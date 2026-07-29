@@ -1314,7 +1314,7 @@ const createSubscriptionPlan = async (req, res) => {
 const createSubscriptionPlans = async (req, res) => {
     try {
         if (config.organization.autoCreateSubscriptionPlans) {
-            const msg = "Bulk creation of subscription plans is not allowed because 'organization.autoCreateSubscriptionPlans' is enabled in the Developer Portal.";
+            const msg = "Bulk creation of subscription plans is not allowed because 'organization.autoCreateSubscriptionPlans' is enabled in the API Portal.";
             logger.info(msg, {
                 orgId: req.orgId
             });
@@ -1396,7 +1396,7 @@ const updateSubscriptionPlan = async (req, res) => {
 const updateSubscriptionPlans = async (req, res) => {
     try {
         if (config.organization.autoCreateSubscriptionPlans) {
-            const msg = "Bulk updating of subscription plans is not allowed because 'organization.autoCreateSubscriptionPlans' is enabled in the Developer Portal.";
+            const msg = "Bulk updating of subscription plans is not allowed because 'organization.autoCreateSubscriptionPlans' is enabled in the API Portal.";
             logger.info(msg, {
                 orgId: req.orgId
             });

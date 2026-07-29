@@ -1,4 +1,4 @@
-<h1 id="wso2-api-developer-portal-core-devportal-routes-api-workflows">API Workflows</h1>
+<h1 id="wso2-api-portal-and-mcp-hub-core-api-workflows">API Workflows</h1>
 
 ## Create an API workflow
 

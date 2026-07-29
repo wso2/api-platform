@@ -35,7 +35,7 @@
  * in authMiddleware/orgGuard, not from these three shims.
  */
 const adminService = require('../../../services/adminService');
-const apiPortalService = require('../../../services/devportalService');
+const apiPortalService = require('../../../services/apiPortalService');
 const util = require('../../../utils/util');
 const logger = require('../../../config/logger');
 
@@ -52,7 +52,7 @@ function singleOrgNotSupported(req, res) {
     return util.sendError(
         res,
         405,
-        'This Developer Portal serves a single organization, which is configured and ' +
+        'This API Portal serves a single organization, which is configured and ' +
         'provisioned at startup. Organizations cannot be created, listed, or deleted ' +
         'through the API.'
     );

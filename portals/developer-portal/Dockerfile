@@ -16,7 +16,7 @@
 # under the License.
 # --------------------------------------------------------------------
 
-# Developer Portal Dockerfile
+# API Portal Dockerfile
 # Uses node:24-slim (Debian/glibc, current LTS) so better-sqlite3 can compile its native binding.
 # Build tools (python3, make, g++) are installed only in the builder stage and are not
 # carried into the runtime image.
@@ -53,7 +53,7 @@ RUN groupadd -g 10001 appgroup && useradd -u 10001 -g appgroup -s /bin/bash -M a
 
 # Pre-create the logs and data directories owned by the non-root user so the
 # app can write log files and its database. The TLS certificate is bind-mounted
-# read-only at /etc/devportal/tls (generated host-side by setup.sh) — never
+# read-only at /etc/api-portal/tls (generated host-side by setup.sh) — never
 # written to by the container.
 RUN mkdir -p /app/logs /app/data && chown -R 10001:10001 /app/logs /app/data
 

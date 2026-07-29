@@ -62,7 +62,7 @@ const MINIMAL_OPENAPI_DEFINITION = JSON.stringify({
 });
 
 // POST /apis takes multipart/form-data: `metadata` (JSON string) + `definition`
-// (file) — see docs/devportal-openapi-spec-v0.9.yaml ApiMetadataMultipartBody.
+// (file) — see docs/api-portal-openapi-spec-v0.9.yaml ApiMetadataMultipartBody.
 // `publisher` holds the API-management scopes; pass `role` to override.
 async function createApi(overrides = {}) {
     const { definition: _definition, definitionFileName: _definitionFileName, role = 'publisher', ...metadataOverrides } = overrides;

@@ -16,10 +16,10 @@
 // under the License.
 // --------------------------------------------------------------------
 
-// Login-time organization mismatch, against the `devportal-other-org` service in
+// Login-time organization mismatch, against the `api-portal-other-org` service in
 // docker-compose.test*.yaml.
 //
-// The rest of this suite can't reach this branch: its devportal and its
+// The rest of this suite can't reach this branch: its portal and its
 // platform-api are both configured for `default`, so a token's org_handle always
 // matches the portal's organization.handle by construction. The second instance
 // exists solely to break that equality — it is pinned to `other-org` while
@@ -45,12 +45,12 @@
 const supertest = require('supertest');
 const client = require('../support/client');
 
-const OTHER_ORG_BASE_URL = process.env.DEVPORTAL_OTHER_ORG_BASE_URL;
-const OTHER_ORG_HANDLE = process.env.DEVPORTAL_OTHER_ORG_HANDLE || 'other-org';
+const OTHER_ORG_BASE_URL = process.env.API_PORTAL_OTHER_ORG_BASE_URL;
+const OTHER_ORG_HANDLE = process.env.API_PORTAL_OTHER_ORG_HANDLE || 'other-org';
 const PLATFORM_API_ORG = client.ORG_HANDLE; // the org platform-api mints tokens for
 
 // Skipped rather than failed when the fixture isn't running (e.g. a hand-rolled
-// `docker compose up devportal rest-api-tests`), so the suite stays usable
+// `docker compose up portal rest-api-tests`), so the suite stays usable
 // outside the Makefile targets. Both CI matrix legs define the variable.
 const describeOtherOrg = OTHER_ORG_BASE_URL ? describe : describe.skip;
 

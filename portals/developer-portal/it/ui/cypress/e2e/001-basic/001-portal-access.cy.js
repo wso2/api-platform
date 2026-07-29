@@ -16,8 +16,8 @@
 // under the License.
 // --------------------------------------------------------------------
 
-describe('Developer Portal — Portal Access', () => {
-    // Prereq: the default org + view are auto-seeded by the devportal on startup
+describe('API Portal — Portal Access', () => {
+    // Prereq: the default org + view are auto-seeded by the portal on startup
     // (seederService.seedDefaultOrg), but the API/MCP listings are empty until
     // something is deployed — so we seed one PUBLISHED REST API and one MCP
     // server into the default view via the management API, and tear them down

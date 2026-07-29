@@ -1,4 +1,4 @@
-<h1 id="wso2-api-developer-portal-core-devportal-routes-views">Views</h1>
+<h1 id="wso2-api-portal-and-mcp-hub-core-views">Views</h1>
 
 ## Create a view
 
@@ -19,7 +19,7 @@ curl -X POST https://localhost:9543/api/v0.9/views \
 
 ```
 
-Creates a Developer Portal view for an organization and associates it with the supplied label names. If `name` is omitted, the service stores the view's handle as its name.
+Creates an API Portal view for an organization and associates it with the supplied label names. If `name` is omitted, the service stores the view's handle as its name.
 
 > Payload
 

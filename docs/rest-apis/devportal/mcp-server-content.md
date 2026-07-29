@@ -1,4 +1,4 @@
-<h1 id="wso2-api-developer-portal-core-devportal-routes-mcp-server-content">MCP Server Content</h1>
+<h1 id="wso2-api-portal-and-mcp-hub-core-mcp-server-content">MCP Server Content</h1>
 
 ## Upload MCP server content
 

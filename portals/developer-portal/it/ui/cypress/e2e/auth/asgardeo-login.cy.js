@@ -17,7 +17,7 @@
 // --------------------------------------------------------------------
 
 // Requires a live or mocked Asgardeo tenant reachable from the test
-// environment — devportal must be configured with identityProvider pointed at
+// environment — portal must be configured with identityProvider pointed at
 // it (see src/config/configLoader.js). Not runnable against the default
 // docker-compose.test*.yaml stack without adding that tenant/config.
 

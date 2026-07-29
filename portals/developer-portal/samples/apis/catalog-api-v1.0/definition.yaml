@@ -5,7 +5,7 @@ info:
   description: |
     Product catalog API with token-based subscription access control.
 
-    Subscribe to a Gold or Bronze plan in the developer portal to receive a
+    Subscribe to a Gold or Bronze plan in the API Portal to receive a
     **subscription token**. Every request must include both an **API key**
     (`X-API-Key` header) and the **subscription token** (`X-Subscription-Token`
     header).

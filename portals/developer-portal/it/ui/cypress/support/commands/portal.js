@@ -31,7 +31,7 @@ Cypress.Commands.add('portalUrl', (path = '') => {
 // ---------------------------------------------------------------------------
 // cy.apiRequest(method, path, options)
 //   Thin wrapper around cy.request that includes the API key header for
-//   accessing admin-protected devportal endpoints in the IT environment.
+//   accessing admin-protected portal endpoints in the IT environment.
 // ---------------------------------------------------------------------------
 Cypress.Commands.add('apiRequest', (method, path, options = {}) => {
     const apiKey = Cypress.env('API_KEY');

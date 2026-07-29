@@ -1,6 +1,6 @@
 # LLM Instructions
 
-LLM Instructions allow portal admins to provide AI agents with high-level context about the developer portal, what APIs are available, how the portal is organized, and any conventions or constraints agents should follow when interacting with it.
+LLM Instructions allow portal admins to provide AI agents with high-level context about the API Portal, what APIs are available, how the portal is organized, and any conventions or constraints agents should follow when interacting with it.
 
 These instructions are published as part of the portal's `llms.txt` file, which is the primary entry point for AI agents discovering the portal's capabilities.
 
@@ -22,7 +22,7 @@ Well-written LLM Instructions reduce agent errors and improve the quality of AI-
 
 LLM Instructions are configured per view, from the organization's admin settings.
 
-1. Sign in to the Developer Portal as an admin.
+1. Sign in to the API Portal as an admin.
 2. Navigate to **Settings** (`/<orgName>/settings`).
 3. Select **LLM Instructions** from the sidebar.
 4. If your organization has more than one view, the **View-scoped setting** banner at the top shows which view you're currently editing — use the pill selector to switch views. Each view has its own LLM Instructions.

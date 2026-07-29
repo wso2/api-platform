@@ -1,4 +1,4 @@
-<h1 id="wso2-api-developer-portal-core-devportal-routes-mcp-servers">MCP Servers</h1>
+<h1 id="wso2-api-portal-and-mcp-hub-core-mcp-servers">MCP Servers</h1>
 
 ## Create MCP server metadata
 
@@ -19,7 +19,7 @@ curl -X POST https://localhost:9543/api/v0.9/mcp-servers \
 
 ```
 
-Creates Developer Portal MCP server metadata. Accepts the same metadata input formats as `POST /api/v0.9/apis` (artifact ZIP, `api.yaml` / `devportal.yaml` / `mcp.yaml`, or `metadata` JSON), but the created record is always typed `MCP`. An MCP server's contract is its `definition` (tools schema) — the tools, resources, and prompts it exposes — not an OpenAPI-style API contract; a `definition` is required. Via the JSON `metadata` field, `type` must be explicitly `MCP`; an omitted type or any other value is rejected with a 400 (use `POST /api/v0.9/apis`).
+Creates API Portal MCP server metadata. Accepts the same metadata input formats as `POST /api/v0.9/apis` (artifact ZIP, `api.yaml` / `devportal.yaml` / `mcp.yaml`, or `metadata` JSON), but the created record is always typed `MCP`. An MCP server's contract is its `definition` (tools schema) — the tools, resources, and prompts it exposes — not an OpenAPI-style API contract; a `definition` is required. Via the JSON `metadata` field, `type` must be explicitly `MCP`; an omitted type or any other value is rejected with a 400 (use `POST /api/v0.9/apis`).
 
 > Payload
 
@@ -187,7 +187,7 @@ This operation requires <strong>Basic Auth</strong> authentication.
 |name|query|string|false|Exact API name filter.|
 |version|query|string|false|Exact API version filter.|
 |tags|query|string|false|Comma-separated tag names. Matches APIs tagged with any of the given names.|
-|view|query|string|false|Developer Portal view name used to filter visible APIs.|
+|view|query|string|false|API Portal view name used to filter visible APIs.|
 |limit|query|integer|false|Maximum number of records to return.|
 |offset|query|integer|false|Number of records to skip before returning results.|
 
@@ -299,7 +299,7 @@ Status Code **200**
 |---|---|---|---|---|
 |»» *anonymous*|object|false|none|none|
 |»»» id|string|false|none|The API's handle (unique per org). Not the internal database uuid.|
-|»»» refId|string¦null|false|none|Platform API (Control Plane) reference ID for this API. Used for MCP registry visibility filtering and included in outbound webhook event payloads. Null/absent for APIs that exist only in the Developer Portal and are not registered with the Platform API — e.g. MCP servers published via the registry.|
+|»»» refId|string¦null|false|none|Platform API (Control Plane) reference ID for this API. Used for MCP registry visibility filtering and included in outbound webhook event payloads. Null/absent for APIs that exist only in the API Portal and are not registered with the Platform API — e.g. MCP servers published via the registry.|
 |»»» dataSource|string¦null|false|none|Indicates which content matched the search term: `METADATA` if the match was in the API's own metadata, or a content type (e.g. a value from the API Content `type` field) if the match was inside an uploaded content file. Only computed by getAllApiMetadataForOrganization when both the `query` search parameter is supplied and the database is PostgreSQL — absent on SQLite (the dev default) and absent from every other operation (get/create/update single API).|
 |»»» planId|string|false|none|none|
 |»»» endPoints|[ApiEndpointsResponse](schemas.md#schemaapiendpointsresponse)|false|none|none|
@@ -394,7 +394,7 @@ curl -X GET https://localhost:9543/api/v0.9/mcp-servers/{mcpServerId} \
 
 ```
 
-Retrieves a single MCP server metadata record by Developer Portal MCP server ID.
+Retrieves a single MCP server metadata record by API Portal MCP server ID.
 
 ### Authentication
 
@@ -508,7 +508,7 @@ curl -X PUT https://localhost:9543/api/v0.9/mcp-servers/{mcpServerId} \
 
 ```
 
-Updates Developer Portal MCP server metadata and, when a `definition` is supplied, its stored tools schema. `type` is required and immutable — it must stay `MCP`; any other value is rejected with `400` via the same resolveTypeOrReject check `POST /mcp-servers` uses. An MCP server's `definition` is its tools schema, not an OpenAPI-style API contract.
+Updates API Portal MCP server metadata and, when a `definition` is supplied, its stored tools schema. `type` is required and immutable — it must stay `MCP`; any other value is rejected with `400` via the same resolveTypeOrReject check `POST /mcp-servers` uses. An MCP server's `definition` is its tools schema, not an OpenAPI-style API contract.
 
 > Payload
 

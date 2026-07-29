@@ -17,7 +17,7 @@
 // --------------------------------------------------------------------
 
 // POST/GET/PUT/DELETE /applications (plain JSON — see
-// docs/devportal-openapi-spec-v0.9.yaml ApplicationRequest). Applications are
+// docs/api-portal-openapi-spec-v0.9.yaml ApplicationRequest). Applications are
 // owned by their creator, so this uses the `developer` role throughout. Async
 // event side effects are covered separately in webhook-events.spec.js.
 

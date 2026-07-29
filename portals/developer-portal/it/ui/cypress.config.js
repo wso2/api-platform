@@ -32,7 +32,7 @@ module.exports = defineConfig({
         defaultCommandTimeout: 10000,
         requestTimeout: 15000,
         responseTimeout: 15000,
-        // Accept self-signed certs from the devportal
+        // Accept self-signed certs from the portal
         chromeWebSecurity: false,
         setupNodeEvents(on, config) {
             // Pass required flags to Chrome/Chromium in Docker (no sandbox, no GPU)

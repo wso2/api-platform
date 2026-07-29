@@ -1,4 +1,4 @@
-<h1 id="wso2-api-developer-portal-core-devportal-routes-webhook-subscribers">Webhook Subscribers</h1>
+<h1 id="wso2-api-portal-and-mcp-hub-core-webhook-subscribers">Webhook Subscribers</h1>
 
 ## Create a webhook subscriber
 

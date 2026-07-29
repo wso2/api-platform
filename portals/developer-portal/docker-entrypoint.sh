@@ -20,7 +20,7 @@
 
 set -e
 
-CERT_DIR=/etc/devportal/tls
+CERT_DIR=/etc/api-portal/tls
 TLS_ENABLED="${APIP_AP_SERVER_HTTPS_ENABLED:-false}"
 
 # The server now requires an explicit --config (repeatable, last-wins) — there is

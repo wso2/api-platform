@@ -141,7 +141,7 @@ describe('Applications', () => {
             cy.get(`#consumer-key-${KM_ID}-PRODUCTION-view`, { timeout: 15000 })
                 .should('have.value', 'it-client-id');
 
-            // 2. Generate a token with the consumer secret (devportal → mock key manager).
+            // 2. Generate a token with the consumer secret (portal → mock key manager).
             cy.get(`#tab-btn-token-${KM_ID}-PRODUCTION`).click();
             cy.get('#tokenKeyBtn-PRODUCTION').click();
             cy.get('#generateTokenPromptModal').should('be.visible');

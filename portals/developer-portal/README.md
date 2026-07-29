@@ -1,6 +1,6 @@
 # API Portal & MCP Hub
 
-A multi-organisation API developer portal built on Node.js. It provides a customisable web UI for discovering and subscribing to APIs, and a set of Admin REST APIs for managing organisations, views, API metadata, and portal content.
+A multi-organisation API API Portal built on Node.js. It provides a customisable web UI for discovering and subscribing to APIs, and a set of Admin REST APIs for managing organisations, views, API metadata, and portal content.
 
 For end-user documentation, see [docs/](docs/).
 
@@ -8,7 +8,7 @@ For end-user documentation, see [docs/](docs/).
 
 | Port | Protocol | Description |
 |------|----------|-------------|
-| `9543` | HTTPS (default) / HTTP | Developer Portal UI and Admin REST API |
+| `9543` | HTTPS (default) / HTTP | API Portal UI and Admin REST API |
 
 ## Prerequisites
 
@@ -31,7 +31,7 @@ The fastest way to get the portal running — no local Node install required. Re
 docker compose up
 ```
 
-`../scripts/setup.sh` is a one-time step: it generates devportal's and the Platform API's encryption/session/JWT secrets (written to `resources/keys/` as files, read via `{{ file }}` — never as env vars), a self-signed TLS certificate, and an admin user into `api-platform.env` (git-ignored). It prompts for an admin username/password interactively, or generates a random password if you press Enter; set `ADMIN_USERNAME`/`ADMIN_PASSWORD` env vars to skip the prompts (e.g. in CI). Safe to re-run — it only fills in what's missing and never overwrites an existing value; to build devportal from source instead of using the published image, run `docker compose up --build`.
+`../scripts/setup.sh` is a one-time step: it generates API Portal's and the Platform API's encryption/session/JWT secrets (written to `resources/keys/` as files, read via `{{ file }}` — never as env vars), a self-signed TLS certificate, and an admin user into `api-platform.env` (git-ignored). It prompts for an admin username/password interactively, or generates a random password if you press Enter; set `ADMIN_USERNAME`/`ADMIN_PASSWORD` env vars to skip the prompts (e.g. in CI). Safe to re-run — it only fills in what's missing and never overwrites an existing value; to build API Portal from source instead of using the published image, run `docker compose up --build`.
 
 Then open **https://localhost:9543/default/views/default** and log in with the admin credentials `../scripts/setup.sh` printed.
 
@@ -55,7 +55,7 @@ make it-open
 ```
 
 Both suites also run on pull requests via the
-[Developer Portal Integration Test](../../.github/workflows/devportal-integration-test.yml)
+[API Portal Integration Test](../../.github/workflows/devportal-integration-test.yml)
 GitHub Actions workflow. For integration test details, see [it/README.md](it/README.md).
 
 ### Clean
@@ -144,15 +144,15 @@ Use this for active development, custom IdP configuration, or when you prefer to
 
 `configs/config.toml`'s own defaults are wired for the Docker Compose topology (TLS on, pointing at a cert only the containers have, `auth.local.platform_api_url` pointing at the `platform-api` hostname that only resolves inside the compose network). Plain `npm start` inherits those as-is and will fail — there's no `/app` filesystem or bind-mounted cert here. `npm run start:local` (`package.json`) overrides all of it in one place: TLS off, `auth.local.platform_api_url` pointed at `localhost`, and `auth.local.public_key_path` pointed at the host-side `resources/keys/` that `../scripts/setup.sh` writes rather than the container mount path (see [Local auth](#local-auth) if you're running the Platform API sidecar).
 
-`security.encryption_key`/`security.session_secret`, unlike `public_key_path`, are read via `{{ file "/etc/devportal/keys/..." }}` directly in `config.toml` — there's no env-var override for that path, so it always looks under `/etc/devportal/keys` even for `npm run start:local`, which doesn't exist outside the containers. For local (non-Docker) runs, point `configs/config.toml` at the host-side files `../scripts/setup.sh` already generated instead:
+`security.encryption_key`/`security.session_secret`, unlike `public_key_path`, are read via `{{ file "/etc/api-portal/keys/..." }}` directly in `config.toml` — there's no env-var override for that path, so it always looks under `/etc/api-portal/keys` even for `npm run start:local`, which doesn't exist outside the containers. For local (non-Docker) runs, point `configs/config.toml` at the host-side files `../scripts/setup.sh` already generated instead:
 
 ```toml
 [api_portal.security]
-encryption_key = '{{ file "resources/keys/devportal-encryption.key" }}'
-session_secret = '{{ file "resources/keys/devportal-session-secret" }}'
+encryption_key = '{{ file "resources/keys/api-portal-encryption.key" }}'
+session_secret = '{{ file "resources/keys/api-portal-session-secret" }}'
 ```
 
-`{{ file }}` only reads from an allowlisted directory (`/etc/devportal`, `/secrets/devportal` by default), so also set `APIP_CONFIG_FILE_SOURCE_ALLOWLIST=resources/keys` when running `npm run start:local` (or add it to the `start:local` script in `package.json`). Don't commit the `config.toml` path change — it's a local-only edit for the Docker-free flow.
+`{{ file }}` only reads from an allowlisted directory (`/etc/api-portal`, `/secrets/api-portal` by default), so also set `APIP_CONFIG_FILE_SOURCE_ALLOWLIST=resources/keys` when running `npm run start:local` (or add it to the `start:local` script in `package.json`). Don't commit the `config.toml` path change — it's a local-only edit for the Docker-free flow.
 
 ### 3. Configure the Identity Provider (optional)
 
@@ -178,17 +178,17 @@ For local exploration you can skip IdP setup by using the Platform API sidecar i
 
 #### SQLite (default — no setup required)
 
-The portal uses SQLite out of the box. The database file is created automatically at the path configured by `database.path` (default: `./devportal.db`). No installation or schema migration step is needed.
+The portal uses SQLite out of the box. The database file is created automatically at the path configured by `database.path` (default: `./api-portal.db`). No installation or schema migration step is needed.
 
 #### PostgreSQL (optional)
 
 To use PostgreSQL instead, spin up an instance:
 
 ```bash
-docker run --name devportal-postgres \
+docker run --name api-portal-postgres \
   -e POSTGRES_USER=postgres \
   -e POSTGRES_PASSWORD=postgres \
-  -e POSTGRES_DB=devportal \
+  -e POSTGRES_DB=api_portal \
   -p 5432:5432 \
   -d postgres:16
 ```
@@ -200,7 +200,7 @@ Then update the `[api_portal.database]` block in `configs/config.toml`:
 driver = "postgres"
 host = "localhost"
 port = 5432
-name = "devportal"
+name = "api_portal"
 user = "postgres"
 password = "postgres"
 ```
@@ -209,7 +209,7 @@ In production, set the password via the `APIP_AP_DATABASE_PASSWORD` environment 
 
 ### 5. Choose the organization
 
-A Developer Portal instance serves exactly one organization, named by `organization.handle`
+A API Portal instance serves exactly one organization, named by `organization.handle`
 (or the `APIP_AP_ORGANIZATION_HANDLE` env var). It is **required** — the portal refuses to
 start without it — and the packaged `configs/config.toml` sets it to `default`. The
 organization is seeded on startup if it doesn't exist yet, so no manual step is required.
@@ -231,13 +231,13 @@ Open **http://localhost:9543/default/views/default**
 
 ## Seed Sample APIs (optional)
 
-Deploys the sample APIs and MCP servers under `samples/` into the default organisation, entirely through the public REST API — devportal itself has no built-in seeding logic. Works with both the Docker Compose and `npm start` workflows.
+Deploys the sample APIs and MCP servers under `samples/` into the default organisation, entirely through the public REST API — API Portal itself has no built-in seeding logic. Works with both the Docker Compose and `npm start` workflows.
 
 ```bash
 ./scripts/seed-samples.sh
 ```
 
-Prompts for the admin username/password (or set `ADMIN_USERNAME`/`ADMIN_PASSWORD` to skip the prompt, e.g. in CI). Safe to re-run — entries that already exist are skipped. Set `DEVPORTAL_URL`/`PLATFORM_API_URL` to override the defaults (`https://localhost:9543` / `https://localhost:9243`) — e.g. `DEVPORTAL_URL=http://localhost:9543` when running against `npm run start:local`.
+Prompts for the admin username/password (or set `ADMIN_USERNAME`/`ADMIN_PASSWORD` to skip the prompt, e.g. in CI). Safe to re-run — entries that already exist are skipped. Set `API_PORTAL_URL`/`PLATFORM_API_URL` to override the defaults (`https://localhost:9543` / `https://localhost:9243`) — e.g. `API_PORTAL_URL=http://localhost:9543` when running against `npm run start:local`.
 
 ---
 
@@ -265,11 +265,11 @@ The portal config (or `APIP_AP_AUTH_LOCAL_*` env vars) must point to the Platfor
 ```toml
 [api_portal.auth.local]
 platform_api_url = "https://localhost:9243"  # env: APIP_AP_AUTH_LOCAL_PLATFORM_API_URL
-public_key_path = "/etc/devportal/keys/jwt_public.pem"  # path to the Platform API's auth.jwt.public_key PEM — env: APIP_AP_AUTH_LOCAL_PUBLIC_KEY_PATH
+public_key_path = "/etc/api-portal/keys/jwt_public.pem"  # path to the Platform API's auth.jwt.public_key PEM — env: APIP_AP_AUTH_LOCAL_PUBLIC_KEY_PATH
 tls_skip_verify = true                    # Platform API uses a self-signed cert
 ```
 
-Tokens are signed asymmetrically (RS256): the Platform API mints them with its `auth.jwt.private_key` and the portal verifies them against the matching public key above. There is no shared HMAC secret, and the private key never leaves the Platform API — `../scripts/setup.sh` generates the keypair into `resources/keys/`, and `docker-compose.yaml` mounts only the `jwt_public.pem` file into the portal (at `/etc/devportal/keys/jwt_public.pem`); the Platform API's own `jwt_private.pem` and `encryption.key` (its at-rest encryption key, `resources/keys/encryption.key`) are never mounted into the portal container. The portal has its own, separate secrets — `resources/keys/devportal-encryption.key` and `resources/keys/devportal-session-secret` — which `docker-compose.yaml` mounts into the portal container at `/etc/devportal/keys/encryption.key` and `/etc/devportal/keys/session-secret` respectively; these never leave the portal container either way.
+Tokens are signed asymmetrically (RS256): the Platform API mints them with its `auth.jwt.private_key` and the portal verifies them against the matching public key above. There is no shared HMAC secret, and the private key never leaves the Platform API — `../scripts/setup.sh` generates the keypair into `resources/keys/`, and `docker-compose.yaml` mounts only the `jwt_public.pem` file into the portal (at `/etc/api-portal/keys/jwt_public.pem`); the Platform API's own `jwt_private.pem` and `encryption.key` (its at-rest encryption key, `resources/keys/encryption.key`) are never mounted into the portal container. The portal has its own, separate secrets — `resources/keys/api-portal-encryption.key` and `resources/keys/api-portal-session-secret` — which `docker-compose.yaml` mounts into the portal container at `/etc/api-portal/keys/encryption.key` and `/etc/api-portal/keys/session-secret` respectively; these never leave the portal container either way.
 
 For production, configure an OIDC identity provider instead of local auth. Its tokens must
 assert this instance's organization — a login whose organization claim resolves to any other
@@ -311,7 +311,7 @@ Create an API manifest file and an OpenAPI definition, then upload them:
 
 ```yaml
 # api.yaml
-apiVersion: devportal.api-platform.wso2.com/v1alpha2
+apiVersion: API Portal.api-platform.wso2.com/v1alpha2
 kind: RestApi
 
 metadata:

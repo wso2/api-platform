@@ -1,4 +1,4 @@
-<h1 id="wso2-api-developer-portal-core-devportal-routes-api-keys">API Keys</h1>
+<h1 id="wso2-api-portal-and-mcp-hub-core-api-keys">API Keys</h1>
 
 ## List all API keys for the current user
 
@@ -17,7 +17,7 @@ curl -X GET https://localhost:9543/api/v0.9/api-keys \
 
 ```
 
-Lists every API key created by the authenticated user across all APIs in the organization. Powers the Developer Portal's global "API Keys" page. Each item additionally carries the owning API's name, version, and type. Secret material is never returned.
+Lists every API key created by the authenticated user across all APIs in the organization. Powers the API Portal's global "API Keys" page. Each item additionally carries the owning API's name, version, and type. Secret material is never returned.
 
 ### Authentication
 
@@ -104,7 +104,7 @@ Status Code **200**
 |» list|[[ApiKeyMetadataResponse](schemas.md#schemaapikeymetadataresponse)]|false|none|[API key metadata returned by list operations. Secret material is omitted.]|
 |»» id|string|false|none|none|
 |»» displayName|string|false|none|none|
-|»» apiId|string|false|none|Developer Portal API ID the key belongs to.|
+|»» apiId|string|false|none|API ID the key belongs to.|
 |»» appId|string¦null|false|none|ID of the application this key is associated with, if any. Analytics attribution only.|
 |»» appDisplayName|string¦null|false|none|Display name of the associated application, if any.|
 |»» status|string|false|none|none|
@@ -149,7 +149,7 @@ curl -X POST https://localhost:9543/api/v0.9/apis/{apiId}/api-keys/generate \
 
 ```
 
-Generates an API key stored in the Developer Portal (devportal is source of truth). The plaintext secret is returned once in the response and never persisted. A `apikey.generated` webhook event is published to the organization's configured webhook subscribers so they can register the key (e.g. with a gateway). Key `id` is optional — a UUID handle is generated when it is omitted; when provided it must match `^[a-z0-9][a-z0-9_-]{0,127}$`. `expiresAt` must include a timezone when sent as an ISO-8601 string.
+Generates an API key stored in the API Portal (devportal is source of truth). The plaintext secret is returned once in the response and never persisted. A `apikey.generated` webhook event is published to the organization's configured webhook subscribers so they can register the key (e.g. with a gateway). Key `id` is optional — a UUID handle is generated when it is omitted; when provided it must match `^[a-z0-9][a-z0-9_-]{0,127}$`. `expiresAt` must include a timezone when sent as an ISO-8601 string.
 
 > Payload
 
@@ -364,7 +364,7 @@ Status Code **200**
 |» list|[[ApiKeyMetadataResponse](schemas.md#schemaapikeymetadataresponse)]|false|none|[API key metadata returned by list operations. Secret material is omitted.]|
 |»» id|string|false|none|none|
 |»» displayName|string|false|none|none|
-|»» apiId|string|false|none|Developer Portal API ID the key belongs to.|
+|»» apiId|string|false|none|API ID the key belongs to.|
 |»» appId|string¦null|false|none|ID of the application this key is associated with, if any. Analytics attribution only.|
 |»» appDisplayName|string¦null|false|none|Display name of the associated application, if any.|
 |»» status|string|false|none|none|
@@ -641,7 +641,7 @@ This operation requires <strong>Basic Auth</strong> authentication.
 |---|---|---|---|---|
 |body|body|object|true|Identifies the API key and the application to associate it with.|
 |» keyId|body|string|true|The key's handle — the `id` returned by generate or list.|
-|» appId|body|string|true|Developer Portal application ID to associate the key with.|
+|» appId|body|string|true|API Portal application ID to associate the key with.|
 |apiId|path|string|true|The API's handle (unique per org). Resolves only to REST/SOAP/WS/WebSub/GraphQL APIs — MCP servers are addressed via `/mcp-servers`.|
 
 > Example responses
@@ -916,7 +916,7 @@ Status Code **200**
 |» list|[[ApiKeyMetadataResponse](schemas.md#schemaapikeymetadataresponse)]|false|none|[API key metadata returned by list operations. Secret material is omitted.]|
 |»» id|string|false|none|none|
 |»» displayName|string|false|none|none|
-|»» apiId|string|false|none|Developer Portal API ID the key belongs to.|
+|»» apiId|string|false|none|API ID the key belongs to.|
 |»» appId|string¦null|false|none|ID of the application this key is associated with, if any. Analytics attribution only.|
 |»» appDisplayName|string¦null|false|none|Display name of the associated application, if any.|
 |»» status|string|false|none|none|

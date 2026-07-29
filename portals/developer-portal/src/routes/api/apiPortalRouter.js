@@ -18,9 +18,9 @@
  */
 
 /*
- * Spec-driven /devportal router.
+ * Spec-driven /portal router.
  *
- * Wires the OpenAPI spec at docs/devportal-openapi-spec-v0.9.yaml into the
+ * Wires the OpenAPI spec at docs/api-portal-openapi-spec-v0.9.yaml into the
  * Express app. Pipeline per request:
  *
  *   1. authResolver        — populates req.auth (legacy auth-mode parity)
@@ -46,10 +46,10 @@ const { config } = require('../../config/configLoader');
 const logger = require('../../config/logger');
 const { authResolver, OAuth2Security, apiKeyAuth } = require('../../middlewares/authMiddleware');
 
-const SPEC_PATH = path.join(__dirname, '..', '..', '..', 'docs', 'devportal-openapi-spec-v0.9.yaml');
+const SPEC_PATH = path.join(__dirname, '..', '..', '..', 'docs', 'api-portal-openapi-spec-v0.9.yaml');
 const HANDLERS_DIR = path.join(__dirname, 'handlers');
 
-// Top-level path segments that belong to the devportal API surface. The router
+// Top-level path segments that belong to the portal API surface. The router
 // is mounted at '/', so it sees every request; this lets us pass rendered page
 // routes (/:orgName/views/...) straight through with next('router') so neither
 // authResolver nor the validator touch them.
@@ -193,7 +193,7 @@ function build() {
     const router = express.Router();
 
     // The router is mounted at '/', so it receives every request. Skip anything
-    // that isn't a devportal API path (e.g. the rendered /:orgName/views/...
+    // that isn't a portal API path (e.g. the rendered /:orgName/views/...
     // page routes) so authResolver and the validator only run for real API
     // requests; next('router') hands the request to the page route tree.
     const apiSegments = apiFirstSegments();

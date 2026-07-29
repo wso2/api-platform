@@ -1,7 +1,7 @@
 
-<h1 id="wso2-api-developer-portal-core-devportal-routes">WSO2 API Developer Portal Core - Devportal Routes v0.9.0</h1>
+<h1 id="wso2-api-portal-and-mcp-hub-core">WSO2 API Portal & MCP Hub Core v0.9.0</h1>
 
-Fine-grained Developer Portal API for managing organizations,
+Fine-grained API Portal REST API for managing organizations,
 API metadata and content, applications, subscriptions, application appKeyMappings, and API flows.
 
 All resources, including organization lifecycle endpoints
@@ -125,7 +125,7 @@ Base URLs:
 
 ### [Application Keys](application-keys.md)
 
-- [Map an OAuth client_id to a Developer Portal application](application-keys.md#map-an-oauth-clientid-to-a-developer-portal-application)
+- [Map an OAuth client_id to an API Portal application](application-keys.md#map-an-oauth-clientid-to-an-api-portal-application)
 - [Generate an OAuth access token](application-keys.md#generate-an-oauth-access-token)
 - [Remove an OAuth client_id mapping](application-keys.md#remove-an-oauth-clientid-mapping)
 

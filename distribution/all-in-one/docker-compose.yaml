@@ -22,30 +22,30 @@ services:
     container_name: postgres
     environment:
       POSTGRES_PASSWORD: postgres
-      POSTGRES_DB: devportal
+      POSTGRES_DB: api_portal
     ports:
       - "5432:5432"
     volumes:
       - postgres_data:/var/lib/postgresql
-      - ../../portals/developer-portal/artifacts/script.sql:/docker-entrypoint-initdb.d/01-init-devportal.sql
+      - ../../portals/developer-portal/artifacts/script.sql:/docker-entrypoint-initdb.d/01-init-api-portal.sql
       - ../../platform-api/internal/database/init-platform-api-db.sql:/docker-entrypoint-initdb.d/02-init-platform-api.sql
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U postgres -d devportal"]
+      test: ["CMD-SHELL", "pg_isready -U postgres -d api_portal"]
       interval: 5s
       timeout: 5s
       retries: 5
 
-  devportal:
+  api-portal:
     build:
       context: ../../portals/developer-portal
       dockerfile: Dockerfile
-    container_name: devportal
+    container_name: api-portal
     environment:
       - APIP_AP_SERVER_HTTPS_ENABLED=false
       - APIP_AP_DATABASE_DRIVER=postgres
       - APIP_AP_DATABASE_HOST=postgres
       - APIP_AP_DATABASE_PORT=5432
-      - APIP_AP_DATABASE_NAME=devportal
+      - APIP_AP_DATABASE_NAME=api_portal
       - APIP_AP_DATABASE_USER=postgres
       - APIP_AP_DATABASE_PASSWORD=postgres
       # platform-api signs its tokens with RS256; the devportal verifies them
@@ -69,7 +69,7 @@ services:
       - ./devportal-config.toml:/app/configs/config.toml:ro
       # Same RS256 keypair volume platform-api signs with — the devportal reads
       # only jwt_public.pem (0644) from it to verify those tokens.
-      - platform-api-jwt-keys:/etc/devportal/keys:ro
+      - platform-api-jwt-keys:/etc/api-portal/keys:ro
     depends_on:
       postgres:
         condition: service_healthy
@@ -142,7 +142,7 @@ services:
       - platform-api-certs:/app/data/certs
       - platform-api-jwt-keys:/etc/platform-api/keys:ro
     environment:
-      - APIP_CP_DEFAULT_API_PORTAL_API_URL=http://devportal:${APIP_AP_SERVER_PORT:-9543}
+      - APIP_CP_DEFAULT_API_PORTAL_API_URL=http://api-portal:${APIP_AP_SERVER_PORT:-9543}
       - APIP_CP_DATABASE_DRIVER=postgres
       - APIP_CP_DATABASE_HOST=postgres
       - APIP_CP_DATABASE_PORT=5432

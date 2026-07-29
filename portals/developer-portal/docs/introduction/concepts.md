@@ -1,6 +1,6 @@
 # Core Concepts
 
-This page explains the key building blocks of the Developer Portal and how they relate to each other.
+This page explains the key building blocks of the API Portal and how they relate to each other.
 
 ## Organization
 

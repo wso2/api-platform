@@ -1,4 +1,4 @@
-<h1 id="wso2-api-developer-portal-core-devportal-routes-webhook-events">Webhook Events</h1>
+<h1 id="wso2-api-portal-and-mcp-hub-core-webhook-events">Webhook Events</h1>
 
 ## List webhook events
 

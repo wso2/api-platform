@@ -27,7 +27,7 @@
 // pin-to-open via the button, persistence across navigation + reload, and
 // collapse via the button.
 
-describe('Developer Portal — Sidebar', () => {
+describe('API Portal — Sidebar', () => {
     beforeEach(() => {
         cy.on('uncaught:exception', () => false);
         cy.visitPortal(); // portal home

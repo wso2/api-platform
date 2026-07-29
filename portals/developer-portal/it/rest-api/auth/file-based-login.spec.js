@@ -17,11 +17,11 @@
 // --------------------------------------------------------------------
 
 // "File-based" login (config.identityProvider unset) is NOT a local credential
-// store inside devportal — POST /:orgName/views/:viewName/login
+// store inside portal — POST /:orgName/views/:viewName/login
 // (src/controllers/authController.js handleLocalLogin) proxies the username/
 // password to Platform API's own file-based auth (POST /api/portal/v0.9/auth/login,
 // see it/configs/config-platform-api-it.toml for the seeded admin/publisher/
-// developer accounts) and decodes the returned JWT into the devportal session.
+// developer accounts) and decodes the returned JWT into the portal session.
 // This is the same login flow support/client.js's login() uses for every other
 // spec in this suite — here it's exercised directly to check the HTTP-level
 // contract (redirects, cookies, error responses) rather than just using it as

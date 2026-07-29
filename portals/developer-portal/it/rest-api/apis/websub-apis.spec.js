@@ -16,7 +16,7 @@
 // under the License.
 // --------------------------------------------------------------------
 
-// POST/GET/PUT/DELETE /apis (type: WEBSUB). This is devportal's own registration
+// POST/GET/PUT/DELETE /apis (type: WEBSUB). This is portal's own registration
 // of an already-published WebSub API's metadata — not to be confused with the
 // event-gateway's WebSub API management (gateway.api-platform.wso2.com).
 

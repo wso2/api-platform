@@ -1,6 +1,6 @@
-<h1 id="wso2-api-developer-portal-core-devportal-routes-application-keys">Application Keys</h1>
+<h1 id="wso2-api-portal-and-mcp-hub-core-application-keys">Application Keys</h1>
 
-## Map an OAuth client_id to a Developer Portal application
+## Map an OAuth client_id to an API Portal application
 
 <a id="opIdgenerateApplicationKeys"></a>
 
@@ -38,7 +38,7 @@ This operation requires <strong>Basic Auth</strong> authentication.
 
 </aside>
 
-<h3 id="map-an-oauth-client_id-to-a-developer-portal-application-parameters">Parameters</h3>
+<h3 id="map-an-oauth-client_id-to-an-api-portal-application-parameters">Parameters</h3>
 
 |Name|In|Type|Required|Description|
 |---|---|---|---|---|
@@ -105,7 +105,7 @@ This operation requires <strong>Basic Auth</strong> authentication.
 }
 ```
 
-<h3 id="map-an-oauth-client_id-to-a-developer-portal-application-responses">Responses</h3>
+<h3 id="map-an-oauth-client_id-to-an-api-portal-application-responses">Responses</h3>
 
 |Status|Meaning|Description|Schema|
 |---|---|---|---|
@@ -115,7 +115,7 @@ This operation requires <strong>Basic Auth</strong> authentication.
 |409|[Conflict](https://tools.ietf.org/html/rfc7231#section-6.5.8)|The request conflicts with an existing resource.|[ErrorResponse](schemas.md#schemaerrorresponse)|
 |500|[Internal Server Error](https://tools.ietf.org/html/rfc7231#section-6.6.1)|Internal server error.|[ErrorResponse](schemas.md#schemaerrorresponse)|
 
-<h3 id="map-an-oauth-client_id-to-a-developer-portal-application-responseschema">Response Schema</h3>
+<h3 id="map-an-oauth-client_id-to-an-api-portal-application-responseschema">Response Schema</h3>
 
 #### Enumerated Values
 

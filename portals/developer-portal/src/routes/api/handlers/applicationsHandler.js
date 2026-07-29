@@ -20,7 +20,7 @@
 /*
  * Tag: Applications
  */
-const apiPortalController = require('../../../controllers/devportalController');
+const apiPortalController = require('../../../controllers/apiPortalController');
 
 module.exports = {
     listApplications: apiPortalController.listApplications,

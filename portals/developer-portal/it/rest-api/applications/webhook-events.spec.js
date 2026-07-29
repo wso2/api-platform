@@ -37,7 +37,7 @@ describe('applications webhook events', () => {
     let subscriber;
 
     // WEBHOOK_SINK_URL (set in it/docker-compose.test*.yaml) gives the hostname the
-    // devportal container can reach this test container at — see resolveSinkUrl's
+    // portal container can reach this test container at — see resolveSinkUrl's
     // comment in support/webhook-sink.js for why the port always stays local to this
     // file rather than coming from the (shared-across-spec-files) env var.
     const sinkUrl = resolveSinkUrl(4500);
@@ -91,7 +91,7 @@ describe('applications webhook events', () => {
         expect(received).toBeDefined();
 
         // Full delivered envelope (src/services/webhooks/deliveryWorker.js buildEnvelope)
-        // and the exact payload built in devportalController.js saveApplication.
+        // and the exact payload built in apiPortalController.js saveApplication.
         expect(received.body.event_type).toBe('application.created');
         expect(received.body.event_id).toBe(event.uuid);
         expect(received.body.occurred_at).toBeDefined();

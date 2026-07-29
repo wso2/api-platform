@@ -22,7 +22,7 @@
 # (as below) so the inner double quotes need no backslash-escaping:
 #
 #   platform_api_url = '{{ env "APIP_AP_AUTH_LOCAL_PLATFORM_API_URL" }}'
-#   encryption_key = '{{ file "/etc/devportal/keys/encryption.key" }}'
+#   encryption_key = '{{ file "/etc/api-portal/keys/encryption.key" }}'
 #
 #   {{ env "NAME" }}            -> NAME's value. FAILS CLOSED (aborts startup)
 #                                   if NAME is unset or empty — it does not
@@ -70,10 +70,10 @@ console_only = true     # true: log to stdout only. false: also write rotating l
 
 [api_portal.database]
 driver = "sqlite"             # sqlite | postgres | mssql
-path = "./devportal.db"       # SQLite only
+path = "./api-portal.db"       # SQLite only
 host = "localhost"            # PostgreSQL / MSSQL only
 port = 5432                   # PostgreSQL / MSSQL only (Change to 1433 for MSSQL)
-name = "devportal"            # PostgreSQL / MSSQL only
+name = "api_portal"            # PostgreSQL / MSSQL only
 user = "postgres"             # PostgreSQL / MSSQL only
 password = ""                 # PostgreSQL / MSSQL only
 ssl_mode = "disable"          # PostgreSQL / MSSQL only: disable | verify-full
@@ -92,7 +92,7 @@ pool_request_timeout_ms = 30000         # MSSQL only - per-query execution timeo
 encryption_key = ""     # 64-char hex — AES-256-GCM key for encrypting secrets at rest
 session_secret = ""     # 64-char hex — express-session signing secret
 
-# Static shared-secret header for calling the devportal's own REST API.
+# Static shared-secret header for calling the API Portal's own REST API.
 [api_portal.security.service_api_key]
 enabled = true
 header_name = "x-wso2-api-key"
@@ -145,7 +145,7 @@ token_refresh_timeout_ms = 10000
 silent_sso = true      # Enable silent SSO
 org_callback = false   # Redirect to the org's own landing page after login
 
-# Maps IDP role names to devportal's internal roles.
+# Maps IDP role names to API Portal's internal roles.
 [api_portal.auth.idp.roles]
 admin = "admin"
 subscriber = "Internal/subscriber"

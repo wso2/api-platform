@@ -4,7 +4,7 @@ A subscription grants you access to a specific API under a chosen subscription p
 
 ## Subscribe to an API
 
-1. Sign in to the Developer Portal.
+1. Sign in to the API Portal.
 2. Click **APIs** from the sidebar.
 3. Find the API you want to access and open it.
 4. Click **Subscribe** in the API's banner (or scroll to the **Subscription plans** section).
@@ -37,7 +37,7 @@ Some APIs are configured to allow direct invocation without subscribing. For the
 
 ## View Your Subscriptions
 
-Your active subscriptions are listed under **Subscriptions** in the Developer Portal sidebar. From there you can see which APIs you are subscribed to, the active plan for each, and manage or cancel subscriptions.
+Your active subscriptions are listed under **Subscriptions** in the API Portal sidebar. From there you can see which APIs you are subscribed to, the active plan for each, and manage or cancel subscriptions.
 
 ## Cancel a Subscription
 

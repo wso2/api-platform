@@ -47,7 +47,7 @@ const yaml = require('js-yaml');
 const Ajv = require('ajv');
 
 const SPEC = yaml.load(
-    fs.readFileSync(path.join(__dirname, '..', 'docs/devportal-openapi-spec-v0.9.yaml'), 'utf8')
+    fs.readFileSync(path.join(__dirname, '..', 'docs/api-portal-openapi-spec-v0.9.yaml'), 'utf8')
 );
 
 function deref(ref) {
@@ -206,7 +206,7 @@ const SAMPLES = [
         createdAt: '2026-05-07T08:30:00.000Z', updatedAt: '2026-05-07T08:30:00.000Z',
     }]],
     ['addSubscriptionPlans', 200, {
-        message: "Bulk creation of subscription plans is not allowed because 'generateDefaultSubPlans' is enabled in the Developer Portal.",
+        message: "Bulk creation of subscription plans is not allowed because 'generateDefaultSubPlans' is enabled in the API Portal.",
     }],
 
     // API Workflows — apiWorkflowService.js. createAPIWorkflow:
@@ -230,7 +230,7 @@ const SAMPLES = [
         pagination: { total: 1, limit: 20, offset: 0 },
     }],
 
-    // API Keys — apiKeyController.js (devportal source of truth, no CP lookup).
+    // API Keys — apiKeyController.js (API Portal source of truth, no CP lookup).
     // apiKeyService.generate/regenerate return { keyId, id, displayName, key, expiresAt,
     // status, ...audit } (apiKeyService.js:197,248) — the key's handle is `id`, its
     // display name is `displayName`; there is no `name` field.

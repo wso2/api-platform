@@ -1,11 +1,11 @@
 # Webhook Integration
 
-The Developer Portal publishes real-time webhook events to your configured endpoint(s) whenever API key or subscription state changes. The portal itself does not talk to a gateway — it only delivers a signed HTTP POST to whatever URL you register as a webhook subscriber. What happens next is up to the receiving system: typically that's a small handler you run which reacts to the event by updating the actual API Gateway (or cache, key store, etc.) so access is enforced immediately — for example, rejecting a key the moment a developer revokes it in the portal.
+The API Portal publishes real-time webhook events to your configured endpoint(s) whenever API key or subscription state changes. The portal itself does not talk to a gateway — it only delivers a signed HTTP POST to whatever URL you register as a webhook subscriber. What happens next is up to the receiving system: typically that's a small handler you run which reacts to the event by updating the actual API Gateway (or cache, key store, etc.) so access is enforced immediately — for example, rejecting a key the moment a developer revokes it in the portal.
 
 ## How It Works
 
 ```
-Developer Portal
+API Portal
        │
        │  POST (signed + optionally encrypted)
        ▼

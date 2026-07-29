@@ -18,7 +18,7 @@
 
 // Minimal OAuth2 client-credentials token endpoint used by the application
 // key/token round-trip test. A key manager's tokenEndpoint is pointed here, and
-// oauthTokenService (in the devportal container) POSTs to it server-side with
+// oauthTokenService (in the portal container) POSTs to it server-side with
 // HTTP Basic auth (clientId:clientSecret). Mirrors the in-process approach the
 // REST suite uses in it/rest-api/key-managers/token-generation.spec.js.
 
@@ -32,7 +32,7 @@ const MOCK_ACCESS_TOKEN = 'it-mock-access-token';
 // caller can't force the mock to buffer an unbounded stream in memory.
 const MAX_TOKEN_BODY_BYTES = 8 * 1024;
 
-// This process's docker-network IPv4, so the devportal container (which makes
+// This process's docker-network IPv4, so the portal container (which makes
 // the token request server-side) can reach the mock. Using the address rather
 // than a service-name alias keeps it working under both `compose up` and the
 // one-off `compose run` used while iterating.

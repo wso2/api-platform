@@ -1,6 +1,6 @@
 # Manage the Organization
 
-An organization owns an API catalog, its applications, subscriptions, and branding. **A Developer Portal instance serves exactly one organization**, named by `organization.handle` in its configuration. That handle appears in every portal URL (`/<orgHandle>/views/<viewName>`).
+An organization owns an API catalog, its applications, subscriptions, and branding. **A API Portal instance serves exactly one organization**, named by `organization.handle` in its configuration. That handle appears in every portal URL (`/<orgHandle>/views/<viewName>`).
 
 The database schema is still multi-organization, so one shared database can hold many organizations — but each is served by its own portal instance, and an instance rejects anything belonging to another one:
 
@@ -98,14 +98,14 @@ The handle and `idpRefId` are immutable because they are what page URLs and inco
 
 ## Local Auth (Development Only)
 
-For local development and first-time setup, the portal ships with a built-in username/password login form. Credentials are validated by a Platform API sidecar — the Developer Portal never handles raw passwords directly.
+For local development and first-time setup, the portal ships with a built-in username/password login form. Credentials are validated by a Platform API sidecar — the API Portal never handles raw passwords directly.
 
 ### How it works
 
 1. The user submits the login form.
-2. The Developer Portal forwards the credentials to the Platform API (`POST /api/portal/v0.9/auth/login`).
+2. The API Portal forwards the credentials to the Platform API (`POST /api/portal/v0.9/auth/login`).
 3. The Platform API verifies the bcrypt-hashed password and returns a signed JWT containing `dp:*` scopes.
-4. The Developer Portal stores the JWT in the server-side session and uses the scopes for all subsequent authorization checks.
+4. The API Portal stores the JWT in the server-side session and uses the scopes for all subsequent authorization checks.
 
 ### Configuration
 
@@ -167,7 +167,7 @@ TOKEN=$(curl -sk -X POST "https://localhost:9243/api/portal/v0.9/auth/login" \
 curl -sk -H "Authorization: Bearer $TOKEN" https://localhost:9543/api/v0.9/organizations/acme
 ```
 
-The token is verified locally by the Developer Portal against the Platform API's RS256 public key (`auth.local.public_key_path`), with no extra call to the Platform API per request.
+The token is verified locally by the API Portal against the Platform API's RS256 public key (`auth.local.public_key_path`), with no extra call to the Platform API per request.
 
 > **Note:** Local auth is for development only. For production, set `auth.mode = "idp"` and configure the OIDC identity provider under `[api_portal.auth.idp]`.
 

@@ -22,7 +22,7 @@
 
 const http = require('http');
 
-// WEBHOOK_SINK_URL (docker-compose.test*.yaml) gives the *hostname* the devportal
+// WEBHOOK_SINK_URL (docker-compose.test*.yaml) gives the *hostname* the portal
 // container must use to reach this test container (its own service name, e.g.
 // "rest-api-tests") — plain "localhost" wouldn't resolve across containers. But every
 // */webhook-events.spec.js file needs its OWN port, since Jest runs spec files in

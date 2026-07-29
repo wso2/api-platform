@@ -66,7 +66,7 @@ function openWarningModal(param1, param2, param3, param4, param5, param6, param7
         };
     } else if (param1 === 'Unsubscribe') {
         modalTitle.innerText = "Do you really want to remove the subscription?";
-        modalMessage.innerText = "This will remove the subscription entry stored in the devportal.";
+        modalMessage.innerText = "This will remove the subscription entry stored in the portal.";
         modalFunction.innerText = "Confirm";
         modalFunction.onclick = function() {
             if (typeof removeSubscription === 'function') {
@@ -96,7 +96,7 @@ function openWarningModal(param1, param2, param3, param4, param5, param6, param7
     } else if (param1 === 'DeleteAppBasedSubscription') {
         modalTitle.innerText = 'Unsubscribe from this API?';
         modalMessage.innerText =
-            'This will remove the subscription entry stored in the devportal. Are you sure you want to unsubscribe from this API?';
+            'This will remove the subscription entry stored in the portal. Are you sure you want to unsubscribe from this API?';
         modalFunction.innerText = 'Confirm';
         modalFunction.onclick = function() {
             if (typeof executeDeleteSubscription === 'function') {

@@ -18,7 +18,7 @@
 
 // Design mode (config.designMode.enabled) is filesystem/config-driven, not a
 // REST API — src/middlewares/registerPartials.js resolves designMode.pathToLayout
-// before falling back to src/defaultContent/. Requires a devportal instance
+// before falling back to src/defaultContent/. Requires a portal instance
 // started with DESIGN_MODE env/config pointed at a custom layout directory.
 
 describe('design mode: org theme overriding', () => {

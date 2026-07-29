@@ -89,7 +89,7 @@ var suite struct {
 	db          string // postgres | sqlite | sqlserver
 	composeFile string
 	multi       bool // second gateway available (postgres stack only)
-	devportal   bool // developer portal + webhook wired (postgres stack only)
+	devportal   bool // API Portal + webhook wired (postgres stack only)
 	token       string
 	projectID   string
 	gw1ID       string
@@ -105,7 +105,7 @@ var httpClient = &http.Client{
 func TestFeatures(t *testing.T) {
 	tags := os.Getenv("E2E_TAGS")
 	if tags == "" && os.Getenv("E2E_DB") != "" && os.Getenv("E2E_DB") != "postgres" {
-		// The second gateway and the developer portal are only wired on the
+		// The second gateway and the API Portal are only wired on the
 		// postgres stack, so their scenarios are skipped elsewhere.
 		tags = "~@multigateway && ~@devportal"
 	}
@@ -148,7 +148,7 @@ func bringUpStack() error {
 	switch suite.db {
 	case "postgres":
 		// The postgres stack is the one wired with the second gateway and the
-		// developer portal (+ webhook), so @multigateway and @devportal run here.
+		// API Portal (+ webhook), so @multigateway and @devportal run here.
 		// The devportal service needs its own image, so only bring it up when the
 		// @devportal scenario is actually selected (a tag subset may exclude it).
 		suite.composeFile, suite.multi = "docker-compose.yaml", true
@@ -210,7 +210,7 @@ func bringUpStack() error {
 		return fmt.Errorf("start data plane: %w", err)
 	}
 
-	// Bootstrap the developer portal so it can fire webhooks that platform-api
+	// Bootstrap the API Portal so it can fire webhooks that platform-api
 	// accepts: link its org to the control-plane org handle and register the
 	// platform-api webhook subscriber.
 	if suite.devportal {
@@ -361,7 +361,7 @@ func devportalSelected() bool {
 	return strings.Contains(tags, "@devportal") && !strings.Contains(tags, "~@devportal")
 }
 
-// webhookSecret is the secret shared between the developer portal subscriber and
+// webhookSecret is the secret shared between the API Portal subscriber and
 // platform-api's APIP_CP_WEBHOOK_SECRET. It both signs deliveries (HMAC-SHA256) and
 // derives the AES key for the encrypted key/token fields, so the two sides holding
 // different values breaks signature verification and field decryption together.

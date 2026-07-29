@@ -46,9 +46,9 @@ const VALID_EVENT_TYPES = new Set([
  * Pass `opts.secretFields` ({ [fieldName]: plaintextValue }) whenever the event carries
  * sensitive values. Each field is encrypted per-subscriber (AES-256-GCM under a key
  * derived from that subscriber's shared secret) and stored
- * as { [fieldName]: envelope } in DP_EVENT_DELIVERY.ENCRYPTED_FIELDS — delivery rows are
+ * as { [fieldName]: envelope } in EVENT_DELIVERY.ENCRYPTED_FIELDS — delivery rows are
  * created immediately inside the caller's TX so plaintext never leaves this call's stack.
- * Secret values are NOT written to DP_EVENT.PAYLOAD.
+ * Secret values are NOT written to EVENT.PAYLOAD.
  *
  * @param {string} eventType
  * @param {object} payload          — event data (no secret values here)

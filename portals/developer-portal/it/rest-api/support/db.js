@@ -16,11 +16,11 @@
 // under the License.
 // --------------------------------------------------------------------
 
-// Read-only access to the devportal database so specs can assert on rows
-// (DP_EVENTS, DP_EVENT_DELIVERIES, etc.) that aren't exposed via the REST API.
-// Branches on DEVPORTAL_DB_DIALECT since IT runs against both SQLite and Postgres.
+// Read-only access to the portal database so specs can assert on rows
+// (EVENTS, EVENT_DELIVERIES, etc.) that aren't exposed via the REST API.
+// Branches on API_PORTAL_DB_DIALECT since IT runs against both SQLite and Postgres.
 
-const DIALECT = process.env.DEVPORTAL_DB_DIALECT || 'sqlite';
+const DIALECT = process.env.API_PORTAL_DB_DIALECT || 'sqlite';
 
 let pool;
 let sqliteDb;
@@ -28,7 +28,7 @@ let sqliteDb;
 function getSqlite() {
     if (!sqliteDb) {
         const Database = require('better-sqlite3');
-        sqliteDb = new Database(process.env.DEVPORTAL_DB_STORAGE, { readonly: true, fileMustExist: true });
+        sqliteDb = new Database(process.env.API_PORTAL_DB_STORAGE, { readonly: true, fileMustExist: true });
     }
     return sqliteDb;
 }
@@ -37,11 +37,11 @@ function getPgPool() {
     if (!pool) {
         const { Pool } = require('pg');
         pool = new Pool({
-            host: process.env.DEVPORTAL_DB_HOST,
-            port: Number(process.env.DEVPORTAL_DB_PORT || 5432),
-            user: process.env.DEVPORTAL_DB_USERNAME,
-            password: process.env.DEVPORTAL_DB_PASSWORD,
-            database: process.env.DEVPORTAL_DB_DATABASE,
+            host: process.env.API_PORTAL_DB_HOST,
+            port: Number(process.env.API_PORTAL_DB_PORT || 5432),
+            user: process.env.API_PORTAL_DB_USERNAME,
+            password: process.env.API_PORTAL_DB_PASSWORD,
+            database: process.env.API_PORTAL_DB_DATABASE,
         });
     }
     return pool;

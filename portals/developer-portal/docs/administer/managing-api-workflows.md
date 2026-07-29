@@ -4,7 +4,7 @@ As a portal admin, you can create, edit, publish, and control the visibility of 
 
 ## Creating a Workflow
 
-1. In the Developer Portal, navigate to **Admin Settings** (`/<orgName>/views/<viewName>/admin/settings`).
+1. In the API Portal, navigate to **Admin Settings** (`/<orgName>/views/<viewName>/admin/settings`).
 2. Open the **API Workflows** section.
 3. Click **Create**.
 4. Fill in the workflow details:

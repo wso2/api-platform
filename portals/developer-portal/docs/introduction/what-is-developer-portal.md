@@ -1,6 +1,6 @@
-# What is the Developer Portal?
+# What is the API Portal?
 
-The Developer Portal is a self-hosted web application that acts as the front door between your APIs and the developers who consume them. API publishers register their APIs in the portal, and developers discover, subscribe, and generate credentials — all without needing direct access to the underlying infrastructure.
+The API Portal is a self-hosted web application that acts as the front door between your APIs and the developers who consume them. API publishers register their APIs in the portal, and developers discover, subscribe, and generate credentials — all without needing direct access to the underlying infrastructure.
 
 ## Key capabilities
 

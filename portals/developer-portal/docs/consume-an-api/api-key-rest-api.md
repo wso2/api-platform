@@ -4,9 +4,9 @@ All API key operations are scoped to a specific API. Replace the placeholders be
 
 | Placeholder | Description |
 |---|---|
-| `{apiId}` | The Developer Portal ID of the API |
-| `{applicationId}` | The Developer Portal ID of the application (used in URL paths) |
-| `{appId}` | The Developer Portal ID of the application to associate the key with (used in request/response bodies) |
+| `{apiId}` | The API Portal ID of the API |
+| `{applicationId}` | The API Portal ID of the application (used in URL paths) |
+| `{appId}` | The API Portal ID of the application to associate the key with (used in request/response bodies) |
 | `{subscriptionId}` | The ID of the subscription to bind the key to |
 | `{keyId}` | The key's handle — the `id` you chose when generating it (not the `keyId` returned in responses) |
 | `{token}` | A valid Bearer token for the current session |
@@ -135,7 +135,7 @@ curl -X POST \
 
 ## Associate a key with an application
 
-Links a key to a Developer Portal application for usage analytics. Association does not affect key validity or authorization.
+Links a key to an API Portal application for usage analytics. Association does not affect key validity or authorization.
 
 ```bash
 curl -X POST \

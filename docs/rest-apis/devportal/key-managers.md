@@ -1,4 +1,4 @@
-<h1 id="wso2-api-developer-portal-core-devportal-routes-key-managers">Key Managers</h1>
+<h1 id="wso2-api-portal-and-mcp-hub-core-key-managers">Key Managers</h1>
 
 ## Create a key manager
 

@@ -1,4 +1,4 @@
-<h1 id="wso2-api-developer-portal-core-devportal-routes-organizations">Organizations</h1>
+<h1 id="wso2-api-portal-and-mcp-hub-core-organizations">Organizations</h1>
 
 ## Create an organization (not supported)
 
@@ -19,7 +19,7 @@ curl -X POST https://localhost:9543/api/v0.9/organizations \
 
 ```
 
-NOT SUPPORTED — always returns 405. This Developer Portal serves the single organization named by its `organization.handle` configuration, which is created on startup along with its default portal configuration, label, view, and subscription plans. The operation is retained for forward compatibility.
+NOT SUPPORTED — always returns 405. This API Portal serves the single organization named by its `organization.handle` configuration, which is created on startup along with its default portal configuration, label, view, and subscription plans. The operation is retained for forward compatibility.
 
 > Payload
 
@@ -88,7 +88,7 @@ This operation requires <strong>Basic Auth</strong> authentication.
 {
   "status": "error",
   "code": "METHOD_NOT_ALLOWED",
-  "message": "This Developer Portal serves a single organization, which is configured and provisioned at startup. Organizations cannot be created, listed, or deleted through the API."
+  "message": "This API Portal serves a single organization, which is configured and provisioned at startup. Organizations cannot be created, listed, or deleted through the API."
 }
 ```
 
@@ -117,7 +117,7 @@ This operation requires <strong>Basic Auth</strong> authentication.
 |Status|Meaning|Description|Schema|
 |---|---|---|---|
 |400|[Bad Request](https://tools.ietf.org/html/rfc7231#section-6.5.1)|Bad request. Validation and other bad-request errors are returned as a standard error object (field-level details, when present, are carried in its `errors` array); some legacy handlers return a message-only object.|Inline|
-|405|[Method Not Allowed](https://tools.ietf.org/html/rfc7231#section-6.5.5)|The operation is not offered by this deployment. Returned by the organization lifecycle operations, which a Developer Portal serving a single organization does not expose — that organization is configured and provisioned at startup.|[ErrorResponse](schemas.md#schemaerrorresponse)|
+|405|[Method Not Allowed](https://tools.ietf.org/html/rfc7231#section-6.5.5)|The operation is not offered by this deployment. Returned by the organization lifecycle operations, which an API Portal serving a single organization does not expose — that organization is configured and provisioned at startup.|[ErrorResponse](schemas.md#schemaerrorresponse)|
 |415|[Unsupported Media Type](https://tools.ietf.org/html/rfc7231#section-6.5.13)|Unsupported request media type.|[ErrorResponse](schemas.md#schemaerrorresponse)|
 |500|[Internal Server Error](https://tools.ietf.org/html/rfc7231#section-6.6.1)|Internal server error.|[ErrorResponse](schemas.md#schemaerrorresponse)|
 
@@ -146,7 +146,7 @@ curl -X GET https://localhost:9543/api/v0.9/organizations \
 
 ```
 
-NOT SUPPORTED — always returns 405. Listing is inherently cross-organization, and this Developer Portal serves exactly one. Use `GET /organizations/{orgId}` with this instance's own handle instead. The operation is retained for forward compatibility.
+NOT SUPPORTED — always returns 405. Listing is inherently cross-organization, and this API Portal serves exactly one. Use `GET /organizations/{orgId}` with this instance's own handle instead. The operation is retained for forward compatibility.
 
 ### Authentication
 
@@ -163,7 +163,7 @@ This operation requires <strong>Basic Auth</strong> authentication.
 {
   "status": "error",
   "code": "METHOD_NOT_ALLOWED",
-  "message": "This Developer Portal serves a single organization, which is configured and provisioned at startup. Organizations cannot be created, listed, or deleted through the API."
+  "message": "This API Portal serves a single organization, which is configured and provisioned at startup. Organizations cannot be created, listed, or deleted through the API."
 }
 ```
 
@@ -181,7 +181,7 @@ This operation requires <strong>Basic Auth</strong> authentication.
 
 |Status|Meaning|Description|Schema|
 |---|---|---|---|
-|405|[Method Not Allowed](https://tools.ietf.org/html/rfc7231#section-6.5.5)|The operation is not offered by this deployment. Returned by the organization lifecycle operations, which a Developer Portal serving a single organization does not expose — that organization is configured and provisioned at startup.|[ErrorResponse](schemas.md#schemaerrorresponse)|
+|405|[Method Not Allowed](https://tools.ietf.org/html/rfc7231#section-6.5.5)|The operation is not offered by this deployment. Returned by the organization lifecycle operations, which an API Portal serving a single organization does not expose — that organization is configured and provisioned at startup.|[ErrorResponse](schemas.md#schemaerrorresponse)|
 |500|[Internal Server Error](https://tools.ietf.org/html/rfc7231#section-6.6.1)|Internal server error.|[ErrorResponse](schemas.md#schemaerrorresponse)|
 
 ## Update an organization
@@ -443,7 +443,7 @@ curl -X DELETE https://localhost:9543/api/v0.9/organizations/{orgId} \
 
 ```
 
-NOT SUPPORTED — always returns 405. This Developer Portal instance is bound to a single organization for its whole lifetime; deleting it would leave the instance serving nothing. The operation is retained for forward compatibility.
+NOT SUPPORTED — always returns 405. This API Portal instance is bound to a single organization for its whole lifetime; deleting it would leave the instance serving nothing. The operation is retained for forward compatibility.
 
 ### Authentication
 
@@ -482,7 +482,7 @@ This operation requires <strong>Basic Auth</strong> authentication.
 {
   "status": "error",
   "code": "METHOD_NOT_ALLOWED",
-  "message": "This Developer Portal serves a single organization, which is configured and provisioned at startup. Organizations cannot be created, listed, or deleted through the API."
+  "message": "This API Portal serves a single organization, which is configured and provisioned at startup. Organizations cannot be created, listed, or deleted through the API."
 }
 ```
 
@@ -501,7 +501,7 @@ This operation requires <strong>Basic Auth</strong> authentication.
 |Status|Meaning|Description|Schema|
 |---|---|---|---|
 |400|[Bad Request](https://tools.ietf.org/html/rfc7231#section-6.5.1)|Bad request. Validation and other bad-request errors are returned as a standard error object (field-level details, when present, are carried in its `errors` array); some legacy handlers return a message-only object.|Inline|
-|405|[Method Not Allowed](https://tools.ietf.org/html/rfc7231#section-6.5.5)|The operation is not offered by this deployment. Returned by the organization lifecycle operations, which a Developer Portal serving a single organization does not expose — that organization is configured and provisioned at startup.|[ErrorResponse](schemas.md#schemaerrorresponse)|
+|405|[Method Not Allowed](https://tools.ietf.org/html/rfc7231#section-6.5.5)|The operation is not offered by this deployment. Returned by the organization lifecycle operations, which an API Portal serving a single organization does not expose — that organization is configured and provisioned at startup.|[ErrorResponse](schemas.md#schemaerrorresponse)|
 |500|[Internal Server Error](https://tools.ietf.org/html/rfc7231#section-6.6.1)|Internal server error.|[ErrorResponse](schemas.md#schemaerrorresponse)|
 
 <h3 id="delete-an-organization-(not-supported)-responseschema">Response Schema</h3>

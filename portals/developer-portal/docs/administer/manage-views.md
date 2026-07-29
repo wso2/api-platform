@@ -20,7 +20,7 @@ https://<host>/<orgHandle>/views/<viewName>
 // view.json
 {
   "id": "internal",
-  "displayName": "Internal Developer Portal",
+  "displayName": "Internal API Portal",
   "labels": ["internal", "platform"]
 }
 ```
@@ -57,7 +57,7 @@ The update request takes the full desired label set via `labels` — labels pres
 ```json
 // view-update.json
 {
-  "displayName": "Internal Developer Portal v2",
+  "displayName": "Internal API Portal v2",
   "labels": ["internal", "platform", "experimental"]
 }
 ```

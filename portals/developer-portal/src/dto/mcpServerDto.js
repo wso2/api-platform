@@ -25,10 +25,10 @@ const STATUS_MAP = {
 };
 
 /**
- * Maps a DP_API_METADATA row (+ optional parsed schema) to the MCP registry spec response shape.
+ * Maps an API_METADATA row (+ optional parsed schema) to the MCP registry spec response shape.
  *
  * @param {object} row        - Sequelize APIMetadata instance or plain object
- * @param {object} [schema]   - Parsed schema object { tools, resources, prompts } from DP_API_CONTENT
+ * @param {object} [schema]   - Parsed schema object { tools, resources, prompts } from API_CONTENT
  */
 class ServerResponseDTO {
     constructor(row, schema) {

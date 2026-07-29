@@ -56,7 +56,7 @@ function printBanner(visitUrl) {
         '='.repeat(40),
         '',
         '',
-        'Developer Portal Started',
+        'API Portal & MCP Hub Started',
         '',
         `Visit Portal: ${visitUrl}`,
         '',
@@ -118,7 +118,7 @@ function onListening() {
 let server;
 
 async function startServer() {
-    logger.info('Developer Portal starting...');
+    logger.info('API Portal & MCP Hub starting...');
     await ensureSchema();
 
     // Seed before binding the listener, not from the 'listening' callback. This
@@ -156,7 +156,7 @@ async function startServer() {
 }
 
 startServer().catch((err) => {
-    logger.error('Developer Portal failed to start', {
+    logger.error('API Portal & MCP Hub failed to start', {
         error: err.message,
         stack: err.stack,
         operation: 'startServer',

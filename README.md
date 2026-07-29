@@ -78,7 +78,7 @@ Central control plane for managing gateways, APIs, policies, and governance.
 - Policy and governance rule management
 - Identity provider configuration
 - API deployment to gateways
-- Publishing to developer portals
+- Publishing to API Portal & MCP Hub
 
 ### API Gateway
 Envoy-based API gateway for securing and routing API traffic.
@@ -90,8 +90,8 @@ Envoy-based API gateway for securing and routing API traffic.
 - Single-tenant mode
 - Optimized for AI/agentic flows
 
-### API Developer Portal
-Developer portal for API discovery, subscription, and consumption.
+### API Portal & MCP Hub
+API Portal for API discovery, subscription, and consumption.
 
 **Key Features:**
 - API catalog and semantic search

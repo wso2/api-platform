@@ -17,7 +17,7 @@
 // --------------------------------------------------------------------
 
 // POST /applications/{applicationId}/oauth-keys/{keyMappingId}/generate-token
-// (src/controllers/devportalController.js -> src/services/oauthTokenService.js
+// (src/controllers/apiPortalController.js -> src/services/oauthTokenService.js
 // -> axios.post(tokenEndpoint, ..., { auth: { username: clientId, password: clientSecret } })).
 // Request: { consumerSecret, scopes?, validityPeriod? }
 // Response: { accessToken, validityTime, tokenScopes }
@@ -80,7 +80,7 @@ function createMockTokenServer() {
 describe('OAuth token generation', () => {
     let tokenServer;
     // Same reachability pattern as support/webhook-sink.js's WEBHOOK_SINK_URL —
-    // devportal must be able to reach this test container at this address.
+    // portal must be able to reach this test container at this address.
     const tokenUrl = new URL(process.env.MOCK_TOKEN_ENDPOINT_URL || 'http://localhost:4504');
 
     beforeAll(async () => {
@@ -131,7 +131,7 @@ describe('OAuth token generation', () => {
             `/applications/${appId}/oauth-keys/${keyMappingId}/generate-token`,
             { consumerSecret: 'wrong-secret' }
         );
-        // The mock key manager returns 401 for a bad secret; the devportal must
+        // The mock key manager returns 401 for a bad secret; the portal must
         // propagate that client error, not mask it as a 500.
         expect([400, 401]).toContain(res.status);
     });
@@ -145,7 +145,7 @@ describe('OAuth token generation', () => {
         );
         expect(res.status).toBe(200);
 
-        // devportalController.js's generateOAuthKeys defaults omitted scopes/
+        // apiPortalController.js's generateOAuthKeys defaults omitted scopes/
         // validityPeriod to ['default']/3600 before calling generateToken, which
         // form-encodes them as scope=default&expiry_time=3600 in the upstream POST —
         // assert on what the mock endpoint actually received, since the response

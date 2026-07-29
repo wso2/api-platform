@@ -1,13 +1,13 @@
 # WSO2 API Platform — API Portal & MCP Hub
 
-A standalone distribution of the Developer Portal and Platform API, orchestrated with Docker Compose. The Developer Portal is a Node.js web application for discovering and subscribing to APIs; the Platform API is its local-auth sidecar, validating username/password logins without requiring an external identity provider.
+A standalone distribution of the API Portal and Platform API, orchestrated with Docker Compose. The API Portal is a Node.js web application for discovering and subscribing to APIs; the Platform API is its local-auth sidecar, validating username/password logins without requiring an external identity provider.
 
 ## Contents
 
 ```
 wso2apip-api-portal-<version>/
 ├── README.md
-├── docker-compose.yaml                          # Developer Portal + Platform API
+├── docker-compose.yaml                          # API Portal + Platform API
 ├── scripts/
 │   ├── setup.sh                                 # One-time TLS + secrets provisioning
 │   ├── setup.ps1                                # Same, for Windows (PowerShell)
@@ -17,8 +17,8 @@ wso2apip-api-portal-<version>/
 │   └── config-template.toml                     # Config reference — both active components, plus optional [ai_workspace] at the bottom
 └── resources/
     ├── role-to-scope-mapping.yaml                               # Platform API role-to-scope mapping (edit to change what a role grants)
-    ├── developer-portal/
-    │   └── db-scripts/                          # Developer Portal PostgreSQL schema (reference copy)
+    ├── api-portal/
+    │   └── db-scripts/                          # API Portal PostgreSQL schema (reference copy)
     ├── platform-api/
     │   └── db-scripts/                          # Platform API database schemas (reference copy)
     └── samples/
@@ -54,11 +54,11 @@ docker compose up -d
 
 | Output | Contents                                                                                                                                                                                                                                                                                                                                      |
 |---|-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
-| `api-platform.env` (git-ignored) | `APIP_CP_ADMIN_USERNAME` / `APIP_CP_ADMIN_PASSWORD_HASH` (bcrypt) only. No JWT signing key, no Developer Portal or Platform API encryption/session secrets — those are all written to `resources/keys/` as files (read via `{{ file }}`) so they never appear in `docker inspect` or a process environment dump. |
+| `api-platform.env` (git-ignored) | `APIP_CP_ADMIN_USERNAME` / `APIP_CP_ADMIN_PASSWORD_HASH` (bcrypt) only. No JWT signing key, no API Portal or Platform API encryption/session secrets — those are all written to `resources/keys/` as files (read via `{{ file }}`) so they never appear in `docker inspect` or a process environment dump. |
 | `resources/certificates/cert.pem` + `key.pem` | Self-signed TLS pair shared by both services                                                                                                                                                                                                                                                                                                  |
-| `resources/keys/jwt_private.pem` + `jwt_public.pem` | RS256 JWT keypair — the Platform API signs with the private key, the Developer Portal verifies with the public one                                                                                                                                                                                                                            |
+| `resources/keys/jwt_private.pem` + `jwt_public.pem` | RS256 JWT keypair — the Platform API signs with the private key, the API Portal verifies with the public one                                                                                                                                                                                                                            |
 | `resources/keys/encryption.key` | Platform API's at-rest encryption key                                                                                                                                                                                                                                                                                                          |
-| `resources/keys/devportal-encryption.key` + `devportal-session-secret` | Developer Portal's at-rest encryption key and session-signing secret                                                                                                                                                                                                                                                                           |
+| `resources/keys/api-portal-encryption.key` + `api-portal-session-secret` | API Portal's at-rest encryption key and session-signing secret |
 | `.env` (git-ignored) | `COMPOSE_PROFILES` and `COMPOSE_PROJECT_NAME` — read by the `docker compose` CLI from this directory |
 
 The admin password is generated and printed once by `setup.sh` — it is not stored anywhere; only its bcrypt hash lands in `api-platform.env`. Re-running `setup.sh` is safe: it only fills in what's missing and never overwrites an existing value — to rotate a value, delete it from `api-platform.env` (or delete `resources/certificates` for the TLS cert) and re-run. `ADMIN_USERNAME` / `ADMIN_PASSWORD` environment variables skip the interactive prompts (used by CI to pin known test credentials).
@@ -69,7 +69,7 @@ Verify the Platform API is healthy:
 curl -fk https://localhost:9243/health
 ```
 
-Open the Developer Portal in a browser at `https://localhost:9543/default/views/default` and log in with the admin credentials printed by `setup.sh`.
+Open the API Portal in a browser at `https://localhost:9543/default/views/default` and log in with the admin credentials printed by `setup.sh`.
 
 > **Browser trust warning?** Both services use a self-signed TLS certificate by default. Click **Advanced → Proceed** to continue. See [Custom TLS Certificates](#custom-tls-certificates) to remove the warning permanently.
 
@@ -87,13 +87,13 @@ Prompts for the admin username/password (or set `ADMIN_USERNAME`/`ADMIN_PASSWORD
 
 | Port | Service | Description |
 |------|---------|-------------|
-| `9543` | Developer Portal | HTTPS — browser entry point |
+| `9543` | API Portal | HTTPS — browser entry point |
 | `9243` | Platform API | HTTPS — local-auth backend |
 | `9643` | AI Workspace | HTTPS — only when the `ai-workspace` profile is enabled (see below) |
 
 ## AI Workspace (optional)
 
-This package runs the Developer Portal and the Platform API by default. **AI Workspace** ships in the same `docker-compose.yaml` as an optional component behind the `ai-workspace` [Compose profile](https://docs.docker.com/compose/how-tos/profiles/), sharing the one Platform API — so you can add it without standing up a second Platform API.
+This package runs the API Portal and the Platform API by default. **AI Workspace** ships in the same `docker-compose.yaml` as an optional component behind the `ai-workspace` [Compose profile](https://docs.docker.com/compose/how-tos/profiles/), sharing the one Platform API — so you can add it without standing up a second Platform API.
 
 AI Workspace mounts the **same** `configs/config.toml` the other services do and reads only its own `[ai_workspace]` section (it ignores `[api_portal]`/`[platform_api]`). It is **off by default**: a plain `docker compose up -d` never starts it. Enabling it takes one one-time step, because that shipped `config.toml` does **not** carry an `[ai_workspace]` section:
 
@@ -111,11 +111,11 @@ AI Workspace comes up at `https://localhost:9643`, backed by the same Platform A
 
 All settings live in the single `configs/config.toml`. It carries two sections — `[api_portal.*]` and `[platform_api.*]` — and the **same file is mounted into both containers**; each service reads only its own section and ignores the other's. Edit it in place — no rebuild required, just restart the affected service.
 
-Each section writes secrets as `'{{ env "..." }}'` tokens, so a key can be set from the environment without editing the file — the token names the variable, by convention the key uppercased and prefixed with `APIP_AP_` (Developer Portal) or `APIP_CP_` (Platform API), e.g. `APIP_AP_SERVER_HTTPS_ENABLED`, `APIP_CP_DATABASE_HOST`. A key with no token is not settable from the environment: uncomment or add it in the TOML first. To source a value from a mounted file instead — the right choice for secrets — swap the token for `'{{ file "/secrets/..." }}'`. Never write a secret as a raw literal.
+Each section writes secrets as `'{{ env "..." }}'` tokens, so a key can be set from the environment without editing the file — the token names the variable, by convention the key uppercased and prefixed with `APIP_AP_` (API Portal) or `APIP_CP_` (Platform API), e.g. `APIP_AP_SERVER_HTTPS_ENABLED`, `APIP_CP_DATABASE_HOST`. A key with no token is not settable from the environment: uncomment or add it in the TOML first. To source a value from a mounted file instead — the right choice for secrets — swap the token for `'{{ file "/secrets/..." }}'`. Never write a secret as a raw literal.
 
 Environment overrides go in `api-platform.env` (git-ignored; loaded into both containers via `env_file`, format `raw`, since the bcrypt password hash contains `$`, which must not be treated as a compose interpolation variable).
 
-### Developer Portal (`[api_portal.*]`)
+### API Portal (`[api_portal.*]`)
 
 | Setting | Description | Default |
 |---------|-------------|---------|
@@ -123,7 +123,7 @@ Environment overrides go in `api-platform.env` (git-ignored; loaded into both co
 | `[api_portal.database].driver` | `sqlite` (default) or `postgres` | `sqlite` |
 | `[api_portal.auth].mode` | `local` (Platform API sidecar) or `idp` (external OIDC IDP via `[api_portal.auth.idp]`) | `local` |
 | `[api_portal.auth.local].platform_api_url` | Address of the Platform API local-auth sidecar | `https://platform-api:9243` |
-| `[api_portal.auth.local].public_key_path` | Path to the Platform API RS256 public key PEM used to verify login tokens | `/etc/devportal/keys/jwt_public.pem` |
+| `[api_portal.auth.local].public_key_path` | Path to the Platform API RS256 public key PEM used to verify login tokens | `/etc/api-portal/keys/jwt_public.pem` |
 | `[api_portal.organization].handle` | The single organization this instance serves, bootstrapped on first start. Required — the portal refuses to start without it | `default` |
 | `[api_portal.organization].display_name` | Display name applied when the organization is first seeded | `Default` |
 
@@ -173,11 +173,11 @@ docker compose up -d --force-recreate
 
 ## Compose project name
 
-`setup.sh` pins `COMPOSE_PROJECT_NAME=wso2apip-developer-portal-<version>-<6 hex>` in `.env` on its first run and never changes it. Compose prefixes this stack's containers, network, and volumes with it, so unpacking this zip again elsewhere on the host gets its own volumes instead of adopting this copy's APIs, applications, and users. Don't edit that line or delete `.env` — the data lives in `<project>_developer-portal-data` and `<project>_platform-api-data`, and a different name starts the portal empty. `down` keeps those volumes; only `down -v` deletes them. To choose the name yourself — including adopting an earlier release's volumes, whose prefix `docker volume ls` shows — set it for the first run only: `COMPOSE_PROJECT_NAME=<name> ./scripts/setup.sh` (PowerShell: `$env:COMPOSE_PROJECT_NAME = '<name>'; .\scripts\setup.ps1`). It must match `^[a-z0-9][a-z0-9_-]*$`. Two portal stacks still can't run at once: both bind ports `9243` and `9543`.
+`setup.sh` pins `COMPOSE_PROJECT_NAME=wso2apip-developer-portal-<version>-<6 hex>` in `.env` on its first run and never changes it. Compose prefixes this stack's containers, network, and volumes with it, so unpacking this zip again elsewhere on the host gets its own volumes instead of adopting this copy's APIs, applications, and users. Don't edit that line or delete `.env` — the data lives in `<project>_api-portal-data` and `<project>_platform-api-data`, and a different name starts the portal empty. `down` keeps those volumes; only `down -v` deletes them. To choose the name yourself — including adopting an earlier release's volumes, whose prefix `docker volume ls` shows — set it for the first run only: `COMPOSE_PROJECT_NAME=<name> ./scripts/setup.sh` (PowerShell: `$env:COMPOSE_PROJECT_NAME = '<name>'; .\scripts\setup.ps1`). It must match `^[a-z0-9][a-z0-9_-]*$`. Two portal stacks still can't run at once: both bind ports `9243` and `9543`.
 
 ## Database
 
-The Developer Portal uses **SQLite** by default (data persisted in a Docker volume) — tables are created automatically on first start. To switch to PostgreSQL, update `configs/config.toml`'s `[api_portal.database]` block with `driver = "postgres"` and your connection details.
+The API Portal uses **SQLite** by default (data persisted in a Docker volume) — tables are created automatically on first start. To switch to PostgreSQL, update `configs/config.toml`'s `[api_portal.database]` block with `driver = "postgres"` and your connection details.
 
 The Platform API likewise defaults to SQLite; switch it with `configs/config.toml`'s `[platform_api.database]` block.
 

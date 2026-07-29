@@ -1,6 +1,6 @@
 # AI Agent Discovery
 
-The Developer Portal has built-in support for AI agent discoverability. Every published API is automatically exposed through a set of machine-readable endpoints that AI agents, LLM-powered assistants, and agentic frameworks can use to discover, understand, and invoke APIs — without human assistance.
+The API Portal has built-in support for AI agent discoverability. Every published API is automatically exposed through a set of machine-readable endpoints that AI agents, LLM-powered assistants, and agentic frameworks can use to discover, understand, and invoke APIs — without human assistance.
 
 ## `llms.txt`: The Entry Point for Agents
 

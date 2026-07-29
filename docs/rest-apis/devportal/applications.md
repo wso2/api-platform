@@ -1,4 +1,4 @@
-<h1 id="wso2-api-developer-portal-core-devportal-routes-applications">Applications</h1>
+<h1 id="wso2-api-portal-and-mcp-hub-core-applications">Applications</h1>
 
 ## List applications for the authenticated user
 
@@ -129,7 +129,7 @@ curl -X POST https://localhost:9543/api/v0.9/applications \
 
 ```
 
-Creates a Developer Portal application in the specified organization. The request may be JSON, multipart form fields, or an application YAML file in the `application` multipart field. An `application.created` webhook event is published to the organization's configured webhook subscribers.
+Creates an API Portal application in the specified organization. The request may be JSON, multipart form fields, or an application YAML file in the `application` multipart field. An `application.created` webhook event is published to the organization's configured webhook subscribers.
 
 > Payload
 

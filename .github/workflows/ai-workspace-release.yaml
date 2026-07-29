@@ -8,8 +8,8 @@ on:
         required: true
         type: string
         default: ''
-      developer_portal_version:
-        description: 'Developer Portal version to pin for the optional "with-developer-portal" Compose profile (e.g. 1.0.0). Need not be released yet — the image tag is pinned regardless, and its config template is taken from tag developer-portal/v<version> if that tag exists, otherwise from the working tree.'
+      api_portal_version:
+        description: 'API Portal version to pin for the optional "api-portal" Compose profile (e.g. 1.0.0). Need not be released yet — the image tag is pinned regardless, and its config template is taken from tag api-portal/v<version> if that tag exists, otherwise from the working tree.'
         required: true
         type: string
         default: ''
@@ -106,13 +106,13 @@ jobs:
       - name: Build distribution zip
         env:
           PLATFORM_API_VERSION: ${{ inputs.platform_api_version }}
-          DEVPORTAL_VERSION: ${{ inputs.developer_portal_version }}
+          API_PORTAL_VERSION: ${{ inputs.api_portal_version }}
         run: |
           echo "Bundling platform-api db-scripts from tag platform-api/v${PLATFORM_API_VERSION}"
-          echo "Pinning optional developer-portal image to ${DEVPORTAL_VERSION}"
+          echo "Pinning optional API Portal image to ${API_PORTAL_VERSION}"
           make -C portals/ai-workspace dist \
             PLATFORM_API_VERSION="${PLATFORM_API_VERSION}" \
-            DEVPORTAL_VERSION="${DEVPORTAL_VERSION}"
+            API_PORTAL_VERSION="${API_PORTAL_VERSION}"
 
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2

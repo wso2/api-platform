@@ -1,6 +1,6 @@
 # Consume an API Secured with OAuth2
 
-The Developer Portal uses OAuth 2.0 bearer token-based authentication for OAuth2-secured APIs. The OAuth application itself is created directly in the key manager — the portal only links its client ID to your application and proxies token requests for it.
+The API Portal uses OAuth 2.0 bearer token-based authentication for OAuth2-secured APIs. The OAuth application itself is created directly in the key manager — the portal only links its client ID to your application and proxies token requests for it.
 
 ## Prerequisites
 
@@ -14,7 +14,7 @@ You will also need an OAuth application already created in the key manager your 
 
 ## Link a Client ID
 
-1. Sign in to the Developer Portal.
+1. Sign in to the API Portal.
 2. In the sidebar, click **Applications**.
 3. Click on your application. Its detail page includes a **Manage Keys** section.
 4. Select the **Production** or **Sandbox** tab based on your environment.

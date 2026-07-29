@@ -1,10 +1,10 @@
-# Developer Portal Integration Tests
+# API Portal Integration Tests
 
-Integration tests for the Developer Portal. There are two suites, both run against a
+Integration tests for the API Portal. There are two suites, both run against a
 real portal instance in Docker Compose:
 
 - **REST API suite** (`rest-api/`) — Jest + Supertest tests that exercise the
-  Admin/DevPortal REST APIs, webhook delivery, key generation, and database side effects.
+  Admin/Portal REST APIs, webhook delivery, key generation, and database side effects.
 - **UI E2E suite** (`ui/`) — Cypress tests that validate portal rendering, authentication
   flows, try-out consoles, theming, and search in a headless browser.
 
@@ -98,7 +98,7 @@ portals/developer-portal/it/
 | `make test-postgres` | Run the Cypress UI suite headlessly (PostgreSQL) |
 | `make test-rest-api` | Run the Jest REST API suite (SQLite) |
 | `make test-rest-api-postgres` | Run the Jest REST API suite (PostgreSQL) |
-| `make open` | Open the Cypress interactive UI against a locally running devportal |
+| `make open` | Open the Cypress interactive UI against a locally running portal |
 | `make deps` | Install Node dependencies (only needed for `make open`) |
 | `make clean` | Remove test containers, volumes, and report artifacts |
 
@@ -124,7 +124,7 @@ can also be triggered manually via **workflow_dispatch**.
 
 > **Note:** `make open` launches Cypress directly in E2E mode (`--e2e`), bypassing the
 > Launchpad setup screen and showing the spec list immediately. It runs against a locally
-> running devportal (start it with `docker compose up` from `portals/developer-portal/`).
+> running portal (start it with `docker compose up` from `portals/developer-portal/`).
 
 ## Cypress Custom Commands
 
@@ -144,8 +144,8 @@ Defined in `ui/cypress/support/`:
 **UI (Cypress)** — `ui/cypress/e2e/`:
 
 ```js
-describe('Developer Portal — API Listing', () => {
-    it('GET /devportal/organizations/{handle} returns the configured organization', () => {
+describe('API Portal — API Listing', () => {
+    it('GET /portal/organizations/{handle} returns the configured organization', () => {
         cy.apiRequest('GET', `/api/v0.9/organizations/${Cypress.env('ORG_HANDLE')}`).then((resp) => {
             expect(resp.status).to.eq(200);
             expect(resp.body.id).to.eq(Cypress.env('ORG_HANDLE'));

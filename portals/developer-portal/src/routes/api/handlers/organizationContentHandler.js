@@ -21,7 +21,7 @@
  * Tag: Organization Content
  */
 const adminService = require('../../../services/adminService');
-const apiPortalService = require('../../../services/devportalService');
+const apiPortalService = require('../../../services/apiPortalService');
 const { requireCsrfForMutatingApi } = require('../../../middlewares/csrfProtection')
 const { compose } = require('./compose');
 

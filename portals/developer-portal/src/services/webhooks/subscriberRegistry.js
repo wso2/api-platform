@@ -18,7 +18,7 @@
 const whDao = require('../../dao/webhookSubscriberDao');
 
 /**
- * Maps a DP_WEBHOOK_SUBSCRIBER record to the shape consumed by the dispatcher
+ * Maps a WEBHOOK_SUBSCRIBER record to the shape consumed by the dispatcher
  * and delivery worker: {id, url, secret, events, timeoutMs}.
  *
  * `secret` serves double duty: HMAC request signing (signer.js) and deriving the

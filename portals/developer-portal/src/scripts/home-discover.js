@@ -5,7 +5,7 @@
     const llmsUrl = window.location.origin + baseUrl + '/llms.txt';
 
     const lines = [
-        'Please explore this developer portal by reading the API catalog index at:',
+        'Please explore this API Portal by reading the API catalog index at:',
         llmsUrl,
         '',
         'Once you have read that document, please answer the following:',

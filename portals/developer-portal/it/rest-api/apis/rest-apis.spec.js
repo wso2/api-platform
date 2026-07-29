@@ -16,7 +16,7 @@
 // under the License.
 // --------------------------------------------------------------------
 
-// POST/GET/PUT/DELETE /apis (type: REST). See docs/devportal-openapi-spec-v0.9.yaml
+// POST/GET/PUT/DELETE /apis (type: REST). See docs/api-portal-openapi-spec-v0.9.yaml
 // ApiMetadataMultipartBody — creation is multipart (metadata JSON + definition
 // file). Publisher owns API management; follow support/fixtures.js createApi()
 // for the request shape; organizations.spec.js for the assertion style.
@@ -333,7 +333,7 @@ describe('REST APIs', () => {
         });
     });
 
-    // apiViewQuery and apiSearchQuery are independently optional (docs/devportal-
+    // apiViewQuery and apiSearchQuery are independently optional (docs/portal-
     // openapi-spec-v0.9.yaml) — searchFallback used to crash with a 500 when `view`
     // was omitted (viewDao.getId querying `handle: undefined`), instead of searching
     // unscoped by view.

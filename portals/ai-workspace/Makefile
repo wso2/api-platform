@@ -216,24 +216,24 @@ PLATFORM_API_TAG := platform-api/v$(PLATFORM_API_VERSION)
 # config.toml — the profile is opt-in and self-served (see README) — so only the
 # image tag is pinned here for a reproducible release.
 #
-# Supplied explicitly when releasing (`make dist DEVPORTAL_VERSION=1.0.0`, driven
-# by the release workflow's developer_portal_version input) so the zip pins a
+# Supplied explicitly when releasing (`make dist API_PORTAL_VERSION=1.0.0`, driven
+# by the release workflow's api_portal_version input) so the zip pins a
 # *released* developer-portal image rather than whatever the working tree happens
 # to carry. For local builds it falls back to the sibling VERSION file. There is
 # deliberately no hardcoded version fallback — `dist` fails below if this resolves
 # to empty, so a release can never silently ship a placeholder tag.
-DEVPORTAL_VERSION ?= $(shell sed 's/-SNAPSHOT//' ../developer-portal/VERSION 2>/dev/null | tr -d '[:space:]')
-DEVPORTAL_TAG     := developer-portal/v$(DEVPORTAL_VERSION)
+API_PORTAL_VERSION ?= $(shell sed 's/-SNAPSHOT//' ../developer-portal/VERSION 2>/dev/null | tr -d '[:space:]')
+API_PORTAL_TAG     := api-portal/v$(API_PORTAL_VERSION)
 
 # As with PLATFORM_API_VERSION: an explicitly supplied version means "bundle that
 # release", so the [api_portal] template appended to config-template.toml is
 # read from the tag rather than the working tree — otherwise the zip would document
 # settings from unreleased branch state against a released image.
-ifeq ($(origin DEVPORTAL_VERSION),command line)
-DEVPORTAL_FROM_TAG := true
+ifeq ($(origin API_PORTAL_VERSION),command line)
+API_PORTAL_FROM_TAG := true
 endif
-ifeq ($(origin DEVPORTAL_VERSION),environment)
-DEVPORTAL_FROM_TAG := true
+ifeq ($(origin API_PORTAL_VERSION),environment)
+API_PORTAL_FROM_TAG := true
 endif
 
 # When PLATFORM_API_VERSION is supplied explicitly (e.g. `make dist PLATFORM_API_VERSION=0.10.0`),
@@ -315,13 +315,13 @@ endef
 
 .PHONY: dist clean-dist
 dist: clean-dist ## Build standalone AI Workspace + Platform API distribution zip
-	@if [ -z "$(strip $(DEVPORTAL_VERSION))" ]; then \
-		echo "Error: DEVPORTAL_VERSION is empty — the optional developer-portal image tag cannot be resolved." >&2; \
-		echo "Pass it explicitly (make dist DEVPORTAL_VERSION=1.0.0) or ensure ../developer-portal/VERSION exists." >&2; \
+	@if [ -z "$(strip $(API_PORTAL_VERSION))" ]; then \
+		echo "Error: API_PORTAL_VERSION is empty — the optional developer-portal image tag cannot be resolved." >&2; \
+		echo "Pass it explicitly (make dist API_PORTAL_VERSION=1.0.0) or ensure ../developer-portal/VERSION exists." >&2; \
 		exit 1; \
 	fi
 	@echo "Building distribution $(DIST_NAME)..."
-	@echo "  optional developer-portal image pinned to $(DOCKER_REGISTRY)/developer-portal:$(DEVPORTAL_VERSION)"
+	@echo "  optional developer-portal image pinned to $(DOCKER_REGISTRY)/api-portal:$(API_PORTAL_VERSION)"
 	@mkdir -p $(DIST_DIR)/configs $(DIST_DIR)/scripts $(DIST_DIR)/resources/certificates $(DIST_DIR)/resources/platform-api/db-scripts
 # Stage platform-api configs + db-scripts (from tag or working tree) for the merge below.
 ifeq ($(PLATFORM_API_FROM_TAG),true)
@@ -359,8 +359,8 @@ endif
 	$(call merge_config,configs/config.toml,$(DIST_DIR)/configs/.pa-config.toml,$(DIST_DIR)/configs/config.toml)
 	$(call merge_config,configs/config-template.toml,$(DIST_DIR)/configs/.pa-config-template.toml,$(DIST_DIR)/configs/config-template.toml)
 # Developer Portal is opt-in: append its template to config-template.toml only, not the active config.
-ifeq ($(DEVPORTAL_FROM_TAG),true)
-	$(call stage_optional_template,$(DEVPORTAL_TAG),portals/developer-portal/configs/config-template.toml,../developer-portal/configs/config-template.toml,$(DIST_DIR)/configs/.dp-config-template.toml)
+ifeq ($(API_PORTAL_FROM_TAG),true)
+	$(call stage_optional_template,$(API_PORTAL_TAG),portals/developer-portal/configs/config-template.toml,../developer-portal/configs/config-template.toml,$(DIST_DIR)/configs/.dp-config-template.toml)
 else
 	@cp ../developer-portal/configs/config-template.toml $(DIST_DIR)/configs/.dp-config-template.toml
 endif
@@ -401,7 +401,7 @@ endif
 	@sed -i.bak -E \
 	    -e 's|^([[:space:]]*image:[[:space:]]*.*/ai-workspace):[^[:space:]]*|\1:$(DIST_VERSION)|' \
 	    -e 's|^([[:space:]]*image:[[:space:]]*.*/platform-api):[^[:space:]]*|\1:$(PLATFORM_API_VERSION)|' \
-	    -e 's|^([[:space:]]*image:[[:space:]]*.*/developer-portal):[^[:space:]]*|\1:$(DEVPORTAL_VERSION)|' \
+	    -e 's|^([[:space:]]*image:[[:space:]]*.*/api-portal):[^[:space:]]*|\1:$(API_PORTAL_VERSION)|' \
 	    $(DIST_DIR)/docker-compose.yaml
 	@rm -f $(DIST_DIR)/docker-compose.yaml.bak
 	@cd target && zip -rq $(DIST_NAME).zip $(DIST_NAME)

@@ -26,25 +26,25 @@ console_only = true
 # the env vars relevant to its own variant, so the other side's tokens just resolve
 # to these defaults, unused.
 driver   = '{{ env "APIP_AP_DATABASE_DRIVER" "sqlite" }}'
-path     = '{{ env "APIP_AP_DATABASE_PATH" "./data/devportal-it.db" }}'
+path     = '{{ env "APIP_AP_DATABASE_PATH" "./data/api-portal-it.db" }}'
 host     = '{{ env "APIP_AP_DATABASE_HOST" "localhost" }}'
 port     = '{{ env "APIP_AP_DATABASE_PORT" "5432" }}'
 user     = '{{ env "APIP_AP_DATABASE_USER" "postgres" }}'
 password = '{{ env "APIP_AP_DATABASE_PASSWORD" "" }}'
-name     = '{{ env "APIP_AP_DATABASE_NAME" "devportal" }}'
+name     = '{{ env "APIP_AP_DATABASE_NAME" "api_portal" }}'
 
 [api_portal.security]
-# Required — devportal fails closed at startup without these.
+# Required — portal fails closed at startup without these.
 encryption_key = '{{ env "APIP_AP_SECURITY_ENCRYPTION_KEY" }}'
 session_secret = '{{ env "APIP_AP_SECURITY_SESSION_SECRET" }}'
 
 [api_portal.security.service_api_key]
 enabled = true
-value = "devportal-it-test-key"
+value = "api-portal-it-test-key"
 
 [api_portal.organization]
-# The single organization each devportal instance serves. Tokenized because the
-# fixture runs a SECOND instance (devportal-other-org) off this same file with a
+# The single organization each portal instance serves. Tokenized because the
+# fixture runs a SECOND instance (api-portal-other-org) off this same file with a
 # handle that deliberately does NOT match platform-api's org, to exercise the
 # login-time organization-mismatch rejection.
 handle       = '{{ env "APIP_AP_ORGANIZATION_HANDLE" "default" }}'
@@ -58,4 +58,4 @@ platform_api_url = "https://platform-api:9243"
 tls_skip_verify = true
 # Path to the public half of the RS256 keypair `make ensure-certs` generates —
 # the same file platform-api reads as its auth.jwt.private_key's counterpart.
-public_key_path = "/etc/devportal/keys/jwt_public.pem"
+public_key_path = "/etc/api-portal/keys/jwt_public.pem"

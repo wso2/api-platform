@@ -49,7 +49,7 @@ services:
     volumes:
       - sqlserver_data:/var/opt/mssql
     networks:
-      - devportal-network
+      - api-portal-network
 
   # Creates the devportal database and applies schema.sqlserver.sql. Polls
   # with sqlcmd until the server actually accepts connections (the container
@@ -75,9 +75,9 @@ services:
     volumes:
       - ./database/schema.sqlserver.sql:/schema/schema.sqlserver.sql:ro
     networks:
-      - devportal-network
+      - api-portal-network
 
-  devportal:
+  api-portal:
     depends_on:
       mssql-init:
         condition: service_completed_successfully
@@ -87,7 +87,7 @@ services:
       APIP_AP_DATABASE_PORT: 1433
       APIP_AP_DATABASE_USER: sa
       APIP_AP_DATABASE_PASSWORD: "${MSSQL_SA_PASSWORD:-Strong!Passw0rd}"
-      APIP_AP_DATABASE_NAME: devportal
+      APIP_AP_DATABASE_NAME: api_portal
       APIP_AP_DATABASE_PATH: ""
 
 volumes:

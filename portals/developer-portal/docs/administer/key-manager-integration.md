@@ -1,6 +1,6 @@
 # Key Manager Integration
 
-A key manager is the OAuth2 authorization server used to issue access tokens for OAuth2-secured APIs. The Developer Portal does not create or register OAuth applications — developers create their OAuth application directly in the key manager, then link its client ID to an application in the portal. The portal only proxies `client_credentials` token requests to the key manager's token endpoint.
+A key manager is the OAuth2 authorization server used to issue access tokens for OAuth2-secured APIs. The API Portal does not create or register OAuth applications — developers create their OAuth application directly in the key manager, then link its client ID to an application in the portal. The portal only proxies `client_credentials` token requests to the key manager's token endpoint.
 
 ## Prerequisites
 

@@ -114,7 +114,7 @@ const hb = Handlebars.create();
 // api-platform component (see common/configinterpolate.EnvFileSourceAllowlist),
 // read directly rather than through {{ env }} since it gates interpolation
 // itself and so can't be one of its own references.
-const DEFAULT_FILE_ALLOWLIST = ['/etc/devportal', '/secrets/devportal'];
+const DEFAULT_FILE_ALLOWLIST = ['/etc/api-portal', '/secrets/api-portal'];
 const FILE_ALLOWLIST_ENV_VAR = 'APIP_CONFIG_FILE_SOURCE_ALLOWLIST';
 
 // Secret files (tokens, keys, passwords) are far smaller than this; the cap
@@ -356,7 +356,7 @@ function requireHexSecret(value, fieldName) {
             `[FATAL] security.${fieldName} did not resolve to a 64-character hex string. ` +
             'Refusing to start with a missing or malformed secret. ' +
             'Generate one with: openssl rand -hex 32 — then reference it from configs/config.toml, ' +
-            `e.g. ${fieldName === 'encryptionKey' ? 'encryption_key' : 'session_secret'} = '{{ file "/etc/devportal/keys/${fieldName === 'encryptionKey' ? 'encryption.key' : 'session-secret'}" }}'.\n`
+            `e.g. ${fieldName === 'encryptionKey' ? 'encryption_key' : 'session_secret'} = '{{ file "/etc/api-portal/keys/${fieldName === 'encryptionKey' ? 'encryption.key' : 'session-secret'}" }}'.\n`
         );
         process.exit(1);
     }

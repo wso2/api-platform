@@ -1,12 +1,12 @@
 # Asgardeo IDP Setup
 
-This guide walks through configuring WSO2 Asgardeo as the identity provider for a production Developer Portal deployment.
+This guide walks through configuring WSO2 Asgardeo as the identity provider for a production API Portal deployment.
 
 A full configuration reference is in [authentication.md](authentication.md).
 
 ## Overview
 
-The Developer Portal uses Asgardeo's sub-organization model: each devportal organization maps to one Asgardeo sub-organization. A single Asgardeo application (Traditional Web App) is shared across all devportal orgs, but each login session is scoped to a specific sub-org.
+The API Portal uses Asgardeo's sub-organization model: each devportal organization maps to one Asgardeo sub-organization. A single Asgardeo application (Traditional Web App) is shared across all devportal orgs, but each login session is scoped to a specific sub-org.
 
 **How it works end-to-end:**
 
@@ -23,7 +23,7 @@ The Developer Portal uses Asgardeo's sub-organization model: each devportal orga
 ## Prerequisites
 
 - An Asgardeo account at [console.asgardeo.io](https://console.asgardeo.io)
-- Developer Portal accessible at a known hostname
+- API Portal accessible at a known hostname
 - `production/scripts/register_asgardeo_scopes.sh` from this repository
 
 ---
@@ -37,7 +37,7 @@ The Developer Portal uses Asgardeo's sub-organization model: each devportal orga
 
 ---
 
-## 2. Developer Portal Application
+## 2. API Portal Application
 
 1. Go to **Applications** → **New Application**.
 2. Choose **Traditional Web Application** (confidential client — the devportal is server-side and can hold a secret).
@@ -85,14 +85,14 @@ For local development, the default `ASGARDEO_RESOURCE_IDENTIFIER=https://localho
 
 ## 4. Link Scopes to the Application
 
-1. Open the **Developer Portal** application in Asgardeo.
+1. Open the **API Portal** application in Asgardeo.
 2. Under **API Authorization**, add the API resource created in step 3.
 3. Create a role (e.g. `dp_admin`) and assign all `dp:*` scopes to it.
 4. Assign the role to users in each sub-organization.
 
 ---
 
-## 5. Developer Portal Configuration
+## 5. API Portal Configuration
 
 Update `configs/config.toml`:
 
@@ -163,7 +163,7 @@ If you are also running ai-workspace and platform-api with Asgardeo, the setups 
 | Component | App Type | Callback URL | Scopes |
 |-----------|----------|--------------|--------|
 | **ai-workspace** | Standard-Based SPA (public client, no secret) | `https://<domain>/signin` | `ap:*` (Platform API) |
-| **devportal** | Traditional Web Application (confidential client) | `https://<domain>/<orgName>/callback` | `dp:*` (Developer Portal) |
+| **devportal** | Traditional Web Application (confidential client) | `https://<domain>/<orgName>/callback` | `dp:*` (API Portal) |
 | **platform-api** | — (validates tokens via JWKS; same `ap:*` scopes as ai-workspace) | — | — |
 
 Each application is registered separately in Asgardeo with its own client ID and scopes.

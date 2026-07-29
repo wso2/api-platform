@@ -1,6 +1,6 @@
 # API Documentation
 
-Each API in the Developer Portal can have documentation sections covering endpoints, schemas, security mechanisms, usage guides, and more.
+Each API in the API Portal can have documentation sections covering endpoints, schemas, security mechanisms, usage guides, and more.
 
 ## View API Documentation
 

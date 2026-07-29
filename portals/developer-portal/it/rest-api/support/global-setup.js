@@ -16,13 +16,13 @@
 // under the License.
 // --------------------------------------------------------------------
 
-// Runs once before the whole Jest run: waits for the devportal container's
+// Runs once before the whole Jest run: waits for the portal container's
 // /health endpoint so specs don't race the server/dispatcher startup.
 
 const http = require('http');
 const https = require('https');
 
-const BASE_URL = process.env.DEVPORTAL_BASE_URL || 'http://localhost:9543';
+const BASE_URL = process.env.API_PORTAL_BASE_URL || 'http://localhost:9543';
 const TIMEOUT_MS = 60000;
 
 module.exports = async function globalSetup() {
@@ -46,7 +46,7 @@ module.exports = async function globalSetup() {
         };
         const retry = () => {
             if (Date.now() > deadline) {
-                return reject(new Error(`devportal did not become healthy within ${TIMEOUT_MS}ms`));
+                return reject(new Error(`portal did not become healthy within ${TIMEOUT_MS}ms`));
             }
             setTimeout(attempt, 1000);
         };

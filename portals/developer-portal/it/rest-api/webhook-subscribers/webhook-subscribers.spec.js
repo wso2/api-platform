@@ -19,7 +19,7 @@
 // POST/GET/PUT/DELETE /webhook-subscribers, GET /webhook-subscribers/{id}/deliveries.
 // Request shape: { displayName, targetUrl, id?, secret?, events?, enabled? }
 // `id` is optional — omit it and the server generates a UUID handle.
-// — see docs/devportal-openapi-spec-v0.9.yaml WebhookSubscriberRequest.
+// — see docs/api-portal-openapi-spec-v0.9.yaml WebhookSubscriberRequest.
 // `events` is a glob allowlist (trailing `*` only, e.g. "apikey.*"); empty/omitted
 // means all event types. `admin` manages org-level integration config.
 
@@ -96,7 +96,7 @@ describe('webhook subscribers', () => {
             events: ['apikey.*'],
         });
 
-        // NOTE: docs/devportal-openapi-spec-v0.9.yaml's WebhookSubscriberUpdateBody
+        // NOTE: docs/api-portal-openapi-spec-v0.9.yaml's WebhookSubscriberUpdateBody
         // description says "all fields are optional; only supplied fields are
         // updated", but it references the base WebhookSubscriberRequest schema,
         // which requires `displayName` and `targetUrl` — the server enforces the

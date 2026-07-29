@@ -1,4 +1,4 @@
-<h1 id="wso2-api-developer-portal-core-devportal-routes-subscription-plans">Subscription Plans</h1>
+<h1 id="wso2-api-portal-and-mcp-hub-core-subscription-plans">Subscription Plans</h1>
 
 ## List subscription plans
 

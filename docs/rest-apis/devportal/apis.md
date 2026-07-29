@@ -1,4 +1,4 @@
-<h1 id="wso2-api-developer-portal-core-devportal-routes-apis">APIs</h1>
+<h1 id="wso2-api-portal-and-mcp-hub-core-apis">APIs</h1>
 
 ## Create API metadata
 
@@ -19,7 +19,7 @@ curl -X POST https://localhost:9543/api/v0.9/apis \
 
 ```
 
-Creates Developer Portal API metadata from either a full API artifact ZIP, an API metadata YAML file (`api.yaml` / `devportal.yaml` / `mcp.yaml`), or a `metadata` JSON string. An API definition file is required unless supplied by the artifact ZIP. The YAML `spec` block accepts: `displayName`, `version`, `description`, `type`, `status`, `agentVisibility`, `tags`, `labels`, `referenceId`, `endpoints` (sandboxUrl, productionUrl), `businessInformation` (owners), and `subscriptionPlans`. The service also stores labels, subscription plan mappings, image metadata, and schema definitions for GraphQL APIs when provided. Via the JSON `metadata` field, `type` is required — an omitted type is rejected with `400` (via YAML, an omitted `spec.type` defaults to `REST`). MCP servers must be created via `POST /api/v0.9/mcp-servers` instead — a request whose resolved `type` is `MCP` is rejected with `400`.
+Creates API metadata from either a full API artifact ZIP, an API metadata YAML file (`api.yaml` / `devportal.yaml` / `mcp.yaml`), or a `metadata` JSON string. An API definition file is required unless supplied by the artifact ZIP. The YAML `spec` block accepts: `displayName`, `version`, `description`, `type`, `status`, `agentVisibility`, `tags`, `labels`, `referenceId`, `endpoints` (sandboxUrl, productionUrl), `businessInformation` (owners), and `subscriptionPlans`. The service also stores labels, subscription plan mappings, image metadata, and schema definitions for GraphQL APIs when provided. Via the JSON `metadata` field, `type` is required — an omitted type is rejected with `400` (via YAML, an omitted `spec.type` defaults to `REST`). MCP servers must be created via `POST /api/v0.9/mcp-servers` instead — a request whose resolved `type` is `MCP` is rejected with `400`.
 `subscriptionPlans` links existing org-level plans to this API by name — it does not create plans. In YAML it is a string array (`["Gold", "Silver"]`). In the JSON `metadata` field it is an object array where only `id` is used (`[{"id":"Gold"}]`); extra fields such as `planId`, `displayName`, or `requestCount` are ignored.
 
 > Payload
@@ -188,7 +188,7 @@ This operation requires <strong>Basic Auth</strong> authentication.
 |name|query|string|false|Exact API name filter.|
 |version|query|string|false|Exact API version filter.|
 |tags|query|string|false|Comma-separated tag names. Matches APIs tagged with any of the given names.|
-|view|query|string|false|Developer Portal view name used to filter visible APIs.|
+|view|query|string|false|API Portal view name used to filter visible APIs.|
 |limit|query|integer|false|Maximum number of records to return.|
 |offset|query|integer|false|Number of records to skip before returning results.|
 
@@ -300,7 +300,7 @@ Status Code **200**
 |---|---|---|---|---|
 |»» *anonymous*|object|false|none|none|
 |»»» id|string|false|none|The API's handle (unique per org). Not the internal database uuid.|
-|»»» refId|string¦null|false|none|Platform API (Control Plane) reference ID for this API. Used for MCP registry visibility filtering and included in outbound webhook event payloads. Null/absent for APIs that exist only in the Developer Portal and are not registered with the Platform API — e.g. MCP servers published via the registry.|
+|»»» refId|string¦null|false|none|Platform API (Control Plane) reference ID for this API. Used for MCP registry visibility filtering and included in outbound webhook event payloads. Null/absent for APIs that exist only in the API Portal and are not registered with the Platform API — e.g. MCP servers published via the registry.|
 |»»» dataSource|string¦null|false|none|Indicates which content matched the search term: `METADATA` if the match was in the API's own metadata, or a content type (e.g. a value from the API Content `type` field) if the match was inside an uploaded content file. Only computed by getAllApiMetadataForOrganization when both the `query` search parameter is supplied and the database is PostgreSQL — absent on SQLite (the dev default) and absent from every other operation (get/create/update single API).|
 |»»» planId|string|false|none|none|
 |»»» endPoints|[ApiEndpointsResponse](schemas.md#schemaapiendpointsresponse)|false|none|none|
@@ -395,7 +395,7 @@ curl -X GET https://localhost:9543/api/v0.9/apis/{apiId} \
 
 ```
 
-Retrieves a single API metadata record by Developer Portal API ID.
+Retrieves a single API metadata record by API ID.
 
 ### Authentication
 
@@ -513,7 +513,7 @@ curl -X PUT https://localhost:9543/api/v0.9/apis/{apiId} \
 
 ```
 
-Updates Developer Portal API metadata and its stored definition. Accepts the same YAML spec fields and `metadata` JSON format as the create operation. The update flow can also adjust label mappings, subscription plan mappings, schema definitions, and image metadata. Status changes to unpublished are rejected when active subscriptions exist. `type` is required (see the create operation) and is immutable — it must match the API's existing type; a different value is rejected with `409`.
+Updates API metadata and its stored definition. Accepts the same YAML spec fields and `metadata` JSON format as the create operation. The update flow can also adjust label mappings, subscription plan mappings, schema definitions, and image metadata. Status changes to unpublished are rejected when active subscriptions exist. `type` is required (see the create operation) and is immutable — it must match the API's existing type; a different value is rejected with `409`.
 
 > Payload
 

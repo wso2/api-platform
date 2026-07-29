@@ -1,4 +1,4 @@
-# Developer Portal Configuration
+# API Portal Configuration
 #
 # Only settings that differ from the built-in defaults need to be listed here —
 # see configs/config-template.toml for the full list of available keys and
@@ -26,7 +26,7 @@
 # literal strings (as below) so the inner double quotes need no escaping:
 #
 #   platform_api_url = '{{ env "APIP_AP_AUTH_LOCAL_PLATFORM_API_URL" }}'
-#   encryption_key = '{{ file "/etc/devportal/keys/encryption.key" }}'
+#   encryption_key = '{{ file "/etc/api-portal/keys/encryption.key" }}'
 #
 #   {{ env "NAME" }}            -> NAME's value. FAILS CLOSED (aborts startup) if
 #                                   NAME is unset or empty — it does not fall
@@ -44,7 +44,7 @@
 # are intentionally wired for the Docker Compose topology (docker-compose.yaml),
 # NOT for src/config/configDefaults.js's generic, dependency-free defaults —
 # e.g. server.https.enabled defaults to true here (a real cert is bind-mounted at
-# /etc/devportal/tls) vs. false in configDefaults.js (no cert available for a
+# /etc/api-portal/tls) vs. false in configDefaults.js (no cert available for a
 # bare `npm start`). configDefaults.js's DEFAULTS only take effect for keys this
 # file doesn't list at all (idp, organization, uploads, etc.). A config file is
 # always required, so DEFAULTS never drive the app on their own — they only fill
@@ -71,8 +71,8 @@ base_url = '{{ env "APIP_AP_SERVER_BASE_URL" "https://localhost:9543" }}'
 # at a real pair when enabled=true (no self-signed fallback).
 [api_portal.server.https]
 enabled   = '{{ env "APIP_AP_SERVER_HTTPS_ENABLED" "true" }}'
-cert_file = '{{ env "APIP_AP_SERVER_HTTPS_CERT_FILE" "/etc/devportal/tls/cert.pem" }}'
-key_file  = '{{ env "APIP_AP_SERVER_HTTPS_KEY_FILE" "/etc/devportal/tls/key.pem" }}'
+cert_file = '{{ env "APIP_AP_SERVER_HTTPS_CERT_FILE" "/etc/api-portal/tls/cert.pem" }}'
+key_file  = '{{ env "APIP_AP_SERVER_HTTPS_KEY_FILE" "/etc/api-portal/tls/key.pem" }}'
 
 [api_portal.logging]
 level        = '{{ env "APIP_AP_LOGGING_LEVEL" "info" }}'   # debug | info | warn | error
@@ -81,18 +81,18 @@ console_only = '{{ env "APIP_AP_LOGGING_CONSOLE_ONLY" "true" }}'
 
 [api_portal.database]
 driver = '{{ env "APIP_AP_DATABASE_DRIVER" "sqlite" }}'   # sqlite | postgres
-# SQLite path. Relative — resolves to /app/data/devportal.db under Compose (cwd
-# /app), matching the developer-portal-data volume mount at /app/data; Docker creates that
+# SQLite path. Relative — resolves to /app/data/api-portal.db under Compose (cwd
+# /app), matching the api-portal-data volume mount at /app/data; Docker creates that
 # directory itself as the volume's mount point, so no extra step is needed there.
-# `npm start` (cwd = repo root) resolves this to ./data/devportal.db instead —
+# `npm start` (cwd = repo root) resolves this to ./data/api-portal.db instead —
 # that directory does NOT get created automatically; see README's
 # "Development (npm start)" section.
-path = '{{ env "APIP_AP_DATABASE_PATH" "./data/devportal.db" }}'
+path = '{{ env "APIP_AP_DATABASE_PATH" "./data/api-portal.db" }}'
 # PostgreSQL connection — used when driver = "postgres" (e.g. the
 # docker-compose.postgres.yaml override sets these).
 host     = '{{ env "APIP_AP_DATABASE_HOST" "localhost" }}'
 port     = '{{ env "APIP_AP_DATABASE_PORT" "5432" }}'
-name     = '{{ env "APIP_AP_DATABASE_NAME" "devportal" }}'
+name     = '{{ env "APIP_AP_DATABASE_NAME" "api_portal" }}'
 user     = '{{ env "APIP_AP_DATABASE_USER" "postgres" }}'
 password = '{{ env "APIP_AP_DATABASE_PASSWORD" "" }}'
 # Connection pool — PostgreSQL / MSSQL only (pool_request_timeout_ms is MSSQL-only).
@@ -103,8 +103,8 @@ pool_connection_timeout_ms = '{{ env "APIP_AP_DATABASE_POOL_CONNECTION_TIMEOUT_M
 pool_request_timeout_ms    = '{{ env "APIP_AP_DATABASE_POOL_REQUEST_TIMEOUT_MS" "30000" }}'
 
 [api_portal.security]
-encryption_key = '{{ file "/etc/devportal/keys/encryption.key" }}'
-session_secret = '{{ file "/etc/devportal/keys/session-secret" }}'
+encryption_key = '{{ file "/etc/api-portal/keys/encryption.key" }}'
+session_secret = '{{ file "/etc/api-portal/keys/session-secret" }}'
 
 [api_portal.auth.local]
 # The upstream Platform API. Used for local auth credential validation when
@@ -112,10 +112,10 @@ session_secret = '{{ file "/etc/devportal/keys/session-secret" }}'
 platform_api_url = '{{ env "APIP_AP_AUTH_LOCAL_PLATFORM_API_URL" "https://platform-api:9243" }}'
 # Filesystem path to the Platform API's RS256 public key PEM — the matching half
 # of its [platform_api.auth.jwt].private_key. scripts/setup.sh generates the
-# keypair and docker-compose.yaml mounts it at /etc/devportal/keys; the devportal
+# keypair and docker-compose.yaml mounts it at /etc/api-portal/keys; the API Portal
 # reads this file to verify Platform API-issued tokens. `npm run start:local`
 # points it at the host-side copy in resources/keys.
-public_key_path  = '{{ env "APIP_AP_AUTH_LOCAL_PUBLIC_KEY_PATH" "/etc/devportal/keys/jwt_public.pem" }}'
+public_key_path  = '{{ env "APIP_AP_AUTH_LOCAL_PUBLIC_KEY_PATH" "/etc/api-portal/keys/jwt_public.pem" }}'
 tls_skip_verify  = '{{ env "APIP_AP_AUTH_LOCAL_TLS_SKIP_VERIFY" "true" }}'
 
 # The single organization this instance serves — the {handle} segment of

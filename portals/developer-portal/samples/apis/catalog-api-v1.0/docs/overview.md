@@ -6,7 +6,7 @@ This sample API demonstrates **token-based subscription access** — the API has
 
 | Header | Required | Description |
 |--------|----------|-------------|
-| `X-API-Key` | Yes | Your API key, generated from the developer portal |
+| `X-API-Key` | Yes | Your API key, generated from the API Portal |
 | `X-Subscription-Token` | Yes | The subscription token issued when you subscribe to a plan |
 
 Both headers must be sent on every request.
@@ -20,7 +20,7 @@ Both headers must be sent on every request.
 
 ## How to consume
 
-1. Subscribe to a **Gold** or **Bronze** plan in the developer portal — this issues your **subscription token**.
+1. Subscribe to a **Gold** or **Bronze** plan in the API Portal — this issues your **subscription token**.
 2. Generate an **API key** from the API's **Manage Keys** page.
 3. Call the API with both the `X-API-Key` and `X-Subscription-Token` headers.
 

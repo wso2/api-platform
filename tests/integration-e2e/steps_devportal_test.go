@@ -68,12 +68,12 @@ var webhookReceiverURL = "https://platform-api:9243" + webhookReceiverPath
 const devportalOrgHandle = "default"
 
 func (w *world) registerDevportalSteps(sc *godog.ScenarioContext) {
-	sc.Step(`^the subscription plan is synced to the developer portal$`, w.syncPlanToDevportal)
-	sc.Step(`^the API is published to the developer portal linked to the platform API$`, w.publishAPIToDevportal)
-	sc.Step(`^an application subscribed to the API is created in the developer portal$`, w.subscribeInDevportal)
-	sc.Step(`^an API key is generated in the developer portal$`, w.generateKeyInDevportal)
+	sc.Step(`^the subscription plan is synced to the API Portal$`, w.syncPlanToDevportal)
+	sc.Step(`^the API is published to the API Portal linked to the platform API$`, w.publishAPIToDevportal)
+	sc.Step(`^an application subscribed to the API is created in the API Portal$`, w.subscribeInDevportal)
+	sc.Step(`^an API key is generated in the API Portal$`, w.generateKeyInDevportal)
 	// The invocation assertions are shared with the platform-api-driven scenario.
-	sc.Step(`^invoking the secured API through the gateway with the developer portal credentials returns 200$`, w.invokeWithCredentialsSucceeds)
+	sc.Step(`^invoking the secured API through the gateway with the API Portal credentials returns 200$`, w.invokeWithCredentialsSucceeds)
 
 	// Credential-lifecycle steps (revoke / expiry / plan / pause / delete / token regen).
 	w.registerDevportalLifecycleSteps(sc)
@@ -81,7 +81,7 @@ func (w *world) registerDevportalSteps(sc *godog.ScenarioContext) {
 
 // --- suite bootstrap (called from bringUpStack) ----------------------------
 
-// bootstrapDevportal prepares the running developer portal so its webhooks are
+// bootstrapDevportal prepares the running API Portal so its webhooks are
 // accepted by platform-api: it links the portal org to the control-plane org
 // handle and registers the platform-api webhook subscriber.
 func bootstrapDevportal() error {
@@ -106,7 +106,7 @@ func waitDevportalHealthy() error {
 		lastStatus, lastErr = st, err
 		time.Sleep(2 * time.Second)
 	}
-	return fmt.Errorf("developer portal did not become healthy (last status %d, err %v)", lastStatus, lastErr)
+	return fmt.Errorf("API Portal did not become healthy (last status %d, err %v)", lastStatus, lastErr)
 }
 
 // linkDevportalOrg sets the portal org's cpRefId to the platform-api org handle
@@ -348,7 +348,7 @@ func (w *world) generateKeyInDevportal() error {
 
 // --- devportal HTTP helpers ------------------------------------------------
 
-// dpCall performs a JSON request against the developer portal with the admin
+// dpCall performs a JSON request against the API Portal with the admin
 // bearer token.
 func dpCall(method, path string, body any) (int, []byte, error) {
 	var payload []byte
@@ -362,7 +362,7 @@ func dpCall(method, path string, body any) (int, []byte, error) {
 	return dpDo(method, path, "application/json", payload)
 }
 
-// dpDo performs a request against the developer portal with the admin bearer token
+// dpDo performs a request against the API Portal with the admin bearer token
 // and an explicit content type (used for both JSON and multipart bodies). path is
 // the resource path relative to devportalBase (e.g. "/apis"), which is prepended.
 func dpDo(method, path, contentType string, body []byte) (int, []byte, error) {

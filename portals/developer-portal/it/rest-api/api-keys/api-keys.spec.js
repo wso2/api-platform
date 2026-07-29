@@ -132,7 +132,7 @@ describe('API keys', () => {
     });
 
     // GET /api-keys — lists every key created by the authenticated caller across all
-    // APIs in the org (powers the developer portal's global "API Keys" page). Each item
+    // APIs in the org (powers the API Portal's global "API Keys" page). Each item
     // carries the owning API's name/version/type so the page renders without a second call.
     describe('GET /api-keys (all keys for the caller)', () => {
         it('lists the caller\'s keys across APIs with owning-API metadata', async () => {

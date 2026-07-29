@@ -1,7 +1,7 @@
 {
-  "name": "devportal-webapp",
+  "name": "api-portal-webapp",
   "version": "1.0.0-rc1-SNAPSHOT",
-  "description": "WSO2 API Platform Developer Portal",
+  "description": "WSO2 API Platform API Portal",
   "main": "src/server.js",
   "scripts": {
     "start": "npm rebuild better-sqlite3 --ignore-scripts=false && NODE_ENV=development nodemon src/server.js --config configs/config.toml",
@@ -19,7 +19,7 @@
   "keywords": [
     "WSO2",
     "API Platform",
-    "Developer Portal"
+    "API Portal"
   ],
   "author": "WSO2 LLC",
   "license": "Apache-2.0",

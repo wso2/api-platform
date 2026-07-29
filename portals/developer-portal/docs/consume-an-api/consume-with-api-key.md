@@ -12,7 +12,7 @@ If the API requires a subscription, [subscribe to it](subscriptions.md) first.
 
 ## Generate an API Key
 
-1. Sign in to the Developer Portal.
+1. Sign in to the API Portal.
 2. Click **APIs** from the sidebar and open the API you want to invoke.
 3. In the API's submenu, click **API Keys**.
 4. Click **Generate API key**.
@@ -65,7 +65,7 @@ Revoked keys cannot be recovered. Generate a new key if you need access again.
 
 API keys are always generated for an API directly — never for an application. Associating a key with an application afterward is optional and exists purely for **usage analytics attribution**: it groups a key's request metrics under an application in reporting. It has no effect on the key's validity or authorization, and a key works identically whether or not it's associated with an application.
 
-1. Sign in to the Developer Portal and open **My Applications** in the sidebar.
+1. Sign in to the API Portal and open **My Applications** in the sidebar.
 2. Select the application you want to attribute usage to.
 3. Go to the application's **API Keys** tab.
 4. Click **Associate existing key**.

@@ -1,10 +1,10 @@
 # Search APIs
 
-You can search for APIs in the Developer Portal that have been published by the API publisher.
+You can search for APIs in the API Portal that have been published by the API publisher.
 
 ## Browse the API Catalog
 
-1. Sign in to the Developer Portal.
+1. Sign in to the API Portal.
 2. Click **APIs** from the sidebar. The API catalog is displayed.
 
 The catalog shows API cards with the API name, type (REST, GraphQL, etc.), version, and a short description.

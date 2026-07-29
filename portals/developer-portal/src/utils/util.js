@@ -880,8 +880,8 @@ async function readFilesInDirectory(directory, orgId, protocol, host, viewName, 
                         strContent = strContent.replace(/@import\s*['"]\/styles\/home\.css['"];/g, `@import url("${constants.API_PORTAL_API.orgPath(orgId)}/views/${viewName}/asset?fileType=style&fileName=home.css");`);
                         strContent = strContent.replace(/@import\s*['"]\/styles\/main\.css['"];/g, `@import url("${constants.API_PORTAL_API.orgPath(orgId)}/views/${viewName}/asset?fileType=style&fileName=main.css");`);
                     }
-                    strContent = strContent.replace(/"\/images\/(devportal-logo\.[^"]+)/g, `"${constants.API_PORTAL_API.orgPath(orgId)}/views/${viewName}/asset?fileType=image&fileName=$1`);
-                    strContent = strContent.replace(/'\/images\/(devportal-logo\.[^']+)/g, `'${constants.API_PORTAL_API.orgPath(orgId)}/views/${viewName}/asset?fileType=image&fileName=$1`);
+                    strContent = strContent.replace(/"\/images\/(api-portal-logo\.[^"]+)/g, `"${constants.API_PORTAL_API.orgPath(orgId)}/views/${viewName}/asset?fileType=image&fileName=$1`);
+                    strContent = strContent.replace(/'\/images\/(api-portal-logo\.[^']+)/g, `'${constants.API_PORTAL_API.orgPath(orgId)}/views/${viewName}/asset?fileType=image&fileName=$1`);
                     content = Buffer.from(strContent, constants.CHARSET_UTF8);
                 } else if (file.name.endsWith(".hbs") && dir.endsWith("layout")) {
                     fileType = "layout"
@@ -987,7 +987,7 @@ function validateScripts(strContent) {
             // and subscriptions/partials/subscription-list.hbs)
             "<script>\n                window.__tokenMap = window.__tokenMap || {};\n                window.__subscriptionOrgId = \"{{@root.orgId}}\";\n            </script>",
             // API config bootstrap (layout/main.hbs)
-            "<script>\n      // Devportal API base segment + version, sourced from server constants.\n      // Browser scripts build invocation URLs via window.apiPortalApi (common.js).\n      window.__API_PORTAL_API__ = { base: \"{{apiPortalApiConfig.base}}\", version: \"{{apiPortalApiConfig.version}}\" };\n    </script>",
+            "<script>\n      // Portal API base segment + version, sourced from server constants.\n      // Browser scripts build invocation URLs via window.apiPortalApi (common.js).\n      window.__API_PORTAL_API__ = { base: \"{{apiPortalApiConfig.base}}\", version: \"{{apiPortalApiConfig.version}}\" };\n    </script>",
             // Existing-subs JSON data island (mcp-landing/partials/mcp-subscription-plans.hbs)
             "<script id=\"mcp-existing-subs-data\" type=\"application/json\">{{{json subscriptions}}}</script>",
         ]);
@@ -1241,7 +1241,7 @@ function resolveApiType(apiType) {
         return constants.API_TYPE.REST;
     }
 
-    // Accept the stored value as-is (e.g. "RestApi", sent by devportal's own UI),
+    // Accept the stored value as-is (e.g. "RestApi", sent by portal's own UI),
     // otherwise fall back to the short authoring keyword (e.g. "REST" in an uploaded api.yaml).
     if (Object.values(constants.API_TYPE).includes(apiType)) {
         return apiType;
@@ -1269,11 +1269,11 @@ function filterAllowedAPIs(searchResults, allowedAPIs) {
 
 const enforcePortalMode = async (req, res, next) => {
     const orgDetails = await orgDao.get(req.params.orgName);
-    const portalMode = orgDetails.configuration?.apiPortalMode || constants.API_PORTAL_MODE.DEFAULT;
+    const apiPortalMode = orgDetails.configuration?.apiPortalMode || constants.API_PORTAL_MODE.DEFAULT;
     const path = req.originalUrl.split('/')[4];
 
-    if ((path.includes('apis') || path.includes('api')) && (portalMode === constants.API_PORTAL_MODE.DEFAULT || portalMode === constants.API_PORTAL_MODE.APIS_ONLY) ||
-        (path.includes('mcps') || path.includes('mcp')) && (portalMode === constants.API_PORTAL_MODE.DEFAULT || portalMode === constants.API_PORTAL_MODE.MCP_SERVERS_ONLY)) {
+    if ((path.includes('apis') || path.includes('api')) && (apiPortalMode === constants.API_PORTAL_MODE.DEFAULT || apiPortalMode === constants.API_PORTAL_MODE.APIS_ONLY) ||
+        (path.includes('mcps') || path.includes('mcp')) && (apiPortalMode === constants.API_PORTAL_MODE.DEFAULT || apiPortalMode === constants.API_PORTAL_MODE.MCP_SERVERS_ONLY)) {
         next();
     } else {
         const err = new Error('Page not found');

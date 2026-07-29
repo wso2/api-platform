@@ -1,6 +1,6 @@
 # Authentication
 
-- oAuth2 authentication. OAuth2/OIDC access token with fine-grained Developer Portal scopes. Each operation declares the exact resource/action scope it requires.
+- oAuth2 authentication. OAuth2/OIDC access token with fine-grained API Portal scopes. Each operation declares the exact resource/action scope it requires.
 
     - Flow: authorizationCode
     - Authorization URL = [https://localhost:9443/oauth2/authorize](https://localhost:9443/oauth2/authorize)

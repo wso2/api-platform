@@ -169,11 +169,11 @@ app.use((req, res, next) => {
 });
 
 //backend routes
-// Spec-driven devportal router (express-openapi-validator): request validation +
+// Spec-driven portal router (express-openapi-validator): request validation +
 // fine-grained OAuth2 scope enforcement, dispatching by operationId to
 // src/routes/api/handlers (/api/v0.9/..., /organizations, /login, ...).
 // Registered before the page route tree so unmatched requests fall through to it.
-const apiPortalRouter = require('./routes/api/devportalApiRouter');
+const apiPortalRouter = require('./routes/api/apiPortalRouter');
 app.use(constants.ROUTE.DEFAULT, apiPortalRouter);
 
 // MCP Server Registry (OpenAPI v0.1)

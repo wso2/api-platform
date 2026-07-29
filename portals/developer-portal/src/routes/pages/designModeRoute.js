@@ -50,7 +50,6 @@ router.get([
     /^\/images\//,
     /^\/styles\//,
     /^\/login/,
-    /^\/devportal\//,
     /^\/views\//,
     '/:orgName/settings',
 ], (req, res) => {

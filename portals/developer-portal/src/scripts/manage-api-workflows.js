@@ -780,7 +780,7 @@ function copySpecPrompt() {
 }
 
 function buildArazzoPrompt(contextBlock, apiContext) {
-    return `You are helping a developer define an API workflow that will be saved to their developer portal.
+    return `You are helping a developer define an API workflow that will be saved to their API Portal.
 
 ${contextBlock ? `Here is some context they have already provided:\n${contextBlock}\n` : ''}**Available APIs on their portal:**
 ${apiContext}
@@ -800,11 +800,11 @@ Your job is to have a short conversation to understand exactly what the workflow
 
 Output the raw YAML only — no prose around it.
 
-**Step 3 — After outputting the YAML, tell the developer:** "Your Arazzo spec is ready. Please copy the YAML above, switch back to your developer portal tab, and paste it into the workflow editor."`;
+**Step 3 — After outputting the YAML, tell the developer:** "Your Arazzo spec is ready. Please copy the YAML above, switch back to your API Portal tab, and paste it into the workflow editor."`;
 }
 
 function buildMarkdownPrompt(contextBlock, apiContext) {
-    return `You are helping a developer describe an API workflow in plain language. The result will be saved as a Markdown document in their developer portal so that AI agents can understand and execute the workflow.
+    return `You are helping a developer describe an API workflow in plain language. The result will be saved as a Markdown document in their API Portal so that AI agents can understand and execute the workflow.
 
 ${contextBlock ? `Here is some context they have already provided:\n${contextBlock}\n` : ''}**APIs available on their portal:**
 ${apiContext}
@@ -824,7 +824,7 @@ Your job is to have a short conversation to understand the workflow, then produc
 
 Use Markdown formatting (headers, numbered lists, tables, bold for emphasis). Write for a developer who needs to understand the flow at a glance. Output the raw Markdown only — no prose around it.
 
-**Step 3 — After outputting the Markdown, tell the developer:** "Your workflow description is ready. Please copy the Markdown above, switch back to your developer portal tab, and paste it into the workflow editor."`;
+**Step 3 — After outputting the Markdown, tell the developer:** "Your workflow description is ready. Please copy the Markdown above, switch back to your API Portal tab, and paste it into the workflow editor."`;
 }
 
 function generateWithClaude() {
@@ -860,7 +860,7 @@ function buildPromptContext() {
             const url = `${window.location.origin}/${orgHandle}/views/${viewName}/api/${a.apiHandle}/docs/specification.json`;
             return `- **${a.apiName}** (${a.apiType || 'REST'}): ${a.apiDescription || 'No description provided'}\n  OpenAPI spec: ${url}`;
         }).join('\n')
-        : '*(No APIs pre-selected — select the required APIs from the Associated APIs section above. For APIs published in the developer portal, the Source Description will be auto-generated.)*';
+        : '*(No APIs pre-selected — select the required APIs from the Associated APIs section above. For APIs published in the API Portal, the Source Description will be auto-generated.)*';
 
     const contextBlock = [
         name ? `**Workflow name:** ${name}` : null,

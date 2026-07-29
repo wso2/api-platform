@@ -4,7 +4,7 @@ API Workflows are published, multi-step sequences of API calls that help you acc
 
 ## How Human Developers Discover Workflows
 
-Workflows are available in the **API Workflows** section of the Developer Portal, accessible from the main navigation.
+Workflows are available in the **API Workflows** section of the API Portal, accessible from the main navigation.
 
 Each workflow is listed with its name and a short description. Clicking a workflow opens a detail view that includes:
 
@@ -14,14 +14,14 @@ Each workflow is listed with its name and a short description. Clicking a workfl
 
 ### Following a Workflow
 
-1. Navigate to **API Workflows** in the Developer Portal sidebar.
+1. Navigate to **API Workflows** in the API Portal sidebar.
 2. Select the workflow that matches your goal.
 3. Follow the steps in order, using the inputs and outputs described at each step.
 4. If the workflow includes an Arazzo specification, download it to use with Arazzo-compatible tools.
 
 ## How AI Agents Discover Workflows
 
-Agents that interact with the Developer Portal can discover workflows through two machine-readable endpoints.
+Agents that interact with the API Portal can discover workflows through two machine-readable endpoints.
 
 ### `llms.txt`
 

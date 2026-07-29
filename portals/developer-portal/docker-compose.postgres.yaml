@@ -30,9 +30,9 @@ services:
   postgres:
     image: postgres:16
     environment:
-      POSTGRES_USER: devportal
-      POSTGRES_PASSWORD: devportal
-      POSTGRES_DB: devportal
+      POSTGRES_USER: api_portal
+      POSTGRES_PASSWORD: api_portal
+      POSTGRES_DB: api_portal
     volumes:
       - postgres_data:/var/lib/postgresql/data
       # Mount only this dialect's schema file — ./database also holds
@@ -42,19 +42,19 @@ services:
       # fail on) schema.sqlserver.sql's T-SQL-only syntax.
       - ./database/schema.postgres.sql:/docker-entrypoint-initdb.d/schema.postgres.sql:ro
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U devportal -d devportal"]
+      test: ["CMD-SHELL", "pg_isready -U api_portal -d api_portal"]
       interval: 10s
       timeout: 5s
       retries: 10
       start_period: 15s
     # Without this, postgres joins compose's own implicit "default" network
     # while devportal/platform-api (which explicitly declare networks: in
-    # docker-compose.yaml) only join devportal-network — two disjoint
+    # docker-compose.yaml) only join api-portal-network — two disjoint
     # networks, so devportal can't resolve "postgres" by hostname at all.
     networks:
-      - devportal-network
+      - api-portal-network
 
-  devportal:
+  api-portal:
     depends_on:
       postgres:
         condition: service_healthy
@@ -62,9 +62,9 @@ services:
       APIP_AP_DATABASE_DRIVER: postgres
       APIP_AP_DATABASE_HOST: postgres
       APIP_AP_DATABASE_PORT: 5432
-      APIP_AP_DATABASE_USER: devportal
-      APIP_AP_DATABASE_PASSWORD: devportal
-      APIP_AP_DATABASE_NAME: devportal
+      APIP_AP_DATABASE_USER: api_portal
+      APIP_AP_DATABASE_PASSWORD: api_portal
+      APIP_AP_DATABASE_NAME: api_portal
       APIP_AP_DATABASE_PATH: ""
 
 volumes:

@@ -1,4 +1,4 @@
-name: Developer Portal Integration Test
+name: API Portal Integration Test
 
 on:
   workflow_dispatch:
@@ -34,14 +34,14 @@ jobs:
         uses: docker/setup-buildx-action@v3
 
       - name: Build platform-api image
-        run: make -C platform-api build IMAGE_NAME=platform-api VERSION=it-devportal
+        run: make -C platform-api build IMAGE_NAME=platform-api VERSION=it-api-portal
 
-      - name: Build developer-portal image
+      - name: Build API Portal image
         run: make -C portals/developer-portal build
 
       - name: Run REST API integration tests (${{ matrix.db }})
         env:
-          PLATFORM_API_IMAGE: platform-api:it-devportal
+          PLATFORM_API_IMAGE: platform-api:it-api-portal
         run: |
           if [ "${{ matrix.db }}" = "postgres" ]; then
             make -C portals/developer-portal/it test-rest-api-postgres
@@ -76,14 +76,14 @@ jobs:
         uses: docker/setup-buildx-action@v3
 
       - name: Build platform-api image
-        run: make -C platform-api build IMAGE_NAME=platform-api VERSION=it-devportal
+        run: make -C platform-api build IMAGE_NAME=platform-api VERSION=it-api-portal
 
-      - name: Build developer-portal image
+      - name: Build API Portal image
         run: make -C portals/developer-portal build
 
       - name: Run Cypress integration tests
         env:
-          PLATFORM_API_IMAGE: platform-api:it-devportal
+          PLATFORM_API_IMAGE: platform-api:it-api-portal
         run: make -C portals/developer-portal/it test
 
       - name: Upload Cypress reports

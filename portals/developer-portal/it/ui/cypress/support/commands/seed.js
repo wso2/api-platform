@@ -17,7 +17,7 @@
 // --------------------------------------------------------------------
 
 // ---------------------------------------------------------------------------
-// Seed helpers — create demo REST APIs / MCP servers through the real devportal
+// Seed helpers — create demo REST APIs / MCP servers through the real portal
 // management API (POST /api/v0.9/apis, /mcp-servers) so UI browse tests have
 // something to render. They go through cy.apiRequest, which injects the
 // service API-key header; the `organization` header selects the target org

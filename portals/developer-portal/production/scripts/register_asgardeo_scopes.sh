@@ -10,7 +10,7 @@
 
 # register_asgardeo_scopes.sh
 #
-# Registers the Developer Portal API resource and all dp:* scopes in Asgardeo
+# Registers the API Portal API resource and all dp:* scopes in Asgardeo
 # so that the devportal traditional web application can request them.
 #
 # Prerequisites:
@@ -34,7 +34,7 @@ TENANT="${ASGARDEO_TENANT:-}"
 CLIENT_ID="${ASGARDEO_CLIENT_ID:-}"
 CLIENT_SECRET="${ASGARDEO_CLIENT_SECRET:-}"
 RESOURCE_IDENTIFIER="${ASGARDEO_RESOURCE_IDENTIFIER:-https://localhost:9543}"
-RESOURCE_NAME="${ASGARDEO_RESOURCE_NAME:-Developer Portal Resources}"
+RESOURCE_NAME="${ASGARDEO_RESOURCE_NAME:-API Portal Resources}"
 
 if [[ -z "$TENANT" || -z "$CLIENT_ID" || -z "$CLIENT_SECRET" ]]; then
   echo "Error: ASGARDEO_TENANT, ASGARDEO_CLIENT_ID, and ASGARDEO_CLIENT_SECRET must be set." >&2
@@ -250,7 +250,7 @@ fi
 
 echo ""
 echo "Done. Next steps:"
-echo "  1. In Asgardeo, open the Developer Portal web application."
+echo "  1. In Asgardeo, open the API Portal web application."
 echo "  2. Add the '${RESOURCE_NAME}' API resource (ID: ${RESOURCE_ID})."
 echo "  3. Create a role (e.g. dp_admin) and assign the dp:* scopes."
 echo "  4. Assign that role to users in your Asgardeo organization."

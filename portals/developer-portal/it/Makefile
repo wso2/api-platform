@@ -20,14 +20,14 @@
 
 VERSION ?= $(shell cat ../VERSION 2>/dev/null | tr -d '[:space:]' || echo "0.0.1-SNAPSHOT")
 DOCKER_REGISTRY ?= ghcr.io/wso2/api-platform
-IMAGE_NAME      := developer-portal
+IMAGE_NAME      := api-portal
 CERT_DIR        := .certs
 
 # Compose project name for the test stacks. Without -p, compose derives it from this
 # directory's name — "it" — which every other repo's it/ directory on the machine also
 # claims.
-IT_PROJECT          := devportal-it
-IT_PROJECT_POSTGRES := devportal-it-postgres
+IT_PROJECT          := api-portal-it
+IT_PROJECT_POSTGRES := api-portal-it-postgres
 
 # Auto-detect host CPU so Cypress runs natively (no QEMU).
 # arm64 = Apple Silicon → pull linux/arm64 Cypress image.
@@ -94,7 +94,7 @@ ensure-test-tag:
 # exited it returns nothing and the code is silently lost (the target then passes
 # even when tests fail). Keep the capture in the same shell as `up`.
 test: ensure-test-tag ensure-certs
-	@CYPRESS_PLATFORM=$(CYPRESS_PLATFORM) DOCKER_REGISTRY=$(DOCKER_REGISTRY) docker compose -p $(IT_PROJECT) -f docker-compose.test.yaml up devportal cypress --abort-on-container-exit --exit-code-from cypress; \
+	@CYPRESS_PLATFORM=$(CYPRESS_PLATFORM) DOCKER_REGISTRY=$(DOCKER_REGISTRY) docker compose -p $(IT_PROJECT) -f docker-compose.test.yaml up api-portal cypress --abort-on-container-exit --exit-code-from cypress; \
 	EXIT=$$?; \
 	docker compose -p $(IT_PROJECT) -f docker-compose.test.yaml down -v --remove-orphans; \
 	exit $$EXIT
@@ -102,7 +102,7 @@ test: ensure-test-tag ensure-certs
 # Run Cypress tests headlessly against PostgreSQL.
 # Requires the developer-portal image to be built first: make build (from portals/developer-portal/).
 test-postgres: ensure-test-tag ensure-certs
-	@CYPRESS_PLATFORM=$(CYPRESS_PLATFORM) DOCKER_REGISTRY=$(DOCKER_REGISTRY) docker compose -p $(IT_PROJECT_POSTGRES) -f docker-compose.test.postgres.yaml up postgres devportal cypress --abort-on-container-exit --exit-code-from cypress; \
+	@CYPRESS_PLATFORM=$(CYPRESS_PLATFORM) DOCKER_REGISTRY=$(DOCKER_REGISTRY) docker compose -p $(IT_PROJECT_POSTGRES) -f docker-compose.test.postgres.yaml up postgres api-portal cypress --abort-on-container-exit --exit-code-from cypress; \
 	EXIT=$$?; \
 	docker compose -p $(IT_PROJECT_POSTGRES) -f docker-compose.test.postgres.yaml down -v --remove-orphans; \
 	exit $$EXIT
@@ -110,20 +110,20 @@ test-postgres: ensure-test-tag ensure-certs
 # Run the REST API integration test suite (Jest + Supertest) against SQLite.
 # Requires the developer-portal image to be built first: make build (from portals/developer-portal/).
 test-rest-api: ensure-test-tag ensure-certs
-	@DOCKER_REGISTRY=$(DOCKER_REGISTRY) docker compose -p $(IT_PROJECT) -f docker-compose.test.yaml up devportal rest-api-tests --abort-on-container-exit --exit-code-from rest-api-tests; \
+	@DOCKER_REGISTRY=$(DOCKER_REGISTRY) docker compose -p $(IT_PROJECT) -f docker-compose.test.yaml up api-portal rest-api-tests --abort-on-container-exit --exit-code-from rest-api-tests; \
 	EXIT=$$?; \
 	docker compose -p $(IT_PROJECT) -f docker-compose.test.yaml down -v --remove-orphans; \
 	exit $$EXIT
 
 # Run the REST API integration test suite (Jest + Supertest) against PostgreSQL.
 test-rest-api-postgres: ensure-test-tag ensure-certs
-	@DOCKER_REGISTRY=$(DOCKER_REGISTRY) docker compose -p $(IT_PROJECT_POSTGRES) -f docker-compose.test.postgres.yaml up postgres devportal rest-api-tests --abort-on-container-exit --exit-code-from rest-api-tests; \
+	@DOCKER_REGISTRY=$(DOCKER_REGISTRY) docker compose -p $(IT_PROJECT_POSTGRES) -f docker-compose.test.postgres.yaml up postgres api-portal rest-api-tests --abort-on-container-exit --exit-code-from rest-api-tests; \
 	EXIT=$$?; \
 	docker compose -p $(IT_PROJECT_POSTGRES) -f docker-compose.test.postgres.yaml down -v --remove-orphans; \
 	exit $$EXIT
 
-# Open Cypress interactive UI — runs against a LOCALLY running devportal (not in Docker).
-# Start your devportal with `docker compose up` in portals/developer-portal/ first.
+# Open Cypress interactive UI — runs against a LOCALLY running portal (not in Docker).
+# Start your portal with `docker compose up` in portals/developer-portal/ first.
 open: deps
 	cd ui && CYPRESS_BASE_URL=https://localhost:9543 npx cypress open --e2e --config-file cypress.config.js
 

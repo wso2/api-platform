@@ -16,7 +16,7 @@
 # under the License.
 # --------------------------------------------------------------------
 
-# Developer Portal Makefile
+# API Portal Makefile
 
 SHELL := /bin/bash
 
@@ -27,19 +27,19 @@ VERSION := $(shell cat VERSION 2>/dev/null || echo "0.0.1-SNAPSHOT")
 DOCKER_REGISTRY ?= ghcr.io/wso2/api-platform
 
 # Image name
-DEVPORTAL_IMAGE := $(DOCKER_REGISTRY)/developer-portal
+API_PORTAL_IMAGE := $(DOCKER_REGISTRY)/api-portal
 
 # API docs tooling
 REPO_ROOT         := $(shell git rev-parse --show-toplevel)
 APIDOCS_TOOLS_DIR := $(REPO_ROOT)/tools/apidocs
 DOCS_OUT_DIR      := $(REPO_ROOT)/docs/rest-apis/devportal
-OPENAPI_SPEC      := docs/devportal-openapi-spec-v0.9.yaml
+OPENAPI_SPEC      := docs/api-portal-openapi-spec-v0.9.yaml
 
 .DEFAULT_GOAL := help
 
 .PHONY: help
 help: ## Show this help message
-	@echo 'Developer Portal Build System (Version: $(VERSION))'
+	@echo 'API Portal Build System (Version: $(VERSION))'
 	@echo ''
 	@echo 'Build Targets:'
 	@echo '  make build                      - Build developer-portal Docker image (buildx)'
@@ -50,7 +50,7 @@ help: ## Show this help message
 	@echo '  make clean-dist                  - Remove distribution staging dir and zip'
 	@echo ''
 	@echo 'Version Management:'
-	@echo '  make version-set VERSION=X       - Set developer portal version and update artifacts'
+	@echo '  make version-set VERSION=X       - Set API Portal version and update artifacts'
 	@echo '  make version-bump-patch          - Bump patch version'
 	@echo '  make version-bump-minor          - Bump minor version'
 	@echo '  make version-bump-major          - Bump major version'
@@ -74,7 +74,7 @@ help: ## Show this help message
 build: ## Build developer-portal Docker image
 	@echo "Building developer-portal Docker image ($(VERSION))..."
 	docker buildx build \
-		--tag $(DEVPORTAL_IMAGE):$(VERSION) \
+		--tag $(API_PORTAL_IMAGE):$(VERSION) \
 		--load \
 		.
 
@@ -83,14 +83,14 @@ build-and-push-multiarch: ## Build and push multi-arch developer-portal image to
 	@echo "Building and pushing multi-arch developer-portal Docker image ($(VERSION))..."
 	docker buildx build \
 		--platform linux/amd64,linux/arm64 \
-		--tag $(DEVPORTAL_IMAGE):$(VERSION) \
+		--tag $(API_PORTAL_IMAGE):$(VERSION) \
 		--push \
 		.
 
 # Version Management Targets
 
 .PHONY: version-set
-version-set: ## Set developer portal version and update artifacts
+version-set: ## Set API Portal version and update artifacts
 	@if [ -z "$(VERSION)" ]; then \
 		echo "Error: VERSION required"; \
 		echo "Usage: make version-set VERSION=1.0.0"; \
@@ -99,7 +99,7 @@ version-set: ## Set developer portal version and update artifacts
 	@echo "$(VERSION)" > VERSION
 	@npm version $(VERSION) --no-git-tag-version --allow-same-version >/dev/null
 	@(cd ../.. && bash scripts/update-docker-compose.sh developer-portal $(VERSION))
-	@echo "✓ Set developer portal version to $(VERSION)"
+	@echo "✓ Set API Portal version to $(VERSION)"
 
 .PHONY: version-bump-patch
 version-bump-patch: ## Bump patch version
@@ -206,7 +206,7 @@ define stage_optional_template
 	fi
 endef
 
-# Merge a Developer Portal config and a Platform API config into one unified
+# Merge an API Portal config and a Platform API config into one unified
 # multi-component config file: $(call merge_config,<dp-toml>,<cp-toml>,<out>).
 # The components share no top-level keys ([api_portal.*] vs [platform_api.*],
 # and [ai_workspace.*] when append_section adds it below), so the merge is a
@@ -250,7 +250,7 @@ define append_section
 endef
 
 .PHONY: dist
-dist: clean-dist ## Build standalone developer portal distribution zip
+dist: clean-dist ## Build standalone API Portal distribution zip
 	@if [ -z "$(strip $(AIW_VERSION))" ]; then \
 		echo "Error: AIW_VERSION is empty — the optional ai-workspace image tag cannot be resolved." >&2; \
 		echo "Pass it explicitly (make dist AIW_VERSION=1.0.0) or ensure ../ai-workspace/VERSION exists." >&2; \
@@ -320,7 +320,7 @@ endif
 	@cp scripts/seed-samples.sh $(DIST_DIR)/scripts/seed-samples.sh
 	@chmod +x $(DIST_DIR)/scripts/seed-samples.sh
 # Bake this pack's default COMPOSE_PROFILES into setup.sh so `docker compose
-# up -d` (no --profile flag) starts Developer Portal + Platform API out of
+# up -d` (no --profile flag) starts API Portal + Platform API out of
 # the box once setup.sh has run. setup.sh writes it to .env at setup time —
 # .env is not shipped in the zip itself, only this pack's default value for it.
 	@sed -i.bak \
@@ -340,7 +340,7 @@ endif
 	    $(DIST_DIR)/scripts/setup.ps1
 	@rm -f $(DIST_DIR)/scripts/setup.ps1.bak
 	@sed -i.bak \
-	    -e 's|image: .*/developer-portal:[^[:space:]]*|image: $(DEVPORTAL_IMAGE):$(DIST_VERSION)|g' \
+	    -e 's|image: .*/api-portal:[^[:space:]]*|image: $(API_PORTAL_IMAGE):$(DIST_VERSION)|g' \
 	    -e 's|image: .*/platform-api:[^[:space:]]*|image: $(PLATFORM_API_IMAGE):$(PLATFORM_API_VERSION)|g' \
 	    -e 's|image: .*/ai-workspace:[^[:space:]]*|image: $(AIW_IMAGE):$(AIW_VERSION)|g' \
 	    $(DIST_DIR)/docker-compose.yaml
@@ -357,7 +357,7 @@ clean-dist: ## Remove distribution staging dir and zip
 
 .PHONY: clean
 clean: clean-dist ## Clean all build artifacts
-	@echo "Cleaned developer portal build artifacts"
+	@echo "Cleaned API Portal build artifacts"
 
 # Docs Targets
 

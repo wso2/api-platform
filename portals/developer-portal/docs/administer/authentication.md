@@ -1,6 +1,6 @@
 # Authentication
 
-The Developer Portal supports two authentication modes, controlled by `auth.mode` in `config.toml`.
+The API Portal supports two authentication modes, controlled by `auth.mode` in `config.toml`.
 
 ## Modes
 

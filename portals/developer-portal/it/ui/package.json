@@ -1,7 +1,7 @@
 {
   "name": "developer-portal-it",
   "version": "1.0.0",
-  "description": "Cypress integration tests for the Developer Portal",
+  "description": "Cypress integration tests for the API Portal",
   "private": true,
   "scripts": {
     "test": "cypress run --headless",

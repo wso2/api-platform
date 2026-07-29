@@ -1,12 +1,12 @@
 # Quick Start
 
-Get the Developer Portal running locally in a few minutes using Docker Compose.
+Get the API Portal running locally in a few minutes using Docker Compose.
 
 ## Prerequisites
 
 - [Docker](https://docs.docker.com/get-docker/) and [Docker Compose](https://docs.docker.com/compose/) installed
 - `openssl` on your `PATH` (used by the setup script to generate certs and secrets)
-- Ports 9543 (Developer Portal) and 9243 (Platform API) available
+- Ports 9543 (API Portal) and 9243 (Platform API) available
 
 ## Steps
 
@@ -26,12 +26,12 @@ cd api-platform/portals/developer-portal/
 This one-time script provisions everything the containers need to start:
 
 - a self-signed TLS certificate under `resources/certificates/`
-- the Developer Portal's encryption/session secrets and the shared JWT signing key, written to `api-platform.env`
+- the API Portal's encryption/session secrets and the shared JWT signing key, written to `api-platform.env`
 - `configs/config-platform-api.toml` — the config for the Platform API sidecar that validates login credentials and issues signed tokens
 
 It also prompts you for an **admin username and password**. Press Enter at the password prompt to have a strong one generated for you — it is printed once at the end, so copy it before continuing. The credentials are stored bcrypt-hashed in `api-platform.env`.
 
-`config.toml`, which controls the Developer Portal itself, is already present in `configs/` — no copying needed.
+`config.toml`, which controls the API Portal itself, is already present in `configs/` — no copying needed.
 
 > The script is idempotent: re-running it only fills in what's missing and never overwrites an existing value. To rotate a secret, remove it from `api-platform.env` (or delete `resources/certificates/` for the TLS cert) and re-run.
 
@@ -41,7 +41,7 @@ It also prompts you for an **admin username and password**. Press Enter at the p
 docker compose up
 ```
 
-This starts the Developer Portal (SQLite by default). On first boot the database schema and the configured organization (`default`, per `[api_portal.organization].handle`) with a `default` view are created automatically.
+This starts the API Portal (SQLite by default). On first boot the database schema and the configured organization (`default`, per `[api_portal.organization].handle`) with a `default` view are created automatically.
 
 ### 4. Open the portal
 
@@ -65,7 +65,7 @@ The fastest way to see a populated catalog is to deploy the bundled sample APIs 
 
 This deploys everything under `samples/` into the `default` organization through the public REST API (the portal has no built-in seeding logic). It prompts for the admin username and password you set in step 2 — or set `ADMIN_USERNAME` / `ADMIN_PASSWORD` to skip the prompt. Safe to re-run: samples that already exist (matched by name and version) are skipped.
 
-> Requires `curl`, `jq`, and `zip` on your `PATH`. The portal must be running (step 3). Set `DEVPORTAL_URL` / `PLATFORM_API_URL` to override the defaults (`https://localhost:9543` / `https://localhost:9243`).
+> Requires `curl`, `jq`, and `zip` on your `PATH`. The portal must be running (step 3). Set `API_PORTAL_URL` / `PLATFORM_API_URL` to override the defaults (`https://localhost:9543` / `https://localhost:9243`).
 
 Refresh the catalog page and the sample APIs appear. To publish an API of your own instead, continue below.
 

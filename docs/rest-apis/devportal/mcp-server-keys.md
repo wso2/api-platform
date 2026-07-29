@@ -1,4 +1,4 @@
-<h1 id="wso2-api-developer-portal-core-devportal-routes-mcp-server-keys">MCP Server Keys</h1>
+<h1 id="wso2-api-portal-and-mcp-hub-core-mcp-server-keys">MCP Server Keys</h1>
 
 ## Generate an MCP server API key
 
@@ -234,7 +234,7 @@ Status Code **200**
 |» list|[[ApiKeyMetadataResponse](schemas.md#schemaapikeymetadataresponse)]|false|none|[API key metadata returned by list operations. Secret material is omitted.]|
 |»» id|string|false|none|none|
 |»» displayName|string|false|none|none|
-|»» apiId|string|false|none|Developer Portal API ID the key belongs to.|
+|»» apiId|string|false|none|API ID the key belongs to.|
 |»» appId|string¦null|false|none|ID of the application this key is associated with, if any. Analytics attribution only.|
 |»» appDisplayName|string¦null|false|none|Display name of the associated application, if any.|
 |»» status|string|false|none|none|
@@ -511,7 +511,7 @@ This operation requires <strong>Basic Auth</strong> authentication.
 |---|---|---|---|---|
 |body|body|object|true|Identifies the API key and the application to associate it with.|
 |» keyId|body|string|true|The key's handle — the `id` returned by generate or list.|
-|» appId|body|string|true|Developer Portal application ID to associate the key with.|
+|» appId|body|string|true|API Portal application ID to associate the key with.|
 |mcpServerId|path|string|true|The MCP server's handle (unique per org).|
 
 > Example responses

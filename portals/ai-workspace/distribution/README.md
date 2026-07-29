@@ -91,10 +91,10 @@ The portal mounts the **same** `configs/config.toml` the other services do and r
 Then start the stack with the profile enabled:
 
 ```bash
-docker compose --profile developer-portal up -d
+docker compose --profile api-portal up -d
 ```
 
-The portal comes up at `https://localhost:9543`, verifying Platform API-issued tokens with the same RS256 public key the rest of the stack uses. It keeps its own data in the `developer-portal-data` volume. Omitting `--profile developer-portal` on a later `docker compose` command neither starts nor stops it — an already-running instance keeps running. To stop it explicitly, run `docker compose stop developer-portal`, or `docker compose --profile developer-portal down` to remove it.
+The portal comes up at `https://localhost:9543`, verifying Platform API-issued tokens with the same RS256 public key the rest of the stack uses. It keeps its own data in the `api-portal-data` volume. Omitting `--profile api-portal` on a later `docker compose` command neither starts nor stops it — an already-running instance keeps running. To stop it explicitly, run `docker compose stop api-portal`, or `docker compose --profile api-portal down` to remove it.
 
 ## Configuration
 

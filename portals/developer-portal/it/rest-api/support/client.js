@@ -18,7 +18,7 @@
 
 // Real session auth against the file-based Platform API accounts configured in
 // it/configs/config-platform-api-it.toml (admin / publisher / developer,
-// password == username) — not the devportal-it-test-key API-key bypass. Every
+// password == username) — not the api-portal-it-test-key API-key bypass. Every
 // role is locked to the single "default" org that account was seeded into
 // (file-based auth supports exactly one org), so all fixtures/specs share that
 // org and rely on uniqueHandle() for per-test resource isolation instead of a
@@ -34,14 +34,14 @@
 const supertest = require('supertest');
 const { autoTrackFromResponse } = require('./cleanup');
 
-const BASE_URL = process.env.DEVPORTAL_BASE_URL || 'http://localhost:9543';
+const BASE_URL = process.env.API_PORTAL_BASE_URL || 'http://localhost:9543';
 const API_PREFIX = '/api/v0.9';
-const ORG_HANDLE = process.env.DEVPORTAL_ORG_HANDLE || 'default';
+const ORG_HANDLE = process.env.API_PORTAL_ORG_HANDLE || 'default';
 
 const CREDENTIALS = {
-    admin: { username: process.env.DEVPORTAL_ADMIN_USERNAME || 'admin', password: process.env.DEVPORTAL_ADMIN_PASSWORD || 'admin' },
-    publisher: { username: process.env.DEVPORTAL_PUBLISHER_USERNAME || 'publisher', password: process.env.DEVPORTAL_PUBLISHER_PASSWORD || 'publisher' },
-    developer: { username: process.env.DEVPORTAL_DEVELOPER_USERNAME || 'developer', password: process.env.DEVPORTAL_DEVELOPER_PASSWORD || 'developer' },
+    admin: { username: process.env.API_PORTAL_ADMIN_USERNAME || 'admin', password: process.env.API_PORTAL_ADMIN_PASSWORD || 'admin' },
+    publisher: { username: process.env.API_PORTAL_PUBLISHER_USERNAME || 'publisher', password: process.env.API_PORTAL_PUBLISHER_PASSWORD || 'publisher' },
+    developer: { username: process.env.API_PORTAL_DEVELOPER_USERNAME || 'developer', password: process.env.API_PORTAL_DEVELOPER_PASSWORD || 'developer' },
 };
 
 // One supertest agent per role, logged in once and reused — the agent's cookie

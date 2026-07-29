@@ -22,7 +22,7 @@
 // APIs / MCP servers / labels / views / subscriptions across the suite.
 //
 // Registered here (before the spec's own hooks) so it runs LAST among afterAll
-// hooks — after any spec-level afterAll — while the devportal is still up.
+// hooks — after any spec-level afterAll — while the portal is still up.
 
 const { cleanupResources } = require('./cleanup');
 

@@ -1,4 +1,4 @@
-<h1 id="wso2-api-developer-portal-core-devportal-routes-subscriptions">Subscriptions</h1>
+<h1 id="wso2-api-portal-and-mcp-hub-core-subscriptions">Subscriptions</h1>
 
 ## Create a subscription
 
@@ -19,7 +19,7 @@ curl -X POST https://localhost:9543/api/v0.9/subscriptions \
 
 ```
 
-Creates a subscription for an API. The API must exist in the Developer Portal and have subscription plans enabled. The subscription is owned by the authenticated user.
+Creates a subscription for an API. The API must exist in the API Portal and have subscription plans enabled. The subscription is owned by the authenticated user.
 
 > Payload
 
@@ -41,7 +41,7 @@ This operation requires <strong>Basic Auth</strong> authentication.
 
 |Name|In|Type|Required|Description|
 |---|---|---|---|---|
-|body|body|[SubscriptionCreateRequest](schemas.md#schemasubscriptioncreaterequest)|true|Subscription creation payload. `artifactId` is the Developer Portal API ID.|
+|body|body|[SubscriptionCreateRequest](schemas.md#schemasubscriptioncreaterequest)|true|Subscription creation payload. `artifactId` is the API ID.|
 
 > Example responses
 
@@ -146,7 +146,7 @@ curl -X GET https://localhost:9543/api/v0.9/subscriptions \
 
 ```
 
-Lists subscriptions owned by the authenticated user. When `artifactId` is provided, results are additionally filtered by the Developer Portal API ID.
+Lists subscriptions owned by the authenticated user. When `artifactId` is provided, results are additionally filtered by the API ID.
 
 ### Authentication
 
@@ -159,7 +159,7 @@ This operation requires <strong>Basic Auth</strong> authentication.
 
 |Name|In|Type|Required|Description|
 |---|---|---|---|---|
-|artifactId|query|string|false|Optional Developer Portal API ID used to filter results.|
+|artifactId|query|string|false|Optional API ID used to filter results.|
 |limit|query|integer|false|Maximum number of records to return.|
 |offset|query|integer|false|Number of records to skip before returning results.|
 
@@ -226,7 +226,7 @@ Status Code **200**
 |---|---|---|---|---|
 |» list|[[SubscriptionResponse](schemas.md#schemasubscriptionresponse)]|false|none|[Subscription payload.]|
 |»» subscriptionId|string|false|none|none|
-|»» artifactId|string|false|none|Developer Portal API ID.|
+|»» artifactId|string|false|none|API ID.|
 |»» subscriptionToken|string¦null|false|none|Plaintext subscription token, decrypted on every read (not just on create). Null if decryption fails (e.g. the encryption key changed since the token was stored).|
 |»» subscriptionPlanName|string|false|none|none|
 |»» status|string|false|none|none|
@@ -550,7 +550,7 @@ This operation requires <strong>Basic Auth</strong> authentication.
 
 |Name|In|Type|Required|Description|
 |---|---|---|---|---|
-|body|body|[SubscriptionChangePlanRequest](schemas.md#schemasubscriptionchangeplanrequest)|true|Subscription plan change payload. `planId` is the Developer Portal subscription plan ID.|
+|body|body|[SubscriptionChangePlanRequest](schemas.md#schemasubscriptionchangeplanrequest)|true|Subscription plan change payload. `planId` is the API Portal subscription plan ID.|
 |subId|path|string|true|none|
 
 > Example responses

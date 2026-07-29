@@ -55,10 +55,10 @@ const DEFAULTS = {
     // driver uses Sequelize's dialect values (sqlite | postgres).
     database: {
         driver: 'sqlite',        // sqlite | postgres
-        path: './devportal.db',  // SQLite only
+        path: './api-portal.db', // SQLite only
         host: 'localhost',       // PostgreSQL only
         port: 5432,              // PostgreSQL only
-        name: 'devportal',       // PostgreSQL only
+        name: 'api_portal',      // PostgreSQL only
         user: 'postgres',        // PostgreSQL only
         password: '',            // PostgreSQL only
         // PostgreSQL TLS: disable | verify-full.
@@ -101,7 +101,7 @@ const DEFAULTS = {
         local: {
             platformApiUrl: '',
             // Filesystem path to the Platform API's RS256 public key PEM
-            // ([platform_api.auth.jwt].public_key) — the devportal reads this file
+            // ([platform_api.auth.jwt].public_key) — the portal reads this file
             // to verify Platform API-issued tokens.
             publicKeyPath: '',
             tlsSkipVerify: false,
@@ -238,10 +238,10 @@ const DEFAULTS = {
         maxResponseBytes: 5242880,  // 5 MiB
     },
     developer: {
-        // Internal/debug knob for the /devportal REST router's response validation
+        // Internal/debug knob for the /portal REST router's response validation
         // strictness (express-openapi-validator) — 'off' | 'strict' | 'log-only'. Not
         // meant for typical deployment config, so kept out of config-template.toml.
-        // See src/routes/api/devportalApiRouter.js#resolveValidateResponsesOpt.
+        // See src/routes/api/apiPortalRouter.js#resolveValidateResponsesOpt.
         openApiResponseValidation: 'off',
     },
 };

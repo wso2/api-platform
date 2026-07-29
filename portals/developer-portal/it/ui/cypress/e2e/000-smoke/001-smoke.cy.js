@@ -16,7 +16,7 @@
 // under the License.
 // --------------------------------------------------------------------
 
-describe('Developer Portal — Smoke', () => {
+describe('API Portal — Smoke', () => {
     beforeEach(() => {
         // Accept self-signed cert and suppress uncaught app exceptions that
         // are unrelated to the assertions being tested.

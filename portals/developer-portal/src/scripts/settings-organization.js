@@ -37,7 +37,7 @@
       idpRefId: g('org-idp-ref').value.trim(),
     };
     // orgDao.update overwrites the whole configuration column, so merge the
-    // devportal mode into the existing object rather than sending it alone —
+    // portal mode into the existing object rather than sending it alone —
     // the API contract permits additional free-form keys.
     var modeEl = g('org-api-portal-mode');
     if (modeEl) {

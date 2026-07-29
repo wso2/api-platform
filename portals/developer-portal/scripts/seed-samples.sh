@@ -29,7 +29,7 @@
 #   ./scripts/seed-samples.sh
 #
 # ADMIN_USERNAME / ADMIN_PASSWORD environment variables skip the interactive
-# credential prompt (used by CI). DEVPORTAL_URL / PLATFORM_API_URL override
+# credential prompt (used by CI). API_PORTAL_URL / PLATFORM_API_URL override
 # the default local URLs.
 #
 # Safe to re-run: entries that already exist (matched by name + version) are
@@ -63,7 +63,7 @@ else
     exit 1
 fi
 
-DEVPORTAL_URL="${DEVPORTAL_URL:-https://localhost:9543}"
+API_PORTAL_URL="${API_PORTAL_URL:-https://localhost:9543}"
 PLATFORM_API_URL="${PLATFORM_API_URL:-https://localhost:9243}"
 
 # Colors/symbols only when writing to an interactive terminal (respects the
@@ -128,7 +128,7 @@ seed_docs() {
 
     local http_code
     http_code=$(curl -sk -o /dev/null -w "%{http_code}" -X POST \
-        "$DEVPORTAL_URL$resource_path/assets" \
+        "$API_PORTAL_URL$resource_path/assets" \
         -H "$AUTH_HEADER" \
         -F "content=@$tmp_zip;type=application/zip")
     rm -f "$tmp_zip"
@@ -181,7 +181,7 @@ seed_entry() {
     local definition
     definition=$(compgen -G "$sample_dir/definition.*" 2>/dev/null | head -1 || true)
 
-    local curl_args=(-sk -X POST "$DEVPORTAL_URL/api/v0.9/$endpoint" \
+    local curl_args=(-sk -X POST "$API_PORTAL_URL/api/v0.9/$endpoint" \
         -H "$AUTH_HEADER" \
         -F "metadata=@$api_yaml;type=application/yaml")
     if [ -n "$definition" ]; then

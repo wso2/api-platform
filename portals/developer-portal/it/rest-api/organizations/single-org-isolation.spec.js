@@ -32,7 +32,7 @@ const client = require('../support/client');
 const OWN_ORG = client.ORG_HANDLE;
 const FOREIGN_ORG = 'some-other-org';
 const API_KEY_HEADER = 'x-wso2-api-key';
-const API_KEY = process.env.DEVPORTAL_API_KEY || 'devportal-it-test-key';
+const API_KEY = process.env.API_PORTAL_API_KEY || 'api-portal-it-test-key';
 
 describe('single-organization isolation', () => {
     describe('page routes', () => {

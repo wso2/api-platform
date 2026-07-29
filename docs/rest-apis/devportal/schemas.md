@@ -182,7 +182,7 @@ xor
 |idpRefId|string|false|none|The organization claim value asserted by the configured Identity Provider at SSO login. On every login, the portal matches the authenticated user's org claim against this value to resolve which organization they belong to — it must exactly match the IDP's claim, or login fails for that org's users. Distinct from `cpRefId`, which is unrelated to authentication.|
 |cpRefId|string¦null|false|none|Control Plane reference ID. Included in outbound webhook event payloads so subscribers can correlate this organization with its Control Plane (Platform API) counterpart. Not used for authentication or org resolution.|
 |configuration|object|false|none|Organization portal configuration. Always includes `apiPortalMode`; may contain additional free-form keys set by the caller.|
-|» apiPortalMode|string|false|none|Controls the mode of the developer portal.|
+|» apiPortalMode|string|false|none|Controls the mode of the API Portal.|
 |createdAt|string(date-time)¦null|false|none|none|
 |updatedAt|string(date-time)¦null|false|none|none|
 
@@ -327,7 +327,7 @@ and
 |---|---|---|---|---|
 |*anonymous*|object|false|none|none|
 |» id|string|false|none|The API's handle (unique per org). Not the internal database uuid.|
-|» refId|string¦null|false|none|Platform API (Control Plane) reference ID for this API. Used for MCP registry visibility filtering and included in outbound webhook event payloads. Null/absent for APIs that exist only in the Developer Portal and are not registered with the Platform API — e.g. MCP servers published via the registry.|
+|» refId|string¦null|false|none|Platform API (Control Plane) reference ID for this API. Used for MCP registry visibility filtering and included in outbound webhook event payloads. Null/absent for APIs that exist only in the API Portal and are not registered with the Platform API — e.g. MCP servers published via the registry.|
 |» endPoints|[ApiEndpointsResponse](#schemaapiendpointsresponse)|false|none|none|
 |» subscriptionPlans|[[SubscriptionPlanResponse](#schemasubscriptionplanresponse)]|false|none|none|
 
@@ -424,7 +424,7 @@ and
 |---|---|---|---|---|
 |*anonymous*|object|false|none|none|
 |» id|string|false|none|The API's handle (unique per org). Not the internal database uuid.|
-|» refId|string¦null|false|none|Platform API (Control Plane) reference ID for this API. Used for MCP registry visibility filtering and included in outbound webhook event payloads. Null/absent for APIs that exist only in the Developer Portal and are not registered with the Platform API — e.g. MCP servers published via the registry.|
+|» refId|string¦null|false|none|Platform API (Control Plane) reference ID for this API. Used for MCP registry visibility filtering and included in outbound webhook event payloads. Null/absent for APIs that exist only in the API Portal and are not registered with the Platform API — e.g. MCP servers published via the registry.|
 |» dataSource|string¦null|false|none|Indicates which content matched the search term: `METADATA` if the match was in the API's own metadata, or a content type (e.g. a value from the API Content `type` field) if the match was inside an uploaded content file. Only computed by getAllApiMetadataForOrganization when both the `query` search parameter is supplied and the database is PostgreSQL — absent on SQLite (the dev default) and absent from every other operation (get/create/update single API).|
 |» planId|string|false|none|none|
 |» endPoints|[ApiEndpointsResponse](#schemaapiendpointsresponse)|false|none|none|
@@ -1038,8 +1038,8 @@ xor
 
 |Name|Type|Required|Restrictions|Description|
 |---|---|---|---|---|
-|artifactId|string|true|none|Developer Portal API ID.|
-|subscriptionPlanId|string|true|none|Developer Portal subscription plan ID.|
+|artifactId|string|true|none|API ID.|
+|subscriptionPlanId|string|true|none|API Portal subscription plan ID.|
 
 <h2 id="tocS_SubscriptionUpdateRequest">SubscriptionUpdateRequest</h2>
 
@@ -1087,8 +1087,8 @@ xor
 
 |Name|Type|Required|Restrictions|Description|
 |---|---|---|---|---|
-|artifactId|string|false|none|Developer Portal API ID the subscription belongs to. Optional — if provided, it is validated against the API derived from the existing subscription record and the request is rejected with 400 if they don't match. It is never used as a fallback: if the API cannot be derived from the subscription record, the request fails with 400 regardless of this value.|
-|planId|string|true|none|Developer Portal subscription plan ID to switch to.|
+|artifactId|string|false|none|API ID the subscription belongs to. Optional — if provided, it is validated against the API derived from the existing subscription record and the request is rejected with 400 if they don't match. It is never used as a fallback: if the API cannot be derived from the subscription record, the request fails with 400 regardless of this value.|
+|planId|string|true|none|API Portal subscription plan ID to switch to.|
 
 <h2 id="tocS_SubscriptionResponse">SubscriptionResponse</h2>
 
@@ -1119,7 +1119,7 @@ Subscription payload.
 |Name|Type|Required|Restrictions|Description|
 |---|---|---|---|---|
 |subscriptionId|string|false|none|none|
-|artifactId|string|false|none|Developer Portal API ID.|
+|artifactId|string|false|none|API ID.|
 |subscriptionToken|string¦null|false|none|Plaintext subscription token, decrypted on every read (not just on create). Null if decryption fails (e.g. the encryption key changed since the token was stored).|
 |subscriptionPlanName|string|false|none|none|
 |status|string|false|none|none|
@@ -1205,7 +1205,7 @@ API key metadata returned by list operations. Secret material is omitted.
 |---|---|---|---|---|
 |id|string|false|none|none|
 |displayName|string|false|none|none|
-|apiId|string|false|none|Developer Portal API ID the key belongs to.|
+|apiId|string|false|none|API ID the key belongs to.|
 |appId|string¦null|false|none|ID of the application this key is associated with, if any. Analytics attribution only.|
 |appDisplayName|string¦null|false|none|Display name of the associated application, if any.|
 |status|string|false|none|none|

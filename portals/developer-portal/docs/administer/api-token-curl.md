@@ -1,6 +1,6 @@
 # Getting a Bearer Token via curl (IDP Mode)
 
-When the Developer Portal is configured with an external IDP (e.g. Asgardeo), REST API calls to `/api/v0.9/*` must include an `Authorization: Bearer <token>` header. This guide shows how to obtain that token from the terminal without a browser.
+When the API Portal is configured with an external IDP (e.g. Asgardeo), REST API calls to `/api/v0.9/*` must include an `Authorization: Bearer <token>` header. This guide shows how to obtain that token from the terminal without a browser.
 
 ## Prerequisites
 
