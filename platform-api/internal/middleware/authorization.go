@@ -168,11 +168,6 @@ func hasPathPrefix(reqPath string, prefixes []string) bool {
 	cleaned := path.Clean("/" + reqPath)
 	for _, prefix := range prefixes {
 		p := path.Clean("/" + prefix)
-		if p == "/" {
-			// A root prefix skips everything — preserved from the previous
-			// behaviour rather than silently narrowed here.
-			return true
-		}
 		if cleaned == p || strings.HasPrefix(cleaned, p+"/") {
 			return true
 		}

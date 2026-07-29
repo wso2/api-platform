@@ -113,9 +113,6 @@ config:
     mode: file
     # Enforce per-endpoint OAuth2 scopes on validated tokens.
     scopeValidation: true
-    # Paths that bypass auth. Empty keeps the binary's built-in default list
-    # (health/metrics/login/internal gateway routes); setting it REPLACES that list.
-    skipPaths: []
     # Claim-name mappings shared by all modes.
     claimMappings:
       organization: organization

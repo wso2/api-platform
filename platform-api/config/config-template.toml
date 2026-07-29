@@ -149,30 +149,6 @@ mode = "file"
 # temporarily bypass authorization during development.
 scope_validation = true
 
-# Paths that bypass the auth middleware entirely. The list below is the
-# built-in default: health/metrics probes, the file-based login endpoint,
-# and internal gateway routes (which authenticate with a gateway token
-# instead). Setting this key REPLACES the default list — keep the entries
-# you still need.
-skip_paths = [
-    "/health",
-    "/metrics",
-    "/api/portal/v0.9/auth/login",
-    "/api/internal/v1/ws/gateways/connect",
-    "/api/internal/v1/apis",
-    "/api/internal/v1/llm-providers",
-    "/api/internal/v1/llm-proxies",
-    "/api/internal/v1/subscription-plans",
-    "/api/internal/v1/mcp-proxies",
-    "/api/internal/v1/gateways",
-    "/api/internal/v1/deployments",
-    "/api/internal/v1/artifacts",
-    "/api/internal/v1/secrets",
-    "/api/internal/v1/websub-apis",
-    "/api/internal/v1/webbroker-apis",
-    "/api/internal/v0.9/webhook/events",
-]
-
 # JWT claim name mappings — shared by all three auth modes ("idp" reads
 # incoming claims by these names; "file" mode's login endpoint signs tokens
 # using these names; "external_token" mode reads externally-minted tokens by

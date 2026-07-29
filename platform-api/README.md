@@ -274,7 +274,7 @@ All settings live under `[platform_api]` / `[platform_api.*]`. The main sections
 | `[platform_api.security]` | `encryption_key` (**required** — at-rest AES-256 key, 32 bytes as hex or base64, never auto-generated) |
 | `[platform_api.security.api_key]` | `hashing_algorithms` accepted for API key verification |
 | `[platform_api.database]` | `driver` (`sqlite3` / `postgres` / `sqlserver`), connection fields, pool sizing |
-| `[platform_api.auth]` | `mode` — one of `external_token`, `file`, or `idp`; `scope_validation`; `skip_paths` |
+| `[platform_api.auth]` | `mode` — one of `external_token`, `file`, or `idp`; `scope_validation` |
 | `[platform_api.auth.jwt]` | Asymmetric (RS256) token settings: `issuer`, `public_key` (**required** — PEM RSA public key, verifies tokens), `private_key` (**required in `file` mode** — PEM RSA private key, signs login tokens), `token_ttl` |
 | `[platform_api.auth.idp]` / `[platform_api.auth.claim_mappings]` | JWKS endpoint, issuer/audience, validation mode, and JWT claim-name mappings for `idp` mode |
 | `[platform_api.auth.file.organization]` / `[[platform_api.auth.file.users]]` | Local org + username/password/scope entries for `file` mode |
@@ -295,8 +295,13 @@ All settings live under `[platform_api]` / `[platform_api.*]`. The main sections
 - **`file`** — `external_token` plus local username/password login: the login endpoint authenticates against `[platform_api.auth.file]` and issues RS256 JWTs signed with `[platform_api.auth.jwt].private_key`, verified with the matching `public_key`. Used by the AI Workspace and Developer Portal quickstarts.
 - **`idp`** — validate tokens against an external IDP's JWKS endpoint (Thunder, Asgardeo, Keycloak, Azure AD, Okta, etc.) via `[platform_api.auth.idp]`; `jwks_url` and `issuer` are required.
 
-`platform_api.auth.skip_paths` is a structured list (not a scalar), so it's edited directly in
-the file rather than through a single token; setting it replaces the built-in default list.
+The paths that bypass authentication and scope enforcement — health/metrics probes, the login
+endpoint, and the internal routes authenticated by a gateway token instead of a user JWT — are not
+configurable: the list is a property of the product's own routing, and a wrong entry in it is an
+auth bypass. Plugins declare their own public prefixes through `AuthSkipPaths()`, which are
+validated at startup. Use `scope_validation` to control authorization enforcement.
+A config file still carrying `platform_api.auth.skip_paths` fails startup rather than having the
+key silently ignored.
 
 #### Role-Based Access Control (RBAC)
 

@@ -164,6 +164,30 @@ jwt_public_key = '{{ file "/etc/devportal/keys/jwt_public.pem" }}'
 	assert.Equal(t, validInlineKey, cfg.Security.EncryptionKey)
 }
 
+// auth.skip_paths was removed from the operator-facing config surface: the list
+// is a property of the product's routing and a wrong entry is an auth bypass.
+// Unknown keys are otherwise ignored, so a stale entry must fail startup rather
+// than leave an operator believing it still takes effect.
+func TestLoadConfig_RemovedSkipPathsKey_Errors(t *testing.T) {
+	_, err := loadWithKeys(t, `
+[platform_api.auth]
+skip_paths = ["/health"]
+`)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "auth.skip_paths")
+	assert.Contains(t, err.Error(), "no longer supported")
+}
+
+// The built-in skip-path list still reaches the config even though the key is
+// no longer settable — dropping it would leave health probes and the internal
+// gateway routes behind a user-JWT check they cannot satisfy.
+func TestLoadConfig_SkipPathsDefaultsSurvive(t *testing.T) {
+	cfg, err := loadWithKeys(t, "")
+	require.NoError(t, err)
+	assert.Contains(t, cfg.Auth.SkipPaths, "/health")
+	assert.Contains(t, cfg.Auth.SkipPaths, "/api/internal/v1/secrets")
+}
+
 // The encryption key is required and never generated — a config that omits it fails startup.
 func TestLoadConfig_MissingEncryptionKey_Errors(t *testing.T) {
 	t.Setenv("APIP_CP_AUTH_JWT_PUBLIC_KEY_FILE", validJWTPublicKeyFile)
@@ -268,6 +292,42 @@ func TestValidateAuthConfig(t *testing.T) {
 		{
 			name: "external_token mode with valid public key",
 			auth: Auth{Mode: AuthModeExternalToken, JWT: JWT{PublicKeyFile: validJWTPublicKeyFile}},
+		},
+		{
+			name: "skip path exempting every route is rejected",
+			auth: Auth{
+				Mode:      AuthModeExternalToken,
+				JWT:       JWT{PublicKeyFile: validJWTPublicKeyFile},
+				SkipPaths: []string{"/health", "/"},
+			},
+			wantErr: "invalid entry in auth.skip_paths",
+		},
+		{
+			name: "empty skip path is rejected",
+			auth: Auth{
+				Mode:      AuthModeExternalToken,
+				JWT:       JWT{PublicKeyFile: validJWTPublicKeyFile},
+				SkipPaths: []string{""},
+			},
+			wantErr: "invalid entry in auth.skip_paths",
+		},
+		{
+			name: "relative skip path is rejected",
+			auth: Auth{
+				Mode:      AuthModeExternalToken,
+				JWT:       JWT{PublicKeyFile: validJWTPublicKeyFile},
+				SkipPaths: []string{"health"},
+			},
+			wantErr: "invalid entry in auth.skip_paths",
+		},
+		{
+			name: "traversal in skip path is rejected",
+			auth: Auth{
+				Mode:      AuthModeExternalToken,
+				JWT:       JWT{PublicKeyFile: validJWTPublicKeyFile},
+				SkipPaths: []string{"/health/../api"},
+			},
+			wantErr: "invalid entry in auth.skip_paths",
 		},
 		{
 			name:    "external_token mode without public key",

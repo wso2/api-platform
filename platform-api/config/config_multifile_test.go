@@ -66,12 +66,12 @@ func TestLoadConfig_MultiFile_DeepMergeLastWins(t *testing.T) {
 // values: a later file replaces the base list wholesale rather than appending.
 func TestLoadConfig_MultiFile_ArrayReplaceNotAppend(t *testing.T) {
 	cfg, err := loadTwoWithKeys(t,
-		"\n[platform_api.auth]\nskip_paths = [\"/health\", \"/metrics\", \"/ready\"]\n",
-		"\n[platform_api.auth]\nskip_paths = [\"/livez\"]\n",
+		"\n[platform_api.server.cors]\nallowed_origins = [\"https://a.example.com\", \"https://b.example.com\"]\n",
+		"\n[platform_api.server.cors]\nallowed_origins = [\"https://c.example.com\"]\n",
 	)
 	require.NoError(t, err)
 
-	assert.Equal(t, []string{"/livez"}, cfg.Auth.SkipPaths,
+	assert.Equal(t, []string{"https://c.example.com"}, cfg.Listeners.CORS.AllowedOrigins,
 		"array value must be replaced by the later file, not appended")
 }
 
