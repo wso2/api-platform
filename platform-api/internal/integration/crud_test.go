@@ -354,7 +354,7 @@ func TestLifecycle_APIKeyCreateListRevoke(t *testing.T) {
 	}
 
 	// --- Revoke the key ---
-	if err := keyRepo.Revoke(artifactUUID, "key-0", got.CreatedBy, "it-revoker"); err != nil {
+	if err := keyRepo.Revoke(artifactUUID, "key-0", "it-revoker"); err != nil {
 		t.Fatalf("[%s] APIKey Revoke failed: %v", it.driver, err)
 	}
 	revoked, err := keyRepo.GetByArtifactAndName(artifactUUID, "key-0")
