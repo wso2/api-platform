@@ -253,7 +253,7 @@ Required scopes (the token must carry at least one of): `ap:project:read`, `ap:p
 |404|[Not Found](https://tools.ietf.org/html/rfc7231#section-6.5.4)|Not Found. The specified resource does not exist.|[Error](schemas.md#schemaerror)|
 |500|[Internal Server Error](https://tools.ietf.org/html/rfc7231#section-6.6.1)|Internal Server Error.|[Error](schemas.md#schemaerror)|
 
-## Get project by handle
+## Get project by ID
 
 <a id="opIdGetProject"></a>
 
@@ -269,9 +269,8 @@ curl -X GET https://localhost:9243/api/v0.9/projects/{projectId} \
 
 ```
 
-Retrieves a specific project by its handle (unique slug identifier). Access is validated
-against the organization in the JWT token to ensure users can only access projects in
-their organization.
+Retrieves a specific project by its ID (handle). Access is validated against the organization
+in the JWT token to ensure users can only access projects in their organization.
 
 ### Authentication
 
@@ -282,15 +281,15 @@ Required scopes (the token must carry at least one of): `ap:project:read`, `ap:p
 
 </aside>
 
-<h3 id="get-project-by-handle-parameters">Parameters</h3>
+<h3 id="get-project-by-id-parameters">Parameters</h3>
 
 |Name|In|Type|Required|Description|
 |---|---|---|---|---|
-|projectId|path|string|true|**Project ID** (handle — unique slug identifier) of the Project.|
+|projectId|path|string|true|**Project ID** consisting of the **handle** (unique slug identifier) of the Project.|
 
 #### Detailed descriptions
 
-**projectId**: **Project ID** (handle — unique slug identifier) of the Project.
+**projectId**: **Project ID** consisting of the **handle** (unique slug identifier) of the Project.
 
 > Example responses
 >
@@ -356,7 +355,7 @@ Required scopes (the token must carry at least one of): `ap:project:read`, `ap:p
 }
 ```
 
-<h3 id="get-project-by-handle-responses">Responses</h3>
+<h3 id="get-project-by-id-responses">Responses</h3>
 
 |Status|Meaning|Description|Schema|
 |---|---|---|---|
@@ -409,12 +408,12 @@ Required scopes (the token must carry at least one of): `ap:project:update`, `ap
 
 |Name|In|Type|Required|Description|
 |---|---|---|---|---|
-|projectId|path|string|true|**Project ID** (handle — unique slug identifier) of the Project.|
+|projectId|path|string|true|**Project ID** consisting of the **handle** (unique slug identifier) of the Project.|
 |body|body|[Project](schemas.md#schemaproject)|true|none|
 
 #### Detailed descriptions
 
-**projectId**: **Project ID** (handle — unique slug identifier) of the Project.
+**projectId**: **Project ID** consisting of the **handle** (unique slug identifier) of the Project.
 
 > Example responses
 >
@@ -544,11 +543,11 @@ Required scopes (the token must carry at least one of): `ap:project:delete`, `ap
 
 |Name|In|Type|Required|Description|
 |---|---|---|---|---|
-|projectId|path|string|true|**Project ID** (handle — unique slug identifier) of the Project.|
+|projectId|path|string|true|**Project ID** consisting of the **handle** (unique slug identifier) of the Project.|
 
 #### Detailed descriptions
 
-**projectId**: **Project ID** (handle — unique slug identifier) of the Project.
+**projectId**: **Project ID** consisting of the **handle** (unique slug identifier) of the Project.
 
 > Example responses
 >

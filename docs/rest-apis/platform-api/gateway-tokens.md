@@ -34,13 +34,13 @@ Required scopes (the token must carry at least one of): `ap:gateway:token:read`,
 
 |Name|In|Type|Required|Description|
 |---|---|---|---|---|
-|gatewayId|path|string|true|**Gateway ID** (handle — unique slug identifier) of the Gateway.|
+|gatewayId|path|string|true|**Gateway ID** consisting of the **handle** (unique slug identifier) of the Gateway.|
 |limit|query|integer|false|Maximum number of items to return per page.|
 |offset|query|integer|false|Zero-based index of the first item to return.|
 
 #### Detailed descriptions
 
-**gatewayId**: **Gateway ID** (handle — unique slug identifier) of the Gateway.
+**gatewayId**: **Gateway ID** consisting of the **handle** (unique slug identifier) of the Gateway.
 
 > Example responses
 >
@@ -137,11 +137,11 @@ Required scopes (the token must carry at least one of): `ap:gateway:token:create
 
 |Name|In|Type|Required|Description|
 |---|---|---|---|---|
-|gatewayId|path|string|true|**Gateway ID** (handle — unique slug identifier) of the Gateway.|
+|gatewayId|path|string|true|**Gateway ID** consisting of the **handle** (unique slug identifier) of the Gateway.|
 
 #### Detailed descriptions
 
-**gatewayId**: **Gateway ID** (handle — unique slug identifier) of the Gateway.
+**gatewayId**: **Gateway ID** consisting of the **handle** (unique slug identifier) of the Gateway.
 
 > Example responses
 >
@@ -262,12 +262,12 @@ Required scopes (the token must carry at least one of): `ap:gateway:token:delete
 
 |Name|In|Type|Required|Description|
 |---|---|---|---|---|
-|gatewayId|path|string|true|**Gateway ID** (handle — unique slug identifier) of the Gateway.|
+|gatewayId|path|string|true|**Gateway ID** consisting of the **handle** (unique slug identifier) of the Gateway.|
 |tokenId|path|string(uuid)|true|**Token ID** consisting of the **UUID** of the Token.|
 
 #### Detailed descriptions
 
-**gatewayId**: **Gateway ID** (handle — unique slug identifier) of the Gateway.
+**gatewayId**: **Gateway ID** consisting of the **handle** (unique slug identifier) of the Gateway.
 
 **tokenId**: **Token ID** consisting of the **UUID** of the Token.
 

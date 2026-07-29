@@ -181,7 +181,7 @@ Required scopes (the token must carry at least one of): `ap:rest_api:deployment:
 |Name|In|Type|Required|Description|
 |---|---|---|---|---|
 |restApiId|path|string|true|**API ID** consisting of the **handle** (unique identifier) of the API.|
-|gatewayId|query|string|false|**Gateway ID** (handle — unique slug identifier) of the Gateway to filter deployments by.|
+|gatewayId|query|string|false|**Gateway ID** consisting of the **handle** (unique slug identifier) of the Gateway to filter status by.|
 |status|query|string|false|Filter deployments by status (DEPLOYED, UNDEPLOYED, DEPLOYING, UNDEPLOYING, FAILED, or ARCHIVED)|
 |limit|query|integer|false|Maximum number of items to return per page.|
 |offset|query|integer|false|Zero-based index of the first item to return.|
@@ -190,7 +190,7 @@ Required scopes (the token must carry at least one of): `ap:rest_api:deployment:
 
 **restApiId**: **API ID** consisting of the **handle** (unique identifier) of the API.
 
-**gatewayId**: **Gateway ID** (handle — unique slug identifier) of the Gateway to filter deployments by.
+**gatewayId**: **Gateway ID** consisting of the **handle** (unique slug identifier) of the Gateway to filter status by.
 
 #### Enumerated Values
 

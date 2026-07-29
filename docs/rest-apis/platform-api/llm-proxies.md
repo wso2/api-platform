@@ -30,7 +30,7 @@ Deploy a new LLM proxy configuration.
   "displayName": "WSO2 Con Assistant",
   "description": "Customer support assistant",
   "version": "v1.0",
-  "projectId": "550e8400-e29b-41d4-a716-446655440000",
+  "projectId": "default-project",
   "context": "/openai",
   "vhost": "api.openai.com",
   "provider": {
@@ -143,7 +143,7 @@ Required scopes (the token must carry at least one of): `ap:llm_proxy:create`, `
   "readOnly": false,
   "updatedBy": "john.doe",
   "version": "v1.0",
-  "projectId": "550e8400-e29b-41d4-a716-446655440000",
+  "projectId": "default-project",
   "context": "/openai",
   "vhost": "api.openai.com",
   "provider": {
@@ -368,7 +368,7 @@ Required scopes (the token must carry at least one of): `ap:llm_proxy:read`, `ap
       "createdBy": "john.doe",
       "context": "/wso2-con-assistant",
       "version": "v1.0",
-      "projectId": "550e8400-e29b-41d4-a716-446655440000",
+      "projectId": "default-project",
       "provider": "wso2-openai-provider",
       "status": "deployed",
       "createdAt": "2025-11-25T10:30:00Z",
@@ -459,7 +459,7 @@ Required scopes (the token must carry at least one of): `ap:llm_proxy:read`, `ap
   "readOnly": false,
   "updatedBy": "john.doe",
   "version": "v1.0",
-  "projectId": "550e8400-e29b-41d4-a716-446655440000",
+  "projectId": "default-project",
   "context": "/openai",
   "vhost": "api.openai.com",
   "provider": {
@@ -613,7 +613,7 @@ Update the configuration of an existing LLM proxy.
   "displayName": "WSO2 Con Assistant",
   "description": "Customer support assistant",
   "version": "v1.0",
-  "projectId": "550e8400-e29b-41d4-a716-446655440000",
+  "projectId": "default-project",
   "context": "/openai",
   "vhost": "api.openai.com",
   "provider": {
@@ -727,7 +727,7 @@ Required scopes (the token must carry at least one of): `ap:llm_proxy:update`, `
   "readOnly": false,
   "updatedBy": "john.doe",
   "version": "v1.0",
-  "projectId": "550e8400-e29b-41d4-a716-446655440000",
+  "projectId": "default-project",
   "context": "/openai",
   "vhost": "api.openai.com",
   "provider": {

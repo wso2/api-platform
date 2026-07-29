@@ -540,7 +540,7 @@ Required scopes (the token must carry at least one of): `ap:rest_api:create`, `a
 |---|---|---|---|---|
 |201|Location|string|uri|URL of the newly created resource.|
 
-## Get REST API by UUID
+## Get REST API by ID
 
 <a id="opIdGetRESTAPI"></a>
 
@@ -556,7 +556,7 @@ curl -X GET https://localhost:9243/api/v0.9/rest-apis/{restApiId} \
 
 ```
 
-Retrieves a specific API by its UUID. Access is validated against the organization 
+Retrieves a specific API by its ID (handle). Access is validated against the organization
 in the JWT token.
 
 ### Authentication
@@ -568,7 +568,7 @@ Required scopes (the token must carry at least one of): `ap:rest_api:read`, `ap:
 
 </aside>
 
-<h3 id="get-rest-api-by-uuid-parameters">Parameters</h3>
+<h3 id="get-rest-api-by-id-parameters">Parameters</h3>
 
 |Name|In|Type|Required|Description|
 |---|---|---|---|---|
@@ -726,7 +726,7 @@ Required scopes (the token must carry at least one of): `ap:rest_api:read`, `ap:
 }
 ```
 
-<h3 id="get-rest-api-by-uuid-responses">Responses</h3>
+<h3 id="get-rest-api-by-id-responses">Responses</h3>
 
 |Status|Meaning|Description|Schema|
 |---|---|---|---|
@@ -1067,7 +1067,7 @@ curl -X DELETE https://localhost:9243/api/v0.9/rest-apis/{restApiId} \
 
 ```
 
-Deletes a specific API by its UUID. Access is validated against the organization 
+Deletes a specific API by its ID (handle). Access is validated against the organization
 in the JWT token.
 
 ### Authentication

@@ -177,14 +177,14 @@ Required scopes (the token must carry at least one of): `ap:llm_provider:deploym
 |Name|In|Type|Required|Description|
 |---|---|---|---|---|
 |llmProviderId|path|string|true|Unique identifier of the LLM provider|
-|gatewayId|query|string|false|**Gateway ID** (handle — unique slug identifier) of the Gateway to filter deployments by.|
+|gatewayId|query|string|false|**Gateway ID** consisting of the **handle** (unique slug identifier) of the Gateway to filter status by.|
 |status|query|string|false|Filter deployments by status (DEPLOYED, UNDEPLOYED, DEPLOYING, UNDEPLOYING, FAILED, or ARCHIVED)|
 |limit|query|integer|false|Maximum number of items to return per page.|
 |offset|query|integer|false|Zero-based index of the first item to return.|
 
 #### Detailed descriptions
 
-**gatewayId**: **Gateway ID** (handle — unique slug identifier) of the Gateway to filter deployments by.
+**gatewayId**: **Gateway ID** consisting of the **handle** (unique slug identifier) of the Gateway to filter status by.
 
 #### Enumerated Values
 
@@ -529,7 +529,7 @@ Required scopes (the token must carry at least one of): `ap:llm_provider:deploym
 |---|---|---|---|---|
 |llmProviderId|path|string|true|Unique identifier of the LLM provider|
 |deploymentId|path|string|true|UUID of the deployment to undeploy|
-|gatewayId|query|string|true|UUID of the gateway (validated against deployment's bound gateway)|
+|gatewayId|query|string|true|Handle (URL-friendly slug) of the gateway (validated against deployment's bound gateway)|
 
 > Example responses
 >
@@ -665,7 +665,7 @@ Required scopes (the token must carry at least one of): `ap:llm_provider:deploym
 |---|---|---|---|---|
 |llmProviderId|path|string|true|Unique identifier of the LLM provider|
 |deploymentId|path|string|true|UUID of the deployment to restore (must be ARCHIVED or UNDEPLOYED)|
-|gatewayId|query|string|true|UUID of the gateway (validated against deployment's bound gateway)|
+|gatewayId|query|string|true|Handle (URL-friendly slug) of the gateway (validated against deployment's bound gateway)|
 
 > Example responses
 >

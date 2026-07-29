@@ -49,7 +49,7 @@ License: <a href="https://www.apache.org/licenses/LICENSE-2.0.html">Apache 2.0</
 
 - [Create a new project](projects.md#create-a-new-project)
 - [Get all projects for current user's organization](projects.md#get-all-projects-for-current-users-organization)
-- [Get project by handle](projects.md#get-project-by-handle)
+- [Get project by ID](projects.md#get-project-by-id)
 - [Update project](projects.md#update-project)
 - [Delete project](projects.md#delete-project)
 
@@ -72,7 +72,7 @@ License: <a href="https://www.apache.org/licenses/LICENSE-2.0.html">Apache 2.0</
 
 - [Get all REST APIs for an organization](rest-apis.md#get-all-rest-apis-for-an-organization)
 - [Create a new REST API](rest-apis.md#create-a-new-rest-api)
-- [Get REST API by UUID](rest-apis.md#get-rest-api-by-uuid)
+- [Get REST API by ID](rest-apis.md#get-rest-api-by-id)
 - [Update REST API](rest-apis.md#update-rest-api)
 - [Delete REST API](rest-apis.md#delete-rest-api)
 - [Get gateways for REST API](rest-apis.md#get-gateways-for-rest-api)
@@ -94,7 +94,7 @@ License: <a href="https://www.apache.org/licenses/LICENSE-2.0.html">Apache 2.0</
 
 - [Register a new gateway](gateways.md#register-a-new-gateway)
 - [List all gateways](gateways.md#list-all-gateways)
-- [Get gateway by UUID](gateways.md#get-gateway-by-uuid)
+- [Get gateway by ID](gateways.md#get-gateway-by-id)
 - [Update gateway](gateways.md#update-gateway)
 - [Delete gateway](gateways.md#delete-gateway)
 - [Get gateway policy manifest](gateways.md#get-gateway-policy-manifest)

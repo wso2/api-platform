@@ -30,7 +30,7 @@ Deploy a new MCP proxy configuration.
   "displayName": "Weather Server",
   "description": "An MCP server which provides weather information",
   "version": "v1.0",
-  "projectId": "550e8400-e29b-41d4-a716-446655440000",
+  "projectId": "default-project",
   "context": "/",
   "vhost": "mcp.gw.com",
   "upstream": {
@@ -114,7 +114,7 @@ Required scopes (the token must carry at least one of): `ap:mcp_proxy:create`, `
   "readOnly": false,
   "updatedBy": "john.doe",
   "version": "v1.0",
-  "projectId": "550e8400-e29b-41d4-a716-446655440000",
+  "projectId": "default-project",
   "context": "/",
   "vhost": "mcp.gw.com",
   "upstream": {
@@ -300,7 +300,7 @@ Required scopes (the token must carry at least one of): `ap:mcp_proxy:read`, `ap
       "createdBy": "john.doe",
       "context": "/weather-mcp-proxy",
       "version": "v1.0",
-      "projectId": "550e8400-e29b-41d4-a716-446655440000",
+      "projectId": "default-project",
       "status": "deployed",
       "mcpSpecVersion": "2025-11-25",
       "createdAt": "2025-11-25T10:30:00Z",
@@ -391,7 +391,7 @@ Required scopes (the token must carry at least one of): `ap:mcp_proxy:read`, `ap
   "readOnly": false,
   "updatedBy": "john.doe",
   "version": "v1.0",
-  "projectId": "550e8400-e29b-41d4-a716-446655440000",
+  "projectId": "default-project",
   "context": "/",
   "vhost": "mcp.gw.com",
   "upstream": {
@@ -517,7 +517,7 @@ Update the configuration of an existing MCP proxy.
   "displayName": "Weather Server",
   "description": "An MCP server which provides weather information",
   "version": "v1.0",
-  "projectId": "550e8400-e29b-41d4-a716-446655440000",
+  "projectId": "default-project",
   "context": "/",
   "vhost": "mcp.gw.com",
   "upstream": {
@@ -602,7 +602,7 @@ Required scopes (the token must carry at least one of): `ap:mcp_proxy:update`, `
   "readOnly": false,
   "updatedBy": "john.doe",
   "version": "v1.0",
-  "projectId": "550e8400-e29b-41d4-a716-446655440000",
+  "projectId": "default-project",
   "context": "/",
   "vhost": "mcp.gw.com",
   "upstream": {

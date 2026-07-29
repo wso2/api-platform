@@ -305,7 +305,7 @@ Required scopes (the token must carry at least one of): `ap:gateway:read`, `ap:g
 |401|[Unauthorized](https://tools.ietf.org/html/rfc7235#section-3.1)|Unauthorized. Authentication credentials are missing or invalid.|[Error](schemas.md#schemaerror)|
 |500|[Internal Server Error](https://tools.ietf.org/html/rfc7231#section-6.6.1)|Internal Server Error.|[Error](schemas.md#schemaerror)|
 
-## Get gateway by UUID
+## Get gateway by ID
 
 <a id="opIdGetGateway"></a>
 
@@ -321,7 +321,7 @@ curl -X GET https://localhost:9243/api/v0.9/gateways/{gatewayId} \
 
 ```
 
-Retrieves a specific gateway by its UUID. Access is validated against the organization 
+Retrieves a specific gateway by its ID (handle). Access is validated against the organization
 in the JWT token.
 
 ### Authentication
@@ -333,15 +333,15 @@ Required scopes (the token must carry at least one of): `ap:gateway:read`, `ap:g
 
 </aside>
 
-<h3 id="get-gateway-by-uuid-parameters">Parameters</h3>
+<h3 id="get-gateway-by-id-parameters">Parameters</h3>
 
 |Name|In|Type|Required|Description|
 |---|---|---|---|---|
-|gatewayId|path|string|true|**Gateway ID** (handle — unique slug identifier) of the Gateway.|
+|gatewayId|path|string|true|**Gateway ID** consisting of the **handle** (unique slug identifier) of the Gateway.|
 
 #### Detailed descriptions
 
-**gatewayId**: **Gateway ID** (handle — unique slug identifier) of the Gateway.
+**gatewayId**: **Gateway ID** consisting of the **handle** (unique slug identifier) of the Gateway.
 
 > Example responses
 >
@@ -419,7 +419,7 @@ Required scopes (the token must carry at least one of): `ap:gateway:read`, `ap:g
 }
 ```
 
-<h3 id="get-gateway-by-uuid-responses">Responses</h3>
+<h3 id="get-gateway-by-id-responses">Responses</h3>
 
 |Status|Meaning|Description|Schema|
 |---|---|---|---|
@@ -487,12 +487,12 @@ Required scopes (the token must carry at least one of): `ap:gateway:update`, `ap
 
 |Name|In|Type|Required|Description|
 |---|---|---|---|---|
-|gatewayId|path|string|true|**Gateway ID** (handle — unique slug identifier) of the Gateway.|
+|gatewayId|path|string|true|**Gateway ID** consisting of the **handle** (unique slug identifier) of the Gateway.|
 |body|body|[GatewayResponse](schemas.md#schemagatewayresponse)|true|Gateway object that needs to be updated|
 
 #### Detailed descriptions
 
-**gatewayId**: **Gateway ID** (handle — unique slug identifier) of the Gateway.
+**gatewayId**: **Gateway ID** consisting of the **handle** (unique slug identifier) of the Gateway.
 
 > Example responses
 >
@@ -624,11 +624,11 @@ Required scopes (the token must carry at least one of): `ap:gateway:delete`, `ap
 
 |Name|In|Type|Required|Description|
 |---|---|---|---|---|
-|gatewayId|path|string|true|**Gateway ID** (handle — unique slug identifier) of the Gateway.|
+|gatewayId|path|string|true|**Gateway ID** consisting of the **handle** (unique slug identifier) of the Gateway.|
 
 #### Detailed descriptions
 
-**gatewayId**: **Gateway ID** (handle — unique slug identifier) of the Gateway.
+**gatewayId**: **Gateway ID** consisting of the **handle** (unique slug identifier) of the Gateway.
 
 > Example responses
 >
@@ -744,11 +744,11 @@ Required scopes (the token must carry at least one of): `ap:gateway:manifest:rea
 
 |Name|In|Type|Required|Description|
 |---|---|---|---|---|
-|gatewayId|path|string|true|**Gateway ID** (handle — unique slug identifier) of the Gateway.|
+|gatewayId|path|string|true|**Gateway ID** consisting of the **handle** (unique slug identifier) of the Gateway.|
 
 #### Detailed descriptions
 
-**gatewayId**: **Gateway ID** (handle — unique slug identifier) of the Gateway.
+**gatewayId**: **Gateway ID** consisting of the **handle** (unique slug identifier) of the Gateway.
 
 > Example responses
 >

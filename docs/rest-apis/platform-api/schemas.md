@@ -4458,7 +4458,7 @@ Limit definition with independent request/token/cost dimensions. If all dimensio
   "readOnly": false,
   "updatedBy": "john.doe",
   "version": "v1.0",
-  "projectId": "550e8400-e29b-41d4-a716-446655440000",
+  "projectId": "default-project",
   "context": "/openai",
   "vhost": "api.openai.com",
   "provider": {
@@ -4557,7 +4557,7 @@ Limit definition with independent request/token/cost dimensions. If all dimensio
 |readOnly|boolean|false|read-only|True if the artifact originated from a data-plane gateway (origin gateway_api) and is read-only in the control plane; false for control-plane created artifacts.|
 |updatedBy|string|false|read-only|User identifier of the user who last updated this resource. Only present in the detail response (GET /llm-proxies/{id}), omitted from list responses.|
 |version|string|true|none|Semantic version of the LLM proxy|
-|projectId|string|true|none|UUID of the project this proxy belongs to|
+|projectId|string|true|none|Handle (URL-friendly slug) of the project this proxy belongs to|
 |context|string|false|none|Base path for all routes exposed by this proxy. Must start with / and carry no trailing slash; the single exception is the root path "/", which is the default.|
 |vhost|string|false|none|Virtual host name used for routing. Supports standard domain names, subdomains, or wildcard domains. Must follow RFC-compliant hostname rules. Wildcards are only allowed in the left-most label (e.g., *.example.com).|
 |provider|[LLMProxyProvider](#schemallmproxyprovider)|true|none|none|
@@ -4586,7 +4586,7 @@ Limit definition with independent request/token/cost dimensions. If all dimensio
   "createdBy": "john.doe",
   "context": "/wso2-con-assistant",
   "version": "v1.0",
-  "projectId": "550e8400-e29b-41d4-a716-446655440000",
+  "projectId": "default-project",
   "provider": "wso2-openai-provider",
   "status": "deployed",
   "createdAt": "2025-11-25T10:30:00Z",
@@ -4606,7 +4606,7 @@ Limit definition with independent request/token/cost dimensions. If all dimensio
 |createdBy|string|false|read-only|User identifier of the user who created this resource|
 |context|string|false|none|Context path where the proxy is exposed|
 |version|string|false|none|none|
-|projectId|string|false|none|UUID of the project this proxy belongs to|
+|projectId|string|false|none|Handle (URL-friendly slug) of the project this proxy belongs to|
 |provider|string|false|none|Unique id of a deployed llm provider|
 |status|string|false|none|none|
 |createdAt|string(date-time)|false|none|none|
@@ -4639,7 +4639,7 @@ Limit definition with independent request/token/cost dimensions. If all dimensio
       "createdBy": "john.doe",
       "context": "/wso2-con-assistant",
       "version": "v1.0",
-      "projectId": "550e8400-e29b-41d4-a716-446655440000",
+      "projectId": "default-project",
       "provider": "wso2-openai-provider",
       "status": "deployed",
       "createdAt": "2025-11-25T10:30:00Z",
@@ -4870,7 +4870,7 @@ Request/response translator applied when this provider is the selected upstream.
   "readOnly": false,
   "updatedBy": "john.doe",
   "version": "v1.0",
-  "projectId": "550e8400-e29b-41d4-a716-446655440000",
+  "projectId": "default-project",
   "context": "/",
   "vhost": "mcp.gw.com",
   "upstream": {
@@ -4940,7 +4940,7 @@ Request/response translator applied when this provider is the selected upstream.
 |readOnly|boolean|false|read-only|True if the artifact originated from a data-plane gateway (origin gateway_api) and is read-only in the control plane; false for control-plane created artifacts.|
 |updatedBy|string|false|read-only|User identifier of the user who last updated this resource. Only present in the detail response (GET /mcp-proxies/{id}), omitted from list responses.|
 |version|string|true|none|Semantic version of the MCP proxy|
-|projectId|string|false|none|UUID of the project this proxy belongs to|
+|projectId|string|false|none|Handle (URL-friendly slug) of the project this proxy belongs to|
 |context|string|false|none|Base path for all routes exposed by this proxy. Must start with / and carry no trailing slash; the single exception is the root path "/", which is the default.|
 |vhost|string|false|none|Virtual host name used for routing. Supports standard domain names, subdomains, or wildcard domains. Must follow RFC-compliant hostname rules. Wildcards are only allowed in the left-most label (e.g., *.example.com).|
 |upstream|[Upstream](#schemaupstream)|true|none|Upstream backend configuration with main and sandbox endpoints|
@@ -4974,7 +4974,7 @@ Request/response translator applied when this provider is the selected upstream.
   "createdBy": "john.doe",
   "context": "/weather-mcp-proxy",
   "version": "v1.0",
-  "projectId": "550e8400-e29b-41d4-a716-446655440000",
+  "projectId": "default-project",
   "status": "deployed",
   "mcpSpecVersion": "2025-11-25",
   "createdAt": "2025-11-25T10:30:00Z",
@@ -4994,7 +4994,7 @@ Request/response translator applied when this provider is the selected upstream.
 |createdBy|string|false|read-only|User identifier of the user who created this resource|
 |context|string|false|none|Context path where the proxy is exposed|
 |version|string|false|none|none|
-|projectId|string|false|none|UUID of the project this proxy belongs to|
+|projectId|string|false|none|Handle (URL-friendly slug) of the project this proxy belongs to|
 |status|string|false|none|none|
 |mcpSpecVersion|string|false|none|none|
 |createdAt|string(date-time)|false|none|none|
@@ -5027,7 +5027,7 @@ Request/response translator applied when this provider is the selected upstream.
       "createdBy": "john.doe",
       "context": "/weather-mcp-proxy",
       "version": "v1.0",
-      "projectId": "550e8400-e29b-41d4-a716-446655440000",
+      "projectId": "default-project",
       "status": "deployed",
       "mcpSpecVersion": "2025-11-25",
       "createdAt": "2025-11-25T10:30:00Z",
