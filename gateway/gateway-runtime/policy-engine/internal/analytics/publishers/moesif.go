@@ -193,6 +193,8 @@ func (m *Moesif) Publish(event *dto.Event) {
 	metadataMap["apiName"] = event.API.APIName
 	metadataMap["apiVersion"] = event.API.APIVersion
 	metadataMap["apiType"] = event.API.APIType
+	// subType mirrors apiType
+	metadataMap["subType"] = event.API.APIType
 	metadataMap["apiId"] = event.API.APIID
 	metadataMap["projectId"] = event.API.ProjectID
 
