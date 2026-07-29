@@ -143,6 +143,10 @@ class DownstreamRequest:
     """
 
     headers: Headers | None = None
+    path: str = ""
+    method: str = ""
+    authority: str = ""
+    scheme: str = ""
 
 
 @dataclass(slots=True)
@@ -182,6 +186,7 @@ class UpstreamResponse:
     """
 
     headers: Headers | None = None
+    status_code: int = 0
 
 
 @dataclass(slots=True)
