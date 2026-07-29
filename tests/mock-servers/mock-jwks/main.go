@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"log"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/go-jose/go-jose/v4"
@@ -70,6 +71,15 @@ func tokenHandler(w http.ResponseWriter, r *http.Request) {
 		scope = scopeParam
 	}
 
+	// Arbitrary extra claims via query params of the form claim_<name>=<value> (single string
+	// value), enabling integration tests for the jwt-auth `claims` policy parameter.
+	extraClaims := map[string]interface{}{}
+	for key, vals := range r.URL.Query() {
+		if strings.HasPrefix(key, "claim_") && len(vals) > 0 {
+			extraClaims[strings.TrimPrefix(key, "claim_")] = vals[0]
+		}
+	}
+
 	claims := jwt.Claims{
 		Subject:   "test-user",
 		Issuer:    issuer,
@@ -78,7 +88,11 @@ func tokenHandler(w http.ResponseWriter, r *http.Request) {
 		Audience:  jwt.Audience{"test-audience"},
 	}
 
-	raw, err := jwt.Signed(signer).Claims(claims).Claims(tokenClaims{Scope: scope}).Serialize()
+	builder := jwt.Signed(signer).Claims(claims).Claims(tokenClaims{Scope: scope})
+	if len(extraClaims) > 0 {
+		builder = builder.Claims(extraClaims)
+	}
+	raw, err := builder.Serialize()
 	if err != nil {
 		http.Error(w, fmt.Sprintf("Failed to sign token: %v", err), http.StatusInternalServerError)
 		return
