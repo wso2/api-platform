@@ -16,7 +16,7 @@ An organization that doesn't exist gets the same `403` as one that does but isn'
 ## Configure the Organization
 
 ```toml
-[developer_portal.organization]
+[api_portal.organization]
 handle       = "acme"     # URL slug: /acme/views/default
 display_name = "Acme Corp"
 ```
@@ -169,7 +169,7 @@ curl -sk -H "Authorization: Bearer $TOKEN" https://localhost:9543/api/v0.9/organ
 
 The token is verified locally by the Developer Portal against the Platform API's RS256 public key (`auth.local.public_key_path`), with no extra call to the Platform API per request.
 
-> **Note:** Local auth is for development only. For production, set `auth.mode = "idp"` and configure the OIDC identity provider under `[developer_portal.auth.idp]`.
+> **Note:** Local auth is for development only. For production, set `auth.mode = "idp"` and configure the OIDC identity provider under `[api_portal.auth.idp]`.
 
 ---
 

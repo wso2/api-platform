@@ -19,29 +19,29 @@ metadata:
     {{- . | nindent 4 }}
   {{- end }}
 data:
-  # Full [developer_portal.*] config, mounted at /app/configs/config.toml to
-  # replace the image's shipped config. configLoader.js unwraps [developer_portal]
+  # Full [api_portal.*] config, mounted at /app/configs/config.toml to
+  # replace the image's shipped config. configLoader.js unwraps [api_portal]
   # and ignores anything outside it. Non-secret values are literals from
   # values.yaml; secrets are the portal's own {{ "{{ env \"APIP_DP_*\" }}" }} tokens,
   # supplied as env vars from the referenced Secret (Secret -> env -> config).
   config.toml: |
-    [developer_portal.server]
+    [api_portal.server]
     port = {{ $dp.containerPort | int }}
     base_url = {{ $baseUrl | quote }}
 
-    [developer_portal.server.https]
+    [api_portal.server.https]
     enabled = {{ $tlsEnabled }}
     {{- if $tlsEnabled }}
     cert_file = {{ printf "%s/server.crt" $certDir | quote }}
     key_file = {{ printf "%s/server.key" $certDir | quote }}
     {{- end }}
 
-    [developer_portal.logging]
+    [api_portal.logging]
     level = {{ $cfg.logging.level | quote }}
     format = {{ $cfg.logging.format | quote }}
     console_only = {{ $cfg.logging.consoleOnly }}
 
-    [developer_portal.database]
+    [api_portal.database]
     driver = {{ $db.type | quote }}
     {{- if eq $db.type "sqlite" }}
     path = {{ $db.file | quote }}
@@ -62,34 +62,34 @@ data:
     pool_request_timeout_ms = {{ $db.poolRequestTimeoutMs | int }}
     {{- end }}
 
-    [developer_portal.security]
+    [api_portal.security]
     encryption_key = {{ `'{{ env "APIP_DP_SECURITY_ENCRYPTION_KEY" }}'` }}
     session_secret = {{ `'{{ env "APIP_DP_SECURITY_SESSION_SECRET" }}'` }}
 
-    [developer_portal.security.service_api_key]
+    [api_portal.security.service_api_key]
     enabled = {{ $cfg.security.serviceApiKey.enabled }}
     header_name = {{ $cfg.security.serviceApiKey.headerName | quote }}
     {{- if $dp.secrets.hasServiceApiKeyValue }}
     value = {{ `'{{ env "APIP_DP_SECURITY_SERVICE_API_KEY_VALUE" }}'` }}
     {{- end }}
 
-    [developer_portal.auth]
+    [api_portal.auth]
     mode = {{ ternary "idp" "local" (ne $auth.idp.clientId "") | quote }}
     role_validation = {{ $cfg.security.roleValidation }}
 
-    [developer_portal.auth.claim_mappings]
+    [api_portal.auth.claim_mappings]
     organization = {{ $auth.claimMappings.organization | quote }}
     roles = {{ $auth.claimMappings.roles | quote }}
     groups = {{ $auth.claimMappings.groups | quote }}
 
-    [developer_portal.auth.local]
+    [api_portal.auth.local]
     platform_api_url = {{ $platformApiUrl | quote }}
     public_key_path = {{ $auth.publicKeyPath | quote }}
     tls_skip_verify = {{ $cfg.platformApi.insecure }}
 
     {{- if ne $auth.idp.clientId "" }}
 
-    [developer_portal.auth.idp]
+    [api_portal.auth.idp]
     name = {{ $auth.idp.name | quote }}
     issuer = {{ $auth.idp.issuer | quote }}
     authorization_url = {{ $auth.idp.authorizationUrl | quote }}
@@ -109,7 +109,7 @@ data:
     silent_sso = {{ $auth.idp.silentSso }}
     token_refresh_timeout_ms = {{ $auth.idp.tokenRefreshTimeoutMs | int }}
 
-    [developer_portal.auth.idp.roles]
+    [api_portal.auth.idp.roles]
     admin = {{ $auth.idp.roles.admin | quote }}
     subscriber = {{ $auth.idp.roles.subscriber | quote }}
     super_admin = {{ $auth.idp.roles.superAdmin | quote }}
@@ -120,17 +120,17 @@ data:
     {{- if not $orgHandle }}
       {{- fail "developerPortal.config.organization.handle is required" }}
     {{- end }}
-    [developer_portal.organization]
+    [api_portal.organization]
     handle = {{ $orgHandle | quote }}
     display_name = {{ $org.displayName | default "" | quote }}
     auto_create_subscription_plans = {{ $org.autoCreateSubscriptionPlans }}
 
-    [developer_portal.webhooks.delivery]
+    [api_portal.webhooks.delivery]
     poll_interval_ms = {{ $cfg.webhooksDelivery.pollIntervalMs | int }}
     batch_size = {{ $cfg.webhooksDelivery.batchSize | int }}
     signature_tolerance_sec = {{ $cfg.webhooksDelivery.signatureToleranceSec | int }}
 
-    [developer_portal.tryout]
+    [api_portal.tryout]
     enabled = {{ $cfg.tryout.enabled }}
     allow_http_endpoints = {{ $cfg.tryout.allowHttpEndpoints }}
     allow_private_endpoints = {{ $cfg.tryout.allowPrivateEndpoints }}

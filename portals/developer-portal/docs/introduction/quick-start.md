@@ -41,7 +41,7 @@ It also prompts you for an **admin username and password**. Press Enter at the p
 docker compose up
 ```
 
-This starts the Developer Portal (SQLite by default). On first boot the database schema and the configured organization (`default`, per `[developer_portal.organization].handle`) with a `default` view are created automatically.
+This starts the Developer Portal (SQLite by default). On first boot the database schema and the configured organization (`default`, per `[api_portal.organization].handle`) with a `default` view are created automatically.
 
 ### 4. Open the portal
 

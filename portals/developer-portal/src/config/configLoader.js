@@ -39,9 +39,9 @@ try {
  * the fully merged tree (see below), so a token declared in a base file can be
  * overridden by a later overlay before either is resolved.
  *
- * Every key lives under the single [developer_portal] table. That wrapper is
+ * Every key lives under the single [api_portal] table. That wrapper is
  * unwrapped here so the in-code config tree stays flat (config.server,
- * config.security, …); anything outside the [developer_portal] table is ignored.
+ * config.security, …); anything outside the [api_portal] table is ignored.
  *
  * There is NO silent fallback: a missing, unreadable, or unparseable file throws
  * — the module bootstrap turns that into a fatal, non-zero exit at startup
@@ -63,17 +63,17 @@ function loadConfigFiles(paths) {
         } catch (err) {
             throw new Error(`config file "${p}" is not valid TOML: ${err.message}`);
         }
-        const tree = snakeToCamelDeep(parsed).developerPortal || {};
+        const tree = snakeToCamelDeep(parsed).apiPortal || {};
         merged = mergeOver(merged, tree);
     }
     // Every --config file layered and nothing came out: no file carried a
-    // [developer_portal] table at all. Returning {} here would boot on pure
+    // [api_portal] table at all. Returning {} here would boot on pure
     // built-in DEFAULTS — the exact silent fallback this loader exists to
     // prevent — so fail here, where the cause is still nameable.
     if (Object.keys(merged).length === 0) {
         throw new Error(
             `config file(s) ${paths.map(p => `"${p}"`).join(', ')} produced an empty ` +
-            'configuration: no [developer_portal] table found. Refusing to start on ' +
+            'configuration: no [api_portal] table found. Refusing to start on ' +
             'built-in defaults alone.'
         );
     }
@@ -423,7 +423,7 @@ validateDatabasePoolConfig(config.database);
  * to pin. That makes this a narrow, explicit opt-out rather than an implicit
  * fallback to "no organization configured".
  *
- * `tomlOrg` is the raw [developer_portal.organization] table — needed to tell an
+ * `tomlOrg` is the raw [api_portal.organization] table — needed to tell an
  * explicitly-configured handle apart from the DEFAULTS one, which is what makes
  * the deprecated default_name alias resolvable.
  */

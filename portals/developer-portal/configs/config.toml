@@ -57,7 +57,7 @@
 # Plain `npm start` inherits this file's Compose-oriented defaults as-is and
 # will fail trying to read a TLS cert path that only exists in the containers.
 
-[developer_portal.server]
+[api_portal.server]
 port = '{{ env "APIP_DP_SERVER_PORT" "9543" }}'
 # Canonical public origin of this portal, used only to build the absolute URLs
 # embedded in a generated agent prompt (so they don't depend on the request's
@@ -69,17 +69,17 @@ base_url = '{{ env "APIP_DP_SERVER_BASE_URL" "https://localhost:9543" }}'
 # enabled=false only when a trusted upstream (proxy/LB/ingress) terminates TLS —
 # the listener then serves plain HTTP on that port. cert_file/key_file must point
 # at a real pair when enabled=true (no self-signed fallback).
-[developer_portal.server.https]
+[api_portal.server.https]
 enabled   = '{{ env "APIP_DP_SERVER_HTTPS_ENABLED" "true" }}'
 cert_file = '{{ env "APIP_DP_SERVER_HTTPS_CERT_FILE" "/etc/devportal/tls/cert.pem" }}'
 key_file  = '{{ env "APIP_DP_SERVER_HTTPS_KEY_FILE" "/etc/devportal/tls/key.pem" }}'
 
-[developer_portal.logging]
+[api_portal.logging]
 level        = '{{ env "APIP_DP_LOGGING_LEVEL" "info" }}'   # debug | info | warn | error
 format       = '{{ env "APIP_DP_LOGGING_FORMAT" "text" }}'  # text | json
 console_only = '{{ env "APIP_DP_LOGGING_CONSOLE_ONLY" "true" }}'
 
-[developer_portal.database]
+[api_portal.database]
 driver = '{{ env "APIP_DP_DATABASE_DRIVER" "sqlite" }}'   # sqlite | postgres
 # SQLite path. Relative — resolves to /app/data/devportal.db under Compose (cwd
 # /app), matching the developer-portal-data volume mount at /app/data; Docker creates that
@@ -102,11 +102,11 @@ pool_idle_timeout_ms       = '{{ env "APIP_DP_DATABASE_POOL_IDLE_TIMEOUT_MS" "10
 pool_connection_timeout_ms = '{{ env "APIP_DP_DATABASE_POOL_CONNECTION_TIMEOUT_MS" "30000" }}'
 pool_request_timeout_ms    = '{{ env "APIP_DP_DATABASE_POOL_REQUEST_TIMEOUT_MS" "30000" }}'
 
-[developer_portal.security]
+[api_portal.security]
 encryption_key = '{{ file "/etc/devportal/keys/encryption.key" }}'
 session_secret = '{{ file "/etc/devportal/keys/session-secret" }}'
 
-[developer_portal.auth.local]
+[api_portal.auth.local]
 # The upstream Platform API. Used for local auth credential validation when
 # auth.mode = "local".
 platform_api_url = '{{ env "APIP_DP_AUTH_LOCAL_PLATFORM_API_URL" "https://platform-api:9243" }}'
@@ -123,6 +123,6 @@ tls_skip_verify  = '{{ env "APIP_DP_AUTH_LOCAL_TLS_SKIP_VERIFY" "true" }}'
 # In auth.mode = "local" it must match the Platform API's
 # [platform_api.auth.file.organization] id, which is what its tokens carry in the
 # org_handle claim.
-[developer_portal.organization]
+[api_portal.organization]
 handle       = '{{ env "APIP_DP_ORGANIZATION_HANDLE" "default" }}'
 display_name = '{{ env "APIP_DP_ORGANIZATION_DISPLAY_NAME" "Default" }}'

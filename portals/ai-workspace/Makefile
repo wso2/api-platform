@@ -226,7 +226,7 @@ DEVPORTAL_VERSION ?= $(shell sed 's/-SNAPSHOT//' ../developer-portal/VERSION 2>/
 DEVPORTAL_TAG     := developer-portal/v$(DEVPORTAL_VERSION)
 
 # As with PLATFORM_API_VERSION: an explicitly supplied version means "bundle that
-# release", so the [developer_portal] template appended to config-template.toml is
+# release", so the [api_portal] template appended to config-template.toml is
 # read from the tag rather than the working tree — otherwise the zip would document
 # settings from unreleased branch state against a released image.
 ifeq ($(origin DEVPORTAL_VERSION),command line)
@@ -273,7 +273,7 @@ endef
 # Merge an AI Workspace config and a Platform API config into one unified
 # multi-component config file: $(call merge_config,<aiw-toml>,<cp-toml>,<out>).
 # The components share no top-level keys ([ai_workspace.*] vs [platform_api.*],
-# and [developer_portal.*] when append_section adds it below), so the merge is a
+# and [api_portal.*] when append_section adds it below), so the merge is a
 # banner-separated concatenation — each service reads only its own root table and
 # ignores the other sections and their tokens.
 define merge_config

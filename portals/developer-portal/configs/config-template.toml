@@ -45,11 +45,11 @@
 # terminates TLS — the listener then serves plain HTTP on that port.
 # cert_file/key_file are required only when enabled=true (no self-signed fallback).
 
-[developer_portal.server]
+[api_portal.server]
 base_url = '{{ env "APIP_DP_SERVER_BASE_URL" "https://localhost:9543" }}'
 port = 9543
 
-[developer_portal.server.https]
+[api_portal.server.https]
 enabled = false
 cert_file = "./resources/security/client-truststore.pem"
 key_file = "./resources/security/private-key.pem"
@@ -58,7 +58,7 @@ key_file = "./resources/security/private-key.pem"
 # LOGGING CONFIGURATION
 # =============================================================================
 
-[developer_portal.logging]
+[api_portal.logging]
 level = "info"          # debug | info | warn | error
 format = "text"         # text | json
 console_only = true     # true: log to stdout only. false: also write rotating log files to disk
@@ -68,7 +68,7 @@ console_only = true     # true: log to stdout only. false: also write rotating l
 # =============================================================================
 # Supported types: sqlite (default), postgres.
 
-[developer_portal.database]
+[api_portal.database]
 driver = "sqlite"             # sqlite | postgres | mssql
 path = "./devportal.db"       # SQLite only
 host = "localhost"            # PostgreSQL / MSSQL only
@@ -88,12 +88,12 @@ pool_request_timeout_ms = 30000         # MSSQL only - per-query execution timeo
 # SECURITY CONFIGURATION
 # =============================================================================
 
-[developer_portal.security]
+[api_portal.security]
 encryption_key = ""     # 64-char hex — AES-256-GCM key for encrypting secrets at rest
 session_secret = ""     # 64-char hex — express-session signing secret
 
 # Static shared-secret header for calling the devportal's own REST API.
-[developer_portal.security.service_api_key]
+[api_portal.security.service_api_key]
 enabled = true
 header_name = "x-wso2-api-key"
 value = ""
@@ -104,28 +104,28 @@ value = ""
 # A mode gate plus the two backends it selects between: local (the default) and
 # idp. Configure the block matching your chosen mode; the other is ignored.
 
-[developer_portal.auth]
+[api_portal.auth]
 # "local" — username/password validated against the Platform API control plane
-# ([developer_portal.auth.local] below). "idp" — external OIDC IDP (auth.idp below).
+# ([api_portal.auth.local] below). "idp" — external OIDC IDP (auth.idp below).
 mode = "local"          # local | idp
 role_validation = false # Enforce per-operation role validation
 
 # JWT claim name mappings — which token claim carries each field.
 # Dot-notation supported for nested claims (e.g. "realm_access.roles").
-[developer_portal.auth.claim_mappings]
+[api_portal.auth.claim_mappings]
 organization = "org_name"   # claim carrying the org ID
 roles = "roles"             # claim carrying the user's roles
 groups = "groups"
 
 # Local auth backend (the Platform API control plane) — used when auth.mode =
 # "local". Leave platform_api_url empty to disable local auth entirely.
-[developer_portal.auth.local]
+[api_portal.auth.local]
 platform_api_url = ""
 public_key_path = ""    # path to the Platform API's RS256 public key PEM
 tls_skip_verify = false
 
 # Identity provider (OAuth2 / OIDC) — used when auth.mode = "idp".
-[developer_portal.auth.idp]
+[api_portal.auth.idp]
 name = "IS"
 issuer = "https://localhost:9443/oauth2/token"
 authorization_url = "https://localhost:9443/oauth2/authorize"
@@ -146,7 +146,7 @@ silent_sso = true      # Enable silent SSO
 org_callback = false   # Redirect to the org's own landing page after login
 
 # Maps IDP role names to devportal's internal roles.
-[developer_portal.auth.idp.roles]
+[api_portal.auth.idp.roles]
 admin = "admin"
 subscriber = "Internal/subscriber"
 super_admin = "superAdmin"
@@ -160,7 +160,7 @@ super_admin = "superAdmin"
 # design-mode page or a custom static route. Patterns are glob-matched (minimatch)
 # against the request URL and merged with (never replace) the built-in list.
 #
-# [developer_portal.page_access_rules]
+# [api_portal.page_access_rules]
 # authenticated = ["**/my-custom-page"]
 # authorized = ["**/my-custom-page"]
 
@@ -182,7 +182,7 @@ super_admin = "superAdmin"
 # the org_handle claim of the tokens this portal verifies. A mismatch means every
 # login is rejected with 403.
 
-[developer_portal.organization]
+[api_portal.organization]
 handle = "default"                       # URL slug: /{handle}/views/{viewName}
 display_name = "Default"                 # Used only when first seeding the organization
 auto_create_subscription_plans = true    # Auto-create Bronze/Silver/Gold/Unlimited/AsyncUnlimited
@@ -195,7 +195,7 @@ auto_create_subscription_plans = true    # Auto-create Bronze/Silver/Gold/Unlimi
 # database. For content authoring and theming workflows only; do not enable
 # in a production environment. Disabled (commented) by default.
 
-# [developer_portal.design_mode]
+# [api_portal.design_mode]
 # enabled = false
 # path_to_layout = "./src/defaultContent/"
 # api_samples_path = "./samples/apis/"
@@ -210,7 +210,7 @@ auto_create_subscription_plans = true    # Auto-create Bronze/Silver/Gold/Unlimi
 # the Webhook Subscribers API, not this file. Each delivery is attempted
 # exactly once; there is no retry/backoff.
 
-[developer_portal.webhooks.delivery]
+[api_portal.webhooks.delivery]
 poll_interval_ms = 2000
 batch_size = 50
 signature_tolerance_sec = 300
@@ -230,7 +230,7 @@ signature_tolerance_sec = 300
 # Link-local and cloud-metadata addresses (169.254.169.254 and friends) are
 # refused at connection time regardless of the settings below.
 
-[developer_portal.tryout]
+[api_portal.tryout]
 enabled = true
 allow_http_endpoints = true    # false: only https:// endpoints may be called
 # Deny-by-default. The registered-endpoint allowlist cannot protect against an

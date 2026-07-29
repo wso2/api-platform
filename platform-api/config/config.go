@@ -509,7 +509,7 @@ func LoadConfig(configPaths ...string) (*Server, error) {
 	}
 
 	// Narrow to this component's own subtree BEFORE interpolating, so a shared
-	// multi-component config file (one that also carries [developer_portal] or
+	// multi-component config file (one that also carries [api_portal] or
 	// [ai_workspace] sections) does not force platform-api to resolve another
 	// component's {{ env }}/{{ file }} tokens — those reference env vars and
 	// allowlisted paths that only exist in that other component's container, and

@@ -147,7 +147,7 @@ Use this for active development, custom IdP configuration, or when you prefer to
 `security.encryption_key`/`security.session_secret`, unlike `public_key_path`, are read via `{{ file "/etc/devportal/keys/..." }}` directly in `config.toml` — there's no env-var override for that path, so it always looks under `/etc/devportal/keys` even for `npm run start:local`, which doesn't exist outside the containers. For local (non-Docker) runs, point `configs/config.toml` at the host-side files `../scripts/setup.sh` already generated instead:
 
 ```toml
-[developer_portal.security]
+[api_portal.security]
 encryption_key = '{{ file "resources/keys/devportal-encryption.key" }}'
 session_secret = '{{ file "resources/keys/devportal-session-secret" }}'
 ```
@@ -156,13 +156,13 @@ session_secret = '{{ file "resources/keys/devportal-session-secret" }}'
 
 ### 3. Configure the Identity Provider (optional)
 
-The portal's login flow requires a valid OAuth2/OIDC provider. Set `[developer_portal.auth]` `mode = "idp"` and fill in the `[developer_portal.auth.idp]` block in `configs/config.toml`:
+The portal's login flow requires a valid OAuth2/OIDC provider. Set `[api_portal.auth]` `mode = "idp"` and fill in the `[api_portal.auth.idp]` block in `configs/config.toml`:
 
 ```toml
-[developer_portal.auth]
+[api_portal.auth]
 mode = "idp"
 
-[developer_portal.auth.idp]
+[api_portal.auth.idp]
 issuer = "https://<your-idp>/oauth2/token"
 authorization_url = "https://<your-idp>/oauth2/authorize"
 token_url = "https://<your-idp>/oauth2/token"
@@ -193,10 +193,10 @@ docker run --name devportal-postgres \
   -d postgres:16
 ```
 
-Then update the `[developer_portal.database]` block in `configs/config.toml`:
+Then update the `[api_portal.database]` block in `configs/config.toml`:
 
 ```toml
-[developer_portal.database]
+[api_portal.database]
 driver = "postgres"
 host = "localhost"
 port = 5432
@@ -263,7 +263,7 @@ To change what a portal user may do, edit that role's entry in `role-to-scope-ma
 The portal config (or `APIP_DP_AUTH_LOCAL_*` env vars) must point to the Platform API. `config.toml`'s own defaults assume Docker Compose, where `platform-api` is a resolvable hostname on the compose network — `npm run start:local` already overrides `platform_api_url` to `https://localhost:9243` (the sidecar's port published to the host) and `tls_skip_verify = true` (self-signed cert), so no manual edit is needed for that flow:
 
 ```toml
-[developer_portal.auth.local]
+[api_portal.auth.local]
 platform_api_url = "https://localhost:9243"  # env: APIP_DP_AUTH_LOCAL_PLATFORM_API_URL
 public_key_path = "/etc/devportal/keys/jwt_public.pem"  # path to the Platform API's auth.jwt.public_key PEM — env: APIP_DP_AUTH_LOCAL_PUBLIC_KEY_PATH
 tls_skip_verify = true                    # Platform API uses a self-signed cert
