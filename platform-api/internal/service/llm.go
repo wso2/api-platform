@@ -194,9 +194,12 @@ func NewLLMProxyService(
 // clients have no way to resolve a UUID back to a project. Mirrors
 // ApplicationService.modelToApplicationResponseUnresolved.
 //
+// The lookup is scoped to orgUUID so a project UUID belonging to another
+// organization never resolves — a stored UUID is not itself proof of tenancy.
+//
 // projectHandleCache is an optional per-request memo so a listing page doesn't
 // re-query the same project once per item; pass nil for single-item responses.
-func (s *LLMProxyService) resolveProjectHandle(projectUUID string, projectHandleCache map[string]string) (string, error) {
+func (s *LLMProxyService) resolveProjectHandle(orgUUID, projectUUID string, projectHandleCache map[string]string) (string, error) {
 	projectUUID = strings.TrimSpace(projectUUID)
 	if projectUUID == "" {
 		return "", nil
@@ -207,7 +210,7 @@ func (s *LLMProxyService) resolveProjectHandle(projectUUID string, projectHandle
 	if s.projectRepo == nil {
 		return "", fmt.Errorf("cannot resolve project handle: project repository unavailable")
 	}
-	project, err := s.projectRepo.GetProjectByUUID(projectUUID)
+	project, err := s.projectRepo.GetProjectByUUIDAndOrgID(projectUUID, orgUUID)
 	if err != nil {
 		return "", fmt.Errorf("failed to resolve project: %w", err)
 	}
@@ -223,12 +226,12 @@ func (s *LLMProxyService) resolveProjectHandle(projectUUID string, projectHandle
 // toProxyAPI converts m via mapProxyModelToAPI, resolves its project UUID to
 // the project handle, and resolves its createdBy/updatedBy UUIDs to their raw
 // external identity.
-func (s *LLMProxyService) toProxyAPI(m *model.LLMProxy) (*api.LLMProxy, error) {
+func (s *LLMProxyService) toProxyAPI(orgUUID string, m *model.LLMProxy) (*api.LLMProxy, error) {
 	resp := mapProxyModelToAPI(m)
 	if resp == nil {
 		return nil, nil
 	}
-	projectHandle, err := s.resolveProjectHandle(resp.ProjectId, nil)
+	projectHandle, err := s.resolveProjectHandle(orgUUID, resp.ProjectId, nil)
 	if err != nil {
 		return nil, err
 	}
@@ -1566,7 +1569,7 @@ func (s *LLMProxyService) Create(orgUUID, createdBy string, req *api.LLMProxy) (
 	if created == nil {
 		return nil, apperror.LLMProxyNotFound.New()
 	}
-	return s.toProxyAPI(created)
+	return s.toProxyAPI(orgUUID, created)
 }
 
 func (s *LLMProxyService) List(orgUUID string, projectHandle *string, limit, offset int) (*api.LLMProxyListResponse, error) {
@@ -1626,7 +1629,7 @@ func (s *LLMProxyService) List(orgUUID string, projectHandle *string, limit, off
 			contextValue = &v
 		}
 		version := p.Version
-		projectID, err := s.resolveProjectHandle(p.ProjectUUID, projectHandles)
+		projectID, err := s.resolveProjectHandle(orgUUID, p.ProjectUUID, projectHandles)
 		if err != nil {
 			return nil, err
 		}
@@ -1697,7 +1700,7 @@ func (s *LLMProxyService) ListByProvider(orgUUID, providerID string, limit, offs
 			contextValue = &v
 		}
 		version := p.Version
-		projectID, err := s.resolveProjectHandle(p.ProjectUUID, projectHandles)
+		projectID, err := s.resolveProjectHandle(orgUUID, p.ProjectUUID, projectHandles)
 		if err != nil {
 			return nil, err
 		}
@@ -1734,7 +1737,7 @@ func (s *LLMProxyService) Get(orgUUID, handle string) (*api.LLMProxy, error) {
 	if m == nil {
 		return nil, apperror.LLMProxyNotFound.New()
 	}
-	return s.toProxyAPI(m)
+	return s.toProxyAPI(orgUUID, m)
 }
 
 func (s *LLMProxyService) Update(orgUUID, handle, updatedBy string, req *api.LLMProxy) (*api.LLMProxy, error) {
@@ -1879,7 +1882,7 @@ func (s *LLMProxyService) Update(orgUUID, handle, updatedBy string, req *api.LLM
 		return nil, apperror.LLMProxyNotFound.New()
 	}
 	_ = s.auditRepo.Record("UPDATE", existing.UUID, "llm_proxy", orgUUID, updatedBy)
-	return s.toProxyAPI(updated)
+	return s.toProxyAPI(orgUUID, updated)
 }
 
 func (s *LLMProxyService) Delete(orgUUID, handle, deletedBy string) error {

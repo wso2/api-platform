@@ -80,9 +80,12 @@ func NewMCPProxyService(repo repository.MCPProxyRepository, projectRepo reposito
 // no way to resolve a project UUID back to a handle. Mirrors
 // LLMProxyService.resolveProjectHandle.
 //
+// The lookup is scoped to orgUUID so a project UUID belonging to another
+// organization never resolves — a stored UUID is not itself proof of tenancy.
+//
 // projectHandleCache is an optional per-request memo so a listing page doesn't
 // re-query the same project once per item; pass nil for single-item responses.
-func (s *MCPProxyService) resolveProjectHandle(projectUUID *string, projectHandleCache map[string]string) (*string, error) {
+func (s *MCPProxyService) resolveProjectHandle(orgUUID string, projectUUID *string, projectHandleCache map[string]string) (*string, error) {
 	if projectUUID == nil || strings.TrimSpace(*projectUUID) == "" {
 		return projectUUID, nil
 	}
@@ -93,7 +96,7 @@ func (s *MCPProxyService) resolveProjectHandle(projectUUID *string, projectHandl
 	if s.projectRepo == nil {
 		return nil, fmt.Errorf("cannot resolve project handle: project repository unavailable")
 	}
-	project, err := s.projectRepo.GetProjectByUUID(uuid)
+	project, err := s.projectRepo.GetProjectByUUIDAndOrgID(uuid, orgUUID)
 	if err != nil {
 		return nil, fmt.Errorf("failed to resolve project: %w", err)
 	}
@@ -110,12 +113,12 @@ func (s *MCPProxyService) resolveProjectHandle(projectUUID *string, projectHandl
 // toMCPProxyAPI converts m via mapMCPProxyModelToAPI, resolves its project
 // UUID to the project handle, and resolves its createdBy/updatedBy UUIDs to
 // their raw external identity.
-func (s *MCPProxyService) toMCPProxyAPI(m *model.MCPProxy) (*api.MCPProxy, error) {
+func (s *MCPProxyService) toMCPProxyAPI(orgUUID string, m *model.MCPProxy) (*api.MCPProxy, error) {
 	resp := mapMCPProxyModelToAPI(m)
 	if resp == nil {
 		return nil, nil
 	}
-	projectHandle, err := s.resolveProjectHandle(resp.ProjectId, nil)
+	projectHandle, err := s.resolveProjectHandle(orgUUID, resp.ProjectId, nil)
 	if err != nil {
 		return nil, err
 	}
@@ -277,7 +280,7 @@ func (s *MCPProxyService) List(orgUUID string, limit, offset int) (*api.MCPProxy
 		if item == nil {
 			continue
 		}
-		projectHandle, err := s.resolveProjectHandle(item.ProjectId, projectHandles)
+		projectHandle, err := s.resolveProjectHandle(orgUUID, item.ProjectId, projectHandles)
 		if err != nil {
 			return nil, err
 		}
@@ -338,7 +341,7 @@ func (s *MCPProxyService) ListByProject(orgUUID, projectHandle string, limit, of
 		if item == nil {
 			continue
 		}
-		projectHandle, err := s.resolveProjectHandle(item.ProjectId, projectHandles)
+		projectHandle, err := s.resolveProjectHandle(orgUUID, item.ProjectId, projectHandles)
 		if err != nil {
 			return nil, err
 		}
@@ -367,7 +370,7 @@ func (s *MCPProxyService) Get(orgUUID, handle string) (*api.MCPProxy, error) {
 		return nil, apperror.MCPProxyNotFound.New()
 	}
 
-	return s.toMCPProxyAPI(m)
+	return s.toMCPProxyAPI(orgUUID, m)
 }
 
 // Update updates an existing MCP proxy

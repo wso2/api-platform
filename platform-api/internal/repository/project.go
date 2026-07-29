@@ -78,6 +78,32 @@ func (r *ProjectRepo) GetProjectByUUID(projectId string) (*model.Project, error)
 	return project, nil
 }
 
+// GetProjectByUUIDAndOrgID retrieves a project by ID scoped to an organization.
+// Use this over GetProjectByUUID whenever the caller is serving a tenant request,
+// so a UUID belonging to another organization resolves to nothing.
+func (r *ProjectRepo) GetProjectByUUIDAndOrgID(projectId, orgID string) (*model.Project, error) {
+	project := &model.Project{}
+	query := `
+		SELECT uuid, handle, display_name, organization_uuid, description, created_by, created_at, updated_by, updated_at
+		FROM projects
+		WHERE uuid = ? AND organization_uuid = ?
+	`
+	var createdBy, updatedBy sql.NullString
+	err := r.db.QueryRow(r.db.Rebind(query), projectId, orgID).Scan(
+		&project.ID, &project.Handle, &project.Name, &project.OrganizationID, &project.Description,
+		&createdBy, &project.CreatedAt, &updatedBy, &project.UpdatedAt,
+	)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil, nil
+		}
+		return nil, err
+	}
+	project.CreatedBy = createdBy.String
+	project.UpdatedBy = updatedBy.String
+	return project, nil
+}
+
 // GetProjectByNameAndOrgID retrieves a project by name within an organization
 func (r *ProjectRepo) GetProjectByNameAndOrgID(name, orgID string) (*model.Project, error) {
 	project := &model.Project{}
