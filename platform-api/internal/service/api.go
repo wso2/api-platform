@@ -1011,10 +1011,10 @@ func (s *APIService) isEmptyUpstream(upstream api.Upstream) bool {
 }
 
 func (s *APIService) isEmptyUpstreamDefinition(definition api.UpstreamDefinition) bool {
-	if definition.Url != nil && *definition.Url != "" {
+	if definition.Url != nil && strings.TrimSpace(*definition.Url) != "" {
 		return false
 	}
-	if definition.Ref != nil && *definition.Ref != "" {
+	if definition.Ref != nil && strings.TrimSpace(*definition.Ref) != "" {
 		return false
 	}
 	return true

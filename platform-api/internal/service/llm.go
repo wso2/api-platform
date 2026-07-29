@@ -1905,10 +1905,16 @@ func isSQLiteUniqueConstraint(err error) bool {
 }
 
 func validateUpstream(u api.Upstream) error {
-	mainUrl := utils.ValueOrEmpty(u.Main.Url)
-	mainRef := utils.ValueOrEmpty(u.Main.Ref)
-	if strings.TrimSpace(mainUrl) == "" && strings.TrimSpace(mainRef) == "" {
-		return apperror.ValidationFailed.New("The upstream main must specify either a url or a ref.")
+	return validateUpstreamDefinition("main", u.Main)
+}
+
+// validateUpstreamDefinition enforces the UpstreamDefinition schema constraint that
+// exactly one of url or ref is provided.
+func validateUpstreamDefinition(name string, definition api.UpstreamDefinition) error {
+	hasUrl := strings.TrimSpace(utils.ValueOrEmpty(definition.Url)) != ""
+	hasRef := strings.TrimSpace(utils.ValueOrEmpty(definition.Ref)) != ""
+	if hasUrl == hasRef {
+		return apperror.ValidationFailed.New(fmt.Sprintf("The upstream %s must specify either a url or a ref, not both.", name))
 	}
 	return nil
 }

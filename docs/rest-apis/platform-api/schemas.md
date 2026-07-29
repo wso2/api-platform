@@ -4261,7 +4261,7 @@ Limit definition with independent request/token/cost dimensions. If all dimensio
 |readOnly|boolean|false|read-only|True if the artifact originated from a data-plane gateway (origin gateway_api) and is read-only in the control plane; false for control-plane created artifacts.|
 |updatedBy|string|false|read-only|User identifier of the user who last updated this resource. Only present in the detail response (GET /llm-providers/{id}), omitted from list responses.|
 |version|string|true|none|Semantic version of the LLM Provider|
-|context|string|false|none|Base path for all routes exposed by this proxy. Must start with / and carry no trailing slash; the single exception is the root path "/", which is the default.|
+|context|string|false|none|Base path for all routes exposed by this provider. Must start with / and carry no trailing slash; the single exception is the root path "/", which is the default.|
 |vhost|string|false|none|Virtual host name used for routing. Supports standard domain names, subdomains, or wildcard domains. Must follow RFC-compliant hostname rules. Wildcards are only allowed in the left-most label (e.g., *.example.com).|
 |template|string|true|none|Template name to use for this LLM Provider|
 |openapi|string|false|none|OpenAPI specification (JSON or YAML) for the provider endpoint|
@@ -5072,13 +5072,36 @@ Request/response translator applied when this provider is the selected upstream.
 
 ```
 
+Target MCP server to introspect. Provide exactly one of `url` (a direct backend URL,
+optionally with `auth`) or `proxyId` (refetch using a stored proxy configuration) — never
+both. `auth` must not be sent together with `proxyId`; the stored auth is always used in
+the refetch flow.
+
 ### Properties
 
 |Name|Type|Required|Restrictions|Description|
 |---|---|---|---|---|
-|url|string(uri)|false|none|Endpoint URL of the MCP server to fetch information from.<br>Required when proxyId is not provided. When proxyId is provided,<br>the URL from the stored proxy configuration is used.|
-|proxyId|string|false|none|MCP proxy handle (identifier) for refresh operations. When provided,<br>the server fetches URL and auth from the stored proxy configuration.<br>Auth override is not allowed in refetch mode.|
-|auth|[UpstreamAuth](#schemaupstreamauth)|false|none|Authentication configuration for the fetch request.<br>Only allowed when proxyId is not provided (initial creation flow).|
+|url|string(uri)|false|none|Endpoint URL of the MCP server to fetch information from. Mutually exclusive<br>with `proxyId`; exactly one of the two must be provided.|
+|proxyId|string|false|none|MCP proxy handle (identifier) for refresh operations. When provided, the server<br>fetches URL and auth from the stored proxy configuration. Mutually exclusive<br>with `url`; exactly one of the two must be provided.|
+|auth|[UpstreamAuth](#schemaupstreamauth)|false|none|Authentication configuration for the fetch request. Allowed only alongside<br>`url` (initial creation flow); sending it with `proxyId` is rejected, as the<br>stored auth is used in the refetch flow.|
+
+oneOf
+
+|Name|Type|Required|Restrictions|Description|
+|---|---|---|---|---|
+|*anonymous*|object|false|none|none|
+
+xor
+
+|Name|Type|Required|Restrictions|Description|
+|---|---|---|---|---|
+|*anonymous*|object|false|none|none|
+
+not
+
+|Name|Type|Required|Restrictions|Description|
+|---|---|---|---|---|
+|» *anonymous*|object|false|none|none|
 
 <h2 id="tocS_MCPServerInfoFetchResponse">MCPServerInfoFetchResponse</h2>
 
@@ -5167,7 +5190,7 @@ Request/response translator applied when this provider is the selected upstream.
 |id|string|false|none|Handle (slug) used in {{ secret "id" }} placeholders. Immutable after creation.|
 |displayName|string|true|none|Human-readable name for the secret|
 |description|string|false|none|none|
-|value|string|true|none|Plaintext secret value — encrypted at rest, never returned in any response|
+|value|string|true|write-only|Plaintext secret value — encrypted at rest, never returned in any response|
 |type|string|false|none|none|
 
 #### Enumerated Values
@@ -5201,7 +5224,7 @@ Request/response translator applied when this provider is the selected upstream.
 |id|string|false|none|Secret handle — if provided, must match the path parameter; returns 400 if they differ. The handle is immutable and cannot be changed via update.|
 |displayName|string|true|none|Human-readable name for the secret|
 |description|string|false|none|none|
-|value|string|true|none|New plaintext secret value — re-encrypted at rest|
+|value|string|true|write-only|New plaintext secret value — re-encrypted at rest|
 
 <h2 id="tocS_SecretResponse">SecretResponse</h2>
 

@@ -7553,7 +7553,7 @@ components:
           example: v1.0
         context:
           type: string
-          description: Base path for all routes exposed by this proxy. Must start with / and carry no trailing slash; the single exception is the root path "/", which is the default.
+          description: Base path for all routes exposed by this provider. Must start with / and carry no trailing slash; the single exception is the root path "/", which is the default.
           pattern: '^\/([a-zA-Z0-9_\-.\/]*[^\/])?$'
           default: /
           minLength: 1
@@ -8356,27 +8356,37 @@ components:
     
     MCPServerInfoFetchRequest:
       type: object
+      oneOf:
+        - required: [ "url" ]
+        - required: [ "proxyId" ]
+          not:
+            required: [ "auth" ]
+      description: |
+        Target MCP server to introspect. Provide exactly one of `url` (a direct backend URL,
+        optionally with `auth`) or `proxyId` (refetch using a stored proxy configuration) — never
+        both. `auth` must not be sent together with `proxyId`; the stored auth is always used in
+        the refetch flow.
       properties:
         url:
           type: string
           format: uri
           description: |
-            Endpoint URL of the MCP server to fetch information from.
-            Required when proxyId is not provided. When proxyId is provided,
-            the URL from the stored proxy configuration is used.
+            Endpoint URL of the MCP server to fetch information from. Mutually exclusive
+            with `proxyId`; exactly one of the two must be provided.
           example: https://mcp.server.com/mcp
         proxyId:
           type: string
           description: |
-            MCP proxy handle (identifier) for refresh operations. When provided,
-            the server fetches URL and auth from the stored proxy configuration.
-            Auth override is not allowed in refetch mode.
+            MCP proxy handle (identifier) for refresh operations. When provided, the server
+            fetches URL and auth from the stored proxy configuration. Mutually exclusive
+            with `url`; exactly one of the two must be provided.
           example: my-mcp-proxy
         auth:
           $ref: '#/components/schemas/UpstreamAuth'
           description: |
-            Authentication configuration for the fetch request.
-            Only allowed when proxyId is not provided (initial creation flow).
+            Authentication configuration for the fetch request. Allowed only alongside
+            `url` (initial creation flow); sending it with `proxyId` is rejected, as the
+            stored auth is used in the refetch flow.
 
     MCPServerInfoFetchResponse:
       type: object
@@ -8439,6 +8449,7 @@ components:
         value:
           type: string
           description: Plaintext secret value — encrypted at rest, never returned in any response
+          writeOnly: true
           example: sk-xxx
         type:
           type: string
@@ -8467,6 +8478,7 @@ components:
         value:
           type: string
           description: New plaintext secret value — re-encrypted at rest
+          writeOnly: true
 
     SecretResponse:
       type: object
