@@ -520,7 +520,7 @@ paths:
       summary: Create a subscription plan
       description: Create a subscription plan that defines rate limits and access tiers for API subscriptions.
       operationId: createSubscriptionPlan
-      x-basicauth-roles: [admin, developer]
+      x-basicauth-roles: [admin]
       tags:
         - Rest API Management
       requestBody:
@@ -558,7 +558,7 @@ paths:
       summary: List subscription plans
       description: List all subscription plans available in the Gateway.
       operationId: listSubscriptionPlans
-      x-basicauth-roles: [admin, developer]
+      x-basicauth-roles: [admin]
       tags:
         - Rest API Management
       responses:
@@ -580,7 +580,7 @@ paths:
       summary: Get a subscription plan by ID
       description: Get the details of a subscription plan by its ID.
       operationId: getSubscriptionPlan
-      x-basicauth-roles: [admin, developer]
+      x-basicauth-roles: [admin]
       tags:
         - Rest API Management
       parameters:
@@ -612,7 +612,7 @@ paths:
       summary: Update a subscription plan
       description: Update an existing subscription plan in the Gateway.
       operationId: updateSubscriptionPlan
-      x-basicauth-roles: [admin, developer]
+      x-basicauth-roles: [admin]
       tags:
         - Rest API Management
       parameters:
@@ -649,7 +649,7 @@ paths:
       summary: Delete a subscription plan
       description: Delete a subscription plan from the Gateway.
       operationId: deleteSubscriptionPlan
-      x-basicauth-roles: [admin, developer]
+      x-basicauth-roles: [admin]
       tags:
         - Rest API Management
       parameters:
@@ -679,7 +679,7 @@ paths:
       summary: Create a subscription
       description: Subscribe an application to a RestAPI in the Gateway.
       operationId: createSubscription
-      x-basicauth-roles: [admin, developer]
+      x-basicauth-roles: [admin]
       tags:
         - Rest API Management
       requestBody:
@@ -717,7 +717,7 @@ paths:
       summary: List subscriptions
       description: List subscriptions in the Gateway, optionally filtered by API, application, or status.
       operationId: listSubscriptions
-      x-basicauth-roles: [admin, developer]
+      x-basicauth-roles: [admin]
       tags:
         - Rest API Management
       parameters:
@@ -757,7 +757,7 @@ paths:
       summary: Get a subscription by ID
       description: Get the details of a subscription by its ID.
       operationId: getSubscription
-      x-basicauth-roles: [admin, developer]
+      x-basicauth-roles: [admin]
       tags:
         - Rest API Management
       parameters:
@@ -789,7 +789,7 @@ paths:
       summary: Update a subscription
       description: Update an existing subscription in the Gateway.
       operationId: updateSubscription
-      x-basicauth-roles: [admin, developer]
+      x-basicauth-roles: [admin]
       tags:
         - Rest API Management
       parameters:
@@ -826,7 +826,7 @@ paths:
       summary: Delete a subscription
       description: Delete a subscription from the Gateway.
       operationId: deleteSubscription
-      x-basicauth-roles: [admin, developer]
+      x-basicauth-roles: [admin]
       tags:
         - Rest API Management
       parameters:
@@ -4242,7 +4242,6 @@ components:
             auth:
               type: api-key
               header: Authorization
-              value: Bearer sk-your-api-key
           accessControl:
             mode: deny_all
             exceptions:
@@ -4358,6 +4357,14 @@ components:
               type: string
             value:
               type: string
+              writeOnly: true
+              description: >
+                Upstream credential. Write-only: accepted on create/update and
+                never returned by the management API on a read, for any role.
+                Supply either a literal value or a secret reference (e.g. a
+                `secret` template expression); either way the field is omitted
+                from management API response bodies. An update that omits it
+                inherits the stored value; set `type: none` to remove auth.
 
     LLMUpstreamAuth:
       type: object
@@ -4371,6 +4378,11 @@ components:
           type: string
         value:
           type: string
+          writeOnly: true
+          description: >
+            Upstream credential. Write-only: accepted on create/update and never
+            returned by the management API on a read, for any role. An update that
+            omits it inherits the stored value; set `type: none` to remove auth.
 
     LLMProxyProvider:
       type: object

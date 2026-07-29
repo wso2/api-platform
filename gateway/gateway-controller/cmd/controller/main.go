@@ -882,18 +882,18 @@ func generateAuthConfig(config *config.Config) commonmodels.AuthConfig {
 		"DELETE /llm-proxies/{id}/api-keys/{apiKeyName}":          {"admin", "consumer"},
 
 		// Root-level subscription endpoints
-		"POST /subscriptions":                    {"admin", "developer"},
-		"GET /subscriptions":                     {"admin", "developer"},
-		"GET /subscriptions/{subscriptionId}":    {"admin", "developer"},
-		"PUT /subscriptions/{subscriptionId}":    {"admin", "developer"},
-		"DELETE /subscriptions/{subscriptionId}": {"admin", "developer"},
+		"POST /subscriptions":                    {"admin"},
+		"GET /subscriptions":                     {"admin"},
+		"GET /subscriptions/{subscriptionId}":    {"admin"},
+		"PUT /subscriptions/{subscriptionId}":    {"admin"},
+		"DELETE /subscriptions/{subscriptionId}": {"admin"},
 
 		// Subscription plan endpoints
-		"POST /subscription-plans":            {"admin", "developer"},
-		"GET /subscription-plans":             {"admin", "developer"},
-		"GET /subscription-plans/{planId}":    {"admin", "developer"},
-		"PUT /subscription-plans/{planId}":    {"admin", "developer"},
-		"DELETE /subscription-plans/{planId}": {"admin", "developer"},
+		"POST /subscription-plans":            {"admin"},
+		"GET /subscription-plans":             {"admin"},
+		"GET /subscription-plans/{planId}":    {"admin"},
+		"PUT /subscription-plans/{planId}":    {"admin"},
+		"DELETE /subscription-plans/{planId}": {"admin"},
 
 		"POST /secrets":        {"admin"},
 		"GET /secrets":         {"admin"},
