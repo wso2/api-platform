@@ -282,20 +282,15 @@ func (s *APIServer) SearchDeployments(w http.ResponseWriter, r *http.Request, ki
 			continue
 		}
 
-		if kind == string(api.MCPProxyConfigurationKindMcp) {
-			mcp, err := rematerializeMCPProxyConfig(s.logger, cfg.UUID, cfg.DisplayName, cfg.SourceConfiguration)
-			if err != nil {
-				httputil.WriteJSON(w, http.StatusInternalServerError, api.ErrorResponse{
-					Status:  "error",
-					Message: "Failed to get stored MCP configuration",
-				})
-				return
-			}
-			items = append(items, buildResourceResponseFromStored(mcp, cfg))
-			continue
+		item, err := buildDeploymentListItem(s.logger, cfg)
+		if err != nil {
+			httputil.WriteJSON(w, http.StatusInternalServerError, api.ErrorResponse{
+				Status:  "error",
+				Message: "Failed to get stored configuration",
+			})
+			return
 		}
-
-		items = append(items, buildResourceResponseFromStored(cfg.SourceConfiguration, cfg))
+		items = append(items, item)
 	}
 
 	// Each kind has its own envelope key to preserve the existing URL contract.

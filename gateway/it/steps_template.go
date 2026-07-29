@@ -46,6 +46,7 @@ func RegisterTemplateSteps(ctx *godog.ScenarioContext, state *TestState, httpSte
 
 	ctx.Step(`^the response body should contain template literal:$`, t.responseBodyShouldContainLiteral)
 	ctx.Step(`^the stored (RestApi|LlmProvider|LlmProxy|Mcp) configuration for "([^"]*)" should contain:$`, t.storedConfigurationShouldContain)
+	ctx.Step(`^the stored (RestApi|LlmProvider|LlmProxy|Mcp) configuration for "([^"]*)" should not contain:$`, t.storedConfigurationShouldNotContain)
 }
 
 // kindTables maps the Gherkin-facing artifact kind to the per-kind storage
@@ -112,6 +113,33 @@ func (t *TemplateSteps) storedConfigurationShouldContain(kind, handle string, li
 	}
 	if !containsLiteralOrJSONEscaped(row, expected) {
 		return fmt.Errorf("stored %s configuration for %q does not contain expected template literal\nexpected substring: %q\nstored row: %s", kind, handle, expected, row)
+	}
+	return nil
+}
+
+// storedConfigurationShouldNotContain asserts a literal is absent from the
+// stored source configuration. Pairs with the positive assertion: proving the
+// unrendered template is persisted says nothing about whether the resolved
+// secret was persisted alongside it.
+func (t *TemplateSteps) storedConfigurationShouldNotContain(kind, handle string, literal *godog.DocString) error {
+	unexpected := strings.TrimSpace(literal.Content)
+	if unexpected == "" {
+		return fmt.Errorf("unexpected literal is empty")
+	}
+	table, ok := kindTables[kind]
+	if !ok {
+		return fmt.Errorf("unknown artifact kind %q (supported: RestApi, LlmProvider, LlmProxy, Mcp)", kind)
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), defaultDBQueryTimeout)
+	defer cancel()
+
+	row, err := GetStoredSourceConfigurationWithRetry(ctx, kind, table, handle)
+	if err != nil {
+		return fmt.Errorf("failed to read stored %s configuration for %q: %w", kind, handle, err)
+	}
+	if containsLiteralOrJSONEscaped(row, unexpected) {
+		return fmt.Errorf("stored %s configuration for %q unexpectedly contains %q", kind, handle, unexpected)
 	}
 	return nil
 }

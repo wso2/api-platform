@@ -468,7 +468,6 @@ func rematerializeLLMProviderConfig(log *slog.Logger, id, displayName string, so
 		log.Error("Failed to marshal stored LLM provider source configuration",
 			slog.String("id", id),
 			slog.String("displayName", displayName),
-			slog.Any("sourceConfiguration", source),
 			slog.Any("error", err))
 		return api.LLMProviderConfiguration{}, fmt.Errorf("marshal LLM provider config: %w", err)
 	}
@@ -477,9 +476,9 @@ func rematerializeLLMProviderConfig(log *slog.Logger, id, displayName string, so
 		log.Error("Failed to unmarshal stored LLM provider configuration",
 			slog.String("id", id),
 			slog.String("displayName", displayName),
-			slog.Any("sourceConfiguration", source),
 			slog.Any("error", err))
 		return api.LLMProviderConfiguration{}, fmt.Errorf("unmarshal LLM provider config: %w", err)
 	}
+	redactLLMProviderCredentials(&prov)
 	return prov, nil
 }
