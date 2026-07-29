@@ -63,7 +63,7 @@ Open the Developer Portal in a browser at `https://localhost:9543/default/views/
 
 ## Seed Sample APIs (optional)
 
-Deploys the sample APIs and MCP servers under `resources/samples/` into the default organisation, entirely through the public REST API:
+Deploys the sample APIs and MCP servers under `resources/samples/` into the default organization, entirely through the public REST API:
 
 ```bash
 ./scripts/seed-samples.sh

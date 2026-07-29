@@ -140,26 +140,44 @@ describe('Organization theming (view theme assets)', () => {
     });
 
     describe('public asset access (no session)', () => {
-        it('serves the image asset to an anonymous caller that supplies orgId', async () => {
+        it('serves the image asset to an anonymous caller', async () => {
             const { id: viewId } = await createView();
             expect((await applyThemeAs('admin', viewId, buildThemeZip())).status).toBe(200);
 
             const res = await client.raw()
-                .get(`${client.API_PREFIX}/views/${viewId}/asset?fileType=image&fileName=brand-mark.png&orgId=${orgUuid}`)
+                .get(`${client.API_PREFIX}/views/${viewId}/asset?fileType=image&fileName=brand-mark.png`)
                 .responseType('blob');
             expect(res.status).toBe(200);
             expect(res.headers['content-type']).toContain('image/png');
             expect(Buffer.compare(res.body, PNG_BYTES)).toBe(0);
         });
 
-        it('falls back to default content (not the custom asset) for an anonymous caller without orgId', async () => {
+        it('ignores orgId rather than resolving it', async () => {
             const { id: viewId } = await createView();
             expect((await applyThemeAs('admin', viewId, buildThemeZip())).status).toBe(200);
 
-            // No orgId + no session → the view-specific asset cannot be resolved, so it
-            // falls through to packaged default content, which has no brand-mark.png → 404.
+            const foreign = await client.raw()
+                .get(`${client.API_PREFIX}/views/${viewId}/asset?fileType=image&fileName=brand-mark.png&orgId=00000000-0000-0000-0000-000000000000`)
+                .responseType('blob');
+            expect(foreign.status).toBe(200);
+            expect(Buffer.compare(foreign.body, PNG_BYTES)).toBe(0);
+
+            const own = await client.raw()
+                .get(`${client.API_PREFIX}/views/${viewId}/asset?fileType=image&fileName=brand-mark.png&orgId=${orgUuid}`)
+                .responseType('blob');
+            expect(own.status).toBe(200);
+            expect(Buffer.compare(own.body, PNG_BYTES)).toBe(0);
+        });
+
+        it('falls back to packaged default content for an asset the view does not have', async () => {
+            const { id: viewId } = await createView();
+            expect((await applyThemeAs('admin', viewId, buildThemeZip())).status).toBe(200);
+
+            // Resolving the organization is not the same as finding the file: a name the
+            // theme never defined falls through to the packaged defaults, which have no
+            // such image either → 404.
             const res = await client.raw()
-                .get(`${client.API_PREFIX}/views/${viewId}/asset?fileType=image&fileName=brand-mark.png`);
+                .get(`${client.API_PREFIX}/views/${viewId}/asset?fileType=image&fileName=no-such-asset.png`);
             expect(res.status).toBe(404);
         });
     });

@@ -110,13 +110,7 @@ async function ensureSchema() {
     logger.info('Database: SQLite schema ensured ✓');
 }
 
-async function onListening() {
-    // Seed before the workers start: both of them scope their claim queries to this
-    // instance's organization, so until it exists there is nothing for them to do and
-    // every tick would just log a lookup failure.
-    await seedDefaultOrg().catch(err =>
-        logger.error('Unexpected error during organization seeding', { error: err.message })
-    );
+function onListening() {
     startBackgroundServices();
     logStartupBanner();
 }
@@ -126,6 +120,14 @@ let server;
 async function startServer() {
     logger.info('Developer Portal starting...');
     await ensureSchema();
+
+    // Seed before binding the listener, not from the 'listening' callback. This
+    // portal serves exactly one organization and cannot do anything without its row:
+    // every scoped lookup would 500 and both background workers scope their claim
+    // queries to it. Seeding here means a failure aborts startup (see the catch on
+    // the startServer() call below) rather than leaving a process that answers
+    // /health 200 while being unable to serve a single page.
+    await seedDefaultOrg();
 
     if (!config.server.https.enabled || config.designMode?.enabled) {
         server = http.createServer(app).listen(PORT, '0.0.0.0', onListening);
@@ -153,7 +155,14 @@ async function startServer() {
     }
 }
 
-startServer();
+startServer().catch((err) => {
+    logger.error('Developer Portal failed to start', {
+        error: err.message,
+        stack: err.stack,
+        operation: 'startServer',
+    });
+    process.exit(1);
+});
 
 // Handle Uncaught Exceptions
 process.on('uncaughtException', (err) => {

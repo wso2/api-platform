@@ -287,6 +287,15 @@ async function authResolver(req, res, next) {
             const platformToken = req.user[constants.ACCESS_TOKEN];
             const claims = platformToken ? decodePlatformJwtClaims(platformToken) : null;
             const orgHandle = req.user[constants.ROLES.ORGANIZATION_CLAIM];
+            // Fail closed on a session with no org claim, exactly as the IDP branch
+            // below does. resolveScopedOrg treats a falsy identifier as "nothing to
+            // check" and returns null, which would leave req.orgId undefined and let
+            // every tenant-scoped query run unscoped rather than be rejected.
+            if (!orgHandle) {
+                const err = new Error('Missing organization claim in session');
+                err.status = 403;
+                return next(err);
+            }
             const orgErr = await resolveScopedOrg(req, orgHandle, 'platform-jwt session');
             if (orgErr) return next(orgErr);
             const userUuid = await resolveUserUuid(req, req.user[constants.USER_ID]);

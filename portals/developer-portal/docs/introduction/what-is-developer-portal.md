@@ -32,7 +32,7 @@ This means you can:
 
 A portal instance serves one **organization**, configured by handle and created on first startup. Within it you can have multiple **views** for different audiences (e.g. internal teams vs. external partners), each showing only the APIs carrying the relevant labels.
 
-Several organizations can share one database, each served by its own portal instance; an instance serves only its own and rejects requests naming any other. Signing in requires an IdP token whose organization claim matches that organization.
+Several organizations can share one database, each served by its own portal instance; an instance serves only its own and rejects requests naming any other. Signing in requires an authenticated token whose organization claim matches that organization — whichever authentication mode is configured.
 
 ## Next steps
 

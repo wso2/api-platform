@@ -66,25 +66,6 @@ This operation requires <strong>Basic Auth</strong> authentication.
 
 > Example responses
 
-> 201 Response
-
-```json
-{
-  "id": "acme",
-  "displayName": "Acme Corporation",
-  "businessOwner": "string",
-  "businessOwnerContact": "string",
-  "businessOwnerEmail": "user@example.com",
-  "idpRefId": "string",
-  "cpRefId": "string",
-  "configuration": {
-    "devportalMode": "DEFAULT"
-  },
-  "createdAt": "2019-08-24T14:15:22Z",
-  "updatedAt": "2019-08-24T14:15:22Z"
-}
-```
-
 > Bad request. Validation and other bad-request errors are returned as a standard error object (field-level details, when present, are carried in its `errors` array); some legacy handlers return a message-only object.
 
 ```json
@@ -101,16 +82,6 @@ This operation requires <strong>Basic Auth</strong> authentication.
 }
 ```
 
-> 404 Response
-
-```json
-{
-  "status": "error",
-  "code": "ORG_NOT_FOUND",
-  "message": "Organization not found."
-}
-```
-
 > 405 Response
 
 ```json
@@ -118,16 +89,6 @@ This operation requires <strong>Basic Auth</strong> authentication.
   "status": "error",
   "code": "METHOD_NOT_ALLOWED",
   "message": "This Developer Portal serves a single organization, which is configured and provisioned at startup. Organizations cannot be created, listed, or deleted through the API."
-}
-```
-
-> 409 Response
-
-```json
-{
-  "status": "error",
-  "code": "CONFLICT",
-  "message": "Conflict"
 }
 ```
 
@@ -155,11 +116,8 @@ This operation requires <strong>Basic Auth</strong> authentication.
 
 |Status|Meaning|Description|Schema|
 |---|---|---|---|
-|201|[Created](https://tools.ietf.org/html/rfc7231#section-6.3.2)|Organization created successfully.|[OrganizationResponse](schemas.md#schemaorganizationresponse)|
 |400|[Bad Request](https://tools.ietf.org/html/rfc7231#section-6.5.1)|Bad request. Validation and other bad-request errors are returned as a standard error object (field-level details, when present, are carried in its `errors` array); some legacy handlers return a message-only object.|Inline|
-|404|[Not Found](https://tools.ietf.org/html/rfc7231#section-6.5.4)|Resource not found.|[ErrorResponse](schemas.md#schemaerrorresponse)|
 |405|[Method Not Allowed](https://tools.ietf.org/html/rfc7231#section-6.5.5)|The operation is not offered by this deployment. Returned by the organization lifecycle operations, which a Developer Portal serving a single organization does not expose — that organization is configured and provisioned at startup.|[ErrorResponse](schemas.md#schemaerrorresponse)|
-|409|[Conflict](https://tools.ietf.org/html/rfc7231#section-6.5.8)|The request conflicts with an existing resource.|[ErrorResponse](schemas.md#schemaerrorresponse)|
 |415|[Unsupported Media Type](https://tools.ietf.org/html/rfc7231#section-6.5.13)|Unsupported request media type.|[ErrorResponse](schemas.md#schemaerrorresponse)|
 |500|[Internal Server Error](https://tools.ietf.org/html/rfc7231#section-6.6.1)|Internal server error.|[ErrorResponse](schemas.md#schemaerrorresponse)|
 
@@ -170,12 +128,6 @@ This operation requires <strong>Basic Auth</strong> authentication.
 |Property|Value|
 |---|---|
 |status|error|
-
-### Response Headers
-
-|Status|Header|Type|Format|Description|
-|---|---|---|---|---|
-|201|Location|string|uri|URL of the created organization.|
 
 ## List organizations (not supported)
 
@@ -205,35 +157,6 @@ This operation requires <strong>Basic Auth</strong> authentication.
 
 > Example responses
 
-> 200 Response
-
-```json
-{
-  "list": [
-    {
-      "id": "acme",
-      "displayName": "Acme Corporation",
-      "businessOwner": "string",
-      "businessOwnerContact": "string",
-      "businessOwnerEmail": "user@example.com",
-      "idpRefId": "string",
-      "cpRefId": "string",
-      "configuration": {
-        "devportalMode": "DEFAULT"
-      },
-      "createdAt": "2019-08-24T14:15:22Z",
-      "updatedAt": "2019-08-24T14:15:22Z"
-    }
-  ],
-  "count": 1,
-  "pagination": {
-    "total": 42,
-    "limit": 20,
-    "offset": 0
-  }
-}
-```
-
 > 405 Response
 
 ```json
@@ -258,41 +181,8 @@ This operation requires <strong>Basic Auth</strong> authentication.
 
 |Status|Meaning|Description|Schema|
 |---|---|---|---|
-|200|[OK](https://tools.ietf.org/html/rfc7231#section-6.3.1)|List of organization DTOs.|Inline|
 |405|[Method Not Allowed](https://tools.ietf.org/html/rfc7231#section-6.5.5)|The operation is not offered by this deployment. Returned by the organization lifecycle operations, which a Developer Portal serving a single organization does not expose — that organization is configured and provisioned at startup.|[ErrorResponse](schemas.md#schemaerrorresponse)|
 |500|[Internal Server Error](https://tools.ietf.org/html/rfc7231#section-6.6.1)|Internal server error.|[ErrorResponse](schemas.md#schemaerrorresponse)|
-
-<h3 id="list-organizations-(not-supported)-responseschema">Response Schema</h3>
-
-Status Code **200**
-
-|Name|Type|Required|Restrictions|Description|
-|---|---|---|---|---|
-|» list|[[OrganizationResponse](schemas.md#schemaorganizationresponse)]|false|none|none|
-|»» id|string|false|none|The organization's handle (unique). Not the internal database uuid.|
-|»» displayName|string|false|none|none|
-|»» businessOwner|string¦null|false|none|none|
-|»» businessOwnerContact|string¦null|false|none|none|
-|»» businessOwnerEmail|string(email)¦null|false|none|none|
-|»» idpRefId|string|false|none|The organization claim value asserted by the configured Identity Provider at SSO login. On every login, the portal matches the authenticated user's org claim against this value to resolve which organization they belong to — it must exactly match the IDP's claim, or login fails for that org's users. Distinct from `cpRefId`, which is unrelated to authentication.|
-|»» cpRefId|string¦null|false|none|Control Plane reference ID. Included in outbound webhook event payloads so subscribers can correlate this organization with its Control Plane (Platform API) counterpart. Not used for authentication or org resolution.|
-|»» configuration|object|false|none|Organization portal configuration. Always includes `devportalMode`; may contain additional free-form keys set by the caller.|
-|»»» devportalMode|string|false|none|Controls the mode of the developer portal.|
-|»» createdAt|string(date-time)¦null|false|none|none|
-|»» updatedAt|string(date-time)¦null|false|none|none|
-|» count|integer|false|none|Number of items returned in this page.|
-|» pagination|[Pagination](schemas.md#schemapagination)|false|none|Standard pagination metadata returned with collection responses.|
-|»» total|integer|true|none|Total number of records matching the query.|
-|»» limit|integer|true|none|Maximum number of records returned in this response.|
-|»» offset|integer|true|none|Number of records skipped before this page.|
-
-#### Enumerated Values
-
-|Property|Value|
-|---|---|
-|devportalMode|DEFAULT|
-|devportalMode|MCP_SERVERS_ONLY|
-|devportalMode|APIS_ONLY|
 
 ## Update an organization
 
@@ -402,7 +292,7 @@ This operation requires <strong>Basic Auth</strong> authentication.
 {
   "status": "error",
   "code": "FORBIDDEN",
-  "message": "Write operations are disabled in read-only mode."
+  "message": "Forbidden"
 }
 ```
 
@@ -442,7 +332,7 @@ This operation requires <strong>Basic Auth</strong> authentication.
 |---|---|---|---|
 |200|[OK](https://tools.ietf.org/html/rfc7231#section-6.3.1)|Organization DTO returned by create, update, and lookup operations.|[OrganizationResponse](schemas.md#schemaorganizationresponse)|
 |400|[Bad Request](https://tools.ietf.org/html/rfc7231#section-6.5.1)|Bad request. Validation and other bad-request errors are returned as a standard error object (field-level details, when present, are carried in its `errors` array); some legacy handlers return a message-only object.|Inline|
-|403|[Forbidden](https://tools.ietf.org/html/rfc7231#section-6.5.3)|Request is forbidden for the current runtime mode or caller permissions.|[ErrorResponse](schemas.md#schemaerrorresponse)|
+|403|[Forbidden](https://tools.ietf.org/html/rfc7231#section-6.5.3)|Request is forbidden — because the caller lacks the required permission, because the current runtime mode disallows the operation (read-only mode), or because an organization was named that is not the single one this instance serves. In that last case an organization that does not exist is answered identically to one belonging to someone else, so the response cannot be used to discover what a shared database holds.|[ErrorResponse](schemas.md#schemaerrorresponse)|
 |404|[Not Found](https://tools.ietf.org/html/rfc7231#section-6.5.4)|Resource not found.|[ErrorResponse](schemas.md#schemaerrorresponse)|
 |409|[Conflict](https://tools.ietf.org/html/rfc7231#section-6.5.8)|The request conflicts with an existing resource.|[ErrorResponse](schemas.md#schemaerrorresponse)|
 |500|[Internal Server Error](https://tools.ietf.org/html/rfc7231#section-6.6.1)|Internal server error.|[ErrorResponse](schemas.md#schemaerrorresponse)|
@@ -514,17 +404,7 @@ This operation requires <strong>Basic Auth</strong> authentication.
 {
   "status": "error",
   "code": "FORBIDDEN",
-  "message": "Write operations are disabled in read-only mode."
-}
-```
-
-> 404 Response
-
-```json
-{
-  "status": "error",
-  "code": "ORG_NOT_FOUND",
-  "message": "Organization not found."
+  "message": "Forbidden"
 }
 ```
 
@@ -543,8 +423,7 @@ This operation requires <strong>Basic Auth</strong> authentication.
 |Status|Meaning|Description|Schema|
 |---|---|---|---|
 |200|[OK](https://tools.ietf.org/html/rfc7231#section-6.3.1)|Organization DTO returned by create, update, and lookup operations.|[OrganizationResponse](schemas.md#schemaorganizationresponse)|
-|403|[Forbidden](https://tools.ietf.org/html/rfc7231#section-6.5.3)|Request is forbidden for the current runtime mode or caller permissions.|[ErrorResponse](schemas.md#schemaerrorresponse)|
-|404|[Not Found](https://tools.ietf.org/html/rfc7231#section-6.5.4)|Resource not found.|[ErrorResponse](schemas.md#schemaerrorresponse)|
+|403|[Forbidden](https://tools.ietf.org/html/rfc7231#section-6.5.3)|Request is forbidden — because the caller lacks the required permission, because the current runtime mode disallows the operation (read-only mode), or because an organization was named that is not the single one this instance serves. In that last case an organization that does not exist is answered identically to one belonging to someone else, so the response cannot be used to discover what a shared database holds.|[ErrorResponse](schemas.md#schemaerrorresponse)|
 |500|[Internal Server Error](https://tools.ietf.org/html/rfc7231#section-6.6.1)|Internal server error.|[ErrorResponse](schemas.md#schemaerrorresponse)|
 
 ## Delete an organization (not supported)
@@ -597,16 +476,6 @@ This operation requires <strong>Basic Auth</strong> authentication.
 }
 ```
 
-> 404 Response
-
-```json
-{
-  "status": "error",
-  "code": "ORG_NOT_FOUND",
-  "message": "Organization not found."
-}
-```
-
 > 405 Response
 
 ```json
@@ -631,9 +500,7 @@ This operation requires <strong>Basic Auth</strong> authentication.
 
 |Status|Meaning|Description|Schema|
 |---|---|---|---|
-|204|[No Content](https://tools.ietf.org/html/rfc7231#section-6.3.5)|Organization deleted successfully.|None|
 |400|[Bad Request](https://tools.ietf.org/html/rfc7231#section-6.5.1)|Bad request. Validation and other bad-request errors are returned as a standard error object (field-level details, when present, are carried in its `errors` array); some legacy handlers return a message-only object.|Inline|
-|404|[Not Found](https://tools.ietf.org/html/rfc7231#section-6.5.4)|Resource not found.|[ErrorResponse](schemas.md#schemaerrorresponse)|
 |405|[Method Not Allowed](https://tools.ietf.org/html/rfc7231#section-6.5.5)|The operation is not offered by this deployment. Returned by the organization lifecycle operations, which a Developer Portal serving a single organization does not expose — that organization is configured and provisioned at startup.|[ErrorResponse](schemas.md#schemaerrorresponse)|
 |500|[Internal Server Error](https://tools.ietf.org/html/rfc7231#section-6.6.1)|Internal server error.|[ErrorResponse](schemas.md#schemaerrorresponse)|
 

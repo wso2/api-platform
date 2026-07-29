@@ -144,7 +144,7 @@ Defined in `ui/cypress/support/`:
 ```js
 describe('Developer Portal — API Listing', () => {
     it('GET /devportal/organizations/{handle} returns the configured organization', () => {
-        cy.apiRequest('GET', `/devportal/organizations/${Cypress.env('ORG_HANDLE')}`).then((resp) => {
+        cy.apiRequest('GET', `/api/v0.9/organizations/${Cypress.env('ORG_HANDLE')}`).then((resp) => {
             expect(resp.status).to.eq(200);
             expect(resp.body.id).to.eq(Cypress.env('ORG_HANDLE'));
         });

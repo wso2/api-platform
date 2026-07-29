@@ -99,7 +99,7 @@ func waitDevportalHealthy() error {
 	var lastStatus int
 	var lastErr error
 	for time.Now().Before(deadline) {
-		st, _, err := dpCall(http.MethodGet, "/organizations", nil)
+		st, _, err := dpCall(http.MethodGet, "/organizations/"+devportalOrgHandle, nil)
 		if err == nil && st == http.StatusOK {
 			return nil
 		}

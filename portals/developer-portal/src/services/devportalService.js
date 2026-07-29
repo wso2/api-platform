@@ -82,22 +82,21 @@ const getOrganizationDetails = async (orgId) => {
 const getOrgContent = async (req, res) => {
     try {
         if (req.query.fileType && req.query.fileName) {
-            // The asset endpoint is public (e.g. the login page fetches CSS before a
-            // session exists). Without a resolved org we can't look up a view-specific
-            // asset — and passing an undefined org into the DAO throws — so only attempt
-            // the lookup when we have an org, and treat any miss/error as "fall back to
-            // the packaged default content" rather than a hard 404.
-            // Session org always wins. For public style/image assets (e.g. the pre-auth
-            // login page, which has no session) fall back to this instance's own
-            // organization so the view's theme still resolves.
+            // This endpoint is public — the login page fetches its CSS before a session
+            // exists. The session org wins when there is one; otherwise style/image
+            // assets fall back to this instance's own organization so the view's theme
+            // still resolves.
             //
-            // The fallback is the *configured* organization, never the caller-supplied
-            // ?orgId. The database is shared across organizations, so on an endpoint
-            // with no credential that query parameter would be an unauthenticated
-            // selector for any tenant's branding. It is still accepted (util.js's
-            // style-URL rewrite appends it, and the spec declares it) and ignored.
-            // Resolution failure degrades to the packaged default content below,
-            // matching how a missing asset is already handled.
+            // That fallback is the *configured* organization, never the caller-supplied
+            // ?orgId. The database is shared across organizations, so on an endpoint with
+            // no credential that query parameter would be an unauthenticated selector for
+            // any tenant's branding. It is still accepted (util.js's style-URL rewrite
+            // appends it, and the spec declares it) and ignored.
+            //
+            // Anything short of a resolved org plus a matching row — no org, a lookup
+            // fault, no such asset — degrades to the packaged default content below
+            // rather than a hard 404. The org is also guarded because passing an
+            // undefined one into the DAO throws.
             let assetOrgId = req.orgId;
             if (!assetOrgId && DEFAULT_CONTENT_DIRS[req.query.fileType]) {
                 assetOrgId = await orgContext.getOrgUuid().catch(() => null);

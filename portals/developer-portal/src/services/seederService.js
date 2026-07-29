@@ -58,11 +58,15 @@ async function seedDefaultOrg() {
         orgId = existing.uuid;
     } catch (notFound) {
         if (!(notFound instanceof NotFoundError)) {
+            // Rethrow rather than continue: without this row the portal has no
+            // organization to scope anything to, so every request would 500 while the
+            // process still reported itself healthy. startServer awaits this before
+            // binding the listener, so the failure stops startup instead.
             logger.error('Failed to look up default organization', {
                 error: notFound.message,
                 operation: 'seedDefaultOrg',
             });
-            return;
+            throw notFound;
         }
         try {
             const organization = await orgDao.create(payload);
@@ -73,7 +77,7 @@ async function seedDefaultOrg() {
                 stack: createError.stack,
                 operation: 'seedDefaultOrg',
             });
-            return;
+            throw createError;
         }
     }
 

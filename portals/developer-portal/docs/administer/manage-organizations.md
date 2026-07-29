@@ -164,7 +164,7 @@ For scripts and CLI tools, get a Bearer token directly from the Platform API and
 TOKEN=$(curl -sk -X POST "https://localhost:9243/api/portal/v0.9/auth/login" \
   -d "username=<admin-username>&password=<admin-password>" | jq -r .token)
 
-curl -sk -H "Authorization: Bearer $TOKEN" https://localhost:9543/api/v0.9/organizations
+curl -sk -H "Authorization: Bearer $TOKEN" https://localhost:9543/api/v0.9/organizations/acme
 ```
 
 The token is verified locally by the Developer Portal against the Platform API's RS256 public key (`auth.local.public_key_path`), with no extra call to the Platform API per request.

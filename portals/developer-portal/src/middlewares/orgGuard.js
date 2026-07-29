@@ -48,8 +48,13 @@ const { NotFoundError } = require('../utils/errors/customErrors');
  * name or idp_ref_id, but a single-organization portal has exactly one correct URL
  * for itself, and matching the handle alone keeps this off the database entirely
  * for the rejection case.
+ *
+ * @param {(res, err) => void} [onReject] how to answer a rejection. Omitted, the
+ *   error goes to `next()` and app.js renders an HTML error page — right for the
+ *   page routers, wrong for the JSON endpoints (MCP registry, try-it proxy) whose
+ *   callers are programs. Those pass a responder that emits their own error shape.
  */
-async function pinOrgParam(req, res, next, value) {
+async function pinOrgParam(req, res, next, value, onReject) {
     // Design mode renders from disk and has no organization to pin — config
     // validation skips the handle check there, so there is nothing to compare to.
     if (config.designMode?.enabled) return next();
@@ -61,7 +66,7 @@ async function pinOrgParam(req, res, next, value) {
         });
         const err = new Error('Not Found');
         err.status = 404;
-        return next(err);
+        return onReject ? onReject(res, err) : next(err);
     }
 
     try {
@@ -79,7 +84,7 @@ async function pinOrgParam(req, res, next, value) {
         });
         const err = new Error('Internal Server Error');
         err.status = status;
-        return next(err);
+        return onReject ? onReject(res, err) : next(err);
     }
 
     return next();
@@ -91,9 +96,10 @@ async function pinOrgParam(req, res, next, value) {
  * @param {import('express').Router} router
  * @param {string} [paramName] the router's own org param — 'orgName' for the page
  *   routers, which all spell it that way.
+ * @param {(res, err) => void} [onReject] see pinOrgParam.
  */
-function attachOrgGuard(router, paramName = 'orgName') {
-    router.param(paramName, pinOrgParam);
+function attachOrgGuard(router, paramName = 'orgName', onReject) {
+    router.param(paramName, (req, res, next, value) => pinOrgParam(req, res, next, value, onReject));
     return router;
 }
 
@@ -105,9 +111,10 @@ function attachOrgGuard(router, paramName = 'orgName') {
  * them; this reads the same mergeParams-supplied value the service handlers use.
  *
  * @param {string} [paramName]
+ * @param {(res, err) => void} [onReject] see pinOrgParam.
  */
-function orgGuardMiddleware(paramName = 'orgHandle') {
-    return (req, res, next) => pinOrgParam(req, res, next, req.params[paramName]);
+function orgGuardMiddleware(paramName = 'orgHandle', onReject) {
+    return (req, res, next) => pinOrgParam(req, res, next, req.params[paramName], onReject);
 }
 
 module.exports = { attachOrgGuard, orgGuardMiddleware, pinOrgParam };

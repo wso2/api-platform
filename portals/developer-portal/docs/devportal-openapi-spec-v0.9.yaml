@@ -65,26 +65,10 @@ paths:
       requestBody:
         $ref: "#/components/requestBodies/OrganizationCreateBody"
       responses:
-        "201":
-          description: Organization created successfully.
-          headers:
-            Location:
-              description: URL of the created organization.
-              schema:
-                type: string
-                format: uri
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/OrganizationResponse"
         "400":
           $ref: "#/components/responses/BadRequest"
-        "404":
-          $ref: "#/components/responses/NotFound"
         "405":
           $ref: "#/components/responses/MethodNotAllowed"
-        "409":
-          $ref: "#/components/responses/Conflict"
         "415":
           $ref: "#/components/responses/UnsupportedMediaType"
         "500":
@@ -103,8 +87,6 @@ paths:
         operation is retained for forward compatibility.
       operationId: getOrganizations
       responses:
-        "200":
-          $ref: "#/components/responses/OrganizationListResponse"
         "405":
           $ref: "#/components/responses/MethodNotAllowed"
         "500":
@@ -160,8 +142,6 @@ paths:
           $ref: "#/components/responses/OrganizationResponse"
         "403":
           $ref: "#/components/responses/Forbidden"
-        "404":
-          $ref: "#/components/responses/NotFound"
         "500":
           $ref: "#/components/responses/InternalServerError"
       security:
@@ -178,12 +158,8 @@ paths:
         forward compatibility.
       operationId: deleteOrganization
       responses:
-        "204":
-          description: Organization deleted successfully.
         "400":
           $ref: "#/components/responses/BadRequest"
-        "404":
-          $ref: "#/components/responses/NotFound"
         "405":
           $ref: "#/components/responses/MethodNotAllowed"
         "500":
@@ -210,6 +186,7 @@ paths:
         - name: orgId
           in: query
           required: false
+          deprecated: true
           schema:
             type: string
           description: >-
@@ -639,6 +616,7 @@ paths:
         - name: orgId
           in: query
           required: false
+          deprecated: true
           schema:
             type: string
           description: >-
@@ -3578,7 +3556,12 @@ components:
           schema:
             type: string
     Forbidden:
-      description: Request is forbidden for the current runtime mode or caller permissions.
+      description: >-
+        Request is forbidden — because the caller lacks the required permission, because the
+        current runtime mode disallows the operation (read-only mode), or because an organization
+        was named that is not the single one this instance serves. In that last case an
+        organization that does not exist is answered identically to one belonging to someone else,
+        so the response cannot be used to discover what a shared database holds.
       content:
         application/json:
           schema:
@@ -3586,7 +3569,7 @@ components:
           example:
             status: error
             code: FORBIDDEN
-            message: Write operations are disabled in read-only mode.
+            message: Forbidden
     ApiMetadataCreateResponse:
       description: Created API metadata payload returned by the service.
       headers:
