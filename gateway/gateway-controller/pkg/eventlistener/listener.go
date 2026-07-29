@@ -68,6 +68,7 @@ type EventListener struct {
 	logger              *slog.Logger
 	systemConfig        *config.Config
 	policyDefinitions   map[string]models.PolicyDefinition
+	policyValidator     *config.PolicyValidator
 	secretResolver      funcs.SecretResolver
 	webhookSecretHandler WebhookSecretEventHandler
 
@@ -123,6 +124,7 @@ func NewEventListener(
 		logger:              logger,
 		systemConfig:        systemConfig,
 		policyDefinitions:   policyDefinitions,
+		policyValidator:     config.NewPolicyValidator(policyDefinitions),
 		secretResolver:      secretResolver,
 		ctx:                 ctx,
 		cancel:              cancel,

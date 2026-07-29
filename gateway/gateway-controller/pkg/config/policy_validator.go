@@ -21,6 +21,8 @@ package config
 import (
 	"fmt"
 	"regexp"
+	"math"
+	"strconv"
 	"strings"
 
 	versionutil "github.com/wso2/api-platform/common/version"
@@ -155,12 +157,14 @@ func (pv *PolicyValidator) validatePolicy(policy api.Policy, fieldPath string) [
 		return errors
 	}
 
-	// Validate policy parameters against JSON schema if schema is defined
+	// Coerce then validate policy parameters against the declared JSON schema.
 	if policyDef.Parameters != nil {
-		// If params is nil, validate against an empty object to enforce required fields
 		params := make(map[string]interface{})
 		if policy.Params != nil {
 			params = *policy.Params
+			// Coerce template-rendered strings to their schema-declared types using the
+			// already-resolved policyDef — avoids a second resolvePolicyVersion call.
+			coerceParamsBySchema(params, *policyDef.Parameters)
 		}
 		schemaErrs := pv.validatePolicyParams(params, *policyDef.Parameters, fieldPath+".params")
 		errors = append(errors, schemaErrs...)
@@ -272,6 +276,163 @@ func ResolvePolicyVersion(definitions map[string]models.PolicyDefinition, latest
 
 	// Unsupported version format
 	return "", fmt.Errorf("invalid version format '%s' for policy '%s'; expected major-only version (e.g., v1)", version, name)
+}
+
+// CoerceRestAPIPolicies coerces policy param strings to their schema-declared types for
+// a RestAPI config. Must be called after template rendering (e.g. in the event listener)
+// so the in-memory store and xDS snapshot receive typed values, not rendered strings.
+func (pv *PolicyValidator) CoerceRestAPIPolicies(config *api.RestAPI) {
+	if config.Spec.Policies != nil {
+		pv.coercePolicySlice(*config.Spec.Policies)
+	}
+	for i := range config.Spec.Operations {
+		if config.Spec.Operations[i].Policies != nil {
+			pv.coercePolicySlice(*config.Spec.Operations[i].Policies)
+		}
+	}
+}
+
+// CoerceMCPProxyPolicies coerces policy param strings to their schema-declared types for
+// an MCPProxyConfiguration. Must be called after template rendering in the event listener.
+func (pv *PolicyValidator) CoerceMCPProxyPolicies(config *api.MCPProxyConfiguration) {
+	if config.Spec.Policies != nil {
+		pv.coercePolicySlice(*config.Spec.Policies)
+	}
+}
+
+// CoerceLLMPolicies coerces policy param strings to their schema-declared types for
+// any LLM config (provider or proxy). Pass the three policy collections from the spec.
+func (pv *PolicyValidator) CoerceLLMPolicies(globalPolicies *[]api.Policy, operationPolicies *[]api.OperationPolicy, legacyPolicies *[]api.LLMPolicy) {
+	pv.coerceLLMPolicyRefs(globalPolicies, operationPolicies, legacyPolicies)
+}
+
+// coercePolicySlice calls coerceSinglePolicyParams for every policy in the slice.
+func (pv *PolicyValidator) coercePolicySlice(policies []api.Policy) {
+	for i := range policies {
+		if policies[i].Params == nil {
+			continue
+		}
+		pv.coerceSinglePolicyParams(policies[i].Name, policies[i].Version, *policies[i].Params)
+	}
+}
+
+// coerceLLMPolicyRefs coerces the three policy collections shared by LLM providers and
+// proxies: global (api-level), operation-level, and the deprecated legacy list.
+func (pv *PolicyValidator) coerceLLMPolicyRefs(globalPolicies *[]api.Policy, operationPolicies *[]api.OperationPolicy, legacyPolicies *[]api.LLMPolicy) {
+	if globalPolicies != nil {
+		pv.coercePolicySlice(*globalPolicies)
+	}
+	if operationPolicies != nil {
+		for i := range *operationPolicies {
+			op := &(*operationPolicies)[i]
+			for j := range op.Paths {
+				pv.coerceSinglePolicyParams(op.Name, op.Version, op.Paths[j].Params)
+			}
+		}
+	}
+	if legacyPolicies != nil {
+		for i := range *legacyPolicies {
+			lp := &(*legacyPolicies)[i]
+			for j := range lp.Paths {
+				pv.coerceSinglePolicyParams(lp.Name, lp.Version, lp.Paths[j].Params)
+			}
+		}
+	}
+}
+
+// coerceSinglePolicyParams is the shared core for all per-policy-collection coercers.
+// It resolves the policy version, looks up the definition, and calls coerceParamsBySchema.
+func (pv *PolicyValidator) coerceSinglePolicyParams(name, version string, params map[string]interface{}) {
+	if len(params) == 0 {
+		return
+	}
+	resolvedVersion, err := pv.resolvePolicyVersion(name, version)
+	if err != nil {
+		return
+	}
+	key := name + "|" + resolvedVersion
+	policyDef, exists := pv.policyDefinitions[key]
+	if !exists || policyDef.Parameters == nil {
+		return
+	}
+	coerceParamsBySchema(params, *policyDef.Parameters)
+}
+
+// coerceParamsBySchema mutates params in-place, replacing string values with their
+// parsed equivalents when the JSON-schema property for that key declares a numeric or
+// boolean type. It walks the schema recursively through "properties" (nested objects)
+// and "items" (array elements) so that params nested inside arrays of objects — for
+// example, advanced-ratelimit's limit nested under quotas[].limits[] — are coerced too.
+//
+// Coercion table:
+//   - "integer" or "number" → strconv.ParseFloat → float64 (gojsonschema accepts
+//     float64 for both; it additionally verifies no fractional part for integer).
+//   - "boolean"             → "true"/"false" literal → bool.
+//   - "object"              → recurse into the nested property map.
+//   - "array"               → iterate over elements, recursing for object items or
+//     coercing each scalar item.
+//   - anything else         → left unchanged.
+func coerceParamsBySchema(params map[string]interface{}, schema map[string]interface{}) {
+	properties, ok := schema["properties"].(map[string]interface{})
+	if !ok {
+		return
+	}
+	for key, val := range params {
+		propSchema, ok := properties[key].(map[string]interface{})
+		if !ok {
+			continue
+		}
+		expectedType, _ := propSchema["type"].(string)
+		switch expectedType {
+		case "object":
+			if nested, ok := val.(map[string]interface{}); ok {
+				coerceParamsBySchema(nested, propSchema)
+			}
+		case "array":
+			items, hasItems := propSchema["items"].(map[string]interface{})
+			arr, isSlice := val.([]interface{})
+			if !hasItems || !isSlice {
+				continue
+			}
+			itemType, _ := items["type"].(string)
+			for i, item := range arr {
+				if itemType == "object" {
+					if itemMap, ok := item.(map[string]interface{}); ok {
+						coerceParamsBySchema(itemMap, items)
+					}
+				} else {
+					arr[i] = coerceScalarByType(item, itemType)
+				}
+			}
+		default:
+			params[key] = coerceScalarByType(val, expectedType)
+		}
+	}
+}
+
+// coerceScalarByType converts val to the type declared by expectedType when val is a
+// string. Non-string values and unrecognised types are returned unchanged.
+func coerceScalarByType(val interface{}, expectedType string) interface{} {
+	s, isString := val.(string)
+	if !isString {
+		return val
+	}
+	switch expectedType {
+	case "integer", "number":
+		if f, err := strconv.ParseFloat(s, 64); err == nil && !math.IsNaN(f) && !math.IsInf(f, 0) {
+			return f
+		}
+	case "boolean":
+		// Accept only JSON-literal "true"/"false" — same semantics as json.Unmarshal,
+		// but avoids a []byte allocation.
+		if s == "true" {
+			return true
+		}
+		if s == "false" {
+			return false
+		}
+	}
+	return val
 }
 
 // validatePolicyParams validates policy parameters against a JSON schema

@@ -45,6 +45,7 @@ import OpenAILogo from '../../../../assets/brands/openAI.png';
 import { FormattedMessage } from 'react-intl';
 import {
   resolveTemplateDisplayName,
+  resolveTemplateLogo,
   truncateProviderDisplayName,
 } from '../../../../utils/providerTemplateDisplay';
 import { useProviderTemplates } from '../../../../contexts/llmProvider/providerTemplate';
@@ -325,7 +326,9 @@ export default function ServiceProvidersSummaryCard({
               const providerDisplayName = truncateProviderDisplayName(
                 provider.displayName
               );
-              const templateLogo = templateLogoMap[templateKey];
+              const templateLogo =
+                resolveTemplateLogo(provider.template, templatesResponse.list) ??
+                templateLogoMap[templateKey];
               const hasTemplateLogo = Boolean(templateLogo);
               const descriptionText = provider.description?.trim() || '';
 

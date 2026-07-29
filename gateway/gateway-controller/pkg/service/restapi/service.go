@@ -187,16 +187,21 @@ func (s *RestAPIService) Create(params CreateParams) (*CreateResult, error) {
 		// Trigger bottom-up sync immediately if connected and control plane type is on-prem
 		if s.controlPlaneClient != nil && s.controlPlaneClient.IsConnected() && s.controlPlaneClient.IsOnPrem() &&
 			s.systemConfig.Controller.ControlPlane.DeploymentSyncEnabled {
-			go func() {
+			s.controlPlaneClient.SubmitAPIMSync(func() {
 				if err := s.controlPlaneClient.SyncArtifactsToOnPremAPIM(s.controlPlaneClient.GetAPIMConfig()); err != nil {
 					log.Error("Failed to sync API to on-prem APIM", slog.Any("error", err))
 				}
-			}()
+			})
 		}
 
 		// Push to control plane asynchronously if connected
-		if s.controlPlaneClient != nil && s.controlPlaneClient.IsConnected() && s.systemConfig.Controller.ControlPlane.DeploymentSyncEnabled {
-			go s.waitForDeploymentAndPush(result.StoredConfig.UUID, params.CorrelationID, result.StoredConfig.DeployedAt, log)
+		if s.controlPlaneClient != nil && s.controlPlaneClient.IsConnected() && !s.controlPlaneClient.IsOnPrem() &&
+			s.systemConfig.Controller.ControlPlane.DeploymentSyncEnabled {
+			cfgID := result.StoredConfig.UUID
+			deployedAt := result.StoredConfig.DeployedAt
+			s.controlPlaneClient.SubmitArtifactPush(func() {
+				s.waitForDeploymentAndPush(cfgID, params.CorrelationID, deployedAt, log)
+			})
 		}
 	}
 
@@ -365,17 +370,22 @@ func (s *RestAPIService) Update(params UpdateParams) (*UpdateResult, error) {
 	// Trigger bottom-up sync if enabled and connected
 	if existing.Origin == models.OriginGatewayAPI && s.controlPlaneClient != nil && s.controlPlaneClient.IsConnected() &&
 		s.controlPlaneClient.IsOnPrem() && s.systemConfig.Controller.ControlPlane.DeploymentSyncEnabled {
-		go func() {
+		s.controlPlaneClient.SubmitAPIMSync(func() {
 			if err := s.controlPlaneClient.SyncArtifactsToOnPremAPIM(s.controlPlaneClient.GetAPIMConfig()); err != nil {
 				log.Error("Failed to sync API to on-prem APIM", slog.Any("error", err))
 			}
-		}()
+		})
 	}
 
 	// Push to control plane asynchronously if connected
 	if existing.Origin == models.OriginGatewayAPI && s.controlPlaneClient != nil &&
-		s.controlPlaneClient.IsConnected() && s.systemConfig.Controller.ControlPlane.DeploymentSyncEnabled {
-		go s.waitForDeploymentAndPush(existing.UUID, params.CorrelationID, existing.DeployedAt, log)
+		s.controlPlaneClient.IsConnected() && !s.controlPlaneClient.IsOnPrem() &&
+		s.systemConfig.Controller.ControlPlane.DeploymentSyncEnabled {
+		cfgID := existing.UUID
+		deployedAt := existing.DeployedAt
+		s.controlPlaneClient.SubmitArtifactPush(func() {
+			s.waitForDeploymentAndPush(cfgID, params.CorrelationID, deployedAt, log)
+		})
 	}
 
 	log.Info("API configuration updated",
@@ -470,12 +480,15 @@ func (s *RestAPIService) undeployFromAPIMBeforeDelete(cfg *models.StoredConfig, 
 		return
 	}
 
-	if err := s.controlPlaneClient.SyncArtifactsToOnPremAPIM(apimCfg); err != nil {
-		log.Error("Failed to undeploy API from on-prem APIM before deletion",
-			slog.String("uuid", cfg.UUID),
-			slog.String("handle", cfg.Handle),
-			slog.Any("error", err))
-	}
+	// Run on the APIM-sync pool but block until done: this serializes the undeploy with other pooled APIM syncs
+	s.controlPlaneClient.SubmitAPIMSyncAndWait(func() {
+		if err := s.controlPlaneClient.SyncArtifactsToOnPremAPIM(apimCfg); err != nil {
+			log.Error("Failed to undeploy API from on-prem APIM before deletion",
+				slog.String("uuid", cfg.UUID),
+				slog.String("handle", cfg.Handle),
+				slog.Any("error", err))
+		}
+	})
 }
 
 // updatePolicyForConfig upserts the runtime config for an API into the policy engine.

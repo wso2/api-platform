@@ -54,6 +54,7 @@ import { useLLMProvider } from '../../../../contexts/llmProvider';
 import useAIWorkspaceSnackbar from '../../../../hooks/aiWorkspaceSnackbar';
 import type { UserAPIKey } from '../../../../utils/types';
 import { logger } from '../../../../utils/logger';
+import { getErrorMessage } from '../../../../utils/apiError';
 import {
   DisabledActionTooltip,
   GATEWAY_MANAGED_ARTIFACT_TOOLTIP,
@@ -248,7 +249,9 @@ export default function ServiceProviderDeploymentsCard({
       onApiKeyCreated?.();
     } catch (error) {
       logger.error('Failed to generate API key:', error);
-      setKeyError('Failed to generate API key. Please try again.');
+      setKeyError(
+        getErrorMessage(error, 'Failed to generate API key. Please try again.')
+      );
     } finally {
       setGeneratingKey(false);
     }

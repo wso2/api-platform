@@ -28,6 +28,7 @@ import (
 	"github.com/wso2/api-platform/platform-api/internal/database"
 	"github.com/wso2/api-platform/platform-api/internal/model"
 )
+var ErrAPIKeyNameConflict = errors.New("api key name already exists")
 
 // APIKeyRepo implements APIKeyRepository
 type APIKeyRepo struct {
@@ -54,7 +55,15 @@ func (r *APIKeyRepo) Create(key *model.APIKey) error {
 		key.Status, key.CreatedAt, key.CreatedBy, key.UpdatedAt, key.UpdatedBy, key.ExpiresAt,
 		key.Issuer, key.AllowedTargets,
 	)
-	return err
+	if err != nil {
+		if r.db.IsDuplicateKeyError(err) {
+			if existing, lookupErr := r.GetByArtifactAndName(key.ArtifactUUID, key.Name); lookupErr == nil && existing != nil {
+				return ErrAPIKeyNameConflict
+			}
+		}
+		return err
+	}
+	return nil
 }
 
 // Update modifies an existing API key record identified by (artifact_uuid, name)

@@ -62,6 +62,9 @@ func stubClient(syncer secretSyncer) *Client {
 	return &Client{
 		logger:       slog.Default(),
 		secretSyncer: syncer,
+		// state must be non-nil so isOnPrem()/GetGatewayPath() can read the
+		// (empty) gateway path without a nil deref. Empty path => not on-prem.
+		state: &ConnectionState{},
 	}
 }
 

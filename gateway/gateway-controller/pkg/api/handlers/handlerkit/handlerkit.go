@@ -114,6 +114,9 @@ type DeploymentPusher struct {
 //
 // minDeployedAt is the DeployedAt of the deployment this push was triggered for.
 func (p *DeploymentPusher) WaitForDeploymentAndPush(configID string, correlationID string, minDeployedAt *time.Time, log *slog.Logger) {
+	if p.ControlPlaneClient != nil && p.ControlPlaneClient.IsOnPrem() {
+		return
+	}
 	if correlationID != "" {
 		log = log.With(slog.String("correlation_id", correlationID))
 	}
@@ -171,15 +174,17 @@ func (p *DeploymentPusher) PushArtifactUndeploy(cfg *models.StoredConfig, log *s
 	if cfg == nil || cfg.Origin != models.OriginGatewayAPI {
 		return
 	}
-	if p.ControlPlaneClient != nil && p.ControlPlaneClient.IsConnected() && p.SystemConfig.Controller.ControlPlane.DeploymentSyncEnabled {
+	if p.ControlPlaneClient != nil && p.ControlPlaneClient.IsConnected() && !p.ControlPlaneClient.IsOnPrem() &&
+		p.SystemConfig.Controller.ControlPlane.DeploymentSyncEnabled {
 		undeploy := *cfg
 		undeploy.DesiredState = models.StateUndeployed
-		go func(uc models.StoredConfig) {
+		p.ControlPlaneClient.SubmitArtifactPush(func() {
+			uc := undeploy
 			if err := p.ControlPlaneClient.PushArtifact(uc.UUID, &uc, uc.DeploymentID); err != nil {
 				log.Error("Failed to push artifact undeploy to control plane",
 					slog.String("artifact_id", uc.UUID), slog.Any("error", err))
 			}
-		}(undeploy)
+		})
 	}
 }
 

@@ -2,7 +2,7 @@
 
 **Version:** 1.0
 **Date:** 2025-11-17
-**Target Envoy Version:** v1.36.2
+**Target Envoy Version:** v1.38.3
 **Implementation Language:** Go
 
 ---
@@ -24,7 +24,7 @@ The Envoy Policy Engine is an external processor (ext_proc) service for Envoy Pr
 
 ```mermaid
 graph TB
-    subgraph Envoy["Envoy Proxy (v1.36.2, port 8000)"]
+    subgraph Envoy["Envoy Proxy (v1.38.3, port 8000)"]
         ExtProc["ext_proc Filter<br/>Port: 9001<br/>Sends: metadata key +<br/>request/response data"]
     end
 
@@ -67,7 +67,7 @@ graph TB
 ```mermaid
 graph TB
     subgraph DockerCompose["Docker Compose Environment"]
-        subgraph EnvoyContainer["Envoy Container<br/>(envoyproxy/envoy:v1.36.2)"]
+        subgraph EnvoyContainer["Envoy Container<br/>(envoyproxy/envoy:v1.38.3)"]
             EnvoyProxy["Envoy Proxy<br/>:8000 (HTTP)<br/>:9000 (Admin)"]
         end
 
@@ -2583,7 +2583,7 @@ logging:
 
 - ✅ < 10ms p95 latency for policy evaluation
 - ✅ 100% unit test coverage for Core and Policies
-- ✅ Integration tests with Envoy v1.36.2
+- ✅ Integration tests with Envoy v1.38.3
 - ✅ Zero memory leaks under load testing
 - ✅ Documentation complete (API docs, architecture, deployment guide)
 

@@ -113,7 +113,7 @@ spec:
   infrastructure:
     replicas: 3
     image: "wso2/gateway-controller:latest"
-    routerImage: "envoyproxy/envoy:v1.28-latest"
+    routerImage: "envoyproxy/envoy:v1.38-latest"
     
     resources:
       requests:

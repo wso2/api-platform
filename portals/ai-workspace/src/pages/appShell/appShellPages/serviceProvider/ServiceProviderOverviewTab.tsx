@@ -56,6 +56,7 @@ import { getLLMProxyDeployments } from '../../../../apis/llmProxiesApis';
 import type { Gateway } from '../../../../apis/gatewayTypes';
 import { PLATFORM_API_BASE_URL } from '../../../../config.env';
 import { logger } from '../../../../utils/logger';
+import { getErrorMessage } from '../../../../utils/apiError';
 import type {
   DeploymentResponse,
   Proxy,
@@ -540,7 +541,12 @@ export default function ServiceProviderOverviewTab({
       onApiKeyCreated?.();
     } catch (apiKeyError) {
       logger.error('Failed to generate API key:', apiKeyError);
-      setKeyError('Failed to generate API key. Please try again.');
+      setKeyError(
+        getErrorMessage(
+          apiKeyError,
+          'Failed to generate API key. Please try again.'
+        )
+      );
     } finally {
       setGeneratingKey(false);
     }

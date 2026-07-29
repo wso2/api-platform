@@ -94,6 +94,8 @@ Feature: Semantic Cache Policy
                 version: v1
                 params:
                   similarityThreshold: 0.9
+                  # No auth attached - opt into the shared cache bucket this test exercises
+                  cacheUnauthenticated: true
       """
     Then the response should be successful
     And I wait for the endpoint "http://localhost:8080/semantic-cache-hit/v1.0/health" to be ready
@@ -145,6 +147,8 @@ Feature: Semantic Cache Policy
                 version: v1
                 params:
                   similarityThreshold: 0.8
+                  # No auth attached - opt into the shared cache bucket this test exercises
+                  cacheUnauthenticated: true
       """
     Then the response should be successful
     And I wait for the endpoint "http://localhost:8080/semantic-cache-similar/v1.0/health" to be ready
@@ -249,6 +253,8 @@ Feature: Semantic Cache Policy
                 version: v1
                 params:
                   similarityThreshold: 0.5
+                  # No auth attached - opt into the shared cache bucket this test exercises
+                  cacheUnauthenticated: true
       """
     Then the response should be successful
     And I wait for the endpoint "http://localhost:8080/semantic-cache-low-threshold/v1.0/health" to be ready
@@ -303,6 +309,8 @@ Feature: Semantic Cache Policy
                 params:
                   similarityThreshold: 0.9
                   jsonPath: "$.messages[0].content"
+                  # No auth attached - opt into the shared cache bucket this test exercises
+                  cacheUnauthenticated: true
       """
     Then the response should be successful
     And I wait for the endpoint "http://localhost:8080/semantic-cache-jsonpath/v1.0/health" to be ready
