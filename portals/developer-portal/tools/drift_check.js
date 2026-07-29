@@ -117,14 +117,14 @@ const SAMPLES = [
     ['createOrganization', 201, {
         id: 'acme', displayName: 'Acme', businessOwner: 'Jane', businessOwnerContact: '+1',
         businessOwnerEmail: 'jane@acme.example',
-        idpRefId: 'ACME', cpRefId: 'cp-ref-1', configuration: { apiPortalMode: 'DEFAULT' },
+        idpRefId: 'ACME', cpRefId: 'cp-ref-1', configuration: {},
         createdAt: '2026-05-07T08:30:00.000Z', updatedAt: '2026-05-07T08:30:00.000Z',
     }],
     ['getOrganizations', 200, {
         list: [{
             id: 'acme', displayName: 'Acme', businessOwner: 'Jane',
             businessOwnerContact: '+1', businessOwnerEmail: 'jane@acme.example',
-            idpRefId: 'ACME', cpRefId: 'cp-ref-1', configuration: { apiPortalMode: 'DEFAULT' },
+            idpRefId: 'ACME', cpRefId: 'cp-ref-1', configuration: {},
             createdAt: '2026-05-07T08:30:00.000Z', updatedAt: '2026-05-07T08:30:00.000Z',
         }],
         pagination: { total: 1, limit: 20, offset: 0 },
@@ -132,13 +132,13 @@ const SAMPLES = [
     ['getOrganization', 200, {
         id: 'acme', displayName: 'Acme', businessOwner: 'Jane', businessOwnerContact: '+1',
         businessOwnerEmail: 'jane@acme.example',
-        idpRefId: 'ACME', cpRefId: 'cp-ref-1', configuration: { apiPortalMode: 'DEFAULT' },
+        idpRefId: 'ACME', cpRefId: 'cp-ref-1', configuration: {},
         createdAt: '2026-05-07T08:30:00.000Z', updatedAt: '2026-05-07T08:30:00.000Z',
     }],
     ['updateOrganization', 200, {
         id: 'acme', displayName: 'Acme', businessOwner: 'Jane', businessOwnerContact: '+1',
         businessOwnerEmail: 'jane@acme.example',
-        idpRefId: 'ACME', cpRefId: 'cp-ref-1', configuration: { apiPortalMode: 'DEFAULT' },
+        idpRefId: 'ACME', cpRefId: 'cp-ref-1', configuration: {},
         createdAt: '2026-05-07T08:30:00.000Z', updatedAt: '2026-05-07T08:30:00.000Z',
     }],
 

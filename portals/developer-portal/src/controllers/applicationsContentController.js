@@ -194,7 +194,6 @@ const loadApplications = async (req, res, next) => {
 
     const orgName = req.params.orgName;
     const orgDetails = await orgDao.get(orgName);
-    const apiPortalMode = orgDetails.configuration?.apiPortalMode || constants.API_PORTAL_MODE.DEFAULT;
     let html, templateContent;
     try {
         const orgName = req.params.orgName;
@@ -217,7 +216,6 @@ const loadApplications = async (req, res, next) => {
             applicationsMetadata: metaData,
             baseUrl: '/' + orgName + constants.ROUTE.VIEWS_PATH + viewName,
             profile: req.isAuthenticated() ? profile : null,
-            apiPortalMode: apiPortalMode,
         }
         const templateResponse = await templateResponseValue('applications');
         const layoutResponse = await loadLayoutFromAPI(orgId, viewName);
@@ -245,7 +243,6 @@ const loadApplication = async (req, res, next) => {
     const viewName = req.params.viewName;
     const orgName = req.params.orgName;
     const orgDetails = await orgDao.get(orgName);
-    const apiPortalMode = orgDetails.configuration?.apiPortalMode || constants.API_PORTAL_MODE.DEFAULT;
     try {
         const applicationHandle = req.params.applicationId;
         const data = await loadApplicationData(req, orgName, applicationHandle, viewName);
@@ -273,7 +270,6 @@ const loadApplication = async (req, res, next) => {
             isProduction: true,
             subscriptionScopes: data.subscriptionScopes,
             profile: req.isAuthenticated() ? data.profile : null,
-            apiPortalMode: apiPortalMode,
             associatedApiKeys,
             availableKeysByApi
         }
@@ -307,7 +303,6 @@ const loadApplicationKeys = async (req, res, next) => {
     const viewName = req.params.viewName;
     const orgName = req.params.orgName;
     const orgDetails = await orgDao.get(orgName);
-    const apiPortalMode = orgDetails.configuration?.apiPortalMode || constants.API_PORTAL_MODE.DEFAULT;
     try {
         const applicationHandle = req.params.applicationId;
         const data = await loadApplicationData(req, orgName, applicationHandle, viewName);
@@ -333,7 +328,6 @@ const loadApplicationKeys = async (req, res, next) => {
             ],
             subscriptionScopes: data.subscriptionScopes,
             profile: req.isAuthenticated() ? data.profile : null,
-            apiPortalMode: apiPortalMode,
         }
         const templateResponse = await templateResponseValue('manage-keys');
         const layoutResponse = await loadLayoutFromAPI(data.orgId, viewName);

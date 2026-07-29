@@ -32,9 +32,7 @@ NOT SUPPORTED — always returns 405. This API Portal serves the single organiza
   "id": "acme",
   "idpRefId": "string",
   "cpRefId": "string",
-  "configuration": {
-    "apiPortalMode": "DEFAULT"
-  }
+  "configuration": {}
 }
 ```
 
@@ -46,8 +44,7 @@ businessOwnerEmail: user@example.com
 id: acme
 idpRefId: string
 cpRefId: string
-configuration:
-  apiPortalMode: DEFAULT
+configuration: {}
 
 ```
 
@@ -216,9 +213,7 @@ Updates organization metadata, claim mappings, role mappings, and portal configu
   "id": "acme",
   "idpRefId": "string",
   "cpRefId": "string",
-  "configuration": {
-    "apiPortalMode": "DEFAULT"
-  }
+  "configuration": {}
 }
 ```
 
@@ -230,8 +225,7 @@ businessOwnerEmail: user@example.com
 id: acme
 idpRefId: string
 cpRefId: string
-configuration:
-  apiPortalMode: DEFAULT
+configuration: {}
 
 ```
 
@@ -262,9 +256,7 @@ This operation requires <strong>Basic Auth</strong> authentication.
   "businessOwnerEmail": "user@example.com",
   "idpRefId": "string",
   "cpRefId": "string",
-  "configuration": {
-    "apiPortalMode": "DEFAULT"
-  },
+  "configuration": {},
   "createdAt": "2019-08-24T14:15:22Z",
   "updatedAt": "2019-08-24T14:15:22Z"
 }
@@ -390,9 +382,7 @@ This operation requires <strong>Basic Auth</strong> authentication.
   "businessOwnerEmail": "user@example.com",
   "idpRefId": "string",
   "cpRefId": "string",
-  "configuration": {
-    "apiPortalMode": "DEFAULT"
-  },
+  "configuration": {},
   "createdAt": "2019-08-24T14:15:22Z",
   "updatedAt": "2019-08-24T14:15:22Z"
 }

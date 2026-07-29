@@ -62,15 +62,15 @@ function handleRawBodyError(req, res, next) {
     });
 }
 
-// The same portal-mode gate the spec page carries (apiContentRoute.js): an
-// APIs-only or MCP-only portal 404s the page for the excluded type, and the
-// proxy must not stay reachable for a type the portal doesn't serve. Wrapped
-// because enforcePortalMode signals rejection with next(err), which app.js
-// renders as an HTML error page — this endpoint answers a fetch, so its
-// rejections stay JSON like every other response here.
-async function enforcePortalModeJson(req, res, next) {
+// The same feature gate the spec page carries (apiContentRoute.js): a portal that
+// doesn't serve this content type 404s the page for it, and the proxy must not
+// stay reachable for a type the portal doesn't serve. Wrapped because
+// requireFeatureForApiType signals rejection with next(err), which app.js renders
+// as an HTML error page — this endpoint answers a fetch, so its rejections stay
+// JSON like every other response here.
+async function requireFeatureForApiTypeJson(req, res, next) {
     try {
-        await util.enforcePortalMode(req, res, (err) => {
+        await util.requireFeatureForApiType(req, res, (err) => {
             if (err) return res.status(404).json({ error: 'not_found' });
             return next();
         });
@@ -150,7 +150,7 @@ attachOrgGuard(router, 'orgName', (res, err) => res.status(err.status).json({
 router.use(
     '/:orgName/views/:viewName/:apiType/:apiHandle/tryout-proxy',
     handleRawBodyError,
-    enforcePortalModeJson,
+    requireFeatureForApiTypeJson,
     authenticateLikeSpecPage,
     tryoutProxyController.proxyTryoutRequest
 );

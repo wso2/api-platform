@@ -61,10 +61,9 @@ const create = async (orgData, t) => {
 /**
  * Normalizes an organization row. `configuration` is a JSON column: postgres
  * returns it already parsed, but sqlite (TEXT) and mssql (NVARCHAR) return a
- * string. Without this, `org.configuration?.apiPortalMode` is silently
- * undefined on those dialects, so every caller falls back to
- * API_PORTAL_MODE.DEFAULT and the configured portal mode never takes effect.
- * The API contract also declares `configuration` as an object.
+ * string. Without this, every `org.configuration?.<key>` read is silently
+ * undefined on those dialects. The API contract also declares `configuration`
+ * as an object.
  */
 const normalizeOrgRow = (row) => {
     if (!row) {

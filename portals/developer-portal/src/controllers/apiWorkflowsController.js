@@ -93,8 +93,6 @@ const loadAPIWorkflows = async (req, res, next) => {
             imageURL: req.user.imageURL,
             isAdmin: req.user.isAdmin,
         } : null;
-        const apiPortalMode = orgDetails.configuration?.apiPortalMode || 'DEFAULT';
-
         const resolvedFlows = apiWorkflows.map(flow => {
             const sources = extractSourceDescriptions(flow);
             return {
@@ -116,7 +114,6 @@ const loadAPIWorkflows = async (req, res, next) => {
             viewName,
             baseUrl: `/${orgName}/views/${viewName}`,
             profile,
-            apiPortalMode
         };
 
         const dbLayout = await loadLayoutFromAPI(orgId, viewName);
@@ -174,8 +171,6 @@ const loadAPIWorkflowDetail = async (req, res, next) => {
             imageURL: req.user.imageURL,
             isAdmin: req.user.isAdmin,
         } : null;
-        const apiPortalMode = orgDetails.configuration?.apiPortalMode || 'DEFAULT';
-
         const rawContent = apiWorkflow.file_content;
         let fileContentStr = '';
         if (rawContent != null) {
@@ -199,7 +194,6 @@ const loadAPIWorkflowDetail = async (req, res, next) => {
             viewName,
             baseUrl: `/${orgName}/views/${viewName}`,
             profile,
-            apiPortalMode
         };
 
         const dbLayout = await loadLayoutFromAPI(orgId, viewName);

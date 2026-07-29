@@ -189,6 +189,18 @@ auto_create_subscription_plans = true    # Auto-create Bronze/Silver/Gold/Unlimi
 # default_name = "default"               # DEPRECATED alias for `handle` — rename it
 
 # =============================================================================
+# FEATURES
+# =============================================================================
+# Which content types this portal serves. Each flag independently controls its
+# nav entry, its landing-page section, and its routes — a disabled type returns
+# 404 rather than rendering an empty page. Any combination is valid; turning all
+# of them off leaves a portal with nothing to browse.
+[api_portal.features]
+apis = true                              # REST/GraphQL/AsyncAPI listings and detail pages
+mcp_servers = true                       # MCP server listings and detail pages
+api_workflows = true                     # Arazzo/Markdown API workflow pages
+
+# =============================================================================
 # DESIGN MODE CONFIGURATION
 # =============================================================================
 # Local, file-based preview mode — APIs/layouts load from disk instead of the

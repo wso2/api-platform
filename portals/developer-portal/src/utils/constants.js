@@ -87,11 +87,6 @@ module.exports = {
         WEBSUB: "WebSubApi",
         GRAPHQL: "GRAPHQL",
     },
-    API_PORTAL_MODE: {
-        DEFAULT: "DEFAULT",
-        MCP_SERVERS_ONLY: "MCP_SERVERS_ONLY",
-        APIS_ONLY: "APIS_ONLY",
-    },
     DOC_TYPES: {
         DOC_ID: 'DOC_',
         DOCLINK_ID: 'LINK_',

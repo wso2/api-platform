@@ -251,7 +251,6 @@ app.use((err, req, res, next) => {
     // outside this portal.
     const baseUrl = '/' + orgContext.getHandle() + constants.ROUTE.VIEWS_PATH + 'default';
     const templateContent = {
-        apiPortalMode: 'DEFAULT',
         baseUrl,
         errorType,
         profile: typeof req.isAuthenticated === 'function' && req.isAuthenticated() ? req.user : null,

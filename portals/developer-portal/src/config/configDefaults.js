@@ -183,10 +183,13 @@ const DEFAULTS = {
         defaultName: '',
         autoCreateSubscriptionPlans: true,
     },
+    // Which content types this portal serves. Each flag independently controls its
+    // nav entry, landing-page section, and routes (404 when off) — so any combination
+    // works, and a new content type is a new flag rather than a new enum value.
+    // All default true: a portal serves everything unless an operator narrows it.
     features: {
-        // API Workflows is a core, always-on feature — not meant to be toggled off via
-        // config. Kept as a struct default (not documented in config-template.toml) only
-        // because src/utils/util.js and viewConfigureController.js read it defensively.
+        apis: true,
+        mcpServers: true,
         apiWorkflows: true,
     },
     designMode: {

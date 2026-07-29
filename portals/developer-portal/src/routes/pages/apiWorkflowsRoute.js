@@ -32,7 +32,7 @@ router.get('/:orgName/views/:viewName/api-workflows', (req, res, next) => {
         return res.status(404).send('Not Found');
     }
     next();
-}, registerPartials, util.enforcePortalMode, apiWorkflowsController.loadAPIWorkflows);
+}, registerPartials, util.requireFeature('apiWorkflows'), apiWorkflowsController.loadAPIWorkflows);
 
 // Get all published workflows as Markdown
 router.get('/:orgName/views/:viewName/api-workflows.md', (req, res, next) => {
@@ -72,7 +72,7 @@ router.get('/:orgName/views/:viewName/api-workflows/:handle', (req, res, next) =
         return res.status(404).send('Not Found');
     }
     next();
-}, registerPartials, util.enforcePortalMode, apiWorkflowsController.loadAPIWorkflowDetail);
+}, registerPartials, util.requireFeature('apiWorkflows'), apiWorkflowsController.loadAPIWorkflowDetail);
 
 // Generate agent prompt from metadata
 router.post('/:orgName/views/:viewName/api-workflows/generate-prompt', (req, res, next) => {

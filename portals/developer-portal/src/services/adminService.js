@@ -108,10 +108,7 @@ const createOrganization = async (req, res) => {
     if (payload.id) {
         payload.handle = payload.id;
     }
-    payload.configuration = {
-        apiPortalMode: constants.API_PORTAL_MODE.DEFAULT,
-        ...(payload.configuration || {}),
-    };
+    payload.configuration = payload.configuration || {};
     const userId = util.resolveActor(req);
     payload.createdBy = userId;
 
@@ -275,11 +272,6 @@ const updateOrganization = async (req, res) => {
         payload.orgId = orgId;
         const userId = util.resolveActor(req);
         payload.updatedBy = userId;
-
-        const apiPortalMode = payload.configuration?.apiPortalMode;
-        if (apiPortalMode !== undefined && !Object.values(constants.API_PORTAL_MODE).includes(apiPortalMode)) {
-            return util.sendError(res, 400, `Invalid apiPortalMode '${apiPortalMode}'. Must be one of: ${Object.values(constants.API_PORTAL_MODE).join(', ')}.`);
-        }
 
         // The handle and idp_ref_id are what tie this organization to
         // organization.handle in config: the page routes match URLs against that

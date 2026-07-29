@@ -93,6 +93,32 @@ function rewriteViewStyles(content, orgId, viewName) {
     );
 }
 
+/**
+ * Per-content-type flags every page render carries, derived from
+ * [api_portal.features]. Templates branch on these booleans rather than on a
+ * single mode value, so the combinations stay independent and a new content type
+ * is a new flag instead of a new enum member.
+ *
+ * contentTypesLabel is built here rather than branched in Handlebars: with N
+ * independent flags the hero copy would otherwise need a branch per combination.
+ */
+function featureFlags() {
+    const enabled = (name) => config.features?.[name] !== false;
+    const showApisNav = enabled('apis');
+    const showMcpServersNav = enabled('mcpServers');
+    const showApiWorkflowsNav = enabled('apiWorkflows');
+
+    const labels = [];
+    if (showApisNav) labels.push('APIs');
+    if (showMcpServersNav) labels.push('MCP servers');
+    if (showApiWorkflowsNav) labels.push('workflows');
+    const contentTypesLabel = labels.length > 1
+        ? `${labels.slice(0, -1).join(', ')} & ${labels[labels.length - 1]}`
+        : (labels[0] || '');
+
+    return { showApisNav, showMcpServersNav, showApiWorkflowsNav, contentTypesLabel };
+}
+
 function renderTemplate(templatePath, layoutPath, templateContent, isTechnical) {
 
     let completeTemplatePath;
@@ -110,8 +136,8 @@ function renderTemplate(templatePath, layoutPath, templateContent, isTechnical) 
     const layout = Handlebars.compile(layoutResponse.toString());
 
     const slots = {};
-    const showApiWorkflowsNav = config.features?.apiWorkflows === true;
-    const enrichedContent = { apiPortalMode: constants.API_PORTAL_MODE.DEFAULT, ...templateContent, showApiWorkflowsNav, slots };
+    const flags = featureFlags();
+    const enrichedContent = { ...flags, ...templateContent, slots };
     return layout({
         ...enrichedContent,
         body: template(enrichedContent),
@@ -153,8 +179,8 @@ async function renderTemplateWithView(templatePath, layoutPath, templateContent,
     const layout = Handlebars.compile(layoutResponse.toString());
 
     const slots = {};
-    const showApiWorkflowsNav = config.features?.apiWorkflows === true;
-    const enrichedContent = { apiPortalMode: constants.API_PORTAL_MODE.DEFAULT, ...templateContent, showApiWorkflowsNav, slots };
+    const flags = featureFlags();
+    const enrichedContent = { ...flags, ...templateContent, slots };
     return layout({
         ...enrichedContent,
         body: template(enrichedContent),
@@ -208,8 +234,8 @@ async function renderTemplateFromAPI(templateContent, orgId, orgName, filePath, 
     const layout = Handlebars.compile(layoutResponse.toString());
 
     const slots = {};
-    const showApiWorkflowsNav = config.features?.apiWorkflows === true;
-    const enrichedContent = { apiPortalMode: constants.API_PORTAL_MODE.DEFAULT, ...templateContent, showApiWorkflowsNav, slots };
+    const flags = featureFlags();
+    const enrichedContent = { ...flags, ...templateContent, slots };
     return layout({
         ...enrichedContent,
         body: template(enrichedContent),
@@ -274,8 +300,8 @@ async function renderGivenTemplate(templatePage, layoutPage, templateContent) {
     const template = Handlebars.compile(templatePage.toString());
     const layout = Handlebars.compile(layoutPage.toString());
     const slots = {};
-    const showApiWorkflowsNav = config.features?.apiWorkflows === true;
-    const enrichedContent = { apiPortalMode: constants.API_PORTAL_MODE.DEFAULT, ...templateContent, showApiWorkflowsNav, slots };
+    const flags = featureFlags();
+    const enrichedContent = { ...flags, ...templateContent, slots };
     return layout({
         ...enrichedContent,
         body: template(enrichedContent),
@@ -1267,20 +1293,34 @@ function filterAllowedAPIs(searchResults, allowedAPIs) {
     return searchResults;
 }
 
-const enforcePortalMode = async (req, res, next) => {
-    const orgDetails = await orgDao.get(req.params.orgName);
-    const apiPortalMode = orgDetails.configuration?.apiPortalMode || constants.API_PORTAL_MODE.DEFAULT;
-    const path = req.originalUrl.split('/')[4];
-
-    if ((path.includes('apis') || path.includes('api')) && (apiPortalMode === constants.API_PORTAL_MODE.DEFAULT || apiPortalMode === constants.API_PORTAL_MODE.APIS_ONLY) ||
-        (path.includes('mcps') || path.includes('mcp')) && (apiPortalMode === constants.API_PORTAL_MODE.DEFAULT || apiPortalMode === constants.API_PORTAL_MODE.MCP_SERVERS_ONLY)) {
-        next();
-    } else {
-        const err = new Error('Page not found');
-        err.status = 404;
-        next(err);
+/**
+ * Route guard for a content type the portal can be configured not to serve.
+ *
+ * The capability is named explicitly by the caller rather than inferred from the
+ * URL: the previous implementation substring-matched a path segment, so
+ * `api-workflows` matched the `api` test and was silently gated behind the APIs
+ * feature. Naming it at the mount point keeps each route's requirement obvious
+ * and independent, and adding a content type needs no change here.
+ *
+ * A disabled type is a 404, not a 403 — the portal doesn't serve it at all, so
+ * its absence shouldn't hint that it exists elsewhere.
+ */
+const requireFeature = (feature) => (req, res, next) => {
+    if (feature && config.features?.[feature] !== false) {
+        return next();
     }
-}
+    const err = new Error('Page not found');
+    err.status = 404;
+    next(err);
+};
+
+// Content type carried in the path (`/{apiType}/{handle}/...`) rather than fixed
+// by the route. The routes below reject anything outside this map before the
+// guard runs, so an unmapped value can't reach here — but requireFeature treats a
+// falsy feature as "not served" anyway, keeping the guard fail-closed either way.
+const API_TYPE_FEATURE = { api: 'apis', mcp: 'mcpServers' };
+const requireFeatureForApiType = (req, res, next) =>
+    requireFeature(API_TYPE_FEATURE[req.params.apiType])(req, res, next);
 
 async function isAiDisabledForPortal(orgId, viewName) {
     const configAsset = await orgDao.getContent({
@@ -1329,7 +1369,8 @@ module.exports = {
     createZipBuffer,
     readDirTree,
     filterAllowedAPIs,
-    enforcePortalMode,
+    requireFeature,
+    requireFeatureForApiType,
     isAiDisabledForPortal,
     isImageFile,
     normalizeStringArray,

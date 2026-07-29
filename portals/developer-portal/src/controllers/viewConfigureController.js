@@ -61,7 +61,6 @@ const loadSettingsPage = async (req, res) => {
         templateContent.loggedOrg = orgName;
         orgId = await orgDao.getId(orgName);
         const orgDetails = await orgDao.get(orgName);
-        templateContent.apiPortalMode = orgDetails.configuration?.apiPortalMode || constants.API_PORTAL_MODE.DEFAULT;
         templateContent.orgId = orgId;
 
         // The Organization tab manages only the current org (no listing/add/delete).
@@ -74,18 +73,11 @@ const loadSettingsPage = async (req, res) => {
             businessOwnerEmail: cur.business_owner_email || '',
             idpRefId: orgDetails.idp_ref_id || '',
             cpRefId: orgDetails.cp_ref_id || '',
-            apiPortalMode: templateContent.apiPortalMode,
             // Whole configuration object so the save can merge rather than
             // replace — orgDao.update overwrites the column wholesale, and the
-            // API contract allows additional free-form keys alongside apiPortalMode.
+            // API contract allows additional free-form keys.
             configuration: cur.configuration || {},
         };
-        templateContent.apiPortalModeOptions = [
-            { value: constants.API_PORTAL_MODE.DEFAULT, label: 'APIs and MCP servers' },
-            { value: constants.API_PORTAL_MODE.APIS_ONLY, label: 'APIs only' },
-            { value: constants.API_PORTAL_MODE.MCP_SERVERS_ONLY, label: 'MCP servers only' },
-        ].map(o => ({ ...o, selected: o.value === templateContent.apiPortalMode }));
-
         // Views for the selector and the merged Views management tab. The in-page
         // view selector picks which view the LLM + API Workflow panels edit via the
         // ?view= query param (the path stays org-scoped). Default to 'default', then

@@ -24,13 +24,9 @@
               <p class="cfg-field-hint">Identifier used in URLs. Cannot be changed.</p>
             </div>
             <div class="cfg-form-group">
-              <label for="org-api-portal-mode">API Portal mode</label>
-              <select id="org-api-portal-mode" class="cfg-form-input">
-                {{#apiPortalModeOptions}}
-                <option value="{{value}}" {{#if selected}}selected{{/if}}>{{label}}</option>
-                {{/apiPortalModeOptions}}
-              </select>
-              <p class="cfg-field-hint">Controls which catalogues the portal exposes. Pages for a hidden type return 404.</p>
+              <label for="org-content-types">Content types served</label>
+              <input type="text" id="org-content-types" class="cfg-form-input" value="{{contentTypesLabel}}" readonly />
+              <p class="cfg-field-hint">Set by the operator in <code>[api_portal.features]</code>. Pages for a type this portal doesn't serve return 404.</p>
             </div>
           </div>
 
@@ -65,9 +61,9 @@
         </div>
         <div style="margin-top:20px;">
           {{!-- data-configuration carries the existing configuration so the save
-                merges instead of dropping free-form keys the API allows
-                alongside apiPortalMode. Passed as a data-* attribute rather than
-                an inline <script> block, per js-output-encoding-xss.md. --}}
+                resends it instead of dropping the free-form keys the API allows.
+                Passed as a data-* attribute rather than an inline <script>
+                block, per js-output-encoding-xss.md. --}}
           <button class="cfg-btn-primary" id="cfg-save-org-btn" type="button" data-handle="{{currentOrg.id}}"
             data-configuration="{{ jsonAttr currentOrg.configuration }}">
             <i class="bi bi-floppy me-1"></i> Save changes

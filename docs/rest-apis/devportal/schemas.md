@@ -161,9 +161,7 @@ xor
   "businessOwnerEmail": "user@example.com",
   "idpRefId": "string",
   "cpRefId": "string",
-  "configuration": {
-    "apiPortalMode": "DEFAULT"
-  },
+  "configuration": {},
   "createdAt": "2019-08-24T14:15:22Z",
   "updatedAt": "2019-08-24T14:15:22Z"
 }
@@ -181,18 +179,9 @@ xor
 |businessOwnerEmail|string(email)¦null|false|none|none|
 |idpRefId|string|false|none|The organization claim value asserted by the configured Identity Provider at SSO login. On every login, the portal matches the authenticated user's org claim against this value to resolve which organization they belong to — it must exactly match the IDP's claim, or login fails for that org's users. Distinct from `cpRefId`, which is unrelated to authentication.|
 |cpRefId|string¦null|false|none|Control Plane reference ID. Included in outbound webhook event payloads so subscribers can correlate this organization with its Control Plane (Platform API) counterpart. Not used for authentication or org resolution.|
-|configuration|object|false|none|Organization portal configuration. Always includes `apiPortalMode`; may contain additional free-form keys set by the caller.|
-|» apiPortalMode|string|false|none|Controls the mode of the API Portal.|
+|configuration|object|false|none|Free-form organization configuration set by the caller. Which content types the portal serves is operator configuration ([api_portal.features]), not part of this.|
 |createdAt|string(date-time)¦null|false|none|none|
 |updatedAt|string(date-time)¦null|false|none|none|
-
-#### Enumerated Values
-
-|Property|Value|
-|---|---|
-|apiPortalMode|DEFAULT|
-|apiPortalMode|MCP_SERVERS_ONLY|
-|apiPortalMode|APIS_ONLY|
 
 <h2 id="tocS_OrganizationContentUploadResponse">OrganizationContentUploadResponse</h2>
 
@@ -812,9 +801,7 @@ OAuth client ID mapping entry attached to an application.
   "id": "acme",
   "idpRefId": "string",
   "cpRefId": "string",
-  "configuration": {
-    "apiPortalMode": "DEFAULT"
-  }
+  "configuration": {}
 }
 
 ```
@@ -830,16 +817,7 @@ OAuth client ID mapping entry attached to an application.
 |id|string|true|none|Desired handle for the organization (unique), stored as-is. Used in portal URLs.|
 |idpRefId|string|true|none|The organization claim value asserted by the configured Identity Provider at SSO login. Must exactly match the IDP's org claim for that org's users, or login will fail. Distinct from `cpRefId`.|
 |cpRefId|string¦null|false|none|Control Plane reference ID, included in outbound webhook event payloads. Not used for authentication.|
-|configuration|object|false|none|none|
-|» apiPortalMode|string|false|none|none|
-
-#### Enumerated Values
-
-|Property|Value|
-|---|---|
-|apiPortalMode|DEFAULT|
-|apiPortalMode|MCP_SERVERS_ONLY|
-|apiPortalMode|APIS_ONLY|
+|configuration|object|false|none|Free-form organization configuration.|
 
 <h2 id="tocS_OrganizationUpdateRequest">OrganizationUpdateRequest</h2>
 
@@ -857,9 +835,7 @@ OAuth client ID mapping entry attached to an application.
   "id": "acme",
   "idpRefId": "string",
   "cpRefId": "string",
-  "configuration": {
-    "apiPortalMode": "DEFAULT"
-  }
+  "configuration": {}
 }
 
 ```
@@ -875,16 +851,7 @@ OAuth client ID mapping entry attached to an application.
 |id|string|true|none|Desired handle for the organization (unique), stored as-is. Used in portal URLs.|
 |idpRefId|string|true|none|The organization claim value asserted by the configured Identity Provider at SSO login. Must exactly match the IDP's org claim for that org's users, or login will fail. Distinct from `cpRefId`.|
 |cpRefId|string¦null|false|none|Control Plane reference ID, included in outbound webhook event payloads. Not used for authentication.|
-|configuration|object|false|none|none|
-|» apiPortalMode|string|false|none|none|
-
-#### Enumerated Values
-
-|Property|Value|
-|---|---|
-|apiPortalMode|DEFAULT|
-|apiPortalMode|MCP_SERVERS_ONLY|
-|apiPortalMode|APIS_ONLY|
+|configuration|object|false|none|Free-form organization configuration.|
 
 <h2 id="tocS_SubscriptionPlanRequest">SubscriptionPlanRequest</h2>
 

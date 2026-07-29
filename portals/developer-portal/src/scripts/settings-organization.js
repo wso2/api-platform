@@ -36,19 +36,14 @@
       id: handle,
       idpRefId: g('org-idp-ref').value.trim(),
     };
-    // orgDao.update overwrites the whole configuration column, so merge the
-    // portal mode into the existing object rather than sending it alone —
-    // the API contract permits additional free-form keys.
-    var modeEl = g('org-api-portal-mode');
-    if (modeEl) {
-      var existingConfig = {};
-      try {
-        var parsed = JSON.parse(saveBtn.dataset.configuration || '{}');
-        if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) existingConfig = parsed;
-      } catch (e) { /* fall back to {} — a bad blob must not block the save */ }
-      existingConfig.apiPortalMode = modeEl.value;
-      body.configuration = existingConfig;
-    }
+    // orgDao.update overwrites the whole configuration column, so resend what is
+    // already stored rather than dropping keys this form doesn't edit. Which
+    // content types the portal serves is operator config ([api_portal.features]),
+    // not per-organization state, so nothing here writes to it.
+    try {
+      var parsed = JSON.parse(saveBtn.dataset.configuration || '{}');
+      if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) body.configuration = parsed;
+    } catch (e) { /* fall back to omitting it — a bad blob must not block the save */ }
     // Optional fields — only send non-blank (businessOwnerEmail is format-validated above).
     var owner = g('org-owner').value.trim();         if (owner) body.businessOwner = owner;
     var oc    = g('org-owner-contact').value.trim(); if (oc)    body.businessOwnerContact = oc;

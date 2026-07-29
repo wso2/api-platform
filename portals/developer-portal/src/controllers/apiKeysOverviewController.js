@@ -41,8 +41,6 @@ const loadApiKeysOverview = async (req, res, next) => {
         if (!req.user) {
             return res.redirect(`/${orgName}${constants.ROUTE.VIEWS_PATH}${viewName}/login`);
         }
-        const apiPortalMode = orgDetails.configuration?.apiPortalMode || constants.API_PORTAL_MODE.DEFAULT;
-
         let apiKeys = [];
         let apiKeysLoadError = false;
         try {
@@ -76,7 +74,6 @@ const loadApiKeysOverview = async (req, res, next) => {
         const templateContent = {
             baseUrl: '/' + orgName + constants.ROUTE.VIEWS_PATH + viewName,
             profile: profile,
-            apiPortalMode: apiPortalMode,
             orgId: orgId,
             apiKeys: apiKeys,
             apiKeysCount: apiKeys.length,
