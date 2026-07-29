@@ -7,7 +7,7 @@
 
 ## Summary
 
-The Envoy Policy Engine is an external processor service that integrates with Envoy Proxy v1.36.2 to provide flexible, extensible HTTP request and response processing through configurable policy chains. The system consists of three major components: (1) **Policy Engine Runtime** - framework service (kernel + worker + interfaces) with ZERO built-in policies, (2) **Policy Engine Builder** - build-time tooling that discovers, validates, and compiles custom policies into the runtime binary, and (3) **Sample Policy Implementations** - optional reference examples (SetHeader, JWT, etc.) demonstrating the framework.
+The Envoy Policy Engine is an external processor service that integrates with Envoy Proxy v1.38.3 to provide flexible, extensible HTTP request and response processing through configurable policy chains. The system consists of three major components: (1) **Policy Engine Runtime** - framework service (kernel + worker + interfaces) with ZERO built-in policies, (2) **Policy Engine Builder** - build-time tooling that discovers, validates, and compiles custom policies into the runtime binary, and (3) **Sample Policy Implementations** - optional reference examples (SetHeader, JWT, etc.) demonstrating the framework.
 
 **Critical Architecture Note**: The Policy Engine runtime ships with NO policies. ALL policies (including sample/reference policies) must be compiled via the Builder. This ensures minimal attack surface and allows organizations to include only needed policies.
 
@@ -46,7 +46,7 @@ The Envoy Policy Engine is an external processor service that integrates with En
 - Builder compilation time: < 3 minutes for custom policies
 
 **Constraints**:
-- Compatible with Envoy v1.36.2 ext_proc filter
+- Compatible with Envoy v1.38.3 ext_proc filter
 - Body buffering limited to configurable size (default 10MB)
 - Policy execution timeout: < 1 second per policy
 - Zero-downtime policy configuration updates

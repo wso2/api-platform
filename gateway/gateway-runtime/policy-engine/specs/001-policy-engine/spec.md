@@ -295,7 +295,7 @@ The Builder loads policies from the URIs in the manifest, validates them, and co
 
 ### External Dependencies
 
-- **Envoy Proxy v1.36.2**: Policy Engine integrates with Envoy's ext_proc filter
+- **Envoy Proxy v1.38.3**: Policy Engine integrates with Envoy's ext_proc filter
 - **gRPC**: Communication protocol for ext_proc and xDS APIs
 - **Go 1.23+**: Implementation language and custom policy development language
 - **CEL (Common Expression Language)**: Conditional execution expression evaluation
