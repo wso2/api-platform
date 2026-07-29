@@ -46,7 +46,7 @@ help: ## Show this help message
 	@echo '  make build-and-push-multiarch   - Build and push multi-arch image to GHCR'
 	@echo ''
 	@echo 'Distribution Targets:'
-	@echo '  make dist                        - Build standalone distribution zip (target/wso2apip-developer-portal-<VERSION>.zip)'
+	@echo '  make dist                        - Build standalone distribution zip (target/wso2apip-api-portal-<VERSION>.zip)'
 	@echo '  make clean-dist                  - Remove distribution staging dir and zip'
 	@echo ''
 	@echo 'Version Management:'
@@ -129,7 +129,7 @@ version-get-release: ## Get release version (strips SNAPSHOT suffix)
 # Distribution Targets
 
 DIST_VERSION := $(shell echo "$(VERSION)" | sed 's/-SNAPSHOT//')
-DIST_NAME    := wso2apip-developer-portal-$(DIST_VERSION)
+DIST_NAME    := wso2apip-api-portal-$(DIST_VERSION)
 DIST_DIR     := target/$(DIST_NAME)
 DIST_ZIP     := target/$(DIST_NAME).zip
 
@@ -260,8 +260,8 @@ dist: clean-dist ## Build standalone developer portal distribution zip
 	@echo "  platform-api image pinned to $(PLATFORM_API_IMAGE):$(PLATFORM_API_VERSION)"
 	@echo "  optional ai-workspace image pinned to $(AIW_IMAGE):$(AIW_VERSION)"
 	@mkdir -p $(DIST_DIR)/configs
-	@mkdir -p $(DIST_DIR)/resources/developer-portal/db-scripts
-	@cp -R database/* $(DIST_DIR)/resources/developer-portal/db-scripts
+	@mkdir -p $(DIST_DIR)/resources/api-portal/db-scripts
+	@cp -R database/* $(DIST_DIR)/resources/api-portal/db-scripts
 	@mkdir -p $(DIST_DIR)/resources/platform-api/db-scripts
 	@mkdir -p $(DIST_DIR)/resources/samples
 	@cp -R samples/apis $(DIST_DIR)/resources/samples/
@@ -351,7 +351,7 @@ endif
 
 .PHONY: clean-dist
 clean-dist: ## Remove distribution staging dir and zip
-	@rm -rf target/wso2apip-developer-portal-*
+	@rm -rf target/wso2apip-api-portal-*
 
 # Clean Targets
 

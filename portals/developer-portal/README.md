@@ -87,7 +87,7 @@ Run `make help` to see the full list. Summary:
 
 | Target | Description |
 |--------|-------------|
-| `make dist` | Build standalone distribution zip (`target/wso2apip-developer-portal-<VERSION>.zip`) |
+| `make dist` | Build standalone distribution zip (`target/wso2apip-api-portal-<VERSION>.zip`) |
 | `make clean-dist` | Remove distribution staging directory and zip |
 
 ### Version Management

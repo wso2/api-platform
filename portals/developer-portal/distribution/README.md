@@ -5,7 +5,7 @@ A standalone distribution of the Developer Portal and Platform API, orchestrated
 ## Contents
 
 ```
-wso2apip-developer-portal-<version>/
+wso2apip-api-portal-<version>/
 ├── README.md
 ├── docker-compose.yaml                          # Developer Portal + Platform API
 ├── scripts/
@@ -181,7 +181,7 @@ The Developer Portal uses **SQLite** by default (data persisted in a Docker volu
 
 The Platform API likewise defaults to SQLite; switch it with `configs/config.toml`'s `[platform_api.database]` block.
 
-`resources/developer-portal/db-scripts/` and `resources/platform-api/db-scripts/` contain reference copies of each component's schema and query files (also bundled inside the images) — provided for inspection; no manual SQL execution is required.
+`resources/api-portal/db-scripts/` and `resources/platform-api/db-scripts/` contain reference copies of each component's schema and query files (also bundled inside the images) — provided for inspection; no manual SQL execution is required.
 
 ## License
 

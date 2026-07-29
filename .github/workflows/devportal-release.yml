@@ -130,9 +130,9 @@ jobs:
             - `linux/arm64`
 
             ### Distribution
-            The attached `wso2apip-developer-portal-${{ steps.version.outputs.version }}.zip` contains the
+            The attached `wso2apip-api-portal-${{ steps.version.outputs.version }}.zip` contains the
             standalone Developer Portal + Platform API distribution (docker-compose and configs).
-          files: portals/developer-portal/target/wso2apip-developer-portal-${{ steps.version.outputs.version }}.zip
+          files: portals/developer-portal/target/wso2apip-api-portal-${{ steps.version.outputs.version }}.zip
           draft: true
           prerelease: ${{ contains(steps.version.outputs.version, '-') }}
           token: ${{ secrets.API_PLATFORM_BOT_TOKEN }}
