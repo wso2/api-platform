@@ -83,6 +83,11 @@ const (
 	// Upstream endpoint metadata carrying the backend hostname for tracing peer identity.
 	envoyLBMetadataNamespace   = "envoy.lb"
 	envoyLBHostnameMetadataKey = "hostname"
+
+	// Route filter metadata carrying the route's path template for tracing (http.route)
+	// and other route-scoped consumers.
+	envoyRouteMetadataNamespace = "wso2.route"
+	envoyRouteHTTPRouteKey      = "http.route"
 )
 
 func checkedUInt32FromPositiveInt(fieldName string, value int) (uint32, error) {
@@ -370,6 +375,7 @@ func (t *Translator) createRouteFromRDC(routeKey string, rdcRoute *models.Route,
 	// route match identical requests).
 	r.Match.Headers = buildMatchHeaders(method, rdcRoute)
 	t.setMatchPathSpecifier(r.Match, fullPath, operationPath, rdcRoute)
+	setRouteHTTPRoute(r, fullPath)
 
 	// Compute regex rewrite to strip context and prepend upstream path
 	upstreamPath := ""
@@ -1688,6 +1694,7 @@ func (t *Translator) createRoute(apiId, apiName, apiVersion, context, method, pa
 			},
 		}
 	}
+	setRouteHTTPRoute(r, fullPath)
 
 	// Add path rewriting if upstream has a path prefix
 	// Strip the API context (with version if included) and prepend the upstream path
@@ -1762,6 +1769,7 @@ func (t *Translator) createRoute(apiId, apiName, apiVersion, context, method, pa
 // createRoutePerTopic creates a route for an operation
 func (t *Translator) createRoutePerTopic(apiId, apiName, apiVersion, context, method, channelName, clusterName, vhost, apiKind, projectID string) *route.Route {
 	routeName := GenerateRouteName(method, context, apiVersion, channelName, vhost)
+	fullPath := ConstructFullPath(context, apiVersion, channelName)
 	r := &route.Route{
 		Name: routeName,
 		Match: &route.RouteMatch{
@@ -1804,12 +1812,13 @@ func (t *Translator) createRoutePerTopic(apiId, apiName, apiVersion, context, me
 
 	if metaStruct, err := structpb.NewStruct(metaMap); err == nil {
 		r.Metadata = &core.Metadata{FilterMetadata: map[string]*structpb.Struct{
-			"wso2.route": metaStruct,
+			envoyRouteMetadataNamespace: metaStruct,
 		}}
 	}
+	setRouteHTTPRoute(r, fullPath)
 
 	r.Match.PathSpecifier = &route.RouteMatch_Path{
-		Path: ConstructFullPath(context, apiVersion, channelName),
+		Path: fullPath,
 	}
 
 	r.GetRoute().PrefixRewrite = "/hub"
@@ -2796,7 +2805,7 @@ func (t *Translator) createTracingConfig() (*hcm.HttpConnectionManager_Tracing, 
 		RandomSampling: &typev3.Percent{
 			Value: samplingPercentage,
 		},
-		CustomTags: createTracingUpstreamPeerCustomTags(),
+		CustomTags: createTracingCustomTags(),
 	}
 
 	t.logger.Info("Tracing configuration created",
@@ -2863,11 +2872,21 @@ func createOTelStaticResourceDetector(attributes map[string]string) (*core.Typed
 	}, nil
 }
 
-// createTracingUpstreamPeerCustomTags builds the peer identity tag Datadog uses to infer
-// downstream dependencies. The value comes from the selected upstream host's metadata rather
-// than the Host header, so it stays correct for upstreams configured with hostRewrite: manual.
-// A single tag is enough: peer.service is Datadog's highest-priority peer attribute.
-func createTracingUpstreamPeerCustomTags() []*tracingv3.CustomTag {
+// createTracingCustomTags builds the HCM-level tracing custom tags:
+//
+//   - peer.service: a standard OTel semantic-convention attribute identifying the
+//     upstream dependency. The value comes from the selected upstream host's metadata
+//     rather than the Host header, so it stays correct for upstreams configured with
+//     hostRewrite: manual.
+//   - http.route: the route's path template (e.g. "/reading-list/v1.0/{id}"), read from
+//     route metadata set by setRouteHTTPRoute. This is the standard OTel semantic
+//     convention attribute for the matched route template, distinct from http.url/
+//     http.target which carry the concrete request path. APM backends commonly derive a
+//     span's display name/resource from "<http.method> <http.route>" and fall back to the
+//     bare method when http.route is absent. Sourced from route (not host) metadata,
+//     since the path template is a property of the matched route, not the selected
+//     upstream endpoint.
+func createTracingCustomTags() []*tracingv3.CustomTag {
 	return []*tracingv3.CustomTag{
 		{
 			Tag: "peer.service",
@@ -2884,6 +2903,28 @@ func createTracingUpstreamPeerCustomTags() []*tracingv3.CustomTag {
 							{
 								Segment: &metadatav3.MetadataKey_PathSegment_Key{
 									Key: envoyLBHostnameMetadataKey,
+								},
+							},
+						},
+					},
+				},
+			},
+		},
+		{
+			Tag: envoyRouteHTTPRouteKey,
+			Type: &tracingv3.CustomTag_Metadata_{
+				Metadata: &tracingv3.CustomTag_Metadata{
+					Kind: &metadatav3.MetadataKind{
+						Kind: &metadatav3.MetadataKind_Route_{
+							Route: &metadatav3.MetadataKind_Route{},
+						},
+					},
+					MetadataKey: &metadatav3.MetadataKey{
+						Key: envoyRouteMetadataNamespace,
+						Path: []*metadatav3.MetadataKey_PathSegment{
+							{
+								Segment: &metadatav3.MetadataKey_PathSegment_Key{
+									Key: envoyRouteHTTPRouteKey,
 								},
 							},
 						},
@@ -2908,7 +2949,7 @@ func ensureFilterMetadata(lbEndpoint *endpoint.LbEndpoint) map[string]*structpb.
 }
 
 // setEndpointPeerHostname stamps the upstream hostname on an endpoint under the envoy.lb
-// namespace so the peer.service custom tag (createTracingUpstreamPeerCustomTags) can read it
+// namespace so the peer.service custom tag (createTracingCustomTags) can read it
 // as the upstream CLIENT span's peer identity. Routing is unaffected. Applies to both plaintext
 // and TLS endpoints — peer.service tracing doesn't depend on transport security. A nil endpoint
 // or empty hostname is a no-op, checked before any allocation, so an endpoint that genuinely has
@@ -2923,6 +2964,45 @@ func setEndpointPeerHostname(lbEndpoint *endpoint.LbEndpoint, hostname string) {
 			envoyLBHostnameMetadataKey: structpb.NewStringValue(hostname),
 		},
 	}
+}
+
+// ensureRouteFilterMetadata returns route r's FilterMetadata map, allocating Metadata/
+// FilterMetadata on demand — mirrors ensureFilterMetadata but for routes rather than
+// endpoints, so multiple writers (e.g. createRoutePerTopic's own metadata block and
+// setRouteHTTPRoute) can populate the same route without depending on call order.
+func ensureRouteFilterMetadata(r *route.Route) map[string]*structpb.Struct {
+	if r.Metadata == nil {
+		r.Metadata = &core.Metadata{}
+	}
+	if r.Metadata.FilterMetadata == nil {
+		r.Metadata.FilterMetadata = map[string]*structpb.Struct{}
+	}
+	return r.Metadata.FilterMetadata
+}
+
+// setRouteHTTPRoute records the route's path template under wso2.route/http.route so the
+// HCM tracing custom tag (see createTracingCustomTags) can surface it as the OTel
+// http.route attribute — the standard semantic-convention attribute for the matched
+// route template, as distinct from the concrete request path. Without it, APM backends
+// that key a span's display name/resource off "<http.method> <http.route>" fall back to
+// the bare method. A nil route or empty template is a no-op, so a route with nothing to
+// report doesn't gain an empty Metadata shell. Merges into any existing wso2.route
+// namespace struct rather than overwriting it, so this can run regardless of whether a
+// caller (e.g. createRoutePerTopic) already wrote other keys under the same namespace.
+func setRouteHTTPRoute(r *route.Route, pathTemplate string) {
+	if r == nil || pathTemplate == "" {
+		return
+	}
+
+	filterMetadata := ensureRouteFilterMetadata(r)
+	routeMeta := filterMetadata[envoyRouteMetadataNamespace]
+	if routeMeta == nil {
+		routeMeta = &structpb.Struct{Fields: map[string]*structpb.Value{}}
+		filterMetadata[envoyRouteMetadataNamespace] = routeMeta
+	} else if routeMeta.Fields == nil {
+		routeMeta.Fields = map[string]*structpb.Value{}
+	}
+	routeMeta.Fields[envoyRouteHTTPRouteKey] = structpb.NewStringValue(pathTemplate)
 }
 
 // setEndpointTransportSocketMatchID tags an endpoint with the lb_id its Cluster_
