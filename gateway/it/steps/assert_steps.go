@@ -76,6 +76,7 @@ func (a *AssertSteps) Register(ctx *godog.ScenarioContext) {
 	ctx.Step(`^the response should be valid JSON$`, a.shouldBeValidJSON)
 	ctx.Step(`^the JSON response should have field "([^"]*)"$`, a.jsonShouldHaveField)
 	ctx.Step(`^the JSON response field "([^"]*)" should be "([^"]*)"$`, a.jsonFieldShouldBe)
+	ctx.Step(`^the JSON response field "([^"]*)" should not exist$`, a.jsonFieldShouldNotExist)
 	ctx.Step(`^the JSON response field "([^"]*)" should contain "([^"]*)"$`, a.jsonFieldShouldContain)
 	ctx.Step(`^the JSON response field "([^"]*)" should be (\d+)$`, a.jsonFieldShouldBeInt)
 	ctx.Step(`^the JSON response field "([^"]*)" should be (true|false)$`, a.jsonFieldShouldBeBool)
@@ -195,6 +196,15 @@ func (a *AssertSteps) headerShouldExist(name string) error {
 		return fmt.Errorf("expected header %q to exist", name)
 	}
 	return nil
+}
+
+// jsonFieldShouldNotExist asserts a JSON path is absent from the response body.
+func (a *AssertSteps) jsonFieldShouldNotExist(field string) error {
+	value, err := a.getJSONField(field)
+	if err != nil {
+		return nil // Path is absent, which is what we asserted.
+	}
+	return fmt.Errorf("expected JSON field %q to be absent, but it is present with value %v", field, value)
 }
 
 // headerShouldNotExist asserts a header does not exist

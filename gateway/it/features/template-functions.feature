@@ -186,7 +186,7 @@ Feature: Template functions in RestApi spec
     When I delete the API "tpl-default-api-v1.0"
     Then the response should be successful
 
-  Scenario: secret template in LlmProvider upstream auth value is rendered upstream but unrendered in response and DB
+  Scenario: secret template in LlmProvider upstream auth value is rendered upstream, unrendered in DB, and never returned in responses
     When I create a secret named "tpl-llm-provider-token" with value "llm-prov-secret-789"
     Then the response status should be 201
 
@@ -212,19 +212,21 @@ Feature: Template functions in RestApi spec
           mode: allow_all
       """
     Then the response status code should be 201
-    And the response body should contain template literal:
-      """
-      {{ secret "tpl-llm-provider-token" }}
-      """
+    # upstream auth.value is write-only: neither the secret handle nor its
+    # resolved value is returned, on create or on any later read.
+    And the response body should not contain "tpl-llm-provider-token"
+    And the response body should not contain "llm-prov-secret-789"
+    And the JSON response field "spec.upstream.auth.value" should not exist
 
-    # GET response must echo the unrendered template body
+    # GET must not echo the credential either, while the rest of the auth block survives
     Given I authenticate using basic auth as "admin"
     When I retrieve the LLM provider "tpl-llm-provider"
     Then the response status code should be 200
-    And the response body should contain template literal:
-      """
-      {{ secret "tpl-llm-provider-token" }}
-      """
+    And the response body should not contain "tpl-llm-provider-token"
+    And the response body should not contain "llm-prov-secret-789"
+    # omitted entirely, not returned blank
+    And the JSON response field "spec.upstream.auth.value" should not exist
+    And the JSON response field "spec.upstream.auth.header" should be "Authorization"
 
     # DB must persist the unrendered template body
     And the stored LlmProvider configuration for "tpl-llm-provider" should contain:
