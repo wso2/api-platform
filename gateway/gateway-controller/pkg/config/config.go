@@ -660,6 +660,11 @@ type ControlPlaneConfig struct {
 	InsecureSkipVerify    bool          `koanf:"insecure_skip_verify"`    // Skip TLS certificate verification (insecure, dev/test only)
 	DeploymentSyncEnabled bool          `koanf:"deployment_sync_enabled"` // Enable two-way artifact/deployment sync with the control plane: DP->CP push and CP->DP pull (default: true)
 	SyncBatchSize         int           `koanf:"sync_batch_size"`         // Number of deployments to fetch per batch request during startup sync (default: 50)
+	// Optional worker pools that cap the concurrency of DP->CP sync work
+	APIMSyncPoolSize         int `koanf:"apim_sync_pool_size"`          // Workers for on-prem APIM bottom-up sync (0/unset = unlimited)
+	APIMSyncQueueSize        int `koanf:"apim_sync_queue_size"`         // Max pending APIM sync tasks when pool size > 0 (0/unset = unbounded)
+	AIWorkspaceSyncPoolSize  int `koanf:"ai_workspace_sync_pool_size"`  // Workers for platform-API (AI Workspace) artifact push (0/unset = unlimited)
+	AIWorkspaceSyncQueueSize int `koanf:"ai_workspace_sync_queue_size"` // Max pending artifact push tasks when pool size > 0 (0/unset = unbounded)
 	// OAuth2 credentials for on-prem APIM API import (for bottom-up API deployment)
 	ApimOAuth2ClientID     string `koanf:"apim_oauth2_client_id"`     // APIM OAuth2 client ID
 	ApimOAuth2ClientSecret string `koanf:"apim_oauth2_client_secret"` // APIM OAuth2 client secret
@@ -880,14 +885,18 @@ func defaultConfig() *Config {
 				Port:    9091,
 			},
 			ControlPlane: ControlPlaneConfig{
-				Host:                  "",
-				Token:                 "",
-				ReconnectInitial:      1 * time.Second,
-				ReconnectMax:          5 * time.Minute,
-				PollingInterval:       15 * time.Minute,
-				InsecureSkipVerify:    true,
-				DeploymentSyncEnabled: true,
-				SyncBatchSize:         50,
+				Host:                     "",
+				Token:                    "",
+				ReconnectInitial:         1 * time.Second,
+				ReconnectMax:             5 * time.Minute,
+				PollingInterval:          15 * time.Minute,
+				InsecureSkipVerify:       true,
+				DeploymentSyncEnabled:    true,
+				SyncBatchSize:            50,
+				APIMSyncPoolSize:         0,
+				APIMSyncQueueSize:        0,
+				AIWorkspaceSyncPoolSize:  0,
+				AIWorkspaceSyncQueueSize: 0,
 			},
 			EventHub: EventHubConfig{
 				PollInterval:    3 * time.Second,

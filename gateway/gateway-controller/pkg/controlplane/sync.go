@@ -617,7 +617,7 @@ func parseCPSyncInfo(cpSyncInfo string) (apiID, revisionID string) {
 // This is distinct from SyncArtifactsToOnPremAPIM, which targets the legacy on-prem APIM
 // product. Both may run; this one is gated only on deployment_sync_enabled.
 func (c *Client) PushGatewayArtifactsToControlPlane() {
-	if c.IsConnected() && c.config.DeploymentSyncEnabled {
+	if c.IsConnected() && c.config.DeploymentSyncEnabled && !c.IsOnPrem() {
 		c.pushGatewayArtifacts()
 	}
 }

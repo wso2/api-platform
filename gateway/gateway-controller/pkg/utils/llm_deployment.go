@@ -1334,12 +1334,12 @@ func (s *LLMDeploymentService) pushTemplateToControlPlane(stored *models.StoredL
 		UpdatedAt:           stored.UpdatedAt,
 	}
 	pusher := s.controlPlaneClient
-	go func(c *models.StoredConfig) {
-		if err := pusher.PushArtifact(c.UUID, c, ""); err != nil {
+	pusher.SubmitArtifactPush(func() {
+		if err := pusher.PushArtifact(cfg.UUID, cfg, ""); err != nil {
 			log.Error("Failed to push LLM provider template to control plane",
-				slog.String("uuid", c.UUID), slog.Any("error", err))
+				slog.String("uuid", cfg.UUID), slog.Any("error", err))
 		}
-	}(cfg)
+	})
 }
 
 // pushDeployableArtifact forwards a freshly created or updated, gateway-originated deployable
@@ -1349,11 +1349,18 @@ func (s *LLMDeploymentService) pushDeployableArtifact(result *APIDeploymentResul
 		return
 	}
 	if result.StoredConfig.Origin == models.OriginGatewayAPI && s.canPushToControlPlane() {
-		go waitForDeploymentAndPush(s.store, s.controlPlaneClient, result.StoredConfig.UUID, correlationID, result.StoredConfig.DeployedAt, log)
+		pusher := s.controlPlaneClient
+		store := s.store
+		cfgID := result.StoredConfig.UUID
+		deployedAt := result.StoredConfig.DeployedAt
+		pusher.SubmitArtifactPush(func() {
+			waitForDeploymentAndPush(store, pusher, cfgID, correlationID, deployedAt, log)
+		})
 	}
 }
 
 // canPushToControlPlane reports whether a DP->CP push should be attempted now.
 func (s *LLMDeploymentService) canPushToControlPlane() bool {
-	return s.deploymentPushEnabled && s.controlPlaneClient != nil && s.controlPlaneClient.IsConnected()
+	return s.deploymentPushEnabled && s.controlPlaneClient != nil &&
+		s.controlPlaneClient.IsConnected() && !s.controlPlaneClient.IsOnPrem()
 }
