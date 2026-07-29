@@ -23,6 +23,7 @@ import (
 	"fmt"
 	"log/slog"
 	"net/http"
+	"path"
 	"strings"
 
 	"github.com/wso2/api-platform/common/constants"
@@ -55,6 +56,35 @@ func WithAuthContext(ctx context.Context, authCtx models.AuthContext) context.Co
 func GetAuthzSkip(r *http.Request) bool {
 	skip, _ := r.Context().Value(authzSkipKeyType{}).(bool)
 	return skip
+}
+
+// HasPathPrefix reports whether reqPath is, or is nested under, any of the given
+// path prefixes. It is the single definition of skip-path matching: AuthMiddleware
+// uses it to decide what bypasses authentication, and callers that enforce
+// authorization over the same list must use it too, or the two disagree on which
+// requests are exempt.
+//
+// The comparison is made on the cleaned path and only at segment boundaries, so
+// "/health" covers "/health" and "/health/live" but not "/health-probe-fake" or
+// "/healthz". A plain strings.HasPrefix would exempt any route whose path merely
+// starts with a skip entry — a different route entirely, silently unauthenticated
+// (GO-AUTH-004) — and would match before ServeMux normalizes the path, so
+// "/health/../admin" would bypass authentication as well.
+func HasPathPrefix(reqPath string, prefixes []string) bool {
+	cleaned := path.Clean("/" + reqPath)
+	for _, prefix := range prefixes {
+		p := path.Clean("/" + prefix)
+		if p == "/" {
+			// A root prefix would exempt every request. Refuse rather than
+			// honor it: callers validate their skip list at startup, and a
+			// bypass this broad is never an intended configuration.
+			continue
+		}
+		if cleaned == p || strings.HasPrefix(cleaned, p+"/") {
+			return true
+		}
+	}
+	return false
 }
 
 // AuthMiddleware creates a unified authentication middleware supporting both Basic and Bearer auth.
@@ -98,13 +128,14 @@ func AuthMiddleware(config models.AuthConfig, logger *slog.Logger) (func(http.Ha
 
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			// Skip authentication for specified paths
-			for _, path := range config.SkipPaths {
-				if strings.HasPrefix(r.URL.Path, path) {
-					ctx := context.WithValue(r.Context(), authzSkipKeyType{}, true)
-					next.ServeHTTP(w, r.WithContext(ctx))
-					return
-				}
+			// Skip authentication for specified paths. This also sets the
+			// authz-skip flag, so a match here bypasses downstream authorization
+			// too — all the more reason it must match only the routes the
+			// operator actually listed.
+			if HasPathPrefix(r.URL.Path, config.SkipPaths) {
+				ctx := context.WithValue(r.Context(), authzSkipKeyType{}, true)
+				next.ServeHTTP(w, r.WithContext(ctx))
+				return
 			}
 
 			// Find suitable authenticator

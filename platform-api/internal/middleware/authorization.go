@@ -20,7 +20,6 @@ package middleware
 import (
 	"errors"
 	"net/http"
-	"path"
 	"strings"
 
 	"github.com/wso2/api-platform/common/authenticators"
@@ -61,7 +60,8 @@ type ScopeEnforcerConfig struct {
 	// SkipPaths are path prefixes exempt from scope enforcement — health/metrics
 	// probes, the login endpoint, and the internal routes authenticated by a
 	// gateway token rather than a user JWT. Mirrors config.Auth.SkipPaths, which
-	// is the same list the authentication middleware bypasses.
+	// is the same list the authentication middleware bypasses — through the same
+	// hasPathPrefix matcher, so both exempt exactly the same requests.
 	SkipPaths []string
 }
 
@@ -159,20 +159,16 @@ func ScopeEnforcer(registry *ScopeRegistry, cfg ScopeEnforcerConfig) (func(http.
 }
 
 // hasPathPrefix reports whether reqPath is, or is nested under, any of the given
-// path prefixes. The comparison is made on the cleaned path and only at segment
-// boundaries: "/health" covers "/health" and "/health/live" but not
+// path prefixes: "/health" covers "/health" and "/health/live" but not
 // "/health-probe-fake", and "/api/internal/v1/secrets" does not cover
-// "/api/internal/v1/secrets-admin". A plain strings.HasPrefix here would let any
-// route whose path merely starts with a skip prefix bypass scope enforcement.
+// "/api/internal/v1/secrets-admin".
+//
+// It delegates to authenticators.HasPathPrefix — the same matcher the IDP-mode
+// auth middleware applies to this same skip list — so authentication and scope
+// enforcement cannot drift into exempting different sets of requests, whichever
+// auth mode is configured.
 func hasPathPrefix(reqPath string, prefixes []string) bool {
-	cleaned := path.Clean("/" + reqPath)
-	for _, prefix := range prefixes {
-		p := path.Clean("/" + prefix)
-		if cleaned == p || strings.HasPrefix(cleaned, p+"/") {
-			return true
-		}
-	}
-	return false
+	return authenticators.HasPathPrefix(reqPath, prefixes)
 }
 
 // scopeSatisfies reports whether a held scope grants a required scope.

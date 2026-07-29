@@ -123,11 +123,15 @@ func writeError(w http.ResponseWriter, appErr *apperror.Error, reason string) {
 func LocalJWTAuthMiddleware(config AuthConfig) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			for _, path := range config.SkipPaths {
-				if strings.HasPrefix(r.URL.Path, path) {
-					next.ServeHTTP(w, r)
-					return
-				}
+			// hasPathPrefix, not strings.HasPrefix: a raw prefix match exempts
+			// any path that merely starts with a skip entry ("/health-probe" for
+			// "/health") and matches before ServeMux normalizes the path, so
+			// "/health/../api/v0.9/rest-apis" would bypass authentication
+			// (GO-AUTH-004). It is also the matcher ScopeEnforcer uses on this
+			// same list — the two must exempt exactly the same requests.
+			if hasPathPrefix(r.URL.Path, config.SkipPaths) {
+				next.ServeHTTP(w, r)
+				return
 			}
 
 			authHeader := r.Header.Get("Authorization")
