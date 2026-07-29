@@ -8788,6 +8788,8 @@ tags:
     description: Gateway registration and management operations
   - name: Gateway Tokens
     description: Gateway token rotation and revocation operations
+  - name: Gateway Policies
+    description: Custom gateway policy management operations
   - name: LLM Providers
     description: LLM provider management operations
   - name: LLM Proxies
@@ -8796,6 +8798,8 @@ tags:
     description: LLM provider template management operations
   - name: LLM Provider Deployments
     description: LLM provider deployment operations
+  - name: LLM Proxy Deployments
+    description: LLM proxy deployment operations
   - name: API Keys
     description: API key management operations for REST APIs and LLM Providers
   - name: MCP Proxies
@@ -8804,5 +8808,9 @@ tags:
     description: MCP proxy deployment operations
   - name: Deployments
     description: Deployment operations for various artifact types
+  - name: SubscriptionPlans
+    description: Subscription plan management operations — rate-limit tiers that subscriptions are created against
+  - name: Subscriptions
+    description: Subscription management operations linking applications to APIs under a subscription plan
   - name: Secrets
     description: Encrypted secret management — create, rotate, and delete organization-scoped secrets referenced via {{ secret "name" }} placeholders
