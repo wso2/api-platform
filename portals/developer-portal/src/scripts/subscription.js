@@ -439,6 +439,22 @@ async function fetchTokenIfNeeded(subscriptionId) {
     }
 }
 
+// Keep the token caches fetchTokenIfNeeded reads (the private _tokenCache, checked
+// first, and window.__tokenMap) in sync after a token is regenerated, so a later
+// reveal/copy returns the new token instead of the stale cached one. Pass a falsy
+// token to invalidate the cached entry instead.
+window.__updateSubscriptionTokenCache = function (subscriptionId, token) {
+    if (!subscriptionId) return;
+    window.__tokenMap = window.__tokenMap || {};
+    if (token) {
+        _tokenCache[subscriptionId] = token;
+        window.__tokenMap[subscriptionId] = token;
+    } else {
+        delete _tokenCache[subscriptionId];
+        delete window.__tokenMap[subscriptionId];
+    }
+};
+
 function showSubscriptionTokenModal(token, planName) {
     return new Promise((resolve) => {
         const overlay = document.createElement('div');
