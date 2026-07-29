@@ -1185,6 +1185,17 @@
 }
 
 .cfg-form-modal--wide { width: 560px; }
+.cfg-form-modal--xwide { width: 680px; }
+
+/* Limits rows: keep every control legible. Wrap instead of clipping when the
+   modal is narrowed (mobile / small viewports), and stop the selects and number
+   inputs from shrinking so tight that their content (e.g. TOTAL_TOKEN_COUNT) is
+   cut off. Widths pair with the inline flex-grow set in settings-plans.js. */
+.cfg-limit-row { flex-wrap: wrap; }
+.cfg-limit-row .cfg-limit-type  { min-width: 150px; }
+.cfg-limit-row .cfg-limit-count { min-width: 90px; }
+.cfg-limit-row .cfg-limit-amount { min-width: 64px; }
+.cfg-limit-row .cfg-limit-unit  { min-width: 120px; }
 
 .cfg-modal-close {
   width: 32px;
