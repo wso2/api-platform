@@ -80,7 +80,7 @@ describe('webhook delivery pipeline', () => {
 
         const received = sink.findDeliveryFor('application.created');
         expect(received).toBeDefined();
-        const sigHeader = received.headers['x-devportal-signature'];
+        const sigHeader = received.headers['x-api-portal-signature'];
         expect(sigHeader).toBeDefined();
 
         // Recompute per signer.js: HMAC-SHA256("<t>.<raw_body>", secret), hex.

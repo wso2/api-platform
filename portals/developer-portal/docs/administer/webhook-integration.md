@@ -79,7 +79,7 @@ The response never includes the secret. That one `secret` value does double duty
 | `id` | No | Handle for the webhook subscriber (unique per org), stored as-is. Generated from `displayName` when omitted — a numeric suffix (`-2`, `-3`) if that handle is taken, then a random one — so reusing a display name never fails. Supply it only when you need a specific, stable identifier: it is the id used in the resource path, and a collision on a handle you supplied is returned as `409` rather than silently renamed |
 | `displayName` | Yes | Human-readable name, and the basis for the generated handle |
 | `targetUrl` | Yes | HTTPS endpoint that receives webhook POSTs (e.g. a handler in front of your gateway). |
-| `secret` | Recommended | Minimum 32-character string, used for **both** signing each event with HMAC-SHA256 and deriving the AES-256-GCM key that encrypts sensitive fields in `apikey.generated`, `apikey.regenerated`, `subscription.created`, and `subscription.token_regenerated` events. Stored encrypted; never returned in API responses. If omitted, deliveries are sent unsigned (no `X-Devportal-Signature` header) **and** sensitive fields are omitted from `data` entirely |
+| `secret` | Recommended | Minimum 32-character string, used for **both** signing each event with HMAC-SHA256 and deriving the AES-256-GCM key that encrypts sensitive fields in `apikey.generated`, `apikey.regenerated`, `subscription.created`, and `subscription.token_regenerated` events. Stored encrypted; never returned in API responses. If omitted, deliveries are sent unsigned (no `X-Api-Portal-Signature` header) **and** sensitive fields are omitted from `data` entirely |
 | `events` | No | Event type allowlist. Wildcards supported (`apikey.*`). Omit or leave empty to receive all events |
 | `enabled` | No | Defaults to `true`. Disable a subscriber without deleting it |
 | `timeoutMs` | No | HTTP request timeout in milliseconds (default: 5000) |
@@ -111,10 +111,10 @@ Every event is delivered as an HTTP POST with a JSON body and the following head
 
 | Header | Description |
 |---|---|
-| `X-Devportal-Event` | Event type (e.g. `apikey.generated`) |
-| `X-Devportal-Event-Id` | UUID of the event — use for idempotency |
-| `X-Devportal-Delivery-Id` | UUID of this specific delivery attempt |
-| `X-Devportal-Signature` | HMAC-SHA256 signature (see [Signature Verification](#signature-verification)). Omitted if the subscriber has no secret configured |
+| `X-Api-Portal-Event` | Event type (e.g. `apikey.generated`) |
+| `X-Api-Portal-Event-Id` | UUID of the event — use for idempotency |
+| `X-Api-Portal-Delivery-Id` | UUID of this specific delivery attempt |
+| `X-Api-Portal-Signature` | HMAC-SHA256 signature (see [Signature Verification](#signature-verification)). Omitted if the subscriber has no secret configured |
 | `Content-Type` | `application/json` |
 
 ### Envelope structure
@@ -503,7 +503,7 @@ Your subscriber identifies the affected application via `application_id`. If the
 
 ### Signature verification
 
-If the subscriber has a secret configured, every POST includes an `X-Devportal-Signature` header. The format is:
+If the subscriber has a secret configured, every POST includes an `X-Api-Portal-Signature` header. The format is:
 
 ```
 t=<unix_seconds>,v1=<hex_hmac>
@@ -558,7 +558,7 @@ Events that carry sensitive fields include them directly in `data` under their f
 
 **Decryption steps:**
 
-1. Derive the AES key: `HKDF-SHA3-256(ikm = secret, salt = "" (empty), info = "devportal-webhook-field-encryption-v1", length = 32)`
+1. Derive the AES key: `HKDF-SHA3-256(ikm = secret, salt = "" (empty), info = "api-portal-webhook-field-encryption-v1", length = 32)`
 2. AES-256-GCM decrypt `ciphertext` using that key, `iv`, and `tag` → plaintext secret
 
 The key is derived rather than using the secret's raw bytes so that the encryption key is domain-separated from the HMAC signing key, even though both come from the same secret. The empty salt is intentional — HKDF substitutes 32 zero bytes (RFC 5869), which is what makes the derivation reproducible on your side without any extra shared state.
@@ -568,7 +568,7 @@ The key is derived rather than using the secret's raw bytes so that the encrypti
 ```js
 const crypto = require('crypto');
 
-const FIELD_KEY_INFO = 'devportal-webhook-field-encryption-v1';
+const FIELD_KEY_INFO = 'api-portal-webhook-field-encryption-v1';
 
 function deriveFieldKey(secret) {
     return Buffer.from(

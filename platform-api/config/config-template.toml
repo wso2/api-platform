@@ -368,4 +368,4 @@ enabled = false
 secret = ""
 signature_tolerance = "5m"                       # max age of a signed request (replay protection)
 max_body_size       = 1048576                    # request body cap in bytes (1 MiB)
-signature_header    = "X-Devportal-Signature"     # header carrying the "t=...,v1=..." signature
+signature_header    = "X-Api-Portal-Signature"     # header carrying the "t=...,v1=..." signature

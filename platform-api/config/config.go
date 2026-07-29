@@ -1013,7 +1013,7 @@ func validateWebhookConfig(w *Webhook) error {
 		w.MaxBodySize = 1 << 20 // 1 MiB
 	}
 	if w.SignatureHeader == "" {
-		w.SignatureHeader = "X-Devportal-Signature"
+		w.SignatureHeader = "X-Api-Portal-Signature"
 	}
 	return nil
 }

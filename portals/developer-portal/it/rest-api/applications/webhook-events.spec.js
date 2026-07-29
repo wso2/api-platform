@@ -97,7 +97,7 @@ describe('applications webhook events', () => {
         expect(received.body.occurred_at).toBeDefined();
         expect(received.body.org).toEqual({ ref_id: expect.any(String) });
         expect(received.body.encrypted_fields).toEqual([]);
-        expect(received.headers['x-devportal-event-id']).toBe(event.uuid);
+        expect(received.headers['x-api-portal-event-id']).toBe(event.uuid);
 
         expect(received.body.data).toEqual({
             application_id: expect.any(String),

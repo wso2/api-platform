@@ -19,7 +19,7 @@ const crypto = require('crypto');
 const { config } = require('../../config/configLoader');
 
 /**
- * Build the X-Devportal-Signature header value.
+ * Build the X-Api-Portal-Signature header value.
  * Canonical string: "<unix_seconds>.<raw_body>"
  *
  * @param {string} secret  — per-subscriber HMAC secret
@@ -36,7 +36,7 @@ function sign(secret, rawBody, ts) {
 }
 
 /**
- * Verify an inbound X-Devportal-Signature header (for testing / reference subscribers).
+ * Verify an inbound X-Api-Portal-Signature header (for testing / reference subscribers).
  * Returns true if the signature is valid and within the tolerance window.
  *
  * @param {string} secret

@@ -69,7 +69,7 @@ func encryptFieldForTest(t *testing.T, secret, plaintext string) *EncryptedKey {
 // If this fails, the two sides no longer derive the same key and every field decryption breaks —
 // check that fieldKeyInfo, the salt (empty), the hash (SHA3-256) and the length still agree.
 func TestDeriveFieldKey_MatchesProducer(t *testing.T) {
-	const wantHex = "8b06507843576be069ac6fc90d88f9c9646ea1909fcea7583092c9ec546fa109"
+	const wantHex = "aa951771c97c94be7e0eae71316c23c8bfa6da5ea49b28223cea84355bfa2e5d"
 
 	d, err := NewDecryptor("shared-secret")
 	if err != nil {
@@ -89,9 +89,9 @@ func TestDecryptor_DecryptsProducerEnvelope(t *testing.T) {
 		t.Fatalf("NewDecryptor: %v", err)
 	}
 	enc := &EncryptedKey{
-		IV:         "usehnt1KbkvltWrp",
-		Tag:        "xRCJjvhjE25UL3mrZbeSXQ==",
-		Ciphertext: "1twIl7zU1DgV91w7OAqzF54rARiP2b5PnL9C",
+		IV:         "MD4uUhNKOl1jt0Wg",
+		Tag:        "oEc3xMXQ4yZejpjFwK1UxA==",
+		Ciphertext: "BRhFPvVB71qaOXJFNV+bgEgBMvpt/99sC3XF",
 	}
 
 	got, err := d.Decrypt(enc)

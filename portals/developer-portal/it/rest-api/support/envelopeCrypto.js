@@ -27,7 +27,7 @@
 
 const crypto = require('crypto');
 
-const FIELD_KEY_INFO = 'devportal-webhook-field-encryption-v1';
+const FIELD_KEY_INFO = 'api-portal-webhook-field-encryption-v1';
 
 function deriveFieldKey(secret) {
     return Buffer.from(

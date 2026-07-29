@@ -40,7 +40,7 @@ import (
 //
 // Trust/transport model (verified from source):
 //   - The devportal signs each webhook "t=<unix>,v1=<hmac>" over "<t>.<body>"
-//     (X-Devportal-Signature) with the shared secret, and encrypts the key/token
+//     (X-Api-Portal-Signature) with the shared secret, and encrypts the key/token
 //     with the platform-api webhook RSA public key (RSA-OAEP-SHA256 + AES-256-GCM).
 //   - platform-api resolves the event's org by HANDLE (org.ref_id) and the API /
 //     plan by HANDLE (data.api.ref_id / data.subscription_plan.ref_id). So the

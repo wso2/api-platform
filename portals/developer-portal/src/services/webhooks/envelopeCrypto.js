@@ -23,7 +23,7 @@ const crypto = require('crypto');
 // secret material directly. Bump the version suffix if the scheme changes; the
 // label must stay byte-identical to the receiver's (platform-api
 // internal/webhook/decryptor.go).
-const FIELD_KEY_INFO = 'devportal-webhook-field-encryption-v1';
+const FIELD_KEY_INFO = 'api-portal-webhook-field-encryption-v1';
 
 const KEY_BYTES = 32; // AES-256
 const IV_BYTES = 12; // 96-bit GCM nonce
@@ -66,7 +66,7 @@ function deriveFieldKey(secret) {
  * }
  *
  * Subscribers decrypt with:
- *   1. HKDF-SHA3-256(secret, info="devportal-webhook-field-encryption-v1") → aesKey
+ *   1. HKDF-SHA3-256(secret, info="api-portal-webhook-field-encryption-v1") → aesKey
  *   2. AES-256-GCM decrypt ciphertext with aesKey + iv + tag → plaintext
  *
  * @param {string} secret    — the subscriber's shared secret

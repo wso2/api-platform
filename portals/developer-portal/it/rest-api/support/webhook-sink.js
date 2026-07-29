@@ -89,7 +89,7 @@ function createWebhookSink() {
 
     // Delivered envelope shape (src/services/webhooks/deliveryWorker.js):
     // { event_id, event_type, occurred_at, org: { ref_id }, encrypted_fields: [], data: {...} }
-    // Signature, when the subscriber has a secret, arrives as X-Devportal-Signature.
+    // Signature, when the subscriber has a secret, arrives as X-Api-Portal-Signature.
     function findDeliveryFor(eventType) {
         return received.find((r) => r.body?.event_type === eventType);
     }

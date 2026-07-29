@@ -159,7 +159,7 @@ func defaultConfig() *Server {
 			Enabled:            false,
 			SignatureTolerance: 5 * time.Minute,
 			MaxBodySize:        1 << 20, // 1 MiB
-			SignatureHeader:    "X-Devportal-Signature",
+			SignatureHeader:    "X-Api-Portal-Signature",
 		},
 	}
 }

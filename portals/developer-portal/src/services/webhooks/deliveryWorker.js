@@ -72,13 +72,13 @@ async function post(delivery, event) {
     const headers = {
         'Content-Type': 'application/json',
         'Content-Length': Buffer.byteLength(body),
-        'X-Devportal-Event': event.type,
-        'X-Devportal-Event-Id': event.uuid,
-        'X-Devportal-Delivery-Id': deliveryId,
+        'X-Api-Portal-Event': event.type,
+        'X-Api-Portal-Event-Id': event.uuid,
+        'X-Api-Portal-Delivery-Id': deliveryId,
     };
     if (sub.secret) {
         const { header: sigHeader } = sign(sub.secret, body);
-        headers['X-Devportal-Signature'] = sigHeader;
+        headers['X-Api-Portal-Signature'] = sigHeader;
     }
 
     return new Promise((resolve) => {

@@ -30,7 +30,7 @@ import (
 // webhook secret. It must stay byte-identical to the producer's label (Developer Portal
 // src/services/webhooks/envelopeCrypto.js, FIELD_KEY_INFO) — a mismatch yields a different key
 // and every decryption fails. The "-v1" suffix is the scheme version; bump both sides together.
-const fieldKeyInfo = "devportal-webhook-field-encryption-v1"
+const fieldKeyInfo = "api-portal-webhook-field-encryption-v1"
 
 // fieldKeyBytes is the derived AES key length (AES-256).
 const fieldKeyBytes = 32
