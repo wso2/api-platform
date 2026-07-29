@@ -28,12 +28,14 @@ This means you can:
 - Run the portal in a fully standalone mode (no live gateway required) and replay events later
 
 
-## Multi-tenancy
+## Organizations and views
 
-The portal is multi-tenant. Each **organization** gets its own branded space, and within an organization you can have multiple **views** for different audiences (e.g. internal teams vs. external partners). Users are routed to their organization automatically based on a claim in their IdP token.
+A portal instance serves one **organization**, configured by handle and created on first startup. Within it you can have multiple **views** for different audiences (e.g. internal teams vs. external partners), each showing only the APIs carrying the relevant labels.
+
+Several organizations can share one database, each served by its own portal instance; an instance serves only its own and rejects requests naming any other. Signing in requires an authenticated token whose organization claim matches that organization — whichever authentication mode is configured.
 
 ## Next steps
 
 - [Quick Start](quick-start.md) — get the portal running in minutes with Docker
 - [Core Concepts](concepts.md) — understand the key building blocks
-- [Administer](../administer/manage-organizations.md) — set up organizations, views, and integrations
+- [Administer](../administer/manage-organizations.md) — configure the organization, views, and integrations

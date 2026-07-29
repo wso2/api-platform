@@ -31,7 +31,8 @@ user     = '{{ env "APIP_DP_DATABASE_USER" "postgres" }}'
 password = '{{ env "APIP_DP_DATABASE_PASSWORD" "postgres" }}'
 
 [developer_portal.organization]
-default_name = '{{ env "APIP_DP_ORGANIZATION_DEFAULT_NAME" "default" }}'
+handle       = '{{ env "APIP_DP_ORGANIZATION_HANDLE" "default" }}'
+display_name = '{{ env "APIP_DP_ORGANIZATION_DISPLAY_NAME" "Default" }}'
 
 [developer_portal.auth]
 mode = "local"

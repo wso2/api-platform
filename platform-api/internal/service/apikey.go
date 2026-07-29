@@ -79,6 +79,23 @@ func NewAPIKeyService(apiRepo repository.APIRepository, artifactRepo repository.
 	}
 }
 
+// canManageAPIKey reports whether callerUserID may read or mutate an API key created by
+// createdBy. The creator always may; any other caller must hold constants.ScopeAPIKeyAllManage
+// (keyAdmin), which is an organization-wide, admin-like grant checked at the handler layer.
+//
+// This is the single ownership predicate shared by every API key CRUD path (REST/WebSub/
+// WebBroker, LLM provider, LLM proxy, application key binding) so the rule cannot drift
+// between them.
+//
+// It fails closed on an empty caller identity: an unidentified caller is never treated as
+// the creator, even if createdBy happens to be empty too.
+func canManageAPIKey(createdBy, callerUserID string, keyAdmin bool) bool {
+	if keyAdmin {
+		return true
+	}
+	return callerUserID != "" && createdBy == callerUserID
+}
+
 // hashAPIKey hashes a plain API key using the given algorithm.
 // Currently only "sha256" is supported. Returns a hex-encoded hash string.
 func hashAPIKey(plainAPIKey, algorithm string) (string, error) {
@@ -111,6 +128,22 @@ func buildAPIKeyHashesJSON(plainAPIKey string, algorithms []string) (string, err
 	return "{" + strings.Join(pairs, ", ") + "}", nil
 }
 
+// validateExpiryInFuture rejects an absolute expiration that is not strictly in the
+// future. Every API-key create/update path funnels through this (directly, or via
+// resolveExpiresAt) so a caller-supplied expiresAt can never persist a key that is
+// already expired the moment it is stored — the gateway would receive, and
+// immediately discard, a key the caller was told was created successfully.
+// A nil expiry means "never expires" and is left alone.
+func validateExpiryInFuture(expiresAt *time.Time) error {
+	if expiresAt == nil {
+		return nil
+	}
+	if !expiresAt.After(time.Now()) {
+		return apperror.ValidationFailed.New("API key expiration time must be in the future.")
+	}
+	return nil
+}
+
 // resolveExpiresAt returns the absolute expiration time to persist.
 // If expiresAt is set it takes precedence; otherwise expiresIn is converted to an
 // absolute timestamp using the same unit mapping as the gateway controller
@@ -118,6 +151,9 @@ func buildAPIKeyHashesJSON(plainAPIKey string, algorithms []string) (string, err
 // the past or the unit is unrecognised.
 func resolveExpiresAt(expiresAt *time.Time, expiresIn *api.ExpirationDuration) (*time.Time, error) {
 	if expiresAt != nil {
+		if err := validateExpiryInFuture(expiresAt); err != nil {
+			return nil, err
+		}
 		return expiresAt, nil
 	}
 	if expiresIn == nil {
@@ -140,12 +176,13 @@ func resolveExpiresAt(expiresAt *time.Time, expiresIn *api.ExpirationDuration) (
 	case api.Months:
 		d *= 30 * 24 * time.Hour // approximate month as 30 days
 	default:
-		return nil, fmt.Errorf("unsupported expiration unit: %s", expiresIn.Unit)
+		return nil, apperror.ValidationFailed.New("Unsupported API key expiration unit.").
+			WithLogMessage(fmt.Sprintf("unsupported expiration unit: %s", expiresIn.Unit))
 	}
 
 	expiry := now.Add(d)
-	if expiry.Before(now) {
-		return nil, fmt.Errorf("API key expiration time must be in the future")
+	if err := validateExpiryInFuture(&expiry); err != nil {
+		return nil, err
 	}
 	return &expiry, nil
 }
@@ -517,7 +554,13 @@ func (s *APIKeyService) CreateAPIKey(ctx context.Context, apiHandle, kind, orgId
 
 // UpdateAPIKey updates/regenerates an API key and broadcasts it to all gateways where the API is deployed.
 // This method is used when external platforms rotates/regenerates API keys on hybrid gateways.
-func (s *APIKeyService) UpdateAPIKey(ctx context.Context, apiHandle, kind, orgId, keyName, userId string, req *api.UpdateAPIKeyRequest) error {
+// Only the key's creator may update it, unless keyAdmin is true — the caller holds
+// constants.ScopeAPIKeyAllManage and may act on any user's key. This is shared by every kind
+// that uses this service (REST, WebSub, WebBroker API keys) via their own handlers.
+// trustedOrigin must be false for every directly-authenticated caller; it is set only by
+// the signature-verified webhook event path, which carries no end-user identity to match against
+// the key's creator (authentication_authorization.md GO-AUTH-019).
+func (s *APIKeyService) UpdateAPIKey(ctx context.Context, apiHandle, kind, orgId, keyName, userId string, keyAdmin, trustedOrigin bool, req *api.UpdateAPIKeyRequest) error {
 	// Resolve API handle to UUID within the artifact table backing kind, so a handle shared across
 	// kinds resolves to exactly one artifact.
 	apiMetadata, err := s.artifactRepo.GetAPIMetadataByHandleAndKind(apiHandle, kind, orgId)
@@ -530,6 +573,23 @@ func (s *APIKeyService) UpdateAPIKey(ctx context.Context, apiHandle, kind, orgId
 		return apperror.ArtifactNotFound.New()
 	}
 	apiId := apiMetadata.ID
+
+	// Ownership check — only the key's creator, or a caller holding
+	// constants.ScopeAPIKeyAllManage, may update it. Enforced up front, right
+	// after resolving the API handle, and before resolving gateway deployments, hashing
+	// the new key material, or broadcasting — an unauthorized caller must not be able to
+	// trigger any of that work (deny-by-default; authentication_authorization.md GO-AUTH-007).
+	existingKey, err := s.apiKeyRepo.GetByArtifactAndName(apiId, keyName)
+	if err != nil {
+		s.slogger.Error("Failed to look up API key for update", "apiHandle", apiHandle, "error", err)
+		return fmt.Errorf("failed to look up API key: %w", err)
+	}
+	if existingKey == nil {
+		return apperror.RESTAPIAPIKeyNotFound.New()
+	}
+	if !trustedOrigin && !canManageAPIKey(existingKey.CreatedBy, userId, keyAdmin) {
+		return apperror.RESTAPIAPIKeyForbidden.New()
+	}
 
 	// Get all deployments for this API to find target gateways
 	gateways, err := s.apiRepo.GetAPIGatewaysWithDetails(apiId, orgId)
@@ -556,8 +616,6 @@ func (s *APIKeyService) UpdateAPIKey(ctx context.Context, apiHandle, kind, orgId
 		s.slogger.Error("Invalid expiration for API key update", "apiHandle", apiHandle, "keyName", keyName, "error", err)
 		return fmt.Errorf("invalid expiration: %w", err)
 	}
-	// Fetch UUID before update for consistent audit record (CREATE uses UUID, not name)
-	existingKey, existingKeyErr := s.apiKeyRepo.GetByArtifactAndName(apiId, keyName)
 
 	dbKey := &model.APIKey{
 		ArtifactUUID: apiId,
@@ -574,11 +632,7 @@ func (s *APIKeyService) UpdateAPIKey(ctx context.Context, apiHandle, kind, orgId
 		return fmt.Errorf("failed to update API key in database: %w", err)
 	}
 	if s.auditRepo != nil {
-		auditUUID := keyName
-		if existingKeyErr == nil && existingKey != nil {
-			auditUUID = existingKey.UUID
-		}
-		_ = s.auditRepo.Record("UPDATE", auditUUID, "api_key", orgId, userId)
+		_ = s.auditRepo.Record("UPDATE", existingKey.UUID, "api_key", orgId, userId)
 	}
 
 	// Build the API key updated event — send the hash JSON and masked key, not the plain key
@@ -628,8 +682,13 @@ func (s *APIKeyService) UpdateAPIKey(ctx context.Context, apiHandle, kind, orgId
 	return nil
 }
 
-// RevokeAPIKey broadcasts API key revocation to all gateways where the API is deployed
-func (s *APIKeyService) RevokeAPIKey(ctx context.Context, apiHandle, kind, orgId, keyName, userId string) error {
+// RevokeAPIKey broadcasts API key revocation to all gateways where the API is deployed.
+// Only the key's creator may revoke it, unless keyAdmin is true — the caller holds
+// constants.ScopeAPIKeyAllManage and may act on any user's key. This is shared by every kind
+// that uses this service (REST, WebSub, WebBroker API keys) via their own handlers.
+// trustedOrigin carries the same meaning as in UpdateAPIKey: false for every
+// directly-authenticated caller, true only on the signature-verified webhook event path.
+func (s *APIKeyService) RevokeAPIKey(ctx context.Context, apiHandle, kind, orgId, keyName, userId string, keyAdmin, trustedOrigin bool) error {
 	// Resolve API handle to UUID within the artifact table backing kind, so a handle shared across
 	// kinds resolves to exactly one artifact.
 	apiMetadata, err := s.artifactRepo.GetAPIMetadataByHandleAndKind(apiHandle, kind, orgId)
@@ -643,6 +702,23 @@ func (s *APIKeyService) RevokeAPIKey(ctx context.Context, apiHandle, kind, orgId
 	}
 	apiId := apiMetadata.ID
 
+	// Ownership check — only the key's creator, or a caller holding
+	// constants.ScopeAPIKeyAllManage, may revoke it. Enforced up front, right
+	// after resolving the API handle, and before resolving gateway deployments or
+	// broadcasting — an unauthorized caller must not be able to trigger any of that work
+	// (deny-by-default; authentication_authorization.md GO-AUTH-007).
+	revokeKey, err := s.apiKeyRepo.GetByArtifactAndName(apiId, keyName)
+	if err != nil {
+		s.slogger.Error("Failed to look up API key for revocation", "apiHandle", apiHandle, "error", err)
+		return fmt.Errorf("failed to look up API key: %w", err)
+	}
+	if revokeKey == nil {
+		return apperror.RESTAPIAPIKeyNotFound.New()
+	}
+	if !trustedOrigin && !canManageAPIKey(revokeKey.CreatedBy, userId, keyAdmin) {
+		return apperror.RESTAPIAPIKeyForbidden.New()
+	}
+
 	// Get all deployments for this API to find target gateways
 	gateways, err := s.apiRepo.GetAPIGatewaysWithDetails(apiId, orgId)
 	if err != nil {
@@ -652,20 +728,13 @@ func (s *APIKeyService) RevokeAPIKey(ctx context.Context, apiHandle, kind, orgId
 		return apperror.GatewayConnectionUnavailable.New()
 	}
 
-	// Fetch UUID before revoke for consistent audit record (CREATE uses UUID, not name)
-	revokeKey, revokeKeyErr := s.apiKeyRepo.GetByArtifactAndName(apiId, keyName)
-
-	// Revoke the API key in the database before broadcasting
+	// Revoke the API key in the database before broadcasting.
 	if err := s.apiKeyRepo.Revoke(apiId, keyName, userId); err != nil {
 		s.slogger.Error("Failed to revoke API key in database", "apiHandle", apiHandle, "keyName", keyName, "error", err)
 		return fmt.Errorf("failed to revoke API key in database: %w", err)
 	}
 	if s.auditRepo != nil {
-		auditUUID := keyName
-		if revokeKeyErr == nil && revokeKey != nil {
-			auditUUID = revokeKey.UUID
-		}
-		_ = s.auditRepo.Record("REVOKE", auditUUID, "api_key", orgId, userId)
+		_ = s.auditRepo.Record("REVOKE", revokeKey.UUID, "api_key", orgId, userId)
 	}
 
 	// Build the API key revoked event

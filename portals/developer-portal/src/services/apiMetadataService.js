@@ -27,6 +27,7 @@ const subscriptionPlanDao = require('../dao/subscriptionPlanDao');
 const apiFileDao = require('../dao/apiFileDao');
 const apiKeyDao = require("../dao/apiKeyDao");
 const util = require("../utils/util");
+const orgContext = require("../utils/orgContext");
 const logger = require("../config/logger");
 const { config } = require('../config/configLoader');
 const path = require("path");
@@ -1115,18 +1116,27 @@ const getAPIFile = async (req, res) => {
     const type = req.query.type;
     // The endpoint is public (security: []) so an API icon renders on the public
     // listing/landing pages without a session. Anonymous access is limited to
-    // images: the session org always wins, and only image reads may fall back to
-    // the orgId query param. A request with no session org for any non-image type
-    // is rejected — non-image content stays session-scoped. Mirrors getOrgAsset.
+    // images: the session org always wins, and only image reads fall back to this
+    // instance's own organization. A request with no session org for any non-image
+    // type is rejected — non-image content stays session-scoped. Mirrors getOrgAsset.
+    //
+    // The fallback is the *configured* organization, never the caller-supplied
+    // ?orgId. The database is shared across organizations, so on an endpoint with
+    // no credential that query parameter would be an unauthenticated selector for
+    // any tenant's API icons. It is still accepted (the portal's own templates
+    // append it, and the spec declares it) and simply ignored.
     const isImageType = type === constants.DOC_TYPES.IMAGES;
-    const orgId = req.orgId || (isImageType ? req.query.orgId : undefined);
     let apiFileResponse = "";
     let apiFile;
     let contentType = "";
     let apiId;
+    // Declared out here so the catch below can log it; resolved inside the try
+    // because getOrgUuid() hits the database and can throw.
+    let orgId;
     try {
+        orgId = req.orgId || (isImageType ? await orgContext.getOrgUuid() : undefined);
         if (!orgId) {
-            // No session org, and either a non-image type or a missing orgId query param.
+            // No session org and a non-image type — non-image content is session-scoped.
             return util.sendError(res, 401, 'Authentication required');
         }
         apiId = await resolveScopedApiId(req, orgId, apiHandle);

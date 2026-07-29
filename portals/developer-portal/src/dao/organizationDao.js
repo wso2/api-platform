@@ -105,6 +105,22 @@ const getByUuid = async (uuid, t) => {
     return organization;
 };
 
+// Exact handle match only — no fallback to display_name/idp_ref_id. Used to resolve
+// the single organization this instance is pinned to (src/utils/orgContext.js): in a
+// shared multi-organization database, one org's handle can legitimately equal
+// another's display name, so findOrgByIdentifier's priority ladder is too loose to
+// establish the pin itself.
+const getByHandle = async (handle, t) => {
+    const exec = t || db;
+    const organization = normalizeOrgRow(
+        await exec.queryOne(`SELECT * FROM ${ORG_TABLE} WHERE handle = ?`, [String(handle).toLowerCase()])
+    );
+    if (!organization) {
+        throw new NotFoundError('Organization not found');
+    }
+    return organization;
+};
+
 const getId = async (orgName) => {
     const organization = await findOrgByIdentifier(orgName);
     if (!organization) {
@@ -330,6 +346,7 @@ module.exports = {
     create,
     get,
     getByUuid,
+    getByHandle,
     getId,
     list,
     update,

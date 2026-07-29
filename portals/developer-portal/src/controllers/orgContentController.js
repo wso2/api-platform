@@ -16,9 +16,6 @@
  * under the License.
  */
 /* eslint-disable no-undef */
-const path = require('path');
-const fs = require('fs');
-const Handlebars = require('handlebars');
 const logger = require('../config/logger');
 const { renderTemplate, renderTemplateFromAPI } = require('../utils/util');
 const { config } = require('../config/configLoader');
@@ -34,16 +31,6 @@ const loadOrganizationContent = async (req, res, next) => {
     } else {
         html = await loadOrgContentFromAPI(req, res, next);
     }
-    res.send(html);
-}
-const loadDefaultLandingPage = async (req, res) => {
-
-    let html = "";
-    const completeTemplatePath = path.join(require.main.filename, '../pages/default-home/page.hbs');
-    const templateResponse = await fs.readFileSync(completeTemplatePath, constants.CHARSET_UTF8);
-    const template = await Handlebars.compile(templateResponse);
-    html = template();
-
     res.send(html);
 }
 const loadOrgContentFromFile = async (req, res) => {
@@ -97,5 +84,4 @@ module.exports = {
     loadOrgContentFromFile,
     loadOrgContentFromAPI,
     loadOrganizationContent,
-    loadDefaultLandingPage
 };

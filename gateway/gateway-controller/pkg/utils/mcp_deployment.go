@@ -341,6 +341,12 @@ func (s *MCPDeploymentService) parseValidateAndTransform(params MCPDeploymentPar
 		return nil, nil, fmt.Errorf("failed to parse configuration: %w", err)
 	}
 
+	// On update, inherit the persisted upstream credential when this request does
+	// not carry one. See credential_inheritance.go for the inheritance rules.
+	if err := s.inheritStoredMCPCredential(&mcpConfig, params); err != nil {
+		return nil, nil, err
+	}
+
 	// Render template expressions ({{ secret "..." }}, {{ env "..." }}, {{ default ... }}, etc.)
 	// BEFORE validation so the validator sees resolved values, not raw template syntax.
 	// We render in a temp StoredConfig then cast back. The original mcpConfig (unrendered)

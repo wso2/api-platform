@@ -210,7 +210,7 @@ This operation requires <strong>Basic Auth</strong> authentication.
 {
   "status": "error",
   "code": "FORBIDDEN",
-  "message": "Write operations are disabled in read-only mode."
+  "message": "Forbidden"
 }
 ```
 
@@ -240,7 +240,7 @@ This operation requires <strong>Basic Auth</strong> authentication.
 |---|---|---|---|
 |201|[Created](https://tools.ietf.org/html/rfc7231#section-6.3.2)|Generated API key. The plaintext `key` is returned exactly once.|[ApiKeyResponse](schemas.md#schemaapikeyresponse)|
 |400|[Bad Request](https://tools.ietf.org/html/rfc7231#section-6.5.1)|Bad request. Validation and other bad-request errors are returned as a standard error object (field-level details, when present, are carried in its `errors` array); some legacy handlers return a message-only object.|Inline|
-|403|[Forbidden](https://tools.ietf.org/html/rfc7231#section-6.5.3)|Request is forbidden for the current runtime mode or caller permissions.|[ErrorResponse](schemas.md#schemaerrorresponse)|
+|403|[Forbidden](https://tools.ietf.org/html/rfc7231#section-6.5.3)|Request is forbidden — because the caller lacks the required permission, because the current runtime mode disallows the operation (read-only mode), or because an organization was named that is not the single one this instance serves. In that last case an organization that does not exist is answered identically to one belonging to someone else, so the response cannot be used to discover what a shared database holds.|[ErrorResponse](schemas.md#schemaerrorresponse)|
 |404|[Not Found](https://tools.ietf.org/html/rfc7231#section-6.5.4)|Resource not found.|[ErrorResponse](schemas.md#schemaerrorresponse)|
 |500|[Internal Server Error](https://tools.ietf.org/html/rfc7231#section-6.6.1)|Internal server error.|[ErrorResponse](schemas.md#schemaerrorresponse)|
 
@@ -458,7 +458,7 @@ This operation requires <strong>Basic Auth</strong> authentication.
 {
   "status": "error",
   "code": "FORBIDDEN",
-  "message": "Write operations are disabled in read-only mode."
+  "message": "Forbidden"
 }
 ```
 
@@ -497,7 +497,7 @@ This operation requires <strong>Basic Auth</strong> authentication.
 |Status|Meaning|Description|Schema|
 |---|---|---|---|
 |200|[OK](https://tools.ietf.org/html/rfc7231#section-6.3.1)|Generated or regenerated API key. The plaintext `key` is returned exactly once.|[ApiKeyResponse](schemas.md#schemaapikeyresponse)|
-|403|[Forbidden](https://tools.ietf.org/html/rfc7231#section-6.5.3)|Request is forbidden for the current runtime mode or caller permissions.|[ErrorResponse](schemas.md#schemaerrorresponse)|
+|403|[Forbidden](https://tools.ietf.org/html/rfc7231#section-6.5.3)|Request is forbidden — because the caller lacks the required permission, because the current runtime mode disallows the operation (read-only mode), or because an organization was named that is not the single one this instance serves. In that last case an organization that does not exist is answered identically to one belonging to someone else, so the response cannot be used to discover what a shared database holds.|[ErrorResponse](schemas.md#schemaerrorresponse)|
 |404|[Not Found](https://tools.ietf.org/html/rfc7231#section-6.5.4)|Resource not found.|[ErrorResponse](schemas.md#schemaerrorresponse)|
 |409|[Conflict](https://tools.ietf.org/html/rfc7231#section-6.5.8)|The key has already been revoked and cannot be regenerated.|[ErrorResponse](schemas.md#schemaerrorresponse)|
 |500|[Internal Server Error](https://tools.ietf.org/html/rfc7231#section-6.6.1)|Internal server error.|[ErrorResponse](schemas.md#schemaerrorresponse)|
@@ -554,7 +554,7 @@ This operation requires <strong>Basic Auth</strong> authentication.
 {
   "status": "error",
   "code": "FORBIDDEN",
-  "message": "Write operations are disabled in read-only mode."
+  "message": "Forbidden"
 }
 ```
 
@@ -593,7 +593,7 @@ This operation requires <strong>Basic Auth</strong> authentication.
 |Status|Meaning|Description|Schema|
 |---|---|---|---|
 |204|[No Content](https://tools.ietf.org/html/rfc7231#section-6.3.5)|API key revoked successfully.|None|
-|403|[Forbidden](https://tools.ietf.org/html/rfc7231#section-6.5.3)|Request is forbidden for the current runtime mode or caller permissions.|[ErrorResponse](schemas.md#schemaerrorresponse)|
+|403|[Forbidden](https://tools.ietf.org/html/rfc7231#section-6.5.3)|Request is forbidden — because the caller lacks the required permission, because the current runtime mode disallows the operation (read-only mode), or because an organization was named that is not the single one this instance serves. In that last case an organization that does not exist is answered identically to one belonging to someone else, so the response cannot be used to discover what a shared database holds.|[ErrorResponse](schemas.md#schemaerrorresponse)|
 |404|[Not Found](https://tools.ietf.org/html/rfc7231#section-6.5.4)|Resource not found.|[ErrorResponse](schemas.md#schemaerrorresponse)|
 |409|[Conflict](https://tools.ietf.org/html/rfc7231#section-6.5.8)|The key has already been revoked.|[ErrorResponse](schemas.md#schemaerrorresponse)|
 |500|[Internal Server Error](https://tools.ietf.org/html/rfc7231#section-6.6.1)|Internal server error.|[ErrorResponse](schemas.md#schemaerrorresponse)|
@@ -679,7 +679,7 @@ This operation requires <strong>Basic Auth</strong> authentication.
 {
   "status": "error",
   "code": "FORBIDDEN",
-  "message": "Write operations are disabled in read-only mode."
+  "message": "Forbidden"
 }
 ```
 
@@ -719,7 +719,7 @@ This operation requires <strong>Basic Auth</strong> authentication.
 |---|---|---|---|
 |200|[OK](https://tools.ietf.org/html/rfc7231#section-6.3.1)|Association updated.|[ApiKeyApplicationResponse](schemas.md#schemaapikeyapplicationresponse)|
 |400|[Bad Request](https://tools.ietf.org/html/rfc7231#section-6.5.1)|Bad request. Validation and other bad-request errors are returned as a standard error object (field-level details, when present, are carried in its `errors` array); some legacy handlers return a message-only object.|Inline|
-|403|[Forbidden](https://tools.ietf.org/html/rfc7231#section-6.5.3)|Request is forbidden for the current runtime mode or caller permissions.|[ErrorResponse](schemas.md#schemaerrorresponse)|
+|403|[Forbidden](https://tools.ietf.org/html/rfc7231#section-6.5.3)|Request is forbidden — because the caller lacks the required permission, because the current runtime mode disallows the operation (read-only mode), or because an organization was named that is not the single one this instance serves. In that last case an organization that does not exist is answered identically to one belonging to someone else, so the response cannot be used to discover what a shared database holds.|[ErrorResponse](schemas.md#schemaerrorresponse)|
 |404|[Not Found](https://tools.ietf.org/html/rfc7231#section-6.5.4)|Resource not found.|[ErrorResponse](schemas.md#schemaerrorresponse)|
 |409|[Conflict](https://tools.ietf.org/html/rfc7231#section-6.5.8)|The key has already been revoked and cannot be associated with an application.|[ErrorResponse](schemas.md#schemaerrorresponse)|
 |500|[Internal Server Error](https://tools.ietf.org/html/rfc7231#section-6.6.1)|Internal server error.|[ErrorResponse](schemas.md#schemaerrorresponse)|
@@ -784,7 +784,7 @@ This operation requires <strong>Basic Auth</strong> authentication.
 {
   "status": "error",
   "code": "FORBIDDEN",
-  "message": "Write operations are disabled in read-only mode."
+  "message": "Forbidden"
 }
 ```
 
@@ -813,7 +813,7 @@ This operation requires <strong>Basic Auth</strong> authentication.
 |Status|Meaning|Description|Schema|
 |---|---|---|---|
 |204|[No Content](https://tools.ietf.org/html/rfc7231#section-6.3.5)|Association removed (or none existed).|None|
-|403|[Forbidden](https://tools.ietf.org/html/rfc7231#section-6.5.3)|Request is forbidden for the current runtime mode or caller permissions.|[ErrorResponse](schemas.md#schemaerrorresponse)|
+|403|[Forbidden](https://tools.ietf.org/html/rfc7231#section-6.5.3)|Request is forbidden — because the caller lacks the required permission, because the current runtime mode disallows the operation (read-only mode), or because an organization was named that is not the single one this instance serves. In that last case an organization that does not exist is answered identically to one belonging to someone else, so the response cannot be used to discover what a shared database holds.|[ErrorResponse](schemas.md#schemaerrorresponse)|
 |404|[Not Found](https://tools.ietf.org/html/rfc7231#section-6.5.4)|Resource not found.|[ErrorResponse](schemas.md#schemaerrorresponse)|
 |500|[Internal Server Error](https://tools.ietf.org/html/rfc7231#section-6.6.1)|Internal server error.|[ErrorResponse](schemas.md#schemaerrorresponse)|
 

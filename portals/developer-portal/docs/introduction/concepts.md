@@ -4,15 +4,17 @@ This page explains the key building blocks of the Developer Portal and how they 
 
 ## Organization
 
-An **organization** is the top-level multi-tenant unit. Each organization gets its own branded space in the portal, and its APIs, applications, subscriptions, and users are isolated from other organizations.
+An **organization** owns a branded space in the portal, along with its APIs, applications, subscriptions, and users.
 
-The organization's handle appears in every portal URL:
+**A portal instance serves exactly one organization**, named by `organization.handle` in its configuration and created on first startup. Its handle appears in every portal URL:
 
 ```
 https://<host>/<orgHandle>/views/<viewName>
 ```
 
-Users are automatically routed to their organization when they sign in, based on a claim in their identity provider (IdP) token.
+Multiple organizations can share one database — each served by its own portal instance — and an instance rejects any request that names a different one, whether through the URL, a request header, or a token claim. See [Manage the Organization](../administer/manage-organizations.md).
+
+A signed-in user's organization claim must match the instance's organization; a user from elsewhere is refused at login rather than given a session that can't do anything.
 
 ## View
 

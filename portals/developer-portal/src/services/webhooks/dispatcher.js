@@ -21,6 +21,7 @@ const { matchSubscribers } = require('./subscriberRegistry');
 const { onPublished } = require('./eventPublisher');
 const db = require('../../db/driver');
 const logger = require('../../config/logger');
+const orgContext = require('../../utils/orgContext');
 
 // dp_events table name — mirrors eventDao.js's EVENTS_TABLE. Kept as a raw
 // db.execute() call here (rather than a new DAO export) because this is the
@@ -32,13 +33,17 @@ let running = false;
 let intervalHandle = null;
 
 /**
- * Process one batch of PENDING (non-key) events: resolve subscribers, create
- * delivery rows, mark events as DISPATCHED.
+ * Process one batch of this organization's PENDING (non-key) events: resolve
+ * subscribers, create delivery rows, mark events as DISPATCHED.
+ *
+ * Claims are scoped to the organization this instance serves — the events table is
+ * shared with every other instance pointed at this database, and each one dispatches
+ * only its own.
  */
 async function runBatch() {
     const delivery = config.webhooks && config.webhooks.delivery;
     const batchSize = (delivery && delivery.batchSize) || 50;
-    const events = await eventDao.claimPending(batchSize);
+    const events = await eventDao.claimPending(batchSize, await orgContext.getOrgUuid());
     if (events.length === 0) return;
 
     for (const event of events) {

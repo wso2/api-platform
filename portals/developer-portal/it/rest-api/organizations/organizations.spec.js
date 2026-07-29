@@ -16,94 +16,134 @@
 // under the License.
 // --------------------------------------------------------------------
 
-// Reference spec for the suite: fully implemented, used as the template for
-// the other resources. Covers POST/GET/PUT/DELETE plus validation and a basic
-// authorization check (unauthenticated access). Organization CRUD is the one
-// place a fresh org-per-test still makes sense — admin can manage additional
-// orgs beyond the fixed one every account is seeded into (org creation isn't
-// scoped to the caller's own org).
+// The portal serves the single organization named by its organization.handle
+// config, created on startup by the seeder. So the organization lifecycle is not
+// client-driven: create/list/delete answer 405, and read/update are pinned to that
+// one organization. The operations remain in the spec (and their service functions
+// intact) so they can be re-enabled later, hence 405 rather than a missing route.
+//
+// Cross-surface rejection of a *foreign* organization — page URLs, the
+// `organization` request header — lives in single-org-isolation.spec.js.
 
 const client = require('../support/client');
-const { createOrganization, deleteOrganization, uniqueHandle } = require('../support/fixtures');
+
+const OWN_ORG = client.ORG_HANDLE;
 
 describe('organizations', () => {
-    let org;
-
     beforeAll(async () => {
         await client.login('admin');
     });
 
-    afterEach(async () => {
-        if (org) {
-            await deleteOrganization(org.id);
-            org = undefined;
-        }
-    });
-
-    it('creates and retrieves an organization', async () => {
-        org = await createOrganization();
-
-        const res = await client.as('admin').get(`/organizations/${org.id}`);
-        expect(res.status).toBe(200);
-        expect(res.body.id).toBe(org.id);
-        expect(res.body.displayName).toBe(org.displayName);
-    });
-
-    it('updates an organization', async () => {
-        org = await createOrganization();
-
-        const res = await client.as('admin').put(`/organizations/${org.id}`, {
-            id: org.id,
-            idpRefId: org.id,
-            displayName: 'Updated Display Name',
+    describe('lifecycle operations are not offered', () => {
+        it('rejects creating an organization with 405', async () => {
+            const res = await client.as('admin').post('/organizations', {
+                id: 'some-new-org',
+                displayName: 'Some New Org',
+                idpRefId: 'some-new-org',
+            });
+            expect(res.status).toBe(405);
+            expect(res.body.code).toBe('METHOD_NOT_ALLOWED');
         });
-        expect(res.status).toBe(200);
-        expect(res.body.displayName).toBe('Updated Display Name');
-    });
 
-    it('deletes an organization', async () => {
-        org = await createOrganization();
-
-        const del = await client.as('admin').del(`/organizations/${org.id}`);
-        expect(del.status).toBe(204);
-
-        const get = await client.as('admin').get(`/organizations/${org.id}`);
-        expect(get.status).toBe(404);
-
-        org = undefined; // already deleted, skip afterEach cleanup
-    });
-
-    it('rejects creation with a missing required field', async () => {
-        const res = await client.as('admin').post('/organizations', {
-            id: uniqueHandle('org'),
-            // displayName and idpRefId omitted
+        it('rejects listing organizations with 405', async () => {
+            const res = await client.as('admin').get('/organizations');
+            expect(res.status).toBe(405);
+            expect(res.body.code).toBe('METHOD_NOT_ALLOWED');
         });
-        expect(res.status).toBe(400);
-    });
 
-    it('rejects creating a duplicate organization handle', async () => {
-        org = await createOrganization();
+        it('rejects deleting its own organization with 405', async () => {
+            const res = await client.as('admin').del(`/organizations/${OWN_ORG}`);
+            expect(res.status).toBe(405);
+            expect(res.body.code).toBe('METHOD_NOT_ALLOWED');
 
-        const res = await client.as('admin').post('/organizations', {
-            id: org.id,
-            displayName: 'Duplicate',
-            idpRefId: org.id,
+            // Still there — the 405 is a refusal, not a silent no-op.
+            const get = await client.as('admin').get(`/organizations/${OWN_ORG}`);
+            expect(get.status).toBe(200);
         });
-        expect(res.status).toBe(409);
     });
 
-    it('rejects requests without an authenticated session', async () => {
-        const res = await client.raw().get(`${client.API_PREFIX}/organizations`);
-        expect([401, 403]).toContain(res.status);
-    });
-
-    it("rejects a role without org management scope (developer can't create an org)", async () => {
-        await client.login('developer');
-        const res = await client.as('developer').post('/organizations', {
-            id: uniqueHandle('org'),
-            displayName: 'Should Be Forbidden',
-            idpRefId: uniqueHandle('org'),
+    describe('read and update are scoped to this instance', () => {
+        it('retrieves its own organization', async () => {
+            const res = await client.as('admin').get(`/organizations/${OWN_ORG}`);
+            expect(res.status).toBe(200);
+            expect(res.body.id).toBe(OWN_ORG);
         });
-        expect(res.status).toBe(403);
+
+        it('updates its own organization', async () => {
+            const displayName = `Updated Display Name ${Date.now()}`;
+            const res = await client.as('admin').put(`/organizations/${OWN_ORG}`, {
+                id: OWN_ORG,
+                idpRefId: OWN_ORG,
+                displayName,
+            });
+            expect(res.status).toBe(200);
+            expect(res.body.displayName).toBe(displayName);
+        });
+
+        it('rejects reading another organization with 403, not 404', async () => {
+            // 403 rather than 404 on purpose: an unknown handle and a real-but-foreign
+            // one must be indistinguishable, or the response becomes a way to
+            // enumerate the organizations sharing this database.
+            const res = await client.as('admin').get('/organizations/some-other-org');
+            expect(res.status).toBe(403);
+        });
+
+        it('rejects updating another organization with 403', async () => {
+            const res = await client.as('admin').put('/organizations/some-other-org', {
+                id: 'some-other-org',
+                idpRefId: 'some-other-org',
+                displayName: 'Hijacked',
+            });
+            expect(res.status).toBe(403);
+        });
+    });
+
+    describe('identity fields are immutable', () => {
+        // The handle and idp_ref_id are what page URLs and incoming token
+        // organization claims are matched against. Renaming either would leave the
+        // running instance unable to find its own organization — every page 404ing
+        // and every login 403ing until config was edited to match.
+        it('rejects changing the organization handle', async () => {
+            const res = await client.as('admin').put(`/organizations/${OWN_ORG}`, {
+                id: 'renamed-org',
+                idpRefId: OWN_ORG,
+                displayName: 'Renamed',
+            });
+            expect(res.status).toBe(400);
+
+            // The rename didn't partially apply.
+            const get = await client.as('admin').get(`/organizations/${OWN_ORG}`);
+            expect(get.status).toBe(200);
+            expect(get.body.id).toBe(OWN_ORG);
+        });
+
+        it('rejects changing the organization IDP reference', async () => {
+            const res = await client.as('admin').put(`/organizations/${OWN_ORG}`, {
+                id: OWN_ORG,
+                idpRefId: 'some-other-idp-ref',
+                displayName: 'Re-pointed',
+            });
+            expect(res.status).toBe(400);
+        });
+    });
+
+    describe('authentication and authorization still run first', () => {
+        // The 405 lives in the operation handler, which the OpenAPI validator only
+        // reaches after the security handlers pass — so it must never be the reason
+        // an unauthenticated or under-scoped caller gets turned away.
+        it('rejects requests without an authenticated session', async () => {
+            const res = await client.raw().get(`${client.API_PREFIX}/organizations`);
+            expect([401, 403]).toContain(res.status);
+        });
+
+        it("rejects a role without org management scope (developer can't create an org)", async () => {
+            await client.login('developer');
+            const res = await client.as('developer').post('/organizations', {
+                id: 'developer-org',
+                displayName: 'Should Be Forbidden',
+                idpRefId: 'developer-org',
+            });
+            expect(res.status).toBe(403);
+        });
     });
 });

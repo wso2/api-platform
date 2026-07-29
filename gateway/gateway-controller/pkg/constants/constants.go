@@ -131,6 +131,11 @@ const (
 	// Routes can be configured with cluster_header to read this header and select the target cluster
 	TargetUpstreamHeader = "x-target-upstream"
 
+	// InternalLoopbackHeader marks the LLM proxy's internal loopback forward to its provider.
+	// The proxy stamps it via a set-headers policy; the analytics system policy reads it on the
+	// provider hop so the duplicate provider analytics event can be dropped from Moesif.
+	InternalLoopbackHeader = "x-wso2-internal-loopback"
+
 	// UpstreamDefinitionClusterPrefix is the prefix used for clusters created from upstreamDefinitions
 	// Cluster names follow the format: upstream_<definition_name>
 	UpstreamDefinitionClusterPrefix = "upstream_"

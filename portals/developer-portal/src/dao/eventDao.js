@@ -108,16 +108,23 @@ async function createDeliveries(eventId, subscribers, perSubscriberEncrypted, tr
 }
 
 /**
- * Claim a batch of PENDING events using SELECT FOR UPDATE SKIP LOCKED.
- * Returns events with their delivery rows.
+ * Claim a batch of this organization's PENDING events using SELECT FOR UPDATE SKIP
+ * LOCKED. Returns events with their delivery rows.
+ *
+ * Scoped to `orgUuid` because the events table is shared: every portal instance
+ * pointed at this database runs its own dispatcher, and an unscoped claim would let
+ * one instance pick up another organization's events and dispatch them from its own
+ * egress. The SKIP LOCKED claim keeps that from double-dispatching, so it wouldn't
+ * look broken — it would just be the wrong instance doing the work, outside whatever
+ * network policy that organization's deployment has.
  */
-async function claimPending(batchSize) {
+async function claimPending(batchSize, orgUuid) {
     const isPostgres = db.getDialect() === 'postgres';
     return db.withTransaction(async (tx) => {
         const lockClause = isPostgres ? ' FOR UPDATE SKIP LOCKED' : '';
         const events = await tx.query(
-            `SELECT * FROM ${EVENTS_TABLE} WHERE status = ? ORDER BY occurred_at ASC LIMIT ?${lockClause}`,
-            ['PENDING', batchSize]
+            `SELECT * FROM ${EVENTS_TABLE} WHERE status = ? AND org_uuid = ? ORDER BY occurred_at ASC LIMIT ?${lockClause}`,
+            ['PENDING', orgUuid, batchSize]
         );
         if (events.length === 0) return [];
 
@@ -132,9 +139,19 @@ async function claimPending(batchSize) {
 }
 
 /**
- * Claim a batch of PENDING delivery rows using SELECT FOR UPDATE SKIP LOCKED.
+ * Claim a batch of this organization's PENDING delivery rows using SELECT FOR UPDATE
+ * SKIP LOCKED.
+ *
+ * Scoped to `orgUuid` for the same reason as claimPending — and the stale-row
+ * recovery sweep below is scoped too: unscoped, every instance would keep resetting
+ * every *other* instance's genuinely in-flight deliveries the moment they passed the
+ * five-minute mark, turning slow deliveries into spurious failures.
+ *
+ * dp_event_deliveries has no org_uuid of its own, so both statements reach the
+ * organization through dp_events. Postgres needs `FOR UPDATE OF d` here: with a join
+ * in play, a bare FOR UPDATE would also try to lock the dp_events rows.
  */
-async function claimDueDeliveries(batchSize) {
+async function claimDueDeliveries(batchSize, orgUuid) {
     const isPostgres = db.getDialect() === 'postgres';
     return db.withTransaction(async (tx) => {
         // Recover stale IN_FLIGHT rows left by a crashed or stopped worker. Any delivery
@@ -142,14 +159,18 @@ async function claimDueDeliveries(batchSize) {
         // marked FAILED so it re-enters PENDING on the next dispatch cycle.
         const staleThreshold = new Date(Date.now() - 5 * 60 * 1000);
         await tx.execute(
-            `UPDATE ${DELIVERIES_TABLE} SET status = ?, last_error = ? WHERE status = ? AND last_attempt_at < ?`,
-            ['FAILED', 'Delivery abandoned: worker stopped mid-flight', 'IN_FLIGHT', staleThreshold]
+            `UPDATE ${DELIVERIES_TABLE} SET status = ?, last_error = ?
+             WHERE status = ? AND last_attempt_at < ?
+               AND event_uuid IN (SELECT uuid FROM ${EVENTS_TABLE} WHERE org_uuid = ?)`,
+            ['FAILED', 'Delivery abandoned: worker stopped mid-flight', 'IN_FLIGHT', staleThreshold, orgUuid]
         );
 
-        const lockClause = isPostgres ? ' FOR UPDATE SKIP LOCKED' : '';
+        const lockClause = isPostgres ? ' FOR UPDATE OF d SKIP LOCKED' : '';
         const rows = await tx.query(
-            `SELECT * FROM ${DELIVERIES_TABLE} WHERE status = ? LIMIT ?${lockClause}`,
-            ['PENDING', batchSize]
+            `SELECT d.* FROM ${DELIVERIES_TABLE} d
+             JOIN ${EVENTS_TABLE} e ON e.uuid = d.event_uuid
+             WHERE d.status = ? AND e.org_uuid = ? LIMIT ?${lockClause}`,
+            ['PENDING', orgUuid, batchSize]
         );
         if (rows.length === 0) return [];
 

@@ -38,16 +38,24 @@ import (
 type LLMProxyAPIKeyHandler struct {
 	apiKeyService *service.LLMProxyAPIKeyService
 	identity      *service.IdentityService
+	authzMode     string
 	slogger       *slog.Logger
 }
 
 // NewLLMProxyAPIKeyHandler creates a new LLM proxy API key handler
-func NewLLMProxyAPIKeyHandler(apiKeyService *service.LLMProxyAPIKeyService, identity *service.IdentityService, slogger *slog.Logger) *LLMProxyAPIKeyHandler {
+func NewLLMProxyAPIKeyHandler(apiKeyService *service.LLMProxyAPIKeyService, identity *service.IdentityService, authzMode string, slogger *slog.Logger) *LLMProxyAPIKeyHandler {
 	return &LLMProxyAPIKeyHandler{
 		apiKeyService: apiKeyService,
 		identity:      identity,
+		authzMode:     authzMode,
 		slogger:       slogger,
 	}
+}
+
+// isKeyAdmin reports whether the caller holds constants.ScopeAPIKeyAllManage and may
+// therefore act on API keys created by other users, not only their own.
+func (h *LLMProxyAPIKeyHandler) isKeyAdmin(r *http.Request) bool {
+	return middleware.HasEffectiveScope(r, h.authzMode, constants.ScopeAPIKeyAllManage)
 }
 
 // ListAPIKeys handles GET /api/v0.9/llm-proxies/{llmProxyId}/api-keys
@@ -70,7 +78,7 @@ func (h *LLMProxyAPIKeyHandler) ListAPIKeys(w http.ResponseWriter, r *http.Reque
 
 	limit, offset := parsePagination(r)
 
-	response, err := h.apiKeyService.ListLLMProxyAPIKeys(r.Context(), proxyID, orgID, callerUserID, limit, offset)
+	response, err := h.apiKeyService.ListLLMProxyAPIKeys(r.Context(), proxyID, orgID, callerUserID, h.isKeyAdmin(r), limit, offset)
 	if err != nil {
 		var appErr *apperror.Error
 		if errors.As(err, &appErr) {
@@ -106,7 +114,7 @@ func (h *LLMProxyAPIKeyHandler) DeleteAPIKey(w http.ResponseWriter, r *http.Requ
 		return err
 	}
 
-	if err := h.apiKeyService.DeleteLLMProxyAPIKey(r.Context(), proxyID, orgID, callerUserID, keyName); err != nil {
+	if err := h.apiKeyService.DeleteLLMProxyAPIKey(r.Context(), proxyID, orgID, callerUserID, keyName, h.isKeyAdmin(r)); err != nil {
 		return serviceError(err, fmt.Sprintf("failed to delete LLM proxy API key %s for proxy %s in org %s", keyName, proxyID, orgID))
 	}
 

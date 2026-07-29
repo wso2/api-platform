@@ -255,6 +255,13 @@ func (s *LLMDeploymentService) DeployLLMProviderConfiguration(params LLMDeployme
 		return nil, fmt.Errorf("failed to parse provider configuration: %w", err)
 	}
 
+	// On update, inherit the persisted upstream credential when this request does
+	// not carry one; auth.value is write-only and cannot be restated by a caller.
+	// Applied before rendering so an inherited secret expression resolves normally.
+	if err := s.inheritStoredProviderCredential(&providerConfig, params); err != nil {
+		return nil, err
+	}
+
 	// Render template expressions ({{ secret "..." }}, {{ env "..." }}, {{ default ... }}, etc.)
 	// BEFORE validation so the validator sees resolved values, not raw template syntax.
 	// We render in a temp StoredConfig then cast back. The unrendered providerConfig is
@@ -435,6 +442,12 @@ func (s *LLMDeploymentService) DeployLLMProxyConfiguration(params LLMDeploymentP
 	// Parse configuration
 	if err := s.parser.Parse(params.Data, params.ContentType, &proxyConfig); err != nil {
 		return nil, fmt.Errorf("%w: failed to parse proxy configuration: %v", ErrLLMProxyValidation, err)
+	}
+
+	// On update, inherit persisted upstream credentials this request omits.
+	// See credential_inheritance.go for the inheritance rules.
+	if err := s.inheritStoredProxyCredentials(&proxyConfig, params); err != nil {
+		return nil, fmt.Errorf("%w: %v", ErrLLMProxyValidation, err)
 	}
 
 	// Render template expressions BEFORE validation so the validator sees resolved

@@ -18,6 +18,7 @@
 /* eslint-disable no-undef */
 const { CustomError, ValidationError } = require('../utils/errors/customErrors');
 const orgDao = require('../dao/organizationDao');
+const orgContext = require('../utils/orgContext');
 const userIdpReferenceDao = require('../dao/userIdpReferenceDao');
 const appDao = require('../dao/applicationDao');
 const labelDao = require('../dao/labelDao');
@@ -263,6 +264,10 @@ const updateOrganization = async (req, res) => {
         ...req.body
     });
     try {
+        // Only this instance's own organization is updatable, whatever else the
+        // shared database holds.
+        await orgContext.requirePinnedOrg(orgId);
+
         const payload = req.body;
         if (payload.id) {
             payload.handle = payload.id;
@@ -274,6 +279,27 @@ const updateOrganization = async (req, res) => {
         const devportalMode = payload.configuration?.devportalMode;
         if (devportalMode !== undefined && !Object.values(constants.DEVPORTAL_MODE).includes(devportalMode)) {
             return util.sendError(res, 400, `Invalid devportalMode '${devportalMode}'. Must be one of: ${Object.values(constants.DEVPORTAL_MODE).join(', ')}.`);
+        }
+
+        // The handle and idp_ref_id are what tie this organization to
+        // organization.handle in config: the page routes match URLs against that
+        // handle and authResolver matches token organization claims against this row.
+        // Renaming either here would leave the running instance pointing at an
+        // organization it can no longer find — every page 404ing and every login
+        // 403ing until an operator edits config to match. Reject instead.
+        const currentHandle = orgContext.getHandle();
+        if (payload.handle !== undefined && String(payload.handle).toLowerCase() !== currentHandle) {
+            return util.sendError(res, 400,
+                `The organization handle cannot be changed; it is fixed to '${currentHandle}' by this ` +
+                "portal's organization.handle configuration.");
+        }
+        if (payload.idpRefId !== undefined) {
+            const existingIdpRefId = (await orgDao.getByHandle(currentHandle)).idp_ref_id;
+            if (payload.idpRefId !== existingIdpRefId) {
+                return util.sendError(res, 400,
+                    'The organization IDP reference cannot be changed; it is what incoming ' +
+                    'tokens are matched against.');
+            }
         }
 
         let updatedOrg;

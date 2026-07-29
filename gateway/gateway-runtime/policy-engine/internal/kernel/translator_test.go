@@ -518,6 +518,58 @@ func TestTranslateRequestActionsCore_WithBodyModification(t *testing.T) {
 	assert.True(t, foundContentLength)
 }
 
+func TestTranslateRequestActionsCore_BodyPreservesHeaderPhaseUpstream(t *testing.T) {
+	kernel := NewKernel()
+	chainExecutor := executor.NewChainExecutor(nil, nil, nil)
+	server := NewExternalProcessorServer(kernel, chainExecutor, config.TracingConfig{}, "", testMaxDecompressedBytes, testMaxDecompressedBytes)
+
+	chain := &registry.PolicyChain{}
+	execCtx := newPolicyExecutionContext(server, "test-route", chain)
+	execCtx.sharedCtx = &policy.SharedContext{
+		APIKind: "LlmProxy",
+		APIId:   "proxy-123",
+	}
+	execCtx.requestBodyCtx = &policy.RequestContext{
+		Path:          "/proxy/chat/completions",
+		SharedContext: execCtx.sharedCtx,
+	}
+	execCtx.apiContext = "/proxy"
+	execCtx.upstreamBasePath = "/primary-provider"
+	execCtx.defaultUpstreamCluster = "upstream_main_127.0.0.1_8080"
+	execCtx.upstreamDefinitionPaths = map[string]string{
+		"anthropic-provider": "/anthropic-provider",
+	}
+	execCtx.dynamicMetadata[constants.ExtProcFilterName] = map[string]interface{}{
+		constants.TargetUpstreamNameKey: "anthropic-provider",
+	}
+
+	result := &executor.RequestExecutionResult{
+		Results: []executor.RequestPolicyResult{{
+			Action: policy.UpstreamRequestModifications{
+				Body: []byte(`{"model":"claude"}`),
+			},
+		}},
+	}
+
+	rsl, err := translateRequestActionsCore(result, execCtx)
+	require.NoError(t, err)
+	require.NotNil(t, rsl.HeaderMutation)
+
+	expectedCluster := constants.UpstreamDefinitionClusterPrefix +
+		"LlmProxy_proxy-123_anthropic-provider"
+	var targetCluster string
+	for _, h := range rsl.HeaderMutation.SetHeaders {
+		if h.Header.Key == constants.TargetUpstreamHeader {
+			targetCluster = string(h.Header.RawValue)
+		}
+	}
+	assert.Equal(t, expectedCluster, targetCluster)
+	require.NotNil(t, rsl.Mutations.Path)
+	assert.Equal(t, "/proxy/chat/completions", *rsl.Mutations.Path)
+	assert.Equal(t, "/anthropic-provider",
+		rsl.DynamicMetadata[constants.ExtProcFilterName]["target_upstream_base_path"])
+}
+
 func TestTranslateRequestActionsCore_ShortCircuit(t *testing.T) {
 	kernel := NewKernel()
 	chainExecutor := executor.NewChainExecutor(nil, nil, nil)

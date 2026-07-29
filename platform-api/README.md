@@ -22,12 +22,17 @@ go run ./cmd/main.go
 
 `config/config.toml` is the local-development config, used with `platform_api.auth.mode = "file"`
 (username/password login backed by the organization/user block in that file) — the same mode the
-AI Workspace and Developer Portal quickstarts use, so it works out of the box with either, with no
-env vars set. It's the one Platform API config shared by every quickstart (both docker-compose
-setups mount it directly), so its admin user's scopes cover both the `ap:*` (AI Workspace /
-platform-admin) and `dp:*` (Developer Portal) namespaces. Set `APIP_CP_ADMIN_USERNAME` /
-`APIP_CP_ADMIN_PASSWORD_HASH` to pick your own login credentials (generate a hash with
-`htpasswd -bnBC 12 "" <password> | tr -d ':\n'`), or set `platform_api.auth.mode = "external_token"`
+AI Workspace and Developer Portal quickstarts use. It's the one Platform API config shared by every
+quickstart (both docker-compose setups mount it directly), so its admin user's scopes cover both the
+`ap:*` (AI Workspace / platform-admin) and `dp:*` (Developer Portal) namespaces.
+
+There is no default admin credential: `APIP_CP_ADMIN_USERNAME` and `APIP_CP_ADMIN_PASSWORD_HASH` are
+**required** in this mode, and startup fails closed if either is unset or empty. `portals/scripts/setup.sh`
+provisions both for the quickstarts, printing the generated password once. To set them yourself,
+generate a hash with `htpasswd -nBC 12 "" | tr -d ':\n'`, which prompts for the password instead of
+taking it as an argument — a password on the command line lands in shell history, `ps` output, and CI
+logs. Alternatively set
+`platform_api.auth.mode = "external_token"`
 for locally-signed HMAC tokens with no local users — see
 [`config/config-template.toml`](config/config-template.toml) for the full reference.
 

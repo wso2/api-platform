@@ -273,6 +273,7 @@ func TestHandleEvent_LLMProxyCreate_RehydratesConfigAndPolicyFromDB(t *testing.T
 
 	policyDefs := map[string]models.PolicyDefinition{
 		"rate-limit-v1.0.0": {Name: "rate-limit", Version: "v1.0.0"},
+		"set-headers-v1.0.0": {Name: "set-headers", Version: "v1.0.0"},
 	}
 	listener := &EventListener{
 		store:         store,

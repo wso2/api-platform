@@ -132,27 +132,36 @@ describe('API content assets', () => {
     });
 
     describe('public image access (no session)', () => {
-        it('serves the icon to an anonymous caller that supplies orgId', async () => {
+        it('serves the icon to an anonymous caller', async () => {
             const api = await createApi();
             expect((await uploadContent('publisher', api.id, buildContentZip())).status).toBe(201);
 
             const res = await client.raw()
-                .get(`${client.API_PREFIX}/apis/${api.id}/assets?type=IMAGE&fileName=api-icon.png&orgId=${orgUuid}`)
+                .get(`${client.API_PREFIX}/apis/${api.id}/assets?type=IMAGE&fileName=api-icon.png`)
                 .responseType('blob');
             expect(res.status).toBe(200);
             expect(res.headers['content-type']).toContain('image/png');
             expect(Buffer.compare(res.body, PNG_BYTES)).toBe(0);
         });
 
-        it('rejects an anonymous image read with no orgId (401)', async () => {
+        it('ignores orgId rather than resolving it', async () => {
             const api = await createApi();
             expect((await uploadContent('publisher', api.id, buildContentZip())).status).toBe(201);
 
-            const res = await client.raw().get(`${client.API_PREFIX}/apis/${api.id}/assets?type=IMAGE&fileName=api-icon.png`);
-            expect(res.status).toBe(401);
+            const foreign = await client.raw()
+                .get(`${client.API_PREFIX}/apis/${api.id}/assets?type=IMAGE&fileName=api-icon.png&orgId=00000000-0000-0000-0000-000000000000`)
+                .responseType('blob');
+            expect(foreign.status).toBe(200);
+            expect(Buffer.compare(foreign.body, PNG_BYTES)).toBe(0);
+
+            const own = await client.raw()
+                .get(`${client.API_PREFIX}/apis/${api.id}/assets?type=IMAGE&fileName=api-icon.png&orgId=${orgUuid}`)
+                .responseType('blob');
+            expect(own.status).toBe(200);
+            expect(Buffer.compare(own.body, PNG_BYTES)).toBe(0);
         });
 
-        it('keeps non-image content session-scoped — anonymous MARKETING read is 401 even with orgId', async () => {
+        it('keeps non-image content session-scoped — anonymous MARKETING read is 401', async () => {
             const api = await createApi();
             expect((await uploadContent('publisher', api.id, buildContentZip())).status).toBe(201);
 

@@ -56,13 +56,25 @@ describe('Developer Portal — Smoke', () => {
         });
     });
 
-    it('serves (or correctly 404s) the main CSS asset for the default view', () => {
-        const orgId = Cypress.env('ORG_ID');
+    it('serves (or correctly 404s) the main CSS asset', () => {
+        // Addressed by its public URL rather than the organization's internal UUID:
+        // the portal serves one organization and never exposes that UUID over the API.
         cy.request({
-            url: `/devportal/organizations/${orgId}/views/default/layout?fileType=style&fileName=main.css`,
+            url: '/styles/main.css',
             failOnStatusCode: false,
         }).then((resp) => {
             expect(resp.status).to.be.oneOf([200, 304, 404]);
+        });
+    });
+
+    it('404s a portal view under another organization handle', () => {
+        // The database is shared across organizations, so the handle in the URL is
+        // untrusted input — this instance serves exactly one and rejects the rest.
+        cy.request({
+            url: '/some-other-org/views/default',
+            failOnStatusCode: false,
+        }).then((resp) => {
+            expect(resp.status).to.eq(404);
         });
     });
 });

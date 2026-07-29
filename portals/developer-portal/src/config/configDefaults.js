@@ -151,8 +151,36 @@ const DEFAULTS = {
         authenticated: [],
         authorized: [],
     },
+    // The single organization this portal instance serves. The database schema is
+    // still multi-org (one shared database can hold many organizations, each served
+    // by its own portal instance), but a given instance is pinned to exactly one:
+    // every page route, REST request, and background worker is scoped to `handle`,
+    // and anything resolving to a different organization is rejected. See
+    // src/utils/orgContext.js. The organization is seeded on first startup if it
+    // doesn't exist yet (src/services/seederService.js).
     organization: {
-        defaultName: 'default',
+        // Handle (URL slug) of this instance's organization — the {orgHandle}
+        // segment of /{orgHandle}/views/{viewName}. Mirrors platform-api's
+        // [platform_api.auth.file.organization] id/display_name pair; in local-auth
+        // mode this MUST match that `id`, since it is what the Platform API puts in
+        // the org_handle claim of the tokens this portal verifies.
+        //
+        // Deliberately EMPTY rather than 'default': configLoader.js refuses to start
+        // when it is unset (design mode excepted). A shipped default would make that
+        // check unreachable and turn a deployment that forgot to configure its
+        // organization — the shared-database case this pin exists for — into one that
+        // silently adopts, and seeds, an organization named 'default'. The packaged
+        // configs/config.toml supplies the value for a normal single-tenant install.
+        handle: '',
+        // Display name used only when seeding the organization for the first time.
+        // Never overwrites an existing organization's name, so an admin's later edit
+        // via the settings UI survives restarts. Empty means "use the handle"
+        // (orgContext.getDisplayName) — a fixed default here would seed an
+        // organization named 'Default' whatever its handle is.
+        displayName: '',
+        // Deprecated alias for `handle`, kept so an existing config.toml setting
+        // default_name keeps working. Resolved (with a warning) in configLoader.js.
+        defaultName: '',
         autoCreateSubscriptionPlans: true,
     },
     features: {

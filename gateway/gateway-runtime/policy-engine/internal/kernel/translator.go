@@ -277,6 +277,16 @@ func translateRequestActionsCore(result *executor.RequestExecutionResult, execCt
 	bodyModified := false
 	var directive upstreamRedirectDirective // Track the last dynamic-routing directive
 
+	// A routing directive selected during request headers remains active during
+	// request-body processing unless a body-phase policy explicitly replaces it.
+	// UpstreamName == nil means "no change"; applying the default upstream here
+	// would otherwise undo a header-phase additional-provider selection.
+	if namespace := execCtx.dynamicMetadata[constants.ExtProcFilterName]; namespace != nil {
+		if name, ok := namespace[constants.TargetUpstreamNameKey].(string); ok && name != "" {
+			directive.set(&name)
+		}
+	}
+
 	// Seed analyticsData from execution context so data set in a previous phase
 	// (e.g. request_headers captured during the request-headers phase) is carried
 	// forward when this function is called again for the request-body phase.

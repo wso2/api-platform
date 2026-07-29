@@ -58,8 +58,9 @@ module.exports = defineConfig({
         },
     },
     env: {
-        // Org/view used throughout tests. ORG_ID is resolved dynamically at runtime
-        // via the before() hook in cypress/support/e2e.js.
+        // Org/view used throughout tests. The portal serves this one organization
+        // (its organization.handle in it/test-config.toml), so specs address it by
+        // handle — there is no internal UUID to resolve at runtime.
         ORG_HANDLE: 'default',
         VIEW_NAME: 'default',
         ADMIN_USER: 'admin',

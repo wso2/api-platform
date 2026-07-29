@@ -198,6 +198,40 @@ func TestLLMProviderTransformer_TransformProxy_ReadsProviderAndTemplateFromDB(t 
 	require.NoError(t, err)
 	require.NotNil(t, result.Spec.Upstream.Main.Url)
 	assert.Equal(t, "http://127.0.0.1:8080/db-provider", *result.Spec.Upstream.Main.Url)
+
+	// Every generated proxy operation must carry the internal loopback marker (unconditional),
+	// so the provider hop's analytics event can be dropped from Moesif.
+	require.NotEmpty(t, result.Spec.Operations, "proxy must generate operations")
+	for i := range result.Spec.Operations {
+		op := result.Spec.Operations[i]
+		require.NotNil(t, op.Policies, "operation %d must have policies", i)
+		assert.True(t, hasInternalLoopbackMarkerPolicy(*op.Policies),
+			"operation %d must carry the internal loopback marker set-headers policy", i)
+	}
+}
+
+// hasInternalLoopbackMarkerPolicy reports whether policies contain a set-headers policy that
+// stamps the internal loopback marker header.
+func hasInternalLoopbackMarkerPolicy(policies []api.Policy) bool {
+	for _, p := range policies {
+		if p.Name != constants.SET_HEADERS_POLICY_NAME || p.Params == nil {
+			continue
+		}
+		req, ok := (*p.Params)["request"].(map[string]interface{})
+		if !ok {
+			continue
+		}
+		headers, ok := req["headers"].([]interface{})
+		if !ok {
+			continue
+		}
+		for _, h := range headers {
+			if hm, ok := h.(map[string]interface{}); ok && hm["name"] == constants.InternalLoopbackHeader {
+				return true
+			}
+		}
+	}
+	return false
 }
 
 func TestGetUpstreamAuthApikeyPolicyParams_Extended(t *testing.T) {
@@ -2187,6 +2221,11 @@ func TestTransformProxy_OtherAndNoneUpstreamAuth(t *testing.T) {
 					continue
 				}
 				for _, p := range *op.Policies {
+					// The unconditional internal loopback marker is also a set-headers policy;
+					// it is always present and is not the upstream-auth policy under test.
+					if hasInternalLoopbackMarkerPolicy([]api.Policy{p}) {
+						continue
+					}
 					assert.NotEqual(t, constants.UPSTREAM_AUTH_APIKEY_POLICY_NAME, p.Name,
 						"proxy auth type %q should not attach an upstream auth policy", authType)
 				}
