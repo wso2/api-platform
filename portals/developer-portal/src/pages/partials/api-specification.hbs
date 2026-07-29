@@ -492,6 +492,8 @@
             // Then render the actual component
             ReactDOM.render(React.createElement(MCPPlayground.default, {
                 url: serverUrl,
+                headerName: 'Authorization',
+                shouldSetHeaderNameExternally: true,
                 tokenPlaceholder: 'Bearer <your-token-here>',
             }), rootElement);
         });
