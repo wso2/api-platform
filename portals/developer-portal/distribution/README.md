@@ -1,4 +1,4 @@
-# WSO2 API Platform — Developer Portal
+# WSO2 API Platform — API Portal & MCP Hub
 
 A standalone distribution of the Developer Portal and Platform API, orchestrated with Docker Compose. The Developer Portal is a Node.js web application for discovering and subscribing to APIs; the Platform API is its local-auth sidecar, validating username/password logins without requiring an external identity provider.
 

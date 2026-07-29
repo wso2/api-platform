@@ -87,7 +87,7 @@ app.get('/llms.txt', (req, res) => {
     // asking the agent to supply a handle it would have to guess.
     const orgHandle = orgContext.getHandle();
     res.type('text/plain').send(
-        `# API Developer Portal — AI Agent Entry Point\n\n` +
+        `# API Portal & MCP Hub — AI Agent Entry Point\n\n` +
         `This portal serves a single organization, \`${orgHandle}\`, whose APIs, MCP servers,\n` +
         `and API workflows are organized into views.\n` +
         `The portal host is the origin you fetched this file from: ${baseUrl}\n\n` +

@@ -5,7 +5,7 @@
     "version": "0.2.0",
     "configurations": [
         {
-            "name": "Developer Portal",
+            "name": "API Portal & MCP Hub",
             "type": "node",
             "request": "launch",
             "program": "${workspaceFolder}/portals/developer-portal/src/server.js",
@@ -213,7 +213,7 @@
             ],
         },
         {
-            "name": "Developer Portal",
+            "name": "API Portal & MCP Hub",
             "type": "node",
             "request": "launch",
             "program": "${workspaceFolder}/portals/developer-portal/src/server.js",

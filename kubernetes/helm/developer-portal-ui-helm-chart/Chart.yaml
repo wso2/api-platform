@@ -1,7 +1,7 @@
 apiVersion: v2
 name: developer-portal-ui
 description: >-
-  WSO2 API Platform — Developer Portal (Node.js app). Independently released
+  WSO2 API Platform — API Portal & MCP Hub (Node.js app). Independently released
   component chart; consumed by the developer-portal product package
   (and pluggable into others) and installable standalone.
 type: application

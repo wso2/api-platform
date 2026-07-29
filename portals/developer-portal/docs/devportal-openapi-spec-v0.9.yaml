@@ -18,7 +18,7 @@
 
 openapi: 3.0.3
 info:
-  title: WSO2 API Developer Portal Core - Devportal Routes
+  title: WSO2 API Portal & MCP Hub
   version: 0.9.0
   description: |
     Fine-grained Developer Portal API for managing organizations,

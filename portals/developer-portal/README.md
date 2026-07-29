@@ -1,4 +1,4 @@
-# Developer Portal
+# API Portal & MCP Hub
 
 A multi-organisation API developer portal built on Node.js. It provides a customisable web UI for discovering and subscribing to APIs, and a set of Admin REST APIs for managing organisations, views, API metadata, and portal content.
 

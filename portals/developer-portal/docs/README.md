@@ -1,4 +1,4 @@
-# Developer Portal Documentation
+# API Portal & MCP Hub Documentation
 
 The Developer Portal is a self-hosted, multi-tenant web application where API publishers expose their APIs and developers discover, subscribe, and consume them.
 
