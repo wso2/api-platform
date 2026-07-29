@@ -1704,11 +1704,15 @@ func TestTranslator_CreateTracingConfig_ResourceAttributes(t *testing.T) {
 }
 
 // TestTranslator_CreateTracingConfig_PeerServiceCustomTag guards the fix for GH issue #2883:
-// with tracing enabled, the HCM tracing config must carry exactly one custom tag, "peer.service",
-// sourced from host metadata under the envoy.lb/hostname key set by setEndpointPeerHostname —
-// without this, Datadog APM has no peer attribute on upstream CLIENT spans to build the
-// Dependencies view / service map from. This pins the wire shape so a go-control-plane version
-// bump can't silently reshape it without a test failure.
+// with tracing enabled, the HCM tracing config must carry a "peer.service" custom tag, sourced
+// from host metadata under the envoy.lb/hostname key set by setEndpointPeerHostname — without
+// this, Datadog APM has no peer attribute on upstream CLIENT spans to build the Dependencies
+// view / service map from. This pins the wire shape so a go-control-plane version bump can't
+// silently reshape it without a test failure.
+//
+// Also guards http.route (Datadog Traces table Resource column, see setRouteHTTPRoute), sourced
+// from ROUTE metadata under the wso2.route/http.route key. Tags are looked up by name rather
+// than asserted by count/order — new tags may be added alongside these two over time.
 func TestTranslator_CreateTracingConfig_PeerServiceCustomTag(t *testing.T) {
 	logger := createTestLogger()
 	routerCfg := testRouterConfig()
@@ -1721,14 +1725,16 @@ func TestTranslator_CreateTracingConfig_PeerServiceCustomTag(t *testing.T) {
 	require.NoError(t, err)
 	require.NotNil(t, tracingCfg)
 
-	customTags := tracingCfg.GetCustomTags()
-	require.Len(t, customTags, 1, "exactly one custom tag (peer.service) is expected")
+	tagsByName := make(map[string]*tracingv3.CustomTag)
+	for _, tag := range tracingCfg.GetCustomTags() {
+		tagsByName[tag.GetTag()] = tag
+	}
 
-	tag := customTags[0]
-	assert.Equal(t, "peer.service", tag.GetTag())
+	peerServiceTag, ok := tagsByName["peer.service"]
+	require.True(t, ok, "expected a peer.service custom tag")
 
-	metaTag, ok := tag.GetType().(*tracingv3.CustomTag_Metadata_)
-	require.True(t, ok, "peer.service must be sourced from metadata, got %T", tag.GetType())
+	metaTag, ok := peerServiceTag.GetType().(*tracingv3.CustomTag_Metadata_)
+	require.True(t, ok, "peer.service must be sourced from metadata, got %T", peerServiceTag.GetType())
 
 	hostKind, ok := metaTag.Metadata.GetKind().GetKind().(*metadatav3.MetadataKind_Host_)
 	require.True(t, ok, "peer.service must read HOST metadata (the selected upstream endpoint), got %T",
@@ -1739,6 +1745,22 @@ func TestTranslator_CreateTracingConfig_PeerServiceCustomTag(t *testing.T) {
 	assert.Equal(t, "envoy.lb", key.GetKey())
 	require.Len(t, key.GetPath(), 1)
 	assert.Equal(t, "hostname", key.GetPath()[0].GetKey())
+
+	httpRouteTag, ok := tagsByName["http.route"]
+	require.True(t, ok, "expected an http.route custom tag")
+
+	routeMetaTag, ok := httpRouteTag.GetType().(*tracingv3.CustomTag_Metadata_)
+	require.True(t, ok, "http.route must be sourced from metadata, got %T", httpRouteTag.GetType())
+
+	routeKind, ok := routeMetaTag.Metadata.GetKind().GetKind().(*metadatav3.MetadataKind_Route_)
+	require.True(t, ok, "http.route must read ROUTE metadata (the matched route), got %T",
+		routeMetaTag.Metadata.GetKind().GetKind())
+	assert.NotNil(t, routeKind)
+
+	routeKey := routeMetaTag.Metadata.GetMetadataKey()
+	assert.Equal(t, "wso2.route", routeKey.GetKey())
+	require.Len(t, routeKey.GetPath(), 1)
+	assert.Equal(t, "http.route", routeKey.GetPath()[0].GetKey())
 }
 
 func TestTranslator_CreateOTELCollectorCluster(t *testing.T) {
@@ -2256,6 +2278,46 @@ func TestTranslator_CreateRoute_Basic(t *testing.T) {
 	assert.NotNil(t, route)
 	assert.Contains(t, route.Name, "GET")
 	assert.Contains(t, route.Name, "/api/users")
+
+	// Guards the Datadog Traces table Resource column fix: the route's path template
+	// must be recorded as route metadata so createTracingCustomTags' http.route tag can
+	// read it (see setRouteHTTPRoute).
+	require.NotNil(t, route.Metadata)
+	assert.Equal(t, "/api/users",
+		route.Metadata.FilterMetadata["wso2.route"].Fields["http.route"].GetStringValue())
+}
+
+// TestTranslator_CreateRouteFromRDC_HTTPRouteMetadata guards the Datadog Traces table
+// Resource column fix: createRouteFromRDC must record the route's full path *template*
+// (not a concrete matched path) as wso2.route/http.route metadata, so the HCM tracing
+// http.route custom tag (createTracingCustomTags) can surface it. Without this, Datadog
+// derives the span resource as the bare HTTP method.
+func TestTranslator_CreateRouteFromRDC_HTTPRouteMetadata(t *testing.T) {
+	logger := createTestLogger()
+	routerCfg := testRouterConfig()
+	cfg := testConfig()
+	translator := NewTranslator(logger, routerCfg, nil, cfg)
+
+	rdc := &models.RuntimeDeployConfig{
+		UpstreamClusters: map[string]*models.UpstreamCluster{
+			"main": {Endpoints: []models.Endpoint{{Host: "echo", Port: 80}}},
+		},
+	}
+	rdcRoute := &models.Route{
+		Method:          "GET",
+		Path:            "/pets/v1.0/{id}",
+		OperationPath:   "/{id}",
+		AutoHostRewrite: true,
+		Upstream:        models.RouteUpstream{ClusterKey: "main"},
+	}
+
+	r := translator.createRouteFromRDC("GET|/pets/v1.0/{id}|", rdcRoute, rdc)
+	require.NotNil(t, r)
+	require.NotNil(t, r.Metadata)
+
+	// The templated path, not a concrete request path, must be stored.
+	assert.Equal(t, "/pets/v1.0/{id}",
+		r.Metadata.FilterMetadata["wso2.route"].Fields["http.route"].GetStringValue())
 }
 
 // TestTranslator_CreateRoute_DynamicRouting pins the cluster specifier createRoute emits:
@@ -2389,6 +2451,12 @@ func TestTranslator_CreateRoutePerTopic(t *testing.T) {
 		assert.NotNil(t, route.Metadata)
 		metadata := route.Metadata.FilterMetadata["wso2.route"]
 		assert.NotNil(t, metadata)
+
+		// setRouteHTTPRoute must merge into the same wso2.route namespace rather than
+		// overwrite it — pre-existing keys and the new http.route key must both survive.
+		assert.Equal(t, "api-123", metadata.Fields["api_id"].GetStringValue())
+		assert.Equal(t, "project-123", metadata.Fields["project_id"].GetStringValue())
+		assert.Equal(t, "/test/channel1", metadata.Fields["http.route"].GetStringValue())
 	})
 
 	t.Run("Create route with version placeholder in context", func(t *testing.T) {
@@ -2410,6 +2478,8 @@ func TestTranslator_CreateRoutePerTopic(t *testing.T) {
 		assert.NotNil(t, route)
 		// ConstructFullPath replaces $version with actual version
 		assert.Equal(t, "/test/v1.0.0/channel1", route.GetMatch().GetPath())
+		assert.Equal(t, "/test/v1.0.0/channel1",
+			route.Metadata.FilterMetadata["wso2.route"].Fields["http.route"].GetStringValue())
 	})
 }
 
@@ -2454,7 +2524,7 @@ func createTestTranslator() *Translator {
 // TestProcessEndpoint_PeerHostnameMetadata guards the fix for GH issue #2883 (Datadog
 // Dependencies view needs a peer.service tag on upstream CLIENT spans). processEndpoint must
 // stamp the upstream hostname under the envoy.lb/hostname metadata key so the peer.service
-// custom tag (createTracingUpstreamPeerCustomTags) can read it, for both plaintext and HTTPS
+// custom tag (createTracingCustomTags) can read it, for both plaintext and HTTPS
 // endpoints — and, for HTTPS, alongside (not instead of) the existing
 // envoy.transport_socket_match/lb_id metadata that TLS transport-socket matching depends on.
 func TestProcessEndpoint_PeerHostnameMetadata(t *testing.T) {
