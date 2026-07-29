@@ -36,7 +36,7 @@ func (x EnvoyRoutes) Swap(i, j int) { x[i], x[j] = x[j], x[i] }
 //
 // Priority order (highest to lowest):
 // 1. Path match type: Exact > Regex > Prefix
-// 2. Literal path specificity (longer constrained paths have higher priority)
+// 2. Path segment specificity (compared left-to-right)
 // 3. Number of header matches (more headers = higher priority)
 // 4. Number of exact header matches
 // 5. Number of query parameter matches
@@ -59,17 +59,13 @@ func (x EnvoyRoutes) Less(i, j int) bool {
 
 	// Equal path match type case
 
-	// 2. Sort based on literal characters constrained by the path matcher.
-	// Longer constrained paths have higher priority.
-	pCountI := pathMatchCount(x[i])
-	pCountJ := pathMatchCount(x[j])
-	if pCountI != pCountJ {
-		// More characters = higher priority
-		// If pCountI < pCountJ, i has lower priority
-		return pCountI < pCountJ
+	// 2. Compare semantic path segments from left to right. An earlier literal constraint
+	// must not be outweighed by longer literals in a later segment.
+	if specificity := comparePathSpecificity(x[i], x[j]); specificity != 0 {
+		return specificity < 0
 	}
 
-	// Equal path count case
+	// Equal path specificity case
 
 	// 3. Sort based on the number of Header matches.
 	// When the number is same, sort based on number of Exact Header matches.
@@ -131,17 +127,33 @@ func getPathMatchType(match *route.RouteMatch) int {
 	}
 }
 
-// pathMatchCount returns a semantic path-specificity score for the route.
-// Product routes carry their semantic path in the route name (METHOD|PATH|VHOST, optionally
-// followed by a discriminator segment), so score that instead of the rendered regex: regex
-// operators are implementation details and must not add specificity. Routes outside that naming
-// contract retain the historical matcher-length fallback.
-func pathMatchCount(r *route.Route) int {
-	if parts := strings.SplitN(r.GetName(), "|", 4); len(parts) >= 3 && parts[1] != "" {
-		return semanticPathMatchCount(parts[1])
+// comparePathSpecificity returns a positive value when left is more specific, a negative value
+// when right is more specific, and zero when they are equally specific. Product routes carry their
+// semantic path in the route name (METHOD|PATH|VHOST, optionally followed by a discriminator), so
+// compare those paths directly. Routes outside that contract retain the historical matcher-length
+// fallback.
+func comparePathSpecificity(left, right *route.Route) int {
+	leftPath, leftOK := semanticPathFromRouteName(left.GetName())
+	rightPath, rightOK := semanticPathFromRouteName(right.GetName())
+	if leftOK && rightOK {
+		return compareSemanticPaths(leftPath, rightPath)
 	}
 
-	switch ps := r.GetMatch().GetPathSpecifier().(type) {
+	return compareInts(pathMatchCount(left.GetMatch()), pathMatchCount(right.GetMatch()))
+}
+
+func semanticPathFromRouteName(name string) (string, bool) {
+	parts := strings.SplitN(name, "|", 4)
+	if len(parts) < 3 || parts[1] == "" {
+		return "", false
+	}
+	return parts[1], true
+}
+
+// pathMatchCount returns the historical matcher-length score used for routes that do not carry a
+// semantic path in their name.
+func pathMatchCount(match *route.RouteMatch) int {
+	switch ps := match.GetPathSpecifier().(type) {
 	case *route.RouteMatch_Path:
 		return len(ps.Path)
 	case *route.RouteMatch_SafeRegex:
@@ -158,31 +170,107 @@ func pathMatchCount(r *route.Route) int {
 	}
 }
 
-// semanticPathMatchCount scores literal constraints in an operation path. Literal characters
-// dominate the score; a non-wildcard path gets a one-point terminal-specificity tie-break so
-// /a/b sorts ahead of /a/b/*. Characters inside {} contribute nothing because {short} and
-// {aVeryLongName} match the same single path segment.
-func semanticPathMatchCount(path string) int {
-	terminal := !strings.HasSuffix(path, "/*")
-	path = strings.TrimSuffix(path, "/*")
+type semanticSegmentKind int
 
-	literals, inParam := 0, false
-	for i := 0; i < len(path); i++ {
-		switch {
-		case path[i] == '{':
-			inParam = true
-		case path[i] == '}':
-			inParam = false
-		case !inParam:
-			literals++
+const (
+	// Wildcards have the lowest priority because they can consume any remaining segments.
+	semanticSegmentWildcard semanticSegmentKind = iota
+	// A terminal marker beats a wildcard rooted at the same path (/a/b before /a/b/*), but a
+	// further constrained segment remains more specific than ending the path.
+	semanticSegmentTerminal
+	semanticSegmentParameter
+	semanticSegmentMixed
+	semanticSegmentLiteral
+)
+
+type semanticSegment struct {
+	kind         semanticSegmentKind
+	literalCount int
+}
+
+// compareSemanticPaths compares slash-delimited path segments from left to right. Position is
+// significant: a literal in an earlier segment beats a parameter in that segment regardless of
+// how many literal characters appear later in the competing path. Parameter names do not affect
+// specificity.
+func compareSemanticPaths(left, right string) int {
+	leftSegments := splitSemanticPath(left)
+	rightSegments := splitSemanticPath(right)
+	segmentCount := max(len(leftSegments), len(rightSegments))
+	terminalSegment := semanticSegment{kind: semanticSegmentTerminal}
+
+	for i := 0; i < segmentCount; i++ {
+		leftSegment := terminalSegment
+		if i < len(leftSegments) {
+			leftSegment = leftSegments[i]
+		}
+		rightSegment := terminalSegment
+		if i < len(rightSegments) {
+			rightSegment = rightSegments[i]
+		}
+
+		if comparison := compareInts(int(leftSegment.kind), int(rightSegment.kind)); comparison != 0 {
+			return comparison
+		}
+		if leftSegment.kind == semanticSegmentMixed {
+			if comparison := compareInts(leftSegment.literalCount, rightSegment.literalCount); comparison != 0 {
+				return comparison
+			}
 		}
 	}
 
-	score := literals * 2
-	if terminal {
-		score++
+	return 0
+}
+
+func splitSemanticPath(path string) []semanticSegment {
+	rawSegments := strings.Split(strings.TrimPrefix(path, "/"), "/")
+	segments := make([]semanticSegment, 0, len(rawSegments))
+	for _, rawSegment := range rawSegments {
+		segments = append(segments, classifySemanticSegment(rawSegment))
 	}
-	return score
+	return segments
+}
+
+func classifySemanticSegment(segment string) semanticSegment {
+	if segment == "*" {
+		return semanticSegment{kind: semanticSegmentWildcard}
+	}
+
+	literalCount, parameterCount, inParameter := 0, 0, false
+	for i := 0; i < len(segment); i++ {
+		switch segment[i] {
+		case '{':
+			if !inParameter {
+				parameterCount++
+				inParameter = true
+			}
+		case '}':
+			inParameter = false
+		default:
+			if !inParameter {
+				literalCount++
+			}
+		}
+	}
+
+	switch {
+	case parameterCount == 0:
+		return semanticSegment{kind: semanticSegmentLiteral, literalCount: literalCount}
+	case literalCount == 0:
+		return semanticSegment{kind: semanticSegmentParameter}
+	default:
+		return semanticSegment{kind: semanticSegmentMixed, literalCount: literalCount}
+	}
+}
+
+func compareInts(left, right int) int {
+	switch {
+	case left > right:
+		return 1
+	case left < right:
+		return -1
+	default:
+		return 0
+	}
 }
 
 // numberOfExactHeaderMatches counts headers that use exact string matching.

@@ -133,6 +133,15 @@ func TestSortRoutesByPriority_GeneratedRegexSpecificity(t *testing.T) {
 			wantNames:   []string{"POST|/llm/a/b|", "POST|/llm/a/b/*|"},
 			description: "a terminal exact path must beat a wildcard rooted at that path",
 		},
+		{
+			name: "earlier literal segment beats longer later literals",
+			routes: []*route.Route{
+				regexRoute("GET|/a/{p}/long/z|", "^/a/[^/]+/long/z$"),
+				regexRoute("GET|/a/x/{p}/{q}|", "^/a/x/[^/]+/[^/]+$"),
+			},
+			wantNames:   []string{"GET|/a/x/{p}/{q}|", "GET|/a/{p}/long/z|"},
+			description: "specificity must be compared at the first differing path segment",
+		},
 	}
 
 	for _, tt := range tests {
