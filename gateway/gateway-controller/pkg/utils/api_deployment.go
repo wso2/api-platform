@@ -328,6 +328,11 @@ func (s *APIDeploymentService) DeployAPIConfiguration(params APIDeploymentParams
 			s.logValidationErrors(params.Logger, apiID, apiName, validationErrors)
 			return nil, &ValidationErrorListError{Errors: validationErrors}
 		}
+		// Write c back: validateRestAPIConfiguration coerces rendered-template strings
+		// in policy params (e.g. "100" → float64(100) for integer params). The type
+		// switch above copies c from storedCfg.Configuration, and Validate(&c) mutates
+		// through the pointer, so the mutations stay in c but not in storedCfg yet.
+		storedCfg.Configuration = c
 	default:
 		if fn, ok := kindConfigValidators[kind]; ok {
 			var validationErrors []config.ValidationError

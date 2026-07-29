@@ -963,6 +963,300 @@ func TestPolicyValidator_ValidateMCPProxyPolicies_MultiplePoliciesWithErrors(t *
 	}
 }
 
+// TestCoerceParamsBySchema_RenderedTemplateStrings verifies that template-rendered
+// string values are coerced to their schema-declared types so that both JSON-schema
+// validation and the policy engine receive correctly-typed values.
+//
+// Background: text/template always produces strings, so {{ env "RATE" }} → "100"
+// even when the parameter schema declares type: integer. coerceParamsBySchema (called
+// inside validatePolicy) must convert the string to float64(100) before
+// gojsonschema sees it.
+func TestCoerceParamsBySchema_RenderedTemplateStrings(t *testing.T) {
+	policyDefs := map[string]models.PolicyDefinition{
+		"AdvancedRateLimit|v1.0.0": {
+			Name:    "AdvancedRateLimit",
+			Version: "v1.0.0",
+			Parameters: &map[string]interface{}{
+				"type": "object",
+				"properties": map[string]interface{}{
+					"limit": map[string]interface{}{"type": "integer"},
+					"burst": map[string]interface{}{"type": "integer"},
+					"enabled": map[string]interface{}{"type": "boolean"},
+					"ratio": map[string]interface{}{"type": "number"},
+					"name": map[string]interface{}{"type": "string"},
+				},
+				"required": []interface{}{"limit"},
+			},
+		},
+	}
+
+	pv := NewPolicyValidator(policyDefs)
+
+	config := &api.RestAPI{
+		ApiVersion: api.RestAPIApiVersionGatewayApiPlatformWso2Comv1,
+		Kind:       api.RestAPIKindRestApi,
+		Spec: api.APIConfigData{
+			DisplayName: "Test API",
+			Version:     "v1.0",
+			Context:     "/test",
+			Upstream: struct {
+				Main    api.Upstream  `json:"main" yaml:"main"`
+				Sandbox *api.Upstream `json:"sandbox,omitempty" yaml:"sandbox,omitempty"`
+			}{
+				Main: api.Upstream{
+					Url: func() *string { s := "http://backend.example.com"; return &s }(),
+				},
+			},
+			Policies: &[]api.Policy{
+				{
+					Name:    "AdvancedRateLimit",
+					Version: "v1",
+					Params: &map[string]interface{}{
+						// Simulates what text/template produces after {{ env "X" }} resolution:
+						// all values arrive as strings regardless of the declared type.
+						"limit":   "100",
+						"burst":   "200",
+						"enabled": "true",
+						"ratio":   "1.5",
+						"name":    "prod",
+					},
+				},
+			},
+			Operations: []api.Operation{
+				{
+					Method: api.Ptr(api.OperationMethod("GET")),
+					Path:   api.Ptr("/resource"),
+				},
+			},
+		},
+	}
+
+	// ValidateRestAPIPolicies coerces params in-place then validates — check both.
+	errs := pv.ValidateRestAPIPolicies(config)
+	assert.Empty(t, errs, "validation should pass after coercion: %v", errs)
+
+	params := *(*config.Spec.Policies)[0].Params
+	assert.Equal(t, float64(100), params["limit"], "integer param should be coerced from string")
+	assert.Equal(t, float64(200), params["burst"], "integer param should be coerced from string")
+	assert.Equal(t, true, params["enabled"], "boolean param should be coerced from string")
+	assert.Equal(t, 1.5, params["ratio"], "number param should be coerced from string")
+	assert.Equal(t, "prod", params["name"], "string param must not be changed")
+}
+
+// TestCoerceParamsBySchema_UnparseableStringStaysString verifies that a string value
+// that cannot be parsed as the declared type is left unchanged — this ensures
+// gojsonschema still produces a clear type-mismatch error rather than a silent no-op.
+func TestCoerceParamsBySchema_UnparseableStringStaysString(t *testing.T) {
+	policyDefs := map[string]models.PolicyDefinition{
+		"RateLimit|v1.0.0": {
+			Name:    "RateLimit",
+			Version: "v1.0.0",
+			Parameters: &map[string]interface{}{
+				"type": "object",
+				"properties": map[string]interface{}{
+					"limit": map[string]interface{}{"type": "integer"},
+				},
+			},
+		},
+	}
+
+	pv := NewPolicyValidator(policyDefs)
+
+	config := &api.RestAPI{
+		ApiVersion: api.RestAPIApiVersionGatewayApiPlatformWso2Comv1,
+		Kind:       api.RestAPIKindRestApi,
+		Spec: api.APIConfigData{
+			DisplayName: "Test API",
+			Version:     "v1.0",
+			Context:     "/test",
+			Upstream: struct {
+				Main    api.Upstream  `json:"main" yaml:"main"`
+				Sandbox *api.Upstream `json:"sandbox,omitempty" yaml:"sandbox,omitempty"`
+			}{
+				Main: api.Upstream{
+					Url: func() *string { s := "http://backend.example.com"; return &s }(),
+				},
+			},
+			Policies: &[]api.Policy{
+				{
+					Name:    "RateLimit",
+					Version: "v1",
+					Params:  &map[string]interface{}{"limit": "not-a-number"},
+				},
+			},
+			Operations: []api.Operation{
+				{Method: api.Ptr(api.OperationMethod("GET")), Path: api.Ptr("/resource")},
+			},
+		},
+	}
+
+	// ValidateRestAPIPolicies attempts coercion then validates — unparseable string must
+	// remain a string so validation produces a clear type-mismatch error.
+	errs := pv.ValidateRestAPIPolicies(config)
+	assert.NotEmpty(t, errs, "type mismatch must still produce a validation error")
+
+	params := *(*config.Spec.Policies)[0].Params
+	assert.Equal(t, "not-a-number", params["limit"], "unparseable string must not be modified")
+}
+
+// TestCoerceParamsBySchema_StringParamWithNumericValueIsUnchanged confirms that a
+// param declared as type:string is never coerced — a string that happens to look
+// like a number (e.g., "100") must stay as a string.
+func TestCoerceParamsBySchema_StringParamWithNumericValueIsUnchanged(t *testing.T) {
+	policyDefs := map[string]models.PolicyDefinition{
+		"HeaderPolicy|v1.0.0": {
+			Name:    "HeaderPolicy",
+			Version: "v1.0.0",
+			Parameters: &map[string]interface{}{
+				"type": "object",
+				"properties": map[string]interface{}{
+					"headerValue": map[string]interface{}{"type": "string"},
+				},
+			},
+		},
+	}
+
+	pv := NewPolicyValidator(policyDefs)
+
+	config := &api.RestAPI{
+		ApiVersion: api.RestAPIApiVersionGatewayApiPlatformWso2Comv1,
+		Kind:       api.RestAPIKindRestApi,
+		Spec: api.APIConfigData{
+			DisplayName: "Test API",
+			Version:     "v1.0",
+			Context:     "/test",
+			Upstream: struct {
+				Main    api.Upstream  `json:"main" yaml:"main"`
+				Sandbox *api.Upstream `json:"sandbox,omitempty" yaml:"sandbox,omitempty"`
+			}{
+				Main: api.Upstream{
+					Url: func() *string { s := "http://backend.example.com"; return &s }(),
+				},
+			},
+			Policies: &[]api.Policy{
+				{
+					Name:    "HeaderPolicy",
+					Version: "v1",
+					Params:  &map[string]interface{}{"headerValue": "100"},
+				},
+			},
+			Operations: []api.Operation{
+				{Method: api.Ptr(api.OperationMethod("GET")), Path: api.Ptr("/resource")},
+			},
+		},
+	}
+
+	errs := pv.ValidateRestAPIPolicies(config)
+	assert.Empty(t, errs, "string param with numeric-looking value must pass validation")
+
+	params := *(*config.Spec.Policies)[0].Params
+	assert.Equal(t, "100", params["headerValue"], "string param must stay as string even when it looks numeric")
+}
+
+// TestCoerceParamsBySchema_NestedObjectParams verifies that integer/number/boolean
+// string values nested inside an object-typed property are coerced recursively.
+func TestCoerceParamsBySchema_NestedObjectParams(t *testing.T) {
+	schema := map[string]interface{}{
+		"type": "object",
+		"properties": map[string]interface{}{
+			"config": map[string]interface{}{
+				"type": "object",
+				"properties": map[string]interface{}{
+					"maxRetries": map[string]interface{}{"type": "integer"},
+					"enabled":    map[string]interface{}{"type": "boolean"},
+				},
+			},
+		},
+	}
+
+	params := map[string]interface{}{
+		"config": map[string]interface{}{
+			"maxRetries": "3",    // rendered template string
+			"enabled":    "true", // rendered template string
+		},
+	}
+
+	coerceParamsBySchema(params, schema)
+
+	inner := params["config"].(map[string]interface{})
+	assert.Equal(t, float64(3), inner["maxRetries"], "nested integer param must be coerced to float64")
+	assert.Equal(t, true, inner["enabled"], "nested boolean param must be coerced to bool")
+}
+
+// TestCoerceParamsBySchema_ArrayOfObjectsWithIntegerParams verifies the advanced-ratelimit
+// case where integer params (limit, burst) are nested inside an array of objects
+// (quotas[].limits[]).
+func TestCoerceParamsBySchema_ArrayOfObjectsWithIntegerParams(t *testing.T) {
+	schema := map[string]interface{}{
+		"type": "object",
+		"properties": map[string]interface{}{
+			"quotas": map[string]interface{}{
+				"type": "array",
+				"items": map[string]interface{}{
+					"type": "object",
+					"properties": map[string]interface{}{
+						"limits": map[string]interface{}{
+							"type": "array",
+							"items": map[string]interface{}{
+								"type": "object",
+								"properties": map[string]interface{}{
+									"limit": map[string]interface{}{"type": "integer"},
+									"burst": map[string]interface{}{"type": "integer"},
+								},
+							},
+						},
+					},
+				},
+			},
+		},
+	}
+
+	params := map[string]interface{}{
+		"quotas": []interface{}{
+			map[string]interface{}{
+				"limits": []interface{}{
+					map[string]interface{}{
+						"limit": "100", // rendered from {{ env "RATE_LIMIT" }}
+						"burst": "200", // rendered from {{ env "BURST_LIMIT" }}
+					},
+				},
+			},
+		},
+	}
+
+	coerceParamsBySchema(params, schema)
+
+	quotas := params["quotas"].([]interface{})
+	limits := quotas[0].(map[string]interface{})["limits"].([]interface{})
+	first := limits[0].(map[string]interface{})
+	assert.Equal(t, float64(100), first["limit"], "deeply nested integer param must be coerced to float64")
+	assert.Equal(t, float64(200), first["burst"], "deeply nested integer param must be coerced to float64")
+}
+
+// TestCoerceParamsBySchema_ArrayOfScalarIntegers verifies that string elements in an
+// array of integers (e.g., allowedPorts: ["8080", "8443"]) are coerced element-by-element.
+func TestCoerceParamsBySchema_ArrayOfScalarIntegers(t *testing.T) {
+	schema := map[string]interface{}{
+		"type": "object",
+		"properties": map[string]interface{}{
+			"allowedPorts": map[string]interface{}{
+				"type":  "array",
+				"items": map[string]interface{}{"type": "integer"},
+			},
+		},
+	}
+
+	params := map[string]interface{}{
+		"allowedPorts": []interface{}{"8080", "8443"},
+	}
+
+	coerceParamsBySchema(params, schema)
+
+	ports := params["allowedPorts"].([]interface{})
+	assert.Equal(t, float64(8080), ports[0], "first array element must be coerced to float64")
+	assert.Equal(t, float64(8443), ports[1], "second array element must be coerced to float64")
+}
+
 // Helper functions
 func boolPtr(b bool) *bool {
 	return &b
