@@ -87,7 +87,7 @@ func (u *APIUtil) RESTAPIToModel(restAPI *api.RESTAPI, orgID string) *model.API 
 			Context:             &restAPI.Context,
 			Transport:           stringSliceValue(restAPI.Transport),
 			Upstream:            *u.UpstreamConfigAPIToModel(&restAPI.Upstream),
-			UpstreamDefinitions: u.ReusableUpstreamsAPIToModel(restAPI.UpstreamDefinitions),
+			UpstreamDefinitions: u.NamedUpstreamsAPIToModel(restAPI.UpstreamDefinitions),
 			Policies:            u.PoliciesAPIToModel(restAPI.Policies),
 			Operations:          u.OperationsAPIToModel(restAPI.Operations),
 			SubscriptionPlans:   stringSliceValue(restAPI.SubscriptionPlans),
@@ -138,7 +138,7 @@ func (u *APIUtil) ModelToRESTAPI(modelAPI *model.API, projectHandle string) (*ap
 		UpdatedAt:           TimePtrIfNotZero(modelAPI.UpdatedAt),
 		UpdatedBy:           StringPtrIfNotEmpty(modelAPI.UpdatedBy),
 		Upstream:            u.UpstreamConfigModelToAPI(&modelAPI.Configuration.Upstream),
-		UpstreamDefinitions: u.ReusableUpstreamsModelToAPI(modelAPI.Configuration.UpstreamDefinitions),
+		UpstreamDefinitions: u.NamedUpstreamsModelToAPI(modelAPI.Configuration.UpstreamDefinitions),
 		Version:             modelAPI.Version,
 	}, nil
 }
@@ -321,13 +321,13 @@ func (u *APIUtil) upstreamAuthToModel(auth *api.UpstreamAuth) *model.UpstreamAut
 	return modelAuth
 }
 
-func (u *APIUtil) ReusableUpstreamsAPIToModel(definitions *[]api.ReusableUpstream) []model.ReusableUpstream {
+func (u *APIUtil) NamedUpstreamsAPIToModel(definitions *[]api.NamedUpstream) []model.NamedUpstream {
 	if definitions == nil {
 		return nil
 	}
-	models := make([]model.ReusableUpstream, 0, len(*definitions))
+	models := make([]model.NamedUpstream, 0, len(*definitions))
 	for _, definition := range *definitions {
-		m := model.ReusableUpstream{
+		m := model.NamedUpstream{
 			Name:     definition.Name,
 			BasePath: defaultStringPtr(definition.BasePath),
 		}
@@ -512,13 +512,13 @@ func (u *APIUtil) upstreamAuthToAPI(auth *model.UpstreamAuth) *api.UpstreamAuth 
 	return apiAuth
 }
 
-func (u *APIUtil) ReusableUpstreamsModelToAPI(models []model.ReusableUpstream) *[]api.ReusableUpstream {
+func (u *APIUtil) NamedUpstreamsModelToAPI(models []model.NamedUpstream) *[]api.NamedUpstream {
 	if len(models) == 0 {
 		return nil
 	}
-	definitions := make([]api.ReusableUpstream, 0, len(models))
+	definitions := make([]api.NamedUpstream, 0, len(models))
 	for _, m := range models {
-		definition := api.ReusableUpstream{
+		definition := api.NamedUpstream{
 			Name:     m.Name,
 			BasePath: StringPtrIfNotEmpty(m.BasePath),
 		}
@@ -558,7 +558,7 @@ func newAPIOperationUpstreamRef(ref string) *struct {
 }
 
 // newAPIUpstreamBackend constructs the anonymous backend entry type generated for
-// ReusableUpstream.upstreams.
+// NamedUpstream.upstreams.
 func newAPIUpstreamBackend(backendURL string, weight *int) struct {
 	Url    string `json:"url" yaml:"url"`
 	Weight *int   `json:"weight,omitempty" yaml:"weight,omitempty"`
@@ -615,9 +615,9 @@ func (u *APIUtil) BuildAPIDeploymentYAML(apiModel *model.API) (*dto.APIDeploymen
 
 	// Convert reusable upstream definitions (the named pool that API-level and
 	// operation-level upstream refs resolve against on the gateway).
-	var upstreamDefsYAML []dto.ReusableUpstream
+	var upstreamDefsYAML []dto.NamedUpstream
 	for _, def := range apiModel.Configuration.UpstreamDefinitions {
-		defYAML := dto.ReusableUpstream{
+		defYAML := dto.NamedUpstream{
 			Name:     def.Name,
 			BasePath: def.BasePath,
 		}

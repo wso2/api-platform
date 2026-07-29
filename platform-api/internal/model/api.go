@@ -43,15 +43,15 @@ type API struct {
 }
 
 type RestAPIConfig struct {
-	Name                string             `json:"name,omitempty"`
-	Version             string             `json:"version,omitempty"`
-	Context             *string            `json:"context,omitempty"`
-	Transport           []string           `json:"transport,omitempty"`
-	Upstream            UpstreamConfig     `json:"upstream,omitempty"`
-	UpstreamDefinitions []ReusableUpstream `json:"upstreamDefinitions,omitempty"`
-	Policies            []Policy           `json:"policies,omitempty"`
-	Operations          []Operation        `json:"operations,omitempty"`
-	SubscriptionPlans   []string           `json:"subscriptionPlans,omitempty"`
+	Name                string          `json:"name,omitempty"`
+	Version             string          `json:"version,omitempty"`
+	Context             *string         `json:"context,omitempty"`
+	Transport           []string        `json:"transport,omitempty"`
+	Upstream            UpstreamConfig  `json:"upstream,omitempty"`
+	UpstreamDefinitions []NamedUpstream `json:"upstreamDefinitions,omitempty"`
+	Policies            []Policy        `json:"policies,omitempty"`
+	Operations          []Operation     `json:"operations,omitempty"`
+	SubscriptionPlans   []string        `json:"subscriptionPlans,omitempty"`
 }
 
 // TableName returns the table name for the API model

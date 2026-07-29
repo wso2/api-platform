@@ -57,15 +57,15 @@ func TestValidateUpstreamRefs(t *testing.T) {
 	s := &APIService{}
 	mainURL := "http://main:8080"
 	validUp := api.Upstream{Main: api.UpstreamDefinition{Url: &mainURL}}
-	ru := func(name string) api.ReusableUpstream {
-		r := api.ReusableUpstream{Name: name}
+	ru := func(name string) api.NamedUpstream {
+		r := api.NamedUpstream{Name: name}
 		r.Upstreams = append(r.Upstreams, struct {
 			Url    string `json:"url" yaml:"url"`
 			Weight *int   `json:"weight,omitempty" yaml:"weight,omitempty"`
 		}{Url: "http://b:8080"})
 		return r
 	}
-	defs := &[]api.ReusableUpstream{ru("alt-backend"), ru("foo")}
+	defs := &[]api.NamedUpstream{ru("alt-backend"), ru("foo")}
 	opWithMainRef := func(ref string) *[]api.Operation {
 		return &[]api.Operation{
 			{Request: api.OperationRequest{
@@ -148,26 +148,26 @@ func TestValidateUpstreamRefs(t *testing.T) {
 		}
 	})
 	t.Run("duplicate definition names", func(t *testing.T) {
-		dup := &[]api.ReusableUpstream{ru("x"), ru("x")}
+		dup := &[]api.NamedUpstream{ru("x"), ru("x")}
 		if err := s.validateUpstreamRefs(dup, validUp, nil); err == nil {
 			t.Error("expected error for duplicate definition names")
 		}
 	})
 	t.Run("definition with zero upstreams rejected", func(t *testing.T) {
-		bare := &[]api.ReusableUpstream{{Name: "bare"}}
+		bare := &[]api.NamedUpstream{{Name: "bare"}}
 		if err := s.validateUpstreamRefs(bare, validUp, nil); err == nil {
 			t.Error("expected error for definition with no upstreams")
 		}
 	})
-	mkDef := func(name, u string) api.ReusableUpstream {
-		d := api.ReusableUpstream{Name: name}
+	mkDef := func(name, u string) api.NamedUpstream {
+		d := api.NamedUpstream{Name: name}
 		d.Upstreams = append(d.Upstreams, struct {
 			Url    string `json:"url" yaml:"url"`
 			Weight *int   `json:"weight,omitempty" yaml:"weight,omitempty"`
 		}{Url: u})
 		return d
 	}
-	wantErr := func(t *testing.T, defs []api.ReusableUpstream, ops *[]api.Operation, what string) {
+	wantErr := func(t *testing.T, defs []api.NamedUpstream, ops *[]api.Operation, what string) {
 		if err := s.validateUpstreamRefs(&defs, validUp, ops); err == nil {
 			t.Errorf("expected error for %s", what)
 		}
@@ -178,13 +178,13 @@ func TestValidateUpstreamRefs(t *testing.T) {
 			Url    string `json:"url" yaml:"url"`
 			Weight *int   `json:"weight,omitempty" yaml:"weight,omitempty"`
 		}{Url: ""})
-		wantErr(t, []api.ReusableUpstream{d}, nil, "empty url on a non-first upstream")
+		wantErr(t, []api.NamedUpstream{d}, nil, "empty url on a non-first upstream")
 	})
 	t.Run("zero weight accepted", func(t *testing.T) {
 		zero := 0
 		d := mkDef("w", "http://b:8080")
 		d.Upstreams[0].Weight = &zero
-		if err := s.validateUpstreamRefs(&[]api.ReusableUpstream{d}, validUp, nil); err != nil {
+		if err := s.validateUpstreamRefs(&[]api.NamedUpstream{d}, validUp, nil); err != nil {
 			t.Errorf("zero weight should be valid (0..100), got %v", err)
 		}
 	})
@@ -192,83 +192,83 @@ func TestValidateUpstreamRefs(t *testing.T) {
 		over := 105
 		d := mkDef("w", "http://b:8080")
 		d.Upstreams[0].Weight = &over
-		wantErr(t, []api.ReusableUpstream{d}, nil, "weight > 100")
+		wantErr(t, []api.NamedUpstream{d}, nil, "weight > 100")
 	})
 	t.Run("negative weight rejected", func(t *testing.T) {
 		neg := -10
 		d := mkDef("w", "http://b:8080")
 		d.Upstreams[0].Weight = &neg
-		wantErr(t, []api.ReusableUpstream{d}, nil, "weight < 0")
+		wantErr(t, []api.NamedUpstream{d}, nil, "weight < 0")
 	})
 	t.Run("weight of exactly 100 accepted", func(t *testing.T) {
 		hundred := 100
 		d := mkDef("w", "http://b:8080")
 		d.Upstreams[0].Weight = &hundred
-		if err := s.validateUpstreamRefs(&[]api.ReusableUpstream{d}, validUp, nil); err != nil {
+		if err := s.validateUpstreamRefs(&[]api.NamedUpstream{d}, validUp, nil); err != nil {
 			t.Errorf("weight 100 should be valid (0..100), got %v", err)
 		}
 	})
 	t.Run("def name bad chars rejected", func(t *testing.T) {
-		wantErr(t, []api.ReusableUpstream{mkDef("bad name!", "http://b:8080")}, nil, "bad definition name")
+		wantErr(t, []api.NamedUpstream{mkDef("bad name!", "http://b:8080")}, nil, "bad definition name")
 	})
 	t.Run("def name too long rejected", func(t *testing.T) {
-		wantErr(t, []api.ReusableUpstream{mkDef(strings.Repeat("a", 101), "http://b:8080")}, nil, "definition name > 100")
+		wantErr(t, []api.NamedUpstream{mkDef(strings.Repeat("a", 101), "http://b:8080")}, nil, "definition name > 100")
 	})
 	t.Run("def url with path rejected", func(t *testing.T) {
-		wantErr(t, []api.ReusableUpstream{mkDef("d", "http://b:8080/foo")}, nil, "url with path")
+		wantErr(t, []api.NamedUpstream{mkDef("d", "http://b:8080/foo")}, nil, "url with path")
 	})
 	t.Run("def url with query rejected", func(t *testing.T) {
-		wantErr(t, []api.ReusableUpstream{mkDef("d", "http://b:8080?debug=true")}, nil, "url with query")
+		wantErr(t, []api.NamedUpstream{mkDef("d", "http://b:8080?debug=true")}, nil, "url with query")
 	})
 	t.Run("def url with fragment rejected", func(t *testing.T) {
-		wantErr(t, []api.ReusableUpstream{mkDef("d", "http://b:8080#section")}, nil, "url with fragment")
+		wantErr(t, []api.NamedUpstream{mkDef("d", "http://b:8080#section")}, nil, "url with fragment")
 	})
 	t.Run("def url bad scheme rejected", func(t *testing.T) {
-		wantErr(t, []api.ReusableUpstream{mkDef("d", "ftp://b:8080")}, nil, "url bad scheme")
+		wantErr(t, []api.NamedUpstream{mkDef("d", "ftp://b:8080")}, nil, "url bad scheme")
 	})
 	t.Run("def url no host rejected", func(t *testing.T) {
-		wantErr(t, []api.ReusableUpstream{mkDef("d", "http://")}, nil, "url no host")
+		wantErr(t, []api.NamedUpstream{mkDef("d", "http://")}, nil, "url no host")
 	})
-	mkDefWithBasePath := func(basePath string) api.ReusableUpstream {
+	mkDefWithBasePath := func(basePath string) api.NamedUpstream {
 		d := mkDef("d", "http://b:8080")
 		d.BasePath = &basePath
 		return d
 	}
 	t.Run("def basePath without leading slash rejected", func(t *testing.T) {
-		wantErr(t, []api.ReusableUpstream{mkDefWithBasePath("api/v2")}, nil, "basePath without leading '/'")
+		wantErr(t, []api.NamedUpstream{mkDefWithBasePath("api/v2")}, nil, "basePath without leading '/'")
 	})
 	t.Run("def basePath with trailing slash rejected", func(t *testing.T) {
-		wantErr(t, []api.ReusableUpstream{mkDefWithBasePath("/api/v2/")}, nil, "basePath with trailing '/'")
+		wantErr(t, []api.NamedUpstream{mkDefWithBasePath("/api/v2/")}, nil, "basePath with trailing '/'")
 	})
 	t.Run("def basePath bare root slash rejected", func(t *testing.T) {
-		wantErr(t, []api.ReusableUpstream{mkDefWithBasePath("/")}, nil, "bare '/' basePath (root is expressed by omitting)")
+		wantErr(t, []api.NamedUpstream{mkDefWithBasePath("/")}, nil, "bare '/' basePath (root is expressed by omitting)")
 	})
 	t.Run("def basePath with space rejected", func(t *testing.T) {
-		wantErr(t, []api.ReusableUpstream{mkDefWithBasePath("/api v2")}, nil, "basePath with a space")
+		wantErr(t, []api.NamedUpstream{mkDefWithBasePath("/api v2")}, nil, "basePath with a space")
 	})
 	t.Run("def basePath with query rejected", func(t *testing.T) {
-		wantErr(t, []api.ReusableUpstream{mkDefWithBasePath("/api?x=1")}, nil, "basePath with a query string")
+		wantErr(t, []api.NamedUpstream{mkDefWithBasePath("/api?x=1")}, nil, "basePath with a query string")
 	})
 	t.Run("def valid basePath accepted", func(t *testing.T) {
-		if err := s.validateUpstreamRefs(&[]api.ReusableUpstream{mkDefWithBasePath("/api/v2")}, validUp, nil); err != nil {
+		if err := s.validateUpstreamRefs(&[]api.NamedUpstream{mkDefWithBasePath("/api/v2")}, validUp, nil); err != nil {
 			t.Errorf("basePath /api/v2 should be valid, got %v", err)
 		}
 	})
 	t.Run("def empty basePath treated as unset", func(t *testing.T) {
 		// omitempty drops an empty basePath from the deployment YAML, so the gateway
 		// never sees it; rejecting it here would be stricter than the deploy contract.
-		if err := s.validateUpstreamRefs(&[]api.ReusableUpstream{mkDefWithBasePath("")}, validUp, nil); err != nil {
+		if err := s.validateUpstreamRefs(&[]api.NamedUpstream{mkDefWithBasePath("")}, validUp, nil); err != nil {
 			t.Errorf("empty basePath should be treated as unset, got %v", err)
 		}
 	})
 	t.Run("per-op empty ref rejected", func(t *testing.T) {
-		defs := []api.ReusableUpstream{mkDef("svc", "http://b:8080")}
+		defs := []api.NamedUpstream{mkDef("svc", "http://b:8080")}
 		ops := []api.Operation{{Request: api.OperationRequest{Method: api.OperationRequestMethodGET, Path: "/x",
 			Upstream: &api.OperationUpstream{Main: newAPIOperationUpstreamRef("")}}}}
 		wantErr(t, defs, &ops, "empty per-op ref")
 	})
 	t.Run("per-op ref name contract enforced", func(t *testing.T) {
-		defs := []api.ReusableUpstream{mkDef("svc", "http://b:8080")}
+		defs := []api.NamedUpstream{mkDef("svc", "http://b:8080")}
 		ops := []api.Operation{{Request: api.OperationRequest{Method: api.OperationRequestMethodGET, Path: "/x",
 			Upstream: &api.OperationUpstream{Main: newAPIOperationUpstreamRef("bad ref!")}}}}
 		err := s.validateUpstreamRefs(&defs, validUp, &ops)
@@ -277,7 +277,7 @@ func TestValidateUpstreamRefs(t *testing.T) {
 		}
 	})
 	t.Run("per-op empty wrapper rejected", func(t *testing.T) {
-		defs := []api.ReusableUpstream{mkDef("svc", "http://b:8080")}
+		defs := []api.NamedUpstream{mkDef("svc", "http://b:8080")}
 		ops := []api.Operation{{Request: api.OperationRequest{Method: api.OperationRequestMethodGET, Path: "/x",
 			Upstream: &api.OperationUpstream{}}}}
 		wantErr(t, defs, &ops, "empty per-op upstream wrapper")
@@ -286,7 +286,7 @@ func TestValidateUpstreamRefs(t *testing.T) {
 		bad := "5x"
 		d := ru("t")
 		d.Timeout = &api.UpstreamTimeout{Connect: &bad}
-		if err := s.validateUpstreamRefs(&[]api.ReusableUpstream{d}, validUp, nil); err == nil {
+		if err := s.validateUpstreamRefs(&[]api.NamedUpstream{d}, validUp, nil); err == nil {
 			t.Error("expected error for invalid timeout.connect")
 		}
 	})
@@ -294,7 +294,7 @@ func TestValidateUpstreamRefs(t *testing.T) {
 		for _, v := range []string{"0s", "-1s"} {
 			d := ru("t")
 			d.Timeout = &api.UpstreamTimeout{Connect: &v}
-			if err := s.validateUpstreamRefs(&[]api.ReusableUpstream{d}, validUp, nil); err == nil {
+			if err := s.validateUpstreamRefs(&[]api.NamedUpstream{d}, validUp, nil); err == nil {
 				t.Errorf("expected error for non-positive timeout.connect %q", v)
 			}
 		}
@@ -303,7 +303,7 @@ func TestValidateUpstreamRefs(t *testing.T) {
 		good := "5s"
 		d := ru("t")
 		d.Timeout = &api.UpstreamTimeout{Connect: &good}
-		if err := s.validateUpstreamRefs(&[]api.ReusableUpstream{d}, validUp, nil); err != nil {
+		if err := s.validateUpstreamRefs(&[]api.NamedUpstream{d}, validUp, nil); err != nil {
 			t.Errorf("expected nil for valid timeout.connect, got %v", err)
 		}
 	})
@@ -313,7 +313,7 @@ func TestValidateUpstreamRefs(t *testing.T) {
 		for _, v := range []string{"", "   "} {
 			d := ru("t")
 			d.Timeout = &api.UpstreamTimeout{Connect: &v}
-			if err := s.validateUpstreamRefs(&[]api.ReusableUpstream{d}, validUp, nil); err != nil {
+			if err := s.validateUpstreamRefs(&[]api.NamedUpstream{d}, validUp, nil); err != nil {
 				t.Errorf("expected nil for blank timeout.connect %q, got %v", v, err)
 			}
 		}
@@ -324,7 +324,7 @@ func TestValidateUpstreamRefs(t *testing.T) {
 		for _, v := range []string{"1h30m", "500ns", "500us"} {
 			d := ru("t")
 			d.Timeout = &api.UpstreamTimeout{Connect: &v}
-			if err := s.validateUpstreamRefs(&[]api.ReusableUpstream{d}, validUp, nil); err == nil {
+			if err := s.validateUpstreamRefs(&[]api.NamedUpstream{d}, validUp, nil); err == nil {
 				t.Errorf("expected error for non-canonical timeout.connect unit %q", v)
 			}
 		}
@@ -384,9 +384,9 @@ func setupUpstreamITEnv(t *testing.T) *APIService {
 	return NewAPIService(apiRepo, projectRepo, nil, nil, nil, nil, nil, nil, &utils.APIUtil{}, slog.Default(), auditRepo, identity)
 }
 
-// perOpReusableUpstream builds a pool entry with a single backend.
-func perOpReusableUpstream(name, basePath, backendURL string) api.ReusableUpstream {
-	r := api.ReusableUpstream{Name: name}
+// perOpNamedUpstream builds a pool entry with a single backend.
+func perOpNamedUpstream(name, basePath, backendURL string) api.NamedUpstream {
+	r := api.NamedUpstream{Name: name}
 	if basePath != "" {
 		r.BasePath = &basePath
 	}
@@ -401,7 +401,7 @@ func perOpReusableUpstream(name, basePath, backendURL string) api.ReusableUpstre
 func perOpCreateRequest() *api.CreateRESTAPIRequest {
 	handle := "perop-svc-it-api"
 	mainURL := "http://default-backend:8080"
-	defs := []api.ReusableUpstream{perOpReusableUpstream("alt-backend", "/alternate", "http://alt-backend:9090")}
+	defs := []api.NamedUpstream{perOpNamedUpstream("alt-backend", "/alternate", "http://alt-backend:9090")}
 	ops := []api.Operation{
 		{Request: api.OperationRequest{
 			Method: api.OperationRequestMethodGET, Path: "/whoami",
@@ -510,7 +510,7 @@ func TestAPIService_UpdateRejectsPoolRemovalWithDanglingRef(t *testing.T) {
 
 	// Replace the pool with one that no longer contains "alt-backend", which the stored
 	// /whoami operation still references.
-	newPool := []api.ReusableUpstream{perOpReusableUpstream("other-backend", "/other", "http://other:9090")}
+	newPool := []api.NamedUpstream{perOpNamedUpstream("other-backend", "/other", "http://other:9090")}
 	_, err := svc.UpdateAPIByHandle("perop-svc-it-api", &api.RESTAPI{UpstreamDefinitions: &newPool}, upstreamITOrgUUID, "tester")
 	if err == nil {
 		t.Fatal("expected error for pool removal with dangling per-op ref")
@@ -528,7 +528,7 @@ func TestAPIService_UpdateReplacesPoolAndRefsTogether(t *testing.T) {
 		t.Fatalf("CreateAPI: %v", err)
 	}
 
-	newPool := []api.ReusableUpstream{perOpReusableUpstream("new-backend", "/renewed", "http://new-backend:9191")}
+	newPool := []api.NamedUpstream{perOpNamedUpstream("new-backend", "/renewed", "http://new-backend:9191")}
 	newOps := []api.Operation{
 		{Request: api.OperationRequest{
 			Method: api.OperationRequestMethodGET, Path: "/whoami",
@@ -584,7 +584,7 @@ func TestAPIService_FailedUpdateLeavesStoredStateUnchanged(t *testing.T) {
 		t.Fatalf("CreateAPI: %v", err)
 	}
 
-	newPool := []api.ReusableUpstream{perOpReusableUpstream("other-backend", "/other", "http://other:9090")}
+	newPool := []api.NamedUpstream{perOpNamedUpstream("other-backend", "/other", "http://other:9090")}
 	if _, err := svc.UpdateAPIByHandle("perop-svc-it-api",
 		&api.RESTAPI{UpstreamDefinitions: &newPool}, upstreamITOrgUUID, "tester"); err == nil {
 		t.Fatal("expected error for pool removal with dangling per-op ref")
