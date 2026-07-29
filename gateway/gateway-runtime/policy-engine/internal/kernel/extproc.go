@@ -58,7 +58,9 @@ type ExternalProcessorServer struct {
 
 	// Per-direction caps on decompressed bytes buffered per body (buffered mode)
 	// or per chunk (streaming), from policy_engine.request_body/.response_body config.
-	// A value <= 0 disables the cap.
+	// Always positive: the constructor falls back to
+	// config.DefaultMaxDecompressedBytes for any non-positive input, so a body is
+	// never decompressed without a ceiling.
 	maxRequestDecompressedBytes  int64
 	maxResponseDecompressedBytes int64
 }
@@ -69,6 +71,20 @@ func NewExternalProcessorServer(kernel *Kernel, chainExecutor *executor.ChainExe
 	serviceName := tracingServiceName
 	if serviceName == "" {
 		serviceName = "policy-engine"
+	}
+
+	// Fail closed on a non-positive ceiling rather than decompressing unbounded.
+	// Config.Validate already rejects these values, so reaching here means the
+	// server was constructed without going through config loading.
+	if maxRequestDecompressedBytes <= 0 {
+		slog.Warn("Non-positive request body max_decompressed_bytes; falling back to default",
+			"provided", maxRequestDecompressedBytes, "default", config.DefaultMaxDecompressedBytes)
+		maxRequestDecompressedBytes = config.DefaultMaxDecompressedBytes
+	}
+	if maxResponseDecompressedBytes <= 0 {
+		slog.Warn("Non-positive response body max_decompressed_bytes; falling back to default",
+			"provided", maxResponseDecompressedBytes, "default", config.DefaultMaxDecompressedBytes)
+		maxResponseDecompressedBytes = config.DefaultMaxDecompressedBytes
 	}
 
 	return &ExternalProcessorServer{

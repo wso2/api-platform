@@ -106,6 +106,28 @@ func TestNewExternalProcessorServer(t *testing.T) {
 	assert.NotNil(t, server.tracer)
 }
 
+// TestNewExternalProcessorServer_NonPositiveDecompressionCaps asserts the
+// constructor fails closed on a non-positive ceiling (bypassing Config.Validate)
+// by substituting the bounded default, so a body is never decompressed unbounded.
+func TestNewExternalProcessorServer_NonPositiveDecompressionCaps(t *testing.T) {
+	for _, tc := range []struct {
+		name      string
+		req, resp int64
+	}{
+		{"zero", 0, 0},
+		{"negative", -1, -1024},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			server := NewExternalProcessorServer(NewKernel(), executor.NewChainExecutor(nil, nil, nil),
+				config.TracingConfig{}, "", tc.req, tc.resp)
+
+			require.NotNil(t, server)
+			assert.Equal(t, config.DefaultMaxDecompressedBytes, server.maxRequestDecompressedBytes)
+			assert.Equal(t, config.DefaultMaxDecompressedBytes, server.maxResponseDecompressedBytes)
+		})
+	}
+}
+
 func TestNewExternalProcessorServer_DefaultServiceName(t *testing.T) {
 	kernel := NewKernel()
 	chainExecutor := executor.NewChainExecutor(nil, nil, nil)
