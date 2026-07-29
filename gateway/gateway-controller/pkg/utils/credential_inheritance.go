@@ -22,10 +22,11 @@
 // returned on a read (see pkg/api/handlers/credential_redaction.go). An update
 // that does not carry a credential therefore inherits the persisted one:
 //
-//	value supplied              -> use it
-//	auth present, value omitted -> inherit the stored value
-//	auth omitted entirely       -> inherit the stored auth block
-//	type: none                  -> no inheritance; auth is removed
+//	value supplied                -> use it
+//	auth present, same type, value omitted -> inherit the stored value
+//	auth omitted entirely         -> inherit the stored auth block
+//	auth present, type changed    -> no inheritance; supply a new value
+//	type: none                    -> no inheritance; auth is removed
 //
 // Inheritance reads the stored SourceConfiguration, which is the unrendered
 // artifact, so a credential held as a `secret` expression is carried forward
@@ -151,6 +152,11 @@ func inheritLLMProviderCredential(incoming *api.LLMProviderConfiguration, stored
 	if string(incoming.Spec.Upstream.Auth.Type) == authTypeNone {
 		return // Explicit removal.
 	}
+	// A credential belongs to the scheme it was stored under, so a changed auth
+	// type must come with its own value rather than silently reusing the old one.
+	if incoming.Spec.Upstream.Auth.Type != stored.Spec.Upstream.Auth.Type {
+		return
+	}
 	if !hasCredential(incoming.Spec.Upstream.Auth.Value) {
 		incoming.Spec.Upstream.Auth.Value = stored.Spec.Upstream.Auth.Value
 	}
@@ -205,6 +211,10 @@ func inheritLLMUpstreamAuth(incoming **api.LLMUpstreamAuth, stored *api.LLMUpstr
 	if string((*incoming).Type) == authTypeNone {
 		return // Explicit removal.
 	}
+	// Changed auth type — see inheritLLMProviderCredential.
+	if (*incoming).Type != stored.Type {
+		return
+	}
 	if !hasCredential((*incoming).Value) {
 		(*incoming).Value = stored.Value
 	}
@@ -227,6 +237,10 @@ func inheritMCPProxyCredential(incoming *api.MCPProxyConfiguration, storedSource
 	}
 	if string(incoming.Spec.Upstream.Auth.Type) == authTypeNone {
 		return // Explicit removal.
+	}
+	// Changed auth type — see inheritLLMProviderCredential.
+	if incoming.Spec.Upstream.Auth.Type != stored.Spec.Upstream.Auth.Type {
+		return
 	}
 	if !hasCredential(incoming.Spec.Upstream.Auth.Value) {
 		incoming.Spec.Upstream.Auth.Value = stored.Spec.Upstream.Auth.Value

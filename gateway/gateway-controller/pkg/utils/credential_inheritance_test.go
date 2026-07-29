@@ -140,6 +140,30 @@ func TestInheritLLMProviderCredential(t *testing.T) {
 		assert.Equal(t, expr, *incoming.Spec.Upstream.Auth.Value)
 	})
 
+	// A credential belongs to the scheme it was stored under: changing the auth
+	// type must not silently carry the old value into the new scheme.
+	t.Run("changed auth type inherits nothing", func(t *testing.T) {
+		incoming := storedProvider()
+		incoming.Spec.Upstream.Auth.Type = "other"
+		incoming.Spec.Upstream.Auth.Value = nil
+
+		inheritLLMProviderCredential(&incoming, storedProvider())
+
+		assert.Nil(t, incoming.Spec.Upstream.Auth.Value,
+			"a changed auth type must supply its own credential")
+	})
+
+	t.Run("unchanged auth type still inherits", func(t *testing.T) {
+		incoming := storedProvider()
+		incoming.Spec.Upstream.Auth.Type = "api-key" // same as stored
+		incoming.Spec.Upstream.Auth.Value = nil
+
+		inheritLLMProviderCredential(&incoming, storedProvider())
+
+		require.NotNil(t, incoming.Spec.Upstream.Auth.Value)
+		assert.Equal(t, storedCred, *incoming.Spec.Upstream.Auth.Value)
+	})
+
 	t.Run("nil incoming does not panic", func(t *testing.T) {
 		assert.NotPanics(t, func() { inheritLLMProviderCredential(nil, storedProvider()) })
 	})
@@ -199,6 +223,18 @@ func TestInheritLLMProxyCredentials(t *testing.T) {
 		inheritLLMProxyCredentials(&incoming, stored())
 
 		assert.Nil(t, (*incoming.Spec.AdditionalProviders)[0].Auth)
+	})
+
+	t.Run("changed auth type on the primary provider inherits nothing", func(t *testing.T) {
+		var incoming api.LLMProxyConfiguration
+		incoming.Spec.Provider = api.LLMProxyProvider{
+			Id:   "openai-provider",
+			Auth: &api.LLMUpstreamAuth{Type: "other"},
+		}
+
+		inheritLLMProxyCredentials(&incoming, stored())
+
+		assert.Nil(t, incoming.Spec.Provider.Auth.Value)
 	})
 
 	t.Run("type none on the primary provider removes auth", func(t *testing.T) {
@@ -261,6 +297,14 @@ func TestInheritMCPProxyCredential(t *testing.T) {
 		incoming.Spec.Upstream.Auth.Value = sp(newCred)
 		inheritMCPProxyCredential(&incoming, stored())
 		assert.Equal(t, newCred, *incoming.Spec.Upstream.Auth.Value)
+	})
+
+	t.Run("changed auth type inherits nothing", func(t *testing.T) {
+		incoming := stored()
+		incoming.Spec.Upstream.Auth.Type = "other"
+		incoming.Spec.Upstream.Auth.Value = nil
+		inheritMCPProxyCredential(&incoming, stored())
+		assert.Nil(t, incoming.Spec.Upstream.Auth.Value)
 	})
 
 	t.Run("type none removes auth", func(t *testing.T) {
