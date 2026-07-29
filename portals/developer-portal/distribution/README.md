@@ -10,6 +10,7 @@ wso2apip-developer-portal-<version>/
 ├── docker-compose.yaml                          # Developer Portal + Platform API
 ├── scripts/
 │   ├── setup.sh                                 # One-time TLS + secrets provisioning
+│   ├── setup.ps1                                # Same, for Windows (PowerShell)
 │   └── seed-samples.sh                          # Optional: deploy the bundled sample APIs/MCPs
 ├── configs/
 │   ├── config.toml                              # Unified active config — [developer_portal] + [platform_api] sections
@@ -36,6 +37,15 @@ Run the setup script once, from the distribution root, before the first start:
 
 ```bash
 ./scripts/setup.sh
+docker compose up -d
+```
+
+On **Windows**, use the PowerShell script instead — same flags, same generated files
+(Git for Windows and Docker Desktop both ship the `openssl` it needs):
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\scripts\setup.ps1
+# PowerShell 7+ is also fine:  pwsh -File .\scripts\setup.ps1
 docker compose up -d
 ```
 
