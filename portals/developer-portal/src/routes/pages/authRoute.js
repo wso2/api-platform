@@ -19,6 +19,11 @@ const express = require('express');
 const router = express.Router();
 const authController = require('../../controllers/authController');
 const registerPartials = require('../../middlewares/registerPartials');
+const { attachOrgGuard } = require('../../middlewares/orgGuard');
+
+// Pin every ':orgName' in this router to the organization this instance serves;
+// anything else is a 404 before the route's own handlers run.
+attachOrgGuard(router);
 
 // router.get('/portal/login', registerPartials, authController.login);
 // router.get('/portal/callback', authController.handleCallback);

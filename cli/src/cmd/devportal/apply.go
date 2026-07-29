@@ -65,11 +65,11 @@ var applyCmd = &cobra.Command{
 	Use:   ApplyCmdLiteral,
 	Short: "Apply a resource to the DevPortal",
 	Long: "Create or update a DevPortal resource from a single file. The file is either a YAML CR " +
-		"(kind: Organization, SubscriptionPolicy, or SubscriptionPolicyList) or a built REST API artifact " +
+		"(kind: SubscriptionPolicy or SubscriptionPolicyList) or a built REST API artifact " +
 		"zip (whose devportal.yaml declares kind: RestApi). The kind selects the target endpoint, and — for " +
-		"kinds that support it (Organization, RestApi) — apply checks whether the resource already exists and " +
+		"kinds that support it (RestApi) — apply checks whether the resource already exists and " +
 		"updates it (PUT) or creates it (POST) accordingly. The target organization is resolved from the " +
-		"DevPortal credentials.",
+		"DevPortal credentials; a DevPortal serves exactly one, so there is no Organization kind to apply.",
 	Example: ApplyCmdExample,
 	Run: func(cmd *cobra.Command, args []string) {
 		if err := runApplyCommand(); err != nil {
@@ -95,7 +95,7 @@ func init() {
 type applyTarget struct {
 	multipartField string
 	// supportsUpdate is true for resources addressable by handle with a PUT
-	// endpoint (Organization, RestApi): apply probes existence and PUTs an update
+	// endpoint (RestApi): apply probes existence and PUTs an update
 	// or POSTs a create. Subscription plans have no per-plan PUT — their publish
 	// endpoint upserts — so they are always POSTed.
 	supportsUpdate bool

@@ -80,7 +80,10 @@ const registerPartials = async (req, res, next) => {
         await registerAllPartialsFromFile(baseUrl, req, './src/defaultContent');
 
         if (isNonConfigure) {
-          const orgId = await orgDao.getId(req.params.orgName);
+          // orgGuard has already matched req.params.orgName against the configured
+          // handle and resolved req.orgId, so reuse it rather than looking the same
+          // organization up again on every page render.
+          const orgId = req.orgId || await orgDao.getId(req.params.orgName);
           await registerPartialsFromAPI(req, orgId);
           //register doc page partials
           if (req.originalUrl.includes(constants.ROUTE.API_DOCS_PATH) && req.params.docType && req.params.docName) {
@@ -98,7 +101,13 @@ const registerPartials = async (req, res, next) => {
         operation: 'registerPartials'
       });
       if (error.message === "Organization not found") {
-        return res.redirect('/?error=org_not_found&org=' + encodeURIComponent(req.params.orgName));
+        // orgGuard rejects a non-local organization before this runs, so reaching
+        // here means the *configured* organization is missing from the database —
+        // a server-side fault, not a bad URL. Redirecting to '/' would bounce
+        // straight back into this same organization's portal and loop.
+        const misconfigured = new Error('Internal Server Error');
+        misconfigured.status = 500;
+        return next(misconfigured);
       }
       if (error.message === "API not found") {
         const notFound = new Error('API not found');

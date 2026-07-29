@@ -161,11 +161,26 @@ super_admin = "superAdmin"
 # =============================================================================
 # ORGANIZATION CONFIGURATION
 # =============================================================================
-# Bootstraps a default organization on startup (idempotent).
+# This portal instance serves exactly ONE organization. The database schema is
+# still multi-organization — one shared database can hold many, each served by its
+# own portal instance — but this instance is pinned to `handle`: every page route,
+# REST request, and background worker is scoped to it, and anything resolving to a
+# different organization is rejected. The organization is seeded on startup if it
+# doesn't exist yet (idempotent).
+#
+# `handle` is REQUIRED: the portal refuses to start without it (design mode
+# excepted, since it renders from disk and has no organization to pin).
+#
+# In auth.mode = "local", this MUST match the Platform API's
+# [platform_api.auth.file.organization] id — that is what the Platform API puts in
+# the org_handle claim of the tokens this portal verifies. A mismatch means every
+# login is rejected with 403.
 
 [developer_portal.organization]
-default_name = "default"                 # "" disables auto-seeding
+handle = "default"                       # URL slug: /{handle}/views/{viewName}
+display_name = "Default"                 # Used only when first seeding the organization
 auto_create_subscription_plans = true    # Auto-create Bronze/Silver/Gold/Unlimited/AsyncUnlimited
+# default_name = "default"               # DEPRECATED alias for `handle` — rename it
 
 # =============================================================================
 # DESIGN MODE CONFIGURATION

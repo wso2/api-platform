@@ -112,7 +112,8 @@ Environment overrides go in `api-platform.env` (git-ignored; loaded into both co
 | `[developer_portal.auth].mode` | `local` (Platform API sidecar) or `idp` (external OIDC IDP via `[developer_portal.auth.idp]`) | `local` |
 | `[developer_portal.auth.local].platform_api_url` | Address of the Platform API local-auth sidecar | `https://platform-api:9243` |
 | `[developer_portal.auth.local].public_key_path` | Path to the Platform API RS256 public key PEM used to verify login tokens | `/etc/devportal/keys/jwt_public.pem` |
-| `[developer_portal.organization].default_name` | Organization bootstrapped automatically on first start | `default` |
+| `[developer_portal.organization].handle` | The single organization this instance serves, bootstrapped on first start. Required — the portal refuses to start without it | `default` |
+| `[developer_portal.organization].display_name` | Display name applied when the organization is first seeded | `Default` |
 
 ### Platform API (`[platform_api.*]`)
 

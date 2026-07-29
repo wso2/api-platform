@@ -20,6 +20,11 @@ const router = express.Router();
 const contentController = require('../../controllers/customContentController');
 const registerPartials = require('../../middlewares/registerPartials');
 const { ensureAuthenticated } = require('../../middlewares/ensureAuthenticated');
+const { attachOrgGuard } = require('../../middlewares/orgGuard');
+
+// Pin every ':orgName' in this router to the organization this instance serves;
+// anything else is a 404 before the route's own handlers run.
+attachOrgGuard(router);
 
 // Exclude specific paths. Express 5 / path-to-regexp v8 no longer accepts bare `*`
 // or prefix globs in string paths, so the glob entries are expressed as RegExps

@@ -20,6 +20,11 @@ const router = express.Router();
 const apiWorkflowsController = require('../../controllers/apiWorkflowsController');
 const registerPartials = require('../../middlewares/registerPartials');
 const util = require('../../utils/util');
+const { attachOrgGuard } = require('../../middlewares/orgGuard');
+
+// Pin every ':orgName' in this router to the organization this instance serves;
+// anything else is a 404 before the route's own handlers run.
+attachOrgGuard(router);
 
 // API Workflows gallery - no authentication required
 router.get('/:orgName/views/:viewName/api-workflows', (req, res, next) => {

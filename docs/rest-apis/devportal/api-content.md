@@ -278,9 +278,9 @@ within that category. Text files and external document links are returned as tex
 returned as binary content with a media type derived from the file extension.
 
 Image files (`type=IMAGE`) are publicly readable so that an API's icon renders on the public
-listing and landing pages without a session — pass `orgId` to resolve the view when no session
-is present (mirrors `GET /views/{viewId}/asset`). All other content categories require a session:
-an anonymous request for a non-image type is rejected.
+listing and landing pages without a session; the organization is then this instance's own
+configured one (mirrors `GET /views/{viewId}/asset`). All other content categories require a
+session: an anonymous request for a non-image type is rejected.
 
 <h3 id="get-an-api-content-file-parameters">Parameters</h3>
 
@@ -288,7 +288,7 @@ an anonymous request for a non-image type is rejected.
 |---|---|---|---|---|
 |type|query|string|true|Stored API content type selector. Common values are `web`, `document`, `image`, and `link`, depending on how the uploaded ZIP content was classified.|
 |fileName|query|string|true|Stored API content file name to retrieve.|
-|orgId|query|string|false|Organization ID used to resolve the API's public image asset when no session is present (e.g. the pre-auth listing/landing page). Ignored for authenticated requests, which use the session organization. Only honored for `type=IMAGE`.|
+|orgId|query|string|false|DEPRECATED and ignored. Accepted only so existing callers (the portal's own image-URL rewrite appends it) are not rejected. The organization is always this instance's own — from the session when there is one, otherwise from `organization.handle` configuration. It was previously honoured on this unauthenticated endpoint, which made it a selector for any organization's API icons in a shared database.|
 |apiId|path|string|true|The API's handle (unique per org). Resolves only to REST/SOAP/WS/WebSub/GraphQL APIs — MCP servers are addressed via `/mcp-servers`.|
 
 > Example responses

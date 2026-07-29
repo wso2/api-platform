@@ -25,6 +25,7 @@ const eventDao = require('../../dao/eventDao');
 const { getSubscriber } = require('./subscriberRegistry');
 const { sign } = require('./signer');
 const logger = require('../../config/logger');
+const orgContext = require('../../utils/orgContext');
 
 let running = false;
 let intervalHandle = null;
@@ -107,7 +108,10 @@ async function post(delivery, event) {
 async function runBatch() {
     const delivery = config.webhooks && config.webhooks.delivery;
     const batchSize = (delivery && delivery.batchSize) || 50;
-    const deliveries = await eventDao.claimDueDeliveries(batchSize);
+    // Scoped to the organization this instance serves: the deliveries table is shared
+    // with every other instance on this database, and each one must only make the
+    // outbound calls for its own organization's subscribers.
+    const deliveries = await eventDao.claimDueDeliveries(batchSize, await orgContext.getOrgUuid());
     if (deliveries.length === 0) return;
 
     const eventIds = [...new Set(deliveries.map(d => d.event_uuid))];

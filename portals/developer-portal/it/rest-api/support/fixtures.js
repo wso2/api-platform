@@ -50,26 +50,10 @@ async function createView(overrides = {}) {
     return { id };
 }
 
-// Only used by organizations.spec.js's own CRUD tests — org creation isn't
-// scoped to the caller's own org, so admin can manage additional orgs beyond
-// the fixed one, even though no file-based account can ever log into them.
-async function createOrganization(overrides = {}) {
-    const id = overrides.id || uniqueHandle('org');
-    const res = await client.as('admin').post('/organizations', {
-        id,
-        displayName: overrides.displayName || `Test Org ${id}`,
-        idpRefId: overrides.idpRefId || id,
-        ...overrides,
-    });
-    if (res.status !== 201) {
-        throw new Error(`Failed to seed organization: ${res.status} ${JSON.stringify(res.body)}`);
-    }
-    return res.body;
-}
-
-async function deleteOrganization(handleOrId) {
-    await client.as('admin').del(`/organizations/${handleOrId}`);
-}
+// No createOrganization/deleteOrganization fixtures: the portal serves the single
+// organization named by its organization.handle config and created by the seeder, so
+// POST/DELETE /organizations answer 405 (see organizations.spec.js). Every fixture
+// below operates inside that one organization.
 
 const MINIMAL_OPENAPI_DEFINITION = JSON.stringify({
     openapi: '3.0.3',
@@ -114,6 +98,8 @@ async function createApi(overrides = {}) {
 }
 
 // `admin` manages org-level integration config; pass `role` to override.
+// displayName is required by WebhookSubscriberRequest (the settings UI collects a
+// name, not a handle, and the handle is generated from it when `id` is omitted).
 async function createWebhookSubscriber(overrides = {}) {
     const { role = 'admin', ...bodyOverrides } = overrides;
     const res = await client.as(role).post('/webhook-subscribers', {
@@ -133,8 +119,6 @@ async function createWebhookSubscriber(overrides = {}) {
 module.exports = {
     uniqueHandle,
     createView,
-    createOrganization,
-    deleteOrganization,
     createApi,
     createWebhookSubscriber,
 };

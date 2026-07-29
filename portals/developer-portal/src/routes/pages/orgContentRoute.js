@@ -21,7 +21,12 @@ const orgController = require('../../controllers/orgContentController');
 const registerPartials = require('../../middlewares/registerPartials');
 const authController = require('../../controllers/authController');
 const constants = require('../../utils/constants');
-const { config } = require('../../config/configLoader');
+const orgContext = require('../../utils/orgContext');
+const { attachOrgGuard } = require('../../middlewares/orgGuard');
+
+// Pin every ':orgName' in this router to the organization this instance serves;
+// anything else is a 404 before the route's own handlers run.
+attachOrgGuard(router);
 
 router.get('/:orgName/views/:viewName', (req, res, next) => {
     if (req.params.orgName === 'favicon.ico' || req.params.orgName === 'images' || req.params.orgName === 'portal' || req.params.orgName === '__dev_reload') {
@@ -37,17 +42,11 @@ router.get('/:orgName', (req, res, next) => {
     return res.redirect(`${req.params.orgName}/views/default`);
 }, authController.handleSilentSSO, registerPartials, orgController.loadOrganizationContent);
 
-router.get('/', (req, res, next) => {
-    // Instead of showing an org selector, send visitors straight into the
-    // configured default organization's portal.
-    const defaultOrg = config.organization?.defaultName;
-    const failedOrg = req.query.error === 'org_not_found' ? req.query.org : null;
-    if (defaultOrg && failedOrg !== defaultOrg) {
-        return res.redirect(`/${defaultOrg}${constants.ROUTE.VIEWS_PATH}default`);
-    }
-    // No default org configured (auto-seeding disabled): fall back to the
-    // legacy selector so multi-org deployments without a default still work.
-    return orgController.loadDefaultLandingPage(req, res, next);
+// The portal serves one organization, so the root is simply its front door —
+// there is nothing to choose between. The handle is validated at config load, so
+// this cannot redirect anywhere but into this instance's own portal.
+router.get('/', (req, res) => {
+    return res.redirect(`/${orgContext.getHandle()}${constants.ROUTE.VIEWS_PATH}default`);
 });
 
 module.exports = router;

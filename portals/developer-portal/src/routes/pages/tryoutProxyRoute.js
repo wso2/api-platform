@@ -23,6 +23,7 @@ const logger = require('../../config/logger');
 const util = require('../../utils/util');
 const { ensureAuthenticated } = require('../../middlewares/ensureAuthenticated');
 const tryoutProxyController = require('../../controllers/tryoutProxyController');
+const { attachOrgGuard } = require('../../middlewares/orgGuard');
 
 // Mounted with `use` rather than a wildcard route: the target URL is appended
 // to this path by Stoplight Elements ("…/tryout-proxy/https://host/path?q=1"),
@@ -133,6 +134,10 @@ function authenticateLikeSpecPage(req, res, next) {
         return next();
     });
 }
+
+// Pin every ':orgName' in this router to the organization this instance serves;
+// anything else is a 404 before the route's own handlers run.
+attachOrgGuard(router);
 
 router.use(
     '/:orgName/views/:viewName/:apiType/:apiHandle/tryout-proxy',

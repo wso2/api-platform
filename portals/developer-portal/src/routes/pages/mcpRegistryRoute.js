@@ -19,6 +19,7 @@ const express = require('express');
 const router = express.Router({ mergeParams: true });
 const mcpRegistryService = require('../../services/mcpRegistryService');
 const { enforceSecurity } = require('../../middlewares/ensureAuthenticated');
+const { orgGuardMiddleware } = require('../../middlewares/orgGuard');
 const constants = require('../../utils/constants');
 
 router.use((req, res, next) => {
@@ -29,6 +30,13 @@ router.use((req, res, next) => {
     }
     next();
 });
+
+// ':orgHandle' is captured by this router's MOUNT paths in app.js
+// ('/registry/:orgHandle' and '/:orgHandle/registry'), not by its own route paths,
+// so a router.param() registered here would never fire for it — the middleware form
+// reads the same mergeParams value the service handlers below use. Runs after CORS
+// so a rejected cross-organization request still answers preflight consistently.
+router.use(orgGuardMiddleware('orgHandle'));
 
 // Discovery endpoints (public)
 router.get('/v0.1/servers', mcpRegistryService.listServers);

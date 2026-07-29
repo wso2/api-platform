@@ -36,9 +36,12 @@ user     = '{{ env "APIP_DP_DATABASE_USER" "apip" }}'
 password = '{{ env "APIP_DP_DATABASE_PASSWORD" "apip" }}'
 
 [developer_portal.organization]
-# Seed the "default" org so its handle matches platform-api's org handle
-# (the webhook resolves the control-plane org by handle via org.ref_id).
-default_name = '{{ env "APIP_DP_ORGANIZATION_DEFAULT_NAME" "default" }}'
+# The single organization this devportal instance serves; seeded on startup.
+# Must match platform-api's org handle — both because the webhook resolves the
+# control-plane org by handle via org.ref_id, and because the devportal rejects a
+# login whose token names any other organization.
+handle       = '{{ env "APIP_DP_ORGANIZATION_HANDLE" "default" }}'
+display_name = '{{ env "APIP_DP_ORGANIZATION_DISPLAY_NAME" "Default" }}'
 auto_create_subscription_plans = false
 
 [developer_portal.auth]

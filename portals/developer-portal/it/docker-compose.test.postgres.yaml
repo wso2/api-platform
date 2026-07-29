@@ -111,6 +111,53 @@ services:
     networks:
       - it-devportal-network
 
+  # A second devportal whose organization deliberately does NOT match the one
+  # platform-api mints tokens for (`default`, see configs/config-platform-api-it.toml).
+  #
+  # Every other service in this fixture is matched by construction, so the
+  # login-time organization checks — authController.handleLocalLogin's org_handle
+  # comparison and passportConfig's IDP equivalent — can never fire there. This
+  # instance is what exercises them: admin/admin is a valid platform-api credential,
+  # the returned token is correctly signed and unexpired, and it is rejected purely
+  # because its org_handle names another organization. See
+  # rest-api/auth/foreign-org-login.spec.js.
+  #
+  # Unlike the SQLite variant (where two better-sqlite3 writers would contend on one
+  # file) this shares the `devportal` database with the instance above — two portals,
+  # two organizations, one database, which is the deployment shape the organization
+  # pin exists for. Safe because the schema comes from postgres's initdb, not from a
+  # migration either instance runs, so there is nothing for them to race on.
+  devportal-other-org:
+    image: ${DOCKER_REGISTRY:-ghcr.io/wso2/api-platform}/developer-portal:test
+    depends_on:
+      postgres:
+        condition: service_healthy
+      platform-api:
+        condition: service_healthy
+    volumes:
+      - ./test-config.toml:/app/configs/config.toml:ro
+      - ./.certs/jwt_public.pem:/etc/devportal/keys/jwt_public.pem:ro
+    environment:
+      APIP_DP_DATABASE_HOST: postgres
+      APIP_DP_DATABASE_PORT: 5432
+      APIP_DP_DATABASE_DRIVER: postgres
+      APIP_DP_DATABASE_USER: devportal
+      APIP_DP_DATABASE_PASSWORD: devportal
+      APIP_DP_DATABASE_NAME: devportal
+      # The deliberate mismatch. platform-api's org is "default".
+      APIP_DP_ORGANIZATION_HANDLE: other-org
+      APIP_DP_ORGANIZATION_DISPLAY_NAME: Other Org
+      APIP_DP_SECURITY_ENCRYPTION_KEY: "7f40672c96fd437dc33550755e218d586014232ceb5b01c9405aab575bcb1f4a"
+      APIP_DP_SECURITY_SESSION_SECRET: "527948cfb2478dbd4dfcd9d466df65d8c70511236fe63dba0da0f5385676f593"
+    healthcheck:
+      test: ["CMD-SHELL", "node -e \"require('http').get('http://localhost:9543/health', r => process.exit(r.statusCode === 200 ? 0 : 1)).on('error', () => process.exit(1))\""]
+      interval: 10s
+      timeout: 5s
+      retries: 20
+      start_period: 20s
+    networks:
+      - it-devportal-network
+
   cypress:
     image: cypress/included:13.17.0
     platform: ${CYPRESS_PLATFORM:-linux/amd64}
@@ -134,9 +181,19 @@ services:
     depends_on:
       devportal:
         condition: service_healthy
+      # Named here rather than in the Makefile's explicit `up` service list —
+      # compose starts a named service's dependencies automatically, so this is
+      # what brings the mismatched instance up for `make test-rest-api-postgres`
+      # while keeping it out of the Cypress-only `make test-postgres`.
+      devportal-other-org:
+        condition: service_healthy
     working_dir: /rest-api
     environment:
       DEVPORTAL_BASE_URL: "http://devportal:9543"
+      # The second instance, pinned to an organization platform-api does not mint
+      # tokens for. auth/foreign-org-login.spec.js skips itself when this is unset.
+      DEVPORTAL_OTHER_ORG_BASE_URL: "http://devportal-other-org:9543"
+      DEVPORTAL_OTHER_ORG_HANDLE: "other-org"
       DEVPORTAL_ORG_HANDLE: "default"
       DEVPORTAL_ADMIN_USERNAME: "admin"
       DEVPORTAL_ADMIN_PASSWORD: "admin"

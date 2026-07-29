@@ -6,6 +6,7 @@ const registerPartials = require('../../middlewares/registerPartials');
 const { ensureAuthenticated } = require('../../middlewares/ensureAuthenticated');
 const authController = require('../../controllers/authController');
 const { requireCsrfForMutatingApi } = require('../../middlewares/csrfProtection');
+const { attachOrgGuard } = require('../../middlewares/orgGuard');
 
 const noFavicon = (req, res, next) => {
     if (req.params.orgName === 'favicon.ico') return res.status(404).send('Not Found');
@@ -20,6 +21,10 @@ const requireAdmin = (req, res, next) => {
     }
     next();
 };
+
+// Pin every ':orgName' in this router to the organization this instance serves;
+// anything else is a 404 before the route's own handlers run.
+attachOrgGuard(router);
 
 // Org-scoped settings page: Organizations, Views, Labels, APIs, Plans, Webhooks,
 // Key Managers, plus the view-scoped LLM Instructions + API Workflows panels

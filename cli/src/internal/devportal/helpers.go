@@ -37,13 +37,13 @@ import (
 const APIVersion = "v0.9"
 
 // ResourcePath builds a Developer Portal resource path of the form
-// /api/{version}/{resource}. Every devportal endpoint — including the
-// organization lifecycle endpoints (organizations, organizations/{orgId}) — is
-// served under this /api/{version} prefix.
+// /api/{version}/{resource}. Every devportal endpoint — including
+// organizations/{orgId} — is served under this /api/{version} prefix.
 //
 // The organization that scopes a request is resolved server-side from the
 // caller's credentials, so it is no longer part of the path (only the
-// organization's own id remains, as the {orgId} segment of organizations/{orgId}).
+// organization's own id remains, as the {orgId} segment of organizations/{orgId},
+// which a DevPortal accepts solely for the one organization it serves).
 // The resource is appended as-is, so callers escape any path segments they
 // interpolate (for example "apis/"+url.PathEscape(apiID)) and may include a
 // trailing query string (for example "api-keys?apiId=x").

@@ -39,7 +39,7 @@ Then open **https://localhost:9543/default/views/default** and log in with the a
 
 What happens automatically on first start:
 - The DB schema is applied and the database is initialised automatically
-- A default **default** org, view, labels, and subscription plans are seeded automatically on startup (controlled by `organization.default_name` in config)
+- The organization this instance serves (**default** out of the box, set by `organization.handle` in config) is seeded on startup, along with its view, labels, and subscription plans
 
 ### Test
 
@@ -207,10 +207,16 @@ password = "postgres"
 
 In production, set the password via the `APIP_DP_DATABASE_PASSWORD` environment variable instead of storing it in the config file.
 
-### 5. Seed default organization
+### 5. Choose the organization
 
-The default organization is seeded automatically on startup when `organization.default_name` is set in config (or via `APIP_DP_ORGANIZATION_DEFAULT_NAME` env var).
-No manual step is required.
+A Developer Portal instance serves exactly one organization, named by `organization.handle`
+(or the `APIP_DP_ORGANIZATION_HANDLE` env var). It is **required** — the portal refuses to
+start without it — and the packaged `configs/config.toml` sets it to `default`. The
+organization is seeded on startup if it doesn't exist yet, so no manual step is required.
+
+Under local auth this must match the Platform API's `[platform_api.auth.file.organization]`
+`id`: that value is what its tokens carry in the `org_handle` claim, and a login naming any
+other organization is rejected. See [Manage the Organization](docs/administer/manage-organizations.md).
 
 ### 6. Install and run
 
@@ -263,7 +269,9 @@ tls_skip_verify = true                    # Platform API uses a self-signed cert
 
 Tokens are signed asymmetrically (RS256): the Platform API mints them with its `auth.jwt.private_key` and the portal verifies them against the matching public key above. There is no shared HMAC secret, and the private key never leaves the Platform API — `../scripts/setup.sh` generates the keypair into `resources/keys/`, and `docker-compose.yaml` mounts only the `jwt_public.pem` file into the portal (at `/etc/devportal/keys/jwt_public.pem`); the Platform API's own `jwt_private.pem` and `encryption.key` (its at-rest encryption key, `resources/keys/encryption.key`) are never mounted into the portal container. The portal has its own, separate secrets — `resources/keys/devportal-encryption.key` and `resources/keys/devportal-session-secret` — which `docker-compose.yaml` mounts into the portal container at `/etc/devportal/keys/encryption.key` and `/etc/devportal/keys/session-secret` respectively; these never leave the portal container either way.
 
-For production, configure an OIDC identity provider per organization instead of local auth.
+For production, configure an OIDC identity provider instead of local auth. Its tokens must
+assert this instance's organization — a login whose organization claim resolves to any other
+organization is refused.
 
 ### Environment variable overrides
 

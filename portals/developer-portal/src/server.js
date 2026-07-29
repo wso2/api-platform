@@ -25,6 +25,7 @@ const webhookDispatcher = require('./services/webhooks/dispatcher');
 const webhookDeliveryWorker = require('./services/webhooks/deliveryWorker');
 const db = require('./db/driver');
 const { seedDefaultOrg } = require('./services/seederService');
+const orgContext = require('./utils/orgContext');
 const app = require('./app');
 
 const liveReload = process.env.NODE_ENV === 'development' ? require('./liveReload') : null;
@@ -71,7 +72,7 @@ function printBanner(visitUrl) {
 }
 
 function logStartupBanner() {
-    const orgSegment = config.designMode?.enabled ? '' : `/${config.organization.defaultName || '<organization>'}`;
+    const orgSegment = config.designMode?.enabled ? '' : `/${orgContext.getHandle()}`;
     // The bare org URL redirects server-side to /views/default (orgContentRoute.js) —
     // shorter and avoids baking view-naming details into the banner.
     const scheme = config.server.https.enabled && !config.designMode?.enabled ? 'https' : 'http';
@@ -110,10 +111,13 @@ async function ensureSchema() {
 }
 
 async function onListening() {
-    startBackgroundServices();
+    // Seed before the workers start: both of them scope their claim queries to this
+    // instance's organization, so until it exists there is nothing for them to do and
+    // every tick would just log a lookup failure.
     await seedDefaultOrg().catch(err =>
-        logger.error('Unexpected error during default org seeding', { error: err.message })
+        logger.error('Unexpected error during organization seeding', { error: err.message })
     );
+    startBackgroundServices();
     logStartupBanner();
 }
 

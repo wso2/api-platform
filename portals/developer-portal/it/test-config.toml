@@ -43,7 +43,12 @@ enabled = true
 value = "devportal-it-test-key"
 
 [developer_portal.organization]
-default_name = "default"
+# The single organization each devportal instance serves. Tokenized because the
+# fixture runs a SECOND instance (devportal-other-org) off this same file with a
+# handle that deliberately does NOT match platform-api's org, to exercise the
+# login-time organization-mismatch rejection.
+handle       = '{{ env "APIP_DP_ORGANIZATION_HANDLE" "default" }}'
+display_name = '{{ env "APIP_DP_ORGANIZATION_DISPLAY_NAME" "Default" }}'
 auto_create_subscription_plans = true
 
 [developer_portal.auth.local]

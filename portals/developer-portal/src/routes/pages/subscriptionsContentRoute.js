@@ -20,6 +20,11 @@ const router = express.Router();
 const subscriptionsController = require('../../controllers/subscriptionsContentController');
 const registerPartials = require('../../middlewares/registerPartials');
 const { ensureAuthenticated } = require('../../middlewares/ensureAuthenticated');
+const { attachOrgGuard } = require('../../middlewares/orgGuard');
+
+// Pin every ':orgName' in this router to the organization this instance serves;
+// anything else is a 404 before the route's own handlers run.
+attachOrgGuard(router);
 
 router.get('/:orgName/views/:viewName/subscriptions', (req, res, next) => {
     if (req.params.orgName === 'favicon.ico') {

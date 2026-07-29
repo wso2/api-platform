@@ -42,6 +42,7 @@ const logger = require('../config/logger');
 const { verifyPlatformJwtClaims, decodePlatformJwtClaims } = require('../utils/platformJwt');
 const { accessTokenPresent, refreshAccessToken, verifyWithCertificate, resolveOrgIdp } = require('../utils/tokenUtil');
 const orgDao = require('../dao/organizationDao');
+const orgContext = require('../utils/orgContext');
 const userIdpReferenceDao = require('../dao/userIdpReferenceDao');
 const { getNestedClaim } = require('./passportConfig');
 const { NotFoundError } = require('../utils/errors/customErrors');
@@ -180,45 +181,92 @@ async function verifyBearerToken(token, req) {
 }
 
 /**
- * Resolves the org UUID from an IDP claim value (IDP_REF_ID) and sets req.orgId.
- * Returns null on success, or an Error (with .status) on failure.
+ * Resolves a caller-supplied organization identifier and sets req.orgId — but only
+ * if it names the single organization this instance serves.
+ *
+ * The database is shared across organizations, so a token minted by a trusted IDP
+ * for a *different* organization still passes signature, expiry, and audience
+ * checks. Without this comparison, "the IDP is trusted" would collapse into "any
+ * token it issues is valid here", and the holder would read and write this
+ * organization's data under their own tenant's credentials.
+ *
+ * The resolved uuid is compared rather than the raw identifier: `identifier` may be
+ * a handle, a display name, or an idp_ref_id depending on which claim it came from,
+ * and orgDao resolves all three. Comparing after resolution makes every spelling of
+ * this organization match and every spelling of any other organization not match.
+ *
+ * @returns {Promise<Error|null>} null on success, or an Error with .status
  */
-async function resolveOrgFromClaim(req, orgClaim) {
-    if (!orgClaim) return null;
+async function resolveScopedOrg(req, identifier, source) {
+    if (!identifier) return null;
+    let resolvedUuid;
     try {
-        req.orgId = await orgDao.getId(orgClaim);
-        return null;
+        resolvedUuid = await orgDao.getId(identifier);
     } catch (e) {
         if (e instanceof NotFoundError) {
-            const err = new Error('Organization not found');
-            err.status = 404;
+            // Same response as a known-but-foreign organization below: a caller must
+            // not be able to tell "no such organization" from "not this portal's
+            // organization", which would turn this into an existence oracle over
+            // every tenant in the shared database.
+            logger.warn('Rejected request naming an unknown organization', { source });
+            const err = new Error('Forbidden');
+            err.status = 403;
             return err;
         }
-        logger.error('Org lookup failed', { error: e.message, orgClaim });
+        logger.error('Org lookup failed', { error: e.message, source });
         const err = new Error('Internal Server Error');
         err.status = 500;
         return err;
     }
+
+    let pinned;
+    try {
+        pinned = await orgContext.isPinnedOrg(resolvedUuid);
+    } catch (e) {
+        logger.error('Pinned org comparison failed', { error: e.message, source });
+        const err = new Error('Internal Server Error');
+        err.status = 500;
+        return err;
+    }
+    if (!pinned) {
+        logger.warn('Rejected credential scoped to a different organization', {
+            source,
+            expected: orgContext.getHandle(),
+        });
+        const err = new Error('Forbidden');
+        err.status = 403;
+        return err;
+    }
+
+    req.orgId = resolvedUuid;
+    return null;
 }
 
 /**
- * Resolves the org UUID from the `organization` request header and sets req.orgId.
- * Used for API-key, mTLS, and local-auth requests that carry no token org claim.
- * Returns null when the header is absent (allows public endpoints through).
+ * Sets req.orgId for credentials that carry no organization of their own (service
+ * API key, mTLS) — they are authenticated as this portal's operator, so the only
+ * organization they can be acting on is the one this instance serves.
+ *
+ * An `organization` header is no longer what selects the organization; it is only
+ * checked for disagreement. Honouring it would let a single API key address every
+ * tenant in the shared database. Rejecting a mismatch rather than ignoring it keeps
+ * a caller from believing it wrote to the organization it named.
+ *
+ * @returns {Promise<Error|null>} null on success, or an Error with .status
  */
-async function resolveOrgFromHeader(req) {
+async function resolvePortalOrg(req) {
     const orgHeader = req.headers.organization;
-    if (!orgHeader) return null;
+    if (orgHeader) {
+        return resolveScopedOrg(req, orgHeader, 'organization header');
+    }
     try {
-        req.orgId = await orgDao.getId(orgHeader);
+        req.orgId = await orgContext.getOrgUuid();
         return null;
     } catch (e) {
-        if (e instanceof NotFoundError) {
-            const err = new Error('Organization not found');
-            err.status = 404;
-            return err;
-        }
-        logger.error('Org lookup failed from header', { error: e.message, orgHeader });
+        logger.error('Configured organization could not be resolved', {
+            error: e.message,
+            handle: orgContext.getHandle(),
+        });
         const err = new Error('Internal Server Error');
         err.status = 500;
         return err;
@@ -233,13 +281,13 @@ async function authResolver(req, res, next) {
     try {
         // 1. Local auth users (platform JWT in session, no IdP configured).
         // The session stores the org handle in the same ORGANIZATION_CLAIM slot used by IDP
-        // sessions, so resolveOrgFromClaim works via the HANDLE lookup in orgDao.getId.
+        // sessions, so resolveScopedOrg works via the HANDLE lookup in orgDao.getId.
         if (req.isAuthenticated && req.isAuthenticated() &&
             req.user?.isLocalAuth && config.auth.mode !== 'idp') {
             const platformToken = req.user[constants.ACCESS_TOKEN];
             const claims = platformToken ? decodePlatformJwtClaims(platformToken) : null;
             const orgHandle = req.user[constants.ROLES.ORGANIZATION_CLAIM];
-            const orgErr = await resolveOrgFromClaim(req, orgHandle);
+            const orgErr = await resolveScopedOrg(req, orgHandle, 'platform-jwt session');
             if (orgErr) return next(orgErr);
             const userUuid = await resolveUserUuid(req, req.user[constants.USER_ID]);
             req.auth = {
@@ -270,7 +318,7 @@ async function authResolver(req, res, next) {
                 err.status = 403;
                 return next(err);
             }
-            const orgErr = await resolveOrgFromClaim(req, sessionOrgClaim);
+            const orgErr = await resolveScopedOrg(req, sessionOrgClaim, 'idp session');
             if (orgErr) return next(orgErr);
             const rawSub = req.user[constants.USER_ID];
             const userUuid = await resolveUserUuid(req, rawSub);
@@ -309,10 +357,10 @@ async function authResolver(req, res, next) {
                     err.status = 403;
                     return next(err);
                 }
-                const orgErr = await resolveOrgFromClaim(req, tokenOrgClaim);
+                const orgErr = await resolveScopedOrg(req, tokenOrgClaim, 'bearer token claim');
                 if (orgErr) return next(orgErr);
             } else if (decoded.org_handle) {
-                const orgErr = await resolveOrgFromClaim(req, decoded.org_handle);
+                const orgErr = await resolveScopedOrg(req, decoded.org_handle, 'bearer token org_handle');
                 if (orgErr) return next(orgErr);
             }
             const rawSub = decoded[constants.USER_ID];
@@ -333,7 +381,7 @@ async function authResolver(req, res, next) {
             if (keyType && config.security?.serviceApiKey?.value) {
                 const apiKey = req.headers[keyType.toLowerCase()];
                 if (apiKey && apiKey === config.security?.serviceApiKey?.value) {
-                    const orgErr = await resolveOrgFromHeader(req);
+                    const orgErr = await resolvePortalOrg(req);
                     if (orgErr) return next(orgErr);
                     req.auth = { mode: 'apikey', preauthorized: true, scopes: [] };
                     return next();
@@ -347,7 +395,7 @@ async function authResolver(req, res, next) {
             if (cert && Object.keys(cert).length > 0 && req.client?.authorized) {
                 const now = new Date();
                 if (new Date(cert.valid_from) <= now && new Date(cert.valid_to) >= now) {
-                    const orgErr = await resolveOrgFromHeader(req);
+                    const orgErr = await resolvePortalOrg(req);
                     if (orgErr) return next(orgErr);
                     req.auth = { mode: 'mtls', preauthorized: true, scopes: [] };
                     return next();

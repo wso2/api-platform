@@ -22,22 +22,30 @@ const labelDao = require('../dao/labelDao');
 const viewDao = require('../dao/viewDao');
 const subscriptionPlanDao = require('../dao/subscriptionPlanDao');
 const { config } = require('../config/configLoader');
+const orgContext = require('../utils/orgContext');
 const constants = require('../utils/constants');
 const logger = require('../config/logger');
 const db = require('../db/driver');
 const { NotFoundError } = require('../utils/errors/customErrors');
 
 /**
- * Seeds the default organization and its dependent resources on startup.
+ * Seeds this instance's organization and its dependent resources on startup.
  * Each resource is checked/created individually so an existing org with
  * missing defaults is repaired without skipping the rest of the seed.
+ *
+ * The organization is the one named by config.organization.handle — the single org
+ * this instance serves (see src/utils/orgContext.js). Lookup is by exact handle,
+ * not orgDao.get()'s handle→display_name→idp_ref_id ladder: in a shared
+ * multi-organization database the looser match could resolve to a *different*
+ * organization that happens to carry this handle as its display name, and the
+ * seeder would then adopt that row as this instance's org.
  */
 async function seedDefaultOrg() {
-    const orgName = config.organization.defaultName;
+    const orgName = orgContext.getHandle();
     if (!orgName) return;
 
     const payload = {
-        displayName: orgName,
+        displayName: orgContext.getDisplayName(),
         handle: orgName,
         idpRefId: orgName,
         configuration: { devportalMode: constants.DEVPORTAL_MODE.DEFAULT },
@@ -46,7 +54,7 @@ async function seedDefaultOrg() {
 
     let orgId;
     try {
-        const existing = await orgDao.get(orgName);
+        const existing = await orgDao.getByHandle(orgName);
         orgId = existing.uuid;
     } catch (notFound) {
         if (!(notFound instanceof NotFoundError)) {
@@ -121,7 +129,11 @@ async function seedDefaultOrg() {
         }
     }
 
-    logger.info('Org: default organization seeded ✓');
+    // Drop any uuid orgContext resolved before the org row existed, so the first
+    // request after startup re-reads it rather than reusing a pre-seed miss.
+    orgContext.resetCache();
+
+    logger.info('Org: organization seeded ✓', { handle: orgName });
 }
 
 module.exports = { seedDefaultOrg };

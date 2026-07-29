@@ -35,6 +35,12 @@ Each suite can run against either **SQLite** (default, no external DB) or **Post
 - **platform-api** — provides file-based auth / IdP so the REST API suite can perform real
   session logins (`admin`/`admin`, `publisher`/`publisher`, `developer`/`developer`).
 - **developer-portal** — the pre-built image under test, tagged `:test` by `make ensure-test-tag`.
+  Pinned to the single organization `default`, matching platform-api's.
+- **developer-portal-other-org** — a second instance of the same image, pinned to `other-org`
+  while platform-api still issues tokens for `default`. A portal serves exactly one
+  organization and refuses a login carrying any other one's — a check the matched pair above
+  can never reach. Started only for the `test-rest-api*` targets (as a `rest-api-tests`
+  dependency), and driven by `rest-api/auth/foreign-org-login.spec.js`.
 - **Jest + Supertest** — REST API test framework.
 - **Cypress** — UI E2E test framework (headless Electron).
 - **SQLite / PostgreSQL** — SQLite by default; the `-postgres` targets swap in a Postgres service.
@@ -137,10 +143,10 @@ Defined in `ui/cypress/support/`:
 
 ```js
 describe('Developer Portal — API Listing', () => {
-    it('GET /devportal/organizations returns 200 with an array', () => {
-        cy.apiRequest('GET', '/devportal/organizations').then((resp) => {
+    it('GET /devportal/organizations/{handle} returns the configured organization', () => {
+        cy.apiRequest('GET', `/devportal/organizations/${Cypress.env('ORG_HANDLE')}`).then((resp) => {
             expect(resp.status).to.eq(200);
-            expect(resp.body).to.be.an('array');
+            expect(resp.body.id).to.eq(Cypress.env('ORG_HANDLE'));
         });
     });
 
@@ -162,10 +168,12 @@ describe('Organizations REST API', () => {
         await client.login('admin');       // real session login via platform-api
     });
 
-    it('lists organizations', async () => {
-        const res = await client.as('admin').get('/organizations');
+    // The portal serves one organization, so client.ORG_HANDLE is the only one
+    // any spec can address — listing them is a 405 (organizations.spec.js).
+    it('retrieves its own organization', async () => {
+        const res = await client.as('admin').get(`/organizations/${client.ORG_HANDLE}`);
         expect(res.status).toBe(200);
-        expect(Array.isArray(res.body)).toBe(true);
+        expect(res.body.id).toBe(client.ORG_HANDLE);
     });
 });
 ```

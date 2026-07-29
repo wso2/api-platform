@@ -39,6 +39,7 @@ const settingsRoute = require('./routes/pages/settingsRoute');
 const apiWorkflowsRoute = require('./routes/pages/apiWorkflowsRoute');
 const crypto = require('crypto');
 const util = require('./utils/util');
+const orgContext = require('./utils/orgContext');
 const sessionStore = require('./db/sessionStoreConfig');
 const { registerHelpers } = require('./helpers/handlebarsHelpers');
 const { configurePassport } = require('./middlewares/passportConfig');
@@ -75,21 +76,26 @@ app.get('/health', (req, res) => {
 
 app.get('/robots.txt', (req, res) => {
     res.type('text/plain').send(
-        'User-agent: *\nAllow: /\n\n# AI agent guidance: /{orgName}/views/{viewName}/llms.txt\n'
+        'User-agent: *\nAllow: /\n\n' +
+        `# AI agent guidance: /${orgContext.getHandle()}/views/{viewName}/llms.txt\n`
     );
 });
 
 app.get('/llms.txt', (req, res) => {
     const baseUrl = `${req.protocol}://${req.get('host')}`;
+    // This portal serves exactly one organization, so name it outright rather than
+    // asking the agent to supply a handle it would have to guess.
+    const orgHandle = orgContext.getHandle();
     res.type('text/plain').send(
         `# API Developer Portal — AI Agent Entry Point\n\n` +
-        `This portal provides APIs, MCP servers, and API workflows organized by organization and view.\n` +
+        `This portal serves a single organization, \`${orgHandle}\`, whose APIs, MCP servers,\n` +
+        `and API workflows are organized into views.\n` +
         `The portal host is the origin you fetched this file from: ${baseUrl}\n\n` +
         `## Exploring APIs\n\n` +
-        `To discover APIs, MCP servers, and API workflows published by an organization, fetch the org/view-specific index:\n\n` +
-        `  ${baseUrl}/{orgName}/views/{viewName}/llms.txt\n\n` +
-        `If the user has provided a URL that contains the organization name and view name, extract them from it.\n\n` +
-        `If the organization name is not known, ask the user to provide it — do not guess.\n` +
+        `To discover APIs, MCP servers, and API workflows published in a view, fetch the\n` +
+        `view-specific index:\n\n` +
+        `  ${baseUrl}/${orgHandle}/views/{viewName}/llms.txt\n\n` +
+        `If the user has provided a URL that contains the view name, extract it from there.\n` +
         `If the view name is not specified, use \`default\`.\n`
     );
 });
@@ -239,7 +245,11 @@ app.use((err, req, res, next) => {
     });
 
     const errorType = status === 404 ? '404' : status === 403 ? '403' : '500';
-    const baseUrl = '/' + (req.originalUrl?.split('/')[1] || '') + constants.ROUTE.VIEWS_PATH + 'default';
+    // Always this instance's own organization — never the first path segment of the
+    // failed request. A 404 from orgGuard means that segment named some *other*
+    // organization, and echoing it back would point the error page's "home" link
+    // outside this portal.
+    const baseUrl = '/' + orgContext.getHandle() + constants.ROUTE.VIEWS_PATH + 'default';
     const templateContent = {
         devportalMode: 'DEFAULT',
         baseUrl,
