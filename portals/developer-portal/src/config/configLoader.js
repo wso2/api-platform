@@ -23,6 +23,7 @@ const fs = require('fs');
 const toml = require('smol-toml');
 const Handlebars = require('handlebars');
 const { DEFAULTS } = require('./configDefaults');
+const { snakeToCamelDeep, mergeOver, parseConfigPaths } = require('./configMerge');
 
 // Load api-platform.env if present (silently ignored if absent)
 try {
@@ -30,45 +31,42 @@ try {
 } catch (_) {}
 
 /**
- * Recursively convert snake_case keys to camelCase (e.g. "base_url" -> "baseUrl").
- * Applied to the parsed TOML tree so config.toml can use snake_case while the
- * in-code struct and every consumer use camelCase.
- */
-function snakeToCamel(key) {
-    return key.replace(/_([a-z0-9])/g, (_, c) => c.toUpperCase());
-}
-
-function snakeToCamelDeep(value) {
-    if (Array.isArray(value)) {
-        return value.map(snakeToCamelDeep);
-    }
-    if (value !== null && typeof value === 'object') {
-        const out = {};
-        for (const [k, v] of Object.entries(value)) {
-            out[snakeToCamel(k)] = snakeToCamelDeep(v);
-        }
-        return out;
-    }
-    return value;
-}
-
-/**
- * Load configs/config.toml (snake_case), converted to camelCase.
- * Returns an empty object if the file does not exist, so DEFAULTS alone can
- * drive the app.
+ * Load and deep-merge one or more config.toml files, in the order given, with
+ * last-wins precedence — the layered pattern the Go components already use via a
+ * repeatable `-config` flag. Nested tables deep-merge; list/array values are
+ * replaced wholesale (see mergeOver in configMerge.js). Interpolation of
+ * {{ env }} / {{ file }} tokens is deliberately NOT done here — it runs once on
+ * the fully merged tree (see below), so a token declared in a base file can be
+ * overridden by a later overlay before either is resolved.
  *
  * Every key lives under the single [developer_portal] table. That wrapper is
  * unwrapped here so the in-code config tree stays flat (config.server,
  * config.security, …); anything outside the [developer_portal] table is ignored.
+ *
+ * There is NO silent fallback: a missing, unreadable, or unparseable file throws
+ * — the module bootstrap turns that into a fatal, non-zero exit at startup
+ * rather than booting on pure built-in DEFAULTS.
  */
-function loadTomlConfig() {
-    const tomlPath = path.join(process.cwd(), 'configs', 'config.toml');
-
-    if (fs.existsSync(tomlPath)) {
-        const raw = fs.readFileSync(tomlPath, 'utf8');
-        return snakeToCamelDeep(toml.parse(raw)).developerPortal || {};
+function loadConfigFiles(paths) {
+    let merged = {};
+    for (const p of paths) {
+        const resolvedPath = path.resolve(p);
+        let raw;
+        try {
+            raw = fs.readFileSync(resolvedPath, 'utf8');
+        } catch (err) {
+            throw new Error(`config file "${p}" could not be read: ${err.message}`);
+        }
+        let parsed;
+        try {
+            parsed = toml.parse(raw);
+        } catch (err) {
+            throw new Error(`config file "${p}" is not valid TOML: ${err.message}`);
+        }
+        const tree = snakeToCamelDeep(parsed).developerPortal || {};
+        merged = mergeOver(merged, tree);
     }
-    return {};
+    return merged;
 }
 
 // ---------------------------------------------------------------------------
@@ -270,41 +268,63 @@ function interpolateTree(value, fieldPath) {
     return interpolateLeaf(value, fieldPath);
 }
 
-/**
- * Prototype-pollution guard, applied to the DEFAULTS<-config.toml merge below.
- */
-const BLOCKED_KEYS = new Set(['__proto__', 'prototype', 'constructor']);
+// ---------------------------------------------------------------------------
+// Startup config resolution
+// ---------------------------------------------------------------------------
+//
+// Resolved once, at module load, from the repeatable `--config` flag — the JS
+// counterpart to the Go components' `-config`. At least one `--config` is
+// REQUIRED: there is no default path and no silent fallback to built-in
+// DEFAULTS. Because env vars reach config only through explicit {{ env }} tokens
+// in a file (there is no APIP_DP_* env-prefix provider), a missing config file
+// means "running on pure built-in defaults" — unacceptable for a portal handling
+// auth/session/secret config, so it fails fast with a non-zero exit here, before
+// the server binds. process.exit is used (not a thrown error) because the logger
+// is not yet initialised and several consumers require this module for its side
+// effect of producing a ready `config`.
 
-/**
- * Deep-merge src into dst (src wins on conflicts) — used to layer the
- * interpolated config.toml tree over a clone of DEFAULTS.
- */
-function mergeOver(dst, src) {
-    for (const [k, v] of Object.entries(src)) {
-        if (BLOCKED_KEYS.has(k)) continue;
-        if (v !== null && typeof v === 'object' && !Array.isArray(v) &&
-            dst[k] !== null && typeof dst[k] === 'object' && !Array.isArray(dst[k])) {
-            mergeOver(dst[k], v);
-        } else {
-            dst[k] = v;
-        }
-    }
-    return dst;
+function fatalConfig(message) {
+    // logger is not yet initialised at this point — write to stderr directly.
+    process.stderr.write(`[FATAL] ${message}\n`);
+    process.exit(1);
 }
 
-const rawTomlConfig = loadTomlConfig();
+let configPaths;
+try {
+    configPaths = parseConfigPaths(process.argv.slice(2));
+} catch (err) {
+    fatalConfig(err.message);
+}
 
+if (configPaths.length === 0) {
+    fatalConfig(
+        'no configuration file provided. Pass at least one --config <path> ' +
+        '(repeatable; later files override earlier ones, key by key), e.g. ' +
+        '--config configs/config.toml. There is no default path and no ' +
+        'silent-defaults fallback.'
+    );
+}
+
+let rawTomlConfig;
+try {
+    rawTomlConfig = loadConfigFiles(configPaths);
+} catch (err) {
+    fatalConfig(err.message);
+}
+
+// {{ env }} / {{ file }} interpolation runs ONCE, here, on the fully merged tree
+// — after every --config file has been layered — so a token can be declared in a
+// base file and left in place (or overridden) by a later overlay before it is
+// resolved.
 let interpolatedTomlConfig;
 try {
     interpolatedTomlConfig = interpolateTree(rawTomlConfig, '');
 } catch (err) {
-    // Use process.stderr directly — logger is not yet initialised at this point
-    process.stderr.write(`[FATAL] ${err.message}\n`);
-    process.exit(1);
+    fatalConfig(err.message);
 }
 
-// Precedence: DEFAULTS (source of truth) → configs/config.toml, with {{ env }}/
-// {{ file }} references resolved before the merge.
+// Precedence: DEFAULTS (source of truth) → merged --config files, with {{ env }}/
+// {{ file }} references resolved before this final merge.
 const config = mergeOver(JSON.parse(JSON.stringify(DEFAULTS)), interpolatedTomlConfig);
 
 if (fieldCount > 0) {

@@ -6,9 +6,15 @@
 # concrete file this project actually ships, which wires some of these same
 # keys up to environment variables using the syntax below.
 #
+# Config files are loaded via a required, repeatable `--config <path>` flag —
+# at least one is mandatory (no default path, no silent-defaults fallback), and
+# passing it more than once layers overlays with last-wins precedence. Nested
+# tables deep-merge; list/array values are replaced wholesale by a later file.
+#
 # Precedence (lowest to highest):
 #   1. Built-in defaults (src/config/configDefaults.js)
-#   2. configs/config.toml, with any {{ env }} / {{ file }} references resolved
+#   2. The merged --config files, with any {{ env }} / {{ file }} references
+#      resolved once after the merge
 #
 # There is no automatic environment-variable override. A key's value comes
 # from an env var or a file ONLY if you explicitly say so, using Handlebars-

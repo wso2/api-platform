@@ -23,6 +23,13 @@ set -e
 CERT_DIR=/etc/devportal/tls
 TLS_ENABLED="${APIP_DP_SERVER_HTTPS_ENABLED:-false}"
 
+# The server now requires an explicit --config (repeatable, last-wins) — there is
+# no default path and no silent-defaults fallback. The base config is mounted at
+# /app/configs/config.toml (docker-compose bind mount / helm configMap). Override
+# the base path with APIP_DP_CONFIG_PATH, and append overlay files by passing
+# extra `--config <path>` arguments to the container (forwarded via "$@" below).
+CONFIG_PATH="${APIP_DP_CONFIG_PATH:-/app/configs/config.toml}"
+
 # Fail closed: certificates are generated once by ./setup.sh (host-side, into a
 # bind-mounted directory), never here. Startup only checks that they exist —
 # it never generates a fallback, matching every other required secret.
@@ -34,4 +41,4 @@ if [ "$TLS_ENABLED" = "true" ]; then
   echo "[entrypoint] TLS certificate found at $CERT_DIR"
 fi
 
-exec node src/server.js
+exec node src/server.js --config "$CONFIG_PATH" "$@"
