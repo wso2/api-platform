@@ -1706,13 +1706,14 @@ func TestTranslator_CreateTracingConfig_ResourceAttributes(t *testing.T) {
 // TestTranslator_CreateTracingConfig_PeerServiceCustomTag guards the fix for GH issue #2883:
 // with tracing enabled, the HCM tracing config must carry a "peer.service" custom tag, sourced
 // from host metadata under the envoy.lb/hostname key set by setEndpointPeerHostname — without
-// this, Datadog APM has no peer attribute on upstream CLIENT spans to build the Dependencies
-// view / service map from. This pins the wire shape so a go-control-plane version bump can't
+// this, APM backends have no peer attribute on upstream CLIENT spans to build a service
+// dependency map from. This pins the wire shape so a go-control-plane version bump can't
 // silently reshape it without a test failure.
 //
-// Also guards http.route (Datadog Traces table Resource column, see setRouteHTTPRoute), sourced
-// from ROUTE metadata under the wso2.route/http.route key. Tags are looked up by name rather
-// than asserted by count/order — new tags may be added alongside these two over time.
+// Also guards http.route (the OTel semantic-convention attribute for the matched route
+// template, see setRouteHTTPRoute), sourced from ROUTE metadata under the
+// wso2.route/http.route key. Tags are looked up by name rather than asserted by
+// count/order — new tags may be added alongside these two over time.
 func TestTranslator_CreateTracingConfig_PeerServiceCustomTag(t *testing.T) {
 	logger := createTestLogger()
 	routerCfg := testRouterConfig()
@@ -2279,19 +2280,20 @@ func TestTranslator_CreateRoute_Basic(t *testing.T) {
 	assert.Contains(t, route.Name, "GET")
 	assert.Contains(t, route.Name, "/api/users")
 
-	// Guards the Datadog Traces table Resource column fix: the route's path template
-	// must be recorded as route metadata so createTracingCustomTags' http.route tag can
-	// read it (see setRouteHTTPRoute).
+	// Guards the http.route tracing fix: the route's path template must be recorded as
+	// route metadata so createTracingCustomTags' http.route tag can read it (see
+	// setRouteHTTPRoute).
 	require.NotNil(t, route.Metadata)
 	assert.Equal(t, "/api/users",
 		route.Metadata.FilterMetadata["wso2.route"].Fields["http.route"].GetStringValue())
 }
 
-// TestTranslator_CreateRouteFromRDC_HTTPRouteMetadata guards the Datadog Traces table
-// Resource column fix: createRouteFromRDC must record the route's full path *template*
-// (not a concrete matched path) as wso2.route/http.route metadata, so the HCM tracing
-// http.route custom tag (createTracingCustomTags) can surface it. Without this, Datadog
-// derives the span resource as the bare HTTP method.
+// TestTranslator_CreateRouteFromRDC_HTTPRouteMetadata guards the http.route tracing fix:
+// createRouteFromRDC must record the route's full path *template* (not a concrete matched
+// path) as wso2.route/http.route metadata, so the HCM tracing http.route custom tag
+// (createTracingCustomTags) can surface it. Without this, APM backends that derive a
+// span's resource/display name from "<http.method> <http.route>" fall back to the bare
+// HTTP method.
 func TestTranslator_CreateRouteFromRDC_HTTPRouteMetadata(t *testing.T) {
 	logger := createTestLogger()
 	routerCfg := testRouterConfig()

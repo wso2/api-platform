@@ -2854,16 +2854,18 @@ func createOTelStaticResourceDetector(attributes map[string]string) (*core.Typed
 
 // createTracingCustomTags builds the HCM-level tracing custom tags:
 //
-//   - peer.service: the identity tag Datadog uses to infer downstream dependencies. The
-//     value comes from the selected upstream host's metadata rather than the Host header,
-//     so it stays correct for upstreams configured with hostRewrite: manual. peer.service
-//     is Datadog's highest-priority peer attribute.
+//   - peer.service: a standard OTel semantic-convention attribute identifying the
+//     upstream dependency. The value comes from the selected upstream host's metadata
+//     rather than the Host header, so it stays correct for upstreams configured with
+//     hostRewrite: manual.
 //   - http.route: the route's path template (e.g. "/reading-list/v1.0/{id}"), read from
-//     route metadata set by setRouteHTTPRoute. Datadog derives a span's resource name as
-//     "<http.method> <http.route>", falling back to the bare method when http.route is
-//     absent — which is what previously left the Traces table Resource column showing
-//     just "GET". Sourced from route (not host) metadata, since the path template is a
-//     property of the matched route, not the selected upstream endpoint.
+//     route metadata set by setRouteHTTPRoute. This is the standard OTel semantic
+//     convention attribute for the matched route template, distinct from http.url/
+//     http.target which carry the concrete request path. APM backends commonly derive a
+//     span's display name/resource from "<http.method> <http.route>" and fall back to the
+//     bare method when http.route is absent. Sourced from route (not host) metadata,
+//     since the path template is a property of the matched route, not the selected
+//     upstream endpoint.
 func createTracingCustomTags() []*tracingv3.CustomTag {
 	return []*tracingv3.CustomTag{
 		{
@@ -2960,13 +2962,13 @@ func ensureRouteFilterMetadata(r *route.Route) map[string]*structpb.Struct {
 
 // setRouteHTTPRoute records the route's path template under wso2.route/http.route so the
 // HCM tracing custom tag (see createTracingCustomTags) can surface it as the OTel
-// http.route attribute. Datadog derives a span's resource name from
-// "<http.method> <http.route>"; without http.route it falls back to the bare method,
-// which is what left the Datadog Traces table Resource column showing just "GET".
-// A nil route or empty template is a no-op, so a route with nothing to report doesn't
-// gain an empty Metadata shell. Merges into any existing wso2.route namespace struct
-// rather than overwriting it, so this can run regardless of whether a caller (e.g.
-// createRoutePerTopic) already wrote other keys under the same namespace.
+// http.route attribute — the standard semantic-convention attribute for the matched
+// route template, as distinct from the concrete request path. Without it, APM backends
+// that key a span's display name/resource off "<http.method> <http.route>" fall back to
+// the bare method. A nil route or empty template is a no-op, so a route with nothing to
+// report doesn't gain an empty Metadata shell. Merges into any existing wso2.route
+// namespace struct rather than overwriting it, so this can run regardless of whether a
+// caller (e.g. createRoutePerTopic) already wrote other keys under the same namespace.
 func setRouteHTTPRoute(r *route.Route, pathTemplate string) {
 	if r == nil || pathTemplate == "" {
 		return
