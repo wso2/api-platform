@@ -824,8 +824,9 @@ func defaultConfig() *Config {
 				GatewayID:                       constants.PlatformGatewayId,
 				SkipInvalidDeploymentsOnStartup: false,
 			},
+			// The admin server exposes configuration and xDS state
 			AdminServer: AdminServerConfig{
-				Enabled:    true,
+				Enabled:    false,
 				Port:       9092,
 				AllowedIPs: []string{"*"},
 				Pprof: PprofConfig{

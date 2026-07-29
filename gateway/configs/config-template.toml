@@ -14,8 +14,8 @@ shutdown_timeout = "15s"
 gateway_id = '{{ env "APIP_GW_CONTROLLER_SERVER_GATEWAY_ID" "platform-gateway-id" }}'
 
 [controller.admin_server]
-# Dedicated admin/debug HTTP server for config dump and xDS sync endpoints
-enabled = true
+# Dedicated admin/debug HTTP server for config dump and xDS sync endpoints.
+enabled = false
 port = 9092
 allowed_ips = ["*"]
 

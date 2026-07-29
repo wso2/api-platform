@@ -73,6 +73,16 @@ deployment_sync_enabled = '{{ env "APIP_GW_CONTROLLER_CONTROLPLANE_DEPLOYMENT_SY
 # Faster poll interval for test responsiveness (default: 3s)
 poll_interval = "200ms"
 
+# The admin/debug server is off by default (see pkg/config/config.go). The
+# config-dump, startup-db-bootstrap and metrics features exercise its endpoints,
+# so the test stack opts in explicitly. allowed_ips stays permissive here because
+# the suite reaches the published port from the host, not from loopback inside
+# the container.
+[controller.admin_server]
+enabled = true
+port = 9092
+allowed_ips = ["*"]
+
 [controller.auth.basic]
 enabled = true
 

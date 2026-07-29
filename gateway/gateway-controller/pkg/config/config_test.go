@@ -740,7 +740,12 @@ func TestConfig_Validate_RouterListenerPort(t *testing.T) {
 
 func TestDefaultConfig_AdminServerDefaults(t *testing.T) {
 	cfg := defaultConfig()
-	assert.True(t, cfg.Controller.AdminServer.Enabled)
+	// The admin server exposes configuration and xDS state and applies no
+	// authentication of its own, so it must stay off unless an operator enables
+	// it deliberately. This assertion is the guard against that default being
+	// flipped back.
+	assert.False(t, cfg.Controller.AdminServer.Enabled,
+		"the admin/debug server must be disabled by default")
 	assert.Equal(t, 9092, cfg.Controller.AdminServer.Port)
 	assert.Equal(t, []string{"*"}, cfg.Controller.AdminServer.AllowedIPs)
 }

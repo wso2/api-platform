@@ -78,12 +78,9 @@ gateway:
         # deployment fails startup loudly so the issue can't go unnoticed.
         skip_invalid_deployments_on_startup: false
 
-      # Dedicated admin/debug HTTP server (config dump, xDS sync status). Already
-      # effectively active today even though this block was previously absent from
-      # config.toml — see defaultConfig() in pkg/config/config.go. Adding it here
-      # only makes the existing implicit default explicit and overridable.
+      # Dedicated admin/debug HTTP server (config dump, xDS sync status).
       admin_server:
-        enabled: true
+        enabled: false
         port: 9092
         allowed_ips: ["*"]
         pprof:
