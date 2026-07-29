@@ -1009,6 +1009,56 @@ func TestSortRoutesByPriority_ExactBeatsLongerPrefixRegex(t *testing.T) {
 	assert.Equal(t, "prefix-match", sorted[2].Name)
 }
 
+// TestSortRoutesByPriority_LegacyExactBeatsWildcardRegex covers simple-form operations used by
+// LLM-generated routes. Both routes intentionally remain safe_regex matchers to preserve the
+// legacy optional-trailing-slash behavior; sorting must use path semantics rather than the raw
+// regex length so the wildcard's (?:/.*)? syntax cannot shadow the exact route's policy chain.
+func TestSortRoutesByPriority_LegacyExactBeatsWildcardRegex(t *testing.T) {
+	logger := createTestLogger()
+	translator := NewTranslator(logger, testRouterConfig(), nil, testConfig())
+
+	const (
+		exactKey    = "POST|/llm/a/b|"
+		wildcardKey = "POST|/llm/a/*|"
+	)
+	rdc := &models.RuntimeDeployConfig{
+		Routes: map[string]*models.Route{
+			exactKey: {
+				Method:        "POST",
+				Path:          "/llm/a/b",
+				OperationPath: "/a/b",
+				Upstream:      models.RouteUpstream{ClusterKey: "main"},
+			},
+			wildcardKey: {
+				Method:        "POST",
+				Path:          "/llm/a/*",
+				OperationPath: "/a/*",
+				Upstream:      models.RouteUpstream{ClusterKey: "main"},
+			},
+		},
+		UpstreamClusters: map[string]*models.UpstreamCluster{
+			"main": {Endpoints: []models.Endpoint{{Host: "echo", Port: 80}}},
+		},
+	}
+
+	routes, _, err := translator.translateRuntimeConfig(rdc)
+	require.NoError(t, err)
+	require.Len(t, routes, 2)
+
+	byName := map[string]*route.Route{}
+	for _, translatedRoute := range routes {
+		byName[translatedRoute.GetName()] = translatedRoute
+	}
+	require.IsType(t, &route.RouteMatch_SafeRegex{}, byName[exactKey].GetMatch().GetPathSpecifier())
+	require.IsType(t, &route.RouteMatch_SafeRegex{}, byName[wildcardKey].GetMatch().GetPathSpecifier())
+	assert.Equal(t, "^/llm/a/b/?$", byName[exactKey].GetMatch().GetSafeRegex().GetRegex())
+	assert.Equal(t, "^/llm/a(?:/.*)?$", byName[wildcardKey].GetMatch().GetSafeRegex().GetRegex())
+
+	sorted := SortRoutesByPriority(routes)
+	assert.Equal(t, exactKey, sorted[0].GetName())
+	assert.Equal(t, wildcardKey, sorted[1].GetName())
+}
+
 func TestTranslator_SanitizeClusterName(t *testing.T) {
 	logger := createTestLogger()
 	routerCfg := testRouterConfig()

@@ -79,6 +79,71 @@ func TestSortRoutesByPriority_PathLength(t *testing.T) {
 	assert.Equal(t, "short", sorted[1].Name, "Shorter path should be second")
 }
 
+func TestSortRoutesByPriority_GeneratedRegexSpecificity(t *testing.T) {
+	regexRoute := func(name, expression string) *route.Route {
+		return &route.Route{
+			Name: name,
+			Match: &route.RouteMatch{
+				PathSpecifier: &route.RouteMatch_SafeRegex{
+					SafeRegex: &matcher.RegexMatcher{Regex: expression},
+				},
+			},
+		}
+	}
+
+	tests := []struct {
+		name        string
+		routes      []*route.Route
+		wantNames   []string
+		description string
+	}{
+		{
+			name: "legacy exact beats wildcard syntax overhead",
+			routes: []*route.Route{
+				regexRoute("POST|/llm/a/b|", "^/llm/a/b/?$"),
+				regexRoute("POST|/llm/a/*|", "^/llm/a(?:/.*)?$"),
+			},
+			wantNames:   []string{"POST|/llm/a/b|", "POST|/llm/a/*|"},
+			description: "wildcard regex syntax must not make a broader path more specific",
+		},
+		{
+			name: "legacy exact beats parameter syntax overhead",
+			routes: []*route.Route{
+				regexRoute("POST|/llm/a/b|", "^/llm/a/b/?$"),
+				regexRoute("POST|/llm/a/{id}|", "^/llm/a/[^/]+$"),
+			},
+			wantNames:   []string{"POST|/llm/a/b|", "POST|/llm/a/{id}|"},
+			description: "parameter regex syntax must not make a broader path more specific",
+		},
+		{
+			name: "longer wildcard prefix remains more specific",
+			routes: []*route.Route{
+				regexRoute("POST|/llm/a/*|", "^/llm/a(?:/.*)?$"),
+				regexRoute("POST|/llm/a/b/*|", "^/llm/a/b(?:/.*)?$"),
+			},
+			wantNames:   []string{"POST|/llm/a/b/*|", "POST|/llm/a/*|"},
+			description: "wildcard routes must still be ordered by their literal prefix",
+		},
+		{
+			name: "exact beats wildcard with the same literal prefix",
+			routes: []*route.Route{
+				regexRoute("POST|/llm/a/b/*|", "^/llm/a/b(?:/.*)?$"),
+				regexRoute("POST|/llm/a/b|", "^/llm/a/b/?$"),
+			},
+			wantNames:   []string{"POST|/llm/a/b|", "POST|/llm/a/b/*|"},
+			description: "a terminal exact path must beat a wildcard rooted at that path",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			sorted := SortRoutesByPriority(tt.routes)
+			assert.Equal(t, tt.wantNames[0], sorted[0].Name, tt.description)
+			assert.Equal(t, tt.wantNames[1], sorted[1].Name, tt.description)
+		})
+	}
+}
+
 func TestSortRoutesByPriority_HeaderMatches(t *testing.T) {
 	// More headers = higher priority
 	noHeaders := &route.Route{

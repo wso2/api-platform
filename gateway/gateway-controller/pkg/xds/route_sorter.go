@@ -20,6 +20,7 @@ package xds
 
 import (
 	"sort"
+	"strings"
 
 	route "github.com/envoyproxy/go-control-plane/envoy/config/route/v3"
 )
@@ -35,7 +36,7 @@ func (x EnvoyRoutes) Swap(i, j int) { x[i], x[j] = x[j], x[i] }
 //
 // Priority order (highest to lowest):
 // 1. Path match type: Exact > Regex > Prefix
-// 2. Path length (longer paths have higher priority)
+// 2. Literal path specificity (longer constrained paths have higher priority)
 // 3. Number of header matches (more headers = higher priority)
 // 4. Number of exact header matches
 // 5. Number of query parameter matches
@@ -58,10 +59,10 @@ func (x EnvoyRoutes) Less(i, j int) bool {
 
 	// Equal path match type case
 
-	// 2. Sort based on characters in a matching path.
-	// Longer paths have higher priority
-	pCountI := pathMatchCount(matchI)
-	pCountJ := pathMatchCount(matchJ)
+	// 2. Sort based on literal characters constrained by the path matcher.
+	// Longer constrained paths have higher priority.
+	pCountI := pathMatchCount(x[i])
+	pCountJ := pathMatchCount(x[j])
 	if pCountI != pCountJ {
 		// More characters = higher priority
 		// If pCountI < pCountJ, i has lower priority
@@ -130,21 +131,21 @@ func getPathMatchType(match *route.RouteMatch) int {
 	}
 }
 
-// pathMatchCount returns the length of the path pattern.
-// Longer paths have higher priority as they are more specific.
-func pathMatchCount(match *route.RouteMatch) int {
-	if match == nil {
-		return 0
+// pathMatchCount returns a semantic path-specificity score for the route.
+// Product routes carry their semantic path in the route name (METHOD|PATH|VHOST, optionally
+// followed by a discriminator segment), so score that instead of the rendered regex: regex
+// operators are implementation details and must not add specificity. Routes outside that naming
+// contract retain the historical matcher-length fallback.
+func pathMatchCount(r *route.Route) int {
+	if parts := strings.SplitN(r.GetName(), "|", 4); len(parts) >= 3 && parts[1] != "" {
+		return semanticPathMatchCount(parts[1])
 	}
 
-	switch ps := match.GetPathSpecifier().(type) {
+	switch ps := r.GetMatch().GetPathSpecifier().(type) {
 	case *route.RouteMatch_Path:
 		return len(ps.Path)
 	case *route.RouteMatch_SafeRegex:
-		if ps.SafeRegex != nil {
-			return len(ps.SafeRegex.GetRegex())
-		}
-		return 0
+		return len(ps.SafeRegex.GetRegex())
 	case *route.RouteMatch_Prefix:
 		// Special case: "/" prefix should have 0 count
 		// as it matches all paths which equals to no path match
@@ -155,6 +156,33 @@ func pathMatchCount(match *route.RouteMatch) int {
 	default:
 		return 0
 	}
+}
+
+// semanticPathMatchCount scores literal constraints in an operation path. Literal characters
+// dominate the score; a non-wildcard path gets a one-point terminal-specificity tie-break so
+// /a/b sorts ahead of /a/b/*. Characters inside {} contribute nothing because {short} and
+// {aVeryLongName} match the same single path segment.
+func semanticPathMatchCount(path string) int {
+	terminal := !strings.HasSuffix(path, "/*")
+	path = strings.TrimSuffix(path, "/*")
+
+	literals, inParam := 0, false
+	for i := 0; i < len(path); i++ {
+		switch {
+		case path[i] == '{':
+			inParam = true
+		case path[i] == '}':
+			inParam = false
+		case !inParam:
+			literals++
+		}
+	}
+
+	score := literals * 2
+	if terminal {
+		score++
+	}
+	return score
 }
 
 // numberOfExactHeaderMatches counts headers that use exact string matching.
