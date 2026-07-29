@@ -1717,3 +1717,180 @@ Feature: Token-Based Rate Limiting
     Then the response status code should be 200
     When I delete the LLM provider template "completion-only-empty-limits-template"
     Then the response status code should be 200
+
+  Scenario: Provider-wide total token quota charges actual token usage and is shared across resources
+    # Anthropic's Messages API response has no total-token field, so the built-in "anthropic"
+    # template defines only promptTokens/completionTokens. The total_tokens quota must fall
+    # back to summing them (50 input + 25 output = 75) instead of charging a flat 1 per request.
+    # Attached provider-wide (globalPolicies), the quota must also be shared across every
+    # resource of the provider, not siloed per path.
+    Given I authenticate using basic auth as "admin"
+    When I create this LLM provider:
+      """
+      apiVersion: gateway.api-platform.wso2.com/v1
+      kind: LlmProvider
+      metadata:
+        name: prov-wide-anthropic-provider
+      spec:
+        displayName: Provider Wide Anthropic Provider
+        version: v1.0
+        context: /prov-wide-anthropic
+        template: anthropic
+        upstream:
+          url: http://mock-openapi:4010
+          auth:
+            type: api-key
+            header: Authorization
+            value: test-key
+        accessControl:
+          mode: allow_all
+        globalPolicies:
+          - name: token-based-ratelimit
+            version: v1
+            params:
+              totalTokenLimits:
+                - count: 75
+                  duration: "1h"
+      """
+    Then the response status code should be 201
+    And I wait for 2 seconds
+    And I wait for policy snapshot sync
+
+    Given I set header "Content-Type" to "application/json"
+
+    # Consumes 75 tokens (50 input + 25 output) of the 75-token quota — remaining hits 0.
+    # Before the fix, this would charge 1 and leave remaining at 74.
+    When I send a POST request to "http://localhost:8080/prov-wide-anthropic/anthropic/v1/messages" with body:
+      """ json
+      {"model": "claude-3-5-haiku-20241022", "messages": [{"role": "user", "content": "Hello"}], "max_tokens": 100}
+      """
+    Then the response status code should be 200
+    And the response header "X-Ratelimit-Remaining" should be "0"
+
+    # Quota is already exhausted — blocked at the pre-flight check before reaching upstream.
+    When I send a POST request to "http://localhost:8080/prov-wide-anthropic/anthropic/v1/messages" with body:
+      """ json
+      {"model": "claude-3-5-haiku-20241022", "messages": [{"role": "user", "content": "Hello"}], "max_tokens": 100}
+      """
+    Then the response status code should be 429
+
+    # KEY ASSERTION: a DIFFERENT resource on the same provider is also blocked — proves the
+    # quota is one shared apiname-keyed bucket, not an independent per-route bucket.
+    When I send a POST request to "http://localhost:8080/prov-wide-anthropic/anthropic/v1/messages-web-search" with body:
+      """ json
+      {"model": "claude-3-5-haiku-20241022", "messages": [{"role": "user", "content": "search"}], "max_tokens": 100}
+      """
+    Then the response status code should be 429
+
+    # Cleanup
+    Given I authenticate using basic auth as "admin"
+    When I delete the LLM provider "prov-wide-anthropic-provider"
+    Then the response status code should be 200
+
+  Scenario: Total token quota does not double-count when the template already defines totalTokens
+    # Regression guard: the "mistralai" built-in template defines promptTokens, completionTokens,
+    # AND totalTokens. The total_tokens quota must be charged from totalTokens alone (150) —
+    # never the sum of all three (300) — so templates that already worked correctly are not
+    # broken by the fallback added for templates like Anthropic that have no totalTokens.
+    Given I authenticate using basic auth as "admin"
+    When I create this LLM provider:
+      """
+      apiVersion: gateway.api-platform.wso2.com/v1
+      kind: LlmProvider
+      metadata:
+        name: prov-wide-mistral-provider
+      spec:
+        displayName: Provider Wide Mistral Provider
+        version: v1.0
+        context: /prov-wide-mistral
+        template: mistralai
+        upstream:
+          url: http://mock-openapi:4010
+          auth:
+            type: api-key
+            header: Authorization
+            value: test-key
+        accessControl:
+          mode: allow_all
+        globalPolicies:
+          - name: token-based-ratelimit
+            version: v1
+            params:
+              totalTokenLimits:
+                - count: 1000
+                  duration: "1h"
+      """
+    Then the response status code should be 201
+    And I wait for 2 seconds
+    And I wait for policy snapshot sync
+
+    Given I set header "Content-Type" to "application/json"
+
+    # 100 prompt + 50 completion = 150 total_tokens. If double-counted (150+100+50=300),
+    # remaining would be 700 instead of 850.
+    When I send a POST request to "http://localhost:8080/prov-wide-mistral/mistral/v1/chat/completions" with body:
+      """ json
+      {"model": "mistral-small-latest", "messages": [{"role": "user", "content": "Hello"}]}
+      """
+    Then the response status code should be 200
+    And the response header "X-Ratelimit-Remaining" should be "850"
+
+    # Cleanup
+    Given I authenticate using basic auth as "admin"
+    When I delete the LLM provider "prov-wide-mistral-provider"
+    Then the response status code should be 200
+
+  Scenario: Consumer-level total token quota also charges actual token usage, not a flat 1 per request
+    Given I authenticate using basic auth as "admin"
+    When I create this LLM provider:
+      """
+      apiVersion: gateway.api-platform.wso2.com/v1
+      kind: LlmProvider
+      metadata:
+        name: consumer-anthropic-provider
+      spec:
+        displayName: Consumer Anthropic Provider
+        version: v1.0
+        context: /consumer-anthropic
+        template: anthropic
+        upstream:
+          url: http://mock-openapi:4010
+          auth:
+            type: api-key
+            header: Authorization
+            value: test-key
+        accessControl:
+          mode: allow_all
+        policies:
+          - name: token-based-ratelimit
+            version: v1
+            paths:
+              - path: /*
+                methods: ['*']
+                params:
+                  totalTokenLimits:
+                    - count: 1000
+                      duration: "1h"
+                  algorithm: fixed-window
+                  backend: memory
+                  consumerBased: true
+      """
+    Then the response status code should be 201
+    And I wait for 2 seconds
+    And I wait for policy snapshot sync
+
+    Given I set header "Content-Type" to "application/json"
+
+    # 50 input + 25 output = 75 tokens consumed of the 1000-token quota — remaining is 925.
+    # Before the fix, this would charge 1 and leave remaining at 999.
+    When I send a POST request to "http://localhost:8080/consumer-anthropic/anthropic/v1/messages" with body:
+      """ json
+      {"model": "claude-3-5-haiku-20241022", "messages": [{"role": "user", "content": "Hello"}], "max_tokens": 100}
+      """
+    Then the response status code should be 200
+    And the response header "X-Ratelimit-Remaining" should be "925"
+
+    # Cleanup
+    Given I authenticate using basic auth as "admin"
+    When I delete the LLM provider "consumer-anthropic-provider"
+    Then the response status code should be 200
