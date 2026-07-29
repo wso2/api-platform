@@ -274,7 +274,7 @@
       sv('wz-tech-email', (api.owners && api.owners.technicalOwnerEmail) || api.technicalOwnerEmail || '');
       sv('wz-biz-owner',  (api.owners && api.owners.businessOwner)       || api.businessOwner       || '');
       sv('wz-biz-email',  (api.owners && api.owners.businessOwnerEmail)  || api.businessOwnerEmail  || '');
-      agentVis = api.agentVisibility || 'Visible';
+      agentVis = String(api.agentVisibility || '').toUpperCase() === 'HIDDEN' ? 'Hidden' : 'Visible';
       document.getElementById('wz-vis-visible').classList.toggle('active', agentVis !== 'Hidden');
       document.getElementById('wz-vis-hidden').classList.toggle('active',  agentVis === 'Hidden');
       setSelectedPolicies(api.subscriptionPlans || []);
