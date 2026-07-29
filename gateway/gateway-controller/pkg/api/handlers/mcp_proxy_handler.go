@@ -338,7 +338,6 @@ func rematerializeMCPProxyConfig(log *slog.Logger, id, displayName string, sourc
 		log.Error("Failed to marshal stored MCP proxy source configuration",
 			slog.String("id", id),
 			slog.String("displayName", displayName),
-			slog.Any("sourceConfiguration", source),
 			slog.Any("error", err))
 		return api.MCPProxyConfiguration{}, fmt.Errorf("marshal MCP proxy config: %w", err)
 	}
@@ -347,9 +346,9 @@ func rematerializeMCPProxyConfig(log *slog.Logger, id, displayName string, sourc
 		log.Error("Failed to unmarshal stored MCP configuration",
 			slog.String("id", id),
 			slog.String("displayName", displayName),
-			slog.Any("sourceConfiguration", source),
 			slog.Any("error", err))
 		return api.MCPProxyConfiguration{}, fmt.Errorf("unmarshal MCP proxy config: %w", err)
 	}
+	redactMCPProxyCredentials(&mcp)
 	return mcp, nil
 }
