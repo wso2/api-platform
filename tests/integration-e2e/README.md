@@ -97,12 +97,12 @@ Or via make (from `platform-api/`): `make e2e`, `make e2e-all-dbs`.
   `@policy_secret`). The `@multigateway` and `@devportal` scenarios run only on the
   postgres stack (the only one wired with a second gateway and the developer
   portal) and are otherwise skipped automatically.
-- `PA_HOST_PORT` / `GW_HTTP_PORT` / `GW2_HTTP_PORT` / `DP_HOST_PORT` override the
+- `PA_HOST_PORT` / `GW_HTTP_PORT` / `GW2_HTTP_PORT` / `AP_HOST_PORT` override the
   published host ports to avoid clashing with other local stacks (defaults 9243 /
   18080 / 18081 / 9543).
 - `DEVPORTAL_IMAGE` overrides the developer-portal image (default
   `developer-portal:it-e2e`).
-- `PA_API_BASE` / `DP_API_BASE` override the REST resource-API base path for
+- `PA_API_BASE` / `AP_API_BASE` override the REST resource-API base path for
   platform-api and the developer portal respectively (default `/api/v0.9` each) —
   set these when either product moves to a new API version, independently of the
   other. `PA_PORTAL_BASE` (login, default `/api/portal/v0.9`) and `PA_WEBHOOK_BASE`

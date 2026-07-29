@@ -26,8 +26,8 @@ display_name = "Acme Corp"
 Both values also accept environment references, which is how a containerized deployment sets them:
 
 ```toml
-handle       = '{{ env "APIP_DP_ORGANIZATION_HANDLE" "default" }}'
-display_name = '{{ env "APIP_DP_ORGANIZATION_DISPLAY_NAME" "Default" }}'
+handle       = '{{ env "APIP_AP_ORGANIZATION_HANDLE" "default" }}'
+display_name = '{{ env "APIP_AP_ORGANIZATION_DISPLAY_NAME" "Default" }}'
 ```
 
 > `organization.default_name` is the **deprecated** name for `handle`. It still works, with a warning at startup — rename it.

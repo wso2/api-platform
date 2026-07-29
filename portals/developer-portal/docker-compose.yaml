@@ -51,7 +51,7 @@ services:
         required: true
         format: raw
     environment:
-      APIP_DP_SERVER_PORT: ${APIP_DP_SERVER_PORT:-9543}
+      APIP_AP_SERVER_PORT: ${APIP_AP_SERVER_PORT:-9543}
     volumes:
       - ./configs/config.toml:/app/configs/config.toml:ro
       - developer-portal-data:/app/data
@@ -60,7 +60,7 @@ services:
       - ./resources/keys/devportal-encryption.key:/etc/devportal/keys/encryption.key:ro
       - ./resources/keys/devportal-session-secret:/etc/devportal/keys/session-secret:ro
     ports:
-      - "${APIP_DP_SERVER_PORT:-9543}:${APIP_DP_SERVER_PORT:-9543}"
+      - "${APIP_AP_SERVER_PORT:-9543}:${APIP_AP_SERVER_PORT:-9543}"
     networks:
       - devportal-network
 

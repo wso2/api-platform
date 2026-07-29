@@ -56,7 +56,7 @@ var (
 	platformAPI  = "https://localhost:" + envOr("PA_HOST_PORT", "9243")
 	ingressGw1   = "http://localhost:" + envOr("GW_HTTP_PORT", "18080")
 	ingressGw2   = "http://localhost:" + envOr("GW2_HTTP_PORT", "18081")
-	devportalAPI = "http://localhost:" + envOr("DP_HOST_PORT", "9543")
+	devportalAPI = "http://localhost:" + envOr("AP_HOST_PORT", "9543")
 	// gwMgmtAPI is the gateway-controller management REST API (port 9090 in the
 	// e2e compose, overridable via GW_MGMT_PORT). Used to verify that resources
 	// deployed via platform-api are visible on the data plane.
@@ -66,12 +66,12 @@ var (
 // REST API base paths, defined in one place so each product's API version/prefix can
 // be reconfigured centrally — and independently, since platform-api and the developer
 // portal version on separate release cadences and may diverge. Overridable via env
-// (PA_API_BASE / DP_API_BASE) so a version bump needs no code change. platformAPIBase
+// (PA_API_BASE / AP_API_BASE) so a version bump needs no code change. platformAPIBase
 // is prepended by the apiCall helper; devportalBase by dpDo — so their callers name
 // only the resource path (e.g. "/rest-apis").
 var (
 	platformAPIBase = envOr("PA_API_BASE", "/api/v0.9")
-	devportalBase   = envOr("DP_API_BASE", "/api/v0.9")
+	devportalBase   = envOr("AP_API_BASE", "/api/v0.9")
 )
 
 // Additional platform-api path prefixes, distinct from the resource API version above

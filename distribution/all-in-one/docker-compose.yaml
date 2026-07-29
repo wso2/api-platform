@@ -41,28 +41,28 @@ services:
       dockerfile: Dockerfile
     container_name: devportal
     environment:
-      - APIP_DP_SERVER_HTTPS_ENABLED=false
-      - APIP_DP_DATABASE_DRIVER=postgres
-      - APIP_DP_DATABASE_HOST=postgres
-      - APIP_DP_DATABASE_PORT=5432
-      - APIP_DP_DATABASE_NAME=devportal
-      - APIP_DP_DATABASE_USER=postgres
-      - APIP_DP_DATABASE_PASSWORD=postgres
+      - APIP_AP_SERVER_HTTPS_ENABLED=false
+      - APIP_AP_DATABASE_DRIVER=postgres
+      - APIP_AP_DATABASE_HOST=postgres
+      - APIP_AP_DATABASE_PORT=5432
+      - APIP_AP_DATABASE_NAME=devportal
+      - APIP_AP_DATABASE_USER=postgres
+      - APIP_AP_DATABASE_PASSWORD=postgres
       # platform-api signs its tokens with RS256; the devportal verifies them
       # against jwt_public.pem from the shared keypair volume mounted below
       # (auth.local.jwt_public_key in devportal-config.toml). There is no shared
       # HMAC secret. tls_skip_verify covers platform-api's self-signed cert.
-      - APIP_DP_AUTH_LOCAL_PLATFORM_API_URL=https://platform-api:9243
-      - APIP_DP_AUTH_LOCAL_TLS_SKIP_VERIFY=true
+      - APIP_AP_AUTH_LOCAL_PLATFORM_API_URL=https://platform-api:9243
+      - APIP_AP_AUTH_LOCAL_TLS_SKIP_VERIFY=true
       # Required — devportal fails closed at startup if either doesn't resolve
       # to a 64-char hex string. Set both before `docker compose up`, e.g.:
-      #   export APIP_DP_SECURITY_ENCRYPTION_KEY=$(openssl rand -hex 32)
-      #   export APIP_DP_SECURITY_SESSION_SECRET=$(openssl rand -hex 32)
-      - APIP_DP_SECURITY_ENCRYPTION_KEY=${APIP_DP_SECURITY_ENCRYPTION_KEY:-}
-      - APIP_DP_SECURITY_SESSION_SECRET=${APIP_DP_SECURITY_SESSION_SECRET:-}
-      - APIP_DP_SERVER_PORT=${APIP_DP_SERVER_PORT:-9543}
+      #   export APIP_AP_SECURITY_ENCRYPTION_KEY=$(openssl rand -hex 32)
+      #   export APIP_AP_SECURITY_SESSION_SECRET=$(openssl rand -hex 32)
+      - APIP_AP_SECURITY_ENCRYPTION_KEY=${APIP_AP_SECURITY_ENCRYPTION_KEY:-}
+      - APIP_AP_SECURITY_SESSION_SECRET=${APIP_AP_SECURITY_SESSION_SECRET:-}
+      - APIP_AP_SERVER_PORT=${APIP_AP_SERVER_PORT:-9543}
     ports:
-      - "${APIP_DP_SERVER_PORT:-9543}:${APIP_DP_SERVER_PORT:-9543}"
+      - "${APIP_AP_SERVER_PORT:-9543}:${APIP_AP_SERVER_PORT:-9543}"
     volumes:
       # Replaces the image's shipped configs/config.toml (SQLite-only, fails
       # closed on security secrets) — see devportal-config.toml for why.
@@ -142,7 +142,7 @@ services:
       - platform-api-certs:/app/data/certs
       - platform-api-jwt-keys:/etc/platform-api/keys:ro
     environment:
-      - APIP_CP_DEFAULT_DEVPORTAL_API_URL=http://devportal:${APIP_DP_SERVER_PORT:-9543}
+      - APIP_CP_DEFAULT_API_PORTAL_API_URL=http://devportal:${APIP_AP_SERVER_PORT:-9543}
       - APIP_CP_DATABASE_DRIVER=postgres
       - APIP_CP_DATABASE_HOST=postgres
       - APIP_CP_DATABASE_PORT=5432

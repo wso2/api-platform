@@ -82,13 +82,13 @@ services:
       mssql-init:
         condition: service_completed_successfully
     environment:
-      APIP_DP_DATABASE_DRIVER: mssql
-      APIP_DP_DATABASE_HOST: sqlserver
-      APIP_DP_DATABASE_PORT: 1433
-      APIP_DP_DATABASE_USER: sa
-      APIP_DP_DATABASE_PASSWORD: "${MSSQL_SA_PASSWORD:-Strong!Passw0rd}"
-      APIP_DP_DATABASE_NAME: devportal
-      APIP_DP_DATABASE_PATH: ""
+      APIP_AP_DATABASE_DRIVER: mssql
+      APIP_AP_DATABASE_HOST: sqlserver
+      APIP_AP_DATABASE_PORT: 1433
+      APIP_AP_DATABASE_USER: sa
+      APIP_AP_DATABASE_PASSWORD: "${MSSQL_SA_PASSWORD:-Strong!Passw0rd}"
+      APIP_AP_DATABASE_NAME: devportal
+      APIP_AP_DATABASE_PATH: ""
 
 volumes:
   sqlserver_data:

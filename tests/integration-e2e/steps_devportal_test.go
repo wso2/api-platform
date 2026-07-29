@@ -62,7 +62,7 @@ import (
 // is a var too).
 var webhookReceiverURL = "https://platform-api:9243" + webhookReceiverPath
 
-// The devportal org handle seeded via APIP_DP_ORGANIZATION_HANDLE; must match the platform-api
+// The devportal org handle seeded via APIP_AP_ORGANIZATION_HANDLE; must match the platform-api
 // org handle so org.ref_id resolves — and so the devportal, which serves this one
 // organization, accepts logins carrying platform-api's org_handle claim.
 const devportalOrgHandle = "default"

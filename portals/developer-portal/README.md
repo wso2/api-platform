@@ -205,12 +205,12 @@ user = "postgres"
 password = "postgres"
 ```
 
-In production, set the password via the `APIP_DP_DATABASE_PASSWORD` environment variable instead of storing it in the config file.
+In production, set the password via the `APIP_AP_DATABASE_PASSWORD` environment variable instead of storing it in the config file.
 
 ### 5. Choose the organization
 
 A Developer Portal instance serves exactly one organization, named by `organization.handle`
-(or the `APIP_DP_ORGANIZATION_HANDLE` env var). It is **required** — the portal refuses to
+(or the `APIP_AP_ORGANIZATION_HANDLE` env var). It is **required** — the portal refuses to
 start without it — and the packaged `configs/config.toml` sets it to `default`. The
 organization is seeded on startup if it doesn't exist yet, so no manual step is required.
 
@@ -243,7 +243,7 @@ Prompts for the admin username/password (or set `ADMIN_USERNAME`/`ADMIN_PASSWORD
 
 ## Configuration Reference
 
-All settings live in `configs/config.toml`. Every setting can also be overridden with an `APIP_DP_*` environment variable.
+All settings live in `configs/config.toml`. Every setting can also be overridden with an `APIP_AP_*` environment variable.
 
 The full annotated list of settings is in [`configs/config-template.toml`](configs/config-template.toml).
 
@@ -260,12 +260,12 @@ roles         = ["ap_admin"]   # grants dp:org_manage, dp:api_manage, … — se
 
 To change what a portal user may do, edit that role's entry in `role-to-scope-mapping.yaml` — or name a second role alongside it — rather than listing scopes on the user block.
 
-The portal config (or `APIP_DP_AUTH_LOCAL_*` env vars) must point to the Platform API. `config.toml`'s own defaults assume Docker Compose, where `platform-api` is a resolvable hostname on the compose network — `npm run start:local` already overrides `platform_api_url` to `https://localhost:9243` (the sidecar's port published to the host) and `tls_skip_verify = true` (self-signed cert), so no manual edit is needed for that flow:
+The portal config (or `APIP_AP_AUTH_LOCAL_*` env vars) must point to the Platform API. `config.toml`'s own defaults assume Docker Compose, where `platform-api` is a resolvable hostname on the compose network — `npm run start:local` already overrides `platform_api_url` to `https://localhost:9243` (the sidecar's port published to the host) and `tls_skip_verify = true` (self-signed cert), so no manual edit is needed for that flow:
 
 ```toml
 [api_portal.auth.local]
-platform_api_url = "https://localhost:9243"  # env: APIP_DP_AUTH_LOCAL_PLATFORM_API_URL
-public_key_path = "/etc/devportal/keys/jwt_public.pem"  # path to the Platform API's auth.jwt.public_key PEM — env: APIP_DP_AUTH_LOCAL_PUBLIC_KEY_PATH
+platform_api_url = "https://localhost:9243"  # env: APIP_AP_AUTH_LOCAL_PLATFORM_API_URL
+public_key_path = "/etc/devportal/keys/jwt_public.pem"  # path to the Platform API's auth.jwt.public_key PEM — env: APIP_AP_AUTH_LOCAL_PUBLIC_KEY_PATH
 tls_skip_verify = true                    # Platform API uses a self-signed cert
 ```
 
@@ -277,30 +277,30 @@ organization is refused.
 
 ### Environment variable overrides
 
-Every config key can be overridden with an `APIP_DP_*` environment variable. You can place these in a `.env` file at the project root.
+Every config key can be overridden with an `APIP_AP_*` environment variable. You can place these in a `.env` file at the project root.
 
 **Convention:**
-- Prefix: `APIP_DP_`
+- Prefix: `APIP_AP_`
 - `_` separates nesting levels (one token = one config object level)
 - `__` represents a literal underscore within a key name
 - Tokens are matched case-insensitively against config keys (matched against the camelCase struct produced from the TOML's snake_case keys)
 
 | Env var | Config path |
 |---------|-------------|
-| `APIP_DP_DATABASE_HOST` | `config.database.host` |
-| `APIP_DP_DATABASE_PORT` | `config.database.port` |
-| `APIP_DP_SERVER_HTTPS_ENABLED` | `config.server.https.enabled` |
-| `APIP_DP_IDP_CLIENTID` | `config.auth.idp.clientId` |
-| `APIP_DP_IDP_ISSUER` | `config.auth.idp.issuer` |
-| `APIP_DP_SERVER_PORT` | `config.server.port` |
-| `APIP_DP_SERVER_BASE_URL` | `config.server.baseUrl` |
-| `APIP_DP_DATABASE_SSL_MODE` | `config.database.sslMode` |
+| `APIP_AP_DATABASE_HOST` | `config.database.host` |
+| `APIP_AP_DATABASE_PORT` | `config.database.port` |
+| `APIP_AP_SERVER_HTTPS_ENABLED` | `config.server.https.enabled` |
+| `APIP_AP_IDP_CLIENTID` | `config.auth.idp.clientId` |
+| `APIP_AP_IDP_ISSUER` | `config.auth.idp.issuer` |
+| `APIP_AP_SERVER_PORT` | `config.server.port` |
+| `APIP_AP_SERVER_BASE_URL` | `config.server.baseUrl` |
+| `APIP_AP_DATABASE_SSL_MODE` | `config.database.sslMode` |
 
 `.env` example:
 ```dotenv
-APIP_DP_DATABASE_HOST=my-postgres-host
-APIP_DP_DATABASE_PASSWORD=my-secret-password
-APIP_DP_IDP_CLIENTID=my-client-id
+APIP_AP_DATABASE_HOST=my-postgres-host
+APIP_AP_DATABASE_PASSWORD=my-secret-password
+APIP_AP_IDP_CLIENTID=my-client-id
 ```
 
 ---

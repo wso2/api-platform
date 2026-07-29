@@ -99,7 +99,7 @@ function loadConfigFiles(paths) {
 //                                    required — missing, unreadable, oversize, or
 //                                    disallowed is a hard startup error.
 //
-// There is no automatic APIP_DP_* prefix mapping anymore (removed the same way
+// There is no automatic APIP_AP_* prefix mapping anymore (removed the same way
 // platform-api removed its koanf env-prefix mapping) — a variable only takes
 // effect where config.toml explicitly references it via {{ env "..." }}.
 //
@@ -206,7 +206,7 @@ hb.registerHelper('env', function envHelper(...args) {
     args.pop(); // discard the Handlebars options object, always the last argument
     const [name, fallback] = args;
     if (typeof name !== 'string' || !name) {
-        throw new Error('{{ env }} requires a variable name, e.g. {{ env "APIP_DP_X" }}');
+        throw new Error('{{ env }} requires a variable name, e.g. {{ env "APIP_AP_X" }}');
     }
     envRefCount += 1;
     const value = process.env[name];
@@ -369,7 +369,7 @@ requireHexSecret(config.security.sessionSecret, 'sessionSecret');
  * Fail-closed startup check: database connection-pool settings must resolve to
  * sane numbers before the application is allowed to start. coerceValue() only
  * converts a leaf to a Number when the *entire* string is numeric — a
- * malformed override (e.g. APIP_DP_DATABASE_MAX_OPEN_CONNS="abc") is left as
+ * malformed override (e.g. APIP_AP_DATABASE_MAX_OPEN_CONNS="abc") is left as
  * that raw string rather than becoming NaN, and would otherwise reach
  * pg.Pool()/mssql.ConnectionPool() unvalidated (see postgresAdapter.js /
  * mssqlAdapter.js), producing a silently broken or uncapped pool.
@@ -467,7 +467,7 @@ function resolveOrganizationConfig(cfg, tomlOrg) {
         process.stderr.write(
             '[FATAL] organization.handle is not configured. This portal serves a single ' +
             'organization and cannot start without knowing which one. Set it in ' +
-            "configs/config.toml, e.g. handle = '{{ env \"APIP_DP_ORGANIZATION_HANDLE\" \"default\" }}'.\n"
+            "configs/config.toml, e.g. handle = '{{ env \"APIP_AP_ORGANIZATION_HANDLE\" \"default\" }}'.\n"
         );
         process.exit(1);
     }

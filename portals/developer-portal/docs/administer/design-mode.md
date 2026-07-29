@@ -48,12 +48,12 @@ Visit **http://localhost:9543/views/default**.
 All options can also be set via environment variables:
 
 ```
-APIP_DP_DESIGNMODE_ENABLED=true
-APIP_DP_DESIGNMODE_APISAMPLESPATH=./my-samples/apis/
-APIP_DP_DESIGNMODE_MCPSAMPLESPATH=./my-samples/mcps/
-APIP_DP_DESIGNMODE_SUBSCRIPTIONPLANSPATH=./my-samples/plans.yaml
-APIP_DP_DESIGNMODE_APPLICATIONSPATH=./my-samples/applications.yaml
-APIP_DP_DESIGNMODE_PATHTOLAYOUT=./my-layout/
+APIP_AP_DESIGNMODE_ENABLED=true
+APIP_AP_DESIGNMODE_APISAMPLESPATH=./my-samples/apis/
+APIP_AP_DESIGNMODE_MCPSAMPLESPATH=./my-samples/mcps/
+APIP_AP_DESIGNMODE_SUBSCRIPTIONPLANSPATH=./my-samples/plans.yaml
+APIP_AP_DESIGNMODE_APPLICATIONSPATH=./my-samples/applications.yaml
+APIP_AP_DESIGNMODE_PATHTOLAYOUT=./my-layout/
 ```
 
 ## Customising the Theme

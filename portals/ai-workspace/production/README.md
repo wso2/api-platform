@@ -223,7 +223,7 @@ written as a plain literal, does nothing.
 
 The shipped `config.toml` already writes its keys this way, naming each variable by the same
 convention: the key's path under `[ai_workspace]` uppercased, dots as underscores, prefixed with
-**`APIP_AIW_`** (the Platform API uses `APIP_CP_`, the Developer Portal `APIP_DP_`). Every key's
+**`APIP_AIW_`** (the Platform API uses `APIP_CP_`, the Developer Portal `APIP_AP_`). Every key's
 exact token — and the default it falls back to when the variable is unset — is written inline in
 `configs/config-template.toml`; that file is the source of truth, so it is not restated here.
 

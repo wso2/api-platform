@@ -59,13 +59,13 @@ services:
       postgres:
         condition: service_healthy
     environment:
-      APIP_DP_DATABASE_DRIVER: postgres
-      APIP_DP_DATABASE_HOST: postgres
-      APIP_DP_DATABASE_PORT: 5432
-      APIP_DP_DATABASE_USER: devportal
-      APIP_DP_DATABASE_PASSWORD: devportal
-      APIP_DP_DATABASE_NAME: devportal
-      APIP_DP_DATABASE_PATH: ""
+      APIP_AP_DATABASE_DRIVER: postgres
+      APIP_AP_DATABASE_HOST: postgres
+      APIP_AP_DATABASE_PORT: 5432
+      APIP_AP_DATABASE_USER: devportal
+      APIP_AP_DATABASE_PASSWORD: devportal
+      APIP_AP_DATABASE_NAME: devportal
+      APIP_AP_DATABASE_PATH: ""
 
 volumes:
   postgres_data:

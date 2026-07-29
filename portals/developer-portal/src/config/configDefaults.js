@@ -26,7 +26,7 @@
  *
  * Effective config precedence: DEFAULTS  →  configs/config.toml (with any
  * {{ env }} / {{ file }} references resolved — see configLoader.js). There is
- * no separate, automatic APIP_DP_* env-var override layer; an env var only
+ * no separate, automatic APIP_AP_* env-var override layer; an env var only
  * takes effect where config.toml explicitly references it.
  */
 const DEFAULTS = {

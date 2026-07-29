@@ -22,7 +22,7 @@ data:
   # Full [api_portal.*] config, mounted at /app/configs/config.toml to
   # replace the image's shipped config. configLoader.js unwraps [api_portal]
   # and ignores anything outside it. Non-secret values are literals from
-  # values.yaml; secrets are the portal's own {{ "{{ env \"APIP_DP_*\" }}" }} tokens,
+  # values.yaml; secrets are the portal's own {{ "{{ env \"APIP_AP_*\" }}" }} tokens,
   # supplied as env vars from the referenced Secret (Secret -> env -> config).
   config.toml: |
     [api_portal.server]
@@ -50,7 +50,7 @@ data:
     port = {{ $db.port | int }}
     name = {{ $db.database | quote }}
     user = {{ $db.user | quote }}
-    password = {{ `'{{ env "APIP_DP_DATABASE_PASSWORD" }}'` }}
+    password = {{ `'{{ env "APIP_AP_DATABASE_PASSWORD" }}'` }}
     ssl_mode = {{ $db.sslmode | quote }}
     {{- with $db.sslRootCert }}
     ssl_root_cert = {{ . | quote }}
@@ -63,14 +63,14 @@ data:
     {{- end }}
 
     [api_portal.security]
-    encryption_key = {{ `'{{ env "APIP_DP_SECURITY_ENCRYPTION_KEY" }}'` }}
-    session_secret = {{ `'{{ env "APIP_DP_SECURITY_SESSION_SECRET" }}'` }}
+    encryption_key = {{ `'{{ env "APIP_AP_SECURITY_ENCRYPTION_KEY" }}'` }}
+    session_secret = {{ `'{{ env "APIP_AP_SECURITY_SESSION_SECRET" }}'` }}
 
     [api_portal.security.service_api_key]
     enabled = {{ $cfg.security.serviceApiKey.enabled }}
     header_name = {{ $cfg.security.serviceApiKey.headerName | quote }}
     {{- if $dp.secrets.hasServiceApiKeyValue }}
-    value = {{ `'{{ env "APIP_DP_SECURITY_SERVICE_API_KEY_VALUE" }}'` }}
+    value = {{ `'{{ env "APIP_AP_SECURITY_SERVICE_API_KEY_VALUE" }}'` }}
     {{- end }}
 
     [api_portal.auth]
@@ -97,7 +97,7 @@ data:
     user_info_url = {{ $auth.idp.userInfoUrl | quote }}
     jwks_url = {{ $auth.idp.jwksUrl | quote }}
     client_id = {{ $auth.idp.clientId | quote }}
-    client_secret = {{ `'{{ env "APIP_DP_AUTH_IDP_CLIENT_SECRET" }}'` }}
+    client_secret = {{ `'{{ env "APIP_AP_AUTH_IDP_CLIENT_SECRET" }}'` }}
     callback_url = {{ $auth.idp.callbackUrl | quote }}
     logout_url = {{ $auth.idp.logoutUrl | quote }}
     scope = {{ $auth.idp.scope | quote }}

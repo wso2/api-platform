@@ -25,21 +25,21 @@ The Developer Portal supports two authentication modes, controlled by `auth.mode
 
 | Field (TOML) | Env var | Required | Description |
 |-------|---------|----------|-------------|
-| `name` | `APIP_DP_IDP_NAME` | No | Friendly name used in logs (default: `oauth2`) |
-| `issuer` | `APIP_DP_IDP_ISSUER` | Yes | IDP token issuer URL — used for issuer claim verification |
-| `authorization_url` | `APIP_DP_IDP_AUTHORIZATIONURL` | Yes | OAuth2 authorization endpoint |
-| `token_url` | `APIP_DP_IDP_TOKENURL` | Yes | OAuth2 token endpoint |
-| `user_info_url` | `APIP_DP_IDP_USERINFOURL` | No | OIDC userinfo endpoint |
-| `client_id` | `APIP_DP_IDP_CLIENTID` | Yes | OAuth2 client ID |
-| `client_secret` | `APIP_DP_IDP_CLIENTSECRET` | No* | Client secret for confidential clients (Traditional Web App, Keycloak). Leave empty for PKCE-only public clients. |
-| `audience` | `APIP_DP_IDP_AUDIENCE` | No | JWT `aud` claim to verify — typically the `client_id`. Leave empty to skip audience check. |
-| `callback_url` | `APIP_DP_IDP_CALLBACKURL` | Yes | OAuth2 redirect URI — must be registered in the IDP. Pattern: `https://<domain>/<orgName>/callback` |
-| `scope` | `APIP_DP_IDP_SCOPE` | No | Space-separated OIDC scopes to request (default: `openid profile email`) |
-| `logout_url` | `APIP_DP_IDP_LOGOUTURL` | No | IDP logout endpoint — used for end-session redirect |
-| `logout_redirect_uri` | `APIP_DP_IDP_LOGOUTREDIRECTURI` | No | Post-logout redirect back to the portal |
-| `jwks_url` | `APIP_DP_IDP_JWKSURL` | No* | JWKS endpoint for token signature verification. Either `jwks_url` or `certificate` is required. |
-| `certificate` | `APIP_DP_IDP_CERTIFICATE` | No* | X.509 certificate (PEM) as alternative to JWKS |
-| `token_refresh_timeout_ms` | `APIP_DP_IDP_TOKENREFRESHTIMEOUTMS` | No | Token refresh timeout in ms (default: `10000`) |
+| `name` | `APIP_AP_IDP_NAME` | No | Friendly name used in logs (default: `oauth2`) |
+| `issuer` | `APIP_AP_IDP_ISSUER` | Yes | IDP token issuer URL — used for issuer claim verification |
+| `authorization_url` | `APIP_AP_IDP_AUTHORIZATIONURL` | Yes | OAuth2 authorization endpoint |
+| `token_url` | `APIP_AP_IDP_TOKENURL` | Yes | OAuth2 token endpoint |
+| `user_info_url` | `APIP_AP_IDP_USERINFOURL` | No | OIDC userinfo endpoint |
+| `client_id` | `APIP_AP_IDP_CLIENTID` | Yes | OAuth2 client ID |
+| `client_secret` | `APIP_AP_IDP_CLIENTSECRET` | No* | Client secret for confidential clients (Traditional Web App, Keycloak). Leave empty for PKCE-only public clients. |
+| `audience` | `APIP_AP_IDP_AUDIENCE` | No | JWT `aud` claim to verify — typically the `client_id`. Leave empty to skip audience check. |
+| `callback_url` | `APIP_AP_IDP_CALLBACKURL` | Yes | OAuth2 redirect URI — must be registered in the IDP. Pattern: `https://<domain>/<orgName>/callback` |
+| `scope` | `APIP_AP_IDP_SCOPE` | No | Space-separated OIDC scopes to request (default: `openid profile email`) |
+| `logout_url` | `APIP_AP_IDP_LOGOUTURL` | No | IDP logout endpoint — used for end-session redirect |
+| `logout_redirect_uri` | `APIP_AP_IDP_LOGOUTREDIRECTURI` | No | Post-logout redirect back to the portal |
+| `jwks_url` | `APIP_AP_IDP_JWKSURL` | No* | JWKS endpoint for token signature verification. Either `jwks_url` or `certificate` is required. |
+| `certificate` | `APIP_AP_IDP_CERTIFICATE` | No* | X.509 certificate (PEM) as alternative to JWKS |
+| `token_refresh_timeout_ms` | `APIP_AP_IDP_TOKENREFRESHTIMEOUTMS` | No | Token refresh timeout in ms (default: `10000`) |
 
 ### Claim mapping and role fields (`[idp.claims]` / `[idp.roles]` in `config.toml`)
 
@@ -47,12 +47,12 @@ These tell the portal how to read user identity and roles from the IDP token.
 
 | Field (TOML) | Env var | Default | Description |
 |-------|---------|---------|-------------|
-| `idp.claims.org_id` | `APIP_DP_IDP_CLAIMS_ORGID` | `org_name` | JWT claim for the organization UUID. Asgardeo B2B uses `org_name`. Supports dot-notation (e.g. `org.id`). |
-| `idp.claims.role` | `APIP_DP_IDP_CLAIMS_ROLE` | `roles` | JWT claim for the user's roles. Supports dot-notation (e.g. `realm_access.roles` for Keycloak). |
-| `idp.claims.groups` | `APIP_DP_IDP_CLAIMS_GROUPS` | `groups` | JWT claim for groups |
-| `idp.roles.admin` | `APIP_DP_IDP_ROLES_ADMIN` | `admin` | Role value that grants portal admin access |
-| `idp.roles.super_admin` | `APIP_DP_IDP_ROLES_SUPERADMIN` | `superAdmin` | Role value that grants portal super-admin access |
-| `idp.roles.subscriber` | `APIP_DP_IDP_ROLES_SUBSCRIBER` | `Internal/subscriber` | Role value for standard subscribers |
+| `idp.claims.org_id` | `APIP_AP_IDP_CLAIMS_ORGID` | `org_name` | JWT claim for the organization UUID. Asgardeo B2B uses `org_name`. Supports dot-notation (e.g. `org.id`). |
+| `idp.claims.role` | `APIP_AP_IDP_CLAIMS_ROLE` | `roles` | JWT claim for the user's roles. Supports dot-notation (e.g. `realm_access.roles` for Keycloak). |
+| `idp.claims.groups` | `APIP_AP_IDP_CLAIMS_GROUPS` | `groups` | JWT claim for groups |
+| `idp.roles.admin` | `APIP_AP_IDP_ROLES_ADMIN` | `admin` | Role value that grants portal admin access |
+| `idp.roles.super_admin` | `APIP_AP_IDP_ROLES_SUPERADMIN` | `superAdmin` | Role value that grants portal super-admin access |
+| `idp.roles.subscriber` | `APIP_AP_IDP_ROLES_SUBSCRIBER` | `Internal/subscriber` | Role value for standard subscribers |
 | `idp.fidp` | — | `{}` | Map of `?fidp=<key>` query param values to IDP identifiers for federated login hints |
 
 > Claim names can also be overridden per-organization in the database (via the admin API), allowing different orgs to use different IDPs or claim structures.
@@ -102,7 +102,7 @@ authorization_url = "https://keycloak.example.com/realms/myrealm/protocol/openid
 token_url = "https://keycloak.example.com/realms/myrealm/protocol/openid-connect/token"
 user_info_url = "https://keycloak.example.com/realms/myrealm/protocol/openid-connect/userinfo"
 client_id = "devportal"
-client_secret = "<client-secret>"        # env: APIP_DP_IDP_CLIENTSECRET
+client_secret = "<client-secret>"        # env: APIP_AP_IDP_CLIENTSECRET
 audience = "devportal"
 callback_url = "https://<your-domain>/default/callback"
 logout_url = "https://keycloak.example.com/realms/myrealm/protocol/openid-connect/logout"

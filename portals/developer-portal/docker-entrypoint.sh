@@ -21,7 +21,7 @@
 set -e
 
 CERT_DIR=/etc/devportal/tls
-TLS_ENABLED="${APIP_DP_SERVER_HTTPS_ENABLED:-false}"
+TLS_ENABLED="${APIP_AP_SERVER_HTTPS_ENABLED:-false}"
 
 # The server now requires an explicit --config (repeatable, last-wins) — there is
 # no default path and no silent-defaults fallback. The base config is mounted at
@@ -35,7 +35,7 @@ CONFIG_PATH="${APIP_DP_CONFIG_PATH:-/app/configs/config.toml}"
 # it never generates a fallback, matching every other required secret.
 if [ "$TLS_ENABLED" = "true" ]; then
   if [ ! -f "$CERT_DIR/cert.pem" ] || [ ! -f "$CERT_DIR/key.pem" ]; then
-    echo "[entrypoint] ERROR: TLS is enabled (APIP_DP_SERVER_HTTPS_ENABLED=true) but no certificate was found at $CERT_DIR/cert.pem / key.pem. Run ./setup.sh first, or mount your own certificate at $CERT_DIR." >&2
+    echo "[entrypoint] ERROR: TLS is enabled (APIP_AP_SERVER_HTTPS_ENABLED=true) but no certificate was found at $CERT_DIR/cert.pem / key.pem. Run ./setup.sh first, or mount your own certificate at $CERT_DIR." >&2
     exit 1
   fi
   echo "[entrypoint] TLS certificate found at $CERT_DIR"

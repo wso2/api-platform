@@ -104,7 +104,7 @@ authorization_url = "https://api.asgardeo.io/t/<your-tenant>/oauth2/authorize"
 token_url = "https://api.asgardeo.io/t/<your-tenant>/oauth2/token"
 user_info_url = "https://api.asgardeo.io/t/<your-tenant>/oauth2/userinfo"
 client_id = "<devportal-app-client-id>"
-client_secret = "<devportal-app-client-secret>"   # env: APIP_DP_IDP_CLIENTSECRET
+client_secret = "<devportal-app-client-secret>"   # env: APIP_AP_IDP_CLIENTSECRET
 audience = "<devportal-app-client-id>"            # Asgardeo sets client_id as the aud claim
 callback_url = "https://<your-domain>/default/callback"
 logout_url = "https://api.asgardeo.io/t/<your-tenant>/oidc/logout"
@@ -117,7 +117,7 @@ org_id = "org_name"    # Asgardeo B2B: org_name matches ORGANIZATION_IDENTIFIER 
 role = "roles"
 ```
 
-> **Note:** Set `client_secret` via the `APIP_DP_IDP_CLIENTSECRET` environment variable rather than in the config file.
+> **Note:** Set `client_secret` via the `APIP_AP_IDP_CLIENTSECRET` environment variable rather than in the config file.
 
 > **Callback URL:** A single `callback_url` is shared across all devportal organizations. After the callback, the portal uses the session's `returnTo` value to redirect the user to the correct org. Register only the URL you set in `callback_url` with Asgardeo.
 

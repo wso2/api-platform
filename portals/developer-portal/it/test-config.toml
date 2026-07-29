@@ -3,9 +3,9 @@
 # Shared by docker-compose.test.yaml and docker-compose.test.postgres.yaml — mounted
 # at /app/configs/config.toml in both. Settings that are identical across both DB
 # variants live here; settings that differ (database connection, network hostnames)
-# stay as APIP_DP_* env vars in each compose file's environment: block.
+# stay as APIP_AP_* env vars in each compose file's environment: block.
 #
-# There is no automatic APIP_DP_* environment-variable override (see
+# There is no automatic APIP_AP_* environment-variable override (see
 # src/config/configLoader.js / configs/config.toml) — an env var set in either
 # compose file's environment: block only takes effect where a key below
 # explicitly references it via a {{ env "..." "default" }} token. Every key
@@ -25,18 +25,18 @@ console_only = true
 # cover docker-compose.test.postgres.yaml (PostgreSQL) — each compose file only sets
 # the env vars relevant to its own variant, so the other side's tokens just resolve
 # to these defaults, unused.
-driver   = '{{ env "APIP_DP_DATABASE_DRIVER" "sqlite" }}'
-path     = '{{ env "APIP_DP_DATABASE_PATH" "./data/devportal-it.db" }}'
-host     = '{{ env "APIP_DP_DATABASE_HOST" "localhost" }}'
-port     = '{{ env "APIP_DP_DATABASE_PORT" "5432" }}'
-user     = '{{ env "APIP_DP_DATABASE_USER" "postgres" }}'
-password = '{{ env "APIP_DP_DATABASE_PASSWORD" "" }}'
-name     = '{{ env "APIP_DP_DATABASE_NAME" "devportal" }}'
+driver   = '{{ env "APIP_AP_DATABASE_DRIVER" "sqlite" }}'
+path     = '{{ env "APIP_AP_DATABASE_PATH" "./data/devportal-it.db" }}'
+host     = '{{ env "APIP_AP_DATABASE_HOST" "localhost" }}'
+port     = '{{ env "APIP_AP_DATABASE_PORT" "5432" }}'
+user     = '{{ env "APIP_AP_DATABASE_USER" "postgres" }}'
+password = '{{ env "APIP_AP_DATABASE_PASSWORD" "" }}'
+name     = '{{ env "APIP_AP_DATABASE_NAME" "devportal" }}'
 
 [api_portal.security]
 # Required — devportal fails closed at startup without these.
-encryption_key = '{{ env "APIP_DP_SECURITY_ENCRYPTION_KEY" }}'
-session_secret = '{{ env "APIP_DP_SECURITY_SESSION_SECRET" }}'
+encryption_key = '{{ env "APIP_AP_SECURITY_ENCRYPTION_KEY" }}'
+session_secret = '{{ env "APIP_AP_SECURITY_SESSION_SECRET" }}'
 
 [api_portal.security.service_api_key]
 enabled = true
@@ -47,8 +47,8 @@ value = "devportal-it-test-key"
 # fixture runs a SECOND instance (devportal-other-org) off this same file with a
 # handle that deliberately does NOT match platform-api's org, to exercise the
 # login-time organization-mismatch rejection.
-handle       = '{{ env "APIP_DP_ORGANIZATION_HANDLE" "default" }}'
-display_name = '{{ env "APIP_DP_ORGANIZATION_DISPLAY_NAME" "Default" }}'
+handle       = '{{ env "APIP_AP_ORGANIZATION_HANDLE" "default" }}'
+display_name = '{{ env "APIP_AP_ORGANIZATION_DISPLAY_NAME" "Default" }}'
 auto_create_subscription_plans = true
 
 [api_portal.auth.local]

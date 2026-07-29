@@ -28,7 +28,7 @@ import (
 )
 
 // EnvPrefix namespaces the AI Workspace's environment variables. It mirrors the
-// Platform API's APIP_CP_ and the Developer Portal's APIP_DP_.
+// Platform API's APIP_CP_ and the Developer Portal's APIP_AP_.
 //
 // It is a naming convention, not a binding: the environment reaches the config only
 // through the {{ env "NAME" }} tokens written in config.toml, which name the variable
