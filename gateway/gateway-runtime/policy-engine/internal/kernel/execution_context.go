@@ -1207,9 +1207,12 @@ func (ec *PolicyExecutionContext) buildResponseContexts(headers *extprocv3.HttpH
 
 	responseHeaders := policy.NewHeaders(responseHeadersMap)
 
-	// Downstream snapshot: the pristine client request headers captured at
-	// request time (ec.downstreamHeaders).
-	downstream := &policy.DownstreamContext{Request: &policy.DownstreamRequest{Headers: ec.downstreamHeaders}}
+	// Downstream snapshot: reuse the request-time snapshot built in
+	// buildRequestContexts, which already carries the pristine client headers
+	// (ec.downstreamHeaders) plus path/method/authority/scheme. Reusing it —
+	// rather than rebuilding from headers alone — keeps the response path's
+	// scalar fields populated and guarantees no drift from the request phase.
+	downstream := ec.requestHeaderCtx.Downstream
 
 	// Upstream: the route's resolved upstream target plus a snapshot of the
 	// original upstream response headers, captured before any response-header

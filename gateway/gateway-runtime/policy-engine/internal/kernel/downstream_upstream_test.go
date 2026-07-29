@@ -204,7 +204,12 @@ func TestResponseSnapshots_DownstreamIsOriginalClientAndUpstreamSurvivesMutation
 // set on every response-phase context.
 func TestSnapshots_PopulatedOnAllResponseContexts(t *testing.T) {
 	ec := newDownstreamTestExecCtx()
-	ec.buildRequestContexts(httpHeaders([2]string{":path", "/api/pets"}), RouteMetadata{})
+	ec.buildRequestContexts(httpHeaders(
+		[2]string{":path", "/api/pets"},
+		[2]string{":method", "POST"},
+		[2]string{":authority", "gateway.example.com"},
+		[2]string{":scheme", "https"},
+	), RouteMetadata{})
 	ec.buildResponseContexts(httpHeaders(
 		[2]string{":status", "200"},
 		[2]string{"x-backend-signature", "sig"},
@@ -220,6 +225,13 @@ func TestSnapshots_PopulatedOnAllResponseContexts(t *testing.T) {
 		"responseStreamContext": {ec.responseStreamContext.Downstream, ec.responseStreamContext.Upstream},
 	} {
 		require.NotNilf(t, s.ds, "%s.Downstream should be populated", name)
+		require.NotNilf(t, s.ds.Request, "%s.Downstream.Request should be populated", name)
+		// The response-path downstream snapshot must carry the original client
+		// request scalars, not just headers.
+		assert.Equalf(t, "/api/pets", s.ds.Request.Path, "%s should snapshot the original path", name)
+		assert.Equalf(t, "POST", s.ds.Request.Method, "%s should snapshot the original method", name)
+		assert.Equalf(t, "gateway.example.com", s.ds.Request.Authority, "%s should snapshot the original authority", name)
+		assert.Equalf(t, "https", s.ds.Request.Scheme, "%s should snapshot the original scheme", name)
 		require.NotNilf(t, s.us, "%s.Upstream should be populated", name)
 		require.NotNilf(t, s.us.Response, "%s.Upstream.Response should be populated", name)
 		assert.Equalf(t, []string{"sig"}, s.us.Response.Headers.Get("x-backend-signature"),
