@@ -124,6 +124,7 @@ const loadSettingsPage = async (req, res) => {
             productionUrl: api.production_url,
             sandboxUrl: api.sandbox_url,
             tags: (api.dp_tags || []).map(tag => tag.name),
+            labels: (api.dp_labels || []).map(label => label.handle),
             agentVisibility: api.agent_visibility,
             subscriptionPlans: (api.dp_subscription_plans || []).map(p => p.display_name),
             existingDocs: docNamesByApiId[api.uuid] || [],
