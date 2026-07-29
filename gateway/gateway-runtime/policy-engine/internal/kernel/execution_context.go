@@ -1111,7 +1111,13 @@ func (ec *PolicyExecutionContext) buildRequestContexts(headers *extprocv3.HttpHe
 	// place, so body/stream-phase validators need this pristine copy to inspect
 	// what the client actually sent.
 	ec.downstreamHeaders = cloneHeaders(wrappedHeaders)
-	downstream := &policy.DownstreamContext{Request: &policy.DownstreamRequest{Headers: ec.downstreamHeaders}}
+	downstream := &policy.DownstreamContext{Request: &policy.DownstreamRequest{
+		Headers:   ec.downstreamHeaders,
+		Path:      path,
+		Method:    method,
+		Authority: authority,
+		Scheme:    scheme,
+	}}
 
 	ec.requestHeaderCtx = &policy.RequestHeaderContext{
 		SharedContext: sharedCtx,
@@ -1208,7 +1214,7 @@ func (ec *PolicyExecutionContext) buildResponseContexts(headers *extprocv3.HttpH
 	// Upstream: the route's resolved upstream target plus a snapshot of the
 	// original upstream response headers, captured before any response-header
 	// policy mutation.
-	upstream := toResponseUpstream(ec.defaultUpstream, cloneHeaders(responseHeaders))
+	upstream := toResponseUpstream(ec.defaultUpstream, cloneHeaders(responseHeaders), responseStatus)
 
 	ec.responseHeaderCtx = &policy.ResponseHeaderContext{
 		SharedContext:   ec.sharedCtx,
@@ -1340,9 +1346,9 @@ func toRequestUpstream(info *policyenginev1.UpstreamInfo) *policy.UpstreamReques
 // is always built (the response came from an upstream), with the identity fields
 // filled only when info is available. Name is left unset for the same
 // reason as toRequestUpstream — the cluster name is not exposed here.
-func toResponseUpstream(info *policyenginev1.UpstreamInfo, respHeaders *policy.Headers) *policy.UpstreamResponseContext {
+func toResponseUpstream(info *policyenginev1.UpstreamInfo, respHeaders *policy.Headers, statusCode int) *policy.UpstreamResponseContext {
 	us := &policy.UpstreamResponseContext{
-		Response: &policy.UpstreamResponse{Headers: respHeaders},
+		Response: &policy.UpstreamResponse{Headers: respHeaders, StatusCode: statusCode},
 	}
 	if info != nil {
 		us.URL = info.URL
