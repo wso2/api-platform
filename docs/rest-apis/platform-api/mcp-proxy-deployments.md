@@ -53,19 +53,18 @@ Required scopes (the token must carry at least one of): `ap:mcp_proxy:deployment
 |body|body|[DeployRequest](schemas.md#schemadeployrequest)|true|Deployment request with gateway ID, base reference, and metadata|
 
 > Example responses
-
-> 201 Response
+>
+> Asynchronous operation accepted; poll the deployment until status becomes DEPLOYED or FAILED.
 
 ```json
 {
   "deploymentId": "a73c85a1-d857-491e-a6b2-51dce05de7a2",
   "name": "v1.0-production",
   "gatewayId": "prod-gateway-01",
-  "status": "DEPLOYED",
+  "status": "DEPLOYING",
   "baseDeploymentId": "be6d8692-b9de-400e-b6c1-14db50154e27",
   "metadata": {},
   "createdAt": "2019-08-24T14:15:22Z",
-  "statusReason": "string",
   "updatedAt": "2019-08-24T14:15:22Z"
 }
 ```
@@ -79,8 +78,8 @@ Required scopes (the token must carry at least one of): `ap:mcp_proxy:deployment
   "message": "The request failed validation.",
   "errors": [
     {
-      "field": "spec.context",
-      "message": "must start with /"
+      "field": "<name of the offending field>",
+      "message": "<reason this field failed validation>"
     }
   ]
 }
@@ -150,7 +149,7 @@ curl -X GET https://localhost:9243/api/v0.9/mcp-proxies/{mcpProxyId}/deployments
 ```
 
 Retrieves all deployment artifacts for a specific MCP proxy. The id parameter is the MCP proxy handle (identifier),
-not the UUID. Supports filtering by gateway UUID and deployment status. 
+not the UUID. Supports filtering by gateway handle and deployment status. 
 Access is validated against the organization in the JWT token.
 
 ### Authentication
@@ -167,14 +166,14 @@ Required scopes (the token must carry at least one of): `ap:mcp_proxy:deployment
 |Name|In|Type|Required|Description|
 |---|---|---|---|---|
 |mcpProxyId|path|string|true|Unique identifier of the MCP proxy|
-|gatewayId|query|string|false|**Gateway ID** consisting of the **UUID** of the Gateway to filter status by.|
+|gatewayId|query|string|false|**Gateway ID** (handle — unique slug identifier) of the Gateway to filter deployments by.|
 |status|query|string|false|Filter deployments by status (DEPLOYED, UNDEPLOYED, DEPLOYING, UNDEPLOYING, FAILED, or ARCHIVED)|
 |limit|query|integer|false|Maximum number of items to return per page.|
 |offset|query|integer|false|Zero-based index of the first item to return.|
 
 #### Detailed descriptions
 
-**gatewayId**: **Gateway ID** consisting of the **UUID** of the Gateway to filter status by.
+**gatewayId**: **Gateway ID** (handle — unique slug identifier) of the Gateway to filter deployments by.
 
 #### Enumerated Values
 
@@ -188,7 +187,7 @@ Required scopes (the token must carry at least one of): `ap:mcp_proxy:deployment
 |status|ARCHIVED|
 
 > Example responses
-
+>
 > 200 Response
 
 ```json
@@ -224,8 +223,8 @@ Required scopes (the token must carry at least one of): `ap:mcp_proxy:deployment
   "message": "The request failed validation.",
   "errors": [
     {
-      "field": "spec.context",
-      "message": "must start with /"
+      "field": "<name of the offending field>",
+      "message": "<reason this field failed validation>"
     }
   ]
 }
@@ -308,7 +307,7 @@ Required scopes (the token must carry at least one of): `ap:mcp_proxy:deployment
 |deploymentId|path|string(uuid)|true|The UUID of the deployment|
 
 > Example responses
-
+>
 > 200 Response
 
 ```json
@@ -401,7 +400,7 @@ Required scopes (the token must carry at least one of): `ap:mcp_proxy:deployment
 |deploymentId|path|string(uuid)|true|The UUID of the deployment|
 
 > Example responses
-
+>
 > 400 Response
 
 ```json
@@ -411,8 +410,8 @@ Required scopes (the token must carry at least one of): `ap:mcp_proxy:deployment
   "message": "The request failed validation.",
   "errors": [
     {
-      "field": "spec.context",
-      "message": "must start with /"
+      "field": "<name of the offending field>",
+      "message": "<reason this field failed validation>"
     }
   ]
 }
@@ -443,8 +442,8 @@ Required scopes (the token must carry at least one of): `ap:mcp_proxy:deployment
 ```json
 {
   "status": "error",
-  "code": "CONFLICT",
-  "message": "The specified resource already exists."
+  "code": "DEPLOYMENT_ACTIVE",
+  "message": "Cannot delete an active deployment - undeploy it first."
 }
 ```
 
@@ -467,7 +466,7 @@ Required scopes (the token must carry at least one of): `ap:mcp_proxy:deployment
 |400|[Bad Request](https://tools.ietf.org/html/rfc7231#section-6.5.1)|Bad Request. Invalid request or validation error.|[Error](schemas.md#schemaerror)|
 |401|[Unauthorized](https://tools.ietf.org/html/rfc7235#section-3.1)|Unauthorized. Authentication credentials are missing or invalid.|[Error](schemas.md#schemaerror)|
 |404|[Not Found](https://tools.ietf.org/html/rfc7231#section-6.5.4)|Not Found. The specified resource does not exist.|[Error](schemas.md#schemaerror)|
-|409|[Conflict](https://tools.ietf.org/html/rfc7231#section-6.5.8)|Conflict. Specified resource already exists.|[Error](schemas.md#schemaerror)|
+|409|[Conflict](https://tools.ietf.org/html/rfc7231#section-6.5.8)|Conflict. The deployment is still active and must be undeployed before deletion.|[Error](schemas.md#schemaerror)|
 |500|[Internal Server Error](https://tools.ietf.org/html/rfc7231#section-6.6.1)|Internal Server Error.|[Error](schemas.md#schemaerror)|
 
 ## Undeploy deployment from gateway
@@ -511,19 +510,18 @@ Required scopes (the token must carry at least one of): `ap:mcp_proxy:deployment
 |gatewayId|query|string|true|Handle (URL-friendly slug) of the gateway (validated against deployment's bound gateway)|
 
 > Example responses
-
-> 200 Response
+>
+> Asynchronous operation accepted; poll the deployment until status becomes UNDEPLOYED or FAILED.
 
 ```json
 {
   "deploymentId": "a73c85a1-d857-491e-a6b2-51dce05de7a2",
   "name": "v1.0-production",
   "gatewayId": "prod-gateway-01",
-  "status": "DEPLOYED",
+  "status": "UNDEPLOYING",
   "baseDeploymentId": "be6d8692-b9de-400e-b6c1-14db50154e27",
   "metadata": {},
   "createdAt": "2019-08-24T14:15:22Z",
-  "statusReason": "string",
   "updatedAt": "2019-08-24T14:15:22Z"
 }
 ```
@@ -537,8 +535,8 @@ Required scopes (the token must carry at least one of): `ap:mcp_proxy:deployment
   "message": "The request failed validation.",
   "errors": [
     {
-      "field": "spec.context",
-      "message": "must start with /"
+      "field": "<name of the offending field>",
+      "message": "<reason this field failed validation>"
     }
   ]
 }
@@ -570,7 +568,7 @@ Required scopes (the token must carry at least one of): `ap:mcp_proxy:deployment
 {
   "status": "error",
   "code": "CONFLICT",
-  "message": "The specified resource already exists."
+  "message": "The request conflicts with the current state of the resource."
 }
 ```
 
@@ -593,7 +591,7 @@ Required scopes (the token must carry at least one of): `ap:mcp_proxy:deployment
 |400|[Bad Request](https://tools.ietf.org/html/rfc7231#section-6.5.1)|Bad Request. Invalid request or validation error.|[Error](schemas.md#schemaerror)|
 |401|[Unauthorized](https://tools.ietf.org/html/rfc7235#section-3.1)|Unauthorized. Authentication credentials are missing or invalid.|[Error](schemas.md#schemaerror)|
 |404|[Not Found](https://tools.ietf.org/html/rfc7231#section-6.5.4)|Not Found. The specified resource does not exist.|[Error](schemas.md#schemaerror)|
-|409|[Conflict](https://tools.ietf.org/html/rfc7231#section-6.5.8)|Conflict. Specified resource already exists.|[Error](schemas.md#schemaerror)|
+|409|[Conflict](https://tools.ietf.org/html/rfc7231#section-6.5.8)|Conflict. The request conflicts with the current state of the resource.|[Error](schemas.md#schemaerror)|
 |500|[Internal Server Error](https://tools.ietf.org/html/rfc7231#section-6.6.1)|Internal Server Error.|[Error](schemas.md#schemaerror)|
 
 ## Restore a previous deployment
@@ -637,19 +635,18 @@ Required scopes (the token must carry at least one of): `ap:mcp_proxy:deployment
 |gatewayId|query|string|true|Handle (URL-friendly slug) of the gateway (validated against deployment's bound gateway)|
 
 > Example responses
-
-> 200 Response
+>
+> Asynchronous operation accepted; poll the deployment until status becomes DEPLOYED or FAILED.
 
 ```json
 {
   "deploymentId": "a73c85a1-d857-491e-a6b2-51dce05de7a2",
   "name": "v1.0-production",
   "gatewayId": "prod-gateway-01",
-  "status": "DEPLOYED",
+  "status": "DEPLOYING",
   "baseDeploymentId": "be6d8692-b9de-400e-b6c1-14db50154e27",
   "metadata": {},
   "createdAt": "2019-08-24T14:15:22Z",
-  "statusReason": "string",
   "updatedAt": "2019-08-24T14:15:22Z"
 }
 ```
@@ -663,8 +660,8 @@ Required scopes (the token must carry at least one of): `ap:mcp_proxy:deployment
   "message": "The request failed validation.",
   "errors": [
     {
-      "field": "spec.context",
-      "message": "must start with /"
+      "field": "<name of the offending field>",
+      "message": "<reason this field failed validation>"
     }
   ]
 }
@@ -696,7 +693,7 @@ Required scopes (the token must carry at least one of): `ap:mcp_proxy:deployment
 {
   "status": "error",
   "code": "CONFLICT",
-  "message": "The specified resource already exists."
+  "message": "The request conflicts with the current state of the resource."
 }
 ```
 
@@ -719,5 +716,5 @@ Required scopes (the token must carry at least one of): `ap:mcp_proxy:deployment
 |400|[Bad Request](https://tools.ietf.org/html/rfc7231#section-6.5.1)|Bad Request. Invalid request or validation error.|[Error](schemas.md#schemaerror)|
 |401|[Unauthorized](https://tools.ietf.org/html/rfc7235#section-3.1)|Unauthorized. Authentication credentials are missing or invalid.|[Error](schemas.md#schemaerror)|
 |404|[Not Found](https://tools.ietf.org/html/rfc7231#section-6.5.4)|Not Found. The specified resource does not exist.|[Error](schemas.md#schemaerror)|
-|409|[Conflict](https://tools.ietf.org/html/rfc7231#section-6.5.8)|Conflict. Specified resource already exists.|[Error](schemas.md#schemaerror)|
+|409|[Conflict](https://tools.ietf.org/html/rfc7231#section-6.5.8)|Conflict. The request conflicts with the current state of the resource.|[Error](schemas.md#schemaerror)|
 |500|[Internal Server Error](https://tools.ietf.org/html/rfc7231#section-6.6.1)|Internal Server Error.|[Error](schemas.md#schemaerror)|

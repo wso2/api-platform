@@ -49,7 +49,7 @@ Required scopes (the token must carry at least one of): `ap:organization:create`
 |body|body|[Organization](schemas.md#schemaorganization)|true|Organization that needs to be added|
 
 > Example responses
-
+>
 > 201 Response
 
 ```json
@@ -73,8 +73,8 @@ Required scopes (the token must carry at least one of): `ap:organization:create`
   "message": "The request failed validation.",
   "errors": [
     {
-      "field": "spec.context",
-      "message": "must start with /"
+      "field": "<name of the offending field>",
+      "message": "<reason this field failed validation>"
     }
   ]
 }
@@ -86,7 +86,7 @@ Required scopes (the token must carry at least one of): `ap:organization:create`
 {
   "status": "error",
   "code": "CONFLICT",
-  "message": "The specified resource already exists."
+  "message": "The request conflicts with the current state of the resource."
 }
 ```
 
@@ -107,7 +107,7 @@ Required scopes (the token must carry at least one of): `ap:organization:create`
 |---|---|---|---|
 |201|[Created](https://tools.ietf.org/html/rfc7231#section-6.3.2)|Organization registered successfully|[Organization](schemas.md#schemaorganization)|
 |400|[Bad Request](https://tools.ietf.org/html/rfc7231#section-6.5.1)|Bad Request. Invalid request or validation error.|[Error](schemas.md#schemaerror)|
-|409|[Conflict](https://tools.ietf.org/html/rfc7231#section-6.5.8)|Conflict. Specified resource already exists.|[Error](schemas.md#schemaerror)|
+|409|[Conflict](https://tools.ietf.org/html/rfc7231#section-6.5.8)|Conflict. The request conflicts with the current state of the resource.|[Error](schemas.md#schemaerror)|
 |500|[Internal Server Error](https://tools.ietf.org/html/rfc7231#section-6.6.1)|Internal Server Error.|[Error](schemas.md#schemaerror)|
 
 ### Response Headers
@@ -152,7 +152,7 @@ Required scopes (the token must carry at least one of): `ap:organization:read`, 
 |offset|query|integer|false|Zero-based index of the first item to return.|
 
 > Example responses
-
+>
 > 200 Response
 
 ```json
@@ -240,7 +240,7 @@ Required scopes (the token must carry at least one of): `ap:organization:read`, 
 |organizationId|path|string|true|ID of the organization.|
 
 > Example responses
-
+>
 > 200 Response
 
 ```json
@@ -330,7 +330,7 @@ Required scopes (the token must carry at least one of): `ap:organization:read`, 
 |organizationId|path|string|true|ID of the organization.|
 
 > Example responses
-
+>
 > 401 Response
 
 ```json

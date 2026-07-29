@@ -32,7 +32,7 @@ Deploy a new LLM proxy configuration.
   "version": "v1.0",
   "projectId": "550e8400-e29b-41d4-a716-446655440000",
   "context": "/openai",
-  "vhost": "api.openai",
+  "vhost": "api.openai.com",
   "provider": {
     "id": "wso2-openai-provider",
     "auth": {
@@ -131,7 +131,7 @@ Required scopes (the token must carry at least one of): `ap:llm_proxy:create`, `
 |body|body|[LLMProxy](schemas.md#schemallmproxy)|true|none|
 
 > Example responses
-
+>
 > 201 Response
 
 ```json
@@ -145,7 +145,7 @@ Required scopes (the token must carry at least one of): `ap:llm_proxy:create`, `
   "version": "v1.0",
   "projectId": "550e8400-e29b-41d4-a716-446655440000",
   "context": "/openai",
-  "vhost": "api.openai",
+  "vhost": "api.openai.com",
   "provider": {
     "id": "wso2-openai-provider",
     "auth": {
@@ -238,8 +238,8 @@ Required scopes (the token must carry at least one of): `ap:llm_proxy:create`, `
   "message": "The request failed validation.",
   "errors": [
     {
-      "field": "spec.context",
-      "message": "must start with /"
+      "field": "<name of the offending field>",
+      "message": "<reason this field failed validation>"
     }
   ]
 }
@@ -281,7 +281,7 @@ Required scopes (the token must carry at least one of): `ap:llm_proxy:create`, `
 {
   "status": "error",
   "code": "CONFLICT",
-  "message": "The specified resource already exists."
+  "message": "The request conflicts with the current state of the resource."
 }
 ```
 
@@ -305,7 +305,7 @@ Required scopes (the token must carry at least one of): `ap:llm_proxy:create`, `
 |401|[Unauthorized](https://tools.ietf.org/html/rfc7235#section-3.1)|Unauthorized. Authentication credentials are missing or invalid.|[Error](schemas.md#schemaerror)|
 |403|[Forbidden](https://tools.ietf.org/html/rfc7231#section-6.5.3)|Forbidden. The authenticated user does not have permission to access this resource.|[Error](schemas.md#schemaerror)|
 |404|[Not Found](https://tools.ietf.org/html/rfc7231#section-6.5.4)|Not Found. The specified resource does not exist.|[Error](schemas.md#schemaerror)|
-|409|[Conflict](https://tools.ietf.org/html/rfc7231#section-6.5.8)|Conflict. Specified resource already exists.|[Error](schemas.md#schemaerror)|
+|409|[Conflict](https://tools.ietf.org/html/rfc7231#section-6.5.8)|Conflict. The request conflicts with the current state of the resource.|[Error](schemas.md#schemaerror)|
 |500|[Internal Server Error](https://tools.ietf.org/html/rfc7231#section-6.6.1)|Internal Server Error.|[Error](schemas.md#schemaerror)|
 
 ### Response Headers
@@ -345,16 +345,16 @@ Required scopes (the token must carry at least one of): `ap:llm_proxy:read`, `ap
 
 |Name|In|Type|Required|Description|
 |---|---|---|---|---|
-|projectId|query|string|true|**Project ID** consisting of the **handle** (unique slug identifier) of the Project to filter APIs by.|
+|projectId|query|string|true|**Project ID** consisting of the **handle** (unique slug identifier) of the Project whose resources should be returned.|
 |limit|query|integer|false|Maximum number of items to return per page.|
 |offset|query|integer|false|Zero-based index of the first item to return.|
 
 #### Detailed descriptions
 
-**projectId**: **Project ID** consisting of the **handle** (unique slug identifier) of the Project to filter APIs by.
+**projectId**: **Project ID** consisting of the **handle** (unique slug identifier) of the Project whose resources should be returned.
 
 > Example responses
-
+>
 > 200 Response
 
 ```json
@@ -447,7 +447,7 @@ Required scopes (the token must carry at least one of): `ap:llm_proxy:read`, `ap
 |llmProxyId|path|string|true|Unique identifier of the LLM proxy|
 
 > Example responses
-
+>
 > 200 Response
 
 ```json
@@ -461,7 +461,7 @@ Required scopes (the token must carry at least one of): `ap:llm_proxy:read`, `ap
   "version": "v1.0",
   "projectId": "550e8400-e29b-41d4-a716-446655440000",
   "context": "/openai",
-  "vhost": "api.openai",
+  "vhost": "api.openai.com",
   "provider": {
     "id": "wso2-openai-provider",
     "auth": {
@@ -615,7 +615,7 @@ Update the configuration of an existing LLM proxy.
   "version": "v1.0",
   "projectId": "550e8400-e29b-41d4-a716-446655440000",
   "context": "/openai",
-  "vhost": "api.openai",
+  "vhost": "api.openai.com",
   "provider": {
     "id": "wso2-openai-provider",
     "auth": {
@@ -715,7 +715,7 @@ Required scopes (the token must carry at least one of): `ap:llm_proxy:update`, `
 |body|body|[LLMProxy](schemas.md#schemallmproxy)|true|none|
 
 > Example responses
-
+>
 > 200 Response
 
 ```json
@@ -729,7 +729,7 @@ Required scopes (the token must carry at least one of): `ap:llm_proxy:update`, `
   "version": "v1.0",
   "projectId": "550e8400-e29b-41d4-a716-446655440000",
   "context": "/openai",
-  "vhost": "api.openai",
+  "vhost": "api.openai.com",
   "provider": {
     "id": "wso2-openai-provider",
     "auth": {
@@ -822,8 +822,8 @@ Required scopes (the token must carry at least one of): `ap:llm_proxy:update`, `
   "message": "The request failed validation.",
   "errors": [
     {
-      "field": "spec.context",
-      "message": "must start with /"
+      "field": "<name of the offending field>",
+      "message": "<reason this field failed validation>"
     }
   ]
 }
@@ -915,7 +915,7 @@ Required scopes (the token must carry at least one of): `ap:llm_proxy:delete`, `
 |llmProxyId|path|string|true|Unique identifier of the LLM proxy|
 
 > Example responses
-
+>
 > 400 Response
 
 ```json
@@ -925,8 +925,8 @@ Required scopes (the token must carry at least one of): `ap:llm_proxy:delete`, `
   "message": "The request failed validation.",
   "errors": [
     {
-      "field": "spec.context",
-      "message": "must start with /"
+      "field": "<name of the offending field>",
+      "message": "<reason this field failed validation>"
     }
   ]
 }
@@ -1035,7 +1035,7 @@ Required scopes (the token must carry at least one of): `ap:llm_proxy:api_key:cr
 |body|body|[CreateLLMProxyAPIKeyRequest](schemas.md#schemacreatellmproxyapikeyrequest)|true|API key creation details|
 
 > Example responses
-
+>
 > 201 Response
 
 ```json
@@ -1043,7 +1043,7 @@ Required scopes (the token must carry at least one of): `ap:llm_proxy:api_key:cr
   "status": "success",
   "message": "API key created and broadcasted to gateways successfully",
   "id": "production-key",
-  "apiKey": "a1b2c3d4e5f6789012345678901234567890abcdef1234567890abcdef123456"
+  "apiKey": "REDACTED_API_KEY"
 }
 ```
 
@@ -1056,8 +1056,8 @@ Required scopes (the token must carry at least one of): `ap:llm_proxy:api_key:cr
   "message": "The request failed validation.",
   "errors": [
     {
-      "field": "spec.context",
-      "message": "must start with /"
+      "field": "<name of the offending field>",
+      "message": "<reason this field failed validation>"
     }
   ]
 }
@@ -1158,7 +1158,7 @@ Required scopes (the token must carry at least one of): `ap:llm_proxy:api_key:re
 |offset|query|integer|false|Zero-based index of the first item to return.|
 
 > Example responses
-
+>
 > 200 Response
 
 ```json
@@ -1261,7 +1261,7 @@ Required scopes (the token must carry at least one of): `ap:llm_proxy:api_key:de
 |apiKeyId|path|string|true|Name of the API key to delete|
 
 > Example responses
-
+>
 > 401 Response
 
 ```json

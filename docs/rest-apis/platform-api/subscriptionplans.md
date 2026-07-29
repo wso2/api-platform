@@ -59,7 +59,7 @@ Required scopes (the token must carry at least one of): `ap:subscription_plan:cr
 |body|body|[CreateSubscriptionPlanRequest](schemas.md#schemacreatesubscriptionplanrequest)|true|none|
 
 > Example responses
-
+>
 > 201 Response
 
 ```json
@@ -95,8 +95,8 @@ Required scopes (the token must carry at least one of): `ap:subscription_plan:cr
   "message": "The request failed validation.",
   "errors": [
     {
-      "field": "spec.context",
-      "message": "must start with /"
+      "field": "<name of the offending field>",
+      "message": "<reason this field failed validation>"
     }
   ]
 }
@@ -128,7 +128,7 @@ Required scopes (the token must carry at least one of): `ap:subscription_plan:cr
 {
   "status": "error",
   "code": "CONFLICT",
-  "message": "The specified resource already exists."
+  "message": "The request conflicts with the current state of the resource."
 }
 ```
 
@@ -151,7 +151,7 @@ Required scopes (the token must carry at least one of): `ap:subscription_plan:cr
 |400|[Bad Request](https://tools.ietf.org/html/rfc7231#section-6.5.1)|Bad Request. Invalid request or validation error.|[Error](schemas.md#schemaerror)|
 |401|[Unauthorized](https://tools.ietf.org/html/rfc7235#section-3.1)|Unauthorized. Authentication credentials are missing or invalid.|[Error](schemas.md#schemaerror)|
 |403|[Forbidden](https://tools.ietf.org/html/rfc7231#section-6.5.3)|Forbidden. The authenticated user does not have permission to access this resource.|[Error](schemas.md#schemaerror)|
-|409|[Conflict](https://tools.ietf.org/html/rfc7231#section-6.5.8)|Conflict. Specified resource already exists.|[Error](schemas.md#schemaerror)|
+|409|[Conflict](https://tools.ietf.org/html/rfc7231#section-6.5.8)|Conflict. The request conflicts with the current state of the resource.|[Error](schemas.md#schemaerror)|
 |500|[Internal Server Error](https://tools.ietf.org/html/rfc7231#section-6.6.1)|Internal Server Error.|[Error](schemas.md#schemaerror)|
 
 ### Response Headers
@@ -195,7 +195,7 @@ Required scopes (the token must carry at least one of): `ap:subscription_plan:re
 |offset|query|integer|false|Zero-based index of the first item to return.|
 
 > Example responses
-
+>
 > 200 Response
 
 ```json
@@ -293,7 +293,7 @@ Required scopes (the token must carry at least one of): `ap:subscription_plan:re
 |subscriptionPlanId|path|string|true|none|
 
 > Example responses
-
+>
 > 200 Response
 
 ```json
@@ -419,7 +419,7 @@ Required scopes (the token must carry at least one of): `ap:subscription_plan:up
 |body|body|[SubscriptionPlan](schemas.md#schemasubscriptionplan)|true|none|
 
 > Example responses
-
+>
 > 200 Response
 
 ```json
@@ -455,8 +455,8 @@ Required scopes (the token must carry at least one of): `ap:subscription_plan:up
   "message": "The request failed validation.",
   "errors": [
     {
-      "field": "spec.context",
-      "message": "must start with /"
+      "field": "<name of the offending field>",
+      "message": "<reason this field failed validation>"
     }
   ]
 }
@@ -498,7 +498,7 @@ Required scopes (the token must carry at least one of): `ap:subscription_plan:up
 {
   "status": "error",
   "code": "CONFLICT",
-  "message": "The specified resource already exists."
+  "message": "The request conflicts with the current state of the resource."
 }
 ```
 
@@ -522,7 +522,7 @@ Required scopes (the token must carry at least one of): `ap:subscription_plan:up
 |401|[Unauthorized](https://tools.ietf.org/html/rfc7235#section-3.1)|Unauthorized. Authentication credentials are missing or invalid.|[Error](schemas.md#schemaerror)|
 |403|[Forbidden](https://tools.ietf.org/html/rfc7231#section-6.5.3)|Forbidden. The authenticated user does not have permission to access this resource.|[Error](schemas.md#schemaerror)|
 |404|[Not Found](https://tools.ietf.org/html/rfc7231#section-6.5.4)|Not Found. The specified resource does not exist.|[Error](schemas.md#schemaerror)|
-|409|[Conflict](https://tools.ietf.org/html/rfc7231#section-6.5.8)|Conflict. Specified resource already exists.|[Error](schemas.md#schemaerror)|
+|409|[Conflict](https://tools.ietf.org/html/rfc7231#section-6.5.8)|Conflict. The request conflicts with the current state of the resource.|[Error](schemas.md#schemaerror)|
 |500|[Internal Server Error](https://tools.ietf.org/html/rfc7231#section-6.6.1)|Internal Server Error.|[Error](schemas.md#schemaerror)|
 
 ## Delete subscription plan
@@ -557,7 +557,7 @@ Required scopes (the token must carry at least one of): `ap:subscription_plan:de
 |subscriptionPlanId|path|string|true|none|
 
 > Example responses
-
+>
 > 401 Response
 
 ```json

@@ -51,23 +51,23 @@ identified via the JWT token.
   },
   "completionTokens": {
     "location": "payload",
-    "identifier": "$.usage.inputTokens"
+    "identifier": "$.usage.outputTokens"
   },
   "totalTokens": {
     "location": "payload",
-    "identifier": "$.usage.inputTokens"
+    "identifier": "$.usage.totalTokens"
   },
   "remainingTokens": {
-    "location": "payload",
-    "identifier": "$.usage.inputTokens"
+    "location": "header",
+    "identifier": "x-ratelimit-remaining-tokens"
   },
   "requestModel": {
     "location": "payload",
-    "identifier": "$.usage.inputTokens"
+    "identifier": "$.model"
   },
   "responseModel": {
     "location": "payload",
-    "identifier": "$.usage.inputTokens"
+    "identifier": "$.model"
   },
   "resourceMappings": {
     "resources": [
@@ -79,23 +79,23 @@ identified via the JWT token.
         },
         "completionTokens": {
           "location": "payload",
-          "identifier": "$.usage.inputTokens"
+          "identifier": "$.usage.outputTokens"
         },
         "totalTokens": {
           "location": "payload",
-          "identifier": "$.usage.inputTokens"
+          "identifier": "$.usage.totalTokens"
         },
         "remainingTokens": {
-          "location": "payload",
-          "identifier": "$.usage.inputTokens"
+          "location": "header",
+          "identifier": "x-ratelimit-remaining-tokens"
         },
         "requestModel": {
           "location": "payload",
-          "identifier": "$.usage.inputTokens"
+          "identifier": "$.model"
         },
         "responseModel": {
           "location": "payload",
-          "identifier": "$.usage.inputTokens"
+          "identifier": "$.model"
         }
       }
     ]
@@ -119,7 +119,7 @@ Required scopes (the token must carry at least one of): `ap:llm_template:create`
 |body|body|[LLMProviderTemplate](schemas.md#schemallmprovidertemplate)|true|The template family to create (starts at v1.0).|
 
 > Example responses
-
+>
 > 201 Response
 
 ```json
@@ -152,23 +152,23 @@ Required scopes (the token must carry at least one of): `ap:llm_template:create`
   },
   "completionTokens": {
     "location": "payload",
-    "identifier": "$.usage.inputTokens"
+    "identifier": "$.usage.outputTokens"
   },
   "totalTokens": {
     "location": "payload",
-    "identifier": "$.usage.inputTokens"
+    "identifier": "$.usage.totalTokens"
   },
   "remainingTokens": {
-    "location": "payload",
-    "identifier": "$.usage.inputTokens"
+    "location": "header",
+    "identifier": "x-ratelimit-remaining-tokens"
   },
   "requestModel": {
     "location": "payload",
-    "identifier": "$.usage.inputTokens"
+    "identifier": "$.model"
   },
   "responseModel": {
     "location": "payload",
-    "identifier": "$.usage.inputTokens"
+    "identifier": "$.model"
   },
   "resourceMappings": {
     "resources": [
@@ -180,23 +180,23 @@ Required scopes (the token must carry at least one of): `ap:llm_template:create`
         },
         "completionTokens": {
           "location": "payload",
-          "identifier": "$.usage.inputTokens"
+          "identifier": "$.usage.outputTokens"
         },
         "totalTokens": {
           "location": "payload",
-          "identifier": "$.usage.inputTokens"
+          "identifier": "$.usage.totalTokens"
         },
         "remainingTokens": {
-          "location": "payload",
-          "identifier": "$.usage.inputTokens"
+          "location": "header",
+          "identifier": "x-ratelimit-remaining-tokens"
         },
         "requestModel": {
           "location": "payload",
-          "identifier": "$.usage.inputTokens"
+          "identifier": "$.model"
         },
         "responseModel": {
           "location": "payload",
-          "identifier": "$.usage.inputTokens"
+          "identifier": "$.model"
         }
       }
     ]
@@ -215,8 +215,8 @@ Required scopes (the token must carry at least one of): `ap:llm_template:create`
   "message": "The request failed validation.",
   "errors": [
     {
-      "field": "spec.context",
-      "message": "must start with /"
+      "field": "<name of the offending field>",
+      "message": "<reason this field failed validation>"
     }
   ]
 }
@@ -258,7 +258,7 @@ Required scopes (the token must carry at least one of): `ap:llm_template:create`
 {
   "status": "error",
   "code": "CONFLICT",
-  "message": "The specified resource already exists."
+  "message": "The request conflicts with the current state of the resource."
 }
 ```
 
@@ -282,7 +282,7 @@ Required scopes (the token must carry at least one of): `ap:llm_template:create`
 |401|[Unauthorized](https://tools.ietf.org/html/rfc7235#section-3.1)|Unauthorized. Authentication credentials are missing or invalid.|[Error](schemas.md#schemaerror)|
 |403|[Forbidden](https://tools.ietf.org/html/rfc7231#section-6.5.3)|Forbidden. The authenticated user does not have permission to access this resource.|[Error](schemas.md#schemaerror)|
 |404|[Not Found](https://tools.ietf.org/html/rfc7231#section-6.5.4)|Not Found. The specified resource does not exist.|[Error](schemas.md#schemaerror)|
-|409|[Conflict](https://tools.ietf.org/html/rfc7231#section-6.5.8)|Conflict. Specified resource already exists.|[Error](schemas.md#schemaerror)|
+|409|[Conflict](https://tools.ietf.org/html/rfc7231#section-6.5.8)|Conflict. The request conflicts with the current state of the resource.|[Error](schemas.md#schemaerror)|
 |500|[Internal Server Error](https://tools.ietf.org/html/rfc7231#section-6.6.1)|Internal Server Error.|[Error](schemas.md#schemaerror)|
 
 ### Response Headers
@@ -337,7 +337,7 @@ Required scopes (the token must carry at least one of): `ap:llm_template:read`, 
 |offset|query|integer|false|Zero-based index of the first item to return.|
 
 > Example responses
-
+>
 > 200 Response
 
 ```json
@@ -377,8 +377,8 @@ Required scopes (the token must carry at least one of): `ap:llm_template:read`, 
   "message": "The request failed validation.",
   "errors": [
     {
-      "field": "spec.context",
-      "message": "must start with /"
+      "field": "<name of the offending field>",
+      "message": "<reason this field failed validation>"
     }
   ]
 }
@@ -431,6 +431,50 @@ Required scopes (the token must carry at least one of): `ap:llm_template:read`, 
 
 |Property|Value|
 |---|---|
+|location|payload|
+|location|header|
+|location|queryParam|
+|location|pathParam|
+|location|payload|
+|location|header|
+|location|queryParam|
+|location|pathParam|
+|location|payload|
+|location|header|
+|location|queryParam|
+|location|pathParam|
+|location|payload|
+|location|header|
+|location|queryParam|
+|location|pathParam|
+|location|payload|
+|location|header|
+|location|queryParam|
+|location|pathParam|
+|location|payload|
+|location|header|
+|location|queryParam|
+|location|pathParam|
+|location|payload|
+|location|header|
+|location|queryParam|
+|location|pathParam|
+|location|payload|
+|location|header|
+|location|queryParam|
+|location|pathParam|
+|location|payload|
+|location|header|
+|location|queryParam|
+|location|pathParam|
+|location|payload|
+|location|header|
+|location|queryParam|
+|location|pathParam|
+|location|payload|
+|location|header|
+|location|queryParam|
+|location|pathParam|
 |location|payload|
 |location|header|
 |location|queryParam|
@@ -495,23 +539,23 @@ its own `group_id` and starts at v1.0.
   },
   "completionTokens": {
     "location": "payload",
-    "identifier": "$.usage.inputTokens"
+    "identifier": "$.usage.outputTokens"
   },
   "totalTokens": {
     "location": "payload",
-    "identifier": "$.usage.inputTokens"
+    "identifier": "$.usage.totalTokens"
   },
   "remainingTokens": {
-    "location": "payload",
-    "identifier": "$.usage.inputTokens"
+    "location": "header",
+    "identifier": "x-ratelimit-remaining-tokens"
   },
   "requestModel": {
     "location": "payload",
-    "identifier": "$.usage.inputTokens"
+    "identifier": "$.model"
   },
   "responseModel": {
     "location": "payload",
-    "identifier": "$.usage.inputTokens"
+    "identifier": "$.model"
   },
   "resourceMappings": {
     "resources": [
@@ -523,23 +567,23 @@ its own `group_id` and starts at v1.0.
         },
         "completionTokens": {
           "location": "payload",
-          "identifier": "$.usage.inputTokens"
+          "identifier": "$.usage.outputTokens"
         },
         "totalTokens": {
           "location": "payload",
-          "identifier": "$.usage.inputTokens"
+          "identifier": "$.usage.totalTokens"
         },
         "remainingTokens": {
-          "location": "payload",
-          "identifier": "$.usage.inputTokens"
+          "location": "header",
+          "identifier": "x-ratelimit-remaining-tokens"
         },
         "requestModel": {
           "location": "payload",
-          "identifier": "$.usage.inputTokens"
+          "identifier": "$.model"
         },
         "responseModel": {
           "location": "payload",
-          "identifier": "$.usage.inputTokens"
+          "identifier": "$.model"
         }
       }
     ]
@@ -566,90 +610,22 @@ Required scopes (the token must carry at least one of): `ap:llm_template:create`
 |body|body|[CreateLLMProviderTemplateVersionRequest](schemas.md#schemacreatellmprovidertemplateversionrequest)|false|Optional overrides applied on top of the copied config. Any field present replaces the value cloned from the source version.|
 
 > Example responses
-
-> 201 Response
+>
+> New version created successfully
 
 ```json
 {
-  "id": "openai",
+  "id": "openai-v4-0",
   "groupId": "openai",
   "displayName": "OpenAI",
-  "managedBy": "wso2",
+  "managedBy": "organization",
   "description": "Default OpenAI template",
   "createdBy": "john.doe",
   "updatedBy": "john.doe",
   "readOnly": false,
-  "version": "v1.0",
+  "version": "v4.0",
   "isLatest": true,
-  "enabled": true,
-  "openapi": "openapi: 3.0.3\ninfo:\n  title: Provider API\n  version: v1.0\npaths: {}\n",
-  "metadata": {
-    "endpointUrl": "https://api.openai.com",
-    "auth": {
-      "type": "bearer",
-      "header": "Authorization",
-      "valuePrefix": "Bearer "
-    },
-    "logoUrl": "https://cdn.example.com/logos/openai.svg",
-    "openapiSpecUrl": "https://api.openai.com/openapi.json"
-  },
-  "promptTokens": {
-    "location": "payload",
-    "identifier": "$.usage.inputTokens"
-  },
-  "completionTokens": {
-    "location": "payload",
-    "identifier": "$.usage.inputTokens"
-  },
-  "totalTokens": {
-    "location": "payload",
-    "identifier": "$.usage.inputTokens"
-  },
-  "remainingTokens": {
-    "location": "payload",
-    "identifier": "$.usage.inputTokens"
-  },
-  "requestModel": {
-    "location": "payload",
-    "identifier": "$.usage.inputTokens"
-  },
-  "responseModel": {
-    "location": "payload",
-    "identifier": "$.usage.inputTokens"
-  },
-  "resourceMappings": {
-    "resources": [
-      {
-        "resource": "/responses",
-        "promptTokens": {
-          "location": "payload",
-          "identifier": "$.usage.inputTokens"
-        },
-        "completionTokens": {
-          "location": "payload",
-          "identifier": "$.usage.inputTokens"
-        },
-        "totalTokens": {
-          "location": "payload",
-          "identifier": "$.usage.inputTokens"
-        },
-        "remainingTokens": {
-          "location": "payload",
-          "identifier": "$.usage.inputTokens"
-        },
-        "requestModel": {
-          "location": "payload",
-          "identifier": "$.usage.inputTokens"
-        },
-        "responseModel": {
-          "location": "payload",
-          "identifier": "$.usage.inputTokens"
-        }
-      }
-    ]
-  },
-  "createdAt": "2023-10-12T10:30:00Z",
-  "updatedAt": "2023-10-12T10:30:00Z"
+  "enabled": true
 }
 ```
 
@@ -662,8 +638,8 @@ Required scopes (the token must carry at least one of): `ap:llm_template:create`
   "message": "The request failed validation.",
   "errors": [
     {
-      "field": "spec.context",
-      "message": "must start with /"
+      "field": "<name of the offending field>",
+      "message": "<reason this field failed validation>"
     }
   ]
 }
@@ -705,7 +681,7 @@ Required scopes (the token must carry at least one of): `ap:llm_template:create`
 {
   "status": "error",
   "code": "CONFLICT",
-  "message": "The specified resource already exists."
+  "message": "The request conflicts with the current state of the resource."
 }
 ```
 
@@ -729,7 +705,7 @@ Required scopes (the token must carry at least one of): `ap:llm_template:create`
 |401|[Unauthorized](https://tools.ietf.org/html/rfc7235#section-3.1)|Unauthorized. Authentication credentials are missing or invalid.|[Error](schemas.md#schemaerror)|
 |403|[Forbidden](https://tools.ietf.org/html/rfc7231#section-6.5.3)|Forbidden. The authenticated user does not have permission to access this resource.|[Error](schemas.md#schemaerror)|
 |404|[Not Found](https://tools.ietf.org/html/rfc7231#section-6.5.4)|Not Found. The specified resource does not exist.|[Error](schemas.md#schemaerror)|
-|409|[Conflict](https://tools.ietf.org/html/rfc7231#section-6.5.8)|Conflict. Specified resource already exists.|[Error](schemas.md#schemaerror)|
+|409|[Conflict](https://tools.ietf.org/html/rfc7231#section-6.5.8)|Conflict. The request conflicts with the current state of the resource.|[Error](schemas.md#schemaerror)|
 |500|[Internal Server Error](https://tools.ietf.org/html/rfc7231#section-6.6.1)|Internal Server Error.|[Error](schemas.md#schemaerror)|
 
 ### Response Headers
@@ -772,7 +748,7 @@ Required scopes (the token must carry at least one of): `ap:llm_template:read`, 
 |llmProviderTemplateId|path|string|true|Unique handle of the template.|
 
 > Example responses
-
+>
 > 200 Response
 
 ```json
@@ -805,23 +781,23 @@ Required scopes (the token must carry at least one of): `ap:llm_template:read`, 
   },
   "completionTokens": {
     "location": "payload",
-    "identifier": "$.usage.inputTokens"
+    "identifier": "$.usage.outputTokens"
   },
   "totalTokens": {
     "location": "payload",
-    "identifier": "$.usage.inputTokens"
+    "identifier": "$.usage.totalTokens"
   },
   "remainingTokens": {
-    "location": "payload",
-    "identifier": "$.usage.inputTokens"
+    "location": "header",
+    "identifier": "x-ratelimit-remaining-tokens"
   },
   "requestModel": {
     "location": "payload",
-    "identifier": "$.usage.inputTokens"
+    "identifier": "$.model"
   },
   "responseModel": {
     "location": "payload",
-    "identifier": "$.usage.inputTokens"
+    "identifier": "$.model"
   },
   "resourceMappings": {
     "resources": [
@@ -833,23 +809,23 @@ Required scopes (the token must carry at least one of): `ap:llm_template:read`, 
         },
         "completionTokens": {
           "location": "payload",
-          "identifier": "$.usage.inputTokens"
+          "identifier": "$.usage.outputTokens"
         },
         "totalTokens": {
           "location": "payload",
-          "identifier": "$.usage.inputTokens"
+          "identifier": "$.usage.totalTokens"
         },
         "remainingTokens": {
-          "location": "payload",
-          "identifier": "$.usage.inputTokens"
+          "location": "header",
+          "identifier": "x-ratelimit-remaining-tokens"
         },
         "requestModel": {
           "location": "payload",
-          "identifier": "$.usage.inputTokens"
+          "identifier": "$.model"
         },
         "responseModel": {
           "location": "payload",
-          "identifier": "$.usage.inputTokens"
+          "identifier": "$.model"
         }
       }
     ]
@@ -947,23 +923,23 @@ version of the template.
   },
   "completionTokens": {
     "location": "payload",
-    "identifier": "$.usage.inputTokens"
+    "identifier": "$.usage.outputTokens"
   },
   "totalTokens": {
     "location": "payload",
-    "identifier": "$.usage.inputTokens"
+    "identifier": "$.usage.totalTokens"
   },
   "remainingTokens": {
-    "location": "payload",
-    "identifier": "$.usage.inputTokens"
+    "location": "header",
+    "identifier": "x-ratelimit-remaining-tokens"
   },
   "requestModel": {
     "location": "payload",
-    "identifier": "$.usage.inputTokens"
+    "identifier": "$.model"
   },
   "responseModel": {
     "location": "payload",
-    "identifier": "$.usage.inputTokens"
+    "identifier": "$.model"
   },
   "resourceMappings": {
     "resources": [
@@ -975,23 +951,23 @@ version of the template.
         },
         "completionTokens": {
           "location": "payload",
-          "identifier": "$.usage.inputTokens"
+          "identifier": "$.usage.outputTokens"
         },
         "totalTokens": {
           "location": "payload",
-          "identifier": "$.usage.inputTokens"
+          "identifier": "$.usage.totalTokens"
         },
         "remainingTokens": {
-          "location": "payload",
-          "identifier": "$.usage.inputTokens"
+          "location": "header",
+          "identifier": "x-ratelimit-remaining-tokens"
         },
         "requestModel": {
           "location": "payload",
-          "identifier": "$.usage.inputTokens"
+          "identifier": "$.model"
         },
         "responseModel": {
           "location": "payload",
-          "identifier": "$.usage.inputTokens"
+          "identifier": "$.model"
         }
       }
     ]
@@ -1016,7 +992,7 @@ Required scopes (the token must carry at least one of): `ap:llm_template:update`
 |body|body|[LLMProviderTemplate](schemas.md#schemallmprovidertemplate)|true|none|
 
 > Example responses
-
+>
 > 200 Response
 
 ```json
@@ -1049,23 +1025,23 @@ Required scopes (the token must carry at least one of): `ap:llm_template:update`
   },
   "completionTokens": {
     "location": "payload",
-    "identifier": "$.usage.inputTokens"
+    "identifier": "$.usage.outputTokens"
   },
   "totalTokens": {
     "location": "payload",
-    "identifier": "$.usage.inputTokens"
+    "identifier": "$.usage.totalTokens"
   },
   "remainingTokens": {
-    "location": "payload",
-    "identifier": "$.usage.inputTokens"
+    "location": "header",
+    "identifier": "x-ratelimit-remaining-tokens"
   },
   "requestModel": {
     "location": "payload",
-    "identifier": "$.usage.inputTokens"
+    "identifier": "$.model"
   },
   "responseModel": {
     "location": "payload",
-    "identifier": "$.usage.inputTokens"
+    "identifier": "$.model"
   },
   "resourceMappings": {
     "resources": [
@@ -1077,23 +1053,23 @@ Required scopes (the token must carry at least one of): `ap:llm_template:update`
         },
         "completionTokens": {
           "location": "payload",
-          "identifier": "$.usage.inputTokens"
+          "identifier": "$.usage.outputTokens"
         },
         "totalTokens": {
           "location": "payload",
-          "identifier": "$.usage.inputTokens"
+          "identifier": "$.usage.totalTokens"
         },
         "remainingTokens": {
-          "location": "payload",
-          "identifier": "$.usage.inputTokens"
+          "location": "header",
+          "identifier": "x-ratelimit-remaining-tokens"
         },
         "requestModel": {
           "location": "payload",
-          "identifier": "$.usage.inputTokens"
+          "identifier": "$.model"
         },
         "responseModel": {
           "location": "payload",
-          "identifier": "$.usage.inputTokens"
+          "identifier": "$.model"
         }
       }
     ]
@@ -1112,8 +1088,8 @@ Required scopes (the token must carry at least one of): `ap:llm_template:update`
   "message": "The request failed validation.",
   "errors": [
     {
-      "field": "spec.context",
-      "message": "must start with /"
+      "field": "<name of the offending field>",
+      "message": "<reason this field failed validation>"
     }
   ]
 }
@@ -1197,7 +1173,7 @@ by a provider is rejected (409).
 
 ```json
 {
-  "enabled": false
+  "enabled": true
 }
 ```
 
@@ -1216,10 +1192,10 @@ Required scopes (the token must carry at least one of): `ap:llm_template:update`
 |---|---|---|---|---|
 |llmProviderTemplateId|path|string|true|Unique handle of the template version.|
 |body|body|object|true|none|
-|» enabled|body|boolean|true|none|
+|» enabled|body|boolean|true|Set to true to enable this template version, false to disable it.|
 
 > Example responses
-
+>
 > 200 Response
 
 ```json
@@ -1252,23 +1228,23 @@ Required scopes (the token must carry at least one of): `ap:llm_template:update`
   },
   "completionTokens": {
     "location": "payload",
-    "identifier": "$.usage.inputTokens"
+    "identifier": "$.usage.outputTokens"
   },
   "totalTokens": {
     "location": "payload",
-    "identifier": "$.usage.inputTokens"
+    "identifier": "$.usage.totalTokens"
   },
   "remainingTokens": {
-    "location": "payload",
-    "identifier": "$.usage.inputTokens"
+    "location": "header",
+    "identifier": "x-ratelimit-remaining-tokens"
   },
   "requestModel": {
     "location": "payload",
-    "identifier": "$.usage.inputTokens"
+    "identifier": "$.model"
   },
   "responseModel": {
     "location": "payload",
-    "identifier": "$.usage.inputTokens"
+    "identifier": "$.model"
   },
   "resourceMappings": {
     "resources": [
@@ -1280,23 +1256,23 @@ Required scopes (the token must carry at least one of): `ap:llm_template:update`
         },
         "completionTokens": {
           "location": "payload",
-          "identifier": "$.usage.inputTokens"
+          "identifier": "$.usage.outputTokens"
         },
         "totalTokens": {
           "location": "payload",
-          "identifier": "$.usage.inputTokens"
+          "identifier": "$.usage.totalTokens"
         },
         "remainingTokens": {
-          "location": "payload",
-          "identifier": "$.usage.inputTokens"
+          "location": "header",
+          "identifier": "x-ratelimit-remaining-tokens"
         },
         "requestModel": {
           "location": "payload",
-          "identifier": "$.usage.inputTokens"
+          "identifier": "$.model"
         },
         "responseModel": {
           "location": "payload",
-          "identifier": "$.usage.inputTokens"
+          "identifier": "$.model"
         }
       }
     ]
@@ -1315,8 +1291,8 @@ Required scopes (the token must carry at least one of): `ap:llm_template:update`
   "message": "The request failed validation.",
   "errors": [
     {
-      "field": "spec.context",
-      "message": "must start with /"
+      "field": "<name of the offending field>",
+      "message": "<reason this field failed validation>"
     }
   ]
 }
@@ -1358,7 +1334,7 @@ Required scopes (the token must carry at least one of): `ap:llm_template:update`
 {
   "status": "error",
   "code": "CONFLICT",
-  "message": "The specified resource already exists."
+  "message": "The request conflicts with the current state of the resource."
 }
 ```
 
@@ -1382,7 +1358,7 @@ Required scopes (the token must carry at least one of): `ap:llm_template:update`
 |401|[Unauthorized](https://tools.ietf.org/html/rfc7235#section-3.1)|Unauthorized. Authentication credentials are missing or invalid.|[Error](schemas.md#schemaerror)|
 |403|[Forbidden](https://tools.ietf.org/html/rfc7231#section-6.5.3)|Forbidden. The authenticated user does not have permission to access this resource.|[Error](schemas.md#schemaerror)|
 |404|[Not Found](https://tools.ietf.org/html/rfc7231#section-6.5.4)|Not Found. The specified resource does not exist.|[Error](schemas.md#schemaerror)|
-|409|[Conflict](https://tools.ietf.org/html/rfc7231#section-6.5.8)|Conflict. Specified resource already exists.|[Error](schemas.md#schemaerror)|
+|409|[Conflict](https://tools.ietf.org/html/rfc7231#section-6.5.8)|Conflict. The request conflicts with the current state of the resource.|[Error](schemas.md#schemaerror)|
 |500|[Internal Server Error](https://tools.ietf.org/html/rfc7231#section-6.6.1)|Internal Server Error.|[Error](schemas.md#schemaerror)|
 
 ## Delete a template version
@@ -1421,7 +1397,7 @@ Required scopes (the token must carry at least one of): `ap:llm_template:delete`
 |llmProviderTemplateId|path|string|true|Unique handle of the template version.|
 
 > Example responses
-
+>
 > 400 Response
 
 ```json
@@ -1431,8 +1407,8 @@ Required scopes (the token must carry at least one of): `ap:llm_template:delete`
   "message": "The request failed validation.",
   "errors": [
     {
-      "field": "spec.context",
-      "message": "must start with /"
+      "field": "<name of the offending field>",
+      "message": "<reason this field failed validation>"
     }
   ]
 }
@@ -1474,7 +1450,7 @@ Required scopes (the token must carry at least one of): `ap:llm_template:delete`
 {
   "status": "error",
   "code": "CONFLICT",
-  "message": "The specified resource already exists."
+  "message": "The request conflicts with the current state of the resource."
 }
 ```
 
@@ -1498,5 +1474,5 @@ Required scopes (the token must carry at least one of): `ap:llm_template:delete`
 |401|[Unauthorized](https://tools.ietf.org/html/rfc7235#section-3.1)|Unauthorized. Authentication credentials are missing or invalid.|[Error](schemas.md#schemaerror)|
 |403|[Forbidden](https://tools.ietf.org/html/rfc7231#section-6.5.3)|Forbidden. The authenticated user does not have permission to access this resource.|[Error](schemas.md#schemaerror)|
 |404|[Not Found](https://tools.ietf.org/html/rfc7231#section-6.5.4)|Not Found. The specified resource does not exist.|[Error](schemas.md#schemaerror)|
-|409|[Conflict](https://tools.ietf.org/html/rfc7231#section-6.5.8)|Conflict. Specified resource already exists.|[Error](schemas.md#schemaerror)|
+|409|[Conflict](https://tools.ietf.org/html/rfc7231#section-6.5.8)|Conflict. The request conflicts with the current state of the resource.|[Error](schemas.md#schemaerror)|
 |500|[Internal Server Error](https://tools.ietf.org/html/rfc7231#section-6.6.1)|Internal Server Error.|[Error](schemas.md#schemaerror)|

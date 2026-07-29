@@ -788,7 +788,7 @@ type CreateLLMProviderAPIKeyRequest struct {
 
 // CreateLLMProviderAPIKeyResponse defines model for CreateLLMProviderAPIKeyResponse.
 type CreateLLMProviderAPIKeyResponse struct {
-	// ApiKey The generated API key value (shown only once, 64 hexadecimal characters)
+	// ApiKey The generated API key value — 64 hexadecimal characters, returned only in this creation response and never retrievable afterwards. The example value is a non-functional placeholder.
 	ApiKey string `binding:"required" json:"apiKey" yaml:"apiKey"`
 
 	// Id Unique identifier of the generated key
@@ -853,7 +853,7 @@ type CreateLLMProxyAPIKeyRequest struct {
 
 // CreateLLMProxyAPIKeyResponse defines model for CreateLLMProxyAPIKeyResponse.
 type CreateLLMProxyAPIKeyResponse struct {
-	// ApiKey The generated API key value (shown only once, 64 hexadecimal characters)
+	// ApiKey The generated API key value — 64 hexadecimal characters, returned only in this creation response and never retrievable afterwards. The example value is a non-functional placeholder.
 	ApiKey string `binding:"required" json:"apiKey" yaml:"apiKey"`
 
 	// Id Unique identifier of the generated key
@@ -1312,7 +1312,7 @@ type LLMProvider struct {
 	// AssociatedGateways Optional list of gateways this LLM provider can be deployed to, along with per-gateway configuration overrides. This field is optional; omitting it does not change existing behaviour.
 	AssociatedGateways *[]AssociatedGateway `json:"associatedGateways,omitempty" yaml:"associatedGateways,omitempty"`
 
-	// Context Base path for all REST API routes (must start with /, no trailing slash)
+	// Context Base path for all routes exposed by this proxy. Must start with / and carry no trailing slash; the single exception is the root path "/", which is the default.
 	Context *string `json:"context,omitempty" yaml:"context,omitempty"`
 
 	// CreatedAt Timestamp when the resource was created
@@ -1570,7 +1570,7 @@ type LLMProxy struct {
 	// AssociatedGateways Optional list of gateways this LLM proxy can be deployed to, along with per-gateway configuration overrides. This field is optional; omitting it does not change existing behaviour.
 	AssociatedGateways *[]AssociatedGateway `json:"associatedGateways,omitempty" yaml:"associatedGateways,omitempty"`
 
-	// Context Base path for all REST API routes (must start with /, no trailing slash)
+	// Context Base path for all routes exposed by this proxy. Must start with / and carry no trailing slash; the single exception is the root path "/", which is the default.
 	Context *string `json:"context,omitempty" yaml:"context,omitempty"`
 
 	// CreatedAt Timestamp when the resource was created
@@ -1719,7 +1719,7 @@ type MCPProxy struct {
 	AssociatedGateways *[]AssociatedGateway  `json:"associatedGateways,omitempty" yaml:"associatedGateways,omitempty"`
 	Capabilities       *MCPProxyCapabilities `json:"capabilities,omitempty" yaml:"capabilities,omitempty"`
 
-	// Context Base path for all REST API routes (must start with /, no trailing slash)
+	// Context Base path for all routes exposed by this proxy. Must start with / and carry no trailing slash; the single exception is the root path "/", which is the default.
 	Context *string `json:"context,omitempty" yaml:"context,omitempty"`
 
 	// CreatedAt Timestamp when the resource was created
@@ -2499,7 +2499,7 @@ type TokenRotationResponse struct {
 	// Message Informational message about token rotation
 	Message *string `json:"message,omitempty" yaml:"message,omitempty"`
 
-	// Token Plain-text new authentication token (only exposed once during rotation)
+	// Token Plain-text new authentication token (only exposed once during rotation). The example value is a non-functional placeholder.
 	Token *string `json:"token,omitempty" yaml:"token,omitempty"`
 }
 
@@ -2542,10 +2542,12 @@ type UpdateAPIKeyResponseStatus string
 
 // Upstream Upstream backend configuration with main and sandbox endpoints
 type Upstream struct {
-	// Main Upstream endpoint configuration (single target or reference)
+	// Main Upstream endpoint configuration. Provide exactly one of `url` (a direct backend URL) or
+	// `ref` (a reference to a predefined upstream definition) — never both.
 	Main UpstreamDefinition `json:"main" yaml:"main"`
 
-	// Sandbox Upstream endpoint configuration (single target or reference)
+	// Sandbox Upstream endpoint configuration. Provide exactly one of `url` (a direct backend URL) or
+	// `ref` (a reference to a predefined upstream definition) — never both.
 	Sandbox *UpstreamDefinition `json:"sandbox,omitempty" yaml:"sandbox,omitempty"`
 }
 
@@ -2564,15 +2566,16 @@ type UpstreamAuth struct {
 // UpstreamAuthType Authentication type
 type UpstreamAuthType string
 
-// UpstreamDefinition Upstream endpoint configuration (single target or reference)
+// UpstreamDefinition Upstream endpoint configuration. Provide exactly one of `url` (a direct backend URL) or
+// `ref` (a reference to a predefined upstream definition) — never both.
 type UpstreamDefinition struct {
 	// Auth Authentication configuration for upstream endpoints
 	Auth *UpstreamAuth `json:"auth,omitempty" yaml:"auth,omitempty"`
 
-	// Ref Reference to a predefined upstreamDefinition
+	// Ref Reference to a predefined upstreamDefinition. Mutually exclusive with `url`.
 	Ref *string `json:"ref,omitempty" yaml:"ref,omitempty"`
 
-	// Url Direct backend URL to route traffic to
+	// Url Direct backend URL to route traffic to. Mutually exclusive with `ref`.
 	Url   *string `json:"url,omitempty" yaml:"url,omitempty"`
 	union json.RawMessage
 }
@@ -2695,6 +2698,9 @@ type BadRequest = Error
 // Conflict The single error shape returned by every failed request across the API.
 type Conflict = Error
 
+// DeploymentActiveConflict The single error shape returned by every failed request across the API.
+type DeploymentActiveConflict = Error
+
 // Forbidden The single error shape returned by every failed request across the API.
 type Forbidden = Error
 
@@ -2715,7 +2721,7 @@ type Unauthorized = Error
 
 // ListApplicationsParams defines parameters for ListApplications.
 type ListApplicationsParams struct {
-	// ProjectId **Project ID** consisting of the **handle** (unique slug identifier) of the Project to filter APIs by.
+	// ProjectId **Project ID** consisting of the **handle** (unique slug identifier) of the Project whose resources should be returned.
 	ProjectId ProjectIdQ `form:"projectId" json:"projectId" yaml:"projectId"`
 
 	// Limit Maximum number of items to return per page.
@@ -2829,7 +2835,7 @@ type ListGatewayTokensParams struct {
 
 // ListLLMProviderTemplatesParams defines parameters for ListLLMProviderTemplates.
 type ListLLMProviderTemplatesParams struct {
-	// Query URL-encoded search DSL. `query=latest:true` lists only the latest version of each family; `query=groupId:<id>` lists that family's versions; adding `&version:<ver>` returns the single full template for that version. Terms are `&`-separated `key:value` pairs and the whole value is percent-encoded (e.g. groupId%3Aopenai%26version%3Av2.0).
+	// Query URL-encoded search DSL. `query=latest:true` lists only the latest version of each family; `query=groupId:<id>` lists that family's versions; adding `&version:<ver>` returns the single full template for that version. Terms are `&`-separated `key:value` pairs and the whole value is percent-encoded (e.g. groupId%3Awso2-openai%26version%3Av2.0).
 	Query *string `form:"query,omitempty" json:"query,omitempty" yaml:"query,omitempty"`
 
 	// Limit Maximum number of items to return per page.
@@ -2853,6 +2859,7 @@ type CopyLLMProviderTemplateVersionParams struct {
 
 // SetLLMProviderTemplateVersionEnabledJSONBody defines parameters for SetLLMProviderTemplateVersionEnabled.
 type SetLLMProviderTemplateVersionEnabledJSONBody struct {
+	// Enabled Set to true to enable this template version, false to disable it.
 	Enabled bool `json:"enabled" yaml:"enabled"`
 }
 
@@ -2876,7 +2883,7 @@ type ListLLMProviderAPIKeysParams struct {
 
 // GetLLMProviderDeploymentsParams defines parameters for GetLLMProviderDeployments.
 type GetLLMProviderDeploymentsParams struct {
-	// GatewayId **Gateway ID** consisting of the **UUID** of the Gateway to filter status by.
+	// GatewayId **Gateway ID** (handle — unique slug identifier) of the Gateway to filter deployments by.
 	GatewayId *GatewayIdQ `form:"gatewayId,omitempty" json:"gatewayId,omitempty" yaml:"gatewayId,omitempty"`
 
 	// Status Filter deployments by status (DEPLOYED, UNDEPLOYED, DEPLOYING, UNDEPLOYING, FAILED, or ARCHIVED)
@@ -2915,7 +2922,7 @@ type ListLLMProxiesByProviderParams struct {
 
 // ListLLMProxiesParams defines parameters for ListLLMProxies.
 type ListLLMProxiesParams struct {
-	// ProjectId **Project ID** consisting of the **handle** (unique slug identifier) of the Project to filter APIs by.
+	// ProjectId **Project ID** consisting of the **handle** (unique slug identifier) of the Project whose resources should be returned.
 	ProjectId ProjectIdQ `form:"projectId" json:"projectId" yaml:"projectId"`
 
 	// Limit Maximum number of items to return per page.
@@ -2936,7 +2943,7 @@ type ListLLMProxyAPIKeysParams struct {
 
 // GetLLMProxyDeploymentsParams defines parameters for GetLLMProxyDeployments.
 type GetLLMProxyDeploymentsParams struct {
-	// GatewayId **Gateway ID** consisting of the **UUID** of the Gateway to filter status by.
+	// GatewayId **Gateway ID** (handle — unique slug identifier) of the Gateway to filter deployments by.
 	GatewayId *GatewayIdQ `form:"gatewayId,omitempty" json:"gatewayId,omitempty" yaml:"gatewayId,omitempty"`
 
 	// Status Filter deployments by status (DEPLOYED, UNDEPLOYED, DEPLOYING, UNDEPLOYING, FAILED, or ARCHIVED)
@@ -2966,7 +2973,7 @@ type UndeployLLMProxyDeploymentParams struct {
 
 // ListMCPProxiesParams defines parameters for ListMCPProxies.
 type ListMCPProxiesParams struct {
-	// ProjectId **Project ID** consisting of the **handle** (unique slug identifier) of the Project to filter APIs by.
+	// ProjectId **Project ID** consisting of the **handle** (unique slug identifier) of the Project whose resources should be returned.
 	ProjectId ProjectIdQ `form:"projectId" json:"projectId" yaml:"projectId"`
 
 	// Limit Maximum number of items to return per page.
@@ -2978,7 +2985,7 @@ type ListMCPProxiesParams struct {
 
 // GetMCPProxyDeploymentsParams defines parameters for GetMCPProxyDeployments.
 type GetMCPProxyDeploymentsParams struct {
-	// GatewayId **Gateway ID** consisting of the **UUID** of the Gateway to filter status by.
+	// GatewayId **Gateway ID** (handle — unique slug identifier) of the Gateway to filter deployments by.
 	GatewayId *GatewayIdQ `form:"gatewayId,omitempty" json:"gatewayId,omitempty" yaml:"gatewayId,omitempty"`
 
 	// Status Filter deployments by status (DEPLOYED, UNDEPLOYED, DEPLOYING, UNDEPLOYING, FAILED, or ARCHIVED)
@@ -3057,7 +3064,7 @@ type ListProjectsParamsSortOrder string
 
 // ListRESTAPIsParams defines parameters for ListRESTAPIs.
 type ListRESTAPIsParams struct {
-	// ProjectId **Project ID** consisting of the **handle** (unique slug identifier) of the Project to filter APIs by.
+	// ProjectId **Project ID** consisting of the **handle** (unique slug identifier) of the Project whose resources should be returned.
 	ProjectId ProjectIdQ `form:"projectId" json:"projectId" yaml:"projectId"`
 
 	// Limit Maximum number of items to return per page.
@@ -3084,7 +3091,7 @@ type ListRESTAPIsParamsSortOrder string
 
 // GetDeploymentsParams defines parameters for GetDeployments.
 type GetDeploymentsParams struct {
-	// GatewayId **Gateway ID** consisting of the **UUID** of the Gateway to filter status by.
+	// GatewayId **Gateway ID** (handle — unique slug identifier) of the Gateway to filter deployments by.
 	GatewayId *GatewayIdQ `form:"gatewayId,omitempty" json:"gatewayId,omitempty" yaml:"gatewayId,omitempty"`
 
 	// Status Filter deployments by status (DEPLOYED, UNDEPLOYED, DEPLOYING, UNDEPLOYING, FAILED, or ARCHIVED)

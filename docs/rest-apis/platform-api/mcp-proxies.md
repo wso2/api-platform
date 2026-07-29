@@ -36,7 +36,6 @@ Deploy a new MCP proxy configuration.
   "upstream": {
     "main": {
       "url": "http://prod-backend:5000/api/v2",
-      "ref": "string",
       "auth": {
         "type": "api-key",
         "header": "X-API-Key",
@@ -45,7 +44,6 @@ Deploy a new MCP proxy configuration.
     },
     "sandbox": {
       "url": "http://prod-backend:5000/api/v2",
-      "ref": "string",
       "auth": {
         "type": "api-key",
         "header": "X-API-Key",
@@ -104,7 +102,7 @@ Required scopes (the token must carry at least one of): `ap:mcp_proxy:create`, `
 |body|body|[MCPProxy](schemas.md#schemamcpproxy)|true|none|
 
 > Example responses
-
+>
 > 201 Response
 
 ```json
@@ -122,18 +120,18 @@ Required scopes (the token must carry at least one of): `ap:mcp_proxy:create`, `
   "upstream": {
     "main": {
       "url": "http://prod-backend:5000/api/v2",
-      "ref": "string",
       "auth": {
         "type": "api-key",
-        "header": "X-API-Key"
+        "header": "X-API-Key",
+        "value": "my-api-key-value"
       }
     },
     "sandbox": {
       "url": "http://prod-backend:5000/api/v2",
-      "ref": "string",
       "auth": {
         "type": "api-key",
-        "header": "X-API-Key"
+        "header": "X-API-Key",
+        "value": "my-api-key-value"
       }
     }
   },
@@ -183,8 +181,8 @@ Required scopes (the token must carry at least one of): `ap:mcp_proxy:create`, `
   "message": "The request failed validation.",
   "errors": [
     {
-      "field": "spec.context",
-      "message": "must start with /"
+      "field": "<name of the offending field>",
+      "message": "<reason this field failed validation>"
     }
   ]
 }
@@ -216,7 +214,7 @@ Required scopes (the token must carry at least one of): `ap:mcp_proxy:create`, `
 {
   "status": "error",
   "code": "CONFLICT",
-  "message": "The specified resource already exists."
+  "message": "The request conflicts with the current state of the resource."
 }
 ```
 
@@ -239,7 +237,7 @@ Required scopes (the token must carry at least one of): `ap:mcp_proxy:create`, `
 |400|[Bad Request](https://tools.ietf.org/html/rfc7231#section-6.5.1)|Bad Request. Invalid request or validation error.|[Error](schemas.md#schemaerror)|
 |401|[Unauthorized](https://tools.ietf.org/html/rfc7235#section-3.1)|Unauthorized. Authentication credentials are missing or invalid.|[Error](schemas.md#schemaerror)|
 |403|[Forbidden](https://tools.ietf.org/html/rfc7231#section-6.5.3)|Forbidden. The authenticated user does not have permission to access this resource.|[Error](schemas.md#schemaerror)|
-|409|[Conflict](https://tools.ietf.org/html/rfc7231#section-6.5.8)|Conflict. Specified resource already exists.|[Error](schemas.md#schemaerror)|
+|409|[Conflict](https://tools.ietf.org/html/rfc7231#section-6.5.8)|Conflict. The request conflicts with the current state of the resource.|[Error](schemas.md#schemaerror)|
 |500|[Internal Server Error](https://tools.ietf.org/html/rfc7231#section-6.6.1)|Internal Server Error.|[Error](schemas.md#schemaerror)|
 
 ### Response Headers
@@ -279,16 +277,16 @@ Required scopes (the token must carry at least one of): `ap:mcp_proxy:read`, `ap
 
 |Name|In|Type|Required|Description|
 |---|---|---|---|---|
-|projectId|query|string|true|**Project ID** consisting of the **handle** (unique slug identifier) of the Project to filter APIs by.|
+|projectId|query|string|true|**Project ID** consisting of the **handle** (unique slug identifier) of the Project whose resources should be returned.|
 |limit|query|integer|false|Maximum number of items to return per page.|
 |offset|query|integer|false|Zero-based index of the first item to return.|
 
 #### Detailed descriptions
 
-**projectId**: **Project ID** consisting of the **handle** (unique slug identifier) of the Project to filter APIs by.
+**projectId**: **Project ID** consisting of the **handle** (unique slug identifier) of the Project whose resources should be returned.
 
 > Example responses
-
+>
 > 200 Response
 
 ```json
@@ -381,7 +379,7 @@ Required scopes (the token must carry at least one of): `ap:mcp_proxy:read`, `ap
 |mcpProxyId|path|string|true|Unique identifier of the MCP proxy|
 
 > Example responses
-
+>
 > 200 Response
 
 ```json
@@ -399,18 +397,18 @@ Required scopes (the token must carry at least one of): `ap:mcp_proxy:read`, `ap
   "upstream": {
     "main": {
       "url": "http://prod-backend:5000/api/v2",
-      "ref": "string",
       "auth": {
         "type": "api-key",
-        "header": "X-API-Key"
+        "header": "X-API-Key",
+        "value": "my-api-key-value"
       }
     },
     "sandbox": {
       "url": "http://prod-backend:5000/api/v2",
-      "ref": "string",
       "auth": {
         "type": "api-key",
-        "header": "X-API-Key"
+        "header": "X-API-Key",
+        "value": "my-api-key-value"
       }
     }
   },
@@ -525,7 +523,6 @@ Update the configuration of an existing MCP proxy.
   "upstream": {
     "main": {
       "url": "http://prod-backend:5000/api/v2",
-      "ref": "string",
       "auth": {
         "type": "api-key",
         "header": "X-API-Key",
@@ -534,7 +531,6 @@ Update the configuration of an existing MCP proxy.
     },
     "sandbox": {
       "url": "http://prod-backend:5000/api/v2",
-      "ref": "string",
       "auth": {
         "type": "api-key",
         "header": "X-API-Key",
@@ -594,7 +590,7 @@ Required scopes (the token must carry at least one of): `ap:mcp_proxy:update`, `
 |body|body|[MCPProxy](schemas.md#schemamcpproxy)|true|none|
 
 > Example responses
-
+>
 > 200 Response
 
 ```json
@@ -612,18 +608,18 @@ Required scopes (the token must carry at least one of): `ap:mcp_proxy:update`, `
   "upstream": {
     "main": {
       "url": "http://prod-backend:5000/api/v2",
-      "ref": "string",
       "auth": {
         "type": "api-key",
-        "header": "X-API-Key"
+        "header": "X-API-Key",
+        "value": "my-api-key-value"
       }
     },
     "sandbox": {
       "url": "http://prod-backend:5000/api/v2",
-      "ref": "string",
       "auth": {
         "type": "api-key",
-        "header": "X-API-Key"
+        "header": "X-API-Key",
+        "value": "my-api-key-value"
       }
     }
   },
@@ -673,8 +669,8 @@ Required scopes (the token must carry at least one of): `ap:mcp_proxy:update`, `
   "message": "The request failed validation.",
   "errors": [
     {
-      "field": "spec.context",
-      "message": "must start with /"
+      "field": "<name of the offending field>",
+      "message": "<reason this field failed validation>"
     }
   ]
 }
@@ -766,7 +762,7 @@ Required scopes (the token must carry at least one of): `ap:mcp_proxy:delete`, `
 |mcpProxyId|path|string|true|Unique identifier of the MCP proxy|
 
 > Example responses
-
+>
 > 400 Response
 
 ```json
@@ -776,8 +772,8 @@ Required scopes (the token must carry at least one of): `ap:mcp_proxy:delete`, `
   "message": "The request failed validation.",
   "errors": [
     {
-      "field": "spec.context",
-      "message": "must start with /"
+      "field": "<name of the offending field>",
+      "message": "<reason this field failed validation>"
     }
   ]
 }
@@ -883,10 +879,10 @@ Required scopes (the token must carry at least one of): `ap:mcp_proxy:read`, `ap
 
 |Name|In|Type|Required|Description|
 |---|---|---|---|---|
-|body|body|[MCPServerInfoFetchRequest](schemas.md#schemamcpserverinfofetchrequest)|true|Deployment request with gateway ID, base reference, and metadata|
+|body|body|[MCPServerInfoFetchRequest](schemas.md#schemamcpserverinfofetchrequest)|true|Target MCP server to introspect — either a direct `url` (with optional `auth`), or a `proxyId` to refetch using a stored proxy configuration.|
 
 > Example responses
-
+>
 > 200 Response
 
 ```json
@@ -913,8 +909,8 @@ Required scopes (the token must carry at least one of): `ap:mcp_proxy:read`, `ap
   "message": "The request failed validation.",
   "errors": [
     {
-      "field": "spec.context",
-      "message": "must start with /"
+      "field": "<name of the offending field>",
+      "message": "<reason this field failed validation>"
     }
   ]
 }

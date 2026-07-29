@@ -50,7 +50,7 @@ Required scopes (the token must carry at least one of): `ap:application:create`,
 |body|body|[CreateApplicationRequest](schemas.md#schemacreateapplicationrequest)|true|none|
 
 > Example responses
-
+>
 > 201 Response
 
 ```json
@@ -76,8 +76,8 @@ Required scopes (the token must carry at least one of): `ap:application:create`,
   "message": "The request failed validation.",
   "errors": [
     {
-      "field": "spec.context",
-      "message": "must start with /"
+      "field": "<name of the offending field>",
+      "message": "<reason this field failed validation>"
     }
   ]
 }
@@ -119,7 +119,7 @@ Required scopes (the token must carry at least one of): `ap:application:create`,
 {
   "status": "error",
   "code": "CONFLICT",
-  "message": "The specified resource already exists."
+  "message": "The request conflicts with the current state of the resource."
 }
 ```
 
@@ -143,7 +143,7 @@ Required scopes (the token must carry at least one of): `ap:application:create`,
 |401|[Unauthorized](https://tools.ietf.org/html/rfc7235#section-3.1)|Unauthorized. Authentication credentials are missing or invalid.|[Error](schemas.md#schemaerror)|
 |403|[Forbidden](https://tools.ietf.org/html/rfc7231#section-6.5.3)|Forbidden. The authenticated user does not have permission to access this resource.|[Error](schemas.md#schemaerror)|
 |404|[Not Found](https://tools.ietf.org/html/rfc7231#section-6.5.4)|Not Found. The specified resource does not exist.|[Error](schemas.md#schemaerror)|
-|409|[Conflict](https://tools.ietf.org/html/rfc7231#section-6.5.8)|Conflict. Specified resource already exists.|[Error](schemas.md#schemaerror)|
+|409|[Conflict](https://tools.ietf.org/html/rfc7231#section-6.5.8)|Conflict. The request conflicts with the current state of the resource.|[Error](schemas.md#schemaerror)|
 |500|[Internal Server Error](https://tools.ietf.org/html/rfc7231#section-6.6.1)|Internal Server Error.|[Error](schemas.md#schemaerror)|
 
 ### Response Headers
@@ -184,7 +184,7 @@ Required scopes (the token must carry at least one of): `ap:application:read`, `
 
 |Name|In|Type|Required|Description|
 |---|---|---|---|---|
-|projectId|query|string|true|**Project ID** consisting of the **handle** (unique slug identifier) of the Project to filter APIs by.|
+|projectId|query|string|true|**Project ID** consisting of the **handle** (unique slug identifier) of the Project whose resources should be returned.|
 |limit|query|integer|false|Maximum number of items to return per page.|
 |offset|query|integer|false|Zero-based index of the first item to return.|
 |sortBy|query|string|false|Field to sort the collection by. An unrecognized value falls back to the default sort (createdAt).|
@@ -193,7 +193,7 @@ Required scopes (the token must carry at least one of): `ap:application:read`, `
 
 #### Detailed descriptions
 
-**projectId**: **Project ID** consisting of the **handle** (unique slug identifier) of the Project to filter APIs by.
+**projectId**: **Project ID** consisting of the **handle** (unique slug identifier) of the Project whose resources should be returned.
 
 #### Enumerated Values
 
@@ -205,7 +205,7 @@ Required scopes (the token must carry at least one of): `ap:application:read`, `
 |sortOrder|desc|
 
 > Example responses
-
+>
 > 200 Response
 
 ```json
@@ -311,7 +311,7 @@ Required scopes (the token must carry at least one of): `ap:application:read`, `
 **applicationId**: **Application ID** consisting of the **handle** of the application.
 
 > Example responses
-
+>
 > 200 Response
 
 ```json
@@ -337,8 +337,8 @@ Required scopes (the token must carry at least one of): `ap:application:read`, `
   "message": "The request failed validation.",
   "errors": [
     {
-      "field": "spec.context",
-      "message": "must start with /"
+      "field": "<name of the offending field>",
+      "message": "<reason this field failed validation>"
     }
   ]
 }
@@ -438,7 +438,7 @@ Required scopes (the token must carry at least one of): `ap:application:update`,
 **applicationId**: **Application ID** consisting of the **handle** of the application.
 
 > Example responses
-
+>
 > 200 Response
 
 ```json
@@ -464,8 +464,8 @@ Required scopes (the token must carry at least one of): `ap:application:update`,
   "message": "The request failed validation.",
   "errors": [
     {
-      "field": "spec.context",
-      "message": "must start with /"
+      "field": "<name of the offending field>",
+      "message": "<reason this field failed validation>"
     }
   ]
 }
@@ -507,7 +507,7 @@ Required scopes (the token must carry at least one of): `ap:application:update`,
 {
   "status": "error",
   "code": "CONFLICT",
-  "message": "The specified resource already exists."
+  "message": "The request conflicts with the current state of the resource."
 }
 ```
 
@@ -531,7 +531,7 @@ Required scopes (the token must carry at least one of): `ap:application:update`,
 |401|[Unauthorized](https://tools.ietf.org/html/rfc7235#section-3.1)|Unauthorized. Authentication credentials are missing or invalid.|[Error](schemas.md#schemaerror)|
 |403|[Forbidden](https://tools.ietf.org/html/rfc7231#section-6.5.3)|Forbidden. The authenticated user does not have permission to access this resource.|[Error](schemas.md#schemaerror)|
 |404|[Not Found](https://tools.ietf.org/html/rfc7231#section-6.5.4)|Not Found. The specified resource does not exist.|[Error](schemas.md#schemaerror)|
-|409|[Conflict](https://tools.ietf.org/html/rfc7231#section-6.5.8)|Conflict. Specified resource already exists.|[Error](schemas.md#schemaerror)|
+|409|[Conflict](https://tools.ietf.org/html/rfc7231#section-6.5.8)|Conflict. The request conflicts with the current state of the resource.|[Error](schemas.md#schemaerror)|
 |500|[Internal Server Error](https://tools.ietf.org/html/rfc7231#section-6.6.1)|Internal Server Error.|[Error](schemas.md#schemaerror)|
 
 ## Delete application
@@ -572,7 +572,7 @@ Required scopes (the token must carry at least one of): `ap:application:delete`,
 **applicationId**: **Application ID** consisting of the **handle** of the application.
 
 > Example responses
-
+>
 > 400 Response
 
 ```json
@@ -582,8 +582,8 @@ Required scopes (the token must carry at least one of): `ap:application:delete`,
   "message": "The request failed validation.",
   "errors": [
     {
-      "field": "spec.context",
-      "message": "must start with /"
+      "field": "<name of the offending field>",
+      "message": "<reason this field failed validation>"
     }
   ]
 }
@@ -681,7 +681,7 @@ Required scopes (the token must carry at least one of): `ap:application:api_key:
 **applicationId**: **Application ID** consisting of the **handle** of the application.
 
 > Example responses
-
+>
 > 200 Response
 
 ```json
@@ -718,8 +718,8 @@ Required scopes (the token must carry at least one of): `ap:application:api_key:
   "message": "The request failed validation.",
   "errors": [
     {
-      "field": "spec.context",
-      "message": "must start with /"
+      "field": "<name of the offending field>",
+      "message": "<reason this field failed validation>"
     }
   ]
 }
@@ -833,7 +833,7 @@ Required scopes (the token must carry at least one of): `ap:application:api_key:
 **applicationId**: **Application ID** consisting of the **handle** of the application.
 
 > Example responses
-
+>
 > 200 Response
 
 ```json
@@ -870,8 +870,8 @@ Required scopes (the token must carry at least one of): `ap:application:api_key:
   "message": "The request failed validation.",
   "errors": [
     {
-      "field": "spec.context",
-      "message": "must start with /"
+      "field": "<name of the offending field>",
+      "message": "<reason this field failed validation>"
     }
   ]
 }
@@ -973,7 +973,7 @@ Required scopes (the token must carry at least one of): `ap:application:api_key:
 **entityID**: **Entity ID** of the artifact associated with the API key mapping.
 
 > Example responses
-
+>
 > 400 Response
 
 ```json
@@ -983,8 +983,8 @@ Required scopes (the token must carry at least one of): `ap:application:api_key:
   "message": "The request failed validation.",
   "errors": [
     {
-      "field": "spec.context",
-      "message": "must start with /"
+      "field": "<name of the offending field>",
+      "message": "<reason this field failed validation>"
     }
   ]
 }
@@ -1082,7 +1082,7 @@ Required scopes (the token must carry at least one of): `ap:application:associat
 **applicationId**: **Application ID** consisting of the **handle** of the application.
 
 > Example responses
-
+>
 > 200 Response
 
 ```json
@@ -1115,8 +1115,8 @@ Required scopes (the token must carry at least one of): `ap:application:associat
   "message": "The request failed validation.",
   "errors": [
     {
-      "field": "spec.context",
-      "message": "must start with /"
+      "field": "<name of the offending field>",
+      "message": "<reason this field failed validation>"
     }
   ]
 }
@@ -1217,7 +1217,7 @@ Required scopes (the token must carry at least one of): `ap:application:associat
 **applicationId**: **Application ID** consisting of the **handle** of the application.
 
 > Example responses
-
+>
 > 200 Response
 
 ```json
@@ -1250,8 +1250,8 @@ Required scopes (the token must carry at least one of): `ap:application:associat
   "message": "The request failed validation.",
   "errors": [
     {
-      "field": "spec.context",
-      "message": "must start with /"
+      "field": "<name of the offending field>",
+      "message": "<reason this field failed validation>"
     }
   ]
 }
@@ -1350,7 +1350,7 @@ Required scopes (the token must carry at least one of): `ap:application:associat
 **associationId**: **Association ID** consisting of the **handle** or **UUID** of the association target.
 
 > Example responses
-
+>
 > 400 Response
 
 ```json
@@ -1360,8 +1360,8 @@ Required scopes (the token must carry at least one of): `ap:application:associat
   "message": "The request failed validation.",
   "errors": [
     {
-      "field": "spec.context",
-      "message": "must start with /"
+      "field": "<name of the offending field>",
+      "message": "<reason this field failed validation>"
     }
   ]
 }
@@ -1462,7 +1462,7 @@ Required scopes (the token must carry at least one of): `ap:application:associat
 **associationId**: **Association ID** consisting of the **handle** or **UUID** of the association target.
 
 > Example responses
-
+>
 > 200 Response
 
 ```json
@@ -1499,8 +1499,8 @@ Required scopes (the token must carry at least one of): `ap:application:associat
   "message": "The request failed validation.",
   "errors": [
     {
-      "field": "spec.context",
-      "message": "must start with /"
+      "field": "<name of the offending field>",
+      "message": "<reason this field failed validation>"
     }
   ]
 }

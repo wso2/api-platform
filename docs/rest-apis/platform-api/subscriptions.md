@@ -52,7 +52,7 @@ Required scopes (the token must carry at least one of): `ap:subscription:create`
 |body|body|[CreateSubscriptionRequest](schemas.md#schemacreatesubscriptionrequest)|true|none|
 
 > Example responses
-
+>
 > 201 Response
 
 ```json
@@ -83,8 +83,8 @@ Required scopes (the token must carry at least one of): `ap:subscription:create`
   "message": "The request failed validation.",
   "errors": [
     {
-      "field": "spec.context",
-      "message": "must start with /"
+      "field": "<name of the offending field>",
+      "message": "<reason this field failed validation>"
     }
   ]
 }
@@ -126,7 +126,7 @@ Required scopes (the token must carry at least one of): `ap:subscription:create`
 {
   "status": "error",
   "code": "CONFLICT",
-  "message": "The specified resource already exists."
+  "message": "The request conflicts with the current state of the resource."
 }
 ```
 
@@ -150,7 +150,7 @@ Required scopes (the token must carry at least one of): `ap:subscription:create`
 |401|[Unauthorized](https://tools.ietf.org/html/rfc7235#section-3.1)|Unauthorized. Authentication credentials are missing or invalid.|[Error](schemas.md#schemaerror)|
 |403|[Forbidden](https://tools.ietf.org/html/rfc7231#section-6.5.3)|Forbidden. The authenticated user does not have permission to access this resource.|[Error](schemas.md#schemaerror)|
 |404|[Not Found](https://tools.ietf.org/html/rfc7231#section-6.5.4)|Not Found. The specified resource does not exist.|[Error](schemas.md#schemaerror)|
-|409|[Conflict](https://tools.ietf.org/html/rfc7231#section-6.5.8)|Conflict. Specified resource already exists.|[Error](schemas.md#schemaerror)|
+|409|[Conflict](https://tools.ietf.org/html/rfc7231#section-6.5.8)|Conflict. The request conflicts with the current state of the resource.|[Error](schemas.md#schemaerror)|
 |500|[Internal Server Error](https://tools.ietf.org/html/rfc7231#section-6.6.1)|Internal Server Error.|[Error](schemas.md#schemaerror)|
 
 ### Response Headers
@@ -208,7 +208,7 @@ Required scopes (the token must carry at least one of): `ap:subscription:read`, 
 |status|REVOKED|
 
 > Example responses
-
+>
 > 200 Response
 
 ```json
@@ -249,8 +249,8 @@ Required scopes (the token must carry at least one of): `ap:subscription:read`, 
   "message": "The request failed validation.",
   "errors": [
     {
-      "field": "spec.context",
-      "message": "must start with /"
+      "field": "<name of the offending field>",
+      "message": "<reason this field failed validation>"
     }
   ]
 }
@@ -313,8 +313,7 @@ curl -X GET https://localhost:9243/api/v0.9/subscriptions/{subscriptionId} \
 
 ```
 
-Returns a single subscription by ID (scoped to organization).
-Query parameter `subscriberId` is required and must match the subscription's subscriber for access control.
+Returns a single subscription by ID, scoped to the organization in the access token.
 
 ### Authentication
 
@@ -332,7 +331,7 @@ Required scopes (the token must carry at least one of): `ap:subscription:read`, 
 |subscriptionId|path|string(uuid)|true|Subscription UUID|
 
 > Example responses
-
+>
 > 200 Response
 
 ```json
@@ -363,8 +362,8 @@ Required scopes (the token must carry at least one of): `ap:subscription:read`, 
   "message": "The request failed validation.",
   "errors": [
     {
-      "field": "spec.context",
-      "message": "must start with /"
+      "field": "<name of the offending field>",
+      "message": "<reason this field failed validation>"
     }
   ]
 }
@@ -480,7 +479,7 @@ Required scopes (the token must carry at least one of): `ap:subscription:update`
 |body|body|[Subscription](schemas.md#schemasubscription)|true|none|
 
 > Example responses
-
+>
 > 200 Response
 
 ```json
@@ -511,8 +510,8 @@ Required scopes (the token must carry at least one of): `ap:subscription:update`
   "message": "The request failed validation.",
   "errors": [
     {
-      "field": "spec.context",
-      "message": "must start with /"
+      "field": "<name of the offending field>",
+      "message": "<reason this field failed validation>"
     }
   ]
 }
@@ -606,7 +605,7 @@ Required scopes (the token must carry at least one of): `ap:subscription:delete`
 |subscriberId|query|string|true|Subscriber ID; must match the subscription's subscriberId.|
 
 > Example responses
-
+>
 > 400 Response
 
 ```json
@@ -616,8 +615,8 @@ Required scopes (the token must carry at least one of): `ap:subscription:delete`
   "message": "The request failed validation.",
   "errors": [
     {
-      "field": "spec.context",
-      "message": "must start with /"
+      "field": "<name of the offending field>",
+      "message": "<reason this field failed validation>"
     }
   ]
 }

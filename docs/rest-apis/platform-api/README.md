@@ -49,7 +49,7 @@ License: <a href="https://www.apache.org/licenses/LICENSE-2.0.html">Apache 2.0</
 
 - [Create a new project](projects.md#create-a-new-project)
 - [Get all projects for current user's organization](projects.md#get-all-projects-for-current-users-organization)
-- [Get project by UUID](projects.md#get-project-by-uuid)
+- [Get project by handle](projects.md#get-project-by-handle)
 - [Update project](projects.md#update-project)
 - [Delete project](projects.md#delete-project)
 

@@ -747,7 +747,7 @@ Request body for creating an application.
   "id": "my-rest-api-handle",
   "displayName": "PizzaShackAPI",
   "description": "This is a simple API for Pizza Shack online pizza delivery store",
-  "context": "pizza",
+  "context": "/pizza",
   "version": "1.0.0",
   "createdBy": "john.doe",
   "updatedBy": "john.doe",
@@ -758,7 +758,6 @@ Request body for creating an application.
   "upstream": {
     "main": {
       "url": "http://prod-backend:5000/api/v2",
-      "ref": "string",
       "auth": {
         "type": "api-key",
         "header": "X-API-Key",
@@ -767,7 +766,6 @@ Request body for creating an application.
     },
     "sandbox": {
       "url": "http://prod-backend:5000/api/v2",
-      "ref": "string",
       "auth": {
         "type": "api-key",
         "header": "X-API-Key",
@@ -1747,7 +1745,7 @@ List of gateway status information for polling
       "id": "my-rest-api-handle",
       "displayName": "PizzaShackAPI",
       "description": "This is a simple API for Pizza Shack online pizza delivery store",
-      "context": "pizza",
+      "context": "/pizza",
       "version": "1.0.0",
       "createdBy": "john.doe",
       "updatedBy": "john.doe",
@@ -1758,7 +1756,6 @@ List of gateway status information for polling
       "upstream": {
         "main": {
           "url": "http://prod-backend:5000/api/v2",
-          "ref": "string",
           "auth": {
             "type": "api-key",
             "header": "X-API-Key",
@@ -1767,7 +1764,6 @@ List of gateway status information for polling
         },
         "sandbox": {
           "url": "http://prod-backend:5000/api/v2",
-          "ref": "string",
           "auth": {
             "type": "api-key",
             "header": "X-API-Key",
@@ -1867,7 +1863,7 @@ List of gateway status information for polling
 ```json
 {
   "id": "def45678-g901-23hi-j456-789012klmnop",
-  "token": "nM8pQ1rT4vW7yZ0bC3eF6hI9kL2nO5qR8tU1wX4zA7cE0fH3jK6mP9sV2yB5dG8i",
+  "token": "REDACTED_TOKEN",
   "createdAt": "2025-10-15T14:20:00Z",
   "message": "New token generated successfully. Old token remains active until revoked."
 }
@@ -1879,7 +1875,7 @@ List of gateway status information for polling
 |Name|Type|Required|Restrictions|Description|
 |---|---|---|---|---|
 |id|string(uuid)|false|none|ID of the newly generated token|
-|token|string|false|none|Plain-text new authentication token (only exposed once during rotation)|
+|token|string|false|none|Plain-text new authentication token (only exposed once during rotation). The example value is a non-functional placeholder.|
 |createdAt|string(date-time)|false|none|Timestamp when new token was created|
 |message|string|false|none|Informational message about token rotation|
 
@@ -1928,7 +1924,7 @@ List of gateway status information for polling
   "id": "my-rest-api-handle",
   "displayName": "PizzaShackAPI",
   "description": "This is a simple API for Pizza Shack online pizza delivery store",
-  "context": "pizza",
+  "context": "/pizza",
   "version": "1.0.0",
   "createdBy": "john.doe",
   "updatedBy": "john.doe",
@@ -1939,7 +1935,6 @@ List of gateway status information for polling
   "upstream": {
     "main": {
       "url": "http://prod-backend:5000/api/v2",
-      "ref": "string",
       "auth": {
         "type": "api-key",
         "header": "X-API-Key",
@@ -1948,7 +1943,6 @@ List of gateway status information for polling
     },
     "sandbox": {
       "url": "http://prod-backend:5000/api/v2",
-      "ref": "string",
       "auth": {
         "type": "api-key",
         "header": "X-API-Key",
@@ -2571,7 +2565,7 @@ Time unit for API key expiration duration
   "message": "The requested REST API could not be found.",
   "errors": [
     {
-      "field": "spec.context",
+      "field": "<name of the offending field>",
       "message": "must start with /"
     }
   ],
@@ -2609,7 +2603,7 @@ Standard error response
 
 ```json
 {
-  "field": "spec.context",
+  "field": "<name of the offending field>",
   "message": "must start with /"
 }
 
@@ -2748,7 +2742,6 @@ Field-level validation error
 {
   "main": {
     "url": "http://prod-backend:5000/api/v2",
-    "ref": "string",
     "auth": {
       "type": "api-key",
       "header": "X-API-Key",
@@ -2757,7 +2750,6 @@ Field-level validation error
   },
   "sandbox": {
     "url": "http://prod-backend:5000/api/v2",
-    "ref": "string",
     "auth": {
       "type": "api-key",
       "header": "X-API-Key",
@@ -2774,8 +2766,8 @@ Upstream backend configuration with main and sandbox endpoints
 
 |Name|Type|Required|Restrictions|Description|
 |---|---|---|---|---|
-|main|[UpstreamDefinition](#schemaupstreamdefinition)|true|none|Upstream endpoint configuration (single target or reference)|
-|sandbox|[UpstreamDefinition](#schemaupstreamdefinition)|false|none|Upstream endpoint configuration (single target or reference)|
+|main|[UpstreamDefinition](#schemaupstreamdefinition)|true|none|Upstream endpoint configuration. Provide exactly one of `url` (a direct backend URL) or<br>`ref` (a reference to a predefined upstream definition) — never both.|
+|sandbox|[UpstreamDefinition](#schemaupstreamdefinition)|false|none|Upstream endpoint configuration. Provide exactly one of `url` (a direct backend URL) or<br>`ref` (a reference to a predefined upstream definition) — never both.|
 
 <h2 id="tocS_UpstreamDefinition">UpstreamDefinition</h2>
 
@@ -2787,7 +2779,6 @@ Upstream backend configuration with main and sandbox endpoints
 ```json
 {
   "url": "http://prod-backend:5000/api/v2",
-  "ref": "string",
   "auth": {
     "type": "api-key",
     "header": "X-API-Key",
@@ -2797,14 +2788,15 @@ Upstream backend configuration with main and sandbox endpoints
 
 ```
 
-Upstream endpoint configuration (single target or reference)
+Upstream endpoint configuration. Provide exactly one of `url` (a direct backend URL) or
+`ref` (a reference to a predefined upstream definition) — never both.
 
 ### Properties
 
 |Name|Type|Required|Restrictions|Description|
 |---|---|---|---|---|
-|url|string(uri)|false|none|Direct backend URL to route traffic to|
-|ref|string|false|none|Reference to a predefined upstreamDefinition|
+|url|string(uri)|false|none|Direct backend URL to route traffic to. Mutually exclusive with `ref`.|
+|ref|string|false|none|Reference to a predefined upstreamDefinition. Mutually exclusive with `url`.|
 |auth|[UpstreamAuth](#schemaupstreamauth)|false|none|Authentication configuration for upstream endpoints|
 
 oneOf
@@ -2956,23 +2948,23 @@ Authentication configuration for upstream endpoints
   },
   "completionTokens": {
     "location": "payload",
-    "identifier": "$.usage.inputTokens"
+    "identifier": "$.usage.outputTokens"
   },
   "totalTokens": {
     "location": "payload",
-    "identifier": "$.usage.inputTokens"
+    "identifier": "$.usage.totalTokens"
   },
   "remainingTokens": {
-    "location": "payload",
-    "identifier": "$.usage.inputTokens"
+    "location": "header",
+    "identifier": "x-ratelimit-remaining-tokens"
   },
   "requestModel": {
     "location": "payload",
-    "identifier": "$.usage.inputTokens"
+    "identifier": "$.model"
   },
   "responseModel": {
     "location": "payload",
-    "identifier": "$.usage.inputTokens"
+    "identifier": "$.model"
   }
 }
 
@@ -3008,23 +3000,23 @@ Authentication configuration for upstream endpoints
       },
       "completionTokens": {
         "location": "payload",
-        "identifier": "$.usage.inputTokens"
+        "identifier": "$.usage.outputTokens"
       },
       "totalTokens": {
         "location": "payload",
-        "identifier": "$.usage.inputTokens"
+        "identifier": "$.usage.totalTokens"
       },
       "remainingTokens": {
-        "location": "payload",
-        "identifier": "$.usage.inputTokens"
+        "location": "header",
+        "identifier": "x-ratelimit-remaining-tokens"
       },
       "requestModel": {
         "location": "payload",
-        "identifier": "$.usage.inputTokens"
+        "identifier": "$.model"
       },
       "responseModel": {
         "location": "payload",
-        "identifier": "$.usage.inputTokens"
+        "identifier": "$.model"
       }
     }
   ]
@@ -3075,23 +3067,23 @@ Authentication configuration for upstream endpoints
   },
   "completionTokens": {
     "location": "payload",
-    "identifier": "$.usage.inputTokens"
+    "identifier": "$.usage.outputTokens"
   },
   "totalTokens": {
     "location": "payload",
-    "identifier": "$.usage.inputTokens"
+    "identifier": "$.usage.totalTokens"
   },
   "remainingTokens": {
-    "location": "payload",
-    "identifier": "$.usage.inputTokens"
+    "location": "header",
+    "identifier": "x-ratelimit-remaining-tokens"
   },
   "requestModel": {
     "location": "payload",
-    "identifier": "$.usage.inputTokens"
+    "identifier": "$.model"
   },
   "responseModel": {
     "location": "payload",
-    "identifier": "$.usage.inputTokens"
+    "identifier": "$.model"
   },
   "resourceMappings": {
     "resources": [
@@ -3103,23 +3095,23 @@ Authentication configuration for upstream endpoints
         },
         "completionTokens": {
           "location": "payload",
-          "identifier": "$.usage.inputTokens"
+          "identifier": "$.usage.outputTokens"
         },
         "totalTokens": {
           "location": "payload",
-          "identifier": "$.usage.inputTokens"
+          "identifier": "$.usage.totalTokens"
         },
         "remainingTokens": {
-          "location": "payload",
-          "identifier": "$.usage.inputTokens"
+          "location": "header",
+          "identifier": "x-ratelimit-remaining-tokens"
         },
         "requestModel": {
           "location": "payload",
-          "identifier": "$.usage.inputTokens"
+          "identifier": "$.model"
         },
         "responseModel": {
           "location": "payload",
-          "identifier": "$.usage.inputTokens"
+          "identifier": "$.model"
         }
       }
     ]
@@ -3187,23 +3179,23 @@ Authentication configuration for upstream endpoints
   },
   "completionTokens": {
     "location": "payload",
-    "identifier": "$.usage.inputTokens"
+    "identifier": "$.usage.outputTokens"
   },
   "totalTokens": {
     "location": "payload",
-    "identifier": "$.usage.inputTokens"
+    "identifier": "$.usage.totalTokens"
   },
   "remainingTokens": {
-    "location": "payload",
-    "identifier": "$.usage.inputTokens"
+    "location": "header",
+    "identifier": "x-ratelimit-remaining-tokens"
   },
   "requestModel": {
     "location": "payload",
-    "identifier": "$.usage.inputTokens"
+    "identifier": "$.model"
   },
   "responseModel": {
     "location": "payload",
-    "identifier": "$.usage.inputTokens"
+    "identifier": "$.model"
   },
   "resourceMappings": {
     "resources": [
@@ -3215,23 +3207,23 @@ Authentication configuration for upstream endpoints
         },
         "completionTokens": {
           "location": "payload",
-          "identifier": "$.usage.inputTokens"
+          "identifier": "$.usage.outputTokens"
         },
         "totalTokens": {
           "location": "payload",
-          "identifier": "$.usage.inputTokens"
+          "identifier": "$.usage.totalTokens"
         },
         "remainingTokens": {
-          "location": "payload",
-          "identifier": "$.usage.inputTokens"
+          "location": "header",
+          "identifier": "x-ratelimit-remaining-tokens"
         },
         "requestModel": {
           "location": "payload",
-          "identifier": "$.usage.inputTokens"
+          "identifier": "$.model"
         },
         "responseModel": {
           "location": "payload",
-          "identifier": "$.usage.inputTokens"
+          "identifier": "$.model"
         }
       }
     ]
@@ -4054,7 +4046,7 @@ Limit definition with independent request/token/cost dimensions. If all dimensio
   "updatedBy": "john.doe",
   "version": "v1.0",
   "context": "/openai",
-  "vhost": "api.openai",
+  "vhost": "api.openai.com",
   "template": "openai",
   "openapi": "openapi: 3.0.3\ninfo:\n  title: Provider API\n  version: v1.0\npaths: {}\n",
   "modelProviders": [
@@ -4073,7 +4065,6 @@ Limit definition with independent request/token/cost dimensions. If all dimensio
   "upstream": {
     "main": {
       "url": "http://prod-backend:5000/api/v2",
-      "ref": "string",
       "auth": {
         "type": "api-key",
         "header": "X-API-Key",
@@ -4082,7 +4073,6 @@ Limit definition with independent request/token/cost dimensions. If all dimensio
     },
     "sandbox": {
       "url": "http://prod-backend:5000/api/v2",
-      "ref": "string",
       "auth": {
         "type": "api-key",
         "header": "X-API-Key",
@@ -4271,7 +4261,7 @@ Limit definition with independent request/token/cost dimensions. If all dimensio
 |readOnly|boolean|false|read-only|True if the artifact originated from a data-plane gateway (origin gateway_api) and is read-only in the control plane; false for control-plane created artifacts.|
 |updatedBy|string|false|read-only|User identifier of the user who last updated this resource. Only present in the detail response (GET /llm-providers/{id}), omitted from list responses.|
 |version|string|true|none|Semantic version of the LLM Provider|
-|context|string|false|none|Base path for all REST API routes (must start with /, no trailing slash)|
+|context|string|false|none|Base path for all routes exposed by this proxy. Must start with / and carry no trailing slash; the single exception is the root path "/", which is the default.|
 |vhost|string|false|none|Virtual host name used for routing. Supports standard domain names, subdomains, or wildcard domains. Must follow RFC-compliant hostname rules. Wildcards are only allowed in the left-most label (e.g., *.example.com).|
 |template|string|true|none|Template name to use for this LLM Provider|
 |openapi|string|false|none|OpenAPI specification (JSON or YAML) for the provider endpoint|
@@ -4470,7 +4460,7 @@ Limit definition with independent request/token/cost dimensions. If all dimensio
   "version": "v1.0",
   "projectId": "550e8400-e29b-41d4-a716-446655440000",
   "context": "/openai",
-  "vhost": "api.openai",
+  "vhost": "api.openai.com",
   "provider": {
     "id": "wso2-openai-provider",
     "auth": {
@@ -4568,7 +4558,7 @@ Limit definition with independent request/token/cost dimensions. If all dimensio
 |updatedBy|string|false|read-only|User identifier of the user who last updated this resource. Only present in the detail response (GET /llm-proxies/{id}), omitted from list responses.|
 |version|string|true|none|Semantic version of the LLM proxy|
 |projectId|string|true|none|UUID of the project this proxy belongs to|
-|context|string|false|none|Base path for all REST API routes (must start with /, no trailing slash)|
+|context|string|false|none|Base path for all routes exposed by this proxy. Must start with / and carry no trailing slash; the single exception is the root path "/", which is the default.|
 |vhost|string|false|none|Virtual host name used for routing. Supports standard domain names, subdomains, or wildcard domains. Must follow RFC-compliant hostname rules. Wildcards are only allowed in the left-most label (e.g., *.example.com).|
 |provider|[LLMProxyProvider](#schemallmproxyprovider)|true|none|none|
 |additionalProviders|[[LLMProxyAdditionalProvider](#schemallmproxyadditionalprovider)]|false|none|Optional list of additional LLM providers attached to this proxy as selectable upstreams. Policies route requests to any of these by setting the upstream name. The primary `provider` field above remains the default upstream and the FK target.|
@@ -4796,7 +4786,7 @@ Request/response translator applied when this provider is the selected upstream.
   "status": "success",
   "message": "API key created and broadcasted to gateways successfully",
   "id": "production-key",
-  "apiKey": "a1b2c3d4e5f6789012345678901234567890abcdef1234567890abcdef123456"
+  "apiKey": "REDACTED_API_KEY"
 }
 
 ```
@@ -4808,7 +4798,7 @@ Request/response translator applied when this provider is the selected upstream.
 |status|string|true|none|Status of the operation|
 |message|string|true|none|Detailed message about the operation result|
 |id|string|true|none|Unique identifier of the generated key|
-|apiKey|string|true|none|The generated API key value (shown only once, 64 hexadecimal characters)|
+|apiKey|string|true|none|The generated API key value — 64 hexadecimal characters, returned only in this creation response and never retrievable afterwards. The example value is a non-functional placeholder.|
 
 <h2 id="tocS_CreateLLMProxyAPIKeyRequest">CreateLLMProxyAPIKeyRequest</h2>
 
@@ -4850,7 +4840,7 @@ Request/response translator applied when this provider is the selected upstream.
   "status": "success",
   "message": "API key created and broadcasted to gateways successfully",
   "id": "production-key",
-  "apiKey": "a1b2c3d4e5f6789012345678901234567890abcdef1234567890abcdef123456"
+  "apiKey": "REDACTED_API_KEY"
 }
 
 ```
@@ -4862,7 +4852,7 @@ Request/response translator applied when this provider is the selected upstream.
 |status|string|true|none|Status of the operation|
 |message|string|true|none|Detailed message about the operation result|
 |id|string|true|none|Unique identifier of the generated key|
-|apiKey|string|true|none|The generated API key value (shown only once, 64 hexadecimal characters)|
+|apiKey|string|true|none|The generated API key value — 64 hexadecimal characters, returned only in this creation response and never retrievable afterwards. The example value is a non-functional placeholder.|
 
 <h2 id="tocS_MCPProxy">MCPProxy</h2>
 
@@ -4886,7 +4876,6 @@ Request/response translator applied when this provider is the selected upstream.
   "upstream": {
     "main": {
       "url": "http://prod-backend:5000/api/v2",
-      "ref": "string",
       "auth": {
         "type": "api-key",
         "header": "X-API-Key",
@@ -4895,7 +4884,6 @@ Request/response translator applied when this provider is the selected upstream.
     },
     "sandbox": {
       "url": "http://prod-backend:5000/api/v2",
-      "ref": "string",
       "auth": {
         "type": "api-key",
         "header": "X-API-Key",
@@ -4953,7 +4941,7 @@ Request/response translator applied when this provider is the selected upstream.
 |updatedBy|string|false|read-only|User identifier of the user who last updated this resource. Only present in the detail response (GET /mcp-proxies/{id}), omitted from list responses.|
 |version|string|true|none|Semantic version of the MCP proxy|
 |projectId|string|false|none|UUID of the project this proxy belongs to|
-|context|string|false|none|Base path for all REST API routes (must start with /, no trailing slash)|
+|context|string|false|none|Base path for all routes exposed by this proxy. Must start with / and carry no trailing slash; the single exception is the root path "/", which is the default.|
 |vhost|string|false|none|Virtual host name used for routing. Supports standard domain names, subdomains, or wildcard domains. Must follow RFC-compliant hostname rules. Wildcards are only allowed in the left-most label (e.g., *.example.com).|
 |upstream|[Upstream](#schemaupstream)|true|none|Upstream backend configuration with main and sandbox endpoints|
 |mcpSpecVersion|string|false|none|MCP specification version supported by this proxy|

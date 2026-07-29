@@ -236,7 +236,13 @@ which part of a credential was wrong.
 The complete set of scopes defined by this API, as declared in the OpenAPI `OAuth2Security` scheme.
 
 - OAuth2, flow: `clientCredentials`
-- Token URL (file mode): [https://localhost:9243/oauth2/token](https://localhost:9243/oauth2/token)
+- Token URL declared in the spec: `https://localhost:9243/oauth2/token`
+
+The declared token URL describes the `clientCredentials` flow an external IDP is expected to expose,
+and is what generated clients target in `idp` mode — the Platform API does not serve it itself.
+In `file` mode there is no client-credentials endpoint; obtain a token from the username/password
+login endpoint described under [Obtaining a token](#obtaining-a-token)
+(`POST /api/portal/v0.9/auth/login`) instead.
 
 |Scope|Scope Description|
 |---|---|

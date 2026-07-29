@@ -49,7 +49,7 @@ Required scopes (the token must carry at least one of): `ap:project:create`, `ap
 |body|body|[CreateProjectRequest](schemas.md#schemacreateprojectrequest)|true|none|
 
 > Example responses
-
+>
 > 201 Response
 
 ```json
@@ -74,8 +74,8 @@ Required scopes (the token must carry at least one of): `ap:project:create`, `ap
   "message": "The request failed validation.",
   "errors": [
     {
-      "field": "spec.context",
-      "message": "must start with /"
+      "field": "<name of the offending field>",
+      "message": "<reason this field failed validation>"
     }
   ]
 }
@@ -107,7 +107,7 @@ Required scopes (the token must carry at least one of): `ap:project:create`, `ap
 {
   "status": "error",
   "code": "CONFLICT",
-  "message": "The specified resource already exists."
+  "message": "The request conflicts with the current state of the resource."
 }
 ```
 
@@ -130,7 +130,7 @@ Required scopes (the token must carry at least one of): `ap:project:create`, `ap
 |400|[Bad Request](https://tools.ietf.org/html/rfc7231#section-6.5.1)|Bad Request. Invalid request or validation error.|[Error](schemas.md#schemaerror)|
 |401|[Unauthorized](https://tools.ietf.org/html/rfc7235#section-3.1)|Unauthorized. Authentication credentials are missing or invalid.|[Error](schemas.md#schemaerror)|
 |403|[Forbidden](https://tools.ietf.org/html/rfc7231#section-6.5.3)|Forbidden. The authenticated user does not have permission to access this resource.|[Error](schemas.md#schemaerror)|
-|409|[Conflict](https://tools.ietf.org/html/rfc7231#section-6.5.8)|Conflict. Specified resource already exists.|[Error](schemas.md#schemaerror)|
+|409|[Conflict](https://tools.ietf.org/html/rfc7231#section-6.5.8)|Conflict. The request conflicts with the current state of the resource.|[Error](schemas.md#schemaerror)|
 |500|[Internal Server Error](https://tools.ietf.org/html/rfc7231#section-6.6.1)|Internal Server Error.|[Error](schemas.md#schemaerror)|
 
 ### Response Headers
@@ -187,7 +187,7 @@ Required scopes (the token must carry at least one of): `ap:project:read`, `ap:p
 |sortOrder|desc|
 
 > Example responses
-
+>
 > 200 Response
 
 ```json
@@ -253,7 +253,7 @@ Required scopes (the token must carry at least one of): `ap:project:read`, `ap:p
 |404|[Not Found](https://tools.ietf.org/html/rfc7231#section-6.5.4)|Not Found. The specified resource does not exist.|[Error](schemas.md#schemaerror)|
 |500|[Internal Server Error](https://tools.ietf.org/html/rfc7231#section-6.6.1)|Internal Server Error.|[Error](schemas.md#schemaerror)|
 
-## Get project by UUID
+## Get project by handle
 
 <a id="opIdGetProject"></a>
 
@@ -269,8 +269,9 @@ curl -X GET https://localhost:9243/api/v0.9/projects/{projectId} \
 
 ```
 
-Retrieves a specific project by its UUID. Access is validated against the organization 
-in the JWT token to ensure users can only access projects in their organization.
+Retrieves a specific project by its handle (unique slug identifier). Access is validated
+against the organization in the JWT token to ensure users can only access projects in
+their organization.
 
 ### Authentication
 
@@ -281,7 +282,7 @@ Required scopes (the token must carry at least one of): `ap:project:read`, `ap:p
 
 </aside>
 
-<h3 id="get-project-by-uuid-parameters">Parameters</h3>
+<h3 id="get-project-by-handle-parameters">Parameters</h3>
 
 |Name|In|Type|Required|Description|
 |---|---|---|---|---|
@@ -292,7 +293,7 @@ Required scopes (the token must carry at least one of): `ap:project:read`, `ap:p
 **projectId**: **Project ID** (handle — unique slug identifier) of the Project.
 
 > Example responses
-
+>
 > 200 Response
 
 ```json
@@ -317,8 +318,8 @@ Required scopes (the token must carry at least one of): `ap:project:read`, `ap:p
   "message": "The request failed validation.",
   "errors": [
     {
-      "field": "spec.context",
-      "message": "must start with /"
+      "field": "<name of the offending field>",
+      "message": "<reason this field failed validation>"
     }
   ]
 }
@@ -355,7 +356,7 @@ Required scopes (the token must carry at least one of): `ap:project:read`, `ap:p
 }
 ```
 
-<h3 id="get-project-by-uuid-responses">Responses</h3>
+<h3 id="get-project-by-handle-responses">Responses</h3>
 
 |Status|Meaning|Description|Schema|
 |---|---|---|---|
@@ -416,7 +417,7 @@ Required scopes (the token must carry at least one of): `ap:project:update`, `ap
 **projectId**: **Project ID** (handle — unique slug identifier) of the Project.
 
 > Example responses
-
+>
 > 200 Response
 
 ```json
@@ -441,8 +442,8 @@ Required scopes (the token must carry at least one of): `ap:project:update`, `ap
   "message": "The request failed validation.",
   "errors": [
     {
-      "field": "spec.context",
-      "message": "must start with /"
+      "field": "<name of the offending field>",
+      "message": "<reason this field failed validation>"
     }
   ]
 }
@@ -484,7 +485,7 @@ Required scopes (the token must carry at least one of): `ap:project:update`, `ap
 {
   "status": "error",
   "code": "CONFLICT",
-  "message": "The specified resource already exists."
+  "message": "The request conflicts with the current state of the resource."
 }
 ```
 
@@ -508,7 +509,7 @@ Required scopes (the token must carry at least one of): `ap:project:update`, `ap
 |401|[Unauthorized](https://tools.ietf.org/html/rfc7235#section-3.1)|Unauthorized. Authentication credentials are missing or invalid.|[Error](schemas.md#schemaerror)|
 |403|[Forbidden](https://tools.ietf.org/html/rfc7231#section-6.5.3)|Forbidden. The authenticated user does not have permission to access this resource.|[Error](schemas.md#schemaerror)|
 |404|[Not Found](https://tools.ietf.org/html/rfc7231#section-6.5.4)|Not Found. The specified resource does not exist.|[Error](schemas.md#schemaerror)|
-|409|[Conflict](https://tools.ietf.org/html/rfc7231#section-6.5.8)|Conflict. Specified resource already exists.|[Error](schemas.md#schemaerror)|
+|409|[Conflict](https://tools.ietf.org/html/rfc7231#section-6.5.8)|Conflict. The request conflicts with the current state of the resource.|[Error](schemas.md#schemaerror)|
 |500|[Internal Server Error](https://tools.ietf.org/html/rfc7231#section-6.6.1)|Internal Server Error.|[Error](schemas.md#schemaerror)|
 
 ## Delete project
@@ -527,8 +528,8 @@ curl -X DELETE https://localhost:9243/api/v0.9/projects/{projectId} \
 
 ```
 
-Deletes a specific project by its UUID. Access is validated against the organization 
-in the JWT token.
+Deletes a specific project by its handle (unique slug identifier). Access is validated
+against the organization in the JWT token.
 
 ### Authentication
 
@@ -550,7 +551,7 @@ Required scopes (the token must carry at least one of): `ap:project:delete`, `ap
 **projectId**: **Project ID** (handle — unique slug identifier) of the Project.
 
 > Example responses
-
+>
 > 400 Response
 
 ```json
@@ -560,8 +561,8 @@ Required scopes (the token must carry at least one of): `ap:project:delete`, `ap
   "message": "The request failed validation.",
   "errors": [
     {
-      "field": "spec.context",
-      "message": "must start with /"
+      "field": "<name of the offending field>",
+      "message": "<reason this field failed validation>"
     }
   ]
 }

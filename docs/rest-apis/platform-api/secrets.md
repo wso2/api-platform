@@ -16,22 +16,15 @@ curl -X POST https://localhost:9243/api/v0.9/secrets \
   -H 'Authorization: Bearer {access_token}' \
   -H 'Content-Type: multipart/form-data' \
   -H 'Accept: application/json' \
-  -d @payload.json
+  -F 'id=wso2-openai-key' \
+  -F 'displayName=WSO2 OpenAI API Key' \
+  -F 'description=Primary API key for WSO2 OpenAI integration' \
+  -F 'value=sk-xxx' \
+  -F 'type=GENERIC'
 
 ```
 
 Create a new encrypted secret scoped to the organization. The plaintext value is never returned.
-
-> Payload
-
-```yaml
-id: wso2-openai-key
-displayName: WSO2 OpenAI API Key
-description: Primary API key for WSO2 OpenAI integration
-value: sk-xxx
-type: GENERIC
-
-```
 
 ### Authentication
 
@@ -49,7 +42,7 @@ Required scopes (the token must carry at least one of): `ap:secret:create`, `ap:
 |body|body|[SecretCreateRequest](schemas.md#schemasecretcreaterequest)|true|none|
 
 > Example responses
-
+>
 > 201 Response
 
 ```json
@@ -72,8 +65,8 @@ Required scopes (the token must carry at least one of): `ap:secret:create`, `ap:
   "message": "The request failed validation.",
   "errors": [
     {
-      "field": "spec.context",
-      "message": "must start with /"
+      "field": "<name of the offending field>",
+      "message": "<reason this field failed validation>"
     }
   ]
 }
@@ -105,7 +98,7 @@ Required scopes (the token must carry at least one of): `ap:secret:create`, `ap:
 {
   "status": "error",
   "code": "CONFLICT",
-  "message": "The specified resource already exists."
+  "message": "The request conflicts with the current state of the resource."
 }
 ```
 
@@ -139,7 +132,7 @@ Required scopes (the token must carry at least one of): `ap:secret:create`, `ap:
 |400|[Bad Request](https://tools.ietf.org/html/rfc7231#section-6.5.1)|Bad Request. Invalid request or validation error.|[Error](schemas.md#schemaerror)|
 |401|[Unauthorized](https://tools.ietf.org/html/rfc7235#section-3.1)|Unauthorized. Authentication credentials are missing or invalid.|[Error](schemas.md#schemaerror)|
 |403|[Forbidden](https://tools.ietf.org/html/rfc7231#section-6.5.3)|Forbidden. The authenticated user does not have permission to access this resource.|[Error](schemas.md#schemaerror)|
-|409|[Conflict](https://tools.ietf.org/html/rfc7231#section-6.5.8)|Conflict. Specified resource already exists.|[Error](schemas.md#schemaerror)|
+|409|[Conflict](https://tools.ietf.org/html/rfc7231#section-6.5.8)|Conflict. The request conflicts with the current state of the resource.|[Error](schemas.md#schemaerror)|
 |500|[Internal Server Error](https://tools.ietf.org/html/rfc7231#section-6.6.1)|Internal Server Error.|[Error](schemas.md#schemaerror)|
 |503|[Service Unavailable](https://tools.ietf.org/html/rfc7231#section-6.6.4)|Service Unavailable. The secrets management feature is not configured.|[Error](schemas.md#schemaerror)|
 
@@ -186,7 +179,7 @@ Required scopes (the token must carry at least one of): `ap:secret:read`, `ap:se
 |updatedAfter|query|string(date-time)|false|RFC3339 timestamp — return only secrets updated after this time. Used by GW controller for incremental polling.|
 
 > Example responses
-
+>
 > 200 Response
 
 ```json
@@ -223,8 +216,8 @@ Required scopes (the token must carry at least one of): `ap:secret:read`, `ap:se
   "message": "The request failed validation.",
   "errors": [
     {
-      "field": "spec.context",
-      "message": "must start with /"
+      "field": "<name of the offending field>",
+      "message": "<reason this field failed validation>"
     }
   ]
 }
@@ -306,7 +299,7 @@ Required scopes (the token must carry at least one of): `ap:secret:read`, `ap:se
 |secretId|path|string|true|The secret handle|
 
 > Example responses
-
+>
 > 200 Response
 
 ```json
@@ -390,23 +383,16 @@ curl -X PUT https://localhost:9243/api/v0.9/secrets/{secretId} \
   -H 'Authorization: Bearer {access_token}' \
   -H 'Content-Type: multipart/form-data' \
   -H 'Accept: application/json' \
-  -d @payload.json
+  -F 'id=wso2-openai-key' \
+  -F 'displayName=string' \
+  -F 'description=string' \
+  -F 'value=string'
 
 ```
 
 Re-encrypts and stores a new value for an existing secret. The handle is immutable
 so all `{{ secret "handle" }}` placeholder references across resources remain valid
 without modification.
-
-> Payload
-
-```yaml
-id: wso2-openai-key
-displayName: string
-description: string
-value: string
-
-```
 
 ### Authentication
 
@@ -425,7 +411,7 @@ Required scopes (the token must carry at least one of): `ap:secret:update`, `ap:
 |body|body|[SecretUpdateRequest](schemas.md#schemasecretupdaterequest)|true|none|
 
 > Example responses
-
+>
 > 200 Response
 
 ```json
@@ -448,8 +434,8 @@ Required scopes (the token must carry at least one of): `ap:secret:update`, `ap:
   "message": "The request failed validation.",
   "errors": [
     {
-      "field": "spec.context",
-      "message": "must start with /"
+      "field": "<name of the offending field>",
+      "message": "<reason this field failed validation>"
     }
   ]
 }
@@ -554,7 +540,7 @@ Required scopes (the token must carry at least one of): `ap:secret:delete`, `ap:
 |secretId|path|string|true|The secret handle|
 
 > Example responses
-
+>
 > 401 Response
 
 ```json

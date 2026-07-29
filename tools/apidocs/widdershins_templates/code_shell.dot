@@ -15,7 +15,20 @@
    }
 }}
 {{ var _hdrs = data.allHeaders.filter(function(h){ return h.name.toLowerCase() !== 'authorization'; }); }}
+{{ var _isMultipart = data.consumes.indexOf('multipart/form-data') >= 0 && data.consumes.indexOf('application/json') < 0; }}
+{{ var _mpFields = []; }}
+{{ if (_isMultipart) {
+     var _ex = data.bodyParameter && data.bodyParameter.exampleValues && data.bodyParameter.exampleValues.object;
+     if (_ex && typeof _ex === 'object') {
+       for (var _k in _ex) {
+         var _v = _ex[_k];
+         if (_v !== null && _v !== undefined && typeof _v !== 'object') { _mpFields.push(_k + '=' + _v); }
+       }
+     }
+   }
+}}
 curl -X {{=data.methodUpper}} {{=data.url}}{{=data.requiredQueryString}} \
 {{? _isBearer && !_isBasic }}  -H 'Authorization: Bearer {access_token}'{{??}}  -u {username}:{password}{{?}}{{?_hdrs.length || data.operation.requestBody}} \{{?}}
 {{~_hdrs :p:index}}  -H '{{=p.name}}: {{=p.exampleValues.object}}'{{?index < _hdrs.length-1 || data.operation.requestBody}} \{{?}}
-{{~}}{{?data.operation.requestBody}}  -d @payload.{{=ext}}{{?}}
+{{~}}{{?data.operation.requestBody}}{{?_mpFields.length}}{{~_mpFields :_f:_fi}}  -F '{{=_f}}'{{?_fi < _mpFields.length-1}} \{{?}}
+{{~}}{{??}}  -d @payload.{{=ext}}{{?}}{{?}}

@@ -31,7 +31,7 @@ Deploy a new LLM provider configuration.
   "description": "Primary OpenAI provider",
   "version": "v1.0",
   "context": "/openai",
-  "vhost": "api.openai",
+  "vhost": "api.openai.com",
   "template": "openai",
   "openapi": "openapi: 3.0.3\ninfo:\n  title: Provider API\n  version: v1.0\npaths: {}\n",
   "modelProviders": [
@@ -50,7 +50,6 @@ Deploy a new LLM provider configuration.
   "upstream": {
     "main": {
       "url": "http://prod-backend:5000/api/v2",
-      "ref": "string",
       "auth": {
         "type": "api-key",
         "header": "X-API-Key",
@@ -59,7 +58,6 @@ Deploy a new LLM provider configuration.
     },
     "sandbox": {
       "url": "http://prod-backend:5000/api/v2",
-      "ref": "string",
       "auth": {
         "type": "api-key",
         "header": "X-API-Key",
@@ -250,7 +248,7 @@ Required scopes (the token must carry at least one of): `ap:llm_provider:create`
 |body|body|[LLMProvider](schemas.md#schemallmprovider)|true|none|
 
 > Example responses
-
+>
 > 201 Response
 
 ```json
@@ -263,7 +261,7 @@ Required scopes (the token must carry at least one of): `ap:llm_provider:create`
   "updatedBy": "john.doe",
   "version": "v1.0",
   "context": "/openai",
-  "vhost": "api.openai",
+  "vhost": "api.openai.com",
   "template": "openai",
   "openapi": "openapi: 3.0.3\ninfo:\n  title: Provider API\n  version: v1.0\npaths: {}\n",
   "modelProviders": [
@@ -282,18 +280,18 @@ Required scopes (the token must carry at least one of): `ap:llm_provider:create`
   "upstream": {
     "main": {
       "url": "http://prod-backend:5000/api/v2",
-      "ref": "string",
       "auth": {
         "type": "api-key",
-        "header": "X-API-Key"
+        "header": "X-API-Key",
+        "value": "my-api-key-value"
       }
     },
     "sandbox": {
       "url": "http://prod-backend:5000/api/v2",
-      "ref": "string",
       "auth": {
         "type": "api-key",
-        "header": "X-API-Key"
+        "header": "X-API-Key",
+        "value": "my-api-key-value"
       }
     }
   },
@@ -475,8 +473,8 @@ Required scopes (the token must carry at least one of): `ap:llm_provider:create`
   "message": "The request failed validation.",
   "errors": [
     {
-      "field": "spec.context",
-      "message": "must start with /"
+      "field": "<name of the offending field>",
+      "message": "<reason this field failed validation>"
     }
   ]
 }
@@ -508,7 +506,7 @@ Required scopes (the token must carry at least one of): `ap:llm_provider:create`
 {
   "status": "error",
   "code": "CONFLICT",
-  "message": "The specified resource already exists."
+  "message": "The request conflicts with the current state of the resource."
 }
 ```
 
@@ -531,7 +529,7 @@ Required scopes (the token must carry at least one of): `ap:llm_provider:create`
 |400|[Bad Request](https://tools.ietf.org/html/rfc7231#section-6.5.1)|Bad Request. Invalid request or validation error.|[Error](schemas.md#schemaerror)|
 |401|[Unauthorized](https://tools.ietf.org/html/rfc7235#section-3.1)|Unauthorized. Authentication credentials are missing or invalid.|[Error](schemas.md#schemaerror)|
 |403|[Forbidden](https://tools.ietf.org/html/rfc7231#section-6.5.3)|Forbidden. The authenticated user does not have permission to access this resource.|[Error](schemas.md#schemaerror)|
-|409|[Conflict](https://tools.ietf.org/html/rfc7231#section-6.5.8)|Conflict. Specified resource already exists.|[Error](schemas.md#schemaerror)|
+|409|[Conflict](https://tools.ietf.org/html/rfc7231#section-6.5.8)|Conflict. The request conflicts with the current state of the resource.|[Error](schemas.md#schemaerror)|
 |500|[Internal Server Error](https://tools.ietf.org/html/rfc7231#section-6.6.1)|Internal Server Error.|[Error](schemas.md#schemaerror)|
 
 ### Response Headers
@@ -575,7 +573,7 @@ Required scopes (the token must carry at least one of): `ap:llm_provider:read`, 
 |offset|query|integer|false|Zero-based index of the first item to return.|
 
 > Example responses
-
+>
 > 200 Response
 
 ```json
@@ -666,7 +664,7 @@ Required scopes (the token must carry at least one of): `ap:llm_provider:read`, 
 |llmProviderId|path|string|true|Unique identifier of the LLM provider|
 
 > Example responses
-
+>
 > 200 Response
 
 ```json
@@ -679,7 +677,7 @@ Required scopes (the token must carry at least one of): `ap:llm_provider:read`, 
   "updatedBy": "john.doe",
   "version": "v1.0",
   "context": "/openai",
-  "vhost": "api.openai",
+  "vhost": "api.openai.com",
   "template": "openai",
   "openapi": "openapi: 3.0.3\ninfo:\n  title: Provider API\n  version: v1.0\npaths: {}\n",
   "modelProviders": [
@@ -698,18 +696,18 @@ Required scopes (the token must carry at least one of): `ap:llm_provider:read`, 
   "upstream": {
     "main": {
       "url": "http://prod-backend:5000/api/v2",
-      "ref": "string",
       "auth": {
         "type": "api-key",
-        "header": "X-API-Key"
+        "header": "X-API-Key",
+        "value": "my-api-key-value"
       }
     },
     "sandbox": {
       "url": "http://prod-backend:5000/api/v2",
-      "ref": "string",
       "auth": {
         "type": "api-key",
-        "header": "X-API-Key"
+        "header": "X-API-Key",
+        "value": "my-api-key-value"
       }
     }
   },
@@ -951,7 +949,7 @@ Update the configuration of an existing LLM provider.
   "description": "Primary OpenAI provider",
   "version": "v1.0",
   "context": "/openai",
-  "vhost": "api.openai",
+  "vhost": "api.openai.com",
   "template": "openai",
   "openapi": "openapi: 3.0.3\ninfo:\n  title: Provider API\n  version: v1.0\npaths: {}\n",
   "modelProviders": [
@@ -970,7 +968,6 @@ Update the configuration of an existing LLM provider.
   "upstream": {
     "main": {
       "url": "http://prod-backend:5000/api/v2",
-      "ref": "string",
       "auth": {
         "type": "api-key",
         "header": "X-API-Key",
@@ -979,7 +976,6 @@ Update the configuration of an existing LLM provider.
     },
     "sandbox": {
       "url": "http://prod-backend:5000/api/v2",
-      "ref": "string",
       "auth": {
         "type": "api-key",
         "header": "X-API-Key",
@@ -1171,7 +1167,7 @@ Required scopes (the token must carry at least one of): `ap:llm_provider:update`
 |body|body|[LLMProvider](schemas.md#schemallmprovider)|true|none|
 
 > Example responses
-
+>
 > 200 Response
 
 ```json
@@ -1184,7 +1180,7 @@ Required scopes (the token must carry at least one of): `ap:llm_provider:update`
   "updatedBy": "john.doe",
   "version": "v1.0",
   "context": "/openai",
-  "vhost": "api.openai",
+  "vhost": "api.openai.com",
   "template": "openai",
   "openapi": "openapi: 3.0.3\ninfo:\n  title: Provider API\n  version: v1.0\npaths: {}\n",
   "modelProviders": [
@@ -1203,18 +1199,18 @@ Required scopes (the token must carry at least one of): `ap:llm_provider:update`
   "upstream": {
     "main": {
       "url": "http://prod-backend:5000/api/v2",
-      "ref": "string",
       "auth": {
         "type": "api-key",
-        "header": "X-API-Key"
+        "header": "X-API-Key",
+        "value": "my-api-key-value"
       }
     },
     "sandbox": {
       "url": "http://prod-backend:5000/api/v2",
-      "ref": "string",
       "auth": {
         "type": "api-key",
-        "header": "X-API-Key"
+        "header": "X-API-Key",
+        "value": "my-api-key-value"
       }
     }
   },
@@ -1396,8 +1392,8 @@ Required scopes (the token must carry at least one of): `ap:llm_provider:update`
   "message": "The request failed validation.",
   "errors": [
     {
-      "field": "spec.context",
-      "message": "must start with /"
+      "field": "<name of the offending field>",
+      "message": "<reason this field failed validation>"
     }
   ]
 }
@@ -1489,7 +1485,7 @@ Required scopes (the token must carry at least one of): `ap:llm_provider:delete`
 |llmProviderId|path|string|true|Unique identifier of the LLM provider|
 
 > Example responses
-
+>
 > 400 Response
 
 ```json
@@ -1499,8 +1495,8 @@ Required scopes (the token must carry at least one of): `ap:llm_provider:delete`
   "message": "The request failed validation.",
   "errors": [
     {
-      "field": "spec.context",
-      "message": "must start with /"
+      "field": "<name of the offending field>",
+      "message": "<reason this field failed validation>"
     }
   ]
 }
@@ -1594,7 +1590,7 @@ Required scopes (the token must carry at least one of): `ap:llm_proxy:deployment
 |offset|query|integer|false|Zero-based index of the first item to return.|
 
 > Example responses
-
+>
 > 200 Response
 
 ```json
@@ -1633,8 +1629,8 @@ Required scopes (the token must carry at least one of): `ap:llm_proxy:deployment
   "message": "The request failed validation.",
   "errors": [
     {
-      "field": "spec.context",
-      "message": "must start with /"
+      "field": "<name of the offending field>",
+      "message": "<reason this field failed validation>"
     }
   ]
 }
@@ -1732,7 +1728,7 @@ Required scopes (the token must carry at least one of): `ap:llm_provider:api_key
 |body|body|[CreateLLMProviderAPIKeyRequest](schemas.md#schemacreatellmproviderapikeyrequest)|true|API key creation details|
 
 > Example responses
-
+>
 > 201 Response
 
 ```json
@@ -1740,7 +1736,7 @@ Required scopes (the token must carry at least one of): `ap:llm_provider:api_key
   "status": "success",
   "message": "API key created and broadcasted to gateways successfully",
   "id": "production-key",
-  "apiKey": "a1b2c3d4e5f6789012345678901234567890abcdef1234567890abcdef123456"
+  "apiKey": "REDACTED_API_KEY"
 }
 ```
 
@@ -1753,8 +1749,8 @@ Required scopes (the token must carry at least one of): `ap:llm_provider:api_key
   "message": "The request failed validation.",
   "errors": [
     {
-      "field": "spec.context",
-      "message": "must start with /"
+      "field": "<name of the offending field>",
+      "message": "<reason this field failed validation>"
     }
   ]
 }
@@ -1855,7 +1851,7 @@ Required scopes (the token must carry at least one of): `ap:llm_provider:api_key
 |offset|query|integer|false|Zero-based index of the first item to return.|
 
 > Example responses
-
+>
 > 200 Response
 
 ```json
@@ -1958,7 +1954,7 @@ Required scopes (the token must carry at least one of): `ap:llm_provider:api_key
 |apiKeyId|path|string|true|Name of the API key to delete|
 
 > Example responses
-
+>
 > 401 Response
 
 ```json

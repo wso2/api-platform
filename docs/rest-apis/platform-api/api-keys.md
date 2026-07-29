@@ -53,7 +53,7 @@ If omitted, all types are returned.
 |type|LlmProxy|
 
 > Example responses
-
+>
 > 200 Response
 
 ```json

@@ -43,7 +43,7 @@ Required scopes (the token must carry at least one of): `ap:gateway:token:read`,
 **gatewayId**: **Gateway ID** (handle — unique slug identifier) of the Gateway.
 
 > Example responses
-
+>
 > 200 Response
 
 ```json
@@ -144,13 +144,13 @@ Required scopes (the token must carry at least one of): `ap:gateway:token:create
 **gatewayId**: **Gateway ID** (handle — unique slug identifier) of the Gateway.
 
 > Example responses
-
+>
 > 201 Response
 
 ```json
 {
   "id": "def45678-g901-23hi-j456-789012klmnop",
-  "token": "nM8pQ1rT4vW7yZ0bC3eF6hI9kL2nO5qR8tU1wX4zA7cE0fH3jK6mP9sV2yB5dG8i",
+  "token": "REDACTED_TOKEN",
   "createdAt": "2025-10-15T14:20:00Z",
   "message": "New token generated successfully. Old token remains active until revoked."
 }
@@ -165,8 +165,8 @@ Required scopes (the token must carry at least one of): `ap:gateway:token:create
   "message": "The request failed validation.",
   "errors": [
     {
-      "field": "spec.context",
-      "message": "must start with /"
+      "field": "<name of the offending field>",
+      "message": "<reason this field failed validation>"
     }
   ]
 }
@@ -272,7 +272,7 @@ Required scopes (the token must carry at least one of): `ap:gateway:token:delete
 **tokenId**: **Token ID** consisting of the **UUID** of the Token.
 
 > Example responses
-
+>
 > 200 Response
 
 ```json
@@ -290,8 +290,8 @@ Required scopes (the token must carry at least one of): `ap:gateway:token:delete
   "message": "The request failed validation.",
   "errors": [
     {
-      "field": "spec.context",
-      "message": "must start with /"
+      "field": "<name of the offending field>",
+      "message": "<reason this field failed validation>"
     }
   ]
 }

@@ -37,7 +37,7 @@ Required scopes (the token must carry at least one of): `ap:gateway_custom_polic
 |offset|query|integer|false|Zero-based index of the first item to return.|
 
 > Example responses
-
+>
 > 200 Response
 
 ```json
@@ -135,7 +135,7 @@ Required scopes (the token must carry at least one of): `ap:gateway_custom_polic
 |policyVersion|query|string|true|Version of the custom policy in MAJOR.MINOR.PATCH format|
 
 > Example responses
-
+>
 > 200 Response
 
 ```json
@@ -160,8 +160,8 @@ Required scopes (the token must carry at least one of): `ap:gateway_custom_polic
   "message": "The request failed validation.",
   "errors": [
     {
-      "field": "spec.context",
-      "message": "must start with /"
+      "field": "<name of the offending field>",
+      "message": "<reason this field failed validation>"
     }
   ]
 }
@@ -203,7 +203,7 @@ Required scopes (the token must carry at least one of): `ap:gateway_custom_polic
 {
   "status": "error",
   "code": "CONFLICT",
-  "message": "The specified resource already exists."
+  "message": "The request conflicts with the current state of the resource."
 }
 ```
 
@@ -237,7 +237,7 @@ Required scopes (the token must carry at least one of): `ap:gateway_custom_polic
 |401|[Unauthorized](https://tools.ietf.org/html/rfc7235#section-3.1)|Unauthorized. Authentication credentials are missing or invalid.|[Error](schemas.md#schemaerror)|
 |403|[Forbidden](https://tools.ietf.org/html/rfc7231#section-6.5.3)|Forbidden. The authenticated user does not have permission to access this resource.|[Error](schemas.md#schemaerror)|
 |404|[Not Found](https://tools.ietf.org/html/rfc7231#section-6.5.4)|Not Found. The specified resource does not exist.|[Error](schemas.md#schemaerror)|
-|409|[Conflict](https://tools.ietf.org/html/rfc7231#section-6.5.8)|Conflict. Specified resource already exists.|[Error](schemas.md#schemaerror)|
+|409|[Conflict](https://tools.ietf.org/html/rfc7231#section-6.5.8)|Conflict. The request conflicts with the current state of the resource.|[Error](schemas.md#schemaerror)|
 |422|[Unprocessable Entity](https://tools.ietf.org/html/rfc2518#section-10.3)|Policy is not a custom policy or manifest is unavailable|[Error](schemas.md#schemaerror)|
 |500|[Internal Server Error](https://tools.ietf.org/html/rfc7231#section-6.6.1)|Internal Server Error.|[Error](schemas.md#schemaerror)|
 
@@ -276,7 +276,7 @@ Required scopes (the token must carry at least one of): `ap:gateway_custom_polic
 |version|path|string|true|Version of the custom policy (e.g. "1.0.0")|
 
 > Example responses
-
+>
 > 200 Response
 
 ```json
@@ -367,7 +367,7 @@ Required scopes (the token must carry at least one of): `ap:gateway_custom_polic
 |version|path|string|true|Version of the custom policy (e.g. "1.0.0")|
 
 > Example responses
-
+>
 > 401 Response
 
 ```json
@@ -404,7 +404,7 @@ Required scopes (the token must carry at least one of): `ap:gateway_custom_polic
 {
   "status": "error",
   "code": "CONFLICT",
-  "message": "The specified resource already exists."
+  "message": "The request conflicts with the current state of the resource."
 }
 ```
 
@@ -427,5 +427,5 @@ Required scopes (the token must carry at least one of): `ap:gateway_custom_polic
 |401|[Unauthorized](https://tools.ietf.org/html/rfc7235#section-3.1)|Unauthorized. Authentication credentials are missing or invalid.|[Error](schemas.md#schemaerror)|
 |403|[Forbidden](https://tools.ietf.org/html/rfc7231#section-6.5.3)|Forbidden. The authenticated user does not have permission to access this resource.|[Error](schemas.md#schemaerror)|
 |404|[Not Found](https://tools.ietf.org/html/rfc7231#section-6.5.4)|Not Found. The specified resource does not exist.|[Error](schemas.md#schemaerror)|
-|409|[Conflict](https://tools.ietf.org/html/rfc7231#section-6.5.8)|Conflict. Specified resource already exists.|[Error](schemas.md#schemaerror)|
+|409|[Conflict](https://tools.ietf.org/html/rfc7231#section-6.5.8)|Conflict. The request conflicts with the current state of the resource.|[Error](schemas.md#schemaerror)|
 |500|[Internal Server Error](https://tools.ietf.org/html/rfc7231#section-6.6.1)|Internal Server Error.|[Error](schemas.md#schemaerror)|
