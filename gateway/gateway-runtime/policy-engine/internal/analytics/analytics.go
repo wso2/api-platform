@@ -161,6 +161,18 @@ func (c *Analytics) Process(event *v3.HTTPAccessLogEntry) {
 	// stamps on its loopback forward (see prepareAnalyticEvent) — a direct provider call
 	// never carries it, so it is never suppressed.
 	if v, ok := analyticEvent.Properties[PropInternalLoopbackProvider].(bool); ok && v {
+		correlationID := ""
+		if analyticEvent.MetaInfo != nil {
+			correlationID = analyticEvent.MetaInfo.CorrelationID
+		}
+		apiType := ""
+		if analyticEvent.API != nil {
+			apiType = analyticEvent.API.APIType
+		}
+		slog.Debug("Suppressing internal loopback provider analytics event",
+			"apiType", apiType,
+			"correlationId", correlationID,
+		)
 		return
 	}
 
@@ -383,9 +395,16 @@ func (c *Analytics) prepareAnalyticEvent(logEntry *v3.HTTPAccessLogEntry) *dto.E
 	// of network topology. The loopback guard uses directRemoteIP (the physical TCP peer),
 	// NOT userIP, so a forged "X-Forwarded-For: 127.0.0.1" cannot fake an internal source.
 	if extendedAPI.APIType == "LlmProvider" &&
-		keyValuePairsFromMetadata[InternalLoopbackMetadataKey] == "true" &&
-		isLoopbackAddress(directRemoteIP) {
-		event.Properties[PropInternalLoopbackProvider] = true
+		keyValuePairsFromMetadata[InternalLoopbackMetadataKey] == "true" {
+		switch {
+		case directRemoteIP == "":
+			slog.Warn("Internal loopback marker present but downstream direct remote address is unavailable; not suppressing event",
+				"apiType", extendedAPI.APIType,
+				"correlationId", metaInfo.CorrelationID,
+			)
+		case isLoopbackAddress(directRemoteIP):
+			event.Properties[PropInternalLoopbackProvider] = true
+		}
 	}
 
 	// Auth-context metadata (type, issuer, credential/token IDs, audience, scopes, custom

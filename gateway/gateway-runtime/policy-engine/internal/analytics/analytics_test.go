@@ -18,6 +18,8 @@
 package analytics
 
 import (
+	"bytes"
+	"log/slog"
 	"testing"
 	"time"
 
@@ -388,6 +390,70 @@ func TestProcess_PublishesDirectProviderOverLoopback(t *testing.T) {
 	analytics.Process(loopbackEntry("LlmProvider", false))
 
 	assert.True(t, mockPub.called, "direct provider call (no marker) must not be suppressed")
+}
+
+// captureLogs redirects the package-level slog default (which analytics.go logs through) into a
+// buffer at debug level for the duration of the test, restoring the previous logger afterwards.
+func captureLogs(t *testing.T) *bytes.Buffer {
+	t.Helper()
+	var buf bytes.Buffer
+	prev := slog.Default()
+	slog.SetDefault(slog.New(slog.NewTextHandler(&buf, &slog.HandlerOptions{Level: slog.LevelDebug})))
+	t.Cleanup(func() { slog.SetDefault(prev) })
+	return &buf
+}
+
+func TestPrepareEvent_MissingDirectRemoteIPNotFlagged(t *testing.T) {
+	// Envoy reported no direct downstream peer. The marker alone must not suppress the event:
+	// falling back to the (forgeable, XFF-derived) remote address would reopen the spoof hole.
+	e := buildProviderEventAddrs("LlmProvider", "127.0.0.1" /*remote*/, "" /*direct=unavailable*/, true)
+	assert.Nil(t, e.Properties[PropInternalLoopbackProvider],
+		"missing direct remote address must not fall back to the forgeable remote address")
+}
+
+func TestPrepareEvent_MissingDirectRemoteIPLogsWarn(t *testing.T) {
+	// The unevaluatable guard must leave a trail explaining the resulting duplicate event.
+	buf := captureLogs(t)
+	buildProviderEventAddrs("LlmProvider", "127.0.0.1", "", true)
+	assert.Contains(t, buf.String(), "direct remote address is unavailable")
+}
+
+func TestPrepareEvent_MissingDirectRemoteIPWithoutMarkerLogsNothing(t *testing.T) {
+	// The warn is scoped to the marker+provider case, so ordinary traffic with no direct
+	// remote address cannot spam the log.
+	buf := captureLogs(t)
+	buildProviderEventAddrs("LlmProxy", "127.0.0.1", "", false)
+	assert.NotContains(t, buf.String(), "direct remote address is unavailable")
+}
+
+func TestProcess_PublishesWhenDirectRemoteIPMissing(t *testing.T) {
+	// Fail open: without a trustworthy peer address the event is published (one possible
+	// duplicate) rather than suppressed on the strength of a forgeable marker alone.
+	analytics := NewAnalytics(&config.Config{})
+	mockPub := &mockPublisher{}
+	analytics.publishers = append(analytics.publishers, mockPub)
+
+	entry := createLogEntryWithMetadata(map[string]string{
+		APITypeKey:                  "LlmProvider",
+		InternalLoopbackMetadataKey: "true",
+	})
+	setDownstreamAddrs(entry, "127.0.0.1", "")
+	analytics.Process(entry)
+
+	assert.True(t, mockPub.called, "event must still be published when the direct remote address is unavailable")
+}
+
+func TestProcess_SuppressionLogsDebug(t *testing.T) {
+	// A suppressed hop must be traceable, otherwise "my analytics event is missing" has no trail.
+	buf := captureLogs(t)
+	analytics := NewAnalytics(&config.Config{})
+	mockPub := &mockPublisher{}
+	analytics.publishers = append(analytics.publishers, mockPub)
+
+	analytics.Process(loopbackEntry("LlmProvider", true))
+
+	assert.False(t, mockPub.called)
+	assert.Contains(t, buf.String(), "Suppressing internal loopback provider analytics event")
 }
 
 func TestIsLoopbackAddress(t *testing.T) {
