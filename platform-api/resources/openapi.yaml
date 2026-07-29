@@ -242,9 +242,9 @@ paths:
 
   /projects/{projectId}:
     get:
-      summary: Get project by UUID
+      summary: Get project by ID
       description: |
-        Retrieves a specific project by its UUID. Access is validated against the organization 
+        Retrieves a specific project by its ID (handle). Access is validated against the organization
         in the JWT token to ensure users can only access projects in their organization.
       operationId: GetProject
       security:
@@ -314,7 +314,7 @@ paths:
     delete:
       summary: Delete project
       description: |
-        Deletes a specific project by its UUID. Access is validated against the organization 
+        Deletes a specific project by its ID (handle). Access is validated against the organization
         in the JWT token.
       operationId: DeleteProject
       security:
@@ -420,9 +420,9 @@ paths:
 
   /rest-apis/{restApiId}:
     get:
-      summary: Get REST API by UUID
+      summary: Get REST API by ID
       description: |
-        Retrieves a specific API by its UUID. Access is validated against the organization 
+        Retrieves a specific API by its ID (handle). Access is validated against the organization
         in the JWT token.
       operationId: GetRESTAPI
       security:
@@ -493,7 +493,7 @@ paths:
     delete:
       summary: Delete REST API
       description: |
-        Deletes a specific API by its UUID. Access is validated against the organization 
+        Deletes a specific API by its ID (handle). Access is validated against the organization
         in the JWT token.
       operationId: DeleteRESTAPI
       security:
@@ -792,7 +792,7 @@ paths:
       summary: Get deployments for a REST API
       description: |
         Retrieves all deployment artifacts for a specific API. The apiId parameter is the API handle (identifier),
-        not the UUID. Supports filtering by gateway UUID and deployment status. 
+        not the UUID. Supports filtering by gateway ID (handle) and deployment status. 
         Access is validated against the organization in the JWT token.
       operationId: GetDeployments
       security:
@@ -1632,7 +1632,7 @@ paths:
       summary: Get deployments for an LLM provider
       description: |
         Retrieves all deployment artifacts for a specific LLM provider. The providerId parameter is the
-        LLM provider handle (identifier), not the UUID. Supports filtering by gateway UUID and deployment status.
+        LLM provider handle (identifier), not the UUID. Supports filtering by gateway ID (handle) and deployment status.
         Access is validated against the organization in the JWT token.
       operationId: getLLMProviderDeployments
       security:
@@ -1781,7 +1781,10 @@ paths:
           required: true
           schema:
             type: string
-          description: UUID of the gateway (validated against deployment's bound gateway)
+            pattern: '^[a-z0-9-]+$'
+            minLength: 3
+            maxLength: 63
+          description: Handle (URL-friendly slug) of the gateway (validated against deployment's bound gateway)
       responses:
         '200':
           description: Undeploy initiated successfully. Returns the deployment with initial status UNDEPLOYING. Poll status for final result.
@@ -1839,7 +1842,10 @@ paths:
           required: true
           schema:
             type: string
-          description: UUID of the gateway (validated against deployment's bound gateway)
+            pattern: '^[a-z0-9-]+$'
+            minLength: 3
+            maxLength: 63
+          description: Handle (URL-friendly slug) of the gateway (validated against deployment's bound gateway)
       responses:
         '200':
           description: Restore initiated successfully. Returns the deployment with initial status DEPLOYING. Poll status for final result.
@@ -2252,7 +2258,7 @@ paths:
       summary: Get deployments for an LLM proxy
       description: |
         Retrieves all deployment artifacts for a specific LLM proxy. The proxyId parameter is the
-        LLM proxy handle (identifier), not the UUID. Supports filtering by gateway UUID and deployment status.
+        LLM proxy handle (identifier), not the UUID. Supports filtering by gateway ID (handle) and deployment status.
         Access is validated against the organization in the JWT token.
       operationId: getLLMProxyDeployments
       security:
@@ -2401,7 +2407,10 @@ paths:
           required: true
           schema:
             type: string
-          description: UUID of the gateway (validated against deployment's bound gateway)
+            pattern: '^[a-z0-9-]+$'
+            minLength: 3
+            maxLength: 63
+          description: Handle (URL-friendly slug) of the gateway (validated against deployment's bound gateway)
       responses:
         '200':
           description: Undeploy initiated successfully. Returns the deployment with initial status UNDEPLOYING. Poll status for final result.
@@ -2459,7 +2468,10 @@ paths:
           required: true
           schema:
             type: string
-          description: UUID of the gateway (validated against deployment's bound gateway)
+            pattern: '^[a-z0-9-]+$'
+            minLength: 3
+            maxLength: 63
+          description: Handle (URL-friendly slug) of the gateway (validated against deployment's bound gateway)
       responses:
         '200':
           description: Restore initiated successfully. Returns the deployment with initial status DEPLOYING. Poll status for final result.
@@ -2830,7 +2842,7 @@ paths:
       summary: Get deployments for an MCP proxy
       description: |
         Retrieves all deployment artifacts for a specific MCP proxy. The id parameter is the MCP proxy handle (identifier),
-        not the UUID. Supports filtering by gateway UUID and deployment status. 
+        not the UUID. Supports filtering by gateway ID (handle) and deployment status. 
         Access is validated against the organization in the JWT token.
       operationId: GetMCPProxyDeployments
       security:
@@ -3171,9 +3183,9 @@ paths:
 
   /gateways/{gatewayId}:
     get:
-      summary: Get gateway by UUID
+      summary: Get gateway by ID
       description: |
-        Retrieves a specific gateway by its UUID. Access is validated against the organization 
+        Retrieves a specific gateway by its ID (handle). Access is validated against the organization
         in the JWT token.
       operationId: GetGateway
       security:
@@ -7702,8 +7714,11 @@ components:
           example: v1.0
         projectId:
           type: string
-          description: UUID of the project this proxy belongs to
-          example: 550e8400-e29b-41d4-a716-446655440000
+          pattern: '^[a-z0-9-]+$'
+          minLength: 3
+          maxLength: 63
+          description: Handle (URL-friendly slug) of the project this proxy belongs to
+          example: default-project
         context:
           type: string
           description: Base path for all REST API routes (must start with /, no trailing slash)
@@ -7817,8 +7832,11 @@ components:
           example: v1.0
         projectId:
           type: string
-          description: UUID of the project this proxy belongs to
-          example: 550e8400-e29b-41d4-a716-446655440000
+          pattern: '^[a-z0-9-]+$'
+          minLength: 3
+          maxLength: 63
+          description: Handle (URL-friendly slug) of the project this proxy belongs to
+          example: default-project
         provider:
           type: string
           description: Unique id of a deployed llm provider
@@ -8093,8 +8111,11 @@ components:
           example: v1.0
         projectId:
           type: string
-          description: UUID of the project this proxy belongs to
-          example: 550e8400-e29b-41d4-a716-446655440000
+          pattern: '^[a-z0-9-]+$'
+          minLength: 3
+          maxLength: 63
+          description: Handle (URL-friendly slug) of the project this proxy belongs to
+          example: default-project
         context:
           type: string
           description: Base path for all REST API routes (must start with /, no trailing slash)
@@ -8191,8 +8212,11 @@ components:
           example: v1.0
         projectId:
           type: string
-          description: UUID of the project this proxy belongs to
-          example: 550e8400-e29b-41d4-a716-446655440000
+          pattern: '^[a-z0-9-]+$'
+          minLength: 3
+          maxLength: 63
+          description: Handle (URL-friendly slug) of the project this proxy belongs to
+          example: default-project
         status:
           type: string
           enum:
@@ -8584,7 +8608,7 @@ components:
       in: path
       required: true
       description: |
-        **Project ID** (handle — unique slug identifier) of the Project.
+        **Project ID** consisting of the **handle** (unique slug identifier) of the Project.
       schema:
         type: string
         example: "default-project"
@@ -8655,17 +8679,20 @@ components:
       in: query
       required: false
       description: |
-        **Gateway ID** consisting of the **UUID** of the Gateway to filter status by.
+        **Gateway ID** consisting of the **handle** (unique slug identifier) of the Gateway to filter status by.
       schema:
         type: string
-        example: "987e6543-e21b-45d3-a789-426614174999"
+        pattern: '^[a-z0-9-]+$'
+        minLength: 3
+        maxLength: 63
+        example: "prod-gateway-01"
 
     gatewayId:
       name: gatewayId
       in: path
       required: true
       description: |
-        **Gateway ID** (handle — unique slug identifier) of the Gateway.
+        **Gateway ID** consisting of the **handle** (unique slug identifier) of the Gateway.
       schema:
         type: string
         example: "prod-gateway-01"

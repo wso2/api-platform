@@ -24,6 +24,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"strings"
 	"time"
 
 	"github.com/wso2/api-platform/platform-api/api"
@@ -73,13 +74,52 @@ func NewMCPProxyService(repo repository.MCPProxyRepository, projectRepo reposito
 	}
 }
 
-// toMCPProxyAPI converts m via mapMCPProxyModelToAPI and resolves its
-// createdBy/updatedBy UUIDs to their raw external identity.
+// resolveProjectHandle maps a stored project UUID to the project handle the
+// API exposes as `projectId`. Requests identify a project by handle
+// (Create/ListByProject both take one), so responses must too — a client has
+// no way to resolve a project UUID back to a handle. Mirrors
+// LLMProxyService.resolveProjectHandle.
+//
+// projectHandleCache is an optional per-request memo so a listing page doesn't
+// re-query the same project once per item; pass nil for single-item responses.
+func (s *MCPProxyService) resolveProjectHandle(projectUUID *string, projectHandleCache map[string]string) (*string, error) {
+	if projectUUID == nil || strings.TrimSpace(*projectUUID) == "" {
+		return projectUUID, nil
+	}
+	uuid := strings.TrimSpace(*projectUUID)
+	if handle, ok := projectHandleCache[uuid]; ok {
+		return &handle, nil
+	}
+	if s.projectRepo == nil {
+		return nil, fmt.Errorf("cannot resolve project handle: project repository unavailable")
+	}
+	project, err := s.projectRepo.GetProjectByUUID(uuid)
+	if err != nil {
+		return nil, fmt.Errorf("failed to resolve project: %w", err)
+	}
+	if project == nil {
+		return nil, apperror.ProjectNotFound.New()
+	}
+	handle := project.Handle
+	if projectHandleCache != nil {
+		projectHandleCache[uuid] = handle
+	}
+	return &handle, nil
+}
+
+// toMCPProxyAPI converts m via mapMCPProxyModelToAPI, resolves its project
+// UUID to the project handle, and resolves its createdBy/updatedBy UUIDs to
+// their raw external identity.
 func (s *MCPProxyService) toMCPProxyAPI(m *model.MCPProxy) (*api.MCPProxy, error) {
 	resp := mapMCPProxyModelToAPI(m)
 	if resp == nil {
 		return nil, nil
 	}
+	projectHandle, err := s.resolveProjectHandle(resp.ProjectId, nil)
+	if err != nil {
+		return nil, err
+	}
+	resp.ProjectId = projectHandle
 	if err := s.identity.ResolveIdentityField(&resp.CreatedBy); err != nil {
 		return nil, err
 	}
@@ -231,11 +271,17 @@ func (s *MCPProxyService) List(orgUUID string, limit, offset int) (*api.MCPProxy
 
 	resp.List = make([]api.MCPProxyListItem, 0, len(proxies))
 	createdByFields := make([]**string, 0, len(proxies))
+	projectHandles := make(map[string]string)
 	for _, p := range proxies {
 		item := mapMCPProxyModelToListItem(p)
 		if item == nil {
 			continue
 		}
+		projectHandle, err := s.resolveProjectHandle(item.ProjectId, projectHandles)
+		if err != nil {
+			return nil, err
+		}
+		item.ProjectId = projectHandle
 		resp.List = append(resp.List, *item)
 		createdByFields = append(createdByFields, &resp.List[len(resp.List)-1].CreatedBy)
 	}
@@ -286,11 +332,17 @@ func (s *MCPProxyService) ListByProject(orgUUID, projectHandle string, limit, of
 
 	resp.List = make([]api.MCPProxyListItem, 0, len(proxies))
 	createdByFields := make([]**string, 0, len(proxies))
+	projectHandles := make(map[string]string)
 	for _, p := range proxies {
 		item := mapMCPProxyModelToListItem(p)
 		if item == nil {
 			continue
 		}
+		projectHandle, err := s.resolveProjectHandle(item.ProjectId, projectHandles)
+		if err != nil {
+			return nil, err
+		}
+		item.ProjectId = projectHandle
 		resp.List = append(resp.List, *item)
 		createdByFields = append(createdByFields, &resp.List[len(resp.List)-1].CreatedBy)
 	}

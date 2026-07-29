@@ -1601,7 +1601,7 @@ type LLMProxy struct {
 	// Deprecated: this property has been marked as deprecated upstream, but no `x-deprecated-reason` was set
 	Policies *[]LLMPolicy `json:"policies,omitempty" yaml:"policies,omitempty"`
 
-	// ProjectId UUID of the project this proxy belongs to
+	// ProjectId Handle (URL-friendly slug) of the project this proxy belongs to
 	ProjectId string           `binding:"required" json:"projectId" yaml:"projectId"`
 	Provider  LLMProxyProvider `json:"provider" yaml:"provider"`
 
@@ -1660,7 +1660,7 @@ type LLMProxyListItem struct {
 	DisplayName string  `binding:"required" json:"displayName" yaml:"displayName"`
 	Id          *string `json:"id,omitempty" yaml:"id,omitempty"`
 
-	// ProjectId UUID of the project this proxy belongs to
+	// ProjectId Handle (URL-friendly slug) of the project this proxy belongs to
 	ProjectId *string `json:"projectId,omitempty" yaml:"projectId,omitempty"`
 
 	// Provider Unique id of a deployed llm provider
@@ -1746,7 +1746,7 @@ type MCPProxy struct {
 	// Policies List of policies to be applied
 	Policies *[]Policy `json:"policies,omitempty" yaml:"policies,omitempty"`
 
-	// ProjectId UUID of the project this proxy belongs to
+	// ProjectId Handle (URL-friendly slug) of the project this proxy belongs to
 	ProjectId *string `json:"projectId,omitempty" yaml:"projectId,omitempty"`
 
 	// ReadOnly True if the artifact originated from a data-plane gateway (origin gateway_api) and is read-only in the control plane; false for control-plane created artifacts.
@@ -1798,7 +1798,7 @@ type MCPProxyListItem struct {
 	Id             *string `json:"id,omitempty" yaml:"id,omitempty"`
 	McpSpecVersion *string `json:"mcpSpecVersion,omitempty" yaml:"mcpSpecVersion,omitempty"`
 
-	// ProjectId UUID of the project this proxy belongs to
+	// ProjectId Handle (URL-friendly slug) of the project this proxy belongs to
 	ProjectId *string `json:"projectId,omitempty" yaml:"projectId,omitempty"`
 
 	// ReadOnly True when the artifact originated from a data-plane gateway (origin gateway_api) and is read-only in the control plane.
@@ -2829,7 +2829,7 @@ type ListGatewayTokensParams struct {
 
 // ListLLMProviderTemplatesParams defines parameters for ListLLMProviderTemplates.
 type ListLLMProviderTemplatesParams struct {
-	// Query URL-encoded search DSL. `query=latest:true` lists only the latest version of each family; `query=groupId:<id>` lists that family's versions; adding `&version:<ver>` returns the single full template for that version. Terms are `&`-separated `key:value` pairs and the whole value is percent-encoded (e.g. groupId%3Aopenai%26version%3Av2.0).
+	// Query URL-encoded search DSL. `query=latest:true` lists only the latest version of each family; `query=groupId:<id>` lists that family's versions; adding `&version:<ver>` returns the single full template for that version. Terms are `&`-separated `key:value` pairs and the whole value is percent-encoded (e.g. groupId%3Awso2-openai%26version%3Av2.0).
 	Query *string `form:"query,omitempty" json:"query,omitempty" yaml:"query,omitempty"`
 
 	// Limit Maximum number of items to return per page.
@@ -2876,7 +2876,7 @@ type ListLLMProviderAPIKeysParams struct {
 
 // GetLLMProviderDeploymentsParams defines parameters for GetLLMProviderDeployments.
 type GetLLMProviderDeploymentsParams struct {
-	// GatewayId **Gateway ID** consisting of the **UUID** of the Gateway to filter status by.
+	// GatewayId **Gateway ID** consisting of the **handle** (unique slug identifier) of the Gateway to filter status by.
 	GatewayId *GatewayIdQ `form:"gatewayId,omitempty" json:"gatewayId,omitempty" yaml:"gatewayId,omitempty"`
 
 	// Status Filter deployments by status (DEPLOYED, UNDEPLOYED, DEPLOYING, UNDEPLOYING, FAILED, or ARCHIVED)
@@ -2894,13 +2894,13 @@ type GetLLMProviderDeploymentsParamsStatus string
 
 // RestoreLLMProviderDeploymentParams defines parameters for RestoreLLMProviderDeployment.
 type RestoreLLMProviderDeploymentParams struct {
-	// GatewayId UUID of the gateway (validated against deployment's bound gateway)
+	// GatewayId Handle (URL-friendly slug) of the gateway (validated against deployment's bound gateway)
 	GatewayId string `form:"gatewayId" json:"gatewayId" yaml:"gatewayId"`
 }
 
 // UndeployLLMProviderDeploymentParams defines parameters for UndeployLLMProviderDeployment.
 type UndeployLLMProviderDeploymentParams struct {
-	// GatewayId UUID of the gateway (validated against deployment's bound gateway)
+	// GatewayId Handle (URL-friendly slug) of the gateway (validated against deployment's bound gateway)
 	GatewayId string `form:"gatewayId" json:"gatewayId" yaml:"gatewayId"`
 }
 
@@ -2936,7 +2936,7 @@ type ListLLMProxyAPIKeysParams struct {
 
 // GetLLMProxyDeploymentsParams defines parameters for GetLLMProxyDeployments.
 type GetLLMProxyDeploymentsParams struct {
-	// GatewayId **Gateway ID** consisting of the **UUID** of the Gateway to filter status by.
+	// GatewayId **Gateway ID** consisting of the **handle** (unique slug identifier) of the Gateway to filter status by.
 	GatewayId *GatewayIdQ `form:"gatewayId,omitempty" json:"gatewayId,omitempty" yaml:"gatewayId,omitempty"`
 
 	// Status Filter deployments by status (DEPLOYED, UNDEPLOYED, DEPLOYING, UNDEPLOYING, FAILED, or ARCHIVED)
@@ -2954,13 +2954,13 @@ type GetLLMProxyDeploymentsParamsStatus string
 
 // RestoreLLMProxyDeploymentParams defines parameters for RestoreLLMProxyDeployment.
 type RestoreLLMProxyDeploymentParams struct {
-	// GatewayId UUID of the gateway (validated against deployment's bound gateway)
+	// GatewayId Handle (URL-friendly slug) of the gateway (validated against deployment's bound gateway)
 	GatewayId string `form:"gatewayId" json:"gatewayId" yaml:"gatewayId"`
 }
 
 // UndeployLLMProxyDeploymentParams defines parameters for UndeployLLMProxyDeployment.
 type UndeployLLMProxyDeploymentParams struct {
-	// GatewayId UUID of the gateway (validated against deployment's bound gateway)
+	// GatewayId Handle (URL-friendly slug) of the gateway (validated against deployment's bound gateway)
 	GatewayId string `form:"gatewayId" json:"gatewayId" yaml:"gatewayId"`
 }
 
@@ -2978,7 +2978,7 @@ type ListMCPProxiesParams struct {
 
 // GetMCPProxyDeploymentsParams defines parameters for GetMCPProxyDeployments.
 type GetMCPProxyDeploymentsParams struct {
-	// GatewayId **Gateway ID** consisting of the **UUID** of the Gateway to filter status by.
+	// GatewayId **Gateway ID** consisting of the **handle** (unique slug identifier) of the Gateway to filter status by.
 	GatewayId *GatewayIdQ `form:"gatewayId,omitempty" json:"gatewayId,omitempty" yaml:"gatewayId,omitempty"`
 
 	// Status Filter deployments by status (DEPLOYED, UNDEPLOYED, DEPLOYING, UNDEPLOYING, FAILED, or ARCHIVED)
@@ -3084,7 +3084,7 @@ type ListRESTAPIsParamsSortOrder string
 
 // GetDeploymentsParams defines parameters for GetDeployments.
 type GetDeploymentsParams struct {
-	// GatewayId **Gateway ID** consisting of the **UUID** of the Gateway to filter status by.
+	// GatewayId **Gateway ID** consisting of the **handle** (unique slug identifier) of the Gateway to filter status by.
 	GatewayId *GatewayIdQ `form:"gatewayId,omitempty" json:"gatewayId,omitempty" yaml:"gatewayId,omitempty"`
 
 	// Status Filter deployments by status (DEPLOYED, UNDEPLOYED, DEPLOYING, UNDEPLOYING, FAILED, or ARCHIVED)

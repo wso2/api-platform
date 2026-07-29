@@ -67,6 +67,26 @@ func TestMCPProxyServiceCreateRejectsInvalidPolicyVersion(t *testing.T) {
 	}
 }
 
+// TestMCPProxyServiceGetReturnsProjectHandle guards the response contract:
+// projectId must be the project handle, never the internal project UUID.
+// Clients route on handles and have no way to resolve a UUID back to one.
+func TestMCPProxyServiceGetReturnsProjectHandle(t *testing.T) {
+	projectUUID := "550e8400-e29b-41d4-a716-446655440000"
+	repo := &mockMCPProxyRepository{getByHandleResult: &model.MCPProxy{
+		Handle:      "mcp-proxy-1",
+		Name:        "Test MCP Proxy",
+		Version:     "v1.0",
+		ProjectUUID: &projectUUID,
+	}}
+	projectRepo := &mockProjectRepo{project: &model.Project{ID: projectUUID, Handle: "test-project", OrganizationID: "org-1"}}
+	service := NewMCPProxyService(repo, projectRepo, nil, nil, nil, slog.Default(), &noopAuditRepo{}, &config.Server{}, newTestIdentityService())
+
+	resp, err := service.Get("org-1", "mcp-proxy-1")
+	require.NoError(t, err)
+	require.NotNil(t, resp.ProjectId)
+	assert.Equal(t, "test-project", *resp.ProjectId)
+}
+
 func TestMCPProxyServiceUpdateRejectsInvalidPolicyVersion(t *testing.T) {
 	repo := &mockMCPProxyRepository{getByHandleResult: &model.MCPProxy{Handle: "mcp-proxy-1"}}
 	service := NewMCPProxyService(repo, nil, nil, nil, nil, slog.Default(), &noopAuditRepo{}, &config.Server{}, newTestIdentityService())

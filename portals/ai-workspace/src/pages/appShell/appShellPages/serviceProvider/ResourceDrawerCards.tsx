@@ -42,6 +42,8 @@ type ResourceDrawerCardsProps = {
   gatewayDeployments: Record<string, DeploymentResponse>;
   proxyDeployments: Record<string, DeploymentResponse>;
   onProxyClick: (proxyId: string, proxyProjectId?: string) => void;
+  /** Omitted when the user can't read gateways — cards then render unclickable. */
+  onGatewayClick?: (gatewayId: string) => void;
   onCreateProxy?: () => void;
   onBlockedNavigation?: () => void;
 };
@@ -52,6 +54,7 @@ export default function ResourceDrawerCards({
   gatewayDeployments,
   proxyDeployments,
   onProxyClick,
+  onGatewayClick,
   onCreateProxy,
   onBlockedNavigation,
 }: ResourceDrawerCardsProps) {
@@ -242,6 +245,9 @@ export default function ResourceDrawerCards({
                     key={gw.id}
                     gateway={gw}
                     deployment={gatewayDeployments[gw.id]}
+                    onClick={
+                      onGatewayClick ? () => onGatewayClick(gw.id) : undefined
+                    }
                   />
                 ))
               ))}

@@ -1499,7 +1499,8 @@ func TestLLMProxyServiceListByProviderUsesProviderUUID(t *testing.T) {
 			return &model.LLMProvider{UUID: "provider-uuid", ID: providerID}, nil
 		},
 	}
-	service := NewLLMProxyService(proxyRepo, providerRepo, nil, nil, nil, nil, slog.Default(), &noopAuditRepo{}, &config.Server{}, newTestIdentityService())
+	projectRepo := &mockProjectRepo{project: &model.Project{ID: "project-1", Handle: "test-project", OrganizationID: "org-1"}}
+	service := NewLLMProxyService(proxyRepo, providerRepo, projectRepo, nil, nil, nil, slog.Default(), &noopAuditRepo{}, &config.Server{}, newTestIdentityService())
 
 	resp, err := service.ListByProvider("org-1", "provider-1", 10, 0)
 	if err != nil {
@@ -1510,6 +1511,11 @@ func TestLLMProxyServiceListByProviderUsesProviderUUID(t *testing.T) {
 	}
 	if resp == nil || resp.Count != 1 || len(resp.List) != 1 {
 		t.Fatalf("expected one proxy in response, got: %#v", resp)
+	}
+	// projectId must be the project handle, not the stored UUID: clients route
+	// on handles and cannot resolve a project UUID back to one.
+	if resp.List[0].ProjectId == nil || *resp.List[0].ProjectId != "test-project" {
+		t.Fatalf("expected projectId to be the project handle, got: %v", resp.List[0].ProjectId)
 	}
 }
 

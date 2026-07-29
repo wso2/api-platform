@@ -66,7 +66,12 @@ import NoData from '../../../../assets/images/NoData.svg';
 import { FormattedMessage } from 'react-intl';
 import useAIWorkspaceSnackbar from '../../../../hooks/aiWorkspaceSnackbar';
 import SwaggerSpecViewer from '../../../../Components/SwaggerSpecViewer';
-import { buildProjectPath } from '../../../../utils/projectRouting';
+import {
+  buildGatewayPath,
+  buildProxyPath,
+} from '../../../../utils/projectRouting';
+import { useAppAuth } from '../../../../contexts/AppAuthContext';
+import { SCOPES } from '../../../../auth/permissions';
 import {
   formatPrefixedKey,
   resolveApiKeyAuthDisplay,
@@ -136,6 +141,8 @@ export default function ServiceProviderOverviewTab({
   const { provider, getProviderAPIKeys } = useLLMProvider();
   const { currentOrganization, projectsForCurrentOrganization } = useAppShell();
   const navigate = useNavigate();
+  const { hasPermission } = useAppAuth();
+  const canViewGateways = hasPermission(SCOPES.GATEWAY_READ);
   const fetchedApiKeysProviderIdRef = useRef<string | null>(null);
   const fetchingApiKeysProviderIdRef = useRef<string | null>(null);
   const [gateways, setGateways] = useState<Gateway[]>([]);
@@ -592,25 +599,40 @@ export default function ServiceProviderOverviewTab({
 
   const handleProxyClick = useCallback(
     (proxyId: string, proxyProjectId?: string) => {
-      // removed: ProjectBase no longer carries a `handler` alias field, so
-      // match on `id` only.
-      const proxyProject = projectsForCurrentOrganization.find(
-        (project) => project.id === proxyProjectId
-      );
-
-      if (!currentOrganization || !proxyProject) {
+      if (!currentOrganization) {
         logger.error(
-          `Unable to navigate to proxy ${proxyId} because project ${
-            proxyProjectId ?? ''
-          } is unavailable.`
+          `Unable to navigate to proxy ${proxyId} because the current organization is unavailable.`
         );
         return;
       }
 
-      const proxyPath = `/proxies/${encodeURIComponent(proxyId)}`;
-      navigate(buildProjectPath(currentOrganization, proxyProject, proxyPath));
+      navigate(
+        buildProxyPath(
+          currentOrganization,
+          projectsForCurrentOrganization,
+          proxyId,
+          proxyProjectId
+        )
+      );
     },
     [currentOrganization, navigate, projectsForCurrentOrganization]
+  );
+
+  // Gateways are organization-scoped, so unlike a proxy there is no project to
+  // resolve. Non-readers get a non-clickable card rather than a click that
+  // lands on a view they can't load.
+  const handleGatewayClick = useCallback(
+    (gatewayId: string) => {
+      if (!currentOrganization) {
+        logger.error(
+          `Unable to navigate to gateway ${gatewayId} because the current organization is unavailable.`
+        );
+        return;
+      }
+
+      navigate(buildGatewayPath(currentOrganization, gatewayId));
+    },
+    [currentOrganization, navigate]
   );
 
   const handleDeleteApiKey = async () => {
@@ -657,6 +679,7 @@ export default function ServiceProviderOverviewTab({
             gatewayDeployments={gatewayDeployments}
             proxyDeployments={proxyDeployments}
             onProxyClick={handleProxyClick}
+            onGatewayClick={canViewGateways ? handleGatewayClick : undefined}
             onCreateProxy={onCreateProxy}
             onBlockedNavigation={onBlockedNavigation}
           />

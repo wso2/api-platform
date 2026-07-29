@@ -53,7 +53,12 @@ import type { Gateway } from '../../../../../apis/gatewayTypes';
 import type { DeploymentResponse, Proxy } from '../../../../../utils/types';
 import { PLATFORM_API_BASE_URL } from '../../../../../config.env';
 import { logger } from '../../../../../utils/logger';
-import { buildProjectPath } from '../../../../../utils/projectRouting';
+import {
+  buildGatewayPath,
+  buildProxyPath,
+} from '../../../../../utils/projectRouting';
+import { useAppAuth } from '../../../../../contexts/AppAuthContext';
+import { SCOPES } from '../../../../../auth/permissions';
 
 import AnthropicLogo from '../../../../../assets/brands/Anthropic.jpg';
 import AWSBedrockLogo from '../../../../../assets/brands/AWSBedrock.webp';
@@ -306,13 +311,28 @@ export function ProxyCard({
 interface GatewayCardProps {
   gateway: Gateway;
   deployment?: DeploymentResponse;
+  onClick?: () => void;
 }
 
-export function GatewayCard({ gateway, deployment }: GatewayCardProps) {
+export function GatewayCard({ gateway, deployment, onClick }: GatewayCardProps) {
   const isDeployed = deployment?.status === 'DEPLOYED';
 
   return (
-    <Card>
+    <Card
+      onClick={onClick}
+      onKeyDown={(event) => {
+        if (!onClick) return;
+        if (event.key === 'Enter' || event.key === ' ') {
+          event.preventDefault();
+          onClick();
+        }
+      }}
+      role={onClick ? 'button' : undefined}
+      tabIndex={onClick ? 0 : undefined}
+      sx={{
+        cursor: onClick ? 'pointer' : undefined,
+      }}
+    >
       <CardContent sx={{ p: 2, '&:last-child': { pb: 2 } }}>
         <Stack direction="row" spacing={1.5} alignItems="flex-start">
           <Avatar
@@ -515,6 +535,8 @@ export default function ProviderMapTab() {
   const { provider } = useLLMProvider();
   const { currentOrganization, projectsForCurrentOrganization } = useAppShell();
   const navigate = useNavigate();
+  const { hasPermission } = useAppAuth();
+  const canViewGateways = hasPermission(SCOPES.GATEWAY_READ);
 
   const [proxies, setProxies] = useState<Proxy[]>([]);
   const [proxyDeployments, setProxyDeployments] = useState<
@@ -651,25 +673,40 @@ export default function ProviderMapTab() {
 
   const handleProxyClick = useCallback(
     (proxyId: string, proxyProjectId?: string) => {
-      // removed: ProjectBase no longer carries a `handler` alias field, so
-      // match on `id` only.
-      const proxyProject = projectsForCurrentOrganization.find(
-        (project) => project.id === proxyProjectId
-      );
-
-      if (!currentOrganization || !proxyProject) {
+      if (!currentOrganization) {
         logger.error(
-          `Unable to navigate to proxy ${proxyId} because project ${
-            proxyProjectId ?? ''
-          } is unavailable.`
+          `Unable to navigate to proxy ${proxyId} because the current organization is unavailable.`
         );
         return;
       }
 
-      const proxyPath = `/proxies/${encodeURIComponent(proxyId)}`;
-      navigate(buildProjectPath(currentOrganization, proxyProject, proxyPath));
+      navigate(
+        buildProxyPath(
+          currentOrganization,
+          projectsForCurrentOrganization,
+          proxyId,
+          proxyProjectId
+        )
+      );
     },
     [currentOrganization, navigate, projectsForCurrentOrganization]
+  );
+
+  // Gateways are organization-scoped, so unlike a proxy there is no project to
+  // resolve. Non-readers get a non-clickable card rather than a click that
+  // lands on a view they can't load.
+  const handleGatewayClick = useCallback(
+    (gatewayId: string) => {
+      if (!currentOrganization) {
+        logger.error(
+          `Unable to navigate to gateway ${gatewayId} because the current organization is unavailable.`
+        );
+        return;
+      }
+
+      navigate(buildGatewayPath(currentOrganization, gatewayId));
+    },
+    [currentOrganization, navigate]
   );
 
   const deploymentsByGateway = deployments.reduce<
@@ -810,6 +847,11 @@ export default function ProviderMapTab() {
                   key={gw.id}
                   gateway={gw}
                   deployment={deploymentsByGateway[gw.id]}
+                  onClick={
+                    canViewGateways
+                      ? () => handleGatewayClick(gw.id)
+                      : undefined
+                  }
                 />
               ))
             )}
