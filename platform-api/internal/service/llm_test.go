@@ -1135,6 +1135,13 @@ func (m *mockProjectRepo) GetProjectByUUID(projectID string) (*model.Project, er
 	return m.project, nil
 }
 
+func (m *mockProjectRepo) GetProjectByUUIDAndOrgID(projectID, orgID string) (*model.Project, error) {
+	if m.project != nil && m.project.OrganizationID != "" && m.project.OrganizationID != orgID {
+		return nil, nil
+	}
+	return m.project, nil
+}
+
 func (m *mockProjectRepo) GetProjectByHandleAndOrgID(handle, orgID string) (*model.Project, error) {
 	return m.project, nil
 }
@@ -1499,7 +1506,8 @@ func TestLLMProxyServiceListByProviderUsesProviderUUID(t *testing.T) {
 			return &model.LLMProvider{UUID: "provider-uuid", ID: providerID}, nil
 		},
 	}
-	service := NewLLMProxyService(proxyRepo, providerRepo, nil, nil, nil, nil, slog.Default(), &noopAuditRepo{}, &config.Server{}, newTestIdentityService())
+	projectRepo := &mockProjectRepo{project: &model.Project{ID: "project-1", Handle: "test-project", OrganizationID: "org-1"}}
+	service := NewLLMProxyService(proxyRepo, providerRepo, projectRepo, nil, nil, nil, slog.Default(), &noopAuditRepo{}, &config.Server{}, newTestIdentityService())
 
 	resp, err := service.ListByProvider("org-1", "provider-1", 10, 0)
 	if err != nil {
@@ -1510,6 +1518,11 @@ func TestLLMProxyServiceListByProviderUsesProviderUUID(t *testing.T) {
 	}
 	if resp == nil || resp.Count != 1 || len(resp.List) != 1 {
 		t.Fatalf("expected one proxy in response, got: %#v", resp)
+	}
+	// projectId must be the project handle, not the stored UUID: clients route
+	// on handles and cannot resolve a project UUID back to one.
+	if resp.List[0].ProjectId == nil || *resp.List[0].ProjectId != "test-project" {
+		t.Fatalf("expected projectId to be the project handle, got: %v", resp.List[0].ProjectId)
 	}
 }
 
@@ -1981,5 +1994,22 @@ func TestLLMProxyServiceUpdateFailsWhenAdditionalProviderNameCollides(t *testing
 	}
 	if proxyRepo.updated != nil {
 		t.Fatalf("expected update to be rejected before persisting, but proxy was updated")
+	}
+}
+
+// A project UUID stored on a proxy is not itself proof of tenancy — resolving
+// it must be scoped to the caller's organization, so a UUID belonging to another
+// org resolves to nothing rather than leaking that org's project handle.
+func TestLLMProxyServiceResolveProjectHandleIsOrgScoped(t *testing.T) {
+	projectRepo := &mockProjectRepo{project: &model.Project{ID: "project-1", Handle: "test-project", OrganizationID: "org-1"}}
+	service := NewLLMProxyService(nil, nil, projectRepo, nil, nil, nil, slog.Default(), &noopAuditRepo{}, &config.Server{}, newTestIdentityService())
+
+	handle, err := service.resolveProjectHandle("org-1", "project-1", nil)
+	if err != nil || handle != "test-project" {
+		t.Fatalf("expected same-org resolution to succeed, got handle=%q err=%v", handle, err)
+	}
+
+	if _, err := service.resolveProjectHandle("org-2", "project-1", nil); !apperror.ProjectNotFound.Is(err) {
+		t.Fatalf("expected ProjectNotFound for a cross-org project uuid, got: %v", err)
 	}
 }

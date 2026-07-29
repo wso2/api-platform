@@ -242,11 +242,10 @@ paths:
 
   /projects/{projectId}:
     get:
-      summary: Get project by handle
+      summary: Get project by ID
       description: |
-        Retrieves a specific project by its handle (unique slug identifier). Access is validated
-        against the organization in the JWT token to ensure users can only access projects in
-        their organization.
+        Retrieves a specific project by its ID (handle). Access is validated against the organization
+        in the JWT token to ensure users can only access projects in their organization.
       operationId: GetProject
       security:
         - OAuth2Security:
@@ -421,9 +420,9 @@ paths:
 
   /rest-apis/{restApiId}:
     get:
-      summary: Get REST API by UUID
+      summary: Get REST API by ID
       description: |
-        Retrieves a specific API by its UUID. Access is validated against the organization 
+        Retrieves a specific API by its ID (handle). Access is validated against the organization
         in the JWT token.
       operationId: GetRESTAPI
       security:
@@ -494,7 +493,7 @@ paths:
     delete:
       summary: Delete REST API
       description: |
-        Deletes a specific API by its UUID. Access is validated against the organization 
+        Deletes a specific API by its ID (handle). Access is validated against the organization
         in the JWT token.
       operationId: DeleteRESTAPI
       security:
@@ -1798,7 +1797,10 @@ paths:
           required: true
           schema:
             type: string
-          description: UUID of the gateway (validated against deployment's bound gateway)
+            pattern: '^[a-z0-9-]+$'
+            minLength: 3
+            maxLength: 63
+          description: Handle (URL-friendly slug) of the gateway (validated against deployment's bound gateway)
       responses:
         '200':
           description: Undeploy initiated successfully. Returns the deployment with initial status UNDEPLOYING. Poll status for final result.
@@ -1859,7 +1861,10 @@ paths:
           required: true
           schema:
             type: string
-          description: UUID of the gateway (validated against deployment's bound gateway)
+            pattern: '^[a-z0-9-]+$'
+            minLength: 3
+            maxLength: 63
+          description: Handle (URL-friendly slug) of the gateway (validated against deployment's bound gateway)
       responses:
         '200':
           description: Restore initiated successfully. Returns the deployment with initial status DEPLOYING. Poll status for final result.
@@ -2427,7 +2432,10 @@ paths:
           required: true
           schema:
             type: string
-          description: UUID of the gateway (validated against deployment's bound gateway)
+            pattern: '^[a-z0-9-]+$'
+            minLength: 3
+            maxLength: 63
+          description: Handle (URL-friendly slug) of the gateway (validated against deployment's bound gateway)
       responses:
         '200':
           description: Undeploy initiated successfully. Returns the deployment with initial status UNDEPLOYING. Poll status for final result.
@@ -2488,7 +2496,10 @@ paths:
           required: true
           schema:
             type: string
-          description: UUID of the gateway (validated against deployment's bound gateway)
+            pattern: '^[a-z0-9-]+$'
+            minLength: 3
+            maxLength: 63
+          description: Handle (URL-friendly slug) of the gateway (validated against deployment's bound gateway)
       responses:
         '200':
           description: Restore initiated successfully. Returns the deployment with initial status DEPLOYING. Poll status for final result.
@@ -3212,9 +3223,9 @@ paths:
 
   /gateways/{gatewayId}:
     get:
-      summary: Get gateway by UUID
+      summary: Get gateway by ID
       description: |
-        Retrieves a specific gateway by its UUID. Access is validated against the organization 
+        Retrieves a specific gateway by its ID (handle). Access is validated against the organization
         in the JWT token.
       operationId: GetGateway
       security:
@@ -7823,8 +7834,11 @@ components:
           example: v1.0
         projectId:
           type: string
-          description: UUID of the project this proxy belongs to
-          example: 550e8400-e29b-41d4-a716-446655440000
+          pattern: '^[a-z0-9-]+$'
+          minLength: 3
+          maxLength: 63
+          description: Handle (URL-friendly slug) of the project this proxy belongs to
+          example: default-project
         context:
           type: string
           description: Base path for all routes exposed by this proxy. Must start with / and carry no trailing slash; the single exception is the root path "/", which is the default.
@@ -7938,8 +7952,11 @@ components:
           example: v1.0
         projectId:
           type: string
-          description: UUID of the project this proxy belongs to
-          example: 550e8400-e29b-41d4-a716-446655440000
+          pattern: '^[a-z0-9-]+$'
+          minLength: 3
+          maxLength: 63
+          description: Handle (URL-friendly slug) of the project this proxy belongs to
+          example: default-project
         provider:
           type: string
           description: Unique id of a deployed llm provider
@@ -8214,8 +8231,11 @@ components:
           example: v1.0
         projectId:
           type: string
-          description: UUID of the project this proxy belongs to
-          example: 550e8400-e29b-41d4-a716-446655440000
+          pattern: '^[a-z0-9-]+$'
+          minLength: 3
+          maxLength: 63
+          description: Handle (URL-friendly slug) of the project this proxy belongs to
+          example: default-project
         context:
           type: string
           description: Base path for all routes exposed by this proxy. Must start with / and carry no trailing slash; the single exception is the root path "/", which is the default.
@@ -8312,8 +8332,11 @@ components:
           example: v1.0
         projectId:
           type: string
-          description: UUID of the project this proxy belongs to
-          example: 550e8400-e29b-41d4-a716-446655440000
+          pattern: '^[a-z0-9-]+$'
+          minLength: 3
+          maxLength: 63
+          description: Handle (URL-friendly slug) of the project this proxy belongs to
+          example: default-project
         status:
           type: string
           enum:
@@ -8765,7 +8788,7 @@ components:
       in: path
       required: true
       description: |
-        **Project ID** (handle — unique slug identifier) of the Project.
+        **Project ID** consisting of the **handle** (unique slug identifier) of the Project.
       schema:
         type: string
         example: "default-project"
@@ -8836,9 +8859,12 @@ components:
       in: query
       required: false
       description: |
-        **Gateway ID** (handle — unique slug identifier) of the Gateway to filter deployments by.
+        **Gateway ID** consisting of the **handle** (unique slug identifier) of the Gateway to filter status by.
       schema:
         type: string
+        pattern: '^[a-z0-9-]+$'
+        minLength: 3
+        maxLength: 63
         example: "prod-gateway-01"
 
     gatewayId:
@@ -8846,7 +8872,7 @@ components:
       in: path
       required: true
       description: |
-        **Gateway ID** (handle — unique slug identifier) of the Gateway.
+        **Gateway ID** consisting of the **handle** (unique slug identifier) of the Gateway.
       schema:
         type: string
         example: "prod-gateway-01"
