@@ -35,7 +35,7 @@
  * in authMiddleware/orgGuard, not from these three shims.
  */
 const adminService = require('../../../services/adminService');
-const devportalService = require('../../../services/devportalService');
+const apiPortalService = require('../../../services/devportalService');
 const util = require('../../../utils/util');
 const logger = require('../../../config/logger');
 
@@ -63,5 +63,5 @@ module.exports = {
     getOrganizations: singleOrgNotSupported,
     deleteOrganization: singleOrgNotSupported,
     updateOrganization: adminService.updateOrganization,
-    getOrganization: devportalService.getOrganization,
+    getOrganization: apiPortalService.getOrganization,
 };

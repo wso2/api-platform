@@ -94,17 +94,17 @@
     try {
       var res;
       if (editHandle) {
-        res = await fetch(window.devportalApi.root('/views/' + encodeURIComponent(editHandle)), {
+        res = await fetch(window.apiPortalApi.root('/views/' + encodeURIComponent(editHandle)), {
           method: 'PUT',
-          headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': window.devportalApi.csrfToken() },
+          headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': window.apiPortalApi.csrfToken() },
           credentials: 'same-origin', body: JSON.stringify({ displayName: display, labels: labels }),
         });
       } else {
         var body = { id: handle, labels: labels };
         if (display) body.displayName = display;
-        res = await fetch(window.devportalApi.root('/views'), {
+        res = await fetch(window.apiPortalApi.root('/views'), {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': window.devportalApi.csrfToken() },
+          headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': window.apiPortalApi.csrfToken() },
           credentials: 'same-origin', body: JSON.stringify(body),
         });
       }
@@ -140,9 +140,9 @@
     if (!pendingDel) return;
     g('cfg-delete-view-modal').style.display = 'none';
     try {
-      var res = await fetch(window.devportalApi.root('/views/' + encodeURIComponent(pendingDel)), {
+      var res = await fetch(window.apiPortalApi.root('/views/' + encodeURIComponent(pendingDel)), {
         method: 'DELETE',
-        headers: { 'X-CSRF-Token': window.devportalApi.csrfToken() }, credentials: 'same-origin',
+        headers: { 'X-CSRF-Token': window.apiPortalApi.csrfToken() }, credentials: 'same-origin',
       });
       if (res.ok || res.status === 204) { await showAlert('View deleted.', 'success'); window.location.reload(); }
       else { var err = await res.json().catch(function () { return {}; }); await showAlert('Delete failed: ' + (err.description || err.message || res.statusText), 'error'); }

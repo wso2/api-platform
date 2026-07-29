@@ -20,10 +20,10 @@
 /*
  * Tag: Application Keys
  */
-const devportalController = require('../../../controllers/devportalController');
+const apiPortalController = require('../../../controllers/devportalController');
 
 module.exports = {
-    generateApplicationKeys: devportalController.generateKeys,
-    generateOAuthKeys: devportalController.generateOAuthKeys,
-    revokeOAuthKeys: devportalController.revokeOAuthKeys,
+    generateApplicationKeys: apiPortalController.generateKeys,
+    generateOAuthKeys: apiPortalController.generateOAuthKeys,
+    revokeOAuthKeys: apiPortalController.revokeOAuthKeys,
 };

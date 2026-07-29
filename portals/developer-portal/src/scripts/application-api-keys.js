@@ -31,7 +31,7 @@
     }
 
     function jsonMutationHeaders() {
-        return { 'Content-Type': 'application/json', 'X-CSRF-Token': window.devportalApi.csrfToken() };
+        return { 'Content-Type': 'application/json', 'X-CSRF-Token': window.apiPortalApi.csrfToken() };
     }
 
     function showModal(id) {
@@ -127,7 +127,7 @@
             submitBtn.disabled = true;
             try {
                 const selectedApiId = apiSelect ? apiSelect.value : '';
-                const response = await fetch(devportalApi.root('/apis/' + encodeURIComponent(selectedApiId) + '/api-keys/associate'), {
+                const response = await fetch(apiPortalApi.root('/apis/' + encodeURIComponent(selectedApiId) + '/api-keys/associate'), {
                     method: 'POST', credentials: 'same-origin',
                     headers: jsonMutationHeaders(), body: JSON.stringify({ keyId: keySelect.value, appId: appId }),
                 });
@@ -156,7 +156,7 @@
             if (!keyId || !keyApiId) return;
             btn.disabled = true;
             try {
-                const response = await fetch(devportalApi.root('/apis/' + encodeURIComponent(keyApiId) + '/api-keys/dissociate'), {
+                const response = await fetch(apiPortalApi.root('/apis/' + encodeURIComponent(keyApiId) + '/api-keys/dissociate'), {
                     method: 'POST', credentials: 'same-origin',
                     headers: jsonMutationHeaders(), body: JSON.stringify({ keyId: keyId }),
                 });

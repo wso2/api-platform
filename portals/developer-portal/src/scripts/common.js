@@ -1,10 +1,10 @@
 // Devportal API URL builder. The base segment and version are injected by
-// the server (window.__DEVPORTAL_API__, set in the layout); the fallback keeps
+// the server (window.__API_PORTAL_API__, set in the layout); the fallback keeps
 // pages working if the global is ever missing. Defined synchronously (outside
 // DOMContentLoaded) so it is available before any page script's handlers run.
 (function () {
-    var cfg = window.__DEVPORTAL_API__ || { base: 'api', version: 'v0.9' };
-    window.devportalApi = {
+    var cfg = window.__API_PORTAL_API__ || { base: 'api', version: 'v0.9' };
+    window.apiPortalApi = {
         // Devportal API resource under the versioned base:
         // root('/subscriptions') => '/api/v0.9/subscriptions'
         root: function (path) {

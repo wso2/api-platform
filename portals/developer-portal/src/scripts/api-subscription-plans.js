@@ -53,8 +53,8 @@
         var meta = (window.__tokenMeta || {})[subscriptionId];
         if (meta && meta._fullToken) return meta._fullToken;
         try {
-          var resp = await fetch(devportalApi.root('/subscriptions/' + encodeURIComponent(subscriptionId)), {
-            headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': window.devportalApi.csrfToken() },
+          var resp = await fetch(apiPortalApi.root('/subscriptions/' + encodeURIComponent(subscriptionId)), {
+            headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': window.apiPortalApi.csrfToken() },
           });
           if (!resp.ok) return null;
           var data = await resp.json();
@@ -200,9 +200,9 @@
         var orgId = window.__subscriptionOrgId;
         var newStatus = _sub.status === 'ACTIVE' ? 'INACTIVE' : 'ACTIVE';
         try {
-          var resp = await fetch(devportalApi.root('/subscriptions/' + encodeURIComponent(_sub.subscriptionId)), {
+          var resp = await fetch(apiPortalApi.root('/subscriptions/' + encodeURIComponent(_sub.subscriptionId)), {
             method: 'PUT',
-            headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': window.devportalApi.csrfToken() },
+            headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': window.apiPortalApi.csrfToken() },
             body: JSON.stringify({ status: newStatus }),
           });
           if (resp.ok) {
@@ -274,10 +274,10 @@
           closeUnsub();
           try {
             var resp = await fetch(
-              devportalApi.root('/subscriptions/' + encodeURIComponent(args.subscriptionId) + '/change-plan'),
+              apiPortalApi.root('/subscriptions/' + encodeURIComponent(args.subscriptionId) + '/change-plan'),
               {
                 method: 'POST',
-                headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': window.devportalApi.csrfToken() },
+                headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': window.apiPortalApi.csrfToken() },
                 body: JSON.stringify({ planId: args.policyId }),
               }
             );
@@ -296,9 +296,9 @@
         if (!_sub) return;
         var orgId = window.__subscriptionOrgId;
         try {
-          resp = await fetch(devportalApi.root('/subscriptions/' + encodeURIComponent(_sub.subscriptionId)), {
+          resp = await fetch(apiPortalApi.root('/subscriptions/' + encodeURIComponent(_sub.subscriptionId)), {
             method: 'DELETE',
-            headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': window.devportalApi.csrfToken() },
+            headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': window.apiPortalApi.csrfToken() },
           });
           if (resp.ok) {
             closeUnsub();

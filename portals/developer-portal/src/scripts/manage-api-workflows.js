@@ -1326,8 +1326,8 @@ async function saveApiWorkflow(orgId, viewName, status) {
     const payload = { displayName: name, id: handle, description, agentPrompt, status, agentVisibility, contentType, apiWorkflowDefinition, markdownContent };
     const isEdit = !!apiWorkflowId;
     const url = isEdit
-        ? devportalApi.root(`/views/${viewName}/api-workflows/${apiWorkflowId}`)
-        : devportalApi.root(`/views/${viewName}/api-workflows`);
+        ? apiPortalApi.root(`/views/${viewName}/api-workflows/${apiWorkflowId}`)
+        : apiPortalApi.root(`/views/${viewName}/api-workflows`);
     const method = isEdit ? 'PUT' : 'POST';
 
     const groupBtns = document.querySelectorAll('#saveApiWorkflowGroup button');
@@ -1392,7 +1392,7 @@ async function deleteApiWorkflow(orgId, viewName, apiWorkflowId) {
     };
 
     try {
-        const response = await fetch(devportalApi.root(`/views/${viewName}/api-workflows/${apiWorkflowId}`), {
+        const response = await fetch(apiPortalApi.root(`/views/${viewName}/api-workflows/${apiWorkflowId}`), {
             method: 'DELETE',
             headers: { 'X-CSRF-Token': csrfToken },
             credentials: 'same-origin'
@@ -2381,7 +2381,7 @@ async function downloadTheme() {
         downloadBtn.innerHTML = '<span class="spinner-border spinner-border-sm me-1" role="status" aria-hidden="true"></span> Preparing…';
     }
     try {
-        const response = await fetch(window.devportalApi.root(`/views/${themingViewName}/export-theme`), {
+        const response = await fetch(window.apiPortalApi.root(`/views/${themingViewName}/export-theme`), {
             method: 'GET',
             credentials: 'same-origin'
         });
@@ -2419,7 +2419,7 @@ async function applyTheme() {
     try {
         const fd = new FormData();
         fd.append('file', themingZipFile);
-        const response = await fetch(window.devportalApi.root(`/views/${themingViewName}/apply-theme`), {
+        const response = await fetch(window.apiPortalApi.root(`/views/${themingViewName}/apply-theme`), {
             method: 'POST',
             headers: { 'X-CSRF-Token': themingCsrfToken },
             credentials: 'same-origin',
@@ -2455,7 +2455,7 @@ async function resetTheme() {
         confirmBtn.innerHTML = '<span class="spinner-border spinner-border-sm me-1" role="status" aria-hidden="true"></span> Resetting…';
     }
     try {
-        const response = await fetch(window.devportalApi.root(`/views/${themingViewName}/reset-theme`), {
+        const response = await fetch(window.apiPortalApi.root(`/views/${themingViewName}/reset-theme`), {
             method: 'POST',
             headers: { 'X-CSRF-Token': themingCsrfToken },
             credentials: 'same-origin'

@@ -56,25 +56,25 @@
       var res;
       if (editLabelName && editLabelName !== name) {
         /* handle changed — handle is immutable, so delete old and create new */
-        await fetch(window.devportalApi.root('/labels/'+encodeURIComponent(editLabelName)), {
+        await fetch(window.apiPortalApi.root('/labels/'+encodeURIComponent(editLabelName)), {
           method: 'DELETE',
-          headers: { 'X-CSRF-Token': window.devportalApi.csrfToken() },
+          headers: { 'X-CSRF-Token': window.apiPortalApi.csrfToken() },
         });
-        res = await fetch(window.devportalApi.root('/labels'), {
+        res = await fetch(window.apiPortalApi.root('/labels'), {
           method: 'POST',
-          headers: { 'Content-Type':'application/json', 'X-CSRF-Token': window.devportalApi.csrfToken() },
+          headers: { 'Content-Type':'application/json', 'X-CSRF-Token': window.apiPortalApi.csrfToken() },
           body: JSON.stringify({ id: name, displayName: displayName }),
         });
       } else if (editLabelName) {
-        res = await fetch(window.devportalApi.root('/labels/'+encodeURIComponent(name)), {
+        res = await fetch(window.apiPortalApi.root('/labels/'+encodeURIComponent(name)), {
           method: 'PUT',
-          headers: { 'Content-Type':'application/json', 'X-CSRF-Token': window.devportalApi.csrfToken() },
+          headers: { 'Content-Type':'application/json', 'X-CSRF-Token': window.apiPortalApi.csrfToken() },
           body: JSON.stringify({ id: name, displayName: displayName }),
         });
       } else {
-        res = await fetch(window.devportalApi.root('/labels'), {
+        res = await fetch(window.apiPortalApi.root('/labels'), {
           method: 'POST',
-          headers: { 'Content-Type':'application/json', 'X-CSRF-Token': window.devportalApi.csrfToken() },
+          headers: { 'Content-Type':'application/json', 'X-CSRF-Token': window.apiPortalApi.csrfToken() },
           body: JSON.stringify({ id: name, displayName: displayName }),
         });
       }
@@ -120,9 +120,9 @@
     if (!pendingDelName) return;
     document.getElementById('cfg-delete-label-modal').style.display = 'none';
     try {
-      var res = await fetch(window.devportalApi.root('/labels/'+encodeURIComponent(pendingDelName)), {
+      var res = await fetch(window.apiPortalApi.root('/labels/'+encodeURIComponent(pendingDelName)), {
         method: 'DELETE',
-        headers: { 'X-CSRF-Token': window.devportalApi.csrfToken() },
+        headers: { 'X-CSRF-Token': window.apiPortalApi.csrfToken() },
       });
       if (res.ok || res.status===204) {
         await showAlert('Label deleted.', 'success');

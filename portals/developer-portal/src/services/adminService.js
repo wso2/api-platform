@@ -109,7 +109,7 @@ const createOrganization = async (req, res) => {
         payload.handle = payload.id;
     }
     payload.configuration = {
-        devportalMode: constants.DEVPORTAL_MODE.DEFAULT,
+        apiPortalMode: constants.API_PORTAL_MODE.DEFAULT,
         ...(payload.configuration || {}),
     };
     const userId = util.resolveActor(req);
@@ -276,9 +276,9 @@ const updateOrganization = async (req, res) => {
         const userId = util.resolveActor(req);
         payload.updatedBy = userId;
 
-        const devportalMode = payload.configuration?.devportalMode;
-        if (devportalMode !== undefined && !Object.values(constants.DEVPORTAL_MODE).includes(devportalMode)) {
-            return util.sendError(res, 400, `Invalid devportalMode '${devportalMode}'. Must be one of: ${Object.values(constants.DEVPORTAL_MODE).join(', ')}.`);
+        const apiPortalMode = payload.configuration?.apiPortalMode;
+        if (apiPortalMode !== undefined && !Object.values(constants.API_PORTAL_MODE).includes(apiPortalMode)) {
+            return util.sendError(res, 400, `Invalid apiPortalMode '${apiPortalMode}'. Must be one of: ${Object.values(constants.API_PORTAL_MODE).join(', ')}.`);
         }
 
         // The handle and idp_ref_id are what tie this organization to

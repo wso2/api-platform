@@ -64,7 +64,7 @@ const resolveSourceUrls = async (sources, orgName, viewName, orgId) => {
         const [, apiType, apiHandle] = match;
         const apiId = await apiDao.getId(orgId, apiHandle);
         if (!apiId) return source;
-        return { ...source, url: `/${orgName}/views/${viewName}/${apiType}/${apiHandle}.md`, isDevportalApi: true };
+        return { ...source, url: `/${orgName}/views/${viewName}/${apiType}/${apiHandle}.md`, isApiPortalApi: true };
     }));
 };
 
@@ -93,7 +93,7 @@ const loadAPIWorkflows = async (req, res, next) => {
             imageURL: req.user.imageURL,
             isAdmin: req.user.isAdmin,
         } : null;
-        const devportalMode = orgDetails.configuration?.devportalMode || 'DEFAULT';
+        const apiPortalMode = orgDetails.configuration?.apiPortalMode || 'DEFAULT';
 
         const resolvedFlows = apiWorkflows.map(flow => {
             const sources = extractSourceDescriptions(flow);
@@ -116,7 +116,7 @@ const loadAPIWorkflows = async (req, res, next) => {
             viewName,
             baseUrl: `/${orgName}/views/${viewName}`,
             profile,
-            devportalMode
+            apiPortalMode
         };
 
         const dbLayout = await loadLayoutFromAPI(orgId, viewName);
@@ -174,7 +174,7 @@ const loadAPIWorkflowDetail = async (req, res, next) => {
             imageURL: req.user.imageURL,
             isAdmin: req.user.isAdmin,
         } : null;
-        const devportalMode = orgDetails.configuration?.devportalMode || 'DEFAULT';
+        const apiPortalMode = orgDetails.configuration?.apiPortalMode || 'DEFAULT';
 
         const rawContent = apiWorkflow.file_content;
         let fileContentStr = '';
@@ -199,7 +199,7 @@ const loadAPIWorkflowDetail = async (req, res, next) => {
             viewName,
             baseUrl: `/${orgName}/views/${viewName}`,
             profile,
-            devportalMode
+            apiPortalMode
         };
 
         const dbLayout = await loadLayoutFromAPI(orgId, viewName);

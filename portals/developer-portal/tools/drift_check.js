@@ -109,7 +109,7 @@ function responseSchema(operationId, status) {
 
 const SAMPLES = [
     // Organizations — adminService.createOrganization/updateOrganization/
-    // getAllOrganizations and devportalService.getOrganizationDetails all emit
+    // getAllOrganizations and apiPortalService.getOrganizationDetails all emit
     // {id, displayName, businessOwner, businessOwnerContact, businessOwnerEmail,
     // idpRefId, cpRefId, configuration, createdAt, updatedAt} (adminService.js
     // ~194-204). The previous org-prefixed field names (orgId/orgName/orgHandle/
@@ -117,14 +117,14 @@ const SAMPLES = [
     ['createOrganization', 201, {
         id: 'acme', displayName: 'Acme', businessOwner: 'Jane', businessOwnerContact: '+1',
         businessOwnerEmail: 'jane@acme.example',
-        idpRefId: 'ACME', cpRefId: 'cp-ref-1', configuration: { devportalMode: 'DEFAULT' },
+        idpRefId: 'ACME', cpRefId: 'cp-ref-1', configuration: { apiPortalMode: 'DEFAULT' },
         createdAt: '2026-05-07T08:30:00.000Z', updatedAt: '2026-05-07T08:30:00.000Z',
     }],
     ['getOrganizations', 200, {
         list: [{
             id: 'acme', displayName: 'Acme', businessOwner: 'Jane',
             businessOwnerContact: '+1', businessOwnerEmail: 'jane@acme.example',
-            idpRefId: 'ACME', cpRefId: 'cp-ref-1', configuration: { devportalMode: 'DEFAULT' },
+            idpRefId: 'ACME', cpRefId: 'cp-ref-1', configuration: { apiPortalMode: 'DEFAULT' },
             createdAt: '2026-05-07T08:30:00.000Z', updatedAt: '2026-05-07T08:30:00.000Z',
         }],
         pagination: { total: 1, limit: 20, offset: 0 },
@@ -132,13 +132,13 @@ const SAMPLES = [
     ['getOrganization', 200, {
         id: 'acme', displayName: 'Acme', businessOwner: 'Jane', businessOwnerContact: '+1',
         businessOwnerEmail: 'jane@acme.example',
-        idpRefId: 'ACME', cpRefId: 'cp-ref-1', configuration: { devportalMode: 'DEFAULT' },
+        idpRefId: 'ACME', cpRefId: 'cp-ref-1', configuration: { apiPortalMode: 'DEFAULT' },
         createdAt: '2026-05-07T08:30:00.000Z', updatedAt: '2026-05-07T08:30:00.000Z',
     }],
     ['updateOrganization', 200, {
         id: 'acme', displayName: 'Acme', businessOwner: 'Jane', businessOwnerContact: '+1',
         businessOwnerEmail: 'jane@acme.example',
-        idpRefId: 'ACME', cpRefId: 'cp-ref-1', configuration: { devportalMode: 'DEFAULT' },
+        idpRefId: 'ACME', cpRefId: 'cp-ref-1', configuration: { apiPortalMode: 'DEFAULT' },
         createdAt: '2026-05-07T08:30:00.000Z', updatedAt: '2026-05-07T08:30:00.000Z',
     }],
 

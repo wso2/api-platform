@@ -200,7 +200,7 @@
     const namePattern = /^[a-z0-9][a-z0-9_-]{0,127}$/;
 
     async function postGenerate(body) {
-        const response = await fetch(devportalApi.root('/apis/' + encodeURIComponent(apiId) + '/api-keys/generate'), {
+        const response = await fetch(apiPortalApi.root('/apis/' + encodeURIComponent(apiId) + '/api-keys/generate'), {
             method: 'POST', credentials: 'same-origin',
             headers: jsonMutationHeaders(), body: JSON.stringify(body),
         });
@@ -210,7 +210,7 @@
     }
 
     async function postRegenerate(keyId, body) {
-        const response = await fetch(devportalApi.root('/apis/' + encodeURIComponent(apiId) + '/api-keys/regenerate'), {
+        const response = await fetch(apiPortalApi.root('/apis/' + encodeURIComponent(apiId) + '/api-keys/regenerate'), {
             method: 'POST', credentials: 'same-origin',
             headers: jsonMutationHeaders(), body: JSON.stringify(Object.assign({ keyId: keyId }, body)),
         });
@@ -220,7 +220,7 @@
     }
 
     async function postRevoke(keyId) {
-        const response = await fetch(devportalApi.root('/apis/' + encodeURIComponent(apiId) + '/api-keys/revoke'), {
+        const response = await fetch(apiPortalApi.root('/apis/' + encodeURIComponent(apiId) + '/api-keys/revoke'), {
             method: 'POST', credentials: 'same-origin',
             headers: jsonMutationHeaders(), body: JSON.stringify({ keyId: keyId }),
         });
@@ -231,7 +231,7 @@
     }
 
     async function postAssociate(keyId, appId) {
-        const response = await fetch(devportalApi.root('/apis/' + encodeURIComponent(apiId) + '/api-keys/associate'), {
+        const response = await fetch(apiPortalApi.root('/apis/' + encodeURIComponent(apiId) + '/api-keys/associate'), {
             method: 'POST', credentials: 'same-origin',
             headers: jsonMutationHeaders(), body: JSON.stringify({ keyId: keyId, appId: appId }),
         });
@@ -242,7 +242,7 @@
     }
 
     async function postDissociate(keyId) {
-        const response = await fetch(devportalApi.root('/apis/' + encodeURIComponent(apiId) + '/api-keys/dissociate'), {
+        const response = await fetch(apiPortalApi.root('/apis/' + encodeURIComponent(apiId) + '/api-keys/dissociate'), {
             method: 'POST', credentials: 'same-origin',
             headers: jsonMutationHeaders(), body: JSON.stringify({ keyId: keyId }),
         });

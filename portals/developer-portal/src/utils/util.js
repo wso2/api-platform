@@ -89,7 +89,7 @@ function rewriteViewStyles(content, orgId, viewName) {
     }
     return content.replace(
         /\/styles\//g,
-        `${constants.DEVPORTAL_API.orgPath(orgId)}/views/${viewName}/asset?orgId=${orgId}&fileType=style&fileName=`
+        `${constants.API_PORTAL_API.orgPath(orgId)}/views/${viewName}/asset?orgId=${orgId}&fileType=style&fileName=`
     );
 }
 
@@ -111,13 +111,13 @@ function renderTemplate(templatePath, layoutPath, templateContent, isTechnical) 
 
     const slots = {};
     const showApiWorkflowsNav = config.features?.apiWorkflows === true;
-    const enrichedContent = { devportalMode: constants.DEVPORTAL_MODE.DEFAULT, ...templateContent, showApiWorkflowsNav, slots };
+    const enrichedContent = { apiPortalMode: constants.API_PORTAL_MODE.DEFAULT, ...templateContent, showApiWorkflowsNav, slots };
     return layout({
         ...enrichedContent,
         body: template(enrichedContent),
-        devportalApiConfig: {
-            base: constants.DEVPORTAL_API.BASE_SEGMENT,
-            version: constants.DEVPORTAL_API.VERSION,
+        apiPortalApiConfig: {
+            base: constants.API_PORTAL_API.BASE_SEGMENT,
+            version: constants.API_PORTAL_API.VERSION,
         },
         devReloadEnabled: process.env.NODE_ENV === 'development',
     });
@@ -154,13 +154,13 @@ async function renderTemplateWithView(templatePath, layoutPath, templateContent,
 
     const slots = {};
     const showApiWorkflowsNav = config.features?.apiWorkflows === true;
-    const enrichedContent = { devportalMode: constants.DEVPORTAL_MODE.DEFAULT, ...templateContent, showApiWorkflowsNav, slots };
+    const enrichedContent = { apiPortalMode: constants.API_PORTAL_MODE.DEFAULT, ...templateContent, showApiWorkflowsNav, slots };
     return layout({
         ...enrichedContent,
         body: template(enrichedContent),
-        devportalApiConfig: {
-            base: constants.DEVPORTAL_API.BASE_SEGMENT,
-            version: constants.DEVPORTAL_API.VERSION,
+        apiPortalApiConfig: {
+            base: constants.API_PORTAL_API.BASE_SEGMENT,
+            version: constants.API_PORTAL_API.VERSION,
         },
         devReloadEnabled: process.env.NODE_ENV === 'development',
     });
@@ -209,13 +209,13 @@ async function renderTemplateFromAPI(templateContent, orgId, orgName, filePath, 
 
     const slots = {};
     const showApiWorkflowsNav = config.features?.apiWorkflows === true;
-    const enrichedContent = { devportalMode: constants.DEVPORTAL_MODE.DEFAULT, ...templateContent, showApiWorkflowsNav, slots };
+    const enrichedContent = { apiPortalMode: constants.API_PORTAL_MODE.DEFAULT, ...templateContent, showApiWorkflowsNav, slots };
     return layout({
         ...enrichedContent,
         body: template(enrichedContent),
-        devportalApiConfig: {
-            base: constants.DEVPORTAL_API.BASE_SEGMENT,
-            version: constants.DEVPORTAL_API.VERSION,
+        apiPortalApiConfig: {
+            base: constants.API_PORTAL_API.BASE_SEGMENT,
+            version: constants.API_PORTAL_API.VERSION,
         },
         devReloadEnabled: process.env.NODE_ENV === 'development',
     });
@@ -275,13 +275,13 @@ async function renderGivenTemplate(templatePage, layoutPage, templateContent) {
     const layout = Handlebars.compile(layoutPage.toString());
     const slots = {};
     const showApiWorkflowsNav = config.features?.apiWorkflows === true;
-    const enrichedContent = { devportalMode: constants.DEVPORTAL_MODE.DEFAULT, ...templateContent, showApiWorkflowsNav, slots };
+    const enrichedContent = { apiPortalMode: constants.API_PORTAL_MODE.DEFAULT, ...templateContent, showApiWorkflowsNav, slots };
     return layout({
         ...enrichedContent,
         body: template(enrichedContent),
-        devportalApiConfig: {
-            base: constants.DEVPORTAL_API.BASE_SEGMENT,
-            version: constants.DEVPORTAL_API.VERSION,
+        apiPortalApiConfig: {
+            base: constants.API_PORTAL_API.BASE_SEGMENT,
+            version: constants.API_PORTAL_API.VERSION,
         },
         devReloadEnabled: process.env.NODE_ENV === 'development',
     });
@@ -876,12 +876,12 @@ async function readFilesInDirectory(directory, orgId, protocol, host, viewName, 
                 if (file.name.endsWith(".css")) {
                     fileType = "style"
                     if (file.name === "main.css") {
-                        strContent = strContent.replace(/@import\s*['"]\/styles\/api-content\.css['"];/g, `@import url("${constants.DEVPORTAL_API.orgPath(orgId)}/views/${viewName}/asset?fileType=style&fileName=api-content.css");`);
-                        strContent = strContent.replace(/@import\s*['"]\/styles\/home\.css['"];/g, `@import url("${constants.DEVPORTAL_API.orgPath(orgId)}/views/${viewName}/asset?fileType=style&fileName=home.css");`);
-                        strContent = strContent.replace(/@import\s*['"]\/styles\/main\.css['"];/g, `@import url("${constants.DEVPORTAL_API.orgPath(orgId)}/views/${viewName}/asset?fileType=style&fileName=main.css");`);
+                        strContent = strContent.replace(/@import\s*['"]\/styles\/api-content\.css['"];/g, `@import url("${constants.API_PORTAL_API.orgPath(orgId)}/views/${viewName}/asset?fileType=style&fileName=api-content.css");`);
+                        strContent = strContent.replace(/@import\s*['"]\/styles\/home\.css['"];/g, `@import url("${constants.API_PORTAL_API.orgPath(orgId)}/views/${viewName}/asset?fileType=style&fileName=home.css");`);
+                        strContent = strContent.replace(/@import\s*['"]\/styles\/main\.css['"];/g, `@import url("${constants.API_PORTAL_API.orgPath(orgId)}/views/${viewName}/asset?fileType=style&fileName=main.css");`);
                     }
-                    strContent = strContent.replace(/"\/images\/(devportal-logo\.[^"]+)/g, `"${constants.DEVPORTAL_API.orgPath(orgId)}/views/${viewName}/asset?fileType=image&fileName=$1`);
-                    strContent = strContent.replace(/'\/images\/(devportal-logo\.[^']+)/g, `'${constants.DEVPORTAL_API.orgPath(orgId)}/views/${viewName}/asset?fileType=image&fileName=$1`);
+                    strContent = strContent.replace(/"\/images\/(devportal-logo\.[^"]+)/g, `"${constants.API_PORTAL_API.orgPath(orgId)}/views/${viewName}/asset?fileType=image&fileName=$1`);
+                    strContent = strContent.replace(/'\/images\/(devportal-logo\.[^']+)/g, `'${constants.API_PORTAL_API.orgPath(orgId)}/views/${viewName}/asset?fileType=image&fileName=$1`);
                     content = Buffer.from(strContent, constants.CHARSET_UTF8);
                 } else if (file.name.endsWith(".hbs") && dir.endsWith("layout")) {
                     fileType = "layout"
@@ -892,8 +892,8 @@ async function readFilesInDirectory(directory, orgId, protocol, host, viewName, 
                     validateScripts(strContent);
                     validateTemplateExpressions(strContent);
                 } else if (file.name.endsWith(".hbs") && dir.endsWith("partials")) {
-                    strContent = strContent.replace(/"\/images\/([^"]+)/g, `"${constants.DEVPORTAL_API.orgPath(orgId)}/views/${viewName}/asset?fileType=image&fileName=$1`);
-                    strContent = strContent.replace(/'\/images\/([^']+)/g, `'${constants.DEVPORTAL_API.orgPath(orgId)}/views/${viewName}/asset?fileType=image&fileName=$1`);
+                    strContent = strContent.replace(/"\/images\/([^"]+)/g, `"${constants.API_PORTAL_API.orgPath(orgId)}/views/${viewName}/asset?fileType=image&fileName=$1`);
+                    strContent = strContent.replace(/'\/images\/([^']+)/g, `'${constants.API_PORTAL_API.orgPath(orgId)}/views/${viewName}/asset?fileType=image&fileName=$1`);
                     content = Buffer.from(strContent, constants.CHARSET_UTF8);
                     validateScripts(strContent);
                     validateTemplateExpressions(strContent);
@@ -987,7 +987,7 @@ function validateScripts(strContent) {
             // and subscriptions/partials/subscription-list.hbs)
             "<script>\n                window.__tokenMap = window.__tokenMap || {};\n                window.__subscriptionOrgId = \"{{@root.orgId}}\";\n            </script>",
             // API config bootstrap (layout/main.hbs)
-            "<script>\n      // Devportal API base segment + version, sourced from server constants.\n      // Browser scripts build invocation URLs via window.devportalApi (common.js).\n      window.__DEVPORTAL_API__ = { base: \"{{devportalApiConfig.base}}\", version: \"{{devportalApiConfig.version}}\" };\n    </script>",
+            "<script>\n      // Devportal API base segment + version, sourced from server constants.\n      // Browser scripts build invocation URLs via window.apiPortalApi (common.js).\n      window.__API_PORTAL_API__ = { base: \"{{apiPortalApiConfig.base}}\", version: \"{{apiPortalApiConfig.version}}\" };\n    </script>",
             // Existing-subs JSON data island (mcp-landing/partials/mcp-subscription-plans.hbs)
             "<script id=\"mcp-existing-subs-data\" type=\"application/json\">{{{json subscriptions}}}</script>",
         ]);
@@ -1131,7 +1131,7 @@ function appendAPIImageURL(subList, req, orgId) {
         const images = element.apiImageMetadata;
         let apiImageUrl = '';
         for (const key in images) {
-            apiImageUrl = `${constants.DEVPORTAL_API.orgPath(orgId)}${constants.ROUTE.API_FILE_PATH}${element.id}${constants.API_TEMPLATE_FILE_NAME}`;
+            apiImageUrl = `${constants.API_PORTAL_API.orgPath(orgId)}${constants.ROUTE.API_FILE_PATH}${element.id}${constants.API_TEMPLATE_FILE_NAME}`;
             // orgId is appended so the (public) image endpoint can resolve the view for
             // anonymous visitors with no session — mirrors getOrgAsset.
             const modifiedApiImageURL = apiImageUrl + images[key] + `${constants.ORG_ID_PARAM}${orgId}`;
@@ -1269,11 +1269,11 @@ function filterAllowedAPIs(searchResults, allowedAPIs) {
 
 const enforcePortalMode = async (req, res, next) => {
     const orgDetails = await orgDao.get(req.params.orgName);
-    const portalMode = orgDetails.configuration?.devportalMode || constants.DEVPORTAL_MODE.DEFAULT;
+    const portalMode = orgDetails.configuration?.apiPortalMode || constants.API_PORTAL_MODE.DEFAULT;
     const path = req.originalUrl.split('/')[4];
 
-    if ((path.includes('apis') || path.includes('api')) && (portalMode === constants.DEVPORTAL_MODE.DEFAULT || portalMode === constants.DEVPORTAL_MODE.APIS_ONLY) ||
-        (path.includes('mcps') || path.includes('mcp')) && (portalMode === constants.DEVPORTAL_MODE.DEFAULT || portalMode === constants.DEVPORTAL_MODE.MCP_SERVERS_ONLY)) {
+    if ((path.includes('apis') || path.includes('api')) && (portalMode === constants.API_PORTAL_MODE.DEFAULT || portalMode === constants.API_PORTAL_MODE.APIS_ONLY) ||
+        (path.includes('mcps') || path.includes('mcp')) && (portalMode === constants.API_PORTAL_MODE.DEFAULT || portalMode === constants.API_PORTAL_MODE.MCP_SERVERS_ONLY)) {
         next();
     } else {
         const err = new Error('Page not found');

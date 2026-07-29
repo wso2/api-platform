@@ -29,7 +29,7 @@ const ORG_CONTENT_TABLE = 'organization_assets';
 
 const create = async (orgData, t) => {
     const exec = t || db;
-    const devPortalId = orgData.handle ? orgData.handle.toLowerCase() : '';
+    const orgHandle = orgData.handle ? orgData.handle.toLowerCase() : '';
     const uuid = crypto.randomUUID();
 
     await exec.execute(
@@ -39,7 +39,7 @@ const create = async (orgData, t) => {
          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         [
             uuid, orgData.displayName, orgData.businessOwner, orgData.businessOwnerContact,
-            orgData.businessOwnerEmail, devPortalId, orgData.idpRefId, orgData.cpRefId,
+            orgData.businessOwnerEmail, orgHandle, orgData.idpRefId, orgData.cpRefId,
             orgData.configuration, orgData.createdBy, orgData.createdBy,
         ]
     );
@@ -49,7 +49,7 @@ const create = async (orgData, t) => {
         business_owner: orgData.businessOwner,
         business_owner_contact: orgData.businessOwnerContact,
         business_owner_email: orgData.businessOwnerEmail,
-        handle: devPortalId,
+        handle: orgHandle,
         idp_ref_id: orgData.idpRefId,
         cp_ref_id: orgData.cpRefId,
         configuration: orgData.configuration,
@@ -61,9 +61,9 @@ const create = async (orgData, t) => {
 /**
  * Normalizes an organization row. `configuration` is a JSON column: postgres
  * returns it already parsed, but sqlite (TEXT) and mssql (NVARCHAR) return a
- * string. Without this, `org.configuration?.devportalMode` is silently
+ * string. Without this, `org.configuration?.apiPortalMode` is silently
  * undefined on those dialects, so every caller falls back to
- * DEVPORTAL_MODE.DEFAULT and the configured portal mode never takes effect.
+ * API_PORTAL_MODE.DEFAULT and the configured portal mode never takes effect.
  * The API contract also declares `configuration` as an object.
  */
 const normalizeOrgRow = (row) => {
@@ -136,7 +136,7 @@ const list = async () => {
 const update = async (orgData, t) => {
     const exec = t || db;
     const existing = await get(orgData.orgId, t);
-    const devPortalId = orgData.handle ? orgData.handle.toLowerCase() : existing.handle;
+    const orgHandle = orgData.handle ? orgData.handle.toLowerCase() : existing.handle;
     const updatedAt = new Date();
 
     const setClauses = [
@@ -145,7 +145,7 @@ const update = async (orgData, t) => {
     ];
     const params = [
         orgData.displayName, orgData.businessOwner, orgData.businessOwnerContact,
-        orgData.businessOwnerEmail, devPortalId, orgData.idpRefId, orgData.updatedBy, updatedAt,
+        orgData.businessOwnerEmail, orgHandle, orgData.idpRefId, orgData.updatedBy, updatedAt,
     ];
     if (orgData.cpRefId !== undefined) {
         setClauses.push('cp_ref_id = ?');

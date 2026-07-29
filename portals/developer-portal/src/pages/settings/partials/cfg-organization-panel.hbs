@@ -24,11 +24,11 @@
               <p class="cfg-field-hint">Identifier used in URLs. Cannot be changed.</p>
             </div>
             <div class="cfg-form-group">
-              <label for="org-devportal-mode">Developer portal mode</label>
-              <select id="org-devportal-mode" class="cfg-form-input">
-                {{#devportalModeOptions}}
+              <label for="org-api-portal-mode">Developer portal mode</label>
+              <select id="org-api-portal-mode" class="cfg-form-input">
+                {{#apiPortalModeOptions}}
                 <option value="{{value}}" {{#if selected}}selected{{/if}}>{{label}}</option>
-                {{/devportalModeOptions}}
+                {{/apiPortalModeOptions}}
               </select>
               <p class="cfg-field-hint">Controls which catalogues the portal exposes. Pages for a hidden type return 404.</p>
             </div>
@@ -66,7 +66,7 @@
         <div style="margin-top:20px;">
           {{!-- data-configuration carries the existing configuration so the save
                 merges instead of dropping free-form keys the API allows
-                alongside devportalMode. Passed as a data-* attribute rather than
+                alongside apiPortalMode. Passed as a data-* attribute rather than
                 an inline <script> block, per js-output-encoding-xss.md. --}}
           <button class="cfg-btn-primary" id="cfg-save-org-btn" type="button" data-handle="{{currentOrg.id}}"
             data-configuration="{{ jsonAttr currentOrg.configuration }}">

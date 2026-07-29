@@ -13,8 +13,8 @@
     <link rel="stylesheet" href="/technical-styles/layout.css" />
     <script>
       // Devportal API base segment + version, sourced from server constants.
-      // Browser scripts build invocation URLs via window.devportalApi (common.js).
-      window.__DEVPORTAL_API__ = { base: "{{devportalApiConfig.base}}", version: "{{devportalApiConfig.version}}" };
+      // Browser scripts build invocation URLs via window.apiPortalApi (common.js).
+      window.__API_PORTAL_API__ = { base: "{{apiPortalApiConfig.base}}", version: "{{apiPortalApiConfig.version}}" };
     </script>
     {{{slots.head}}}
 </head>
@@ -23,14 +23,14 @@
     {{> header
         profile=profile
         baseUrl=baseUrl
-        devportalMode=devportalMode
+        apiPortalMode=apiPortalMode
         showApiWorkflowsNav=showApiWorkflowsNav
     }}
     <div class="layout-body">
         {{> sidebar
             profile=profile
             baseUrl=baseUrl
-            devportalMode=devportalMode
+            apiPortalMode=apiPortalMode
             showApiKeysNav=showApiKeysNav
             showApiWorkflowsNav=showApiWorkflowsNav
         }}

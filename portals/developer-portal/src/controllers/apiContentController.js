@@ -59,7 +59,7 @@ const loadAPIs = async (req, res, next) => {
         html = renderTemplate(layoutPath + listingPage + '/page.hbs', layoutPath + 'layout/main.hbs', templateContent, false);
     } else {
         const orgDetails = await orgDao.get(orgName);
-        const devportalMode = orgDetails.configuration?.devportalMode || constants.DEVPORTAL_MODE.DEFAULT;
+        const apiPortalMode = orgDetails.configuration?.apiPortalMode || constants.API_PORTAL_MODE.DEFAULT;
         try {
             const orgId = orgDetails.uuid;
             const searchTerm = req.query.query;
@@ -124,7 +124,7 @@ const loadAPIs = async (req, res, next) => {
                 baseUrl: '/' + orgName + constants.ROUTE.VIEWS_PATH + viewName,
                 orgId: orgId,
                 profile: req.isAuthenticated() ? profile : null,
-                devportalMode: devportalMode,
+                apiPortalMode: apiPortalMode,
                 applications: []
             };
 
@@ -218,7 +218,7 @@ const loadAPIContent = async (req, res, next) => {
         res.send(html);
     } else {
         const orgDetails = await orgDao.get(orgName);
-        const devportalMode = orgDetails.configuration?.devportalMode || constants.DEVPORTAL_MODE.DEFAULT;
+        const apiPortalMode = orgDetails.configuration?.apiPortalMode || constants.API_PORTAL_MODE.DEFAULT;
         try {
             const orgDetails = await orgDao.get(orgName);
             const orgId = orgDetails.uuid;
@@ -379,7 +379,7 @@ const loadAPIContent = async (req, res, next) => {
             try {
                 const definitionDoc = await apiFileDao.getByType(definitionDocType, orgId, apiId);
                 if (definitionDoc?.file_name) {
-                    schemaUrl = `${req.protocol}://${req.get('host')}${constants.DEVPORTAL_API.orgPath(orgId)}`
+                    schemaUrl = `${req.protocol}://${req.get('host')}${constants.API_PORTAL_API.orgPath(orgId)}`
                         + `${definitionAssetBasePath}${apiId}/assets?type=${definitionDocType}`
                         + `&fileName=${encodeURIComponent(definitionDoc.file_name)}`;
                 }
@@ -414,7 +414,7 @@ const loadAPIContent = async (req, res, next) => {
                 orgId: orgId,
                 schemaDefinition: schemaDefinition,
                 scopes: [],
-                devportalMode: devportalMode,
+                apiPortalMode: apiPortalMode,
                 profile: req.isAuthenticated() ? profile : null,
             };
             templateContent.showApiKeysNav = await resolveShowApiKeysNav(orgId, apiId, metaData.type, metaData, apiDefinitionForNav);
@@ -523,7 +523,7 @@ const loadDocsPage = async (req, res, next) => {
         html = renderTemplate(layoutPath + 'pages/docs/page.hbs', layoutPath + 'layout/main.hbs', templateContent, false);
     } else {
         const orgDetails = await orgDao.get(orgName);
-        const devportalMode = orgDetails.configuration?.devportalMode || constants.DEVPORTAL_MODE.DEFAULT;
+        const apiPortalMode = orgDetails.configuration?.apiPortalMode || constants.API_PORTAL_MODE.DEFAULT;
 
         try {
             const orgId = await orgDao.getId(orgName);
@@ -555,7 +555,7 @@ const loadDocsPage = async (req, res, next) => {
                 apiType: apiType,
                 apiName: apiMetadata[0].name || '',
                 profile: req.isAuthenticated() ? profile : null,
-                devportalMode: devportalMode,
+                apiPortalMode: apiPortalMode,
                 // resolveShowApiKeysNav returns false early for GraphQL/MCP/SOAP and lazily
                 // fetches the definition itself for the remaining types, so no preload here.
                 showApiKeysNav: await resolveShowApiKeysNav(orgId, apiId, apiType, metaForNav),
@@ -647,7 +647,7 @@ const loadDocument = async (req, res, next) => {
     }
 
     const orgDetails = await orgDao.get(orgName);
-    const devportalMode = orgDetails.configuration?.devportalMode || constants.DEVPORTAL_MODE.DEFAULT;
+    const apiPortalMode = orgDetails.configuration?.apiPortalMode || constants.API_PORTAL_MODE.DEFAULT;
     let baseDocUrl = '/' + orgName + '/views/' + viewName + "/api/" + apiHandle
     if (req.originalUrl.includes('/mcp')) {
         baseDocUrl = '/' + orgName + '/views/' + viewName + "/mcp/" + apiHandle
@@ -795,7 +795,7 @@ const loadDocument = async (req, res, next) => {
             }
             templateContent.profile = req.isAuthenticated() ? profile : null;
             templateContent.apiType = apiType;
-            templateContent.devportalMode = devportalMode;
+            templateContent.apiPortalMode = apiPortalMode;
             const row = apiMetadata[0];
             const metaForNav = {
                 refId: row.ref_id,
@@ -864,7 +864,7 @@ async function loadAPIMetaData(req, orgId, apiId, viewName) {
         // anonymous visitors with no session — mirrors appendAPIImageURL and getOrgAsset.
         let images = metaData.apiImageMetadata;
         for (const key in images) {
-            let apiImageUrl = `${constants.DEVPORTAL_API.orgPath(orgId)}${constants.ROUTE.API_FILE_PATH}${metaData.id}${constants.API_TEMPLATE_FILE_NAME}`;
+            let apiImageUrl = `${constants.API_PORTAL_API.orgPath(orgId)}${constants.ROUTE.API_FILE_PATH}${metaData.id}${constants.API_TEMPLATE_FILE_NAME}`;
             const modifiedApiImageURL = apiImageUrl + images[key] + `${constants.ORG_ID_PARAM}${orgId}`;
             images[key] = modifiedApiImageURL;
         }

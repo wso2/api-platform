@@ -35,7 +35,7 @@ const loadSubscriptions = async (req, res, next) => {
         if (!req.user) {
             return res.redirect(`/${orgName}${constants.ROUTE.VIEWS_PATH}${viewName}/login`);
         }
-        const devportalMode = orgDetails.configuration?.devportalMode || constants.DEVPORTAL_MODE.DEFAULT;
+        const apiPortalMode = orgDetails.configuration?.apiPortalMode || constants.API_PORTAL_MODE.DEFAULT;
 
         let allSubscriptions = [];
         try {
@@ -69,7 +69,7 @@ const loadSubscriptions = async (req, res, next) => {
         const templateContent = {
             baseUrl: '/' + orgName + constants.ROUTE.VIEWS_PATH + viewName,
             profile: profile,
-            devportalMode: devportalMode,
+            apiPortalMode: apiPortalMode,
             orgId: orgId,
             subscriptions: allSubscriptions,
         };

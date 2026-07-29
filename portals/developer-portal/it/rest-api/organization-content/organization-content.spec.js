@@ -18,7 +18,7 @@
 
 // Organization theming REST API — the /views/{viewId}/(apply-theme|reset-theme|
 // export-theme|asset) endpoints (adminService.applyTheme/resetTheme/exportTheme,
-// devportalService.getOrgAsset). A theme is a ZIP of view assets (styles/, images/,
+// apiPortalService.getOrgAsset). A theme is a ZIP of view assets (styles/, images/,
 // layout/, partials/, …). applyTheme unzips it and atomically replaces the view's
 // stored theme rows; getOrgAsset serves one asset back and — like the pre-auth
 // login page — is PUBLIC (security: []), resolving the org from the `orgId` query

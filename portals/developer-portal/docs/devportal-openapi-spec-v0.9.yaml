@@ -4305,10 +4305,10 @@ components:
         configuration:
           type: object
           description: >-
-            Organization portal configuration. Always includes `devportalMode`; may contain
+            Organization portal configuration. Always includes `apiPortalMode`; may contain
             additional free-form keys set by the caller.
           properties:
-            devportalMode:
+            apiPortalMode:
               type: string
               enum:
                 - DEFAULT
@@ -4317,7 +4317,7 @@ components:
               description: Controls the mode of the developer portal.
           additionalProperties: true
           example:
-            devportalMode: DEFAULT
+            apiPortalMode: DEFAULT
         createdAt:
           type: string
           format: date-time
@@ -4735,7 +4735,7 @@ components:
         configuration:
           type: object
           properties:
-            devportalMode:
+            apiPortalMode:
               type: string
               enum:
                 - DEFAULT
@@ -4777,7 +4777,7 @@ components:
         configuration:
           type: object
           properties:
-            devportalMode:
+            apiPortalMode:
               type: string
               enum:
                 - DEFAULT

@@ -21,12 +21,12 @@
  * Tag: Organization Content
  */
 const adminService = require('../../../services/adminService');
-const devportalService = require('../../../services/devportalService');
+const apiPortalService = require('../../../services/devportalService');
 const { requireCsrfForMutatingApi } = require('../../../middlewares/csrfProtection')
 const { compose } = require('./compose');
 
 module.exports = {
-    getOrgAsset: devportalService.getOrgContent,
+    getOrgAsset: apiPortalService.getOrgContent,
     applyTheme: compose(requireCsrfForMutatingApi, adminService.applyTheme),
     resetTheme: compose(requireCsrfForMutatingApi, adminService.resetTheme),
     exportTheme: adminService.exportTheme,

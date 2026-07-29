@@ -79,8 +79,8 @@ async function fetchSubToken(subId) {
     if (!orgId) return null;
     try {
         const resp = await fetch(
-            devportalApi.root(`/subscriptions/${encodeURIComponent(subId)}`),
-            { headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': window.devportalApi.csrfToken() } }
+            apiPortalApi.root(`/subscriptions/${encodeURIComponent(subId)}`),
+            { headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': window.apiPortalApi.csrfToken() } }
         );
         if (!resp.ok) return null;
         const data = await resp.json();
@@ -149,8 +149,8 @@ async function confirmRegenerateToken() {
     _regenerateInFlight = true;
     try {
         const resp = await fetch(
-            devportalApi.root(`/subscriptions/${encodeURIComponent(subId)}/regenerate-token`),
-            { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': window.devportalApi.csrfToken() } }
+            apiPortalApi.root(`/subscriptions/${encodeURIComponent(subId)}/regenerate-token`),
+            { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': window.apiPortalApi.csrfToken() } }
         );
         if (resp.ok) {
             const data = await resp.json();
@@ -186,10 +186,10 @@ async function toggleSubSuspend() {
     const newStatus = _manageSub.status === 'ACTIVE' ? 'INACTIVE' : 'ACTIVE';
     try {
         const resp = await fetch(
-            devportalApi.root(`/subscriptions/${encodeURIComponent(_manageSub.id)}`),
+            apiPortalApi.root(`/subscriptions/${encodeURIComponent(_manageSub.id)}`),
             {
                 method: 'PUT',
-                headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': window.devportalApi.csrfToken() },
+                headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': window.apiPortalApi.csrfToken() },
                 body: JSON.stringify({ status: newStatus }),
             }
         );
@@ -239,8 +239,8 @@ async function confirmSubUnsub() {
 async function executeSubRowDelete(subscriptionId) {
     try {
         const response = await fetch(
-            devportalApi.root(`/subscriptions/${encodeURIComponent(subscriptionId)}`),
-            { method: 'DELETE', headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': window.devportalApi.csrfToken() } }
+            apiPortalApi.root(`/subscriptions/${encodeURIComponent(subscriptionId)}`),
+            { method: 'DELETE', headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': window.apiPortalApi.csrfToken() } }
         );
 
         if (response.ok) {

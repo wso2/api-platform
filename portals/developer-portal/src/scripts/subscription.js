@@ -46,9 +46,9 @@ async function subscribe(orgId, apiId, planName, planId) {
     try {
         const body = { artifactId: apiId, subscriptionPlanId: planId };
 
-        const response = await fetch(devportalApi.root('/subscriptions'), {
+        const response = await fetch(apiPortalApi.root('/subscriptions'), {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': window.devportalApi.csrfToken() },
+            headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': window.apiPortalApi.csrfToken() },
             body: JSON.stringify(body),
         });
 
@@ -132,9 +132,9 @@ async function handlePlanSubscription(btnElement) {
 
 async function toggleSubscriptionStatus(orgId, subscriptionId, newStatus) {
     try {
-        const response = await fetch(devportalApi.root(`/subscriptions/${encodeURIComponent(subscriptionId)}`), {
+        const response = await fetch(apiPortalApi.root(`/subscriptions/${encodeURIComponent(subscriptionId)}`), {
             method: 'PUT',
-            headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': window.devportalApi.csrfToken() },
+            headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': window.apiPortalApi.csrfToken() },
             body: JSON.stringify({ status: newStatus }),
         });
 
@@ -161,9 +161,9 @@ function confirmDeleteSubscription(orgId, subscriptionId) {
 
 async function executeDeleteSubscription(orgId, subscriptionId) {
     try {
-        const response = await fetch(devportalApi.root(`/subscriptions/${encodeURIComponent(subscriptionId)}`), {
+        const response = await fetch(apiPortalApi.root(`/subscriptions/${encodeURIComponent(subscriptionId)}`), {
             method: 'DELETE',
-            headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': window.devportalApi.csrfToken() },
+            headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': window.apiPortalApi.csrfToken() },
         });
 
         if (response.ok) {
@@ -190,10 +190,10 @@ async function runPendingPlanSwitch(orgId, apiId, planName, displayName, subscri
 
     try {
         const response = await fetch(
-            devportalApi.root(`/subscriptions/${encodeURIComponent(subscriptionId)}/change-plan`),
+            apiPortalApi.root(`/subscriptions/${encodeURIComponent(subscriptionId)}/change-plan`),
             {
                 method: 'POST',
-                headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': window.devportalApi.csrfToken() },
+                headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': window.apiPortalApi.csrfToken() },
                 body: JSON.stringify({ artifactId: apiId, planId }),
             }
         );
@@ -235,7 +235,7 @@ async function refreshLandingPageSubscriptions() {
     if (!apiId) { window.location.reload(); return; }
 
     try {
-        var resp = await fetch(devportalApi.root('/subscriptions?artifactId=' + encodeURIComponent(apiId)), { headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': window.devportalApi.csrfToken() } });
+        var resp = await fetch(apiPortalApi.root('/subscriptions?artifactId=' + encodeURIComponent(apiId)), { headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': window.apiPortalApi.csrfToken() } });
         if (!resp.ok) { window.location.reload(); return; }
         var data = await resp.json();
         var existing = data.list || data || [];
@@ -425,7 +425,7 @@ async function fetchTokenIfNeeded(subscriptionId) {
     const orgId = window.__subscriptionOrgId;
     if (!orgId) return null;
     try {
-        const resp = await fetch(devportalApi.root(`/subscriptions/${encodeURIComponent(subscriptionId)}`), { headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': window.devportalApi.csrfToken() } });
+        const resp = await fetch(apiPortalApi.root(`/subscriptions/${encodeURIComponent(subscriptionId)}`), { headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': window.apiPortalApi.csrfToken() } });
         if (!resp.ok) return null;
         const data = await resp.json();
         const token = data.subscriptionToken;

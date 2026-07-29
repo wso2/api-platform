@@ -20,12 +20,12 @@
 /*
  * Tag: Applications
  */
-const devportalController = require('../../../controllers/devportalController');
+const apiPortalController = require('../../../controllers/devportalController');
 
 module.exports = {
-    listApplications: devportalController.listApplications,
-    getApplication: devportalController.getApplication,
-    saveApplication: devportalController.saveApplication,
-    updateApplication: devportalController.updateApplication,
-    deleteApplication: devportalController.deleteApplication,
+    listApplications: apiPortalController.listApplications,
+    getApplication: apiPortalController.getApplication,
+    saveApplication: apiPortalController.saveApplication,
+    updateApplication: apiPortalController.updateApplication,
+    deleteApplication: apiPortalController.deleteApplication,
 };

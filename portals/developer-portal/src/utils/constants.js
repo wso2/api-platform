@@ -18,23 +18,23 @@
 // Devportal API base segment and version — single source of truth for the
 // invocation prefix `/api/v0.9`. Change these two to bump the base segment
 // (e.g. devportalv2) or version (e.g. v2) everywhere.
-const DEVPORTAL_BASE_SEGMENT = 'api';
-const DEVPORTAL_VERSION = 'v0.9';
+const API_PORTAL_BASE_SEGMENT = 'api';
+const API_PORTAL_VERSION = 'v0.9';
 // Express route prefix for devportal routes, e.g. '/api/v0.9'
-const DEVPORTAL_BASE_PATH = `/${DEVPORTAL_BASE_SEGMENT}/${DEVPORTAL_VERSION}`;
+const API_PORTAL_BASE_PATH = `/${API_PORTAL_BASE_SEGMENT}/${API_PORTAL_VERSION}`;
 // Builder for the devportal base path used in server-side URL generation.
 // The orgId argument is accepted for backward-compatibility but not used —
 // org context is resolved from the token/session, not the URL.
-const devportalOrgPath = (_orgId) => `/${DEVPORTAL_BASE_SEGMENT}/${DEVPORTAL_VERSION}`;
+const apiPortalOrgPath = (_orgId) => `/${API_PORTAL_BASE_SEGMENT}/${API_PORTAL_VERSION}`;
 
 module.exports = {
     // Allowed algorithms for IdP JWT verification.
     JWT_ASYMMETRIC_ALGORITHMS: ['RS256', 'RS384', 'RS512', 'PS256'],
-    DEVPORTAL_API: {
-        BASE_SEGMENT: DEVPORTAL_BASE_SEGMENT,
-        VERSION: DEVPORTAL_VERSION,
-        BASE_PATH: DEVPORTAL_BASE_PATH,
-        orgPath: devportalOrgPath,
+    API_PORTAL_API: {
+        BASE_SEGMENT: API_PORTAL_BASE_SEGMENT,
+        VERSION: API_PORTAL_VERSION,
+        BASE_PATH: API_PORTAL_BASE_PATH,
+        orgPath: apiPortalOrgPath,
     },
     IMAGE: 'image',
     STYLE: 'style',
@@ -87,7 +87,7 @@ module.exports = {
         WEBSUB: "WebSubApi",
         GRAPHQL: "GRAPHQL",
     },
-    DEVPORTAL_MODE: {
+    API_PORTAL_MODE: {
         DEFAULT: "DEFAULT",
         MCP_SERVERS_ONLY: "MCP_SERVERS_ONLY",
         APIS_ONLY: "APIS_ONLY",
@@ -181,10 +181,10 @@ module.exports = {
         API_FILE_PATH: '/apis/',
         API_LANDING_PAGE_PATH: '/api/',
         API_DOCS_PATH: '/docs/',
-        DEVPORTAL_CONFIGURE: ['/*/settings'],
-        DEVPORTAL_ROOT: ['/portal', '/portal/*/edit', '/devportal'],
-        DEVPORTAL_API_LISTING: '/*/apis',
-        DEVPORTAL_TECHNICAL_PAGES: ['*/application'],
+        API_PORTAL_CONFIGURE: ['/*/settings'],
+        API_PORTAL_ROOT: ['/portal', '/portal/*/edit', '/devportal'],
+        API_PORTAL_API_LISTING: '/*/apis',
+        API_PORTAL_TECHNICAL_PAGES: ['*/application'],
         VIEWS_PATH: "/views/",
         // Fixed page-access gates enforced by ensureAuthenticated.js — not user-configurable.
         // config.pageAccessRules.authenticated/authorized (deployer-supplied, via config.toml)

@@ -128,9 +128,9 @@
 
     try {
       var method = editPlanId ? 'PUT' : 'POST';
-      var res = await fetch(window.devportalApi.root('/subscription-plans'), {
+      var res = await fetch(window.apiPortalApi.root('/subscription-plans'), {
         method: method,
-        headers: { 'Content-Type':'application/json', 'X-CSRF-Token': window.devportalApi.csrfToken() },
+        headers: { 'Content-Type':'application/json', 'X-CSRF-Token': window.apiPortalApi.csrfToken() },
         body: JSON.stringify(body),
       });
       if (res.ok) {
@@ -180,9 +180,9 @@
     if (!pendingDelPlanId) return;
     document.getElementById('cfg-delete-plan-modal').style.display = 'none';
     try {
-      var res = await fetch(window.devportalApi.root('/subscription-plans/'+encodeURIComponent(pendingDelPlanId)), {
+      var res = await fetch(window.apiPortalApi.root('/subscription-plans/'+encodeURIComponent(pendingDelPlanId)), {
         method: 'DELETE',
-        headers: { 'X-CSRF-Token': window.devportalApi.csrfToken() },
+        headers: { 'X-CSRF-Token': window.apiPortalApi.csrfToken() },
       });
       if (res.ok || res.status===204) {
         await showAlert('Plan deleted.', 'success');

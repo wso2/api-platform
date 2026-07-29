@@ -68,14 +68,14 @@
     };
 
     var url    = editKmId
-      ? window.devportalApi.root('/key-managers/' + encodeURIComponent(editKmId))
-      : window.devportalApi.root('/key-managers');
+      ? window.apiPortalApi.root('/key-managers/' + encodeURIComponent(editKmId))
+      : window.apiPortalApi.root('/key-managers');
     var method = editKmId ? 'PUT' : 'POST';
 
     try {
       var res = await fetch(url, {
         method: method,
-        headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': window.devportalApi.csrfToken() },
+        headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': window.apiPortalApi.csrfToken() },
         body: JSON.stringify(body),
       });
       if (res.ok) {
@@ -120,9 +120,9 @@
     if (!pendingDelKmId) return;
     document.getElementById('cfg-delete-km-modal').style.display = 'none';
     try {
-      var res = await fetch(window.devportalApi.root('/key-managers/' + encodeURIComponent(pendingDelKmId)), {
+      var res = await fetch(window.apiPortalApi.root('/key-managers/' + encodeURIComponent(pendingDelKmId)), {
         method: 'DELETE',
-        headers: { 'X-CSRF-Token': window.devportalApi.csrfToken() },
+        headers: { 'X-CSRF-Token': window.apiPortalApi.csrfToken() },
       });
       if (res.ok || res.status === 204) {
         await showAlert('Key manager deleted.', 'success');

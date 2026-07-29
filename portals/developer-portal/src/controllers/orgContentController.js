@@ -49,7 +49,7 @@ const loadOrgContentFromAPI = async (req, res, next) => {
     let html;
     const orgName = req.params.orgName;
     const orgDetails = await orgDao.get(orgName);
-    const devportalMode = orgDetails.configuration?.devportalMode || constants.DEVPORTAL_MODE.DEFAULT;
+    const apiPortalMode = orgDetails.configuration?.apiPortalMode || constants.API_PORTAL_MODE.DEFAULT;
     try {
         const orgId = await orgDao.getId(orgName);
         let profile = null;
@@ -63,7 +63,7 @@ const loadOrgContentFromAPI = async (req, res, next) => {
             }
         }
         templateContent = {
-            devportalMode: devportalMode,
+            apiPortalMode: apiPortalMode,
             baseUrl: '/' + orgName + constants.ROUTE.VIEWS_PATH + req.params.viewName,
             profile: req.isAuthenticated() ? profile : null,
         };

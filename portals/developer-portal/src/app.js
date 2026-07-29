@@ -173,8 +173,8 @@ app.use((req, res, next) => {
 // fine-grained OAuth2 scope enforcement, dispatching by operationId to
 // src/routes/api/handlers (/api/v0.9/..., /organizations, /login, ...).
 // Registered before the page route tree so unmatched requests fall through to it.
-const devportalApiRouter = require('./routes/api/devportalApiRouter');
-app.use(constants.ROUTE.DEFAULT, devportalApiRouter);
+const apiPortalRouter = require('./routes/api/devportalApiRouter');
+app.use(constants.ROUTE.DEFAULT, apiPortalRouter);
 
 // MCP Server Registry (OpenAPI v0.1)
 app.use('/registry/:orgHandle', mcpRegistryRoute);
@@ -251,7 +251,7 @@ app.use((err, req, res, next) => {
     // outside this portal.
     const baseUrl = '/' + orgContext.getHandle() + constants.ROUTE.VIEWS_PATH + 'default';
     const templateContent = {
-        devportalMode: 'DEFAULT',
+        apiPortalMode: 'DEFAULT',
         baseUrl,
         errorType,
         profile: typeof req.isAuthenticated === 'function' && req.isAuthenticated() ? req.user : null,

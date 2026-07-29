@@ -39,7 +39,7 @@ const loadAPIApiKeys = async (req, res, next) => {
         if (!req.user) {
             return res.redirect(`/${orgName}${constants.ROUTE.VIEWS_PATH}${viewName}/login`);
         }
-        const devportalMode = orgDetails.configuration?.devportalMode || constants.DEVPORTAL_MODE.DEFAULT;
+        const apiPortalMode = orgDetails.configuration?.apiPortalMode || constants.API_PORTAL_MODE.DEFAULT;
 
         const apiId = await apiDao.getId(orgId, apiHandle);
         if (!apiId) {
@@ -53,7 +53,7 @@ const loadAPIApiKeys = async (req, res, next) => {
             const images = metaData.apiImageMetadata;
             if (images) {
                 for (const key in images) {
-                    images[key] = `${constants.DEVPORTAL_API.orgPath(orgId)}${constants.ROUTE.API_FILE_PATH}${apiId}${constants.API_TEMPLATE_FILE_NAME}${images[key]}`;
+                    images[key] = `${constants.API_PORTAL_API.orgPath(orgId)}${constants.ROUTE.API_FILE_PATH}${apiId}${constants.API_TEMPLATE_FILE_NAME}${images[key]}`;
                 }
             }
         } else {
@@ -137,7 +137,7 @@ const loadAPIApiKeys = async (req, res, next) => {
         const templateContent = {
             baseUrl: '/' + orgName + constants.ROUTE.VIEWS_PATH + viewName,
             profile: profile,
-            devportalMode: devportalMode,
+            apiPortalMode: apiPortalMode,
             orgId: orgId,
             apiKeys: apiKeys,
             apiKeysCount: apiKeysCount,

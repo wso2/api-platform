@@ -35,7 +35,7 @@
     /* ── helpers ──────────────────────────────────────────────── */
 
     function mutationHeaders() {
-        return { 'Content-Type': 'application/json', 'X-CSRF-Token': window.devportalApi.csrfToken() };
+        return { 'Content-Type': 'application/json', 'X-CSRF-Token': window.apiPortalApi.csrfToken() };
     }
     function show(id) { var el = document.getElementById(id); if (el) el.style.display = 'flex'; }
     function hide(id) { var el = document.getElementById(id); if (el) el.style.display = 'none'; }
@@ -74,7 +74,7 @@
     // (/mcp-servers/{handle}/api-keys/...). Pick the base from the key's apiType.
     function keyEndpoint(suffix) {
         var base = isMcp(_manageKey) ? '/mcp-servers/' : '/apis/';
-        return devportalApi.root(base + encodeURIComponent(_manageKey.apiId) + '/api-keys/' + suffix);
+        return apiPortalApi.root(base + encodeURIComponent(_manageKey.apiId) + '/api-keys/' + suffix);
     }
 
     /* ── regenerate modal ─────────────────────────────────────── */
@@ -153,7 +153,7 @@
     async function loadApps() {
         if (_apps) return _apps;
         try {
-            var resp = await fetch(devportalApi.root('/applications'), { headers: mutationHeaders() });
+            var resp = await fetch(apiPortalApi.root('/applications'), { headers: mutationHeaders() });
             if (!resp.ok) return [];
             var data = await resp.json();
             // The associate endpoint expects the app handle, returned as `id` here.

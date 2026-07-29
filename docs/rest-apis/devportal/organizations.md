@@ -33,7 +33,7 @@ NOT SUPPORTED — always returns 405. This Developer Portal serves the single or
   "idpRefId": "string",
   "cpRefId": "string",
   "configuration": {
-    "devportalMode": "DEFAULT"
+    "apiPortalMode": "DEFAULT"
   }
 }
 ```
@@ -47,7 +47,7 @@ id: acme
 idpRefId: string
 cpRefId: string
 configuration:
-  devportalMode: DEFAULT
+  apiPortalMode: DEFAULT
 
 ```
 
@@ -217,7 +217,7 @@ Updates organization metadata, claim mappings, role mappings, and portal configu
   "idpRefId": "string",
   "cpRefId": "string",
   "configuration": {
-    "devportalMode": "DEFAULT"
+    "apiPortalMode": "DEFAULT"
   }
 }
 ```
@@ -231,7 +231,7 @@ id: acme
 idpRefId: string
 cpRefId: string
 configuration:
-  devportalMode: DEFAULT
+  apiPortalMode: DEFAULT
 
 ```
 
@@ -263,7 +263,7 @@ This operation requires <strong>Basic Auth</strong> authentication.
   "idpRefId": "string",
   "cpRefId": "string",
   "configuration": {
-    "devportalMode": "DEFAULT"
+    "apiPortalMode": "DEFAULT"
   },
   "createdAt": "2019-08-24T14:15:22Z",
   "updatedAt": "2019-08-24T14:15:22Z"
@@ -391,7 +391,7 @@ This operation requires <strong>Basic Auth</strong> authentication.
   "idpRefId": "string",
   "cpRefId": "string",
   "configuration": {
-    "devportalMode": "DEFAULT"
+    "apiPortalMode": "DEFAULT"
   },
   "createdAt": "2019-08-24T14:15:22Z",
   "updatedAt": "2019-08-24T14:15:22Z"

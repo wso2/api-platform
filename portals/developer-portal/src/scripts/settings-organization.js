@@ -39,14 +39,14 @@
     // orgDao.update overwrites the whole configuration column, so merge the
     // devportal mode into the existing object rather than sending it alone —
     // the API contract permits additional free-form keys.
-    var modeEl = g('org-devportal-mode');
+    var modeEl = g('org-api-portal-mode');
     if (modeEl) {
       var existingConfig = {};
       try {
         var parsed = JSON.parse(saveBtn.dataset.configuration || '{}');
         if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) existingConfig = parsed;
       } catch (e) { /* fall back to {} — a bad blob must not block the save */ }
-      existingConfig.devportalMode = modeEl.value;
+      existingConfig.apiPortalMode = modeEl.value;
       body.configuration = existingConfig;
     }
     // Optional fields — only send non-blank (businessOwnerEmail is format-validated above).
@@ -56,9 +56,9 @@
     var cp    = g('org-cp-ref').value.trim();         if (cp)    body.cpRefId = cp;
     saveBtn.disabled = true;
     try {
-      var res = await fetch(window.devportalApi.root('/organizations/' + encodeURIComponent(handle)), {
+      var res = await fetch(window.apiPortalApi.root('/organizations/' + encodeURIComponent(handle)), {
         method: 'PUT',
-        headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': window.devportalApi.csrfToken() },
+        headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': window.apiPortalApi.csrfToken() },
         credentials: 'same-origin', body: JSON.stringify(body),
       });
       if (res.ok) {

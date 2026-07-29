@@ -186,14 +186,14 @@
     if (secret) body.secret = secret;
 
     var url2   = editWebhookId
-      ? window.devportalApi.root('/webhook-subscribers/' + encodeURIComponent(editWebhookId))
-      : window.devportalApi.root('/webhook-subscribers');
+      ? window.apiPortalApi.root('/webhook-subscribers/' + encodeURIComponent(editWebhookId))
+      : window.apiPortalApi.root('/webhook-subscribers');
     var method = editWebhookId ? 'PUT' : 'POST';
 
     try {
       var res = await fetch(url2, {
         method: method,
-        headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': window.devportalApi.csrfToken() },
+        headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': window.apiPortalApi.csrfToken() },
         body: JSON.stringify(body),
       });
       if (res.ok) {
@@ -240,9 +240,9 @@
     if (!pendingDelWebhookId) return;
     document.getElementById('cfg-delete-webhook-modal').style.display = 'none';
     try {
-      var res = await fetch(window.devportalApi.root('/webhook-subscribers/' + encodeURIComponent(pendingDelWebhookId)), {
+      var res = await fetch(window.apiPortalApi.root('/webhook-subscribers/' + encodeURIComponent(pendingDelWebhookId)), {
         method: 'DELETE',
-        headers: { 'X-CSRF-Token': window.devportalApi.csrfToken() },
+        headers: { 'X-CSRF-Token': window.apiPortalApi.csrfToken() },
       });
       if (res.ok || res.status === 204) {
         await showAlert('Webhook deleted.', 'success');

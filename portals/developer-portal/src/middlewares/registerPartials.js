@@ -206,7 +206,7 @@ async function registerAPILandingContent(req, orgId, partialObject) {
     //replace image urls
     let images = metaData.apiImageMetadata;
     for (const key in images) {
-      let apiImageUrl = `${req.protocol}://${req.get('host')}${constants.DEVPORTAL_API.orgPath(orgId)}${constants.ROUTE.API_FILE_PATH}${apiId}${constants.API_TEMPLATE_FILE_NAME}`
+      let apiImageUrl = `${req.protocol}://${req.get('host')}${constants.API_PORTAL_API.orgPath(orgId)}${constants.ROUTE.API_FILE_PATH}${apiId}${constants.API_TEMPLATE_FILE_NAME}`
       const modifiedApiImageURL = apiImageUrl + images[key]
       images[key] = modifiedApiImageURL;
     }

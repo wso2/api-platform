@@ -135,9 +135,9 @@ const ensurePermission = (currentPage, role, req) => {
         adminRole = req.user[constants.ROLES.ADMIN];
         superAdminRole = req.user[constants.ROLES.SUPER_ADMIN];
         subscriberRole = req.user[constants.ROLES.SUBSCRIBER];
-        if (constants.ROUTE.DEVPORTAL_CONFIGURE.some(pattern => minimatch.minimatch(currentPage, pattern))) {
+        if (constants.ROUTE.API_PORTAL_CONFIGURE.some(pattern => minimatch.minimatch(currentPage, pattern))) {
             return hasRole(role, superAdminRole) || hasRole(role, adminRole);
-        } else if (constants.ROUTE.DEVPORTAL_ROOT.some(pattern => minimatch.minimatch(currentPage, pattern))) {
+        } else if (constants.ROUTE.API_PORTAL_ROOT.some(pattern => minimatch.minimatch(currentPage, pattern))) {
             return hasRole(role, superAdminRole);
         } else if (AUTHORIZED_PAGES.some(pattern => minimatch.minimatch(currentPage, pattern))) {
             return hasRole(role, subscriberRole) || hasRole(role, adminRole) || hasRole(role, superAdminRole);
@@ -214,7 +214,7 @@ const ensureAuthenticated = async (req, res, next) => {
             }
         }
     }
-    // Glob patterns below (AUTHENTICATED_PAGES/AUTHORIZED_PAGES/DEVPORTAL_ROOT) match the
+    // Glob patterns below (AUTHENTICATED_PAGES/AUTHORIZED_PAGES/API_PORTAL_ROOT) match the
     // full string with no implicit query-string handling, so req.originalUrl (which retains
     // "?...") would silently fail to match any pattern lacking an explicit "?**" suffix —
     // e.g. "/*/settings" never matches "/org/settings?view=x", which would skip this entire
@@ -238,8 +238,8 @@ const ensureAuthenticated = async (req, res, next) => {
                     // Reject cross-org access: the URL's :orgName must resolve (via orgDetails.idp_ref_id)
                     // to the org the authenticated (local-auth) user's token claims it belongs to — the
                     // same comparison the token/OAuth2 branch below uses (belongsToTargetOrg).
-                    const isDevportalRoot = constants.ROUTE.DEVPORTAL_ROOT.some(pattern => minimatch.minimatch(pathname, pattern));
-                    if (!isDevportalRoot && !belongsToTargetOrg(req, orgDetails)) {
+                    const isApiPortalRoot = constants.ROUTE.API_PORTAL_ROOT.some(pattern => minimatch.minimatch(pathname, pattern));
+                    if (!isApiPortalRoot && !belongsToTargetOrg(req, orgDetails)) {
                         const err = new Error('Forbidden');
                         err.status = 403;
                         return next(err);
@@ -283,7 +283,7 @@ const ensureAuthenticated = async (req, res, next) => {
                         req.user[constants.ORG_IDENTIFIER] = orgDetails.idp_ref_id;
                     }
                 }
-                const isMatch = constants.ROUTE.DEVPORTAL_ROOT.some(pattern => minimatch.minimatch(pathname, pattern));
+                const isMatch = constants.ROUTE.API_PORTAL_ROOT.some(pattern => minimatch.minimatch(pathname, pattern));
                 if (!isMatch && !belongsToTargetOrg(req, orgDetails)) {
                     const err = new Error('Forbidden');
                     err.status = 403;

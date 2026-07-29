@@ -48,7 +48,7 @@ async function seedDefaultOrg() {
         displayName: orgContext.getDisplayName(),
         handle: orgName,
         idpRefId: orgName,
-        configuration: { devportalMode: constants.DEVPORTAL_MODE.DEFAULT },
+        configuration: { apiPortalMode: constants.API_PORTAL_MODE.DEFAULT },
         createdBy: constants.SYSTEM_ACTOR,
     };
 

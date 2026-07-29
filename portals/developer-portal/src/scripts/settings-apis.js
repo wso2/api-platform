@@ -407,14 +407,14 @@
        non-MCP); everything else goes through /apis (which rejects MCP). */
     var base   = meta.type === 'Mcp' ? '/mcp-servers' : '/apis';
     var url    = editingId
-      ? window.devportalApi.root(base + '/' + encodeURIComponent(editingId))
-      : window.devportalApi.root(base);
+      ? window.apiPortalApi.root(base + '/' + encodeURIComponent(editingId))
+      : window.apiPortalApi.root(base);
     var method = editingId ? 'PUT' : 'POST';
 
     try {
       var res = await fetch(url, {
         method: method,
-        headers: { 'X-CSRF-Token': window.devportalApi.csrfToken() },
+        headers: { 'X-CSRF-Token': window.apiPortalApi.csrfToken() },
         body: fd,
       });
       if (res.ok) {
@@ -497,9 +497,9 @@
       var failCount = 0;
       await Promise.all(ids.map(async function(item) {
         try {
-          var r = await fetch(window.devportalApi.root(mutationBasePath(item.id)+'/'+encodeURIComponent(item.id)), {
+          var r = await fetch(window.apiPortalApi.root(mutationBasePath(item.id)+'/'+encodeURIComponent(item.id)), {
             method: 'DELETE',
-            headers: { 'X-CSRF-Token': window.devportalApi.csrfToken() },
+            headers: { 'X-CSRF-Token': window.apiPortalApi.csrfToken() },
           });
           if (r.ok || r.status===204) {
             var row = document.getElementById('cfg-api-row-'+item.id);
@@ -519,9 +519,9 @@
 
     if (!pendingDelId) return;
     try {
-      var res = await fetch(window.devportalApi.root(mutationBasePath(pendingDelId)+'/'+encodeURIComponent(pendingDelId)), {
+      var res = await fetch(window.apiPortalApi.root(mutationBasePath(pendingDelId)+'/'+encodeURIComponent(pendingDelId)), {
         method: 'DELETE',
-        headers: { 'X-CSRF-Token': window.devportalApi.csrfToken() },
+        headers: { 'X-CSRF-Token': window.apiPortalApi.csrfToken() },
       });
       if (res.ok || res.status===204) {
         await showAlert(mutationBasePath(pendingDelId) === '/mcp-servers' ? 'MCP server deleted.' : 'API deleted.', 'success');
@@ -557,8 +557,8 @@
     /* fetch current metadata, patch status, PUT back — MCP records use /mcp-servers */
     var base = mutationBasePath(apiId);
     try {
-      var res = await fetch(window.devportalApi.root(base+'/'+encodeURIComponent(apiId)), {
-        headers: { 'Content-Type':'application/json', 'X-CSRF-Token': window.devportalApi.csrfToken() }
+      var res = await fetch(window.apiPortalApi.root(base+'/'+encodeURIComponent(apiId)), {
+        headers: { 'Content-Type':'application/json', 'X-CSRF-Token': window.apiPortalApi.csrfToken() }
       });
       if (!res.ok) throw new Error(res.statusText);
       var apiData = await res.json();
@@ -570,9 +570,9 @@
       });
       var fd = new FormData();
       fd.append('metadata', JSON.stringify(meta));
-      var putRes = await fetch(window.devportalApi.root(base+'/'+encodeURIComponent(apiId)), {
+      var putRes = await fetch(window.apiPortalApi.root(base+'/'+encodeURIComponent(apiId)), {
         method: 'PUT',
-        headers: { 'X-CSRF-Token': window.devportalApi.csrfToken() },
+        headers: { 'X-CSRF-Token': window.apiPortalApi.csrfToken() },
         body: fd,
       });
       if (putRes.ok) {
@@ -921,9 +921,9 @@
     try {
       var fd = new FormData();
       fd.append('content', contentZipFile);
-      var res = await fetch(window.devportalApi.root('/apis/' + encodeURIComponent(editingId) + '/assets'), {
+      var res = await fetch(window.apiPortalApi.root('/apis/' + encodeURIComponent(editingId) + '/assets'), {
         method: 'PUT',
-        headers: { 'X-CSRF-Token': window.devportalApi.csrfToken() },
+        headers: { 'X-CSRF-Token': window.apiPortalApi.csrfToken() },
         credentials: 'same-origin',
         body: fd,
       });
