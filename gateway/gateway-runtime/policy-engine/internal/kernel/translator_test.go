@@ -521,7 +521,7 @@ func TestTranslateRequestActionsCore_WithBodyModification(t *testing.T) {
 func TestTranslateRequestActionsCore_BodyPreservesHeaderPhaseUpstream(t *testing.T) {
 	kernel := NewKernel()
 	chainExecutor := executor.NewChainExecutor(nil, nil, nil)
-	server := NewExternalProcessorServer(kernel, chainExecutor, config.TracingConfig{}, "")
+	server := NewExternalProcessorServer(kernel, chainExecutor, config.TracingConfig{}, "", testMaxDecompressedBytes, testMaxDecompressedBytes)
 
 	chain := &registry.PolicyChain{}
 	execCtx := newPolicyExecutionContext(server, "test-route", chain)
