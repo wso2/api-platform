@@ -60,6 +60,12 @@ func validAnalyticsConfigForValidation(analytics config.AnalyticsConfig) *config
 				Server:  config.PythonExecutorServerConfig{Port: 9010, Host: "localhost"},
 				Timeout: 30 * time.Second,
 			},
+			RequestBody: config.BodyConfig{
+				MaxDecompressedBytes: config.DefaultMaxDecompressedBytes,
+			},
+			ResponseBody: config.BodyConfig{
+				MaxDecompressedBytes: config.DefaultMaxDecompressedBytes,
+			},
 		},
 		Analytics: analytics,
 	}

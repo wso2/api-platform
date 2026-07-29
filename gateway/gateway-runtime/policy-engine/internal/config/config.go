@@ -35,6 +35,13 @@ import (
 	"github.com/wso2/api-platform/common/configinterpolate"
 )
 
+const (
+	// DefaultMaxDecompressedBytes is the default cap on decompressed bytes buffered
+	// from a Content-Encoded body — the whole body when buffered, each chunk when
+	// streaming. Applied when max_decompressed_bytes is unset for a direction.
+	DefaultMaxDecompressedBytes int64 = 10 * 1024 * 1024 // 10 MiB
+)
+
 // defaultFileSourceAllowlist is the policy-engine's default set of directories that
 // a {{ file "..." }} config-interpolation token may read from. It uses the
 // operator-visible container name (gateway-runtime), and can be overridden via the
@@ -161,10 +168,24 @@ type PolicyEngine struct {
 	// Tracing holds OpenTelemetry exporter configuration
 	TracingServiceName string `koanf:"tracing_service_name"`
 
+	// RequestBody and ResponseBody hold body-processing limits per direction, so
+	// request bodies can be bounded differently from response bodies.
+	RequestBody  BodyConfig `koanf:"request_body"`
+	ResponseBody BodyConfig `koanf:"response_body"`
+
 	// RawConfig holds the complete raw configuration map including custom fields
 	// This is used for resolving ${config} CEL expressions in policy systemParameters
 	// Note: No struct tag - populated manually via k.Raw()
 	RawConfig map[string]interface{}
+}
+
+// BodyConfig holds body-processing limits for one direction
+// ([policy_engine.request_body] or [policy_engine.response_body]).
+type BodyConfig struct {
+	// MaxDecompressedBytes caps decompressed bytes buffered per body (buffered mode)
+	// or per chunk (streaming) — not cumulative, so long-lived streams such as SSE
+	// are unaffected. Defaults to DefaultMaxDecompressedBytes when unset.
+	MaxDecompressedBytes int64 `koanf:"max_decompressed_bytes"`
 }
 
 // MetricsConfig holds Prometheus metrics server configuration
@@ -535,6 +556,12 @@ func defaultConfig() *Config {
 				Timeout: 30 * time.Second,
 			},
 			TracingServiceName: "policy-engine",
+			RequestBody: BodyConfig{
+				MaxDecompressedBytes: DefaultMaxDecompressedBytes,
+			},
+			ResponseBody: BodyConfig{
+				MaxDecompressedBytes: DefaultMaxDecompressedBytes,
+			},
 		},
 		Collector: CollectorConfig{
 			RequestBody:  false,
@@ -646,6 +673,13 @@ func (c *Config) Validate() error {
 		if c.PolicyEngine.Metrics.Port == c.PolicyEngine.Admin.Port {
 			return fmt.Errorf("metrics.port cannot be same as admin.port")
 		}
+	}
+
+	if c.PolicyEngine.RequestBody.MaxDecompressedBytes <= 0 {
+		return fmt.Errorf("policy_engine.request_body.max_decompressed_bytes must be positive, got %d", c.PolicyEngine.RequestBody.MaxDecompressedBytes)
+	}
+	if c.PolicyEngine.ResponseBody.MaxDecompressedBytes <= 0 {
+		return fmt.Errorf("policy_engine.response_body.max_decompressed_bytes must be positive, got %d", c.PolicyEngine.ResponseBody.MaxDecompressedBytes)
 	}
 
 	// Validate config mode
