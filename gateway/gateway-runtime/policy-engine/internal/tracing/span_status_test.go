@@ -83,17 +83,31 @@ func TestRecordHTTPOutcome_Table(t *testing.T) {
 			wantReason:     constants.TerminalReasonPolicyError,
 		},
 		{
-			name:           "502 is Error",
+			name:           "502 upstream stays Unset",
 			outcome:        HTTPOutcome{StatusCode: 502, Reason: constants.TerminalReasonUpstream},
-			wantCode:       codes.Error,
+			wantCode:       codes.Unset,
 			wantStatusCode: 502,
 			wantReason:     constants.TerminalReasonUpstream,
 		},
 		{
-			name:           "599 is Error",
+			name:           "5xx with no reason defaults to Error",
 			outcome:        HTTPOutcome{StatusCode: 599},
 			wantCode:       codes.Error,
 			wantStatusCode: 599,
+		},
+		{
+			name:           "500 upstream stays Unset (exemption keyed on reason, not status code)",
+			outcome:        HTTPOutcome{StatusCode: 500, Reason: constants.TerminalReasonUpstream},
+			wantCode:       codes.Unset,
+			wantStatusCode: 500,
+			wantReason:     constants.TerminalReasonUpstream,
+		},
+		{
+			name:           "503 policy status override is Error",
+			outcome:        HTTPOutcome{StatusCode: 503, Reason: constants.TerminalReasonPolicyStatusOverride},
+			wantCode:       codes.Error,
+			wantStatusCode: 503,
+			wantReason:     constants.TerminalReasonPolicyStatusOverride,
 		},
 		{
 			name:           "413 stays Unset (client fault, semconv-strict)",
@@ -210,6 +224,41 @@ func TestRecordHTTPOutcome_Table(t *testing.T) {
 
 			// RecordHTTPOutcome deliberately never calls RecordError.
 			assert.Empty(t, ended.Events())
+		})
+	}
+}
+
+// TestRecordHTTPOutcome_ReasonClassification is a classification test over
+// every constants.TerminalReason* value: it fixes StatusCode at 503 uniformly
+// (rather than each reason's realistic status) so the table is purely about
+// which reasons are exempt from the Error span status, not about status-code
+// handling already covered by TestRecordHTTPOutcome_Table. Its real purpose is
+// to force a conscious decision here whenever a new terminal reason is added —
+// a new row must be added and classified, rather than the reason silently
+// falling into whichever default the map lookup happens to produce.
+func TestRecordHTTPOutcome_ReasonClassification(t *testing.T) {
+	tests := []struct {
+		reason   string
+		wantCode codes.Code
+	}{
+		{constants.TerminalReasonUpstream, codes.Unset}, // the sole exemption — backend fault, not ours
+		{constants.TerminalReasonPolicyStatusOverride, codes.Error},
+		{constants.TerminalReasonPolicyDenied, codes.Error},
+		{constants.TerminalReasonPolicyError, codes.Error},
+		{constants.TerminalReasonPayloadTooLarge, codes.Error}, // only ever used with 413 in practice; classified here for completeness
+		{constants.TerminalReasonNoPolicyChain, codes.Error},
+		{constants.TerminalReasonUnknownMessageType, codes.Error},
+		{constants.TerminalReasonProcessingFailed, codes.Error},
+		{"", codes.Error}, // no reason at all — safe default, fail loud
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.reason, func(t *testing.T) {
+			span, sr := newRecordedSpan(t)
+			RecordHTTPOutcome(span, HTTPOutcome{StatusCode: 503, Reason: tc.reason})
+			ended := endedSpan(t, span, sr)
+
+			assert.Equal(t, tc.wantCode, ended.Status().Code)
 		})
 	}
 }

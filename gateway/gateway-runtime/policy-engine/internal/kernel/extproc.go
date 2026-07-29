@@ -249,6 +249,14 @@ func (s *ExternalProcessorServer) handleProcessingPhase(ctx context.Context, req
 		}
 		if err != nil {
 			metrics.RequestErrorsTotal.WithLabelValues("request_headers", "processing_failed", rm.RouteName).Inc()
+			// A fatal (stream-ending) error has no resp to derive an outcome from.
+			// Overwrite any outcome memoized by an earlier phase so the root-span
+			// defer in Process doesn't stamp a stale success status onto a
+			// request that actually failed here.
+			(*execCtx).terminal = tracing.HTTPOutcome{
+				StatusCode: http.StatusInternalServerError,
+				Reason:     constants.TerminalReasonProcessingFailed,
+			}
 		}
 		// Stamp the terminal HTTP status on the phase span. Only on the success
 		// path: when err != nil, resp is nil and the failure is already recorded
@@ -302,6 +310,12 @@ func (s *ExternalProcessorServer) handleProcessingPhase(ctx context.Context, req
 		}
 		if err != nil {
 			metrics.RequestErrorsTotal.WithLabelValues("request_body", "processing_failed", routeName).Inc()
+			// See the request_headers case above: overwrite any stale outcome
+			// memoized by an earlier phase.
+			(*execCtx).terminal = tracing.HTTPOutcome{
+				StatusCode: http.StatusInternalServerError,
+				Reason:     constants.TerminalReasonProcessingFailed,
+			}
 		}
 		// Stamp the terminal HTTP status on the phase span. Only on the success
 		// path: when err != nil, resp is nil and the failure is already recorded
@@ -350,6 +364,12 @@ func (s *ExternalProcessorServer) handleProcessingPhase(ctx context.Context, req
 		}
 		if err != nil {
 			metrics.RequestErrorsTotal.WithLabelValues("response_headers", "processing_failed", routeName).Inc()
+			// See the request_headers case above: overwrite any stale outcome
+			// memoized by an earlier phase.
+			(*execCtx).terminal = tracing.HTTPOutcome{
+				StatusCode: http.StatusInternalServerError,
+				Reason:     constants.TerminalReasonProcessingFailed,
+			}
 		}
 		// Stamp the terminal HTTP status on the phase span. Only on the success
 		// path: when err != nil, resp is nil and the failure is already recorded
@@ -403,6 +423,16 @@ func (s *ExternalProcessorServer) handleProcessingPhase(ctx context.Context, req
 		}
 		if err != nil {
 			metrics.RequestErrorsTotal.WithLabelValues("response_body", "processing_failed", routeName).Inc()
+			// This is the case the stale-memo bug was found in: a response-headers
+			// pass-through memoizes {200, upstream_response}, then the response-body
+			// phase fails closed (e.g. responsePayloadTooLargeError) with resp==nil,
+			// so resolveTerminalOutcome is never called to refresh the memo. Without
+			// this, the root span would end Error-status but still carry the stale
+			// 200/upstream_response attributes from the earlier phase.
+			(*execCtx).terminal = tracing.HTTPOutcome{
+				StatusCode: http.StatusInternalServerError,
+				Reason:     constants.TerminalReasonProcessingFailed,
+			}
 		}
 		// Stamp the terminal HTTP status on the phase span. Only on the success
 		// path: when err != nil, resp is nil and the failure is already recorded
@@ -419,10 +449,18 @@ func (s *ExternalProcessorServer) handleProcessingPhase(ctx context.Context, req
 		slog.WarnContext(ctx, "Unknown request type", "type", fmt.Sprintf("%T", req.Request))
 		metrics.RequestErrorsTotal.WithLabelValues("unknown", "unknown_type", "unknown").Inc()
 		// No phase span exists on this path; parentSpan is the only span in scope.
-		tracing.RecordHTTPOutcome(parentSpan, tracing.HTTPOutcome{
+		outcome := tracing.HTTPOutcome{
 			StatusCode: http.StatusInternalServerError,
 			Reason:     constants.TerminalReasonUnknownMessageType,
-		})
+		}
+		tracing.RecordHTTPOutcome(parentSpan, outcome)
+		// If execCtx already exists (a stray unknown message mid-stream), also
+		// update its memoized terminal outcome — otherwise Process's root-span
+		// defer runs after this and overwrites what was just stamped above with
+		// whatever an earlier phase memoized.
+		if *execCtx != nil {
+			(*execCtx).terminal = outcome
+		}
 		return &extprocv3.ProcessingResponse{
 			Response: &extprocv3.ProcessingResponse_ImmediateResponse{
 				ImmediateResponse: &extprocv3.ImmediateResponse{

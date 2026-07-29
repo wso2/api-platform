@@ -75,6 +75,21 @@ func (p *statusOverrideResponsePolicy) OnResponseBody(_ context.Context, _ *poli
 	return policy.DownstreamResponseModifications{StatusCode: &code}
 }
 
+// analyticsMarshalFailurePolicy returns AnalyticsMetadata containing a value
+// structpb/JSON cannot represent, forcing TranslateResponseBodyActions to
+// return a genuine (nil, err) — a fatal ext_proc-level failure distinct from
+// handlePolicyError, used to exercise the "phase fails after an earlier phase
+// already memoized a terminal outcome" path.
+type analyticsMarshalFailurePolicy struct{}
+
+func (p *analyticsMarshalFailurePolicy) Mode() policy.ProcessingMode {
+	return policy.ProcessingMode{ResponseBodyMode: policy.BodyModeBuffer}
+}
+
+func (p *analyticsMarshalFailurePolicy) OnResponseBody(_ context.Context, _ *policy.ResponseContext, _ map[string]interface{}) policy.ResponseAction {
+	return policy.DownstreamResponseModifications{AnalyticsMetadata: map[string]interface{}{"bad": make(chan int)}}
+}
+
 // =============================================================================
 // Test helpers
 // =============================================================================
@@ -394,16 +409,15 @@ func TestProcessSpanStatus_PolicyDeny500(t *testing.T) {
 	assert.Equal(t, constants.TerminalReasonPolicyDenied, reason)
 }
 
-func TestProcessSpanStatus_UpstreamPassThrough(t *testing.T) {
+func TestProcessSpanStatus_UpstreamPassThrough_NeverError(t *testing.T) {
 	tests := []struct {
 		name       string
 		status     string
-		wantCode   codes.Code
 		wantStatus int64
 	}{
-		{"502 is Error", "502", codes.Error, 502},
-		{"401 stays Unset", "401", codes.Unset, 401},
-		{"200 stays Unset", "200", codes.Unset, 200},
+		{"502 stays Unset", "502", 502},
+		{"401 stays Unset", "401", 401},
+		{"200 stays Unset", "200", 200},
 	}
 
 	for _, tc := range tests {
@@ -426,7 +440,7 @@ func TestProcessSpanStatus_UpstreamPassThrough(t *testing.T) {
 			require.NotNil(t, phase)
 
 			for _, s := range []sdktrace.ReadOnlySpan{root, phase} {
-				assert.Equal(t, tc.wantCode, s.Status().Code)
+				assert.Equal(t, codes.Unset, s.Status().Code)
 				code, ok := statusCodeAttr(t, s)
 				require.True(t, ok)
 				assert.Equal(t, tc.wantStatus, code)
@@ -435,14 +449,16 @@ func TestProcessSpanStatus_UpstreamPassThrough(t *testing.T) {
 				assert.Equal(t, constants.TerminalReasonUpstream, reason)
 			}
 
-			if tc.wantCode != codes.Error {
-				assert.NotEqual(t, codes.Ok, root.Status().Code)
-				assert.Empty(t, root.Events())
-			}
+			assert.NotEqual(t, codes.Ok, root.Status().Code)
+			assert.Empty(t, root.Events())
 		})
 	}
 }
 
+// TestProcessSpanStatus_ResponseBodyStatusOverride is the guard that a policy-
+// *chosen* 5xx (TerminalReasonPolicyStatusOverride) is not swept up by the
+// upstream-fault exemption in RecordHTTPOutcome — only a genuine unmodified
+// backend pass-through (TerminalReasonUpstream) gets that exemption.
 func TestProcessSpanStatus_ResponseBodyStatusOverride(t *testing.T) {
 	server, k, sr := newSpanStatusServer(t)
 
@@ -469,7 +485,77 @@ func TestProcessSpanStatus_ResponseBodyStatusOverride(t *testing.T) {
 		code, ok := statusCodeAttr(t, s)
 		require.True(t, ok)
 		assert.Equal(t, int64(503), code)
+		reason, ok := reasonAttr(s)
+		require.True(t, ok)
+		assert.Equal(t, constants.TerminalReasonPolicyStatusOverride, reason,
+			"a policy-set status must be distinguishable from a genuine upstream pass-through")
 	}
+}
+
+// TestProcessSpanStatus_ResponseBodyFatalError_ClearsStaleMemo is a regression
+// test for a stale-memo bug: the response-headers phase memoizes a successful
+// {200, upstream_response} outcome, then the response-body phase fails closed
+// with a genuine error (resp == nil) rather than going through
+// handlePolicyError. Without clearing the memo, the root span would end up
+// Error-status but still carry the earlier 200/upstream_response attributes.
+func TestProcessSpanStatus_ResponseBodyFatalError_ClearsStaleMemo(t *testing.T) {
+	server, k, sr := newSpanStatusServer(t)
+
+	chain := buildChainWithPolicy(t, "analytics-fail-policy", &analyticsMarshalFailurePolicy{}, map[string]interface{}{})
+	registerTestRoute(k, "test-route", chain)
+
+	stream := newMockStream([]*extprocv3.ProcessingRequest{
+		requestHeadersReq("test-route", "GET", "/pets"),
+		responseHeadersReq("200"), // memoizes {200, upstream_response} on execCtx.terminal
+		responseBodyReq("OK"),     // fails with a genuine error, resp == nil
+	})
+
+	err := server.Process(stream)
+	require.Error(t, err)
+
+	root := spanByName(sr.Ended(), constants.SpanExternalProcessingProcess)
+	require.NotNil(t, root)
+	assert.Equal(t, codes.Error, root.Status().Code)
+
+	code, ok := statusCodeAttr(t, root)
+	require.True(t, ok)
+	assert.Equal(t, int64(500), code, "root span must not retain the stale 200 memoized by the response-headers phase")
+
+	reason, ok := reasonAttr(root)
+	require.True(t, ok)
+	assert.Equal(t, constants.TerminalReasonProcessingFailed, reason)
+}
+
+// TestProcessSpanStatus_UnknownMessageType_ClearsStaleMemo is a regression test
+// for the sibling stale-memo bug in the default (unknown ext_proc message)
+// branch: it stamps parentSpan inline, but if execCtx already memoized a
+// success outcome from an earlier phase, Process's root-span defer would run
+// afterwards and clobber the correct 500/unknown_message_type attributes with
+// the stale ones.
+func TestProcessSpanStatus_UnknownMessageType_ClearsStaleMemo(t *testing.T) {
+	server, k, sr := newSpanStatusServer(t)
+	registerTestRoute(k, "test-route", emptyChain())
+
+	stream := newMockStream([]*extprocv3.ProcessingRequest{
+		requestHeadersReq("test-route", "GET", "/pets"),
+		responseHeadersReq("200"), // memoizes {200, upstream_response} on execCtx.terminal
+		{},                        // unknown message type, arrives with execCtx already non-nil
+	})
+
+	err := server.Process(stream)
+	require.NoError(t, err)
+
+	root := spanByName(sr.Ended(), constants.SpanExternalProcessingProcess)
+	require.NotNil(t, root)
+	assert.Equal(t, codes.Error, root.Status().Code)
+
+	code, ok := statusCodeAttr(t, root)
+	require.True(t, ok)
+	assert.Equal(t, int64(500), code, "unknown-message-type outcome must not be overwritten by the earlier 200 pass-through memo")
+
+	reason, ok := reasonAttr(root)
+	require.True(t, ok)
+	assert.Equal(t, constants.TerminalReasonUnknownMessageType, reason)
 }
 
 func TestProcessSpanStatus_HappyPath200(t *testing.T) {

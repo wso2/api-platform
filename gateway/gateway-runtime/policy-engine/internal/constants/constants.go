@@ -97,12 +97,14 @@ const (
 
 	// Values for AttrTerminalReason. A 4xx keeps span status Unset, so these are
 	// the tag that keeps denials queryable.
-	TerminalReasonUpstream           = "upstream_response"    // pass-through; status came from the backend
-	TerminalReasonPolicyDenied       = "policy_denied"        // a policy returned an ImmediateResponse
-	TerminalReasonPolicyError        = "policy_error"         // handlePolicyError generated a 500
-	TerminalReasonPayloadTooLarge    = "payload_too_large"    // handlePayloadTooLarge generated a 413
-	TerminalReasonNoPolicyChain      = "no_policy_chain"      // route resolved but no chain registered
-	TerminalReasonUnknownMessageType = "unknown_message_type" // unrecognised ext_proc message
+	TerminalReasonUpstream             = "upstream_response"      // pass-through with no policy status override; status came from the backend unmodified. The one reason exempt from the Error span status — see tracing.upstreamFaultReasons.
+	TerminalReasonPolicyStatusOverride = "policy_status_override" // a response-body policy set DownstreamResponseModifications.StatusCode
+	TerminalReasonPolicyDenied         = "policy_denied"          // a policy returned an ImmediateResponse
+	TerminalReasonPolicyError          = "policy_error"           // handlePolicyError generated a 500
+	TerminalReasonPayloadTooLarge      = "payload_too_large"      // handlePayloadTooLarge generated a 413
+	TerminalReasonNoPolicyChain        = "no_policy_chain"        // route resolved but no chain registered
+	TerminalReasonUnknownMessageType   = "unknown_message_type"   // unrecognised ext_proc message
+	TerminalReasonProcessingFailed     = "processing_failed"      // a phase returned a fatal (stream-ending) error with no ImmediateResponse to classify
 
 	// Analytics metadata and property keys shared across packages.
 	GuardrailHitMetadataKey  = "isGuardrailHit"
