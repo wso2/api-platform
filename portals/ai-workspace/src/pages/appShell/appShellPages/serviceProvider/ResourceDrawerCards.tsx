@@ -41,7 +41,8 @@ type ResourceDrawerCardsProps = {
   gateways: Gateway[];
   gatewayDeployments: Record<string, DeploymentResponse>;
   proxyDeployments: Record<string, DeploymentResponse>;
-  onProxyClick: (proxyId: string, proxyProjectId?: string) => void;
+  /** Omitted when the user can't read proxies — cards then render unclickable. */
+  onProxyClick?: (proxyId: string, proxyProjectId?: string) => void;
   /** Omitted when the user can't read gateways — cards then render unclickable. */
   onGatewayClick?: (gatewayId: string) => void;
   onCreateProxy?: () => void;
@@ -225,7 +226,7 @@ export default function ResourceDrawerCards({
                         proxyId ? proxyDeployments[proxyId] : undefined
                       }
                       onClick={
-                        proxyId
+                        proxyId && onProxyClick
                           ? () => onProxyClick(proxyId, proxy.projectId)
                           : undefined
                       }

@@ -59,6 +59,7 @@ import {
 } from '../../../../../utils/projectRouting';
 import { useAppAuth } from '../../../../../contexts/AppAuthContext';
 import { SCOPES } from '../../../../../auth/permissions';
+import useAIWorkspaceSnackbar from '../../../../../hooks/aiWorkspaceSnackbar';
 
 import AnthropicLogo from '../../../../../assets/brands/Anthropic.jpg';
 import AWSBedrockLogo from '../../../../../assets/brands/AWSBedrock.webp';
@@ -537,6 +538,8 @@ export default function ProviderMapTab() {
   const navigate = useNavigate();
   const { hasPermission } = useAppAuth();
   const canViewGateways = hasPermission(SCOPES.GATEWAY_READ);
+  const canViewProxies = hasPermission(SCOPES.LLM_PROXY_READ);
+  const showSnackbar = useAIWorkspaceSnackbar();
 
   const [proxies, setProxies] = useState<Proxy[]>([]);
   const [proxyDeployments, setProxyDeployments] = useState<
@@ -671,25 +674,50 @@ export default function ProviderMapTab() {
     void loadData();
   }, [loadData]);
 
+  // A proxy lives inside a project, so there is no meaningful org-level route to
+  // fall back to: if the project can't be resolved, stay put and say why rather
+  // than navigating somewhere the proxy isn't.
   const handleProxyClick = useCallback(
     (proxyId: string, proxyProjectId?: string) => {
       if (!currentOrganization) {
         logger.error(
           `Unable to navigate to proxy ${proxyId} because the current organization is unavailable.`
         );
+        showSnackbar(
+          'Unable to open this proxy right now. Please refresh and try again.',
+          'error'
+        );
         return;
       }
 
-      navigate(
-        buildProxyPath(
-          currentOrganization,
-          projectsForCurrentOrganization,
-          proxyId,
-          proxyProjectId
-        )
+      const proxyPath = buildProxyPath(
+        currentOrganization,
+        projectsForCurrentOrganization,
+        proxyId,
+        proxyProjectId
       );
+
+      if (!proxyPath) {
+        logger.error(
+          `Unable to navigate to proxy ${proxyId} because project ${
+            proxyProjectId ?? ''
+          } is unavailable.`
+        );
+        showSnackbar(
+          "Unable to open this proxy because its project isn't available to you.",
+          'error'
+        );
+        return;
+      }
+
+      navigate(proxyPath);
     },
-    [currentOrganization, navigate, projectsForCurrentOrganization]
+    [
+      currentOrganization,
+      navigate,
+      projectsForCurrentOrganization,
+      showSnackbar,
+    ]
   );
 
   // Gateways are organization-scoped, so unlike a proxy there is no project to
@@ -802,7 +830,7 @@ export default function ProviderMapTab() {
                     proxy={proxy}
                     deployment={proxyId ? proxyDeployments[proxyId] : undefined}
                     onClick={
-                      proxyId
+                      proxyId && canViewProxies
                         ? () => handleProxyClick(proxyId, proxy.projectId)
                         : undefined
                     }

@@ -143,6 +143,7 @@ export default function ServiceProviderOverviewTab({
   const navigate = useNavigate();
   const { hasPermission } = useAppAuth();
   const canViewGateways = hasPermission(SCOPES.GATEWAY_READ);
+  const canViewProxies = hasPermission(SCOPES.LLM_PROXY_READ);
   const fetchedApiKeysProviderIdRef = useRef<string | null>(null);
   const fetchingApiKeysProviderIdRef = useRef<string | null>(null);
   const [gateways, setGateways] = useState<Gateway[]>([]);
@@ -597,25 +598,50 @@ export default function ServiceProviderOverviewTab({
     }
   };
 
+  // A proxy lives inside a project, so there is no meaningful org-level route to
+  // fall back to: if the project can't be resolved, stay put and say why rather
+  // than navigating somewhere the proxy isn't.
   const handleProxyClick = useCallback(
     (proxyId: string, proxyProjectId?: string) => {
       if (!currentOrganization) {
         logger.error(
           `Unable to navigate to proxy ${proxyId} because the current organization is unavailable.`
         );
+        showSnackbar(
+          'Unable to open this proxy right now. Please refresh and try again.',
+          'error'
+        );
         return;
       }
 
-      navigate(
-        buildProxyPath(
-          currentOrganization,
-          projectsForCurrentOrganization,
-          proxyId,
-          proxyProjectId
-        )
+      const proxyPath = buildProxyPath(
+        currentOrganization,
+        projectsForCurrentOrganization,
+        proxyId,
+        proxyProjectId
       );
+
+      if (!proxyPath) {
+        logger.error(
+          `Unable to navigate to proxy ${proxyId} because project ${
+            proxyProjectId ?? ''
+          } is unavailable.`
+        );
+        showSnackbar(
+          "Unable to open this proxy because its project isn't available to you.",
+          'error'
+        );
+        return;
+      }
+
+      navigate(proxyPath);
     },
-    [currentOrganization, navigate, projectsForCurrentOrganization]
+    [
+      currentOrganization,
+      navigate,
+      projectsForCurrentOrganization,
+      showSnackbar,
+    ]
   );
 
   // Gateways are organization-scoped, so unlike a proxy there is no project to
@@ -678,7 +704,7 @@ export default function ServiceProviderOverviewTab({
             gateways={gateways}
             gatewayDeployments={gatewayDeployments}
             proxyDeployments={proxyDeployments}
-            onProxyClick={handleProxyClick}
+            onProxyClick={canViewProxies ? handleProxyClick : undefined}
             onGatewayClick={canViewGateways ? handleGatewayClick : undefined}
             onCreateProxy={onCreateProxy}
             onBlockedNavigation={onBlockedNavigation}
