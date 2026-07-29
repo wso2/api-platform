@@ -58,7 +58,6 @@ func NewHTTPSteps(client *http.Client, baseURLs map[string]string) *HTTPSteps {
 func (h *HTTPSteps) Register(ctx *godog.ScenarioContext) {
 	// Request building steps
 	ctx.Step(`^I set header "([^"]*)" to "([^"]*)"$`, h.iSetHeader)
-	ctx.Step(`^I set header "([^"]*)" to the JSON response field "([^"]*)"$`, h.iSetHeaderFromJSONField)
 	ctx.Step(`^I set the following headers:$`, h.iSetHeaders)
 	ctx.Step(`^I clear all headers$`, h.iClearHeaders)
 	ctx.Step(`^I set request host to "([^"]*)"$`, h.iSetRequestHost)
@@ -144,35 +143,6 @@ func (h *HTTPSteps) LastBody() []byte {
 
 // iSetHeader sets a single header
 func (h *HTTPSteps) iSetHeader(name, value string) error {
-	h.headers[name] = value
-	return nil
-}
-
-// iSetHeaderFromJSONField sets a header from a field in the last JSON response (dot notation).
-func (h *HTTPSteps) iSetHeaderFromJSONField(name, field string) error {
-	var data map[string]interface{}
-	if err := json.Unmarshal(h.lastBody, &data); err != nil {
-		return fmt.Errorf("failed to parse last response as JSON: %w", err)
-	}
-
-	var current interface{} = data
-	for _, part := range strings.Split(field, ".") {
-		m, ok := current.(map[string]interface{})
-		if !ok {
-			return fmt.Errorf("expected a JSON object while resolving field %q, got %T", field, current)
-		}
-		v, exists := m[part]
-		if !exists {
-			return fmt.Errorf("field %q not found in last JSON response", field)
-		}
-		current = v
-	}
-
-	value, ok := current.(string)
-	if !ok {
-		return fmt.Errorf("field %q is not a string (got %T)", field, current)
-	}
-
 	h.headers[name] = value
 	return nil
 }
