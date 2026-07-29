@@ -21,7 +21,7 @@ const crypto = require('crypto');
 const db = require('../db/driver');
 const { findOrCreateSafe } = require('./findOrCreateHelper');
 
-const TABLE = 'dp_user_idp_references';
+const TABLE = 'user_idp_references';
 const DELETED_USER = 'deleted_user';
 
 /**

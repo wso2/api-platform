@@ -33,7 +33,7 @@ function formatDelivery(d) {
 }
 
 function formatEvent(row) {
-    const deliveries = (row.dp_event_deliveries || []).map(formatDelivery);
+    const deliveries = (row.event_deliveries || []).map(formatDelivery);
     return {
         eventId: row.uuid,
         eventType: row.type,

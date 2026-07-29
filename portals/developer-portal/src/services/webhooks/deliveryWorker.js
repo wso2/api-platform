@@ -116,7 +116,7 @@ async function runBatch() {
 
     const eventIds = [...new Set(deliveries.map(d => d.event_uuid))];
     const eventPlaceholders = eventIds.map(() => '?').join(', ');
-    const events = await db.query(`SELECT * FROM dp_events WHERE uuid IN (${eventPlaceholders})`, eventIds);
+    const events = await db.query(`SELECT * FROM events WHERE uuid IN (${eventPlaceholders})`, eventIds);
     // payload is JSONB on postgres (auto-parsed by `pg`) but TEXT on sqlite/mssql —
     // parse it back into an object here, matching eventDao.js's own parseEventRow.
     // Without this, `{ ...event.payload }` below silently spreads a JSON STRING
@@ -131,7 +131,7 @@ async function runBatch() {
     if (orgIds.length > 0) {
         const orgPlaceholders = orgIds.map(() => '?').join(', ');
         const orgs = await db.query(
-            `SELECT uuid, cp_ref_id FROM dp_organizations WHERE uuid IN (${orgPlaceholders})`,
+            `SELECT uuid, cp_ref_id FROM organizations WHERE uuid IN (${orgPlaceholders})`,
             orgIds
         );
         orgCpRefIdMap = Object.fromEntries(orgs.map(o => [o.uuid, o.cp_ref_id]));

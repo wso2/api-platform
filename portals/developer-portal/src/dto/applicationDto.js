@@ -23,8 +23,8 @@ class ApplicationDTO {
         this.id = app.handle;
         this.displayName = app.display_name;
         this.description = app.description;
-        if (app.dp_app_key_mappings) {
-            this.appKeyMappings = app.dp_app_key_mappings.map(map => new AppMappingDTO(map));
+        if (app.app_key_mappings) {
+            this.appKeyMappings = app.app_key_mappings.map(map => new AppMappingDTO(map));
         }
         applyAudit(this, audit);
     }

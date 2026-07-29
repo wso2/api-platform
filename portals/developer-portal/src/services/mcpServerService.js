@@ -18,7 +18,7 @@
 
 /*
  * Thin, type-scoped wrapper around apiMetadataService for the /mcp-servers resource
- * family. MCP servers live in the same dp_api_metadata table as REST APIs, distinguished
+ * family. MCP servers live in the same api_metadata table as REST APIs, distinguished
  * only by the `type` column, so this module reuses apiMetadataService's battle-tested
  * create/update/delete/content logic rather than duplicating it. Delegation works by
  * aliasing the `mcpServerId` path param to `apiId` (what the underlying functions read)

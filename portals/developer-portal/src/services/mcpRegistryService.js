@@ -40,7 +40,7 @@ const MAX_LIMIT = 100;
 // (see toFlatSchema); parseSchema regroups on read.
 const SCHEMA_FILE_NAME = constants.FILE_NAME.SCHEMA_DEFINITION_YAML_FILE_NAME;
 
-const API_METADATA_TABLE = 'dp_api_metadata';
+const API_METADATA_TABLE = 'api_metadata';
 
 // Resolved once — db.getDialect() is static for the life of the process, so every
 // dialect-conditional expression below is computed a single time at module load

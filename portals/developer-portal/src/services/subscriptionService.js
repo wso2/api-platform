@@ -66,8 +66,8 @@ async function buildWebhookPayload(sub, apiMetadata, plan) {
 }
 
 function formatSubscriptionResponse(sub, audit) {
-    const plan = sub.dp_subscription_plan || {};
-    const api = sub.dp_api_metadata || {};
+    const plan = sub.subscription_plan || {};
+    const api = sub.api_metadata || {};
     return {
         subscriptionId: sub.uuid,
         subscriptionToken: sub.token,
@@ -100,7 +100,7 @@ const createSubscription = async (req, res) => {
 
         const apiMetadata = apiMetadataResponse[0];
 
-        const plans = apiMetadata.dp_subscription_plans || [];
+        const plans = apiMetadata.subscription_plans || [];
         if (plans.length === 0) {
             return util.sendError(res, 400, 'Bad Request', { errors: [{ message: 'This API does not support subscriptions' }] });
         }
@@ -207,7 +207,7 @@ const updateSubscription = async (req, res) => {
                 throw err;
             }
             await publishWebhookEvent('subscription.updated',
-                await buildWebhookPayload({ ...existing, status: status }, existing.dp_api_metadata, existing.dp_subscription_plan),
+                await buildWebhookPayload({ ...existing, status: status }, existing.api_metadata, existing.subscription_plan),
                 { transaction: t, orgId: orgId, aggregateType: 'subscription', aggregateId: subscriptionId });
         });
         sub = await subDao.get(orgId, subscriptionId, actorId);
@@ -236,11 +236,11 @@ const changePlan = async (req, res) => {
             return util.sendError(res, 404, 'Not Found', { errors: [{ message: 'Subscription not found' }] });
         }
 
-        const apiId = existing.api_uuid || (existing.dp_api_metadata ? existing.dp_api_metadata.uuid : null) || null;
+        const apiId = existing.api_uuid || (existing.api_metadata ? existing.api_metadata.uuid : null) || null;
         if (!apiId) {
             return util.sendError(res, 400, 'Bad Request', { errors: [{ message: 'API not found for this subscription' }] });
         }
-        const apiHandle = existing.dp_api_metadata ? existing.dp_api_metadata.handle : null;
+        const apiHandle = existing.api_metadata ? existing.api_metadata.handle : null;
         if (reqApiHandle && reqApiHandle !== apiHandle) {
             return util.sendError(res, 400, 'Bad Request', { errors: [{ message: 'artifactId does not match this subscription' }] });
         }
@@ -250,14 +250,14 @@ const changePlan = async (req, res) => {
             return util.sendError(res, 404, 'Not Found', { errors: [{ message: 'API not found' }] });
         }
         const apiMetadata = apiMetadataResponse[0];
-        const plans = apiMetadata.dp_subscription_plans || [];
+        const plans = apiMetadata.subscription_plans || [];
         const newPlan = plans.find(p => p.handle === reqPlanHandle);
         if (!newPlan) {
             return util.sendError(res, 400, 'Bad Request', { errors: [{ message: 'Subscription plan not found for this API' }] });
         }
         const planId = newPlan.uuid;
 
-        const previousPlan = existing.dp_subscription_plan;
+        const previousPlan = existing.subscription_plan;
 
         await db.withTransaction(async (t) => {
             const updated = await subDao.updatePlan(orgId, subscriptionId, planId, actorId, t);
@@ -302,8 +302,8 @@ const regenerateSubscriptionToken = async (req, res) => {
             return util.sendError(res, 404, 'Not Found', { errors: [{ message: 'Subscription not found' }] });
         }
 
-        const apiMetadata = existing.dp_api_metadata;
-        const plan = existing.dp_subscription_plan;
+        const apiMetadata = existing.api_metadata;
+        const plan = existing.subscription_plan;
         let newToken;
 
         await db.withTransaction(async (t) => {
@@ -343,8 +343,8 @@ const deleteSubscription = async (req, res) => {
             return util.sendError(res, 404, 'Not Found', { errors: [{ message: 'Subscription not found' }] });
         }
 
-        const apiMetadata = existing.dp_api_metadata;
-        const plan = existing.dp_subscription_plan;
+        const apiMetadata = existing.api_metadata;
+        const plan = existing.subscription_plan;
 
         await db.withTransaction(async (t) => {
             const deleted = await subDao.delete(orgId, subscriptionId, actorId, t);

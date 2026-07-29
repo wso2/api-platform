@@ -18,7 +18,7 @@
 
 // Reference spec for the webhook pipeline end-to-end: register a subscriber
 // pointed at a local sink -> trigger application.created via the real API ->
-// assert the dp_events row -> assert the actual HTTP delivery payload/headers.
+// assert the events row -> assert the actual HTTP delivery payload/headers.
 // Every other `*/webhook-events.spec.js` file should follow this shape.
 //
 // Every test in this file shares the one fixed org (client.ORG_HANDLE) — each
@@ -81,7 +81,7 @@ describe('applications webhook events', () => {
         expect(event).toBeDefined();
         expect(event.payload).toBeDefined();
 
-        // dp_event_deliveries.subscriber_id stores the subscriber's internal
+        // event_deliveries.subscriber_id stores the subscriber's internal
         // uuid, not the REST-facing handle (subscriber.id) — the API never
         // exposes that uuid, so scope by event only (fine here: one subscriber).
         const delivery = await waitForDelivery({ eventUuid: event.uuid });

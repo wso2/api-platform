@@ -27,9 +27,9 @@ const logger = require('../config/logger');
 
 const subCrypto = createCryptoUtil(config.security.encryptionKey);
 
-const SUBSCRIPTIONS_TABLE = 'dp_subscriptions';
-const API_METADATA_TABLE = 'dp_api_metadata';
-const SUBSCRIPTION_PLANS_TABLE = 'dp_subscription_plans';
+const SUBSCRIPTIONS_TABLE = 'subscriptions';
+const API_METADATA_TABLE = 'api_metadata';
+const SUBSCRIPTION_PLANS_TABLE = 'subscription_plans';
 
 // Matches the previous include's `attributes:` restriction on each association.
 const API_METADATA_COLUMNS = 'uuid, name, version, handle, ref_id, type';
@@ -64,7 +64,7 @@ function generateSubToken() {
  * previous INCLUDE_API_AND_PLAN shape: one query for the distinct API rows
  * and one for the distinct plan rows referenced by the batch, attached under
  * the same property names the old Sequelize associations produced —
- * `dp_api_metadata` (explicit `as:` alias) and `dp_subscription_plan`
+ * `api_metadata` (explicit `as:` alias) and `subscription_plan`
  * (default singular association name, no `as:` was set on that belongsTo).
  * Both are `required: false` in the old include, so a subscription with no
  * matching row (e.g. plan_uuid is null) simply gets `undefined` attached.
@@ -96,8 +96,8 @@ async function attachApiAndPlan(subs) {
     }
 
     for (const sub of subs) {
-        sub.dp_api_metadata = apiByUuid.get(sub.api_uuid);
-        sub.dp_subscription_plan = planByUuid.get(sub.plan_uuid);
+        sub.api_metadata = apiByUuid.get(sub.api_uuid);
+        sub.subscription_plan = planByUuid.get(sub.plan_uuid);
     }
     return subs;
 }

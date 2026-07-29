@@ -297,7 +297,7 @@ describe('MCP servers', () => {
         });
     });
 
-    // /mcp-servers and /apis share the same dp_api_metadata table, distinguished only
+    // /mcp-servers and /apis share the same api_metadata table, distinguished only
     // by `type` — resolveScopedApiId (apiMetadataService.js:313) is what's supposed to
     // keep the two families from resolving each other's handles. The tests above only
     // cover MCP-created-via-/apis being rejected; these cover the reverse (a plain REST

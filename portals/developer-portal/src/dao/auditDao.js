@@ -21,7 +21,7 @@ const crypto = require('crypto');
 const db = require('../db/driver');
 
 const INSERT_AUDIT_SQL = `
-    INSERT INTO dp_audit (uuid, action, resource_uuid, resource_type, org_uuid, performed_by)
+    INSERT INTO audit (uuid, action, resource_uuid, resource_type, org_uuid, performed_by)
     VALUES (?, ?, ?, ?, ?, ?)
 `;
 

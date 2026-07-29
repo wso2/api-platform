@@ -21,8 +21,8 @@ const crypto = require('crypto');
 const db = require('../db/driver');
 const { findOrCreateSafe } = require('./findOrCreateHelper');
 
-const TAGS_TABLE = 'dp_tags';
-const API_TAGS_TABLE = 'dp_api_tag_mappings';
+const TAGS_TABLE = 'tags';
+const API_TAGS_TABLE = 'api_tag_mappings';
 
 // Built once at module load — buildUpsert only depends on the (fixed) dialect
 // and column list, not on any per-call data.

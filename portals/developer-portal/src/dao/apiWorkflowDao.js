@@ -23,7 +23,7 @@ const constants = require('../utils/constants');
 const logger = require('../config/logger');
 const { bufferToUtf8 } = require('../utils/cryptoUtil');
 
-const TABLE = 'dp_api_workflows';
+const TABLE = 'api_workflows';
 
 /**
  * The Sequelize model exposed `agent_prompt` (a BLOB column) through a getter

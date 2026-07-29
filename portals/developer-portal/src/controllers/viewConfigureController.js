@@ -123,8 +123,8 @@ const loadSettingsPage = async (req, res) => {
             apiStatus: api.status,
             productionUrl: api.production_url,
             sandboxUrl: api.sandbox_url,
-            tags: (api.dp_tags || []).map(tag => tag.name),
-            labels: (api.dp_labels || []).map(label => label.handle),
+            tags: (api.tags || []).map(tag => tag.name),
+            labels: (api.labels || []).map(label => label.handle),
             agentVisibility: api.agent_visibility,
             owners: {
                 technicalOwner:      api.technical_owner,
@@ -132,7 +132,7 @@ const loadSettingsPage = async (req, res) => {
                 businessOwner:       api.business_owner,
                 businessOwnerEmail:  api.business_owner_email,
             },
-            subscriptionPlans: (api.dp_subscription_plans || []).map(p => p.display_name),
+            subscriptionPlans: (api.subscription_plans || []).map(p => p.display_name),
             existingDocs: docNamesByApiId[api.uuid] || [],
         }));
         // MCP servers get their own admin tab; keep REST/WS/GraphQL/SOAP/WebSub in the APIs tab.

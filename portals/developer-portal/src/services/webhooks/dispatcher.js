@@ -23,11 +23,11 @@ const db = require('../../db/driver');
 const logger = require('../../config/logger');
 const orgContext = require('../../utils/orgContext');
 
-// dp_events table name — mirrors eventDao.js's EVENTS_TABLE. Kept as a raw
+// events table name — mirrors eventDao.js's EVENTS_TABLE. Kept as a raw
 // db.execute() call here (rather than a new DAO export) because this is the
 // only caller that needs a bare status flip outside of any of eventDao's
 // existing higher-level operations.
-const EVENTS_TABLE = 'dp_events';
+const EVENTS_TABLE = 'events';
 
 let running = false;
 let intervalHandle = null;

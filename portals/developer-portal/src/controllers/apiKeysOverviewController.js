@@ -52,13 +52,13 @@ const loadApiKeysOverview = async (req, res, next) => {
                 displayName: k.display_name,
                 status: String(k.status || 'ACTIVE'),
                 expiresAt: k.expires_at,
-                apiName: k.dp_api_metadata?.name || '',
-                apiVersion: k.dp_api_metadata?.version || '',
+                apiName: k.api_metadata?.name || '',
+                apiVersion: k.api_metadata?.version || '',
                 // apiHandle is the path segment the per-API / per-MCP endpoints expect.
-                apiHandle: k.dp_api_metadata?.handle || k.api_uuid,
-                apiType: k.dp_api_metadata?.type || '',
-                appId: k.dp_api_key_app_mapping?.dp_application?.handle || '',
-                appDisplayName: k.dp_api_key_app_mapping?.dp_application?.display_name || '',
+                apiHandle: k.api_metadata?.handle || k.api_uuid,
+                apiType: k.api_metadata?.type || '',
+                appId: k.api_key_app_mapping?.application?.handle || '',
+                appDisplayName: k.api_key_app_mapping?.application?.display_name || '',
             }));
         } catch (dbError) {
             apiKeysLoadError = true;

@@ -23,9 +23,9 @@ const { findOrCreateSafe } = require('./findOrCreateHelper');
 const constants = require('../utils/constants');
 const { CustomError } = require('../utils/errors/customErrors');
 
-const LABELS_TABLE = 'dp_labels';
-const API_LABELS_TABLE = 'dp_api_label_mappings';
-const VIEW_LABELS_TABLE = 'dp_view_label_mappings';
+const LABELS_TABLE = 'labels';
+const API_LABELS_TABLE = 'api_label_mappings';
+const VIEW_LABELS_TABLE = 'view_label_mappings';
 
 // Built once at module load — buildUpsert only depends on the (fixed) dialect
 // and column list, not on any per-call data.

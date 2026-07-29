@@ -19,7 +19,7 @@
 -- layer that targets this schema.
 
 -- Organizations table
-CREATE TABLE IF NOT EXISTS dp_organizations (
+CREATE TABLE IF NOT EXISTS organizations (
     uuid VARCHAR(40) PRIMARY KEY,
     display_name VARCHAR(255) NOT NULL UNIQUE,
     business_owner VARCHAR(255),
@@ -36,7 +36,7 @@ CREATE TABLE IF NOT EXISTS dp_organizations (
 );
 
 -- Views table (organization-scoped grouping of APIs for gateway/portal visibility)
-CREATE TABLE IF NOT EXISTS dp_views (
+CREATE TABLE IF NOT EXISTS views (
     uuid VARCHAR(40) PRIMARY KEY,
     org_uuid VARCHAR(40) NOT NULL,
     handle VARCHAR(255) NOT NULL,
@@ -45,13 +45,13 @@ CREATE TABLE IF NOT EXISTS dp_views (
     created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_by VARCHAR(255) NOT NULL,
     updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    FOREIGN KEY (org_uuid) REFERENCES dp_organizations(uuid) ON DELETE NO ACTION
+    FOREIGN KEY (org_uuid) REFERENCES organizations(uuid) ON DELETE NO ACTION
 );
-CREATE UNIQUE INDEX IF NOT EXISTS uq_view_handle_org_uuid ON dp_views(handle, org_uuid);
-CREATE INDEX IF NOT EXISTS idx_view_org_uuid ON dp_views(org_uuid);
+CREATE UNIQUE INDEX IF NOT EXISTS uq_view_handle_org_uuid ON views(handle, org_uuid);
+CREATE INDEX IF NOT EXISTS idx_view_org_uuid ON views(org_uuid);
 
 -- Organization Assets table (per-view branding/content assets, e.g. logos, docs)
-CREATE TABLE IF NOT EXISTS dp_organization_assets (
+CREATE TABLE IF NOT EXISTS organization_assets (
     uuid VARCHAR(40) PRIMARY KEY,
     file_name VARCHAR(255) NOT NULL,
     file_content BYTEA NOT NULL,
@@ -63,17 +63,17 @@ CREATE TABLE IF NOT EXISTS dp_organization_assets (
     created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_by VARCHAR(255) NOT NULL,
     updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    FOREIGN KEY (org_uuid) REFERENCES dp_organizations(uuid) ON DELETE NO ACTION,
+    FOREIGN KEY (org_uuid) REFERENCES organizations(uuid) ON DELETE NO ACTION,
     -- CASCADE: an org asset is meaningless once its view is gone.
-    FOREIGN KEY (view_uuid) REFERENCES dp_views(uuid) ON DELETE CASCADE
+    FOREIGN KEY (view_uuid) REFERENCES views(uuid) ON DELETE CASCADE
 );
 CREATE UNIQUE INDEX IF NOT EXISTS uq_organization_asset_type_name_path_org_view
-    ON dp_organization_assets(file_type, file_name, file_path, org_uuid, view_uuid);
-CREATE INDEX IF NOT EXISTS idx_organization_asset_org_uuid ON dp_organization_assets(org_uuid);
-CREATE INDEX IF NOT EXISTS idx_organization_asset_view_uuid ON dp_organization_assets(view_uuid);
+    ON organization_assets(file_type, file_name, file_path, org_uuid, view_uuid);
+CREATE INDEX IF NOT EXISTS idx_organization_asset_org_uuid ON organization_assets(org_uuid);
+CREATE INDEX IF NOT EXISTS idx_organization_asset_view_uuid ON organization_assets(view_uuid);
 
 -- Labels table (organization-scoped labels used for gateway/view assignment)
-CREATE TABLE IF NOT EXISTS dp_labels (
+CREATE TABLE IF NOT EXISTS labels (
     uuid VARCHAR(40) PRIMARY KEY,
     org_uuid VARCHAR(40) NOT NULL,
     handle VARCHAR(255) NOT NULL,
@@ -82,13 +82,13 @@ CREATE TABLE IF NOT EXISTS dp_labels (
     created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_by VARCHAR(255) NOT NULL,
     updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    FOREIGN KEY (org_uuid) REFERENCES dp_organizations(uuid) ON DELETE NO ACTION
+    FOREIGN KEY (org_uuid) REFERENCES organizations(uuid) ON DELETE NO ACTION
 );
-CREATE UNIQUE INDEX IF NOT EXISTS uq_label_handle_org_uuid ON dp_labels(handle, org_uuid);
-CREATE INDEX IF NOT EXISTS idx_label_org_uuid ON dp_labels(org_uuid);
+CREATE UNIQUE INDEX IF NOT EXISTS uq_label_handle_org_uuid ON labels(handle, org_uuid);
+CREATE INDEX IF NOT EXISTS idx_label_org_uuid ON labels(org_uuid);
 
 -- Tags table (organization-scoped free-form API tags)
-CREATE TABLE IF NOT EXISTS dp_tags (
+CREATE TABLE IF NOT EXISTS tags (
     uuid VARCHAR(40) PRIMARY KEY,
     org_uuid VARCHAR(40) NOT NULL,
     name VARCHAR(255) NOT NULL,
@@ -96,26 +96,26 @@ CREATE TABLE IF NOT EXISTS dp_tags (
     created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_by VARCHAR(255) NOT NULL,
     updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    FOREIGN KEY (org_uuid) REFERENCES dp_organizations(uuid) ON DELETE NO ACTION
+    FOREIGN KEY (org_uuid) REFERENCES organizations(uuid) ON DELETE NO ACTION
 );
-CREATE UNIQUE INDEX IF NOT EXISTS uq_tag_name_org_uuid ON dp_tags(name, org_uuid);
-CREATE INDEX IF NOT EXISTS idx_tag_org_uuid ON dp_tags(org_uuid);
+CREATE UNIQUE INDEX IF NOT EXISTS uq_tag_name_org_uuid ON tags(name, org_uuid);
+CREATE INDEX IF NOT EXISTS idx_tag_org_uuid ON tags(org_uuid);
 
 -- View-Label mappings (many-to-many: which labels belong to a view)
-CREATE TABLE IF NOT EXISTS dp_view_label_mappings (
+CREATE TABLE IF NOT EXISTS view_label_mappings (
     uuid VARCHAR(40) PRIMARY KEY,
     view_uuid VARCHAR(40) NOT NULL,
     label_uuid VARCHAR(40) NOT NULL,
     created_by VARCHAR(255) NOT NULL,
     created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    FOREIGN KEY (view_uuid) REFERENCES dp_views(uuid) ON DELETE CASCADE,
-    FOREIGN KEY (label_uuid) REFERENCES dp_labels(uuid) ON DELETE CASCADE
+    FOREIGN KEY (view_uuid) REFERENCES views(uuid) ON DELETE CASCADE,
+    FOREIGN KEY (label_uuid) REFERENCES labels(uuid) ON DELETE CASCADE
 );
-CREATE UNIQUE INDEX IF NOT EXISTS uq_view_label_mappings_label_view ON dp_view_label_mappings(label_uuid, view_uuid);
-CREATE INDEX IF NOT EXISTS idx_view_label_mappings_view_uuid ON dp_view_label_mappings(view_uuid);
+CREATE UNIQUE INDEX IF NOT EXISTS uq_view_label_mappings_label_view ON view_label_mappings(label_uuid, view_uuid);
+CREATE INDEX IF NOT EXISTS idx_view_label_mappings_view_uuid ON view_label_mappings(view_uuid);
 
 -- API Metadata table (core record for REST APIs, MCP servers, AI agents, etc.)
-CREATE TABLE IF NOT EXISTS dp_api_metadata (
+CREATE TABLE IF NOT EXISTS api_metadata (
     uuid VARCHAR(40) PRIMARY KEY,
     ref_id VARCHAR(255),
     name VARCHAR(255) NOT NULL,
@@ -138,15 +138,15 @@ CREATE TABLE IF NOT EXISTS dp_api_metadata (
     created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_by VARCHAR(255) NOT NULL,
     updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    FOREIGN KEY (org_uuid) REFERENCES dp_organizations(uuid) ON DELETE SET NULL
+    FOREIGN KEY (org_uuid) REFERENCES organizations(uuid) ON DELETE SET NULL
 );
-CREATE UNIQUE INDEX IF NOT EXISTS uq_api_metadata_name_version_org ON dp_api_metadata(name, version, org_uuid);
-CREATE UNIQUE INDEX IF NOT EXISTS uq_api_metadata_org_ref_id ON dp_api_metadata(org_uuid, ref_id);
-CREATE UNIQUE INDEX IF NOT EXISTS uq_api_metadata_handle_org ON dp_api_metadata(handle, org_uuid);
-CREATE INDEX IF NOT EXISTS idx_api_metadata_status ON dp_api_metadata(status);
+CREATE UNIQUE INDEX IF NOT EXISTS uq_api_metadata_name_version_org ON api_metadata(name, version, org_uuid);
+CREATE UNIQUE INDEX IF NOT EXISTS uq_api_metadata_org_ref_id ON api_metadata(org_uuid, ref_id);
+CREATE UNIQUE INDEX IF NOT EXISTS uq_api_metadata_handle_org ON api_metadata(handle, org_uuid);
+CREATE INDEX IF NOT EXISTS idx_api_metadata_status ON api_metadata(status);
 
 -- API Contents table (spec files, docs, icons, etc. attached to an API)
-CREATE TABLE IF NOT EXISTS dp_api_contents (
+CREATE TABLE IF NOT EXISTS api_contents (
     uuid VARCHAR(40) PRIMARY KEY,
     api_uuid VARCHAR(40) NOT NULL,
     file_content BYTEA NOT NULL,
@@ -157,40 +157,40 @@ CREATE TABLE IF NOT EXISTS dp_api_contents (
     created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_by VARCHAR(255) NOT NULL,
     updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    FOREIGN KEY (api_uuid) REFERENCES dp_api_metadata(uuid) ON DELETE CASCADE
+    FOREIGN KEY (api_uuid) REFERENCES api_metadata(uuid) ON DELETE CASCADE
 );
-CREATE UNIQUE INDEX IF NOT EXISTS uq_api_content_api_type_file_name ON dp_api_contents(api_uuid, type, file_name);
-CREATE UNIQUE INDEX IF NOT EXISTS uq_api_content_api_type_lookup_key ON dp_api_contents(api_uuid, type, lookup_key);
+CREATE UNIQUE INDEX IF NOT EXISTS uq_api_content_api_type_file_name ON api_contents(api_uuid, type, file_name);
+CREATE UNIQUE INDEX IF NOT EXISTS uq_api_content_api_type_lookup_key ON api_contents(api_uuid, type, lookup_key);
 
 -- API-Label mappings (many-to-many: which labels are attached to an API)
-CREATE TABLE IF NOT EXISTS dp_api_label_mappings (
+CREATE TABLE IF NOT EXISTS api_label_mappings (
     uuid VARCHAR(40) PRIMARY KEY,
     api_uuid VARCHAR(40) NOT NULL,
     label_uuid VARCHAR(40) NOT NULL,
     created_by VARCHAR(255) NOT NULL,
     created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    FOREIGN KEY (api_uuid) REFERENCES dp_api_metadata(uuid) ON DELETE CASCADE,
-    FOREIGN KEY (label_uuid) REFERENCES dp_labels(uuid) ON DELETE CASCADE
+    FOREIGN KEY (api_uuid) REFERENCES api_metadata(uuid) ON DELETE CASCADE,
+    FOREIGN KEY (label_uuid) REFERENCES labels(uuid) ON DELETE CASCADE
 );
-CREATE UNIQUE INDEX IF NOT EXISTS uq_api_label_mappings_label_api ON dp_api_label_mappings(label_uuid, api_uuid);
-CREATE INDEX IF NOT EXISTS idx_api_label_mappings_api_uuid ON dp_api_label_mappings(api_uuid);
+CREATE UNIQUE INDEX IF NOT EXISTS uq_api_label_mappings_label_api ON api_label_mappings(label_uuid, api_uuid);
+CREATE INDEX IF NOT EXISTS idx_api_label_mappings_api_uuid ON api_label_mappings(api_uuid);
 
 -- API-Tag mappings (many-to-many: which tags are attached to an API)
-CREATE TABLE IF NOT EXISTS dp_api_tag_mappings (
+CREATE TABLE IF NOT EXISTS api_tag_mappings (
     uuid VARCHAR(40) PRIMARY KEY,
     api_uuid VARCHAR(40) NOT NULL,
     tag_uuid VARCHAR(40) NOT NULL,
     created_by VARCHAR(255) NOT NULL,
     created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    FOREIGN KEY (api_uuid) REFERENCES dp_api_metadata(uuid) ON DELETE CASCADE,
-    FOREIGN KEY (tag_uuid) REFERENCES dp_tags(uuid) ON DELETE CASCADE
+    FOREIGN KEY (api_uuid) REFERENCES api_metadata(uuid) ON DELETE CASCADE,
+    FOREIGN KEY (tag_uuid) REFERENCES tags(uuid) ON DELETE CASCADE
 );
-CREATE UNIQUE INDEX IF NOT EXISTS uq_api_tag_mappings_tag_api ON dp_api_tag_mappings(tag_uuid, api_uuid);
-CREATE INDEX IF NOT EXISTS idx_api_tag_mappings_api_uuid ON dp_api_tag_mappings(api_uuid);
+CREATE UNIQUE INDEX IF NOT EXISTS uq_api_tag_mappings_tag_api ON api_tag_mappings(tag_uuid, api_uuid);
+CREATE INDEX IF NOT EXISTS idx_api_tag_mappings_api_uuid ON api_tag_mappings(api_uuid);
 
 -- Subscription Plans table (organization-scoped rate/billing plans)
--- Throttling limits live in dp_subscription_plan_limits (one row per limit).
-CREATE TABLE IF NOT EXISTS dp_subscription_plans (
+-- Throttling limits live in subscription_plan_limits (one row per limit).
+CREATE TABLE IF NOT EXISTS subscription_plans (
     uuid VARCHAR(40) PRIMARY KEY,
     handle VARCHAR(255) NOT NULL,
     display_name VARCHAR(255) NOT NULL,
@@ -202,45 +202,45 @@ CREATE TABLE IF NOT EXISTS dp_subscription_plans (
     created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_by VARCHAR(255) NOT NULL,
     updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    FOREIGN KEY (org_uuid) REFERENCES dp_organizations(uuid) ON DELETE SET NULL
+    FOREIGN KEY (org_uuid) REFERENCES organizations(uuid) ON DELETE SET NULL
 );
-CREATE UNIQUE INDEX IF NOT EXISTS uq_subscription_plan_org_handle ON dp_subscription_plans(org_uuid, handle);
+CREATE UNIQUE INDEX IF NOT EXISTS uq_subscription_plan_org_handle ON subscription_plans(org_uuid, handle);
 
 -- Subscription Plan Limits table (throttling limits for a plan)
-CREATE TABLE IF NOT EXISTS dp_subscription_plan_limits (
+CREATE TABLE IF NOT EXISTS subscription_plan_limits (
     uuid VARCHAR(40) PRIMARY KEY,
     plan_uuid VARCHAR(40) NOT NULL,
     limit_type VARCHAR(20) NOT NULL DEFAULT 'REQUEST_COUNT',
     time_unit VARCHAR(20),
     time_amount INTEGER NOT NULL DEFAULT 1,
     limit_count BIGINT NOT NULL,
-    FOREIGN KEY (plan_uuid) REFERENCES dp_subscription_plans(uuid) ON DELETE CASCADE
+    FOREIGN KEY (plan_uuid) REFERENCES subscription_plans(uuid) ON DELETE CASCADE
 );
-CREATE INDEX IF NOT EXISTS idx_dp_subscription_plan_limits_plan ON dp_subscription_plan_limits(plan_uuid);
+CREATE INDEX IF NOT EXISTS idx_subscription_plan_limits_plan ON subscription_plan_limits(plan_uuid);
 -- Split into two filtered unique indexes because time_unit is nullable: a plain composite
 -- unique index would let Postgres treat every NULL time_unit row as distinct (never colliding),
 -- silently allowing duplicate NULL-time_unit limits. These two indexes make both branches explicit.
-CREATE UNIQUE INDEX IF NOT EXISTS uq_dp_subscription_plan_limits
-    ON dp_subscription_plan_limits(plan_uuid, limit_type, time_amount, time_unit) WHERE time_unit IS NOT NULL;
-CREATE UNIQUE INDEX IF NOT EXISTS uq_dp_subscription_plan_limits_null_unit
-    ON dp_subscription_plan_limits(plan_uuid, limit_type, time_amount) WHERE time_unit IS NULL;
+CREATE UNIQUE INDEX IF NOT EXISTS uq_subscription_plan_limits
+    ON subscription_plan_limits(plan_uuid, limit_type, time_amount, time_unit) WHERE time_unit IS NOT NULL;
+CREATE UNIQUE INDEX IF NOT EXISTS uq_subscription_plan_limits_null_unit
+    ON subscription_plan_limits(plan_uuid, limit_type, time_amount) WHERE time_unit IS NULL;
 
 -- API-Subscription Plan mappings (many-to-many: which plans an API offers)
-CREATE TABLE IF NOT EXISTS dp_api_subscription_plan_mappings (
+CREATE TABLE IF NOT EXISTS api_subscription_plan_mappings (
     uuid VARCHAR(40) PRIMARY KEY,
     api_uuid VARCHAR(40) NOT NULL,
     plan_uuid VARCHAR(40) NOT NULL,
     created_by VARCHAR(255) NOT NULL,
     created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    FOREIGN KEY (api_uuid) REFERENCES dp_api_metadata(uuid) ON DELETE CASCADE,
-    FOREIGN KEY (plan_uuid) REFERENCES dp_subscription_plans(uuid) ON DELETE CASCADE
+    FOREIGN KEY (api_uuid) REFERENCES api_metadata(uuid) ON DELETE CASCADE,
+    FOREIGN KEY (plan_uuid) REFERENCES subscription_plans(uuid) ON DELETE CASCADE
 );
 CREATE UNIQUE INDEX IF NOT EXISTS uq_api_subscription_plan_mappings_plan_api
-    ON dp_api_subscription_plan_mappings(plan_uuid, api_uuid);
-CREATE INDEX IF NOT EXISTS idx_api_subscription_plan_mappings_api_uuid ON dp_api_subscription_plan_mappings(api_uuid);
+    ON api_subscription_plan_mappings(plan_uuid, api_uuid);
+CREATE INDEX IF NOT EXISTS idx_api_subscription_plan_mappings_api_uuid ON api_subscription_plan_mappings(api_uuid);
 
 -- Key Managers table (organization-scoped identity providers used to validate app keys)
-CREATE TABLE IF NOT EXISTS dp_key_managers (
+CREATE TABLE IF NOT EXISTS key_managers (
     uuid VARCHAR(40) PRIMARY KEY,
     org_uuid VARCHAR(40) NOT NULL,
     handle VARCHAR(255) NOT NULL,
@@ -251,12 +251,12 @@ CREATE TABLE IF NOT EXISTS dp_key_managers (
     created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_by VARCHAR(255) NOT NULL,
     updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    FOREIGN KEY (org_uuid) REFERENCES dp_organizations(uuid) ON DELETE NO ACTION
+    FOREIGN KEY (org_uuid) REFERENCES organizations(uuid) ON DELETE NO ACTION
 );
-CREATE UNIQUE INDEX IF NOT EXISTS uq_key_manager_org_handle ON dp_key_managers(org_uuid, handle);
+CREATE UNIQUE INDEX IF NOT EXISTS uq_key_manager_org_handle ON key_managers(org_uuid, handle);
 
 -- Applications table (developer-created consumer apps that subscribe to APIs)
-CREATE TABLE IF NOT EXISTS dp_applications (
+CREATE TABLE IF NOT EXISTS applications (
     uuid VARCHAR(40) PRIMARY KEY,
     org_uuid VARCHAR(40) NOT NULL,
     created_by VARCHAR(255) NOT NULL,
@@ -266,13 +266,13 @@ CREATE TABLE IF NOT EXISTS dp_applications (
     created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_by VARCHAR(255) NOT NULL,
     updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    FOREIGN KEY (org_uuid) REFERENCES dp_organizations(uuid) ON DELETE NO ACTION
+    FOREIGN KEY (org_uuid) REFERENCES organizations(uuid) ON DELETE NO ACTION
 );
-CREATE INDEX IF NOT EXISTS idx_application_org_created_by ON dp_applications(org_uuid, created_by);
-CREATE UNIQUE INDEX IF NOT EXISTS uq_application_org_handle ON dp_applications(org_uuid, handle);
+CREATE INDEX IF NOT EXISTS idx_application_org_created_by ON applications(org_uuid, created_by);
+CREATE UNIQUE INDEX IF NOT EXISTS uq_application_org_handle ON applications(org_uuid, handle);
 
 -- Application-KeyManager mappings (per-KM OAuth2 client registration for an application)
-CREATE TABLE IF NOT EXISTS dp_app_key_mappings (
+CREATE TABLE IF NOT EXISTS app_key_mappings (
     uuid VARCHAR(40) PRIMARY KEY,
     app_uuid VARCHAR(40) NOT NULL,
     km_uuid VARCHAR(40) NOT NULL,
@@ -282,14 +282,14 @@ CREATE TABLE IF NOT EXISTS dp_app_key_mappings (
     created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_by VARCHAR(255) NOT NULL,
     updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    FOREIGN KEY (app_uuid) REFERENCES dp_applications(uuid) ON DELETE NO ACTION,
-    FOREIGN KEY (km_uuid) REFERENCES dp_key_managers(uuid) ON DELETE NO ACTION
+    FOREIGN KEY (app_uuid) REFERENCES applications(uuid) ON DELETE NO ACTION,
+    FOREIGN KEY (km_uuid) REFERENCES key_managers(uuid) ON DELETE NO ACTION
 );
-CREATE INDEX IF NOT EXISTS idx_app_key_mappings_app_uuid ON dp_app_key_mappings(app_uuid);
-CREATE INDEX IF NOT EXISTS idx_app_key_mappings_km_uuid ON dp_app_key_mappings(km_uuid);
+CREATE INDEX IF NOT EXISTS idx_app_key_mappings_app_uuid ON app_key_mappings(app_uuid);
+CREATE INDEX IF NOT EXISTS idx_app_key_mappings_km_uuid ON app_key_mappings(km_uuid);
 
 -- Subscriptions table (application-level subscriptions to an API)
-CREATE TABLE IF NOT EXISTS dp_subscriptions (
+CREATE TABLE IF NOT EXISTS subscriptions (
     uuid VARCHAR(40) PRIMARY KEY,
     created_by VARCHAR(255) NOT NULL,
     api_uuid VARCHAR(40) NOT NULL,
@@ -301,21 +301,21 @@ CREATE TABLE IF NOT EXISTS dp_subscriptions (
     created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_by VARCHAR(255) NOT NULL,
     updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    FOREIGN KEY (api_uuid) REFERENCES dp_api_metadata(uuid) ON DELETE NO ACTION,
-    FOREIGN KEY (plan_uuid) REFERENCES dp_subscription_plans(uuid) ON DELETE SET NULL,
-    FOREIGN KEY (org_uuid) REFERENCES dp_organizations(uuid) ON DELETE NO ACTION,
+    FOREIGN KEY (api_uuid) REFERENCES api_metadata(uuid) ON DELETE NO ACTION,
+    FOREIGN KEY (plan_uuid) REFERENCES subscription_plans(uuid) ON DELETE SET NULL,
+    FOREIGN KEY (org_uuid) REFERENCES organizations(uuid) ON DELETE NO ACTION,
     UNIQUE(token)
 );
-CREATE INDEX IF NOT EXISTS idx_subscription_org_created_by ON dp_subscriptions(org_uuid, created_by);
-CREATE INDEX IF NOT EXISTS idx_subscription_org_api_uuid ON dp_subscriptions(org_uuid, api_uuid);
-CREATE INDEX IF NOT EXISTS idx_subscription_plan_uuid ON dp_subscriptions(plan_uuid);
-CREATE INDEX IF NOT EXISTS idx_subscription_status ON dp_subscriptions(status);
+CREATE INDEX IF NOT EXISTS idx_subscription_org_created_by ON subscriptions(org_uuid, created_by);
+CREATE INDEX IF NOT EXISTS idx_subscription_org_api_uuid ON subscriptions(org_uuid, api_uuid);
+CREATE INDEX IF NOT EXISTS idx_subscription_plan_uuid ON subscriptions(plan_uuid);
+CREATE INDEX IF NOT EXISTS idx_subscription_status ON subscriptions(status);
 -- api_uuid is only ever a trailing column above (org_uuid, api_uuid) -- add a
 -- dedicated leading index so single-column api_uuid lookups/joins stay indexed.
-CREATE INDEX IF NOT EXISTS idx_subscription_api_uuid ON dp_subscriptions(api_uuid);
+CREATE INDEX IF NOT EXISTS idx_subscription_api_uuid ON subscriptions(api_uuid);
 
 -- API Keys table (standalone, non-OAuth2 API key credentials for an API)
-CREATE TABLE IF NOT EXISTS dp_api_keys (
+CREATE TABLE IF NOT EXISTS api_keys (
     uuid VARCHAR(40) PRIMARY KEY,
     api_uuid VARCHAR(40) NOT NULL,
     -- Nullable: SET NULL keeps the key record if its originating subscription is removed.
@@ -331,35 +331,35 @@ CREATE TABLE IF NOT EXISTS dp_api_keys (
     revoked_by VARCHAR(200),
     created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    FOREIGN KEY (api_uuid) REFERENCES dp_api_metadata(uuid) ON DELETE NO ACTION,
-    FOREIGN KEY (subscription_uuid) REFERENCES dp_subscriptions(uuid) ON DELETE SET NULL,
-    FOREIGN KEY (org_uuid) REFERENCES dp_organizations(uuid) ON DELETE NO ACTION,
+    FOREIGN KEY (api_uuid) REFERENCES api_metadata(uuid) ON DELETE NO ACTION,
+    FOREIGN KEY (subscription_uuid) REFERENCES subscriptions(uuid) ON DELETE SET NULL,
+    FOREIGN KEY (org_uuid) REFERENCES organizations(uuid) ON DELETE NO ACTION,
     CONSTRAINT chk_api_key_revoked
         CHECK ((revoked_at IS NULL AND status != 'REVOKED') OR (revoked_at IS NOT NULL AND status = 'REVOKED'))
 );
-CREATE INDEX IF NOT EXISTS idx_api_key_org_api_uuid ON dp_api_keys(org_uuid, api_uuid);
-CREATE INDEX IF NOT EXISTS idx_api_key_subscription_uuid ON dp_api_keys(subscription_uuid);
-CREATE INDEX IF NOT EXISTS idx_api_key_status ON dp_api_keys(status);
+CREATE INDEX IF NOT EXISTS idx_api_key_org_api_uuid ON api_keys(org_uuid, api_uuid);
+CREATE INDEX IF NOT EXISTS idx_api_key_subscription_uuid ON api_keys(subscription_uuid);
+CREATE INDEX IF NOT EXISTS idx_api_key_status ON api_keys(status);
 -- api_uuid is only ever a trailing column above (org_uuid, api_uuid) -- add a
 -- dedicated leading index so single-column api_uuid lookups/joins stay indexed.
-CREATE INDEX IF NOT EXISTS idx_api_key_api_uuid ON dp_api_keys(api_uuid);
+CREATE INDEX IF NOT EXISTS idx_api_key_api_uuid ON api_keys(api_uuid);
 -- Handle is the caller-facing id used to address a key within an API, so it must be
 -- unique per (org, api). Enforced here for a race-free guarantee, not just in the service.
-CREATE UNIQUE INDEX IF NOT EXISTS uq_api_key_org_api_handle ON dp_api_keys(org_uuid, api_uuid, handle);
+CREATE UNIQUE INDEX IF NOT EXISTS uq_api_key_org_api_handle ON api_keys(org_uuid, api_uuid, handle);
 
 -- API Key-Application mappings (which application an API key was issued to)
-CREATE TABLE IF NOT EXISTS dp_api_key_app_mappings (
+CREATE TABLE IF NOT EXISTS api_key_app_mappings (
     key_uuid VARCHAR(40) PRIMARY KEY,
     app_uuid VARCHAR(40) NOT NULL,
     created_by VARCHAR(255) NOT NULL,
     created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    FOREIGN KEY (key_uuid) REFERENCES dp_api_keys(uuid) ON DELETE CASCADE,
-    FOREIGN KEY (app_uuid) REFERENCES dp_applications(uuid) ON DELETE CASCADE
+    FOREIGN KEY (key_uuid) REFERENCES api_keys(uuid) ON DELETE CASCADE,
+    FOREIGN KEY (app_uuid) REFERENCES applications(uuid) ON DELETE CASCADE
 );
-CREATE INDEX IF NOT EXISTS idx_api_key_app_mappings_app_uuid ON dp_api_key_app_mappings(app_uuid);
+CREATE INDEX IF NOT EXISTS idx_api_key_app_mappings_app_uuid ON api_key_app_mappings(app_uuid);
 
 -- API Workflows table (agent/automation workflows published under a view)
-CREATE TABLE IF NOT EXISTS dp_api_workflows (
+CREATE TABLE IF NOT EXISTS api_workflows (
     uuid VARCHAR(40) PRIMARY KEY,
     org_uuid VARCHAR(40) NOT NULL,
     view_uuid VARCHAR(40) NOT NULL,
@@ -375,16 +375,16 @@ CREATE TABLE IF NOT EXISTS dp_api_workflows (
     created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_by VARCHAR(255) NOT NULL,
     updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    FOREIGN KEY (org_uuid) REFERENCES dp_organizations(uuid) ON DELETE NO ACTION,
-    FOREIGN KEY (view_uuid) REFERENCES dp_views(uuid) ON DELETE NO ACTION
+    FOREIGN KEY (org_uuid) REFERENCES organizations(uuid) ON DELETE NO ACTION,
+    FOREIGN KEY (view_uuid) REFERENCES views(uuid) ON DELETE NO ACTION
 );
-CREATE UNIQUE INDEX IF NOT EXISTS uq_api_workflow_org_view_handle ON dp_api_workflows(org_uuid, view_uuid, handle);
-CREATE INDEX IF NOT EXISTS idx_api_workflow_view_uuid ON dp_api_workflows(view_uuid);
-CREATE INDEX IF NOT EXISTS idx_api_workflow_status ON dp_api_workflows(status);
+CREATE UNIQUE INDEX IF NOT EXISTS uq_api_workflow_org_view_handle ON api_workflows(org_uuid, view_uuid, handle);
+CREATE INDEX IF NOT EXISTS idx_api_workflow_view_uuid ON api_workflows(view_uuid);
+CREATE INDEX IF NOT EXISTS idx_api_workflow_status ON api_workflows(status);
 
 -- Audit table (write-only mutation trail; no FK on performed_by so history
--- survives deletion of the referenced dp_user_idp_references row)
-CREATE TABLE IF NOT EXISTS dp_audit (
+-- survives deletion of the referenced user_idp_references row)
+CREATE TABLE IF NOT EXISTS audit (
     uuid VARCHAR(40) PRIMARY KEY,
     action VARCHAR(50) NOT NULL,
     resource_uuid VARCHAR(40) NOT NULL,
@@ -392,12 +392,12 @@ CREATE TABLE IF NOT EXISTS dp_audit (
     org_uuid VARCHAR(40) NOT NULL,
     performed_by VARCHAR(255),
     performed_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    FOREIGN KEY (org_uuid) REFERENCES dp_organizations(uuid) ON DELETE CASCADE
+    FOREIGN KEY (org_uuid) REFERENCES organizations(uuid) ON DELETE CASCADE
 );
-CREATE INDEX IF NOT EXISTS idx_audit_org_uuid ON dp_audit(org_uuid);
+CREATE INDEX IF NOT EXISTS idx_audit_org_uuid ON audit(org_uuid);
 
 -- Events table (outbox: one row per domain event; payload never contains plaintext key secrets)
-CREATE TABLE IF NOT EXISTS dp_events (
+CREATE TABLE IF NOT EXISTS events (
     uuid VARCHAR(40) PRIMARY KEY,
     type VARCHAR(128) NOT NULL,
     org_uuid VARCHAR(40) NOT NULL,
@@ -406,14 +406,14 @@ CREATE TABLE IF NOT EXISTS dp_events (
     payload JSONB NOT NULL DEFAULT '{}',
     occurred_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
     status VARCHAR(20) NOT NULL DEFAULT 'PENDING',
-    FOREIGN KEY (org_uuid) REFERENCES dp_organizations(uuid) ON DELETE NO ACTION
+    FOREIGN KEY (org_uuid) REFERENCES organizations(uuid) ON DELETE NO ACTION
 );
-CREATE INDEX IF NOT EXISTS idx_event_status_occurred_at ON dp_events(status, occurred_at);
-CREATE INDEX IF NOT EXISTS idx_event_org_uuid ON dp_events(org_uuid);
+CREATE INDEX IF NOT EXISTS idx_event_status_occurred_at ON events(status, occurred_at);
+CREATE INDEX IF NOT EXISTS idx_event_org_uuid ON events(org_uuid);
 
 -- Event Deliveries table (one row per event x webhook subscriber; encrypted_fields
--- holds per-subscriber ciphertext so plaintext never lives in dp_events)
-CREATE TABLE IF NOT EXISTS dp_event_deliveries (
+-- holds per-subscriber ciphertext so plaintext never lives in events)
+CREATE TABLE IF NOT EXISTS event_deliveries (
     uuid VARCHAR(40) PRIMARY KEY,
     event_uuid VARCHAR(40) NOT NULL,
     subscriber_id VARCHAR(128) NOT NULL,
@@ -424,10 +424,10 @@ CREATE TABLE IF NOT EXISTS dp_event_deliveries (
     last_error VARCHAR(255),
     last_attempt_at TIMESTAMPTZ,
     delivered_at TIMESTAMPTZ,
-    FOREIGN KEY (event_uuid) REFERENCES dp_events(uuid) ON DELETE NO ACTION
+    FOREIGN KEY (event_uuid) REFERENCES events(uuid) ON DELETE NO ACTION
 );
-CREATE INDEX IF NOT EXISTS idx_event_delivery_event_uuid ON dp_event_deliveries(event_uuid);
-CREATE UNIQUE INDEX IF NOT EXISTS uq_event_delivery_event_subscriber ON dp_event_deliveries(event_uuid, subscriber_id);
+CREATE INDEX IF NOT EXISTS idx_event_delivery_event_uuid ON event_deliveries(event_uuid);
+CREATE UNIQUE INDEX IF NOT EXISTS uq_event_delivery_event_subscriber ON event_deliveries(event_uuid, subscriber_id);
 
 -- Sessions table, used by connect-pg-simple for server-side Express session storage.
 CREATE TABLE IF NOT EXISTS sessions (
@@ -440,7 +440,7 @@ CREATE INDEX IF NOT EXISTS idx_session_expire ON sessions(expire);
 -- User IdP References table (one durable record per distinct IdP `sub` claim; referenced
 -- by uuid from created_by/updated_by-style columns elsewhere WITHOUT a foreign key, so
 -- those columns keep pointing at a uuid after the row here is deleted)
-CREATE TABLE IF NOT EXISTS dp_user_idp_references (
+CREATE TABLE IF NOT EXISTS user_idp_references (
     uuid VARCHAR(40) PRIMARY KEY,
     idp_id VARCHAR(255) NOT NULL UNIQUE,
     created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
@@ -448,17 +448,17 @@ CREATE TABLE IF NOT EXISTS dp_user_idp_references (
 
 -- User-Organization mappings (live membership record -- both sides cascade on delete,
 -- unlike the "hanging creator" created_by/updated_by pattern used elsewhere)
-CREATE TABLE IF NOT EXISTS dp_user_organization_mappings (
+CREATE TABLE IF NOT EXISTS user_organization_mappings (
     user_uuid VARCHAR(40) NOT NULL,
     org_uuid VARCHAR(40) NOT NULL,
     PRIMARY KEY (user_uuid, org_uuid),
-    FOREIGN KEY (user_uuid) REFERENCES dp_user_idp_references(uuid) ON DELETE CASCADE,
-    FOREIGN KEY (org_uuid) REFERENCES dp_organizations(uuid) ON DELETE CASCADE
+    FOREIGN KEY (user_uuid) REFERENCES user_idp_references(uuid) ON DELETE CASCADE,
+    FOREIGN KEY (org_uuid) REFERENCES organizations(uuid) ON DELETE CASCADE
 );
-CREATE INDEX IF NOT EXISTS idx_user_organization_mappings_org_uuid ON dp_user_organization_mappings(org_uuid);
+CREATE INDEX IF NOT EXISTS idx_user_organization_mappings_org_uuid ON user_organization_mappings(org_uuid);
 
 -- Webhook Subscribers table (organization-scoped outbound event subscribers)
-CREATE TABLE IF NOT EXISTS dp_webhook_subscribers (
+CREATE TABLE IF NOT EXISTS webhook_subscribers (
     uuid VARCHAR(40) PRIMARY KEY,
     org_uuid VARCHAR(40) NOT NULL,
     handle VARCHAR(255) NOT NULL,
@@ -472,6 +472,6 @@ CREATE TABLE IF NOT EXISTS dp_webhook_subscribers (
     created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_by VARCHAR(255) NOT NULL,
     updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    FOREIGN KEY (org_uuid) REFERENCES dp_organizations(uuid) ON DELETE NO ACTION
+    FOREIGN KEY (org_uuid) REFERENCES organizations(uuid) ON DELETE NO ACTION
 );
-CREATE UNIQUE INDEX IF NOT EXISTS uq_webhook_subscriber_org_handle ON dp_webhook_subscribers(org_uuid, handle);
+CREATE UNIQUE INDEX IF NOT EXISTS uq_webhook_subscriber_org_handle ON webhook_subscribers(org_uuid, handle);

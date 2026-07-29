@@ -22,8 +22,8 @@ const db = require('../db/driver');
 const { groupBy, toBlobBuffer } = require('../db/rows');
 const constants = require('../utils/constants');
 
-const CONTENT_TABLE = 'dp_api_contents';
-const API_METADATA_TABLE = 'dp_api_metadata';
+const CONTENT_TABLE = 'api_contents';
+const API_METADATA_TABLE = 'api_metadata';
 
 // Every content row is tenant-scoped through the API it belongs to — this
 // correlated EXISTS clause (not a JOIN alias, which sqlite's UPDATE grammar

@@ -24,8 +24,8 @@ const { NotFoundError } = require('../utils/errors/customErrors');
 const viewDao = require('./viewDao');
 const constants = require('../utils/constants');
 
-const ORG_TABLE = 'dp_organizations';
-const ORG_CONTENT_TABLE = 'dp_organization_assets';
+const ORG_TABLE = 'organizations';
+const ORG_CONTENT_TABLE = 'organization_assets';
 
 const create = async (orgData, t) => {
     const exec = t || db;
@@ -172,30 +172,30 @@ const update = async (orgData, t) => {
 
 // Tables whose org_uuid FK is ON DELETE NO ACTION (database/schema.*.sql) block
 // deleting the organization row unless their rows are removed first. Tables with
-// ON DELETE CASCADE/SET NULL (dp_api_metadata, dp_subscription_plans, dp_audit,
-// dp_user_organization_mappings, and the *_mappings join tables) are left to the
+// ON DELETE CASCADE/SET NULL (api_metadata, subscription_plans, audit,
+// user_organization_mappings, and the *_mappings join tables) are left to the
 // database to handle and aren't touched here.
 const deleteOrgDependents = async (orgUuid, t) => {
     const exec = t || db;
 
-    const events = await exec.query('SELECT uuid FROM dp_events WHERE org_uuid = ?', [orgUuid]);
+    const events = await exec.query('SELECT uuid FROM events WHERE org_uuid = ?', [orgUuid]);
     if (events.length) {
         const placeholders = events.map(() => '?').join(', ');
         await exec.execute(
-            `DELETE FROM dp_event_deliveries WHERE event_uuid IN (${placeholders})`,
+            `DELETE FROM event_deliveries WHERE event_uuid IN (${placeholders})`,
             events.map((e) => e.uuid)
         );
     }
-    await exec.execute('DELETE FROM dp_events WHERE org_uuid = ?', [orgUuid]);
+    await exec.execute('DELETE FROM events WHERE org_uuid = ?', [orgUuid]);
 
-    await exec.execute('DELETE FROM dp_api_keys WHERE org_uuid = ?', [orgUuid]);
-    await exec.execute('DELETE FROM dp_subscriptions WHERE org_uuid = ?', [orgUuid]);
+    await exec.execute('DELETE FROM api_keys WHERE org_uuid = ?', [orgUuid]);
+    await exec.execute('DELETE FROM subscriptions WHERE org_uuid = ?', [orgUuid]);
 
     // Sequential, not Promise.all: both queries share the same connection/transaction
     // handle (sqlite's single connection, or an open tx on postgres/mssql), so running
     // them concurrently would interleave two statements on one session.
-    const apps = await exec.query('SELECT uuid FROM dp_applications WHERE org_uuid = ?', [orgUuid]);
-    const keyManagers = await exec.query('SELECT uuid FROM dp_key_managers WHERE org_uuid = ?', [orgUuid]);
+    const apps = await exec.query('SELECT uuid FROM applications WHERE org_uuid = ?', [orgUuid]);
+    const keyManagers = await exec.query('SELECT uuid FROM key_managers WHERE org_uuid = ?', [orgUuid]);
     if (apps.length || keyManagers.length) {
         const conditions = [];
         const params = [];
@@ -207,19 +207,19 @@ const deleteOrgDependents = async (orgUuid, t) => {
             conditions.push(`km_uuid IN (${keyManagers.map(() => '?').join(', ')})`);
             params.push(...keyManagers.map((k) => k.uuid));
         }
-        await exec.execute(`DELETE FROM dp_app_key_mappings WHERE ${conditions.join(' OR ')}`, params);
+        await exec.execute(`DELETE FROM app_key_mappings WHERE ${conditions.join(' OR ')}`, params);
     }
-    await exec.execute('DELETE FROM dp_applications WHERE org_uuid = ?', [orgUuid]);
-    await exec.execute('DELETE FROM dp_key_managers WHERE org_uuid = ?', [orgUuid]);
+    await exec.execute('DELETE FROM applications WHERE org_uuid = ?', [orgUuid]);
+    await exec.execute('DELETE FROM key_managers WHERE org_uuid = ?', [orgUuid]);
 
-    await exec.execute('DELETE FROM dp_api_workflows WHERE org_uuid = ?', [orgUuid]);
+    await exec.execute('DELETE FROM api_workflows WHERE org_uuid = ?', [orgUuid]);
     await exec.execute(`DELETE FROM ${ORG_CONTENT_TABLE} WHERE org_uuid = ?`, [orgUuid]);
-    // dp_view_label_mappings/dp_api_label_mappings cascade automatically from
-    // dp_views/dp_labels ON DELETE CASCADE.
-    await exec.execute('DELETE FROM dp_views WHERE org_uuid = ?', [orgUuid]);
-    await exec.execute('DELETE FROM dp_labels WHERE org_uuid = ?', [orgUuid]);
-    await exec.execute('DELETE FROM dp_tags WHERE org_uuid = ?', [orgUuid]);
-    await exec.execute('DELETE FROM dp_webhook_subscribers WHERE org_uuid = ?', [orgUuid]);
+    // view_label_mappings/api_label_mappings cascade automatically from
+    // views/labels ON DELETE CASCADE.
+    await exec.execute('DELETE FROM views WHERE org_uuid = ?', [orgUuid]);
+    await exec.execute('DELETE FROM labels WHERE org_uuid = ?', [orgUuid]);
+    await exec.execute('DELETE FROM tags WHERE org_uuid = ?', [orgUuid]);
+    await exec.execute('DELETE FROM webhook_subscribers WHERE org_uuid = ?', [orgUuid]);
 };
 
 const deleteOrg = async (orgId, t) => {

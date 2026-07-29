@@ -22,9 +22,9 @@ const db = require('../db/driver');
 const { groupBy } = require('../db/rows');
 const { ValidationError } = require('../utils/errors/customErrors');
 
-const SUBSCRIPTION_PLANS_TABLE = 'dp_subscription_plans';
-const SUBSCRIPTION_PLAN_LIMITS_TABLE = 'dp_subscription_plan_limits';
-const API_SUBSCRIPTION_PLAN_MAPPINGS_TABLE = 'dp_api_subscription_plan_mappings';
+const SUBSCRIPTION_PLANS_TABLE = 'subscription_plans';
+const SUBSCRIPTION_PLAN_LIMITS_TABLE = 'subscription_plan_limits';
+const API_SUBSCRIPTION_PLAN_MAPPINGS_TABLE = 'api_subscription_plan_mappings';
 
 const VALID_LIMIT_TYPES = ['REQUEST_COUNT', 'EVENT_COUNT', 'BANDWIDTH', 'TOTAL_TOKEN_COUNT'];
 
@@ -211,7 +211,7 @@ const getByName = async (orgId, planName, t) => {
 };
 
 /**
- * Plans mapped to a given API, via the dp_api_subscription_plan_mappings join
+ * Plans mapped to a given API, via the api_subscription_plan_mappings join
  * table. Mirrors the previous belongsToMany `include: [{model: APIMetadata,
  * where: {uuid: apiId}}, ...PLAN_INCLUDE]` shape. Intentionally not scoped by
  * org_uuid — the original Sequelize query wasn't either.

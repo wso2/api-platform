@@ -23,22 +23,22 @@ const { groupBy } = require('../db/rows');
 const constants = require('../utils/constants');
 const logger = require('../config/logger');
 
-const API_METADATA_TABLE = 'dp_api_metadata';
-const CONTENT_TABLE = 'dp_api_contents';
-const LABELS_TABLE = 'dp_labels';
-const TAGS_TABLE = 'dp_tags';
-const API_LABEL_MAPPINGS_TABLE = 'dp_api_label_mappings';
-const API_TAG_MAPPINGS_TABLE = 'dp_api_tag_mappings';
-const SUBSCRIPTION_PLANS_TABLE = 'dp_subscription_plans';
-const SUBSCRIPTION_PLAN_LIMITS_TABLE = 'dp_subscription_plan_limits';
-const API_SUBSCRIPTION_PLAN_MAPPINGS_TABLE = 'dp_api_subscription_plan_mappings';
-const VIEW_LABEL_MAPPINGS_TABLE = 'dp_view_label_mappings';
+const API_METADATA_TABLE = 'api_metadata';
+const CONTENT_TABLE = 'api_contents';
+const LABELS_TABLE = 'labels';
+const TAGS_TABLE = 'tags';
+const API_LABEL_MAPPINGS_TABLE = 'api_label_mappings';
+const API_TAG_MAPPINGS_TABLE = 'api_tag_mappings';
+const SUBSCRIPTION_PLANS_TABLE = 'subscription_plans';
+const SUBSCRIPTION_PLAN_LIMITS_TABLE = 'subscription_plan_limits';
+const API_SUBSCRIPTION_PLAN_MAPPINGS_TABLE = 'api_subscription_plan_mappings';
+const VIEW_LABEL_MAPPINGS_TABLE = 'view_label_mappings';
 
 const PUBLISHED_STATUSES = [constants.API_STATUS.PUBLISHED, constants.API_STATUS.DEPRECATED];
 const STATUS_PLACEHOLDERS = PUBLISHED_STATUSES.map(() => '?').join(', ');
 
 /**
- * Full-text search query for dp_api_metadata (PostgreSQL only). Used by search()
+ * Full-text search query for api_metadata (PostgreSQL only). Used by search()
  * below via db.bindNamedParams(). Named parameters:
  *   :searchTerm   — the user-supplied search string
  *   :orgId        — the organisation UUID to scope results to
@@ -54,7 +54,7 @@ const STATUS_PLACEHOLDERS = PUBLISHED_STATUSES.map(() => '?').join(', ');
  *
  * Associations (contents/labels/tags/subscription plans + limits) are deliberately
  * NOT aggregated here — none of them feed the WHERE clause, and JSONB_AGG'ing
- * dp_api_subscription_plan_mappings would only yield mapping-table columns
+ * api_subscription_plan_mappings would only yield mapping-table columns
  * (api_uuid, plan_uuid), not the actual plan data (handle, display_name, limits)
  * that APIDTO/APISubscriptionPlan need. search() below runs these rows through
  * the same attachAssociations() every other list method uses instead, per the
@@ -76,9 +76,9 @@ const SEARCH_APIS_POSTGRES_SQL = `
             END, ', '
         ) AS "DATA_SOURCE"
     FROM
-        dp_api_metadata metadata
+        api_metadata metadata
     LEFT JOIN
-        dp_api_contents content
+        api_contents content
         ON metadata.uuid = content.api_uuid
         AND (
             content.file_name LIKE '%.hbs'
@@ -102,8 +102,8 @@ const SEARCH_APIS_POSTGRES_SQL = `
             :viewId::uuid IS NULL
             OR EXISTS (
                 SELECT 1
-                FROM dp_api_label_mappings alm
-                JOIN dp_view_label_mappings vlm ON alm.label_uuid = vlm.label_uuid
+                FROM api_label_mappings alm
+                JOIN view_label_mappings vlm ON alm.label_uuid = vlm.label_uuid
                 WHERE alm.api_uuid = metadata.uuid AND vlm.view_uuid = :viewId
             )
         )
@@ -117,10 +117,10 @@ const SEARCH_APIS_POSTGRES_SQL = `
  * App-side "eager load" mirroring the previous Sequelize `include:` shape on
  * APIMetadata — attaches, on each row, the same property names/shapes the old
  * associations produced (see src/dto/apiDto.js and src/dto/subscriptionPlanDto.js):
- *   dp_api_contents       — content rows of type IMAGES
- *   dp_labels             — [{handle}]
- *   dp_tags               — [{name}]
- *   dp_subscription_plans — plan rows with `.limits` attached
+ *   api_contents       — content rows of type IMAGES
+ *   labels             — [{handle}]
+ *   tags               — [{name}]
+ *   subscription_plans — plan rows with `.limits` attached
  */
 async function attachAssociations(apiRows, t) {
     const exec = t || db;
@@ -172,10 +172,10 @@ async function attachAssociations(apiRows, t) {
     const plansByApi = groupBy(planMappingRows, 'mapping_api_uuid');
 
     for (const api of apiRows) {
-        api.dp_api_contents = contentsByApi.get(api.uuid) || [];
-        api.dp_labels = labelsByApi.get(api.uuid) || [];
-        api.dp_tags = tagsByApi.get(api.uuid) || [];
-        api.dp_subscription_plans = (plansByApi.get(api.uuid) || []).map(({ mapping_api_uuid, ...rest }) => rest);
+        api.api_contents = contentsByApi.get(api.uuid) || [];
+        api.labels = labelsByApi.get(api.uuid) || [];
+        api.tags = tagsByApi.get(api.uuid) || [];
+        api.subscription_plans = (plansByApi.get(api.uuid) || []).map(({ mapping_api_uuid, ...rest }) => rest);
     }
     return apiRows;
 }

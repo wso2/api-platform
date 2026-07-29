@@ -37,7 +37,7 @@ async function poll(fn, { timeoutMs = 15000, intervalMs = 500 } = {}) {
 }
 
 // orgHandle is the REST-facing handle (e.g. org.id); it's resolved to the
-// internal org_uuid once since dp_events isn't keyed by the public handle.
+// internal org_uuid once since events isn't keyed by the public handle.
 async function waitForEvent({ orgHandle, orgUuid, type, aggregateUuid, since }, options) {
     const resolvedOrgUuid = orgUuid || (orgHandle ? await db.findOrgUuidByHandle(orgHandle) : undefined);
     return poll(async () => {

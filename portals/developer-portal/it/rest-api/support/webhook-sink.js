@@ -16,7 +16,7 @@
 // under the License.
 // --------------------------------------------------------------------
 
-// A minimal HTTP receiver that specs register as a dp_webhook_subscribers
+// A minimal HTTP receiver that specs register as a webhook_subscribers
 // target_url, so the real dispatcher/delivery worker can POST to it and tests
 // can assert on the payload/signature actually delivered over the wire.
 

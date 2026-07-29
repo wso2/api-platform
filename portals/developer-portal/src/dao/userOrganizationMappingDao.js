@@ -19,7 +19,7 @@
 
 const { findOrCreateSafe } = require('./findOrCreateHelper');
 
-const TABLE = 'dp_user_organization_mappings';
+const TABLE = 'user_organization_mappings';
 
 /**
  * Record that this user has been seen in this org. No-op if already recorded.

@@ -20,8 +20,8 @@
 -- layer that targets this schema.
 
 -- Organizations table
-IF OBJECT_ID(N'dbo.dp_organizations', N'U') IS NULL
-CREATE TABLE dbo.dp_organizations (
+IF OBJECT_ID(N'dbo.organizations', N'U') IS NULL
+CREATE TABLE dbo.organizations (
     uuid VARCHAR(40) PRIMARY KEY,
     display_name NVARCHAR(255) NOT NULL UNIQUE,
     business_owner NVARCHAR(255),
@@ -38,8 +38,8 @@ CREATE TABLE dbo.dp_organizations (
 );
 
 -- Views table (organization-scoped grouping of APIs for gateway/portal visibility)
-IF OBJECT_ID(N'dbo.dp_views', N'U') IS NULL
-CREATE TABLE dbo.dp_views (
+IF OBJECT_ID(N'dbo.views', N'U') IS NULL
+CREATE TABLE dbo.views (
     uuid VARCHAR(40) PRIMARY KEY,
     org_uuid VARCHAR(40) NOT NULL,
     handle VARCHAR(255) NOT NULL,
@@ -48,16 +48,16 @@ CREATE TABLE dbo.dp_views (
     created_at DATETIME2(7) DEFAULT SYSUTCDATETIME(),
     updated_by VARCHAR(255) NOT NULL,
     updated_at DATETIME2(7) DEFAULT SYSUTCDATETIME(),
-    FOREIGN KEY (org_uuid) REFERENCES dp_organizations(uuid) ON DELETE NO ACTION
+    FOREIGN KEY (org_uuid) REFERENCES organizations(uuid) ON DELETE NO ACTION
 );
-IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = N'uq_view_handle_org_uuid' AND object_id = OBJECT_ID(N'dbo.dp_views'))
-CREATE UNIQUE INDEX uq_view_handle_org_uuid ON dbo.dp_views(handle, org_uuid);
-IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = N'idx_view_org_uuid' AND object_id = OBJECT_ID(N'dbo.dp_views'))
-CREATE INDEX idx_view_org_uuid ON dbo.dp_views(org_uuid);
+IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = N'uq_view_handle_org_uuid' AND object_id = OBJECT_ID(N'dbo.views'))
+CREATE UNIQUE INDEX uq_view_handle_org_uuid ON dbo.views(handle, org_uuid);
+IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = N'idx_view_org_uuid' AND object_id = OBJECT_ID(N'dbo.views'))
+CREATE INDEX idx_view_org_uuid ON dbo.views(org_uuid);
 
 -- Organization Assets table (per-view branding/content assets, e.g. logos, docs)
-IF OBJECT_ID(N'dbo.dp_organization_assets', N'U') IS NULL
-CREATE TABLE dbo.dp_organization_assets (
+IF OBJECT_ID(N'dbo.organization_assets', N'U') IS NULL
+CREATE TABLE dbo.organization_assets (
     uuid VARCHAR(40) PRIMARY KEY,
     file_name VARCHAR(255) NOT NULL,
     file_content VARBINARY(MAX) NOT NULL,
@@ -69,20 +69,20 @@ CREATE TABLE dbo.dp_organization_assets (
     created_at DATETIME2(7) DEFAULT SYSUTCDATETIME(),
     updated_by VARCHAR(255) NOT NULL,
     updated_at DATETIME2(7) DEFAULT SYSUTCDATETIME(),
-    FOREIGN KEY (org_uuid) REFERENCES dp_organizations(uuid) ON DELETE NO ACTION,
+    FOREIGN KEY (org_uuid) REFERENCES organizations(uuid) ON DELETE NO ACTION,
     -- CASCADE: an org asset is meaningless once its view is gone.
-    FOREIGN KEY (view_uuid) REFERENCES dp_views(uuid) ON DELETE CASCADE
+    FOREIGN KEY (view_uuid) REFERENCES views(uuid) ON DELETE CASCADE
 );
-IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = N'uq_organization_asset_type_name_path_org_view' AND object_id = OBJECT_ID(N'dbo.dp_organization_assets'))
-CREATE UNIQUE INDEX uq_organization_asset_type_name_path_org_view ON dbo.dp_organization_assets(file_type, file_name, file_path, org_uuid, view_uuid);
-IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = N'idx_organization_asset_org_uuid' AND object_id = OBJECT_ID(N'dbo.dp_organization_assets'))
-CREATE INDEX idx_organization_asset_org_uuid ON dbo.dp_organization_assets(org_uuid);
-IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = N'idx_organization_asset_view_uuid' AND object_id = OBJECT_ID(N'dbo.dp_organization_assets'))
-CREATE INDEX idx_organization_asset_view_uuid ON dbo.dp_organization_assets(view_uuid);
+IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = N'uq_organization_asset_type_name_path_org_view' AND object_id = OBJECT_ID(N'dbo.organization_assets'))
+CREATE UNIQUE INDEX uq_organization_asset_type_name_path_org_view ON dbo.organization_assets(file_type, file_name, file_path, org_uuid, view_uuid);
+IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = N'idx_organization_asset_org_uuid' AND object_id = OBJECT_ID(N'dbo.organization_assets'))
+CREATE INDEX idx_organization_asset_org_uuid ON dbo.organization_assets(org_uuid);
+IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = N'idx_organization_asset_view_uuid' AND object_id = OBJECT_ID(N'dbo.organization_assets'))
+CREATE INDEX idx_organization_asset_view_uuid ON dbo.organization_assets(view_uuid);
 
 -- Labels table (organization-scoped labels used for gateway/view assignment)
-IF OBJECT_ID(N'dbo.dp_labels', N'U') IS NULL
-CREATE TABLE dbo.dp_labels (
+IF OBJECT_ID(N'dbo.labels', N'U') IS NULL
+CREATE TABLE dbo.labels (
     uuid VARCHAR(40) PRIMARY KEY,
     org_uuid VARCHAR(40) NOT NULL,
     handle VARCHAR(255) NOT NULL,
@@ -91,16 +91,16 @@ CREATE TABLE dbo.dp_labels (
     created_at DATETIME2(7) DEFAULT SYSUTCDATETIME(),
     updated_by VARCHAR(255) NOT NULL,
     updated_at DATETIME2(7) DEFAULT SYSUTCDATETIME(),
-    FOREIGN KEY (org_uuid) REFERENCES dp_organizations(uuid) ON DELETE NO ACTION
+    FOREIGN KEY (org_uuid) REFERENCES organizations(uuid) ON DELETE NO ACTION
 );
-IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = N'uq_label_handle_org_uuid' AND object_id = OBJECT_ID(N'dbo.dp_labels'))
-CREATE UNIQUE INDEX uq_label_handle_org_uuid ON dbo.dp_labels(handle, org_uuid);
-IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = N'idx_label_org_uuid' AND object_id = OBJECT_ID(N'dbo.dp_labels'))
-CREATE INDEX idx_label_org_uuid ON dbo.dp_labels(org_uuid);
+IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = N'uq_label_handle_org_uuid' AND object_id = OBJECT_ID(N'dbo.labels'))
+CREATE UNIQUE INDEX uq_label_handle_org_uuid ON dbo.labels(handle, org_uuid);
+IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = N'idx_label_org_uuid' AND object_id = OBJECT_ID(N'dbo.labels'))
+CREATE INDEX idx_label_org_uuid ON dbo.labels(org_uuid);
 
 -- Tags table (organization-scoped free-form API tags)
-IF OBJECT_ID(N'dbo.dp_tags', N'U') IS NULL
-CREATE TABLE dbo.dp_tags (
+IF OBJECT_ID(N'dbo.tags', N'U') IS NULL
+CREATE TABLE dbo.tags (
     uuid VARCHAR(40) PRIMARY KEY,
     org_uuid VARCHAR(40) NOT NULL,
     name NVARCHAR(255) NOT NULL,
@@ -108,32 +108,32 @@ CREATE TABLE dbo.dp_tags (
     created_at DATETIME2(7) DEFAULT SYSUTCDATETIME(),
     updated_by VARCHAR(255) NOT NULL,
     updated_at DATETIME2(7) DEFAULT SYSUTCDATETIME(),
-    FOREIGN KEY (org_uuid) REFERENCES dp_organizations(uuid) ON DELETE NO ACTION
+    FOREIGN KEY (org_uuid) REFERENCES organizations(uuid) ON DELETE NO ACTION
 );
-IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = N'uq_tag_name_org_uuid' AND object_id = OBJECT_ID(N'dbo.dp_tags'))
-CREATE UNIQUE INDEX uq_tag_name_org_uuid ON dbo.dp_tags(name, org_uuid);
-IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = N'idx_tag_org_uuid' AND object_id = OBJECT_ID(N'dbo.dp_tags'))
-CREATE INDEX idx_tag_org_uuid ON dbo.dp_tags(org_uuid);
+IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = N'uq_tag_name_org_uuid' AND object_id = OBJECT_ID(N'dbo.tags'))
+CREATE UNIQUE INDEX uq_tag_name_org_uuid ON dbo.tags(name, org_uuid);
+IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = N'idx_tag_org_uuid' AND object_id = OBJECT_ID(N'dbo.tags'))
+CREATE INDEX idx_tag_org_uuid ON dbo.tags(org_uuid);
 
 -- View-Label mappings (many-to-many: which labels belong to a view)
-IF OBJECT_ID(N'dbo.dp_view_label_mappings', N'U') IS NULL
-CREATE TABLE dbo.dp_view_label_mappings (
+IF OBJECT_ID(N'dbo.view_label_mappings', N'U') IS NULL
+CREATE TABLE dbo.view_label_mappings (
     uuid VARCHAR(40) PRIMARY KEY,
     view_uuid VARCHAR(40) NOT NULL,
     label_uuid VARCHAR(40) NOT NULL,
     created_by VARCHAR(255) NOT NULL,
     created_at DATETIME2(7) DEFAULT SYSUTCDATETIME(),
-    FOREIGN KEY (view_uuid) REFERENCES dp_views(uuid) ON DELETE CASCADE,
-    FOREIGN KEY (label_uuid) REFERENCES dp_labels(uuid) ON DELETE CASCADE
+    FOREIGN KEY (view_uuid) REFERENCES views(uuid) ON DELETE CASCADE,
+    FOREIGN KEY (label_uuid) REFERENCES labels(uuid) ON DELETE CASCADE
 );
-IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = N'uq_view_label_mappings_label_view' AND object_id = OBJECT_ID(N'dbo.dp_view_label_mappings'))
-CREATE UNIQUE INDEX uq_view_label_mappings_label_view ON dbo.dp_view_label_mappings(label_uuid, view_uuid);
-IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = N'idx_view_label_mappings_view_uuid' AND object_id = OBJECT_ID(N'dbo.dp_view_label_mappings'))
-CREATE INDEX idx_view_label_mappings_view_uuid ON dbo.dp_view_label_mappings(view_uuid);
+IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = N'uq_view_label_mappings_label_view' AND object_id = OBJECT_ID(N'dbo.view_label_mappings'))
+CREATE UNIQUE INDEX uq_view_label_mappings_label_view ON dbo.view_label_mappings(label_uuid, view_uuid);
+IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = N'idx_view_label_mappings_view_uuid' AND object_id = OBJECT_ID(N'dbo.view_label_mappings'))
+CREATE INDEX idx_view_label_mappings_view_uuid ON dbo.view_label_mappings(view_uuid);
 
 -- API Metadata table (core record for REST APIs, MCP servers, AI agents, etc.)
-IF OBJECT_ID(N'dbo.dp_api_metadata', N'U') IS NULL
-CREATE TABLE dbo.dp_api_metadata (
+IF OBJECT_ID(N'dbo.api_metadata', N'U') IS NULL
+CREATE TABLE dbo.api_metadata (
     uuid VARCHAR(40) PRIMARY KEY,
     ref_id VARCHAR(255),
     name NVARCHAR(255) NOT NULL,
@@ -156,25 +156,25 @@ CREATE TABLE dbo.dp_api_metadata (
     created_at DATETIME2(7) DEFAULT SYSUTCDATETIME(),
     updated_by VARCHAR(255) NOT NULL,
     updated_at DATETIME2(7) DEFAULT SYSUTCDATETIME(),
-    FOREIGN KEY (org_uuid) REFERENCES dp_organizations(uuid) ON DELETE SET NULL
+    FOREIGN KEY (org_uuid) REFERENCES organizations(uuid) ON DELETE SET NULL
 );
 -- org_uuid, ref_id, and handle are all nullable/optional in combination here. SQL Server's
 -- plain UNIQUE INDEX treats NULL as equal to NULL (unlike Postgres/SQLite), so a bare
 -- composite index would wrongly block a second row once one NULL-org_uuid combination
 -- existed. Filtering to org_uuid IS NOT NULL (and ref_id IS NOT NULL where relevant)
 -- reproduces the Postgres/SQLite "NULL never collides" semantics.
-IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = N'uq_api_metadata_name_version_org' AND object_id = OBJECT_ID(N'dbo.dp_api_metadata'))
-CREATE UNIQUE INDEX uq_api_metadata_name_version_org ON dbo.dp_api_metadata(name, version, org_uuid) WHERE org_uuid IS NOT NULL;
-IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = N'uq_api_metadata_org_ref_id' AND object_id = OBJECT_ID(N'dbo.dp_api_metadata'))
-CREATE UNIQUE INDEX uq_api_metadata_org_ref_id ON dbo.dp_api_metadata(org_uuid, ref_id) WHERE org_uuid IS NOT NULL AND ref_id IS NOT NULL;
-IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = N'uq_api_metadata_handle_org' AND object_id = OBJECT_ID(N'dbo.dp_api_metadata'))
-CREATE UNIQUE INDEX uq_api_metadata_handle_org ON dbo.dp_api_metadata(handle, org_uuid) WHERE org_uuid IS NOT NULL;
-IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = N'idx_api_metadata_status' AND object_id = OBJECT_ID(N'dbo.dp_api_metadata'))
-CREATE INDEX idx_api_metadata_status ON dbo.dp_api_metadata(status);
+IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = N'uq_api_metadata_name_version_org' AND object_id = OBJECT_ID(N'dbo.api_metadata'))
+CREATE UNIQUE INDEX uq_api_metadata_name_version_org ON dbo.api_metadata(name, version, org_uuid) WHERE org_uuid IS NOT NULL;
+IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = N'uq_api_metadata_org_ref_id' AND object_id = OBJECT_ID(N'dbo.api_metadata'))
+CREATE UNIQUE INDEX uq_api_metadata_org_ref_id ON dbo.api_metadata(org_uuid, ref_id) WHERE org_uuid IS NOT NULL AND ref_id IS NOT NULL;
+IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = N'uq_api_metadata_handle_org' AND object_id = OBJECT_ID(N'dbo.api_metadata'))
+CREATE UNIQUE INDEX uq_api_metadata_handle_org ON dbo.api_metadata(handle, org_uuid) WHERE org_uuid IS NOT NULL;
+IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = N'idx_api_metadata_status' AND object_id = OBJECT_ID(N'dbo.api_metadata'))
+CREATE INDEX idx_api_metadata_status ON dbo.api_metadata(status);
 
 -- API Contents table (spec files, docs, icons, etc. attached to an API)
-IF OBJECT_ID(N'dbo.dp_api_contents', N'U') IS NULL
-CREATE TABLE dbo.dp_api_contents (
+IF OBJECT_ID(N'dbo.api_contents', N'U') IS NULL
+CREATE TABLE dbo.api_contents (
     uuid VARCHAR(40) PRIMARY KEY,
     api_uuid VARCHAR(40) NOT NULL,
     file_content VARBINARY(MAX) NOT NULL,
@@ -185,51 +185,51 @@ CREATE TABLE dbo.dp_api_contents (
     created_at DATETIME2(7) DEFAULT SYSUTCDATETIME(),
     updated_by VARCHAR(255) NOT NULL,
     updated_at DATETIME2(7) DEFAULT SYSUTCDATETIME(),
-    FOREIGN KEY (api_uuid) REFERENCES dp_api_metadata(uuid) ON DELETE CASCADE
+    FOREIGN KEY (api_uuid) REFERENCES api_metadata(uuid) ON DELETE CASCADE
 );
-IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = N'uq_api_content_api_type_file_name' AND object_id = OBJECT_ID(N'dbo.dp_api_contents'))
-CREATE UNIQUE INDEX uq_api_content_api_type_file_name ON dbo.dp_api_contents(api_uuid, type, file_name);
+IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = N'uq_api_content_api_type_file_name' AND object_id = OBJECT_ID(N'dbo.api_contents'))
+CREATE UNIQUE INDEX uq_api_content_api_type_file_name ON dbo.api_contents(api_uuid, type, file_name);
 -- lookup_key is nullable -- filtered so multiple NULL-lookup_key rows per (api_uuid, type)
--- are allowed, matching Postgres/SQLite behavior (see the note on dp_api_metadata above).
-IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = N'uq_api_content_api_type_lookup_key' AND object_id = OBJECT_ID(N'dbo.dp_api_contents'))
-CREATE UNIQUE INDEX uq_api_content_api_type_lookup_key ON dbo.dp_api_contents(api_uuid, type, lookup_key) WHERE lookup_key IS NOT NULL;
+-- are allowed, matching Postgres/SQLite behavior (see the note on api_metadata above).
+IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = N'uq_api_content_api_type_lookup_key' AND object_id = OBJECT_ID(N'dbo.api_contents'))
+CREATE UNIQUE INDEX uq_api_content_api_type_lookup_key ON dbo.api_contents(api_uuid, type, lookup_key) WHERE lookup_key IS NOT NULL;
 
 -- API-Label mappings (many-to-many: which labels are attached to an API)
-IF OBJECT_ID(N'dbo.dp_api_label_mappings', N'U') IS NULL
-CREATE TABLE dbo.dp_api_label_mappings (
+IF OBJECT_ID(N'dbo.api_label_mappings', N'U') IS NULL
+CREATE TABLE dbo.api_label_mappings (
     uuid VARCHAR(40) PRIMARY KEY,
     api_uuid VARCHAR(40) NOT NULL,
     label_uuid VARCHAR(40) NOT NULL,
     created_by VARCHAR(255) NOT NULL,
     created_at DATETIME2(7) DEFAULT SYSUTCDATETIME(),
-    FOREIGN KEY (api_uuid) REFERENCES dp_api_metadata(uuid) ON DELETE CASCADE,
-    FOREIGN KEY (label_uuid) REFERENCES dp_labels(uuid) ON DELETE CASCADE
+    FOREIGN KEY (api_uuid) REFERENCES api_metadata(uuid) ON DELETE CASCADE,
+    FOREIGN KEY (label_uuid) REFERENCES labels(uuid) ON DELETE CASCADE
 );
-IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = N'uq_api_label_mappings_label_api' AND object_id = OBJECT_ID(N'dbo.dp_api_label_mappings'))
-CREATE UNIQUE INDEX uq_api_label_mappings_label_api ON dbo.dp_api_label_mappings(label_uuid, api_uuid);
-IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = N'idx_api_label_mappings_api_uuid' AND object_id = OBJECT_ID(N'dbo.dp_api_label_mappings'))
-CREATE INDEX idx_api_label_mappings_api_uuid ON dbo.dp_api_label_mappings(api_uuid);
+IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = N'uq_api_label_mappings_label_api' AND object_id = OBJECT_ID(N'dbo.api_label_mappings'))
+CREATE UNIQUE INDEX uq_api_label_mappings_label_api ON dbo.api_label_mappings(label_uuid, api_uuid);
+IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = N'idx_api_label_mappings_api_uuid' AND object_id = OBJECT_ID(N'dbo.api_label_mappings'))
+CREATE INDEX idx_api_label_mappings_api_uuid ON dbo.api_label_mappings(api_uuid);
 
 -- API-Tag mappings (many-to-many: which tags are attached to an API)
-IF OBJECT_ID(N'dbo.dp_api_tag_mappings', N'U') IS NULL
-CREATE TABLE dbo.dp_api_tag_mappings (
+IF OBJECT_ID(N'dbo.api_tag_mappings', N'U') IS NULL
+CREATE TABLE dbo.api_tag_mappings (
     uuid VARCHAR(40) PRIMARY KEY,
     api_uuid VARCHAR(40) NOT NULL,
     tag_uuid VARCHAR(40) NOT NULL,
     created_by VARCHAR(255) NOT NULL,
     created_at DATETIME2(7) DEFAULT SYSUTCDATETIME(),
-    FOREIGN KEY (api_uuid) REFERENCES dp_api_metadata(uuid) ON DELETE CASCADE,
-    FOREIGN KEY (tag_uuid) REFERENCES dp_tags(uuid) ON DELETE CASCADE
+    FOREIGN KEY (api_uuid) REFERENCES api_metadata(uuid) ON DELETE CASCADE,
+    FOREIGN KEY (tag_uuid) REFERENCES tags(uuid) ON DELETE CASCADE
 );
-IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = N'uq_api_tag_mappings_tag_api' AND object_id = OBJECT_ID(N'dbo.dp_api_tag_mappings'))
-CREATE UNIQUE INDEX uq_api_tag_mappings_tag_api ON dbo.dp_api_tag_mappings(tag_uuid, api_uuid);
-IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = N'idx_api_tag_mappings_api_uuid' AND object_id = OBJECT_ID(N'dbo.dp_api_tag_mappings'))
-CREATE INDEX idx_api_tag_mappings_api_uuid ON dbo.dp_api_tag_mappings(api_uuid);
+IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = N'uq_api_tag_mappings_tag_api' AND object_id = OBJECT_ID(N'dbo.api_tag_mappings'))
+CREATE UNIQUE INDEX uq_api_tag_mappings_tag_api ON dbo.api_tag_mappings(tag_uuid, api_uuid);
+IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = N'idx_api_tag_mappings_api_uuid' AND object_id = OBJECT_ID(N'dbo.api_tag_mappings'))
+CREATE INDEX idx_api_tag_mappings_api_uuid ON dbo.api_tag_mappings(api_uuid);
 
 -- Subscription Plans table (organization-scoped rate/billing plans)
--- Throttling limits live in dp_subscription_plan_limits (one row per limit).
-IF OBJECT_ID(N'dbo.dp_subscription_plans', N'U') IS NULL
-CREATE TABLE dbo.dp_subscription_plans (
+-- Throttling limits live in subscription_plan_limits (one row per limit).
+IF OBJECT_ID(N'dbo.subscription_plans', N'U') IS NULL
+CREATE TABLE dbo.subscription_plans (
     uuid VARCHAR(40) PRIMARY KEY,
     handle VARCHAR(255) NOT NULL,
     display_name NVARCHAR(255) NOT NULL,
@@ -241,52 +241,52 @@ CREATE TABLE dbo.dp_subscription_plans (
     created_at DATETIME2(7) DEFAULT SYSUTCDATETIME(),
     updated_by VARCHAR(255) NOT NULL,
     updated_at DATETIME2(7) DEFAULT SYSUTCDATETIME(),
-    FOREIGN KEY (org_uuid) REFERENCES dp_organizations(uuid) ON DELETE SET NULL
+    FOREIGN KEY (org_uuid) REFERENCES organizations(uuid) ON DELETE SET NULL
 );
--- org_uuid is nullable -- filtered for the same NULL-handling reason as dp_api_metadata above.
-IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = N'uq_subscription_plan_org_handle' AND object_id = OBJECT_ID(N'dbo.dp_subscription_plans'))
-CREATE UNIQUE INDEX uq_subscription_plan_org_handle ON dbo.dp_subscription_plans(org_uuid, handle) WHERE org_uuid IS NOT NULL;
+-- org_uuid is nullable -- filtered for the same NULL-handling reason as api_metadata above.
+IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = N'uq_subscription_plan_org_handle' AND object_id = OBJECT_ID(N'dbo.subscription_plans'))
+CREATE UNIQUE INDEX uq_subscription_plan_org_handle ON dbo.subscription_plans(org_uuid, handle) WHERE org_uuid IS NOT NULL;
 
 -- Subscription Plan Limits table (throttling limits for a plan)
-IF OBJECT_ID(N'dbo.dp_subscription_plan_limits', N'U') IS NULL
-CREATE TABLE dbo.dp_subscription_plan_limits (
+IF OBJECT_ID(N'dbo.subscription_plan_limits', N'U') IS NULL
+CREATE TABLE dbo.subscription_plan_limits (
     uuid VARCHAR(40) PRIMARY KEY,
     plan_uuid VARCHAR(40) NOT NULL,
     limit_type VARCHAR(20) NOT NULL DEFAULT 'REQUEST_COUNT',
     time_unit VARCHAR(20),
     time_amount INT NOT NULL DEFAULT 1,
     limit_count BIGINT NOT NULL,
-    FOREIGN KEY (plan_uuid) REFERENCES dp_subscription_plans(uuid) ON DELETE CASCADE
+    FOREIGN KEY (plan_uuid) REFERENCES subscription_plans(uuid) ON DELETE CASCADE
 );
-IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = N'idx_dp_subscription_plan_limits_plan' AND object_id = OBJECT_ID(N'dbo.dp_subscription_plan_limits'))
-CREATE INDEX idx_dp_subscription_plan_limits_plan ON dbo.dp_subscription_plan_limits(plan_uuid);
+IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = N'idx_subscription_plan_limits_plan' AND object_id = OBJECT_ID(N'dbo.subscription_plan_limits'))
+CREATE INDEX idx_subscription_plan_limits_plan ON dbo.subscription_plan_limits(plan_uuid);
 -- Split into two filtered unique indexes because time_unit is nullable (see the
 -- postgres schema for the full rationale); this is already how the source model
 -- declares it (two named partial indexes), so all three dialects agree exactly.
-IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = N'uq_dp_subscription_plan_limits' AND object_id = OBJECT_ID(N'dbo.dp_subscription_plan_limits'))
-CREATE UNIQUE INDEX uq_dp_subscription_plan_limits ON dbo.dp_subscription_plan_limits(plan_uuid, limit_type, time_amount, time_unit) WHERE time_unit IS NOT NULL;
-IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = N'uq_dp_subscription_plan_limits_null_unit' AND object_id = OBJECT_ID(N'dbo.dp_subscription_plan_limits'))
-CREATE UNIQUE INDEX uq_dp_subscription_plan_limits_null_unit ON dbo.dp_subscription_plan_limits(plan_uuid, limit_type, time_amount) WHERE time_unit IS NULL;
+IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = N'uq_subscription_plan_limits' AND object_id = OBJECT_ID(N'dbo.subscription_plan_limits'))
+CREATE UNIQUE INDEX uq_subscription_plan_limits ON dbo.subscription_plan_limits(plan_uuid, limit_type, time_amount, time_unit) WHERE time_unit IS NOT NULL;
+IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = N'uq_subscription_plan_limits_null_unit' AND object_id = OBJECT_ID(N'dbo.subscription_plan_limits'))
+CREATE UNIQUE INDEX uq_subscription_plan_limits_null_unit ON dbo.subscription_plan_limits(plan_uuid, limit_type, time_amount) WHERE time_unit IS NULL;
 
 -- API-Subscription Plan mappings (many-to-many: which plans an API offers)
-IF OBJECT_ID(N'dbo.dp_api_subscription_plan_mappings', N'U') IS NULL
-CREATE TABLE dbo.dp_api_subscription_plan_mappings (
+IF OBJECT_ID(N'dbo.api_subscription_plan_mappings', N'U') IS NULL
+CREATE TABLE dbo.api_subscription_plan_mappings (
     uuid VARCHAR(40) PRIMARY KEY,
     api_uuid VARCHAR(40) NOT NULL,
     plan_uuid VARCHAR(40) NOT NULL,
     created_by VARCHAR(255) NOT NULL,
     created_at DATETIME2(7) DEFAULT SYSUTCDATETIME(),
-    FOREIGN KEY (api_uuid) REFERENCES dp_api_metadata(uuid) ON DELETE CASCADE,
-    FOREIGN KEY (plan_uuid) REFERENCES dp_subscription_plans(uuid) ON DELETE CASCADE
+    FOREIGN KEY (api_uuid) REFERENCES api_metadata(uuid) ON DELETE CASCADE,
+    FOREIGN KEY (plan_uuid) REFERENCES subscription_plans(uuid) ON DELETE CASCADE
 );
-IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = N'uq_api_subscription_plan_mappings_plan_api' AND object_id = OBJECT_ID(N'dbo.dp_api_subscription_plan_mappings'))
-CREATE UNIQUE INDEX uq_api_subscription_plan_mappings_plan_api ON dbo.dp_api_subscription_plan_mappings(plan_uuid, api_uuid);
-IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = N'idx_api_subscription_plan_mappings_api_uuid' AND object_id = OBJECT_ID(N'dbo.dp_api_subscription_plan_mappings'))
-CREATE INDEX idx_api_subscription_plan_mappings_api_uuid ON dbo.dp_api_subscription_plan_mappings(api_uuid);
+IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = N'uq_api_subscription_plan_mappings_plan_api' AND object_id = OBJECT_ID(N'dbo.api_subscription_plan_mappings'))
+CREATE UNIQUE INDEX uq_api_subscription_plan_mappings_plan_api ON dbo.api_subscription_plan_mappings(plan_uuid, api_uuid);
+IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = N'idx_api_subscription_plan_mappings_api_uuid' AND object_id = OBJECT_ID(N'dbo.api_subscription_plan_mappings'))
+CREATE INDEX idx_api_subscription_plan_mappings_api_uuid ON dbo.api_subscription_plan_mappings(api_uuid);
 
 -- Key Managers table (organization-scoped identity providers used to validate app keys)
-IF OBJECT_ID(N'dbo.dp_key_managers', N'U') IS NULL
-CREATE TABLE dbo.dp_key_managers (
+IF OBJECT_ID(N'dbo.key_managers', N'U') IS NULL
+CREATE TABLE dbo.key_managers (
     uuid VARCHAR(40) PRIMARY KEY,
     org_uuid VARCHAR(40) NOT NULL,
     handle VARCHAR(255) NOT NULL,
@@ -297,14 +297,14 @@ CREATE TABLE dbo.dp_key_managers (
     created_at DATETIME2(7) DEFAULT SYSUTCDATETIME(),
     updated_by VARCHAR(255) NOT NULL,
     updated_at DATETIME2(7) DEFAULT SYSUTCDATETIME(),
-    FOREIGN KEY (org_uuid) REFERENCES dp_organizations(uuid) ON DELETE NO ACTION
+    FOREIGN KEY (org_uuid) REFERENCES organizations(uuid) ON DELETE NO ACTION
 );
-IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = N'uq_key_manager_org_handle' AND object_id = OBJECT_ID(N'dbo.dp_key_managers'))
-CREATE UNIQUE INDEX uq_key_manager_org_handle ON dbo.dp_key_managers(org_uuid, handle);
+IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = N'uq_key_manager_org_handle' AND object_id = OBJECT_ID(N'dbo.key_managers'))
+CREATE UNIQUE INDEX uq_key_manager_org_handle ON dbo.key_managers(org_uuid, handle);
 
 -- Applications table (developer-created consumer apps that subscribe to APIs)
-IF OBJECT_ID(N'dbo.dp_applications', N'U') IS NULL
-CREATE TABLE dbo.dp_applications (
+IF OBJECT_ID(N'dbo.applications', N'U') IS NULL
+CREATE TABLE dbo.applications (
     uuid VARCHAR(40) PRIMARY KEY,
     org_uuid VARCHAR(40) NOT NULL,
     created_by VARCHAR(255) NOT NULL,
@@ -314,16 +314,16 @@ CREATE TABLE dbo.dp_applications (
     created_at DATETIME2(7) DEFAULT SYSUTCDATETIME(),
     updated_by VARCHAR(255) NOT NULL,
     updated_at DATETIME2(7) DEFAULT SYSUTCDATETIME(),
-    FOREIGN KEY (org_uuid) REFERENCES dp_organizations(uuid) ON DELETE NO ACTION
+    FOREIGN KEY (org_uuid) REFERENCES organizations(uuid) ON DELETE NO ACTION
 );
-IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = N'idx_application_org_created_by' AND object_id = OBJECT_ID(N'dbo.dp_applications'))
-CREATE INDEX idx_application_org_created_by ON dbo.dp_applications(org_uuid, created_by);
-IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = N'uq_application_org_handle' AND object_id = OBJECT_ID(N'dbo.dp_applications'))
-CREATE UNIQUE INDEX uq_application_org_handle ON dbo.dp_applications(org_uuid, handle);
+IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = N'idx_application_org_created_by' AND object_id = OBJECT_ID(N'dbo.applications'))
+CREATE INDEX idx_application_org_created_by ON dbo.applications(org_uuid, created_by);
+IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = N'uq_application_org_handle' AND object_id = OBJECT_ID(N'dbo.applications'))
+CREATE UNIQUE INDEX uq_application_org_handle ON dbo.applications(org_uuid, handle);
 
 -- Application-KeyManager mappings (per-KM OAuth2 client registration for an application)
-IF OBJECT_ID(N'dbo.dp_app_key_mappings', N'U') IS NULL
-CREATE TABLE dbo.dp_app_key_mappings (
+IF OBJECT_ID(N'dbo.app_key_mappings', N'U') IS NULL
+CREATE TABLE dbo.app_key_mappings (
     uuid VARCHAR(40) PRIMARY KEY,
     app_uuid VARCHAR(40) NOT NULL,
     km_uuid VARCHAR(40) NOT NULL,
@@ -333,17 +333,17 @@ CREATE TABLE dbo.dp_app_key_mappings (
     created_at DATETIME2(7) DEFAULT SYSUTCDATETIME(),
     updated_by VARCHAR(255) NOT NULL,
     updated_at DATETIME2(7) DEFAULT SYSUTCDATETIME(),
-    FOREIGN KEY (app_uuid) REFERENCES dp_applications(uuid) ON DELETE NO ACTION,
-    FOREIGN KEY (km_uuid) REFERENCES dp_key_managers(uuid) ON DELETE NO ACTION
+    FOREIGN KEY (app_uuid) REFERENCES applications(uuid) ON DELETE NO ACTION,
+    FOREIGN KEY (km_uuid) REFERENCES key_managers(uuid) ON DELETE NO ACTION
 );
-IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = N'idx_app_key_mappings_app_uuid' AND object_id = OBJECT_ID(N'dbo.dp_app_key_mappings'))
-CREATE INDEX idx_app_key_mappings_app_uuid ON dbo.dp_app_key_mappings(app_uuid);
-IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = N'idx_app_key_mappings_km_uuid' AND object_id = OBJECT_ID(N'dbo.dp_app_key_mappings'))
-CREATE INDEX idx_app_key_mappings_km_uuid ON dbo.dp_app_key_mappings(km_uuid);
+IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = N'idx_app_key_mappings_app_uuid' AND object_id = OBJECT_ID(N'dbo.app_key_mappings'))
+CREATE INDEX idx_app_key_mappings_app_uuid ON dbo.app_key_mappings(app_uuid);
+IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = N'idx_app_key_mappings_km_uuid' AND object_id = OBJECT_ID(N'dbo.app_key_mappings'))
+CREATE INDEX idx_app_key_mappings_km_uuid ON dbo.app_key_mappings(km_uuid);
 
 -- Subscriptions table (application-level subscriptions to an API)
-IF OBJECT_ID(N'dbo.dp_subscriptions', N'U') IS NULL
-CREATE TABLE dbo.dp_subscriptions (
+IF OBJECT_ID(N'dbo.subscriptions', N'U') IS NULL
+CREATE TABLE dbo.subscriptions (
     uuid VARCHAR(40) PRIMARY KEY,
     created_by VARCHAR(255) NOT NULL,
     api_uuid VARCHAR(40) NOT NULL,
@@ -355,32 +355,32 @@ CREATE TABLE dbo.dp_subscriptions (
     created_at DATETIME2(7) DEFAULT SYSUTCDATETIME(),
     updated_by VARCHAR(255) NOT NULL,
     updated_at DATETIME2(7) DEFAULT SYSUTCDATETIME(),
-    FOREIGN KEY (api_uuid) REFERENCES dp_api_metadata(uuid) ON DELETE NO ACTION,
-    FOREIGN KEY (plan_uuid) REFERENCES dp_subscription_plans(uuid) ON DELETE SET NULL,
-    FOREIGN KEY (org_uuid) REFERENCES dp_organizations(uuid) ON DELETE NO ACTION
+    FOREIGN KEY (api_uuid) REFERENCES api_metadata(uuid) ON DELETE NO ACTION,
+    FOREIGN KEY (plan_uuid) REFERENCES subscription_plans(uuid) ON DELETE SET NULL,
+    FOREIGN KEY (org_uuid) REFERENCES organizations(uuid) ON DELETE NO ACTION
 );
-IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = N'idx_subscription_org_created_by' AND object_id = OBJECT_ID(N'dbo.dp_subscriptions'))
-CREATE INDEX idx_subscription_org_created_by ON dbo.dp_subscriptions(org_uuid, created_by);
-IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = N'idx_subscription_org_api_uuid' AND object_id = OBJECT_ID(N'dbo.dp_subscriptions'))
-CREATE INDEX idx_subscription_org_api_uuid ON dbo.dp_subscriptions(org_uuid, api_uuid);
-IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = N'idx_subscription_plan_uuid' AND object_id = OBJECT_ID(N'dbo.dp_subscriptions'))
-CREATE INDEX idx_subscription_plan_uuid ON dbo.dp_subscriptions(plan_uuid);
-IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = N'idx_subscription_status' AND object_id = OBJECT_ID(N'dbo.dp_subscriptions'))
-CREATE INDEX idx_subscription_status ON dbo.dp_subscriptions(status);
+IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = N'idx_subscription_org_created_by' AND object_id = OBJECT_ID(N'dbo.subscriptions'))
+CREATE INDEX idx_subscription_org_created_by ON dbo.subscriptions(org_uuid, created_by);
+IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = N'idx_subscription_org_api_uuid' AND object_id = OBJECT_ID(N'dbo.subscriptions'))
+CREATE INDEX idx_subscription_org_api_uuid ON dbo.subscriptions(org_uuid, api_uuid);
+IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = N'idx_subscription_plan_uuid' AND object_id = OBJECT_ID(N'dbo.subscriptions'))
+CREATE INDEX idx_subscription_plan_uuid ON dbo.subscriptions(plan_uuid);
+IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = N'idx_subscription_status' AND object_id = OBJECT_ID(N'dbo.subscriptions'))
+CREATE INDEX idx_subscription_status ON dbo.subscriptions(status);
 -- api_uuid is only ever a trailing column above (org_uuid, api_uuid) -- add a
 -- dedicated leading index so single-column api_uuid lookups/joins stay indexed.
-IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = N'idx_subscription_api_uuid' AND object_id = OBJECT_ID(N'dbo.dp_subscriptions'))
-CREATE INDEX idx_subscription_api_uuid ON dbo.dp_subscriptions(api_uuid);
+IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = N'idx_subscription_api_uuid' AND object_id = OBJECT_ID(N'dbo.subscriptions'))
+CREATE INDEX idx_subscription_api_uuid ON dbo.subscriptions(api_uuid);
 -- token is a single nullable column with a uniqueness requirement. A plain UNIQUE
 -- constraint would let SQL Server allow only ONE NULL-token row total across the
 -- whole table (unlike Postgres/SQLite, which allow unlimited NULLs). Filtering to
 -- token IS NOT NULL reproduces the intended "many token-less subscriptions" behavior.
-IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = N'uq_subscription_token' AND object_id = OBJECT_ID(N'dbo.dp_subscriptions'))
-CREATE UNIQUE INDEX uq_subscription_token ON dbo.dp_subscriptions(token) WHERE token IS NOT NULL;
+IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = N'uq_subscription_token' AND object_id = OBJECT_ID(N'dbo.subscriptions'))
+CREATE UNIQUE INDEX uq_subscription_token ON dbo.subscriptions(token) WHERE token IS NOT NULL;
 
 -- API Keys table (standalone, non-OAuth2 API key credentials for an API)
-IF OBJECT_ID(N'dbo.dp_api_keys', N'U') IS NULL
-CREATE TABLE dbo.dp_api_keys (
+IF OBJECT_ID(N'dbo.api_keys', N'U') IS NULL
+CREATE TABLE dbo.api_keys (
     uuid VARCHAR(40) PRIMARY KEY,
     api_uuid VARCHAR(40) NOT NULL,
     -- Nullable: SET NULL keeps the key record if its originating subscription is removed.
@@ -396,43 +396,43 @@ CREATE TABLE dbo.dp_api_keys (
     revoked_by VARCHAR(200),
     created_at DATETIME2(7) DEFAULT SYSUTCDATETIME(),
     updated_at DATETIME2(7) DEFAULT SYSUTCDATETIME(),
-    FOREIGN KEY (api_uuid) REFERENCES dp_api_metadata(uuid) ON DELETE NO ACTION,
-    FOREIGN KEY (subscription_uuid) REFERENCES dp_subscriptions(uuid) ON DELETE SET NULL,
-    FOREIGN KEY (org_uuid) REFERENCES dp_organizations(uuid) ON DELETE NO ACTION,
+    FOREIGN KEY (api_uuid) REFERENCES api_metadata(uuid) ON DELETE NO ACTION,
+    FOREIGN KEY (subscription_uuid) REFERENCES subscriptions(uuid) ON DELETE SET NULL,
+    FOREIGN KEY (org_uuid) REFERENCES organizations(uuid) ON DELETE NO ACTION,
     CONSTRAINT chk_api_key_revoked
         CHECK ((revoked_at IS NULL AND status != 'REVOKED') OR (revoked_at IS NOT NULL AND status = 'REVOKED'))
 );
-IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = N'idx_api_key_org_api_uuid' AND object_id = OBJECT_ID(N'dbo.dp_api_keys'))
-CREATE INDEX idx_api_key_org_api_uuid ON dbo.dp_api_keys(org_uuid, api_uuid);
-IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = N'idx_api_key_subscription_uuid' AND object_id = OBJECT_ID(N'dbo.dp_api_keys'))
-CREATE INDEX idx_api_key_subscription_uuid ON dbo.dp_api_keys(subscription_uuid);
-IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = N'idx_api_key_status' AND object_id = OBJECT_ID(N'dbo.dp_api_keys'))
-CREATE INDEX idx_api_key_status ON dbo.dp_api_keys(status);
+IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = N'idx_api_key_org_api_uuid' AND object_id = OBJECT_ID(N'dbo.api_keys'))
+CREATE INDEX idx_api_key_org_api_uuid ON dbo.api_keys(org_uuid, api_uuid);
+IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = N'idx_api_key_subscription_uuid' AND object_id = OBJECT_ID(N'dbo.api_keys'))
+CREATE INDEX idx_api_key_subscription_uuid ON dbo.api_keys(subscription_uuid);
+IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = N'idx_api_key_status' AND object_id = OBJECT_ID(N'dbo.api_keys'))
+CREATE INDEX idx_api_key_status ON dbo.api_keys(status);
 -- api_uuid is only ever a trailing column above (org_uuid, api_uuid) -- add a
 -- dedicated leading index so single-column api_uuid lookups/joins stay indexed.
-IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = N'idx_api_key_api_uuid' AND object_id = OBJECT_ID(N'dbo.dp_api_keys'))
-CREATE INDEX idx_api_key_api_uuid ON dbo.dp_api_keys(api_uuid);
+IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = N'idx_api_key_api_uuid' AND object_id = OBJECT_ID(N'dbo.api_keys'))
+CREATE INDEX idx_api_key_api_uuid ON dbo.api_keys(api_uuid);
 -- Handle is the caller-facing id used to address a key within an API, so it must be
 -- unique per (org, api). Enforced here for a race-free guarantee, not just in the service.
-IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = N'uq_api_key_org_api_handle' AND object_id = OBJECT_ID(N'dbo.dp_api_keys'))
-CREATE UNIQUE INDEX uq_api_key_org_api_handle ON dbo.dp_api_keys(org_uuid, api_uuid, handle);
+IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = N'uq_api_key_org_api_handle' AND object_id = OBJECT_ID(N'dbo.api_keys'))
+CREATE UNIQUE INDEX uq_api_key_org_api_handle ON dbo.api_keys(org_uuid, api_uuid, handle);
 
 -- API Key-Application mappings (which application an API key was issued to)
-IF OBJECT_ID(N'dbo.dp_api_key_app_mappings', N'U') IS NULL
-CREATE TABLE dbo.dp_api_key_app_mappings (
+IF OBJECT_ID(N'dbo.api_key_app_mappings', N'U') IS NULL
+CREATE TABLE dbo.api_key_app_mappings (
     key_uuid VARCHAR(40) PRIMARY KEY,
     app_uuid VARCHAR(40) NOT NULL,
     created_by VARCHAR(255) NOT NULL,
     created_at DATETIME2(7) DEFAULT SYSUTCDATETIME(),
-    FOREIGN KEY (key_uuid) REFERENCES dp_api_keys(uuid) ON DELETE CASCADE,
-    FOREIGN KEY (app_uuid) REFERENCES dp_applications(uuid) ON DELETE CASCADE
+    FOREIGN KEY (key_uuid) REFERENCES api_keys(uuid) ON DELETE CASCADE,
+    FOREIGN KEY (app_uuid) REFERENCES applications(uuid) ON DELETE CASCADE
 );
-IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = N'idx_api_key_app_mappings_app_uuid' AND object_id = OBJECT_ID(N'dbo.dp_api_key_app_mappings'))
-CREATE INDEX idx_api_key_app_mappings_app_uuid ON dbo.dp_api_key_app_mappings(app_uuid);
+IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = N'idx_api_key_app_mappings_app_uuid' AND object_id = OBJECT_ID(N'dbo.api_key_app_mappings'))
+CREATE INDEX idx_api_key_app_mappings_app_uuid ON dbo.api_key_app_mappings(app_uuid);
 
 -- API Workflows table (agent/automation workflows published under a view)
-IF OBJECT_ID(N'dbo.dp_api_workflows', N'U') IS NULL
-CREATE TABLE dbo.dp_api_workflows (
+IF OBJECT_ID(N'dbo.api_workflows', N'U') IS NULL
+CREATE TABLE dbo.api_workflows (
     uuid VARCHAR(40) PRIMARY KEY,
     org_uuid VARCHAR(40) NOT NULL,
     view_uuid VARCHAR(40) NOT NULL,
@@ -448,20 +448,20 @@ CREATE TABLE dbo.dp_api_workflows (
     created_at DATETIME2(7) DEFAULT SYSUTCDATETIME(),
     updated_by VARCHAR(255) NOT NULL,
     updated_at DATETIME2(7) DEFAULT SYSUTCDATETIME(),
-    FOREIGN KEY (org_uuid) REFERENCES dp_organizations(uuid) ON DELETE NO ACTION,
-    FOREIGN KEY (view_uuid) REFERENCES dp_views(uuid) ON DELETE NO ACTION
+    FOREIGN KEY (org_uuid) REFERENCES organizations(uuid) ON DELETE NO ACTION,
+    FOREIGN KEY (view_uuid) REFERENCES views(uuid) ON DELETE NO ACTION
 );
-IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = N'uq_api_workflow_org_view_handle' AND object_id = OBJECT_ID(N'dbo.dp_api_workflows'))
-CREATE UNIQUE INDEX uq_api_workflow_org_view_handle ON dbo.dp_api_workflows(org_uuid, view_uuid, handle);
-IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = N'idx_api_workflow_view_uuid' AND object_id = OBJECT_ID(N'dbo.dp_api_workflows'))
-CREATE INDEX idx_api_workflow_view_uuid ON dbo.dp_api_workflows(view_uuid);
-IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = N'idx_api_workflow_status' AND object_id = OBJECT_ID(N'dbo.dp_api_workflows'))
-CREATE INDEX idx_api_workflow_status ON dbo.dp_api_workflows(status);
+IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = N'uq_api_workflow_org_view_handle' AND object_id = OBJECT_ID(N'dbo.api_workflows'))
+CREATE UNIQUE INDEX uq_api_workflow_org_view_handle ON dbo.api_workflows(org_uuid, view_uuid, handle);
+IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = N'idx_api_workflow_view_uuid' AND object_id = OBJECT_ID(N'dbo.api_workflows'))
+CREATE INDEX idx_api_workflow_view_uuid ON dbo.api_workflows(view_uuid);
+IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = N'idx_api_workflow_status' AND object_id = OBJECT_ID(N'dbo.api_workflows'))
+CREATE INDEX idx_api_workflow_status ON dbo.api_workflows(status);
 
 -- Audit table (write-only mutation trail; no FK on performed_by so history
--- survives deletion of the referenced dp_user_idp_references row)
-IF OBJECT_ID(N'dbo.dp_audit', N'U') IS NULL
-CREATE TABLE dbo.dp_audit (
+-- survives deletion of the referenced user_idp_references row)
+IF OBJECT_ID(N'dbo.audit', N'U') IS NULL
+CREATE TABLE dbo.audit (
     uuid VARCHAR(40) PRIMARY KEY,
     action VARCHAR(50) NOT NULL,
     resource_uuid VARCHAR(40) NOT NULL,
@@ -469,14 +469,14 @@ CREATE TABLE dbo.dp_audit (
     org_uuid VARCHAR(40) NOT NULL,
     performed_by VARCHAR(255),
     performed_at DATETIME2(7) DEFAULT SYSUTCDATETIME(),
-    FOREIGN KEY (org_uuid) REFERENCES dp_organizations(uuid) ON DELETE CASCADE
+    FOREIGN KEY (org_uuid) REFERENCES organizations(uuid) ON DELETE CASCADE
 );
-IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = N'idx_audit_org_uuid' AND object_id = OBJECT_ID(N'dbo.dp_audit'))
-CREATE INDEX idx_audit_org_uuid ON dbo.dp_audit(org_uuid);
+IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = N'idx_audit_org_uuid' AND object_id = OBJECT_ID(N'dbo.audit'))
+CREATE INDEX idx_audit_org_uuid ON dbo.audit(org_uuid);
 
 -- Events table (outbox: one row per domain event; payload never contains plaintext key secrets)
-IF OBJECT_ID(N'dbo.dp_events', N'U') IS NULL
-CREATE TABLE dbo.dp_events (
+IF OBJECT_ID(N'dbo.events', N'U') IS NULL
+CREATE TABLE dbo.events (
     uuid VARCHAR(40) PRIMARY KEY,
     type VARCHAR(128) NOT NULL,
     org_uuid VARCHAR(40) NOT NULL,
@@ -485,17 +485,17 @@ CREATE TABLE dbo.dp_events (
     payload NVARCHAR(MAX) NOT NULL DEFAULT '{}',
     occurred_at DATETIME2(7) DEFAULT SYSUTCDATETIME(),
     status VARCHAR(20) NOT NULL DEFAULT 'PENDING',
-    FOREIGN KEY (org_uuid) REFERENCES dp_organizations(uuid) ON DELETE NO ACTION
+    FOREIGN KEY (org_uuid) REFERENCES organizations(uuid) ON DELETE NO ACTION
 );
-IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = N'idx_event_status_occurred_at' AND object_id = OBJECT_ID(N'dbo.dp_events'))
-CREATE INDEX idx_event_status_occurred_at ON dbo.dp_events(status, occurred_at);
-IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = N'idx_event_org_uuid' AND object_id = OBJECT_ID(N'dbo.dp_events'))
-CREATE INDEX idx_event_org_uuid ON dbo.dp_events(org_uuid);
+IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = N'idx_event_status_occurred_at' AND object_id = OBJECT_ID(N'dbo.events'))
+CREATE INDEX idx_event_status_occurred_at ON dbo.events(status, occurred_at);
+IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = N'idx_event_org_uuid' AND object_id = OBJECT_ID(N'dbo.events'))
+CREATE INDEX idx_event_org_uuid ON dbo.events(org_uuid);
 
 -- Event Deliveries table (one row per event x webhook subscriber; encrypted_fields
--- holds per-subscriber ciphertext so plaintext never lives in dp_events)
-IF OBJECT_ID(N'dbo.dp_event_deliveries', N'U') IS NULL
-CREATE TABLE dbo.dp_event_deliveries (
+-- holds per-subscriber ciphertext so plaintext never lives in events)
+IF OBJECT_ID(N'dbo.event_deliveries', N'U') IS NULL
+CREATE TABLE dbo.event_deliveries (
     uuid VARCHAR(40) PRIMARY KEY,
     event_uuid VARCHAR(40) NOT NULL,
     subscriber_id VARCHAR(128) NOT NULL,
@@ -506,12 +506,12 @@ CREATE TABLE dbo.dp_event_deliveries (
     last_error VARCHAR(255),
     last_attempt_at DATETIME2(7),
     delivered_at DATETIME2(7),
-    FOREIGN KEY (event_uuid) REFERENCES dp_events(uuid) ON DELETE NO ACTION
+    FOREIGN KEY (event_uuid) REFERENCES events(uuid) ON DELETE NO ACTION
 );
-IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = N'idx_event_delivery_event_uuid' AND object_id = OBJECT_ID(N'dbo.dp_event_deliveries'))
-CREATE INDEX idx_event_delivery_event_uuid ON dbo.dp_event_deliveries(event_uuid);
-IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = N'uq_event_delivery_event_subscriber' AND object_id = OBJECT_ID(N'dbo.dp_event_deliveries'))
-CREATE UNIQUE INDEX uq_event_delivery_event_subscriber ON dbo.dp_event_deliveries(event_uuid, subscriber_id);
+IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = N'idx_event_delivery_event_uuid' AND object_id = OBJECT_ID(N'dbo.event_deliveries'))
+CREATE INDEX idx_event_delivery_event_uuid ON dbo.event_deliveries(event_uuid);
+IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = N'uq_event_delivery_event_subscriber' AND object_id = OBJECT_ID(N'dbo.event_deliveries'))
+CREATE UNIQUE INDEX uq_event_delivery_event_subscriber ON dbo.event_deliveries(event_uuid, subscriber_id);
 
 -- Sessions table, used by connect-mssql-v2 (or equivalent) for server-side Express session storage.
 IF OBJECT_ID(N'dbo.sessions', N'U') IS NULL
@@ -526,8 +526,8 @@ CREATE INDEX idx_session_expire ON dbo.sessions(expire);
 -- User IdP References table (one durable record per distinct IdP `sub` claim; referenced
 -- by uuid from created_by/updated_by-style columns elsewhere WITHOUT a foreign key, so
 -- those columns keep pointing at a uuid after the row here is deleted)
-IF OBJECT_ID(N'dbo.dp_user_idp_references', N'U') IS NULL
-CREATE TABLE dbo.dp_user_idp_references (
+IF OBJECT_ID(N'dbo.user_idp_references', N'U') IS NULL
+CREATE TABLE dbo.user_idp_references (
     uuid VARCHAR(40) PRIMARY KEY,
     idp_id VARCHAR(255) NOT NULL UNIQUE,
     created_at DATETIME2(7) DEFAULT SYSUTCDATETIME()
@@ -535,20 +535,20 @@ CREATE TABLE dbo.dp_user_idp_references (
 
 -- User-Organization mappings (live membership record -- both sides cascade on delete,
 -- unlike the "hanging creator" created_by/updated_by pattern used elsewhere)
-IF OBJECT_ID(N'dbo.dp_user_organization_mappings', N'U') IS NULL
-CREATE TABLE dbo.dp_user_organization_mappings (
+IF OBJECT_ID(N'dbo.user_organization_mappings', N'U') IS NULL
+CREATE TABLE dbo.user_organization_mappings (
     user_uuid VARCHAR(40) NOT NULL,
     org_uuid VARCHAR(40) NOT NULL,
     PRIMARY KEY (user_uuid, org_uuid),
-    FOREIGN KEY (user_uuid) REFERENCES dp_user_idp_references(uuid) ON DELETE CASCADE,
-    FOREIGN KEY (org_uuid) REFERENCES dp_organizations(uuid) ON DELETE CASCADE
+    FOREIGN KEY (user_uuid) REFERENCES user_idp_references(uuid) ON DELETE CASCADE,
+    FOREIGN KEY (org_uuid) REFERENCES organizations(uuid) ON DELETE CASCADE
 );
-IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = N'idx_user_organization_mappings_org_uuid' AND object_id = OBJECT_ID(N'dbo.dp_user_organization_mappings'))
-CREATE INDEX idx_user_organization_mappings_org_uuid ON dbo.dp_user_organization_mappings(org_uuid);
+IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = N'idx_user_organization_mappings_org_uuid' AND object_id = OBJECT_ID(N'dbo.user_organization_mappings'))
+CREATE INDEX idx_user_organization_mappings_org_uuid ON dbo.user_organization_mappings(org_uuid);
 
 -- Webhook Subscribers table (organization-scoped outbound event subscribers)
-IF OBJECT_ID(N'dbo.dp_webhook_subscribers', N'U') IS NULL
-CREATE TABLE dbo.dp_webhook_subscribers (
+IF OBJECT_ID(N'dbo.webhook_subscribers', N'U') IS NULL
+CREATE TABLE dbo.webhook_subscribers (
     uuid VARCHAR(40) PRIMARY KEY,
     org_uuid VARCHAR(40) NOT NULL,
     handle VARCHAR(255) NOT NULL,
@@ -562,7 +562,7 @@ CREATE TABLE dbo.dp_webhook_subscribers (
     created_at DATETIME2(7) DEFAULT SYSUTCDATETIME(),
     updated_by VARCHAR(255) NOT NULL,
     updated_at DATETIME2(7) DEFAULT SYSUTCDATETIME(),
-    FOREIGN KEY (org_uuid) REFERENCES dp_organizations(uuid) ON DELETE NO ACTION
+    FOREIGN KEY (org_uuid) REFERENCES organizations(uuid) ON DELETE NO ACTION
 );
-IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = N'uq_webhook_subscriber_org_handle' AND object_id = OBJECT_ID(N'dbo.dp_webhook_subscribers'))
-CREATE UNIQUE INDEX uq_webhook_subscriber_org_handle ON dbo.dp_webhook_subscribers(org_uuid, handle);
+IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = N'uq_webhook_subscriber_org_handle' AND object_id = OBJECT_ID(N'dbo.webhook_subscribers'))
+CREATE UNIQUE INDEX uq_webhook_subscriber_org_handle ON dbo.webhook_subscribers(org_uuid, handle);

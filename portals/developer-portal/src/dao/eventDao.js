@@ -21,16 +21,16 @@ const crypto = require('crypto');
 const db = require('../db/driver');
 const { groupBy, parseJsonColumn } = require('../db/rows');
 
-const EVENTS_TABLE = 'dp_events';
-const DELIVERIES_TABLE = 'dp_event_deliveries';
+const EVENTS_TABLE = 'events';
+const DELIVERIES_TABLE = 'event_deliveries';
 
-/** Normalizes a dp_events row: `payload` JSON column back to a JS object. */
+/** Normalizes a events row: `payload` JSON column back to a JS object. */
 function parseEventRow(row) {
     if (!row) return row;
     return { ...row, payload: parseJsonColumn(row.payload) };
 }
 
-/** Normalizes a dp_event_deliveries row: `encrypted_fields` JSON column back to a JS object. */
+/** Normalizes a event_deliveries row: `encrypted_fields` JSON column back to a JS object. */
 function parseDeliveryRow(row) {
     if (!row) return row;
     return { ...row, encrypted_fields: parseJsonColumn(row.encrypted_fields) };
@@ -147,9 +147,9 @@ async function claimPending(batchSize, orgUuid) {
  * every *other* instance's genuinely in-flight deliveries the moment they passed the
  * five-minute mark, turning slow deliveries into spurious failures.
  *
- * dp_event_deliveries has no org_uuid of its own, so both statements reach the
- * organization through dp_events. Postgres needs `FOR UPDATE OF d` here: with a join
- * in play, a bare FOR UPDATE would also try to lock the dp_events rows.
+ * event_deliveries has no org_uuid of its own, so both statements reach the
+ * organization through events. Postgres needs `FOR UPDATE OF d` here: with a join
+ * in play, a bare FOR UPDATE would also try to lock the events rows.
  */
 async function claimDueDeliveries(batchSize, orgUuid) {
     const isPostgres = db.getDialect() === 'postgres';
@@ -262,7 +262,7 @@ async function list({ orgId, status, limit = 50, offset = 0 }) {
 
     const rows = events.map((e) => parseEventRow({
         ...e,
-        dp_event_deliveries: (deliveriesByEvent.get(e.uuid) || []).map(parseDeliveryRow),
+        event_deliveries: (deliveriesByEvent.get(e.uuid) || []).map(parseDeliveryRow),
     }));
 
     return { count, rows };
@@ -275,7 +275,7 @@ async function get(eventId) {
     const event = await db.queryOne(`SELECT * FROM ${EVENTS_TABLE} WHERE uuid = ?`, [eventId]);
     if (!event) return null;
     const deliveries = await db.query(`SELECT * FROM ${DELIVERIES_TABLE} WHERE event_uuid = ?`, [eventId]);
-    return parseEventRow({ ...event, dp_event_deliveries: deliveries.map(parseDeliveryRow) });
+    return parseEventRow({ ...event, event_deliveries: deliveries.map(parseDeliveryRow) });
 }
 
 /**
@@ -294,7 +294,7 @@ async function listDeliveriesForSubscriber(orgId, subscriberId, limit = 20) {
     );
     return rows.map(({ event_type, event_occurred_at, ...delivery }) => parseDeliveryRow({
         ...delivery,
-        dp_event: { type: event_type, occurred_at: event_occurred_at },
+        event: { type: event_type, occurred_at: event_occurred_at },
     }));
 }
 

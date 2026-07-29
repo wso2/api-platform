@@ -22,7 +22,7 @@ const db = require('../db/driver');
 const { NotFoundError } = require('../utils/errors/customErrors');
 const logger = require('../config/logger');
 
-const TABLE = 'dp_key_managers';
+const TABLE = 'key_managers';
 
 /**
  * Create a new key manager for an organization.

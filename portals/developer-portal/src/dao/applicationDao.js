@@ -22,8 +22,8 @@ const db = require('../db/driver');
 const { NotFoundError } = require('../utils/errors/customErrors');
 const logger = require('../config/logger');
 
-const APPLICATION_TABLE = 'dp_applications';
-const KEY_MAPPING_TABLE = 'dp_app_key_mappings';
+const APPLICATION_TABLE = 'applications';
+const KEY_MAPPING_TABLE = 'app_key_mappings';
 
 // URL-safe slug derived from a display name, used as the handle when the caller
 // doesn't supply one. Handles appear in route segments, so restrict to [a-z0-9-].
@@ -111,7 +111,7 @@ const deleteApp = async (orgId, appId, userId, t) => {
 };
 
 /**
- * Application row with its key mappings attached as `dp_app_key_mappings`
+ * Application row with its key mappings attached as `app_key_mappings`
  * (matching the table name — see src/dto/applicationDto.js). Mirrors the old
  * Sequelize `include` with a `where` on the association, which Sequelize
  * implicitly treats as an inner join: returns null (not the bare application)
@@ -131,7 +131,7 @@ const getKeyMapping = async (orgId, appId, t) => {
     );
     if (mappings.length === 0) return null;
 
-    return { ...application, dp_app_key_mappings: mappings };
+    return { ...application, app_key_mappings: mappings };
 };
 
 const upsertKeyMapping = async (mappingData, t) => {
@@ -189,7 +189,7 @@ const deleteMappings = async (orgId, appId, t) => {
 
 /**
  * Deletes only the given mapping ids that actually belong to an application in
- * this org — the join against dp_applications.org_uuid is a tenant-isolation
+ * this org — the join against applications.org_uuid is a tenant-isolation
  * check, not just a convenience filter; do not drop it in favor of a bare
  * `uuid IN (...)` delete.
  */

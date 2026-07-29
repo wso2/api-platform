@@ -83,7 +83,7 @@ async function resolveKeyIdOrRespond(orgId, apiId, keyHandle, res) {
 }
 
 function mapKey(k, audit) {
-    const app = k.dp_api_key_app_mapping?.dp_application;
+    const app = k.api_key_app_mapping?.application;
     return {
         id: k.handle,
         displayName: k.display_name,
@@ -91,7 +91,7 @@ function mapKey(k, audit) {
         expiresAt: k.expires_at,
         createdAt: k.created_at,
         revokedAt: k.revoked_at || undefined,
-        apiId: k.dp_api_metadata?.handle || k.api_uuid,
+        apiId: k.api_metadata?.handle || k.api_uuid,
         appId: app ? app.handle : null,
         appDisplayName: app ? app.display_name : null,
         ...audit,
@@ -221,9 +221,9 @@ async function listAllApiKeys(req, res) {
             const m = mapKey(k, auditList[i]);
             return {
                 ...m,
-                apiName: k.dp_api_metadata?.name || '',
-                apiVersion: k.dp_api_metadata?.version || '',
-                apiType: k.dp_api_metadata?.type || '',
+                apiName: k.api_metadata?.name || '',
+                apiVersion: k.api_metadata?.version || '',
+                apiType: k.api_metadata?.type || '',
             };
         });
         return res.status(200).json(util.toPaginatedList(mapped, req));

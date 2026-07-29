@@ -40,7 +40,7 @@ function _validateRequiredFields(payload) {
 
 /**
  * Build a specific conflict message for the handle unique constraint.
- * dp_webhook_subscribers has exactly one unique constraint — (org_uuid, handle) —
+ * webhook_subscribers has exactly one unique constraint — (org_uuid, handle) —
  * so any duplicate-key error from this table is always a handle collision. The raw
  * driver error (unlike the previous Sequelize.UniqueConstraintError) doesn't carry
  * a structured `fields` list, so there's nothing left to branch on here.
@@ -145,7 +145,7 @@ const getWebhookSubscriber = async (req, res) => {
 };
 
 function _formatDeliverySummary(delivery) {
-    const event = delivery.dp_event;
+    const event = delivery.event;
     return {
         deliveryId: delivery.uuid,
         eventType: event ? event.type : null,

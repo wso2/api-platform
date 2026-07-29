@@ -113,7 +113,7 @@ function sanitizeObject(obj, sensitiveFields) {
  * @param {string} action - Action being performed
  * @param {Object} req - Express request object
  * @param {Object} additionalData - Additional data to include in audit log.
- *   Include `resourceUuid`/`resourceType` to also persist a dp_audit row —
+ *   Include `resourceUuid`/`resourceType` to also persist a audit row —
  *   both those and an org uuid (req.orgId, or `orgUuid` for org-lifecycle
  *   actions where req.orgId isn't populated, e.g. creating a brand new org)
  *   are required, mirroring platform-api's audit table, which only tracks
@@ -138,7 +138,7 @@ function logUserAction(action, req, additionalData = {}) {
     const auditOrgUuid = orgUuid || req.orgId;
     if (resourceUuid && auditOrgUuid) {
         auditDao.record(action, resourceUuid, resourceType, auditOrgUuid, util.resolveActor(req))
-            .catch((err) => logger.warn('Failed to persist dp_audit record', { error: err.message, action }));
+            .catch((err) => logger.warn('Failed to persist audit record', { error: err.message, action }));
     }
 }
 

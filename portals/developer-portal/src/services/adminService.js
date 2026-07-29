@@ -371,7 +371,7 @@ const deleteOrganization = async (req, res) => {
         orgId
     });
     try {
-        // Resolved before delete: dp_audit.org_uuid has ON DELETE CASCADE, so once the
+        // Resolved before delete: audit.org_uuid has ON DELETE CASCADE, so once the
         // org is gone this uuid can no longer satisfy that FK — the ORG_DELETED audit
         // insert below will be dropped (caught, logged, non-fatal), same limitation
         // platform-api's own audit table has for its own org-delete cascade.

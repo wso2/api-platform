@@ -97,7 +97,7 @@ async function resolveSubscription(orgId, subscriptionId) {
     if (!subscriptionId) return null;
     const sub = await subDao.getById(orgId, subscriptionId);
     if (!sub) return null;
-    const plan = sub.dp_subscription_plan;
+    const plan = sub.subscription_plan;
     return {
         ref_id: sub.uuid,
         plan_ref_id: plan ? (plan.ref_id || null) : null,
@@ -117,7 +117,7 @@ async function resolveApp(orgId, appId, actor) {
 }
 
 function applicationOf(key) {
-    const app = key.dp_api_key_app_mapping?.dp_application;
+    const app = key.api_key_app_mapping?.application;
     return app ? { id: app.uuid, display_name: app.display_name, handle: app.handle } : null;
 }
 
@@ -326,7 +326,7 @@ async function associateApplication({ orgId, apiId, keyId, appId, actor }) {
         const updated = await apiKeyDao.setApplication(orgId, keyId, application.id, actor, t, { activeOnly: true });
         if (!updated) throw Object.assign(new Error('API key not found'), { status: 404 });
 
-        const meta = existing.dp_api_metadata;
+        const meta = existing.api_metadata;
         const api = { name: meta.name || null, version: meta.version || null, ref_id: meta.ref_id || '', type: meta.type || null };
         await publishKeyApplicationUpdated(orgId, keyId, existing.handle, existing.display_name, api, application, t);
     });
@@ -345,11 +345,11 @@ async function removeApplicationAssociation({ orgId, apiId, keyId, actor }) {
     if (!existing) throw Object.assign(new Error('API key not found'), { status: 404 });
     if (apiId && existing.api_uuid !== apiId) throw Object.assign(new Error('API key not found'), { status: 404 });
 
-    if (!existing.dp_api_key_app_mapping) return { keyId, application: null };
+    if (!existing.api_key_app_mapping) return { keyId, application: null };
 
     await db.withTransaction(async (t) => {
         await apiKeyDao.setApplication(orgId, keyId, null, actor, t);
-        const meta = existing.dp_api_metadata;
+        const meta = existing.api_metadata;
         const api = { name: meta.name || null, version: meta.version || null, ref_id: meta.ref_id || '', type: meta.type || null };
         await publishKeyApplicationUpdated(orgId, keyId, existing.handle, existing.display_name, api, null, t);
     });

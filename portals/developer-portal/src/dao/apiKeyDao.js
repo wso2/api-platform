@@ -22,10 +22,10 @@ const db = require('../db/driver');
 const { indexBy } = require('../db/rows');
 const constants = require('../utils/constants');
 
-const API_KEYS_TABLE = 'dp_api_keys';
-const APP_KEY_MAPPINGS_TABLE = 'dp_api_key_app_mappings';
-const API_METADATA_TABLE = 'dp_api_metadata';
-const APPLICATIONS_TABLE = 'dp_applications';
+const API_KEYS_TABLE = 'api_keys';
+const APP_KEY_MAPPINGS_TABLE = 'api_key_app_mappings';
+const API_METADATA_TABLE = 'api_metadata';
+const APPLICATIONS_TABLE = 'applications';
 
 // Built once at module load — buildUpsert only depends on the (fixed) dialect
 // and column list, not on any per-call data. Used both by create() (first-time
@@ -75,10 +75,10 @@ async function attachAssociations(exec, keys) {
     const appByUuid = indexBy(appRows, 'uuid');
 
     for (const key of keys) {
-        key.dp_api_metadata = metadataByUuid.get(key.api_uuid) || null;
+        key.api_metadata = metadataByUuid.get(key.api_uuid) || null;
         const mapping = mappingByKeyUuid.get(key.uuid);
-        key.dp_api_key_app_mapping = mapping
-            ? { ...mapping, dp_application: appByUuid.get(mapping.app_uuid) || null }
+        key.api_key_app_mapping = mapping
+            ? { ...mapping, application: appByUuid.get(mapping.app_uuid) || null }
             : null;
     }
     return keys;

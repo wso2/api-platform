@@ -159,7 +159,7 @@ const publishApplicationDeletedEvents = async (orgId, applicationId, appToDelete
                 );
             }
             for (const key of affectedKeys) {
-                const meta = key.dp_api_metadata;
+                const meta = key.api_metadata;
                 const api = { name: meta.name || null, version: meta.version || null, ref_id: meta.ref_id || '', type: meta.type || null };
                 await apiKeyService.publishKeyApplicationUpdated(orgId, key.uuid, key.handle, key.display_name, api, null, t);
             }

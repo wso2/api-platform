@@ -24,12 +24,12 @@ const { createCryptoUtil, bufferToUtf8 } = require('../utils/cryptoUtil');
 const { config } = require('../config/configLoader');
 const { NotFoundError } = require('../utils/errors/customErrors');
 
-const TABLE = 'dp_webhook_subscribers';
+const TABLE = 'webhook_subscribers';
 
 const whCrypto = createCryptoUtil(config.security.encryptionKey);
 
 /**
- * Normalizes a raw dp_webhook_subscribers row: BLOB columns back to utf8 strings
+ * Normalizes a raw webhook_subscribers row: BLOB columns back to utf8 strings
  * (mirrors the previous Sequelize attribute `get()`), and the JSON `event_patterns`
  * column back to a JS array.
  */

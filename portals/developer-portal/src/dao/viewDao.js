@@ -23,10 +23,10 @@ const { groupBy } = require('../db/rows');
 const constants = require('../utils/constants');
 const { CustomError } = require('../utils/errors/customErrors');
 
-const VIEWS_TABLE = 'dp_views';
-const VIEW_LABELS_TABLE = 'dp_view_label_mappings';
-const LABELS_TABLE = 'dp_labels';
-const ORG_ASSETS_TABLE = 'dp_organization_assets';
+const VIEWS_TABLE = 'views';
+const VIEW_LABELS_TABLE = 'view_label_mappings';
+const LABELS_TABLE = 'labels';
+const ORG_ASSETS_TABLE = 'organization_assets';
 
 const create = async (orgId, payload, createdBy, t) => {
     const exec = t || db;
@@ -136,7 +136,7 @@ const get = async (orgId, handle) => {
          WHERE vl.view_uuid = ?`,
         [view.uuid]
     );
-    return { ...view, dp_labels: labels };
+    return { ...view, labels: labels };
 };
 
 const getId = async (orgId, viewName, t) => {
@@ -180,7 +180,7 @@ const list = async (orgId) => {
 
     return views.map((v) => ({
         ...v,
-        dp_labels: (labelsByView.get(v.uuid) || []).map((r) => ({ handle: r.handle })),
+        labels: (labelsByView.get(v.uuid) || []).map((r) => ({ handle: r.handle })),
     }));
 };
 
