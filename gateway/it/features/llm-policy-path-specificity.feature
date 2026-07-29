@@ -30,6 +30,88 @@ Feature: LLM policy path and method specificity
     And I authenticate using basic auth as "admin"
 
   # ------------------------------------------------------------------
+  # The controller renders legacy/simple LLM operation paths as safe_regex.
+  # Regex syntax must not contribute to path specificity: otherwise the
+  # (?:/.*)? suffix makes /a/* look longer than the narrower /a/b route,
+  # causing Envoy to select the wildcard route and its policy chain.
+  # ------------------------------------------------------------------
+  Scenario: A shallow exact path selects its own policy chain ahead of a wildcard
+    When I create this LLM provider template:
+      """
+      apiVersion: gateway.api-platform.wso2.com/v1
+      kind: LlmProviderTemplate
+      metadata:
+        name: route-order-template
+      spec:
+        displayName: Route Order Template
+      """
+    Then the response status code should be 201
+
+    When I create this LLM provider:
+      """
+      apiVersion: gateway.api-platform.wso2.com/v1
+      kind: LlmProvider
+      metadata:
+        name: route-order-provider
+      spec:
+        displayName: Route Order Provider
+        version: v1.0
+        context: /route-order
+        template: route-order-template
+        upstream:
+          url: http://echo-backend-multi-arch:8080/anything
+          auth:
+            type: api-key
+            header: Authorization
+            value: test-api-key
+        accessControl:
+          mode: allow_all
+        policies:
+          - name: set-headers
+            version: v1
+            paths:
+              - path: /a/*
+                methods: [POST]
+                params:
+                  response:
+                    headers:
+                      - name: X-Matched-Policy
+                        value: wildcard
+              - path: /a/b
+                methods: [POST]
+                params:
+                  response:
+                    headers:
+                      - name: X-Matched-Policy
+                        value: exact
+      """
+    Then the response status code should be 201
+    And I wait for 2 seconds
+    And I wait for policy snapshot sync
+
+    Given I set header "Content-Type" to "application/json"
+
+    When I send a POST request to "http://localhost:8080/route-order/a/b" with body:
+      """
+      {"model": "gpt-4"}
+      """
+    Then the response status code should be 200
+    And the response header "X-Matched-Policy" should be "exact"
+
+    When I send a POST request to "http://localhost:8080/route-order/a/c" with body:
+      """
+      {"model": "gpt-4"}
+      """
+    Then the response status code should be 200
+    And the response header "X-Matched-Policy" should be "wildcard"
+
+    Given I authenticate using basic auth as "admin"
+    When I delete the LLM provider "route-order-provider"
+    Then the response status code should be 200
+    When I delete the LLM provider template "route-order-template"
+    Then the response status code should be 200
+
+  # ------------------------------------------------------------------
   # Reproduces a path-specificity bug using an LLM provider with the
   # advanced-ratelimit policy attached to TWO overlapping paths:
   #
