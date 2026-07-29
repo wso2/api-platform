@@ -196,6 +196,10 @@ message StreamBody {
 // downstream client, captured before any policy mutation.
 message DownstreamRequest {
   Headers headers = 1;
+  string path = 2;
+  string method = 3;
+  string authority = 4;
+  string scheme = 5;
 }
 
 // DownstreamContext identifies the downstream client and carries a snapshot of
@@ -218,6 +222,7 @@ message UpstreamRequestContext {
 // captured before any policy mutation.
 message UpstreamResponse {
   Headers headers = 1;
+  int32 status_code = 2;
 }
 
 // UpstreamResponseContext identifies the route's resolved upstream target during

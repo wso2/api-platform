@@ -1545,6 +1545,10 @@ func (x *StreamBody) GetIndex() uint64 {
 type DownstreamRequest struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	Headers       *Headers               `protobuf:"bytes,1,opt,name=headers,proto3" json:"headers,omitempty"`
+	Path          string                 `protobuf:"bytes,2,opt,name=path,proto3" json:"path,omitempty"`
+	Method        string                 `protobuf:"bytes,3,opt,name=method,proto3" json:"method,omitempty"`
+	Authority     string                 `protobuf:"bytes,4,opt,name=authority,proto3" json:"authority,omitempty"`
+	Scheme        string                 `protobuf:"bytes,5,opt,name=scheme,proto3" json:"scheme,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -1584,6 +1588,34 @@ func (x *DownstreamRequest) GetHeaders() *Headers {
 		return x.Headers
 	}
 	return nil
+}
+
+func (x *DownstreamRequest) GetPath() string {
+	if x != nil {
+		return x.Path
+	}
+	return ""
+}
+
+func (x *DownstreamRequest) GetMethod() string {
+	if x != nil {
+		return x.Method
+	}
+	return ""
+}
+
+func (x *DownstreamRequest) GetAuthority() string {
+	if x != nil {
+		return x.Authority
+	}
+	return ""
+}
+
+func (x *DownstreamRequest) GetScheme() string {
+	if x != nil {
+		return x.Scheme
+	}
+	return ""
 }
 
 // DownstreamContext identifies the downstream client and carries a snapshot of
@@ -1701,6 +1733,7 @@ func (x *UpstreamRequestContext) GetBasePath() string {
 type UpstreamResponse struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	Headers       *Headers               `protobuf:"bytes,1,opt,name=headers,proto3" json:"headers,omitempty"`
+	StatusCode    int32                  `protobuf:"varint,2,opt,name=status_code,json=statusCode,proto3" json:"status_code,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -1740,6 +1773,13 @@ func (x *UpstreamResponse) GetHeaders() *Headers {
 		return x.Headers
 	}
 	return nil
+}
+
+func (x *UpstreamResponse) GetStatusCode() int32 {
+	if x != nil {
+		return x.StatusCode
+	}
+	return 0
 }
 
 // UpstreamResponseContext identifies the route's resolved upstream target during
@@ -1826,8 +1866,10 @@ type AuthContext struct {
 	Properties    map[string]string      `protobuf:"bytes,9,rep,name=properties,proto3" json:"properties,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"`
 	Previous      *AuthContext           `protobuf:"bytes,10,opt,name=previous,proto3" json:"previous,omitempty"`
 	TokenId       string                 `protobuf:"bytes,11,opt,name=token_id,json=tokenId,proto3" json:"token_id,omitempty"`
-	// typed_properties preserves structured values; numbers use float64, so large integers (>2^53)
-	// should be encoded as strings if exact precision is required.
+	// typed_properties preserves structured claim values (arrays/objects) that the flat
+	// `properties` map flattens to strings. Numbers are stored as float64 (per
+	// google.protobuf.Struct/JSON), so integers larger than 2^53 should be represented as strings
+	// if exact precision is required.
 	TypedProperties *structpb.Struct `protobuf:"bytes,12,opt,name=typed_properties,json=typedProperties,proto3" json:"typed_properties,omitempty"`
 	unknownFields   protoimpl.UnknownFields
 	sizeCache       protoimpl.SizeCache
@@ -4571,17 +4613,23 @@ const file_proto_python_executor_proto_rawDesc = "" +
 	"StreamBody\x12\x14\n" +
 	"\x05chunk\x18\x01 \x01(\fR\x05chunk\x12\"\n" +
 	"\rend_of_stream\x18\x02 \x01(\bR\vendOfStream\x12\x14\n" +
-	"\x05index\x18\x03 \x01(\x04R\x05index\"T\n" +
+	"\x05index\x18\x03 \x01(\x04R\x05index\"\xb6\x01\n" +
 	"\x11DownstreamRequest\x12?\n" +
-	"\aheaders\x18\x01 \x01(\v2%.wso2.gateway.python.v1alpha2.HeadersR\aheaders\"^\n" +
+	"\aheaders\x18\x01 \x01(\v2%.wso2.gateway.python.v1alpha2.HeadersR\aheaders\x12\x12\n" +
+	"\x04path\x18\x02 \x01(\tR\x04path\x12\x16\n" +
+	"\x06method\x18\x03 \x01(\tR\x06method\x12\x1c\n" +
+	"\tauthority\x18\x04 \x01(\tR\tauthority\x12\x16\n" +
+	"\x06scheme\x18\x05 \x01(\tR\x06scheme\"^\n" +
 	"\x11DownstreamContext\x12I\n" +
 	"\arequest\x18\x01 \x01(\v2/.wso2.gateway.python.v1alpha2.DownstreamRequestR\arequest\"[\n" +
 	"\x16UpstreamRequestContext\x12\x12\n" +
 	"\x04name\x18\x01 \x01(\tR\x04name\x12\x10\n" +
 	"\x03url\x18\x02 \x01(\tR\x03url\x12\x1b\n" +
-	"\tbase_path\x18\x03 \x01(\tR\bbasePath\"S\n" +
+	"\tbase_path\x18\x03 \x01(\tR\bbasePath\"t\n" +
 	"\x10UpstreamResponse\x12?\n" +
-	"\aheaders\x18\x01 \x01(\v2%.wso2.gateway.python.v1alpha2.HeadersR\aheaders\"\xa8\x01\n" +
+	"\aheaders\x18\x01 \x01(\v2%.wso2.gateway.python.v1alpha2.HeadersR\aheaders\x12\x1f\n" +
+	"\vstatus_code\x18\x02 \x01(\x05R\n" +
+	"statusCode\"\xa8\x01\n" +
 	"\x17UpstreamResponseContext\x12\x12\n" +
 	"\x04name\x18\x01 \x01(\tR\x04name\x12\x10\n" +
 	"\x03url\x18\x02 \x01(\tR\x03url\x12\x1b\n" +

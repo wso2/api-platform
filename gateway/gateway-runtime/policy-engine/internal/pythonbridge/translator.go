@@ -87,7 +87,11 @@ func (t *Translator) ToProtoDownstream(ds *policy.DownstreamContext) *proto.Down
 	}
 	return &proto.DownstreamContext{
 		Request: &proto.DownstreamRequest{
-			Headers: t.ToProtoHeaders(ds.Request.Headers),
+			Headers:   t.ToProtoHeaders(ds.Request.Headers),
+			Path:      ds.Request.Path,
+			Method:    ds.Request.Method,
+			Authority: ds.Request.Authority,
+			Scheme:    ds.Request.Scheme,
 		},
 	}
 }
@@ -120,7 +124,8 @@ func (t *Translator) ToProtoUpstream(us *policy.UpstreamResponseContext) *proto.
 	}
 	if us.Response != nil {
 		out.Response = &proto.UpstreamResponse{
-			Headers: t.ToProtoHeaders(us.Response.Headers),
+			Headers:    t.ToProtoHeaders(us.Response.Headers),
+			StatusCode: int32(us.Response.StatusCode),
 		}
 	}
 	return out
