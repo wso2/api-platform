@@ -314,8 +314,8 @@ paths:
     delete:
       summary: Delete project
       description: |
-        Deletes a specific project by its ID (handle). Access is validated against the organization
-        in the JWT token.
+        Deletes a specific project by its handle (unique slug identifier). Access is validated
+        against the organization in the JWT token.
       operationId: DeleteProject
       security:
         - OAuth2Security:
@@ -777,6 +777,9 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/DeploymentResponse'
+              examples:
+                default:
+                  $ref: '#/components/examples/DeploymentDeploying'
         '400':
           $ref: '#/components/responses/BadRequest'
         '401':
@@ -792,7 +795,7 @@ paths:
       summary: Get deployments for a REST API
       description: |
         Retrieves all deployment artifacts for a specific API. The apiId parameter is the API handle (identifier),
-        not the UUID. Supports filtering by gateway ID (handle) and deployment status. 
+        not the UUID. Supports filtering by gateway handle and deployment status. 
         Access is validated against the organization in the JWT token.
       operationId: GetDeployments
       security:
@@ -885,7 +888,7 @@ paths:
         '404':
           $ref: '#/components/responses/NotFound'
         '409':
-          $ref: '#/components/responses/Conflict'
+          $ref: '#/components/responses/DeploymentActiveConflict'
         '500':
           $ref: '#/components/responses/InternalServerError'
 
@@ -932,6 +935,9 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/DeploymentResponse'
+              examples:
+                default:
+                  $ref: '#/components/examples/DeploymentUndeploying'
         '400':
           $ref: '#/components/responses/BadRequest'
         '401':
@@ -988,6 +994,9 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/DeploymentResponse'
+              examples:
+                default:
+                  $ref: '#/components/examples/DeploymentDeploying'
         '400':
           $ref: '#/components/responses/BadRequest'
         '401':
@@ -1176,6 +1185,9 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/LLMProviderTemplate'
+              examples:
+                default:
+                  $ref: '#/components/examples/CopiedTemplateVersion'
         '400':
           $ref: '#/components/responses/BadRequest'
         '401':
@@ -1299,7 +1311,8 @@ paths:
               properties:
                 enabled:
                   type: boolean
-                  example: false
+                  description: Set to true to enable this template version, false to disable it.
+                  example: true
       responses:
         '200':
           description: Updated template version
@@ -1617,6 +1630,9 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/DeploymentResponse'
+              examples:
+                default:
+                  $ref: '#/components/examples/DeploymentDeploying'
         '400':
           $ref: '#/components/responses/BadRequest'
         '401':
@@ -1632,7 +1648,7 @@ paths:
       summary: Get deployments for an LLM provider
       description: |
         Retrieves all deployment artifacts for a specific LLM provider. The providerId parameter is the
-        LLM provider handle (identifier), not the UUID. Supports filtering by gateway ID (handle) and deployment status.
+        LLM provider handle (identifier), not the UUID. Supports filtering by gateway handle and deployment status.
         Access is validated against the organization in the JWT token.
       operationId: getLLMProviderDeployments
       security:
@@ -1740,7 +1756,7 @@ paths:
         '404':
           $ref: '#/components/responses/NotFound'
         '409':
-          $ref: '#/components/responses/Conflict'
+          $ref: '#/components/responses/DeploymentActiveConflict'
         '500':
           $ref: '#/components/responses/InternalServerError'
 
@@ -1792,6 +1808,9 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/DeploymentResponse'
+              examples:
+                default:
+                  $ref: '#/components/examples/DeploymentUndeploying'
         '400':
           $ref: '#/components/responses/BadRequest'
         '401':
@@ -1853,6 +1872,9 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/DeploymentResponse'
+              examples:
+                default:
+                  $ref: '#/components/examples/DeploymentDeploying'
         '400':
           $ref: '#/components/responses/BadRequest'
         '401':
@@ -2243,6 +2265,9 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/DeploymentResponse'
+              examples:
+                default:
+                  $ref: '#/components/examples/DeploymentDeploying'
         '400':
           $ref: '#/components/responses/BadRequest'
         '401':
@@ -2258,7 +2283,7 @@ paths:
       summary: Get deployments for an LLM proxy
       description: |
         Retrieves all deployment artifacts for a specific LLM proxy. The proxyId parameter is the
-        LLM proxy handle (identifier), not the UUID. Supports filtering by gateway ID (handle) and deployment status.
+        LLM proxy handle (identifier), not the UUID. Supports filtering by gateway handle and deployment status.
         Access is validated against the organization in the JWT token.
       operationId: getLLMProxyDeployments
       security:
@@ -2366,7 +2391,7 @@ paths:
         '404':
           $ref: '#/components/responses/NotFound'
         '409':
-          $ref: '#/components/responses/Conflict'
+          $ref: '#/components/responses/DeploymentActiveConflict'
         '500':
           $ref: '#/components/responses/InternalServerError'
 
@@ -2418,6 +2443,9 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/DeploymentResponse'
+              examples:
+                default:
+                  $ref: '#/components/examples/DeploymentUndeploying'
         '400':
           $ref: '#/components/responses/BadRequest'
         '401':
@@ -2479,6 +2507,9 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/DeploymentResponse'
+              examples:
+                default:
+                  $ref: '#/components/examples/DeploymentDeploying'
         '400':
           $ref: '#/components/responses/BadRequest'
         '401':
@@ -2829,6 +2860,9 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/DeploymentResponse'
+              examples:
+                default:
+                  $ref: '#/components/examples/DeploymentDeploying'
         '400':
           $ref: '#/components/responses/BadRequest'
         '401':
@@ -2842,7 +2876,7 @@ paths:
       summary: Get deployments for an MCP proxy
       description: |
         Retrieves all deployment artifacts for a specific MCP proxy. The id parameter is the MCP proxy handle (identifier),
-        not the UUID. Supports filtering by gateway ID (handle) and deployment status. 
+        not the UUID. Supports filtering by gateway handle and deployment status. 
         Access is validated against the organization in the JWT token.
       operationId: GetMCPProxyDeployments
       security:
@@ -2948,7 +2982,7 @@ paths:
         '404':
           $ref: '#/components/responses/NotFound'
         '409':
-          $ref: '#/components/responses/Conflict'
+          $ref: '#/components/responses/DeploymentActiveConflict'
         '500':
           $ref: '#/components/responses/InternalServerError'
 
@@ -3000,6 +3034,9 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/DeploymentResponse'
+              examples:
+                default:
+                  $ref: '#/components/examples/DeploymentUndeploying'
         '400':
           $ref: '#/components/responses/BadRequest'
         '401':
@@ -3059,6 +3096,9 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/DeploymentResponse'
+              examples:
+                default:
+                  $ref: '#/components/examples/DeploymentDeploying'
         '400':
           $ref: '#/components/responses/BadRequest'
         '401':
@@ -3084,7 +3124,7 @@ paths:
       tags:
         - MCP Proxies
       requestBody:
-        description: Deployment request with gateway ID, base reference, and metadata
+        description: Target MCP server to introspect — either a direct `url` (with optional `auth`), or a `proxyId` to refetch using a stored proxy configuration.
         required: true
         content:
           application/json:
@@ -4278,8 +4318,7 @@ paths:
     get:
       summary: Get subscription by ID
       description: |
-        Returns a single subscription by ID (scoped to organization).
-        Query parameter `subscriberId` is required and must match the subscription's subscriber for access control.
+        Returns a single subscription by ID, scoped to the organization in the access token.
       operationId: GetSubscription
       security:
         - OAuth2Security:
@@ -5380,7 +5419,7 @@ components:
           maxLength: 232
           minLength: 1
           type: string
-          example: pizza
+          example: /pizza
         version:
           maxLength: 30
           minLength: 1
@@ -6079,8 +6118,8 @@ components:
           example: "def45678-g901-23hi-j456-789012klmnop"
         token:
           type: string
-          description: Plain-text new authentication token (only exposed once during rotation)
-          example: "nM8pQ1rT4vW7yZ0bC3eF6hI9kL2nO5qR8tU1wX4zA7cE0fH3jK6mP9sV2yB5dG8i"
+          description: Plain-text new authentication token (only exposed once during rotation). The example value is a non-functional placeholder.
+          example: "REDACTED_TOKEN"
         createdAt:
           type: string
           format: date-time
@@ -6586,7 +6625,7 @@ components:
         field:
           type: string
           description: Path of the offending field.
-          example: spec.context
+          example: <name of the offending field>
         message:
           type: string
           description: Why the field failed validation.
@@ -6717,16 +6756,25 @@ components:
       oneOf:
         - required: [ "url" ]
         - required: [ "ref" ]
-      description: Upstream endpoint configuration (single target or reference)
+      description: |
+        Upstream endpoint configuration. Provide exactly one of `url` (a direct backend URL) or
+        `ref` (a reference to a predefined upstream definition) — never both.
+      example:
+        url: http://prod-backend:5000/api/v2
+        auth:
+          type: api-key
+          header: X-API-Key
+          value: my-api-key-value
       properties:
         url:
           type: string
           format: uri
-          description: Direct backend URL to route traffic to
+          description: Direct backend URL to route traffic to. Mutually exclusive with `ref`.
           example: http://prod-backend:5000/api/v2
         ref:
           type: string
-          description: Reference to a predefined upstreamDefinition
+          description: Reference to a predefined upstreamDefinition. Mutually exclusive with `url`.
+          example: my-shared-upstream
         auth:
           $ref: '#/components/schemas/UpstreamAuth'
 
@@ -6818,17 +6866,41 @@ components:
           description: Resource path pattern this mapping applies to (for example /responses or /chat/*)
           example: /responses
         promptTokens:
-          $ref: '#/components/schemas/ExtractionIdentifier'
+          allOf:
+            - $ref: '#/components/schemas/ExtractionIdentifier'
+          example:
+            location: payload
+            identifier: "$.usage.inputTokens"
         completionTokens:
-          $ref: '#/components/schemas/ExtractionIdentifier'
+          allOf:
+            - $ref: '#/components/schemas/ExtractionIdentifier'
+          example:
+            location: payload
+            identifier: "$.usage.outputTokens"
         totalTokens:
-          $ref: '#/components/schemas/ExtractionIdentifier'
+          allOf:
+            - $ref: '#/components/schemas/ExtractionIdentifier'
+          example:
+            location: payload
+            identifier: "$.usage.totalTokens"
         remainingTokens:
-          $ref: '#/components/schemas/ExtractionIdentifier'
+          allOf:
+            - $ref: '#/components/schemas/ExtractionIdentifier'
+          example:
+            location: header
+            identifier: "x-ratelimit-remaining-tokens"
         requestModel:
-          $ref: '#/components/schemas/ExtractionIdentifier'
+          allOf:
+            - $ref: '#/components/schemas/ExtractionIdentifier'
+          example:
+            location: payload
+            identifier: "$.model"
         responseModel:
-          $ref: '#/components/schemas/ExtractionIdentifier'
+          allOf:
+            - $ref: '#/components/schemas/ExtractionIdentifier'
+          example:
+            location: payload
+            identifier: "$.model"
 
     LLMProviderTemplateResourceMappings:
       type: object
@@ -6928,17 +7000,41 @@ components:
         metadata:
           $ref: '#/components/schemas/LLMProviderTemplateMetadata'
         promptTokens:
-          $ref: '#/components/schemas/ExtractionIdentifier'
+          allOf:
+            - $ref: '#/components/schemas/ExtractionIdentifier'
+          example:
+            location: payload
+            identifier: "$.usage.inputTokens"
         completionTokens:
-          $ref: '#/components/schemas/ExtractionIdentifier'
+          allOf:
+            - $ref: '#/components/schemas/ExtractionIdentifier'
+          example:
+            location: payload
+            identifier: "$.usage.outputTokens"
         totalTokens:
-          $ref: '#/components/schemas/ExtractionIdentifier'
+          allOf:
+            - $ref: '#/components/schemas/ExtractionIdentifier'
+          example:
+            location: payload
+            identifier: "$.usage.totalTokens"
         remainingTokens:
-          $ref: '#/components/schemas/ExtractionIdentifier'
+          allOf:
+            - $ref: '#/components/schemas/ExtractionIdentifier'
+          example:
+            location: header
+            identifier: "x-ratelimit-remaining-tokens"
         requestModel:
-          $ref: '#/components/schemas/ExtractionIdentifier'
+          allOf:
+            - $ref: '#/components/schemas/ExtractionIdentifier'
+          example:
+            location: payload
+            identifier: "$.model"
         responseModel:
-          $ref: '#/components/schemas/ExtractionIdentifier'
+          allOf:
+            - $ref: '#/components/schemas/ExtractionIdentifier'
+          example:
+            location: payload
+            identifier: "$.model"
         resourceMappings:
           $ref: '#/components/schemas/LLMProviderTemplateResourceMappings'
         createdAt:
@@ -6995,17 +7091,41 @@ components:
         metadata:
           $ref: '#/components/schemas/LLMProviderTemplateMetadata'
         promptTokens:
-          $ref: '#/components/schemas/ExtractionIdentifier'
+          allOf:
+            - $ref: '#/components/schemas/ExtractionIdentifier'
+          example:
+            location: payload
+            identifier: "$.usage.inputTokens"
         completionTokens:
-          $ref: '#/components/schemas/ExtractionIdentifier'
+          allOf:
+            - $ref: '#/components/schemas/ExtractionIdentifier'
+          example:
+            location: payload
+            identifier: "$.usage.outputTokens"
         totalTokens:
-          $ref: '#/components/schemas/ExtractionIdentifier'
+          allOf:
+            - $ref: '#/components/schemas/ExtractionIdentifier'
+          example:
+            location: payload
+            identifier: "$.usage.totalTokens"
         remainingTokens:
-          $ref: '#/components/schemas/ExtractionIdentifier'
+          allOf:
+            - $ref: '#/components/schemas/ExtractionIdentifier'
+          example:
+            location: header
+            identifier: "x-ratelimit-remaining-tokens"
         requestModel:
-          $ref: '#/components/schemas/ExtractionIdentifier'
+          allOf:
+            - $ref: '#/components/schemas/ExtractionIdentifier'
+          example:
+            location: payload
+            identifier: "$.model"
         responseModel:
-          $ref: '#/components/schemas/ExtractionIdentifier'
+          allOf:
+            - $ref: '#/components/schemas/ExtractionIdentifier'
+          example:
+            location: payload
+            identifier: "$.model"
         resourceMappings:
           $ref: '#/components/schemas/LLMProviderTemplateResourceMappings'
 
@@ -7444,7 +7564,7 @@ components:
           example: v1.0
         context:
           type: string
-          description: Base path for all REST API routes (must start with /, no trailing slash)
+          description: Base path for all routes exposed by this provider. Must start with / and carry no trailing slash; the single exception is the root path "/", which is the default.
           pattern: '^\/([a-zA-Z0-9_\-.\/]*[^\/])?$'
           default: /
           minLength: 1
@@ -7459,7 +7579,7 @@ components:
           pattern: '^(\*\.|[a-zA-Z0-9](?:[a-zA-Z0-9\-]{0,61}[a-zA-Z0-9])?\.)+[a-zA-Z]{2,}$'
           minLength: 1
           maxLength: 253
-          example: "api.openai"
+          example: "api.openai.com"
         template:
           type: string
           description: Template name to use for this LLM Provider
@@ -7721,7 +7841,7 @@ components:
           example: default-project
         context:
           type: string
-          description: Base path for all REST API routes (must start with /, no trailing slash)
+          description: Base path for all routes exposed by this proxy. Must start with / and carry no trailing slash; the single exception is the root path "/", which is the default.
           pattern: '^\/([a-zA-Z0-9_\-.\/]*[^\/])?$'
           default: /
           minLength: 1
@@ -7736,7 +7856,7 @@ components:
           pattern: '^(\*\.|[a-zA-Z0-9](?:[a-zA-Z0-9\-]{0,61}[a-zA-Z0-9])?\.)+[a-zA-Z]{2,}$'
           minLength: 1
           maxLength: 253
-          example: "api.openai"
+          example: "api.openai.com"
         provider:
           $ref: '#/components/schemas/LLMProxyProvider'
         additionalProviders:
@@ -8002,8 +8122,8 @@ components:
           example: "production-key"
         apiKey:
           type: string
-          description: The generated API key value (shown only once, 64 hexadecimal characters)
-          example: "a1b2c3d4e5f6789012345678901234567890abcdef1234567890abcdef123456"
+          description: The generated API key value — 64 hexadecimal characters, returned only in this creation response and never retrievable afterwards. The example value is a non-functional placeholder.
+          example: "REDACTED_API_KEY"
     CreateLLMProxyAPIKeyRequest:
       type: object
       required:
@@ -8061,8 +8181,8 @@ components:
           example: "production-key"
         apiKey:
           type: string
-          description: The generated API key value (shown only once, 64 hexadecimal characters)
-          example: "a1b2c3d4e5f6789012345678901234567890abcdef1234567890abcdef123456"
+          description: The generated API key value — 64 hexadecimal characters, returned only in this creation response and never retrievable afterwards. The example value is a non-functional placeholder.
+          example: "REDACTED_API_KEY"
 
     MCPProxy:
       type: object
@@ -8118,7 +8238,7 @@ components:
           example: default-project
         context:
           type: string
-          description: Base path for all REST API routes (must start with /, no trailing slash)
+          description: Base path for all routes exposed by this proxy. Must start with / and carry no trailing slash; the single exception is the root path "/", which is the default.
           pattern: '^\/([a-zA-Z0-9_\-.\/]*[^\/])?$'
           default: /
           minLength: 1
@@ -8259,27 +8379,37 @@ components:
     
     MCPServerInfoFetchRequest:
       type: object
+      oneOf:
+        - required: [ "url" ]
+        - required: [ "proxyId" ]
+          not:
+            required: [ "auth" ]
+      description: |
+        Target MCP server to introspect. Provide exactly one of `url` (a direct backend URL,
+        optionally with `auth`) or `proxyId` (refetch using a stored proxy configuration) — never
+        both. `auth` must not be sent together with `proxyId`; the stored auth is always used in
+        the refetch flow.
       properties:
         url:
           type: string
           format: uri
           description: |
-            Endpoint URL of the MCP server to fetch information from.
-            Required when proxyId is not provided. When proxyId is provided,
-            the URL from the stored proxy configuration is used.
+            Endpoint URL of the MCP server to fetch information from. Mutually exclusive
+            with `proxyId`; exactly one of the two must be provided.
           example: https://mcp.server.com/mcp
         proxyId:
           type: string
           description: |
-            MCP proxy handle (identifier) for refresh operations. When provided,
-            the server fetches URL and auth from the stored proxy configuration.
-            Auth override is not allowed in refetch mode.
+            MCP proxy handle (identifier) for refresh operations. When provided, the server
+            fetches URL and auth from the stored proxy configuration. Mutually exclusive
+            with `url`; exactly one of the two must be provided.
           example: my-mcp-proxy
         auth:
           $ref: '#/components/schemas/UpstreamAuth'
           description: |
-            Authentication configuration for the fetch request.
-            Only allowed when proxyId is not provided (initial creation flow).
+            Authentication configuration for the fetch request. Allowed only alongside
+            `url` (initial creation flow); sending it with `proxyId` is rejected, as the
+            stored auth is used in the refetch flow.
 
     MCPServerInfoFetchResponse:
       type: object
@@ -8342,6 +8472,7 @@ components:
         value:
           type: string
           description: Plaintext secret value — encrypted at rest, never returned in any response
+          writeOnly: true
           example: sk-xxx
         type:
           type: string
@@ -8370,6 +8501,7 @@ components:
         value:
           type: string
           description: New plaintext secret value — re-encrypted at rest
+          writeOnly: true
 
     SecretResponse:
       type: object
@@ -8524,8 +8656,8 @@ components:
             code: VALIDATION_FAILED
             message: The request failed validation.
             errors:
-              - field: spec.context
-                message: must start with /
+              - field: <name of the offending field>
+                message: <reason this field failed validation>
     Forbidden:
       description: Forbidden. The authenticated user does not have permission to access this resource.
       content:
@@ -8547,7 +8679,7 @@ components:
             code: NOT_FOUND
             message: The specified resource does not exist.
     Conflict:
-      description: Conflict. Specified resource already exists.
+      description: Conflict. The request conflicts with the current state of the resource.
       content:
         application/json:
           schema:
@@ -8555,7 +8687,17 @@ components:
           example:
             status: error
             code: CONFLICT
-            message: The specified resource already exists.
+            message: The request conflicts with the current state of the resource.
+    DeploymentActiveConflict:
+      description: Conflict. The deployment is still active and must be undeployed before deletion.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+          example:
+            status: error
+            code: DEPLOYMENT_ACTIVE
+            message: Cannot delete an active deployment - undeploy it first.
     InternalServerError:
       description: Internal Server Error.
       content:
@@ -8592,6 +8734,44 @@ components:
             trackingId: 4f1c6f2e-8a4b-4c93-b1de-9f2f6f0c2a11
 
   examples:
+    CopiedTemplateVersion:
+      summary: New version created by copying openai-v3-0
+      value:
+        id: openai-v4-0
+        groupId: openai
+        displayName: OpenAI
+        managedBy: organization
+        description: Default OpenAI template
+        createdBy: john.doe
+        updatedBy: john.doe
+        readOnly: false
+        version: v4.0
+        isLatest: true
+        enabled: true
+    DeploymentDeploying:
+      summary: Deployment initiated (transitional)
+      description: Asynchronous operation accepted; poll the deployment until status becomes DEPLOYED or FAILED.
+      value:
+        deploymentId: a73c85a1-d857-491e-a6b2-51dce05de7a2
+        name: v1.0-production
+        gatewayId: prod-gateway-01
+        status: DEPLOYING
+        baseDeploymentId: be6d8692-b9de-400e-b6c1-14db50154e27
+        metadata: {}
+        createdAt: 2019-08-24T14:15:22Z
+        updatedAt: 2019-08-24T14:15:22Z
+    DeploymentUndeploying:
+      summary: Undeploy initiated (transitional)
+      description: Asynchronous operation accepted; poll the deployment until status becomes UNDEPLOYED or FAILED.
+      value:
+        deploymentId: a73c85a1-d857-491e-a6b2-51dce05de7a2
+        name: v1.0-production
+        gatewayId: prod-gateway-01
+        status: UNDEPLOYING
+        baseDeploymentId: be6d8692-b9de-400e-b6c1-14db50154e27
+        metadata: {}
+        createdAt: 2019-08-24T14:15:22Z
+        updatedAt: 2019-08-24T14:15:22Z
     GatewayNotFoundExample:
       value:
         status: error
@@ -8669,7 +8849,7 @@ components:
       in: query
       required: true
       description: |
-        **Project ID** consisting of the **handle** (unique slug identifier) of the Project to filter APIs by.
+        **Project ID** consisting of the **handle** (unique slug identifier) of the Project whose resources should be returned.
       schema:
         type: string
         example: "default-project"
@@ -8815,6 +8995,8 @@ tags:
     description: Gateway registration and management operations
   - name: Gateway Tokens
     description: Gateway token rotation and revocation operations
+  - name: Gateway Policies
+    description: Custom gateway policy management operations
   - name: LLM Providers
     description: LLM provider management operations
   - name: LLM Proxies
@@ -8823,6 +9005,8 @@ tags:
     description: LLM provider template management operations
   - name: LLM Provider Deployments
     description: LLM provider deployment operations
+  - name: LLM Proxy Deployments
+    description: LLM proxy deployment operations
   - name: API Keys
     description: API key management operations for REST APIs and LLM Providers
   - name: MCP Proxies
@@ -8831,5 +9015,9 @@ tags:
     description: MCP proxy deployment operations
   - name: Deployments
     description: Deployment operations for various artifact types
+  - name: SubscriptionPlans
+    description: Subscription plan management operations — rate-limit tiers that subscriptions are created against
+  - name: Subscriptions
+    description: Subscription management operations linking applications to APIs under a subscription plan
   - name: Secrets
     description: Encrypted secret management — create, rotate, and delete organization-scoped secrets referenced via {{ secret "name" }} placeholders

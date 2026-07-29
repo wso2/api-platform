@@ -462,25 +462,16 @@ func ValidateExternalURL(_ context.Context, rawURL string) error {
 // CheckURLReachability verifies that the given URL is reachable by sending an HTTP HEAD request.
 // It returns an error if the request fails or cannot complete within the given timeout.
 func CheckURLReachability(rawURL string, timeout time.Duration) error {
-	client := &http.Client{
-		Timeout: timeout,
-		CheckRedirect: func(req *http.Request, via []*http.Request) error {
-			if len(via) >= 5 {
-				return errors.New("too many redirects")
-			}
-			return nil
-		},
-		// This is a one-off diagnostic probe with nothing to gain from keep-alive —
-		// and everything to lose: some servers send a Transfer-Encoding: chunked
-		// response to a HEAD request without properly terminating it, and Go's
-		// transport can still decide the connection is safe to pool for reuse even
-		// when the body is drained (see the drain below). Disabling keep-alives here
-		// guarantees this connection is always closed after use, so a malformed
-		// response to this probe can never leak into and corrupt a later, unrelated
-		// request (e.g. the MCP initialize/tools/list calls FetchServerInfo makes
-		// right after this) that happens to reuse the same pooled connection.
-		Transport: &http.Transport{DisableKeepAlives: true},
-	}
+	// The probed URL is user/tenant-supplied, so the connection goes through the guarded
+	// dialer: every resolved IP is checked at dial time under the upstream policy
+	// (link-local/metadata refused; private and in-cluster upstreams allowed, since that is
+	// what an MCP backend normally is) and every redirect hop is bounded and re-dialed
+	// through the same guard. The client also disables keep-alives — this is a one-off
+	// diagnostic probe with nothing to gain from connection reuse, and everything to lose:
+	// some servers answer a HEAD with an improperly terminated chunked response, and a
+	// pooled connection could then corrupt a later, unrelated request (e.g. the MCP
+	// initialize/tools/list calls FetchServerInfo makes right after this).
+	client := NewUpstreamFetchClient(timeout)
 
 	req, err := http.NewRequestWithContext(context.Background(), http.MethodHead, rawURL, nil)
 	if err != nil {

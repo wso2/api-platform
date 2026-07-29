@@ -559,10 +559,24 @@ func (s *MCPProxyService) FetchServerInfo(orgUUID string, req *api.MCPServerInfo
 	var url string
 	var headerName, headerValue string
 
-	if req.ProxyId != nil && *req.ProxyId != "" {
-		if req.Auth != nil {
-			s.slogger.Warn("Auth override is not allowed when proxyId is provided. Ignoring auth in request and using stored auth from proxy configuration.", "org_id", orgUUID, "proxy_id", *req.ProxyId)
-		}
+	hasProxyID := req.ProxyId != nil && *req.ProxyId != ""
+	hasURL := req.Url != nil && *req.Url != ""
+
+	// Exactly one of url / proxyId selects the target, matching the oneOf constraint on
+	// MCPServerInfoFetchRequest. Accepting both would leave which one wins implicit.
+	if hasProxyID && hasURL {
+		return nil, apperror.ValidationFailed.New("Provide either url or proxyId, not both.")
+	}
+	if !hasProxyID && !hasURL {
+		return nil, apperror.ValidationFailed.New("Either url or proxyId is required.")
+	}
+	// Auth is only meaningful for the direct-url flow; in refetch mode the stored auth is
+	// authoritative, so a caller-supplied override is rejected rather than silently ignored.
+	if hasProxyID && req.Auth != nil {
+		return nil, apperror.ValidationFailed.New("The auth field is not allowed when proxyId is provided.")
+	}
+
+	if hasProxyID {
 		// ProxyId provided - fetch stored configuration (refetch flow)
 		// Auth override is NOT allowed in refetch - use exactly what's stored
 		proxy, err := s.repo.GetByHandle(*req.ProxyId, orgUUID)
@@ -602,10 +616,7 @@ func (s *MCPProxyService) FetchServerInfo(orgUUID string, req *api.MCPServerInfo
 			}
 		}
 	} else {
-		// No proxyId - initial creation flow, url is required
-		if req.Url == nil || *req.Url == "" {
-			return nil, apperror.ValidationFailed.New("The url field is required when proxyId is not provided.")
-		}
+		// No proxyId - initial creation flow, url selects the target
 		url = *req.Url
 
 		// Use provided auth (optional for initial fetch)

@@ -1,7 +1,34 @@
 {{ var defined_ct = data.allHeaders.find(function(h){ return h.name === 'Content-Type'; }); }}
 {{ if (defined_ct && data.consumes.indexOf('application/json') >= 0) { defined_ct.exampleValues.object = 'application/json'; } }}
 {{ var ext = 'json'; if (defined_ct) { var ct = defined_ct.exampleValues.object; if (ct.indexOf('yaml') >= 0) ext = 'yaml'; else if (ct.indexOf('xml') >= 0) ext = 'xml'; else if (ct.indexOf('text') >= 0) ext = 'txt'; } }}
+{{ var _schemes = (data.api.components && data.api.components.securitySchemes) || {}; }}
+{{ var _reqs = data.operation.security ? data.operation.security : (data.api.security || []); }}
+{{ var _isBasic = false; var _isBearer = false; }}
+{{ for (var _r = 0; _r < _reqs.length; _r++) {
+     var _req = _reqs[_r];
+     for (var _name in _req) {
+       var _sd = _schemes[_name] || {};
+       if (_sd.type === 'http' && (_sd.scheme || '').toLowerCase() === 'basic') { _isBasic = true; }
+       if (_sd.type === 'http' && (_sd.scheme || '').toLowerCase() === 'bearer') { _isBearer = true; }
+       if (_sd.type === 'oauth2' || _sd.type === 'openIdConnect') { _isBearer = true; }
+     }
+   }
+}}
+{{ var _hdrs = data.allHeaders.filter(function(h){ return h.name.toLowerCase() !== 'authorization'; }); }}
+{{ var _isMultipart = data.consumes.indexOf('multipart/form-data') >= 0 && data.consumes.indexOf('application/json') < 0; }}
+{{ var _mpFields = []; }}
+{{ if (_isMultipart) {
+     var _ex = data.bodyParameter && data.bodyParameter.exampleValues && data.bodyParameter.exampleValues.object;
+     if (_ex && typeof _ex === 'object') {
+       for (var _k in _ex) {
+         var _v = _ex[_k];
+         if (_v !== null && _v !== undefined && typeof _v !== 'object') { _mpFields.push(_k + '=' + _v); }
+       }
+     }
+   }
+}}
 curl -X {{=data.methodUpper}} {{=data.url}}{{=data.requiredQueryString}} \
-  -u {username}:{password}{{?data.allHeaders.length || data.operation.requestBody}} \{{?}}
-{{~data.allHeaders :p:index}}  -H '{{=p.name}}: {{=p.exampleValues.object}}'{{?index < data.allHeaders.length-1 || data.operation.requestBody}} \{{?}}
-{{~}}{{?data.operation.requestBody}}  -d @payload.{{=ext}}{{?}}
+{{? _isBearer && !_isBasic }}  -H 'Authorization: Bearer {access_token}'{{??}}  -u {username}:{password}{{?}}{{?_hdrs.length || data.operation.requestBody}} \{{?}}
+{{~_hdrs :p:index}}  -H '{{=p.name}}: {{=p.exampleValues.object}}'{{?index < _hdrs.length-1 || data.operation.requestBody}} \{{?}}
+{{~}}{{?data.operation.requestBody}}{{?_mpFields.length}}{{~_mpFields :_f:_fi}}  -F '{{=_f}}'{{?_fi < _mpFields.length-1}} \{{?}}
+{{~}}{{??}}  -d @payload.{{=ext}}{{?}}{{?}}
