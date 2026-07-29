@@ -21,6 +21,7 @@
   var _cfg = document.getElementById('cfg-page-config') || { dataset: {} };
   var ORG_ID = _cfg.dataset.orgId || '';
   var editLabelName = null;
+  var labelHandleTouched = false;
 
   function esc(s) { return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
   function v(id) { var e=document.getElementById(id); return e?e.value.trim():''; }
@@ -28,6 +29,7 @@
   /* ── open modal ── */
   function openLabelModal(mode, data) {
     editLabelName = mode === 'edit' ? data.id : null;
+    labelHandleTouched = false;
     document.getElementById('cfg-label-modal-title').textContent = mode === 'edit' ? 'Edit label' : 'Add label';
     document.getElementById('cfg-label-modal-save').textContent  = mode === 'edit' ? 'Save changes' : 'Add label';
     document.getElementById('lbl-display').value = mode === 'edit' ? data.displayName : '';
@@ -37,9 +39,10 @@
   }
   function closeLabelModal() { document.getElementById('cfg-label-modal').style.display = 'none'; editLabelName = null; }
 
-  /* ── auto-slug display → name ── */
+  /* ── auto-slug display → name (skips once the user edits Name) ── */
+  document.getElementById('lbl-name').addEventListener('input', function() { labelHandleTouched = true; });
   document.getElementById('lbl-display').addEventListener('input', function() {
-    if (editLabelName) return;
+    if (editLabelName || labelHandleTouched) return;
     document.getElementById('lbl-name').value = this.value.toLowerCase().trim().replace(/[^a-z0-9]+/g,'-').replace(/^-|-$/g,'');
   });
 

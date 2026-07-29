@@ -21,6 +21,7 @@
   var views = [];
   try { views = JSON.parse(document.getElementById('cfg-views-data').textContent) || []; } catch (e) { /* ignore */ }
   var editHandle = null;
+  var handleTouched = false;
   var modal = document.getElementById('cfg-view-modal');
   if (!modal) return;
   function g(id) { return document.getElementById(id); }
@@ -55,6 +56,7 @@
 
   function openModal(mode, view) {
     editHandle = mode === 'edit' ? view.id : null;
+    handleTouched = false;
     g('cfg-view-modal-title').textContent = mode === 'edit' ? 'Edit view' : 'Add view';
     g('cfg-view-modal-save').textContent  = mode === 'edit' ? 'Save changes' : 'Add view';
     g('view-handle').value    = view ? (view.id || '') : '';
@@ -62,7 +64,7 @@
     g('view-display').value   = view ? (view.displayName || '') : '';
     setSelectedLabels(view ? view.labels : []);
     modal.style.display = 'flex';
-    g('view-handle').focus();
+    g('view-display').focus();
   }
   function closeModal() { modal.style.display = 'none'; editHandle = null; }
 
@@ -72,10 +74,11 @@
   g('cfg-view-modal-cancel').addEventListener('click', closeModal);
   modal.addEventListener('click', function (e) { if (e.target === modal) closeModal(); });
 
-  /* ── auto-slug display → handle ── */
+  /* ── auto-slug display → handle (skips once the user edits Handle) ── */
   var viewHandleRe = /^[a-z0-9][a-z0-9-]*[a-z0-9]$|^[a-z0-9]$/;
+  g('view-handle').addEventListener('input', function () { handleTouched = true; });
   g('view-display').addEventListener('input', function () {
-    if (editHandle) return;
+    if (editHandle || handleTouched) return;
     g('view-handle').value = this.value.toLowerCase().trim().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
   });
 
