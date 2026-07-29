@@ -143,7 +143,7 @@ type APIYAMLData struct {
 	SubscriptionPlans   []string               `yaml:"subscriptionPlans,omitempty"`
 	Vhosts              *Vhosts                `yaml:"vhosts,omitempty"`
 	Upstream            *UpstreamYAML          `yaml:"upstream,omitempty"`
-	UpstreamDefinitions []ReusableUpstream     `yaml:"upstreamDefinitions,omitempty"`
+	UpstreamDefinitions []NamedUpstream        `yaml:"upstreamDefinitions,omitempty"`
 	Policies            []Policy               `yaml:"policies,omitempty"`
 	Operations          []api.OperationRequest `yaml:"operations,omitempty"`
 	Channels            []api.ChannelRequest   `yaml:"channels,omitempty"`
@@ -161,8 +161,8 @@ type UpstreamTarget struct {
 	Ref string `yaml:"ref,omitempty"`
 }
 
-// ReusableUpstream represents a named entry in the deployment YAML's upstreamDefinitions pool.
-type ReusableUpstream struct {
+// NamedUpstream represents a named entry in the deployment YAML's upstreamDefinitions pool.
+type NamedUpstream struct {
 	Name      string            `yaml:"name"`
 	BasePath  string            `yaml:"basePath,omitempty"`
 	Timeout   *UpstreamTimeout  `yaml:"timeout,omitempty"`

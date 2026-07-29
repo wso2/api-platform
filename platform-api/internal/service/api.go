@@ -864,7 +864,7 @@ func validateAPIUpstreamEndpoint(endpoint api.UpstreamDefinition, field string, 
 // validateUpstreamRefs ensures upstreamDefinitions are well-formed (unique, legal name, valid
 // host-only url, legal basePath, in-range weight, positive timeout), validates each API-level
 // url-or-ref union, and ensures every API-level and per-operation ref resolves.
-func (s *APIService) validateUpstreamRefs(upstreamDefs *[]api.ReusableUpstream, upstream api.Upstream, operations *[]api.Operation) error {
+func (s *APIService) validateUpstreamRefs(upstreamDefs *[]api.NamedUpstream, upstream api.Upstream, operations *[]api.Operation) error {
 	defined := make(map[string]bool)
 	if upstreamDefs != nil {
 		for defIdx, d := range *upstreamDefs {

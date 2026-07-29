@@ -51,7 +51,7 @@ func TestAPIRepo_CreateAndRead_PreservesUpstreamDefinitionsAndPerOp(t *testing.T
 			Upstream: model.UpstreamConfig{
 				Main: &model.UpstreamEndpoint{URL: "http://default-backend:8080"},
 			},
-			UpstreamDefinitions: []model.ReusableUpstream{
+			UpstreamDefinitions: []model.NamedUpstream{
 				{
 					Name:      "alt-backend",
 					BasePath:  "/api/v2",

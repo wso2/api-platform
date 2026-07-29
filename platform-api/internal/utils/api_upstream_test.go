@@ -42,7 +42,7 @@ func TestBuildAPIDeploymentYAML_EmitsUpstreamDefinitions(t *testing.T) {
 		Configuration: model.RestAPIConfig{
 			Context:  &ctx,
 			Upstream: model.UpstreamConfig{Main: &model.UpstreamEndpoint{URL: "http://main:8080"}},
-			UpstreamDefinitions: []model.ReusableUpstream{
+			UpstreamDefinitions: []model.NamedUpstream{
 				{
 					Name:      "alt-backend",
 					BasePath:  "/api/v2",
@@ -97,7 +97,7 @@ func TestBuildAPIDeploymentYAML_EmitsPerOpUpstreamRef(t *testing.T) {
 		Configuration: model.RestAPIConfig{
 			Context:  &ctx,
 			Upstream: model.UpstreamConfig{Main: &model.UpstreamEndpoint{URL: "http://main:8080"}},
-			UpstreamDefinitions: []model.ReusableUpstream{
+			UpstreamDefinitions: []model.NamedUpstream{
 				{Name: "alt-backend", Upstreams: []model.UpstreamTarget{{URL: "http://alt:9090"}}},
 			},
 			Operations: []model.Operation{
@@ -147,7 +147,7 @@ func TestBuildAPIDeploymentYAML_WebSubOmitsUpstreamDefinitions(t *testing.T) {
 		Kind:    constants.WebSubApi,
 		Configuration: model.RestAPIConfig{
 			Context: &ctx,
-			UpstreamDefinitions: []model.ReusableUpstream{
+			UpstreamDefinitions: []model.NamedUpstream{
 				{Name: "alt-backend", Upstreams: []model.UpstreamTarget{{URL: "http://alt:9090"}}},
 			},
 		},
@@ -172,7 +172,7 @@ func TestUpstreamDefinitions_RoundTripThroughModel(t *testing.T) {
 	basePath := "/api/v2"
 	connect := "5s"
 	weight := 80
-	pool := []api.ReusableUpstream{{
+	pool := []api.NamedUpstream{{
 		Name:     "alt-backend",
 		BasePath: &basePath,
 		Timeout:  &api.UpstreamTimeout{Connect: &connect},
@@ -225,15 +225,15 @@ func TestUpstreamDefinitions_RoundTripThroughModel(t *testing.T) {
 	}
 }
 
-// TestReusableUpstreamsAPIToModel_NormalizesConnectTimeout verifies a whitespace-only connect
+// TestNamedUpstreamsAPIToModel_NormalizesConnectTimeout verifies a whitespace-only connect
 // timeout is treated as unset (matching validation) and surrounding whitespace is trimmed, so no
 // meaningless value is persisted into the model or the emitted deployment YAML.
-func TestReusableUpstreamsAPIToModel_NormalizesConnectTimeout(t *testing.T) {
+func TestNamedUpstreamsAPIToModel_NormalizesConnectTimeout(t *testing.T) {
 	util := &APIUtil{}
 	blank := "   "
 	padded := "  5s  "
 	mainURL := "http://main:8080"
-	pool := []api.ReusableUpstream{
+	pool := []api.NamedUpstream{
 		{Name: "blank-timeout", Timeout: &api.UpstreamTimeout{Connect: &blank}},
 		{Name: "padded-timeout", Timeout: &api.UpstreamTimeout{Connect: &padded}},
 	}
@@ -274,7 +274,7 @@ func TestBuildAPIDeploymentYAML_EmitsAPILevelUpstreamRefs(t *testing.T) {
 				Main:    &model.UpstreamEndpoint{Ref: "production-pool"},
 				Sandbox: &model.UpstreamEndpoint{Ref: "sandbox-pool"},
 			},
-			UpstreamDefinitions: []model.ReusableUpstream{
+			UpstreamDefinitions: []model.NamedUpstream{
 				{Name: "production-pool", Upstreams: []model.UpstreamTarget{{URL: "http://prod:9090"}}},
 				{Name: "sandbox-pool", Upstreams: []model.UpstreamTarget{{URL: "http://sb:9090"}}},
 			},
@@ -322,7 +322,7 @@ func TestBuildAPIDeploymentYAML_EmitsWeightedTargetsIncludingZero(t *testing.T) 
 		Configuration: model.RestAPIConfig{
 			Context:  &ctx,
 			Upstream: model.UpstreamConfig{Main: &model.UpstreamEndpoint{URL: "http://main:8080"}},
-			UpstreamDefinitions: []model.ReusableUpstream{
+			UpstreamDefinitions: []model.NamedUpstream{
 				{
 					Name: "weighted-pool",
 					Upstreams: []model.UpstreamTarget{

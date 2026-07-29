@@ -36,8 +36,8 @@ type UpstreamAuth struct {
 	Value  string `json:"value,omitempty" db:"-"`
 }
 
-// ReusableUpstream represents a named reusable upstream definition
-type ReusableUpstream struct {
+// NamedUpstream represents a named reusable upstream definition
+type NamedUpstream struct {
 	Name      string           `json:"name" db:"-"`
 	BasePath  string           `json:"basePath,omitempty" db:"-"`
 	Timeout   *UpstreamTimeout `json:"timeout,omitempty" db:"-"`
