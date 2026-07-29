@@ -24,6 +24,7 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
+	"net/http"
 	"time"
 
 	extprocconfigv3 "github.com/envoyproxy/go-control-plane/envoy/extensions/filters/http/ext_proc/v3"
@@ -116,6 +117,18 @@ func (s *ExternalProcessorServer) Process(stream extprocv3.ExternalProcessor_Pro
 	// Lives until response complete, then garbage collected when stream ends.
 	// One stream = one HTTP request, so this is allocated once per request.
 	var execCtx *PolicyExecutionContext
+	// Stamp the request's terminal HTTP status on the root span. Registered AFTER
+	// `defer span.End()` above, so LIFO ordering guarantees this runs while the
+	// span is still recording. execCtx.terminal holds the last outcome resolved
+	// by handleProcessingPhase: the upstream response status for a pass-through,
+	// or the denial/fault status for a short-circuit. Nothing is recorded when no
+	// phase ever resolved a status (execCtx nil, or the stream ended mid-request);
+	// paths that terminate without an execCtx stamp parentSpan inline instead.
+	defer func() {
+		if execCtx != nil {
+			tracing.RecordHTTPOutcome(span, execCtx.terminal)
+		}
+	}()
 	defer func() {
 		if execCtx != nil {
 			execCtx.closeStreamDecompressors()
@@ -138,6 +151,10 @@ func (s *ExternalProcessorServer) Process(stream extprocv3.ExternalProcessor_Pro
 			}
 			slog.ErrorContext(ctx, "Error receiving from stream", "error", err)
 			metrics.StreamErrorsTotal.WithLabelValues("receive").Inc()
+			if span.IsRecording() {
+				span.RecordError(err)
+				span.SetStatus(codes.Error, "ext_proc stream receive failed")
+			}
 			return status.Errorf(grpccodes.Unknown, "failed to receive request: %v", err)
 		}
 
@@ -152,6 +169,10 @@ func (s *ExternalProcessorServer) Process(stream extprocv3.ExternalProcessor_Pro
 		if err := stream.Send(resp); err != nil {
 			slog.ErrorContext(ctx, "Error sending response", "error", err)
 			metrics.StreamErrorsTotal.WithLabelValues("send").Inc()
+			if span.IsRecording() {
+				span.RecordError(err)
+				span.SetStatus(codes.Error, "ext_proc stream send failed")
+			}
 			return status.Errorf(grpccodes.Unknown, "failed to send response: %v", err)
 		}
 	}
@@ -188,6 +209,12 @@ func (s *ExternalProcessorServer) handleProcessingPhase(ctx context.Context, req
 			if span.IsRecording() {
 				span.SetAttributes(attribute.Int(constants.AttrPolicyCount, 0))
 			}
+			outcome := tracing.HTTPOutcome{
+				StatusCode: http.StatusInternalServerError,
+				Reason:     constants.TerminalReasonNoPolicyChain,
+			}
+			tracing.RecordHTTPOutcome(span, outcome)
+			tracing.RecordHTTPOutcome(parentSpan, outcome)
 			metrics.RouteLookupFailuresTotal.Inc()
 			metrics.RequestDurationSeconds.WithLabelValues("request_headers", rm.RouteName).Observe(time.Since(startTime).Seconds())
 			slog.ErrorContext(ctx, "Policy chain not found for route, returning 500",
@@ -222,6 +249,12 @@ func (s *ExternalProcessorServer) handleProcessingPhase(ctx context.Context, req
 		}
 		if err != nil {
 			metrics.RequestErrorsTotal.WithLabelValues("request_headers", "processing_failed", rm.RouteName).Inc()
+		}
+		// Stamp the terminal HTTP status on the phase span. Only on the success
+		// path: when err != nil, resp is nil and the failure is already recorded
+		// above. The root span is stamped once, by the defer in Process.
+		if err == nil && resp != nil {
+			tracing.RecordHTTPOutcome(span, (*execCtx).resolveTerminalOutcome(resp))
 		}
 		if slog.Default().Enabled(ctx, slog.LevelDebug) {
 			slog.DebugContext(ctx, "ext_proc response", "phase", "request_headers", "resp", prototext.Format(resp))
@@ -270,6 +303,12 @@ func (s *ExternalProcessorServer) handleProcessingPhase(ctx context.Context, req
 		if err != nil {
 			metrics.RequestErrorsTotal.WithLabelValues("request_body", "processing_failed", routeName).Inc()
 		}
+		// Stamp the terminal HTTP status on the phase span. Only on the success
+		// path: when err != nil, resp is nil and the failure is already recorded
+		// above. The root span is stamped once, by the defer in Process.
+		if err == nil && resp != nil {
+			tracing.RecordHTTPOutcome(span, (*execCtx).resolveTerminalOutcome(resp))
+		}
 		if slog.Default().Enabled(ctx, slog.LevelDebug) {
 			slog.DebugContext(ctx, "ext_proc response", "phase", "request_body", "resp", prototext.Format(resp))
 		}
@@ -311,6 +350,12 @@ func (s *ExternalProcessorServer) handleProcessingPhase(ctx context.Context, req
 		}
 		if err != nil {
 			metrics.RequestErrorsTotal.WithLabelValues("response_headers", "processing_failed", routeName).Inc()
+		}
+		// Stamp the terminal HTTP status on the phase span. Only on the success
+		// path: when err != nil, resp is nil and the failure is already recorded
+		// above. The root span is stamped once, by the defer in Process.
+		if err == nil && resp != nil {
+			tracing.RecordHTTPOutcome(span, (*execCtx).resolveTerminalOutcome(resp))
 		}
 		if slog.Default().Enabled(ctx, slog.LevelDebug) {
 			slog.DebugContext(ctx, "ext_proc response", "phase", "response_headers", "resp", prototext.Format(resp))
@@ -359,6 +404,12 @@ func (s *ExternalProcessorServer) handleProcessingPhase(ctx context.Context, req
 		if err != nil {
 			metrics.RequestErrorsTotal.WithLabelValues("response_body", "processing_failed", routeName).Inc()
 		}
+		// Stamp the terminal HTTP status on the phase span. Only on the success
+		// path: when err != nil, resp is nil and the failure is already recorded
+		// above. The root span is stamped once, by the defer in Process.
+		if err == nil && resp != nil {
+			tracing.RecordHTTPOutcome(span, (*execCtx).resolveTerminalOutcome(resp))
+		}
 		if slog.Default().Enabled(ctx, slog.LevelDebug) {
 			slog.DebugContext(ctx, "ext_proc response", "phase", "response_body", "resp", prototext.Format(resp))
 		}
@@ -367,6 +418,11 @@ func (s *ExternalProcessorServer) handleProcessingPhase(ctx context.Context, req
 	default:
 		slog.WarnContext(ctx, "Unknown request type", "type", fmt.Sprintf("%T", req.Request))
 		metrics.RequestErrorsTotal.WithLabelValues("unknown", "unknown_type", "unknown").Inc()
+		// No phase span exists on this path; parentSpan is the only span in scope.
+		tracing.RecordHTTPOutcome(parentSpan, tracing.HTTPOutcome{
+			StatusCode: http.StatusInternalServerError,
+			Reason:     constants.TerminalReasonUnknownMessageType,
+		})
 		return &extprocv3.ProcessingResponse{
 			Response: &extprocv3.ProcessingResponse_ImmediateResponse{
 				ImmediateResponse: &extprocv3.ImmediateResponse{
