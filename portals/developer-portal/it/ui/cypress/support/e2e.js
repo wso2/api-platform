@@ -20,23 +20,8 @@
 // Import custom commands so they are available in all specs.
 import './commands';
 
-// Resolve the default org UUID from the API at runtime so tests are not
-// coupled to a hardcoded UUID that changes between database backends.
-before(() => {
-    const apiKey = Cypress.env('API_KEY');
-    cy.request({
-        method: 'GET',
-        // Must include the API base path — the devportal API router (see
-        // src/routes/api/devportalApiRouter.js) only recognizes requests whose
-        // first path segment matches the OpenAPI spec's server basePath ('api').
-        // A bare '/organizations' falls through to the page-rendering route
-        // tree instead, which misinterprets "organizations" as an org handle.
-        url: '/api/v0.9/organizations',
-        headers: apiKey ? { 'x-wso2-api-key': apiKey } : {},
-        failOnStatusCode: false,
-    }).then((resp) => {
-        if (resp.status === 200 && resp.body && resp.body.list && resp.body.list.length > 0) {
-            Cypress.env('ORG_ID', resp.body.list[0].orgId);
-        }
-    });
-});
+// No org-resolution step: the portal serves the single organization named by its
+// organization.handle config, so specs address it by handle (Cypress.env('ORG_HANDLE'),
+// see commands.js) and never need the internal UUID. GET /api/v0.9/organizations —
+// which this hook used to call — now answers 405, since listing is inherently
+// cross-organization.

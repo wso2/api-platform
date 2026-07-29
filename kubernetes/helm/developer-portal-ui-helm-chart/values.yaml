@@ -151,7 +151,8 @@ config:
         superAdmin: superAdmin
 
   organization:
-    defaultName: default                    # default organization name; "" disables auto-seeding
+    handle: default                         # URL slug: /{handle}/views/{viewName}; required
+    displayName: ""                         # seed-time only; empty means "use the handle"
     autoCreateSubscriptionPlans: true       # auto-create Bronze/Silver/Gold/Unlimited/AsyncUnlimited
 
   # --- Webhook delivery tuning (global) ---

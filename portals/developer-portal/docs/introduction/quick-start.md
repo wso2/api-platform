@@ -41,7 +41,7 @@ It also prompts you for an **admin username and password**. Press Enter at the p
 docker compose up
 ```
 
-This starts the Developer Portal (SQLite by default). On first boot the database schema and a default organization (`default`) with a `default` view are created automatically.
+This starts the Developer Portal (SQLite by default). On first boot the database schema and the configured organization (`default`, per `[developer_portal.organization].handle`) with a `default` view are created automatically.
 
 ### 4. Open the portal
 
@@ -267,7 +267,7 @@ Refresh the portal — the Reading-List-API now appears in the catalog. Click it
 
 | Goal | Where to go |
 |---|---|
-| Customize org name and IdP | [Manage Organizations](../administer/manage-organizations.md) |
+| Customize the org handle/name and IdP | [Manage the Organization](../administer/manage-organizations.md) |
 | Add a filtered view for a different audience | [Manage Views](../administer/manage-views.md) |
 | Register and publish your first API | [Publish APIs](../publish-apis/publishing-apis.md) |
 | Set up subscription plans | [Subscription Plans](../administer/subscription-plans.md) |

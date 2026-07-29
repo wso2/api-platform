@@ -25,6 +25,7 @@ const { config } = require('../config/configLoader');
 const constants = require('../utils/constants');
 const util = require('../utils/util');
 const orgDao = require('../dao/organizationDao');
+const orgContext = require('../utils/orgContext');
 const { validationResult } = require('express-validator');
 const { verifyPlatformJwtClaims } = require('../utils/platformJwt');
 
@@ -287,6 +288,19 @@ const handleLocalLogin = async (req, res) => {
     if (!claims) {
         logger.error('Failed to verify platform API token');
         return res.redirect(`${baseUrl}/login?error=Login+failed%2C+please+try+again`);
+    }
+
+    // The credential is valid, but it belongs to a different organization than the one
+    // this portal serves. authResolver would reject every subsequent API call anyway;
+    // stopping here means the user gets a login error instead of a session that
+    // silently 403s on every page. Reported as a plain credential failure — whether
+    // this portal's organization is the caller's is not something to disclose.
+    if (claims.org_handle && claims.org_handle.toLowerCase() !== orgContext.getHandle()) {
+        logger.warn('Rejected login for a user outside this portal\'s organization', {
+            expected: orgContext.getHandle(),
+        });
+        logUserAction('USER_LOGIN_FAILED', req, { orgName, reason: 'organization_mismatch' });
+        return res.redirect(`${baseUrl}/login?error=Invalid+username+or+password`);
     }
 
     const adminRole = config.auth.idp?.roles?.admin || 'admin';

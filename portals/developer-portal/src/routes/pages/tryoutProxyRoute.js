@@ -23,6 +23,7 @@ const logger = require('../../config/logger');
 const util = require('../../utils/util');
 const { ensureAuthenticated } = require('../../middlewares/ensureAuthenticated');
 const tryoutProxyController = require('../../controllers/tryoutProxyController');
+const { attachOrgGuard } = require('../../middlewares/orgGuard');
 
 // Mounted with `use` rather than a wildcard route: the target URL is appended
 // to this path by Stoplight Elements ("…/tryout-proxy/https://host/path?q=1"),
@@ -133,6 +134,18 @@ function authenticateLikeSpecPage(req, res, next) {
         return next();
     });
 }
+
+// Pin every ':orgName' in this router to the organization this instance serves;
+// anything else is a 404 before the route's own handlers run. Answered as JSON for
+// the same reason unauthorizedJson exists above: the try-it panel fetches this
+// endpoint, so app.js's HTML error page would arrive where JSON is expected. A 500
+// stays generic — the reason is logged inside the guard.
+attachOrgGuard(router, 'orgName', (res, err) => res.status(err.status).json({
+    error: err.status === 404 ? 'not_found' : 'internal_error',
+    message: err.status === 404
+        ? 'The requested resource was not found.'
+        : 'An unexpected error occurred.',
+}));
 
 router.use(
     '/:orgName/views/:viewName/:apiType/:apiHandle/tryout-proxy',

@@ -25,7 +25,7 @@ Retrieves a single organization theme asset (CSS, image, etc.) by `fileType` and
 |fileType|query|string|true|Organization content file type, such as style, image, text, template, or partial.|
 |fileName|query|string|true|Stored organization content file name.|
 |filePath|query|string|false|Optional relative content path used together with `fileType` and `fileName`.|
-|orgId|query|string|false|Organization ID used to resolve a view's public style/image asset when no session is present (e.g. the pre-auth login page). Ignored for authenticated requests, which use the session organization.|
+|orgId|query|string|false|DEPRECATED and ignored. Accepted only so existing callers (the portal's own style-URL rewrite appends it) are not rejected. The organization is always this instance's own — from the session when there is one, otherwise from `organization.handle` configuration. It was previously honoured on this unauthenticated endpoint, which made it a selector for any organization's branding in a shared database.|
 |viewId|path|string|true|The view's handle (unique per org). Not the internal database uuid.|
 
 > Example responses

@@ -18,6 +18,7 @@
  
 const adminService = require('../services/adminService');
 const orgDao = require('../dao/organizationDao');
+const orgContext = require('../utils/orgContext');
 const userIdpReferenceDao = require('../dao/userIdpReferenceDao');
 const util = require('../utils/util');
 const logger = require('../config/logger');
@@ -52,6 +53,9 @@ function serveDefaultContentAsset(res, fileType, fileName) {
 
 const getOrganization = async (req, res) => {
     try {
+        // Only this instance's own organization is readable — the {orgId} parameter
+        // selects nothing else, even though the shared database holds other orgs.
+        await orgContext.requirePinnedOrg(req.params.orgId);
         const organization = await getOrganizationDetails(req.params.orgId);
         res.status(200).json(organization);
     } catch (error) {
@@ -78,16 +82,25 @@ const getOrganizationDetails = async (orgId) => {
 const getOrgContent = async (req, res) => {
     try {
         if (req.query.fileType && req.query.fileName) {
-            // The asset endpoint is public (e.g. the login page fetches CSS before a
-            // session exists). Without a resolved org we can't look up a view-specific
-            // asset — and passing an undefined org into the DAO throws — so only attempt
-            // the lookup when we have an org, and treat any miss/error as "fall back to
-            // the packaged default content" rather than a hard 404.
-            // Session org always wins. For public style/image assets (e.g. the pre-auth
-            // login page, which has no session) allow the org to be named via query param
-            // so the view's theme can still be resolved; these assets are public branding.
-            const assetOrgId = req.orgId
-                || (DEFAULT_CONTENT_DIRS[req.query.fileType] ? req.query.orgId : undefined);
+            // This endpoint is public — the login page fetches its CSS before a session
+            // exists. The session org wins when there is one; otherwise style/image
+            // assets fall back to this instance's own organization so the view's theme
+            // still resolves.
+            //
+            // That fallback is the *configured* organization, never the caller-supplied
+            // ?orgId. The database is shared across organizations, so on an endpoint with
+            // no credential that query parameter would be an unauthenticated selector for
+            // any tenant's branding. It is still accepted (util.js's style-URL rewrite
+            // appends it, and the spec declares it) and ignored.
+            //
+            // Anything short of a resolved org plus a matching row — no org, a lookup
+            // fault, no such asset — degrades to the packaged default content below
+            // rather than a hard 404. The org is also guarded because passing an
+            // undefined one into the DAO throws.
+            let assetOrgId = req.orgId;
+            if (!assetOrgId && DEFAULT_CONTENT_DIRS[req.query.fileType]) {
+                assetOrgId = await orgContext.getOrgUuid().catch(() => null);
+            }
             let asset = null;
             if (assetOrgId) {
                 try {

@@ -98,7 +98,7 @@ describe('webhook subscribers', () => {
         // updated", but it references the base WebhookSubscriberRequest schema,
         // which requires `displayName` and `targetUrl` — the server enforces the
         // schema, rejecting a PUT that omits either with a 400. Doc/implementation
-        // mismatch, so we resend displayName (unchanged) alongside the updates.
+        // mismatch.
         const res = await client.as('admin').put(`/webhook-subscribers/${subscriber.id}`, {
             displayName: subscriber.displayName,
             targetUrl: 'https://updated.example.invalid/webhook',
@@ -145,6 +145,7 @@ describe('webhook subscribers', () => {
         // ending in ".*" (prefix match); anything else — like "*.created" — is
         // compared with strict equality against the event type, so it's accepted
         // at creation time but will simply never match any real event type.
+        const handle = uniqueHandle('literal-pattern-subscriber');
         const res = await client.as('admin').post('/webhook-subscribers', {
             id: uniqueHandle('literal-pattern-subscriber'),
             displayName: 'Literal Pattern Subscriber',

@@ -104,3 +104,12 @@ platform_api_url = '{{ env "APIP_DP_AUTH_LOCAL_PLATFORM_API_URL" "https://platfo
 # points it at the host-side copy in resources/keys.
 public_key_path  = '{{ env "APIP_DP_AUTH_LOCAL_PUBLIC_KEY_PATH" "/etc/devportal/keys/jwt_public.pem" }}'
 tls_skip_verify  = '{{ env "APIP_DP_AUTH_LOCAL_TLS_SKIP_VERIFY" "true" }}'
+
+# The single organization this instance serves — the {handle} segment of
+# /{handle}/views/{viewName}. Required; the portal refuses to start without it.
+# In auth.mode = "local" it must match the Platform API's
+# [platform_api.auth.file.organization] id, which is what its tokens carry in the
+# org_handle claim.
+[developer_portal.organization]
+handle       = '{{ env "APIP_DP_ORGANIZATION_HANDLE" "default" }}'
+display_name = '{{ env "APIP_DP_ORGANIZATION_DISPLAY_NAME" "Default" }}'

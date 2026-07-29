@@ -18,11 +18,11 @@ Base URLs:
 
 ### [Organizations](organizations.md)
 
-- [Create an organization](organizations.md#create-an-organization)
-- [List organizations](organizations.md#list-organizations)
+- [Create an organization (not supported)](organizations.md#create-an-organization-not-supported)
+- [List organizations (not supported)](organizations.md#list-organizations-not-supported)
 - [Update an organization](organizations.md#update-an-organization)
 - [Get an organization](organizations.md#get-an-organization)
-- [Delete an organization](organizations.md#delete-an-organization)
+- [Delete an organization (not supported)](organizations.md#delete-an-organization-not-supported)
 
 ### [Organization Content](organization-content.md)
 

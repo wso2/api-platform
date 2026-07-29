@@ -379,4 +379,83 @@ function validateDatabasePoolConfig(database) {
 
 validateDatabasePoolConfig(config.database);
 
+/**
+ * Resolves organization.handle and fails closed when it is missing or unusable.
+ *
+ * This portal instance serves exactly one organization, so an unresolvable handle
+ * is not a degraded mode — every page route and REST request would reject with no
+ * clear cause. Catch it at startup instead, following the same fail-closed pattern
+ * as the secret/pool checks above.
+ *
+ * Design mode is the one exception: it renders from disk and never touches the
+ * organization tables (see app.js's designMode branch), so it has no organization
+ * to pin. That makes this a narrow, explicit opt-out rather than an implicit
+ * fallback to "no organization configured".
+ *
+ * `tomlOrg` is the raw [developer_portal.organization] table — needed to tell an
+ * explicitly-configured handle apart from the DEFAULTS one, which is what makes
+ * the deprecated default_name alias resolvable.
+ */
+// Permissive enough for any handle orgDao.create() would have accepted (it only
+// lowercases), strict enough that the value is safe to interpolate into the
+// redirect targets built from it — a handle containing '/' or '\' could otherwise
+// turn a relative redirect into an off-site one, the same hazard authController's
+// SAFE_HANDLE guards against for the URL-supplied value.
+const ORG_HANDLE_PATTERN = /^[a-z0-9][a-z0-9._-]*$/;
+
+function resolveOrganizationConfig(cfg, tomlOrg) {
+    const org = cfg.organization;
+    // Read `handle` from the raw config.toml table, not from cfg: DEFAULTS always
+    // supplies a handle, so the merged value can't distinguish "the operator set
+    // this" from "nobody set anything". Only an explicitly-configured handle may
+    // take precedence over the deprecated default_name.
+    const trimmed = (v) => (typeof v === 'string' ? v.trim() : '');
+    const explicit = trimmed(tomlOrg?.handle);
+    const legacy = trimmed(tomlOrg?.defaultName);
+
+    if (!explicit && legacy) {
+        process.stderr.write(
+            `[WARN] Config: organization.default_name ("${legacy}") is deprecated — rename it to ` +
+            'organization.handle. Using its value for this run.\n'
+        );
+        org.handle = legacy;
+    } else if (legacy && legacy !== explicit) {
+        process.stderr.write(
+            `[WARN] Config: organization.default_name ("${legacy}") is deprecated and ignored ` +
+            `because organization.handle ("${explicit}") is set. Remove default_name.\n`
+        );
+    }
+
+    if (cfg.designMode?.enabled) {
+        // Nothing to pin — design mode renders from disk. Leave whatever resolved
+        // above in place (unused) rather than validating it.
+        return;
+    }
+
+    if (!org.handle) {
+        process.stderr.write(
+            '[FATAL] organization.handle is not configured. This portal serves a single ' +
+            'organization and cannot start without knowing which one. Set it in ' +
+            "configs/config.toml, e.g. handle = '{{ env \"APIP_DP_ORGANIZATION_HANDLE\" \"default\" }}'.\n"
+        );
+        process.exit(1);
+    }
+
+    // Handles are stored lowercase (orgDao.create lowercases on insert and
+    // findOrgByIdentifier lowercases on lookup), so normalize here too — otherwise
+    // a config value of "Acme" would never match the stored "acme".
+    org.handle = org.handle.toLowerCase();
+
+    if (!ORG_HANDLE_PATTERN.test(org.handle)) {
+        process.stderr.write(
+            `[FATAL] organization.handle ("${org.handle}") is not a valid handle. ` +
+            'Expected a URL-safe slug starting with a letter or digit and containing only ' +
+            'letters, digits, dots, underscores, and hyphens.\n'
+        );
+        process.exit(1);
+    }
+}
+
+resolveOrganizationConfig(config, interpolatedTomlConfig.organization);
+
 module.exports = { config };

@@ -115,9 +115,15 @@ data:
     super_admin = {{ $auth.idp.roles.superAdmin | quote }}
     {{- end }}
 
+    {{- $org := $cfg.organization }}
+    {{- $orgHandle := $org.handle | default $org.defaultName }}
+    {{- if not $orgHandle }}
+      {{- fail "developerPortal.config.organization.handle is required" }}
+    {{- end }}
     [developer_portal.organization]
-    default_name = {{ $cfg.organization.defaultName | quote }}
-    auto_create_subscription_plans = {{ $cfg.organization.autoCreateSubscriptionPlans }}
+    handle = {{ $orgHandle | quote }}
+    display_name = {{ $org.displayName | default "" | quote }}
+    auto_create_subscription_plans = {{ $org.autoCreateSubscriptionPlans }}
 
     [developer_portal.webhooks.delivery]
     poll_interval_ms = {{ $cfg.webhooksDelivery.pollIntervalMs | int }}

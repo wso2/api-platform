@@ -19,6 +19,7 @@ const express = require('express');
 const router = express.Router({ mergeParams: true });
 const mcpRegistryService = require('../../services/mcpRegistryService');
 const { enforceSecurity } = require('../../middlewares/ensureAuthenticated');
+const { orgGuardMiddleware } = require('../../middlewares/orgGuard');
 const constants = require('../../utils/constants');
 
 router.use((req, res, next) => {
@@ -29,6 +30,19 @@ router.use((req, res, next) => {
     }
     next();
 });
+
+// ':orgHandle' is captured by this router's MOUNT paths in app.js
+// ('/registry/:orgHandle' and '/:orgHandle/registry'), not by its own route paths,
+// so a router.param() registered here would never fire for it — the middleware form
+// reads the same mergeParams value the service handlers below use. Runs after CORS
+// so a rejected cross-organization request still answers preflight consistently.
+// The rejection is answered here rather than via next(): every other response from
+// this router is JSON (mcpRegistryService.sendError's { error } shape), and its
+// callers are MCP clients, so falling through to app.js's HTML error page would hand
+// a program a page. A 500 stays generic — the reason is logged inside the guard.
+router.use(orgGuardMiddleware('orgHandle', (res, err) => res.status(err.status).json({
+    error: err.status === 404 ? 'Not Found' : 'Internal Server Error',
+})));
 
 // Discovery endpoints (public)
 router.get('/v0.1/servers', mcpRegistryService.listServers);

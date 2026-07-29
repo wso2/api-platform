@@ -25,6 +25,7 @@ const webhookDispatcher = require('./services/webhooks/dispatcher');
 const webhookDeliveryWorker = require('./services/webhooks/deliveryWorker');
 const db = require('./db/driver');
 const { seedDefaultOrg } = require('./services/seederService');
+const orgContext = require('./utils/orgContext');
 const app = require('./app');
 
 const liveReload = process.env.NODE_ENV === 'development' ? require('./liveReload') : null;
@@ -71,7 +72,7 @@ function printBanner(visitUrl) {
 }
 
 function logStartupBanner() {
-    const orgSegment = config.designMode?.enabled ? '' : `/${config.organization.defaultName || '<organization>'}`;
+    const orgSegment = config.designMode?.enabled ? '' : `/${orgContext.getHandle()}`;
     // The bare org URL redirects server-side to /views/default (orgContentRoute.js) —
     // shorter and avoids baking view-naming details into the banner.
     const scheme = config.server.https.enabled && !config.designMode?.enabled ? 'https' : 'http';
@@ -109,11 +110,8 @@ async function ensureSchema() {
     logger.info('Database: SQLite schema ensured ✓');
 }
 
-async function onListening() {
+function onListening() {
     startBackgroundServices();
-    await seedDefaultOrg().catch(err =>
-        logger.error('Unexpected error during default org seeding', { error: err.message })
-    );
     logStartupBanner();
 }
 
@@ -122,6 +120,14 @@ let server;
 async function startServer() {
     logger.info('Developer Portal starting...');
     await ensureSchema();
+
+    // Seed before binding the listener, not from the 'listening' callback. This
+    // portal serves exactly one organization and cannot do anything without its row:
+    // every scoped lookup would 500 and both background workers scope their claim
+    // queries to it. Seeding here means a failure aborts startup (see the catch on
+    // the startServer() call below) rather than leaving a process that answers
+    // /health 200 while being unable to serve a single page.
+    await seedDefaultOrg();
 
     if (!config.server.https.enabled || config.designMode?.enabled) {
         server = http.createServer(app).listen(PORT, '0.0.0.0', onListening);
@@ -149,7 +155,14 @@ async function startServer() {
     }
 }
 
-startServer();
+startServer().catch((err) => {
+    logger.error('Developer Portal failed to start', {
+        error: err.message,
+        stack: err.stack,
+        operation: 'startServer',
+    });
+    process.exit(1);
+});
 
 // Handle Uncaught Exceptions
 process.on('uncaughtException', (err) => {

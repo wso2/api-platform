@@ -56,32 +56,19 @@ paths:
     post:
       tags:
         - Organizations
-      summary: Create an organization
+      summary: Create an organization (not supported)
       description: >-
-        Creates a Developer Portal organization and initializes its default portal configuration, default label, default
-        view, and default subscription plans when configured.
+        NOT SUPPORTED — always returns 405. This Developer Portal serves the single organization named by its
+        `organization.handle` configuration, which is created on startup along with its default portal
+        configuration, label, view, and subscription plans. The operation is retained for forward compatibility.
       operationId: createOrganization
       requestBody:
         $ref: "#/components/requestBodies/OrganizationCreateBody"
       responses:
-        "201":
-          description: Organization created successfully.
-          headers:
-            Location:
-              description: URL of the created organization.
-              schema:
-                type: string
-                format: uri
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/OrganizationResponse"
         "400":
           $ref: "#/components/responses/BadRequest"
-        "404":
-          $ref: "#/components/responses/NotFound"
-        "409":
-          $ref: "#/components/responses/Conflict"
+        "405":
+          $ref: "#/components/responses/MethodNotAllowed"
         "415":
           $ref: "#/components/responses/UnsupportedMediaType"
         "500":
@@ -93,12 +80,15 @@ paths:
     get:
       tags:
         - Organizations
-      summary: List organizations
-      description: Returns all Developer Portal organizations visible to the admin context.
+      summary: List organizations (not supported)
+      description: >-
+        NOT SUPPORTED — always returns 405. Listing is inherently cross-organization, and this Developer Portal
+        serves exactly one. Use `GET /organizations/{orgId}` with this instance's own handle instead. The
+        operation is retained for forward compatibility.
       operationId: getOrganizations
       responses:
-        "200":
-          $ref: "#/components/responses/OrganizationListResponse"
+        "405":
+          $ref: "#/components/responses/MethodNotAllowed"
         "500":
           $ref: "#/components/responses/InternalServerError"
       security:
@@ -112,7 +102,11 @@ paths:
       tags:
         - Organizations
       summary: Update an organization
-      description: Updates organization metadata, claim mappings, role mappings, and portal configuration.
+      description: >-
+        Updates organization metadata, claim mappings, role mappings, and portal configuration. `orgId` must name
+        this instance's own organization; any other returns 403. The `id` (handle) and `idpRefId` fields cannot be
+        changed — they are what page URLs and incoming token organization claims are matched against, so a rename
+        would leave the running instance unable to find its own organization. Sending a different value returns 400.
       operationId: updateOrganization
       requestBody:
         $ref: "#/components/requestBodies/OrganizationUpdateBody"
@@ -121,6 +115,8 @@ paths:
           $ref: "#/components/responses/OrganizationResponse"
         "400":
           $ref: "#/components/responses/BadRequest"
+        "403":
+          $ref: "#/components/responses/Forbidden"
         "404":
           $ref: "#/components/responses/NotFound"
         "409":
@@ -136,14 +132,16 @@ paths:
         - Organizations
       summary: Get an organization
       description: >-
-        Retrieves a single organization by organization ID, organization name, organization handle, or organization
-        identifier.
+        Retrieves this instance's organization by organization name, handle, or IDP reference ID. Because the portal
+        serves a single organization, `orgId` must resolve to that one; any other organization returns 403 — and so
+        does an organization that does not exist, so the response cannot be used to discover which organizations the
+        shared database holds.
       operationId: getOrganization
       responses:
         "200":
           $ref: "#/components/responses/OrganizationResponse"
-        "404":
-          $ref: "#/components/responses/NotFound"
+        "403":
+          $ref: "#/components/responses/Forbidden"
         "500":
           $ref: "#/components/responses/InternalServerError"
       security:
@@ -153,16 +151,17 @@ paths:
     delete:
       tags:
         - Organizations
-      summary: Delete an organization
-      description: Deletes an organization and returns no response body when deletion succeeds.
+      summary: Delete an organization (not supported)
+      description: >-
+        NOT SUPPORTED — always returns 405. This Developer Portal instance is bound to a single organization for
+        its whole lifetime; deleting it would leave the instance serving nothing. The operation is retained for
+        forward compatibility.
       operationId: deleteOrganization
       responses:
-        "204":
-          description: Organization deleted successfully.
         "400":
           $ref: "#/components/responses/BadRequest"
-        "404":
-          $ref: "#/components/responses/NotFound"
+        "405":
+          $ref: "#/components/responses/MethodNotAllowed"
         "500":
           $ref: "#/components/responses/InternalServerError"
       security:
@@ -187,12 +186,16 @@ paths:
         - name: orgId
           in: query
           required: false
+          deprecated: true
           schema:
             type: string
           description: >-
-            Organization ID used to resolve a view's public style/image asset when no
-            session is present (e.g. the pre-auth login page). Ignored for authenticated
-            requests, which use the session organization.
+            DEPRECATED and ignored. Accepted only so existing callers (the portal's own
+            style-URL rewrite appends it) are not rejected. The organization is always this
+            instance's own — from the session when there is one, otherwise from
+            `organization.handle` configuration. It was previously honoured on this
+            unauthenticated endpoint, which made it a selector for any organization's
+            branding in a shared database.
       responses:
         "200":
           $ref: "#/components/responses/OrganizationContentAssetResponse"
@@ -602,9 +605,9 @@ paths:
         returned as binary content with a media type derived from the file extension.
 
         Image files (`type=IMAGE`) are publicly readable so that an API's icon renders on the public
-        listing and landing pages without a session — pass `orgId` to resolve the view when no session
-        is present (mirrors `GET /views/{viewId}/asset`). All other content categories require a session:
-        an anonymous request for a non-image type is rejected.
+        listing and landing pages without a session; the organization is then this instance's own
+        configured one (mirrors `GET /views/{viewId}/asset`). All other content categories require a
+        session: an anonymous request for a non-image type is rejected.
       operationId: getApiContentFile
       security: []
       parameters:
@@ -613,12 +616,15 @@ paths:
         - name: orgId
           in: query
           required: false
+          deprecated: true
           schema:
             type: string
           description: >-
-            Organization ID used to resolve the API's public image asset when no session is present
-            (e.g. the pre-auth listing/landing page). Ignored for authenticated requests, which use the
-            session organization. Only honored for `type=IMAGE`.
+            DEPRECATED and ignored. Accepted only so existing callers (the portal's own image-URL
+            rewrite appends it) are not rejected. The organization is always this instance's own —
+            from the session when there is one, otherwise from `organization.handle` configuration.
+            It was previously honoured on this unauthenticated endpoint, which made it a selector
+            for any organization's API icons in a shared database.
       responses:
         "200":
           $ref: "#/components/responses/ContentAssetResponse"
@@ -3511,6 +3517,22 @@ components:
             status: error
             code: UNSUPPORTED_MEDIA_TYPE
             message: Content-Type must be application/json.
+    MethodNotAllowed:
+      description: >-
+        The operation is not offered by this deployment. Returned by the organization
+        lifecycle operations, which a Developer Portal serving a single organization does
+        not expose — that organization is configured and provisioned at startup.
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+          example:
+            status: error
+            code: METHOD_NOT_ALLOWED
+            message: >-
+              This Developer Portal serves a single organization, which is configured and
+              provisioned at startup. Organizations cannot be created, listed, or deleted
+              through the API.
     InternalServerError:
       description: Internal server error.
       content:
@@ -3534,7 +3556,12 @@ components:
           schema:
             type: string
     Forbidden:
-      description: Request is forbidden for the current runtime mode or caller permissions.
+      description: >-
+        Request is forbidden — because the caller lacks the required permission, because the
+        current runtime mode disallows the operation (read-only mode), or because an organization
+        was named that is not the single one this instance serves. In that last case an
+        organization that does not exist is answered identically to one belonging to someone else,
+        so the response cannot be used to discover what a shared database holds.
       content:
         application/json:
           schema:
@@ -3542,7 +3569,7 @@ components:
           example:
             status: error
             code: FORBIDDEN
-            message: Write operations are disabled in read-only mode.
+            message: Forbidden
     ApiMetadataCreateResponse:
       description: Created API metadata payload returned by the service.
       headers:

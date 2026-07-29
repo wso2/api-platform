@@ -1,65 +1,64 @@
-# Manage Organizations
+# Manage the Organization
 
-An organization is the top-level multi-tenant unit in the Developer Portal. Each organization has its own API catalog, applications, subscriptions, and branding. The organization handle appears in every portal URL (`/<orgHandle>/views/<viewName>`).
+An organization owns an API catalog, its applications, subscriptions, and branding. **A Developer Portal instance serves exactly one organization**, named by `organization.handle` in its configuration. That handle appears in every portal URL (`/<orgHandle>/views/<viewName>`).
 
-## Create an Organization
+The database schema is still multi-organization, so one shared database can hold many organizations — but each is served by its own portal instance, and an instance rejects anything belonging to another one:
 
-Create an `org.yaml` file using the Organization manifest format:
+| Surface | A different organization gets |
+|---|---|
+| Page URL (`/<orgHandle>/...`) | `404 Not Found` |
+| `organization` request header on an API-key call | `403 Forbidden` |
+| Organization claim in a session or bearer token | `403 Forbidden` (login itself is refused) |
+| `GET`/`PUT /organizations/{orgId}` | `403 Forbidden` |
 
-```yaml
-# org.yaml
-apiVersion: devportal.api-platform.wso2.com/v1alpha2
-kind: Organization
+An organization that doesn't exist gets the same `403` as one that does but isn't this portal's, so the responses can't be used to discover which organizations the shared database holds.
 
-metadata:
-  name: acme                     # orgHandle — used in portal URLs
+## Configure the Organization
 
-spec:
-  displayName: Acme Corp
-  idpRefId: ACME                 # value of the org claim for this org's users
-  cpRefId: cp-ref-acme            # optional Control Plane reference ID
-  businessOwner: Platform Team
-  businessOwnerContact: "+1-202-555-0147"
-  businessOwnerEmail: platform-team@acme.com
-
-  labels:
-    - name: default
-      displayName: Default
-
-  views:
-    - handle: default
-      name: Default View
-      labels:
-        - default
+```toml
+[developer_portal.organization]
+handle       = "acme"     # URL slug: /acme/views/default
+display_name = "Acme Corp"
 ```
+
+`handle` is **required** — the portal refuses to start without it, since a single-organization portal that doesn't know its organization would reject every request. (Design mode is the exception: it renders from disk and has no organization to pin.)
+
+Both values also accept environment references, which is how a containerized deployment sets them:
+
+```toml
+handle       = '{{ env "APIP_DP_ORGANIZATION_HANDLE" "default" }}'
+display_name = '{{ env "APIP_DP_ORGANIZATION_DISPLAY_NAME" "Default" }}'
+```
+
+> `organization.default_name` is the **deprecated** name for `handle`. It still works, with a warning at startup — rename it.
+
+### Matching the Platform API in local auth mode
+
+With `auth.mode = "local"`, `handle` **must** match the Platform API's `[platform_api.auth.file.organization].id`. That value is what the Platform API puts in the `org_handle` claim of the tokens this portal verifies, so a mismatch means every login is refused with a generic credential error (the specific reason is logged server-side only).
+
+In `auth.mode = "idp"`, the organization claim your IDP asserts must resolve to this organization — matched against its handle, display name, or `idpRefId`.
+
+## Provisioning
+
+The organization is created on startup if it doesn't already exist, along with a `default` label, a `default` view, and the default subscription plans (unless `auto_create_subscription_plans = false`). The seeder is idempotent: an existing organization missing any of those defaults gets them added, and its `display_name` is **not** overwritten — so an edit made through the settings UI survives restarts.
+
+Because provisioning is the seeder's job, the organization lifecycle is not client-driven. These operations return `405 Method Not Allowed`:
+
+| Operation | Why |
+|---|---|
+| `POST /organizations` | The seeder owns creation |
+| `GET /organizations` | Listing is inherently cross-organization |
+| `DELETE /organizations/{orgId}` | An instance is bound to its organization for its whole lifetime |
+
+They remain in the OpenAPI spec, and the code behind them is intact, so they can be re-enabled without an API change.
+
+## Read the Organization
 
 ```bash
-curl -k -X POST https://localhost:9543/api/v0.9/organizations \
-  -H "Authorization: Bearer $TOKEN" \
-  -F "organization=@org.yaml"
+curl -k https://localhost:9543/api/v0.9/organizations/acme -H "Authorization: Bearer $TOKEN"
 ```
 
-| Field | Required | Description |
-|---|---|---|
-| `metadata.name` | Yes | URL-safe org handle used in all portal URLs (becomes `orgHandle`) |
-| `spec.displayName` | Yes | Human-friendly organization name shown in the portal UI |
-| `spec.idpRefId` | Yes | The org claim value asserted by your Identity Provider at SSO login. The portal matches an authenticated user's org claim against this value to resolve which organization they belong to — it must exactly match, or login fails for that org's users. |
-| `spec.cpRefId` | No | Control Plane reference ID, included in outbound webhook event payloads. Not used for authentication. |
-| `spec.businessOwner` | No | Contact name for the organization owner |
-| `spec.businessOwnerContact` | No | Business owner's phone or contact string |
-| `spec.businessOwnerEmail` | No | Business owner's email address |
-| `spec.labels` | No | Labels to create for this org (array of `{name, displayName}`). Defaults to a single `default` label if omitted |
-| `spec.views` | No | Views to create for this org (array of `{handle, name, labels}`). Defaults to a single `default` view if omitted |
-
-After creation, the organization is accessible at `/<orgHandle>/views/<viewName>` once a view is created for it.
-
-## List Organizations
-
-```bash
-curl -k https://localhost:9543/api/v0.9/organizations -H "Authorization: Bearer $TOKEN"
-```
-
-## Update an Organization
+## Update the Organization
 
 ```yaml
 # org-update.yaml
@@ -76,18 +75,24 @@ spec:
 ```
 
 ```bash
-curl -k -X PUT https://localhost:9543/api/v0.9/organizations/{orgId} \
+curl -k -X PUT https://localhost:9543/api/v0.9/organizations/acme \
   -H "Authorization: Bearer $TOKEN" \
   -F "organization=@org-update.yaml"
 ```
 
-## Delete an Organization
+| Field | Required | Description |
+|---|---|---|
+| `metadata.name` | Yes | The org handle. **Immutable** — must equal `organization.handle`; any other value returns `400` |
+| `spec.displayName` | Yes | Human-friendly organization name shown in the portal UI |
+| `spec.idpRefId` | No | The org claim value asserted by your Identity Provider at SSO login. **Immutable** — changing it returns `400` |
+| `spec.cpRefId` | No | Control Plane reference ID, included in outbound webhook event payloads. Not used for authentication |
+| `spec.businessOwner` | No | Contact name for the organization owner |
+| `spec.businessOwnerContact` | No | Business owner's phone or contact string |
+| `spec.businessOwnerEmail` | No | Business owner's email address |
+| `spec.labels` | No | Labels to upsert (array of `{name, displayName}`) |
+| `spec.views` | No | Views to upsert (array of `{handle, name, labels}`) |
 
-```bash
-curl -k -X DELETE https://localhost:9543/api/v0.9/organizations/{orgId} -H "Authorization: Bearer $TOKEN"
-```
-
-> **Warning:** Deleting an organization removes all of its views, APIs, subscriptions, and applications. This action is irreversible.
+The handle and `idpRefId` are immutable because they are what page URLs and incoming token organization claims are matched against. Renaming either would leave the running instance unable to find its own organization — every page returning `404` and every login `403` — until an operator edited the configuration to match.
 
 ---
 
@@ -159,7 +164,7 @@ For scripts and CLI tools, get a Bearer token directly from the Platform API and
 TOKEN=$(curl -sk -X POST "https://localhost:9243/api/portal/v0.9/auth/login" \
   -d "username=<admin-username>&password=<admin-password>" | jq -r .token)
 
-curl -sk -H "Authorization: Bearer $TOKEN" https://localhost:9543/api/v0.9/organizations
+curl -sk -H "Authorization: Bearer $TOKEN" https://localhost:9543/api/v0.9/organizations/acme
 ```
 
 The token is verified locally by the Developer Portal against the Platform API's RS256 public key (`auth.local.public_key_path`), with no extra call to the Platform API per request.
@@ -170,4 +175,4 @@ The token is verified locally by the Developer Portal against the Platform API's
 
 ## Default Organization
 
-When the portal starts (or via the Docker init scripts), a default organization named `ACME` with a `default` view and `default` label is created automatically. You can rename or reconfigure it after first boot.
+Out of the box `organization.handle` is `default`, so a fresh install comes up at `/default/views/default` with a `default` view and `default` label. Set `handle` and `display_name` before first boot to name it something else — the handle cannot be changed afterwards without also updating the configuration (see [Update the Organization](#update-the-organization)).
