@@ -24,6 +24,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"log/slog"
+	"maps"
 	"math"
 	"net"
 	"net/url"
@@ -52,8 +53,11 @@ import (
 	luav3 "github.com/envoyproxy/go-control-plane/envoy/extensions/filters/http/lua/v3"
 	router "github.com/envoyproxy/go-control-plane/envoy/extensions/filters/http/router/v3"
 	hcm "github.com/envoyproxy/go-control-plane/envoy/extensions/filters/network/http_connection_manager/v3"
+	otelresourcedetectorsv3 "github.com/envoyproxy/go-control-plane/envoy/extensions/tracers/opentelemetry/resource_detectors/v3"
 	tlsv3 "github.com/envoyproxy/go-control-plane/envoy/extensions/transport_sockets/tls/v3"
 	matcher "github.com/envoyproxy/go-control-plane/envoy/type/matcher/v3"
+	metadatav3 "github.com/envoyproxy/go-control-plane/envoy/type/metadata/v3"
+	tracingv3 "github.com/envoyproxy/go-control-plane/envoy/type/tracing/v3"
 	typev3 "github.com/envoyproxy/go-control-plane/envoy/type/v3"
 	"github.com/envoyproxy/go-control-plane/pkg/cache/types"
 	"github.com/envoyproxy/go-control-plane/pkg/resource/v3"
@@ -75,6 +79,10 @@ const (
 	ExternalProcessorGRPCServiceClusterName = "ext-processor-grpc-service"
 	OTELCollectorClusterName                = "otel_collector"
 	WebSubHubInternalClusterName            = "WEBSUBHUB_INTERNAL_CLUSTER"
+
+	// Upstream endpoint metadata carrying the backend hostname for tracing peer identity.
+	envoyLBMetadataNamespace   = "envoy.lb"
+	envoyLBHostnameMetadataKey = "hostname"
 )
 
 func checkedUInt32FromPositiveInt(fieldName string, value int) (uint32, error) {
@@ -546,6 +554,12 @@ func (t *Translator) createWeightedCluster(
 			lb.LoadBalancingWeight = &wrapperspb.UInt32Value{Value: uint32(*ep.Weight)}
 		}
 
+		// Each endpoint in a weighted upstream can have a different hostname (round-robin/
+		// failover across distinct backends), so peer.service metadata is stamped per-endpoint
+		// here too, mirroring processEndpoint (the single-endpoint path). Without this, any
+		// upstream with more than one endpoint would have no peer.service tracing tag at all.
+		setEndpointPeerHostname(lb, ep.Host)
+
 		// When the upstream definition is HTTPS, dial each endpoint over TLS. Endpoints in a
 		// weighted definition can have different hostnames, so each gets its own transport
 		// socket match carrying an UpstreamTlsContext with that endpoint's SNI, and the
@@ -574,15 +588,7 @@ func (t *Translator) createWeightedCluster(
 						},
 					},
 				})
-				lb.Metadata = &core.Metadata{
-					FilterMetadata: map[string]*structpb.Struct{
-						constants.TransportSocketMatchKey: {
-							Fields: map[string]*structpb.Value{
-								constants.LoadBalancerIDKey: structpb.NewStringValue(matchID),
-							},
-						},
-					},
-				}
+				setEndpointTransportSocketMatchID(lb, matchID)
 			}
 		}
 
@@ -1185,6 +1191,21 @@ func (t *Translator) resolveUpstreamCluster(upstreamName string, up *api.Upstrea
 // SharedRouteConfigName is the name of the shared route configuration used by both HTTP and HTTPS listeners
 const SharedRouteConfigName = "shared_route_config"
 
+// convertPathWithEscapedSlashesAction maps the configured string to the Envoy HCM enum.
+// Unknown values fall back to KEEP_UNCHANGED.
+func convertPathWithEscapedSlashesAction(action string) hcm.HttpConnectionManager_PathWithEscapedSlashesAction {
+	switch action {
+	case commonconstants.REJECT_REQUEST:
+		return hcm.HttpConnectionManager_REJECT_REQUEST
+	case commonconstants.UNESCAPE_AND_REDIRECT:
+		return hcm.HttpConnectionManager_UNESCAPE_AND_REDIRECT
+	case commonconstants.UNESCAPE_AND_FORWARD:
+		return hcm.HttpConnectionManager_UNESCAPE_AND_FORWARD
+	default:
+		return hcm.HttpConnectionManager_KEEP_UNCHANGED
+	}
+}
+
 // createListener creates an Envoy listener with access logging
 // If isHTTPS is true, creates an HTTPS listener with TLS configuration
 // Uses RDS (Route Discovery Service) to share route configuration between listeners
@@ -1251,6 +1272,11 @@ func (t *Translator) createListener(virtualHosts []*route.VirtualHost, isHTTPS b
 		CommonHttpProtocolOptions: &core.HttpProtocolOptions{
 			IdleTimeout: durationpb.New(t.routerConfig.HTTPListener.Timeouts.IdleTimeout),
 		},
+		// Resolve dot-segments and merge duplicate slashes before route matching (enabled unless
+		// explicitly disabled). Escaped slashes are handled separately via PathWithEscapedSlashesAction.
+		NormalizePath:                wrapperspb.Bool(!t.routerConfig.HTTPListener.DisablePathNormalization),
+		MergeSlashes:                 !t.routerConfig.HTTPListener.DisablePathNormalization,
+		PathWithEscapedSlashesAction: convertPathWithEscapedSlashesAction(t.routerConfig.HTTPListener.PathWithEscapedSlashesAction),
 	}
 
 	// Add access logs if enabled
@@ -1330,7 +1356,7 @@ func (t *Translator) createListener(virtualHosts []*route.VirtualHost, isHTTPS b
 				},
 			},
 		},
-		FilterChains: []*listener.FilterChain{filterChain},
+		FilterChains:                  []*listener.FilterChain{filterChain},
 		PerConnectionBufferLimitBytes: wrapperspb.UInt32(t.routerConfig.HTTPListener.PerConnectionBufferLimitBytes),
 	}, routeConfig, nil
 }
@@ -2418,6 +2444,8 @@ func (t *Translator) processEndpoint(
 		}},
 	}
 
+	setEndpointPeerHostname(localityLbEndpoints.LbEndpoints[0], upstreamURL.Hostname())
+
 	if upstreamURL.Scheme == constants.SchemeHTTPS {
 		var epCert []byte
 		if cert, found := upstreamCerts[upstreamURL.String()]; found {
@@ -2455,15 +2483,7 @@ func (t *Translator) processEndpoint(
 
 		// Set metadata for transport socket matching
 		// This metadata links the endpoint to its transport socket configuration
-		localityLbEndpoints.LbEndpoints[0].Metadata = &core.Metadata{
-			FilterMetadata: map[string]*structpb.Struct{
-				constants.TransportSocketMatchKey: {
-					Fields: map[string]*structpb.Value{
-						constants.LoadBalancerIDKey: structpb.NewStringValue(matchID),
-					},
-				},
-			},
-		}
+		setEndpointTransportSocketMatchID(localityLbEndpoints.LbEndpoints[0], matchID)
 
 		return []*endpoint.LocalityLbEndpoints{localityLbEndpoints}, transportSocketMatch
 	}
@@ -2738,6 +2758,11 @@ func (t *Translator) createTracingConfig() (*hcm.HttpConnectionManager_Tracing, 
 	}
 	samplingPercentage := samplingRate * 100.0
 
+	resourceDetectors, err := t.createOTelResourceDetectors()
+	if err != nil {
+		return nil, err
+	}
+
 	// Create OpenTelemetry tracing configuration
 	otelConfig := &tracev3.OpenTelemetryConfig{
 		GrpcService: &core.GrpcService{
@@ -2747,7 +2772,8 @@ func (t *Translator) createTracingConfig() (*hcm.HttpConnectionManager_Tracing, 
 				},
 			},
 		},
-		ServiceName: serviceName,
+		ServiceName:       serviceName,
+		ResourceDetectors: resourceDetectors,
 	}
 
 	// Marshal to Any
@@ -2756,7 +2782,9 @@ func (t *Translator) createTracingConfig() (*hcm.HttpConnectionManager_Tracing, 
 		return nil, fmt.Errorf("failed to marshal OpenTelemetry config: %w", err)
 	}
 
-	// Create tracing configuration
+	// Tracing essentials for Datadog Dependencies:
+	// 1) spawn_upstream_span → CLIENT child span for the upstream call
+	// 2) peer.service → backend hostname Datadog can aggregate as a peer
 	tracingConfig := &hcm.HttpConnectionManager_Tracing{
 		Provider: &tracev3.Tracing_Http{
 			Name: "envoy.tracers.opentelemetry",
@@ -2768,6 +2796,7 @@ func (t *Translator) createTracingConfig() (*hcm.HttpConnectionManager_Tracing, 
 		RandomSampling: &typev3.Percent{
 			Value: samplingPercentage,
 		},
+		CustomTags: createTracingUpstreamPeerCustomTags(),
 	}
 
 	t.logger.Info("Tracing configuration created",
@@ -2776,6 +2805,140 @@ func (t *Translator) createTracingConfig() (*hcm.HttpConnectionManager_Tracing, 
 		slog.String("collector_cluster", OTELCollectorClusterName))
 
 	return tracingConfig, nil
+}
+
+// createOTelResourceDetectors builds the resource detectors attached to Envoy's
+// OpenTelemetry tracer, in the order Envoy merges them (later detectors win).
+//
+// The environment detector comes first: it reads OTEL_RESOURCE_ATTRIBUTES from the
+// Envoy process and contributes nothing when the variable is unset. The static
+// detector comes second, so attributes configured explicitly under
+// [tracing.resource_attributes] take precedence over ambient environment values.
+// The policy-engine applies the same precedence to its own spans, keeping the two
+// components' resource attributes consistent.
+func (t *Translator) createOTelResourceDetectors() ([]*core.TypedExtensionConfig, error) {
+	envDetector, err := createOTelEnvironmentResourceDetector()
+	if err != nil {
+		return nil, fmt.Errorf("failed to create environment resource detector: %w", err)
+	}
+	detectors := []*core.TypedExtensionConfig{envDetector}
+
+	attributes := t.config.TracingConfig.ResourceAttributes
+	if len(attributes) == 0 {
+		return detectors, nil
+	}
+
+	staticDetector, err := createOTelStaticResourceDetector(attributes)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create static resource detector: %w", err)
+	}
+	return append(detectors, staticDetector), nil
+}
+
+func createOTelEnvironmentResourceDetector() (*core.TypedExtensionConfig, error) {
+	envDetectorConfig := &otelresourcedetectorsv3.EnvironmentResourceDetectorConfig{}
+	envDetectorAny, err := anypb.New(envDetectorConfig)
+	if err != nil {
+		return nil, fmt.Errorf("failed to marshal environment resource detector config: %w", err)
+	}
+
+	return &core.TypedExtensionConfig{
+		Name:        "envoy.tracers.opentelemetry.resource_detectors.environment",
+		TypedConfig: envDetectorAny,
+	}, nil
+}
+
+func createOTelStaticResourceDetector(attributes map[string]string) (*core.TypedExtensionConfig, error) {
+	staticDetectorConfig := &otelresourcedetectorsv3.StaticConfigResourceDetectorConfig{
+		Attributes: maps.Clone(attributes),
+	}
+	staticDetectorAny, err := anypb.New(staticDetectorConfig)
+	if err != nil {
+		return nil, fmt.Errorf("failed to marshal static resource detector config: %w", err)
+	}
+
+	return &core.TypedExtensionConfig{
+		Name:        "envoy.tracers.opentelemetry.resource_detectors.static_config",
+		TypedConfig: staticDetectorAny,
+	}, nil
+}
+
+// createTracingUpstreamPeerCustomTags builds the peer identity tag Datadog uses to infer
+// downstream dependencies. The value comes from the selected upstream host's metadata rather
+// than the Host header, so it stays correct for upstreams configured with hostRewrite: manual.
+// A single tag is enough: peer.service is Datadog's highest-priority peer attribute.
+func createTracingUpstreamPeerCustomTags() []*tracingv3.CustomTag {
+	return []*tracingv3.CustomTag{
+		{
+			Tag: "peer.service",
+			Type: &tracingv3.CustomTag_Metadata_{
+				Metadata: &tracingv3.CustomTag_Metadata{
+					Kind: &metadatav3.MetadataKind{
+						Kind: &metadatav3.MetadataKind_Host_{
+							Host: &metadatav3.MetadataKind_Host{},
+						},
+					},
+					MetadataKey: &metadatav3.MetadataKey{
+						Key: envoyLBMetadataNamespace,
+						Path: []*metadatav3.MetadataKey_PathSegment{
+							{
+								Segment: &metadatav3.MetadataKey_PathSegment_Key{
+									Key: envoyLBHostnameMetadataKey,
+								},
+							},
+						},
+					},
+				},
+			},
+		},
+	}
+}
+
+// ensureFilterMetadata returns lbEndpoint's FilterMetadata map, allocating Metadata/
+// FilterMetadata on demand. Every filter-metadata writer goes through this helper so no
+// writer depends on another having run first or on call ordering within a single endpoint.
+func ensureFilterMetadata(lbEndpoint *endpoint.LbEndpoint) map[string]*structpb.Struct {
+	if lbEndpoint.Metadata == nil {
+		lbEndpoint.Metadata = &core.Metadata{}
+	}
+	if lbEndpoint.Metadata.FilterMetadata == nil {
+		lbEndpoint.Metadata.FilterMetadata = map[string]*structpb.Struct{}
+	}
+	return lbEndpoint.Metadata.FilterMetadata
+}
+
+// setEndpointPeerHostname stamps the upstream hostname on an endpoint under the envoy.lb
+// namespace so the peer.service custom tag (createTracingUpstreamPeerCustomTags) can read it
+// as the upstream CLIENT span's peer identity. Routing is unaffected. Applies to both plaintext
+// and TLS endpoints — peer.service tracing doesn't depend on transport security. A nil endpoint
+// or empty hostname is a no-op, checked before any allocation, so an endpoint that genuinely has
+// no resolvable hostname doesn't gain an empty Metadata shell.
+func setEndpointPeerHostname(lbEndpoint *endpoint.LbEndpoint, hostname string) {
+	if lbEndpoint == nil || hostname == "" {
+		return
+	}
+
+	ensureFilterMetadata(lbEndpoint)[envoyLBMetadataNamespace] = &structpb.Struct{
+		Fields: map[string]*structpb.Value{
+			envoyLBHostnameMetadataKey: structpb.NewStringValue(hostname),
+		},
+	}
+}
+
+// setEndpointTransportSocketMatchID tags an endpoint with the lb_id its Cluster_
+// TransportSocketMatch was registered under, so Envoy selects the matching per-endpoint TLS
+// transport socket. Shared by the single-endpoint (processEndpoint) and weighted
+// (createWeightedCluster) cluster-building paths.
+func setEndpointTransportSocketMatchID(lbEndpoint *endpoint.LbEndpoint, matchID string) {
+	if lbEndpoint == nil {
+		return
+	}
+
+	ensureFilterMetadata(lbEndpoint)[constants.TransportSocketMatchKey] = &structpb.Struct{
+		Fields: map[string]*structpb.Value{
+			constants.LoadBalancerIDKey: structpb.NewStringValue(matchID),
+		},
+	}
 }
 
 // convertToInterface converts map[string]string to map[string]interface{} for structpb

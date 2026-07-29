@@ -73,6 +73,36 @@ class TranslatorTest(unittest.TestCase):
         self.assertEqual("public.example.com", request_ctx.vhost)
         self.assertEqual(b"payload", request_ctx.body.content)
 
+    def test_downstream_and_upstream_snapshot_translation(self):
+        shared = self.translator.to_python_shared_context(proto.SharedContext())
+
+        request_proto = proto.RequestContext(
+            downstream=proto.DownstreamContext(
+                request=proto.DownstreamRequest(
+                    path="/api/pets",
+                    method="POST",
+                    authority="gateway.example.com",
+                    scheme="https",
+                ),
+            ),
+        )
+        request_ctx = self.translator.to_python_request_context(request_proto, shared)
+        self.assertIsNotNone(request_ctx.downstream)
+        self.assertEqual("/api/pets", request_ctx.downstream.request.path)
+        self.assertEqual("POST", request_ctx.downstream.request.method)
+        self.assertEqual("gateway.example.com", request_ctx.downstream.request.authority)
+        self.assertEqual("https", request_ctx.downstream.request.scheme)
+
+        response_proto = proto.ResponseContext(
+            upstream=proto.UpstreamResponseContext(
+                response=proto.UpstreamResponse(status_code=503),
+            ),
+        )
+        response_ctx = self.translator.to_python_response_context(response_proto, shared)
+        self.assertIsNotNone(response_ctx.upstream)
+        self.assertIsNotNone(response_ctx.upstream.response)
+        self.assertEqual(503, response_ctx.upstream.response.status_code)
+
     def test_action_translation_preserves_current_fields(self):
         request_action = UpstreamRequestModifications(
             body=b"rewritten",

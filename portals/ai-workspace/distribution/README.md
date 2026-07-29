@@ -9,7 +9,8 @@ wso2apip-ai-workspace-<version>/
 ├── README.md
 ├── docker-compose.yaml                          # AI Workspace + Platform API
 ├── scripts/
-│   └── setup.sh                                 # One-time TLS + secrets provisioning
+│   ├── setup.sh                                 # One-time TLS + secrets provisioning
+│   └── setup.ps1                                # Same, for Windows (PowerShell)
 ├── configs/
 │   ├── config.toml                              # Active configuration for BOTH services —
 │   │                                             #   [platform_api.*] and [ai_workspace.*]
@@ -34,6 +35,15 @@ Run the setup script once, from the distribution root, before the first start:
 
 ```bash
 ./scripts/setup.sh
+docker compose up -d
+```
+
+On **Windows**, use the PowerShell script instead — same flags, same generated files
+(Git for Windows and Docker Desktop both ship the `openssl` it needs):
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\scripts\setup.ps1
+# PowerShell 7+ is also fine:  pwsh -File .\scripts\setup.ps1
 docker compose up -d
 ```
 

@@ -60,7 +60,10 @@ export const getPolicyDefinition = async (
   version: string
 ): Promise<string> => {
   const encodedName = encodeURIComponent(name);
-  const encodedVersion = encodeURIComponent(version);
+  const normalizedVersion = version.replace(/^v/i, '');
+  const encodedVersion = encodeURIComponent(
+    normalizedVersion.includes('.') ? normalizedVersion : `${normalizedVersion}.0`
+  );
   return getText(
     `/policies/${encodedName}/versions/${encodedVersion}/definition`,
     undefined,

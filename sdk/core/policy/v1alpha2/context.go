@@ -26,7 +26,11 @@ type DownstreamContext struct {
 // DownstreamRequest holds a snapshot of the request as received from the
 // downstream client, captured before any policy mutation is applied.
 type DownstreamRequest struct {
-	Headers *Headers
+	Headers   *Headers
+	Path      string
+	Method    string
+	Authority string
+	Scheme    string
 }
 
 // UpstreamRequestContext identifies the route's resolved upstream target during
@@ -49,7 +53,8 @@ type UpstreamResponseContext struct {
 // UpstreamResponse holds a snapshot of the response as received from the
 // upstream backend, captured before any policy mutation is applied.
 type UpstreamResponse struct {
-	Headers *Headers
+	Headers    *Headers
+	StatusCode int
 }
 
 // SharedContext contains data shared across request and response phases

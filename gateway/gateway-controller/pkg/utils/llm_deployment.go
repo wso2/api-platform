@@ -268,6 +268,14 @@ func (s *LLMDeploymentService) DeployLLMProviderConfiguration(params LLMDeployme
 		return nil, fmt.Errorf("unexpected configuration type %T after rendering LLM provider", renderHolder.Configuration)
 	}
 
+	// Coerce rendered-template strings in policy params before validation and
+	// transformation. text/template always produces strings, so {{ env "X" }} → "100"
+	// even for integer params; coercing here ensures the transformer also puts typed
+	// values into the derived RestAPI.
+	if s.policyValidator != nil {
+		s.policyValidator.CoerceLLMPolicies(renderedProvider.Spec.GlobalPolicies, renderedProvider.Spec.OperationPolicies, renderedProvider.Spec.Policies)
+	}
+
 	// Validate against rendered values
 	validationErrors := s.validator.Validate(&renderedProvider)
 	if len(validationErrors) > 0 {
@@ -439,6 +447,14 @@ func (s *LLMDeploymentService) DeployLLMProxyConfiguration(params LLMDeploymentP
 	renderedProxy, ok := renderHolder.Configuration.(api.LLMProxyConfiguration)
 	if !ok {
 		return nil, fmt.Errorf("unexpected configuration type %T after rendering LLM proxy", renderHolder.Configuration)
+	}
+
+	// Coerce rendered-template strings in policy params before validation and
+	// transformation. text/template always produces strings, so {{ env "X" }} → "100"
+	// even for integer params; coercing here ensures the transformer also puts typed
+	// values into the derived RestAPI.
+	if s.policyValidator != nil {
+		s.policyValidator.CoerceLLMPolicies(renderedProxy.Spec.GlobalPolicies, renderedProxy.Spec.OperationPolicies, renderedProxy.Spec.Policies)
 	}
 
 	// Validate against rendered values
@@ -1334,12 +1350,12 @@ func (s *LLMDeploymentService) pushTemplateToControlPlane(stored *models.StoredL
 		UpdatedAt:           stored.UpdatedAt,
 	}
 	pusher := s.controlPlaneClient
-	go func(c *models.StoredConfig) {
-		if err := pusher.PushArtifact(c.UUID, c, ""); err != nil {
+	pusher.SubmitArtifactPush(func() {
+		if err := pusher.PushArtifact(cfg.UUID, cfg, ""); err != nil {
 			log.Error("Failed to push LLM provider template to control plane",
-				slog.String("uuid", c.UUID), slog.Any("error", err))
+				slog.String("uuid", cfg.UUID), slog.Any("error", err))
 		}
-	}(cfg)
+	})
 }
 
 // pushDeployableArtifact forwards a freshly created or updated, gateway-originated deployable
@@ -1349,11 +1365,18 @@ func (s *LLMDeploymentService) pushDeployableArtifact(result *APIDeploymentResul
 		return
 	}
 	if result.StoredConfig.Origin == models.OriginGatewayAPI && s.canPushToControlPlane() {
-		go waitForDeploymentAndPush(s.store, s.controlPlaneClient, result.StoredConfig.UUID, correlationID, result.StoredConfig.DeployedAt, log)
+		pusher := s.controlPlaneClient
+		store := s.store
+		cfgID := result.StoredConfig.UUID
+		deployedAt := result.StoredConfig.DeployedAt
+		pusher.SubmitArtifactPush(func() {
+			waitForDeploymentAndPush(store, pusher, cfgID, correlationID, deployedAt, log)
+		})
 	}
 }
 
 // canPushToControlPlane reports whether a DP->CP push should be attempted now.
 func (s *LLMDeploymentService) canPushToControlPlane() bool {
-	return s.deploymentPushEnabled && s.controlPlaneClient != nil && s.controlPlaneClient.IsConnected()
+	return s.deploymentPushEnabled && s.controlPlaneClient != nil &&
+		s.controlPlaneClient.IsConnected() && !s.controlPlaneClient.IsOnPrem()
 }

@@ -68,6 +68,12 @@ func validConfig() *Config {
 				},
 				Timeout: 30 * time.Second,
 			},
+			RequestBody: BodyConfig{
+				MaxDecompressedBytes: DefaultMaxDecompressedBytes,
+			},
+			ResponseBody: BodyConfig{
+				MaxDecompressedBytes: DefaultMaxDecompressedBytes,
+			},
 		},
 		// The collector is implicit (active whenever a consumer is enabled). ALS
 		// receiver defaults mirror production so transport validation passes and the
@@ -90,6 +96,56 @@ func TestValidate_ValidConfig(t *testing.T) {
 	cfg := validConfig()
 	err := cfg.Validate()
 	assert.NoError(t, err)
+}
+
+func TestValidate_MaxDecompressedBytes(t *testing.T) {
+	tests := []struct {
+		name      string
+		value     int64
+		expectErr bool
+	}{
+		{name: "default value", value: DefaultMaxDecompressedBytes, expectErr: false},
+		{name: "small positive", value: 1, expectErr: false},
+		{name: "zero", value: 0, expectErr: true},
+		{name: "negative", value: -1, expectErr: true},
+	}
+
+	// The request and response ceilings are validated independently; exercise each
+	// direction on its own so a missing check on either side is caught.
+	directions := []struct {
+		name string
+		set  func(cfg *Config, v int64)
+	}{
+		{name: "request", set: func(cfg *Config, v int64) { cfg.PolicyEngine.RequestBody.MaxDecompressedBytes = v }},
+		{name: "response", set: func(cfg *Config, v int64) { cfg.PolicyEngine.ResponseBody.MaxDecompressedBytes = v }},
+	}
+
+	for _, dir := range directions {
+		for _, tt := range tests {
+			t.Run(dir.name+"/"+tt.name, func(t *testing.T) {
+				cfg := validConfig()
+				dir.set(cfg, tt.value)
+
+				err := cfg.Validate()
+				if tt.expectErr {
+					assert.Error(t, err)
+					assert.Contains(t, err.Error(), "max_decompressed_bytes must be positive")
+				} else {
+					assert.NoError(t, err)
+				}
+			})
+		}
+	}
+}
+
+// TestDefaultConfig_MaxDecompressedBytes verifies the default is applied to both
+// directions so the decompression guard is active out of the box.
+func TestDefaultConfig_MaxDecompressedBytes(t *testing.T) {
+	cfg := defaultConfig()
+	assert.Equal(t, DefaultMaxDecompressedBytes, cfg.PolicyEngine.RequestBody.MaxDecompressedBytes)
+	assert.Positive(t, cfg.PolicyEngine.RequestBody.MaxDecompressedBytes)
+	assert.Equal(t, DefaultMaxDecompressedBytes, cfg.PolicyEngine.ResponseBody.MaxDecompressedBytes)
+	assert.Positive(t, cfg.PolicyEngine.ResponseBody.MaxDecompressedBytes)
 }
 
 // TestValidate_ExtProcPort tests extproc port validation (TCP mode only)

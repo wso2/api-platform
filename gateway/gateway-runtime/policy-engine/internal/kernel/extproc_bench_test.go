@@ -197,6 +197,8 @@ func newBenchServer(routes map[string]*registry.PolicyChain) *ExternalProcessorS
 		chainExecutor,
 		config.TracingConfig{Enabled: false},
 		"bench-policy-engine",
+		testMaxDecompressedBytes,
+		testMaxDecompressedBytes,
 	)
 }
 

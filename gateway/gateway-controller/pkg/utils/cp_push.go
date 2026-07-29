@@ -34,7 +34,9 @@ import (
 // cannot import controlplane without creating an import cycle.
 type ArtifactPusher interface {
 	IsConnected() bool
+	IsOnPrem() bool
 	PushArtifact(artifactID string, artifact *models.StoredConfig, deploymentID string) error
+	SubmitArtifactPush(task func())
 }
 
 // cpSyncStatusForOrigin returns the initial cp_sync_status for a newly created/updated

@@ -49,6 +49,7 @@ import { getGateways } from '../../../../apis/gatewayApis';
 import { getLLMProxyDeployments } from '../../../../apis/llmProxiesApis';
 import { PLATFORM_API_BASE_URL } from '../../../../config.env';
 import { logger } from '../../../../utils/logger';
+import { getErrorMessage } from '../../../../utils/apiError';
 import NoData from '../../../../assets/images/NoData.svg';
 import { FormattedMessage } from 'react-intl';
 import useAIWorkspaceSnackbar from '../../../../hooks/aiWorkspaceSnackbar';
@@ -441,7 +442,12 @@ export default function LLMProxyOverviewTab() {
       }
     } catch (apiKeyError) {
       logger.error('Failed to generate API key:', apiKeyError);
-      setKeyError('Failed to generate API key. Please try again.');
+      setKeyError(
+        getErrorMessage(
+          apiKeyError,
+          'Failed to generate API key. Please try again.'
+        )
+      );
     } finally {
       setGeneratingKey(false);
     }

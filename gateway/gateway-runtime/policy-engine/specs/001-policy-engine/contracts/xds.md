@@ -85,5 +85,5 @@ Located in `tests/contract/xds_test.go`
 
 ## References
 
-- xDS protocol: https://www.envoyproxy.io/docs/envoy/v1.36.2/api-docs/xds_protocol
+- xDS protocol: https://www.envoyproxy.io/docs/envoy/v1.38.3/api-docs/xds_protocol
 - go-control-plane: https://github.com/envoyproxy/go-control-plane

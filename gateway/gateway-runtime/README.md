@@ -46,7 +46,7 @@ API Consumer
 ## Components
 
 ### Router (Envoy Proxy)
-Based on `envoyproxy/envoy:v1.37.1`. Handles all inbound traffic, performs dynamic routing, and delegates request/response processing to the Policy Engine via the `ext_proc` filter.
+Based on `envoyproxy/envoy:v1.38.3`. Handles all inbound traffic, performs dynamic routing, and delegates request/response processing to the Policy Engine via the `ext_proc` filter.
 
 Connects to the Gateway Controller on port `18000` to receive listener, route, and cluster configuration via xDS (ADS protocol).
 

@@ -73,7 +73,7 @@ const buildUrl = (
   const full = path.startsWith('http') ? path : `${baseUrl}${path}`;
   if (!params || Object.keys(params).length === 0) return full;
 
-  const url = new URL(full);
+  const url = new URL(full, window.location.origin);
   for (const [k, v] of Object.entries(params)) {
     if (v !== undefined && v !== null) url.searchParams.append(k, String(v));
   }

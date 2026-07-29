@@ -53,7 +53,10 @@ import type {
   GuardrailSelection,
 } from './AddNewProvider/serviceProviderTypes';
 import type { ProviderTemplate } from '../../../../utils/types';
-import { familyHandle } from '../../../../utils/providerTemplateDisplay';
+import {
+  COST_POLICY_NAME,
+  autoAttachesCostPolicy,
+} from '../../../../utils/providerTemplateDisplay';
 import TemplateVersionDialog from './AddNewProvider/TemplateVersionDialog';
 import { getErrorMessage, getFieldErrors } from '../../../../utils/apiError';
 import { FormattedMessage } from 'react-intl';
@@ -377,9 +380,8 @@ export default function ServiceProviderNew() {
         upstream,
         security,
         globalPolicies: [
-          ...(familyHandle(selectedTemplateId) !== 'azure-openai' &&
-          familyHandle(selectedTemplateId) !== 'azureai-foundry'
-            ? [{ name: 'llm-cost', version: 'v1', params: {} }]
+          ...(autoAttachesCostPolicy(selectedTemplateId)
+            ? [{ name: COST_POLICY_NAME, version: 'v1', params: {} }]
             : []),
           ...guardrails.map((guardrail) => ({
             name: guardrail.name,

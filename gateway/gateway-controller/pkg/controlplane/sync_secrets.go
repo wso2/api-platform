@@ -34,6 +34,10 @@ import (
 // Reconnect (warm cache): metadata-only request, then per-secret /value calls only
 // for secrets whose hash has changed since last sync.
 func (c *Client) syncSecrets() {
+	if c.IsOnPrem() {
+		c.logger.Debug("Skipping secret sync: on-prem control plane detected")
+		return
+	}
 	if c.apiUtilsService == nil {
 		c.logger.Debug("Skipping secret sync: apiUtilsService is nil")
 		return

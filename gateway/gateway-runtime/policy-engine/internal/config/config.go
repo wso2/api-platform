@@ -35,6 +35,13 @@ import (
 	"github.com/wso2/api-platform/common/configinterpolate"
 )
 
+const (
+	// DefaultMaxDecompressedBytes is the default cap on decompressed bytes buffered
+	// from a Content-Encoded body — the whole body when buffered, each chunk when
+	// streaming. Applied when max_decompressed_bytes is unset for a direction.
+	DefaultMaxDecompressedBytes int64 = 10 * 1024 * 1024 // 10 MiB
+)
+
 // defaultFileSourceAllowlist is the policy-engine's default set of directories that
 // a {{ file "..." }} config-interpolation token may read from. It uses the
 // operator-visible container name (gateway-runtime), and can be overridden via the
@@ -161,10 +168,24 @@ type PolicyEngine struct {
 	// Tracing holds OpenTelemetry exporter configuration
 	TracingServiceName string `koanf:"tracing_service_name"`
 
+	// RequestBody and ResponseBody hold body-processing limits per direction, so
+	// request bodies can be bounded differently from response bodies.
+	RequestBody  BodyConfig `koanf:"request_body"`
+	ResponseBody BodyConfig `koanf:"response_body"`
+
 	// RawConfig holds the complete raw configuration map including custom fields
 	// This is used for resolving ${config} CEL expressions in policy systemParameters
 	// Note: No struct tag - populated manually via k.Raw()
 	RawConfig map[string]interface{}
+}
+
+// BodyConfig holds body-processing limits for one direction
+// ([policy_engine.request_body] or [policy_engine.response_body]).
+type BodyConfig struct {
+	// MaxDecompressedBytes caps decompressed bytes buffered per body (buffered mode)
+	// or per chunk (streaming) — not cumulative, so long-lived streams such as SSE
+	// are unaffected. Defaults to DefaultMaxDecompressedBytes when unset.
+	MaxDecompressedBytes int64 `koanf:"max_decompressed_bytes"`
 }
 
 // MetricsConfig holds Prometheus metrics server configuration
@@ -200,6 +221,14 @@ type TracingConfig struct {
 	// 1.0 = sample all requests, 0.1 = sample 10% of requests
 	// If set to 0 or not specified, defaults to 1.0 (sample all)
 	SamplingRate float64 `koanf:"sampling_rate"`
+
+	// ResourceAttributes are OpenTelemetry resource attributes attached to every
+	// exported span, e.g. {"deployment.environment": "prod"}. The same block is
+	// read by the gateway-controller to configure the router's (Envoy's) resource
+	// detector, so one setting covers both components. Attributes discovered from
+	// the environment (OTEL_RESOURCE_ATTRIBUTES) are still honoured, but these
+	// take precedence.
+	ResourceAttributes map[string]string `koanf:"resource_attributes"`
 }
 
 // ServerConfig holds ext_proc server configuration
@@ -370,6 +399,10 @@ func Load(configPaths ...string) (*Config, error) {
 	// unmarshal and Validate.
 	k := koanf.New(".")
 
+	if err := k.Load(confmap.Provider(defaultResolvableConfig(), "."), nil); err != nil {
+		return nil, fmt.Errorf("failed to seed resolvable config defaults: %w", err)
+	}
+
 	// Load each config file in order. Successive loads deep-merge maps and replace
 	// arrays, giving last-wins precedence for keys set in more than one file.
 	for _, configPath := range configPaths {
@@ -442,6 +475,22 @@ func interpolate(k *koanf.Koanf) (*koanf.Koanf, error) {
 	return out, nil
 }
 
+// DefaultLLMCostPricingFile is the model-pricing file the llm-cost policy fallback
+const DefaultLLMCostPricingFile = "/etc/policy-engine/llm-pricing/model_prices.json"
+
+// defaultResolvableConfig returns defaults for config keys that policy definitions
+// reference via ${config...} system-parameter markers
+func defaultResolvableConfig() map[string]interface{} {
+	return map[string]interface{}{
+		"policy_configurations.llm_cost_v1.pricing_file": DefaultLLMCostPricingFile,
+	}
+}
+
+// defaultMaskedHeaders returns the header names whose values traffic logging redacts
+func defaultMaskedHeaders() []string {
+	return []string{"authorization", "x-api-key", "x-jwt-assertion"}
+}
+
 // defaultAccessLogsServiceConfig returns the default policy-engine ALS receiver tuning.
 // Shared by the collector (canonical) and the deprecated [analytics].access_logs_service
 // alias so a partial alias override migrates cleanly.
@@ -507,6 +556,12 @@ func defaultConfig() *Config {
 				Timeout: 30 * time.Second,
 			},
 			TracingServiceName: "policy-engine",
+			RequestBody: BodyConfig{
+				MaxDecompressedBytes: DefaultMaxDecompressedBytes,
+			},
+			ResponseBody: BodyConfig{
+				MaxDecompressedBytes: DefaultMaxDecompressedBytes,
+			},
 		},
 		Collector: CollectorConfig{
 			RequestBody:  false,
@@ -515,7 +570,7 @@ func defaultConfig() *Config {
 		},
 		TrafficLogging: TrafficLoggingConfig{
 			Enabled:         false,
-			MaskedHeaders:   []string{},
+			MaskedHeaders:   defaultMaskedHeaders(),
 			MaxPayloadSize:  0,
 			RequestHeaders:  false,
 			RequestBody:     false,
@@ -618,6 +673,13 @@ func (c *Config) Validate() error {
 		if c.PolicyEngine.Metrics.Port == c.PolicyEngine.Admin.Port {
 			return fmt.Errorf("metrics.port cannot be same as admin.port")
 		}
+	}
+
+	if c.PolicyEngine.RequestBody.MaxDecompressedBytes <= 0 {
+		return fmt.Errorf("policy_engine.request_body.max_decompressed_bytes must be positive, got %d", c.PolicyEngine.RequestBody.MaxDecompressedBytes)
+	}
+	if c.PolicyEngine.ResponseBody.MaxDecompressedBytes <= 0 {
+		return fmt.Errorf("policy_engine.response_body.max_decompressed_bytes must be positive, got %d", c.PolicyEngine.ResponseBody.MaxDecompressedBytes)
 	}
 
 	// Validate config mode

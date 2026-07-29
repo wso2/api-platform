@@ -287,6 +287,14 @@ type TracingConfig struct {
 	// 1.0 = sample all requests, 0.1 = sample 10% of requests
 	// If set to 0 or not specified, defaults to 1.0 (sample all)
 	SamplingRate float64 `koanf:"sampling_rate"`
+
+	// ResourceAttributes are OpenTelemetry resource attributes attached to every
+	// exported span, e.g. {"deployment.environment": "prod"}. The controller
+	// translates these into the router's (Envoy's) static_config resource
+	// detector; the policy-engine applies the same map to its own spans, so one
+	// block covers both components. Attributes discovered from the environment
+	// (OTEL_RESOURCE_ATTRIBUTES) are still honoured, but these take precedence.
+	ResourceAttributes map[string]string `koanf:"resource_attributes"`
 }
 
 // ServerConfig holds server-related configuration
@@ -598,6 +606,8 @@ type HTTPListenerConfig struct {
 	ServerHeaderValue             string      `koanf:"server_header_value"`               // Custom value for the Server header
 	Timeouts                      HCMTimeouts `koanf:"timeouts"`                          // HTTP Connection Manager (downstream) timeouts
 	PerConnectionBufferLimitBytes uint32      `koanf:"per_connection_buffer_limit_bytes"` // Downstream per-connection buffer limit in bytes
+	DisablePathNormalization      bool        `koanf:"disable_path_normalization"`
+	PathWithEscapedSlashesAction  string      `koanf:"path_with_escaped_slashes_action"` // Options: "KEEP_UNCHANGED", "REJECT_REQUEST", "UNESCAPE_AND_REDIRECT", "UNESCAPE_AND_FORWARD"
 }
 
 // HCMTimeouts holds HTTP Connection Manager (downstream/connection) timeouts.
@@ -652,6 +662,11 @@ type ControlPlaneConfig struct {
 	InsecureSkipVerify    bool          `koanf:"insecure_skip_verify"`    // Skip TLS certificate verification (insecure, dev/test only)
 	DeploymentSyncEnabled bool          `koanf:"deployment_sync_enabled"` // Enable two-way artifact/deployment sync with the control plane: DP->CP push and CP->DP pull (default: true)
 	SyncBatchSize         int           `koanf:"sync_batch_size"`         // Number of deployments to fetch per batch request during startup sync (default: 50)
+	// Optional worker pools that cap the concurrency of DP->CP sync work
+	APIMSyncPoolSize         int `koanf:"apim_sync_pool_size"`          // Workers for on-prem APIM bottom-up sync (0/unset = unlimited)
+	APIMSyncQueueSize        int `koanf:"apim_sync_queue_size"`         // Max pending APIM sync tasks when pool size > 0 (0/unset = unbounded)
+	AIWorkspaceSyncPoolSize  int `koanf:"ai_workspace_sync_pool_size"`  // Workers for platform-API (AI Workspace) artifact push (0/unset = unlimited)
+	AIWorkspaceSyncQueueSize int `koanf:"ai_workspace_sync_queue_size"` // Max pending artifact push tasks when pool size > 0 (0/unset = unbounded)
 	// OAuth2 credentials for on-prem APIM API import (for bottom-up API deployment)
 	ApimOAuth2ClientID     string `koanf:"apim_oauth2_client_id"`     // APIM OAuth2 client ID
 	ApimOAuth2ClientSecret string `koanf:"apim_oauth2_client_secret"` // APIM OAuth2 client secret
@@ -872,14 +887,18 @@ func defaultConfig() *Config {
 				Port:    9091,
 			},
 			ControlPlane: ControlPlaneConfig{
-				Host:                  "",
-				Token:                 "",
-				ReconnectInitial:      1 * time.Second,
-				ReconnectMax:          5 * time.Minute,
-				PollingInterval:       15 * time.Minute,
-				InsecureSkipVerify:    false,
-				DeploymentSyncEnabled: true,
-				SyncBatchSize:         50,
+				Host:                     "",
+				Token:                    "",
+				ReconnectInitial:         1 * time.Second,
+				ReconnectMax:             5 * time.Minute,
+				PollingInterval:          15 * time.Minute,
+				InsecureSkipVerify:       true,
+				DeploymentSyncEnabled:    true,
+				SyncBatchSize:            50,
+				APIMSyncPoolSize:         0,
+				APIMSyncQueueSize:        0,
+				AIWorkspaceSyncPoolSize:  0,
+				AIWorkspaceSyncQueueSize: 0,
 			},
 			EventHub: EventHubConfig{
 				PollInterval:    3 * time.Second,
@@ -1004,7 +1023,9 @@ func defaultConfig() *Config {
 					StreamIdleTimeout:     5 * time.Minute, // Envoy default
 					IdleTimeout:           1 * time.Hour,   // Envoy default (connection-level)
 				},
-				PerConnectionBufferLimitBytes: 1048576, // 1 MiB, matches Envoy's built-in default
+				PerConnectionBufferLimitBytes: 1048576,                        // 1 MiB, matches Envoy's built-in default
+				DisablePathNormalization:      false,                          // Path normalization enabled by default
+				PathWithEscapedSlashesAction:  commonconstants.KEEP_UNCHANGED, // Leave escaped-slash paths unchanged by default
 			},
 		},
 		Analytics: AnalyticsConfig{
@@ -2036,6 +2057,35 @@ func (c *Config) validateHTTPListenerConfig() error {
 	if httpListener.PerConnectionBufferLimitBytes > constants.MaxReasonableBufferLimitBytes {
 		return fmt.Errorf("http_listener.per_connection_buffer_limit_bytes must not exceed %d, got: %d",
 			constants.MaxReasonableBufferLimitBytes, httpListener.PerConnectionBufferLimitBytes)
+	}
+
+	// Leave escaped-slash paths unchanged when unset.
+	if httpListener.PathWithEscapedSlashesAction == "" {
+		httpListener.PathWithEscapedSlashesAction = commonconstants.KEEP_UNCHANGED
+	}
+
+	validEscapedSlashesActions := []string{
+		commonconstants.KEEP_UNCHANGED,
+		commonconstants.REJECT_REQUEST,
+		commonconstants.UNESCAPE_AND_REDIRECT,
+		commonconstants.UNESCAPE_AND_FORWARD,
+	}
+
+	isValidAction := false
+	for _, valid := range validEscapedSlashesActions {
+		if httpListener.PathWithEscapedSlashesAction == valid {
+			isValidAction = true
+			break
+		}
+	}
+
+	if !isValidAction {
+		return fmt.Errorf("http_listener.path_with_escaped_slashes_action must be one of: %s, %s, %s, %s. Got: %s",
+			commonconstants.KEEP_UNCHANGED,
+			commonconstants.REJECT_REQUEST,
+			commonconstants.UNESCAPE_AND_REDIRECT,
+			commonconstants.UNESCAPE_AND_FORWARD,
+			httpListener.PathWithEscapedSlashesAction)
 	}
 
 	return nil

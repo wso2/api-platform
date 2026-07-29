@@ -54,13 +54,39 @@ reconnect_max = "5m"
 # Polling interval for periodic sync
 polling_interval = "15m"
 # Skip TLS certificate verification for control plane connections
-insecure_skip_verify = '{{ env "APIP_GW_CONTROLLER_CONTROLPLANE_INSECURE_SKIP_VERIFY" "false" }}'
+insecure_skip_verify = '{{ env "APIP_GW_CONTROLLER_CONTROLPLANE_INSECURE_SKIP_VERIFY" "true" }}'
 # Enable two-way artifact/deployment sync with the control plane (default: true)
 deployment_sync_enabled = '{{ env "APIP_GW_CONTROLLER_CONTROLPLANE_DEPLOYMENT_SYNC_ENABLED" "true" }}'
-# APIM OAuth2 Client ID
+# Number of deployment artifacts fetched and processed per batch during the
+# CP->DP sync (startup and periodic). Must be positive — the controller refuses
+# to start on 0 or a negative value.
+sync_batch_size = 50
+# Concurrency caps for the two background DP->CP sync worker pools. Both default
+# to unlimited/unbounded, which exactly preserves the historical "one goroutine
+# per operation" behaviour; set a positive pool size only when the upstream needs
+# protecting from a large artifact burst (e.g. an on-prem APIM that stalls under
+# many concurrent publishes).
+#   *_pool_size  = 0 (or unset) -> unlimited: a goroutine per task, no bound on
+#                  concurrency or backlog. > 0 -> exactly that many workers.
+#   *_queue_size = 0 (or unset) -> unbounded pending queue (work is never
+#                  rejected). > 0 caps the backlog and rejects submissions once
+#                  full; only meaningful when the matching pool size is > 0.
+# Workers for the on-prem APIM bottom-up sync
+apim_sync_pool_size = 0
+# Max pending on-prem APIM sync tasks
+apim_sync_queue_size = 0
+# Workers for the platform-API (AI Workspace) artifact push
+ai_workspace_sync_pool_size = 0
+# Max pending artifact push tasks
+ai_workspace_sync_queue_size = 0
+# Option 1: Client Credentials Flow (OAuth2) — APIM OAuth2 Client ID
 apim_oauth2_client_id = '{{ env "APIP_GW_CONTROLLER_CONTROLPLANE_APIM_OAUTH2_CLIENT_ID" "" }}'
 # APIM OAuth2 Client secret
 apim_oauth2_client_secret = '{{ env "APIP_GW_CONTROLLER_CONTROLPLANE_APIM_OAUTH2_CLIENT_SECRET" "" }}'
+# Option 2: Resource Owner Password Credentials Flow (OAuth2). Set these instead of
+# the client id/secret pair above; both default to empty.
+# apim_oauth2_username = "your-username"
+# apim_oauth2_password = "your-password"
 # Gateway name
 gateway_name = '{{ env "APIP_GW_CONTROLLER_CONTROLPLANE_GATEWAY_NAME" "default" }}'
 
@@ -140,7 +166,7 @@ level = '{{ env "APIP_GW_CONTROLLER_LOGGING_LEVEL" "info" }}'
 format = "text"
 
 [controller.metrics]
-enabled = true
+enabled = false
 port = '{{ env "APIP_GW_CONTROLLER_METRICS_PORT" "9091" }}'
 
 [controller.event_hub]
@@ -234,6 +260,12 @@ server_header_transformation = "OVERWRITE"
 server_header_value = "WSO2 API Platform"
 # Downstream per-connection buffer limit in bytes (default: 1048576 / 1 MiB)
 per_connection_buffer_limit_bytes = 1048576
+# Disable dot-segment resolution and duplicate-slash merging on the request path. Defaults to
+# false (normalization enabled) so route matching cannot be fooled by ".." or "//" in the path.
+disable_path_normalization = false
+# How to handle escaped slashes ("%2F"/"%5C") in the request path. Options: "KEEP_UNCHANGED"
+# (default), "REJECT_REQUEST", "UNESCAPE_AND_REDIRECT", "UNESCAPE_AND_FORWARD".
+path_with_escaped_slashes_action = "KEEP_UNCHANGED"
 
 # HTTP Connection Manager (downstream) timeouts
 # A value of zero disables any of these timeout settings.
@@ -264,6 +296,15 @@ skip_verify = false
 # =============================================================================
 # POLICY ENGINE CONFIGURATION
 # =============================================================================
+
+# max_decompressed_bytes caps decompressed bytes buffered per body (buffered
+# mode) or per chunk (streaming) — not cumulative, so long-lived streams such
+# as SSE are unaffected. Each direction is configured independently.
+[policy_engine.request_body]
+max_decompressed_bytes = 10485760
+
+[policy_engine.response_body]
+max_decompressed_bytes = 10485760
 
 [policy_engine.server]
 extproc_port = 9001
@@ -385,7 +426,7 @@ max_header_limit = 8192
 # ANALYTICS CONFIGURATION (consumer — enabling it activates the collector)
 # =============================================================================
 [analytics]
-enabled = false
+enabled = true
 # Deprecated: allow_payloads is preserved for backward compatibility. When true
 # and both send_request_body and send_response_body are false, both directions
 # are enabled (bool fields cannot distinguish "unset" from explicitly false).
@@ -400,7 +441,7 @@ send_response_body = false
 enabled_publishers = ["moesif"]
 
 [analytics.publishers.moesif]
-application_id = '{{ env "APIP_GW_ANALYTICS_PUBLISHERS_MOESIF_APPLICATION_ID" "" }}'
+application_id = '{{ env "APIP_GW_ANALYTICS_PUBLISHERS_MOESIF_APPLICATION_ID" "<your-moesif-application-id>" }}'
 moesif_base_url = "https://api.moesif.net"
 publish_interval = 5
 event_queue_size = 10000

@@ -415,9 +415,14 @@ class Translator:
         is unset (older gateways) so policies can detect absence and fall back."""
         if not proto_ctx.HasField(field_name):
             return None
+        request = getattr(proto_ctx, field_name).request
         return DownstreamContext(
             request=DownstreamRequest(
-                headers=Translator._to_python_headers(getattr(proto_ctx, field_name).request.headers),
+                headers=Translator._to_python_headers(request.headers),
+                path=request.path,
+                method=request.method,
+                authority=request.authority,
+                scheme=request.scheme,
             ),
         )
 
@@ -448,6 +453,7 @@ class Translator:
         if up.HasField("response"):
             response = UpstreamResponse(
                 headers=Translator._to_python_headers(up.response.headers),
+                status_code=up.response.status_code,
             )
         return UpstreamResponseContext(
             name=up.name,

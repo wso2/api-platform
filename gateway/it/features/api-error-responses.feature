@@ -66,7 +66,7 @@ Feature: API Error Responses
           - name: respond
             version: v1
             params:
-              statusCode: "200"
+              statusCode: "not-a-number"
         operations:
           - method: GET
             path: /test

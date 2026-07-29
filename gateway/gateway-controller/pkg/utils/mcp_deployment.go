@@ -536,11 +536,18 @@ func (s *MCPDeploymentService) pushDeployableArtifact(result *APIDeploymentResul
 		return
 	}
 	if result.StoredConfig.Origin == models.OriginGatewayAPI && s.canPushToControlPlane() {
-		go waitForDeploymentAndPush(s.store, s.controlPlaneClient, result.StoredConfig.UUID, correlationID, result.StoredConfig.DeployedAt, log)
+		pusher := s.controlPlaneClient
+		store := s.store
+		cfgID := result.StoredConfig.UUID
+		deployedAt := result.StoredConfig.DeployedAt
+		pusher.SubmitArtifactPush(func() {
+			waitForDeploymentAndPush(store, pusher, cfgID, correlationID, deployedAt, log)
+		})
 	}
 }
 
 // canPushToControlPlane reports whether a DP->CP push should be attempted now.
 func (s *MCPDeploymentService) canPushToControlPlane() bool {
-	return s.deploymentPushEnabled && s.controlPlaneClient != nil && s.controlPlaneClient.IsConnected()
+	return s.deploymentPushEnabled && s.controlPlaneClient != nil &&
+		s.controlPlaneClient.IsConnected() && !s.controlPlaneClient.IsOnPrem()
 }

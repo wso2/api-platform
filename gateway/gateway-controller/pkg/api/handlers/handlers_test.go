@@ -1046,6 +1046,30 @@ func (m *MockControlPlaneClient) SyncArtifactsToOnPremAPIM(apimConfig *utils.API
 	return nil
 }
 
+// SubmitAPIMSync runs the task in a goroutine, mirroring the previous per-op
+// goroutine behavior so existing eventual-consistency test assertions still hold.
+func (m *MockControlPlaneClient) SubmitAPIMSync(task func()) {
+	if task != nil {
+		go task()
+	}
+}
+
+// SubmitAPIMSyncAndWait runs the task inline (blocking), matching the real
+// client's blocking semantics used on the delete path.
+func (m *MockControlPlaneClient) SubmitAPIMSyncAndWait(task func()) {
+	if task != nil {
+		task()
+	}
+}
+
+// SubmitArtifactPush runs the task in a goroutine, mirroring the previous per-op
+// goroutine behavior so existing eventual-consistency test assertions still hold.
+func (m *MockControlPlaneClient) SubmitArtifactPush(task func()) {
+	if task != nil {
+		go task()
+	}
+}
+
 func (m *MockControlPlaneClient) IsOnPrem() bool {
 	return false
 }

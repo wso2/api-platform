@@ -369,7 +369,7 @@ gateway:
           route_idle_timeout_ms: 300000
           connect_timeout_ms: 5000
 
-      # HTTP Connection Manager (downstream) configuration: server-header handling and timeouts
+      # HTTP Connection Manager (downstream) configuration: server-header, path handling, and timeouts
       http_listener:
         # Server header handling: APPEND_IF_ABSENT | OVERWRITE | PASS_THROUGH
         server_header_transformation: OVERWRITE
@@ -377,6 +377,11 @@ gateway:
         server_header_value: "WSO2 API Platform"
         # Downstream per-connection buffer limit in bytes
         per_connection_buffer_limit_bytes: 1048576
+        # Disable RFC 3986 dot-segment normalization and duplicate-slash merging
+        disable_path_normalization: false
+        # Escaped slash handling: KEEP_UNCHANGED | REJECT_REQUEST |
+        # UNESCAPE_AND_REDIRECT | UNESCAPE_AND_FORWARD
+        path_with_escaped_slashes_action: KEEP_UNCHANGED
 
         # Downstream (client-facing) timeouts. A value of "0s" disables the timeout.
         timeouts:
@@ -655,6 +660,13 @@ gateway:
     #   batch_timeout: 1s
     #   max_export_batch_size: 512
     #   sampling_rate: 1.0
+    #   # Resource attributes attached to every exported span, by both the router
+    #   # (Envoy) and the policy-engine. Datadog derives its `env` tag from
+    #   # deployment.environment. Do not set service.name here — each component
+    #   # gets its own from tracing_service_name.
+    #   resource_attributes:
+    #     deployment.environment: prod
+    #     service.namespace: api-gw
 
   # Raw TOML string to append to the generated config.toml
   # Use this for additional configuration not covered by the structured values above

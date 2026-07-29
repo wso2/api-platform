@@ -20,11 +20,14 @@ package kernel
 
 import (
 	"context"
+	"fmt"
 	"testing"
+	"time"
 
 	corev3 "github.com/envoyproxy/go-control-plane/envoy/config/core/v3"
 	extprocconfigv3 "github.com/envoyproxy/go-control-plane/envoy/extensions/filters/http/ext_proc/v3"
 	extprocv3 "github.com/envoyproxy/go-control-plane/envoy/service/ext_proc/v3"
+	typev3 "github.com/envoyproxy/go-control-plane/envoy/type/v3"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"go.opentelemetry.io/otel/trace/noop"
@@ -49,7 +52,7 @@ func newTestExecutor() *executor.ChainExecutor {
 func TestNewPolicyExecutionContext(t *testing.T) {
 	kernel := NewKernel()
 	chainExecutor := executor.NewChainExecutor(nil, nil, nil)
-	server := NewExternalProcessorServer(kernel, chainExecutor, config.TracingConfig{}, "")
+	server := NewExternalProcessorServer(kernel, chainExecutor, config.TracingConfig{}, "", testMaxDecompressedBytes, testMaxDecompressedBytes)
 
 	chain := &registry.PolicyChain{
 		Policies:    []policy.Policy{},
@@ -65,6 +68,31 @@ func TestNewPolicyExecutionContext(t *testing.T) {
 	assert.Empty(t, execCtx.analyticsMetadata)
 }
 
+func TestPolicyExecutionContext_CloseStreamDecompressors(t *testing.T) {
+	requestDecomp := newStreamDecompressor("gzip", testMaxDecompressedBytes)
+	responseDecomp := newStreamDecompressor("br", testMaxDecompressedBytes)
+	execCtx := &PolicyExecutionContext{
+		requestStreamDecomp:  requestDecomp,
+		responseStreamDecomp: responseDecomp,
+	}
+
+	execCtx.closeStreamDecompressors()
+	execCtx.closeStreamDecompressors() // cleanup is idempotent
+
+	assert.Nil(t, execCtx.requestStreamDecomp)
+	assert.Nil(t, execCtx.responseStreamDecomp)
+	select {
+	case <-requestDecomp.decoderDone:
+	case <-time.After(2 * time.Second):
+		t.Fatal("request decoder goroutine was not stopped")
+	}
+	select {
+	case <-responseDecomp.decoderDone:
+	case <-time.After(2 * time.Second):
+		t.Fatal("response decoder goroutine was not stopped")
+	}
+}
+
 // =============================================================================
 // handlePolicyError Tests
 // =============================================================================
@@ -72,7 +100,7 @@ func TestNewPolicyExecutionContext(t *testing.T) {
 func TestHandlePolicyError(t *testing.T) {
 	kernel := NewKernel()
 	chainExecutor := executor.NewChainExecutor(nil, nil, nil)
-	server := NewExternalProcessorServer(kernel, chainExecutor, config.TracingConfig{}, "")
+	server := NewExternalProcessorServer(kernel, chainExecutor, config.TracingConfig{}, "", testMaxDecompressedBytes, testMaxDecompressedBytes)
 
 	chain := &registry.PolicyChain{}
 	execCtx := newPolicyExecutionContext(server, "test-route", chain)
@@ -102,7 +130,7 @@ func TestHandlePolicyError(t *testing.T) {
 func TestGetModeOverride_NoBodyRequired(t *testing.T) {
 	kernel := NewKernel()
 	chainExecutor := executor.NewChainExecutor(nil, nil, nil)
-	server := NewExternalProcessorServer(kernel, chainExecutor, config.TracingConfig{}, "")
+	server := NewExternalProcessorServer(kernel, chainExecutor, config.TracingConfig{}, "", testMaxDecompressedBytes, testMaxDecompressedBytes)
 
 	chain := &registry.PolicyChain{
 		RequiresRequestBody:  false,
@@ -124,7 +152,7 @@ func TestGetModeOverride_NoBodyRequired(t *testing.T) {
 func TestGetModeOverride_RequestBodyRequired(t *testing.T) {
 	kernel := NewKernel()
 	chainExecutor := executor.NewChainExecutor(nil, nil, nil)
-	server := NewExternalProcessorServer(kernel, chainExecutor, config.TracingConfig{}, "")
+	server := NewExternalProcessorServer(kernel, chainExecutor, config.TracingConfig{}, "", testMaxDecompressedBytes, testMaxDecompressedBytes)
 
 	chain := &registry.PolicyChain{
 		RequiresRequestBody:  true,
@@ -142,7 +170,7 @@ func TestGetModeOverride_RequestBodyRequired(t *testing.T) {
 func TestGetModeOverride_ResponseBodyRequired(t *testing.T) {
 	kernel := NewKernel()
 	chainExecutor := executor.NewChainExecutor(nil, nil, nil)
-	server := NewExternalProcessorServer(kernel, chainExecutor, config.TracingConfig{}, "")
+	server := NewExternalProcessorServer(kernel, chainExecutor, config.TracingConfig{}, "", testMaxDecompressedBytes, testMaxDecompressedBytes)
 
 	chain := &registry.PolicyChain{
 		RequiresRequestBody:  false,
@@ -160,7 +188,7 @@ func TestGetModeOverride_ResponseBodyRequired(t *testing.T) {
 func TestGetModeOverride_BothBodiesRequired(t *testing.T) {
 	kernel := NewKernel()
 	chainExecutor := executor.NewChainExecutor(nil, nil, nil)
-	server := NewExternalProcessorServer(kernel, chainExecutor, config.TracingConfig{}, "")
+	server := NewExternalProcessorServer(kernel, chainExecutor, config.TracingConfig{}, "", testMaxDecompressedBytes, testMaxDecompressedBytes)
 
 	chain := &registry.PolicyChain{
 		RequiresRequestBody:  true,
@@ -178,7 +206,7 @@ func TestGetModeOverride_BothBodiesRequired(t *testing.T) {
 func TestGetModeOverride_ResponseHeaderProcessing(t *testing.T) {
 	kernel := NewKernel()
 	chainExecutor := executor.NewChainExecutor(nil, nil, nil)
-	server := NewExternalProcessorServer(kernel, chainExecutor, config.TracingConfig{}, "")
+	server := NewExternalProcessorServer(kernel, chainExecutor, config.TracingConfig{}, "", testMaxDecompressedBytes, testMaxDecompressedBytes)
 
 	mockPol := &testutils.ConfigurableMockPolicy{
 		MockMode: policy.ProcessingMode{
@@ -199,13 +227,81 @@ func TestGetModeOverride_ResponseHeaderProcessing(t *testing.T) {
 }
 
 // =============================================================================
+// responseStreamingEnabled / getModeOverride streaming-decision Tests
+//
+// Regression coverage: getModeOverride must derive ResponseBodyMode purely from ec.isStreamingResponse
+// (set once by responseStreamingEnabled in processResponseHeaders), never re-derive
+// its own decision — otherwise Envoy's negotiated body mode can disagree with which
+// body-phase handler the kernel actually runs, which Envoy rejects as a
+// content-length/mutated-body mismatch.
+// =============================================================================
+
+func TestGetModeOverride_MCPStreamingUpstreamStaysBuffered(t *testing.T) {
+	kernel := NewKernel()
+	server := NewExternalProcessorServer(kernel, executor.NewChainExecutor(nil, nil, nil), config.TracingConfig{}, "", testMaxDecompressedBytes, testMaxDecompressedBytes)
+
+	chain := &registry.PolicyChain{
+		RequiresResponseBody:      true,
+		SupportsResponseStreaming: true,
+	}
+	execCtx := newPolicyExecutionContext(server, "test-route", chain)
+
+	execCtx.buildRequestContexts(&extprocv3.HttpHeaders{Headers: &corev3.HeaderMap{}}, RouteMetadata{APIKind: string(policy.APIKindMCP)})
+	execCtx.buildResponseContexts(&extprocv3.HttpHeaders{
+		Headers: &corev3.HeaderMap{
+			Headers: []*corev3.HeaderValue{
+				{Key: ":status", RawValue: []byte("200")},
+				{Key: "content-type", RawValue: []byte("text/event-stream")},
+			},
+		},
+		EndOfStream: false,
+	})
+
+	execCtx.isStreamingResponse = execCtx.responseStreamingEnabled(false)
+	require.False(t, execCtx.isStreamingResponse, "MCP responses must never be upgraded to streaming")
+
+	execCtx.phase = phaseResponseHeaders
+	mode := execCtx.getModeOverride()
+	assert.Equal(t, extprocconfigv3.ProcessingMode_BUFFERED, mode.ResponseBodyMode)
+}
+
+func TestGetModeOverride_NonMCPStreamingUpstreamUpgrades(t *testing.T) {
+	kernel := NewKernel()
+	server := NewExternalProcessorServer(kernel, executor.NewChainExecutor(nil, nil, nil), config.TracingConfig{}, "", testMaxDecompressedBytes, testMaxDecompressedBytes)
+
+	chain := &registry.PolicyChain{
+		RequiresResponseBody:      true,
+		SupportsResponseStreaming: true,
+	}
+	execCtx := newPolicyExecutionContext(server, "test-route", chain)
+
+	execCtx.buildRequestContexts(&extprocv3.HttpHeaders{Headers: &corev3.HeaderMap{}}, RouteMetadata{APIKind: string(policy.APIKindRestApi)})
+	execCtx.buildResponseContexts(&extprocv3.HttpHeaders{
+		Headers: &corev3.HeaderMap{
+			Headers: []*corev3.HeaderValue{
+				{Key: ":status", RawValue: []byte("200")},
+				{Key: "content-type", RawValue: []byte("text/event-stream")},
+			},
+		},
+		EndOfStream: false,
+	})
+
+	execCtx.isStreamingResponse = execCtx.responseStreamingEnabled(false)
+	require.True(t, execCtx.isStreamingResponse, "non-MCP streaming upstream responses should still upgrade")
+
+	execCtx.phase = phaseResponseHeaders
+	mode := execCtx.getModeOverride()
+	assert.Equal(t, extprocconfigv3.ProcessingMode_FULL_DUPLEX_STREAMED, mode.ResponseBodyMode)
+}
+
+// =============================================================================
 // buildRequestContext Tests
 // =============================================================================
 
 func TestBuildRequestContext_BasicHeaders(t *testing.T) {
 	kernel := NewKernel()
 	chainExecutor := executor.NewChainExecutor(nil, nil, nil)
-	server := NewExternalProcessorServer(kernel, chainExecutor, config.TracingConfig{}, "")
+	server := NewExternalProcessorServer(kernel, chainExecutor, config.TracingConfig{}, "", testMaxDecompressedBytes, testMaxDecompressedBytes)
 
 	chain := &registry.PolicyChain{}
 	execCtx := newPolicyExecutionContext(server, "test-route", chain)
@@ -252,7 +348,7 @@ func TestBuildRequestContext_BasicHeaders(t *testing.T) {
 func TestBuildRequestContext_WithRequestID(t *testing.T) {
 	kernel := NewKernel()
 	chainExecutor := executor.NewChainExecutor(nil, nil, nil)
-	server := NewExternalProcessorServer(kernel, chainExecutor, config.TracingConfig{}, "")
+	server := NewExternalProcessorServer(kernel, chainExecutor, config.TracingConfig{}, "", testMaxDecompressedBytes, testMaxDecompressedBytes)
 
 	chain := &registry.PolicyChain{}
 	execCtx := newPolicyExecutionContext(server, "test-route", chain)
@@ -276,7 +372,7 @@ func TestBuildRequestContext_WithRequestID(t *testing.T) {
 func TestBuildRequestContext_EndOfStream(t *testing.T) {
 	kernel := NewKernel()
 	chainExecutor := executor.NewChainExecutor(nil, nil, nil)
-	server := NewExternalProcessorServer(kernel, chainExecutor, config.TracingConfig{}, "")
+	server := NewExternalProcessorServer(kernel, chainExecutor, config.TracingConfig{}, "", testMaxDecompressedBytes, testMaxDecompressedBytes)
 
 	chain := &registry.PolicyChain{}
 	execCtx := newPolicyExecutionContext(server, "test-route", chain)
@@ -302,7 +398,7 @@ func TestBuildRequestContext_EndOfStream(t *testing.T) {
 func TestBuildRequestContext_WithTemplateAndProvider(t *testing.T) {
 	kernel := NewKernel()
 	chainExecutor := executor.NewChainExecutor(nil, nil, nil)
-	server := NewExternalProcessorServer(kernel, chainExecutor, config.TracingConfig{}, "")
+	server := NewExternalProcessorServer(kernel, chainExecutor, config.TracingConfig{}, "", testMaxDecompressedBytes, testMaxDecompressedBytes)
 
 	chain := &registry.PolicyChain{}
 	execCtx := newPolicyExecutionContext(server, "test-route", chain)
@@ -334,7 +430,7 @@ func TestBuildRequestContext_WithTemplateAndProvider(t *testing.T) {
 func TestBuildRequestContext_MultipleHeaderValues(t *testing.T) {
 	kernel := NewKernel()
 	chainExecutor := executor.NewChainExecutor(nil, nil, nil)
-	server := NewExternalProcessorServer(kernel, chainExecutor, config.TracingConfig{}, "")
+	server := NewExternalProcessorServer(kernel, chainExecutor, config.TracingConfig{}, "", testMaxDecompressedBytes, testMaxDecompressedBytes)
 
 	chain := &registry.PolicyChain{}
 	execCtx := newPolicyExecutionContext(server, "test-route", chain)
@@ -365,7 +461,7 @@ func TestBuildRequestContext_MultipleHeaderValues(t *testing.T) {
 func TestBuildResponseContext_BasicHeaders(t *testing.T) {
 	kernel := NewKernel()
 	chainExecutor := executor.NewChainExecutor(nil, nil, nil)
-	server := NewExternalProcessorServer(kernel, chainExecutor, config.TracingConfig{}, "")
+	server := NewExternalProcessorServer(kernel, chainExecutor, config.TracingConfig{}, "", testMaxDecompressedBytes, testMaxDecompressedBytes)
 
 	chain := &registry.PolicyChain{}
 	execCtx := newPolicyExecutionContext(server, "test-route", chain)
@@ -408,7 +504,7 @@ func TestBuildResponseContext_BasicHeaders(t *testing.T) {
 func TestBuildResponseContext_EndOfStream(t *testing.T) {
 	kernel := NewKernel()
 	chainExecutor := executor.NewChainExecutor(nil, nil, nil)
-	server := NewExternalProcessorServer(kernel, chainExecutor, config.TracingConfig{}, "")
+	server := NewExternalProcessorServer(kernel, chainExecutor, config.TracingConfig{}, "", testMaxDecompressedBytes, testMaxDecompressedBytes)
 
 	chain := &registry.PolicyChain{}
 	execCtx := newPolicyExecutionContext(server, "test-route", chain)
@@ -439,7 +535,7 @@ func TestBuildResponseContext_EndOfStream(t *testing.T) {
 func TestBuildResponseContext_InvalidStatus(t *testing.T) {
 	kernel := NewKernel()
 	chainExecutor := executor.NewChainExecutor(nil, nil, nil)
-	server := NewExternalProcessorServer(kernel, chainExecutor, config.TracingConfig{}, "")
+	server := NewExternalProcessorServer(kernel, chainExecutor, config.TracingConfig{}, "", testMaxDecompressedBytes, testMaxDecompressedBytes)
 
 	chain := &registry.PolicyChain{}
 	execCtx := newPolicyExecutionContext(server, "test-route", chain)
@@ -472,7 +568,7 @@ func TestBuildResponseContext_InvalidStatus(t *testing.T) {
 func TestBuildRequestContext_DetectsContentEncoding(t *testing.T) {
 	kernel := NewKernel()
 	chainExecutor := executor.NewChainExecutor(nil, nil, nil)
-	server := NewExternalProcessorServer(kernel, chainExecutor, config.TracingConfig{}, "")
+	server := NewExternalProcessorServer(kernel, chainExecutor, config.TracingConfig{}, "", testMaxDecompressedBytes, testMaxDecompressedBytes)
 
 	chain := &registry.PolicyChain{}
 	execCtx := newPolicyExecutionContext(server, "test-route", chain)
@@ -494,7 +590,7 @@ func TestBuildRequestContext_DetectsContentEncoding(t *testing.T) {
 func TestBuildRequestContext_DetectsBrotliEncoding(t *testing.T) {
 	kernel := NewKernel()
 	chainExecutor := executor.NewChainExecutor(nil, nil, nil)
-	server := NewExternalProcessorServer(kernel, chainExecutor, config.TracingConfig{}, "")
+	server := NewExternalProcessorServer(kernel, chainExecutor, config.TracingConfig{}, "", testMaxDecompressedBytes, testMaxDecompressedBytes)
 
 	chain := &registry.PolicyChain{}
 	execCtx := newPolicyExecutionContext(server, "test-route", chain)
@@ -516,7 +612,7 @@ func TestBuildRequestContext_DetectsBrotliEncoding(t *testing.T) {
 func TestBuildRequestContext_NoContentEncoding(t *testing.T) {
 	kernel := NewKernel()
 	chainExecutor := executor.NewChainExecutor(nil, nil, nil)
-	server := NewExternalProcessorServer(kernel, chainExecutor, config.TracingConfig{}, "")
+	server := NewExternalProcessorServer(kernel, chainExecutor, config.TracingConfig{}, "", testMaxDecompressedBytes, testMaxDecompressedBytes)
 
 	chain := &registry.PolicyChain{}
 	execCtx := newPolicyExecutionContext(server, "test-route", chain)
@@ -538,7 +634,7 @@ func TestBuildRequestContext_NoContentEncoding(t *testing.T) {
 func TestBuildResponseContext_DetectsContentEncoding(t *testing.T) {
 	kernel := NewKernel()
 	chainExecutor := executor.NewChainExecutor(nil, nil, nil)
-	server := NewExternalProcessorServer(kernel, chainExecutor, config.TracingConfig{}, "")
+	server := NewExternalProcessorServer(kernel, chainExecutor, config.TracingConfig{}, "", testMaxDecompressedBytes, testMaxDecompressedBytes)
 
 	chain := &registry.PolicyChain{}
 	execCtx := newPolicyExecutionContext(server, "test-route", chain)
@@ -562,7 +658,7 @@ func TestBuildResponseContext_DetectsContentEncoding(t *testing.T) {
 func TestBuildResponseContext_DetectsBrotliEncoding(t *testing.T) {
 	kernel := NewKernel()
 	chainExecutor := executor.NewChainExecutor(nil, nil, nil)
-	server := NewExternalProcessorServer(kernel, chainExecutor, config.TracingConfig{}, "")
+	server := NewExternalProcessorServer(kernel, chainExecutor, config.TracingConfig{}, "", testMaxDecompressedBytes, testMaxDecompressedBytes)
 
 	chain := &registry.PolicyChain{}
 	execCtx := newPolicyExecutionContext(server, "test-route", chain)
@@ -586,7 +682,7 @@ func TestBuildResponseContext_DetectsBrotliEncoding(t *testing.T) {
 func TestBuildResponseContext_NoContentEncoding(t *testing.T) {
 	kernel := NewKernel()
 	chainExecutor := executor.NewChainExecutor(nil, nil, nil)
-	server := NewExternalProcessorServer(kernel, chainExecutor, config.TracingConfig{}, "")
+	server := NewExternalProcessorServer(kernel, chainExecutor, config.TracingConfig{}, "", testMaxDecompressedBytes, testMaxDecompressedBytes)
 
 	chain := &registry.PolicyChain{}
 	execCtx := newPolicyExecutionContext(server, "test-route", chain)
@@ -613,7 +709,7 @@ func TestBuildResponseContext_NoContentEncoding(t *testing.T) {
 
 func TestProcessResponseBody_DecompressesGzip(t *testing.T) {
 	kernel := NewKernel()
-	server := NewExternalProcessorServer(kernel, newTestExecutor(), config.TracingConfig{}, "")
+	server := NewExternalProcessorServer(kernel, newTestExecutor(), config.TracingConfig{}, "", testMaxDecompressedBytes, testMaxDecompressedBytes)
 
 	// Policy that requires and captures the response body
 	var capturedBody []byte
@@ -664,7 +760,7 @@ func TestProcessResponseBody_DecompressesGzip(t *testing.T) {
 
 func TestProcessResponseBody_DecompressesBrotli(t *testing.T) {
 	kernel := NewKernel()
-	server := NewExternalProcessorServer(kernel, newTestExecutor(), config.TracingConfig{}, "")
+	server := NewExternalProcessorServer(kernel, newTestExecutor(), config.TracingConfig{}, "", testMaxDecompressedBytes, testMaxDecompressedBytes)
 
 	var capturedBody []byte
 	mockPolicy := &testutils.ConfigurableMockPolicy{
@@ -708,9 +804,78 @@ func TestProcessResponseBody_DecompressesBrotli(t *testing.T) {
 	assert.Equal(t, originalJSON, capturedBody)
 }
 
+func TestProcessStreamingResponseBody_DecompressionErrorFailsClosed(t *testing.T) {
+	const maxChunkBytes int64 = 64
+
+	kernel := NewKernel()
+	server := NewExternalProcessorServer(kernel, newTestExecutor(), config.TracingConfig{}, "", testMaxDecompressedBytes, maxChunkBytes)
+	chain := &registry.PolicyChain{}
+	execCtx := newPolicyExecutionContext(server, "test-route", chain)
+
+	execCtx.buildRequestContexts(&extprocv3.HttpHeaders{Headers: &corev3.HeaderMap{}}, RouteMetadata{})
+	execCtx.buildResponseContexts(&extprocv3.HttpHeaders{
+		Headers: &corev3.HeaderMap{
+			Headers: []*corev3.HeaderValue{
+				{Key: ":status", RawValue: []byte("200")},
+				{Key: "content-encoding", RawValue: []byte("gzip")},
+			},
+		},
+	})
+
+	// Feed a real gzip stream without signaling EOS. Splitting the compressed bytes
+	// exercises decoder state and boundary accounting across calls. Once enough
+	// compressed input has arrived, the ext_proc stream must fail instead of
+	// returning a normal empty body and later ending as a successful truncation.
+	compressed := gzipCompress(make([]byte, 1024))
+	var resp *extprocv3.ProcessingResponse
+	var err error
+	for i := 0; i < len(compressed) && err == nil; i++ {
+		resp, err = execCtx.processStreamingResponseBody(context.Background(), &extprocv3.HttpBody{
+			Body:        compressed[i : i+1],
+			EndOfStream: false,
+		})
+	}
+
+	assert.Nil(t, resp, "a decompression failure must not be translated into a normal body response")
+	require.ErrorIs(t, err, ErrDecompressedTooLarge)
+	assert.False(t, execCtx.streamTerminated, "kernel errors terminate ext_proc instead of using policy EOS suppression")
+	assert.Nil(t, execCtx.responseStreamDecomp)
+}
+
+func TestProcessResponseBody_DecompressionLimitFailsClosed(t *testing.T) {
+	const responseLimit int64 = 64
+
+	kernel := NewKernel()
+	server := NewExternalProcessorServer(kernel, newTestExecutor(), config.TracingConfig{}, "", testMaxDecompressedBytes, responseLimit)
+	chain := &registry.PolicyChain{
+		RequiresResponseBody: true,
+		Policies:             []policy.Policy{&testutils.NoopPolicy{}},
+		PolicySpecs:          []policy.PolicySpec{{Enabled: true}},
+	}
+	execCtx := newPolicyExecutionContext(server, "test-route", chain)
+
+	execCtx.buildRequestContexts(&extprocv3.HttpHeaders{Headers: &corev3.HeaderMap{}}, RouteMetadata{})
+	execCtx.buildResponseContexts(&extprocv3.HttpHeaders{
+		Headers: &corev3.HeaderMap{
+			Headers: []*corev3.HeaderValue{
+				{Key: ":status", RawValue: []byte("200")},
+				{Key: "content-encoding", RawValue: []byte("gzip")},
+			},
+		},
+	})
+
+	resp, err := execCtx.processResponseBody(context.Background(), &extprocv3.HttpBody{
+		Body:        gzipCompress(make([]byte, 1024)),
+		EndOfStream: true,
+	})
+
+	assert.Nil(t, resp)
+	require.ErrorIs(t, err, ErrDecompressedTooLarge)
+}
+
 func TestProcessResponseBody_NoEncoding_PassesThrough(t *testing.T) {
 	kernel := NewKernel()
-	server := NewExternalProcessorServer(kernel, newTestExecutor(), config.TracingConfig{}, "")
+	server := NewExternalProcessorServer(kernel, newTestExecutor(), config.TracingConfig{}, "", testMaxDecompressedBytes, testMaxDecompressedBytes)
 
 	var capturedBody []byte
 	mockPolicy := &testutils.ConfigurableMockPolicy{
@@ -758,7 +923,7 @@ func TestProcessResponseBody_NoEncoding_PassesThrough(t *testing.T) {
 
 func TestProcessRequestBody_DecompressesGzip(t *testing.T) {
 	kernel := NewKernel()
-	server := NewExternalProcessorServer(kernel, newTestExecutor(), config.TracingConfig{}, "")
+	server := NewExternalProcessorServer(kernel, newTestExecutor(), config.TracingConfig{}, "", testMaxDecompressedBytes, testMaxDecompressedBytes)
 
 	chain := &registry.PolicyChain{
 		RequiresRequestBody: true,
@@ -793,7 +958,7 @@ func TestProcessRequestBody_DecompressesGzip(t *testing.T) {
 
 func TestProcessRequestBody_NoEncoding_PassesThrough(t *testing.T) {
 	kernel := NewKernel()
-	server := NewExternalProcessorServer(kernel, newTestExecutor(), config.TracingConfig{}, "")
+	server := NewExternalProcessorServer(kernel, newTestExecutor(), config.TracingConfig{}, "", testMaxDecompressedBytes, testMaxDecompressedBytes)
 
 	chain := &registry.PolicyChain{
 		RequiresRequestBody: true,
@@ -820,4 +985,194 @@ func TestProcessRequestBody_NoEncoding_PassesThrough(t *testing.T) {
 	require.NoError(t, err)
 	require.NotNil(t, execCtx.requestBodyCtx.Body)
 	assert.Equal(t, plainJSON, execCtx.requestBodyCtx.Body.Content)
+}
+
+// =============================================================================
+// MCP SSE response body-mutation regression Tests
+//
+// Reproduces the exact configuration that triggered the HTTP 500
+// ("mismatch_between_content_length_and_the_length_of_the_mutated_body"): an MCP
+// proxy chain whose only response-body policy is streaming-capable (mirroring the
+// always-injected analytics system policy with no user policies attached), fronting
+// an upstream that replies with a chunked text/event-stream body. Before the fix,
+// isStreamingResponse was set to true independently of the MCP-only BUFFERED
+// ModeOverride, so processResponseBody dispatched to the streaming handler and
+// emitted a BodyMutation_StreamedResponse while Envoy was in a buffered body
+// callback — which Envoy rejects. After the fix, both decisions come from the same
+// responseStreamingEnabled() predicate, so a body-mutating policy's output always
+// arrives as a BodyMutation_Body with a matching content-length.
+// =============================================================================
+
+func TestProcessResponseBody_MCPSSEEmitsBufferedBodyMutation(t *testing.T) {
+	kernel := NewKernel()
+	server := NewExternalProcessorServer(kernel, newTestExecutor(), config.TracingConfig{}, "", testMaxDecompressedBytes, testMaxDecompressedBytes)
+
+	rewrittenBody := []byte("event: message\ndata: {\"jsonrpc\":\"2.0\",\"id\":1,\"result\":{\"tools\":[]}}\n\n")
+	mockPolicy := &testutils.ConfigurableMockPolicy{
+		MockMode: policy.ProcessingMode{
+			ResponseBodyMode: policy.BodyModeBuffer,
+		},
+		OnRespFn: func(_ *policy.ResponseContext, _ map[string]interface{}) policy.ResponseAction {
+			return policy.DownstreamResponseModifications{Body: rewrittenBody}
+		},
+	}
+
+	chain := &registry.PolicyChain{
+		RequiresResponseBody: true,
+		// Mirrors a chain with no user MCP policies attached: the only response-body
+		// policy is the always-injected, streaming-capable analytics system policy.
+		SupportsResponseStreaming: true,
+		Policies:                  []policy.Policy{mockPolicy},
+		PolicySpecs:               []policy.PolicySpec{{Enabled: true}},
+	}
+	execCtx := newPolicyExecutionContext(server, "test-route", chain)
+
+	execCtx.buildRequestContexts(&extprocv3.HttpHeaders{
+		Headers: &corev3.HeaderMap{
+			Headers: []*corev3.HeaderValue{
+				{Key: ":path", RawValue: []byte("/everything/mcp")},
+				{Key: ":method", RawValue: []byte("POST")},
+			},
+		},
+	}, RouteMetadata{APIKind: string(policy.APIKindMCP)})
+
+	headersResp, err := execCtx.processResponseHeaders(context.Background(), &extprocv3.HttpHeaders{
+		Headers: &corev3.HeaderMap{
+			Headers: []*corev3.HeaderValue{
+				{Key: ":status", RawValue: []byte("200")},
+				{Key: "content-type", RawValue: []byte("text/event-stream")},
+				{Key: "transfer-encoding", RawValue: []byte("chunked")},
+			},
+		},
+		EndOfStream: false,
+	})
+	require.NoError(t, err)
+	require.False(t, execCtx.isStreamingResponse, "MCP responses must stay buffered end-to-end")
+	require.Equal(t, extprocconfigv3.ProcessingMode_BUFFERED, headersResp.ModeOverride.ResponseBodyMode)
+
+	upstreamBody := []byte("event: message\ndata: {\"jsonrpc\":\"2.0\",\"id\":1,\"result\":{\"tools\":[{\"name\":\"add\"}]}}\n\n")
+	bodyResp, err := execCtx.processResponseBody(context.Background(), &extprocv3.HttpBody{
+		Body:        upstreamBody,
+		EndOfStream: true,
+	})
+	require.NoError(t, err)
+
+	respBody := bodyResp.GetResponseBody()
+	require.NotNil(t, respBody)
+	mutation := respBody.GetResponse().GetBodyMutation()
+	require.NotNil(t, mutation, "a body-mutating policy must produce a body mutation")
+
+	// The critical assertion: never a StreamedResponse mutation while Envoy is running
+	// this response in a buffered body callback (see processor_state.cc validateContentLength).
+	assert.Nil(t, mutation.GetStreamedResponse())
+	assert.Equal(t, rewrittenBody, mutation.GetBody())
+
+	contentLength := ""
+	for _, h := range respBody.GetResponse().GetHeaderMutation().GetSetHeaders() {
+		if h.GetHeader().GetKey() == "content-length" {
+			contentLength = string(h.GetHeader().GetRawValue())
+		}
+	}
+	assert.Equal(t, fmt.Sprintf("%d", len(rewrittenBody)), contentLength)
+}
+
+func TestProcessRequestBody_DecompressionLimitReturns413(t *testing.T) {
+	const requestLimit int64 = 64
+
+	kernel := NewKernel()
+	server := NewExternalProcessorServer(kernel, newTestExecutor(), config.TracingConfig{}, "", requestLimit, testMaxDecompressedBytes)
+	chain := &registry.PolicyChain{
+		RequiresRequestBody: true,
+		Policies:            []policy.Policy{&testutils.NoopPolicy{}},
+		PolicySpecs:         []policy.PolicySpec{{Enabled: true}},
+	}
+	execCtx := newPolicyExecutionContext(server, "test-route", chain)
+	execCtx.buildRequestContexts(&extprocv3.HttpHeaders{
+		Headers: &corev3.HeaderMap{
+			Headers: []*corev3.HeaderValue{
+				{Key: ":path", RawValue: []byte("/api/chat")},
+				{Key: "content-encoding", RawValue: []byte("gzip")},
+			},
+		},
+	}, RouteMetadata{})
+
+	resp, err := execCtx.processRequestBody(context.Background(), &extprocv3.HttpBody{
+		Body:        gzipCompress(make([]byte, 1024)),
+		EndOfStream: true,
+	})
+
+	require.NoError(t, err)
+	require.NotNil(t, resp)
+	require.NotNil(t, resp.GetImmediateResponse())
+	assert.Equal(t, typev3.StatusCode_PayloadTooLarge, resp.GetImmediateResponse().Status.Code)
+}
+
+func TestProcessStreamingRequestBody_DecompressionLimitFailsClosed(t *testing.T) {
+	const requestLimit int64 = 64
+
+	kernel := NewKernel()
+	server := NewExternalProcessorServer(kernel, newTestExecutor(), config.TracingConfig{}, "", requestLimit, testMaxDecompressedBytes)
+	chain := &registry.PolicyChain{
+		RequiresRequestBody:      true,
+		SupportsRequestStreaming: true,
+		Policies:                 []policy.Policy{&testutils.NoopPolicy{}},
+		PolicySpecs:              []policy.PolicySpec{{Enabled: true}},
+	}
+	execCtx := newPolicyExecutionContext(server, "test-route", chain)
+	execCtx.buildRequestContexts(&extprocv3.HttpHeaders{
+		Headers: &corev3.HeaderMap{
+			Headers: []*corev3.HeaderValue{
+				{Key: ":path", RawValue: []byte("/api/chat")},
+				{Key: "content-encoding", RawValue: []byte("gzip")},
+				{Key: "transfer-encoding", RawValue: []byte("chunked")},
+			},
+		},
+	}, RouteMetadata{})
+
+	compressed := gzipCompress(make([]byte, 1024))
+	var resp *extprocv3.ProcessingResponse
+	var err error
+	for i := 0; i < len(compressed) && err == nil; i++ {
+		resp, err = execCtx.processStreamingRequestBody(context.Background(), &extprocv3.HttpBody{
+			Body:        compressed[i : i+1],
+			EndOfStream: false,
+		})
+	}
+
+	assert.Nil(t, resp, "full-duplex limit failures must not promise a late ImmediateResponse")
+	require.ErrorIs(t, err, ErrDecompressedTooLarge)
+	assert.Nil(t, execCtx.requestStreamDecomp)
+}
+
+func TestProcessStreamingRequestBody_MalformedEncodingFailsClosed(t *testing.T) {
+	kernel := NewKernel()
+	server := NewExternalProcessorServer(kernel, newTestExecutor(), config.TracingConfig{}, "", testMaxDecompressedBytes, testMaxDecompressedBytes)
+	chain := &registry.PolicyChain{
+		RequiresRequestBody:      true,
+		SupportsRequestStreaming: true,
+		Policies:                 []policy.Policy{&testutils.NoopPolicy{}},
+		PolicySpecs:              []policy.PolicySpec{{Enabled: true}},
+	}
+	execCtx := newPolicyExecutionContext(server, "test-route", chain)
+	execCtx.buildRequestContexts(&extprocv3.HttpHeaders{
+		Headers: &corev3.HeaderMap{
+			Headers: []*corev3.HeaderValue{
+				{Key: ":path", RawValue: []byte("/api/chat")},
+				{Key: "content-encoding", RawValue: []byte("gzip")},
+				{Key: "transfer-encoding", RawValue: []byte("chunked")},
+			},
+		},
+	}, RouteMetadata{})
+
+	compressed := gzipCompress([]byte("valid body with a corrupted trailer"))
+	compressed[len(compressed)-1] ^= 0xff
+	resp, err := execCtx.processStreamingRequestBody(context.Background(), &extprocv3.HttpBody{
+		Body:        compressed,
+		EndOfStream: true,
+	})
+
+	assert.Nil(t, resp, "malformed compressed fragments must never be forwarded raw")
+	require.Error(t, err)
+	assert.NotErrorIs(t, err, ErrDecompressedTooLarge)
+	assert.Nil(t, execCtx.requestStreamDecomp)
 }
