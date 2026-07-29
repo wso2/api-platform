@@ -28,6 +28,7 @@ const (
 	AIProviderDisplayNameMetadataKey = "ai:providerdisplayname"
 	ApplicationIDMetadataKey         = "x-wso2-application-id"
 	ApplicationNameMetadataKey       = "x-wso2-application-name"
+	InternalLoopbackMetadataKey = "x-wso2-internal-loopback"
 
 	// Auth-context metadata keys. Populated generically (auth-type-agnostic, via
 	// SharedContext.AuthContext) by populateAuthAnalyticsMetadata below, so they work
@@ -173,6 +174,11 @@ func (a *AnalyticsPolicy) OnRequestHeaders(_ context.Context, reqCtx *policy.Req
 		}
 		if appNames := reqCtx.Headers.Get("x-wso2-application-name"); len(appNames) > 0 {
 			analyticsMetadata[ApplicationNameMetadataKey] = appNames[0]
+		}
+		// Marker stamped by the proxy on its internal loopback forward to the provider.
+		// Normalized to "true" so the policy-engine can drop the duplicate provider hop.
+		if loopback := reqCtx.Headers.Get(InternalLoopbackMetadataKey); len(loopback) > 0 && loopback[0] != "" {
+			analyticsMetadata[InternalLoopbackMetadataKey] = "true"
 		}
 	}
 

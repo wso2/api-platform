@@ -22,6 +22,7 @@ import (
 	"fmt"
 	"log/slog"
 	"maps"
+	"net"
 	"strconv"
 	"time"
 
@@ -80,6 +81,16 @@ const (
 
 	// UserIDMetadataKey represents the user ID metadata key for analytics.
 	UserIDMetadataKey string = "x-wso2-user-id"
+
+	// InternalLoopbackMetadataKey is the analytics-metadata key carrying the marker that
+	// the proxy stamps on its internal loopback forward to the provider (surfaced by the
+	// analytics system policy from the x-wso2-internal-loopback request header).
+	InternalLoopbackMetadataKey string = "x-wso2-internal-loopback"
+
+	// PropInternalLoopbackProvider is the event property set when a provider event is the
+	// internal loopback hop of a proxy call. Read by the Moesif publisher to skip it (avoids
+	// double-counting), while other publishers (traffic log) still emit it.
+	PropInternalLoopbackProvider string = "isInternalLoopbackProvider"
 )
 
 // Analytics represents analytics collector service.
@@ -144,10 +155,42 @@ func (c *Analytics) Process(event *v3.HTTPAccessLogEntry) {
 	}
 
 	analyticEvent := c.prepareAnalyticEvent(event)
+
+	// Suppress the internal loopback provider hop of an LLM proxy call so a single client
+	// call is counted once. Detection uses the x-wso2-internal-loopback marker the proxy
+	// stamps on its loopback forward (see prepareAnalyticEvent) — a direct provider call
+	// never carries it, so it is never suppressed.
+	if v, ok := analyticEvent.Properties[PropInternalLoopbackProvider].(bool); ok && v {
+		correlationID := ""
+		if analyticEvent.MetaInfo != nil {
+			correlationID = analyticEvent.MetaInfo.CorrelationID
+		}
+		apiType := ""
+		if analyticEvent.API != nil {
+			apiType = analyticEvent.API.APIType
+		}
+		slog.Debug("Suppressing internal loopback provider analytics event",
+			"apiType", apiType,
+			"correlationId", correlationID,
+		)
+		return
+	}
+
 	for _, publisher := range c.publishers {
 		publisher.Publish(analyticEvent)
 	}
 
+}
+
+// isLoopbackAddress reports whether ip is an IPv4/IPv6 loopback address.
+func isLoopbackAddress(ip string) bool {
+	if ip == "127.0.0.1" || ip == "::1" {
+		return true
+	}
+	if parsed := net.ParseIP(ip); parsed != nil {
+		return parsed.IsLoopback()
+	}
+	return false
 }
 
 // isInvalid checks if the log entry is invalid.
@@ -321,6 +364,8 @@ func (c *Analytics) prepareAnalyticEvent(logEntry *v3.HTTPAccessLogEntry) *dto.E
 	if userIP == "" {
 		userIP = Unknown
 	}
+
+	directRemoteIP := logEntry.GetCommonProperties().GetDownstreamDirectRemoteAddress().GetSocketAddress().GetAddress()
 	if userAgent == "" {
 		userAgent = Unknown
 	}
@@ -341,6 +386,25 @@ func (c *Analytics) prepareAnalyticEvent(logEntry *v3.HTTPAccessLogEntry) *dto.E
 	if userID, exists := keyValuePairsFromMetadata[UserIDMetadataKey]; exists && userID != "" {
 		event.Properties[UserIDMetadataKey] = userID
 		slog.Debug("Analytics: User ID set from metadata", "userID", userID)
+	}
+
+	// Flag the internal loopback provider hop of an LLM proxy call so the Moesif publisher
+	// can drop it (one counted event per client call) while the traffic log keeps it. The
+	// primary signal is the x-wso2-internal-loopback marker the proxy stamps on its loopback
+	// forward — a direct provider call never carries it, so it is never suppressed regardless
+	// of network topology. The loopback guard uses directRemoteIP (the physical TCP peer),
+	// NOT userIP, so a forged "X-Forwarded-For: 127.0.0.1" cannot fake an internal source.
+	if extendedAPI.APIType == "LlmProvider" &&
+		keyValuePairsFromMetadata[InternalLoopbackMetadataKey] == "true" {
+		switch {
+		case directRemoteIP == "":
+			slog.Warn("Internal loopback marker present but downstream direct remote address is unavailable; not suppressing event",
+				"apiType", extendedAPI.APIType,
+				"correlationId", metaInfo.CorrelationID,
+			)
+		case isLoopbackAddress(directRemoteIP):
+			event.Properties[PropInternalLoopbackProvider] = true
+		}
 	}
 
 	// Auth-context metadata (type, issuer, credential/token IDs, audience, scopes, custom

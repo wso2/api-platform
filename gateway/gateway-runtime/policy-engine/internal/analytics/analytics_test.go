@@ -18,6 +18,8 @@
 package analytics
 
 import (
+	"bytes"
+	"log/slog"
 	"testing"
 	"time"
 
@@ -287,6 +289,187 @@ func TestProcess_PublishesEvent(t *testing.T) {
 	analytics.Process(logEntry)
 
 	assert.True(t, mockPub.called, "publisher must be called")
+}
+
+func setDownstreamAddrs(entry *v3.HTTPAccessLogEntry, remoteAddr, directAddr string) {
+	entry.CommonProperties.DownstreamRemoteAddress = &corev3.Address{
+		Address: &corev3.Address_SocketAddress{SocketAddress: &corev3.SocketAddress{Address: remoteAddr}},
+	}
+	entry.CommonProperties.DownstreamDirectRemoteAddress = &corev3.Address{
+		Address: &corev3.Address_SocketAddress{SocketAddress: &corev3.SocketAddress{Address: directAddr}},
+	}
+}
+
+// createLogEntryWithAPITypeAndAddr builds an access-log entry with the given api-kind
+// (analytics_data metadata) and downstream addresses (remote==direct), for suppression tests.
+func createLogEntryWithAPITypeAndAddr(apiType, downstreamAddr string) *v3.HTTPAccessLogEntry {
+	entry := createLogEntryWithMetadata(map[string]string{APITypeKey: apiType})
+	setDownstreamAddrs(entry, downstreamAddr, downstreamAddr)
+	return entry
+}
+
+// buildProviderEvent runs prepareAnalyticEvent for the given api-kind, downstream address
+// (remote==direct), and optional internal-loopback marker.
+func buildProviderEvent(apiType, downstreamAddr string, marker bool) *dto.Event {
+	return buildProviderEventAddrs(apiType, downstreamAddr, downstreamAddr, marker)
+}
+
+func buildProviderEventAddrs(apiType, remoteAddr, directAddr string, marker bool) *dto.Event {
+	md := map[string]string{APITypeKey: apiType}
+	if marker {
+		md[InternalLoopbackMetadataKey] = "true"
+	}
+	entry := createLogEntryWithMetadata(md)
+	setDownstreamAddrs(entry, remoteAddr, directAddr)
+	return NewAnalytics(&config.Config{}).prepareAnalyticEvent(entry)
+}
+
+func TestPrepareEvent_LoopbackProviderFlagged(t *testing.T) {
+	// LlmProvider hop carrying the marker over loopback → flagged for Moesif suppression.
+	e := buildProviderEvent("LlmProvider", "127.0.0.1", true)
+	assert.Equal(t, true, e.Properties[PropInternalLoopbackProvider])
+}
+
+func TestPrepareEvent_DirectProviderNotFlagged(t *testing.T) {
+	// No marker → a direct provider call is never flagged, even when it arrives over loopback
+	// (the sidecar/port-forward case the reviewer raised).
+	e := buildProviderEvent("LlmProvider", "127.0.0.1", false)
+	assert.Nil(t, e.Properties[PropInternalLoopbackProvider])
+}
+
+func TestPrepareEvent_ProviderMarkerRealIPNotFlagged(t *testing.T) {
+	// Marker present but downstream is a routable client address → not flagged (spoof guard).
+	e := buildProviderEvent("LlmProvider", "192.168.1.1", true)
+	assert.Nil(t, e.Properties[PropInternalLoopbackProvider])
+}
+
+func TestPrepareEvent_ProxyNotFlagged(t *testing.T) {
+	// Only LlmProvider events are candidates; a proxy event is never flagged.
+	e := buildProviderEvent("LlmProxy", "127.0.0.1", true)
+	assert.Nil(t, e.Properties[PropInternalLoopbackProvider])
+}
+
+func TestPrepareEvent_ForgedXFFLoopbackNotFlagged(t *testing.T) {
+	// The internal-loopback marker is only applied by the proxy, so a forged X-Forwarded-For header (remote=spoofed) must not cause suppression.
+	e := buildProviderEventAddrs("LlmProvider", "127.0.0.1" /*remote=forged XFF*/, "172.18.0.9" /*direct=real peer*/, true /*forged marker*/)
+	assert.Nil(t, e.Properties[PropInternalLoopbackProvider],
+		"forged X-Forwarded-For + marker must not cause suppression")
+}
+
+func TestPrepareEvent_GenuineLoopbackWithForgedXFFStillFlagged(t *testing.T) {
+	// The legitimate proxy loopback hop: physical peer IS loopback (gateway self-call) and the
+	// marker is set by the controller. Still flagged regardless of the remote (XFF) value.
+	e := buildProviderEventAddrs("LlmProvider", "203.0.113.7" /*remote*/, "127.0.0.1" /*direct=loopback*/, true)
+	assert.Equal(t, true, e.Properties[PropInternalLoopbackProvider])
+}
+
+// loopbackEntry builds an access-log entry for an LlmProvider/LlmProxy over loopback, with or
+// without the internal-loopback marker, for Process-level suppression tests.
+func loopbackEntry(apiType string, marker bool) *v3.HTTPAccessLogEntry {
+	md := map[string]string{APITypeKey: apiType}
+	if marker {
+		md[InternalLoopbackMetadataKey] = "true"
+	}
+	e := createLogEntryWithMetadata(md)
+	setDownstreamAddrs(e, "127.0.0.1", "127.0.0.1")
+	return e
+}
+
+func TestProcess_SuppressesFlaggedLoopbackProvider(t *testing.T) {
+	// Marker + loopback + LlmProvider → the internal loopback hop is suppressed.
+	analytics := NewAnalytics(&config.Config{})
+	mockPub := &mockPublisher{}
+	analytics.publishers = append(analytics.publishers, mockPub)
+
+	analytics.Process(loopbackEntry("LlmProvider", true))
+
+	assert.False(t, mockPub.called, "flagged internal loopback provider event must be suppressed")
+}
+
+func TestProcess_PublishesDirectProviderOverLoopback(t *testing.T) {
+	// No marker (a direct provider call) is never suppressed, even when it arrives over
+	// loopback — the sidecar/port-forward case the reviewer raised.
+	analytics := NewAnalytics(&config.Config{})
+	mockPub := &mockPublisher{}
+	analytics.publishers = append(analytics.publishers, mockPub)
+
+	analytics.Process(loopbackEntry("LlmProvider", false))
+
+	assert.True(t, mockPub.called, "direct provider call (no marker) must not be suppressed")
+}
+
+// captureLogs redirects the package-level slog default (which analytics.go logs through) into a
+// buffer at debug level for the duration of the test, restoring the previous logger afterwards.
+func captureLogs(t *testing.T) *bytes.Buffer {
+	t.Helper()
+	var buf bytes.Buffer
+	prev := slog.Default()
+	slog.SetDefault(slog.New(slog.NewTextHandler(&buf, &slog.HandlerOptions{Level: slog.LevelDebug})))
+	t.Cleanup(func() { slog.SetDefault(prev) })
+	return &buf
+}
+
+func TestPrepareEvent_MissingDirectRemoteIPNotFlagged(t *testing.T) {
+	// Envoy reported no direct downstream peer. The marker alone must not suppress the event:
+	// falling back to the (forgeable, XFF-derived) remote address would reopen the spoof hole.
+	e := buildProviderEventAddrs("LlmProvider", "127.0.0.1" /*remote*/, "" /*direct=unavailable*/, true)
+	assert.Nil(t, e.Properties[PropInternalLoopbackProvider],
+		"missing direct remote address must not fall back to the forgeable remote address")
+}
+
+func TestPrepareEvent_MissingDirectRemoteIPLogsWarn(t *testing.T) {
+	// The unevaluatable guard must leave a trail explaining the resulting duplicate event.
+	buf := captureLogs(t)
+	buildProviderEventAddrs("LlmProvider", "127.0.0.1", "", true)
+	assert.Contains(t, buf.String(), "direct remote address is unavailable")
+}
+
+func TestPrepareEvent_MissingDirectRemoteIPWithoutMarkerLogsNothing(t *testing.T) {
+	// The warn is scoped to the marker+provider case, so ordinary traffic with no direct
+	// remote address cannot spam the log.
+	buf := captureLogs(t)
+	buildProviderEventAddrs("LlmProxy", "127.0.0.1", "", false)
+	assert.NotContains(t, buf.String(), "direct remote address is unavailable")
+}
+
+func TestProcess_PublishesWhenDirectRemoteIPMissing(t *testing.T) {
+	// Fail open: without a trustworthy peer address the event is published (one possible
+	// duplicate) rather than suppressed on the strength of a forgeable marker alone.
+	analytics := NewAnalytics(&config.Config{})
+	mockPub := &mockPublisher{}
+	analytics.publishers = append(analytics.publishers, mockPub)
+
+	entry := createLogEntryWithMetadata(map[string]string{
+		APITypeKey:                  "LlmProvider",
+		InternalLoopbackMetadataKey: "true",
+	})
+	setDownstreamAddrs(entry, "127.0.0.1", "")
+	analytics.Process(entry)
+
+	assert.True(t, mockPub.called, "event must still be published when the direct remote address is unavailable")
+}
+
+func TestProcess_SuppressionLogsDebug(t *testing.T) {
+	// A suppressed hop must be traceable, otherwise "my analytics event is missing" has no trail.
+	buf := captureLogs(t)
+	analytics := NewAnalytics(&config.Config{})
+	mockPub := &mockPublisher{}
+	analytics.publishers = append(analytics.publishers, mockPub)
+
+	analytics.Process(loopbackEntry("LlmProvider", true))
+
+	assert.False(t, mockPub.called)
+	assert.Contains(t, buf.String(), "Suppressing internal loopback provider analytics event")
+}
+
+func TestIsLoopbackAddress(t *testing.T) {
+	assert.True(t, isLoopbackAddress("127.0.0.1"))
+	assert.True(t, isLoopbackAddress("::1"))
+	assert.True(t, isLoopbackAddress("127.0.0.5"))
+	assert.False(t, isLoopbackAddress("192.168.1.1"))
+	assert.False(t, isLoopbackAddress("10.0.0.1"))
+	assert.False(t, isLoopbackAddress(""))
+	assert.False(t, isLoopbackAddress("not-an-ip"))
 }
 
 func TestProcess_PanicRecovery(t *testing.T) {

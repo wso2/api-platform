@@ -275,6 +275,36 @@ func TestPublish_LlmProviderWithAIMetadata(t *testing.T) {
 	assert.Equal(t, 50, tokenUsage.CompletionToken)
 }
 
+func TestPublish_LlmProxyWithAIMetadata(t *testing.T) {
+	moesif := createTestMoesifWithoutAPI()
+
+	event := createBaseEvent()
+	event.API.APIType = "LlmProxy"
+	event.Properties["aiMetadata"] = dto.AIMetadata{
+		Model:      "gpt-4",
+		VendorName: "openai",
+	}
+	event.Properties["aiTokenUsage"] = dto.AITokenUsage{
+		PromptToken:     100,
+		CompletionToken: 50,
+		TotalToken:      150,
+	}
+
+	moesif.Publish(event)
+
+	assert.Len(t, moesif.events, 1)
+	metadata := getMetadata(moesif.events[0])
+	assert.NotNil(t, metadata["aiMetadata"])
+	assert.NotNil(t, metadata["aiTokenUsage"])
+
+	aiMeta := metadata["aiMetadata"].(dto.AIMetadata)
+	assert.Equal(t, "gpt-4", aiMeta.Model)
+	assert.Equal(t, "openai", aiMeta.VendorName)
+
+	tokenUsage := metadata["aiTokenUsage"].(dto.AITokenUsage)
+	assert.Equal(t, 150, tokenUsage.TotalToken)
+}
+
 func TestPublish_LlmProviderMissingAIMetadata(t *testing.T) {
 	moesif := createTestMoesifWithoutAPI()
 

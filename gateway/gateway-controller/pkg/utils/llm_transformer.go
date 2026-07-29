@@ -378,6 +378,14 @@ func (t *LLMProviderTransformer) transformProxy(proxy *api.LLMProxyConfiguration
 			}
 		}
 	}
+	// Phase 4: Attach loopback marker policy to all operations so the gateway can identify
+	loopbackMarkerPolicy, err := t.proxyInternalLoopbackMarkerPolicy()
+	if err != nil {
+		return nil, err
+	}
+	for i := range ops {
+		appendOperationPolicy(&ops[i], *loopbackMarkerPolicy)
+	}
 	// A proxy is always allow-all with no access control, so there are no deny routes:
 	// attach API-level resilience to all generated routes.
 	applyResilienceToTrafficRoutes(ops, proxy.Spec.Resilience, nil)
@@ -850,6 +858,27 @@ func (t *LLMProviderTransformer) proxyUpstreamAuthPolicy(auth *api.LLMUpstreamAu
 	default:
 		return nil, fmt.Errorf("unsupported upstream auth type: %s", auth.Type)
 	}
+}
+
+// proxyInternalLoopbackMarkerPolicy builds an unconditional set-headers policy that stamps the
+// internal loopback marker header on the proxy's loopback forward to its provider. The analytics
+// system policy reads it on the provider hop so the duplicate provider analytics event is dropped
+// from Moesif. It carries no ExecutionCondition, so it applies for the primary and every
+// additional provider; set-headers overwrites any client-supplied value.
+func (t *LLMProviderTransformer) proxyInternalLoopbackMarkerPolicy() (*api.Policy, error) {
+	params, err := GetUpstreamAuthApikeyPolicyParams(constants.InternalLoopbackHeader, "1")
+	if err != nil {
+		return nil, fmt.Errorf("failed to build internal loopback marker params: %w", err)
+	}
+	policyVersion, err := t.resolvePolicyVersion(constants.SET_HEADERS_POLICY_NAME)
+	if err != nil {
+		return nil, err
+	}
+	return &api.Policy{
+		Name:    constants.SET_HEADERS_POLICY_NAME,
+		Version: policyVersion,
+		Params:  &params,
+	}, nil
 }
 
 // proxyTransformerPolicy builds a translator policy for an additional provider's
