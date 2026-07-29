@@ -23,11 +23,6 @@ const crypto = require('crypto');
 // room for the disambiguating suffix appended on collision.
 const DEFAULT_MAX_HANDLE_LENGTH = 200;
 
-// Bytes of randomness in the last-resort suffix. 4 bytes = 8 hex chars = ~4.3e9
-// possibilities, so a collision after the numeric ladder is already exhausted is
-// not a case worth designing around.
-const RANDOM_SUFFIX_BYTES = 4;
-
 /**
  * Derive a URL-safe handle from a human display name.
  *
@@ -63,27 +58,24 @@ function handleCandidate(base, attempt) {
 }
 
 /**
- * A handle with a random tail, for when the numeric ladder has been exhausted.
+ * A plain UUID handle, for when there is no usable slug base (the name doesn't
+ * slugify to anything) or the readable numeric ladder has been exhausted.
  *
- * Used as a last resort rather than from the start because the numeric suffixes read
- * far better for the ordinary "two webhooks with the same name" case. Once a caller is
- * past that, the handle is no longer meaningfully readable anyway, and succeeding with
- * an ugly handle beats failing with a pretty one.
+ * A bare UUID rather than a base-prefixed random tail: once we're past the numeric
+ * suffixes the handle is no longer meaningfully readable anyway, so there's nothing
+ * to gain from keeping the base — and a UUID is unambiguous and collision-proof on
+ * its own. crypto.randomUUID (not Math.random) so the uniqueness is a real property,
+ * not a hope.
  *
- * crypto.randomBytes (not Math.random) purely so there is never a question about the
- * quality of the source — uniqueness here is a correctness property, not a secret.
- *
- * @param {string} base
  * @returns {string}
  */
-function randomHandle(base) {
-    return `${base}-${crypto.randomBytes(RANDOM_SUFFIX_BYTES).toString('hex')}`;
+function uuidHandle() {
+    return crypto.randomUUID();
 }
 
 module.exports = {
     slugifyHandle,
     handleCandidate,
-    randomHandle,
+    uuidHandle,
     DEFAULT_MAX_HANDLE_LENGTH,
-    RANDOM_SUFFIX_BYTES,
 };

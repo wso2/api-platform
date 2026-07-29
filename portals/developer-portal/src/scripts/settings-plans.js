@@ -108,7 +108,7 @@
   document.getElementById('cfg-plan-modal-save').addEventListener('click', async function() {
     var displayName = v('pol-display');
     var planName    = v('pol-name');
-    if (!displayName || !planName) { await showAlert('Display name and name are required.', 'error'); return; }
+    if (!displayName || !planName) { await showAlert('Name and handle are required.', 'error'); return; }
 
     var limits;
     try {

@@ -23,22 +23,20 @@ const { WebhookSubscriberDTO } = require('../dto/webhookSubscriberDto');
 const userIdpReferenceDao = require('../dao/userIdpReferenceDao');
 const constants = require('../utils/constants');
 const util = require('../utils/util');
-const { slugifyHandle, handleCandidate, randomHandle } = require('../utils/handleSlug');
+const { slugifyHandle, handleCandidate, uuidHandle } = require('../utils/handleSlug');
 const logger = require('../config/logger');
 const { logUserAction } = require('../middlewares/auditLogger');
 
 // Generated-handle collision strategy: try the readable numeric ladder first
-// (base, base-2, base-3), then fall back to a random tail. The random attempts are what
+// (base, base-2, base-3), then fall back to a plain UUID. The UUID attempts are what
 // make failure effectively unreachable, so a caller is never asked to rename a webhook
 // just because the name is popular; the numeric ladder exists only because it reads
-// better for the ordinary duplicate-name case. Both are bounded so a broken unique
-// index can't spin indefinitely inside a request.
+// better for the ordinary duplicate-name case. A name that slugifies to nothing skips
+// the ladder and goes straight to a UUID. Both are bounded so a broken unique index
+// can't spin indefinitely inside a request.
 const NUMERIC_HANDLE_ATTEMPTS = 3;
-const RANDOM_HANDLE_ATTEMPTS = 2;
-const MAX_HANDLE_ATTEMPTS = NUMERIC_HANDLE_ATTEMPTS + RANDOM_HANDLE_ATTEMPTS;
-// Used when displayName slugifies to nothing (e.g. it is entirely punctuation, or a
-// script with no a-z0-9 characters); uniqueness then comes from the suffix, not the name.
-const FALLBACK_HANDLE_BASE = 'webhook';
+const UUID_HANDLE_ATTEMPTS = 2;
+const MAX_HANDLE_ATTEMPTS = NUMERIC_HANDLE_ATTEMPTS + UUID_HANDLE_ATTEMPTS;
 
 function _validateRequiredFields(payload) {
     // `handle` is intentionally absent: it is either supplied by the caller as `id`
@@ -82,7 +80,7 @@ const createWebhookSubscriber = async (req, res) => {
 
         const base = callerSuppliedId
             ? payload.handle
-            : (slugifyHandle(payload.displayName) || FALLBACK_HANDLE_BASE);
+            : slugifyHandle(payload.displayName); // may be '' — the loop uses a UUID then
         const userId = util.resolveActor(req);
 
         // A caller-supplied handle is taken at face value: a collision is their
@@ -92,9 +90,9 @@ const createWebhookSubscriber = async (req, res) => {
         // creates, where a check-then-insert would race.
         const attempts = callerSuppliedId ? 1 : MAX_HANDLE_ATTEMPTS;
         for (let attempt = 0; attempt < attempts; attempt++) {
-            payload.handle = attempt < NUMERIC_HANDLE_ATTEMPTS
+            payload.handle = (base && attempt < NUMERIC_HANDLE_ATTEMPTS)
                 ? handleCandidate(base, attempt)
-                : randomHandle(base);
+                : uuidHandle();
             try {
                 const record = await whDao.create(orgId, payload, userId);
                 logUserAction('WEBHOOK_SUBSCRIBER_CREATED', req, { orgId, subscriberId: record.uuid, resourceUuid: record.uuid, resourceType: 'webhook_subscriber' });

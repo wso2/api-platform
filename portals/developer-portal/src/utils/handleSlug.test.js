@@ -23,9 +23,8 @@ const assert = require('node:assert');
 const {
     slugifyHandle,
     handleCandidate,
-    randomHandle,
+    uuidHandle,
     DEFAULT_MAX_HANDLE_LENGTH,
-    RANDOM_SUFFIX_BYTES,
 } = require('./handleSlug');
 
 test('slugifyHandle produces the same shape the settings UI used to generate client-side', () => {
@@ -47,8 +46,8 @@ test('slugifyHandle never emits a leading or trailing separator', () => {
 });
 
 test('slugifyHandle returns empty for names with nothing slugifiable, so callers apply a fallback', () => {
-    // Deliberately empty rather than a generated value: the service substitutes its own
-    // fallback base, and silently inventing one here would hide that decision.
+    // Deliberately empty rather than a generated value: the service falls back to a
+    // UUID handle, and silently inventing one here would hide that decision.
     for (const name of ['★★★', '___', '   ', '', null, undefined]) {
         assert.strictEqual(slugifyHandle(name), '', `expected empty slug for ${JSON.stringify(name)}`);
     }
@@ -80,25 +79,20 @@ test('handleCandidate output stays a valid slug', () => {
     }
 });
 
-test('randomHandle appends a hex tail and stays a valid slug', () => {
-    const handle = randomHandle('prod-listener');
-    assert.match(handle, /^prod-listener-[0-9a-f]+$/);
-    assert.strictEqual(handle, `prod-listener-${handle.split('-').pop()}`);
-    assert.strictEqual(handle.split('-').pop().length, RANDOM_SUFFIX_BYTES * 2);
+test('uuidHandle returns a plain UUID', () => {
+    assert.match(uuidHandle(), /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/);
 });
 
-test('randomHandle does not repeat itself', () => {
-    // The whole point of the random fallback is that it succeeds where the numeric
+test('uuidHandle does not repeat itself', () => {
+    // The whole point of the UUID fallback is that it succeeds where the numeric
     // ladder has already collided, so two calls returning the same value would defeat it.
     const seen = new Set();
     for (let i = 0; i < 200; i++) {
-        seen.add(randomHandle('prod'));
+        seen.add(uuidHandle());
     }
     assert.strictEqual(seen.size, 200);
 });
 
-test('a randomly-suffixed handle at max base length still fits the handle column', () => {
-    const base = slugifyHandle('a'.repeat(300)); // capped at DEFAULT_MAX_HANDLE_LENGTH
-    assert.strictEqual(base.length, DEFAULT_MAX_HANDLE_LENGTH);
-    assert.ok(randomHandle(base).length < 255, 'random-suffixed handle must fit VARCHAR(255)');
+test('a UUID handle fits the handle column', () => {
+    assert.ok(uuidHandle().length < 255, 'UUID handle must fit VARCHAR(255)');
 });
