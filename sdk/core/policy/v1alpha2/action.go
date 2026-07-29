@@ -1,3 +1,20 @@
+/*
+ *  Copyright (c) 2026, WSO2 LLC. (http://www.wso2.com) All Rights Reserved.
+ *
+ *  Licensed under the Apache License, Version 2.0 (the "License");
+ *  you may not use this file except in compliance with the License.
+ *  You may obtain a copy of the License at
+ *
+ *  http://www.apache.org/licenses/LICENSE-2.0
+ *
+ *  Unless required by applicable law or agreed to in writing, software
+ *  distributed under the License is distributed on an "AS IS" BASIS,
+ *  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ *  See the License for the specific language governing permissions and
+ *  limitations under the License.
+ *
+ */
+
 package policyv1alpha2
 
 // DropHeaderAction controls which headers appear in the analytics event.
@@ -170,14 +187,14 @@ func (ImmediateResponse) isResponseAction() {}
 // These ensure ImmediateResponse satisfies all sealed action interfaces and that
 // the concrete modification types satisfy their respective action interfaces.
 var (
-	_ RequestHeaderAction  = UpstreamRequestHeaderModifications{}
-	_ RequestHeaderAction  = ImmediateResponse{}
-	_ ResponseHeaderAction = DownstreamResponseHeaderModifications{}
-	_ ResponseHeaderAction = ImmediateResponse{}
-	_ RequestAction        = UpstreamRequestModifications{}
-	_ RequestAction        = ImmediateResponse{}
-	_ ResponseAction       = DownstreamResponseModifications{}
-	_ ResponseAction       = ImmediateResponse{}
+	_ RequestHeaderAction     = UpstreamRequestHeaderModifications{}
+	_ RequestHeaderAction     = ImmediateResponse{}
+	_ ResponseHeaderAction    = DownstreamResponseHeaderModifications{}
+	_ ResponseHeaderAction    = ImmediateResponse{}
+	_ RequestAction           = UpstreamRequestModifications{}
+	_ RequestAction           = ImmediateResponse{}
+	_ ResponseAction          = DownstreamResponseModifications{}
+	_ ResponseAction          = ImmediateResponse{}
 	_ StreamingRequestAction  = ForwardRequestChunk{}
 	_ StreamingResponseAction = ForwardResponseChunk{}
 	_ StreamingResponseAction = TerminateResponseChunk{}
