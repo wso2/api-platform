@@ -202,7 +202,7 @@ func bringUpStack() error {
 		dataPlane = append(dataPlane, "gateway-controller-2", "gateway-runtime-2")
 	}
 	if suite.devportal {
-		dataPlane = append(dataPlane, "devportal")
+		dataPlane = append(dataPlane, "api-portal")
 	}
 
 	// Phase 2: data plane (+ devportal) with the minted tokens.
