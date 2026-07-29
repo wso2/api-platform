@@ -1,57 +1,67 @@
 package policyv1alpha2
 
-// This file provides convenience accessors that resolve the pre-mutation
-// request/response snapshots carried on each policy context, falling back to the
-// live (possibly peer-mutated) values on gateways built before the snapshot
-// feature.
+// This file provides convenience accessors that return the pre-mutation
+// request/response snapshot carried on each policy context, falling back to the
+// live values when the gateway does not provide a snapshot.
 //
-// Use these for every read that feeds an authentication, authorization, or
-// gating decision. The kernel runs every policy's header phase before any
-// policy's body phase, mutating one shared header set in place, so a decision
-// that reads the live values can observe something another policy rewrote —
-// regardless of policy order. The snapshot always holds what the client
-// actually sent / what the upstream actually returned.
+// Snapshots and live values carry DIFFERENT guarantees — do not treat the
+// accessor's return value as always being the unmutated client request /
+// upstream response:
 //
-// The accessors are nil-safe: they may be called even when the Downstream/
-// Upstream context (or its Request/Response) is nil, which is the case on
-// gateways that predate the snapshot-header-context feature.
+//   - When the gateway populates the snapshot (Downstream.Request /
+//     Upstream.Response present), the accessor returns it. This is what the
+//     client actually sent / what the upstream actually returned, immune to
+//     rewrites by earlier policies in the chain. The kernel runs every policy's
+//     header phase before any policy's body phase against one shared, mutable
+//     header set, so reading the live values can otherwise observe a value
+//     another policy rewrote — regardless of policy order. Prefer the snapshot
+//     for any authentication, authorization, or gating decision.
+//
+//   - When the gateway does NOT provide the snapshot (gateways released before
+//     the snapshot feature, where Downstream/Upstream — or its Request/Response
+//     — is nil), the accessor falls back to the live values. These are exactly
+//     what policies observed before this feature existed, and may already
+//     reflect an earlier in-chain mutation. The immunity guarantee above holds
+//     ONLY where the snapshot is present.
+//
+// The fallback is deliberate compatibility behaviour and does NOT fail closed:
+// on a gateway that never populates the snapshot, live is the only data that
+// exists, and refusing to return it would break every such deployment. A policy
+// that must have the unmutated values (and can require a snapshot-capable
+// gateway) should read the Downstream/Upstream snapshot directly and handle a
+// nil snapshot itself, rather than relying on the fallback.
+//
+// All accessors are nil-safe: they may be called even when Downstream/Upstream
+// (or its Request/Response) is nil.
 
-// resolveDownstreamRequest returns the downstream request snapshot when the
-// gateway provides it, otherwise a snapshot synthesized from the live request
-// values so callers always get the same shape.
-func resolveDownstreamRequest(ds *DownstreamContext, liveHeaders *Headers, livePath, liveMethod, liveAuthority, liveScheme string) *DownstreamRequest {
+// downstreamSnapshot returns the client request snapshot, or nil when the
+// gateway does not provide one. Single home for the snapshot-presence check.
+func downstreamSnapshot(ds *DownstreamContext) *DownstreamRequest {
 	if ds != nil && ds.Request != nil {
 		return ds.Request // fields may be nil/empty; Headers reads (Get/Has/Iterate) are nil-safe
 	}
-	return &DownstreamRequest{
-		Headers:   liveHeaders,
-		Path:      livePath,
-		Method:    liveMethod,
-		Authority: liveAuthority,
-		Scheme:    liveScheme,
-	}
+	return nil
 }
 
-// resolveUpstreamResponse returns the upstream response snapshot when the
-// gateway provides it, otherwise a snapshot synthesized from the live response
-// values.
-func resolveUpstreamResponse(us *UpstreamResponseContext, liveHeaders *Headers, liveStatus int) *UpstreamResponse {
+// upstreamSnapshot returns the upstream response snapshot, or nil when the
+// gateway does not provide one.
+func upstreamSnapshot(us *UpstreamResponseContext) *UpstreamResponse {
 	if us != nil && us.Response != nil {
 		return us.Response // Headers may be nil; Headers reads are nil-safe
 	}
-	return &UpstreamResponse{
-		Headers:    liveHeaders,
-		StatusCode: liveStatus,
-	}
+	return nil
 }
 
 // ─── Request-phase accessors ─────────────────────────────────────────────────
 
-// DownstreamRequest returns the pre-mutation snapshot of the client request,
-// falling back to a snapshot built from the live request values on gateways
-// that predate the snapshot feature.
+// DownstreamRequest returns the client request snapshot, or the live request
+// values when the gateway does not provide a snapshot. See the file header for
+// the guarantee difference between the two.
 func (c *RequestHeaderContext) DownstreamRequest() *DownstreamRequest {
-	return resolveDownstreamRequest(c.Downstream, c.Headers, c.Path, c.Method, c.Authority, c.Scheme)
+	if snap := downstreamSnapshot(c.Downstream); snap != nil {
+		return snap
+	}
+	return &DownstreamRequest{Headers: c.Headers, Path: c.Path, Method: c.Method, Authority: c.Authority, Scheme: c.Scheme}
 }
 
 // DownstreamHeaders is a shortcut for DownstreamRequest().Headers.
@@ -59,11 +69,13 @@ func (c *RequestHeaderContext) DownstreamHeaders() *Headers {
 	return c.DownstreamRequest().Headers
 }
 
-// DownstreamRequest returns the pre-mutation snapshot of the client request,
-// falling back to a snapshot built from the live request values on gateways
-// that predate the snapshot feature.
+// DownstreamRequest returns the client request snapshot, or the live request
+// values when the gateway does not provide a snapshot.
 func (c *RequestContext) DownstreamRequest() *DownstreamRequest {
-	return resolveDownstreamRequest(c.Downstream, c.Headers, c.Path, c.Method, c.Authority, c.Scheme)
+	if snap := downstreamSnapshot(c.Downstream); snap != nil {
+		return snap
+	}
+	return &DownstreamRequest{Headers: c.Headers, Path: c.Path, Method: c.Method, Authority: c.Authority, Scheme: c.Scheme}
 }
 
 // DownstreamHeaders is a shortcut for DownstreamRequest().Headers.
@@ -71,11 +83,13 @@ func (c *RequestContext) DownstreamHeaders() *Headers {
 	return c.DownstreamRequest().Headers
 }
 
-// DownstreamRequest returns the pre-mutation snapshot of the client request,
-// falling back to a snapshot built from the live request values on gateways
-// that predate the snapshot feature.
+// DownstreamRequest returns the client request snapshot, or the live request
+// values when the gateway does not provide a snapshot.
 func (c *RequestStreamContext) DownstreamRequest() *DownstreamRequest {
-	return resolveDownstreamRequest(c.Downstream, c.Headers, c.Path, c.Method, c.Authority, c.Scheme)
+	if snap := downstreamSnapshot(c.Downstream); snap != nil {
+		return snap
+	}
+	return &DownstreamRequest{Headers: c.Headers, Path: c.Path, Method: c.Method, Authority: c.Authority, Scheme: c.Scheme}
 }
 
 // DownstreamHeaders is a shortcut for DownstreamRequest().Headers.
@@ -87,14 +101,16 @@ func (c *RequestStreamContext) DownstreamHeaders() *Headers {
 //
 // Response contexts carry only the live request echoes (RequestHeaders,
 // RequestPath, RequestMethod); there is no live Authority/Scheme to fall back
-// to, so those come from the snapshot only and are empty on pre-snapshot
-// gateways.
+// to, so those come from the snapshot only and are empty when the gateway does
+// not provide a snapshot.
 
-// DownstreamRequest returns the pre-mutation snapshot of the client request,
-// falling back to the live request echoes on gateways that predate the snapshot
-// feature.
+// DownstreamRequest returns the client request snapshot, or the live request
+// echoes when the gateway does not provide a snapshot.
 func (c *ResponseHeaderContext) DownstreamRequest() *DownstreamRequest {
-	return resolveDownstreamRequest(c.Downstream, c.RequestHeaders, c.RequestPath, c.RequestMethod, "", "")
+	if snap := downstreamSnapshot(c.Downstream); snap != nil {
+		return snap
+	}
+	return &DownstreamRequest{Headers: c.RequestHeaders, Path: c.RequestPath, Method: c.RequestMethod}
 }
 
 // DownstreamHeaders is a shortcut for DownstreamRequest().Headers.
@@ -102,11 +118,13 @@ func (c *ResponseHeaderContext) DownstreamHeaders() *Headers {
 	return c.DownstreamRequest().Headers
 }
 
-// UpstreamResponse returns the pre-mutation snapshot of the upstream response,
-// falling back to a snapshot built from the live response values on gateways
-// that predate the snapshot feature.
+// UpstreamResponse returns the upstream response snapshot, or the live response
+// values when the gateway does not provide a snapshot.
 func (c *ResponseHeaderContext) UpstreamResponse() *UpstreamResponse {
-	return resolveUpstreamResponse(c.Upstream, c.ResponseHeaders, c.ResponseStatus)
+	if snap := upstreamSnapshot(c.Upstream); snap != nil {
+		return snap
+	}
+	return &UpstreamResponse{Headers: c.ResponseHeaders, StatusCode: c.ResponseStatus}
 }
 
 // UpstreamHeaders is a shortcut for UpstreamResponse().Headers.
@@ -114,11 +132,13 @@ func (c *ResponseHeaderContext) UpstreamHeaders() *Headers {
 	return c.UpstreamResponse().Headers
 }
 
-// DownstreamRequest returns the pre-mutation snapshot of the client request,
-// falling back to the live request echoes on gateways that predate the snapshot
-// feature.
+// DownstreamRequest returns the client request snapshot, or the live request
+// echoes when the gateway does not provide a snapshot.
 func (c *ResponseContext) DownstreamRequest() *DownstreamRequest {
-	return resolveDownstreamRequest(c.Downstream, c.RequestHeaders, c.RequestPath, c.RequestMethod, "", "")
+	if snap := downstreamSnapshot(c.Downstream); snap != nil {
+		return snap
+	}
+	return &DownstreamRequest{Headers: c.RequestHeaders, Path: c.RequestPath, Method: c.RequestMethod}
 }
 
 // DownstreamHeaders is a shortcut for DownstreamRequest().Headers.
@@ -126,11 +146,13 @@ func (c *ResponseContext) DownstreamHeaders() *Headers {
 	return c.DownstreamRequest().Headers
 }
 
-// UpstreamResponse returns the pre-mutation snapshot of the upstream response,
-// falling back to a snapshot built from the live response values on gateways
-// that predate the snapshot feature.
+// UpstreamResponse returns the upstream response snapshot, or the live response
+// values when the gateway does not provide a snapshot.
 func (c *ResponseContext) UpstreamResponse() *UpstreamResponse {
-	return resolveUpstreamResponse(c.Upstream, c.ResponseHeaders, c.ResponseStatus)
+	if snap := upstreamSnapshot(c.Upstream); snap != nil {
+		return snap
+	}
+	return &UpstreamResponse{Headers: c.ResponseHeaders, StatusCode: c.ResponseStatus}
 }
 
 // UpstreamHeaders is a shortcut for UpstreamResponse().Headers.
@@ -138,11 +160,13 @@ func (c *ResponseContext) UpstreamHeaders() *Headers {
 	return c.UpstreamResponse().Headers
 }
 
-// DownstreamRequest returns the pre-mutation snapshot of the client request,
-// falling back to the live request echoes on gateways that predate the snapshot
-// feature.
+// DownstreamRequest returns the client request snapshot, or the live request
+// echoes when the gateway does not provide a snapshot.
 func (c *ResponseStreamContext) DownstreamRequest() *DownstreamRequest {
-	return resolveDownstreamRequest(c.Downstream, c.RequestHeaders, c.RequestPath, c.RequestMethod, "", "")
+	if snap := downstreamSnapshot(c.Downstream); snap != nil {
+		return snap
+	}
+	return &DownstreamRequest{Headers: c.RequestHeaders, Path: c.RequestPath, Method: c.RequestMethod}
 }
 
 // DownstreamHeaders is a shortcut for DownstreamRequest().Headers.
@@ -150,11 +174,13 @@ func (c *ResponseStreamContext) DownstreamHeaders() *Headers {
 	return c.DownstreamRequest().Headers
 }
 
-// UpstreamResponse returns the pre-mutation snapshot of the upstream response,
-// falling back to a snapshot built from the live response values on gateways
-// that predate the snapshot feature.
+// UpstreamResponse returns the upstream response snapshot, or the live response
+// values when the gateway does not provide a snapshot.
 func (c *ResponseStreamContext) UpstreamResponse() *UpstreamResponse {
-	return resolveUpstreamResponse(c.Upstream, c.ResponseHeaders, c.ResponseStatus)
+	if snap := upstreamSnapshot(c.Upstream); snap != nil {
+		return snap
+	}
+	return &UpstreamResponse{Headers: c.ResponseHeaders, StatusCode: c.ResponseStatus}
 }
 
 // UpstreamHeaders is a shortcut for UpstreamResponse().Headers.

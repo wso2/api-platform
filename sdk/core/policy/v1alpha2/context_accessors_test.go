@@ -34,82 +34,54 @@ func snapshotResponse() *UpstreamResponse {
 	}
 }
 
-// ─── resolveDownstreamRequest ────────────────────────────────────────────────
+// ─── downstreamSnapshot ──────────────────────────────────────────────────────
 
-func TestResolveDownstreamRequest_PrefersSnapshot(t *testing.T) {
-	ds := &DownstreamContext{Request: snapshotRequest()}
-	got := resolveDownstreamRequest(ds, liveRequestHeaders(), "/live", "GET", "live.example.com", "http")
-
-	if got != ds.Request {
-		t.Fatalf("expected the snapshot struct to be returned as-is")
-	}
-	if v := firstValue(got.Headers, "x-src"); v != "snapshot" {
-		t.Errorf("headers: got %q, want snapshot", v)
-	}
-	if got.Path != "/snap/path" || got.Method != "POST" || got.Authority != "snap.example.com" || got.Scheme != "https" {
-		t.Errorf("unexpected snapshot fields: %+v", got)
-	}
+func TestDownstreamSnapshot(t *testing.T) {
+	t.Run("returns snapshot as-is when present", func(t *testing.T) {
+		ds := &DownstreamContext{Request: snapshotRequest()}
+		if got := downstreamSnapshot(ds); got != ds.Request {
+			t.Fatalf("expected the snapshot struct to be returned as-is")
+		}
+	})
+	t.Run("nil when Downstream nil", func(t *testing.T) {
+		if got := downstreamSnapshot(nil); got != nil {
+			t.Errorf("expected nil, got %+v", got)
+		}
+	})
+	t.Run("nil when Request nil", func(t *testing.T) {
+		if got := downstreamSnapshot(&DownstreamContext{Request: nil}); got != nil {
+			t.Errorf("expected nil, got %+v", got)
+		}
+	})
 }
 
-func TestResolveDownstreamRequest_FallbackWhenDownstreamNil(t *testing.T) {
-	got := resolveDownstreamRequest(nil, liveRequestHeaders(), "/live", "GET", "live.example.com", "http")
+// ─── upstreamSnapshot ────────────────────────────────────────────────────────
 
-	if v := firstValue(got.Headers, "x-src"); v != "live" {
-		t.Errorf("headers: got %q, want live", v)
-	}
-	if got.Path != "/live" || got.Method != "GET" || got.Authority != "live.example.com" || got.Scheme != "http" {
-		t.Errorf("unexpected live fields: %+v", got)
-	}
+func TestUpstreamSnapshot(t *testing.T) {
+	t.Run("returns snapshot as-is when present", func(t *testing.T) {
+		us := &UpstreamResponseContext{Response: snapshotResponse()}
+		if got := upstreamSnapshot(us); got != us.Response {
+			t.Fatalf("expected the snapshot response to be returned as-is")
+		}
+	})
+	t.Run("nil when Upstream nil", func(t *testing.T) {
+		if got := upstreamSnapshot(nil); got != nil {
+			t.Errorf("expected nil, got %+v", got)
+		}
+	})
+	t.Run("nil when Response nil", func(t *testing.T) {
+		if got := upstreamSnapshot(&UpstreamResponseContext{Response: nil}); got != nil {
+			t.Errorf("expected nil, got %+v", got)
+		}
+	})
 }
 
-func TestResolveDownstreamRequest_FallbackWhenRequestNil(t *testing.T) {
-	ds := &DownstreamContext{Request: nil}
-	got := resolveDownstreamRequest(ds, liveRequestHeaders(), "/live", "GET", "", "")
-
-	if v := firstValue(got.Headers, "x-src"); v != "live" {
-		t.Errorf("headers: got %q, want live", v)
-	}
-	if got.Path != "/live" || got.Method != "GET" {
-		t.Errorf("unexpected live fields: %+v", got)
-	}
-}
-
-func TestResolveDownstreamRequest_NilLiveHeadersStillNilSafe(t *testing.T) {
-	got := resolveDownstreamRequest(nil, nil, "/live", "GET", "", "")
-	// Headers reads must be nil-safe even when the fallback headers are nil.
-	if got.Headers.Has("anything") {
+// TestDownstreamHeaders_NilLiveFallbackIsNilSafe verifies Headers reads stay
+// nil-safe when the gateway provides no snapshot and the live headers are nil.
+func TestDownstreamHeaders_NilLiveFallbackIsNilSafe(t *testing.T) {
+	c := &RequestHeaderContext{} // no Downstream, no live Headers
+	if c.DownstreamHeaders().Has("anything") {
 		t.Errorf("expected no headers on nil fallback")
-	}
-}
-
-// ─── resolveUpstreamResponse ─────────────────────────────────────────────────
-
-func TestResolveUpstreamResponse_PrefersSnapshot(t *testing.T) {
-	us := &UpstreamResponseContext{Response: snapshotResponse()}
-	got := resolveUpstreamResponse(us, NewHeaders(map[string][]string{"x-src": {"live"}}), 500)
-
-	if got != us.Response {
-		t.Fatalf("expected the snapshot response to be returned as-is")
-	}
-	if v := firstValue(got.Headers, "x-src"); v != "snapshot" || got.StatusCode != 201 {
-		t.Errorf("unexpected snapshot response: header=%q status=%d", v, got.StatusCode)
-	}
-}
-
-func TestResolveUpstreamResponse_FallbackWhenUpstreamNil(t *testing.T) {
-	got := resolveUpstreamResponse(nil, NewHeaders(map[string][]string{"x-src": {"live"}}), 500)
-
-	if v := firstValue(got.Headers, "x-src"); v != "live" || got.StatusCode != 500 {
-		t.Errorf("unexpected live response: header=%q status=%d", v, got.StatusCode)
-	}
-}
-
-func TestResolveUpstreamResponse_FallbackWhenResponseNil(t *testing.T) {
-	us := &UpstreamResponseContext{Response: nil}
-	got := resolveUpstreamResponse(us, NewHeaders(map[string][]string{"x-src": {"live"}}), 502)
-
-	if v := firstValue(got.Headers, "x-src"); v != "live" || got.StatusCode != 502 {
-		t.Errorf("unexpected live response: header=%q status=%d", v, got.StatusCode)
 	}
 }
 
