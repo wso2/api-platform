@@ -509,6 +509,25 @@ func TestPublish_MetadataContainsAPIInfo(t *testing.T) {
 	assert.Equal(t, "test-api", metadata["apiName"])
 	assert.Equal(t, "v1.0", metadata["apiVersion"])
 	assert.Equal(t, "Rest", metadata["apiType"])
+	assert.Equal(t, "Rest", metadata["subType"])
 	assert.Equal(t, "api-123", metadata["apiId"])
 	assert.Equal(t, "project-123", metadata["projectId"])
+}
+
+// Test that the subType in metadata mirrors the APIType for various API types.
+func TestPublish_SubTypeMirrorsAPIType(t *testing.T) {
+	for _, apiType := range []string{"Rest", "LlmProvider", "LlmProxy", "Mcp"} {
+		t.Run(apiType, func(t *testing.T) {
+			moesif := createTestMoesifWithoutAPI()
+
+			event := createBaseEvent()
+			event.API.APIType = apiType
+			moesif.Publish(event)
+
+			assert.Len(t, moesif.events, 1)
+			metadata := getMetadata(moesif.events[0])
+			assert.Equal(t, apiType, metadata["subType"])
+			assert.Equal(t, metadata["apiType"], metadata["subType"])
+		})
+	}
 }
