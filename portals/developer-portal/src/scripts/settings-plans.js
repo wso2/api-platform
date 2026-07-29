@@ -19,6 +19,7 @@
 
 (function () {
   var editPlanId = null;
+  var planHandleTouched = false;
 
   var LIMIT_TYPES = ['REQUEST_COUNT','EVENT_COUNT','BANDWIDTH','TOTAL_TOKEN_COUNT'];
   var TIME_UNITS  = ['MINUTE','HOUR','DAY','MONTH'];
@@ -84,6 +85,7 @@
   /* ── open / close modal ── */
   function openPlanModal(mode, data) {
     editPlanId = mode === 'edit' ? data.planId : null;
+    planHandleTouched = false;
     document.getElementById('cfg-plan-modal-title').textContent = mode === 'edit' ? 'Edit subscription plan' : 'Add subscription plan';
     document.getElementById('cfg-plan-modal-save').textContent  = mode === 'edit' ? 'Save changes' : 'Add plan';
     document.getElementById('pol-display').value = mode === 'edit' ? (data.displayName||'') : '';
@@ -103,6 +105,13 @@
     document.getElementById('pol-display').focus();
   }
   function closePlanModal() { document.getElementById('cfg-plan-modal').style.display='none'; editPlanId=null; }
+
+  /* ── auto-slug name → handle (skips once the user edits Handle, or in edit mode) ── */
+  document.getElementById('pol-name').addEventListener('input', function() { planHandleTouched = true; });
+  document.getElementById('pol-display').addEventListener('input', function() {
+    if (editPlanId || planHandleTouched) return;
+    document.getElementById('pol-name').value = this.value.toLowerCase().trim().replace(/[^a-z0-9]+/g,'-').replace(/^-|-$/g,'');
+  });
 
   /* ── save ── */
   document.getElementById('cfg-plan-modal-save').addEventListener('click', async function() {

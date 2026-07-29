@@ -979,6 +979,7 @@
   font-size: 0.75rem;
   color: var(--text-subtle);
   margin-top: 5px;
+  margin-bottom: 0;
   line-height: 1.4;
 }
 
