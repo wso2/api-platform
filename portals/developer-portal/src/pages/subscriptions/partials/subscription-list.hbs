@@ -11,7 +11,6 @@
           <th>Version</th>
           <th>Type</th>
           <th>Plan</th>
-          <th>Application</th>
           <th>Status</th>
           <th style="text-align:right;">Actions</th>
         </tr>
@@ -31,7 +30,6 @@
             <span class="sub-type-pill">Token-based</span>
           </td>
           <td>{{this.planName}}</td>
-          <td style="color:#8a98a6;">{{#if this.applicationName}}{{this.applicationName}}{{else}}-{{/if}}</td>
           <td>
             <span class="sub-status-pill {{#if (eq this.status 'ACTIVE')}}sub-status-pill--active{{else}}sub-status-pill--inactive{{/if}}">
               <span class="sub-status-dot"></span>
