@@ -98,6 +98,8 @@ const (
 	CodeRESTAPINotFound                   = "REST_API_NOT_FOUND"
 	CodeRESTAPIExists                     = "REST_API_EXISTS"
 	CodeRESTAPIDeploymentValidationFailed = "REST_API_DEPLOYMENT_VALIDATION_FAILED"
+	CodeRESTAPIAPIKeyNotFound             = "REST_API_API_KEY_NOT_FOUND"
+	CodeRESTAPIAPIKeyForbidden            = "REST_API_API_KEY_FORBIDDEN"
 )
 
 // MCP proxy domain codes.

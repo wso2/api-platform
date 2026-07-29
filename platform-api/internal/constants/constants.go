@@ -155,6 +155,13 @@ const (
 	APIBasePath = "/api/" + APIVersion
 )
 
+// ScopeAPIKeyAllManage grants management of API keys created by any user in the
+// organization, not just the caller's own. Every API key CRUD path is otherwise
+// restricted to the key's creator; a caller holding this scope passes that
+// ownership check for any key. It is an organization-wide, admin-like grant —
+// keep it out of self-service/developer roles.
+const ScopeAPIKeyAllManage = "ap:api_key:all:manage"
+
 // Custom Policy ManagedBy constants
 const (
 	PolicyManagedByOrganization   = "organization"

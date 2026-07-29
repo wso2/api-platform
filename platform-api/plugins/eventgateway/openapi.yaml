@@ -276,6 +276,7 @@ paths:
         - OAuth2SecurityEventGateway:
             - ap:websub_api:api_key:create
             - ap:websub_api:api_key:manage
+            - ap:api_key:all:manage
       responses:
         '201':
           description: WebSub API key created successfully
@@ -307,6 +308,7 @@ paths:
         - OAuth2SecurityEventGateway:
             - ap:websub_api:api_key:update
             - ap:websub_api:api_key:manage
+            - ap:api_key:all:manage
       responses:
         '200':
           description: WebSub API key updated successfully
@@ -325,6 +327,7 @@ paths:
         - OAuth2SecurityEventGateway:
             - ap:websub_api:api_key:delete
             - ap:websub_api:api_key:manage
+            - ap:api_key:all:manage
       responses:
         '204':
           description: WebSub API key deleted successfully
@@ -664,6 +667,7 @@ paths:
         - OAuth2SecurityEventGateway:
             - ap:webbroker_api:api_key:create
             - ap:webbroker_api:api_key:manage
+            - ap:api_key:all:manage
       responses:
         '201':
           description: WebBroker API key created successfully
@@ -695,6 +699,7 @@ paths:
         - OAuth2SecurityEventGateway:
             - ap:webbroker_api:api_key:update
             - ap:webbroker_api:api_key:manage
+            - ap:api_key:all:manage
       responses:
         '200':
           description: WebBroker API key updated successfully
@@ -713,6 +718,7 @@ paths:
         - OAuth2SecurityEventGateway:
             - ap:webbroker_api:api_key:delete
             - ap:webbroker_api:api_key:manage
+            - ap:api_key:all:manage
       responses:
         '204':
           description: WebBroker API key deleted successfully

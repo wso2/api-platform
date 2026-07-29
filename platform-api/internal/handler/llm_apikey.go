@@ -38,16 +38,24 @@ import (
 type LLMProviderAPIKeyHandler struct {
 	apiKeyService *service.LLMProviderAPIKeyService
 	identity      *service.IdentityService
+	authzMode     string
 	slogger       *slog.Logger
 }
 
 // NewLLMProviderAPIKeyHandler creates a new LLM provider API key handler
-func NewLLMProviderAPIKeyHandler(apiKeyService *service.LLMProviderAPIKeyService, identity *service.IdentityService, slogger *slog.Logger) *LLMProviderAPIKeyHandler {
+func NewLLMProviderAPIKeyHandler(apiKeyService *service.LLMProviderAPIKeyService, identity *service.IdentityService, authzMode string, slogger *slog.Logger) *LLMProviderAPIKeyHandler {
 	return &LLMProviderAPIKeyHandler{
 		apiKeyService: apiKeyService,
 		identity:      identity,
+		authzMode:     authzMode,
 		slogger:       slogger,
 	}
+}
+
+// isKeyAdmin reports whether the caller holds constants.ScopeAPIKeyAllManage and may
+// therefore act on API keys created by other users, not only their own.
+func (h *LLMProviderAPIKeyHandler) isKeyAdmin(r *http.Request) bool {
+	return middleware.HasEffectiveScope(r, h.authzMode, constants.ScopeAPIKeyAllManage)
 }
 
 // ListAPIKeys handles GET /api/v0.9/llm-providers/{llmProviderId}/api-keys
@@ -70,7 +78,7 @@ func (h *LLMProviderAPIKeyHandler) ListAPIKeys(w http.ResponseWriter, r *http.Re
 
 	limit, offset := parsePagination(r)
 
-	response, err := h.apiKeyService.ListLLMProviderAPIKeys(r.Context(), providerID, orgID, callerUserID, limit, offset)
+	response, err := h.apiKeyService.ListLLMProviderAPIKeys(r.Context(), providerID, orgID, callerUserID, h.isKeyAdmin(r), limit, offset)
 	if err != nil {
 		var appErr *apperror.Error
 		if errors.As(err, &appErr) {
@@ -106,7 +114,7 @@ func (h *LLMProviderAPIKeyHandler) DeleteAPIKey(w http.ResponseWriter, r *http.R
 		return err
 	}
 
-	if err := h.apiKeyService.DeleteLLMProviderAPIKey(r.Context(), providerID, orgID, callerUserID, keyName); err != nil {
+	if err := h.apiKeyService.DeleteLLMProviderAPIKey(r.Context(), providerID, orgID, callerUserID, keyName, h.isKeyAdmin(r)); err != nil {
 		var appErr *apperror.Error
 		if errors.As(err, &appErr) {
 			return err

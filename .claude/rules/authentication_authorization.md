@@ -375,6 +375,47 @@ os.chmod(socket_path, 0o660)  # defense-in-depth only, not the primary guarantee
 
 ---
 
+## GO-AUTH-019: Ownership-Override Scopes Must Be Named and Service-Layer Enforced — High
+
+Most resources in this repo are *organization-scoped*: any caller in the org with the right resource scope may act on them, and GO-AUTH-005 alone governs access. A few are additionally *creator-scoped* — a caller may act only on rows they created — API keys (`api_keys.created_by`, enforced by `canManageAPIKey` in `platform-api/internal/service`) being the canonical case. This rule applies to those creator-scoped resources; note that a `created_by`/`CreatedBy` column is usually just an audit field and does not by itself make a resource creator-scoped. Where cross-user administration of a creator-scoped resource is genuinely needed, express it as an explicitly named override scope **for that one resource type** (`ap:api_key:all:manage` overrides creator-scoping on API keys and nothing else) — resolved from verified claims at the handler, passed down as an explicit argument, and enforced by a single shared predicate at the service layer that every entry point funnels through (GO-AUTH-015). Never approximate it with an implicit signal — an empty caller id, or "this call came from an internal path so it must be trusted". An empty identity treated as elevated fails *open* for any path that merely forgot to populate the actor. The override widens which rows within the caller's own organization are reachable, never which organization (GO-AUTH-005).
+
+"One named scope" means one *per resource type*, not one for the whole platform. Never define a catch-all override like `ap:admin` or `ap:all:manage` that a handler for any resource can accept: a scope is always bound to the resource it governs, so granting API-key administration cannot silently confer subscription or application administration. A caller who legitimately administers several resource types holds several scopes. Wildcards are not an exception to this, `:*` is **own-level only** — it covers the actions directly at its level and never descends into sub-resources, matches a prefix, or acts transitively (`ap:gateway:*` satisfies `ap:gateway:create` but not `ap:gateway:token:create`). `scopeSatisfies` in `platform-api/internal/middleware/authorization.go` implements exactly that expansion. Wildcards live on the *grant* side only: a handler or service-layer predicate always names the concrete scope it requires and never matches on a wildcard itself.
+
+A scope decision does not survive a broadcast: an event carries the acting user's id, not their scopes, so a downstream `created_by` re-check rejects every legitimate admin-initiated change. Gate that check behind an explicit "trusted origin" flag (the call came from a pre-validated origin) set only by the event path — deleting it outright would also disable it for that component's own directly-authenticated API.
+
+```go
+// BAD: empty caller id is an implicit admin — fails OPEN for any caller that
+// forgets to populate userID; and each service spells the rule differently
+if userID != "" && key.CreatedBy != userID { return apperror.Forbidden.New() }
+
+// BAD: widening by omission — an unresolved actor lists the whole org
+if username != "" { filter = "created_by = ? AND " } // empty username == no filter
+
+// GOOD: one predicate shared by every path, failing closed on an unknown caller
+func canManageAPIKey(createdBy, callerUserID string, keyAdmin bool) bool {
+    if keyAdmin { // holds ap:api_key:all:manage, verified at the handler
+        return true
+    }
+    return callerUserID != "" && createdBy == callerUserID // "" never matches
+}
+
+// GOOD: the widening is an explicit argument, and the repo refuses to guess
+func (r *APIKeyRepo) ListAPIKeysByUser(orgUUID, username string, allUsers bool, kinds []string) (...) {
+    if !allUsers && username == "" {
+        return nil, errors.New("refusing to list: no creator specified and org-wide listing not requested")
+    }
+}
+
+// GOOD: downstream check gated, not deleted — false for this service's own REST API
+if !params.TrustedOrigin { // set only by RevokeExternalAPIKeyFromEvent
+    if err := s.canRevokeAPIKey(params.User, apiKey, logger); err != nil {
+        return nil, fmt.Errorf("API key revocation failed for API: '%s'", params.Handle)
+    }
+}
+```
+
+---
+
 > **Verification Checklist before outputting code:**
 > * GO-AUTH-001: Does every auth-failure branch `return` immediately instead of falling through to `next()`?
 > * GO-AUTH-002: Is JWT verification restricted to an explicit asymmetric-algorithm allowlist, rejecting `HS*`/`none`?
@@ -394,3 +435,4 @@ os.chmod(socket_path, 0o660)  # defense-in-depth only, not the primary guarantee
 > * GO-AUTH-016: Is a peer-asserted identity/config value compared against local expectation, with mismatch degrading the connection (never `os.Exit`)?
 > * GO-AUTH-017: Does a security gate match structurally against router/policy config rather than a method+path-substring heuristic?
 > * GO-AUTH-018: Does a permission check on a critical file/socket hard-fail when too permissive, with socket mode set at creation time?
+> * GO-AUTH-019: Is a cross-user override a named scope enforced by one service-layer predicate that fails closed on an empty caller, rather than an implicit empty-id/absent-filter bypass?

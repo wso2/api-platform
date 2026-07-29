@@ -38,16 +38,24 @@ import (
 type APIKeyHandler struct {
 	apiKeyService *service.APIKeyService
 	identity      *service.IdentityService
+	authzMode     string
 	slogger       *slog.Logger
 }
 
 // NewAPIKeyHandler creates a new API key handler
-func NewAPIKeyHandler(apiKeyService *service.APIKeyService, identity *service.IdentityService, slogger *slog.Logger) *APIKeyHandler {
+func NewAPIKeyHandler(apiKeyService *service.APIKeyService, identity *service.IdentityService, authzMode string, slogger *slog.Logger) *APIKeyHandler {
 	return &APIKeyHandler{
 		apiKeyService: apiKeyService,
 		identity:      identity,
+		authzMode:     authzMode,
 		slogger:       slogger,
 	}
+}
+
+// isKeyAdmin reports whether the caller holds constants.ScopeAPIKeyAllManage and may
+// therefore act on API keys created by other users, not only their own.
+func (h *APIKeyHandler) isKeyAdmin(r *http.Request) bool {
+	return middleware.HasEffectiveScope(r, h.authzMode, constants.ScopeAPIKeyAllManage)
 }
 
 // CreateAPIKey handles POST /rest-apis/{restApiId}/api-keys
@@ -167,7 +175,7 @@ func (h *APIKeyHandler) UpdateAPIKey(w http.ResponseWriter, r *http.Request) err
 	}
 
 	// Update the API key and broadcast to gateways
-	if err := h.apiKeyService.UpdateAPIKey(r.Context(), apiHandle, constants.RestApi, orgId, keyName, userId, &req); err != nil {
+	if err := h.apiKeyService.UpdateAPIKey(r.Context(), apiHandle, constants.RestApi, orgId, keyName, userId, h.isKeyAdmin(r), false, &req); err != nil {
 		var appErr *apperror.Error
 		if errors.As(err, &appErr) {
 			return err
@@ -214,7 +222,7 @@ func (h *APIKeyHandler) RevokeAPIKey(w http.ResponseWriter, r *http.Request) err
 	}
 
 	// Revoke the API key and broadcast to gateways
-	if err := h.apiKeyService.RevokeAPIKey(r.Context(), apiHandle, constants.RestApi, orgId, keyName, userId); err != nil {
+	if err := h.apiKeyService.RevokeAPIKey(r.Context(), apiHandle, constants.RestApi, orgId, keyName, userId, h.isKeyAdmin(r), false); err != nil {
 		var appErr *apperror.Error
 		if errors.As(err, &appErr) {
 			return err

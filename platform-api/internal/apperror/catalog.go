@@ -70,6 +70,8 @@ var (
 	// project) — the call site supplies which one.
 	RESTAPIExists                     = def(CodeRESTAPIExists, http.StatusConflict, "%s")
 	RESTAPIDeploymentValidationFailed = def(CodeRESTAPIDeploymentValidationFailed, http.StatusBadRequest, "%s")
+	RESTAPIAPIKeyNotFound             = def(CodeRESTAPIAPIKeyNotFound, http.StatusNotFound, "The specified API key could not be found.")
+	RESTAPIAPIKeyForbidden            = def(CodeRESTAPIAPIKeyForbidden, http.StatusForbidden, "You do not have permission to access this API key.")
 )
 
 // LLM provider / proxy entries.

@@ -409,13 +409,13 @@ func (s *ApplicationService) ListApplicationAssociations(appIDOrHandle, orgID st
 	return associations, nil
 }
 
-func (s *ApplicationService) AddMappedAPIKeys(appIDOrHandle string, req *api.AddApplicationAPIKeysRequest, orgID, userID string) (*api.MappedAPIKeyListResponse, error) {
+func (s *ApplicationService) AddMappedAPIKeys(appIDOrHandle string, req *api.AddApplicationAPIKeysRequest, orgID, userID string, keyAdmin bool) (*api.MappedAPIKeyListResponse, error) {
 	app, err := s.getApplication(appIDOrHandle, orgID)
 	if err != nil {
 		return nil, err
 	}
 
-	apiKeyIDs, err := s.resolveAPIKeyIDs(req.ApiKeys, orgID, userID)
+	apiKeyIDs, err := s.resolveAPIKeyIDs(req.ApiKeys, orgID, userID, keyAdmin)
 	if err != nil {
 		return nil, err
 	}
@@ -632,7 +632,7 @@ func (s *ApplicationService) getApplication(appIDOrHandle, orgID string) (*model
 	return app, nil
 }
 
-func (s *ApplicationService) resolveAPIKeyIDs(selectors []api.APIKeyMappingSelector, orgID, userID string) ([]string, error) {
+func (s *ApplicationService) resolveAPIKeyIDs(selectors []api.APIKeyMappingSelector, orgID, userID string, keyAdmin bool) ([]string, error) {
 	keys, err := s.resolveAPIKeys(selectors, orgID)
 	if err != nil {
 		return nil, err
@@ -640,7 +640,7 @@ func (s *ApplicationService) resolveAPIKeyIDs(selectors []api.APIKeyMappingSelec
 
 	result := make([]string, 0, len(keys))
 	for _, key := range keys {
-		if err := s.validateAPIKeyBindingPermission(key, userID); err != nil {
+		if err := s.validateAPIKeyBindingPermission(key, userID, keyAdmin); err != nil {
 			return nil, err
 		}
 		result = append(result, key.ID)
@@ -772,19 +772,20 @@ func (s *ApplicationService) resolveAPIKey(selector api.APIKeyMappingSelector, o
 	return key, nil
 }
 
-func (s *ApplicationService) validateAPIKeyBindingPermission(key *model.ApplicationAPIKey, userID string) error {
+// validateAPIKeyBindingPermission reports whether userID may bind this API key to an
+// application. Only the key's creator may, unless keyAdmin is true — the caller holds
+// constants.ScopeAPIKeyAllManage and may bind any user's key.
+func (s *ApplicationService) validateAPIKeyBindingPermission(key *model.ApplicationAPIKey, userID string, keyAdmin bool) error {
 	if key == nil {
 		return apperror.ApplicationAPIKeyNotFound.New()
 	}
 
+	// Fails closed on an unidentified caller or an unattributed key: canManageAPIKey never
+	// treats an empty identity as the creator (authentication_authorization.md GO-AUTH-019).
 	creator := strings.TrimSpace(key.CreatedBy)
 	requester := strings.TrimSpace(userID)
 
-	if creator == "" || requester == "" {
-		return nil
-	}
-
-	if creator != requester {
+	if !canManageAPIKey(creator, requester, keyAdmin) {
 		return apperror.ApplicationAPIKeyForbidden.New()
 	}
 
