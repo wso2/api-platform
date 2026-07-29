@@ -92,5 +92,5 @@ Located in `tests/contract/extproc_test.go`
 
 ## References
 
-- Envoy ext_proc documentation: https://www.envoyproxy.io/docs/envoy/v1.36.2/configuration/http/http_filters/ext_proc_filter
-- Protobuf definitions: https://github.com/envoyproxy/envoy/blob/v1.36.2/api/envoy/service/ext_proc/v3/external_processor.proto
+- Envoy ext_proc documentation: https://www.envoyproxy.io/docs/envoy/v1.38.3/configuration/http/http_filters/ext_proc_filter
+- Protobuf definitions: https://github.com/envoyproxy/envoy/blob/v1.38.3/api/envoy/service/ext_proc/v3/external_processor.proto
