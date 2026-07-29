@@ -122,10 +122,10 @@ function Invoke-Fail($msg) {
     exit 1
 }
 
-# `--profiles=a,b` is one token to bash, but PowerShell's argument-mode parser
-# splits an unquoted comma into an array, so a single $args element can itself
-# be an array (@('--profiles=a', 'b')). Flatten it back to the bash form
-# before matching, so both `--profiles=a,b` and `--profiles="a,b"` work.
+# PowerShell's argument-mode parser splits an unquoted comma into an array, so
+# a single $args element can itself be an array (@('--profiles=a', 'b')).
+# Flatten it back to the bash form so both `--profiles=a,b` and
+# `--profiles="a,b"` work.
 foreach ($rawArg in $args) {
     $arg = if ($rawArg -is [array]) { ($rawArg -join ',') } else { [string]$rawArg }
     switch -Regex ($arg) {
@@ -189,19 +189,13 @@ function Test-CommandExists($name) {
 }
 
 # Restrict a file to the current user only (Windows analogue of chmod 600).
-# Uses icacls rather than Set-Acl of a freshly-built FileSecurity: the latter
-# makes Set-Acl attempt to write the file's SACL, which requires the
-# SeSecurityPrivilege a normal user does not hold. icacls only touches the
-# DACL, so it needs no elevation.
+# icacls rather than Set-Acl: Set-Acl on a freshly-built FileSecurity tries to
+# write the SACL, which needs a privilege a normal user does not hold.
 #
-# Unlike setup.sh on Linux, no container-UID ACL entry is needed: Docker
-# Desktop bind-mounts a Windows path through a translation layer that presents
-# every file to the container with permissive ownership regardless of the host
-# DACL, so tightening the DACL here protects the file from other *host* users
-# without making it unreadable to the container.
-#
-# Best-effort: if permissions cannot be tightened, warn and continue rather
-# than aborting setup over a hardening step.
+# Unlike setup.sh, no container-UID entry is needed - Docker Desktop presents
+# bind-mounted files to the container with permissive ownership regardless of
+# the host DACL. Best-effort: warn and continue rather than aborting setup
+# over a hardening step.
 function Set-OwnerOnlyAcl([string]$path) {
     $prev = $ErrorActionPreference
     $ErrorActionPreference = 'Continue'
@@ -221,27 +215,40 @@ function Set-OwnerOnlyAcl([string]$path) {
     }
 }
 
-# Run openssl with its stderr chatter suppressed. openssl prints key-generation
-# progress to stderr, and with $ErrorActionPreference='Stop' PowerShell turns
-# any native stderr write into a terminating NativeCommandError - which 2>$null
-# alone does not reliably suppress on Windows PowerShell 5.1. Relax the
-# preference for the duration of the call and decide success from the exit code.
+# Run openssl with its stderr chatter suppressed and MSYS path conversion off,
+# deciding success from the exit code instead.
+#
+# openssl writes key-generation progress to stderr, and under
+# $ErrorActionPreference='Stop' any native stderr write becomes a terminating
+# NativeCommandError that 2>$null alone does not reliably suppress on Windows
+# PowerShell 5.1.
+#
+# Git for Windows ships the openssl most Windows hosts have, and its MSYS
+# runtime rewrites POSIX-looking arguments into Windows paths - so
+# `-subj "/O=WSO2 API Platform/CN=localhost"` would arrive as
+# `C:/Program Files/Git/O=WSO2 API Platform/CN=localhost`.
 function Invoke-OpenSslQuiet([scriptblock]$Script, [string]$FailMessage) {
     $prev = $ErrorActionPreference
+    $prevNoPathConv = $env:MSYS_NO_PATHCONV
+    $prevArgConvExcl = $env:MSYS2_ARG_CONV_EXCL
     $ErrorActionPreference = 'Continue'
+    $env:MSYS_NO_PATHCONV = '1'
+    $env:MSYS2_ARG_CONV_EXCL = '*'
     try {
         $out = & $Script 2>$null
     } finally {
         $ErrorActionPreference = $prev
+        # Assigning $null removes the variable, restoring an originally-unset env.
+        $env:MSYS_NO_PATHCONV = $prevNoPathConv
+        $env:MSYS2_ARG_CONV_EXCL = $prevArgConvExcl
     }
     if ($LASTEXITCODE -ne 0) { Invoke-Fail $FailMessage }
     return $out
 }
 
-# Is the Docker daemon actually reachable? The docker CLI being present does
-# not mean the engine is running (Docker Desktop stopped, or in
-# Windows-containers mode), and bcrypt hashing via the httpd image needs a live
-# daemon.
+# The docker CLI being present does not mean the engine is running (Docker
+# Desktop stopped, or in Windows-containers mode), and bcrypt hashing via the
+# httpd image needs a live daemon.
 function Test-DockerDaemon {
     if (-not (Test-CommandExists 'docker')) { return $false }
     $prev = $ErrorActionPreference
@@ -257,19 +264,17 @@ function Test-DockerDaemon {
     return $ok
 }
 
-# Verify the tools this script depends on before doing any work. openssl is a
-# hard requirement for every path (cert, keys, and password generation); the
-# bcrypt tool (htpasswd or docker) is only needed when a new admin credential
-# is generated, so its absence is a warning here and a hard failure later in
-# Get-BcryptHash if and when hashing is actually attempted.
+# openssl is a hard requirement for every path (cert, keys, password
+# generation); the bcrypt tool (htpasswd or docker) is only needed when a new
+# admin credential is generated, so its absence is a warning here and a hard
+# failure later in Get-BcryptHash if hashing is actually attempted.
 function Test-Prerequisites {
     Write-Log 'Verifying prerequisites ...'
     Write-Host "    [ok]      PowerShell $($PSVersionTable.PSVersion)"
 
     if (Test-CommandExists 'openssl') {
-        # Routed through Invoke-OpenSslQuiet like every other openssl call: with
-        # $ErrorActionPreference = 'Stop', a build that writes a benign warning
-        # to stderr (e.g. "can't open config file") would otherwise abort the
+        # Routed through Invoke-OpenSslQuiet so a build that writes a benign
+        # warning to stderr (e.g. "can't open config file") can't abort the
         # whole script on this version check.
         $opensslVersion = (Invoke-OpenSslQuiet { & openssl version } 'openssl is installed but failed to run')
         Write-Host "    [ok]      openssl - $(([string]$opensslVersion).Trim())"
@@ -294,17 +299,9 @@ function Test-Prerequisites {
     Write-Host ''
 }
 
-# bcrypt isn't in openssl; use htpasswd when available, else a throwaway httpd
-# container, so docker isn't a hard requirement for hosts that already have
-# Apache httpd installed.
-#
-# The password is written to the child process's stdin WITHOUT a trailing
-# newline (mirroring bash's `printf '%s'`) - piping a PowerShell string would
-# append CRLF and silently corrupt the hashed password. The username is
-# deliberately NOT passed to the tool: bcrypt hashes are username-independent
-# (htpasswd only uses it to print the "<user>:<hash>" prefix we strip anyway),
-# and keeping it out of the command line removes any argument-injection
-# surface from an interactively-typed username.
+# Writes to the child's stdin WITHOUT a trailing newline (mirroring bash's
+# `printf '%s'`) - piping a PowerShell string would append CRLF and silently
+# corrupt the hashed password.
 function Invoke-WithStdin([string]$file, [string]$argString, [string]$inputText) {
     $psi = New-Object System.Diagnostics.ProcessStartInfo
     $psi.FileName = $file
@@ -330,6 +327,11 @@ function Invoke-WithStdin([string]$file, [string]$argString, [string]$inputText)
     return $outTask.Result
 }
 
+# bcrypt isn't in openssl; use htpasswd when available, else a throwaway httpd
+# container. Unlike setup.sh, the username is deliberately NOT passed to the
+# tool: bcrypt hashes are username-independent (htpasswd only uses it for the
+# "<user>:<hash>" prefix stripped below), so keeping it off the command line
+# removes any argument-injection surface from an interactively-typed username.
 function Get-BcryptHash([string]$password) {
     if (Test-CommandExists 'htpasswd') {
         $out = Invoke-WithStdin 'htpasswd' '-niB -C 12 ""' $password
@@ -382,9 +384,9 @@ function Set-EnvVar([string]$file, [string]$key, [string]$value) {
         if ($line -notmatch $pattern) { [void]$lines.Add($line) }
     }
     # Drop the trailing empty element the final newline produces, so repeated
-    # runs don't accumulate blank lines. (An ArrayList rather than slicing:
-    # $arr[0..($arr.Count - 2)] silently duplicates the sole element when the
-    # array has one item, because 0..-1 counts backwards.)
+    # runs don't accumulate blank lines. An ArrayList rather than slicing:
+    # $arr[0..($arr.Count - 2)] duplicates the sole element of a 1-item array,
+    # because 0..-1 counts backwards.
     while ($lines.Count -gt 0 -and $lines[$lines.Count - 1] -eq '') {
         $lines.RemoveAt($lines.Count - 1)
     }
