@@ -305,8 +305,8 @@ const handleLocalLogin = async (req, res) => {
 
     const adminRole = config.auth.idp?.roles?.admin || 'admin';
     const subscriberRole = config.auth.idp?.roles?.subscriber || 'Internal/subscriber';
-    // Users with any _manage scope are treated as admins in the devportal
-    const isAdmin = claims.scopes.some(s => s.endsWith('_manage'));
+    // Users with any dp: manage scope are treated as admins in the API Portal.
+    const isAdmin = claims.scopes.some(s => s.startsWith('dp:') && s.endsWith(':manage'));
     const roles = isAdmin ? [adminRole] : [subscriberRole];
 
     const returnTo = req.session.returnTo;
@@ -334,7 +334,6 @@ const handleLocalLogin = async (req, res) => {
         [constants.ROLES.ROLE_CLAIM]: roles,
         [constants.ROLES.GROUP_CLAIM]: [],
         isAdmin,
-        isSuperAdmin: false,
         [constants.USER_ID]: claims.sub || username,
         userOrg: claims.org_handle || orgName,
         isLocalAuth: true,

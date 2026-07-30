@@ -109,7 +109,7 @@ function configurePassport(SERVER_ID) {
             if (!accessToken) {
                 return done(new Error('Access token missing'));
             }
-            let isAdmin = false, isSuperAdmin = false;
+            let isAdmin = false;
             const decodedJWT = safeDecodeJwt(params.id_token) || {};
             const decodedAccessToken = safeDecodeJwt(accessToken);
             const firstName = decodedJWT['given_name'] || decodedJWT['nickname'];
@@ -125,9 +125,6 @@ function configurePassport(SERVER_ID) {
                 : String(rawGroups).split(/[\s,]+/).filter(Boolean);
             if (roles.includes(config.auth.idp.roles.superAdmin) || roles.includes(config.auth.idp.roles.admin)) {
                 isAdmin = true;
-            }
-            if (roles.includes(config.auth.idp.roles.superAdmin)) {
-                isSuperAdmin = true;
             }
             // The IDP is trusted to say who the user is, not which organization this
             // portal serves. A token it correctly signed for a *different*
@@ -170,7 +167,6 @@ function configurePassport(SERVER_ID) {
                 [constants.ROLES.ROLE_CLAIM]: roles,
                 [constants.ROLES.GROUP_CLAIM]: groups,
                 isAdmin,
-                isSuperAdmin,
                 [constants.USER_ID]: decodedAccessToken?.[constants.USER_ID],
                 serverId: SERVER_ID,
                 imageURL,
@@ -227,7 +223,6 @@ function configurePassport(SERVER_ID) {
             [constants.ROLES.ROLE_CLAIM]: user.roles,
             [constants.ROLES.GROUP_CLAIM]: user.groups,
             isAdmin: user.isAdmin,
-            isSuperAdmin: user.isSuperAdmin,
             [constants.USER_ID]: user[constants.USER_ID],
             isLocalAuth: user.isLocalAuth || false,
             serverId: user.serverId,
