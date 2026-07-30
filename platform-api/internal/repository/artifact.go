@@ -61,6 +61,11 @@ func (r *ArtifactRepo) Update(_ *sql.Tx, _ *model.Artifact) error {
 }
 
 func (r *ArtifactRepo) Delete(tx *sql.Tx, uuid string) error {
+	// Explicit delete, not relying on the FK cascade, so the policy's "in use"
+	// lock releases regardless of FK enforcement state or SQL dialect.
+	if err := deleteCustomPolicyUsagesTx(tx, r.db, uuid); err != nil {
+		return err
+	}
 	query := `DELETE FROM artifacts WHERE uuid = ?`
 	result, err := tx.Exec(r.db.Rebind(query), uuid)
 	if err != nil {
