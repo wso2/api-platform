@@ -20,6 +20,7 @@ package handler
 import (
 	"testing"
 
+	"github.com/golang-jwt/jwt/v5"
 	"github.com/stretchr/testify/assert"
 
 	"github.com/wso2/api-platform/platform-api/config"
@@ -73,4 +74,50 @@ func TestEffectiveScopes(t *testing.T) {
 			assert.Equal(t, tt.want, h.effectiveScopes(&tt.user))
 		})
 	}
+}
+
+// A claim mapping may be a dot-separated path into a nested claim object, the
+// shape Keycloak and similar IDPs use. setClaim is the write-side mirror of the
+// middleware's resolveClaimPath, so a mapping configured for that layout must
+// round-trip: what this endpoint signs is what the reader finds.
+func TestSetClaimNestedPaths(t *testing.T) {
+	t.Run("flat path writes a top-level claim", func(t *testing.T) {
+		claims := jwt.MapClaims{}
+		setClaim(claims, "roles", []string{"ap_admin"})
+		assert.Equal(t, []string{"ap_admin"}, claims["roles"])
+	})
+
+	t.Run("dotted path writes a nested object", func(t *testing.T) {
+		claims := jwt.MapClaims{}
+		setClaim(claims, "realm_access.roles", []string{"ap_admin"})
+
+		nested, ok := claims["realm_access"].(map[string]interface{})
+		assert.True(t, ok, "realm_access should be a nested object, not a literal key")
+		assert.Equal(t, []string{"ap_admin"}, nested["roles"])
+		assert.Nil(t, claims["realm_access.roles"], "the dotted name must not survive as a flat key")
+	})
+
+	t.Run("mappings sharing a prefix both survive", func(t *testing.T) {
+		claims := jwt.MapClaims{}
+		setClaim(claims, "realm_access.roles", []string{"ap_admin"})
+		setClaim(claims, "realm_access.org_id", "acme")
+
+		nested := claims["realm_access"].(map[string]interface{})
+		assert.Equal(t, []string{"ap_admin"}, nested["roles"])
+		assert.Equal(t, "acme", nested["org_id"])
+	})
+
+	t.Run("deeper nesting is created for every intermediate level", func(t *testing.T) {
+		claims := jwt.MapClaims{}
+		setClaim(claims, "resource_access.platform-api.roles", []string{"ap_admin"})
+
+		client := claims["resource_access"].(map[string]interface{})["platform-api"].(map[string]interface{})
+		assert.Equal(t, []string{"ap_admin"}, client["roles"])
+	})
+
+	t.Run("empty path writes nothing", func(t *testing.T) {
+		claims := jwt.MapClaims{}
+		setClaim(claims, "", "value")
+		assert.Empty(t, claims)
+	})
 }

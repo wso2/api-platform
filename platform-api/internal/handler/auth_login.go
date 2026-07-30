@@ -95,29 +95,30 @@ func (h *AuthLoginHandler) Login(w http.ResponseWriter, r *http.Request) error {
 	// Claim names come from auth.claim_mappings — the same mapping IDP mode
 	// reads incoming claims by — so a token this endpoint signs is readable by
 	// validateLocalJWT (and by any other consumer configured against the same
-	// mapping) without the two ever drifting apart. Mapped names are used as
-	// flat claim keys here; a dot-separated nested path (meant for reading
-	// externally-issued tokens) is not meaningful to sign against, so
-	// validateFileModeClaimMappings rejects one at startup in this mode.
+	// mapping) without the two ever drifting apart. A mapped name may be a
+	// dot-separated path ("realm_access.roles", the Keycloak shape): setClaim
+	// writes it as the nested object resolveClaimPath reads back, so the same
+	// mapping works in both directions and an operator can point file mode at
+	// the claim layout the rest of their estate already uses.
 	cm := h.cfg.Auth.ClaimMappings
 	expiry := time.Now().Add(h.cfg.Auth.JWT.TokenTTL)
 	claims := jwt.MapClaims{
-		"sub":                                     matched.Username,
-		claimKey(cm.Username, "username"):         matched.Username,
-		claimKey(cm.Scope, "scope"):               h.effectiveScopes(matched),
-		claimKey(cm.Organization, "organization"): fileBasedAuth.Organization.UUID,
-		claimKey(cm.OrgName, "org_name"):          fileBasedAuth.Organization.DisplayName,
-		claimKey(cm.OrgHandle, "org_handle"):      fileBasedAuth.Organization.ID,
-		"iss":                                     h.cfg.Auth.JWT.Issuer,
-		"exp":                                     expiry.Unix(),
-		"iat":                                     time.Now().Unix(),
+		"sub": matched.Username,
+		"iss": h.cfg.Auth.JWT.Issuer,
+		"exp": expiry.Unix(),
+		"iat": time.Now().Unix(),
 	}
+	setClaim(claims, claimKey(cm.Username, "username"), matched.Username)
+	setClaim(claims, claimKey(cm.Scope, "scope"), h.effectiveScopes(matched))
+	setClaim(claims, claimKey(cm.Organization, "organization"), fileBasedAuth.Organization.UUID)
+	setClaim(claims, claimKey(cm.OrgName, "org_name"), fileBasedAuth.Organization.DisplayName)
+	setClaim(claims, claimKey(cm.OrgHandle, "org_handle"), fileBasedAuth.Organization.ID)
 	// The role travels in the token as well as the scopes it expanded to, so a
 	// consumer configured for role-based authorization reads the same identity
 	// this endpoint authorized — the claim is a list, matching the shape IDPs
 	// emit and the shape the roles claim is read back in. Config validation
 	// guarantees the role is set, so this is unconditional.
-	claims[claimKey(cm.Roles, "roles")] = []string{matched.Role}
+	setClaim(claims, claimKey(cm.Roles, "roles"), []string{matched.Role})
 
 	// Sign asymmetrically with RS256 using the configured RSA private key,
 	// read fresh from its mounted file. Config validation (validateJWTConfig)
@@ -170,4 +171,39 @@ func claimKey(name, def string) string {
 		return def
 	}
 	return name
+}
+
+// setClaim writes value at path, where path is either a flat claim name
+// ("roles") or a dot-separated path into nested claim objects
+// ("realm_access.roles"). It is the write-side mirror of the middleware's
+// resolveClaimPath, so a mapping configured for an IDP's nested layout reads
+// back the same way from a token this endpoint signed.
+//
+// Intermediate objects are created as needed and merged into, never replaced,
+// so two mappings sharing a prefix ("realm_access.roles" and
+// "realm_access.org_id") both survive regardless of the order they are set. A
+// prefix that already holds a non-object value is overwritten with an object:
+// that only happens when one mapping is a strict prefix of another, which is a
+// contradictory configuration either way, and the deeper path is the one an
+// operator wrote deliberately.
+func setClaim(claims jwt.MapClaims, path string, value interface{}) {
+	if path == "" {
+		return
+	}
+	parts := strings.Split(path, ".")
+	if len(parts) == 1 {
+		claims[path] = value
+		return
+	}
+
+	current := map[string]interface{}(claims)
+	for _, part := range parts[:len(parts)-1] {
+		next, ok := current[part].(map[string]interface{})
+		if !ok {
+			next = map[string]interface{}{}
+			current[part] = next
+		}
+		current = next
+	}
+	current[parts[len(parts)-1]] = value
 }

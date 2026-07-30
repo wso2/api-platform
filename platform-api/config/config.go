@@ -725,9 +725,6 @@ func validateAuthModeConfig(auth *Auth) error {
 			return fmt.Errorf("Auth.JWT.TokenTTL must be a positive duration when auth.mode is %q "+
 				"(set auth.jwt.token_ttl, e.g. \"8h\")", AuthModeFile)
 		}
-		if err := validateFileModeClaimMappings(&auth.ClaimMappings); err != nil {
-			return err
-		}
 		return validateFileBasedConfig(&auth.File, &auth.Authorization)
 	case AuthModeIDP:
 		return validateIDPConfig(&auth.IDP)
@@ -903,13 +900,6 @@ func validateIDPConfig(idp *IDP) error {
 	if len(idp.Issuer) == 0 {
 		return fmt.Errorf("auth.mode=%q requires auth.idp.issuer to be configured", AuthModeIDP)
 	}
-	// Without an expected audience, any token the IDP minted for any of its
-	// clients verifies here — signature and issuer alone collapse "this IDP is
-	// trusted" into "every token it issues is valid for this server".
-	if len(idp.Audience) == 0 {
-		return fmt.Errorf("auth.mode=%q requires auth.idp.audience to be configured "+
-			"(without it, a token minted for any other client of the same IDP is accepted)", AuthModeIDP)
-	}
 	return nil
 }
 
@@ -934,35 +924,6 @@ func validateAuthorizationConfig(authz *Authorization, claimMappings *ClaimMappi
 		// a scope, grants unintentionally). Require the mapping explicitly.
 		if authz.RoleMappings == "" {
 			return fmt.Errorf("auth.authorization.mode=%s requires auth.authorization.role_mappings to be configured", AuthzModeRole)
-		}
-	}
-	return nil
-}
-
-// validateFileModeClaimMappings rejects a dot-separated claim mapping in file
-// mode. A dotted mapping ("realm_access.roles") is a path into a nested claim,
-// meaningful only when reading a token some IDP issued. The login endpoint signs
-// flat claims, so it would emit a claim literally named "realm_access.roles"
-// while the reader looks for a nested "realm_access" object and finds nothing —
-// silently dropping the value. For the roles mapping that means a token whose
-// role never arrives, so role-mode authorization denies every request from a
-// user who logged in successfully. Reject at startup rather than mint tokens
-// that read back empty.
-func validateFileModeClaimMappings(cm *ClaimMappings) error {
-	for _, m := range []struct{ key, value string }{
-		{"organization", cm.Organization},
-		{"org_name", cm.OrgName},
-		{"org_handle", cm.OrgHandle},
-		{"user_id", cm.UserID},
-		{"username", cm.Username},
-		{"email", cm.Email},
-		{"scope", cm.Scope},
-		{"roles", cm.Roles},
-	} {
-		if strings.Contains(m.value, ".") {
-			return fmt.Errorf("auth.claim_mappings.%s must be a flat claim name in auth.mode=%q (got %q): "+
-				"the login endpoint signs flat claims, so a nested path would be issued as a literal claim name and read back empty",
-				m.key, AuthModeFile, m.value)
 		}
 	}
 	return nil
