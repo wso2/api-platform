@@ -353,7 +353,7 @@ function LLMProxyNewContent({
       // Encrypt the provider API key as a secret before storing it in the proxy
       // config — even though it is a platform-issued key, it is still a credential
       // that should not be persisted in plain text.
-      let providerAuthType = providerDetail?.upstream?.main?.auth?.type ?? '';
+      let providerAuthType = providerDetail?.upstream?.main?.auth?.type || 'none';
       let providerAuthHeader = providerDetail?.upstream?.main?.auth?.header ?? '';
       let providerAuthValue = providerDetail?.upstream?.main?.auth?.value ?? '';
       if (selectedProviderRequiresApiKey) {

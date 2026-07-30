@@ -151,14 +151,36 @@ export function LLMProvidersProvider({ children }: LLMProvidersProviderProps) {
         const isAlreadyPlaceholder =
           typeof authValue === 'string' && authValue.includes('{{ secret ');
 
-        if (authValue && !isAlreadyPlaceholder) {
+        // A create carries no credential the platform could already be holding, so a
+        // credential-bearing type with a blank value describes an injection that can
+        // never happen. Record it as 'none' rather than creating a provider whose
+        // deployment the gateway rejects for an empty 'api-key' value.
+        const credential = typeof authValue === 'string' ? authValue.trim() : '';
+        const hasCredential = credential !== '';
+        const authType = provider.upstream?.main?.auth?.type || '';
+        const isNoCredentialsAuthType =
+          authType === '' || authType === 'other' || authType === 'none';
+        if (!isNoCredentialsAuthType && !hasCredential) {
+          providerPayload = {
+            ...provider,
+            upstream: {
+              ...provider.upstream,
+              main: {
+                ...provider.upstream.main,
+                auth: { type: 'none', header: '', value: '' },
+              },
+            },
+          };
+        }
+
+        if (hasCredential && !isAlreadyPlaceholder) {
           const secretHandle = generateSecretHandle();
           const secretResponse = await createSecret(
             {
               id: secretHandle,
               displayName: `${provider.displayName} API Key`,
               description: `Auto-generated secret for LLM provider ${provider.displayName}`,
-              value: authValue,
+              value: credential,
               type: 'GENERIC',
             },
           );
@@ -175,6 +197,7 @@ export function LLMProvidersProvider({ children }: LLMProvidersProviderProps) {
                 ...provider.upstream.main,
                 auth: {
                   ...provider.upstream.main.auth,
+                  type: provider.upstream.main.auth?.type || 'none',
                   value: buildSecretPlaceholder(secretResponse.id),
                 },
               },
@@ -252,6 +275,7 @@ export function LLMProvidersProvider({ children }: LLMProvidersProviderProps) {
                 url: updates.upstream?.main?.url ?? currentProvider?.upstream?.main?.url ?? '',
                 auth: {
                   ...updates.upstream?.main?.auth,
+                  type: updates.upstream?.main?.auth?.type || 'none',
                   value: buildSecretPlaceholder(secretResponse.id),
                 },
               },

@@ -157,7 +157,7 @@ export default function LLMProxyProviderTab() {
                 ? {
                     id: newProviderId,
                     auth: {
-                      type: nextProviderDetail?.upstream?.main?.auth?.type ?? '',
+                      type: nextProviderDetail?.upstream?.main?.auth?.type || 'none',
                       header:
                         nextProviderDetail?.upstream?.main?.auth?.header ?? '',
                       value: nextProviderDetail?.upstream?.main?.auth?.value ?? '',
