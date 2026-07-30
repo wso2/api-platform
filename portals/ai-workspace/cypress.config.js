@@ -47,5 +47,9 @@ export default {
     ADMIN_PASSWORD: 'admin',
     ORG_HANDLE: 'default',
     QS_INTRO_STORAGE_KEY: 'qs_intro_seen_v1',
+    // Gateway registered by scripts/start-e2e-gateway.sh. Specs that exercise
+    // deploy/redeploy/restore look this up and skip themselves when no gateway
+    // is connected, so the suite still passes on a control-plane-only stack.
+    E2E_GATEWAY_NAME: 'e2e-gw',
   },
 };
