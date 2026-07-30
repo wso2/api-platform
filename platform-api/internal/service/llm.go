@@ -188,13 +188,54 @@ func NewLLMProxyService(
 	}
 }
 
-// toProxyAPI converts m via mapProxyModelToAPI and resolves its
-// createdBy/updatedBy UUIDs to their raw external identity.
-func (s *LLMProxyService) toProxyAPI(m *model.LLMProxy) (*api.LLMProxy, error) {
+// resolveProjectHandle maps a stored project UUID to the project handle the
+// API exposes as `projectId`. Every id-shaped field in this API is a handle
+// (Create/List take a project handle), so responses must return one too —
+// clients have no way to resolve a UUID back to a project. Mirrors
+// ApplicationService.modelToApplicationResponseUnresolved.
+//
+// The lookup is scoped to orgUUID so a project UUID belonging to another
+// organization never resolves — a stored UUID is not itself proof of tenancy.
+//
+// projectHandleCache is an optional per-request memo so a listing page doesn't
+// re-query the same project once per item; pass nil for single-item responses.
+func (s *LLMProxyService) resolveProjectHandle(orgUUID, projectUUID string, projectHandleCache map[string]string) (string, error) {
+	projectUUID = strings.TrimSpace(projectUUID)
+	if projectUUID == "" {
+		return "", nil
+	}
+	if handle, ok := projectHandleCache[projectUUID]; ok {
+		return handle, nil
+	}
+	if s.projectRepo == nil {
+		return "", fmt.Errorf("cannot resolve project handle: project repository unavailable")
+	}
+	project, err := s.projectRepo.GetProjectByUUIDAndOrgID(projectUUID, orgUUID)
+	if err != nil {
+		return "", fmt.Errorf("failed to resolve project: %w", err)
+	}
+	if project == nil {
+		return "", apperror.ProjectNotFound.New()
+	}
+	if projectHandleCache != nil {
+		projectHandleCache[projectUUID] = project.Handle
+	}
+	return project.Handle, nil
+}
+
+// toProxyAPI converts m via mapProxyModelToAPI, resolves its project UUID to
+// the project handle, and resolves its createdBy/updatedBy UUIDs to their raw
+// external identity.
+func (s *LLMProxyService) toProxyAPI(orgUUID string, m *model.LLMProxy) (*api.LLMProxy, error) {
 	resp := mapProxyModelToAPI(m)
 	if resp == nil {
 		return nil, nil
 	}
+	projectHandle, err := s.resolveProjectHandle(orgUUID, resp.ProjectId, nil)
+	if err != nil {
+		return nil, err
+	}
+	resp.ProjectId = projectHandle
 	if err := s.identity.ResolveIdentityField(&resp.CreatedBy); err != nil {
 		return nil, err
 	}
@@ -1528,7 +1569,7 @@ func (s *LLMProxyService) Create(orgUUID, createdBy string, req *api.LLMProxy) (
 	if created == nil {
 		return nil, apperror.LLMProxyNotFound.New()
 	}
-	return s.toProxyAPI(created)
+	return s.toProxyAPI(orgUUID, created)
 }
 
 func (s *LLMProxyService) List(orgUUID string, projectHandle *string, limit, offset int) (*api.LLMProxyListResponse, error) {
@@ -1576,6 +1617,7 @@ func (s *LLMProxyService) List(orgUUID string, projectHandle *string, limit, off
 	}
 	resp.List = make([]api.LLMProxyListItem, 0, len(items))
 	createdByFields := make([]**string, 0, len(items))
+	projectHandles := make(map[string]string)
 	for _, p := range items {
 		id := p.ID
 		name := p.Name
@@ -1587,7 +1629,10 @@ func (s *LLMProxyService) List(orgUUID string, projectHandle *string, limit, off
 			contextValue = &v
 		}
 		version := p.Version
-		projectID := p.ProjectUUID
+		projectID, err := s.resolveProjectHandle(orgUUID, p.ProjectUUID, projectHandles)
+		if err != nil {
+			return nil, err
+		}
 		provider := p.Configuration.Provider
 		resp.List = append(resp.List, api.LLMProxyListItem{
 			Id:          &id,
@@ -1643,6 +1688,7 @@ func (s *LLMProxyService) ListByProvider(orgUUID, providerID string, limit, offs
 	}
 	resp.List = make([]api.LLMProxyListItem, 0, len(items))
 	createdByFields := make([]**string, 0, len(items))
+	projectHandles := make(map[string]string)
 	for _, p := range items {
 		id := p.ID
 		name := p.Name
@@ -1654,7 +1700,10 @@ func (s *LLMProxyService) ListByProvider(orgUUID, providerID string, limit, offs
 			contextValue = &v
 		}
 		version := p.Version
-		projectID := p.ProjectUUID
+		projectID, err := s.resolveProjectHandle(orgUUID, p.ProjectUUID, projectHandles)
+		if err != nil {
+			return nil, err
+		}
 		provider := p.Configuration.Provider
 		resp.List = append(resp.List, api.LLMProxyListItem{
 			Id:          &id,
@@ -1688,7 +1737,7 @@ func (s *LLMProxyService) Get(orgUUID, handle string) (*api.LLMProxy, error) {
 	if m == nil {
 		return nil, apperror.LLMProxyNotFound.New()
 	}
-	return s.toProxyAPI(m)
+	return s.toProxyAPI(orgUUID, m)
 }
 
 func (s *LLMProxyService) Update(orgUUID, handle, updatedBy string, req *api.LLMProxy) (*api.LLMProxy, error) {
@@ -1833,7 +1882,7 @@ func (s *LLMProxyService) Update(orgUUID, handle, updatedBy string, req *api.LLM
 		return nil, apperror.LLMProxyNotFound.New()
 	}
 	_ = s.auditRepo.Record("UPDATE", existing.UUID, "llm_proxy", orgUUID, updatedBy)
-	return s.toProxyAPI(updated)
+	return s.toProxyAPI(orgUUID, updated)
 }
 
 func (s *LLMProxyService) Delete(orgUUID, handle, deletedBy string) error {
@@ -1905,10 +1954,24 @@ func isSQLiteUniqueConstraint(err error) bool {
 }
 
 func validateUpstream(u api.Upstream) error {
-	mainUrl := utils.ValueOrEmpty(u.Main.Url)
-	mainRef := utils.ValueOrEmpty(u.Main.Ref)
-	if strings.TrimSpace(mainUrl) == "" && strings.TrimSpace(mainRef) == "" {
-		return apperror.ValidationFailed.New("The upstream main must specify either a url or a ref.")
+	if err := validateUpstreamDefinition("main", u.Main); err != nil {
+		return err
+	}
+	// Sandbox is optional, but when present it carries the same either-url-or-ref
+	// constraint as main.
+	if u.Sandbox != nil {
+		return validateUpstreamDefinition("sandbox", *u.Sandbox)
+	}
+	return nil
+}
+
+// validateUpstreamDefinition enforces the UpstreamDefinition schema constraint that
+// exactly one of url or ref is provided.
+func validateUpstreamDefinition(name string, definition api.UpstreamDefinition) error {
+	hasUrl := strings.TrimSpace(utils.ValueOrEmpty(definition.Url)) != ""
+	hasRef := strings.TrimSpace(utils.ValueOrEmpty(definition.Ref)) != ""
+	if hasUrl == hasRef {
+		return apperror.ValidationFailed.New(fmt.Sprintf("The upstream %s must specify either a url or a ref, not both.", name))
 	}
 	return nil
 }

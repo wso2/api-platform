@@ -67,6 +67,26 @@ func TestMCPProxyServiceCreateRejectsInvalidPolicyVersion(t *testing.T) {
 	}
 }
 
+// TestMCPProxyServiceGetReturnsProjectHandle guards the response contract:
+// projectId must be the project handle, never the internal project UUID.
+// Clients route on handles and have no way to resolve a UUID back to one.
+func TestMCPProxyServiceGetReturnsProjectHandle(t *testing.T) {
+	projectUUID := "550e8400-e29b-41d4-a716-446655440000"
+	repo := &mockMCPProxyRepository{getByHandleResult: &model.MCPProxy{
+		Handle:      "mcp-proxy-1",
+		Name:        "Test MCP Proxy",
+		Version:     "v1.0",
+		ProjectUUID: &projectUUID,
+	}}
+	projectRepo := &mockProjectRepo{project: &model.Project{ID: projectUUID, Handle: "test-project", OrganizationID: "org-1"}}
+	service := NewMCPProxyService(repo, projectRepo, nil, nil, nil, slog.Default(), &noopAuditRepo{}, &config.Server{}, newTestIdentityService())
+
+	resp, err := service.Get("org-1", "mcp-proxy-1")
+	require.NoError(t, err)
+	require.NotNil(t, resp.ProjectId)
+	assert.Equal(t, "test-project", *resp.ProjectId)
+}
+
 func TestMCPProxyServiceUpdateRejectsInvalidPolicyVersion(t *testing.T) {
 	repo := &mockMCPProxyRepository{getByHandleResult: &model.MCPProxy{Handle: "mcp-proxy-1"}}
 	service := NewMCPProxyService(repo, nil, nil, nil, nil, slog.Default(), &noopAuditRepo{}, &config.Server{}, newTestIdentityService())
@@ -137,6 +157,38 @@ func TestFetchServerInfoRefetchUsesStoredURLVerbatim(t *testing.T) {
 				assert.Equal(t, tt.wantPath, p, "backend received an unexpected path")
 				assert.NotContains(t, p, "/mcp/mcp", "the /mcp resource path must not be doubled on the backend")
 			}
+		})
+	}
+}
+
+// TestFetchServerInfoRejectsAmbiguousTargets asserts the request-shape rules enforced by
+// FetchServerInfo, matching the oneOf constraint on MCPServerInfoFetchRequest: exactly one
+// of url/proxyId selects the target, and auth may not accompany proxyId (where the stored
+// auth is authoritative) — no branch may silently ignore a supplied field.
+func TestFetchServerInfoRejectsAmbiguousTargets(t *testing.T) {
+	url := "https://mcp.example.com/mcp"
+	proxyID := "mcp-proxy-1"
+	header, value := "X-API-Key", "secret"
+
+	tests := []struct {
+		name string
+		req  *api.MCPServerInfoFetchRequest
+	}{
+		{"both url and proxyId", &api.MCPServerInfoFetchRequest{Url: &url, ProxyId: &proxyID}},
+		{"neither url nor proxyId", &api.MCPServerInfoFetchRequest{}},
+		{"auth supplied with proxyId", &api.MCPServerInfoFetchRequest{
+			ProxyId: &proxyID,
+			Auth:    &api.UpstreamAuth{Header: &header, Value: &value},
+		}},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			repo := &mockMCPProxyRepository{getByHandleResult: &model.MCPProxy{Handle: proxyID}}
+			service := NewMCPProxyService(repo, nil, nil, nil, nil, slog.Default(), &noopAuditRepo{}, &config.Server{}, newTestIdentityService())
+
+			_, err := service.FetchServerInfo("org-1", tt.req)
+			assert.True(t, apperror.ValidationFailed.Is(err), "expected a validation failure, got: %v", err)
 		})
 	}
 }
