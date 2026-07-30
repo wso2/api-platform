@@ -243,7 +243,7 @@ Prompts for the admin username/password (or set `ADMIN_USERNAME`/`ADMIN_PASSWORD
 
 ## Configuration Reference
 
-All settings live in `configs/config.toml`. Every setting can also be overridden with an `APIP_AP_*` environment variable.
+All settings live in `configs/config.toml`. There is no automatic `APIP_AP_*` override layer: an environment variable takes effect only for a setting whose `config.toml` entry explicitly references it with a `{{ env "NAME" "fallback" }}` token (see [Environment variable overrides](#environment-variable-overrides)).
 
 The full annotated list of settings is in [`configs/config-template.toml`](configs/config-template.toml).
 
@@ -265,9 +265,9 @@ Note there are two files with this name, read by different components in differe
 | File | Read by | When |
 |---|---|---|
 | [`platform-api/resources/role-to-scope-mapping.yaml`](../../platform-api/resources/role-to-scope-mapping.yaml) | Platform API | Local auth — expands a file user's `roles` into the `scope` claim of the token it issues (roles named `ap_*`) |
-| [`resources/role-to-scope-mapping.yaml`](resources/role-to-scope-mapping.yaml) | This portal | `auth.authorization.mode = "role"` — expands an incoming token's roles claim on every request (roles named `dp_admin`, `dp_subscriber`) |
+| [`resources/role-to-scope-mapping.yaml`](resources/role-to-scope-mapping.yaml) | This portal | `auth.authorization.mode = "role"` (the default) — expands an incoming token's roles claim on every request to authorize the portal's REST surface. Recognises `dp_admin`/`dp_subscriber`, and **aliases** `ap_admin`/`ap_subscriber` so local-auth tokens (which carry `ap_*` roles) are authorized unchanged |
 
-Local auth uses the first; an external IDP in role mode uses the second. See [Authorization](docs/administer/authentication.md#authorization).
+Because role mode is the default, the local-auth quickstart uses **both** files, each governing a different surface: the Platform API expands the file user's `roles` into the token it issues (and authorizes its own surface with that mapping), and the portal then expands that same token's roles claim on every request to authorize its REST surface — which is why the portal file aliases `ap_admin`/`ap_subscriber`. An external IDP in role mode drives the portal file directly with its own groups. So to change what a role may do, edit the file for the surface you mean — the portal file for the portal's REST permissions, the Platform API file for the Platform API's — and both if the change must hold across both components. See [Authorization](docs/administer/authentication.md#authorization).
 
 The portal config (or `APIP_AP_AUTH_LOCAL_*` env vars) must point to the Platform API. `config.toml`'s own defaults assume Docker Compose, where `platform-api` is a resolvable hostname on the compose network — `npm run start:local` already overrides `platform_api_url` to `https://localhost:9243` (the sidecar's port published to the host) and `tls_skip_verify = true` (self-signed cert), so no manual edit is needed for that flow:
 

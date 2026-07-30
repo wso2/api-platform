@@ -39,7 +39,7 @@ services:
     networks:
       - api-portal-network
 
-  devportal:
+  api-portal:
     image: ghcr.io/wso2/api-platform/api-portal:1.0.0-SNAPSHOT
     container_name: api-portal
     restart: unless-stopped
@@ -62,6 +62,12 @@ services:
       # editing this file on the host changes what a role grants after a restart, with
       # no rebuild and no env-var indirection.
       - ./resources/role-to-scope-mapping.yaml:/app/resources/role-to-scope-mapping.yaml:ro
+      # Design-mode sample content (APIs, MCP servers, applications, subscription
+      # plans), read from disk when [api_portal.design_mode] is enabled. Edit these
+      # files on the host and restart to preview your own content — no image rebuild
+      # (design mode isn't baked into the image). Unused when design mode is off. The
+      # standalone dist rewrites the host path to ./resources/samples (see Makefile).
+      - ./samples:/app/samples:ro
       - ./resources/certificates:/etc/api-portal/tls:ro
       - ./resources/keys/jwt_public.pem:/etc/api-portal/keys/jwt_public.pem:ro
       - ./resources/keys/api-portal-encryption.key:/etc/api-portal/keys/encryption.key:ro

@@ -748,3 +748,12 @@
   .aov-body { flex-direction: column; }
   .aov-body-sidebar { width: 100%; }
 }
+/* Design mode: nav/action buttons whose routes aren't served in this mode are
+   rendered without an href and with this class so they stay visible but are
+   non-interactive (no click, no hover, no keyboard focus) instead of leading to
+   a 404. See partials/header.hbs and partials/sidebar.hbs. */
+.design-disabled {
+  pointer-events: none;
+  opacity: 0.45;
+  cursor: default;
+}

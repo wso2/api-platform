@@ -29,8 +29,13 @@ docker-compose*.yaml
 # ── Database init / seed scripts (volume-mounted into postgres) ───
 artifacts/
 
-# ── Sample APIs/MCPs (deployed via ./scripts/seed-samples.sh against the
-# REST API, not read from disk by the running app) ─────────────────
+# ── Sample APIs/MCPs ──────────────────────────────────────────────
+# Not baked into the image. Both consumers reach them from OUTSIDE the image:
+#   - ./scripts/seed-samples.sh deploys them via the REST API (host-side), and
+#   - design mode reads them from disk via a bind-mount — docker-compose.yaml
+#     mounts ./samples at /app/samples (the standalone dist rewrites this to
+#     ./resources/samples; see the Makefile), so operators can edit the sample
+#     set and restart to preview it without rebuilding the image.
 samples/
 
 # ── Host-side operational scripts (setup.sh, seed-samples.sh) — run against

@@ -17,8 +17,16 @@
  */
 
 const Handlebars = require('handlebars');
+const { config } = require('../config/configLoader');
 
 const helpers = {
+    // True only when the portal is running in file-based design mode. Partials use
+    // it to disable nav/action buttons whose routes aren't served in design mode
+    // (login, subscriptions, api-keys, api-workflows) so they don't lead to a 404.
+    // Read from config at render time so it's correct regardless of which render
+    // path (design vs. normal) produced the context.
+    designMode: () => config.designMode?.enabled === true,
+
     // Array helpers
     filterByStatus: (array, status) => {
         if (!Array.isArray(array)) return [];

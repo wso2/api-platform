@@ -65,7 +65,30 @@ const dialect = config.database.driver;
  */
 const txStorage = new AsyncLocalStorage();
 
+// Design mode renders every page from disk (see app.js's designMode branch) and
+// never issues a query, so it needs no database connection at all — not even the
+// empty sqlite file the sqlite adapter would create on open, and not the native
+// better-sqlite3 binding it would load. Return a stub whose query methods fail
+// loudly: reaching one means a code path that should have been gated on
+// design_mode.enabled slipped through, which we want surfaced, not silently run
+// against a phantom connection.
+function createDesignModeStub() {
+    const refuse = () => {
+        throw new Error('Database access is not available in design mode (design_mode.enabled = true).');
+    };
+    return {
+        query: refuse,
+        queryOne: refuse,
+        execute: refuse,
+        withTransaction: refuse,
+        close: () => {},
+    };
+}
+
 function loadAdapter() {
+    if (config.designMode?.enabled) {
+        return createDesignModeStub();
+    }
     switch (dialect) {
         case rebindHelpers.DIALECTS.SQLITE:
             return require('./adapters/sqliteAdapter').createSqliteAdapter(config);

@@ -259,12 +259,22 @@ enabled_types = ["apis", "mcp-servers", "api-workflows"]
 # =============================================================================
 # DESIGN MODE CONFIGURATION
 # =============================================================================
-# Local, file-based preview mode — APIs/layouts load from disk instead of the
-# database. For content authoring and theming workflows only; do not enable
-# in a production environment. Disabled (commented) by default.
+# Local, file-based preview mode — APIs, MCP servers, layouts, and applications
+# render straight from the bundled sample files on disk (samples/,
+# src/defaultContent/) instead of the database. The portal opens no database
+# connection and never calls the Platform API in this mode, so it also waives the
+# encryption_key/session_secret requirement (sessions are in-memory and an
+# ephemeral secret is minted at startup). For content-authoring and theming
+# previews only; never enable it in a production environment. OFF by default.
+#
+# To turn it on, copy the whole [api_portal.design_mode] block below into your
+# active configs/config.toml (the same copy-it-from-the-template opt-in used for
+# AI Workspace) and restart. The sample paths are relative to the app's working
+# directory, where the bundled samples/ already live — leave them as-is unless
+# you're pointing at your own sample set.
 
 # [api_portal.design_mode]
-# enabled = false
+# enabled = true
 # path_to_layout = "./src/defaultContent/"
 # api_samples_path = "./samples/apis/"
 # mcp_samples_path = "./samples/mcps/"

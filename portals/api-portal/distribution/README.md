@@ -108,6 +108,19 @@ docker compose --profile ai-workspace up -d
 
 AI Workspace comes up at `https://localhost:9643`, backed by the same Platform API. Omitting `--profile ai-workspace` on a later `docker compose` command neither starts nor stops it — an already-running instance keeps running. To stop it explicitly, run `docker compose stop ai-workspace`, or `docker compose --profile ai-workspace down` to remove it.
 
+## Design Mode (optional)
+
+**Design mode** turns the API Portal into a file-based preview: it renders APIs, MCP servers, layouts, and applications straight from the bundled sample files instead of the database. With it on, the portal **opens no database connection and never calls the Platform API** — it's purely for previewing content and theming. Do **not** enable it in production.
+
+Like AI Workspace, it's an opt-in you turn on by editing `configs/config.toml` — there's no separate config file or Compose profile:
+
+1. **Copy the `[api_portal.design_mode]` block** from the "DESIGN MODE CONFIGURATION" section of the shipped `configs/config-template.toml` into `configs/config.toml` (keep `enabled = true`). The sample paths are already correct for the bundled samples — leave them as-is.
+2. **Restart the API Portal:** `docker compose up -d` (or `docker compose restart api-portal`).
+
+The portal then serves from disk at `/views/default` (e.g. `http://localhost:9543/views/default`). Because design mode never touches the database, the accompanying Platform API and its database go unused while it's on — set `enabled` back to `false` and restart to return to the normal, database-backed portal.
+
+The sample content lives in **`resources/samples/`** (`apis/`, `mcps/`, `applications.yaml`, `subscription-plans.yaml`), which the API Portal container mounts at `/app/samples`. To preview **your own** APIs and MCP servers, add or edit files there and restart — no image rebuild needed.
+
 ## Configuration
 
 All settings live in the single `configs/config.toml`. It carries two sections — `[api_portal.*]` and `[platform_api.*]` — and the **same file is mounted into both containers**; each service reads only its own section and ignores the other's. Edit it in place — no rebuild required, just restart the affected service.
@@ -126,10 +139,10 @@ Environment overrides go in `api-platform.env` (git-ignored; loaded into both co
 | `[api_portal.auth.local].platform_api_url` | Address of the Platform API local-auth sidecar | `https://platform-api:9243` |
 | `[api_portal.auth.local].public_key_path` | Path to the Platform API RS256 public key PEM used to verify login tokens | `/etc/api-portal/keys/jwt_public.pem` |
 | `[api_portal.auth.authorization].enabled` | Enforce each REST operation's declared `dp:*` scopes. `false` lets any authenticated caller through — development only | `true` |
-| `[api_portal.auth.authorization].mode` | `scope` reads the token's own scope claim; `role` expands its roles claim through the grant table instead (for an IDP that emits roles, not `dp:*` scopes) | `scope` |
-| `[api_portal.auth.authorization].role_to_scope_mapping` | Path to the mounted `resources/api-portal/role-to-scope-mapping.yaml` — required in `role` mode; edit that file to change what a role grants | _(empty)_ |
+| `[api_portal.auth.authorization].mode` | `role` (the default) expands the token's roles claim through the grant table; `scope` reads the token's own scope claim instead | `role` |
+| `[api_portal.auth.authorization].role_to_scope_mapping` | Path to the mounted `resources/api-portal/role-to-scope-mapping.yaml` — used in `role` mode; edit that file to change what a role grants | `./resources/role-to-scope-mapping.yaml` |
 | `[api_portal.auth.authorization].page_role_validation` | Gate portal pages on the caller's role tier (`portal_roles` below). Separate from `enabled`, which governs REST scopes | `false` |
-| `[api_portal.auth.authorization.portal_roles]` | Which role name in the token's roles claim grants each page tier (`admin`, `super_admin`, `subscriber`) | `admin`, `superAdmin`, `Internal/subscriber` |
+| `[api_portal.auth.authorization.portal_roles]` | Which role name in the token's roles claim grants each page tier (`admin`, `subscriber`) | `admin`, `Internal/subscriber` |
 | `[api_portal.organization].handle` | The single organization this instance serves, bootstrapped on first start. Required — the portal refuses to start without it | `default` |
 | `[api_portal.organization].display_name` | Display name applied when the organization is first seeded | `Default` |
 
