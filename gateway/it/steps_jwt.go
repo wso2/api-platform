@@ -24,6 +24,7 @@ import (
 	"log"
 	"net/http"
 	"net/url"
+	"strings"
 
 	"github.com/cucumber/godog"
 	"github.com/wso2/api-platform/gateway/it/steps"
@@ -54,6 +55,8 @@ func (j *JWTSteps) Register(ctx *godog.ScenarioContext) {
 	ctx.Step(`^I send a POST request to "([^"]*)" with the JWT token$`, j.iSendPOSTRequestWithJWTToken)
 	ctx.Step(`^I send a GET request to "([^"]*)" with JWT in header "([^"]*)"$`, j.iSendGETRequestWithJWTInHeader)
 	ctx.Step(`^I get a JWT token from the mock JWKS server with issuer "([^"]*)" and scope "([^"]*)"$`, j.iGetJWTTokenWithIssuerAndScope)
+	ctx.Step(`^I get a JWT token from the mock JWKS server with issuer "([^"]*)" and claims "([^"]*)"$`, j.iGetJWTTokenWithIssuerAndClaims)
+	ctx.Step(`^I get a JWT token from the mock JWKS server with issuer "([^"]*)", scope "([^"]*)" and claims "([^"]*)"$`, j.iGetJWTTokenWithIssuerScopeAndClaims)
 }
 
 // Reset clears JWT state between scenarios
@@ -111,6 +114,76 @@ func (j *JWTSteps) iGetJWTTokenWithIssuerAndScope(issuer, scope string) error {
 		tokenURL = tokenURL + "scope=" + url.QueryEscape(scope)
 	}
 
+	log.Printf("DEBUG: Fetching JWT token from %s", tokenURL)
+
+	resp, err := j.state.HTTPClient.Get(tokenURL)
+	if err != nil {
+		return fmt.Errorf("failed to get JWT token from mock JWKS server: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return fmt.Errorf("mock JWKS server returned status %d", resp.StatusCode)
+	}
+
+	tokenBytes, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return fmt.Errorf("failed to read token response: %w", err)
+	}
+
+	j.currentToken = string(tokenBytes)
+	log.Printf("DEBUG: Obtained JWT token (length: %d)", len(j.currentToken))
+
+	return nil
+}
+
+// iGetJWTTokenWithIssuerAndClaims fetches a token carrying arbitrary custom claims. The claims
+// argument is a comma-separated list of key=value pairs (e.g. "department=platform,role=internal").
+func (j *JWTSteps) iGetJWTTokenWithIssuerAndClaims(issuer, claims string) error {
+	return j.iGetJWTTokenWithIssuerScopeAndClaims(issuer, "", claims)
+}
+
+// iGetJWTTokenWithIssuerScopeAndClaims fetches a token carrying both a scope and arbitrary custom
+// claims, needed to exercise policies that combine the `scopes` and `claims` params on one
+// operation. claims is a comma-separated list of key=value pairs; each becomes a claim_<key>=<value>
+// query param on the mock server.
+func (j *JWTSteps) iGetJWTTokenWithIssuerScopeAndClaims(issuer, scope, claims string) error {
+	q := url.Values{}
+	if issuer != "" {
+		q.Set("issuer", issuer)
+	}
+	if scope != "" {
+		q.Set("scope", scope)
+	}
+	if err := addClaimParams(q, claims); err != nil {
+		return err
+	}
+
+	tokenURL := j.mockJWKSURL + "/token"
+	if enc := q.Encode(); enc != "" {
+		tokenURL = tokenURL + "?" + enc
+	}
+	return j.fetchTokenFrom(tokenURL)
+}
+
+// addClaimParams parses a comma-separated "key=value" list into claim_<key>=<value> query params.
+func addClaimParams(q url.Values, claims string) error {
+	for _, pair := range strings.Split(claims, ",") {
+		pair = strings.TrimSpace(pair)
+		if pair == "" {
+			continue
+		}
+		kv := strings.SplitN(pair, "=", 2)
+		if len(kv) != 2 {
+			return fmt.Errorf("invalid claim pair %q, expected key=value", pair)
+		}
+		q.Set("claim_"+strings.TrimSpace(kv[0]), strings.TrimSpace(kv[1]))
+	}
+	return nil
+}
+
+// fetchTokenFrom retrieves a token from the mock server URL and stores it as the current token.
+func (j *JWTSteps) fetchTokenFrom(tokenURL string) error {
 	log.Printf("DEBUG: Fetching JWT token from %s", tokenURL)
 
 	resp, err := j.state.HTTPClient.Get(tokenURL)
