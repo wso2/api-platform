@@ -166,8 +166,8 @@ export const PLATFORM_GATEWAY_VERSIONS = getEnvOrDefault<GatewayVersionEntry[]>(
   [
     {
       version: '1.2',
-      latestVersion: 'v1.2.0-rc',
-      distVersion: '1.2.0-rc',
+      latestVersion: 'v1.2.0',
+      distVersion: '1.2.0',
       distFolderVersion: '1.2.0',
       channel: 'STS',
     }
