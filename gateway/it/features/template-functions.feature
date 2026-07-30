@@ -400,6 +400,118 @@ Feature: Template functions in RestApi spec
     When I delete the MCP proxy "tpl-mcp-v1.0"
     Then the response should be successful
 
+  Scenario: env template in integer policy param is coerced and enforced at runtime
+    # IT_RATE_LIMIT=5 is set in docker-compose.test.yaml.
+    # The template renders to the string "5"; CoerceRestAPIPolicies turns it into
+    # the numeric value 5 so schema validation passes (type: integer) and the
+    # policy engine enforces the correct limit.
+    When I deploy this API configuration:
+      """
+      apiVersion: gateway.api-platform.wso2.com/v1
+      kind: RestApi
+      metadata:
+        name: tpl-env-ratelimit-api-v1.0
+      spec:
+        displayName: Tpl-Env-Ratelimit-Api
+        version: v1.0
+        context: /tpl-env-ratelimit/$version
+        upstream:
+          main:
+            url: http://sample-backend:9080/api/v1
+        operations:
+          - method: GET
+            path: /probe
+            policies:
+              - name: advanced-ratelimit
+                version: v1
+                params:
+                  quotas:
+                    - name: request-limit
+                      limits:
+                        - limit: '{{ env "IT_RATE_LIMIT" }}'
+                          duration: "1h"
+      """
+    Then the response status code should be 201
+    And the response body should contain template literal:
+      """
+      {{ env "IT_RATE_LIMIT" }}
+      """
+
+    And the stored RestApi configuration for "tpl-env-ratelimit-api-v1.0" should contain:
+      """
+      {{ env "IT_RATE_LIMIT" }}
+      """
+
+    # Runtime: the integer limit of 5 must be enforced.
+    # The readiness probe uses ~1 request; send 4 more to reach the limit.
+    And I wait for the endpoint "http://localhost:8080/tpl-env-ratelimit/v1.0/probe" to be ready
+    When I send 4 GET requests to "http://localhost:8080/tpl-env-ratelimit/v1.0/probe"
+    Then the response status code should be 200
+
+    # One more request must be rejected — limit exhausted.
+    When I send a GET request to "http://localhost:8080/tpl-env-ratelimit/v1.0/probe"
+    Then the response status code should be 429
+    And the response body should contain "Rate limit exceeded"
+
+    # Cleanup
+    Given I authenticate using basic auth as "admin"
+    When I delete the API "tpl-env-ratelimit-api-v1.0"
+    Then the response should be successful
+
+  Scenario: env template in boolean policy param is coerced and applied at runtime
+    # IT_ALLOW_CREDENTIALS=true is set in docker-compose.test.yaml.
+    # The template renders to the string "true"; CoerceRestAPIPolicies turns it
+    # into bool(true) so schema validation passes (type: boolean) and the CORS
+    # policy emits the Access-Control-Allow-Credentials: true response header.
+    When I deploy this API configuration:
+      """
+      apiVersion: gateway.api-platform.wso2.com/v1
+      kind: RestApi
+      metadata:
+        name: tpl-env-cors-api-v1.0
+      spec:
+        displayName: Tpl-Env-Cors-Api
+        version: v1.0
+        context: /tpl-env-cors/$version
+        upstream:
+          main:
+            url: http://sample-backend:9080/api/v1
+        policies:
+          - name: cors
+            version: v1
+            params:
+              allowedOrigins:
+                - "http://example.com"
+              allowedMethods:
+                - "GET"
+              allowCredentials: '{{ env "IT_ALLOW_CREDENTIALS" }}'
+        operations:
+          - method: GET
+            path: /probe
+      """
+    Then the response status code should be 201
+    And the response body should contain template literal:
+      """
+      {{ env "IT_ALLOW_CREDENTIALS" }}
+      """
+
+    And the stored RestApi configuration for "tpl-env-cors-api-v1.0" should contain:
+      """
+      {{ env "IT_ALLOW_CREDENTIALS" }}
+      """
+
+    # Runtime: allowCredentials=true must produce the credentials response header.
+    And I wait for the endpoint "http://localhost:8080/tpl-env-cors/v1.0/probe" to be ready
+    When I set header "Origin" to "http://example.com"
+    And I send a GET request to "http://localhost:8080/tpl-env-cors/v1.0/probe"
+    Then the response status code should be 200
+    And the response header "Access-Control-Allow-Credentials" should be "true"
+
+    # Cleanup
+    Given I authenticate using basic auth as "admin"
+    When I delete the API "tpl-env-cors-api-v1.0"
+    Then the response should be successful
+
   Scenario: missing secret reference fails with 400 at deploy time
     When I deploy this API configuration:
       """
