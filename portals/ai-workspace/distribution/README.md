@@ -55,6 +55,7 @@ docker compose up -d
 | `resources/keys/encryption.key` (git-ignored) | Platform API at-rest encryption key (32 bytes, 64 hex chars); read by `config.toml` via `{{ file }}`. **Retain it** — losing or changing it makes previously-encrypted secrets unreadable. |
 | `resources/keys/jwt_private.pem` + `jwt_public.pem` (git-ignored) | RS256 keypair signing/verifying login JWTs; read by `config.toml` via `{{ file }}` |
 | `resources/certificates/cert.pem` + `key.pem` | Self-signed TLS pair shared by both services (SAN: `localhost`, `platform-api`, `ai-workspace`) |
+| `.env` | `COMPOSE_PROFILES` and `COMPOSE_PROJECT_NAME` — read by the `docker compose` CLI from this directory |
 
 The admin password is generated and printed once by `setup.sh` — it is not stored anywhere; only its bcrypt hash lands in `api-platform.env`. Re-running `setup.sh` keeps existing files; pass `--force` to rotate keys and credentials, or `--certs-only` to (re)generate just the TLS pair. `ADMIN_USERNAME` / `ADMIN_PASSWORD` environment variables skip the interactive prompts (used by CI to pin known test credentials).
 
@@ -175,6 +176,10 @@ See `configs/config-template.toml` for the full, per-field reference of both act
 ```bash
 docker compose up -d --force-recreate
 ```
+
+## Compose project name
+
+`setup.sh` pins `COMPOSE_PROJECT_NAME=wso2apip-ai-workspace-<version>-<6 hex>` in `.env` on its first run and never changes it. Compose prefixes this stack's containers, network, and volumes with it, so unpacking this zip again elsewhere on the host gets its own volumes instead of adopting this copy's APIs, applications, and users. Don't edit that line or delete `.env` — the data lives in `<project>_platform-api-data` (and `<project>_developer-portal-data` if you enable that profile), and a different name starts the stack empty. `down` keeps those volumes; only `down -v` deletes them. To choose the name yourself — including adopting an earlier release's volumes, whose prefix `docker volume ls` shows — set it for the first run only: `COMPOSE_PROJECT_NAME=<name> ./scripts/setup.sh` (PowerShell: `$env:COMPOSE_PROJECT_NAME = '<name>'; .\scripts\setup.ps1`). It must match `^[a-z0-9][a-z0-9_-]*$`. Two AI Workspace stacks still can't run at once: both bind ports `9243` and `9643`.
 
 ## Database
 

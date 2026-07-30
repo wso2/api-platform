@@ -105,6 +105,8 @@ portals/developer-portal/it/
 > All targets require the `developer-portal` image to be built first (`make build` in
 > `portals/developer-portal/`). `make ensure-test-tag` (run automatically) tags it as `:test`.
 
+The SQLite targets run under compose project `devportal-it` and the PostgreSQL ones under `devportal-it-postgres` (`-p` in the Makefile), so the two flavours never share containers or volumes.
+
 You can also run both UI suites from the portal root: `make -C portals/developer-portal it`
 (SQLite) and `make -C portals/developer-portal it-postgres`.
 

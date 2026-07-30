@@ -23,6 +23,12 @@ DOCKER_REGISTRY ?= ghcr.io/wso2/api-platform
 IMAGE_NAME      := developer-portal
 CERT_DIR        := .certs
 
+# Compose project name for the test stacks. Without -p, compose derives it from this
+# directory's name — "it" — which every other repo's it/ directory on the machine also
+# claims.
+IT_PROJECT          := devportal-it
+IT_PROJECT_POSTGRES := devportal-it-postgres
+
 # Auto-detect host CPU so Cypress runs natively (no QEMU).
 # arm64 = Apple Silicon → pull linux/arm64 Cypress image.
 # Everything else (CI, Intel) defaults to linux/amd64.
@@ -88,32 +94,32 @@ ensure-test-tag:
 # exited it returns nothing and the code is silently lost (the target then passes
 # even when tests fail). Keep the capture in the same shell as `up`.
 test: ensure-test-tag ensure-certs
-	@CYPRESS_PLATFORM=$(CYPRESS_PLATFORM) DOCKER_REGISTRY=$(DOCKER_REGISTRY) docker compose -f docker-compose.test.yaml up devportal cypress --abort-on-container-exit --exit-code-from cypress; \
+	@CYPRESS_PLATFORM=$(CYPRESS_PLATFORM) DOCKER_REGISTRY=$(DOCKER_REGISTRY) docker compose -p $(IT_PROJECT) -f docker-compose.test.yaml up devportal cypress --abort-on-container-exit --exit-code-from cypress; \
 	EXIT=$$?; \
-	docker compose -f docker-compose.test.yaml down -v --remove-orphans; \
+	docker compose -p $(IT_PROJECT) -f docker-compose.test.yaml down -v --remove-orphans; \
 	exit $$EXIT
 
 # Run Cypress tests headlessly against PostgreSQL.
 # Requires the developer-portal image to be built first: make build (from portals/developer-portal/).
 test-postgres: ensure-test-tag ensure-certs
-	@CYPRESS_PLATFORM=$(CYPRESS_PLATFORM) DOCKER_REGISTRY=$(DOCKER_REGISTRY) docker compose -f docker-compose.test.postgres.yaml up postgres devportal cypress --abort-on-container-exit --exit-code-from cypress; \
+	@CYPRESS_PLATFORM=$(CYPRESS_PLATFORM) DOCKER_REGISTRY=$(DOCKER_REGISTRY) docker compose -p $(IT_PROJECT_POSTGRES) -f docker-compose.test.postgres.yaml up postgres devportal cypress --abort-on-container-exit --exit-code-from cypress; \
 	EXIT=$$?; \
-	docker compose -f docker-compose.test.postgres.yaml down -v --remove-orphans; \
+	docker compose -p $(IT_PROJECT_POSTGRES) -f docker-compose.test.postgres.yaml down -v --remove-orphans; \
 	exit $$EXIT
 
 # Run the REST API integration test suite (Jest + Supertest) against SQLite.
 # Requires the developer-portal image to be built first: make build (from portals/developer-portal/).
 test-rest-api: ensure-test-tag ensure-certs
-	@DOCKER_REGISTRY=$(DOCKER_REGISTRY) docker compose -f docker-compose.test.yaml up devportal rest-api-tests --abort-on-container-exit --exit-code-from rest-api-tests; \
+	@DOCKER_REGISTRY=$(DOCKER_REGISTRY) docker compose -p $(IT_PROJECT) -f docker-compose.test.yaml up devportal rest-api-tests --abort-on-container-exit --exit-code-from rest-api-tests; \
 	EXIT=$$?; \
-	docker compose -f docker-compose.test.yaml down -v --remove-orphans; \
+	docker compose -p $(IT_PROJECT) -f docker-compose.test.yaml down -v --remove-orphans; \
 	exit $$EXIT
 
 # Run the REST API integration test suite (Jest + Supertest) against PostgreSQL.
 test-rest-api-postgres: ensure-test-tag ensure-certs
-	@DOCKER_REGISTRY=$(DOCKER_REGISTRY) docker compose -f docker-compose.test.postgres.yaml up postgres devportal rest-api-tests --abort-on-container-exit --exit-code-from rest-api-tests; \
+	@DOCKER_REGISTRY=$(DOCKER_REGISTRY) docker compose -p $(IT_PROJECT_POSTGRES) -f docker-compose.test.postgres.yaml up postgres devportal rest-api-tests --abort-on-container-exit --exit-code-from rest-api-tests; \
 	EXIT=$$?; \
-	docker compose -f docker-compose.test.postgres.yaml down -v --remove-orphans; \
+	docker compose -p $(IT_PROJECT_POSTGRES) -f docker-compose.test.postgres.yaml down -v --remove-orphans; \
 	exit $$EXIT
 
 # Open Cypress interactive UI — runs against a LOCALLY running devportal (not in Docker).
@@ -127,6 +133,6 @@ deps:
 
 # Tear down any leftover test containers and volumes.
 clean:
-	docker compose -f docker-compose.test.yaml down -v --remove-orphans 2>/dev/null || true
-	docker compose -f docker-compose.test.postgres.yaml down -v --remove-orphans 2>/dev/null || true
+	docker compose -p $(IT_PROJECT) -f docker-compose.test.yaml down -v --remove-orphans 2>/dev/null || true
+	docker compose -p $(IT_PROJECT_POSTGRES) -f docker-compose.test.postgres.yaml down -v --remove-orphans 2>/dev/null || true
 	rm -rf reports/videos reports/screenshots reports/*.json reports/*.html ui/node_modules/.cache rest-api/node_modules

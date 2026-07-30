@@ -15,7 +15,6 @@
 services:
   platform-api:
     image: ghcr.io/wso2/api-platform/platform-api:0.13.0-SNAPSHOT
-    container_name: platform-api
     restart: unless-stopped
     profiles: ["platform-api", "all"]
     command: ["-config", "/etc/platform-api/config.toml"]
@@ -41,7 +40,6 @@ services:
 
   devportal:
     image: ghcr.io/wso2/api-platform/developer-portal:1.0.0-rc1-SNAPSHOT
-    container_name: devportal
     restart: unless-stopped
     profiles: ["developer-portal", "all"]
     depends_on:
@@ -55,7 +53,7 @@ services:
       APIP_DP_SERVER_PORT: ${APIP_DP_SERVER_PORT:-9543}
     volumes:
       - ./configs/config.toml:/app/configs/config.toml:ro
-      - sqlite_data:/app/data
+      - developer-portal-data:/app/data
       - ./resources/certificates:/etc/devportal/tls:ro
       - ./resources/keys/jwt_public.pem:/etc/devportal/keys/jwt_public.pem:ro
       - ./resources/keys/devportal-encryption.key:/etc/devportal/keys/encryption.key:ro
@@ -67,7 +65,6 @@ services:
 
   ai-workspace:
     image: ghcr.io/wso2/api-platform/ai-workspace:1.0.0-beta-SNAPSHOT
-    container_name: ai-workspace
     restart: unless-stopped
     profiles: ["ai-workspace", "all"]
     depends_on:
@@ -92,7 +89,7 @@ services:
       - devportal-network
 
 volumes:
-  sqlite_data:
+  developer-portal-data:
     driver: local
   platform-api-data:
     driver: local

@@ -27,6 +27,11 @@
 #     is no shared HMAC secret to copy between services
 #   - an admin username/password (prompted interactively — see below),
 #     bcrypt-hashed into APIP_CP_ADMIN_USERNAME / APIP_CP_ADMIN_PASSWORD_HASH
+#   - COMPOSE_PROJECT_NAME in ./.env, unique to this copy of the distribution.
+#     Read by the docker compose CLI (not by the containers) to prefix every
+#     container, network, and volume, so another extraction of the same zip on
+#     this host cannot bind to this stack's volumes — the Platform API's
+#     database and the Developer Portal's data.
 #
 # This is a ONE-TIME step. It never runs as part of container startup — every
 # service fails closed at startup if a required secret is missing, rather
@@ -84,6 +89,10 @@ DEFAULT_COMPOSE_PROFILES="__DEFAULT_COMPOSE_PROFILES__"
 # placeholder, detect_pack() below determines it from docker-compose.yaml's
 # actual service topology instead.
 DEFAULT_PACK_NAME="__DEFAULT_PACK_NAME__"
+# This pack's version, baked in by `make dist` the same way as the two values
+# above. Only feeds the generated COMPOSE_PROJECT_NAME. Left at this
+# placeholder, the VERSION file in a repo checkout is read instead.
+DEFAULT_DIST_VERSION="__DEFAULT_DIST_VERSION__"
 PROFILES_OVERRIDE=""
 
 for arg in "$@"; do
@@ -116,6 +125,24 @@ Usage: ./setup.sh [--force] [--certs-only] [--rotate-encryption-key] [--profiles
 
 ADMIN_USERNAME / ADMIN_PASSWORD environment variables skip the interactive
 prompts and pin the credentials (used by CI).
+
+Compose project name (data isolation):
+  Setup writes COMPOSE_PROJECT_NAME into .env on the first run, unique to this copy of
+  the distribution. It prefixes every container, network, and volume, so another
+  extraction of this zip on the same host cannot bind to this stack's volumes (the
+  Platform API's database, the Developer Portal's data).
+  The name is pinned once and never changes afterwards - not on a rerun, not with
+  --force, not with --rotate-encryption-key. A new name would leave the running data
+  behind in the old volumes and start the stack with an empty database. Deleting .env
+  has that same effect, so leave it in place.
+  To choose the name yourself, set COMPOSE_PROJECT_NAME in the environment for the
+  FIRST run:
+    COMPOSE_PROJECT_NAME=my-workspace ./scripts/setup.sh
+  It must match ^[a-z0-9][a-z0-9_-]*$ (no dots, no uppercase - docker compose rejects
+  those).
+  That is also the upgrade path from a distribution that had no .env: its data lives in
+  volumes prefixed with the old extracted-folder name (find it with: docker volume ls),
+  so pass that name on the first run to keep it.
 EOF
       exit 0
       ;;
@@ -152,6 +179,10 @@ ENV_FILE="$ROOT_DIR/api-platform.env"
 # containers explicitly via each service's own env_file: entry), so this is
 # what makes a plain `docker compose up -d` resolve the right services.
 COMPOSE_ENV_FILE="$ROOT_DIR/.env"
+# COMPOSE_PROJECT_NAME goes in the same file. The full prefix is
+# "$PROJECT_NAME_PREFIX-$PACK", so the two packs never share a project name.
+PROJECT_NAME_PREFIX="wso2apip"
+PROJECT_NAME=""
 CERTS_DIR="$ROOT_DIR/resources/certificates"
 # RS256 JWT keypair (PEM). Mounted into the platform-api container at
 # /etc/platform-api/keys and read by config.toml via {{ file }}.
@@ -265,6 +296,150 @@ detect_pack() {
 }
 PACK="$(detect_pack)"
 
+# --- Compose project name -------------------------------------------------------
+# Compose accepts ^[a-z0-9][a-z0-9_-]*$ only — no dots, no uppercase. $2 is an optional
+# extra line naming where the rejected value came from.
+validate_project_name() {
+    [[ "$1" =~ ^[a-z0-9][a-z0-9_-]*$ ]] && return
+    echo "[setup] ERROR: invalid project name '$1' — must start with a lowercase letter or digit and contain only [a-z0-9_-]" >&2
+    [[ -n "${2:-}" ]] && echo "$2" >&2
+    exit 2
+}
+
+# This pack's version: the value `make dist` baked in for a distribution zip,
+# else the VERSION file a repo checkout has. Neither dist target copies VERSION
+# into the zip, which is why the baked placeholder exists at all.
+dist_version() {
+    if [[ "$DEFAULT_DIST_VERSION" != "__DEFAULT_DIST_VERSION__" ]]; then
+        printf '%s' "$DEFAULT_DIST_VERSION"
+    elif [[ -f "$ROOT_DIR/VERSION" ]]; then
+        tr -d ' \t\r\n' < "$ROOT_DIR/VERSION"
+    fi
+}
+
+# <prefix>-<pack>-<sanitized version>-<6 hex>, e.g. wso2apip-ai-workspace-1-0-0-rc-a3f19c.
+# The version is cosmetic: if it can't be read or sanitizes to nothing, fall back to
+# <prefix>-<pack>-<6 hex> rather than failing setup. The suffix alone is what makes
+# the name unique.
+gen_project_name() {
+    local version suffix prefix candidate
+    prefix="$PROJECT_NAME_PREFIX-$PACK"
+    version="$(dist_version)"
+    version="${version%-SNAPSHOT}"
+    version="$(printf '%s' "$version" | tr '[:upper:]' '[:lower:]' | tr -c 'a-z0-9_-' '-' | tr -s '-' | sed 's/^-*//; s/-*$//')"
+    suffix="$(openssl rand -hex 3)"
+    candidate="$prefix-$suffix"
+    if [[ -n "$version" && "$prefix-$version-$suffix" =~ ^[a-z0-9][a-z0-9_-]*$ ]]; then
+        candidate="$prefix-$version-$suffix"
+    fi
+    printf '%s' "$candidate"
+}
+
+# Reads the value the way compose itself does — it strips whitespace around an unquoted
+# value, so "  name  " and "name" are the same pin and must validate the same way.
+read_dotenv_project_name() {
+    [[ -f "$COMPOSE_ENV_FILE" ]] || return 0
+    local line
+    line="$(grep -E '^[[:space:]]*COMPOSE_PROJECT_NAME=' "$COMPOSE_ENV_FILE" | tail -n1 || true)"
+    [[ -n "$line" ]] || return 0
+    line="${line#*=}"          # value only
+    line="${line%$'\r'}"       # tolerate a CRLF-written .env
+    line="${line//\"/}"        # unquote
+    line="${line//\'/}"
+    line="${line#"${line%%[![:space:]]*}"}"   # trim leading whitespace
+    line="${line%"${line##*[![:space:]]}"}"   # trim trailing whitespace
+    printf '%s' "$line"
+}
+
+# Key-scoped write: .env already holds COMPOSE_PROFILES (and possibly a dev's own
+# keys), so never rewrite the whole file. set_env_var() cannot be used here — it
+# replaces the value whenever --force is passed, which is exactly what must never
+# happen to this key.
+write_dotenv_project_name() {
+    local name="$1" tmp
+    if [[ ! -f "$COMPOSE_ENV_FILE" ]]; then
+        cat > "$COMPOSE_ENV_FILE" <<EOF
+# Generated by scripts/setup.sh on $(date -u +"%Y-%m-%dT%H:%M:%SZ").
+# Read automatically by "docker compose" from this directory. NOT passed to the containers.
+#
+# COMPOSE_PROJECT_NAME namespaces every container, network, and volume of this stack.
+# It is unique to THIS copy of the distribution, so another extraction of the same zip
+# elsewhere on this host cannot bind to this stack's volumes.
+#
+# Do not change or delete this line after the first start: the running data lives in
+# volumes named <project>_platform-api-data etc., and a different name means the stack
+# starts with an empty database.
+COMPOSE_PROJECT_NAME=$name
+EOF
+        return
+    fi
+    if grep -qE '^[[:space:]]*COMPOSE_PROJECT_NAME=' "$COMPOSE_ENV_FILE"; then
+        tmp="$(mktemp "${COMPOSE_ENV_FILE}.XXXXXX")"
+        awk -v val="$name" '
+            /^[[:space:]]*COMPOSE_PROJECT_NAME=/ {
+                if (!seen) { print "COMPOSE_PROJECT_NAME=" val; seen = 1 }
+                next
+            }
+            { print }
+        ' "$COMPOSE_ENV_FILE" > "$tmp"
+        # Copy over the original rather than mv, so the existing file's permissions stay.
+        cat "$tmp" > "$COMPOSE_ENV_FILE"
+        rm -f "$tmp"
+    else
+        cat >> "$COMPOSE_ENV_FILE" <<EOF
+
+# Added by scripts/setup.sh on $(date -u +"%Y-%m-%dT%H:%M:%SZ").
+# COMPOSE_PROJECT_NAME namespaces every container, network, and volume of this stack.
+# It is unique to THIS copy of the distribution, so another extraction of the same zip
+# elsewhere on this host cannot bind to this stack's volumes.
+#
+# Do not change or delete this line after the first start: the running data lives in
+# volumes named <project>_platform-api-data etc., and a different name means the stack
+# starts with an empty database.
+COMPOSE_PROJECT_NAME=$name
+EOF
+    fi
+}
+
+# Written once, on the first run, then never rotated — not on a rerun, not under
+# --force, not under --rotate-encryption-key. Rotating it would orphan the live
+# volumes and hand the operator an empty stack, which looks exactly like the bug
+# this pinning exists to fix. An operator who wants a specific name (including the
+# old extracted-folder name, to adopt a pre-.env install's volumes) sets
+# COMPOSE_PROJECT_NAME in the environment for that first run.
+provision_project_name() {
+    local existing chosen source
+    existing="$(read_dotenv_project_name)"
+
+    # An empty "COMPOSE_PROJECT_NAME=" line counts as unset — Compose would fall
+    # back to the directory name, which is the collision being fixed.
+    if [[ -n "$existing" ]]; then
+        # A hand-edited pin gets the same check as a generated one — otherwise setup reports
+        # success on a stack docker compose then refuses to start.
+        validate_project_name "$existing" "               from the COMPOSE_PROJECT_NAME line in .env"
+        PROJECT_NAME="$existing"
+        log "  - .env already pins COMPOSE_PROJECT_NAME=$existing — keeping it"
+        # docker compose reads the shell environment ahead of .env, so a stale export
+        # here silently sends compose at a different project than this stack is pinned to.
+        if [[ -n "${COMPOSE_PROJECT_NAME:-}" && "$COMPOSE_PROJECT_NAME" != "$existing" ]]; then
+            log "    note: COMPOSE_PROJECT_NAME=$COMPOSE_PROJECT_NAME is exported in this shell and takes"
+            log "          precedence over .env for every docker compose command run from it."
+        fi
+        return
+    fi
+
+    if [[ -n "${COMPOSE_PROJECT_NAME:-}" ]]; then
+        chosen="$COMPOSE_PROJECT_NAME"; source="COMPOSE_PROJECT_NAME from the environment"
+    else
+        chosen="$(gen_project_name)"; source="generated"
+    fi
+
+    validate_project_name "$chosen"
+    write_dotenv_project_name "$chosen"
+    PROJECT_NAME="$chosen"
+    log "  - COMPOSE_PROJECT_NAME=$chosen written to .env ($source)"
+}
+
 log "Setting default docker compose profiles ..."
 # Resolution order: an explicit --profiles=<...> flag always wins; otherwise
 # use the value `make dist` baked into DEFAULT_COMPOSE_PROFILES for a
@@ -288,6 +463,12 @@ if [[ -n "$COMPOSE_PROFILES_VALUE" ]]; then
 else
     log "  - could not detect this pack's default profiles; pass --profiles=<a,b,...> or always use --profile explicitly with docker compose"
 fi
+
+# Same file, same section — .env is already created above and $PACK is resolved, and
+# this one call site covers every path including the --certs-only exit below (which
+# `make bff-run` uses, and which has already written .env by this point).
+log "Provisioning the docker compose project name ..."
+provision_project_name
 
 log "Provisioning TLS certificate ..."
 mkdir -p "$CERTS_DIR"
@@ -456,6 +637,8 @@ if [[ "$CREDENTIALS_PROVISIONED" == true ]]; then
     echo "  ------------------------------------------------------------------"
     echo
 fi
+echo "  Compose project:  ${PROJECT_NAME}   (pinned in .env)"
+echo
 echo "  Next step — choose which components:"
 echo
 # The first line always reflects $COMPOSE_PROFILES_VALUE — the value actually
