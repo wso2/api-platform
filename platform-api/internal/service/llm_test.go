@@ -1209,6 +1209,82 @@ func TestLLMProviderServiceCreateAllowsAggregatorTemplate(t *testing.T) {
 	}
 }
 
+func TestLLMProviderServiceCreateDefaultsEmptyAPIKeyAuthToNone(t *testing.T) {
+	now := time.Now()
+	providerRepo := &mockLLMProviderRepo{}
+	providerRepo.getByIDFunc = func(providerID, orgUUID string) (*model.LLMProvider, error) {
+		if providerRepo.created == nil {
+			return nil, nil
+		}
+		created := *providerRepo.created
+		created.UUID = "prov-uuid"
+		created.CreatedAt = now
+		created.UpdatedAt = now
+		return &created, nil
+	}
+	templateRepo := &mockLLMTemplateRepo{
+		getByIDFunc: func(templateID, orgUUID string) (*model.LLMProviderTemplate, error) {
+			return &model.LLMProviderTemplate{UUID: "tpl-openai", ID: "openai", Enabled: true, CreatedAt: now, UpdatedAt: now}, nil
+		},
+	}
+	orgRepo := &mockOrganizationRepo{org: &model.Organization{ID: "org-1"}}
+	service := NewLLMProviderService(providerRepo, templateRepo, orgRepo, nil, nil, nil, nil, slog.Default(), &noopAuditRepo{}, &config.Server{}, newTestIdentityService())
+
+	request := validProviderRequest("openai")
+	request.Upstream.Main.Auth = &api.UpstreamAuth{
+		Type:   upstreamAuthTypePtr(string(api.ApiKey)),
+		Header: stringPtr("Authorization"),
+	}
+
+	if _, err := service.Create("org-1", "alice", request); err != nil {
+		t.Fatalf("expected no error, got: %v", err)
+	}
+	auth := providerRepo.created.Configuration.Upstream.Main.Auth
+	if auth == nil || auth.Type != string(api.None) {
+		t.Fatalf("expected empty api-key auth to be stored as none, got: %+v", auth)
+	}
+	if auth.Header != "" || auth.Value != "" {
+		t.Fatalf("expected none auth to omit header/value, got: %+v", auth)
+	}
+}
+
+func TestLLMProviderServiceCreatePreservesAPIKeyAuthWithValue(t *testing.T) {
+	now := time.Now()
+	providerRepo := &mockLLMProviderRepo{}
+	providerRepo.getByIDFunc = func(providerID, orgUUID string) (*model.LLMProvider, error) {
+		if providerRepo.created == nil {
+			return nil, nil
+		}
+		created := *providerRepo.created
+		created.UUID = "prov-uuid"
+		created.CreatedAt = now
+		created.UpdatedAt = now
+		return &created, nil
+	}
+	templateRepo := &mockLLMTemplateRepo{
+		getByIDFunc: func(templateID, orgUUID string) (*model.LLMProviderTemplate, error) {
+			return &model.LLMProviderTemplate{UUID: "tpl-openai", ID: "openai", Enabled: true, CreatedAt: now, UpdatedAt: now}, nil
+		},
+	}
+	orgRepo := &mockOrganizationRepo{org: &model.Organization{ID: "org-1"}}
+	service := NewLLMProviderService(providerRepo, templateRepo, orgRepo, nil, nil, nil, nil, slog.Default(), &noopAuditRepo{}, &config.Server{}, newTestIdentityService())
+
+	request := validProviderRequest("openai")
+	request.Upstream.Main.Auth = &api.UpstreamAuth{
+		Type:   upstreamAuthTypePtr(string(api.ApiKey)),
+		Header: stringPtr("Authorization"),
+		Value:  stringPtr("secret"),
+	}
+
+	if _, err := service.Create("org-1", "alice", request); err != nil {
+		t.Fatalf("expected no error, got: %v", err)
+	}
+	auth := providerRepo.created.Configuration.Upstream.Main.Auth
+	if auth == nil || auth.Type != string(api.ApiKey) || auth.Value != "secret" {
+		t.Fatalf("expected configured api-key auth to be preserved, got: %+v", auth)
+	}
+}
+
 // TestLLMProviderServiceCreateMigratesLegacyPolicies verifies Phase 10 save-time
 // migration: a provider created with the deprecated `policies` list has it split into
 // globalPolicies (for path "/*" + methods ["*"]) and operationPolicies (all other paths).

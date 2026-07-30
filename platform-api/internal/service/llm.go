@@ -955,10 +955,10 @@ func (s *LLMProviderService) Create(orgUUID, createdBy string, req *api.LLMProvi
 	migrateLegacyProviderPoliciesInPlace(&m.Configuration)
 
 	if m.Configuration.Upstream != nil && m.Configuration.Upstream.Main != nil {
-		m.Configuration.Upstream.Main.Auth = defaultUpstreamAuthToNone(m.Configuration.Upstream.Main.Auth)
+		m.Configuration.Upstream.Main.Auth = defaultProviderCreationAuth(m.Configuration.Upstream.Main.Auth)
 	}
 	if m.Configuration.Upstream != nil && m.Configuration.Upstream.Sandbox != nil {
-		m.Configuration.Upstream.Sandbox.Auth = defaultUpstreamAuthToNone(m.Configuration.Upstream.Sandbox.Auth)
+		m.Configuration.Upstream.Sandbox.Auth = defaultProviderCreationAuth(m.Configuration.Upstream.Sandbox.Auth)
 	}
 
 	policyUUIDs, err := s.resolveCustomPolicyUUIDs(orgUUID, &m.Configuration)
@@ -3383,6 +3383,19 @@ func defaultUpstreamAuthToNone(auth *model.UpstreamAuth) *model.UpstreamAuth {
 		auth.Type = string(api.None)
 	}
 	if isCredentialLessUpstreamAuthType(auth.Type) {
+		auth.Header = ""
+		auth.Value = ""
+	}
+	return auth
+}
+
+// defaultProviderCreationAuth treats an omitted API-key credential as disabled
+// upstream authentication. This normalization is intentionally limited to provider
+// creation so stored configurations are valid before deployment.
+func defaultProviderCreationAuth(auth *model.UpstreamAuth) *model.UpstreamAuth {
+	auth = defaultUpstreamAuthToNone(auth)
+	if normalizeUpstreamAuthType(auth.Type) == string(api.ApiKey) && strings.TrimSpace(auth.Value) == "" {
+		auth.Type = string(api.None)
 		auth.Header = ""
 		auth.Value = ""
 	}
