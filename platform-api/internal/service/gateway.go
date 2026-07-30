@@ -524,7 +524,12 @@ func (s *GatewayService) DeleteCustomPolicyByUUID(orgID, policyUUID, version str
 		return apperror.CustomPolicyVersionNotFnd.New()
 	}
 
-	if err := s.customPolicyRepo.DeleteCustomPolicyIfUnused(orgID, policyUUID); err != nil {
+	purgedOrphans, err := s.customPolicyRepo.DeleteCustomPolicyIfUnused(orgID, policyUUID)
+	if purgedOrphans > 0 {
+		s.slogger.Warn("purged orphaned custom policy usage rows referencing deleted artifacts",
+			slog.String("org_id", orgID), slog.String("policy_uuid", policyUUID), slog.Int("count", purgedOrphans))
+	}
+	if err != nil {
 		return err
 	}
 	if s.auditRepo != nil {

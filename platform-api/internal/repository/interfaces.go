@@ -366,8 +366,9 @@ type CustomPolicyRepository interface {
 	ListCustomPolicyByOrganization(orgUUID string) ([]*model.CustomPolicy, error)
 	DeleteCustomPolicy(orgUUID, name, version string) error
 	CountCustomPolicyUsages(policyUUID string) (int, error)
-	// DeleteCustomPolicyIfUnused atomically deletes the policy only when it has no active usages.
-	DeleteCustomPolicyIfUnused(orgUUID, policyUUID string) error
+	// DeleteCustomPolicyIfUnused atomically deletes the policy if unused, purging
+	// orphaned usage rows first; returns the number of orphans purged.
+	DeleteCustomPolicyIfUnused(orgUUID, policyUUID string) (int, error)
 	// Gateway Custom Policy usage tracking methods.
 	GetCustomPolicyUsagesByAPIUUID(apiUUID string) ([]string, error)
 	InsertCustomPolicyUsage(policyUUID, apiUUID string) error
