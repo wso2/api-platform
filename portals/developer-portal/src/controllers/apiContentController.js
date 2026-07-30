@@ -36,6 +36,7 @@ const sampleApiLoader = require('../utils/sampleApiLoader');
 const apiWorkflowService = require('../services/apiWorkflowService');
 const { buildSchema, getIntrospectionQuery, graphql: executeGraphQL } = require('graphql');
 const yaml = require('../utils/yaml');
+const markdown = require('marked');
 const generateArray = (length) => Array.from({ length });
 
 const loadAPIs = async (req, res, next) => {
@@ -236,6 +237,9 @@ const loadAPIContent = async (req, res, next) => {
             let schemaDefinition = "";
             let apiDefinition = {};
             const markdownResponse = await apiFileDao.get(constants.FILE_NAME.API_MD_CONTENT_FILE_NAME, constants.DOC_TYPES.API_LANDING, orgId, apiId);
+            const apiContentHtml = markdownResponse
+                ? markdown.parse(markdownResponse.file_content.toString(constants.CHARSET_UTF8))
+                : '';
             if (!markdownResponse) {
                 let additionalAPIContentResponse = await apiFileDao.get(constants.FILE_NAME.API_HBS_CONTENT_FILE_NAME, constants.DOC_TYPES.API_LANDING, orgId, apiId);
                 if (!additionalAPIContentResponse) {
@@ -407,6 +411,7 @@ const loadAPIContent = async (req, res, next) => {
                 baseUrl: '/' + orgName + constants.ROUTE.VIEWS_PATH + viewName,
                 schemaUrl: schemaUrl,
                 loadDefault: loadDefault,
+                apiContent: apiContentHtml,
                 resources: apiDetails,
                 orgId: orgId,
                 schemaDefinition: schemaDefinition,
