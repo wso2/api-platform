@@ -1,6 +1,6 @@
 {
   "name": "api-portal-webapp",
-  "version": "1.0.0-rc1-SNAPSHOT",
+  "version": "1.0.0-SNAPSHOT",
   "description": "WSO2 API Platform API Portal",
   "main": "src/server.js",
   "scripts": {
