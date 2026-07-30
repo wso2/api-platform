@@ -38,11 +38,15 @@ import (
 // mockPublisher is a test publisher that records whether Publish was called
 type mockPublisher struct {
 	called bool
-	event  *dto.Event
+	// count is how many events were published, needed to assert that a multi-hop call
+	// yields exactly one event — `called` cannot tell one event from two.
+	count int
+	event *dto.Event
 }
 
 func (m *mockPublisher) Publish(event *dto.Event) {
 	m.called = true
+	m.count++
 	m.event = event
 }
 
@@ -447,6 +451,11 @@ func TestProcess_PublishesWhenDirectRemoteIPMissing(t *testing.T) {
 	analytics.Process(entry)
 
 	assert.True(t, mockPub.called, "event must still be published when the direct remote address is unavailable")
+	assert.Equal(t, 1, mockPub.count, "fail-open must publish the event exactly once, not drop or duplicate it")
+	require.NotNil(t, mockPub.event, "an event must have been published")
+	assert.Equal(t, "LlmProvider", mockPub.event.API.APIType)
+	assert.Nil(t, mockPub.event.Properties[PropInternalLoopbackProvider],
+		"the event must not be flagged when the peer address could not be verified")
 }
 
 func TestProcess_SuppressionLogsDebug(t *testing.T) {
@@ -460,6 +469,42 @@ func TestProcess_SuppressionLogsDebug(t *testing.T) {
 
 	assert.False(t, mockPub.called)
 	assert.Contains(t, buf.String(), "Suppressing internal loopback provider analytics event")
+}
+
+// TestProcess_ProxyCallPublishesExactlyOneEvent is the end-to-end shape of the bug this
+// suppression exists for: a single client call to an LLM proxy traverses the listener twice, so
+// the access-log service delivers two entries. Exactly one event must reach the publishers, and
+// it must be the proxy's — that is the hop carrying the user identity, application and
+// subscription; the provider hop is anonymous.
+func TestProcess_ProxyCallPublishesExactlyOneEvent(t *testing.T) {
+	analytics := NewAnalytics(&config.Config{})
+	mockPub := &mockPublisher{}
+	analytics.publishers = append(analytics.publishers, mockPub)
+
+	// Hop 1 — the proxy's own event: real client peer, no marker.
+	analytics.Process(createLogEntryWithAPITypeAndAddr("LlmProxy", "203.0.113.7"))
+	// Hop 2 — the provider hop over the internal loopback: marker stamped by the proxy, and a
+	// genuinely loopback socket peer.
+	analytics.Process(loopbackEntry("LlmProvider", true))
+
+	assert.Equal(t, 1, mockPub.count, "one client call must publish exactly one analytics event")
+	require.NotNil(t, mockPub.event, "an event must have been published")
+	assert.Equal(t, "LlmProxy", mockPub.event.API.APIType,
+		"the surviving event must be the proxy's, not the anonymous provider hop")
+}
+
+// TestProcess_DirectProviderCallPublishesExactlyOneEvent is the counterpart: a provider invoked
+// directly is a single hop and must still be counted once — the suppression must not reach it.
+func TestProcess_DirectProviderCallPublishesExactlyOneEvent(t *testing.T) {
+	analytics := NewAnalytics(&config.Config{})
+	mockPub := &mockPublisher{}
+	analytics.publishers = append(analytics.publishers, mockPub)
+
+	analytics.Process(createLogEntryWithAPITypeAndAddr("LlmProvider", "203.0.113.7"))
+
+	assert.Equal(t, 1, mockPub.count, "a direct provider call must publish exactly one event")
+	require.NotNil(t, mockPub.event, "an event must have been published")
+	assert.Equal(t, "LlmProvider", mockPub.event.API.APIType)
 }
 
 func TestIsLoopbackAddress(t *testing.T) {

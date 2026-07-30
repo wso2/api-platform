@@ -24,6 +24,7 @@ import (
 	"maps"
 	"net"
 	"strconv"
+	"sync"
 	"time"
 
 	v3 "github.com/envoyproxy/go-control-plane/envoy/data/accesslog/v3"
@@ -82,14 +83,12 @@ const (
 	// UserIDMetadataKey represents the user ID metadata key for analytics.
 	UserIDMetadataKey string = "x-wso2-user-id"
 
-	// InternalLoopbackMetadataKey is the analytics-metadata key carrying the marker that
-	// the proxy stamps on its internal loopback forward to the provider (surfaced by the
-	// analytics system policy from the x-wso2-internal-loopback request header).
+	// InternalLoopbackMetadataKey is the analytics metadata key for the marker added to the proxy's
+	// internal loopback request to the provider.
 	InternalLoopbackMetadataKey string = "x-wso2-internal-loopback"
 
-	// PropInternalLoopbackProvider is the event property set when a provider event is the
-	// internal loopback hop of a proxy call. Read by the Moesif publisher to skip it (avoids
-	// double-counting), while other publishers (traffic log) still emit it.
+	// PropInternalLoopbackProvider marks the provider-side loopback hop of a proxy call
+	// so Process can drop the duplicate event before publisher fan-out.
 	PropInternalLoopbackProvider string = "isInternalLoopbackProvider"
 )
 
@@ -99,6 +98,9 @@ type Analytics struct {
 	cfg *config.Config
 	// publishers represents the publishers.
 	publishers []analytics_publisher.Publisher
+	// missingDirectPeerWarn limits the "direct remote address unavailable" warning to one
+	// line per process which otherwise repeating it once per request would flood the logs
+	missingDirectPeerWarn sync.Once
 }
 
 // NewAnalytics creates a new instance of Analytics. Publishers are assembled from
@@ -157,9 +159,8 @@ func (c *Analytics) Process(event *v3.HTTPAccessLogEntry) {
 	analyticEvent := c.prepareAnalyticEvent(event)
 
 	// Suppress the internal loopback provider hop of an LLM proxy call so a single client
-	// call is counted once. Detection uses the x-wso2-internal-loopback marker the proxy
-	// stamps on its loopback forward (see prepareAnalyticEvent) — a direct provider call
-	// never carries it, so it is never suppressed.
+	// call is counted once, detecting using the marker header set by the proxy
+	// when carrying on its loopback forward
 	if v, ok := analyticEvent.Properties[PropInternalLoopbackProvider].(bool); ok && v {
 		correlationID := ""
 		if analyticEvent.MetaInfo != nil {
@@ -180,6 +181,31 @@ func (c *Analytics) Process(event *v3.HTTPAccessLogEntry) {
 		publisher.Publish(analyticEvent)
 	}
 
+}
+
+// isInternalLoopbackHop identifies the provider-side hop of an LLM proxy loopback call by requiring
+// both the proxy marker and the unforgeable direct TCP peer; if the peer is unavailable, it fails open, warns once, and allows duplicates.
+func (c *Analytics) isInternalLoopbackHop(apiType, marker, directRemoteIP, downstreamListener, correlationID string) bool {
+	if apiType != "LlmProvider" || marker != "true" {
+		return false
+	}
+	if directRemoteIP == "" {
+		// Warn once so the resulting duplicates are visible at the default (info) log level
+		c.missingDirectPeerWarn.Do(func() {
+			slog.Warn("Internal loopback marker present but downstream direct remote address is unavailable; not suppressing event (logged once per process)",
+				"apiType", apiType,
+				"correlationId", correlationID,
+			)
+		})
+		// Enabling debug shows whether this affects all traffic or only some ingress paths.
+		slog.Debug("Internal loopback marker present but downstream direct remote address is unavailable",
+			"apiType", apiType,
+			"downstreamListener", downstreamListener,
+			"correlationId", correlationID,
+		)
+		return false
+	}
+	return isLoopbackAddress(directRemoteIP)
 }
 
 // isLoopbackAddress reports whether ip is an IPv4/IPv6 loopback address.
@@ -364,11 +390,14 @@ func (c *Analytics) prepareAnalyticEvent(logEntry *v3.HTTPAccessLogEntry) *dto.E
 	if userIP == "" {
 		userIP = Unknown
 	}
-
-	directRemoteIP := logEntry.GetCommonProperties().GetDownstreamDirectRemoteAddress().GetSocketAddress().GetAddress()
 	if userAgent == "" {
 		userAgent = Unknown
 	}
+
+	// Physical socket peer of the downstream connection. Empty when Envoy did not report it.
+	directRemoteIP := logEntry.GetCommonProperties().GetDownstreamDirectRemoteAddress().GetSocketAddress().GetAddress()
+	// Address of the listener that accepted the connection. Only used to diagnose a missing directRemoteIP
+	downstreamListener := logEntry.GetCommonProperties().GetDownstreamLocalAddress().GetSocketAddress().GetAddress()
 
 	event.MetaInfo = &metaInfo
 	event.API = &extendedAPI
@@ -388,23 +417,11 @@ func (c *Analytics) prepareAnalyticEvent(logEntry *v3.HTTPAccessLogEntry) *dto.E
 		slog.Debug("Analytics: User ID set from metadata", "userID", userID)
 	}
 
-	// Flag the internal loopback provider hop of an LLM proxy call so the Moesif publisher
-	// can drop it (one counted event per client call) while the traffic log keeps it. The
-	// primary signal is the x-wso2-internal-loopback marker the proxy stamps on its loopback
-	// forward — a direct provider call never carries it, so it is never suppressed regardless
-	// of network topology. The loopback guard uses directRemoteIP (the physical TCP peer),
-	// NOT userIP, so a forged "X-Forwarded-For: 127.0.0.1" cannot fake an internal source.
-	if extendedAPI.APIType == "LlmProvider" &&
-		keyValuePairsFromMetadata[InternalLoopbackMetadataKey] == "true" {
-		switch {
-		case directRemoteIP == "":
-			slog.Warn("Internal loopback marker present but downstream direct remote address is unavailable; not suppressing event",
-				"apiType", extendedAPI.APIType,
-				"correlationId", metaInfo.CorrelationID,
-			)
-		case isLoopbackAddress(directRemoteIP):
-			event.Properties[PropInternalLoopbackProvider] = true
-		}
+	// Flag the internal loopback provider hop of an LLM proxy call — the duplicate of the
+	// proxy's own event — so a single client call is counted once.
+	if c.isInternalLoopbackHop(extendedAPI.APIType, keyValuePairsFromMetadata[InternalLoopbackMetadataKey],
+		directRemoteIP, downstreamListener, metaInfo.CorrelationID) {
+		event.Properties[PropInternalLoopbackProvider] = true
 	}
 
 	// Auth-context metadata (type, issuer, credential/token IDs, audience, scopes, custom

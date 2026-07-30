@@ -28,7 +28,7 @@ const (
 	AIProviderDisplayNameMetadataKey = "ai:providerdisplayname"
 	ApplicationIDMetadataKey         = "x-wso2-application-id"
 	ApplicationNameMetadataKey       = "x-wso2-application-name"
-	InternalLoopbackMetadataKey = "x-wso2-internal-loopback"
+	InternalLoopbackMetadataKey      = "x-wso2-internal-loopback"
 
 	// Auth-context metadata keys. Populated generically (auth-type-agnostic, via
 	// SharedContext.AuthContext) by populateAuthAnalyticsMetadata below, so they work
