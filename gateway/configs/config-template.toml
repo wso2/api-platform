@@ -155,6 +155,8 @@ roles           = ["admin"]
 enabled = false
 jwks_url = ""
 issuer = ""
+roles_claim = "roles"
+audience = []
 
 [api_key]
 api_keys_per_user_per_api = 10

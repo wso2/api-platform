@@ -566,6 +566,10 @@ func main() {
 	igw := immutable.NewImmutableGW(cfg.ImmutableGateway, restAPIService, llmSvc, mcpSvc)
 
 	authConfig := generateAuthConfig(cfg)
+	if cfg.Controller.Auth.IDP.Enabled && len(cfg.Controller.Auth.IDP.Audience) == 0 {
+		log.Warn("IDP auth is enabled but no auth.idp.audience is configured - token audience ('aud') will NOT be " +
+			"validated; set auth.idp.audience to the expected audience(s) to restrict this")
+	}
 	authMiddleWare, err := authenticators.AuthMiddleware(authConfig, log)
 	if err != nil {
 		log.Error("Failed to create auth middleware", slog.Any("error", err))
@@ -929,6 +933,9 @@ func generateAuthConfig(config *config.Config) commonmodels.AuthConfig {
 			JWKSUrl:           config.Controller.Auth.IDP.JWKSURL,
 			ScopeClaim:        config.Controller.Auth.IDP.RolesClaim,
 			PermissionMapping: &config.Controller.Auth.IDP.RoleMapping,
+		}
+		if len(config.Controller.Auth.IDP.Audience) > 0 {
+			idpAuth.Audience = &config.Controller.Auth.IDP.Audience
 		}
 	}
 	authConfig := commonmodels.AuthConfig{BasicAuth: &basicAuth,

@@ -1504,20 +1504,23 @@ func TestConfig_ValidateAuthConfig(t *testing.T) {
 	tests := []struct {
 		name        string
 		idpEnabled  bool
+		rolesClaim  string
 		roleMapping map[string][]string
 		wantErr     bool
 		errContains string
 	}{
 		{name: "IDP disabled", idpEnabled: false, wantErr: false},
-		{name: "IDP enabled no role mapping", idpEnabled: true, roleMapping: nil, wantErr: false},
-		{name: "IDP enabled single wildcard", idpEnabled: true, roleMapping: map[string][]string{"admin": {"*"}}, wantErr: false},
-		{name: "IDP enabled multiple wildcards", idpEnabled: true, roleMapping: map[string][]string{"admin": {"*"}, "user": {"*"}}, wantErr: true, errContains: "multiple wildcard ('*') mappings detected"},
+		{name: "IDP enabled no role mapping", idpEnabled: true, rolesClaim: "roles", roleMapping: nil, wantErr: false},
+		{name: "IDP enabled single wildcard", idpEnabled: true, rolesClaim: "roles", roleMapping: map[string][]string{"admin": {"*"}}, wantErr: false},
+		{name: "IDP enabled multiple wildcards", idpEnabled: true, rolesClaim: "roles", roleMapping: map[string][]string{"admin": {"*"}, "user": {"*"}}, wantErr: true, errContains: "multiple wildcard ('*') mappings detected"},
+		{name: "IDP enabled empty roles claim fails closed", idpEnabled: true, rolesClaim: "", roleMapping: nil, wantErr: true, errContains: "roles_claim is empty"},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			cfg := validConfig()
 			cfg.Controller.Auth.IDP.Enabled = tt.idpEnabled
+			cfg.Controller.Auth.IDP.RolesClaim = tt.rolesClaim
 			cfg.Controller.Auth.IDP.RoleMapping = tt.roleMapping
 			err := cfg.Validate()
 			if tt.wantErr {

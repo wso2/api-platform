@@ -171,13 +171,15 @@ func (j *JWTAuthenticator) Authenticate(r *http.Request) (*AuthResult, error) {
 		}
 	}
 
-	// If no role claim is configured, set flag to skip authorization
-	// This allows authentication-only mode where all authenticated users can access resources
+	// Authorization is skipped ONLY when it has been explicitly disabled via DisableAuthorization (authentication-only)
 	var permissions []string
-	skipAuthz := false
+	skipAuthz := j.config.JWTConfig.DisableAuthorization
+	if skipAuthz {
+		j.logger.Warn("authorization is explicitly disabled for IDP auth (disable_authorization=true); " +
+			"every authenticated token is granted access to all routes without a per-route role check")
+	}
 	if j.config.JWTConfig.ScopeClaim == "" {
-		j.logger.Debug("No role claim configured, setting skip_authz flag")
-		skipAuthz = true
+		j.logger.Debug("no scope/roles claim configured; caller resolves to zero roles")
 		permissions = []string{}
 	} else {
 		permissions = j.resolvePermissions(claims)
@@ -259,7 +261,6 @@ func (j *JWTAuthenticator) resolvePermissions(claims jwt.MapClaims) []string {
 	}
 	return permissions
 }
-
 
 // Name returns the authenticator name
 func (j *JWTAuthenticator) Name() string {

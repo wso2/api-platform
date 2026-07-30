@@ -261,6 +261,7 @@ type IDPConfig struct {
 	Issuer      string              `koanf:"issuer"`
 	RolesClaim  string              `koanf:"roles_claim"`
 	RoleMapping map[string][]string `koanf:"role_mapping"` // local role -> idp roles
+	Audience    []string            `koanf:"audience"`
 }
 
 // TracingConfig holds OpenTelemetry tracing configuration
@@ -874,8 +875,9 @@ func defaultConfig() *Config {
 					Enabled:     false,
 					JWKSURL:     "",
 					Issuer:      "",
-					RolesClaim:  "",
+					RolesClaim:  "roles",
 					RoleMapping: map[string][]string{},
+					Audience:    []string{},
 				},
 			},
 			Logging: LoggingConfig{
@@ -1946,6 +1948,12 @@ func (c *Config) validateAuthConfig() error {
 					"(sets APIP_GW_CONTROLLER_AUTH_BASIC_ADMIN_USERNAME and APIP_GW_CONTROLLER_AUTH_BASIC_ADMIN_PASSWORD_HASH)", i+1)
 			}
 		}
+	}
+
+	if c.Controller.Auth.IDP.Enabled && strings.TrimSpace(c.Controller.Auth.IDP.RolesClaim) == "" {
+		return fmt.Errorf("auth.idp.roles_claim is empty while auth.idp.enabled=true - " +
+			"Set auth.idp.roles_claim to the token claim carrying the caller's roles/scopes " +
+			"(and configure auth.idp.role_mapping to map them to local roles)")
 	}
 
 	// Validate IDP role mapping for multiple wildcards
