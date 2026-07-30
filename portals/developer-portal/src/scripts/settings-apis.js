@@ -59,6 +59,35 @@
   function sv(id,val){ var e=document.getElementById(id); if(e) e.value=val||''; }
   function sel(id,val){ var e=document.getElementById(id); if(e) e.value=val; }
 
+  /* Managed labels control which views include an API. */
+  var labelPicker = document.getElementById('wz-labels');
+  if (labelPicker) {
+    labelPicker.addEventListener('click', function(e) {
+      var chip = e.target.closest('.cfg-label-toggle');
+      if (!chip) return;
+      var selected = chip.getAttribute('aria-pressed') === 'true';
+      chip.setAttribute('aria-pressed', selected ? 'false' : 'true');
+      chip.classList.toggle('selected', !selected);
+    });
+  }
+  function setSelectedLabels(labels) {
+    if (!labelPicker) return;
+    var selected = Object.create(null);
+    (labels || []).forEach(function(label) { selected[label] = true; });
+    labelPicker.querySelectorAll('.cfg-label-toggle').forEach(function(chip) {
+      var isSelected = !!selected[chip.dataset.value];
+      chip.setAttribute('aria-pressed', isSelected ? 'true' : 'false');
+      chip.classList.toggle('selected', isSelected);
+    });
+  }
+  function selectedLabels() {
+    if (!labelPicker) return [];
+    return Array.prototype.map.call(
+      labelPicker.querySelectorAll('.cfg-label-toggle[aria-pressed="true"]'),
+      function(chip) { return chip.dataset.value; }
+    );
+  }
+
   /* type-color map */
   var typeMap = {
     RestApi:   { av:'cfg-api-avatar--rest',    tb:'cfg-type-badge--rest',    label:'REST' },
@@ -239,6 +268,7 @@
       sel('wz-type',      api.apiType);
       sel('wz-status',    api.apiStatus === 'DEPRECATED' ? 'DEPRECATED' : 'PUBLISHED');
       sv('wz-desc',       api.apiDescription);
+      setSelectedLabels(api.labels || []);
       sv('wz-tags',       (api.tags && api.tags.length) ? (Array.isArray(api.tags) ? api.tags.join(', ') : api.tags) : '');
       sv('wz-prod',       api.productionUrl);
       sv('wz-sandbox',    api.sandboxUrl);
@@ -257,6 +287,9 @@
       editingId = null;
       document.getElementById('cfg-wizard-title').textContent = isMcp ? 'Add MCP Server' : 'Add API';
       ['wz-name','wz-version','wz-handle','wz-desc','wz-tags','wz-prod','wz-sandbox','wz-tech-owner','wz-tech-email','wz-biz-owner','wz-biz-email'].forEach(function(id){ sv(id,''); });
+      // Keep the API visible in the standard view unless the admin chooses
+      // a different set of managed labels.
+      setSelectedLabels(['default']);
       sel('wz-type', isMcp ? 'Mcp' : 'RestApi'); sel('wz-status','PUBLISHED');
       agentVis = 'Visible';
       document.getElementById('wz-vis-visible').classList.add('active');
@@ -347,6 +380,7 @@
       type:        document.getElementById('wz-type').value,
       status:      document.getElementById('wz-status').value,
       description: v('wz-desc'),
+      labels:         selectedLabels(),
       tags:           v('wz-tags') ? v('wz-tags').split(',').map(function(t){return t.trim();}).filter(Boolean) : [],
       agentVisibility: agentVis,
       owners: {
