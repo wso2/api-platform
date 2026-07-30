@@ -156,10 +156,9 @@ Or via make (from `platform-api/`): `make e2e`, `make e2e-all-dbs`.
    - Auth: the devportal accepts the platform-api admin JWT directly (verified
      against the RS256 `jwt_public.pem` shared via the `platform-api-jwt-keys`
      volume, org from the token's `org_handle` claim). The
-     admin must carry `dp:*` scopes, which platform-api's built-in admin lacks —
-     so the suite injects an admin (ap:* *and* dp:*) via the
-     `AUTH_FILE_BASED_USERS` env var (a mounted config's users are ignored; only
-     that env override wins). Bearer auth (not API-key mode) is used because the
+     admin must carry `dp:*` scopes, which it gets from the `ap_admin` role in the
+     mounted `role-to-scope-mapping.yaml` — that role spans both the `ap:*` and `dp:*` namespaces,
+     so the one admin JWT authorizes both products. Bearer auth (not API-key mode) is used because the
      write paths need a resolved user for `created_by`.
    - `BeforeSuite` generates the shared webhook secret (`prepareWebhookSecret`, exported
      as `E2E_WEBHOOK_SECRET` before the stack starts so compose interpolates the same

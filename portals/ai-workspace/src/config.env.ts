@@ -82,7 +82,6 @@ export const OIDC_SCOPE = getEnvOrDefault(
   ' ap:rest_api:deployment:read ap:rest_api:deployment:create ap:rest_api:deployment:delete ap:rest_api:deployment:manage ap:rest_api:deployment:undeploy ap:rest_api:deployment:restore' +
   ' ap:rest_api:api_key:read ap:rest_api:api_key:create ap:rest_api:api_key:update ap:rest_api:api_key:delete ap:rest_api:api_key:manage' +
   ' ap:rest_api:publication:read ap:rest_api:publication:create ap:rest_api:publication:delete' +
-  ' ap:devportal:read ap:devportal:create ap:devportal:update ap:devportal:delete ap:devportal:manage' +
   ' ap:subscription:read ap:subscription:create ap:subscription:update ap:subscription:delete ap:subscription:manage' +
   ' ap:subscription_plan:read ap:subscription_plan:create ap:subscription_plan:update ap:subscription_plan:delete ap:subscription_plan:manage' +
   ' ap:llm_template:read ap:llm_template:create ap:llm_template:update ap:llm_template:delete ap:llm_template:manage' +

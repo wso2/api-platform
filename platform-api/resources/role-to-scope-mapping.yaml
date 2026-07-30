@@ -1,0 +1,281 @@
+# Role-to-scope mapping used by the Platform API (auth.authorization.role_to_scope_mapping).
+#
+# Each entry maps a role name to the scopes that role grants. Two consumers read
+# this file:
+#
+#   * role authorization (auth.authorization.mode = "role") — the roles claim of
+#     an incoming token is expanded through this file on every request.
+#   * file-mode users (auth.file.users[].roles) — the login endpoint expands the
+#     roles once, into the scope claim of the token it issues. Those roles are
+#     such a user's entire grant, so this file is the only place their privileges
+#     are defined; there is no per-user scope list to keep in sync with it.
+#
+# When a token — or a file-mode user's roles list — carries multiple roles, the
+# effective scopes are the union of all matching entries; most-permissive wins.
+#
+# Naming: roles are named after the platform ("ap_") rather than after any one
+# IDP's convention, because the same file serves every auth mode. Map your IDP's
+# groups onto these names via auth.claim_mappings.roles; supported claim paths:
+#   Asgardeo            — roles: roles
+#   Keycloak            — roles: realm_access.roles  (or resource_access.<client>.roles)
+#   Microsoft Entra ID  — roles: roles
+#
+# Scopes span the whole platform, not just this server:
+#   ap:*  Platform API scopes. Every one must be declared in this server's OpenAPI
+#         spec (plus any its compiled-in plugins declare) — an unknown ap: scope
+#         fails startup rather than silently denying requests later. The
+#         event-gateway scopes below are commented out for that reason: uncomment
+#         them on a build that includes that plugin.
+#   dp:*  Developer Portal scopes. This server mints them into the token but never
+#         enforces them, so it validates only their shape, not their existence.
+#
+# Scope convention:
+#   ap:<resource>:manage             — every action on that resource
+#   ap:<resource>:<sub>:manage       — every action on the subresource only
+#   dp:<resource>_manage             — every action on that Developer Portal resource
+#                                      (Developer Portal read operations accept the
+#                                      _manage scope as well as _read)
+#
+# This file requires a server restart to take effect.
+
+roles:
+  # Platform administrator — full access to every resource and operation,
+  # across both the Platform API and the Developer Portal.
+  - name: ap_admin
+    scopes:
+      # Platform API
+      - ap:organization:manage
+      - ap:project:manage
+      - ap:gateway:manage
+      - ap:gateway:token:manage
+      - ap:gateway:manifest:read
+      - ap:gateway_custom_policy:manage
+      - ap:rest_api:manage
+      - ap:rest_api:deployment:manage
+      - ap:rest_api:gateway:manage
+      - ap:rest_api:api_key:manage
+      - ap:application:manage
+      - ap:application:api_key:manage
+      - ap:application:association:manage
+      - ap:subscription:manage
+      - ap:subscription_plan:manage
+      - ap:llm_template:manage
+      - ap:llm_provider:manage
+      - ap:llm_provider:deployment:manage
+      - ap:llm_provider:api_key:manage
+      - ap:llm_proxy:manage
+      - ap:llm_proxy:deployment:manage
+      - ap:llm_proxy:api_key:manage
+      - ap:mcp_proxy:manage
+      - ap:mcp_proxy:deployment:manage
+      - ap:secret:manage
+      - ap:api_key:read
+      # Administrative access to every user's API keys, not just the caller's.
+      - ap:api_key:all:manage
+      # - ap:websub_api:manage   # event-gateway build only
+      # - ap:webbroker_api:manage   # event-gateway build only
+      # Developer Portal
+      - dp:org_manage
+      - dp:org_content_manage
+      - dp:api_manage
+      - dp:api_content_manage
+      - dp:mcp_manage
+      - dp:mcp_content_manage
+      - dp:api_workflow_manage
+      - dp:api_key_manage
+      - dp:mcp_key_manage
+      - dp:app_manage
+      - dp:app_key_manage
+      - dp:app_key_revoke
+      - dp:app_key_mapping_manage
+      - dp:subscription_manage
+      - dp:sub_plan_manage
+      - dp:km_manage
+      - dp:km_read
+      - dp:view_manage
+      - dp:label_manage
+      - dp:webhook_subscriber_manage
+      - dp:event_read
+      - dp:delivery_manage
+
+  # Platform operator / CI-CD service account — runs gateways, deployments,
+  # subscription plans, key managers and webhooks; reads everything else.
+  - name: ap_operator
+    scopes:
+      # Platform API
+      - ap:organization:read
+      - ap:project:read
+      - ap:gateway:manage
+      - ap:gateway:token:manage
+      - ap:gateway:manifest:read
+      - ap:gateway_custom_policy:manage
+      - ap:rest_api:read
+      - ap:rest_api:deployment:manage
+      - ap:rest_api:gateway:read
+      - ap:llm_template:manage
+      - ap:llm_provider:read
+      - ap:llm_provider:deployment:manage
+      - ap:llm_proxy:read
+      - ap:llm_proxy:deployment:manage
+      - ap:mcp_proxy:read
+      - ap:mcp_proxy:deployment:manage
+      - ap:subscription_plan:manage
+      - ap:application:read
+      - ap:application:api_key:read
+      - ap:application:association:read
+      - ap:subscription:read
+      - ap:secret:read
+      - ap:api_key:read
+      # - ap:websub_api:read   # event-gateway build only
+      # - ap:websub_api:deployment:read   # event-gateway build only
+      # - ap:webbroker_api:read   # event-gateway build only
+      # - ap:webbroker_api:deployment:read   # event-gateway build only
+      # Developer Portal
+      - dp:km_manage
+      - dp:km_read
+      - dp:webhook_subscriber_manage
+      - dp:sub_plan_manage
+      - dp:org_read
+      - dp:org_content_read
+      - dp:api_read
+      - dp:mcp_read
+      - dp:mcp_content_read
+      - dp:app_read
+      - dp:subscription_read
+      - dp:view_read
+      - dp:label_read
+      - dp:api_key_read
+      - dp:mcp_key_read
+      - dp:api_workflow_read
+      - dp:event_read
+
+  # API publisher — owns the full API/MCP/LLM lifecycle and the Developer
+  # Portal content for it; reads applications, subscriptions and plans.
+  - name: ap_publisher
+    scopes:
+      # Platform API
+      - ap:organization:read
+      - ap:project:manage
+      - ap:rest_api:manage
+      - ap:rest_api:deployment:manage
+      - ap:rest_api:gateway:read
+      - ap:rest_api:api_key:manage
+      - ap:mcp_proxy:manage
+      - ap:mcp_proxy:deployment:manage
+      - ap:llm_provider:manage
+      - ap:llm_provider:deployment:manage
+      - ap:llm_proxy:manage
+      - ap:llm_proxy:deployment:manage
+      - ap:llm_template:read
+      - ap:gateway:read
+      - ap:gateway:manifest:read
+      - ap:gateway_custom_policy:read
+      - ap:subscription_plan:read
+      - ap:application:read
+      - ap:subscription:read
+      - ap:secret:read
+      - ap:api_key:read
+      # - ap:websub_api:manage   # event-gateway build only
+      # - ap:webbroker_api:manage   # event-gateway build only
+      # Developer Portal
+      - dp:api_manage
+      - dp:api_content_manage
+      - dp:mcp_manage
+      - dp:mcp_content_manage
+      - dp:api_workflow_manage
+      - dp:label_manage
+      - dp:view_manage
+      - dp:org_read
+      - dp:org_content_read
+      - dp:app_read
+      - dp:subscription_read
+      - dp:sub_plan_read
+      - dp:api_key_read
+      - dp:mcp_key_read
+      - dp:event_read
+
+  # API consumer — manages its own applications, subscriptions and keys;
+  # reads the API/MCP catalog and the plans it can subscribe to.
+  - name: ap_subscriber
+    scopes:
+      # Platform API
+      - ap:organization:read
+      - ap:project:read
+      - ap:application:manage
+      - ap:application:api_key:manage
+      - ap:application:association:manage
+      - ap:subscription:manage
+      - ap:subscription_plan:read
+      - ap:rest_api:read
+      - ap:mcp_proxy:read
+      - ap:llm_proxy:read
+      - ap:llm_provider:read
+      - ap:api_key:read
+      # Developer Portal
+      - dp:app_manage
+      - dp:app_key_manage
+      - dp:app_key_revoke
+      - dp:subscription_manage
+      - dp:api_key_manage
+      - dp:mcp_key_manage
+      - dp:api_read
+      - dp:mcp_read
+      - dp:sub_plan_read
+      - dp:org_read
+      - dp:org_content_read
+      - dp:view_read
+      - dp:label_read
+
+  # Auditor — read-only across both components. Grants no mutating scope
+  # (the one POST it can reach, mcp-proxies/fetch-server-info, is a read
+  # the spec models as a POST).
+  - name: ap_viewer
+    scopes:
+      # Platform API
+      - ap:organization:read
+      - ap:project:read
+      - ap:gateway:read
+      - ap:gateway:manifest:read
+      - ap:gateway:token:read
+      - ap:gateway_custom_policy:read
+      - ap:rest_api:read
+      - ap:rest_api:deployment:read
+      - ap:rest_api:gateway:read
+      - ap:application:read
+      - ap:application:api_key:read
+      - ap:application:association:read
+      - ap:application:association:api_key:read
+      - ap:subscription:read
+      - ap:subscription_plan:read
+      - ap:llm_template:read
+      - ap:llm_provider:read
+      - ap:llm_provider:deployment:read
+      - ap:llm_provider:api_key:read
+      - ap:llm_proxy:read
+      - ap:llm_proxy:deployment:read
+      - ap:llm_proxy:api_key:read
+      - ap:mcp_proxy:read
+      - ap:mcp_proxy:deployment:read
+      - ap:secret:read
+      - ap:api_key:read
+      # - ap:websub_api:read   # event-gateway build only
+      # - ap:websub_api:deployment:read   # event-gateway build only
+      # - ap:webbroker_api:read   # event-gateway build only
+      # - ap:webbroker_api:deployment:read   # event-gateway build only
+      # Developer Portal
+      - dp:org_read
+      - dp:org_content_read
+      - dp:api_read
+      - dp:mcp_read
+      - dp:mcp_content_read
+      - dp:app_read
+      - dp:subscription_read
+      - dp:sub_plan_read
+      - dp:view_read
+      - dp:label_read
+      - dp:km_read
+      - dp:api_key_read
+      - dp:mcp_key_read
+      - dp:api_workflow_read
+      - dp:webhook_subscriber_read
+      - dp:event_read

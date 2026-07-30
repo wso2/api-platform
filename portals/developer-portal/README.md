@@ -249,14 +249,16 @@ The full annotated list of settings is in [`configs/config-template.toml`](confi
 
 ### Local auth
 
-For quick exploration without an IdP, the portal delegates credential validation to a Platform API sidecar. `docker-compose.yaml` mounts the Platform API's own [`../../platform-api/config/config.toml`](../../platform-api/config/config.toml) directly — there is no per-portal copy. Users, bcrypt-hashed passwords, and `dp:*` scopes are defined there, under `[[platform_api.auth.file.users]]`:
+For quick exploration without an IdP, the portal delegates credential validation to a Platform API sidecar. `docker-compose.yaml` mounts the Platform API's own [`../../platform-api/config/config.toml`](../../platform-api/config/config.toml) directly — there is no per-portal copy. Users and bcrypt-hashed passwords are defined there, under `[[platform_api.auth.file.users]]`; each names one or more roles from the [`role-to-scope-mapping.yaml`](../../platform-api/resources/role-to-scope-mapping.yaml) mounted alongside it, and those roles are where the `dp:*` scopes the portal enforces come from:
 
 ```toml
 [[platform_api.auth.file.users]]
 username      = "admin"
 password_hash = "$2y$10$..."   # bcrypt hash — generate with: htpasswd -bnBC 12 "" <pw> | tr -d ':\n'
-scopes        = "dp:org_manage dp:api_manage ..."
+roles         = ["ap_admin"]   # grants dp:org_manage, dp:api_manage, … — see role-to-scope-mapping.yaml
 ```
+
+To change what a portal user may do, edit that role's entry in `role-to-scope-mapping.yaml` — or name a second role alongside it — rather than listing scopes on the user block.
 
 The portal config (or `APIP_DP_AUTH_LOCAL_*` env vars) must point to the Platform API. `config.toml`'s own defaults assume Docker Compose, where `platform-api` is a resolvable hostname on the compose network — `npm run start:local` already overrides `platform_api_url` to `https://localhost:9243` (the sidecar's port published to the host) and `tls_skip_verify = true` (self-signed cert), so no manual edit is needed for that flow:
 

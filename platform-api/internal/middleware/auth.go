@@ -79,7 +79,7 @@ type AuthConfig struct {
 }
 
 // ClaimMappings holds the JWT claim names used to extract identity values,
-// shared by the local-JWT (external_token/file) and IDP auth paths.
+// shared by the local-JWT (internal_token/file) and IDP auth paths.
 type ClaimMappings struct {
 	OrganizationClaim string
 	OrgNameClaim      string

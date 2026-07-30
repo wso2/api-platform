@@ -57,6 +57,7 @@ services:
       APIP_CP_ENCRYPTION_KEY: "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
     volumes:
       - ./configs/config-platform-api-it.toml:/etc/platform-api/config-platform-api.toml:ro
+      - ./configs/roles-platform-api-it.yaml:/etc/platform-api/role-to-scope-mapping.yaml:ro
       - platform-api-data:/app/data
       # TLS pair + RS256 JWT keypair generated once, host-side, by `make
       # ensure-certs` (mirrors ../../scripts/setup.sh's approach for the production
