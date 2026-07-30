@@ -19,7 +19,7 @@
 // POST/PUT /apis via the `artifact` full-ZIP upload path (as opposed to the JSON
 // `metadata` field or the standalone `api`/`definition` YAML pair) — see
 // apiMetadataService.js's extractFullApiBundleFromUploadedZip. A ZIP must contain
-// one of api.yaml/mcp.yaml/devportal.yaml plus a definition file
+// one of metadata.yaml/api.yaml/mcp.yaml plus a definition file
 // (definition.(yaml|yml|json)); `web`/`docs`
 // directories are optional (extractApiContentFromUploadedZip's 'artifact' mode
 // tolerates neither being present).
@@ -79,7 +79,7 @@ describe('APIs via artifact ZIP upload', () => {
         expect(get.body.endPoints.productionURL).toBe(`https://backend.example.invalid/${handle}`);
     });
 
-    it('rejects an artifact ZIP missing a metadata file (api.yaml/mcp.yaml/devportal.yaml)', async () => {
+    it('rejects an artifact ZIP missing a metadata file (metadata.yaml/api.yaml/mcp.yaml)', async () => {
         const zip = createZip([{ name: 'definition.json', content: SAMPLE_DEFINITION }]);
         const res = await client.as('publisher').postMultipart('/apis').attach('artifact', zip, 'artifact.zip');
         expect(res.status).toBe(400);

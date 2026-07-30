@@ -128,7 +128,7 @@ const loadAPIApiKeys = async (req, res, next) => {
             firstName: req.user.firstName,
             lastName: req.user.lastName,
             email: req.user.email,
-            imageURL: req.user.picture || req.user.imageURL || '/images/default-profile.png',
+            imageURL: req.user.picture || req.user.imageURL || constants.DEFAULT_PROFILE_IMAGE_URL,
             isAdmin: req.user.isAdmin,
         };
 

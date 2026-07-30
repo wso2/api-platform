@@ -19,7 +19,7 @@ curl -X POST https://localhost:9543/api/v0.9/mcp-servers \
 
 ```
 
-Creates API Portal MCP server metadata. Accepts the same metadata input formats as `POST /api/v0.9/apis` (artifact ZIP, `api.yaml` / `devportal.yaml` / `mcp.yaml`, or `metadata` JSON), but the created record is always typed `MCP`. An MCP server's contract is its `definition` (tools schema) — the tools, resources, and prompts it exposes — not an OpenAPI-style API contract; a `definition` is required. Via the JSON `metadata` field, `type` must be explicitly `MCP`; an omitted type or any other value is rejected with a 400 (use `POST /api/v0.9/apis`).
+Creates API Portal MCP server metadata. Accepts the same metadata input formats as `POST /api/v0.9/apis` (artifact ZIP, `api.yaml` / `mcp.yaml`, or `metadata` JSON), but the created record is always typed `MCP`. An MCP server's contract is its `definition` (tools schema) — the tools, resources, and prompts it exposes — not an OpenAPI-style API contract; a `definition` is required. Via the JSON `metadata` field, `type` must be explicitly `MCP`; an omitted type or any other value is rejected with a 400 (use `POST /api/v0.9/apis`).
 
 > Payload
 
@@ -48,7 +48,7 @@ This operation requires <strong>Basic Auth</strong> authentication.
 |body|body|object|true|MCP server upload. Provide the server metadata via `metadata` (a JSON string or an uploaded YAML/JSON file), or a full `artifact` ZIP, together with its `definition` — the tools, resources, and prompts the server exposes. An MCP server has no OpenAPI-style API contract; its `definition` (tools schema) IS its contract, so it is required on create (and replaces the stored schema when supplied on update).|
 |» artifact|body|string(binary)|false|Full MCP server ZIP artifact containing the metadata and the definition.|
 |» definition|body|string(binary)|false|MCP tools schema (YAML or JSON) listing the tools, resources, and prompts the server exposes. Required on create; when supplied on update it replaces the stored schema.|
-|» metadata|body|string|false|MCP server metadata, supplied either as a JSON string field or as an uploaded YAML/JSON file (a k8s-style document of kind `MCP`; file names `metadata.yaml`/`.yml`/`.json`, or the legacy `api.yaml`/`mcp.yaml`/`devportal.yaml`). As a JSON string it accepts these top-level fields: `name`, `version`, `description`, `type` (must be `MCP`), `agentVisibility`, `status`, `referenceId`, `id`, `tags`, `labels`, `owners`, `endPoints` (productionURL, sandboxURL), and `subscriptionPlans` (array of `{ id }` objects — only `id` is read; the plan must already exist in the organization). `id` becomes the MCP server's stored handle.|
+|» metadata|body|string|false|MCP server metadata, supplied either as a JSON string field or as an uploaded YAML/JSON file (a k8s-style document of kind `MCP`; file names `metadata.yaml`/`.yml`/`.json`, or the legacy `api.yaml`/`mcp.yaml`). As a JSON string it accepts these top-level fields: `name`, `version`, `description`, `type` (must be `MCP`), `agentVisibility`, `status`, `referenceId`, `id`, `tags`, `labels`, `owners`, `endPoints` (productionURL, sandboxURL), and `subscriptionPlans` (array of `{ id }` objects — only `id` is read; the plan must already exist in the organization). `id` becomes the MCP server's stored handle.|
 
 > Example responses
 
@@ -279,7 +279,7 @@ Status Code **200**
 |»»» status|string|false|none|API lifecycle status.|
 |»»» description|string|false|none|none|
 |»»» type|string|false|none|The stored/returned type constant (src/utils/constants.js API_TYPE) — distinct from the request-time keyword accepted on create/update (see `type` in ApiMetadataMultipartBody: REST, SOAP, MCP, WS, WEBSUB, GRAPHQL). REST maps to `RestApi` and WEBSUB maps to `WebSubApi`; the rest are returned unchanged.|
-|»»» referenceId|string¦null|false|none|External reference ID. Present when the API was created from a `devportal.yaml` artifact whose `spec` block sets `referenceId` — the create response echoes the parsed YAML back.|
+|»»» referenceId|string¦null|false|none|External reference ID. Present when the API was created from a YAML artifact whose `spec` block sets `referenceId` — the create response echoes the parsed YAML back.|
 |»»» agentVisibility|string|false|none|none|
 |»»» addedLabels|[string]|false|none|none|
 |»»» removedLabels|[string]|false|none|none|
@@ -537,7 +537,7 @@ This operation requires <strong>Basic Auth</strong> authentication.
 |body|body|object|true|MCP server upload. Provide the server metadata via `metadata` (a JSON string or an uploaded YAML/JSON file), or a full `artifact` ZIP, together with its `definition` — the tools, resources, and prompts the server exposes. An MCP server has no OpenAPI-style API contract; its `definition` (tools schema) IS its contract, so it is required on create (and replaces the stored schema when supplied on update).|
 |» artifact|body|string(binary)|false|Full MCP server ZIP artifact containing the metadata and the definition.|
 |» definition|body|string(binary)|false|MCP tools schema (YAML or JSON) listing the tools, resources, and prompts the server exposes. Required on create; when supplied on update it replaces the stored schema.|
-|» metadata|body|string|false|MCP server metadata, supplied either as a JSON string field or as an uploaded YAML/JSON file (a k8s-style document of kind `MCP`; file names `metadata.yaml`/`.yml`/`.json`, or the legacy `api.yaml`/`mcp.yaml`/`devportal.yaml`). As a JSON string it accepts these top-level fields: `name`, `version`, `description`, `type` (must be `MCP`), `agentVisibility`, `status`, `referenceId`, `id`, `tags`, `labels`, `owners`, `endPoints` (productionURL, sandboxURL), and `subscriptionPlans` (array of `{ id }` objects — only `id` is read; the plan must already exist in the organization). `id` becomes the MCP server's stored handle.|
+|» metadata|body|string|false|MCP server metadata, supplied either as a JSON string field or as an uploaded YAML/JSON file (a k8s-style document of kind `MCP`; file names `metadata.yaml`/`.yml`/`.json`, or the legacy `api.yaml`/`mcp.yaml`). As a JSON string it accepts these top-level fields: `name`, `version`, `description`, `type` (must be `MCP`), `agentVisibility`, `status`, `referenceId`, `id`, `tags`, `labels`, `owners`, `endPoints` (productionURL, sandboxURL), and `subscriptionPlans` (array of `{ id }` objects — only `id` is read; the plan must already exist in the organization). `id` becomes the MCP server's stored handle.|
 |mcpServerId|path|string|true|The MCP server's handle (unique per org).|
 
 > Example responses

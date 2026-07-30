@@ -1,4 +1,4 @@
-apiVersion: devportal.api-platform.wso2.com/v1alpha2
+apiVersion: api-portal.api-platform.wso2.com/v1
 kind: WS
 
 metadata:

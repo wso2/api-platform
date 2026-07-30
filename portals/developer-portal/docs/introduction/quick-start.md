@@ -75,7 +75,7 @@ Create an API manifest file and an OpenAPI definition, then upload them:
 
 ```yaml
 # api.yaml
-apiVersion: devportal.api-platform.wso2.com/v1alpha2
+apiVersion: api-portal.api-platform.wso2.com/v1
 kind: RestApi
 
 metadata:

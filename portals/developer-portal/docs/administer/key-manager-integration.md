@@ -18,7 +18,7 @@ Use the `KeyManager` manifest format:
 
 ```yaml
 # keymanager.yaml
-apiVersion: devportal.api-platform.wso2.com/v1alpha2
+apiVersion: api-portal.api-platform.wso2.com/v1
 kind: KeyManager
 
 metadata:
@@ -61,7 +61,7 @@ curl -k https://localhost:9543/api/v0.9/key-managers/{kmId} -H "Authorization: B
 
 ```yaml
 # keymanager-update.yaml
-apiVersion: devportal.api-platform.wso2.com/v1alpha2
+apiVersion: api-portal.api-platform.wso2.com/v1
 kind: KeyManager
 
 metadata:

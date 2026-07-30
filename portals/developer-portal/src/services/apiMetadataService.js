@@ -335,7 +335,7 @@ async function resolveScopedApiId(req, orgId, apiHandle) {
  *    other type is rejected (non-MCP records must go through /apis).
  *
  * Applies to the JSON `apiMetadata` field path only. YAML/ZIP uploads resolve `type`
- * via mapDevportalYamlToApiMetadata before this ever runs, defaulting a missing one to
+ * via mapArtifactYamlToApiMetadata before this ever runs, defaulting a missing one to
  * REST — real usage always states `type: MCP` explicitly there (see the api.yaml files
  * under samples/mcps), so this doesn't affect any current caller.
  */
@@ -1903,9 +1903,9 @@ async function extractFullApiBundleFromUploadedZip(zipFile, orgId, apiId) {
         await util.unzipDirectory(tempZipPath, extractPath);
 
         const rootPath = await resolveZipRootPath(extractPath);
-        const metadataFilePath = await util.findFileByNameRecursive(rootPath, ['api.yaml', 'mcp.yaml', 'devportal.yaml']);
+        const metadataFilePath = await util.findFileByNameRecursive(rootPath, ['metadata.yaml', 'metadata.yml', 'api.yaml', 'mcp.yaml']);
         if (!metadataFilePath) {
-            throw new ValidationError("Invalid full API zip: missing api.yaml, mcp.yaml or devportal.yaml");
+            throw new ValidationError("Invalid full API zip: missing metadata.yaml, metadata.yml, api.yaml or mcp.yaml");
         }
 
         const apiMetadataBuffer = await fs.readFile(metadataFilePath);
@@ -1959,7 +1959,7 @@ async function extractFullApiBundleFromUploadedZip(zipFile, orgId, apiId) {
     }
 }
 
-function mapDevportalYamlToApiMetadata(parsedYaml) {
+function mapArtifactYamlToApiMetadata(parsedYaml) {
     if (!parsedYaml || typeof parsedYaml !== 'object') {
         throw new ValidationError('Invalid API YAML content');
     }
@@ -2016,10 +2016,10 @@ function mapDevportalYamlToApiMetadata(parsedYaml) {
 function parseApiMetadataFromYamlFile(fileName, fileBuffer) {
     const allowedMetadataFileNames = new Set([
         'metadata.yaml', 'metadata.yml', 'metadata.json',
-        'api.yaml', 'mcp.yaml', 'devportal.yaml',
+        'api.yaml', 'mcp.yaml',
     ]);
     if (!allowedMetadataFileNames.has(String(fileName).toLowerCase())) {
-        throw new ValidationError("Invalid metadata file name. Expected 'metadata.yaml', 'metadata.yml', 'metadata.json', 'api.yaml', 'mcp.yaml' or 'devportal.yaml'");
+        throw new ValidationError("Invalid metadata file name. Expected 'metadata.yaml', 'metadata.yml', 'metadata.json', 'api.yaml' or 'mcp.yaml'");
     }
 
     let parsedYaml;
@@ -2029,7 +2029,7 @@ function parseApiMetadataFromYamlFile(fileName, fileBuffer) {
         throw new ValidationError(`Invalid API YAML file: ${e.message}`);
     }
 
-    return mapDevportalYamlToApiMetadata(parsedYaml);
+    return mapArtifactYamlToApiMetadata(parsedYaml);
 }
 
 function parseApiMetadataFromYamlRequest(req) {

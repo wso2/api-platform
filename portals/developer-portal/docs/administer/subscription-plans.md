@@ -32,7 +32,7 @@ Use the `SubscriptionPlan` manifest format:
 
 ```yaml
 # plan.yaml
-apiVersion: devportal.api-platform.wso2.com/v1alpha2
+apiVersion: api-portal.api-platform.wso2.com/v1
 kind: SubscriptionPlan
 
 metadata:
@@ -65,7 +65,7 @@ To create multiple plans in one request, use the `SubscriptionPlanList` kind:
 
 ```yaml
 # plans.yaml
-apiVersion: devportal.api-platform.wso2.com/v1alpha2
+apiVersion: api-portal.api-platform.wso2.com/v1
 kind: SubscriptionPlanList
 
 items:
@@ -111,7 +111,7 @@ curl -k https://localhost:9543/api/v0.9/subscription-plans/{planId} \
 
 ```yaml
 # plan-update.yaml
-apiVersion: devportal.api-platform.wso2.com/v1alpha2
+apiVersion: api-portal.api-platform.wso2.com/v1
 kind: SubscriptionPlan
 
 metadata:
