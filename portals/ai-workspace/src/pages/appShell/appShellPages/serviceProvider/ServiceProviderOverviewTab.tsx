@@ -653,12 +653,16 @@ export default function ServiceProviderOverviewTab({
         logger.error(
           `Unable to navigate to gateway ${gatewayId} because the current organization is unavailable.`
         );
+        showSnackbar(
+          'Unable to open this gateway right now. Please refresh and try again.',
+          'error'
+        );
         return;
       }
 
       navigate(buildGatewayPath(currentOrganization, gatewayId));
     },
-    [currentOrganization, navigate]
+    [currentOrganization, navigate, showSnackbar]
   );
 
   const handleDeleteApiKey = async () => {
