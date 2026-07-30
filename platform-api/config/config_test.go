@@ -144,7 +144,7 @@ public_key_file = '{{ env "APIP_CP_AUTH_JWT_PUBLIC_KEY_FILE" }}'
 	assert.Equal(t, validInlineKey, cfg.Security.EncryptionKey)
 }
 
-// A merged multi-component config file also carries a foreign [developer_portal]
+// A merged multi-component config file also carries a foreign [api_portal]
 // section with its own interpolation tokens — here deliberately poisonous ones: an
 // {{ env }} with no default that is left unset, and a {{ file }} path outside
 // platform-api's allowlist. LoadConfig must interpolate and consume ONLY the
@@ -152,12 +152,12 @@ public_key_file = '{{ env "APIP_CP_AUTH_JWT_PUBLIC_KEY_FILE" }}'
 // Guards the k.Cut(platformAPIConfigKey) scoping in LoadConfig: without it, the
 // whole-tree interpolation would fail closed on these tokens.
 func TestLoadConfig_IgnoresForeignComponentSection(t *testing.T) {
-	// APIP_DP_SECURITY_ENCRYPTION_KEY is intentionally never set, and /etc/devportal
+	// APIP_AP_SECURITY_ENCRYPTION_KEY is intentionally never set, and /etc/devportal
 	// is not on platform-api's {{ file }} allowlist.
 	cfg, err := loadWithKeys(t, `
-[developer_portal.security]
-encryption_key = '{{ env "APIP_DP_SECURITY_ENCRYPTION_KEY" }}'
-[developer_portal.auth.local]
+[api_portal.security]
+encryption_key = '{{ env "APIP_AP_SECURITY_ENCRYPTION_KEY" }}'
+[api_portal.auth.local]
 jwt_public_key = '{{ file "/etc/devportal/keys/jwt_public.pem" }}'
 `)
 	require.NoError(t, err)

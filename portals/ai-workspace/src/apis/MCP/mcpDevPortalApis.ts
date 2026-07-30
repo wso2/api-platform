@@ -40,7 +40,7 @@ function buildRegistryPath(
 }
 
 /**
- * Check if an MCP proxy is published in the Developer Portal.
+ * Check if an MCP proxy is published in the API Portal.
  * Returns true if published (HTTP 200), false if not found (HTTP 404).
  * Throws for any other error.
  */
@@ -64,7 +64,7 @@ export async function checkMCPServerPublished(
 }
 
 /**
- * Publish an MCP proxy to the Developer Portal via the APIM Publisher API.
+ * Publish an MCP proxy to the API Portal via the APIM Publisher API.
  * APIM fetches the full proxy record, builds the registry payload, and POSTs to devportal.
  * POST {apimBaseUrl}/mcp-proxies/{id}/publish?organizationId={orgId}
  */
@@ -88,7 +88,7 @@ export async function publishMCPServer(
 }
 
 /**
- * Unpublish an MCP proxy from the Developer Portal via the APIM Publisher API.
+ * Unpublish an MCP proxy from the API Portal via the APIM Publisher API.
  * POST {apimBaseUrl}/mcp-proxies/{id}/unpublish?organizationId={orgId}
  */
 export async function unpublishMCPServer(

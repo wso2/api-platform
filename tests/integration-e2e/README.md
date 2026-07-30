@@ -6,7 +6,7 @@ engine**, so a single scenario exercises both products integrated end to end:
 an API created in platform-api is deployed to a gateway and served by the data
 plane.
 
-On the postgres stack it additionally runs the **real developer portal**, so the
+On the postgres stack it additionally runs the **real API Portal**, so the
 `@devportal` scenario exercises all three planes together: a credential created
 in the portal reaches the gateway via the signed webhook to platform-api.
 
@@ -70,7 +70,7 @@ Build the component images once (tagged `it-e2e`), then run the suite:
 cd platform-api && docker build -t platform-api:it-e2e \
   --build-context common=../common --build-context httpkit=../httpkit .
 cd gateway      && make build VERSION=it-e2e   # gateway-controller / gateway-runtime :it-e2e
-cd portals/developer-portal && docker build -t developer-portal:it-e2e .  # only needed for @devportal
+cd portals/api-portal && docker build -t developer-portal:it-e2e .  # only needed for @devportal
 
 cd tests/integration-e2e
 go test -run TestFeatures -v ./...                                  # PostgreSQL (default)
@@ -83,7 +83,7 @@ Or via make (from `platform-api/`): `make e2e`, `make e2e-all-dbs`.
 
 - `E2E_DB` = `postgres` (default) | `sqlite` | `sqlserver`.
 - `E2E_KEEP=1` leaves the stack up after the run for inspection.
-- `E2E_WEBHOOK_SECRET` is the secret shared between the developer portal subscriber and
+- `E2E_WEBHOOK_SECRET` is the secret shared between the API Portal subscriber and
   platform-api. **The suite generates a fresh one per run and exports it, so you normally
   set nothing.** There is no committed default: compose declares the variable required, so
   a manual `docker compose up` without it fails immediately rather than running on a
@@ -97,13 +97,13 @@ Or via make (from `platform-api/`): `make e2e`, `make e2e-all-dbs`.
   `@policy_secret`). The `@multigateway` and `@devportal` scenarios run only on the
   postgres stack (the only one wired with a second gateway and the developer
   portal) and are otherwise skipped automatically.
-- `PA_HOST_PORT` / `GW_HTTP_PORT` / `GW2_HTTP_PORT` / `DP_HOST_PORT` override the
+- `PA_HOST_PORT` / `GW_HTTP_PORT` / `GW2_HTTP_PORT` / `AP_HOST_PORT` override the
   published host ports to avoid clashing with other local stacks (defaults 9243 /
   18080 / 18081 / 9543).
-- `DEVPORTAL_IMAGE` overrides the developer-portal image (default
+- `API_PORTAL_IMAGE` overrides the developer-portal image (default
   `developer-portal:it-e2e`).
-- `PA_API_BASE` / `DP_API_BASE` override the REST resource-API base path for
-  platform-api and the developer portal respectively (default `/api/v0.9` each) —
+- `PA_API_BASE` / `AP_API_BASE` override the REST resource-API base path for
+  platform-api and the API Portal respectively (default `/api/v0.9` each) —
   set these when either product moves to a new API version, independently of the
   other. `PA_PORTAL_BASE` (login, default `/api/portal/v0.9`) and `PA_WEBHOOK_BASE`
   (webhook receiver, default `/api/internal/v0.9`) cover platform-api's other prefixes.
@@ -137,9 +137,9 @@ Or via make (from `platform-api/`): `make e2e`, `make e2e-all-dbs`.
      described above), subscriptions and API keys are pushed live over the
      control-plane WebSocket and applied immediately, so the scenario just polls
      the ingress until they propagate.
-5. **Full suite via developer portal** (`@devportal`, postgres,
+5. **Full suite via API Portal** (`@devportal`, postgres,
    `features/devportal-webhook.feature`) — the same secured API, but the
-   subscription and API key are created in the **developer portal**, which fires
+   subscription and API key are created in the **API Portal**, which fires
    signed webhooks to platform-api; platform-api decrypts them, persists the
    credentials, and propagates them to the gateway. The API is then invoked
    through the gateway with those **portal-issued** credentials → 200 (and a
@@ -183,7 +183,7 @@ Or via make (from `platform-api/`): `make e2e`, `make e2e-all-dbs`.
      credentials propagate.
 6. **Developer-portal credential lifecycle** (`@devportal @lifecycle`, postgres,
    same feature file) — after the same publish/deploy/subscribe/key setup, it drives
-   every credential-lifecycle change in the developer portal and verifies each via
+   every credential-lifecycle change in the API Portal and verifies each via
    the webhook propagation:
    - **Change API key expiry** — set a past expiry; the gateway must reject the now
      expired key (401), then serve again after the expiry is restored. (Verified at

@@ -108,6 +108,26 @@ const resolveGatewayVersion = (gatewayVersion?: string): string => {
   return entry.latestVersion ?? `v${entry.version}`;
 };
 
+// Version segment of the distribution zip name. Falls back to the release tag
+// when the configured entry doesn't override it.
+const resolveGatewayDistVersion = (gatewayVersion?: string): string | undefined => {
+  const entry = gatewayVersion
+    ? PLATFORM_GATEWAY_VERSIONS.find((v) => v.version === gatewayVersion)
+    : PLATFORM_GATEWAY_VERSIONS[0];
+  return entry?.distVersion;
+};
+
+// Version segment of the directory the zip unpacks into. Falls back to the zip's
+// own version when the configured entry doesn't override it.
+const resolveGatewayDistFolderVersion = (
+  gatewayVersion?: string,
+): string | undefined => {
+  const entry = gatewayVersion
+    ? PLATFORM_GATEWAY_VERSIONS.find((v) => v.version === gatewayVersion)
+    : PLATFORM_GATEWAY_VERSIONS[0];
+  return entry?.distFolderVersion;
+};
+
 const getPlatformApiBaseUrl = (): string => {
   return PLATFORM_API_BASE_URL;
 };
@@ -247,8 +267,15 @@ export default function ViewGateway() {
   const gatewayVersionHelm = gatewayVersion.startsWith("v")
     ? gatewayVersion.slice(1)
     : gatewayVersion;
-  const gatewayZipName = `wso2apip-ai-gateway-${gatewayVersionHelm}`;
-  const gatewayFolderName = `wso2apip-ai-gateway-${gatewayVersionHelm}`;
+  // Zip name can carry a suffix the release tag doesn't (e.g. tag v1.2.0
+  // publishing wso2apip-ai-gateway-1.2.0-rc.zip), and the directory that zip
+  // unpacks into can in turn drop the suffix the zip name carries.
+  const gatewayDistVersion =
+    resolveGatewayDistVersion(gateway?.version) ?? gatewayVersionHelm;
+  const gatewayDistFolderVersion =
+    resolveGatewayDistFolderVersion(gateway?.version) ?? gatewayDistVersion;
+  const gatewayZipName = `wso2apip-ai-gateway-${gatewayDistVersion}`;
+  const gatewayFolderName = `wso2apip-ai-gateway-${gatewayDistFolderVersion}`;
   const gatewayIsV12OrAbove = isGatewayV12OrAbove(gatewayVersionHelm);
   const GatewaySetupSteps = gatewayIsV12OrAbove
     ? GatewaySetupStepsV1_2Plus

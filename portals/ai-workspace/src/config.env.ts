@@ -145,13 +145,32 @@ export const MOESIF_APP_API_KEY = getEnvOrDefault(
 export interface GatewayVersionEntry {
   version: string;
   latestVersion?: string;
+  /**
+   * Version segment of the distribution zip name, when the published asset name
+   * differs from the release tag (e.g. tag `v1.2.0` shipping
+   * `wso2apip-ai-gateway-1.2.0-rc.zip`). Defaults to `latestVersion` without
+   * its leading `v`.
+   */
+  distVersion?: string;
+  /**
+   * Version segment of the directory the zip unpacks into, when it differs from
+   * the zip name itself (e.g. `wso2apip-ai-gateway-1.2.0-rc.zip` extracting to
+   * `wso2apip-ai-gateway-1.2.0/`). Defaults to `distVersion`.
+   */
+  distFolderVersion?: string;
   channel: 'STS' | 'LTS';
 }
 
 export const PLATFORM_GATEWAY_VERSIONS = getEnvOrDefault<GatewayVersionEntry[]>(
   'APIP_AIW_GATEWAY_PLATFORM_GATEWAY_VERSIONS',
   [
-    { version: '1.2', latestVersion: 'v1.2.0-beta', channel: 'STS' }
+    {
+      version: '1.2',
+      latestVersion: 'v1.2.0',
+      distVersion: '1.2.0',
+      distFolderVersion: '1.2.0',
+      channel: 'STS',
+    }
   ]
 );
 

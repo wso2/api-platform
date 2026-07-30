@@ -485,7 +485,7 @@ func StartPlatformAPIServer(cfg *config.Server, slogger *slog.Logger,
 		}
 	}
 
-	// Register the control-plane webhook receiver (Developer Portal -> Platform API) when enabled.
+	// Register the control-plane webhook receiver (API Portal -> Platform API) when enabled.
 	// Authenticity is established by HMAC signature; the route is excluded from JWT/IDP auth via
 	// cfg.Auth.SkipPaths (see config defaults).
 	if cfg.Webhook.Enabled {

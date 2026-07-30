@@ -33,7 +33,7 @@ import (
 // list unnecessary.
 func TestEffectiveScopes(t *testing.T) {
 	h := NewAuthLoginHandler(&config.Server{}, map[string][]string{
-		"ap_admin":  {"ap:organization:manage", "ap:rest_api:manage", "dp:org_manage"},
+		"ap_admin":  {"ap:organization:manage", "ap:rest_api:manage", "dp:organization:manage"},
 		"ap_viewer": {"ap:organization:read"},
 		"ap_dupes":  {"ap:rest_api:manage", "ap:organization:read", "ap:rest_api:manage"},
 	})
@@ -53,7 +53,7 @@ func TestEffectiveScopes(t *testing.T) {
 			// be granted outside it.
 			name: "role spanning multiple namespaces",
 			user: config.FileBasedUser{Roles: []string{"ap_admin"}},
-			want: "ap:organization:manage ap:rest_api:manage dp:org_manage",
+			want: "ap:organization:manage ap:rest_api:manage dp:organization:manage",
 		},
 		{
 			// A role listing the same scope twice must not repeat it in the claim.
@@ -66,13 +66,13 @@ func TestEffectiveScopes(t *testing.T) {
 			// carrying several roles is expanded in role authorization mode.
 			name: "multiple roles union their scopes",
 			user: config.FileBasedUser{Roles: []string{"ap_viewer", "ap_admin"}},
-			want: "ap:organization:read ap:organization:manage ap:rest_api:manage dp:org_manage",
+			want: "ap:organization:read ap:organization:manage ap:rest_api:manage dp:organization:manage",
 		},
 		{
 			// A scope two of the user's roles both grant appears once.
 			name: "scope granted by two roles is deduped",
 			user: config.FileBasedUser{Roles: []string{"ap_admin", "ap_dupes"}},
-			want: "ap:organization:manage ap:rest_api:manage dp:org_manage ap:organization:read",
+			want: "ap:organization:manage ap:rest_api:manage dp:organization:manage ap:organization:read",
 		},
 		{
 			// validateFileUserRoles rejects this at startup; if it ever reached

@@ -47,7 +47,7 @@ import {
   ChevronUp,
 } from '@wso2/oxygen-ui-icons-react';
 import YAML from 'yaml';
-import { getGuardrails } from '../../../../apis/policyHubApis';
+import { getGuardrails, getPolicies } from '../../../../apis/policyHubApis';
 import { getGatewayCustomPolicies } from '../../../../apis/gatewayPolicyApis';
 import type { GatewayCustomPolicy } from '../../../../apis/gatewayPolicyApis';
 import { useLLMProvider } from '../../../../contexts/llmProvider';
@@ -55,7 +55,11 @@ import { useGuardrails } from '../../../../contexts/GuardrailsContext';
 import useAIWorkspaceSnackbar from '../../../../hooks/aiWorkspaceSnackbar';
 import { logger } from '../../../../utils/logger';
 import { filterOpenApiSpecByAccessControl } from '../../../../utils/openApiAccessControl';
-import { GuardrailPill, PolicyCategorySelector } from '../../../../Components/GuardrailPill';
+import {
+  GuardrailPill,
+  POLICY_CATEGORIES,
+  PolicyCategorySelector,
+} from '../../../../Components/GuardrailPill';
 import { ResourceRow } from '../../../../Components/ResourceView';
 import PolicyParameterEditor from '../../PolicyParameterEditor/PolicyParameterEditor';
 import type {
@@ -254,13 +258,14 @@ export default function ServiceProviderGuardrailsTab() {
   const showSnackbar = useAIWorkspaceSnackbar();
 
   const fetchDrawerGuardrails = useCallback(async (categories: string[]) => {
-    if (categories.length === 0) {
-      setDrawerGuardrails([]);
-      return;
-    }
     setDrawerGuardrailsLoading(true);
     try {
-      const response = await getGuardrails(categories.join(','));
+      const showAll =
+        categories.length === 0 ||
+        categories.length === POLICY_CATEGORIES.length;
+      const response = showAll
+        ? await getPolicies()
+        : await getGuardrails(categories.join(','));
       setDrawerGuardrails(response.data);
     } catch {
       setDrawerGuardrails([]);

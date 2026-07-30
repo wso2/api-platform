@@ -101,7 +101,7 @@ export default function PolicyCategorySelector({
       >
         {value.length === 0 ? (
           <Typography variant="body2" color="text.secondary" sx={{ flex: 1 }}>
-            Select categories to filter
+            All categories
           </Typography>
         ) : (
           value.map((cat) => (

@@ -1,5 +1,5 @@
 version: 3
 paths:
   only: 
-    - ./portals/developer-portal
+    - ./portals/api-portal
 

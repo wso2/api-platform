@@ -5,11 +5,11 @@ CREATE DATABASE platform_api;
 CREATE DATABASE gateway_test;
 -- Second gateway-controller store for the multi-gateway scenario.
 CREATE DATABASE gateway_test2;
--- Developer portal store for the @devportal scenario. Postgres is used (not the
+-- API Portal store for the @devportal scenario. Postgres is used (not the
 -- devportal's default SQLite) because the devportal's org-update path relies on
 -- UPDATE ... RETURNING rows, which SQLite does not provide. Tables are
 -- auto-created by the devportal on startup (sequelize.sync()).
-CREATE DATABASE devportal;
+CREATE DATABASE api_portal;
 
 -- platform-api only auto-runs schema DDL for SQLite; against an external
 -- database it expects the schema to be pre-provisioned by the operator. Apply
@@ -18,10 +18,10 @@ CREATE DATABASE devportal;
 \connect platform_api
 \i /schema/schema.postgres.sql
 
--- Same for the developer portal database (it does not auto-create its schema on
+-- Same for the API Portal database (it does not auto-create its schema on
 -- an external postgres — its own postgres compose loads this dump at init too).
-\connect devportal
-\i /devportal-schema/schema.postgres.sql
+\connect api_portal
+\i /api-portal-schema/schema.postgres.sql
 
 -- The gateway-controller likewise no longer auto-migrates its schema on external
 -- databases, so pre-provision it into both gateway-controller stores here

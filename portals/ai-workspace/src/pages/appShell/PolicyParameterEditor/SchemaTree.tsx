@@ -18,7 +18,14 @@ import React, {
   useRef,
   useEffect,
 } from 'react';
-import { Box, Typography, Collapse, IconButton, Button } from '@wso2/oxygen-ui';
+import {
+  Box,
+  Typography,
+  Collapse,
+  IconButton,
+  Button,
+  Chip,
+} from '@wso2/oxygen-ui';
 import {
   ChevronRight,
   ChevronDown,
@@ -312,6 +319,15 @@ const SchemaTreeNodeComponent: React.FC<SchemaTreeNodeProps> = ({
                   defaultMessage={'(Optional)'}
                 />
               </Typography>
+            )}
+            {node.schema['x-wso2-policy-deprecated-param'] === true && (
+              <Chip
+                label="Deprecated"
+                size="small"
+                variant="outlined"
+                color="warning"
+                sx={classes.deprecatedBadge}
+              />
             )}
             {/* Delete button for array items */}
             {node.isArrayItem && node.parentArrayPath !== undefined && (

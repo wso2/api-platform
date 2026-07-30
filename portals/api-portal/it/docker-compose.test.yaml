@@ -1,0 +1,205 @@
+# --------------------------------------------------------------------
+# Copyright (c) 2026, WSO2 LLC. (https://www.wso2.com).
+#
+# WSO2 LLC. licenses this file to you under the Apache License,
+# Version 2.0 (the "License"); you may not use this file except
+# in compliance with the License.
+# You may obtain a copy of the License at
+#
+# http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing,
+# software distributed under the License is distributed on an
+# "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+# KIND, either express or implied.  See the License for the
+# specific language governing permissions and limitations
+# under the License.
+# --------------------------------------------------------------------
+
+# Integration test Docker Compose for the API Portal.
+#
+# Usage (via Makefile):
+#   make test      — run Cypress headlessly (CI)
+#   make open      — open Cypress interactive UI against a locally running portal
+#
+# The portal service uses the pre-built image tagged :test (set by make ensure-test-tag).
+
+services:
+  platform-api:
+    # Overridable so CI can point this at a freshly built image (make -C platform-api
+    # build) instead of the last release — this fixture's config-platform-api-it.toml
+    # tracks platform-api's current config schema, which a pinned old release may not
+    # understand.
+    image: ${PLATFORM_API_IMAGE:-ghcr.io/wso2/api-platform/platform-api:0.13.0-SNAPSHOT}
+    command: ["-config", "/etc/platform-api/config-platform-api.toml"]
+    environment:
+      APIP_CP_ENCRYPTION_KEY: "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
+    volumes:
+      - ./configs/config-platform-api-it.toml:/etc/platform-api/config-platform-api.toml:ro
+      - ./configs/roles-platform-api-it.yaml:/etc/platform-api/role-to-scope-mapping.yaml:ro
+      - platform-api-data:/app/data
+      # TLS pair + RS256 JWT keypair generated once, host-side, by `make
+      # ensure-certs` (mirrors ../../scripts/setup.sh's approach for the production
+      # compose) — read-only, 644-mode so the container's non-root user can read
+      # a host-owned file. Same host dir, two mount points: TLS cert/key.pem
+      # under /app/data/certs, jwt_{public,private}.pem under
+      # /etc/platform-api/keys (the Platform API's {{ file }} allowlist).
+      - ./.certs:/app/data/certs:ro
+      - ./.certs:/etc/platform-api/keys:ro
+    healthcheck:
+      test: ["CMD", "curl", "-fk", "https://localhost:9243/health"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+      start_period: 10s
+    networks:
+      - it-api-portal-network
+
+  api-portal:
+    image: ${DOCKER_REGISTRY:-ghcr.io/wso2/api-platform}/api-portal:test
+    depends_on:
+      platform-api:
+        condition: service_healthy
+    environment:
+      # SQLite — no external database required. Shared, DB-agnostic settings
+      # (tls/logging/api-key/org/platform-api) live in ./test-config.toml.
+      APIP_AP_DATABASE_DRIVER: sqlite
+      APIP_AP_DATABASE_PATH: /tmp/api-portal-it.db
+      # portal fails closed at startup without these — fixed test-only values,
+      # not meant to be reused outside this CI fixture.
+      APIP_AP_SECURITY_ENCRYPTION_KEY: "7f40672c96fd437dc33550755e218d586014232ceb5b01c9405aab575bcb1f4a"
+      APIP_AP_SECURITY_SESSION_SECRET: "527948cfb2478dbd4dfcd9d466df65d8c70511236fe63dba0da0f5385676f593"
+    healthcheck:
+      test: ["CMD-SHELL", "node -e \"require('http').get('http://localhost:9543/health', r => process.exit(r.statusCode === 200 ? 0 : 1)).on('error', () => process.exit(1))\""]
+      interval: 10s
+      timeout: 5s
+      retries: 20
+      start_period: 20s
+    volumes:
+      - ./test-config.toml:/app/configs/config.toml:ro
+      # Public half of the RS256 JWT keypair from `make ensure-certs` — the
+      # portal verifies Platform API tokens with it (test-config.toml reads it
+      # via {{ file }}). /etc/api-portal is on the portal's file allowlist.
+      # Mount only jwt_public.pem, not the whole .certs dir, so the private key
+      # (also in .certs, for platform-api) is never exposed to the portal.
+      - ./.certs/jwt_public.pem:/etc/api-portal/keys/jwt_public.pem:ro
+      # Named volume at /tmp (not a new mount point) so Docker copies the image's
+      # existing /tmp ownership/permissions into it on first use — a fresh mount
+      # at a brand-new path would be root-owned and unwritable by the app user.
+      # Shared with rest-api-tests (read-only, different path there) so specs can
+      # assert EVENTS/EVENT_DELIVERIES rows directly.
+      - sqlite-data:/tmp
+    networks:
+      - it-api-portal-network
+
+  # A second portal whose organization deliberately does NOT match the one
+  # platform-api mints tokens for (`default`, see configs/config-platform-api-it.toml).
+  #
+  # Every other service in this fixture is matched by construction, so the
+  # login-time organization checks — authController.handleLocalLogin's org_handle
+  # comparison and passportConfig's IDP equivalent — can never fire there. This
+  # instance is what exercises them: admin/admin is a valid platform-api credential,
+  # the returned token is correctly signed and unexpired, and it is rejected purely
+  # because its org_handle names another organization. See
+  # rest-api/auth/foreign-org-login.spec.js.
+  #
+  # Its own SQLite file, not the shared one: two better-sqlite3 processes writing a
+  # single file would contend on SQLITE_BUSY. Nothing here depends on sharing the
+  # database — the mismatch under test is between this instance's configured
+  # organization and the token's, not between rows.
+  api-portal-other-org:
+    image: ${DOCKER_REGISTRY:-ghcr.io/wso2/api-platform}/api-portal:test
+    depends_on:
+      platform-api:
+        condition: service_healthy
+    environment:
+      APIP_AP_DATABASE_DRIVER: sqlite
+      APIP_AP_DATABASE_PATH: /tmp/api-portal-it-other-org.db
+      # The deliberate mismatch. platform-api's org is "default".
+      APIP_AP_ORGANIZATION_HANDLE: other-org
+      APIP_AP_ORGANIZATION_DISPLAY_NAME: Other Org
+      APIP_AP_SECURITY_ENCRYPTION_KEY: "7f40672c96fd437dc33550755e218d586014232ceb5b01c9405aab575bcb1f4a"
+      APIP_AP_SECURITY_SESSION_SECRET: "527948cfb2478dbd4dfcd9d466df65d8c70511236fe63dba0da0f5385676f593"
+    healthcheck:
+      test: ["CMD-SHELL", "node -e \"require('http').get('http://localhost:9543/health', r => process.exit(r.statusCode === 200 ? 0 : 1)).on('error', () => process.exit(1))\""]
+      interval: 10s
+      timeout: 5s
+      retries: 20
+      start_period: 20s
+    volumes:
+      - ./test-config.toml:/app/configs/config.toml:ro
+      - ./.certs/jwt_public.pem:/etc/api-portal/keys/jwt_public.pem:ro
+      - sqlite-data:/tmp
+    networks:
+      - it-api-portal-network
+
+  cypress:
+    image: cypress/included:13.17.0
+    platform: ${CYPRESS_PLATFORM:-linux/amd64}
+    depends_on:
+      api-portal:
+        condition: service_healthy
+    working_dir: /e2e
+    shm_size: '2gb'
+    environment:
+      CYPRESS_BASE_URL: "http://api-portal:9543"
+      CYPRESS_API_KEY: "api-portal-it-test-key"
+    volumes:
+      - ./ui:/e2e
+      - ./reports:/e2e/reports
+    networks:
+      - it-api-portal-network
+    command: ["cypress", "run", "--headless", "--browser", "electron"]
+
+  rest-api-tests:
+    image: node:24-alpine
+    depends_on:
+      api-portal:
+        condition: service_healthy
+      # Named here rather than in the Makefile's explicit `up` service list —
+      # compose starts a named service's dependencies automatically, so this is
+      # what brings the mismatched instance up for `make test-rest-api` while
+      # keeping it out of the Cypress-only `make test`.
+      api-portal-other-org:
+        condition: service_healthy
+    working_dir: /rest-api
+    environment:
+      API_PORTAL_BASE_URL: "http://api-portal:9543"
+      # The second instance, pinned to an organization platform-api does not mint
+      # tokens for. auth/foreign-org-login.spec.js skips itself when this is unset.
+      API_PORTAL_OTHER_ORG_BASE_URL: "http://api-portal-other-org:9543"
+      API_PORTAL_OTHER_ORG_HANDLE: "other-org"
+      # Real session login (config-platform-api-it.toml) — password == username
+      # for all three, matching the admin/admin convention documented in
+      # configs/config-platform-api-template.toml.
+      API_PORTAL_ORG_HANDLE: "default"
+      API_PORTAL_ADMIN_USERNAME: "admin"
+      API_PORTAL_ADMIN_PASSWORD: "admin"
+      API_PORTAL_PUBLISHER_USERNAME: "publisher"
+      API_PORTAL_PUBLISHER_PASSWORD: "publisher"
+      API_PORTAL_DEVELOPER_USERNAME: "developer"
+      API_PORTAL_DEVELOPER_PASSWORD: "developer"
+      API_PORTAL_DB_DIALECT: sqlite
+      API_PORTAL_DB_STORAGE: /shared-db/api-portal-it.db
+      # Reachable from inside the compose network by the webhook dispatcher.
+      WEBHOOK_SINK_URL: "http://rest-api-tests:4500"
+      MOCK_TOKEN_ENDPOINT_URL: "http://rest-api-tests:4504"
+    volumes:
+      - ./rest-api:/rest-api
+      - ./reports:/rest-api/reports
+      # Mounted at a path distinct from this container's own /tmp (needed for
+      # npm install), read-only since only the portal process should write it.
+      - sqlite-data:/shared-db:ro
+    networks:
+      - it-api-portal-network
+    # better-sqlite3 compiles from source on node:24-alpine (no prebuilt binary
+    # for this platform) — needs python3/make/g++ for node-gyp.
+    command: ["sh", "-c", "apk add --no-cache python3 make g++ >/dev/null && npm install --no-audit --no-fund && npm test"]
+
+networks:
+  it-api-portal-network:
+    driver: bridge
+
+volumes:
+  sqlite-data:
+  platform-api-data:

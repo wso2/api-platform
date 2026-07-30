@@ -26,15 +26,15 @@
 #         fails startup rather than silently denying requests later. The
 #         event-gateway scopes below are commented out for that reason: uncomment
 #         them on a build that includes that plugin.
-#   dp:*  Developer Portal scopes. This server mints them into the token but never
+#   dp:*  API Portal scopes. This server mints them into the token but never
 #         enforces them, so it validates only their shape, not their existence.
 #
 # Scope convention:
 #   ap:<resource>:manage             — every action on that resource
 #   ap:<resource>:<sub>:manage       — every action on the subresource only
-#   dp:<resource>_manage             — every action on that Developer Portal resource
-#                                      (Developer Portal read operations accept the
-#                                      _manage scope as well as _read)
+#   dp:<resource>:manage             — every action on that API Portal resource
+#                                      (API Portal read operations accept the
+#                                      :manage scope as well as :read)
 #
 # This file requires a server restart to take effect.
 
@@ -75,28 +75,28 @@ roles:
       # - ap:websub_api:manage   # event-gateway build only
       # - ap:webbroker_api:manage   # event-gateway build only
       # Developer Portal
-      - dp:org_manage
-      - dp:org_content_manage
-      - dp:api_manage
-      - dp:api_content_manage
-      - dp:mcp_manage
-      - dp:mcp_content_manage
-      - dp:api_workflow_manage
-      - dp:api_key_manage
-      - dp:mcp_key_manage
-      - dp:app_manage
-      - dp:app_key_manage
-      - dp:app_key_revoke
-      - dp:app_key_mapping_manage
-      - dp:subscription_manage
-      - dp:sub_plan_manage
-      - dp:km_manage
-      - dp:km_read
-      - dp:view_manage
-      - dp:label_manage
-      - dp:webhook_subscriber_manage
-      - dp:event_read
-      - dp:delivery_manage
+      - dp:organization:manage
+      - dp:organization_content:manage
+      - dp:api:manage
+      - dp:api_content:manage
+      - dp:mcp_server:manage
+      - dp:mcp_server_content:manage
+      - dp:api_workflow:manage
+      - dp:api_key:manage
+      - dp:mcp_server_key:manage
+      - dp:application:manage
+      - dp:application_key:manage
+      - dp:application_key:revoke
+      - dp:application_key_mapping:manage
+      - dp:subscription:manage
+      - dp:subscription_plan:manage
+      - dp:key_manager:manage
+      - dp:key_manager:read
+      - dp:view:manage
+      - dp:label:manage
+      - dp:webhook_subscriber:manage
+      - dp:event:read
+      - dp:delivery:manage
 
   # Platform operator / CI-CD service account — runs gateways, deployments,
   # subscription plans, key managers and webhooks; reads everything else.
@@ -131,23 +131,23 @@ roles:
       # - ap:webbroker_api:read   # event-gateway build only
       # - ap:webbroker_api:deployment:read   # event-gateway build only
       # Developer Portal
-      - dp:km_manage
-      - dp:km_read
-      - dp:webhook_subscriber_manage
-      - dp:sub_plan_manage
-      - dp:org_read
-      - dp:org_content_read
-      - dp:api_read
-      - dp:mcp_read
-      - dp:mcp_content_read
-      - dp:app_read
-      - dp:subscription_read
-      - dp:view_read
-      - dp:label_read
-      - dp:api_key_read
-      - dp:mcp_key_read
-      - dp:api_workflow_read
-      - dp:event_read
+      - dp:key_manager:manage
+      - dp:key_manager:read
+      - dp:webhook_subscriber:manage
+      - dp:subscription_plan:manage
+      - dp:organization:read
+      - dp:organization_content:read
+      - dp:api:read
+      - dp:mcp_server:read
+      - dp:mcp_server_content:read
+      - dp:application:read
+      - dp:subscription:read
+      - dp:view:read
+      - dp:label:read
+      - dp:api_key:read
+      - dp:mcp_server_key:read
+      - dp:api_workflow:read
+      - dp:event:read
 
   # API publisher — owns the full API/MCP/LLM lifecycle and the Developer
   # Portal content for it; reads applications, subscriptions and plans.
@@ -178,21 +178,21 @@ roles:
       # - ap:websub_api:manage   # event-gateway build only
       # - ap:webbroker_api:manage   # event-gateway build only
       # Developer Portal
-      - dp:api_manage
-      - dp:api_content_manage
-      - dp:mcp_manage
-      - dp:mcp_content_manage
-      - dp:api_workflow_manage
-      - dp:label_manage
-      - dp:view_manage
-      - dp:org_read
-      - dp:org_content_read
-      - dp:app_read
-      - dp:subscription_read
-      - dp:sub_plan_read
-      - dp:api_key_read
-      - dp:mcp_key_read
-      - dp:event_read
+      - dp:api:manage
+      - dp:api_content:manage
+      - dp:mcp_server:manage
+      - dp:mcp_server_content:manage
+      - dp:api_workflow:manage
+      - dp:label:manage
+      - dp:view:manage
+      - dp:organization:read
+      - dp:organization_content:read
+      - dp:application:read
+      - dp:subscription:read
+      - dp:subscription_plan:read
+      - dp:api_key:read
+      - dp:mcp_server_key:read
+      - dp:event:read
 
   # API consumer — manages its own applications, subscriptions and keys;
   # reads the API/MCP catalog and the plans it can subscribe to.
@@ -212,19 +212,19 @@ roles:
       - ap:llm_provider:read
       - ap:api_key:read
       # Developer Portal
-      - dp:app_manage
-      - dp:app_key_manage
-      - dp:app_key_revoke
-      - dp:subscription_manage
-      - dp:api_key_manage
-      - dp:mcp_key_manage
-      - dp:api_read
-      - dp:mcp_read
-      - dp:sub_plan_read
-      - dp:org_read
-      - dp:org_content_read
-      - dp:view_read
-      - dp:label_read
+      - dp:application:manage
+      - dp:application_key:manage
+      - dp:application_key:revoke
+      - dp:subscription:manage
+      - dp:api_key:manage
+      - dp:mcp_server_key:manage
+      - dp:api:read
+      - dp:mcp_server:read
+      - dp:subscription_plan:read
+      - dp:organization:read
+      - dp:organization_content:read
+      - dp:view:read
+      - dp:label:read
 
   # Auditor — read-only across both components. Grants no mutating scope
   # (the one POST it can reach, mcp-proxies/fetch-server-info, is a read
@@ -263,19 +263,19 @@ roles:
       # - ap:webbroker_api:read   # event-gateway build only
       # - ap:webbroker_api:deployment:read   # event-gateway build only
       # Developer Portal
-      - dp:org_read
-      - dp:org_content_read
-      - dp:api_read
-      - dp:mcp_read
-      - dp:mcp_content_read
-      - dp:app_read
-      - dp:subscription_read
-      - dp:sub_plan_read
-      - dp:view_read
-      - dp:label_read
-      - dp:km_read
-      - dp:api_key_read
-      - dp:mcp_key_read
-      - dp:api_workflow_read
-      - dp:webhook_subscriber_read
-      - dp:event_read
+      - dp:organization:read
+      - dp:organization_content:read
+      - dp:api:read
+      - dp:mcp_server:read
+      - dp:mcp_server_content:read
+      - dp:application:read
+      - dp:subscription:read
+      - dp:subscription_plan:read
+      - dp:view:read
+      - dp:label:read
+      - dp:key_manager:read
+      - dp:api_key:read
+      - dp:mcp_server_key:read
+      - dp:api_workflow:read
+      - dp:webhook_subscriber:read
+      - dp:event:read
