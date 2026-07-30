@@ -22,7 +22,7 @@
 // generation enabled on their application because an org key manager now exists.
 
 describe('Settings — Key Managers', () => {
-    const uid = Date.now();
+    const uid = crypto.randomUUID();
     const KM_NAME = `IT KM ${uid}`;
     const ENDPOINT = 'https://idp.example.invalid/oauth2/token';
     const APP_NAME = `IT KM App ${uid}`;
@@ -31,7 +31,7 @@ describe('Settings — Key Managers', () => {
 
     after(() => {
         // Remove the developer-owned application (via its owner) and the key manager.
-        cy.logout();
+        cy.clearCookies();
         cy.login('developer', 'developer');
         cy.deleteApplication(APP_NAME);
         // The handle is a server-generated UUID, so discover it by display name and
@@ -63,7 +63,7 @@ describe('Settings — Key Managers', () => {
         });
 
         // 3. Switch to a developer user and create an application.
-        cy.logout();
+        cy.clearCookies();
         cy.login('developer', 'developer');
         cy.createApplication(APP_NAME, 'App for the key-manager key-generation test');
 

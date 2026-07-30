@@ -130,14 +130,20 @@
       }
 
       /* ── Regenerate token ── */
+      var _regenTrigger = null;
       function askRegenerate() {
         if (!_sub) return;
         var dialog = document.getElementById('mcpRegenerateDialog');
-        if (dialog) dialog.style.display = 'flex';
+        if (!dialog) return;
+        _regenTrigger = document.activeElement; // restore focus here on close
+        dialog.style.display = 'flex';
+        document.getElementById('mcpRegenerateCancelBtn').focus();
       }
       function closeRegenerate() {
         var dialog = document.getElementById('mcpRegenerateDialog');
         if (dialog) dialog.style.display = 'none';
+        if (_regenTrigger && typeof _regenTrigger.focus === 'function') _regenTrigger.focus();
+        _regenTrigger = null;
       }
       async function confirmRegenerate() {
         if (!_sub || _regenerateInFlight) return;

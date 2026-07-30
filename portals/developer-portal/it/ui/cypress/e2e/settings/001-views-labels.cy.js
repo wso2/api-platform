@@ -20,7 +20,7 @@
 // flow is: type a name, let the handle auto-generate, and save.
 
 describe('Settings — Views & Labels', () => {
-    const uid = Date.now();
+    const uid = crypto.randomUUID();
     const VIEW_NAME = `IT View ${uid}`;
     const VIEW_HANDLE = `it-view-${uid}`; // slugify(VIEW_NAME)
     const LABEL_DISPLAY = `IT Label ${uid}`;

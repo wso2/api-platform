@@ -133,7 +133,13 @@ const createKeyManager = async (req, res) => {
         // when present; otherwise generate a UUID. The settings UI sends none, so those
         // get a UUID. A handle collision is always a 409 — we never rewrite the caller's
         // id or invent a variant.
-        const hadExplicitHandle = !!(payload.handle && payload.handle.trim());
+        // An explicit handle (body `id` or YAML metadata.name) must be a string; reject
+        // other types with a 400 rather than crashing on .trim() — the YAML-upload path
+        // isn't schema-validated, so a numeric metadata.name can reach here.
+        if (payload.handle != null && typeof payload.handle !== 'string') {
+            return util.sendError(res, 400, "Invalid 'id'. Must contain only letters, numbers, underscores, and hyphens.");
+        }
+        const hadExplicitHandle = typeof payload.handle === 'string' && !!payload.handle.trim();
         if (hadExplicitHandle && !HANDLE_PATTERN.test(payload.handle.trim())) {
             return util.sendError(res, 400, "Invalid 'id'. Must contain only letters, numbers, underscores, and hyphens.");
         }

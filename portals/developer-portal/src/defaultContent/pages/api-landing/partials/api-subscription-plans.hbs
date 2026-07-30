@@ -174,11 +174,11 @@
 </div>
 
 <!-- Regenerate token confirmation dialog -->
-<div id="apiRegenerateDialog" class="mc-overlay" style="display:none;" role="dialog" aria-modal="true">
+<div id="apiRegenerateDialog" class="mc-overlay" style="display:none;" role="dialog" aria-modal="true" aria-labelledby="apiRegenerateTitle">
   <div class="mc-unsub-dialog">
     <div class="mc-unsub-header">
       <span class="mc-unsub-icon"><i class="bi bi-exclamation-triangle-fill"></i></span>
-      <h2 class="mc-unsub-title">Regenerate token?</h2>
+      <h2 class="mc-unsub-title" id="apiRegenerateTitle">Regenerate token?</h2>
     </div>
     <p class="mc-unsub-desc">Your current token will be invalidated immediately. Any applications using it will need to be updated with the new token.</p>
     <div class="mc-unsub-actions">
