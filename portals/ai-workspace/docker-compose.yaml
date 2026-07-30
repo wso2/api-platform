@@ -39,7 +39,7 @@ services:
       retries: 3
 
   ai-workspace:
-    image: ghcr.io/wso2/api-platform/ai-workspace:1.0.0-rc-SNAPSHOT
+    image: ghcr.io/wso2/api-platform/ai-workspace:1.0.0-SNAPSHOT
     restart: unless-stopped
     profiles: ["ai-workspace", "all"]
     depends_on:
@@ -63,7 +63,7 @@ services:
       retries: 3
 
   developer-portal:
-    image: ghcr.io/wso2/api-platform/developer-portal:1.0.0-beta-SNAPSHOT
+    image: ghcr.io/wso2/api-platform/developer-portal:1.0.0-SNAPSHOT
     restart: unless-stopped
     profiles: ["developer-portal", "all"]
     depends_on:
