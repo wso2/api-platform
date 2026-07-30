@@ -1,13 +1,13 @@
 version: v1
 policies:
     - name: advanced-ratelimit
-      version: v1.1.1
+      version: v1.1.2
       gomodule: github.com/wso2/gateway-controllers/policies/advanced-ratelimit@v1
     - name: analytics-header-filter
       version: v1.0.1
       gomodule: github.com/wso2/gateway-controllers/policies/analytics-header-filter@v1
     - name: api-key-auth
-      version: v1.2.0
+      version: v1.2.1
       gomodule: github.com/wso2/gateway-controllers/policies/api-key-auth@v1
     - name: aws-authentication
       version: v0.10.0
@@ -19,10 +19,10 @@ policies:
       version: v1.0.2
       gomodule: github.com/wso2/gateway-controllers/policies/azure-content-safety-content-moderation@v1
     - name: backend-jwt
-      version: v1.0.0
+      version: v1.0.1
       gomodule: github.com/wso2/gateway-controllers/policies/backend-jwt@v1
     - name: basic-auth
-      version: v1.0.2
+      version: v1.0.3
       gomodule: github.com/wso2/gateway-controllers/policies/basic-auth@v1
     - name: basic-ratelimit
       version: v1.1.0
@@ -31,7 +31,7 @@ policies:
       version: v1.0.1
       gomodule: github.com/wso2/gateway-controllers/policies/content-length-guardrail@v1
     - name: cors
-      version: v1.0.1
+      version: v1.0.2
       gomodule: github.com/wso2/gateway-controllers/policies/cors@v1
     - name: dynamic-endpoint
       version: v1.0.1
@@ -40,16 +40,16 @@ policies:
       version: v1.0.1
       gomodule: github.com/wso2/gateway-controllers/policies/host-rewrite@v1
     - name: interceptor-service
-      version: v1.0.0
+      version: v1.0.1
       gomodule: github.com/wso2/gateway-controllers/policies/interceptor-service@v1
     - name: json-schema-guardrail
       version: v1.0.1
       gomodule: github.com/wso2/gateway-controllers/policies/json-schema-guardrail@v1
     - name: json-xml-mediator
-      version: v1.0.3
+      version: v1.0.4
       gomodule: github.com/wso2/gateway-controllers/policies/json-xml-mediator@v1
     - name: jwt-auth
-      version: v1.2.3
+      version: v1.3.0
       gomodule: github.com/wso2/gateway-controllers/policies/jwt-auth@v1
     - name: llm-cost
       version: v1.1.0
@@ -61,31 +61,31 @@ policies:
       version: v0.9.0
       gomodule: github.com/wso2/gateway-controllers/policies/llm-header-router@v0
     - name: log-message
-      version: v1.0.2
+      version: v1.0.3
       gomodule: github.com/wso2/gateway-controllers/policies/log-message@v1
     - name: mcp-acl-list
-      version: v1.0.2
+      version: v1.0.3
       gomodule: github.com/wso2/gateway-controllers/policies/mcp-acl-list@v1
     - name: mcp-auth
       version: v1.1.2
       gomodule: github.com/wso2/gateway-controllers/policies/mcp-auth@v1
     - name: mcp-authz
-      version: v1.0.2
+      version: v1.1.0
       gomodule: github.com/wso2/gateway-controllers/policies/mcp-authz@v1
     - name: mcp-ratelimit
       version: v1.1.0
       gomodule: github.com/wso2/gateway-controllers/policies/mcp-ratelimit@v1
     - name: mcp-rewrite
-      version: v1.0.2
+      version: v1.0.3
       gomodule: github.com/wso2/gateway-controllers/policies/mcp-rewrite@v1
     - name: model-round-robin
-      version: v1.1.0
+      version: v1.1.1
       gomodule: github.com/wso2/gateway-controllers/policies/model-round-robin@v1
     - name: model-weighted-round-robin
-      version: v1.1.0
+      version: v1.1.1
       gomodule: github.com/wso2/gateway-controllers/policies/model-weighted-round-robin@v1
     - name: opaque-token-auth
-      version: v1.0.0
+      version: v1.0.1
       gomodule: github.com/wso2/gateway-controllers/policies/opaque-token-auth@v1
     - name: openai-to-anthropic-transformer
       version: v0.9.0
@@ -94,7 +94,7 @@ policies:
       version: v0.9.0
       gomodule: github.com/wso2/gateway-controllers/policies/openai-to-azure-openai-transformer@v0
     - name: openai-to-bedrock-transformer
-      version: v0.9.0
+      version: v0.9.1
       gomodule: github.com/wso2/gateway-controllers/policies/openai-to-bedrock-transformer@v0
     - name: openai-to-gemini-transformer
       version: v0.9.0
@@ -103,7 +103,7 @@ policies:
       version: v0.9.0
       gomodule: github.com/wso2/gateway-controllers/policies/openai-to-mistral-transformer@v0
     - name: pii-masking-regex
-      version: v1.0.1
+      version: v1.0.3
       gomodule: github.com/wso2/gateway-controllers/policies/pii-masking-regex@v1
     - name: prompt-compressor
       version: v0.9.0
@@ -115,7 +115,7 @@ policies:
       version: v1.0.1
       gomodule: github.com/wso2/gateway-controllers/policies/prompt-template@v1
     - name: redirect
-      version: v0.9.0
+      version: v0.9.1
       gomodule: github.com/wso2/gateway-controllers/policies/redirect@v0
     - name: regex-guardrail
       version: v1.0.1
@@ -124,13 +124,13 @@ policies:
       version: v1.0.1
       gomodule: github.com/wso2/gateway-controllers/policies/remove-headers@v1
     - name: request-rewrite
-      version: v1.0.1
+      version: v1.0.2
       gomodule: github.com/wso2/gateway-controllers/policies/request-rewrite@v1
     - name: respond
       version: v1.0.1
       gomodule: github.com/wso2/gateway-controllers/policies/respond@v1
     - name: semantic-cache
-      version: v1.0.1
+      version: v1.1.0
       gomodule: github.com/wso2/gateway-controllers/policies/semantic-cache@v1
     - name: semantic-prompt-guard
       version: v1.0.1
@@ -145,7 +145,7 @@ policies:
       version: v1.1.0
       gomodule: github.com/wso2/gateway-controllers/policies/set-headers@v1
     - name: subscription-validation
-      version: v1.0.2
+      version: v1.0.3
       gomodule: github.com/wso2/gateway-controllers/policies/subscription-validation@v1
     - name: token-based-ratelimit
       version: v1.1.0
