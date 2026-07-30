@@ -36,10 +36,14 @@ import {
 } from '@wso2/oxygen-ui';
 import { Plus, Search, X } from '@wso2/oxygen-ui-icons-react';
 import { useGuardrails } from '../../../../../contexts/GuardrailsContext';
-import { getGuardrails } from '../../../../../apis/policyHubApis';
+import { getGuardrails, getPolicies } from '../../../../../apis/policyHubApis';
 import { getGatewayCustomPolicies } from '../../../../../apis/gatewayPolicyApis';
 import type { GatewayCustomPolicy } from '../../../../../apis/gatewayPolicyApis';
-import { GuardrailPill, PolicyCategorySelector } from '../../../../../Components/GuardrailPill';
+import {
+  GuardrailPill,
+  POLICY_CATEGORIES,
+  PolicyCategorySelector,
+} from '../../../../../Components/GuardrailPill';
 import PolicyParameterEditor from '../../../PolicyParameterEditor/PolicyParameterEditor';
 import type {
   ParameterSchema,
@@ -179,11 +183,6 @@ export default function GuardrailsSection({
 
   const fetchDrawerGuardrails = useCallback(
     async (categories: string[], offset: number, append: boolean) => {
-      if (categories.length === 0) {
-        setDrawerGuardrails([]);
-        setHasMoreGuardrails(false);
-        return;
-      }
       if (append) {
         setIsLoadingMoreGuardrails(true);
       } else {
@@ -191,11 +190,16 @@ export default function GuardrailsSection({
       }
       setDrawerGuardrailsError(null);
       try {
-        const response = await getGuardrails(
-          categories.join(','),
-          GUARDRAILS_PAGE_SIZE,
-          offset
-        );
+        const showAll =
+          categories.length === 0 ||
+          categories.length === POLICY_CATEGORIES.length;
+        const response = showAll
+          ? await getPolicies(offset, GUARDRAILS_PAGE_SIZE)
+          : await getGuardrails(
+              categories.join(','),
+              GUARDRAILS_PAGE_SIZE,
+              offset
+            );
         setDrawerGuardrails((prev) =>
           append ? [...prev, ...response.data] : response.data
         );

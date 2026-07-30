@@ -89,20 +89,18 @@ func NewConnection(cfg *config.Database, slogger *slog.Logger) (*DB, error) {
 		// Open SQLite connection to the api_platform.db file.
 		// _loc=UTC forces the driver to interpret and return timestamps in UTC,
 		// matching the time.Now().UTC() values written throughout the codebase.
+		// _foreign_keys=on must be a DSN parameter: go-sqlite3 applies PRAGMA
+		// foreign_keys per physical connection, so a one-shot PRAGMA exec stops
+		// enforcing FKs the moment the pool recycles that connection.
 		dsn := cfg.Path
 		if strings.Contains(dsn, "?") {
-			dsn += "&_loc=UTC"
+			dsn += "&_loc=UTC&_foreign_keys=on"
 		} else {
-			dsn += "?_loc=UTC"
+			dsn += "?_loc=UTC&_foreign_keys=on"
 		}
 		db, err = sql.Open(DriverSQLite, dsn)
 		if err != nil {
 			return nil, fmt.Errorf("failed to open database: %w", err)
-		}
-
-		// Enable foreign key constraints for SQLite
-		if _, err := db.Exec("PRAGMA foreign_keys = ON"); err != nil {
-			return nil, fmt.Errorf("failed to enable foreign keys: %w", err)
 		}
 		slogger.Info("Successfully opened SQLite database connection", "path", cfg.Path)
 	case DriverPostgres, DriverPostgreSQL, DriverPGX:
@@ -156,6 +154,18 @@ func NewConnection(cfg *config.Database, slogger *slog.Logger) (*DB, error) {
 	// Test the connection
 	if err := db.Ping(); err != nil {
 		return nil, fmt.Errorf("failed to ping database: %w", err)
+	}
+
+	// Drawn from the pool, not the DSN-opening connection, so a misconfigured
+	// DSN is caught here rather than only downstream.
+	if strings.ToLower(cfg.Driver) == DriverSQLite {
+		var enabled int
+		if err := db.QueryRow("PRAGMA foreign_keys").Scan(&enabled); err != nil {
+			return nil, fmt.Errorf("failed to verify foreign key enforcement: %w", err)
+		}
+		if enabled != 1 {
+			return nil, fmt.Errorf("foreign key enforcement is not active on the SQLite connection")
+		}
 	}
 
 	// Normalize driver name so that all PostgreSQL aliases are treated the same

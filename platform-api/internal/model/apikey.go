@@ -33,7 +33,7 @@ type APIKey struct {
 	UpdatedAt      time.Time
 	UpdatedBy      string
 	ExpiresAt      *time.Time
-	Issuer         *string // Identifier of the developer portal that provisioned this key; nil if not provided
+	Issuer         *string // Identifier of the API Portal that provisioned this key; nil if not provided
 	AllowedTargets string  // Comma-separated list of allowed gateways; defaults to 'ALL'
 }
 

@@ -170,4 +170,4 @@ dev-policies/
 gateway/target/
 
 # Devportal
-portals/developer-portal/target/
+portals/api-portal/target/

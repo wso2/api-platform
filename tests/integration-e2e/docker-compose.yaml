@@ -25,9 +25,9 @@ services:
       # platform-api no longer auto-provisions its schema on external databases,
       # so init-db.sql applies it from here (mounted from the source tree).
       - ../../platform-api/internal/database/schema.postgres.sql:/schema/schema.postgres.sql:ro
-      # The developer portal likewise pre-loads its schema on postgres (it does
+      # The API Portal likewise pre-loads its schema on postgres (it does
       # not sequelize.sync() on external DBs); init-db.sql applies it too.
-      - ../../portals/developer-portal/database/schema.postgres.sql:/devportal-schema/schema.postgres.sql:ro
+      - ../../portals/api-portal/database/schema.postgres.sql:/api-portal-schema/schema.postgres.sql:ro
       # The gateway-controller no longer auto-migrates its schema on external
       # databases either; init-db.sql applies it to gateway_test / gateway_test2.
       - ../../gateway/gateway-controller/pkg/storage/gateway-controller-db.postgres.sql:/gw-schema/schema.postgres.sql:ro
@@ -108,7 +108,7 @@ services:
       - APIP_CP_AUTH_FILE_ORGANIZATION_UUID=99089a17-72e0-4dd8-a2f4-c8dfbb085295
       - APIP_CP_AUTH_FILE_ORGANIZATION_DISPLAY_NAME=Default
       - APIP_CP_AUTH_FILE_ORGANIZATION_REGION=us
-      # Developer Portal webhook receiver (only the postgres stack runs the devportal).
+      # API Portal webhook receiver (only the postgres stack runs the devportal).
       # Enabled via env so the sqlite/sqlserver stacks — which have no devportal —
       # leave it off. The secret both verifies request signatures and decrypts the
       # encrypted key/token fields, so the suite registers the devportal subscriber
@@ -241,13 +241,13 @@ services:
         condition: service_started
     networks: [e2e]
 
-  # Developer Portal — the consumer-facing plane. Credentials (subscriptions,
+  # API Portal — the consumer-facing plane. Credentials (subscriptions,
   # API keys) generated here are fired as signed webhooks to platform-api's
   # receiver (…/api/internal/v0.9/webhook/events), which persists them and
   # propagates to the gateway data plane over its existing WebSocket sync. 
   # Started on demand by the godog suite (postgres stack only).
-  devportal:
-    image: ${DEVPORTAL_IMAGE:-developer-portal:it-e2e}
+  api-portal:
+    image: ${API_PORTAL_IMAGE:-api-portal:it-e2e}
     depends_on:
       postgres:
         condition: service_healthy
@@ -256,11 +256,11 @@ services:
       platform-api-jwtkeygen:
         condition: service_completed_successfully
     volumes:
-      # The devportal has no automatic APIP_DP_* env override (see
-      # src/config/configLoader.js) — an APIP_DP_* var only applies where this
+      # The devportal has no automatic APIP_AP_* env override (see
+      # src/config/configLoader.js) — an APIP_AP_* var only applies where this
       # config.toml references it via {{ env "..." }}. It replaces the image's
       # shipped configs/config.toml, which fails closed on the security secrets
-      # and wires only the SQLite path key (ignoring APIP_DP_DATABASE_DRIVER etc.).
+      # and wires only the SQLite path key (ignoring APIP_AP_DATABASE_DRIVER etc.).
       - ./devportal-config.toml:/app/configs/config.toml:ro
       # Same RS256 keypair volume platform-api signs with — the devportal reads
       # only jwt_public.pem to verify those tokens. A subpath mount exposes just
@@ -268,7 +268,7 @@ services:
       # (defence in depth on top of its 0600/uid-10001 permissions).
       - type: volume
         source: platform-api-jwt-keys
-        target: /etc/devportal/keys/jwt_public.pem
+        target: /etc/api-portal/keys/jwt_public.pem
         read_only: true
         volume:
           subpath: jwt_public.pem
@@ -276,25 +276,25 @@ services:
       # Its own database on the shared postgres server (created by init-db.sql).
       # Postgres, not the devportal's default SQLite: the org-update path needs
       # UPDATE ... RETURNING, which SQLite doesn't support. Schema auto-migrates.
-      - APIP_DP_DATABASE_DRIVER=postgres
-      - APIP_DP_DATABASE_HOST=postgres
-      - APIP_DP_DATABASE_PORT=5432
-      - APIP_DP_DATABASE_NAME=devportal
-      - APIP_DP_DATABASE_USER=apip
-      - APIP_DP_DATABASE_PASSWORD=apip
+      - APIP_AP_DATABASE_DRIVER=postgres
+      - APIP_AP_DATABASE_HOST=postgres
+      - APIP_AP_DATABASE_PORT=5432
+      - APIP_AP_DATABASE_NAME=api_portal
+      - APIP_AP_DATABASE_USER=apip
+      - APIP_AP_DATABASE_PASSWORD=apip
       # Plain HTTP to avoid the self-signed cert dance in tests (TLS disabled).
-      - APIP_DP_SERVER_HTTPS_ENABLED=false
+      - APIP_AP_SERVER_HTTPS_ENABLED=false
       # The single org this devportal serves; seeded on startup. Must match the
       # platform-api org handle — the webhook resolves the control-plane org by
       # handle via org.ref_id, and a login whose token names another org is rejected.
-      - APIP_DP_ORGANIZATION_HANDLE=default
-      - APIP_DP_LOGGING_CONSOLE_ONLY=true
+      - APIP_AP_ORGANIZATION_HANDLE=default
+      - APIP_AP_LOGGING_CONSOLE_ONLY=true
       # platform-api signs its tokens with RS256; the devportal verifies them
       # against jwt_public.pem from the shared keypair volume mounted above
       # (auth.local.public_key_path in devportal-config.toml). There is no shared
       # HMAC secret. tls_skip_verify covers platform-api's self-signed cert.
-      - APIP_DP_AUTH_LOCAL_PLATFORM_API_URL=https://platform-api:9243
-      - APIP_DP_AUTH_LOCAL_TLS_SKIP_VERIFY=true
+      - APIP_AP_AUTH_LOCAL_PLATFORM_API_URL=https://platform-api:9243
+      - APIP_AP_AUTH_LOCAL_TLS_SKIP_VERIFY=true
       # The webhook delivery worker POSTs over raw https with the default agent,
       # and platform-api serves a self-signed cert here. auth.local.tls_skip_verify
       # only covers the auth client, so disable TLS verification globally for this
@@ -303,12 +303,12 @@ services:
       # Stable AES-256-GCM key (64 hex) for encrypting the webhook subscriber
       # secret at rest; must not change across restarts or the stored secret
       # becomes undecryptable and outbound requests go unsigned.
-      - APIP_DP_SECURITY_ENCRYPTION_KEY=0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef
+      - APIP_AP_SECURITY_ENCRYPTION_KEY=0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef
       # express-session signing secret (64 hex). Required — the devportal fails
       # closed at startup if it doesn't resolve. Fixed test-only value.
-      - APIP_DP_SECURITY_SESSION_SECRET=fedcba9876543210fedcba9876543210fedcba9876543210fedcba9876543210
+      - APIP_AP_SECURITY_SESSION_SECRET=fedcba9876543210fedcba9876543210fedcba9876543210fedcba9876543210
     ports:
-      - "${DP_HOST_PORT:-9543}:9543"
+      - "${AP_HOST_PORT:-9543}:9543"
     networks: [e2e]
 
 networks:

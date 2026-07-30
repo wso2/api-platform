@@ -1,0 +1,8 @@
+{
+  "ext": "js,hbs,yaml,json,css",
+  "ignore": [
+    "api-portal.db",
+    "node_modules/",
+    "*.test.js"
+  ]
+}

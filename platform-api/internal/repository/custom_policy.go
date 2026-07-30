@@ -191,10 +191,15 @@ func (r *CustomPolicyRepo) DeleteCustomPolicy(orgUUID, name, version string) err
 	return err
 }
 
-// CountCustomPolicyUsages returns the number of APIs that reference this custom policy via the join table.
+// CountCustomPolicyUsages returns the number of live artifacts referencing this
+// policy; usage rows whose artifact no longer exists are not counted.
 func (r *CustomPolicyRepo) CountCustomPolicyUsages(policyUUID string) (int, error) {
 	var count int
-	query := `SELECT COUNT(*) FROM gateway_custom_policy_usages WHERE policy_uuid = ?`
+	query := `
+		SELECT COUNT(*) FROM gateway_custom_policy_usages u
+		WHERE u.policy_uuid = ?
+		AND EXISTS (SELECT 1 FROM artifacts a WHERE a.uuid = u.artifact_uuid)
+	`
 	err := r.db.QueryRow(r.db.Rebind(query), policyUUID).Scan(&count)
 	return count, err
 }
@@ -232,11 +237,18 @@ func (r *CustomPolicyRepo) DeleteCustomPolicyUsage(policyUUID, apiUUID string) e
 	return err
 }
 
+// deleteCustomPolicyUsagesTx removes every usage row for an artifact; shared
+// by replaceCustomPolicyUsagesTx and ArtifactRepo.Delete.
+func deleteCustomPolicyUsagesTx(tx *sql.Tx, db *database.DB, artifactUUID string) error {
+	_, err := tx.Exec(db.Rebind(`DELETE FROM gateway_custom_policy_usages WHERE artifact_uuid = ?`), artifactUUID)
+	return err
+}
+
 // replaceCustomPolicyUsagesTx atomically replaces every custom-policy usage for
 // an artifact. It is used from artifact persistence transactions so the artifact
 // configuration and its deletion guards cannot diverge.
 func replaceCustomPolicyUsagesTx(tx *sql.Tx, db *database.DB, artifactUUID string, policyUUIDs []string) error {
-	if _, err := tx.Exec(db.Rebind(`DELETE FROM gateway_custom_policy_usages WHERE artifact_uuid = ?`), artifactUUID); err != nil {
+	if err := deleteCustomPolicyUsagesTx(tx, db, artifactUUID); err != nil {
 		return err
 	}
 	seen := make(map[string]struct{}, len(policyUUIDs))
@@ -252,8 +264,32 @@ func replaceCustomPolicyUsagesTx(tx *sql.Tx, db *database.DB, artifactUUID strin
 	return nil
 }
 
-// DeleteCustomPolicyIfUnused atomically deletes the policy only when it has no active usages.
-func (r *CustomPolicyRepo) DeleteCustomPolicyIfUnused(orgUUID, policyUUID string) error {
+// DeleteCustomPolicyIfUnused atomically deletes the policy if unused, purging
+// any orphaned usage rows first (see ArtifactRepo.Delete). Returns the number
+// of orphans purged, for the caller to log.
+func (r *CustomPolicyRepo) DeleteCustomPolicyIfUnused(orgUUID, policyUUID string) (int, error) {
+	tx, err := r.db.Begin()
+	if err != nil {
+		return 0, err
+	}
+	defer tx.Rollback()
+
+	purgeQuery := `
+		DELETE FROM gateway_custom_policy_usages
+		WHERE policy_uuid = ?
+		AND NOT EXISTS (
+			SELECT 1 FROM artifacts WHERE artifacts.uuid = gateway_custom_policy_usages.artifact_uuid
+		)
+	`
+	purgeResult, err := tx.Exec(r.db.Rebind(purgeQuery), policyUUID)
+	if err != nil {
+		return 0, err
+	}
+	purged, err := purgeResult.RowsAffected()
+	if err != nil {
+		return 0, err
+	}
+
 	deleteQuery := `
 		DELETE FROM gateway_custom_policies
 		WHERE organization_uuid = ? AND uuid = ?
@@ -261,28 +297,31 @@ func (r *CustomPolicyRepo) DeleteCustomPolicyIfUnused(orgUUID, policyUUID string
 			SELECT 1 FROM gateway_custom_policy_usages WHERE policy_uuid = ?
 		)
 	`
-	result, err := r.db.Exec(r.db.Rebind(deleteQuery), orgUUID, policyUUID, policyUUID)
+	result, err := tx.Exec(r.db.Rebind(deleteQuery), orgUUID, policyUUID, policyUUID)
 	if err != nil {
-		return err
+		return 0, err
 	}
 
 	rows, err := result.RowsAffected()
 	if err != nil {
-		return err
+		return 0, err
 	}
 	if rows == 1 {
-		return nil
+		return int(purged), tx.Commit()
 	}
 
 	// Zero rows: diagnose whether the policy doesn't exist or is in use.
 	// This read is safe — it is no longer guarding the deletion itself.
 	var count int
 	checkQuery := `SELECT COUNT(*) FROM gateway_custom_policies WHERE organization_uuid = ? AND uuid = ?`
-	if err := r.db.QueryRow(r.db.Rebind(checkQuery), orgUUID, policyUUID).Scan(&count); err != nil {
-		return err
+	if err := tx.QueryRow(r.db.Rebind(checkQuery), orgUUID, policyUUID).Scan(&count); err != nil {
+		return 0, err
 	}
 	if count == 0 {
-		return apperror.CustomPolicyNotFound.New()
+		return 0, apperror.CustomPolicyNotFound.New()
 	}
-	return apperror.PolicyInUse.New()
+	if err := tx.Commit(); err != nil {
+		return 0, err
+	}
+	return int(purged), apperror.PolicyInUse.New()
 }

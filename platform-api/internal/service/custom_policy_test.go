@@ -99,6 +99,7 @@ type mockCustomPolicyRepo struct {
 	listPolicies              []*model.CustomPolicy
 	listErr                   error
 	deleteIfUnusedErr         error
+	deleteIfUnusedPurged      int
 	countUsages               int
 	countUsagesErr            error
 	insertCalled              bool
@@ -134,9 +135,9 @@ func (m *mockCustomPolicyRepo) ListCustomPolicyByOrganization(orgUUID string) ([
 	return m.listPolicies, m.listErr
 }
 
-func (m *mockCustomPolicyRepo) DeleteCustomPolicyIfUnused(orgUUID, policyUUID string) error {
+func (m *mockCustomPolicyRepo) DeleteCustomPolicyIfUnused(orgUUID, policyUUID string) (int, error) {
 	m.deleteIfUnusedCalled = true
-	return m.deleteIfUnusedErr
+	return m.deleteIfUnusedPurged, m.deleteIfUnusedErr
 }
 
 func (m *mockCustomPolicyRepo) CountCustomPolicyUsages(policyUUID string) (int, error) {

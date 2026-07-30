@@ -10,13 +10,13 @@
 #
 # Shared quickstart setup script for both the AI Workspace and the Developer
 # Portal quickstarts (and their standalone distribution zips). Both stacks
-# run the same three services — platform-api, ai-workspace, developer-portal —
+# run the same three services — platform-api, ai-workspace, api-portal —
 # behind docker-compose profiles, so this single script provisions everything
 # either stack (or both at once) might need:
 #
 #   - a self-signed TLS certificate shared by all three services
-#   - devportal's own encryption key and session secret, written to
-#     resources/keys/devportal-encryption.key and devportal-session-secret and
+#   - API Portal's own encryption key and session secret, written to
+#     resources/keys/api-portal-encryption.key and api-portal-session-secret and
 #     read by config.toml via {{ file }} — never stored as an env var
 #   - the Platform API's at-rest encryption key, written to resources/keys/encryption.key
 #     and read by config.toml via {{ file }} — like the JWT keypair below, never stored
@@ -31,7 +31,7 @@
 #     Read by the docker compose CLI (not by the containers) to prefix every
 #     container, network, and volume, so another extraction of the same zip on
 #     this host cannot bind to this stack's volumes — the Platform API's
-#     database and the Developer Portal's data.
+#     database and the API Portal's data.
 #
 # This is a ONE-TIME step. It never runs as part of container startup — every
 # service fails closed at startup if a required secret is missing, rather
@@ -41,12 +41,12 @@
 # and admin credentials. --force deliberately does NOT touch the at-rest
 # encryption key — see --rotate-encryption-key below.
 #
-# Usage (run from either portals/ai-workspace or portals/developer-portal, or
+# Usage (run from either portals/ai-workspace or portals/api-portal, or
 # from the root of a standalone distribution zip — same script, same layout):
 #   ../scripts/setup.sh          # inside the repo checkout
 #   ./scripts/setup.sh     # inside a distribution zip (copied there by `make dist`)
 #   docker compose up -d   # uses this pack's default profiles, set via COMPOSE_PROFILES in ./.env
-#   docker compose --profile <ai-workspace|developer-portal|all> up -d  # override
+#   docker compose --profile <ai-workspace|api-portal|all> up -d  # override
 #
 # Flags:
 #   --force                   regenerate TLS cert, JWT signing keypair, and
@@ -79,15 +79,15 @@ ROTATE_ENCRYPTION_KEY=false
 # services for this pack. Each pack's `make dist` target bakes in its own
 # value here via sed when it copies this shared script into the distribution
 # zip (see the `dist` target in portals/ai-workspace/Makefile and
-# portals/developer-portal/Makefile). Left at this placeholder, it falls back
-# to detect_pack()'s topology-based detection below, which is what happens
+# portals/api-portal/Makefile). Left at this placeholder, it falls back
+# to detect_pack()'s directory-name detection below, which is what happens
 # when this script runs straight out of a repo checkout (not a dist zip).
 DEFAULT_COMPOSE_PROFILES="__DEFAULT_COMPOSE_PROFILES__"
-# Which pack this is ("developer-portal" or "ai-workspace") — `make dist`
+# Which pack this is ("api-portal" or "ai-workspace") — `make dist`
 # bakes this in the same way as DEFAULT_COMPOSE_PROFILES above, so a shipped
 # distribution zip never needs to detect it at runtime. Left at this
-# placeholder, detect_pack() below determines it from docker-compose.yaml's
-# actual service topology instead.
+# placeholder, detect_pack() below falls back to this pack's own directory
+# name instead (only reachable from a repo checkout).
 DEFAULT_PACK_NAME="__DEFAULT_PACK_NAME__"
 # This pack's version, baked in by `make dist` the same way as the two values
 # above. Only feeds the generated COMPOSE_PROJECT_NAME. Left at this
@@ -112,7 +112,7 @@ Usage: ./setup.sh [--force] [--certs-only] [--rotate-encryption-key] [--profiles
   --certs-only              generate only the TLS certificate (used by
                              `make bff-run`)
   --rotate-encryption-key   DESTRUCTIVE: replace resources/keys/encryption.key
-                             and resources/keys/devportal-encryption.key even if
+                             and resources/keys/api-portal-encryption.key even if
                              they already exist. Any data encrypted
                              under the old key(s) (e.g. stored secrets) becomes
                              permanently unreadable. Requires interactive
@@ -130,7 +130,7 @@ Compose project name (data isolation):
   Setup writes COMPOSE_PROJECT_NAME into .env on the first run, unique to this copy of
   the distribution. It prefixes every container, network, and volume, so another
   extraction of this zip on the same host cannot bind to this stack's volumes (the
-  Platform API's database, the Developer Portal's data).
+  Platform API's database, the API Portal's data).
   The name is pinned once and never changes afterwards - not on a rerun, not with
   --force, not with --rotate-encryption-key. A new name would leave the running data
   behind in the old volumes and start the stack with an empty database. Deleting .env
@@ -157,7 +157,7 @@ fail() { echo "[setup] ERROR: $*" >&2; exit 1; }
 
 # This script is invoked from a caller's working directory that has its own
 # docker-compose.yaml one level below it (portals/ai-workspace, or
-# portals/developer-portal, or the root of a distribution zip via
+# portals/api-portal, or the root of a distribution zip via
 # scripts/setup.sh) — never from this script's own directory. Look at $PWD
 # first, then fall back to a sibling/parent of this file, so the same file
 # works whether it's called as `../scripts/setup.sh` (dev checkout) or
@@ -169,7 +169,7 @@ elif [[ -f "$THIS_DIR/docker-compose.yaml" ]]; then
 elif [[ -f "$THIS_DIR/../docker-compose.yaml" ]]; then
     ROOT_DIR="$(cd "$THIS_DIR/.." && pwd)"
 else
-    fail "could not find docker-compose.yaml in the current directory, next to this script, or its parent directory. Run this from portals/ai-workspace, portals/developer-portal, or a distribution zip's root."
+    fail "could not find docker-compose.yaml in the current directory, next to this script, or its parent directory. Run this from portals/ai-workspace, portals/api-portal, or a distribution zip's root."
 fi
 cd "$ROOT_DIR"
 
@@ -189,7 +189,7 @@ CERTS_DIR="$ROOT_DIR/resources/certificates"
 KEYS_DIR="$ROOT_DIR/resources/keys"
 
 # Every service image runs as this fixed non-root UID (see platform-api,
-# ai-workspace, and developer-portal Dockerfiles).
+# ai-workspace, and api-portal Dockerfiles).
 CONTAINER_UID=10001
 
 # Non-sensitive files (public cert, public key) — safe to leave world-readable
@@ -219,7 +219,7 @@ restrict_secret_file() {
 }
 
 # One-time confirmation gate for --rotate-encryption-key, shared by both the
-# devportal and Platform API at-rest encryption keys (rotating either makes
+# API Portal and Platform API at-rest encryption keys (rotating either makes
 # data encrypted under it permanently unreadable) — prompts at most once per
 # run even though both keys are provisioned separately below.
 ROTATION_CONFIRMED=false
@@ -277,18 +277,19 @@ set_env_var() {
 # Which pack's docker-compose.yaml this is — a single source of truth reused
 # both to resolve the default COMPOSE_PROFILES value below and to print the
 # right profile combinations at the end of this script. Prefers the value
-# `make dist` baked into DEFAULT_PACK_NAME; falls back to the compose file's
-# own service topology — each pack's mandatory service is uniquely named
-# ("devportal" vs "ai-workspace"/"developer-portal"), which is a far more
-# stable signal than matching a comment's exact wording.
+# `make dist` baked into DEFAULT_PACK_NAME; falls back to this pack's own
+# directory name, since both packs ship the same services and differ only in
+# which one is their headline component.
 detect_pack() {
     if [[ "$DEFAULT_PACK_NAME" != "__DEFAULT_PACK_NAME__" ]]; then
         echo "$DEFAULT_PACK_NAME"
         return
     fi
-    if grep -q '^  devportal:' "$ROOT_DIR/docker-compose.yaml" 2>/dev/null; then
-        echo "developer-portal"
-    elif grep -q '^  developer-portal:' "$ROOT_DIR/docker-compose.yaml" 2>/dev/null; then
+    local dir
+    dir="$(basename "$ROOT_DIR")"
+    if [[ "$dir" == "api-portal" ]]; then
+        echo "api-portal"
+    elif [[ "$dir" == "ai-workspace" ]]; then
         echo "ai-workspace"
     else
         echo "unknown"
@@ -452,7 +453,7 @@ elif [[ "$DEFAULT_COMPOSE_PROFILES" != "__DEFAULT_COMPOSE_PROFILES__" ]]; then
 else
     case "$PACK" in
         ai-workspace) COMPOSE_PROFILES_VALUE="ai-workspace,platform-api" ;;
-        developer-portal) COMPOSE_PROFILES_VALUE="developer-portal,platform-api" ;;
+        api-portal) COMPOSE_PROFILES_VALUE="api-portal,platform-api" ;;
         *) COMPOSE_PROFILES_VALUE="" ;;
     esac
 fi
@@ -481,7 +482,7 @@ else
     openssl req -x509 -newkey rsa:2048 -sha256 -days 3650 -nodes \
         -keyout "$CERTS_DIR/key.pem" -out "$CERTS_DIR/cert.pem" \
         -subj "/O=WSO2 API Platform/CN=localhost" \
-        -addext "subjectAltName=DNS:localhost,DNS:*.localhost,DNS:platform-api,DNS:ai-workspace,DNS:developer-portal,DNS:devportal,DNS:host.docker.internal,IP:127.0.0.1" \
+        -addext "subjectAltName=DNS:localhost,DNS:*.localhost,DNS:platform-api,DNS:ai-workspace,DNS:api-portal,DNS:host.docker.internal,IP:127.0.0.1" \
         >/dev/null 2>&1
     chmod "$FILE_MODE" "$CERTS_DIR/cert.pem"
     restrict_secret_file "$CERTS_DIR/key.pem"
@@ -498,43 +499,43 @@ touch "$ENV_FILE"
 # protection, not container-UID read access via restrict_secret_file.
 chmod 600 "$ENV_FILE"
 
-log "Provisioning devportal encryption key and session secret ..."
+log "Provisioning API Portal encryption key and session secret ..."
 # Written to files (not api-platform.env) and read by config.toml via
-# {{ file "/etc/devportal/keys/encryption.key" }} / {{ file ".../session-secret" }}
+# {{ file "/etc/api-portal/keys/encryption.key" }} / {{ file ".../session-secret" }}
 # — the same pattern as the Platform API's at-rest encryption key below, and
 # for the same reason: a value that never appears in `docker inspect`, a
 # process environment dump, or api-platform.env is materially harder to
-# exfiltrate than an env var. resources/keys is mounted into the devportal
-# container at /etc/devportal/keys (see docker-compose.yaml), which is on
-# devportal's {{ file }} allowlist.
+# exfiltrate than an env var. resources/keys is mounted into the API Portal
+# container at /etc/api-portal/keys (see docker-compose.yaml), which is on
+# API Portal's {{ file }} allowlist.
 #
-# devportal-encryption.key encrypts subscription/webhook secrets at rest
+# api-portal-encryption.key encrypts subscription/webhook secrets at rest
 # (see src/dao/subscriptionDao.js, webhookSubscriberDao.js) — exactly like
 # the Platform API's encryption.key below, so it is preserved across reruns
 # and rotated ONLY via --rotate-encryption-key, never by the generic --force.
-# devportal-session-secret only signs session cookies — rotating it merely
+# api-portal-session-secret only signs session cookies — rotating it merely
 # invalidates existing sessions, so it follows --force like the TLS cert/JWT
 # keypair.
-if [[ -f "$KEYS_DIR/devportal-encryption.key" && "$ROTATE_ENCRYPTION_KEY" == true ]]; then
-    confirm_rotation_once "$KEYS_DIR/devportal-encryption.key"
-    openssl rand -hex 32 > "$KEYS_DIR/devportal-encryption.key"
-    restrict_secret_file "$KEYS_DIR/devportal-encryption.key"
-    log "  - devportal encryption key ROTATED at $KEYS_DIR/devportal-encryption.key"
-elif [[ -f "$KEYS_DIR/devportal-encryption.key" ]]; then
-    log "  - $KEYS_DIR/devportal-encryption.key already exists, leaving as-is (pass --rotate-encryption-key to replace it)"
+if [[ -f "$KEYS_DIR/api-portal-encryption.key" && "$ROTATE_ENCRYPTION_KEY" == true ]]; then
+    confirm_rotation_once "$KEYS_DIR/api-portal-encryption.key"
+    openssl rand -hex 32 > "$KEYS_DIR/api-portal-encryption.key"
+    restrict_secret_file "$KEYS_DIR/api-portal-encryption.key"
+    log "  - API Portal encryption key ROTATED at $KEYS_DIR/api-portal-encryption.key"
+elif [[ -f "$KEYS_DIR/api-portal-encryption.key" ]]; then
+    log "  - $KEYS_DIR/api-portal-encryption.key already exists, leaving as-is (pass --rotate-encryption-key to replace it)"
 else
     mkdir -p "$KEYS_DIR"
-    openssl rand -hex 32 > "$KEYS_DIR/devportal-encryption.key"
-    restrict_secret_file "$KEYS_DIR/devportal-encryption.key"
-    log "  - devportal encryption key generated at $KEYS_DIR/devportal-encryption.key"
+    openssl rand -hex 32 > "$KEYS_DIR/api-portal-encryption.key"
+    restrict_secret_file "$KEYS_DIR/api-portal-encryption.key"
+    log "  - API Portal encryption key generated at $KEYS_DIR/api-portal-encryption.key"
 fi
-if [[ "$FORCE" == false && -f "$KEYS_DIR/devportal-session-secret" ]]; then
-    log "  - $KEYS_DIR/devportal-session-secret already exists, leaving as-is"
+if [[ "$FORCE" == false && -f "$KEYS_DIR/api-portal-session-secret" ]]; then
+    log "  - $KEYS_DIR/api-portal-session-secret already exists, leaving as-is"
 else
     mkdir -p "$KEYS_DIR"
-    openssl rand -hex 32 > "$KEYS_DIR/devportal-session-secret"
-    restrict_secret_file "$KEYS_DIR/devportal-session-secret"
-    log "  - devportal session secret generated at $KEYS_DIR/devportal-session-secret"
+    openssl rand -hex 32 > "$KEYS_DIR/api-portal-session-secret"
+    restrict_secret_file "$KEYS_DIR/api-portal-session-secret"
+    log "  - API Portal session secret generated at $KEYS_DIR/api-portal-session-secret"
 fi
 
 log "Provisioning Platform API JWT signing keypair (RS256) ..."
@@ -650,15 +651,15 @@ if [[ -n "$COMPOSE_PROFILES_VALUE" ]]; then
 else
     echo "    docker compose up -d                                                    # no default set — pass --profile explicitly"
 fi
-if [[ "$PACK" == "developer-portal" ]]; then
-    echo "    docker compose --profile developer-portal --profile ai-workspace --profile platform-api up -d  # Developer Portal + AI Workspace + Platform API"
-    echo "    docker compose --profile all up -d                                                              # AI Workspace + Developer Portal + Platform API"
+if [[ "$PACK" == "api-portal" ]]; then
+    echo "    docker compose --profile api-portal --profile ai-workspace --profile platform-api up -d  # API Portal + AI Workspace + Platform API"
+    echo "    docker compose --profile all up -d                                                              # AI Workspace + API Portal + Platform API"
     echo "    docker compose --profile platform-api up -d                                                     # Platform API only"
 elif [[ "$PACK" == "ai-workspace" ]]; then
-    echo "    docker compose --profile ai-workspace --profile developer-portal --profile platform-api up -d  # AI Workspace + Developer Portal + Platform API"
-    echo "    docker compose --profile all up -d                                                             # AI Workspace + Developer Portal + Platform API"
+    echo "    docker compose --profile ai-workspace --profile api-portal --profile platform-api up -d  # AI Workspace + API Portal + Platform API"
+    echo "    docker compose --profile all up -d                                                             # AI Workspace + API Portal + Platform API"
     echo "    docker compose --profile platform-api up -d                                                    # Platform API only"
 else
-    echo "    docker compose --profile <ai-workspace|developer-portal|all|platform-api> up -d"
+    echo "    docker compose --profile <ai-workspace|api-portal|all|platform-api> up -d"
 fi
 echo

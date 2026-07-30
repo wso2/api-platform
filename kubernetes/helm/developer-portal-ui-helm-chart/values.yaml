@@ -9,7 +9,7 @@
 #              umbrella; the block below is the STANDALONE default, overridden
 #              when nested.
 #   (rest)     This component's own settings. Structured config here is rendered
-#              into APIP_DP_* environment variables on the container.
+#              into APIP_AP_* environment variables on the container.
 #
 # `enabled` is read by the umbrella's dependency condition (ignored standalone).
 
@@ -49,9 +49,9 @@ image:
 imagePullSecrets: []
 
 # ----------------------------------------------------------------------------
-# config — rendered into /app/configs/config.toml under [developer_portal.*]
-# (portals/developer-portal/configs/config-template.toml). Non-secret values are
-# literals; secrets come from the referenced Secret via APIP_DP_* env tokens.
+# config — rendered into /app/configs/config.toml under [api_portal.*]
+# (portals/api-portal/configs/config-template.toml). Non-secret values are
+# literals; secrets come from the referenced Secret via APIP_AP_* env tokens.
 # ----------------------------------------------------------------------------
 config:
   server:
@@ -193,11 +193,11 @@ configToml: ""
 secrets:
   existingSecret: ""
   keys:
-    encryptionKey: ENCRYPTION_KEY          # → APIP_DP_SECURITY_ENCRYPTION_KEY
-    sessionSecret: SESSION_SECRET          # → APIP_DP_SECURITY_SESSION_SECRET
-    databasePassword: DATABASE_PASSWORD    # → APIP_DP_DATABASE_PASSWORD (postgres)
-    idpClientSecret: IDP_CLIENT_SECRET     # → APIP_DP_AUTH_IDP_CLIENT_SECRET (idp mode)
-    serviceApiKeyValue: SERVICE_API_KEY_VALUE  # → APIP_DP_SECURITY_SERVICE_API_KEY_VALUE
+    encryptionKey: ENCRYPTION_KEY          # → APIP_AP_SECURITY_ENCRYPTION_KEY
+    sessionSecret: SESSION_SECRET          # → APIP_AP_SECURITY_SESSION_SECRET
+    databasePassword: DATABASE_PASSWORD    # → APIP_AP_DATABASE_PASSWORD (postgres)
+    idpClientSecret: IDP_CLIENT_SECRET     # → APIP_AP_AUTH_IDP_CLIENT_SECRET (idp mode)
+    serviceApiKeyValue: SERVICE_API_KEY_VALUE  # → APIP_AP_SECURITY_SERVICE_API_KEY_VALUE
     publicKey: jwt_public.pem              # mounted file → config.auth.publicKeyPath
   # Flip to true ONLY if the referenced Secret actually carries that optional key,
   # so the deployment wires it. generate-secrets.sh sets these for you in the
@@ -226,7 +226,7 @@ service:
 containerPort: 3000
 
 # ----------------------------------------------------------------------------
-# tls — certificate for the portal's HTTPS listener (APIP_DP_TLS_*)
+# tls — certificate for the portal's HTTPS listener (APIP_AP_TLS_*)
 # ----------------------------------------------------------------------------
 tls:
   # How the portal's HTTPS listener gets its certificate. The image does NOT
@@ -237,7 +237,7 @@ tls:
   # NOTE: "selfSigned" is NOT supported — the image has no in-container cert
   # generation, so the chart rejects it at render time (fail-fast, like platform-api).
   certificateProvider: cert-manager
-  # Where certs are mounted / read from (matches APIP_DP_TLS_CERTFILE etc.).
+  # Where certs are mounted / read from (matches APIP_AP_TLS_CERTFILE etc.).
   mountPath: /app/certs
   certManager:
     create: true

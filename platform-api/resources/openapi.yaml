@@ -4895,7 +4895,7 @@ components:
           description: Optional expiration timestamp
         issuer:
           type: string
-          description: Optional identifier of the developer portal that provisioned this key
+          description: Optional identifier of the API Portal that provisioned this key
           example: "api-platform-devportal"
         allowedTargets:
           type: string
@@ -6248,7 +6248,7 @@ components:
           description: Optional expiration duration
         issuer:
           type: string
-          description: Identifier of the developer portal that provisioned this API key. Null if not provided.
+          description: Identifier of the API Portal that provisioned this API key. Null if not provided.
           nullable: true
           example: "api-platform-devportal"
 
@@ -8107,7 +8107,7 @@ components:
           example: "2026-12-31T23:59:59Z"
         issuer:
           type: string
-          description: Identifier of the developer portal that provisioned this API key. Null if not provided.
+          description: Identifier of the API Portal that provisioned this API key. Null if not provided.
           nullable: true
           example: "api-platform-devportal"
         allowedTargets:
@@ -8166,7 +8166,7 @@ components:
           example: "2026-12-31T23:59:59Z"
         issuer:
           type: string
-          description: Identifier of the developer portal that provisioned this API key. Null if not provided.
+          description: Identifier of the API Portal that provisioned this API key. Null if not provided.
           nullable: true
           example: "api-platform-devportal"
         allowedTargets:

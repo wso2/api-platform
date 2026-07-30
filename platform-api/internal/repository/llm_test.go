@@ -95,6 +95,77 @@ func TestLLMProviderRepoUpdateWithCustomPolicyUsagesRollsBackOnInsertFailure(t *
 	}
 }
 
+// TestLLMProviderRepoDeleteRemovesCustomPolicyUsagesWithoutForeignKeys verifies
+// deleting a provider releases its custom-policy usage rows even with FK
+// enforcement off, i.e. without relying on ON DELETE CASCADE.
+func TestLLMProviderRepoDeleteRemovesCustomPolicyUsagesWithoutForeignKeys(t *testing.T) {
+	db, cleanup := setupTestDBWithoutForeignKeys(t)
+	t.Cleanup(cleanup)
+
+	const (
+		orgUUID     = "org-policy-delete"
+		projectUUID = "project-policy-delete"
+	)
+	createTestOrganizationAndProject(t, db, orgUUID, projectUUID)
+
+	templateRepo := NewLLMProviderTemplateRepo(db)
+	template := &model.LLMProviderTemplate{
+		OrganizationUUID: orgUUID,
+		ID:               "policy-delete-template",
+		GroupID:          "policy-delete-template",
+		Name:             "Policy Delete Template",
+		ManagedBy:        "organization",
+		Version:          "v1.0",
+	}
+	if err := templateRepo.Create(template); err != nil {
+		t.Fatalf("create template: %v", err)
+	}
+
+	customPolicyRepo := NewCustomPolicyRepo(db)
+	policy := &model.CustomPolicy{
+		UUID:             "policy-locked-by-provider",
+		OrganizationUUID: orgUUID,
+		Name:             "custom-policy-delete",
+		Version:          "v1.0.0",
+	}
+	if err := customPolicyRepo.InsertCustomPolicy(policy); err != nil {
+		t.Fatalf("create custom policy: %v", err)
+	}
+
+	providerRepo := NewLLMProviderRepo(db)
+	provider := &model.LLMProvider{
+		OrganizationUUID: orgUUID,
+		ID:               "policy-delete-provider",
+		Name:             "Provider",
+		Version:          "v1.0",
+		TemplateUUID:     template.UUID,
+	}
+	if err := providerRepo.CreateWithCustomPolicyUsages(provider, []string{policy.UUID}); err != nil {
+		t.Fatalf("create provider: %v", err)
+	}
+
+	// Sanity check: the policy is locked while the provider references it.
+	if _, err := customPolicyRepo.DeleteCustomPolicyIfUnused(orgUUID, policy.UUID); err == nil {
+		t.Fatalf("DeleteCustomPolicyIfUnused() before provider delete = nil error, want PolicyInUse")
+	}
+
+	if err := providerRepo.Delete(provider.ID, orgUUID); err != nil {
+		t.Fatalf("delete provider: %v", err)
+	}
+
+	usages, err := customPolicyRepo.GetCustomPolicyUsagesByAPIUUID(provider.UUID)
+	if err != nil {
+		t.Fatalf("get usages after provider delete: %v", err)
+	}
+	if len(usages) != 0 {
+		t.Fatalf("policy usages after provider delete = %v, want none", usages)
+	}
+
+	if purged, err := customPolicyRepo.DeleteCustomPolicyIfUnused(orgUUID, policy.UUID); err != nil {
+		t.Fatalf("DeleteCustomPolicyIfUnused() after provider delete: %v (purged=%d)", err, purged)
+	}
+}
+
 // TestLLMProviderTemplateRepo_GetByID_ExactVersion verifies that GetByID honours
 // the exact handle it is given (rather than always returning the family's latest
 // version), and returns nil for an unknown handle. This is the resolution that

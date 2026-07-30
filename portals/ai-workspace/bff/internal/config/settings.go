@@ -28,7 +28,7 @@ import (
 )
 
 // EnvPrefix namespaces the AI Workspace's environment variables. It mirrors the
-// Platform API's APIP_CP_ and the Developer Portal's APIP_DP_.
+// Platform API's APIP_CP_ and the API Portal's APIP_AP_.
 //
 // It is a naming convention, not a binding: the environment reaches the config only
 // through the {{ env "NAME" }} tokens written in config.toml, which name the variable
@@ -90,7 +90,7 @@ func loadConfigKoanf(tomlPaths ...string) (*koanf.Koanf, error) {
 
 	// Narrow to this component's own subtree BEFORE interpolating, so a shared
 	// multi-component config file (one that also carries [platform_api] or
-	// [developer_portal] sections) does not force the AI Workspace to resolve
+	// [api_portal] sections) does not force the AI Workspace to resolve
 	// another component's {{ env }}/{{ file }} tokens — those reference env vars
 	// and allowlisted paths that only exist in that other component's container,
 	// and resolving them here would fail closed. Cut promotes the ai_workspace.*

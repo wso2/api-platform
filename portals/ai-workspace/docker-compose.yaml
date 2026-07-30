@@ -63,9 +63,9 @@ services:
       retries: 3
 
   developer-portal:
-    image: ghcr.io/wso2/api-platform/developer-portal:1.0.0-SNAPSHOT
+    image: ghcr.io/wso2/api-platform/api-portal:1.0.0-SNAPSHOT
     restart: unless-stopped
-    profiles: ["developer-portal", "all"]
+    profiles: ["api-portal", "all"]
     depends_on:
       platform-api:
         condition: service_healthy
@@ -75,11 +75,11 @@ services:
         format: raw
     volumes:
       - ./configs/config.toml:/app/configs/config.toml:ro
-      - developer-portal-data:/app/data
-      - ./resources/certificates:/etc/devportal/tls:ro
-      - ./resources/keys/jwt_public.pem:/etc/devportal/keys/jwt_public.pem:ro
-      - ./resources/keys/devportal-encryption.key:/etc/devportal/keys/encryption.key:ro
-      - ./resources/keys/devportal-session-secret:/etc/devportal/keys/session-secret:ro
+      - api-portal-data:/app/data
+      - ./resources/certificates:/etc/api-portal/tls:ro
+      - ./resources/keys/jwt_public.pem:/etc/api-portal/keys/jwt_public.pem:ro
+      - ./resources/keys/api-portal-encryption.key:/etc/api-portal/keys/encryption.key:ro
+      - ./resources/keys/api-portal-session-secret:/etc/api-portal/keys/session-secret:ro
     ports:
       - "9543:9543"
     healthcheck:
@@ -92,5 +92,5 @@ services:
 volumes:
   platform-api-data:
     driver: local
-  developer-portal-data:
+  api-portal-data:
     driver: local

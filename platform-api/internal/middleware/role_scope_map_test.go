@@ -51,7 +51,7 @@ paths:
 		},
 		{
 			name:   "foreign-namespace scope passes without being declared here",
-			scopes: []string{"dp:org_manage", "dp:api_key_revoke"},
+			scopes: []string{"dp:organization:manage", "dp:api_key:revoke"},
 		},
 		{
 			name:    "undeclared platform scope is rejected",
