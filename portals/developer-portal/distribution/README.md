@@ -171,7 +171,16 @@ docker compose up -d --force-recreate
 
 ## Compose project name
 
-`setup.sh` pins `COMPOSE_PROJECT_NAME=wso2apip-developer-portal-<version>-<6 hex>` in `.env` on its first run and never changes it. Compose prefixes this stack's containers, network, and volumes with it, so unpacking this zip again elsewhere on the host gets its own volumes instead of adopting this copy's APIs, applications, and users. Don't edit that line or delete `.env` — the data lives in `<project>_sqlite_data` and `<project>_platform-api-data`, and a different name starts the portal empty. `down` keeps those volumes; only `down -v` deletes them. To choose the name yourself — including adopting an earlier release's volumes, whose prefix `docker volume ls` shows — set it for the first run only: `COMPOSE_PROJECT_NAME=<name> ./scripts/setup.sh` (PowerShell: `$env:COMPOSE_PROJECT_NAME = '<name>'; .\scripts\setup.ps1`). It must match `^[a-z0-9][a-z0-9_-]*$`. Two portal stacks still can't run at once: both bind ports `9243` and `9543`.
+`setup.sh` pins `COMPOSE_PROJECT_NAME=wso2apip-developer-portal-<version>-<6 hex>` in `.env` on its first run and never changes it. Compose prefixes this stack's containers, network, and volumes with it, so unpacking this zip again elsewhere on the host gets its own volumes instead of adopting this copy's APIs, applications, and users. Don't edit that line or delete `.env` — the data lives in `<project>_developer-portal-data` and `<project>_platform-api-data`, and a different name starts the portal empty. `down` keeps those volumes; only `down -v` deletes them. To choose the name yourself — including adopting an earlier release's volumes, whose prefix `docker volume ls` shows — set it for the first run only: `COMPOSE_PROJECT_NAME=<name> ./scripts/setup.sh` (PowerShell: `$env:COMPOSE_PROJECT_NAME = '<name>'; .\scripts\setup.ps1`). It must match `^[a-z0-9][a-z0-9_-]*$`. Two portal stacks still can't run at once: both bind ports `9243` and `9543`.
+
+The portal's data volume was `sqlite_data` up to 1.0.0-rc1 and is now `developer-portal-data`. Postgres and SQL Server users are unaffected; on SQLite, copy the old volume across with the stack stopped:
+
+```bash
+PROJECT=$(grep '^COMPOSE_PROJECT_NAME=' .env | cut -d= -f2)
+docker compose up -d --no-start
+docker run --rm -v ${PROJECT}_sqlite_data:/from -v ${PROJECT}_developer-portal-data:/to alpine sh -c 'cp -a /from/. /to/'
+docker compose up -d
+```
 
 ## Database
 

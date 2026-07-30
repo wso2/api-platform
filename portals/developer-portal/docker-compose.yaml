@@ -53,7 +53,7 @@ services:
       APIP_DP_SERVER_PORT: ${APIP_DP_SERVER_PORT:-9543}
     volumes:
       - ./configs/config.toml:/app/configs/config.toml:ro
-      - sqlite_data:/app/data
+      - developer-portal-data:/app/data
       - ./resources/certificates:/etc/devportal/tls:ro
       - ./resources/keys/jwt_public.pem:/etc/devportal/keys/jwt_public.pem:ro
       - ./resources/keys/devportal-encryption.key:/etc/devportal/keys/encryption.key:ro
@@ -89,7 +89,7 @@ services:
       - devportal-network
 
 volumes:
-  sqlite_data:
+  developer-portal-data:
     driver: local
   platform-api-data:
     driver: local
