@@ -28,11 +28,45 @@ import (
 	"log"
 	"net/http"
 	"net/http/httputil"
+	"regexp"
 	"strings"
 	"time"
 
 	"github.com/cucumber/godog"
 )
+
+// sensitiveHeaderNames are redacted from logged request dumps; the request
+// itself keeps the real value.
+var sensitiveHeaderNames = map[string]bool{
+	"authorization": true,
+	"api-key":       true,
+}
+
+// sensitiveBodyFieldPattern matches common secret-bearing JSON fields (e.g.
+// key-provisioning responses) so their values never reach test logs.
+var sensitiveBodyFieldPattern = regexp.MustCompile(`(?i)"(api[_-]?key|token|secret|password|credential)"\s*:\s*"[^"]*"`)
+
+// redactRequestDump masks sensitive header values in a httputil.DumpRequestOut
+// dump before it's logged.
+func redactRequestDump(dump []byte) []byte {
+	lines := strings.Split(string(dump), "\r\n")
+	for i, line := range lines {
+		idx := strings.Index(line, ":")
+		if idx <= 0 {
+			continue
+		}
+		if sensitiveHeaderNames[strings.ToLower(strings.TrimSpace(line[:idx]))] {
+			lines[i] = line[:idx+1] + " [REDACTED]"
+		}
+	}
+	return []byte(strings.Join(lines, "\r\n"))
+}
+
+// redactSensitiveBodyFields masks secret-bearing JSON field values before a
+// response body is logged.
+func redactSensitiveBodyFields(body string) string {
+	return sensitiveBodyFieldPattern.ReplaceAllString(body, `"$1":"[REDACTED]"`)
+}
 
 // HTTPSteps provides common HTTP request step definitions
 type HTTPSteps struct {
@@ -371,7 +405,7 @@ func (h *HTTPSteps) sendRequestWithTempHeader(method, url string, body []byte, h
 	h.lastRequest = req
 
 	reqDump, _ := httputil.DumpRequestOut(req, true)
-	fmt.Printf("REQUEST:\n%s\n", string(reqDump))
+	fmt.Printf("REQUEST:\n%s\n", string(redactRequestDump(reqDump)))
 	log.Printf("DEBUG: Sending %s request to %s", method, url)
 
 	resp, err := h.client.Do(req)
@@ -398,7 +432,7 @@ func (h *HTTPSteps) sendRequestWithTempHeader(method, url string, body []byte, h
 	}
 
 	// Log response body for debugging (truncate if too large)
-	bodyStr := string(h.lastBody)
+	bodyStr := redactSensitiveBodyFields(string(h.lastBody))
 	if len(bodyStr) > 500 {
 		bodyStr = bodyStr[:500] + "..."
 	}
@@ -439,7 +473,7 @@ func (h *HTTPSteps) sendRequest(method, url string, body []byte) error {
 	h.lastRequest = req
 
 	reqDump, _ := httputil.DumpRequestOut(req, true)
-	fmt.Printf("REQUEST:\n%s\n", string(reqDump))
+	fmt.Printf("REQUEST:\n%s\n", string(redactRequestDump(reqDump)))
 	// Log the request for debugging
 	log.Printf("DEBUG: Sending %s request to %s", method, url)
 
@@ -467,7 +501,7 @@ func (h *HTTPSteps) sendRequest(method, url string, body []byte) error {
 	}
 
 	// Log response body for debugging (truncate if too large)
-	bodyStr := string(h.lastBody)
+	bodyStr := redactSensitiveBodyFields(string(h.lastBody))
 	if len(bodyStr) > 500 {
 		bodyStr = bodyStr[:500] + "..."
 	}
