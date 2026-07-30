@@ -254,6 +254,10 @@ describe('AI Workspace — MCP server secret management', () => {
       authValue: 'Bearer tok-tc83-will-fail',
     });
 
+    // Record notifications before the action: the snackbar auto-hides after
+    // ~3.5s, so polling for the element afterwards is racy under load.
+    cy.recordSnackbars();
+
     cy.contains('button', 'Create', { timeout: 15000 })
       .should('not.be.disabled')
       .click();
@@ -261,8 +265,7 @@ describe('AI Workspace — MCP server secret management', () => {
     cy.wait('@failSecret');
 
     // App surfaces errors through the Notification component with a stable testId.
-    cy.get('[data-testid="aiworkspace-snackbar-notification"]', { timeout: 15000 })
-      .should('be.visible');
+    cy.expectSnackbar('Failed to encrypt upstream auth credential');
 
     cy.wrap(null).then(() => {
       expect(serverCallCount).to.equal(0);
