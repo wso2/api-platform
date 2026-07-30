@@ -147,12 +147,13 @@ gen_encryption_key() {
 }
 
 # --- Compose project name -------------------------------------------------------
-# Compose accepts ^[a-z0-9][a-z0-9_-]*$ only — no dots, no uppercase.
+# Compose accepts ^[a-z0-9][a-z0-9_-]*$ only — no dots, no uppercase. $2 is an optional
+# extra line naming where the rejected value came from.
 validate_project_name() {
-  [[ "$1" =~ ^[a-z0-9][a-z0-9_-]*$ ]] || {
-    echo "error: invalid project name '$1' — must start with a lowercase letter or digit and contain only [a-z0-9_-]" >&2
-    exit 2
-  }
+  [[ "$1" =~ ^[a-z0-9][a-z0-9_-]*$ ]] && return
+  echo "error: invalid project name '$1' — must start with a lowercase letter or digit and contain only [a-z0-9_-]" >&2
+  [[ -n "${2:-}" ]] && echo "$2" >&2
+  exit 2
 }
 
 # gateway.version from build.yaml — NOT the top-level "version: v1" schema key above it.
@@ -186,6 +187,8 @@ gen_project_name() {
   printf '%s' "$candidate"
 }
 
+# Reads the value the way compose itself does — it strips whitespace around an unquoted
+# value, so "  name  " and "name" are the same pin and must validate the same way.
 read_dotenv_project_name() {
   [[ -f "$DOTENV_FILE" ]] || return 0
   local line
@@ -195,6 +198,8 @@ read_dotenv_project_name() {
   line="${line%$'\r'}"       # tolerate a CRLF-written .env
   line="${line//\"/}"        # unquote
   line="${line//\'/}"
+  line="${line#"${line%%[![:space:]]*}"}"   # trim leading whitespace
+  line="${line%"${line##*[![:space:]]}"}"   # trim trailing whitespace
   printf '%s' "$line"
 }
 
@@ -251,6 +256,9 @@ provision_project_name() {
   existing="$(read_dotenv_project_name)"
 
   if [[ -n "$existing" ]]; then
+    # A hand-edited pin gets the same check as a generated one — otherwise setup reports
+    # success on a stack docker compose then refuses to start.
+    validate_project_name "$existing" "       from the COMPOSE_PROJECT_NAME line in $DOTENV_FILE"
     PROJECT_NAME="$existing"
     log "  - $DOTENV_FILE already pins COMPOSE_PROJECT_NAME=$existing — keeping it"
     # docker compose reads the shell environment ahead of .env, so a stale export here

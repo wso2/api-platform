@@ -344,9 +344,11 @@ function Test-BasicAuthEnabled {
 # Compose accepts ^[a-z0-9][a-z0-9_-]*$ only - no dots, no uppercase. The comparisons
 # below are case-SENSITIVE (-cmatch/-cnotmatch): PowerShell's -match is case-insensitive,
 # which would accept "My_Gateway" and let Compose reject it later.
-function Test-ProjectName([string]$name) {
+# $hint is an optional extra line naming where the rejected value came from.
+function Test-ProjectName([string]$name, [string]$hint = '') {
     if ($name -cnotmatch '^[a-z0-9][a-z0-9_-]*$') {
         [Console]::Error.WriteLine("error: invalid project name '$name' - must start with a lowercase letter or digit and contain only [a-z0-9_-]")
+        if (-not [string]::IsNullOrEmpty($hint)) { [Console]::Error.WriteLine($hint) }
         exit 2
     }
 }
@@ -456,6 +458,9 @@ function Set-ProjectName {
     $source = ''
 
     if (-not [string]::IsNullOrEmpty($existing)) {
+        # A hand-edited pin gets the same check as a generated one - otherwise setup reports
+        # success on a stack docker compose then refuses to start.
+        Test-ProjectName $existing "       from the COMPOSE_PROJECT_NAME line in $DotEnvFile"
         $script:ProjectName = $existing
         Write-Log "  - $DotEnvFile already pins COMPOSE_PROJECT_NAME=$existing - keeping it"
         # docker compose reads the environment ahead of .env, so a stale variable here
