@@ -184,9 +184,11 @@ func (t *LLMProviderTransformer) transformProxy(proxy *api.LLMProxyConfiguration
 			if err != nil {
 				return nil, fmt.Errorf("failed to get context for additional provider '%s': %w", ap.Id, err)
 			}
-			if addProviderConfig, ok := addCfg.SourceConfiguration.(api.LLMProviderConfiguration); ok {
-				additionalValuePrefixByID[ap.Id] = apiKeyAuthValuePrefix(addProviderConfig.Spec.GlobalPolicies)
+			addProviderConfig, ok := addCfg.SourceConfiguration.(api.LLMProviderConfiguration)
+			if !ok {
+				return nil, fmt.Errorf("additional provider '%s' source configuration is not LLMProviderConfiguration", ap.Id)
 			}
+			additionalValuePrefixByID[ap.Id] = apiKeyAuthValuePrefix(addProviderConfig.Spec.GlobalPolicies)
 			// UpstreamDefinition URLs are host[:port] only. Keep the provider's
 			// loopback context in BasePath so the router rewrites requests to the
 			// additional provider route instead of dropping the context.
