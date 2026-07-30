@@ -322,15 +322,17 @@ endif
 	@sed -i.bak \
 	    -e 's|^DEFAULT_COMPOSE_PROFILES=.*|DEFAULT_COMPOSE_PROFILES="developer-portal,platform-api"|' \
 	    -e 's|^DEFAULT_PACK_NAME=.*|DEFAULT_PACK_NAME="developer-portal"|' \
+	    -e 's|^DEFAULT_DIST_VERSION=.*|DEFAULT_DIST_VERSION="$(DIST_VERSION)"|' \
 	    $(DIST_DIR)/scripts/setup.sh
 	@rm -f $(DIST_DIR)/scripts/setup.sh.bak
 # Windows counterpart of setup.sh — same flags, same generated files. The same
-# two values are baked in the same way (the PowerShell assignment spells them
+# three values are baked in the same way (the PowerShell assignment spells them
 # `$VAR = '...'`).
 	@cp ../scripts/setup.ps1 $(DIST_DIR)/scripts/setup.ps1
 	@sed -i.bak \
 	    -e "s|^\$$DEFAULT_COMPOSE_PROFILES = .*|\$$DEFAULT_COMPOSE_PROFILES = 'developer-portal,platform-api'|" \
 	    -e "s|^\$$DEFAULT_PACK_NAME = .*|\$$DEFAULT_PACK_NAME = 'developer-portal'|" \
+	    -e "s|^\$$DEFAULT_DIST_VERSION = .*|\$$DEFAULT_DIST_VERSION = '$(DIST_VERSION)'|" \
 	    $(DIST_DIR)/scripts/setup.ps1
 	@rm -f $(DIST_DIR)/scripts/setup.ps1.bak
 	@sed -i.bak \

@@ -35,6 +35,8 @@ TLS certificate shared by both services (written to `resources/certificates/`).
 > **Save the printed admin username and password** — the password is shown only
 > once and stored nowhere. Rerun `./scripts/setup.sh --force` to rotate it.
 
+It also pins a `COMPOSE_PROJECT_NAME` unique to this extraction in `.env`, so this copy's data can't be picked up by another copy of the zip on the same host. Leave that file in place — deleting it or changing the name starts the stack with an empty database.
+
 ### 3. Start the stack
 
 ```bash
