@@ -837,18 +837,29 @@ export type MCPServerListResponse = ApiListResponse<MCPServer>;
 
 /**
  * MCP Server Info Fetch Request
+ *
+ * `url` and `proxyId` are mutually exclusive (the API's oneOf), and `auth` is only
+ * allowed alongside `url` — with `proxyId` the stored auth is authoritative and an
+ * override is rejected. Modelled as a union so the invalid combinations don't compile.
  */
-export interface MCPServerInfoFetchRequest {
-  url: string;
-  proxyId?: string;
+interface MCPServerInfoFetchRequestBase {
   transportType?: string;
   headers?: Record<string, string>;
-  auth?: {
-    type: string;
-    header: string;
-    value: string;
-  };
 }
+
+export type MCPServerInfoFetchRequest = MCPServerInfoFetchRequestBase &
+  (
+    | {
+        url: string;
+        proxyId?: never;
+        auth?: {
+          type: string;
+          header: string;
+          value: string;
+        };
+      }
+    | { proxyId: string; url?: never; auth?: never }
+  );
 
 /**
  * MCP Server Info Fetch Response

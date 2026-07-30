@@ -694,8 +694,10 @@ export default function ExternalServersOverview(): JSX.Element {
       if (endpointUnchanged && headerNameUnchanged && credentialUnchanged) {
         // Nothing edited yet — let the backend resolve the stored URL and auth (via the
         // saved secret handle) from the persisted proxy config instead of us re-entering
-        // a credential we can never read back.
-        request = { url: trimmedUrl, proxyId: server.id };
+        // a credential we can never read back. url and proxyId are mutually exclusive
+        // (the backend rejects both), and the unchanged url is exactly what it would
+        // resolve anyway, so send proxyId alone.
+        request = { proxyId: server.id };
       } else if (trimmedHeaderName && !isCredentialMasked && authHeaderValue.trim()) {
         // Something was edited and we have a live credential value to validate with.
         // proxyId + auth override together aren't allowed, so this omits proxyId.

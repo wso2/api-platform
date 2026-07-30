@@ -23,10 +23,11 @@
  * shapes, chosen by whether the endpoint URL / auth header / auth value differ
  * from what is currently persisted on the server:
  *
- *   - Unedited: POST /mcp-proxies/fetch-server-info { url, proxyId } — the
+ *   - Unedited: POST /mcp-proxies/fetch-server-info { proxyId } — the
  *     backend resolves the stored URL and auth (via the saved secret handle)
  *     itself, so the browser never needs to re-send a credential it can't
- *     read back (auth.value is writeOnly).
+ *     read back (auth.value is writeOnly). url and proxyId are mutually
+ *     exclusive by API contract, so this omits url.
  *   - Edited: POST /mcp-proxies/fetch-server-info { url, auth: { type,
  *     header, value } } — validates the live, not-yet-saved values directly.
  *     proxyId and an auth override are mutually exclusive by API contract, so
@@ -199,7 +200,7 @@ describe('AI Workspace — MCP proxy Backend Connection tab (Refetch Server Info
     cy.wait('@refetch').then((pi) => {
       const body = pi.request.body;
       expect(body.proxyId, 'refetch request carries proxyId').to.equal(createdServerId);
-      expect(body.url, 'refetch request still carries the current url').to.equal(ORIGINAL_URL);
+      expect(body.url, 'url is omitted — mutually exclusive with proxyId').to.be.undefined;
       expect(body.auth, 'no auth override sent alongside proxyId').to.be.undefined;
     });
 
@@ -297,7 +298,8 @@ describe('AI Workspace — MCP proxy Backend Connection tab (Refetch Server Info
     cy.wait('@refetchAfterSave').then((pi) => {
       const body = pi.request.body;
       expect(body.proxyId, 'refetch after save uses proxyId again').to.equal(createdServerId);
-      expect(body.url, 'refetch after save uses the newly saved url').to.equal(newUrl);
+      expect(body.url, 'url omitted — the backend resolves the newly saved url').to.be
+        .undefined;
       expect(body.auth, 'no auth override needed post-save').to.be.undefined;
     });
   });
