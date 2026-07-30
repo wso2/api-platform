@@ -410,7 +410,12 @@ func (h *GatewayHandler) SyncCustomPolicy(w http.ResponseWriter, r *http.Request
 		return apperror.ValidationFailed.New("gatewayId, policyName and policyVersion are required")
 	}
 
-	policy, err := h.gatewayService.SyncCustomPolicy(gatewayHandle, orgId, policyName, version)
+	createdBy, err := resolveActorErr(r, h.identity, "sync custom policy")
+	if err != nil {
+		return err
+	}
+
+	policy, err := h.gatewayService.SyncCustomPolicy(gatewayHandle, orgId, policyName, version, createdBy)
 	if err != nil {
 		var appErr *apperror.Error
 		if errors.As(err, &appErr) {

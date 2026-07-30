@@ -326,8 +326,10 @@ func parseVersion(v string) (parsedVersion, error) {
 
 // SyncCustomPolicy upserts a custom policy from the gateway manifest into the gateway_custom_policies table.
 // The gateway is identified by its handle and must belong to the caller's organization. The policy must
-// exist in the manifest and it should be a custom policy.
-func (s *GatewayService) SyncCustomPolicy(gatewayHandle, orgID, policyName, version string) (*model.CustomPolicy, error) {
+// exist in the manifest and it should be a custom policy. createdBy is the internal platform UUID of the
+// user who triggered the sync (resolved from the token), and is what lands in created_by/updated_by —
+// never the gateway's own ID.
+func (s *GatewayService) SyncCustomPolicy(gatewayHandle, orgID, policyName, version, createdBy string) (*model.CustomPolicy, error) {
 	policyName = strings.ToLower(policyName)
 
 	gateway, err := s.gatewayRepo.GetByHandleAndOrgID(gatewayHandle, orgID)
@@ -413,8 +415,8 @@ func (s *GatewayService) SyncCustomPolicy(gatewayHandle, orgID, policyName, vers
 		Version:          version,
 		Description:      found.Description,
 		PolicyDefinition: policyDefJSON,
-		CreatedBy:        gateway.ID,
-		UpdatedBy:        gateway.ID,
+		CreatedBy:        createdBy,
+		UpdatedBy:        createdBy,
 	}
 
 	if sameMajorVersionedPolicy != nil {
@@ -438,8 +440,11 @@ func (s *GatewayService) SyncCustomPolicy(gatewayHandle, orgID, policyName, vers
 				WithLogMessage(fmt.Sprintf("cannot downgrade policy '%s' from '%s' to '%s'",
 					policyName, sameMajorVersionedPolicy.Version, version))
 		}
-		// New minor version — update the existing record.
+		// New minor version — update the existing record. created_by stays with the
+		// original creator (the UPDATE only touches updated_by); mirror that here so
+		// the returned model matches the persisted row.
 		policy.UUID = sameMajorVersionedPolicy.UUID
+		policy.CreatedBy = sameMajorVersionedPolicy.CreatedBy
 		if err := s.customPolicyRepo.UpdateCustomPolicy(policy, sameMajorVersionedPolicy.Version); err != nil {
 			s.slogger.Error("failed to update custom policy", slog.String("org_id", orgID), slog.String("policy_name", policyName), slog.String("old_version", sameMajorVersionedPolicy.Version), slog.String("new_version", version))
 			return nil, fmt.Errorf("failed to update custom policy: %w", err)
@@ -472,12 +477,12 @@ func (s *GatewayService) SyncCustomPolicy(gatewayHandle, orgID, policyName, vers
 	persisted, err := s.customPolicyRepo.GetCustomPolicyByNameAndVersion(orgID, policyName, version)
 	if err != nil || persisted == nil {
 		if s.auditRepo != nil {
-			_ = s.auditRepo.Record("CREATE", policy.UUID, "custom_policy", orgID, "")
+			_ = s.auditRepo.Record("CREATE", policy.UUID, "custom_policy", orgID, createdBy)
 		}
 		return policy, nil
 	}
 	if s.auditRepo != nil {
-		_ = s.auditRepo.Record("CREATE", persisted.UUID, "custom_policy", orgID, "")
+		_ = s.auditRepo.Record("CREATE", persisted.UUID, "custom_policy", orgID, createdBy)
 	}
 	return persisted, nil
 }
