@@ -40,7 +40,7 @@ services:
       - api-portal-network
 
   api-portal:
-    image: ghcr.io/wso2/api-platform/api-portal:1.0.0
+    image: ghcr.io/wso2/api-platform/api-portal:1.0.0-SNAPSHOT
     container_name: api-portal
     restart: unless-stopped
     profiles: ["api-portal", "all"]
