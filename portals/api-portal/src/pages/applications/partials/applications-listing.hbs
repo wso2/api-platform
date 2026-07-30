@@ -35,8 +35,9 @@
   {{#if applicationsMetadata.length}}
   <div class="apps-grid" id="applicationsContainer">
     {{#applicationsMetadata}}
+    {{!-- The application detail page isn't served in design mode, so the card isn't a link there (no onclick / pointer cursor). --}}
     <div class="app-card" id="app-card-{{id}}" data-id="{{id}}" data-display-name="{{displayName}}"
-      style="cursor:pointer;" onclick="window.location.href='{{../baseUrl}}/applications/{{id}}'">
+      {{#unless (designMode)}}style="cursor:pointer;" onclick="window.location.href='{{../baseUrl}}/applications/{{id}}'"{{/unless}}>
 
       <div class="app-card-top">
         <span class="app-avatar" data-display-name="{{displayName}}"></span>

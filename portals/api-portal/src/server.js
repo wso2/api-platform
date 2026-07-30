@@ -72,11 +72,13 @@ function printBanner(visitUrl) {
 }
 
 function logStartupBanner() {
-    const orgSegment = config.designMode?.enabled ? '' : `/${orgContext.getHandle()}`;
-    // The bare org URL redirects server-side to /views/default (orgContentRoute.js) —
-    // shorter and avoids baking view-naming details into the banner.
+    // Non-design mode: the bare org URL (/{handle}) redirects server-side to
+    // /{handle}/views/default (orgContentRoute.js). Design mode has no organization
+    // segment and no such redirect, so point straight at the default view — the
+    // bare root 404s there (only /views/* is served).
+    const landingPath = config.designMode?.enabled ? '/views/default' : `/${orgContext.getHandle()}`;
     const scheme = config.server.https.enabled && !config.designMode?.enabled ? 'https' : 'http';
-    const visitUrl = `${scheme}://localhost:${PORT}${orgSegment}`;
+    const visitUrl = `${scheme}://localhost:${PORT}${landingPath}`;
     printBanner(visitUrl);
 }
 
@@ -127,7 +129,13 @@ async function startServer() {
     // queries to it. Seeding here means a failure aborts startup (see the catch on
     // the startServer() call below) rather than leaving a process that answers
     // /health 200 while being unable to serve a single page.
-    await seedDefaultOrg();
+    //
+    // Design mode renders from disk and never touches the organization tables (nor
+    // any database), so there is nothing to seed — skip it, matching ensureSchema()
+    // above and the designMode branch in app.js.
+    if (!config.designMode?.enabled) {
+        await seedDefaultOrg();
+    }
 
     if (!config.server.https.enabled || config.designMode?.enabled) {
         server = http.createServer(app).listen(PORT, '0.0.0.0', onListening);

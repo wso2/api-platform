@@ -55,7 +55,9 @@
           ><span class="aov-plan-spinner"></span>Subscribe</button>
         {{/if}}
       {{else}}
-      <a class="dp-btn dp-btn--outline dp-btn--block" href="{{@root.baseUrl}}/login">Subscribe</a>
+      {{!-- Unauthenticated Subscribe links to login, which 404s in design mode — disable it there. --}}
+      <a class="dp-btn dp-btn--outline dp-btn--block{{#if (designMode)}} design-disabled{{/if}}"
+        {{#unless (designMode)}}href="{{@root.baseUrl}}/login"{{else}}aria-disabled="true" tabindex="-1" title="Not available in design mode"{{/unless}}>Subscribe</a>
       {{/if}}
     </div>
     <div class="aov-plan-error">

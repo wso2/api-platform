@@ -29,9 +29,14 @@ docker-compose*.yaml
 # ── Database init / seed scripts (volume-mounted into postgres) ───
 artifacts/
 
-# ── Sample APIs/MCPs (deployed via ./scripts/seed-samples.sh against the
-# REST API, not read from disk by the running app) ─────────────────
-samples/
+# ── Sample APIs/MCPs ──────────────────────────────────────────────
+# Two consumers: ./scripts/seed-samples.sh deploys them via the REST API against
+# a running container (host-side), AND design mode reads them straight from disk
+# inside the container (the [api_portal.design_mode] api_samples_path/... default
+# to ./samples/*). So they must be baked into the image. Sample dirs are source
+# trees, never archive drops — exclude any stray .zip so a developer's local one
+# can't get baked in (COPY honors this file, not .gitignore's repo-wide *.zip).
+samples/**/*.zip
 
 # ── Host-side operational scripts (setup.sh, seed-samples.sh) — run against
 # a running container from the host, never executed inside it ──────

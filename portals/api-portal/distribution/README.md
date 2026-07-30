@@ -108,6 +108,17 @@ docker compose --profile ai-workspace up -d
 
 AI Workspace comes up at `https://localhost:9643`, backed by the same Platform API. Omitting `--profile ai-workspace` on a later `docker compose` command neither starts nor stops it — an already-running instance keeps running. To stop it explicitly, run `docker compose stop ai-workspace`, or `docker compose --profile ai-workspace down` to remove it.
 
+## Design Mode (optional)
+
+**Design mode** turns the API Portal into a file-based preview: it renders APIs, MCP servers, layouts, and applications straight from the bundled sample files instead of the database. With it on, the portal **opens no database connection and never calls the Platform API** — it's purely for previewing content and theming. Do **not** enable it in production.
+
+Like AI Workspace, it's an opt-in you turn on by editing `configs/config.toml` — there's no separate config file or Compose profile:
+
+1. **Copy the `[api_portal.design_mode]` block** from the "DESIGN MODE CONFIGURATION" section of the shipped `configs/config-template.toml` into `configs/config.toml` (keep `enabled = true`). The sample paths are already correct for the bundled samples — leave them as-is unless you're pointing at your own set.
+2. **Restart the API Portal:** `docker compose up -d` (or `docker compose restart api-portal`).
+
+The portal then serves from disk at `/views/default` (e.g. `http://localhost:9543/views/default`). Because design mode never touches the database, the accompanying Platform API and its database go unused while it's on — set `enabled` back to `false` and restart to return to the normal, database-backed portal.
+
 ## Configuration
 
 All settings live in the single `configs/config.toml`. It carries two sections — `[api_portal.*]` and `[platform_api.*]` — and the **same file is mounted into both containers**; each service reads only its own section and ignores the other's. Edit it in place — no rebuild required, just restart the affected service.

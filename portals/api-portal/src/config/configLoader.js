@@ -20,6 +20,7 @@
 
 const path = require('path');
 const fs = require('fs');
+const crypto = require('crypto');
 const toml = require('smol-toml');
 const Handlebars = require('handlebars');
 const { DEFAULTS } = require('./configDefaults');
@@ -365,8 +366,23 @@ function requireHexSecret(value, fieldName) {
     }
 }
 
-requireHexSecret(config.security.encryptionKey, 'encryptionKey');
-requireHexSecret(config.security.sessionSecret, 'sessionSecret');
+// Design mode renders entirely from disk: no database, so there are no stored
+// secrets to encrypt (encryptionKey stays unused — createCryptoUtil is lazy and
+// only throws if an encrypt/decrypt actually runs, which the disabled
+// webhook/subscription paths never do here), and sessions use an in-memory store
+// (see sessionStoreConfig.js). The session cookie is still signed, so mint an
+// ephemeral secret when none was supplied rather than forcing an operator to
+// configure secret files a local preview never persists anything with. This is
+// the one place the fail-closed secret requirement is waived, gated on the
+// explicit, off-by-default design_mode.enabled flag.
+if (config.designMode?.enabled) {
+    if (!config.security.sessionSecret) {
+        config.security.sessionSecret = crypto.randomBytes(32).toString('hex');
+    }
+} else {
+    requireHexSecret(config.security.encryptionKey, 'encryptionKey');
+    requireHexSecret(config.security.sessionSecret, 'sessionSecret');
+}
 
 /**
  * Fail-closed startup check: database connection-pool settings must resolve to

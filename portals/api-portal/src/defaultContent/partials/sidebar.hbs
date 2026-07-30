@@ -20,7 +20,9 @@
         <span class="nav-text">Documentation</span>
       </a>
       {{#if showApiKeysNav}}
-      <a href="#" class="nav-link submenu-link fw-light" id="api-keys-nav">
+      {{!-- The API Keys view isn't served in design mode; disable the (JS-driven) link there. --}}
+      <a {{#unless (designMode)}}href="#"{{else}}aria-disabled="true" tabindex="-1" title="Not available in design mode"{{/unless}}
+        class="nav-link submenu-link fw-light{{#if (designMode)}} design-disabled{{/if}}" id="api-keys-nav">
         <i class="bi bi-key submenu-icon"></i>
         <span class="nav-text">API Keys</span>
       </a>
@@ -44,7 +46,10 @@
       </a>
     </div>
     {{/if}}
-    <a href="{{baseUrl}}/api-workflows" class="nav-link" id="api-workflows">
+    {{!-- API Workflows, Subscriptions and API Keys have no route in design mode; render
+          them disabled (no href) so they stay visible but don't lead to a 404. --}}
+    <a {{#unless (designMode)}}href="{{baseUrl}}/api-workflows"{{else}}aria-disabled="true" tabindex="-1" title="Not available in design mode"{{/unless}}
+      class="nav-link{{#if (designMode)}} design-disabled{{/if}}" id="api-workflows">
       <i class="bi bi-diagram-3 sidebar-icon"></i>
       <span class="nav-text">API Workflows</span>
     </a>
@@ -52,11 +57,13 @@
       <img src="/images/applications-icon.svg" class="sidebar-icon" alt="" />
       <span class="nav-text">Applications</span>
     </a>
-    <a href="{{baseUrl}}/subscriptions" class="nav-link" id="subscriptions">
+    <a {{#unless (designMode)}}href="{{baseUrl}}/subscriptions"{{else}}aria-disabled="true" tabindex="-1" title="Not available in design mode"{{/unless}}
+      class="nav-link{{#if (designMode)}} design-disabled{{/if}}" id="subscriptions">
       <i class="bi bi-receipt sidebar-icon"></i>
       <span class="nav-text">Subscriptions</span>
     </a>
-    <a href="{{baseUrl}}/api-keys" class="nav-link" id="api-keys">
+    <a {{#unless (designMode)}}href="{{baseUrl}}/api-keys"{{else}}aria-disabled="true" tabindex="-1" title="Not available in design mode"{{/unless}}
+      class="nav-link{{#if (designMode)}} design-disabled{{/if}}" id="api-keys">
       <i class="bi bi-key sidebar-icon"></i>
       <span class="nav-text">API Keys</span>
     </a>

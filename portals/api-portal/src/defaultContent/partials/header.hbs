@@ -31,7 +31,9 @@
         </ul>
         {{else}}
         <div id="auth-section">
-          <a class="login-btn" href="{{baseUrl}}/login">Log In</a>
+          {{!-- Login isn't served in design mode, so render it disabled (no href) rather than linking to a 404 --}}
+          <a class="login-btn{{#if (designMode)}} design-disabled{{/if}}"
+            {{#unless (designMode)}}href="{{baseUrl}}/login"{{else}}aria-disabled="true" tabindex="-1" title="Not available in design mode"{{/unless}}>Log In</a>
         </div>
         {{/if}}
       </div>
