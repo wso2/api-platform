@@ -97,7 +97,13 @@
                         class="mk-btn-primary"
                         data-app-id="{{appId}}"
                         data-keymappingid="{{keys.keyMappingId}}"
-                        onclick="openGenerateTokenModal('inlineTokenForm-{{kmId}}-{{keyType}}', '{{appId}}', '{{keys.keyMappingId}}', '{{kmName}}', '{{appName}}', '{{json subscriptionScopes}}', '{{keyType}}')">
+                        data-open-token-modal="true"
+                        data-form-id="inlineTokenForm-{{kmId}}-{{keyType}}"
+                        data-key-mapping-id="{{keys.keyMappingId}}"
+                        data-key-manager="{{kmName}}"
+                        data-client-name="{{appName}}"
+                        data-scopes="{{json subscriptionScopes}}"
+                        data-key-type="{{keyType}}">
                         <span class="button-normal-state"><i class="bi bi-lightning-fill"></i> Generate access token</span>
                         <span class="button-loading-state" style="display:none">
                             <span class="spinner-border spinner-border-sm" role="status"></span> Generating…

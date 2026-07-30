@@ -22,7 +22,10 @@
 // generation enabled on their application because an org key manager now exists.
 
 describe('Settings — Key Managers', () => {
-    const uid = crypto.randomUUID();
+    // Not crypto.randomUUID(): Cypress runs specs against http://devportal:9543, an
+    // insecure context where the WebCrypto API is unavailable. Date.now() + a random
+    // suffix is unique across (serial) runs.
+    const uid = `${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
     const KM_NAME = `IT KM ${uid}`;
     const ENDPOINT = 'https://idp.example.invalid/oauth2/token';
     const APP_NAME = `IT KM App ${uid}`;

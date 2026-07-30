@@ -201,6 +201,11 @@ async function generate({ orgId, apiId, subscriptionId, appId, handle, displayNa
         });
     } catch (err) {
         plaintext = '\0'.repeat(plaintext.length);
+        // Atomic backstop for the pre-check above: the (org, api, handle) unique index
+        // rejects a duplicate even under a concurrent create that races past the pre-check.
+        if (db.isDuplicateKeyError(err)) {
+            throw Object.assign(new Error(`An API key with id "${normalizedHandle}" already exists for this API.`), { status: 409 });
+        }
         throw err;
     }
 

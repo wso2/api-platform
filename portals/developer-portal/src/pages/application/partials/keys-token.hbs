@@ -44,7 +44,14 @@
                                     <button
                                         class="common-btn-primary btn-sm me-1"
                                         id="regenerateButton_{{../id}}_{{keyType}}"
-                                        onclick="openGenerateTokenModal('inlineTokenForm-{{../id}}-{{keyType}}', '{{@root.applicationMetadata.id}}', '{{keys.keyMappingId}}', '{{../id}}', '{{@root.applicationMetadata.displayName}}', '{{json @root.subscriptionScopes}}', '{{keyType}}')">
+                                        data-open-token-modal="true"
+                                        data-form-id="inlineTokenForm-{{../id}}-{{keyType}}"
+                                        data-app-id="{{@root.applicationMetadata.id}}"
+                                        data-key-mapping-id="{{keys.keyMappingId}}"
+                                        data-key-manager="{{../id}}"
+                                        data-client-name="{{@root.applicationMetadata.displayName}}"
+                                        data-scopes="{{json @root.subscriptionScopes}}"
+                                        data-key-type="{{keyType}}">
                                         <span class="button-normal-state">
                                             <i class="bi bi-arrow-clockwise"></i> Regenerate
                                         </span>

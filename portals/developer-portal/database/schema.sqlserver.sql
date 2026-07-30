@@ -412,6 +412,10 @@ CREATE INDEX idx_api_key_status ON dbo.dp_api_keys(status);
 -- dedicated leading index so single-column api_uuid lookups/joins stay indexed.
 IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = N'idx_api_key_api_uuid' AND object_id = OBJECT_ID(N'dbo.dp_api_keys'))
 CREATE INDEX idx_api_key_api_uuid ON dbo.dp_api_keys(api_uuid);
+-- Handle is the caller-facing id used to address a key within an API, so it must be
+-- unique per (org, api). Enforced here for a race-free guarantee, not just in the service.
+IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = N'uq_api_key_org_api_handle' AND object_id = OBJECT_ID(N'dbo.dp_api_keys'))
+CREATE UNIQUE INDEX uq_api_key_org_api_handle ON dbo.dp_api_keys(org_uuid, api_uuid, handle);
 
 -- API Key-Application mappings (which application an API key was issued to)
 IF OBJECT_ID(N'dbo.dp_api_key_app_mappings', N'U') IS NULL

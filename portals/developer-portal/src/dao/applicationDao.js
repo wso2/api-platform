@@ -38,10 +38,11 @@ function slugify(name) {
 const create = async (orgId, userId, appData) => {
     const uuid = crypto.randomUUID();
     // Handle rule: use the caller-supplied handle (body `id` / YAML metadata.name)
-    // when present; otherwise a slugified display name.
-    const handle = (appData.handle && appData.handle.trim())
-        ? appData.handle.trim()
-        : slugify(appData.displayName);
+    // when present; otherwise a slugified display name. Coerce to string first so a
+    // non-string id (e.g. a numeric YAML metadata.name) doesn't throw on .trim(), and
+    // fall back to the uuid when the display name slugifies to nothing.
+    const suppliedHandle = appData.handle != null ? String(appData.handle).trim() : '';
+    const handle = suppliedHandle || slugify(appData.displayName) || uuid;
     await db.execute(
         `INSERT INTO ${APPLICATION_TABLE} (uuid, display_name, handle, org_uuid, description, created_by, updated_by)
          VALUES (?, ?, ?, ?, ?, ?, ?)`,

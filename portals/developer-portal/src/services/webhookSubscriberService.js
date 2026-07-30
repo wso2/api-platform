@@ -104,7 +104,7 @@ const updateWebhookSubscriber = async (req, res) => {
             return util.sendError(res, 404, constants.ERROR_MESSAGE.WEBHOOK_SUBSCRIBER_NOT_FOUND);
         }
         if (db.isDuplicateKeyError(error)) {
-            return util.sendError(res, 409, _uniqueConstraintMessage(req.body));
+            return util.sendError(res, 409, _uniqueConstraintMessage(req.body?.id));
         }
         logger.error(constants.ERROR_MESSAGE.WEBHOOK_SUBSCRIBER_UPDATE_ERROR, { error });
         return util.sendError(res, 500, constants.ERROR_MESSAGE.WEBHOOK_SUBSCRIBER_UPDATE_ERROR);

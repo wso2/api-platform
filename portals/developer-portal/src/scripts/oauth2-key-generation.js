@@ -132,8 +132,12 @@ async function generateOauthKey(formId, appId, keyMappingId, keyManager, clientN
 
     // Capture the scope chips the user currently sees in the token modal BEFORE the
     // re-render below rebuilds them, so scopes added/removed in the modal (e.g. via the
-    // Enter-to-add input) are what actually get requested on regenerate.
+    // Enter-to-add input) are what actually get requested on regenerate. `modalWasShown`
+    // is set by loadKeysTokenModal after the first successful generate, so it's true only
+    // when this call is a regenerate (the modal has been on screen and its chips are the
+    // user's source of truth), and false on the first generate (modal never shown yet).
     const openTokenModal = document.getElementById('keysTokenModal-' + keyType);
+    const modalWasShown = openTokenModal?.dataset?.shown === 'true';
     const uiScopeChips = openTokenModal
         ? Array.from(openTokenModal.querySelectorAll('.input-scopes .span-tag'))
             .map(el => el.textContent.replace('×', '').trim()).filter(Boolean)
@@ -206,10 +210,16 @@ async function generateOauthKey(formId, appId, keyMappingId, keyManager, clientN
     });
 
     function addScope(scope) {
-        // Create a new span element for the scope
+        // Create a new span element for the scope. Use textContent (not innerHTML) for
+        // the caller-typed scope so it can't inject markup, and append the static remove
+        // control separately.
         const span = document.createElement('span');
         span.className = 'span-tag';
-        span.innerHTML = `${scope}<span class="remove">&times;</span>`;
+        span.textContent = scope;
+        const removeBtn = document.createElement('span');
+        removeBtn.className = 'remove';
+        removeBtn.textContent = '×';
+        span.appendChild(removeBtn);
 
         // Append the new span to the scope container only if it doesn't already exist
         const existingScopes = Array.from(scopeContainer.querySelectorAll('.span-tag'))
@@ -268,8 +278,10 @@ async function generateOauthKey(formId, appId, keyMappingId, keyManager, clientN
         }
     }
 
-    // Prefer whatever scope chips the user actually has in the modal.
-    if (uiScopeChips.length) {
+    // On a regenerate, the modal's chips are the source of truth — honor them exactly,
+    // even if the user cleared them all (empty array). On first generate the modal hasn't
+    // been shown, so fall through to the scopes passed by the caller.
+    if (modalWasShown) {
         subscribedScopes = uiScopeChips;
     }
 
@@ -540,6 +552,9 @@ function loadKeysTokenModal(keyType) {
         console.error(`Modal ${modalId} not found`);
         return;
     }
+    // Mark the modal as shown so a later regenerate treats its scope chips as the
+    // source of truth (see generateOauthKey's modalWasShown handling).
+    modal.dataset.shown = 'true';
     modal.style.display = 'flex';
 }
 
@@ -563,9 +578,31 @@ document.addEventListener('keydown', function (event) {
     if (!existing.includes(scope)) {
         const span = document.createElement('span');
         span.className = 'span-tag';
-        span.innerHTML = `${scope}<span class="remove">&times;</span>`;
-        span.querySelector('.remove').addEventListener('click', function () { span.remove(); });
+        span.textContent = scope; // textContent, not innerHTML — the scope is user-typed
+        const removeBtn = document.createElement('span');
+        removeBtn.className = 'remove';
+        removeBtn.textContent = '×';
+        removeBtn.addEventListener('click', function () { span.remove(); });
+        span.appendChild(removeBtn);
         container.insertBefore(span, input);
     }
     input.value = '';
+});
+
+// Token-modal open binding (both the first "Generate access token" button and the
+// "Regenerate" button): read the token-generation parameters from data-* attributes
+// instead of an inline onclick, so user-controlled values (display name, scopes) never
+// end up embedded in JavaScript source (where an apostrophe would break the handler).
+document.addEventListener('click', function (event) {
+    const btn = event.target.closest('[data-open-token-modal]');
+    if (!btn) return;
+    openGenerateTokenModal(
+        btn.dataset.formId,
+        btn.dataset.appId,
+        btn.dataset.keyMappingId,
+        btn.dataset.keyManager,
+        btn.dataset.clientName,
+        btn.dataset.scopes,
+        btn.dataset.keyType
+    );
 });
