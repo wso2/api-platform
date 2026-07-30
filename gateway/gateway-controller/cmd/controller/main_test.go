@@ -628,6 +628,7 @@ func TestGenerateAuthConfig(t *testing.T) {
 						JWKSURL:     "https://idp.example.com/.well-known/jwks.json",
 						RolesClaim:  "roles",
 						RoleMapping: roleMapping,
+						Audience:    []string{"gateway-controller"},
 					},
 				},
 			},
@@ -641,6 +642,31 @@ func TestGenerateAuthConfig(t *testing.T) {
 		assert.Equal(t, "https://idp.example.com/.well-known/jwks.json", authConfig.JWTConfig.JWKSUrl)
 		assert.Equal(t, "roles", authConfig.JWTConfig.ScopeClaim)
 		assert.NotNil(t, authConfig.JWTConfig.PermissionMapping)
+		require.NotNil(t, authConfig.JWTConfig.Audience)
+		assert.Equal(t, []string{"gateway-controller"}, *authConfig.JWTConfig.Audience)
+	})
+
+	t.Run("IDP auth enabled without audience leaves audience unset", func(t *testing.T) {
+		cfg := &config.Config{
+			Controller: config.Controller{
+				Auth: config.AuthConfig{
+					Basic: config.BasicAuth{Enabled: false},
+					IDP: config.IDPConfig{
+						Enabled:    true,
+						Issuer:     "https://idp.example.com",
+						JWKSURL:    "https://idp.example.com/.well-known/jwks.json",
+						RolesClaim: "roles",
+						// Audience intentionally empty — validation is skipped.
+					},
+				},
+			},
+		}
+
+		authConfig := generateAuthConfig(cfg)
+
+		assert.True(t, authConfig.JWTConfig.Enabled)
+		assert.Nil(t, authConfig.JWTConfig.Audience,
+			"empty audience must leave the common Audience nil so validation is skipped")
 	})
 
 	t.Run("Both basic and IDP auth enabled", func(t *testing.T) {

@@ -28,6 +28,7 @@ import (
 	"github.com/MicahParks/jwkset"
 	"github.com/golang-jwt/jwt/v5"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 	"github.com/wso2/api-platform/common/constants"
 	"github.com/wso2/api-platform/common/models"
 )
@@ -264,4 +265,68 @@ func TestJWTAuthenticator_Authenticate_ExpiredTokenRejected_WithIssuerValidation
 
 	_, err = a.Authenticate(req)
 	assert.ErrorIs(t, err, ErrExpiredToken)
+}
+
+// authenticateWithConfig signs a valid token for the given issuer and runs it
+// through a JWTAuthenticator built on the supplied IDP config, using a static
+// key so no JWKS endpoint is needed.
+func authenticateWithConfig(t *testing.T, idp *models.IDPConfig) *AuthResult {
+	t.Helper()
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
+	secret := []byte("test-secret")
+	tok := jwt.NewWithClaims(jwt.SigningMethodHS256, jwt.MapClaims{
+		"iss": idp.IssuerURL,
+		"sub": "user123",
+		"exp": time.Now().Add(1 * time.Hour).Unix(),
+	})
+	tokenString, err := tok.SignedString(secret)
+	require.NoError(t, err)
+
+	a := &JWTAuthenticator{
+		config: &models.AuthConfig{JWTConfig: idp},
+		logger: logger,
+		jwks:   staticKeyfunc{key: secret},
+	}
+	req, _ := http.NewRequest("GET", "/", nil)
+	req.Header.Set(constants.AuthorizationHeader, constants.BearerPrefix+tokenString)
+
+	result, err := a.Authenticate(req)
+	require.NoError(t, err)
+	return result
+}
+
+// TestJWTAuthenticator_Authenticate_EmptyScopeClaim_DoesNotSkipAuthz verifies
+// the Layer 2 fix: an unset scope/roles claim must NOT disable authorization.
+// The caller resolves to zero roles so the authz middleware denies by default,
+// rather than the token being granted blanket access to every route.
+func TestJWTAuthenticator_Authenticate_EmptyScopeClaim_DoesNotSkipAuthz(t *testing.T) {
+	issuer := "https://issuer.example.com"
+	result := authenticateWithConfig(t, &models.IDPConfig{
+		Enabled:    true,
+		IssuerURL:  issuer,
+		ScopeClaim: "", // no roles claim configured
+		// DisableAuthorization intentionally left false (the default)
+	})
+
+	assert.True(t, result.Success)
+	assert.False(t, result.SkipAuthorization,
+		"an empty scope claim must not skip authorization — it must fail closed to zero roles")
+	assert.Empty(t, result.Roles)
+}
+
+// TestJWTAuthenticator_Authenticate_DisableAuthorization_SkipsAuthz verifies
+// that authentication-only mode still works, but only via the explicit
+// opt-in flag.
+func TestJWTAuthenticator_Authenticate_DisableAuthorization_SkipsAuthz(t *testing.T) {
+	issuer := "https://issuer.example.com"
+	result := authenticateWithConfig(t, &models.IDPConfig{
+		Enabled:              true,
+		IssuerURL:            issuer,
+		ScopeClaim:           "",
+		DisableAuthorization: true, // explicit opt-in to authentication-only mode
+	})
+
+	assert.True(t, result.Success)
+	assert.True(t, result.SkipAuthorization,
+		"disable_authorization=true must skip authorization (explicit auth-only mode)")
 }

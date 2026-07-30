@@ -199,8 +199,9 @@ func TestValidateAuthConfig_IDPAuthEnabled(t *testing.T) {
 					Enabled: false,
 				},
 				IDP: IDPConfig{
-					Enabled: true,
-					JWKSURL: "https://idp.example.com/jwks",
+					Enabled:    true,
+					JWKSURL:    "https://idp.example.com/jwks",
+					RolesClaim: "roles",
 				},
 			},
 		},
@@ -208,6 +209,29 @@ func TestValidateAuthConfig_IDPAuthEnabled(t *testing.T) {
 
 	err := config.validateAuthConfig()
 	assert.NoError(t, err)
+}
+
+func TestValidateAuthConfig_IDPAuthEnabledEmptyRolesClaim_FailsClosed(t *testing.T) {
+	// IDP enabled with an empty roles_claim is almost always a misconfiguration:
+	// the JWT authenticator retains authorization and resolves such tokens to
+	// zero roles, so every role-protected route would deny by default. Fail fast
+	// at startup with a clear error rather than starting in that state.
+	config := &Config{
+		Controller: Controller{
+			Auth: AuthConfig{
+				Basic: BasicAuth{Enabled: false},
+				IDP: IDPConfig{
+					Enabled:    true,
+					JWKSURL:    "https://idp.example.com/jwks",
+					RolesClaim: "",
+				},
+			},
+		},
+	}
+
+	err := config.validateAuthConfig()
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "roles_claim is empty")
 }
 
 func TestValidateAuthConfig_BothAuthEnabled(t *testing.T) {
@@ -222,8 +246,9 @@ func TestValidateAuthConfig_BothAuthEnabled(t *testing.T) {
 					},
 				},
 				IDP: IDPConfig{
-					Enabled: true,
-					JWKSURL: "https://idp.example.com/jwks",
+					Enabled:    true,
+					JWKSURL:    "https://idp.example.com/jwks",
+					RolesClaim: "roles",
 				},
 			},
 		},
