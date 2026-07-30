@@ -16,6 +16,7 @@
  * under the License.
  */
 /* eslint-disable no-undef */
+const crypto = require('crypto');
 const db = require('../db/driver');
 const apiDao = require("../dao/apiDao");
 const subDao = require('../dao/subscriptionDao');
@@ -1265,9 +1266,13 @@ const putSubscriptionPlans = async (req, res) => {
 // The plan's own `id` in the request body is what the client wants to become the stored handle.
 // YAML-sourced plans already carry `.handle` (set from metadata.name), so this is a no-op for them.
 function normalizePlanHandle(plan) {
-    if (plan && plan.id) {
-        plan.handle = plan.id;
+    if (!plan) {
+        return plan;
     }
+    // Handle rule: use the caller-supplied `id` when present; otherwise generate a
+    // UUID. The settings UI sends no id on create (so those get a UUID) but always
+    // sends it on update (that's how the plan is located), so update never generates.
+    plan.handle = (plan.id && String(plan.id).trim()) ? plan.id : crypto.randomUUID();
     return plan;
 }
 

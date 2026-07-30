@@ -151,13 +151,13 @@
       <button type="button" class="cfg-modal-close" id="cfg-view-modal-close"><i class="bi bi-x-lg"></i></button>
     </div>
     <div class="cfg-form-group" style="margin-bottom:16px;">
+      <label for="view-display">Name</label>
+      <input type="text" id="view-display" class="cfg-form-input" placeholder="e.g. Partner APIs" />
+    </div>
+    <div class="cfg-form-group" style="margin-bottom:16px;">
       <label for="view-handle">Handle <span class="required">*</span></label>
       <input type="text" id="view-handle" class="cfg-form-input cfg-form-input--mono" placeholder="partner-apis" />
       <p class="cfg-field-hint">Lowercase identifier used in URLs. Cannot be changed later.</p>
-    </div>
-    <div class="cfg-form-group" style="margin-bottom:16px;">
-      <label for="view-display">Name</label>
-      <input type="text" id="view-display" class="cfg-form-input" placeholder="e.g. Partner APIs" />
     </div>
     <div class="cfg-form-group" style="margin-bottom:24px;">
       <label>Labels</label>
@@ -183,20 +183,14 @@
 
 <!-- Add / Edit Plan modal -->
 <div class="cfg-modal-overlay" id="cfg-plan-modal" style="display:none;">
-  <div class="cfg-form-modal cfg-form-modal--wide">
+  <div class="cfg-form-modal cfg-form-modal--xwide">
     <div class="cfg-modal-titlerow">
       <h2 class="cfg-modal-form-title" id="cfg-plan-modal-title">Add subscription plan</h2>
       <button type="button" class="cfg-modal-close" id="cfg-plan-modal-close"><i class="bi bi-x-lg"></i></button>
     </div>
-    <div class="cfg-form-grid" style="margin-bottom:16px;">
-      <div class="cfg-form-group">
-        <label for="pol-display">Display name <span class="required">*</span></label>
-        <input type="text" id="pol-display" class="cfg-form-input" placeholder="e.g. Gold" />
-      </div>
-      <div class="cfg-form-group">
-        <label for="pol-name">Name <span class="required">*</span></label>
-        <input type="text" id="pol-name" class="cfg-form-input cfg-form-input--mono" placeholder="Gold" />
-      </div>
+    <div class="cfg-form-group" style="margin-bottom:16px;">
+      <label for="pol-display">Name <span class="required">*</span></label>
+      <input type="text" id="pol-display" class="cfg-form-input" placeholder="e.g. Gold" />
     </div>
     <div class="cfg-form-group" style="margin-bottom:16px;">
       <label for="pol-desc">Description</label>
@@ -230,13 +224,8 @@
       <button type="button" class="cfg-modal-close" id="cfg-km-modal-close"><i class="bi bi-x-lg"></i></button>
     </div>
     <div class="cfg-form-group" style="margin-bottom:16px;">
-      <label for="km-display">Display name <span class="required">*</span></label>
+      <label for="km-display">Name <span class="required">*</span></label>
       <input type="text" id="km-display" class="cfg-form-input" placeholder="e.g. Production" />
-    </div>
-    <div class="cfg-form-group" style="margin-bottom:16px;">
-      <label for="km-handle">Handle <span class="required">*</span></label>
-      <input type="text" id="km-handle" class="cfg-form-input cfg-form-input--mono" placeholder="production" />
-      <p class="cfg-field-hint">Lowercase identifier used internally.</p>
     </div>
     <div class="cfg-form-group" style="margin-bottom:16px;">
       <label for="km-token-endpoint">Token endpoint <span class="required">*</span></label>

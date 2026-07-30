@@ -41,7 +41,6 @@
     document.getElementById('cfg-km-modal-title').textContent = mode === 'edit' ? 'Edit key manager' : 'Add key manager';
     document.getElementById('cfg-km-modal-save').textContent  = mode === 'edit' ? 'Save changes' : 'Add key manager';
     sv('km-display',        mode === 'edit' ? data.displayName    : '');
-    sv('km-handle',         mode === 'edit' ? data.id             : '');
     sv('km-token-endpoint', mode === 'edit' ? data.tokenEndpoint  : '');
     document.getElementById('km-enabled').checked = mode === 'edit' ? !!data.enabled : true;
     document.getElementById('cfg-km-modal').style.display = 'flex';
@@ -49,18 +48,11 @@
   }
   function closeKmModal() { document.getElementById('cfg-km-modal').style.display = 'none'; editKmId = null; }
 
-  /* ── auto-slug display → handle ── */
-  document.getElementById('km-display').addEventListener('input', function() {
-    if (editKmId) return;
-    document.getElementById('km-handle').value = this.value.toLowerCase().trim().replace(/[^a-z0-9]+/g,'-').replace(/^-|-$/g,'');
-  });
-
   /* ── save ── */
   document.getElementById('cfg-km-modal-save').addEventListener('click', async function() {
     var displayName   = v('km-display');
-    var handle        = v('km-handle');
     var tokenEndpoint = v('km-token-endpoint');
-    if (!displayName || !handle || !tokenEndpoint) { await showAlert('Display name, handle and token endpoint are required.', 'error'); return; }
+    if (!displayName || !tokenEndpoint) { await showAlert('Name and token endpoint are required.', 'error'); return; }
 
     var parsedUrl;
     try { parsedUrl = new URL(tokenEndpoint); } catch (e) { parsedUrl = null; }
@@ -70,7 +62,6 @@
     }
 
     var body = {
-      id: handle,
       displayName: displayName,
       tokenEndpoint: tokenEndpoint,
       enabled: document.getElementById('km-enabled').checked,

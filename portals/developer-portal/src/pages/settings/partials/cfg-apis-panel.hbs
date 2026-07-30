@@ -221,8 +221,24 @@
               <p class="cfg-form-section-title">Labels &amp; Visibility</p>
               <div class="cfg-form-grid">
                 <div class="cfg-form-group cfg-form-group-full">
-                  <label for="wz-tags">Labels</label>
+                  <label>Labels</label>
+                  {{#if orgLabels.length}}
+                  <div id="wz-labels" class="cfg-label-picker" role="group" aria-label="API labels">
+                    {{#orgLabels}}
+                    <button type="button" class="cfg-label-toggle" data-value="{{id}}" aria-pressed="false">
+                      <i class="bi bi-check2"></i><span>{{displayName}}</span>
+                    </button>
+                    {{/orgLabels}}
+                  </div>
+                  <p class="cfg-field-hint">Click labels to toggle. Labels control which views this API appears in.</p>
+                  {{else}}
+                  <p class="cfg-field-hint">No labels yet — create them in the Labels tab to attach them here.</p>
+                  {{/if}}
+                </div>
+                <div class="cfg-form-group cfg-form-group-full">
+                  <label for="wz-tags">Tags</label>
                   <input type="text" id="wz-tags" class="cfg-form-input" placeholder="booking, travel  (comma separated)" />
+                  <p class="cfg-field-hint">Free-text keywords for search and discovery.</p>
                 </div>
                 <div class="cfg-form-group">
                   <label for="wz-status">Status</label>

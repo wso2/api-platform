@@ -87,7 +87,6 @@
     document.getElementById('cfg-plan-modal-title').textContent = mode === 'edit' ? 'Edit subscription plan' : 'Add subscription plan';
     document.getElementById('cfg-plan-modal-save').textContent  = mode === 'edit' ? 'Save changes' : 'Add plan';
     document.getElementById('pol-display').value = mode === 'edit' ? (data.displayName||'') : '';
-    document.getElementById('pol-name').value    = mode === 'edit' ? (data.planName||'')    : '';
     document.getElementById('pol-desc').value    = mode === 'edit' ? (data.description||'') : '';
     document.getElementById('pol-refid').value   = mode === 'edit' ? (data.refId||'')       : '';
 
@@ -107,8 +106,7 @@
   /* ── save ── */
   document.getElementById('cfg-plan-modal-save').addEventListener('click', async function() {
     var displayName = v('pol-display');
-    var planName    = v('pol-name');
-    if (!displayName || !planName) { await showAlert('Display name and name are required.', 'error'); return; }
+    if (!displayName) { await showAlert('Name is required.', 'error'); return; }
 
     var limits;
     try {
@@ -119,12 +117,14 @@
     }
 
     var body = {
-      id:          planName,
       displayName: displayName,
       description: v('pol-desc') || undefined,
       limits:      limits,
       refId:       v('pol-refid') || undefined,
     };
+    // No `id` on create — the server generates a UUID handle. On edit, send the
+    // existing handle so the update targets the right plan (it is not renamed).
+    if (editPlanId) body.id = editPlanId;
 
     try {
       var method = editPlanId ? 'PUT' : 'POST';

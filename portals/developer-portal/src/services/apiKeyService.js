@@ -138,8 +138,15 @@ async function publishKeyApplicationUpdated(orgId, keyId, handle, displayName, a
  */
 async function generate({ orgId, apiId, subscriptionId, appId, handle, displayName, expiresAt, actor }) {
 
-    const normalizedHandle = parseAndValidateHandle(handle);
-    if (!normalizedHandle) throw Object.assign(new Error('id must match ^[a-z0-9][a-z0-9_-]{0,127}$'), { status: 400 });
+    // Handle rule: use the caller-supplied `id` when present (validated); otherwise a
+    // UUID. A UUID satisfies KEY_HANDLE_PATTERN, so it needs no extra validation.
+    let normalizedHandle;
+    if (typeof handle === 'string' && handle.trim()) {
+        normalizedHandle = parseAndValidateHandle(handle);
+        if (!normalizedHandle) throw Object.assign(new Error('id must match ^[a-z0-9][a-z0-9_-]{0,127}$'), { status: 400 });
+    } else {
+        normalizedHandle = crypto.randomUUID();
+    }
     const normalizedDisplayName = typeof displayName === 'string' && displayName.trim() ? displayName.trim() : normalizedHandle;
 
     const expiry = parseExpiresAt(expiresAt);
@@ -147,6 +154,14 @@ async function generate({ orgId, apiId, subscriptionId, appId, handle, displayNa
 
     const api = await resolveApi(orgId, apiId);
     if (api.error) throw Object.assign(new Error(api.error.message), { status: api.error.status });
+
+    // The handle is the caller-facing id used to resolve a key within an API, so reject
+    // a duplicate. This is a friendly pre-check; the (org_uuid, api_uuid, handle) unique
+    // index is the authoritative guard, enforced atomically by the duplicate-key catch
+    // around apiKeyDao.create below (which also covers a create that races past this).
+    if (await apiKeyDao.getIdByHandle(orgId, api.id, normalizedHandle)) {
+        throw Object.assign(new Error(`An API key with id "${normalizedHandle}" already exists for this API.`), { status: 409 });
+    }
 
     const application = await resolveApp(orgId, appId, actor);
 
@@ -157,11 +172,22 @@ async function generate({ orgId, apiId, subscriptionId, appId, handle, displayNa
 
     try {
         await db.withTransaction(async (t) => {
-            const key = await apiKeyDao.create(
-                { apiId: api.id, subscriptionId, appId: application ? application.id : null, orgId,
-                  handle: normalizedHandle, displayName: normalizedDisplayName, expiresAt: expiry.date, createdBy: actor },
-                t
-            );
+            let key;
+            try {
+                key = await apiKeyDao.create(
+                    { apiId: api.id, subscriptionId, appId: application ? application.id : null, orgId,
+                      handle: normalizedHandle, displayName: normalizedDisplayName, expiresAt: expiry.date, createdBy: actor },
+                    t
+                );
+            } catch (createErr) {
+                // Only a handle collision on the insert (uq_api_key_org_api_handle) maps to
+                // 409 — a duplicate-key error from a later step (event publishes, etc.) is
+                // unrelated and must keep its own handling, so scope the check to create.
+                if (db.isDuplicateKeyError(createErr)) {
+                    throw Object.assign(new Error(`An API key with id "${normalizedHandle}" already exists for this API.`), { status: 409 });
+                }
+                throw createErr;
+            }
             keyId = key.uuid;
             audit = await userIdpReferenceDao.buildSingleAuditFields(key);
 

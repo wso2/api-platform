@@ -25,9 +25,24 @@ const logger = require('../config/logger');
 const APPLICATION_TABLE = 'dp_applications';
 const KEY_MAPPING_TABLE = 'dp_app_key_mappings';
 
+// URL-safe slug derived from a display name, used as the handle when the caller
+// doesn't supply one. Handles appear in route segments, so restrict to [a-z0-9-].
+function slugify(name) {
+    return String(name || '')
+        .toLowerCase()
+        .trim()
+        .replace(/[^a-z0-9]+/g, '-')
+        .replace(/^-+|-+$/g, '');
+}
+
 const create = async (orgId, userId, appData) => {
     const uuid = crypto.randomUUID();
-    const handle = appData.handle || appData.displayName;
+    // Handle rule: use the caller-supplied handle (body `id` / YAML metadata.name)
+    // when present; otherwise a slugified display name. Coerce to string first so a
+    // non-string id (e.g. a numeric YAML metadata.name) doesn't throw on .trim(), and
+    // fall back to the uuid when the display name slugifies to nothing.
+    const suppliedHandle = appData.handle != null ? String(appData.handle).trim() : '';
+    const handle = suppliedHandle || slugify(appData.displayName) || uuid;
     await db.execute(
         `INSERT INTO ${APPLICATION_TABLE} (uuid, display_name, handle, org_uuid, description, created_by, updated_by)
          VALUES (?, ?, ?, ?, ?, ?, ?)`,

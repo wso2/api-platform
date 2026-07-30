@@ -68,6 +68,7 @@
       var _sub = null;
       var _revealed = false;
       var _mCopyTimer = null;
+      var _regenerateInFlight = false;
 
       function openManage(policyName) {
         var subs = window.existingSubscriptions || [];
@@ -143,6 +144,55 @@
         if (btn) btn.classList.add('copy-btn--copied');
         if (_mCopyTimer) clearTimeout(_mCopyTimer);
         _mCopyTimer = setTimeout(resetManageCopyBtn, 1600);
+      }
+
+      /* ── Regenerate token ── */
+      var _regenTrigger = null;
+      function askRegenerate() {
+        if (!_sub) return;
+        var dialog = document.getElementById('apiRegenerateDialog');
+        if (!dialog) return;
+        _regenTrigger = document.activeElement; // restore focus here on close
+        dialog.style.display = 'flex';
+        document.getElementById('apiRegenerateCancelBtn').focus();
+      }
+      function closeRegenerate() {
+        var dialog = document.getElementById('apiRegenerateDialog');
+        if (dialog) dialog.style.display = 'none';
+        if (_regenTrigger && typeof _regenTrigger.focus === 'function') _regenTrigger.focus();
+        _regenTrigger = null;
+      }
+      async function confirmRegenerate() {
+        if (!_sub || _regenerateInFlight) return;
+        var subId = _sub.subscriptionId;
+        closeRegenerate();
+        _regenerateInFlight = true;
+        try {
+          var resp = await fetch(devportalApi.root('/subscriptions/' + encodeURIComponent(subId) + '/regenerate-token'), {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': window.devportalApi.csrfToken() },
+          });
+          if (resp.ok) {
+            var data = await resp.json();
+            var newToken = data.subscriptionToken;
+            var meta = (window.__tokenMeta || {})[subId];
+            if (meta) { meta._fullToken = newToken || null; }
+            /* Show the new token revealed so the user can copy it before closing. */
+            _revealed = true;
+            document.getElementById('apiManageTokenVal').textContent = newToken || '•'.repeat(28);
+            var ri = document.getElementById('apiManageRevealIcon');
+            if (ri) ri.className = 'bi bi-eye-slash';
+            resetManageCopyBtn();
+            showAlert('Token regenerated. Copy your new token before closing this window.', 'success');
+          } else {
+            var err = await resp.json().catch(function () { return {}; });
+            showAlert('Failed to regenerate token: ' + (err.description || 'Unknown error'), 'error');
+          }
+        } catch (e) {
+          showAlert('Error: ' + e.message, 'error');
+        } finally {
+          _regenerateInFlight = false;
+        }
       }
 
       async function toggleSuspend() {
@@ -352,9 +402,19 @@
           document.getElementById('apiManageClose').addEventListener('click', closeManage);
           document.getElementById('apiManageRevealBtn').addEventListener('click', revealToken);
           document.getElementById('apiManageCopyBtn').addEventListener('click', copyManageToken);
+          var regenBtn = document.getElementById('apiManageRegenerateBtn');
+          if (regenBtn) regenBtn.addEventListener('click', askRegenerate);
           document.getElementById('apiManageSuspendBtn').addEventListener('click', toggleSuspend);
           document.getElementById('apiManageUnsubBtn').addEventListener('click', askUnsub);
           manageModal.addEventListener('click', function (e) { if (e.target === manageModal) closeManage(); });
+        }
+
+        /* Regenerate confirmation dialog */
+        var regenDialog = document.getElementById('apiRegenerateDialog');
+        if (regenDialog) {
+          document.getElementById('apiRegenerateCancelBtn').addEventListener('click', closeRegenerate);
+          document.getElementById('apiRegenerateConfirmBtn').addEventListener('click', confirmRegenerate);
+          regenDialog.addEventListener('click', function (e) { if (e.target === regenDialog) closeRegenerate(); });
         }
 
         /* Unsub dialog */

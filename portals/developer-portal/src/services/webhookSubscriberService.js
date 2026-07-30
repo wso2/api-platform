@@ -23,26 +23,13 @@ const { WebhookSubscriberDTO } = require('../dto/webhookSubscriberDto');
 const userIdpReferenceDao = require('../dao/userIdpReferenceDao');
 const constants = require('../utils/constants');
 const util = require('../utils/util');
-const { slugifyHandle, handleCandidate, randomHandle } = require('../utils/handleSlug');
+const crypto = require('crypto');
 const logger = require('../config/logger');
 const { logUserAction } = require('../middlewares/auditLogger');
 
-// Generated-handle collision strategy: try the readable numeric ladder first
-// (base, base-2, base-3), then fall back to a random tail. The random attempts are what
-// make failure effectively unreachable, so a caller is never asked to rename a webhook
-// just because the name is popular; the numeric ladder exists only because it reads
-// better for the ordinary duplicate-name case. Both are bounded so a broken unique
-// index can't spin indefinitely inside a request.
-const NUMERIC_HANDLE_ATTEMPTS = 3;
-const RANDOM_HANDLE_ATTEMPTS = 2;
-const MAX_HANDLE_ATTEMPTS = NUMERIC_HANDLE_ATTEMPTS + RANDOM_HANDLE_ATTEMPTS;
-// Used when displayName slugifies to nothing (e.g. it is entirely punctuation, or a
-// script with no a-z0-9 characters); uniqueness then comes from the suffix, not the name.
-const FALLBACK_HANDLE_BASE = 'webhook';
-
 function _validateRequiredFields(payload) {
     // `handle` is intentionally absent: it is either supplied by the caller as `id`
-    // or derived from displayName below, so it is never a field the caller must send.
+    // or generated as a UUID below, so it is never a field the caller must send.
     const missing = ['displayName', 'targetUrl'].filter(f => !payload[f]);
     if (missing.length) {
         return `Missing required fields: ${missing.join(', ')}`;
@@ -58,65 +45,42 @@ function _validateRequiredFields(payload) {
  * driver error (unlike the previous Sequelize.UniqueConstraintError) doesn't carry
  * a structured `fields` list, so there's nothing left to branch on here.
  */
-function _uniqueConstraintMessage(payload) {
-    return `A webhook subscriber with id "${payload?.id}" already exists in this organization.`;
+function _uniqueConstraintMessage(handle) {
+    return `A webhook subscriber with id "${handle}" already exists in this organization.`;
 }
 
 const createWebhookSubscriber = async (req, res) => {
     try {
         const orgId = req.orgId;
-        const payload = req.body;
+        // Normalize to an object so an undefined/non-object body doesn't throw on the
+        // handle assignment below — it falls through to _validateRequiredFields and the
+        // expected 400 instead.
+        const payload = (req.body && typeof req.body === 'object' && !Array.isArray(req.body)) ? req.body : {};
 
-        // `id` is optional. The settings UI never sends one — the handle is derived
-        // from displayName here — but it stays accepted so an API client can still
-        // pick a stable identifier of its own (and so existing callers keep working).
-        const callerSuppliedId = !!(payload && payload.id);
-        if (callerSuppliedId) {
-            payload.handle = payload.id;
-        }
+        // Handle rule: use the caller-supplied `id` when present; otherwise generate a
+        // UUID. The settings UI sends no id (so those get a UUID); an API client may
+        // pick a stable identifier of its own. A handle collision is always a 409 —
+        // we never rewrite the caller's id or invent a variant.
+        payload.handle = payload.id ? payload.id : crypto.randomUUID();
 
         const validationError = _validateRequiredFields(payload);
         if (validationError) {
             return util.sendError(res, 400, validationError);
         }
 
-        const base = callerSuppliedId
-            ? payload.handle
-            : (slugifyHandle(payload.displayName) || FALLBACK_HANDLE_BASE);
         const userId = util.resolveActor(req);
-
-        // A caller-supplied handle is taken at face value: a collision is their
-        // conflict to resolve (409). A generated one is ours, so a collision just
-        // means trying the next suffix. Retrying on the insert's duplicate-key error
-        // rather than pre-checking availability keeps this correct under concurrent
-        // creates, where a check-then-insert would race.
-        const attempts = callerSuppliedId ? 1 : MAX_HANDLE_ATTEMPTS;
-        for (let attempt = 0; attempt < attempts; attempt++) {
-            payload.handle = attempt < NUMERIC_HANDLE_ATTEMPTS
-                ? handleCandidate(base, attempt)
-                : randomHandle(base);
-            try {
-                const record = await whDao.create(orgId, payload, userId);
-                logUserAction('WEBHOOK_SUBSCRIBER_CREATED', req, { orgId, subscriberId: record.uuid, resourceUuid: record.uuid, resourceType: 'webhook_subscriber' });
-                const audit = await userIdpReferenceDao.buildSingleAuditFields(record);
-                const dto = new WebhookSubscriberDTO(record, audit);
-                return res.status(201).json(dto);
-            } catch (error) {
-                if (!db.isDuplicateKeyError(error)) {
-                    throw error;
-                }
-                if (callerSuppliedId) {
-                    return util.sendError(res, 409, _uniqueConstraintMessage(req.body));
-                }
-                // Generated handle collided — fall through and try the next suffix.
+        try {
+            const record = await whDao.create(orgId, payload, userId);
+            logUserAction('WEBHOOK_SUBSCRIBER_CREATED', req, { orgId, subscriberId: record.uuid, resourceUuid: record.uuid, resourceType: 'webhook_subscriber' });
+            const audit = await userIdpReferenceDao.buildSingleAuditFields(record);
+            const dto = new WebhookSubscriberDTO(record, audit);
+            return res.status(201).json(dto);
+        } catch (error) {
+            if (db.isDuplicateKeyError(error)) {
+                return util.sendError(res, 409, _uniqueConstraintMessage(payload.handle));
             }
+            throw error;
         }
-
-        // Effectively unreachable: reaching here means the numeric ladder collided AND
-        // every random suffix collided too, which points at a broken unique index rather
-        // than an unlucky caller — so this is logged as a server fault, not a 4xx.
-        logger.error('Exhausted webhook subscriber handle generation attempts', { orgId, base, attempts });
-        return util.sendError(res, 500, constants.ERROR_MESSAGE.WEBHOOK_SUBSCRIBER_CREATE_ERROR);
     } catch (error) {
         logger.error(constants.ERROR_MESSAGE.WEBHOOK_SUBSCRIBER_CREATE_ERROR, { error });
         return util.sendError(res, 500, constants.ERROR_MESSAGE.WEBHOOK_SUBSCRIBER_CREATE_ERROR);
@@ -143,7 +107,7 @@ const updateWebhookSubscriber = async (req, res) => {
             return util.sendError(res, 404, constants.ERROR_MESSAGE.WEBHOOK_SUBSCRIBER_NOT_FOUND);
         }
         if (db.isDuplicateKeyError(error)) {
-            return util.sendError(res, 409, _uniqueConstraintMessage(req.body));
+            return util.sendError(res, 409, _uniqueConstraintMessage(req.body?.id));
         }
         logger.error(constants.ERROR_MESSAGE.WEBHOOK_SUBSCRIBER_UPDATE_ERROR, { error });
         return util.sendError(res, 500, constants.ERROR_MESSAGE.WEBHOOK_SUBSCRIBER_UPDATE_ERROR);

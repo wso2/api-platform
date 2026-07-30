@@ -71,6 +71,34 @@
   function typeInfo(t) { return typeMap[t] || typeMap['RestApi']; }
   function initials(name) { var w=String(name||'').trim().split(/\s+/); return (w[0]?w[0][0]:'') + (w[1]?w[1][0]:''); }
 
+  /* ── org-label picker (toggle chips), same UX as the Views modal ── */
+  var labelPicker = document.getElementById('wz-labels');
+  if (labelPicker) {
+    labelPicker.addEventListener('click', function (e) {
+      var chip = e.target.closest('.cfg-label-toggle');
+      if (!chip) return;
+      var on = chip.getAttribute('aria-pressed') === 'true';
+      chip.setAttribute('aria-pressed', on ? 'false' : 'true');
+      chip.classList.toggle('selected', !on);
+    });
+  }
+  function setSelectedLabels(labels) {
+    if (!labelPicker) return;
+    var set = {}; (labels || []).forEach(function (l) { set[l] = true; });
+    labelPicker.querySelectorAll('.cfg-label-toggle').forEach(function (chip) {
+      var on = !!set[chip.dataset.value];
+      chip.setAttribute('aria-pressed', on ? 'true' : 'false');
+      chip.classList.toggle('selected', on);
+    });
+  }
+  function getSelectedLabels() {
+    if (!labelPicker) return [];
+    return Array.prototype.map.call(
+      labelPicker.querySelectorAll('.cfg-label-toggle[aria-pressed="true"]'),
+      function (chip) { return chip.dataset.value; }
+    );
+  }
+
   /* ── handle auto-generate ── */
   var handleTouched = false;
   document.getElementById('wz-handle').addEventListener('input', function() { handleTouched = true; });
@@ -246,10 +274,11 @@
       sv('wz-tech-email', (api.owners && api.owners.technicalOwnerEmail) || api.technicalOwnerEmail || '');
       sv('wz-biz-owner',  (api.owners && api.owners.businessOwner)       || api.businessOwner       || '');
       sv('wz-biz-email',  (api.owners && api.owners.businessOwnerEmail)  || api.businessOwnerEmail  || '');
-      agentVis = api.agentVisibility || 'Visible';
+      agentVis = String(api.agentVisibility || '').toUpperCase() === 'HIDDEN' ? 'Hidden' : 'Visible';
       document.getElementById('wz-vis-visible').classList.toggle('active', agentVis !== 'Hidden');
       document.getElementById('wz-vis-hidden').classList.toggle('active',  agentVis === 'Hidden');
       setSelectedPolicies(api.subscriptionPlans || []);
+      setSelectedLabels(api.labels || []);
       /* existing docs are embedded server-side in cfg-org-apis-data */
       existingDocs = api.existingDocs || [];
     } else {
@@ -262,6 +291,9 @@
       document.getElementById('wz-vis-visible').classList.add('active');
       document.getElementById('wz-vis-hidden').classList.remove('active');
       setSelectedPolicies([]);
+      /* Pre-select the 'default' label so a new API lands in the default view,
+         matching the prior behavior where create defaulted to ['default']. */
+      setSelectedLabels(['default']);
     }
 
     syncProdRequiredMarker();
@@ -348,6 +380,7 @@
       status:      document.getElementById('wz-status').value,
       description: v('wz-desc'),
       tags:           v('wz-tags') ? v('wz-tags').split(',').map(function(t){return t.trim();}).filter(Boolean) : [],
+      labels:         getSelectedLabels(),
       agentVisibility: agentVis,
       owners: {
         technicalOwner:      v('wz-tech-owner') || undefined,

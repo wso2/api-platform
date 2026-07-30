@@ -14,7 +14,6 @@
           <table class="cfg-table">
             <thead>
               <tr>
-                <th>Plan</th>
                 <th>Name</th>
                 <th>Limits</th>
                 <th style="width:90px;"></th>
@@ -33,7 +32,6 @@
                   <div style="font-size:.875rem;font-weight:600;color:#1a2433;">{{displayName}}</div>
                   {{#if description}}<div style="font-size:.75rem;color:#637282;margin-top:2px;">{{description}}</div>{{/if}}
                 </td>
-                <td><span class="cfg-name-chip">{{planName}}</span></td>
                 <td>
                   {{#if limits.length}}
                     {{#limits}}
@@ -59,7 +57,7 @@
               </tr>
               {{/orgPlans}}
               {{#unless orgPlans.length}}
-              <tr><td colspan="4" class="cfg-tbl-empty">No subscription plans yet. Add one to get started.</td></tr>
+              <tr><td colspan="3" class="cfg-tbl-empty">No subscription plans yet. Add one to get started.</td></tr>
               {{/unless}}
             </tbody>
           </table>

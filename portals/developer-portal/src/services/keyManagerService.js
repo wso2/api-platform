@@ -25,6 +25,7 @@ const constants = require('../utils/constants');
 const util = require('../utils/util');
 const logger = require('../config/logger');
 const { logUserAction } = require('../middlewares/auditLogger');
+const crypto = require('crypto');
 
 // ---------------------------------------------------------------------------
 // YAML ingestion helpers (mirrors parseIdentityProviderFromYamlFile pattern)
@@ -92,15 +93,8 @@ function _resolvePayload(req) {
     return payload;
 }
 
-const generateHandle = (name) =>
-    name.toLowerCase().trim()
-        .replace(/[^\w\s-]/g, '')
-        .replace(/\s+/g, '-')
-        .replace(/-+/g, '-')
-        .substring(0, 100);
-
-// Handles are used to build route segments, so user-supplied ids must be restricted
-// to the same safe character set generateHandle() produces.
+// Handles are used to build route segments, so a caller-supplied id must be restricted
+// to a safe character set. Generated handles are UUIDs, which already satisfy this.
 const HANDLE_PATTERN = /^[a-zA-Z0-9_-]+$/;
 
 function _validateRequiredFields(payload) {
@@ -134,27 +128,45 @@ const createKeyManager = async (req, res) => {
         if (validationError) {
             return util.sendError(res, 400, validationError);
         }
-        const hadExplicitHandle = !!(payload.handle && payload.handle.trim());
-        const resolvedHandle = hadExplicitHandle ? payload.handle.trim() : generateHandle(payload.displayName);
-        if (!resolvedHandle || !HANDLE_PATTERN.test(resolvedHandle)) {
+
+        // Handle rule: use the caller-supplied handle (a body `id` or YAML metadata.name)
+        // when present; otherwise generate a UUID. The settings UI sends none, so those
+        // get a UUID. A handle collision is always a 409 — we never rewrite the caller's
+        // id or invent a variant.
+        // An explicit handle (body `id` or YAML metadata.name) must be a string; reject
+        // other types with a 400 rather than crashing on .trim() — the YAML-upload path
+        // isn't schema-validated, so a numeric metadata.name can reach here.
+        if (payload.handle != null && typeof payload.handle !== 'string') {
             return util.sendError(res, 400, "Invalid 'id'. Must contain only letters, numbers, underscores, and hyphens.");
         }
+        const hadExplicitHandle = typeof payload.handle === 'string' && !!payload.handle.trim();
+        if (hadExplicitHandle && !HANDLE_PATTERN.test(payload.handle.trim())) {
+            return util.sendError(res, 400, "Invalid 'id'. Must contain only letters, numbers, underscores, and hyphens.");
+        }
+        const handle = hadExplicitHandle ? payload.handle.trim() : crypto.randomUUID();
 
         const userId = util.resolveActor(req);
-        const record = await kmDao.create(orgId, { ...payload, handle: resolvedHandle }, userId);
-        logUserAction('KEY_MANAGER_CREATED', req, { orgId, kmId: record.uuid, resourceUuid: record.uuid, resourceType: 'key_manager' });
-        let audit;
         try {
-            audit = await userIdpReferenceDao.buildSingleAuditFields(record);
-        } catch (auditError) {
-            logger.error('Audit field resolution failed after key manager creation', {
-                error: auditError.message,
-                kmId: record.uuid
-            });
-            audit = { createdAt: record.created_at, updatedAt: record.updated_at };
+            const record = await kmDao.create(orgId, { ...payload, handle }, userId);
+            logUserAction('KEY_MANAGER_CREATED', req, { orgId, kmId: record.uuid, resourceUuid: record.uuid, resourceType: 'key_manager' });
+            let audit;
+            try {
+                audit = await userIdpReferenceDao.buildSingleAuditFields(record);
+            } catch (auditError) {
+                logger.error('Audit field resolution failed after key manager creation', {
+                    error: auditError.message,
+                    kmId: record.uuid
+                });
+                audit = { createdAt: record.created_at, updatedAt: record.updated_at };
+            }
+            const dto = new KeyManagerDTO(record, audit);
+            return res.status(201).json(dto);
+        } catch (error) {
+            if (db.isDuplicateKeyError(error)) {
+                return util.sendError(res, 409, `A key manager with that id already exists in this organization.`);
+            }
+            throw error;
         }
-        const dto = new KeyManagerDTO(record, audit);
-        return res.status(201).json(dto);
     } catch (error) {
         if (db.isDuplicateKeyError(error)) {
             return util.sendError(res, 409, `A key manager with that id already exists in this organization.`);

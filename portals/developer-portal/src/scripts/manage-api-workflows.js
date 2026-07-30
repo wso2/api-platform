@@ -55,6 +55,18 @@ function generateHandle(name) {
         .substring(0, 100);
 }
 
+// Set once the user edits the Handle field manually, so auto-generation from the
+// name stops clobbering it — same pattern as the API/MCP creation wizard.
+let apiWorkflowHandleTouched = false;
+
+// The handle to submit: the Handle field's value when present, else derived from
+// the name (the server also slugs from displayName as a final fallback).
+function getWorkflowHandle(name) {
+    const field = document.getElementById('apiWorkflowHandle');
+    const typed = field && field.value ? field.value.trim() : '';
+    return typed || generateHandle(name || '');
+}
+
 document.addEventListener('DOMContentLoaded', function () {
     initializeApiWorkflowsData();
 
@@ -99,6 +111,17 @@ document.addEventListener('DOMContentLoaded', function () {
     };
     document.getElementById('apiWorkflowName')?.addEventListener('input', debouncePromptUpdate);
     document.getElementById('apiWorkflowDescription')?.addEventListener('input', debouncePromptUpdate);
+
+    // Auto-generate the handle from the name until the user edits the handle (or is
+    // editing an existing workflow, where the handle is immutable/read-only).
+    const wfHandleField = document.getElementById('apiWorkflowHandle');
+    if (wfHandleField) {
+        wfHandleField.addEventListener('input', function () { apiWorkflowHandleTouched = true; });
+        document.getElementById('apiWorkflowName')?.addEventListener('input', function () {
+            if (apiWorkflowHandleTouched || wfHandleField.readOnly) return;
+            wfHandleField.value = generateHandle(this.value);
+        });
+    }
 
     // Form action buttons
     document.getElementById('regeneratePromptBtn')?.addEventListener('click', regenerateAgentPrompt);
@@ -882,6 +905,10 @@ function resetApiWorkflowForm() {
     const nameField = document.getElementById('apiWorkflowName');
     if (nameField) { nameField.value = ''; nameField.readOnly = false; nameField.classList.remove('af-field-readonly'); }
 
+    const handleField = document.getElementById('apiWorkflowHandle');
+    if (handleField) { handleField.value = ''; handleField.readOnly = false; handleField.classList.remove('af-field-readonly'); }
+    apiWorkflowHandleTouched = false;
+
     document.getElementById('apiWorkflowDescription').value = '';
     document.getElementById('apiWorkflowDefinition').value = '';
     document.getElementById('markdownContent').value = '';
@@ -1140,7 +1167,7 @@ async function updatePromptFromForm() {
     const viewName = currentViewName || 'default';
     const editingId = document.getElementById('editingApiWorkflowId')?.value || '';
     const editingFlow = editingId ? (window.apiWorkflowsData || []).find(f => String(f.id) === String(editingId)) : null;
-    const handle = editingFlow?.id || generateHandle(name);
+    const handle = editingFlow?.id || getWorkflowHandle(name);
 
     try {
         const response = await fetch(`/${orgName}/views/${viewName}/api-workflows/generate-prompt`, {
@@ -1295,7 +1322,7 @@ async function saveApiWorkflow(orgId, viewName, status) {
     });
     if (!valid) return;
 
-    const handle = generateHandle(name);
+    const handle = getWorkflowHandle(name);
     const payload = { displayName: name, id: handle, description, agentPrompt, status, agentVisibility, contentType, apiWorkflowDefinition, markdownContent };
     const isEdit = !!apiWorkflowId;
     const url = isEdit
@@ -1443,6 +1470,9 @@ function openEditApiWorkflow(apiWorkflowId) {
     document.getElementById('editingApiWorkflowId').value = apiWorkflowId;
     const nameField = document.getElementById('apiWorkflowName');
     if (nameField) { nameField.value = data.displayName || ''; nameField.readOnly = true; nameField.classList.add('af-field-readonly'); }
+
+    const handleField = document.getElementById('apiWorkflowHandle');
+    if (handleField) { handleField.value = apiWorkflowId || data.id || ''; handleField.readOnly = true; handleField.classList.add('af-field-readonly'); apiWorkflowHandleTouched = true; }
 
     document.getElementById('apiWorkflowDescription').value = data.description || '';
 

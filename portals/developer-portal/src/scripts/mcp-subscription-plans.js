@@ -51,6 +51,7 @@
       var _sub = null;
       var _revealed = false;
       var _mCopyTimer = null;
+      var _regenerateInFlight = false;
 
       function openManage(policyName) {
         var subs = window.existingSubscriptions || [];
@@ -126,6 +127,57 @@
         if (btn) btn.classList.add('copy-btn--copied');
         if (_mCopyTimer) clearTimeout(_mCopyTimer);
         _mCopyTimer = setTimeout(resetManageCopyBtn, 1600);
+      }
+
+      /* ── Regenerate token ── */
+      var _regenTrigger = null;
+      function askRegenerate() {
+        if (!_sub) return;
+        var dialog = document.getElementById('mcpRegenerateDialog');
+        if (!dialog) return;
+        _regenTrigger = document.activeElement; // restore focus here on close
+        dialog.style.display = 'flex';
+        document.getElementById('mcpRegenerateCancelBtn').focus();
+      }
+      function closeRegenerate() {
+        var dialog = document.getElementById('mcpRegenerateDialog');
+        if (dialog) dialog.style.display = 'none';
+        if (_regenTrigger && typeof _regenTrigger.focus === 'function') _regenTrigger.focus();
+        _regenTrigger = null;
+      }
+      async function confirmRegenerate() {
+        if (!_sub || _regenerateInFlight) return;
+        var subId = _sub.subscriptionId;
+        closeRegenerate();
+        _regenerateInFlight = true;
+        try {
+          var resp = await fetch(devportalApi.root('/subscriptions/' + encodeURIComponent(subId) + '/regenerate-token'), {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': window.devportalApi.csrfToken() },
+          });
+          if (resp.ok) {
+            var data = await resp.json();
+            var newToken = data.subscriptionToken;
+            /* Sync the shared token cache so a later reveal/copy returns the new token. */
+            if (typeof window.__updateSubscriptionTokenCache === 'function') {
+              window.__updateSubscriptionTokenCache(subId, newToken || null);
+            }
+            /* Show the new token revealed so the user can copy it before closing. */
+            _revealed = true;
+            document.getElementById('mcpManageTokenVal').textContent = newToken || '•'.repeat(28);
+            var ri = document.getElementById('mcpManageRevealIcon');
+            if (ri) ri.className = 'bi bi-eye-slash';
+            resetManageCopyBtn();
+            showAlert('Token regenerated. Copy your new token before closing this window.', 'success');
+          } else {
+            var err = await resp.json().catch(function () { return {}; });
+            showAlert('Failed to regenerate token: ' + (err.description || 'Unknown error'), 'error');
+          }
+        } catch (e) {
+          showAlert('Error: ' + e.message, 'error');
+        } finally {
+          _regenerateInFlight = false;
+        }
       }
 
       async function toggleSuspend() {
@@ -320,6 +372,8 @@
           document.getElementById('mcpManageClose').addEventListener('click', closeManage);
           document.getElementById('mcpManageRevealBtn').addEventListener('click', revealToken);
           document.getElementById('mcpManageCopyBtn').addEventListener('click', copyManageToken);
+          var mcpRegenBtn = document.getElementById('mcpManageRegenerateBtn');
+          if (mcpRegenBtn) mcpRegenBtn.addEventListener('click', askRegenerate);
           document.getElementById('mcpManageSuspendBtn').addEventListener('click', toggleSuspend);
           document.getElementById('mcpManageUnsubBtn').addEventListener('click', askUnsub);
           manageModal.addEventListener('click', function (e) { if (e.target === manageModal) closeManage(); });
@@ -331,6 +385,14 @@
           document.getElementById('mcpUnsubKeepBtn').addEventListener('click', closeUnsub);
           document.getElementById('mcpUnsubConfirmBtn').addEventListener('click', confirmUnsub);
           unsubDialog.addEventListener('click', function (e) { if (e.target === unsubDialog) closeUnsub(); });
+        }
+
+        /* Regenerate confirmation dialog */
+        var mcpRegenDialog = document.getElementById('mcpRegenerateDialog');
+        if (mcpRegenDialog) {
+          document.getElementById('mcpRegenerateCancelBtn').addEventListener('click', closeRegenerate);
+          document.getElementById('mcpRegenerateConfirmBtn').addEventListener('click', confirmRegenerate);
+          mcpRegenDialog.addEventListener('click', function (e) { if (e.target === mcpRegenDialog) closeRegenerate(); });
         }
 
         /* Token modal */

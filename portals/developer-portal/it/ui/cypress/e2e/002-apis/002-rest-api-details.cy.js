@@ -149,10 +149,9 @@ describe('REST API — overview, documentation & try-out', () => {
     it('exposes the Try It console on the specification page', () => {
         cy.visitPortal(`/api/${apiHandle}/docs/specification`);
         // For a REST API the "try out" console is Stoplight Elements' built-in
-        // Try-It panel inside <elements-api>, wired to the portal's tryout proxy.
-        // (Elements loads from a CDN and the seeded backend is unreachable, so a
-        // live request round-trip isn't exercised here — we assert the console is
-        // present and proxy-wired.)
-        cy.get('elements-api').should('exist').and('have.attr', 'tryItCorsProxy');
+        // Try-It panel inside <elements-api>. The internal CORS proxy is deliberately
+        // NOT wired in (no tryItCorsProxy attribute) so Elements' sample curl can't leak
+        // the internal proxy URL — so we assert the console is present but unproxied.
+        cy.get('elements-api').should('exist').and('not.have.attr', 'tryItCorsProxy');
     });
 });

@@ -159,6 +159,9 @@
       <p class="mc-config-note" style="margin:0.625rem 0 0;">Use this token as the <code class="mc-inline-code">Subscription-Key</code> header when invoking the MCP server.</p>
       <hr class="mc-manage-divider">
       <div class="mc-manage-actions">
+        <button id="mcpManageRegenerateBtn" class="dp-btn mc-manage-action-btn mc-manage-action-btn--regenerate">
+          <i class="bi bi-arrow-clockwise"></i> Regenerate
+        </button>
         <button id="mcpManageSuspendBtn" class="dp-btn mc-manage-action-btn mc-manage-action-btn--suspend">
           <i class="bi bi-pause-circle"></i>
           <span class="mc-suspend-label">Suspend</span>
@@ -182,6 +185,21 @@
     <div class="mc-unsub-actions">
       <button id="mcpUnsubKeepBtn" class="dp-btn dp-btn--outline">Cancel</button>
       <button id="mcpUnsubConfirmBtn" class="dp-btn mc-unsub-confirm-btn">Unsubscribe</button>
+    </div>
+  </div>
+</div>
+
+<!-- Regenerate token confirmation dialog -->
+<div id="mcpRegenerateDialog" class="mc-overlay" style="display:none;" role="dialog" aria-modal="true" aria-labelledby="mcpRegenerateTitle">
+  <div class="mc-unsub-dialog">
+    <div class="mc-unsub-header">
+      <span class="mc-unsub-icon"><i class="bi bi-exclamation-triangle-fill"></i></span>
+      <h2 class="mc-unsub-title" id="mcpRegenerateTitle">Regenerate token?</h2>
+    </div>
+    <p class="mc-unsub-desc">Your current token will be invalidated immediately. Any applications using it will need to be updated with the new token.</p>
+    <div class="mc-unsub-actions">
+      <button id="mcpRegenerateCancelBtn" class="dp-btn dp-btn--outline">Cancel</button>
+      <button id="mcpRegenerateConfirmBtn" class="dp-btn mc-unsub-confirm-btn">Regenerate</button>
     </div>
   </div>
 </div>

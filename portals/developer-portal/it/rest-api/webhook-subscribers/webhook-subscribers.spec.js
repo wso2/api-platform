@@ -18,7 +18,7 @@
 
 // POST/GET/PUT/DELETE /webhook-subscribers, GET /webhook-subscribers/{id}/deliveries.
 // Request shape: { displayName, targetUrl, id?, secret?, events?, enabled? }
-// `id` is optional — omit it and the handle is generated from displayName.
+// `id` is optional — omit it and the server generates a UUID handle.
 // — see docs/devportal-openapi-spec-v0.9.yaml WebhookSubscriberRequest.
 // `events` is a glob allowlist (trailing `*` only, e.g. "apikey.*"); empty/omitted
 // means all event types. `admin` manages org-level integration config.
@@ -45,9 +45,11 @@ describe('webhook subscribers', () => {
     });
 
     // The settings UI no longer collects a handle, so the common path is now a create
-    // with no `id` at all. The generated handle is what every later request addresses,
-    // so it has to come back in the response.
-    it('generates the handle from displayName when id is omitted', async () => {
+    // with no `id` at all. The server generates a UUID handle, which is what every later
+    // request addresses, so it has to come back in the response.
+    const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
+
+    it('generates a UUID handle when id is omitted', async () => {
         const displayName = `Prod Listener ${uniqueHandle('x')}`;
         const res = await client.as('admin').post('/webhook-subscribers', {
             displayName,
@@ -57,8 +59,8 @@ describe('webhook subscribers', () => {
         });
         expect(res.status).toBe(201);
 
-        const expected = displayName.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
-        expect(res.body.id).toBe(expected);
+        // No id supplied → a UUID handle (not a slug of displayName).
+        expect(res.body.id).toMatch(UUID_RE);
 
         // The generated id must actually address the resource.
         const fetched = await client.as('admin').get(`/webhook-subscribers/${res.body.id}`);
@@ -68,7 +70,7 @@ describe('webhook subscribers', () => {
         await client.as('admin').del(`/webhook-subscribers/${res.body.id}`);
     });
 
-    it('suffixes the generated handle when the slug is already taken', async () => {
+    it('gives each subscriber a distinct handle when displayName is reused', async () => {
         const displayName = `Dup Listener ${uniqueHandle('y')}`;
         const body = {
             displayName,
@@ -79,9 +81,10 @@ describe('webhook subscribers', () => {
         const second = await client.as('admin').post('/webhook-subscribers', body);
 
         expect(first.status).toBe(201);
-        // Same displayName must not 409 — the second one takes the next suffix.
+        // Same displayName must not 409 — generated handles are independent UUIDs.
         expect(second.status).toBe(201);
-        expect(second.body.id).toBe(`${first.body.id}-2`);
+        expect(second.body.id).toMatch(UUID_RE);
+        expect(second.body.id).not.toBe(first.body.id);
 
         await client.as('admin').del(`/webhook-subscribers/${first.body.id}`);
         await client.as('admin').del(`/webhook-subscribers/${second.body.id}`);

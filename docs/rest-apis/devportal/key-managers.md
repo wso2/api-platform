@@ -19,7 +19,7 @@ curl -X POST https://localhost:9543/api/v0.9/key-managers \
 
 ```
 
-Creates a key manager configuration for the organization. If `id` is omitted, the service generates one from the display name. Accepts either a `application/json` body or a `multipart/form-data` upload with a `keymanager` field containing the KeyManager YAML file. OAuth applications are created directly in the key manager itself, outside the portal — the portal only needs the token endpoint to proxy `client_appKeyMappings` token requests.
+Creates a key manager configuration for the organization. If `id` is omitted, the service generates a UUID handle. Accepts either a `application/json` body or a `multipart/form-data` upload with a `keymanager` field containing the KeyManager YAML file. OAuth applications are created directly in the key manager itself, outside the portal — the portal only needs the token endpoint to proxy `client_appKeyMappings` token requests.
 
 > Payload
 

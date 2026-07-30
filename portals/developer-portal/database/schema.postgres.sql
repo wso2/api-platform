@@ -343,6 +343,9 @@ CREATE INDEX IF NOT EXISTS idx_api_key_status ON dp_api_keys(status);
 -- api_uuid is only ever a trailing column above (org_uuid, api_uuid) -- add a
 -- dedicated leading index so single-column api_uuid lookups/joins stay indexed.
 CREATE INDEX IF NOT EXISTS idx_api_key_api_uuid ON dp_api_keys(api_uuid);
+-- Handle is the caller-facing id used to address a key within an API, so it must be
+-- unique per (org, api). Enforced here for a race-free guarantee, not just in the service.
+CREATE UNIQUE INDEX IF NOT EXISTS uq_api_key_org_api_handle ON dp_api_keys(org_uuid, api_uuid, handle);
 
 -- API Key-Application mappings (which application an API key was issued to)
 CREATE TABLE IF NOT EXISTS dp_api_key_app_mappings (
