@@ -20,6 +20,10 @@
 #   - aesgcm-keys/default-aesgcm256-v1.bin         : AES-256 at-rest encryption key. The gateway's
 #       docker compose bind-mounts this host file into the controller.
 #   - api-platform.env                            : required runtime defaults for the gateway-runtime
+#   - .env                                        : COMPOSE_PROJECT_NAME, unique to this copy of the
+#       distribution. Read by the docker compose CLI (not by the containers) to prefix every container,
+#       network, and volume, so another extraction of the same zip on this host cannot bind to this
+#       stack's volumes - its gateway database and dynamically-managed certificates.
 #
 # Usage:
 #   powershell -ExecutionPolicy Bypass -File .\scripts\setup.ps1 [--force] [--certs-only]
@@ -35,6 +39,12 @@ if (-not (Test-Path -LiteralPath 'docker-compose.yaml')) {
 }
 
 $EnvFile = 'api-platform.env'
+
+# Compose project name. $DotEnvFile is what the docker compose CLI auto-loads from the
+# project directory; unrelated to $EnvFile, which is an env_file: mounted into the services.
+$DotEnvFile = '.env'
+$ProjectNamePrefix = 'wso2apip-gateway'
+$ProjectName = ''
 
 # Router downstream (HTTPS ingress) listener cert/key. Referenced by
 # [router.downstream_tls] in config.toml as ./listener-certs/default-listener.{crt,key}
@@ -66,13 +76,29 @@ Usage: .\scripts\setup.ps1 [--force] [--certs-only]
 
   --force        regenerate the certificate and encryption key (rotates them), rewrite api-platform.env,
                  and re-provision the admin credentials (rotates the password)
-  --certs-only   generate only the listener TLS certificate (skip the encryption key and api-platform.env)
+  --certs-only   generate only the listener TLS certificate (skip the encryption key, api-platform.env,
+                 and .env)
 
 Admin credentials (gateway-controller REST/management API basic auth):
   Set ADMIN_USERNAME and/or ADMIN_PASSWORD in the environment to run non-interactively (CI).
   When unset and running interactively the script prompts; username defaults to "admin" and an empty
   password is randomly generated. Only the bcrypt hash is stored (in api-platform.env); the
   plaintext password is printed once and never written to disk.
+
+Compose project name (data isolation):
+  Setup writes COMPOSE_PROJECT_NAME into .env on the first run, unique to this copy of the
+  distribution. It prefixes every container, network, and volume, so another extraction of this
+  zip on the same host cannot bind to this stack's volumes (its gateway database and
+  dynamically-managed certificates).
+  The name is pinned once and never changes afterwards - not on a rerun, not with --force. A new
+  name would leave the running data behind in the old volumes and start the gateway with an empty
+  database. Deleting .env has that same effect, so leave it in place.
+  To choose the name yourself, set COMPOSE_PROJECT_NAME in the environment for the FIRST run:
+    $env:COMPOSE_PROJECT_NAME = 'my-gateway'; .\scripts\setup.ps1
+  It must match ^[a-z0-9][a-z0-9_-]*$ (no dots, no uppercase - docker compose rejects those).
+  That is also the upgrade path from a distribution that had no .env: its data lives in volumes
+  prefixed with the old extracted-folder name (find it with: docker volume ls), so pass that name
+  on the first run to keep it.
 
 The control-plane connection is optional and is NOT configured here: to connect to a control
 plane, add APIP_GW_CONTROLLER_CONTROLPLANE_HOST and APIP_GW_CONTROLLER_CONTROLPLANE_TOKEN to
@@ -314,6 +340,145 @@ function Test-BasicAuthEnabled {
     return $false
 }
 
+# --- Compose project name --------------------------------------------------------
+# Compose accepts ^[a-z0-9][a-z0-9_-]*$ only - no dots, no uppercase. The comparisons
+# below are case-SENSITIVE (-cmatch/-cnotmatch): PowerShell's -match is case-insensitive,
+# which would accept "My_Gateway" and let Compose reject it later.
+function Test-ProjectName([string]$name) {
+    if ($name -cnotmatch '^[a-z0-9][a-z0-9_-]*$') {
+        [Console]::Error.WriteLine("error: invalid project name '$name' - must start with a lowercase letter or digit and contain only [a-z0-9_-]")
+        exit 2
+    }
+}
+
+# gateway.version from build.yaml - NOT the top-level "version: v1" schema key above it.
+# Mirrors setup.sh's dist_version awk scan; no YAML module needed.
+function Get-DistVersion {
+    if (-not (Test-Path -LiteralPath 'build.yaml')) { return '' }
+    $inGateway = $false
+    foreach ($ln in Get-Content -LiteralPath 'build.yaml') {
+        if ($ln -match '^gateway:\s*$') { $inGateway = $true; continue }
+        if ($ln -match '^[^\s#]') { $inGateway = $false }
+        if ($inGateway -and $ln -match '^\s+version:\s*(.*)$') {
+            return ($matches[1] -replace '["'']', '').Trim()
+        }
+    }
+    return ''
+}
+
+# <prefix>-<sanitized version>-<6 hex>, e.g. wso2apip-gateway-1-2-0-rc-a3f19c.
+# The version is cosmetic: if build.yaml can't be read or sanitizes to nothing, fall back
+# to <prefix>-<6 hex> rather than failing setup. The suffix alone makes the name unique.
+function New-ProjectName {
+    $version = Get-DistVersion
+    if ($version.EndsWith('-SNAPSHOT')) {
+        $version = $version.Substring(0, $version.Length - '-SNAPSHOT'.Length)
+    }
+    $version = $version.ToLowerInvariant() -replace '[^a-z0-9_-]', '-'
+    $version = ($version -replace '-{2,}', '-').Trim('-')
+
+    # openssl, not Get-Random: Get-Random is not a CSPRNG and would diverge from setup.sh.
+    $suffix = (Invoke-OpenSslQuiet { & openssl rand -hex 3 } 'openssl failed to generate a project name suffix' | Out-String).Trim()
+
+    $candidate = "$ProjectNamePrefix-$suffix"
+    if ($version -and "$ProjectNamePrefix-$version-$suffix" -cmatch '^[a-z0-9][a-z0-9_-]*$') {
+        $candidate = "$ProjectNamePrefix-$version-$suffix"
+    }
+    return $candidate
+}
+
+function Get-DotEnvProjectName {
+    if (-not (Test-Path -LiteralPath $DotEnvFile)) { return '' }
+    $line = @(Get-Content -LiteralPath $DotEnvFile |
+        Where-Object { $_ -match '^\s*COMPOSE_PROJECT_NAME=' }) | Select-Object -Last 1
+    if ($null -eq $line) { return '' }
+    return (($line -replace '^[^=]*=', '') -replace '["'']', '').Trim()
+}
+
+# Key-scoped write: .env may already hold unrelated keys (a dev's MSSQL_SA_PASSWORD, read
+# by docker-compose.sqlserver.yaml), so never rewrite the whole file. Always UTF-8 without
+# BOM and LF endings - a BOM makes Compose read the first key as "?COMPOSE_PROJECT_NAME"
+# and silently ignore it.
+function Write-DotEnvProjectName([string]$name) {
+    $timestamp = [DateTime]::UtcNow.ToString('yyyy-MM-ddTHH:mm:ssZ')
+    $path = Join-Path (Get-Location) $DotEnvFile
+    $utf8NoBom = New-Object System.Text.UTF8Encoding($false)
+
+    if (-not (Test-Path -LiteralPath $DotEnvFile)) {
+        $lines = @(
+            "# Generated by scripts/setup.ps1 on $timestamp."
+            '# Read automatically by "docker compose" from this directory. NOT passed to the containers.'
+            '#'
+            '# COMPOSE_PROJECT_NAME namespaces every container, network, and volume of this stack. It is'
+            '# unique to THIS copy of the distribution, so another extraction of the same zip elsewhere on'
+            '# this host cannot bind to this stack''s volumes.'
+            '#'
+            '# Do not change or delete this file after the first start: the running data lives in volumes'
+            '# named <project>_controller-data etc., and a different name means the gateway starts with an'
+            '# empty database.'
+            "COMPOSE_PROJECT_NAME=$name"
+            ''
+        )
+        [System.IO.File]::WriteAllText($path, ($lines -join "`n"), $utf8NoBom)
+        return
+    }
+
+    $existing = @(Get-Content -LiteralPath $DotEnvFile)
+    if (@($existing | Where-Object { $_ -match '^\s*COMPOSE_PROJECT_NAME=' }).Count -gt 0) {
+        $seen = $false
+        $out = @(foreach ($ln in $existing) {
+            if ($ln -match '^\s*COMPOSE_PROJECT_NAME=') {
+                if (-not $seen) { "COMPOSE_PROJECT_NAME=$name"; $seen = $true }
+            } else {
+                $ln
+            }
+        })
+    } else {
+        $out = $existing + @(
+            ''
+            "# Added by scripts/setup.ps1 on $timestamp."
+            '# Namespaces every container, network, and volume of this stack; unique to this copy of the'
+            '# distribution. Changing it after the first start hides the existing data.'
+            "COMPOSE_PROJECT_NAME=$name"
+        )
+    }
+    [System.IO.File]::WriteAllText($path, (($out -join "`n") + "`n"), $utf8NoBom)
+}
+
+# Written once, on the first run, then never rotated - not on a rerun, not under --force.
+# Rotating it would orphan the live volumes and hand the operator an empty gateway, which
+# looks exactly like the bug this pinning exists to fix. An operator who wants a specific
+# name (including the old extracted-folder name, to adopt a pre-.env install's volumes)
+# sets COMPOSE_PROJECT_NAME in the environment for that first run.
+function Set-ProjectName {
+    $existing = Get-DotEnvProjectName
+    $chosen = ''
+    $source = ''
+
+    if (-not [string]::IsNullOrEmpty($existing)) {
+        $script:ProjectName = $existing
+        Write-Log "  - $DotEnvFile already pins COMPOSE_PROJECT_NAME=$existing - keeping it"
+        # docker compose reads the environment ahead of .env, so a stale variable here
+        # silently sends compose at a different project than the one this stack is pinned to.
+        if ((-not [string]::IsNullOrEmpty($env:COMPOSE_PROJECT_NAME)) -and ($env:COMPOSE_PROJECT_NAME -cne $existing)) {
+            Write-Log "    note: COMPOSE_PROJECT_NAME=$($env:COMPOSE_PROJECT_NAME) is set in this session and takes"
+            Write-Log "          precedence over $DotEnvFile for every docker compose command run from it."
+        }
+        return
+    }
+
+    if (-not [string]::IsNullOrEmpty($env:COMPOSE_PROJECT_NAME)) {
+        $chosen = $env:COMPOSE_PROJECT_NAME; $source = 'COMPOSE_PROJECT_NAME from the environment'
+    } else {
+        $chosen = New-ProjectName; $source = 'generated'
+    }
+
+    Test-ProjectName $chosen
+    Write-DotEnvProjectName $chosen
+    $script:ProjectName = $chosen
+    Write-Log "  - COMPOSE_PROJECT_NAME=$chosen written to $DotEnvFile ($source)"
+}
+
 Write-Log 'Provisioning listener TLS certificate ...'
 New-ListenerCert
 
@@ -323,6 +488,12 @@ if ($CertsOnly) {
 
 Write-Log 'Provisioning AES-256 encryption key ...'
 New-EncryptionKey
+
+# Before the $EnvFile branch below, so both the fresh install and the "api-platform.env
+# already exists" path provision it - the latter is what an operator upgrading from a
+# distribution that predates .env hits.
+Write-Log 'Provisioning the docker compose project name ...'
+Set-ProjectName
 
 if (-not $Force -and (Test-Path -LiteralPath $EnvFile)) {
     Write-Log "$EnvFile already exists - keeping it (rerun with --force to rewrite it)"
@@ -351,6 +522,8 @@ if (-not $Force -and (Test-Path -LiteralPath $EnvFile)) {
     }
 
     Write-Log 'Setup complete.'
+    Write-Host ''
+    Write-Host "  Compose project:  $ProjectName   (pinned in $DotEnvFile)"
     Write-Host ''
     Write-Host '  Next step:'
     Write-Host '    docker compose up'
@@ -417,6 +590,8 @@ Write-Host "   Gateway-controller admin login:  $adminUsername / $adminPassword"
 Write-Host '   This password will not be shown again - copy it now.'
 Write-Host "   (Only its bcrypt hash is stored, in $EnvFile)"
 Write-Host '  ------------------------------------------------------------------'
+Write-Host ''
+Write-Host "  Compose project:  $ProjectName   (pinned in $DotEnvFile)"
 Write-Host ''
 Write-Host '  Next step:'
 Write-Host '    docker compose up'
