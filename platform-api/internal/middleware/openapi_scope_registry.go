@@ -20,6 +20,7 @@ package middleware
 import (
 	"fmt"
 	"os"
+	"regexp"
 	"strings"
 
 	"gopkg.in/yaml.v3"
@@ -28,15 +29,41 @@ import (
 // ScopeRegistry maps (HTTP method, net/http path pattern) to the acceptable scopes for
 // that operation. Scopes are OR-evaluated: the caller needs at least one.
 type ScopeRegistry struct {
-	// scopes is keyed by "METHOD:/api/v1/path/{param}".
+	// scopes is keyed by "METHOD:/api/v1/path/{}", with path parameter names
+	// normalized away by normalizePathParams.
 	scopes map[string][]string
+}
+
+// pathParamName matches a "{name}" path-parameter placeholder, excluding the
+// "{name...}" wildcard form, which matches a different set of paths and so must
+// stay distinct. The "{$}" exact-path anchor is excluded too — it is a ServeMux
+// end-of-path marker rather than a parameter, and normalizing it would make
+// "/gateways/{$}" (exact "/gateways/" only) collide with "/gateways/{id}".
+var pathParamName = regexp.MustCompile(`\{[^/{}.]+\}`)
+
+// normalizePathParams strips path parameter names from a route pattern, so
+// "/gateways/{gatewayId}" and "/gateways/{apiId}" produce the same key.
+//
+// A parameter's name is not part of a route's identity: net/http matches on the
+// pattern's structure, and the name only determines what r.PathValue reads it
+// back as. Keying the registry on the name means an OpenAPI spec that documents
+// "{apiId}" while the route registers "{webSubApiId}" silently fails every
+// lookup — the same shape of failure as looking up an unmatched route, and just
+// as invisible.
+func normalizePathParams(path string) string {
+	return pathParamName.ReplaceAllStringFunc(path, func(match string) string {
+		if match == "{$}" {
+			return match // Exact-path anchor, not a parameter name.
+		}
+		return "{}"
+	})
 }
 
 // Lookup returns the required scopes for the given HTTP method and path pattern
 // (e.g. r.Method and the path portion of r.Pattern). found is false when the route
 // is not in the OpenAPI spec, meaning no scope requirement was declared.
 func (r *ScopeRegistry) Lookup(method, path string) ([]string, bool) {
-	key := strings.ToUpper(method) + ":" + path
+	key := strings.ToUpper(method) + ":" + normalizePathParams(path)
 	scopes, ok := r.scopes[key]
 	return scopes, ok
 }
@@ -45,6 +72,27 @@ func (r *ScopeRegistry) Lookup(method, path string) ([]string, bool) {
 // requirement. Operations with no security block contribute no entry.
 func (r *ScopeRegistry) Len() int {
 	return len(r.scopes)
+}
+
+// Operation is a single (method, path pattern) entry in the registry.
+type Operation struct {
+	Method string
+	Path   string
+}
+
+// Operations returns every (method, path) the registry declares a scope
+// requirement for. Used at startup to verify each declared operation actually
+// resolves to a registered route.
+func (r *ScopeRegistry) Operations() []Operation {
+	ops := make([]Operation, 0, len(r.scopes))
+	for key := range r.scopes {
+		method, path, found := strings.Cut(key, ":")
+		if !found {
+			continue
+		}
+		ops = append(ops, Operation{Method: method, Path: path})
+	}
+	return ops
 }
 
 // AllScopes returns the set of every scope name declared across all operations.
@@ -60,11 +108,43 @@ func (r *ScopeRegistry) AllScopes() map[string]struct{} {
 }
 
 // openAPIDoc is the minimal subset of an OpenAPI 3.x document we need to parse.
+//
+// A path item's fields are held as raw nodes rather than decoded straight into
+// openAPIOperation: alongside its operations, a path item may carry "parameters"
+// (a sequence), "summary", "$ref" and others. Decoding those into an operation
+// struct fails, and because that failure is per-document, a single path-level
+// "parameters" block makes the entire spec unloadable — which, for a spec whose
+// only purpose here is to declare required scopes, means no scope in it is ever
+// enforced.
 type openAPIDoc struct {
 	Servers []struct {
 		URL string `yaml:"url"`
 	} `yaml:"servers"`
-	Paths map[string]map[string]openAPIOperation `yaml:"paths"`
+	Paths map[string]map[string]yaml.Node `yaml:"paths"`
+}
+
+// httpMethods is the set of path-item keys that denote an operation. Anything
+// else in a path item is metadata and carries no security requirement.
+var httpMethods = map[string]struct{}{
+	"get": {}, "put": {}, "post": {}, "delete": {},
+	"options": {}, "head": {}, "patch": {}, "trace": {},
+}
+
+// operationsIn decodes the operation entries of a path item, skipping the
+// path-item metadata keys that are not operations.
+func operationsIn(pathItem map[string]yaml.Node, oaPath string) (map[string]openAPIOperation, error) {
+	ops := make(map[string]openAPIOperation, len(pathItem))
+	for field, node := range pathItem {
+		if _, isMethod := httpMethods[strings.ToLower(field)]; !isMethod {
+			continue
+		}
+		var op openAPIOperation
+		if err := node.Decode(&op); err != nil {
+			return nil, fmt.Errorf("path %q, operation %q: %w", oaPath, field, err)
+		}
+		ops[field] = op
+	}
+	return ops, nil
 }
 
 // openAPIOperation captures the per-operation security requirements. Each entry in
@@ -100,14 +180,18 @@ func LoadScopeRegistryFromBytes(data []byte) (*ScopeRegistry, error) {
 	}
 
 	registry := &ScopeRegistry{scopes: make(map[string][]string)}
-	for oaPath, methods := range doc.Paths {
+	for oaPath, pathItem := range doc.Paths {
 		httpPath := basePath + oaPath
+		methods, opErr := operationsIn(pathItem, oaPath)
+		if opErr != nil {
+			return nil, fmt.Errorf("openapi scope registry: parse embedded spec: %w", opErr)
+		}
 		for method, op := range methods {
 			scopes := collectScopes(op.Security)
 			if len(scopes) == 0 {
 				continue
 			}
-			key := strings.ToUpper(method) + ":" + httpPath
+			key := strings.ToUpper(method) + ":" + normalizePathParams(httpPath)
 			registry.scopes[key] = scopes
 		}
 	}
@@ -136,15 +220,19 @@ func LoadScopeRegistry(specPath string) (*ScopeRegistry, error) {
 
 	registry := &ScopeRegistry{scopes: make(map[string][]string)}
 
-	for oaPath, methods := range doc.Paths {
+	for oaPath, pathItem := range doc.Paths {
 		// Keep OpenAPI {param} syntax — it matches net/http ServeMux path values directly.
 		httpPath := basePath + oaPath
+		methods, opErr := operationsIn(pathItem, oaPath)
+		if opErr != nil {
+			return nil, fmt.Errorf("openapi scope registry: parse %q: %w", specPath, opErr)
+		}
 		for method, op := range methods {
 			scopes := collectScopes(op.Security)
 			if len(scopes) == 0 {
 				continue
 			}
-			key := strings.ToUpper(method) + ":" + httpPath
+			key := strings.ToUpper(method) + ":" + normalizePathParams(httpPath)
 			registry.scopes[key] = scopes
 		}
 	}

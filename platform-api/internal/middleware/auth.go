@@ -123,11 +123,15 @@ func writeError(w http.ResponseWriter, appErr *apperror.Error, reason string) {
 func LocalJWTAuthMiddleware(config AuthConfig) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			for _, path := range config.SkipPaths {
-				if strings.HasPrefix(r.URL.Path, path) {
-					next.ServeHTTP(w, r)
-					return
-				}
+			// hasPathPrefix, not strings.HasPrefix: a raw prefix match exempts
+			// any path that merely starts with a skip entry ("/health-probe" for
+			// "/health") and matches before ServeMux normalizes the path, so
+			// "/health/../api/v0.9/rest-apis" would bypass authentication
+			// (GO-AUTH-004). It is also the matcher ScopeEnforcer uses on this
+			// same list — the two must exempt exactly the same requests.
+			if hasPathPrefix(r.URL.Path, config.SkipPaths) {
+				next.ServeHTTP(w, r)
+				return
 			}
 
 			authHeader := r.Header.Get("Authorization")
@@ -632,6 +636,13 @@ func WithOrganization(r *http.Request, org string) *http.Request {
 // WithUserID is a helper for tests to inject a user ID into the request context.
 func WithUserID(r *http.Request, id string) *http.Request {
 	return r.WithContext(context.WithValue(r.Context(), keyUserID, id))
+}
+
+// WithScope is a helper for tests to inject a space-separated scope claim into
+// the request context, as the authentication middleware does after validating a
+// token. Lets packages outside this one exercise ScopeEnforcer end to end.
+func WithScope(r *http.Request, scope string) *http.Request {
+	return r.WithContext(context.WithValue(r.Context(), keyScope, scope))
 }
 
 // --- Compatibility shims for common/authenticators ---

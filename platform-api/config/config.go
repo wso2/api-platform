@@ -125,9 +125,16 @@ type Auth struct {
 	Mode string `koanf:"mode"`
 	// ScopeValidation enforces per-endpoint OAuth2 scopes on validated tokens.
 	// Disable only to temporarily bypass authorization during development.
-	ScopeValidation bool     `koanf:"scope_validation"`
-	SkipPaths       []string `koanf:"skip_paths"`
-	IDP             IDP      `koanf:"idp"`
+	ScopeValidation bool `koanf:"scope_validation"`
+	// SkipPaths are the path prefixes that bypass authentication and scope
+	// enforcement — health/metrics probes, the login endpoint, and the internal
+	// routes authenticated by a gateway token instead of a user JWT. It is not
+	// operator-configurable (koanf:"-"): the list is a property of the product's
+	// own routing, and a wrong entry here is an auth bypass, so it comes from
+	// DefaultConfig plus the prefixes plugins declare. Operators turn
+	// authorization on and off with scope_validation instead.
+	SkipPaths []string `koanf:"-"`
+	IDP       IDP      `koanf:"idp"`
 	// JWT is shared by two modes — "external_token" mode only verifies
 	// externally-minted tokens with the public key, "file" mode both signs (with
 	// the private key) and verifies (with the public key) using the RSA key pair.
@@ -417,6 +424,11 @@ var defaultFileSourceAllowlist = []string{
 // sections in a shared deployment config.
 const platformAPIConfigKey = "platform_api"
 
+// removedAuthSkipPathsKey is a config key that was removed; it is still
+// recognized so a config file carrying it fails startup instead of being
+// silently ignored. Path is relative to the platform_api subtree.
+const removedAuthSkipPathsKey = "auth.skip_paths"
+
 // LoadConfig loads configuration with priority: config files > defaults.
 //
 // configPaths is repeatable: files are merged in the order given with last-wins
@@ -475,6 +487,17 @@ func LoadConfig(configPaths ...string) (*Server, error) {
 	k, err := interpolate(k)
 	if err != nil {
 		return nil, err
+	}
+
+	// auth.skip_paths used to be operator-configurable. It no longer is (the
+	// list is a property of the product's routing, and a wrong entry is an auth
+	// bypass), and unknown keys are otherwise ignored — so fail loudly rather
+	// than let an operator believe a stale entry is still in effect.
+	if k.Exists(removedAuthSkipPathsKey) {
+		return nil, fmt.Errorf("config key %q.%s is no longer supported: the auth skip-path list is "+
+			"built in and, for plugins, declared by the plugin — remove the key "+
+			"(use auth.scope_validation to control authorization enforcement)",
+			platformAPIConfigKey, removedAuthSkipPathsKey)
 	}
 
 	// Subtree is already promoted to the top level by Cut, so unmarshal from the
@@ -634,6 +657,12 @@ func validateTimeoutsConfig(cfg *Timeouts) error {
 // discriminator, so conflicting-mode configurations are inexpressible and only
 // the active mode's section is validated.
 func validateAuthConfig(auth *Auth) error {
+	for _, p := range auth.SkipPaths {
+		if err := ValidateAuthSkipPath(p); err != nil {
+			return fmt.Errorf("invalid entry in auth.skip_paths: %w", err)
+		}
+	}
+
 	switch auth.Mode {
 	case AuthModeExternalToken:
 		// Verify-only: a public key is sufficient (tokens are minted elsewhere).
@@ -656,6 +685,27 @@ func validateAuthConfig(auth *Auth) error {
 	default:
 		return fmt.Errorf("auth.mode must be %q, %q, or %q (got %q)", AuthModeExternalToken, AuthModeFile, AuthModeIDP, auth.Mode)
 	}
+}
+
+// ValidateAuthSkipPath rejects a skip-path entry that would widen the auth
+// bypass beyond the narrow, specific prefix a skip path is meant to be.
+// Skip-path matching is a segment-boundary prefix match, so "" or "/" would
+// disable authentication and scope enforcement for every route on the server
+// (GO-AUTH-004/GO-AUTH-011) — that must fail startup, not silently pass every
+// request through. It is applied to both config-sourced entries and the
+// prefixes plugins contribute, so neither source can drift from the other.
+func ValidateAuthSkipPath(path string) error {
+	switch {
+	case path == "":
+		return fmt.Errorf("path is empty, which matches every request")
+	case path == "/":
+		return fmt.Errorf("path is the root prefix, which matches every request")
+	case !strings.HasPrefix(path, "/"):
+		return fmt.Errorf("path %q must start with %q", path, "/")
+	case strings.Contains(path, ".."):
+		return fmt.Errorf("path %q must not contain %q", path, "..")
+	}
+	return nil
 }
 
 // validateJWTConfig verifies the local asymmetric JWT key material is present

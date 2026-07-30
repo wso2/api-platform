@@ -66,9 +66,6 @@ data:
     [platform_api.auth]
     mode = {{ $auth.mode | quote }}
     scope_validation = {{ $auth.scopeValidation }}
-    {{- with $auth.skipPaths }}
-    skip_paths = {{ toJson . }}
-    {{- end }}
 
     [platform_api.auth.claim_mappings]
     organization = {{ $auth.claimMappings.organization | quote }}
