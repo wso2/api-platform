@@ -129,6 +129,10 @@ export const useStyles = () => {
         color: theme.palette.error.main,
         fontSize: '0.75rem',
       },
+      deprecatedBadge: {
+        height: theme.spacing(2.5),
+        fontSize: '0.7rem',
+      },
       typeBadge: {
         fontSize: '0.7rem',
         padding: theme.spacing(0.25, 0.75),

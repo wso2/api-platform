@@ -31,6 +31,7 @@ export interface ParameterSchema {
   minimum?: number;
   maximum?: number;
   'x-wso2-policy-advanced-param'?: boolean;
+  'x-wso2-policy-deprecated-param'?: boolean;
   anyOf?: Array<{
     required?: string[];
     properties?: Record<string, { const?: unknown }>;
