@@ -101,14 +101,15 @@ value = ""
 # =============================================================================
 # AUTHENTICATION
 # =============================================================================
-# A mode gate plus the two backends it selects between: local (the default) and
-# idp. Configure the block matching your chosen mode; the other is ignored.
+# HOW a token is verified: a mode gate plus the two backends it selects between,
+# local (the default) and idp. Configure the block matching your chosen mode; the
+# other is ignored. What a verified token may DO is authorization, configured in
+# its own mode-independent section further below.
 
 [api_portal.auth]
 # "local" — username/password validated against the Platform API control plane
 # ([api_portal.auth.local] below). "idp" — external OIDC IDP (auth.idp below).
 mode = "local"          # local | idp
-role_validation = false # Enforce per-operation role validation
 
 # JWT claim name mappings — which token claim carries each field.
 # Dot-notation supported for nested claims (e.g. "realm_access.roles").
@@ -145,11 +146,64 @@ token_refresh_timeout_ms = 10000
 silent_sso = true      # Enable silent SSO
 org_callback = false   # Redirect to the org's own landing page after login
 
-# Maps IDP role names to API Portal's internal roles.
-[api_portal.auth.idp.roles]
-admin = "admin"
-subscriber = "Internal/subscriber"
-super_admin = "superAdmin"
+# =============================================================================
+# AUTHORIZATION
+# =============================================================================
+# What a VERIFIED token may do. Deliberately its own section, outside both
+# auth.local and auth.idp: a token carries the same roles claim whether the portal
+# verified it against a JWKS endpoint or against the Platform API's public key, so
+# these settings apply in every auth mode.
+#
+# Retired keys (startup fails if either is still present, because an ignored key
+# would silently apply the default instead of what the file says):
+#   auth.role_validation  -> auth.authorization.page_role_validation
+#   auth.idp.roles        -> auth.authorization.portal_roles
+
+[api_portal.auth.authorization]
+# Master switch for REST API (/api/v0.9) authorization. false lets any
+# authenticated caller satisfy every operation's declared scope list — an explicit
+# development opt-out that logs a warning at startup.
+enabled = true
+# How a REST request's effective scopes are derived:
+#   "role"  — (the DEFAULT) by expanding the token's roles claim
+#             (auth.claim_mappings.roles) through role_to_scope_mapping below. Works
+#             for every issuer: an external IDP emits the roles its estate is
+#             organized around and has no reason to mint dp:* scopes, and the
+#             Platform API mints its own ap_* role names, which the shipped table
+#             aliases. The scope claim is ignored entirely in this mode, so a caller
+#             cannot widen a role's grant by requesting extra scopes.
+#   "scope" — from the token's own scope claim. Use this when the issuer mints dp:*
+#             scopes directly: an Asgardeo tenant set up with
+#             production/scripts/register_asgardeo_scopes.sh (which registers all
+#             dp:* scopes and lets you attach them to an Asgardeo role), or the
+#             Platform API in local auth mode.
+# Validated even when enabled = false, so a typo surfaces when it is written rather
+# than when enforcement is switched back on.
+mode = "role"           # scope | role
+# Path to the YAML role-to-scope grant table. REQUIRED when mode = "role", which is
+# the default — hence a real default rather than an empty string. The shipped table is
+# baked into the image at ./resources (and resolves from the project root for
+# `npm start`); docker-compose.yaml overrides this to the mounted /etc/api-portal copy
+# so operators can edit what a role grants without rebuilding.
+# Loaded and validated at startup whenever it is set (regardless of mode) against the
+# portal's OpenAPI spec: an undeclared dp:* scope fails startup rather than surfacing
+# later as a role that logs in fine and is denied every request.
+role_to_scope_mapping = "./resources/role-to-scope-mapping.yaml"
+# Per-page role-tier gating: requires the caller's roles claim to name the tier a
+# page demands (portal_roles below). Separate from `enabled` above, which governs
+# REST scopes — one switch for both would mean turning page gating off also
+# silently turned REST scope enforcement off.
+page_role_validation = false
+
+# Which role name, as it appears in the token's roles claim, grants each of the
+# portal's two page-access tiers. Was [api_portal.auth.idp.roles], despite being
+# read in local auth mode too. (There was a third tier, super_admin; it gated pages
+# this portal does not serve, so it guarded nothing and was removed.) Point these at your IDP's role names — or at the role
+# names in role_to_scope_mapping (e.g. admin = "dp_admin") to drive page gating and
+# REST authorization from the same roles.
+[api_portal.auth.authorization.portal_roles]
+admin = "ap_admin"
+subscriber = "ap_subscriber"
 
 # =============================================================================
 # PAGE ACCESS RULES

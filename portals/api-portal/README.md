@@ -255,10 +255,19 @@ For quick exploration without an IdP, the portal delegates credential validation
 [[platform_api.auth.file.users]]
 username      = "admin"
 password_hash = "$2y$10$..."   # bcrypt hash — generate with: htpasswd -bnBC 12 "" <pw> | tr -d ':\n'
-roles         = ["ap_admin"]   # grants dp:organization:manage, dp:api:manage, … — see role-to-scope-mapping.yaml
+roles         = ["ap_admin"]   # grants dp:organization:manage, dp:api:manage, … — see platform-api's role-to-scope-mapping.yaml
 ```
 
-To change what a portal user may do, edit that role's entry in `role-to-scope-mapping.yaml` — or name a second role alongside it — rather than listing scopes on the user block.
+To change what a portal user may do, edit that role's entry in [platform-api's `role-to-scope-mapping.yaml`](../../platform-api/resources/role-to-scope-mapping.yaml) — or name a second role alongside it — rather than listing scopes on the user block.
+
+Note there are two files with this name, read by different components in different modes:
+
+| File | Read by | When |
+|---|---|---|
+| [`platform-api/resources/role-to-scope-mapping.yaml`](../../platform-api/resources/role-to-scope-mapping.yaml) | Platform API | Local auth — expands a file user's `roles` into the `scope` claim of the token it issues (roles named `ap_*`) |
+| [`resources/role-to-scope-mapping.yaml`](resources/role-to-scope-mapping.yaml) | This portal | `auth.authorization.mode = "role"` — expands an incoming token's roles claim on every request (roles named `dp_admin`, `dp_subscriber`) |
+
+Local auth uses the first; an external IDP in role mode uses the second. See [Authorization](docs/administer/authentication.md#authorization).
 
 The portal config (or `APIP_AP_AUTH_LOCAL_*` env vars) must point to the Platform API. `config.toml`'s own defaults assume Docker Compose, where `platform-api` is a resolvable hostname on the compose network — `npm run start:local` already overrides `platform_api_url` to `https://localhost:9243` (the sidecar's port published to the host) and `tls_skip_verify = true` (self-signed cert), so no manual edit is needed for that flow:
 
@@ -277,30 +286,45 @@ organization is refused.
 
 ### Environment variable overrides
 
-Every config key can be overridden with an `APIP_AP_*` environment variable. You can place these in a `.env` file at the project root.
+There is **no** automatic `APIP_AP_*` override layer. A variable takes effect only where
+`configs/config.toml` explicitly references it with a `{{ env "NAME" "fallback" }}` token
+— the same design platform-api uses (see `src/config/configLoader.js`). Setting a
+variable no key references does nothing, silently.
 
-**Convention:**
-- Prefix: `APIP_AP_`
-- `_` separates nesting levels (one token = one config object level)
-- `__` represents a literal underscore within a key name
-- Tokens are matched case-insensitively against config keys (matched against the camelCase struct produced from the TOML's snake_case keys)
+Following `platform-api/config/config.toml`, tokens are used sparingly: a key gets one
+only where something actually drives it — the Compose database overrides,
+`npm run start:local`, `docker-entrypoint.sh`, or a secret. Everything else is a plain
+literal, so the file states its own effective configuration.
+
+These are the variables the shipped `configs/config.toml` honours:
 
 | Env var | Config path |
 |---------|-------------|
+| `APIP_AP_SERVER_PORT` | `config.server.port` |
+| `APIP_AP_SERVER_HTTPS_ENABLED` | `config.server.https.enabled` |
+| `APIP_AP_LOGGING_LEVEL` | `config.logging.level` |
+| `APIP_AP_DATABASE_DRIVER` | `config.database.driver` |
+| `APIP_AP_DATABASE_PATH` | `config.database.path` |
 | `APIP_AP_DATABASE_HOST` | `config.database.host` |
 | `APIP_AP_DATABASE_PORT` | `config.database.port` |
-| `APIP_AP_SERVER_HTTPS_ENABLED` | `config.server.https.enabled` |
-| `APIP_AP_IDP_CLIENTID` | `config.auth.idp.clientId` |
-| `APIP_AP_IDP_ISSUER` | `config.auth.idp.issuer` |
-| `APIP_AP_SERVER_PORT` | `config.server.port` |
-| `APIP_AP_SERVER_BASE_URL` | `config.server.baseUrl` |
-| `APIP_AP_DATABASE_SSL_MODE` | `config.database.sslMode` |
+| `APIP_AP_DATABASE_NAME` | `config.database.name` |
+| `APIP_AP_DATABASE_USER` | `config.database.user` |
+| `APIP_AP_DATABASE_PASSWORD` | `config.database.password` |
+| `APIP_AP_AUTH_LOCAL_PLATFORM_API_URL` | `config.auth.local.platformApiUrl` |
+| `APIP_AP_AUTH_LOCAL_PUBLIC_KEY_PATH` | `config.auth.local.publicKeyPath` |
+| `APIP_AP_AUTH_LOCAL_TLS_SKIP_VERIFY` | `config.auth.local.tlsSkipVerify` |
+| `APIP_AP_ORGANIZATION_HANDLE` | `config.organization.handle` |
+| `APIP_AP_ORGANIZATION_DISPLAY_NAME` | `config.organization.displayName` |
 
-`.env` example:
+To make any other key settable from the environment, add the token to `config.toml`
+yourself. To change something without an environment variable — including the
+`[api_portal.auth.authorization]` block and the IDP settings — edit `config.toml`, or
+layer a thin overlay with a second `--config` flag.
+
+`.env` example (loaded from `api-platform.env` at the project root):
 ```dotenv
 APIP_AP_DATABASE_HOST=my-postgres-host
 APIP_AP_DATABASE_PASSWORD=my-secret-password
-APIP_AP_IDP_CLIENTID=my-client-id
 ```
 
 ---

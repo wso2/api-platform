@@ -75,6 +75,18 @@ echo "Token obtained."
 echo ""
 
 # ── dp:* scope list ───────────────────────────────────────────────────────────
+#
+# Must stay identical to the scopes declared under components.securitySchemes in
+# docs/api-portal-openapi-spec-v0.9.yaml — that document is what the portal enforces
+# per operation, so a scope missing here cannot be granted in Asgardeo at all (this
+# list had drifted: the whole dp:mcp_server* family was absent), and a scope here
+# that the spec does not declare is registered for nothing.
+#
+# To check after changing the spec (run from portals/api-portal; no output = in sync):
+#   diff <(grep -oE 'dp:[a-z_]+:[a-z_]+' production/scripts/register_asgardeo_scopes.sh \
+#            | sort -u) \
+#        <(grep -oE '^ +dp:[a-z_]+:[a-z_]+:' docs/api-portal-openapi-spec-v0.9.yaml \
+#            | tr -d ' ' | sed 's/:$//' | sort -u)
 
 SCOPES=(
   # organization
@@ -85,10 +97,7 @@ SCOPES=(
   "dp:organization:manage"
 
   # organization content
-  "dp:organization_content:create"
   "dp:organization_content:read"
-  "dp:organization_content:update"
-  "dp:organization_content:delete"
   "dp:organization_content:manage"
 
   # views
@@ -104,13 +113,6 @@ SCOPES=(
   "dp:label:update"
   "dp:label:delete"
   "dp:label:manage"
-
-  # providers
-  "dp:provider:create"
-  "dp:provider:read"
-  "dp:provider:update"
-  "dp:provider:delete"
-  "dp:provider:manage"
 
   # key managers
   "dp:key_manager:create"
@@ -133,12 +135,12 @@ SCOPES=(
   "dp:api_content:delete"
   "dp:api_content:manage"
 
-  # API flows
-  "dp:api_flow:create"
-  "dp:api_flow:read"
-  "dp:api_flow:update"
-  "dp:api_flow:delete"
-  "dp:api_flow:manage"
+  # API workflows
+  "dp:api_workflow:create"
+  "dp:api_workflow:read"
+  "dp:api_workflow:update"
+  "dp:api_workflow:delete"
+  "dp:api_workflow:manage"
 
   # API keys
   "dp:api_key:create"
@@ -146,6 +148,27 @@ SCOPES=(
   "dp:api_key:update"
   "dp:api_key:revoke"
   "dp:api_key:manage"
+
+  # MCP servers
+  "dp:mcp_server:create"
+  "dp:mcp_server:read"
+  "dp:mcp_server:update"
+  "dp:mcp_server:delete"
+  "dp:mcp_server:manage"
+
+  # MCP server content
+  "dp:mcp_server_content:create"
+  "dp:mcp_server_content:read"
+  "dp:mcp_server_content:update"
+  "dp:mcp_server_content:delete"
+  "dp:mcp_server_content:manage"
+
+  # MCP server keys
+  "dp:mcp_server_key:create"
+  "dp:mcp_server_key:read"
+  "dp:mcp_server_key:update"
+  "dp:mcp_server_key:revoke"
+  "dp:mcp_server_key:manage"
 
   # applications
   "dp:application:create"
@@ -188,10 +211,6 @@ SCOPES=(
 
   # webhook events
   "dp:event:read"
-
-  # utilities
-  "dp:utility:create"
-  "dp:utility:manage"
 )
 
 # ── Build and POST the resource ───────────────────────────────────────────────

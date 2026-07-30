@@ -51,6 +51,15 @@ handle       = '{{ env "APIP_AP_ORGANIZATION_HANDLE" "default" }}'
 display_name = '{{ env "APIP_AP_ORGANIZATION_DISPLAY_NAME" "Default" }}'
 auto_create_subscription_plans = true
 
+# The IT suite authorizes against the dp:* scopes the Platform API sidecar mints into
+# each token's scope claim — its own grant table (configs/roles-platform-api-it.yaml)
+# is where the three IT accounts' privileges are defined. That is scope mode by
+# definition, so it is pinned here rather than inheriting the "role" default: role mode
+# would expand the dp_*_it role names against the PORTAL's grant table, which does not
+# define them, and every REST assertion would 403.
+[api_portal.auth.authorization]
+mode = "scope"
+
 [api_portal.auth.local]
 # File-based (local) auth against the Platform API sidecar. Host is identical in
 # both DB variants; tls_skip_verify accepts its self-signed cert inside the test network.

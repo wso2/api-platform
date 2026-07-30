@@ -56,6 +56,12 @@ services:
     volumes:
       - ./configs/config.toml:/app/configs/config.toml:ro
       - api-portal-data:/app/data
+      # Role-to-scope grant table (auth.authorization.role_to_scope_mapping). Mounted
+      # OVER the copy baked into the image — config.toml names it by the one relative
+      # path that resolves both here (WORKDIR /app) and for `npm run start:local` — so
+      # editing this file on the host changes what a role grants after a restart, with
+      # no rebuild and no env-var indirection.
+      - ./resources/role-to-scope-mapping.yaml:/app/resources/role-to-scope-mapping.yaml:ro
       - ./resources/certificates:/etc/api-portal/tls:ro
       - ./resources/keys/jwt_public.pem:/etc/api-portal/keys/jwt_public.pem:ro
       - ./resources/keys/api-portal-encryption.key:/etc/api-portal/keys/encryption.key:ro

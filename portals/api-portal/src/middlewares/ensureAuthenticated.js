@@ -27,6 +27,12 @@ const logger = require('../config/logger');
 const { decodePlatformJwtClaims } = require('../utils/platformJwt');
 const { accessTokenPresent } = require('../utils/tokenUtil');
 const { resolveUserUuid, verifyBearerToken } = require('./authMiddleware');
+const {
+    effectiveScopes,
+    isAuthorizationEnabled,
+    portalRoles,
+    isPageRoleValidationEnabled,
+} = require('./authorization');
 
 // System page-access gates (constants.js) merged with any deployer-supplied additions
 // (config.pageAccessRules, via config.toml) — the config side only ever adds patterns,
@@ -48,6 +54,11 @@ const AUTHORIZED_PAGES = [
 // CRUD operation on the same resource would.
 function matchesAnyScope(tokenScopes, requiredScope) {
     if (!requiredScope) return true;
+    // Authentication has already been established by the caller; this only waives the
+    // scope comparison, via the same explicit opt-out OAuth2Security honours, so an
+    // enforceSecurity-gated route and a /api/v0.9 operation agree on whether
+    // authorization applies at all.
+    if (!isAuthorizationEnabled()) return true;
     const required = Array.isArray(requiredScope) ? requiredScope : [requiredScope];
     return required.some((s) => tokenScopes.includes(s));
 }
@@ -67,7 +78,8 @@ function enforceSecurity(scope) {
             if (req.isAuthenticated() && req.user && req.user.isLocalAuth && config.auth.mode !== 'idp') {
                 const platformToken = req.user[constants.ACCESS_TOKEN];
                 if (!platformToken) return util.handleError(res, new CustomError(401, constants.ERROR_CODE[401], constants.ERROR_MESSAGE.UNAUTHENTICATED));
-                const tokenScopes = decodePlatformJwtClaims(platformToken)?.scopes ?? [];
+                const platformClaims = decodePlatformJwtClaims(platformToken);
+                const tokenScopes = effectiveScopes(platformClaims?.scopes ?? [], platformClaims);
                 req.tokenScopes = tokenScopes;
                 if (matchesAnyScope(tokenScopes, scope)) return next();
                 return util.handleError(res, new CustomError(403, constants.ERROR_CODE[403], constants.ERROR_MESSAGE.FORBIDDEN));
@@ -129,19 +141,20 @@ function belongsToTargetOrg(req, orgDetails) {
     );
 }
 
+// Two tiers, matching the two personas this portal serves: an administrator, and a
+// consumer of its APIs. There was a third, superAdmin, gating the multi-organization
+// pages of the earlier devportal (/portal, /devportal) — those routes are not served
+// here (customPageRoute.js 404s /portal outright), so the tier guarded nothing and is
+// gone along with the route list it keyed on.
 const ensurePermission = (currentPage, role, req) => {
-    let adminRole, superAdminRole, subscriberRole;
-    if (req.user) {
-        adminRole = req.user[constants.ROLES.ADMIN];
-        superAdminRole = req.user[constants.ROLES.SUPER_ADMIN];
-        subscriberRole = req.user[constants.ROLES.SUBSCRIBER];
-        if (constants.ROUTE.API_PORTAL_CONFIGURE.some(pattern => minimatch.minimatch(currentPage, pattern))) {
-            return hasRole(role, superAdminRole) || hasRole(role, adminRole);
-        } else if (constants.ROUTE.API_PORTAL_ROOT.some(pattern => minimatch.minimatch(currentPage, pattern))) {
-            return hasRole(role, superAdminRole);
-        } else if (AUTHORIZED_PAGES.some(pattern => minimatch.minimatch(currentPage, pattern))) {
-            return hasRole(role, subscriberRole) || hasRole(role, adminRole) || hasRole(role, superAdminRole);
-        }
+    if (!req.user) return false;
+    const adminRole = req.user[constants.ROLES.ADMIN];
+    const subscriberRole = req.user[constants.ROLES.SUBSCRIBER];
+    if (constants.ROUTE.API_PORTAL_CONFIGURE.some(pattern => minimatch.minimatch(currentPage, pattern))) {
+        return hasRole(role, adminRole);
+    }
+    if (AUTHORIZED_PAGES.some(pattern => minimatch.minimatch(currentPage, pattern))) {
+        return hasRole(role, subscriberRole) || hasRole(role, adminRole);
     }
     return false;
 }
@@ -183,9 +196,10 @@ const ensureAuthenticated = async (req, res, next) => {
         logger.warn('Rejected request with path-traversal sequence', { operation: 'ensureAuthenticated' });
         return res.status(400).json({ error: 'bad_request', message: 'Invalid request path.' });
     }
-    let adminRole = config.auth.idp?.roles?.admin;
-    let superAdminRole = config.auth.idp?.roles?.superAdmin;
-    let subscriberRole = config.auth.idp?.roles?.subscriber;
+    // Read from the mode-independent authorization section: this function's local-auth
+    // branch and its token/OAuth2 branch both need these names, so they cannot live
+    // under auth.idp.
+    const { admin: adminRole, subscriber: subscriberRole } = portalRoles();
     const rules = util.validateRequestParameters();
     for (let validation of rules) {
         await validation.run(req);
@@ -214,7 +228,7 @@ const ensureAuthenticated = async (req, res, next) => {
             }
         }
     }
-    // Glob patterns below (AUTHENTICATED_PAGES/AUTHORIZED_PAGES/API_PORTAL_ROOT) match the
+    // Glob patterns below (AUTHENTICATED_PAGES/AUTHORIZED_PAGES) match the
     // full string with no implicit query-string handling, so req.originalUrl (which retains
     // "?...") would silently fail to match any pattern lacking an explicit "?**" suffix —
     // e.g. "/*/settings" never matches "/org/settings?view=x", which would skip this entire
@@ -238,22 +252,25 @@ const ensureAuthenticated = async (req, res, next) => {
                     // Reject cross-org access: the URL's :orgName must resolve (via orgDetails.idp_ref_id)
                     // to the org the authenticated (local-auth) user's token claims it belongs to — the
                     // same comparison the token/OAuth2 branch below uses (belongsToTargetOrg).
-                    const isApiPortalRoot = constants.ROUTE.API_PORTAL_ROOT.some(pattern => minimatch.minimatch(pathname, pattern));
-                    if (!isApiPortalRoot && !belongsToTargetOrg(req, orgDetails)) {
+                    //
+                    // This check used to be skipped for API_PORTAL_ROOT paths, because the
+                    // superAdmin tier administered several organizations from /portal. Those
+                    // pages are not served here and that tier no longer exists, so the
+                    // exemption is gone too — every authorized page is now org-checked.
+                    if (!belongsToTargetOrg(req, orgDetails)) {
                         const err = new Error('Forbidden');
                         err.status = 403;
                         return next(err);
                     }
                     if (req.user) {
                         req.user[constants.ROLES.ADMIN] = adminRole;
-                        req.user[constants.ROLES.SUPER_ADMIN] = superAdminRole;
                         req.user[constants.ROLES.SUBSCRIBER] = subscriberRole;
                         if (orgDetails) {
                             req.user[constants.ORG_UUID] = orgDetails.uuid;
                             req.user[constants.ORG_IDENTIFIER] = orgDetails.idp_ref_id;
                         }
                     }
-                    if (config.auth.roleValidation) {
+                    if (isPageRoleValidationEnabled()) {
                         role = req.user[constants.ROLES.ROLE_CLAIM];
                         if (ensurePermission(pathname, role, req)) {
                             return next();
@@ -276,20 +293,19 @@ const ensureAuthenticated = async (req, res, next) => {
                 role = req.user[constants.ROLES.ROLE_CLAIM];
                 if (req.user) {
                     req.user[constants.ROLES.ADMIN] = adminRole;
-                    req.user[constants.ROLES.SUPER_ADMIN] = superAdminRole;
                     req.user[constants.ROLES.SUBSCRIBER] = subscriberRole;
                     if (orgDetails) {
                         req.user[constants.ORG_UUID] = orgDetails.uuid;
                         req.user[constants.ORG_IDENTIFIER] = orgDetails.idp_ref_id;
                     }
                 }
-                const isMatch = constants.ROUTE.API_PORTAL_ROOT.some(pattern => minimatch.minimatch(pathname, pattern));
-                if (!isMatch && !belongsToTargetOrg(req, orgDetails)) {
+                // No API_PORTAL_ROOT exemption here either — see the local-auth branch above.
+                if (!belongsToTargetOrg(req, orgDetails)) {
                     const err = new Error('Forbidden');
                     err.status = 403;
                     return next(err);
                 }
-                if (config.auth.roleValidation) {
+                if (isPageRoleValidationEnabled()) {
                     if (ensurePermission(pathname, role, req)) {
                         return next();
                     } else {
@@ -342,7 +358,11 @@ function validateAuthentication(scope) {
         const { valid, scopes } = await verifyBearerToken(accessToken, req);
 
         if (valid) {
-            const tokenScopes = String(scopes || '').split(' ');
+            // Decoded only after verification succeeded, and from the token
+            // verifyBearerToken just accepted (which may be a refreshed one it wrote
+            // back onto the session) — so role mode expands a verified roles claim.
+            const verifiedClaims = safeDecodeJwt(req.user?.[constants.ACCESS_TOKEN] || accessToken);
+            const tokenScopes = effectiveScopes(scopes, verifiedClaims);
             req.tokenScopes = tokenScopes;
             if (matchesAnyScope(tokenScopes, scope)) {
                 return next();
@@ -402,4 +422,7 @@ module.exports = {
     validateAuthentication,
     enforceSecurity,
     matchesAnyScope,
+    // Exported for tests: the page-tier decision is security-relevant enough to pin
+    // directly rather than only through the integration suite.
+    ensurePermission,
 }

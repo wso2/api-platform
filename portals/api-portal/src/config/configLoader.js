@@ -24,6 +24,9 @@ const toml = require('smol-toml');
 const Handlebars = require('handlebars');
 const { DEFAULTS } = require('./configDefaults');
 const { snakeToCamelDeep, mergeOver, parseConfigPaths } = require('./configMerge');
+// Requires nothing from this module in return, so loading the grant table from the
+// startup validation below cannot cycle.
+const roleScopeMap = require('./roleScopeMap');
 
 // Load api-platform.env if present (silently ignored if absent)
 try {
@@ -532,4 +535,134 @@ function validateArtifactConfig(artifacts) {
 
 validateArtifactConfig(config.artifacts);
 
-module.exports = { config, KNOWN_ARTIFACT_TYPES };
+// ---------------------------------------------------------------------------
+// Authorization config (auth.authorization)
+// ---------------------------------------------------------------------------
+
+const AUTHORIZATION_MODES = ['scope', 'role'];
+
+// The OpenAPI document apiPortalRouter serves /api/v0.9 from — the authority on
+// which dp:* scopes exist, so a grant table naming one that isn't declared there
+// can be rejected at startup rather than denying requests later.
+const PORTAL_SPEC_PATH = path.join(
+    __dirname, '..', '..', 'docs', 'api-portal-openapi-spec-v0.9.yaml'
+);
+
+/**
+ * Rejects config keys retired when authentication and authorization were split into
+ * separate sections.
+ *
+ * A retired key no longer maps to anything, so leaving it in place would silently
+ * apply the DEFAULTS value instead of what the file says — `role_validation = true`
+ * would read as "page gating on" to the operator and mean "off" to the portal. Both
+ * of these keys govern authorization, so failing here is what keeps a half-migrated
+ * config from starting and enforcing something other than what it states.
+ *
+ * Checked against the raw config.toml tree, not the merged one: DEFAULTS no longer
+ * carries either key, so a hit here can only be operator-supplied.
+ */
+function rejectRetiredAuthKeys(tomlAuth) {
+    if (!tomlAuth) return;
+    const retired = [];
+    if (tomlAuth.roleValidation !== undefined) {
+        retired.push(
+            'auth.role_validation is retired — it is now ' +
+            'auth.authorization.page_role_validation (per-page role gating). Note that ' +
+            'REST-API scope enforcement is a separate switch, auth.authorization.enabled, ' +
+            'which is on by default'
+        );
+    }
+    if (tomlAuth.idp?.roles !== undefined) {
+        retired.push(
+            'auth.idp.roles is retired — it is now auth.authorization.portal_roles, ' +
+            'outside the idp block, because the portal reads these role names in local ' +
+            'auth mode as well'
+        );
+    }
+    if (retired.length) {
+        process.stderr.write(
+            `[FATAL] Retired authorization config key(s):\n  - ${retired.join('\n  - ')}\n` +
+            'Refusing to start: a retired key is ignored, so the effective setting would ' +
+            'be the default rather than what the config file says.\n'
+        );
+        process.exit(1);
+    }
+}
+
+/**
+ * Fail-closed startup check for the authorization section.
+ *
+ * Runs in every auth mode, not inside a per-mode branch: a token carries the same
+ * roles claim whether it was verified against a JWKS endpoint (idp) or the Platform
+ * API's public key (local), so role authorization is configurable — and must be
+ * validated — in both.
+ *
+ * `mode` is checked even when `enabled = false`, so a typo surfaces when it is
+ * written rather than months later when enforcement is switched back on.
+ */
+function validateAuthorizationConfig(cfg) {
+    const authz = cfg.auth?.authorization;
+    if (!authz) {
+        process.stderr.write('[FATAL] auth.authorization is missing from the resolved config.\n');
+        process.exit(1);
+    }
+
+    if (!AUTHORIZATION_MODES.includes(authz.mode)) {
+        process.stderr.write(
+            `[FATAL] auth.authorization.mode must be one of ${AUTHORIZATION_MODES.map(m => `"${m}"`).join(' | ')}, ` +
+            `got ${JSON.stringify(authz.mode)}.\n`
+        );
+        process.exit(1);
+    }
+
+    if (authz.mode === 'role') {
+        // Without a roles claim mapping there is nothing to expand; without the grant
+        // table the role names would be used verbatim as scope values, which matches no
+        // operation and denies every request.
+        if (!cfg.auth?.claimMappings?.roles) {
+            process.stderr.write(
+                '[FATAL] auth.authorization.mode = "role" requires auth.claim_mappings.roles — ' +
+                'the token claim carrying the roles to expand (e.g. "roles", or ' +
+                '"realm_access.roles" for Keycloak).\n'
+            );
+            process.exit(1);
+        }
+        if (!authz.roleToScopeMapping) {
+            process.stderr.write(
+                '[FATAL] auth.authorization.mode = "role" requires ' +
+                'auth.authorization.role_to_scope_mapping — the path to the YAML grant table ' +
+                'defining what each role may do. Without it, role names would be used as ' +
+                'scope values and every request would be denied.\n'
+            );
+            process.exit(1);
+        }
+    }
+
+    // Loaded whenever a path is configured, regardless of mode: an operator switching
+    // to role mode should find out at the next restart that their grant table is
+    // valid, not the first time a request is authorized against it.
+    if (authz.roleToScopeMapping) {
+        try {
+            const map = roleScopeMap.init(authz.roleToScopeMapping, PORTAL_SPEC_PATH);
+            process.stderr.write(
+                `[INFO] Authorization: loaded ${map.size} role(s) from ` +
+                `"${authz.roleToScopeMapping}" (mode = "${authz.mode}").\n`
+            );
+        } catch (err) {
+            process.stderr.write(`[FATAL] ${err.message}\n`);
+            process.exit(1);
+        }
+    }
+
+    if (!authz.enabled) {
+        process.stderr.write(
+            '[WARN] auth.authorization.enabled = false — REST API operations accept any ' +
+            'authenticated caller regardless of the scopes they declare. Development only.\n'
+        );
+    }
+}
+
+rejectRetiredAuthKeys(interpolatedTomlConfig.auth);
+validateAuthorizationConfig(config);
+
+module.exports = { config, KNOWN_ARTIFACT_TYPES, AUTHORIZATION_MODES };
