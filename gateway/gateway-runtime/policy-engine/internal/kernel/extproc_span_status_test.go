@@ -100,12 +100,20 @@ func (p *analyticsMarshalFailurePolicy) OnResponseBody(_ context.Context, _ *pol
 // assert on actual recorded span status/attributes.
 func newSpanStatusServer(t *testing.T) (*ExternalProcessorServer, *Kernel, *tracetest.SpanRecorder) {
 	t.Helper()
+	return newSpanStatusServerWithCEL(t, nil)
+}
+
+// newSpanStatusServerWithCEL is like newSpanStatusServer but wires in a custom
+// CELEvaluator (e.g. one that returns errors) for tests that need to drive the
+// policy-error path without relying on deepCopyParams failure.
+func newSpanStatusServerWithCEL(t *testing.T, cel executor.CELEvaluator) (*ExternalProcessorServer, *Kernel, *tracetest.SpanRecorder) {
+	t.Helper()
 	sr := tracetest.NewSpanRecorder()
 	tp := sdktrace.NewTracerProvider(sdktrace.WithSpanProcessor(sr))
 	t.Cleanup(func() { _ = tp.Shutdown(context.Background()) })
 
 	k := NewKernel()
-	chainExecutor := executor.NewChainExecutor(nil, nil, tp.Tracer("test"))
+	chainExecutor := executor.NewChainExecutor(nil, cel, tp.Tracer("test"))
 	server := NewExternalProcessorServer(k, chainExecutor, config.TracingConfig{}, "", testMaxDecompressedBytes, testMaxDecompressedBytes)
 	server.tracer = tp.Tracer("test") // package-internal field; avoids mutating global otel state
 	return server, k, sr
@@ -125,6 +133,13 @@ func registerTestRoute(k *Kernel, routeName string, chain *registry.PolicyChain)
 // registering impl under name/v1 with the given spec parameters.
 func buildChainWithPolicy(t *testing.T, name string, impl policy.Policy, params map[string]interface{}) *registry.PolicyChain {
 	t.Helper()
+	return buildChainWithPolicyAndCondition(t, name, impl, params, nil)
+}
+
+// buildChainWithPolicyAndCondition is like buildChainWithPolicy but also sets an
+// ExecutionCondition on the spec, making HasExecutionConditions=true on the chain.
+func buildChainWithPolicyAndCondition(t *testing.T, name string, impl policy.Policy, params map[string]interface{}, condition *string) *registry.PolicyChain {
+	t.Helper()
 	reg := &registry.PolicyRegistry{Policies: make(map[string]*registry.PolicyEntry)}
 	require.NoError(t, reg.SetConfig(map[string]interface{}{}))
 	require.NoError(t, reg.Register(&policy.PolicyDefinition{Name: name, Version: "v1.0.0"},
@@ -134,10 +149,11 @@ func buildChainWithPolicy(t *testing.T, name string, impl policy.Policy, params 
 
 	specs := []policy.PolicySpec{
 		{
-			Name:       name,
-			Version:    "v1",
-			Enabled:    true,
-			Parameters: policy.PolicyParameters{Raw: params},
+			Name:               name,
+			Version:            "v1",
+			Enabled:            true,
+			Parameters:         policy.PolicyParameters{Raw: params},
+			ExecutionCondition: condition,
 		},
 	}
 
@@ -145,6 +161,29 @@ func buildChainWithPolicy(t *testing.T, name string, impl policy.Policy, params 
 	chain, err := k.BuildPolicyChain("test-route", specs, reg, policy.PolicyMetadata{})
 	require.NoError(t, err)
 	return chain
+}
+
+// mockEvaluatorError implements executor.CELEvaluator, returning an error on every
+// evaluation call. Used to trigger the handlePolicyError path in extproc tests.
+type mockEvaluatorError struct{}
+
+func (m *mockEvaluatorError) EvaluateRequestHeaderCondition(_ string, _ *policy.RequestHeaderContext) (bool, error) {
+	return false, errors.New("injected evaluator error")
+}
+func (m *mockEvaluatorError) EvaluateRequestBodyCondition(_ string, _ *policy.RequestContext) (bool, error) {
+	return false, errors.New("injected evaluator error")
+}
+func (m *mockEvaluatorError) EvaluateResponseHeaderCondition(_ string, _ *policy.ResponseHeaderContext) (bool, error) {
+	return false, errors.New("injected evaluator error")
+}
+func (m *mockEvaluatorError) EvaluateResponseBodyCondition(_ string, _ *policy.ResponseContext) (bool, error) {
+	return false, errors.New("injected evaluator error")
+}
+func (m *mockEvaluatorError) EvaluateStreamingRequestCondition(_ string, _ *policy.RequestStreamContext) (bool, error) {
+	return false, errors.New("injected evaluator error")
+}
+func (m *mockEvaluatorError) EvaluateStreamingResponseCondition(_ string, _ *policy.ResponseStreamContext) (bool, error) {
+	return false, errors.New("injected evaluator error")
 }
 
 func emptyChain() *registry.PolicyChain {
@@ -301,13 +340,12 @@ func TestProcessSpanStatus_UnknownMessageType(t *testing.T) {
 }
 
 func TestProcessSpanStatus_PolicyError500(t *testing.T) {
-	server, k, sr := newSpanStatusServer(t)
-
-	// deepCopyParams fails on a channel value, which json.Marshal cannot encode,
-	// driving ExecuteRequestHeaderPolicies (and thus processRequestHeaders) into
-	// handlePolicyError.
-	chain := buildChainWithPolicy(t, "bad-params-policy", &denyHeaderPolicy{statusCode: 403},
-		map[string]interface{}{"bad": make(chan int)})
+	// A CEL evaluator that always errors drives ExecuteRequestHeaderPolicies (and
+	// thus processRequestHeaders) into handlePolicyError, returning HTTP 500.
+	cond := "some.condition == true"
+	server, k, sr := newSpanStatusServerWithCEL(t, &mockEvaluatorError{})
+	chain := buildChainWithPolicyAndCondition(t, "cel-error-policy", &denyHeaderPolicy{statusCode: 403},
+		map[string]interface{}{}, &cond)
 	registerTestRoute(k, "test-route", chain)
 
 	stream := newMockStream([]*extprocv3.ProcessingRequest{
