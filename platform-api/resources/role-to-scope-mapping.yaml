@@ -40,7 +40,7 @@
 
 roles:
   # Platform administrator — full access to every resource and operation,
-  # across both the Platform API and the Developer Portal.
+  # across both the Platform API and the API Portal.
   - name: ap_admin
     scopes:
       # Platform API
@@ -74,7 +74,7 @@ roles:
       - ap:api_key:all:manage
       # - ap:websub_api:manage   # event-gateway build only
       # - ap:webbroker_api:manage   # event-gateway build only
-      # Developer Portal
+      # API Portal & MCP Hub
       - dp:organization:manage
       - dp:organization_content:manage
       - dp:api:manage
@@ -129,7 +129,7 @@ roles:
       # - ap:websub_api:deployment:read   # event-gateway build only
       # - ap:webbroker_api:read   # event-gateway build only
       # - ap:webbroker_api:deployment:read   # event-gateway build only
-      # Developer Portal
+      # API Portal & MCP Hub
       - dp:key_manager:manage
       - dp:key_manager:read
       - dp:webhook_subscriber:manage
@@ -176,7 +176,7 @@ roles:
       - ap:api_key:read
       # - ap:websub_api:manage   # event-gateway build only
       # - ap:webbroker_api:manage   # event-gateway build only
-      # Developer Portal
+      # API Portal & MCP Hub
       - dp:api:manage
       - dp:api_content:manage
       - dp:mcp_server:manage
@@ -210,7 +210,7 @@ roles:
       - ap:llm_proxy:read
       - ap:llm_provider:read
       - ap:api_key:read
-      # Developer Portal
+      # API Portal & MCP Hub
       - dp:application:manage
       - dp:application_key:manage
       - dp:application_key:revoke
@@ -261,7 +261,7 @@ roles:
       # - ap:websub_api:deployment:read   # event-gateway build only
       # - ap:webbroker_api:read   # event-gateway build only
       # - ap:webbroker_api:deployment:read   # event-gateway build only
-      # Developer Portal
+      # API Portal & MCP Hub
       - dp:organization:read
       - dp:organization_content:read
       - dp:api:read

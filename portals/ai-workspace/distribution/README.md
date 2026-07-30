@@ -78,15 +78,15 @@ Open the AI Workspace in a browser at `https://localhost:9643` and log in with t
 |------|---------|-------------|
 | `9643` | AI Workspace (BFF) | HTTPS — browser entry point |
 | `9243` | Platform API | HTTPS — backend REST API |
-| `9543` | API Portal | HTTPS — only when the `developer-portal` profile is enabled (see below) |
+| `9543` | API Portal | HTTPS — only when the `api-portal` profile is enabled (see below) |
 
 ## API Portal (optional)
 
-AI Workspace and the Platform API start together via the `ai-workspace` [Compose profile](https://docs.docker.com/compose/how-tos/profiles/) shown in [Quick Start](#quick-start). The **API Portal** ships in the same `docker-compose.yaml` as an optional component behind its own `developer-portal` profile, sharing the one Platform API — so you can add it without standing up a second Platform API.
+AI Workspace and the Platform API start together via the `ai-workspace` [Compose profile](https://docs.docker.com/compose/how-tos/profiles/) shown in [Quick Start](#quick-start). The **API Portal** ships in the same `docker-compose.yaml` as an optional component behind its own `api-portal` profile, sharing the one Platform API — so you can add it without standing up a second Platform API.
 
 The portal mounts the **same** `configs/config.toml` the other services do and reads only its own `[api_portal]` section (it ignores `[ai_workspace]`/`[platform_api]`, including their tokens). It is **off by default**: a plain `docker compose up -d` never starts it. Enabling it takes one one-time step, because that shipped `config.toml` does **not** carry a `[api_portal]` section:
 
-1. **Add the `[api_portal]` section to `configs/config.toml`.** Copy the `[api_portal.*]` tables from the bottom of the shipped `configs/config-template.toml` (the "API Portal (optional)" section) and append them to this stack's `configs/config.toml`. The compose stack already provides everything they reference — the defaults point at `https://platform-api:9243`, read the JWT public key from `/etc/devportal/keys/jwt_public.pem`, and read its encryption key/session secret from `/etc/devportal/keys/encryption.key` / `session-secret` — files `setup.sh` already generated at `resources/keys/devportal-encryption.key` / `devportal-session-secret` regardless of which profile is enabled, so there's nothing further to provision.
+1. **Add the `[api_portal]` section to `configs/config.toml`.** Copy the `[api_portal.*]` tables from the bottom of the shipped `configs/config-template.toml` (the "API Portal (optional)" section) and append them to this stack's `configs/config.toml`. The compose stack already provides everything they reference — the defaults point at `https://platform-api:9243`, read the JWT public key from `/etc/api-portal/keys/jwt_public.pem`, and read its encryption key/session secret from `/etc/api-portal/keys/encryption.key` / `session-secret` — files `setup.sh` already generated at `resources/keys/api-portal-encryption.key` / `api-portal-session-secret` regardless of which profile is enabled, so there's nothing further to provision.
 
 Then start the stack with the profile enabled:
 
@@ -180,7 +180,7 @@ docker compose up -d --force-recreate
 
 ## Compose project name
 
-`setup.sh` pins `COMPOSE_PROJECT_NAME=wso2apip-ai-workspace-<version>-<6 hex>` in `.env` on its first run and never changes it. Compose prefixes this stack's containers, network, and volumes with it, so unpacking this zip again elsewhere on the host gets its own volumes instead of adopting this copy's APIs, applications, and users. Don't edit that line or delete `.env` — the data lives in `<project>_platform-api-data` (and `<project>_developer-portal-data` if you enable that profile), and a different name starts the stack empty. `down` keeps those volumes; only `down -v` deletes them. To choose the name yourself — including adopting an earlier release's volumes, whose prefix `docker volume ls` shows — set it for the first run only: `COMPOSE_PROJECT_NAME=<name> ./scripts/setup.sh` (PowerShell: `$env:COMPOSE_PROJECT_NAME = '<name>'; .\scripts\setup.ps1`). It must match `^[a-z0-9][a-z0-9_-]*$`. Two AI Workspace stacks still can't run at once: both bind ports `9243` and `9643`.
+`setup.sh` pins `COMPOSE_PROJECT_NAME=wso2apip-ai-workspace-<version>-<6 hex>` in `.env` on its first run and never changes it. Compose prefixes this stack's containers, network, and volumes with it, so unpacking this zip again elsewhere on the host gets its own volumes instead of adopting this copy's APIs, applications, and users. Don't edit that line or delete `.env` — the data lives in `<project>_platform-api-data` (and `<project>_api-portal-data` if you enable that profile), and a different name starts the stack empty. `down` keeps those volumes; only `down -v` deletes them. To choose the name yourself — including adopting an earlier release's volumes, whose prefix `docker volume ls` shows — set it for the first run only: `COMPOSE_PROJECT_NAME=<name> ./scripts/setup.sh` (PowerShell: `$env:COMPOSE_PROJECT_NAME = '<name>'; .\scripts\setup.ps1`). It must match `^[a-z0-9][a-z0-9_-]*$`. Two AI Workspace stacks still can't run at once: both bind ports `9243` and `9643`.
 
 ## Database
 
