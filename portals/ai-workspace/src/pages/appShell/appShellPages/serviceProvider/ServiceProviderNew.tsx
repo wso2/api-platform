@@ -345,8 +345,7 @@ export default function ServiceProviderNew() {
       const providerId = toProviderId(formState.name);
 
       // The API key is optional. A credential-bearing auth type with no key
-      // entered stores nothing to inject, so record it as 'other' — upstream
-      // authentication is then left to user-attached policies. Sending
+      // entered stores nothing to inject, so record it as 'none'. Sending
       // 'api-key' with an empty value creates a provider the gateway rejects
       // at deployment time.
       const hasCredential = Boolean(formState.upstreamAuthValue.trim());
@@ -358,7 +357,7 @@ export default function ServiceProviderNew() {
           ? {
               type: isNoCredentialsAuthType
                 ? formState.upstreamAuthType
-                : 'other',
+                : 'none',
               header: '',
               value: '',
             }

@@ -682,23 +682,22 @@ export default function ExternalServersOverview(): JSX.Element {
     }
 
     const trimmedHeaderName = authHeaderName.trim();
+    const storedHeaderName = (server.upstream?.main?.auth?.header ?? '').trim();
     const endpointUnchanged =
       trimmedUrl === (server.upstream?.main?.url ?? '').trim();
-    const headerNameUnchanged =
-      trimmedHeaderName === (server.upstream?.main?.auth?.header ?? '').trim();
-    const credentialUnchanged = isCredentialMasked || !hasCredentialChanged;
+    const headerNameUnchanged = trimmedHeaderName === storedHeaderName;
 
     setIsRefetching(true);
     try {
+      // Which credential the fetch runs with is what picks the request shape. A live
+      // value the user just typed goes on the wire directly; otherwise the credential
+      // is write-only (masked as ******) and only the backend can resolve it, which it
+      // does from proxyId. auth never accompanies proxyId — whenever a proxy is
+      // referenced, its stored auth is authoritative and an override is rejected.
       let request: MCPServerInfoFetchRequest;
-      if (endpointUnchanged && headerNameUnchanged && credentialUnchanged) {
-        // Nothing edited yet — let the backend resolve the stored URL and auth (via the
-        // saved secret handle) from the persisted proxy config instead of us re-entering
-        // a credential we can never read back.
-        request = { url: trimmedUrl, proxyId: server.id };
-      } else if (trimmedHeaderName && !isCredentialMasked && authHeaderValue.trim()) {
-        // Something was edited and we have a live credential value to validate with.
-        // proxyId + auth override together aren't allowed, so this omits proxyId.
+      if (trimmedHeaderName && !isCredentialMasked && authHeaderValue.trim()) {
+        // A new or rotated credential was typed — validate the endpoint against it
+        // directly, before anything is saved.
         request = {
           url: trimmedUrl,
           auth: {
@@ -707,14 +706,28 @@ export default function ExternalServersOverview(): JSX.Element {
             value: authHeaderValue.trim(),
           },
         };
-      } else if (trimmedHeaderName && isCredentialMasked) {
+      } else if (!trimmedHeaderName) {
+        // No auth header configured, or the user is clearing it — validate the way the
+        // saved proxy would actually behave, unauthenticated.
+        request = { url: trimmedUrl };
+      } else if (!headerNameUnchanged) {
+        // The header was renamed but the value is still masked. proxyId would resolve
+        // the stored header name too, so there is no shape that pairs the new name with
+        // the stored value — the user has to supply one or the other.
         showSnackbar(
-          'Enter the authentication header value to refetch with the updated endpoint or header.',
+          'Enter the authentication header value, or save your changes first, to refetch with the renamed header.',
           'error'
         );
         return;
+      } else if (endpointUnchanged) {
+        // Nothing to override — the backend resolves both the stored URL and the stored
+        // credential from the persisted config.
+        request = { proxyId: server.id };
       } else {
-        request = { url: trimmedUrl };
+        // The endpoint was edited but the credential was not. Send both: the backend
+        // fetches the unsaved URL using the stored secret, so the user can verify an
+        // endpoint change without re-entering a credential they can never read back.
+        request = { url: trimmedUrl, proxyId: server.id };
       }
 
       const response = await mcpServerValidationApis.fetchMCPProxyServerInfo(
