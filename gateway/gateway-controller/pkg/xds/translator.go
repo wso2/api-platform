@@ -632,6 +632,55 @@ func (t *Translator) createWeightedCluster(
 
 // TranslateConfigs translates all API configurations to Envoy resources
 // The correlationID parameter is optional and used for request tracing in logs
+// buildGatewayHealthRoutes builds the gateway's own readiness/liveness
+// direct-response routes (constants.GatewayReadyPath, constants.GatewayHealthyPath).
+// They are exact-path matches under a reserved namespace (constants.
+// GatewayHealthPathPrefix) that API/LLMProvider/LLMProxy path validation must
+// reject, bypass the policy-engine ext_proc filter like the "no-api-found"
+// catch-all, and return a static, sterile body — no internal state is ever
+// disclosed through them.
+func buildGatewayHealthRoutes() ([]*route.Route, error) {
+	disabledAny, err := anypb.New(&extproc.ExtProcPerRoute{
+		Override: &extproc.ExtProcPerRoute_Disabled{Disabled: true},
+	})
+	if err != nil {
+		return nil, fmt.Errorf("failed to marshal ExtProcPerRoute for gateway health routes: %w", err)
+	}
+
+	newHealthRoute := func(name, path, body string) *route.Route {
+		return &route.Route{
+			Name: name,
+			Match: &route.RouteMatch{
+				PathSpecifier: &route.RouteMatch_Path{Path: path},
+			},
+			Action: &route.Route_DirectResponse{
+				DirectResponse: &route.DirectResponseAction{
+					Status: 200,
+					Body: &core.DataSource{
+						Specifier: &core.DataSource_InlineString{InlineString: body},
+					},
+				},
+			},
+			ResponseHeadersToAdd: []*core.HeaderValueOption{
+				{
+					Header: &core.HeaderValue{
+						Key:   "content-type",
+						Value: "application/json",
+					},
+				},
+			},
+			TypedPerFilterConfig: map[string]*anypb.Any{
+				constants.ExtProcFilterName: disabledAny,
+			},
+		}
+	}
+
+	return []*route.Route{
+		newHealthRoute("gateway-ready", constants.GatewayReadyPath, `{"status":"ready"}`),
+		newHealthRoute("gateway-healthy", constants.GatewayHealthyPath, `{"status":"healthy"}`),
+	}, nil
+}
+
 func (t *Translator) TranslateConfigs(
 	configs []*models.StoredConfig,
 	correlationID string,
@@ -736,11 +785,29 @@ func (t *Translator) TranslateConfigs(
 		vhostMap[vhost] = append(vhostMap[vhost], r)
 	}
 
+	// Built once, after every API/LLMProvider/LLMProxy config above has
+	// contributed its routes to allRoutes, and reused for every vhost below —
+	// this is the single registration point for the gateway's own health routes.
+	gatewayHealthRoutes, err := buildGatewayHealthRoutes()
+	if err != nil {
+		return nil, err
+	}
+
 	// Create a virtual host for each vhost
 	var virtualHosts []*route.VirtualHost
 	for vhost, routes := range vhostMap {
 		// Sort routes by priority (highest priority first) before adding to vhost
 		routes = SortRoutesByPriority(routes)
+
+		// Prepend the gateway health routes ahead of every API route and the
+		// catch-all 404 below. vhostMap always contains at least the "*" wildcard
+		// vhost (pre-seeded above), so /ready and /healthy respond even when zero
+		// APIs/LLMProviders/LLMProxies are deployed. They match on an exact,
+		// reserved path (constants.GatewayHealthPathPrefix) that API/LLMProvider/
+		// LLMProxy path validation must reject, so ordering relative to API routes
+		// is never ambiguous — but they still must precede the "/" prefix catch-all
+		// appended below, or Envoy's first-match routing would shadow them.
+		routes = append(append([]*route.Route{}, gatewayHealthRoutes...), routes...)
 
 		// Append the catch-all 404 route as the last route for each vhost (lowest priority).
 		extProcDisabledAny, err := anypb.New(&extproc.ExtProcPerRoute{
@@ -1279,7 +1346,9 @@ func (t *Translator) createListener(virtualHosts []*route.VirtualHost, isHTTPS b
 			IdleTimeout: durationpb.New(t.routerConfig.HTTPListener.Timeouts.IdleTimeout),
 		},
 		// Resolve dot-segments and merge duplicate slashes before route matching (enabled unless
-		// explicitly disabled). Escaped slashes are handled separately via PathWithEscapedSlashesAction.
+		// explicitly disabled), so a request path never desynchronizes from what validators (see
+		// validateNotReservedHealthPath in pkg/config/validator.go) reasoned about at config time.
+		// Escaped slashes are handled separately via PathWithEscapedSlashesAction.
 		NormalizePath:                wrapperspb.Bool(!t.routerConfig.HTTPListener.DisablePathNormalization),
 		MergeSlashes:                 !t.routerConfig.HTTPListener.DisablePathNormalization,
 		PathWithEscapedSlashesAction: convertPathWithEscapedSlashesAction(t.routerConfig.HTTPListener.PathWithEscapedSlashesAction),

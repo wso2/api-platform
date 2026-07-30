@@ -25,6 +25,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	api "github.com/wso2/api-platform/gateway/gateway-controller/pkg/api/management"
+	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/constants"
 )
 
 // TestNewLLMValidator tests the constructor
@@ -1849,6 +1850,108 @@ func validProxyWithResilience(r *api.Resilience) api.LLMProxyConfiguration {
 			Resilience:  r,
 		},
 	}
+}
+
+// The reserved gateway health-check namespace (constants.GatewayHealthPathPrefix)
+// must be checked against an LLMProvider's spec.context — unlike RestAPI, an
+// LLMProvider has no per-operation path list to combine it with.
+func TestValidateLLMProvider_ReservedHealthPath(t *testing.T) {
+	validator := NewLLMValidator()
+
+	newProvider := func(context *string) api.LLMProviderConfiguration {
+		return api.LLMProviderConfiguration{
+			ApiVersion: "gateway.api-platform.wso2.com/v1",
+			Kind:       api.LLMProviderConfigurationKindLlmProvider,
+			Metadata:   api.Metadata{Name: "openai"},
+			Spec: api.LLMProviderConfigData{
+				DisplayName:   "my-provider",
+				Version:       "v1.0",
+				Template:      "openai",
+				Context:       context,
+				Upstream:      api.LLMProviderConfigData_Upstream{Url: stringPtr("https://api.openai.com")},
+				AccessControl: api.LLMAccessControl{Mode: api.AllowAll},
+			},
+		}
+	}
+
+	t.Run("context under the reserved namespace is rejected", func(t *testing.T) {
+		provider := newProvider(stringPtr(constants.GatewayHealthPathPrefix + "/ready"))
+		errs := validator.Validate(&provider)
+		assertHasFieldError(t, errs, "spec.context")
+	})
+
+	t.Run("context equal to the reserved prefix itself is rejected", func(t *testing.T) {
+		provider := newProvider(stringPtr(constants.GatewayHealthPathPrefix))
+		errs := validator.Validate(&provider)
+		assertHasFieldError(t, errs, "spec.context")
+	})
+
+	t.Run("unrelated context is unaffected", func(t *testing.T) {
+		provider := newProvider(stringPtr("/openai"))
+		errs := validator.Validate(&provider)
+		assert.Empty(t, errs)
+	})
+
+	t.Run("nil context is unaffected", func(t *testing.T) {
+		provider := newProvider(nil)
+		errs := validator.Validate(&provider)
+		assert.Empty(t, errs)
+	})
+
+	t.Run("dot-segment context resolving into the reserved namespace is rejected", func(t *testing.T) {
+		provider := newProvider(stringPtr("/foo/.." + constants.GatewayHealthPathPrefix + "/ready"))
+		errs := validator.Validate(&provider)
+		assertHasFieldError(t, errs, "spec.context")
+	})
+
+	t.Run("dot-segment context resolving to an unrelated namespace is unaffected", func(t *testing.T) {
+		provider := newProvider(stringPtr("/foo/../bar"))
+		errs := validator.Validate(&provider)
+		assert.Empty(t, errs)
+	})
+}
+
+// Same reservation, checked against an LLMProxy's spec.context.
+func TestValidateLLMProxy_ReservedHealthPath(t *testing.T) {
+	validator := NewLLMValidator()
+
+	newProxy := func(context *string) api.LLMProxyConfiguration {
+		return api.LLMProxyConfiguration{
+			ApiVersion: api.LLMProxyConfigurationApiVersionGatewayApiPlatformWso2Comv1,
+			Kind:       api.LLMProxyConfigurationKindLlmProxy,
+			Metadata:   api.Metadata{Name: "openai-proxy"},
+			Spec: api.LLMProxyConfigData{
+				DisplayName: "my-proxy",
+				Version:     "v1.0",
+				Context:     context,
+				Provider:    api.LLMProxyProvider{Id: "openai"},
+			},
+		}
+	}
+
+	t.Run("context under the reserved namespace is rejected", func(t *testing.T) {
+		proxy := newProxy(stringPtr(constants.GatewayHealthPathPrefix + "/healthy"))
+		errs := validator.Validate(&proxy)
+		assertHasFieldError(t, errs, "spec.context")
+	})
+
+	t.Run("unrelated context is unaffected", func(t *testing.T) {
+		proxy := newProxy(stringPtr("/openai-proxy"))
+		errs := validator.Validate(&proxy)
+		assert.Empty(t, errs)
+	})
+
+	t.Run("nil context is unaffected", func(t *testing.T) {
+		proxy := newProxy(nil)
+		errs := validator.Validate(&proxy)
+		assert.Empty(t, errs)
+	})
+
+	t.Run("dot-segment context resolving into the reserved namespace is rejected", func(t *testing.T) {
+		proxy := newProxy(stringPtr("/foo/.." + constants.GatewayHealthPathPrefix + "/healthy"))
+		errs := validator.Validate(&proxy)
+		assertHasFieldError(t, errs, "spec.context")
+	})
 }
 
 func TestValidateLLMProvider_Resilience(t *testing.T) {

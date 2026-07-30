@@ -459,7 +459,7 @@ func (v *APIValidator) validateRestData(spec *api.APIConfigData) []ValidationErr
 	errors = append(errors, v.validateResilience("spec.resilience", spec.Resilience)...)
 
 	// Validate operations
-	errors = append(errors, v.validateOperations(spec.Operations)...)
+	errors = append(errors, v.validateOperations(spec.Context, spec.Operations)...)
 
 	return errors
 }
@@ -551,8 +551,14 @@ func (v *APIValidator) ValidateContext(context string) []ValidationError {
 	return errors
 }
 
-// validateOperations validates the operations configuration
-func (v *APIValidator) validateOperations(operations []api.Operation) []ValidationError {
+// validateOperations validates the operations configuration. context is the
+// API's own spec.Context, needed here (alongside each operation's own path) to
+// reject an operation whose combined route path falls under the reserved
+// constants.GatewayHealthPathPrefix namespace (see buildGatewayHealthRoutes in
+// gateway-controller/pkg/xds/translator.go) — that namespace is reserved for the
+// gateway's own /ready and /healthy direct-response routes, and must never be
+// reachable by anything an API defines.
+func (v *APIValidator) validateOperations(context string, operations []api.Operation) []ValidationError {
 	var errors []ValidationError
 
 	if len(operations) == 0 {
@@ -610,6 +616,10 @@ func (v *APIValidator) validateOperations(operations []api.Operation) []Validati
 			})
 		}
 
+		// The combined route path (context + operation path) must not fall under
+		// the reserved gateway health-check namespace.
+		errors = append(errors, validateNotReservedHealthPath(pathField, joinContextPath(context, path))...)
+
 		// Validate path parameters have balanced braces
 		if !v.validatePathParameters(path) {
 			errors = append(errors, ValidationError{
@@ -623,6 +633,15 @@ func (v *APIValidator) validateOperations(operations []api.Operation) []Validati
 	}
 
 	return errors
+}
+
+// joinContextPath concatenates a resource's context and an operation's path into
+// the combined route path. It does not canonicalize the result — canonicalization
+// (needed to catch dot-segment paths that resolve into the reserved health
+// namespace once Envoy's NormalizePath runs at request time) is handled by
+// validateNotReservedHealthPath itself, so every caller gets it uniformly.
+func joinContextPath(context, opPath string) string {
+	return strings.TrimSuffix(context, "/") + "/" + strings.TrimPrefix(opPath, "/")
 }
 
 // validatePathParameters checks if path parameters have balanced braces

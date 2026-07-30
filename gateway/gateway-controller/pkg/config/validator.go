@@ -20,15 +20,46 @@ package config
 
 import (
 	"fmt"
+	"path"
 	"regexp"
+	"strings"
 
 	api "github.com/wso2/api-platform/gateway/gateway-controller/pkg/api/management"
+	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/constants"
 )
 
 // ValidationError represents a field-level validation error
 type ValidationError struct {
 	Field   string `json:"field"`
 	Message string `json:"message"`
+}
+
+// validateNotReservedHealthPath rejects a resource path (or path prefix, such as
+// an LLMProvider/LLMProxy context with no per-operation path list of its own)
+// that falls under the reserved gateway health-check namespace
+// (constants.GatewayHealthPathPrefix) — reserved for the gateway's own /ready
+// and /healthy direct-response routes, which are added to every virtual host
+// regardless of what's deployed. See buildGatewayHealthRoutes in
+// gateway-controller/pkg/xds/translator.go. Shared across the RestAPI and LLM
+// validators so the reservation is enforced identically for every resource kind.
+func validateNotReservedHealthPath(field, resourcePath string) []ValidationError {
+	// Canonicalize before comparing: every generated HttpConnectionManager sets
+	// NormalizePath (see translator.go), so Envoy collapses dot-segments at
+	// request time. A raw, uncleaned comparison here would miss a path like
+	// "/foo/../_gateway-health/ready" that only resolves into the reserved
+	// namespace after that normalization.
+	canonical := resourcePath
+	if !strings.HasPrefix(canonical, "/") {
+		canonical = "/" + canonical
+	}
+	canonical = path.Clean(canonical)
+	if canonical == constants.GatewayHealthPathPrefix || strings.HasPrefix(canonical, constants.GatewayHealthPathPrefix+"/") {
+		return []ValidationError{{
+			Field:   field,
+			Message: fmt.Sprintf("path conflicts with the reserved gateway health-check namespace (%s)", constants.GatewayHealthPathPrefix),
+		}}
+	}
+	return nil
 }
 
 // Validator is an interface for validating configurations

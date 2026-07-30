@@ -346,6 +346,8 @@ func TestMCPValidator_ValidateContextAndVhost(t *testing.T) {
 		{name: "No context but has vhost", context: nil, vhost: stringPtr("api.example.com"), wantError: false},
 		{name: "No context and no vhost", context: nil, vhost: nil, wantError: true, errField: "spec.vhost"},
 		{name: "Empty context no vhost", context: stringPtr(""), vhost: nil, wantError: true, errField: "spec.vhost"},
+		{name: "Context under reserved health namespace", context: stringPtr(constants.GatewayHealthPathPrefix + "/ready"), vhost: nil, wantError: true, errField: "spec.context"},
+		{name: "Dot-segment context resolving into reserved health namespace", context: stringPtr("/foo/.." + constants.GatewayHealthPathPrefix + "/ready"), vhost: nil, wantError: true, errField: "spec.context"},
 	}
 
 	for _, tt := range tests {
