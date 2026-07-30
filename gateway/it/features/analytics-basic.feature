@@ -129,10 +129,9 @@ Feature: Analytics - Basic Event Capture
           id: analytics-dedup-provider
       """
     Then the response status should be 201
-    And I wait for 3 seconds
+    And I wait for the endpoint "http://localhost:8080/analytics-dedup-proxy/chat/completions" to be ready with method "POST" and body '{"model": "gpt-4o-mini", "messages": [{"role": "user", "content": "Hello"}]}'
 
-    # Reset after deployment so the count covers only the single invocation below. Readiness
-    # probes and deployment traffic would otherwise be counted too.
+    And I wait 5 seconds for analytics to be published
     Given I reset the analytics collector
     When I set header "Content-Type" to "application/json"
     And I send a POST request to "http://localhost:8080/analytics-dedup-proxy/chat/completions" with body:

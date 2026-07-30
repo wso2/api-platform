@@ -451,6 +451,11 @@ func TestProcess_PublishesWhenDirectRemoteIPMissing(t *testing.T) {
 	analytics.Process(entry)
 
 	assert.True(t, mockPub.called, "event must still be published when the direct remote address is unavailable")
+	assert.Equal(t, 1, mockPub.count, "fail-open must publish the event exactly once, not drop or duplicate it")
+	require.NotNil(t, mockPub.event, "an event must have been published")
+	assert.Equal(t, "LlmProvider", mockPub.event.API.APIType)
+	assert.Nil(t, mockPub.event.Properties[PropInternalLoopbackProvider],
+		"the event must not be flagged when the peer address could not be verified")
 }
 
 func TestProcess_SuppressionLogsDebug(t *testing.T) {
