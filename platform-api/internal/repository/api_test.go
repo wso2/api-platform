@@ -383,6 +383,74 @@ func TestAPIRepo_Delete(t *testing.T) {
 	}
 }
 
+// TestAPIRepo_DeleteAPIRemovesCustomPolicyUsagesWithoutForeignKeys is the REST
+// API counterpart to the LLM provider delete test: deleting an API must
+// release its custom-policy usage rows even when the ON DELETE CASCADE from
+// artifacts(uuid) doesn't fire.
+func TestAPIRepo_DeleteAPIRemovesCustomPolicyUsagesWithoutForeignKeys(t *testing.T) {
+	db, cleanup := setupTestDBWithoutForeignKeys(t)
+	t.Cleanup(cleanup)
+
+	repo := NewAPIRepo(db)
+	customPolicyRepo := NewCustomPolicyRepo(db)
+
+	orgUUID := "org-policy-api-delete"
+	projectUUID := "project-policy-api-delete"
+	createTestOrganizationAndProject(t, db, orgUUID, projectUUID)
+
+	policy := &model.CustomPolicy{
+		UUID:             "policy-locked-by-api",
+		OrganizationUUID: orgUUID,
+		Name:             "custom-policy-api-delete",
+		Version:          "v1.0.0",
+	}
+	if err := customPolicyRepo.InsertCustomPolicy(policy); err != nil {
+		t.Fatalf("create custom policy: %v", err)
+	}
+
+	api := &model.API{
+		Handle:          "policy-delete-api",
+		Name:            "Policy Delete API",
+		Version:         "1.0.0",
+		CreatedBy:       "test-user",
+		ProjectID:       projectUUID,
+		OrganizationID:  orgUUID,
+		LifeCycleStatus: "CREATED",
+		Configuration: model.RestAPIConfig{
+			Name:      "Policy Delete API",
+			Version:   "1.0.0",
+			Transport: []string{"https"},
+		},
+	}
+	if err := repo.CreateAPI(api); err != nil {
+		t.Fatalf("CreateAPI failed: %v", err)
+	}
+	if err := customPolicyRepo.InsertCustomPolicyUsage(policy.UUID, api.ID); err != nil {
+		t.Fatalf("insert custom policy usage: %v", err)
+	}
+
+	// Sanity check: the policy is locked while the API references it.
+	if _, err := customPolicyRepo.DeleteCustomPolicyIfUnused(orgUUID, policy.UUID); err == nil {
+		t.Fatalf("DeleteCustomPolicyIfUnused() before API delete = nil error, want PolicyInUse")
+	}
+
+	if err := repo.DeleteAPI(api.ID, orgUUID); err != nil {
+		t.Fatalf("DeleteAPI failed: %v", err)
+	}
+
+	usages, err := customPolicyRepo.GetCustomPolicyUsagesByAPIUUID(api.ID)
+	if err != nil {
+		t.Fatalf("get usages after API delete: %v", err)
+	}
+	if len(usages) != 0 {
+		t.Fatalf("policy usages after API delete = %v, want none", usages)
+	}
+
+	if purged, err := customPolicyRepo.DeleteCustomPolicyIfUnused(orgUUID, policy.UUID); err != nil {
+		t.Fatalf("DeleteCustomPolicyIfUnused() after API delete: %v (purged=%d)", err, purged)
+	}
+}
+
 func TestAPIRepo_CheckAPIExistsByNameAndVersionInOrganization(t *testing.T) {
 	db, cleanup := setupTestDB(t)
 	t.Cleanup(cleanup)

@@ -32,24 +32,41 @@ import (
 	_ "github.com/mattn/go-sqlite3"
 )
 
-// setupTestDB creates a temporary SQLite database for testing
+// setupTestDB creates a temporary SQLite database for testing, with foreign
+// key enforcement on.
 func setupTestDB(t *testing.T) (*database.DB, func()) {
+	t.Helper()
+	return openTestDB(t, true)
+}
+
+// setupTestDBWithoutForeignKeys creates a database with FK enforcement off, to
+// assert that code cleans up dependent rows explicitly rather than relying on
+// ON DELETE CASCADE.
+func setupTestDBWithoutForeignKeys(t *testing.T) (*database.DB, func()) {
+	t.Helper()
+	return openTestDB(t, false)
+}
+
+func openTestDB(t *testing.T, foreignKeys bool) (*database.DB, func()) {
 	t.Helper()
 
 	tmpDir := t.TempDir()
 	dbPath := filepath.Join(tmpDir, "test.db")
 
-	// Open SQLite database
-	sqlDB, err := sql.Open("sqlite3", dbPath)
+	// The foreign_keys pragma is per-connection in mattn/go-sqlite3, so it must
+	// be set via the DSN (applied to every connection the driver opens) rather
+	// than a one-shot PRAGMA exec against the pool.
+	fkParam := "off"
+	if foreignKeys {
+		fkParam = "on"
+	}
+	dsn := fmt.Sprintf("%s?_foreign_keys=%s", dbPath, fkParam)
+
+	sqlDB, err := sql.Open("sqlite3", dsn)
 	if err != nil {
 		t.Fatalf("Failed to open SQLite database: %v", err)
 	}
-
-	// Enable foreign keys for SQLite
-	_, err = sqlDB.Exec("PRAGMA foreign_keys = ON")
-	if err != nil {
-		t.Fatalf("Failed to enable foreign keys: %v", err)
-	}
+	sqlDB.SetMaxOpenConns(1)
 
 	// Wrap in database.DB
 	db := &database.DB{DB: sqlDB}
