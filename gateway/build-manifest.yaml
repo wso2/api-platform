@@ -67,13 +67,13 @@ policies:
       version: v1.0.3
       gomodule: github.com/wso2/gateway-controllers/policies/mcp-acl-list@v1
     - name: mcp-auth
-      version: v1.2.0
+      version: v1.2.1
       gomodule: github.com/wso2/gateway-controllers/policies/mcp-auth@v1
     - name: mcp-authz
-      version: v1.1.0
+      version: v1.1.1
       gomodule: github.com/wso2/gateway-controllers/policies/mcp-authz@v1
     - name: mcp-ratelimit
-      version: v1.1.1
+      version: v1.1.2
       gomodule: github.com/wso2/gateway-controllers/policies/mcp-ratelimit@v1
     - name: mcp-rewrite
       version: v1.0.3
