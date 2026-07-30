@@ -815,3 +815,112 @@ func TestSyncCustomPolicy_ActorRecordedAsCreator(t *testing.T) {
 		}
 	})
 }
+
+// mappingIdentityRepo maps internal platform UUIDs to external identities, so
+// tests can tell a resolved response apart from a raw UUID (unlike
+// passthroughIdentityRepo, which returns the input unchanged).
+type mappingIdentityRepo struct {
+	subs map[string]string
+}
+
+func (m mappingIdentityRepo) GetOrCreateUUID(identity string) (string, error) {
+	return identity, nil
+}
+
+func (m mappingIdentityRepo) GetSubByUUID(uuid string) (string, bool, error) {
+	sub, ok := m.subs[uuid]
+	return sub, ok, nil
+}
+
+func (m mappingIdentityRepo) GetSubsByUUIDs(uuids []string) (map[string]string, error) {
+	result := make(map[string]string, len(uuids))
+	for _, id := range uuids {
+		if sub, ok := m.subs[id]; ok {
+			result[id] = sub
+		}
+	}
+	return result, nil
+}
+
+// TestCustomPolicyResponses_ResolveIdentity verifies that sync, get, and list
+// responses expose the external identity behind created_by/updated_by rather
+// than the internal platform UUID stored in the column, and fall back to the
+// deleted-user placeholder when a UUID has no mapping.
+func TestCustomPolicyResponses_ResolveIdentity(t *testing.T) {
+	const (
+		orgID      = "org-uuid-0001"
+		gwID       = "gw-uuid-0001"
+		policyID   = "pol-uuid-0001"
+		unmappedID = "user-uuid-gone"
+	)
+
+	newSvc := func(gwRepo repository.GatewayRepository, cpRepo repository.CustomPolicyRepository) *GatewayService {
+		svc := newTestGatewayService(gwRepo, cpRepo)
+		svc.identity = NewIdentityService(mappingIdentityRepo{subs: map[string]string{testActorUUID: "alice"}})
+		return svc
+	}
+
+	t.Run("sync", func(t *testing.T) {
+		persisted := makeCustomPolicy(policyID, orgID, "my-policy", "1.0.0")
+		persisted.CreatedBy = testActorUUID
+		persisted.UpdatedBy = testActorUUID
+
+		svc := newSvc(&mockGatewayRepoForPolicy{
+			gateway:  &model.Gateway{ID: gwID, OrganizationID: orgID},
+			manifest: sampleManifest("my-policy", "1.0.0"),
+		}, &mockCustomPolicyRepo{getPolicyByNameVersion: persisted})
+
+		got, err := svc.SyncCustomPolicy(gwID, orgID, "my-policy", "1.0.0", testActorUUID)
+		if err != nil {
+			t.Fatalf("SyncCustomPolicy() unexpected error: %v", err)
+		}
+		if got.CreatedBy != "alice" || got.UpdatedBy != "alice" {
+			t.Errorf("SyncCustomPolicy() createdBy/updatedBy = %q/%q, want %q/%q", got.CreatedBy, got.UpdatedBy, "alice", "alice")
+		}
+	})
+
+	t.Run("get", func(t *testing.T) {
+		stored := makeCustomPolicy(policyID, orgID, "my-policy", "1.0.0")
+		stored.CreatedBy = testActorUUID
+		stored.UpdatedBy = unmappedID
+
+		svc := newSvc(&mockGatewayRepoForPolicy{}, &mockCustomPolicyRepo{getPolicyByUUID: stored})
+
+		got, err := svc.GetCustomPolicyByUUID(orgID, policyID, "1.0.0")
+		if err != nil {
+			t.Fatalf("GetCustomPolicyByUUID() unexpected error: %v", err)
+		}
+		if got.CreatedBy != "alice" {
+			t.Errorf("GetCustomPolicyByUUID() createdBy = %q, want %q", got.CreatedBy, "alice")
+		}
+		if got.UpdatedBy != constants.DeletedUser {
+			t.Errorf("GetCustomPolicyByUUID() updatedBy = %q, want %q for an unmapped UUID", got.UpdatedBy, constants.DeletedUser)
+		}
+	})
+
+	t.Run("list", func(t *testing.T) {
+		mapped := makeCustomPolicy(policyID, orgID, "my-policy", "1.0.0")
+		mapped.CreatedBy = testActorUUID
+		mapped.UpdatedBy = testActorUUID
+		unmapped := makeCustomPolicy("pol-uuid-0002", orgID, "other-policy", "1.0.0")
+		unmapped.CreatedBy = unmappedID
+
+		svc := newSvc(&mockGatewayRepoForPolicy{}, &mockCustomPolicyRepo{
+			listPolicies: []*model.CustomPolicy{mapped, unmapped},
+		})
+
+		got, _, err := svc.ListCustomPolicies(orgID, 10, 0)
+		if err != nil {
+			t.Fatalf("ListCustomPolicies() unexpected error: %v", err)
+		}
+		if len(got) != 2 {
+			t.Fatalf("ListCustomPolicies() returned %d policies, want 2", len(got))
+		}
+		if got[0].CreatedBy != "alice" || got[0].UpdatedBy != "alice" {
+			t.Errorf("ListCustomPolicies() createdBy/updatedBy = %q/%q, want %q/%q", got[0].CreatedBy, got[0].UpdatedBy, "alice", "alice")
+		}
+		if got[1].CreatedBy != constants.DeletedUser {
+			t.Errorf("ListCustomPolicies() createdBy = %q, want %q for an unmapped UUID", got[1].CreatedBy, constants.DeletedUser)
+		}
+	})
+}

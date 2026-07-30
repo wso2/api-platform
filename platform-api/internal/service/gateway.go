@@ -479,12 +479,73 @@ func (s *GatewayService) SyncCustomPolicy(gatewayHandle, orgID, policyName, vers
 		if s.auditRepo != nil {
 			_ = s.auditRepo.Record("CREATE", policy.UUID, "custom_policy", orgID, createdBy)
 		}
+		if err := s.resolveCustomPolicyIdentity(policy); err != nil {
+			return nil, err
+		}
 		return policy, nil
 	}
 	if s.auditRepo != nil {
 		_ = s.auditRepo.Record("CREATE", persisted.UUID, "custom_policy", orgID, createdBy)
 	}
+	if err := s.resolveCustomPolicyIdentity(persisted); err != nil {
+		return nil, err
+	}
 	return persisted, nil
+}
+
+// resolveCustomPolicyIdentity replaces the internal platform UUIDs held in a
+// custom policy's CreatedBy/UpdatedBy with the raw external identity, so a
+// response never exposes an internal UUID — the same unwrapping every other
+// resource does via IdentityService before returning a detail response.
+func (s *GatewayService) resolveCustomPolicyIdentity(policy *model.CustomPolicy) error {
+	if policy == nil {
+		return nil
+	}
+	createdBy, err := s.identity.SubForUUID(policy.CreatedBy)
+	if err != nil {
+		return err
+	}
+	updatedBy, err := s.identity.SubForUUID(policy.UpdatedBy)
+	if err != nil {
+		return err
+	}
+	policy.CreatedBy = createdBy
+	policy.UpdatedBy = updatedBy
+	return nil
+}
+
+// resolveCustomPolicyIdentities is the list equivalent of
+// resolveCustomPolicyIdentity, batching every lookup into one query to avoid
+// an N+1 against the identity mapping table.
+func (s *GatewayService) resolveCustomPolicyIdentities(policies []*model.CustomPolicy) error {
+	uuids := make([]string, 0, len(policies)*2)
+	for _, p := range policies {
+		if p == nil {
+			continue
+		}
+		uuids = append(uuids, p.CreatedBy, p.UpdatedBy)
+	}
+	resolved, err := s.identity.SubsForUUIDs(uuids)
+	if err != nil {
+		return err
+	}
+	for _, p := range policies {
+		if p == nil {
+			continue
+		}
+		// An empty UUID is absent from the map; SubForUUID's contract maps it
+		// to the deleted-user placeholder, so mirror that here.
+		p.CreatedBy = resolvedIdentityOrDeleted(resolved, p.CreatedBy)
+		p.UpdatedBy = resolvedIdentityOrDeleted(resolved, p.UpdatedBy)
+	}
+	return nil
+}
+
+func resolvedIdentityOrDeleted(resolved map[string]string, uuid string) string {
+	if identity, ok := resolved[uuid]; ok && identity != "" {
+		return identity
+	}
+	return constants.DeletedUser
 }
 
 // ListCustomPolicies returns all custom policies synced for the given organization.
@@ -498,7 +559,11 @@ func (s *GatewayService) ListCustomPolicies(orgID string, limit, offset int) ([]
 	// Custom policies for one organization are a small, bounded set, so the total
 	// is the full count and the requested window is applied in memory.
 	total := len(policies)
-	return paginateSlice(policies, limit, offset), total, nil
+	page := paginateSlice(policies, limit, offset)
+	if err := s.resolveCustomPolicyIdentities(page); err != nil {
+		return nil, 0, err
+	}
+	return page, total, nil
 }
 
 // GetCustomPolicyByUUID returns a custom policy by UUID, verifying org ownership and version.
@@ -512,6 +577,9 @@ func (s *GatewayService) GetCustomPolicyByUUID(orgID, policyUUID, version string
 	}
 	if policy.Version != version {
 		return nil, apperror.CustomPolicyVersionNotFnd.New()
+	}
+	if err := s.resolveCustomPolicyIdentity(policy); err != nil {
+		return nil, err
 	}
 	return policy, nil
 }
