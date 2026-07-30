@@ -279,6 +279,8 @@ func (c *Analytics) prepareAnalyticEvent(logEntry *v3.HTTPAccessLogEntry) *dto.E
 	// Prepare extended API
 	extendedAPI := dto.ExtendedAPI{}
 	extendedAPI.APIType = keyValuePairsFromMetadata[APITypeKey]
+	// subType currently mirrors apiType; populated here so it flows through the analytics event.
+	extendedAPI.SubType = keyValuePairsFromMetadata[APITypeKey]
 	extendedAPI.APIID = keyValuePairsFromMetadata[APIIDKey]
 	extendedAPI.APICreator = keyValuePairsFromMetadata[APICreatorKey]
 	extendedAPI.APIName = keyValuePairsFromMetadata[APINameKey]

@@ -14,13 +14,14 @@
  *  limitations under the License.
  *
  */
- 
+
 package dto
 
 // API represents the API attributes in an analytics event.
 type API struct {
 	APIID                  string `json:"apiId"`
 	APIType                string `json:"apiType"`
+	SubType                string `json:"subType"` // currently mirrors APIType; a distinct property so it can diverge later without a schema change
 	APIName                string `json:"apiName"`
 	APIVersion             string `json:"apiVersion"`
 	APICreator             string `json:"apiCreator"`
@@ -45,6 +46,16 @@ func (a *API) GetAPIType() string {
 // SetAPIType sets the API type.
 func (a *API) SetAPIType(apiType string) {
 	a.APIType = apiType
+}
+
+// GetSubType returns the API sub type.
+func (a *API) GetSubType() string {
+	return a.SubType
+}
+
+// SetSubType sets the API sub type.
+func (a *API) SetSubType(subType string) {
+	a.SubType = subType
 }
 
 // GetAPIName returns the API name.

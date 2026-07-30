@@ -71,6 +71,7 @@ func createBaseEvent() *dto.Event {
 				APIName:    "test-api",
 				APIVersion: "v1.0",
 				APIType:    "Rest",
+				SubType:    "Rest",
 			},
 			APIContext: "/test",
 			ProjectID:  "project-123",
@@ -521,7 +522,10 @@ func TestPublish_SubTypeMirrorsAPIType(t *testing.T) {
 			moesif := createTestMoesifWithoutAPI()
 
 			event := createBaseEvent()
+			// Production populates APIType and SubType from the same metadata source
+			// (see analytics.go); mirror that here so the fixture matches the real event.
 			event.API.APIType = apiType
+			event.API.SubType = apiType
 			moesif.Publish(event)
 
 			assert.Len(t, moesif.events, 1)

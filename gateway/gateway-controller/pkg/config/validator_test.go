@@ -882,6 +882,35 @@ func TestValidateUpstreamDefinitions_NoTimeout(t *testing.T) {
 	assert.Empty(t, errors, "No timeout should be valid")
 }
 
+// TestValidateUpstreamDefinitions_NonPositiveConnectTimeout asserts that a zero (or otherwise
+// non-positive) connect timeout is rejected at validation time. Zero does not disable a connect
+// timeout (Envoy requires connect_timeout > 0s and the transformer rejects it), so accepting it
+// here would let a definition deploy that can never be translated.
+func TestValidateUpstreamDefinitions_NonPositiveConnectTimeout(t *testing.T) {
+	validator := NewAPIValidator()
+
+	for _, zero := range []string{"0s", "0ms"} {
+		connect := zero
+		definitions := &[]api.UpstreamDefinition{
+			{
+				Name:    "my-upstream",
+				Timeout: &api.UpstreamTimeout{Connect: &connect},
+				Upstreams: []struct {
+					Url    string `json:"url" yaml:"url"`
+					Weight *int   `json:"weight,omitempty" yaml:"weight,omitempty"`
+				}{
+					{Url: "http://backend:8080"},
+				},
+			},
+		}
+
+		errors := validator.validateUpstreamDefinitions(definitions)
+		if assert.NotEmpty(t, errors, "connect timeout %q must be rejected (must be positive)", zero) {
+			assert.Contains(t, errors[0].Message, "must be positive")
+		}
+	}
+}
+
 func TestValidateUpstreamRef_ValidRef(t *testing.T) {
 	validator := NewAPIValidator()
 
