@@ -43,7 +43,7 @@ const AUTHORIZED_PAGES = [
 // Accepts either a single scope string or an array of candidate scopes and reports
 // whether the token satisfies any one of them — the same any-of semantics the
 // OpenAPI-validator-driven /api/v0.9 security handlers apply to a spec operation's
-// declared scope list (e.g. dp:mcp_update OR dp:mcp_manage), so a route gated by
+// declared scope list (e.g. dp:mcp_server:update OR dp:mcp_server:manage), so a route gated by
 // enforceSecurity([...]) grants access to exactly the same principals a /api/v0.9
 // CRUD operation on the same resource would.
 function matchesAnyScope(tokenScopes, requiredScope) {

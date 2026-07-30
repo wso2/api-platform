@@ -466,8 +466,8 @@ const publishServer = async (req, res) => {
             : null;
 
         // publish is an upsert — a caller must hold the scope matching whichever operation
-        // will ACTUALLY happen, not just either one: dp:mcp_create alone must not be able to
-        // update an existing server, and dp:mcp_update alone must not be able to create a new
+        // will ACTUALLY happen, not just either one: dp:mcp_server:create alone must not be able to
+        // update an existing server, and dp:mcp_server:update alone must not be able to create a new
         // one. Route-level enforceSecurity(MCP_PUBLISH_SCOPES) only proves the caller has SOME
         // MCP-publishing capability; this is the precise, per-operation check (GO-AUTH-007 /
         // GO-AUTH-015 — the specific check belongs at the point the operation is decided, not

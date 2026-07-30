@@ -131,9 +131,9 @@ module.exports = {
         // requirements declare per operation (docs/api-portal-openapi-spec-v0.9.yaml) — reused
         // here so the MCP registry protocol routes (mcpRegistryRoute.js) grant access to
         // exactly the same principals as the equivalent admin CRUD operation.
-        MCP_CREATE: ['dp:mcp_create', 'dp:mcp_manage'],
-        MCP_UPDATE: ['dp:mcp_update', 'dp:mcp_manage'],
-        MCP_DELETE: ['dp:mcp_delete', 'dp:mcp_manage'],
+        MCP_CREATE: ['dp:mcp_server:create', 'dp:mcp_server:manage'],
+        MCP_UPDATE: ['dp:mcp_server:update', 'dp:mcp_server:manage'],
+        MCP_DELETE: ['dp:mcp_server:delete', 'dp:mcp_server:manage'],
     },
 
     FILE_EXTENSIONS: {

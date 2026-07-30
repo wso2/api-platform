@@ -61,8 +61,8 @@ router.get('/v0.1/servers/:serverName/versions/:version', mcpRegistryService.get
 // until publishServer looks up the target name/version/proxyId, so mcpRegistryService.js's
 // publishServer re-checks req.tokenScopes against the precise create-vs-update scope once
 // it has determined which operation this request actually performs. A caller with only
-// dp:mcp_create must not be able to update an existing server via this coarse gate alone,
-// and vice versa for dp:mcp_update against creating a new one.
+// dp:mcp_server:create must not be able to update an existing server via this coarse gate alone,
+// and vice versa for dp:mcp_server:update against creating a new one.
 const MCP_PUBLISH_SCOPES = [...constants.SCOPES.MCP_CREATE, ...constants.SCOPES.MCP_UPDATE];
 router.post('/v0.1/publish', enforceSecurity(MCP_PUBLISH_SCOPES), mcpRegistryService.publishServer);
 router.put('/v0.1/servers/:serverName/versions/:version', enforceSecurity(constants.SCOPES.MCP_UPDATE), mcpRegistryService.updateVersion);

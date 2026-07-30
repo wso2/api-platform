@@ -255,7 +255,7 @@ For quick exploration without an IdP, the portal delegates credential validation
 [[platform_api.auth.file.users]]
 username      = "admin"
 password_hash = "$2y$10$..."   # bcrypt hash — generate with: htpasswd -bnBC 12 "" <pw> | tr -d ':\n'
-roles         = ["ap_admin"]   # grants dp:org_manage, dp:api_manage, … — see role-to-scope-mapping.yaml
+roles         = ["ap_admin"]   # grants dp:organization:manage, dp:api:manage, … — see role-to-scope-mapping.yaml
 ```
 
 To change what a portal user may do, edit that role's entry in `role-to-scope-mapping.yaml` — or name a second role alongside it — rather than listing scopes on the user block.

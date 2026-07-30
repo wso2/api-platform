@@ -80,14 +80,14 @@ ROTATE_ENCRYPTION_KEY=false
 # value here via sed when it copies this shared script into the distribution
 # zip (see the `dist` target in portals/ai-workspace/Makefile and
 # portals/api-portal/Makefile). Left at this placeholder, it falls back
-# to detect_pack()'s topology-based detection below, which is what happens
+# to detect_pack()'s directory-name detection below, which is what happens
 # when this script runs straight out of a repo checkout (not a dist zip).
 DEFAULT_COMPOSE_PROFILES="__DEFAULT_COMPOSE_PROFILES__"
 # Which pack this is ("api-portal" or "ai-workspace") — `make dist`
 # bakes this in the same way as DEFAULT_COMPOSE_PROFILES above, so a shipped
 # distribution zip never needs to detect it at runtime. Left at this
-# placeholder, detect_pack() below determines it from docker-compose.yaml's
-# actual service topology instead.
+# placeholder, detect_pack() below falls back to this pack's own directory
+# name instead (only reachable from a repo checkout).
 DEFAULT_PACK_NAME="__DEFAULT_PACK_NAME__"
 # This pack's version, baked in by `make dist` the same way as the two values
 # above. Only feeds the generated COMPOSE_PROJECT_NAME. Left at this
