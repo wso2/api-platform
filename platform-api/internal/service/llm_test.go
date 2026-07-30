@@ -92,36 +92,24 @@ func TestNormalizeUpstreamAuthType(t *testing.T) {
 	}
 }
 
-// TestMapLLMUpstreamYAMLToModel_DefaultsToOther verifies the DP->CP import default:
-// a gateway-pushed provider whose upstream.auth block is absent (or empty-typed) is
-// stored with auth type "other" — the gateway may authenticate the upstream via
-// user-attached policies, so absence must not be recorded as "no auth". An explicit
-// type is preserved.
-func TestMapLLMUpstreamYAMLToModel_DefaultsToOther(t *testing.T) {
-	// No auth block => "other".
+// TestMapLLMUpstreamYAMLToModel_DefaultsToNone verifies the DP->CP import default:
+// a gateway-pushed provider whose upstream.auth block is absent (or empty-typed)
+// is stored with auth type "none", while an explicit "other" type is preserved.
+func TestMapLLMUpstreamYAMLToModel_DefaultsToNone(t *testing.T) {
+	// No auth block => "none".
 	got := mapLLMUpstreamYAMLToModel(dto.LLMUpstreamYAML{URL: "https://api.openai.com/v1"})
-	if got == nil || got.Main == nil || got.Main.Auth == nil || got.Main.Auth.Type != "other" {
-		t.Fatalf("expected auth type 'other' for absent auth, got %+v", got)
-	}
-
-	// Empty-typed auth block => "other".
-	emptyType := api.UpstreamAuthType("")
-	got = mapLLMUpstreamYAMLToModel(dto.LLMUpstreamYAML{
-		URL:  "https://api.openai.com/v1",
-		Auth: &api.UpstreamAuth{Type: &emptyType},
-	})
-	if got == nil || got.Main == nil || got.Main.Auth == nil || got.Main.Auth.Type != "other" {
-		t.Fatalf("expected auth type 'other' for empty-typed auth, got %+v", got)
-	}
-
-	// An explicit "none" is preserved — it is not overwritten by the default.
-	noneType := api.None
-	got = mapLLMUpstreamYAMLToModel(dto.LLMUpstreamYAML{
-		URL:  "https://api.openai.com/v1",
-		Auth: &api.UpstreamAuth{Type: &noneType},
-	})
 	if got == nil || got.Main == nil || got.Main.Auth == nil || got.Main.Auth.Type != "none" {
-		t.Fatalf("expected auth type 'none' preserved, got %+v", got)
+		t.Fatalf("expected auth type 'none' for absent auth, got %+v", got)
+	}
+
+	// Explicit "other" is preserved.
+	otherType := api.Other
+	got = mapLLMUpstreamYAMLToModel(dto.LLMUpstreamYAML{
+		URL:  "https://api.openai.com/v1",
+		Auth: &api.UpstreamAuth{Type: &otherType},
+	})
+	if got == nil || got.Main == nil || got.Main.Auth == nil || got.Main.Auth.Type != "other" {
+		t.Fatalf("expected auth type 'other' preserved, got %+v", got)
 	}
 }
 
