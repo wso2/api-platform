@@ -23,6 +23,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"net/http"
 	"strings"
 
 	extprocconfigv3 "github.com/envoyproxy/go-control-plane/envoy/extensions/filters/http/ext_proc/v3"
@@ -30,8 +31,10 @@ import (
 	typev3 "github.com/envoyproxy/go-control-plane/envoy/type/v3"
 	"github.com/google/uuid"
 
+	"github.com/wso2/api-platform/gateway/gateway-runtime/policy-engine/internal/constants"
 	"github.com/wso2/api-platform/gateway/gateway-runtime/policy-engine/internal/executor"
 	"github.com/wso2/api-platform/gateway/gateway-runtime/policy-engine/internal/registry"
+	"github.com/wso2/api-platform/gateway/gateway-runtime/policy-engine/internal/tracing"
 	policy "github.com/wso2/api-platform/sdk/core/policy/v1alpha2"
 	policyenginev1 "github.com/wso2/api-platform/sdk/core/policyengine"
 )
@@ -144,6 +147,31 @@ type PolicyExecutionContext struct {
 
 	// phase tracks the current ext_proc processing phase and is read by getModeOverride.
 	phase processingPhase
+
+	// terminal is the last known terminal HTTP outcome for this request, memoized
+	// by resolveTerminalOutcome so Process's root-span defer can stamp it after
+	// the final phase. Only non-zero outcomes overwrite it.
+	terminal tracing.HTTPOutcome
+
+	// generated describes the ImmediateResponse this execution context built
+	// itself (handlePolicyError / handlePayloadTooLarge) rather than one a policy
+	// returned. Matched by pointer identity in resolveTerminalOutcome so an
+	// engine-generated fault is never mislabelled as a policy denial.
+	generated generatedResponse
+
+	// responseStatusOverridden is set by processResponseBody /
+	// processResponseBodyForEmptyResponse when a response-body policy sets
+	// DownstreamResponseModifications.StatusCode, so resolveTerminalOutcome can
+	// distinguish a policy-chosen status from a genuine upstream pass-through
+	// (constants.TerminalReasonPolicyStatusOverride vs TerminalReasonUpstream).
+	responseStatusOverridden bool
+}
+
+// generatedResponse ties a policy-engine-generated ImmediateResponse to the span
+// outcome that describes it.
+type generatedResponse struct {
+	resp    *extprocv3.ProcessingResponse
+	outcome tracing.HTTPOutcome
 }
 
 // newPolicyExecutionContext creates a new execution context for a request
@@ -193,7 +221,7 @@ func (ec *PolicyExecutionContext) handlePolicyError(
 
 	errorBody := fmt.Sprintf(`{"error":"Internal Server Error","error_id":"%s"}`, errorID)
 
-	return &extprocv3.ProcessingResponse{
+	resp := &extprocv3.ProcessingResponse{
 		Response: &extprocv3.ProcessingResponse_ImmediateResponse{
 			ImmediateResponse: &extprocv3.ImmediateResponse{
 				Status: &typev3.HttpStatus{
@@ -207,6 +235,19 @@ func (ec *PolicyExecutionContext) handlePolicyError(
 			},
 		},
 	}
+
+	// Tag this response as engine-generated so the span carries
+	// reason=policy_error and the same correlation id the client and the error
+	// log see.
+	ec.generated = generatedResponse{
+		resp: resp,
+		outcome: tracing.HTTPOutcome{
+			StatusCode: http.StatusInternalServerError,
+			Reason:     constants.TerminalReasonPolicyError,
+			ErrorID:    errorID,
+		},
+	}
+	return resp
 }
 
 // handlePayloadTooLarge builds an HTTP 413 immediate response for a buffered
@@ -231,7 +272,7 @@ func (ec *PolicyExecutionContext) handlePayloadTooLarge(
 
 	errorBody := fmt.Sprintf(`{"error":"Payload Too Large","error_id":"%s"}`, errorID)
 
-	return &extprocv3.ProcessingResponse{
+	resp := &extprocv3.ProcessingResponse{
 		Response: &extprocv3.ProcessingResponse_ImmediateResponse{
 			ImmediateResponse: &extprocv3.ImmediateResponse{
 				Status: &typev3.HttpStatus{
@@ -245,6 +286,107 @@ func (ec *PolicyExecutionContext) handlePayloadTooLarge(
 			},
 		},
 	}
+
+	// Tag this response as engine-generated so the span carries
+	// reason=payload_too_large and the same correlation id the client and the
+	// warning log see.
+	ec.generated = generatedResponse{
+		resp: resp,
+		outcome: tracing.HTTPOutcome{
+			StatusCode: http.StatusRequestEntityTooLarge,
+			Reason:     constants.TerminalReasonPayloadTooLarge,
+			ErrorID:    errorID,
+		},
+	}
+	return resp
+}
+
+// finalResponseStatus returns the HTTP status the downstream client will
+// actually see for a pass-through (non-short-circuited) response.
+//
+// responseBodyCtx.ResponseStatus starts out equal to the upstream ":status"
+// (both are seeded from the same value in buildResponseContexts) and is
+// overwritten in place by applyResponseModifications when a response-body policy
+// sets StatusCode — the same value the translator emits as a ":status" header op
+// for Envoy. So it must be read only AFTER chain execution has returned.
+// Response-HEADER policies cannot change the status
+// (DownstreamResponseHeaderModifications has no StatusCode field), so the header
+// context is only a fallback for a bodyless response.
+func (ec *PolicyExecutionContext) finalResponseStatus() int {
+	if ec.responseBodyCtx != nil && ec.responseBodyCtx.ResponseStatus != 0 {
+		return ec.responseBodyCtx.ResponseStatus
+	}
+	if ec.responseHeaderCtx != nil {
+		return ec.responseHeaderCtx.ResponseStatus
+	}
+	return 0 // request phase — no response status exists yet
+}
+
+// resolveTerminalOutcome derives the terminal HTTP outcome of the phase that is
+// about to return resp, and memoizes it on ec for the root-span stamp in
+// Process. Reading the outgoing ext_proc response rather than tracking state at
+// every generator means every terminating status — a policy deny, a generated
+// 500 or 413, a python-bridge fault — is classified from what actually goes on
+// the wire and cannot drift.
+//
+// Must be called only after chain execution has returned, because a
+// response-body policy can still change the status at that point
+// (applyResponseModifications).
+func (ec *PolicyExecutionContext) resolveTerminalOutcome(resp *extprocv3.ProcessingResponse) tracing.HTTPOutcome {
+	var out tracing.HTTPOutcome
+
+	if imm := resp.GetImmediateResponse(); imm != nil {
+		if ec.generated.resp == resp {
+			// Built by handlePolicyError / handlePayloadTooLarge.
+			out = ec.generated.outcome
+		} else {
+			// Every other ImmediateResponse originates from a policy returning
+			// policy.ImmediateResponse (auth denial, rate limit, guardrail, or a
+			// python-bridge fault).
+			out = tracing.HTTPOutcome{
+				StatusCode: int(imm.GetStatus().GetCode()),
+				Reason:     constants.TerminalReasonPolicyDenied,
+			}
+		}
+	} else if status := ec.finalResponseStatus(); status != 0 {
+		// Pass-through: the client sees the upstream status, post policy override.
+		// finalResponseStatus() can't tell those two cases apart on its own (a
+		// response-body policy overwrites ResponseStatus in place), so
+		// responseStatusOverridden — set when a policy actually supplied
+		// DownstreamResponseModifications.StatusCode — picks the reason.
+		reason := constants.TerminalReasonUpstream
+		if ec.responseStatusOverridden {
+			reason = constants.TerminalReasonPolicyStatusOverride
+		}
+		out = tracing.HTTPOutcome{
+			StatusCode: status,
+			Reason:     reason,
+		}
+	}
+
+	// A request-phase pass-through has no status yet; never let it erase a status
+	// resolved by an earlier phase.
+	if out.StatusCode != 0 {
+		ec.terminal = out
+	}
+	return out
+}
+
+// responseStatusOverriddenByPolicy reports whether any non-skipped, non-errored
+// response-body policy result set DownstreamResponseModifications.StatusCode.
+// Mirrors the same Results scan translator.go performs when building the
+// ":status" header op, so the two can never disagree about whether a policy
+// touched the status.
+func responseStatusOverriddenByPolicy(results []executor.ResponsePolicyResult) bool {
+	for _, r := range results {
+		if r.Skipped || r.Error != nil {
+			continue
+		}
+		if mods, ok := r.Action.(policy.DownstreamResponseModifications); ok && mods.StatusCode != nil {
+			return true
+		}
+	}
+	return false
 }
 
 // responsePayloadTooLargeError fails the ext_proc stream closed when an upstream
@@ -495,6 +637,9 @@ func (ec *PolicyExecutionContext) processResponseBodyForEmptyResponse(
 	)
 	if err != nil {
 		return ec.handlePolicyError(ctx, err, "response_body_no_body"), nil
+	}
+	if responseStatusOverriddenByPolicy(bodyResult.Results) {
+		ec.responseStatusOverridden = true
 	}
 
 	return TranslateResponseHeaderActionsWithBodyMerge(headerResult, bodyResult, ec)
@@ -845,6 +990,9 @@ func (ec *PolicyExecutionContext) processResponseBody(
 		)
 		if err != nil {
 			return ec.handlePolicyError(ctx, err, "response_body"), nil
+		}
+		if responseStatusOverriddenByPolicy(execResult.Results) {
+			ec.responseStatusOverridden = true
 		}
 
 		return TranslateResponseBodyActions(execResult, ec)

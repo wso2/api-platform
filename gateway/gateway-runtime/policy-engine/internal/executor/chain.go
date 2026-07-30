@@ -143,6 +143,10 @@ func (c *ChainExecutor) ExecuteRequestHeaderPolicies(
 
 		params, err := deepCopyParams(spec.Parameters.Raw)
 		if err != nil {
+			if span.IsRecording() {
+				span.RecordError(err)
+				span.SetStatus(codes.Error, "parameter clone failed")
+			}
 			span.End()
 			return nil, fmt.Errorf("failed to clone parameters for policy %s:%s: %w", spec.Name, spec.Version, err)
 		}
@@ -312,6 +316,10 @@ func (c *ChainExecutor) ExecuteRequestPolicies(ctx context.Context, policyList [
 		// across concurrent requests (nested maps/slices require a full deep copy).
 		params, err := deepCopyParams(spec.Parameters.Raw)
 		if err != nil {
+			if span.IsRecording() {
+				span.RecordError(err)
+				span.SetStatus(codes.Error, "parameter clone failed")
+			}
 			span.End()
 			return nil, fmt.Errorf("failed to clone parameters for policy %s:%s: %w", spec.Name, spec.Version, err)
 		}
@@ -446,6 +454,10 @@ func (c *ChainExecutor) ExecuteResponseHeaderPolicies(
 			if c.celEvaluator != nil {
 				conditionMet, err := c.celEvaluator.EvaluateResponseHeaderCondition(*spec.ExecutionCondition, respCtx)
 				if err != nil {
+					if span.IsRecording() {
+						span.RecordError(err)
+						span.SetStatus(codes.Error, "condition evaluation failed")
+					}
 					span.End()
 					return nil, fmt.Errorf("condition evaluation failed for policy %s:%s: %w", spec.Name, spec.Version, err)
 				}
@@ -469,6 +481,10 @@ func (c *ChainExecutor) ExecuteResponseHeaderPolicies(
 
 		params, err := deepCopyParams(spec.Parameters.Raw)
 		if err != nil {
+			if span.IsRecording() {
+				span.RecordError(err)
+				span.SetStatus(codes.Error, "parameter clone failed")
+			}
 			span.End()
 			return nil, fmt.Errorf("failed to clone parameters for policy %s:%s: %w", spec.Name, spec.Version, err)
 		}
@@ -633,6 +649,10 @@ func (c *ChainExecutor) ExecuteResponsePolicies(ctx context.Context, policyList 
 		// across concurrent requests (nested maps/slices require a full deep copy).
 		params, err := deepCopyParams(spec.Parameters.Raw)
 		if err != nil {
+			if span.IsRecording() {
+				span.RecordError(err)
+				span.SetStatus(codes.Error, "parameter clone failed")
+			}
 			span.End()
 			return nil, fmt.Errorf("failed to clone parameters for policy %s:%s: %w", spec.Name, spec.Version, err)
 		}
@@ -767,7 +787,7 @@ func (c *ChainExecutor) ExecuteStreamingRequestPolicies(
 				if err != nil {
 					if span.IsRecording() {
 						span.RecordError(err)
-						span.SetStatus(codes.Error, err.Error())
+						span.SetStatus(codes.Error, "condition evaluation failed")
 					}
 					span.End()
 					return nil, fmt.Errorf("condition evaluation failed for policy %s:%s: %w", spec.Name, spec.Version, err)
@@ -790,6 +810,10 @@ func (c *ChainExecutor) ExecuteStreamingRequestPolicies(
 
 		params, err := deepCopyParams(spec.Parameters.Raw)
 		if err != nil {
+			if span.IsRecording() {
+				span.RecordError(err)
+				span.SetStatus(codes.Error, "parameter clone failed")
+			}
 			span.End()
 			return nil, fmt.Errorf("failed to clone parameters for policy %s:%s: %w", spec.Name, spec.Version, err)
 		}
@@ -938,6 +962,10 @@ func (c *ChainExecutor) ExecuteStreamingResponsePolicies(
 
 		params, err := deepCopyParams(spec.Parameters.Raw)
 		if err != nil {
+			if span.IsRecording() {
+				span.RecordError(err)
+				span.SetStatus(codes.Error, "parameter clone failed")
+			}
 			span.End()
 			return nil, fmt.Errorf("failed to clone parameters for policy %s:%s: %w", spec.Name, spec.Version, err)
 		}
