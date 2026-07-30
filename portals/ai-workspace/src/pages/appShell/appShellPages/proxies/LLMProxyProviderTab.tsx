@@ -149,6 +149,20 @@ export default function LLMProxyProviderTab() {
         nextProviderDetail = detail;
         setProviderDetail(detail);
       }
+      // Type, header and value move as one unit: an absent/'none' type carries no
+      // credential, so the header and value are cleared with it rather than being
+      // inherited from the provider and contradicting the type.
+      const nextAuthType = nextProviderDetail?.upstream?.main?.auth?.type || 'none';
+      const carriesCredential = nextAuthType !== 'none';
+      const nextAuth = {
+        type: nextAuthType,
+        header: carriesCredential
+          ? (nextProviderDetail?.upstream?.main?.auth?.header ?? '')
+          : '',
+        value: carriesCredential
+          ? (nextProviderDetail?.upstream?.main?.auth?.value ?? '')
+          : '',
+      };
       setLocalProxy((prev) =>
         prev
           ? {
@@ -156,12 +170,7 @@ export default function LLMProxyProviderTab() {
               provider: newProviderId
                 ? {
                     id: newProviderId,
-                    auth: {
-                      type: nextProviderDetail?.upstream?.main?.auth?.type ?? '',
-                      header:
-                        nextProviderDetail?.upstream?.main?.auth?.header ?? '',
-                      value: nextProviderDetail?.upstream?.main?.auth?.value ?? '',
-                    },
+                    auth: nextAuth,
                   }
                 : undefined,
               vhost: nextProviderDetail?.vhost?.trim() || undefined,
