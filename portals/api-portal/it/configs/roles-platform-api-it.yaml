@@ -108,7 +108,6 @@ roles:
       - dp:webhook_subscriber:delete
       - dp:webhook_subscriber:manage
       - dp:event:read
-      - dp:delivery:manage
 
   # Content/config manager — APIs, MCP servers, key managers, subscription
   # plans, views/labels, webhook subscribers, API workflows. No org management,
