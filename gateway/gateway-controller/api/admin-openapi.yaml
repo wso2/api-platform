@@ -5,6 +5,11 @@ info:
     Admin/debug API for Gateway Controller.
 
     These endpoints are served on the dedicated admin server port (default: 9092).
+
+    All endpoints except `/health` require HTTP Basic authentication using the
+    same credentials configured for the management API (`controller.auth.basic`).
+    `/health` is intentionally left unauthenticated so Docker and Kubernetes
+    liveness/readiness probes can reach it.
   version: 1.0.0
   contact:
     name: WSO2 API Platform Team
@@ -27,6 +32,8 @@ paths:
       operationId: getConfigDump
       tags:
         - System
+      security:
+        - basicAuth: []
       responses:
         "200":
           description: Complete configuration dump
@@ -34,6 +41,12 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ConfigDumpResponse"
+        "401":
+          description: Missing or invalid credentials
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
         "500":
           description: Internal server error
           content:
@@ -51,6 +64,7 @@ paths:
       operationId: getHealth
       tags:
         - System
+      security: []
       responses:
         "200":
           description: Gateway controller is healthy
@@ -67,6 +81,8 @@ paths:
       operationId: getXDSSyncStatus
       tags:
         - System
+      security:
+        - basicAuth: []
       responses:
         "200":
           description: Current controller xDS policy sync status
@@ -74,6 +90,12 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/XDSSyncStatusResponse"
+        "401":
+          description: Missing or invalid credentials
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
         "500":
           description: Internal server error
           content:
@@ -81,7 +103,17 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
 
+security:
+  - basicAuth: []
+
 components:
+  securitySchemes:
+    basicAuth:
+      type: http
+      scheme: basic
+      description: |
+        HTTP Basic authentication using the credentials configured under
+        `controller.auth.basic`. Applies to every admin endpoint except `/health`.
   schemas:
     ErrorResponse:
       type: object

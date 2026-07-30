@@ -32,23 +32,43 @@ type Server struct {
 }
 
 // NewServer creates a new admin HTTP server.
-func NewServer(cfg *config.AdminServerConfig, apiServer apiServer, logger *slog.Logger) *Server {
+//
+// authMiddleware is the shared authentication middleware (basic auth / IDP) used
+// to gate every admin endpoint except the public health probe. Pass the same
+// middleware the management API uses so both servers accept the same credentials.
+// A nil authMiddleware disables authentication entirely and is intended only for
+// tests that exercise the handlers or IP allowlist in isolation — production
+// callers must always pass a configured middleware.
+func NewServer(cfg *config.AdminServerConfig, apiServer apiServer, authMiddleware func(http.Handler) http.Handler, logger *slog.Logger) *Server {
 	s := &Server{
 		cfg:       cfg,
 		apiServer: apiServer,
 		logger:    logger,
 	}
 
+	// Authentication is the primary gate; the IP allowlist is defense-in-depth.
+	// The health probe bypasses both so Docker/k8s liveness checks
+	// keep working without credentials.
+	if authMiddleware == nil {
+		logger.Warn("admin server starting WITHOUT authentication — every non-health endpoint " +
+			"(config_dump, xds_sync_status, pprof) is reachable without credentials; this is only " +
+			"safe in tests. Configure controller.auth.basic and pass the auth middleware.")
+	}
+	authMW := createSelectiveAuthMiddleware(authMiddleware)
+
 	// Share a single mux so both registrations populate the same router.
 	mux := http.NewServeMux()
 
 	// Versioned admin API routes — the current, non-deprecated form.
 	// BaseURL must match the `servers.url` prefix in api/admin-openapi.yaml.
+	// The auth middleware is placed last so it is the outermost wrapper and runs
+	// first — an unauthenticated request is rejected before the IP check.
 	adminapi.HandlerWithOptions(s, adminapi.StdHTTPServerOptions{
 		BaseURL:    AdminAPIBasePath,
 		BaseRouter: mux,
 		Middlewares: []adminapi.MiddlewareFunc{
 			createSelectiveIPWhitelistMiddleware(cfg.AllowedIPs),
+			authMW,
 		},
 	})
 
@@ -62,20 +82,22 @@ func NewServer(cfg *config.AdminServerConfig, apiServer apiServer, logger *slog.
 		Middlewares: []adminapi.MiddlewareFunc{
 			createSelectiveIPWhitelistMiddleware(cfg.AllowedIPs),
 			deprecatedAdminPathMiddleware(AdminAPIBasePath),
+			authMW,
 		},
 	})
 
 	// Go runtime profiling endpoints, registered only when explicitly enabled.
-	// They are wrapped in the same IP whitelist as the other admin routes — the
-	// selective middleware here (not on the mux itself) is what protects them, so
+	// They are wrapped in the same auth + IP whitelist as the other admin routes —
+	// the middleware here (not on the mux itself) is what protects them, so
 	// registering directly on the mux without it would leave pprof unauthenticated.
 	if cfg.Pprof.Enabled {
 		ipmw := createSelectiveIPWhitelistMiddleware(cfg.AllowedIPs)
-		mux.Handle("/debug/pprof/", ipmw(http.HandlerFunc(pprof.Index)))
-		mux.Handle("/debug/pprof/cmdline", ipmw(http.HandlerFunc(pprof.Cmdline)))
-		mux.Handle("/debug/pprof/profile", ipmw(http.HandlerFunc(pprof.Profile)))
-		mux.Handle("/debug/pprof/symbol", ipmw(http.HandlerFunc(pprof.Symbol)))
-		mux.Handle("/debug/pprof/trace", ipmw(http.HandlerFunc(pprof.Trace)))
+		protect := func(h http.Handler) http.Handler { return authMW(ipmw(h)) }
+		mux.Handle("/debug/pprof/", protect(http.HandlerFunc(pprof.Index)))
+		mux.Handle("/debug/pprof/cmdline", protect(http.HandlerFunc(pprof.Cmdline)))
+		mux.Handle("/debug/pprof/profile", protect(http.HandlerFunc(pprof.Profile)))
+		mux.Handle("/debug/pprof/symbol", protect(http.HandlerFunc(pprof.Symbol)))
+		mux.Handle("/debug/pprof/trace", protect(http.HandlerFunc(pprof.Trace)))
 	}
 
 	s.httpSrv = &http.Server{
@@ -160,6 +182,36 @@ func createSelectiveIPWhitelistMiddleware(allowedIPs []string) adminapi.Middlewa
 				return
 			}
 			next.ServeHTTP(w, r)
+		})
+	}
+}
+
+// createSelectiveAuthMiddleware wraps the shared authentication middleware so the
+// public health endpoints (versioned and legacy) bypass authentication — matching
+// the exemption applied by createSelectiveIPWhitelistMiddleware — while every other
+// admin endpoint (config_dump, xds_sync_status, pprof) requires valid credentials.
+//
+// The health paths are matched exactly (not by prefix) so an unrelated path can
+// never be mistaken for the public probe. When
+// authMiddleware is nil the returned wrapper is a passthrough; production callers
+// must supply a configured middleware (see NewServer).
+func createSelectiveAuthMiddleware(authMiddleware func(http.Handler) http.Handler) adminapi.MiddlewareFunc {
+	healthPath := AdminAPIBasePath + "/health"
+	const legacyHealthPath = "/health"
+	return func(next http.Handler) http.Handler {
+		// Build the authenticated handler once per wrapped route. When no
+		// authenticator is wired, fall through to the unauthenticated handler.
+		authenticated := next
+		if authMiddleware != nil {
+			authenticated = authMiddleware(next)
+		}
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			// Health probes must stay reachable without credentials.
+			if r.URL.Path == healthPath || r.URL.Path == legacyHealthPath {
+				next.ServeHTTP(w, r)
+				return
+			}
+			authenticated.ServeHTTP(w, r)
 		})
 	}
 }

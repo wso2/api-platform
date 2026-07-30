@@ -688,7 +688,11 @@ func main() {
 	// Start controller admin server for debug endpoints if enabled.
 	var controllerAdminServer *adminserver.Server
 	if cfg.Controller.AdminServer.Enabled {
-		controllerAdminServer = adminserver.NewServer(&cfg.Controller.AdminServer, apiServer, log)
+		// Gate the admin/debug server behind the same authentication middleware as
+		// the management API. The health probe stays public; every
+		// other admin endpoint (config_dump, xds_sync_status, pprof) now requires
+		// valid credentials from controller.auth.basic.
+		controllerAdminServer = adminserver.NewServer(&cfg.Controller.AdminServer, apiServer, authMiddleWare, log)
 		go func() {
 			if err := controllerAdminServer.Start(); err != nil {
 				log.Error("Controller admin server failed", slog.Any("error", err))
