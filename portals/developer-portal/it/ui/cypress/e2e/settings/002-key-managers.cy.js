@@ -17,14 +17,13 @@
 // --------------------------------------------------------------------
 
 // End-to-end for the Key Manager form: an admin creates a key manager (the form
-// has no Handle field — the server derives it from the name), the creation is
-// confirmed over the REST API, and a developer then sees key generation enabled
-// on their application because an org key manager now exists.
+// has no Handle field — the server generates a UUID handle since the UI sends no id),
+// the creation is confirmed over the REST API, and a developer then sees key
+// generation enabled on their application because an org key manager now exists.
 
 describe('Settings — Key Managers', () => {
     const uid = Date.now();
     const KM_NAME = `IT KM ${uid}`;
-    const KM_HANDLE = `it-km-${uid}`; // slugify(KM_NAME)
     const ENDPOINT = 'https://idp.example.invalid/oauth2/token';
     const APP_NAME = `IT KM App ${uid}`;
 
@@ -35,8 +34,13 @@ describe('Settings — Key Managers', () => {
         cy.logout();
         cy.login('developer', 'developer');
         cy.deleteApplication(APP_NAME);
-        // Key manager delete uses the admin management API key, independent of session.
-        cy.apiRequest('DELETE', `/api/v0.9/key-managers/${KM_HANDLE}`, { failOnStatusCode: false });
+        // The handle is a server-generated UUID, so discover it by display name and
+        // delete via the admin management API key (independent of session).
+        cy.apiRequest('GET', '/api/v0.9/key-managers').then((res) => {
+            (res.body.list || [])
+                .filter((km) => km.displayName === KM_NAME)
+                .forEach((km) => cy.apiRequest('DELETE', `/api/v0.9/key-managers/${km.id}`, { failOnStatusCode: false }));
+        });
     });
 
     it('creates a key manager and enables key generation for a developer application', () => {
@@ -51,11 +55,11 @@ describe('Settings — Key Managers', () => {
         cy.get('#cfg-km-modal-save').click();
         cy.contains('.cfg-km-edit-btn', KM_NAME, { timeout: 15000 }).should('exist');
 
-        // 2. Confirm it was created over the REST API, with the server-derived handle.
+        // 2. Confirm it was created over the REST API, with a server-generated handle.
         cy.apiRequest('GET', '/api/v0.9/key-managers').then((res) => {
             const match = (res.body.list || []).find((km) => km.displayName === KM_NAME);
             expect(match, 'created key manager present in list').to.exist;
-            expect(match.id).to.eq(KM_HANDLE);
+            expect(match.id, 'server generated a handle').to.be.a('string').and.not.be.empty;
         });
 
         // 3. Switch to a developer user and create an application.
@@ -70,7 +74,6 @@ describe('Settings — Key Managers', () => {
         cy.url().should('include', '/applications/');
         cy.get('.mk-unavailable').should('not.exist');
         cy.get('.mk-km-card').should('exist');
-        cy.get('.mk-km-name').should('contain', KM_HANDLE);
         cy.get('[id^="addClientIdBtn-"]').should('exist');
     });
 });

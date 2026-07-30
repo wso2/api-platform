@@ -25,16 +25,7 @@ const constants = require('../utils/constants');
 const util = require('../utils/util');
 const logger = require('../config/logger');
 const { logUserAction } = require('../middlewares/auditLogger');
-const { slugifyHandle, handleCandidate, uuidHandle } = require('../utils/handleSlug');
-
-// Generated-handle collision strategy (mirrors webhookSubscriberService): try the
-// readable numeric ladder first (base, base-2, base-3), then fall back to a plain
-// UUID, all bounded so a broken unique index can't spin indefinitely. A name that
-// slugifies to nothing skips the ladder and goes straight to a UUID. This is what
-// lets two key managers with the same display name auto-disambiguate rather than 409.
-const NUMERIC_HANDLE_ATTEMPTS = 3;
-const UUID_HANDLE_ATTEMPTS = 2;
-const MAX_HANDLE_ATTEMPTS = NUMERIC_HANDLE_ATTEMPTS + UUID_HANDLE_ATTEMPTS;
+const crypto = require('crypto');
 
 // ---------------------------------------------------------------------------
 // YAML ingestion helpers (mirrors parseIdentityProviderFromYamlFile pattern)
@@ -103,8 +94,7 @@ function _resolvePayload(req) {
 }
 
 // Handles are used to build route segments, so a caller-supplied id must be restricted
-// to a safe character set. Generated handles come from slugifyHandle, which already
-// produces only [a-z0-9-].
+// to a safe character set. Generated handles are UUIDs, which already satisfy this.
 const HANDLE_PATTERN = /^[a-zA-Z0-9_-]+$/;
 
 function _validateRequiredFields(payload) {
@@ -139,57 +129,38 @@ const createKeyManager = async (req, res) => {
             return util.sendError(res, 400, validationError);
         }
 
-        // An explicit handle (YAML metadata.name or a body `id`) is taken at face value
-        // and a collision is the caller's conflict to resolve (409). The settings UI sends
-        // none, so the handle is derived from displayName and auto-disambiguated on
-        // collision, exactly like webhook subscribers.
+        // Handle rule: use the caller-supplied handle (a body `id` or YAML metadata.name)
+        // when present; otherwise generate a UUID. The settings UI sends none, so those
+        // get a UUID. A handle collision is always a 409 — we never rewrite the caller's
+        // id or invent a variant.
         const hadExplicitHandle = !!(payload.handle && payload.handle.trim());
         if (hadExplicitHandle && !HANDLE_PATTERN.test(payload.handle.trim())) {
             return util.sendError(res, 400, "Invalid 'id'. Must contain only letters, numbers, underscores, and hyphens.");
         }
-        const base = hadExplicitHandle
-            ? payload.handle.trim()
-            : slugifyHandle(payload.displayName); // may be '' — the loop uses a UUID then
+        const handle = hadExplicitHandle ? payload.handle.trim() : crypto.randomUUID();
 
         const userId = util.resolveActor(req);
-
-        // Retrying on the insert's duplicate-key error rather than pre-checking keeps this
-        // correct under concurrent creates, where a check-then-insert would race.
-        const attempts = hadExplicitHandle ? 1 : MAX_HANDLE_ATTEMPTS;
-        for (let attempt = 0; attempt < attempts; attempt++) {
-            const handle = (base && attempt < NUMERIC_HANDLE_ATTEMPTS)
-                ? handleCandidate(base, attempt)
-                : uuidHandle();
+        try {
+            const record = await kmDao.create(orgId, { ...payload, handle }, userId);
+            logUserAction('KEY_MANAGER_CREATED', req, { orgId, kmId: record.uuid, resourceUuid: record.uuid, resourceType: 'key_manager' });
+            let audit;
             try {
-                const record = await kmDao.create(orgId, { ...payload, handle }, userId);
-                logUserAction('KEY_MANAGER_CREATED', req, { orgId, kmId: record.uuid, resourceUuid: record.uuid, resourceType: 'key_manager' });
-                let audit;
-                try {
-                    audit = await userIdpReferenceDao.buildSingleAuditFields(record);
-                } catch (auditError) {
-                    logger.error('Audit field resolution failed after key manager creation', {
-                        error: auditError.message,
-                        kmId: record.uuid
-                    });
-                    audit = { createdAt: record.created_at, updatedAt: record.updated_at };
-                }
-                const dto = new KeyManagerDTO(record, audit);
-                return res.status(201).json(dto);
-            } catch (error) {
-                if (!db.isDuplicateKeyError(error)) {
-                    throw error;
-                }
-                if (hadExplicitHandle) {
-                    return util.sendError(res, 409, `A key manager with that id already exists in this organization.`);
-                }
-                // Generated handle collided — fall through and try the next suffix.
+                audit = await userIdpReferenceDao.buildSingleAuditFields(record);
+            } catch (auditError) {
+                logger.error('Audit field resolution failed after key manager creation', {
+                    error: auditError.message,
+                    kmId: record.uuid
+                });
+                audit = { createdAt: record.created_at, updatedAt: record.updated_at };
             }
+            const dto = new KeyManagerDTO(record, audit);
+            return res.status(201).json(dto);
+        } catch (error) {
+            if (db.isDuplicateKeyError(error)) {
+                return util.sendError(res, 409, `A key manager with that id already exists in this organization.`);
+            }
+            throw error;
         }
-
-        // Effectively unreachable: the numeric ladder AND every random suffix collided,
-        // which points at a broken unique index rather than an unlucky caller.
-        logger.error('Exhausted key manager handle generation attempts', { orgId, base, attempts });
-        return util.sendError(res, 500, constants.ERROR_MESSAGE.KEY_MANAGER_CREATE_ERROR);
     } catch (error) {
         if (db.isDuplicateKeyError(error)) {
             return util.sendError(res, 409, `A key manager with that id already exists in this organization.`);

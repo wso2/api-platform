@@ -1122,8 +1122,8 @@ paths:
         Generates an API key stored in the Developer Portal (devportal is source of truth). The plaintext secret is
         returned once in the response and never persisted. A `apikey.generated` webhook event is published to the
         organization's configured webhook subscribers so they can register the key (e.g. with a gateway). Key `id`
-        must match `^[a-z0-9][a-z0-9_-]{0,127}$`, and `expiresAt` must include a timezone when sent as an ISO-8601
-        string.
+        is optional — a UUID handle is generated when it is omitted; when provided it must match
+        `^[a-z0-9][a-z0-9_-]{0,127}$`. `expiresAt` must include a timezone when sent as an ISO-8601 string.
       requestBody:
         $ref: "#/components/requestBodies/ApiKeyBody"
       responses:
@@ -4988,12 +4988,13 @@ components:
       additionalProperties: false
     ApiKeyRequest:
       type: object
-      required:
-        - id
       properties:
         id:
           type: string
           pattern: ^[a-z0-9][a-z0-9_-]{0,127}$
+          description: >-
+            Optional handle for the key. When provided it must match the pattern and be unique
+            for this API; when omitted, the server generates a UUID handle.
           example: weather_prod_key
         displayName:
           type: string

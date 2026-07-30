@@ -138,8 +138,15 @@ async function publishKeyApplicationUpdated(orgId, keyId, handle, displayName, a
  */
 async function generate({ orgId, apiId, subscriptionId, appId, handle, displayName, expiresAt, actor }) {
 
-    const normalizedHandle = parseAndValidateHandle(handle);
-    if (!normalizedHandle) throw Object.assign(new Error('id must match ^[a-z0-9][a-z0-9_-]{0,127}$'), { status: 400 });
+    // Handle rule: use the caller-supplied `id` when present (validated); otherwise a
+    // UUID. A UUID satisfies KEY_HANDLE_PATTERN, so it needs no extra validation.
+    let normalizedHandle;
+    if (typeof handle === 'string' && handle.trim()) {
+        normalizedHandle = parseAndValidateHandle(handle);
+        if (!normalizedHandle) throw Object.assign(new Error('id must match ^[a-z0-9][a-z0-9_-]{0,127}$'), { status: 400 });
+    } else {
+        normalizedHandle = crypto.randomUUID();
+    }
     const normalizedDisplayName = typeof displayName === 'string' && displayName.trim() ? displayName.trim() : normalizedHandle;
 
     const expiry = parseExpiresAt(expiresAt);
@@ -147,6 +154,13 @@ async function generate({ orgId, apiId, subscriptionId, appId, handle, displayNa
 
     const api = await resolveApi(orgId, apiId);
     if (api.error) throw Object.assign(new Error(api.error.message), { status: api.error.status });
+
+    // The handle is the caller-facing id used to resolve a key within an API, so reject
+    // a duplicate. dp_api_keys has no unique constraint, so this is enforced here (a
+    // best-effort pre-check; concurrent creates with the same id are not fully serialized).
+    if (await apiKeyDao.getIdByHandle(orgId, api.id, normalizedHandle)) {
+        throw Object.assign(new Error(`An API key with id "${normalizedHandle}" already exists for this API.`), { status: 409 });
+    }
 
     const application = await resolveApp(orgId, appId, actor);
 
