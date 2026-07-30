@@ -93,6 +93,11 @@ function createProjectViaUI(projectName) {
 
 function createProviderViaUI(providerName) {
   cy.intercept('POST', /\/llm-providers(\?|$)/).as('createProviderForProxy');
+  // Providers are an organization-level resource: with a project selected (which
+  // createProjectViaUI leaves behind), the Service Provider page renders the
+  // "available at the organization level" notice and no create button at all.
+  // currentProject is in-memory React state, so reloading the org root clears it.
+  cy.visitWorkspace(`/organizations/${Cypress.env('ORG_HANDLE')}`);
   cy.get('[data-cyid="nav-service-provider"]', { timeout: 30000 }).should('be.visible').click();
   cy.get('[data-cyid="add-new-provider-button"]', { timeout: 30000 }).should('be.visible').click();
   cy.get('[data-cyid="provider-template-openai-card"]', { timeout: 30000 }).should('be.visible').click();
