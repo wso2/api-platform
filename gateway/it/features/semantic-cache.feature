@@ -560,6 +560,7 @@ Feature: Semantic Cache Policy
       """
     Then the response should be successful
     And I wait for the endpoint "http://localhost:8080/semantic-cache-isolation/v1.0/health" to be ready
+    And I wait for policy snapshot sync
 
     # Provision caller A's API key
     When I send a POST request to the "gateway-controller" service at "/rest-apis/semantic-cache-isolation-api/api-keys" with body:
