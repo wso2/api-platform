@@ -21,8 +21,8 @@ components:
       name: X-API-Key
   parameters:
     SubscriptionTokenHeader:
-      name: X-Subscription-Token
-      x-header-type: subscription-token   # marks the API as token-based subscription
+      name: Subscription-Token
+      x-header-type: subscription-key   # marks the API as token-based subscription
       in: header
       required: true
       schema:

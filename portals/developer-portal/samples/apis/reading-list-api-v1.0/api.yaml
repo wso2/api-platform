@@ -29,9 +29,9 @@ spec:
     technicalOwner: API Team
     technicalOwnerEmail: architecture@example.com
 
-  # Gateway ingress (Envoy, port 8080) fronting the RestApi registered with
-  # context /reading-list/$version. The gateway forwards to the upstream at
-  # https://apis.bijira.dev/samples/reading-list-api-service/v1.0.
+  # Points straight at the hosted sample backend, so the API works in a fresh
+  # portal with no gateway deployed. Front it with the gateway instead by
+  # swapping these for the gateway ingress URL.
   endpoints:
-    sandboxUrl: http://localhost:8080/reading-list/v1.0
-    productionUrl: http://localhost:8080/reading-list/v1.0
+    sandboxUrl: https://apis.bijira.dev/samples/reading-list-api-service/v1.0
+    productionUrl: https://apis.bijira.dev/samples/reading-list-api-service/v1.0

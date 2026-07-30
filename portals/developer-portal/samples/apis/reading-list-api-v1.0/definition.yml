@@ -8,7 +8,7 @@ info:
 
     Open access: no API key or subscription token is required.
 servers:
-  - url: /reading-list/v1.0
+  - url: https://apis.bijira.dev/samples/reading-list-api-service/v1.0
 
 components:
   schemas:

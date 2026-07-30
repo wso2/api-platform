@@ -44,7 +44,7 @@ const parseApiDefinition = (definition) => {
 
 /**
  * Returns the subscription token header name if the definition declares a parameter with
- * x-header-type: subscription-token, otherwise null.
+ * x-header-type: subscription-key, otherwise null.
  */
 const findSubscriptionTokenHeader = (apiDefinition) => {
     const parsed = parseApiDefinition(apiDefinition);
@@ -52,7 +52,7 @@ const findSubscriptionTokenHeader = (apiDefinition) => {
     const components = parsed.components || {};
     const params = components.parameters || {};
     for (const param of Object.values(params)) {
-        if (param && param['x-header-type'] === 'subscription-token' && param.in === 'header') {
+        if (param && param['x-header-type'] === 'subscription-key' && param.in === 'header') {
             return param.name || null;
         }
     }

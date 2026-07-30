@@ -8,16 +8,16 @@ It is the simplest of the sample APIs: **no API key and no subscription token** 
 
 | Method | Path | Description |
 |--------|------|-------------|
-| `GET` | `/reading-list/v1.0/books` | List every book on the reading list |
-| `POST` | `/reading-list/v1.0/books` | Add a book |
-| `GET` | `/reading-list/v1.0/books/{id}` | Get a single book by id |
-| `PUT` | `/reading-list/v1.0/books/{id}` | Update a book — e.g. move it to `read` |
-| `DELETE` | `/reading-list/v1.0/books/{id}` | Remove a book |
+| `GET` | `/books` | List every book on the reading list |
+| `POST` | `/books` | Add a book |
+| `GET` | `/books/{id}` | Get a single book by id |
+| `PUT` | `/books/{id}` | Update a book — e.g. move it to `read` |
+| `DELETE` | `/books/{id}` | Remove a book |
 
 ## Example
 
 ```bash
-curl http://localhost:8080/reading-list/v1.0/books
+curl https://apis.bijira.dev/samples/reading-list-api-service/v1.0/books
 ```
 
 ```json
@@ -39,8 +39,8 @@ A request for an unknown id returns `404` with an error body:
 { "error": "UUID does not exist" }
 ```
 
-## Gateway URLs
+## Endpoints
 
-- **Sandbox:** `http://localhost:8080/reading-list/v1.0`
-- **Production:** `http://localhost:8080/reading-list/v1.0`
+- **Sandbox:** `https://apis.bijira.dev/samples/reading-list-api-service/v1.0`
+- **Production:** `https://apis.bijira.dev/samples/reading-list-api-service/v1.0`
 

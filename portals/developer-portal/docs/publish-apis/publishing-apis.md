@@ -262,8 +262,8 @@ components:
       name: X-API-Key
   parameters:
     SubscriptionTokenHeader:
-      name: X-Subscription-Token
-      x-header-type: subscription-token   # marks the API as token-based subscription
+      name: Subscription-Token
+      x-header-type: subscription-key   # marks the API as token-based subscription
       in: header
       required: true
       schema:
@@ -276,7 +276,7 @@ Consumers subscribe to a plan (receiving a subscription token), generate an API 
 
 ### Summary
 
-| Pattern | `subscriptionPlans` | `securitySchemes` | `x-header-type: subscription-token` |
+| Pattern | `subscriptionPlans` | `securitySchemes` | `x-header-type: subscription-key` |
 |---|---|---|---|
 | API key only | `[]` | `apiKey` | No |
 | API key + direct subscription | one or more plans | `apiKey` | No |
