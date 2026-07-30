@@ -130,11 +130,11 @@ conn_max_lifetime = 300   # seconds before a connection is recycled
 # Authentication
 #
 # auth.mode selects exactly one mode:
-#   "external_token" — verify locally-issued, asymmetrically-signed (RS256) JWTs,
-#                       minted externally (e.g. by the Developer Portal) and
-#                       signed with the matching RSA private key; verified here
-#                       against auth.jwt.public_key_file.
-#   "file"            — external_token + local username/password login: the
+#   "internal_token" — verify asymmetrically-signed (RS256) JWTs minted by
+#                       another trusted platform component, signed with the
+#                       matching RSA private key; verified here against
+#                       auth.jwt.public_key_file.
+#   "file"            — internal_token + local username/password login: the
 #                       login endpoint authenticates from
 #                       [platform_api.auth.file] and issues RS256 JWTs signed
 #                       with auth.jwt.private_key_file.
@@ -145,13 +145,28 @@ conn_max_lifetime = 300   # seconds before a connection is recycled
 [platform_api.auth]
 mode = "file"
 
+# Authorization — how a verified token's privileges are checked. Independent of
+# the authentication mode above: these settings apply whether the token was
+# verified against an IDP's JWKS or with a local public key, because an
+# enterprise-IDP-minted token carries the same roles claim either way.
+[platform_api.auth.authorization]
 # Enforce per-endpoint OAuth2 scopes on validated tokens. Set false only to
 # temporarily bypass authorization during development.
-scope_validation = true
+enabled = true
+
+# "scope" (default) checks the scope claim; "role" checks the roles claim
+# configured below at claim_mappings.roles, expanding each role via role_mappings.
+mode = "scope"
+
+# Path to a YAML file mapping role names to platform scopes. Required when
+# mode = "role" (startup fails if unset), and also when any file-mode user below
+# names a role — the login endpoint expands that role through this same file.
+# The packs mount their editable sample at /etc/platform-api/roles.yaml.
+role_mappings = ""
 
 # JWT claim name mappings — shared by all three auth modes ("idp" reads
 # incoming claims by these names; "file" mode's login endpoint signs tokens
-# using these names; "external_token" mode reads externally-minted tokens by
+# using these names; "internal_token" mode reads tokens minted elsewhere by
 # these names too), so issuance and validation never drift apart. Each value
 # is either a flat top-level claim name ("org_id") or a dot-separated path
 # into a nested claim ("realm_access.org_id") — useful for IDPs like
@@ -164,7 +179,10 @@ user_id      = "sub"            # claim used as the user's unique ID
 username     = "username"
 email        = "email"
 scope        = "scope"          # space-separated scope string
-roles        = ""               # e.g. "realm_access.roles" (Keycloak) or "roles" (Asgardeo)
+# Claim carrying the user's roles. Read in role authorization mode, and it is the
+# claim the file-mode login endpoint signs the user's role into. Default suits
+# Asgardeo/Entra ID; Keycloak nests it: "realm_access.roles".
+roles        = "roles"
 
 # IDP (JWKS-based) — used when mode = "idp" (Asgardeo, Keycloak, Auth0, etc.).
 # jwks_url and issuer are required in that mode.
@@ -173,11 +191,6 @@ name     = "asgardeo"                                # friendly name for logging
 jwks_url = "https://accounts.example.com/oauth2/jwks"
 issuer   = ["https://accounts.example.com"]          # list of accepted issuers
 audience = []                                        # accepted "aud" values; empty = skip audience check
-
-# Authorization mode: "scope" (default) checks the scope claim;
-# "role" checks the roles claim configured below at claim_mappings.roles.
-validation_mode = "scope"
-role_mappings   = ""   # path to a YAML file mapping IDP roles to platform scopes
 
 # File auth — local username/password login, used when mode = "file". Ideal
 # for initial / air-gapped setup; not recommended for production — prefer
@@ -197,8 +210,24 @@ uuid = "99089a17-72e0-4dd8-a2f4-c8dfbb085295"
 # starting with a blank or guessable credential.
 username      = ""
 password_hash = ""
-# Full scope set — trim to restrict permissions for this user.
-scopes = "ap:organization:manage ap:gateway:manage ap:gateway_custom_policy:manage ap:rest_api:manage ap:llm_provider:manage ap:llm_proxy:manage ap:mcp_proxy:manage ap:webbroker_api:manage ap:websub_api:manage ap:application:manage ap:subscription:manage ap:subscription_plan:manage ap:project:manage ap:llm_template:manage ap:devportal:manage ap:api_key:read ap:api_key:all:manage ap:secret:manage"
+# One of role / scopes is REQUIRED — a user with neither authenticates and is then
+# authorized for nothing.
+#
+# A role from auth.authorization.role_mappings is the normal way to grant a
+# file-mode user. The login endpoint expands it into the token's scope claim and
+# also emits the role itself as the roles claim, so the same token works whether
+# auth.authorization.mode is "scope" (default) or "role". It is commented out here
+# because role_mappings above is empty in this template: naming a role without a
+# mapping file fails startup. Set role_mappings first, then uncomment.
+# role  = "ap_admin"   # see resources/roles.yaml for the shipped roles
+#
+# Space-separated scope list, unioned with whatever the role grants. Use it
+# alongside a role to grant something the mapping file cannot name — an ap: scope
+# this server's OpenAPI spec doesn't declare is rejected there, which is why the
+# shipped config.toml lists the AI Workspace (ap:devportal:*, ap:git:read) and
+# event-gateway plugin scopes here rather than in roles.yaml — or on its own
+# instead of a role, as below.
+scopes = "ap:organization:manage ap:project:manage ap:gateway:manage ap:gateway_custom_policy:manage ap:rest_api:manage ap:llm_provider:manage ap:llm_proxy:manage ap:llm_template:manage ap:mcp_proxy:manage ap:application:manage ap:subscription:manage ap:subscription_plan:manage ap:secret:manage ap:api_key:read ap:api_key:all:manage ap:devportal:manage ap:git:read"
 
 # Additional users — uncomment the WHOLE block (including the [[...]] header)
 # and replace the placeholder hash with a real bcrypt hash before use.
@@ -207,8 +236,8 @@ scopes = "ap:organization:manage ap:gateway:manage ap:gateway_custom_policy:mana
 # password_hash = "$2a$12$<bcrypt-hash-of-your-password>"
 # scopes        = "ap:organization:read ap:gateway:read ap:rest_api:read ap:llm_provider:read"
 
-# JWT (local RS256) — used by "external_token" and "file" modes. Tokens are
-# signed asymmetrically: "external_token" only verifies externally-minted tokens
+# JWT (local RS256) — used by "internal_token" and "file" modes. Tokens are
+# signed asymmetrically: "internal_token" only verifies tokens minted elsewhere
 # with the public key; "file" also signs the tokens its login endpoint issues
 # with the private key. Symmetric (HMAC) and unsigned ("none") tokens are
 # rejected. Keys are mounted PEM files, referenced here by path only — the
@@ -225,7 +254,7 @@ issuer = "platform-api"
 public_key_file  = "/etc/platform-api/keys/jwt_public.pem"
 private_key_file = "/etc/platform-api/keys/jwt_private.pem"
 # Lifetime of tokens issued by the file-mode login endpoint (Go duration
-# syntax). Not used for "external_token" tokens — their expiry is whatever
+# syntax). Not used for "internal_token" tokens — their expiry is whatever
 # "exp" claim the issuer set.
 token_ttl = "1h"
 

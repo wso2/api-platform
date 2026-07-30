@@ -83,7 +83,7 @@ func genRSAKeyPEMs() (pubPEM, privPEM string) {
 // APIP_CP_ENCRYPTION_KEY / APIP_CP_AUTH_JWT_PUBLIC_KEY_FILE env vars via {{ env }}
 // interpolation. Environment variables reach config ONLY through these tokens now
 // (there is no direct env-key override), so tests must go through a config file.
-// The default auth mode is "external_token", which needs only the verification
+// The default auth mode is "internal_token", which needs only the verification
 // public key.
 const validKeysBase = `
 [platform_api.security]
@@ -216,7 +216,7 @@ public_key_file = '{{ env "APIP_CP_AUTH_JWT_PUBLIC_KEY_FILE" }}'
 	assert.Contains(t, err.Error(), "invalid EncryptionKey")
 }
 
-// The JWT public key is required (default auth mode is "external_token") and never generated.
+// The JWT public key is required (default auth mode is "internal_token") and never generated.
 func TestLoadConfig_MissingJWTPublicKey_Errors(t *testing.T) {
 	t.Setenv("APIP_CP_ENCRYPTION_KEY", validInlineKey)
 
@@ -290,13 +290,13 @@ func TestValidateAuthConfig(t *testing.T) {
 		wantErr string
 	}{
 		{
-			name: "external_token mode with valid public key",
-			auth: Auth{Mode: AuthModeExternalToken, JWT: JWT{PublicKeyFile: validJWTPublicKeyFile}},
+			name: "internal_token mode with valid public key",
+			auth: Auth{Mode: AuthModeInternalToken, JWT: JWT{PublicKeyFile: validJWTPublicKeyFile}},
 		},
 		{
 			name: "skip path exempting every route is rejected",
 			auth: Auth{
-				Mode:      AuthModeExternalToken,
+				Mode:      AuthModeInternalToken,
 				JWT:       JWT{PublicKeyFile: validJWTPublicKeyFile},
 				SkipPaths: []string{"/health", "/"},
 			},
@@ -305,7 +305,7 @@ func TestValidateAuthConfig(t *testing.T) {
 		{
 			name: "empty skip path is rejected",
 			auth: Auth{
-				Mode:      AuthModeExternalToken,
+				Mode:      AuthModeInternalToken,
 				JWT:       JWT{PublicKeyFile: validJWTPublicKeyFile},
 				SkipPaths: []string{""},
 			},
@@ -314,7 +314,7 @@ func TestValidateAuthConfig(t *testing.T) {
 		{
 			name: "relative skip path is rejected",
 			auth: Auth{
-				Mode:      AuthModeExternalToken,
+				Mode:      AuthModeInternalToken,
 				JWT:       JWT{PublicKeyFile: validJWTPublicKeyFile},
 				SkipPaths: []string{"health"},
 			},
@@ -323,15 +323,15 @@ func TestValidateAuthConfig(t *testing.T) {
 		{
 			name: "traversal in skip path is rejected",
 			auth: Auth{
-				Mode:      AuthModeExternalToken,
+				Mode:      AuthModeInternalToken,
 				JWT:       JWT{PublicKeyFile: validJWTPublicKeyFile},
 				SkipPaths: []string{"/health/../api"},
 			},
 			wantErr: "invalid entry in auth.skip_paths",
 		},
 		{
-			name:    "external_token mode without public key",
-			auth:    Auth{Mode: AuthModeExternalToken},
+			name:    "internal_token mode without public key",
+			auth:    Auth{Mode: AuthModeInternalToken},
 			wantErr: "Auth.JWT.PublicKeyFile is required",
 		},
 		{
@@ -367,21 +367,67 @@ func TestValidateAuthConfig(t *testing.T) {
 				JWT:  JWT{PublicKeyFile: validJWTPublicKeyFile, PrivateKeyFile: validJWTPrivateKeyFile, TokenTTL: time.Hour},
 				File: FileBased{
 					Organization: FileBasedOrg{ID: "default", DisplayName: "Default"},
+					Users:        FileBasedUsers{{Username: "admin", PasswordHash: "$2a$12$hash", Scopes: "ap:organization:manage"}},
+				},
+			},
+		},
+		{
+			// A user granted nothing authenticates successfully and is then
+			// denied every route — reject the config instead.
+			name: "file mode user with neither role nor scopes",
+			auth: Auth{
+				Mode: AuthModeFile,
+				JWT:  JWT{PublicKeyFile: validJWTPublicKeyFile, PrivateKeyFile: validJWTPrivateKeyFile, TokenTTL: time.Hour},
+				File: FileBased{
+					Organization: FileBasedOrg{ID: "default", DisplayName: "Default"},
 					Users:        FileBasedUsers{{Username: "admin", PasswordHash: "$2a$12$hash"}},
+				},
+			},
+			wantErr: "one of role or scopes is required",
+		},
+		{
+			// The role is expanded from the mapping file at login, so without the
+			// file it would silently grant nothing.
+			name: "file mode user with a role but no mapping file",
+			auth: Auth{
+				Mode:          AuthModeFile,
+				JWT:           JWT{PublicKeyFile: validJWTPublicKeyFile, PrivateKeyFile: validJWTPrivateKeyFile, TokenTTL: time.Hour},
+				Authorization: Authorization{Enabled: true, Mode: AuthzModeScope},
+				File: FileBased{
+					Organization: FileBasedOrg{ID: "default", DisplayName: "Default"},
+					Users:        FileBasedUsers{{Username: "admin", PasswordHash: "$2a$12$hash", Role: "ap_admin"}},
+				},
+			},
+			wantErr: "auth.authorization.role_mappings",
+		},
+		{
+			// A file-mode user may name a role while authorization itself runs in
+			// scope mode: the login endpoint expands the role into the scope claim.
+			name: "file mode user with a role in scope authorization mode",
+			auth: Auth{
+				Mode: AuthModeFile,
+				JWT:  JWT{PublicKeyFile: validJWTPublicKeyFile, PrivateKeyFile: validJWTPrivateKeyFile, TokenTTL: time.Hour},
+				Authorization: Authorization{
+					Enabled:      true,
+					Mode:         AuthzModeScope,
+					RoleMappings: "/etc/platform-api/roles.yaml",
+				},
+				File: FileBased{
+					Organization: FileBasedOrg{ID: "default", DisplayName: "Default"},
+					Users:        FileBasedUsers{{Username: "admin", PasswordHash: "$2a$12$hash", Role: "ap_admin"}},
 				},
 			},
 		},
 		{
 			name:    "idp mode requires jwks_url",
-			auth:    Auth{Mode: AuthModeIDP, IDP: IDP{ValidationMode: "scope"}},
+			auth:    Auth{Mode: AuthModeIDP},
 			wantErr: "auth.idp.jwks_url",
 		},
 		{
 			name: "idp mode fully configured",
 			auth: Auth{Mode: AuthModeIDP, IDP: IDP{
-				JWKSUrl:        "https://idp.example.com/jwks",
-				Issuer:         []string{"https://idp.example.com"},
-				ValidationMode: "scope",
+				JWKSUrl: "https://idp.example.com/jwks",
+				Issuer:  []string{"https://idp.example.com"},
 			}},
 		},
 		{
@@ -397,6 +443,13 @@ func TestValidateAuthConfig(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			// Every case exercises an authentication concern, so fill in the
+			// authorization mode DefaultConfig would supply unless the case
+			// sets one itself — TestValidateAuthorizationConfig covers that
+			// section on its own.
+			if tt.auth.Authorization.Mode == "" {
+				tt.auth.Authorization.Mode = AuthzModeScope
+			}
 			err := validateAuthConfig(&tt.auth)
 			if tt.wantErr != "" {
 				require.Error(t, err)
@@ -406,6 +459,80 @@ func TestValidateAuthConfig(t *testing.T) {
 			}
 		})
 	}
+}
+
+// validateAuthorizationConfig: [auth.authorization] is validated in every auth
+// mode, so role-based authorization is reachable whether tokens are verified
+// against an IDP's JWKS or with a local public key.
+func TestValidateAuthorizationConfig(t *testing.T) {
+	tests := []struct {
+		name    string
+		authz   Authorization
+		claims  ClaimMappings
+		wantErr string
+	}{
+		{
+			name:  "scope mode needs nothing else",
+			authz: Authorization{Enabled: true, Mode: AuthzModeScope},
+		},
+		{
+			name:   "role mode fully configured",
+			authz:  Authorization{Enabled: true, Mode: AuthzModeRole, RoleMappings: "/etc/platform-api/roles.yaml"},
+			claims: ClaimMappings{Roles: "realm_access.roles"},
+		},
+		{
+			name:    "role mode without roles claim mapping",
+			authz:   Authorization{Enabled: true, Mode: AuthzModeRole, RoleMappings: "/etc/platform-api/roles.yaml"},
+			wantErr: "auth.claim_mappings.roles",
+		},
+		{
+			name:    "role mode without role_mappings file",
+			authz:   Authorization{Enabled: true, Mode: AuthzModeRole},
+			claims:  ClaimMappings{Roles: "roles"},
+			wantErr: "auth.authorization.role_mappings",
+		},
+		{
+			name:    "unknown mode rejected",
+			authz:   Authorization{Enabled: true, Mode: "rbac"},
+			wantErr: "auth.authorization.mode must be",
+		},
+		{
+			name:    "empty mode rejected",
+			authz:   Authorization{Enabled: true},
+			wantErr: "auth.authorization.mode must be",
+		},
+		{
+			// Disabling enforcement doesn't excuse an invalid mode: flipping
+			// enabled back on must not be what surfaces the misconfiguration.
+			name:    "invalid mode rejected even when disabled",
+			authz:   Authorization{Mode: "rbac"},
+			wantErr: "auth.authorization.mode must be",
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			err := validateAuthorizationConfig(&tt.authz, &tt.claims)
+			if tt.wantErr != "" {
+				require.Error(t, err)
+				assert.Contains(t, err.Error(), tt.wantErr)
+			} else {
+				assert.NoError(t, err)
+			}
+		})
+	}
+}
+
+// Role-based authorization is configured independently of the authentication
+// mode, so it must validate in internal_token mode too — where it previously
+// lived under [auth.idp] and was unreachable.
+func TestValidateAuthConfig_RoleAuthorizationInInternalTokenMode(t *testing.T) {
+	auth := Auth{
+		Mode:          AuthModeInternalToken,
+		JWT:           JWT{PublicKeyFile: validJWTPublicKeyFile},
+		Authorization: Authorization{Enabled: true, Mode: AuthzModeRole, RoleMappings: "/etc/platform-api/roles.yaml"},
+		ClaimMappings: ClaimMappings{Roles: "roles"},
+	}
+	assert.NoError(t, validateAuthConfig(&auth))
 }
 
 // The HTTPS listener is on (and the plain-HTTP listener off) unless an operator

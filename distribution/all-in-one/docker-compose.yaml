@@ -137,6 +137,7 @@ services:
       - "9243:9243"
     volumes:
       - ../../platform-api/config/config.toml:/etc/platform-api/config.toml:ro
+      - ../../platform-api/resources/roles.yaml:/etc/platform-api/roles.yaml:ro
       - platform-api-data:/api-platform/data
       - platform-api-certs:/app/data/certs
       # RS256 JWT signing/verification keys — on the Platform API's {{ file }}

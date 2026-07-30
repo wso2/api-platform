@@ -18,7 +18,7 @@ wso2apip-ai-workspace-<version>/
 │   └── config-template.toml                     # Full configuration reference for both,
 │                                                 #   plus optional [developer_portal] at the bottom
 └── resources/
-    ├── roles.yaml                               # Platform API role definitions
+    ├── roles.yaml                               # Platform API role-to-scope mapping (edit to change what a role grants)
     └── platform-api/
         └── db-scripts/                          # Platform API schema scripts (schema.*.sql)
 ```
@@ -124,7 +124,7 @@ Environment overrides go in `api-platform.env` (git-ignored; loaded into both co
 | `[platform_api.logging].level` | Log level (`debug`, `info`, `warn`, `error`; matched case-insensitively) |
 | `[platform_api.security].encryption_key` | Single 32-byte key (64 hex chars or base64) used for all at-rest encryption (secrets, subscription tokens, WebSub HMAC secrets). Generate with `openssl rand -hex 32` |
 | `[platform_api.database].driver` | `sqlite3` or `postgres` |
-| `[platform_api.auth].mode` | `file` (quickstart default), `external_token`, or `idp` — selects exactly one auth mode |
+| `[platform_api.auth].mode` | `file` (quickstart default), `internal_token`, or `idp` — selects exactly one auth mode |
 | `[platform_api.auth.jwt].public_key_file` / `private_key_file` | RS256 (asymmetric) PEM keys; `public_key_file` verifies every token, `private_key_file` signs login JWTs in `file` mode. Read via `{{ file }}` — HMAC and unsigned tokens are rejected |
 | `[platform_api.auth.idp]` | JWKS-based IDP auth — active when `mode = "idp"`; configure for Asgardeo, Keycloak, Auth0, etc. |
 | `[platform_api.auth.file.users]` | Local user credentials, active when `mode = "file"` (change the password hash before sharing) |

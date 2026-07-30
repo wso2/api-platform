@@ -20,6 +20,7 @@ package handler
 import (
 	"log/slog"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/wso2/api-platform/platform-api/config"
@@ -43,12 +44,17 @@ type loginResponse struct {
 
 // AuthLoginHandler issues JWT tokens for locally-configured users (file-based auth mode).
 type AuthLoginHandler struct {
-	cfg     *config.Server
-	slogger *slog.Logger
+	cfg *config.Server
+	// roleScopeMap is the role-to-scope mapping from auth.authorization.role_mappings,
+	// used to expand a user's configured role into the scopes its token carries.
+	// Nil when no mapping file is configured, in which case no user may name a
+	// role (config validation enforces that pairing).
+	roleScopeMap map[string][]string
+	slogger      *slog.Logger
 }
 
-func NewAuthLoginHandler(cfg *config.Server) *AuthLoginHandler {
-	return &AuthLoginHandler{cfg: cfg, slogger: slog.Default()}
+func NewAuthLoginHandler(cfg *config.Server, roleScopeMap map[string][]string) *AuthLoginHandler {
+	return &AuthLoginHandler{cfg: cfg, roleScopeMap: roleScopeMap, slogger: slog.Default()}
 }
 
 func (h *AuthLoginHandler) RegisterPublicRoutes(mux *http.ServeMux) {
@@ -98,13 +104,20 @@ func (h *AuthLoginHandler) Login(w http.ResponseWriter, r *http.Request) error {
 	claims := jwt.MapClaims{
 		"sub":                                     matched.Username,
 		claimKey(cm.Username, "username"):         matched.Username,
-		claimKey(cm.Scope, "scope"):               matched.Scopes,
+		claimKey(cm.Scope, "scope"):               h.effectiveScopes(matched),
 		claimKey(cm.Organization, "organization"): fileBasedAuth.Organization.UUID,
 		claimKey(cm.OrgName, "org_name"):          fileBasedAuth.Organization.DisplayName,
 		claimKey(cm.OrgHandle, "org_handle"):      fileBasedAuth.Organization.ID,
 		"iss":                                     h.cfg.Auth.JWT.Issuer,
 		"exp":                                     expiry.Unix(),
 		"iat":                                     time.Now().Unix(),
+	}
+	// The role travels in the token as well as the scopes it expanded to, so a
+	// consumer configured for role-based authorization reads the same identity
+	// this endpoint authorized — the claim is a list, matching the shape IDPs
+	// emit and the shape the roles claim is read back in.
+	if matched.Role != "" {
+		claims[claimKey(cm.Roles, "roles")] = []string{matched.Role}
 	}
 
 	// Sign asymmetrically with RS256 using the configured RSA private key,
@@ -126,6 +139,36 @@ func (h *AuthLoginHandler) Login(w http.ResponseWriter, r *http.Request) error {
 		ExpiresAt: expiry.Unix(),
 	})
 	return nil
+}
+
+// effectiveScopes returns the space-separated scope claim for a user: the scopes
+// its configured role grants, unioned with the scopes granted directly. A role is
+// normally the whole grant — the mapping file may name scopes in any component's
+// namespace — and the direct list is for anything beyond it, such as a scope only
+// a plugin build declares.
+//
+// Authorization is still enforced against this scope claim — expanding the role
+// at issue time is what lets a role-shaped configuration be checked by the
+// scope-mode enforcer, rather than requiring authorization to run in role mode.
+func (h *AuthLoginHandler) effectiveScopes(user *config.FileBasedUser) string {
+	direct := strings.Fields(user.Scopes)
+	if user.Role == "" {
+		return strings.Join(direct, " ")
+	}
+
+	// Role scopes come first so the claim reads role-then-extras; seen dedupes
+	// an extra that the role already grants.
+	fromRole := h.roleScopeMap[user.Role]
+	scopes := make([]string, 0, len(fromRole)+len(direct))
+	seen := make(map[string]struct{}, len(fromRole)+len(direct))
+	for _, s := range append(append([]string{}, fromRole...), direct...) {
+		if _, dup := seen[s]; dup {
+			continue
+		}
+		seen[s] = struct{}{}
+		scopes = append(scopes, s)
+	}
+	return strings.Join(scopes, " ")
 }
 
 // claimKey returns name, falling back to def when the operator has left the

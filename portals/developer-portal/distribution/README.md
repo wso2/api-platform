@@ -16,6 +16,7 @@ wso2apip-developer-portal-<version>/
 │   ├── config.toml                              # Unified active config — [developer_portal] + [platform_api] sections
 │   └── config-template.toml                     # Config reference — both active components, plus optional [ai_workspace] at the bottom
 └── resources/
+    ├── roles.yaml                               # Platform API role-to-scope mapping (edit to change what a role grants)
     ├── developer-portal/
     │   └── db-scripts/                          # Developer Portal PostgreSQL schema (reference copy)
     ├── platform-api/

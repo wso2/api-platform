@@ -204,10 +204,10 @@ func (p *EventGatewayPlugin) Init(deps *plugin.Deps) error {
 	p.websubAPIHandler = eghandler.NewWebSubAPIHandler(websubAPISvc, deps.IdentityService, logger)
 	p.websubAPIDeploymentHandler = eghandler.NewWebSubAPIDeploymentHandler(websubDeploymentSvc, deps.IdentityService, logger)
 	p.websubAPIHmacSecretHandler = eghandler.NewWebSubAPIHmacSecretHandler(hmacSecretSvc, deps.IdentityService, logger)
-	p.websubAPIKeyHandler = eghandler.NewWebSubAPIKeyHandler(websubAPISvc, deps.APIKeyService, deps.IdentityService, cfg.Auth.IDP.ValidationMode, logger)
+	p.websubAPIKeyHandler = eghandler.NewWebSubAPIKeyHandler(websubAPISvc, deps.APIKeyService, deps.IdentityService, cfg.Auth.Authorization.Mode, logger)
 	p.webbrokerAPIHandler = eghandler.NewWebBrokerAPIHandler(webbrokerAPISvc, deps.IdentityService, logger)
 	p.webbrokerDeploymentHandler = eghandler.NewWebBrokerAPIDeploymentHandler(webbrokerDeploymentSvc, deps.IdentityService, logger)
-	p.webbrokerAPIKeyHandler = eghandler.NewWebBrokerAPIKeyHandler(webbrokerAPISvc, deps.APIKeyService, deps.IdentityService, cfg.Auth.IDP.ValidationMode, logger)
+	p.webbrokerAPIKeyHandler = eghandler.NewWebBrokerAPIKeyHandler(webbrokerAPISvc, deps.APIKeyService, deps.IdentityService, cfg.Auth.Authorization.Mode, logger)
 
 	return nil
 }

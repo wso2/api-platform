@@ -20,8 +20,15 @@ driver = "sqlite3"
 path   = "./data/api_platform.db"
 
 [platform_api.auth]
-mode             = "file"
-scope_validation = "true"
+mode = "file"
+
+[platform_api.auth.authorization]
+enabled = true
+mode    = "scope"
+# Mounted role-to-scope mapping (resources/roles.yaml in this pack). Edit it to
+# change what each role grants — it is config, not part of the image. The admin
+# user below names a role from this file instead of listing platform scopes.
+role_mappings = "/etc/platform-api/roles.yaml"
 
 [platform_api.auth.jwt]
 issuer            = "platform-api"
@@ -36,4 +43,10 @@ region       = "us"
 [[platform_api.auth.file.users]]
 username      = '{{ env "APIP_CP_ADMIN_USERNAME" }}'
 password_hash = '{{ env "APIP_CP_ADMIN_PASSWORD_HASH" }}'
-scopes        = "ap:organization:manage ap:gateway:manage ap:gateway_custom_policy:manage ap:rest_api:manage ap:llm_provider:manage ap:llm_proxy:manage ap:mcp_proxy:manage ap:webbroker_api:manage ap:websub_api:manage ap:application:manage ap:subscription:manage ap:subscription_plan:manage ap:project:manage ap:llm_template:manage ap:devportal:manage ap:git:read ap:api_key:read ap:api_key:all:manage ap:secret:manage dp:org_read dp:org_create dp:org_update dp:org_manage dp:org_delete dp:org_content_read dp:org_content_write dp:org_content_manage dp:org_content_delete dp:api_read dp:api_create dp:api_update dp:api_manage dp:api_delete dp:api_content_read dp:api_content_write dp:api_content_manage dp:api_content_delete dp:mcp_read dp:mcp_create dp:mcp_update dp:mcp_manage dp:mcp_delete dp:mcp_content_read dp:mcp_content_create dp:mcp_content_update dp:mcp_content_manage dp:mcp_content_delete dp:api_key_create dp:api_key_read dp:api_key_update dp:api_key_manage dp:api_key_revoke dp:mcp_key_create dp:mcp_key_read dp:mcp_key_update dp:mcp_key_manage dp:mcp_key_revoke dp:api_workflow_create dp:api_workflow_read dp:api_workflow_update dp:api_workflow_delete dp:api_workflow_manage dp:app_create dp:app_read dp:app_update dp:app_manage dp:app_delete dp:app_key_create dp:app_key_manage dp:app_key_revoke dp:app_key_mapping_read dp:app_key_mapping_write dp:app_key_mapping_manage dp:subscription_create dp:subscription_read dp:subscription_update dp:subscription_manage dp:subscription_delete dp:sub_plan_create dp:sub_plan_read dp:sub_plan_update dp:sub_plan_manage dp:sub_plan_delete dp:km_create dp:km_read dp:km_update dp:km_manage dp:km_delete dp:view_create dp:view_read dp:view_update dp:view_manage dp:view_delete dp:label_create dp:label_read dp:label_update dp:label_manage dp:label_delete dp:webhook_subscriber_create dp:webhook_subscriber_read dp:webhook_subscriber_update dp:webhook_subscriber_delete dp:webhook_subscriber_manage dp:event_read dp:delivery_manage"
+role          = '{{ env "APIP_CP_ADMIN_ROLE" "ap_admin" }}'
+# Unioned with whatever the role grants. These four live here rather than in
+# roles.yaml because that file's ap: scopes are validated against this server's
+# OpenAPI spec: ap:devportal:manage / ap:git:read are AI Workspace BFF scopes this
+# server only mints, and the event-gateway scopes are declared only on a build
+# that compiles in that plugin — naming any of them in roles.yaml fails startup.
+scopes        = "ap:devportal:manage ap:git:read ap:websub_api:manage ap:webbroker_api:manage"

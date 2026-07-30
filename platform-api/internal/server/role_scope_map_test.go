@@ -25,6 +25,7 @@ import (
 	"testing"
 
 	"github.com/wso2/api-platform/platform-api/config"
+	"github.com/wso2/api-platform/platform-api/internal/middleware"
 )
 
 // writeRolesFile writes a roles.yaml mapping one role to the given scopes and
@@ -43,12 +44,13 @@ func writeRolesFile(t *testing.T, role string, scopes ...string) string {
 	return path
 }
 
-// roleModeConfig returns a config in IDP role-validation mode pointing at path.
+// roleModeConfig returns a config in role-authorization mode pointing at path.
+// The authentication mode is deliberately left at its zero value: role-based
+// authorization is independent of how tokens are authenticated.
 func roleModeConfig(path string) *config.Server {
 	cfg := &config.Server{}
-	cfg.Auth.Mode = config.AuthModeIDP
-	cfg.Auth.IDP.ValidationMode = "role"
-	cfg.Auth.IDP.RoleMappings = path
+	cfg.Auth.Authorization.Mode = config.AuthzModeRole
+	cfg.Auth.Authorization.RoleMappings = path
 	return cfg
 }
 
@@ -90,19 +92,108 @@ func TestLoadRoleScopeMap_RejectsPluginScopeBeforeMerge(t *testing.T) {
 	}
 }
 
-// Outside IDP role mode the mapping is not loaded at all, so a roles.yaml
-// referencing an unknown scope must not fail startup.
-func TestLoadRoleScopeMap_SkippedOutsideRoleMode(t *testing.T) {
-	path := writeRolesFile(t, "widget-admin", "ap:not_a_real_scope")
+// The mapping is loaded whenever it is configured, including in scope
+// authorization mode — file-mode users name a role from this same file to
+// inherit its scopes, so the login endpoint needs it there too. A bad roles.yaml
+// therefore still fails startup in scope mode.
+func TestLoadRoleScopeMap_LoadedInScopeMode(t *testing.T) {
+	reg := emptyRegistry(t)
+	if _, err := run(t, reg, &fakePlugin{name: "widgets", spec: specWithScopes}); err != nil {
+		t.Fatalf("initPlugins: unexpected error: %v", err)
+	}
 
-	cfg := roleModeConfig(path)
-	cfg.Auth.IDP.ValidationMode = "scope"
+	cfg := roleModeConfig(writeRolesFile(t, "widget-admin", "ap:widget_read"))
+	cfg.Auth.Authorization.Mode = config.AuthzModeScope
 
-	m, err := loadRoleScopeMap(cfg, emptyRegistry(t), testLogger())
+	m, err := loadRoleScopeMap(cfg, reg, testLogger())
+	if err != nil {
+		t.Fatalf("loadRoleScopeMap: unexpected error: %v", err)
+	}
+	if got := m["widget-admin"]; len(got) != 1 || got[0] != "ap:widget_read" {
+		t.Fatalf("expected the mapping to load in scope mode, got %v", m)
+	}
+}
+
+// With no mapping file configured nothing consumes the mapping, so none is
+// loaded — config validation is what guarantees the path is set wherever a role
+// is actually named.
+func TestLoadRoleScopeMap_SkippedWhenUnconfigured(t *testing.T) {
+	m, err := loadRoleScopeMap(&config.Server{}, emptyRegistry(t), testLogger())
 	if err != nil {
 		t.Fatalf("loadRoleScopeMap: unexpected error: %v", err)
 	}
 	if m != nil {
-		t.Fatalf("expected no mapping outside role mode, got %v", m)
+		t.Fatalf("expected no mapping when role_mappings is unset, got %v", m)
+	}
+}
+
+// A file-mode user naming a role absent from the mapping would get a token whose
+// scope claim silently lacks everything the role was meant to grant — a login
+// that succeeds and then 403s on every request. Catch the typo at startup.
+func TestValidateFileUserRoles(t *testing.T) {
+	roleScopeMap := map[string][]string{"ap_admin": {"ap:organization:manage"}}
+
+	cfg := &config.Server{}
+	cfg.Auth.Mode = config.AuthModeFile
+	cfg.Auth.Authorization.RoleMappings = "/etc/platform-api/roles.yaml"
+	cfg.Auth.File.Users = config.FileBasedUsers{{Username: "admin", Role: "ap_admin"}}
+	if err := validateFileUserRoles(cfg, roleScopeMap); err != nil {
+		t.Fatalf("unexpected error for a defined role: %v", err)
+	}
+
+	cfg.Auth.File.Users = config.FileBasedUsers{{Username: "admin", Role: "ap_admn"}}
+	err := validateFileUserRoles(cfg, roleScopeMap)
+	if err == nil {
+		t.Fatal("expected an error for a role missing from the mapping, got nil")
+	}
+	if !strings.Contains(err.Error(), "ap_admn") {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	// A user granted scopes directly names no role, so there is nothing to check.
+	cfg.Auth.File.Users = config.FileBasedUsers{{Username: "admin", Scopes: "ap:organization:manage"}}
+	if err := validateFileUserRoles(cfg, roleScopeMap); err != nil {
+		t.Fatalf("unexpected error for a user with no role: %v", err)
+	}
+}
+
+// The shipped sample mapping must load and validate against the shipped OpenAPI
+// spec in a default build. It is mounted (not baked into the image) and named by
+// the shipped config.toml, so a scope that this spec doesn't declare — or that
+// only exists on a plugin build — would fail startup for every pack user.
+func TestShippedSampleRolesValidateAgainstShippedSpec(t *testing.T) {
+	reg, err := middleware.LoadScopeRegistry("../../resources/openapi.yaml")
+	if err != nil {
+		t.Fatalf("loading the shipped OpenAPI spec: %v", err)
+	}
+
+	m, err := middleware.LoadRoleScopeMap("../../resources/roles.yaml")
+	if err != nil {
+		t.Fatalf("loading the shipped roles.yaml: %v", err)
+	}
+	if err := middleware.ValidateRoleScopeMap(m, reg); err != nil {
+		t.Fatalf("shipped roles.yaml is not valid against the shipped spec: %v", err)
+	}
+
+	// The documented role set. ap_admin in particular is what the shipped
+	// config.toml grants its admin user, so a rename here breaks every pack.
+	for _, role := range []string{"ap_admin", "ap_operator", "ap_publisher", "ap_subscriber", "ap_viewer"} {
+		if _, ok := m[role]; !ok {
+			t.Fatalf("shipped roles.yaml does not declare %q", role)
+		}
+	}
+
+	// Roles span the platform: a role names Developer Portal scopes too, which
+	// this server mints but does not enforce. If the namespace-scoped validation
+	// above ever regresses to registry-only, this is what would start failing.
+	found := false
+	for _, s := range m["ap_admin"] {
+		if strings.HasPrefix(s, "dp:") {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Fatalf("expected ap_admin to grant Developer Portal scopes: %v", m["ap_admin"])
 	}
 }

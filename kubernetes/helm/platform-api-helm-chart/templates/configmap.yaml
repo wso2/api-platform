@@ -65,7 +65,11 @@ data:
 
     [platform_api.auth]
     mode = {{ $auth.mode | quote }}
-    scope_validation = {{ $auth.scopeValidation }}
+
+    [platform_api.auth.authorization]
+    enabled = {{ $auth.authorization.enabled }}
+    mode = {{ $auth.authorization.mode | quote }}
+    role_mappings = {{ $auth.authorization.roleMappings | quote }}
 
     [platform_api.auth.claim_mappings]
     organization = {{ $auth.claimMappings.organization | quote }}
@@ -90,8 +94,6 @@ data:
     jwks_url = {{ required "config.auth.idp.jwksUrl is required when auth.mode is \"idp\"" $auth.idp.jwksUrl | quote }}
     issuer = {{ toJson $auth.idp.issuer }}
     audience = {{ toJson $auth.idp.audience }}
-    validation_mode = {{ $auth.idp.validationMode | quote }}
-    role_mappings = {{ $auth.idp.roleMappings | quote }}
     {{- end }}
 
     {{- if eq $auth.mode "file" }}
@@ -109,6 +111,9 @@ data:
     # provisions a generated username and a bcrypt password hash.
     username = {{ `'{{ env "APIP_CP_ADMIN_USERNAME" }}'` }}
     password_hash = {{ `'{{ env "APIP_CP_ADMIN_PASSWORD_HASH" }}'` }}
+    {{- with $auth.file.admin.role }}
+    role = {{ . | quote }}
+    {{- end }}
     scopes = {{ $auth.file.admin.scopes | quote }}
     {{- end }}
 

@@ -284,10 +284,13 @@ ifeq ($(PLATFORM_API_FROM_TAG),true)
 		> $(DIST_DIR)/configs/.pa-config.toml
 	@git -C ../.. show "$(PLATFORM_API_TAG):platform-api/config/config-template.toml" \
 		> $(DIST_DIR)/configs/.pa-config-template.toml
+	@git -C ../.. show "$(PLATFORM_API_TAG):platform-api/resources/roles.yaml" \
+		> $(DIST_DIR)/resources/roles.yaml
 else
 	@cp ../../platform-api/internal/database/schema.*.sql $(DIST_DIR)/resources/platform-api/db-scripts/
 	@cp ../../platform-api/config/config.toml $(DIST_DIR)/configs/.pa-config.toml
 	@cp ../../platform-api/config/config-template.toml $(DIST_DIR)/configs/.pa-config-template.toml
+	@cp ../../platform-api/resources/roles.yaml $(DIST_DIR)/resources/roles.yaml
 endif
 # Require a [platform_api] root table — pre-unified configs would merge into a broken file.
 	@if ! grep -q '^\[platform_api' $(DIST_DIR)/configs/.pa-config.toml; then \
@@ -307,7 +310,8 @@ endif
 	$(call append_section,AI WORKSPACE (optional),$(DIST_DIR)/configs/.aiw-config-template.toml,$(DIST_DIR)/configs/config-template.toml)
 	@rm -f $(DIST_DIR)/configs/.pa-config.toml $(DIST_DIR)/configs/.pa-config-template.toml $(DIST_DIR)/configs/.aiw-config-template.toml
 # Point the platform-api mount at the merged config so both containers share one file.
-	@sed 's#\.\./\.\./platform-api/config/config\.toml:#./configs/config.toml:#' \
+	@sed -e 's#\.\./\.\./platform-api/config/config\.toml:#./configs/config.toml:#' \
+	     -e 's#\.\./\.\./platform-api/resources/roles\.yaml:#./resources/roles.yaml:#' \
 		docker-compose.yaml > $(DIST_DIR)/docker-compose.yaml
 	@cp distribution/README.md $(DIST_DIR)/README.md
 	@mkdir -p $(DIST_DIR)/scripts

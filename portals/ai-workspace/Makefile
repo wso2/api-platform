@@ -392,7 +392,8 @@ endif
 	    $(DIST_DIR)/scripts/setup.ps1
 	@rm -f $(DIST_DIR)/scripts/setup.ps1.bak
 # Point the platform-api mount at the merged config so both containers share one file.
-	@sed 's#\.\./\.\./platform-api/config/config\.toml:#./configs/config.toml:#' \
+	@sed -e 's#\.\./\.\./platform-api/config/config\.toml:#./configs/config.toml:#' \
+	     -e 's#\.\./\.\./platform-api/resources/roles\.yaml:#./resources/roles.yaml:#' \
 		docker-compose.yaml > $(DIST_DIR)/docker-compose.yaml
 	@cp distribution/README.md $(DIST_DIR)/README.md
 	@sed -i.bak -E \

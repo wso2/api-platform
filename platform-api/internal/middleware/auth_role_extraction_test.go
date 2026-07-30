@@ -53,24 +53,24 @@ func TestExtractClaimByPath(t *testing.T) {
 			claims: jwt.MapClaims{
 				"resource_access": map[string]interface{}{
 					"my-client": map[string]interface{}{
-						"roles": []interface{}{"platform-admin", "platform-developer"},
+						"roles": []interface{}{"ap_admin", "ap_publisher"},
 					},
 				},
 			},
 			path: "resource_access.my-client.roles",
-			want: []string{"platform-admin", "platform-developer"},
+			want: []string{"ap_admin", "ap_publisher"},
 		},
 		{
 			name: "nested three levels - single role in array",
 			claims: jwt.MapClaims{
 				"resource_access": map[string]interface{}{
 					"my-client": map[string]interface{}{
-						"roles": []interface{}{"platform-admin"},
+						"roles": []interface{}{"ap_admin"},
 					},
 				},
 			},
 			path: "resource_access.my-client.roles",
-			want: []string{"platform-admin"},
+			want: []string{"ap_admin"},
 		},
 		{
 			name:   "missing claim returns nil",

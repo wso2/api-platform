@@ -374,7 +374,7 @@ failures, by symptom:
 | Symptom | Cause | Fix |
 |---|---|---|
 | `unauthorized_client` / *"not authorized to use the requested grant type"* | App registered as SPA, or Code/Refresh grant not enabled | Recreate as Standard-Based OIDC app; enable **Code** + **Refresh Token** (step 1) |
-| Platform API exits at startup with *`auth.mode must be "external_token", "file", or "idp"`* | `auth.mode` is unset or misspelled | Compose: set `APIP_CP_AUTH_MODE=idp` in `api-platform.env` (step 3, Option 1). Local: set `[auth] mode = "idp"` in `config.toml` (step 3, Option 2) |
+| Platform API exits at startup with *`auth.mode must be "internal_token", "file", or "idp"`* | `auth.mode` is unset or misspelled | Compose: set `APIP_CP_AUTH_MODE=idp` in `api-platform.env` (step 3, Option 1). Local: set `[auth] mode = "idp"` in `config.toml` (step 3, Option 2) |
 | `502` + `dial tcp: lookup platform-api: no such host` | BFF run locally but `[ai_workspace.control_plane] url` points at the compose hostname | Set `APIP_AIW_CONTROL_PLANE_URL=https://localhost:9243` (step 3, Option 2) |
 | Proxied calls return `authentication_failed` | Platform API still on local JWT/file-based, validating the IDP token with the wrong validator | Switch it to the IDP — compose: set the `APIP_CP_AUTH_IDP_*` keys in `api-platform.env` (step 3, Option 1); local: enable `[auth.idp]` (step 3, Option 2) |
 | Proxied calls return `authentication_failed`, Platform API logs `token contains an invalid number of segments` | IDP is issuing **opaque** access tokens — the BFF forwards the access token and the Platform API can only validate a **JWT** via JWKS | Set **Access Token Type = JWT** on the app's Protocol tab (step 1) and re-login |

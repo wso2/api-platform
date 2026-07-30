@@ -81,8 +81,8 @@ func TestLoadConfig_MultiFile_ArrayReplaceNotAppend(t *testing.T) {
 // weakly-typed unmarshal after the merge rather than at merge time.
 func TestLoadConfig_MultiFile_TypeMismatchFails(t *testing.T) {
 	dir := t.TempDir()
-	base := writeMultiTOML(t, dir, "base.toml", "[platform_api.auth]\nscope_validation = true\n")
-	over := writeMultiTOML(t, dir, "overlay.toml", "[platform_api.auth]\nscope_validation = \"maybe\"\n")
+	base := writeMultiTOML(t, dir, "base.toml", "[platform_api.auth.authorization]\nenabled = true\n")
+	over := writeMultiTOML(t, dir, "overlay.toml", "[platform_api.auth.authorization]\nenabled = \"maybe\"\n")
 
 	_, err := LoadConfig(base, over)
 	require.Error(t, err, "a non-coercible cross-file override must still fail (at unmarshal)")

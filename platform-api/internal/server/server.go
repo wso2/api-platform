@@ -325,22 +325,22 @@ func StartPlatformAPIServer(cfg *config.Server, slogger *slog.Logger,
 	secretService := service.NewSecretService(secretRepo, secretVault, identityService)
 
 	// Initialize handlers
-	orgHandler := handler.NewOrganizationHandler(orgService, identityService, cfg.Auth.IDP.ValidationMode, slogger)
+	orgHandler := handler.NewOrganizationHandler(orgService, identityService, cfg.Auth.Authorization.Mode, slogger)
 	projectHandler := handler.NewProjectHandler(projectService, identityService, slogger)
 	apiHandler := handler.NewAPIHandler(apiService, identityService, slogger)
 	gatewayHandler := handler.NewGatewayHandler(gatewayService, identityService, slogger)
 	subscriptionHandler := handler.NewSubscriptionHandler(subscriptionService, subscriptionPlanService, identityService, slogger)
 	subscriptionPlanHandler := handler.NewSubscriptionPlanHandler(subscriptionPlanService, identityService, slogger)
-	appHandler := handler.NewApplicationHandler(appService, identityService, cfg.Auth.IDP.ValidationMode, slogger)
+	appHandler := handler.NewApplicationHandler(appService, identityService, cfg.Auth.Authorization.Mode, slogger)
 	wsHandler := handler.NewWebSocketHandler(wsManager, gatewayService, deploymentService, cfg.Listeners.WebSocket.RateLimitPerMin, slogger)
 	internalGatewayHandler := handler.NewGatewayInternalAPIHandler(gatewayService, internalGatewayService, artifactImportService, secretService, slogger)
-	apiKeyHandler := handler.NewAPIKeyHandler(apiKeyService, identityService, cfg.Auth.IDP.ValidationMode, slogger)
+	apiKeyHandler := handler.NewAPIKeyHandler(apiKeyService, identityService, cfg.Auth.Authorization.Mode, slogger)
 	deploymentHandler := handler.NewDeploymentHandler(deploymentService, identityService, slogger)
 	llmHandler := handler.NewLLMHandler(llmTemplateService, llmProviderService, llmProxyService, identityService, slogger)
 	llmDeploymentHandler := handler.NewLLMProviderDeploymentHandler(llmProviderDeploymentService, identityService, slogger)
-	llmProviderAPIKeyHandler := handler.NewLLMProviderAPIKeyHandler(llmProviderAPIKeyService, identityService, cfg.Auth.IDP.ValidationMode, slogger)
-	llmProxyAPIKeyHandler := handler.NewLLMProxyAPIKeyHandler(llmProxyAPIKeyService, identityService, cfg.Auth.IDP.ValidationMode, slogger)
-	apiKeyUserHandler := handler.NewAPIKeyUserHandler(apiKeyUserService, identityService, cfg.Auth.IDP.ValidationMode, slogger)
+	llmProviderAPIKeyHandler := handler.NewLLMProviderAPIKeyHandler(llmProviderAPIKeyService, identityService, cfg.Auth.Authorization.Mode, slogger)
+	llmProxyAPIKeyHandler := handler.NewLLMProxyAPIKeyHandler(llmProxyAPIKeyService, identityService, cfg.Auth.Authorization.Mode, slogger)
+	apiKeyUserHandler := handler.NewAPIKeyUserHandler(apiKeyUserService, identityService, cfg.Auth.Authorization.Mode, slogger)
 	llmProxyDeploymentHandler := handler.NewLLMProxyDeploymentHandler(llmProxyDeploymentService, identityService, slogger)
 	mcpProxyHandler := handler.NewMCPProxyHandler(mcpProxyService, identityService, slogger)
 	mcpProxyDeploymentHandler := handler.NewMCPProxyDeploymentHandler(mcpDeploymentService, identityService, slogger)
@@ -371,13 +371,12 @@ func StartPlatformAPIServer(cfg *config.Server, slogger *slog.Logger,
 	}
 	slogger.Info("Loaded OpenAPI scope registry", "path", cfg.OpenAPISpecPath)
 
-	if !cfg.Auth.ScopeValidation {
+	if !cfg.Auth.Authorization.Enabled {
 		slogger.Warn("scope validation is disabled — all authenticated requests will be allowed regardless of scope")
 	}
 
-	// Register all routes on the mux. Public routes (login) are accessible
-	// because the auth middleware uses cfg.Auth.SkipPaths to bypass them.
-	handler.NewAuthLoginHandler(cfg).RegisterPublicRoutes(mux)
+	// Register all routes on the mux. The public login route is registered later,
+	// once the role-to-scope mapping its tokens are signed against is loaded.
 	orgHandler.RegisterRoutes(mux)
 	projectHandler.RegisterRoutes(mux)
 	appHandler.RegisterRoutes(mux)
@@ -456,6 +455,15 @@ func StartPlatformAPIServer(cfg *config.Server, slogger *slog.Logger,
 	if err != nil {
 		return nil, err
 	}
+	if err := validateFileUserRoles(cfg, roleScopeMap); err != nil {
+		return nil, err
+	}
+
+	// The login endpoint signs each user's role into the tokens it issues and
+	// expands that role through the mapping loaded above, so it is registered
+	// here rather than with the other routes. It stays public because the auth
+	// middleware bypasses it via cfg.Auth.SkipPaths.
+	handler.NewAuthLoginHandler(cfg, roleScopeMap).RegisterPublicRoutes(mux)
 
 	// Declared public paths are appended before the auth middleware is built
 	// below, so the skip-path list is complete when the chain is assembled.
@@ -571,15 +579,15 @@ func StartPlatformAPIServer(cfg *config.Server, slogger *slog.Logger,
 	// Every route the spec declares a scope for must actually be registered under
 	// that same pattern — otherwise the enforcer's deny-by-default would reject a
 	// live endpoint at runtime. Catch the drift at startup instead.
-	if cfg.Auth.ScopeValidation {
+	if cfg.Auth.Authorization.Enabled {
 		if err := middleware.ValidateScopeRegistryRoutes(mux, scopeRegistry); err != nil {
 			return nil, err
 		}
 	}
 
 	scopeEnforcer, err := middleware.ScopeEnforcer(scopeRegistry, middleware.ScopeEnforcerConfig{
-		ValidationMode: cfg.Auth.IDP.ValidationMode,
-		Enabled:        cfg.Auth.ScopeValidation,
+		ValidationMode: cfg.Auth.Authorization.Mode,
+		Enabled:        cfg.Auth.Authorization.Enabled,
 		Routes:         mux,
 		SkipPaths:      cfg.Auth.SkipPaths,
 	})
@@ -636,7 +644,7 @@ func buildClaimMappings(cm config.ClaimMappings, roleScopeMap map[string][]strin
 }
 
 // buildAuthenticator constructs an Authenticator from the server configuration.
-// Only called when the auth mode is "external_token" or "idp" (file mode wires
+// Only called when the auth mode is "internal_token" or "idp" (file mode wires
 // its own local-JWT middleware).
 func buildAuthenticator(cfg *config.Server, slogger *slog.Logger, roleScopeMap map[string][]string) (middleware.Authenticator, error) {
 	if cfg.Auth.Mode != config.AuthModeIDP {
@@ -696,24 +704,51 @@ func buildAuthenticator(cfg *config.Server, slogger *slog.Logger, roleScopeMap m
 	), nil
 }
 
-// loadRoleScopeMap loads the role-to-scope mapping for IDP role mode.
-// Returns nil when role mode is not active or no mapping file is configured,
-// which causes IDP role names to be used as-is as scope values (passthrough).
+// loadRoleScopeMap loads the role-to-scope mapping whenever one is configured.
+// It is deliberately gated on neither the authentication mode nor the
+// authorization mode: a token minted by an enterprise IDP carries the same roles
+// claim whether the platform verifies it against a JWKS endpoint or with a local
+// public key, and file-mode users name a role from this same file to inherit its
+// scopes even while authorization itself runs in "scope" mode. Config validation
+// requires the path wherever it is needed, so an empty path here means nothing
+// consumes the mapping.
 func loadRoleScopeMap(cfg *config.Server, registry *middleware.ScopeRegistry, slogger *slog.Logger) (map[string][]string, error) {
-	if cfg.Auth.Mode != config.AuthModeIDP || cfg.Auth.IDP.ValidationMode != "role" || cfg.Auth.IDP.RoleMappings == "" {
+	if cfg.Auth.Authorization.RoleMappings == "" {
 		return nil, nil
 	}
 
-	m, err := middleware.LoadRoleScopeMap(cfg.Auth.IDP.RoleMappings)
+	m, err := middleware.LoadRoleScopeMap(cfg.Auth.Authorization.RoleMappings)
 	if err != nil {
 		return nil, fmt.Errorf("failed to load role mappings file: %w", err)
 	}
 	if err := middleware.ValidateRoleScopeMap(m, registry); err != nil {
 		return nil, fmt.Errorf("invalid roles.yaml: %w", err)
 	}
-	slogger.Info("Loaded role-to-scope mapping", "path", cfg.Auth.IDP.RoleMappings, "roles", len(m))
+	slogger.Info("Loaded role-to-scope mapping", "path", cfg.Auth.Authorization.RoleMappings, "roles", len(m))
 
 	return m, nil
+}
+
+// validateFileUserRoles checks that every role a file-mode user names exists in
+// the loaded mapping. A typo would otherwise surface as a token whose scope
+// claim silently lacks everything the role was meant to grant — a login that
+// succeeds and then 403s on every request. Config validation already guarantees
+// a mapping file is configured whenever a user names a role, so an empty map
+// here means the file itself declares no roles.
+func validateFileUserRoles(cfg *config.Server, roleScopeMap map[string][]string) error {
+	if cfg.Auth.Mode != config.AuthModeFile {
+		return nil
+	}
+	for i, u := range cfg.Auth.File.Users {
+		if u.Role == "" {
+			continue
+		}
+		if _, ok := roleScopeMap[u.Role]; !ok {
+			return fmt.Errorf("auth.file.users[%d]: role %q is not defined in %s",
+				i, u.Role, cfg.Auth.Authorization.RoleMappings)
+		}
+	}
+	return nil
 }
 
 // buildTLSConfig resolves the TLS listener configuration. The caller invokes it

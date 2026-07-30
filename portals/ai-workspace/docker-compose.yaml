@@ -26,6 +26,9 @@ services:
         format: raw
     volumes:
       - ../../platform-api/config/config.toml:/etc/platform-api/config.toml:ro
+      # Role-to-scope mapping named by auth.authorization.role_mappings. Mounted
+      # rather than baked into the image so it can be edited in place.
+      - ../../platform-api/resources/roles.yaml:/etc/platform-api/roles.yaml:ro
       - platform-api-data:/app/data
       - ./resources/certificates:/app/data/certs:ro
       - ./resources/keys:/etc/platform-api/keys:ro
