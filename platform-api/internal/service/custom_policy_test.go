@@ -103,18 +103,22 @@ type mockCustomPolicyRepo struct {
 	countUsages               int
 	countUsagesErr            error
 	insertCalled              bool
+	insertedPolicy            *model.CustomPolicy
 	updateCalled              bool
+	updatedPolicy             *model.CustomPolicy
 	updateOldVersion          string
 	deleteIfUnusedCalled      bool
 }
 
 func (m *mockCustomPolicyRepo) InsertCustomPolicy(policy *model.CustomPolicy) error {
 	m.insertCalled = true
+	m.insertedPolicy = policy
 	return m.insertErr
 }
 
 func (m *mockCustomPolicyRepo) UpdateCustomPolicy(policy *model.CustomPolicy, oldVersion string) error {
 	m.updateCalled = true
+	m.updatedPolicy = policy
 	m.updateOldVersion = oldVersion
 	return m.updateErr
 }
@@ -183,6 +187,9 @@ func sampleManifest(name, version string) []byte {
 		},
 	})
 }
+
+// testActorUUID is the internal platform UUID of the user triggering a sync in tests.
+const testActorUUID = "user-uuid-0001"
 
 // newTestGatewayService provides a GatewayService with given mock repos.
 func newTestGatewayService(gwRepo repository.GatewayRepository, cpRepo repository.CustomPolicyRepository) *GatewayService {
@@ -421,7 +428,7 @@ func TestSyncCustomPolicy(t *testing.T) {
 			}
 
 			svc := newTestGatewayService(gwRepo, cpRepo)
-			policy, err := svc.SyncCustomPolicy(gwID, orgID, tt.policyName, tt.version)
+			policy, err := svc.SyncCustomPolicy(gwID, orgID, tt.policyName, tt.version, testActorUUID)
 
 			if (err != nil) != tt.wantErr {
 				t.Errorf("SyncCustomPolicy() error = %v, wantErr %v", err, tt.wantErr)
@@ -471,7 +478,7 @@ func TestSyncCustomPolicy_MinorUpdatePreservesUUID(t *testing.T) {
 	}
 
 	svc := newTestGatewayService(gwRepo, cpRepo)
-	result, err := svc.SyncCustomPolicy(gwID, orgID, "my-policy", "1.2.0")
+	result, err := svc.SyncCustomPolicy(gwID, orgID, "my-policy", "1.2.0", testActorUUID)
 	if err != nil {
 		t.Fatalf("SyncCustomPolicy() unexpected error: %v", err)
 	}
@@ -748,4 +755,172 @@ func TestReceiveGatewayManifest_LegacyCustomerNormalized(t *testing.T) {
 	if p := byName["built-in"]; p.ManagedBy != constants.PolicyManagedByWSO2 {
 		t.Errorf("built-in policy stored with managedBy %q, want %q", p.ManagedBy, constants.PolicyManagedByWSO2)
 	}
+}
+
+// TestSyncCustomPolicy_ActorRecordedAsCreator verifies that created_by/updated_by
+// carry the triggering user's internal UUID, not the gateway's ID, and that an
+// existing policy's original creator survives a minor-version update.
+func TestSyncCustomPolicy_ActorRecordedAsCreator(t *testing.T) {
+	const (
+		orgID      = "org-uuid-0001"
+		gwID       = "gw-uuid-0001"
+		existingID = "stable-policy-uuid"
+	)
+
+	t.Run("insert", func(t *testing.T) {
+		gwRepo := &mockGatewayRepoForPolicy{
+			gateway:  &model.Gateway{ID: gwID, OrganizationID: orgID},
+			manifest: sampleManifest("my-policy", "1.0.0"),
+		}
+		cpRepo := &mockCustomPolicyRepo{}
+
+		svc := newTestGatewayService(gwRepo, cpRepo)
+		if _, err := svc.SyncCustomPolicy(gwID, orgID, "my-policy", "1.0.0", testActorUUID); err != nil {
+			t.Fatalf("SyncCustomPolicy() unexpected error: %v", err)
+		}
+		if cpRepo.insertedPolicy == nil {
+			t.Fatal("InsertCustomPolicy() was not called")
+		}
+		if got := cpRepo.insertedPolicy.CreatedBy; got != testActorUUID {
+			t.Errorf("CreatedBy = %q, want %q (the triggering user, not the gateway)", got, testActorUUID)
+		}
+		if got := cpRepo.insertedPolicy.UpdatedBy; got != testActorUUID {
+			t.Errorf("UpdatedBy = %q, want %q", got, testActorUUID)
+		}
+	})
+
+	t.Run("minor version update", func(t *testing.T) {
+		const originalCreator = "user-uuid-0002"
+		existing := makeCustomPolicy(existingID, orgID, "my-policy", "1.1.0")
+		existing.CreatedBy = originalCreator
+
+		gwRepo := &mockGatewayRepoForPolicy{
+			gateway:  &model.Gateway{ID: gwID, OrganizationID: orgID},
+			manifest: sampleManifest("my-policy", "1.2.0"),
+		}
+		cpRepo := &mockCustomPolicyRepo{getPoliciesByName: []*model.CustomPolicy{existing}}
+
+		svc := newTestGatewayService(gwRepo, cpRepo)
+		if _, err := svc.SyncCustomPolicy(gwID, orgID, "my-policy", "1.2.0", testActorUUID); err != nil {
+			t.Fatalf("SyncCustomPolicy() unexpected error: %v", err)
+		}
+		if cpRepo.updatedPolicy == nil {
+			t.Fatal("UpdateCustomPolicy() was not called")
+		}
+		if got := cpRepo.updatedPolicy.UpdatedBy; got != testActorUUID {
+			t.Errorf("UpdatedBy = %q, want %q (the triggering user)", got, testActorUUID)
+		}
+		if got := cpRepo.updatedPolicy.CreatedBy; got != originalCreator {
+			t.Errorf("CreatedBy = %q, want %q (original creator preserved)", got, originalCreator)
+		}
+	})
+}
+
+// mappingIdentityRepo maps internal platform UUIDs to external identities, so
+// tests can tell a resolved response apart from a raw UUID (unlike
+// passthroughIdentityRepo, which returns the input unchanged).
+type mappingIdentityRepo struct {
+	subs map[string]string
+}
+
+func (m mappingIdentityRepo) GetOrCreateUUID(identity string) (string, error) {
+	return identity, nil
+}
+
+func (m mappingIdentityRepo) GetSubByUUID(uuid string) (string, bool, error) {
+	sub, ok := m.subs[uuid]
+	return sub, ok, nil
+}
+
+func (m mappingIdentityRepo) GetSubsByUUIDs(uuids []string) (map[string]string, error) {
+	result := make(map[string]string, len(uuids))
+	for _, id := range uuids {
+		if sub, ok := m.subs[id]; ok {
+			result[id] = sub
+		}
+	}
+	return result, nil
+}
+
+// TestCustomPolicyResponses_ResolveIdentity verifies that sync, get, and list
+// responses expose the external identity behind created_by/updated_by rather
+// than the internal platform UUID stored in the column, and fall back to the
+// deleted-user placeholder when a UUID has no mapping.
+func TestCustomPolicyResponses_ResolveIdentity(t *testing.T) {
+	const (
+		orgID      = "org-uuid-0001"
+		gwID       = "gw-uuid-0001"
+		policyID   = "pol-uuid-0001"
+		unmappedID = "user-uuid-gone"
+	)
+
+	newSvc := func(gwRepo repository.GatewayRepository, cpRepo repository.CustomPolicyRepository) *GatewayService {
+		svc := newTestGatewayService(gwRepo, cpRepo)
+		svc.identity = NewIdentityService(mappingIdentityRepo{subs: map[string]string{testActorUUID: "alice"}})
+		return svc
+	}
+
+	t.Run("sync", func(t *testing.T) {
+		persisted := makeCustomPolicy(policyID, orgID, "my-policy", "1.0.0")
+		persisted.CreatedBy = testActorUUID
+		persisted.UpdatedBy = testActorUUID
+
+		svc := newSvc(&mockGatewayRepoForPolicy{
+			gateway:  &model.Gateway{ID: gwID, OrganizationID: orgID},
+			manifest: sampleManifest("my-policy", "1.0.0"),
+		}, &mockCustomPolicyRepo{getPolicyByNameVersion: persisted})
+
+		got, err := svc.SyncCustomPolicy(gwID, orgID, "my-policy", "1.0.0", testActorUUID)
+		if err != nil {
+			t.Fatalf("SyncCustomPolicy() unexpected error: %v", err)
+		}
+		if got.CreatedBy != "alice" || got.UpdatedBy != "alice" {
+			t.Errorf("SyncCustomPolicy() createdBy/updatedBy = %q/%q, want %q/%q", got.CreatedBy, got.UpdatedBy, "alice", "alice")
+		}
+	})
+
+	t.Run("get", func(t *testing.T) {
+		stored := makeCustomPolicy(policyID, orgID, "my-policy", "1.0.0")
+		stored.CreatedBy = testActorUUID
+		stored.UpdatedBy = unmappedID
+
+		svc := newSvc(&mockGatewayRepoForPolicy{}, &mockCustomPolicyRepo{getPolicyByUUID: stored})
+
+		got, err := svc.GetCustomPolicyByUUID(orgID, policyID, "1.0.0")
+		if err != nil {
+			t.Fatalf("GetCustomPolicyByUUID() unexpected error: %v", err)
+		}
+		if got.CreatedBy != "alice" {
+			t.Errorf("GetCustomPolicyByUUID() createdBy = %q, want %q", got.CreatedBy, "alice")
+		}
+		if got.UpdatedBy != constants.DeletedUser {
+			t.Errorf("GetCustomPolicyByUUID() updatedBy = %q, want %q for an unmapped UUID", got.UpdatedBy, constants.DeletedUser)
+		}
+	})
+
+	t.Run("list", func(t *testing.T) {
+		mapped := makeCustomPolicy(policyID, orgID, "my-policy", "1.0.0")
+		mapped.CreatedBy = testActorUUID
+		mapped.UpdatedBy = testActorUUID
+		unmapped := makeCustomPolicy("pol-uuid-0002", orgID, "other-policy", "1.0.0")
+		unmapped.CreatedBy = unmappedID
+
+		svc := newSvc(&mockGatewayRepoForPolicy{}, &mockCustomPolicyRepo{
+			listPolicies: []*model.CustomPolicy{mapped, unmapped},
+		})
+
+		got, _, err := svc.ListCustomPolicies(orgID, 10, 0)
+		if err != nil {
+			t.Fatalf("ListCustomPolicies() unexpected error: %v", err)
+		}
+		if len(got) != 2 {
+			t.Fatalf("ListCustomPolicies() returned %d policies, want 2", len(got))
+		}
+		if got[0].CreatedBy != "alice" || got[0].UpdatedBy != "alice" {
+			t.Errorf("ListCustomPolicies() createdBy/updatedBy = %q/%q, want %q/%q", got[0].CreatedBy, got[0].UpdatedBy, "alice", "alice")
+		}
+		if got[1].CreatedBy != constants.DeletedUser {
+			t.Errorf("ListCustomPolicies() createdBy = %q, want %q for an unmapped UUID", got[1].CreatedBy, constants.DeletedUser)
+		}
+	})
 }
