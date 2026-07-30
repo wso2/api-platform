@@ -270,6 +270,10 @@ dist: clean-dist ## Build standalone API Portal distribution zip
 	@mkdir -p $(DIST_DIR)/resources/samples
 	@cp -R samples/apis $(DIST_DIR)/resources/samples/
 	@cp -R samples/mcps $(DIST_DIR)/resources/samples/
+# subscription-plans.yaml and applications.yaml complete the design-mode sample
+# set (seed-samples.sh only needs apis/ + mcps/, but design mode reads these too).
+	@cp samples/subscription-plans.yaml $(DIST_DIR)/resources/samples/
+	@cp samples/applications.yaml $(DIST_DIR)/resources/samples/
 # Stage platform-api configs + db-scripts (from tag or working tree) for the merge below.
 ifeq ($(PLATFORM_API_FROM_TAG),true)
 	@echo "Fetching platform-api configs and db-scripts from tag $(PLATFORM_API_TAG)..."
@@ -317,6 +321,7 @@ endif
 	@sed -e 's#\.\./\.\./platform-api/config/config\.toml:#./configs/config.toml:#' \
 	     -e 's#\.\./\.\./platform-api/resources/role-to-scope-mapping\.yaml:#./resources/platform-api/role-to-scope-mapping.yaml:#' \
 	     -e 's#\./resources/role-to-scope-mapping\.yaml:#./resources/api-portal/role-to-scope-mapping.yaml:#' \
+	     -e 's#\./samples:/app/samples:#./resources/samples:/app/samples:#' \
 		docker-compose.yaml > $(DIST_DIR)/docker-compose.yaml
 	@cp distribution/README.md $(DIST_DIR)/README.md
 	@mkdir -p $(DIST_DIR)/scripts
