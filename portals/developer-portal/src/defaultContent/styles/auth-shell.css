@@ -141,7 +141,7 @@ body {
 
 /* Field */
 .auth-field {
-  margin-top: 1.875rem;
+  margin-top: 0;
 }
 
 .auth-field-label {
@@ -193,7 +193,6 @@ body {
 .auth-continue-btn {
   display: block;
   width: 100%;
-  margin-top: 1.125rem;
   padding: 0.875rem;
   border: none;
   border-radius: 1.25rem;
