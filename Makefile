@@ -24,7 +24,7 @@ GATEWAY_VERSION := $(shell cat gateway/VERSION)
 EVENT_GATEWAY_VERSION := $(shell cat event-gateway/VERSION)
 PLATFORM_API_VERSION := $(shell cat platform-api/VERSION)
 CLI_VERSION := $(shell cat cli/VERSION)
-DEVPORTAL_VERSION := $(shell cat portals/developer-portal/VERSION)
+API_PORTAL_VERSION := $(shell cat portals/api-portal/VERSION)
 
 # Docker registry configuration
 DOCKER_REGISTRY ?= ghcr.io/wso2/api-platform
@@ -48,14 +48,14 @@ help: ## Show this help message
 	@echo '  make build-and-push-gateway-multiarch - Build and push all gateway images for multiple architectures'
 	@echo '  make build-and-push-event-gateway-multiarch - Build and push all event gateway images for multiple architectures'
 	@echo '  make build-and-push-platform-api-multiarch VERSION=X - Build and push platform-api images for multiple architectures'
-	@echo '  make build-and-push-devportal-multiarch - Build and push developer portal image for multiple architectures'
+	@echo '  make build-and-push-api-portal-multiarch - Build and push API Portal image for multiple architectures'
 	@echo '  make build-cli                        - Build CLI binaries for all platforms'
 	@echo '  make package-event-gateway            - Package event gateway as a self-contained zip'
 	@echo '  make test-gateway                     - Run gateway tests'
 	@echo '  make test-event-gateway               - Run event gateway tests'
 	@echo '  make test-platform-api                - Run platform-api tests'
 	@echo '  make test-cli                         - Run CLI tests'
-	@echo '  make test-devportal                   - Run developer portal integration tests'
+	@echo '  make test-api-portal                  - Run API Portal integration tests'
 	@echo '  make test-ai-workspace                - Run AI Workspace E2E tests'
 	@echo ''
 	@echo 'Push Targets:'
@@ -74,7 +74,7 @@ version: ## Display current versions
 	@echo "Event Gateway Version: $(EVENT_GATEWAY_VERSION)"
 	@echo "Platform API Version:  $(PLATFORM_API_VERSION)"
 	@echo "CLI Version:           $(CLI_VERSION)"
-	@echo "Developer Portal Version: $(DEVPORTAL_VERSION)"
+	@echo "API Portal Version: $(API_PORTAL_VERSION)"
 
 
 # Build Targets
@@ -108,11 +108,11 @@ build-and-push-platform-api-multiarch: ## Build and push platform-api Docker ima
 	$(MAKE) -C platform-api build-and-push-multiarch VERSION=$(PLATFORM_API_VERSION)
 	@echo "Successfully built and pushed multi-arch platform-api"
 
-.PHONY: build-and-push-devportal-multiarch
-build-and-push-devportal-multiarch: ## Build and push developer portal Docker image for multiple architectures (amd64, arm64)
-	@echo "Building and pushing multi-arch developer-portal ($(DEVPORTAL_VERSION))..."
-	$(MAKE) -C portals/developer-portal build-and-push-multiarch
-	@echo "Successfully built and pushed multi-arch developer-portal"
+.PHONY: build-and-push-api-portal-multiarch
+build-and-push-api-portal-multiarch: ## Build and push API Portal Docker image for multiple architectures (amd64, arm64)
+	@echo "Building and pushing multi-arch API Portal ($(API_PORTAL_VERSION))..."
+	$(MAKE) -C portals/api-portal build-and-push-multiarch
+	@echo "Successfully built and pushed multi-arch API Portal"
 
 # Package Targets
 .PHONY: package-event-gateway
@@ -152,10 +152,10 @@ test-platform-api: ## Run platform-api tests
 	@echo "Running platform-api tests..."
 	$(MAKE) -C platform-api test
 
-.PHONY: test-devportal
-test-devportal: ## Run developer portal integration tests
-	@echo "Running developer portal integration tests..."
-	$(MAKE) -C portals/developer-portal/it test
+.PHONY: test-api-portal
+test-api-portal: ## Run API Portal integration tests
+	@echo "Running API Portal integration tests..."
+	$(MAKE) -C portals/api-portal/it test
 
 .PHONY: test-ai-workspace
 test-ai-workspace: ## Run AI Workspace E2E tests

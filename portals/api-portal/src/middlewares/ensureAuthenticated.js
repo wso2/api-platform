@@ -1,0 +1,405 @@
+/*
+ * Copyright (c) 2024, WSO2 LLC. (http://www.wso2.com) All Rights Reserved.
+ *
+ * WSO2 LLC. licenses this file to you under the Apache License,
+ * Version 2.0 (the "License"); you may not use this file except
+ * in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing,
+ * software distributed under the License is distributed on an
+ * "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+ * KIND, either express or implied. See the License for the
+ * specific language governing permissions and limitations
+ * under the License.
+ */
+const minimatch = require('minimatch');
+const constants = require('../utils/constants');
+const { config } = require('../config/configLoader');
+const orgDao = require('../dao/organizationDao');
+const { validationResult } = require('express-validator');
+const util = require('../utils/util');
+const { CustomError } = require('../utils/errors/customErrors');
+const { safeDecodeJwt } = require('../utils/jwtDecode');
+const logger = require('../config/logger');
+const { decodePlatformJwtClaims } = require('../utils/platformJwt');
+const { accessTokenPresent } = require('../utils/tokenUtil');
+const { resolveUserUuid, verifyBearerToken } = require('./authMiddleware');
+
+// System page-access gates (constants.js) merged with any deployer-supplied additions
+// (config.pageAccessRules, via config.toml) — the config side only ever adds patterns,
+// never replaces the fixed system list. Computed once; config is static after startup.
+const AUTHENTICATED_PAGES = [
+    ...constants.ROUTE.SYSTEM_AUTHENTICATED_PAGES,
+    ...(config.pageAccessRules?.authenticated || []),
+];
+const AUTHORIZED_PAGES = [
+    ...constants.ROUTE.SYSTEM_AUTHORIZED_PAGES,
+    ...(config.pageAccessRules?.authorized || []),
+];
+
+// Accepts either a single scope string or an array of candidate scopes and reports
+// whether the token satisfies any one of them — the same any-of semantics the
+// OpenAPI-validator-driven /api/v0.9 security handlers apply to a spec operation's
+// declared scope list (e.g. dp:mcp_server:update OR dp:mcp_server:manage), so a route gated by
+// enforceSecurity([...]) grants access to exactly the same principals a /api/v0.9
+// CRUD operation on the same resource would.
+function matchesAnyScope(tokenScopes, requiredScope) {
+    if (!requiredScope) return true;
+    const required = Array.isArray(requiredScope) ? requiredScope : [requiredScope];
+    return required.some((s) => tokenScopes.includes(s));
+}
+
+function enforceSecurity(scope) {
+    return async function (req, res, next) {
+        try {
+            const rules = util.validateRequestParameters();
+            for (let validation of rules) {
+                await validation.run(req);
+            }
+            const errors = validationResult(req);
+            if (!errors.isEmpty()) {
+                return res.status(400).json(util.getErrors(errors));
+            }
+            // Local auth users: validate dp:* scope from platform JWT
+            if (req.isAuthenticated() && req.user && req.user.isLocalAuth && config.auth.mode !== 'idp') {
+                const platformToken = req.user[constants.ACCESS_TOKEN];
+                if (!platformToken) return util.handleError(res, new CustomError(401, constants.ERROR_CODE[401], constants.ERROR_MESSAGE.UNAUTHENTICATED));
+                const tokenScopes = decodePlatformJwtClaims(platformToken)?.scopes ?? [];
+                req.tokenScopes = tokenScopes;
+                if (matchesAnyScope(tokenScopes, scope)) return next();
+                return util.handleError(res, new CustomError(403, constants.ERROR_CODE[403], constants.ERROR_MESSAGE.FORBIDDEN));
+            }
+            const token = accessTokenPresent(req);
+            if (token) {
+                if (req.user && req.user[constants.ORG_IDENTIFIER] && req.user[constants.ROLES.ORGANIZATION_CLAIM] !== req.user[constants.ORG_IDENTIFIER]) {
+                    const authorizedOrgs = req.user.authorizedOrgs;
+                    if ((authorizedOrgs && !(authorizedOrgs.includes(req.user[constants.ORG_IDENTIFIER]))) || !authorizedOrgs) {
+                        const err = new Error('Forbidden');
+                        err.status = 403;
+                        return next(err);
+                    }
+                }
+                const decodedAccessToken = safeDecodeJwt(token);
+                req[constants.USER_ID] = await resolveUserUuid(req, decodedAccessToken?.[constants.USER_ID]);
+                return validateAuthentication(scope)(req, res, next);
+            } else if (config.security.serviceApiKey.enabled) {
+                enforceAPIKey(req, res, next);
+            } else if (typeof req.socket?.getPeerCertificate === 'function' && req.socket.getPeerCertificate(true)) {
+                enforceMTLS(req, res, next);
+            } else {
+                req.session.returnTo = accessControlUrl(req) || `/${req.params.orgName}`;
+                if (req.params.orgName) {
+                    res.redirect(`/${req.params.orgName}/views/${req.session.view}/login`);
+                }
+            }
+        } catch (err) {
+            logger.error("Error checking access token", { error: err.message, stack: err.stack, operation: "checkAccessToken" });
+            return res.status(500).json({ error: "Internal Server Error" });
+        }
+    }
+}
+
+// Checks whether a role claim value (string or array) contains an exact role name.
+function hasRole(roleClaimValue, roleName) {
+    if (!roleClaimValue || !roleName) return false;
+    if (Array.isArray(roleClaimValue)) return roleClaimValue.includes(roleName);
+    return String(roleClaimValue).split(/[\s,]+/).includes(roleName);
+}
+
+// Aligns the org-membership check across the local-auth and token/OAuth2 branches of
+// ensureAuthenticated: the caller's org claim must resolve to the target org's
+// idp_ref_id (or be present in authorizedOrgs). Enforced fail-closed once the caller's
+// session carries an org claim — a target org with no resolvable idp_ref_id counts as
+// "no match" and is rejected, never silently skipped (GO-AUTH-005 / JS-AUTH-005
+// multi-tenant isolation; avoids the org check being bypassable just because the
+// looked-up org row happens to have a blank idp_ref_id). Sessions with no org claim at
+// all (e.g. an IDP that doesn't emit one) are left to the role-based ensurePermission
+// gate below, which is the existing, separate authorization mechanism for that case.
+function belongsToTargetOrg(req, orgDetails) {
+    const tokenOrgClaim = req.user?.[constants.ROLES.ORGANIZATION_CLAIM];
+    if (!tokenOrgClaim) return true;
+    const orgIdentifier = orgDetails?.idp_ref_id;
+    const authorizedOrgs = req.user?.authorizedOrgs;
+    return !!orgIdentifier && (
+        tokenOrgClaim === orgIdentifier ||
+        (Array.isArray(authorizedOrgs) && authorizedOrgs.includes(orgIdentifier))
+    );
+}
+
+const ensurePermission = (currentPage, role, req) => {
+    let adminRole, superAdminRole, subscriberRole;
+    if (req.user) {
+        adminRole = req.user[constants.ROLES.ADMIN];
+        superAdminRole = req.user[constants.ROLES.SUPER_ADMIN];
+        subscriberRole = req.user[constants.ROLES.SUBSCRIBER];
+        if (constants.ROUTE.API_PORTAL_CONFIGURE.some(pattern => minimatch.minimatch(currentPage, pattern))) {
+            return hasRole(role, superAdminRole) || hasRole(role, adminRole);
+        } else if (constants.ROUTE.API_PORTAL_ROOT.some(pattern => minimatch.minimatch(currentPage, pattern))) {
+            return hasRole(role, superAdminRole);
+        } else if (AUTHORIZED_PAGES.some(pattern => minimatch.minimatch(currentPage, pattern))) {
+            return hasRole(role, subscriberRole) || hasRole(role, adminRole) || hasRole(role, superAdminRole);
+        }
+    }
+    return false;
+}
+
+// Rejects requests whose path contains traversal or encoded-separator sequences.
+// Checked on the path only; query strings may legitimately contain dots.
+const ENCODED_SEPARATOR_RE = /%2f|%5c|%00/i;
+function hasTraversalSequence(originalUrl) {
+    const rawUrl = originalUrl || '';
+    const rawPath = rawUrl.split('?')[0];
+    if (rawUrl.includes('\0') || rawPath.includes('\\')) return true;
+    // Encoded separators are always suspicious in a path.
+    if (ENCODED_SEPARATOR_RE.test(rawPath)) return true;
+    // Decode once (originalUrl is raw — Express does not decode it) so mixed-encoding
+    // dot segments (.., .%2e, %2e., %2e%2e) all normalize to '..' before the check.
+    let decodedPath;
+    try {
+        decodedPath = decodeURIComponent(rawPath);
+    } catch {
+        return true; // malformed percent-encoding — fail closed
+    }
+    return decodedPath.includes('..') || decodedPath.includes('\\') || decodedPath.includes('\0');
+}
+
+// The URL this request's access rules are evaluated against.
+//
+// Normally that is the request URL itself. A route whose URL carries data that
+// is not part of the page's identity sets req.accessControlPath to the page path
+// it acts on — the try-it proxy appends a whole target URL to its path, which is
+// neither what the page-access globs are written against nor safe to run the
+// encoded-separator check over. Declaring the page path explicitly is what lets
+// such a route go through this gate unchanged instead of around it.
+function accessControlUrl(req) {
+    return req.accessControlPath || req.originalUrl;
+}
+
+const ensureAuthenticated = async (req, res, next) => {
+    if (hasTraversalSequence(accessControlUrl(req))) {
+        logger.warn('Rejected request with path-traversal sequence', { operation: 'ensureAuthenticated' });
+        return res.status(400).json({ error: 'bad_request', message: 'Invalid request path.' });
+    }
+    let adminRole = config.auth.idp?.roles?.admin;
+    let superAdminRole = config.auth.idp?.roles?.superAdmin;
+    let subscriberRole = config.auth.idp?.roles?.subscriber;
+    const rules = util.validateRequestParameters();
+    for (let validation of rules) {
+        await validation.run(req);
+    }
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) {
+        return res.status(400).json(util.getErrors(errors));
+    }
+    if (req.user && Array.isArray(req.user.authorizedOrgs) && req.user.userOrg) {
+        if (req.user.authorizedOrgs.includes(req.user.userOrg)) {
+            req.user[constants.ORG_IDENTIFIER] = req.user.userOrg;
+        }
+    }
+    // Resolve the acting user's internal UUID for every authenticated request, not just
+    // pages gated by authenticatedPages below — resolveActor() (used for created_by/updated_by
+    // audit columns and "my resources" filters like subscriptions) must return the same
+    // identity here as it does on /api/v0.9 REST routes, where authResolver always resolves it.
+    if (req.isAuthenticated() && req.user && !req[constants.USER_ID]) {
+        if (req.user.isLocalAuth && config.auth.mode !== 'idp') {
+            req[constants.USER_ID] = await resolveUserUuid(req, req.user[constants.USER_ID]);
+        } else {
+            const earlyToken = accessTokenPresent(req);
+            if (earlyToken) {
+                const earlyDecoded = safeDecodeJwt(earlyToken);
+                req[constants.USER_ID] = await resolveUserUuid(req, earlyDecoded?.[constants.USER_ID]);
+            }
+        }
+    }
+    // Glob patterns below (AUTHENTICATED_PAGES/AUTHORIZED_PAGES/API_PORTAL_ROOT) match the
+    // full string with no implicit query-string handling, so req.originalUrl (which retains
+    // "?...") would silently fail to match any pattern lacking an explicit "?**" suffix —
+    // e.g. "/*/settings" never matches "/org/settings?view=x", which would skip this entire
+    // auth block. Match against the query-stripped pathname instead.
+    const pathname = accessControlUrl(req).split('?')[0];
+    if (pathname !== '/favicon.ico' && pathname !== '/images' &&
+        AUTHENTICATED_PAGES.some(pattern => minimatch.minimatch(pathname, pattern))) {
+        const orgId = req.params.orgName;
+        let orgDetails;
+        if (orgId !== undefined) {
+            orgDetails = await orgDao.get(orgId);
+        }
+        let role;
+        logger.debug("Request authentication status", { isAuthenticated: req.isAuthenticated() });
+        if (req.isAuthenticated()) {
+            // Config-auth: skip all token/exchange checks; roles already in session
+            if (req.user && req.user.isLocalAuth && config.auth.mode !== 'idp') {
+                req.orgId = req.orgId || orgDetails?.uuid;
+                req[constants.USER_ID] = await resolveUserUuid(req, req.user[constants.USER_ID]);
+                if (AUTHORIZED_PAGES.some(pattern => minimatch.minimatch(pathname, pattern))) {
+                    // Reject cross-org access: the URL's :orgName must resolve (via orgDetails.idp_ref_id)
+                    // to the org the authenticated (local-auth) user's token claims it belongs to — the
+                    // same comparison the token/OAuth2 branch below uses (belongsToTargetOrg).
+                    const isApiPortalRoot = constants.ROUTE.API_PORTAL_ROOT.some(pattern => minimatch.minimatch(pathname, pattern));
+                    if (!isApiPortalRoot && !belongsToTargetOrg(req, orgDetails)) {
+                        const err = new Error('Forbidden');
+                        err.status = 403;
+                        return next(err);
+                    }
+                    if (req.user) {
+                        req.user[constants.ROLES.ADMIN] = adminRole;
+                        req.user[constants.ROLES.SUPER_ADMIN] = superAdminRole;
+                        req.user[constants.ROLES.SUBSCRIBER] = subscriberRole;
+                        if (orgDetails) {
+                            req.user[constants.ORG_UUID] = orgDetails.uuid;
+                            req.user[constants.ORG_IDENTIFIER] = orgDetails.idp_ref_id;
+                        }
+                    }
+                    if (config.auth.roleValidation) {
+                        role = req.user[constants.ROLES.ROLE_CLAIM];
+                        if (ensurePermission(pathname, role, req)) {
+                            return next();
+                        } else {
+                            const err = new Error('Forbidden');
+                            err.status = 403;
+                            return next(err);
+                        }
+                    }
+                }
+                return next();
+            }
+            const token = accessTokenPresent(req);
+            if (token) {
+                const decodedAccessToken = safeDecodeJwt(token);
+                req.orgId = req.orgId || orgDetails?.uuid;
+                req[constants.USER_ID] = await resolveUserUuid(req, decodedAccessToken?.[constants.USER_ID]);
+            }
+            if (AUTHORIZED_PAGES.some(pattern => minimatch.minimatch(pathname, pattern))) {
+                role = req.user[constants.ROLES.ROLE_CLAIM];
+                if (req.user) {
+                    req.user[constants.ROLES.ADMIN] = adminRole;
+                    req.user[constants.ROLES.SUPER_ADMIN] = superAdminRole;
+                    req.user[constants.ROLES.SUBSCRIBER] = subscriberRole;
+                    if (orgDetails) {
+                        req.user[constants.ORG_UUID] = orgDetails.uuid;
+                        req.user[constants.ORG_IDENTIFIER] = orgDetails.idp_ref_id;
+                    }
+                }
+                const isMatch = constants.ROUTE.API_PORTAL_ROOT.some(pattern => minimatch.minimatch(pathname, pattern));
+                if (!isMatch && !belongsToTargetOrg(req, orgDetails)) {
+                    const err = new Error('Forbidden');
+                    err.status = 403;
+                    return next(err);
+                }
+                if (config.auth.roleValidation) {
+                    if (ensurePermission(pathname, role, req)) {
+                        return next();
+                    } else {
+                        const err = new Error('Forbidden');
+                        err.status = 403;
+                        return next(err);
+                    }
+                }
+            }
+            return next();
+        } else {
+            req.session.returnTo = accessControlUrl(req) || `/${req.params.orgName}`;
+            req.session.save((err) => {
+                if (err) {
+                    logger.error('Session save failed before login redirect', { error: err.message });
+                }
+                if (req.params.orgName) {
+                    res.redirect(`/${req.params.orgName}/views/${req.params.viewName}/login`);
+                } else {
+                    res.redirect(303, `/portal/login`);
+                }
+            });
+        }
+    } else {
+        return next();
+    };
+};
+
+// Reuses the exact bearer-token verification the /api/v0.9 REST API's authResolver
+// applies (authMiddleware.js's verifyBearerToken): local-auth mode verifies against the
+// Platform API's own RS256 public key (config.auth.local.publicKeyPath), idp mode verifies
+// via IDP.certificate/jwksUrl — so a bearer JWT gated by enforceSecurity is authenticated
+// identically to one calling /api/v0.9, regardless of which auth.mode is active.
+//
+// Does NOT re-run util.validateRequestParameters() — enforceSecurity (this function's only
+// caller) already ran that sanitizer over req.params/req.query before delegating here.
+// Running param('*').escape() a second time double-escapes any already-escaped character:
+// a route param containing '/' (e.g. a reverse-DNS MCP server identifier segment) becomes
+// '&#x2F;' on the first pass and '&amp;#x2F;' on a second, which callers' unescapeParam-style
+// reversal (a single-pass '&#x2F;' -> '/' replace) can no longer undo.
+function validateAuthentication(scope) {
+    return async function (req, res, next) {
+        let accessToken;
+        if (req.isAuthenticated() && req.user) {
+            accessToken = req.user[constants.ACCESS_TOKEN];
+        } else {
+            accessToken = req.headers.authorization && req.headers.authorization.split(' ')[1];
+        }
+
+        const { valid, scopes } = await verifyBearerToken(accessToken, req);
+
+        if (valid) {
+            const tokenScopes = String(scopes || '').split(' ');
+            req.tokenScopes = tokenScopes;
+            if (matchesAnyScope(tokenScopes, scope)) {
+                return next();
+            }
+            return util.handleError(res, new CustomError(403, constants.ERROR_CODE[403], constants.ERROR_MESSAGE.FORBIDDEN));
+        }
+        // Uniform response regardless of req.user (js-error-handling.md directive 4, same
+        // shape tryoutProxyRoute.js's unauthorizedJson uses) — this gate protects API routes
+        // (mcpRegistryRoute.js), not browser pages, so a stale session cookie must not divert
+        // a rejected bearer token into an HTML login redirect instead of the same JSON body a
+        // header-only caller gets.
+        return res.status(401).json({
+            error: 'unauthorized',
+            message: 'Invalid or expired credentials.',
+        });
+    }
+}
+
+const enforceMTLS = (req, res, next) => {
+    const clientCert = req.socket?.getPeerCertificate?.(true);
+
+    if (!clientCert || Object.keys(clientCert).length === 0) {
+        return res.status(403).send('Client certificate required');
+    }
+
+    if (!req.client.authorized) {
+        return res.status(403).send('Client certificate verification failed');
+    }
+
+    const now = new Date();
+    const validFrom = new Date(clientCert.valid_from);
+    const validTo = new Date(clientCert.valid_to);
+    if (validFrom > now || validTo < now) {
+        return res.status(403).send('Client certificate is expired or not yet valid');
+    }
+
+    return next();
+};
+
+const enforceAPIKey = (req, res, next) => {
+    const keyType = config.security?.serviceApiKey?.headerName;
+
+    if (!keyType || !config.security?.serviceApiKey?.value) {
+        return res.status(500).json({ error: "Server configuration error" });
+    }
+
+    const apiKey = req.headers[keyType.toLowerCase()];
+
+    if (!apiKey || apiKey !== config.security?.serviceApiKey?.value) {
+        return res.status(401).json({ error: "Unauthorized: API key is invalid or not found" });
+    }
+    return next();
+};
+
+module.exports = {
+    ensureAuthenticated,
+    validateAuthentication,
+    enforceSecurity,
+    matchesAnyScope,
+}

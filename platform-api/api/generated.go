@@ -480,7 +480,7 @@ type APIKeyItem struct {
 	// Id URL-safe handle (identifier) of the API key (generated from displayName when not supplied)
 	Id *string `json:"id,omitempty" yaml:"id,omitempty"`
 
-	// Issuer Optional identifier of the developer portal that provisioned this key
+	// Issuer Optional identifier of the API Portal that provisioned this key
 	Issuer *string `json:"issuer,omitempty" yaml:"issuer,omitempty"`
 
 	// MaskedApiKey Masked representation of the API key for display purposes
@@ -699,7 +699,7 @@ type CreateAPIKeyRequest struct {
 	// generated from displayName)
 	Id *string `json:"id,omitempty" yaml:"id,omitempty"`
 
-	// Issuer Identifier of the developer portal that provisioned this API key. Null if not provided.
+	// Issuer Identifier of the API Portal that provisioned this API key. Null if not provided.
 	Issuer *string `json:"issuer" yaml:"issuer"`
 }
 
@@ -782,7 +782,7 @@ type CreateLLMProviderAPIKeyRequest struct {
 	// Id Unique identifier for the API key within the LLM provider. If not provided, generated from displayName.
 	Id *string `json:"id,omitempty" yaml:"id,omitempty"`
 
-	// Issuer Identifier of the developer portal that provisioned this API key. Null if not provided.
+	// Issuer Identifier of the API Portal that provisioned this API key. Null if not provided.
 	Issuer *string `json:"issuer" yaml:"issuer"`
 }
 
@@ -847,7 +847,7 @@ type CreateLLMProxyAPIKeyRequest struct {
 	// Id Unique identifier for the API key within the LLM proxy. If not provided, generated from displayName.
 	Id *string `json:"id,omitempty" yaml:"id,omitempty"`
 
-	// Issuer Identifier of the developer portal that provisioned this API key. Null if not provided.
+	// Issuer Identifier of the API Portal that provisioned this API key. Null if not provided.
 	Issuer *string `json:"issuer" yaml:"issuer"`
 }
 
@@ -2612,7 +2612,7 @@ type UserAPIKeyItem struct {
 	// Id URL-safe handle (identifier) of the API key (generated from displayName when not supplied)
 	Id *string `json:"id,omitempty" yaml:"id,omitempty"`
 
-	// Issuer Optional identifier of the developer portal that provisioned this key
+	// Issuer Optional identifier of the API Portal that provisioned this key
 	Issuer *string `json:"issuer,omitempty" yaml:"issuer,omitempty"`
 
 	// MaskedApiKey Masked representation of the API key for display purposes

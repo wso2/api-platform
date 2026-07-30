@@ -258,7 +258,7 @@ config:
     # the secret set on the Developer Portal's webhook subscriber.
     signatureTolerance: 5m
     maxBodySize: 1048576
-    signatureHeader: X-Devportal-Signature
+    signatureHeader: X-Api-Portal-Signature
 
 # Escape hatch: raw TOML appended verbatim to the generated config file, for keys
 # not exposed as structured values above.

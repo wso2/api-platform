@@ -218,13 +218,13 @@ type EventHub struct {
 	RetentionPeriod time.Duration `koanf:"retention_period"`
 }
 
-// Webhook holds configuration for the control-plane webhook receiver. The Developer Portal
+// Webhook holds configuration for the control-plane webhook receiver. The API Portal
 // delivers signed events (API key / subscription changes) to this endpoint. See
 // docs-local/platform-api-webhook.md.
 type Webhook struct {
 	// Enabled controls whether the webhook endpoint is registered.
 	Enabled bool `koanf:"enabled"`
-	// Secret is the shared secret with the Developer Portal. It serves two purposes: verifying
+	// Secret is the shared secret with the API Portal. It serves two purposes: verifying
 	// the HMAC-SHA256 request signature, and deriving (via HKDF-SHA3-256) the AES key that decrypts
 	// encrypted payload fields such as an API key secret.
 	Secret string `koanf:"secret"`
@@ -509,7 +509,7 @@ func LoadConfig(configPaths ...string) (*Server, error) {
 	}
 
 	// Narrow to this component's own subtree BEFORE interpolating, so a shared
-	// multi-component config file (one that also carries [developer_portal] or
+	// multi-component config file (one that also carries [api_portal] or
 	// [ai_workspace] sections) does not force platform-api to resolve another
 	// component's {{ env }}/{{ file }} tokens — those reference env vars and
 	// allowlisted paths that only exist in that other component's container, and
@@ -1013,7 +1013,7 @@ func validateWebhookConfig(w *Webhook) error {
 		w.MaxBodySize = 1 << 20 // 1 MiB
 	}
 	if w.SignatureHeader == "" {
-		w.SignatureHeader = "X-Devportal-Signature"
+		w.SignatureHeader = "X-Api-Portal-Signature"
 	}
 	return nil
 }

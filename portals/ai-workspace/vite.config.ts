@@ -93,7 +93,7 @@ export default defineConfig({
   // Expose only the allowlisted APIP_AIW_ variables to client code via
   // import.meta.env, instead of Vite's default VITE_ prefix. The whole platform
   // namespaces its configuration this way (APIP_AIW_ here, APIP_CP_ for the Platform
-  // API, APIP_DP_ for the Developer Portal), and the BFF serves the same names in
+  // API, APIP_AP_ for the API Portal), and the BFF serves the same names in
   // window.__RUNTIME_CONFIG__, so one key spelling works at build time and at runtime.
   envPrefix: browserSafeEnvVars,
   resolve: {

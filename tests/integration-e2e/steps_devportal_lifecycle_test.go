@@ -28,7 +28,7 @@ import (
 )
 
 // This file extends the @devportal scenario with credential-lifecycle changes made
-// in the developer portal, each verified either at the gateway (invocation) or on
+// in the API Portal, each verified either at the gateway (invocation) or on
 // the platform-api (control-plane) side, all via the signed-webhook propagation.
 // The scenario runs them in two groups:
 //
@@ -60,26 +60,26 @@ const (
 )
 
 func (w *world) registerDevportalLifecycleSteps(sc *godog.ScenarioContext) {
-	sc.Step(`^a second subscription plan is synced to the developer portal$`, w.syncSecondPlan)
-	sc.Step(`^the API key is expired in the developer portal$`, w.expireKey)
+	sc.Step(`^a second subscription plan is synced to the API Portal$`, w.syncSecondPlan)
+	sc.Step(`^the API key is expired in the API Portal$`, w.expireKey)
 	sc.Step(`^invoking with the expired API key is rejected$`, w.invokeExpiredKeyRejected)
-	sc.Step(`^the API key expiry is restored in the developer portal$`, w.restoreKeyExpiry)
-	sc.Step(`^the applied subscription plan of the API is switched in the developer portal$`, w.changeSubPlan)
+	sc.Step(`^the API key expiry is restored in the API Portal$`, w.restoreKeyExpiry)
+	sc.Step(`^the applied subscription plan of the API is switched in the API Portal$`, w.changeSubPlan)
 	sc.Step(`^platform-api receives the new subscription plan update of the API$`, w.verifySubPlan)
 	// The token-regeneration triple: the current token works, then after regen the new
 	// token works and the old one is rejected. The two 200-checks reuse the shared
 	// invokeWithCredentialsSucceeds (invokes with the current w.apiKey + w.subToken).
 	sc.Step(`^invoking with the current subscription token returns 200$`, w.invokeWithCredentialsSucceeds)
-	sc.Step(`^the subscription token is regenerated in the developer portal$`, w.regenerateSubToken)
+	sc.Step(`^the subscription token is regenerated in the API Portal$`, w.regenerateSubToken)
 	sc.Step(`^invoking with the new subscription token returns 200$`, w.invokeWithCredentialsSucceeds)
 	sc.Step(`^invoking with the old subscription token is rejected$`, w.invokeOldTokenRejected)
-	sc.Step(`^the subscription is paused in the developer portal$`, w.pauseSubscription)
-	sc.Step(`^the subscription is resumed in the developer portal$`, w.resumeSubscription)
+	sc.Step(`^the subscription is paused in the API Portal$`, w.pauseSubscription)
+	sc.Step(`^the subscription is resumed in the API Portal$`, w.resumeSubscription)
 	sc.Step(`^invoking the secured API through the gateway is rejected$`, w.invokeRejected)
-	sc.Step(`^the API key is revoked in the developer portal$`, w.revokeKey)
+	sc.Step(`^the API key is revoked in the API Portal$`, w.revokeKey)
 	sc.Step(`^invoking with the revoked API key is unauthorized$`, w.invokeRevokedKeyUnauthorized)
-	sc.Step(`^a new API key is generated in the developer portal$`, w.generateKeyInDevportal)
-	sc.Step(`^the subscription is removed in the developer portal$`, w.removeSubscription)
+	sc.Step(`^a new API key is generated in the API Portal$`, w.generateKeyInDevportal)
+	sc.Step(`^the subscription is removed in the API Portal$`, w.removeSubscription)
 }
 
 // --- 2. API key expiry --------------------------------------------------------
@@ -116,7 +116,7 @@ func (w *world) invokeExpiredKeyRejected() error {
 // --- 3. subscription plan change ---------------------------------------------
 
 // syncSecondPlan creates a second plan in platform-api (ACTIVE) and mirrors it into
-// the developer portal. It must run before the API is published so the API can offer
+// the API Portal. It must run before the API is published so the API can offer
 // it (publishAPIToDevportal includes plan2ID), which the change-plan below requires.
 func (w *world) syncSecondPlan() error {
 	w.plan2ID = "e2e-silver-" + randHex()

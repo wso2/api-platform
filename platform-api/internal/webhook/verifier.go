@@ -29,7 +29,7 @@ import (
 
 // Verifier validates the HMAC-SHA256 signature of an incoming webhook request.
 //
-// The Developer Portal signs each request with a per-subscriber shared secret. The signature
+// The API Portal signs each request with a per-subscriber shared secret. The signature
 // header has the form "t=<unix-seconds>,v1=<hex-hmac>" and the signed payload is
 // "<timestamp>.<raw_body>". This matches the producer scheme documented in
 // docs-local/platform-api-webhook.md.

@@ -50,7 +50,7 @@ const (
 )
 
 // apiRef identifies the API an event targets. ref_id is the Platform API artifact handle (the
-// Developer Portal's REFERENCE_ID); the API-key/subscription services resolve it to the API.
+// API Portal's REFERENCE_ID); the API-key/subscription services resolve it to the API.
 // type is the artifact kind (e.g. RestApi, LlmProvider) and scopes the handle lookup to exactly
 // one artifact table, so every API resolution passes kind alongside the handle.
 type apiRef struct {
@@ -213,7 +213,7 @@ func (r *Receiver) handleAPIKeyRegenerated(ctx context.Context, env *Envelope) e
 		return err
 	}
 
-	// Carry the Developer Portal's expiry through. The Developer Portal is authoritative for the
+	// Carry the API Portal's expiry through. The API Portal is authoritative for the
 	// key's expiry, so a regeneration reflects data.expires_at (and clears it only when the DP
 	// sends a non-expiring key). Omitting it here would reset every regenerated key to no-expiry.
 	expiresAt, err := parseExpiresAt(d.ExpiresAt)
@@ -259,9 +259,9 @@ func (r *Receiver) handleAPIKeyRevoked(ctx context.Context, env *Envelope) error
 }
 
 // appRef is the optional application reference on apikey.application_updated. It is null when the
-// key was dissociated from its application. handle is the Developer Portal application handle, which
+// key was dissociated from its application. handle is the API Portal application handle, which
 // the Platform API stores as the application handle and uses to resolve the application; id (the
-// Developer Portal's internal id) is received but not used for resolution.
+// API Portal's internal id) is received but not used for resolution.
 type appRef struct {
 	ID          string `json:"id"`
 	DisplayName string `json:"display_name"`

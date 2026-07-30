@@ -48,7 +48,7 @@ type subscriptionPlanRef struct {
 // subscriber_id is required: a Platform API subscription belongs to a subscriber (the subscriptions
 // table enforces NOT NULL). application_id is optional.
 //
-// token carries the subscription token issued by the Developer Portal — the value shown to the user
+// token carries the subscription token issued by the API Portal — the value shown to the user
 // and presented to the gateway for validation. It arrives as an encrypted envelope (listed in the
 // envelope's encrypted_fields as "token"); once decrypted it is persisted as-is so the same token
 // validates end to end. When absent, the Platform API generates its own.
@@ -86,7 +86,7 @@ func (r *Receiver) findSubscription(orgID, apiRefID, kind, subscriberID string) 
 	return r.subs.FindByArtifactKindAndSubscriber(orgID, apiRefID, kind, subscriberID)
 }
 
-// handleSubscriptionCreated reconciles a subscription created in the Developer Portal. The existing
+// handleSubscriptionCreated reconciles a subscription created in the API Portal. The existing
 // service generates the subscription's token, persists it, and broadcasts to deployed gateways.
 func (r *Receiver) handleSubscriptionCreated(ctx context.Context, env *Envelope) error {
 	var d subscriptionData
@@ -97,7 +97,7 @@ func (r *Receiver) handleSubscriptionCreated(ctx context.Context, env *Envelope)
 		return err
 	}
 
-	// Import the Developer Portal token (encrypted under data.token) so the value the user sees
+	// Import the API Portal token (encrypted under data.token) so the value the user sees
 	// validates at the gateway. When absent, the service generates its own.
 	var token string
 	if d.Token != nil {
@@ -108,7 +108,7 @@ func (r *Receiver) handleSubscriptionCreated(ctx context.Context, env *Envelope)
 		token = decrypted
 	}
 
-	// Developer Portal sync events have no interactive platform user, so the audit
+	// API Portal sync events have no interactive platform user, so the audit
 	// actor is left empty (there is no internal-UUID identity to attribute).
 	_, err := r.subs.CreateSubscription(d.API.RefID, d.API.kind(), env.OrgID, d.SubscriberID, d.applicationIDPtr(), &d.SubscriptionPlan.RefID, token, d.Status, "")
 	if err != nil {
@@ -203,7 +203,7 @@ func (r *Receiver) handleSubscriptionTokenRegenerated(ctx context.Context, env *
 	return err
 }
 
-// handleSubscriptionDeleted removes a subscription deleted in the Developer Portal.
+// handleSubscriptionDeleted removes a subscription deleted in the API Portal.
 func (r *Receiver) handleSubscriptionDeleted(ctx context.Context, env *Envelope) error {
 	var d subscriptionData
 	if err := env.decodeData(&d); err != nil {
