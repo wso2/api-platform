@@ -52,13 +52,16 @@ function _uniqueConstraintMessage(handle) {
 const createWebhookSubscriber = async (req, res) => {
     try {
         const orgId = req.orgId;
-        const payload = req.body;
+        // Normalize to an object so an undefined/non-object body doesn't throw on the
+        // handle assignment below — it falls through to _validateRequiredFields and the
+        // expected 400 instead.
+        const payload = (req.body && typeof req.body === 'object' && !Array.isArray(req.body)) ? req.body : {};
 
         // Handle rule: use the caller-supplied `id` when present; otherwise generate a
         // UUID. The settings UI sends no id (so those get a UUID); an API client may
         // pick a stable identifier of its own. A handle collision is always a 409 —
         // we never rewrite the caller's id or invent a variant.
-        payload.handle = (payload && payload.id) ? payload.id : crypto.randomUUID();
+        payload.handle = payload.id ? payload.id : crypto.randomUUID();
 
         const validationError = _validateRequiredFields(payload);
         if (validationError) {

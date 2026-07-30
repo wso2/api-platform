@@ -156,8 +156,9 @@ async function generate({ orgId, apiId, subscriptionId, appId, handle, displayNa
     if (api.error) throw Object.assign(new Error(api.error.message), { status: api.error.status });
 
     // The handle is the caller-facing id used to resolve a key within an API, so reject
-    // a duplicate. dp_api_keys has no unique constraint, so this is enforced here (a
-    // best-effort pre-check; concurrent creates with the same id are not fully serialized).
+    // a duplicate. This is a friendly pre-check; the (org_uuid, api_uuid, handle) unique
+    // index is the authoritative guard, enforced atomically by the duplicate-key catch
+    // around apiKeyDao.create below (which also covers a create that races past this).
     if (await apiKeyDao.getIdByHandle(orgId, api.id, normalizedHandle)) {
         throw Object.assign(new Error(`An API key with id "${normalizedHandle}" already exists for this API.`), { status: 409 });
     }
@@ -171,11 +172,22 @@ async function generate({ orgId, apiId, subscriptionId, appId, handle, displayNa
 
     try {
         await db.withTransaction(async (t) => {
-            const key = await apiKeyDao.create(
-                { apiId: api.id, subscriptionId, appId: application ? application.id : null, orgId,
-                  handle: normalizedHandle, displayName: normalizedDisplayName, expiresAt: expiry.date, createdBy: actor },
-                t
-            );
+            let key;
+            try {
+                key = await apiKeyDao.create(
+                    { apiId: api.id, subscriptionId, appId: application ? application.id : null, orgId,
+                      handle: normalizedHandle, displayName: normalizedDisplayName, expiresAt: expiry.date, createdBy: actor },
+                    t
+                );
+            } catch (createErr) {
+                // Only a handle collision on the insert (uq_api_key_org_api_handle) maps to
+                // 409 — a duplicate-key error from a later step (event publishes, etc.) is
+                // unrelated and must keep its own handling, so scope the check to create.
+                if (db.isDuplicateKeyError(createErr)) {
+                    throw Object.assign(new Error(`An API key with id "${normalizedHandle}" already exists for this API.`), { status: 409 });
+                }
+                throw createErr;
+            }
             keyId = key.uuid;
             audit = await userIdpReferenceDao.buildSingleAuditFields(key);
 
@@ -201,11 +213,6 @@ async function generate({ orgId, apiId, subscriptionId, appId, handle, displayNa
         });
     } catch (err) {
         plaintext = '\0'.repeat(plaintext.length);
-        // Atomic backstop for the pre-check above: the (org, api, handle) unique index
-        // rejects a duplicate even under a concurrent create that races past the pre-check.
-        if (db.isDuplicateKeyError(err)) {
-            throw Object.assign(new Error(`An API key with id "${normalizedHandle}" already exists for this API.`), { status: 409 });
-        }
         throw err;
     }
 

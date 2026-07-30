@@ -216,8 +216,10 @@ async function generateOauthKey(formId, appId, keyMappingId, keyManager, clientN
         const span = document.createElement('span');
         span.className = 'span-tag';
         span.textContent = scope;
-        const removeBtn = document.createElement('span');
+        const removeBtn = document.createElement('button');
+        removeBtn.type = 'button';
         removeBtn.className = 'remove';
+        removeBtn.setAttribute('aria-label', `Remove scope ${scope}`);
         removeBtn.textContent = '×';
         span.appendChild(removeBtn);
 
@@ -579,8 +581,10 @@ document.addEventListener('keydown', function (event) {
         const span = document.createElement('span');
         span.className = 'span-tag';
         span.textContent = scope; // textContent, not innerHTML — the scope is user-typed
-        const removeBtn = document.createElement('span');
+        const removeBtn = document.createElement('button');
+        removeBtn.type = 'button';
         removeBtn.className = 'remove';
+        removeBtn.setAttribute('aria-label', `Remove scope ${scope}`);
         removeBtn.textContent = '×';
         removeBtn.addEventListener('click', function () { span.remove(); });
         span.appendChild(removeBtn);
