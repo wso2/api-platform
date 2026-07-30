@@ -6,10 +6,11 @@ info:
 
     These endpoints are served on the dedicated admin server port (default: 9092).
 
-    All endpoints except `/health` require HTTP Basic authentication using the
-    same credentials configured for the management API (`controller.auth.basic`).
-    `/health` is intentionally left unauthenticated so Docker and Kubernetes
-    liveness/readiness probes can reach it.
+    All endpoints except the health probe require HTTP Basic authentication using
+    the same credentials configured for the management API (`controller.auth.basic`),
+    and the authenticated user must additionally hold the `admin` role. Both the
+    versioned `/api/admin/v1/health` path and its legacy `/health` alias are
+    intentionally left unauthenticated
   version: 1.0.0
   contact:
     name: WSO2 API Platform Team
@@ -46,7 +47,13 @@ paths:
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/ErrorResponse"
+                $ref: "#/components/schemas/UnauthorizedResponse"
+        "403":
+          description: Authenticated user lacks the required admin role
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ForbiddenResponse"
         "500":
           description: Internal server error
           content:
@@ -59,8 +66,9 @@ paths:
       summary: Health check
       description: |
         Returns the health status of the gateway controller.
-        This endpoint is not subject to IP whitelist restrictions so that
-        Docker and Kubernetes health probes can reach it.
+        This endpoint is exempt from both authentication and the IP whitelist so
+        that Docker and Kubernetes health probes can reach it. The exemption
+        applies to both this versioned path and the legacy `/health` alias.
       operationId: getHealth
       tags:
         - System
@@ -95,7 +103,13 @@ paths:
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/ErrorResponse"
+                $ref: "#/components/schemas/UnauthorizedResponse"
+        "403":
+          description: Authenticated user lacks the required admin role
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ForbiddenResponse"
         "500":
           description: Internal server error
           content:
@@ -113,7 +127,8 @@ components:
       scheme: basic
       description: |
         HTTP Basic authentication using the credentials configured under
-        `controller.auth.basic`. Applies to every admin endpoint except `/health`.
+        `controller.auth.basic`. The authenticated user must also hold the
+        `admin` role. Applies to every admin endpoint except the health probe.
   schemas:
     ErrorResponse:
       type: object
@@ -125,6 +140,36 @@ components:
           type: string
         message:
           type: string
+
+    UnauthorizedResponse:
+      type: object
+      required:
+        - code
+        - message
+      properties:
+        code:
+          type: string
+          description: 'Error code, e.g. "authentication_failed".'
+        message:
+          type: string
+      example:
+        code: authentication_failed
+        message: authentication failed
+
+    ForbiddenResponse:
+      type: object
+      required:
+        - code
+        - message
+      properties:
+        code:
+          type: string
+          description: 'Error code, e.g. "forbidden".'
+        message:
+          type: string
+      example:
+        code: forbidden
+        message: forbidden
 
     CertificateResponse:
       type: object

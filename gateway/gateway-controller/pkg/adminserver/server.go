@@ -33,12 +33,13 @@ type Server struct {
 
 // NewServer creates a new admin HTTP server.
 //
-// authMiddleware is the shared authentication middleware (basic auth / IDP) used
-// to gate every admin endpoint except the public health probe. Pass the same
-// middleware the management API uses so both servers accept the same credentials.
-// A nil authMiddleware disables authentication entirely and is intended only for
+// authMiddleware is the protection chain applied to every admin endpoint except
+// the public health probe. In production it composes the shared authentication
+// middleware (basic auth / IDP) with a deny-by-default admin-role authorization
+// check, so callers must both present valid credentials and hold the "admin" role.
+// A nil authMiddleware disables that protection entirely and is intended only for
 // tests that exercise the handlers or IP allowlist in isolation — production
-// callers must always pass a configured middleware.
+// callers must always pass a configured chain.
 func NewServer(cfg *config.AdminServerConfig, apiServer apiServer, authMiddleware func(http.Handler) http.Handler, logger *slog.Logger) *Server {
 	s := &Server{
 		cfg:       cfg,
