@@ -39,7 +39,7 @@ services:
       retries: 3
 
   ai-workspace:
-    image: ghcr.io/wso2/api-platform/ai-workspace:1.0.0-SNAPSHOT
+    image: ghcr.io/wso2/api-platform/ai-workspace:1.0.0
     restart: unless-stopped
     profiles: ["ai-workspace", "all"]
     depends_on:
