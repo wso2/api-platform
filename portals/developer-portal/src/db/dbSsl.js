@@ -22,7 +22,7 @@ const fs = require('fs');
 const path = require('path');
 const { config } = require('../config/configLoader');
 
-// The ssl_mode values devportal supports.
+// The ssl_mode values the API Portal supports.
 const SUPPORTED_SSL_MODES = ['disable', 'verify-full'];
 
 /**

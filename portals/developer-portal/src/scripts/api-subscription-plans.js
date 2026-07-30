@@ -168,9 +168,9 @@
         closeRegenerate();
         _regenerateInFlight = true;
         try {
-          var resp = await fetch(devportalApi.root('/subscriptions/' + encodeURIComponent(subId) + '/regenerate-token'), {
+          var resp = await fetch(apiPortalApi.root('/subscriptions/' + encodeURIComponent(subId) + '/regenerate-token'), {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': window.devportalApi.csrfToken() },
+            headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': window.apiPortalApi.csrfToken() },
           });
           if (resp.ok) {
             var data = await resp.json();

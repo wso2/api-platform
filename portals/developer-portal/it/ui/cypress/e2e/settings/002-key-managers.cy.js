@@ -22,7 +22,7 @@
 // generation enabled on their application because an org key manager now exists.
 
 describe('Settings — Key Managers', () => {
-    // Not crypto.randomUUID(): Cypress runs specs against http://devportal:9543, an
+    // Not crypto.randomUUID(): Cypress runs specs against http://api-portal:9543, an
     // insecure context where the WebCrypto API is unavailable. Date.now() + a random
     // suffix is unique across (serial) runs.
     const uid = `${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;

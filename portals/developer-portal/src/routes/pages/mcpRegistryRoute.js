@@ -51,7 +51,7 @@ router.get('/v0.1/servers/:serverName/versions/:version', mcpRegistryService.get
 
 // Publishing endpoints — gated by the same dp:mcp_* scopes the admin /api/v0.9/mcp-servers*
 // CRUD operations require (see constants.SCOPES.MCP_*), via bearer JWT or local-auth session
-// (enforceSecurity), same as every other devportal write route. Status changes have no
+// (enforceSecurity), same as every other API Portal write route. Status changes have no
 // dedicated admin-API scope of their own — per the OpenAPI spec, they go through the same
 // PUT /mcp-servers/{id} operation as a plain update, so they're gated identically here.
 //

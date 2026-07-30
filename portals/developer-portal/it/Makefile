@@ -70,7 +70,7 @@ ensure-certs:
 		chmod 644 $(CERT_DIR)/jwt_private.pem $(CERT_DIR)/jwt_public.pem; \
 	fi
 
-# Tag the pre-built developer-portal image as :test so docker-compose.test.yaml can
+# Tag the pre-built API Portal image as :test so docker-compose.test.yaml can
 # reference a stable :test tag regardless of whether the local build is :VERSION.
 ensure-test-tag:
 	@if docker image inspect $(DOCKER_REGISTRY)/$(IMAGE_NAME):$(VERSION) >/dev/null 2>&1; then \
@@ -83,7 +83,7 @@ ensure-test-tag:
 	fi
 
 # Run Cypress tests headlessly against SQLite (CI-friendly, no external DB required).
-# Requires the developer-portal image to be built first: make build (from portals/developer-portal/).
+# Requires the API Portal image to be built first: make build (from portals/developer-portal/).
 # Service list is explicit — the compose file also defines rest-api-tests, which
 # `up` with no args would otherwise start too.
 # Each target captures the exit code of `docker compose up` itself — which
@@ -100,7 +100,7 @@ test: ensure-test-tag ensure-certs
 	exit $$EXIT
 
 # Run Cypress tests headlessly against PostgreSQL.
-# Requires the developer-portal image to be built first: make build (from portals/developer-portal/).
+# Requires the API Portal image to be built first: make build (from portals/developer-portal/).
 test-postgres: ensure-test-tag ensure-certs
 	@CYPRESS_PLATFORM=$(CYPRESS_PLATFORM) DOCKER_REGISTRY=$(DOCKER_REGISTRY) docker compose -p $(IT_PROJECT_POSTGRES) -f docker-compose.test.postgres.yaml up postgres api-portal cypress --abort-on-container-exit --exit-code-from cypress; \
 	EXIT=$$?; \
@@ -108,7 +108,7 @@ test-postgres: ensure-test-tag ensure-certs
 	exit $$EXIT
 
 # Run the REST API integration test suite (Jest + Supertest) against SQLite.
-# Requires the developer-portal image to be built first: make build (from portals/developer-portal/).
+# Requires the API Portal image to be built first: make build (from portals/developer-portal/).
 test-rest-api: ensure-test-tag ensure-certs
 	@DOCKER_REGISTRY=$(DOCKER_REGISTRY) docker compose -p $(IT_PROJECT) -f docker-compose.test.yaml up api-portal rest-api-tests --abort-on-container-exit --exit-code-from rest-api-tests; \
 	EXIT=$$?; \

@@ -18,11 +18,11 @@
  */
 
 /*
- * Auth pipeline for the spec-driven /devportal router.
+ * Auth pipeline for the spec-driven API Portal REST router (/api/v0.9).
  *
  *   authResolver  →  OpenAPI validator (calls OAuth2Security / apiKeyAuth)  →  handler
  *
- * `authResolver` runs once per /devportal request and resolves credentials in the
+ * `authResolver` runs once per API Portal REST request and resolves credentials in the
  * order: local session → bearer → api-key → mTLS. It populates `req.auth` with
  * `{ mode, scopes, preauthorized, userId, rawSub }` but does NOT enforce scopes —
  * that is the job of `OAuth2Security`, which the validator invokes with the
@@ -138,7 +138,7 @@ async function verifyJwksWithRefresh(token, jwksURL, req) {
     } catch (err) {
         if (err.code === 'ERR_JWT_EXPIRED' && req.user && req.user.refreshToken) {
             try {
-                logger.info('Access token expired during /devportal request, refreshing');
+                logger.info('Access token expired during API Portal REST request, refreshing');
                 const refreshed = await refreshAccessToken(req.user.refreshToken);
                 req.user[constants.ACCESS_TOKEN] = refreshed.access_token;
                 req.user[constants.REFRESH_TOKEN] = refreshed.refresh_token;
@@ -275,7 +275,7 @@ async function resolvePortalOrg(req) {
 
 /**
  * Pre-validator middleware that establishes `req.auth`. Runs once per
- * /devportal request before the OpenAPI validator security check.
+ * API Portal REST request before the OpenAPI validator security check.
  */
 async function authResolver(req, res, next) {
     try {

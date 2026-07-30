@@ -132,7 +132,7 @@ describe('APIs via artifact ZIP upload', () => {
     });
 
     describe('label handling via ZIP (spec.labels)', () => {
-        // mapDevportalYamlToApiMetadata used to run every `spec.labels` through
+        // mapArtifactYamlToApiMetadata used to run every `spec.labels` through
         // util.normalizeStringArray, which returns `[]` whether the YAML omitted
         // `labels` entirely or set it to an empty list — collapsing "not mentioned"
         // and "explicitly none" into the same value. That broke both directions:

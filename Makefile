@@ -110,9 +110,9 @@ build-and-push-platform-api-multiarch: ## Build and push platform-api Docker ima
 
 .PHONY: build-and-push-api-portal-multiarch
 build-and-push-api-portal-multiarch: ## Build and push API Portal Docker image for multiple architectures (amd64, arm64)
-	@echo "Building and pushing multi-arch developer-portal ($(API_PORTAL_VERSION))..."
+	@echo "Building and pushing multi-arch API Portal ($(API_PORTAL_VERSION))..."
 	$(MAKE) -C portals/developer-portal build-and-push-multiarch
-	@echo "Successfully built and pushed multi-arch developer-portal"
+	@echo "Successfully built and pushed multi-arch API Portal"
 
 # Package Targets
 .PHONY: package-event-gateway

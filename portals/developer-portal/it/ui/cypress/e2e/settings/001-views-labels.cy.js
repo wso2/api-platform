@@ -20,7 +20,7 @@
 // flow is: type a name, let the handle auto-generate, and save.
 
 describe('Settings — Views & Labels', () => {
-    // Not crypto.randomUUID(): Cypress runs specs against http://devportal:9543, an
+    // Not crypto.randomUUID(): Cypress runs specs against http://api-portal:9543, an
     // insecure context where the WebCrypto API is unavailable. Date.now() + a random
     // suffix is unique across (serial) runs and stays slug-safe ([0-9a-z-]).
     const uid = `${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;

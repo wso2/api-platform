@@ -79,7 +79,7 @@ function timingSafeCompare(a, b) {
 }
 
 /**
- * For mutating /devportal routes: cookie-based sessions must send X-CSRF-Token
+ * For mutating API Portal REST routes: cookie-based sessions must send X-CSRF-Token
  * matching getSessionCsrfToken. Skips when auth matches non-browser paths used by
  * enforceSecurity (Bearer, API key, mTLS).
  */

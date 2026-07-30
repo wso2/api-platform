@@ -482,7 +482,7 @@ else
     openssl req -x509 -newkey rsa:2048 -sha256 -days 3650 -nodes \
         -keyout "$CERTS_DIR/key.pem" -out "$CERTS_DIR/cert.pem" \
         -subj "/O=WSO2 API Platform/CN=localhost" \
-        -addext "subjectAltName=DNS:localhost,DNS:*.localhost,DNS:platform-api,DNS:ai-workspace,DNS:developer-portal,DNS:api-portal,DNS:host.docker.internal,IP:127.0.0.1" \
+        -addext "subjectAltName=DNS:localhost,DNS:*.localhost,DNS:platform-api,DNS:ai-workspace,DNS:api-portal,DNS:host.docker.internal,IP:127.0.0.1" \
         >/dev/null 2>&1
     chmod "$FILE_MODE" "$CERTS_DIR/cert.pem"
     restrict_secret_file "$CERTS_DIR/key.pem"

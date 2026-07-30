@@ -11,7 +11,7 @@
 # register_asgardeo_scopes.sh
 #
 # Registers the API Portal API resource and all dp:* scopes in Asgardeo
-# so that the devportal traditional web application can request them.
+# so that the API Portal traditional web application can request them.
 #
 # Prerequisites:
 #   1. Create a system OIDC application in Asgardeo.
@@ -25,7 +25,7 @@
 #   ASGARDEO_TENANT              Asgardeo tenant/root-org name
 #   ASGARDEO_CLIENT_ID           System application client ID
 #   ASGARDEO_CLIENT_SECRET       System application client secret
-#   ASGARDEO_RESOURCE_IDENTIFIER API resource identifier (usually the devportal base URL)
+#   ASGARDEO_RESOURCE_IDENTIFIER API resource identifier (usually the API Portal base URL)
 #   ASGARDEO_RESOURCE_NAME       Display name for the API resource
 
 set -euo pipefail

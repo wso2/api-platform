@@ -18,8 +18,8 @@
 # provisions everything either stack (or both at once) might need:
 #
 #   - a self-signed TLS certificate shared by all three services
-#   - devportal's own encryption key and session secret, written to
-#     resources/keys/devportal-encryption.key and devportal-session-secret and
+#   - API Portal's own encryption key and session secret, written to
+#     resources/keys/api-portal-encryption.key and api-portal-session-secret and
 #     read by config.toml via {{ file }} - never stored as an env var
 #   - the Platform API's at-rest encryption key, written to resources/keys/encryption.key
 #     and read by config.toml via {{ file }} - like the JWT keypair below, never stored
@@ -109,7 +109,7 @@ Usage: .\scripts\setup.ps1 [--force] [--certs-only] [--rotate-encryption-key] [-
                              --rotate-encryption-key.
   --certs-only              generate only the TLS certificate
   --rotate-encryption-key   DESTRUCTIVE: replace resources\keys\encryption.key
-                             and resources\keys\devportal-encryption.key even if
+                             and resources\keys\api-portal-encryption.key even if
                              they already exist. Any data encrypted
                              under the old key(s) (e.g. stored secrets) becomes
                              permanently unreadable. Requires interactive
@@ -201,8 +201,8 @@ $ProjectNamePrefix = 'wso2apip'
 $ProjectName = ''
 $CertsDir = Join-Path $RootDir 'resources\certificates'
 # RS256 JWT keypair (PEM) + at-rest encryption keys. Mounted into the
-# platform-api container at /etc/platform-api/keys and into the devportal
-# container at /etc/devportal/keys, read by config.toml via {{ file }}.
+# platform-api container at /etc/platform-api/keys and into the api-portal
+# container at /etc/api-portal/keys, read by config.toml via {{ file }}.
 $KeysDir = Join-Path $RootDir 'resources\keys'
 $ComposeFile = Join-Path $RootDir 'docker-compose.yaml'
 
@@ -439,7 +439,7 @@ function New-HexSecretFile([string]$path) {
 }
 
 # One-time confirmation gate for --rotate-encryption-key, shared by both the
-# devportal and Platform API at-rest encryption keys (rotating either makes
+# API Portal and Platform API at-rest encryption keys (rotating either makes
 # data encrypted under it permanently unreadable) - prompts at most once per
 # run even though both keys are provisioned separately below.
 $script:RotationConfirmed = $false
@@ -462,16 +462,14 @@ function Confirm-RotationOnce([string]$keyPath) {
 # Which pack's docker-compose.yaml this is - a single source of truth reused
 # both to resolve the default COMPOSE_PROFILES value below and to print the
 # right profile combinations at the end of this script. Prefers the value
-# `make dist` baked into DEFAULT_PACK_NAME; falls back to the compose file's
-# own service topology - each pack's mandatory service is uniquely named
-# ("devportal" vs "ai-workspace"/"developer-portal"), which is a far more
-# stable signal than matching a comment's exact wording.
+# `make dist` baked into DEFAULT_PACK_NAME; falls back to this pack's own
+# directory name, since both packs ship the same services and differ only in
+# which one is their headline component. Mirrors detect_pack() in setup.sh.
 function Get-Pack {
     if ($DEFAULT_PACK_NAME -ne '__DEFAULT_PACK_NAME__') { return $DEFAULT_PACK_NAME }
-    if (-not (Test-Path -LiteralPath $ComposeFile)) { return 'unknown' }
-    $lines = Get-Content -LiteralPath $ComposeFile
-    if ($lines | Where-Object { $_ -match '^  devportal:' }) { return 'developer-portal' }
-    if ($lines | Where-Object { $_ -match '^  developer-portal:' }) { return 'ai-workspace' }
+    $dir = Split-Path -Leaf $RootDir
+    if ($dir -eq 'developer-portal') { return 'developer-portal' }
+    if ($dir -eq 'ai-workspace') { return 'ai-workspace' }
     return 'unknown'
 }
 
@@ -681,7 +679,7 @@ if (-not $Force -and (Test-Path -LiteralPath $CertPem) -and (Test-Path -LiteralP
         & openssl req -x509 -newkey rsa:2048 -sha256 -days 3650 -nodes `
             -keyout $KeyPem -out $CertPem `
             -subj "/O=WSO2 API Platform/CN=localhost" `
-            -addext "subjectAltName=DNS:localhost,DNS:*.localhost,DNS:platform-api,DNS:ai-workspace,DNS:developer-portal,DNS:devportal,DNS:host.docker.internal,IP:127.0.0.1"
+            -addext "subjectAltName=DNS:localhost,DNS:*.localhost,DNS:platform-api,DNS:ai-workspace,DNS:api-portal,DNS:host.docker.internal,IP:127.0.0.1"
     } 'openssl failed to generate the TLS certificate' | Out-Null
     Set-OwnerOnlyAcl $KeyPem
     Write-Log "  - self-signed certificate generated at $CertsDir"
@@ -698,38 +696,38 @@ Set-OwnerOnlyAcl $EnvFile
 
 New-Item -ItemType Directory -Force -Path $KeysDir | Out-Null
 
-Write-Log 'Provisioning devportal encryption key and session secret ...'
+Write-Log 'Provisioning API Portal encryption key and session secret ...'
 # Written to files (not api-platform.env) and read by config.toml via
-# {{ file "/etc/devportal/keys/encryption.key" }} / {{ file ".../session-secret" }}
+# {{ file "/etc/api-portal/keys/encryption.key" }} / {{ file ".../session-secret" }}
 # - the same pattern as the Platform API's at-rest encryption key below, and
 # for the same reason: a value that never appears in `docker inspect`, a
 # process environment dump, or api-platform.env is materially harder to
-# exfiltrate than an env var. resources\keys is mounted into the devportal
-# container at /etc/devportal/keys (see docker-compose.yaml), which is on
-# devportal's {{ file }} allowlist.
+# exfiltrate than an env var. resources\keys is mounted into the api-portal
+# container at /etc/api-portal/keys (see docker-compose.yaml), which is on
+# the API Portal's {{ file }} allowlist.
 #
-# devportal-encryption.key encrypts subscription/webhook secrets at rest - so
+# api-portal-encryption.key encrypts subscription/webhook secrets at rest - so
 # it is preserved across reruns and rotated ONLY via --rotate-encryption-key,
-# never by the generic --force. devportal-session-secret only signs session
+# never by the generic --force. api-portal-session-secret only signs session
 # cookies - rotating it merely invalidates existing sessions, so it follows
 # --force like the TLS cert/JWT keypair.
-$DevportalEncKey = Join-Path $KeysDir 'devportal-encryption.key'
-$DevportalSessionSecret = Join-Path $KeysDir 'devportal-session-secret'
-if ((Test-Path -LiteralPath $DevportalEncKey) -and $RotateEncryptionKey) {
-    Confirm-RotationOnce $DevportalEncKey
-    New-HexSecretFile $DevportalEncKey
-    Write-Log "  - devportal encryption key ROTATED at $DevportalEncKey"
-} elseif (Test-Path -LiteralPath $DevportalEncKey) {
-    Write-Log "  - $DevportalEncKey already exists, leaving as-is (pass --rotate-encryption-key to replace it)"
+$ApiPortalEncKey = Join-Path $KeysDir 'api-portal-encryption.key'
+$ApiPortalSessionSecret = Join-Path $KeysDir 'api-portal-session-secret'
+if ((Test-Path -LiteralPath $ApiPortalEncKey) -and $RotateEncryptionKey) {
+    Confirm-RotationOnce $ApiPortalEncKey
+    New-HexSecretFile $ApiPortalEncKey
+    Write-Log "  - API Portal encryption key ROTATED at $ApiPortalEncKey"
+} elseif (Test-Path -LiteralPath $ApiPortalEncKey) {
+    Write-Log "  - $ApiPortalEncKey already exists, leaving as-is (pass --rotate-encryption-key to replace it)"
 } else {
-    New-HexSecretFile $DevportalEncKey
-    Write-Log "  - devportal encryption key generated at $DevportalEncKey"
+    New-HexSecretFile $ApiPortalEncKey
+    Write-Log "  - API Portal encryption key generated at $ApiPortalEncKey"
 }
-if (-not $Force -and (Test-Path -LiteralPath $DevportalSessionSecret)) {
-    Write-Log "  - $DevportalSessionSecret already exists, leaving as-is"
+if (-not $Force -and (Test-Path -LiteralPath $ApiPortalSessionSecret)) {
+    Write-Log "  - $ApiPortalSessionSecret already exists, leaving as-is"
 } else {
-    New-HexSecretFile $DevportalSessionSecret
-    Write-Log "  - devportal session secret generated at $DevportalSessionSecret"
+    New-HexSecretFile $ApiPortalSessionSecret
+    Write-Log "  - API Portal session secret generated at $ApiPortalSessionSecret"
 }
 
 Write-Log 'Provisioning Platform API JWT signing keypair (RS256) ...'
@@ -859,14 +857,14 @@ if (-not [string]::IsNullOrEmpty($ComposeProfilesValue)) {
     Write-Host '    docker compose up -d                                                    # no default set - pass --profile explicitly'
 }
 if ($Pack -eq 'developer-portal') {
-    Write-Host '    docker compose --profile developer-portal --profile ai-workspace --profile platform-api up -d  # Developer Portal + AI Workspace + Platform API'
-    Write-Host '    docker compose --profile all up -d                                                              # AI Workspace + Developer Portal + Platform API'
+    Write-Host '    docker compose --profile api-portal --profile ai-workspace --profile platform-api up -d  # API Portal + AI Workspace + Platform API'
+    Write-Host '    docker compose --profile all up -d                                                              # AI Workspace + API Portal + Platform API'
     Write-Host '    docker compose --profile platform-api up -d                                                     # Platform API only'
 } elseif ($Pack -eq 'ai-workspace') {
-    Write-Host '    docker compose --profile ai-workspace --profile developer-portal --profile platform-api up -d  # AI Workspace + Developer Portal + Platform API'
-    Write-Host '    docker compose --profile all up -d                                                             # AI Workspace + Developer Portal + Platform API'
+    Write-Host '    docker compose --profile ai-workspace --profile api-portal --profile platform-api up -d  # AI Workspace + API Portal + Platform API'
+    Write-Host '    docker compose --profile all up -d                                                             # AI Workspace + API Portal + Platform API'
     Write-Host '    docker compose --profile platform-api up -d                                                    # Platform API only'
 } else {
-    Write-Host '    docker compose --profile <ai-workspace|developer-portal|all|platform-api> up -d'
+    Write-Host '    docker compose --profile <ai-workspace|api-portal|all|platform-api> up -d'
 }
 Write-Host ''

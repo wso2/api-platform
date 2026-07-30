@@ -262,7 +262,7 @@ function parseSchema(contentRow) {
         const str = Buffer.isBuffer(raw) ? raw.toString('utf-8') : String(raw);
         // The stored schema comes in one of two shapes depending on which path wrote it:
         //   - registry publishServer writes grouped JSON: { tools, resources, prompts }
-        //   - the devportal admin API and sample seeder store the raw uploaded schemaDefinition,
+        //   - the API Portal admin API and sample seeder store the raw uploaded schemaDefinition,
         //     a flat YAML/JSON array of { type: TOOL|RESOURCE|PROMPT, ... } entries.
         // yaml.load parses both JSON and YAML; normalize a flat array into the grouped shape the
         // ServerResponseDTO expects, so the registry exposes capabilities however the server was

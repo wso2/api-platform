@@ -69,7 +69,7 @@ services:
         done;
         /opt/mssql-tools/bin/sqlcmd -S sqlserver -U sa -P "$${MSSQL_SA_PASSWORD}" -b -Q
         "IF DB_ID('api_portal') IS NULL CREATE DATABASE [api_portal];" &&
-        /opt/mssql-tools/bin/sqlcmd -S sqlserver -U sa -P "$${MSSQL_SA_PASSWORD}" -b -I -d devportal -i /schema/schema.sqlserver.sql
+        /opt/mssql-tools/bin/sqlcmd -S sqlserver -U sa -P "$${MSSQL_SA_PASSWORD}" -b -I -d api_portal -i /schema/schema.sqlserver.sql
     environment:
       MSSQL_SA_PASSWORD: "${MSSQL_SA_PASSWORD:-Strong!Passw0rd}"
     volumes:

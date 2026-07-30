@@ -86,12 +86,12 @@ command -v jq   >/dev/null 2>&1 || fail "jq is required but not found on PATH."
 command -v zip  >/dev/null 2>&1 || fail "zip is required but not found on PATH."
 
 if [ -z "${ADMIN_USERNAME:-}" ] && [ -t 0 ]; then
-    read -r -p "Devportal admin username: " ADMIN_USERNAME
+    read -r -p "API Portal admin username: " ADMIN_USERNAME
 fi
 [ -n "${ADMIN_USERNAME:-}" ] || fail "an admin username is required (set ADMIN_USERNAME or run interactively)."
 
 if [ -z "${ADMIN_PASSWORD:-}" ] && [ -t 0 ]; then
-    read -r -s -p "Devportal admin password: " ADMIN_PASSWORD
+    read -r -s -p "API Portal admin password: " ADMIN_PASSWORD
     echo
 fi
 [ -n "${ADMIN_PASSWORD:-}" ] || fail "an admin password is required (set ADMIN_PASSWORD or run interactively)."
@@ -117,7 +117,7 @@ seed_docs() {
     [ -d "$sample_dir/docs" ] || return 0
 
     local tmp_zip
-    tmp_zip="$(mktemp /tmp/devportal-docs-XXXXXX)"
+    tmp_zip="$(mktemp /tmp/api-portal-docs-XXXXXX)"
     rm -f "$tmp_zip"
     tmp_zip="${tmp_zip}.zip"
     # Wrapped in a top-level folder (named after the sample) rather than zipping

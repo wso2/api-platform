@@ -15,14 +15,14 @@
  * specific language governing permissions and limitations
  * under the License.
  */
-// Devportal API base segment and version — single source of truth for the
+// API Portal API base segment and version — single source of truth for the
 // invocation prefix `/api/v0.9`. Change these two to bump the base segment
-// (e.g. devportalv2) or version (e.g. v2) everywhere.
+// (e.g. apiv2) or version (e.g. v2) everywhere.
 const API_PORTAL_BASE_SEGMENT = 'api';
 const API_PORTAL_VERSION = 'v0.9';
-// Express route prefix for devportal routes, e.g. '/api/v0.9'
+// Express route prefix for API Portal REST routes, e.g. '/api/v0.9'
 const API_PORTAL_BASE_PATH = `/${API_PORTAL_BASE_SEGMENT}/${API_PORTAL_VERSION}`;
-// Builder for the devportal base path used in server-side URL generation.
+// Builder for the API Portal base path used in server-side URL generation.
 // The orgId argument is accepted for backward-compatibility but not used —
 // org context is resolved from the token/session, not the URL.
 const apiPortalOrgPath = (_orgId) => `/${API_PORTAL_BASE_SEGMENT}/${API_PORTAL_VERSION}`;
@@ -128,7 +128,7 @@ module.exports = {
         ADMIN: 'admin',
         DEVELOPER: 'dev',
         // Same any-of scope groups the admin `/api/v0.9/mcp-servers*` OpenAPI security
-        // requirements declare per operation (docs/devportal-openapi-spec-v0.9.yaml) — reused
+        // requirements declare per operation (docs/api-portal-openapi-spec-v0.9.yaml) — reused
         // here so the MCP registry protocol routes (mcpRegistryRoute.js) grant access to
         // exactly the same principals as the equivalent admin CRUD operation.
         MCP_CREATE: ['dp:mcp_create', 'dp:mcp_manage'],
