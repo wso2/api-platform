@@ -11,10 +11,13 @@
       <p class="page-desc">Applications hold the API keys and subscriptions you use to call APIs.</p>
     </div>
     {{#if applicationsMetadata.length}}
+    {{!-- Create/Delete mutate through the REST API, which design mode can't serve (no database) — omit them there. --}}
+    {{#unless (designMode)}}
     <button class="apps-create-btn" id="apps-create-btn" type="button"
       >
       <i class="bi bi-plus"></i> Create application
     </button>
+    {{/unless}}
     {{/if}}
   </div>
 
@@ -24,10 +27,12 @@
     <span class="dp-empty-icon"><i class="bi bi-grid-3x3-gap-fill"></i></span>
     <h2 class="dp-empty-title">No applications yet</h2>
     <p class="dp-empty-desc">Create an application to generate API keys and subscribe to APIs. You can manage all your credentials in one place.</p>
+    {{#unless (designMode)}}
     <button class="dp-btn dp-btn--primary dp-btn--lg" id="apps-create-btn-empty" type="button"
       >
       <i class="bi bi-plus"></i> Create application
     </button>
+    {{/unless}}
   </div>
   {{/unless}}
 
@@ -49,10 +54,12 @@
       <p class="app-card-desc">{{description}}</p>
 
       <div class="app-card-footer">
+        {{#unless (designMode)}}
         <button type="button" class="app-delete-btn" id="trash-btn-{{id}}"
           title="Delete application" data-app-id="{{id}}" data-app-name="{{displayName}}">
           <i class="bi bi-trash"></i>
         </button>
+        {{/unless}}
       </div>
 
     </div>
@@ -62,6 +69,8 @@
 
 </div>
 
+{{!-- Create/Delete modals and their handlers are omitted in design mode (no REST API to call). --}}
+{{#unless (designMode)}}
 <!-- ── Create application modal ── -->
 <div class="app-modal-overlay" id="app-create-modal" style="display:none;">
   <div class="app-modal">
@@ -112,6 +121,7 @@
     </div>
   </div>
 </div>
+{{/unless}}
 
 <script>
 (function () {
@@ -156,6 +166,7 @@
     el.style.color = c.fg;
     el.textContent = initials(el.getAttribute('data-display-name'));
   });
+{{#unless (designMode)}}
 
   /* ── Create modal ────────────────────────────────── */
   function openCreateModal() {
@@ -267,5 +278,6 @@
         console.error('Delete application failed:', err);
       });
   });
+{{/unless}}
 }());
 </script>

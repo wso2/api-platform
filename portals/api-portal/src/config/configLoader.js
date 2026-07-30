@@ -379,6 +379,11 @@ if (config.designMode?.enabled) {
     if (!config.security.sessionSecret) {
         config.security.sessionSecret = crypto.randomBytes(32).toString('hex');
     }
+    // Validate whatever we ended up with — the freshly minted value passes, and an
+    // operator-supplied one is held to the same format check as every other mode
+    // rather than silently bypassing it. encryptionKey stays unchecked: it is
+    // genuinely unused in design mode (no database, createCryptoUtil is lazy).
+    requireHexSecret(config.security.sessionSecret, 'sessionSecret');
 } else {
     requireHexSecret(config.security.encryptionKey, 'encryptionKey');
     requireHexSecret(config.security.sessionSecret, 'sessionSecret');

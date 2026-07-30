@@ -39,7 +39,7 @@ services:
     networks:
       - api-portal-network
 
-  devportal:
+  api-portal:
     image: ghcr.io/wso2/api-platform/api-portal:1.0.0-SNAPSHOT
     container_name: api-portal
     restart: unless-stopped
