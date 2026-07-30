@@ -98,6 +98,7 @@ func setupImportTest(t *testing.T) *importTestDeps {
 	if _, err := db.Exec(string(schema)); err != nil {
 		t.Fatalf("apply schema: %v", err)
 	}
+	seedServiceTestActors(t, db)
 
 	// Seed org, project, gateway.
 	if _, err := db.Exec(`INSERT INTO organizations (uuid, handle, display_name, region, idp_organization_ref_uuid, created_at, updated_at)

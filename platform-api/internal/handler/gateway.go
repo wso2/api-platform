@@ -410,7 +410,11 @@ func (h *GatewayHandler) SyncCustomPolicy(w http.ResponseWriter, r *http.Request
 		return apperror.ValidationFailed.New("gatewayId, policyName and policyVersion are required")
 	}
 
-	policy, err := h.gatewayService.SyncCustomPolicy(gatewayHandle, orgId, policyName, version)
+	actor, err := resolveActorErr(r, h.identity, "sync gateway custom policy")
+	if err != nil {
+		return err
+	}
+	policy, err := h.gatewayService.SyncCustomPolicy(gatewayHandle, orgId, policyName, version, actor)
 	if err != nil {
 		var appErr *apperror.Error
 		if errors.As(err, &appErr) {
@@ -462,7 +466,11 @@ func (h *GatewayHandler) DeleteCustomPolicy(w http.ResponseWriter, r *http.Reque
 		return apperror.ValidationFailed.New("customPolicyUuid and version are required")
 	}
 
-	if err := h.gatewayService.DeleteCustomPolicyByUUID(orgId, policyUUID, version); err != nil {
+	actor, err := resolveActorErr(r, h.identity, "delete gateway custom policy")
+	if err != nil {
+		return err
+	}
+	if err := h.gatewayService.DeleteCustomPolicyByUUID(orgId, policyUUID, version, actor); err != nil {
 		var appErr *apperror.Error
 		if errors.As(err, &appErr) {
 			return err

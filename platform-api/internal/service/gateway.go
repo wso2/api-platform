@@ -327,7 +327,7 @@ func parseVersion(v string) (parsedVersion, error) {
 // SyncCustomPolicy upserts a custom policy from the gateway manifest into the gateway_custom_policies table.
 // The gateway is identified by its handle and must belong to the caller's organization. The policy must
 // exist in the manifest and it should be a custom policy.
-func (s *GatewayService) SyncCustomPolicy(gatewayHandle, orgID, policyName, version string) (*model.CustomPolicy, error) {
+func (s *GatewayService) SyncCustomPolicy(gatewayHandle, orgID, policyName, version, actor string) (*model.CustomPolicy, error) {
 	policyName = strings.ToLower(policyName)
 
 	gateway, err := s.gatewayRepo.GetByHandleAndOrgID(gatewayHandle, orgID)
@@ -413,8 +413,8 @@ func (s *GatewayService) SyncCustomPolicy(gatewayHandle, orgID, policyName, vers
 		Version:          version,
 		Description:      found.Description,
 		PolicyDefinition: policyDefJSON,
-		CreatedBy:        gateway.ID,
-		UpdatedBy:        gateway.ID,
+		CreatedBy:        actor,
+		UpdatedBy:        actor,
 	}
 
 	if sameMajorVersionedPolicy != nil {
@@ -472,12 +472,12 @@ func (s *GatewayService) SyncCustomPolicy(gatewayHandle, orgID, policyName, vers
 	persisted, err := s.customPolicyRepo.GetCustomPolicyByNameAndVersion(orgID, policyName, version)
 	if err != nil || persisted == nil {
 		if s.auditRepo != nil {
-			_ = s.auditRepo.Record("CREATE", policy.UUID, "custom_policy", orgID, "")
+			_ = s.auditRepo.Record("CREATE", policy.UUID, "custom_policy", orgID, actor)
 		}
 		return policy, nil
 	}
 	if s.auditRepo != nil {
-		_ = s.auditRepo.Record("CREATE", persisted.UUID, "custom_policy", orgID, "")
+		_ = s.auditRepo.Record("CREATE", persisted.UUID, "custom_policy", orgID, actor)
 	}
 	return persisted, nil
 }
@@ -512,7 +512,7 @@ func (s *GatewayService) GetCustomPolicyByUUID(orgID, policyUUID, version string
 }
 
 // DeleteCustomPolicyByUUID deletes a custom policy by UUID, verifying org ownership, version, and no active usages.
-func (s *GatewayService) DeleteCustomPolicyByUUID(orgID, policyUUID, version string) error {
+func (s *GatewayService) DeleteCustomPolicyByUUID(orgID, policyUUID, version, actor string) error {
 	policy, err := s.customPolicyRepo.GetCustomPolicyByUUID(orgID, policyUUID)
 	if err != nil {
 		return fmt.Errorf("failed to retrieve custom policy (org_id=%s, policy_uuid=%s): %w", orgID, policyUUID, err)
@@ -528,7 +528,7 @@ func (s *GatewayService) DeleteCustomPolicyByUUID(orgID, policyUUID, version str
 		return err
 	}
 	if s.auditRepo != nil {
-		_ = s.auditRepo.Record("DELETE", policyUUID, "custom_policy", orgID, "")
+		_ = s.auditRepo.Record("DELETE", policyUUID, "custom_policy", orgID, actor)
 	}
 	return nil
 }

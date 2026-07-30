@@ -70,6 +70,7 @@ func setupAPISecretTestEnv(t *testing.T) (*APIService, *SecretService, func()) {
 	if _, err = db.Exec(string(schema)); err != nil {
 		t.Fatalf("apply schema: %v", err)
 	}
+	seedServiceTestActors(t, db)
 
 	if _, err = db.Exec(`INSERT INTO organizations (uuid, handle, display_name, region, idp_organization_ref_uuid, created_at, updated_at)
 		VALUES (?, 'api-secret-it-org', 'API Secret IT Org', 'default', 'idp-ref', datetime('now'), datetime('now'))`, apiSecretITOrgUUID); err != nil {

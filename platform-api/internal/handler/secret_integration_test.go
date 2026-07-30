@@ -743,6 +743,7 @@ func TestSecretService_Decrypt_DeprecatedSecretReturnsError(t *testing.T) {
 
 	schema, _ := os.ReadFile(filepath.Join("..", "database", "schema.sqlite.sql"))
 	db.Exec(string(schema))
+	seedHandlerTestActors(t, db)
 	db.Exec(`INSERT INTO organizations (uuid, handle, display_name, region, idp_organization_ref_uuid, created_at, updated_at)
 		VALUES ('org-dep-it', 'org-dep', 'Org Dep', 'default', 'idp-ref', datetime('now'), datetime('now'))`)
 
@@ -786,6 +787,7 @@ func TestSecretRepo_CiphertextStoredNotPlaintext(t *testing.T) {
 
 	schema, _ := os.ReadFile(filepath.Join("..", "database", "schema.sqlite.sql"))
 	db.Exec(string(schema))
+	seedHandlerTestActors(t, db)
 	db.Exec(`INSERT INTO organizations (uuid, handle, display_name, region, idp_organization_ref_uuid, created_at, updated_at)
 		VALUES ('org-ct-001', 'org-ct', 'Org CT', 'default', 'idp-ref', datetime('now'), datetime('now'))`)
 
@@ -825,6 +827,7 @@ func TestSecretRepo_ProviderIsInBuilt(t *testing.T) {
 
 	schema, _ := os.ReadFile(filepath.Join("..", "database", "schema.sqlite.sql"))
 	db.Exec(string(schema))
+	seedHandlerTestActors(t, db)
 	db.Exec(`INSERT INTO organizations (uuid, handle, display_name, region, idp_organization_ref_uuid, created_at, updated_at)
 		VALUES ('org-prov-001', 'org-prov', 'Org Prov', 'default', 'idp-ref', datetime('now'), datetime('now'))`)
 
@@ -861,6 +864,7 @@ func TestSecretService_DecryptReturnsOriginalPlaintext(t *testing.T) {
 
 	schema, _ := os.ReadFile(filepath.Join("..", "database", "schema.sqlite.sql"))
 	db.Exec(string(schema))
+	seedHandlerTestActors(t, db)
 	db.Exec(`INSERT INTO organizations (uuid, handle, display_name, region, idp_organization_ref_uuid, created_at, updated_at)
 		VALUES ('org-dec-001', 'org-dec', 'Org Dec', 'default', 'idp-ref', datetime('now'), datetime('now'))`)
 
@@ -897,6 +901,7 @@ func TestSecretService_ValidateSecretRefs_DeprecatedHandleRejected(t *testing.T)
 
 	schema, _ := os.ReadFile(filepath.Join("..", "database", "schema.sqlite.sql"))
 	db.Exec(string(schema))
+	seedHandlerTestActors(t, db)
 	db.Exec(`INSERT INTO organizations (uuid, handle, display_name, region, idp_organization_ref_uuid, created_at, updated_at)
 		VALUES ('org-val-it', 'org-val', 'Org Val', 'default', 'idp-ref', datetime('now'), datetime('now'))`)
 

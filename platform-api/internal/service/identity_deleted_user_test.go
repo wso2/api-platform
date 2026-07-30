@@ -24,6 +24,7 @@
 package service
 
 import (
+	"context"
 	"database/sql"
 	"os"
 	"path/filepath"
@@ -42,6 +43,33 @@ import (
 // setupIdentityTestDB creates a real SQLite-backed DB plus a real
 // IdentityService for tests that need genuine sub<->UUID mapping rows
 // (as opposed to the passthroughIdentityRepo used elsewhere in this package).
+// deleteUserIDPReferenceIgnoringFK mimics forcefully removing a user by
+// deleting their user_idp_references row, for tests exercising the
+// DeletedUser read-side fallback against a pre-FK dangling reference. The
+// created_by/updated_by FK now forbids this for new writes, so it's disabled
+// for the delete — on a single held connection, since SQLite's
+// PRAGMA foreign_keys is per-connection and database/sql pools connections,
+// so a separate Exec per statement could silently run on different
+// connections and leave the pragma toggle without effect.
+func deleteUserIDPReferenceIgnoringFK(t *testing.T, db *database.DB, idpID string) {
+	t.Helper()
+	conn, err := db.Conn(context.Background())
+	if err != nil {
+		t.Fatalf("failed to acquire connection: %v", err)
+	}
+	defer conn.Close()
+
+	if _, err := conn.ExecContext(context.Background(), "PRAGMA foreign_keys = OFF"); err != nil {
+		t.Fatalf("failed to disable foreign keys: %v", err)
+	}
+	if _, err := conn.ExecContext(context.Background(), `DELETE FROM user_idp_references WHERE idp_id = ?`, idpID); err != nil {
+		t.Fatalf("failed to delete user_idp_references row: %v", err)
+	}
+	if _, err := conn.ExecContext(context.Background(), "PRAGMA foreign_keys = ON"); err != nil {
+		t.Fatalf("failed to re-enable foreign keys: %v", err)
+	}
+}
+
 func setupIdentityTestDB(t *testing.T) (*database.DB, *IdentityService, func()) {
 	t.Helper()
 
@@ -203,10 +231,7 @@ func TestAPIService_ModelToRESTAPI_DeletedUser(t *testing.T) {
 		t.Fatalf("expected updatedBy to resolve to sub-to-delete before delete, got %v", before.UpdatedBy)
 	}
 
-	// Mimic forcefully removing the user: delete their user_idp_references row.
-	if _, err := db.Exec(`DELETE FROM user_idp_references WHERE idp_id = 'sub-to-delete'`); err != nil {
-		t.Fatalf("failed to delete user_idp_references row: %v", err)
-	}
+	deleteUserIDPReferenceIgnoringFK(t, db, "sub-to-delete")
 
 	// Re-fetch from the DB (fresh model instance) rather than reusing apiModel,
 	// so this exercises the same read path a real GET request would take.
@@ -287,9 +312,7 @@ func TestAPIService_GetAPIsByOrganization_BatchResolvesDeletedUser(t *testing.T)
 		}
 	}
 
-	if _, err := db.Exec(`DELETE FROM user_idp_references WHERE idp_id = 'sub-list-removed'`); err != nil {
-		t.Fatalf("failed to delete user_idp_references row: %v", err)
-	}
+	deleteUserIDPReferenceIgnoringFK(t, db, "sub-list-removed")
 
 	apiSvc := &APIService{
 		apiRepo:     apiRepo,

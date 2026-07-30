@@ -65,6 +65,7 @@ func setupLLMSecretTestEnv(t *testing.T, orgID string) (*SecretService, func()) 
 	if _, err = db.Exec(string(schema)); err != nil {
 		t.Fatalf("apply schema: %v", err)
 	}
+	seedServiceTestActors(t, db)
 
 	_, err = db.Exec(`INSERT INTO organizations (uuid, handle, display_name, region, idp_organization_ref_uuid, created_at, updated_at)
 		VALUES (?, 'llm-org', 'LLM Org', 'default', 'idp-ref', datetime('now'), datetime('now'))`, orgID)

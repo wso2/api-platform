@@ -166,7 +166,12 @@ func (s *ApplicationService) CreateApplication(req *api.CreateApplicationRequest
 	if err := s.appRepo.CreateApplication(app); err != nil {
 		return nil, err
 	}
-	_ = s.auditRepo.Record("CREATE", app.UUID, "application", orgID, actor)
+	// actor is only empty on the Developer Portal webhook path (via
+	// CreateApplicationFromWebhook), which has no JWT-backed identity to
+	// attribute — skip the audit row rather than writing one with no actor.
+	if actor != "" {
+		_ = s.auditRepo.Record("CREATE", app.UUID, "application", orgID, actor)
+	}
 
 	return s.modelToApplicationResponse(app)
 }
@@ -299,7 +304,11 @@ func (s *ApplicationService) UpdateApplication(appIDOrHandle string, req *api.Ap
 	if err := s.appRepo.UpdateApplication(app); err != nil {
 		return nil, err
 	}
-	_ = s.auditRepo.Record("UPDATE", app.UUID, "application", app.OrganizationUUID, userID)
+	// userID is only empty on the Developer Portal webhook path — see the
+	// comment in CreateApplication.
+	if userID != "" {
+		_ = s.auditRepo.Record("UPDATE", app.UUID, "application", app.OrganizationUUID, userID)
+	}
 
 	broadcastKeys, err := s.listMappedAPIKeysForBroadcast(app.UUID)
 	if err != nil {
@@ -335,7 +344,11 @@ func (s *ApplicationService) DeleteApplication(appIDOrHandle, orgID, actor strin
 	if err := s.appRepo.DeleteApplication(app.UUID, orgID); err != nil {
 		return err
 	}
-	_ = s.auditRepo.Record("DELETE", app.UUID, "application", orgID, actor)
+	// actor is only empty on the Developer Portal webhook path — see the
+	// comment in CreateApplication.
+	if actor != "" {
+		_ = s.auditRepo.Record("DELETE", app.UUID, "application", orgID, actor)
+	}
 
 	// Broadcast an empty mapping set so the gateways clear every key for this application. The
 	// removed keys' artifacts are passed as hints so the correct gateways are targeted (the

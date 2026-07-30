@@ -79,6 +79,7 @@ func setupGatewaySecretTestEnv(t *testing.T) (*gatewaySecretTestEnv, func()) {
 	if _, err = db.Exec(string(schema)); err != nil {
 		t.Fatalf("apply schema: %v", err)
 	}
+	seedHandlerTestActors(t, db)
 
 	const orgID = "org-gw-001"
 	const gatewayID = "gw-001"

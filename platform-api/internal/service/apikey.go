@@ -521,7 +521,12 @@ func (s *APIKeyService) CreateAPIKey(ctx context.Context, apiHandle, kind, orgId
 		s.slogger.Error("Failed to persist API key to database", "apiHandle", apiHandle, "keyName", keyName, "error", err)
 		return fmt.Errorf("failed to persist API key: %w", err)
 	}
-	_ = s.auditRepo.Record("CREATE", apiKeyUUID, "api_key", orgId, userId)
+	// userId is only empty on the Developer Portal webhook path, which has no
+	// JWT-backed identity to attribute — skip the audit row rather than
+	// writing one with no real actor.
+	if userId != "" {
+		_ = s.auditRepo.Record("CREATE", apiKeyUUID, "api_key", orgId, userId)
+	}
 
 	// Build the API key created event — send the hash JSON and masked key, not the plain key
 	event := APIKeyCreatedEventFromModel(dbKey)
@@ -631,7 +636,9 @@ func (s *APIKeyService) UpdateAPIKey(ctx context.Context, apiHandle, kind, orgId
 		s.slogger.Error("Failed to update API key in database", "apiHandle", apiHandle, "keyName", keyName, "error", err)
 		return fmt.Errorf("failed to update API key in database: %w", err)
 	}
-	if s.auditRepo != nil {
+	// userId is only empty on the Developer Portal webhook path — see the
+	// comment in CreateAPIKey.
+	if s.auditRepo != nil && userId != "" {
 		_ = s.auditRepo.Record("UPDATE", existingKey.UUID, "api_key", orgId, userId)
 	}
 
@@ -733,7 +740,9 @@ func (s *APIKeyService) RevokeAPIKey(ctx context.Context, apiHandle, kind, orgId
 		s.slogger.Error("Failed to revoke API key in database", "apiHandle", apiHandle, "keyName", keyName, "error", err)
 		return fmt.Errorf("failed to revoke API key in database: %w", err)
 	}
-	if s.auditRepo != nil {
+	// userId is only empty on the Developer Portal webhook path — see the
+	// comment in CreateAPIKey.
+	if s.auditRepo != nil && userId != "" {
 		_ = s.auditRepo.Record("REVOKE", revokeKey.UUID, "api_key", orgId, userId)
 	}
 

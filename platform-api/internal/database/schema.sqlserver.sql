@@ -15,6 +15,18 @@
  *
  */
 
+-- Maps our internal user UUID to the IdP identity; audit columns FK to uuid.
+-- ('', '') is the reserved unattributed-actor row and can never collide with a real idp_id.
+IF OBJECT_ID(N'dbo.user_idp_references', N'U') IS NULL
+CREATE TABLE dbo.user_idp_references (
+    uuid       VARCHAR(40)  PRIMARY KEY,
+    idp_id     VARCHAR(255) NOT NULL UNIQUE,
+    created_at DATETIME2(7) DEFAULT SYSUTCDATETIME()
+);
+
+IF NOT EXISTS (SELECT 1 FROM dbo.user_idp_references WHERE uuid = '')
+INSERT INTO dbo.user_idp_references (uuid, idp_id) VALUES ('', '');
+
 -- Organizations table
 IF OBJECT_ID(N'dbo.organizations', N'U') IS NULL
 CREATE TABLE dbo.organizations (
@@ -24,10 +36,12 @@ CREATE TABLE dbo.organizations (
     region VARCHAR(63) NOT NULL,
     idp_organization_ref_uuid VARCHAR(40) NOT NULL,
     data_version VARCHAR(20) NOT NULL DEFAULT '1.0',
-    created_by VARCHAR(200),
+    created_by VARCHAR(40),
     created_at DATETIME2(7) DEFAULT SYSUTCDATETIME(),
-    updated_by VARCHAR(200),
-    updated_at DATETIME2(7) DEFAULT SYSUTCDATETIME()
+    updated_by VARCHAR(40),
+    updated_at DATETIME2(7) DEFAULT SYSUTCDATETIME(),
+    CONSTRAINT fk_organizations_created_by FOREIGN KEY (created_by) REFERENCES dbo.user_idp_references(uuid),
+    CONSTRAINT fk_organizations_updated_by FOREIGN KEY (updated_by) REFERENCES dbo.user_idp_references(uuid)
 );
 
 -- Projects table
@@ -39,11 +53,13 @@ CREATE TABLE dbo.projects (
     organization_uuid VARCHAR(40) NOT NULL,
     description VARCHAR(1023),
     data_version VARCHAR(20) NOT NULL DEFAULT '1.0',
-    created_by VARCHAR(200),
+    created_by VARCHAR(40),
     created_at DATETIME2(7) DEFAULT SYSUTCDATETIME(),
-    updated_by VARCHAR(200),
+    updated_by VARCHAR(40),
     updated_at DATETIME2(7) DEFAULT SYSUTCDATETIME(),
     FOREIGN KEY (organization_uuid) REFERENCES organizations(uuid) ON DELETE CASCADE,
+    CONSTRAINT fk_projects_created_by FOREIGN KEY (created_by) REFERENCES dbo.user_idp_references(uuid),
+    CONSTRAINT fk_projects_updated_by FOREIGN KEY (updated_by) REFERENCES dbo.user_idp_references(uuid),
     UNIQUE(organization_uuid, handle)
 );
 
@@ -58,11 +74,13 @@ CREATE TABLE dbo.applications (
     description VARCHAR(1023),
     type VARCHAR(50) NOT NULL,
     data_version VARCHAR(20) NOT NULL DEFAULT '1.0',
-    created_by VARCHAR(200),
+    created_by VARCHAR(40),
     created_at DATETIME2(7) DEFAULT SYSUTCDATETIME(),
-    updated_by VARCHAR(200),
+    updated_by VARCHAR(40),
     updated_at DATETIME2(7) DEFAULT SYSUTCDATETIME(),
     FOREIGN KEY (organization_uuid) REFERENCES organizations(uuid) ON DELETE CASCADE,
+    CONSTRAINT fk_applications_created_by FOREIGN KEY (created_by) REFERENCES dbo.user_idp_references(uuid),
+    CONSTRAINT fk_applications_updated_by FOREIGN KEY (updated_by) REFERENCES dbo.user_idp_references(uuid),
     UNIQUE(organization_uuid, handle)
 );
 
@@ -92,15 +110,17 @@ CREATE TABLE dbo.rest_apis (
     configuration VARBINARY(MAX) NOT NULL,
     data_version VARCHAR(20) NOT NULL DEFAULT '1.0',
     origin VARCHAR(20) NOT NULL DEFAULT 'control_plane',
-    created_by VARCHAR(200),
+    created_by VARCHAR(40),
     created_at DATETIME2(7) DEFAULT SYSUTCDATETIME(),
-    updated_by VARCHAR(200),
+    updated_by VARCHAR(40),
     updated_at DATETIME2(7) DEFAULT SYSUTCDATETIME(),
     FOREIGN KEY (uuid) REFERENCES artifacts(uuid) ON DELETE CASCADE,
     -- NO ACTION to avoid SQL Server multiple-cascade-paths restriction (error 1785).
     -- Rows are removed via the artifact CASCADE edge.
     FOREIGN KEY (organization_uuid) REFERENCES organizations(uuid) ON DELETE NO ACTION,
     FOREIGN KEY (project_uuid) REFERENCES projects(uuid) ON DELETE CASCADE,
+    CONSTRAINT fk_rest_apis_created_by FOREIGN KEY (created_by) REFERENCES dbo.user_idp_references(uuid),
+    CONSTRAINT fk_rest_apis_updated_by FOREIGN KEY (updated_by) REFERENCES dbo.user_idp_references(uuid),
     UNIQUE(organization_uuid, handle)
 );
 
@@ -115,11 +135,13 @@ CREATE TABLE dbo.subscription_plans (
     organization_uuid VARCHAR(40) NOT NULL,
     status VARCHAR(20) NOT NULL DEFAULT 'ACTIVE',
     data_version VARCHAR(20) NOT NULL DEFAULT '1.0',
-    created_by VARCHAR(200),
+    created_by VARCHAR(40),
     created_at DATETIME2(7) DEFAULT SYSUTCDATETIME(),
-    updated_by VARCHAR(200),
+    updated_by VARCHAR(40),
     updated_at DATETIME2(7) DEFAULT SYSUTCDATETIME(),
     FOREIGN KEY (organization_uuid) REFERENCES organizations(uuid) ON DELETE CASCADE,
+    CONSTRAINT fk_subscription_plans_created_by FOREIGN KEY (created_by) REFERENCES dbo.user_idp_references(uuid),
+    CONSTRAINT fk_subscription_plans_updated_by FOREIGN KEY (updated_by) REFERENCES dbo.user_idp_references(uuid),
     UNIQUE(organization_uuid, handle)
 );
 
@@ -145,11 +167,12 @@ IF OBJECT_ID(N'dbo.artifact_subscription_plans', N'U') IS NULL
 CREATE TABLE dbo.artifact_subscription_plans (
     artifact_uuid VARCHAR(40) NOT NULL,
     subscription_plan_uuid VARCHAR(40) NOT NULL,
-    created_by VARCHAR(200),
+    created_by VARCHAR(40),
     created_at DATETIME2(7) DEFAULT SYSUTCDATETIME(),
     PRIMARY KEY (artifact_uuid, subscription_plan_uuid),
     FOREIGN KEY (artifact_uuid) REFERENCES artifacts(uuid) ON DELETE CASCADE,
-    FOREIGN KEY (subscription_plan_uuid) REFERENCES subscription_plans(uuid) ON DELETE CASCADE
+    FOREIGN KEY (subscription_plan_uuid) REFERENCES subscription_plans(uuid) ON DELETE CASCADE,
+    CONSTRAINT fk_artifact_subscription_plans_created_by FOREIGN KEY (created_by) REFERENCES dbo.user_idp_references(uuid)
 );
 
 -- Subscriptions table (application-level subscriptions for any artifact type)
@@ -167,9 +190,9 @@ CREATE TABLE dbo.subscriptions (
     organization_uuid VARCHAR(40) NOT NULL,
     status VARCHAR(20) NOT NULL DEFAULT 'ACTIVE',
     data_version VARCHAR(20) NOT NULL DEFAULT '1.0',
-    created_by VARCHAR(200),
+    created_by VARCHAR(40),
     created_at DATETIME2(7) DEFAULT SYSUTCDATETIME(),
-    updated_by VARCHAR(200),
+    updated_by VARCHAR(40),
     updated_at DATETIME2(7) DEFAULT SYSUTCDATETIME(),
     FOREIGN KEY (artifact_uuid) REFERENCES artifacts(uuid) ON DELETE CASCADE,
     -- NO ACTION on the organization and artifact+org edges to avoid the SQL Server
@@ -180,6 +203,8 @@ CREATE TABLE dbo.subscriptions (
     FOREIGN KEY (subscription_plan_uuid) REFERENCES subscription_plans(uuid) ON DELETE NO ACTION,
     FOREIGN KEY (artifact_uuid, organization_uuid)
         REFERENCES artifacts(uuid, organization_uuid) ON DELETE NO ACTION,
+    CONSTRAINT fk_subscriptions_created_by FOREIGN KEY (created_by) REFERENCES dbo.user_idp_references(uuid),
+    CONSTRAINT fk_subscriptions_updated_by FOREIGN KEY (updated_by) REFERENCES dbo.user_idp_references(uuid),
     UNIQUE(artifact_uuid, subscription_token_hash)
 );
 IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = N'idx_subscriptions_token' AND object_id = OBJECT_ID(N'dbo.subscriptions'))
@@ -210,11 +235,13 @@ CREATE TABLE dbo.gateways (
     is_active SMALLINT DEFAULT 0,
     is_critical SMALLINT DEFAULT 0,
     data_version VARCHAR(20) NOT NULL DEFAULT '1.0',
-    created_by VARCHAR(200),
+    created_by VARCHAR(40),
     created_at DATETIME2(7) DEFAULT SYSUTCDATETIME(),
-    updated_by VARCHAR(200),
+    updated_by VARCHAR(40),
     updated_at DATETIME2(7) DEFAULT SYSUTCDATETIME(),
     FOREIGN KEY (organization_uuid) REFERENCES organizations(uuid) ON DELETE CASCADE,
+    CONSTRAINT fk_gateways_created_by FOREIGN KEY (created_by) REFERENCES dbo.user_idp_references(uuid),
+    CONSTRAINT fk_gateways_updated_by FOREIGN KEY (updated_by) REFERENCES dbo.user_idp_references(uuid),
     UNIQUE(organization_uuid, handle)
 );
 
@@ -236,16 +263,18 @@ CREATE TABLE dbo.artifact_gateway_mappings (
     organization_uuid VARCHAR(40) NOT NULL,
     gateway_uuid VARCHAR(40) NOT NULL,
     metadata VARBINARY(MAX),
-    created_by VARCHAR(200),
+    created_by VARCHAR(40),
     created_at DATETIME2(7) DEFAULT SYSUTCDATETIME(),
-    updated_by VARCHAR(200),
+    updated_by VARCHAR(40),
     updated_at DATETIME2(7) DEFAULT SYSUTCDATETIME(),
     PRIMARY KEY (organization_uuid, artifact_uuid, gateway_uuid),
     FOREIGN KEY (artifact_uuid) REFERENCES artifacts(uuid) ON DELETE CASCADE,
     -- NO ACTION to avoid SQL Server multiple-cascade-paths restriction (error 1785).
     -- Rows are cleaned up via the artifact CASCADE edge.
     FOREIGN KEY (organization_uuid) REFERENCES organizations(uuid) ON DELETE NO ACTION,
-    FOREIGN KEY (gateway_uuid) REFERENCES gateways(uuid) ON DELETE NO ACTION
+    FOREIGN KEY (gateway_uuid) REFERENCES gateways(uuid) ON DELETE NO ACTION,
+    CONSTRAINT fk_artifact_gateway_mappings_created_by FOREIGN KEY (created_by) REFERENCES dbo.user_idp_references(uuid),
+    CONSTRAINT fk_artifact_gateway_mappings_updated_by FOREIGN KEY (updated_by) REFERENCES dbo.user_idp_references(uuid)
 );
 
 -- Gateway Custom Policies table (org-scoped custom policies synced from gateway manifests)
@@ -259,11 +288,13 @@ CREATE TABLE dbo.gateway_custom_policies (
     description VARCHAR(1023),
     policy_definition VARBINARY(MAX),
     data_version VARCHAR(20) NOT NULL DEFAULT '1.0',
-    created_by VARCHAR(200),
+    created_by VARCHAR(40),
     created_at DATETIME2(7) DEFAULT SYSUTCDATETIME(),
-    updated_by VARCHAR(200),
+    updated_by VARCHAR(40),
     updated_at DATETIME2(7) DEFAULT SYSUTCDATETIME(),
     FOREIGN KEY (organization_uuid) REFERENCES organizations(uuid) ON DELETE CASCADE,
+    CONSTRAINT fk_gateway_custom_policies_created_by FOREIGN KEY (created_by) REFERENCES dbo.user_idp_references(uuid),
+    CONSTRAINT fk_gateway_custom_policies_updated_by FOREIGN KEY (updated_by) REFERENCES dbo.user_idp_references(uuid),
     UNIQUE(organization_uuid, name, version)
 );
 
@@ -286,11 +317,13 @@ CREATE TABLE dbo.gateway_tokens (
     salt VARCHAR(255) NOT NULL,
     status VARCHAR(20) NOT NULL DEFAULT 'active',
     data_version VARCHAR(20) NOT NULL DEFAULT '1.0',
-    created_by VARCHAR(200),
+    created_by VARCHAR(40),
     created_at DATETIME2(7) DEFAULT SYSUTCDATETIME(),
-    revoked_by VARCHAR(200),
+    revoked_by VARCHAR(40),
     revoked_at DATETIME2(7),
-    FOREIGN KEY (gateway_uuid) REFERENCES gateways(uuid) ON DELETE CASCADE
+    FOREIGN KEY (gateway_uuid) REFERENCES gateways(uuid) ON DELETE CASCADE,
+    CONSTRAINT fk_gateway_tokens_created_by FOREIGN KEY (created_by) REFERENCES dbo.user_idp_references(uuid),
+    CONSTRAINT fk_gateway_tokens_revoked_by FOREIGN KEY (revoked_by) REFERENCES dbo.user_idp_references(uuid)
 );
 
 -- Artifact Deployments table (immutable deployment artifacts)
@@ -305,7 +338,7 @@ CREATE TABLE dbo.deployments (
     content VARBINARY(MAX) NOT NULL,
     metadata VARBINARY(MAX),
     data_version VARCHAR(20) NOT NULL DEFAULT '1.0',
-    created_by VARCHAR(200),
+    created_by VARCHAR(40),
     created_at DATETIME2(7) DEFAULT SYSUTCDATETIME(),
     FOREIGN KEY (artifact_uuid) REFERENCES artifacts(uuid) ON DELETE CASCADE,
     -- NO ACTION to avoid the SQL Server multiple-cascade-paths restriction
@@ -318,7 +351,8 @@ CREATE TABLE dbo.deployments (
     -- artifact/gateway are deleted together in a single statement (or via the
     -- artifact/gateway CASCADE), so the referenced base row is removed in the
     -- same operation and no dangling reference remains.
-    FOREIGN KEY (base_deployment_uuid) REFERENCES deployments(uuid) ON DELETE NO ACTION
+    FOREIGN KEY (base_deployment_uuid) REFERENCES deployments(uuid) ON DELETE NO ACTION,
+    CONSTRAINT fk_deployments_created_by FOREIGN KEY (created_by) REFERENCES dbo.user_idp_references(uuid)
 );
 
 -- Artifact Deployment Status table (current deployment state per artifact+Gateway)
@@ -331,7 +365,7 @@ CREATE TABLE dbo.deployment_status (
     status VARCHAR(20) NOT NULL DEFAULT 'DEPLOYED',
     status_desired VARCHAR(20),
     performed_at DATETIME2(7) DEFAULT SYSUTCDATETIME(),
-    performed_by VARCHAR(200),
+    performed_by VARCHAR(40),
     status_reason VARCHAR(50),
     updated_at DATETIME2(7) DEFAULT SYSUTCDATETIME(),
     PRIMARY KEY (organization_uuid, artifact_uuid, gateway_uuid),
@@ -344,7 +378,8 @@ CREATE TABLE dbo.deployment_status (
     FOREIGN KEY (artifact_uuid) REFERENCES artifacts(uuid) ON DELETE NO ACTION,
     FOREIGN KEY (organization_uuid) REFERENCES organizations(uuid) ON DELETE NO ACTION,
     FOREIGN KEY (gateway_uuid) REFERENCES gateways(uuid) ON DELETE NO ACTION,
-    FOREIGN KEY (deployment_uuid) REFERENCES deployments(uuid) ON DELETE CASCADE
+    FOREIGN KEY (deployment_uuid) REFERENCES deployments(uuid) ON DELETE CASCADE,
+    CONSTRAINT fk_deployment_status_performed_by FOREIGN KEY (performed_by) REFERENCES dbo.user_idp_references(uuid)
 );
 
 -- LLM Provider Templates table
@@ -364,11 +399,13 @@ CREATE TABLE dbo.llm_provider_templates (
     enabled SMALLINT NOT NULL DEFAULT 1,
     data_version VARCHAR(20) NOT NULL DEFAULT '1.0',
     origin VARCHAR(20) NOT NULL DEFAULT 'control_plane',
-    created_by VARCHAR(200),
+    created_by VARCHAR(40),
     created_at DATETIME2(7) DEFAULT SYSUTCDATETIME(),
-    updated_by VARCHAR(200),
+    updated_by VARCHAR(40),
     updated_at DATETIME2(7) DEFAULT SYSUTCDATETIME(),
     FOREIGN KEY (organization_uuid) REFERENCES organizations(uuid) ON DELETE CASCADE,
+    CONSTRAINT fk_llm_provider_templates_created_by FOREIGN KEY (created_by) REFERENCES dbo.user_idp_references(uuid),
+    CONSTRAINT fk_llm_provider_templates_updated_by FOREIGN KEY (updated_by) REFERENCES dbo.user_idp_references(uuid),
     UNIQUE(organization_uuid, group_id, version),
     UNIQUE(organization_uuid, handle)
 );
@@ -387,15 +424,17 @@ CREATE TABLE dbo.llm_providers (
     configuration VARBINARY(MAX) NOT NULL,
     data_version VARCHAR(20) NOT NULL DEFAULT '1.0',
     origin VARCHAR(20) NOT NULL DEFAULT 'control_plane',
-    created_by VARCHAR(200),
+    created_by VARCHAR(40),
     created_at DATETIME2(7) DEFAULT SYSUTCDATETIME(),
-    updated_by VARCHAR(200),
+    updated_by VARCHAR(40),
     updated_at DATETIME2(7) DEFAULT SYSUTCDATETIME(),
     organization_uuid VARCHAR(40) NOT NULL,
     FOREIGN KEY (uuid) REFERENCES artifacts(uuid) ON DELETE CASCADE,
     -- NO ACTION to avoid SQL Server multiple-cascade-paths restriction (error 1785).
     FOREIGN KEY (organization_uuid) REFERENCES organizations(uuid) ON DELETE NO ACTION,
     FOREIGN KEY (template_uuid) REFERENCES llm_provider_templates(uuid) ON DELETE NO ACTION,
+    CONSTRAINT fk_llm_providers_created_by FOREIGN KEY (created_by) REFERENCES dbo.user_idp_references(uuid),
+    CONSTRAINT fk_llm_providers_updated_by FOREIGN KEY (updated_by) REFERENCES dbo.user_idp_references(uuid),
     UNIQUE(organization_uuid, handle)
 );
 
@@ -413,9 +452,9 @@ CREATE TABLE dbo.llm_proxies (
     configuration VARBINARY(MAX) NOT NULL,
     data_version VARCHAR(20) NOT NULL DEFAULT '1.0',
     origin VARCHAR(20) NOT NULL DEFAULT 'control_plane',
-    created_by VARCHAR(200),
+    created_by VARCHAR(40),
     created_at DATETIME2(7) DEFAULT SYSUTCDATETIME(),
-    updated_by VARCHAR(200),
+    updated_by VARCHAR(40),
     updated_at DATETIME2(7) DEFAULT SYSUTCDATETIME(),
     organization_uuid VARCHAR(40) NOT NULL,
     FOREIGN KEY (uuid) REFERENCES artifacts(uuid) ON DELETE CASCADE,
@@ -423,6 +462,8 @@ CREATE TABLE dbo.llm_proxies (
     FOREIGN KEY (organization_uuid) REFERENCES organizations(uuid) ON DELETE NO ACTION,
     FOREIGN KEY (project_uuid) REFERENCES projects(uuid) ON DELETE CASCADE,
     FOREIGN KEY (provider_uuid) REFERENCES llm_providers(uuid) ON DELETE NO ACTION,
+    CONSTRAINT fk_llm_proxies_created_by FOREIGN KEY (created_by) REFERENCES dbo.user_idp_references(uuid),
+    CONSTRAINT fk_llm_proxies_updated_by FOREIGN KEY (updated_by) REFERENCES dbo.user_idp_references(uuid),
     UNIQUE(organization_uuid, handle)
 );
 
@@ -438,15 +479,17 @@ CREATE TABLE dbo.mcp_proxies (
     configuration VARBINARY(MAX) NOT NULL,
     data_version VARCHAR(20) NOT NULL DEFAULT '1.0',
     origin VARCHAR(20) NOT NULL DEFAULT 'control_plane',
-    created_by VARCHAR(200),
+    created_by VARCHAR(40),
     created_at DATETIME2(7) DEFAULT SYSUTCDATETIME(),
-    updated_by VARCHAR(200),
+    updated_by VARCHAR(40),
     updated_at DATETIME2(7) DEFAULT SYSUTCDATETIME(),
     organization_uuid VARCHAR(40) NOT NULL,
     FOREIGN KEY (uuid) REFERENCES artifacts(uuid) ON DELETE CASCADE,
     -- NO ACTION to avoid SQL Server multiple-cascade-paths restriction (error 1785).
     FOREIGN KEY (organization_uuid) REFERENCES organizations(uuid) ON DELETE NO ACTION,
     FOREIGN KEY (project_uuid) REFERENCES projects(uuid) ON DELETE CASCADE,
+    CONSTRAINT fk_mcp_proxies_created_by FOREIGN KEY (created_by) REFERENCES dbo.user_idp_references(uuid),
+    CONSTRAINT fk_mcp_proxies_updated_by FOREIGN KEY (updated_by) REFERENCES dbo.user_idp_references(uuid),
     UNIQUE(organization_uuid, handle)
 );
 
@@ -460,14 +503,16 @@ CREATE TABLE dbo.api_keys (
     api_key_hashes VARBINARY(MAX) NOT NULL,
     status VARCHAR(20) NOT NULL DEFAULT 'active',
     data_version VARCHAR(20) NOT NULL DEFAULT '1.0',
-    created_by VARCHAR(200),
+    created_by VARCHAR(40),
     created_at DATETIME2(7) DEFAULT SYSUTCDATETIME(),
-    updated_by VARCHAR(200),
+    updated_by VARCHAR(40),
     updated_at DATETIME2(7) DEFAULT SYSUTCDATETIME(),
     expires_at DATETIME2(7),
     issuer VARCHAR(255) NULL DEFAULT NULL,
     allowed_targets VARCHAR(255) NOT NULL DEFAULT 'ALL',
     FOREIGN KEY (artifact_uuid) REFERENCES artifacts(uuid) ON DELETE CASCADE,
+    CONSTRAINT fk_api_keys_created_by FOREIGN KEY (created_by) REFERENCES dbo.user_idp_references(uuid),
+    CONSTRAINT fk_api_keys_updated_by FOREIGN KEY (updated_by) REFERENCES dbo.user_idp_references(uuid),
     UNIQUE(artifact_uuid, handle)
 );
 
@@ -476,11 +521,12 @@ IF OBJECT_ID(N'dbo.application_api_key_mappings', N'U') IS NULL
 CREATE TABLE dbo.application_api_key_mappings (
     application_uuid VARCHAR(40) NOT NULL,
     api_key_id VARCHAR(40) NOT NULL,
-    created_by VARCHAR(200),
+    created_by VARCHAR(40),
     created_at DATETIME2(7) DEFAULT SYSUTCDATETIME(),
     PRIMARY KEY (application_uuid, api_key_id),
     FOREIGN KEY (application_uuid) REFERENCES applications(uuid) ON DELETE CASCADE,
-    FOREIGN KEY (api_key_id) REFERENCES api_keys(uuid) ON DELETE CASCADE
+    FOREIGN KEY (api_key_id) REFERENCES api_keys(uuid) ON DELETE CASCADE,
+    CONSTRAINT fk_application_api_key_mappings_created_by FOREIGN KEY (created_by) REFERENCES dbo.user_idp_references(uuid)
 );
 
 -- Application to artifacts mapping table
@@ -488,11 +534,12 @@ IF OBJECT_ID(N'dbo.application_artifact_mappings', N'U') IS NULL
 CREATE TABLE dbo.application_artifact_mappings (
     application_uuid VARCHAR(40) NOT NULL,
     artifact_uuid VARCHAR(40) NOT NULL,
-    created_by VARCHAR(200),
+    created_by VARCHAR(40),
     created_at DATETIME2(7) DEFAULT SYSUTCDATETIME(),
     PRIMARY KEY (application_uuid, artifact_uuid),
     FOREIGN KEY (application_uuid) REFERENCES applications(uuid) ON DELETE CASCADE,
-    FOREIGN KEY (artifact_uuid) REFERENCES artifacts(uuid) ON DELETE CASCADE
+    FOREIGN KEY (artifact_uuid) REFERENCES artifacts(uuid) ON DELETE CASCADE,
+    CONSTRAINT fk_application_artifact_mappings_created_by FOREIGN KEY (created_by) REFERENCES dbo.user_idp_references(uuid)
 );
 
 -- Indexes for better performance
@@ -623,9 +670,10 @@ CREATE TABLE dbo.audit (
     resource_uuid VARCHAR(40) NOT NULL,
     resource_type VARCHAR(50),
     organization_uuid VARCHAR(40) NOT NULL,
-    performed_by VARCHAR(200),
+    performed_by VARCHAR(40),
     performed_at DATETIME2(7) DEFAULT SYSUTCDATETIME(),
-    FOREIGN KEY (organization_uuid) REFERENCES organizations(uuid) ON DELETE CASCADE
+    FOREIGN KEY (organization_uuid) REFERENCES organizations(uuid) ON DELETE CASCADE,
+    CONSTRAINT fk_audit_performed_by FOREIGN KEY (performed_by) REFERENCES dbo.user_idp_references(uuid)
 );
 
 IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = N'idx_artifact_gateway_mappings_artifact' AND object_id = OBJECT_ID(N'dbo.artifact_gateway_mappings'))
@@ -650,11 +698,13 @@ CREATE TABLE dbo.secrets (
     provider          VARCHAR(20)    NOT NULL DEFAULT 'IN_BUILT',
     status            VARCHAR(20)    NOT NULL DEFAULT 'ACTIVE',
     created_at        DATETIME2(7)   NOT NULL DEFAULT SYSUTCDATETIME(),
-    created_by        VARCHAR(255),
+    created_by        VARCHAR(40),
     updated_at        DATETIME2(7)   NOT NULL DEFAULT SYSUTCDATETIME(),
-    updated_by        VARCHAR(255),
+    updated_by        VARCHAR(40),
     CONSTRAINT uq_secrets_org_handle UNIQUE (organization_uuid, handle),
-    CONSTRAINT fk_secrets_org FOREIGN KEY (organization_uuid) REFERENCES dbo.organizations(uuid) ON DELETE CASCADE
+    CONSTRAINT fk_secrets_org FOREIGN KEY (organization_uuid) REFERENCES dbo.organizations(uuid) ON DELETE CASCADE,
+    CONSTRAINT fk_secrets_created_by FOREIGN KEY (created_by) REFERENCES dbo.user_idp_references(uuid),
+    CONSTRAINT fk_secrets_updated_by FOREIGN KEY (updated_by) REFERENCES dbo.user_idp_references(uuid)
 );
 
 IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = N'idx_secrets_updated_at' AND object_id = OBJECT_ID(N'dbo.secrets'))
@@ -690,15 +740,6 @@ CREATE INDEX idx_asr_org_handle ON dbo.artifact_secret_refs(organization_uuid, s
 
 IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = N'idx_asr_org_gateway' AND object_id = OBJECT_ID(N'dbo.artifact_secret_refs'))
 CREATE INDEX idx_asr_org_gateway ON dbo.artifact_secret_refs(organization_uuid, gateway_id);
-
--- Maps our internal user UUID to the IdP actor identity. Audit columns store the
--- UUID; responses/events resolve it back to idp_id. No FK; no empty-idp_id rows.
-IF OBJECT_ID(N'dbo.user_idp_references', N'U') IS NULL
-CREATE TABLE dbo.user_idp_references (
-    uuid       VARCHAR(40)  PRIMARY KEY,
-    idp_id     VARCHAR(255) NOT NULL UNIQUE,
-    created_at DATETIME2(7) DEFAULT SYSUTCDATETIME()
-);
 
 -- User-to-organization membership, populated on org onboarding.
 IF OBJECT_ID(N'dbo.user_organization_mappings', N'U') IS NULL

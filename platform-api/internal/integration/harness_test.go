@@ -115,7 +115,25 @@ func openITDB(t *testing.T) *itDB {
 	if err := db.InitSchema("../database/schema.sql", logger); err != nil {
 		t.Fatalf("InitSchema (%s) failed: %v", driver, err)
 	}
+	seedITTestActors(t, db)
 	return &itDB{driver: driver, db: db}
+}
+
+// seedITTestActors inserts every literal actor string used as a
+// created_by/updated_by fixture value across the integration tests, so
+// those fixtures satisfy the created_by/updated_by foreign key to
+// user_idp_references(uuid). Unlike SQLite's fresh-tempdir-per-test database,
+// Postgres/SQL Server connect to one long-lived database shared across every
+// test in the run, so this must tolerate a row already seeded by an earlier
+// test rather than failing on the resulting duplicate-key error.
+func seedITTestActors(t *testing.T, db *database.DB) {
+	t.Helper()
+	actors := []string{"it-user", "it-creator", "it-updater", "it-deployer", "it-revoker"}
+	for _, actor := range actors {
+		if _, err := db.Exec(db.Rebind(`INSERT INTO user_idp_references (uuid, idp_id) VALUES (?, ?)`), actor, actor); err != nil && !db.IsDuplicateKeyError(err) {
+			t.Fatalf("failed to seed test actor %q: %v", actor, err)
+		}
+	}
 }
 
 func connectITDB(t *testing.T, cfg *config.Database, logger *slog.Logger) *database.DB {

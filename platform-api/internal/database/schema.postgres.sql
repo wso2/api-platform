@@ -15,6 +15,16 @@
  *
  */
 
+-- Maps our internal user UUID to the IdP identity; audit columns FK to uuid.
+-- ('', '') is the reserved unattributed-actor row and can never collide with a real idp_id.
+CREATE TABLE IF NOT EXISTS user_idp_references (
+    uuid       VARCHAR(40)  PRIMARY KEY,
+    idp_id     VARCHAR(255) NOT NULL,
+    created_at TIMESTAMPTZ  DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE(idp_id)
+);
+INSERT INTO user_idp_references (uuid, idp_id) VALUES ('', '') ON CONFLICT (uuid) DO NOTHING;
+
 -- Organizations table
 CREATE TABLE IF NOT EXISTS organizations (
     uuid VARCHAR(40) PRIMARY KEY,
@@ -23,10 +33,12 @@ CREATE TABLE IF NOT EXISTS organizations (
     region VARCHAR(63) NOT NULL,
     idp_organization_ref_uuid VARCHAR(40) NOT NULL,
     data_version VARCHAR(20) NOT NULL DEFAULT '1.0',
-    created_by VARCHAR(200),
+    created_by VARCHAR(40),
     created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
-    updated_by VARCHAR(200),
-    updated_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
+    updated_by VARCHAR(40),
+    updated_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
+    CONSTRAINT fk_organizations_created_by FOREIGN KEY (created_by) REFERENCES user_idp_references(uuid),
+    CONSTRAINT fk_organizations_updated_by FOREIGN KEY (updated_by) REFERENCES user_idp_references(uuid)
 );
 
 
@@ -38,11 +50,13 @@ CREATE TABLE IF NOT EXISTS projects (
     organization_uuid VARCHAR(40) NOT NULL,
     description VARCHAR(1023),
     data_version VARCHAR(20) NOT NULL DEFAULT '1.0',
-    created_by VARCHAR(200),
+    created_by VARCHAR(40),
     created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
-    updated_by VARCHAR(200),
+    updated_by VARCHAR(40),
     updated_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
     FOREIGN KEY (organization_uuid) REFERENCES organizations(uuid) ON DELETE CASCADE,
+    CONSTRAINT fk_projects_created_by FOREIGN KEY (created_by) REFERENCES user_idp_references(uuid),
+    CONSTRAINT fk_projects_updated_by FOREIGN KEY (updated_by) REFERENCES user_idp_references(uuid),
     UNIQUE(organization_uuid, handle)
 );
 
@@ -56,11 +70,13 @@ CREATE TABLE IF NOT EXISTS applications (
     description VARCHAR(1023),
     type VARCHAR(50) NOT NULL,
     data_version VARCHAR(20) NOT NULL DEFAULT '1.0',
-    created_by VARCHAR(200),
+    created_by VARCHAR(40),
     created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
-    updated_by VARCHAR(200),
+    updated_by VARCHAR(40),
     updated_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
     FOREIGN KEY (organization_uuid) REFERENCES organizations(uuid) ON DELETE CASCADE,
+    CONSTRAINT fk_applications_created_by FOREIGN KEY (created_by) REFERENCES user_idp_references(uuid),
+    CONSTRAINT fk_applications_updated_by FOREIGN KEY (updated_by) REFERENCES user_idp_references(uuid),
     UNIQUE(organization_uuid, handle)
 );
 
@@ -88,13 +104,15 @@ CREATE TABLE IF NOT EXISTS rest_apis (
     configuration BYTEA NOT NULL,
     data_version VARCHAR(20) NOT NULL DEFAULT '1.0',
     origin VARCHAR(20) NOT NULL DEFAULT 'control_plane',
-    created_by VARCHAR(200),
+    created_by VARCHAR(40),
     created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
-    updated_by VARCHAR(200),
+    updated_by VARCHAR(40),
     updated_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
     FOREIGN KEY (uuid) REFERENCES artifacts(uuid) ON DELETE CASCADE,
     FOREIGN KEY (organization_uuid) REFERENCES organizations(uuid) ON DELETE CASCADE,
     FOREIGN KEY (project_uuid) REFERENCES projects(uuid) ON DELETE CASCADE,
+    CONSTRAINT fk_rest_apis_created_by FOREIGN KEY (created_by) REFERENCES user_idp_references(uuid),
+    CONSTRAINT fk_rest_apis_updated_by FOREIGN KEY (updated_by) REFERENCES user_idp_references(uuid),
     UNIQUE(organization_uuid, handle)
 );
 
@@ -108,11 +126,13 @@ CREATE TABLE IF NOT EXISTS subscription_plans (
     organization_uuid VARCHAR(40) NOT NULL,
     status VARCHAR(20) NOT NULL DEFAULT 'ACTIVE',
     data_version VARCHAR(20) NOT NULL DEFAULT '1.0',
-    created_by VARCHAR(200),
+    created_by VARCHAR(40),
     created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
-    updated_by VARCHAR(200),
+    updated_by VARCHAR(40),
     updated_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
     FOREIGN KEY (organization_uuid) REFERENCES organizations(uuid) ON DELETE CASCADE,
+    CONSTRAINT fk_subscription_plans_created_by FOREIGN KEY (created_by) REFERENCES user_idp_references(uuid),
+    CONSTRAINT fk_subscription_plans_updated_by FOREIGN KEY (updated_by) REFERENCES user_idp_references(uuid),
     UNIQUE(organization_uuid, handle)
 );
 
@@ -134,11 +154,12 @@ CREATE TABLE IF NOT EXISTS subscription_plan_limits (
 CREATE TABLE IF NOT EXISTS artifact_subscription_plans (
     artifact_uuid VARCHAR(40) NOT NULL,
     subscription_plan_uuid VARCHAR(40) NOT NULL,
-    created_by VARCHAR(200),
+    created_by VARCHAR(40),
     created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
     PRIMARY KEY (artifact_uuid, subscription_plan_uuid),
     FOREIGN KEY (artifact_uuid) REFERENCES artifacts(uuid) ON DELETE CASCADE,
-    FOREIGN KEY (subscription_plan_uuid) REFERENCES subscription_plans(uuid) ON DELETE CASCADE
+    FOREIGN KEY (subscription_plan_uuid) REFERENCES subscription_plans(uuid) ON DELETE CASCADE,
+    CONSTRAINT fk_artifact_subscription_plans_created_by FOREIGN KEY (created_by) REFERENCES user_idp_references(uuid)
 );
 
 -- Subscriptions table (application-level subscriptions for any artifact type)
@@ -155,15 +176,17 @@ CREATE TABLE IF NOT EXISTS subscriptions (
     organization_uuid VARCHAR(40) NOT NULL,
     status VARCHAR(20) NOT NULL DEFAULT 'ACTIVE',
     data_version VARCHAR(20) NOT NULL DEFAULT '1.0',
-    created_by VARCHAR(200),
+    created_by VARCHAR(40),
     created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
-    updated_by VARCHAR(200),
+    updated_by VARCHAR(40),
     updated_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
     FOREIGN KEY (artifact_uuid) REFERENCES artifacts(uuid) ON DELETE CASCADE,
     FOREIGN KEY (organization_uuid) REFERENCES organizations(uuid) ON DELETE CASCADE,
     FOREIGN KEY (subscription_plan_uuid) REFERENCES subscription_plans(uuid),
     FOREIGN KEY (artifact_uuid, organization_uuid)
       REFERENCES artifacts(uuid, organization_uuid) ON DELETE CASCADE,
+    CONSTRAINT fk_subscriptions_created_by FOREIGN KEY (created_by) REFERENCES user_idp_references(uuid),
+    CONSTRAINT fk_subscriptions_updated_by FOREIGN KEY (updated_by) REFERENCES user_idp_references(uuid),
     UNIQUE(artifact_uuid, subscription_token_hash)
 );
 CREATE INDEX IF NOT EXISTS idx_subscriptions_token ON subscriptions(subscription_token_hash);
@@ -190,11 +213,13 @@ CREATE TABLE IF NOT EXISTS gateways (
     is_active SMALLINT DEFAULT 0,
     is_critical SMALLINT DEFAULT 0,
     data_version VARCHAR(20) NOT NULL DEFAULT '1.0',
-    created_by VARCHAR(200),
+    created_by VARCHAR(40),
     created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
-    updated_by VARCHAR(200),
+    updated_by VARCHAR(40),
     updated_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
     FOREIGN KEY (organization_uuid) REFERENCES organizations(uuid) ON DELETE CASCADE,
+    CONSTRAINT fk_gateways_created_by FOREIGN KEY (created_by) REFERENCES user_idp_references(uuid),
+    CONSTRAINT fk_gateways_updated_by FOREIGN KEY (updated_by) REFERENCES user_idp_references(uuid),
     UNIQUE(organization_uuid, handle)
 );
 
@@ -213,14 +238,16 @@ CREATE TABLE IF NOT EXISTS artifact_gateway_mappings (
     organization_uuid VARCHAR(40) NOT NULL,
     gateway_uuid VARCHAR(40) NOT NULL,
     metadata BYTEA,
-    created_by VARCHAR(200),
+    created_by VARCHAR(40),
     created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
-    updated_by VARCHAR(200),
+    updated_by VARCHAR(40),
     updated_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
     PRIMARY KEY (organization_uuid, artifact_uuid, gateway_uuid),
     FOREIGN KEY (artifact_uuid) REFERENCES artifacts(uuid) ON DELETE CASCADE,
     FOREIGN KEY (organization_uuid) REFERENCES organizations(uuid) ON DELETE CASCADE,
-    FOREIGN KEY (gateway_uuid) REFERENCES gateways(uuid) ON DELETE CASCADE
+    FOREIGN KEY (gateway_uuid) REFERENCES gateways(uuid) ON DELETE CASCADE,
+    CONSTRAINT fk_artifact_gateway_mappings_created_by FOREIGN KEY (created_by) REFERENCES user_idp_references(uuid),
+    CONSTRAINT fk_artifact_gateway_mappings_updated_by FOREIGN KEY (updated_by) REFERENCES user_idp_references(uuid)
 );
 
 -- Gateway Custom Policies table (org-scoped custom policies synced from gateway manifests)
@@ -233,11 +260,13 @@ CREATE TABLE IF NOT EXISTS gateway_custom_policies (
     description VARCHAR(1023),
     policy_definition BYTEA,
     data_version VARCHAR(20) NOT NULL DEFAULT '1.0',
-    created_by VARCHAR(200),
+    created_by VARCHAR(40),
     created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
-    updated_by VARCHAR(200),
+    updated_by VARCHAR(40),
     updated_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
     FOREIGN KEY (organization_uuid) REFERENCES organizations(uuid) ON DELETE CASCADE,
+    CONSTRAINT fk_gateway_custom_policies_created_by FOREIGN KEY (created_by) REFERENCES user_idp_references(uuid),
+    CONSTRAINT fk_gateway_custom_policies_updated_by FOREIGN KEY (updated_by) REFERENCES user_idp_references(uuid),
     UNIQUE(organization_uuid, name, version)
 );
 
@@ -258,11 +287,13 @@ CREATE TABLE IF NOT EXISTS gateway_tokens (
     salt VARCHAR(255) NOT NULL,
     status VARCHAR(20) NOT NULL DEFAULT 'active',
     data_version VARCHAR(20) NOT NULL DEFAULT '1.0',
-    created_by VARCHAR(200),
+    created_by VARCHAR(40),
     created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
-    revoked_by VARCHAR(200),
+    revoked_by VARCHAR(40),
     revoked_at TIMESTAMPTZ,
-    FOREIGN KEY (gateway_uuid) REFERENCES gateways(uuid) ON DELETE CASCADE
+    FOREIGN KEY (gateway_uuid) REFERENCES gateways(uuid) ON DELETE CASCADE,
+    CONSTRAINT fk_gateway_tokens_created_by FOREIGN KEY (created_by) REFERENCES user_idp_references(uuid),
+    CONSTRAINT fk_gateway_tokens_revoked_by FOREIGN KEY (revoked_by) REFERENCES user_idp_references(uuid)
 );
 
 -- Artifact Deployments table (immutable deployment artifacts)
@@ -276,12 +307,13 @@ CREATE TABLE IF NOT EXISTS deployments (
     content BYTEA NOT NULL,
     metadata BYTEA,
     data_version VARCHAR(20) NOT NULL DEFAULT '1.0',
-    created_by VARCHAR(200),
+    created_by VARCHAR(40),
     created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
     FOREIGN KEY (artifact_uuid) REFERENCES artifacts(uuid) ON DELETE CASCADE,
     FOREIGN KEY (organization_uuid) REFERENCES organizations(uuid) ON DELETE CASCADE,
     FOREIGN KEY (gateway_uuid) REFERENCES gateways(uuid) ON DELETE CASCADE,
-    FOREIGN KEY (base_deployment_uuid) REFERENCES deployments(uuid) ON DELETE SET NULL
+    FOREIGN KEY (base_deployment_uuid) REFERENCES deployments(uuid) ON DELETE SET NULL,
+    CONSTRAINT fk_deployments_created_by FOREIGN KEY (created_by) REFERENCES user_idp_references(uuid)
 );
 
 -- Artifact Deployment Status table (current deployment state per artifact+Gateway)
@@ -293,14 +325,15 @@ CREATE TABLE IF NOT EXISTS deployment_status (
     status VARCHAR(20) NOT NULL DEFAULT 'DEPLOYED',
     status_desired VARCHAR(20),
     performed_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
-    performed_by VARCHAR(200),
+    performed_by VARCHAR(40),
     status_reason VARCHAR(50),
     updated_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
     PRIMARY KEY (organization_uuid, artifact_uuid, gateway_uuid),
     FOREIGN KEY (artifact_uuid) REFERENCES artifacts(uuid) ON DELETE CASCADE,
     FOREIGN KEY (organization_uuid) REFERENCES organizations(uuid) ON DELETE CASCADE,
     FOREIGN KEY (gateway_uuid) REFERENCES gateways(uuid) ON DELETE CASCADE,
-    FOREIGN KEY (deployment_uuid) REFERENCES deployments(uuid) ON DELETE CASCADE
+    FOREIGN KEY (deployment_uuid) REFERENCES deployments(uuid) ON DELETE CASCADE,
+    CONSTRAINT fk_deployment_status_performed_by FOREIGN KEY (performed_by) REFERENCES user_idp_references(uuid)
 );
 
 -- LLM Provider Templates table
@@ -319,11 +352,13 @@ CREATE TABLE IF NOT EXISTS llm_provider_templates (
     enabled SMALLINT NOT NULL DEFAULT 1,
     data_version VARCHAR(20) NOT NULL DEFAULT '1.0',
     origin VARCHAR(20) NOT NULL DEFAULT 'control_plane',
-    created_by VARCHAR(200),
+    created_by VARCHAR(40),
     created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
-    updated_by VARCHAR(200),
+    updated_by VARCHAR(40),
     updated_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
     FOREIGN KEY (organization_uuid) REFERENCES organizations(uuid) ON DELETE CASCADE,
+    CONSTRAINT fk_llm_provider_templates_created_by FOREIGN KEY (created_by) REFERENCES user_idp_references(uuid),
+    CONSTRAINT fk_llm_provider_templates_updated_by FOREIGN KEY (updated_by) REFERENCES user_idp_references(uuid),
     UNIQUE(organization_uuid, group_id, version),
     UNIQUE(organization_uuid, handle)
 );
@@ -341,14 +376,16 @@ CREATE TABLE IF NOT EXISTS llm_providers (
     configuration BYTEA NOT NULL,
     data_version VARCHAR(20) NOT NULL DEFAULT '1.0',
     origin VARCHAR(20) NOT NULL DEFAULT 'control_plane',
-    created_by VARCHAR(200),
+    created_by VARCHAR(40),
     created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
-    updated_by VARCHAR(200),
+    updated_by VARCHAR(40),
     updated_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
     organization_uuid VARCHAR(40) NOT NULL,
     FOREIGN KEY (uuid) REFERENCES artifacts(uuid) ON DELETE CASCADE,
     FOREIGN KEY (organization_uuid) REFERENCES organizations(uuid) ON DELETE CASCADE,
     FOREIGN KEY (template_uuid) REFERENCES llm_provider_templates(uuid),
+    CONSTRAINT fk_llm_providers_created_by FOREIGN KEY (created_by) REFERENCES user_idp_references(uuid),
+    CONSTRAINT fk_llm_providers_updated_by FOREIGN KEY (updated_by) REFERENCES user_idp_references(uuid),
     UNIQUE(organization_uuid, handle)
 );
 
@@ -365,15 +402,17 @@ CREATE TABLE IF NOT EXISTS llm_proxies (
     configuration BYTEA NOT NULL,
     data_version VARCHAR(20) NOT NULL DEFAULT '1.0',
     origin VARCHAR(20) NOT NULL DEFAULT 'control_plane',
-    created_by VARCHAR(200),
+    created_by VARCHAR(40),
     created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
-    updated_by VARCHAR(200),
+    updated_by VARCHAR(40),
     updated_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
     organization_uuid VARCHAR(40) NOT NULL,
     FOREIGN KEY (uuid) REFERENCES artifacts(uuid) ON DELETE CASCADE,
     FOREIGN KEY (organization_uuid) REFERENCES organizations(uuid) ON DELETE CASCADE,
     FOREIGN KEY (project_uuid) REFERENCES projects(uuid) ON DELETE CASCADE,
     FOREIGN KEY (provider_uuid) REFERENCES llm_providers(uuid),
+    CONSTRAINT fk_llm_proxies_created_by FOREIGN KEY (created_by) REFERENCES user_idp_references(uuid),
+    CONSTRAINT fk_llm_proxies_updated_by FOREIGN KEY (updated_by) REFERENCES user_idp_references(uuid),
     UNIQUE(organization_uuid, handle)
 );
 
@@ -388,14 +427,16 @@ CREATE TABLE IF NOT EXISTS mcp_proxies (
     configuration BYTEA NOT NULL,
     data_version VARCHAR(20) NOT NULL DEFAULT '1.0',
     origin VARCHAR(20) NOT NULL DEFAULT 'control_plane',
-    created_by VARCHAR(200),
+    created_by VARCHAR(40),
     created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
-    updated_by VARCHAR(200),
+    updated_by VARCHAR(40),
     updated_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
     organization_uuid VARCHAR(40) NOT NULL,
     FOREIGN KEY (uuid) REFERENCES artifacts(uuid) ON DELETE CASCADE,
     FOREIGN KEY (organization_uuid) REFERENCES organizations(uuid) ON DELETE CASCADE,
     FOREIGN KEY (project_uuid) REFERENCES projects(uuid) ON DELETE CASCADE,
+    CONSTRAINT fk_mcp_proxies_created_by FOREIGN KEY (created_by) REFERENCES user_idp_references(uuid),
+    CONSTRAINT fk_mcp_proxies_updated_by FOREIGN KEY (updated_by) REFERENCES user_idp_references(uuid),
     UNIQUE(organization_uuid, handle)
 );
 
@@ -409,14 +450,16 @@ CREATE TABLE IF NOT EXISTS api_keys (
     api_key_hashes BYTEA NOT NULL,
     status VARCHAR(20) NOT NULL DEFAULT 'active',
     data_version VARCHAR(20) NOT NULL DEFAULT '1.0',
-    created_by VARCHAR(200),
+    created_by VARCHAR(40),
     created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
-    updated_by VARCHAR(200),
+    updated_by VARCHAR(40),
     updated_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
     expires_at TIMESTAMPTZ,
     issuer VARCHAR(255) NULL DEFAULT NULL,
     allowed_targets VARCHAR(255) NOT NULL DEFAULT 'ALL',
     FOREIGN KEY (artifact_uuid) REFERENCES artifacts(uuid) ON DELETE CASCADE,
+    CONSTRAINT fk_api_keys_created_by FOREIGN KEY (created_by) REFERENCES user_idp_references(uuid),
+    CONSTRAINT fk_api_keys_updated_by FOREIGN KEY (updated_by) REFERENCES user_idp_references(uuid),
     UNIQUE(artifact_uuid, handle)
 );
 
@@ -424,22 +467,24 @@ CREATE TABLE IF NOT EXISTS api_keys (
 CREATE TABLE IF NOT EXISTS application_api_key_mappings (
     application_uuid VARCHAR(40) NOT NULL,
     api_key_id VARCHAR(40) NOT NULL,
-    created_by VARCHAR(200),
+    created_by VARCHAR(40),
     created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
     PRIMARY KEY (application_uuid, api_key_id),
     FOREIGN KEY (application_uuid) REFERENCES applications(uuid) ON DELETE CASCADE,
-    FOREIGN KEY (api_key_id) REFERENCES api_keys(uuid) ON DELETE CASCADE
+    FOREIGN KEY (api_key_id) REFERENCES api_keys(uuid) ON DELETE CASCADE,
+    CONSTRAINT fk_application_api_key_mappings_created_by FOREIGN KEY (created_by) REFERENCES user_idp_references(uuid)
 );
 
 -- Application to artifacts mapping table
 CREATE TABLE IF NOT EXISTS application_artifact_mappings (
     application_uuid VARCHAR(40) NOT NULL,
     artifact_uuid VARCHAR(40) NOT NULL,
-    created_by VARCHAR(200),
+    created_by VARCHAR(40),
     created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
     PRIMARY KEY (application_uuid, artifact_uuid),
     FOREIGN KEY (application_uuid) REFERENCES applications(uuid) ON DELETE CASCADE,
-    FOREIGN KEY (artifact_uuid) REFERENCES artifacts(uuid) ON DELETE CASCADE
+    FOREIGN KEY (artifact_uuid) REFERENCES artifacts(uuid) ON DELETE CASCADE,
+    CONSTRAINT fk_application_artifact_mappings_created_by FOREIGN KEY (created_by) REFERENCES user_idp_references(uuid)
 );
 
 -- Indexes for better performance
@@ -521,9 +566,10 @@ CREATE TABLE IF NOT EXISTS audit (
    resource_uuid VARCHAR(40) NOT NULL,
    resource_type VARCHAR(50),
    organization_uuid VARCHAR(40) NOT NULL,
-   performed_by VARCHAR(200),
+   performed_by VARCHAR(40),
    performed_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
-   FOREIGN KEY (organization_uuid) REFERENCES organizations(uuid) ON DELETE CASCADE
+   FOREIGN KEY (organization_uuid) REFERENCES organizations(uuid) ON DELETE CASCADE,
+   CONSTRAINT fk_audit_performed_by FOREIGN KEY (performed_by) REFERENCES user_idp_references(uuid)
 );
 CREATE INDEX IF NOT EXISTS idx_audit_org ON audit(organization_uuid);
 
@@ -541,11 +587,13 @@ CREATE TABLE IF NOT EXISTS secrets (
     provider          VARCHAR(20)   NOT NULL DEFAULT 'IN_BUILT',
     status            VARCHAR(20)   NOT NULL DEFAULT 'ACTIVE',
     created_at        TIMESTAMPTZ   NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    created_by        VARCHAR(255),
+    created_by        VARCHAR(40),
     updated_at        TIMESTAMPTZ   NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    updated_by        VARCHAR(255),
+    updated_by        VARCHAR(40),
     UNIQUE (organization_uuid, handle),
-    FOREIGN KEY (organization_uuid) REFERENCES organizations(uuid) ON DELETE CASCADE
+    FOREIGN KEY (organization_uuid) REFERENCES organizations(uuid) ON DELETE CASCADE,
+    CONSTRAINT fk_secrets_created_by FOREIGN KEY (created_by) REFERENCES user_idp_references(uuid),
+    CONSTRAINT fk_secrets_updated_by FOREIGN KEY (updated_by) REFERENCES user_idp_references(uuid)
 );
 
 CREATE INDEX IF NOT EXISTS idx_secrets_updated_at ON secrets(updated_at);
@@ -581,15 +629,6 @@ CREATE INDEX IF NOT EXISTS idx_asr_org_handle
 -- Fast gateway sync lookups: which handles does this gateway need?
 CREATE INDEX IF NOT EXISTS idx_asr_org_gateway
     ON artifact_secret_refs(organization_uuid, gateway_id);
-
--- Maps our internal user UUID to the IdP actor identity. Audit columns store the
--- UUID; responses/events resolve it back to idp_id. No FK; no empty-idp_id rows.
-CREATE TABLE IF NOT EXISTS user_idp_references (
-    uuid       VARCHAR(40)  PRIMARY KEY,
-    idp_id     VARCHAR(255) NOT NULL,
-    created_at TIMESTAMPTZ  DEFAULT CURRENT_TIMESTAMP,
-    UNIQUE(idp_id)
-);
 
 -- User-to-organization membership, populated on org onboarding.
 CREATE TABLE IF NOT EXISTS user_organization_mappings (

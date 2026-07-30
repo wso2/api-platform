@@ -420,7 +420,7 @@ func TestSyncCustomPolicy(t *testing.T) {
 			}
 
 			svc := newTestGatewayService(gwRepo, cpRepo)
-			policy, err := svc.SyncCustomPolicy(gwID, orgID, tt.policyName, tt.version)
+			policy, err := svc.SyncCustomPolicy(gwID, orgID, tt.policyName, tt.version, "tester")
 
 			if (err != nil) != tt.wantErr {
 				t.Errorf("SyncCustomPolicy() error = %v, wantErr %v", err, tt.wantErr)
@@ -470,7 +470,7 @@ func TestSyncCustomPolicy_MinorUpdatePreservesUUID(t *testing.T) {
 	}
 
 	svc := newTestGatewayService(gwRepo, cpRepo)
-	result, err := svc.SyncCustomPolicy(gwID, orgID, "my-policy", "1.2.0")
+	result, err := svc.SyncCustomPolicy(gwID, orgID, "my-policy", "1.2.0", "tester")
 	if err != nil {
 		t.Fatalf("SyncCustomPolicy() unexpected error: %v", err)
 	}
@@ -625,7 +625,7 @@ func TestDeleteCustomPolicyByUUID(t *testing.T) {
 			}
 			svc := newTestGatewayService(&mockGatewayRepoForPolicy{}, cpRepo)
 
-			err := svc.DeleteCustomPolicyByUUID(orgID, policyUUID, tt.version)
+			err := svc.DeleteCustomPolicyByUUID(orgID, policyUUID, tt.version, "tester")
 
 			if (err != nil) != tt.wantErr {
 				t.Errorf("DeleteCustomPolicyByUUID() error = %v, wantErr %v", err, tt.wantErr)

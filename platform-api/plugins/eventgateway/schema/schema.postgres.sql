@@ -15,13 +15,15 @@ CREATE TABLE IF NOT EXISTS websub_apis (
     configuration BYTEA NOT NULL,
     data_version VARCHAR(20) NOT NULL DEFAULT '1.0',
     origin VARCHAR(20) NOT NULL DEFAULT 'control_plane',
-    created_by VARCHAR(200),
+    created_by VARCHAR(40),
     created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
-    updated_by VARCHAR(200),
+    updated_by VARCHAR(40),
     updated_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
     FOREIGN KEY (uuid) REFERENCES artifacts(uuid) ON DELETE CASCADE,
     FOREIGN KEY (organization_uuid) REFERENCES organizations(uuid) ON DELETE CASCADE,
     FOREIGN KEY (project_uuid) REFERENCES projects(uuid) ON DELETE CASCADE,
+    CONSTRAINT fk_websub_apis_created_by FOREIGN KEY (created_by) REFERENCES user_idp_references(uuid),
+    CONSTRAINT fk_websub_apis_updated_by FOREIGN KEY (updated_by) REFERENCES user_idp_references(uuid),
     UNIQUE(organization_uuid, handle)
 );
 CREATE INDEX IF NOT EXISTS idx_websub_apis_project ON websub_apis(project_uuid);
@@ -36,11 +38,13 @@ CREATE TABLE IF NOT EXISTS websub_api_hmac_secrets (
     encrypted_secret BYTEA NOT NULL,
     status VARCHAR(20) NOT NULL DEFAULT 'active',
     data_version VARCHAR(20) NOT NULL DEFAULT '1.0',
-    created_by VARCHAR(200),
+    created_by VARCHAR(40),
     created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
-    updated_by VARCHAR(200),
+    updated_by VARCHAR(40),
     updated_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
     FOREIGN KEY (artifact_uuid) REFERENCES artifacts(uuid) ON DELETE CASCADE,
+    CONSTRAINT fk_websub_api_hmac_secrets_created_by FOREIGN KEY (created_by) REFERENCES user_idp_references(uuid),
+    CONSTRAINT fk_websub_api_hmac_secrets_updated_by FOREIGN KEY (updated_by) REFERENCES user_idp_references(uuid),
     UNIQUE(artifact_uuid, handle)
 );
 CREATE INDEX IF NOT EXISTS idx_websub_api_hmac_secrets_artifact ON websub_api_hmac_secrets(artifact_uuid);
@@ -59,13 +63,15 @@ CREATE TABLE IF NOT EXISTS webbroker_apis (
     configuration BYTEA NOT NULL,
     data_version VARCHAR(20) NOT NULL DEFAULT '1.0',
     origin VARCHAR(20) NOT NULL DEFAULT 'control_plane',
-    created_by VARCHAR(200),
+    created_by VARCHAR(40),
     created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
-    updated_by VARCHAR(200),
+    updated_by VARCHAR(40),
     updated_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
     FOREIGN KEY (uuid) REFERENCES artifacts(uuid) ON DELETE CASCADE,
     FOREIGN KEY (organization_uuid) REFERENCES organizations(uuid) ON DELETE CASCADE,
     FOREIGN KEY (project_uuid) REFERENCES projects(uuid) ON DELETE CASCADE,
+    CONSTRAINT fk_webbroker_apis_created_by FOREIGN KEY (created_by) REFERENCES user_idp_references(uuid),
+    CONSTRAINT fk_webbroker_apis_updated_by FOREIGN KEY (updated_by) REFERENCES user_idp_references(uuid),
     UNIQUE(organization_uuid, handle)
 );
 CREATE INDEX IF NOT EXISTS idx_webbroker_apis_project ON webbroker_apis(project_uuid);

@@ -81,6 +81,20 @@ func createTestSchema(db *database.DB) error {
 		return fmt.Errorf("failed to execute schema: %w", err)
 	}
 
+	return seedTestActors(db)
+}
+
+// seedTestActors inserts every literal actor string used as a
+// created_by/updated_by/revoked_by fixture value across the repository
+// tests, so those fixtures satisfy the created_by/updated_by foreign key to
+// user_idp_references(uuid) without each test needing its own mapping row.
+func seedTestActors(db *database.DB) error {
+	actors := []string{"test-user", "fixture-user", "creator-user", "config-user", "alice", "u", "updater-user", "revoker-user", "admin"}
+	for _, actor := range actors {
+		if _, err := db.Exec(db.Rebind(`INSERT INTO user_idp_references (uuid, idp_id) VALUES (?, ?)`), actor, actor); err != nil {
+			return fmt.Errorf("failed to seed test actor %q: %w", actor, err)
+		}
+	}
 	return nil
 }
 

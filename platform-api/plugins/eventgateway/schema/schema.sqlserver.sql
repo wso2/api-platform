@@ -16,14 +16,16 @@ CREATE TABLE dbo.websub_apis (
     configuration VARBINARY(MAX) NOT NULL,
     data_version VARCHAR(20) NOT NULL DEFAULT '1.0',
     origin VARCHAR(20) NOT NULL DEFAULT 'control_plane',
-    created_by VARCHAR(200),
+    created_by VARCHAR(40),
     created_at DATETIME2(7) DEFAULT SYSUTCDATETIME(),
-    updated_by VARCHAR(200),
+    updated_by VARCHAR(40),
     updated_at DATETIME2(7) DEFAULT SYSUTCDATETIME(),
     FOREIGN KEY (uuid) REFERENCES artifacts(uuid) ON DELETE CASCADE,
     -- NO ACTION to avoid SQL Server multiple-cascade-paths restriction (error 1785).
     FOREIGN KEY (organization_uuid) REFERENCES organizations(uuid) ON DELETE NO ACTION,
     FOREIGN KEY (project_uuid) REFERENCES projects(uuid) ON DELETE CASCADE,
+    CONSTRAINT fk_websub_apis_created_by FOREIGN KEY (created_by) REFERENCES dbo.user_idp_references(uuid),
+    CONSTRAINT fk_websub_apis_updated_by FOREIGN KEY (updated_by) REFERENCES dbo.user_idp_references(uuid),
     UNIQUE(organization_uuid, handle)
 );
 IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = N'idx_websub_apis_project' AND object_id = OBJECT_ID(N'dbo.websub_apis'))
@@ -41,12 +43,14 @@ CREATE TABLE dbo.websub_api_hmac_secrets (
     encrypted_secret VARBINARY(MAX) NOT NULL,
     status VARCHAR(20) NOT NULL DEFAULT 'active',
     data_version VARCHAR(20) NOT NULL DEFAULT '1.0',
-    created_by VARCHAR(200),
+    created_by VARCHAR(40),
     created_at DATETIME2(7) DEFAULT SYSUTCDATETIME(),
-    updated_by VARCHAR(200),
+    updated_by VARCHAR(40),
     updated_at DATETIME2(7) DEFAULT SYSUTCDATETIME(),
     FOREIGN KEY (artifact_uuid) REFERENCES artifacts(uuid) ON DELETE CASCADE,
-    CONSTRAINT uq_websub_api_hmac_secrets_artifact_handle UNIQUE (artifact_uuid, handle)
+    CONSTRAINT uq_websub_api_hmac_secrets_artifact_handle UNIQUE (artifact_uuid, handle),
+    CONSTRAINT fk_websub_api_hmac_secrets_created_by FOREIGN KEY (created_by) REFERENCES dbo.user_idp_references(uuid),
+    CONSTRAINT fk_websub_api_hmac_secrets_updated_by FOREIGN KEY (updated_by) REFERENCES dbo.user_idp_references(uuid)
 );
 IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = N'idx_websub_api_hmac_secrets_artifact' AND object_id = OBJECT_ID(N'dbo.websub_api_hmac_secrets'))
 CREATE INDEX idx_websub_api_hmac_secrets_artifact ON dbo.websub_api_hmac_secrets(artifact_uuid);
@@ -67,14 +71,16 @@ CREATE TABLE dbo.webbroker_apis (
     configuration VARBINARY(MAX) NOT NULL,
     data_version VARCHAR(20) NOT NULL DEFAULT '1.0',
     origin VARCHAR(20) NOT NULL DEFAULT 'control_plane',
-    created_by VARCHAR(200),
+    created_by VARCHAR(40),
     created_at DATETIME2(7) DEFAULT SYSUTCDATETIME(),
-    updated_by VARCHAR(200),
+    updated_by VARCHAR(40),
     updated_at DATETIME2(7) DEFAULT SYSUTCDATETIME(),
     FOREIGN KEY (uuid) REFERENCES artifacts(uuid) ON DELETE CASCADE,
     -- NO ACTION to avoid SQL Server multiple-cascade-paths restriction (error 1785).
     FOREIGN KEY (organization_uuid) REFERENCES organizations(uuid) ON DELETE NO ACTION,
     FOREIGN KEY (project_uuid) REFERENCES projects(uuid) ON DELETE CASCADE,
+    CONSTRAINT fk_webbroker_apis_created_by FOREIGN KEY (created_by) REFERENCES dbo.user_idp_references(uuid),
+    CONSTRAINT fk_webbroker_apis_updated_by FOREIGN KEY (updated_by) REFERENCES dbo.user_idp_references(uuid),
     UNIQUE(organization_uuid, handle)
 );
 IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = N'idx_webbroker_apis_project' AND object_id = OBJECT_ID(N'dbo.webbroker_apis'))

@@ -215,7 +215,12 @@ func (s *SubscriptionService) CreateSubscription(apiId, kind, orgUUID string, su
 	if err := s.subscriptionRepo.Create(sub); err != nil {
 		return nil, err
 	}
-	_ = s.auditRepo.Record("CREATE", sub.UUID, "subscription", sub.OrganizationUUID, actor)
+	// actor is only empty on the Developer Portal webhook path, which has no
+	// JWT-backed identity to attribute — skip the audit row rather than
+	// writing one with no real actor.
+	if actor != "" {
+		_ = s.auditRepo.Record("CREATE", sub.UUID, "subscription", sub.OrganizationUUID, actor)
+	}
 
 	if s.gatewayEvents != nil {
 		gateways, err := s.apiRepo.GetAPIGatewaysWithDetails(apiUUID, orgUUID)
@@ -339,7 +344,11 @@ func (s *SubscriptionService) UpdateSubscription(subscriptionId, orgUUID, subscr
 	if err := s.subscriptionRepo.Update(sub); err != nil {
 		return nil, err
 	}
-	_ = s.auditRepo.Record("UPDATE", sub.UUID, "subscription", sub.OrganizationUUID, actor)
+	// actor is only empty on the Developer Portal webhook path — see the
+	// comment in CreateSubscription.
+	if actor != "" {
+		_ = s.auditRepo.Record("UPDATE", sub.UUID, "subscription", sub.OrganizationUUID, actor)
+	}
 
 	if s.gatewayEvents != nil {
 		gateways, err := s.apiRepo.GetAPIGatewaysWithDetails(sub.ArtifactUUID, orgUUID)
@@ -466,7 +475,8 @@ func (s *SubscriptionService) RegenerateToken(subscriptionId, orgUUID, subscribe
 		return nil, err
 	}
 	sub.SubscriptionToken = newToken
-	_ = s.auditRepo.Record("UPDATE", sub.UUID, "subscription", sub.OrganizationUUID, subscriberID)
+	// RegenerateToken is reachable only via the Developer Portal webhook path
+	// (no JWT-backed actor exists here), so no audit row is recorded.
 
 	if s.gatewayEvents != nil {
 		gateways, err := s.apiRepo.GetAPIGatewaysWithDetails(sub.ArtifactUUID, orgUUID)
@@ -517,7 +527,11 @@ func (s *SubscriptionService) DeleteSubscription(subscriptionId, orgUUID, subscr
 	if err := s.subscriptionRepo.Delete(subscriptionId, orgUUID); err != nil {
 		return err
 	}
-	_ = s.auditRepo.Record("DELETE", subscriptionId, "subscription", orgUUID, actor)
+	// actor is only empty on the Developer Portal webhook path — see the
+	// comment in CreateSubscription.
+	if actor != "" {
+		_ = s.auditRepo.Record("DELETE", subscriptionId, "subscription", orgUUID, actor)
+	}
 
 	if s.gatewayEvents != nil {
 		gateways, err := s.apiRepo.GetAPIGatewaysWithDetails(sub.ArtifactUUID, orgUUID)

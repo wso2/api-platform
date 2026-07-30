@@ -17,6 +17,25 @@
 
 package service
 
+import (
+	"testing"
+
+	"github.com/wso2/api-platform/platform-api/internal/database"
+)
+
+// seedServiceTestActors inserts every literal actor string used as a
+// created_by/updated_by fixture value across the service package's
+// real-DB-backed tests, so those fixtures satisfy the created_by/updated_by
+// foreign key to user_idp_references(uuid).
+func seedServiceTestActors(t *testing.T, db *database.DB) {
+	t.Helper()
+	for _, actor := range []string{"alice", "tester"} {
+		if _, err := db.Exec(db.Rebind(`INSERT INTO user_idp_references (uuid, idp_id) VALUES (?, ?)`), actor, actor); err != nil {
+			t.Fatalf("failed to seed test actor %q: %v", actor, err)
+		}
+	}
+}
+
 // passthroughIdentityRepo is a repository.UserIdentityMappingRepository test
 // double that returns the input identity unchanged (no real
 // user_idp_references table). It lets unit tests that assert exact
