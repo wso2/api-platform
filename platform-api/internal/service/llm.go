@@ -1954,7 +1954,15 @@ func isSQLiteUniqueConstraint(err error) bool {
 }
 
 func validateUpstream(u api.Upstream) error {
-	return validateUpstreamDefinition("main", u.Main)
+	if err := validateUpstreamDefinition("main", u.Main); err != nil {
+		return err
+	}
+	// Sandbox is optional, but when present it carries the same either-url-or-ref
+	// constraint as main.
+	if u.Sandbox != nil {
+		return validateUpstreamDefinition("sandbox", *u.Sandbox)
+	}
+	return nil
 }
 
 // validateUpstreamDefinition enforces the UpstreamDefinition schema constraint that

@@ -99,3 +99,41 @@ func TestUpstreamFetchClientRefusesDeniedAddress(t *testing.T) {
 		t.Fatal("expected the guarded client to refuse a disallowed address")
 	}
 }
+
+// TestUpstreamFetchClientRefusesCrossHostRedirect guards the credential-leak case: callers
+// pass a custom auth header on MCP calls, and net/http forwards a custom header name across
+// hosts, so a redirect off the original host must not be followed. A same-host redirect
+// still is.
+func TestUpstreamFetchClientRefusesCrossHostRedirect(t *testing.T) {
+	target := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer target.Close()
+
+	crossHost := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		http.Redirect(w, r, target.URL+"/stolen", http.StatusFound)
+	}))
+	defer crossHost.Close()
+
+	if _, err := NewUpstreamFetchClient(0).Get(crossHost.URL); err == nil {
+		t.Fatal("expected the guarded client to refuse a cross-host redirect")
+	}
+
+	sameHost := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/moved" {
+			http.Redirect(w, r, "/final", http.StatusFound)
+			return
+		}
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer sameHost.Close()
+
+	resp, err := NewUpstreamFetchClient(0).Get(sameHost.URL + "/moved")
+	if err != nil {
+		t.Fatalf("expected a same-host redirect to be followed: %v", err)
+	}
+	defer resp.Body.Close() //nolint:errcheck
+	if resp.StatusCode != http.StatusOK {
+		t.Errorf("expected 200 after a same-host redirect, got %d", resp.StatusCode)
+	}
+}

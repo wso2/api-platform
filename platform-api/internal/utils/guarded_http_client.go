@@ -22,12 +22,40 @@ import (
 	"fmt"
 	"net"
 	"net/http"
+	"strings"
 	"time"
 )
 
 // maxOutboundRedirects caps redirect hops on guarded clients. Every hop is still dialed
 // through the guarded dialer, so this only bounds redirect loops.
 const maxOutboundRedirects = 5
+
+// checkRedirectPolicy builds the CheckRedirect callback shared by every guarded client. It
+// bounds redirect loops, keeps the scheme within http/https, and refuses any hop that leaves
+// the host of the original request.
+//
+// The host check is what stops a credential leak: callers pass their own headers on these
+// requests (an MCP endpoint's auth header, for instance), and net/http only strips
+// Authorization/Cookie-style headers across hosts — a custom header name is forwarded
+// verbatim. A malicious or compromised upstream could otherwise answer with a redirect to a
+// host it controls and be handed the caller's credential. Same-host redirects are still
+// dialed through the guarded dialer, so the address policy continues to apply per hop.
+func checkRedirectPolicy(maxRedirects int) func(*http.Request, []*http.Request) error {
+	return func(req *http.Request, via []*http.Request) error {
+		if len(via) >= maxRedirects {
+			return fmt.Errorf("too many redirects")
+		}
+		if req.URL.Scheme != "http" && req.URL.Scheme != "https" {
+			return fmt.Errorf("redirect to a disallowed scheme")
+		}
+		// via[0] is the original request; Host carries the port, so a port change counts
+		// as a different host too.
+		if len(via) > 0 && !strings.EqualFold(req.URL.Host, via[0].URL.Host) {
+			return fmt.Errorf("redirect to a different host")
+		}
+		return nil
+	}
+}
 
 // guardedDialContext builds a DialContext that resolves the target host itself, refuses to
 // connect when any resolved address fails the supplied policy, and then dials the exact IP
@@ -134,15 +162,7 @@ func NewUpstreamFetchClient(timeout time.Duration) *http.Client {
 			// that could bypass the address checks.
 			Proxy: nil,
 		},
-		CheckRedirect: func(req *http.Request, via []*http.Request) error {
-			if len(via) >= maxOutboundRedirects {
-				return fmt.Errorf("too many redirects")
-			}
-			if req.URL.Scheme != "http" && req.URL.Scheme != "https" {
-				return fmt.Errorf("redirect to a disallowed scheme")
-			}
-			return nil
-		},
+		CheckRedirect: checkRedirectPolicy(maxOutboundRedirects),
 	}
 }
 

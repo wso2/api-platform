@@ -51,7 +51,8 @@ const (
 //     DNS-rebinding) — loopback, private (RFC 1918 / ULA), link-local (incl. the cloud
 //     metadata endpoint 169.254.169.254), unspecified, multicast and broadcast addresses
 //     are refused.
-//   - Redirects are bounded and each hop is dialed through the same guarded dialer.
+//   - Redirects are bounded, may not leave the original host, and each hop is dialed
+//     through the same guarded dialer.
 //   - The response body is read through an io.LimitReader capped at maxBytes.
 //   - Errors are returned sterile (no internal host/IP detail) so callers can log them
 //     internally without leaking infrastructure information to clients.
@@ -87,15 +88,7 @@ func FetchOpenAPISpecFromURL(ctx context.Context, rawURL string, maxBytes int64)
 			// that could bypass the IP checks.
 			Proxy: nil,
 		},
-		CheckRedirect: func(req *http.Request, via []*http.Request) error {
-			if len(via) >= openAPISpecMaxRedirects {
-				return fmt.Errorf("too many redirects")
-			}
-			if req.URL.Scheme != "http" && req.URL.Scheme != "https" {
-				return fmt.Errorf("redirect to a disallowed scheme")
-			}
-			return nil
-		},
+		CheckRedirect: checkRedirectPolicy(openAPISpecMaxRedirects),
 	}
 
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, parsed.String(), nil)

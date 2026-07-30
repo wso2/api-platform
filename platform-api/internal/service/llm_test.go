@@ -2013,3 +2013,25 @@ func TestLLMProxyServiceResolveProjectHandleIsOrgScoped(t *testing.T) {
 		t.Fatalf("expected ProjectNotFound for a cross-org project uuid, got: %v", err)
 	}
 }
+
+// The sandbox upstream is optional, but when supplied it carries the same
+// exactly-one-of-url-or-ref constraint as main — an unvalidated sandbox would let
+// an ambiguous (both) or empty (neither) endpoint through.
+func TestValidateUpstreamValidatesSandbox(t *testing.T) {
+	url := "https://api.example.com"
+	ref := "openai-default"
+	main := api.UpstreamDefinition{Url: &url}
+
+	if err := validateUpstream(api.Upstream{Main: main}); err != nil {
+		t.Fatalf("expected an absent sandbox to be accepted: %v", err)
+	}
+	if err := validateUpstream(api.Upstream{Main: main, Sandbox: &api.UpstreamDefinition{Ref: &ref}}); err != nil {
+		t.Fatalf("expected a ref-only sandbox to be accepted: %v", err)
+	}
+	if err := validateUpstream(api.Upstream{Main: main, Sandbox: &api.UpstreamDefinition{Url: &url, Ref: &ref}}); !apperror.ValidationFailed.Is(err) {
+		t.Fatalf("expected ValidationFailed for a sandbox with both url and ref, got: %v", err)
+	}
+	if err := validateUpstream(api.Upstream{Main: main, Sandbox: &api.UpstreamDefinition{}}); !apperror.ValidationFailed.Is(err) {
+		t.Fatalf("expected ValidationFailed for a sandbox with neither url nor ref, got: %v", err)
+	}
+}
