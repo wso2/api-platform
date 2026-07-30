@@ -692,7 +692,19 @@ func main() {
 	// Start controller admin server for debug endpoints if enabled.
 	var controllerAdminServer *adminserver.Server
 	if cfg.Controller.AdminServer.Enabled {
-		controllerAdminServer = adminserver.NewServer(&cfg.Controller.AdminServer, apiServer, log)
+		// Gate the admin/debug server behind the same authentication middleware as
+		// the management API, plus a deny-by-default admin-role authorization check.
+		// The health probe stays public; every other admin
+		// endpoint (config_dump, xds_sync_status, pprof) requires an authenticated
+		// caller from controller.auth.basic who also holds the "admin" role.
+		// Authentication runs first (outermost) to populate the auth context, then
+		// authorization consumes it — the same ordering the management API uses.
+		adminAuthz := authenticators.AuthorizationMiddleware(
+			commonmodels.AuthConfig{ResourceRoles: adminResourceRoles()}, log)
+		adminProtect := func(next http.Handler) http.Handler {
+			return authMiddleWare(adminAuthz(next))
+		}
+		controllerAdminServer = adminserver.NewServer(&cfg.Controller.AdminServer, apiServer, adminProtect, log)
 		go func() {
 			if err := controllerAdminServer.Start(); err != nil {
 				log.Error("Controller admin server failed", slog.Any("error", err))
@@ -943,6 +955,59 @@ func generateAuthConfig(config *config.Config) commonmodels.AuthConfig {
 		ResourceRoles: DefaultResourceRoles,
 	}
 	return authConfig
+}
+
+// adminResourceRoles maps every non-public admin-server route to the roles allowed
+// to reach it, following the same shape as generateAuthConfig: relative
+// "METHOD /path" keys expanded into both the versioned (base-path-prefixed) and
+// legacy (unprefixed) forms that AuthorizationMiddleware matches against r.Pattern.
+// AuthorizationMiddleware denies by default, so any admin route absent from this map
+// is rejected with 403 — a route added later without an entry fails closed rather
+// than becoming world-readable. The health probe is intentionally omitted: it is
+// exempt from auth entirely and never reaches authorization.
+func adminResourceRoles() map[string][]string {
+	const adminRole = "admin"
+
+	// prefixed builds a resource key of the form "<METHOD> <adminAPIBasePath><path>"
+	// matching the versioned routes registered via HandlerWithOptions(BaseURL=adminAPIBasePath),
+	// mirroring the prefixed helper in generateAuthConfig.
+	prefixed := func(methodAndPath string) string {
+		idx := strings.Index(methodAndPath, " ")
+		if idx < 0 {
+			return methodAndPath
+		}
+		return methodAndPath[:idx+1] + adminAPIBasePath + methodAndPath[idx+1:]
+	}
+
+	relativeRoles := map[string][]string{
+		"GET /config_dump":     {adminRole},
+		"GET /xds_sync_status": {adminRole},
+	}
+
+	// pprof endpoints are registered directly on the mux (not via a BaseURL), so
+	// their r.Pattern carries no method and no base-path prefix — map them as-is.
+	// Only registered when admin_server.pprof is enabled, but mapping them
+	// unconditionally is harmless and keeps them admin-gated when it is.
+	pprofRoles := map[string][]string{
+		"/debug/pprof/":        {adminRole},
+		"/debug/pprof/cmdline": {adminRole},
+		"/debug/pprof/profile": {adminRole},
+		"/debug/pprof/symbol":  {adminRole},
+		"/debug/pprof/trace":   {adminRole},
+	}
+
+	// Populate both the versioned and legacy (unprefixed) keys for each relative
+	// route so the authz middleware matches either form, exactly as generateAuthConfig does.
+	resourceRoles := make(map[string][]string, len(relativeRoles)*2+len(pprofRoles))
+	for methodAndPath, roles := range relativeRoles {
+		resourceRoles[prefixed(methodAndPath)] = roles
+		resourceRoles[methodAndPath] = roles
+	}
+	for pattern, roles := range pprofRoles {
+		resourceRoles[pattern] = roles
+	}
+
+	return resourceRoles
 }
 
 // deprecatedManagementPathMiddleware marks responses served on the legacy
