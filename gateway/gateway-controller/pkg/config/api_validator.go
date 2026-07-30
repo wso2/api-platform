@@ -371,6 +371,8 @@ func validateUpstreamDefinitionsList(fieldPrefix string, definitions *[]api.Upst
 		// Timeout validation is limited to connect timeout. Enforce the same single-unit duration
 		// pattern as the CRD/OpenAPI so gateway validation cannot diverge from CRD admission, then
 		// a ParseDuration guard for pathological overflow — mirroring validateResilienceTimeouts.
+		// Unlike the resilience timeouts, zero does not disable a connect timeout: the transformer
+		// requires a positive value (and Envoy rejects connect_timeout <= 0s)
 		if def.Timeout != nil && def.Timeout.Connect != nil {
 			timeoutStr := strings.TrimSpace(*def.Timeout.Connect)
 			if timeoutStr != "" {
@@ -379,12 +381,17 @@ func validateUpstreamDefinitionsList(fieldPrefix string, definitions *[]api.Upst
 						Field:   fmt.Sprintf("%s[%d].timeout.connect", fieldPrefix, i),
 						Message: "Invalid timeout format (expected a single-unit duration like '30s', '1m', '500ms')",
 					})
-				} else if _, err := time.ParseDuration(timeoutStr); err != nil {
+				} else if duration, err := time.ParseDuration(timeoutStr); err != nil {
 					// The pattern guarantees a single-unit value; ParseDuration is a final guard
 					// against pathological overflow (e.g. "99999999999999999999s").
 					errors = append(errors, ValidationError{
 						Field:   fmt.Sprintf("%s[%d].timeout.connect", fieldPrefix, i),
 						Message: fmt.Sprintf("Invalid timeout format: %v", err),
+					})
+				} else if duration <= 0 {
+					errors = append(errors, ValidationError{
+						Field:   fmt.Sprintf("%s[%d].timeout.connect", fieldPrefix, i),
+						Message: "Connect timeout must be positive",
 					})
 				}
 			}
