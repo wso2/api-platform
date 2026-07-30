@@ -247,6 +247,84 @@ func TestLLMProviderTransformer_TransformProxy_AdditionalProviderTransformerIsCo
 	assert.Equal(t, "claude-sonnet-4-5-20250929", (*transformerPolicy.Params)["model"])
 }
 
+func TestLLMProviderTransformer_TransformProxy_RejectsInvalidAdditionalProviderSourceConfiguration(t *testing.T) {
+	store := storage.NewConfigStore()
+	db := newTestMockDB()
+
+	template := &models.StoredLLMProviderTemplate{
+		UUID: "0000-db-template-id-0000-000000000004",
+		Configuration: api.LLMProviderTemplate{
+			ApiVersion: api.LLMProviderTemplateApiVersionGatewayApiPlatformWso2Comv1,
+			Kind:       api.LLMProviderTemplateKindLlmProviderTemplate,
+			Metadata:   api.Metadata{Name: "openai"},
+			Spec:       api.LLMProviderTemplateData{DisplayName: "openai"},
+		},
+	}
+	require.NoError(t, db.SaveLLMProviderTemplate(template))
+
+	primaryProvider := api.LLMProviderConfiguration{
+		ApiVersion: api.LLMProviderConfigurationApiVersionGatewayApiPlatformWso2Comv1,
+		Kind:       api.LLMProviderConfigurationKindLlmProvider,
+		Metadata:   api.Metadata{Name: "openai-provider"},
+		Spec: api.LLMProviderConfigData{
+			DisplayName:   "openai-provider",
+			Version:       "v1.0",
+			Context:       stringPtr("/openai-provider"),
+			Template:      "openai",
+			Upstream:      api.LLMProviderConfigData_Upstream{Url: stringPtr("https://example.com")},
+			AccessControl: api.LLMAccessControl{Mode: api.AllowAll},
+		},
+	}
+	require.NoError(t, db.SaveConfig(&models.StoredConfig{
+		UUID:                "openai-provider-uuid",
+		Kind:                string(api.LLMProviderConfigurationKindLlmProvider),
+		Handle:              "openai-provider",
+		DisplayName:         "openai-provider",
+		Version:             "v1.0",
+		SourceConfiguration: primaryProvider,
+		DesiredState:        models.StateDeployed,
+	}))
+
+	require.NoError(t, db.SaveConfig(&models.StoredConfig{
+		UUID:        "invalid-provider-uuid",
+		Kind:        string(api.LLMProviderConfigurationKindLlmProvider),
+		Handle:      "invalid-provider",
+		DisplayName: "invalid-provider",
+		Version:     "v1.0",
+		SourceConfiguration: api.RestAPI{
+			ApiVersion: api.RestAPIApiVersionGatewayApiPlatformWso2Comv1,
+			Kind:       api.RestAPIKindRestApi,
+			Metadata:   api.Metadata{Name: "invalid-provider"},
+			Spec: api.APIConfigData{
+				DisplayName: "invalid-provider",
+				Version:     "v1.0",
+				Context:     "/invalid-provider",
+			},
+		},
+		DesiredState: models.StateDeployed,
+	}))
+
+	transformer := NewLLMProviderTransformer(store, db, &config.RouterConfig{ListenerPort: 8080}, newTestPolicyVersionResolver())
+	proxy := &api.LLMProxyConfiguration{
+		ApiVersion: api.LLMProxyConfigurationApiVersionGatewayApiPlatformWso2Comv1,
+		Kind:       api.LLMProxyConfigurationKindLlmProxy,
+		Metadata:   api.Metadata{Name: "openai-multi"},
+		Spec: api.LLMProxyConfigData{
+			DisplayName: "openai-multi",
+			Version:     "v1.0",
+			Provider:    api.LLMProxyProvider{Id: "openai-provider"},
+			AdditionalProviders: &[]api.LLMProxyAdditionalProvider{{
+				Id: "invalid-provider",
+			}},
+		},
+	}
+
+	result, err := transformer.Transform(proxy, &api.RestAPI{})
+	require.Error(t, err)
+	assert.Nil(t, result)
+	assert.Equal(t, "additional provider 'invalid-provider' source configuration is not LLMProviderConfiguration", err.Error())
+}
+
 // Test that a proxy that loops back into a provider with a downstream api-key-auth policy
 func TestLLMProviderTransformer_TransformProxy_LoopbackAuthCarriesProviderValuePrefix(t *testing.T) {
 	store := storage.NewConfigStore()

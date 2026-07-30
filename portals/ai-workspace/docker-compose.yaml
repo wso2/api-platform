@@ -16,7 +16,6 @@ services:
 
   platform-api:
     image: ghcr.io/wso2/api-platform/platform-api:0.14.0-SNAPSHOT
-    container_name: platform-api
     restart: unless-stopped
     profiles: ["platform-api", "all"]
     command: ["-config", "/etc/platform-api/config.toml"]
@@ -41,7 +40,6 @@ services:
 
   ai-workspace:
     image: ghcr.io/wso2/api-platform/ai-workspace:1.0.0-rc-SNAPSHOT
-    container_name: ai-workspace
     restart: unless-stopped
     profiles: ["ai-workspace", "all"]
     depends_on:
@@ -66,7 +64,6 @@ services:
 
   developer-portal:
     image: ghcr.io/wso2/api-platform/developer-portal:1.0.0-beta-SNAPSHOT
-    container_name: developer-portal
     restart: unless-stopped
     profiles: ["developer-portal", "all"]
     depends_on:

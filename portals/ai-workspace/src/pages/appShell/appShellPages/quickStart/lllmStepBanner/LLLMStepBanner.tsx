@@ -133,9 +133,13 @@ export default function LLLMStepBanner({
       }
 
       setStepCompletion({
+        // A deployment record alone doesn't mean the provider is live — a
+        // failed or in-progress deploy must leave the step incomplete.
         hasDeployments:
           deploymentsResult.status === 'fulfilled'
-            ? (deploymentsResult.value.list?.length ?? 0) > 0
+            ? (deploymentsResult.value.list ?? []).some(
+                (deployment) => deployment.status === 'DEPLOYED'
+              )
             : false,
         hasConsumptions:
           apiKeysResult.status === 'fulfilled'

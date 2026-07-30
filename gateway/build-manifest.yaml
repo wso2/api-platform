@@ -25,7 +25,7 @@ policies:
       version: v1.0.3
       gomodule: github.com/wso2/gateway-controllers/policies/basic-auth@v1
     - name: basic-ratelimit
-      version: v1.1.0
+      version: v1.1.1
       gomodule: github.com/wso2/gateway-controllers/policies/basic-ratelimit@v1
     - name: content-length-guardrail
       version: v1.0.1
@@ -55,7 +55,7 @@ policies:
       version: v1.1.0
       gomodule: github.com/wso2/gateway-controllers/policies/llm-cost@v1
     - name: llm-cost-based-ratelimit
-      version: v1.1.0
+      version: v1.1.1
       gomodule: github.com/wso2/gateway-controllers/policies/llm-cost-based-ratelimit@v1
     - name: llm-header-router
       version: v0.9.0
@@ -67,13 +67,13 @@ policies:
       version: v1.0.3
       gomodule: github.com/wso2/gateway-controllers/policies/mcp-acl-list@v1
     - name: mcp-auth
-      version: v1.1.2
+      version: v1.2.1
       gomodule: github.com/wso2/gateway-controllers/policies/mcp-auth@v1
     - name: mcp-authz
-      version: v1.1.0
+      version: v1.1.1
       gomodule: github.com/wso2/gateway-controllers/policies/mcp-authz@v1
     - name: mcp-ratelimit
-      version: v1.1.0
+      version: v1.1.2
       gomodule: github.com/wso2/gateway-controllers/policies/mcp-ratelimit@v1
     - name: mcp-rewrite
       version: v1.0.3
@@ -148,7 +148,7 @@ policies:
       version: v1.0.3
       gomodule: github.com/wso2/gateway-controllers/policies/subscription-validation@v1
     - name: token-based-ratelimit
-      version: v1.1.0
+      version: v1.1.1
       gomodule: github.com/wso2/gateway-controllers/policies/token-based-ratelimit@v1
     - name: url-guardrail
       version: v1.0.1

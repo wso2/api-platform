@@ -30,6 +30,11 @@
 #     is no shared HMAC secret to copy between services
 #   - an admin username/password (prompted interactively - see below),
 #     bcrypt-hashed into APIP_CP_ADMIN_USERNAME / APIP_CP_ADMIN_PASSWORD_HASH
+#   - COMPOSE_PROJECT_NAME in .\.env, unique to this copy of the distribution.
+#     Read by the docker compose CLI (not by the containers) to prefix every
+#     container, network, and volume, so another extraction of the same zip on
+#     this host cannot bind to this stack's volumes - the Platform API's
+#     database and the Developer Portal's data.
 #
 # This is a ONE-TIME step. It never runs as part of container startup - every
 # service fails closed at startup if a required secret is missing, rather
@@ -89,6 +94,10 @@ $DEFAULT_COMPOSE_PROFILES = '__DEFAULT_COMPOSE_PROFILES__'
 # placeholder, Get-Pack below determines it from docker-compose.yaml's actual
 # service topology instead.
 $DEFAULT_PACK_NAME = '__DEFAULT_PACK_NAME__'
+# This pack's version, baked in by `make dist` the same way as the two values
+# above. Only feeds the generated COMPOSE_PROJECT_NAME. Left at this
+# placeholder, the VERSION file in a repo checkout is read instead.
+$DEFAULT_DIST_VERSION = '__DEFAULT_DIST_VERSION__'
 
 function Show-Usage {
     @'
@@ -113,6 +122,24 @@ Usage: .\scripts\setup.ps1 [--force] [--certs-only] [--rotate-encryption-key] [-
 
 ADMIN_USERNAME / ADMIN_PASSWORD environment variables skip the interactive
 prompts and pin the credentials (used by CI).
+
+Compose project name (data isolation):
+  Setup writes COMPOSE_PROJECT_NAME into .env on the first run, unique to this copy of
+  the distribution. It prefixes every container, network, and volume, so another
+  extraction of this zip on the same host cannot bind to this stack's volumes (the
+  Platform API's database, the Developer Portal's data).
+  The name is pinned once and never changes afterwards - not on a rerun, not with
+  --force, not with --rotate-encryption-key. A new name would leave the running data
+  behind in the old volumes and start the stack with an empty database. Deleting .env
+  has that same effect, so leave it in place.
+  To choose the name yourself, set COMPOSE_PROJECT_NAME in the environment for the
+  FIRST run:
+    $env:COMPOSE_PROJECT_NAME = 'my-workspace'; .\scripts\setup.ps1
+  It must match ^[a-z0-9][a-z0-9_-]*$ (no dots, no uppercase - docker compose rejects
+  those).
+  That is also the upgrade path from a distribution that had no .env: its data lives in
+  volumes prefixed with the old extracted-folder name (find it with: docker volume ls),
+  so pass that name on the first run to keep it.
 '@
 }
 
@@ -168,6 +195,10 @@ $EnvFile = Join-Path $RootDir 'api-platform.env'
 # containers explicitly via each service's own env_file: entry), so this is
 # what makes a plain `docker compose up -d` resolve the right services.
 $ComposeEnvFile = Join-Path $RootDir '.env'
+# COMPOSE_PROJECT_NAME goes in the same file. The full prefix is
+# "$ProjectNamePrefix-$Pack", so the two packs never share a project name.
+$ProjectNamePrefix = 'wso2apip'
+$ProjectName = ''
 $CertsDir = Join-Path $RootDir 'resources\certificates'
 # RS256 JWT keypair (PEM) + at-rest encryption keys. Mounted into the
 # platform-api container at /etc/platform-api/keys and into the devportal
@@ -444,6 +475,164 @@ function Get-Pack {
     return 'unknown'
 }
 
+# --- Compose project name --------------------------------------------------------
+# Compose accepts ^[a-z0-9][a-z0-9_-]*$ only - no dots, no uppercase. The comparisons
+# below are case-SENSITIVE (-cmatch/-cnotmatch): PowerShell's -match is case-insensitive,
+# which would accept "My_Workspace" and let Compose reject it later.
+# $hint is an optional extra line naming where the rejected value came from.
+function Test-ProjectName([string]$name, [string]$hint = '') {
+    if ($name -cnotmatch '^[a-z0-9][a-z0-9_-]*$') {
+        [Console]::Error.WriteLine("[setup] ERROR: invalid project name '$name' - must start with a lowercase letter or digit and contain only [a-z0-9_-]")
+        if (-not [string]::IsNullOrEmpty($hint)) { [Console]::Error.WriteLine($hint) }
+        exit 2
+    }
+}
+
+# This pack's version: the value `make dist` baked in for a distribution zip, else the
+# VERSION file a repo checkout has. Neither dist target copies VERSION into the zip,
+# which is why the baked placeholder exists at all.
+function Get-DistVersion {
+    if ($DEFAULT_DIST_VERSION -ne '__DEFAULT_DIST_VERSION__') { return $DEFAULT_DIST_VERSION }
+    $versionFile = Join-Path $RootDir 'VERSION'
+    if (Test-Path -LiteralPath $versionFile) {
+        return ([System.IO.File]::ReadAllText($versionFile)).Trim()
+    }
+    return ''
+}
+
+# <prefix>-<pack>-<sanitized version>-<6 hex>, e.g. wso2apip-ai-workspace-1-0-0-rc-a3f19c.
+# The version is cosmetic: if it can't be read or sanitizes to nothing, fall back to
+# <prefix>-<pack>-<6 hex> rather than failing setup. The suffix alone is what makes the
+# name unique. Must produce the same name as setup.sh for the same inputs.
+function New-ProjectName {
+    $prefix = "$ProjectNamePrefix-$Pack"
+    $version = Get-DistVersion
+    if ($version.EndsWith('-SNAPSHOT')) {
+        $version = $version.Substring(0, $version.Length - '-SNAPSHOT'.Length)
+    }
+    $version = $version.ToLowerInvariant() -replace '[^a-z0-9_-]', '-'
+    $version = ($version -replace '-{2,}', '-').Trim('-')
+
+    # openssl, not Get-Random: Get-Random is not a CSPRNG and would diverge from setup.sh.
+    $suffix = (Invoke-OpenSslQuiet { & openssl rand -hex 3 } 'openssl failed to generate a project name suffix' | Out-String).Trim()
+
+    $candidate = "$prefix-$suffix"
+    if ($version -and "$prefix-$version-$suffix" -cmatch '^[a-z0-9][a-z0-9_-]*$') {
+        $candidate = "$prefix-$version-$suffix"
+    }
+    return $candidate
+}
+
+# Reads the value the way compose itself does - it strips whitespace around an unquoted
+# value, so "  name  " and "name" are the same pin and must validate the same way.
+function Get-DotEnvProjectName {
+    $line = @(Read-EnvLines $ComposeEnvFile |
+        Where-Object { $_ -match '^\s*COMPOSE_PROJECT_NAME=' }) | Select-Object -Last 1
+    if ($null -eq $line) { return '' }
+    return (($line -replace '^[^=]*=', '') -replace '["'']', '').Trim()
+}
+
+# Key-scoped write: .env already holds COMPOSE_PROFILES (and possibly a dev's own keys),
+# so never rewrite the whole file. Set-EnvVar cannot be used here - it replaces the value
+# whenever --force is passed, which is exactly what must never happen to this key.
+# Always UTF-8 without BOM and LF endings via Write-TextFileLf - a BOM makes Compose read
+# the first key as "?COMPOSE_PROJECT_NAME" and silently ignore it.
+function Write-DotEnvProjectName([string]$name) {
+    $timestamp = [DateTime]::UtcNow.ToString('yyyy-MM-ddTHH:mm:ssZ')
+
+    if (-not (Test-Path -LiteralPath $ComposeEnvFile)) {
+        $lines = @(
+            "# Generated by scripts/setup.ps1 on $timestamp."
+            '# Read automatically by "docker compose" from this directory. NOT passed to the containers.'
+            '#'
+            '# COMPOSE_PROJECT_NAME namespaces every container, network, and volume of this stack.'
+            '# It is unique to THIS copy of the distribution, so another extraction of the same zip'
+            '# elsewhere on this host cannot bind to this stack''s volumes.'
+            '#'
+            '# Do not change or delete this line after the first start: the running data lives in'
+            '# volumes named <project>_platform-api-data etc., and a different name means the stack'
+            '# starts with an empty database.'
+            "COMPOSE_PROJECT_NAME=$name"
+        )
+        Write-TextFileLf $ComposeEnvFile (($lines -join "`n") + "`n")
+        return
+    }
+
+    $existing = @(Read-EnvLines $ComposeEnvFile)
+    $out = New-Object System.Collections.ArrayList
+    if (@($existing | Where-Object { $_ -match '^\s*COMPOSE_PROJECT_NAME=' }).Count -gt 0) {
+        $seen = $false
+        foreach ($ln in $existing) {
+            if ($ln -match '^\s*COMPOSE_PROJECT_NAME=') {
+                if (-not $seen) { [void]$out.Add("COMPOSE_PROJECT_NAME=$name"); $seen = $true }
+            } else {
+                [void]$out.Add($ln)
+            }
+        }
+    } else {
+        foreach ($ln in $existing) { [void]$out.Add($ln) }
+        # Drop the trailing empty element the final newline produces, so the appended
+        # block doesn't accumulate blank lines on top of Set-EnvVar's own write.
+        while ($out.Count -gt 0 -and $out[$out.Count - 1] -eq '') {
+            $out.RemoveAt($out.Count - 1)
+        }
+        [void]$out.Add('')
+        [void]$out.Add("# Added by scripts/setup.ps1 on $timestamp.")
+        [void]$out.Add('# COMPOSE_PROJECT_NAME namespaces every container, network, and volume of this stack.')
+        [void]$out.Add('# It is unique to THIS copy of the distribution, so another extraction of the same zip')
+        [void]$out.Add('# elsewhere on this host cannot bind to this stack''s volumes.')
+        [void]$out.Add('#')
+        [void]$out.Add('# Do not change or delete this line after the first start: the running data lives in')
+        [void]$out.Add('# volumes named <project>_platform-api-data etc., and a different name means the stack')
+        [void]$out.Add('# starts with an empty database.')
+        [void]$out.Add("COMPOSE_PROJECT_NAME=$name")
+    }
+    # Read-EnvLines yields a trailing empty element for the file's final newline;
+    # writing it back verbatim would add one blank line to .env on every rerun.
+    while ($out.Count -gt 0 -and $out[$out.Count - 1] -eq '') {
+        $out.RemoveAt($out.Count - 1)
+    }
+    Write-TextFileLf $ComposeEnvFile (($out -join "`n") + "`n")
+}
+
+# Written once, on the first run, then never rotated - not on a rerun, not under --force,
+# not under --rotate-encryption-key. Rotating it would orphan the live volumes and hand
+# the operator an empty stack, which looks exactly like the bug this pinning exists to
+# fix. An operator who wants a specific name (including the old extracted-folder name, to
+# adopt a pre-.env install's volumes) sets COMPOSE_PROJECT_NAME in the environment for
+# that first run.
+function Set-ProjectName {
+    # An empty "COMPOSE_PROJECT_NAME=" line counts as unset - Compose would fall back to
+    # the directory name, which is the collision being fixed.
+    $existing = Get-DotEnvProjectName
+
+    if (-not [string]::IsNullOrEmpty($existing)) {
+        # A hand-edited pin gets the same check as a generated one - otherwise setup reports
+        # success on a stack docker compose then refuses to start.
+        Test-ProjectName $existing '               from the COMPOSE_PROJECT_NAME line in .env'
+        $script:ProjectName = $existing
+        Write-Log "  - .env already pins COMPOSE_PROJECT_NAME=$existing - keeping it"
+        # docker compose reads the environment ahead of .env, so a stale variable here
+        # silently sends compose at a different project than this stack is pinned to.
+        if ((-not [string]::IsNullOrEmpty($env:COMPOSE_PROJECT_NAME)) -and ($env:COMPOSE_PROJECT_NAME -cne $existing)) {
+            Write-Log "    note: COMPOSE_PROJECT_NAME=$($env:COMPOSE_PROJECT_NAME) is set in this session and takes"
+            Write-Log '          precedence over .env for every docker compose command run from it.'
+        }
+        return
+    }
+
+    if (-not [string]::IsNullOrEmpty($env:COMPOSE_PROJECT_NAME)) {
+        $chosen = $env:COMPOSE_PROJECT_NAME; $source = 'COMPOSE_PROJECT_NAME from the environment'
+    } else {
+        $chosen = New-ProjectName; $source = 'generated'
+    }
+
+    Test-ProjectName $chosen
+    Write-DotEnvProjectName $chosen
+    $script:ProjectName = $chosen
+    Write-Log "  - COMPOSE_PROJECT_NAME=$chosen written to .env ($source)"
+}
+
 Test-Prerequisites
 
 $Pack = Get-Pack
@@ -471,6 +660,12 @@ if (-not [string]::IsNullOrEmpty($ComposeProfilesValue)) {
 } else {
     Write-Log '  - could not detect this pack''s default profiles; pass --profiles=<a,b,...> or always use --profile explicitly with docker compose'
 }
+
+# Same file, same section - .env is already created above and $Pack is resolved, and
+# this one call site covers every path including the --certs-only exit below (which
+# has already written .env by this point).
+Write-Log 'Provisioning the docker compose project name ...'
+Set-ProjectName
 
 Write-Log 'Provisioning TLS certificate ...'
 New-Item -ItemType Directory -Force -Path $CertsDir | Out-Null
@@ -650,6 +845,8 @@ if ($CredentialsProvisioned) {
     Write-Host '  ------------------------------------------------------------------'
     Write-Host ''
 }
+Write-Host "  Compose project:  $ProjectName   (pinned in .env)"
+Write-Host ''
 Write-Host '  Next step - choose which components:'
 Write-Host ''
 # The first line always reflects $ComposeProfilesValue - the value actually

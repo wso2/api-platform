@@ -59,6 +59,7 @@ docker compose up -d
 | `resources/keys/jwt_private.pem` + `jwt_public.pem` | RS256 JWT keypair — the Platform API signs with the private key, the Developer Portal verifies with the public one                                                                                                                                                                                                                            |
 | `resources/keys/encryption.key` | Platform API's at-rest encryption key                                                                                                                                                                                                                                                                                                          |
 | `resources/keys/devportal-encryption.key` + `devportal-session-secret` | Developer Portal's at-rest encryption key and session-signing secret                                                                                                                                                                                                                                                                           |
+| `.env` (git-ignored) | `COMPOSE_PROFILES` and `COMPOSE_PROJECT_NAME` — read by the `docker compose` CLI from this directory |
 
 The admin password is generated and printed once by `setup.sh` — it is not stored anywhere; only its bcrypt hash lands in `api-platform.env`. Re-running `setup.sh` is safe: it only fills in what's missing and never overwrites an existing value — to rotate a value, delete it from `api-platform.env` (or delete `resources/certificates` for the TLS cert) and re-run. `ADMIN_USERNAME` / `ADMIN_PASSWORD` environment variables skip the interactive prompts (used by CI to pin known test credentials).
 
@@ -169,6 +170,10 @@ See `configs/config-template.toml` for the full, per-field reference.
 ```bash
 docker compose up -d --force-recreate
 ```
+
+## Compose project name
+
+`setup.sh` pins `COMPOSE_PROJECT_NAME=wso2apip-developer-portal-<version>-<6 hex>` in `.env` on its first run and never changes it. Compose prefixes this stack's containers, network, and volumes with it, so unpacking this zip again elsewhere on the host gets its own volumes instead of adopting this copy's APIs, applications, and users. Don't edit that line or delete `.env` — the data lives in `<project>_developer-portal-data` and `<project>_platform-api-data`, and a different name starts the portal empty. `down` keeps those volumes; only `down -v` deletes them. To choose the name yourself — including adopting an earlier release's volumes, whose prefix `docker volume ls` shows — set it for the first run only: `COMPOSE_PROJECT_NAME=<name> ./scripts/setup.sh` (PowerShell: `$env:COMPOSE_PROJECT_NAME = '<name>'; .\scripts\setup.ps1`). It must match `^[a-z0-9][a-z0-9_-]*$`. Two portal stacks still can't run at once: both bind ports `9243` and `9543`.
 
 ## Database
 

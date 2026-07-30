@@ -49,11 +49,25 @@ router.get('/v0.1/servers', mcpRegistryService.listServers);
 router.get('/v0.1/servers/:serverName/versions', mcpRegistryService.listVersions);
 router.get('/v0.1/servers/:serverName/versions/:version', mcpRegistryService.getVersion);
 
-// Publishing endpoints (API key or session auth — same as all other devportal write routes)
-router.post('/v0.1/publish', enforceSecurity(constants.SCOPES.DEVELOPER), mcpRegistryService.publishServer);
-router.put('/v0.1/servers/:serverName/versions/:version', enforceSecurity(constants.SCOPES.DEVELOPER), mcpRegistryService.updateVersion);
-router.delete('/v0.1/servers/:serverName/versions/:version', enforceSecurity(constants.SCOPES.DEVELOPER), mcpRegistryService.deleteVersion);
-router.patch('/v0.1/servers/:serverName/versions/:version/status', enforceSecurity(constants.SCOPES.DEVELOPER), mcpRegistryService.updateVersionStatus);
-router.patch('/v0.1/servers/:serverName/status', enforceSecurity(constants.SCOPES.DEVELOPER), mcpRegistryService.updateAllVersionsStatus);
+// Publishing endpoints — gated by the same dp:mcp_* scopes the admin /api/v0.9/mcp-servers*
+// CRUD operations require (see constants.SCOPES.MCP_*), via bearer JWT or local-auth session
+// (enforceSecurity), same as every other devportal write route. Status changes have no
+// dedicated admin-API scope of their own — per the OpenAPI spec, they go through the same
+// PUT /mcp-servers/{id} operation as a plain update, so they're gated identically here.
+//
+// publishServer is an upsert (create-or-update), and MCP_PUBLISH_SCOPES here is only a
+// coarse pre-filter — proof the caller holds SOME MCP-publishing scope — not the final
+// authorization decision: whether this specific request creates or updates isn't knowable
+// until publishServer looks up the target name/version/proxyId, so mcpRegistryService.js's
+// publishServer re-checks req.tokenScopes against the precise create-vs-update scope once
+// it has determined which operation this request actually performs. A caller with only
+// dp:mcp_create must not be able to update an existing server via this coarse gate alone,
+// and vice versa for dp:mcp_update against creating a new one.
+const MCP_PUBLISH_SCOPES = [...constants.SCOPES.MCP_CREATE, ...constants.SCOPES.MCP_UPDATE];
+router.post('/v0.1/publish', enforceSecurity(MCP_PUBLISH_SCOPES), mcpRegistryService.publishServer);
+router.put('/v0.1/servers/:serverName/versions/:version', enforceSecurity(constants.SCOPES.MCP_UPDATE), mcpRegistryService.updateVersion);
+router.delete('/v0.1/servers/:serverName/versions/:version', enforceSecurity(constants.SCOPES.MCP_DELETE), mcpRegistryService.deleteVersion);
+router.patch('/v0.1/servers/:serverName/versions/:version/status', enforceSecurity(constants.SCOPES.MCP_UPDATE), mcpRegistryService.updateVersionStatus);
+router.patch('/v0.1/servers/:serverName/status', enforceSecurity(constants.SCOPES.MCP_UPDATE), mcpRegistryService.updateAllVersionsStatus);
 
 module.exports = router;

@@ -72,6 +72,51 @@ export function buildOrgPath(org: OrgLike | null | undefined, path: string): str
   return `${base}/${path.replace(/^\/+/, '')}`;
 }
 
+/**
+ * Resolves the route for a proxy that may live in any project of the current
+ * organization.
+ *
+ * `proxyProjectId` is the project handle (the same value `ProjectBase.id`
+ * carries), so the proxy's own project is matched by handle. Returns `null`
+ * when the proxy names a project outside `projects` — a stale listing, or a
+ * project the user can't see. Callers must surface that as an error rather
+ * than navigating somewhere the proxy doesn't live: an org-level fallback
+ * lands on a page whose project-scoped breadcrumbs and back links are wrong,
+ * and whose fetch fails anyway when the project is genuinely out of reach.
+ */
+export function buildProxyPath(
+  org: OrgLike | null | undefined,
+  projects: ProjectLike[],
+  proxyId: string,
+  proxyProjectId?: string
+): string | null {
+  const proxyProject = proxyProjectId
+    ? projects.find((project) => project.id === proxyProjectId)
+    : undefined;
+  if (!proxyProject) return null;
+
+  return buildProjectPath(
+    org,
+    proxyProject,
+    `/proxies/${encodeURIComponent(proxyId)}`
+  );
+}
+
+/**
+ * Resolves the route for a gateway detail view.
+ *
+ * Gateways are organization-scoped, not project-scoped, so this is always an
+ * org-level path. `gatewayId` is the gateway handle — the same value
+ * `Gateway.id` carries and the value `ViewGateway` matches its `:gatewayName`
+ * param against.
+ */
+export function buildGatewayPath(
+  org: OrgLike | null | undefined,
+  gatewayId: string
+): string {
+  return buildOrgPath(org, `/gateways/view/${encodeURIComponent(gatewayId)}`);
+}
+
 export function buildProjectPath(
   org: OrgLike | null | undefined,
   project: ProjectLike | null | undefined,

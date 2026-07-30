@@ -27,7 +27,8 @@
 
 {{? data.operation.description}}{{= data.operation.description }}{{?}}
 
-{{? data.operation.requestBody}}
+{{ var _mpOnly = data.consumes && data.consumes.indexOf('multipart/form-data') >= 0 && data.consumes.indexOf('application/json') < 0; }}
+{{? data.operation.requestBody && !_mpOnly}}
 > Payload
 
 {{? data.bodyParameter.exampleValues.description }}
