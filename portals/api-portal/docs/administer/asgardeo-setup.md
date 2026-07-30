@@ -97,7 +97,7 @@ For local development, the default `ASGARDEO_RESOURCE_IDENTIFIER=https://localho
 Update `configs/config.toml`:
 
 ```toml
-[idp]
+[api_portal.auth.idp]
 name = "Asgardeo"
 issuer = "https://api.asgardeo.io/t/<your-tenant>/oauth2/token"
 authorization_url = "https://api.asgardeo.io/t/<your-tenant>/oauth2/authorize"

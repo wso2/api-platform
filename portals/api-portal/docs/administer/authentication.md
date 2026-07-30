@@ -257,7 +257,7 @@ When multiple devportal organizations share one IDP, the portal enforces per-org
 ## Keycloak Example
 
 ```toml
-[idp]
+[api_portal.auth.idp]
 name = "Keycloak"
 issuer = "https://keycloak.example.com/realms/myrealm"
 authorization_url = "https://keycloak.example.com/realms/myrealm/protocol/openid-connect/auth"

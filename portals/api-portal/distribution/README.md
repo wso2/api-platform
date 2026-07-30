@@ -137,10 +137,10 @@ Environment overrides go in `api-platform.env` (git-ignored; loaded into both co
 | `[api_portal.auth.local].platform_api_url` | Address of the Platform API local-auth sidecar | `https://platform-api:9243` |
 | `[api_portal.auth.local].public_key_path` | Path to the Platform API RS256 public key PEM used to verify login tokens | `/etc/api-portal/keys/jwt_public.pem` |
 | `[api_portal.auth.authorization].enabled` | Enforce each REST operation's declared `dp:*` scopes. `false` lets any authenticated caller through — development only | `true` |
-| `[api_portal.auth.authorization].mode` | `scope` reads the token's own scope claim; `role` expands its roles claim through the grant table instead (for an IDP that emits roles, not `dp:*` scopes) | `scope` |
-| `[api_portal.auth.authorization].role_to_scope_mapping` | Path to the mounted `resources/api-portal/role-to-scope-mapping.yaml` — required in `role` mode; edit that file to change what a role grants | _(empty)_ |
+| `[api_portal.auth.authorization].mode` | `role` (the default) expands the token's roles claim through the grant table; `scope` reads the token's own scope claim instead | `role` |
+| `[api_portal.auth.authorization].role_to_scope_mapping` | Path to the mounted `resources/api-portal/role-to-scope-mapping.yaml` — used in `role` mode; edit that file to change what a role grants | `./resources/role-to-scope-mapping.yaml` |
 | `[api_portal.auth.authorization].page_role_validation` | Gate portal pages on the caller's role tier (`portal_roles` below). Separate from `enabled`, which governs REST scopes | `false` |
-| `[api_portal.auth.authorization.portal_roles]` | Which role name in the token's roles claim grants each page tier (`admin`, `super_admin`, `subscriber`) | `admin`, `superAdmin`, `Internal/subscriber` |
+| `[api_portal.auth.authorization.portal_roles]` | Which role name in the token's roles claim grants each page tier (`admin`, `subscriber`) | `admin`, `Internal/subscriber` |
 | `[api_portal.organization].handle` | The single organization this instance serves, bootstrapped on first start. Required — the portal refuses to start without it | `default` |
 | `[api_portal.organization].display_name` | Display name applied when the organization is first seeded | `Default` |
 
