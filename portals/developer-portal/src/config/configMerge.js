@@ -36,6 +36,11 @@ function snakeToCamelDeep(value) {
     if (Array.isArray(value)) {
         return value.map(snakeToCamelDeep);
     }
+    if (value instanceof Date) {
+        // TOML date/date-time values parse to Date objects (smol-toml's TomlDate);
+        // recursing into one would flatten it to {}.
+        return value;
+    }
     if (value !== null && typeof value === 'object') {
         const out = {};
         for (const [k, v] of Object.entries(value)) {

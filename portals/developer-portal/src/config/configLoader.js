@@ -66,6 +66,17 @@ function loadConfigFiles(paths) {
         const tree = snakeToCamelDeep(parsed).developerPortal || {};
         merged = mergeOver(merged, tree);
     }
+    // Every --config file layered and nothing came out: no file carried a
+    // [developer_portal] table at all. Returning {} here would boot on pure
+    // built-in DEFAULTS — the exact silent fallback this loader exists to
+    // prevent — so fail here, where the cause is still nameable.
+    if (Object.keys(merged).length === 0) {
+        throw new Error(
+            `config file(s) ${paths.map(p => `"${p}"`).join(', ')} produced an empty ` +
+            'configuration: no [developer_portal] table found. Refusing to start on ' +
+            'built-in defaults alone.'
+        );
+    }
     return merged;
 }
 
