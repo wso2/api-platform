@@ -210,31 +210,28 @@ uuid = "99089a17-72e0-4dd8-a2f4-c8dfbb085295"
 # starting with a blank or guessable credential.
 username      = ""
 password_hash = ""
-# One of role / scopes is REQUIRED — a user with neither authenticates and is then
-# authorized for nothing.
+# REQUIRED — a role from the auth.authorization.role_mappings file above, and this
+# user's entire grant. The login endpoint expands it into the token's scope claim
+# and also emits the role itself as the roles claim, so the same token works
+# whether auth.authorization.mode is "scope" (default) or "role". A user with no
+# role, or one naming a role the mapping file doesn't define, fails startup rather
+# than logging in successfully and then being denied every request.
 #
-# A role from auth.authorization.role_mappings is the normal way to grant a
-# file-mode user. The login endpoint expands it into the token's scope claim and
-# also emits the role itself as the roles claim, so the same token works whether
-# auth.authorization.mode is "scope" (default) or "role". It is commented out here
-# because role_mappings above is empty in this template: naming a role without a
-# mapping file fails startup. Set role_mappings first, then uncomment.
-# role  = "ap_admin"   # see resources/roles.yaml for the shipped roles
+# There is no per-user scope list: what a role grants is defined once, in the
+# mapping file, so no user can drift out of step with the role it names. To grant
+# something no shipped role covers, add a role to that file (see
+# resources/roles.yaml for the shipped ones and the scope namespaces it may use).
 #
-# Space-separated scope list, unioned with whatever the role grants. Use it
-# alongside a role to grant something the mapping file cannot name — an ap: scope
-# this server's OpenAPI spec doesn't declare is rejected there, which is why the
-# shipped config.toml lists the AI Workspace (ap:devportal:*, ap:git:read) and
-# event-gateway plugin scopes here rather than in roles.yaml — or on its own
-# instead of a role, as below.
-scopes = "ap:organization:manage ap:project:manage ap:gateway:manage ap:gateway_custom_policy:manage ap:rest_api:manage ap:llm_provider:manage ap:llm_proxy:manage ap:llm_template:manage ap:mcp_proxy:manage ap:application:manage ap:subscription:manage ap:subscription_plan:manage ap:secret:manage ap:api_key:read ap:api_key:all:manage ap:devportal:manage ap:git:read"
+# Left empty here because role_mappings above is empty in this template — set that
+# first, then name a role.
+role          = ""
 
 # Additional users — uncomment the WHOLE block (including the [[...]] header)
 # and replace the placeholder hash with a real bcrypt hash before use.
 # [[platform_api.auth.file.users]]
 # username      = "readonly"
 # password_hash = "$2a$12$<bcrypt-hash-of-your-password>"
-# scopes        = "ap:organization:read ap:gateway:read ap:rest_api:read ap:llm_provider:read"
+# role          = "ap_viewer"
 
 # JWT (local RS256) — used by "internal_token" and "file" modes. Tokens are
 # signed asymmetrically: "internal_token" only verifies tokens minted elsewhere

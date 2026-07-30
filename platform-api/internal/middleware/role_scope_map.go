@@ -71,6 +71,21 @@ const PlatformScopePrefix = "ap:"
 // which is the only error class detectable without that component's spec.
 var wellFormedScope = regexp.MustCompile(`^[a-z0-9_]+:[a-z0-9_:*]+$`)
 
+// mintedPlatformScopes are scopes in this server's own namespace that it issues
+// into tokens but does not itself declare or enforce — they gate endpoints on a
+// sibling component (the AI Workspace BFF) that trusts the same token. They
+// cannot be checked against the OpenAPI spec for that reason, but they must be
+// nameable in roles.yaml: a role is a file-mode user's entire grant, so a scope
+// that can't be named in the mapping can't be granted at all.
+var mintedPlatformScopes = map[string]bool{
+	"ap:devportal:read":   true,
+	"ap:devportal:create": true,
+	"ap:devportal:update": true,
+	"ap:devportal:delete": true,
+	"ap:devportal:manage": true,
+	"ap:git:read":         true,
+}
+
 // ValidateRoleScopeMap checks the scopes referenced in the map, failing fast at
 // startup rather than at request time — an unrecognized scope name is almost
 // certainly a typo that would otherwise surface as a silent 403.
@@ -78,10 +93,12 @@ var wellFormedScope = regexp.MustCompile(`^[a-z0-9_]+:[a-z0-9_:*]+$`)
 // Validation is namespace-scoped. A scope in this server's own namespace
 // (PlatformScopePrefix) must be declared in the OpenAPI spec — that includes
 // scopes contributed by compiled-in plugins, so this must run after the plugin
-// specs are merged. A scope in another component's namespace is checked only for
-// well-formedness: the roles file is the natural place to describe what a role
-// grants across the platform, and refusing scopes this server doesn't declare
-// would push those grants back into per-user scope lists.
+// specs are merged — unless it is one of the mintedPlatformScopes this server
+// issues on a sibling component's behalf. A scope in another component's
+// namespace is checked only for well-formedness: the roles file is where a role's
+// grants across the whole platform are described, and it is the only place a
+// file-mode user's grants can be expressed, so refusing scopes this server does
+// not declare would make them ungrantable.
 func ValidateRoleScopeMap(m map[string][]string, registry *ScopeRegistry) error {
 	known := registry.AllScopes()
 	for role, scopes := range m {
@@ -92,6 +109,9 @@ func ValidateRoleScopeMap(m map[string][]string, registry *ScopeRegistry) error 
 			}
 			if !strings.HasPrefix(s, PlatformScopePrefix) {
 				continue // another component's namespace — not ours to validate
+			}
+			if mintedPlatformScopes[s] {
+				continue // ours to mint, a sibling component's to enforce
 			}
 			if _, ok := known[s]; !ok {
 				return fmt.Errorf("roles.yaml: role %q references unknown scope %q — check the OpenAPI spec for valid scope names", role, s)

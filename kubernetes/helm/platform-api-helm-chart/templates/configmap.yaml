@@ -111,10 +111,7 @@ data:
     # provisions a generated username and a bcrypt password hash.
     username = {{ `'{{ env "APIP_CP_ADMIN_USERNAME" }}'` }}
     password_hash = {{ `'{{ env "APIP_CP_ADMIN_PASSWORD_HASH" }}'` }}
-    {{- with $auth.file.admin.role }}
-    role = {{ . | quote }}
-    {{- end }}
-    scopes = {{ $auth.file.admin.scopes | quote }}
+    role = {{ required "config.auth.file.admin.role is required when auth.mode is \"file\"" $auth.file.admin.role | quote }}
     {{- end }}
 
     [platform_api.server.http]
@@ -171,4 +168,12 @@ data:
 
     {{ . | nindent 4 | trim }}
     {{- end }}
+  {{- with $auth.authorization.roles }}
+  # Role→scope mapping named by auth.authorization.role_mappings. Mounted as a
+  # file rather than folded into the TOML above because the Platform API reads it
+  # separately and re-reads it only on restart.
+  roles.yaml: |
+    roles:
+      {{- toYaml . | nindent 6 }}
+  {{- end }}
 {{- end }}

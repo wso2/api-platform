@@ -46,9 +46,9 @@ type loginResponse struct {
 type AuthLoginHandler struct {
 	cfg *config.Server
 	// roleScopeMap is the role-to-scope mapping from auth.authorization.role_mappings,
-	// used to expand a user's configured role into the scopes its token carries.
-	// Nil when no mapping file is configured, in which case no user may name a
-	// role (config validation enforces that pairing).
+	// used to expand each user's role into the scopes its token carries. In file
+	// mode it is always populated: config validation requires the mapping file, and
+	// startup checks every user's role against it.
 	roleScopeMap map[string][]string
 	slogger      *slog.Logger
 }
@@ -115,10 +115,9 @@ func (h *AuthLoginHandler) Login(w http.ResponseWriter, r *http.Request) error {
 	// The role travels in the token as well as the scopes it expanded to, so a
 	// consumer configured for role-based authorization reads the same identity
 	// this endpoint authorized — the claim is a list, matching the shape IDPs
-	// emit and the shape the roles claim is read back in.
-	if matched.Role != "" {
-		claims[claimKey(cm.Roles, "roles")] = []string{matched.Role}
-	}
+	// emit and the shape the roles claim is read back in. Config validation
+	// guarantees the role is set, so this is unconditional.
+	claims[claimKey(cm.Roles, "roles")] = []string{matched.Role}
 
 	// Sign asymmetrically with RS256 using the configured RSA private key,
 	// read fresh from its mounted file. Config validation (validateJWTConfig)
@@ -142,26 +141,19 @@ func (h *AuthLoginHandler) Login(w http.ResponseWriter, r *http.Request) error {
 }
 
 // effectiveScopes returns the space-separated scope claim for a user: the scopes
-// its configured role grants, unioned with the scopes granted directly. A role is
-// normally the whole grant — the mapping file may name scopes in any component's
-// namespace — and the direct list is for anything beyond it, such as a scope only
-// a plugin build declares.
+// its role grants, per the mapping file. The role is the user's whole grant —
+// there is no per-user scope list to drift out of sync with it — so widening or
+// narrowing what a user may do is an edit to the role's entry in that one file.
 //
-// Authorization is still enforced against this scope claim — expanding the role
-// at issue time is what lets a role-shaped configuration be checked by the
-// scope-mode enforcer, rather than requiring authorization to run in role mode.
+// Authorization is still enforced against this scope claim; expanding the role at
+// issue time is what lets a role-shaped configuration be checked by the scope-mode
+// enforcer, rather than requiring authorization to run in role mode. Duplicates
+// are dropped so a role that lists a scope twice doesn't repeat it in the claim.
 func (h *AuthLoginHandler) effectiveScopes(user *config.FileBasedUser) string {
-	direct := strings.Fields(user.Scopes)
-	if user.Role == "" {
-		return strings.Join(direct, " ")
-	}
-
-	// Role scopes come first so the claim reads role-then-extras; seen dedupes
-	// an extra that the role already grants.
 	fromRole := h.roleScopeMap[user.Role]
-	scopes := make([]string, 0, len(fromRole)+len(direct))
-	seen := make(map[string]struct{}, len(fromRole)+len(direct))
-	for _, s := range append(append([]string{}, fromRole...), direct...) {
+	scopes := make([]string, 0, len(fromRole))
+	seen := make(map[string]struct{}, len(fromRole))
+	for _, s := range fromRole {
 		if _, dup := seen[s]; dup {
 			continue
 		}

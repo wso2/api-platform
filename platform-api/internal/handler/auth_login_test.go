@@ -25,14 +25,16 @@ import (
 	"github.com/wso2/api-platform/platform-api/config"
 )
 
-// A file-mode user's scope claim is the union of the scopes its role grants and
-// the scopes granted directly. The role covers the platform scopes (validated
-// against the OpenAPI spec at startup); the direct list carries scopes this
-// server does not declare, such as the Developer Portal's "dp:*" scopes.
+// A file-mode user's scope claim is exactly what its role grants — the role is
+// the whole grant, so the mapping file is the only place the user's privileges
+// are defined. The mapping may name scopes in any component's namespace (the
+// Developer Portal's "dp:*", for example), which is what makes a per-user scope
+// list unnecessary.
 func TestEffectiveScopes(t *testing.T) {
 	h := NewAuthLoginHandler(&config.Server{}, map[string][]string{
-		"ap_admin":  {"ap:organization:manage", "ap:rest_api:manage"},
+		"ap_admin":  {"ap:organization:manage", "ap:rest_api:manage", "dp:org_manage"},
 		"ap_viewer": {"ap:organization:read"},
+		"ap_dupes":  {"ap:rest_api:manage", "ap:organization:read", "ap:rest_api:manage"},
 	})
 
 	tests := []struct {
@@ -41,33 +43,29 @@ func TestEffectiveScopes(t *testing.T) {
 		want string
 	}{
 		{
-			name: "role only",
+			name: "role expands to its scopes, in order",
 			user: config.FileBasedUser{Role: "ap_viewer"},
 			want: "ap:organization:read",
 		},
 		{
-			name: "scopes only",
-			user: config.FileBasedUser{Scopes: "dp:org_manage ap:devportal:manage"},
-			want: "dp:org_manage ap:devportal:manage",
-		},
-		{
-			// Role scopes first, then the extras the mapping cannot name.
-			name: "role unioned with direct scopes",
-			user: config.FileBasedUser{Role: "ap_admin", Scopes: "dp:org_manage"},
+			// The mapping carries foreign-namespace scopes too, so nothing has to
+			// be granted outside it.
+			name: "role spanning multiple namespaces",
+			user: config.FileBasedUser{Role: "ap_admin"},
 			want: "ap:organization:manage ap:rest_api:manage dp:org_manage",
 		},
 		{
-			// A direct scope the role already grants must not appear twice.
-			name: "overlapping scope is deduped",
-			user: config.FileBasedUser{Role: "ap_admin", Scopes: "ap:rest_api:manage dp:org_manage"},
-			want: "ap:organization:manage ap:rest_api:manage dp:org_manage",
+			// A role listing the same scope twice must not repeat it in the claim.
+			name: "duplicate scope in a role is deduped",
+			user: config.FileBasedUser{Role: "ap_dupes"},
+			want: "ap:rest_api:manage ap:organization:read",
 		},
 		{
-			// validateFileUserRoles rejects this at startup; if it ever reaches
-			// here the direct scopes must still be honored rather than dropped.
-			name: "unknown role falls back to direct scopes",
-			user: config.FileBasedUser{Role: "no-such-role", Scopes: "dp:org_manage"},
-			want: "dp:org_manage",
+			// validateFileUserRoles rejects this at startup; if it ever reached
+			// here the token must carry no scopes rather than a guessed grant.
+			name: "unknown role grants nothing",
+			user: config.FileBasedUser{Role: "no-such-role"},
+			want: "",
 		},
 	}
 	for _, tt := range tests {

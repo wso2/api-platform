@@ -43,10 +43,6 @@ region       = "us"
 [[platform_api.auth.file.users]]
 username      = '{{ env "APIP_CP_ADMIN_USERNAME" }}'
 password_hash = '{{ env "APIP_CP_ADMIN_PASSWORD_HASH" }}'
+# The role is the whole grant — edit its entry in the mounted roles.yaml to change
+# what this user may do.
 role          = '{{ env "APIP_CP_ADMIN_ROLE" "ap_admin" }}'
-# Unioned with whatever the role grants. These four live here rather than in
-# roles.yaml because that file's ap: scopes are validated against this server's
-# OpenAPI spec: ap:devportal:manage / ap:git:read are AI Workspace BFF scopes this
-# server only mints, and the event-gateway scopes are declared only on a build
-# that compiles in that plugin — naming any of them in roles.yaml fails startup.
-scopes        = "ap:devportal:manage ap:git:read ap:websub_api:manage ap:webbroker_api:manage"

@@ -70,6 +70,19 @@ paths:
 			scopes:  []string{"DP:org_manage"},
 			wantErr: "malformed scope",
 		},
+		{
+			// This server mints these for the AI Workspace BFF to enforce, so they
+			// appear in no spec it can check. A role must still be able to name
+			// them — it is a file-mode user's only grant.
+			name:   "minted platform scope passes without being declared here",
+			scopes: []string{"ap:devportal:manage", "ap:git:read"},
+		},
+		{
+			// The allowlist is exact, not a prefix: a typo inside it still fails.
+			name:    "typo in a minted scope is still rejected",
+			scopes:  []string{"ap:devportal:mange"},
+			wantErr: "unknown scope",
+		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

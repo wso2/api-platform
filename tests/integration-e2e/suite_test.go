@@ -49,11 +49,12 @@ const (
 	pollTimeout = 120 * time.Second
 
 	// Admin user injected via AUTH_FILE_BASED_USERS on the @devportal stack. It
-	// carries both the platform-api ap:* scopes and the dp:*_manage scopes the
-	// developer portal requires, so the same admin JWT authorizes both products.
-	// (A mounted config's users are ignored — the built-in default admin wins —
-	// but the AUTH_FILE_BASED_USERS env var does override it.)
-	fileBasedAdminUsers = `[{"username":"admin","password_hash":"$2y$10$U2yKMwGamGwDoMu0hRPT7u8nCuP8z/qxHFOKV6dhIxkJN9NJ0eVQ.","scopes":"ap:organization:manage ap:gateway:manage ap:gateway_custom_policy:manage ap:rest_api:manage ap:llm_provider:manage ap:llm_proxy:manage ap:mcp_proxy:manage ap:webbroker_api:manage ap:websub_api:manage ap:application:manage ap:subscription:manage ap:subscription_plan:manage ap:project:manage ap:llm_template:manage ap:devportal:manage ap:api_key:read ap:api_key:all:manage ap:secret:manage dp:org_manage dp:api_manage dp:sub_plan_manage dp:app_manage dp:subscription_manage dp:api_key_manage dp:webhook_subscriber_manage"}]`
+	// names ap_admin from the mounted roles.yaml, which carries both the
+	// platform-api ap:* scopes and the dp:*_manage scopes the developer portal
+	// requires, so the same admin JWT authorizes both products. (A mounted
+	// config's users are ignored — the built-in default admin wins — but the
+	// AUTH_FILE_BASED_USERS env var does override it.)
+	fileBasedAdminUsers = `[{"username":"admin","password_hash":"$2y$10$U2yKMwGamGwDoMu0hRPT7u8nCuP8z/qxHFOKV6dhIxkJN9NJ0eVQ.","role":"ap_admin"}]`
 )
 
 // Host-side endpoints. Ports are overridable so the suite can run alongside
@@ -176,7 +177,7 @@ func bringUpStack() error {
 	}
 
 	if suite.db == "postgres" {
-		// Give the admin JWT the dp:* scopes the developer portal enforces.
+		// Give the admin JWT the role whose dp:* scopes the developer portal enforces.
 		if err := os.Setenv("AUTH_FILE_BASED_USERS", fileBasedAdminUsers); err != nil {
 			return err
 		}

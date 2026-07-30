@@ -1,0 +1,212 @@
+# --------------------------------------------------------------------
+# Copyright (c) 2026, WSO2 LLC. (https://www.wso2.com).
+#
+# WSO2 LLC. licenses this file to you under the Apache License,
+# Version 2.0 (the "License"); you may not use this file except
+# in compliance with the License.
+# You may obtain a copy of the License at
+#
+# http://www.apache.org/licenses/LICENSE-2.0
+# --------------------------------------------------------------------
+#
+# Role-to-scope mapping for the developer-portal backend IT suite, named by
+# auth.authorization.role_mappings in config-platform-api-it.toml. A file-mode
+# user's role is its entire grant, so the three IT accounts (admin / publisher /
+# developer) get one role each, defined here rather than as per-user scope lists.
+#
+# These are Developer Portal ("dp:") scopes throughout: the Platform API mints
+# them into the tokens it issues but does not enforce them, so it checks only
+# their shape. The suite's own authorization assertions are what exercise them.
+# --------------------------------------------------------------------
+
+roles:
+  # Full access — organization management plus every resource area.
+  - name: dp_admin_it
+    scopes:
+      - dp:org_read
+      - dp:org_create
+      - dp:org_update
+      - dp:org_manage
+      - dp:org_delete
+      - dp:org_content_read
+      - dp:org_content_write
+      - dp:org_content_manage
+      - dp:org_content_delete
+      - dp:api_read
+      - dp:api_create
+      - dp:api_update
+      - dp:api_manage
+      - dp:api_delete
+      - dp:api_content_read
+      - dp:api_content_write
+      - dp:api_content_manage
+      - dp:api_content_delete
+      - dp:mcp_read
+      - dp:mcp_create
+      - dp:mcp_update
+      - dp:mcp_manage
+      - dp:mcp_delete
+      - dp:mcp_content_read
+      - dp:mcp_content_create
+      - dp:mcp_content_update
+      - dp:mcp_content_manage
+      - dp:mcp_content_delete
+      - dp:api_key_create
+      - dp:api_key_read
+      - dp:api_key_update
+      - dp:api_key_manage
+      - dp:api_key_revoke
+      - dp:mcp_key_create
+      - dp:mcp_key_read
+      - dp:mcp_key_update
+      - dp:mcp_key_manage
+      - dp:mcp_key_revoke
+      - dp:api_workflow_create
+      - dp:api_workflow_read
+      - dp:api_workflow_update
+      - dp:api_workflow_delete
+      - dp:api_workflow_manage
+      - dp:app_create
+      - dp:app_read
+      - dp:app_update
+      - dp:app_manage
+      - dp:app_delete
+      - dp:app_key_create
+      - dp:app_key_manage
+      - dp:app_key_revoke
+      - dp:app_key_mapping_read
+      - dp:app_key_mapping_write
+      - dp:app_key_mapping_manage
+      - dp:subscription_create
+      - dp:subscription_read
+      - dp:subscription_update
+      - dp:subscription_manage
+      - dp:subscription_delete
+      - dp:sub_plan_create
+      - dp:sub_plan_read
+      - dp:sub_plan_update
+      - dp:sub_plan_manage
+      - dp:sub_plan_delete
+      - dp:km_create
+      - dp:km_read
+      - dp:km_update
+      - dp:km_manage
+      - dp:km_delete
+      - dp:view_create
+      - dp:view_read
+      - dp:view_update
+      - dp:view_manage
+      - dp:view_delete
+      - dp:label_create
+      - dp:label_read
+      - dp:label_update
+      - dp:label_manage
+      - dp:label_delete
+      - dp:webhook_subscriber_create
+      - dp:webhook_subscriber_read
+      - dp:webhook_subscriber_update
+      - dp:webhook_subscriber_delete
+      - dp:webhook_subscriber_manage
+      - dp:event_read
+      - dp:delivery_manage
+
+  # Content/config manager — APIs, MCP servers, key managers, subscription
+  # plans, views/labels, webhook subscribers, API workflows. No org management,
+  # no application ownership (that's the developer's).
+  - name: dp_publisher_it
+    scopes:
+      - dp:org_read
+      - dp:api_read
+      - dp:api_create
+      - dp:api_update
+      - dp:api_manage
+      - dp:api_delete
+      - dp:api_content_read
+      - dp:api_content_write
+      - dp:api_content_manage
+      - dp:api_content_delete
+      - dp:mcp_read
+      - dp:mcp_create
+      - dp:mcp_update
+      - dp:mcp_manage
+      - dp:mcp_delete
+      - dp:mcp_content_read
+      - dp:mcp_content_create
+      - dp:mcp_content_update
+      - dp:mcp_content_manage
+      - dp:mcp_content_delete
+      - dp:api_key_create
+      - dp:api_key_read
+      - dp:api_key_update
+      - dp:api_key_manage
+      - dp:api_key_revoke
+      - dp:mcp_key_create
+      - dp:mcp_key_read
+      - dp:mcp_key_update
+      - dp:mcp_key_manage
+      - dp:mcp_key_revoke
+      - dp:api_workflow_create
+      - dp:api_workflow_read
+      - dp:api_workflow_update
+      - dp:api_workflow_delete
+      - dp:api_workflow_manage
+      - dp:sub_plan_create
+      - dp:sub_plan_read
+      - dp:sub_plan_update
+      - dp:sub_plan_manage
+      - dp:sub_plan_delete
+      - dp:km_create
+      - dp:km_read
+      - dp:km_update
+      - dp:km_manage
+      - dp:km_delete
+      - dp:view_create
+      - dp:view_read
+      - dp:view_update
+      - dp:view_manage
+      - dp:view_delete
+      - dp:label_create
+      - dp:label_read
+      - dp:label_update
+      - dp:label_manage
+      - dp:label_delete
+      - dp:webhook_subscriber_create
+      - dp:webhook_subscriber_read
+      - dp:webhook_subscriber_update
+      - dp:webhook_subscriber_delete
+      - dp:webhook_subscriber_manage
+      - dp:event_read
+
+  # Portal end-user — read APIs/MCP servers, own applications, subscriptions,
+  # and API keys. No org, key-manager, view/label, or webhook-subscriber management.
+  - name: dp_developer_it
+    scopes:
+      - dp:org_read
+      - dp:api_read
+      - dp:api_content_read
+      - dp:mcp_read
+      - dp:mcp_content_read
+      - dp:api_key_create
+      - dp:api_key_read
+      - dp:api_key_update
+      - dp:api_key_manage
+      - dp:api_key_revoke
+      - dp:app_create
+      - dp:app_read
+      - dp:app_update
+      - dp:app_manage
+      - dp:app_delete
+      - dp:app_key_create
+      - dp:app_key_manage
+      - dp:app_key_revoke
+      - dp:app_key_mapping_read
+      - dp:app_key_mapping_write
+      - dp:app_key_mapping_manage
+      - dp:subscription_create
+      - dp:subscription_read
+      - dp:subscription_update
+      - dp:subscription_manage
+      - dp:subscription_delete
+      - dp:sub_plan_read
+      - dp:view_read
+      - dp:label_read

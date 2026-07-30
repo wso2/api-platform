@@ -363,31 +363,33 @@ func TestValidateAuthConfig(t *testing.T) {
 		{
 			name: "file mode fully configured",
 			auth: Auth{
-				Mode: AuthModeFile,
-				JWT:  JWT{PublicKeyFile: validJWTPublicKeyFile, PrivateKeyFile: validJWTPrivateKeyFile, TokenTTL: time.Hour},
+				Mode:          AuthModeFile,
+				JWT:           JWT{PublicKeyFile: validJWTPublicKeyFile, PrivateKeyFile: validJWTPrivateKeyFile, TokenTTL: time.Hour},
+				Authorization: Authorization{Enabled: true, Mode: AuthzModeScope, RoleMappings: "/etc/platform-api/roles.yaml"},
 				File: FileBased{
 					Organization: FileBasedOrg{ID: "default", DisplayName: "Default"},
-					Users:        FileBasedUsers{{Username: "admin", PasswordHash: "$2a$12$hash", Scopes: "ap:organization:manage"}},
+					Users:        FileBasedUsers{{Username: "admin", PasswordHash: "$2a$12$hash", Role: "ap_admin"}},
 				},
 			},
 		},
 		{
-			// A user granted nothing authenticates successfully and is then
-			// denied every route — reject the config instead.
-			name: "file mode user with neither role nor scopes",
+			// A role is the whole grant, so a user without one authenticates
+			// successfully and is then denied every route — reject the config.
+			name: "file mode user without a role",
 			auth: Auth{
-				Mode: AuthModeFile,
-				JWT:  JWT{PublicKeyFile: validJWTPublicKeyFile, PrivateKeyFile: validJWTPrivateKeyFile, TokenTTL: time.Hour},
+				Mode:          AuthModeFile,
+				JWT:           JWT{PublicKeyFile: validJWTPublicKeyFile, PrivateKeyFile: validJWTPrivateKeyFile, TokenTTL: time.Hour},
+				Authorization: Authorization{Enabled: true, Mode: AuthzModeScope, RoleMappings: "/etc/platform-api/roles.yaml"},
 				File: FileBased{
 					Organization: FileBasedOrg{ID: "default", DisplayName: "Default"},
 					Users:        FileBasedUsers{{Username: "admin", PasswordHash: "$2a$12$hash"}},
 				},
 			},
-			wantErr: "one of role or scopes is required",
+			wantErr: "role is required",
 		},
 		{
 			// The role is expanded from the mapping file at login, so without the
-			// file it would silently grant nothing.
+			// file it would grant nothing.
 			name: "file mode user with a role but no mapping file",
 			auth: Auth{
 				Mode:          AuthModeFile,
@@ -401,8 +403,8 @@ func TestValidateAuthConfig(t *testing.T) {
 			wantErr: "auth.authorization.role_mappings",
 		},
 		{
-			// A file-mode user may name a role while authorization itself runs in
-			// scope mode: the login endpoint expands the role into the scope claim.
+			// A file-mode user's role is expanded into the scope claim at login, so
+			// it works while authorization itself runs in the default scope mode.
 			name: "file mode user with a role in scope authorization mode",
 			auth: Auth{
 				Mode: AuthModeFile,
@@ -672,6 +674,9 @@ encryption_key = "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcd
 [platform_api.auth]
 mode = "file"
 
+[platform_api.auth.authorization]
+role_mappings = "/etc/platform-api/roles.yaml"
+
 [platform_api.auth.jwt]
 public_key_file = "` + validJWTPublicKeyFile + `"
 private_key_file = "` + validJWTPrivateKeyFile + `"
@@ -684,7 +689,7 @@ display_name = "Default"
 [[platform_api.auth.file.users]]
 username      = '{{ env "APIP_CP_ADMIN_USERNAME" }}'
 password_hash = '{{ env "APIP_CP_ADMIN_PASSWORD_HASH" }}'
-scopes        = "ap:api_key:all:manage"
+role          = "ap_admin"
 `
 		require.NoError(t, os.WriteFile(path, []byte(body), 0o600))
 

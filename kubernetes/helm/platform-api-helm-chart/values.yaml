@@ -119,11 +119,37 @@ config:
       # Enforce per-endpoint OAuth2 scopes on validated tokens.
       enabled: true
       mode: scope                # scope | role
-      # Path to a role→scope mapping YAML. Required when mode=role, and also when
-      # auth.file.admin.role below is set. The chart mounts no such file by default —
-      # supply one (ConfigMap volume via extraVolumes/extraVolumeMounts) and point
-      # this at it; platform-api/resources/roles.yaml is the shipped sample.
-      roleMappings: ""
+      # Path to the role→scope mapping YAML. Required when mode=role, and in file
+      # mode (auth.file.admin.role is a user's whole grant). The chart renders
+      # `roles` below into its config ConfigMap and mounts it here; point this
+      # elsewhere only if you supply your own file via extraVolumes/extraVolumeMounts.
+      roleMappings: /etc/platform-api/roles.yaml
+      # Roles the mapping file defines, each a name and the scopes it grants.
+      # Only ap_admin is shipped here — the file-mode admin below names it.
+      # platform-api/resources/roles.yaml is the full sample set (ap_admin,
+      # ap_operator, ap_publisher, ap_subscriber, ap_viewer); copy the entries you
+      # need from it. An ap: scope the Platform API's OpenAPI spec does not declare
+      # fails startup; dp: scopes (Developer Portal) are checked for shape only.
+      roles:
+        - name: ap_admin
+          scopes:
+            - ap:organization:manage
+            - ap:project:manage
+            - ap:gateway:manage
+            - ap:gateway_custom_policy:manage
+            - ap:rest_api:manage
+            - ap:llm_provider:manage
+            - ap:llm_proxy:manage
+            - ap:llm_template:manage
+            - ap:mcp_proxy:manage
+            - ap:application:manage
+            - ap:subscription:manage
+            - ap:subscription_plan:manage
+            - ap:secret:manage
+            - ap:api_key:read
+            - ap:api_key:all:manage
+            - ap:devportal:manage
+            - ap:git:read
     # Claim-name mappings shared by all modes.
     claimMappings:
       organization: organization
@@ -158,14 +184,13 @@ config:
       # APIP_CP_ADMIN_PASSWORD_HASH (secrets.keys.adminUsername / adminPasswordHash),
       # which generate-secrets.sh provisions with a generated username and a bcrypt
       # hash. There is no admin/admin default: startup fails closed if unset. Only
-      # the granted scopes are configured here (add more users via configToml).
+      # the granted role is configured here (add more users via configToml).
       admin:
-        # Optional: a role from the roleMappings file, expanded into the token's
-        # scopes at login (e.g. "ap_admin"). Requires that file to be mounted and
-        # roleMappings to point at it; leave empty to grant scopes only. A role
-        # named here but absent from the file fails startup.
-        role: ""
-        scopes: "ap:organization:manage ap:gateway:manage ap:gateway_custom_policy:manage ap:rest_api:manage ap:llm_provider:manage ap:llm_proxy:manage ap:mcp_proxy:manage ap:application:manage ap:subscription:manage ap:subscription_plan:manage ap:project:manage ap:llm_template:manage ap:devportal:manage ap:api_key:read ap:api_key:all:manage ap:secret:manage"
+        # REQUIRED in file mode — a role from the roleMappings file, expanded into
+        # the token's scopes at login, and this user's entire grant (there is no
+        # per-user scope list). Requires that file to be mounted and roleMappings
+        # above to point at it; a role absent from the file fails startup.
+        role: ap_admin
     # idp mode — external OIDC provider (rendered only when mode=idp). jwksUrl is
     # required in that mode.
     idp:

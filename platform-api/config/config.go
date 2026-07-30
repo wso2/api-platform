@@ -45,17 +45,13 @@ import (
 type FileBasedUser struct {
 	Username     string `json:"username"     koanf:"username"`
 	PasswordHash string `json:"password_hash" koanf:"password_hash"`
-	// Role names one of the roles in the auth.authorization.role_mappings file.
-	// The login endpoint expands it into that role's scopes, so a user's grants
-	// can be expressed the same way an IDP expresses them — as a role — instead
-	// of a hand-maintained scope string.
+	// Role names one of the roles in the auth.authorization.role_mappings file
+	// and is the user's entire grant: the login endpoint expands it into the
+	// scope claim of the token it issues. It is the only way to grant a file-mode
+	// user, so a user's privileges are expressed exactly the way an IDP expresses
+	// them — as a role — and changing what a role grants is a single edit to the
+	// mapping file rather than a per-user scope string to keep in sync.
 	Role string `json:"role" koanf:"role"`
-	// Scopes is a space-separated scope list granted directly, unioned with
-	// whatever Role expands to. It is still needed for scopes this server does
-	// not itself declare (Developer Portal "dp:*" scopes, for example): the role
-	// mapping is validated against this server's OpenAPI spec, so it can only
-	// name scopes this server knows.
-	Scopes string `json:"scopes"       koanf:"scopes"`
 }
 
 // FileBasedUsers is a slice of FileBasedUser that can be decoded from a JSON string (env var)
@@ -950,15 +946,16 @@ func validateFileBasedConfig(cfg *FileBased, authz *Authorization) error {
 		if u.PasswordHash == "" {
 			return fmt.Errorf("auth.file.users[%d] (%s): password_hash is required (set it in config via {{ env }}/{{ file }})", i, u.Username)
 		}
-		// A user with neither is authenticated but authorized for nothing — a
-		// login that succeeds and then fails every request. Reject it at startup
-		// instead of shipping a token with an empty scope claim.
-		if u.Role == "" && u.Scopes == "" {
-			return fmt.Errorf("auth.file.users[%d] (%s): one of role or scopes is required", i, u.Username)
+		// A role is the user's whole grant, so a user without one is authenticated
+		// and then authorized for nothing — a login that succeeds and then fails
+		// every request. Reject it at startup instead of issuing a token with an
+		// empty scope claim.
+		if u.Role == "" {
+			return fmt.Errorf("auth.file.users[%d] (%s): role is required — name a role from auth.authorization.role_mappings", i, u.Username)
 		}
 		// The role is expanded from the mapping file at login, so without the
-		// file the role silently grants nothing.
-		if u.Role != "" && authz.RoleMappings == "" {
+		// file the role grants nothing.
+		if authz.RoleMappings == "" {
 			return fmt.Errorf("auth.file.users[%d] (%s): role %q requires auth.authorization.role_mappings to be configured",
 				i, u.Username, u.Role)
 		}

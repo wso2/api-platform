@@ -25,9 +25,8 @@ go run ./cmd/main.go
 AI Workspace and Developer Portal quickstarts use. It's the one Platform API config shared by every
 quickstart (both docker-compose setups mount it directly), so its admin user is granted the
 `ap_admin` role from the mounted [`resources/roles.yaml`](resources/roles.yaml), which covers both
-the `ap:*` (Platform API) and `dp:*` (Developer Portal) namespaces. Override the role with
-`APIP_CP_ADMIN_ROLE`; the small `scopes` list alongside it carries the few scopes `roles.yaml`
-cannot name (see the comment there).
+the `ap:*` (Platform API) and `dp:*` (Developer Portal) namespaces. That role is the whole grant —
+override it with `APIP_CP_ADMIN_ROLE`, or edit what it grants in `roles.yaml`.
 
 There is no default admin credential: `APIP_CP_ADMIN_USERNAME` and `APIP_CP_ADMIN_PASSWORD_HASH` are
 **required** in this mode, and startup fails closed if either is unset or empty. `portals/scripts/setup.sh`
@@ -358,13 +357,15 @@ sample (`resources/roles.yaml`) at `/etc/platform-api/roles.yaml`.
 
 Validation of that file is namespace-scoped. An `ap:` scope must be declared in this server's OpenAPI
 spec (plus any its compiled-in plugins declare) — an unknown one fails startup rather than silently
-denying requests later. A scope in another component's namespace (`dp:*`) is checked only for shape:
-this server mints it into the token but never enforces it, so it can neither confirm nor deny that it
-exists. That is what lets one role describe a persona across the whole platform.
+denying requests later. The exceptions are `ap:devportal:*` and `ap:git:read`, which this server mints
+for the AI Workspace BFF to enforce and therefore allowlists rather than spec-checks. A scope in
+another component's namespace (`dp:*`) is checked only for shape: this server mints it into the token
+but never enforces it, so it can neither confirm nor deny that it exists. That is what lets one role
+describe a persona across the whole platform — and what makes a per-user scope list unnecessary.
 
 ##### Granting a file-mode user a role
 
-A `file`-mode user is granted a role rather than a hand-maintained scope list. The login endpoint
+A `file`-mode user is granted **only** a role — there is no per-user scope list. The login endpoint
 expands that role through the same `role_mappings` file when it mints the token:
 
 ```toml
@@ -372,7 +373,6 @@ expands that role through the same `role_mappings` file when it mints the token:
 username      = '{{ env "APIP_CP_ADMIN_USERNAME" }}'
 password_hash = '{{ env "APIP_CP_ADMIN_PASSWORD_HASH" }}'
 role          = "ap_admin"                 # expanded via auth.authorization.role_mappings
-# scopes      = ""                         # optional: unioned with the role's scopes
 ```
 
 The issued token carries **both**: the expanded scopes as the `scope` claim, and the role name as the
@@ -381,11 +381,11 @@ the expanded claim, and flipping `auth.authorization.mode = "role"` re-expands t
 `roles.yaml` on every request instead. `claim_mappings.roles` defaults to the flat `roles` claim the
 login endpoint signs, so that switch needs no extra claim wiring.
 
-A role is normally the whole grant — the mapping file may name scopes in any namespace, so there is
-usually nothing left to add. `scopes` remains available for anything the file cannot name (an `ap:`
-scope this server's spec doesn't declare, which `roles.yaml` would reject) or on its own instead of a
-role; the two are unioned, and one of them is required — a user granted neither would authenticate
-and then be denied every route. A role absent from the mapping file fails startup.
+The role is required, and startup fails if a user has none or names one the mapping file doesn't
+define — either way that user would authenticate successfully and then be denied every route. Because
+the mapping is the only place a grant is expressed, no user can drift out of step with the role it
+names, and widening or narrowing a persona is one edit in one file. To grant something no shipped
+role covers, add a role to `roles.yaml`.
 
 This is how the shipped `config/config.toml` grants its admin user: `role = "ap_admin"` and nothing
 else. Changing what that user can do means editing the mounted `roles.yaml`, which makes that file the

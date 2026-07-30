@@ -150,10 +150,11 @@ func TestValidateFileUserRoles(t *testing.T) {
 		t.Fatalf("unexpected error: %v", err)
 	}
 
-	// A user granted scopes directly names no role, so there is nothing to check.
-	cfg.Auth.File.Users = config.FileBasedUsers{{Username: "admin", Scopes: "ap:organization:manage"}}
+	// Only file mode has users to check — another mode's config carries none.
+	cfg.Auth.Mode = config.AuthModeIDP
+	cfg.Auth.File.Users = config.FileBasedUsers{{Username: "admin", Role: "ap_admn"}}
 	if err := validateFileUserRoles(cfg, roleScopeMap); err != nil {
-		t.Fatalf("unexpected error for a user with no role: %v", err)
+		t.Fatalf("unexpected error outside file mode: %v", err)
 	}
 }
 
