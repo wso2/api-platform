@@ -188,7 +188,6 @@ SCOPES=(
 
   # webhook events
   "dp:event:read"
-  "dp:delivery:manage"
 
   # utilities
   "dp:utility:create"

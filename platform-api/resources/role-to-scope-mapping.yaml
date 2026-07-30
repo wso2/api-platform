@@ -96,7 +96,6 @@ roles:
       - dp:label:manage
       - dp:webhook_subscriber:manage
       - dp:event:read
-      - dp:delivery:manage
 
   # Platform operator / CI-CD service account — runs gateways, deployments,
   # subscription plans, key managers and webhooks; reads everything else.
