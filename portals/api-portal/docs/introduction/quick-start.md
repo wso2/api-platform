@@ -14,7 +14,7 @@ Get the API Portal running locally in a few minutes using Docker Compose.
 
 ```bash
 git clone https://github.com/wso2/api-platform.git
-cd api-platform/portals/developer-portal/
+cd api-platform/portals/api-portal/
 ```
 
 ### 2. Run the setup script

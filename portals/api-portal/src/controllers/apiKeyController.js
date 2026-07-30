@@ -196,7 +196,7 @@ async function listApiKeys(req, res) {
 /**
  * GET /api/v0.9/api-keys
  * Lists every API key created by the authenticated user across all APIs in the org.
- * Powers the developer portal's global "API Keys" page (client-rendered). Each item
+ * Powers the API Portal's global "API Keys" page (client-rendered). Each item
  * carries the owning API's name/version/type in addition to the standard metadata so
  * the page can render and link without a second call. Secret material is never returned.
  */

@@ -222,7 +222,7 @@ PLATFORM_API_TAG := platform-api/v$(PLATFORM_API_VERSION)
 # to carry. For local builds it falls back to the sibling VERSION file. There is
 # deliberately no hardcoded version fallback — `dist` fails below if this resolves
 # to empty, so a release can never silently ship a placeholder tag.
-API_PORTAL_VERSION ?= $(shell sed 's/-SNAPSHOT//' ../developer-portal/VERSION 2>/dev/null | tr -d '[:space:]')
+API_PORTAL_VERSION ?= $(shell sed 's/-SNAPSHOT//' ../api-portal/VERSION 2>/dev/null | tr -d '[:space:]')
 API_PORTAL_TAG     := api-portal/v$(API_PORTAL_VERSION)
 
 # As with PLATFORM_API_VERSION: an explicitly supplied version means "bundle that
@@ -317,7 +317,7 @@ endef
 dist: clean-dist ## Build standalone AI Workspace + Platform API distribution zip
 	@if [ -z "$(strip $(API_PORTAL_VERSION))" ]; then \
 		echo "Error: API_PORTAL_VERSION is empty — the optional API Portal image tag cannot be resolved." >&2; \
-		echo "Pass it explicitly (make dist API_PORTAL_VERSION=1.0.0) or ensure ../developer-portal/VERSION exists." >&2; \
+		echo "Pass it explicitly (make dist API_PORTAL_VERSION=1.0.0) or ensure ../api-portal/VERSION exists." >&2; \
 		exit 1; \
 	fi
 	@echo "Building distribution $(DIST_NAME)..."
@@ -360,9 +360,9 @@ endif
 	$(call merge_config,configs/config-template.toml,$(DIST_DIR)/configs/.pa-config-template.toml,$(DIST_DIR)/configs/config-template.toml)
 # The API Portal is opt-in: append its template to config-template.toml only, not the active config.
 ifeq ($(API_PORTAL_FROM_TAG),true)
-	$(call stage_optional_template,$(API_PORTAL_TAG),portals/developer-portal/configs/config-template.toml,../developer-portal/configs/config-template.toml,$(DIST_DIR)/configs/.dp-config-template.toml)
+	$(call stage_optional_template,$(API_PORTAL_TAG),portals/api-portal/configs/config-template.toml,../api-portal/configs/config-template.toml,$(DIST_DIR)/configs/.dp-config-template.toml)
 else
-	@cp ../developer-portal/configs/config-template.toml $(DIST_DIR)/configs/.dp-config-template.toml
+	@cp ../api-portal/configs/config-template.toml $(DIST_DIR)/configs/.dp-config-template.toml
 endif
 	$(call append_section,API PORTAL (optional),$(DIST_DIR)/configs/.dp-config-template.toml,$(DIST_DIR)/configs/config-template.toml)
 	@rm -f $(DIST_DIR)/configs/.pa-config.toml $(DIST_DIR)/configs/.pa-config-template.toml $(DIST_DIR)/configs/.dp-config-template.toml

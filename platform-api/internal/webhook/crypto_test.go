@@ -32,7 +32,7 @@ import (
 	"time"
 )
 
-// encryptFieldForTest mirrors the producer side (Developer Portal
+// encryptFieldForTest mirrors the producer side (API Portal
 // src/services/webhooks/envelopeCrypto.js, encryptField): AES-256-GCM under the HKDF-derived
 // field key, with the nonce and tag carried separately from the ciphertext.
 func encryptFieldForTest(t *testing.T, secret, plaintext string) *EncryptedKey {
@@ -62,7 +62,7 @@ func encryptFieldForTest(t *testing.T, secret, plaintext string) *EncryptedKey {
 }
 
 // TestDeriveFieldKey_MatchesProducer is a known-answer test pinning this side's HKDF derivation
-// to the Developer Portal's. The expected key was produced by the Node producer:
+// to the API Portal's. The expected key was produced by the Node producer:
 //
 //	require('./src/services/webhooks/envelopeCrypto').deriveFieldKey('shared-secret').toString('hex')
 //

@@ -103,25 +103,25 @@ version-set: ## Set API Portal version and update artifacts
 
 .PHONY: version-bump-patch
 version-bump-patch: ## Bump patch version
-	@$(MAKE) version-set VERSION=$$(cd ../.. && bash scripts/next-version.sh patch portals/developer-portal)
+	@$(MAKE) version-set VERSION=$$(cd ../.. && bash scripts/next-version.sh patch portals/api-portal)
 
 .PHONY: version-bump-minor
 version-bump-minor: ## Bump minor version
-	@$(MAKE) version-set VERSION=$$(cd ../.. && bash scripts/next-version.sh minor portals/developer-portal)
+	@$(MAKE) version-set VERSION=$$(cd ../.. && bash scripts/next-version.sh minor portals/api-portal)
 
 .PHONY: version-bump-major
 version-bump-major: ## Bump major version
-	@$(MAKE) version-set VERSION=$$(cd ../.. && bash scripts/next-version.sh major portals/developer-portal)
+	@$(MAKE) version-set VERSION=$$(cd ../.. && bash scripts/next-version.sh major portals/api-portal)
 
 .PHONY: version-bump-next-dev
 version-bump-next-dev: ## Bump to next minor dev version with SNAPSHOT suffix
-	@$(MAKE) version-set VERSION=$$(cd ../.. && bash scripts/next-version.sh next-dev portals/developer-portal)
+	@$(MAKE) version-set VERSION=$$(cd ../.. && bash scripts/next-version.sh next-dev portals/api-portal)
 
 .PHONY: version-get-release
 version-get-release: ## Get release version (strips SNAPSHOT suffix)
 	@VERSION=$$(cat VERSION 2>/dev/null | tr -d '[:space:]' | sed 's/-SNAPSHOT//'); \
 	if [ -z "$$VERSION" ]; then \
-		echo "Error: VERSION is empty or contains only whitespace. Check portals/developer-portal/VERSION file." >&2; \
+		echo "Error: VERSION is empty or contains only whitespace. Check portals/api-portal/VERSION file." >&2; \
 		exit 1; \
 	fi; \
 	echo "$$VERSION"
@@ -325,7 +325,7 @@ endif
 # .env is not shipped in the zip itself, only this pack's default value for it.
 	@sed -i.bak \
 	    -e 's|^DEFAULT_COMPOSE_PROFILES=.*|DEFAULT_COMPOSE_PROFILES="api-portal,platform-api"|' \
-	    -e 's|^DEFAULT_PACK_NAME=.*|DEFAULT_PACK_NAME="developer-portal"|' \
+	    -e 's|^DEFAULT_PACK_NAME=.*|DEFAULT_PACK_NAME="api-portal"|' \
 	    -e 's|^DEFAULT_DIST_VERSION=.*|DEFAULT_DIST_VERSION="$(DIST_VERSION)"|' \
 	    $(DIST_DIR)/scripts/setup.sh
 	@rm -f $(DIST_DIR)/scripts/setup.sh.bak
@@ -335,7 +335,7 @@ endif
 	@cp ../scripts/setup.ps1 $(DIST_DIR)/scripts/setup.ps1
 	@sed -i.bak \
 	    -e "s|^\$$DEFAULT_COMPOSE_PROFILES = .*|\$$DEFAULT_COMPOSE_PROFILES = 'api-portal,platform-api'|" \
-	    -e "s|^\$$DEFAULT_PACK_NAME = .*|\$$DEFAULT_PACK_NAME = 'developer-portal'|" \
+	    -e "s|^\$$DEFAULT_PACK_NAME = .*|\$$DEFAULT_PACK_NAME = 'api-portal'|" \
 	    -e "s|^\$$DEFAULT_DIST_VERSION = .*|\$$DEFAULT_DIST_VERSION = '$(DIST_VERSION)'|" \
 	    $(DIST_DIR)/scripts/setup.ps1
 	@rm -f $(DIST_DIR)/scripts/setup.ps1.bak

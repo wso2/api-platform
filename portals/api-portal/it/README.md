@@ -48,14 +48,14 @@ Each suite can run against either **SQLite** (default, no external DB) or **Post
 ## Prerequisites
 
 - Docker and Docker Compose
-- A built `developer-portal` image — run `make build` from `portals/developer-portal/` first.
+- A built `developer-portal` image — run `make build` from `portals/api-portal/` first.
   (The Make targets here auto-tag that image as `:test`.)
 
 ## Quick Start
 
 ```bash
 # 1. Build the developer-portal image (from the portal root)
-cd portals/developer-portal && make build
+cd portals/api-portal && make build
 
 # 2. Run the tests (from this directory)
 cd it
@@ -66,7 +66,7 @@ make test            # UI E2E suite (Cypress, SQLite)
 ## Project Structure
 
 ```
-portals/developer-portal/it/
+portals/api-portal/it/
 ├── rest-api/                       # REST API suite (Jest + Supertest)
 │   ├── <feature>/*.spec.js         # apis, api-keys, applications, subscriptions,
 │   │                               #   key-managers, mcp-servers, webhook-subscribers, ...
@@ -103,16 +103,16 @@ portals/developer-portal/it/
 | `make clean` | Remove test containers, volumes, and report artifacts |
 
 > All targets require the `developer-portal` image to be built first (`make build` in
-> `portals/developer-portal/`). `make ensure-test-tag` (run automatically) tags it as `:test`.
+> `portals/api-portal/`). `make ensure-test-tag` (run automatically) tags it as `:test`.
 
 The SQLite targets run under compose project `devportal-it` and the PostgreSQL ones under `devportal-it-postgres` (`-p` in the Makefile), so the two flavours never share containers or volumes.
 
-You can also run both UI suites from the portal root: `make -C portals/developer-portal it`
-(SQLite) and `make -C portals/developer-portal it-postgres`.
+You can also run both UI suites from the portal root: `make -C portals/api-portal it`
+(SQLite) and `make -C portals/api-portal it-postgres`.
 
 ## Continuous Integration
 
-Both suites run automatically on pull requests that touch `portals/developer-portal/**`,
+Both suites run automatically on pull requests that touch `portals/api-portal/**`,
 via [`.github/workflows/devportal-integration-test.yml`](../../../.github/workflows/devportal-integration-test.yml):
 
 - **`rest-api-test`** — builds the image and runs `make test-rest-api` /
@@ -124,7 +124,7 @@ can also be triggered manually via **workflow_dispatch**.
 
 > **Note:** `make open` launches Cypress directly in E2E mode (`--e2e`), bypassing the
 > Launchpad setup screen and showing the spec list immediately. It runs against a locally
-> running portal (start it with `docker compose up` from `portals/developer-portal/`).
+> running portal (start it with `docker compose up` from `portals/api-portal/`).
 
 ## Cypress Custom Commands
 

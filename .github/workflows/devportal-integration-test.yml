@@ -6,7 +6,7 @@ on:
     branches:
       - main
     paths:
-      - 'portals/developer-portal/**'
+      - 'portals/api-portal/**'
       - '.github/workflows/devportal-integration-test.yml'
 
 concurrency:
@@ -37,16 +37,16 @@ jobs:
         run: make -C platform-api build IMAGE_NAME=platform-api VERSION=it-api-portal
 
       - name: Build API Portal image
-        run: make -C portals/developer-portal build
+        run: make -C portals/api-portal build
 
       - name: Run REST API integration tests (${{ matrix.db }})
         env:
           PLATFORM_API_IMAGE: platform-api:it-api-portal
         run: |
           if [ "${{ matrix.db }}" = "postgres" ]; then
-            make -C portals/developer-portal/it test-rest-api-postgres
+            make -C portals/api-portal/it test-rest-api-postgres
           else
-            make -C portals/developer-portal/it test-rest-api
+            make -C portals/api-portal/it test-rest-api
           fi
 
       - name: Upload test reports
@@ -54,7 +54,7 @@ jobs:
         if: always()
         with:
           name: rest-api-test-reports-${{ matrix.db }}
-          path: portals/developer-portal/it/reports/
+          path: portals/api-portal/it/reports/
           retention-days: 7
 
       - name: Debug on failure - dump container logs
@@ -79,19 +79,19 @@ jobs:
         run: make -C platform-api build IMAGE_NAME=platform-api VERSION=it-api-portal
 
       - name: Build API Portal image
-        run: make -C portals/developer-portal build
+        run: make -C portals/api-portal build
 
       - name: Run Cypress integration tests
         env:
           PLATFORM_API_IMAGE: platform-api:it-api-portal
-        run: make -C portals/developer-portal/it test
+        run: make -C portals/api-portal/it test
 
       - name: Upload Cypress reports
         uses: actions/upload-artifact@v4
         if: always()
         with:
           name: cypress-reports
-          path: portals/developer-portal/it/reports/
+          path: portals/api-portal/it/reports/
           retention-days: 7
 
       - name: Debug on failure - dump container logs

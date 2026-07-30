@@ -218,13 +218,13 @@ type EventHub struct {
 	RetentionPeriod time.Duration `koanf:"retention_period"`
 }
 
-// Webhook holds configuration for the control-plane webhook receiver. The Developer Portal
+// Webhook holds configuration for the control-plane webhook receiver. The API Portal
 // delivers signed events (API key / subscription changes) to this endpoint. See
 // docs-local/platform-api-webhook.md.
 type Webhook struct {
 	// Enabled controls whether the webhook endpoint is registered.
 	Enabled bool `koanf:"enabled"`
-	// Secret is the shared secret with the Developer Portal. It serves two purposes: verifying
+	// Secret is the shared secret with the API Portal. It serves two purposes: verifying
 	// the HMAC-SHA256 request signature, and deriving (via HKDF-SHA3-256) the AES key that decrypts
 	// encrypted payload fields such as an API key secret.
 	Secret string `koanf:"secret"`

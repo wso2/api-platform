@@ -307,7 +307,7 @@ idle        = "120s"
 # CORS
 # ---------------------------------------------------------------------------
 # Origins allowed to make credentialed cross-origin requests, e.g. the
-# Developer Portal and AI Workspace origins. Must never contain "*"; leave
+# API Portal and AI Workspace origins. Must never contain "*"; leave
 # empty to disable cross-origin access (the default).
 [platform_api.server.cors]
 allowed_origins = ""   # comma-separated, e.g. "https://workspace.example.com,https://devportal.example.com"
@@ -356,14 +356,14 @@ retention_period = "1h"    # how long delivered events are retained
 # ---------------------------------------------------------------------------
 # Webhook — control-plane webhook receiver
 # ---------------------------------------------------------------------------
-# The Developer Portal delivers signed events (API key / subscription
+# The API Portal delivers signed events (API key / subscription
 # changes) to this endpoint.
 [platform_api.webhook]
 enabled = false
-# Shared secret with the Developer Portal, used both to verify request
+# Shared secret with the API Portal, used both to verify request
 # signatures (HMAC-SHA256) and to derive the AES key that decrypts encrypted
 # payload fields (API key generate/regenerate, subscription token). Must match
-# the secret configured on the Developer Portal's webhook subscriber. REQUIRED
+# the secret configured on the API Portal's webhook subscriber. REQUIRED
 # when enabled. The "" default below is only ever read while enabled = false.
 secret = ""
 signature_tolerance = "5m"                       # max age of a signed request (replay protection)

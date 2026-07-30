@@ -70,7 +70,7 @@ Build the component images once (tagged `it-e2e`), then run the suite:
 cd platform-api && docker build -t platform-api:it-e2e \
   --build-context common=../common --build-context httpkit=../httpkit .
 cd gateway      && make build VERSION=it-e2e   # gateway-controller / gateway-runtime :it-e2e
-cd portals/developer-portal && docker build -t developer-portal:it-e2e .  # only needed for @devportal
+cd portals/api-portal && docker build -t developer-portal:it-e2e .  # only needed for @devportal
 
 cd tests/integration-e2e
 go test -run TestFeatures -v ./...                                  # PostgreSQL (default)

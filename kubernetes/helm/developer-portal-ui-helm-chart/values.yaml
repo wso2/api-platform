@@ -50,7 +50,7 @@ imagePullSecrets: []
 
 # ----------------------------------------------------------------------------
 # config — rendered into /app/configs/config.toml under [api_portal.*]
-# (portals/developer-portal/configs/config-template.toml). Non-secret values are
+# (portals/api-portal/configs/config-template.toml). Non-secret values are
 # literals; secrets come from the referenced Secret via APIP_AP_* env tokens.
 # ----------------------------------------------------------------------------
 config:

@@ -78,15 +78,15 @@ Open the AI Workspace in a browser at `https://localhost:9643` and log in with t
 |------|---------|-------------|
 | `9643` | AI Workspace (BFF) | HTTPS — browser entry point |
 | `9243` | Platform API | HTTPS — backend REST API |
-| `9543` | Developer Portal | HTTPS — only when the `developer-portal` profile is enabled (see below) |
+| `9543` | API Portal | HTTPS — only when the `developer-portal` profile is enabled (see below) |
 
-## Developer Portal (optional)
+## API Portal (optional)
 
-AI Workspace and the Platform API start together via the `ai-workspace` [Compose profile](https://docs.docker.com/compose/how-tos/profiles/) shown in [Quick Start](#quick-start). The **Developer Portal** ships in the same `docker-compose.yaml` as an optional component behind its own `developer-portal` profile, sharing the one Platform API — so you can add it without standing up a second Platform API.
+AI Workspace and the Platform API start together via the `ai-workspace` [Compose profile](https://docs.docker.com/compose/how-tos/profiles/) shown in [Quick Start](#quick-start). The **API Portal** ships in the same `docker-compose.yaml` as an optional component behind its own `developer-portal` profile, sharing the one Platform API — so you can add it without standing up a second Platform API.
 
 The portal mounts the **same** `configs/config.toml` the other services do and reads only its own `[api_portal]` section (it ignores `[ai_workspace]`/`[platform_api]`, including their tokens). It is **off by default**: a plain `docker compose up -d` never starts it. Enabling it takes one one-time step, because that shipped `config.toml` does **not** carry a `[api_portal]` section:
 
-1. **Add the `[api_portal]` section to `configs/config.toml`.** Copy the `[api_portal.*]` tables from the bottom of the shipped `configs/config-template.toml` (the "Developer Portal (optional)" section) and append them to this stack's `configs/config.toml`. The compose stack already provides everything they reference — the defaults point at `https://platform-api:9243`, read the JWT public key from `/etc/devportal/keys/jwt_public.pem`, and read its encryption key/session secret from `/etc/devportal/keys/encryption.key` / `session-secret` — files `setup.sh` already generated at `resources/keys/devportal-encryption.key` / `devportal-session-secret` regardless of which profile is enabled, so there's nothing further to provision.
+1. **Add the `[api_portal]` section to `configs/config.toml`.** Copy the `[api_portal.*]` tables from the bottom of the shipped `configs/config-template.toml` (the "API Portal (optional)" section) and append them to this stack's `configs/config.toml`. The compose stack already provides everything they reference — the defaults point at `https://platform-api:9243`, read the JWT public key from `/etc/devportal/keys/jwt_public.pem`, and read its encryption key/session secret from `/etc/devportal/keys/encryption.key` / `session-secret` — files `setup.sh` already generated at `resources/keys/devportal-encryption.key` / `devportal-session-secret` regardless of which profile is enabled, so there's nothing further to provision.
 
 Then start the stack with the profile enabled:
 

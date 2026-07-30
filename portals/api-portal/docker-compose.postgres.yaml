@@ -23,8 +23,8 @@
 #
 # This file merges with docker-compose.yaml:
 #   - Adds the postgres service.
-#   - Overrides devportal DB env vars to point at postgres.
-#   - Adds a postgres depends_on condition to devportal.
+#   - Overrides api-portal DB env vars to point at postgres.
+#   - Adds a postgres depends_on condition to api-portal.
 
 services:
   postgres:
@@ -48,9 +48,9 @@ services:
       retries: 10
       start_period: 15s
     # Without this, postgres joins compose's own implicit "default" network
-    # while devportal/platform-api (which explicitly declare networks: in
+    # while api-portal/platform-api (which explicitly declare networks: in
     # docker-compose.yaml) only join api-portal-network — two disjoint
-    # networks, so devportal can't resolve "postgres" by hostname at all.
+    # networks, so api-portal can't resolve "postgres" by hostname at all.
     networks:
       - api-portal-network
 

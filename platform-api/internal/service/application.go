@@ -440,7 +440,7 @@ func (s *ApplicationService) AddMappedAPIKeys(appIDOrHandle string, req *api.Add
 	return keys, nil
 }
 
-// CreateApplicationFromWebhook creates an application reconciled from a Developer Portal
+// CreateApplicationFromWebhook creates an application reconciled from a API Portal
 // application.created/updated event. DP applications carry no project.
 func (s *ApplicationService) CreateApplicationFromWebhook(handle, name, description, appType, orgID string) (*api.Application, error) {
 	id := strings.TrimSpace(handle)
@@ -455,10 +455,10 @@ func (s *ApplicationService) CreateApplicationFromWebhook(handle, name, descript
 	return s.CreateApplication(req, orgID, "")
 }
 
-// SetAPIKeyApplication reconciles which application an API key belongs to, from a Developer Portal
+// SetAPIKeyApplication reconciles which application an API key belongs to, from a API Portal
 // apikey.application_updated event. keyName + artifactRef (artifact UUID or handle) + kind identify
 // the key; kind scopes the resolution to the artifact table backing that kind, so a handle shared
-// across kinds resolves unambiguously. Because a Developer Portal key belongs to at most one
+// across kinds resolves unambiguously. Because a API Portal key belongs to at most one
 // application, this first removes the key from any application it is currently mapped to, then —
 // when appIDOrHandle is non-empty — maps it to that application and broadcasts the change to the
 // deployed gateways. A blank appIDOrHandle dissociates the key.

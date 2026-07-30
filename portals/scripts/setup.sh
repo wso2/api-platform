@@ -31,7 +31,7 @@
 #     Read by the docker compose CLI (not by the containers) to prefix every
 #     container, network, and volume, so another extraction of the same zip on
 #     this host cannot bind to this stack's volumes — the Platform API's
-#     database and the Developer Portal's data.
+#     database and the API Portal's data.
 #
 # This is a ONE-TIME step. It never runs as part of container startup — every
 # service fails closed at startup if a required secret is missing, rather
@@ -41,7 +41,7 @@
 # and admin credentials. --force deliberately does NOT touch the at-rest
 # encryption key — see --rotate-encryption-key below.
 #
-# Usage (run from either portals/ai-workspace or portals/developer-portal, or
+# Usage (run from either portals/ai-workspace or portals/api-portal, or
 # from the root of a standalone distribution zip — same script, same layout):
 #   ../scripts/setup.sh          # inside the repo checkout
 #   ./scripts/setup.sh     # inside a distribution zip (copied there by `make dist`)
@@ -79,11 +79,11 @@ ROTATE_ENCRYPTION_KEY=false
 # services for this pack. Each pack's `make dist` target bakes in its own
 # value here via sed when it copies this shared script into the distribution
 # zip (see the `dist` target in portals/ai-workspace/Makefile and
-# portals/developer-portal/Makefile). Left at this placeholder, it falls back
+# portals/api-portal/Makefile). Left at this placeholder, it falls back
 # to detect_pack()'s topology-based detection below, which is what happens
 # when this script runs straight out of a repo checkout (not a dist zip).
 DEFAULT_COMPOSE_PROFILES="__DEFAULT_COMPOSE_PROFILES__"
-# Which pack this is ("developer-portal" or "ai-workspace") — `make dist`
+# Which pack this is ("api-portal" or "ai-workspace") — `make dist`
 # bakes this in the same way as DEFAULT_COMPOSE_PROFILES above, so a shipped
 # distribution zip never needs to detect it at runtime. Left at this
 # placeholder, detect_pack() below determines it from docker-compose.yaml's
@@ -130,7 +130,7 @@ Compose project name (data isolation):
   Setup writes COMPOSE_PROJECT_NAME into .env on the first run, unique to this copy of
   the distribution. It prefixes every container, network, and volume, so another
   extraction of this zip on the same host cannot bind to this stack's volumes (the
-  Platform API's database, the Developer Portal's data).
+  Platform API's database, the API Portal's data).
   The name is pinned once and never changes afterwards - not on a rerun, not with
   --force, not with --rotate-encryption-key. A new name would leave the running data
   behind in the old volumes and start the stack with an empty database. Deleting .env
@@ -157,7 +157,7 @@ fail() { echo "[setup] ERROR: $*" >&2; exit 1; }
 
 # This script is invoked from a caller's working directory that has its own
 # docker-compose.yaml one level below it (portals/ai-workspace, or
-# portals/developer-portal, or the root of a distribution zip via
+# portals/api-portal, or the root of a distribution zip via
 # scripts/setup.sh) — never from this script's own directory. Look at $PWD
 # first, then fall back to a sibling/parent of this file, so the same file
 # works whether it's called as `../scripts/setup.sh` (dev checkout) or
@@ -169,7 +169,7 @@ elif [[ -f "$THIS_DIR/docker-compose.yaml" ]]; then
 elif [[ -f "$THIS_DIR/../docker-compose.yaml" ]]; then
     ROOT_DIR="$(cd "$THIS_DIR/.." && pwd)"
 else
-    fail "could not find docker-compose.yaml in the current directory, next to this script, or its parent directory. Run this from portals/ai-workspace, portals/developer-portal, or a distribution zip's root."
+    fail "could not find docker-compose.yaml in the current directory, next to this script, or its parent directory. Run this from portals/ai-workspace, portals/api-portal, or a distribution zip's root."
 fi
 cd "$ROOT_DIR"
 
@@ -189,7 +189,7 @@ CERTS_DIR="$ROOT_DIR/resources/certificates"
 KEYS_DIR="$ROOT_DIR/resources/keys"
 
 # Every service image runs as this fixed non-root UID (see platform-api,
-# ai-workspace, and developer-portal Dockerfiles).
+# ai-workspace, and api-portal Dockerfiles).
 CONTAINER_UID=10001
 
 # Non-sensitive files (public cert, public key) — safe to leave world-readable
@@ -287,8 +287,8 @@ detect_pack() {
     fi
     local dir
     dir="$(basename "$ROOT_DIR")"
-    if [[ "$dir" == "developer-portal" ]]; then
-        echo "developer-portal"
+    if [[ "$dir" == "api-portal" ]]; then
+        echo "api-portal"
     elif [[ "$dir" == "ai-workspace" ]]; then
         echo "ai-workspace"
     else
@@ -453,7 +453,7 @@ elif [[ "$DEFAULT_COMPOSE_PROFILES" != "__DEFAULT_COMPOSE_PROFILES__" ]]; then
 else
     case "$PACK" in
         ai-workspace) COMPOSE_PROFILES_VALUE="ai-workspace,platform-api" ;;
-        developer-portal) COMPOSE_PROFILES_VALUE="api-portal,platform-api" ;;
+        api-portal) COMPOSE_PROFILES_VALUE="api-portal,platform-api" ;;
         *) COMPOSE_PROFILES_VALUE="" ;;
     esac
 fi
@@ -651,7 +651,7 @@ if [[ -n "$COMPOSE_PROFILES_VALUE" ]]; then
 else
     echo "    docker compose up -d                                                    # no default set — pass --profile explicitly"
 fi
-if [[ "$PACK" == "developer-portal" ]]; then
+if [[ "$PACK" == "api-portal" ]]; then
     echo "    docker compose --profile api-portal --profile ai-workspace --profile platform-api up -d  # API Portal + AI Workspace + Platform API"
     echo "    docker compose --profile all up -d                                                              # AI Workspace + API Portal + Platform API"
     echo "    docker compose --profile platform-api up -d                                                     # Platform API only"

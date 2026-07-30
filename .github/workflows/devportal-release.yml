@@ -41,7 +41,7 @@ jobs:
       - name: Determine version from VERSION file
         id: version
         run: |
-          VERSION=$(make -C portals/developer-portal version-get-release --no-print-directory)
+          VERSION=$(make -C portals/api-portal version-get-release --no-print-directory)
           echo "Releasing API Portal version: ${VERSION}"
           echo "version=${VERSION}" >> $GITHUB_OUTPUT
 
@@ -56,7 +56,7 @@ jobs:
       - name: Set version
         run: |
           VERSION=${{ steps.version.outputs.version }}
-          make -C portals/developer-portal version-set VERSION=${VERSION}
+          make -C portals/api-portal version-set VERSION=${VERSION}
 
       - name: Set up QEMU
         uses: docker/setup-qemu-action@v3
@@ -69,7 +69,7 @@ jobs:
           driver: docker-container
 
       - name: Build Docker image for testing
-        run: make -C portals/developer-portal build
+        run: make -C portals/api-portal build
 
       - name: Run tests
         env:
@@ -108,7 +108,7 @@ jobs:
         run: |
           echo "Bundling platform-api configs and db-scripts from tag platform-api/v${PLATFORM_API_VERSION}"
           echo "Pinning optional ai-workspace image to ${AIW_VERSION}"
-          make -C portals/developer-portal dist \
+          make -C portals/api-portal dist \
             PLATFORM_API_VERSION="${PLATFORM_API_VERSION}" \
             AIW_VERSION="${AIW_VERSION}"
 
@@ -132,7 +132,7 @@ jobs:
             ### Distribution
             The attached `wso2apip-api-portal-${{ steps.version.outputs.version }}.zip` contains the
             standalone API Portal + Platform API distribution (docker-compose and configs).
-          files: portals/developer-portal/target/wso2apip-api-portal-${{ steps.version.outputs.version }}.zip
+          files: portals/api-portal/target/wso2apip-api-portal-${{ steps.version.outputs.version }}.zip
           draft: true
           prerelease: ${{ contains(steps.version.outputs.version, '-') }}
           token: ${{ secrets.API_PLATFORM_BOT_TOKEN }}
@@ -150,7 +150,7 @@ jobs:
             exit 1
           fi
           echo "Setting API Portal to next dev version: ${NEXT_DEV_VERSION}"
-          make -C portals/developer-portal version-set "VERSION=${NEXT_DEV_VERSION}"
+          make -C portals/api-portal version-set "VERSION=${NEXT_DEV_VERSION}"
 
       - name: Commit version bump
         run: |

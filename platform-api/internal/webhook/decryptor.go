@@ -27,7 +27,7 @@ import (
 )
 
 // fieldKeyInfo is the HKDF info label used to derive the field-encryption key from the shared
-// webhook secret. It must stay byte-identical to the producer's label (Developer Portal
+// webhook secret. It must stay byte-identical to the producer's label (API Portal
 // src/services/webhooks/envelopeCrypto.js, FIELD_KEY_INFO) — a mismatch yields a different key
 // and every decryption fails. The "-v1" suffix is the scheme version; bump both sides together.
 const fieldKeyInfo = "api-portal-webhook-field-encryption-v1"
@@ -37,7 +37,7 @@ const fieldKeyBytes = 32
 
 // Decryptor recovers a plaintext secret from an encrypted EncryptedKey field.
 //
-// The producer (Developer Portal) and this receiver share one per-subscriber secret, which
+// The producer (API Portal) and this receiver share one per-subscriber secret, which
 // serves two purposes: HMAC request signing (see Verifier) and field encryption. Rather than
 // using that secret's bytes directly for both, each side derives a separate AES-256 key from it
 // with HKDF-SHA3-256 under fieldKeyInfo, so the encryption key is domain-separated from the

@@ -58,7 +58,7 @@ jobs:
 
       - name: Build API Portal image
         run: make build VERSION=it-e2e
-        working-directory: portals/developer-portal
+        working-directory: portals/api-portal
 
       - name: Run API Portal e2e (postgres)
         # make build above tags the API Portal image under the default registry, so

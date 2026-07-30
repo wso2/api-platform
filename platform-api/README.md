@@ -22,10 +22,10 @@ go run ./cmd/main.go
 
 `config/config.toml` is the local-development config, used with `platform_api.auth.mode = "file"`
 (username/password login backed by the organization/user block in that file) — the same mode the
-AI Workspace and Developer Portal quickstarts use. It's the one Platform API config shared by every
+AI Workspace and API Portal quickstarts use. It's the one Platform API config shared by every
 quickstart (both docker-compose setups mount it directly), so its admin user is granted the
 `ap_admin` role from the mounted [`resources/role-to-scope-mapping.yaml`](resources/role-to-scope-mapping.yaml), which covers both
-the `ap:*` (Platform API) and `dp:*` (Developer Portal) namespaces. That one role is the whole grant —
+the `ap:*` (Platform API) and `dp:*` (API Portal) namespaces. That one role is the whole grant —
 replace it, name more roles alongside it, or edit what it grants in
 `role-to-scope-mapping.yaml`.
 
@@ -294,14 +294,14 @@ All settings live under `[platform_api]` / `[platform_api.*]`. The main sections
 | `[platform_api.deployments]` | Deployment caps and stuck-deployment timeout handling |
 | `[platform_api.gateway]` | Gateway registration verification toggles |
 | `[platform_api.event_hub]` | Multi-replica event delivery polling/retention |
-| `[platform_api.webhook]` | Developer Portal webhook receiver: `enabled`, `secret` (required when enabled), signature/body limits |
+| `[platform_api.webhook]` | API Portal webhook receiver: `enabled`, `secret` (required when enabled), signature/body limits |
 
 #### Authentication modes
 
 `platform_api.auth.mode` selects exactly one mode; only that mode's section is read:
 
 - **`internal_token`** — verify asymmetrically-signed (RS256) JWTs (`[platform_api.auth.jwt]`); tokens are minted by another trusted platform component and signed with the matching RSA private key, verified here against `public_key_file`. Symmetric (HMAC) and unsigned (`none`) tokens are rejected.
-- **`file`** — `internal_token` plus local username/password login: the login endpoint authenticates against `[platform_api.auth.file]` and issues RS256 JWTs signed with `[platform_api.auth.jwt].private_key_file`, verified with the matching `public_key_file`. Used by the AI Workspace and Developer Portal quickstarts.
+- **`file`** — `internal_token` plus local username/password login: the login endpoint authenticates against `[platform_api.auth.file]` and issues RS256 JWTs signed with `[platform_api.auth.jwt].private_key_file`, verified with the matching `public_key_file`. Used by the AI Workspace and API Portal quickstarts.
 - **`idp`** — validate tokens against an external IDP's JWKS endpoint (Thunder, Asgardeo, Keycloak, Azure AD, Okta, etc.) via `[platform_api.auth.idp]`; `jwks_url` and `issuer` are required.
 
 The paths that bypass authentication and scope enforcement — health/metrics probes, the login

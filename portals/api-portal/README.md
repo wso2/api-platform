@@ -1,6 +1,6 @@
 # API Portal & MCP Hub
 
-A multi-organisation API API Portal built on Node.js. It provides a customisable web UI for discovering and subscribing to APIs, and a set of Admin REST APIs for managing organisations, views, API metadata, and portal content.
+A multi-organisation API Portal built on Node.js. It provides a customisable web UI for discovering and subscribing to APIs, and a set of Admin REST APIs for managing organisations, views, API metadata, and portal content.
 
 For end-user documentation, see [docs/](docs/).
 

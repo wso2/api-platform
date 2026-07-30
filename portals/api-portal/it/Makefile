@@ -79,11 +79,11 @@ ensure-test-tag:
 	elif docker image inspect $(DOCKER_REGISTRY)/$(IMAGE_NAME):test >/dev/null 2>&1; then \
 		echo "Using existing $(DOCKER_REGISTRY)/$(IMAGE_NAME):test (no :$(VERSION) image found)"; \
 	else \
-		echo "Error: No image found for $(IMAGE_NAME) (:$(VERSION) or :test). Run 'make build' in portals/developer-portal/ first." && exit 1; \
+		echo "Error: No image found for $(IMAGE_NAME) (:$(VERSION) or :test). Run 'make build' in portals/api-portal/ first." && exit 1; \
 	fi
 
 # Run Cypress tests headlessly against SQLite (CI-friendly, no external DB required).
-# Requires the API Portal image to be built first: make build (from portals/developer-portal/).
+# Requires the API Portal image to be built first: make build (from portals/api-portal/).
 # Service list is explicit — the compose file also defines rest-api-tests, which
 # `up` with no args would otherwise start too.
 # Each target captures the exit code of `docker compose up` itself — which
@@ -100,7 +100,7 @@ test: ensure-test-tag ensure-certs
 	exit $$EXIT
 
 # Run Cypress tests headlessly against PostgreSQL.
-# Requires the API Portal image to be built first: make build (from portals/developer-portal/).
+# Requires the API Portal image to be built first: make build (from portals/api-portal/).
 test-postgres: ensure-test-tag ensure-certs
 	@CYPRESS_PLATFORM=$(CYPRESS_PLATFORM) DOCKER_REGISTRY=$(DOCKER_REGISTRY) docker compose -p $(IT_PROJECT_POSTGRES) -f docker-compose.test.postgres.yaml up postgres api-portal cypress --abort-on-container-exit --exit-code-from cypress; \
 	EXIT=$$?; \
@@ -108,7 +108,7 @@ test-postgres: ensure-test-tag ensure-certs
 	exit $$EXIT
 
 # Run the REST API integration test suite (Jest + Supertest) against SQLite.
-# Requires the API Portal image to be built first: make build (from portals/developer-portal/).
+# Requires the API Portal image to be built first: make build (from portals/api-portal/).
 test-rest-api: ensure-test-tag ensure-certs
 	@DOCKER_REGISTRY=$(DOCKER_REGISTRY) docker compose -p $(IT_PROJECT) -f docker-compose.test.yaml up api-portal rest-api-tests --abort-on-container-exit --exit-code-from rest-api-tests; \
 	EXIT=$$?; \
@@ -123,7 +123,7 @@ test-rest-api-postgres: ensure-test-tag ensure-certs
 	exit $$EXIT
 
 # Open Cypress interactive UI — runs against a LOCALLY running portal (not in Docker).
-# Start your portal with `docker compose up` in portals/developer-portal/ first.
+# Start your portal with `docker compose up` in portals/api-portal/ first.
 open: deps
 	cd ui && CYPRESS_BASE_URL=https://localhost:9543 npx cypress open --e2e --config-file cypress.config.js
 

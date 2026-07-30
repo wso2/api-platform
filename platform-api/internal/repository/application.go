@@ -554,7 +554,7 @@ func (r *ApplicationRepo) GetApplicationsByAPIKeyID(apiKeyID, orgID string) ([]*
 }
 
 // RemoveAPIKeyFromAllApplications removes the given API key from every application it is mapped to.
-// Used to reconcile a Developer Portal apikey.application_updated event (a key belongs to at most
+// Used to reconcile a API Portal apikey.application_updated event (a key belongs to at most
 // one application), where the previous application is not carried in the event.
 func (r *ApplicationRepo) RemoveAPIKeyFromAllApplications(apiKeyID string) error {
 	_, err := r.db.Exec(r.db.Rebind(`

@@ -27,7 +27,7 @@ services:
       - "5432:5432"
     volumes:
       - postgres_data:/var/lib/postgresql
-      - ../../portals/developer-portal/artifacts/script.sql:/docker-entrypoint-initdb.d/01-init-api-portal.sql
+      - ../../portals/api-portal/artifacts/script.sql:/docker-entrypoint-initdb.d/01-init-api-portal.sql
       - ../../platform-api/internal/database/init-platform-api-db.sql:/docker-entrypoint-initdb.d/02-init-platform-api.sql
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U postgres -d api_portal"]
@@ -37,7 +37,7 @@ services:
 
   api-portal:
     build:
-      context: ../../portals/developer-portal
+      context: ../../portals/api-portal
       dockerfile: Dockerfile
     container_name: api-portal
     environment:

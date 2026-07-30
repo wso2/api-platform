@@ -24,7 +24,7 @@ GATEWAY_VERSION := $(shell cat gateway/VERSION)
 EVENT_GATEWAY_VERSION := $(shell cat event-gateway/VERSION)
 PLATFORM_API_VERSION := $(shell cat platform-api/VERSION)
 CLI_VERSION := $(shell cat cli/VERSION)
-API_PORTAL_VERSION := $(shell cat portals/developer-portal/VERSION)
+API_PORTAL_VERSION := $(shell cat portals/api-portal/VERSION)
 
 # Docker registry configuration
 DOCKER_REGISTRY ?= ghcr.io/wso2/api-platform
@@ -111,7 +111,7 @@ build-and-push-platform-api-multiarch: ## Build and push platform-api Docker ima
 .PHONY: build-and-push-api-portal-multiarch
 build-and-push-api-portal-multiarch: ## Build and push API Portal Docker image for multiple architectures (amd64, arm64)
 	@echo "Building and pushing multi-arch API Portal ($(API_PORTAL_VERSION))..."
-	$(MAKE) -C portals/developer-portal build-and-push-multiarch
+	$(MAKE) -C portals/api-portal build-and-push-multiarch
 	@echo "Successfully built and pushed multi-arch API Portal"
 
 # Package Targets
@@ -155,7 +155,7 @@ test-platform-api: ## Run platform-api tests
 .PHONY: test-api-portal
 test-api-portal: ## Run API Portal integration tests
 	@echo "Running API Portal integration tests..."
-	$(MAKE) -C portals/developer-portal/it test
+	$(MAKE) -C portals/api-portal/it test
 
 .PHONY: test-ai-workspace
 test-ai-workspace: ## Run AI Workspace E2E tests
