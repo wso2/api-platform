@@ -1,4 +1,4 @@
-<h1 id="wso2-api-portal-and-mcp-hub-core-application-keys">Application Keys</h1>
+<h1 id="wso2-api-portal-and-mcp-hub-application-keys">Application Keys</h1>
 
 ## Map an OAuth client_id to an API Portal application
 

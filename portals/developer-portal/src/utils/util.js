@@ -93,30 +93,40 @@ function rewriteViewStyles(content, orgId, viewName) {
     );
 }
 
-/**
- * Per-content-type flags every page render carries, derived from
- * [api_portal.features]. Templates branch on these booleans rather than on a
- * single mode value, so the combinations stay independent and a new content type
- * is a new flag instead of a new enum member.
- *
- * contentTypesLabel is built here rather than branched in Handlebars: with N
- * independent flags the hero copy would otherwise need a branch per combination.
- */
-function featureFlags() {
-    const enabled = (name) => config.features?.[name] !== false;
-    const showApisNav = enabled('apis');
-    const showMcpServersNav = enabled('mcpServers');
-    const showApiWorkflowsNav = enabled('apiWorkflows');
+// Human-readable name per artifact type, used to build the landing-page copy.
+const ARTIFACT_TYPE_LABELS = {
+    'apis': 'APIs',
+    'mcp-servers': 'MCP servers',
+    'api-workflows': 'workflows',
+};
 
-    const labels = [];
-    if (showApisNav) labels.push('APIs');
-    if (showMcpServersNav) labels.push('MCP servers');
-    if (showApiWorkflowsNav) labels.push('workflows');
-    const contentTypesLabel = labels.length > 1
+const artifactTypeEnabled = (type) => (config.artifacts?.enabledTypes || []).includes(type);
+
+/**
+ * Per-artifact-type flags every page render carries, derived from
+ * [api_portal.artifacts]. Templates branch on these booleans rather than on a
+ * single mode value, so the types stay independent and adding one is a new entry
+ * rather than a new enum member.
+ *
+ * artifactTypesLabel is built here rather than branched in Handlebars: with N
+ * independent types the hero copy would otherwise need a branch per combination.
+ * It follows the configured order, so an operator listing "mcp-servers" first
+ * sees it first.
+ */
+function artifactFlags() {
+    const labels = (config.artifacts?.enabledTypes || [])
+        .map((t) => ARTIFACT_TYPE_LABELS[t])
+        .filter(Boolean);
+    const artifactTypesLabel = labels.length > 1
         ? `${labels.slice(0, -1).join(', ')} & ${labels[labels.length - 1]}`
         : (labels[0] || '');
 
-    return { showApisNav, showMcpServersNav, showApiWorkflowsNav, contentTypesLabel };
+    return {
+        showApisNav: artifactTypeEnabled('apis'),
+        showMcpServersNav: artifactTypeEnabled('mcp-servers'),
+        showApiWorkflowsNav: artifactTypeEnabled('api-workflows'),
+        artifactTypesLabel,
+    };
 }
 
 function renderTemplate(templatePath, layoutPath, templateContent, isTechnical) {
@@ -136,7 +146,7 @@ function renderTemplate(templatePath, layoutPath, templateContent, isTechnical) 
     const layout = Handlebars.compile(layoutResponse.toString());
 
     const slots = {};
-    const flags = featureFlags();
+    const flags = artifactFlags();
     const enrichedContent = { ...flags, ...templateContent, slots };
     return layout({
         ...enrichedContent,
@@ -179,7 +189,7 @@ async function renderTemplateWithView(templatePath, layoutPath, templateContent,
     const layout = Handlebars.compile(layoutResponse.toString());
 
     const slots = {};
-    const flags = featureFlags();
+    const flags = artifactFlags();
     const enrichedContent = { ...flags, ...templateContent, slots };
     return layout({
         ...enrichedContent,
@@ -234,7 +244,7 @@ async function renderTemplateFromAPI(templateContent, orgId, orgName, filePath, 
     const layout = Handlebars.compile(layoutResponse.toString());
 
     const slots = {};
-    const flags = featureFlags();
+    const flags = artifactFlags();
     const enrichedContent = { ...flags, ...templateContent, slots };
     return layout({
         ...enrichedContent,
@@ -300,7 +310,7 @@ async function renderGivenTemplate(templatePage, layoutPage, templateContent) {
     const template = Handlebars.compile(templatePage.toString());
     const layout = Handlebars.compile(layoutPage.toString());
     const slots = {};
-    const flags = featureFlags();
+    const flags = artifactFlags();
     const enrichedContent = { ...flags, ...templateContent, slots };
     return layout({
         ...enrichedContent,
@@ -1305,8 +1315,8 @@ function filterAllowedAPIs(searchResults, allowedAPIs) {
  * A disabled type is a 404, not a 403 — the portal doesn't serve it at all, so
  * its absence shouldn't hint that it exists elsewhere.
  */
-const requireFeature = (feature) => (req, res, next) => {
-    if (feature && config.features?.[feature] !== false) {
+const requireArtifactType = (type) => (req, res, next) => {
+    if (type && artifactTypeEnabled(type)) {
         return next();
     }
     const err = new Error('Page not found');
@@ -1314,13 +1324,13 @@ const requireFeature = (feature) => (req, res, next) => {
     next(err);
 };
 
-// Content type carried in the path (`/{apiType}/{handle}/...`) rather than fixed
-// by the route. The routes below reject anything outside this map before the
-// guard runs, so an unmapped value can't reach here — but requireFeature treats a
-// falsy feature as "not served" anyway, keeping the guard fail-closed either way.
-const API_TYPE_FEATURE = { api: 'apis', mcp: 'mcpServers' };
-const requireFeatureForApiType = (req, res, next) =>
-    requireFeature(API_TYPE_FEATURE[req.params.apiType])(req, res, next);
+// Artifact type carried in the path (`/{apiType}/{handle}/...`) rather than fixed
+// by the route. The routes below reject anything outside this map before the guard
+// runs, so an unmapped value can't reach here — but requireArtifactType treats a
+// falsy type as "not served" anyway, keeping the guard fail-closed either way.
+const API_TYPE_ARTIFACT = { api: 'apis', mcp: 'mcp-servers' };
+const requireArtifactTypeFromPath = (req, res, next) =>
+    requireArtifactType(API_TYPE_ARTIFACT[req.params.apiType])(req, res, next);
 
 async function isAiDisabledForPortal(orgId, viewName) {
     const configAsset = await orgDao.getContent({
@@ -1369,8 +1379,8 @@ module.exports = {
     createZipBuffer,
     readDirTree,
     filterAllowedAPIs,
-    requireFeature,
-    requireFeatureForApiType,
+    requireArtifactType,
+    requireArtifactTypeFromPath,
     isAiDisabledForPortal,
     isImageFile,
     normalizeStringArray,

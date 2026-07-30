@@ -38,7 +38,7 @@
     };
     // orgDao.update overwrites the whole configuration column, so resend what is
     // already stored rather than dropping keys this form doesn't edit. Which
-    // content types the portal serves is operator config ([api_portal.features]),
+    // artifact types the portal serves are operator config ([api_portal.artifacts]),
     // not per-organization state, so nothing here writes to it.
     try {
       var parsed = JSON.parse(saveBtn.dataset.configuration || '{}');

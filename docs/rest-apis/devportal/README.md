@@ -1,5 +1,5 @@
 
-<h1 id="wso2-api-portal-and-mcp-hub-core">WSO2 API Portal & MCP Hub Core v0.9.0</h1>
+<h1 id="wso2-api-portal-and-mcp-hub">WSO2 API Portal & MCP Hub v0.9.0</h1>
 
 Fine-grained API Portal REST API for managing organizations,
 API metadata and content, applications, subscriptions, application appKeyMappings, and API flows.

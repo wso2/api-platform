@@ -183,14 +183,14 @@ const DEFAULTS = {
         defaultName: '',
         autoCreateSubscriptionPlans: true,
     },
-    // Which content types this portal serves. Each flag independently controls its
-    // nav entry, landing-page section, and routes (404 when off) — so any combination
-    // works, and a new content type is a new flag rather than a new enum value.
-    // All default true: a portal serves everything unless an operator narrows it.
-    features: {
-        apis: true,
-        mcpServers: true,
-        apiWorkflows: true,
+    // Which artifact types this portal serves. An allowlist: a type not listed here
+    // gets no nav entry, no landing-page section, and 404s on its routes. Any
+    // combination is valid, and a new artifact type is a new entry rather than a
+    // new enum value. Defaults to all of them — an operator narrows, never widens.
+    // Unknown entries are rejected at startup (see configLoader) so a typo can't
+    // silently drop a type.
+    artifacts: {
+        enabledTypes: ['apis', 'mcp-servers', 'api-workflows'],
     },
     designMode: {
         enabled: false,

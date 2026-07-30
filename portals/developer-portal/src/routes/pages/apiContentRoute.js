@@ -41,56 +41,56 @@ router.get('/:orgName/views/:viewName/apis.md', (req, res, next) => {
         return res.status(404).send('Not Found');
     }
     next();
-}, util.requireFeature('apis'), apiController.loadAPIsMd);
+}, util.requireArtifactType('apis'), apiController.loadAPIsMd);
 
 router.get('/:orgName/views/:viewName/mcps.md', (req, res, next) => {
     if (req.params.orgName === 'favicon.ico') {
         return res.status(404).send('Not Found');
     }
     next();
-}, util.requireFeature('mcpServers'), apiController.loadMCPsMd);
+}, util.requireArtifactType('mcp-servers'), apiController.loadMCPsMd);
 
 router.get('/:orgName/views/:viewName/apis', (req, res, next) => {
     if (req.params.orgName === 'favicon.ico') {
         return res.status(404).send('Not Found');
     }
     next();
-}, authController.handleSilentSSO, registerPartials, util.requireFeature('apis'), ensureAuthenticated, apiController.loadAPIs);
+}, authController.handleSilentSSO, registerPartials, util.requireArtifactType('apis'), ensureAuthenticated, apiController.loadAPIs);
 
 router.get('/:orgName/views/:viewName/mcps', (req, res, next) => {
     if (req.params.orgName === 'favicon.ico') {
         return res.status(404).send('Not Found');
     }
     next();
-}, registerPartials, ensureAuthenticated, util.requireFeature('mcpServers'), apiController.loadAPIs);
+}, registerPartials, ensureAuthenticated, util.requireArtifactType('mcp-servers'), apiController.loadAPIs);
 
 router.get('/:orgName/views/:viewName/api/:apiHandle.md', (req, res, next) => {
     if (req.params.orgName === 'favicon.ico') {
         return res.status(404).send('Not Found');
     }
     next();
-}, util.requireFeature('apis'), apiController.loadAPIContentMd);
+}, util.requireArtifactType('apis'), apiController.loadAPIContentMd);
 
 router.get('/:orgName/views/:viewName/mcp/:apiHandle.md', (req, res, next) => {
     if (req.params.orgName === 'favicon.ico') {
         return res.status(404).send('Not Found');
     }
     next();
-}, util.requireFeature('mcpServers'), apiController.loadAPIContentMd);
+}, util.requireArtifactType('mcp-servers'), apiController.loadAPIContentMd);
 
 router.get('/:orgName/views/:viewName/api/:apiHandle', (req, res, next) => {
     if (req.params.orgName === 'favicon.ico') {
         return res.status(404).send('Not Found');
     }
     next();
-}, authController.handleSilentSSO, registerPartials, util.requireFeature('apis'), ensureAuthenticated, apiController.loadAPIContent);
+}, authController.handleSilentSSO, registerPartials, util.requireArtifactType('apis'), ensureAuthenticated, apiController.loadAPIContent);
 
 router.get('/:orgName/views/:viewName/mcp/:apiHandle', (req, res, next) => {
     if (req.params.orgName === 'favicon.ico') {
         return res.status(404).send('Not Found');
     }
     next();
-}, registerPartials, ensureAuthenticated, util.requireFeature('mcpServers'), apiController.loadAPIContent);
+}, registerPartials, ensureAuthenticated, util.requireArtifactType('mcp-servers'), apiController.loadAPIContent);
 
 
 router.get('/:orgName/views/:viewName/api/:apiHandle/api-keys', (req, res, next) => {
@@ -98,7 +98,7 @@ router.get('/:orgName/views/:viewName/api/:apiHandle/api-keys', (req, res, next)
         return res.status(404).send('Not Found');
     }
     next();
-}, authController.handleSilentSSO, registerPartials, util.requireFeature('apis'), ensureAuthenticated, apiKeysContentController.loadAPIApiKeys);
+}, authController.handleSilentSSO, registerPartials, util.requireArtifactType('apis'), ensureAuthenticated, apiKeysContentController.loadAPIApiKeys);
 
 // Express 5 / path-to-regexp v8 dropped inline regex params (`:apiType(api|mcp)`,
 // `:format(json|graphql|xml)`), so the params are unconstrained here and validated in
@@ -111,21 +111,21 @@ router.get('/:orgName/views/:viewName/:apiType/:apiHandle/docs/specification.:fo
         return next('route');
     }
     next();
-  }, registerPartials, util.requireFeatureForApiType, ensureAuthenticated, apiController.loadSpecificationRaw);
+  }, registerPartials, util.requireArtifactTypeFromPath, ensureAuthenticated, apiController.loadSpecificationRaw);
 
 router.get('/:orgName/views/:viewName/api/:apiHandle/docs/specification', (req, res, next) => {
     if (req.params.orgName === 'favicon.ico') {
         return res.status(404).send('Not Found');
     }
     next();
-}, authController.handleSilentSSO, registerPartials, util.requireFeature('apis'), ensureAuthenticated, apiController.loadDocument);
+}, authController.handleSilentSSO, registerPartials, util.requireArtifactType('apis'), ensureAuthenticated, apiController.loadDocument);
 
 router.get('/:orgName/views/:viewName/mcp/:apiHandle/docs/specification', (req, res, next) => {
     if (req.params.orgName === 'favicon.ico') {
         return res.status(404).send('Not Found');
     }
     next();
-}, authController.handleSilentSSO, registerPartials, util.requireFeature('mcpServers'), ensureAuthenticated, apiController.loadDocument);
+}, authController.handleSilentSSO, registerPartials, util.requireArtifactType('mcp-servers'), ensureAuthenticated, apiController.loadDocument);
 
 // Express 5: `:apiType(api|mcp)` inline regex dropped — validated in the guard below.
 router.get('/:orgName/views/:viewName/:apiType/:apiHandle/docs/:docType/:docName.md', (req, res, next) => {
@@ -136,20 +136,20 @@ router.get('/:orgName/views/:viewName/:apiType/:apiHandle/docs/:docType/:docName
         return next('route');
     }
     next();
-}, util.requireFeatureForApiType, apiController.loadDocumentMd);
+}, util.requireArtifactTypeFromPath, apiController.loadDocumentMd);
 
 router.get('/:orgName/views/:viewName/api/:apiHandle/docs/:docType/:docName', (req, res, next) => {
     if (req.params.orgName === 'favicon.ico') {
         return res.status(404).send('Not Found');
     }
     next();
-}, authController.handleSilentSSO, registerPartials, util.requireFeature('apis'), ensureAuthenticated, apiController.loadDocument);
+}, authController.handleSilentSSO, registerPartials, util.requireArtifactType('apis'), ensureAuthenticated, apiController.loadDocument);
 
 router.get('/:orgName/views/:viewName/mcp/:apiHandle/docs/:docType/:docName', (req, res, next) => {
     if (req.params.orgName === 'favicon.ico') {
         return res.status(404).send('Not Found');
     }
     next();
-}, authController.handleSilentSSO, registerPartials, util.requireFeature('mcpServers'), ensureAuthenticated, apiController.loadDocument);
+}, authController.handleSilentSSO, registerPartials, util.requireArtifactType('mcp-servers'), ensureAuthenticated, apiController.loadDocument);
 
 module.exports = router;

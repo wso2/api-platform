@@ -78,121 +78,121 @@ echo ""
 
 SCOPES=(
   # organization
-  "dp:org_create"
-  "dp:org_read"
-  "dp:org_update"
-  "dp:org_delete"
-  "dp:org_manage"
+  "dp:organization:create"
+  "dp:organization:read"
+  "dp:organization:update"
+  "dp:organization:delete"
+  "dp:organization:manage"
 
   # organization content
-  "dp:org_content_create"
-  "dp:org_content_read"
-  "dp:org_content_update"
-  "dp:org_content_delete"
-  "dp:org_content_manage"
+  "dp:organization_content:create"
+  "dp:organization_content:read"
+  "dp:organization_content:update"
+  "dp:organization_content:delete"
+  "dp:organization_content:manage"
 
   # views
-  "dp:view_create"
-  "dp:view_read"
-  "dp:view_update"
-  "dp:view_delete"
-  "dp:view_manage"
+  "dp:view:create"
+  "dp:view:read"
+  "dp:view:update"
+  "dp:view:delete"
+  "dp:view:manage"
 
   # labels
-  "dp:label_create"
-  "dp:label_read"
-  "dp:label_update"
-  "dp:label_delete"
-  "dp:label_manage"
+  "dp:label:create"
+  "dp:label:read"
+  "dp:label:update"
+  "dp:label:delete"
+  "dp:label:manage"
 
   # providers
-  "dp:provider_create"
-  "dp:provider_read"
-  "dp:provider_update"
-  "dp:provider_delete"
-  "dp:provider_manage"
+  "dp:provider:create"
+  "dp:provider:read"
+  "dp:provider:update"
+  "dp:provider:delete"
+  "dp:provider:manage"
 
   # key managers
-  "dp:km_create"
-  "dp:km_read"
-  "dp:km_update"
-  "dp:km_delete"
-  "dp:km_manage"
+  "dp:key_manager:create"
+  "dp:key_manager:read"
+  "dp:key_manager:update"
+  "dp:key_manager:delete"
+  "dp:key_manager:manage"
 
   # APIs
-  "dp:api_create"
-  "dp:api_read"
-  "dp:api_update"
-  "dp:api_delete"
-  "dp:api_manage"
+  "dp:api:create"
+  "dp:api:read"
+  "dp:api:update"
+  "dp:api:delete"
+  "dp:api:manage"
 
   # API content
-  "dp:api_content_create"
-  "dp:api_content_read"
-  "dp:api_content_update"
-  "dp:api_content_delete"
-  "dp:api_content_manage"
+  "dp:api_content:create"
+  "dp:api_content:read"
+  "dp:api_content:update"
+  "dp:api_content:delete"
+  "dp:api_content:manage"
 
   # API flows
-  "dp:api_flow_create"
-  "dp:api_flow_read"
-  "dp:api_flow_update"
-  "dp:api_flow_delete"
-  "dp:api_flow_manage"
+  "dp:api_flow:create"
+  "dp:api_flow:read"
+  "dp:api_flow:update"
+  "dp:api_flow:delete"
+  "dp:api_flow:manage"
 
   # API keys
-  "dp:api_key_create"
-  "dp:api_key_read"
-  "dp:api_key_update"
-  "dp:api_key_revoke"
-  "dp:api_key_manage"
+  "dp:api_key:create"
+  "dp:api_key:read"
+  "dp:api_key:update"
+  "dp:api_key:revoke"
+  "dp:api_key:manage"
 
   # applications
-  "dp:app_create"
-  "dp:app_read"
-  "dp:app_update"
-  "dp:app_delete"
-  "dp:app_manage"
+  "dp:application:create"
+  "dp:application:read"
+  "dp:application:update"
+  "dp:application:delete"
+  "dp:application:manage"
 
   # application keys
-  "dp:app_key_create"
-  "dp:app_key_update"
-  "dp:app_key_revoke"
-  "dp:app_key_manage"
+  "dp:application_key:create"
+  "dp:application_key:update"
+  "dp:application_key:revoke"
+  "dp:application_key:manage"
 
   # application key mappings
-  "dp:app_key_mapping_create"
-  "dp:app_key_mapping_read"
-  "dp:app_key_mapping_manage"
+  "dp:application_key_mapping:create"
+  "dp:application_key_mapping:read"
+  "dp:application_key_mapping:manage"
 
   # subscriptions
-  "dp:subscription_create"
-  "dp:subscription_read"
-  "dp:subscription_update"
-  "dp:subscription_delete"
-  "dp:subscription_manage"
+  "dp:subscription:create"
+  "dp:subscription:read"
+  "dp:subscription:update"
+  "dp:subscription:delete"
+  "dp:subscription:manage"
 
   # subscription plans
-  "dp:sub_plan_create"
-  "dp:sub_plan_read"
-  "dp:sub_plan_update"
-  "dp:sub_plan_delete"
-  "dp:sub_plan_manage"
+  "dp:subscription_plan:create"
+  "dp:subscription_plan:read"
+  "dp:subscription_plan:update"
+  "dp:subscription_plan:delete"
+  "dp:subscription_plan:manage"
 
   # webhook subscribers
-  "dp:webhook_subscriber_create"
-  "dp:webhook_subscriber_read"
-  "dp:webhook_subscriber_update"
-  "dp:webhook_subscriber_delete"
-  "dp:webhook_subscriber_manage"
+  "dp:webhook_subscriber:create"
+  "dp:webhook_subscriber:read"
+  "dp:webhook_subscriber:update"
+  "dp:webhook_subscriber:delete"
+  "dp:webhook_subscriber:manage"
 
   # webhook events
-  "dp:event_read"
-  "dp:delivery_manage"
+  "dp:event:read"
+  "dp:delivery:manage"
 
   # utilities
-  "dp:utility_create"
-  "dp:utility_manage"
+  "dp:utility:create"
+  "dp:utility:manage"
 )
 
 # ── Build and POST the resource ───────────────────────────────────────────────

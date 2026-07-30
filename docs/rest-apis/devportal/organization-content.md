@@ -1,4 +1,4 @@
-<h1 id="wso2-api-portal-and-mcp-hub-core-organization-content">Organization Content</h1>
+<h1 id="wso2-api-portal-and-mcp-hub-organization-content">Organization Content</h1>
 
 ## Get a theme asset
 

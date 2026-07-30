@@ -27,7 +27,7 @@
 // the API, not just status codes.
 //
 // Roles (real scopes via file-based login, not the preauthorized session bypass):
-//   admin      → dp:org_content_manage / dp:org_manage  (can theme)
+//   admin      → dp:organization_content:manage / dp:organization:manage  (can theme)
 //   publisher  → API scopes only, no org content manage  (403 on theme writes)
 //   developer  → read-only                               (403 on theme writes)
 

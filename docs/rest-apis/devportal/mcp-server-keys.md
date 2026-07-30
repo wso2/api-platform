@@ -1,4 +1,4 @@
-<h1 id="wso2-api-portal-and-mcp-hub-core-mcp-server-keys">MCP Server Keys</h1>
+<h1 id="wso2-api-portal-and-mcp-hub-mcp-server-keys">MCP Server Keys</h1>
 
 ## Generate an MCP server API key
 

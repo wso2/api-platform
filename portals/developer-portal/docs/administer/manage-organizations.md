@@ -121,12 +121,12 @@ Add or modify users in the `[[auth.file_based.users]]` sections:
 [[auth.file_based.users]]
 username      = "admin"
 password_hash = "$2y$10$..."   # bcrypt hash — see below
-scopes        = "dp:org_read dp:org_manage dp:api_read dp:api_manage ..."
+scopes        = "dp:organization:read dp:organization:manage dp:api:read dp:api:manage ..."
 
 [[auth.file_based.users]]
 username      = "developer"
 password_hash = "$2y$10$..."
-scopes        = "dp:api_read dp:app_read dp:app_write dp:subscription_read"
+scopes        = "dp:api:read dp:application:read dp:application:write dp:subscription:read"
 ```
 
 Generate a bcrypt password hash with:
@@ -142,8 +142,8 @@ Every devportal REST API operation requires a specific `dp:*` scope. Users witho
 | Access level | Scopes to grant |
 |---|---|
 | Full admin | All `dp:*_manage` scopes + `dp:*_read` |
-| API publisher | `dp:api_manage dp:api_content_manage dp:org_read dp:label_read` |
-| Developer / subscriber | `dp:api_read dp:app_read dp:app_write dp:subscription_read dp:subscription_write` |
+| API publisher | `dp:api:manage dp:api_content:manage dp:organization:read dp:label:read` |
+| Developer / subscriber | `dp:api:read dp:application:read dp:application:write dp:subscription:read dp:subscription:write` |
 
 See `configs/config-platform-api-template.toml` for the complete scope list used by the default admin user.
 

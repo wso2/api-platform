@@ -62,20 +62,20 @@ function handleRawBodyError(req, res, next) {
     });
 }
 
-// The same feature gate the spec page carries (apiContentRoute.js): a portal that
-// doesn't serve this content type 404s the page for it, and the proxy must not
+// The same artifact-type gate the spec page carries (apiContentRoute.js): a portal that
+// doesn't serve this artifact type 404s the page for it, and the proxy must not
 // stay reachable for a type the portal doesn't serve. Wrapped because
-// requireFeatureForApiType signals rejection with next(err), which app.js renders
+// requireArtifactTypeFromPath signals rejection with next(err), which app.js renders
 // as an HTML error page — this endpoint answers a fetch, so its rejections stay
 // JSON like every other response here.
-async function requireFeatureForApiTypeJson(req, res, next) {
+async function requireArtifactTypeFromPathJson(req, res, next) {
     try {
-        await util.requireFeatureForApiType(req, res, (err) => {
+        await util.requireArtifactTypeFromPath(req, res, (err) => {
             if (err) return res.status(404).json({ error: 'not_found' });
             return next();
         });
     } catch (err) {
-        logger.warn('Try-it proxy portal-mode check failed', {
+        logger.warn('Try-it proxy artifact-type check failed', {
             reason: err.message,
             operation: 'proxyTryoutRequest',
         });
@@ -150,7 +150,7 @@ attachOrgGuard(router, 'orgName', (res, err) => res.status(err.status).json({
 router.use(
     '/:orgName/views/:viewName/:apiType/:apiHandle/tryout-proxy',
     handleRawBodyError,
-    requireFeatureForApiTypeJson,
+    requireArtifactTypeFromPathJson,
     authenticateLikeSpecPage,
     tryoutProxyController.proxyTryoutRequest
 );

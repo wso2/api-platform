@@ -179,7 +179,7 @@ xor
 |businessOwnerEmail|string(email)¦null|false|none|none|
 |idpRefId|string|false|none|The organization claim value asserted by the configured Identity Provider at SSO login. On every login, the portal matches the authenticated user's org claim against this value to resolve which organization they belong to — it must exactly match the IDP's claim, or login fails for that org's users. Distinct from `cpRefId`, which is unrelated to authentication.|
 |cpRefId|string¦null|false|none|Control Plane reference ID. Included in outbound webhook event payloads so subscribers can correlate this organization with its Control Plane (Platform API) counterpart. Not used for authentication or org resolution.|
-|configuration|object|false|none|Free-form organization configuration set by the caller. Which content types the portal serves is operator configuration ([api_portal.features]), not part of this.|
+|configuration|object|false|none|Free-form organization configuration set by the caller. Which artifact types the portal serves is operator configuration ([api_portal.artifacts]), not part of this.|
 |createdAt|string(date-time)¦null|false|none|none|
 |updatedAt|string(date-time)¦null|false|none|none|
 
@@ -1378,7 +1378,7 @@ Minimal developer-facing key manager view.
 {
   "id": "production-gateway",
   "displayName": "Production Gateway",
-  "targetUrl": "https://gateway.example.com/devportal-webhook",
+  "targetUrl": "https://gateway.example.com/api-portal-webhook",
   "secret": "<shared-secret>",
   "events": [
     "apikey.*",
@@ -1414,7 +1414,7 @@ Minimal developer-facing key manager view.
   "id": "production-gateway",
   "orgId": "org-12345",
   "displayName": "Production Gateway",
-  "targetUrl": "https://gateway.example.com/devportal-webhook",
+  "targetUrl": "https://gateway.example.com/api-portal-webhook",
   "enabled": true,
   "events": [
     "apikey.*",

@@ -26,7 +26,7 @@
 //      with no session) — anonymous callers may read type=IMAGE only, and must pass
 //      the org via `orgId`; every other content type stays session-scoped.
 //
-// Roles: publisher holds dp:api_content_*; developer is read-only (403 on writes).
+// Roles: publisher holds dp:api_content:*; developer is read-only (403 on writes).
 
 const client = require('../support/client');
 const db = require('../support/db');

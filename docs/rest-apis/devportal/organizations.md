@@ -1,4 +1,4 @@
-<h1 id="wso2-api-portal-and-mcp-hub-core-organizations">Organizations</h1>
+<h1 id="wso2-api-portal-and-mcp-hub-organizations">Organizations</h1>
 
 ## Create an organization (not supported)
 

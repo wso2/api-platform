@@ -8,91 +8,91 @@
 
 |Scope|Scope Description|
 |---|---|
-|dp:org_read|Read organizations.|
-|dp:org_create|Create organizations.|
-|dp:org_update|Update organizations.|
-|dp:org_delete|Delete organizations.|
-|dp:org_manage|Manage organizations (including creating, updating, and deleting).|
-|dp:org_content_read|Read organization theme assets.|
-|dp:org_content_manage|Apply or reset organization theme.|
-|dp:api_read|Read API metadata.|
-|dp:api_create|Create API metadata.|
-|dp:api_update|Update API metadata.|
-|dp:api_delete|Delete API metadata.|
-|dp:api_manage|Manage API metadata.|
-|dp:api_content_read|Read API content.|
-|dp:api_content_create|Create API content.|
-|dp:api_content_update|Update API content.|
-|dp:api_content_delete|Delete API content.|
-|dp:api_content_manage|Manage API content.|
-|dp:mcp_read|Read MCP server metadata.|
-|dp:mcp_create|Create MCP server metadata.|
-|dp:mcp_update|Update MCP server metadata.|
-|dp:mcp_delete|Delete MCP server metadata.|
-|dp:mcp_manage|Manage MCP server metadata.|
-|dp:mcp_content_read|Read MCP server content.|
-|dp:mcp_content_create|Create MCP server content.|
-|dp:mcp_content_update|Update MCP server content.|
-|dp:mcp_content_delete|Delete MCP server content.|
-|dp:mcp_content_manage|Manage MCP server content.|
-|dp:mcp_key_read|Read MCP server API keys.|
-|dp:mcp_key_create|Generate MCP server API keys.|
-|dp:mcp_key_update|Regenerate MCP server API keys.|
-|dp:mcp_key_revoke|Revoke MCP server API keys.|
-|dp:mcp_key_manage|Manage MCP server API keys.|
-|dp:sub_plan_read|Read subscription plans.|
-|dp:sub_plan_create|Create subscription plans.|
-|dp:sub_plan_update|Update subscription plans.|
-|dp:sub_plan_delete|Delete subscription plans.|
-|dp:sub_plan_manage|Manage subscription plans.|
-|dp:label_read|Read labels.|
-|dp:label_create|Create labels.|
-|dp:label_update|Update labels.|
-|dp:label_delete|Delete labels.|
-|dp:label_manage|Manage labels.|
-|dp:app_read|Read applications.|
-|dp:app_create|Create applications.|
-|dp:app_update|Update applications.|
-|dp:app_delete|Delete applications.|
-|dp:app_manage|Manage applications.|
-|dp:subscription_read|Read subscriptions.|
-|dp:subscription_create|Create subscriptions.|
-|dp:subscription_update|Update subscriptions.|
-|dp:subscription_delete|Delete subscriptions.|
-|dp:subscription_manage|Manage subscriptions.|
-|dp:api_key_read|Read API keys.|
-|dp:api_key_create|Generate API keys.|
-|dp:api_key_update|Regenerate API keys.|
-|dp:api_key_revoke|Revoke API keys.|
-|dp:api_key_manage|Manage API keys.|
-|dp:app_key_mapping_read|Read application key mappings.|
-|dp:app_key_mapping_create|Create application key mappings.|
-|dp:app_key_mapping_manage|Manage application key mappings.|
-|dp:view_read|Read views.|
-|dp:view_create|Create views.|
-|dp:view_update|Update views.|
-|dp:view_delete|Delete views.|
-|dp:view_manage|Manage views.|
-|dp:app_key_create|Generate and create application keys.|
-|dp:app_key_update|Update application keys.|
-|dp:app_key_revoke|Revoke application keys.|
-|dp:app_key_manage|Manage application keys.|
-|dp:api_workflow_read|Read API workflows.|
-|dp:api_workflow_create|Create or generate API workflows.|
-|dp:api_workflow_update|Update API workflows.|
-|dp:api_workflow_delete|Delete API workflows.|
-|dp:api_workflow_manage|Manage API workflows.|
-|dp:event_read|Read webhook events and delivery details.|
-|dp:km_read|Read key manager configurations.|
-|dp:km_create|Create key manager configurations.|
-|dp:km_update|Update key manager configurations.|
-|dp:km_delete|Delete key manager configurations.|
-|dp:km_manage|Manage key manager configurations (including creating, updating, and deleting).|
-|dp:webhook_subscriber_read|Read webhook subscriber configurations.|
-|dp:webhook_subscriber_create|Create webhook subscriber configurations.|
-|dp:webhook_subscriber_update|Update webhook subscriber configurations.|
-|dp:webhook_subscriber_delete|Delete webhook subscriber configurations.|
-|dp:webhook_subscriber_manage|Manage webhook subscriber configurations (including creating, updating, and deleting).|
+|dp:organization:read|Read organizations.|
+|dp:organization:create|Create organizations.|
+|dp:organization:update|Update organizations.|
+|dp:organization:delete|Delete organizations.|
+|dp:organization:manage|Manage organizations (including creating, updating, and deleting).|
+|dp:organization_content:read|Read organization theme assets.|
+|dp:organization_content:manage|Apply or reset organization theme.|
+|dp:api:read|Read API metadata.|
+|dp:api:create|Create API metadata.|
+|dp:api:update|Update API metadata.|
+|dp:api:delete|Delete API metadata.|
+|dp:api:manage|Manage API metadata.|
+|dp:api_content:read|Read API content.|
+|dp:api_content:create|Create API content.|
+|dp:api_content:update|Update API content.|
+|dp:api_content:delete|Delete API content.|
+|dp:api_content:manage|Manage API content.|
+|dp:mcp_server:read|Read MCP server metadata.|
+|dp:mcp_server:create|Create MCP server metadata.|
+|dp:mcp_server:update|Update MCP server metadata.|
+|dp:mcp_server:delete|Delete MCP server metadata.|
+|dp:mcp_server:manage|Manage MCP server metadata.|
+|dp:mcp_server_content:read|Read MCP server content.|
+|dp:mcp_server_content:create|Create MCP server content.|
+|dp:mcp_server_content:update|Update MCP server content.|
+|dp:mcp_server_content:delete|Delete MCP server content.|
+|dp:mcp_server_content:manage|Manage MCP server content.|
+|dp:mcp_server_key:read|Read MCP server API keys.|
+|dp:mcp_server_key:create|Generate MCP server API keys.|
+|dp:mcp_server_key:update|Regenerate MCP server API keys.|
+|dp:mcp_server_key:revoke|Revoke MCP server API keys.|
+|dp:mcp_server_key:manage|Manage MCP server API keys.|
+|dp:subscription_plan:read|Read subscription plans.|
+|dp:subscription_plan:create|Create subscription plans.|
+|dp:subscription_plan:update|Update subscription plans.|
+|dp:subscription_plan:delete|Delete subscription plans.|
+|dp:subscription_plan:manage|Manage subscription plans.|
+|dp:label:read|Read labels.|
+|dp:label:create|Create labels.|
+|dp:label:update|Update labels.|
+|dp:label:delete|Delete labels.|
+|dp:label:manage|Manage labels.|
+|dp:application:read|Read applications.|
+|dp:application:create|Create applications.|
+|dp:application:update|Update applications.|
+|dp:application:delete|Delete applications.|
+|dp:application:manage|Manage applications.|
+|dp:subscription:read|Read subscriptions.|
+|dp:subscription:create|Create subscriptions.|
+|dp:subscription:update|Update subscriptions.|
+|dp:subscription:delete|Delete subscriptions.|
+|dp:subscription:manage|Manage subscriptions.|
+|dp:api_key:read|Read API keys.|
+|dp:api_key:create|Generate API keys.|
+|dp:api_key:update|Regenerate API keys.|
+|dp:api_key:revoke|Revoke API keys.|
+|dp:api_key:manage|Manage API keys.|
+|dp:application_key_mapping:read|Read application key mappings.|
+|dp:application_key_mapping:create|Create application key mappings.|
+|dp:application_key_mapping:manage|Manage application key mappings.|
+|dp:view:read|Read views.|
+|dp:view:create|Create views.|
+|dp:view:update|Update views.|
+|dp:view:delete|Delete views.|
+|dp:view:manage|Manage views.|
+|dp:application_key:create|Generate and create application keys.|
+|dp:application_key:update|Update application keys.|
+|dp:application_key:revoke|Revoke application keys.|
+|dp:application_key:manage|Manage application keys.|
+|dp:api_workflow:read|Read API workflows.|
+|dp:api_workflow:create|Create or generate API workflows.|
+|dp:api_workflow:update|Update API workflows.|
+|dp:api_workflow:delete|Delete API workflows.|
+|dp:api_workflow:manage|Manage API workflows.|
+|dp:event:read|Read webhook events and delivery details.|
+|dp:key_manager:read|Read key manager configurations.|
+|dp:key_manager:create|Create key manager configurations.|
+|dp:key_manager:update|Update key manager configurations.|
+|dp:key_manager:delete|Delete key manager configurations.|
+|dp:key_manager:manage|Manage key manager configurations (including creating, updating, and deleting).|
+|dp:webhook_subscriber:read|Read webhook subscriber configurations.|
+|dp:webhook_subscriber:create|Create webhook subscriber configurations.|
+|dp:webhook_subscriber:update|Update webhook subscriber configurations.|
+|dp:webhook_subscriber:delete|Delete webhook subscriber configurations.|
+|dp:webhook_subscriber:manage|Manage webhook subscriber configurations (including creating, updating, and deleting).|
 
 * API Key (apiKeyAuth)
     - Parameter Name: **x-api-key**, in: header. API key authentication. Server-side authorization should bind each key to the same fine-grained permissions used by OAuth2 scopes.

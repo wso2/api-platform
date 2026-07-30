@@ -55,7 +55,7 @@ const loadSettingsPage = async (req, res) => {
     let templateContent = {
         settingsUrl,
         csrfToken,
-        showApiWorkflowsNav: config.features?.apiWorkflows === true
+        showApiWorkflowsNav: (config.artifacts?.enabledTypes || []).includes('api-workflows')
     };
     try {
         templateContent.loggedOrg = orgName;

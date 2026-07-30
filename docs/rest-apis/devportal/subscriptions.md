@@ -1,4 +1,4 @@
-<h1 id="wso2-api-portal-and-mcp-hub-core-subscriptions">Subscriptions</h1>
+<h1 id="wso2-api-portal-and-mcp-hub-subscriptions">Subscriptions</h1>
 
 ## Create a subscription
 

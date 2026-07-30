@@ -287,7 +287,7 @@ function interpolateTree(value, fieldPath) {
 // counterpart to the Go components' `-config`. At least one `--config` is
 // REQUIRED: there is no default path and no silent fallback to built-in
 // DEFAULTS. Because env vars reach config only through explicit {{ env }} tokens
-// in a file (there is no APIP_DP_* env-prefix provider), a missing config file
+// in a file (there is no APIP_AP_* env-prefix provider), a missing config file
 // means "running on pure built-in defaults" — unacceptable for a portal handling
 // auth/session/secret config, so it fails fast with a non-zero exit here, before
 // the server binds. process.exit is used (not a thrown error) because the logger
@@ -489,4 +489,47 @@ function resolveOrganizationConfig(cfg, tomlOrg) {
 
 resolveOrganizationConfig(config, interpolatedTomlConfig.organization);
 
-module.exports = { config };
+// Every artifact type this portal knows how to serve. `artifacts.enabled_types`
+// is an allowlist drawn from this set.
+const KNOWN_ARTIFACT_TYPES = ['apis', 'mcp-servers', 'api-workflows'];
+
+/**
+ * Validates artifacts.enabledTypes against KNOWN_ARTIFACT_TYPES and aborts on
+ * anything else.
+ *
+ * An allowlist fails differently from a set of booleans: a misspelt boolean key
+ * is ignored and its default still applies, but a misspelt array entry silently
+ * drops that artifact type — the portal starts, serves fewer pages than intended,
+ * and 404s look like a routing bug. Fail at startup instead, consistent with how
+ * the other required config is checked above.
+ */
+function validateArtifactConfig(artifacts) {
+    const enabled = artifacts?.enabledTypes;
+    if (enabled === undefined) return; // section omitted — defaults apply
+
+    if (!Array.isArray(enabled)) {
+        process.stderr.write(
+            '[FATAL] artifacts.enabled_types must be an array, e.g. ' +
+            'enabled_types = ["apis", "mcp-servers"].\n'
+        );
+        process.exit(1);
+    }
+    const unknown = enabled.filter((t) => !KNOWN_ARTIFACT_TYPES.includes(t));
+    if (unknown.length) {
+        process.stderr.write(
+            `[FATAL] artifacts.enabled_types contains unknown ${unknown.length === 1 ? 'entry' : 'entries'}: ` +
+            `${unknown.map((t) => `"${t}"`).join(', ')}. Valid entries are ` +
+            `${KNOWN_ARTIFACT_TYPES.map((t) => `"${t}"`).join(', ')}.\n`
+        );
+        process.exit(1);
+    }
+    if (!enabled.length) {
+        process.stderr.write(
+            '[WARN] artifacts.enabled_types is empty — this portal serves no artifacts.\n'
+        );
+    }
+}
+
+validateArtifactConfig(config.artifacts);
+
+module.exports = { config, KNOWN_ARTIFACT_TYPES };

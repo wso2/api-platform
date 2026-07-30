@@ -1,4 +1,4 @@
-<h1 id="wso2-api-portal-and-mcp-hub-core-labels">Labels</h1>
+<h1 id="wso2-api-portal-and-mcp-hub-labels">Labels</h1>
 
 ## Create a label
 

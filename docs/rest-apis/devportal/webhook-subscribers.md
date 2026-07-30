@@ -1,4 +1,4 @@
-<h1 id="wso2-api-portal-and-mcp-hub-core-webhook-subscribers">Webhook Subscribers</h1>
+<h1 id="wso2-api-portal-and-mcp-hub-webhook-subscribers">Webhook Subscribers</h1>
 
 ## Create a webhook subscriber
 
@@ -27,7 +27,7 @@ Registers a webhook subscriber for the organization. Event deliveries (apikey.*,
 {
   "id": "production-gateway",
   "displayName": "Production Gateway",
-  "targetUrl": "https://gateway.example.com/devportal-webhook",
+  "targetUrl": "https://gateway.example.com/api-portal-webhook",
   "secret": "<shared-secret>",
   "events": [
     "apikey.*",
@@ -60,7 +60,7 @@ This operation requires <strong>Basic Auth</strong> authentication.
   "id": "production-gateway",
   "orgId": "org-12345",
   "displayName": "Production Gateway",
-  "targetUrl": "https://gateway.example.com/devportal-webhook",
+  "targetUrl": "https://gateway.example.com/api-portal-webhook",
   "enabled": true,
   "events": [
     "apikey.*",
@@ -178,7 +178,7 @@ This operation requires <strong>Basic Auth</strong> authentication.
       "id": "production-gateway",
       "orgId": "org-12345",
       "displayName": "Production Gateway",
-      "targetUrl": "https://gateway.example.com/devportal-webhook",
+      "targetUrl": "https://gateway.example.com/api-portal-webhook",
       "enabled": true,
       "events": [
         "apikey.*",
@@ -284,7 +284,7 @@ This operation requires <strong>Basic Auth</strong> authentication.
   "id": "production-gateway",
   "orgId": "org-12345",
   "displayName": "Production Gateway",
-  "targetUrl": "https://gateway.example.com/devportal-webhook",
+  "targetUrl": "https://gateway.example.com/api-portal-webhook",
   "enabled": true,
   "events": [
     "apikey.*",
@@ -354,7 +354,7 @@ Updates an existing webhook subscriber configuration. Only supplied fields are u
 {
   "id": "production-gateway",
   "displayName": "Production Gateway",
-  "targetUrl": "https://gateway.example.com/devportal-webhook",
+  "targetUrl": "https://gateway.example.com/api-portal-webhook",
   "secret": "<shared-secret>",
   "events": [
     "apikey.*",
@@ -388,7 +388,7 @@ This operation requires <strong>Basic Auth</strong> authentication.
   "id": "production-gateway",
   "orgId": "org-12345",
   "displayName": "Production Gateway",
-  "targetUrl": "https://gateway.example.com/devportal-webhook",
+  "targetUrl": "https://gateway.example.com/api-portal-webhook",
   "enabled": true,
   "events": [
     "apikey.*",

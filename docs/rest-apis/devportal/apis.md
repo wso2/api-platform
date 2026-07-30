@@ -1,4 +1,4 @@
-<h1 id="wso2-api-portal-and-mcp-hub-core-apis">APIs</h1>
+<h1 id="wso2-api-portal-and-mcp-hub-apis">APIs</h1>
 
 ## Create API metadata
 

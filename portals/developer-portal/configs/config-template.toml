@@ -189,16 +189,18 @@ auto_create_subscription_plans = true    # Auto-create Bronze/Silver/Gold/Unlimi
 # default_name = "default"               # DEPRECATED alias for `handle` — rename it
 
 # =============================================================================
-# FEATURES
+# ARTIFACTS
 # =============================================================================
-# Which content types this portal serves. Each flag independently controls its
-# nav entry, its landing-page section, and its routes — a disabled type returns
-# 404 rather than rendering an empty page. Any combination is valid; turning all
-# of them off leaves a portal with nothing to browse.
-[api_portal.features]
-apis = true                              # REST/GraphQL/AsyncAPI listings and detail pages
-mcp_servers = true                       # MCP server listings and detail pages
-api_workflows = true                     # Arazzo/Markdown API workflow pages
+# Which artifact types this portal serves — an allowlist. A type left out of the
+# list gets no nav entry, no landing-page section, and 404s on its routes rather
+# than rendering an empty page. Any combination is valid; an empty list leaves a
+# portal with nothing to browse.
+#
+# Valid entries: "apis", "mcp-servers", "api-workflows".
+# An unrecognised entry aborts startup, so a typo can't silently drop a type.
+# Omit the whole section to serve all of them.
+[api_portal.artifacts]
+enabled_types = ["apis", "mcp-servers", "api-workflows"]
 
 # =============================================================================
 # DESIGN MODE CONFIGURATION

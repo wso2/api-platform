@@ -1,4 +1,4 @@
-<h1 id="wso2-api-portal-and-mcp-hub-core-api-keys">API Keys</h1>
+<h1 id="wso2-api-portal-and-mcp-hub-api-keys">API Keys</h1>
 
 ## List all API keys for the current user
 

@@ -103,7 +103,7 @@ curl -k -X DELETE "https://localhost:9543/api/v0.9/webhook-subscribers/{subscrib
   -H "Authorization: Bearer $TOKEN"
 ```
 
-These endpoints require the `dp:webhook_subscriber_read`, `dp:webhook_subscriber_create`, `dp:webhook_subscriber_update`, `dp:webhook_subscriber_delete`, or `dp:webhook_subscriber_manage` OAuth2 scopes (see the OpenAPI spec for the exact scope per operation).
+These endpoints require the `dp:webhook_subscriber:read`, `dp:webhook_subscriber:create`, `dp:webhook_subscriber:update`, `dp:webhook_subscriber:delete`, or `dp:webhook_subscriber:manage` OAuth2 scopes (see the OpenAPI spec for the exact scope per operation).
 
 ## Webhook Request Format
 

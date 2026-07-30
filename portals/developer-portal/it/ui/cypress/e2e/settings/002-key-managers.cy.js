@@ -39,7 +39,7 @@ describe('Settings — Key Managers', () => {
         cy.deleteApplication(APP_NAME);
         // Then the key manager. Clear the developer session so this authorizes via the
         // admin API key (x-wso2-api-key) — with the developer session still set, the
-        // server would authorize as `developer`, who lacks dp:km_read, and return 403.
+        // server would authorize as `developer`, who lacks dp:key_manager:read, and return 403.
         // The handle is a server-generated UUID, so discover it by display name.
         cy.clearCookies();
         cy.apiRequest('GET', '/api/v0.9/key-managers').then((res) => {
@@ -73,7 +73,7 @@ describe('Settings — Key Managers', () => {
         cy.login('developer', 'developer');
 
         // A developer can list the enabled key managers (public, credential-free view) —
-        // dp:app_key_mapping_read grants read access; the request is authorized by the
+        // dp:application_key_mapping:read grants read access; the request is authorized by the
         // developer session (which takes precedence over the API-key header).
         cy.apiRequest('GET', '/api/v0.9/key-managers').then((res) => {
             expect(res.status, 'developer can read key managers').to.eq(200);

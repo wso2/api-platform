@@ -1,4 +1,4 @@
-<h1 id="wso2-api-portal-and-mcp-hub-core-views">Views</h1>
+<h1 id="wso2-api-portal-and-mcp-hub-views">Views</h1>
 
 ## Create a view
 

@@ -94,7 +94,7 @@ describe('API keys', () => {
     // resolveAppId(orgId, util.resolveActor(req), appHandle) — i.e. scoped to
     // the *caller's own* created_by, not just API-key scope. A publisher can
     // generate the key but can never associate it with another user's
-    // application (404 "Application not found") even with full dp:api_key_manage
+    // application (404 "Application not found") even with full dp:api_key:manage
     // scope — only the app's own owner can call associate/dissociate on it.
     // That's surprising given the OpenAPI description ("Associates ... with an
     // application, for analytics attribution only") doesn't mention this

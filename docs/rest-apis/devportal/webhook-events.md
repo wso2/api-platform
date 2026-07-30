@@ -1,4 +1,4 @@
-<h1 id="wso2-api-portal-and-mcp-hub-core-webhook-events">Webhook Events</h1>
+<h1 id="wso2-api-portal-and-mcp-hub-webhook-events">Webhook Events</h1>
 
 ## List webhook events
 
@@ -17,7 +17,7 @@ curl -X GET https://localhost:9543/api/v0.9/webhook-events \
 
 ```
 
-Returns a paginated list of webhook events for the organization. Each event includes a summary of its delivery rows. Requires dp:event_read scope.
+Returns a paginated list of webhook events for the organization. Each event includes a summary of its delivery rows. Requires dp:event:read scope.
 
 ### Authentication
 
@@ -168,7 +168,7 @@ curl -X GET https://localhost:9543/api/v0.9/webhook-events/{eventId} \
 
 ```
 
-Returns a single webhook event with the full details of all its delivery rows. Requires dp:event_read scope.
+Returns a single webhook event with the full details of all its delivery rows. Requires dp:event:read scope.
 
 ### Authentication
 

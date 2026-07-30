@@ -1,4 +1,4 @@
-<h1 id="wso2-api-portal-and-mcp-hub-core-applications">Applications</h1>
+<h1 id="wso2-api-portal-and-mcp-hub-applications">Applications</h1>
 
 ## List applications for the authenticated user
 

@@ -1,4 +1,4 @@
-<h1 id="wso2-api-portal-and-mcp-hub-core-mcp-servers">MCP Servers</h1>
+<h1 id="wso2-api-portal-and-mcp-hub-mcp-servers">MCP Servers</h1>
 
 ## Create MCP server metadata
 

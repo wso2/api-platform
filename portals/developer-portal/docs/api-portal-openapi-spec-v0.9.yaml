@@ -75,8 +75,8 @@ paths:
           $ref: "#/components/responses/InternalServerError"
       security:
         - OAuth2Security:
-            - dp:org_create
-            - dp:org_manage
+            - dp:organization:create
+            - dp:organization:manage
     get:
       tags:
         - Organizations
@@ -93,8 +93,8 @@ paths:
           $ref: "#/components/responses/InternalServerError"
       security:
         - OAuth2Security:
-            - dp:org_read
-            - dp:org_manage
+            - dp:organization:read
+            - dp:organization:manage
   /organizations/{orgId}:
     parameters:
       - $ref: "#/components/parameters/orgId"
@@ -125,8 +125,8 @@ paths:
           $ref: "#/components/responses/InternalServerError"
       security:
         - OAuth2Security:
-            - dp:org_update
-            - dp:org_manage
+            - dp:organization:update
+            - dp:organization:manage
     get:
       tags:
         - Organizations
@@ -146,8 +146,8 @@ paths:
           $ref: "#/components/responses/InternalServerError"
       security:
         - OAuth2Security:
-            - dp:org_read
-            - dp:org_manage
+            - dp:organization:read
+            - dp:organization:manage
     delete:
       tags:
         - Organizations
@@ -166,8 +166,8 @@ paths:
           $ref: "#/components/responses/InternalServerError"
       security:
         - OAuth2Security:
-            - dp:org_delete
-            - dp:org_manage
+            - dp:organization:delete
+            - dp:organization:manage
   /views/{viewId}/asset:
     parameters:
       - $ref: "#/components/parameters/viewId"
@@ -228,8 +228,8 @@ paths:
           $ref: "#/components/responses/InternalServerError"
       security:
         - OAuth2Security:
-            - dp:org_content_manage
-            - dp:org_manage
+            - dp:organization_content:manage
+            - dp:organization:manage
   /views/{viewId}/reset-theme:
     parameters:
       - $ref: "#/components/parameters/viewId"
@@ -246,8 +246,8 @@ paths:
           $ref: "#/components/responses/InternalServerError"
       security:
         - OAuth2Security:
-            - dp:org_content_manage
-            - dp:org_manage
+            - dp:organization_content:manage
+            - dp:organization:manage
   /views/{viewId}/export-theme:
     parameters:
       - $ref: "#/components/parameters/viewId"
@@ -274,8 +274,8 @@ paths:
           $ref: "#/components/responses/InternalServerError"
       security:
         - OAuth2Security:
-            - dp:org_content_read
-            - dp:org_manage
+            - dp:organization_content:read
+            - dp:organization:manage
   /apis:
     post:
       tags:
@@ -312,8 +312,8 @@ paths:
           $ref: "#/components/responses/InternalServerError"
       security:
         - OAuth2Security:
-            - dp:api_create
-            - dp:api_manage
+            - dp:api:create
+            - dp:api:manage
     get:
       tags:
         - APIs
@@ -340,8 +340,8 @@ paths:
           $ref: "#/components/responses/InternalServerError"
       security:
         - OAuth2Security:
-            - dp:api_read
-            - dp:api_manage
+            - dp:api:read
+            - dp:api:manage
   /apis/{apiId}:
     parameters:
       - $ref: "#/components/parameters/apiId"
@@ -362,8 +362,8 @@ paths:
           $ref: "#/components/responses/InternalServerError"
       security:
         - OAuth2Security:
-            - dp:api_read
-            - dp:api_manage
+            - dp:api:read
+            - dp:api:manage
     put:
       tags:
         - APIs
@@ -390,8 +390,8 @@ paths:
           $ref: "#/components/responses/InternalServerError"
       security:
         - OAuth2Security:
-            - dp:api_update
-            - dp:api_manage
+            - dp:api:update
+            - dp:api:manage
     delete:
       tags:
         - APIs
@@ -411,8 +411,8 @@ paths:
           $ref: "#/components/responses/InternalServerError"
       security:
         - OAuth2Security:
-            - dp:api_delete
-            - dp:api_manage
+            - dp:api:delete
+            - dp:api:manage
   /subscription-plans:
     get:
       tags:
@@ -438,8 +438,8 @@ paths:
           $ref: "#/components/responses/InternalServerError"
       security:
         - OAuth2Security:
-            - dp:sub_plan_read
-            - dp:sub_plan_manage
+            - dp:subscription_plan:read
+            - dp:subscription_plan:manage
     post:
       tags:
         - Subscription Plans
@@ -464,8 +464,8 @@ paths:
           $ref: "#/components/responses/InternalServerError"
       security:
         - OAuth2Security:
-            - dp:sub_plan_create
-            - dp:sub_plan_manage
+            - dp:subscription_plan:create
+            - dp:subscription_plan:manage
     put:
       tags:
         - Subscription Plans
@@ -492,8 +492,8 @@ paths:
           $ref: "#/components/responses/InternalServerError"
       security:
         - OAuth2Security:
-            - dp:sub_plan_update
-            - dp:sub_plan_manage
+            - dp:subscription_plan:update
+            - dp:subscription_plan:manage
   /subscription-plans/{planId}:
     parameters:
       - $ref: "#/components/parameters/planId"
@@ -514,8 +514,8 @@ paths:
           $ref: "#/components/responses/InternalServerError"
       security:
         - OAuth2Security:
-            - dp:sub_plan_read
-            - dp:sub_plan_manage
+            - dp:subscription_plan:read
+            - dp:subscription_plan:manage
     delete:
       tags:
         - Subscription Plans
@@ -533,8 +533,8 @@ paths:
           $ref: "#/components/responses/InternalServerError"
       security:
         - OAuth2Security:
-            - dp:sub_plan_delete
-            - dp:sub_plan_manage
+            - dp:subscription_plan:delete
+            - dp:subscription_plan:manage
   /apis/{apiId}/assets:
     parameters:
       - $ref: "#/components/parameters/apiId"
@@ -565,8 +565,8 @@ paths:
           $ref: "#/components/responses/InternalServerError"
       security:
         - OAuth2Security:
-            - dp:api_content_create
-            - dp:api_content_manage
+            - dp:api_content:create
+            - dp:api_content:manage
     put:
       tags:
         - API Content
@@ -591,8 +591,8 @@ paths:
           $ref: "#/components/responses/InternalServerError"
       security:
         - OAuth2Security:
-            - dp:api_content_update
-            - dp:api_content_manage
+            - dp:api_content:update
+            - dp:api_content:manage
     get:
       tags:
         - API Content
@@ -658,8 +658,8 @@ paths:
           $ref: "#/components/responses/InternalServerError"
       security:
         - OAuth2Security:
-            - dp:api_content_delete
-            - dp:api_content_manage
+            - dp:api_content:delete
+            - dp:api_content:manage
   /labels:
     post:
       tags:
@@ -690,8 +690,8 @@ paths:
           $ref: "#/components/responses/InternalServerError"
       security:
         - OAuth2Security:
-            - dp:label_create
-            - dp:label_manage
+            - dp:label:create
+            - dp:label:manage
     get:
       tags:
         - Labels
@@ -710,8 +710,8 @@ paths:
           $ref: "#/components/responses/InternalServerError"
       security:
         - OAuth2Security:
-            - dp:label_read
-            - dp:label_manage
+            - dp:label:read
+            - dp:label:manage
   /labels/{labelId}:
     get:
       tags:
@@ -730,8 +730,8 @@ paths:
           $ref: "#/components/responses/InternalServerError"
       security:
         - OAuth2Security:
-            - dp:label_read
-            - dp:label_manage
+            - dp:label:read
+            - dp:label:manage
     put:
       tags:
         - Labels
@@ -755,8 +755,8 @@ paths:
           $ref: "#/components/responses/InternalServerError"
       security:
         - OAuth2Security:
-            - dp:label_update
-            - dp:label_manage
+            - dp:label:update
+            - dp:label:manage
     delete:
       tags:
         - Labels
@@ -774,8 +774,8 @@ paths:
           $ref: "#/components/responses/InternalServerError"
       security:
         - OAuth2Security:
-            - dp:label_delete
-            - dp:label_manage
+            - dp:label:delete
+            - dp:label:manage
   /applications:
     get:
       tags:
@@ -793,8 +793,8 @@ paths:
           $ref: "#/components/responses/InternalServerError"
       security:
         - OAuth2Security:
-            - dp:app_read
-            - dp:app_manage
+            - dp:application:read
+            - dp:application:manage
     post:
       tags:
         - Applications
@@ -832,8 +832,8 @@ paths:
           $ref: "#/components/responses/InternalServerError"
       security:
         - OAuth2Security:
-            - dp:app_create
-            - dp:app_manage
+            - dp:application:create
+            - dp:application:manage
   /applications/{applicationId}:
     parameters:
       - $ref: "#/components/parameters/applicationId"
@@ -852,8 +852,8 @@ paths:
           $ref: "#/components/responses/InternalServerError"
       security:
         - OAuth2Security:
-            - dp:app_read
-            - dp:app_manage
+            - dp:application:read
+            - dp:application:manage
     put:
       tags:
         - Applications
@@ -878,8 +878,8 @@ paths:
           $ref: "#/components/responses/InternalServerError"
       security:
         - OAuth2Security:
-            - dp:app_update
-            - dp:app_manage
+            - dp:application:update
+            - dp:application:manage
     delete:
       tags:
         - Applications
@@ -900,8 +900,8 @@ paths:
           $ref: "#/components/responses/InternalServerError"
       security:
         - OAuth2Security:
-            - dp:app_delete
-            - dp:app_manage
+            - dp:application:delete
+            - dp:application:manage
   /subscriptions:
     post:
       tags:
@@ -944,8 +944,8 @@ paths:
           $ref: "#/components/responses/InternalServerError"
       security:
         - OAuth2Security:
-            - dp:subscription_create
-            - dp:subscription_manage
+            - dp:subscription:create
+            - dp:subscription:manage
     get:
       tags:
         - Subscriptions
@@ -975,8 +975,8 @@ paths:
           $ref: "#/components/responses/InternalServerError"
       security:
         - OAuth2Security:
-            - dp:subscription_read
-            - dp:subscription_manage
+            - dp:subscription:read
+            - dp:subscription:manage
   /subscriptions/{subId}:
     parameters:
       - $ref: "#/components/parameters/subId"
@@ -995,8 +995,8 @@ paths:
           $ref: "#/components/responses/InternalServerError"
       security:
         - OAuth2Security:
-            - dp:subscription_read
-            - dp:subscription_manage
+            - dp:subscription:read
+            - dp:subscription:manage
     put:
       tags:
         - Subscriptions
@@ -1016,8 +1016,8 @@ paths:
           $ref: "#/components/responses/InternalServerError"
       security:
         - OAuth2Security:
-            - dp:subscription_update
-            - dp:subscription_manage
+            - dp:subscription:update
+            - dp:subscription:manage
     delete:
       tags:
         - Subscriptions
@@ -1033,8 +1033,8 @@ paths:
           $ref: "#/components/responses/InternalServerError"
       security:
         - OAuth2Security:
-            - dp:subscription_delete
-            - dp:subscription_manage
+            - dp:subscription:delete
+            - dp:subscription:manage
   /subscriptions/{subId}/change-plan:
     parameters:
       - $ref: "#/components/parameters/subId"
@@ -1060,8 +1060,8 @@ paths:
           $ref: "#/components/responses/InternalServerError"
       security:
         - OAuth2Security:
-            - dp:subscription_update
-            - dp:subscription_manage
+            - dp:subscription:update
+            - dp:subscription:manage
   /subscriptions/{subId}/regenerate-token:
     parameters:
       - $ref: "#/components/parameters/subId"
@@ -1084,7 +1084,7 @@ paths:
           $ref: "#/components/responses/InternalServerError"
       security:
         - OAuth2Security:
-            - dp:subscription_manage
+            - dp:subscription:manage
   /api-keys:
     get:
       tags:
@@ -1108,8 +1108,8 @@ paths:
           $ref: "#/components/responses/InternalServerError"
       security:
         - OAuth2Security:
-            - dp:api_key_read
-            - dp:api_key_manage
+            - dp:api_key:read
+            - dp:api_key:manage
   /apis/{apiId}/api-keys/generate:
     parameters:
       - $ref: "#/components/parameters/apiId"
@@ -1155,8 +1155,8 @@ paths:
           $ref: "#/components/responses/InternalServerError"
       security:
         - OAuth2Security:
-            - dp:api_key_create
-            - dp:api_key_manage
+            - dp:api_key:create
+            - dp:api_key:manage
   /apis/{apiId}/api-keys:
     parameters:
       - $ref: "#/components/parameters/apiId"
@@ -1179,8 +1179,8 @@ paths:
           $ref: "#/components/responses/InternalServerError"
       security:
         - OAuth2Security:
-            - dp:api_key_read
-            - dp:api_key_manage
+            - dp:api_key:read
+            - dp:api_key:manage
   /apis/{apiId}/api-keys/regenerate:
     parameters:
       - $ref: "#/components/parameters/apiId"
@@ -1216,8 +1216,8 @@ paths:
           $ref: "#/components/responses/InternalServerError"
       security:
         - OAuth2Security:
-            - dp:api_key_update
-            - dp:api_key_manage
+            - dp:api_key:update
+            - dp:api_key:manage
   /apis/{apiId}/api-keys/revoke:
     parameters:
       - $ref: "#/components/parameters/apiId"
@@ -1253,8 +1253,8 @@ paths:
           $ref: "#/components/responses/InternalServerError"
       security:
         - OAuth2Security:
-            - dp:api_key_revoke
-            - dp:api_key_manage
+            - dp:api_key:revoke
+            - dp:api_key:manage
   /apis/{apiId}/api-keys/associate:
     parameters:
       - $ref: "#/components/parameters/apiId"
@@ -1296,8 +1296,8 @@ paths:
           $ref: "#/components/responses/InternalServerError"
       security:
         - OAuth2Security:
-            - dp:api_key_update
-            - dp:api_key_manage
+            - dp:api_key:update
+            - dp:api_key:manage
   /apis/{apiId}/api-keys/dissociate:
     parameters:
       - $ref: "#/components/parameters/apiId"
@@ -1322,8 +1322,8 @@ paths:
           $ref: "#/components/responses/InternalServerError"
       security:
         - OAuth2Security:
-            - dp:api_key_update
-            - dp:api_key_manage
+            - dp:api_key:update
+            - dp:api_key:manage
   /mcp-servers:
     post:
       tags:
@@ -1352,8 +1352,8 @@ paths:
           $ref: "#/components/responses/InternalServerError"
       security:
         - OAuth2Security:
-            - dp:mcp_create
-            - dp:mcp_manage
+            - dp:mcp_server:create
+            - dp:mcp_server:manage
     get:
       tags:
         - MCP Servers
@@ -1379,8 +1379,8 @@ paths:
           $ref: "#/components/responses/InternalServerError"
       security:
         - OAuth2Security:
-            - dp:mcp_read
-            - dp:mcp_manage
+            - dp:mcp_server:read
+            - dp:mcp_server:manage
   /mcp-servers/{mcpServerId}:
     parameters:
       - $ref: "#/components/parameters/mcpServerId"
@@ -1401,8 +1401,8 @@ paths:
           $ref: "#/components/responses/InternalServerError"
       security:
         - OAuth2Security:
-            - dp:mcp_read
-            - dp:mcp_manage
+            - dp:mcp_server:read
+            - dp:mcp_server:manage
     put:
       tags:
         - MCP Servers
@@ -1428,8 +1428,8 @@ paths:
           $ref: "#/components/responses/InternalServerError"
       security:
         - OAuth2Security:
-            - dp:mcp_update
-            - dp:mcp_manage
+            - dp:mcp_server:update
+            - dp:mcp_server:manage
     delete:
       tags:
         - MCP Servers
@@ -1449,8 +1449,8 @@ paths:
           $ref: "#/components/responses/InternalServerError"
       security:
         - OAuth2Security:
-            - dp:mcp_delete
-            - dp:mcp_manage
+            - dp:mcp_server:delete
+            - dp:mcp_server:manage
   /mcp-servers/{mcpServerId}/assets:
     parameters:
       - $ref: "#/components/parameters/mcpServerId"
@@ -1474,8 +1474,8 @@ paths:
           $ref: "#/components/responses/InternalServerError"
       security:
         - OAuth2Security:
-            - dp:mcp_content_create
-            - dp:mcp_content_manage
+            - dp:mcp_server_content:create
+            - dp:mcp_server_content:manage
     put:
       tags:
         - MCP Server Content
@@ -1496,8 +1496,8 @@ paths:
           $ref: "#/components/responses/InternalServerError"
       security:
         - OAuth2Security:
-            - dp:mcp_content_update
-            - dp:mcp_content_manage
+            - dp:mcp_server_content:update
+            - dp:mcp_server_content:manage
     get:
       tags:
         - MCP Server Content
@@ -1506,8 +1506,8 @@ paths:
       operationId: getMcpServerContentFile
       security:
         - OAuth2Security:
-            - dp:mcp_content_read
-            - dp:mcp_content_manage
+            - dp:mcp_server_content:read
+            - dp:mcp_server_content:manage
       parameters:
         - $ref: "#/components/parameters/contentTypeQuery"
         - $ref: "#/components/parameters/contentFileNameQuery"
@@ -1541,8 +1541,8 @@ paths:
           $ref: "#/components/responses/InternalServerError"
       security:
         - OAuth2Security:
-            - dp:mcp_content_delete
-            - dp:mcp_content_manage
+            - dp:mcp_server_content:delete
+            - dp:mcp_server_content:manage
   /mcp-servers/{mcpServerId}/api-keys/generate:
     parameters:
       - $ref: "#/components/parameters/mcpServerId"
@@ -1578,8 +1578,8 @@ paths:
           $ref: "#/components/responses/InternalServerError"
       security:
         - OAuth2Security:
-            - dp:mcp_key_create
-            - dp:mcp_key_manage
+            - dp:mcp_server_key:create
+            - dp:mcp_server_key:manage
   /mcp-servers/{mcpServerId}/api-keys:
     parameters:
       - $ref: "#/components/parameters/mcpServerId"
@@ -1602,8 +1602,8 @@ paths:
           $ref: "#/components/responses/InternalServerError"
       security:
         - OAuth2Security:
-            - dp:mcp_key_read
-            - dp:mcp_key_manage
+            - dp:mcp_server_key:read
+            - dp:mcp_server_key:manage
   /mcp-servers/{mcpServerId}/api-keys/regenerate:
     parameters:
       - $ref: "#/components/parameters/mcpServerId"
@@ -1638,8 +1638,8 @@ paths:
           $ref: "#/components/responses/InternalServerError"
       security:
         - OAuth2Security:
-            - dp:mcp_key_update
-            - dp:mcp_key_manage
+            - dp:mcp_server_key:update
+            - dp:mcp_server_key:manage
   /mcp-servers/{mcpServerId}/api-keys/revoke:
     parameters:
       - $ref: "#/components/parameters/mcpServerId"
@@ -1674,8 +1674,8 @@ paths:
           $ref: "#/components/responses/InternalServerError"
       security:
         - OAuth2Security:
-            - dp:mcp_key_revoke
-            - dp:mcp_key_manage
+            - dp:mcp_server_key:revoke
+            - dp:mcp_server_key:manage
   /mcp-servers/{mcpServerId}/api-keys/associate:
     parameters:
       - $ref: "#/components/parameters/mcpServerId"
@@ -1716,8 +1716,8 @@ paths:
           $ref: "#/components/responses/InternalServerError"
       security:
         - OAuth2Security:
-            - dp:mcp_key_update
-            - dp:mcp_key_manage
+            - dp:mcp_server_key:update
+            - dp:mcp_server_key:manage
   /mcp-servers/{mcpServerId}/api-keys/dissociate:
     parameters:
       - $ref: "#/components/parameters/mcpServerId"
@@ -1742,8 +1742,8 @@ paths:
           $ref: "#/components/responses/InternalServerError"
       security:
         - OAuth2Security:
-            - dp:mcp_key_update
-            - dp:mcp_key_manage
+            - dp:mcp_server_key:update
+            - dp:mcp_server_key:manage
   /applications/{applicationId}/api-keys:
     parameters:
       - $ref: "#/components/parameters/applicationId"
@@ -1767,8 +1767,8 @@ paths:
           $ref: "#/components/responses/InternalServerError"
       security:
         - OAuth2Security:
-            - dp:api_key_read
-            - dp:api_key_manage
+            - dp:api_key:read
+            - dp:api_key:manage
   /views:
     post:
       tags:
@@ -1791,8 +1791,8 @@ paths:
           $ref: "#/components/responses/InternalServerError"
       security:
         - OAuth2Security:
-            - dp:view_create
-            - dp:view_manage
+            - dp:view:create
+            - dp:view:manage
     get:
       tags:
         - Views
@@ -1811,8 +1811,8 @@ paths:
           $ref: "#/components/responses/InternalServerError"
       security:
         - OAuth2Security:
-            - dp:view_read
-            - dp:view_manage
+            - dp:view:read
+            - dp:view:manage
   /views/{viewId}:
     parameters:
       - $ref: "#/components/parameters/viewId"
@@ -1840,8 +1840,8 @@ paths:
           $ref: "#/components/responses/InternalServerError"
       security:
         - OAuth2Security:
-            - dp:view_update
-            - dp:view_manage
+            - dp:view:update
+            - dp:view:manage
     get:
       tags:
         - Views
@@ -1859,8 +1859,8 @@ paths:
           $ref: "#/components/responses/InternalServerError"
       security:
         - OAuth2Security:
-            - dp:view_read
-            - dp:view_manage
+            - dp:view:read
+            - dp:view:manage
     delete:
       tags:
         - Views
@@ -1878,8 +1878,8 @@ paths:
           $ref: "#/components/responses/InternalServerError"
       security:
         - OAuth2Security:
-            - dp:view_delete
-            - dp:view_manage
+            - dp:view:delete
+            - dp:view:manage
   /applications/{applicationId}/generate-keys:
     parameters:
       - $ref: "#/components/parameters/applicationId"
@@ -1907,8 +1907,8 @@ paths:
           $ref: "#/components/responses/InternalServerError"
       security:
         - OAuth2Security:
-            - dp:app_key_create
-            - dp:app_key_manage
+            - dp:application_key:create
+            - dp:application_key:manage
   /applications/{applicationId}/oauth-keys/{keyMappingId}/generate-token:
     parameters:
       - $ref: "#/components/parameters/applicationId"
@@ -1934,8 +1934,8 @@ paths:
           $ref: "#/components/responses/InternalServerError"
       security:
         - OAuth2Security:
-            - dp:app_key_create
-            - dp:app_key_manage
+            - dp:application_key:create
+            - dp:application_key:manage
   /applications/{applicationId}/oauth-keys/{keyMappingId}:
     parameters:
       - $ref: "#/components/parameters/applicationId"
@@ -1957,7 +1957,7 @@ paths:
           $ref: "#/components/responses/InternalServerError"
       security:
         - OAuth2Security:
-            - dp:app_key_revoke
+            - dp:application_key:revoke
   /views/{viewId}/api-workflows:
     parameters:
       - $ref: "#/components/parameters/viewId"
@@ -1982,8 +1982,8 @@ paths:
           $ref: "#/components/responses/MessageResponse"
       security:
         - OAuth2Security:
-            - dp:api_workflow_create
-            - dp:api_workflow_manage
+            - dp:api_workflow:create
+            - dp:api_workflow:manage
     get:
       tags:
         - API Workflows
@@ -2000,8 +2000,8 @@ paths:
           $ref: "#/components/responses/MessageResponse"
       security:
         - OAuth2Security:
-            - dp:api_workflow_read
-            - dp:api_workflow_manage
+            - dp:api_workflow:read
+            - dp:api_workflow:manage
   /views/{viewId}/api-workflows/{apiWorkflowId}:
     parameters:
       - $ref: "#/components/parameters/viewId"
@@ -2021,8 +2021,8 @@ paths:
           $ref: "#/components/responses/MessageResponse"
       security:
         - OAuth2Security:
-            - dp:api_workflow_read
-            - dp:api_workflow_manage
+            - dp:api_workflow:read
+            - dp:api_workflow:manage
     put:
       tags:
         - API Workflows
@@ -2044,8 +2044,8 @@ paths:
           $ref: "#/components/responses/MessageResponse"
       security:
         - OAuth2Security:
-            - dp:api_workflow_update
-            - dp:api_workflow_manage
+            - dp:api_workflow:update
+            - dp:api_workflow:manage
     delete:
       tags:
         - API Workflows
@@ -2061,8 +2061,8 @@ paths:
           $ref: "#/components/responses/MessageResponse"
       security:
         - OAuth2Security:
-            - dp:api_workflow_delete
-            - dp:api_workflow_manage
+            - dp:api_workflow:delete
+            - dp:api_workflow:manage
   /views/{viewId}/api-workflows/generate-prompt:
     parameters:
       - $ref: "#/components/parameters/viewId"
@@ -2083,8 +2083,8 @@ paths:
           $ref: "#/components/responses/MessageResponse"
       security:
         - OAuth2Security:
-            - dp:api_workflow_create
-            - dp:api_workflow_manage
+            - dp:api_workflow:create
+            - dp:api_workflow:manage
   /key-managers:
     post:
       tags:
@@ -2120,8 +2120,8 @@ paths:
           $ref: "#/components/responses/InternalServerError"
       security:
         - OAuth2Security:
-            - dp:km_create
-            - dp:km_manage
+            - dp:key_manager:create
+            - dp:key_manager:manage
     get:
       tags:
         - Key Managers
@@ -2139,14 +2139,14 @@ paths:
           $ref: "#/components/responses/KeyManagerListResponse"
         "500":
           $ref: "#/components/responses/InternalServerError"
-      # dp:app_key_mapping_read lets developers list the enabled, credential-free public
+      # dp:application_key_mapping:read lets developers list the enabled, credential-free public
       # view — they need the available key managers to map/generate application keys. The
       # handler restricts the full/admin view to admins by role. Scopes are OR-ed, so
-      # admins/publishers with dp:km_read still get their existing view.
+      # admins/publishers with dp:key_manager:read still get their existing view.
       security:
         - OAuth2Security:
-            - dp:km_read
-            - dp:app_key_mapping_read
+            - dp:key_manager:read
+            - dp:application_key_mapping:read
   /key-managers/{kmId}:
     parameters:
       - $ref: "#/components/parameters/kmId"
@@ -2165,8 +2165,8 @@ paths:
           $ref: "#/components/responses/InternalServerError"
       security:
         - OAuth2Security:
-            - dp:km_read
-            - dp:km_manage
+            - dp:key_manager:read
+            - dp:key_manager:manage
     put:
       tags:
         - Key Managers
@@ -2191,8 +2191,8 @@ paths:
           $ref: "#/components/responses/InternalServerError"
       security:
         - OAuth2Security:
-            - dp:km_update
-            - dp:km_manage
+            - dp:key_manager:update
+            - dp:key_manager:manage
     delete:
       tags:
         - Key Managers
@@ -2208,8 +2208,8 @@ paths:
           $ref: "#/components/responses/InternalServerError"
       security:
         - OAuth2Security:
-            - dp:km_delete
-            - dp:km_manage
+            - dp:key_manager:delete
+            - dp:key_manager:manage
   /webhook-subscribers:
     post:
       tags:
@@ -2244,8 +2244,8 @@ paths:
           $ref: "#/components/responses/InternalServerError"
       security:
         - OAuth2Security:
-            - dp:webhook_subscriber_create
-            - dp:webhook_subscriber_manage
+            - dp:webhook_subscriber:create
+            - dp:webhook_subscriber:manage
     get:
       tags:
         - Webhook Subscribers
@@ -2262,8 +2262,8 @@ paths:
           $ref: "#/components/responses/InternalServerError"
       security:
         - OAuth2Security:
-            - dp:webhook_subscriber_read
-            - dp:webhook_subscriber_manage
+            - dp:webhook_subscriber:read
+            - dp:webhook_subscriber:manage
   /webhook-subscribers/{subscriberId}:
     parameters:
       - $ref: "#/components/parameters/subscriberId"
@@ -2282,8 +2282,8 @@ paths:
           $ref: "#/components/responses/InternalServerError"
       security:
         - OAuth2Security:
-            - dp:webhook_subscriber_read
-            - dp:webhook_subscriber_manage
+            - dp:webhook_subscriber:read
+            - dp:webhook_subscriber:manage
     put:
       tags:
         - Webhook Subscribers
@@ -2307,8 +2307,8 @@ paths:
           $ref: "#/components/responses/InternalServerError"
       security:
         - OAuth2Security:
-            - dp:webhook_subscriber_update
-            - dp:webhook_subscriber_manage
+            - dp:webhook_subscriber:update
+            - dp:webhook_subscriber:manage
     delete:
       tags:
         - Webhook Subscribers
@@ -2324,8 +2324,8 @@ paths:
           $ref: "#/components/responses/InternalServerError"
       security:
         - OAuth2Security:
-            - dp:webhook_subscriber_delete
-            - dp:webhook_subscriber_manage
+            - dp:webhook_subscriber:delete
+            - dp:webhook_subscriber:manage
   /webhook-subscribers/{subscriberId}/deliveries:
     parameters:
       - $ref: "#/components/parameters/subscriberId"
@@ -2353,8 +2353,8 @@ paths:
           $ref: "#/components/responses/InternalServerError"
       security:
         - OAuth2Security:
-            - dp:webhook_subscriber_read
-            - dp:webhook_subscriber_manage
+            - dp:webhook_subscriber:read
+            - dp:webhook_subscriber:manage
   /webhook-events:
     get:
       tags:
@@ -2363,7 +2363,7 @@ paths:
       summary: List webhook events
       description: >-
         Returns a paginated list of webhook events for the organization. Each event includes a summary of its delivery
-        rows. Requires dp:event_read scope.
+        rows. Requires dp:event:read scope.
       parameters:
         - name: status
           in: query
@@ -2387,7 +2387,7 @@ paths:
           $ref: "#/components/responses/InternalServerError"
       security:
         - OAuth2Security:
-            - dp:event_read
+            - dp:event:read
   /webhook-events/{eventId}:
     parameters:
       - $ref: "#/components/parameters/eventId"
@@ -2396,7 +2396,7 @@ paths:
         - Webhook Events
       operationId: getWebhookEvent
       summary: Get a webhook event
-      description: Returns a single webhook event with the full details of all its delivery rows. Requires dp:event_read scope.
+      description: Returns a single webhook event with the full details of all its delivery rows. Requires dp:event:read scope.
       responses:
         "200":
           $ref: "#/components/responses/WebhookEventResponse"
@@ -2408,7 +2408,7 @@ paths:
           $ref: "#/components/responses/InternalServerError"
       security:
         - OAuth2Security:
-            - dp:event_read
+            - dp:event:read
 components:
   securitySchemes:
     OAuth2Security:
@@ -2421,91 +2421,91 @@ components:
           authorizationUrl: https://localhost:9443/oauth2/authorize
           tokenUrl: https://localhost:9443/oauth2/token
           scopes:
-            dp:org_read: Read organizations.
-            dp:org_create: Create organizations.
-            dp:org_update: Update organizations.
-            dp:org_delete: Delete organizations.
-            dp:org_manage: Manage organizations (including creating, updating, and deleting).
-            dp:org_content_read: Read organization theme assets.
-            dp:org_content_manage: Apply or reset organization theme.
-            dp:api_read: Read API metadata.
-            dp:api_create: Create API metadata.
-            dp:api_update: Update API metadata.
-            dp:api_delete: Delete API metadata.
-            dp:api_manage: Manage API metadata.
-            dp:api_content_read: Read API content.
-            dp:api_content_create: Create API content.
-            dp:api_content_update: Update API content.
-            dp:api_content_delete: Delete API content.
-            dp:api_content_manage: Manage API content.
-            dp:mcp_read: Read MCP server metadata.
-            dp:mcp_create: Create MCP server metadata.
-            dp:mcp_update: Update MCP server metadata.
-            dp:mcp_delete: Delete MCP server metadata.
-            dp:mcp_manage: Manage MCP server metadata.
-            dp:mcp_content_read: Read MCP server content.
-            dp:mcp_content_create: Create MCP server content.
-            dp:mcp_content_update: Update MCP server content.
-            dp:mcp_content_delete: Delete MCP server content.
-            dp:mcp_content_manage: Manage MCP server content.
-            dp:mcp_key_read: Read MCP server API keys.
-            dp:mcp_key_create: Generate MCP server API keys.
-            dp:mcp_key_update: Regenerate MCP server API keys.
-            dp:mcp_key_revoke: Revoke MCP server API keys.
-            dp:mcp_key_manage: Manage MCP server API keys.
-            dp:sub_plan_read: Read subscription plans.
-            dp:sub_plan_create: Create subscription plans.
-            dp:sub_plan_update: Update subscription plans.
-            dp:sub_plan_delete: Delete subscription plans.
-            dp:sub_plan_manage: Manage subscription plans.
-            dp:label_read: Read labels.
-            dp:label_create: Create labels.
-            dp:label_update: Update labels.
-            dp:label_delete: Delete labels.
-            dp:label_manage: Manage labels.
-            dp:app_read: Read applications.
-            dp:app_create: Create applications.
-            dp:app_update: Update applications.
-            dp:app_delete: Delete applications.
-            dp:app_manage: Manage applications.
-            dp:subscription_read: Read subscriptions.
-            dp:subscription_create: Create subscriptions.
-            dp:subscription_update: Update subscriptions.
-            dp:subscription_delete: Delete subscriptions.
-            dp:subscription_manage: Manage subscriptions.
-            dp:api_key_read: Read API keys.
-            dp:api_key_create: Generate API keys.
-            dp:api_key_update: Regenerate API keys.
-            dp:api_key_revoke: Revoke API keys.
-            dp:api_key_manage: Manage API keys.
-            dp:app_key_mapping_read: Read application key mappings.
-            dp:app_key_mapping_create: Create application key mappings.
-            dp:app_key_mapping_manage: Manage application key mappings.
-            dp:view_read: Read views.
-            dp:view_create: Create views.
-            dp:view_update: Update views.
-            dp:view_delete: Delete views.
-            dp:view_manage: Manage views.
-            dp:app_key_create: Generate and create application keys.
-            dp:app_key_update: Update application keys.
-            dp:app_key_revoke: Revoke application keys.
-            dp:app_key_manage: Manage application keys.
-            dp:api_workflow_read: Read API workflows.
-            dp:api_workflow_create: Create or generate API workflows.
-            dp:api_workflow_update: Update API workflows.
-            dp:api_workflow_delete: Delete API workflows.
-            dp:api_workflow_manage: Manage API workflows.
-            dp:event_read: Read webhook events and delivery details.
-            dp:km_read: Read key manager configurations.
-            dp:km_create: Create key manager configurations.
-            dp:km_update: Update key manager configurations.
-            dp:km_delete: Delete key manager configurations.
-            dp:km_manage: Manage key manager configurations (including creating, updating, and deleting).
-            dp:webhook_subscriber_read: Read webhook subscriber configurations.
-            dp:webhook_subscriber_create: Create webhook subscriber configurations.
-            dp:webhook_subscriber_update: Update webhook subscriber configurations.
-            dp:webhook_subscriber_delete: Delete webhook subscriber configurations.
-            dp:webhook_subscriber_manage: Manage webhook subscriber configurations (including creating, updating, and deleting).
+            dp:organization:read: Read organizations.
+            dp:organization:create: Create organizations.
+            dp:organization:update: Update organizations.
+            dp:organization:delete: Delete organizations.
+            dp:organization:manage: Manage organizations (including creating, updating, and deleting).
+            dp:organization_content:read: Read organization theme assets.
+            dp:organization_content:manage: Apply or reset organization theme.
+            dp:api:read: Read API metadata.
+            dp:api:create: Create API metadata.
+            dp:api:update: Update API metadata.
+            dp:api:delete: Delete API metadata.
+            dp:api:manage: Manage API metadata.
+            dp:api_content:read: Read API content.
+            dp:api_content:create: Create API content.
+            dp:api_content:update: Update API content.
+            dp:api_content:delete: Delete API content.
+            dp:api_content:manage: Manage API content.
+            dp:mcp_server:read: Read MCP server metadata.
+            dp:mcp_server:create: Create MCP server metadata.
+            dp:mcp_server:update: Update MCP server metadata.
+            dp:mcp_server:delete: Delete MCP server metadata.
+            dp:mcp_server:manage: Manage MCP server metadata.
+            dp:mcp_server_content:read: Read MCP server content.
+            dp:mcp_server_content:create: Create MCP server content.
+            dp:mcp_server_content:update: Update MCP server content.
+            dp:mcp_server_content:delete: Delete MCP server content.
+            dp:mcp_server_content:manage: Manage MCP server content.
+            dp:mcp_server_key:read: Read MCP server API keys.
+            dp:mcp_server_key:create: Generate MCP server API keys.
+            dp:mcp_server_key:update: Regenerate MCP server API keys.
+            dp:mcp_server_key:revoke: Revoke MCP server API keys.
+            dp:mcp_server_key:manage: Manage MCP server API keys.
+            dp:subscription_plan:read: Read subscription plans.
+            dp:subscription_plan:create: Create subscription plans.
+            dp:subscription_plan:update: Update subscription plans.
+            dp:subscription_plan:delete: Delete subscription plans.
+            dp:subscription_plan:manage: Manage subscription plans.
+            dp:label:read: Read labels.
+            dp:label:create: Create labels.
+            dp:label:update: Update labels.
+            dp:label:delete: Delete labels.
+            dp:label:manage: Manage labels.
+            dp:application:read: Read applications.
+            dp:application:create: Create applications.
+            dp:application:update: Update applications.
+            dp:application:delete: Delete applications.
+            dp:application:manage: Manage applications.
+            dp:subscription:read: Read subscriptions.
+            dp:subscription:create: Create subscriptions.
+            dp:subscription:update: Update subscriptions.
+            dp:subscription:delete: Delete subscriptions.
+            dp:subscription:manage: Manage subscriptions.
+            dp:api_key:read: Read API keys.
+            dp:api_key:create: Generate API keys.
+            dp:api_key:update: Regenerate API keys.
+            dp:api_key:revoke: Revoke API keys.
+            dp:api_key:manage: Manage API keys.
+            dp:application_key_mapping:read: Read application key mappings.
+            dp:application_key_mapping:create: Create application key mappings.
+            dp:application_key_mapping:manage: Manage application key mappings.
+            dp:view:read: Read views.
+            dp:view:create: Create views.
+            dp:view:update: Update views.
+            dp:view:delete: Delete views.
+            dp:view:manage: Manage views.
+            dp:application_key:create: Generate and create application keys.
+            dp:application_key:update: Update application keys.
+            dp:application_key:revoke: Revoke application keys.
+            dp:application_key:manage: Manage application keys.
+            dp:api_workflow:read: Read API workflows.
+            dp:api_workflow:create: Create or generate API workflows.
+            dp:api_workflow:update: Update API workflows.
+            dp:api_workflow:delete: Delete API workflows.
+            dp:api_workflow:manage: Manage API workflows.
+            dp:event:read: Read webhook events and delivery details.
+            dp:key_manager:read: Read key manager configurations.
+            dp:key_manager:create: Create key manager configurations.
+            dp:key_manager:update: Update key manager configurations.
+            dp:key_manager:delete: Delete key manager configurations.
+            dp:key_manager:manage: Manage key manager configurations (including creating, updating, and deleting).
+            dp:webhook_subscriber:read: Read webhook subscriber configurations.
+            dp:webhook_subscriber:create: Create webhook subscriber configurations.
+            dp:webhook_subscriber:update: Update webhook subscriber configurations.
+            dp:webhook_subscriber:delete: Delete webhook subscriber configurations.
+            dp:webhook_subscriber:manage: Manage webhook subscriber configurations (including creating, updating, and deleting).
     apiKeyAuth:
       type: apiKey
       in: header
@@ -3087,7 +3087,7 @@ components:
             $ref: "#/components/schemas/WebhookSubscriberRequest"
           example:
             displayName: Production Gateway
-            targetUrl: https://gateway.example.com/devportal-webhook
+            targetUrl: https://gateway.example.com/api-portal-webhook
             secret: <shared-secret>
             events:
               - apikey.*
@@ -4305,8 +4305,8 @@ components:
         configuration:
           type: object
           description: >-
-            Free-form organization configuration set by the caller. Which content types the
-            portal serves is operator configuration ([api_portal.features]), not part of this.
+            Free-form organization configuration set by the caller. Which artifact types the
+            portal serves is operator configuration ([api_portal.artifacts]), not part of this.
           additionalProperties: true
           example: {}
         createdAt:
@@ -5212,7 +5212,7 @@ components:
           format: uri
           description: >-
             Target URL events are POSTed to.
-          example: https://gateway.example.com/devportal-webhook
+          example: https://gateway.example.com/api-portal-webhook
         secret:
           type: string
           description: >-
@@ -5256,7 +5256,7 @@ components:
         targetUrl:
           type: string
           format: uri
-          example: https://gateway.example.com/devportal-webhook
+          example: https://gateway.example.com/api-portal-webhook
         enabled:
           type: boolean
           example: true
