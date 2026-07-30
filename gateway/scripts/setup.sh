@@ -18,12 +18,22 @@
 #   - aesgcm-keys/default-aesgcm256-v1.bin         : AES-256 at-rest encryption key. The gateway's
 #       docker compose bind-mounts this host file into the controller.
 #   - api-platform.env                            : required runtime defaults for the gateway-runtime
+#   - .env                                        : COMPOSE_PROJECT_NAME, unique to this copy of the
+#       distribution. Read by the docker compose CLI (not by the containers) to prefix every container,
+#       network, and volume, so another extraction of the same zip on this host cannot bind to this
+#       stack's volumes — its gateway database and dynamically-managed certificates.
 set -euo pipefail
 cd "$(dirname "$0")"
 # Distribution layout: scripts/setup.sh, one level below docker-compose.yaml.
 [[ -f docker-compose.yaml ]] || cd ..
 
 ENV_FILE="api-platform.env"
+
+# Compose project name. DOTENV_FILE is what the docker compose CLI auto-loads from the
+# project directory; unrelated to $ENV_FILE, which is an env_file: mounted into the services.
+DOTENV_FILE=".env"
+PROJECT_NAME_PREFIX="wso2apip-gateway"
+PROJECT_NAME=""
 
 # Router downstream (HTTPS ingress) listener cert/key. Referenced by
 # [router.downstream_tls] in config.toml as ./listener-certs/default-listener.{crt,key}
@@ -59,7 +69,8 @@ Usage: ./scripts/setup.sh [--force] [--certs-only]
 
   --force        regenerate the certificate and encryption key (rotates them), rewrite api-platform.env,
                  and re-provision the admin credentials (rotates the password)
-  --certs-only   generate only the listener TLS certificate (skip the encryption key and api-platform.env)
+  --certs-only   generate only the listener TLS certificate (skip the encryption key, api-platform.env,
+                 and .env)
 
 Admin credentials (gateway-controller REST/management API basic auth):
   Set ADMIN_USERNAME and/or ADMIN_PASSWORD in the environment to run non-interactively (CI).
@@ -67,14 +78,30 @@ Admin credentials (gateway-controller REST/management API basic auth):
   password is randomly generated. Only the bcrypt hash is stored (in api-platform.env); the
   plaintext password is printed once and never written to disk.
 
+Compose project name (data isolation):
+  Setup writes COMPOSE_PROJECT_NAME into .env on the first run, unique to this copy of the
+  distribution. It prefixes every container, network, and volume, so another extraction of this
+  zip on the same host cannot bind to this stack's volumes (its gateway database and
+  dynamically-managed certificates).
+  The name is pinned once and never changes afterwards - not on a rerun, not with --force. A new
+  name would leave the running data behind in the old volumes and start the gateway with an empty
+  database. Deleting .env has that same effect, so leave it in place.
+  To choose the name yourself, set COMPOSE_PROJECT_NAME in the environment for the FIRST run:
+    COMPOSE_PROJECT_NAME=my-gateway ./scripts/setup.sh
+  It must match ^[a-z0-9][a-z0-9_-]*$ (no dots, no uppercase - docker compose rejects those).
+  That is also the upgrade path from a distribution that had no .env: its data lives in volumes
+  prefixed with the old extracted-folder name (find it with: docker volume ls), so pass that name
+  on the first run to keep it.
+
 The control-plane connection is optional and is NOT configured here: to connect to a control
 plane, add APIP_GW_CONTROLLER_CONTROLPLANE_HOST and APIP_GW_CONTROLLER_CONTROLPLANE_TOKEN to
 api-platform.env by hand (both default to empty = standalone mode).
 EOF
       exit 0
       ;;
-    *) echo "unknown option: $arg (try --help)" >&2; exit 2 ;;
+    *) echo "unknown option: $1 (try --help)" >&2; exit 2 ;;
   esac
+  shift
 done
 
 command -v openssl >/dev/null 2>&1 || { echo "error: openssl is required" >&2; exit 1; }
@@ -119,6 +146,142 @@ gen_encryption_key() {
   log "  - AES-256 encryption key generated at $ENC_KEY_FILE"
 }
 
+# --- Compose project name -------------------------------------------------------
+# Compose accepts ^[a-z0-9][a-z0-9_-]*$ only — no dots, no uppercase. $2 is an optional
+# extra line naming where the rejected value came from.
+validate_project_name() {
+  [[ "$1" =~ ^[a-z0-9][a-z0-9_-]*$ ]] && return
+  echo "error: invalid project name '$1' — must start with a lowercase letter or digit and contain only [a-z0-9_-]" >&2
+  [[ -n "${2:-}" ]] && echo "$2" >&2
+  exit 2
+}
+
+# gateway.version from build.yaml — NOT the top-level "version: v1" schema key above it.
+dist_version() {
+  [[ -f build.yaml ]] || return 0
+  awk '
+    /^gateway:[[:space:]]*$/         { in_gw = 1; next }
+    /^[^[:space:]#]/                 { in_gw = 0 }
+    in_gw && /^[[:space:]]+version:/ {
+      sub(/^[[:space:]]*version:[[:space:]]*/, "")
+      gsub(/[\047"]/, "")
+      print; exit
+    }
+  ' build.yaml 2>/dev/null || true
+}
+
+# <prefix>-<sanitized version>-<6 hex>, e.g. wso2apip-gateway-1-2-0-rc-a3f19c.
+# The version is cosmetic: if build.yaml can't be read or sanitizes to nothing, fall
+# back to <prefix>-<6 hex> rather than failing setup. The suffix alone is what makes
+# the name unique.
+gen_project_name() {
+  local version suffix candidate
+  version="$(dist_version)"
+  version="${version%-SNAPSHOT}"
+  version="$(printf '%s' "$version" | tr '[:upper:]' '[:lower:]' | tr -c 'a-z0-9_-' '-' | tr -s '-' | sed 's/^-*//; s/-*$//')"
+  suffix="$(openssl rand -hex 3)"
+  candidate="$PROJECT_NAME_PREFIX-$suffix"
+  if [[ -n "$version" && "$PROJECT_NAME_PREFIX-$version-$suffix" =~ ^[a-z0-9][a-z0-9_-]*$ ]]; then
+    candidate="$PROJECT_NAME_PREFIX-$version-$suffix"
+  fi
+  printf '%s' "$candidate"
+}
+
+# Reads the value the way compose itself does — it strips whitespace around an unquoted
+# value, so "  name  " and "name" are the same pin and must validate the same way.
+read_dotenv_project_name() {
+  [[ -f "$DOTENV_FILE" ]] || return 0
+  local line
+  line="$(grep -E '^[[:space:]]*COMPOSE_PROJECT_NAME=' "$DOTENV_FILE" | tail -n1 || true)"
+  [[ -n "$line" ]] || return 0
+  line="${line#*=}"          # value only
+  line="${line%$'\r'}"       # tolerate a CRLF-written .env
+  line="${line//\"/}"        # unquote
+  line="${line//\'/}"
+  line="${line#"${line%%[![:space:]]*}"}"   # trim leading whitespace
+  line="${line%"${line##*[![:space:]]}"}"   # trim trailing whitespace
+  printf '%s' "$line"
+}
+
+# Key-scoped write: .env may already hold unrelated keys (a dev's MSSQL_SA_PASSWORD,
+# read by docker-compose.sqlserver.yaml), so never rewrite the whole file.
+write_dotenv_project_name() {
+  local name="$1" tmp
+  if [[ ! -f "$DOTENV_FILE" ]]; then
+    cat > "$DOTENV_FILE" <<EOF
+# Generated by scripts/setup.sh on $(date -u +"%Y-%m-%dT%H:%M:%SZ").
+# Read automatically by "docker compose" from this directory. NOT passed to the containers.
+#
+# COMPOSE_PROJECT_NAME namespaces every container, network, and volume of this stack. It is
+# unique to THIS copy of the distribution, so another extraction of the same zip elsewhere on
+# this host cannot bind to this stack's volumes.
+#
+# Do not change or delete this file after the first start: the running data lives in volumes
+# named <project>_controller-data etc., and a different name means the gateway starts with an
+# empty database.
+COMPOSE_PROJECT_NAME=$name
+EOF
+    return
+  fi
+  if grep -qE '^[[:space:]]*COMPOSE_PROJECT_NAME=' "$DOTENV_FILE"; then
+    tmp="$(mktemp "${DOTENV_FILE}.XXXXXX")"
+    awk -v val="$name" '
+      /^[[:space:]]*COMPOSE_PROJECT_NAME=/ {
+        if (!seen) { print "COMPOSE_PROJECT_NAME=" val; seen = 1 }
+        next
+      }
+      { print }
+    ' "$DOTENV_FILE" > "$tmp"
+    # Copy over the original rather than mv, so the existing file's permissions stay.
+    cat "$tmp" > "$DOTENV_FILE"
+    rm -f "$tmp"
+  else
+    cat >> "$DOTENV_FILE" <<EOF
+
+# Added by scripts/setup.sh on $(date -u +"%Y-%m-%dT%H:%M:%SZ").
+# Namespaces every container, network, and volume of this stack; unique to this copy of the
+# distribution. Changing it after the first start hides the existing data.
+COMPOSE_PROJECT_NAME=$name
+EOF
+  fi
+}
+
+# Written once, on the first run, then never rotated — not on a rerun, not under --force.
+# Rotating it would orphan the live volumes and hand the operator an empty gateway, which
+# looks exactly like the bug this pinning exists to fix. An operator who wants a specific
+# name (including the old extracted-folder name, to adopt a pre-.env install's volumes)
+# sets COMPOSE_PROJECT_NAME in the environment for that first run.
+provision_project_name() {
+  local existing chosen source
+  existing="$(read_dotenv_project_name)"
+
+  if [[ -n "$existing" ]]; then
+    # A hand-edited pin gets the same check as a generated one — otherwise setup reports
+    # success on a stack docker compose then refuses to start.
+    validate_project_name "$existing" "       from the COMPOSE_PROJECT_NAME line in $DOTENV_FILE"
+    PROJECT_NAME="$existing"
+    log "  - $DOTENV_FILE already pins COMPOSE_PROJECT_NAME=$existing — keeping it"
+    # docker compose reads the shell environment ahead of .env, so a stale export here
+    # silently sends compose at a different project than the one this stack is pinned to.
+    if [[ -n "${COMPOSE_PROJECT_NAME:-}" && "$COMPOSE_PROJECT_NAME" != "$existing" ]]; then
+      log "    note: COMPOSE_PROJECT_NAME=$COMPOSE_PROJECT_NAME is exported in this shell and takes"
+      log "          precedence over $DOTENV_FILE for every docker compose command run from it."
+    fi
+    return
+  fi
+
+  if [[ -n "${COMPOSE_PROJECT_NAME:-}" ]]; then
+    chosen="$COMPOSE_PROJECT_NAME"; source="COMPOSE_PROJECT_NAME from the environment"
+  else
+    chosen="$(gen_project_name)"; source="generated"
+  fi
+
+  validate_project_name "$chosen"
+  write_dotenv_project_name "$chosen"
+  PROJECT_NAME="$chosen"
+  log "  - COMPOSE_PROJECT_NAME=$chosen written to $DOTENV_FILE ($source)"
+}
+
 log "Provisioning listener TLS certificate ..."
 gen_cert
 
@@ -128,6 +291,12 @@ fi
 
 log "Provisioning AES-256 encryption key ..."
 gen_encryption_key
+
+# Before the $ENV_FILE branch below, so both the fresh install and the "api-platform.env
+# already exists" path provision it — the latter is what an operator upgrading from a
+# distribution that predates .env hits.
+log "Provisioning the docker compose project name ..."
+provision_project_name
 
 if [[ "$FORCE" == false && -f "$ENV_FILE" ]]; then
   log "$ENV_FILE already exists — keeping it (rerun with --force to rewrite it)"
@@ -182,6 +351,8 @@ if [[ "$FORCE" == false && -f "$ENV_FILE" ]]; then
 
   log "Setup complete."
   echo
+  echo "  Compose project:  $PROJECT_NAME   (pinned in $DOTENV_FILE)"
+  echo
   echo "  Next step:"
   echo "    docker compose up"
   exit 0
@@ -231,6 +402,8 @@ echo "   Gateway-controller admin login:  $ADMIN_USERNAME / $ADMIN_PASSWORD"
 echo "   This password will not be shown again — copy it now."
 echo "   (Only its bcrypt hash is stored, in $ENV_FILE)"
 echo "  ------------------------------------------------------------------"
+echo
+echo "  Compose project:  $PROJECT_NAME   (pinned in $DOTENV_FILE)"
 echo
 echo "  Next step:"
 echo "    docker compose up"
