@@ -27,6 +27,7 @@ const logger = require('../config/logger');
 const constants = require('../utils/constants');
 const util = require('../utils/util');
 const yaml = require('../utils/yaml');
+const { matchesAnyScope } = require('../middlewares/ensureAuthenticated');
 
 const MCP_STATUSES = ['active', 'deprecated', 'deleted'];
 const SERVER_NAME_PATTERN = /^[a-zA-Z0-9._-]+\/[a-zA-Z0-9._-]+$/;
@@ -41,19 +42,49 @@ const SCHEMA_FILE_NAME = constants.FILE_NAME.SCHEMA_DEFINITION_YAML_FILE_NAME;
 
 const API_METADATA_TABLE = 'dp_api_metadata';
 
-// metadata_search is JSONB on postgres and TEXT on sqlite/mssql — the ->> text-extraction
-// operator used below is postgres syntax, but sqlite (3.38+, via better-sqlite3) also
-// implements '->>' as a JSON accessor on TEXT columns, so this expression happens to work
-// on both. This mirrors the previous Sequelize implementation, which used raw
-// `sequelize.literal("metadata_search->>'proxyId'")` for the same reason.
-const PROXY_ID_EXPR = "metadata_search->>'proxyId'";
-const PUBLISHED_AT_EXPR = "(metadata_search->>'publishedAt')";
+// Resolved once — db.getDialect() is static for the life of the process, so every
+// dialect-conditional expression below is computed a single time at module load
+// rather than re-branching per query.
+const DIALECT = db.getDialect();
+
+// metadata_search is JSONB on postgres, TEXT on sqlite, and NVARCHAR(MAX) on mssql
+// (see database/schema.*.sql). Postgres's '->>' text-extraction operator also happens to
+// work unmodified on sqlite (3.38+, via better-sqlite3, which implements '->>' as a JSON
+// accessor on TEXT columns too), but SQL Server has no '->>' operator at all — the
+// equivalent there is JSON_VALUE() against the same NVARCHAR(MAX) JSON text. This mirrors
+// the previous Sequelize implementation, which used raw
+// `sequelize.literal("metadata_search->>'proxyId'")` for postgres.
+const PROXY_ID_EXPR = DIALECT === 'mssql'
+    ? "JSON_VALUE(metadata_search, '$.proxyId')"
+    : "metadata_search->>'proxyId'";
+const PUBLISHED_AT_EXPR = DIALECT === 'mssql'
+    ? "JSON_VALUE(metadata_search, '$.publishedAt')"
+    : "(metadata_search->>'publishedAt')";
+
+// SQL Server has no NULLS LAST syntax (unlike postgres and sqlite 3.30+) — emulate it with
+// a leading CASE that sorts NULL published-at values after every non-NULL one, then the
+// same DESC ordering on the real value for ties within each group.
+const ORDER_BY_PUBLISHED_AT_DESC = DIALECT === 'mssql'
+    ? `ORDER BY CASE WHEN ${PUBLISHED_AT_EXPR} IS NULL THEN 1 ELSE 0 END, ${PUBLISHED_AT_EXPR} DESC`
+    : `ORDER BY ${PUBLISHED_AT_EXPR} DESC NULLS LAST`;
 
 // ILIKE is postgres-only syntax — sqlite has no ILIKE operator at all (a bare LIKE is
 // already case-insensitive for ASCII there), and mssql's LIKE case-sensitivity depends on
-// the column/database collation rather than a keyword. Branch once per dialect rather than
-// hardcoding ILIKE, so `search` doesn't hard-fail with a SQL syntax error on non-postgres.
-const SEARCH_LIKE_OP = db.getDialect() === 'postgres' ? 'ILIKE' : 'LIKE';
+// the column/database collation rather than a keyword, so LIKE is the correct fallback for
+// both. Branch once per dialect rather than hardcoding ILIKE, so `search` doesn't hard-fail
+// with a SQL syntax error on non-postgres.
+const SEARCH_LIKE_OP = DIALECT === 'postgres' ? 'ILIKE' : 'LIKE';
+
+// SQL Server has no FOR UPDATE — the equivalent is a WITH (UPDLOCK, ROWLOCK) table hint
+// placed directly after the table name, not appended to WHERE like postgres's FOR UPDATE,
+// so the lock has to be expressed as part of the FROM target rather than a query suffix.
+// SQLite needs neither hint: it already serializes all writes through a single
+// connection/lock (see driver.js), so omitting one there doesn't reintroduce the race that
+// FOR UPDATE/UPDLOCK guards against on postgres/mssql.
+const LOCKABLE_METADATA_TABLE = DIALECT === 'mssql'
+    ? `${API_METADATA_TABLE} WITH (UPDLOCK, ROWLOCK)`
+    : API_METADATA_TABLE;
+const FOR_UPDATE_SUFFIX = DIALECT === 'postgres' ? ' FOR UPDATE' : '';
 
 // Map registry spec status values to DB STATUS values
 const REGISTRY_TO_DB_STATUS = {
@@ -293,11 +324,16 @@ const listServers = async (req, res) => {
             params.push(`%${search}%`, `%${search}%`);
         }
 
+        // db.paginationClause emits dialect-correct row-limiting syntax — mssql has no
+        // LIMIT/OFFSET keyword at all (it uses ANSI OFFSET ... FETCH NEXT), so this can't be
+        // a hardcoded "LIMIT ? OFFSET ?" string the way the rest of this file's postgres/sqlite
+        // expressions can share one spelling.
+        const { clause: paginationClause, params: paginationParams } = db.paginationClause(limit + 1, currentOffset);
         const rows = await db.query(
             `SELECT * FROM ${API_METADATA_TABLE} WHERE ${conditions.join(' AND ')}
-             ORDER BY ${PUBLISHED_AT_EXPR} DESC NULLS LAST
-             LIMIT ? OFFSET ?`,
-            [...params, limit + 1, currentOffset]
+             ${ORDER_BY_PUBLISHED_AT_DESC}
+             ${paginationClause}`,
+            [...params, ...paginationParams]
         );
 
         const hasMore = rows.length > limit;
@@ -332,14 +368,14 @@ const listVersions = async (req, res) => {
 
         let rows = await db.query(
             `SELECT * FROM ${API_METADATA_TABLE} WHERE ${baseWhereSql} AND ${PROXY_ID_EXPR} = ?
-             ORDER BY ${PUBLISHED_AT_EXPR} DESC NULLS LAST`,
+             ${ORDER_BY_PUBLISHED_AT_DESC}`,
             [...baseParams, serverIdentifier]
         );
 
         if (rows.length === 0) {
             rows = await db.query(
                 `SELECT * FROM ${API_METADATA_TABLE} WHERE ${baseWhereSql} AND name = ?
-                 ORDER BY ${PUBLISHED_AT_EXPR} DESC NULLS LAST`,
+                 ${ORDER_BY_PUBLISHED_AT_DESC}`,
                 [...baseParams, serverIdentifier]
             );
         }
@@ -385,6 +421,26 @@ const getVersion = async (req, res) => {
 
 // ─── Write endpoints ──────────────────────────────────────────────────────────
 
+// Shared by publishServer's pre-authorization existence check and its transactional
+// upsert, so the "does this name/version/proxyId already exist" lookup has one
+// implementation instead of two copies that could silently drift apart.
+async function findExistingMcpVersion(exec, orgId, name, version, proxyId) {
+    let existing = null;
+    if (proxyId) {
+        existing = await exec.queryOne(
+            `SELECT * FROM ${API_METADATA_TABLE} WHERE org_uuid = ? AND type = ? AND version = ? AND ${PROXY_ID_EXPR} = ?`,
+            [orgId, constants.API_TYPE.MCP, version, proxyId]
+        );
+    }
+    if (!existing) {
+        existing = await exec.queryOne(
+            `SELECT * FROM ${API_METADATA_TABLE} WHERE org_uuid = ? AND type = ? AND name = ? AND version = ?`,
+            [orgId, constants.API_TYPE.MCP, name, version]
+        );
+    }
+    return existing;
+}
+
 const publishServer = async (req, res) => {
     try {
         const orgHandle = req.params.orgHandle;
@@ -409,25 +465,25 @@ const publishServer = async (req, res) => {
             ? Buffer.from(yaml.dump(toFlatSchema(tools, resources, prompts)), 'utf-8')
             : null;
 
+        // publish is an upsert — a caller must hold the scope matching whichever operation
+        // will ACTUALLY happen, not just either one: dp:mcp_create alone must not be able to
+        // update an existing server, and dp:mcp_update alone must not be able to create a new
+        // one. Route-level enforceSecurity(MCP_PUBLISH_SCOPES) only proves the caller has SOME
+        // MCP-publishing capability; this is the precise, per-operation check (GO-AUTH-007 /
+        // GO-AUTH-015 — the specific check belongs at the point the operation is decided, not
+        // only in route middleware that can't yet know which operation this request performs).
+        const willUpdate = !!(await findExistingMcpVersion(db, orgId, name, version, proxyId));
+        const requiredScope = willUpdate ? constants.SCOPES.MCP_UPDATE : constants.SCOPES.MCP_CREATE;
+        if (!matchesAnyScope(req.tokenScopes || [], requiredScope)) {
+            return sendError(res, 403, 'Forbidden');
+        }
+
         let row;
         let created = false;
         let existingApiId = null;
 
         await db.withTransaction(async (t) => {
-            let existing = null;
-            if (proxyId) {
-                existing = await t.queryOne(
-                    `SELECT * FROM ${API_METADATA_TABLE} WHERE org_uuid = ? AND type = ? AND version = ? AND ${PROXY_ID_EXPR} = ?`,
-                    [orgId, constants.API_TYPE.MCP, version, proxyId]
-                );
-            }
-
-            if (!existing) {
-                existing = await t.queryOne(
-                    `SELECT * FROM ${API_METADATA_TABLE} WHERE org_uuid = ? AND type = ? AND name = ? AND version = ?`,
-                    [orgId, constants.API_TYPE.MCP, name, version]
-                );
-            }
+            const existing = await findExistingMcpVersion(t, orgId, name, version, proxyId);
 
             if (existing) {
                 existingApiId = existing.uuid;
@@ -610,26 +666,21 @@ const updateAllVersionsStatus = async (req, res) => {
         const dbStatus = REGISTRY_TO_DB_STATUS[status];
         let updated;
 
-        // FOR UPDATE is postgres-only syntax (sqlite/mssql reject it outright, same as the
-        // ILIKE case above) — row-locking is only needed to guard against a concurrent writer
-        // on postgres; sqlite already serializes all writes through a single connection/lock
-        // (see driver.js), so omitting the clause there doesn't reintroduce the race. Mirrors
-        // the identical dialect branch in eventDao.js's claim queries.
-        const lockClause = db.getDialect() === 'postgres' ? ' FOR UPDATE' : '';
-
         await db.withTransaction(async (t) => {
-            // FOR UPDATE row-locks every candidate row for the duration of this transaction,
-            // so a concurrent updateAllVersionsStatus/publishServer call on the same server
-            // can't race this bulk status change.
+            // Row-locks every candidate row for the duration of this transaction, so a
+            // concurrent updateAllVersionsStatus/publishServer call on the same server can't
+            // race this bulk status change — FOR_UPDATE_SUFFIX (postgres) / the WITH
+            // (UPDLOCK, ROWLOCK) hint baked into LOCKABLE_METADATA_TABLE (mssql) / neither
+            // (sqlite, which already serializes writes through a single connection).
             let existing = await t.query(
-                `SELECT * FROM ${API_METADATA_TABLE}
-                 WHERE org_uuid = ? AND type = ? AND ref_id IS NULL AND ${PROXY_ID_EXPR} = ?${lockClause}`,
+                `SELECT * FROM ${LOCKABLE_METADATA_TABLE}
+                 WHERE org_uuid = ? AND type = ? AND ref_id IS NULL AND ${PROXY_ID_EXPR} = ?${FOR_UPDATE_SUFFIX}`,
                 [orgId, constants.API_TYPE.MCP, serverIdentifier]
             );
             if (existing.length === 0) {
                 existing = await t.query(
-                    `SELECT * FROM ${API_METADATA_TABLE}
-                     WHERE org_uuid = ? AND type = ? AND ref_id IS NULL AND name = ?${lockClause}`,
+                    `SELECT * FROM ${LOCKABLE_METADATA_TABLE}
+                     WHERE org_uuid = ? AND type = ? AND ref_id IS NULL AND name = ?${FOR_UPDATE_SUFFIX}`,
                     [orgId, constants.API_TYPE.MCP, serverIdentifier]
                 );
             }

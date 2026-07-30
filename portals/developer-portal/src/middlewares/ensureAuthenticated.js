@@ -68,6 +68,7 @@ function enforceSecurity(scope) {
                 const platformToken = req.user[constants.ACCESS_TOKEN];
                 if (!platformToken) return util.handleError(res, new CustomError(401, constants.ERROR_CODE[401], constants.ERROR_MESSAGE.UNAUTHENTICATED));
                 const tokenScopes = decodePlatformJwtClaims(platformToken)?.scopes ?? [];
+                req.tokenScopes = tokenScopes;
                 if (matchesAnyScope(tokenScopes, scope)) return next();
                 return util.handleError(res, new CustomError(403, constants.ERROR_CODE[403], constants.ERROR_MESSAGE.FORBIDDEN));
             }
@@ -342,15 +343,21 @@ function validateAuthentication(scope) {
 
         if (valid) {
             const tokenScopes = String(scopes || '').split(' ');
+            req.tokenScopes = tokenScopes;
             if (matchesAnyScope(tokenScopes, scope)) {
                 return next();
             }
             return util.handleError(res, new CustomError(403, constants.ERROR_CODE[403], constants.ERROR_MESSAGE.FORBIDDEN));
         }
-        if (req.user) {
-            return res.redirect('login');
-        }
-        return util.handleError(res, new CustomError(401, constants.ERROR_CODE[401], constants.ERROR_MESSAGE.UNAUTHENTICATED));
+        // Uniform response regardless of req.user (js-error-handling.md directive 4, same
+        // shape tryoutProxyRoute.js's unauthorizedJson uses) — this gate protects API routes
+        // (mcpRegistryRoute.js), not browser pages, so a stale session cookie must not divert
+        // a rejected bearer token into an HTML login redirect instead of the same JSON body a
+        // header-only caller gets.
+        return res.status(401).json({
+            error: 'unauthorized',
+            message: 'Invalid or expired credentials.',
+        });
     }
 }
 
@@ -393,5 +400,6 @@ const enforceAPIKey = (req, res, next) => {
 module.exports = {
     ensureAuthenticated,
     validateAuthentication,
-    enforceSecurity
+    enforceSecurity,
+    matchesAnyScope,
 }
