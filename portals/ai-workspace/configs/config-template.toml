@@ -170,8 +170,15 @@ controlplane_host = "localhost:9243"
 
 # Gateway versions offered in the create-gateway version selector (JSON array string).
 # Each entry: version (helm chart minor), latestVersion (image/chart tag, used in the
-# helm --version flag), channel ("STS" | "LTS"). The first entry is the default.
-platform_gateway_versions = "[{\"version\":\"1.2\",\"latestVersion\":\"v1.2.0-beta\",\"channel\":\"STS\"}]"
+# helm --version flag and the release-tag path of the download URL), channel
+# ("STS" | "LTS"). The first entry is the default. Optional distVersion overrides the
+# version segment of the distribution zip name when the published asset name differs
+# from the release tag (e.g. tag v1.2.0 shipping wso2apip-ai-gateway-1.2.0-rc.zip);
+# defaults to latestVersion without its leading "v". Optional distFolderVersion does
+# the same for the directory that zip unpacks into, when it differs from the zip name
+# (e.g. wso2apip-ai-gateway-1.2.0-rc.zip extracting to wso2apip-ai-gateway-1.2.0/);
+# defaults to distVersion.
+platform_gateway_versions = "[{\"version\":\"1.2\",\"latestVersion\":\"v1.2.0-rc\",\"distVersion\":\"1.2.0-rc\",\"distFolderVersion\":\"1.2.0\",\"channel\":\"STS\"}]"
 
 
 
