@@ -169,7 +169,7 @@ export const PLATFORM_GATEWAY_VERSIONS = getEnvOrDefault<GatewayVersionEntry[]>(
       latestVersion: 'v1.2.0',
       distVersion: '1.2.0',
       distFolderVersion: '1.2.0',
-      channel: 'STS',
+      channel: 'LTS',
     }
   ]
 );

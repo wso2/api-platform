@@ -242,13 +242,16 @@ describe('AI Workspace — LLM provider secret management (create flow)', () => 
     selectOpenAITemplate();
     fillProviderForm(providerName, 'sk-tc59-will-fail');
 
+    // Record notifications before the action: the snackbar auto-hides after
+    // ~3.5s, so polling for the element afterwards is racy under load.
+    cy.recordSnackbars();
+
     cy.get('[data-cyid="add-provider-button"]').should('not.be.disabled').click();
 
     cy.wait('@failSecret');
 
     // The app renders errors via the Notification component with a stable testId.
-    cy.get('[data-testid="aiworkspace-snackbar-notification"]', { timeout: 15000 })
-      .should('be.visible');
+    cy.expectSnackbar(/Failed to create LLM provider|HTTP 500|simulated vault failure/);
 
     // Read providerCallCount inside a .then() so it is evaluated after the
     // Cypress queue settles (not at scheduling time).
@@ -531,14 +534,17 @@ describe('AI Workspace — LLM provider secret management (update flow)', () => 
       .find('input')
       .type('sk-tc62-will-fail');
 
+    // Record notifications before the action: the snackbar auto-hides after
+    // ~3.5s, so polling for the element afterwards is racy under load.
+    cy.recordSnackbars();
+
     // Click Save — the stubbed 500 on POST /secrets should abort the update.
     cy.contains('button', 'Save').click();
 
     cy.wait('@failSecret');
 
-    // Error notification must be visible.
-    cy.get('[data-testid="aiworkspace-snackbar-notification"]', { timeout: 15000 })
-      .should('be.visible');
+    // Error notification must have been raised.
+    cy.expectSnackbar('Failed to save provider changes.');
 
     // Provider PUT must not have fired.
     cy.wrap(null).then(() => {

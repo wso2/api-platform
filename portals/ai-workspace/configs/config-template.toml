@@ -178,7 +178,7 @@ controlplane_host = "localhost:9243"
 # the same for the directory that zip unpacks into, when it differs from the zip name
 # (e.g. wso2apip-ai-gateway-1.2.0-rc.zip extracting to wso2apip-ai-gateway-1.2.0/);
 # defaults to distVersion.
-platform_gateway_versions = "[{\"version\":\"1.2\",\"latestVersion\":\"v1.2.0-rc\",\"distVersion\":\"1.2.0-rc\",\"distFolderVersion\":\"1.2.0\",\"channel\":\"STS\"}]"
+platform_gateway_versions = "[{\"version\":\"1.2\",\"latestVersion\":\"v1.2.0-rc\",\"distVersion\":\"1.2.0-rc\",\"distFolderVersion\":\"1.2.0\",\"channel\":\"LTS\"}]"
 
 
 
