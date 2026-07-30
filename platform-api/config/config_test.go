@@ -421,15 +421,43 @@ func TestValidateAuthConfig(t *testing.T) {
 			},
 		},
 		{
+			// The login endpoint signs flat claims, so a nested path would be
+			// issued as a literal claim name and read back empty — for the roles
+			// mapping, a user who logs in successfully and is then denied everything.
+			name: "file mode rejects a dotted claim mapping",
+			auth: Auth{
+				Mode:          AuthModeFile,
+				JWT:           JWT{PublicKeyFile: validJWTPublicKeyFile, PrivateKeyFile: validJWTPrivateKeyFile, TokenTTL: time.Hour},
+				Authorization: Authorization{Enabled: true, Mode: AuthzModeScope, RoleMappings: "/etc/platform-api/roles.yaml"},
+				ClaimMappings: ClaimMappings{Roles: "realm_access.roles"},
+				File: FileBased{
+					Organization: FileBasedOrg{ID: "default", DisplayName: "Default"},
+					Users:        FileBasedUsers{{Username: "admin", PasswordHash: "$2a$12$hash", Role: "ap_admin"}},
+				},
+			},
+			wantErr: "auth.claim_mappings.roles",
+		},
+		{
 			name:    "idp mode requires jwks_url",
 			auth:    Auth{Mode: AuthModeIDP},
 			wantErr: "auth.idp.jwks_url",
 		},
 		{
-			name: "idp mode fully configured",
+			// Signature and issuer alone would accept a token the same IDP minted
+			// for any other client, so an expected audience is required too.
+			name: "idp mode without an audience rejected",
 			auth: Auth{Mode: AuthModeIDP, IDP: IDP{
 				JWKSUrl: "https://idp.example.com/jwks",
 				Issuer:  []string{"https://idp.example.com"},
+			}},
+			wantErr: "auth.idp.audience",
+		},
+		{
+			name: "idp mode fully configured",
+			auth: Auth{Mode: AuthModeIDP, IDP: IDP{
+				JWKSUrl:  "https://idp.example.com/jwks",
+				Issuer:   []string{"https://idp.example.com"},
+				Audience: []string{"platform-api"},
 			}},
 		},
 		{

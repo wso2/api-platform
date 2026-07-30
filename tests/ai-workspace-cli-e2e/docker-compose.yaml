@@ -9,29 +9,83 @@
 # platform-api:it-e2e from source and passes it through (same pattern the
 # platform-api-devportal-e2e / platform-api-gateway-e2e suites use).
 services:
+  # One-shot init container: generates the TLS pair the platform-api HTTPS
+  # listener requires (the server no longer generates a self-signed fallback).
+  platform-api-certgen:
+    image: alpine/openssl
+    entrypoint: ["/bin/sh", "-c"]
+    command:
+      - |
+        set -e
+        [ -f /certs/cert.pem ] && [ -f /certs/key.pem ] && exit 0
+        openssl req -x509 -newkey rsa:2048 -sha256 -days 365 -nodes \
+          -keyout /certs/key.pem -out /certs/cert.pem \
+          -subj "/O=WSO2 API Platform/CN=platform-api" \
+          -addext "subjectAltName=DNS:localhost,DNS:platform-api,IP:127.0.0.1"
+        # certgen runs as root; platform-api runs as uid 10001, so the key must be
+        # owned by that uid, not made world-readable.
+        chown 10001 /certs/key.pem
+        chmod 0600 /certs/key.pem
+    volumes:
+      - platform-api-certs:/certs
+    networks: [aiwscli]
+
+  # One-shot init container: generates the RS256 keypair platform-api's
+  # auth.jwt config requires. Login tokens are signed asymmetrically — there is
+  # no shared HMAC secret anymore.
+  platform-api-jwtkeygen:
+    image: alpine/openssl
+    entrypoint: ["/bin/sh", "-c"]
+    command:
+      - |
+        set -e
+        [ -f /keys/jwt_private.pem ] && [ -f /keys/jwt_public.pem ] && exit 0
+        openssl genpkey -algorithm RSA -pkeyopt rsa_keygen_bits:2048 \
+          -out /keys/jwt_private.pem 2>/dev/null
+        openssl rsa -in /keys/jwt_private.pem -pubout \
+          -out /keys/jwt_public.pem 2>/dev/null
+        chown 10001 /keys/jwt_private.pem
+        chmod 0600 /keys/jwt_private.pem
+        chmod 0644 /keys/jwt_public.pem
+    volumes:
+      - platform-api-jwt-keys:/keys
+    networks: [aiwscli]
+
   platform-api:
     image: ${PLATFORM_API_IMAGE:-platform-api:it-e2e}
-    command: ["./platform-api", "-config", "/etc/platform-api/config.toml"]
+    command: ["-config", "/etc/platform-api/config.toml"]
+    # Every variable here is read through the matching {{ env }} token in
+    # platform-api-config.toml — platform-api has no env-override layer.
     environment:
-      - DATABASE_DRIVER=sqlite3
-      - DATABASE_PATH=/app/data/platform.db
-      - DATABASE_EXECUTE_SCHEMA_DDL=true
+      - APIP_CP_DATABASE_DRIVER=sqlite3
+      - APIP_CP_DATABASE_PATH=/app/data/platform.db
       # Single encryption key — must be 32 bytes (64 hex chars). Used for all
       # at-rest encryption (secrets, subscription tokens, HMAC).
-      - ENCRYPTION_KEY=0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef
-      - AUTH_FILE_BASED_ENABLED=true
-      - AUTH_FILE_BASED_ORGANIZATION_ID=default
-      - AUTH_FILE_BASED_ORGANIZATION_UUID=99089a17-72e0-4dd8-a2f4-c8dfbb085295
-      - AUTH_FILE_BASED_ORGANIZATION_DISPLAY_NAME=Default
-      - AUTH_FILE_BASED_ORGANIZATION_REGION=us
-      # Signs login JWTs; must be 32 bytes (64 hex chars). Overrides the
-      # placeholder in platform-api-config.toml (env wins in koanf).
-      - AUTH_JWT_SECRET_KEY=fedcba9876543210fedcba9876543210fedcba9876543210fedcba9876543210
+      - APIP_CP_ENCRYPTION_KEY=0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef
+      # Stable org identity so the scenario's org handle/UUID are fixed across runs.
+      - APIP_CP_AUTH_FILE_ORGANIZATION_ID=default
+      - APIP_CP_AUTH_FILE_ORGANIZATION_UUID=99089a17-72e0-4dd8-a2f4-c8dfbb085295
+      - APIP_CP_AUTH_FILE_ORGANIZATION_DISPLAY_NAME=Default
+      - APIP_CP_AUTH_FILE_ORGANIZATION_REGION=us
     volumes:
       - ./platform-api-config.toml:/etc/platform-api/config.toml:ro
+      # Role-to-scope mapping named by auth.authorization.role_mappings — the
+      # shipped file, so the suite runs against the same grants operators get.
+      - ../../platform-api/resources/roles.yaml:/etc/platform-api/roles.yaml:ro
+      - platform-api-certs:/app/data/certs
+      - platform-api-jwt-keys:/etc/platform-api/keys:ro
     ports:
       - "${PA_HOST_PORT:-9243}:9243"
+    depends_on:
+      platform-api-certgen:
+        condition: service_completed_successfully
+      platform-api-jwtkeygen:
+        condition: service_completed_successfully
     networks: [aiwscli]
+
+volumes:
+  platform-api-certs:
+  platform-api-jwt-keys:
 
 networks:
   aiwscli:

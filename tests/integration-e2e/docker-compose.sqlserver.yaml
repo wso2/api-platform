@@ -102,11 +102,13 @@ services:
       # Single encryption key — must be 32 bytes (64 hex chars). Used for all at-rest
       # encryption (secrets, subscription tokens, HMAC)
       - APIP_CP_ENCRYPTION_KEY=0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef
-      - APIP_CP_AUTH_FILE_BASED_ENABLED=true
-      - APIP_CP_AUTH_FILE_BASED_ORGANIZATION_ID=default
-      - APIP_CP_AUTH_FILE_BASED_ORGANIZATION_UUID=99089a17-72e0-4dd8-a2f4-c8dfbb085295
-      - APIP_CP_AUTH_FILE_BASED_ORGANIZATION_DISPLAY_NAME=Default
-      - APIP_CP_AUTH_FILE_BASED_ORGANIZATION_REGION=us
+      # Stable org identity so the scenario's org handle/UUID are fixed across runs.
+      # These names are the {{ env }} tokens platform-api-config.toml reads; the
+      # server has no env-override layer, so a name not spelled in that file is inert.
+      - APIP_CP_AUTH_FILE_ORGANIZATION_ID=default
+      - APIP_CP_AUTH_FILE_ORGANIZATION_UUID=99089a17-72e0-4dd8-a2f4-c8dfbb085295
+      - APIP_CP_AUTH_FILE_ORGANIZATION_DISPLAY_NAME=Default
+      - APIP_CP_AUTH_FILE_ORGANIZATION_REGION=us
     volumes:
       - ./platform-api-config.toml:/etc/platform-api/config.toml:ro
       # Role-to-scope mapping named by auth.authorization.role_mappings — the

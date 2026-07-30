@@ -90,13 +90,6 @@ export const SCOPES = {
   REST_API_API_KEY_MANAGE:    'ap:rest_api:api_key:manage',
   REST_API_PUBLICATION_READ:  'ap:rest_api:publication:read',
 
-  // DevPortals
-  DEVPORTAL_READ:   'ap:devportal:read',
-  DEVPORTAL_CREATE: 'ap:devportal:create',
-  DEVPORTAL_UPDATE: 'ap:devportal:update',
-  DEVPORTAL_DELETE: 'ap:devportal:delete',
-  DEVPORTAL_MANAGE: 'ap:devportal:manage',
-
   // Subscriptions
   SUBSCRIPTION_READ:        'ap:subscription:read',
   SUBSCRIPTION_CREATE:      'ap:subscription:create',

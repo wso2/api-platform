@@ -181,16 +181,21 @@ email        = "email"
 scope        = "scope"          # space-separated scope string
 # Claim carrying the user's roles. Read in role authorization mode, and it is the
 # claim the file-mode login endpoint signs the user's role into. Default suits
-# Asgardeo/Entra ID; Keycloak nests it: "realm_access.roles".
+# Asgardeo/Entra ID; Keycloak nests it: "realm_access.roles". A dotted path is a
+# read-side construct only — the login endpoint signs flat claims, so mode =
+# "file" rejects a dotted mapping at startup rather than issue a token whose
+# nested claim reads back empty.
 roles        = "roles"
 
 # IDP (JWKS-based) — used when mode = "idp" (Asgardeo, Keycloak, Auth0, etc.).
-# jwks_url and issuer are required in that mode.
+# jwks_url, issuer, and audience are all required in that mode.
 [platform_api.auth.idp]
 name     = "asgardeo"                                # friendly name for logging
 jwks_url = "https://accounts.example.com/oauth2/jwks"
 issuer   = ["https://accounts.example.com"]          # list of accepted issuers
-audience = []                                        # accepted "aud" values; empty = skip audience check
+# Accepted "aud" values — required. Without it, a token the same IDP minted for
+# any of its other clients verifies here on signature and issuer alone.
+audience = ["platform-api"]
 
 # File auth — local username/password login, used when mode = "file". Ideal
 # for initial / air-gapped setup; not recommended for production — prefer

@@ -97,8 +97,8 @@ func (h *AuthLoginHandler) Login(w http.ResponseWriter, r *http.Request) error {
 	// validateLocalJWT (and by any other consumer configured against the same
 	// mapping) without the two ever drifting apart. Mapped names are used as
 	// flat claim keys here; a dot-separated nested path (meant for reading
-	// externally-issued tokens) is not meaningful to sign against and is used
-	// as a literal flat key if configured that way.
+	// externally-issued tokens) is not meaningful to sign against, so
+	// validateFileModeClaimMappings rejects one at startup in this mode.
 	cm := h.cfg.Auth.ClaimMappings
 	expiry := time.Now().Add(h.cfg.Auth.JWT.TokenTTL)
 	claims := jwt.MapClaims{

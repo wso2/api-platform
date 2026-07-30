@@ -283,7 +283,7 @@ All settings live under `[platform_api]` / `[platform_api.*]`. The main sections
 | `[platform_api.database]` | `driver` (`sqlite3` / `postgres` / `sqlserver`), connection fields, pool sizing |
 | `[platform_api.auth]` | `mode` — one of `internal_token`, `file`, or `idp` |
 | `[platform_api.auth.authorization]` | `enabled`, `mode` (`scope` / `role`), `role_mappings` — applies in every auth mode |
-| `[platform_api.auth.jwt]` | Asymmetric (RS256) token settings: `issuer`, `public_key` (**required** — PEM RSA public key, verifies tokens), `private_key` (**required in `file` mode** — PEM RSA private key, signs login tokens), `token_ttl` |
+| `[platform_api.auth.jwt]` | Asymmetric (RS256) token settings: `issuer`, `public_key_file` (**required** — path to a PEM RSA public key, verifies tokens), `private_key_file` (**required in `file` mode** — path to a PEM RSA private key, signs login tokens), `token_ttl` |
 | `[platform_api.auth.idp]` / `[platform_api.auth.claim_mappings]` | JWKS endpoint and issuer/audience for `idp` mode; JWT claim-name mappings (all modes) |
 | `[platform_api.auth.file.organization]` / `[[platform_api.auth.file.users]]` | Local org + username/password/scope entries for `file` mode |
 | `[platform_api.server.http]` / `[platform_api.server.https]` | Listener enablement, ports, and (HTTPS) `cert_file` / `key_file` paths (certificates are always required for HTTPS — no self-signed fallback) |
@@ -299,8 +299,8 @@ All settings live under `[platform_api]` / `[platform_api.*]`. The main sections
 
 `platform_api.auth.mode` selects exactly one mode; only that mode's section is read:
 
-- **`internal_token`** — verify asymmetrically-signed (RS256) JWTs (`[platform_api.auth.jwt]`); tokens are minted by another trusted platform component and signed with the matching RSA private key, verified here against `public_key`. Symmetric (HMAC) and unsigned (`none`) tokens are rejected.
-- **`file`** — `internal_token` plus local username/password login: the login endpoint authenticates against `[platform_api.auth.file]` and issues RS256 JWTs signed with `[platform_api.auth.jwt].private_key`, verified with the matching `public_key`. Used by the AI Workspace and Developer Portal quickstarts.
+- **`internal_token`** — verify asymmetrically-signed (RS256) JWTs (`[platform_api.auth.jwt]`); tokens are minted by another trusted platform component and signed with the matching RSA private key, verified here against `public_key_file`. Symmetric (HMAC) and unsigned (`none`) tokens are rejected.
+- **`file`** — `internal_token` plus local username/password login: the login endpoint authenticates against `[platform_api.auth.file]` and issues RS256 JWTs signed with `[platform_api.auth.jwt].private_key_file`, verified with the matching `public_key_file`. Used by the AI Workspace and Developer Portal quickstarts.
 - **`idp`** — validate tokens against an external IDP's JWKS endpoint (Thunder, Asgardeo, Keycloak, Azure AD, Okta, etc.) via `[platform_api.auth.idp]`; `jwks_url` and `issuer` are required.
 
 The paths that bypass authentication and scope enforcement — health/metrics probes, the login
@@ -357,8 +357,7 @@ sample (`resources/roles.yaml`) at `/etc/platform-api/roles.yaml`.
 
 Validation of that file is namespace-scoped. An `ap:` scope must be declared in this server's OpenAPI
 spec (plus any its compiled-in plugins declare) — an unknown one fails startup rather than silently
-denying requests later. The exceptions are `ap:devportal:*` and `ap:git:read`, which this server mints
-for the AI Workspace BFF to enforce and therefore allowlists rather than spec-checks. A scope in
+denying requests later. A scope in
 another component's namespace (`dp:*`) is checked only for shape: this server mints it into the token
 but never enforces it, so it can neither confirm nor deny that it exists. That is what lets one role
 describe a persona across the whole platform — and what makes a per-user scope list unnecessary.

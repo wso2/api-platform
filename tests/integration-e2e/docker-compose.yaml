@@ -101,17 +101,13 @@ services:
       - APIP_CP_DATABASE_PASSWORD=apip
       - APIP_CP_DATABASE_SSL_MODE=disable
       - APIP_CP_ENCRYPTION_KEY=0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef
-      # Force file-based auth + a stable org so the scenario can log in and the
-      # org is seeded (env overrides the mounted config file).
-      - APIP_CP_AUTH_FILE_BASED_ENABLED=true
-      - APIP_CP_AUTH_FILE_BASED_ORGANIZATION_ID=default
-      - APIP_CP_AUTH_FILE_BASED_ORGANIZATION_UUID=99089a17-72e0-4dd8-a2f4-c8dfbb085295
-      - APIP_CP_AUTH_FILE_BASED_ORGANIZATION_DISPLAY_NAME=Default
-      - APIP_CP_AUTH_FILE_BASED_ORGANIZATION_REGION=us
-      # The @devportal stack injects the admin user (with dp:* scopes) here so the
-      # issued JWT is authorized on the developer portal. Empty (the default) means
-      # platform-api uses its built-in admin (ap:* scopes only).
-      - APIP_CP_AUTH_FILE_BASED_USERS=${AUTH_FILE_BASED_USERS:-}
+      # Stable org identity so the scenario's org handle/UUID are fixed across runs.
+      # These names are the {{ env }} tokens platform-api-config.toml reads; the
+      # server has no env-override layer, so a name not spelled in that file is inert.
+      - APIP_CP_AUTH_FILE_ORGANIZATION_ID=default
+      - APIP_CP_AUTH_FILE_ORGANIZATION_UUID=99089a17-72e0-4dd8-a2f4-c8dfbb085295
+      - APIP_CP_AUTH_FILE_ORGANIZATION_DISPLAY_NAME=Default
+      - APIP_CP_AUTH_FILE_ORGANIZATION_REGION=us
       # Developer Portal webhook receiver (only the postgres stack runs the devportal).
       # Enabled via env so the sqlite/sqlserver stacks — which have no devportal —
       # leave it off. The secret both verifies request signatures and decrypts the
@@ -119,7 +115,6 @@ services:
       # with this exact same value (see registerWebhookSubscriber).
       - APIP_CP_WEBHOOK_ENABLED=true
       - APIP_CP_WEBHOOK_SECRET=${E2E_WEBHOOK_SECRET:?set E2E_WEBHOOK_SECRET (the suite sets it automatically; export one to run compose by hand)}
-      - APIP_CP_WEBHOOK_GATEWAY_TYPE=wso2/api-platform
     volumes:
       - ./platform-api-config.toml:/etc/platform-api/config.toml:ro
       # Role-to-scope mapping named by auth.authorization.role_mappings — the

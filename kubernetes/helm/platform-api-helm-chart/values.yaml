@@ -148,8 +148,6 @@ config:
             - ap:secret:manage
             - ap:api_key:read
             - ap:api_key:all:manage
-            - ap:devportal:manage
-            - ap:git:read
     # Claim-name mappings shared by all modes.
     claimMappings:
       organization: organization
@@ -191,13 +189,15 @@ config:
         # per-user scope list). Requires that file to be mounted and roleMappings
         # above to point at it; a role absent from the file fails startup.
         role: ap_admin
-    # idp mode — external OIDC provider (rendered only when mode=idp). jwksUrl is
-    # required in that mode.
+    # idp mode — external OIDC provider (rendered only when mode=idp). jwksUrl,
+    # issuer, and audience are all required in that mode.
     idp:
       name: ""
       jwksUrl: ""
       issuer: []                 # accepted token issuers
-      audience: []               # accepted audiences; empty = don't check
+      # Accepted audiences. Required: without it, a token the same IDP minted for
+      # any of its other clients verifies here on signature and issuer alone.
+      audience: []
 
   # --- Server listeners ---
   server:

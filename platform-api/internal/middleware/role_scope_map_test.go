@@ -71,17 +71,16 @@ paths:
 			wantErr: "malformed scope",
 		},
 		{
-			// This server mints these for the AI Workspace BFF to enforce, so they
-			// appear in no spec it can check. A role must still be able to name
-			// them — it is a file-mode user's only grant.
-			name:   "minted platform scope passes without being declared here",
-			scopes: []string{"ap:devportal:manage", "ap:git:read"},
+			// A foreign namespace picks its own naming convention, so a hyphen in a
+			// segment is well-formed even though this server's own scopes never use one.
+			name:   "hyphenated foreign scope is accepted",
+			scopes: []string{"dp:api-key_read"},
 		},
 		{
-			// The allowlist is exact, not a prefix: a typo inside it still fails.
-			name:    "typo in a minted scope is still rejected",
-			scopes:  []string{"ap:devportal:mange"},
-			wantErr: "unknown scope",
+			// "*" is a trailing segment, not a free-floating character.
+			name:    "wildcard outside the final segment is rejected",
+			scopes:  []string{"ap:rest_*:read"},
+			wantErr: "malformed scope",
 		},
 	}
 	for _, tt := range tests {

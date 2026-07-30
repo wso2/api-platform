@@ -113,11 +113,11 @@ org_handle   = "org_handle"
 Optional overrides (defaults shown):
 
 ```toml
-[auth.authorization]
+[platform_api.auth.authorization]
 enabled = true
 mode    = "scope"   # or "role" for role-based auth (then set role_mappings)
 
-[auth.claim_mappings]
+[platform_api.auth.claim_mappings]
 user_id  = "sub"
 username = "username"
 email    = "email"

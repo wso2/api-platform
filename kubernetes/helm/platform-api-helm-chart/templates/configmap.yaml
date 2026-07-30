@@ -93,6 +93,9 @@ data:
     name = {{ $auth.idp.name | quote }}
     jwks_url = {{ required "config.auth.idp.jwksUrl is required when auth.mode is \"idp\"" $auth.idp.jwksUrl | quote }}
     issuer = {{ toJson $auth.idp.issuer }}
+    {{- if empty $auth.idp.audience }}
+    {{- fail "config.auth.idp.audience is required when auth.mode is \"idp\": without it, a token minted for any other client of the same IDP is accepted here on signature and issuer alone" }}
+    {{- end }}
     audience = {{ toJson $auth.idp.audience }}
     {{- end }}
 

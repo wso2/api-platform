@@ -25,9 +25,7 @@
 #         spec (plus any its compiled-in plugins declare) — an unknown ap: scope
 #         fails startup rather than silently denying requests later. The
 #         event-gateway scopes below are commented out for that reason: uncomment
-#         them on a build that includes that plugin. The two exceptions are
-#         ap:devportal:* and ap:git:read, which this server mints for the AI
-#         Workspace BFF to enforce; they are allowlisted, not spec-checked.
+#         them on a build that includes that plugin.
 #   dp:*  Developer Portal scopes. This server mints them into the token but never
 #         enforces them, so it validates only their shape, not their existence.
 #
@@ -76,9 +74,6 @@ roles:
       - ap:api_key:all:manage
       # - ap:websub_api:manage   # event-gateway build only
       # - ap:webbroker_api:manage   # event-gateway build only
-      # AI Workspace — minted by the Platform API, enforced by the BFF.
-      - ap:devportal:manage
-      - ap:git:read
       # Developer Portal
       - dp:org_manage
       - dp:org_content_manage

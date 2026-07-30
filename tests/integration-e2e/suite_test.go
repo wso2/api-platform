@@ -47,14 +47,6 @@ const (
 	// run (postgres + two gateways + devportal, with controller restarts) tolerates
 	// slower Envoy config propagation under load on constrained hosts.
 	pollTimeout = 120 * time.Second
-
-	// Admin user injected via AUTH_FILE_BASED_USERS on the @devportal stack. It
-	// names ap_admin from the mounted roles.yaml, which carries both the
-	// platform-api ap:* scopes and the dp:*_manage scopes the developer portal
-	// requires, so the same admin JWT authorizes both products. (A mounted
-	// config's users are ignored — the built-in default admin wins — but the
-	// AUTH_FILE_BASED_USERS env var does override it.)
-	fileBasedAdminUsers = `[{"username":"admin","password_hash":"$2y$10$U2yKMwGamGwDoMu0hRPT7u8nCuP8z/qxHFOKV6dhIxkJN9NJ0eVQ.","role":"ap_admin"}]`
 )
 
 // Host-side endpoints. Ports are overridable so the suite can run alongside
@@ -174,13 +166,6 @@ func bringUpStack() error {
 	// interpolates it into platform-api's environment (and refuses to start without it).
 	if err := prepareWebhookSecret(); err != nil {
 		return err
-	}
-
-	if suite.db == "postgres" {
-		// Give the admin JWT the role whose dp:* scopes the developer portal enforces.
-		if err := os.Setenv("AUTH_FILE_BASED_USERS", fileBasedAdminUsers); err != nil {
-			return err
-		}
 	}
 
 	// Phase 1: control plane + backend.
