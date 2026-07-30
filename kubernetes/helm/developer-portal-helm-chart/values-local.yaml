@@ -26,5 +26,8 @@ developer-portal-ui:
       level: debug
     platformApi:
       insecure: true
-    security:
-      roleValidation: false
+    auth:
+      authorization:
+        # Relax page role-tier gating for local dev. REST scope enforcement
+        # (authorization.enabled) stays on — it is a separate switch.
+        pageRoleValidation: false

@@ -18,8 +18,9 @@
 
 const passport = require('passport');
 const OAuth2Strategy = require('passport-oauth2');
-const { safeDecodeJwt } = require('../utils/jwtDecode');
+const { safeDecodeJwt, getNestedClaim } = require('../utils/jwtDecode');
 const { config } = require('../config/configLoader');
+const { portalRoles } = require('./authorization');
 const constants = require('../utils/constants');
 const logger = require('../config/logger');
 const orgContext = require('../utils/orgContext');
@@ -70,19 +71,6 @@ async function assertLoginOrgAllowed(organizationId) {
     }
 }
 
-// Resolves a dot-notation path (e.g. "realm_access.roles") from a decoded JWT.
-// Falls back gracefully so plain claim names (e.g. "roles") still work.
-function getNestedClaim(obj, path) {
-    if (!path || typeof obj !== 'object' || obj === null) return undefined;
-    const parts = String(path).split('.');
-    let cur = obj;
-    for (const part of parts) {
-        if (typeof cur !== 'object' || cur === null) return undefined;
-        cur = cur[part];
-    }
-    return cur;
-}
-
 function configurePassport(SERVER_ID) {
     if (config.auth.mode === 'idp') {
         const idpScope = config.auth.idp.scope;
@@ -123,7 +111,8 @@ function configurePassport(SERVER_ID) {
             const groups = Array.isArray(rawGroups)
                 ? rawGroups
                 : String(rawGroups).split(/[\s,]+/).filter(Boolean);
-            if (roles.includes(config.auth.idp.roles.superAdmin) || roles.includes(config.auth.idp.roles.admin)) {
+            const { admin: adminRole } = portalRoles();
+            if (roles.includes(adminRole)) {
                 isAdmin = true;
             }
             // The IDP is trusted to say who the user is, not which organization this
@@ -235,5 +224,5 @@ function configurePassport(SERVER_ID) {
     });
 }
 
-module.exports = { configurePassport, getNestedClaim };
+module.exports = { configurePassport };
 

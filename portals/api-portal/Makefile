@@ -262,6 +262,10 @@ dist: clean-dist ## Build standalone API Portal distribution zip
 	@mkdir -p $(DIST_DIR)/configs
 	@mkdir -p $(DIST_DIR)/resources/api-portal/db-scripts
 	@cp -R database/* $(DIST_DIR)/resources/api-portal/db-scripts
+# Both components ship a role-to-scope-mapping.yaml, so each goes under its own
+# resources/<component>/ dir (matching db-scripts) rather than colliding on one
+# resources/role-to-scope-mapping.yaml. The in-container mount paths are unchanged.
+	@cp resources/role-to-scope-mapping.yaml $(DIST_DIR)/resources/api-portal/role-to-scope-mapping.yaml
 	@mkdir -p $(DIST_DIR)/resources/platform-api/db-scripts
 	@mkdir -p $(DIST_DIR)/resources/samples
 	@cp -R samples/apis $(DIST_DIR)/resources/samples/
@@ -285,12 +289,12 @@ ifeq ($(PLATFORM_API_FROM_TAG),true)
 	@git -C ../.. show "$(PLATFORM_API_TAG):platform-api/config/config-template.toml" \
 		> $(DIST_DIR)/configs/.pa-config-template.toml
 	@git -C ../.. show "$(PLATFORM_API_TAG):platform-api/resources/role-to-scope-mapping.yaml" \
-		> $(DIST_DIR)/resources/role-to-scope-mapping.yaml
+		> $(DIST_DIR)/resources/platform-api/role-to-scope-mapping.yaml
 else
 	@cp ../../platform-api/internal/database/schema.*.sql $(DIST_DIR)/resources/platform-api/db-scripts/
 	@cp ../../platform-api/config/config.toml $(DIST_DIR)/configs/.pa-config.toml
 	@cp ../../platform-api/config/config-template.toml $(DIST_DIR)/configs/.pa-config-template.toml
-	@cp ../../platform-api/resources/role-to-scope-mapping.yaml $(DIST_DIR)/resources/role-to-scope-mapping.yaml
+	@cp ../../platform-api/resources/role-to-scope-mapping.yaml $(DIST_DIR)/resources/platform-api/role-to-scope-mapping.yaml
 endif
 # Require a [platform_api] root table — pre-unified configs would merge into a broken file.
 	@if ! grep -q '^\[platform_api' $(DIST_DIR)/configs/.pa-config.toml; then \
@@ -311,7 +315,8 @@ endif
 	@rm -f $(DIST_DIR)/configs/.pa-config.toml $(DIST_DIR)/configs/.pa-config-template.toml $(DIST_DIR)/configs/.aiw-config-template.toml
 # Point the platform-api mount at the merged config so both containers share one file.
 	@sed -e 's#\.\./\.\./platform-api/config/config\.toml:#./configs/config.toml:#' \
-	     -e 's#\.\./\.\./platform-api/resources/role-to-scope-mapping\.yaml:#./resources/role-to-scope-mapping.yaml:#' \
+	     -e 's#\.\./\.\./platform-api/resources/role-to-scope-mapping\.yaml:#./resources/platform-api/role-to-scope-mapping.yaml:#' \
+	     -e 's#\./resources/role-to-scope-mapping\.yaml:#./resources/api-portal/role-to-scope-mapping.yaml:#' \
 		docker-compose.yaml > $(DIST_DIR)/docker-compose.yaml
 	@cp distribution/README.md $(DIST_DIR)/README.md
 	@mkdir -p $(DIST_DIR)/scripts

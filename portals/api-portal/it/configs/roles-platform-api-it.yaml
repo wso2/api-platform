@@ -14,7 +14,7 @@
 # user's roles are its entire grant, so the three IT accounts (admin / publisher /
 # developer) get one role each, defined here rather than as per-user scope lists.
 #
-# These are Developer Portal ("dp:") scopes throughout: the Platform API mints
+# These are API Portal & MCP Hub ("dp:") scopes throughout: the Platform API mints
 # them into the tokens it issues but does not enforce them, so it checks only
 # their shape. The suite's own authorization assertions are what exercise them.
 # --------------------------------------------------------------------
@@ -29,16 +29,15 @@ roles:
       - dp:organization:manage
       - dp:organization:delete
       - dp:organization_content:read
-      - dp:organization_content:write
       - dp:organization_content:manage
-      - dp:organization_content:delete
       - dp:api:read
       - dp:api:create
       - dp:api:update
       - dp:api:manage
       - dp:api:delete
       - dp:api_content:read
-      - dp:api_content:write
+      - dp:api_content:create
+      - dp:api_content:update
       - dp:api_content:manage
       - dp:api_content:delete
       - dp:mcp_server:read
@@ -75,7 +74,7 @@ roles:
       - dp:application_key:manage
       - dp:application_key:revoke
       - dp:application_key_mapping:read
-      - dp:application_key_mapping:write
+      - dp:application_key_mapping:create
       - dp:application_key_mapping:manage
       - dp:subscription:create
       - dp:subscription:read
@@ -121,7 +120,8 @@ roles:
       - dp:api:manage
       - dp:api:delete
       - dp:api_content:read
-      - dp:api_content:write
+      - dp:api_content:create
+      - dp:api_content:update
       - dp:api_content:manage
       - dp:api_content:delete
       - dp:mcp_server:read
@@ -199,7 +199,7 @@ roles:
       - dp:application_key:manage
       - dp:application_key:revoke
       - dp:application_key_mapping:read
-      - dp:application_key_mapping:write
+      - dp:application_key_mapping:create
       - dp:application_key_mapping:manage
       - dp:subscription:create
       - dp:subscription:read

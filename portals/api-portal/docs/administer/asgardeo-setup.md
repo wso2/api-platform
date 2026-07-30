@@ -104,20 +104,20 @@ authorization_url = "https://api.asgardeo.io/t/<your-tenant>/oauth2/authorize"
 token_url = "https://api.asgardeo.io/t/<your-tenant>/oauth2/token"
 user_info_url = "https://api.asgardeo.io/t/<your-tenant>/oauth2/userinfo"
 client_id = "<devportal-app-client-id>"
-client_secret = "<devportal-app-client-secret>"   # env: APIP_AP_IDP_CLIENTSECRET
+client_secret = '{{ env "APIP_AP_AUTH_IDP_CLIENT_SECRET" }}'
 audience = "<devportal-app-client-id>"            # Asgardeo sets client_id as the aud claim
 callback_url = "https://<your-domain>/default/callback"
 logout_url = "https://api.asgardeo.io/t/<your-tenant>/oidc/logout"
 logout_redirect_uri = "https://<your-domain>/default"
 jwks_url = "https://api.asgardeo.io/t/<your-tenant>/oauth2/jwks"
-scope = "openid profile email"   # dp:* not needed — browser sessions are preauthorized
+scope = "openid profile email"   # dp:* not needed — see auth.authorization.mode in authentication.md
 
-[idp.claims]
-org_id = "org_name"    # Asgardeo B2B: org_name matches ORGANIZATION_IDENTIFIER (sub-org display name)
-role = "roles"
+[api_portal.auth.claim_mappings]
+organization = "org_name"  # Asgardeo B2B: org_name matches ORGANIZATION_IDENTIFIER (sub-org display name)
+roles        = "roles"
 ```
 
-> **Note:** Set `client_secret` via the `APIP_AP_IDP_CLIENTSECRET` environment variable rather than in the config file.
+> **Note:** Keep the client secret out of the config file — but note there is no automatic `APIP_AP_*` override layer, so the variable only works because the `client_secret` key above references it with a `{{ env }}` token. `APIP_AP_AUTH_IDP_CLIENT_SECRET` is the name the Helm chart wires; a hand-written `config.toml` may use any name it references. `'{{ file "/etc/api-portal/keys/idp-client-secret" }}'` avoids putting it in the environment at all.
 
 > **Callback URL:** A single `callback_url` is shared across all devportal organizations. After the callback, the portal uses the session's `returnTo` value to redirect the user to the correct org. Register only the URL you set in `callback_url` with Asgardeo.
 

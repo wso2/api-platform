@@ -28,6 +28,7 @@ const orgDao = require('../dao/organizationDao');
 const orgContext = require('../utils/orgContext');
 const { validationResult } = require('express-validator');
 const { verifyPlatformJwtClaims } = require('../utils/platformJwt');
+const { portalRoles, rolesFromClaims } = require('../middlewares/authorization');
 
 
 
@@ -303,11 +304,36 @@ const handleLocalLogin = async (req, res) => {
         return res.redirect(`${baseUrl}/login?error=Invalid+username+or+password`);
     }
 
-    const adminRole = config.auth.idp?.roles?.admin || 'admin';
-    const subscriberRole = config.auth.idp?.roles?.subscriber || 'Internal/subscriber';
-    // Users with any dp: manage scope are treated as admins in the API Portal.
-    const isAdmin = claims.scopes.some(s => s.startsWith('dp:') && s.endsWith(':manage'));
-    const roles = isAdmin ? [adminRole] : [subscriberRole];
+    // Role tiers come from the mode-independent authorization section — this is local
+    // auth mode, where the old auth.idp.roles placement meant configuring the portal's
+    // role names inside a block the docs describe as idp-only.
+    const { admin: adminRole, subscriber: subscriberRole } = portalRoles();
+    // Prefer the token's own roles claim: since authentication and authorization were
+    // split, the Platform API expands a file-mode user's roles into both the scope claim
+    // and a roles claim, so the portal can read the roles it was actually granted
+    // instead of inferring a tier from the scopes they happened to expand into. The
+    // scope heuristic below remains as a fallback for a Platform API predating that.
+    const claimedRoles = rolesFromClaims(claims);
+    const normalizedRoles = Array.isArray(claimedRoles)
+        ? claimedRoles.filter(r => typeof r === 'string' && r.trim())
+        : String(claimedRoles || '').split(/[\s,]+/).filter(Boolean);
+    // Only honour the claim when it names a tier this portal was configured to
+    // recognise. The Platform API's shipped roles are named for the platform
+    // ("ap_admin"), not for the portal's tiers, so a claim carrying them would
+    // otherwise resolve to no tier at all and silently demote an admin — the operator
+    // opts in by pointing portal_roles at their role names.
+    const configuredTiers = [adminRole, subscriberRole].filter(Boolean);
+    const recognisedRoles = normalizedRoles.filter(r => configuredTiers.includes(r));
+    let roles;
+    let isAdmin;
+    if (recognisedRoles.length) {
+        roles = recognisedRoles;
+        isAdmin = roles.includes(adminRole);
+    } else {
+        // Users with any dp: manage scope are treated as admins in the API Portal.
+        isAdmin = claims.scopes.some(s => s.startsWith('dp:') && s.endsWith(':manage'));
+        roles = isAdmin ? [adminRole] : [subscriberRole];
+    }
 
     const returnTo = req.session.returnTo;
     let view = viewName;

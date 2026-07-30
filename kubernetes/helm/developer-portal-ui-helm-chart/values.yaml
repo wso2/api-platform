@@ -89,10 +89,6 @@ config:
 
   # --- Security ---
   security:
-    # Enforce per-operation role checks on incoming tokens. Secure by default;
-    # override to false locally (values-local.yaml) only if a deployment
-    # genuinely cannot supply role claims yet.
-    roleValidation: true
     # A shared API key some server-to-server callers present in a header.
     serviceApiKey:
       enabled: true
@@ -144,11 +140,36 @@ config:
       orgCallback: false         # redirect to the org's own landing page after login
       silentSso: true
       tokenRefreshTimeoutMs: 10000
-      # Map IDP role names to the portal's internal roles (idp mode).
-      roles:
+
+    # --- Authorization: what a verified token may do ---
+    # Outside auth.local/auth.idp on purpose — a token carries the same roles claim
+    # whichever way the portal verified it, so these apply in every auth mode.
+    authorization:
+      # Enforce each REST operation's declared dp:* scopes. Secure by default;
+      # false lets any authenticated caller through (development only).
+      enabled: true
+      # "role" (the default) expands the token's roles claim through
+      # roleToScopeMapping. "scope" reads the token's own scope claim instead — use
+      # it when the issuer mints dp:* scopes directly (an Asgardeo tenant registered
+      # via production/scripts/register_asgardeo_scopes.sh, or the Platform API in
+      # local auth mode).
+      mode: role
+      # Path to the role-to-scope grant table inside the container. REQUIRED in role
+      # mode — the chart refuses to render without it, since the portal would refuse
+      # to start. Defaults to the table baked into the image (WORKDIR /app). To change
+      # what a role grants, mount your own copy from a ConfigMap and point this at it.
+      roleToScopeMapping: ./resources/role-to-scope-mapping.yaml
+      # Gate portal pages on the caller's role tier (portalRoles below). Distinct
+      # from `enabled`, which governs the REST API — one switch for both would mean
+      # turning page gating off also silently turned REST enforcement off.
+      # This replaced config.security.roleValidation.
+      pageRoleValidation: false
+      # Which role name in the token's roles claim grants each page tier. Was
+      # auth.idp.roles, despite being read in local auth mode too. There were three
+      # tiers; the superAdmin one gated pages this portal does not serve and is gone.
+      portalRoles:
         admin: admin
         subscriber: Internal/subscriber
-        superAdmin: superAdmin
 
   organization:
     handle: default                         # URL slug: /{handle}/views/{viewName}; required

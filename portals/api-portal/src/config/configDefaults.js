@@ -81,20 +81,65 @@ const DEFAULTS = {
             value: '',
         },
     },
-    // Authentication: a mode gate plus the two backends it selects between —
-    // local (default) and idp.
+    // Authentication — HOW a token is verified: a mode gate plus the two backends it
+    // selects between, local (default) and idp. What a verified token may DO is
+    // authorization, which lives in its own mode-independent section below.
     auth: {
         // "local" — username/password validated against the Platform API control
         // plane (auth.local below). "idp" — external OIDC IDP (auth.idp below).
         mode: 'local',   // local | idp
-        // Enforce per-operation role validation.
-        roleValidation: false,   // was: advanced.disabledRoleValidation, inverted
         // JWT claim name mappings — which token claim carries each field.
         // Dot-notation supported for nested claims (e.g. "realm_access.roles").
         claimMappings: {
             organization: 'org_name',   // claim carrying the org ID
             roles: 'roles',             // claim carrying the user's roles
             groups: 'groups',
+        },
+        // Authorization — what a VERIFIED token may do. Deliberately outside both
+        // auth.local and auth.idp: a token carries the same roles claim whether the
+        // portal verified it against a JWKS endpoint or against the Platform API's
+        // public key, so these settings apply in every auth mode. (They used to live
+        // as auth.role_validation and auth.idp.roles, which made role configuration
+        // reachable only in idp mode even though both branches of
+        // ensureAuthenticated read it.)
+        authorization: {
+            // Master switch for REST-API (/api/v0.9) authorization. When false, an
+            // authenticated caller satisfies every operation's declared scope list —
+            // an explicit development opt-out, never the default.
+            enabled: true,
+            // How a REST request's effective scopes are derived:
+            //   "role"  — (default) by expanding the token's roles claim through
+            //             roleToScopeMapping. Works for every issuer: an external IDP
+            //             emits the roles its estate is organized around and has no
+            //             reason to mint dp:* scopes, and the Platform API mints its
+            //             own ap_* role names, which the shipped table aliases.
+            //   "scope" — from the token's own scope claim. Use this when the issuer
+            //             mints dp:* scopes directly (an Asgardeo tenant set up with
+            //             production/scripts/register_asgardeo_scopes.sh, or the
+            //             Platform API in local auth mode).
+            mode: 'role',   // scope | role
+            // Path to the role-to-scope grant table (YAML). Required when
+            // mode = "role", so it has a default rather than being empty: the shipped
+            // table is baked into the image at ./resources (Dockerfile's COPY . .,
+            // WORKDIR /app), and the same relative path resolves for `npm start` from
+            // the project root. docker-compose.yaml points this at the mounted,
+            // operator-editable copy under /etc/api-portal instead.
+            roleToScopeMapping: './resources/role-to-scope-mapping.yaml',
+            // Per-page role-tier gating (ensurePermission in ensureAuthenticated.js):
+            // requires the caller's roles claim to name the tier a page demands.
+            // Distinct from `enabled` above, which governs REST scopes — collapsing
+            // the two would mean an operator turning page gating off also silently
+            // turned REST scope enforcement off.
+            pageRoleValidation: false,   // was: auth.role_validation
+            // Which role name, as it appears in the token's roles claim, grants each
+            // of the portal's two access tiers. Was auth.idp.roles, despite being read in
+            // local mode too (authController.js's login). A third tier, superAdmin, used
+            // to gate the earlier devportal's /portal pages; those are not served here, so
+            // it guarded nothing and was removed.
+            portalRoles: {
+                admin: 'admin',
+                subscriber: 'Internal/subscriber',
+            },
         },
         // Local auth backend (the Platform API control plane) — used when
         // mode = "local". Validates username/password and verifies its JWTs.
@@ -126,11 +171,6 @@ const DEFAULTS = {
             tokenRefreshTimeoutMs: 10000,
             silentSso: true,     // was: advanced.disableSilentSSO, inverted
             orgCallback: false,  // was: advanced.disableOrgCallback, inverted
-            roles: {
-                admin: 'admin',
-                subscriber: 'Internal/subscriber',
-                superAdmin: 'superAdmin',
-            },
             // Maps ?fidp=<key> query param to IDP identifier for federated login hints
             // (authController.js#login -> passportConfig.js's authorizationParams). Only
             // takes effect in OIDC mode. Kept out of config-template.toml since it's not

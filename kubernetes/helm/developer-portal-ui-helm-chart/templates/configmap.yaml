@@ -75,12 +75,32 @@ data:
 
     [api_portal.auth]
     mode = {{ ternary "idp" "local" (ne $auth.idp.clientId "") | quote }}
-    role_validation = {{ $cfg.security.roleValidation }}
 
     [api_portal.auth.claim_mappings]
     organization = {{ $auth.claimMappings.organization | quote }}
     roles = {{ $auth.claimMappings.roles | quote }}
     groups = {{ $auth.claimMappings.groups | quote }}
+
+    {{- $authz := $auth.authorization }}
+    {{- if and (ne $authz.mode "scope") (ne $authz.mode "role") }}
+    {{- fail (printf "config.auth.authorization.mode must be \"scope\" or \"role\", got %q" $authz.mode) }}
+    {{- end }}
+    {{- if and (eq $authz.mode "role") (not $authz.roleToScopeMapping) }}
+    {{- fail "config.auth.authorization.mode is \"role\" but config.auth.authorization.roleToScopeMapping is empty — the portal would refuse to start" }}
+    {{- end }}
+    # Authorization — what a verified token may do. Rendered outside the idp block
+    # below because it applies in every auth mode: a token carries the same roles
+    # claim whether the portal verified it against a JWKS endpoint or against the
+    # Platform API's public key.
+    [api_portal.auth.authorization]
+    enabled = {{ $authz.enabled }}
+    mode = {{ $authz.mode | quote }}
+    role_to_scope_mapping = {{ $authz.roleToScopeMapping | quote }}
+    page_role_validation = {{ $authz.pageRoleValidation }}
+
+    [api_portal.auth.authorization.portal_roles]
+    admin = {{ $authz.portalRoles.admin | quote }}
+    subscriber = {{ $authz.portalRoles.subscriber | quote }}
 
     [api_portal.auth.local]
     platform_api_url = {{ $platformApiUrl | quote }}
@@ -108,11 +128,6 @@ data:
     org_callback = {{ $auth.idp.orgCallback }}
     silent_sso = {{ $auth.idp.silentSso }}
     token_refresh_timeout_ms = {{ $auth.idp.tokenRefreshTimeoutMs | int }}
-
-    [api_portal.auth.idp.roles]
-    admin = {{ $auth.idp.roles.admin | quote }}
-    subscriber = {{ $auth.idp.roles.subscriber | quote }}
-    super_admin = {{ $auth.idp.roles.superAdmin | quote }}
     {{- end }}
 
     {{- $org := $cfg.organization }}

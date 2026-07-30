@@ -40,16 +40,23 @@
 # Partial substitution works too: 'foo-{{ env "X" }}' resolves to "foo-bar" if
 # X=bar. See src/config/configLoader.js for the full implementation.
 #
-# This file's own fallbacks (the third arg to {{ env "NAME" "default" }} below)
-# are intentionally wired for the Docker Compose topology (docker-compose.yaml),
-# NOT for src/config/configDefaults.js's generic, dependency-free defaults —
-# e.g. server.https.enabled defaults to true here (a real cert is bind-mounted at
-# /etc/api-portal/tls) vs. false in configDefaults.js (no cert available for a
-# bare `npm start`). configDefaults.js's DEFAULTS only take effect for keys this
-# file doesn't list at all (idp, organization, uploads, etc.). A config file is
-# always required, so DEFAULTS never drive the app on their own — they only fill
-# the gaps for keys no --config file sets. See configDefaults.js's own comment
-# for why its values stay generic.
+# {{ env }} is used SPARINGLY, matching platform-api/config/config.toml: a key gets
+# a token only where something actually drives it — the compose DB overrides
+# (docker-compose.postgres.yaml / .sqlserver.yaml), `npm run start:local`
+# (package.json), docker-entrypoint.sh, or a secret. Everything else is a plain
+# literal, so this file states its own effective configuration instead of sending
+# the reader hunting for a variable nobody sets. Adding a token "just in case" is
+# what turned a readable file into 25 indirections; don't.
+#
+# Where a token IS present, its fallback (the third arg) is wired for the Docker
+# Compose topology (docker-compose.yaml), NOT for src/config/configDefaults.js's
+# generic, dependency-free defaults — e.g. server.https.enabled falls back to true
+# here (a real cert is bind-mounted at /etc/api-portal/tls) vs. false in
+# configDefaults.js (no cert available for a bare `npm start`). configDefaults.js's
+# DEFAULTS only take effect for keys this file doesn't list at all (idp, uploads,
+# etc.). A config file is always required, so DEFAULTS never drive the app on their
+# own — they only fill the gaps for keys no --config file sets. See
+# configDefaults.js's own comment for why its values stay generic.
 #
 # Running locally without Docker? Use `npm run start:local` instead of
 # `npm start` (package.json) — it overrides server.https.enabled and auth.local.* to
@@ -63,7 +70,7 @@ port = '{{ env "APIP_AP_SERVER_PORT" "9543" }}'
 # embedded in a generated agent prompt (so they don't depend on the request's
 # Host header). Set this to the portal's externally-reachable origin behind a
 # proxy/LB. Empty falls back to the request origin.
-base_url = '{{ env "APIP_AP_SERVER_BASE_URL" "https://localhost:9543" }}'
+base_url = "https://localhost:9543"
 
 # Single listener on server.port; enabled toggles whether it terminates TLS. Set
 # enabled=false only when a trusted upstream (proxy/LB/ingress) terminates TLS —
@@ -71,13 +78,13 @@ base_url = '{{ env "APIP_AP_SERVER_BASE_URL" "https://localhost:9543" }}'
 # at a real pair when enabled=true (no self-signed fallback).
 [api_portal.server.https]
 enabled   = '{{ env "APIP_AP_SERVER_HTTPS_ENABLED" "true" }}'
-cert_file = '{{ env "APIP_AP_SERVER_HTTPS_CERT_FILE" "/etc/api-portal/tls/cert.pem" }}'
-key_file  = '{{ env "APIP_AP_SERVER_HTTPS_KEY_FILE" "/etc/api-portal/tls/key.pem" }}'
+cert_file = "/etc/api-portal/tls/cert.pem"
+key_file  = "/etc/api-portal/tls/key.pem"
 
 [api_portal.logging]
 level        = '{{ env "APIP_AP_LOGGING_LEVEL" "info" }}'   # debug | info | warn | error
-format       = '{{ env "APIP_AP_LOGGING_FORMAT" "text" }}'  # text | json
-console_only = '{{ env "APIP_AP_LOGGING_CONSOLE_ONLY" "true" }}'
+format       = "text"   # text | json
+console_only = true
 
 [api_portal.database]
 driver = '{{ env "APIP_AP_DATABASE_DRIVER" "sqlite" }}'   # sqlite | postgres
@@ -96,11 +103,11 @@ name     = '{{ env "APIP_AP_DATABASE_NAME" "api_portal" }}'
 user     = '{{ env "APIP_AP_DATABASE_USER" "postgres" }}'
 password = '{{ env "APIP_AP_DATABASE_PASSWORD" "" }}'
 # Connection pool — PostgreSQL / MSSQL only (pool_request_timeout_ms is MSSQL-only).
-max_open_conns             = '{{ env "APIP_AP_DATABASE_MAX_OPEN_CONNS" "50" }}'
-min_open_conns             = '{{ env "APIP_AP_DATABASE_MIN_OPEN_CONNS" "2" }}'
-pool_idle_timeout_ms       = '{{ env "APIP_AP_DATABASE_POOL_IDLE_TIMEOUT_MS" "10000" }}'
-pool_connection_timeout_ms = '{{ env "APIP_AP_DATABASE_POOL_CONNECTION_TIMEOUT_MS" "30000" }}'
-pool_request_timeout_ms    = '{{ env "APIP_AP_DATABASE_POOL_REQUEST_TIMEOUT_MS" "30000" }}'
+max_open_conns             = 50
+min_open_conns             = 2
+pool_idle_timeout_ms       = 10000
+pool_connection_timeout_ms = 30000
+pool_request_timeout_ms    = 30000
 
 [api_portal.security]
 encryption_key = '{{ file "/etc/api-portal/keys/encryption.key" }}'
@@ -117,6 +124,38 @@ platform_api_url = '{{ env "APIP_AP_AUTH_LOCAL_PLATFORM_API_URL" "https://platfo
 # points it at the host-side copy in resources/keys.
 public_key_path  = '{{ env "APIP_AP_AUTH_LOCAL_PUBLIC_KEY_PATH" "/etc/api-portal/keys/jwt_public.pem" }}'
 tls_skip_verify  = '{{ env "APIP_AP_AUTH_LOCAL_TLS_SKIP_VERIFY" "true" }}'
+
+# Authorization — what a verified token may do. Applies in every auth mode, which is
+# why it is not nested under auth.local or auth.idp. Plain literals, matching how
+# [platform_api.auth.authorization] is written: these are deployment policy an operator
+# edits in place, not per-environment values or secrets, so they get no {{ env }} token.
+[api_portal.auth.authorization]
+# false lets any authenticated caller satisfy every operation's declared scope list.
+enabled = true
+# "role" expands the token's roles claim through the grant table below. "scope" reads
+# the token's own scope claim instead — use it when the issuer mints dp:* scopes
+# directly (an Asgardeo tenant registered via
+# production/scripts/register_asgardeo_scopes.sh, or the Platform API in local mode).
+mode    = "role"
+# The role-to-scope grant table: required in role mode, and validated against the
+# portal's OpenAPI spec at startup. Edit it to change what each role grants — it is
+# config, not part of the image.
+#
+# Relative, unlike platform-api's absolute /etc/platform-api path, so one literal works
+# everywhere: the container resolves it against WORKDIR /app, where docker-compose.yaml
+# mounts the host copy over the one baked into the image, and `npm run start:local`
+# resolves it against the project root.
+role_to_scope_mapping = "./resources/role-to-scope-mapping.yaml"
+# Per-page role-tier gating (portal_roles below). Distinct from `enabled`, which
+# governs REST scopes.
+page_role_validation = true
+
+# Which role name in the token's roles claim grants each page-access tier. These name
+# the grant table's roles, so page gating and REST authorization are driven by the same
+# roles the Platform API and your IDP already emit.
+[api_portal.auth.authorization.portal_roles]
+admin      = "ap_admin"
+subscriber = "ap_subscriber"
 
 # The single organization this instance serves — the {handle} segment of
 # /{handle}/views/{viewName}. Required; the portal refuses to start without it.

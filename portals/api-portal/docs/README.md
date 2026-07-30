@@ -6,7 +6,7 @@ The API Portal is a self-hosted, multi-tenant web application where API publishe
 
 | Section | Audience | What you'll find |
 |---|---|---|
-| [Introduction](introduction/what-is-developer-portal.md) | Everyone | Overview, quick start, and core concepts |
+| [Introduction](introduction/what-is-api-portal.md) | Everyone | Overview, quick start, and core concepts |
 | [Administer](administer/manage-organizations.md) | Admins / Operators | The organization, views, subscription plans, gateway and key manager integration, theming, design mode, IDP authentication |
 | [Publish APIs](publish-apis/publishing-apis.md) | API Publishers / Admins | Registering APIs, uploading definitions and docs, managing API workflows |
 | [Discover APIs](discover-apis/search-apis.md) | Developers | Searching the API catalog, reading documentation, AI agent discovery |
@@ -29,7 +29,7 @@ The API Portal is a self-hosted, multi-tenant web application where API publishe
 2. [Get a Bearer Token via curl](administer/api-token-curl.md)
 
 **As a developer consuming APIs**
-1. [What is the API Portal?](introduction/what-is-developer-portal.md)
+1. [What is the API Portal?](introduction/what-is-api-portal.md)
 2. [Core Concepts](introduction/concepts.md)
 3. [Search APIs](discover-apis/search-apis.md)
 4. [Subscribe to an API](consume-an-api/subscriptions.md)

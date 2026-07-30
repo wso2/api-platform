@@ -177,7 +177,6 @@ module.exports = {
         API_LANDING_PAGE_PATH: '/api/',
         API_DOCS_PATH: '/docs/',
         API_PORTAL_CONFIGURE: ['/*/settings'],
-        API_PORTAL_ROOT: ['/portal', '/portal/*/edit', '/devportal'],
         API_PORTAL_API_LISTING: '/*/apis',
         API_PORTAL_TECHNICAL_PAGES: ['*/application'],
         VIEWS_PATH: "/views/",
@@ -204,7 +203,6 @@ module.exports = {
     ROLES: {
         ADMIN: 'admin',
         SUBSCRIBER: 'subscriber',
-        SUPER_ADMIN: 'superAdmin',
         ROLE_CLAIM: 'roles',
         GROUP_CLAIM: 'groups',
         ORGANIZATION_CLAIM: 'orgClaimName'

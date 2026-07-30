@@ -38,4 +38,24 @@ function safeDecodeJwt(token) {
     }
 }
 
-module.exports = { safeDecodeJwt };
+/**
+ * Resolves a dot-notation claim path (e.g. Keycloak's "realm_access.roles") from a
+ * decoded JWT, falling back gracefully so a plain claim name ("roles") still works.
+ *
+ * Lives here rather than in passportConfig.js — where it started, next to its first
+ * caller — because the authorization layer needs it to read the configured roles
+ * claim, and requiring passportConfig from there would make the middleware graph
+ * circular (passportConfig -> authorization -> passportConfig).
+ */
+function getNestedClaim(obj, path) {
+    if (!path || typeof obj !== 'object' || obj === null) return undefined;
+    const parts = String(path).split('.');
+    let cur = obj;
+    for (const part of parts) {
+        if (typeof cur !== 'object' || cur === null) return undefined;
+        cur = cur[part];
+    }
+    return cur;
+}
+
+module.exports = { safeDecodeJwt, getNestedClaim };

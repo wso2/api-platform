@@ -33,7 +33,7 @@
  *
  */
 
-const { safeDecodeJwt } = require('../utils/jwtDecode');
+const { safeDecodeJwt, getNestedClaim } = require('../utils/jwtDecode');
 const { jwtVerify, createRemoteJWKSet } = require('jose');
 
 const { config } = require('../config/configLoader');
@@ -44,7 +44,7 @@ const { accessTokenPresent, refreshAccessToken, verifyWithCertificate, resolveOr
 const orgDao = require('../dao/organizationDao');
 const orgContext = require('../utils/orgContext');
 const userIdpReferenceDao = require('../dao/userIdpReferenceDao');
-const { getNestedClaim } = require('./passportConfig');
+const { effectiveScopes, isAuthorizationEnabled, isRoleMode } = require('./authorization');
 const { NotFoundError } = require('../utils/errors/customErrors');
 const userOrganizationMappingDao = require('../dao/userOrganizationMappingDao');
 
@@ -302,17 +302,27 @@ async function authResolver(req, res, next) {
             req.auth = {
                 mode: 'platform-jwt',
                 preauthorized: false,
-                scopes: claims?.scopes ?? [],
+                // Platform API tokens carry both a scope claim and (since the
+                // authentication/authorization split) a roles claim, so either
+                // authorization mode can be applied to the same token.
+                scopes: effectiveScopes(claims?.scopes ?? [], claims),
                 userId: userUuid,
                 rawSub: req.user[constants.USER_ID],
             };
             return next();
         }
 
-        // 2. Session fast-path: browser login via IDP — role check is done by ensureAuthenticated
-        // on page routes, so scope enforcement here is redundant and would require listing all
-        // dp:* scopes in the OIDC scope config. Set preauthorized to bypass the per-operation
-        // scope check for session users (same as API key and mTLS paths).
+        // 2. Session fast-path: browser login via IDP.
+        //
+        // In "scope" mode the per-operation check is bypassed (preauthorized, same as the
+        // API key and mTLS paths): the IDP mints whatever scopes its client is registered
+        // for, which would mean listing all dp:* scopes in the OIDC scope config, so the
+        // authorization that actually applies to these sessions is ensureAuthenticated's
+        // page role check.
+        //
+        // In "role" mode the grant table makes the session's own roles claim sufficient to
+        // derive dp:* scopes, so the operation-level check is enforced here instead of
+        // bypassed — that is the gap role mode exists to close.
         if (req.isAuthenticated && req.isAuthenticated() && req.user?.grantedScopes !== undefined && config.auth.mode === 'idp') {
             // The session's org claim is populated at login from
             // config.auth.claimMappings.organization (see passportConfig) and stored
@@ -334,8 +344,8 @@ async function authResolver(req, res, next) {
             req[constants.USER_ID] = userUuid;
             req.auth = {
                 mode: 'oauth2',
-                preauthorized: true,
-                scopes: String(req.user.grantedScopes || '').split(' ').filter(Boolean),
+                preauthorized: !isRoleMode(),
+                scopes: effectiveScopes(req.user.grantedScopes, req.user),
                 userId: userUuid,
                 rawSub,
             };
@@ -377,7 +387,10 @@ async function authResolver(req, res, next) {
             req[constants.USER_ID] = userUuid;
             req.auth = {
                 mode: 'oauth2',
-                scopes: String(scopes || '').split(' ').filter(Boolean),
+                // `decoded` is the same payload verifyBearerToken just verified, so the
+                // roles claim role mode expands is a verified one — never a claim read
+                // out of an unverified token.
+                scopes: effectiveScopes(scopes, decoded),
                 userId: userUuid,
                 rawSub,
             };
@@ -447,6 +460,10 @@ async function OAuth2Security(req /* , requiredScopes, schema */) {
         err.status = 401;
         throw err;
     }
+    // Authentication is still required above — only the per-operation scope check is
+    // waived, and only by an explicit opt-out (auth.authorization.enabled = false,
+    // which logs a warning at startup).
+    if (!isAuthorizationEnabled()) return true;
     if (!requiredScopes || requiredScopes.length === 0) return true;
     const tokenScopes = req.auth.scopes || [];
     const ok = requiredScopes.some(s => tokenScopes.includes(s));
