@@ -130,6 +130,15 @@ async function generateOauthKey(formId, appId, keyMappingId, keyManager, clientN
     const scopeContainer = document.getElementById('scopeContainer-' + devAppId + '-' + keyType);
     const scopeInput = document.getElementById('scope-' + devAppId + '-' + keyType);
 
+    // Capture the scope chips the user currently sees in the token modal BEFORE the
+    // re-render below rebuilds them, so scopes added/removed in the modal (e.g. via the
+    // Enter-to-add input) are what actually get requested on regenerate.
+    const openTokenModal = document.getElementById('keysTokenModal-' + keyType);
+    const uiScopeChips = openTokenModal
+        ? Array.from(openTokenModal.querySelectorAll('.input-scopes .span-tag'))
+            .map(el => el.textContent.replace('×', '').trim()).filter(Boolean)
+        : [];
+
     if (!(subscribedScopes)) {
         // In the regenerate token request, the scopes are fetched from the span tags
         const scopeElements = document.querySelectorAll(`#scopeContainer-${devAppId}-${keyType} .span-tag`);
@@ -249,9 +258,6 @@ async function generateOauthKey(formId, appId, keyMappingId, keyManager, clientN
         tokenBtn.disabled = true;
     }
 
-    const form = document.getElementById(formId);
-    const formData = new FormData(form);
-
     if (!keyMappingId) {
         const tokenbtn = document.getElementById('tokenKeyBtn-' + keyType);
         keyMappingId = tokenbtn?.getAttribute("data-keymappingid") || tokenbtn?.getAttribute("data-keyMappingId");
@@ -260,6 +266,11 @@ async function generateOauthKey(formId, appId, keyMappingId, keyManager, clientN
             const clientSecretId = tokenbtn?.getAttribute("data-consumerSecretId");
             if (clientSecretId) clientSecret = document.getElementById(clientSecretId)?.value;
         }
+    }
+
+    // Prefer whatever scope chips the user actually has in the modal.
+    if (uiScopeChips.length) {
+        subscribedScopes = uiScopeChips;
     }
 
     try {
@@ -433,9 +444,13 @@ async function copyConsumerKey(inputId) {
 }
 
 async function copyRealCurl(button) {
-    const keyManagerId = button.id.replace("curl-copy-", "");
     const tokenEndpoint = button.getAttribute('data-endpoint');
-    const consumerKeyEl = document.getElementById("consumer-key-" + keyManagerId);
+    // The consumer-key input: the KM card points at it explicitly via data-consumer-el;
+    // the older instructions view encodes it in the button id (curl-copy-<consumerKeyId>).
+    const ref = button.getAttribute('data-consumer-el');
+    const consumerKeyEl = ref
+        ? document.getElementById(ref)
+        : document.getElementById("consumer-key-" + button.id.replace("curl-copy-", ""));
     const consumerKey = consumerKeyEl ? consumerKeyEl.value : '';
 
     if (!consumerKey) return;
@@ -527,3 +542,30 @@ function loadKeysTokenModal(keyType) {
     }
     modal.style.display = 'flex';
 }
+
+// ── Scope chip input ──────────────────────────────────────────────────────
+// Pressing Enter in a "Request Permissions (Scopes)" field adds the typed scope
+// as a removable chip. Delegated on document so it works for every key type/modal
+// regardless of when the modal is shown — the per-generate wiring in
+// generateOauthKey only attaches after a token has been generated and depends on
+// the app-id resolving, so it isn't reliable inside the (re)generate modal.
+document.addEventListener('keydown', function (event) {
+    if (event.key !== 'Enter') return;
+    const input = event.target;
+    if (!input || !input.classList || !input.classList.contains('text-input')) return;
+    const container = input.closest('.input-scopes');
+    if (!container) return;
+    event.preventDefault();
+    const scope = input.value.trim();
+    if (!scope) return;
+    const existing = Array.from(container.querySelectorAll('.span-tag'))
+        .map(el => el.textContent.replace('×', '').trim());
+    if (!existing.includes(scope)) {
+        const span = document.createElement('span');
+        span.className = 'span-tag';
+        span.innerHTML = `${scope}<span class="remove">&times;</span>`;
+        span.querySelector('.remove').addEventListener('click', function () { span.remove(); });
+        container.insertBefore(span, input);
+    }
+    input.value = '';
+});

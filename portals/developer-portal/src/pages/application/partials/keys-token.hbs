@@ -28,9 +28,10 @@
                                 </div>
                                 <div class="token-card">
                                     <pre id="token_{{../id}}_{{keyType}}" class="token-text"></pre>
-                                    <button id="copyButton_{{../id}}_{{keyType}}" class="copy-button" aria-label="Copy token"
-                                        type="button" onclick="copyToken('{{../id}}_{{keyType}}')">
-                                        <i class="bi bi-copy"></i>
+                                    <button id="copyButton_{{../id}}_{{keyType}}" class="copy-button copy-btn" aria-label="Copy token"
+                                        type="button" onclick="copyToken(this, '{{../id}}_{{keyType}}')">
+                                        <span class="copy-btn-icon"><i class="bi bi-copy"></i></span>
+                                        <span class="copy-btn-check"><i class="bi bi-check"></i> Copied</span>
                                     </button>
                                 </div>
                                 <div class="info-title pt-2 pb-2" id="resScopeTitle-{{keyType}}">Response Permissions (Scopes)
@@ -40,14 +41,10 @@
                                 </div>
                                 <div class="d-flex justify-content-end mt-4 mb-3"
                                     id="applicationKeyUpdateButtonContainer-{{keyType}}">
-                                    <button class="common-btn-outlined pr-3 me-3" type="button"
-                                        onClick="closeModal('keysTokenModal-{{keyType}}')">
-                                        Cancel
-                                    </button>
                                     <button
                                         class="common-btn-primary btn-sm me-1"
                                         id="regenerateButton_{{../id}}_{{keyType}}"
-                                        onclick="openGenerateTokenModal('applicationKeyGenerateForm-{{../id}}-{{keyType}}', '{{@root.applicationMetadata.id}}', '{{keys.keyMappingId}}', '{{../id}}', '{{@root.applicationMetadata.displayName}}', '{{json @root.subscriptionScopes}}', '{{keyType}}')">
+                                        onclick="openGenerateTokenModal('inlineTokenForm-{{../id}}-{{keyType}}', '{{@root.applicationMetadata.id}}', '{{keys.keyMappingId}}', '{{../id}}', '{{@root.applicationMetadata.displayName}}', '{{json @root.subscriptionScopes}}', '{{keyType}}')">
                                         <span class="button-normal-state">
                                             <i class="bi bi-arrow-clockwise"></i> Regenerate
                                         </span>
