@@ -28,6 +28,7 @@ import (
 	"github.com/MicahParks/jwkset"
 	"github.com/golang-jwt/jwt/v5"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 	"github.com/wso2/api-platform/common/constants"
 	"github.com/wso2/api-platform/common/models"
 )
@@ -279,7 +280,7 @@ func authenticateWithConfig(t *testing.T, idp *models.IDPConfig) *AuthResult {
 		"exp": time.Now().Add(1 * time.Hour).Unix(),
 	})
 	tokenString, err := tok.SignedString(secret)
-	assert.NoError(t, err)
+	require.NoError(t, err)
 
 	a := &JWTAuthenticator{
 		config: &models.AuthConfig{JWTConfig: idp},
@@ -290,7 +291,7 @@ func authenticateWithConfig(t *testing.T, idp *models.IDPConfig) *AuthResult {
 	req.Header.Set(constants.AuthorizationHeader, constants.BearerPrefix+tokenString)
 
 	result, err := a.Authenticate(req)
-	assert.NoError(t, err)
+	require.NoError(t, err)
 	return result
 }
 

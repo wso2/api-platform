@@ -56,6 +56,10 @@ func NewJWTAuthenticator(config *models.AuthConfig, logger *slog.Logger) (*JWTAu
 // newJWTAuthenticatorWithJWKS creates a new JWT authenticator with optional JWKS initialization
 // This is useful for testing where JWKS is not needed
 func newJWTAuthenticatorWithJWKS(config *models.AuthConfig, logger *slog.Logger, initJWKS bool) (*JWTAuthenticator, error) {
+	if config.JWTConfig != nil && config.JWTConfig.DisableAuthorization {
+		logger.Warn("authorization is explicitly disabled for IDP auth (disable_authorization=true); " +
+			"every authenticated token is granted access to all routes without a per-route role check")
+	}
 	var jwks keyfunc.Keyfunc
 	if config.JWTConfig != nil && initJWKS {
 		if config.JWTConfig.IssuerURL == "" {
@@ -174,10 +178,6 @@ func (j *JWTAuthenticator) Authenticate(r *http.Request) (*AuthResult, error) {
 	// Authorization is skipped ONLY when it has been explicitly disabled via DisableAuthorization (authentication-only)
 	var permissions []string
 	skipAuthz := j.config.JWTConfig.DisableAuthorization
-	if skipAuthz {
-		j.logger.Warn("authorization is explicitly disabled for IDP auth (disable_authorization=true); " +
-			"every authenticated token is granted access to all routes without a per-route role check")
-	}
 	if j.config.JWTConfig.ScopeClaim == "" {
 		j.logger.Debug("no scope/roles claim configured; caller resolves to zero roles")
 		permissions = []string{}
