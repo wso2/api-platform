@@ -10,7 +10,7 @@
 # --------------------------------------------------------------------
 #
 # Role-to-scope mapping for the developer-portal backend IT suite, named by
-# auth.authorization.roles_to_scope_mapping in config-platform-api-it.toml. A file-mode
+# auth.authorization.role_to_scope_mapping in config-platform-api-it.toml. A file-mode
 # user's roles are its entire grant, so the three IT accounts (admin / publisher /
 # developer) get one role each, defined here rather than as per-user scope lists.
 #

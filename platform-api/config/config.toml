@@ -25,10 +25,10 @@ mode = "file"
 [platform_api.auth.authorization]
 enabled = true
 mode    = "scope"
-# Mounted role-to-scope mapping (resources/roles_to_scope_mapping.yaml in this pack). Edit it to
+# Mounted role-to-scope mapping (resources/role-to-scope-mapping.yaml in this pack). Edit it to
 # change what each role grants — it is config, not part of the image. The admin
 # user below names a role from this file instead of listing platform scopes.
-roles_to_scope_mapping = "/etc/platform-api/roles_to_scope_mapping.yaml"
+role_to_scope_mapping = "/etc/platform-api/role-to-scope-mapping.yaml"
 
 [platform_api.auth.jwt]
 issuer            = "platform-api"
@@ -44,6 +44,6 @@ region       = "us"
 username      = '{{ env "APIP_CP_ADMIN_USERNAME" }}'
 password_hash = '{{ env "APIP_CP_ADMIN_PASSWORD_HASH" }}'
 # The roles are the whole grant — name more than one to union what they grant, or
-# edit an entry in the mounted roles_to_scope_mapping.yaml to change what this
+# edit an entry in the mounted role-to-scope-mapping.yaml to change what this
 # user may do.
-roles         = ['{{ env "APIP_CP_ADMIN_ROLE" "ap_admin" }}']
+roles         = ["ap_admin"]

@@ -96,7 +96,7 @@ func (r *ScopeRegistry) Operations() []Operation {
 }
 
 // AllScopes returns the set of every scope name declared across all operations.
-// Used at startup to validate that roles_to_scope_mapping.yaml only references known scopes.
+// Used at startup to validate that role-to-scope-mapping.yaml only references known scopes.
 func (r *ScopeRegistry) AllScopes() map[string]struct{} {
 	known := make(map[string]struct{})
 	for _, scopes := range r.scopes {

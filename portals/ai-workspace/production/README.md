@@ -115,7 +115,7 @@ Optional overrides (defaults shown):
 ```toml
 [platform_api.auth.authorization]
 enabled = true
-mode    = "scope"   # or "role" for role-based auth (then set roles_to_scope_mapping)
+mode    = "scope"   # or "role" for role-based auth (then set role_to_scope_mapping)
 
 [platform_api.auth.claim_mappings]
 user_id  = "sub"

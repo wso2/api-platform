@@ -27,7 +27,7 @@ mode = '{{ env "APIP_CP_AUTH_MODE" "file" }}'
 [platform_api.auth.authorization]
 enabled       = true
 mode          = "scope"
-roles_to_scope_mapping = "/etc/platform-api/roles_to_scope_mapping.yaml"
+role_to_scope_mapping = "/etc/platform-api/role-to-scope-mapping.yaml"
 
 [platform_api.auth.jwt]
 issuer = '{{ env "APIP_CP_AUTH_JWT_ISSUER" "platform-api" }}'
@@ -48,6 +48,6 @@ uuid         = '{{ env "APIP_CP_AUTH_FILE_ORGANIZATION_UUID" "99089a17-72e0-4dd8
 [[platform_api.auth.file.users]]
 username      = "admin"
 password_hash = "$2y$10$U2yKMwGamGwDoMu0hRPT7u8nCuP8z/qxHFOKV6dhIxkJN9NJ0eVQ."
-# ap_admin from the shipped roles_to_scope_mapping.yaml — every Platform API scope this build
+# ap_admin from the shipped role-to-scope-mapping.yaml — every Platform API scope this build
 # declares. The roles list is the user's whole grant; there is no per-user scope list.
 roles         = ["ap_admin"]

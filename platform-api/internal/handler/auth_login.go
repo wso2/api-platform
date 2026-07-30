@@ -46,7 +46,7 @@ type loginResponse struct {
 // AuthLoginHandler issues JWT tokens for locally-configured users (file-based auth mode).
 type AuthLoginHandler struct {
 	cfg *config.Server
-	// roleScopeMap is the role-to-scope mapping from auth.authorization.roles_to_scope_mapping,
+	// roleScopeMap is the role-to-scope mapping from auth.authorization.role_to_scope_mapping,
 	// used to expand each user's roles into the scopes its token carries. In file
 	// mode it is always populated: config validation requires the mapping file, and
 	// startup checks every role every user names against it.

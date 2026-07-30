@@ -42,7 +42,7 @@ mode = '{{ env "APIP_CP_AUTH_MODE" "file" }}'
 # Each user below names a role from this file — a role is a file-mode user's
 # entire grant, so the scope lists live there, not here.
 [platform_api.auth.authorization]
-roles_to_scope_mapping = "/etc/platform-api/roles_to_scope_mapping.yaml"
+role_to_scope_mapping = "/etc/platform-api/role-to-scope-mapping.yaml"
 
 [platform_api.auth.jwt]
 issuer      = '{{ env "APIP_CP_AUTH_JWT_ISSUER" "platform-api-it" }}'

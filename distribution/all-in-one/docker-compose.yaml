@@ -137,7 +137,7 @@ services:
       - "9243:9243"
     volumes:
       - ../../platform-api/config/config.toml:/etc/platform-api/config.toml:ro
-      - ../../platform-api/resources/roles_to_scope_mapping.yaml:/etc/platform-api/roles_to_scope_mapping.yaml:ro
+      - ../../platform-api/resources/role-to-scope-mapping.yaml:/etc/platform-api/role-to-scope-mapping.yaml:ro
       - platform-api-data:/api-platform/data
       - platform-api-certs:/app/data/certs
       - platform-api-jwt-keys:/etc/platform-api/keys:ro

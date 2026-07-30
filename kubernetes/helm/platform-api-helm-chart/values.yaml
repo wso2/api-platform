@@ -123,10 +123,10 @@ config:
       # mode (auth.file.admin.roles is a user's whole grant). The chart renders
       # `roles` below into its config ConfigMap and mounts it here; point this
       # elsewhere only if you supply your own file via extraVolumes/extraVolumeMounts.
-      rolesToScopeMapping: /etc/platform-api/roles_to_scope_mapping.yaml
+      roleToScopeMapping: /etc/platform-api/role-to-scope-mapping.yaml
       # Roles the mapping file defines, each a name and the scopes it grants.
       # Only ap_admin is shipped here — the file-mode admin below names it.
-      # platform-api/resources/roles_to_scope_mapping.yaml is the full sample set (ap_admin,
+      # platform-api/resources/role-to-scope-mapping.yaml is the full sample set (ap_admin,
       # ap_operator, ap_publisher, ap_subscriber, ap_viewer); copy the entries you
       # need from it. An ap: scope the Platform API's OpenAPI spec does not declare
       # fails startup; dp: scopes (Developer Portal) are checked for shape only.
@@ -184,10 +184,10 @@ config:
       # hash. There is no admin/admin default: startup fails closed if unset. Only
       # the granted roles are configured here (add more users via configToml).
       admin:
-        # REQUIRED in file mode — one or more roles from the rolesToScopeMapping
+        # REQUIRED in file mode — one or more roles from the roleToScopeMapping
         # file, expanded into the token's scopes at login (the union of what each
         # grants), and this user's entire grant (there is no per-user scope list).
-        # Requires that file to be mounted and rolesToScopeMapping above to point
+        # Requires that file to be mounted and roleToScopeMapping above to point
         # at it; a role absent from the file fails startup.
         roles:
           - ap_admin

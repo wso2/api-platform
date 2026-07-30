@@ -28,7 +28,7 @@ import (
 	"github.com/wso2/api-platform/platform-api/internal/middleware"
 )
 
-// writeRolesFile writes a roles_to_scope_mapping.yaml mapping one role to the given scopes and
+// writeRolesFile writes a role-to-scope-mapping.yaml mapping one role to the given scopes and
 // returns its path.
 func writeRolesFile(t *testing.T, role string, scopes ...string) string {
 	t.Helper()
@@ -37,9 +37,9 @@ func writeRolesFile(t *testing.T, role string, scopes ...string) string {
 	for _, s := range scopes {
 		fmt.Fprintf(&b, "      - %s\n", s)
 	}
-	path := filepath.Join(t.TempDir(), "roles_to_scope_mapping.yaml")
+	path := filepath.Join(t.TempDir(), "role-to-scope-mapping.yaml")
 	if err := os.WriteFile(path, []byte(b.String()), 0o600); err != nil {
-		t.Fatalf("writing roles_to_scope_mapping.yaml: %v", err)
+		t.Fatalf("writing role-to-scope-mapping.yaml: %v", err)
 	}
 	return path
 }
@@ -50,7 +50,7 @@ func writeRolesFile(t *testing.T, role string, scopes ...string) string {
 func roleModeConfig(path string) *config.Server {
 	cfg := &config.Server{}
 	cfg.Auth.Authorization.Mode = config.AuthzModeRole
-	cfg.Auth.Authorization.RolesToScopeMapping = path
+	cfg.Auth.Authorization.RoleToScopeMapping = path
 	return cfg
 }
 
@@ -76,7 +76,7 @@ func TestLoadRoleScopeMap_AcceptsPluginScopeAfterMerge(t *testing.T) {
 }
 
 // The pre-merge registry knows nothing of plugin scopes, so validating against
-// it rejects the same roles_to_scope_mapping.yaml. This is the failure the ordering above avoids;
+// it rejects the same role-to-scope-mapping.yaml. This is the failure the ordering above avoids;
 // if someone moves loadRoleScopeMap back before initPlugins, the test above
 // starts failing with exactly this error.
 func TestLoadRoleScopeMap_RejectsPluginScopeBeforeMerge(t *testing.T) {
@@ -94,7 +94,7 @@ func TestLoadRoleScopeMap_RejectsPluginScopeBeforeMerge(t *testing.T) {
 
 // The mapping is loaded whenever it is configured, including in scope
 // authorization mode — file-mode users name a role from this same file to
-// inherit its scopes, so the login endpoint needs it there too. A bad roles_to_scope_mapping.yaml
+// inherit its scopes, so the login endpoint needs it there too. A bad role-to-scope-mapping.yaml
 // therefore still fails startup in scope mode.
 func TestLoadRoleScopeMap_LoadedInScopeMode(t *testing.T) {
 	reg := emptyRegistry(t)
@@ -123,7 +123,7 @@ func TestLoadRoleScopeMap_SkippedWhenUnconfigured(t *testing.T) {
 		t.Fatalf("loadRoleScopeMap: unexpected error: %v", err)
 	}
 	if m != nil {
-		t.Fatalf("expected no mapping when roles_to_scope_mapping is unset, got %v", m)
+		t.Fatalf("expected no mapping when role_to_scope_mapping is unset, got %v", m)
 	}
 }
 
@@ -135,7 +135,7 @@ func TestValidateFileUserRoles(t *testing.T) {
 
 	cfg := &config.Server{}
 	cfg.Auth.Mode = config.AuthModeFile
-	cfg.Auth.Authorization.RolesToScopeMapping = "/etc/platform-api/roles_to_scope_mapping.yaml"
+	cfg.Auth.Authorization.RoleToScopeMapping = "/etc/platform-api/role-to-scope-mapping.yaml"
 	cfg.Auth.File.Users = config.FileBasedUsers{{Username: "admin", Roles: []string{"ap_admin"}}}
 	if err := validateFileUserRoles(cfg, roleScopeMap); err != nil {
 		t.Fatalf("unexpected error for a defined role: %v", err)
@@ -168,19 +168,19 @@ func TestShippedSampleRolesValidateAgainstShippedSpec(t *testing.T) {
 		t.Fatalf("loading the shipped OpenAPI spec: %v", err)
 	}
 
-	m, err := middleware.LoadRoleScopeMap("../../resources/roles_to_scope_mapping.yaml")
+	m, err := middleware.LoadRoleScopeMap("../../resources/role-to-scope-mapping.yaml")
 	if err != nil {
-		t.Fatalf("loading the shipped roles_to_scope_mapping.yaml: %v", err)
+		t.Fatalf("loading the shipped role-to-scope-mapping.yaml: %v", err)
 	}
 	if err := middleware.ValidateRoleScopeMap(m, reg); err != nil {
-		t.Fatalf("shipped roles_to_scope_mapping.yaml is not valid against the shipped spec: %v", err)
+		t.Fatalf("shipped role-to-scope-mapping.yaml is not valid against the shipped spec: %v", err)
 	}
 
 	// The documented role set. ap_admin in particular is what the shipped
 	// config.toml grants its admin user, so a rename here breaks every pack.
 	for _, role := range []string{"ap_admin", "ap_operator", "ap_publisher", "ap_subscriber", "ap_viewer"} {
 		if _, ok := m[role]; !ok {
-			t.Fatalf("shipped roles_to_scope_mapping.yaml does not declare %q", role)
+			t.Fatalf("shipped role-to-scope-mapping.yaml does not declare %q", role)
 		}
 	}
 

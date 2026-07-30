@@ -1,4 +1,4 @@
-# Role-to-scope mapping used by the Platform API (auth.authorization.roles_to_scope_mapping).
+# Role-to-scope mapping used by the Platform API (auth.authorization.role_to_scope_mapping).
 #
 # Each entry maps a role name to the scopes that role grants. Two consumers read
 # this file:

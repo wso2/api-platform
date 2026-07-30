@@ -65,9 +65,9 @@ services:
       - APIP_CP_AUTH_FILE_ORGANIZATION_REGION=us
     volumes:
       - ./platform-api-config.toml:/etc/platform-api/config.toml:ro
-      # Role-to-scope mapping named by auth.authorization.roles_to_scope_mapping — the
+      # Role-to-scope mapping named by auth.authorization.role_to_scope_mapping — the
       # shipped file, so the suite runs against the same grants operators get.
-      - ../../platform-api/resources/roles_to_scope_mapping.yaml:/etc/platform-api/roles_to_scope_mapping.yaml:ro
+      - ../../platform-api/resources/role-to-scope-mapping.yaml:/etc/platform-api/role-to-scope-mapping.yaml:ro
       - platform-api-certs:/app/data/certs
       - platform-api-jwt-keys:/etc/platform-api/keys:ro
     ports:

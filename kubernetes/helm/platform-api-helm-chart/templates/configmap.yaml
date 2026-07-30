@@ -69,7 +69,7 @@ data:
     [platform_api.auth.authorization]
     enabled = {{ $auth.authorization.enabled }}
     mode = {{ $auth.authorization.mode | quote }}
-    roles_to_scope_mapping = {{ $auth.authorization.rolesToScopeMapping | quote }}
+    role_to_scope_mapping = {{ $auth.authorization.roleToScopeMapping | quote }}
 
     [platform_api.auth.claim_mappings]
     organization = {{ $auth.claimMappings.organization | quote }}
@@ -169,10 +169,10 @@ data:
     {{ . | nindent 4 | trim }}
     {{- end }}
   {{- with $auth.authorization.roles }}
-  # Role→scope mapping named by auth.authorization.roles_to_scope_mapping. Mounted as a
+  # Role→scope mapping named by auth.authorization.role_to_scope_mapping. Mounted as a
   # file rather than folded into the TOML above because the Platform API reads it
   # separately and re-reads it only on restart.
-  roles_to_scope_mapping.yaml: |
+  role-to-scope-mapping.yaml: |
     roles:
       {{- toYaml . | nindent 6 }}
   {{- end }}

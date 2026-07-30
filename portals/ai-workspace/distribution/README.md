@@ -18,7 +18,7 @@ wso2apip-ai-workspace-<version>/
 │   └── config-template.toml                     # Full configuration reference for both,
 │                                                 #   plus optional [developer_portal] at the bottom
 └── resources/
-    ├── roles_to_scope_mapping.yaml                               # Platform API role-to-scope mapping (edit to change what a role grants)
+    ├── role-to-scope-mapping.yaml                               # Platform API role-to-scope mapping (edit to change what a role grants)
     └── platform-api/
         └── db-scripts/                          # Platform API schema scripts (schema.*.sql)
 ```
@@ -127,8 +127,8 @@ Environment overrides go in `api-platform.env` (git-ignored; loaded into both co
 | `[platform_api.auth].mode` | `file` (quickstart default), `internal_token`, or `idp` — selects exactly one auth mode |
 | `[platform_api.auth.jwt].public_key_file` / `private_key_file` | RS256 (asymmetric) PEM keys; `public_key_file` verifies every token, `private_key_file` signs login JWTs in `file` mode. Read via `{{ file }}` — HMAC and unsigned tokens are rejected |
 | `[platform_api.auth.idp]` | JWKS-based IDP auth — active when `mode = "idp"`; configure for Asgardeo, Keycloak, Auth0, etc. |
-| `[platform_api.auth.file.users]` | Local user credentials, active when `mode = "file"` (change the password hash before sharing). Each user names one or more `roles` from `resources/roles_to_scope_mapping.yaml` — those roles are the whole grant, unioned |
-| `[platform_api.auth.authorization].roles_to_scope_mapping` | Path to the mounted `resources/roles_to_scope_mapping.yaml` — edit that file to change what a role grants |
+| `[platform_api.auth.file.users]` | Local user credentials, active when `mode = "file"` (change the password hash before sharing). Each user names one or more `roles` from `resources/role-to-scope-mapping.yaml` — those roles are the whole grant, unioned |
+| `[platform_api.auth.authorization].role_to_scope_mapping` | Path to the mounted `resources/role-to-scope-mapping.yaml` — edit that file to change what a role grants |
 | `[platform_api.server.https]` | Listener on `:9243`; `cert_file`/`key_file` point at `cert.pem`/`key.pem` |
 
 Each key's default value is written inline in `configs/config-template.toml` — a

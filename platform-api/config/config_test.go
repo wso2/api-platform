@@ -365,7 +365,7 @@ func TestValidateAuthConfig(t *testing.T) {
 			auth: Auth{
 				Mode:          AuthModeFile,
 				JWT:           JWT{PublicKeyFile: validJWTPublicKeyFile, PrivateKeyFile: validJWTPrivateKeyFile, TokenTTL: time.Hour},
-				Authorization: Authorization{Enabled: true, Mode: AuthzModeScope, RolesToScopeMapping: "/etc/platform-api/roles_to_scope_mapping.yaml"},
+				Authorization: Authorization{Enabled: true, Mode: AuthzModeScope, RoleToScopeMapping: "/etc/platform-api/role-to-scope-mapping.yaml"},
 				File: FileBased{
 					Organization: FileBasedOrg{ID: "default", DisplayName: "Default"},
 					Users:        FileBasedUsers{{Username: "admin", PasswordHash: "$2a$12$hash", Roles: []string{"ap_admin"}}},
@@ -379,7 +379,7 @@ func TestValidateAuthConfig(t *testing.T) {
 			auth: Auth{
 				Mode:          AuthModeFile,
 				JWT:           JWT{PublicKeyFile: validJWTPublicKeyFile, PrivateKeyFile: validJWTPrivateKeyFile, TokenTTL: time.Hour},
-				Authorization: Authorization{Enabled: true, Mode: AuthzModeScope, RolesToScopeMapping: "/etc/platform-api/roles_to_scope_mapping.yaml"},
+				Authorization: Authorization{Enabled: true, Mode: AuthzModeScope, RoleToScopeMapping: "/etc/platform-api/role-to-scope-mapping.yaml"},
 				File: FileBased{
 					Organization: FileBasedOrg{ID: "default", DisplayName: "Default"},
 					Users:        FileBasedUsers{{Username: "admin", PasswordHash: "$2a$12$hash"}},
@@ -400,7 +400,7 @@ func TestValidateAuthConfig(t *testing.T) {
 					Users:        FileBasedUsers{{Username: "admin", PasswordHash: "$2a$12$hash", Roles: []string{"ap_admin"}}},
 				},
 			},
-			wantErr: "auth.authorization.roles_to_scope_mapping",
+			wantErr: "auth.authorization.role_to_scope_mapping",
 		},
 		{
 			// A file-mode user's role is expanded into the scope claim at login, so
@@ -412,7 +412,7 @@ func TestValidateAuthConfig(t *testing.T) {
 				Authorization: Authorization{
 					Enabled:      true,
 					Mode:         AuthzModeScope,
-					RolesToScopeMapping: "/etc/platform-api/roles_to_scope_mapping.yaml",
+					RoleToScopeMapping: "/etc/platform-api/role-to-scope-mapping.yaml",
 				},
 				File: FileBased{
 					Organization: FileBasedOrg{ID: "default", DisplayName: "Default"},
@@ -479,19 +479,19 @@ func TestValidateAuthorizationConfig(t *testing.T) {
 		},
 		{
 			name:   "role mode fully configured",
-			authz:  Authorization{Enabled: true, Mode: AuthzModeRole, RolesToScopeMapping: "/etc/platform-api/roles_to_scope_mapping.yaml"},
+			authz:  Authorization{Enabled: true, Mode: AuthzModeRole, RoleToScopeMapping: "/etc/platform-api/role-to-scope-mapping.yaml"},
 			claims: ClaimMappings{Roles: "realm_access.roles"},
 		},
 		{
 			name:    "role mode without roles claim mapping",
-			authz:   Authorization{Enabled: true, Mode: AuthzModeRole, RolesToScopeMapping: "/etc/platform-api/roles_to_scope_mapping.yaml"},
+			authz:   Authorization{Enabled: true, Mode: AuthzModeRole, RoleToScopeMapping: "/etc/platform-api/role-to-scope-mapping.yaml"},
 			wantErr: "auth.claim_mappings.roles",
 		},
 		{
-			name:    "role mode without roles_to_scope_mapping file",
+			name:    "role mode without role_to_scope_mapping file",
 			authz:   Authorization{Enabled: true, Mode: AuthzModeRole},
 			claims:  ClaimMappings{Roles: "roles"},
-			wantErr: "auth.authorization.roles_to_scope_mapping",
+			wantErr: "auth.authorization.role_to_scope_mapping",
 		},
 		{
 			name:    "unknown mode rejected",
@@ -531,7 +531,7 @@ func TestValidateAuthConfig_RoleAuthorizationInInternalTokenMode(t *testing.T) {
 	auth := Auth{
 		Mode:          AuthModeInternalToken,
 		JWT:           JWT{PublicKeyFile: validJWTPublicKeyFile},
-		Authorization: Authorization{Enabled: true, Mode: AuthzModeRole, RolesToScopeMapping: "/etc/platform-api/roles_to_scope_mapping.yaml"},
+		Authorization: Authorization{Enabled: true, Mode: AuthzModeRole, RoleToScopeMapping: "/etc/platform-api/role-to-scope-mapping.yaml"},
 		ClaimMappings: ClaimMappings{Roles: "roles"},
 	}
 	assert.NoError(t, validateAuthConfig(&auth))
@@ -675,7 +675,7 @@ encryption_key = "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcd
 mode = "file"
 
 [platform_api.auth.authorization]
-roles_to_scope_mapping = "/etc/platform-api/roles_to_scope_mapping.yaml"
+role_to_scope_mapping = "/etc/platform-api/role-to-scope-mapping.yaml"
 
 [platform_api.auth.jwt]
 public_key_file = "` + validJWTPublicKeyFile + `"
@@ -724,19 +724,19 @@ roles         = ["ap_admin"]
 
 // auth.file.users[].roles is a list, so a user whose persona spans two shipped
 // roles names both rather than needing a role defined for the combination. The
-// shipped config.toml writes that list with an {{ env }} token inside it, so this
-// also pins that interpolation reaches into array elements — a regression there
-// would silently hand the raw "{{ env ... }}" string to the role lookup and grant
-// the user nothing.
+// list is also written with an {{ env }} token in one element, pinning that
+// interpolation reaches into array elements and not just scalars — a regression
+// there would silently hand the raw "{{ env ... }}" string to the role lookup
+// and grant the user nothing.
 func TestLoadConfig_FileUserRolesList(t *testing.T) {
-	t.Setenv("APIP_CP_ADMIN_ROLE", "ap_operator")
+	t.Setenv("APIP_CP_USER_ROLE", "ap_operator")
 	cfg, err := loadWithKeys(t, `private_key_file = "`+validJWTPrivateKeyFile+`"
 
 [platform_api.auth]
 mode = "file"
 
 [platform_api.auth.authorization]
-roles_to_scope_mapping = "/etc/platform-api/roles_to_scope_mapping.yaml"
+role_to_scope_mapping = "/etc/platform-api/role-to-scope-mapping.yaml"
 
 [platform_api.auth.file.organization]
 id = "default"
@@ -745,7 +745,7 @@ display_name = "Default"
 [[platform_api.auth.file.users]]
 username      = "admin"
 password_hash = "$2a$12$hash"
-roles         = ['{{ env "APIP_CP_ADMIN_ROLE" "ap_admin" }}', "ap_viewer"]
+roles         = ['{{ env "APIP_CP_USER_ROLE" "ap_admin" }}', "ap_viewer"]
 `)
 	require.NoError(t, err)
 	require.Len(t, cfg.Auth.File.Users, 1)

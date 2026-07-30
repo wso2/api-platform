@@ -161,8 +161,8 @@ spec:
               subPath: config-platform-api.toml
             {{- if $pa.config.auth.authorization.roles }}
             - name: config
-              mountPath: {{ $pa.config.auth.authorization.rolesToScopeMapping }}
-              subPath: roles_to_scope_mapping.yaml
+              mountPath: {{ $pa.config.auth.authorization.roleToScopeMapping }}
+              subPath: role-to-scope-mapping.yaml
             {{- end }}
             - name: jwt-keys
               mountPath: {{ $jwtKeyDir }}
@@ -190,8 +190,8 @@ spec:
               - key: config-platform-api.toml
                 path: config-platform-api.toml
               {{- if $pa.config.auth.authorization.roles }}
-              - key: roles_to_scope_mapping.yaml
-                path: roles_to_scope_mapping.yaml
+              - key: role-to-scope-mapping.yaml
+                path: role-to-scope-mapping.yaml
               {{- end }}
         # RS256 JWT keys mounted as PEM files from the external Secret. The
         # public key verifies tokens (every mode); the private key signs
