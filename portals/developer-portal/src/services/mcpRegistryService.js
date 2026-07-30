@@ -41,13 +41,19 @@ const SCHEMA_FILE_NAME = constants.FILE_NAME.SCHEMA_DEFINITION_YAML_FILE_NAME;
 
 const API_METADATA_TABLE = 'dp_api_metadata';
 
-// metadata_search is JSONB on postgres — the ->> text-extraction operator used below
-// is postgres-specific. This mirrors the previous Sequelize implementation, which used
-// raw `sequelize.literal("metadata_search->>'proxyId'")` for the same reason: the MCP
-// registry's proxyId/publishedAt lookups have only ever been postgres-only (same for the
-// ILIKE case-insensitive search and the `FOR UPDATE` row lock further below).
+// metadata_search is JSONB on postgres and TEXT on sqlite/mssql — the ->> text-extraction
+// operator used below is postgres syntax, but sqlite (3.38+, via better-sqlite3) also
+// implements '->>' as a JSON accessor on TEXT columns, so this expression happens to work
+// on both. This mirrors the previous Sequelize implementation, which used raw
+// `sequelize.literal("metadata_search->>'proxyId'")` for the same reason.
 const PROXY_ID_EXPR = "metadata_search->>'proxyId'";
 const PUBLISHED_AT_EXPR = "(metadata_search->>'publishedAt')";
+
+// ILIKE is postgres-only syntax — sqlite has no ILIKE operator at all (a bare LIKE is
+// already case-insensitive for ASCII there), and mssql's LIKE case-sensitivity depends on
+// the column/database collation rather than a keyword. Branch once per dialect rather than
+// hardcoding ILIKE, so `search` doesn't hard-fail with a SQL syntax error on non-postgres.
+const SEARCH_LIKE_OP = db.getDialect() === 'postgres' ? 'ILIKE' : 'LIKE';
 
 // Map registry spec status values to DB STATUS values
 const REGISTRY_TO_DB_STATUS = {
@@ -283,7 +289,7 @@ const listServers = async (req, res) => {
             conditions.push("status != 'DELETED'");
         }
         if (search) {
-            conditions.push(`(name ILIKE ? OR ${PROXY_ID_EXPR} ILIKE ?)`);
+            conditions.push(`(name ${SEARCH_LIKE_OP} ? OR ${PROXY_ID_EXPR} ${SEARCH_LIKE_OP} ?)`);
             params.push(`%${search}%`, `%${search}%`);
         }
 
@@ -604,19 +610,26 @@ const updateAllVersionsStatus = async (req, res) => {
         const dbStatus = REGISTRY_TO_DB_STATUS[status];
         let updated;
 
+        // FOR UPDATE is postgres-only syntax (sqlite/mssql reject it outright, same as the
+        // ILIKE case above) — row-locking is only needed to guard against a concurrent writer
+        // on postgres; sqlite already serializes all writes through a single connection/lock
+        // (see driver.js), so omitting the clause there doesn't reintroduce the race. Mirrors
+        // the identical dialect branch in eventDao.js's claim queries.
+        const lockClause = db.getDialect() === 'postgres' ? ' FOR UPDATE' : '';
+
         await db.withTransaction(async (t) => {
             // FOR UPDATE row-locks every candidate row for the duration of this transaction,
             // so a concurrent updateAllVersionsStatus/publishServer call on the same server
-            // can't race this bulk status change (postgres-only, per this file's own note above).
+            // can't race this bulk status change.
             let existing = await t.query(
                 `SELECT * FROM ${API_METADATA_TABLE}
-                 WHERE org_uuid = ? AND type = ? AND ref_id IS NULL AND ${PROXY_ID_EXPR} = ? FOR UPDATE`,
+                 WHERE org_uuid = ? AND type = ? AND ref_id IS NULL AND ${PROXY_ID_EXPR} = ?${lockClause}`,
                 [orgId, constants.API_TYPE.MCP, serverIdentifier]
             );
             if (existing.length === 0) {
                 existing = await t.query(
                     `SELECT * FROM ${API_METADATA_TABLE}
-                     WHERE org_uuid = ? AND type = ? AND ref_id IS NULL AND name = ? FOR UPDATE`,
+                     WHERE org_uuid = ? AND type = ? AND ref_id IS NULL AND name = ?${lockClause}`,
                     [orgId, constants.API_TYPE.MCP, serverIdentifier]
                 );
             }

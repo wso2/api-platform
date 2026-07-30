@@ -131,6 +131,13 @@ module.exports = {
     SCOPES: {
         ADMIN: 'admin',
         DEVELOPER: 'dev',
+        // Same any-of scope groups the admin `/api/v0.9/mcp-servers*` OpenAPI security
+        // requirements declare per operation (docs/devportal-openapi-spec-v0.9.yaml) — reused
+        // here so the MCP registry protocol routes (mcpRegistryRoute.js) grant access to
+        // exactly the same principals as the equivalent admin CRUD operation.
+        MCP_CREATE: ['dp:mcp_create', 'dp:mcp_manage'],
+        MCP_UPDATE: ['dp:mcp_update', 'dp:mcp_manage'],
+        MCP_DELETE: ['dp:mcp_delete', 'dp:mcp_manage'],
     },
 
     FILE_EXTENSIONS: {

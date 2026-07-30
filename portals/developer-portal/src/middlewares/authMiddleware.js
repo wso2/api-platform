@@ -413,4 +413,5 @@ module.exports = {
     OAuth2Security,
     apiKeyAuth,
     resolveUserUuid,
+    verifyBearerToken,
 };

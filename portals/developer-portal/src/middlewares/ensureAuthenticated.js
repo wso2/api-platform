@@ -20,14 +20,13 @@ const constants = require('../utils/constants');
 const { config } = require('../config/configLoader');
 const orgDao = require('../dao/organizationDao');
 const { validationResult } = require('express-validator');
-const { jwtVerify, createRemoteJWKSet } = require('jose');
 const util = require('../utils/util');
 const { CustomError } = require('../utils/errors/customErrors');
 const { safeDecodeJwt } = require('../utils/jwtDecode');
 const logger = require('../config/logger');
 const { decodePlatformJwtClaims } = require('../utils/platformJwt');
-const { accessTokenPresent, refreshAccessToken, verifyWithCertificate } = require('../utils/tokenUtil');
-const { resolveUserUuid } = require('./authMiddleware');
+const { accessTokenPresent } = require('../utils/tokenUtil');
+const { resolveUserUuid, verifyBearerToken } = require('./authMiddleware');
 
 // System page-access gates (constants.js) merged with any deployer-supplied additions
 // (config.pageAccessRules, via config.toml) — the config side only ever adds patterns,
@@ -40,6 +39,18 @@ const AUTHORIZED_PAGES = [
     ...constants.ROUTE.SYSTEM_AUTHORIZED_PAGES,
     ...(config.pageAccessRules?.authorized || []),
 ];
+
+// Accepts either a single scope string or an array of candidate scopes and reports
+// whether the token satisfies any one of them — the same any-of semantics the
+// OpenAPI-validator-driven /api/v0.9 security handlers apply to a spec operation's
+// declared scope list (e.g. dp:mcp_update OR dp:mcp_manage), so a route gated by
+// enforceSecurity([...]) grants access to exactly the same principals a /api/v0.9
+// CRUD operation on the same resource would.
+function matchesAnyScope(tokenScopes, requiredScope) {
+    if (!requiredScope) return true;
+    const required = Array.isArray(requiredScope) ? requiredScope : [requiredScope];
+    return required.some((s) => tokenScopes.includes(s));
+}
 
 function enforceSecurity(scope) {
     return async function (req, res, next) {
@@ -57,7 +68,7 @@ function enforceSecurity(scope) {
                 const platformToken = req.user[constants.ACCESS_TOKEN];
                 if (!platformToken) return util.handleError(res, new CustomError(401, constants.ERROR_CODE[401], constants.ERROR_MESSAGE.UNAUTHENTICATED));
                 const tokenScopes = decodePlatformJwtClaims(platformToken)?.scopes ?? [];
-                if (!scope || tokenScopes.includes(scope)) return next();
+                if (matchesAnyScope(tokenScopes, scope)) return next();
                 return util.handleError(res, new CustomError(403, constants.ERROR_CODE[403], constants.ERROR_MESSAGE.FORBIDDEN));
             }
             const token = accessTokenPresent(req);
@@ -306,19 +317,20 @@ const ensureAuthenticated = async (req, res, next) => {
     };
 };
 
+// Reuses the exact bearer-token verification the /api/v0.9 REST API's authResolver
+// applies (authMiddleware.js's verifyBearerToken): local-auth mode verifies against the
+// Platform API's own RS256 public key (config.auth.local.publicKeyPath), idp mode verifies
+// via IDP.certificate/jwksUrl — so a bearer JWT gated by enforceSecurity is authenticated
+// identically to one calling /api/v0.9, regardless of which auth.mode is active.
+//
+// Does NOT re-run util.validateRequestParameters() — enforceSecurity (this function's only
+// caller) already ran that sanitizer over req.params/req.query before delegating here.
+// Running param('*').escape() a second time double-escapes any already-escaped character:
+// a route param containing '/' (e.g. a reverse-DNS MCP server identifier segment) becomes
+// '&#x2F;' on the first pass and '&amp;#x2F;' on a second, which callers' unescapeParam-style
+// reversal (a single-pass '&#x2F;' -> '/' replace) can no longer undo.
 function validateAuthentication(scope) {
     return async function (req, res, next) {
-        const rules = util.validateRequestParameters();
-        for (let validation of rules) {
-            await validation.run(req);
-        }
-        const errors = validationResult(req);
-        if (!errors.isEmpty()) {
-            return res.status(400).json(util.getErrors(errors));
-        }
-        let IDP, valid, scopes;
-        IDP = config.auth.idp || {};
-
         let accessToken;
         if (req.isAuthenticated() && req.user) {
             accessToken = req.user[constants.ACCESS_TOKEN];
@@ -326,16 +338,11 @@ function validateAuthentication(scope) {
             accessToken = req.headers.authorization && req.headers.authorization.split(' ')[1];
         }
 
-        if (IDP.certificate) {
-            ({ valid, scopes } = await verifyWithCertificate(accessToken, IDP.certificate));
-        } else if (IDP.jwksUrl) {
-            ({ valid, scopes } = await validateWithJwks(accessToken, IDP.jwksUrl, req));
-        } else {
-            valid = false;
-        }
+        const { valid, scopes } = await verifyBearerToken(accessToken, req);
 
         if (valid) {
-            if (String(scopes || '').split(' ').includes(scope)) {
+            const tokenScopes = String(scopes || '').split(' ');
+            if (matchesAnyScope(tokenScopes, scope)) {
                 return next();
             }
             return util.handleError(res, new CustomError(403, constants.ERROR_CODE[403], constants.ERROR_MESSAGE.FORBIDDEN));
@@ -346,32 +353,6 @@ function validateAuthentication(scope) {
         return util.handleError(res, new CustomError(401, constants.ERROR_CODE[401], constants.ERROR_MESSAGE.UNAUTHENTICATED));
     }
 }
-
-const validateWithJwks = async (token, jwksURL, req) => {
-    try {
-        const jwks = await createRemoteJWKSet(new URL(jwksURL));
-        const jwtVerifyOptions = { algorithms: constants.JWT_ASYMMETRIC_ALGORITHMS };
-        if (config.auth.idp?.issuer) jwtVerifyOptions.issuer = config.auth.idp.issuer;
-        if (config.auth.idp?.audience) jwtVerifyOptions.audience = config.auth.idp.audience;
-        const { payload } = await jwtVerify(token, jwks, jwtVerifyOptions);
-        return { valid: true, scopes: payload.scope || '' };
-    } catch (err) {
-        logger.error("Invalid token", { error: err.message, stack: err.stack, operation: "tokenValidation" });
-        if (err.code === 'ERR_JWT_EXPIRED' && req.user && req.user.refreshToken) {
-            try {
-                logger.info("Access token expired, triggering refresh token flow");
-                const response = await refreshAccessToken(req.user.refreshToken);
-                req.user[constants.ACCESS_TOKEN] = response.access_token;
-                req.user[constants.REFRESH_TOKEN] = response.refresh_token;
-                return { valid: true, scopes: response.scope || '' };
-            } catch (error) {
-                logger.error("Error refreshing access token", { error: error.message, stack: error.stack, operation: "refreshToken" });
-                return { valid: false, scopes: '' };
-            }
-        }
-        return { valid: false, scopes: '' };
-    }
-};
 
 const enforceMTLS = (req, res, next) => {
     const clientCert = req.socket?.getPeerCertificate?.(true);
