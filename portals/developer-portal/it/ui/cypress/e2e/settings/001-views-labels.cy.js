@@ -28,17 +28,23 @@ describe('Settings — Views & Labels', () => {
     const VIEW_HANDLE = `it-view-${uid}`; // slugify(VIEW_NAME)
     const LABEL_DISPLAY = `IT Label ${uid}`;
     const LABEL_HANDLE = `it-label-${uid}`; // slugify(LABEL_DISPLAY)
+    // A view requires at least one label (ViewCreateRequest.labels has minItems: 1), so
+    // the view test needs an existing label to pick. Seed one up front, distinct from the
+    // label the label test creates.
+    const VIEW_LABEL = `it-vlabel-${uid}`;
 
     const settingsUrl = () => `/${Cypress.env('ORG_HANDLE')}/settings`;
 
     before(() => {
         cy.login();
+        cy.apiRequest('POST', '/api/v0.9/labels', { body: { id: VIEW_LABEL, displayName: 'IT View Label' } });
     });
 
     after(() => {
         // Robust API cleanup, idempotent (404 if the create step never persisted).
         cy.apiRequest('DELETE', `/api/v0.9/views/${VIEW_HANDLE}`, { failOnStatusCode: false });
         cy.apiRequest('DELETE', `/api/v0.9/labels/${LABEL_HANDLE}`, { failOnStatusCode: false });
+        cy.apiRequest('DELETE', `/api/v0.9/labels/${VIEW_LABEL}`, { failOnStatusCode: false });
     });
 
     it('creates a view from a name', () => {
@@ -52,6 +58,9 @@ describe('Settings — Views & Labels', () => {
         // Type the name; the handle auto-generates from it.
         cy.get('#view-display').type(VIEW_NAME);
         cy.get('#view-handle').should('have.value', VIEW_HANDLE);
+
+        // A view must have at least one label — pick the seeded one.
+        cy.get(`#view-labels .cfg-label-toggle[data-value="${VIEW_LABEL}"]`).click();
 
         cy.get('#cfg-view-modal-save').click();
 

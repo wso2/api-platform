@@ -2139,9 +2139,14 @@ paths:
           $ref: "#/components/responses/KeyManagerListResponse"
         "500":
           $ref: "#/components/responses/InternalServerError"
+      # dp:app_key_mapping_read lets developers list the enabled, credential-free public
+      # view — they need the available key managers to map/generate application keys. The
+      # handler restricts the full/admin view to admins by role. Scopes are OR-ed, so
+      # admins/publishers with dp:km_read still get their existing view.
       security:
         - OAuth2Security:
             - dp:km_read
+            - dp:app_key_mapping_read
   /key-managers/{kmId}:
     parameters:
       - $ref: "#/components/parameters/kmId"

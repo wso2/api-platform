@@ -149,7 +149,7 @@ curl -X POST https://localhost:9543/api/v0.9/apis/{apiId}/api-keys/generate \
 
 ```
 
-Generates an API key stored in the Developer Portal (devportal is source of truth). The plaintext secret is returned once in the response and never persisted. A `apikey.generated` webhook event is published to the organization's configured webhook subscribers so they can register the key (e.g. with a gateway). Key `id` must match `^[a-z0-9][a-z0-9_-]{0,127}$`, and `expiresAt` must include a timezone when sent as an ISO-8601 string.
+Generates an API key stored in the Developer Portal (devportal is source of truth). The plaintext secret is returned once in the response and never persisted. A `apikey.generated` webhook event is published to the organization's configured webhook subscribers so they can register the key (e.g. with a gateway). Key `id` is optional — a UUID handle is generated when it is omitted; when provided it must match `^[a-z0-9][a-z0-9_-]{0,127}$`. `expiresAt` must include a timezone when sent as an ISO-8601 string.
 
 > Payload
 
