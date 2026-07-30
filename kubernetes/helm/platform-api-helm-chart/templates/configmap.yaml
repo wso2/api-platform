@@ -69,7 +69,7 @@ data:
     [platform_api.auth.authorization]
     enabled = {{ $auth.authorization.enabled }}
     mode = {{ $auth.authorization.mode | quote }}
-    role_mappings = {{ $auth.authorization.roleMappings | quote }}
+    roles_to_scope_mapping = {{ $auth.authorization.rolesToScopeMapping | quote }}
 
     [platform_api.auth.claim_mappings]
     organization = {{ $auth.claimMappings.organization | quote }}
@@ -111,7 +111,7 @@ data:
     # provisions a generated username and a bcrypt password hash.
     username = {{ `'{{ env "APIP_CP_ADMIN_USERNAME" }}'` }}
     password_hash = {{ `'{{ env "APIP_CP_ADMIN_PASSWORD_HASH" }}'` }}
-    role = {{ required "config.auth.file.admin.role is required when auth.mode is \"file\"" $auth.file.admin.role | quote }}
+    roles = {{ required "config.auth.file.admin.roles is required when auth.mode is \"file\"" $auth.file.admin.roles | toJson }}
     {{- end }}
 
     [platform_api.server.http]
@@ -169,10 +169,10 @@ data:
     {{ . | nindent 4 | trim }}
     {{- end }}
   {{- with $auth.authorization.roles }}
-  # Role→scope mapping named by auth.authorization.role_mappings. Mounted as a
+  # Role→scope mapping named by auth.authorization.roles_to_scope_mapping. Mounted as a
   # file rather than folded into the TOML above because the Platform API reads it
   # separately and re-reads it only on restart.
-  roles.yaml: |
+  roles_to_scope_mapping.yaml: |
     roles:
       {{- toYaml . | nindent 6 }}
   {{- end }}

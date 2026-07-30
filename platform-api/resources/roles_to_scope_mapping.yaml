@@ -1,17 +1,17 @@
-# Role-to-scope mapping used by the Platform API (auth.authorization.role_mappings).
+# Role-to-scope mapping used by the Platform API (auth.authorization.roles_to_scope_mapping).
 #
 # Each entry maps a role name to the scopes that role grants. Two consumers read
 # this file:
 #
 #   * role authorization (auth.authorization.mode = "role") — the roles claim of
 #     an incoming token is expanded through this file on every request.
-#   * file-mode users (auth.file.users[].role) — the login endpoint expands the
-#     role once, into the scope claim of the token it issues. A role is such a
-#     user's entire grant, so this file is the only place their privileges are
-#     defined; there is no per-user scope list to keep in sync with it.
+#   * file-mode users (auth.file.users[].roles) — the login endpoint expands the
+#     roles once, into the scope claim of the token it issues. Those roles are
+#     such a user's entire grant, so this file is the only place their privileges
+#     are defined; there is no per-user scope list to keep in sync with it.
 #
-# When a token carries multiple roles the effective scopes are the union of all
-# matching entries — most-permissive wins.
+# When a token — or a file-mode user's roles list — carries multiple roles, the
+# effective scopes are the union of all matching entries; most-permissive wins.
 #
 # Naming: roles are named after the platform ("ap_") rather than after any one
 # IDP's convention, because the same file serves every auth mode. Map your IDP's

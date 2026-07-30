@@ -20,6 +20,7 @@ package handler
 import (
 	"log/slog"
 	"net/http"
+	"slices"
 	"strings"
 	"time"
 
@@ -45,10 +46,10 @@ type loginResponse struct {
 // AuthLoginHandler issues JWT tokens for locally-configured users (file-based auth mode).
 type AuthLoginHandler struct {
 	cfg *config.Server
-	// roleScopeMap is the role-to-scope mapping from auth.authorization.role_mappings,
-	// used to expand each user's role into the scopes its token carries. In file
+	// roleScopeMap is the role-to-scope mapping from auth.authorization.roles_to_scope_mapping,
+	// used to expand each user's roles into the scopes its token carries. In file
 	// mode it is always populated: config validation requires the mapping file, and
-	// startup checks every user's role against it.
+	// startup checks every role every user names against it.
 	roleScopeMap map[string][]string
 	slogger      *slog.Logger
 }
@@ -113,12 +114,12 @@ func (h *AuthLoginHandler) Login(w http.ResponseWriter, r *http.Request) error {
 	setClaim(claims, claimKey(cm.Organization, "organization"), fileBasedAuth.Organization.UUID)
 	setClaim(claims, claimKey(cm.OrgName, "org_name"), fileBasedAuth.Organization.DisplayName)
 	setClaim(claims, claimKey(cm.OrgHandle, "org_handle"), fileBasedAuth.Organization.ID)
-	// The role travels in the token as well as the scopes it expanded to, so a
+	// The roles travel in the token as well as the scopes they expanded to, so a
 	// consumer configured for role-based authorization reads the same identity
 	// this endpoint authorized — the claim is a list, matching the shape IDPs
 	// emit and the shape the roles claim is read back in. Config validation
-	// guarantees the role is set, so this is unconditional.
-	setClaim(claims, claimKey(cm.Roles, "roles"), []string{matched.Role})
+	// guarantees at least one role is set, so this is unconditional.
+	setClaim(claims, claimKey(cm.Roles, "roles"), slices.Clone(matched.Roles))
 
 	// Sign asymmetrically with RS256 using the configured RSA private key,
 	// read fresh from its mounted file. Config validation (validateJWTConfig)
@@ -141,25 +142,28 @@ func (h *AuthLoginHandler) Login(w http.ResponseWriter, r *http.Request) error {
 	return nil
 }
 
-// effectiveScopes returns the space-separated scope claim for a user: the scopes
-// its role grants, per the mapping file. The role is the user's whole grant —
-// there is no per-user scope list to drift out of sync with it — so widening or
-// narrowing what a user may do is an edit to the role's entry in that one file.
+// effectiveScopes returns the space-separated scope claim for a user: the union
+// of the scopes its roles grant, per the mapping file. The roles are the user's
+// whole grant — there is no per-user scope list to drift out of sync with them —
+// so widening or narrowing what a user may do is an edit to a role's entry in
+// that one file, or naming a different set of roles.
 //
-// Authorization is still enforced against this scope claim; expanding the role at
+// Authorization is still enforced against this scope claim; expanding the roles at
 // issue time is what lets a role-shaped configuration be checked by the scope-mode
 // enforcer, rather than requiring authorization to run in role mode. Duplicates
-// are dropped so a role that lists a scope twice doesn't repeat it in the claim.
+// are dropped, so a scope two of the user's roles both grant — or one role lists
+// twice — appears once in the claim.
 func (h *AuthLoginHandler) effectiveScopes(user *config.FileBasedUser) string {
-	fromRole := h.roleScopeMap[user.Role]
-	scopes := make([]string, 0, len(fromRole))
-	seen := make(map[string]struct{}, len(fromRole))
-	for _, s := range fromRole {
-		if _, dup := seen[s]; dup {
-			continue
+	scopes := make([]string, 0, len(user.Roles))
+	seen := make(map[string]struct{}, len(user.Roles))
+	for _, role := range user.Roles {
+		for _, s := range h.roleScopeMap[role] {
+			if _, dup := seen[s]; dup {
+				continue
+			}
+			seen[s] = struct{}{}
+			scopes = append(scopes, s)
 		}
-		seen[s] = struct{}{}
-		scopes = append(scopes, s)
 	}
 	return strings.Join(scopes, " ")
 }

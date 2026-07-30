@@ -157,7 +157,7 @@ Or via make (from `platform-api/`): `make e2e`, `make e2e-all-dbs`.
      against the RS256 `jwt_public.pem` shared via the `platform-api-jwt-keys`
      volume, org from the token's `org_handle` claim). The
      admin must carry `dp:*` scopes, which it gets from the `ap_admin` role in the
-     mounted `roles.yaml` — that role spans both the `ap:*` and `dp:*` namespaces,
+     mounted `roles_to_scope_mapping.yaml` — that role spans both the `ap:*` and `dp:*` namespaces,
      so the one admin JWT authorizes both products. Bearer auth (not API-key mode) is used because the
      write paths need a resolved user for `created_by`.
    - `BeforeSuite` generates the shared webhook secret (`prepareWebhookSecret`, exported

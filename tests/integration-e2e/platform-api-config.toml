@@ -26,7 +26,7 @@ mode = '{{ env "APIP_CP_AUTH_MODE" "file" }}'
 # The admin below names a role from the shipped mapping, bind-mounted at this
 # path — a role is a file-mode user's entire grant.
 [platform_api.auth.authorization]
-role_mappings = "/etc/platform-api/roles.yaml"
+roles_to_scope_mapping = "/etc/platform-api/roles_to_scope_mapping.yaml"
 
 [platform_api.auth.jwt]
 issuer      = '{{ env "APIP_CP_AUTH_JWT_ISSUER" "platform-api" }}'
@@ -46,9 +46,9 @@ uuid         = '{{ env "APIP_CP_AUTH_FILE_ORGANIZATION_UUID" "99089a17-72e0-4dd8
 [[platform_api.auth.file.users]]
 username      = "admin"
 password_hash = "$2y$10$U2yKMwGamGwDoMu0hRPT7u8nCuP8z/qxHFOKV6dhIxkJN9NJ0eVQ."
-# ap_admin from the shipped roles.yaml — every Platform API scope this build
+# ap_admin from the shipped roles_to_scope_mapping.yaml — every Platform API scope this build
 # declares, plus the Developer Portal scopes the devportal e2e stack asserts on.
-role          = "ap_admin"
+roles         = ["ap_admin"]
 
 [platform_api.webhook]
 enabled = '{{ env "APIP_CP_WEBHOOK_ENABLED" "false" }}'

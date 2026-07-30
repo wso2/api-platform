@@ -155,14 +155,14 @@ mode = "file"
 enabled = true
 
 # "scope" (default) checks the scope claim; "role" checks the roles claim
-# configured below at claim_mappings.roles, expanding each role via role_mappings.
+# configured below at claim_mappings.roles, expanding each role via roles_to_scope_mapping.
 mode = "scope"
 
 # Path to a YAML file mapping role names to platform scopes. Required when
 # mode = "role" (startup fails if unset), and also when any file-mode user below
 # names a role — the login endpoint expands that role through this same file.
-# The packs mount their editable sample at /etc/platform-api/roles.yaml.
-role_mappings = ""
+# The packs mount their editable sample at /etc/platform-api/roles_to_scope_mapping.yaml.
+roles_to_scope_mapping = ""
 
 # JWT claim name mappings — shared by all three auth modes ("idp" reads
 # incoming claims by these names; "file" mode's login endpoint signs tokens
@@ -180,7 +180,7 @@ username     = "username"
 email        = "email"
 scope        = "scope"          # space-separated scope string
 # Claim carrying the user's roles. Read in role authorization mode, and it is the
-# claim the file-mode login endpoint signs the user's role into. Default suits
+# claim the file-mode login endpoint signs the user's roles into. Default suits
 # Asgardeo/Entra ID; Keycloak nests it: "realm_access.roles". A dotted path works
 # in both directions — file mode signs the nested object the reader resolves — so
 # the same mapping serves whichever auth mode is active.
@@ -212,28 +212,30 @@ uuid = "99089a17-72e0-4dd8-a2f4-c8dfbb085295"
 # starting with a blank or guessable credential.
 username      = ""
 password_hash = ""
-# REQUIRED — a role from the auth.authorization.role_mappings file above, and this
-# user's entire grant. The login endpoint expands it into the token's scope claim
-# and also emits the role itself as the roles claim, so the same token works
+# REQUIRED — one or more roles from the auth.authorization.roles_to_scope_mapping
+# file above, and this user's entire grant. The login endpoint expands them into
+# the token's scope claim (the union of what each grants — most-permissive wins)
+# and also emits the roles themselves as the roles claim, so the same token works
 # whether auth.authorization.mode is "scope" (default) or "role". A user with no
-# role, or one naming a role the mapping file doesn't define, fails startup rather
+# roles, or one naming a role the mapping file doesn't define, fails startup rather
 # than logging in successfully and then being denied every request.
 #
 # There is no per-user scope list: what a role grants is defined once, in the
-# mapping file, so no user can drift out of step with the role it names. To grant
-# something no shipped role covers, add a role to that file (see
-# resources/roles.yaml for the shipped ones and the scope namespaces it may use).
+# mapping file, so no user can drift out of step with the roles it names. To grant
+# something no shipped role covers, name several roles, or add a role to that file
+# (see resources/roles_to_scope_mapping.yaml for the shipped ones and the scope
+# namespaces it may use).
 #
-# Left empty here because role_mappings above is empty in this template — set that
+# Left empty here because roles_to_scope_mapping above is empty in this template — set that
 # first, then name a role.
-role          = ""
+roles         = []
 
 # Additional users — uncomment the WHOLE block (including the [[...]] header)
 # and replace the placeholder hash with a real bcrypt hash before use.
 # [[platform_api.auth.file.users]]
 # username      = "readonly"
 # password_hash = "$2a$12$<bcrypt-hash-of-your-password>"
-# role          = "ap_viewer"
+# roles         = ["ap_viewer"]
 
 # JWT (local RS256) — used by "internal_token" and "file" modes. Tokens are
 # signed asymmetrically: "internal_token" only verifies tokens minted elsewhere

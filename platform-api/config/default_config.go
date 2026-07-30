@@ -47,7 +47,7 @@ func defaultConfig() *Server {
 			Authorization: Authorization{
 				Enabled: true,
 				Mode:    AuthzModeScope,
-				// RoleMappings is left empty on purpose: the mapping file is
+				// RolesToScopeMapping is left empty on purpose: the mapping file is
 				// operator-owned and mounted (the packs ship a sample), so a
 				// built-in path would make startup depend on a file the image
 				// does not carry. The shipped config.toml points at the mount.

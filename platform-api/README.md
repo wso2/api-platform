@@ -24,9 +24,10 @@ go run ./cmd/main.go
 (username/password login backed by the organization/user block in that file) — the same mode the
 AI Workspace and Developer Portal quickstarts use. It's the one Platform API config shared by every
 quickstart (both docker-compose setups mount it directly), so its admin user is granted the
-`ap_admin` role from the mounted [`resources/roles.yaml`](resources/roles.yaml), which covers both
-the `ap:*` (Platform API) and `dp:*` (Developer Portal) namespaces. That role is the whole grant —
-override it with `APIP_CP_ADMIN_ROLE`, or edit what it grants in `roles.yaml`.
+`ap_admin` role from the mounted [`resources/roles_to_scope_mapping.yaml`](resources/roles_to_scope_mapping.yaml), which covers both
+the `ap:*` (Platform API) and `dp:*` (Developer Portal) namespaces. That one role is the whole grant —
+override it with `APIP_CP_ADMIN_ROLE`, name more roles alongside it, or edit what it grants in
+`roles_to_scope_mapping.yaml`.
 
 There is no default admin credential: `APIP_CP_ADMIN_USERNAME` and `APIP_CP_ADMIN_PASSWORD_HASH` are
 **required** in this mode, and startup fails closed if either is unset or empty. `portals/scripts/setup.sh`
@@ -282,7 +283,7 @@ All settings live under `[platform_api]` / `[platform_api.*]`. The main sections
 | `[platform_api.security.api_key]` | `hashing_algorithms` accepted for API key verification |
 | `[platform_api.database]` | `driver` (`sqlite3` / `postgres` / `sqlserver`), connection fields, pool sizing |
 | `[platform_api.auth]` | `mode` — one of `internal_token`, `file`, or `idp` |
-| `[platform_api.auth.authorization]` | `enabled`, `mode` (`scope` / `role`), `role_mappings` — applies in every auth mode |
+| `[platform_api.auth.authorization]` | `enabled`, `mode` (`scope` / `role`), `roles_to_scope_mapping` — applies in every auth mode |
 | `[platform_api.auth.jwt]` | Asymmetric (RS256) token settings: `issuer`, `public_key_file` (**required** — path to a PEM RSA public key, verifies tokens), `private_key_file` (**required in `file` mode** — path to a PEM RSA private key, signs login tokens), `token_ttl` |
 | `[platform_api.auth.idp]` / `[platform_api.auth.claim_mappings]` | JWKS endpoint and issuer/audience for `idp` mode; JWT claim-name mappings (all modes) |
 | `[platform_api.auth.file.organization]` / `[[platform_api.auth.file.users]]` | Local org + username/password/scope entries for `file` mode |
@@ -314,7 +315,7 @@ key silently ignored.
 #### Role-Based Access Control (RBAC)
 
 Per-route scope checks are enforced when `platform_api.auth.authorization.enabled = true`. The
-shipped [`resources/roles.yaml`](resources/roles.yaml) defines five roles, each granting scopes in
+shipped [`resources/roles_to_scope_mapping.yaml`](resources/roles_to_scope_mapping.yaml) defines five roles, each granting scopes in
 both the `ap:*` (Platform API) and `dp:*` (Developer Portal) namespaces — one role covers a persona
 across both components:
 
@@ -344,16 +345,16 @@ local public key:
 [platform_api.auth.authorization]
 enabled       = true
 mode          = "role"                          # "scope" (default) or "role"
-role_mappings = "/etc/platform-api/roles.yaml"  # required when mode = "role"
+roles_to_scope_mapping = "/etc/platform-api/roles_to_scope_mapping.yaml"  # required when mode = "role"
 ```
 
 `mode = "scope"` authorizes from the scope claim directly. `mode = "role"` expands the roles claim
-named by `claim_mappings.roles` into platform scopes via the `role_mappings` YAML file; both that
+named by `claim_mappings.roles` into platform scopes via the `roles_to_scope_mapping` YAML file; both that
 claim mapping and the file path are required in role mode, so startup fails rather than falling
 back to using role names verbatim as scopes.
 
 The mapping file is operator-owned config, not part of the image: the packs mount their editable
-sample (`resources/roles.yaml`) at `/etc/platform-api/roles.yaml`.
+sample (`resources/roles_to_scope_mapping.yaml`) at `/etc/platform-api/roles_to_scope_mapping.yaml`.
 
 Validation of that file is namespace-scoped. An `ap:` scope must be declared in this server's OpenAPI
 spec (plus any its compiled-in plugins declare) — an unknown one fails startup rather than silently
@@ -362,32 +363,37 @@ another component's namespace (`dp:*`) is checked only for shape: this server mi
 but never enforces it, so it can neither confirm nor deny that it exists. That is what lets one role
 describe a persona across the whole platform — and what makes a per-user scope list unnecessary.
 
-##### Granting a file-mode user a role
+##### Granting a file-mode user roles
 
-A `file`-mode user is granted **only** a role — there is no per-user scope list. The login endpoint
-expands that role through the same `role_mappings` file when it mints the token:
+A `file`-mode user is granted **only** roles — there is no per-user scope list. The login endpoint
+expands them through the same `roles_to_scope_mapping` file when it mints the token, unioning what
+each grants:
 
 ```toml
 [[platform_api.auth.file.users]]
 username      = '{{ env "APIP_CP_ADMIN_USERNAME" }}'
 password_hash = '{{ env "APIP_CP_ADMIN_PASSWORD_HASH" }}'
-role          = "ap_admin"                 # expanded via auth.authorization.role_mappings
+roles         = ["ap_admin"]               # expanded via auth.authorization.roles_to_scope_mapping
 ```
 
-The issued token carries **both**: the expanded scopes as the `scope` claim, and the role name as the
+`roles` is a list, so a user whose persona spans two shipped roles names both rather than needing a
+sixth role defined for the combination — `roles = ["ap_publisher", "ap_subscriber"]` grants the union
+of the two, most-permissive wins, with duplicate scopes collapsed.
+
+The issued token carries **both**: the expanded scopes as the `scope` claim, and the role names as the
 `roles` claim. So the same login works under either authorization mode — `scope` (the default) checks
-the expanded claim, and flipping `auth.authorization.mode = "role"` re-expands the role from the same
-`roles.yaml` on every request instead. `claim_mappings.roles` defaults to the flat `roles` claim the
+the expanded claim, and flipping `auth.authorization.mode = "role"` re-expands the roles from the same
+`roles_to_scope_mapping.yaml` on every request instead. `claim_mappings.roles` defaults to the flat `roles` claim the
 login endpoint signs, so that switch needs no extra claim wiring.
 
-The role is required, and startup fails if a user has none or names one the mapping file doesn't
-define — either way that user would authenticate successfully and then be denied every route. Because
-the mapping is the only place a grant is expressed, no user can drift out of step with the role it
-names, and widening or narrowing a persona is one edit in one file. To grant something no shipped
-role covers, add a role to `roles.yaml`.
+At least one role is required, and startup fails if a user has none or names one the mapping file
+doesn't define — either way that user would authenticate successfully and then be denied every route.
+Because the mapping is the only place a grant is expressed, no user can drift out of step with the
+roles it names, and widening or narrowing a persona is one edit in one file. To grant something no
+combination of shipped roles covers, add a role to `roles_to_scope_mapping.yaml`.
 
-This is how the shipped `config/config.toml` grants its admin user: `role = "ap_admin"` and nothing
-else. Changing what that user can do means editing the mounted `roles.yaml`, which makes that file the
+This is how the shipped `config/config.toml` grants its admin user: `roles = ["ap_admin"]` and nothing
+else. Changing what that user can do means editing the mounted `roles_to_scope_mapping.yaml`, which makes that file the
 security-relevant one to review in a pack.
 
 ### Providing secrets via the config file

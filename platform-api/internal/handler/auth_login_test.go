@@ -26,7 +26,7 @@ import (
 	"github.com/wso2/api-platform/platform-api/config"
 )
 
-// A file-mode user's scope claim is exactly what its role grants — the role is
+// A file-mode user's scope claim is exactly what its roles grant — the roles are
 // the whole grant, so the mapping file is the only place the user's privileges
 // are defined. The mapping may name scopes in any component's namespace (the
 // Developer Portal's "dp:*", for example), which is what makes a per-user scope
@@ -45,27 +45,47 @@ func TestEffectiveScopes(t *testing.T) {
 	}{
 		{
 			name: "role expands to its scopes, in order",
-			user: config.FileBasedUser{Role: "ap_viewer"},
+			user: config.FileBasedUser{Roles: []string{"ap_viewer"}},
 			want: "ap:organization:read",
 		},
 		{
 			// The mapping carries foreign-namespace scopes too, so nothing has to
 			// be granted outside it.
 			name: "role spanning multiple namespaces",
-			user: config.FileBasedUser{Role: "ap_admin"},
+			user: config.FileBasedUser{Roles: []string{"ap_admin"}},
 			want: "ap:organization:manage ap:rest_api:manage dp:org_manage",
 		},
 		{
 			// A role listing the same scope twice must not repeat it in the claim.
 			name: "duplicate scope in a role is deduped",
-			user: config.FileBasedUser{Role: "ap_dupes"},
+			user: config.FileBasedUser{Roles: []string{"ap_dupes"}},
 			want: "ap:rest_api:manage ap:organization:read",
+		},
+		{
+			// Several roles union — most-permissive wins, matching how a token
+			// carrying several roles is expanded in role authorization mode.
+			name: "multiple roles union their scopes",
+			user: config.FileBasedUser{Roles: []string{"ap_viewer", "ap_admin"}},
+			want: "ap:organization:read ap:organization:manage ap:rest_api:manage dp:org_manage",
+		},
+		{
+			// A scope two of the user's roles both grant appears once.
+			name: "scope granted by two roles is deduped",
+			user: config.FileBasedUser{Roles: []string{"ap_admin", "ap_dupes"}},
+			want: "ap:organization:manage ap:rest_api:manage dp:org_manage ap:organization:read",
 		},
 		{
 			// validateFileUserRoles rejects this at startup; if it ever reached
 			// here the token must carry no scopes rather than a guessed grant.
 			name: "unknown role grants nothing",
-			user: config.FileBasedUser{Role: "no-such-role"},
+			user: config.FileBasedUser{Roles: []string{"no-such-role"}},
+			want: "",
+		},
+		{
+			// Config validation rejects this at startup; the token must carry no
+			// scopes rather than a guessed grant if it ever reached here.
+			name: "no roles grants nothing",
+			user: config.FileBasedUser{},
 			want: "",
 		},
 	}

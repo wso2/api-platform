@@ -42,9 +42,7 @@ services:
         format: raw
     volumes:
       - ../../platform-api/config/config.toml:/etc/platform-api/config.toml:ro
-      # Role-to-scope mapping named by auth.authorization.role_mappings. Mounted
-      # rather than baked into the image so it can be edited in place.
-      - ../../platform-api/resources/roles.yaml:/etc/platform-api/roles.yaml:ro
+      - ../../platform-api/resources/roles_to_scope_mapping.yaml:/etc/platform-api/roles_to_scope_mapping.yaml:ro
       - platform-api-data:/app/data
       # Certs land under /app/data/certs to match the binary's compiled
       # default cert_file/key_file paths (./data/certs/{cert,key}.pem,

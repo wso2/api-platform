@@ -448,9 +448,9 @@ func StartPlatformAPIServer(cfg *config.Server, slogger *slog.Logger,
 		}
 	}()
 
-	// Load and validate the role-to-scope map when roles.yaml is configured.
+	// Load and validate the role-to-scope map when roles_to_scope_mapping.yaml is configured.
 	// Runs after initPlugins so a role may map to a plugin-declared scope, and
-	// after the defer above so a bad roles.yaml still stops the plugins.
+	// after the defer above so a bad roles_to_scope_mapping.yaml still stops the plugins.
 	roleScopeMap, err := loadRoleScopeMap(cfg, scopeRegistry, slogger)
 	if err != nil {
 		return nil, err
@@ -713,18 +713,18 @@ func buildAuthenticator(cfg *config.Server, slogger *slog.Logger, roleScopeMap m
 // requires the path wherever it is needed, so an empty path here means nothing
 // consumes the mapping.
 func loadRoleScopeMap(cfg *config.Server, registry *middleware.ScopeRegistry, slogger *slog.Logger) (map[string][]string, error) {
-	if cfg.Auth.Authorization.RoleMappings == "" {
+	if cfg.Auth.Authorization.RolesToScopeMapping == "" {
 		return nil, nil
 	}
 
-	m, err := middleware.LoadRoleScopeMap(cfg.Auth.Authorization.RoleMappings)
+	m, err := middleware.LoadRoleScopeMap(cfg.Auth.Authorization.RolesToScopeMapping)
 	if err != nil {
 		return nil, fmt.Errorf("failed to load role mappings file: %w", err)
 	}
 	if err := middleware.ValidateRoleScopeMap(m, registry); err != nil {
-		return nil, fmt.Errorf("invalid roles.yaml: %w", err)
+		return nil, fmt.Errorf("invalid roles_to_scope_mapping.yaml: %w", err)
 	}
-	slogger.Info("Loaded role-to-scope mapping", "path", cfg.Auth.Authorization.RoleMappings, "roles", len(m))
+	slogger.Info("Loaded role-to-scope mapping", "path", cfg.Auth.Authorization.RolesToScopeMapping, "roles", len(m))
 
 	return m, nil
 }
@@ -740,12 +740,14 @@ func validateFileUserRoles(cfg *config.Server, roleScopeMap map[string][]string)
 		return nil
 	}
 	for i, u := range cfg.Auth.File.Users {
-		if u.Role == "" {
-			continue
-		}
-		if _, ok := roleScopeMap[u.Role]; !ok {
-			return fmt.Errorf("auth.file.users[%d]: role %q is not defined in %s",
-				i, u.Role, cfg.Auth.Authorization.RoleMappings)
+		for j, role := range u.Roles {
+			if role == "" {
+				continue
+			}
+			if _, ok := roleScopeMap[role]; !ok {
+				return fmt.Errorf("auth.file.users[%d]: roles[%d] %q is not defined in %s",
+					i, j, role, cfg.Auth.Authorization.RolesToScopeMapping)
+			}
 		}
 	}
 	return nil

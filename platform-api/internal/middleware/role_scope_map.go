@@ -26,34 +26,34 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
-// roleScopeEntry is a single entry in roles.yaml: an IDP role name and the
+// roleScopeEntry is a single entry in roles_to_scope_mapping.yaml: an IDP role name and the
 // platform scopes it grants.
 type roleScopeEntry struct {
 	Name   string   `yaml:"name"`
 	Scopes []string `yaml:"scopes"`
 }
 
-// roleScopeConfig is the top-level structure of roles.yaml.
+// roleScopeConfig is the top-level structure of roles_to_scope_mapping.yaml.
 type roleScopeConfig struct {
 	Roles []roleScopeEntry `yaml:"roles"`
 }
 
-// LoadRoleScopeMap reads a roles.yaml file and returns a map from IDP role name
+// LoadRoleScopeMap reads a roles_to_scope_mapping.yaml file and returns a map from IDP role name
 // to the list of platform scopes that role grants. Each user token may carry
 // multiple roles; the caller is expected to union the scope lists at request time.
 func LoadRoleScopeMap(path string) (map[string][]string, error) {
 	data, err := os.ReadFile(path)
 	if err != nil {
-		return nil, fmt.Errorf("roles.yaml: read %q: %w", path, err)
+		return nil, fmt.Errorf("roles_to_scope_mapping.yaml: read %q: %w", path, err)
 	}
 	var cfg roleScopeConfig
 	if err := yaml.Unmarshal(data, &cfg); err != nil {
-		return nil, fmt.Errorf("roles.yaml: parse %q: %w", path, err)
+		return nil, fmt.Errorf("roles_to_scope_mapping.yaml: parse %q: %w", path, err)
 	}
 	m := make(map[string][]string, len(cfg.Roles))
 	for _, entry := range cfg.Roles {
 		if entry.Name == "" {
-			return nil, fmt.Errorf("roles.yaml: entry missing required 'name' field in %q", path)
+			return nil, fmt.Errorf("roles_to_scope_mapping.yaml: entry missing required 'name' field in %q", path)
 		}
 		m[entry.Name] = entry.Scopes
 	}
@@ -91,14 +91,14 @@ func ValidateRoleScopeMap(m map[string][]string, registry *ScopeRegistry) error 
 	for role, scopes := range m {
 		for _, s := range scopes {
 			if !wellFormedScope.MatchString(s) {
-				return fmt.Errorf("roles.yaml: role %q references malformed scope %q — expected \"<namespace>:<name>\", e.g. %sorganization:manage",
+				return fmt.Errorf("roles_to_scope_mapping.yaml: role %q references malformed scope %q — expected \"<namespace>:<name>\", e.g. %sorganization:manage",
 					role, s, PlatformScopePrefix)
 			}
 			if !strings.HasPrefix(s, PlatformScopePrefix) {
 				continue // another component's namespace — not ours to validate
 			}
 			if _, ok := known[s]; !ok {
-				return fmt.Errorf("roles.yaml: role %q references unknown scope %q — check the OpenAPI spec for valid scope names", role, s)
+				return fmt.Errorf("roles_to_scope_mapping.yaml: role %q references unknown scope %q — check the OpenAPI spec for valid scope names", role, s)
 			}
 		}
 	}

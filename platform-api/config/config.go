@@ -45,13 +45,16 @@ import (
 type FileBasedUser struct {
 	Username     string `json:"username"     koanf:"username"`
 	PasswordHash string `json:"password_hash" koanf:"password_hash"`
-	// Role names one of the roles in the auth.authorization.role_mappings file
-	// and is the user's entire grant: the login endpoint expands it into the
-	// scope claim of the token it issues. It is the only way to grant a file-mode
-	// user, so a user's privileges are expressed exactly the way an IDP expresses
-	// them — as a role — and changing what a role grants is a single edit to the
-	// mapping file rather than a per-user scope string to keep in sync.
-	Role string `json:"role" koanf:"role"`
+	// Roles names one or more of the roles in the
+	// auth.authorization.roles_to_scope_mapping file and is the user's entire
+	// grant: the login endpoint expands them into the scope claim of the token it
+	// issues, unioning what each role grants — most-permissive wins, the same way
+	// a token carrying several roles is expanded in role authorization mode. It is
+	// the only way to grant a file-mode user, so a user's privileges are expressed
+	// exactly the way an IDP expresses them — as roles — and changing what a role
+	// grants is a single edit to the mapping file rather than a per-user scope
+	// string to keep in sync.
+	Roles []string `json:"roles" koanf:"roles"`
 }
 
 // FileBasedUsers is a slice of FileBasedUser that can be decoded from a JSON string (env var)
@@ -166,7 +169,7 @@ const (
 	// AuthzModeScope authorizes using the JWT scope claim directly.
 	AuthzModeScope = "scope"
 	// AuthzModeRole authorizes by expanding the token's roles claim into
-	// platform scopes via the auth.authorization.role_mappings file.
+	// platform scopes via the auth.authorization.roles_to_scope_mapping file.
 	AuthzModeRole = "role"
 )
 
@@ -181,10 +184,10 @@ type Authorization struct {
 	Enabled bool `koanf:"enabled"`
 	// Mode selects how authorization is enforced: "scope" (default) or "role".
 	Mode string `koanf:"mode"`
-	// RoleMappings is the path to a YAML file mapping IDP roles to platform
+	// RolesToScopeMapping is the path to a YAML file mapping IDP roles to platform
 	// scopes. Required in "role" mode (validateAuthorizationConfig rejects an
 	// empty path there); unused in "scope" mode.
-	RoleMappings string `koanf:"role_mappings"`
+	RolesToScopeMapping string `koanf:"roles_to_scope_mapping"`
 }
 
 // ClaimMappings holds JWT claim name mappings, shared across all auth modes.
@@ -922,8 +925,8 @@ func validateAuthorizationConfig(authz *Authorization, claimMappings *ClaimMappi
 		// exactly like a platform scope, so silently accepting an empty path
 		// means authorization that denies everything (or, for a role named after
 		// a scope, grants unintentionally). Require the mapping explicitly.
-		if authz.RoleMappings == "" {
-			return fmt.Errorf("auth.authorization.mode=%s requires auth.authorization.role_mappings to be configured", AuthzModeRole)
+		if authz.RolesToScopeMapping == "" {
+			return fmt.Errorf("auth.authorization.mode=%s requires auth.authorization.roles_to_scope_mapping to be configured", AuthzModeRole)
 		}
 	}
 	return nil
@@ -946,18 +949,25 @@ func validateFileBasedConfig(cfg *FileBased, authz *Authorization) error {
 		if u.PasswordHash == "" {
 			return fmt.Errorf("auth.file.users[%d] (%s): password_hash is required (set it in config via {{ env }}/{{ file }})", i, u.Username)
 		}
-		// A role is the user's whole grant, so a user without one is authenticated
-		// and then authorized for nothing — a login that succeeds and then fails
-		// every request. Reject it at startup instead of issuing a token with an
-		// empty scope claim.
-		if u.Role == "" {
-			return fmt.Errorf("auth.file.users[%d] (%s): role is required — name a role from auth.authorization.role_mappings", i, u.Username)
+		// The roles are the user's whole grant, so a user without any is
+		// authenticated and then authorized for nothing — a login that succeeds and
+		// then fails every request. Reject it at startup instead of issuing a token
+		// with an empty scope claim. An entry that is present but blank is the same
+		// mistake spelled differently, so reject it here rather than letting it
+		// expand to nothing later.
+		if len(u.Roles) == 0 {
+			return fmt.Errorf("auth.file.users[%d] (%s): roles is required — name at least one role from auth.authorization.roles_to_scope_mapping", i, u.Username)
 		}
-		// The role is expanded from the mapping file at login, so without the
-		// file the role grants nothing.
-		if authz.RoleMappings == "" {
-			return fmt.Errorf("auth.file.users[%d] (%s): role %q requires auth.authorization.role_mappings to be configured",
-				i, u.Username, u.Role)
+		for j, role := range u.Roles {
+			if role == "" {
+				return fmt.Errorf("auth.file.users[%d] (%s): roles[%d] is empty — name a role from auth.authorization.roles_to_scope_mapping", i, u.Username, j)
+			}
+		}
+		// The roles are expanded from the mapping file at login, so without the
+		// file they grant nothing.
+		if authz.RolesToScopeMapping == "" {
+			return fmt.Errorf("auth.file.users[%d] (%s): roles %v require auth.authorization.roles_to_scope_mapping to be configured",
+				i, u.Username, u.Roles)
 		}
 	}
 	return nil

@@ -42,7 +42,7 @@ mode = '{{ env "APIP_CP_AUTH_MODE" "file" }}'
 # Each user below names a role from this file — a role is a file-mode user's
 # entire grant, so the scope lists live there, not here.
 [platform_api.auth.authorization]
-role_mappings = "/etc/platform-api/roles.yaml"
+roles_to_scope_mapping = "/etc/platform-api/roles_to_scope_mapping.yaml"
 
 [platform_api.auth.jwt]
 issuer      = '{{ env "APIP_CP_AUTH_JWT_ISSUER" "platform-api-it" }}'
@@ -61,7 +61,7 @@ region       = '{{ env "APIP_CP_AUTH_FILE_ORGANIZATION_REGION" "us" }}'
 [[platform_api.auth.file.users]]
 username      = "admin"
 password_hash = "$2y$10$U2yKMwGamGwDoMu0hRPT7u8nCuP8z/qxHFOKV6dhIxkJN9NJ0eVQ."
-role          = "dp_admin_it"
+roles         = ["dp_admin_it"]
 
 # Content/config manager — APIs, MCP servers, key managers, subscription
 # plans, views/labels, webhook subscribers, API workflows. No org management,
@@ -69,11 +69,11 @@ role          = "dp_admin_it"
 [[platform_api.auth.file.users]]
 username      = "publisher"
 password_hash = "$2y$10$BN9I5oPs34clNmhlO0CX0uDMKMnh9xkczGGmuLiInXSe/KOF5wqFW"
-role          = "dp_publisher_it"
+roles         = ["dp_publisher_it"]
 
 # Portal end-user — read APIs/MCP servers, own applications, subscriptions,
 # and API keys. No org, key-manager, view/label, or webhook-subscriber management.
 [[platform_api.auth.file.users]]
 username      = "developer"
 password_hash = "$2y$10$jX3o2E5jF4i3EOgoyJ0k.uegbDYmsmFNDfIxnvcZgTNJifAPjgKKK"
-role          = "dp_developer_it"
+roles         = ["dp_developer_it"]
