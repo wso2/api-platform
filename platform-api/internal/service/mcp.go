@@ -549,8 +549,16 @@ func (s *MCPProxyService) Delete(orgUUID, handle, deletedBy string) error {
 }
 
 // FetchServerInfo fetches server information from an MCP backend.
-// When proxyId is provided, the URL and auth are fetched from the stored proxy configuration.
-// When proxyId is not provided, url is required and auth is optional.
+//
+// The target and credentials are selected by which fields the caller supplies:
+//   - url alone, or url + auth: contact that URL with the caller's own credentials
+//     (the creation flow, where nothing is stored yet).
+//   - proxyId alone: contact the proxy's stored URL with its stored credentials.
+//   - proxyId + url: contact the caller's URL with the proxy's stored credentials, for
+//     validating an unsaved endpoint edit without re-entering a write-only secret.
+//
+// auth may never accompany proxyId: in any stored-credential flow the stored auth is
+// authoritative, so an override is rejected rather than silently ignored.
 func (s *MCPProxyService) FetchServerInfo(orgUUID string, req *api.MCPServerInfoFetchRequest) (*api.MCPServerInfoFetchResponse, error) {
 	if req == nil {
 		return nil, apperror.ValidationFailed.New("A request body is required.")
@@ -562,22 +570,15 @@ func (s *MCPProxyService) FetchServerInfo(orgUUID string, req *api.MCPServerInfo
 	hasProxyID := req.ProxyId != nil && *req.ProxyId != ""
 	hasURL := req.Url != nil && *req.Url != ""
 
-	// Exactly one of url / proxyId selects the target, matching the oneOf constraint on
-	// MCPServerInfoFetchRequest. Accepting both would leave which one wins implicit.
-	if hasProxyID && hasURL {
-		return nil, apperror.ValidationFailed.New("Provide either url or proxyId, not both.")
-	}
 	if !hasProxyID && !hasURL {
 		return nil, apperror.ValidationFailed.New("Either url or proxyId is required.")
 	}
-	// Auth is only meaningful for the direct-url flow; in refetch mode the stored auth is
-	// authoritative, so a caller-supplied override is rejected rather than silently ignored.
 	if hasProxyID && req.Auth != nil {
 		return nil, apperror.ValidationFailed.New("The auth field is not allowed when proxyId is provided.")
 	}
 
 	if hasProxyID {
-		// ProxyId provided - fetch stored configuration (refetch flow)
+		// ProxyId provided - resolve stored configuration (refetch flow)
 		// Auth override is NOT allowed in refetch - use exactly what's stored
 		proxy, err := s.repo.GetByHandle(*req.ProxyId, orgUUID)
 		if err != nil {
@@ -593,6 +594,13 @@ func (s *MCPProxyService) FetchServerInfo(orgUUID string, req *api.MCPServerInfo
 		// here — doing so would diverge from what is stored and deployed to the gateway.
 		if proxy.Configuration.Upstream.Main != nil && proxy.Configuration.Upstream.Main.URL != "" {
 			url = proxy.Configuration.Upstream.Main.URL
+		}
+
+		// A caller-supplied URL overrides the stored one, and is used verbatim — this is
+		// what lets the UI validate an unsaved endpoint edit without re-entering a
+		// write-only credential.
+		if hasURL {
+			url = *req.Url
 		}
 
 		// Use stored auth from proxy configuration. The stored value is a

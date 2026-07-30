@@ -3456,14 +3456,32 @@ func resolveTemplateOpenAPISpec(ctx context.Context, tpl *model.LLMProviderTempl
 	return ""
 }
 
-// defaultUpstreamAuthToNone applies the platform's default upstream auth type and
-// strips credentials from credential-less types.
+// defaultUpstreamAuthToNone applies the platform's default upstream auth type for
+// caller-authored requests (create/update), where an omitted auth block means the
+// upstream genuinely takes no credentials.
 func defaultUpstreamAuthToNone(auth *model.UpstreamAuth) *model.UpstreamAuth {
+	return defaultUpstreamAuthType(auth, string(api.None))
+}
+
+// defaultUpstreamAuthToOther applies the default upstream auth type for LLM providers
+// imported from a gateway. An absent auth block there doesn't imply the upstream is
+// unauthenticated — the gateway may authenticate it via user-attached policies the
+// control plane doesn't model — so "other" is used rather than "none". This applies to
+// the provider import path only; every other path defaults to "none" (or leaves auth
+// absent) as before. The two are equivalent to the gateway at runtime — it attaches no
+// auth policy for either — so this affects what the control plane reports, not routing.
+func defaultUpstreamAuthToOther(auth *model.UpstreamAuth) *model.UpstreamAuth {
+	return defaultUpstreamAuthType(auth, string(api.Other))
+}
+
+// defaultUpstreamAuthType fills in an absent/blank auth type with defaultType and
+// strips credentials from credential-less types.
+func defaultUpstreamAuthType(auth *model.UpstreamAuth, defaultType string) *model.UpstreamAuth {
 	if auth == nil {
-		return &model.UpstreamAuth{Type: string(api.None)}
+		return &model.UpstreamAuth{Type: defaultType}
 	}
 	if strings.TrimSpace(auth.Type) == "" {
-		auth.Type = string(api.None)
+		auth.Type = defaultType
 	}
 	if isCredentialLessUpstreamAuthType(auth.Type) {
 		auth.Header = ""

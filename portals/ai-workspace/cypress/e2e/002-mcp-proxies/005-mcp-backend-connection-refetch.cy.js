@@ -19,19 +19,19 @@
 /**
  * "Refetch Server Info" behaviour on the MCP Proxy — Backend Connection tab.
  *
- * ExternalServersOverview's handleRefetch has two mutually-exclusive request
- * shapes, chosen by whether the endpoint URL / auth header / auth value differ
- * from what is currently persisted on the server:
+ * ExternalServersOverview's handleRefetch picks one of three request shapes,
+ * according to which credential the fetch has to run with:
  *
  *   - Unedited: POST /mcp-proxies/fetch-server-info { proxyId } — the
  *     backend resolves the stored URL and auth (via the saved secret handle)
  *     itself, so the browser never needs to re-send a credential it can't
- *     read back (auth.value is writeOnly). url and proxyId are mutually
- *     exclusive by API contract, so this omits url.
- *   - Edited: POST /mcp-proxies/fetch-server-info { url, auth: { type,
- *     header, value } } — validates the live, not-yet-saved values directly.
- *     proxyId and an auth override are mutually exclusive by API contract, so
- *     this omits proxyId.
+ *     read back (auth.value is writeOnly).
+ *   - Endpoint edited, credential untouched: { url, proxyId } — the backend
+ *     fetches the unsaved URL using the stored secret, so an endpoint change
+ *     can be verified without re-entering a credential the browser can't read.
+ *   - Credential typed: { url, auth: { type, header, value } } — validates
+ *     the live, not-yet-saved values directly. auth and proxyId are mutually
+ *     exclusive by API contract, so this omits proxyId.
  *
  * Covers:
  *   TC-98  Refetch with nothing edited → request uses proxyId, omits auth
@@ -341,5 +341,38 @@ describe('AI Workspace — MCP proxy Backend Connection tab (Refetch Server Info
         expect(secretCallCount, 'no new secret created for a non-credential edit').to.equal(0);
       });
     });
+  });
+
+  // ---------------------------------------------------------------------------
+  // TC-102
+  // ---------------------------------------------------------------------------
+  it('TC-102: refetching after a URL-only edit sends url + proxyId, reusing the stored credential', () => {
+    // An unsaved endpoint edit. The credential field is never focused, so it stays
+    // masked and the browser has no value to send; proxyId is what lets the backend
+    // supply it.
+    const editedPathUrl = 'https://sample.mcp.example.com/v2/mcp';
+
+    cy.get('[data-testid="backend-connection-endpoint-url"]')
+      .clear()
+      .type(editedPathUrl);
+    cy.get('[data-testid="backend-connection-auth-value"]')
+      .should('have.value', '******');
+
+    stubFetchServerInfo('refetchEditedUrl');
+
+    cy.get('[data-testid="backend-connection-refetch"]', { timeout: 15000 })
+      .should('not.be.disabled')
+      .click();
+
+    cy.wait('@refetchEditedUrl').then((pi) => {
+      const body = pi.request.body;
+      expect(body.url, 'the unsaved, edited url is what gets fetched').to.equal(editedPathUrl);
+      expect(body.proxyId, 'proxyId supplies the stored credential').to.equal(createdServerId);
+      // The masked sentinel must never be sent as if it were a credential, and no
+      // plaintext is available client-side to send either.
+      expect(body.auth, 'auth is never combined with proxyId').to.be.undefined;
+    });
+
+    cy.contains('Connection verified', { timeout: 15000 }).should('be.visible');
   });
 });

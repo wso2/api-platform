@@ -8396,37 +8396,37 @@ components:
     
     MCPServerInfoFetchRequest:
       type: object
-      oneOf:
+      anyOf:
         - required: [ "url" ]
         - required: [ "proxyId" ]
-          not:
-            required: [ "auth" ]
+      not:
+        required: [ "proxyId", "auth" ]
       description: |
-        Target MCP server to introspect. Provide exactly one of `url` (a direct backend URL,
-        optionally with `auth`) or `proxyId` (refetch using a stored proxy configuration) — never
-        both. `auth` must not be sent together with `proxyId`; the stored auth is always used in
-        the refetch flow.
+        Target MCP server to introspect, and the credentials to introspect it with. At least
+        one of `url`/`proxyId` must be provided
       properties:
         url:
           type: string
           format: uri
           description: |
-            Endpoint URL of the MCP server to fetch information from. Mutually exclusive
-            with `proxyId`; exactly one of the two must be provided.
+            Endpoint URL of the MCP server to fetch information from. Required unless
+            `proxyId` is given. When sent together with `proxyId` it overrides that proxy's
+            stored upstream URL, while the proxy's stored credentials are still used — this
+            validates an unsaved endpoint edit without re-sending a write-only secret.
           example: https://mcp.server.com/mcp
         proxyId:
           type: string
           description: |
-            MCP proxy handle (identifier) for refresh operations. When provided, the server
-            fetches URL and auth from the stored proxy configuration. Mutually exclusive
-            with `url`; exactly one of the two must be provided.
+            MCP proxy handle (identifier) for refresh operations. The stored credentials of
+            this proxy are used for the fetch, and its stored upstream URL too unless `url`
+            overrides it. Required unless `url` is given.
           example: my-mcp-proxy
         auth:
           $ref: '#/components/schemas/UpstreamAuth'
           description: |
-            Authentication configuration for the fetch request. Allowed only alongside
-            `url` (initial creation flow); sending it with `proxyId` is rejected, as the
-            stored auth is used in the refetch flow.
+            Authentication configuration for the fetch request. Allowed only when `proxyId`
+            is absent (initial creation flow); sending it with `proxyId` is rejected, as the
+            stored auth is used whenever a proxy is referenced.
 
     MCPServerInfoFetchResponse:
       type: object

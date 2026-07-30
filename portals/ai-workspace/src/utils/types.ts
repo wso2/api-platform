@@ -838,9 +838,15 @@ export type MCPServerListResponse = ApiListResponse<MCPServer>;
 /**
  * MCP Server Info Fetch Request
  *
- * `url` and `proxyId` are mutually exclusive (the API's oneOf), and `auth` is only
- * allowed alongside `url` — with `proxyId` the stored auth is authoritative and an
- * override is rejected. Modelled as a union so the invalid combinations don't compile.
+ * At least one of `url`/`proxyId` is required, and `auth` may never accompany `proxyId`
+ * — whenever a proxy is referenced its stored auth is authoritative and an override is
+ * rejected. Modelled as a union so that invalid combination doesn't compile. The three
+ * valid shapes are:
+ *
+ *   { url, auth? }      — contact this URL with these (or no) credentials
+ *   { proxyId }         — contact the stored URL with the stored credentials
+ *   { url, proxyId }    — contact this URL with the stored credentials, so an unsaved
+ *                         endpoint edit can be validated without re-sending the secret
  */
 interface MCPServerInfoFetchRequestBase {
   transportType?: string;
@@ -858,7 +864,7 @@ export type MCPServerInfoFetchRequest = MCPServerInfoFetchRequestBase &
           value: string;
         };
       }
-    | { proxyId: string; url?: never; auth?: never }
+    | { proxyId: string; url?: string; auth?: never }
   );
 
 /**
