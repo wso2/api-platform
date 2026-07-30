@@ -4,9 +4,21 @@
 # see configs/config-template.toml for the full list of available keys and
 # their default values.
 #
+# This file is loaded via a required, repeatable `--config <path>` flag (the JS
+# counterpart to the Go components' `-config`) — e.g. the container entrypoint
+# runs `node src/server.js --config /app/configs/config.toml`. At least one
+# --config is mandatory: there is no default path and no silent fallback to the
+# built-in defaults. Pass --config more than once to layer thin overlays over a
+# base file; later files override earlier ones, key by key.
+#
 # Precedence (lowest to highest):
 #   1. Built-in defaults (src/config/configDefaults.js)
-#   2. This file, with any {{ env }} / {{ file }} references resolved
+#   2. The merged --config files (this file, plus any later overlays), with any
+#      {{ env }} / {{ file }} references resolved once after the merge
+#
+# Merge semantics when layering multiple --config files: nested tables
+# deep-merge, but list/array values are REPLACED wholesale — an overlay that
+# sets a list key replaces the base list rather than appending to it.
 #
 # There is no automatic APIP_DP_* environment-variable override — an env var (or
 # a mounted file) only takes effect where a key below explicitly references it,
@@ -34,9 +46,10 @@
 # e.g. server.https.enabled defaults to true here (a real cert is bind-mounted at
 # /etc/devportal/tls) vs. false in configDefaults.js (no cert available for a
 # bare `npm start`). configDefaults.js's DEFAULTS only take effect for keys this
-# file doesn't list at all (idp, organization, uploads, etc.), or if this file
-# itself were absent entirely (e.g. the packaged `pkg` binary run standalone) —
-# see configDefaults.js's own comment for why its values stay generic.
+# file doesn't list at all (idp, organization, uploads, etc.). A config file is
+# always required, so DEFAULTS never drive the app on their own — they only fill
+# the gaps for keys no --config file sets. See configDefaults.js's own comment
+# for why its values stay generic.
 #
 # Running locally without Docker? Use `npm run start:local` instead of
 # `npm start` (package.json) — it overrides server.https.enabled and auth.local.* to
