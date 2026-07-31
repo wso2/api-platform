@@ -181,9 +181,13 @@ data:
             logLevel: info
             moesifKey: ""
           livenessProbe:
-            exec:
-              command: ["health-check.sh"]
+            httpGet:
+              path: /_gateway-health/healthy
+              port: https
+              scheme: HTTPS
           readinessProbe:
-            exec:
-              command: ["health-check.sh"]
+            httpGet:
+              path: /_gateway-health/ready
+              port: https
+              scheme: HTTPS
 

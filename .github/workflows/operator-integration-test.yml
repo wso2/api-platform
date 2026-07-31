@@ -744,15 +744,22 @@ jobs:
                     podLabels: {}
                     priorityClassName: ""
                     livenessProbe:
-                      exec:
-                        command: ["health-check.sh"]
+                      httpGet:
+                        # Direct-response route served by the router (Envoy) on the main
+                        # traffic listener — see constants.GatewayHealthyPath.
+                        path: /_gateway-health/healthy
+                        port: https
+                        scheme: HTTPS
                       initialDelaySeconds: 30
                       periodSeconds: 10
                       timeoutSeconds: 5
                       failureThreshold: 3
                     readinessProbe:
-                      exec:
-                        command: ["health-check.sh"]
+                      httpGet:
+                        # See constants.GatewayReadyPath.
+                        path: /_gateway-health/ready
+                        port: https
+                        scheme: HTTPS
                       initialDelaySeconds: 10
                       periodSeconds: 5
                       timeoutSeconds: 3

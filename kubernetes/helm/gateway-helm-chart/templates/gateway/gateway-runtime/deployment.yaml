@@ -120,14 +120,47 @@ spec:
             - name: pe-metrics
               containerPort: {{ $unified.service.ports.policyEngineMetrics }}
               protocol: TCP
+          {{- /*
+          Health-check probes must dial the router's actual bound port/scheme,
+          sourced directly from gateway.config.router (listener_port/https_port/
+          https_enabled) — the same values the router itself binds to in
+          gateway-config.yaml. They must NOT be derived from the "http"/"https"
+          named container ports below: those come from the independently
+          configurable gatewayRuntime.service.ports.*, which nothing forces to
+          stay in sync with gateway.config.router's actual bind ports, and a
+          Kubernetes httpGet probe's "port" is a raw dial target that need not
+          match any declared containerPort anyway.
+          */}}
+          {{- $httpsEnabled := $config.router.https_enabled }}
+          {{- $healthPort := $config.router.listener_port }}
+          {{- $healthScheme := "HTTP" }}
+          {{- if $httpsEnabled }}
+            {{- $healthPort = $config.router.https_port }}
+            {{- $healthScheme = "HTTPS" }}
+          {{- end }}
+          {{- $livenessProbe := deepCopy $deployment.livenessProbe }}
+          {{- if hasKey $livenessProbe "httpGet" }}
+            {{- $_ := set $livenessProbe.httpGet "port" $healthPort }}
+            {{- $_ := set $livenessProbe.httpGet "scheme" $healthScheme }}
+          {{- end }}
           livenessProbe:
-            {{- toYaml $deployment.livenessProbe | nindent 12 }}
+            {{- toYaml $livenessProbe | nindent 12 }}
           {{- with $deployment.startupProbe }}
+          {{- $startupProbe := deepCopy . }}
+          {{- if hasKey $startupProbe "httpGet" }}
+            {{- $_ := set $startupProbe.httpGet "port" $healthPort }}
+            {{- $_ := set $startupProbe.httpGet "scheme" $healthScheme }}
+          {{- end }}
           startupProbe:
-            {{- toYaml . | nindent 12 }}
+            {{- toYaml $startupProbe | nindent 12 }}
+          {{- end }}
+          {{- $readinessProbe := deepCopy $deployment.readinessProbe }}
+          {{- if hasKey $readinessProbe "httpGet" }}
+            {{- $_ := set $readinessProbe.httpGet "port" $healthPort }}
+            {{- $_ := set $readinessProbe.httpGet "scheme" $healthScheme }}
           {{- end }}
           readinessProbe:
-            {{- toYaml $deployment.readinessProbe | nindent 12 }}
+            {{- toYaml $readinessProbe | nindent 12 }}
           resources:
             {{- toYaml ($deployment.resources | default dict) | nindent 12 }}
           volumeMounts:
