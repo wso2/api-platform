@@ -36,6 +36,9 @@ policies:
     - name: dynamic-endpoint
       version: v1.0.1
       gomodule: github.com/wso2/gateway-controllers/policies/dynamic-endpoint@v1
+    - name: granite-guardian-prompt-injection
+      version: v0.9.0
+      pipPackage: git+https://github.com/wso2/gateway-controllers.git@policies/granite-guardian-prompt-injection/v0.9.0#subdirectory=policies/granite-guardian-prompt-injection
     - name: host-rewrite
       version: v1.0.1
       gomodule: github.com/wso2/gateway-controllers/policies/host-rewrite@v1
@@ -84,6 +87,9 @@ policies:
     - name: model-weighted-round-robin
       version: v1.1.1
       gomodule: github.com/wso2/gateway-controllers/policies/model-weighted-round-robin@v1
+    - name: nvidia-nemoguard-content-safety
+      version: v0.9.0
+      pipPackage: git+https://github.com/wso2/gateway-controllers.git@policies/nvidia-nemoguard-content-safety/v0.9.0#subdirectory=policies/nvidia-nemoguard-content-safety
     - name: opaque-token-auth
       version: v1.0.1
       gomodule: github.com/wso2/gateway-controllers/policies/opaque-token-auth@v1
