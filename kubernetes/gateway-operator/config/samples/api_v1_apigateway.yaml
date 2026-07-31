@@ -514,15 +514,19 @@ data:
           podLabels: {}
           priorityClassName: ""
           livenessProbe:
-            exec:
-              command: ["health-check.sh"]
+            httpGet:
+              path: /_gateway-health/healthy
+              port: https
+              scheme: HTTPS
             initialDelaySeconds: 30
             periodSeconds: 10
             timeoutSeconds: 5
             failureThreshold: 3
           readinessProbe:
-            exec:
-              command: ["health-check.sh"]
+            httpGet:
+              path: /_gateway-health/ready
+              port: https
+              scheme: HTTPS
             initialDelaySeconds: 10
             periodSeconds: 5
             timeoutSeconds: 3
