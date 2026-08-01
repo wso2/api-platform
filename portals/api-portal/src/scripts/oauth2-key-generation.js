@@ -58,12 +58,12 @@ async function addClientId(kmId, keyType, appId, orgId, keyManager) {
     }
 }
 
-function confirmAndRevokeKeys(applicationId, keyMappingId, keyType) {
+function confirmAndRemoveKeys(applicationId, keyMappingId, keyType) {
     const modal = document.getElementById('deleteConfirmation');
     if (modal) {
         const titleEl = modal.querySelector('.modal-title');
         const msgEl = modal.querySelector('.modal-message');
-        if (titleEl) titleEl.textContent = 'Revoke Application Keys';
+        if (titleEl) titleEl.textContent = 'Remove Application Keys';
         if (msgEl) msgEl.textContent = 'Are you sure you want to remove this client ID? Tokens already issued remain valid until they expire.';
         modal.dataset.applicationId = applicationId;
         modal.dataset.param2 = keyMappingId;
@@ -74,7 +74,7 @@ function confirmAndRevokeKeys(applicationId, keyMappingId, keyType) {
             confirmBtn.removeEventListener('click', handler);
             if (confirmBtn) {
                 confirmBtn.disabled = true;
-                confirmBtn.innerHTML = '<span class="spinner-border spinner-border-sm" role="status"></span> Revoking…';
+                confirmBtn.innerHTML = '<span class="spinner-border spinner-border-sm" role="status"></span> Removing…';
             }
             await removeApplicationKeys(applicationId, keyMappingId, keyType);
             if (confirmBtn) {
