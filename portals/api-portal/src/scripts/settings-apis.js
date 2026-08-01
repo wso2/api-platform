@@ -680,9 +680,9 @@
     setFieldError('wz-version', 'wz-version-error', version ? '' : 'Version is required.');
     if (!version) ok = false;
 
-    var desc = v('wz-desc');
-    setFieldError('wz-desc', 'wz-desc-error', desc ? '' : 'Description is required.');
-    if (!desc) ok = false;
+    // Description is optional — api_metadata.description is nullable and the
+    // create/update API never required it.
+    setFieldError('wz-desc', 'wz-desc-error', '');
 
     var handle = v('wz-handle');
     if (!handle) {
