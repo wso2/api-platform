@@ -17,7 +17,8 @@
 // --------------------------------------------------------------------
 
 // POST/GET/PUT/DELETE /views. A view groups a set of labels to filter which
-// APIs are visible in that portal view. ViewCreateRequest requires { id, labels }.
+// APIs are visible in that portal view. ViewCreateRequest requires only { id } —
+// labels are optional, so a view can be created first and labelled later.
 // `admin` manages org-level config.
 
 const client = require('../support/client');
@@ -46,6 +47,22 @@ describe('views', () => {
     it('creates a view', async () => {
         const id = uniqueHandle('view');
         const res = await client.as('admin').post('/views', { id, displayName: 'Partner APIs', labels: [label.id] });
+        expect(res.status).toBe(201);
+    });
+
+    it('creates a view with no labels', async () => {
+        const id = uniqueHandle('view');
+        const res = await client.as('admin').post('/views', { id, displayName: 'Unlabelled View' });
+        expect(res.status).toBe(201);
+
+        const fetched = await client.as('admin').get(`/views/${id}`);
+        expect(fetched.status).toBe(200);
+        expect(fetched.body.labels).toEqual([]);
+    });
+
+    it('creates a view with an empty label array', async () => {
+        const id = uniqueHandle('view');
+        const res = await client.as('admin').post('/views', { id, displayName: 'Empty Labels View', labels: [] });
         expect(res.status).toBe(201);
     });
 

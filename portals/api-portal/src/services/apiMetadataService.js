@@ -1620,7 +1620,10 @@ const getOrgLabels = async (orgId) => {
 const addView = async (req, res) => {
 
     const orgId = req.orgId;
-    const labels = req.body.labels;
+    // labels is optional — a view with none is valid, it just surfaces no APIs
+    // until labels are attached later. getLabelId() iterates the list, so an
+    // absent one has to become [] here rather than reaching the DAO undefined.
+    const labels = Array.isArray(req.body.labels) ? req.body.labels : [];
     const userId = util.resolveActor(req);
     if (req.body.id) {
         req.body.handle = req.body.id;
