@@ -1128,6 +1128,21 @@ async function convertSDLToIntrospection(sdl) {
 }
 
 
+/**
+ * Markdown/agent-facing endpoints answer in text rather than the HTML error
+ * page, so they can't hand the error to the central handler. A URL naming a
+ * view or API that doesn't exist is still the caller's mistake, not a server
+ * fault — the DAOs raise those as CustomError(404), whose status sits on
+ * `statusCode`, so treating every failure as 500 told an agent to retry
+ * something that will never succeed.
+ */
+function sendMarkdownError(res, error, failureMessage) {
+    if (util.pageErrorStatus(error) === 404) {
+        return res.status(404).send('# Not Found\n\nThe requested resource does not exist.');
+    }
+    return res.status(500).send(`# Error\n\n${failureMessage}`);
+}
+
 const loadAPIContentMd = async (req, res) => {
     const { orgName, apiHandle, viewName } = req.params;
 
@@ -1251,7 +1266,7 @@ const loadAPIContentMd = async (req, res) => {
             error: error.message,
             stack: error.stack
         });
-        res.status(500).send('# Error\n\nFailed to load API details.');
+        sendMarkdownError(res, error, 'Failed to load API details.');
     }
 };
 
@@ -1328,7 +1343,7 @@ const loadLlmsTxt = async (req, res) => {
         res.send(md);
     } catch (error) {
         logger.error('Error generating llms.txt', { orgName, error: error.message, stack: error.stack });
-        res.status(500).send('# Error\n\nFailed to generate portal index.');
+        sendMarkdownError(res, error, 'Failed to generate portal index.');
     }
 };
 
@@ -1353,7 +1368,7 @@ const previewLlmsTxt = async (req, res) => {
         res.send(md);
     } catch (error) {
         logger.error('Error previewing llms.txt', { orgName, error: error.message, stack: error.stack });
-        res.status(500).send('# Error\n\nFailed to generate preview.');
+        sendMarkdownError(res, error, 'Failed to generate preview.');
     }
 };
 
@@ -1408,7 +1423,7 @@ const loadAPIsMd = async (req, res) => {
             error: error.message,
             stack: error.stack
         });
-        res.status(500).send('# Error\n\nFailed to load API list.');
+        sendMarkdownError(res, error, 'Failed to load API list.');
     }
 };
 
@@ -1449,7 +1464,7 @@ const loadMCPsMd = async (req, res) => {
             error: error.message,
             stack: error.stack
         });
-        res.status(500).send('# Error\n\nFailed to load MCP list.');
+        sendMarkdownError(res, error, 'Failed to load MCP list.');
     }
 };
 
@@ -1560,7 +1575,7 @@ const loadDocumentMd = async (req, res) => {
             error: error.message,
             stack: error.stack
         });
-        res.status(500).send('# Error\n\nFailed to load document.');
+        sendMarkdownError(res, error, 'Failed to load document.');
     }
 };
 
