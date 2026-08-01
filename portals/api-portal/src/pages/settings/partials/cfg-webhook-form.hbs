@@ -15,8 +15,13 @@
 
         <div class="cfg-webhook-form">
           <div class="cfg-form-group" style="margin-bottom:16px;">
-            <label for="wh-display">Display name <span class="required">*</span></label>
+            <label for="wh-display">Name <span class="required">*</span></label>
             <input type="text" id="wh-display" class="cfg-form-input" placeholder="e.g. Production listener" />
+          </div>
+          <div class="cfg-form-group" style="margin-bottom:16px;">
+            <label for="wh-handle">Handle <span class="required">*</span></label>
+            <input type="text" id="wh-handle" class="cfg-form-input cfg-form-input--mono" placeholder="production-listener" />
+            <p class="cfg-field-hint">Identifier used in the API path. Cannot be changed.</p>
           </div>
           <div class="cfg-form-group" style="margin-bottom:16px;">
             <label for="wh-url">Target URL <span class="required">*</span></label>
