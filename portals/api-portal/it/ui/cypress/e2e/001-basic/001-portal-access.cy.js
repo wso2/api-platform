@@ -27,11 +27,15 @@ describe('API Portal — Portal Access', () => {
     let mcpHandle;
 
     before(() => {
+        // Seeding goes through the REST API as a logged-in admin — the portal's
+        // static service API key is gone.
+        cy.login();
         cy.seedApi().then((handle) => { apiHandle = handle; });
         cy.seedMcp().then((handle) => { mcpHandle = handle; });
     });
 
     after(() => {
+        cy.login();
         cy.deleteApi(apiHandle);
         cy.deleteMcp(mcpHandle);
     });

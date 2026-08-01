@@ -26,6 +26,7 @@ describe('REST API — overview, documentation & try-out', () => {
     let apiHandle;
 
     before(() => {
+        cy.login();
         cy.seedApi({
             name: API_NAME,
             version: 'v1.0',
@@ -67,6 +68,7 @@ describe('REST API — overview, documentation & try-out', () => {
     });
 
     after(() => {
+        cy.login();
         cy.deleteApi(apiHandle);
     });
 

@@ -243,14 +243,14 @@ async function resolveScopedOrg(req, identifier, source) {
 }
 
 /**
- * Sets req.orgId for credentials that carry no organization of their own (service
- * API key, mTLS) — they are authenticated as this portal's operator, so the only
- * organization they can be acting on is the one this instance serves.
+ * Sets req.orgId for credentials that carry no organization of their own (mTLS) —
+ * they are authenticated as this portal's operator, so the only organization they
+ * can be acting on is the one this instance serves.
  *
  * An `organization` header is no longer what selects the organization; it is only
- * checked for disagreement. Honouring it would let a single API key address every
- * tenant in the shared database. Rejecting a mismatch rather than ignoring it keeps
- * a caller from believing it wrote to the organization it named.
+ * checked for disagreement. Honouring it would let a single credential address
+ * every tenant in the shared database. Rejecting a mismatch rather than ignoring
+ * it keeps a caller from believing it wrote to the organization it named.
  *
  * @returns {Promise<Error|null>} null on success, or an Error with .status
  */
@@ -315,7 +315,7 @@ async function authResolver(req, res, next) {
         // 2. Session fast-path: browser login via IDP.
         //
         // In "scope" mode the per-operation check is bypassed (preauthorized, same as the
-        // API key and mTLS paths): the IDP mints whatever scopes its client is registered
+        // mTLS path): the IDP mints whatever scopes its client is registered
         // for, which would mean listing all dp:* scopes in the OIDC scope config, so the
         // authorization that actually applies to these sessions is ensureAuthenticated's
         // page role check.
@@ -397,21 +397,7 @@ async function authResolver(req, res, next) {
             return next();
         }
 
-        // 4. API key — org resolved from the `organization` request header
-        if (config.security?.serviceApiKey?.enabled) {
-            const keyType = config.security.serviceApiKey.headerName;
-            if (keyType && config.security?.serviceApiKey?.value) {
-                const apiKey = req.headers[keyType.toLowerCase()];
-                if (apiKey && apiKey === config.security?.serviceApiKey?.value) {
-                    const orgErr = await resolvePortalOrg(req);
-                    if (orgErr) return next(orgErr);
-                    req.auth = { mode: 'apikey', preauthorized: true, scopes: [] };
-                    return next();
-                }
-            }
-        }
-
-        // 5. mTLS — org resolved from the `organization` request header
+        // 4. mTLS — org resolved from the `organization` request header
         if (typeof req.socket?.getPeerCertificate === 'function') {
             const cert = req.socket.getPeerCertificate(true);
             if (cert && Object.keys(cert).length > 0 && req.client?.authorized) {
@@ -425,7 +411,7 @@ async function authResolver(req, res, next) {
             }
         }
 
-        // 6. No usable credential — pass through as anonymous so the OpenAPI
+        // 5. No usable credential — pass through as anonymous so the OpenAPI
         // validator can enforce security on a per-operation basis. Operations
         // with `security: []` (public endpoints) will proceed; operations that
         // declare a security scheme will have their handler invoked by the
@@ -476,16 +462,17 @@ async function OAuth2Security(req /* , requiredScopes, schema */) {
 }
 
 /**
- * API key security handler. Accepts the request if authResolver already
- * authenticated it via API key (or any preauthorized non-OAuth mode, to
- * mirror legacy behaviour where API key endpoints also accepted basic/mTLS).
- */
-/*
- * TODO: once the API key support introduces with scope support, change the method
- * to check for scopes as well, and rename it to ApiKeySecurity for clarity.
+ * Handler for the spec's `apiKeyAuth` security scheme. No operation currently
+ * declares that scheme, so the validator never invokes this — it stays wired up
+ * so adding `security: [apiKeyAuth]` to an operation doesn't fail at startup.
+ * Accepts any preauthorized non-OAuth mode (mTLS, role-mode session).
+ *
+ * The portal's own static shared-secret header auth (`service_api_key`) was
+ * removed; this is not a revival of it. Any future API key scheme needs its own
+ * credential store and a real scope check here, not a config constant.
  */
 async function apiKeyAuth(req /* , scopes, schema */) {
-    if (req.auth?.mode === 'apikey' || req.auth?.preauthorized) return true;
+    if (req.auth?.preauthorized) return true;
     const err = new Error('Authentication required');
     err.status = 401;
     throw err;

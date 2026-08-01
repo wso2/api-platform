@@ -38,10 +38,6 @@ name     = '{{ env "APIP_AP_DATABASE_NAME" "api_portal" }}'
 encryption_key = '{{ env "APIP_AP_SECURITY_ENCRYPTION_KEY" }}'
 session_secret = '{{ env "APIP_AP_SECURITY_SESSION_SECRET" }}'
 
-[api_portal.security.service_api_key]
-enabled = true
-value = "api-portal-it-test-key"
-
 [api_portal.organization]
 # The single organization each portal instance serves. Tokenized because the
 # fixture runs a SECOND instance (api-portal-other-org) off this same file with a

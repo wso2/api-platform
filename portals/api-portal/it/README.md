@@ -195,8 +195,10 @@ After a run, artifacts are available under `reports/`:
 - **REST API suite** performs **real session logins** against `platform-api` using the
   file-based users defined in `configs/config-platform-api-it.toml`
   (`admin`/`admin`, `publisher`/`publisher`, `developer`/`developer`).
-- **UI suite** uses both real login flows (`auth/` specs) and, for admin-protected REST
-  calls, an IT API key injected via the `x-wso2-api-key` header.
+- **UI suite** uses real login flows throughout. Seeding and cleanup hooks call
+  `cy.login()` and then `cy.apiRequest`, which authenticates with the resulting session
+  cookie plus the `X-CSRF-Token` double-submit header. `testIsolation` clears cookies
+  between tests, so each `before`/`after` hook needs its own `cy.login()`.
 
 ## Adding New Tests
 

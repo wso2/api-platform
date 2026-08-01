@@ -30,6 +30,7 @@ describe('MCP server listing', () => {
     let restHandle;
 
     before(() => {
+        cy.login();
         cy.seedMcp({ name: MCP_ONE }).then((h) => { mcpOneHandle = h; });
         cy.seedMcp({ name: MCP_TWO }).then((h) => { mcpTwoHandle = h; });
         // A REST API — must NOT appear on the /mcps listing (it belongs on /apis).
@@ -37,6 +38,7 @@ describe('MCP server listing', () => {
     });
 
     after(() => {
+        cy.login();
         cy.deleteMcp(mcpOneHandle);
         cy.deleteMcp(mcpTwoHandle);
         cy.deleteApi(restHandle);

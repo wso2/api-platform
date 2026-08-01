@@ -613,7 +613,7 @@ const loadDocument = async (req, res, next) => {
                     const schemaAsIntrospectionJSON = await convertSDLToIntrospection(definitionResponse.swagger);
                     templateContent.graphqlSchemaAsIntrospectionJSON = schemaAsIntrospectionJSON ? JSON.stringify(schemaAsIntrospectionJSON) : null;
                     templateContent.graphqlSecurityScheme = '[]';
-                    templateContent.graphqlApiKeyHeader = config.security?.serviceApiKey?.headerName || 'apikey';
+                    templateContent.graphqlApiKeyHeader = 'apikey';
                     templateContent.apiMetadata = metaData;
                 } else {
                     templateContent.graphql = JSON.stringify(definitionResponse.swagger);
@@ -738,7 +738,7 @@ const loadDocument = async (req, res, next) => {
                     const schemaAsIntrospectionJSON = await convertSDLToIntrospection(definitionResponse.graphql);
                     templateContent.graphqlSchemaAsIntrospectionJSON = schemaAsIntrospectionJSON ? JSON.stringify(schemaAsIntrospectionJSON) : null;
                     templateContent.graphqlSecurityScheme = '[]';
-                    templateContent.graphqlApiKeyHeader = config.security?.serviceApiKey?.headerName || 'apikey';
+                    templateContent.graphqlApiKeyHeader = 'apikey';
                 } else {
                     templateContent.graphql = definitionResponse.graphql ? JSON.stringify(definitionResponse.graphql) : '""';
                     templateContent.apiMetadataJSON = JSON.stringify(apiMetadata || {});

@@ -100,6 +100,9 @@ describe('Applications', () => {
         let mockToken;
 
         before(() => {
+            // Key managers are admin-only over the REST API, and seeding now
+            // authenticates with a session rather than the removed service API key.
+            cy.login();
             // Start the mock OAuth2 token endpoint only for this context, and point
             // the key manager at it so the token round-trip can actually resolve.
             cy.task('startMockTokenServer').then((mock) => {
@@ -113,6 +116,7 @@ describe('Applications', () => {
         });
 
         after(() => {
+            cy.login();
             cy.deleteKeyManager(KM_ID);
             cy.task('stopMockTokenServer');
         });

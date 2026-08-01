@@ -21,18 +21,22 @@
 // accept one must reject anything but this instance's own organization:
 //
 //   page URLs            /{orgHandle}/...            -> 404   (src/middlewares/orgGuard.js)
-//   `organization` header on an API-key request      -> 403   (src/middlewares/authMiddleware.js)
 //
-// These are all unauthenticated or API-key surfaces — the point is that no
-// credential is needed to attempt them, so the rejection cannot depend on one.
-// Token/session organization claims are covered by auth/file-based-login.spec.js.
+// The page surfaces are unauthenticated — the point is that no credential is
+// needed to attempt them, so the rejection cannot depend on one.
+//
+// authMiddleware's `organization` header check (resolvePortalOrg -> 403) now only
+// applies to mTLS, the sole remaining credential that carries no organization of
+// its own; the static service API key that used to reach it was removed, and this
+// fixture provisions no client certificates, so that path is not exercised here.
+// For session and bearer credentials the organization comes from the credential's
+// own claim (resolveScopedOrg) and the header is never a selector — asserted
+// below, and covered further by auth/file-based-login.spec.js.
 
 const client = require('../support/client');
 
 const OWN_ORG = client.ORG_HANDLE;
 const FOREIGN_ORG = 'some-other-org';
-const API_KEY_HEADER = 'x-wso2-api-key';
-const API_KEY = process.env.API_PORTAL_API_KEY || 'api-portal-it-test-key';
 
 describe('single-organization isolation', () => {
     describe('page routes', () => {
@@ -71,31 +75,31 @@ describe('single-organization isolation', () => {
         });
     });
 
-    describe('organization request header', () => {
-        it('scopes an API-key request to this organization when no header is sent', async () => {
-            const res = await client.raw()
-                .get(`${client.API_PREFIX}/apis`)
-                .set(API_KEY_HEADER, API_KEY);
+    describe('organization request header on a session credential', () => {
+        beforeAll(async () => {
+            await client.login('admin');
+        });
+
+        it('serves the caller organization when no header is sent', async () => {
+            const res = await client.as('admin').get('/apis');
             expect(res.status).toBe(200);
         });
 
-        it('accepts a header naming this organization', async () => {
-            const res = await client.raw()
-                .get(`${client.API_PREFIX}/apis`)
-                .set(API_KEY_HEADER, API_KEY)
-                .set('organization', OWN_ORG);
+        it('serves the caller organization when the header names it', async () => {
+            const res = await client.as('admin').get('/apis').set('organization', OWN_ORG);
             expect(res.status).toBe(200);
         });
 
-        it('rejects a header naming another organization with 403', async () => {
-            // Honouring this header would make one API key able to address every
-            // tenant in the shared database. Rejecting rather than ignoring it also
-            // keeps a caller from believing it wrote to the organization it named.
-            const res = await client.raw()
-                .get(`${client.API_PREFIX}/apis`)
-                .set(API_KEY_HEADER, API_KEY)
-                .set('organization', FOREIGN_ORG);
-            expect(res.status).toBe(403);
+        it('does not let the header redirect the request to another organization', async () => {
+            // The organization comes from the session's own claim, so this header is
+            // not a selector. Honouring it would let one credential address every
+            // tenant in the shared database; the request must stay scoped to the
+            // caller's organization rather than reaching the one it named.
+            const res = await client.as('admin').get('/apis').set('organization', FOREIGN_ORG);
+            expect(res.status).toBe(200);
+
+            const own = await client.as('admin').get('/apis');
+            expect(res.body).toEqual(own.body);
         });
     });
 

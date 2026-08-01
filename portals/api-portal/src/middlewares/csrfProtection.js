@@ -17,7 +17,6 @@
  */
  
 const crypto = require('crypto');
-const { config } = require('../config/configLoader');
 
 const CSRF_HMAC_LABEL = 'api-portal-api-keys-csrf';
 
@@ -48,15 +47,6 @@ function hasBearerAuthorization(req) {
     return typeof a === 'string' && a.length > 6 && a.toLowerCase().startsWith('bearer ');
 }
 
-function hasConfiguredApiKey(req) {
-    if (!config.security?.serviceApiKey?.enabled || !config.security.serviceApiKey.headerName || !config.security.serviceApiKey.value) {
-        return false;
-    }
-    const keyType = config.security.serviceApiKey.headerName;
-    const sentKey = req.headers[keyType.toLowerCase()] || req.headers[keyType];
-    return sentKey === config.security.serviceApiKey.value;
-}
-
 function hasMTLSClient(req) {
     try {
         const cert = req.socket?.getPeerCertificate?.(true);
@@ -81,13 +71,10 @@ function timingSafeCompare(a, b) {
 /**
  * For mutating API Portal REST routes: cookie-based sessions must send X-CSRF-Token
  * matching getSessionCsrfToken. Skips when auth matches non-browser paths used by
- * enforceSecurity (Bearer, API key, mTLS).
+ * enforceSecurity (Bearer, mTLS).
  */
 function requireCsrfForMutatingApi(req, res, next) {
     if (hasBearerAuthorization(req)) {
-        return next();
-    }
-    if (hasConfiguredApiKey(req)) {
         return next();
     }
     if (hasMTLSClient(req)) {

@@ -143,7 +143,6 @@ services:
     shm_size: '2gb'
     environment:
       CYPRESS_BASE_URL: "http://api-portal:9543"
-      CYPRESS_API_KEY: "api-portal-it-test-key"
     volumes:
       - ./ui:/e2e
       - ./reports:/e2e/reports
