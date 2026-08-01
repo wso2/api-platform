@@ -1369,9 +1369,15 @@ const loadAPIsMd = async (req, res) => {
         const hiddenAPICount = metaDataList.length - agentVisibleAPIs.length;
 
         const nonMcpAPIs = agentVisibleAPIs.filter(api => api.type !== constants.API_TYPE.MCP);
+        // api.type holds the stored constant (e.g. "RestApi", "WebSubApi" — see
+        // constants.API_TYPE), not the enum key used below — map it back or every
+        // REST/WebSub API silently drops out of this catalog.
+        const typeConstantToEnum = Object.fromEntries(
+            Object.entries(constants.API_TYPE).map(([enumKey, storedValue]) => [storedValue, enumKey])
+        );
         const byType = { REST: [], GRAPHQL: [], WS: [], WEBSUB: [] };
         for (const api of nonMcpAPIs) {
-            const type = api.type;
+            const type = typeConstantToEnum[api.type];
             if (byType[type]) byType[type].push(api);
         }
         const baseUrl = '/' + orgName + constants.ROUTE.VIEWS_PATH + viewName;
