@@ -665,19 +665,23 @@ const loadDocument = async (req, res, next) => {
             templateContent.isGraphQLTryout = tryoutEnabled;
         }
         let apiMetadata = definitionResponse.metaData;
-        
-        const isMCPFromRegistry = apiMetadata?.type === constants.API_TYPE.MCP && !apiMetadata?.refId;
 
         //load API definition
         if (req.originalUrl.includes(constants.FILE_NAME.API_SPECIFICATION_PATH)) {
 
-            if (isMCPFromRegistry) {
-                const remotes = apiMetadata?.remotes || [];
-                const serverUrl = remotes.length > 0 ? remotes[0].url : '';
-                templateContent.swagger = JSON.stringify({ servers: [{ url: serverUrl }] });
-            } else if (definitionResponse.apiType === constants.API_TYPE.MCP) {
-                // CP-registered MCP: use server URL from endPoints
-                templateContent.swagger = definitionResponse.swagger;
+            if (definitionResponse.apiType === constants.API_TYPE.MCP) {
+                // The playground reads its server URL from servers[0].url. A
+                // registry-sourced MCP carries that endpoint in remotes[]; one
+                // registered through the control plane carries it in endPoints
+                // (getAPIDefinition already wraps it as {servers:[...]}).
+                // Keying purely on refId sent every MCP created directly in the
+                // portal — which has no refId *and* no remotes[] — down the
+                // remotes path, leaving the playground with a blank URL. Prefer
+                // remotes when present, otherwise fall back to endPoints.
+                const remoteUrl = (apiMetadata?.remotes || [])[0]?.url;
+                templateContent.swagger = remoteUrl
+                    ? JSON.stringify({ servers: [{ url: remoteUrl }] })
+                    : definitionResponse.swagger;
             } else if (definitionResponse.apiType !== constants.API_TYPE.WS && definitionResponse.apiType !== constants.API_TYPE.GRAPHQL && definitionResponse.apiType !== constants.API_TYPE.WEBSUB) {
                 let modifiedSwagger;
                 try {
