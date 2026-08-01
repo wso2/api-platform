@@ -41,6 +41,16 @@ Each suite can run against either **SQLite** (default, no external DB) or **Post
   organization and refuses a login carrying any other one's — a check the matched pair above
   can never reach. Started only for the `test-rest-api*` targets (as a `rest-api-tests`
   dependency), and driven by `rest-api/auth/foreign-org-login.spec.js`.
+- **api-portal-role-mode** — a third instance, identical to the primary one except that it
+  runs `auth.authorization.mode = "role"` (the shipped default) instead of `"scope"`, with its
+  own portal-side grant table, `configs/portal-roles-role-mode-it.yaml`. Role mode ignores a
+  token's scope claim and expands its roles claim instead, so the primary instance can never
+  exercise it. That grant table deliberately gives `dp_developer_it` *less* than
+  `configs/roles-platform-api-it.yaml` puts in the same user's scope claim, which is what lets
+  the spec prove the scope claim is ignored rather than merged. Started only for the
+  `test-rest-api*` targets, and driven by `rest-api/auth/role-mode-authorization.spec.js`.
+  Runs on its own container-local SQLite database in both DB variants — instances sharing a
+  database steal each other's webhook deliveries, and each has a different encryption key.
 - **Jest + Supertest** — REST API test framework.
 - **Cypress** — UI E2E test framework (headless Electron).
 - **SQLite / PostgreSQL** — SQLite by default; the `-postgres` targets swap in a Postgres service.
@@ -134,7 +144,7 @@ Defined in `ui/cypress/support/`:
 |---------|-------------|
 | `cy.visitPortal(path)` | Navigate to a path inside the default portal view |
 | `cy.portalUrl(path)` | Build a URL under the default view without visiting it |
-| `cy.apiRequest(method, path, options)` | `cy.request` wrapper that injects the IT API key header for admin-protected endpoints |
+| `cy.apiRequest(method, path, options)` | `cy.request` wrapper that authenticates with the current session cookie plus the `X-CSRF-Token` header (call `cy.login()` first) |
 | `cy.login(username, password)` | Perform a real login flow (see `support/commands/auth.js`) |
 | `cy.logout()` | Log the current user out |
 | `cy.createApplication(name)` / `cy.deleteApplication(name)` | Create/delete an application (see `support/commands/applications.js`) |

@@ -1,0 +1,96 @@
+# --------------------------------------------------------------------
+# Copyright (c) 2026, WSO2 LLC. (https://www.wso2.com).
+#
+# WSO2 LLC. licenses this file to you under the Apache License,
+# Version 2.0 (the "License"); you may not use this file except
+# in compliance with the License.
+# You may obtain a copy of the License at
+#
+# http://www.apache.org/licenses/LICENSE-2.0
+# --------------------------------------------------------------------
+#
+# The PORTAL's role-to-scope grant table for the `api-portal-role-mode` service in
+# docker-compose.test*.yaml (auth.authorization.role_to_scope_mapping). Read only by
+# that instance, which runs with auth.authorization.mode = "role" — the shipped
+# default in configs/config.toml, and the mode the rest of this suite cannot exercise
+# because it is pinned to "scope" (see test-config.toml).
+#
+# NOT the same file as roles-platform-api-it.yaml, and deliberately so.
+#
+#   roles-platform-api-it.yaml  — platform-api's table. Expands each IT account's
+#                                 roles into the *scope claim* of the token it mints.
+#   this file                   — the portal's table. In role mode the portal ignores
+#                                 that scope claim entirely and expands the token's
+#                                 *roles claim* through this file instead.
+#
+# Two tables, same three role names, deliberately different grants. That divergence is
+# the point: it is what lets role-mode-authorization.spec.js prove the scope claim is
+# ignored rather than merged. `dp_developer_it` is read-only here while platform-api
+# grants it dp:application:manage, so an application create by the developer must be
+# refused by the role-mode instance even though the token it presents carries a scope
+# that would allow it. Keep that asymmetry — collapsing the two tables would make the
+# suite pass whether or not role mode consults the scope claim.
+#
+# Every dp:* scope below must be declared in docs/api-portal-openapi-spec-v0.9.yaml;
+# the portal validates this file against the spec at startup (src/config/roleScopeMap.js)
+# and refuses to boot on an unknown one, so a typo here fails the fixture loudly.
+# --------------------------------------------------------------------
+
+roles:
+  # Mirrors the shipped dp_admin grant — full portal administration. The admin
+  # assertions expect every management operation to succeed under this role.
+  - name: dp_admin_it
+    scopes:
+      - dp:organization:manage
+      - dp:organization_content:manage
+      - dp:api:manage
+      - dp:api_content:manage
+      - dp:mcp_server:manage
+      - dp:mcp_server_content:manage
+      - dp:api_workflow:manage
+      - dp:api_key:manage
+      - dp:mcp_server_key:manage
+      - dp:application:manage
+      - dp:application_key:manage
+      - dp:application_key:revoke
+      - dp:application_key_mapping:manage
+      - dp:subscription:manage
+      - dp:subscription_plan:manage
+      - dp:key_manager:manage
+      - dp:key_manager:read
+      - dp:view:manage
+      - dp:label:manage
+      - dp:webhook_subscriber:manage
+      - dp:event:read
+
+  # Catalogue manager — APIs, MCP servers, views and labels. No organization
+  # settings, no key managers, no webhook subscribers: those separate it from
+  # dp_admin_it in the "a narrower role is denied an admin operation" assertions.
+  - name: dp_publisher_it
+    scopes:
+      - dp:api:manage
+      - dp:api_content:manage
+      - dp:mcp_server:manage
+      - dp:mcp_server_content:manage
+      - dp:api_workflow:manage
+      - dp:view:manage
+      - dp:label:manage
+      - dp:subscription_plan:read
+      - dp:organization:read
+      - dp:organization_content:read
+
+  # Read-only. Intentionally NARROWER than the same role's grant in
+  # roles-platform-api-it.yaml, which additionally carries dp:application:manage,
+  # dp:subscription:manage and dp:api_key:manage. Those absences are load-bearing —
+  # see the header note.
+  - name: dp_developer_it
+    scopes:
+      - dp:api:read
+      - dp:api_content:read
+      - dp:mcp_server:read
+      - dp:mcp_server_content:read
+      - dp:subscription_plan:read
+      - dp:organization:read
+      - dp:organization_content:read
+      - dp:view:read
+      - dp:label:read
