@@ -145,7 +145,7 @@ const loadAPIs = async (req, res, next) => {
                 const err = Object.assign(new Error(constants.ERROR_MESSAGE.COMMON_AUTH_ERROR_MESSAGE), { status: 401 });
                 return next(err);
             } else {
-                error.status = 500;
+                error.status = util.pageErrorStatus(error);
                 return next(error);
             }
         }
@@ -436,7 +436,7 @@ const loadAPIContent = async (req, res, next) => {
                 const err = Object.assign(new Error(constants.ERROR_MESSAGE.COMMON_AUTH_ERROR_MESSAGE), { status: 401 });
                 return next(err);
             } else {
-                error.status = 500;
+                error.status = util.pageErrorStatus(error);
                 return next(error);
             }
         }
@@ -565,7 +565,7 @@ const loadDocsPage = async (req, res, next) => {
                 error: error.message,
                 stack: error.stack
             });
-            error.status = 500;
+            error.status = util.pageErrorStatus(error);
             return next(error);
         }
     }
@@ -804,7 +804,7 @@ const loadDocument = async (req, res, next) => {
                 error: error.message,
                 stack: error.stack
             });
-            error.status = 500;
+            error.status = util.pageErrorStatus(error);
             return next(error);
         }
         res.send(html);
@@ -813,7 +813,7 @@ const loadDocument = async (req, res, next) => {
             const err = Object.assign(new Error(constants.ERROR_MESSAGE.COMMON_AUTH_ERROR_MESSAGE), { status: 401 });
             return next(err);
         } else {
-            error.status = 500;
+            error.status = util.pageErrorStatus(error);
             return next(error);
         }
     }

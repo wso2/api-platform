@@ -16,7 +16,7 @@
  * under the License.
  */
  
-const { renderTemplateWithView, resolveActor } = require('../utils/util');
+const { renderTemplateWithView, resolveActor, pageErrorStatus } = require('../utils/util');
 const logger = require('../config/logger');
 const constants = require('../utils/constants');
 const orgDao = require('../dao/organizationDao');
@@ -88,7 +88,7 @@ const loadApiKeysOverview = async (req, res, next) => {
             stack: error.stack,
             orgName,
         });
-        error.status = 500;
+        error.status = pageErrorStatus(error);
         return next(error);
     }
 };

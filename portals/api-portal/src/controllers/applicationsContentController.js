@@ -16,7 +16,7 @@
  * under the License.
  */
  
-const { renderTemplate, renderGivenTemplate, loadLayoutFromAPI, resolveActor } = require('../utils/util');
+const { renderTemplate, renderGivenTemplate, loadLayoutFromAPI, resolveActor, pageErrorStatus } = require('../utils/util');
 const { config } = require('../config/configLoader');
 const logger = require('../config/logger');
 const constants = require('../utils/constants');
@@ -230,7 +230,7 @@ const loadApplications = async (req, res, next) => {
             error: error.message,
             stack: error.stack
         });
-        error.status = 500;
+        error.status = pageErrorStatus(error);
         return next(error);
     }
     res.send(html);

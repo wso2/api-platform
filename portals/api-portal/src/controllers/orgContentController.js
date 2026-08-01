@@ -17,7 +17,7 @@
  */
 /* eslint-disable no-undef */
 const logger = require('../config/logger');
-const { renderTemplate, renderTemplateFromAPI } = require('../utils/util');
+const { renderTemplate, renderTemplateFromAPI, pageErrorStatus } = require('../utils/util');
 const { config } = require('../config/configLoader');
 const constants = require('../utils/constants');
 const orgDao = require('../dao/organizationDao');
@@ -31,6 +31,10 @@ const loadOrganizationContent = async (req, res, next) => {
     } else {
         html = await loadOrgContentFromAPI(req, res, next);
     }
+    // loadOrgContentFromAPI returns undefined once it has handed the error to
+    // next() — the error handler has already written the response by then, so
+    // sending again would throw ERR_HTTP_HEADERS_SENT over the real error.
+    if (html === undefined || res.headersSent) return;
     res.send(html);
 }
 const loadOrgContentFromFile = async (req, res) => {
@@ -72,7 +76,7 @@ const loadOrgContentFromAPI = async (req, res, next) => {
             error: error.message,
             stack: error.stack
         });
-        error.status = 500;
+        error.status = pageErrorStatus(error);
         return next(error);
     }
     return html;

@@ -16,7 +16,7 @@
  * under the License.
  */
  
-const { renderTemplate, renderTemplateFromAPI, loadMarkdown, filePrefix } = require('../utils/util');
+const { renderTemplate, renderTemplateFromAPI, loadMarkdown, filePrefix, pageErrorStatus } = require('../utils/util');
 const { config } = require('../config/configLoader');
 const markdown = require('marked');
 const fs = require('fs');
@@ -102,7 +102,7 @@ const loadCustomContent = async (req, res, next) => {
                 stack: error.stack,
                 filePath: req.params.filePath,
             });
-            error.status = 500;
+            error.status = pageErrorStatus(error);
             return next(error);
         }
     }

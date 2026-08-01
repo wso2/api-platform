@@ -137,7 +137,7 @@ const loadAPIWorkflows = async (req, res, next) => {
             orgName,
             viewName
         });
-        error.status = 500;
+        error.status = util.pageErrorStatus(error);
         return next(error);
     }
 };
@@ -218,7 +218,7 @@ const loadAPIWorkflowDetail = async (req, res, next) => {
             viewName,
             handle
         });
-        error.status = 500;
+        error.status = util.pageErrorStatus(error);
         return next(error);
     }
 };
