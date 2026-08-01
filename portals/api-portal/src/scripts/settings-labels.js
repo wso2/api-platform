@@ -42,7 +42,7 @@
   }
   function closeLabelModal() { document.getElementById('cfg-label-modal').style.display = 'none'; editLabelName = null; }
 
-  /* ── auto-slug display → name (skips once the user edits Name) ── */
+  /* ── auto-slug name → handle (skips once the user edits Handle) ── */
   document.getElementById('lbl-name').addEventListener('input', function() { labelHandleTouched = true; });
   document.getElementById('lbl-display').addEventListener('input', function() {
     if (editLabelName || labelHandleTouched) return;
@@ -53,7 +53,7 @@
   document.getElementById('cfg-label-modal-save').addEventListener('click', async function() {
     var displayName = v('lbl-display');
     var name        = v('lbl-name');
-    if (!displayName || !name) { await showAlert('Display name and name are required.', 'error'); return; }
+    if (!displayName || !name) { await showAlert('Name and handle are required.', 'error'); return; }
 
     try {
       var res;
