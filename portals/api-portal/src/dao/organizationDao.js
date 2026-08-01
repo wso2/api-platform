@@ -31,11 +31,6 @@ const create = async (orgData, t) => {
     const exec = t || db;
     const orgHandle = orgData.handle ? orgData.handle.toLowerCase() : '';
     const uuid = crypto.randomUUID();
-    // Control-plane reference defaults to the org handle when the caller didn't
-    // supply one — the two match in every normal deployment. Create-time only:
-    // update() leaves cp_ref_id alone unless explicitly passed, so an operator
-    // can still clear it back to empty afterwards.
-    const cpRefId = orgData.cpRefId ? orgData.cpRefId : orgHandle;
 
     await exec.execute(
         `INSERT INTO ${ORG_TABLE}
@@ -44,7 +39,7 @@ const create = async (orgData, t) => {
          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         [
             uuid, orgData.displayName, orgData.businessOwner, orgData.businessOwnerContact,
-            orgData.businessOwnerEmail, orgHandle, orgData.idpRefId, cpRefId,
+            orgData.businessOwnerEmail, orgHandle, orgData.idpRefId, orgData.cpRefId,
             orgData.configuration, orgData.createdBy, orgData.createdBy,
         ]
     );
@@ -56,7 +51,7 @@ const create = async (orgData, t) => {
         business_owner_email: orgData.businessOwnerEmail,
         handle: orgHandle,
         idp_ref_id: orgData.idpRefId,
-        cp_ref_id: cpRefId,
+        cp_ref_id: orgData.cpRefId,
         configuration: orgData.configuration,
         created_by: orgData.createdBy,
         updated_by: orgData.createdBy,
@@ -143,18 +138,19 @@ const update = async (orgData, t) => {
     const orgHandle = orgData.handle ? orgData.handle.toLowerCase() : existing.handle;
     const updatedAt = new Date();
 
+    // cp_ref_id is written unconditionally, exactly like idp_ref_id: both are
+    // plain optional reference fields with no derived default, so a blank one
+    // clears the stored value rather than silently keeping the old one.
     const setClauses = [
         'display_name = ?', 'business_owner = ?', 'business_owner_contact = ?',
-        'business_owner_email = ?', 'handle = ?', 'idp_ref_id = ?', 'updated_by = ?', 'updated_at = ?',
+        'business_owner_email = ?', 'handle = ?', 'idp_ref_id = ?', 'cp_ref_id = ?',
+        'updated_by = ?', 'updated_at = ?',
     ];
     const params = [
         orgData.displayName, orgData.businessOwner, orgData.businessOwnerContact,
-        orgData.businessOwnerEmail, orgHandle, orgData.idpRefId, orgData.updatedBy, updatedAt,
+        orgData.businessOwnerEmail, orgHandle, orgData.idpRefId, orgData.cpRefId,
+        orgData.updatedBy, updatedAt,
     ];
-    if (orgData.cpRefId !== undefined) {
-        setClauses.push('cp_ref_id = ?');
-        params.push(orgData.cpRefId);
-    }
     if (orgData.configuration !== undefined) {
         setClauses.push('configuration = ?');
         params.push(orgData.configuration);

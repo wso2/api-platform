@@ -48,9 +48,9 @@
     var owner = g('org-owner').value.trim();         if (owner) body.businessOwner = owner;
     var oc    = g('org-owner-contact').value.trim(); if (oc)    body.businessOwnerContact = oc;
     if (oe) body.businessOwnerEmail = oe;
-    // Always sent, blank included — orgDao.update only touches cp_ref_id when the
-    // key is present, so omitting a cleared field would silently keep the old
-    // value and make the reference impossible to remove from this form.
+    // Always sent, blank included — same as idpRefId above. orgDao.update writes
+    // cp_ref_id unconditionally, so omitting a cleared field would leave the old
+    // value in place and make the reference impossible to remove from this form.
     body.cpRefId = g('org-cp-ref').value.trim();
     saveBtn.disabled = true;
     try {
