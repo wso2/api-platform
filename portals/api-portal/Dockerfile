@@ -33,9 +33,6 @@ RUN npm ci --omit=dev
 # Runtime stage
 FROM node:24-slim
 
-# Install runtime utilities needed by the entrypoint (openssl for cert generation)
-RUN apt-get update && apt-get install -y --no-install-recommends openssl curl && rm -rf /var/lib/apt/lists/*
-
 # Set the working directory inside the container
 WORKDIR /app
 
