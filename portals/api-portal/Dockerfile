@@ -17,21 +17,21 @@
 # --------------------------------------------------------------------
 
 # API Portal Dockerfile
-# Uses node:24-slim (Debian/glibc, current LTS) so better-sqlite3 can compile its native binding.
-# Build tools (python3, make, g++) are installed only in the builder stage and are not
-# carried into the runtime image.
+# Uses node:24-alpine (musl libc) — better-sqlite3 compiles its native binding against musl
+# just as well as glibc (verified). Build tools (python3, make, g++) are installed only in
+# the builder stage and are not carried into the runtime image.
 
 # Build stage — installs production dependencies (including native build of better-sqlite3)
-FROM node:24-slim AS builder
+FROM node:24-alpine AS builder
 WORKDIR /app
 # Install native build tools required by better-sqlite3's node-gyp compilation.
 # python3 is needed by node-gyp; make and g++ compile the C++ binding.
-RUN apt-get update && apt-get install -y --no-install-recommends python3 make g++ && rm -rf /var/lib/apt/lists/*
+RUN apk add --no-cache python3 make g++
 COPY package*.json ./
 RUN npm ci --omit=dev
 
 # Runtime stage
-FROM node:24-slim
+FROM node:24-alpine
 
 # Set the working directory inside the container
 WORKDIR /app
@@ -46,7 +46,7 @@ COPY . .
 EXPOSE 9543
 
 # Create a non-root user with UID 10001 to satisfy Checkov CKV_CHOREO_1
-RUN groupadd -g 10001 appgroup && useradd -u 10001 -g appgroup -s /bin/bash -M appuser
+RUN addgroup -g 10001 appgroup && adduser -u 10001 -G appgroup -s /bin/sh -D -H appuser
 
 # Pre-create the logs and data directories owned by the non-root user so the
 # app can write log files and its database. The TLS certificate is bind-mounted
