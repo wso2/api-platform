@@ -34,6 +34,9 @@
     document.getElementById('cfg-label-modal-save').textContent  = mode === 'edit' ? 'Save changes' : 'Add label';
     document.getElementById('lbl-display').value = mode === 'edit' ? data.displayName : '';
     document.getElementById('lbl-name').value    = mode === 'edit' ? data.id          : '';
+    /* The handle is the label's identity — every API and view mapping keys off
+       it, so it cannot change after creation. */
+    document.getElementById('lbl-name').readOnly = mode === 'edit';
     document.getElementById('cfg-label-modal').style.display = 'flex';
     document.getElementById('lbl-display').focus();
   }
@@ -54,22 +57,16 @@
 
     try {
       var res;
-      if (editLabelName && editLabelName !== name) {
-        /* handle changed — handle is immutable, so delete old and create new */
-        await fetch(window.apiPortalApi.root('/labels/'+encodeURIComponent(editLabelName)), {
-          method: 'DELETE',
-          headers: { 'X-CSRF-Token': window.apiPortalApi.csrfToken() },
-        });
-        res = await fetch(window.apiPortalApi.root('/labels'), {
-          method: 'POST',
-          headers: { 'Content-Type':'application/json', 'X-CSRF-Token': window.apiPortalApi.csrfToken() },
-          body: JSON.stringify({ id: name, displayName: displayName }),
-        });
-      } else if (editLabelName) {
-        res = await fetch(window.apiPortalApi.root('/labels/'+encodeURIComponent(name)), {
+      if (editLabelName) {
+        /* Handle is immutable and the input is read-only while editing, so this
+           is always a display-name update. It used to fall back to DELETE + POST
+           when the handle differed — but deleting a label cascades through
+           api_label_mappings / view_label_mappings, so every API and view lost
+           the label and the recreated one came back with no members. */
+        res = await fetch(window.apiPortalApi.root('/labels/'+encodeURIComponent(editLabelName)), {
           method: 'PUT',
           headers: { 'Content-Type':'application/json', 'X-CSRF-Token': window.apiPortalApi.csrfToken() },
-          body: JSON.stringify({ id: name, displayName: displayName }),
+          body: JSON.stringify({ id: editLabelName, displayName: displayName }),
         });
       } else {
         res = await fetch(window.apiPortalApi.root('/labels'), {
