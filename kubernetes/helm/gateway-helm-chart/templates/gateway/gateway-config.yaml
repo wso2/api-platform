@@ -471,7 +471,7 @@ data:
     {{- range $i := until 6 }}
     {{- $policyConfigToml = regexReplaceAll "(?m)^\\[[^\\]\r\n]+\\]\r?\n(\\[)" $policyConfigToml "$1" }}
     {{- end }}
-    {{- $policyConfigToml = regexReplaceAll "(?m)= (-?[0-9]+)\\.0$" $policyConfigToml "= $1" }}
+    {{- $policyConfigToml = regexReplaceAll "(?m)= (-?[0-9]+)\r?$" $policyConfigToml "= ${1}.0" }}
 {{ $policyConfigToml | indent 4 }}
     {{- end }}
 
