@@ -77,3 +77,17 @@ roles         = ["dp_publisher_it"]
 username      = "developer"
 password_hash = "$2y$10$jX3o2E5jF4i3EOgoyJ0k.uegbDYmsmFNDfIxnvcZgTNJifAPjgKKK"
 roles         = ["dp_developer_it"]
+
+# Exists only to make the difference between authorization modes observable.
+#
+# Its roles claim is dp_narrow_it, which platform-api's grant table
+# (roles-platform-api-it.yaml) gives the FULL developer scope set — so the token it
+# receives carries dp:application:create in its scope claim. The portal's own table
+# (portal-roles-it.yaml) grants dp_narrow_it read-only.
+#
+# So this one account can create an application in scope mode and is refused in role
+# mode, which is what auth/authorization-mode.spec.js asserts. No other spec uses it.
+[[platform_api.auth.file.users]]
+username      = "narrow"
+password_hash = "$2b$10$87Aj.eQ6JU4WZ2SohdyZEOKRXfVVt7QPGwE9bwaYxk1WqYbF8uTR6"
+roles         = ["dp_narrow_it"]

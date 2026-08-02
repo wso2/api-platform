@@ -74,11 +74,16 @@ const loadCustomContent = async (req, res, next) => {
             // Check if the file exists before attempting to render
             const resolvedPagePath = path.join(process.cwd(), filePrefix + filePath + '/page.hbs');
             if (!fs.existsSync(resolvedPagePath)) {
-                // If it's a manage-keys route that doesn't exist, return 404 or redirect
-                if (filePath.includes('manage-keys')) {
-                    throw new Error(`Manage keys page not found. This route should be handled by the application controller.`);
-                }
-                throw new Error(`Content page not found at ${resolvedPagePath}`);
+                // Both branches mean "this page does not exist", so they carry a 404.
+                // A bare Error has no status, and pageErrorStatus() below falls back to
+                // 500 — which rendered a server-error page for what is simply a bad URL.
+                const notFound = filePath.includes('manage-keys')
+                    // A manage-keys route that got here was not claimed by the
+                    // application controller, so there is nothing to render.
+                    ? new Error('Manage keys page not found. This route should be handled by the application controller.')
+                    : new Error(`Content page not found at ${resolvedPagePath}`);
+                notFound.status = 404;
+                throw notFound;
             }
             const orgDetails = await orgDao.get(orgName);
             const orgId = orgDetails.uuid;

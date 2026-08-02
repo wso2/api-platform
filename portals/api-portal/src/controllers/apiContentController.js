@@ -1135,8 +1135,13 @@ async function convertSDLToIntrospection(sdl) {
  * fault — the DAOs raise those as CustomError(404), whose status sits on
  * `statusCode`, so treating every failure as 500 told an agent to retry
  * something that will never succeed.
+ *
+ * `mediaType` must match what the handler's success path sets. The failure can
+ * happen before that header is applied, and `res.send(string)` then defaults to
+ * text/html — so an agent asking for markdown got a markdown body labelled HTML.
  */
-function sendMarkdownError(res, error, failureMessage) {
+function sendMarkdownError(res, error, failureMessage, mediaType = 'text/markdown; charset=utf-8') {
+    res.setHeader('Content-Type', mediaType);
     if (util.pageErrorStatus(error) === 404) {
         return res.status(404).send('# Not Found\n\nThe requested resource does not exist.');
     }
@@ -1343,7 +1348,7 @@ const loadLlmsTxt = async (req, res) => {
         res.send(md);
     } catch (error) {
         logger.error('Error generating llms.txt', { orgName, error: error.message, stack: error.stack });
-        sendMarkdownError(res, error, 'Failed to generate portal index.');
+        sendMarkdownError(res, error, 'Failed to generate portal index.', 'text/plain; charset=utf-8');
     }
 };
 
@@ -1368,7 +1373,7 @@ const previewLlmsTxt = async (req, res) => {
         res.send(md);
     } catch (error) {
         logger.error('Error previewing llms.txt', { orgName, error: error.message, stack: error.stack });
-        sendMarkdownError(res, error, 'Failed to generate preview.');
+        sendMarkdownError(res, error, 'Failed to generate preview.', 'text/plain; charset=utf-8');
     }
 };
 

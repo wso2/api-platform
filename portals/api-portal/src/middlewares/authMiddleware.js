@@ -397,7 +397,9 @@ async function authResolver(req, res, next) {
             return next();
         }
 
-        // 4. mTLS — org resolved from the `organization` request header
+        // 4. mTLS — the organization is this instance's own; resolvePortalOrg only
+        // VALIDATES an `organization` header if one is present (403 on anything but
+        // the pinned org), it does not let the header choose the organization.
         if (typeof req.socket?.getPeerCertificate === 'function') {
             const cert = req.socket.getPeerCertificate(true);
             if (cert && Object.keys(cert).length > 0 && req.client?.authorized) {
@@ -465,7 +467,11 @@ async function OAuth2Security(req /* , requiredScopes, schema */) {
  * Handler for the spec's `apiKeyAuth` security scheme. No operation currently
  * declares that scheme, so the validator never invokes this — it stays wired up
  * so adding `security: [apiKeyAuth]` to an operation doesn't fail at startup.
- * Accepts any preauthorized non-OAuth mode (mTLS, role-mode session).
+ *
+ * Accepts a request only when `req.auth?.preauthorized` is true. That covers mTLS
+ * and, because authResolver sets `preauthorized: !isRoleMode()`, OAuth2 sessions in
+ * scope mode too. It does NOT cover a role-mode session, where that flag is false
+ * precisely so the per-operation scope check still runs.
  *
  * The portal's own static shared-secret header auth (`service_api_key`) was
  * removed; this is not a revival of it. Any future API key scheme needs its own

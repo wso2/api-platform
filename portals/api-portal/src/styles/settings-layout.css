@@ -609,9 +609,13 @@
   cursor: not-allowed;
 }
 
+/* A read-only input is still keyboard-focusable (unlike a disabled one), so it keeps
+   a focus ring — just a muted one, so it reads as "focused but not editable" rather
+   than borrowing the primary-coloured ring of a field you can type into. Suppressing
+   the indicator entirely left keyboard users with no way to see where focus was. */
 .cfg-form-input[readonly]:focus {
   border-color: var(--border-strong);
-  box-shadow: none;
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--text-muted) 22%, transparent);
 }
 
 /* ── File upload zone ────────────────────────────────────── */

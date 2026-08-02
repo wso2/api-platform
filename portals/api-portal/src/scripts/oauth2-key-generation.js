@@ -64,7 +64,11 @@ function confirmAndRemoveKeys(applicationId, keyMappingId, keyType) {
         const titleEl = modal.querySelector('.modal-title');
         const msgEl = modal.querySelector('.modal-message');
         if (titleEl) titleEl.textContent = 'Remove Application Keys';
-        if (msgEl) msgEl.textContent = 'Are you sure you want to remove this client ID? Tokens already issued remain valid until they expire.';
+        // Wording tracks what DELETE /applications/{id}/oauth-keys/{keyMappingId}
+        // actually does (see the operation description in the OpenAPI spec): it drops
+        // the portal's local client_id mapping only. The OAuth client itself is owned
+        // by the key manager and is untouched, as are tokens already issued from it.
+        if (msgEl) msgEl.textContent = 'Are you sure you want to unlink this client ID from the application? The OAuth client remains in the key manager, and tokens already issued remain valid until they expire.';
         modal.dataset.applicationId = applicationId;
         modal.dataset.param2 = keyMappingId;
 
@@ -86,7 +90,7 @@ function confirmAndRemoveKeys(applicationId, keyMappingId, keyType) {
 
         const bsModal = new bootstrap.Modal(modal);
         bsModal.show();
-    } else if (confirm('Are you sure you want to remove this client ID? This cannot be undone.')) {
+    } else if (confirm('Are you sure you want to unlink this client ID from the application? The OAuth client remains in the key manager.')) {
         removeApplicationKeys(applicationId, keyMappingId, keyType);
     }
 }

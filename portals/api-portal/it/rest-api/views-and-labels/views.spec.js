@@ -64,6 +64,12 @@ describe('views', () => {
         const id = uniqueHandle('view');
         const res = await client.as('admin').post('/views', { id, displayName: 'Empty Labels View', labels: [] });
         expect(res.status).toBe(201);
+
+        // Read back, as the omitted-labels case above does: an explicit [] has to
+        // persist as no associations, not merely be accepted by the create.
+        const fetched = await client.as('admin').get(`/views/${id}`);
+        expect(fetched.status).toBe(200);
+        expect(fetched.body.labels).toEqual([]);
     });
 
     it('retrieves a view', async () => {
