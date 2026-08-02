@@ -306,11 +306,19 @@
     // dropped when the user clicks Save.
     input.addEventListener('blur', commitTagInput);
     input.addEventListener('paste', function(e) {
-      var text = (e.clipboardData || window.clipboardData) && (e.clipboardData || window.clipboardData).getData('text');
-      if (text && text.indexOf(',') >= 0) {
-        e.preventDefault();
-        text.split(',').forEach(addTag);
-      }
+      var clip = e.clipboardData || window.clipboardData;
+      var text = clip && clip.getData('text');
+      // No comma: nothing to split, so let the browser paste normally.
+      if (!text || text.indexOf(',') < 0) return;
+      e.preventDefault();
+      /* Splice the pasted text in at the caret (replacing any selection) rather than
+         committing it on its own, so a half-typed tag joins the paste instead of
+         being left orphaned in the input: "foo" with "bar, baz" pasted at the end
+         commits as "foobar" and "baz" — what typing those same characters would do. */
+      var start = input.selectionStart != null ? input.selectionStart : input.value.length;
+      var end = input.selectionEnd != null ? input.selectionEnd : input.value.length;
+      input.value = input.value.slice(0, start) + text + input.value.slice(end);
+      commitTagInput();
     });
   }());
 
