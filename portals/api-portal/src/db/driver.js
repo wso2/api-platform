@@ -32,6 +32,11 @@
  *   db.paginationClause(limit, offset)
  *   db.buildUpsert(table, insertCols, conflictCols, updateCols)
  *   db.isDuplicateKeyError(err)
+ *   db.binaryParam(value)       -> wrap a nullable BLOB/BYTEA/VARBINARY column's
+ *                                  bind value (Buffer or null) so every adapter binds
+ *                                  it correctly — see ./paramTypes.js
+ *   db.runDetached(fn)          -> run fn() with no ambient transaction in scope,
+ *                                  even if the caller is currently inside one
  *
  * Every DAO query is written once with ANSI SQL and positional `?`
  * placeholders; this module (via ./rebind.js) is the only place that knows
@@ -41,6 +46,7 @@ const { AsyncLocalStorage } = require('node:async_hooks');
 const crypto = require('node:crypto');
 const { config } = require('../config/configLoader');
 const rebindHelpers = require('./rebind');
+const { binaryParam } = require('./paramTypes');
 
 const dialect = config.database.driver;
 
@@ -137,12 +143,36 @@ const driverApi = {
         const wrappedTx = wrap(tx);
         return txStorage.run(wrappedTx, () => fn(wrappedTx));
     }),
+    /**
+     * Runs `fn` with the ambient transaction store explicitly cleared, so any
+     * bare db.query/queryOne/execute call made inside it (or inside anything
+     * it awaits) always targets the module-level pool handle — never a
+     * transaction the *caller* happens to still be inside.
+     *
+     * Needed for code that can be invoked synchronously from inside someone
+     * else's withTransaction() callback via an EventEmitter, without itself
+     * being part of that transaction — e.g. the webhook dispatcher's poll tick,
+     * which webhooks/eventPublisher.js's bus.emit('event_published') wakes
+     * immediately, synchronously, from inside the publishing caller's own
+     * transaction. AsyncLocalStorage propagates that caller's `wrappedTx`
+     * through the *entire* async continuation the synchronous emit kicks off
+     * — well past the point where the publishing transaction itself commits —
+     * so an un-guarded ambient call made later in that continuation silently
+     * binds to an already-committed (mssql: already-released) transaction
+     * handle instead of the pool, surfacing as mssql's
+     * "Transaction has not begun. Call begin() first." (ENOTBEGUN) the moment
+     * a Request is built against it. Wrapping the entry point with
+     * runDetached() closes that off regardless of which caller (if any)
+     * happened to be mid-transaction when the tick fired.
+     */
+    runDetached: (fn) => txStorage.run(undefined, fn),
     rebind: (sqlText) => rebindHelpers.rebind(dialect, sqlText),
     paginationClause: (limit, offset) => rebindHelpers.paginationClause(dialect, limit, offset),
     buildUpsert: (table, insertCols, conflictCols, updateCols) =>
         rebindHelpers.buildUpsert(dialect, table, insertCols, conflictCols, updateCols),
     bindNamedParams: (sqlText, valuesByName) => rebindHelpers.bindNamedParams(sqlText, valuesByName),
     isDuplicateKeyError: (err) => rebindHelpers.isDuplicateKeyError(dialect, err),
+    binaryParam,
     /**
      * Runs `fn` guarded by a SAVEPOINT when `exec` is a live transaction handle,
      * so a caught, expected error inside it (e.g. a duplicate-key race in a

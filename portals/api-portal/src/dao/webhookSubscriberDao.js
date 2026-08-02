@@ -74,7 +74,7 @@ const create = async (orgId, subData, createdBy) => {
          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         [
             row.uuid, row.org_uuid, row.handle, row.display_name, row.target_url,
-            row.secret_enc !== null ? Buffer.from(row.secret_enc, 'utf8') : null,
+            db.binaryParam(row.secret_enc !== null ? Buffer.from(row.secret_enc, 'utf8') : null),
             JSON.stringify(row.event_patterns),
             row.enabled, row.timeout_ms, row.created_by, row.updated_by,
         ]
@@ -112,7 +112,7 @@ const update = async (orgId, subscriberHandle, subData, updatedBy) => {
         const value = updatePayload[c];
         if (c === 'event_patterns') return JSON.stringify(value);
         if (c === 'secret_enc') {
-            return value === null || value === undefined ? null : Buffer.from(value, 'utf8');
+            return db.binaryParam(value === null || value === undefined ? null : Buffer.from(value, 'utf8'));
         }
         return value;
     });

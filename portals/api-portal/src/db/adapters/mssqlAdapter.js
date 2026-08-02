@@ -18,6 +18,7 @@
 'use strict';
 
 const sql = require('mssql');
+const { isBinaryParam } = require('../paramTypes');
 
 /**
  * SQL Server adapter (`mssql`, Tedious-based). Unlike `pg`, the driver has no
@@ -76,7 +77,16 @@ function createMssqlAdapter(config) {
 
     function bindParams(request, params) {
         (params || []).forEach((value, idx) => {
-            request.input(`p${idx + 1}`, coerceParamValue(value));
+            const name = `p${idx + 1}`;
+            // A value wrapped with paramTypes.binaryParam() targets a nullable
+            // VARBINARY(MAX) column — bind it with an explicit type instead of
+            // letting the driver infer one, since it can't infer anything
+            // useful from a bare `null` (see paramTypes.js for the full story).
+            if (isBinaryParam(value)) {
+                request.input(name, sql.VarBinary(sql.MAX), value.value);
+                return;
+            }
+            request.input(name, coerceParamValue(value));
         });
     }
 

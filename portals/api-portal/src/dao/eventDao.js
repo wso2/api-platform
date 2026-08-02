@@ -122,9 +122,10 @@ async function claimPending(batchSize, orgUuid) {
     const isPostgres = db.getDialect() === 'postgres';
     return db.withTransaction(async (tx) => {
         const lockClause = isPostgres ? ' FOR UPDATE SKIP LOCKED' : '';
+        const { clause, params: pageParams } = db.paginationClause(batchSize, 0);
         const events = await tx.query(
-            `SELECT * FROM ${EVENTS_TABLE} WHERE status = ? AND org_uuid = ? ORDER BY occurred_at ASC LIMIT ?${lockClause}`,
-            ['PENDING', orgUuid, batchSize]
+            `SELECT * FROM ${EVENTS_TABLE} WHERE status = ? AND org_uuid = ? ORDER BY occurred_at ASC ${clause}${lockClause}`,
+            ['PENDING', orgUuid, ...pageParams]
         );
         if (events.length === 0) return [];
 
@@ -166,11 +167,12 @@ async function claimDueDeliveries(batchSize, orgUuid) {
         );
 
         const lockClause = isPostgres ? ' FOR UPDATE OF d SKIP LOCKED' : '';
+        const { clause, params: pageParams } = db.paginationClause(batchSize, 0);
         const rows = await tx.query(
             `SELECT d.* FROM ${DELIVERIES_TABLE} d
              JOIN ${EVENTS_TABLE} e ON e.uuid = d.event_uuid
-             WHERE d.status = ? AND e.org_uuid = ? LIMIT ?${lockClause}`,
-            ['PENDING', orgUuid, batchSize]
+             WHERE d.status = ? AND e.org_uuid = ? ORDER BY e.occurred_at ASC ${clause}${lockClause}`,
+            ['PENDING', orgUuid, ...pageParams]
         );
         if (rows.length === 0) return [];
 
@@ -283,14 +285,15 @@ async function get(eventId) {
  * newest event first. Used by the webhook subscriber's "recent deliveries" log.
  */
 async function listDeliveriesForSubscriber(orgId, subscriberId, limit = 20) {
+    const { clause, params: pageParams } = db.paginationClause(limit, 0);
     const rows = await db.query(
         `SELECT d.*, e.type AS event_type, e.occurred_at AS event_occurred_at
          FROM ${DELIVERIES_TABLE} d
          INNER JOIN ${EVENTS_TABLE} e ON e.uuid = d.event_uuid
          WHERE d.subscriber_id = ? AND e.org_uuid = ?
          ORDER BY e.occurred_at DESC
-         LIMIT ?`,
-        [subscriberId, orgId, limit]
+         ${clause}`,
+        [subscriberId, orgId, ...pageParams]
     );
     return rows.map(({ event_type, event_occurred_at, ...delivery }) => parseDeliveryRow({
         ...delivery,

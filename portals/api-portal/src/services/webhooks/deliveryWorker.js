@@ -181,7 +181,12 @@ function start() {
 
     async function tick() {
         try {
-            await runBatch();
+            // See db.runDetached()'s doc comment (src/db/driver.js) and
+            // webhooks/dispatcher.js's identical use: this poll loop only fires
+            // from setInterval today, but wrapping it keeps it safe against
+            // inheriting a caller's ambient transaction if it's ever also wired
+            // to a synchronous wake-up signal, same as the dispatcher.
+            await db.runDetached(runBatch);
         } catch (err) {
             logger.error('Batch error', { error: err.message || String(err) });
         }
