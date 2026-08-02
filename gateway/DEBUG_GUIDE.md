@@ -116,6 +116,43 @@ curl http://localhost:8080/petstore/v1/pets
 
 ---
 
+## Local debug config overlay
+
+Both local-process options (2A and 2B) need a handful of settings that differ from a production container — chiefly the policy-engine ext_proc, ALS, and Python-executor connections switching from **UDS to TCP**, because there is no shared Unix socket between the Docker router and the host-run processes.
+
+These values live in **`gateway/configs/config-debug.toml`**, a small overlay that is layered on top of the shipped `config.toml`:
+
+- `-config` is **repeatable** on both the gateway-controller and policy-engine binaries. The loaders merge the files in the order given, **last-wins per key** (a key set in a later file overrides the same key from an earlier one), deep-merging sections and leaving every unlisted key untouched.
+- The **Gateway Controller**, **Policy Engine - xDS**, and **Policy Engine - File** launch configs already pass both files:
+
+  ```jsonc
+  "args": [
+      "-config", "${workspaceFolder}/gateway/configs/config.toml",
+      "-config", "${workspaceFolder}/gateway/configs/config-debug.toml",
+  ]
+  ```
+
+Why an overlay instead of editing `config.toml` or setting env vars:
+
+- **`config.toml` ships in the distribution** — it must stay production-clean. The overlay keeps debug-only values out of it, and is **never mounted into the container** (the container reads `config.toml` directly, in UDS mode), so there is nothing to remember to revert.
+- **Env vars only work where `config.toml` references them** via a `{{ env "NAME" }}` token — there is no prefix-based override. The overlay sets concrete values directly, with no dependency on token names matching.
+
+Workspace-relative **file paths** (policy definitions, DB) stay as `launch.json` env vars — TOML can't expand VS Code's `${workspaceFolder}` — and the Controller's `cwd` is set to `gateway/gateway-controller` so `config.toml`'s relative defaults (certs, lua, LLM templates) resolve to the checked-in dirs there. The **one file the overlay does carry** is the AES-GCM encryption key (`[[controller.encryption.providers]]`): the shipped `config.toml` has no encryption section, so without it the host-run controller falls back to a code-default key path that doesn't exist under the debug `cwd` and fails to start. Its value is a stable, repo-relative path (not per-developer), so it lives in the overlay rather than an env var.
+
+### One-time key provisioning
+
+The AES-256 at-rest encryption key the overlay points at is **gitignored and not committed** (it's a real secret — see `gateway/.gitignore`). The listener TLS cert/key are already committed, so this key is the only file you need to generate. Create it once from the `gateway/` directory:
+
+```bash
+cd gateway
+mkdir -p gateway-controller/aesgcm-keys
+( umask 177; openssl rand 32 > gateway-controller/aesgcm-keys/default-aesgcm256-v1.bin )
+```
+
+This writes the 32-byte key to exactly the path the debug controller's `cwd` reads. Without it the Gateway Controller **exits at startup** while loading encryption providers.
+
+---
+
 ## Option 2A: Local Process Debug — Controller + Policy Engine in VS Code
 
 Gateway Controller and Policy Engine run as local VS Code processes. Only the Envoy Router runs in Docker Compose.
@@ -147,8 +184,15 @@ graph TB
 - VS Code with Go extension installed
 - Docker and Docker Compose
 - Control plane host and registration token (optional, for gateway registration)
+- **One-time key provisioning** — generate the gitignored AES-256 encryption key the controller loads (see [One-time key provisioning](#one-time-key-provisioning)). The controller **won't start** without it.
 
-### Step 1: Configure Control Plane Connection
+### Step 1: Run Gateway Builder
+
+Run the **Gateway Builder** debug configuration from VS Code. This compiles all policies and generates the policy-engine binary into `gateway/gateway-builder/target/output/`. It also writes the policy **definition** files into `gateway/gateway-builder/target/output/gateway-controller/policies/` — the directory the controller reads via `APIP_GW_CONTROLLER_POLICIES_DEFINITIONS_PATH`.
+
+> **Note:** This is the slowest step, so start it first — it can compile in the background while you do Steps 2–3. It **must** finish before you start the Gateway Controller (Step 4): the controller loads these policy definitions once at startup (before it hydrates stored configs and builds the first xDS snapshot). If the directory is still empty because the builder hasn't finished, the controller starts with **zero** policy definitions — with no hard error — and you must restart it after the builder completes.
+
+### Step 2: Configure Control Plane Connection
 
 Update `.vscode/launch.json` in the **Gateway Controller** configuration with your control plane details:
 
@@ -169,7 +213,7 @@ Update `.vscode/launch.json` in the **Gateway Controller** configuration with yo
 > and the matching token for the registration token). Leave them empty (`""`) to run in standalone
 > mode without a control plane connection.
 
-### Step 2: Update Docker Compose Configuration
+### Step 3: Update Docker Compose Configuration
 
 In `gateway/docker-compose.yaml`, make two changes to the `gateway-runtime` service:
 
@@ -200,15 +244,9 @@ services:
       # - "9003:9003"   # Metrics
 ```
 
-### Step 3: Start Gateway Controller
+### Step 4: Start Gateway Controller
 
 Run the **Gateway Controller** debug configuration from VS Code.
-
-### Step 4: Run Gateway Builder
-
-Run the **Gateway Builder** debug configuration from VS Code. This compiles all policies and generates the policy-engine binary into `gateway/gateway-builder/target/output/`.
-
-> **Note:** Wait for the builder to complete successfully before starting the Policy Engine.
 
 ### Step 5: Start Policy Engine
 
@@ -226,18 +264,19 @@ docker compose logs -ft gateway-runtime sample-backend
 
 ### Step 7: Deploy an API and Test
 
-Deploy a test API via the Gateway Controller REST API:
+Deploy a test API via the Gateway Controller REST API. The `-u "admin:admin"` below is the **local-only** debug login set by the `Gateway Controller` launch config (`config-debug.toml`); it is never a shipped or deployable credential. Against a real control plane, pass your own instead, e.g. `-u "$APIP_ADMIN_USER:$APIP_ADMIN_PASS"`.
 
 ```bash
-curl -X POST http://localhost:9090/api/management/v0.9/rest-apis \
+curl -X POST http://localhost:9090/api/management/v1/rest-apis \
   -H "Content-Type: application/yaml" \
-  --data-binary @path/to/api.yaml
+  -u "admin:admin" \
+  --data-binary @examples/petstore-api.yaml
 ```
 
 Send a request to the deployed API:
 
 ```bash
-curl http://localhost:8080/petstore/v1/pets
+curl http://localhost:8080/petstoretest/pet/85964529
 ```
 
 ---
@@ -278,22 +317,23 @@ graph TB
 - VS Code with Go and Python extensions installed
 - Docker and Docker Compose
 - Control plane host and registration token (optional, for gateway registration)
+- **One-time key provisioning** — generate the gitignored AES-256 encryption key the controller loads (see [One-time key provisioning](#one-time-key-provisioning)). The controller **won't start** without it.
 
-### Step 1: Enable TCP Mode in config.toml
+### Step 1: TCP Mode (no action needed)
 
-Add the following block to `configs/config.toml`:
+The Policy Engine reaches the host-run Python Executor over TCP at `localhost:9010`. This is **already configured** in the local debug overlay `configs/config-debug.toml`, which the **Policy Engine - xDS** launch config loads as a second `-config` on top of `config.toml`:
 
 ```toml
+# configs/config-debug.toml (already committed)
 [policy_engine.python_executor.server]
 mode = "tcp"
 port = 9010
 host = "localhost"
 ```
 
-This tells the Policy Engine to connect to the Python Executor over TCP instead of the default Unix domain socket.
+No `config.toml` edit is required, and there is nothing to revert afterward. Because the overlay is passed only on the launch config's command line — never mounted into the container — the shipped `config.toml` stays in UDS mode, so the containerized Policy Engine is unaffected.
 
-> [!WARNING]
-> **Remove this block when you are done debugging.** The `config.toml` is also mounted into the Docker container (`docker-compose.yaml`), where the Python Executor runs in UDS mode. If this TCP block is left in, the containerized Policy Engine will try to dial `localhost:9010` while the embedded Python Executor is listening on a UDS socket — causing silent connection failures.
+> **How it works:** `-config` is repeatable; the loaders merge the files in order with last-wins precedence, so the overlay's `tcp` values override the `uds` defaults from `config.toml` for the host-run process only. See [Local debug config overlay](#local-debug-config-overlay).
 
 ### Step 2: Run Gateway Builder
 
@@ -423,20 +463,9 @@ curl -X POST http://localhost:8080/your-api/chat \
 
 ### Step 10: Clean Up
 
-When you are done debugging:
+When you are done debugging, **revert the Docker Compose changes** from Step 4 (restore `GATEWAY_CONTROLLER_HOST` and uncomment the Policy Engine ports) so `docker compose up` runs the full containerized stack again.
 
-1. **Remove the TCP block** from `configs/config.toml`:
-
-```diff
--[policy_engine.python_executor.server]
--mode = "tcp"
--port = 9010
--host = "localhost"
-```
-
-2. **Revert the Docker Compose changes** from Step 4 (restore `GATEWAY_CONTROLLER_HOST` and uncomment Policy Engine ports).
-
-This ensures `docker compose up` continues to work correctly with UDS mode.
+There is nothing to undo in `config.toml` — all TCP/debug settings live in `configs/config-debug.toml`, which is only ever passed to the host-run processes via `launch.json`, never mounted into the container.
 
 ---
 
@@ -516,10 +545,7 @@ cp gateway-builder/target/output/python-executor/python_policy_registry.py \
 → The Policy Engine is trying to connect to the Python Executor but failing. Check:
 1. Is the Python Executor actually running? (`ps aux | grep main.py`)
 2. Is it listening on the right address? (should show `localhost:9010`)
-3. Does your `config.toml` have the `[policy_engine.python_executor.server]` block with `mode = "tcp"`?
+3. Is the **Policy Engine - xDS** launch config loading `configs/config-debug.toml` as a second `-config` (it carries `[policy_engine.python_executor.server] mode = "tcp"`)?
 
 **"bind: address already in use" on port 9010**
 → Kill stale Python Executor processes: `pkill -f "python.*main.py"`
-
-**Container mode broken after debugging**
-→ You likely left `[policy_engine.python_executor.server] mode = "tcp"` in `configs/config.toml`. Remove it — see [Step 10](#step-10-clean-up).
