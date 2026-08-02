@@ -14,6 +14,34 @@
             "skipFiles": ["<node_internals>/**"]
         },
         {
+            // AI Workspace Go BFF on https://localhost:8081 — serves /api/*,
+            // proxies to the Platform API, and owns the session/OIDC flow.
+            // Mirrors `make bff-run`. Requires the TLS cert pair under
+            // resources/certificates — run `./setup.sh --certs-only` first if missing.
+            "name": "AI Workspace BFF",
+            "type": "go",
+            "request": "launch",
+            "mode": "auto",
+            "program": "${workspaceFolder}/portals/ai-workspace/bff",
+            "cwd": "${workspaceFolder}/portals/ai-workspace/bff",
+            "args": [
+                // Shipped base config + local debug overlay (repeatable -config, last-wins).
+                // The overlay flips the listener to :8081, points certs at resources/,
+                // enables debug logging, and targets the local Platform API — config.toml
+                // ships untouched.
+                "-config", "${workspaceFolder}/portals/ai-workspace/configs/config.toml",
+                "-config", "${workspaceFolder}/portals/ai-workspace/configs/config-debug.toml",
+                "-static-dir", "${workspaceFolder}/portals/ai-workspace/dist",
+            ],
+            "env": {
+                // All debug-only settings (listener port/cert/key, control-plane URL +
+                // tls_skip_verify, log level) live in configs/config-debug.toml, loaded via
+                // the second -config above. Its cert/key paths are relative to this config's
+                // cwd (portals/ai-workspace/bff); generate the pair once with
+                // `./setup.sh --certs-only` (gitignored under resources/certificates).
+            },
+        },
+        {
             "name": "Platform API",
             "type": "go",
             "request": "launch",
@@ -21,16 +49,23 @@
             "program": "${workspaceFolder}/platform-api/cmd",
             "cwd": "${workspaceFolder}/platform-api",
             "args": [
+                // Shipped base config + local debug overlay (repeatable -config, last-wins).
+                // The overlay carries every debug override — dev encryption key, admin login,
+                // debug logging, and the host JWT keypair paths — so config.toml ships
+                // untouched with its container-path defaults and no env keys.
                 "-config", "${workspaceFolder}/platform-api/config/config.toml",
+                "-config", "${workspaceFolder}/platform-api/config/config-debug.toml",
             ],
             "env": {
-                // Database configuration
-                "DATABASE_DRIVER": "sqlite3",
-                "DATABASE_DB_PATH": "${workspaceFolder}/platform-api/data/api_platform.db",
-                "DATABASE_EXECUTE_SCHEMA_DDL": "true",
-                "DB_SCHEMA_PATH": "./internal/database/schema.sqlite.sql",
-                // JWT - skip signature validation in development
-                "JWT_SKIP_VALIDATION": "true",
+                // Allow the {{ file }} interpolation in config-debug.toml to read the
+                // host-relative dev encryption key (data/keys/encryption.key). The shipped
+                // default allowlist is /etc/platform-api only; this widens it to data/keys
+                // (relative to the platform-api/ cwd above). Generate the key once with:
+                //   openssl rand -hex 32 > data/keys/encryption.key   (gitignored)
+                "APIP_CONFIG_FILE_SOURCE_ALLOWLIST": "data/keys",
+                // Other debug overrides (admin login, debug logging, JWT keypair paths)
+                // live in config/config-debug.toml; generate the JWT keys via
+                // platform-api/scripts/setup.sh.
             },
         },
         {
