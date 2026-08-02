@@ -121,6 +121,20 @@ func traceContextCarrier(req *extprocv3.ProcessingRequest) propagation.MapCarrie
 		if value == "" {
 			value = h.Value
 		}
+		// W3C Trace Context permits tracestate to be split across multiple
+		// header fields; a receiver must combine them into one value in field
+		// order (comma-separated). traceparent must appear exactly once, so it
+		// stays last-wins — appending would yield a malformed value the
+		// propagator rejects.
+		if key == "tracestate" {
+			if prev := carrier[key]; prev != "" {
+				if value == "" {
+					value = prev
+				} else {
+					value = prev + "," + value
+				}
+			}
+		}
 		carrier[key] = value
 	}
 	return carrier

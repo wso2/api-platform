@@ -269,6 +269,28 @@ func TestTraceContextCarrier(t *testing.T) {
 		assert.Empty(t, carrier.Get(":path"))
 	})
 
+	t.Run("combines repeated tracestate headers in field order", func(t *testing.T) {
+		req := &extprocv3.ProcessingRequest{
+			Request: &extprocv3.ProcessingRequest_RequestHeaders{
+				RequestHeaders: &extprocv3.HttpHeaders{
+					Headers: &corev3.HeaderMap{
+						Headers: []*corev3.HeaderValue{
+							{Key: "traceparent", RawValue: []byte(traceparent)},
+							{Key: "tracestate", RawValue: []byte("vendor1=value1")},
+							{Key: "tracestate", RawValue: []byte("vendor2=value2")},
+						},
+					},
+				},
+			},
+		}
+
+		carrier := traceContextCarrier(req)
+		// W3C requires repeated tracestate fields be combined in field order,
+		// not overwritten.
+		assert.Equal(t, "vendor1=value1,vendor2=value2", carrier.Get("tracestate"))
+		assert.Equal(t, traceparent, carrier.Get("traceparent"))
+	})
+
 	t.Run("falls back to deprecated Value field", func(t *testing.T) {
 		req := &extprocv3.ProcessingRequest{
 			Request: &extprocv3.ProcessingRequest_RequestHeaders{
