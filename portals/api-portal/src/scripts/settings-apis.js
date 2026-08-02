@@ -225,6 +225,95 @@
     });
   }());
 
+  /* ── tag chip input ──
+     Same chip markup and classes as the subscription-plan picker above, but tags are
+     free text: there is nothing to search, so a chip is committed from whatever was
+     typed rather than picked from a dropdown. */
+  var tagChips = [];
+
+  function renderTagChips() {
+    var container = document.getElementById('wz-tags-chips');
+    if (!container) return;
+    container.innerHTML = '';
+    tagChips.forEach(function(tag) {
+      var chip = document.createElement('span');
+      chip.className = 'cfg-chip';
+      chip.innerHTML = esc(tag) +
+        '<button type="button" class="cfg-chip-remove" data-tag="'+esc(tag)+'" title="Remove ' + esc(tag) + '"><i class="bi bi-x"></i></button>';
+      chip.querySelector('.cfg-chip-remove').addEventListener('click', function(e) {
+        e.stopPropagation();
+        removeTag(e.currentTarget.dataset.tag);
+        var input = document.getElementById('wz-tags-input');
+        if (input) input.focus();
+      });
+      container.appendChild(chip);
+    });
+  }
+
+  /* Case-insensitive dedupe, keeping the casing first entered: "Travel" and "travel"
+     as separate chips is a typo every time, and unlike the old free-text field the
+     duplicate is now plainly visible. */
+  function addTag(raw) {
+    var tag = String(raw || '').trim();
+    if (!tag) return;
+    var lower = tag.toLowerCase();
+    if (tagChips.some(function(t){ return t.toLowerCase() === lower; })) return;
+    tagChips.push(tag);
+    renderTagChips();
+  }
+
+  function removeTag(tag) {
+    tagChips = tagChips.filter(function(t){ return t !== tag; });
+    renderTagChips();
+  }
+
+  /* Splits on commas so a pasted "a, b, c" — and anything typed in the old
+     comma-separated habit — still lands as separate chips. */
+  function commitTagInput() {
+    var input = document.getElementById('wz-tags-input');
+    if (!input) return;
+    input.value.split(',').forEach(addTag);
+    input.value = '';
+  }
+
+  function getTags() { return tagChips.slice(); }
+
+  function setTags(list) {
+    tagChips = [];
+    var items = Array.isArray(list) ? list : (list ? String(list).split(',') : []);
+    items.forEach(addTag);
+    renderTagChips();
+    var input = document.getElementById('wz-tags-input');
+    if (input) input.value = '';
+  }
+
+  (function() {
+    var wrap = document.getElementById('wz-tags-wrap');
+    var input = document.getElementById('wz-tags-input');
+    if (!input) return;
+    if (wrap) wrap.addEventListener('click', function() { input.focus(); });
+    input.addEventListener('keydown', function(e) {
+      if (e.key === 'Enter' || e.key === ',') {
+        // Enter would otherwise submit the wizard with the tag still uncommitted.
+        e.preventDefault();
+        commitTagInput();
+      } else if (e.key === 'Backspace' && !input.value && tagChips.length) {
+        e.preventDefault();
+        removeTag(tagChips[tagChips.length - 1]);
+      }
+    });
+    // Losing focus commits too — otherwise a typed-but-not-entered tag is silently
+    // dropped when the user clicks Save.
+    input.addEventListener('blur', commitTagInput);
+    input.addEventListener('paste', function(e) {
+      var text = (e.clipboardData || window.clipboardData) && (e.clipboardData || window.clipboardData).getData('text');
+      if (text && text.indexOf(',') >= 0) {
+        e.preventDefault();
+        text.split(',').forEach(addTag);
+      }
+    });
+  }());
+
   /* ── wizard show/hide ── */
   function showWizard(api, kindHint) {
     /* MCP servers and APIs share this wizard. Derive the "kind" from the record being
@@ -271,7 +360,7 @@
       sel('wz-type',      api.apiType);
       sel('wz-status',    api.apiStatus === 'DEPRECATED' ? 'DEPRECATED' : 'PUBLISHED');
       sv('wz-desc',       api.apiDescription);
-      sv('wz-tags',       (api.tags && api.tags.length) ? (Array.isArray(api.tags) ? api.tags.join(', ') : api.tags) : '');
+      setTags(api.tags);
       sv('wz-prod',       api.productionUrl);
       sv('wz-sandbox',    api.sandboxUrl);
       sv('wz-tech-owner', (api.owners && api.owners.technicalOwner)      || api.technicalOwner      || '');
@@ -289,7 +378,8 @@
       /* add mode */
       editingId = null;
       document.getElementById('cfg-wizard-title').textContent = isMcp ? 'Add MCP Server' : 'Add API';
-      ['wz-name','wz-version','wz-handle','wz-desc','wz-tags','wz-prod','wz-sandbox','wz-tech-owner','wz-tech-email','wz-biz-owner','wz-biz-email'].forEach(function(id){ sv(id,''); });
+      ['wz-name','wz-version','wz-handle','wz-desc','wz-prod','wz-sandbox','wz-tech-owner','wz-tech-email','wz-biz-owner','wz-biz-email'].forEach(function(id){ sv(id,''); });
+      setTags([]);
       document.getElementById('wz-handle').readOnly = false;
       sel('wz-type', isMcp ? 'Mcp' : 'RestApi'); sel('wz-status','PUBLISHED');
       agentVis = 'Visible';
@@ -369,6 +459,10 @@
 
   /* ── save API (create / update) ── */
   async function saveApi() {
+    /* Belt and braces: the tag input commits on blur, which normally fires before the
+       Save click lands. Committing here too means a tag typed but never Entered is
+       saved rather than quietly discarded, whatever order those events arrive in. */
+    commitTagInput();
     var name    = v('wz-name');
     var version = v('wz-version');
     var handle  = v('wz-handle');
@@ -384,7 +478,7 @@
       type:        document.getElementById('wz-type').value,
       status:      document.getElementById('wz-status').value,
       description: v('wz-desc'),
-      tags:           v('wz-tags') ? v('wz-tags').split(',').map(function(t){return t.trim();}).filter(Boolean) : [],
+      tags:           getTags(),
       labels:         getSelectedLabels(),
       agentVisibility: agentVis,
       owners: {

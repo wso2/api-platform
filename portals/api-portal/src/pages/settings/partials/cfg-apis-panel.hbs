@@ -236,9 +236,16 @@
                   {{/if}}
                 </div>
                 <div class="cfg-form-group cfg-form-group-full">
-                  <label for="wz-tags">Tags</label>
-                  <input type="text" id="wz-tags" class="cfg-form-input" placeholder="booking, travel  (comma separated)" />
-                  <p class="cfg-field-hint">Free-text keywords for search and discovery.</p>
+                  <label for="wz-tags-input">Tags</label>
+                  {{!-- Chip input, same markup/classes as the subscription-plan picker
+                        above. Tags are free text, so there is no dropdown — a chip is
+                        committed from what was typed. --}}
+                  <div class="cfg-chip-input-wrap" id="wz-tags-wrap">
+                    <div id="wz-tags-chips" style="display:contents;"></div>
+                    <input type="text" class="cfg-chip-text-input" id="wz-tags-input"
+                      placeholder="Add a tag…" autocomplete="off" aria-describedby="wz-tags-hint" />
+                  </div>
+                  <p class="cfg-field-hint" id="wz-tags-hint">Free-text keywords for search and discovery. Press Enter or comma to add; Backspace removes the last tag.</p>
                 </div>
                 <div class="cfg-form-group">
                   <label for="wz-status">Status</label>

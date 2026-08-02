@@ -1442,18 +1442,34 @@
   white-space: nowrap;
 }
 
+/* Sized as a real hit target rather than a decorative glyph: at 0.75rem with only
+   1px of padding this was ~14x13px, which is both hard to see against the chip's
+   tinted background and fiddly to click. Shared with the subscription-plan chips,
+   so both pickers get the same affordance. */
 .cfg-chip-remove {
   background: none;
   border: none;
   cursor: pointer;
-  color: var(--text-muted);
-  padding: 0 1px;
+  color: var(--primary);
+  opacity: 0.65;
+  padding: 0;
+  margin-left: 1px;
+  width: 18px;
+  height: 18px;
+  border-radius: 4px;
   line-height: 1;
-  font-size: 0.75rem;
+  font-size: 0.875rem;
   display: flex;
   align-items: center;
+  justify-content: center;
+  transition: background-color .12s, color .12s, opacity .12s;
 }
-.cfg-chip-remove:hover { color: var(--danger); }
+.cfg-chip-remove:hover,
+.cfg-chip-remove:focus-visible {
+  color: var(--danger);
+  opacity: 1;
+  background: color-mix(in srgb, var(--danger) 14%, transparent);
+}
 
 .cfg-chip-text-input {
   flex: 1;
