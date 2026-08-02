@@ -28,9 +28,9 @@ describe('Settings — Views & Labels', () => {
     const VIEW_HANDLE = `it-view-${uid}`; // slugify(VIEW_NAME)
     const LABEL_DISPLAY = `IT Label ${uid}`;
     const LABEL_HANDLE = `it-label-${uid}`; // slugify(LABEL_DISPLAY)
-    // A view requires at least one label (ViewCreateRequest.labels has minItems: 1), so
-    // the view test needs an existing label to pick. Seed one up front, distinct from the
-    // label the label test creates.
+    // Labels are optional on a view, but this test exercises attaching one from the
+    // picker, so it needs an existing label to click. Seed one up front, distinct from
+    // the label the label test creates.
     const VIEW_LABEL = `it-vlabel-${uid}`;
 
     const settingsUrl = () => `/${Cypress.env('ORG_HANDLE')}/settings`;
@@ -42,6 +42,7 @@ describe('Settings — Views & Labels', () => {
 
     after(() => {
         // Robust API cleanup, idempotent (404 if the create step never persisted).
+        cy.login();
         cy.apiRequest('DELETE', `/api/v0.9/views/${VIEW_HANDLE}`, { failOnStatusCode: false });
         cy.apiRequest('DELETE', `/api/v0.9/labels/${LABEL_HANDLE}`, { failOnStatusCode: false });
         cy.apiRequest('DELETE', `/api/v0.9/labels/${VIEW_LABEL}`, { failOnStatusCode: false });

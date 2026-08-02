@@ -145,7 +145,7 @@ const loadAPIs = async (req, res, next) => {
                 const err = Object.assign(new Error(constants.ERROR_MESSAGE.COMMON_AUTH_ERROR_MESSAGE), { status: 401 });
                 return next(err);
             } else {
-                error.status = 500;
+                error.status = util.pageErrorStatus(error);
                 return next(error);
             }
         }
@@ -436,7 +436,7 @@ const loadAPIContent = async (req, res, next) => {
                 const err = Object.assign(new Error(constants.ERROR_MESSAGE.COMMON_AUTH_ERROR_MESSAGE), { status: 401 });
                 return next(err);
             } else {
-                error.status = 500;
+                error.status = util.pageErrorStatus(error);
                 return next(error);
             }
         }
@@ -565,7 +565,7 @@ const loadDocsPage = async (req, res, next) => {
                 error: error.message,
                 stack: error.stack
             });
-            error.status = 500;
+            error.status = util.pageErrorStatus(error);
             return next(error);
         }
     }
@@ -613,7 +613,7 @@ const loadDocument = async (req, res, next) => {
                     const schemaAsIntrospectionJSON = await convertSDLToIntrospection(definitionResponse.swagger);
                     templateContent.graphqlSchemaAsIntrospectionJSON = schemaAsIntrospectionJSON ? JSON.stringify(schemaAsIntrospectionJSON) : null;
                     templateContent.graphqlSecurityScheme = '[]';
-                    templateContent.graphqlApiKeyHeader = config.security?.serviceApiKey?.headerName || 'apikey';
+                    templateContent.graphqlApiKeyHeader = 'apikey';
                     templateContent.apiMetadata = metaData;
                 } else {
                     templateContent.graphql = JSON.stringify(definitionResponse.swagger);
@@ -665,19 +665,23 @@ const loadDocument = async (req, res, next) => {
             templateContent.isGraphQLTryout = tryoutEnabled;
         }
         let apiMetadata = definitionResponse.metaData;
-        
-        const isMCPFromRegistry = apiMetadata?.type === constants.API_TYPE.MCP && !apiMetadata?.refId;
 
         //load API definition
         if (req.originalUrl.includes(constants.FILE_NAME.API_SPECIFICATION_PATH)) {
 
-            if (isMCPFromRegistry) {
-                const remotes = apiMetadata?.remotes || [];
-                const serverUrl = remotes.length > 0 ? remotes[0].url : '';
-                templateContent.swagger = JSON.stringify({ servers: [{ url: serverUrl }] });
-            } else if (definitionResponse.apiType === constants.API_TYPE.MCP) {
-                // CP-registered MCP: use server URL from endPoints
-                templateContent.swagger = definitionResponse.swagger;
+            if (definitionResponse.apiType === constants.API_TYPE.MCP) {
+                // The playground reads its server URL from servers[0].url. A
+                // registry-sourced MCP carries that endpoint in remotes[]; one
+                // registered through the control plane carries it in endPoints
+                // (getAPIDefinition already wraps it as {servers:[...]}).
+                // Keying purely on refId sent every MCP created directly in the
+                // portal — which has no refId *and* no remotes[] — down the
+                // remotes path, leaving the playground with a blank URL. Prefer
+                // remotes when present, otherwise fall back to endPoints.
+                const remoteUrl = (apiMetadata?.remotes || [])[0]?.url;
+                templateContent.swagger = remoteUrl
+                    ? JSON.stringify({ servers: [{ url: remoteUrl }] })
+                    : definitionResponse.swagger;
             } else if (definitionResponse.apiType !== constants.API_TYPE.WS && definitionResponse.apiType !== constants.API_TYPE.GRAPHQL && definitionResponse.apiType !== constants.API_TYPE.WEBSUB) {
                 let modifiedSwagger;
                 try {
@@ -734,7 +738,7 @@ const loadDocument = async (req, res, next) => {
                     const schemaAsIntrospectionJSON = await convertSDLToIntrospection(definitionResponse.graphql);
                     templateContent.graphqlSchemaAsIntrospectionJSON = schemaAsIntrospectionJSON ? JSON.stringify(schemaAsIntrospectionJSON) : null;
                     templateContent.graphqlSecurityScheme = '[]';
-                    templateContent.graphqlApiKeyHeader = config.security?.serviceApiKey?.headerName || 'apikey';
+                    templateContent.graphqlApiKeyHeader = 'apikey';
                 } else {
                     templateContent.graphql = definitionResponse.graphql ? JSON.stringify(definitionResponse.graphql) : '""';
                     templateContent.apiMetadataJSON = JSON.stringify(apiMetadata || {});
@@ -804,7 +808,7 @@ const loadDocument = async (req, res, next) => {
                 error: error.message,
                 stack: error.stack
             });
-            error.status = 500;
+            error.status = util.pageErrorStatus(error);
             return next(error);
         }
         res.send(html);
@@ -813,7 +817,7 @@ const loadDocument = async (req, res, next) => {
             const err = Object.assign(new Error(constants.ERROR_MESSAGE.COMMON_AUTH_ERROR_MESSAGE), { status: 401 });
             return next(err);
         } else {
-            error.status = 500;
+            error.status = util.pageErrorStatus(error);
             return next(error);
         }
     }
@@ -1124,6 +1128,26 @@ async function convertSDLToIntrospection(sdl) {
 }
 
 
+/**
+ * Markdown/agent-facing endpoints answer in text rather than the HTML error
+ * page, so they can't hand the error to the central handler. A URL naming a
+ * view or API that doesn't exist is still the caller's mistake, not a server
+ * fault — the DAOs raise those as CustomError(404), whose status sits on
+ * `statusCode`, so treating every failure as 500 told an agent to retry
+ * something that will never succeed.
+ *
+ * `mediaType` must match what the handler's success path sets. The failure can
+ * happen before that header is applied, and `res.send(string)` then defaults to
+ * text/html — so an agent asking for markdown got a markdown body labelled HTML.
+ */
+function sendMarkdownError(res, error, failureMessage, mediaType = 'text/markdown; charset=utf-8') {
+    res.setHeader('Content-Type', mediaType);
+    if (util.pageErrorStatus(error) === 404) {
+        return res.status(404).send('# Not Found\n\nThe requested resource does not exist.');
+    }
+    return res.status(500).send(`# Error\n\n${failureMessage}`);
+}
+
 const loadAPIContentMd = async (req, res) => {
     const { orgName, apiHandle, viewName } = req.params;
 
@@ -1247,7 +1271,7 @@ const loadAPIContentMd = async (req, res) => {
             error: error.message,
             stack: error.stack
         });
-        res.status(500).send('# Error\n\nFailed to load API details.');
+        sendMarkdownError(res, error, 'Failed to load API details.');
     }
 };
 
@@ -1324,7 +1348,7 @@ const loadLlmsTxt = async (req, res) => {
         res.send(md);
     } catch (error) {
         logger.error('Error generating llms.txt', { orgName, error: error.message, stack: error.stack });
-        res.status(500).send('# Error\n\nFailed to generate portal index.');
+        sendMarkdownError(res, error, 'Failed to generate portal index.', 'text/plain; charset=utf-8');
     }
 };
 
@@ -1349,7 +1373,7 @@ const previewLlmsTxt = async (req, res) => {
         res.send(md);
     } catch (error) {
         logger.error('Error previewing llms.txt', { orgName, error: error.message, stack: error.stack });
-        res.status(500).send('# Error\n\nFailed to generate preview.');
+        sendMarkdownError(res, error, 'Failed to generate preview.', 'text/plain; charset=utf-8');
     }
 };
 
@@ -1369,9 +1393,15 @@ const loadAPIsMd = async (req, res) => {
         const hiddenAPICount = metaDataList.length - agentVisibleAPIs.length;
 
         const nonMcpAPIs = agentVisibleAPIs.filter(api => api.type !== constants.API_TYPE.MCP);
+        // api.type holds the stored constant (e.g. "RestApi", "WebSubApi" — see
+        // constants.API_TYPE), not the enum key used below — map it back or every
+        // REST/WebSub API silently drops out of this catalog.
+        const typeConstantToEnum = Object.fromEntries(
+            Object.entries(constants.API_TYPE).map(([enumKey, storedValue]) => [storedValue, enumKey])
+        );
         const byType = { REST: [], GRAPHQL: [], WS: [], WEBSUB: [] };
         for (const api of nonMcpAPIs) {
-            const type = api.type;
+            const type = typeConstantToEnum[api.type];
             if (byType[type]) byType[type].push(api);
         }
         const baseUrl = '/' + orgName + constants.ROUTE.VIEWS_PATH + viewName;
@@ -1398,7 +1428,7 @@ const loadAPIsMd = async (req, res) => {
             error: error.message,
             stack: error.stack
         });
-        res.status(500).send('# Error\n\nFailed to load API list.');
+        sendMarkdownError(res, error, 'Failed to load API list.');
     }
 };
 
@@ -1439,7 +1469,7 @@ const loadMCPsMd = async (req, res) => {
             error: error.message,
             stack: error.stack
         });
-        res.status(500).send('# Error\n\nFailed to load MCP list.');
+        sendMarkdownError(res, error, 'Failed to load MCP list.');
     }
 };
 
@@ -1550,7 +1580,7 @@ const loadDocumentMd = async (req, res) => {
             error: error.message,
             stack: error.stack
         });
-        res.status(500).send('# Error\n\nFailed to load document.');
+        sendMarkdownError(res, error, 'Failed to load document.');
     }
 };
 

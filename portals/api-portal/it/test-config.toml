@@ -38,10 +38,6 @@ name     = '{{ env "APIP_AP_DATABASE_NAME" "api_portal" }}'
 encryption_key = '{{ env "APIP_AP_SECURITY_ENCRYPTION_KEY" }}'
 session_secret = '{{ env "APIP_AP_SECURITY_SESSION_SECRET" }}'
 
-[api_portal.security.service_api_key]
-enabled = true
-value = "api-portal-it-test-key"
-
 [api_portal.organization]
 # The single organization each portal instance serves. Tokenized because the
 # fixture runs a SECOND instance (api-portal-other-org) off this same file with a
@@ -51,14 +47,25 @@ handle       = '{{ env "APIP_AP_ORGANIZATION_HANDLE" "default" }}'
 display_name = '{{ env "APIP_AP_ORGANIZATION_DISPLAY_NAME" "Default" }}'
 auto_create_subscription_plans = true
 
-# The IT suite authorizes against the dp:* scopes the Platform API sidecar mints into
-# each token's scope claim — its own grant table (configs/roles-platform-api-it.yaml)
+# Most of the suite authorizes against the dp:* scopes the Platform API sidecar mints
+# into each token's scope claim — its own grant table (configs/roles-platform-api-it.yaml)
 # is where the three IT accounts' privileges are defined. That is scope mode by
-# definition, so it is pinned here rather than inheriting the "role" default: role mode
-# would expand the dp_*_it role names against the PORTAL's grant table, which does not
-# define them, and every REST assertion would 403.
+# definition, so it is the default here rather than the shipped "role": role mode would
+# expand the dp_*_it role names against the PORTAL's grant table, and the table baked
+# into the image does not define them, so every REST assertion would 403.
+#
+# Tokenized, not hardcoded, because the fixture also runs a THIRD portal instance
+# (api-portal-role-mode) off this same file with mode = "role" and a grant table that
+# does define those roles (configs/portal-roles-role-mode-it.yaml) — role mode is the
+# shipped default in configs/config.toml, so leaving it unexercised meant the suite
+# never covered the configuration most deployments actually run. Driven by
+# rest-api/auth/role-mode-authorization.spec.js.
 [api_portal.auth.authorization]
-mode = "scope"
+mode = '{{ env "APIP_AP_AUTH_AUTHORIZATION_MODE" "scope" }}'
+# Only read in role mode. The default points at the copy baked into the image so the
+# scope-mode instances resolve a real path; the role-mode instance overrides it with
+# its mounted IT table.
+role_to_scope_mapping = '{{ env "APIP_AP_AUTH_AUTHORIZATION_ROLE_TO_SCOPE_MAPPING" "./resources/role-to-scope-mapping.yaml" }}'
 
 [api_portal.auth.local]
 # File-based (local) auth against the Platform API sidecar. Host is identical in

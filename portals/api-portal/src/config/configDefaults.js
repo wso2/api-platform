@@ -75,11 +75,6 @@ const DEFAULTS = {
     security: {
         encryptionKey: '',
         sessionSecret: '',
-        serviceApiKey: {
-            enabled: true,
-            headerName: 'x-wso2-api-key',
-            value: '',
-        },
     },
     // Authentication — HOW a token is verified: a mode gate plus the two backends it
     // selects between, local (default) and idp. What a verified token may DO is

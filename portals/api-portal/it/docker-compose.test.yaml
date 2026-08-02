@@ -30,7 +30,7 @@ services:
     # build) instead of the last release — this fixture's config-platform-api-it.toml
     # tracks platform-api's current config schema, which a pinned old release may not
     # understand.
-    image: ${PLATFORM_API_IMAGE:-ghcr.io/wso2/api-platform/platform-api:0.13.0-SNAPSHOT}
+    image: ${PLATFORM_API_IMAGE:-ghcr.io/wso2/api-platform/platform-api:0.14.0-SNAPSHOT}
     command: ["-config", "/etc/platform-api/config-platform-api.toml"]
     environment:
       APIP_CP_ENCRYPTION_KEY: "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
@@ -65,6 +65,16 @@ services:
       # (tls/logging/api-key/org/platform-api) live in ./test-config.toml.
       APIP_AP_DATABASE_DRIVER: sqlite
       APIP_AP_DATABASE_PATH: /tmp/api-portal-it.db
+      # Which authorization mode the ENTIRE suite runs against this time —
+      # "scope" (default) or "role", selected by the Makefile's
+      # test-rest-api-scope / test-rest-api-role targets. Both modes must pass
+      # the same specs; see it/README.md "Authorization modes".
+      APIP_AP_AUTH_AUTHORIZATION_MODE: ${AUTH_MODE:-scope}
+      # Read only in role mode. Mirrors the scopes platform-api puts in the token's
+      # scope claim, so the two modes grant each IT account the same thing and the
+      # suite's expectations hold either way — grant-table-parity.spec.js fails if
+      # the two tables ever drift apart.
+      APIP_AP_AUTH_AUTHORIZATION_ROLE_TO_SCOPE_MAPPING: /etc/api-portal/portal-roles-it.yaml
       # portal fails closed at startup without these — fixed test-only values,
       # not meant to be reused outside this CI fixture.
       APIP_AP_SECURITY_ENCRYPTION_KEY: "7f40672c96fd437dc33550755e218d586014232ceb5b01c9405aab575bcb1f4a"
@@ -83,6 +93,7 @@ services:
       # Mount only jwt_public.pem, not the whole .certs dir, so the private key
       # (also in .certs, for platform-api) is never exposed to the portal.
       - ./.certs/jwt_public.pem:/etc/api-portal/keys/jwt_public.pem:ro
+      - ./configs/portal-roles-it.yaml:/etc/api-portal/portal-roles-it.yaml:ro
       # Named volume at /tmp (not a new mount point) so Docker copies the image's
       # existing /tmp ownership/permissions into it on first use — a fresh mount
       # at a brand-new path would be root-owned and unwritable by the app user.
@@ -143,7 +154,6 @@ services:
     shm_size: '2gb'
     environment:
       CYPRESS_BASE_URL: "http://api-portal:9543"
-      CYPRESS_API_KEY: "api-portal-it-test-key"
     volumes:
       - ./ui:/e2e
       - ./reports:/e2e/reports
@@ -169,6 +179,11 @@ services:
       # tokens for. auth/foreign-org-login.spec.js skips itself when this is unset.
       API_PORTAL_OTHER_ORG_BASE_URL: "http://api-portal-other-org:9543"
       API_PORTAL_OTHER_ORG_HANDLE: "other-org"
+      # Which authorization mode the portal under test is running. Must track the
+      # portal service's APIP_AP_AUTH_AUTHORIZATION_MODE above — authorization-mode.spec.js
+      # asserts they agree, so a mismatch fails loudly instead of silently testing
+      # the wrong mode.
+      API_PORTAL_AUTH_MODE: ${AUTH_MODE:-scope}
       # Real session login (config-platform-api-it.toml) — password == username
       # for all three, matching the admin/admin convention documented in
       # configs/config-platform-api-template.toml.
@@ -187,6 +202,9 @@ services:
     volumes:
       - ./rest-api:/rest-api
       - ./reports:/rest-api/reports
+      # The two grant tables, so auth/grant-table-parity.spec.js can compare them
+      # directly. Read-only — the suite reads these, the portal and platform-api own them.
+      - ./configs:/it-configs:ro
       # Mounted at a path distinct from this container's own /tmp (needed for
       # npm install), read-only since only the portal process should write it.
       - sqlite-data:/shared-db:ro

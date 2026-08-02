@@ -29,6 +29,7 @@ describe('API listing', () => {
     let mcpHandle;
 
     before(() => {
+        cy.login();
         // Seed two APIs of different types so the listing shows distinct badges,
         // plus an MCP server — which must NOT appear on the /apis listing (it
         // belongs on /mcps). loadAPIs filters type !== MCP for the APIs page.
@@ -44,6 +45,7 @@ describe('API listing', () => {
     });
 
     after(() => {
+        cy.login();
         cy.deleteApi(restHandle);
         cy.deleteApi(gqlHandle);
         cy.deleteMcp(mcpHandle);

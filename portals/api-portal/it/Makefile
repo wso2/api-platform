@@ -16,7 +16,9 @@
 # under the License.
 # --------------------------------------------------------------------
 
-.PHONY: all test test-postgres test-rest-api test-rest-api-postgres open clean deps ensure-test-tag ensure-certs
+.PHONY: all test test-postgres test-rest-api test-rest-api-scope test-rest-api-role \
+        test-rest-api-postgres test-rest-api-postgres-scope test-rest-api-postgres-role \
+        open clean deps ensure-test-tag ensure-certs
 
 VERSION ?= $(shell cat ../VERSION 2>/dev/null | tr -d '[:space:]' || echo "0.0.1-SNAPSHOT")
 DOCKER_REGISTRY ?= ghcr.io/wso2/api-platform
@@ -107,19 +109,48 @@ test-postgres: ensure-test-tag ensure-certs
 	docker compose -p $(IT_PROJECT_POSTGRES) -f docker-compose.test.postgres.yaml down -v --remove-orphans; \
 	exit $$EXIT
 
-# Run the REST API integration test suite (Jest + Supertest) against SQLite.
+# --- REST API suite (Jest + Supertest) -------------------------------------
+#
+# The whole suite runs twice, once per authorization mode, because
+# auth.authorization.mode changes where a request's effective scopes come from:
+#
+#   scope — the portal reads the token's own scope claim (what platform-api mints).
+#   role  — the portal IGNORES that claim and expands the token's roles claim
+#           through its own grant table (configs/portal-roles-it.yaml). This is the
+#           SHIPPED DEFAULT in configs/config.toml.
+#
+# Both are real deployment configurations, so both must pass the same specs. The
+# portal-side grant table mirrors platform-api's, which is what lets one set of
+# expectations hold in either mode; auth/grant-table-parity.spec.js guards the mirror
+# and auth/authorization-mode.spec.js covers the deliberate difference between them.
+#
+# `test-rest-api` runs both, sequentially. Use the -scope / -role targets to run one.
 # Requires the API Portal image to be built first: make build (from portals/api-portal/).
-test-rest-api: ensure-test-tag ensure-certs
-	@DOCKER_REGISTRY=$(DOCKER_REGISTRY) docker compose -p $(IT_PROJECT) -f docker-compose.test.yaml up api-portal rest-api-tests --abort-on-container-exit --exit-code-from rest-api-tests; \
+test-rest-api:
+	@$(MAKE) test-rest-api-scope
+	@$(MAKE) test-rest-api-role
+
+test-rest-api-scope: AUTH_MODE = scope
+test-rest-api-role:  AUTH_MODE = role
+test-rest-api-scope test-rest-api-role: ensure-test-tag ensure-certs
+	@echo "==> REST API suite (SQLite, authorization mode = $(AUTH_MODE))"
+	@AUTH_MODE=$(AUTH_MODE) DOCKER_REGISTRY=$(DOCKER_REGISTRY) docker compose -p $(IT_PROJECT) -f docker-compose.test.yaml up api-portal rest-api-tests --abort-on-container-exit --exit-code-from rest-api-tests; \
 	EXIT=$$?; \
-	docker compose -p $(IT_PROJECT) -f docker-compose.test.yaml down -v --remove-orphans; \
+	AUTH_MODE=$(AUTH_MODE) docker compose -p $(IT_PROJECT) -f docker-compose.test.yaml down -v --remove-orphans; \
 	exit $$EXIT
 
-# Run the REST API integration test suite (Jest + Supertest) against PostgreSQL.
-test-rest-api-postgres: ensure-test-tag ensure-certs
-	@DOCKER_REGISTRY=$(DOCKER_REGISTRY) docker compose -p $(IT_PROJECT_POSTGRES) -f docker-compose.test.postgres.yaml up postgres api-portal rest-api-tests --abort-on-container-exit --exit-code-from rest-api-tests; \
+# Same, against PostgreSQL.
+test-rest-api-postgres:
+	@$(MAKE) test-rest-api-postgres-scope
+	@$(MAKE) test-rest-api-postgres-role
+
+test-rest-api-postgres-scope: AUTH_MODE = scope
+test-rest-api-postgres-role:  AUTH_MODE = role
+test-rest-api-postgres-scope test-rest-api-postgres-role: ensure-test-tag ensure-certs
+	@echo "==> REST API suite (PostgreSQL, authorization mode = $(AUTH_MODE))"
+	@AUTH_MODE=$(AUTH_MODE) DOCKER_REGISTRY=$(DOCKER_REGISTRY) docker compose -p $(IT_PROJECT_POSTGRES) -f docker-compose.test.postgres.yaml up postgres api-portal rest-api-tests --abort-on-container-exit --exit-code-from rest-api-tests; \
 	EXIT=$$?; \
-	docker compose -p $(IT_PROJECT_POSTGRES) -f docker-compose.test.postgres.yaml down -v --remove-orphans; \
+	AUTH_MODE=$(AUTH_MODE) docker compose -p $(IT_PROJECT_POSTGRES) -f docker-compose.test.postgres.yaml down -v --remove-orphans; \
 	exit $$EXIT
 
 # Open Cypress interactive UI — runs against a LOCALLY running portal (not in Docker).

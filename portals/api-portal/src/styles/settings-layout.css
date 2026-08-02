@@ -599,6 +599,25 @@
 
 .cfg-form-input--mono { font-family: var(--font-family-mono); font-size: 0.8125rem; }
 
+/* Read-only fields — handles, and values the operator sets elsewhere. A handle is
+   a resource's identity and is immutable after creation, so the field must not
+   look typeable. Attribute selector (0,2,0) outranks .cfg-form-input (0,1,0),
+   including the :focus rule above, which is overridden explicitly below. */
+.cfg-form-input[readonly] {
+  background: var(--surface-sunken);
+  color: var(--text-muted);
+  cursor: not-allowed;
+}
+
+/* A read-only input is still keyboard-focusable (unlike a disabled one), so it keeps
+   a focus ring — just a muted one, so it reads as "focused but not editable" rather
+   than borrowing the primary-coloured ring of a field you can type into. Suppressing
+   the indicator entirely left keyboard users with no way to see where focus was. */
+.cfg-form-input[readonly]:focus {
+  border-color: var(--border-strong);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--text-muted) 22%, transparent);
+}
+
 /* ── File upload zone ────────────────────────────────────── */
 
 .cfg-upload-zone {

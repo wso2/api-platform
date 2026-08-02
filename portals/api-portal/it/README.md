@@ -45,6 +45,35 @@ Each suite can run against either **SQLite** (default, no external DB) or **Post
 - **Cypress** — UI E2E test framework (headless Electron).
 - **SQLite / PostgreSQL** — SQLite by default; the `-postgres` targets swap in a Postgres service.
 
+## Authorization modes
+
+`auth.authorization.mode` decides where a request's effective scopes come from, and the
+REST suite runs **in full, once per mode**:
+
+| Mode | Effective scopes come from | Grant table |
+|---|---|---|
+| `scope` | the token's own `scope` claim, as minted by platform-api | `configs/roles-platform-api-it.yaml` |
+| `role` (shipped default) | expanding the token's `roles` claim — the scope claim is **ignored** | `configs/portal-roles-it.yaml` |
+
+Both are real deployment configurations, so both must pass the same specs. That works
+because the portal-side table mirrors platform-api's exactly, giving each IT account the
+same grant either way. Two things keep that honest:
+
+- **`rest-api/auth/grant-table-parity.spec.js`** fails if the two tables drift apart,
+  naming the role and the missing scopes — instead of surfacing as a puzzling 403 in
+  some unrelated spec. Regenerate the portal table after editing platform-api's.
+- **`rest-api/auth/authorization-mode.spec.js`** covers the one deliberate divergence.
+  The `narrow` account's roles claim (`dp_narrow_it`) is granted the full developer scope
+  set by platform-api but read-only by the portal, so the *same token* creating an
+  application succeeds in scope mode and is refused in role mode. Each assertion runs in
+  exactly one mode; together they prove the scope claim really is ignored under role mode
+  rather than merged — i.e. a caller cannot widen a role's grant by getting extra scopes
+  from their issuer. No other spec uses that account.
+
+Mode is selected by `AUTH_MODE`, which the compose fixture feeds to both the portal
+(`APIP_AP_AUTH_AUTHORIZATION_MODE`) and the test process (`API_PORTAL_AUTH_MODE`) so they
+cannot disagree. Cypress always runs in the default `scope` mode.
+
 ## Prerequisites
 
 - Docker and Docker Compose
@@ -96,8 +125,12 @@ portals/api-portal/it/
 |---------|-------------|
 | `make test` | Run the Cypress UI suite headlessly (SQLite, CI-friendly) |
 | `make test-postgres` | Run the Cypress UI suite headlessly (PostgreSQL) |
-| `make test-rest-api` | Run the Jest REST API suite (SQLite) |
-| `make test-rest-api-postgres` | Run the Jest REST API suite (PostgreSQL) |
+| `make test-rest-api` | Run the Jest REST API suite (SQLite) — **both** authorization modes, sequentially |
+| `make test-rest-api-scope` | Same, scope mode only |
+| `make test-rest-api-role` | Same, role mode only (the shipped default) |
+| `make test-rest-api-postgres` | Run the Jest REST API suite (PostgreSQL) — both modes |
+| `make test-rest-api-postgres-scope` | Same, scope mode only |
+| `make test-rest-api-postgres-role` | Same, role mode only |
 | `make open` | Open the Cypress interactive UI against a locally running portal |
 | `make deps` | Install Node dependencies (only needed for `make open`) |
 | `make clean` | Remove test containers, volumes, and report artifacts |
@@ -115,8 +148,9 @@ You can also run both UI suites from the portal root: `make -C portals/api-porta
 Both suites run automatically on pull requests that touch `portals/api-portal/**`,
 via [`.github/workflows/devportal-integration-test.yml`](../../../.github/workflows/devportal-integration-test.yml):
 
-- **`rest-api-test`** — builds the image and runs `make test-rest-api` /
-  `make test-rest-api-postgres` in an `sqlite` × `postgres` matrix.
+- **`rest-api-test`** — builds the image and runs the suite in an
+  `sqlite` × `postgres` × `scope` × `role` matrix (four parallel jobs, via the
+  per-mode targets, so covering both authorization modes doesn't double wall-clock).
 - **`ui-test`** — builds the image and runs `make test` (Cypress, SQLite).
 
 Test reports (`it/reports/`) are uploaded as workflow artifacts on every run. The workflow
@@ -134,7 +168,7 @@ Defined in `ui/cypress/support/`:
 |---------|-------------|
 | `cy.visitPortal(path)` | Navigate to a path inside the default portal view |
 | `cy.portalUrl(path)` | Build a URL under the default view without visiting it |
-| `cy.apiRequest(method, path, options)` | `cy.request` wrapper that injects the IT API key header for admin-protected endpoints |
+| `cy.apiRequest(method, path, options)` | `cy.request` wrapper that authenticates with the current session cookie plus the `X-CSRF-Token` header (call `cy.login()` first) |
 | `cy.login(username, password)` | Perform a real login flow (see `support/commands/auth.js`) |
 | `cy.logout()` | Log the current user out |
 | `cy.createApplication(name)` / `cy.deleteApplication(name)` | Create/delete an application (see `support/commands/applications.js`) |
@@ -195,8 +229,10 @@ After a run, artifacts are available under `reports/`:
 - **REST API suite** performs **real session logins** against `platform-api` using the
   file-based users defined in `configs/config-platform-api-it.toml`
   (`admin`/`admin`, `publisher`/`publisher`, `developer`/`developer`).
-- **UI suite** uses both real login flows (`auth/` specs) and, for admin-protected REST
-  calls, an IT API key injected via the `x-wso2-api-key` header.
+- **UI suite** uses real login flows throughout. Seeding and cleanup hooks call
+  `cy.login()` and then `cy.apiRequest`, which authenticates with the resulting session
+  cookie plus the `X-CSRF-Token` double-submit header. `testIsolation` clears cookies
+  between tests, so each `before`/`after` hook needs its own `cy.login()`.
 
 ## Adding New Tests
 

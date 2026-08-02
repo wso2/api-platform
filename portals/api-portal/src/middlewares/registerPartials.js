@@ -114,7 +114,14 @@ const registerPartials = async (req, res, next) => {
         notFound.status = 404;
         return next(notFound);
       }
-      next(error);
+      // Partial resolution reads per-view content, so a URL naming a view that
+      // doesn't exist surfaces here as a CustomError(404) — before any page
+      // controller runs. That status lives on `statusCode`, which the central
+      // handler doesn't read, so without this it rendered the 500 "Oops!" page
+      // instead of "Page not found". `return` matters too: falling through to
+      // the next() below would call next twice on the same request.
+      error.status = util.pageErrorStatus(error);
+      return next(error);
     }
   }
   next();

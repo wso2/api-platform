@@ -62,16 +62,17 @@
                     </div>
                 </div>
             </div>
-            {{!-- Revoke footer — part of Credentials tab --}}
+            {{!-- Remove-keys footer — part of Credentials tab --}}
             <div class="mk-km-footer" id="keyActionsContainer-{{keyType}}">
                 <span class="mk-secret-note">
                     <i class="bi bi-info-circle"></i>
-                    Revoking removes all credentials. Tokens already issued remain valid until they expire.
+                    Removing unlinks this client ID from the application. The OAuth client stays in the
+                    key manager, and tokens already issued remain valid until they expire.
                 </span>
                 <div class="mk-footer-actions">
                     <button class="mk-btn-danger"
-                        onclick="confirmAndRevokeKeys('{{appId}}', '{{keys.keyMappingId}}', '{{keyType}}')">
-                        <i class="bi bi-trash3"></i> Revoke keys
+                        onclick="confirmAndRemoveKeys('{{appId}}', '{{keys.keyMappingId}}', '{{keyType}}')">
+                        <i class="bi bi-trash3"></i> Remove keys
                     </button>
                 </div>
             </div>

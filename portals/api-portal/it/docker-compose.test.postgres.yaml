@@ -51,7 +51,7 @@ services:
     # build) instead of the last release — this fixture's config-platform-api-it.toml
     # tracks platform-api's current config schema, which a pinned old release may not
     # understand.
-    image: ${PLATFORM_API_IMAGE:-ghcr.io/wso2/api-platform/platform-api:0.13.0-SNAPSHOT}
+    image: ${PLATFORM_API_IMAGE:-ghcr.io/wso2/api-platform/platform-api:0.14.0-SNAPSHOT}
     command: ["-config", "/etc/platform-api/config-platform-api.toml"]
     environment:
       APIP_CP_ENCRYPTION_KEY: "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
@@ -91,6 +91,7 @@ services:
       # Mount only jwt_public.pem, not the whole .certs dir, so the private key
       # (also in .certs, for platform-api) is never exposed to the portal.
       - ./.certs/jwt_public.pem:/etc/api-portal/keys/jwt_public.pem:ro
+      - ./configs/portal-roles-it.yaml:/etc/api-portal/portal-roles-it.yaml:ro
     environment:
       # DB-agnostic settings (tls/logging/api-key/org/platform-api) live in ./test-config.toml.
       APIP_AP_DATABASE_HOST: postgres
@@ -99,6 +100,10 @@ services:
       APIP_AP_DATABASE_USER: api_portal
       APIP_AP_DATABASE_PASSWORD: api_portal
       APIP_AP_DATABASE_NAME: api_portal
+      # Which authorization mode the ENTIRE suite runs against this time — see the
+      # matching note in docker-compose.test.yaml and it/README.md.
+      APIP_AP_AUTH_AUTHORIZATION_MODE: ${AUTH_MODE:-scope}
+      APIP_AP_AUTH_AUTHORIZATION_ROLE_TO_SCOPE_MAPPING: /etc/api-portal/portal-roles-it.yaml
       # portal fails closed at startup without these — fixed test-only values,
       # not meant to be reused outside this CI fixture.
       APIP_AP_SECURITY_ENCRYPTION_KEY: "7f40672c96fd437dc33550755e218d586014232ceb5b01c9405aab575bcb1f4a"
@@ -169,7 +174,6 @@ services:
     shm_size: '2gb'
     environment:
       CYPRESS_BASE_URL: "http://api-portal:9543"
-      CYPRESS_API_KEY: "api-portal-it-test-key"
     volumes:
       - ./ui:/e2e
       - ./reports:/e2e/reports
@@ -195,6 +199,9 @@ services:
       # tokens for. auth/foreign-org-login.spec.js skips itself when this is unset.
       API_PORTAL_OTHER_ORG_BASE_URL: "http://api-portal-other-org:9543"
       API_PORTAL_OTHER_ORG_HANDLE: "other-org"
+      # Must track the portal service's APIP_AP_AUTH_AUTHORIZATION_MODE above;
+      # authorization-mode.spec.js asserts they agree.
+      API_PORTAL_AUTH_MODE: ${AUTH_MODE:-scope}
       API_PORTAL_ORG_HANDLE: "default"
       API_PORTAL_ADMIN_USERNAME: "admin"
       API_PORTAL_ADMIN_PASSWORD: "admin"
@@ -214,6 +221,9 @@ services:
     volumes:
       - ./rest-api:/rest-api
       - ./reports:/rest-api/reports
+      # The two grant tables, for auth/grant-table-parity.spec.js — see the note on
+      # the same mount in docker-compose.test.yaml.
+      - ./configs:/it-configs:ro
     networks:
       - it-api-portal-network
     # better-sqlite3 (an optionalDependency used only by the SQLite variant) is the

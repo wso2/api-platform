@@ -342,6 +342,20 @@ function getErrors(errors) {
     return errorList;
 }
 
+// Page controllers hand the central error handler (src/app.js) a status on
+// `error.status`, but a DAO-level CustomError carries its HTTP status on
+// `statusCode` instead. Forcing 500 in every catch turned a genuinely
+// client-side failure — most visibly a URL naming a view that doesn't exist,
+// where viewDao.getId throws CustomError(404) — into the "Oops! Something went
+// wrong" 500 page. Preserve only the statuses the error page actually renders;
+// anything else really is a 500.
+const PAGE_ERROR_STATUSES = new Set([400, 403, 404]);
+
+function pageErrorStatus(error) {
+    const status = error?.statusCode ?? error?.status;
+    return PAGE_ERROR_STATUSES.has(status) ? status : 500;
+}
+
 function handleError(res, error) {
     if (db.isDuplicateKeyError(error)) {
         // Raw driver messages (pg/sqlite/mssql) can echo internal constraint/table
@@ -1357,6 +1371,7 @@ module.exports = {
     renderLlmsTxt,
     renderGivenTemplate,
     handleError,
+    pageErrorStatus,
     sendError,
     retrieveContentType,
     getAPIFileContent,

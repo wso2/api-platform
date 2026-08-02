@@ -98,8 +98,9 @@ async function createApi(overrides = {}) {
 }
 
 // `admin` manages org-level integration config; pass `role` to override.
-// displayName is required by WebhookSubscriberRequest (the settings UI collects a
-// name, not a handle, and the handle is generated from it when `id` is omitted).
+// displayName is required by WebhookSubscriberRequest; `id` (the handle) is
+// optional here — the server generates a UUID when it is omitted, which is what
+// these fixtures rely on. The settings UI collects both explicitly.
 async function createWebhookSubscriber(overrides = {}) {
     const { role = 'admin', ...bodyOverrides } = overrides;
     const res = await client.as(role).post('/webhook-subscribers', {

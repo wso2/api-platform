@@ -97,8 +97,6 @@ function enforceSecurity(scope) {
                 const decodedAccessToken = safeDecodeJwt(token);
                 req[constants.USER_ID] = await resolveUserUuid(req, decodedAccessToken?.[constants.USER_ID]);
                 return validateAuthentication(scope)(req, res, next);
-            } else if (config.security.serviceApiKey.enabled) {
-                enforceAPIKey(req, res, next);
             } else if (typeof req.socket?.getPeerCertificate === 'function' && req.socket.getPeerCertificate(true)) {
                 enforceMTLS(req, res, next);
             } else {
@@ -399,21 +397,6 @@ const enforceMTLS = (req, res, next) => {
         return res.status(403).send('Client certificate is expired or not yet valid');
     }
 
-    return next();
-};
-
-const enforceAPIKey = (req, res, next) => {
-    const keyType = config.security?.serviceApiKey?.headerName;
-
-    if (!keyType || !config.security?.serviceApiKey?.value) {
-        return res.status(500).json({ error: "Server configuration error" });
-    }
-
-    const apiKey = req.headers[keyType.toLowerCase()];
-
-    if (!apiKey || apiKey !== config.security?.serviceApiKey?.value) {
-        return res.status(401).json({ error: "Unauthorized: API key is invalid or not found" });
-    }
     return next();
 };
 

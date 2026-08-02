@@ -58,13 +58,17 @@ async function addClientId(kmId, keyType, appId, orgId, keyManager) {
     }
 }
 
-function confirmAndRevokeKeys(applicationId, keyMappingId, keyType) {
+function confirmAndRemoveKeys(applicationId, keyMappingId, keyType) {
     const modal = document.getElementById('deleteConfirmation');
     if (modal) {
         const titleEl = modal.querySelector('.modal-title');
         const msgEl = modal.querySelector('.modal-message');
-        if (titleEl) titleEl.textContent = 'Revoke Application Keys';
-        if (msgEl) msgEl.textContent = 'Are you sure you want to remove this client ID? Tokens already issued remain valid until they expire.';
+        if (titleEl) titleEl.textContent = 'Remove Application Keys';
+        // Wording tracks what DELETE /applications/{id}/oauth-keys/{keyMappingId}
+        // actually does (see the operation description in the OpenAPI spec): it drops
+        // the portal's local client_id mapping only. The OAuth client itself is owned
+        // by the key manager and is untouched, as are tokens already issued from it.
+        if (msgEl) msgEl.textContent = 'Are you sure you want to unlink this client ID from the application? The OAuth client remains in the key manager, and tokens already issued remain valid until they expire.';
         modal.dataset.applicationId = applicationId;
         modal.dataset.param2 = keyMappingId;
 
@@ -74,7 +78,7 @@ function confirmAndRevokeKeys(applicationId, keyMappingId, keyType) {
             confirmBtn.removeEventListener('click', handler);
             if (confirmBtn) {
                 confirmBtn.disabled = true;
-                confirmBtn.innerHTML = '<span class="spinner-border spinner-border-sm" role="status"></span> Revoking…';
+                confirmBtn.innerHTML = '<span class="spinner-border spinner-border-sm" role="status"></span> Removing…';
             }
             await removeApplicationKeys(applicationId, keyMappingId, keyType);
             if (confirmBtn) {
@@ -86,7 +90,7 @@ function confirmAndRevokeKeys(applicationId, keyMappingId, keyType) {
 
         const bsModal = new bootstrap.Modal(modal);
         bsModal.show();
-    } else if (confirm('Are you sure you want to remove this client ID? This cannot be undone.')) {
+    } else if (confirm('Are you sure you want to unlink this client ID from the application? The OAuth client remains in the key manager.')) {
         removeApplicationKeys(applicationId, keyMappingId, keyType);
     }
 }

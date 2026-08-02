@@ -19,11 +19,12 @@
 // ---------------------------------------------------------------------------
 // Seed helpers — create demo REST APIs / MCP servers through the real portal
 // management API (POST /api/v0.9/apis, /mcp-servers) so UI browse tests have
-// something to render. They go through cy.apiRequest, which injects the
-// service API-key header; the `organization` header selects the target org
-// (authMiddleware.resolveOrgFromHeader), and `labels: ['default']` maps the
-// resource into the default view so it appears on the /apis and /mcps listings
-// (apiDao.list requires a label mapped to the view).
+// something to render. They go through cy.apiRequest, which authenticates with
+// the caller's session cookie — so the calling hook must cy.login() first. The
+// `organization` header names the target org (authMiddleware.resolvePortalOrg
+// rejects any other), and `labels: ['default']` maps the resource into the
+// default view so it appears on the /apis and /mcps listings (apiDao.list
+// requires a label mapped to the view).
 //
 // These endpoints take multipart/form-data. cy.request runs in Node, not the
 // browser, so a browser FormData won't serialize — instead we build the
@@ -50,7 +51,7 @@ function buildMultipart(parts) {
 
 function seedHeaders(contentType) {
     return {
-        // authMiddleware resolves the target org from this header for API-key requests.
+        // Checked against the organization this instance serves; a mismatch is a 403.
         organization: Cypress.env('ORG_HANDLE'),
         'content-type': contentType,
     };

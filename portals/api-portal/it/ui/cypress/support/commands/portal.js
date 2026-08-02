@@ -30,21 +30,28 @@ Cypress.Commands.add('portalUrl', (path = '') => {
 
 // ---------------------------------------------------------------------------
 // cy.apiRequest(method, path, options)
-//   Thin wrapper around cy.request that includes the API key header for
-//   accessing admin-protected portal endpoints in the IT environment.
+//   Call a portal REST endpoint as whichever user is currently logged in.
+//
+//   The portal's static service API key (x-wso2-api-key) was removed, so these
+//   calls authenticate with the ordinary session cookie — cy.request shares the
+//   browser's cookie jar — plus the X-CSRF-Token header that csrfProtection
+//   requires on mutating cookie-authenticated requests (double-submit of the
+//   XSRF-TOKEN cookie the server sets on every response).
+//
+//   Callers must have established a session first: testIsolation clears cookies
+//   between tests, so before()/after() hooks need their own cy.login().
 // ---------------------------------------------------------------------------
 Cypress.Commands.add('apiRequest', (method, path, options = {}) => {
-    const apiKey = Cypress.env('API_KEY');
-    const headers = apiKey
-        ? { 'x-wso2-api-key': apiKey, ...(options.headers || {}) }
-        : (options.headers || {});
-    return cy.request({
+    return cy.getCookie('XSRF-TOKEN').then((csrf) => cy.request({
         method,
         url: path,
         failOnStatusCode: options.failOnStatusCode !== false,
         ...options,
-        headers,
-    });
+        headers: {
+            ...(csrf && csrf.value ? { 'X-CSRF-Token': decodeURIComponent(csrf.value) } : {}),
+            ...(options.headers || {}),
+        },
+    }));
 });
 
 // ---------------------------------------------------------------------------

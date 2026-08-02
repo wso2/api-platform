@@ -37,11 +37,12 @@ describe('Settings — Key Managers', () => {
         cy.clearCookies();
         cy.login('developer', 'developer');
         cy.deleteApplication(APP_NAME);
-        // Then the key manager. Clear the developer session so this authorizes via the
-        // admin API key (x-wso2-api-key) — with the developer session still set, the
-        // server would authorize as `developer`, who lacks dp:key_manager:read, and return 403.
+        // Then the key manager. Swap the developer session for an admin one — the
+        // REST call authorizes as whoever is logged in, and `developer` lacks
+        // dp:key_manager:read, so it would 403.
         // The handle is a server-generated UUID, so discover it by display name.
         cy.clearCookies();
+        cy.login();
         cy.apiRequest('GET', '/api/v0.9/key-managers').then((res) => {
             (res.body.list || [])
                 .filter((km) => km.displayName === KM_NAME)

@@ -42,7 +42,17 @@ const CREDENTIALS = {
     admin: { username: process.env.API_PORTAL_ADMIN_USERNAME || 'admin', password: process.env.API_PORTAL_ADMIN_PASSWORD || 'admin' },
     publisher: { username: process.env.API_PORTAL_PUBLISHER_USERNAME || 'publisher', password: process.env.API_PORTAL_PUBLISHER_PASSWORD || 'publisher' },
     developer: { username: process.env.API_PORTAL_DEVELOPER_USERNAME || 'developer', password: process.env.API_PORTAL_DEVELOPER_PASSWORD || 'developer' },
+    // Used by auth/authorization-mode.spec.js only. Its portal-side grant is
+    // deliberately narrower than its token's scope claim, which is what makes the
+    // scope-mode/role-mode difference observable. Don't reach for it in other specs —
+    // what it can do depends on which mode the run is in.
+    narrow: { username: process.env.API_PORTAL_NARROW_USERNAME || 'narrow', password: process.env.API_PORTAL_NARROW_PASSWORD || 'narrow' },
 };
+
+// Which authorization mode the portal under test is running ("scope" | "role"),
+// set by the compose fixture from the Makefile's AUTH_MODE. Specs whose expectations
+// differ per mode branch on this; everything else must pass in both.
+const AUTH_MODE = process.env.API_PORTAL_AUTH_MODE || 'scope';
 
 // One supertest agent per role, logged in once and reused — the agent's cookie
 // jar carries the session across every request made through it.
@@ -144,6 +154,7 @@ module.exports = {
     BASE_URL,
     API_PREFIX,
     ORG_HANDLE,
+    AUTH_MODE,
     login,
     as,
     page,

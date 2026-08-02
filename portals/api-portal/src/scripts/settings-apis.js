@@ -263,6 +263,10 @@
       document.getElementById('cfg-wizard-title').textContent = isMcp ? 'Edit MCP Server' : 'Edit API';
       sv('wz-name',       api.apiName);
       sv('wz-handle',     api.apiHandle);   handleTouched = true;
+      /* The handle is the API's identity in every portal URL and apiDao.update
+         never writes it — leaving the field editable let a change look accepted
+         while being silently discarded. */
+      document.getElementById('wz-handle').readOnly = true;
       sv('wz-version',    api.apiVersion);
       sel('wz-type',      api.apiType);
       sel('wz-status',    api.apiStatus === 'DEPRECATED' ? 'DEPRECATED' : 'PUBLISHED');
@@ -286,6 +290,7 @@
       editingId = null;
       document.getElementById('cfg-wizard-title').textContent = isMcp ? 'Add MCP Server' : 'Add API';
       ['wz-name','wz-version','wz-handle','wz-desc','wz-tags','wz-prod','wz-sandbox','wz-tech-owner','wz-tech-email','wz-biz-owner','wz-biz-email'].forEach(function(id){ sv(id,''); });
+      document.getElementById('wz-handle').readOnly = false;
       sel('wz-type', isMcp ? 'Mcp' : 'RestApi'); sel('wz-status','PUBLISHED');
       agentVis = 'Visible';
       document.getElementById('wz-vis-visible').classList.add('active');
@@ -680,9 +685,9 @@
     setFieldError('wz-version', 'wz-version-error', version ? '' : 'Version is required.');
     if (!version) ok = false;
 
-    var desc = v('wz-desc');
-    setFieldError('wz-desc', 'wz-desc-error', desc ? '' : 'Description is required.');
-    if (!desc) ok = false;
+    // Description is optional — api_metadata.description is nullable and the
+    // create/update API never required it.
+    setFieldError('wz-desc', 'wz-desc-error', '');
 
     var handle = v('wz-handle');
     if (!handle) {

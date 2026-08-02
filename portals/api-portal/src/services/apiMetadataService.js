@@ -1620,26 +1620,36 @@ const getOrgLabels = async (orgId) => {
 const addView = async (req, res) => {
 
     const orgId = req.orgId;
-    const labels = req.body.labels;
+    // labels is optional — a view with none is valid, it just surfaces no APIs
+    // until labels are attached later. getLabelId() iterates the list, so an
+    // absent one has to become [] here rather than reaching the DAO undefined.
+    const labels = Array.isArray(req.body.labels) ? req.body.labels : [];
     const userId = util.resolveActor(req);
     if (req.body.id) {
         req.body.handle = req.body.id;
     }
-    await db.withTransaction(async (t) => {
-        try {
+    try {
+        await db.withTransaction(async (t) => {
             const viewResponse = await viewDao.create(orgId, req.body, userId, t);
-            const viewId = viewResponse.uuid;
-            await viewDao.addLabels(orgId, viewId, labels, userId, t);
-            res.status(201).send({ message: "View added successfully" });
-        } catch (error) {
-            logger.error('view create error failed', {
-                error: error.message,
-                stack: error.stack,
-                orgId
-            });
-            util.handleError(res, error);
-        }
-    });
+            await viewDao.addLabels(orgId, viewResponse.uuid, labels, userId, t);
+        });
+        // Responded to only after the transaction has COMMITTED. Sending from inside
+        // the callback is wrong twice over: a client that reads the view back can beat
+        // the commit it was just told succeeded (visible on Postgres, where the read
+        // takes a different pooled connection and cannot see uncommitted rows), and a
+        // COMMIT that then fails leaves the caller holding a 2xx for work that was
+        // rolled back. The catch also has to live out here — inside the callback it
+        // swallowed the error, so withTransaction saw the callback resolve and
+        // committed the partial write instead of rolling it back.
+        res.status(201).send({ message: "View added successfully" });
+    } catch (error) {
+        logger.error('view create error failed', {
+            error: error.message,
+            stack: error.stack,
+            orgId
+        });
+        util.handleError(res, error);
+    }
 }
 
 const updateView = async (req, res) => {
@@ -1663,8 +1673,13 @@ const updateView = async (req, res) => {
             }
             viewId = viewId ? viewId : await viewDao.getId(orgId, viewHandle, t);
             updatedViewId = viewId;
-            res.status(200).send(req.body);
         });
+        // After COMMIT, not inside the callback — see the note in addView. This is
+        // what the "updates a view" spec's read-back depends on: it GETs the view
+        // immediately after this 200, and on Postgres that read runs on a different
+        // pooled connection, so a response sent pre-commit can be answered from the
+        // pre-update snapshot.
+        res.status(200).send(req.body);
         // Fired only after the transaction above has committed and released its
         // connection — see the comment in updateAPIMetadata for why firing this
         // while the connection is still checked out deadlocks against itself.

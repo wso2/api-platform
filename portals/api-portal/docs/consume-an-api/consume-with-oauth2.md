@@ -76,7 +76,7 @@ curl -X GET "https://api.example.com/orders/v1/orders" \
 
 ## Revoke a Client ID
 
-To remove a linked client ID, go to **Manage Keys** and click **Revoke keys** for that key manager. This only removes the local reference in the portal — it does not deregister or delete the OAuth application in the key manager, and any tokens already issued remain valid until they expire. To invalidate the OAuth application itself or revoke a specific token, use the key manager's own console or revoke endpoint.
+To remove a linked client ID, go to **Manage Keys** and click **Remove keys** for that key manager. This only removes the local reference in the portal — it does not deregister or delete the OAuth application in the key manager, and any tokens already issued remain valid until they expire. To invalidate the OAuth application itself or revoke a specific token, use the key manager's own console or revoke endpoint.
 
 ---
 

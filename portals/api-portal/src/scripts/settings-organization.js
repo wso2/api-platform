@@ -48,7 +48,10 @@
     var owner = g('org-owner').value.trim();         if (owner) body.businessOwner = owner;
     var oc    = g('org-owner-contact').value.trim(); if (oc)    body.businessOwnerContact = oc;
     if (oe) body.businessOwnerEmail = oe;
-    var cp    = g('org-cp-ref').value.trim();         if (cp)    body.cpRefId = cp;
+    // Always sent, blank included — same as idpRefId above. orgDao.update writes
+    // cp_ref_id unconditionally, so omitting a cleared field would leave the old
+    // value in place and make the reference impossible to remove from this form.
+    body.cpRefId = g('org-cp-ref').value.trim();
     saveBtn.disabled = true;
     try {
       var res = await fetch(window.apiPortalApi.root('/organizations/' + encodeURIComponent(handle)), {

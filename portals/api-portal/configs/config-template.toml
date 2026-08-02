@@ -92,12 +92,6 @@ pool_request_timeout_ms = 30000         # MSSQL only - per-query execution timeo
 encryption_key = ""     # 64-char hex — AES-256-GCM key for encrypting secrets at rest
 session_secret = ""     # 64-char hex — express-session signing secret
 
-# Static shared-secret header for calling the API Portal's own REST API.
-[api_portal.security.service_api_key]
-enabled = true
-header_name = "x-wso2-api-key"
-value = ""
-
 # =============================================================================
 # AUTHENTICATION
 # =============================================================================
