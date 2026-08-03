@@ -48,11 +48,13 @@ export default function GatewayDeployEnvCard({
     deployingGatewayId,
     isDeployingToGateway,
     isPollingGateway,
+    isVerifyingGateway,
     readOnly,
   } = useGatewayDeploy();
 
   const isThisGatewayDeploying = deployingGatewayId === gateway.id;
   const isPolling = isPollingGateway(gateway.id);
+  const isVerifying = isVerifyingGateway(gateway.id);
   const [selectorOpen, setSelectorOpen] = useState(false);
   const [activeColorScheme, setActiveColorScheme] = useState(
     getActiveColorScheme,
@@ -105,6 +107,16 @@ export default function GatewayDeployEnvCard({
   const isFailed = effectiveStatus === 'FAILED';
   const isNotActive = effectiveStatus === 'NOT_ACTIVE';
   const hasDeployment = currentDeployment !== null;
+
+  // The platform API can answer a deploy/undeploy optimistically, before the gateway
+  // has acknowledged the artifact. Until that acknowledgement lands the status is
+  // provisional, so report it as in-progress rather than claiming Active/Suspended.
+  const isAwaitingGatewayAck =
+    isVerifying &&
+    !isNotActive &&
+    !isFailed &&
+    !isDeploying &&
+    !isUndeploying;
 
   const handleUndeploy = async () => {
     if (!currentDeployment?.deploymentId) return;
@@ -175,7 +187,7 @@ export default function GatewayDeployEnvCard({
         {relativeTime && (
           <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
             <Typography variant="body2" sx={{ fontWeight: 500 }}>
-              {isDeployed ? 'Deployed' : 'Last deployed'}
+              {isDeployed && !isAwaitingGatewayAck ? 'Deployed' : 'Last deployed'}
             </Typography>
             <Typography variant="body2" color="text.secondary">
               ⏱ {relativeTime}
@@ -250,6 +262,11 @@ export default function GatewayDeployEnvCard({
           bgcolor: (theme) => {
             const isDarkMode = activeColorScheme === 'dark';
 
+            if (isAwaitingGatewayAck) {
+              return isDarkMode
+                ? 'rgba(237, 108, 2, 0.20)'
+                : 'rgba(237, 108, 2, 0.08)';
+            }
             if (isNotActive || isUndeployed) {
               return isDarkMode ? 'rgba(255, 255, 255, 0.12)' : theme.palette.grey[100];
             }
@@ -279,7 +296,9 @@ export default function GatewayDeployEnvCard({
           variant="body2"
           sx={{
             fontWeight: 600,
-            color: isNotActive
+            color: isAwaitingGatewayAck
+              ? 'warning.main'
+              : isNotActive
               ? 'text.secondary'
               : isDeployed
                 ? 'success.main'
@@ -292,7 +311,7 @@ export default function GatewayDeployEnvCard({
                       : 'text.secondary',
           }}
         >
-          {isNotActive ? 'Not Active' : isDeployed ? 'Active' : isUndeployed ? 'Suspended' : isDeploying ? 'Deploying' : isUndeploying ? 'Undeploying' : isFailed ? 'Failed' : deploymentStatus}
+          {isAwaitingGatewayAck ? 'Deploying' : isNotActive ? 'Not Active' : isDeployed ? 'Active' : isUndeployed ? 'Suspended' : isDeploying ? 'Deploying' : isUndeploying ? 'Undeploying' : isFailed ? 'Failed' : deploymentStatus}
         </Typography>
       </Box>
 

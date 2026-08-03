@@ -137,6 +137,18 @@ type AuthConfig struct {
 	Authorization AuthorizationConfig `koanf:"authorization"`
 }
 
+// AuthModeBasic and AuthModeOIDC are the supported [auth] modes.
+const (
+	AuthModeBasic = "basic"
+	AuthModeOIDC  = "oidc"
+)
+
+// OIDCEnabled reports whether the OIDC client is in use. It is derived from the mode
+// alone — there is no separate [auth.oidc] enabled key, so mode is the single switch
+// and the two can never disagree. validate rejects any mode outside the two constants
+// above, so a typo cannot silently degrade to basic auth.
+func (a AuthConfig) OIDCEnabled() bool { return a.Mode == AuthModeOIDC }
+
 // AuthorizationConfig is [ai_workspace.auth.authorization]: how the BFF derives the
 // effective scopes it reports to the SPA on /api/session, which is what the UI gates
 // every action on. It mirrors the Platform API's [platform_api.auth.authorization] key
@@ -163,10 +175,10 @@ const (
 )
 
 // OIDCConfig is [ai_workspace.auth.oidc]: the confidential-client settings. The client
-// secret lives only here on the BFF and is never emitted to the browser. Enabled is
-// both a config key and derived — Load ORs it with (auth.mode == "oidc").
+// secret lives only here on the BFF and is never emitted to the browser. Whether the
+// client is used at all is not a key here — see AuthConfig.OIDCEnabled, which derives it
+// from [auth] mode.
 type OIDCConfig struct {
-	Enabled               bool   `koanf:"enabled"`
 	Issuer                string `koanf:"authority"` // discovery base; {issuer}/.well-known/openid-configuration
 	ClientID              string `koanf:"client_id"`
 	ClientSecret          string `koanf:"client_secret"`
@@ -292,8 +304,8 @@ func Load(paths ...string) (*Config, error) {
 }
 
 // normalize resolves the derived fields that are not a straight copy of a config key:
-// case-folding (level/format/both auth modes), trimming trailing slashes off URLs/prefixes, the
-// oidc-mode-implies-enabled rule, and the fixed cookie attributes.
+// case-folding (level/format/both auth modes), trimming trailing slashes off
+// URLs/prefixes, and the fixed cookie attributes.
 func (c *Config) normalize() {
 	c.Logging.Level = strings.ToLower(c.Logging.Level)
 	c.Logging.Format = strings.ToLower(c.Logging.Format)
@@ -308,10 +320,6 @@ func (c *Config) normalize() {
 	c.ControlPlane.ProxyPrefix = strings.TrimRight(c.ControlPlane.ProxyPrefix, "/")
 	c.Auth.OIDC.Issuer = strings.TrimRight(c.Auth.OIDC.Issuer, "/")
 
-	// oidc mode implies the client is enabled even if the explicit flag is unset, so a
-	// typo'd mode cannot silently degrade to basic auth.
-	c.Auth.OIDC.Enabled = c.Auth.OIDC.Enabled || c.Auth.Mode == "oidc"
-
 	c.Cookie = CookieConfig{Name: cookieName, Secure: true, SameSite: "lax"}
 }
 
@@ -319,10 +327,11 @@ func (c *Config) normalize() {
 // runtime error (a bad port, an empty upstream URL, an incomplete OIDC set) and warns
 // on security-relevant downgrades.
 func (c *Config) validate() error {
-	// A typo'd mode must not silently degrade to basic auth: any value other than
-	// "oidc" would leave OIDC.Enabled false and hand the SPA an unknown login UX.
-	if c.Auth.Mode != "basic" && c.Auth.Mode != "oidc" {
-		return fmt.Errorf("invalid [auth] mode %q: must be \"basic\" or \"oidc\"", c.Auth.Mode)
+	// A typo'd mode must not silently degrade to basic auth: mode is the only switch
+	// for the OIDC client, so any unrecognized value would leave it off and hand the
+	// SPA an unknown login UX.
+	if c.Auth.Mode != AuthModeBasic && c.Auth.Mode != AuthModeOIDC {
+		return fmt.Errorf("invalid [auth] mode %q: must be %q or %q", c.Auth.Mode, AuthModeBasic, AuthModeOIDC)
 	}
 	// Fail closed on the authorization mode: an unrecognized value would fall through
 	// to reading the scope claim, which for a role-mode deployment means the SPA shows
@@ -381,7 +390,7 @@ func (c *Config) validate() error {
 			"Trust the upstream certificate with [control_plane] ca_file instead.")
 	}
 
-	if c.Auth.OIDC.Enabled {
+	if c.Auth.OIDCEnabled() {
 		if c.Auth.OIDC.Issuer == "" || c.Auth.OIDC.ClientID == "" || c.Auth.OIDC.ClientSecret == "" || c.Auth.OIDC.RedirectURL == "" {
 			return fmt.Errorf("OIDC mode requires [auth.oidc] authority, client_id, client_secret and redirect_url")
 		}
@@ -398,7 +407,7 @@ func (c *Config) validate() error {
 
 	// Basic (file-based) auth is supported for quickstart deployments but is not
 	// recommended for production; point operators at OIDC.
-	if !c.Auth.OIDC.Enabled {
+	if !c.Auth.OIDCEnabled() {
 		slog.Warn("basic (file-based) auth is enabled — this is not recommended for production; " +
 			"configure OIDC (set [auth] mode = \"oidc\" and [auth.oidc] authority, client_id, client_secret, redirect_url)")
 	}

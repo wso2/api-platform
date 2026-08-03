@@ -368,7 +368,7 @@ absolute_ttl = "2h"
 }
 
 // A key in a table must not collide with the same key in another table — they are
-// distinct dotted paths, so [server.https] enabled and [auth.oidc] enabled are
+// distinct dotted paths, so [server.http] enabled and [server.https] enabled are
 // independent.
 func TestLoad_SameKeyInDifferentTables(t *testing.T) {
 	cfgPath := writeConfig(t, `
@@ -385,7 +385,6 @@ enabled = true
 enabled = false
 
 [ai_workspace.auth.oidc]
-enabled       = true
 authority     = "https://idp.example.com"
 client_id     = "client-id"
 client_secret = "s3cr3t"
@@ -396,11 +395,14 @@ redirect_url  = "https://localhost:9643/api/auth/callback"
 	if err != nil {
 		t.Fatalf("Load() error = %v", err)
 	}
-	if cfg.Server.HTTPS.Enabled {
-		t.Error("Server.HTTPS.Enabled = true, want false — [server.https] enabled must not read [auth.oidc] enabled")
+	if !cfg.Server.HTTP.Enabled {
+		t.Error("Server.HTTP.Enabled = false, want true")
 	}
-	if !cfg.Auth.OIDC.Enabled {
-		t.Error("OIDC.Enabled = false, want true")
+	if cfg.Server.HTTPS.Enabled {
+		t.Error("Server.HTTPS.Enabled = true, want false — [server.https] enabled must not read [server.http] enabled")
+	}
+	if !cfg.Auth.OIDCEnabled() {
+		t.Error("OIDCEnabled() = false, want true — [auth] mode is the only OIDC switch")
 	}
 }
 

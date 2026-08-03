@@ -198,7 +198,7 @@ func runListeners(cfg *config.Config, handler http.Handler) error {
 		url := portalURL(s.Addr, cfg.Domain, false)
 		slog.Info("AI Workspace BFF: starting HTTP listener",
 			"addr", s.Addr, "url", url, "auth_mode", cfg.Auth.Mode,
-			"control_plane", cfg.ControlPlane.URL, "oidc_enabled", cfg.Auth.OIDC.Enabled,
+			"control_plane", cfg.ControlPlane.URL, "oidc_enabled", cfg.Auth.OIDCEnabled(),
 		)
 		if !httpsCfg.Enabled {
 			printStartedMarker(url)
@@ -216,7 +216,7 @@ func runListeners(cfg *config.Config, handler http.Handler) error {
 		url := portalURL(s.Addr, cfg.Domain, true)
 		slog.Info("AI Workspace BFF: starting HTTPS listener",
 			"addr", s.Addr, "url", url, "auth_mode", cfg.Auth.Mode,
-			"control_plane", cfg.ControlPlane.URL, "oidc_enabled", cfg.Auth.OIDC.Enabled,
+			"control_plane", cfg.ControlPlane.URL, "oidc_enabled", cfg.Auth.OIDCEnabled(),
 		)
 		if !bannerPrinted {
 			printStartedMarker(url)

@@ -46,8 +46,8 @@ func TestShippedConfig_QuickstartLoadsWithNoEnv(t *testing.T) {
 	}
 	// The missing [ai_workspace.auth.oidc] table must not switch the OIDC client on, or
 	// Load would demand an authority/client_id/client_secret the quickstart has no use for.
-	if cfg.Auth.OIDC.Enabled {
-		t.Error("OIDC.Enabled = true, want false — the empty [ai_workspace.auth.oidc] defaults must leave basic mode intact")
+	if cfg.Auth.OIDCEnabled() {
+		t.Error("OIDCEnabled() = true, want false — the empty [ai_workspace.auth.oidc] defaults must leave basic mode intact")
 	}
 	// The defaults in the file are the container's: the port it publishes and the SPA
 	// baked into the image.
@@ -139,8 +139,8 @@ func TestShippedConfig_TemplateEditedForOIDC(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Load(edited template) error = %v", err)
 	}
-	if !cfg.Auth.OIDC.Enabled {
-		t.Fatal("OIDC.Enabled = false, want true — mode = oidc must enable the client")
+	if !cfg.Auth.OIDCEnabled() {
+		t.Fatal("OIDCEnabled() = false, want true — mode = oidc must enable the client")
 	}
 	if cfg.Auth.OIDC.ClientSecret != "s3cr3t" {
 		t.Errorf("OIDC.ClientSecret = %q, want %q", cfg.Auth.OIDC.ClientSecret, "s3cr3t")
