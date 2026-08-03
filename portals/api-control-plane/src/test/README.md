@@ -1,4 +1,4 @@
-# Testing guide — management-portal
+# Testing guide — api-control-plane
 
 Stack: **Vitest** (jsdom) + **@testing-library/react** + **@testing-library/user-event**
 + **MSW** (network mocking) + **@vitest/coverage-v8**. Config lives in `vite.config.ts`

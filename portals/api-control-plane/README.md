@@ -1,4 +1,4 @@
-# Management Portal
+# API Control Plane
 
 Oxygen UI console for the API Platform, replacing the legacy `choreo-console`.
 
@@ -17,7 +17,7 @@ Non-MVP legacy pages are hidden rather than ported.
 ## Development
 
 ```bash
-cd portals/management-portal
+cd portals/api-control-plane
 npm install
 npm run dev
 ```

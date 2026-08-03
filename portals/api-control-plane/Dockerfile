@@ -11,7 +11,7 @@
 # variables via /docker-entrypoint.d/40-config-setup.sh (envsubst over
 # api-platform.env.config.template.js). index.html loads it before React boots.
 #
-#   docker build -t management-portal .
+#   docker build -t api-control-plane .
 # -----------------------------------------------------------------------------
 
 # Stage 1: build the SPA.
