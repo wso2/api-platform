@@ -587,6 +587,12 @@ function requestOrigin(req) {
     return `${protocol}://${req.get('host')}`;
 }
 
+const TRYOUT_CAPABLE_TYPES = new Set([
+    constants.API_TYPE.WS,
+    constants.API_TYPE.WEBSUB,
+    constants.API_TYPE.GRAPHQL,
+]);
+
 const loadDocument = async (req, res, next) => {
     const { orgName, apiHandle, viewName, docType, docName } = req.params;
 
@@ -599,11 +605,14 @@ const loadDocument = async (req, res, next) => {
             isAPIDefinition: false,
             isWebSocketTryout: false,
             isGraphQLTryout: false,
+            isTryout: false,
         };
         templateContent.apiType = definitionResponse.apiType;
+        templateContent.supportsTryout = TRYOUT_CAPABLE_TYPES.has(definitionResponse.apiType);
         if (isSpecPage && definitionResponse.swagger) {
             const specType = definitionResponse.apiType;
             const tryoutEnabled = !!req.query.tryout;
+            templateContent.isTryout = templateContent.supportsTryout && tryoutEnabled;
             if (specType === constants.API_TYPE.WS || specType === constants.API_TYPE.WEBSUB) {
                 templateContent.asyncapi = JSON.stringify(parseApiDefinitionContent(definitionResponse.swagger));
                 templateContent.isWebSocketTryout = tryoutEnabled;
@@ -653,12 +662,15 @@ const loadDocument = async (req, res, next) => {
         let templateContent = {
             "isAPIDefinition": false,
             "isWebSocketTryout": false,
-            "isGraphQLTryout": false
+            "isGraphQLTryout": false,
+            "isTryout": false
         };
         const definitionResponse = await getAPIDefinition(orgName, viewName, apiHandle);
         templateContent.apiType = definitionResponse.apiType;
-        
+
         const tryoutEnabled = req.query.tryout ? true : false;
+        templateContent.supportsTryout = TRYOUT_CAPABLE_TYPES.has(definitionResponse.apiType);
+        templateContent.isTryout = templateContent.supportsTryout && tryoutEnabled;
         if (definitionResponse.apiType === constants.API_TYPE.WS || definitionResponse.apiType === constants.API_TYPE.WEBSUB) {
             templateContent.isWebSocketTryout = tryoutEnabled;
         } else if (definitionResponse.apiType === constants.API_TYPE.GRAPHQL) {

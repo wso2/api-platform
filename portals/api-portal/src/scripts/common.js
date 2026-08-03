@@ -298,30 +298,6 @@ document.addEventListener("DOMContentLoaded", function () {
     // Call the function when page loads
     setActiveSidebarLink();
 
-    // Set active documentation link based on current path
-    const setActiveDocLink = () => {
-        const currentPath = window.location.pathname;
-        const docLinks = document.querySelectorAll('.doc-link');
-
-        // Check if we're on a docs page
-        if (currentPath.includes('/docs/')) {
-            docLinks.forEach(link => {
-                const href = link.getAttribute('href');
-                // Remove active class first
-                link.classList.remove('active');
-
-                // Add active class if the href matches the current path
-                if (href === currentPath ||
-                    (href && currentPath.endsWith(href)) ||
-                    (href && currentPath === href)) {
-                    link.classList.add('active');
-                }
-            });
-        }
-    };
-
-    // Call the function when page loads
-    setActiveDocLink();
 
     // Handle API card message overlays
     const messageOverlays = document.querySelectorAll('.message-overlay');
