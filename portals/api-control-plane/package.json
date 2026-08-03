@@ -5,6 +5,9 @@
   "type": "module",
   "main": "src/index.ts",
   "types": "src/index.ts",
+  "engines": {
+    "node": "24.x"
+  },
   "scripts": {
     "start": "vite --host localhost --port 3000",
     "dev": "vite --host localhost --port 3000",
