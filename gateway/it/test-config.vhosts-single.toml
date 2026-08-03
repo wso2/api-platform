@@ -70,6 +70,10 @@ level = '{{ env "APIP_GW_CONTROLLER_LOGGING_LEVEL" "debug" }}'
 [controller.metrics]
 enabled = true
 
+[controller.admin_server.config_dump]
+# config_dump is off by default in production; enabled here for the IT suite.
+enabled = true
+
 # =============================================================================
 # ROUTER CONFIGURATION
 # =============================================================================
@@ -90,6 +94,10 @@ default = "*-sandbox.wso2.com"
 
 [policy_engine.logging]
 level = "debug"
+
+[policy_engine.admin.config_dump]
+# config_dump is off by default in production; enabled here for the IT suite.
+enabled = true
 
 [policy_engine.metrics]
 enabled = true

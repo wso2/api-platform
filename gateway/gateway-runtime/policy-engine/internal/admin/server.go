@@ -47,7 +47,8 @@ func NewServer(cfg *config.AdminConfig, k *kernel.Kernel, reg *registry.PolicyRe
 	configDumpHandler := NewConfigDumpHandler(k, reg, xds)
 	xdsSyncHandler := NewXDSSyncStatusHandler(xds)
 	healthHandler := NewHealthHandler(health, pythonHealth)
-	mux.Handle("/config_dump", ipWhitelistMiddleware(cfg.AllowedIPs, configDumpHandler))
+	mux.Handle("/config_dump", configDumpEnabledMiddleware(cfg.ConfigDump.Enabled,
+		ipWhitelistMiddleware(cfg.AllowedIPs, configDumpHandler)))
 	mux.Handle("/xds_sync_status", ipWhitelistMiddleware(cfg.AllowedIPs, xdsSyncHandler))
 	// Health endpoint is registered without IP whitelist so Docker/k8s health probes can reach it
 	mux.Handle("/health", healthHandler)
@@ -91,6 +92,20 @@ func (s *Server) Start(ctx context.Context) error {
 func (s *Server) Stop(ctx context.Context) error {
 	slog.InfoContext(ctx, "Stopping admin HTTP server")
 	return s.httpServer.Shutdown(ctx)
+}
+
+// configDumpEnabledMiddleware gates /config_dump behind an explicit enable flag
+// that is independent of the admin server's own Enabled flag, so /health (relied
+// on by Docker/k8s health probes) keeps working even when config_dump is off.
+// Disabled by default; returns 404 rather than a payload when disabled.
+func configDumpEnabledMiddleware(enabled bool, next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if !enabled {
+			http.NotFound(w, r)
+			return
+		}
+		next.ServeHTTP(w, r)
+	})
 }
 
 // ipWhitelistMiddleware creates a middleware that checks if the request IP is in the allowed list

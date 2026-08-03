@@ -97,6 +97,8 @@ spec:
             - name: MOESIF_KEY
               value: {{ $deployment.env.moesifKey | quote }}
             {{- end }}
+            - name: ROUTER_ADMIN_ENABLED
+              value: {{ default false $deployment.env.routerAdminEnabled | quote }}
             {{- range $deployment.extraEnv }}
             - {{- toYaml . | nindent 14 }}
             {{- end }}
