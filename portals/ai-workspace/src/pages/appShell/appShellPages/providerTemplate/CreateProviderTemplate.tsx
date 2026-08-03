@@ -223,15 +223,15 @@ export default function CreateProviderTemplate() {
   // of those left the submit button disabled with nothing on screen explaining why. Seed
   // the field from the copied specification's server URL, the same value the
   // "Fetch specification" button would fill in, so the operator can edit it instead.
-  const endpointSeededRef = useRef(false);
   useEffect(() => {
-    if (endpointSeededRef.current) return;
     if (!copyFrom || endpointUrl.trim()) return;
-    endpointSeededRef.current = true;
 
+    // Seeding only ever fills an empty field: the functional update re-reads the
+    // current value, so anything the operator typed while the spec was in flight wins
+    // over the fetched server URL.
     const seedFrom = (text: string) => {
       const serverUrl = parseSpecServerUrl(text);
-      if (serverUrl) setEndpointUrl(serverUrl);
+      if (serverUrl) setEndpointUrl((current) => (current.trim() ? current : serverUrl));
     };
 
     if (copyFrom.openapi?.trim()) {
@@ -241,19 +241,20 @@ export default function CreateProviderTemplate() {
     const specUrl = copyFrom.metadata?.openapiSpecUrl?.trim();
     if (!specUrl || !isValidHttpUrl(specUrl)) return;
 
-    let cancelled = false;
+    const controller = new AbortController();
     void (async () => {
       try {
-        const res = await fetch(specUrl);
+        const res = await fetch(specUrl, { signal: controller.signal });
         if (!res.ok) return;
         const text = await res.text();
-        if (!cancelled && isParseableSpec(text)) seedFrom(text);
+        if (isParseableSpec(text)) seedFrom(text);
       } catch {
-        // Leave the field empty; the operator can fetch or type the endpoint manually.
+        // Aborted, or unreachable: leave the field empty; the operator can fetch or
+        // type the endpoint manually.
       }
     })();
     return () => {
-      cancelled = true;
+      controller.abort();
     };
   }, [copyFrom, endpointUrl]);
 

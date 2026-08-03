@@ -151,6 +151,14 @@ interface Props {
   models?: string[];
 }
 
+/**
+ * Close the single-quoted shell argument, emit an escaped quote, reopen it — the
+ * standard '\'' idiom. Model ids and header values reach the snippet from provider
+ * config, so a value containing a single quote would otherwise end the -d/-H argument
+ * early and hand the rest of the JSON to the shell.
+ */
+const escapeSingleQuoted = (value: string): string => value.replace(/'/g, `'\\''`);
+
 function buildCurlCommand(
   url: string,
   apiKeyHeaderName: string,
@@ -176,11 +184,11 @@ function buildCurlCommand(
 
   if (extraHeaders) {
     Object.entries(extraHeaders).forEach(([key, value]) => {
-      lines.push(`  -H '${key}: ${value}' \\`);
+      lines.push(`  -H '${escapeSingleQuoted(`${key}: ${value}`)}' \\`);
     });
   }
 
-  lines.push(`  -d '${bodyJson}'`);
+  lines.push(`  -d '${escapeSingleQuoted(bodyJson)}'`);
   return lines.join('\n');
 }
 
