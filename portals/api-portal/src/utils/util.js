@@ -215,7 +215,7 @@ async function renderTemplateWithView(templatePath, layoutPath, templateContent,
     const slots = {};
     const flags = artifactFlags();
     const aiEnabled = await resolveAiEnabled(orgId, viewName);
-    const enrichedContent = { ...flags, aiEnabled, ...templateContent, slots };
+    const enrichedContent = { ...flags, ...templateContent, aiEnabled, slots };
     return layout({
         ...enrichedContent,
         body: template(enrichedContent),
@@ -271,7 +271,7 @@ async function renderTemplateFromAPI(templateContent, orgId, orgName, filePath, 
     const slots = {};
     const flags = artifactFlags();
     const aiEnabled = await resolveAiEnabled(orgId, viewName);
-    const enrichedContent = { ...flags, aiEnabled, ...templateContent, slots };
+    const enrichedContent = { ...flags, ...templateContent, aiEnabled, slots };
     return layout({
         ...enrichedContent,
         body: template(enrichedContent),
@@ -1427,6 +1427,7 @@ module.exports = {
     requireArtifactType,
     requireArtifactTypeFromPath,
     isAiDisabledForPortal,
+    resolveAiEnabled,
     isImageFile,
     normalizeStringArray,
     resolveApiType,

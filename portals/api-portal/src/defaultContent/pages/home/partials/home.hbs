@@ -5,11 +5,11 @@
   <div class="hero-hero-body">
     <span class="hero-pill">
       <i class="bi bi-stars" aria-hidden="true"></i>
-      Ready for AI agents
+      {{#if aiEnabled}}Ready for AI agents{{else}}Ready for developers{{/if}}
     </span>
 
     <h1 class="hero-headline">
-      <span class="hero-headline-accent">{{artifactTypesLabel}}</span><br>built for Developers and AI Agents.
+      <span class="hero-headline-accent">{{artifactTypesLabel}}</span><br>built for Developers{{#if aiEnabled}} and AI Agents{{/if}}.
     </h1>
 
     <p class="hero-desc">

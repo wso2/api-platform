@@ -19,7 +19,7 @@
   flex: none;
   width: 1em;
   height: 1em;
-  background-color: currentColor;
+  background-color: currentcolor;
   -webkit-mask: url("/images/mcp-icon.svg") no-repeat center / contain;
   mask: url("/images/mcp-icon.svg") no-repeat center / contain;
 }

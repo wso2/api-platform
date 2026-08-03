@@ -611,7 +611,7 @@ const loadDocument = async (req, res, next) => {
         templateContent.supportsTryout = TRYOUT_CAPABLE_TYPES.has(definitionResponse.apiType);
         if (isSpecPage && definitionResponse.swagger) {
             const specType = definitionResponse.apiType;
-            const tryoutEnabled = !!req.query.tryout;
+            const tryoutEnabled = req.query.tryout === true || req.query.tryout === 'true';
             templateContent.isTryout = templateContent.supportsTryout && tryoutEnabled;
             if (specType === constants.API_TYPE.WS || specType === constants.API_TYPE.WEBSUB) {
                 templateContent.asyncapi = JSON.stringify(parseApiDefinitionContent(definitionResponse.swagger));
@@ -668,7 +668,12 @@ const loadDocument = async (req, res, next) => {
         const definitionResponse = await getAPIDefinition(orgName, viewName, apiHandle);
         templateContent.apiType = definitionResponse.apiType;
 
-        const tryoutEnabled = req.query.tryout ? true : false;
+        // Only an explicit tryout=true opts in, and only on the specification page —
+        // the tryout payload (asyncapi/GraphQL introspection) is loaded only there, so a
+        // non-spec document must never render the tryout console. Any other query value
+        // (e.g. tryout=false) is a truthy string and must not enable it.
+        const isSpecPage = req.originalUrl.includes(constants.FILE_NAME.API_SPECIFICATION_PATH);
+        const tryoutEnabled = isSpecPage && (req.query.tryout === true || req.query.tryout === 'true');
         templateContent.supportsTryout = TRYOUT_CAPABLE_TYPES.has(definitionResponse.apiType);
         templateContent.isTryout = templateContent.supportsTryout && tryoutEnabled;
         if (definitionResponse.apiType === constants.API_TYPE.WS || definitionResponse.apiType === constants.API_TYPE.WEBSUB) {
@@ -679,7 +684,7 @@ const loadDocument = async (req, res, next) => {
         let apiMetadata = definitionResponse.metaData;
 
         //load API definition
-        if (req.originalUrl.includes(constants.FILE_NAME.API_SPECIFICATION_PATH)) {
+        if (isSpecPage) {
 
             if (definitionResponse.apiType === constants.API_TYPE.MCP) {
                 // The playground reads its server URL from servers[0].url. A

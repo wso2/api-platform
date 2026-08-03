@@ -188,13 +188,17 @@ async function deleteApplication() {
             }
         } else {
             if (typeof showAlert === 'function') showAlert('Failed to delete application. Please try again.', 'error');
-            trashButton.disabled = false;
-            trashButton.innerHTML = '<i class="bi bi-trash"></i>';
+            if (trashButton) {
+                trashButton.disabled = false;
+                trashButton.innerHTML = '<i class="bi bi-trash"></i>';
+            }
         }
     } catch (error) {
         if (typeof showAlert === 'function') showAlert('An error occurred while deleting the application. Please try again.', 'error');
-        trashButton.disabled = false;
-        trashButton.innerHTML = '<i class="bi bi-trash"></i>';
+        if (trashButton) {
+            trashButton.disabled = false;
+            trashButton.innerHTML = '<i class="bi bi-trash"></i>';
+        }
     }
 }
 

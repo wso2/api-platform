@@ -813,11 +813,23 @@
     if (inputEl) { inputEl.classList.toggle('cfg-form-input--error', !!msg); }
   }
 
-  /* Frontend-only URL check for the endpoint fields — a valid http/https URL. */
-  function isValidHttpUrl(s) {
+  /* Frontend-only URL check for the endpoint fields — a valid http/https URL, or a
+     ws/wss URL when the API is a WebSocket type. */
+  function isValidHttpUrl(s, allowWs) {
     var u;
     try { u = new URL(s); } catch (e) { return false; }
+    if (allowWs && (u.protocol === 'ws:' || u.protocol === 'wss:')) return true;
     return u.protocol === 'http:' || u.protocol === 'https:';
+  }
+
+  /* The type actually being saved, mirroring saveApi's resolvedType: MCP when the
+     field is hidden, the original type when editing a type the dropdown doesn't list,
+     otherwise the dropdown selection. */
+  function selectedApiType() {
+    if (wizardIsMcp) return 'Mcp';
+    if (editMode && wizardEditType && !TYPE_DROPDOWN_VALUES[wizardEditType]) return wizardEditType;
+    var el = document.getElementById('wz-type');
+    return el ? el.value : 'RestApi';
   }
 
   function validateStep0() {
@@ -847,21 +859,26 @@
       setFieldError('wz-handle', 'wz-handle-error', '');
     }
 
+    var allowWs = selectedApiType() === 'WS';
+    var urlErrMsg = allowWs
+      ? 'Enter a valid ws://, wss://, http://, or https:// URL.'
+      : 'Enter a valid http:// or https:// URL.';
+
     var status = document.getElementById('wz-status').value;
     var prodUrl = v('wz-prod');
     if (status === 'PUBLISHED' && !prodUrl) {
       setFieldError('wz-prod', 'wz-prod-error', 'Production URL is required to publish an API.');
       ok = false;
-    } else if (prodUrl && !isValidHttpUrl(prodUrl)) {
-      setFieldError('wz-prod', 'wz-prod-error', 'Enter a valid http:// or https:// URL.');
+    } else if (prodUrl && !isValidHttpUrl(prodUrl, allowWs)) {
+      setFieldError('wz-prod', 'wz-prod-error', urlErrMsg);
       ok = false;
     } else {
       setFieldError('wz-prod', 'wz-prod-error', '');
     }
 
     var sandboxUrl = v('wz-sandbox');
-    if (sandboxUrl && !isValidHttpUrl(sandboxUrl)) {
-      setFieldError('wz-sandbox', 'wz-sandbox-error', 'Enter a valid http:// or https:// URL.');
+    if (sandboxUrl && !isValidHttpUrl(sandboxUrl, allowWs)) {
+      setFieldError('wz-sandbox', 'wz-sandbox-error', urlErrMsg);
       ok = false;
     } else {
       setFieldError('wz-sandbox', 'wz-sandbox-error', '');
