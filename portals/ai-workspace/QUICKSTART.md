@@ -40,7 +40,7 @@ It also pins a `COMPOSE_PROJECT_NAME` unique to this extraction in `.env`, so th
 ### 3. Start the stack
 
 ```bash
-docker compose up -d
+docker compose up
 ```
 
 ### 4. Open the workspace

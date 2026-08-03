@@ -7,17 +7,17 @@
 # License at http://www.apache.org/licenses/LICENSE-2.0
 # --------------------------------------------------------------------
 # AI Workspace + Platform API — standalone release compose file. See README.md
-# for usage. Each service's `profiles:` list names only itself (plus "all") —
-# never a sibling pack's profile — so every profile can be enabled
-# independently; combinations come from COMPOSE_PROFILES/--profile listing
-# multiple names, not from one service pulling in another's profile.
+# for usage. Each service's `profiles:` list names only itself — never a sibling
+# pack's profile — so every profile can be enabled independently; combinations
+# come from COMPOSE_PROFILES/--profile listing multiple names, not from one service
+# pulling in another's profile.
 
 services:
 
   platform-api:
     image: ghcr.io/wso2/api-platform/platform-api:0.14.0-SNAPSHOT
     restart: unless-stopped
-    profiles: ["platform-api", "all"]
+    profiles: ["platform-api"]
     command: ["-config", "/etc/platform-api/config.toml"]
     env_file:
       - path: api-platform.env
@@ -41,7 +41,7 @@ services:
   ai-workspace:
     image: ghcr.io/wso2/api-platform/ai-workspace:1.0.0-SNAPSHOT
     restart: unless-stopped
-    profiles: ["ai-workspace", "all"]
+    profiles: ["ai-workspace"]
     depends_on:
       platform-api:
         condition: service_healthy
@@ -62,10 +62,10 @@ services:
       start_period: 10s
       retries: 3
 
-  developer-portal:
+  api-portal:
     image: ghcr.io/wso2/api-platform/api-portal:1.0.0-SNAPSHOT
     restart: unless-stopped
-    profiles: ["api-portal", "all"]
+    profiles: ["api-portal"]
     depends_on:
       platform-api:
         condition: service_healthy

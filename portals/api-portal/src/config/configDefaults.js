@@ -59,7 +59,7 @@ const DEFAULTS = {
         host: 'localhost',       // PostgreSQL only
         port: 5432,              // PostgreSQL only
         name: 'api_portal',      // PostgreSQL only
-        user: 'postgres',        // PostgreSQL only
+        user: '',                // PostgreSQL / MSSQL only
         password: '',            // PostgreSQL only
         // PostgreSQL TLS: disable | verify-full.
         sslMode: 'disable',
