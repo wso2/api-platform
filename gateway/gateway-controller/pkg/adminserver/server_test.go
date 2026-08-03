@@ -85,7 +85,11 @@ func TestAdminServer_ConfigDumpHandler(t *testing.T) {
 	stub := &stubAPIServer{
 		configDump: adminapi.ConfigDumpResponse{Status: &status},
 	}
-	s := NewServer(&config.AdminServerConfig{Port: 9092, AllowedIPs: []string{"*"}}, stub, nil, slog.Default())
+	s := NewServer(&config.AdminServerConfig{
+		Port:       9092,
+		AllowedIPs: []string{"*"},
+		ConfigDump: config.ConfigDumpConfig{Enabled: true},
+	}, stub, nil, slog.Default())
 
 	req := httptest.NewRequest(http.MethodGet, AdminAPIBasePath+"/config_dump", nil)
 	req.RemoteAddr = "127.0.0.1:12345"
@@ -98,6 +102,22 @@ func TestAdminServer_ConfigDumpHandler(t *testing.T) {
 	assert.NoError(t, json.NewDecoder(rr.Body).Decode(&body))
 	assert.NotNil(t, body.Status)
 	assert.Equal(t, "ok", *body.Status)
+}
+
+func TestAdminServer_ConfigDumpHandler_DisabledByDefault(t *testing.T) {
+	status := "ok"
+	stub := &stubAPIServer{
+		configDump: adminapi.ConfigDumpResponse{Status: &status},
+	}
+	// ConfigDump.Enabled left at its zero value (false) — matches the production default.
+	s := NewServer(&config.AdminServerConfig{Port: 9092, AllowedIPs: []string{"*"}}, stub, nil, slog.Default())
+
+	req := httptest.NewRequest(http.MethodGet, AdminAPIBasePath+"/config_dump", nil)
+	req.RemoteAddr = "127.0.0.1:12345"
+	rr := httptest.NewRecorder()
+
+	s.httpSrv.Handler.ServeHTTP(rr, req)
+	assert.Equal(t, http.StatusNotFound, rr.Code)
 }
 
 func TestAdminServer_XDSSyncStatusHandler(t *testing.T) {
@@ -221,7 +241,11 @@ func TestAdminServer_LegacyConfigDump(t *testing.T) {
 	stub := &stubAPIServer{
 		configDump: adminapi.ConfigDumpResponse{Status: &status},
 	}
-	s := NewServer(&config.AdminServerConfig{Port: 9092, AllowedIPs: []string{"*"}}, stub, nil, slog.Default())
+	s := NewServer(&config.AdminServerConfig{
+		Port:       9092,
+		AllowedIPs: []string{"*"},
+		ConfigDump: config.ConfigDumpConfig{Enabled: true},
+	}, stub, nil, slog.Default())
 
 	req := httptest.NewRequest(http.MethodGet, "/config_dump", nil)
 	req.RemoteAddr = "127.0.0.1:12345"
@@ -307,7 +331,11 @@ func TestAdminServer_ConfigDump_WrongCredentials(t *testing.T) {
 func TestAdminServer_ConfigDump_WithValidAuth(t *testing.T) {
 	status := "ok"
 	stub := &stubAPIServer{configDump: adminapi.ConfigDumpResponse{Status: &status}}
-	s := NewServer(&config.AdminServerConfig{Port: 9092, AllowedIPs: []string{"*"}}, stub, newBasicAuthMiddleware(t), slog.Default())
+	s := NewServer(&config.AdminServerConfig{
+		Port:       9092,
+		AllowedIPs: []string{"*"},
+		ConfigDump: config.ConfigDumpConfig{Enabled: true},
+	}, stub, newBasicAuthMiddleware(t), slog.Default())
 
 	req := httptest.NewRequest(http.MethodGet, AdminAPIBasePath+"/config_dump", nil)
 	req.SetBasicAuth(testAdminUser, testAdminPass)
@@ -384,7 +412,11 @@ func TestAdminServer_LegacyConfigDump_RequiresAuth(t *testing.T) {
 func TestAdminServer_ConfigDump_AdminRoleAllowed(t *testing.T) {
 	status := "ok"
 	stub := &stubAPIServer{configDump: adminapi.ConfigDumpResponse{Status: &status}}
-	s := NewServer(&config.AdminServerConfig{Port: 9092, AllowedIPs: []string{"*"}}, stub,
+	s := NewServer(&config.AdminServerConfig{
+		Port:       9092,
+		AllowedIPs: []string{"*"},
+		ConfigDump: config.ConfigDumpConfig{Enabled: true},
+	}, stub,
 		newAdminProtectMiddleware(t, []string{"admin"}), slog.Default())
 
 	req := httptest.NewRequest(http.MethodGet, AdminAPIBasePath+"/config_dump", nil)
