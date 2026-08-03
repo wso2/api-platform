@@ -101,8 +101,8 @@
                   {{else if (eq type "SOAP")}}dp-badge--soap
                   {{else if (eq type "WebSubApi")}}dp-badge--ws
                   {{else}}dp-badge--rest{{/if}}">
-                  {{#if (eq type "GRAPHQL")}}<i class="bi bi-share"></i> GraphQL
-                  {{else if (eq type "WS")}}<i class="bi bi-broadcast"></i> WebSocket
+                  {{#if (eq type "GRAPHQL")}}<img src="/images/graphql-icon.svg" class="dp-badge-icon" alt="" /> GraphQL
+                  {{else if (eq type "WS")}}<img src="/images/websocket-icon.svg" class="dp-badge-icon" alt="" /> WebSocket
                   {{else if (eq type "WebSubApi")}}<i class="bi bi-broadcast-pin"></i> WebSub
                   {{else if (eq type "SOAP")}}<i class="bi bi-file-code"></i> SOAP
                   {{else}}<i class="bi bi-braces"></i> REST{{/if}}

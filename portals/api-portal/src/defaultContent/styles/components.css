@@ -12,6 +12,8 @@
   white-space: nowrap;
 }
 
+.dp-badge-icon { width: 0.875em; height: 0.875em; flex: none; }
+
 .dp-badge--rest    { background: #e6f2fb; color: #0277bd; }
 .dp-badge--graphql { background: #fce4ef; color: #d6336c; }
 .dp-badge--soap    { background: #ece9fb; color: #6741d9; }
