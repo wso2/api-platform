@@ -115,7 +115,7 @@ func TestLoadRoleScopeMap_RejectsBadPaths(t *testing.T) {
 		// containing no ".." at all, which a later check could not catch.
 		{"traversal", dir + "/../../etc/passwd", "traversal sequences"},
 		{"missing", dir + "/absent.yaml", "could not be read"},
-		{"directory", dir, "is not a file"},
+		{"directory", dir, "is not a regular file"},
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {

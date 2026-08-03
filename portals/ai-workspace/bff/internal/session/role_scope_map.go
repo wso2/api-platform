@@ -18,6 +18,7 @@ package session
 
 import (
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"slices"
@@ -77,20 +78,34 @@ func LoadRoleScopeMap(path string) (map[string][]string, error) {
 	}
 	cleaned := filepath.Clean(path)
 
-	info, err := os.Stat(cleaned)
+	// Opened once and validated through the descriptor: a separate os.Stat followed by a
+	// path-based read checks one file and reads another if the path is replaced in
+	// between. IsRegular also rejects FIFOs and devices, where the reported size is 0 and
+	// the ceiling below would otherwise never trigger — the LimitReader is what bounds
+	// the read, the size check only fails fast.
+	f, err := os.Open(cleaned)
 	if err != nil {
 		return nil, fmt.Errorf("role_to_scope_mapping file %q could not be read: %w", path, err)
 	}
-	if info.IsDir() {
-		return nil, fmt.Errorf("role_to_scope_mapping %q is not a file", path)
+	defer f.Close()
+
+	info, err := f.Stat()
+	if err != nil {
+		return nil, fmt.Errorf("role_to_scope_mapping file %q could not be read: %w", path, err)
+	}
+	if !info.Mode().IsRegular() {
+		return nil, fmt.Errorf("role_to_scope_mapping %q is not a regular file", path)
 	}
 	if info.Size() > maxMappingBytes {
 		return nil, fmt.Errorf("role_to_scope_mapping file %q exceeds the maximum allowed size", path)
 	}
 
-	data, err := os.ReadFile(cleaned)
+	data, err := io.ReadAll(io.LimitReader(f, maxMappingBytes+1))
 	if err != nil {
 		return nil, fmt.Errorf("role_to_scope_mapping file %q could not be read: %w", path, err)
+	}
+	if int64(len(data)) > maxMappingBytes {
+		return nil, fmt.Errorf("role_to_scope_mapping file %q exceeds the maximum allowed size", path)
 	}
 
 	var cfg roleScopeConfig
