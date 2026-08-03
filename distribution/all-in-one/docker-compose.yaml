@@ -79,10 +79,15 @@ services:
       # Same RS256 keypair volume platform-api signs with — the devportal reads
       # only jwt_public.pem (0644) from it to verify those tokens.
       - platform-api-jwt-keys:/etc/api-portal/keys:ro
-      # platform-api's self-signed TLS cert, mounted read-only so the webhook
-      # delivery worker can trust it via NODE_EXTRA_CA_CERTS above. Same pattern as
-      # the jwt-keys volume — only the public cert.pem is used (key.pem is ignored).
-      - platform-api-certs:/etc/api-portal/certs:ro
+      # platform-api's self-signed TLS cert, trusted via NODE_EXTRA_CA_CERTS above.
+      # Subpath mount exposes only the public cert.pem — never the private key.pem
+      # that also lives in this volume (same pattern as the e2e compose).
+      - type: volume
+        source: platform-api-certs
+        target: /etc/api-portal/certs/cert.pem
+        read_only: true
+        volume:
+          subpath: cert.pem
     depends_on:
       postgres:
         condition: service_healthy
@@ -102,11 +107,20 @@ services:
     entrypoint: ["/bin/sh", "-c"]
     command:
       - |
-        [ -f /certs/cert.pem ] && [ -f /certs/key.pem ] && exit 0
-        openssl req -x509 -newkey rsa:2048 -sha256 -days 365 -nodes \
-          -keyout /certs/key.pem -out /certs/cert.pem \
-          -subj "/O=WSO2 API Platform/CN=platform-api" \
-          -addext "subjectAltName=DNS:localhost,DNS:platform-api,IP:127.0.0.1"
+        set -e
+        if [ ! -f /certs/cert.pem ] || [ ! -f /certs/key.pem ]; then
+          openssl req -x509 -newkey rsa:2048 -sha256 -days 365 -nodes \
+            -keyout /certs/key.pem -out /certs/cert.pem \
+            -subj "/O=WSO2 API Platform/CN=platform-api" \
+            -addext "subjectAltName=DNS:localhost,DNS:platform-api,IP:127.0.0.1"
+        fi
+        # platform-api runs as uid 10001 and reads both files. Keep the private key
+        # owned by that uid and non-world-readable; keep the public cert world-readable
+        # so api-portal can trust it via NODE_EXTRA_CA_CERTS. Applied every run (like
+        # platform-api-jwtkeygen) so a cached certs volume gets the same permissions.
+        chown 10001 /certs/key.pem
+        chmod 0600 /certs/key.pem
+        chmod 0644 /certs/cert.pem
     volumes:
       - platform-api-certs:/certs
 
