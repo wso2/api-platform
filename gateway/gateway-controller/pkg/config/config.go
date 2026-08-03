@@ -309,10 +309,18 @@ type ServerConfig struct {
 
 // AdminServerConfig holds controller admin HTTP server configuration.
 type AdminServerConfig struct {
-	Enabled    bool        `koanf:"enabled"`
-	Port       int         `koanf:"port"`
-	AllowedIPs []string    `koanf:"allowed_ips"`
-	Pprof      PprofConfig `koanf:"pprof"`
+	Enabled    bool             `koanf:"enabled"`
+	Port       int              `koanf:"port"`
+	AllowedIPs []string         `koanf:"allowed_ips"`
+	Pprof      PprofConfig      `koanf:"pprof"`
+	ConfigDump ConfigDumpConfig `koanf:"config_dump"`
+}
+
+// ConfigDumpConfig gates the /config_dump endpoint served on the admin HTTP
+// server. Disabled by default — /health and other admin routes are unaffected
+// by this flag; when disabled, /config_dump returns 404 rather than a payload.
+type ConfigDumpConfig struct {
+	Enabled bool `koanf:"enabled"`
 }
 
 // PprofConfig gates the Go runtime profiling endpoints (net/http/pprof) served on
@@ -833,6 +841,9 @@ func defaultConfig() *Config {
 					Enabled:              false,
 					BlockProfileRate:     0,
 					MutexProfileFraction: 0,
+				},
+				ConfigDump: ConfigDumpConfig{
+					Enabled: false,
 				},
 			},
 			PolicyServer: PolicyServerConfig{

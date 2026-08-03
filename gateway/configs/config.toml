@@ -23,6 +23,11 @@ path = '{{ env "APIP_GW_CONTROLLER_STORAGE_SQLITE_PATH" "./data/gateway.db" }}'
 [policy_engine.logging]
 level = "info"
 
+[policy_engine.admin.config_dump]
+# Enabled for local development convenience. Off by default in production
+# (see config-template.toml) — /config_dump returns 404 when disabled.
+enabled = true
+
 [controller.logging]
 level = '{{ env "APIP_GW_CONTROLLER_LOGGING_LEVEL" "info" }}'
 
@@ -36,6 +41,11 @@ apim_oauth2_client_secret = '{{ env "APIP_GW_CONTROLLER_CONTROLPLANE_APIM_OAUTH2
 
 [controller.policies]
 definitions_path = '{{ env "APIP_GW_CONTROLLER_POLICIES_DEFINITIONS_PATH" "./default-policies" }}'
+
+[controller.admin_server.config_dump]
+# Enabled for local development convenience. Off by default in production
+# (see config-template.toml) — /config_dump returns 404 when disabled.
+enabled = true
 
 [controller.auth.basic]
 enabled = true
