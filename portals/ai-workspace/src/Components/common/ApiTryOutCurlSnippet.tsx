@@ -34,82 +34,110 @@ interface EndpointOption {
   extraHeaders?: Record<string, string>;
 }
 
-const TEMPLATE_ENDPOINTS: Record<string, EndpointOption> = {
+interface TemplateEndpoint {
+  /** Used only when the provider has no model configured yet. */
+  defaultModel: string;
+  build: (model: string) => EndpointOption;
+}
+
+const SAMPLE_PROMPT = 'Say hello!';
+
+/**
+ * Model ids appear in the request path for Gemini and AWS Bedrock. Percent-encode
+ * the segment but keep ':' literal — Bedrock model ids embed it
+ * (`us.meta.llama3-3-70b-instruct-v1:0`) and the gateway route matches it raw.
+ */
+const encodeModelPathSegment = (model: string): string =>
+  encodeURIComponent(model).replace(/%3A/gi, ':');
+
+/**
+ * Paths, query parameters and request bodies here must match the OpenAPI spec each
+ * default template ships with (`llm-provider-specs/<template>/openapi.yaml`), because
+ * the gateway only routes the operations present in that spec. Keys are the template
+ * ids from `platform-api/resources/default-llm-provider-templates`.
+ */
+const TEMPLATE_ENDPOINTS: Record<string, TemplateEndpoint> = {
   openai: {
-    path: '/chat/completions',
-    body: {
-      model: 'gpt-4o-mini',
-      messages: [{ role: 'user', content: 'Say hello!' }],
-    },
+    defaultModel: 'gpt-4o-mini',
+    build: (model) => ({
+      path: '/chat/completions',
+      body: {
+        model,
+        messages: [{ role: 'user', content: SAMPLE_PROMPT }],
+      },
+    }),
   },
   mistralai: {
-    path: '/v1/chat/completions',
-    body: {
-      model: 'mistral-large-latest',
-      messages: [{ role: 'user', content: 'Say hello!' }],
-    },
+    defaultModel: 'mistral-large-latest',
+    build: (model) => ({
+      path: '/v1/chat/completions',
+      body: {
+        model,
+        messages: [{ role: 'user', content: SAMPLE_PROMPT }],
+      },
+    }),
   },
   anthropic: {
-    path: '/v1/messages',
-    extraHeaders: { 'anthropic-version': '2023-06-01' },
-    body: {
-      model: 'claude-sonnet-4-6',
-      max_tokens: 1024,
-      messages: [{ role: 'user', content: 'Say hello!' }],
-    },
+    defaultModel: 'claude-sonnet-4-6',
+    build: (model) => ({
+      path: '/v1/messages',
+      extraHeaders: { 'anthropic-version': '2023-06-01' },
+      body: {
+        model,
+        max_tokens: 1024,
+        messages: [{ role: 'user', content: SAMPLE_PROMPT }],
+      },
+    }),
   },
   gemini: {
-    path: '/v1beta/models/gemini-2.5-flash:generateContent',
-    body: {
-      contents: [{ parts: [{ text: 'Say hello!' }] }],
-    },
+    defaultModel: 'gemini-2.5-flash',
+    build: (model) => ({
+      path: `/v1beta/models/${encodeModelPathSegment(model)}:generateContent`,
+      body: {
+        contents: [{ parts: [{ text: SAMPLE_PROMPT }] }],
+      },
+    }),
   },
   'azure-openai': {
-    path: '/chat/completions?api-version=2024-02-01',
-    body: {
-      messages: [{ role: 'user', content: 'Say hello!' }],
-    },
+    defaultModel: 'gpt-4o',
+    build: (model) => ({
+      path: '/openai/responses?api-version=2025-04-01-preview',
+      body: {
+        model,
+        input: SAMPLE_PROMPT,
+      },
+    }),
   },
   'azureai-foundry': {
-    path: '/chat/completions?api-version=2024-02-01',
-    body: {
-      messages: [{ role: 'user', content: 'Say hello!' }],
-    },
-  },
-  meta: {
-    path: '/chat/completions',
-    body: {
-      model: 'us.meta.llama3-3-70b-instruct-v1:0',
-      messages: [{ role: 'user', content: 'Say hello!' }],
-    },
+    defaultModel: 'gpt-4o',
+    build: (model) => ({
+      path: '/models/chat/completions?api-version=2024-05-01-preview',
+      body: {
+        model,
+        messages: [{ role: 'user', content: SAMPLE_PROMPT }],
+      },
+    }),
   },
   awsbedrock: {
-    path: '/model/amazon.titan-text-express-v1/invoke',
-    body: {
-      inputText: 'Say hello!',
-      textGenerationConfig: { maxTokenCount: 256, temperature: 0.7 },
-    },
-  },
-  'aws-bedrock': {
-    path: '/model/amazon.titan-text-express-v1/invoke',
-    body: {
-      inputText: 'Say hello!',
-      textGenerationConfig: { maxTokenCount: 256, temperature: 0.7 },
-    },
-  },
-  'google-vertex': {
-    path: '/projects/{project}/locations/us-central1/publishers/google/models/gemini-2.0-flash:generateContent',
-    body: {
-      contents: [{ parts: [{ text: 'Say hello!' }] }],
-    },
+    defaultModel: 'amazon.titan-text-express-v1',
+    build: (model) => ({
+      path: `/model/${encodeModelPathSegment(model)}/converse`,
+      body: {
+        messages: [{ role: 'user', content: [{ text: SAMPLE_PROMPT }] }],
+      },
+    }),
   },
 };
 
-const FALLBACK_ENDPOINT: EndpointOption = {
-  path: '/chat/completions',
-  body: {
-    messages: [{ role: 'user', content: 'Say hello!' }],
-  },
+const FALLBACK_ENDPOINT: TemplateEndpoint = {
+  defaultModel: '<model-id>',
+  build: (model) => ({
+    path: '/chat/completions',
+    body: {
+      model,
+      messages: [{ role: 'user', content: SAMPLE_PROMPT }],
+    },
+  }),
 };
 
 interface Props {
@@ -119,6 +147,8 @@ interface Props {
   apiKeyLocation: 'header' | 'query';
   apiKeyValuePrefix?: string;
   providerTemplate?: string | null;
+  /** Model ids configured on the provider; the first one is used in the sample. */
+  models?: string[];
 }
 
 function buildCurlCommand(
@@ -161,11 +191,16 @@ export default function ApiTryOutCurlSnippet({
   apiKeyLocation,
   apiKeyValuePrefix,
   providerTemplate,
+  models,
 }: Props) {
   const endpoint = useMemo(() => {
     const key = providerTemplate?.trim().toLowerCase() ?? '';
-    return TEMPLATE_ENDPOINTS[key] ?? FALLBACK_ENDPOINT;
-  }, [providerTemplate]);
+    const template = TEMPLATE_ENDPOINTS[key] ?? FALLBACK_ENDPOINT;
+    const configuredModel = models
+      ?.map((model) => model.trim())
+      .find((model) => model.length > 0);
+    return template.build(configuredModel || template.defaultModel);
+  }, [models, providerTemplate]);
 
   const [copied, setCopied] = useState(false);
 

@@ -203,6 +203,13 @@ export default function ServiceProviderOverviewTab({
       : '/';
     return `${normalizedBase}${normalizedContext}`;
   }, [provider?.context, selectedGateway?.endpoints, selectedGateway?.vhost]);
+  const providerModelIds = useMemo(
+    () =>
+      (provider?.modelProviders ?? []).flatMap((modelProvider) =>
+        (modelProvider.models ?? []).map((model) => model.id)
+      ),
+    [provider?.modelProviders]
+  );
   const swaggerSpecWithGatewayServer = useMemo<OpenApiSpec>(() => {
     const baseSpec = parsedOpenApiSpec;
     if (!baseSpec) return {};
@@ -1120,6 +1127,7 @@ export default function ServiceProviderOverviewTab({
                 apiKeyLocation={apiKeyLocation}
                 apiKeyValuePrefix={apiKeyValuePrefix}
                 providerTemplate={provider?.template}
+                models={providerModelIds}
               />
             </>
           ) : (

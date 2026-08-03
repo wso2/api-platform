@@ -16,7 +16,7 @@
  * under the License.
  */
 
-import React, { useRef, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { useNavigate, useLocation, Link as RouterLink } from 'react-router-dom';
 import YAML from 'yaml';
 import {
@@ -216,6 +216,46 @@ export default function CreateProviderTemplate() {
       e.target.value = '';
     }
   };
+
+  // Some shipped templates deliberately omit metadata.endpointUrl because the host is
+  // per-deployment (AWS Bedrock is region-specific, Azure OpenAI / Azure AI Foundry are
+  // resource-specific). The endpoint URL is required to create a template, so a plain copy
+  // of those left the submit button disabled with nothing on screen explaining why. Seed
+  // the field from the copied specification's server URL, the same value the
+  // "Fetch specification" button would fill in, so the operator can edit it instead.
+  const endpointSeededRef = useRef(false);
+  useEffect(() => {
+    if (endpointSeededRef.current) return;
+    if (!copyFrom || endpointUrl.trim()) return;
+    endpointSeededRef.current = true;
+
+    const seedFrom = (text: string) => {
+      const serverUrl = parseSpecServerUrl(text);
+      if (serverUrl) setEndpointUrl(serverUrl);
+    };
+
+    if (copyFrom.openapi?.trim()) {
+      seedFrom(copyFrom.openapi);
+      return;
+    }
+    const specUrl = copyFrom.metadata?.openapiSpecUrl?.trim();
+    if (!specUrl || !isValidHttpUrl(specUrl)) return;
+
+    let cancelled = false;
+    void (async () => {
+      try {
+        const res = await fetch(specUrl);
+        if (!res.ok) return;
+        const text = await res.text();
+        if (!cancelled && isParseableSpec(text)) seedFrom(text);
+      } catch {
+        // Leave the field empty; the operator can fetch or type the endpoint manually.
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [copyFrom, endpointUrl]);
 
   const toTemplateId = (value: string): string =>
     value
@@ -478,11 +518,13 @@ export default function CreateProviderTemplate() {
                   }}
                   onBlur={() => setEndpointUrlTouched(true)}
                   placeholder="https://api.openai.com"
-                  error={endpointUrlTouched && endpointUrl.trim().length > 0 && !isValidHttpUrl(endpointUrl)}
+                  error={endpointUrlTouched && !isEndpointValid}
                   helperText={
-                    endpointUrlTouched && endpointUrl.trim().length > 0 && !isValidHttpUrl(endpointUrl)
-                      ? 'Enter a valid URL.'
-                      : ''
+                    !endpointUrlTouched || isEndpointValid
+                      ? ''
+                      : endpointUrl.trim().length === 0
+                        ? 'Endpoint URL is required.'
+                        : 'Enter a valid URL.'
                   }
                 />
               </FormControl>
