@@ -109,6 +109,7 @@ const loadApplicationData = async (req, orgName, applicationHandle, viewName) =>
         for (const km of dbKeyManagers) {
             kMmetaData.push({
                 id: km.handle,
+                name: km.display_name,
                 enabled: true,
                 tokenEndpoint: km.token_endpoint,
             });
