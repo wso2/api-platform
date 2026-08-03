@@ -1122,6 +1122,7 @@
 
 .cfg-api-avatar--mcp    { background: #e0f5f2; color: #0d9488; }
 .cfg-api-avatar--websub { background: var(--success-surface); color: var(--success); }
+.cfg-api-avatar--workflow { background: #ede9fe; color: #6d28d9; }
 .cfg-type-badge--mcp    { background: #e0f5f2; color: #0d9488; }
 .cfg-type-badge--websub { background: var(--success-surface); color: var(--success); }
 

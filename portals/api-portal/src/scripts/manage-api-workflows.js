@@ -73,7 +73,6 @@ document.addEventListener('DOMContentLoaded', function () {
     const listSection = document.getElementById('apiWorkflowList');
     const formSection = document.getElementById('apiWorkflowForm');
     const createBtn = document.getElementById('createApiWorkflowBtn');
-    const createBtnEmpty = document.getElementById('createApiWorkflowBtnEmpty');
 
     function showForm() {
         listSection.style.display = 'none';
@@ -97,7 +96,14 @@ document.addEventListener('DOMContentLoaded', function () {
     }
 
     createBtn?.addEventListener('click', handleCreateClick);
-    createBtnEmpty?.addEventListener('click', handleCreateClick);
+
+    // Delete-confirmation modal (cfg-modal style — dismiss on Cancel or overlay click).
+    document.getElementById('deleteApiWorkflowCancelBtn')?.addEventListener('click', () => {
+        document.getElementById('deleteApiWorkflowModal').style.display = 'none';
+    });
+    document.getElementById('deleteApiWorkflowModal')?.addEventListener('click', function (e) {
+        if (e.target === this) this.style.display = 'none';
+    });
 
     document.getElementById('cancelApiWorkflowBtn')?.addEventListener('click', showList);
     document.getElementById('cancelApiWorkflowBtn2')?.addEventListener('click', showList);
@@ -166,10 +172,14 @@ document.addEventListener('DOMContentLoaded', function () {
         saveApiWorkflow(currentOrgId, currentViewName, this.dataset.status);
     });
 
-    // List view action buttons
+    // List view action buttons (these live in the shared cfg-table three-dots
+    // dropdown; closeRowMenus() hides it after an action, matching the other panels).
+    const closeRowMenus = () => document.querySelectorAll('.cfg-dropdown').forEach(d => { d.style.display = 'none'; });
+
     document.querySelectorAll('.api-workflow-view-prompt-btn').forEach(btn => {
         btn.addEventListener('click', (e) => {
             e.preventDefault();
+            closeRowMenus();
             openPromptModal(btn.dataset.apiWorkflowId);
         });
     });
@@ -177,6 +187,7 @@ document.addEventListener('DOMContentLoaded', function () {
     document.querySelectorAll('.api-workflow-edit-btn').forEach(btn => {
         btn.addEventListener('click', (e) => {
             e.preventDefault();
+            closeRowMenus();
             openEditApiWorkflow(btn.dataset.apiWorkflowId);
         });
     });
@@ -184,6 +195,7 @@ document.addEventListener('DOMContentLoaded', function () {
     document.querySelectorAll('.api-workflow-delete-btn').forEach(btn => {
         btn.addEventListener('click', (e) => {
             e.preventDefault();
+            closeRowMenus();
             openDeleteApiWorkflowModal(currentOrgId, currentViewName, btn.dataset.apiWorkflowId);
         });
     });
@@ -1367,46 +1379,34 @@ function openDeleteApiWorkflowModal(orgId, viewName, apiWorkflowId) {
     const flow = (apiWorkflowsData || []).find(f => String(f.id) === String(apiWorkflowId));
     const flowName = flow?.displayName || 'API Workflow';
 
-    document.getElementById('deleteApiWorkflowModalTitle').textContent = 'Delete API Workflow';
-    const messageEl = document.getElementById('deleteApiWorkflowModalMessage');
-    messageEl.textContent = `Are you sure you want to delete "${flowName}"? This action cannot be undone.`;
+    // The name goes into a dedicated <strong> via textContent (never interpolated
+    // into HTML) so a crafted display name can't inject markup — see js-output-encoding-xss.
+    document.getElementById('deleteApiWorkflowNameTxt').textContent = flowName;
 
     const confirmBtn = document.getElementById('deleteApiWorkflowConfirmBtn');
-    confirmBtn.disabled = false;
-    confirmBtn.innerHTML = 'Confirm';
     confirmBtn.onclick = () => deleteApiWorkflow(orgId, viewName, apiWorkflowId);
-    const modal = new bootstrap.Modal(document.getElementById('deleteApiWorkflowModal'));
-    modal.show();
+    document.getElementById('deleteApiWorkflowModal').style.display = 'flex';
 }
 
 async function deleteApiWorkflow(orgId, viewName, apiWorkflowId) {
     const confirmBtn = document.getElementById('deleteApiWorkflowConfirmBtn');
-    confirmBtn.disabled = true;
-    confirmBtn.style.backgroundColor = 'var(--danger)';
-    confirmBtn.innerHTML = '<span class="spinner-border spinner-border-sm me-1" role="status" aria-hidden="true"></span> Deleting…';
-
-    const resetBtn = () => {
-        confirmBtn.disabled = false;
-        confirmBtn.style.backgroundColor = '';
-        confirmBtn.innerHTML = 'Confirm';
-    };
-
-    try {
-        const response = await fetch(apiPortalApi.root(`/views/${viewName}/api-workflows/${apiWorkflowId}`), {
-            method: 'DELETE',
-            headers: { 'X-CSRF-Token': csrfToken },
-            credentials: 'same-origin'
-        });
-        if (response.ok) {
-            window.location.reload();
-        } else {
-            resetBtn();
+    await withButtonBusy(confirmBtn, 'Deleting…', async () => {
+        try {
+            const response = await fetch(apiPortalApi.root(`/views/${viewName}/api-workflows/${apiWorkflowId}`), {
+                method: 'DELETE',
+                headers: { 'X-CSRF-Token': csrfToken },
+                credentials: 'same-origin'
+            });
+            if (response.ok) {
+                window.location.reload();
+                return;
+            }
             showAlert('Failed to delete API Workflow', 'error');
+        } catch (error) {
+            showAlert(`Failed to delete API Workflow: ${error.message}`, 'error');
         }
-    } catch (error) {
-        resetBtn();
-        showAlert(`Failed to delete API Workflow: ${error.message}`, 'error');
-    }
+        document.getElementById('deleteApiWorkflowModal').style.display = 'none';
+    });
 }
 
 // ─────────────────────────────────────────────
