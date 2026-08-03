@@ -620,20 +620,28 @@ gateway:
           podAnnotations: {}
           podLabels: {}
           priorityClassName: ""
-          # Probe tuning for Envoy bootstrap:
-          # - readiness checks Envoy /ready on admin port
-          # - liveness stays loose and uses policy-engine /health
-          # - startup probe absorbs xDS/CDS bootstrap delay before readiness/liveness gates
+          # Health-check probes must stay httpGet-based (not exec) and only httpGet, matching
+          # the gateway-helm-chart's own chart-default probes: the operator installs that chart
+          # via the Helm SDK, which coalesces these values on top of the chart defaults with a
+          # naive recursive map merge — a mismatched handler type here (e.g. exec) merges
+          # alongside the chart's httpGet instead of replacing it, producing a Deployment with
+          # two probe handlers set, which the Kubernetes API rejects outright ("may not specify
+          # more than 1 handler type"). See gateway-helm-chart/templates/gateway/gateway-runtime/
+          # deployment.yaml, which patches httpGet.port/scheme from gateway.config.router.
           livenessProbe:
-            exec:
-              command: ["health-check.sh"]
+            httpGet:
+              path: /_gateway-health/healthy
+              port: https
+              scheme: HTTPS
             initialDelaySeconds: 30
             periodSeconds: 10
             timeoutSeconds: 5
             failureThreshold: 3
           readinessProbe:
-            exec:
-              command: ["health-check.sh"]
+            httpGet:
+              path: /_gateway-health/ready
+              port: https
+              scheme: HTTPS
             initialDelaySeconds: 10
             periodSeconds: 5
             timeoutSeconds: 3
