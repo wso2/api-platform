@@ -1214,7 +1214,7 @@ function updateWorkflowMdPreview() {
     const isMarkdown = createPathFormat === 'markdown';
 
     if (!name && !desc) {
-        el.textContent = 'Fill in name and description to see a preview.';
+        el.textContent = 'Enter a name to see a preview.';
         return;
     }
 
@@ -2078,7 +2078,7 @@ function updateStep3Readiness() {
     const hasSpec = hasArazzo || hasMd;
     const hasPrompt = document.getElementById('agentPromptField')?.value?.trim().length > 0;
 
-    setChecklistItem('afReady1', (name && desc) ? 'ok' : 'warn');
+    setChecklistItem('afReady1', name ? 'ok' : 'warn');
     setChecklistItem('afReady2', hasSpec ? 'ok' : 'warn');
     setChecklistItem('afReady3', hasPrompt ? 'ok' : 'warn');
 
