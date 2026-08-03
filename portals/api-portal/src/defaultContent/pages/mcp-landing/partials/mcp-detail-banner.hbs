@@ -13,7 +13,7 @@
         {{#if apiMetadata.version}}
         <span class="dp-badge dp-badge--version">{{apiMetadata.version}}</span>
         {{/if}}
-        <span class="dp-badge dp-badge--mcp"><img src="/images/mcp-icon.svg" class="dp-badge-icon" alt="" /> MCP</span>
+        <span class="dp-badge dp-badge--mcp"><span class="mcp-glyph dp-badge-icon" aria-hidden="true"></span> MCP</span>
         {{#if (eq apiMetadata.status "DEPRECATED")}}
         <span class="dp-badge dp-badge--deprecated"><i class="bi bi-exclamation-circle"></i> Deprecated</span>
         {{/if}}

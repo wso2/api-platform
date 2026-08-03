@@ -79,7 +79,7 @@
 }
 
 .cfg-nav-item i { font-size: 1rem; flex: none; }
-.cfg-nav-item img { width: 1rem; height: 1rem; flex: none; }
+.cfg-nav-item .mcp-glyph { width: 1rem; height: 1rem; }
 
 .cfg-nav-item:hover {
   background: var(--surface-sunken);

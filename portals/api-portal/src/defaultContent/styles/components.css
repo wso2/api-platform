@@ -14,6 +14,16 @@
 
 .dp-badge-icon { width: 0.875em; height: 0.875em; flex: none; }
 
+.mcp-glyph {
+  display: inline-block;
+  flex: none;
+  width: 1em;
+  height: 1em;
+  background-color: currentColor;
+  -webkit-mask: url("/images/mcp-icon.svg") no-repeat center / contain;
+  mask: url("/images/mcp-icon.svg") no-repeat center / contain;
+}
+
 .dp-badge--rest    { background: #e6f2fb; color: #0277bd; }
 .dp-badge--graphql { background: #fce4ef; color: #d6336c; }
 .dp-badge--soap    { background: #ece9fb; color: #6741d9; }
