@@ -111,6 +111,8 @@ Both scripts accept the same flags:
 docker compose up
 ```
 
+This runs in the foreground — keep that terminal open and use a second one for the steps below, or start it detached with `docker compose up -d`.
+
 ### 3. Verify
 
 ```bash

@@ -25,6 +25,9 @@ password = '{{ env "APIP_AP_DATABASE_PASSWORD" "" }}'
 encryption_key = '{{ file "/etc/api-portal/keys/encryption.key" }}'
 session_secret = '{{ file "/etc/api-portal/keys/session-secret" }}'
 
+[api_portal.auth]
+mode = "local"
+
 [api_portal.auth.local]
 platform_api_url = '{{ env "APIP_AP_AUTH_LOCAL_PLATFORM_API_URL" "https://platform-api:9243" }}'
 public_key_path  = '{{ env "APIP_AP_AUTH_LOCAL_PUBLIC_KEY_PATH" "/etc/api-portal/keys/jwt_public.pem" }}'

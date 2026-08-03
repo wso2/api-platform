@@ -57,6 +57,8 @@ cp .env.example .env
 docker compose up
 ```
 
+This runs in the foreground — keep that terminal open and use a second one for the commands below, or start it detached with `docker compose up -d`.
+
 This starts five services:
 
 | Service | Port(s) | Description |

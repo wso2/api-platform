@@ -296,6 +296,9 @@ function New-ListenerCert {
             -subj "/O=WSO2 API Platform/CN=localhost" `
             -addext "subjectAltName=DNS:localhost,DNS:*.localhost,DNS:host.docker.internal,IP:127.0.0.1"
     } "openssl failed to generate the listener certificate" | Out-Null
+    # The private key gets the same protection New-EncryptionKey applies; the
+    # certificate beside it is public and keeps its inherited permissions.
+    Set-OwnerOnlyAcl "$CertsDir/default-listener.key"
     Write-Log "  - self-signed listener certificate generated at $CertsDir/default-listener.crt"
 }
 
