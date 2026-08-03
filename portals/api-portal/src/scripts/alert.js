@@ -22,6 +22,27 @@ function withButtonBusy(button, busyText, action) {
     });
 }
 
+/**
+ * Keep a submit button disabled until a form is valid. `watchIds` lists the input /
+ * textarea / select ids whose changes can affect validity; `validate` returns true when
+ * the button should be enabled (typically: all required fields non-blank). The check runs
+ * on every input/change of a watched field and once immediately. Returns a `sync()` you can
+ * call after programmatically changing field values (opening or resetting a modal/form) so
+ * the button state stays correct. Shared by the admin settings forms.
+ */
+function bindFormValidity(button, watchIds, validate) {
+    if (!button) return function () {};
+    var els = (watchIds || []).map(function (id) { return document.getElementById(id); })
+        .filter(Boolean);
+    function sync() { button.disabled = !validate(); }
+    els.forEach(function (el) {
+        el.addEventListener('input', sync);
+        el.addEventListener('change', sync);
+    });
+    sync();
+    return sync;
+}
+
 function showAlert(message, type) {
     return new Promise((resolve) => {
         const alertElement = document.getElementById('alertToast');

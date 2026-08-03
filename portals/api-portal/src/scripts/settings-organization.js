@@ -24,6 +24,11 @@
 
   var emailRe = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
+  /* Disable save while the organization Name is empty. */
+  bindFormValidity(saveBtn, ['org-display'], function () {
+    return g('org-display').value.trim() !== '';
+  });
+
   saveBtn.addEventListener('click', async function () {
     var handle = saveBtn.dataset.handle;
     var name = g('org-display').value.trim();

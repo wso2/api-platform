@@ -63,6 +63,7 @@
     g('view-handle').readOnly = mode === 'edit';
     g('view-display').value   = view ? (view.displayName || '') : '';
     setSelectedLabels(view ? view.labels : []);
+    syncViewSave();
     modal.style.display = 'flex';
     g('view-display').focus();
   }
@@ -80,6 +81,12 @@
   g('view-display').addEventListener('input', function () {
     if (editHandle || handleTouched) return;
     g('view-handle').value = this.value.toLowerCase().trim().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
+    syncViewSave();
+  });
+
+  /* Disable the save button until Name and Handle are both filled. */
+  var syncViewSave = bindFormValidity(g('cfg-view-modal-save'), ['view-display', 'view-handle'], function () {
+    return g('view-display').value.trim() !== '' && g('view-handle').value.trim() !== '';
   });
 
   g('cfg-view-modal-save').addEventListener('click', function () {

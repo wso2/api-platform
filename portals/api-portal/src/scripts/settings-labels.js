@@ -37,6 +37,7 @@
     /* The handle is the label's identity — every API and view mapping keys off
        it, so it cannot change after creation. */
     document.getElementById('lbl-name').readOnly = mode === 'edit';
+    syncLabelSave();
     document.getElementById('cfg-label-modal').style.display = 'flex';
     document.getElementById('lbl-display').focus();
   }
@@ -47,6 +48,12 @@
   document.getElementById('lbl-display').addEventListener('input', function() {
     if (editLabelName || labelHandleTouched) return;
     document.getElementById('lbl-name').value = this.value.toLowerCase().trim().replace(/[^a-z0-9]+/g,'-').replace(/^-|-$/g,'');
+    syncLabelSave();
+  });
+
+  /* Disable save until Name and Handle are both filled. */
+  var syncLabelSave = bindFormValidity(document.getElementById('cfg-label-modal-save'), ['lbl-display', 'lbl-name'], function() {
+    return v('lbl-display') !== '' && v('lbl-name') !== '';
   });
 
   /* ── save label ── */

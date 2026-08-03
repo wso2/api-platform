@@ -43,10 +43,16 @@
     sv('km-display',        mode === 'edit' ? data.displayName    : '');
     sv('km-token-endpoint', mode === 'edit' ? data.tokenEndpoint  : '');
     document.getElementById('km-enabled').checked = mode === 'edit' ? !!data.enabled : true;
+    syncKmSave();
     document.getElementById('cfg-km-modal').style.display = 'flex';
     document.getElementById('km-display').focus();
   }
   function closeKmModal() { document.getElementById('cfg-km-modal').style.display = 'none'; editKmId = null; }
+
+  /* Disable save until Name and Token endpoint are both filled. */
+  var syncKmSave = bindFormValidity(document.getElementById('cfg-km-modal-save'), ['km-display', 'km-token-endpoint'], function() {
+    return v('km-display') !== '' && v('km-token-endpoint') !== '';
+  });
 
   /* ── save ── */
   document.getElementById('cfg-km-modal-save').addEventListener('click', async function() {

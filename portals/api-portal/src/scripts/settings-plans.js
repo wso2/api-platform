@@ -98,10 +98,16 @@
     }
     existing.forEach(function(l){ list.appendChild(makeLimitRow(l)); });
 
+    syncPlanSave();
     document.getElementById('cfg-plan-modal').style.display = 'flex';
     document.getElementById('pol-display').focus();
   }
   function closePlanModal() { document.getElementById('cfg-plan-modal').style.display='none'; editPlanId=null; }
+
+  /* Disable save until the plan Name is filled. */
+  var syncPlanSave = bindFormValidity(document.getElementById('cfg-plan-modal-save'), ['pol-display'], function() {
+    return document.getElementById('pol-display').value.trim() !== '';
+  });
 
   /* ── save ── */
   document.getElementById('cfg-plan-modal-save').addEventListener('click', async function() {

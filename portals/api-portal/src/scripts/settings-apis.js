@@ -117,6 +117,21 @@
   document.getElementById('wz-name').addEventListener('input', autoHandle);
   document.getElementById('wz-version').addEventListener('input', autoHandle);
 
+  /* ── keep the step-0 Next button disabled until the required fields are filled ──
+     Name, Version and Handle are the step-0 requirements (validateStep0). Once past
+     step 0 they can't be empty, so the button only ever disables while on step 0. */
+  function step0Valid() {
+    return v('wz-name') !== '' && v('wz-version') !== '' && v('wz-handle') !== '';
+  }
+  function syncWizardNext() {
+    var nextBtn = document.getElementById('cfg-wizard-next');
+    if (nextBtn) nextBtn.disabled = (currentStep === 0) && !step0Valid();
+  }
+  ['wz-name', 'wz-version', 'wz-handle'].forEach(function(id) {
+    var el = document.getElementById(id);
+    if (el) el.addEventListener('input', syncWizardNext);
+  });
+
   /* ── agent visibility toggle ── */
   document.getElementById('wz-vis-visible').addEventListener('click', function() {
     agentVis = 'Visible';
@@ -477,7 +492,7 @@
     var nextBtn = document.getElementById('cfg-wizard-next');
     backBtn.style.display = step > 0 ? 'inline-flex' : 'none';
     nextBtn.textContent = step === lastStep ? (editingId ? 'Save changes' : 'Save API') : 'Next';
-    nextBtn.disabled = false;
+    syncWizardNext(); /* step-0 stays disabled until Name/Version/Handle are filled */
     nextBtn.title = '';
   }
 

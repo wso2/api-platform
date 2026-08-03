@@ -122,6 +122,7 @@
     document.getElementById('wh-enabled').checked = mode === 'edit' ? !!data.enabled : true;
     document.getElementById('wh-secret-hint').style.display = editHasSecret ? 'block' : 'none';
     setSelectedEvents(mode === 'edit' ? data.events : []);
+    syncWhSave();
     listView.style.display = 'none';
     formView.style.display = 'block';
     // The panel scrolls, so returning from a long list would otherwise open the form
@@ -136,6 +137,13 @@
     editWebhookId = null;
     editHasSecret = false;
   }
+
+  /* Disable save until Name and Target URL are filled, and (on create, or a legacy row
+     with no stored secret) a Secret is entered — mirrors the submit-time validation. */
+  var syncWhSave = bindFormValidity(document.getElementById('wh-form-save'),
+    ['wh-display', 'wh-url', 'wh-secret'], function() {
+      return v('wh-display') !== '' && v('wh-url') !== '' && (editHasSecret || v('wh-secret') !== '');
+    });
 
   /* ── save ── */
   document.getElementById('wh-form-save').addEventListener('click', async function() {
