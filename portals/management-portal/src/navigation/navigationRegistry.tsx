@@ -1,0 +1,162 @@
+import {
+  Boxes,
+  ClipboardList,
+  Home,
+  Network,
+  Rocket,
+  Settings,
+  Terminal,
+} from '@wso2/oxygen-ui-icons-react';
+
+import { routes } from '../routes/paths';
+import type { NavigationDefinition } from './navigationTypes';
+
+export const navigationRegistry: NavigationDefinition[] = [
+  {
+    id: 'organization-home',
+    label: 'Home',
+    level: 'organization',
+    order: 10,
+    icon: <Home />,
+    to: ({ params }) =>
+      params.orgHandle ? routes.organizationHome(params.orgHandle) : undefined,
+    match: (pathname) => /\/organizations\/[^/]+\/home$/.test(pathname),
+  },
+  {
+    id: 'projects',
+    label: 'Projects',
+    level: 'organization',
+    order: 20,
+    icon: <Boxes />,
+    to: ({ params }) =>
+      params.orgHandle ? routes.projects(params.orgHandle) : undefined,
+    match: (pathname) => /\/organizations\/[^/]+\/projects$/.test(pathname),
+  },
+  {
+    id: 'gateways',
+    label: 'API Gateways',
+    level: 'organization',
+    order: 30,
+    icon: <Network />,
+    to: ({ params }) =>
+      params.orgHandle ? routes.gateways(params.orgHandle) : undefined,
+    match: (pathname) => /\/organizations\/[^/]+\/gateways(\/[^/]+)?$/.test(pathname),
+  },
+  {
+    id: 'project-home',
+    label: 'Project Home',
+    level: 'project',
+    order: 100,
+    icon: <Home />,
+    to: ({ params }) =>
+      params.orgHandle && params.projectHandler
+        ? routes.projectHome(params.orgHandle, params.projectHandler)
+        : undefined,
+    match: (pathname) =>
+      /\/organizations\/[^/]+\/projects\/[^/]+\/home$/.test(pathname),
+  },
+  {
+    id: 'apis',
+    label: 'APIs',
+    level: 'project',
+    order: 110,
+    icon: <Boxes />,
+    to: ({ params }) =>
+      params.orgHandle && params.projectHandler
+        ? routes.apis(params.orgHandle, params.projectHandler)
+        : undefined,
+    match: (pathname) =>
+      /\/projects\/[^/]+\/apis(\/new)?$/.test(pathname),
+  },
+  {
+    id: 'runtime-logs',
+    label: 'Runtime Logs',
+    level: 'project',
+    order: 120,
+    icon: <Terminal />,
+    to: ({ params }) =>
+      params.orgHandle && params.projectHandler
+        ? routes.runtimeLogs(params.orgHandle, params.projectHandler)
+        : undefined,
+    match: (pathname) => /\/observe\/runtimelogs$/.test(pathname),
+  },
+  {
+    id: 'settings',
+    label: 'Settings',
+    level: 'project',
+    order: 130,
+    icon: <Settings />,
+    to: ({ params }) =>
+      params.orgHandle && params.projectHandler
+        ? routes.settings(params.orgHandle, params.projectHandler)
+        : undefined,
+    match: (pathname) => /\/settings$/.test(pathname),
+  },
+  {
+    id: 'api-overview',
+    label: 'API Overview',
+    level: 'api',
+    order: 200,
+    icon: <Boxes />,
+    to: ({ params }) =>
+      params.orgHandle && params.projectHandler && params.apiHandler
+        ? routes.api(
+            params.orgHandle,
+            params.projectHandler,
+            params.apiHandler
+          )
+        : undefined,
+    match: (pathname) => /\/apis\/[^/]+$/.test(pathname),
+  },
+  {
+    id: 'deploy',
+    label: 'Deploy',
+    level: 'api',
+    order: 210,
+    icon: <Rocket />,
+    isVisible: ({ capabilities }) => capabilities.canDeploy,
+    to: ({ params }) =>
+      params.orgHandle && params.projectHandler && params.apiHandler
+        ? routes.apiDeploy(
+            params.orgHandle,
+            params.projectHandler,
+            params.apiHandler
+          )
+        : undefined,
+    match: (pathname) => /\/deploy$/.test(pathname),
+  },
+  {
+    id: 'test',
+    label: 'Test',
+    level: 'api',
+    order: 220,
+    icon: <Terminal />,
+    isVisible: ({ capabilities }) => capabilities.canTest,
+    to: ({ params }) =>
+      params.orgHandle && params.projectHandler && params.apiHandler
+        ? routes.apiTest(
+            params.orgHandle,
+            params.projectHandler,
+            params.apiHandler
+          )
+        : undefined,
+    match: (pathname) => /\/test$/.test(pathname),
+  },
+  {
+    id: 'manage',
+    label: 'Manage',
+    level: 'api',
+    order: 230,
+    icon: <ClipboardList />,
+    isVisible: ({ capabilities }) => capabilities.canManage,
+    to: ({ params }) =>
+      params.orgHandle && params.projectHandler && params.apiHandler
+        ? routes.apiManage(
+            params.orgHandle,
+            params.projectHandler,
+            params.apiHandler
+          )
+        : undefined,
+    match: (pathname) => /\/manage$/.test(pathname),
+  },
+];
