@@ -54,7 +54,7 @@ From the `event-gateway/` directory:
 cp .env.example .env
 # edit .env and set GATEWAY_REGISTRATION_TOKEN
 
-docker compose up -d
+docker compose up
 ```
 
 This starts five services:

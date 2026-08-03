@@ -364,7 +364,7 @@ fi
 GENERATED_PASSWORD="$(openssl rand -base64 24 | tr -d '/+=' | cut -c1-20)"
 
 if [[ -z "${ADMIN_USERNAME:-}" && -t 0 ]]; then
-  read -r -p "Admin username [admin]: " ADMIN_USERNAME
+  read -r -p "Admin username [press Enter to use the default username 'admin']: " ADMIN_USERNAME
 fi
 ADMIN_USERNAME="${ADMIN_USERNAME:-admin}"
 
@@ -397,11 +397,14 @@ log "  - $ENV_FILE written"
 echo
 log "Setup complete."
 echo
-echo "  ------------------------------------------------------------------"
-echo "   Gateway-controller admin login:  $ADMIN_USERNAME / $ADMIN_PASSWORD"
-echo "   This password will not be shown again — copy it now."
-echo "   (Only its bcrypt hash is stored, in $ENV_FILE)"
-echo "  ------------------------------------------------------------------"
+echo "  =================================================================="
+echo "   ADMIN CREDENTIALS"
+echo
+echo "     Username:  $ADMIN_USERNAME"
+echo "     Password:  $ADMIN_PASSWORD"
+echo
+echo "   !!  THIS PASSWORD WILL NOT BE SHOWN AGAIN — COPY IT NOW  !!"
+echo "  =================================================================="
 echo
 echo "  Compose project:  $PROJECT_NAME   (pinned in $DOTENV_FILE)"
 echo

@@ -43,10 +43,11 @@
 #
 # Usage (run from either portals/ai-workspace or portals/api-portal, or
 # from the root of a standalone distribution zip — same script, same layout):
-#   ../scripts/setup.sh          # inside the repo checkout
+#   ../scripts/setup.sh    # inside the repo checkout
 #   ./scripts/setup.sh     # inside a distribution zip (copied there by `make dist`)
-#   docker compose up -d   # uses this pack's default profiles, set via COMPOSE_PROFILES in ./.env
-#   docker compose --profile <ai-workspace|api-portal|all> up -d  # override
+#   docker compose up      # runs in the foreground; starts the profiles listed in
+#                          # COMPOSE_PROFILES in ./.env — edit that line to add
+#                          # ai-workspace / api-portal / platform-api
 #
 # Flags:
 #   --force                   regenerate TLS cert, JWT signing keypair, and
@@ -75,7 +76,7 @@ CERTS_ONLY=false
 ROTATE_ENCRYPTION_KEY=false
 
 # The comma-separated COMPOSE_PROFILES value this script writes to .env, so
-# that a plain `docker compose up -d` (no --profile flag) starts the right
+# that a plain `docker compose up` (no --profile flag) starts the right
 # services for this pack. Each pack's `make dist` target bakes in its own
 # value here via sed when it copies this shared script into the distribution
 # zip (see the `dist` target in portals/ai-workspace/Makefile and
@@ -120,8 +121,10 @@ Usage: ./setup.sh [--force] [--certs-only] [--rotate-encryption-key] [--profiles
                              are set (CI), in which case passing this flag is
                              itself treated as confirmation.
   --profiles=<a,b,...>      override the default COMPOSE_PROFILES value this
-                             script writes to .env, e.g. --profiles=all or
-                             --profiles=platform-api
+                             script writes to .env. Valid profiles:
+                             ai-workspace, api-portal, platform-api — e.g.
+                             --profiles=ai-workspace,api-portal,platform-api
+                             or --profiles=platform-api
 
 ADMIN_USERNAME / ADMIN_PASSWORD environment variables skip the interactive
 prompts and pin the credentials (used by CI).
@@ -177,7 +180,7 @@ ENV_FILE="$ROOT_DIR/api-platform.env"
 # Project-level env file — Docker Compose reads COMPOSE_PROFILES from here
 # automatically (unlike api-platform.env above, which is only ever passed to
 # containers explicitly via each service's own env_file: entry), so this is
-# what makes a plain `docker compose up -d` resolve the right services.
+# what makes a plain `docker compose up` resolve the right services.
 COMPOSE_ENV_FILE="$ROOT_DIR/.env"
 # COMPOSE_PROJECT_NAME goes in the same file. The full prefix is
 # "$PROJECT_NAME_PREFIX-$PACK", so the two packs never share a project name.
@@ -462,7 +465,7 @@ if [[ -n "$COMPOSE_PROFILES_VALUE" ]]; then
     touch "$COMPOSE_ENV_FILE"
     set_env_var "$COMPOSE_ENV_FILE" "COMPOSE_PROFILES" "$COMPOSE_PROFILES_VALUE"
 else
-    log "  - could not detect this pack's default profiles; pass --profiles=<a,b,...> or always use --profile explicitly with docker compose"
+    log "  - could not detect this pack's default profiles; rerun with --profiles=<a,b,...>, or add a COMPOSE_PROFILES line to .env by hand before starting"
 fi
 
 # Same file, same section — .env is already created above and $PACK is resolved, and
@@ -604,7 +607,7 @@ else
     [[ -n "$GENERATED_PASSWORD" ]] || fail "failed to generate an admin password."
 
     if [[ -z "${ADMIN_USERNAME:-}" && -t 0 ]]; then
-        read -r -p "Admin username [admin]: " ADMIN_USERNAME
+        read -r -p "Admin username [press Enter to use the default username 'admin']: " ADMIN_USERNAME
     fi
     ADMIN_USERNAME="${ADMIN_USERNAME:-admin}"
 
@@ -631,35 +634,28 @@ echo
 log "Setup complete."
 echo
 if [[ "$CREDENTIALS_PROVISIONED" == true ]]; then
-    echo "  ------------------------------------------------------------------"
-    echo "   Admin login:  ${ADMIN_USERNAME} / ${ADMIN_PASSWORD}"
-    echo "   This password will not be shown again — copy it now."
-    echo "   (It is stored, bcrypt-hashed, in api-platform.env's APIP_CP_ADMIN_PASSWORD_HASH)"
-    echo "  ------------------------------------------------------------------"
+    echo "  =================================================================="
+    echo "   ADMIN CREDENTIALS"
+    echo
+    echo "     Username:  ${ADMIN_USERNAME}"
+    echo "     Password:  ${ADMIN_PASSWORD}"
+    echo
+    echo "   !!  THIS PASSWORD WILL NOT BE SHOWN AGAIN — COPY IT NOW  !!"
+    echo "  =================================================================="
     echo
 fi
 echo "  Compose project:  ${PROJECT_NAME}   (pinned in .env)"
 echo
-echo "  Next step — choose which components:"
+echo "  Next step:"
+echo "    docker compose up"
 echo
-# The first line always reflects $COMPOSE_PROFILES_VALUE — the value actually
-# just written to .env — rather than assuming $PACK's usual default. Those
-# can differ: --profiles=<...> or a dist-baked DEFAULT_COMPOSE_PROFILES can
-# set .env to something other than this pack's normal two-service combo.
+# Which services that starts is decided entirely by COMPOSE_PROFILES in .env —
+# written above, so point at it rather than restating the value here.
 if [[ -n "$COMPOSE_PROFILES_VALUE" ]]; then
-    echo "    docker compose up -d                                                    # ${COMPOSE_PROFILES_VALUE} (current .env default)"
+    echo "  To run more components, add their profiles to COMPOSE_PROFILES in .env"
+    echo "  (ai-workspace, api-portal, platform-api)."
 else
-    echo "    docker compose up -d                                                    # no default set — pass --profile explicitly"
-fi
-if [[ "$PACK" == "api-portal" ]]; then
-    echo "    docker compose --profile api-portal --profile ai-workspace --profile platform-api up -d  # API Portal + AI Workspace + Platform API"
-    echo "    docker compose --profile all up -d                                                              # AI Workspace + API Portal + Platform API"
-    echo "    docker compose --profile platform-api up -d                                                     # Platform API only"
-elif [[ "$PACK" == "ai-workspace" ]]; then
-    echo "    docker compose --profile ai-workspace --profile api-portal --profile platform-api up -d  # AI Workspace + API Portal + Platform API"
-    echo "    docker compose --profile all up -d                                                             # AI Workspace + API Portal + Platform API"
-    echo "    docker compose --profile platform-api up -d                                                    # Platform API only"
-else
-    echo "    docker compose --profile <ai-workspace|api-portal|all|platform-api> up -d"
+    echo "  No components are set for this pack yet — add a COMPOSE_PROFILES line to"
+    echo "  .env (ai-workspace, api-portal, platform-api) before starting."
 fi
 echo

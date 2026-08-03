@@ -546,7 +546,7 @@ $interactive = -not [Console]::IsInputRedirected
 
 $adminUsername = $env:ADMIN_USERNAME
 if ([string]::IsNullOrEmpty($adminUsername) -and $interactive) {
-    $adminUsername = Read-Host 'Admin username [admin]'
+    $adminUsername = Read-Host "Admin username [press Enter to use the default username 'admin']"
 }
 if ([string]::IsNullOrEmpty($adminUsername)) { $adminUsername = 'admin' }
 
@@ -590,11 +590,14 @@ Write-Log "  - $EnvFile written"
 Write-Host ''
 Write-Log 'Setup complete.'
 Write-Host ''
-Write-Host '  ------------------------------------------------------------------'
-Write-Host "   Gateway-controller admin login:  $adminUsername / $adminPassword"
-Write-Host '   This password will not be shown again - copy it now.'
-Write-Host "   (Only its bcrypt hash is stored, in $EnvFile)"
-Write-Host '  ------------------------------------------------------------------'
+Write-Host '  =================================================================='
+Write-Host '   ADMIN CREDENTIALS'
+Write-Host ''
+Write-Host "     Username:  $adminUsername"
+Write-Host "     Password:  $adminPassword"
+Write-Host ''
+Write-Host '   !!  THIS PASSWORD WILL NOT BE SHOWN AGAIN - COPY IT NOW  !!'
+Write-Host '  =================================================================='
 Write-Host ''
 Write-Host "  Compose project:  $ProjectName   (pinned in $DotEnvFile)"
 Write-Host ''
