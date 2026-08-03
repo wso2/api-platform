@@ -1,0 +1,95 @@
+# --------------------------------------------------------------------
+# Copyright (c) 2026, WSO2 LLC. (https://www.wso2.com).
+#
+# WSO2 LLC. licenses this file to you under the Apache License,
+# Version 2.0 (the "License"); you may not use this file except
+# in compliance with the License. You may obtain a copy of the
+# License at http://www.apache.org/licenses/LICENSE-2.0
+# --------------------------------------------------------------------
+# Optional AI gateway data plane for AI Workspace E2E runs.
+#
+# docker-compose.yaml on its own brings up the control plane only (platform-api
+# + ai-workspace), which is enough for the create/view/update/delete specs. The
+# release test plan also covers deploy → view deployments → redeploy → restore,
+# and those need a real gateway registered against the control plane. This
+# overlay adds one.
+#
+# It is a SEPARATE file rather than another profile in docker-compose.yaml
+# because the gateway cannot start with the rest of the stack: its
+# control-plane token is minted by platform-api at run time, after platform-api
+# is already healthy. scripts/start-e2e-gateway.sh does that two-phase
+# bring-up; do not `docker compose up` this file directly.
+#
+# Usage:
+#   ./scripts/start-e2e-gateway.sh          # brings up the stack + gateway
+#   make e2e-test-with-gateway              # the above, then Cypress
+#
+# The gateway reuses gateway/it/test-config.toml — the config the gateway's own
+# integration tests run against. It is already shaped for testing: sqlite
+# storage (no extra database service), a 200ms event-hub poll so a deployment
+# shows up in the UI quickly, and basic-auth admin/admin.
+
+services:
+  gateway-controller:
+    image: ${GATEWAY_CONTROLLER_IMAGE:-ghcr.io/wso2/api-platform/gateway-controller:1.2.0-SNAPSHOT}
+    restart: unless-stopped
+    command: ["-config", "/etc/gateway-controller/config.toml"]
+    environment:
+      - APIP_GW_CONTROLLER_STORAGE_TYPE=sqlite
+      - APIP_GW_CONTROLLER_STORAGE_SQLITE_PATH=/app/data/gateway.db
+      - APIP_GW_CONTROLLER_LOGGING_LEVEL=info
+      # The control plane is the platform-api container on this same network.
+      # The token is minted by start-e2e-gateway.sh and injected here; with an
+      # empty token the controller just sits in its reconnect loop.
+      - APIP_GW_CONTROLLER_CONTROLPLANE_HOST=platform-api:9243
+      - APIP_GW_CONTROLLER_CONTROLPLANE_TOKEN=${GATEWAY_REGISTRATION_TOKEN:-}
+      - APIP_GW_CONTROLLER_CONTROLPLANE_INSECURE_SKIP_VERIFY=true
+      - APIP_GW_CONTROLLER_CONTROLPLANE_DEPLOYMENT_SYNC_ENABLED=true
+    ports:
+      - "9090:9090"   # REST API — the URL registered as the gateway endpoint
+      - "9092:9092"   # Admin API
+      - "18000:18000" # xDS gRPC
+    volumes:
+      - gateway-controller-data:/app/data
+      - ../../gateway/it/test-config.toml:/etc/gateway-controller/config.toml:ro
+      - ../../gateway/it/it-aesgcm-keys/default-aesgcm256-v1.bin:/app/data/aesgcm-keys/default-aesgcm256-v1.bin:ro
+      - ../../gateway/gateway-controller/certificates:/app/certificates
+      - ../../gateway/gateway-controller/listener-certs:/app/listener-certs:ro
+    healthcheck:
+      # /health lives on the ADMIN API (9092), not the REST API (9090) — 9090/health
+      # is a 404. It is one of the few admin routes served without basic auth.
+      test: ["CMD-SHELL", "wget -qO- http://localhost:9092/health || exit 1"]
+      interval: 5s
+      timeout: 5s
+      start_period: 15s
+      retries: 12
+
+  gateway-runtime:
+    image: ${GATEWAY_RUNTIME_IMAGE:-ghcr.io/wso2/api-platform/gateway-runtime:1.2.0-SNAPSHOT}
+    restart: unless-stopped
+    command: ["--pol.config", "/etc/policy-engine/config.toml"]
+    environment:
+      - GATEWAY_CONTROLLER_HOST=gateway-controller
+      - LOG_LEVEL=info
+    ports:
+      - "18080:8080"  # HTTP ingress — invoke deployed providers/proxies here
+      - "18443:8443"  # HTTPS ingress
+      - "9002:9002"   # Policy engine admin
+    volumes:
+      - ../../gateway/it/test-config.toml:/etc/policy-engine/config.toml:ro
+    depends_on:
+      gateway-controller:
+        condition: service_started
+
+  # Stand-in upstream. Provider/proxy specs point their endpoint at this so a
+  # deploy-then-invoke assertion needs no real LLM vendor credentials.
+  sample-backend:
+    image: ghcr.io/wso2/api-platform/sample-service:latest
+    restart: unless-stopped
+    command: ["-addr", ":9080", "-pretty"]
+    ports:
+      - "19080:9080"
+
+volumes:
+  gateway-controller-data:
+    driver: local

@@ -66,6 +66,171 @@ Cypress.Commands.add('login', (username, password) => {
   cy.contains('Projects').should('be.visible');
 });
 
+// Authenticate against the BFF proxy directly and resolve the organization id.
+// Specs need this alongside `cy.login()` (which drives the UI) so that their
+// cleanup hooks can run deterministically even when the UI flow failed early.
+Cypress.Commands.add('apiLogin', () => {
+  return cy
+    .request({
+      method: 'POST',
+      url: '/proxy/api/portal/v0.9/auth/login',
+      form: true,
+      body: {
+        username: Cypress.env('ADMIN_USER'),
+        password: Cypress.env('ADMIN_PASSWORD'),
+      },
+    })
+    .then((response) => {
+      expect(response.status).to.eq(200);
+      const authToken = response.body?.token ?? '';
+      expect(authToken, 'auth token').to.not.equal('');
+
+      return cy
+        .request({
+          url: '/proxy/api/v0.9/organizations',
+          headers: { Authorization: `Bearer ${authToken}` },
+        })
+        .then((orgResponse) => {
+          expect(orgResponse.status).to.eq(200);
+          // This endpoint returns a single org in some deployments and a
+          // {list: []} envelope in others; accept both rather than assuming.
+          const organizationId =
+            orgResponse.body?.id ?? orgResponse.body?.list?.[0]?.id ?? '';
+          expect(organizationId, 'organization id').to.not.equal('');
+          return { authToken, organizationId };
+        });
+    });
+});
+
+// Create a project through the UI and land on its list entry. Several specs
+// need a project purely as a container, so the flow lives here rather than
+// being re-typed (and re-drifting) in each one.
+Cypress.Commands.add('createProjectUI', (projectName, description) => {
+  cy.get('[data-cyid="nav-projects"]', { timeout: 30000 })
+    .should('be.visible')
+    .click();
+
+  cy.contains('button, a', /Create Project|Add New Project/, { timeout: 30000 })
+    .should('be.visible')
+    .click();
+
+  cy.get('input[placeholder="My AI Project"]', { timeout: 30000 })
+    .should('be.visible')
+    .type(projectName);
+  cy.get('textarea[placeholder="Short description of the project."]').type(
+    description ?? 'Cypress E2E project.'
+  );
+  cy.contains('button', 'Create').should('not.be.disabled').click();
+
+  cy.contains(projectName, { timeout: 30000 }).should('be.visible');
+});
+
+// Look up a project by human-readable displayName and delete it by id.
+Cypress.Commands.add('deleteProjectByNameApi', (authToken, targetName) => {
+  if (!authToken) return cy.wrap(null);
+  return cy
+    .request({
+      url: '/proxy/api/v0.9/projects',
+      headers: { Authorization: `Bearer ${authToken}` },
+      failOnStatusCode: false,
+    })
+    .then((response) => {
+      if (response.status !== 200) return;
+      const target = (response.body?.list ?? []).find(
+        (project) => project.displayName === targetName
+      );
+      if (!target?.id) return;
+      return cy.request({
+        method: 'DELETE',
+        url: `/proxy/api/v0.9/projects/${encodeURIComponent(target.id)}`,
+        headers: { Authorization: `Bearer ${authToken}` },
+        failOnStatusCode: false,
+      });
+    });
+});
+
+// Delete every MCP proxy whose displayName starts with "E2E ". The org caps MCP
+// proxies (MaxMCPProxiesPerOrganization), so proxies leaked by an earlier failed
+// run eventually make `create` return 409. The list endpoint is project-scoped
+// while the cap is per-organization, so every project has to be swept.
+Cypress.Commands.add('sweepE2EMCPProxies', (authToken) => {
+  if (!authToken) return cy.wrap(null);
+  const headers = { Authorization: `Bearer ${authToken}` };
+  return cy
+    .request({ url: '/proxy/api/v0.9/projects', headers, failOnStatusCode: false })
+    .then((response) => {
+      if (response.status !== 200) return;
+      const projects = response.body?.list ?? [];
+      projects.forEach((project) => {
+        if (!project.id) return;
+        cy.request({
+          url: `/proxy/api/v0.9/mcp-proxies?projectId=${encodeURIComponent(project.id)}&limit=100&offset=0`,
+          headers,
+          failOnStatusCode: false,
+        }).then((listResponse) => {
+          if (listResponse.status !== 200) return;
+          (listResponse.body?.list ?? [])
+            .filter(
+              (proxy) =>
+                typeof proxy.displayName === 'string' &&
+                proxy.displayName.startsWith('E2E ')
+            )
+            .forEach((proxy) => {
+              if (!proxy.id) return;
+              cy.request({
+                method: 'DELETE',
+                url: `/proxy/api/v0.9/mcp-proxies/${encodeURIComponent(proxy.id)}`,
+                headers,
+                failOnStatusCode: false,
+              });
+            });
+        });
+      });
+    });
+});
+
+// Provider/proxy detail pages keep edits in a draft until the sticky bottom bar
+// is committed, so a tab edit is not persisted until this runs.
+Cypress.Commands.add('saveDraftChanges', () => {
+  cy.contains('You have unsaved changes.', { timeout: 30000 }).should('be.visible');
+  cy.contains('button', 'Save').should('not.be.disabled').click();
+  cy.contains('You have unsaved changes.', { timeout: 30000 }).should('not.exist');
+});
+
+// Read the value out of an MUI field located by its FormLabel text. Most of the
+// provider/proxy configuration tabs have no test ids, and the label is the only
+// stable anchor that survives layout changes.
+Cypress.Commands.add('fieldByLabel', (labelText) => {
+  return cy
+    .contains('label', labelText, { timeout: 30000 })
+    .parents('.MuiFormControl-root')
+    .first();
+});
+
+// Resolve the connected E2E gateway, or null when none is registered. Deploy
+// specs use this to skip themselves rather than fail on a control-plane-only
+// stack (docker-compose.yaml without scripts/start-e2e-gateway.sh).
+Cypress.Commands.add('findConnectedGateway', (authToken) => {
+  const gatewayName = Cypress.env('E2E_GATEWAY_NAME');
+  return cy
+    .request({
+      url: '/proxy/api/v0.9/gateways',
+      headers: { Authorization: `Bearer ${authToken}` },
+      failOnStatusCode: false,
+    })
+    .then((response) => {
+      if (response.status !== 200) return null;
+      const gateways = response.body?.list ?? [];
+      // isActive only flips true once the controller completes its registration
+      // handshake, so it — not mere existence of the row — is the real signal.
+      return (
+        gateways.find((gw) => gw.id === gatewayName && gw.isActive) ??
+        gateways.find((gw) => gw.isActive) ??
+        null
+      );
+    });
+});
+
 Cypress.Commands.add('sweepE2EProviders', (authToken, organizationId) => {
   const PAGE_SIZE = 100;
   const headersFor = (token) => ({ Authorization: `Bearer ${token}` });
