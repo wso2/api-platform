@@ -69,6 +69,11 @@ func defaultConfig() *Config {
 				OrgName:   "org_name",
 				OrgHandle: "org_handle",
 			},
+			// Mirrors the Platform API's [auth.authorization] default. Both sides must
+			// be switched to "role" together for an IDP that mints no ap:* scopes.
+			Authorization: AuthorizationConfig{
+				Mode: AuthzModeScope,
+			},
 		},
 	}
 }
