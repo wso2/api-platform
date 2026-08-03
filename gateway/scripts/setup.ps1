@@ -285,6 +285,7 @@ function Get-BcryptHash([string]$password) {
 
 function New-ListenerCert {
     if (-not $Force -and (Test-Path -LiteralPath "$CertsDir/default-listener.crt") -and (Test-Path -LiteralPath "$CertsDir/default-listener.key")) {
+        Set-OwnerOnlyAcl "$CertsDir/default-listener.key"
         Write-Log "  - $CertsDir/default-listener.crt already exists - keeping it"
         return
     }
@@ -300,6 +301,7 @@ function New-ListenerCert {
 
 function New-EncryptionKey {
     if (-not $Force -and (Test-Path -LiteralPath $EncKeyFile)) {
+        Set-OwnerOnlyAcl $EncKeyFile
         Write-Log "  - $EncKeyFile already exists - keeping it"
         return
     }

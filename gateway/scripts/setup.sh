@@ -108,6 +108,25 @@ command -v openssl >/dev/null 2>&1 || { echo "error: openssl is required" >&2; e
 
 log() { echo "[setup] $*"; }
 
+# Every gateway image runs as this fixed non-root UID
+CONTAINER_UID=10001
+
+# Non-sensitive files (the public listener certificate) — left world-readable so
+# the container UID above can read them across the bind mount.
+FILE_MODE=644
+
+restrict_secret_file() {
+  local file="$1"
+  if command -v setfacl >/dev/null 2>&1; then
+    chmod 600 "$file"
+    if setfacl -m "u:${CONTAINER_UID}:r" "$file" 2>/dev/null; then
+      return
+    fi
+    log "  - WARNING: setfacl failed on $file; falling back to world-readable so the container (UID ${CONTAINER_UID}) can still read it"
+  fi
+  chmod "$FILE_MODE" "$file"
+}
+
 # bcrypt isn't in openssl; use htpasswd when available, else the httpd image.
 # The gateway-controller's basic authenticator accepts bcrypt ($2a/$2b/$2y$) hashes.
 bcrypt_hash() {
@@ -124,6 +143,8 @@ bcrypt_hash() {
 
 gen_cert() {
   if [[ "$FORCE" == false && -f "$CERTS_DIR/default-listener.crt" && -f "$CERTS_DIR/default-listener.key" ]]; then
+    chmod "$FILE_MODE" "$CERTS_DIR/default-listener.crt"
+    restrict_secret_file "$CERTS_DIR/default-listener.key"
     log "  - $CERTS_DIR/default-listener.crt already exists — keeping it"
     return
   fi
@@ -132,17 +153,20 @@ gen_cert() {
     -keyout "$CERTS_DIR/default-listener.key" -out "$CERTS_DIR/default-listener.crt" \
     -subj "/O=WSO2 API Platform/CN=localhost" \
     -addext "subjectAltName=DNS:localhost,DNS:*.localhost,DNS:host.docker.internal,IP:127.0.0.1" >/dev/null 2>&1
-  chmod 644 "$CERTS_DIR/default-listener.key" "$CERTS_DIR/default-listener.crt"
+  chmod "$FILE_MODE" "$CERTS_DIR/default-listener.crt"
+  restrict_secret_file "$CERTS_DIR/default-listener.key"
   log "  - self-signed listener certificate generated at $CERTS_DIR/default-listener.crt"
 }
 
 gen_encryption_key() {
   if [[ "$FORCE" == false && -f "$ENC_KEY_FILE" ]]; then
+    restrict_secret_file "$ENC_KEY_FILE"
     log "  - $ENC_KEY_FILE already exists — keeping it"
     return
   fi
   mkdir -p "$(dirname "$ENC_KEY_FILE")"
   ( umask 177; openssl rand 32 > "$ENC_KEY_FILE" )
+  restrict_secret_file "$ENC_KEY_FILE"
   log "  - AES-256 encryption key generated at $ENC_KEY_FILE"
 }
 
