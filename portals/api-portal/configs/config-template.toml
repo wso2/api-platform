@@ -66,7 +66,13 @@ console_only = true     # true: log to stdout only. false: also write rotating l
 # =============================================================================
 # DATABASE CONFIGURATION
 # =============================================================================
-# Supported types: sqlite (default), postgres.
+# Supported types: sqlite (default), postgres, mssql.
+#
+# SQLite is the shipped default, and the only driver configs/config.toml carries
+# keys for (driver + path). PostgreSQL and SQL Server are advanced setups: add the
+# keys you need to your own config.toml — the reference block below lists them all,
+# and the two ready-to-paste examples further down are the complete, working
+# versions.
 
 [api_portal.database]
 driver = "sqlite"             # sqlite | postgres | mssql
@@ -74,7 +80,7 @@ path = "./api-portal.db"       # SQLite only
 host = "localhost"            # PostgreSQL / MSSQL only
 port = 5432                   # PostgreSQL / MSSQL only (Change to 1433 for MSSQL)
 name = "api_portal"            # PostgreSQL / MSSQL only
-user = "postgres"             # PostgreSQL / MSSQL only
+user = ""                     # PostgreSQL / MSSQL only - REQUIRED for those drivers (no default; startup fails if empty)
 password = ""                 # PostgreSQL / MSSQL only
 ssl_mode = "disable"          # PostgreSQL / MSSQL only: disable | verify-full
 ssl_root_cert = "./resources/security/ca.pem"   # CA cert - used by verify-full
@@ -83,6 +89,43 @@ min_open_conns = 2            # PostgreSQL / MSSQL only
 pool_idle_timeout_ms = 10000            # PostgreSQL / MSSQL only
 pool_connection_timeout_ms = 30000      # PostgreSQL / MSSQL only
 pool_request_timeout_ms = 30000         # MSSQL only - per-query execution timeout
+
+# -----------------------------------------------------------------------------
+# PostgreSQL - replace the [api_portal.database] block in your
+# configs/config.toml with this one. The {{ env }} tokens are what make the
+# APIP_AP_DATABASE_* variables take effect: an env var reaches config ONLY where
+# a key references it, so a variable set with no matching token here does nothing.
+# This is also what docker-compose.postgres.yaml's env block expects to find.
+#
+#   [api_portal.database]
+#   driver   = '{{ env "APIP_AP_DATABASE_DRIVER" "postgres" }}'
+#   host     = '{{ env "APIP_AP_DATABASE_HOST" "localhost" }}'
+#   port     = '{{ env "APIP_AP_DATABASE_PORT" "5432" }}'
+#   name     = '{{ env "APIP_AP_DATABASE_NAME" "api_portal" }}'
+#   # No fallback for the user: a non-SQLite driver with no user (or host, or
+#   # name) refuses to start, rather than silently connecting as a conventional
+#   # superuser name to whatever server the fallbacks happen to point at.
+#   user     = '{{ env "APIP_AP_DATABASE_USER" "" }}'
+#   password = '{{ env "APIP_AP_DATABASE_PASSWORD" "" }}'
+#
+# An empty password is accepted (peer/trust auth, or an IAM/Entra token supplied
+# out of band). Add ssl_mode/ssl_root_cert from the block above for TLS, and the
+# pool keys only to move off their defaults.
+#
+# SQL Server (advanced) - same shape, different driver and port:
+#
+#   [api_portal.database]
+#   driver   = '{{ env "APIP_AP_DATABASE_DRIVER" "mssql" }}'
+#   host     = '{{ env "APIP_AP_DATABASE_HOST" "localhost" }}'
+#   port     = '{{ env "APIP_AP_DATABASE_PORT" "1433" }}'
+#   name     = '{{ env "APIP_AP_DATABASE_NAME" "api_portal" }}'
+#   user     = '{{ env "APIP_AP_DATABASE_USER" "" }}'
+#   password = '{{ env "APIP_AP_DATABASE_PASSWORD" "" }}'
+#
+# Rather than editing config.toml, the same block can live in a separate file
+# passed as a second --config (repeatable, last-wins; nested tables deep-merge):
+#   node src/server.js --config configs/config.toml --config /path/to/my-db.toml
+# -----------------------------------------------------------------------------
 
 # =============================================================================
 # SECURITY CONFIGURATION

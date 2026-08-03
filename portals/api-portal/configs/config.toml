@@ -15,11 +15,6 @@ console_only = true
 [api_portal.database]
 driver = '{{ env "APIP_AP_DATABASE_DRIVER" "sqlite" }}'
 path = '{{ env "APIP_AP_DATABASE_PATH" "./data/api-portal.db" }}'
-host     = '{{ env "APIP_AP_DATABASE_HOST" "localhost" }}'
-port     = '{{ env "APIP_AP_DATABASE_PORT" "5432" }}'
-name     = '{{ env "APIP_AP_DATABASE_NAME" "api_portal" }}'
-user     = '{{ env "APIP_AP_DATABASE_USER" "postgres" }}'
-password = '{{ env "APIP_AP_DATABASE_PASSWORD" "" }}'
 
 [api_portal.security]
 encryption_key = '{{ file "/etc/api-portal/keys/encryption.key" }}'

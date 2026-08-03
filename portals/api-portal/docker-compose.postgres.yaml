@@ -21,6 +21,12 @@
 # Usage:
 #   docker compose -f docker-compose.yaml -f docker-compose.postgres.yaml up
 #
+# PREREQUISITE: the shipped configs/config.toml is SQLite-only, and an env var
+# reaches config only where a key references it via {{ env }}. Copy the
+# PostgreSQL block from configs/config-template.toml into configs/config.toml
+# first, or the APIP_AP_DATABASE_* variables below do nothing and startup fails
+# closed on the missing user.
+#
 # This file merges with docker-compose.yaml:
 #   - Adds the postgres service.
 #   - Overrides api-portal DB env vars to point at postgres.

@@ -316,6 +316,14 @@ These are the variables the shipped `configs/config.toml` honours:
 | `APIP_AP_ORGANIZATION_HANDLE` | `config.organization.handle` |
 | `APIP_AP_ORGANIZATION_DISPLAY_NAME` | `config.organization.displayName` |
 
+The five `APIP_AP_DATABASE_HOST`/`PORT`/`NAME`/`USER`/`PASSWORD` variables need a key
+to reference them first: the shipped `config.toml` is SQLite-only (driver + path), so
+PostgreSQL and SQL Server — advanced setups — mean copying the ready-to-paste block
+from `configs/config-template.toml` into your `config.toml`, or passing it as a second
+`--config`. That applies to `docker-compose.postgres.yaml` /
+`docker-compose.sqlserver.yaml` too. A non-SQLite driver with no host/name/user
+resolved refuses to start rather than silently connecting somewhere unintended.
+
 To make any other key settable from the environment, add the token to `config.toml`
 yourself. To change something without an environment variable — including the
 `[api_portal.auth.authorization]` block and the IDP settings — edit `config.toml`, or
