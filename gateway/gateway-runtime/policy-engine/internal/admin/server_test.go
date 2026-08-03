@@ -76,6 +76,7 @@ func TestServer_StartAndStop(t *testing.T) {
 	cfg := &config.AdminConfig{
 		Port:       port,
 		AllowedIPs: []string{"127.0.0.1", "*"},
+		ConfigDump: config.ConfigDumpConfig{Enabled: true},
 	}
 	k := kernel.NewKernel()
 	reg := &registry.PolicyRegistry{

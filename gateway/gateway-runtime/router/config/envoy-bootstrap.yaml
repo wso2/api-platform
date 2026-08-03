@@ -16,11 +16,12 @@
 # under the License.
 # --------------------------------------------------------------------
 
-admin:
-  address:
-    socket_address:
-      address: 0.0.0.0
-      port_value: 9901
+# The admin interface (config_dump, stats, /runtime_modify, etc.) is intentionally
+# NOT defined here. It is disabled by default and, when enabled via
+# ROUTER_ADMIN_ENABLED, injected at startup by docker-entrypoint.sh through
+# `envoy --config-yaml`, bound to loopback only. See docker-entrypoint.sh for
+# the injected block and health-check.sh for how liveness/readiness are
+# checked without depending on the admin interface.
 
 node:
   cluster: gateway-cluster

@@ -75,6 +75,10 @@ services:
     environment:
       - GATEWAY_CONTROLLER_HOST=it-gateway-controller
       - LOG_LEVEL=info
+      # The IT suite (steps_health.go) exercises Envoy's admin /ready directly on the
+      # host-published port, so admin must bind the container interface, not loopback.
+      - ROUTER_ADMIN_ENABLED=true
+      - ROUTER_ADMIN_HOST=0.0.0.0
       # Override AWS Bedrock Runtime endpoint for testing with mock service
       - AWS_ENDPOINT_URL_BEDROCK_RUNTIME=http://mock-aws-bedrock-guardrail:8080
       - GOCOVERDIR=/coverage
