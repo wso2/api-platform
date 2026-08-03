@@ -97,8 +97,14 @@ fi
 [ -n "${ADMIN_PASSWORD:-}" ] || fail "an admin password is required (set ADMIN_PASSWORD or run interactively)."
 
 log "Logging in to Platform API at $PLATFORM_API_URL ..."
+# Percent-encode both values — a raw '&'/'='/'+'/'%' in either would otherwise
+# split or corrupt the application/x-www-form-urlencoded body. jq is already a
+# hard requirement above, so @uri is used rather than adding a new dependency.
+urlencode() { jq -rn --arg v "$1" '$v|@uri'; }
+ENCODED_ADMIN_USERNAME="$(urlencode "$ADMIN_USERNAME")"
+ENCODED_ADMIN_PASSWORD="$(urlencode "$ADMIN_PASSWORD")"
 TOKEN=$(curl -sk -X POST "$PLATFORM_API_URL/api/portal/v0.9/auth/login" \
-    -d "username=$ADMIN_USERNAME&password=$ADMIN_PASSWORD" | jq -r '.token // empty')
+    -d "username=$ENCODED_ADMIN_USERNAME&password=$ENCODED_ADMIN_PASSWORD" | jq -r '.token // empty')
 [ -n "$TOKEN" ] || fail "failed to obtain a token — check the credentials and that Platform API is reachable at $PLATFORM_API_URL."
 AUTH_HEADER="Authorization: Bearer $TOKEN"
 
@@ -252,3 +258,7 @@ fi
 API_WORD="APIs"; [ "$API_CREATED" -eq 1 ] && API_WORD="API"
 MCP_WORD="MCP servers"; [ "$MCP_CREATED" -eq 1 ] && MCP_WORD="MCP server"
 echo "${STATUS_COLOR}Done${C_RESET} — ${C_BOLD}${TOTAL_CREATED} seeded${C_RESET} (${API_CREATED} ${API_WORD}, ${MCP_CREATED} ${MCP_WORD}), ${TOTAL_SKIPPED} skipped, ${TOTAL_FAILED} failed in ${SECONDS}s"
+
+# CI pins credentials via ADMIN_USERNAME/ADMIN_PASSWORD specifically so this
+# script can run unattended — a failing seed must not be reported as success.
+[ "$TOTAL_FAILED" -eq 0 ] || exit 1

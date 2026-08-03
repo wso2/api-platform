@@ -329,6 +329,8 @@ endif
 	@chmod +x $(DIST_DIR)/scripts/setup.sh
 	@cp scripts/seed-samples.sh $(DIST_DIR)/scripts/seed-samples.sh
 	@chmod +x $(DIST_DIR)/scripts/seed-samples.sh
+# Windows counterpart of seed-samples.sh — same behavior, same generated output.
+	@cp scripts/seed-samples.ps1 $(DIST_DIR)/scripts/seed-samples.ps1
 # Bake this pack's default COMPOSE_PROFILES into setup.sh so `docker compose
 # up -d` (no --profile flag) starts API Portal + Platform API out of
 # the box once setup.sh has run. setup.sh writes it to .env at setup time —
