@@ -257,10 +257,6 @@ roles        = "roles"
 # ---------------------------------------------------------------------------
 [ai_workspace.auth.oidc]
 
-# Force the OIDC client on independently of mode. Rarely needed — mode = "oidc"
-# above already enables it.
-enabled = "false"
-
 # Issuer URL — endpoints are auto-discovered from /.well-known/openid-configuration.
 authority = "https://accounts.example.com"
 
