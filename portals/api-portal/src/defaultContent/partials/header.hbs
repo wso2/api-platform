@@ -1,6 +1,13 @@
 <header>
   <nav class="navbar navbar-expand-lg custom-navbar fixed-top">
     <div class="container-fluid">
+      {{!-- Opens the sidebar as an off-canvas drawer. Only rendered visible below the
+            860px breakpoint (see side-bar.css) — above it the sidebar is always on
+            screen and this would be redundant. --}}
+      <button class="sidebar-toggle" id="sidebarToggle" type="button"
+        aria-label="Open navigation menu" aria-controls="sidebar" aria-expanded="false">
+        <i class="bi bi-list"></i>
+      </button>
       <a class="navbar-brand d-flex align-items-center" href="{{baseUrl}}">
         <img src="/images/api-portal-logo.svg" alt="Logo" class="navbar-logo me-2" />
       </a>

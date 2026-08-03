@@ -264,9 +264,116 @@
     width: auto;
 }
 
-/* ── Responsive: hide on narrow screens ── */
+/* ── Hamburger + backdrop (desktop: both inert) ── */
+
+/* Lives in the header. Hidden above the breakpoint, where the sidebar is always
+   on screen and a toggle would be redundant. */
+.sidebar-toggle {
+    display: none;
+    align-items: center;
+    justify-content: center;
+    width: 2.5rem;
+    height: 2.5rem;
+    margin-right: 0.5rem;
+    padding: 0;
+    border: none;
+    border-radius: 0.5rem;
+    background: transparent;
+    color: var(--text-strong, #1b2028);
+    font-size: 1.5rem;
+    line-height: 1;
+    cursor: pointer;
+}
+
+.sidebar-backdrop {
+    display: none;
+}
+
+/* ── Responsive: the sidebar becomes an off-canvas drawer ── */
+
+/* This used to be `display: none`, which removed the portal's ONLY primary
+   navigation below 860px and offered nothing in its place — Home, APIs, MCP
+   Servers, API Workflows, Applications, Subscriptions, API Keys and Settings
+   were all unreachable on a phone. The rail now slides in over the content,
+   opened by the header's hamburger and dismissed by the backdrop, Escape, or
+   picking a destination. */
 @media (max-width: 860px) {
+    .sidebar-toggle { display: inline-flex; }
+
     .sidebar {
-        display: none;
+        position: fixed;
+        top: 0;
+        left: 0;
+        bottom: 0;
+        height: 100%;
+        transform: translateX(-100%);
+        transition: transform 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+        /* Above Bootstrap's .fixed-top navbar (1030) and the backdrop below. */
+        z-index: 1045;
+        overflow-y: auto;
+        box-shadow: 2px 0 16px rgba(0, 0, 0, 0.28);
     }
+
+    .sidebar.mobile-open { transform: translateX(0); }
+
+    /* Touch has no hover, so width/label rules keyed on :hover or .expanded can
+       never fire here — the open drawer is always the labelled, full-width form.
+       max-width keeps it off the right edge on very narrow phones. */
+    .sidebar,
+    .sidebar:hover:not(.force-collapse),
+    .sidebar.force-collapse:hover,
+    .sidebar.expanded {
+        width: 16.5rem;
+        max-width: 84vw;
+    }
+
+    .sidebar .nav-link { justify-content: flex-start; }
+
+    .sidebar .nav-text,
+    .sidebar .collapse-text {
+        margin-left: 0.875rem;
+        opacity: 1;
+        visibility: visible;
+        width: auto;
+    }
+
+    /* Pinning a drawer open has no meaning — it is dismissed, not collapsed. */
+    .collapse-btn,
+    .nav-section-divider { display: none; }
+
+    .sidebar-backdrop {
+        display: block;
+        position: fixed;
+        inset: 0;
+        background: rgba(0, 0, 0, 0.45);
+        opacity: 0;
+        visibility: hidden;
+        transition: opacity 0.25s ease, visibility 0.25s ease;
+        z-index: 1040;
+    }
+
+    .sidebar-backdrop.visible {
+        opacity: 1;
+        visibility: visible;
+    }
+
+    /* Scroll lock. Applied to .main-container, not <body> — main.css already sets
+       .main-body { overflow: hidden } and this layout scrolls the container, so a
+       body-level lock reads as if it works while the content keeps scrolling behind
+       the open drawer.
+
+       It lives inside the media query on purpose: as an inline style it would
+       survive a resize past the breakpoint if the cleanup listener didn't run,
+       leaving the desktop page unscrollable with no drawer in sight. Scoped here it
+       lapses on its own above 860px, whatever events the browser does or doesn't
+       emit. */
+    body.drawer-open .main-container {
+        overflow: hidden;
+    }
+}
+
+/* Users who prefer reduced motion get the drawer without the slide. */
+@media (max-width: 860px) and (prefers-reduced-motion: reduce) {
+    .sidebar { transition: none; }
+    .sidebar-backdrop { transition: none; }
 }

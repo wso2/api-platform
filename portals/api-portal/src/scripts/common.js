@@ -69,6 +69,78 @@ document.addEventListener("DOMContentLoaded", function () {
         }
     });
 
+    /* ── Mobile drawer ──
+       Below 860px the sidebar is off-canvas (see side-bar.css) and this is the only
+       way to reach it. Everything below is a no-op above that breakpoint, where the
+       toggle and backdrop are display:none and never receive events. */
+    const sidebarToggle = document.getElementById('sidebarToggle');
+    const sidebarBackdrop = document.getElementById('sidebarBackdrop');
+
+    if (sidebarToggle && sidebarBackdrop) {
+        sidebarBackdrop.hidden = false; // inert via CSS until the breakpoint applies
+
+        const openDrawer = () => {
+            sidebar.classList.add('mobile-open');
+            sidebarBackdrop.classList.add('visible');
+            sidebarToggle.setAttribute('aria-expanded', 'true');
+            // Stops the page scrolling behind the drawer on touch. A class, not an
+            // inline style, so the rule can live inside side-bar.css's 860px media
+            // query and lapse on its own above the breakpoint.
+            document.body.classList.add('drawer-open');
+        };
+
+        const closeDrawer = () => {
+            sidebar.classList.remove('mobile-open');
+            sidebarBackdrop.classList.remove('visible');
+            sidebarToggle.setAttribute('aria-expanded', 'false');
+            document.body.classList.remove('drawer-open');
+        };
+
+        const isOpen = () => sidebar.classList.contains('mobile-open');
+
+        sidebarToggle.addEventListener('click', () => {
+            if (isOpen()) {
+                closeDrawer();
+            } else {
+                openDrawer();
+                sidebar.querySelector('.nav-link')?.focus();
+            }
+        });
+
+        sidebarBackdrop.addEventListener('click', closeDrawer);
+
+        document.addEventListener('keydown', (e) => {
+            if (e.key === 'Escape' && isOpen()) {
+                closeDrawer();
+                sidebarToggle.focus();
+            }
+        });
+
+        /* Navigating leaves the drawer open over the new page on a same-document
+           route (the submenu links are '#'-href and handled in JS), so close on any
+           destination pick. Submenu parents only expand a section — those stay open. */
+        sidebar.addEventListener('click', (e) => {
+            const link = e.target.closest('a.nav-link');
+            if (!link || !isOpen()) return;
+            const href = link.getAttribute('href');
+            if (!href || href === '#') return; // section expander, not a destination
+            closeDrawer();
+        });
+
+        /* Rotating to landscape / resizing past the breakpoint must not leave the
+           body scroll-locked with an invisible drawer still flagged open.
+           matchMedia rather than a resize listener: it fires exactly on the breakpoint
+           crossing (including orientation changes, which don't always emit resize),
+           and the query mirrors side-bar.css's own 860px so the two can't disagree. */
+        const mobileQuery = window.matchMedia('(max-width: 860px)');
+        const syncToBreakpoint = () => { if (!mobileQuery.matches && isOpen()) closeDrawer(); };
+        if (mobileQuery.addEventListener) {
+            mobileQuery.addEventListener('change', syncToBreakpoint);
+        } else if (mobileQuery.addListener) {
+            mobileQuery.addListener(syncToBreakpoint); // Safari < 14
+        }
+    }
+
     // Set active status based on current URL path
     const setActiveSidebarLink = () => {
         const currentPath = window.location.pathname;

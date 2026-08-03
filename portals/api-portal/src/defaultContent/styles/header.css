@@ -83,6 +83,34 @@
   color: var(--white);
 }
 
+/* Keep the header a single row on small screens.
+   Bootstrap's .container-fluid inside .navbar is flex-wrap: wrap, and the logo has
+   no upper bound, so on a phone the brand and the profile/login block each took a
+   row of their own — and the sidebar hamburger (see side-bar.css) would have made a
+   third, ~136px of header before any content. Letting the brand shrink keeps all
+   three on one line. */
+@media (max-width: 53.75rem) {
+  .custom-navbar .container-fluid {
+    flex-wrap: nowrap;
+    gap: 0.5rem;
+  }
+
+  .custom-navbar .navbar-brand {
+    /* min-width:0 is what actually permits a flex item to shrink below its
+       content size; without it the logo keeps its intrinsic width and wraps. */
+    min-width: 0;
+    flex: 0 1 auto;
+    margin-right: 0;
+    overflow: hidden;
+  }
+
+  .custom-navbar .navbar-logo {
+    max-width: 100%;
+    height: auto;
+    max-height: 2rem;
+  }
+}
+
 @media (max-width: 48rem) {
   .navbar-brand span {
     font-size: 1rem;
