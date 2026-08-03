@@ -307,12 +307,16 @@ func Load(paths ...string) (*Config, error) {
 }
 
 // normalize resolves the derived fields that are not a straight copy of a config key:
-// case-folding (level/format/mode), trimming trailing slashes off URLs/prefixes, the
+// case-folding (level/format/both auth modes), trimming trailing slashes off URLs/prefixes, the
 // oidc-mode-implies-enabled rule, and the fixed cookie attributes.
 func (c *Config) normalize() {
 	c.Logging.Level = strings.ToLower(c.Logging.Level)
 	c.Logging.Format = strings.ToLower(c.Logging.Format)
 	c.Auth.Mode = strings.ToLower(c.Auth.Mode)
+	// Folded like the [auth] mode one line up: both are closed value sets compared
+	// against lowercase constants, so a capital letter must not be the difference
+	// between a config that starts and one that does not.
+	c.Auth.Authorization.Mode = strings.ToLower(c.Auth.Authorization.Mode)
 
 	c.ControlPlane.URL = strings.TrimRight(c.ControlPlane.URL, "/")
 	c.ControlPlane.PortalBasePath = strings.TrimRight(c.ControlPlane.PortalBasePath, "/")
