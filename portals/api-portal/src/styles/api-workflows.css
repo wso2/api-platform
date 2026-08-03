@@ -353,6 +353,15 @@
     width: 100%;
 }
 
+/* Constrain the breadcrumb to the same width as the header card so it left-aligns
+   with it (matching the API overview page). Without this the centered
+   .flow-detail-section shrink-wraps the nav and centers it in the page. */
+.flow-detail-breadcrumb {
+    width: 100%;
+    max-width: 1300px;
+    margin-top: 0.5rem;
+}
+
 .flow-detail-header {
     width: 100%;
     max-width: 1300px;
