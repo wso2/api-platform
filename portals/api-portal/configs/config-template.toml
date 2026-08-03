@@ -115,9 +115,21 @@ groups = "groups"
 # Local auth backend (the Platform API control plane) — used when auth.mode =
 # "local". Leave platform_api_url empty to disable local auth entirely.
 [api_portal.auth.local]
-platform_api_url = ""
-public_key_path = ""    # path to the Platform API's RS256 public key PEM
-tls_skip_verify = false
+# The upstream Platform API. Used for local auth credential validation when
+# auth.mode = "local".
+platform_api_url = '{{ env "APIP_AP_AUTH_LOCAL_PLATFORM_API_URL" "https://platform-api:9243" }}'
+# Filesystem path to the Platform API's RS256 public key PEM — the matching half
+# of its [platform_api.auth.jwt].private_key. scripts/setup.sh generates the
+# keypair and docker-compose.yaml mounts it at /etc/api-portal/keys; the API Portal
+# reads this file to verify Platform API-issued tokens. `npm run start:local`
+# points it at the host-side copy in resources/keys.
+public_key_path  = '{{ env "APIP_AP_AUTH_LOCAL_PUBLIC_KEY_PATH" "/etc/api-portal/keys/jwt_public.pem" }}'
+tls_skip_verify  = '{{ env "APIP_AP_AUTH_LOCAL_TLS_SKIP_VERIFY" "true" }}'
+
+# Authorization — what a verified token may do. Applies in every auth mode, which is
+# why it is not nested under auth.local or auth.idp. Plain literals, matching how
+# [platform_api.auth.authorization] is written: these are deployment policy an operator
+# edits in place, not per-environment values or secrets, so they get no {{ env }} token.
 
 # Identity provider (OAuth2 / OIDC) — used when auth.mode = "idp".
 [api_portal.auth.idp]

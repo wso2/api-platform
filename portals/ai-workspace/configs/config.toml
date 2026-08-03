@@ -12,7 +12,7 @@ key_file  = "/etc/ai-workspace/tls/key.pem"
 
 [ai_workspace.logging]
 
-level = '{{ env "APIP_AIW_LOGGING_LEVEL" "info" }}'   # debug | info | warn | error
+level = '{{ env "APIP_AIW_LOGGING_LEVEL" "info" }}'
 
 
 [ai_workspace.control_plane]
