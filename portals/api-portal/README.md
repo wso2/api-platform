@@ -68,7 +68,7 @@ docker compose down -v
 make clean
 ```
 
-`docker compose down` only tears down services matching the profiles currently active for the project (from `COMPOSE_PROFILES` in `.env`, or an explicit `--profile` flag) — it does not remember what was passed to `docker compose up` earlier. If you separately started the optional `ai-workspace` profile (`docker compose --profile ai-workspace up -d`), a bare `docker compose down` leaves it running. Either tear that down explicitly first (`docker compose --profile ai-workspace down`, or `docker compose stop ai-workspace` to stop without removing), or use `docker compose --profile all down -v` to remove every service regardless of which profiles are currently set — every service in this file carries the `all` profile for exactly this case.
+`docker compose down` only tears down services matching the profiles currently active for the project (from `COMPOSE_PROFILES` in `.env`, or an explicit `--profile` flag) — it does not remember what was running earlier. If you started the optional `ai-workspace` profile and have since dropped it from `COMPOSE_PROFILES`, a bare `docker compose down` leaves it running. Either tear that down explicitly first (`docker compose --profile ai-workspace down`, or `docker compose stop ai-workspace` to stop without removing), or name every profile on the `down` command to remove them all at once: `docker compose --profile api-portal --profile ai-workspace --profile platform-api down -v`.
 
 ---
 
@@ -315,6 +315,14 @@ These are the variables the shipped `configs/config.toml` honours:
 | `APIP_AP_AUTH_LOCAL_TLS_SKIP_VERIFY` | `config.auth.local.tlsSkipVerify` |
 | `APIP_AP_ORGANIZATION_HANDLE` | `config.organization.handle` |
 | `APIP_AP_ORGANIZATION_DISPLAY_NAME` | `config.organization.displayName` |
+
+The five `APIP_AP_DATABASE_HOST`/`PORT`/`NAME`/`USER`/`PASSWORD` variables need a key
+to reference them first: the shipped `config.toml` is SQLite-only (driver + path), so
+PostgreSQL and SQL Server — advanced setups — mean copying the ready-to-paste block
+from `configs/config-template.toml` into your `config.toml`, or passing it as a second
+`--config`. That applies to `docker-compose.postgres.yaml` /
+`docker-compose.sqlserver.yaml` too. A non-SQLite driver with no host/name/user
+resolved refuses to start rather than silently connecting somewhere unintended.
 
 To make any other key settable from the environment, add the token to `config.toml`
 yourself. To change something without an environment variable — including the

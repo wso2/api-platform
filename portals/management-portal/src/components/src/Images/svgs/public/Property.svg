@@ -1,7 +1,0 @@
-<svg id="Icon_Flow_Log" data-name="Icon/Flow/Log" xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 20 20">
-  <g id="Oval" fill="none" stroke="#ccd1f2" stroke-miterlimit="10" stroke-width="2">
-    <circle cx="10" cy="10" r="10" stroke="none"/>
-    <circle cx="10" cy="10" r="9" fill="none"/>
-  </g>
-  <path id="Combined_Shape_Copy_7" data-name="Combined Shape Copy 7" d="M-1.168,9.586A1.168,1.168,0,0,0,0,8.418V1.168A1.168,1.168,0,0,0-1.168,0h-.093A1.168,1.168,0,0,0-2.429,1.168v6.08H-5.417A1.17,1.17,0,0,0-6.586,8.418,1.169,1.169,0,0,0-5.417,9.586Z" transform="translate(15.718 7.439) rotate(45)" fill="#5567d5"/>
-</svg>

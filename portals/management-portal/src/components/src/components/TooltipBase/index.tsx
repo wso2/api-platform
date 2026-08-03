@@ -1,1 +1,0 @@
-export { TooltipBase } from './TooltipBase';

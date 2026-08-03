@@ -11,7 +11,8 @@ wso2apip-api-portal-<version>/
 ├── scripts/
 │   ├── setup.sh                                 # One-time TLS + secrets provisioning
 │   ├── setup.ps1                                # Same, for Windows (PowerShell)
-│   └── seed-samples.sh                          # Optional: deploy the bundled sample APIs/MCPs
+│   ├── seed-samples.sh                          # Optional: deploy the bundled sample APIs/MCPs
+│   └── seed-samples.ps1                         # Same, for Windows (PowerShell)
 ├── configs/
 │   ├── config.toml                              # Unified active config — [api_portal] + [platform_api] sections
 │   └── config-template.toml                     # Config reference — both active components, plus optional [ai_workspace] at the bottom
@@ -39,7 +40,7 @@ Run the setup script once, from the distribution root, before the first start:
 
 ```bash
 ./scripts/setup.sh
-docker compose up -d
+docker compose up
 ```
 
 On **Windows**, use the PowerShell script instead — same flags, same generated files
@@ -48,8 +49,10 @@ On **Windows**, use the PowerShell script instead — same flags, same generated
 ```powershell
 powershell -ExecutionPolicy Bypass -File .\scripts\setup.ps1
 # PowerShell 7+ is also fine:  pwsh -File .\scripts\setup.ps1
-docker compose up -d
+docker compose up
 ```
+
+`docker compose up` runs in the foreground — leave it running and use a second terminal for anything else, or press `Ctrl+C` to stop the stack. Which components it starts comes entirely from the `COMPOSE_PROFILES` line `setup.sh` wrote into `.env`; add profiles to that line (`api-portal`, `ai-workspace`, `platform-api`) to run more of them.
 
 `setup.sh` generates everything the stack needs — nothing is auto-generated at runtime:
 
@@ -82,6 +85,13 @@ Deploys the sample APIs and MCP servers under `resources/samples/` into the defa
 ./scripts/seed-samples.sh
 ```
 
+On **Windows**:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\scripts\seed-samples.ps1
+# PowerShell 7+ is also fine:  pwsh -File .\scripts\seed-samples.ps1
+```
+
 Prompts for the admin username/password (or set `ADMIN_USERNAME`/`ADMIN_PASSWORD` to skip the prompt). Safe to re-run — entries that already exist are skipped.
 
 ## Exposed Ports
@@ -96,17 +106,23 @@ Prompts for the admin username/password (or set `ADMIN_USERNAME`/`ADMIN_PASSWORD
 
 This package runs the API Portal and the Platform API by default. **AI Workspace** ships in the same `docker-compose.yaml` as an optional component behind the `ai-workspace` [Compose profile](https://docs.docker.com/compose/how-tos/profiles/), sharing the one Platform API — so you can add it without standing up a second Platform API.
 
-AI Workspace mounts the **same** `configs/config.toml` the other services do and reads only its own `[ai_workspace]` section (it ignores `[api_portal]`/`[platform_api]`). It is **off by default**: a plain `docker compose up -d` never starts it. Enabling it takes one one-time step, because that shipped `config.toml` does **not** carry an `[ai_workspace]` section:
+AI Workspace mounts the **same** `configs/config.toml` the other services do and reads only its own `[ai_workspace]` section (it ignores `[api_portal]`/`[platform_api]`). It is **off by default**: `COMPOSE_PROFILES` in `.env` does not list it, so a plain `docker compose up` never starts it. Enabling it takes two one-time steps, because that shipped `config.toml` does **not** carry an `[ai_workspace]` section:
 
 1. **Add the `[ai_workspace]` section to `configs/config.toml`.** Copy the `[ai_workspace.*]` tables from the bottom of the shipped `configs/config-template.toml` (the "AI Workspace (optional)" section) and append them to this stack's `configs/config.toml`. The defaults already point at the shared `https://platform-api:9243`.
 
-Then start the stack with the profile enabled:
+2. **Add `ai-workspace` to the `COMPOSE_PROFILES` line in `.env`**, so it starts with the rest of the stack:
 
-```bash
-docker compose --profile ai-workspace up -d
+```
+COMPOSE_PROFILES=api-portal,ai-workspace,platform-api
 ```
 
-AI Workspace comes up at `https://localhost:9643`, backed by the same Platform API. Omitting `--profile ai-workspace` on a later `docker compose` command neither starts nor stops it — an already-running instance keeps running. To stop it explicitly, run `docker compose stop ai-workspace`, or `docker compose --profile ai-workspace down` to remove it.
+Then start the stack:
+
+```bash
+docker compose up
+```
+
+AI Workspace comes up at `https://localhost:9643`, backed by the same Platform API. Removing `ai-workspace` from `COMPOSE_PROFILES` again neither starts nor stops it on the spot — an already-running instance keeps running. To stop it explicitly, run `docker compose stop ai-workspace`, or `docker compose --profile ai-workspace down` to remove it.
 
 ## Design Mode (optional)
 
@@ -115,7 +131,7 @@ AI Workspace comes up at `https://localhost:9643`, backed by the same Platform A
 Like AI Workspace, it's an opt-in you turn on by editing `configs/config.toml` — there's no separate config file or Compose profile:
 
 1. **Copy the `[api_portal.design_mode]` block** from the "DESIGN MODE CONFIGURATION" section of the shipped `configs/config-template.toml` into `configs/config.toml` (keep `enabled = true`). The sample paths are already correct for the bundled samples — leave them as-is.
-2. **Restart the API Portal:** `docker compose up -d` (or `docker compose restart api-portal`).
+2. **Restart the API Portal:** `docker compose up` (or `docker compose restart api-portal`).
 
 The portal then serves from disk at `/views/default` (e.g. `http://localhost:9543/views/default`). Because design mode never touches the database, the accompanying Platform API and its database go unused while it's on — set `enabled` back to `false` and restart to return to the normal, database-backed portal.
 
@@ -188,7 +204,7 @@ See `configs/config-template.toml` for the full, per-field reference.
 `resources/certificates/` holds the TLS pair shared by both services — `cert.pem` and `key.pem`, generated by `setup.sh`. This one directory is mounted read-only into both containers at their `/etc/<service>/tls` path. To remove the browser trust warning, replace both files with a certificate from your own CA (same file names), then restart:
 
 ```bash
-docker compose up -d --force-recreate
+docker compose up --force-recreate
 ```
 
 ## Compose project name

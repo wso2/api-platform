@@ -34,6 +34,7 @@ import React, {
 import { logger } from '../utils/logger';
 import type { Organization, ValidateUserResponse } from '../utils/types';
 import { PLATFORM_API_BASE_URL } from '../config.env';
+import { handleUnauthorizedResponse } from '../auth/logout';
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -98,6 +99,7 @@ async function fetchPlatformOrganization(): Promise<Organization[]> {
     });
 
     if (!res.ok) {
+      handleUnauthorizedResponse(res);
       if (res.status === 404) {
         logger.warn('[ChoreoUserContext] No organization found — register one at /register-org');
         return [];

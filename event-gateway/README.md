@@ -54,8 +54,10 @@ From the `event-gateway/` directory:
 cp .env.example .env
 # edit .env and set GATEWAY_REGISTRATION_TOKEN
 
-docker compose up -d
+docker compose up
 ```
+
+This runs in the foreground — keep that terminal open and use a second one for the commands below, or start it detached with `docker compose up -d`.
 
 This starts five services:
 

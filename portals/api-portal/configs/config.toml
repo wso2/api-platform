@@ -1,167 +1,43 @@
-# API Portal Configuration
-#
-# Only settings that differ from the built-in defaults need to be listed here —
-# see configs/config-template.toml for the full list of available keys and
-# their default values.
-#
-# This file is loaded via a required, repeatable `--config <path>` flag (the JS
-# counterpart to the Go components' `-config`) — e.g. the container entrypoint
-# runs `node src/server.js --config /app/configs/config.toml`. At least one
-# --config is mandatory: there is no default path and no silent fallback to the
-# built-in defaults. Pass --config more than once to layer thin overlays over a
-# base file; later files override earlier ones, key by key.
-#
-# Precedence (lowest to highest):
-#   1. Built-in defaults (src/config/configDefaults.js)
-#   2. The merged --config files (this file, plus any later overlays), with any
-#      {{ env }} / {{ file }} references resolved once after the merge
-#
-# Merge semantics when layering multiple --config files: nested tables
-# deep-merge, but list/array values are REPLACED wholesale — an overlay that
-# sets a list key replaces the base list rather than appending to it.
-#
-# There is no automatic APIP_AP_* environment-variable override — an env var (or
-# a mounted file) only takes effect where a key below explicitly references it,
-# using Handlebars-style template syntax as the value. Use single-quoted TOML
-# literal strings (as below) so the inner double quotes need no escaping:
-#
-#   platform_api_url = '{{ env "APIP_AP_AUTH_LOCAL_PLATFORM_API_URL" }}'
-#   encryption_key = '{{ file "/etc/api-portal/keys/encryption.key" }}'
-#
-#   {{ env "NAME" }}            -> NAME's value. FAILS CLOSED (aborts startup) if
-#                                   NAME is unset or empty — it does not fall
-#                                   through to the built-in default shown above.
-#   {{ env "NAME" "default" }}  -> NAME's value if set, else the literal
-#                                   "default".
-#   {{ file "/path" }}          -> contents of /path, trimmed. Always required —
-#                                   a missing/unreadable/disallowed file is a
-#                                   hard startup error.
-#
-# Partial substitution works too: 'foo-{{ env "X" }}' resolves to "foo-bar" if
-# X=bar. See src/config/configLoader.js for the full implementation.
-#
-# {{ env }} is used SPARINGLY, matching platform-api/config/config.toml: a key gets
-# a token only where something actually drives it — the compose DB overrides
-# (docker-compose.postgres.yaml / .sqlserver.yaml), `npm run start:local`
-# (package.json), docker-entrypoint.sh, or a secret. Everything else is a plain
-# literal, so this file states its own effective configuration instead of sending
-# the reader hunting for a variable nobody sets. Adding a token "just in case" is
-# what turned a readable file into 25 indirections; don't.
-#
-# Where a token IS present, its fallback (the third arg) is wired for the Docker
-# Compose topology (docker-compose.yaml), NOT for src/config/configDefaults.js's
-# generic, dependency-free defaults — e.g. server.https.enabled falls back to true
-# here (a real cert is bind-mounted at /etc/api-portal/tls) vs. false in
-# configDefaults.js (no cert available for a bare `npm start`). configDefaults.js's
-# DEFAULTS only take effect for keys this file doesn't list at all (idp, uploads,
-# etc.). A config file is always required, so DEFAULTS never drive the app on their
-# own — they only fill the gaps for keys no --config file sets. See
-# configDefaults.js's own comment for why its values stay generic.
-#
-# Running locally without Docker? Use `npm run start:local` instead of
-# `npm start` (package.json) — it overrides server.https.enabled and auth.local.* to
-# values that make sense outside Compose, all in one place.
-# Plain `npm start` inherits this file's Compose-oriented defaults as-is and
-# will fail trying to read a TLS cert path that only exists in the containers.
-
 [api_portal.server]
 port = '{{ env "APIP_AP_SERVER_PORT" "9543" }}'
-# Canonical public origin of this portal, used only to build the absolute URLs
-# embedded in a generated agent prompt (so they don't depend on the request's
-# Host header). Set this to the portal's externally-reachable origin behind a
-# proxy/LB. Empty falls back to the request origin.
 base_url = "https://localhost:9543"
 
-# Single listener on server.port; enabled toggles whether it terminates TLS. Set
-# enabled=false only when a trusted upstream (proxy/LB/ingress) terminates TLS —
-# the listener then serves plain HTTP on that port. cert_file/key_file must point
-# at a real pair when enabled=true (no self-signed fallback).
 [api_portal.server.https]
 enabled   = '{{ env "APIP_AP_SERVER_HTTPS_ENABLED" "true" }}'
 cert_file = "/etc/api-portal/tls/cert.pem"
 key_file  = "/etc/api-portal/tls/key.pem"
 
 [api_portal.logging]
-level        = '{{ env "APIP_AP_LOGGING_LEVEL" "info" }}'   # debug | info | warn | error
-format       = "text"   # text | json
+level        = '{{ env "APIP_AP_LOGGING_LEVEL" "info" }}'
+format       = "text"
 console_only = true
 
 [api_portal.database]
-driver = '{{ env "APIP_AP_DATABASE_DRIVER" "sqlite" }}'   # sqlite | postgres
-# SQLite path. Relative — resolves to /app/data/api-portal.db under Compose (cwd
-# /app), matching the api-portal-data volume mount at /app/data; Docker creates that
-# directory itself as the volume's mount point, so no extra step is needed there.
-# `npm start` (cwd = repo root) resolves this to ./data/api-portal.db instead —
-# that directory does NOT get created automatically; see README's
-# "Development (npm start)" section.
+driver = '{{ env "APIP_AP_DATABASE_DRIVER" "sqlite" }}'
 path = '{{ env "APIP_AP_DATABASE_PATH" "./data/api-portal.db" }}'
-# PostgreSQL connection — used when driver = "postgres" (e.g. the
-# docker-compose.postgres.yaml override sets these).
-host     = '{{ env "APIP_AP_DATABASE_HOST" "localhost" }}'
-port     = '{{ env "APIP_AP_DATABASE_PORT" "5432" }}'
-name     = '{{ env "APIP_AP_DATABASE_NAME" "api_portal" }}'
-user     = '{{ env "APIP_AP_DATABASE_USER" "postgres" }}'
-password = '{{ env "APIP_AP_DATABASE_PASSWORD" "" }}'
-# Connection pool — PostgreSQL / MSSQL only (pool_request_timeout_ms is MSSQL-only).
-max_open_conns             = 50
-min_open_conns             = 2
-pool_idle_timeout_ms       = 10000
-pool_connection_timeout_ms = 30000
-pool_request_timeout_ms    = 30000
 
 [api_portal.security]
 encryption_key = '{{ file "/etc/api-portal/keys/encryption.key" }}'
 session_secret = '{{ file "/etc/api-portal/keys/session-secret" }}'
 
+[api_portal.auth]
+mode = "local"
+
 [api_portal.auth.local]
-# The upstream Platform API. Used for local auth credential validation when
-# auth.mode = "local".
 platform_api_url = '{{ env "APIP_AP_AUTH_LOCAL_PLATFORM_API_URL" "https://platform-api:9243" }}'
-# Filesystem path to the Platform API's RS256 public key PEM — the matching half
-# of its [platform_api.auth.jwt].private_key. scripts/setup.sh generates the
-# keypair and docker-compose.yaml mounts it at /etc/api-portal/keys; the API Portal
-# reads this file to verify Platform API-issued tokens. `npm run start:local`
-# points it at the host-side copy in resources/keys.
 public_key_path  = '{{ env "APIP_AP_AUTH_LOCAL_PUBLIC_KEY_PATH" "/etc/api-portal/keys/jwt_public.pem" }}'
 tls_skip_verify  = '{{ env "APIP_AP_AUTH_LOCAL_TLS_SKIP_VERIFY" "true" }}'
 
-# Authorization — what a verified token may do. Applies in every auth mode, which is
-# why it is not nested under auth.local or auth.idp. Plain literals, matching how
-# [platform_api.auth.authorization] is written: these are deployment policy an operator
-# edits in place, not per-environment values or secrets, so they get no {{ env }} token.
 [api_portal.auth.authorization]
-# false lets any authenticated caller satisfy every operation's declared scope list.
 enabled = true
-# "role" expands the token's roles claim through the grant table below. "scope" reads
-# the token's own scope claim instead — use it when the issuer mints dp:* scopes
-# directly (an Asgardeo tenant registered via
-# production/scripts/register_asgardeo_scopes.sh, or the Platform API in local mode).
 mode    = "role"
-# The role-to-scope grant table: required in role mode, and validated against the
-# portal's OpenAPI spec at startup. Edit it to change what each role grants — it is
-# config, not part of the image.
-#
-# Relative, unlike platform-api's absolute /etc/platform-api path, so one literal works
-# everywhere: the container resolves it against WORKDIR /app, where docker-compose.yaml
-# mounts the host copy over the one baked into the image, and `npm run start:local`
-# resolves it against the project root.
 role_to_scope_mapping = "./resources/role-to-scope-mapping.yaml"
-# Per-page role-tier gating (portal_roles below). Distinct from `enabled`, which
-# governs REST scopes.
 page_role_validation = true
 
-# Which role name in the token's roles claim grants each page-access tier. These name
-# the grant table's roles, so page gating and REST authorization are driven by the same
-# roles the Platform API and your IDP already emit.
 [api_portal.auth.authorization.portal_roles]
 admin      = "ap_admin"
 subscriber = "ap_subscriber"
 
-# The single organization this instance serves — the {handle} segment of
-# /{handle}/views/{viewName}. Required; the portal refuses to start without it.
-# In auth.mode = "local" it must match the Platform API's
-# [platform_api.auth.file.organization] id, which is what its tokens carry in the
-# org_handle claim.
 [api_portal.organization]
 handle       = '{{ env "APIP_AP_ORGANIZATION_HANDLE" "default" }}'
 display_name = '{{ env "APIP_AP_ORGANIZATION_DISPLAY_NAME" "Default" }}'
