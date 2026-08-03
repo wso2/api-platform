@@ -620,20 +620,24 @@ gateway:
           podAnnotations: {}
           podLabels: {}
           priorityClassName: ""
-          # Probe tuning for Envoy bootstrap:
-          # - readiness checks Envoy /ready on admin port
-          # - liveness stays loose and uses policy-engine /health
-          # - startup probe absorbs xDS/CDS bootstrap delay before readiness/liveness gates
+          # Probes hit the router's own health routes on the main traffic listener;
+          # the gateway chart rewrites httpGet.port/scheme from gateway.config.router
+          # so they always follow the router's actual bind port.
+          # These MUST use the same handler type as gateway-helm-chart's defaults
           livenessProbe:
-            exec:
-              command: ["health-check.sh"]
+            httpGet:
+              path: /_gateway-health/healthy
+              port: https
+              scheme: HTTPS
             initialDelaySeconds: 30
             periodSeconds: 10
             timeoutSeconds: 5
             failureThreshold: 3
           readinessProbe:
-            exec:
-              command: ["health-check.sh"]
+            httpGet:
+              path: /_gateway-health/ready
+              port: https
+              scheme: HTTPS
             initialDelaySeconds: 10
             periodSeconds: 5
             timeoutSeconds: 3

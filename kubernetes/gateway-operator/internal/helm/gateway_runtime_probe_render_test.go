@@ -18,6 +18,7 @@
 package helm
 
 import (
+	"os"
 	"strings"
 	"testing"
 
@@ -32,6 +33,11 @@ import (
 // operator installs via InstallOrUpgrade/UpgradeOrInstall.
 const gatewayHelmChartPath = "../../../helm/gateway-helm-chart"
 
+// operatorHelmChartValuesPath points at the operator chart's values.yaml, whose
+// gateway.values block is written to the gateway-values ConfigMap and handed to
+// the gateway chart install as user-supplied values (helm_values_file_path).
+const operatorHelmChartValuesPath = "../../../helm/operator-helm-chart/values.yaml"
+
 // routerOverrides describes the gateway.config.router fields relevant to health
 // probes. A zero value for listenerPort/httpsPort leaves the chart default.
 type routerOverrides struct {
@@ -45,11 +51,6 @@ type routerOverrides struct {
 // Deployment manifest.
 func renderGatewayRuntimeDeployment(t *testing.T, ro routerOverrides) map[string]interface{} {
 	t.Helper()
-
-	chrt, err := loader.Load(gatewayHelmChartPath)
-	if err != nil {
-		t.Fatalf("load chart: %v", err)
-	}
 
 	router := map[string]interface{}{
 		"https_enabled": ro.httpsEnabled,
@@ -77,6 +78,19 @@ func renderGatewayRuntimeDeployment(t *testing.T, ro routerOverrides) map[string
 		},
 	}
 
+	rendered := renderGatewayChart(t, overrides)
+	return gatewayChartDeployment(t, rendered, "gateway/templates/gateway/gateway-runtime/deployment.yaml")
+}
+
+// renderGatewayChart coalesces overrides over the gateway chart's own defaults
+// exactly the way `helm upgrade --install -f values.yaml` does, and renders it.
+func renderGatewayChart(t *testing.T, overrides map[string]interface{}) map[string]string {
+	t.Helper()
+
+	chrt, err := loader.Load(gatewayHelmChartPath)
+	if err != nil {
+		t.Fatalf("load chart: %v", err)
+	}
 	vals, err := chartutil.CoalesceValues(chrt, overrides)
 	if err != nil {
 		t.Fatalf("coalesce values: %v", err)
@@ -88,18 +102,20 @@ func renderGatewayRuntimeDeployment(t *testing.T, ro routerOverrides) map[string
 	if err != nil {
 		t.Fatalf("build render values: %v", err)
 	}
-
 	rendered, err := engine.Render(chrt, renderValues)
 	if err != nil {
 		t.Fatalf("render chart: %v", err)
 	}
+	return rendered
+}
 
-	const templateName = "gateway/templates/gateway/gateway-runtime/deployment.yaml"
+func gatewayChartDeployment(t *testing.T, rendered map[string]string, templateName string) map[string]interface{} {
+	t.Helper()
+
 	manifest, ok := rendered[templateName]
 	if !ok {
 		t.Fatalf("template %q not found in rendered output; available: %v", templateName, keysOf(rendered))
 	}
-
 	var deployment map[string]interface{}
 	if err := yaml.Unmarshal([]byte(manifest), &deployment); err != nil {
 		t.Fatalf("parse rendered deployment manifest: %v\n%s", err, manifest)
@@ -205,4 +221,89 @@ func TestGatewayRuntimeProbes_CustomRouterPorts(t *testing.T) {
 
 	assertProbePort(t, deployment, "livenessProbe", 9443, "HTTPS")
 	assertProbePort(t, deployment, "readinessProbe", 9443, "HTTPS")
+}
+
+// probeHandlerKeys are the mutually exclusive Probe handler fields; Kubernetes
+// rejects a Deployment whose probe sets more than one of them ("may not specify
+// more than 1 handler type").
+var probeHandlerKeys = []string{"exec", "httpGet", "tcpSocket", "grpc"}
+
+// TestOperatorChartValues_ProbesHaveSingleHandler guards the operator chart's
+// gateway.values block (mounted as gateway_values.yaml and passed to the gateway
+// chart install) against handler-type drift from the gateway chart's own defaults.
+//
+// Helm coalesces user-supplied values over chart defaults by deep-merging maps, so a
+// probe overridden with a *different* handler type does not replace the chart's — both
+// end up in the rendered Deployment and the API server rejects it, leaving the Gateway
+// stuck Programmed=False ("failed to create resource: ... livenessProbe.httpGet:
+// Forbidden: may not specify more than 1 handler type"). That is exactly how the
+// operator chart's `exec: health-check.sh` runtime probes broke the Gateway API
+// conformance run after the gateway chart switched to httpGet health routes.
+func TestOperatorChartValues_ProbesHaveSingleHandler(t *testing.T) {
+	raw, err := os.ReadFile(operatorHelmChartValuesPath)
+	if err != nil {
+		t.Fatalf("read operator chart values: %v", err)
+	}
+	var operatorValues struct {
+		Gateway struct {
+			Values map[string]interface{} `yaml:"values"`
+		} `yaml:"gateway"`
+	}
+	if err := yaml.Unmarshal(raw, &operatorValues); err != nil {
+		t.Fatalf("parse operator chart values: %v", err)
+	}
+	overlay := operatorValues.Gateway.Values
+	if len(overlay) == 0 {
+		t.Fatalf("gateway.values missing/empty in %s", operatorHelmChartValuesPath)
+	}
+	// Mirrors conformance/install-wso2-gateway.sh: encryption keys are mandatory
+	// for the chart to render at all.
+	if gw, ok := overlay["gateway"].(map[string]interface{}); ok {
+		controller, _ := gw["controller"].(map[string]interface{})
+		if controller == nil {
+			controller = map[string]interface{}{}
+			gw["controller"] = controller
+		}
+		controller["encryptionKeys"] = map[string]interface{}{
+			"enabled":    true,
+			"secretName": "dummy-secret",
+		}
+	}
+
+	rendered := renderGatewayChart(t, overlay)
+	for _, templateName := range []string{
+		"gateway/templates/gateway/gateway-runtime/deployment.yaml",
+		"gateway/templates/gateway/controller/deployment.yaml",
+	} {
+		deployment := gatewayChartDeployment(t, rendered, templateName)
+		containers, ok := navigate(t, deployment, "spec", "template", "spec", "containers").([]interface{})
+		if !ok || len(containers) == 0 {
+			t.Fatalf("%s: expected a non-empty containers list", templateName)
+		}
+		for _, c := range containers {
+			container, ok := c.(map[string]interface{})
+			if !ok {
+				t.Fatalf("%s: expected container map, got %#v", templateName, c)
+			}
+			name, _ := container["name"].(string)
+			for _, probeName := range []string{"livenessProbe", "readinessProbe", "startupProbe"} {
+				probe, ok := container[probeName].(map[string]interface{})
+				if !ok {
+					continue // probe not configured — nothing to validate
+				}
+				var handlers []string
+				for _, key := range probeHandlerKeys {
+					if _, present := probe[key]; present {
+						handlers = append(handlers, key)
+					}
+				}
+				if len(handlers) != 1 {
+					t.Errorf("%s: container %q %s has handlers %v, want exactly 1 — "+
+						"the operator chart's gateway.values probe must use the same handler type as "+
+						"gateway-helm-chart/values.yaml, since Helm merges (not replaces) the two maps",
+						templateName, name, probeName, handlers)
+				}
+			}
+		}
+	}
 }
