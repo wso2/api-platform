@@ -68,6 +68,7 @@ export const OIDC_CLIENT_ID  = getEnvOrDefault('APIP_AIW_OIDC_CLIENT_ID', '');
 export const OIDC_SCOPE = getEnvOrDefault(
   'APIP_AIW_AUTH_OIDC_SCOPE',
   'openid profile email offline_access' +
+  ' ap:api_key:read' +
   ' ap:organization:read ap:organization:manage' +
   ' ap:project:read ap:project:create ap:project:update ap:project:delete ap:project:manage' +
   ' ap:application:read ap:application:create ap:application:update ap:application:delete ap:application:manage' +

@@ -82,6 +82,10 @@ echo ""
 # ── Scope list ────────────────────────────────────────────────────────────────
 
 SCOPES=(
+  # api_key (organization-wide, not scoped to a resource)
+  "ap:api_key:read"
+  "ap:api_key:all:manage"
+
   # organization
   "ap:organization:manage"
   "ap:organization:read"
