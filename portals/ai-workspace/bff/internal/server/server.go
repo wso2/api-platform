@@ -78,7 +78,10 @@ func New(ctx context.Context, cfg *config.Config) (*Server, error) {
 	// Shared by both auth modes: OIDC tokens from the configured IDP, and the HMAC
 	// JWTs the Platform API's file-based login endpoint signs with the same mapped
 	// claim names. Building it once keeps the two readers from drifting apart.
-	claims := buildClaimMapping(cfg.Auth.ClaimMappings)
+	claims, err := buildClaimMapping(cfg.Auth.ClaimMappings, cfg.Auth.Authorization)
+	if err != nil {
+		return nil, err
+	}
 
 	s := &Server{
 		cfg:          cfg,
@@ -127,8 +130,22 @@ func (s *Server) Close() error {
 // config. Each field overrides the session-package default only when set, so an
 // operator can point a single claim (e.g. the display name) at the right key via
 // the CLAIM_MAPPINGS_* env vars without re-specifying the rest.
-func buildClaimMapping(c config.ClaimMappingConfig) session.ClaimMapping {
+//
+// It also carries the authorization mode and, in role mode, the loaded role-to-scope
+// grant table — the pair that decides whether a user's effective scopes come from the
+// scope claim or from expanding the roles claim. A grant table that cannot be loaded
+// fails startup rather than degrading to an empty one, which would present a UI in
+// which nothing is permitted.
+func buildClaimMapping(c config.ClaimMappingConfig, authz config.AuthorizationConfig) (session.ClaimMapping, error) {
 	m := session.DefaultClaimMapping()
+	m.AuthzMode = authz.Mode
+	if authz.Mode == config.AuthzModeRole {
+		roleScopeMap, err := session.LoadRoleScopeMap(authz.RoleToScopeMapping)
+		if err != nil {
+			return session.ClaimMapping{}, err
+		}
+		m.RoleScopeMap = roleScopeMap
+	}
 	if c.Username != "" {
 		m.Username = c.Username
 	}
@@ -150,5 +167,5 @@ func buildClaimMapping(c config.ClaimMappingConfig) session.ClaimMapping {
 	if c.OrgHandle != "" {
 		m.OrgHandle = c.OrgHandle
 	}
-	return m
+	return m, nil
 }

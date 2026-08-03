@@ -208,6 +208,30 @@ mode = "basic"
 
 
 # ---------------------------------------------------------------------------
+# Authorization — how the BFF derives the effective scopes it reports to the SPA on
+# /api/session, which is what the UI gates every action on. Mirrors
+# [platform_api.auth.authorization] and MUST be set to the same mode: the Platform API
+# enforces authorization, this only decides what the UI believes it may do. A mismatch
+# either shows every operation as blocked when the API would have allowed it, or offers
+# actions that then fail with 403.
+# ---------------------------------------------------------------------------
+[ai_workspace.auth.authorization]
+
+# "scope" (default) reads the token's scope claim. "role" expands the roles claim
+# through the grant table below — required for any IDP that cannot mint the platform's
+# ap:* scopes, which includes Microsoft Entra ID (it has no way to register them, and
+# requesting the full set exceeds its authorize-URL length limit).
+mode = "scope"
+
+# Absolute path to role-to-scope-mapping.yaml — the same file, in the same shape, that
+# the Platform API reads. REQUIRED when mode = "role": startup fails without it rather
+# than serving a UI in which nothing is permitted. Mount the same file both services
+# use so the UI and the API can never disagree about what a role grants. A path
+# containing ".." is rejected.
+role_to_scope_mapping = ""
+
+
+# ---------------------------------------------------------------------------
 # JWT claim name mappings — which token claim carries each user/org field. Applies to
 # BOTH auth modes (a sibling of [ai_workspace.auth.oidc], not nested in it): in basic
 # mode the Platform API signs JWTs using these same claim names, so the two services

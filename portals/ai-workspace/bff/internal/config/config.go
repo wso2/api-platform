@@ -131,10 +131,36 @@ type SessionConfig struct {
 
 // AuthConfig is [ai_workspace.auth]: the login mode and the claim/OIDC settings.
 type AuthConfig struct {
-	Mode          string             `koanf:"mode"` // "basic" | "oidc" — informs the SPA which login UX to show
-	OIDC          OIDCConfig         `koanf:"oidc"`
-	ClaimMappings ClaimMappingConfig `koanf:"claim_mappings"`
+	Mode          string              `koanf:"mode"` // "basic" | "oidc" — informs the SPA which login UX to show
+	OIDC          OIDCConfig          `koanf:"oidc"`
+	ClaimMappings ClaimMappingConfig  `koanf:"claim_mappings"`
+	Authorization AuthorizationConfig `koanf:"authorization"`
 }
+
+// AuthorizationConfig is [ai_workspace.auth.authorization]: how the BFF derives the
+// effective scopes it reports to the SPA on /api/session, which is what the UI gates
+// every action on. It mirrors the Platform API's [platform_api.auth.authorization] key
+// for key and MUST be set to the same mode — the Platform API enforces authorization,
+// this only decides what the UI believes it may do. A mismatch either shows every
+// operation as blocked when the API would have allowed it (mode left at "scope" against
+// an IDP that mints no ap:* scopes), or offers actions that then fail with 403.
+type AuthorizationConfig struct {
+	// Mode is "scope" (default — read the scope claim) or "role" (expand the roles
+	// claim through RoleToScopeMapping). Required as "role" for any IDP that cannot
+	// mint the platform's ap:* scopes, which includes Microsoft Entra ID.
+	Mode string `koanf:"mode"`
+	// RoleToScopeMapping is the path to role-to-scope-mapping.yaml — the same file,
+	// in the same shape, that the Platform API reads. Required in role mode; mount
+	// the same file both services use so the UI and the API cannot disagree about
+	// what a role grants.
+	RoleToScopeMapping string `koanf:"role_to_scope_mapping"`
+}
+
+// AuthzModeScope and AuthzModeRole are the supported [auth.authorization] modes.
+const (
+	AuthzModeScope = "scope"
+	AuthzModeRole  = "role"
+)
 
 // OIDCConfig is [ai_workspace.auth.oidc]: the confidential-client settings. The client
 // secret lives only here on the BFF and is never emitted to the browser. Enabled is
@@ -198,6 +224,7 @@ const CSRFHeaderName = "X-Requested-By"
 // Azure AD) issue no refresh token, so the BFF cannot silently renew the access
 // token and the user is logged out the moment it expires. Keep it in any override.
 const defaultOIDCScopes = "openid profile email offline_access" +
+	" ap:api_key:read" +
 	" ap:organization:read ap:organization:manage ap:organization:subscription:read" +
 	" ap:project:read ap:project:create ap:project:update ap:project:delete ap:project:manage" +
 	" ap:application:read ap:application:create ap:application:update ap:application:delete ap:application:manage" +
@@ -307,6 +334,18 @@ func (c *Config) validate() error {
 	// "oidc" would leave OIDC.Enabled false and hand the SPA an unknown login UX.
 	if c.Auth.Mode != "basic" && c.Auth.Mode != "oidc" {
 		return fmt.Errorf("invalid [auth] mode %q: must be \"basic\" or \"oidc\"", c.Auth.Mode)
+	}
+	// Fail closed on the authorization mode: an unrecognized value would fall through
+	// to reading the scope claim, which for a role-mode deployment means the SPA shows
+	// every operation as blocked with no error explaining why.
+	if c.Auth.Authorization.Mode != AuthzModeScope && c.Auth.Authorization.Mode != AuthzModeRole {
+		return fmt.Errorf("invalid [auth.authorization] mode %q: must be %q or %q",
+			c.Auth.Authorization.Mode, AuthzModeScope, AuthzModeRole)
+	}
+	// Role mode without a grant table can only ever expand to zero scopes, so refuse
+	// to start rather than serve a UI in which nothing is permitted.
+	if c.Auth.Authorization.Mode == AuthzModeRole && c.Auth.Authorization.RoleToScopeMapping == "" {
+		return fmt.Errorf("[auth.authorization] role_to_scope_mapping is required when mode = %q", AuthzModeRole)
 	}
 	if !c.Server.HTTP.Enabled && !c.Server.HTTPS.Enabled {
 		return fmt.Errorf("no listeners enabled: set [server.http] enabled = true and/or [server.https] enabled = true")

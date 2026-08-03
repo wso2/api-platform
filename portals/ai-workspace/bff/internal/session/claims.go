@@ -38,7 +38,22 @@ type ClaimMapping struct {
 	OrgID     string
 	OrgName   string
 	OrgHandle string
+
+	// AuthzMode mirrors the Platform API's auth.authorization.mode: "scope"
+	// (default) reads the user's effective scopes from the scope claim, "role"
+	// derives them by expanding the roles claim through RoleScopeMap. It lives on
+	// the claim mapping rather than in its own struct because this value is already
+	// threaded to every place a User is built, and the mode decides which *claim*
+	// the scopes are read from — a mapping concern.
+	AuthzMode string
+	// RoleScopeMap is the loaded role-to-scope grant table, used only in role mode.
+	// Nil in scope mode.
+	RoleScopeMap map[string][]string
 }
+
+// AuthzModeRole is the auth.authorization.mode value that derives effective scopes
+// from the roles claim rather than from the scope claim.
+const AuthzModeRole = "role"
 
 // DefaultClaimMapping returns the built-in fallback mapping, used whenever a
 // config.ClaimMappingConfig field is left unset — for both file-based and OIDC
@@ -116,11 +131,16 @@ func UserFromClaims(claims, idClaims map[string]any, m ClaimMapping) User {
 	// Resolve a human-friendly display name from the configured username claim,
 	// then email, and only as a last resort the opaque subject id (so the UI
 	// never shows a raw UUID when a readable claim is available).
+	// The roles claim is a string on some IDPs and an array on others (Entra ID emits
+	// ["ap_admin"]), so read both shapes — a plain string read would leave this empty
+	// for an array-valued claim. roleList also feeds the role-mode expansion below.
+	roleList := strSliceClaim(claims, m.Roles)
+
 	u := User{
 		Name:   first(get(m.Username), get(m.Email), get("sub")),
 		Email:  get(m.Email),
-		Role:   strClaim(claims, m.Roles),
-		Scopes: scopes(claims, m.Scope),
+		Role:   strings.Join(roleList, " "),
+		Scopes: effectiveScopes(claims, roleList, m),
 	}
 
 	orgID := strClaim(claims, m.OrgID)
@@ -144,6 +164,43 @@ func strClaim(claims map[string]any, key string) string {
 		return s
 	}
 	return ""
+}
+
+// strSliceClaim reads a claim that may be a single string, a space-delimited string,
+// or an array of strings. Roles arrive in all three shapes depending on the IDP:
+// Asgardeo sends a string, Entra ID sends an array.
+func strSliceClaim(claims map[string]any, key string) []string {
+	if key == "" || claims == nil {
+		return nil
+	}
+	switch v := claims[key].(type) {
+	case string:
+		return strings.Fields(v)
+	case []any:
+		out := make([]string, 0, len(v))
+		for _, item := range v {
+			if s, ok := item.(string); ok && s != "" {
+				out = append(out, s)
+			}
+		}
+		return out
+	}
+	return nil
+}
+
+// effectiveScopes resolves the scopes the SPA gates on, mirroring the Platform API's
+// resolveEffectiveScopes: in role mode the roles claim expanded through the grant
+// table, otherwise the scope claim as-is.
+//
+// Role mode deliberately does not fall back to the scope claim when the expansion is
+// empty. A role the operator never mapped granting nothing is a real deny-by-default
+// outcome, and the Platform API reaches the same one for the same token — falling back
+// here would show actions as available that then fail with 403.
+func effectiveScopes(claims map[string]any, roleList []string, m ClaimMapping) []string {
+	if m.AuthzMode == AuthzModeRole {
+		return ExpandRoles(roleList, m.RoleScopeMap)
+	}
+	return scopes(claims, m.Scope)
 }
 
 // scopes reads the scope claim, which may be a space-delimited string ("scope")
