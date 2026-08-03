@@ -34,6 +34,12 @@
   var contentZipFile = null;
   var hasContentStep = false;   /* the Content step exists only for existing, non-MCP APIs */
   var wizardOrigin = 'cfg-apis'; /* tab that launched the wizard: 'cfg-apis' or 'cfg-mcps' */
+  /* MCP is created via its own flow (type field hidden, always 'Mcp'); the API-type
+     dropdown only offers the user-selectable API types. wizardEditType preserves the
+     original type on edit for types the dropdown no longer lists (Mcp, WebSub, SOAP). */
+  var TYPE_DROPDOWN_VALUES = { RestApi: 1, WS: 1, GRAPHQL: 1 };
+  var wizardIsMcp = false;
+  var wizardEditType = null;
 
   /* build id→api lookup and load all policies from server-rendered data blobs */
   var apiMap = {};
@@ -328,6 +334,15 @@
        edited, or from the launching button (kindHint) when adding. */
     var isMcp = api ? (api.apiType === 'Mcp') : (kindHint === 'mcp');
     wizardOrigin = isMcp ? 'cfg-mcps' : 'cfg-apis';
+    wizardIsMcp = isMcp;
+    wizardEditType = api ? api.apiType : null;
+
+    /* The API-type field is only meaningful for the user-selectable API types. Hide it
+       for MCP (always 'Mcp') and when editing a type the dropdown no longer lists
+       (WebSub/SOAP) — the original type is preserved on save via wizardEditType. */
+    var hideTypeField = isMcp || (!!api && !TYPE_DROPDOWN_VALUES[api.apiType]);
+    var typeGroup = document.getElementById('wz-type-group');
+    if (typeGroup) typeGroup.style.display = hideTypeField ? 'none' : '';
 
     /* The wizard markup lives inside #cfg-apis; reveal that panel (with its list hidden)
        regardless of which tab launched it, and keep the launching tab highlighted. */
@@ -389,7 +404,8 @@
       ['wz-name','wz-version','wz-handle','wz-desc','wz-prod','wz-sandbox','wz-tech-owner','wz-tech-email','wz-biz-owner','wz-biz-email'].forEach(function(id){ sv(id,''); });
       setTags([]);
       document.getElementById('wz-handle').readOnly = false;
-      sel('wz-type', isMcp ? 'Mcp' : 'RestApi'); sel('wz-status','PUBLISHED');
+      /* MCP has no dropdown entry — its type is forced to 'Mcp' on save (wizardIsMcp). */
+      sel('wz-type', 'RestApi'); sel('wz-status','PUBLISHED');
       agentVis = 'Visible';
       document.getElementById('wz-vis-visible').classList.add('active');
       document.getElementById('wz-vis-hidden').classList.remove('active');
@@ -402,10 +418,10 @@
     syncProdRequiredMarker();
 
     /* clear any leftover validation errors */
-    ['wz-name-error','wz-version-error','wz-handle-error','wz-desc-error','wz-prod-error','wz-tech-email-error','wz-biz-email-error'].forEach(function(eid) {
+    ['wz-name-error','wz-version-error','wz-handle-error','wz-desc-error','wz-prod-error','wz-sandbox-error','wz-tech-email-error','wz-biz-email-error'].forEach(function(eid) {
       var el = document.getElementById(eid); if (el) el.style.display = 'none';
     });
-    ['wz-name','wz-version','wz-handle','wz-desc','wz-prod','wz-tech-email','wz-biz-email'].forEach(function(fid) {
+    ['wz-name','wz-version','wz-handle','wz-desc','wz-prod','wz-sandbox','wz-tech-email','wz-biz-email'].forEach(function(fid) {
       var el = document.getElementById(fid); if (el) el.classList.remove('cfg-form-input--error');
     });
 
@@ -475,15 +491,22 @@
     var version = v('wz-version');
     var handle  = v('wz-handle');
     if (!name || !version || !handle) {
-      await showAlert('API name, version, and handle are required.', 'error');
+      await showAlert('Name, version, and handle are required.', 'error');
       return;
     }
+
+    /* Type resolution: MCP is always 'Mcp' (field hidden); when editing a type the
+       dropdown doesn't list (WebSub/SOAP), keep the original; otherwise take the
+       user's dropdown choice. */
+    var resolvedType = wizardIsMcp ? 'Mcp'
+      : (editMode && wizardEditType && !TYPE_DROPDOWN_VALUES[wizardEditType]) ? wizardEditType
+      : document.getElementById('wz-type').value;
 
     var meta = {
       name:        name,
       version:     version,
       handle:      handle,
-      type:        document.getElementById('wz-type').value,
+      type:        resolvedType,
       status:      document.getElementById('wz-status').value,
       description: v('wz-desc'),
       tags:           getTags(),
@@ -775,12 +798,19 @@
     if (inputEl) { inputEl.classList.toggle('cfg-form-input--error', !!msg); }
   }
 
+  /* Frontend-only URL check for the endpoint fields — a valid http/https URL. */
+  function isValidHttpUrl(s) {
+    var u;
+    try { u = new URL(s); } catch (e) { return false; }
+    return u.protocol === 'http:' || u.protocol === 'https:';
+  }
+
   function validateStep0() {
     var ok = true;
     var emailRe = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
     var name = v('wz-name');
-    setFieldError('wz-name', 'wz-name-error', name ? '' : 'API name is required.');
+    setFieldError('wz-name', 'wz-name-error', name ? '' : 'Name is required.');
     if (!name) ok = false;
 
     var version = v('wz-version');
@@ -807,8 +837,19 @@
     if (status === 'PUBLISHED' && !prodUrl) {
       setFieldError('wz-prod', 'wz-prod-error', 'Production URL is required to publish an API.');
       ok = false;
+    } else if (prodUrl && !isValidHttpUrl(prodUrl)) {
+      setFieldError('wz-prod', 'wz-prod-error', 'Enter a valid http:// or https:// URL.');
+      ok = false;
     } else {
       setFieldError('wz-prod', 'wz-prod-error', '');
+    }
+
+    var sandboxUrl = v('wz-sandbox');
+    if (sandboxUrl && !isValidHttpUrl(sandboxUrl)) {
+      setFieldError('wz-sandbox', 'wz-sandbox-error', 'Enter a valid http:// or https:// URL.');
+      ok = false;
+    } else {
+      setFieldError('wz-sandbox', 'wz-sandbox-error', '');
     }
 
     var techEmail = v('wz-tech-email');
