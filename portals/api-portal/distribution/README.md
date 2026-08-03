@@ -11,7 +11,8 @@ wso2apip-api-portal-<version>/
 ├── scripts/
 │   ├── setup.sh                                 # One-time TLS + secrets provisioning
 │   ├── setup.ps1                                # Same, for Windows (PowerShell)
-│   └── seed-samples.sh                          # Optional: deploy the bundled sample APIs/MCPs
+│   ├── seed-samples.sh                          # Optional: deploy the bundled sample APIs/MCPs
+│   └── seed-samples.ps1                         # Same, for Windows (PowerShell)
 ├── configs/
 │   ├── config.toml                              # Unified active config — [api_portal] + [platform_api] sections
 │   └── config-template.toml                     # Config reference — both active components, plus optional [ai_workspace] at the bottom
@@ -80,6 +81,13 @@ Deploys the sample APIs and MCP servers under `resources/samples/` into the defa
 
 ```bash
 ./scripts/seed-samples.sh
+```
+
+On **Windows**:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\scripts\seed-samples.ps1
+# PowerShell 7+ is also fine:  pwsh -File .\scripts\seed-samples.ps1
 ```
 
 Prompts for the admin username/password (or set `ADMIN_USERNAME`/`ADMIN_PASSWORD` to skip the prompt). Safe to re-run — entries that already exist are skipped.
