@@ -136,7 +136,7 @@
           <div class="api-card-footer">
             <div class="api-card-footer-left">
               <a href="{{../baseUrl}}/api/{{id}}#subscriptionPlans" class="api-plans-link">
-                <i class="bi bi-tag"></i> {{subscriptionPlans.length}} plans
+                <i class="bi bi-tag"></i> {{subscriptionPlans.length}} {{conditionalIf (eq subscriptionPlans.length 1) "plan" "plans"}}
               </a>
             </div>
             {{#if hasSubscription}}
