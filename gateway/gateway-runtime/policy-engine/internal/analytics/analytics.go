@@ -87,17 +87,28 @@ const (
 	// internal loopback request to the provider.
 	InternalLoopbackMetadataKey string = "x-wso2-internal-loopback"
 
-	// PropInternalLoopbackProvider marks the provider-side loopback hop of a proxy call
-	// so Process can drop the duplicate event before publisher fan-out.
+	// PropInternalLoopbackProvider marks the provider-side loopback hop of a proxy call so
+	// Process can apply each consumer's delivery rule to it during publisher fan-out.
 	PropInternalLoopbackProvider string = "isInternalLoopbackProvider"
 )
+
+// registeredPublisher pairs a publisher with the per-consumer delivery rules that only
+// the collector knows about, keeping them out of the Publisher interface.
+type registeredPublisher struct {
+	// publisher receives the prepared event.
+	publisher analytics_publisher.Publisher
+	// suppressInternalLoopback drops the provider-side loopback hop of a proxy call for
+	// this consumer only. Set for consumers that count a client call once (Moesif) and
+	// left unset for consumers that record every hop (traffic logging).
+	suppressInternalLoopback bool
+}
 
 // Analytics represents analytics collector service.
 type Analytics struct {
 	// cfg represents the server configuration.
 	cfg *config.Config
-	// publishers represents the publishers.
-	publishers []analytics_publisher.Publisher
+	// publishers represents the publishers together with their delivery rules.
+	publishers []registeredPublisher
 	// missingDirectPeerWarn limits the "direct remote address unavailable" warning to one
 	// line per process which otherwise repeating it once per request would flood the logs
 	missingDirectPeerWarn sync.Once
@@ -110,14 +121,18 @@ type Analytics struct {
 // receive any events.
 func NewAnalytics(cfg *config.Config) *Analytics {
 	analyticsCfg := cfg.Analytics
-	publishers := make([]analytics_publisher.Publisher, 0)
+	publishers := make([]registeredPublisher, 0)
 	if analyticsCfg.Enabled {
 		for _, publisherName := range analyticsCfg.EnabledPublishers {
 			switch publisherName {
 			case MoesifAnalyticsPublisher:
 				publisher := analytics_publisher.NewMoesif(&analyticsCfg.Publishers.Moesif)
 				if publisher != nil {
-					publishers = append(publishers, publisher)
+					// Moesif counts one client call once, so it must not see the loopback hop.
+					publishers = append(publishers, registeredPublisher{
+						publisher:                publisher,
+						suppressInternalLoopback: true,
+					})
 					slog.Info("Moesif publisher added")
 				}
 			default:
@@ -126,9 +141,16 @@ func NewAnalytics(cfg *config.Config) *Analytics {
 		}
 	}
 
-	// Traffic logging is a standalone consumer, independent of analytics.
+	// Traffic logging is a standalone consumer, independent of analytics. It records every
+	// hop, so the provider hop is the only measure of the real vendor round-trip and must
+	// not be suppressed.
 	if cfg.TrafficLogging.Enabled {
-		publishers = append(publishers, analytics_publisher.NewLog(&cfg.TrafficLogging))
+		publishers = append(publishers, registeredPublisher{
+			publisher: analytics_publisher.NewLog(&cfg.TrafficLogging),
+			// Stated explicitly rather than left to the zero value: delivering the provider
+			// hop here is the behaviour this registration exists to guarantee.
+			suppressInternalLoopback: false,
+		})
 		slog.Info("Traffic logging (stdout) publisher added")
 	}
 
@@ -158,27 +180,38 @@ func (c *Analytics) Process(event *v3.HTTPAccessLogEntry) {
 
 	analyticEvent := c.prepareAnalyticEvent(event)
 
-	// Suppress the internal loopback provider hop of an LLM proxy call so a single client
-	// call is counted once, detecting using the marker header set by the proxy
-	// when carrying on its loopback forward
+	// The internal loopback provider hop of an LLM proxy call is a duplicate only for
+	// consumers that count a client call once, detected using the marker header set by the
+	// proxy when carrying on its loopback forward. It is filtered per consumer during
+	// fan-out rather than globally, so consumers that record every hop still receive it.
+	isInternalLoopbackProvider := false
 	if v, ok := analyticEvent.Properties[PropInternalLoopbackProvider].(bool); ok && v {
-		correlationID := ""
-		if analyticEvent.MetaInfo != nil {
-			correlationID = analyticEvent.MetaInfo.CorrelationID
-		}
-		apiType := ""
-		if analyticEvent.API != nil {
-			apiType = analyticEvent.API.APIType
-		}
-		slog.Debug("Suppressing internal loopback provider analytics event",
-			"apiType", apiType,
-			"correlationId", correlationID,
-		)
-		return
+		isInternalLoopbackProvider = true
 	}
 
-	for _, publisher := range c.publishers {
-		publisher.Publish(analyticEvent)
+	// Traced once per event, and only once a consumer has actually been skipped: a
+	// deployment with no suppressing consumer drops nothing and must not claim otherwise.
+	suppressionLogged := false
+	for _, registered := range c.publishers {
+		if isInternalLoopbackProvider && registered.suppressInternalLoopback {
+			if !suppressionLogged {
+				suppressionLogged = true
+				correlationID := ""
+				if analyticEvent.MetaInfo != nil {
+					correlationID = analyticEvent.MetaInfo.CorrelationID
+				}
+				apiType := ""
+				if analyticEvent.API != nil {
+					apiType = analyticEvent.API.APIType
+				}
+				slog.Debug("Suppressing internal loopback provider analytics event",
+					"apiType", apiType,
+					"correlationId", correlationID,
+				)
+			}
+			continue
+		}
+		registered.publisher.Publish(analyticEvent)
 	}
 
 }
