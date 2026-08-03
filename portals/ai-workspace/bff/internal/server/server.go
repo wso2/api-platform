@@ -91,7 +91,7 @@ func New(ctx context.Context, cfg *config.Config) (*Server, error) {
 		refreshLocks: make(map[string]*refreshLock),
 	}
 
-	if cfg.Auth.OIDC.Enabled {
+	if cfg.Auth.OIDCEnabled() {
 		// The session store exists only to hold OIDC refresh/id tokens for renewal.
 		// File-based sessions are fully self-contained in the cookie JWT.
 		s.store = session.NewMemoryStore()

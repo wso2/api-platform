@@ -311,7 +311,7 @@ export default function GatewayDeployEnvCard({
                       : 'text.secondary',
           }}
         >
-          {isAwaitingGatewayAck ? 'Verifying' : isNotActive ? 'Not Active' : isDeployed ? 'Active' : isUndeployed ? 'Suspended' : isDeploying ? 'Deploying' : isUndeploying ? 'Undeploying' : isFailed ? 'Failed' : deploymentStatus}
+          {isAwaitingGatewayAck ? 'Deploying' : isNotActive ? 'Not Active' : isDeployed ? 'Active' : isUndeployed ? 'Suspended' : isDeploying ? 'Deploying' : isUndeploying ? 'Undeploying' : isFailed ? 'Failed' : deploymentStatus}
         </Typography>
       </Box>
 
