@@ -59,7 +59,7 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  min-height: calc(100vh - 7rem);   /* fill available vertical space */
+  min-height: calc(100vh - 6.5rem);   /* fill available vertical space */
   margin: 0 -2rem -1rem -2rem;   /* bleed past content-area padding */
   background: var(--surface-dark);
 }

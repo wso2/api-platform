@@ -101,13 +101,13 @@
                   {{else if (eq type "SOAP")}}dp-badge--soap
                   {{else if (eq type "WebSubApi")}}dp-badge--ws
                   {{else}}dp-badge--rest{{/if}}">
-                  {{#if (eq type "GRAPHQL")}}<i class="bi bi-share"></i> GraphQL
-                  {{else if (eq type "WS")}}<i class="bi bi-broadcast"></i> WebSocket
+                  {{#if (eq type "GRAPHQL")}}<img src="/images/graphql-icon.svg" class="dp-badge-icon" alt="" /> GraphQL
+                  {{else if (eq type "WS")}}<img src="/images/websocket-icon.svg" class="dp-badge-icon" alt="" /> WebSocket
                   {{else if (eq type "WebSubApi")}}<i class="bi bi-broadcast-pin"></i> WebSub
                   {{else if (eq type "SOAP")}}<i class="bi bi-file-code"></i> SOAP
                   {{else}}<i class="bi bi-braces"></i> REST{{/if}}
                 </span>
-                {{#if ../showApiWorkflowsNav}}
+                {{#if ../aiEnabled}}
                 {{#unless (eq agentVisibility "HIDDEN")}}
                 <span class="dp-badge dp-badge--ai" title="AI agents can discover and use this API">
                   <i class="bi bi-robot"></i> AI Ready
@@ -136,7 +136,7 @@
           <div class="api-card-footer">
             <div class="api-card-footer-left">
               <a href="{{../baseUrl}}/api/{{id}}#subscriptionPlans" class="api-plans-link">
-                <i class="bi bi-tag"></i> {{subscriptionPlans.length}} plans
+                <i class="bi bi-tag"></i> {{subscriptionPlans.length}} {{conditionalIf (eq subscriptionPlans.length 1) "plan" "plans"}}
               </a>
             </div>
             {{#if hasSubscription}}
@@ -165,4 +165,5 @@
   </div>
 
   <script src='/technical-scripts/listing-cards.js' defer></script>
+  <script src='/technical-scripts/paginate.js' defer></script>
 </section>

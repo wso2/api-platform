@@ -12,6 +12,18 @@
   white-space: nowrap;
 }
 
+.dp-badge-icon { width: 0.875em; height: 0.875em; flex: none; }
+
+.mcp-glyph {
+  display: inline-block;
+  flex: none;
+  width: 1em;
+  height: 1em;
+  background-color: currentcolor;
+  -webkit-mask: url("/images/mcp-icon.svg") no-repeat center / contain;
+  mask: url("/images/mcp-icon.svg") no-repeat center / contain;
+}
+
 .dp-badge--rest    { background: #e6f2fb; color: #0277bd; }
 .dp-badge--graphql { background: #fce4ef; color: #d6336c; }
 .dp-badge--soap    { background: #ece9fb; color: #6741d9; }
@@ -756,4 +768,70 @@
   pointer-events: none;
   opacity: 0.45;
   cursor: default;
+}
+
+/* ── Pagination ──────────────────────────────────────────────
+   Shared by the public API/MCP card grids and the Settings tables
+   (client-side pagination, see scripts/paginate.js). */
+.dp-pagination {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin-top: 24px;
+}
+
+.dp-pagination-info {
+  font-size: 0.8125rem;
+  color: var(--text-muted, #6b7280);
+}
+
+.dp-pagination-nav {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-left: auto;
+}
+
+.dp-page-btn {
+  min-width: 34px;
+  height: 34px;
+  padding: 0 8px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid var(--border-strong, #d0d7de);
+  border-radius: 8px;
+  background: var(--white, #fff);
+  color: var(--primary, #1a2433);
+  font-size: 0.8125rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background 0.15s ease, border-color 0.15s ease, color 0.15s ease;
+}
+
+.dp-page-btn:hover:not(:disabled):not(.dp-page-btn--active) {
+  background: var(--surface-sunken, #f3f4f6);
+  border-color: var(--primary, #1a2433);
+}
+
+.dp-page-btn--active {
+  background: var(--cta-gradient, #1f6feb);
+  border-color: transparent;
+  color: var(--white, #fff);
+  cursor: default;
+}
+
+.dp-page-btn:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.dp-page-ellipsis {
+  min-width: 20px;
+  text-align: center;
+  color: var(--text-muted, #6b7280);
+  user-select: none;
 }

@@ -13,7 +13,14 @@
         {{#if apiMetadata.version}}
         <span class="dp-badge dp-badge--version">{{apiMetadata.version}}</span>
         {{/if}}
-        <span class="dp-badge dp-badge--mcp"><i class="bi bi-cpu"></i> MCP</span>
+        <span class="dp-badge dp-badge--mcp"><span class="mcp-glyph dp-badge-icon" aria-hidden="true"></span> MCP</span>
+        {{#if aiEnabled}}
+        {{#unless (eq apiMetadata.agentVisibility "HIDDEN")}}
+        <span class="dp-badge dp-badge--ai" title="AI agents can discover and use this MCP server">
+          <i class="bi bi-robot"></i> AI Ready
+        </span>
+        {{/unless}}
+        {{/if}}
         {{#if (eq apiMetadata.status "DEPRECATED")}}
         <span class="dp-badge dp-badge--deprecated"><i class="bi bi-exclamation-circle"></i> Deprecated</span>
         {{/if}}
@@ -42,6 +49,13 @@
       <a class="dp-btn dp-btn--outline" href="{{baseUrl}}/mcp/{{apiMetadata.id}}/docs/specification">
         <i class="bi bi-book"></i> Documentation
       </a>
+      {{#if aiEnabled}}
+      {{#unless (eq apiMetadata.agentVisibility "HIDDEN")}}
+      <button type="button" class="dp-btn dp-btn--ai" data-bs-toggle="modal" data-bs-target="#apiAgentPromptModal">
+        <i class="bi bi-robot"></i> Try with AI
+      </button>
+      {{/unless}}
+      {{/if}}
       {{#if showApiKeysNav}}
       <a class="dp-btn dp-btn--outline" href="{{baseUrl}}/mcp/{{apiMetadata.id}}/api-keys">
         <i class="bi bi-key"></i> API Keys

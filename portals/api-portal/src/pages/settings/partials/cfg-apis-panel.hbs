@@ -156,7 +156,7 @@
               <p class="cfg-form-section-title">General</p>
               <div class="cfg-form-grid">
                 <div class="cfg-form-group">
-                  <label for="wz-name">API name <span class="required">*</span></label>
+                  <label for="wz-name">Name <span class="required">*</span></label>
                   <input type="text" id="wz-name" class="cfg-form-input" placeholder="e.g. Reading-List-API" />
                   <p id="wz-name-error" style="display:none;color:#c62828;font-size:.75rem;margin:3px 0 0;"></p>
                 </div>
@@ -171,14 +171,12 @@
                   <p class="cfg-field-hint">Auto-generated from name &amp; version. Edit to override — cannot be changed once created.</p>
                   <p id="wz-handle-error" style="display:none;color:#c62828;font-size:.75rem;margin:3px 0 0;"></p>
                 </div>
-                <div class="cfg-form-group">
+                <div class="cfg-form-group" id="wz-type-group">
                   <label for="wz-type">API type</label>
                   <select id="wz-type" class="cfg-form-input">
                     <option value="RestApi">REST</option>
                     <option value="WS">WebSocket</option>
                     <option value="GRAPHQL">GraphQL</option>
-                    <option value="WebSubApi">WebSub</option>
-                    <option value="Mcp">MCP</option>
                   </select>
                 </div>
                 <div class="cfg-form-group">
@@ -212,6 +210,7 @@
                 <div class="cfg-form-group">
                   <label for="wz-sandbox">Sandbox URL</label>
                   <input type="text" id="wz-sandbox" class="cfg-form-input cfg-form-input--mono" placeholder="https://sandbox.example.com/booking" />
+                  <p id="wz-sandbox-error" style="display:none;color:#c62828;font-size:.75rem;margin:3px 0 0;"></p>
                 </div>
               </div>
             </div>
@@ -236,9 +235,16 @@
                   {{/if}}
                 </div>
                 <div class="cfg-form-group cfg-form-group-full">
-                  <label for="wz-tags">Tags</label>
-                  <input type="text" id="wz-tags" class="cfg-form-input" placeholder="booking, travel  (comma separated)" />
-                  <p class="cfg-field-hint">Free-text keywords for search and discovery.</p>
+                  <label for="wz-tags-input">Tags</label>
+                  {{!-- Chip input, same markup/classes as the subscription-plan picker
+                        above. Tags are free text, so there is no dropdown — a chip is
+                        committed from what was typed. --}}
+                  <div class="cfg-chip-input-wrap" id="wz-tags-wrap">
+                    <div id="wz-tags-chips" style="display:contents;"></div>
+                    <input type="text" class="cfg-chip-text-input" id="wz-tags-input"
+                      placeholder="Add a tag…" autocomplete="off" aria-describedby="wz-tags-hint" />
+                  </div>
+                  <p class="cfg-field-hint" id="wz-tags-hint">Free-text keywords for search and discovery. Press Enter or comma to add; Backspace removes the last tag.</p>
                 </div>
                 <div class="cfg-form-group">
                   <label for="wz-status">Status</label>

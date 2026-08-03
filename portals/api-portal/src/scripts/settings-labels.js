@@ -18,6 +18,11 @@
  
 
 (function () {
+  // Local fallback for the shared bindFormValidity (defined in alert.js, loaded first
+  // on the settings page): keeps save/delete working even if it were ever unavailable,
+  // only skipping the disable-until-valid behaviour instead of throwing at init.
+  var bindFormValidity = window.bindFormValidity || function () { return function () {}; };
+
   var _cfg = document.getElementById('cfg-page-config') || { dataset: {} };
   var ORG_ID = _cfg.dataset.orgId || '';
   var editLabelName = null;
@@ -37,6 +42,7 @@
     /* The handle is the label's identity — every API and view mapping keys off
        it, so it cannot change after creation. */
     document.getElementById('lbl-name').readOnly = mode === 'edit';
+    syncLabelSave();
     document.getElementById('cfg-label-modal').style.display = 'flex';
     document.getElementById('lbl-display').focus();
   }
@@ -47,42 +53,51 @@
   document.getElementById('lbl-display').addEventListener('input', function() {
     if (editLabelName || labelHandleTouched) return;
     document.getElementById('lbl-name').value = this.value.toLowerCase().trim().replace(/[^a-z0-9]+/g,'-').replace(/^-|-$/g,'');
+    syncLabelSave();
+  });
+
+  /* Disable save until Name and Handle are both filled. */
+  var syncLabelSave = bindFormValidity(document.getElementById('cfg-label-modal-save'), ['lbl-display', 'lbl-name'], function() {
+    return v('lbl-display') !== '' && v('lbl-name') !== '';
   });
 
   /* ── save label ── */
   document.getElementById('cfg-label-modal-save').addEventListener('click', async function() {
+    var saveBtn     = this;
     var displayName = v('lbl-display');
     var name        = v('lbl-name');
     if (!displayName || !name) { await showAlert('Name and handle are required.', 'error'); return; }
 
-    try {
-      var res;
-      if (editLabelName) {
-        /* Handle is immutable and the input is read-only while editing, so this
-           is always a display-name update. It used to fall back to DELETE + POST
-           when the handle differed — but deleting a label cascades through
-           api_label_mappings / view_label_mappings, so every API and view lost
-           the label and the recreated one came back with no members. */
-        res = await fetch(window.apiPortalApi.root('/labels/'+encodeURIComponent(editLabelName)), {
-          method: 'PUT',
-          headers: { 'Content-Type':'application/json', 'X-CSRF-Token': window.apiPortalApi.csrfToken() },
-          body: JSON.stringify({ id: editLabelName, displayName: displayName }),
-        });
-      } else {
-        res = await fetch(window.apiPortalApi.root('/labels'), {
-          method: 'POST',
-          headers: { 'Content-Type':'application/json', 'X-CSRF-Token': window.apiPortalApi.csrfToken() },
-          body: JSON.stringify({ id: name, displayName: displayName }),
-        });
-      }
-      if (res.ok) {
-        await showAlert(editLabelName ? 'Label updated.' : 'Label created.', 'success');
-        window.location.reload();
-      } else {
-        var err = await res.json().catch(function(){ return {}; });
-        await showAlert('Failed: '+(err.description||err.message||res.statusText), 'error');
-      }
-    } catch(e) { await showAlert('Error: '+e.message, 'error'); }
+    await withButtonBusy(saveBtn, editLabelName ? 'Saving…' : 'Adding…', async function() {
+      try {
+        var res;
+        if (editLabelName) {
+          /* Handle is immutable and the input is read-only while editing, so this
+             is always a display-name update. It used to fall back to DELETE + POST
+             when the handle differed — but deleting a label cascades through
+             api_label_mappings / view_label_mappings, so every API and view lost
+             the label and the recreated one came back with no members. */
+          res = await fetch(window.apiPortalApi.root('/labels/'+encodeURIComponent(editLabelName)), {
+            method: 'PUT',
+            headers: { 'Content-Type':'application/json', 'X-CSRF-Token': window.apiPortalApi.csrfToken() },
+            body: JSON.stringify({ id: editLabelName, displayName: displayName }),
+          });
+        } else {
+          res = await fetch(window.apiPortalApi.root('/labels'), {
+            method: 'POST',
+            headers: { 'Content-Type':'application/json', 'X-CSRF-Token': window.apiPortalApi.csrfToken() },
+            body: JSON.stringify({ id: name, displayName: displayName }),
+          });
+        }
+        if (res.ok) {
+          await showAlert(editLabelName ? 'Label updated.' : 'Label created.', 'success');
+          window.location.reload();
+        } else {
+          var err = await res.json().catch(function(){ return {}; });
+          await showAlert('Failed: '+(err.description||err.message||res.statusText), 'error');
+        }
+      } catch(e) { await showAlert('Error: '+e.message, 'error'); }
+    });
   });
 
   document.getElementById('cfg-label-modal-close').addEventListener('click', closeLabelModal);
@@ -113,22 +128,24 @@
     document.getElementById('cfg-delete-label-modal').style.display = 'none';
   });
   document.getElementById('cfg-delete-label-modal').addEventListener('click', function(e){ if(e.target===this) this.style.display='none'; });
-  document.getElementById('cfg-del-label-confirm').addEventListener('click', async function() {
+  document.getElementById('cfg-del-label-confirm').addEventListener('click', function() {
     if (!pendingDelName) return;
-    document.getElementById('cfg-delete-label-modal').style.display = 'none';
-    try {
-      var res = await fetch(window.apiPortalApi.root('/labels/'+encodeURIComponent(pendingDelName)), {
-        method: 'DELETE',
-        headers: { 'X-CSRF-Token': window.apiPortalApi.csrfToken() },
-      });
-      if (res.ok || res.status===204) {
-        await showAlert('Label deleted.', 'success');
-        window.location.reload();
-      } else {
+    withButtonBusy(this, 'Deleting…', async function() {
+      try {
+        var res = await fetch(window.apiPortalApi.root('/labels/'+encodeURIComponent(pendingDelName)), {
+          method: 'DELETE',
+          headers: { 'X-CSRF-Token': window.apiPortalApi.csrfToken() },
+        });
+        if (res.ok || res.status===204) {
+          await showAlert('Label deleted.', 'success');
+          window.location.reload();
+          return;
+        }
         var err = await res.json().catch(function(){ return {}; });
         await showAlert('Delete failed: '+(err.description||err.message||res.statusText), 'error');
-      }
-    } catch(e) { await showAlert('Error: '+e.message, 'error'); }
-    pendingDelName = null;
+      } catch(e) { await showAlert('Error: '+e.message, 'error'); }
+      document.getElementById('cfg-delete-label-modal').style.display = 'none';
+      pendingDelName = null;
+    });
   });
 }());

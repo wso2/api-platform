@@ -9,9 +9,10 @@
     padding: 12px 15px;
     gap: 10px;
     border-radius: 6px;
-    background-color: var(--white);
+    background-color: var(--surface);
     color: var(--text);
     border: 1px solid var(--border);
+    border-left: 4px solid var(--border-strong);
     box-shadow: 0 4px 12px rgba(0, 0, 0, 0.12);
     z-index: 1090;
     pointer-events: auto;
@@ -30,25 +31,27 @@
     animation: alertFadeOut 0.5s forwards;
 }
 
-.alert-toast.success {
-    background-color: color-mix(in srgb, var(--success) 45%, var(--surface));
-    color: var(--success);
-}
-
-.alert-toast.error {
-    background-color: color-mix(in srgb, var(--danger) 50%, var(--surface));
-    color: #4f0000;
-}
+.alert-toast.success { background-color: var(--success-surface); border-left-color: var(--success); }
+.alert-toast.error   { background-color: var(--danger-surface);  border-left-color: var(--danger); }
+.alert-toast.warning { background-color: var(--warning-surface); border-left-color: var(--warning); }
+.alert-toast.info    { background-color: var(--info-surface);    border-left-color: var(--info); }
 
 .alert-toast .alert-icon {
-    font-size: 0.875rem;
+    font-size: 1rem;
     flex-shrink: 0;
+    color: var(--text-muted);
 }
+
+.alert-toast.success .alert-icon { color: var(--success); }
+.alert-toast.error   .alert-icon { color: var(--danger); }
+.alert-toast.warning .alert-icon { color: var(--warning); }
+.alert-toast.info    .alert-icon { color: var(--info); }
 
 .alert-toast .alert-toast-message {
     margin: 0;
     font-weight: 500;
     font-size: 14px;
+    color: var(--text);
 }
 
 @keyframes alertFadeIn {

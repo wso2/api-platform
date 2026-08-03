@@ -19,7 +19,6 @@
             <thead>
               <tr>
                 <th>Name</th>
-                <th>Handle</th>
                 <th>Target URL</th>
                 <th>Events</th>
                 <th>Secret</th>
@@ -34,7 +33,6 @@
                   <button type="button" class="cfg-webhook-edit-btn" data-id="{{id}}"
                     style="border:none;background:none;padding:0;cursor:pointer;font-size:.875rem;font-weight:600;color:#1a2433;text-decoration:none;">{{displayName}}</button>
                 </td>
-                <td><span class="cfg-name-chip">{{id}}</span></td>
                 <td>
                   <span class="cfg-name-chip" title="{{targetUrl}}"
                     style="display:inline-block;max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">{{targetUrl}}</span>
@@ -62,7 +60,7 @@
               </tr>
               {{/webhookSubscribers}}
               {{#unless webhookSubscribers.length}}
-              <tr><td colspan="7" class="cfg-tbl-empty">No webhooks yet. Add one to get started.</td></tr>
+              <tr><td colspan="6" class="cfg-tbl-empty">No webhooks yet. Add one to get started.</td></tr>
               {{/unless}}
             </tbody>
           </table>

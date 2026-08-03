@@ -142,6 +142,12 @@ const loadSettingsPage = async (req, res) => {
         }
         templateContent.orgLabels = orgLabels;
 
+        const labelNameByHandle = new Map(orgLabels.map(l => [l.id, l.displayName]));
+        templateContent.views = views.map(view => ({
+            ...view,
+            labelNames: (view.labels || []).map(handle => labelNameByHandle.get(handle) || handle),
+        }));
+
         let orgPlans = [];
         try {
             const plansRaw = await subscriptionPlanDao.list(orgId);

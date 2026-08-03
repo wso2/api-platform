@@ -253,6 +253,10 @@ services:
         condition: service_healthy
       platform-api:
         condition: service_started
+      # cert.pem must exist in the certs volume before the subpath mount below and
+      # before Node reads NODE_EXTRA_CA_CERTS at startup.
+      platform-api-certgen:
+        condition: service_completed_successfully
       platform-api-jwtkeygen:
         condition: service_completed_successfully
     volumes:
@@ -272,6 +276,16 @@ services:
         read_only: true
         volume:
           subpath: jwt_public.pem
+      # platform-api's self-signed TLS cert, trusted via NODE_EXTRA_CA_CERTS below so
+      # both the auth client and the webhook delivery worker verify it instead of
+      # skipping verification. Subpath mount exposes only the public cert.pem, never
+      # the private key.pem — same pattern as jwt_public.pem above.
+      - type: volume
+        source: platform-api-certs
+        target: /etc/api-portal/certs/cert.pem
+        read_only: true
+        volume:
+          subpath: cert.pem
     environment:
       # Its own database on the shared postgres server (created by init-db.sql).
       # Postgres, not the devportal's default SQLite: the org-update path needs
@@ -292,14 +306,17 @@ services:
       # platform-api signs its tokens with RS256; the devportal verifies them
       # against jwt_public.pem from the shared keypair volume mounted above
       # (auth.local.public_key_path in devportal-config.toml). There is no shared
-      # HMAC secret. tls_skip_verify covers platform-api's self-signed cert.
+      # HMAC secret.
       - APIP_AP_AUTH_LOCAL_PLATFORM_API_URL=https://platform-api:9243
-      - APIP_AP_AUTH_LOCAL_TLS_SKIP_VERIFY=true
-      # The webhook delivery worker POSTs over raw https with the default agent,
-      # and platform-api serves a self-signed cert here. auth.local.tls_skip_verify
-      # only covers the auth client, so disable TLS verification globally for this
-      # throwaway test container to let signed webhook deliveries through.
-      - NODE_TLS_REJECT_UNAUTHORIZED=0
+      # Trust platform-api's self-signed cert at Node's trust-store level rather than
+      # disabling TLS verification. This *appends* to Node's built-in CAs and applies
+      # process-wide, so it covers BOTH the auth login client AND the webhook delivery
+      # worker (which POSTs over Node's default TLS and has no tls_skip_verify hatch,
+      # the reason this used to set NODE_TLS_REJECT_UNAUTHORIZED=0). Verified TLS —
+      # not a global bypass — even in the throwaway test container. The cert's SAN
+      # includes DNS:platform-api, matching the https://platform-api:9243 host used
+      # for both the auth call and the control-plane webhook subscriber.
+      - NODE_EXTRA_CA_CERTS=/etc/api-portal/certs/cert.pem
       # Stable AES-256-GCM key (64 hex) for encrypting the webhook subscriber
       # secret at rest; must not change across restarts or the stored secret
       # becomes undecryptable and outbound requests go unsigned.

@@ -92,7 +92,10 @@ document.addEventListener('DOMContentLoaded', () => {
     if (dataEl) {
         try {
             const data = JSON.parse(dataEl.textContent);
-            const mdUrl = window.location.origin + data.baseUrl + '/api/' + data.id + '.md';
+            // MCP servers are served from /mcp/{handle}.md rather than /api/{handle}.md,
+            // so the segment comes from the page. Defaults to 'api' for the API pages.
+            const resourcePath = data.resourcePath || 'api';
+            const mdUrl = window.location.origin + data.baseUrl + '/' + resourcePath + '/' + data.id + '.md';
             _agentMdUrl = mdUrl;
             apiName = data.id;
 

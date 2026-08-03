@@ -18,14 +18,16 @@
           {{#if (eq apiMetadata.type "GRAPHQL")}}dp-badge--graphql
           {{else if (eq apiMetadata.type "WS")}}dp-badge--ws
           {{else if (eq apiMetadata.type "SOAP")}}dp-badge--soap
+          {{else if (eq apiMetadata.type "WebSubApi")}}dp-badge--ws
           {{else}}dp-badge--rest{{/if}}">
-          {{#if (eq apiMetadata.type "GRAPHQL")}}<i class="bi bi-share"></i> GraphQL
-          {{else if (eq apiMetadata.type "WS")}}<i class="bi bi-broadcast"></i> WebSocket
+          {{#if (eq apiMetadata.type "GRAPHQL")}}<img src="/images/graphql-icon.svg" class="dp-badge-icon" alt="" /> GraphQL
+          {{else if (eq apiMetadata.type "WS")}}<img src="/images/websocket-icon.svg" class="dp-badge-icon" alt="" /> WebSocket
+          {{else if (eq apiMetadata.type "WebSubApi")}}<i class="bi bi-broadcast-pin"></i> WebSub
           {{else if (eq apiMetadata.type "SOAP")}}<i class="bi bi-file-code"></i> SOAP
-          {{else}}<i class="bi bi-braces"></i> {{apiMetadata.type}}{{/if}}
+          {{else}}<i class="bi bi-braces"></i> REST{{/if}}
         </span>
         {{/if}}
-        {{#if showApiWorkflowsNav}}
+        {{#if aiEnabled}}
         {{#unless (eq apiMetadata.agentVisibility "HIDDEN")}}
         <span class="dp-badge dp-badge--ai" title="AI agents can discover and use this API">
           <i class="bi bi-robot"></i> AI Ready
@@ -68,7 +70,7 @@
       </a>
       {{/if}}
       {{/in}}
-      {{#if showApiWorkflowsNav}}
+      {{#if aiEnabled}}
       {{#unless (eq apiMetadata.agentVisibility "HIDDEN")}}
       <button type="button" class="dp-btn dp-btn--ai" data-bs-toggle="modal" data-bs-target="#apiAgentPromptModal">
         <i class="bi bi-robot"></i> Try with AI

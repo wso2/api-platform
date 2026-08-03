@@ -587,6 +587,12 @@ function requestOrigin(req) {
     return `${protocol}://${req.get('host')}`;
 }
 
+const TRYOUT_CAPABLE_TYPES = new Set([
+    constants.API_TYPE.WS,
+    constants.API_TYPE.WEBSUB,
+    constants.API_TYPE.GRAPHQL,
+]);
+
 const loadDocument = async (req, res, next) => {
     const { orgName, apiHandle, viewName, docType, docName } = req.params;
 
@@ -599,11 +605,14 @@ const loadDocument = async (req, res, next) => {
             isAPIDefinition: false,
             isWebSocketTryout: false,
             isGraphQLTryout: false,
+            isTryout: false,
         };
         templateContent.apiType = definitionResponse.apiType;
+        templateContent.supportsTryout = TRYOUT_CAPABLE_TYPES.has(definitionResponse.apiType);
         if (isSpecPage && definitionResponse.swagger) {
             const specType = definitionResponse.apiType;
-            const tryoutEnabled = !!req.query.tryout;
+            const tryoutEnabled = req.query.tryout === true || req.query.tryout === 'true';
+            templateContent.isTryout = templateContent.supportsTryout && tryoutEnabled;
             if (specType === constants.API_TYPE.WS || specType === constants.API_TYPE.WEBSUB) {
                 templateContent.asyncapi = JSON.stringify(parseApiDefinitionContent(definitionResponse.swagger));
                 templateContent.isWebSocketTryout = tryoutEnabled;
@@ -653,12 +662,20 @@ const loadDocument = async (req, res, next) => {
         let templateContent = {
             "isAPIDefinition": false,
             "isWebSocketTryout": false,
-            "isGraphQLTryout": false
+            "isGraphQLTryout": false,
+            "isTryout": false
         };
         const definitionResponse = await getAPIDefinition(orgName, viewName, apiHandle);
         templateContent.apiType = definitionResponse.apiType;
-        
-        const tryoutEnabled = req.query.tryout ? true : false;
+
+        // Only an explicit tryout=true opts in, and only on the specification page —
+        // the tryout payload (asyncapi/GraphQL introspection) is loaded only there, so a
+        // non-spec document must never render the tryout console. Any other query value
+        // (e.g. tryout=false) is a truthy string and must not enable it.
+        const isSpecPage = req.originalUrl.includes(constants.FILE_NAME.API_SPECIFICATION_PATH);
+        const tryoutEnabled = isSpecPage && (req.query.tryout === true || req.query.tryout === 'true');
+        templateContent.supportsTryout = TRYOUT_CAPABLE_TYPES.has(definitionResponse.apiType);
+        templateContent.isTryout = templateContent.supportsTryout && tryoutEnabled;
         if (definitionResponse.apiType === constants.API_TYPE.WS || definitionResponse.apiType === constants.API_TYPE.WEBSUB) {
             templateContent.isWebSocketTryout = tryoutEnabled;
         } else if (definitionResponse.apiType === constants.API_TYPE.GRAPHQL) {
@@ -667,7 +684,7 @@ const loadDocument = async (req, res, next) => {
         let apiMetadata = definitionResponse.metaData;
 
         //load API definition
-        if (req.originalUrl.includes(constants.FILE_NAME.API_SPECIFICATION_PATH)) {
+        if (isSpecPage) {
 
             if (definitionResponse.apiType === constants.API_TYPE.MCP) {
                 // The playground reads its server URL from servers[0].url. A

@@ -17,35 +17,6 @@
  */
 
 /**
- * Show a temporary notification toast
- */
-function showNotification(message, type = 'info') {
-    const notification = document.createElement('div');
-    notification.className = `notification notification-${type}`;
-    const content = document.createElement('div');
-    content.className = 'notification-content';
-    const icon = document.createElement('i');
-    icon.classList.add('bi', type === 'success' ? 'bi-check-circle' : 'bi-exclamation-circle');
-    const span = document.createElement('span');
-    span.textContent = message;
-    content.append(icon, span);
-    notification.appendChild(content);
-
-    document.body.appendChild(notification);
-
-    setTimeout(() => {
-        notification.classList.add('show');
-    }, 10);
-
-    setTimeout(() => {
-        notification.classList.remove('show');
-        setTimeout(() => {
-            notification.remove();
-        }, 300);
-    }, 3000);
-}
-
-/**
  * Render markdown content into the markdownViewer container
  */
 function renderMarkdownPreview(content) {

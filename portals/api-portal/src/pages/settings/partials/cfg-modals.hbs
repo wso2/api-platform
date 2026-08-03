@@ -151,7 +151,7 @@
       <button type="button" class="cfg-modal-close" id="cfg-view-modal-close"><i class="bi bi-x-lg"></i></button>
     </div>
     <div class="cfg-form-group" style="margin-bottom:16px;">
-      <label for="view-display">Name</label>
+      <label for="view-display">Name <span class="required">*</span></label>
       <input type="text" id="view-display" class="cfg-form-input" placeholder="e.g. Partner APIs" />
     </div>
     <div class="cfg-form-group" style="margin-bottom:16px;">
@@ -169,7 +169,7 @@
         </button>
         {{/orgLabels}}
       </div>
-      <p class="cfg-field-hint">Click labels to toggle. APIs with these labels appear in this view.</p>
+      <p class="cfg-field-hint">Click labels to toggle. APIs and MCP Servers with these labels appear in this view.</p>
       {{else}}
       <p class="cfg-field-hint">No labels yet — create labels first to attach them to this view.</p>
       {{/if}}

@@ -10,13 +10,6 @@
       <h1 class="page-title">API Workflows</h1>
       <p class="page-desc">Pre-configured workflows let your AI agents reference these best practices to use your APIs correctly, every time — no hallucination, no manual setup.</p>
     </div>
-    {{#if apiWorkflows.length}}
-      {{#if profile.isAdmin}}
-      <a href="{{beforeSeparator baseUrl '/views/'}}/settings#cfg-workflows" class="dp-btn dp-btn--primary">
-        <i class="bi bi-pencil"></i> Manage workflows
-      </a>
-      {{/if}}
-    {{/if}}
   </div>
 
   {{#if apiWorkflows.length}}
@@ -31,12 +24,7 @@
       <i class="bi bi-diagram-3"></i>
     </span>
     <h2 class="dp-empty-title">No workflows yet</h2>
-    <p class="dp-empty-desc">Create a workflow to encode a multi-step API sequence your AI agents can follow. Published workflows will appear here for every consumer.</p>
-    {{#if profile.isAdmin}}
-    <a href="{{beforeSeparator baseUrl '/views/'}}/settings#cfg-workflows" class="dp-btn dp-btn--primary dp-btn--lg" style="margin-top:1.5rem;">
-      <i class="bi bi-plus"></i> Create workflow
-    </a>
-    {{/if}}
+    <p class="dp-empty-desc">There are no published workflows available right now. Once they're published, they'll appear here for your AI agents to follow.</p>
   </div>
   {{/if}}
 

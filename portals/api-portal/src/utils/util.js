@@ -129,6 +129,28 @@ function artifactFlags() {
     };
 }
 
+/**
+ * Whether the portal's AI features (AI Ready chips, "Try with AI"/"Discover with AI"
+ * prompts) should render for this org+view. Backed by the LLM Instructions config's
+ * `aiEnabled` toggle — the actual AI switch. These used to be gated on
+ * showApiWorkflowsNav (`artifactTypeEnabled('api-workflows')`), which meant turning
+ * off the API Workflows artifact type also silently removed every AI affordance.
+ *
+ * Fails open (AI shown) if the lookup errors: the toggle is a presentation choice,
+ * so a transient read failure must not blank the page's primary actions.
+ */
+async function resolveAiEnabled(orgId, viewName) {
+    if (!orgId || !viewName) return true; // design mode / no view context — nothing to opt out of
+    try {
+        return !(await isAiDisabledForPortal(orgId, viewName));
+    } catch (err) {
+        logger.warn('Could not resolve AI enablement; defaulting to enabled', {
+            orgId, viewName, error: err.message
+        });
+        return true;
+    }
+}
+
 function renderTemplate(templatePath, layoutPath, templateContent, isTechnical) {
 
     let completeTemplatePath;
@@ -147,7 +169,9 @@ function renderTemplate(templatePath, layoutPath, templateContent, isTechnical) 
 
     const slots = {};
     const flags = artifactFlags();
-    const enrichedContent = { ...flags, ...templateContent, slots };
+    // Design mode renders from disk with no organization, so there is no per-view
+    // llms-config to consult — show the AI affordances so designers can style them.
+    const enrichedContent = { ...flags, aiEnabled: true, ...templateContent, slots };
     return layout({
         ...enrichedContent,
         body: template(enrichedContent),
@@ -190,7 +214,8 @@ async function renderTemplateWithView(templatePath, layoutPath, templateContent,
 
     const slots = {};
     const flags = artifactFlags();
-    const enrichedContent = { ...flags, ...templateContent, slots };
+    const aiEnabled = await resolveAiEnabled(orgId, viewName);
+    const enrichedContent = { ...flags, ...templateContent, aiEnabled, slots };
     return layout({
         ...enrichedContent,
         body: template(enrichedContent),
@@ -245,7 +270,8 @@ async function renderTemplateFromAPI(templateContent, orgId, orgName, filePath, 
 
     const slots = {};
     const flags = artifactFlags();
-    const enrichedContent = { ...flags, ...templateContent, slots };
+    const aiEnabled = await resolveAiEnabled(orgId, viewName);
+    const enrichedContent = { ...flags, ...templateContent, aiEnabled, slots };
     return layout({
         ...enrichedContent,
         body: template(enrichedContent),
@@ -311,7 +337,11 @@ async function renderGivenTemplate(templatePage, layoutPage, templateContent) {
     const layout = Handlebars.compile(layoutPage.toString());
     const slots = {};
     const flags = artifactFlags();
-    const enrichedContent = { ...flags, ...templateContent, slots };
+    // No org/view is threaded through here (applications, settings, api-workflows), so
+    // the per-view AI toggle can't be resolved. Default to enabled rather than leaving
+    // it undefined, which would silently hide AI affordances on those pages — none of
+    // them gate on it today, and a falsy default would make that a trap later.
+    const enrichedContent = { ...flags, aiEnabled: true, ...templateContent, slots };
     return layout({
         ...enrichedContent,
         body: template(enrichedContent),
@@ -1397,6 +1427,7 @@ module.exports = {
     requireArtifactType,
     requireArtifactTypeFromPath,
     isAiDisabledForPortal,
+    resolveAiEnabled,
     isImageFile,
     normalizeStringArray,
     resolveApiType,

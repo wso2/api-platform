@@ -34,6 +34,12 @@
   var contentZipFile = null;
   var hasContentStep = false;   /* the Content step exists only for existing, non-MCP APIs */
   var wizardOrigin = 'cfg-apis'; /* tab that launched the wizard: 'cfg-apis' or 'cfg-mcps' */
+  /* MCP is created via its own flow (type field hidden, always 'Mcp'); the API-type
+     dropdown only offers the user-selectable API types. wizardEditType preserves the
+     original type on edit for types the dropdown no longer lists (Mcp, WebSub, SOAP). */
+  var TYPE_DROPDOWN_VALUES = { RestApi: 1, WS: 1, GRAPHQL: 1 };
+  var wizardIsMcp = false;
+  var wizardEditType = null;
 
   /* build id→api lookup and load all policies from server-rendered data blobs */
   var apiMap = {};
@@ -110,6 +116,21 @@
   }
   document.getElementById('wz-name').addEventListener('input', autoHandle);
   document.getElementById('wz-version').addEventListener('input', autoHandle);
+
+  /* ── keep the step-0 Next button disabled until the required fields are filled ──
+     Name, Version and Handle are the step-0 requirements (validateStep0). Once past
+     step 0 they can't be empty, so the button only ever disables while on step 0. */
+  function step0Valid() {
+    return v('wz-name') !== '' && v('wz-version') !== '' && v('wz-handle') !== '';
+  }
+  function syncWizardNext() {
+    var nextBtn = document.getElementById('cfg-wizard-next');
+    if (nextBtn) nextBtn.disabled = (currentStep === 0) && !step0Valid();
+  }
+  ['wz-name', 'wz-version', 'wz-handle'].forEach(function(id) {
+    var el = document.getElementById(id);
+    if (el) el.addEventListener('input', syncWizardNext);
+  });
 
   /* ── agent visibility toggle ── */
   document.getElementById('wz-vis-visible').addEventListener('click', function() {
@@ -225,12 +246,118 @@
     });
   }());
 
+  /* ── tag chip input ──
+     Same chip markup and classes as the subscription-plan picker above, but tags are
+     free text: there is nothing to search, so a chip is committed from whatever was
+     typed rather than picked from a dropdown. */
+  var tagChips = [];
+
+  function renderTagChips() {
+    var container = document.getElementById('wz-tags-chips');
+    if (!container) return;
+    container.innerHTML = '';
+    tagChips.forEach(function(tag) {
+      var chip = document.createElement('span');
+      chip.className = 'cfg-chip';
+      chip.innerHTML = esc(tag) +
+        '<button type="button" class="cfg-chip-remove" data-tag="'+esc(tag)+'" title="Remove ' + esc(tag) + '"><i class="bi bi-x"></i></button>';
+      chip.querySelector('.cfg-chip-remove').addEventListener('click', function(e) {
+        e.stopPropagation();
+        removeTag(e.currentTarget.dataset.tag);
+        var input = document.getElementById('wz-tags-input');
+        if (input) input.focus();
+      });
+      container.appendChild(chip);
+    });
+  }
+
+  /* Case-insensitive dedupe, keeping the casing first entered: "Travel" and "travel"
+     as separate chips is a typo every time, and unlike the old free-text field the
+     duplicate is now plainly visible. */
+  function addTag(raw) {
+    var tag = String(raw || '').trim();
+    if (!tag) return;
+    var lower = tag.toLowerCase();
+    if (tagChips.some(function(t){ return t.toLowerCase() === lower; })) return;
+    tagChips.push(tag);
+    renderTagChips();
+  }
+
+  function removeTag(tag) {
+    tagChips = tagChips.filter(function(t){ return t !== tag; });
+    renderTagChips();
+  }
+
+  /* Splits on commas so a pasted "a, b, c" — and anything typed in the old
+     comma-separated habit — still lands as separate chips. */
+  function commitTagInput() {
+    var input = document.getElementById('wz-tags-input');
+    if (!input) return;
+    input.value.split(',').forEach(addTag);
+    input.value = '';
+  }
+
+  function getTags() { return tagChips.slice(); }
+
+  function setTags(list) {
+    tagChips = [];
+    var items = Array.isArray(list) ? list : (list ? String(list).split(',') : []);
+    items.forEach(addTag);
+    renderTagChips();
+    var input = document.getElementById('wz-tags-input');
+    if (input) input.value = '';
+  }
+
+  (function() {
+    var wrap = document.getElementById('wz-tags-wrap');
+    var input = document.getElementById('wz-tags-input');
+    if (!input) return;
+    if (wrap) wrap.addEventListener('click', function() { input.focus(); });
+    input.addEventListener('keydown', function(e) {
+      if (e.key === 'Enter' || e.key === ',') {
+        // Enter would otherwise submit the wizard with the tag still uncommitted.
+        e.preventDefault();
+        commitTagInput();
+      } else if (e.key === 'Backspace' && !input.value && tagChips.length) {
+        e.preventDefault();
+        removeTag(tagChips[tagChips.length - 1]);
+      }
+    });
+    // Losing focus commits too — otherwise a typed-but-not-entered tag is silently
+    // dropped when the user clicks Save.
+    input.addEventListener('blur', commitTagInput);
+    input.addEventListener('paste', function(e) {
+      var clip = e.clipboardData || window.clipboardData;
+      var text = clip && clip.getData('text');
+      // No comma: nothing to split, so let the browser paste normally.
+      if (!text || text.indexOf(',') < 0) return;
+      e.preventDefault();
+      /* Splice the pasted text in at the caret (replacing any selection) rather than
+         committing it on its own, so a half-typed tag joins the paste instead of
+         being left orphaned in the input: "foo" with "bar, baz" pasted at the end
+         commits as "foobar" and "baz" — what typing those same characters would do. */
+      var start = input.selectionStart != null ? input.selectionStart : input.value.length;
+      var end = input.selectionEnd != null ? input.selectionEnd : input.value.length;
+      input.value = input.value.slice(0, start) + text + input.value.slice(end);
+      commitTagInput();
+    });
+  }());
+
   /* ── wizard show/hide ── */
   function showWizard(api, kindHint) {
     /* MCP servers and APIs share this wizard. Derive the "kind" from the record being
        edited, or from the launching button (kindHint) when adding. */
     var isMcp = api ? (api.apiType === 'Mcp') : (kindHint === 'mcp');
     wizardOrigin = isMcp ? 'cfg-mcps' : 'cfg-apis';
+    wizardIsMcp = isMcp;
+    wizardEditType = api ? api.apiType : null;
+
+    /* The API-type field is only meaningful for the user-selectable API types. Hide it
+       for MCP (always 'Mcp') and when editing a type the dropdown no longer lists
+       (WebSub/SOAP) — the original type is preserved on save via wizardEditType. */
+    var hideTypeField = isMcp || (!!api && !TYPE_DROPDOWN_VALUES[api.apiType]);
+    var typeGroup = document.getElementById('wz-type-group');
+    if (typeGroup) typeGroup.style.display = hideTypeField ? 'none' : '';
 
     /* The wizard markup lives inside #cfg-apis; reveal that panel (with its list hidden)
        regardless of which tab launched it, and keep the launching tab highlighted. */
@@ -271,7 +398,7 @@
       sel('wz-type',      api.apiType);
       sel('wz-status',    api.apiStatus === 'DEPRECATED' ? 'DEPRECATED' : 'PUBLISHED');
       sv('wz-desc',       api.apiDescription);
-      sv('wz-tags',       (api.tags && api.tags.length) ? (Array.isArray(api.tags) ? api.tags.join(', ') : api.tags) : '');
+      setTags(api.tags);
       sv('wz-prod',       api.productionUrl);
       sv('wz-sandbox',    api.sandboxUrl);
       sv('wz-tech-owner', (api.owners && api.owners.technicalOwner)      || api.technicalOwner      || '');
@@ -289,9 +416,11 @@
       /* add mode */
       editingId = null;
       document.getElementById('cfg-wizard-title').textContent = isMcp ? 'Add MCP Server' : 'Add API';
-      ['wz-name','wz-version','wz-handle','wz-desc','wz-tags','wz-prod','wz-sandbox','wz-tech-owner','wz-tech-email','wz-biz-owner','wz-biz-email'].forEach(function(id){ sv(id,''); });
+      ['wz-name','wz-version','wz-handle','wz-desc','wz-prod','wz-sandbox','wz-tech-owner','wz-tech-email','wz-biz-owner','wz-biz-email'].forEach(function(id){ sv(id,''); });
+      setTags([]);
       document.getElementById('wz-handle').readOnly = false;
-      sel('wz-type', isMcp ? 'Mcp' : 'RestApi'); sel('wz-status','PUBLISHED');
+      /* MCP has no dropdown entry — its type is forced to 'Mcp' on save (wizardIsMcp). */
+      sel('wz-type', 'RestApi'); sel('wz-status','PUBLISHED');
       agentVis = 'Visible';
       document.getElementById('wz-vis-visible').classList.add('active');
       document.getElementById('wz-vis-hidden').classList.remove('active');
@@ -304,10 +433,10 @@
     syncProdRequiredMarker();
 
     /* clear any leftover validation errors */
-    ['wz-name-error','wz-version-error','wz-handle-error','wz-desc-error','wz-prod-error','wz-tech-email-error','wz-biz-email-error'].forEach(function(eid) {
+    ['wz-name-error','wz-version-error','wz-handle-error','wz-desc-error','wz-prod-error','wz-sandbox-error','wz-tech-email-error','wz-biz-email-error'].forEach(function(eid) {
       var el = document.getElementById(eid); if (el) el.style.display = 'none';
     });
-    ['wz-name','wz-version','wz-handle','wz-desc','wz-prod','wz-tech-email','wz-biz-email'].forEach(function(fid) {
+    ['wz-name','wz-version','wz-handle','wz-desc','wz-prod','wz-sandbox','wz-tech-email','wz-biz-email'].forEach(function(fid) {
       var el = document.getElementById(fid); if (el) el.classList.remove('cfg-form-input--error');
     });
 
@@ -363,28 +492,39 @@
     var nextBtn = document.getElementById('cfg-wizard-next');
     backBtn.style.display = step > 0 ? 'inline-flex' : 'none';
     nextBtn.textContent = step === lastStep ? (editingId ? 'Save changes' : 'Save API') : 'Next';
-    nextBtn.disabled = false;
+    syncWizardNext(); /* step-0 stays disabled until Name/Version/Handle are filled */
     nextBtn.title = '';
   }
 
   /* ── save API (create / update) ── */
   async function saveApi() {
+    /* Belt and braces: the tag input commits on blur, which normally fires before the
+       Save click lands. Committing here too means a tag typed but never Entered is
+       saved rather than quietly discarded, whatever order those events arrive in. */
+    commitTagInput();
     var name    = v('wz-name');
     var version = v('wz-version');
     var handle  = v('wz-handle');
     if (!name || !version || !handle) {
-      await showAlert('API name, version, and handle are required.', 'error');
+      await showAlert('Name, version, and handle are required.', 'error');
       return;
     }
+
+    /* Type resolution: MCP is always 'Mcp' (field hidden); when editing a type the
+       dropdown doesn't list (WebSub/SOAP), keep the original; otherwise take the
+       user's dropdown choice. */
+    var resolvedType = wizardIsMcp ? 'Mcp'
+      : (editMode && wizardEditType && !TYPE_DROPDOWN_VALUES[wizardEditType]) ? wizardEditType
+      : document.getElementById('wz-type').value;
 
     var meta = {
       name:        name,
       version:     version,
       handle:      handle,
-      type:        document.getElementById('wz-type').value,
+      type:        resolvedType,
       status:      document.getElementById('wz-status').value,
       description: v('wz-desc'),
-      tags:           v('wz-tags') ? v('wz-tags').split(',').map(function(t){return t.trim();}).filter(Boolean) : [],
+      tags:           getTags(),
       labels:         getSelectedLabels(),
       agentVisibility: agentVis,
       owners: {
@@ -673,12 +813,31 @@
     if (inputEl) { inputEl.classList.toggle('cfg-form-input--error', !!msg); }
   }
 
+  /* Frontend-only URL check for the endpoint fields — a valid http/https URL, or a
+     ws/wss URL when the API is a WebSocket type. */
+  function isValidHttpUrl(s, allowWs) {
+    var u;
+    try { u = new URL(s); } catch (e) { return false; }
+    if (allowWs && (u.protocol === 'ws:' || u.protocol === 'wss:')) return true;
+    return u.protocol === 'http:' || u.protocol === 'https:';
+  }
+
+  /* The type actually being saved, mirroring saveApi's resolvedType: MCP when the
+     field is hidden, the original type when editing a type the dropdown doesn't list,
+     otherwise the dropdown selection. */
+  function selectedApiType() {
+    if (wizardIsMcp) return 'Mcp';
+    if (editMode && wizardEditType && !TYPE_DROPDOWN_VALUES[wizardEditType]) return wizardEditType;
+    var el = document.getElementById('wz-type');
+    return el ? el.value : 'RestApi';
+  }
+
   function validateStep0() {
     var ok = true;
     var emailRe = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
     var name = v('wz-name');
-    setFieldError('wz-name', 'wz-name-error', name ? '' : 'API name is required.');
+    setFieldError('wz-name', 'wz-name-error', name ? '' : 'Name is required.');
     if (!name) ok = false;
 
     var version = v('wz-version');
@@ -700,13 +859,29 @@
       setFieldError('wz-handle', 'wz-handle-error', '');
     }
 
+    var allowWs = selectedApiType() === 'WS';
+    var urlErrMsg = allowWs
+      ? 'Enter a valid ws://, wss://, http://, or https:// URL.'
+      : 'Enter a valid http:// or https:// URL.';
+
     var status = document.getElementById('wz-status').value;
     var prodUrl = v('wz-prod');
     if (status === 'PUBLISHED' && !prodUrl) {
       setFieldError('wz-prod', 'wz-prod-error', 'Production URL is required to publish an API.');
       ok = false;
+    } else if (prodUrl && !isValidHttpUrl(prodUrl, allowWs)) {
+      setFieldError('wz-prod', 'wz-prod-error', urlErrMsg);
+      ok = false;
     } else {
       setFieldError('wz-prod', 'wz-prod-error', '');
+    }
+
+    var sandboxUrl = v('wz-sandbox');
+    if (sandboxUrl && !isValidHttpUrl(sandboxUrl, allowWs)) {
+      setFieldError('wz-sandbox', 'wz-sandbox-error', urlErrMsg);
+      ok = false;
+    } else {
+      setFieldError('wz-sandbox', 'wz-sandbox-error', '');
     }
 
     var techEmail = v('wz-tech-email');

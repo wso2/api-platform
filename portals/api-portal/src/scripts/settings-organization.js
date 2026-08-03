@@ -18,11 +18,21 @@
  
 
 (function () {
+  // Local fallback for the shared bindFormValidity (defined in alert.js, loaded first
+  // on the settings page): keeps save working even if it were ever unavailable, only
+  // skipping the disable-until-valid behaviour instead of throwing at init.
+  var bindFormValidity = window.bindFormValidity || function () { return function () {}; };
+
   function g(id) { return document.getElementById(id); }
   var saveBtn = g('cfg-save-org-btn');
   if (!saveBtn) return;
 
   var emailRe = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+  /* Disable save while the organization Name is empty. */
+  bindFormValidity(saveBtn, ['org-display'], function () {
+    return g('org-display').value.trim() !== '';
+  });
 
   saveBtn.addEventListener('click', async function () {
     var handle = saveBtn.dataset.handle;
@@ -52,21 +62,21 @@
     // cp_ref_id unconditionally, so omitting a cleared field would leave the old
     // value in place and make the reference impossible to remove from this form.
     body.cpRefId = g('org-cp-ref').value.trim();
-    saveBtn.disabled = true;
-    try {
-      var res = await fetch(window.apiPortalApi.root('/organizations/' + encodeURIComponent(handle)), {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': window.apiPortalApi.csrfToken() },
-        credentials: 'same-origin', body: JSON.stringify(body),
-      });
-      if (res.ok) {
-        await showAlert('Organization updated.', 'success');
-        window.location.reload();
-      } else {
-        var err = await res.json().catch(function () { return {}; });
-        await showAlert('Failed: ' + (err.description || err.message || res.statusText), 'error');
-      }
-    } catch (e) { await showAlert('Error: ' + e.message, 'error'); }
-    finally { saveBtn.disabled = false; }
+    await withButtonBusy(saveBtn, 'Saving…', async function () {
+      try {
+        var res = await fetch(window.apiPortalApi.root('/organizations/' + encodeURIComponent(handle)), {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': window.apiPortalApi.csrfToken() },
+          credentials: 'same-origin', body: JSON.stringify(body),
+        });
+        if (res.ok) {
+          await showAlert('Organization updated.', 'success');
+          window.location.reload();
+        } else {
+          var err = await res.json().catch(function () { return {}; });
+          await showAlert('Failed: ' + (err.description || err.message || res.statusText), 'error');
+        }
+      } catch (e) { await showAlert('Error: ' + e.message, 'error'); }
+    });
   });
 }());

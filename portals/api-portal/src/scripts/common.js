@@ -69,6 +69,113 @@ document.addEventListener("DOMContentLoaded", function () {
         }
     });
 
+    /* ── Mobile drawer ──
+       Below 860px the sidebar is off-canvas (see side-bar.css) and this is the only
+       way to reach it. Everything below is a no-op above that breakpoint, where the
+       toggle and backdrop are display:none and never receive events. */
+    const sidebarToggle = document.getElementById('sidebarToggle');
+    const sidebarBackdrop = document.getElementById('sidebarBackdrop');
+
+    if (sidebarToggle && sidebarBackdrop) {
+        sidebarBackdrop.hidden = false; // inert via CSS until the breakpoint applies
+
+        /* matchMedia mirrors side-bar.css's own 860px so the two can't disagree.
+           Declared before the helpers below because they read it. */
+        const mobileQuery = window.matchMedia('(max-width: 860px)');
+
+        const isOpen = () => sidebar.classList.contains('mobile-open');
+
+        /* A closed drawer is only moved off-screen by a transform, so it stayed in the
+           tab order and the accessibility tree: 13 focusable links a keyboard user
+           could tab into invisibly, and that a screen reader would still announce.
+           `inert` removes both; `aria-hidden` is set alongside for assistive tech that
+           predates it. Above the breakpoint the sidebar is ordinary visible layout, so
+           neither may ever apply there — which is why this is re-run on breakpoint
+           change and not just on open/close. */
+        const syncDrawerHiddenState = () => {
+            const hidden = mobileQuery.matches && !isOpen();
+            sidebar.toggleAttribute('inert', hidden);
+            sidebar.setAttribute('aria-hidden', hidden ? 'true' : 'false');
+        };
+
+        const openDrawer = () => {
+            sidebar.classList.add('mobile-open');
+            sidebarBackdrop.classList.add('visible');
+            sidebarToggle.setAttribute('aria-expanded', 'true');
+            // Stops the page scrolling behind the drawer on touch. A class, not an
+            // inline style, so the rule can live inside side-bar.css's 860px media
+            // query and lapse on its own above the breakpoint.
+            document.body.classList.add('drawer-open');
+            // Before any caller focuses into the drawer — focus() is a no-op on an
+            // inert subtree.
+            syncDrawerHiddenState();
+        };
+
+        const closeDrawer = () => {
+            /* Move focus out before the subtree goes inert, otherwise it lands on
+               <body> and the user loses their place. The toggle is where they came
+               from, so it is where they go back to. */
+            if (sidebar.contains(document.activeElement)) {
+                sidebarToggle.focus();
+            }
+            sidebar.classList.remove('mobile-open');
+            sidebarBackdrop.classList.remove('visible');
+            sidebarToggle.setAttribute('aria-expanded', 'false');
+            document.body.classList.remove('drawer-open');
+            syncDrawerHiddenState();
+        };
+
+        sidebarToggle.addEventListener('click', () => {
+            if (isOpen()) {
+                closeDrawer();
+            } else {
+                openDrawer();
+                sidebar.querySelector('.nav-link')?.focus();
+            }
+        });
+
+        sidebarBackdrop.addEventListener('click', closeDrawer);
+
+        document.addEventListener('keydown', (e) => {
+            if (e.key === 'Escape' && isOpen()) {
+                closeDrawer();
+                sidebarToggle.focus();
+            }
+        });
+
+        /* Navigating leaves the drawer open over the new page on a same-document
+           route (the submenu links are '#'-href and handled in JS), so close on any
+           destination pick. Submenu parents only expand a section — those stay open. */
+        sidebar.addEventListener('click', (e) => {
+            const link = e.target.closest('a.nav-link');
+            if (!link || !isOpen()) return;
+            const href = link.getAttribute('href');
+            if (!href || href === '#') return; // section expander, not a destination
+            closeDrawer();
+        });
+
+        /* Rotating to landscape / resizing past the breakpoint must not leave the
+           drawer flagged open, nor leave the sidebar inert once it is part of the
+           desktop layout again. matchMedia rather than a resize listener: it fires
+           exactly on the breakpoint crossing, including orientation changes, which
+           don't always emit resize. */
+        const syncToBreakpoint = () => {
+            if (!mobileQuery.matches && isOpen()) {
+                closeDrawer(); // already re-syncs the hidden state
+            } else {
+                syncDrawerHiddenState();
+            }
+        };
+        if (mobileQuery.addEventListener) {
+            mobileQuery.addEventListener('change', syncToBreakpoint);
+        } else if (mobileQuery.addListener) {
+            mobileQuery.addListener(syncToBreakpoint); // Safari < 14
+        }
+
+        // Initial state: inert below the breakpoint (drawer starts closed), never above.
+        syncDrawerHiddenState();
+    }
+
     // Set active status based on current URL path
     const setActiveSidebarLink = () => {
         const currentPath = window.location.pathname;
@@ -191,30 +298,6 @@ document.addEventListener("DOMContentLoaded", function () {
     // Call the function when page loads
     setActiveSidebarLink();
 
-    // Set active documentation link based on current path
-    const setActiveDocLink = () => {
-        const currentPath = window.location.pathname;
-        const docLinks = document.querySelectorAll('.doc-link');
-
-        // Check if we're on a docs page
-        if (currentPath.includes('/docs/')) {
-            docLinks.forEach(link => {
-                const href = link.getAttribute('href');
-                // Remove active class first
-                link.classList.remove('active');
-
-                // Add active class if the href matches the current path
-                if (href === currentPath ||
-                    (href && currentPath.endsWith(href)) ||
-                    (href && currentPath === href)) {
-                    link.classList.add('active');
-                }
-            });
-        }
-    };
-
-    // Call the function when page loads
-    setActiveDocLink();
 
     // Handle API card message overlays
     const messageOverlays = document.querySelectorAll('.message-overlay');

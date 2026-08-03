@@ -5,11 +5,11 @@
   <div class="hero-hero-body">
     <span class="hero-pill">
       <i class="bi bi-stars" aria-hidden="true"></i>
-      Ready for AI agents
+      {{#if aiEnabled}}Ready for AI agents{{else}}Ready for developers{{/if}}
     </span>
 
     <h1 class="hero-headline">
-      <span class="hero-headline-accent">{{artifactTypesLabel}}</span><br>built for Developers and AI Agents.
+      <span class="hero-headline-accent">{{artifactTypesLabel}}</span><br>built for Developers{{#if aiEnabled}} and AI Agents{{/if}}.
     </h1>
 
     <p class="hero-desc">
@@ -27,7 +27,7 @@
         Browse our MCP servers <i class="bi bi-arrow-right" aria-hidden="true"></i>
       </a>
       {{/if}}
-      {{#if showApiWorkflowsNav}}
+      {{#if aiEnabled}}
       <button type="button" class="hero-btn hero-btn--ai" data-bs-toggle="modal" data-bs-target="#discoverAiModal">
         <i class="bi bi-stars" aria-hidden="true"></i> Discover with AI
       </button>
@@ -37,7 +37,7 @@
 </section>
 
 <!-- ── Discover with AI modal ────────────────────────────── -->
-{{#if showApiWorkflowsNav}}
+{{#if aiEnabled}}
 <div class="modal fade" id="discoverAiModal" tabindex="-1" aria-labelledby="discoverAiModalLabel" aria-hidden="true">
   <div class="modal-dialog modal-lg modal-dialog-scrollable modal-dialog-centered">
     <div class="modal-content hero-modal">

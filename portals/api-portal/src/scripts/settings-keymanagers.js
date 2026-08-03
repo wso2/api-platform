@@ -18,6 +18,11 @@
  
 
 (function () {
+  // Local fallback for the shared bindFormValidity (defined in alert.js, loaded first
+  // on the settings page): keeps save/delete working even if it were ever unavailable,
+  // only skipping the disable-until-valid behaviour instead of throwing at init.
+  var bindFormValidity = window.bindFormValidity || function () { return function () {}; };
+
   var editKmId = null;
 
   function v(id) { var e=document.getElementById(id); return e?e.value.trim():''; }
@@ -43,10 +48,16 @@
     sv('km-display',        mode === 'edit' ? data.displayName    : '');
     sv('km-token-endpoint', mode === 'edit' ? data.tokenEndpoint  : '');
     document.getElementById('km-enabled').checked = mode === 'edit' ? !!data.enabled : true;
+    syncKmSave();
     document.getElementById('cfg-km-modal').style.display = 'flex';
     document.getElementById('km-display').focus();
   }
   function closeKmModal() { document.getElementById('cfg-km-modal').style.display = 'none'; editKmId = null; }
+
+  /* Disable save until Name and Token endpoint are both filled. */
+  var syncKmSave = bindFormValidity(document.getElementById('cfg-km-modal-save'), ['km-display', 'km-token-endpoint'], function() {
+    return v('km-display') !== '' && v('km-token-endpoint') !== '';
+  });
 
   /* ── save ── */
   document.getElementById('cfg-km-modal-save').addEventListener('click', async function() {
@@ -72,20 +83,22 @@
       : window.apiPortalApi.root('/key-managers');
     var method = editKmId ? 'PUT' : 'POST';
 
-    try {
-      var res = await fetch(url, {
-        method: method,
-        headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': window.apiPortalApi.csrfToken() },
-        body: JSON.stringify(body),
-      });
-      if (res.ok) {
-        await showAlert(editKmId ? 'Key manager updated.' : 'Key manager created.', 'success');
-        window.location.reload();
-      } else {
-        var err = await res.json().catch(function(){ return {}; });
-        await showAlert('Failed: ' + (err.error || err.description || err.message || res.statusText), 'error');
-      }
-    } catch(e) { await showAlert('Error: ' + e.message, 'error'); }
+    await withButtonBusy(this, editKmId ? 'Saving…' : 'Adding…', async function() {
+      try {
+        var res = await fetch(url, {
+          method: method,
+          headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': window.apiPortalApi.csrfToken() },
+          body: JSON.stringify(body),
+        });
+        if (res.ok) {
+          await showAlert(editKmId ? 'Key manager updated.' : 'Key manager created.', 'success');
+          window.location.reload();
+        } else {
+          var err = await res.json().catch(function(){ return {}; });
+          await showAlert('Failed: ' + (err.error || err.description || err.message || res.statusText), 'error');
+        }
+      } catch(e) { await showAlert('Error: ' + e.message, 'error'); }
+    });
   });
 
   document.getElementById('cfg-km-modal-close').addEventListener('click', closeKmModal);
@@ -116,22 +129,24 @@
     document.getElementById('cfg-delete-km-modal').style.display = 'none';
   });
   document.getElementById('cfg-delete-km-modal').addEventListener('click', function(e){ if(e.target===this) this.style.display='none'; });
-  document.getElementById('cfg-del-km-confirm').addEventListener('click', async function() {
+  document.getElementById('cfg-del-km-confirm').addEventListener('click', function() {
     if (!pendingDelKmId) return;
-    document.getElementById('cfg-delete-km-modal').style.display = 'none';
-    try {
-      var res = await fetch(window.apiPortalApi.root('/key-managers/' + encodeURIComponent(pendingDelKmId)), {
-        method: 'DELETE',
-        headers: { 'X-CSRF-Token': window.apiPortalApi.csrfToken() },
-      });
-      if (res.ok || res.status === 204) {
-        await showAlert('Key manager deleted.', 'success');
-        window.location.reload();
-      } else {
+    withButtonBusy(this, 'Deleting…', async function() {
+      try {
+        var res = await fetch(window.apiPortalApi.root('/key-managers/' + encodeURIComponent(pendingDelKmId)), {
+          method: 'DELETE',
+          headers: { 'X-CSRF-Token': window.apiPortalApi.csrfToken() },
+        });
+        if (res.ok || res.status === 204) {
+          await showAlert('Key manager deleted.', 'success');
+          window.location.reload();
+          return;
+        }
         var err = await res.json().catch(function(){ return {}; });
         await showAlert('Delete failed: ' + (err.error || err.description || err.message || res.statusText), 'error');
-      }
-    } catch(e) { await showAlert('Error: ' + e.message, 'error'); }
-    pendingDelKmId = null;
+      } catch(e) { await showAlert('Error: ' + e.message, 'error'); }
+      document.getElementById('cfg-delete-km-modal').style.display = 'none';
+      pendingDelKmId = null;
+    });
   });
 }());

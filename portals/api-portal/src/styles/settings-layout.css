@@ -79,6 +79,7 @@
 }
 
 .cfg-nav-item i { font-size: 1rem; flex: none; }
+.cfg-nav-item .mcp-glyph { width: 1rem; height: 1rem; }
 
 .cfg-nav-item:hover {
   background: var(--surface-sunken);
@@ -396,18 +397,54 @@
 
 @media (max-width: 900px) {
   .cfg-layout { flex-direction: column; gap: 0; }
+
+  /* The vertical rail becomes a single horizontally-scrollable strip.
+     It used to wrap instead (flex-wrap on both .cfg-nav and .cfg-nav-items), which
+     at phone widths produced a ragged grid — each group wrapped independently, so
+     rows held one or two items depending on label length ("Organization | Views",
+     then three full-width rows, then "APIs | MCP Servers") — and cost ~490px of
+     height before any content appeared. One non-wrapping row is ~50px and keeps
+     every item reachable by swiping. */
   .cfg-nav {
     width: 100%;
+    max-width: 100%;
+    min-width: 0;
     display: flex;
-    flex-wrap: wrap;
-    gap: 8px;
-    margin-bottom: 20px;
-    /* Stacked layout: the divider becomes .cfg-content's border-top below. */
+    flex-wrap: nowrap;
+    align-items: center;
+    gap: 0;
+    overflow-x: auto;
+    overscroll-behavior-x: contain;
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: none;               /* swiped, not dragged — Firefox */
+    margin-bottom: 16px;
     padding-right: 0;
+    padding-bottom: 4px;
+    /* Stacked layout: the divider becomes .cfg-content's border-top below. */
     border-right: none;
   }
+  .cfg-nav::-webkit-scrollbar { display: none; }
+
+  /* Headings can't sit inline in a single row, so grouping is carried by a rule
+     between adjacent groups instead of being lost entirely. The `.cfg-nav-items ~`
+     prefix skips the first group, which needs no leading divider. */
   .cfg-nav-section { display: none; }
-  .cfg-nav-items { flex-direction: row; flex-wrap: wrap; margin-bottom: 0; }
+  .cfg-nav-items {
+    flex-direction: row;
+    flex-wrap: nowrap;
+    flex: none;
+    gap: 4px;
+    margin-bottom: 0;
+  }
+  .cfg-nav-items ~ .cfg-nav-section + .cfg-nav-items {
+    margin-left: 8px;
+    padding-left: 8px;
+    border-left: 1px solid var(--border);
+  }
+  /* Without this the items shrink to fit rather than overflowing, which is what
+     makes the strip scroll instead of squashing the labels. */
+  .cfg-nav-item { flex: none; }
+
   .cfg-content { border-top: 1px solid var(--border); padding-top: 20px; }
 }
 
@@ -1086,6 +1123,7 @@
 
 .cfg-api-avatar--mcp    { background: #e0f5f2; color: #0d9488; }
 .cfg-api-avatar--websub { background: var(--success-surface); color: var(--success); }
+.cfg-api-avatar--workflow { background: #ede9fe; color: #6d28d9; }
 .cfg-type-badge--mcp    { background: #e0f5f2; color: #0d9488; }
 .cfg-type-badge--websub { background: var(--success-surface); color: var(--success); }
 
@@ -1442,18 +1480,34 @@
   white-space: nowrap;
 }
 
+/* Sized as a real hit target rather than a decorative glyph: at 0.75rem with only
+   1px of padding this was ~14x13px, which is both hard to see against the chip's
+   tinted background and fiddly to click. Shared with the subscription-plan chips,
+   so both pickers get the same affordance. */
 .cfg-chip-remove {
   background: none;
   border: none;
   cursor: pointer;
-  color: var(--text-muted);
-  padding: 0 1px;
+  color: var(--primary);
+  opacity: 0.65;
+  padding: 0;
+  margin-left: 1px;
+  width: 18px;
+  height: 18px;
+  border-radius: 4px;
   line-height: 1;
-  font-size: 0.75rem;
+  font-size: 0.875rem;
   display: flex;
   align-items: center;
+  justify-content: center;
+  transition: background-color .12s, color .12s, opacity .12s;
 }
-.cfg-chip-remove:hover { color: var(--danger); }
+.cfg-chip-remove:hover,
+.cfg-chip-remove:focus-visible {
+  color: var(--danger);
+  opacity: 1;
+  background: color-mix(in srgb, var(--danger) 14%, transparent);
+}
 
 .cfg-chip-text-input {
   flex: 1;

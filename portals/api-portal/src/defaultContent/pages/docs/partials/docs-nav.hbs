@@ -6,22 +6,13 @@
       <div class="adoc-nav-group-title">SPECIFICATION</div>
       <div class="adoc-nav-items">
         <a href="{{../baseDocUrl}}/docs/specification"
-          class="adoc-nav-item doc-link{{#if ../isAPIDefinition}} adoc-nav-item--active{{/if}}">
+          class="adoc-nav-item doc-link{{#if ../isAPIDefinition}}{{#unless ../isTryout}} adoc-nav-item--active{{/unless}}{{/if}}">
           <i class="bi bi-code-slash"></i>
           <span>{{#if (eq ../apiType "Mcp")}}MCP Playground{{else}}API Definition{{/if}}</span>
         </a>
-        {{#if (eq ../apiType "WS")}}
-        <a href="{{../baseDocUrl}}/docs/specification?tryout=true" class="adoc-nav-item doc-link">
-          <i class="bi bi-play-circle"></i><span>Tryout</span>
-        </a>
-        {{/if}}
-        {{#if (eq ../apiType "WebSubApi")}}
-        <a href="{{../baseDocUrl}}/docs/specification?tryout=true" class="adoc-nav-item doc-link">
-          <i class="bi bi-play-circle"></i><span>Tryout</span>
-        </a>
-        {{/if}}
-        {{#if (eq ../apiType "GRAPHQL")}}
-        <a href="{{../baseDocUrl}}/docs/specification?tryout=true" class="adoc-nav-item doc-link">
+        {{#if ../supportsTryout}}
+        <a href="{{../baseDocUrl}}/docs/specification?tryout=true"
+          class="adoc-nav-item doc-link{{#if ../isTryout}} adoc-nav-item--active{{/if}}">
           <i class="bi bi-play-circle"></i><span>Tryout</span>
         </a>
         {{/if}}

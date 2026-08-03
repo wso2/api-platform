@@ -342,49 +342,6 @@
     margin: 0;
 }
 
-.notification {
-    position: fixed;
-    bottom: 1.25rem;
-    right: 1.25rem;
-    background: var(--surface);
-    border-radius: 0.5rem;
-    padding: 1rem 1.25rem;
-    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
-    z-index: 2000;
-    opacity: 0;
-    transform: translateX(400px);
-    transition: all 0.3s ease;
-}
-
-.notification.show {
-    opacity: 1;
-    transform: translateX(0);
-}
-
-.notification-success {
-    border-left: 4px solid var(--success);
-}
-
-.notification-error {
-    border-left: 4px solid var(--danger);
-}
-
-.notification-content {
-    display: flex;
-    align-items: center;
-    gap: 0.75rem;
-    font-size: 0.9rem;
-    font-weight: 500;
-}
-
-.notification-success .notification-content {
-    color: var(--success);
-}
-
-.notification-error .notification-content {
-    color: var(--danger);
-}
-
 /* ===== API Workflow — Detail Page ===== */
 
 .flow-detail-section {
@@ -394,6 +351,15 @@
     align-items: center;
     flex-direction: column;
     width: 100%;
+}
+
+/* Constrain the breadcrumb to the same width as the header card so it left-aligns
+   with it (matching the API overview page). Without this the centered
+   .flow-detail-section shrink-wraps the nav and centers it in the page. */
+.flow-detail-breadcrumb {
+    width: 100%;
+    max-width: 1300px;
+    margin-top: 0.5rem;
 }
 
 .flow-detail-header {

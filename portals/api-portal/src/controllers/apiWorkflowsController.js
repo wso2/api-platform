@@ -23,7 +23,7 @@ const apiWorkflowService = require('../services/apiWorkflowService');
 const { config } = require('../config/configLoader');
 const logger = require('../config/logger');
 const util = require('../utils/util');
-const { loadLayoutFromAPI, renderGivenTemplate, renderTemplateFromAPI, rewriteViewStyles, isAiDisabledForPortal } = require('../utils/util');
+const { loadLayoutFromAPI, renderGivenTemplate, renderTemplateFromAPI, rewriteViewStyles, isAiDisabledForPortal, resolveAiEnabled } = require('../utils/util');
 const constants = require('../utils/constants');
 const fs = require('fs');
 const path = require('path');
@@ -114,6 +114,11 @@ const loadAPIWorkflows = async (req, res, next) => {
             viewName,
             baseUrl: `/${orgName}/views/${viewName}`,
             profile,
+            // Gate the AI Ready chips on the real AI toggle, not the artifact type.
+            // Set explicitly so the custom-view renderGivenTemplate path (which hardcodes
+            // aiEnabled: true) also respects it, matching renderTemplateFromAPI. Uses the
+            // fail-open helper so a transient config-read error doesn't reject the page.
+            aiEnabled: await resolveAiEnabled(orgId, viewName),
         };
 
         const dbLayout = await loadLayoutFromAPI(orgId, viewName);
@@ -194,6 +199,11 @@ const loadAPIWorkflowDetail = async (req, res, next) => {
             viewName,
             baseUrl: `/${orgName}/views/${viewName}`,
             profile,
+            // Gate the "Try with AI" button/modal on the real AI toggle. Set explicitly so
+            // the custom-view renderGivenTemplate path (which hardcodes aiEnabled: true) also
+            // respects it, matching renderTemplateFromAPI. Uses the fail-open helper so a
+            // transient config-read error doesn't reject the page.
+            aiEnabled: await resolveAiEnabled(orgId, viewName),
         };
 
         const dbLayout = await loadLayoutFromAPI(orgId, viewName);

@@ -163,7 +163,6 @@ function openWarningModal(param1, param2, param3, param4, param5, param6, param7
 async function deleteApplication() {
     const modal = document.getElementById('warningModal');
     const applicationId = modal.dataset.param2;
-    const messageOverlay = document.getElementById(`message-overlay-${applicationId}`);
     const trashButton = document.getElementById(`trash-btn-${applicationId}`);
 
     try {
@@ -188,52 +187,18 @@ async function deleteApplication() {
                 }
             }
         } else {
-            if (messageOverlay && typeof window.showAppDeleteMessage === 'function') {
-                window.showAppDeleteMessage(messageOverlay, 'Failed to delete application. Please try again.', 'error');
+            if (typeof showAlert === 'function') showAlert('Failed to delete application. Please try again.', 'error');
+            if (trashButton) {
+                trashButton.disabled = false;
+                trashButton.innerHTML = '<i class="bi bi-trash"></i>';
             }
+        }
+    } catch (error) {
+        if (typeof showAlert === 'function') showAlert('An error occurred while deleting the application. Please try again.', 'error');
+        if (trashButton) {
             trashButton.disabled = false;
             trashButton.innerHTML = '<i class="bi bi-trash"></i>';
         }
-    } catch (error) {
-        if (messageOverlay && typeof window.showAppDeleteMessage === 'function') {
-            window.showAppDeleteMessage(
-                messageOverlay,
-                'An error occurred while deleting the application. Please try again.',
-                'error',
-            );
-        }
-        trashButton.disabled = false;
-        trashButton.innerHTML = '<i class="bi bi-trash"></i>';
     }
 }
 
-window.showAppDeleteMessage = function (overlay, message, type = 'success') {
-    if (overlay) {
-        // Clear any existing auto-hide timers
-        if (overlay.hideTimer) {
-            clearTimeout(overlay.hideTimer);
-            overlay.hideTimer = null;
-        }
-
-        // Set message - keeping it simple and concise
-        const messageText = overlay.querySelector('.message-text');
-        if (messageText) messageText.textContent = message;
-
-        // Set type (success/error)
-        overlay.classList.remove('success', 'error');
-        overlay.classList.add(type);
-
-        // Update icon - ensure proper class structure for alignment
-        const icon = overlay.querySelector('.message-icon');
-        if (icon) {
-            icon.className = 'bi message-icon ' + type;
-            icon.classList.add(type === 'success' ? 'bi-check-circle-fill' : 'bi-exclamation-circle-fill');
-        }
-
-        // Show the overlay (remove hidden class if it exists)
-        overlay.classList.remove('hidden');
-
-        return overlay;
-    }
-    return null;
-};
