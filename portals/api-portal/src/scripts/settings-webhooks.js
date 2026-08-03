@@ -139,6 +139,7 @@
 
   /* ── save ── */
   document.getElementById('wh-form-save').addEventListener('click', async function() {
+    var saveBtn = this;
     var displayName = v('wh-display');
     var url         = v('wh-url');
     if (!displayName || !url) { await showAlert('Name and target URL are required.', 'error'); return; }
@@ -189,20 +190,22 @@
       : window.apiPortalApi.root('/webhook-subscribers');
     var method = editWebhookId ? 'PUT' : 'POST';
 
-    try {
-      var res = await fetch(url2, {
-        method: method,
-        headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': window.apiPortalApi.csrfToken() },
-        body: JSON.stringify(body),
-      });
-      if (res.ok) {
-        await showAlert(editWebhookId ? 'Webhook updated.' : 'Webhook created.', 'success');
-        window.location.reload();
-      } else {
-        var err = await res.json().catch(function(){ return {}; });
-        await showAlert('Failed: ' + (err.error || err.description || err.message || res.statusText), 'error');
-      }
-    } catch(e) { await showAlert('Error: ' + e.message, 'error'); }
+    await withButtonBusy(saveBtn, editWebhookId ? 'Saving…' : 'Adding…', async function() {
+      try {
+        var res = await fetch(url2, {
+          method: method,
+          headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': window.apiPortalApi.csrfToken() },
+          body: JSON.stringify(body),
+        });
+        if (res.ok) {
+          await showAlert(editWebhookId ? 'Webhook updated.' : 'Webhook created.', 'success');
+          window.location.reload();
+        } else {
+          var err = await res.json().catch(function(){ return {}; });
+          await showAlert('Failed: ' + (err.error || err.description || err.message || res.statusText), 'error');
+        }
+      } catch(e) { await showAlert('Error: ' + e.message, 'error'); }
+    });
   });
 
   document.getElementById('wh-form-cancel').addEventListener('click', showWebhookList);
@@ -235,22 +238,24 @@
     document.getElementById('cfg-delete-webhook-modal').style.display = 'none';
   });
   document.getElementById('cfg-delete-webhook-modal').addEventListener('click', function(e){ if(e.target===this) this.style.display='none'; });
-  document.getElementById('cfg-del-webhook-confirm').addEventListener('click', async function() {
+  document.getElementById('cfg-del-webhook-confirm').addEventListener('click', function() {
     if (!pendingDelWebhookId) return;
-    document.getElementById('cfg-delete-webhook-modal').style.display = 'none';
-    try {
-      var res = await fetch(window.apiPortalApi.root('/webhook-subscribers/' + encodeURIComponent(pendingDelWebhookId)), {
-        method: 'DELETE',
-        headers: { 'X-CSRF-Token': window.apiPortalApi.csrfToken() },
-      });
-      if (res.ok || res.status === 204) {
-        await showAlert('Webhook deleted.', 'success');
-        window.location.reload();
-      } else {
+    withButtonBusy(this, 'Deleting…', async function() {
+      try {
+        var res = await fetch(window.apiPortalApi.root('/webhook-subscribers/' + encodeURIComponent(pendingDelWebhookId)), {
+          method: 'DELETE',
+          headers: { 'X-CSRF-Token': window.apiPortalApi.csrfToken() },
+        });
+        if (res.ok || res.status === 204) {
+          await showAlert('Webhook deleted.', 'success');
+          window.location.reload();
+          return;
+        }
         var err = await res.json().catch(function(){ return {}; });
         await showAlert('Delete failed: ' + (err.error || err.description || err.message || res.statusText), 'error');
-      }
-    } catch(e) { await showAlert('Error: ' + e.message, 'error'); }
-    pendingDelWebhookId = null;
+      } catch(e) { await showAlert('Error: ' + e.message, 'error'); }
+      document.getElementById('cfg-delete-webhook-modal').style.display = 'none';
+      pendingDelWebhookId = null;
+    });
   });
 }());

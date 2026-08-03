@@ -1,3 +1,27 @@
+/**
+ * Run an async `action` while showing a "processing" state on `button`: disable it and
+ * swap its label for a Bootstrap spinner + `busyText`, then always restore the original
+ * label and disabled state afterwards — even if `action` throws. Shared by the admin
+ * settings forms (views, webhooks, labels, plans, key managers, …) so every save/delete
+ * shows progress and can't be double-submitted. Follows the inline spinner convention
+ * already used elsewhere in the portal. Returns the action's promise.
+ */
+function withButtonBusy(button, busyText, action) {
+    if (!button) return Promise.resolve().then(action);
+    const originalHtml = button.innerHTML;
+    const wasDisabled = button.disabled;
+    button.disabled = true;
+    button.setAttribute('aria-busy', 'true');
+    button.innerHTML =
+        '<span class="spinner-border spinner-border-sm me-1" role="status" aria-hidden="true"></span>' +
+        (busyText || 'Processing…');
+    return Promise.resolve().then(action).finally(() => {
+        button.innerHTML = originalHtml;
+        button.disabled = wasDisabled;
+        button.removeAttribute('aria-busy');
+    });
+}
+
 function showAlert(message, type) {
     return new Promise((resolve) => {
         const alertElement = document.getElementById('alertToast');

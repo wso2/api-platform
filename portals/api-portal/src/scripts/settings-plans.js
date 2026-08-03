@@ -126,21 +126,23 @@
     // existing handle so the update targets the right plan (it is not renamed).
     if (editPlanId) body.id = editPlanId;
 
-    try {
-      var method = editPlanId ? 'PUT' : 'POST';
-      var res = await fetch(window.apiPortalApi.root('/subscription-plans'), {
-        method: method,
-        headers: { 'Content-Type':'application/json', 'X-CSRF-Token': window.apiPortalApi.csrfToken() },
-        body: JSON.stringify(body),
-      });
-      if (res.ok) {
-        await showAlert(editPlanId ? 'Plan updated.' : 'Plan created.', 'success');
-        window.location.reload();
-      } else {
-        var err = await res.json().catch(function(){ return {}; });
-        await showAlert('Failed: '+(err.description||err.message||res.statusText), 'error');
-      }
-    } catch(e) { await showAlert('Error: '+e.message, 'error'); }
+    await withButtonBusy(this, editPlanId ? 'Saving…' : 'Adding…', async function() {
+      try {
+        var method = editPlanId ? 'PUT' : 'POST';
+        var res = await fetch(window.apiPortalApi.root('/subscription-plans'), {
+          method: method,
+          headers: { 'Content-Type':'application/json', 'X-CSRF-Token': window.apiPortalApi.csrfToken() },
+          body: JSON.stringify(body),
+        });
+        if (res.ok) {
+          await showAlert(editPlanId ? 'Plan updated.' : 'Plan created.', 'success');
+          window.location.reload();
+        } else {
+          var err = await res.json().catch(function(){ return {}; });
+          await showAlert('Failed: '+(err.description||err.message||res.statusText), 'error');
+        }
+      } catch(e) { await showAlert('Error: '+e.message, 'error'); }
+    });
   });
 
   document.getElementById('cfg-plan-modal-close').addEventListener('click', closePlanModal);
@@ -176,22 +178,24 @@
     document.getElementById('cfg-delete-plan-modal').style.display = 'none';
   });
   document.getElementById('cfg-delete-plan-modal').addEventListener('click', function(e){ if(e.target===this) this.style.display='none'; });
-  document.getElementById('cfg-del-plan-confirm').addEventListener('click', async function() {
+  document.getElementById('cfg-del-plan-confirm').addEventListener('click', function() {
     if (!pendingDelPlanId) return;
-    document.getElementById('cfg-delete-plan-modal').style.display = 'none';
-    try {
-      var res = await fetch(window.apiPortalApi.root('/subscription-plans/'+encodeURIComponent(pendingDelPlanId)), {
-        method: 'DELETE',
-        headers: { 'X-CSRF-Token': window.apiPortalApi.csrfToken() },
-      });
-      if (res.ok || res.status===204) {
-        await showAlert('Plan deleted.', 'success');
-        window.location.reload();
-      } else {
+    withButtonBusy(this, 'Deleting…', async function() {
+      try {
+        var res = await fetch(window.apiPortalApi.root('/subscription-plans/'+encodeURIComponent(pendingDelPlanId)), {
+          method: 'DELETE',
+          headers: { 'X-CSRF-Token': window.apiPortalApi.csrfToken() },
+        });
+        if (res.ok || res.status===204) {
+          await showAlert('Plan deleted.', 'success');
+          window.location.reload();
+          return;
+        }
         var err = await res.json().catch(function(){ return {}; });
         await showAlert('Delete failed: '+(err.description||err.message||res.statusText), 'error');
-      }
-    } catch(e) { await showAlert('Error: '+e.message, 'error'); }
-    pendingDelPlanId = null;
+      } catch(e) { await showAlert('Error: '+e.message, 'error'); }
+      document.getElementById('cfg-delete-plan-modal').style.display = 'none';
+      pendingDelPlanId = null;
+    });
   });
 }());

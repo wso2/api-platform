@@ -82,40 +82,41 @@
     g('view-handle').value = this.value.toLowerCase().trim().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
   });
 
-  g('cfg-view-modal-save').addEventListener('click', async function () {
+  g('cfg-view-modal-save').addEventListener('click', function () {
     var handle  = g('view-handle').value.trim();
     var display = g('view-display').value.trim();
     var labels  = getSelectedLabels();
-    if (!handle) { await showAlert('Handle is required.', 'error'); return; }
+    if (!display) { showAlert('Name is required.', 'error'); return; }
+    if (!handle) { showAlert('Handle is required.', 'error'); return; }
     if (!viewHandleRe.test(handle)) {
-      await showAlert('Handle must be lowercase letters, numbers and hyphens only.', 'error');
+      showAlert('Handle must be lowercase letters, numbers and hyphens only.', 'error');
       return;
     }
-    try {
-      var res;
-      if (editHandle) {
-        res = await fetch(window.apiPortalApi.root('/views/' + encodeURIComponent(editHandle)), {
-          method: 'PUT',
-          headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': window.apiPortalApi.csrfToken() },
-          credentials: 'same-origin', body: JSON.stringify({ displayName: display, labels: labels }),
-        });
-      } else {
-        var body = { id: handle, labels: labels };
-        if (display) body.displayName = display;
-        res = await fetch(window.apiPortalApi.root('/views'), {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': window.apiPortalApi.csrfToken() },
-          credentials: 'same-origin', body: JSON.stringify(body),
-        });
-      }
-      if (res.ok) {
-        await showAlert(editHandle ? 'View updated.' : 'View created.', 'success');
-        window.location.reload();
-      } else {
-        var err = await res.json().catch(function () { return {}; });
-        await showAlert('Failed: ' + (err.description || err.message || res.statusText), 'error');
-      }
-    } catch (e) { await showAlert('Error: ' + e.message, 'error'); }
+    withButtonBusy(this, editHandle ? 'Saving…' : 'Adding…', async function () {
+      try {
+        var res;
+        if (editHandle) {
+          res = await fetch(window.apiPortalApi.root('/views/' + encodeURIComponent(editHandle)), {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': window.apiPortalApi.csrfToken() },
+            credentials: 'same-origin', body: JSON.stringify({ displayName: display, labels: labels }),
+          });
+        } else {
+          res = await fetch(window.apiPortalApi.root('/views'), {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': window.apiPortalApi.csrfToken() },
+            credentials: 'same-origin', body: JSON.stringify({ id: handle, displayName: display, labels: labels }),
+          });
+        }
+        if (res.ok) {
+          await showAlert(editHandle ? 'View updated.' : 'View created.', 'success');
+          window.location.reload();
+        } else {
+          var err = await res.json().catch(function () { return {}; });
+          await showAlert('Failed: ' + (err.description || err.message || res.statusText), 'error');
+        }
+      } catch (e) { await showAlert('Error: ' + e.message, 'error'); }
+    });
   });
 
   var pendingDel = null;
@@ -136,17 +137,20 @@
   });
   g('cfg-del-view-cancel').addEventListener('click', function () { g('cfg-delete-view-modal').style.display = 'none'; });
   g('cfg-delete-view-modal').addEventListener('click', function (e) { if (e.target === this) this.style.display = 'none'; });
-  g('cfg-del-view-confirm').addEventListener('click', async function () {
+  g('cfg-del-view-confirm').addEventListener('click', function () {
     if (!pendingDel) return;
-    g('cfg-delete-view-modal').style.display = 'none';
-    try {
-      var res = await fetch(window.apiPortalApi.root('/views/' + encodeURIComponent(pendingDel)), {
-        method: 'DELETE',
-        headers: { 'X-CSRF-Token': window.apiPortalApi.csrfToken() }, credentials: 'same-origin',
-      });
-      if (res.ok || res.status === 204) { await showAlert('View deleted.', 'success'); window.location.reload(); }
-      else { var err = await res.json().catch(function () { return {}; }); await showAlert('Delete failed: ' + (err.description || err.message || res.statusText), 'error'); }
-    } catch (e) { await showAlert('Error: ' + e.message, 'error'); }
-    pendingDel = null;
+    withButtonBusy(this, 'Deleting…', async function () {
+      try {
+        var res = await fetch(window.apiPortalApi.root('/views/' + encodeURIComponent(pendingDel)), {
+          method: 'DELETE',
+          headers: { 'X-CSRF-Token': window.apiPortalApi.csrfToken() }, credentials: 'same-origin',
+        });
+        if (res.ok || res.status === 204) { await showAlert('View deleted.', 'success'); window.location.reload(); return; }
+        var err = await res.json().catch(function () { return {}; });
+        await showAlert('Delete failed: ' + (err.description || err.message || res.statusText), 'error');
+      } catch (e) { await showAlert('Error: ' + e.message, 'error'); }
+      g('cfg-delete-view-modal').style.display = 'none';
+      pendingDel = null;
+    });
   });
 }());
