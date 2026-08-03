@@ -443,6 +443,85 @@ roles        = "roles"
 	}
 }
 
+// Scope mode is the default, so an operator who never mentions [auth.authorization]
+// keeps today's behaviour.
+func TestLoad_AuthorizationModeDefaultsToScope(t *testing.T) {
+	cfgPath := writeConfig(t, `
+[ai_workspace.control_plane]
+url = "https://platform-api:9243"
+`)
+	cfg, err := Load(cfgPath)
+	if err != nil {
+		t.Fatalf("Load() error = %v", err)
+	}
+	if cfg.Auth.Authorization.Mode != AuthzModeScope {
+		t.Errorf("Authorization.Mode = %q, want %q", cfg.Auth.Authorization.Mode, AuthzModeScope)
+	}
+}
+
+func TestLoad_AuthorizationRoleMode(t *testing.T) {
+	cfgPath := writeConfig(t, `
+[ai_workspace.control_plane]
+url = "https://platform-api:9243"
+
+[ai_workspace.auth.authorization]
+mode = "role"
+role_to_scope_mapping = "/etc/ai-workspace/role-to-scope-mapping.yaml"
+`)
+	cfg, err := Load(cfgPath)
+	if err != nil {
+		t.Fatalf("Load() error = %v", err)
+	}
+	if cfg.Auth.Authorization.Mode != AuthzModeRole {
+		t.Errorf("Authorization.Mode = %q, want %q", cfg.Auth.Authorization.Mode, AuthzModeRole)
+	}
+	if cfg.Auth.Authorization.RoleToScopeMapping == "" {
+		t.Error("RoleToScopeMapping is empty, want the configured path")
+	}
+	// The grant table is a server-side concern; the SPA gates on the scopes
+	// /api/session reports, never on the table itself.
+	if _, ok := cfg.RuntimeConfig["APIP_AIW_AUTH_AUTHORIZATION_ROLE_TO_SCOPE_MAPPING"]; ok {
+		t.Error("role_to_scope_mapping must not reach the browser")
+	}
+}
+
+// Role mode with no grant table can only expand to zero scopes, which would present a
+// UI in which nothing is permitted. Refuse to start instead.
+func TestLoad_RoleModeWithoutMapping_Errors(t *testing.T) {
+	cfgPath := writeConfig(t, `
+[ai_workspace.control_plane]
+url = "https://platform-api:9243"
+
+[ai_workspace.auth.authorization]
+mode = "role"
+`)
+	_, err := Load(cfgPath)
+	if err == nil {
+		t.Fatal("Load() succeeded, want an error when role mode has no role_to_scope_mapping")
+	}
+	if !strings.Contains(err.Error(), "role_to_scope_mapping is required") {
+		t.Errorf("error = %v, want it to name role_to_scope_mapping", err)
+	}
+}
+
+// A typo'd mode must not silently degrade to reading the scope claim.
+func TestLoad_InvalidAuthorizationMode_Errors(t *testing.T) {
+	cfgPath := writeConfig(t, `
+[ai_workspace.control_plane]
+url = "https://platform-api:9243"
+
+[ai_workspace.auth.authorization]
+mode = "roles"
+`)
+	_, err := Load(cfgPath)
+	if err == nil {
+		t.Fatal("Load() succeeded, want an error for an unknown authorization mode")
+	}
+	if !strings.Contains(err.Error(), "[auth.authorization] mode") {
+		t.Errorf("error = %v, want it to name [auth.authorization] mode", err)
+	}
+}
+
 // A malformed boolean must fail startup rather than fall back to the default.
 func TestLoad_InvalidBool_Errors(t *testing.T) {
 	cfgPath := writeConfig(t, `

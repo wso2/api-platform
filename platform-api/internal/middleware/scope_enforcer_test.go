@@ -385,7 +385,7 @@ func TestScopeEnforcer_RoleMode(t *testing.T) {
 			// The scope claim carries a satisfying value that must be ignored in
 			// role mode — only the expanded roles count.
 			ctx := context.WithValue(req.Context(), keyScope, "ap:organization:manage")
-			ctx = context.WithValue(ctx, keyPlatformRoles, tc.roles)
+			ctx = context.WithValue(ctx, keyRoles, tc.roles)
 			req = req.WithContext(ctx)
 
 			rec := httptest.NewRecorder()
