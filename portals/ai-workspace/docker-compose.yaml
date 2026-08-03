@@ -62,7 +62,7 @@ services:
       start_period: 10s
       retries: 3
 
-  developer-portal:
+  api-portal:
     image: ghcr.io/wso2/api-platform/api-portal:1.0.0-SNAPSHOT
     restart: unless-stopped
     profiles: ["api-portal"]
