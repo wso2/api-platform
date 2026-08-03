@@ -27,7 +27,7 @@
         Browse our MCP servers <i class="bi bi-arrow-right" aria-hidden="true"></i>
       </a>
       {{/if}}
-      {{#if showApiWorkflowsNav}}
+      {{#if aiEnabled}}
       <button type="button" class="hero-btn hero-btn--ai" data-bs-toggle="modal" data-bs-target="#discoverAiModal">
         <i class="bi bi-stars" aria-hidden="true"></i> Discover with AI
       </button>
@@ -37,7 +37,7 @@
 </section>
 
 <!-- ── Discover with AI modal ────────────────────────────── -->
-{{#if showApiWorkflowsNav}}
+{{#if aiEnabled}}
 <div class="modal fade" id="discoverAiModal" tabindex="-1" aria-labelledby="discoverAiModalLabel" aria-hidden="true">
   <div class="modal-dialog modal-lg modal-dialog-scrollable modal-dialog-centered">
     <div class="modal-content hero-modal">

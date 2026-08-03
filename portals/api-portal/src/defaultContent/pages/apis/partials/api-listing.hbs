@@ -107,7 +107,7 @@
                   {{else if (eq type "SOAP")}}<i class="bi bi-file-code"></i> SOAP
                   {{else}}<i class="bi bi-braces"></i> REST{{/if}}
                 </span>
-                {{#if ../showApiWorkflowsNav}}
+                {{#if ../aiEnabled}}
                 {{#unless (eq agentVisibility "HIDDEN")}}
                 <span class="dp-badge dp-badge--ai" title="AI agents can discover and use this API">
                   <i class="bi bi-robot"></i> AI Ready

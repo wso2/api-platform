@@ -33,11 +33,13 @@
                 <p>{{flow.description}}</p>
             </div>
             <div class="flow-header-actions">
+                {{#if aiEnabled}}
                 {{#unless (eq flow.agentVisibility "HIDDEN")}}
                 <button class="common-btn-primary discover-ai-btn" id="openPromptBtn" data-bs-toggle="modal" data-bs-target="#agentPromptModal">
                     <img src="/images/ai-stars-icon.svg" width="16" height="16" aria-hidden="true" alt="" style="margin-right:6px;vertical-align:middle;">Try with AI
                 </button>
                 {{/unless}}
+                {{/if}}
             </div>
         </div>
 
@@ -58,7 +60,11 @@
     {{> alert}}
 
     {{!-- ── AGENT PROMPT MODAL ── --}}
+    {{#if aiEnabled}}
+    {{#unless (eq flow.agentVisibility "HIDDEN")}}
     {{> agent-prompt-modal}}
+    {{/unless}}
+    {{/if}}
 
     {{!-- Hidden container for spec content --}}
     <textarea id="specContent" style="display: none;">{{flow.content}}</textarea>

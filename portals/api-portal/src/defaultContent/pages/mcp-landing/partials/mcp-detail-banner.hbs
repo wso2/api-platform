@@ -14,7 +14,7 @@
         <span class="dp-badge dp-badge--version">{{apiMetadata.version}}</span>
         {{/if}}
         <span class="dp-badge dp-badge--mcp"><span class="mcp-glyph dp-badge-icon" aria-hidden="true"></span> MCP</span>
-        {{#if showApiWorkflowsNav}}
+        {{#if aiEnabled}}
         {{#unless (eq apiMetadata.agentVisibility "HIDDEN")}}
         <span class="dp-badge dp-badge--ai" title="AI agents can discover and use this MCP server">
           <i class="bi bi-robot"></i> AI Ready
@@ -49,7 +49,7 @@
       <a class="dp-btn dp-btn--outline" href="{{baseUrl}}/mcp/{{apiMetadata.id}}/docs/specification">
         <i class="bi bi-book"></i> Documentation
       </a>
-      {{#if showApiWorkflowsNav}}
+      {{#if aiEnabled}}
       {{#unless (eq apiMetadata.agentVisibility "HIDDEN")}}
       <button type="button" class="dp-btn dp-btn--ai" data-bs-toggle="modal" data-bs-target="#apiAgentPromptModal">
         <i class="bi bi-robot"></i> Try with AI

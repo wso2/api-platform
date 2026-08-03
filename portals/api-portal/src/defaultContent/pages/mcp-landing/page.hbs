@@ -57,7 +57,7 @@
 {{> alert }}
 
 {{!-- ── AGENT PROMPT MODAL ── --}}
-{{#if showApiWorkflowsNav}}
+{{#if aiEnabled}}
 {{#unless (eq apiMetadata.agentVisibility "HIDDEN")}}
 {{> api-agent-prompt-modal}}
 {{/unless}}

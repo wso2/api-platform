@@ -27,7 +27,7 @@
           {{else}}<i class="bi bi-braces"></i> REST{{/if}}
         </span>
         {{/if}}
-        {{#if showApiWorkflowsNav}}
+        {{#if aiEnabled}}
         {{#unless (eq apiMetadata.agentVisibility "HIDDEN")}}
         <span class="dp-badge dp-badge--ai" title="AI agents can discover and use this API">
           <i class="bi bi-robot"></i> AI Ready
@@ -70,7 +70,7 @@
       </a>
       {{/if}}
       {{/in}}
-      {{#if showApiWorkflowsNav}}
+      {{#if aiEnabled}}
       {{#unless (eq apiMetadata.agentVisibility "HIDDEN")}}
       <button type="button" class="dp-btn dp-btn--ai" data-bs-toggle="modal" data-bs-target="#apiAgentPromptModal">
         <i class="bi bi-robot"></i> Try with AI

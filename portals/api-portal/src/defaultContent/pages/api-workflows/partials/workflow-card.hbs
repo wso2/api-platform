@@ -17,10 +17,12 @@
         {{/if}}
       </div>
       <div class="wf-card-footer">
+        {{#if @root.aiEnabled}}
         {{#unless (eq this.agentVisibility "HIDDEN")}}
         <span class="dp-badge dp-badge--ai" title="AI agents can discover and use this workflow">
           <i class="bi bi-robot"></i> AI Ready
         </span>
         {{/unless}}
+        {{/if}}
       </div>
     </div>
