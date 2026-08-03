@@ -45,7 +45,7 @@
             {{#if enabled}}
             {{#let "keys" productionKeys}}
             {{> manage-keys-km-card
-                kmName=../id
+                kmName=../name
                 kmId=../id
                 keyType="PRODUCTION"
                 keys=keys
@@ -81,7 +81,7 @@
             {{#if enabled}}
             {{#let "keys" sandboxKeys}}
             {{> manage-keys-km-card
-                kmName=../id
+                kmName=../name
                 kmId=../id
                 keyType="SANDBOX"
                 keys=keys

@@ -96,6 +96,7 @@ describe('Applications', () => {
         // The Manage Keys card labels each key manager by its handle (kmName =
         // km.handle), so seed a known id and assert on that.
         const KM_ID = 'it-key-manager';
+        const KM_DISPLAY_NAME = 'IT Key Manager';
         // Populated from the on-demand mock token server (started in before()).
         let mockToken;
 
@@ -109,7 +110,7 @@ describe('Applications', () => {
                 mockToken = mock;
                 cy.seedKeyManager({
                     id: KM_ID,
-                    displayName: 'IT Key Manager',
+                    displayName: KM_DISPLAY_NAME,
                     tokenEndpoint: mock.endpoint,
                 });
             });
@@ -128,7 +129,7 @@ describe('Applications', () => {
             // The unavailable message is gone; a key-manager card renders instead.
             cy.get('.mk-unavailable').should('not.exist');
             cy.get('.mk-km-card').should('exist');
-            cy.get('.mk-km-name').should('contain', KM_ID);
+            cy.get('.mk-km-name').should('contain', KM_DISPLAY_NAME);
             // With no credentials yet, the card exposes the "add client ID" control
             // (OAuth apps are created in the key manager itself, then linked here).
             cy.get('[id^="addClientIdBtn-"]').should('exist');
