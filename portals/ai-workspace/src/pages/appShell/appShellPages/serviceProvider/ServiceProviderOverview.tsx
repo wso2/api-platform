@@ -186,6 +186,9 @@ function parseOpenApiSpec(text: string): OpenApiSpec | null {
 
 type LocationState = {
   providerAdded?: boolean;
+  // One-time intent set by the "Consume LLM Provider" step on the deploy page.
+  // Consumed and cleared on arrival so a refresh doesn't re-trigger the scroll.
+  focusApiKeys?: boolean;
 };
 
 type ProxyCreationNavigationState = {
@@ -217,6 +220,8 @@ const tabs = [
   'Guardrails & Policies',
   'Models',
 ];
+
+const API_KEY_HIGHLIGHT_DURATION_MS = 3000;
 
 type RateLimitingDraftActions = {
   saveDraftChanges: () => Promise<boolean>;
@@ -539,6 +544,57 @@ function ServiceProviderOverviewContent() {
   };
 
   const [highlightApiKeySection, setHighlightApiKeySection] = useState(false);
+  const apiKeysSectionNodeRef = useRef<HTMLDivElement | null>(null);
+  // Set when a focus is requested before the section is mounted. The section is
+  // behind both the Overview tab panel (which unmounts inactive tabs) and an
+  // async `gateways.length > 0` guard, so on a tab switch or a fresh navigation
+  // the node doesn't exist yet. The callback ref below drains this flag as soon
+  // as it mounts, so no timeout or polling is needed.
+  const pendingApiKeysFocusRef = useRef(false);
+  // Last history entry whose navigation state was consumed, so an effect replay
+  // (React Strict Mode) can't re-run the snackbar or the scroll for that entry.
+  const processedNavigationStateKeyRef = useRef<string | null>(null);
+
+  // Scrolls to the section if it is mounted; otherwise the intent stays pending
+  // for `registerApiKeysSection` to pick up once it does mount.
+  const focusApiKeysNode = useCallback(() => {
+    const node = apiKeysSectionNodeRef.current;
+    if (!node) return;
+    // Cleared before scrolling so a single intent can never scroll twice
+    // (relevant under React Strict Mode's double effect/ref invocation).
+    pendingApiKeysFocusRef.current = false;
+    setHighlightApiKeySection(true);
+    node.scrollIntoView({ behavior: 'smooth', block: 'center' });
+  }, []);
+
+  // Stable callback ref: React invokes it exactly when the section mounts or
+  // unmounts, making this render-aware rather than time-based.
+  const registerApiKeysSection = useCallback(
+    (node: HTMLDivElement | null) => {
+      apiKeysSectionNodeRef.current = node;
+      if (node && pendingApiKeysFocusRef.current) {
+        focusApiKeysNode();
+      }
+    },
+    [focusApiKeysNode]
+  );
+
+  const focusApiKeysSection = useCallback(() => {
+    setTabIndex(0); // API Keys live on the Overview tab.
+    pendingApiKeysFocusRef.current = true;
+    focusApiKeysNode();
+  }, [focusApiKeysNode]);
+
+  // Auto-clears the highlight and owns its own timer cleanup, so an unmount or
+  // a Strict Mode remount can't leave a stray timeout behind.
+  useEffect(() => {
+    if (!highlightApiKeySection) return;
+    const timer = setTimeout(
+      () => setHighlightApiKeySection(false),
+      API_KEY_HIGHLIGHT_DURATION_MS
+    );
+    return () => clearTimeout(timer);
+  }, [highlightApiKeySection]);
 
   const handleDeleteConfirm = async () => {
     if (!deleteTarget || isDeletingProvider) return;
@@ -618,9 +674,7 @@ function ServiceProviderOverviewContent() {
           );
       navigate(deployPath);
     } else if (stepId === 'consume') {
-      setTabIndex(0);
-      setHighlightApiKeySection(true);
-      setTimeout(() => setHighlightApiKeySection(false), 3000);
+      focusApiKeysSection();
     }
   };
 
@@ -653,11 +707,44 @@ function ServiceProviderOverviewContent() {
 
   useEffect(() => {
     const state = location.state as LocationState | null;
-    if (state?.providerAdded) {
+    if (!state?.providerAdded && !state?.focusApiKeys) return;
+    // The replace navigation below is async, so a replayed effect still sees this
+    // state. Claim the entry first — both runs then resolve to a single pass.
+    if (processedNavigationStateKeyRef.current === location.key) return;
+    processedNavigationStateKeyRef.current = location.key;
+
+    if (state.providerAdded) {
       showSnackbar('Successfully added new service provider.', 'success');
-      navigate(location.pathname, { replace: true, state: null });
     }
-  }, [location.pathname, location.state, navigate]);
+    if (state.focusApiKeys) {
+      focusApiKeysSection();
+    }
+
+    // Drop only the consumed flags so unrelated router state survives, and keep
+    // search/hash so replacing the entry doesn't discard query parameters.
+    const remainingState: Record<string, unknown> = { ...state };
+    delete remainingState.providerAdded;
+    delete remainingState.focusApiKeys;
+    navigate(
+      {
+        pathname: location.pathname,
+        search: location.search,
+        hash: location.hash,
+      },
+      {
+        replace: true,
+        state: Object.keys(remainingState).length > 0 ? remainingState : null,
+      }
+    );
+  }, [
+    location.key,
+    location.pathname,
+    location.search,
+    location.hash,
+    location.state,
+    navigate,
+    focusApiKeysSection,
+  ]);
 
   useEffect(() => {
     if (hasUnsavedChanges) return;
@@ -1586,6 +1673,7 @@ function ServiceProviderOverviewContent() {
                     setStepBannerRefreshTrigger((prev) => prev + 1)
                   }
                   highlightApiKeySection={highlightApiKeySection}
+                  apiKeysSectionRef={registerApiKeysSection}
                   onCreateProxy={handleCreateProxyClick}
                   onBlockedNavigation={handleDeployNavigation}
                 />

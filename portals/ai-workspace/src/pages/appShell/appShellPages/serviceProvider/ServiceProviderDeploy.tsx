@@ -74,7 +74,13 @@ function ServiceProviderDeployLayout({ providerId }: ServiceProviderDeployLayout
         )
       : buildOrgPath(currentOrganization, `/service-provider/${providerId}`);
 
-    navigate(overviewPath);
+    // The API Keys section lives on the overview page, so the consume step
+    // carries a one-time focus intent that the overview page consumes and
+    // clears on arrival.
+    navigate(
+      overviewPath,
+      stepId === 'consume' ? { state: { focusApiKeys: true } } : undefined
+    );
   };
   const stepBannerRefreshTrigger = useMemo(() => {
     if (isLoadingDeployments) return 'loading';
