@@ -98,11 +98,36 @@ func specPaths() []string {
 	}
 }
 
-// The default scope set must satisfy every scoped operation the Platform API declares.
-// This is what makes the trimmed list safe: the granular create/update/delete scopes
-// are omitted only because each of their operations also accepts a resource :manage,
-// and that is per-endpoint enumeration in the spec, not scope hierarchy — nothing
-// expands `ap:x:manage` into `ap:x:y:read` at request time.
+// excludedScopeResources are the resource families the AI Workspace does not surface,
+// so the default scope set deliberately requests nothing for them. An operation whose
+// every accepted alternative names one of these is out of scope for the coverage check
+// below rather than a gap in the requested set.
+var excludedScopeResources = []string{
+	"ap:rest_api:",
+	"ap:subscription:",
+	"ap:subscription_plan:",
+	"ap:websub_api:",
+	"ap:webbroker_api:",
+}
+
+func isExcludedScope(scope string) bool {
+	// The cross-user ownership override is never requested by default
+	// (TestDefaultOIDCScopesExcludeOwnershipOverride), so it can't stand in as the
+	// remaining alternative that keeps an excluded-family operation in the check.
+	if scope == "ap:api_key:all:manage" {
+		return true
+	}
+	return slices.ContainsFunc(excludedScopeResources, func(prefix string) bool {
+		return strings.HasPrefix(scope, prefix)
+	})
+}
+
+// The default scope set must satisfy every scoped operation the Platform API declares,
+// excluding the resource families listed in excludedScopeResources. This is what makes
+// the trimmed list safe: the granular create/update/delete scopes are omitted only
+// because each of their operations also accepts a resource :manage, and that is
+// per-endpoint enumeration in the spec, not scope hierarchy — nothing expands
+// `ap:x:manage` into `ap:x:y:read` at request time.
 func TestDefaultOIDCScopesCoverEveryOperation(t *testing.T) {
 	granted := strings.Fields(defaultOIDCScopes)
 	checked := 0
@@ -113,6 +138,10 @@ func TestDefaultOIDCScopesCoverEveryOperation(t *testing.T) {
 			continue
 		}
 		for _, op := range ops {
+			// Only reachable via an excluded family — not a coverage gap.
+			if !slices.ContainsFunc(op.accepts, func(s string) bool { return !isExcludedScope(s) }) {
+				continue
+			}
 			checked++
 			satisfied := slices.ContainsFunc(op.accepts, func(s string) bool {
 				return slices.Contains(granted, s)
@@ -146,10 +175,11 @@ func TestDefaultOIDCScopesRequestOfflineAccess(t *testing.T) {
 	}
 }
 
-// The default set requests every declared scope on purpose, so that whatever subset a
-// least-privilege user actually holds survives the IDP's intersection of requested and
-// entitled. A user granted only ap:rest_api:create would lose it if the request were
-// trimmed to :manage/:read.
+// Within the resource families the workspace does surface, the default set requests
+// every declared scope on purpose, so that whatever subset a least-privilege user
+// actually holds survives the IDP's intersection of requested and entitled. A user
+// granted only ap:llm_proxy:create would lose it if the request were trimmed to
+// :manage/:read.
 //
 // The cost is size: encoded, this parameter is several kilobytes, which exceeds
 // Microsoft Entra ID's authorize-URL limit outright (AADSTS90015). That is not fixed by
@@ -161,10 +191,10 @@ func TestDefaultOIDCScopesRequestGranularScopes(t *testing.T) {
 	granted := strings.Fields(defaultOIDCScopes)
 	// Representative granular scopes that a :manage/:read-only request would drop.
 	for _, scope := range []string{
-		"ap:rest_api:create",
+		"ap:llm_proxy:create",
 		"ap:project:delete",
 		"ap:llm_proxy:update",
-		"ap:rest_api:deployment:undeploy",
+		"ap:llm_proxy:deployment:undeploy",
 	} {
 		if !slices.Contains(granted, scope) {
 			t.Errorf("defaultOIDCScopes omits %s — a user holding only that grant would lose it, "+
