@@ -25,7 +25,6 @@
   // field means "keep the stored one", so the mandatory check below only applies when
   // there is nothing stored to keep — on create, or on a legacy row saved without one.
   var editHasSecret = false;
-  var handleTouched = false;
 
   function v(id) { var e=document.getElementById(id); return e?e.value.trim():''; }
 
@@ -114,14 +113,9 @@
   function showWebhookForm(mode, data) {
     editWebhookId = mode === 'edit' ? data.id : null;
     editHasSecret = mode === 'edit' && !!data.hasSecret;
-    handleTouched = false;
     document.getElementById('wh-form-title').textContent = mode === 'edit' ? 'Edit webhook' : 'Add webhook';
     document.getElementById('wh-form-save').textContent  = mode === 'edit' ? 'Save changes' : 'Add webhook';
     document.getElementById('wh-display').value   = mode === 'edit' ? (data.displayName || '') : '';
-    document.getElementById('wh-handle').value    = mode === 'edit' ? (data.id || '') : '';
-    /* The handle is the subscriber's identity and the id in its API path, so it
-       is fixed once created. */
-    document.getElementById('wh-handle').readOnly = mode === 'edit';
     document.getElementById('wh-url').value       = mode === 'edit' ? (data.targetUrl || '')       : '';
     document.getElementById('wh-secret').value    = '';
     document.getElementById('wh-timeout').value   = mode === 'edit' ? (data.timeoutMs || 5000) : 5000;
@@ -143,25 +137,11 @@
     editHasSecret = false;
   }
 
-  /* ── auto-slug name → handle (skips once the user edits Handle, or on edit) ── */
-  var whHandleRe = /^[a-z0-9][a-z0-9-]*[a-z0-9]$|^[a-z0-9]$/;
-  document.getElementById('wh-handle').addEventListener('input', function() { handleTouched = true; });
-  document.getElementById('wh-display').addEventListener('input', function() {
-    if (editWebhookId || handleTouched) return;
-    document.getElementById('wh-handle').value =
-      this.value.toLowerCase().trim().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
-  });
-
   /* ── save ── */
   document.getElementById('wh-form-save').addEventListener('click', async function() {
     var displayName = v('wh-display');
-    var handle      = v('wh-handle');
     var url         = v('wh-url');
-    if (!displayName || !handle || !url) { await showAlert('Name, handle and target URL are required.', 'error'); return; }
-    if (!whHandleRe.test(handle)) {
-      await showAlert('Handle must be lowercase letters, numbers and hyphens only.', 'error');
-      return;
-    }
+    if (!displayName || !url) { await showAlert('Name and target URL are required.', 'error'); return; }
 
     // The secret both signs deliveries and encrypts sensitive event fields, so a
     // subscriber without one silently loses the API key / token payloads entirely.
@@ -199,11 +179,8 @@
       enabled: document.getElementById('wh-enabled').checked,
       timeoutMs: timeoutMs,
     };
-    // `id` only on create — that is the caller-chosen handle, and the server
-    // falls back to a random UUID when it is absent. On update it is omitted
-    // deliberately: the handle is immutable, and the DAO patches sparsely, so
-    // sending one would rename the subscriber on every save.
-    if (!editWebhookId) body.id = handle;
+    // The UI never sends an `id`: on create the server generates a UUID handle,
+    // and on update the handle is immutable, so there is nothing to send.
     var secret = v('wh-secret');
     if (secret) body.secret = secret;
 
