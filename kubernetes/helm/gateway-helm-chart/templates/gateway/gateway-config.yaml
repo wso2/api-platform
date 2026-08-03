@@ -465,7 +465,12 @@ data:
     {{- end }}
 
     {{- if .Values.gateway.config.policy_configurations }}
-{{ dict "policy_configurations" .Values.gateway.config.policy_configurations | toToml | indent 4 }}
+    {{- $policyConfigToml := dict "policy_configurations" .Values.gateway.config.policy_configurations | toToml }}
+    {{- $policyConfigToml = regexReplaceAll "(?m)^[ \t]+" $policyConfigToml "" }}
+    {{- range $i := until 6 }}
+    {{- $policyConfigToml = regexReplaceAll "(?m)^\\[[^\\]\r\n]+\\]\r?\n(\\[)" $policyConfigToml "$1" }}
+    {{- end }}
+{{ $policyConfigToml | indent 4 }}
     {{- end }}
 
     {{- if .Values.gateway.config.api_key }}
