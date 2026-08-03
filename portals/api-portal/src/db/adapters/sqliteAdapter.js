@@ -21,6 +21,7 @@ const fs = require('fs');
 const path = require('path');
 const BetterSqlite3 = require('better-sqlite3');
 const AsyncLock = require('async-lock');
+const { isBinaryParam } = require('../paramTypes');
 
 /**
  * SQLite adapter (better-sqlite3). better-sqlite3 is synchronous and this
@@ -53,6 +54,10 @@ function createSqliteAdapter(config) {
     const LOCK_KEY = 'sqlite-conn';
 
     function coerceBindValue(value) {
+        // paramTypes.binaryParam() only exists to give the mssql adapter an
+        // explicit type for a nullable VARBINARY(MAX) bind — better-sqlite3 has
+        // no such inference gap, so just unwrap to the underlying value.
+        if (isBinaryParam(value)) return value.value;
         if (typeof value === 'boolean') return value ? 1 : 0;
         if (value instanceof Date) return value.toISOString();
         if (value !== null && typeof value === 'object' && !Buffer.isBuffer(value)) {

@@ -52,7 +52,7 @@ const create = async (orgId, viewId, apiWorkflowData, createdBy, t) => {
                  agent_visibility, file_content, content_type, created_by, updated_by, created_at, updated_at)
              VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
             [uuid, orgId, viewId, apiWorkflowData.displayName, apiWorkflowData.handle, apiWorkflowData.description,
-                Buffer.from(apiWorkflowData.agentPrompt), status, agentVisibility, fileContent, contentType,
+                Buffer.from(apiWorkflowData.agentPrompt), status, agentVisibility, db.binaryParam(fileContent), contentType,
                 createdBy, createdBy, now, now]
         );
     } catch (error) {
@@ -96,7 +96,7 @@ const update = async (orgId, viewId, apiWorkflowId, apiWorkflowData, updatedBy, 
     if (apiWorkflowData.agentVisibility !== undefined) { setClauses.push('agent_visibility = ?'); params.push(apiWorkflowData.agentVisibility); }
     if (apiWorkflowData.apiWorkflowDefinition !== undefined) {
         setClauses.push('file_content = ?');
-        params.push(apiWorkflowData.apiWorkflowDefinition != null ? Buffer.from(apiWorkflowData.apiWorkflowDefinition) : null);
+        params.push(db.binaryParam(apiWorkflowData.apiWorkflowDefinition != null ? Buffer.from(apiWorkflowData.apiWorkflowDefinition) : null));
     }
     if (apiWorkflowData.contentType !== undefined) { setClauses.push('content_type = ?'); params.push(apiWorkflowData.contentType); }
     params.push(apiWorkflowId, orgId, viewId);

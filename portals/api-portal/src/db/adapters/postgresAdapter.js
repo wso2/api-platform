@@ -19,6 +19,7 @@
 
 const { Pool } = require('pg');
 const { buildDbSsl } = require('../dbSsl');
+const { isBinaryParam } = require('../paramTypes');
 
 /** PostgreSQL adapter (`pg`). Pool-backed; transactions check out a dedicated client. */
 function createPostgresAdapter(config) {
@@ -50,6 +51,12 @@ function createPostgresAdapter(config) {
     // is NOT optional (their drivers have no such auto-serialization).
     function coerceParams(params) {
         return (params || []).map((value) => {
+            // paramTypes.binaryParam() only exists to give the mssql adapter an
+            // explicit type for a nullable VARBINARY(MAX) bind — `pg` has no
+            // such inference gap, so just unwrap to the underlying value.
+            if (isBinaryParam(value)) {
+                return value.value;
+            }
             if (value !== null && typeof value === 'object' &&
                 !(value instanceof Date) && !Buffer.isBuffer(value) && !Array.isArray(value)) {
                 return JSON.stringify(value);

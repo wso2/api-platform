@@ -82,7 +82,13 @@ function start() {
 
     async function tick() {
         try {
-            await runBatch();
+            // runDetached() matters here specifically because of the onPublished(tick)
+            // registration below: eventPublisher.js's bus.emit('event_published') fires
+            // synchronously from inside the *publishing* caller's own db.withTransaction()
+            // callback, and without this, runBatch()'s ambient db calls would inherit
+            // that (possibly already-committed) transaction instead of the module-level
+            // pool — see db.runDetached()'s doc comment in src/db/driver.js.
+            await db.runDetached(runBatch);
         } catch (err) {
             logger.error('Batch error', { error: err.message || String(err) });
         }
