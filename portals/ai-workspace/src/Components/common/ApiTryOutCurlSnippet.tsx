@@ -105,12 +105,25 @@ const TEMPLATE_ENDPOINTS: Record<string, EndpointOption> = {
   },
 };
 
-const FALLBACK_ENDPOINT: EndpointOption = {
-  path: '/chat/completions',
-  body: {
-    messages: [{ role: 'user', content: 'Say hello!' }],
-  },
-};
+/**
+ * Look up the sample request by EXACT template key. A derived template
+ * (`mistral-copy`, `mistralai-v2-0`) deliberately resolves to nothing rather
+ * than borrowing the vendor's request shape: its upstream and request format
+ * are unknown to us, so a guessed curl would just fail.
+ */
+function resolveEndpoint(providerTemplate?: string | null): EndpointOption | undefined {
+  const key = providerTemplate?.trim().toLowerCase() ?? '';
+  if (!key) return undefined;
+  return TEMPLATE_ENDPOINTS[key];
+}
+
+/**
+ * True only when a known sample request exists for the provider template.
+ * Unknown templates get no curl snippet rather than a guessed one.
+ */
+export function hasTryOutCurlSnippet(providerTemplate?: string | null): boolean {
+  return resolveEndpoint(providerTemplate) !== undefined;
+}
 
 interface Props {
   apiKey: string;
@@ -162,14 +175,12 @@ export default function ApiTryOutCurlSnippet({
   apiKeyValuePrefix,
   providerTemplate,
 }: Props) {
-  const endpoint = useMemo(() => {
-    const key = providerTemplate?.trim().toLowerCase() ?? '';
-    return TEMPLATE_ENDPOINTS[key] ?? FALLBACK_ENDPOINT;
-  }, [providerTemplate]);
+  const endpoint = useMemo(() => resolveEndpoint(providerTemplate), [providerTemplate]);
 
   const [copied, setCopied] = useState(false);
 
   const curlCommand = useMemo(() => {
+    if (!endpoint) return '';
     const base = gatewayUrl ? gatewayUrl.replace(/\/+$/, '') : '<gateway-url>';
     const url = `${base}${endpoint.path}`;
     const keyValue = formatPrefixedKey(apiKeyValuePrefix ?? '', apiKey);
@@ -185,6 +196,10 @@ export default function ApiTryOutCurlSnippet({
       // clipboard not available
     }
   };
+
+  if (!endpoint) {
+    return null;
+  }
 
   return (
     <Stack spacing={1.5}>

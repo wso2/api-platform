@@ -85,7 +85,7 @@ import {
   getProxyIdentifier,
 } from './ProviderMap/ProviderMapTab';
 import ResourceDrawerCards from './ResourceDrawerCards';
-import ApiTryOutCurlSnippet from '../../../../Components/common/ApiTryOutCurlSnippet';
+import ApiTryOutCurlSnippet, { hasTryOutCurlSnippet } from '../../../../Components/common/ApiTryOutCurlSnippet';
 
 type OpenApiSpec = Record<string, unknown>;
 
@@ -1112,15 +1112,19 @@ export default function ServiceProviderOverviewTab({
                   </Box>
                 </Stack>
               </Alert>
-              <Divider sx={{ my: 2 }} />
-              <ApiTryOutCurlSnippet
-                apiKey={generatedKey}
-                gatewayUrl={generatedGatewayUrl}
-                apiKeyHeaderName={apiKeyName}
-                apiKeyLocation={apiKeyLocation}
-                apiKeyValuePrefix={apiKeyValuePrefix}
-                providerTemplate={provider?.template}
-              />
+              {hasTryOutCurlSnippet(provider?.template) && (
+                <>
+                  <Divider sx={{ my: 2 }} />
+                  <ApiTryOutCurlSnippet
+                    apiKey={generatedKey}
+                    gatewayUrl={generatedGatewayUrl}
+                    apiKeyHeaderName={apiKeyName}
+                    apiKeyLocation={apiKeyLocation}
+                    apiKeyValuePrefix={apiKeyValuePrefix}
+                    providerTemplate={provider?.template}
+                  />
+                </>
+              )}
             </>
           ) : (
             <Stack spacing={1}>
