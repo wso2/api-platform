@@ -33,6 +33,7 @@ import { PLATFORM_API_BASE_URL, CSRF_HEADER, CSRF_VALUE } from '../config.env';
 import { logger } from '../utils/logger';
 import { HttpMethod, ApiRequestConfig, GQLResponse } from '../utils/types';
 import { buildApiError } from '../utils/apiError';
+import { handleUnauthorizedResponse } from '../auth/logout';
 
 export type { HttpMethod, ApiRequestConfig, GQLResponse };
 export type { ApiError, FieldError } from '../utils/apiError';
@@ -100,6 +101,7 @@ export const request = async <T>(config: ApiRequestConfig): Promise<T> => {
   });
 
   if (!res.ok) {
+    handleUnauthorizedResponse(res);
     let data: unknown;
     try {
       data = await res.json();
@@ -149,6 +151,7 @@ const sendForm = async <T>(
   const res = await fetch(url, { method, credentials: 'include', headers, body: form });
 
   if (!res.ok) {
+    handleUnauthorizedResponse(res);
     let data: unknown;
     try {
       data = await res.json();

@@ -16,7 +16,6 @@
  * under the License.
  */
 
-import { clearStoredToken } from '../clients/choreoApiClient';
 import { clearBasicAuthSession } from '../contexts/BasicAuthProvider';
 import { CSRF_HEADER, CSRF_VALUE } from '../config.env';
 import { logger } from '../utils/logger';
@@ -50,9 +49,25 @@ export const handleLogout = async (signoutRedirect: SignOutFunction): Promise<vo
  * Only removes known auth keys — does not wipe unrelated sessionStorage entries.
  */
 export const clearAuthData = (): void => {
-  clearStoredToken();
   clearBasicAuthSession();
   AUTH_SESSION_KEYS.forEach((key) => sessionStorage.removeItem(key));
+};
+
+let unauthorizedRedirectStarted = false;
+
+/**
+ * Start the session-expiry flow once when an authenticated API call returns
+ * 401. Several requests can fail together when a session expires, so the
+ * guard prevents duplicate logout calls and competing redirects.
+ */
+export const handleUnauthorizedResponse = (response: Response): boolean => {
+  if (response.status !== 401) return false;
+
+  if (!unauthorizedRedirectStarted) {
+    unauthorizedRedirectStarted = true;
+    void forceLogoutAndRedirect();
+  }
+  return true;
 };
 
 /**
