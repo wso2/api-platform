@@ -23,7 +23,7 @@ metadata:
 spec:
   displayName: OpenAI
   groupId: openai
-  managedBy: wso2
+  managedBy: organization
   version: v1.0
   promptTokens:
     location: payload
