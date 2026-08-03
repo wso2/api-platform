@@ -51,9 +51,18 @@ services:
       # platform-api signs its tokens with RS256; the devportal verifies them
       # against jwt_public.pem from the shared keypair volume mounted below
       # (auth.local.jwt_public_key in devportal-config.toml). There is no shared
-      # HMAC secret. tls_skip_verify covers platform-api's self-signed cert.
+      # HMAC secret.
       - APIP_AP_AUTH_LOCAL_PLATFORM_API_URL=https://platform-api:9243
-      - APIP_AP_AUTH_LOCAL_TLS_SKIP_VERIFY=true
+      # Trust platform-api's self-signed cert at Node's trust-store level instead of
+      # skipping verification per client. NODE_EXTRA_CA_CERTS *appends* to Node's
+      # built-in CAs (public CAs keep working) and applies process-wide, so it covers
+      # BOTH the auth login client (authController's https.Agent passes no custom
+      # `ca`, so it honours this) AND the webhook delivery worker
+      # (src/services/webhooks/deliveryWorker.js), which POSTs events such as
+      # apikey.generated over Node's default TLS and has no tls_skip_verify hatch of
+      # its own. That is why APIP_AP_AUTH_LOCAL_TLS_SKIP_VERIFY is no longer set here:
+      # verification stays ON for every platform-api call, self-signed cert and all.
+      - NODE_EXTRA_CA_CERTS=/etc/api-portal/certs/cert.pem
       # Required — devportal fails closed at startup if either doesn't resolve
       # to a 64-char hex string. Set both before `docker compose up`, e.g.:
       #   export APIP_AP_SECURITY_ENCRYPTION_KEY=$(openssl rand -hex 32)
@@ -70,11 +79,19 @@ services:
       # Same RS256 keypair volume platform-api signs with — the devportal reads
       # only jwt_public.pem (0644) from it to verify those tokens.
       - platform-api-jwt-keys:/etc/api-portal/keys:ro
+      # platform-api's self-signed TLS cert, mounted read-only so the webhook
+      # delivery worker can trust it via NODE_EXTRA_CA_CERTS above. Same pattern as
+      # the jwt-keys volume — only the public cert.pem is used (key.pem is ignored).
+      - platform-api-certs:/etc/api-portal/certs:ro
     depends_on:
       postgres:
         condition: service_healthy
       platform-api:
         condition: service_healthy
+      # cert.pem must exist in the certs volume before Node reads NODE_EXTRA_CA_CERTS
+      # at startup (a missing file is silently ignored with a warning).
+      platform-api-certgen:
+        condition: service_completed_successfully
       platform-api-jwtkeygen:
         condition: service_completed_successfully
 
