@@ -18,6 +18,11 @@
  
 
 (function () {
+  // Local fallback for the shared bindFormValidity (defined in alert.js, loaded first
+  // on the settings page): keeps save working even if it were ever unavailable, only
+  // skipping the disable-until-valid behaviour instead of throwing at init.
+  var bindFormValidity = window.bindFormValidity || function () { return function () {}; };
+
   function g(id) { return document.getElementById(id); }
   var saveBtn = g('cfg-save-org-btn');
   if (!saveBtn) return;

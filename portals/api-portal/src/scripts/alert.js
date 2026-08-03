@@ -57,17 +57,19 @@ function showAlert(message, type) {
             alertMessage.textContent = message;
         }
 
-        alertElement.classList.remove('success', 'error', 'info');
+        alertElement.classList.remove('success', 'error', 'warning', 'info');
         if (type) alertElement.classList.add(type);
 
-        // Set appropriate icon based on alert type
+        // Set the icon for the type. Every type gets one (unknown/none falls back to
+        // the info glyph) so a toast is never shown without an icon.
         if (alertIcon) {
-            alertIcon.className = 'alert-icon bi';
-            if (type === 'success') {
-                alertIcon.classList.add('bi-check-circle-fill');
-            } else if (type === 'error') {
-                alertIcon.classList.add('bi-exclamation-circle-fill');
-            }
+            var icons = {
+                success: 'bi-check-circle-fill',
+                error: 'bi-exclamation-circle-fill',
+                warning: 'bi-exclamation-triangle-fill',
+                info: 'bi-info-circle-fill',
+            };
+            alertIcon.className = 'alert-icon bi ' + (icons[type] || icons.info);
         }
 
         // Show the toast

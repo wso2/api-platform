@@ -18,6 +18,11 @@
  
 
 (function () {
+  // Local fallback for the shared bindFormValidity (defined in alert.js, loaded first
+  // on the settings page): keeps save/delete working even if it were ever unavailable,
+  // only skipping the disable-until-valid behaviour instead of throwing at init.
+  var bindFormValidity = window.bindFormValidity || function () { return function () {}; };
+
   var editPlanId = null;
 
   var LIMIT_TYPES = ['REQUEST_COUNT','EVENT_COUNT','BANDWIDTH','TOTAL_TOKEN_COUNT'];

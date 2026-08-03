@@ -14,6 +14,10 @@
   integrity="sha512-CSBhVREyzHAjAFfBlIBakjoRUKp5h7VSweP0InR/pAJyptH7peuhCsqAI/snV+TwZmXZqoUklpXp6R6wMnYf5Q=="
   crossorigin="anonymous"></script>
 {{/pageHead}}
+{{!-- alert.js must load before the settings-*.js scripts below: they call its
+     bindFormValidity() helper at init time. pageScripts concatenates in include
+     order, so this partial (which registers alert.js) has to come first. --}}
+{{> alert}}
 {{#pageScripts}}
 <script src='/technical-scripts/manage-api-workflows.js' defer></script>
 <script src='/technical-scripts/settings-nav.js' defer></script>
@@ -91,4 +95,3 @@
 </div><!-- /.cfg-page -->
 
 {{> cfg-modals}}
-{{> alert}}

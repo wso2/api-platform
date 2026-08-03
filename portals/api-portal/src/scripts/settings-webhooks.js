@@ -18,6 +18,11 @@
  
 
 (function () {
+  // Local fallback for the shared bindFormValidity (defined in alert.js, loaded first
+  // on the settings page): keeps save/delete working even if it were ever unavailable,
+  // only skipping the disable-until-valid behaviour instead of throwing at init.
+  var bindFormValidity = window.bindFormValidity || function () { return function () {}; };
+
   var _cfg = document.getElementById('cfg-page-config') || { dataset: {} };
   var ORG_ID = _cfg.dataset.orgId || '';
   var editWebhookId = null;

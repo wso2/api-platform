@@ -18,6 +18,12 @@
  
 
 (function () {
+  // bindFormValidity is defined in alert.js, which the settings page loads first.
+  // This local fallback keeps the form fully working (save/delete) even if that helper
+  // were ever unavailable — it only skips the disable-until-valid behaviour, and can't
+  // throw at init time (the one place this runs before event handlers are attached).
+  var bindFormValidity = window.bindFormValidity || function () { return function () {}; };
+
   var views = [];
   try { views = JSON.parse(document.getElementById('cfg-views-data').textContent) || []; } catch (e) { /* ignore */ }
   var editHandle = null;
