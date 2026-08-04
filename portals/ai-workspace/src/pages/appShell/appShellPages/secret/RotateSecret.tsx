@@ -40,6 +40,7 @@ import { getSecret, updateSecret, type SecretMetadata } from '../../../../apis/s
 import { useAppShell } from '../../../../contexts/AppShellContext';
 import { buildOrgPath } from '../../../../utils/projectRouting';
 import useAIWorkspaceSnackbar from '../../../../hooks/aiWorkspaceSnackbar';
+import useIsMounted from '../../../../hooks/useIsMounted';
 import { getErrorMessage } from '../../../../utils/apiError';
 import ErrorAlert from '../../../../Components/common/ErrorAlert';
 
@@ -48,6 +49,7 @@ export default function RotateSecret(): React.JSX.Element {
   const navigate = useNavigate();
   const { currentOrganization } = useAppShell();
   const showSnackbar = useAIWorkspaceSnackbar();
+  const isMounted = useIsMounted();
 
   const [secret, setSecret] = useState<SecretMetadata | null>(null);
   const [isLoading, setIsLoading] = useState(true);
@@ -69,13 +71,15 @@ export default function RotateSecret(): React.JSX.Element {
       setIsLoading(true);
       setLoadError(null);
       const response = await getSecret(handle);
+      if (!isMounted()) return;
       setSecret(response);
       setDisplayName(response.displayName);
       setDescription(response.description ?? '');
     } catch (err) {
+      if (!isMounted()) return;
       setLoadError(err instanceof Error ? err : new Error('Failed to load secret.'));
     } finally {
-      setIsLoading(false);
+      if (isMounted()) setIsLoading(false);
     }
   };
 
@@ -97,12 +101,14 @@ export default function RotateSecret(): React.JSX.Element {
         name: displayName.trim() || undefined,
         description: description.trim() || undefined,
       });
+      if (!isMounted()) return;
       showSnackbar('Secret rotated successfully.', 'success');
       navigate(overviewPath);
     } catch (err) {
+      if (!isMounted()) return;
       showSnackbar(getErrorMessage(err, 'Failed to rotate secret.'), 'error');
     } finally {
-      setIsSubmitting(false);
+      if (isMounted()) setIsSubmitting(false);
     }
   };
 
@@ -173,6 +179,7 @@ export default function RotateSecret(): React.JSX.Element {
                       onChange={(e) => setValue(e.target.value)}
                       onBlur={() => setValueTouched(true)}
                       placeholder="Paste the new credential"
+                      autoComplete="new-password"
                       error={valueTouched && !isValueValid}
                       helperText={valueTouched && !isValueValid ? 'A new value is required.' : ''}
                       slotProps={{

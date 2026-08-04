@@ -246,7 +246,16 @@ export default function SecretsList(): React.JSX.Element {
                       <TableRow
                         key={secret.uuid}
                         hover
+                        role="link"
+                        tabIndex={0}
                         onClick={() => navigate(`${basePath}/${secret.id}`)}
+                        onKeyDown={(event) => {
+                          if (event.key === 'Enter' || event.key === ' ') {
+                            event.preventDefault();
+                            navigate(`${basePath}/${secret.id}`);
+                          }
+                        }}
+                        aria-label={`View ${secret.displayName}`}
                         sx={{ cursor: 'pointer' }}
                         data-cyid={`secret-row-${secret.id}`}
                       >

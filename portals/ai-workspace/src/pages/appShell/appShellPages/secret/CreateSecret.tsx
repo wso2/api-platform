@@ -39,10 +39,12 @@ import { createSecret, type SecretType } from '../../../../apis/secretApis';
 import { useAppShell } from '../../../../contexts/AppShellContext';
 import { buildOrgPath } from '../../../../utils/projectRouting';
 import useAIWorkspaceSnackbar from '../../../../hooks/aiWorkspaceSnackbar';
+import useIsMounted from '../../../../hooks/useIsMounted';
 import { getErrorMessage } from '../../../../utils/apiError';
 
 const MAX_NAME_LENGTH = 120;
 const MAX_DESCRIPTION_LENGTH = 300;
+const MAX_HANDLE_LENGTH = 40; // matches the `handle VARCHAR(40)` column enforced server-side
 const HANDLE_PATTERN = /^[a-z0-9]+(-[a-z0-9]+)*$/;
 
 function toHandle(value: string): string {
@@ -57,6 +59,7 @@ export default function CreateSecret(): React.JSX.Element {
   const navigate = useNavigate();
   const { currentOrganization } = useAppShell();
   const showSnackbar = useAIWorkspaceSnackbar();
+  const isMounted = useIsMounted();
 
   const [displayName, setDisplayName] = useState('');
   const [handle, setHandle] = useState('');
@@ -78,7 +81,7 @@ export default function CreateSecret(): React.JSX.Element {
 
   const isNameValid = displayName.trim().length > 0 && displayName.length <= MAX_NAME_LENGTH;
   const isDescriptionValid = description.length <= MAX_DESCRIPTION_LENGTH;
-  const isHandleValid = HANDLE_PATTERN.test(handle);
+  const isHandleValid = HANDLE_PATTERN.test(handle) && handle.length <= MAX_HANDLE_LENGTH;
   const isValueValid = value.trim().length > 0;
   const isFormValid = isNameValid && isHandleValid && isDescriptionValid && isValueValid;
 
@@ -95,12 +98,14 @@ export default function CreateSecret(): React.JSX.Element {
         value,
         type,
       });
+      if (!isMounted()) return;
       showSnackbar('Secret created successfully.', 'success');
       navigate(`${listPath}/${secret.id}`);
     } catch (err) {
+      if (!isMounted()) return;
       showSnackbar(getErrorMessage(err, 'Failed to create secret.'), 'error');
     } finally {
-      setIsSubmitting(false);
+      if (isMounted()) setIsSubmitting(false);
     }
   };
 
@@ -162,7 +167,10 @@ export default function CreateSecret(): React.JSX.Element {
                     setHandle(e.target.value.toLowerCase());
                   }}
                   placeholder="wso2-openai-key"
-                  slotProps={{ input: { style: { fontFamily: 'monospace' } } }}
+                  slotProps={{
+                    input: { style: { fontFamily: 'monospace' } },
+                    htmlInput: { maxLength: MAX_HANDLE_LENGTH },
+                  }}
                   error={handle.length > 0 && !isHandleValid}
                   helperText={
                     handle.length > 0 && !isHandleValid
@@ -203,6 +211,7 @@ export default function CreateSecret(): React.JSX.Element {
                   onChange={(e) => setValue(e.target.value)}
                   onBlur={() => setValueTouched(true)}
                   placeholder="Paste your credential here"
+                  autoComplete="new-password"
                   error={valueTouched && !isValueValid}
                   helperText={
                     valueTouched && !isValueValid

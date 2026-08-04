@@ -31,6 +31,7 @@ import {
 } from '@wso2/oxygen-ui';
 import { deleteSecret, SecretConflictError, type SecretMetadata, type SecretReference } from '../../../../apis/secretApis';
 import useAIWorkspaceSnackbar from '../../../../hooks/aiWorkspaceSnackbar';
+import useIsMounted from '../../../../hooks/useIsMounted';
 import { getErrorMessage } from '../../../../utils/apiError';
 
 interface DeleteSecretDialogProps {
@@ -48,6 +49,7 @@ interface DeleteSecretDialogProps {
  */
 export default function DeleteSecretDialog({ secret, onClose, onDeleted }: DeleteSecretDialogProps): React.JSX.Element {
   const showSnackbar = useAIWorkspaceSnackbar();
+  const isMounted = useIsMounted();
   const [isDeleting, setIsDeleting] = useState(false);
   const [conflictRefs, setConflictRefs] = useState<SecretReference[] | null>(null);
 
@@ -60,10 +62,12 @@ export default function DeleteSecretDialog({ secret, onClose, onDeleted }: Delet
     setIsDeleting(true);
     try {
       await deleteSecret(secret.id);
+      if (!isMounted()) return;
       showSnackbar(`"${secret.displayName}" was deprecated and can no longer be referenced.`, 'success');
       onDeleted(secret.id);
       onClose();
     } catch (error) {
+      if (!isMounted()) return;
       if (error instanceof SecretConflictError) {
         setConflictRefs(error.conflict.references);
       } else {
@@ -71,7 +75,7 @@ export default function DeleteSecretDialog({ secret, onClose, onDeleted }: Delet
         onClose();
       }
     } finally {
-      setIsDeleting(false);
+      if (isMounted()) setIsDeleting(false);
     }
   };
 
