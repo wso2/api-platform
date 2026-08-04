@@ -1567,7 +1567,8 @@ const loadAPIDefinitionRaw = async (req, res) => {
             error: error.message,
             stack: error.stack
         });
-        util.sendError(res, 500, 'Failed to load specification.');
+        const status = Number.isInteger(error.status) ? error.status : 500;
+        util.sendError(res, status, status === 500 ? 'Failed to load specification.' : 'API specification not found');
     }
 };
 

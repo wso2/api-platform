@@ -241,7 +241,7 @@ async function registerAPILandingContent(req, orgId, partialObject) {
 async function registerDocsPageContent(req, orgId, partialObject) {
 
   const { orgName, apiHandle, viewName, docType, docName } = req.params;
-  const apiId = await apiDao.getId(orgId, apiHandle);
+  const apiId = await apiDao.getIdInView(orgId, apiHandle, viewName);
   let markdownHtml = "";
   const docContentResponse = await apiFileDao.getDocByName(constants.DOC_TYPES.DOC_ID + docType, docName + ".md", orgId, apiId);
   if (docContentResponse !== null) {
