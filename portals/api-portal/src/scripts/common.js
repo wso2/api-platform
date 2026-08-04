@@ -3,12 +3,15 @@
 // pages working if the global is ever missing. Defined synchronously (outside
 // DOMContentLoaded) so it is available before any page script's handlers run.
 (function () {
-    var cfg = window.__API_PORTAL_API__ || { base: 'api', version: 'v0.9' };
+    var cfg = window.__API_PORTAL_API__ || { basePath: '/api-portal', base: 'api', version: 'v0.9' };
     window.apiPortalApi = {
-        // API Portal API resource under the versioned base:
-        // root('/subscriptions') => '/api/v0.9/subscriptions'
+        // The hardcoded mount prefix (server constants.ROUTE.BASE_PATH). Exposed so page
+        // scripts that build page URLs (not API calls) can prefix them consistently.
+        basePath: cfg.basePath || '',
+        // API Portal API resource under the mount prefix + versioned base:
+        // root('/subscriptions') => '/api-portal/api/v0.9/subscriptions'
         root: function (path) {
-            return '/' + cfg.base + '/' + cfg.version + (path || '');
+            return (cfg.basePath || '') + '/' + cfg.base + '/' + cfg.version + (path || '');
         },
         // Per-session CSRF token from the XSRF-TOKEN cookie, to send as
         // X-CSRF-Token on mutating requests (see csrfProtection middleware).

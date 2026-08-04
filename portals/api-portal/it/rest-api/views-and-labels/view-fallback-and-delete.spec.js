@@ -38,12 +38,12 @@ describe('view fallback resolution and deletion rules', () => {
     });
 
     it('redirects the bare org root to the resolved fallback view', async () => {
-        const res = await client.raw().get(`/${client.ORG_HANDLE}`).redirects(0);
+        const res = await client.raw().get(`${client.BASE_PATH}/${client.ORG_HANDLE}`).redirects(0);
         expect(res.status).toBe(302);
         // The fixture org still has its seeded 'default' view, so that is what the
         // resolver prefers — the assertion that matters is that the target is a view
         // that exists, reached through the resolver rather than a literal.
-        expect(res.headers.location).toMatch(new RegExp(`^/${client.ORG_HANDLE}/views/[^/]+$`));
+        expect(res.headers.location).toMatch(new RegExp(`^${client.BASE_PATH}/${client.ORG_HANDLE}/views/[^/]+$`));
         const target = res.headers.location.split('/views/')[1].split(/[?#]/)[0];
         const view = await client.as('admin').get(`/views/${target}`);
         expect(view.status).toBe(200);
@@ -53,15 +53,15 @@ describe('view fallback resolution and deletion rules', () => {
         // Express strict routing is off, so /{org}/ matches this route too. The redirect
         // must be absolute: a relative Location resolves against the current directory,
         // which for a trailing-slash URL is /{org}/ — producing /{org}/{org}/views/x.
-        const res = await client.raw().get(`/${client.ORG_HANDLE}/`).redirects(0);
+        const res = await client.raw().get(`${client.BASE_PATH}/${client.ORG_HANDLE}/`).redirects(0);
         expect(res.status).toBe(302);
-        expect(res.headers.location).toMatch(new RegExp(`^/${client.ORG_HANDLE}/views/[^/]+$`));
+        expect(res.headers.location).toMatch(new RegExp(`^${client.BASE_PATH}/${client.ORG_HANDLE}/views/[^/]+$`));
     });
 
     it('redirects the portal root into this org and a view that exists', async () => {
-        const res = await client.raw().get('/').redirects(0);
+        const res = await client.raw().get(client.BASE_PATH).redirects(0);
         expect(res.status).toBe(302);
-        expect(res.headers.location).toContain(`/${client.ORG_HANDLE}/views/`);
+        expect(res.headers.location).toContain(`${client.BASE_PATH}/${client.ORG_HANDLE}/views/`);
         const target = res.headers.location.split('/views/')[1].split(/[?#]/)[0];
         expect((await client.as('admin').get(`/views/${target}`)).status).toBe(200);
     });

@@ -187,7 +187,7 @@ const loadApplications = async (req, res, next) => {
     if (config.designMode?.enabled) {
         const templateContent = {
             applicationsMetadata: sampleApiLoader.loadApplications(),
-            baseUrl: constants.ROUTE.VIEWS_PATH + viewName,
+            baseUrl: constants.ROUTE.BASE_PATH + constants.ROUTE.VIEWS_PATH + viewName,
             devMode: true,
         };
         const html = renderTemplate('../pages/applications/page.hbs', config.designMode.pathToLayout + 'layout/main.hbs', templateContent, true);
@@ -216,7 +216,7 @@ const loadApplications = async (req, res, next) => {
         templateContent = {
             orgId,
             applicationsMetadata: metaData,
-            baseUrl: '/' + orgName + constants.ROUTE.VIEWS_PATH + viewName,
+            baseUrl: constants.ROUTE.BASE_PATH + '/' + orgName + constants.ROUTE.VIEWS_PATH + viewName,
             profile: req.isAuthenticated() ? profile : null,
         }
         const templateResponse = await templateResponseValue('applications');
@@ -256,7 +256,7 @@ const loadApplication = async (req, res, next) => {
             orgId: data.orgId,
             applicationMetadata: metaData,
             keyManagersMetadata: kMmetaData,
-            baseUrl: '/' + orgName + constants.ROUTE.VIEWS_PATH + viewName,
+            baseUrl: constants.ROUTE.BASE_PATH + '/' + orgName + constants.ROUTE.VIEWS_PATH + viewName,
             productionKeys: data.productionKeys,
             sandboxKeys: data.sandboxKeys,
             applicationKeys: [
@@ -315,7 +315,7 @@ const loadApplicationKeys = async (req, res, next) => {
             orgId: data.orgId,
             applicationMetadata: metaData,
             keyManagersMetadata: kMmetaData,
-            baseUrl: '/' + orgName + constants.ROUTE.VIEWS_PATH + viewName,
+            baseUrl: constants.ROUTE.BASE_PATH + '/' + orgName + constants.ROUTE.VIEWS_PATH + viewName,
             productionKeys: data.productionKeys,
             sandboxKeys: data.sandboxKeys,
             applicationKeys: [

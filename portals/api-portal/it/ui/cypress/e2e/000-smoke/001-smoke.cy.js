@@ -28,12 +28,13 @@ describe('API Portal — Smoke', () => {
         const viewName = Cypress.env('VIEW_NAME');
         // The org selector was removed — `/` no longer serves a selector page;
         // it redirects straight into the default organization's portal view.
-        cy.request({ url: '/', followRedirect: false, failOnStatusCode: false }).then((resp) => {
+        const basePath = Cypress.env('BASE_PATH');
+        cy.request({ url: basePath, followRedirect: false, failOnStatusCode: false }).then((resp) => {
             expect(resp.status).to.eq(302);
-            expect(resp.redirectedToUrl).to.contain(`/${orgHandle}/views/${viewName}`);
+            expect(resp.redirectedToUrl).to.contain(`${basePath}/${orgHandle}/views/${viewName}`);
         });
         // Following the redirect lands on a rendered page, not an error.
-        cy.request({ url: '/', failOnStatusCode: false }).then((resp) => {
+        cy.request({ url: basePath, failOnStatusCode: false }).then((resp) => {
             expect(resp.status).to.eq(200);
         });
     });
@@ -60,7 +61,7 @@ describe('API Portal — Smoke', () => {
         // Addressed by its public URL rather than the organization's internal UUID:
         // the portal serves one organization and never exposes that UUID over the API.
         cy.request({
-            url: '/styles/main.css',
+            url: `${Cypress.env('BASE_PATH')}/styles/main.css`,
             failOnStatusCode: false,
         }).then((resp) => {
             expect(resp.status).to.be.oneOf([200, 304, 404]);
@@ -71,7 +72,7 @@ describe('API Portal — Smoke', () => {
         // The database is shared across organizations, so the handle in the URL is
         // untrusted input — this instance serves exactly one and rejects the rest.
         cy.request({
-            url: '/some-other-org/views/default',
+            url: `${Cypress.env('BASE_PATH')}/some-other-org/views/default`,
             failOnStatusCode: false,
         }).then((resp) => {
             expect(resp.status).to.eq(404);

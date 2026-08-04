@@ -1,6 +1,6 @@
 /* Subscriptions page — sub-* prefix */
 
-@import "/styles/components.css";
+@import "../styles/components.css";
 
 /* ── Page title — lighter weight matching design spec ─────────── */
 .sub-title {

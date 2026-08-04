@@ -100,9 +100,9 @@ function enforceSecurity(scope) {
             } else if (typeof req.socket?.getPeerCertificate === 'function' && req.socket.getPeerCertificate(true)) {
                 enforceMTLS(req, res, next);
             } else {
-                req.session.returnTo = accessControlUrl(req) || `/${req.params.orgName}`;
+                req.session.returnTo = accessControlUrl(req) || `${constants.ROUTE.BASE_PATH}/${req.params.orgName}`;
                 if (req.params.orgName) {
-                    res.redirect(`/${req.params.orgName}/views/${req.session.view}/login`);
+                    res.redirect(`${constants.ROUTE.BASE_PATH}/${req.params.orgName}/views/${req.session.view}/login`);
                 }
             }
         } catch (err) {
@@ -231,7 +231,17 @@ const ensureAuthenticated = async (req, res, next) => {
     // "?...") would silently fail to match any pattern lacking an explicit "?**" suffix —
     // e.g. "/*/settings" never matches "/org/settings?view=x", which would skip this entire
     // auth block. Match against the query-stripped pathname instead.
-    const pathname = accessControlUrl(req).split('?')[0];
+    //
+    // Strip BASE_PATH before matching: the whole portal is mounted under it, so
+    // accessControlUrl always carries the prefix, but the page-access globs are written
+    // against the bare page paths ("/*/settings", "**/applications"). Without this,
+    // "/*/settings" — a single leading segment — would no longer match
+    // "/api-portal/org/settings" and the settings page would silently drop out of the
+    // authenticated/authorized gate. returnTo (below) still uses the full, prefixed URL.
+    let pathname = accessControlUrl(req).split('?')[0];
+    if (pathname.startsWith(constants.ROUTE.BASE_PATH + '/') || pathname === constants.ROUTE.BASE_PATH) {
+        pathname = pathname.slice(constants.ROUTE.BASE_PATH.length) || '/';
+    }
     if (pathname !== '/favicon.ico' && pathname !== '/images' &&
         AUTHENTICATED_PAGES.some(pattern => minimatch.minimatch(pathname, pattern))) {
         const orgId = req.params.orgName;
@@ -315,15 +325,15 @@ const ensureAuthenticated = async (req, res, next) => {
             }
             return next();
         } else {
-            req.session.returnTo = accessControlUrl(req) || `/${req.params.orgName}`;
+            req.session.returnTo = accessControlUrl(req) || `${constants.ROUTE.BASE_PATH}/${req.params.orgName}`;
             req.session.save((err) => {
                 if (err) {
                     logger.error('Session save failed before login redirect', { error: err.message });
                 }
                 if (req.params.orgName) {
-                    res.redirect(`/${req.params.orgName}/views/${req.params.viewName}/login`);
+                    res.redirect(`${constants.ROUTE.BASE_PATH}/${req.params.orgName}/views/${req.params.viewName}/login`);
                 } else {
-                    res.redirect(303, `/portal/login`);
+                    res.redirect(303, `${constants.ROUTE.BASE_PATH}/portal/login`);
                 }
             });
         }

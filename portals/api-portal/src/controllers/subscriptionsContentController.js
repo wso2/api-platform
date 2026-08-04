@@ -33,7 +33,7 @@ const loadSubscriptions = async (req, res, next) => {
         const orgId = orgDetails.uuid;
 
         if (!req.user) {
-            return res.redirect(`/${orgName}${constants.ROUTE.VIEWS_PATH}${viewName}/login`);
+            return res.redirect(`${constants.ROUTE.BASE_PATH}/${orgName}${constants.ROUTE.VIEWS_PATH}${viewName}/login`);
         }
         let allSubscriptions = [];
         try {
@@ -65,7 +65,7 @@ const loadSubscriptions = async (req, res, next) => {
         };
 
         const templateContent = {
-            baseUrl: '/' + orgName + constants.ROUTE.VIEWS_PATH + viewName,
+            baseUrl: constants.ROUTE.BASE_PATH + '/' + orgName + constants.ROUTE.VIEWS_PATH + viewName,
             profile: profile,
             orgId: orgId,
             subscriptions: allSubscriptions,

@@ -176,6 +176,7 @@ function renderTemplate(templatePath, layoutPath, templateContent, isTechnical) 
         ...enrichedContent,
         body: template(enrichedContent),
         apiPortalApiConfig: {
+            basePath: constants.ROUTE.BASE_PATH,
             base: constants.API_PORTAL_API.BASE_SEGMENT,
             version: constants.API_PORTAL_API.VERSION,
         },
@@ -220,6 +221,7 @@ async function renderTemplateWithView(templatePath, layoutPath, templateContent,
         ...enrichedContent,
         body: template(enrichedContent),
         apiPortalApiConfig: {
+            basePath: constants.ROUTE.BASE_PATH,
             base: constants.API_PORTAL_API.BASE_SEGMENT,
             version: constants.API_PORTAL_API.VERSION,
         },
@@ -276,6 +278,7 @@ async function renderTemplateFromAPI(templateContent, orgId, orgName, filePath, 
         ...enrichedContent,
         body: template(enrichedContent),
         apiPortalApiConfig: {
+            basePath: constants.ROUTE.BASE_PATH,
             base: constants.API_PORTAL_API.BASE_SEGMENT,
             version: constants.API_PORTAL_API.VERSION,
         },
@@ -346,6 +349,7 @@ async function renderGivenTemplate(templatePage, layoutPage, templateContent) {
         ...enrichedContent,
         body: template(enrichedContent),
         apiPortalApiConfig: {
+            basePath: constants.ROUTE.BASE_PATH,
             base: constants.API_PORTAL_API.BASE_SEGMENT,
             version: constants.API_PORTAL_API.VERSION,
         },
@@ -1067,7 +1071,7 @@ function validateScripts(strContent) {
             // and subscriptions/partials/subscription-list.hbs)
             "<script>\n                window.__tokenMap = window.__tokenMap || {};\n                window.__subscriptionOrgId = \"{{@root.orgId}}\";\n            </script>",
             // API config bootstrap (layout/main.hbs)
-            "<script>\n      // Portal API base segment + version, sourced from server constants.\n      // Browser scripts build invocation URLs via window.apiPortalApi (common.js).\n      window.__API_PORTAL_API__ = { base: \"{{apiPortalApiConfig.base}}\", version: \"{{apiPortalApiConfig.version}}\" };\n    </script>",
+            "<script>\n      // Portal API base segment + version, sourced from server constants.\n      // Browser scripts build invocation URLs via window.apiPortalApi (common.js).\n      window.__API_PORTAL_API__ = { basePath: \"{{apiPortalApiConfig.basePath}}\", base: \"{{apiPortalApiConfig.base}}\", version: \"{{apiPortalApiConfig.version}}\" };\n    </script>",
             // Existing-subs JSON data island (mcp-landing/partials/mcp-subscription-plans.hbs)
             "<script id=\"mcp-existing-subs-data\" type=\"application/json\">{{{json subscriptions}}}</script>",
         ]);

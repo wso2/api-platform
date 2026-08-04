@@ -34,7 +34,7 @@
     {{/if}}
     {{#if showMcpServersNav}}
     <a href="{{baseUrl}}/mcps" class="nav-link" id="mcps">
-      <img src="/images/mcp-icon.svg" class="sidebar-icon" alt="" />
+      <img src="{{basePath}}/images/mcp-icon.svg" class="sidebar-icon" alt="" />
       <span class="nav-text">MCP Servers</span>
       <i class="bi bi-chevron-right sidebar-chevron nav-text"></i>
     </a>
@@ -57,7 +57,7 @@
       <span class="nav-text">API Workflows</span>
     </a>
     <a href="{{baseUrl}}/applications" class="nav-link" id="applications">
-      <img src="/images/applications-icon.svg" class="sidebar-icon" alt="" />
+      <img src="{{basePath}}/images/applications-icon.svg" class="sidebar-icon" alt="" />
       <span class="nav-text">Applications</span>
     </a>
     <a {{#unless (designMode)}}href="{{baseUrl}}/subscriptions"{{else}}aria-disabled="true" tabindex="-1" title="Not available in design mode"{{/unless}}

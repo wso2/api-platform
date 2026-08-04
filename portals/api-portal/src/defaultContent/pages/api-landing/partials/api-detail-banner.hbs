@@ -20,8 +20,8 @@
           {{else if (eq apiMetadata.type "SOAP")}}dp-badge--soap
           {{else if (eq apiMetadata.type "WebSubApi")}}dp-badge--ws
           {{else}}dp-badge--rest{{/if}}">
-          {{#if (eq apiMetadata.type "GRAPHQL")}}<img src="/images/graphql-icon.svg" class="dp-badge-icon" alt="" /> GraphQL
-          {{else if (eq apiMetadata.type "WS")}}<img src="/images/websocket-icon.svg" class="dp-badge-icon" alt="" /> WebSocket
+          {{#if (eq apiMetadata.type "GRAPHQL")}}<img src="{{basePath}}/images/graphql-icon.svg" class="dp-badge-icon" alt="" /> GraphQL
+          {{else if (eq apiMetadata.type "WS")}}<img src="{{basePath}}/images/websocket-icon.svg" class="dp-badge-icon" alt="" /> WebSocket
           {{else if (eq apiMetadata.type "WebSubApi")}}<i class="bi bi-broadcast-pin"></i> WebSub
           {{else if (eq apiMetadata.type "SOAP")}}<i class="bi bi-file-code"></i> SOAP
           {{else}}<i class="bi bi-braces"></i> REST{{/if}}

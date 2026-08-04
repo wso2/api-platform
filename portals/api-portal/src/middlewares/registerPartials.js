@@ -58,6 +58,13 @@ const registerPartials = async (req, res, next) => {
     if (req.session.returnTo) {
       matchURL = req.session.returnTo;
     }
+    // matchURL carries the portal's BASE_PATH mount prefix; the org-settings regex below
+    // is written against the bare page path (/{org}/settings), so strip the prefix first —
+    // otherwise "/api-portal/{org}/settings" fails the `^/[^/]+/settings` test and the
+    // settings page renders without its chrome partials.
+    if (matchURL.startsWith(constants.ROUTE.BASE_PATH + '/') || matchURL === constants.ROUTE.BASE_PATH) {
+      matchURL = matchURL.slice(constants.ROUTE.BASE_PATH.length) || '/';
+    }
     try {
       
       // Org-scoped settings page (/:orgName/settings) has no view segment, but still
@@ -254,9 +261,9 @@ async function registerDocsPageContent(req, orgId, partialObject) {
   let baseUrl;
 
   if (apiType === constants.API_TYPE.MCP) {
-    baseUrl = '/' + orgName + '/views/' + viewName + "/mcp/" + apiHandle;
+    baseUrl = constants.ROUTE.BASE_PATH + '/' + orgName + '/views/' + viewName + "/mcp/" + apiHandle;
   } else {
-    baseUrl = '/' + orgName + '/views/' + viewName + "/api/" + apiHandle;
+    baseUrl = constants.ROUTE.BASE_PATH + '/' + orgName + '/views/' + viewName + "/api/" + apiHandle;
   }
 
   hbs.handlebars.partials[constants.FILE_NAME.API_DOC_PARTIAL_NAME] = hbs.handlebars.compile(

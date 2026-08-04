@@ -65,6 +65,7 @@ Cypress.Commands.add('completeLoginForm', (username, password) => {
 //   Log out by navigating to the logout endpoint.
 // ---------------------------------------------------------------------------
 Cypress.Commands.add('logout', () => {
+    const basePath = Cypress.env('BASE_PATH');
     const orgHandle = Cypress.env('ORG_HANDLE');
-    cy.visit(`/${orgHandle}/logout`);
+    cy.visit(`${basePath}/${orgHandle}/logout`);
 });

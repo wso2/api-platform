@@ -24,6 +24,7 @@ const util = require('../../utils/util');
 const { ensureAuthenticated } = require('../../middlewares/ensureAuthenticated');
 const tryoutProxyController = require('../../controllers/tryoutProxyController');
 const { attachOrgGuard } = require('../../middlewares/orgGuard');
+const constants = require('../../utils/constants');
 
 // Mounted with `use` rather than a wildcard route: the target URL is appended
 // to this path by Stoplight Elements ("…/tryout-proxy/https://host/path?q=1"),
@@ -107,7 +108,11 @@ function unauthorizedJson(res) {
 
 function authenticateLikeSpecPage(req, res, next) {
     const { orgName, viewName, apiType, apiHandle } = req.params;
-    req.accessControlPath = `/${orgName}/views/${viewName}/${apiType}/${apiHandle}`;
+    // Includes BASE_PATH so it doubles as the post-login returnTo: ensureAuthenticated
+    // strips BASE_PATH before matching the page-access globs (so the bare page globs
+    // still match) but stores this value verbatim as returnTo, which must be the real,
+    // prefixed URL the browser navigates back to.
+    req.accessControlPath = `${constants.ROUTE.BASE_PATH}/${orgName}/views/${viewName}/${apiType}/${apiHandle}`;
 
     // The login redirect is issued via res.redirect and never reaches next(), so
     // it is intercepted here. Swapped only for the duration of the gate.
@@ -157,7 +162,11 @@ router.use(
 
 // Requests this router handles relay their body verbatim, so app.js must not let
 // a JSON/urlencoded parser consume the stream first. The pattern lives here, next
-// to the mount path it mirrors, so the two cannot drift apart.
-const BODY_PARSER_SKIP_PATTERN = /^\/[^/]+\/views\/[^/]+\/[^/]+\/[^/]+\/tryout-proxy(\/|$)/;
+// to the mount path it mirrors, so the two cannot drift apart. It is tested at the
+// app level (before the BASE_PATH parent router strips the prefix), so it matches the
+// full, prefixed request path — hence the leading BASE_PATH segment.
+const BODY_PARSER_SKIP_PATTERN = new RegExp(
+    `^${constants.ROUTE.BASE_PATH}/[^/]+/views/[^/]+/[^/]+/[^/]+/tryout-proxy(/|$)`
+);
 
 module.exports = { router, BODY_PARSER_SKIP_PATTERN };

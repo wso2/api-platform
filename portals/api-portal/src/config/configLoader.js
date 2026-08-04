@@ -458,6 +458,20 @@ validateDatabasePoolConfig(config.database);
 // SAFE_HANDLE guards against for the URL-supplied value.
 const ORG_HANDLE_PATTERN = /^[a-z0-9][a-z0-9._-]*$/;
 
+// Root path segments the portal owns. `/:orgName` is matched at the true root, so a
+// handle equal to any of these would shadow — or be shadowed by — a real endpoint: a
+// handle mounted before the org router makes the org silently unreachable, one mounted
+// after silently shadows the platform path (BASE_PATH, the API base, health/metrics,
+// the static mounts, the MCP registry, dev/well-known endpoints). Enforced fail-closed
+// at startup so the collision surfaces as a refused boot rather than a page that simply
+// never loads. Compared against the already-lowercased handle. (View handles need no
+// such list — they sit behind a literal `views/` segment and so can't collide.)
+const RESERVED_ORG_HANDLES = new Set([
+    'api', 'api-portal', 'health', 'metrics', 'favicon.ico', 'styles', 'images',
+    'scripts', 'technical-styles', 'technical-scripts', 'mock', 'registry', 'portal',
+    '__dev_reload', '.well-known', 'robots.txt',
+]);
+
 function resolveOrganizationConfig(cfg, tomlOrg) {
     const org = cfg.organization;
     // Read `handle` from the raw config.toml table, not from cfg: DEFAULTS always
@@ -506,6 +520,17 @@ function resolveOrganizationConfig(cfg, tomlOrg) {
             `[FATAL] organization.handle ("${org.handle}") is not a valid handle. ` +
             'Expected a URL-safe slug starting with a letter or digit and containing only ' +
             'letters, digits, dots, underscores, and hyphens.\n'
+        );
+        process.exit(1);
+    }
+
+    if (RESERVED_ORG_HANDLES.has(org.handle)) {
+        process.stderr.write(
+            `[FATAL] organization.handle ("${org.handle}") is a reserved word. It collides with a ` +
+            'root path the portal owns (the mount prefix, the API base, health/metrics, the static ' +
+            'asset mounts, the MCP registry, or a dev/well-known endpoint), which would make the ' +
+            'organization silently unreachable. Choose a different handle. Reserved: ' +
+            `${[...RESERVED_ORG_HANDLES].join(', ')}.\n`
         );
         process.exit(1);
     }

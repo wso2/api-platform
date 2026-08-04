@@ -64,7 +64,7 @@ const resolveSourceUrls = async (sources, orgName, viewName, orgId) => {
         const [, apiType, apiHandle] = match;
         const apiId = await apiDao.getId(orgId, apiHandle);
         if (!apiId) return source;
-        return { ...source, url: `/${orgName}/views/${viewName}/${apiType}/${apiHandle}.md`, isApiPortalApi: true };
+        return { ...source, url: `${constants.ROUTE.BASE_PATH}/${orgName}/views/${viewName}/${apiType}/${apiHandle}.md`, isApiPortalApi: true };
     }));
 };
 
@@ -112,7 +112,7 @@ const loadAPIWorkflows = async (req, res, next) => {
             apiWorkflows: resolvedFlows,
             orgName,
             viewName,
-            baseUrl: `/${orgName}/views/${viewName}`,
+            baseUrl: `${constants.ROUTE.BASE_PATH}/${orgName}/views/${viewName}`,
             profile,
             // Gate the AI Ready chips on the real AI toggle, not the artifact type.
             // Set explicitly so the custom-view renderGivenTemplate path (which hardcodes
@@ -197,7 +197,7 @@ const loadAPIWorkflowDetail = async (req, res, next) => {
             },
             orgName,
             viewName,
-            baseUrl: `/${orgName}/views/${viewName}`,
+            baseUrl: `${constants.ROUTE.BASE_PATH}/${orgName}/views/${viewName}`,
             profile,
             // Gate the "Try with AI" button/modal on the real AI toggle. Set explicitly so
             // the custom-view renderGivenTemplate path (which hardcodes aiEnabled: true) also
@@ -350,7 +350,7 @@ const generateWorkflowMarkdown = (arazoJson, apiWorkflow, orgName, viewName, sou
     const toEnvVarPrefix = (name) =>
         name.toUpperCase().replace(/[^A-Z0-9]+/g, '_').replace(/^_+|_+$/g, '');
 
-    const baseUrl = `/${orgName}/views/${viewName}`;
+    const baseUrl = `${constants.ROUTE.BASE_PATH}/${orgName}/views/${viewName}`;
     const data = {
         flow: {
             displayName: apiWorkflow.display_name,
@@ -375,7 +375,7 @@ const generateWorkflowsListMarkdown = (apiWorkflows, orgName, viewName, hiddenWo
     const templateContent = fs.readFileSync(templatePath, 'utf8');
     const template = Handlebars.compile(templateContent);
 
-    const baseUrl = `/${orgName}/views/${viewName}`;
+    const baseUrl = `${constants.ROUTE.BASE_PATH}/${orgName}/views/${viewName}`;
     const data = {
         flows: apiWorkflows.map(flow => ({
             displayName: flow.display_name,

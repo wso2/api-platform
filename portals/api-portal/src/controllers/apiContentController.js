@@ -53,7 +53,7 @@ const loadAPIs = async (req, res, next) => {
         }
         const templateContent = {
             apiMetadata: metaDataList,
-            baseUrl: constants.ROUTE.VIEWS_PATH + viewName,
+            baseUrl: constants.ROUTE.BASE_PATH + constants.ROUTE.VIEWS_PATH + viewName,
             devMode: true,
         }
         const listingPage = isMcpListing ? 'pages/mcp' : 'pages/apis';
@@ -121,7 +121,7 @@ const loadAPIs = async (req, res, next) => {
                 isAuthenticated: req.isAuthenticated(),
                 apiMetadata: filteredList,
                 tags: apiTags,
-                baseUrl: '/' + orgName + constants.ROUTE.VIEWS_PATH + viewName,
+                baseUrl: constants.ROUTE.BASE_PATH + '/' + orgName + constants.ROUTE.VIEWS_PATH + viewName,
                 orgId: orgId,
                 profile: req.isAuthenticated() ? profile : null,
                 applications: []
@@ -207,7 +207,7 @@ const loadAPIContent = async (req, res, next) => {
             schemaDefinition,
             apiMetadata: metaData,
             subscriptionPlans: metaData.subscriptionPlans,
-            baseUrl: constants.ROUTE.VIEWS_PATH + viewName,
+            baseUrl: constants.ROUTE.BASE_PATH + constants.ROUTE.VIEWS_PATH + viewName,
             schemaUrl: `/mock/${apiHandle}/definition.yml`,
             showApiKeysNav: await resolveShowApiKeysNav(null, null, apiType, metaData, definitionResponse.swagger ?? null),
             showSubscriptionsNav: (metaData.subscriptionPlans || []).length > 0,
@@ -410,7 +410,7 @@ const loadAPIContent = async (req, res, next) => {
                 apiMetadata: metaData,
                 subscriptionPlans: subscriptionPlans,
                 subscriptions: subscriptions,
-                baseUrl: '/' + orgName + constants.ROUTE.VIEWS_PATH + viewName,
+                baseUrl: constants.ROUTE.BASE_PATH + '/' + orgName + constants.ROUTE.VIEWS_PATH + viewName,
                 schemaUrl: schemaUrl,
                 loadDefault: loadDefault,
                 apiContent: apiContentHtml,
@@ -518,7 +518,7 @@ const loadDocsPage = async (req, res, next) => {
         const definitionResponse = await getAPIDefinition(orgName, viewName, apiHandle);
         const templateContent = {
             apiMD: '',
-            baseUrl: constants.ROUTE.VIEWS_PATH + viewName + '/api/' + apiHandle,
+            baseUrl: constants.ROUTE.BASE_PATH + constants.ROUTE.VIEWS_PATH + viewName + '/api/' + apiHandle,
             baseDocUrl: constants.ROUTE.VIEWS_PATH + viewName + '/api/' + apiHandle,
             docTypes: docNames,
             apiType: apiMetadata.type,
@@ -552,8 +552,8 @@ const loadDocsPage = async (req, res, next) => {
             };
 
             const templateContent = {
-                baseUrl: '/' + orgName + '/views/' + viewName + "/api/" + apiHandle,
-                baseDocUrl: '/' + orgName + '/views/' + viewName + "/api/" + apiHandle,
+                baseUrl: constants.ROUTE.BASE_PATH + '/' + orgName + '/views/' + viewName + "/api/" + apiHandle,
+                baseDocUrl: constants.ROUTE.BASE_PATH + '/' + orgName + '/views/' + viewName + "/api/" + apiHandle,
                 docTypes: docNames,
                 apiType: apiType,
                 apiName: apiMetadata[0].name || '',
@@ -641,7 +641,7 @@ const loadDocument = async (req, res, next) => {
             const raw = sampleApiLoader.getDocMarkdown(apiHandle, docName, resolveSamplesPath(apiHandle), docType) || '';
             templateContent.apiMD = raw ? require('marked').parse(raw) : '';
         }
-        templateContent.baseUrl = constants.ROUTE.VIEWS_PATH + viewName;
+        templateContent.baseUrl = constants.ROUTE.BASE_PATH + constants.ROUTE.VIEWS_PATH + viewName;
         templateContent.baseDocUrl = constants.ROUTE.VIEWS_PATH + viewName + '/api/' + apiHandle;
         templateContent.docTypes = metaData.docTypes;
         templateContent.currentDocName = docName || null;
@@ -658,9 +658,9 @@ const loadDocument = async (req, res, next) => {
     }
 
     const orgDetails = await orgDao.get(orgName);
-    let baseDocUrl = '/' + orgName + '/views/' + viewName + "/api/" + apiHandle
+    let baseDocUrl = constants.ROUTE.BASE_PATH + '/' + orgName + '/views/' + viewName + "/api/" + apiHandle
     if (req.originalUrl.includes('/mcp')) {
-        baseDocUrl = '/' + orgName + '/views/' + viewName + "/mcp/" + apiHandle
+        baseDocUrl = constants.ROUTE.BASE_PATH + '/' + orgName + '/views/' + viewName + "/mcp/" + apiHandle
     }
     try {
         let templateContent = {
@@ -785,7 +785,7 @@ const loadDocument = async (req, res, next) => {
             if (apiType === constants.API_TYPE.MCP && !docNames.some(d => d.type === constants.DOC_TYPES.DOCS.API_DEFINITION)) {
                 docNames = [{ type: constants.DOC_TYPES.DOCS.API_DEFINITION }, ...docNames];
             }
-            templateContent.baseUrl = '/' + orgName + constants.ROUTE.VIEWS_PATH + viewName;
+            templateContent.baseUrl = constants.ROUTE.BASE_PATH + '/' + orgName + constants.ROUTE.VIEWS_PATH + viewName;
             templateContent.baseDocUrl = baseDocUrl;
             // Base for Stoplight Elements' `tryItCorsProxy`: Elements appends the
             // full target URL to this prefix, and the resulting same-origin request
@@ -1223,7 +1223,7 @@ const loadAPIContentMd = async (req, res) => {
         }
 
         // Load docs
-        const baseUrl = '/' + orgName + constants.ROUTE.VIEWS_PATH + viewName;
+        const baseUrl = constants.ROUTE.BASE_PATH + '/' + orgName + constants.ROUTE.VIEWS_PATH + viewName;
         const linkBase = apiType === constants.API_TYPE.MCP
             ? `${baseUrl}/mcp/${apiHandle}`
             : `${baseUrl}/api/${apiHandle}`;
@@ -1325,7 +1325,7 @@ async function buildLlmsTxtTemplateContent(req, orgId, orgName, viewName, config
     const publishedWorkflows = allPublishedWorkflows.filter(flow => flow.agentVisibility !== 'HIDDEN');
     const hiddenWorkflowCount = allPublishedWorkflows.length - publishedWorkflows.length;
 
-    const baseUrl = '/' + orgName + constants.ROUTE.VIEWS_PATH + viewName;
+    const baseUrl = constants.ROUTE.BASE_PATH + '/' + orgName + constants.ROUTE.VIEWS_PATH + viewName;
     return {
         orgName: configOverrides.orgName,
         portalName: configOverrides.portalName || null,
@@ -1431,7 +1431,7 @@ const loadAPIsMd = async (req, res) => {
             const type = typeConstantToEnum[api.type];
             if (byType[type]) byType[type].push(api);
         }
-        const baseUrl = '/' + orgName + constants.ROUTE.VIEWS_PATH + viewName;
+        const baseUrl = constants.ROUTE.BASE_PATH + '/' + orgName + constants.ROUTE.VIEWS_PATH + viewName;
         const templateContent = {
             restAPIs:    byType.REST.length    ? byType.REST    : null,
             graphqlAPIs: byType.GRAPHQL.length ? byType.GRAPHQL : null,
@@ -1475,7 +1475,7 @@ const loadMCPsMd = async (req, res) => {
         const mcpAPIs = agentVisibleAPIs.filter(api => api.type === constants.API_TYPE.MCP);
         const hiddenAPICount = metaDataList.filter(api => api.type === constants.API_TYPE.MCP).length - mcpAPIs.length;
 
-        const baseUrl = '/' + orgName + constants.ROUTE.VIEWS_PATH + viewName;
+        const baseUrl = constants.ROUTE.BASE_PATH + '/' + orgName + constants.ROUTE.VIEWS_PATH + viewName;
         const templateContent = {
             mcpAPIs: mcpAPIs.length ? mcpAPIs : null,
             baseUrl,

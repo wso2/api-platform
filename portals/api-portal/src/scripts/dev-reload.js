@@ -21,7 +21,10 @@
 (function () {
     var connected = false, reloadPending = false;
     function connect() {
-        var es = new EventSource('/__dev_reload');
+        // The SSE endpoint is mounted under the portal's BASE_PATH (see liveReload.js,
+        // registered on the same parent router as every other route in app.js).
+        var basePath = (window.apiPortalApi && window.apiPortalApi.basePath) || '';
+        var es = new EventSource(basePath + '/__dev_reload');
         es.onopen = function () {
             if (connected && reloadPending) { location.reload(); return; }
             connected = true;

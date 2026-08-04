@@ -41,37 +41,37 @@ const FOREIGN_ORG = 'some-other-org';
 describe('single-organization isolation', () => {
     describe('page routes', () => {
         it('serves its own organization portal home', async () => {
-            const res = await client.raw().get(`/${OWN_ORG}/views/default`);
+            const res = await client.raw().get(`${client.BASE_PATH}/${OWN_ORG}/views/default`);
             expect(res.status).toBe(200);
         });
 
         it('404s a portal home under another organization handle', async () => {
-            const res = await client.raw().get(`/${FOREIGN_ORG}/views/default`);
+            const res = await client.raw().get(`${client.BASE_PATH}/${FOREIGN_ORG}/views/default`);
             expect(res.status).toBe(404);
         });
 
         it('404s an API listing under another organization handle', async () => {
-            const res = await client.raw().get(`/${FOREIGN_ORG}/views/default/apis`);
+            const res = await client.raw().get(`${client.BASE_PATH}/${FOREIGN_ORG}/views/default/apis`);
             expect(res.status).toBe(404);
         });
 
         it('404s the MCP registry under another organization handle', async () => {
-            const res = await client.raw().get(`/registry/${FOREIGN_ORG}/v0.1/servers`);
+            const res = await client.raw().get(`${client.BASE_PATH}/registry/${FOREIGN_ORG}/v0.1/servers`);
             expect(res.status).toBe(404);
         });
 
         it('does not name the rejected organization in the 404 body', async () => {
             // The error page's own links must point back into this portal, never into
             // the organization the caller asked for.
-            const res = await client.raw().get(`/${FOREIGN_ORG}/views/default`);
+            const res = await client.raw().get(`${client.BASE_PATH}/${FOREIGN_ORG}/views/default`);
             expect(res.status).toBe(404);
             expect(res.text || '').not.toContain(FOREIGN_ORG);
         });
 
         it('redirects the root to its own organization', async () => {
-            const res = await client.raw().get('/').redirects(0);
+            const res = await client.raw().get(client.BASE_PATH).redirects(0);
             expect(res.status).toBe(302);
-            expect(res.headers.location).toBe(`/${OWN_ORG}/views/default`);
+            expect(res.headers.location).toBe(`${client.BASE_PATH}/${OWN_ORG}/views/default`);
         });
     });
 

@@ -20,8 +20,8 @@
   width: 1em;
   height: 1em;
   background-color: currentcolor;
-  -webkit-mask: url("/images/mcp-icon.svg") no-repeat center / contain;
-  mask: url("/images/mcp-icon.svg") no-repeat center / contain;
+  -webkit-mask: url("../images/mcp-icon.svg") no-repeat center / contain;
+  mask: url("../images/mcp-icon.svg") no-repeat center / contain;
 }
 
 .dp-badge--rest    { background: #e6f2fb; color: #0277bd; }

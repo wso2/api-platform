@@ -28,33 +28,30 @@ const { attachOrgGuard } = require('../../middlewares/orgGuard');
 // anything else is a 404 before the route's own handlers run.
 attachOrgGuard(router);
 
-router.get('/:orgName/views/:viewName', (req, res, next) => {
-    if (req.params.orgName === 'favicon.ico' || req.params.orgName === 'images' || req.params.orgName === 'portal' || req.params.orgName === '__dev_reload') {
-        return res.status(404).send('Not Found');
-    }
-    next();
-}, authController.handleSilentSSO, registerPartials, orgController.loadOrganizationContent);
+// No inline reserved-word denylist: orgGuard (attachOrgGuard above) already 404s any
+// :orgName that isn't the configured handle, and configLoader's RESERVED_ORG_HANDLES
+// check guarantees the configured handle is never one of these root-owned words.
+router.get('/:orgName/views/:viewName', authController.handleSilentSSO, registerPartials, orgController.loadOrganizationContent);
 
 // The view segment is resolved, not hardcoded to 'default': that view can be renamed or
 // deleted (only the last view is protected), and a redirect to a view that no longer
 // exists would 404 the portal's own front door.
 router.get('/:orgName', async (req, res, next) => {
-    if (req.params.orgName === 'favicon.ico' || req.params.orgName === 'images' || req.params.orgName === 'portal' || req.params.orgName === '__dev_reload') {
-        return res.status(404).send('Not Found');
-    }
-    // Absolute (leading slash), not relative: a relative Location is resolved against the
-    // current URL's directory, so `/default/` — which this route matches too, since
-    // Express strict routing is off — turned `default/views/x` into
-    // `/default/default/views/x`. Without the trailing slash it happened to work, which
-    // is why it went unnoticed.
-    return res.redirect(`/${req.params.orgName}${constants.ROUTE.VIEWS_PATH}${await orgContext.getFallbackViewHandle()}`);
+    // Absolute (leading slash) AND prefixed with BASE_PATH, not relative: a relative
+    // Location is resolved against the current URL's directory, so `/default/` — which
+    // this route matches too, since Express strict routing is off — turned
+    // `default/views/x` into `/default/default/views/x`. Now that the whole portal is
+    // mounted under BASE_PATH the target must carry it too (res.redirect on a
+    // domain-absolute path ignores the router mount), or the browser lands outside the
+    // portal namespace and 404s.
+    return res.redirect(`${constants.ROUTE.BASE_PATH}/${req.params.orgName}${constants.ROUTE.VIEWS_PATH}${await orgContext.getFallbackViewHandle()}`);
 }, authController.handleSilentSSO, registerPartials, orgController.loadOrganizationContent);
 
 // The portal serves one organization, so the root is simply its front door —
 // there is nothing to choose between. The handle is validated at config load, so
 // this cannot redirect anywhere but into this instance's own portal.
 router.get('/', async (req, res) => {
-    return res.redirect(`/${orgContext.getHandle()}${constants.ROUTE.VIEWS_PATH}${await orgContext.getFallbackViewHandle()}`);
+    return res.redirect(`${constants.ROUTE.BASE_PATH}/${orgContext.getHandle()}${constants.ROUTE.VIEWS_PATH}${await orgContext.getFallbackViewHandle()}`);
 });
 
 module.exports = router;

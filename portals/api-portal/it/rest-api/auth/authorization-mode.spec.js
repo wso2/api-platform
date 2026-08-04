@@ -63,7 +63,7 @@ describe(`authorization mode = ${MODE}`, () => {
             // AUTH_MODE by the compose fixture — if they ever drift, the mode-gated
             // describes below would silently skip or assert against the wrong mode.
             expect(['scope', 'role']).toContain(MODE);
-            const res = await client.raw().get(`/${ORG}/views/default`);
+            const res = await client.raw().get(`${client.BASE_PATH}/${ORG}/views/default`);
             expect(res.status).toBe(200);
         });
 

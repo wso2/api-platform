@@ -41,6 +41,7 @@ const crypto = require('crypto');
 const yaml = require('../../utils/yaml');
 const express = require('express');
 const OpenApiValidator = require('express-openapi-validator');
+const constants = require('../../utils/constants');
 
 const { config } = require('../../config/configLoader');
 const logger = require('../../config/logger');
@@ -54,12 +55,19 @@ const HANDLERS_DIR = path.join(__dirname, 'handlers');
 // routes (/:orgName/views/...) straight through with next('router') so neither
 // authResolver nor the validator touch them.
 //
-// The version base (e.g. '/api/v0.9') lives in the spec's `servers[].url`, so
-// express-openapi-validator matches requests against `basePath + pathKey`. We
+// The version base (e.g. '/api-portal/api/v0.9') lives in the spec's `servers[].url`,
+// so express-openapi-validator matches requests against `basePath + pathKey`. We
 // mirror that here: the segment we must recognize is the first segment of the
 // *combined* route (e.g. 'api' for a server basePath of '/api/v0.9'), not of the
 // bare path key. When no server basePath is set we fall back to the path key's
 // own first segment.
+//
+// The spec's server basePath is fully qualified (`${BASE_PATH}/api/v0.9`) so the
+// validator matches the absolute req.originalUrl. This skip middleware, however, runs
+// inside the router *after* app.js has mounted it under BASE_PATH, so req.path is
+// already stripped of the prefix — the discriminator it needs is the first segment
+// *after* BASE_PATH ('api' vs. an org handle). So strip BASE_PATH from the server base
+// before taking the segment, keeping the two views of the path in agreement.
 let API_FIRST_SEGMENTS;
 function serverBasePath(url) {
     // Strip scheme://host, keeping only the path portion. Tolerates server URL
@@ -75,9 +83,12 @@ function apiFirstSegments() {
         const bases = (doc.servers || []).map((s) => serverBasePath(s.url));
         const effectiveBases = bases.length ? bases : [''];
         API_FIRST_SEGMENTS = new Set();
+        const basePath = constants.ROUTE.BASE_PATH;
         for (const base of effectiveBases) {
+            // Strip the mount prefix: req.path is mount-relative here (see comment above).
+            const relBase = base.startsWith(basePath) ? base.slice(basePath.length) : base;
             for (const p of Object.keys(doc.paths || {})) {
-                const seg = `${base}${p}`.split('/')[1];
+                const seg = `${relBase}${p}`.split('/')[1];
                 if (seg) API_FIRST_SEGMENTS.add(seg);
             }
         }

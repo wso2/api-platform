@@ -58,6 +58,9 @@ module.exports = defineConfig({
         },
     },
     env: {
+        // The whole portal (pages + REST API) is mounted under this hardcoded prefix
+        // (src/utils/constants.js ROUTE.BASE_PATH); every navigation/request carries it.
+        BASE_PATH: '/api-portal',
         // Org/view used throughout tests. The portal serves this one organization
         // (its organization.handle in it/test-config.toml), so specs address it by
         // handle — there is no internal UUID to resolve at runtime.

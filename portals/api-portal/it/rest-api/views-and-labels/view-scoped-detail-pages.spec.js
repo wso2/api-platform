@@ -43,7 +43,7 @@ async function createLabel() {
 // The portal pages are HTML, not the REST API, so they're fetched with the raw agent
 // against the page URL rather than through client.as(...).
 function pageUrl(viewHandle, artifactPath) {
-    return `/${client.ORG_HANDLE}/views/${viewHandle}${artifactPath}`;
+    return `${client.BASE_PATH}/${client.ORG_HANDLE}/views/${viewHandle}${artifactPath}`;
 }
 
 // MCP servers have their own resource family and require a tools schema as the
