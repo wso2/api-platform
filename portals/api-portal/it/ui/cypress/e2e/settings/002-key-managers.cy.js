@@ -30,7 +30,7 @@ describe('Settings — Key Managers', () => {
     const ENDPOINT = 'https://idp.example.invalid/oauth2/token';
     const APP_NAME = `IT KM App ${uid}`;
 
-    const settingsUrl = () => `/${Cypress.env('ORG_HANDLE')}/settings`;
+    const settingsUrl = () => `${Cypress.env('BASE_PATH')}/${Cypress.env('ORG_HANDLE')}/settings`;
 
     after(() => {
         // Remove the developer-owned application (via its owner) first.

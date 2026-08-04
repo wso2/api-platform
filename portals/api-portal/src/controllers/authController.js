@@ -29,12 +29,13 @@ const orgContext = require('../utils/orgContext');
 const { validationResult } = require('express-validator');
 const { verifyPlatformJwtClaims } = require('../utils/platformJwt');
 const { portalRoles, rolesFromClaims } = require('../middlewares/authorization');
+const { clearPortalCookies } = require('../utils/sessionCookies');
 
 
 
 const login = async (req, res, next) => {
     const orgName = req.params.orgName;
-    const baseUrl = '/' + orgName + constants.ROUTE.VIEWS_PATH + req.params.viewName;
+    const baseUrl = constants.ROUTE.BASE_PATH + '/' + orgName + constants.ROUTE.VIEWS_PATH + req.params.viewName;
     if (!req.isAuthenticated()) {
         const fidp = req.query.fidp;
         const fidpMap = config.auth.idp?.fidp || {};
@@ -57,7 +58,7 @@ const login = async (req, res, next) => {
             // view's uploaded layout (falls back to the default styles otherwise).
             const orgDetails = await orgDao.get(orgName);
             const templateContent = {
-                baseUrl: '/' + orgName + constants.ROUTE.VIEWS_PATH + req.params.viewName,
+                baseUrl: constants.ROUTE.BASE_PATH + '/' + orgName + constants.ROUTE.VIEWS_PATH + req.params.viewName,
                 localAuthEnabled: true,
                 loginError: req.query.error || null,
             };
@@ -83,7 +84,7 @@ const handleCallback = async (req, res, next) => {
     await passport.authenticate(
         'oauth2',
         {
-            failureRedirect: '/login'
+            failureRedirect: `${constants.ROUTE.BASE_PATH}/login`
         },
         (err, user) => {
             if (err || !user) {
@@ -100,9 +101,9 @@ const handleCallback = async (req, res, next) => {
                 res.set('Cache-Control', 'no-store');
                 let returnTo = req.user.returnTo;
                 if (config.auth.idp?.orgCallback && returnTo == null) {
-                    returnTo = `/${req.params.orgName}`;
+                    returnTo = `${constants.ROUTE.BASE_PATH}/${req.params.orgName}`;
                 }
-                returnTo = returnTo || `/${req.params.orgName}`;
+                returnTo = returnTo || `${constants.ROUTE.BASE_PATH}/${req.params.orgName}`;
                 delete req.session.returnTo;
                 logUserAction('USER_LOGIN', req, { orgName: req.params.orgName });
                 req.session.save((saveErr) => {
@@ -128,7 +129,7 @@ const handleSignUp = async (req, res) => {
     if (authJsonContent?.signUpUrl) {
         res.redirect(authJsonContent.signUpUrl);
     } else {
-        const returnTo = req.session.returnTo || `/${req.params.orgName}`;
+        const returnTo = req.session.returnTo || `${constants.ROUTE.BASE_PATH}/${req.params.orgName}`;
         delete req.session.returnTo;
         res.redirect(returnTo);
     }
@@ -165,6 +166,7 @@ const handleLogOut = async (req, res) => {
                 if (destroyErr) {
                     logger.error('Session destroy failed on local-auth logout', { error: destroyErr.message });
                 }
+                clearPortalCookies(res);
                 res.redirect(req.originalUrl.replace('/logout', '/login'));
             });
         });
@@ -201,11 +203,14 @@ const handleLogOut = async (req, res) => {
 };
 
 const handleLogOutLanding = async (req, res) => {
-    const currentPathURI = req.session.currentPathURI || '/';
+    const currentPathURI = req.session.currentPathURI || constants.ROUTE.BASE_PATH;
     req.session.destroy((err) => {
         if (err) {
             logger.error('Session destroy failed on logout landing', { error: err.message });
         }
+        // The IDP round-trip ends here, so this is the one place an idp-mode session is
+        // actually torn down — clear its cookies at every path they may exist at.
+        clearPortalCookies(res);
         res.redirect(currentPathURI);
     });
 }
@@ -239,8 +244,8 @@ const handleLocalLogin = async (req, res) => {
     // protocol-relative one. Fall back to a server-controlled login path otherwise.
     const SAFE_HANDLE = /^[a-zA-Z0-9_-]+$/;
     const baseUrl = (SAFE_HANDLE.test(orgName || '') && SAFE_HANDLE.test(viewName || ''))
-        ? `/${orgName}${constants.ROUTE.VIEWS_PATH}${viewName}`
-        : '';
+        ? `${constants.ROUTE.BASE_PATH}/${orgName}${constants.ROUTE.VIEWS_PATH}${viewName}`
+        : constants.ROUTE.BASE_PATH;
 
     if (config.auth.mode === 'idp') {
         return res.status(404).send('Not found');

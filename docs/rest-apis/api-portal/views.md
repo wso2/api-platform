@@ -10,11 +10,10 @@
 
 ```shell
 
-curl -X POST https://localhost:9543/api/v0.9/views \
-  -u {username}:{password} \
+curl -X POST https://localhost:9543/api-portal/api/v0.9/views \
+  -H 'Authorization: Bearer {access_token}' \
   -H 'Content-Type: application/json' \
   -H 'Accept: application/json' \
-  -H 'Authorization: Bearer {access-token}' \
   -d @payload.json
 
 ```
@@ -37,7 +36,9 @@ Creates an API Portal view for an organization and associates it with the suppli
 ### Authentication
 
 <aside class="warning">
-This operation requires <strong>Basic Auth</strong> authentication.
+This operation requires a <strong>Bearer JWT</strong> access token in the <code>Authorization</code> header.
+
+Required scopes (the token must carry at least one of): `dp:view:create`, `dp:view:manage`
 
 </aside>
 
@@ -48,7 +49,7 @@ This operation requires <strong>Basic Auth</strong> authentication.
 |body|body|[ViewCreateRequest](schemas.md#schemaviewcreaterequest)|true|View creation payload with the label names that should be visible in the view.|
 
 > Example responses
-
+>
 > 201 Response
 
 ```json
@@ -120,10 +121,9 @@ This operation requires <strong>Basic Auth</strong> authentication.
 
 ```shell
 
-curl -X GET https://localhost:9543/api/v0.9/views \
-  -u {username}:{password} \
-  -H 'Accept: application/json' \
-  -H 'Authorization: Bearer {access-token}'
+curl -X GET https://localhost:9543/api-portal/api/v0.9/views \
+  -H 'Authorization: Bearer {access_token}' \
+  -H 'Accept: application/json'
 
 ```
 
@@ -132,7 +132,9 @@ Lists all views configured for the organization. Each view includes the label na
 ### Authentication
 
 <aside class="warning">
-This operation requires <strong>Basic Auth</strong> authentication.
+This operation requires a <strong>Bearer JWT</strong> access token in the <code>Authorization</code> header.
+
+Required scopes (the token must carry at least one of): `dp:view:read`, `dp:view:manage`
 
 </aside>
 
@@ -144,7 +146,7 @@ This operation requires <strong>Basic Auth</strong> authentication.
 |offset|query|integer|false|Number of records to skip before returning results.|
 
 > Example responses
-
+>
 > 200 Response
 
 ```json
@@ -226,16 +228,15 @@ Status Code **200**
 
 ```shell
 
-curl -X PUT https://localhost:9543/api/v0.9/views/{viewId} \
-  -u {username}:{password} \
+curl -X PUT https://localhost:9543/api-portal/api/v0.9/views/{viewId} \
+  -H 'Authorization: Bearer {access_token}' \
   -H 'Content-Type: application/json' \
   -H 'Accept: application/json' \
-  -H 'Authorization: Bearer {access-token}' \
   -d @payload.json
 
 ```
 
-Updates the view display name and/or label associations. When `labels` is supplied, it fully replaces the view's label set — labels present in the list are attached and any others are detached. The service returns the accepted request payload.
+Updates the view handle, display name and/or label associations. When `labels` is supplied, it fully replaces the view's label set — labels present in the list are attached and any others are detached. Supplying `id` renames the view's handle, which keeps the view's identity (labels, assets and API workflows follow it) but invalidates every existing URL built from the old handle. The service returns the accepted request payload.
 
 > Payload
 
@@ -252,7 +253,9 @@ Updates the view display name and/or label associations. When `labels` is suppli
 ### Authentication
 
 <aside class="warning">
-This operation requires <strong>Basic Auth</strong> authentication.
+This operation requires a <strong>Bearer JWT</strong> access token in the <code>Authorization</code> header.
+
+Required scopes (the token must carry at least one of): `dp:view:update`, `dp:view:manage`
 
 </aside>
 
@@ -264,7 +267,7 @@ This operation requires <strong>Basic Auth</strong> authentication.
 |viewId|path|string|true|The view's handle (unique per org). Not the internal database uuid.|
 
 > Example responses
-
+>
 > 200 Response
 
 ```json
@@ -351,10 +354,9 @@ This operation requires <strong>Basic Auth</strong> authentication.
 
 ```shell
 
-curl -X GET https://localhost:9543/api/v0.9/views/{viewId} \
-  -u {username}:{password} \
-  -H 'Accept: application/json' \
-  -H 'Authorization: Bearer {access-token}'
+curl -X GET https://localhost:9543/api-portal/api/v0.9/views/{viewId} \
+  -H 'Authorization: Bearer {access_token}' \
+  -H 'Accept: application/json'
 
 ```
 
@@ -363,7 +365,9 @@ Retrieves one view by its `viewId` handle, including the label names attached to
 ### Authentication
 
 <aside class="warning">
-This operation requires <strong>Basic Auth</strong> authentication.
+This operation requires a <strong>Bearer JWT</strong> access token in the <code>Authorization</code> header.
+
+Required scopes (the token must carry at least one of): `dp:view:read`, `dp:view:manage`
 
 </aside>
 
@@ -374,7 +378,7 @@ This operation requires <strong>Basic Auth</strong> authentication.
 |viewId|path|string|true|The view's handle (unique per org). Not the internal database uuid.|
 
 > Example responses
-
+>
 > 200 Response
 
 ```json
@@ -451,19 +455,20 @@ This operation requires <strong>Basic Auth</strong> authentication.
 
 ```shell
 
-curl -X DELETE https://localhost:9543/api/v0.9/views/{viewId} \
-  -u {username}:{password} \
-  -H 'Accept: application/json' \
-  -H 'Authorization: Bearer {access-token}'
+curl -X DELETE https://localhost:9543/api-portal/api/v0.9/views/{viewId} \
+  -H 'Authorization: Bearer {access_token}' \
+  -H 'Accept: application/json'
 
 ```
 
-Deletes a view by its `viewId` handle. A missing view is returned as a not-found error.
+Deletes a view by its `viewId` handle. A missing view is returned as a not-found error. Any view may be deleted, including the one seeded as `default` — the portal resolves whichever view remains as its landing view. The organization's LAST view cannot be deleted (`400`), since an organization with no views has no page to serve. A view that still has API workflows is rejected with `409`; delete those first.
 
 ### Authentication
 
 <aside class="warning">
-This operation requires <strong>Basic Auth</strong> authentication.
+This operation requires a <strong>Bearer JWT</strong> access token in the <code>Authorization</code> header.
+
+Required scopes (the token must carry at least one of): `dp:view:delete`, `dp:view:manage`
 
 </aside>
 
@@ -474,7 +479,7 @@ This operation requires <strong>Basic Auth</strong> authentication.
 |viewId|path|string|true|The view's handle (unique per org). Not the internal database uuid.|
 
 > Example responses
-
+>
 > Bad request. Validation and other bad-request errors are returned as a standard error object (field-level details, when present, are carried in its `errors` array); some legacy handlers return a message-only object.
 
 ```json
@@ -501,6 +506,16 @@ This operation requires <strong>Basic Auth</strong> authentication.
 }
 ```
 
+> 409 Response
+
+```json
+{
+  "status": "error",
+  "code": "CONFLICT",
+  "message": "Conflict"
+}
+```
+
 > 500 Response
 
 ```json
@@ -518,6 +533,7 @@ This operation requires <strong>Basic Auth</strong> authentication.
 |204|[No Content](https://tools.ietf.org/html/rfc7231#section-6.3.5)|View deleted successfully.|None|
 |400|[Bad Request](https://tools.ietf.org/html/rfc7231#section-6.5.1)|Bad request. Validation and other bad-request errors are returned as a standard error object (field-level details, when present, are carried in its `errors` array); some legacy handlers return a message-only object.|Inline|
 |404|[Not Found](https://tools.ietf.org/html/rfc7231#section-6.5.4)|Resource not found.|[ErrorResponse](schemas.md#schemaerrorresponse)|
+|409|[Conflict](https://tools.ietf.org/html/rfc7231#section-6.5.8)|The request conflicts with an existing resource.|[ErrorResponse](schemas.md#schemaerrorresponse)|
 |500|[Internal Server Error](https://tools.ietf.org/html/rfc7231#section-6.6.1)|Internal server error.|[ErrorResponse](schemas.md#schemaerrorresponse)|
 
 <h3 id="delete-a-view-responseschema">Response Schema</h3>

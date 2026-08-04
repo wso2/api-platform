@@ -10,10 +10,9 @@
 
 ```shell
 
-curl -X GET https://localhost:9543/api/v0.9/subscription-plans \
-  -u {username}:{password} \
-  -H 'Accept: application/json' \
-  -H 'Authorization: Bearer {access-token}'
+curl -X GET https://localhost:9543/api-portal/api/v0.9/subscription-plans \
+  -H 'Authorization: Bearer {access_token}' \
+  -H 'Accept: application/json'
 
 ```
 
@@ -22,7 +21,9 @@ Lists subscription plans for an organization. When `name` is supplied, only the 
 ### Authentication
 
 <aside class="warning">
-This operation requires <strong>Basic Auth</strong> authentication.
+This operation requires a <strong>Bearer JWT</strong> access token in the <code>Authorization</code> header.
+
+Required scopes (the token must carry at least one of): `dp:subscription_plan:read`, `dp:subscription_plan:manage`
 
 </aside>
 
@@ -33,7 +34,7 @@ This operation requires <strong>Basic Auth</strong> authentication.
 |name|query|string|false|Filter by exact plan name. Returns an array of zero or one items.|
 
 > Example responses
-
+>
 > 200 Response
 
 ```json
@@ -175,11 +176,10 @@ Status Code **200**
 
 ```shell
 
-curl -X POST https://localhost:9543/api/v0.9/subscription-plans \
-  -u {username}:{password} \
+curl -X POST https://localhost:9543/api-portal/api/v0.9/subscription-plans \
+  -H 'Authorization: Bearer {access_token}' \
   -H 'Content-Type: application/json' \
   -H 'Accept: application/json' \
-  -H 'Authorization: Bearer {access-token}' \
   -d @payload.json
 
 ```
@@ -221,7 +221,9 @@ limits:
 ### Authentication
 
 <aside class="warning">
-This operation requires <strong>Basic Auth</strong> authentication.
+This operation requires a <strong>Bearer JWT</strong> access token in the <code>Authorization</code> header.
+
+Required scopes (the token must carry at least one of): `dp:subscription_plan:create`, `dp:subscription_plan:manage`
 
 </aside>
 
@@ -232,7 +234,7 @@ This operation requires <strong>Basic Auth</strong> authentication.
 |body|body|any|true|Subscription plan payload. Send a single object for single create/upsert, or a non-empty array for bulk create/upsert; each object carries its rate/quota rules in `limits`. Alternatively, upload a YAML file in the `subscriptionPlan` multipart field; use `kind: SubscriptionPlan` for a single plan or `kind: SubscriptionPlanList` with an `items` array for bulk operations. YAML uploads may use the legacy `type: requestcount` or `type: eventcount` shorthand, which is converted into `limits` before storage.|
 
 > Example responses
-
+>
 > 200 Response
 
 ```json
@@ -319,11 +321,10 @@ This operation requires <strong>Basic Auth</strong> authentication.
 
 ```shell
 
-curl -X PUT https://localhost:9543/api/v0.9/subscription-plans \
-  -u {username}:{password} \
+curl -X PUT https://localhost:9543/api-portal/api/v0.9/subscription-plans \
+  -H 'Authorization: Bearer {access_token}' \
   -H 'Content-Type: application/json' \
   -H 'Accept: application/json' \
-  -H 'Authorization: Bearer {access-token}' \
   -d @payload.json
 
 ```
@@ -365,7 +366,9 @@ limits:
 ### Authentication
 
 <aside class="warning">
-This operation requires <strong>Basic Auth</strong> authentication.
+This operation requires a <strong>Bearer JWT</strong> access token in the <code>Authorization</code> header.
+
+Required scopes (the token must carry at least one of): `dp:subscription_plan:update`, `dp:subscription_plan:manage`
 
 </aside>
 
@@ -376,7 +379,7 @@ This operation requires <strong>Basic Auth</strong> authentication.
 |body|body|any|true|Subscription plan payload. Send a single object for single create/upsert, or a non-empty array for bulk create/upsert; each object carries its rate/quota rules in `limits`. Alternatively, upload a YAML file in the `subscriptionPlan` multipart field; use `kind: SubscriptionPlan` for a single plan or `kind: SubscriptionPlanList` with an `items` array for bulk operations. YAML uploads may use the legacy `type: requestcount` or `type: eventcount` shorthand, which is converted into `limits` before storage.|
 
 > Example responses
-
+>
 > 200 Response
 
 ```json
@@ -504,10 +507,9 @@ This operation requires <strong>Basic Auth</strong> authentication.
 
 ```shell
 
-curl -X GET https://localhost:9543/api/v0.9/subscription-plans/{planId} \
-  -u {username}:{password} \
-  -H 'Accept: application/json' \
-  -H 'Authorization: Bearer {access-token}'
+curl -X GET https://localhost:9543/api-portal/api/v0.9/subscription-plans/{planId} \
+  -H 'Authorization: Bearer {access_token}' \
+  -H 'Accept: application/json'
 
 ```
 
@@ -516,7 +518,9 @@ Retrieves a single subscription plan by `planId`.
 ### Authentication
 
 <aside class="warning">
-This operation requires <strong>Basic Auth</strong> authentication.
+This operation requires a <strong>Bearer JWT</strong> access token in the <code>Authorization</code> header.
+
+Required scopes (the token must carry at least one of): `dp:subscription_plan:read`, `dp:subscription_plan:manage`
 
 </aside>
 
@@ -527,7 +531,7 @@ This operation requires <strong>Basic Auth</strong> authentication.
 |planId|path|string|true|The subscription plan's handle (unique per org).|
 
 > Example responses
-
+>
 > 200 Response
 
 ```json
@@ -615,10 +619,9 @@ This operation requires <strong>Basic Auth</strong> authentication.
 
 ```shell
 
-curl -X DELETE https://localhost:9543/api/v0.9/subscription-plans/{planId} \
-  -u {username}:{password} \
-  -H 'Accept: application/json' \
-  -H 'Authorization: Bearer {access-token}'
+curl -X DELETE https://localhost:9543/api-portal/api/v0.9/subscription-plans/{planId} \
+  -H 'Authorization: Bearer {access_token}' \
+  -H 'Accept: application/json'
 
 ```
 
@@ -627,7 +630,9 @@ Deletes a subscription plan by `planId`.
 ### Authentication
 
 <aside class="warning">
-This operation requires <strong>Basic Auth</strong> authentication.
+This operation requires a <strong>Bearer JWT</strong> access token in the <code>Authorization</code> header.
+
+Required scopes (the token must carry at least one of): `dp:subscription_plan:delete`, `dp:subscription_plan:manage`
 
 </aside>
 
@@ -638,7 +643,7 @@ This operation requires <strong>Basic Auth</strong> authentication.
 |planId|path|string|true|The subscription plan's handle (unique per org).|
 
 > Example responses
-
+>
 > Bad request. Validation and other bad-request errors are returned as a standard error object (field-level details, when present, are carried in its `errors` array); some legacy handlers return a message-only object.
 
 ```json

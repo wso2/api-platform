@@ -39,7 +39,7 @@ describe('Applications', () => {
         cy.login();
         cy.request({
             method: 'DELETE',
-            url: `/api/v0.9/applications/${detailHandle}`,
+            url: `${Cypress.env('BASE_PATH')}/api/v0.9/applications/${detailHandle}`,
             failOnStatusCode: false,
         }).its('status').should('be.oneOf', [200, 404]); // 200 = deleted; 404 = already gone (idempotent). Any other status is a real failure.
     });

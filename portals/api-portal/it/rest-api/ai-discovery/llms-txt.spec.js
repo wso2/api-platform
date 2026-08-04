@@ -39,7 +39,7 @@ describe('AI/LLM discovery (llms.txt)', () => {
     it("GET /:org/views/:view/llms.txt lists that view's visible APIs and MCP servers", async () => {
         const api = await createApi({ name: 'Discoverable API', labels: ['default'] });
 
-        const res = await client.raw().get(`/${client.ORG_HANDLE}/views/default/llms.txt`);
+        const res = await client.raw().get(`${client.BASE_PATH}/${client.ORG_HANDLE}/views/default/llms.txt`);
         expect(res.status).toBe(200);
         expect(res.headers['content-type']).toMatch(/text\/plain/);
         expect(res.text).toContain(api.name);
@@ -49,7 +49,7 @@ describe('AI/LLM discovery (llms.txt)', () => {
         const visible = await createApi({ name: 'Visible Discoverable API', labels: ['default'], agentVisibility: 'VISIBLE' });
         const hidden = await createApi({ name: 'Hidden Discoverable API', labels: ['default'], agentVisibility: 'HIDDEN' });
 
-        const res = await client.raw().get(`/${client.ORG_HANDLE}/views/default/llms.txt`);
+        const res = await client.raw().get(`${client.BASE_PATH}/${client.ORG_HANDLE}/views/default/llms.txt`);
         expect(res.status).toBe(200);
         expect(res.text).toContain(visible.name);
         expect(res.text).not.toContain(hidden.name);
@@ -66,7 +66,7 @@ describe('AI/LLM discovery (llms.txt)', () => {
             const save = await client.page('publisher').put(configPath, { aiEnabled: false, portalName: '', portalDescription: '' });
             expect(save.status).toBe(200);
 
-            const res = await client.raw().get(`/${client.ORG_HANDLE}/views/default/llms.txt`);
+            const res = await client.raw().get(`${client.BASE_PATH}/${client.ORG_HANDLE}/views/default/llms.txt`);
             expect(res.status).toBe(404);
         } finally {
             // Restore — this view/org is shared by every other test in this file.

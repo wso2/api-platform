@@ -101,8 +101,8 @@
                   {{else if (eq type "SOAP")}}dp-badge--soap
                   {{else if (eq type "WebSubApi")}}dp-badge--ws
                   {{else}}dp-badge--rest{{/if}}">
-                  {{#if (eq type "GRAPHQL")}}<img src="/images/graphql-icon.svg" class="dp-badge-icon" alt="" /> GraphQL
-                  {{else if (eq type "WS")}}<img src="/images/websocket-icon.svg" class="dp-badge-icon" alt="" /> WebSocket
+                  {{#if (eq type "GRAPHQL")}}<img src="{{basePath}}/images/graphql-icon.svg" class="dp-badge-icon" alt="" /> GraphQL
+                  {{else if (eq type "WS")}}<img src="{{basePath}}/images/websocket-icon.svg" class="dp-badge-icon" alt="" /> WebSocket
                   {{else if (eq type "WebSubApi")}}<i class="bi bi-broadcast-pin"></i> WebSub
                   {{else if (eq type "SOAP")}}<i class="bi bi-file-code"></i> SOAP
                   {{else}}<i class="bi bi-braces"></i> REST{{/if}}
@@ -164,6 +164,6 @@
     </div>
   </div>
 
-  <script src='/technical-scripts/listing-cards.js' defer></script>
-  <script src='/technical-scripts/paginate.js' defer></script>
+  <script src='{{basePath}}/technical-scripts/listing-cards.js' defer></script>
+  <script src='{{basePath}}/technical-scripts/paginate.js' defer></script>
 </section>

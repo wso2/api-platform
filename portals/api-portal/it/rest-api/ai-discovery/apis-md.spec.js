@@ -38,7 +38,7 @@ describe('AI/LLM discovery (apis.md)', () => {
     it('lists a REST API in the catalog', async () => {
         const api = await createApi({ name: 'Catalogued REST API', type: 'REST', labels: ['default'] });
 
-        const res = await client.raw().get(`/${client.ORG_HANDLE}/views/default/apis.md`);
+        const res = await client.raw().get(`${client.BASE_PATH}/${client.ORG_HANDLE}/views/default/apis.md`);
         expect(res.status).toBe(200);
         expect(res.headers['content-type']).toMatch(/text\/markdown/);
         expect(res.text).toContain(api.name);
@@ -47,7 +47,7 @@ describe('AI/LLM discovery (apis.md)', () => {
     it('lists a WebSub API in the catalog', async () => {
         const api = await createApi({ name: 'Catalogued WebSub API', type: 'WEBSUB', labels: ['default'] });
 
-        const res = await client.raw().get(`/${client.ORG_HANDLE}/views/default/apis.md`);
+        const res = await client.raw().get(`${client.BASE_PATH}/${client.ORG_HANDLE}/views/default/apis.md`);
         expect(res.status).toBe(200);
         expect(res.text).toContain(api.name);
     });
@@ -60,7 +60,7 @@ describe('AI/LLM discovery (apis.md)', () => {
             agentVisibility: 'HIDDEN',
         });
 
-        const res = await client.raw().get(`/${client.ORG_HANDLE}/views/default/apis.md`);
+        const res = await client.raw().get(`${client.BASE_PATH}/${client.ORG_HANDLE}/views/default/apis.md`);
         expect(res.status).toBe(200);
         expect(res.text).not.toContain(hidden.name);
     });

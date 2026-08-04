@@ -66,10 +66,28 @@ function resolveDesignFallback(filePath) {
     return abs;
 }
 
+// Matches the mount-prefix token the templates write in front of an absolute asset
+// path (`{{basePath}}/styles/main.css`, see helpers/handlebarsHelpers.js). Optional, so
+// the same pattern also matches a theme authored before the prefix existed, whose
+// references are bare (`/styles/main.css`). Tolerates the `{{ basePath }}` spacing a
+// hand-written theme may use.
+//
+// Every rewrite below CONSUMES this token rather than matching after it: the
+// replacement is built from constants.API_PORTAL_API.orgPath(), which already begins
+// with ROUTE.BASE_PATH, so leaving the token in place would emit the prefix twice
+// (`/api-portal/api-portal/api/v0.9/...`) and 404 the asset.
+const BASE_PATH_TOKEN_RE = '(?:\\{\\{\\s*basePath\\s*\\}\\})?';
+
+/** `<BASE_PATH>/api/v0.9/views/<view>/asset?` — the view's public theme-asset endpoint. */
+function viewAssetEndpoint(orgId, viewName) {
+    return `${constants.API_PORTAL_API.orgPath(orgId)}/views/${viewName}/asset?`;
+}
+
 /**
- * Rewrite `/styles/` references (in a layout or stylesheet) to the view asset
- * endpoint, carrying orgId so the PUBLIC endpoint can resolve the view's theme
- * even without a session — e.g. anonymous view pages and the pre-auth login page.
+ * Rewrite `{{basePath}}/styles/` (or a legacy bare `/styles/`) reference in a layout
+ * or stylesheet to the view asset endpoint, carrying orgId so the PUBLIC endpoint can
+ * resolve the view's theme even without a session — e.g. anonymous view pages and the
+ * pre-auth login page.
  *
  * Centralised on purpose: this rewrite used to be hand-written at every render
  * and upload site, and any site that omitted orgId served the default stylesheet
@@ -88,9 +106,59 @@ function rewriteViewStyles(content, orgId, viewName) {
         }
     }
     return content.replace(
-        /\/styles\//g,
-        `${constants.API_PORTAL_API.orgPath(orgId)}/views/${viewName}/asset?orgId=${orgId}&fileType=style&fileName=`
+        new RegExp(`${BASE_PATH_TOKEN_RE}/styles/`, 'g'),
+        `${viewAssetEndpoint(orgId, viewName)}orgId=${orgId}&fileType=style&fileName=`
     );
+}
+
+/**
+ * Rewrite every sibling-stylesheet `@import` in an uploaded theme's main.css to the
+ * view asset endpoint.
+ *
+ * main.css is itself served from `…/asset?fileType=style&fileName=main.css`, so a
+ * relative `@import "home.css"` resolves against THAT url's directory
+ * (`…/views/<view>/home.css`) and 404s, while a root-absolute `/styles/home.css`
+ * resolves to the built-in static mount — quietly serving the default stylesheet in
+ * place of the uploaded theme's own copy. Every spelling therefore routes through the
+ * endpoint, and every import does, not just the three that used to be listed here.
+ *
+ * Only a bare quoted path is matched, so a remote import written the other legal way
+ * (`@import url("https://fonts.googleapis.com/…")`) is left untouched. The captured
+ * name is restricted to a flat basename, so nothing that could escape the query
+ * parameter — a quote, a brace, a path separator — can reach the rewritten URL.
+ */
+function rewriteViewStyleImports(content, orgId, viewName) {
+    const pattern = new RegExp(
+        `@import\\s*(['"])${BASE_PATH_TOKEN_RE}(?:\\.{0,2}/styles/|\\./)?([A-Za-z0-9._-]+\\.css)\\1\\s*;`,
+        'g'
+    );
+    return content.replace(pattern, (_match, _quote, fileName) =>
+        `@import url("${viewAssetEndpoint(orgId, viewName)}fileType=style&fileName=${fileName}");`);
+}
+
+/**
+ * Rewrite quoted image references in an uploaded theme to the view asset endpoint, so
+ * the theme's own uploaded images win over the built-in defaults.
+ *
+ * Both spellings a theme can use are matched: the absolute `{{basePath}}/images/<file>`
+ * that templates write, and the stylesheet-relative `../images/<file>` that a CSS file
+ * under styles/ writes. The relative form MUST be rewritten rather than left alone —
+ * the stylesheet is itself served from `…/asset?fileName=<sheet>.css`, so `../images/x`
+ * would resolve to `…/views/<view>/images/x`, which is not a route at all. Sending it
+ * through the endpoint instead degrades to the packaged default asset when the theme
+ * doesn't carry that image (see apiPortalService.getOrgContent), which is exactly what
+ * a root-absolute `/images/x` used to do off the static mount.
+ */
+function rewriteViewImages(content, orgId, viewName) {
+    const target = `${viewAssetEndpoint(orgId, viewName)}fileType=image&fileName=$1`;
+    let out = content;
+    for (const quote of ['"', "'"]) {
+        out = out.replace(
+            new RegExp(`${quote}(?:${BASE_PATH_TOKEN_RE}|\\.{1,2})/images/([^${quote}]+)`, 'g'),
+            `${quote}${target}`
+        );
+    }
+    return out;
 }
 
 // Human-readable name per artifact type, used to build the landing-page copy.
@@ -176,6 +244,7 @@ function renderTemplate(templatePath, layoutPath, templateContent, isTechnical) 
         ...enrichedContent,
         body: template(enrichedContent),
         apiPortalApiConfig: {
+            basePath: constants.ROUTE.BASE_PATH,
             base: constants.API_PORTAL_API.BASE_SEGMENT,
             version: constants.API_PORTAL_API.VERSION,
         },
@@ -220,6 +289,7 @@ async function renderTemplateWithView(templatePath, layoutPath, templateContent,
         ...enrichedContent,
         body: template(enrichedContent),
         apiPortalApiConfig: {
+            basePath: constants.ROUTE.BASE_PATH,
             base: constants.API_PORTAL_API.BASE_SEGMENT,
             version: constants.API_PORTAL_API.VERSION,
         },
@@ -276,6 +346,7 @@ async function renderTemplateFromAPI(templateContent, orgId, orgName, filePath, 
         ...enrichedContent,
         body: template(enrichedContent),
         apiPortalApiConfig: {
+            basePath: constants.ROUTE.BASE_PATH,
             base: constants.API_PORTAL_API.BASE_SEGMENT,
             version: constants.API_PORTAL_API.VERSION,
         },
@@ -346,6 +417,7 @@ async function renderGivenTemplate(templatePage, layoutPage, templateContent) {
         ...enrichedContent,
         body: template(enrichedContent),
         apiPortalApiConfig: {
+            basePath: constants.ROUTE.BASE_PATH,
             base: constants.API_PORTAL_API.BASE_SEGMENT,
             version: constants.API_PORTAL_API.VERSION,
         },
@@ -927,11 +999,25 @@ const rejectExtraProperties = (allowedKeys, payload) => {
     return extraKeys;
 };
 
+const IGNORED_THEME_ENTRIES = new Set(['.DS_Store', 'Thumbs.db', 'desktop.ini', '__MACOSX']);
+const isIgnoredThemeEntry = (name) => IGNORED_THEME_ENTRIES.has(name) || name.startsWith('._');
+
 async function readFilesInDirectory(directory, orgId, protocol, host, viewName, baseDir = '') {
     try {
         const files = await fs.promises.readdir(directory, { withFileTypes: true });
         let fileDetails = [];
         for (const file of files) {
+            // Checked before the isDirectory() split so `__MACOSX/` is skipped whole rather
+            // than walked into.
+            if (isIgnoredThemeEntry(file.name)) {
+                logger.debug('Skipping OS metadata entry in uploaded theme', {
+                    fileName: file.name,
+                    directory,
+                    orgId,
+                });
+                continue;
+            }
+
             const filePath = path.join(directory, file.name);
             const relativePath = path.join(baseDir, file.name);
 
@@ -956,12 +1042,9 @@ async function readFilesInDirectory(directory, orgId, protocol, host, viewName, 
                 if (file.name.endsWith(".css")) {
                     fileType = "style"
                     if (file.name === "main.css") {
-                        strContent = strContent.replace(/@import\s*['"]\/styles\/api-content\.css['"];/g, `@import url("${constants.API_PORTAL_API.orgPath(orgId)}/views/${viewName}/asset?fileType=style&fileName=api-content.css");`);
-                        strContent = strContent.replace(/@import\s*['"]\/styles\/home\.css['"];/g, `@import url("${constants.API_PORTAL_API.orgPath(orgId)}/views/${viewName}/asset?fileType=style&fileName=home.css");`);
-                        strContent = strContent.replace(/@import\s*['"]\/styles\/main\.css['"];/g, `@import url("${constants.API_PORTAL_API.orgPath(orgId)}/views/${viewName}/asset?fileType=style&fileName=main.css");`);
+                        strContent = rewriteViewStyleImports(strContent, orgId, viewName);
                     }
-                    strContent = strContent.replace(/"\/images\/(api-portal-logo\.[^"]+)/g, `"${constants.API_PORTAL_API.orgPath(orgId)}/views/${viewName}/asset?fileType=image&fileName=$1`);
-                    strContent = strContent.replace(/'\/images\/(api-portal-logo\.[^']+)/g, `'${constants.API_PORTAL_API.orgPath(orgId)}/views/${viewName}/asset?fileType=image&fileName=$1`);
+                    strContent = rewriteViewImages(strContent, orgId, viewName);
                     content = Buffer.from(strContent, constants.CHARSET_UTF8);
                 } else if (file.name.endsWith(".hbs") && dir.endsWith("layout")) {
                     fileType = "layout"
@@ -972,8 +1055,7 @@ async function readFilesInDirectory(directory, orgId, protocol, host, viewName, 
                     validateScripts(strContent);
                     validateTemplateExpressions(strContent);
                 } else if (file.name.endsWith(".hbs") && dir.endsWith("partials")) {
-                    strContent = strContent.replace(/"\/images\/([^"]+)/g, `"${constants.API_PORTAL_API.orgPath(orgId)}/views/${viewName}/asset?fileType=image&fileName=$1`);
-                    strContent = strContent.replace(/'\/images\/([^']+)/g, `'${constants.API_PORTAL_API.orgPath(orgId)}/views/${viewName}/asset?fileType=image&fileName=$1`);
+                    strContent = rewriteViewImages(strContent, orgId, viewName);
                     content = Buffer.from(strContent, constants.CHARSET_UTF8);
                     validateScripts(strContent);
                     validateTemplateExpressions(strContent);
@@ -987,14 +1069,18 @@ async function readFilesInDirectory(directory, orgId, protocol, host, viewName, 
                 } else if (isImageFile(fileExtension)) {
                     fileType = "image";
                 } else {
-                    // Unexpected file type
-                    logger.error(`Unexpected file type detected: ${file.name}`, {
+                    // Not something a theme is built from. Skipped rather than rejecting the
+                    // whole upload: one stray file is no reason to throw away sixty good
+                    // ones, and a zip built on a desktop routinely picks strays up. Warned
+                    // rather than ignored so a file the author *did* mean to ship — a .js
+                    // they expected to be served, say — doesn't vanish without a trace.
+                    logger.warn('Skipping unsupported file in uploaded theme', {
                         fileName: file.name,
                         fileExtension: fileExtension,
                         directory: directory,
                         orgId: orgId
                     });
-                    throw new CustomError(400, `Bad Request`, `Unexpected file type: ${file.name}`);
+                    continue;
                 }
 
                 fileDetails.push({
@@ -1020,9 +1106,31 @@ async function readFilesInDirectory(directory, orgId, protocol, host, viewName, 
 }
 
 
+// A theme exported from src/defaultContent (exportTheme's fallback when a view has no
+// custom theme) writes its own script tags as `{{basePath}}/technical-scripts/…`, while a
+// theme authored before the mount prefix existed writes the bare `/technical-scripts/…`.
+// Both spellings name the same vetted, server-shipped script, so each entry below is
+// registered in both forms — derived here rather than listed twice by hand, so the two
+// can never drift apart the way the templates and this allowlist already did once.
+function withBasePathVariants(tags) {
+    const expanded = new Set();
+    for (const tag of tags) {
+        expanded.add(tag);
+        if (tag.includes('/technical-scripts/')) {
+            expanded.add(tag.replace(/\/technical-scripts\//g, '{{basePath}}/technical-scripts/'));
+        }
+    }
+    return expanded;
+}
+
+// Inline scripts are compared after collapsing whitespace runs, so a theme author who
+// re-indents a shipped bootstrap block still passes. Only layout/formatting is
+// normalised — the code and comments themselves must still match exactly.
+const normalizeInlineScript = (script) => String(script).replace(/\s+/g, ' ').trim();
+
 function validateScripts(strContent) {
     try {
-        const allowedScripts = new Set([
+        const allowedScripts = withBasePathVariants([
             "<script src='https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js'></script>",
             '<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>',
             "<script src='/technical-scripts/search.js' defer></script>",
@@ -1037,6 +1145,8 @@ function validateScripts(strContent) {
             '<script src="/technical-scripts/home-discover.js" defer></script>',
             "<script src='/technical-scripts/home-particles.js' defer></script>",
             "<script src='/technical-scripts/listing-cards.js' defer></script>",
+            // Paired with listing-cards.js in both api-listing.hbs and mcp-listing.hbs.
+            "<script src='/technical-scripts/paginate.js' defer></script>",
             "<script src='/technical-scripts/mcp-landing.js' defer></script>",
             "<script src='/technical-scripts/api-subscription-plans.js' defer></script>",
             "<script src='/technical-scripts/mcp-subscription-plans.js' defer></script>",
@@ -1059,6 +1169,9 @@ function validateScripts(strContent) {
             "<script type=\"application/json\" id=\"apiWorkflowsDataContainer\">{{{json apiWorkflows}}}</script>",
             // AI agent data island (pages/api-landing/page.hbs)
             "<script type=\"application/json\" id=\"apiAgentData\">{\"baseUrl\":\"{{baseUrl}}\",\"id\":\"{{apiMetadata.id}}\"}</script>",
+            // AI agent data island, MCP variant (pages/mcp-landing/page.hbs) — same island
+            // plus the resourcePath that points the prompt at /mcp/{handle}.md.
+            "<script type=\"application/json\" id=\"apiAgentData\">{\"baseUrl\":\"{{baseUrl}}\",\"id\":\"{{apiMetadata.id}}\",\"resourcePath\":\"mcp\"}</script>",
             // Home discover data island (pages/home/page.hbs)
             "<script type=\"application/json\" id=\"homeDiscoverData\">{\"baseUrl\":\"{{baseUrl}}\"}</script>",
             // Existing-subs bootstrap (api-landing/partials/api-subscription-plans.hbs)
@@ -1067,10 +1180,17 @@ function validateScripts(strContent) {
             // and subscriptions/partials/subscription-list.hbs)
             "<script>\n                window.__tokenMap = window.__tokenMap || {};\n                window.__subscriptionOrgId = \"{{@root.orgId}}\";\n            </script>",
             // API config bootstrap (layout/main.hbs)
+            "<script>\n      // API Portal API base segment + version, sourced from server constants.\n      // Browser scripts build invocation URLs via window.apiPortalApi (common.js).\n      window.__API_PORTAL_API__ = { basePath: \"{{apiPortalApiConfig.basePath}}\", base: \"{{apiPortalApiConfig.base}}\", version: \"{{apiPortalApiConfig.version}}\" };\n    </script>",
+            // Same bootstrap as shipped BEFORE the portal gained its mount prefix (no
+            // basePath field). Kept so a theme exported from an earlier release still
+            // applies — window.apiPortalApi falls back to a default basePath (scripts/common.js).
             "<script>\n      // Portal API base segment + version, sourced from server constants.\n      // Browser scripts build invocation URLs via window.apiPortalApi (common.js).\n      window.__API_PORTAL_API__ = { base: \"{{apiPortalApiConfig.base}}\", version: \"{{apiPortalApiConfig.version}}\" };\n    </script>",
+            // Sidebar pinned-state bootstrap (layout/main.hbs) — applied before first paint
+            // so a pinned sidebar doesn't visibly collapse then re-expand.
+            "<script>\n      try {\n        if (localStorage.getItem('sidebar-expanded') === '1') {\n          document.documentElement.classList.add('sidebar-pinned');\n        }\n      } catch (e) { /* storage unavailable (private mode) — fall back to collapsed */ }\n    </script>",
             // Existing-subs JSON data island (mcp-landing/partials/mcp-subscription-plans.hbs)
             "<script id=\"mcp-existing-subs-data\" type=\"application/json\">{{{json subscriptions}}}</script>",
-        ]);
+        ].map(normalizeInlineScript));
 
         const scriptRegex = /<script(?:\s+[^>]*)?>[\s\S]*?<\/script>/gi;
         let match;
@@ -1082,7 +1202,7 @@ function validateScripts(strContent) {
 
             if (!hasSrc) {
                 const isEmpty = /^<script[^>]*>\s*<\/script>$/i.test(script);
-                if (isEmpty || allowedInlineScripts.has(script)) {
+                if (isEmpty || allowedInlineScripts.has(normalizeInlineScript(script))) {
                     continue;
                 }
                 logger.error("Script validation failed: inline scripts are not allowed", { script });

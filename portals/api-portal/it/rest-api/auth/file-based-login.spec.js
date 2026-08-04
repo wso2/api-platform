@@ -33,7 +33,7 @@ describe('file-based (demo mode) login', () => {
     it('logs in with valid credentials and establishes a session', async () => {
         const agent = require('supertest').agent(client.BASE_URL);
         const res = await agent
-            .post(`/${client.ORG_HANDLE}/views/default/login`)
+            .post(`${client.BASE_PATH}/${client.ORG_HANDLE}/views/default/login`)
             .type('form')
             .send({ username: 'admin', password: 'admin' })
             .redirects(0);
@@ -44,7 +44,7 @@ describe('file-based (demo mode) login', () => {
 
     it('rejects an incorrect password', async () => {
         const res = await client.raw()
-            .post(`/${client.ORG_HANDLE}/views/default/login`)
+            .post(`${client.BASE_PATH}/${client.ORG_HANDLE}/views/default/login`)
             .type('form')
             .send({ username: 'admin', password: 'wrong-password' })
             .redirects(0);
@@ -54,7 +54,7 @@ describe('file-based (demo mode) login', () => {
 
     it('rejects a non-existent username', async () => {
         const res = await client.raw()
-            .post(`/${client.ORG_HANDLE}/views/default/login`)
+            .post(`${client.BASE_PATH}/${client.ORG_HANDLE}/views/default/login`)
             .type('form')
             .send({ username: 'no-such-user', password: 'whatever' })
             .redirects(0);
@@ -64,7 +64,7 @@ describe('file-based (demo mode) login', () => {
 
     it('rejects when username or password is missing', async () => {
         const res = await client.raw()
-            .post(`/${client.ORG_HANDLE}/views/default/login`)
+            .post(`${client.BASE_PATH}/${client.ORG_HANDLE}/views/default/login`)
             .type('form')
             .send({ username: 'admin' })
             .redirects(0);

@@ -26,13 +26,20 @@ describe('API Portal — Smoke', () => {
     it('root redirects to the default organization view', () => {
         const orgHandle = Cypress.env('ORG_HANDLE');
         const viewName = Cypress.env('VIEW_NAME');
-        // The org selector was removed — `/` no longer serves a selector page;
-        // it redirects straight into the default organization's portal view.
+        const basePath = Cypress.env('BASE_PATH');
+        // The true root (/) redirects into the portal mount (${BASE_PATH}/) as a
+        // convenience for direct container access; the portal root then redirects
+        // straight into the default organization's view.
         cy.request({ url: '/', followRedirect: false, failOnStatusCode: false }).then((resp) => {
             expect(resp.status).to.eq(302);
-            expect(resp.redirectedToUrl).to.contain(`/${orgHandle}/views/${viewName}`);
+            expect(resp.redirectedToUrl).to.contain(basePath);
         });
-        // Following the redirect lands on a rendered page, not an error.
+        // The portal mount root redirects on into the default view.
+        cy.request({ url: basePath, followRedirect: false, failOnStatusCode: false }).then((resp) => {
+            expect(resp.status).to.eq(302);
+            expect(resp.redirectedToUrl).to.contain(`${basePath}/${orgHandle}/views/${viewName}`);
+        });
+        // Following all redirects from / lands on a rendered page, not an error.
         cy.request({ url: '/', failOnStatusCode: false }).then((resp) => {
             expect(resp.status).to.eq(200);
         });
@@ -46,13 +53,42 @@ describe('API Portal — Smoke', () => {
         cy.get('body').should('not.contain.text', 'Cannot GET');
     });
 
-    it('health endpoint returns 200', () => {
+    it('health endpoint returns 200 at the root and under the prefix', () => {
+        // Both exist on purpose: container/Kubernetes probes dial the pod directly with
+        // no ingress to add the prefix, while an ingress-routed check only sees the
+        // prefixed path.
+        ['/health', `${Cypress.env('BASE_PATH')}/health`].forEach((url) => {
+            cy.request({ url, failOnStatusCode: false }).then((resp) => {
+                expect(resp.status, url).to.eq(200);
+                expect(resp.body, url).to.have.property('status', 'ok');
+            });
+        });
+    });
+
+    it('404s paths outside the mount prefix without rendering the portal error page', () => {
+        // On a host where an ingress fronts several portals under different prefixes, an
+        // unprefixed path is not this portal's to answer — so it gets a plain 404 rather
+        // than this portal's branded error page with its "home" link. The root paths the
+        // service does own (/, /health, /robots.txt, /llms.txt) are asserted elsewhere in
+        // this file and are unaffected.
+        ['/nope', '/some-other-portal/apis', '/api/v0.9/apis'].forEach((url) => {
+            cy.request({ url, failOnStatusCode: false }).then((resp) => {
+                expect(resp.status, url).to.eq(404);
+                expect(resp.headers['content-type'], url).to.contain('text/plain');
+                expect(String(resp.body), url).to.not.contain('<html');
+            });
+        });
+    });
+
+    it('still renders the portal error page for a 404 inside the prefix', () => {
+        // The complement of the test above: a bad URL under the prefix IS this portal's,
+        // so it keeps the branded page rather than degrading to plain text.
         cy.request({
-            url: '/health',
+            url: `${Cypress.env('BASE_PATH')}/no-such-page-here`,
             failOnStatusCode: false,
         }).then((resp) => {
-            expect(resp.status).to.eq(200);
-            expect(resp.body).to.have.property('status', 'ok');
+            expect(resp.status).to.eq(404);
+            expect(resp.headers['content-type']).to.contain('text/html');
         });
     });
 
@@ -60,7 +96,7 @@ describe('API Portal — Smoke', () => {
         // Addressed by its public URL rather than the organization's internal UUID:
         // the portal serves one organization and never exposes that UUID over the API.
         cy.request({
-            url: '/styles/main.css',
+            url: `${Cypress.env('BASE_PATH')}/styles/main.css`,
             failOnStatusCode: false,
         }).then((resp) => {
             expect(resp.status).to.be.oneOf([200, 304, 404]);
@@ -71,7 +107,7 @@ describe('API Portal — Smoke', () => {
         // The database is shared across organizations, so the handle in the URL is
         // untrusted input — this instance serves exactly one and rejects the rest.
         cy.request({
-            url: '/some-other-org/views/default',
+            url: `${Cypress.env('BASE_PATH')}/some-other-org/views/default`,
             failOnStatusCode: false,
         }).then((resp) => {
             expect(resp.status).to.eq(404);

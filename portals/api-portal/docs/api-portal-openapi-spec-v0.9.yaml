@@ -25,12 +25,14 @@ info:
     API metadata and content, applications, subscriptions, application appKeyMappings, and API flows.
 
     All resources, including organization lifecycle endpoints
-    (`/api/v0.9/organizations`, `/api/v0.9/organizations/{orgId}`), are served under `/api/v0.9`.
+    (`/api-portal/api/v0.9/organizations`, `/api-portal/api/v0.9/organizations/{orgId}`), are
+    served under `/api-portal/api/v0.9` — the portal mounts its whole surface, pages and REST
+    API alike, beneath the `/api-portal` prefix.
     Operations declare the least-privilege OAuth2 scopes required for each resource action.
 servers:
-  - url: https://localhost:9543/api/v0.9
+  - url: https://localhost:9543/api-portal/api/v0.9
     description: Local HTTPS server
-  - url: http://localhost:9543/api/v0.9
+  - url: http://localhost:9543/api-portal/api/v0.9
     description: Local development server
 tags:
   - name: Organizations
@@ -292,7 +294,7 @@ paths:
         The service also stores labels, subscription plan mappings, image metadata, and schema definitions for
         GraphQL APIs when provided. Via the JSON `metadata` field, `type` is required — an omitted type is
         rejected with `400` (via YAML, an omitted `spec.type` defaults to `REST`). MCP servers must be created via
-        `POST /api/v0.9/mcp-servers` instead — a request whose resolved `type` is `MCP` is rejected with `400`.
+        `POST /api-portal/api/v0.9/mcp-servers` instead — a request whose resolved `type` is `MCP` is rejected with `400`.
 
         `subscriptionPlans` links existing org-level plans to this API by name — it does not create plans. In YAML it is
         a string array (`["Gold", "Silver"]`). In the JSON `metadata` field it is an object array where only
@@ -323,7 +325,7 @@ paths:
       description: >-
         Lists API metadata for an organization. The service supports exact filters by API name, version, and tags,
         free-text search with `query`, and view filtering. Unknown query parameters are rejected. MCP-typed records
-        are never returned here — use `GET /api/v0.9/mcp-servers`.
+        are never returned here — use `GET /api-portal/api/v0.9/mcp-servers`.
       operationId: getAllApiMetadataForOrganization
       parameters:
         - $ref: "#/components/parameters/searchQuery"
@@ -576,7 +578,7 @@ paths:
       description: |
         Replaces or adds static content files for an existing API.
 
-        The upload format is the same as `POST /api/v0.9/apis/{apiId}/assets`.
+        The upload format is the same as `POST /api-portal/api/v0.9/apis/{apiId}/assets`.
         Existing files with the same stored `type` and `fileName` are updated; new files are created.
         Image metadata is updated only when image metadata can be resolved from the upload or request body.
       operationId: replaceApiContent
@@ -1333,11 +1335,11 @@ paths:
       summary: Create MCP server metadata
       description: >-
         Creates API Portal MCP server metadata. Accepts the same metadata input formats as
-        `POST /api/v0.9/apis` (artifact ZIP, `api.yaml` / `mcp.yaml`, or `metadata` JSON),
+        `POST /api-portal/api/v0.9/apis` (artifact ZIP, `api.yaml` / `mcp.yaml`, or `metadata` JSON),
         but the created record is always typed `MCP`. An MCP server's contract is its `definition` (tools schema) — the
         tools, resources, and prompts it exposes — not an OpenAPI-style API contract; a `definition` is
         required. Via the JSON `metadata` field, `type` must be
-        explicitly `MCP`; an omitted type or any other value is rejected with a 400 (use `POST /api/v0.9/apis`).
+        explicitly `MCP`; an omitted type or any other value is rejected with a 400 (use `POST /api-portal/api/v0.9/apis`).
       operationId: createMcpServer
       requestBody:
         $ref: "#/components/requestBodies/McpServerMultipartBody"
@@ -1361,7 +1363,7 @@ paths:
         - MCP Servers
       summary: List MCP server metadata
       description: >-
-        Lists MCP server metadata for an organization. Mirrors `GET /api/v0.9/apis` but only returns MCP-typed
+        Lists MCP server metadata for an organization. Mirrors `GET /api-portal/api/v0.9/apis` but only returns MCP-typed
         records.
       operationId: getAllMcpServersForOrganization
       parameters:
@@ -1461,7 +1463,7 @@ paths:
         - MCP Server Content
       summary: Upload MCP server content
       description: >-
-        Uploads the static content package for an MCP server. Mirrors `POST /api/v0.9/apis/{apiId}/assets`.
+        Uploads the static content package for an MCP server. Mirrors `POST /api-portal/api/v0.9/apis/{apiId}/assets`.
       operationId: createMcpServerContent
       requestBody:
         $ref: "#/components/requestBodies/ContentZipMultipartBody"
@@ -1483,7 +1485,7 @@ paths:
         - MCP Server Content
       summary: Replace MCP server content
       description: >-
-        Replaces or adds static content files for an existing MCP server. Mirrors `PUT /api/v0.9/apis/{apiId}/assets`.
+        Replaces or adds static content files for an existing MCP server. Mirrors `PUT /api-portal/api/v0.9/apis/{apiId}/assets`.
       operationId: replaceMcpServerContent
       requestBody:
         $ref: "#/components/requestBodies/ContentZipMultipartBody"
@@ -1504,7 +1506,7 @@ paths:
       tags:
         - MCP Server Content
       summary: Get an MCP server content file
-      description: Retrieves a single stored MCP server content file. Mirrors `GET /api/v0.9/apis/{apiId}/assets`.
+      description: Retrieves a single stored MCP server content file. Mirrors `GET /api-portal/api/v0.9/apis/{apiId}/assets`.
       operationId: getMcpServerContentFile
       security:
         - OAuth2Security:
@@ -1527,7 +1529,7 @@ paths:
         - MCP Server Content
       summary: Delete MCP server content files
       description: >-
-        Deletes stored MCP server content. Mirrors `DELETE /api/v0.9/apis/{apiId}/assets`.
+        Deletes stored MCP server content. Mirrors `DELETE /api-portal/api/v0.9/apis/{apiId}/assets`.
       operationId: deleteMcpServerContentFile
       parameters:
         - $ref: "#/components/parameters/contentTypeQuery"
@@ -1554,7 +1556,7 @@ paths:
       operationId: generateMcpServerApiKey
       summary: Generate an MCP server API key
       description: >-
-        Generates an API key for an MCP server. Mirrors `POST /api/v0.9/apis/{apiId}/api-keys/generate`.
+        Generates an API key for an MCP server. Mirrors `POST /api-portal/api/v0.9/apis/{apiId}/api-keys/generate`.
       requestBody:
         $ref: "#/components/requestBodies/ApiKeyBody"
       responses:
@@ -1590,7 +1592,7 @@ paths:
         - MCP Server Keys
       operationId: listMcpServerApiKeys
       summary: List MCP server API keys
-      description: Lists API keys for the given MCP server. Mirrors `GET /api/v0.9/apis/{apiId}/api-keys`.
+      description: Lists API keys for the given MCP server. Mirrors `GET /api-portal/api/v0.9/apis/{apiId}/api-keys`.
       parameters:
         - $ref: "#/components/parameters/appIdQueryOptional"
         - $ref: "#/components/parameters/limit"
@@ -1616,7 +1618,7 @@ paths:
       summary: Regenerate an MCP server API key
       description: >-
         Regenerates the secret for an existing MCP server API key identified by `keyId` in the request body. Mirrors
-        `POST /api/v0.9/apis/{apiId}/api-keys/regenerate`.
+        `POST /api-portal/api/v0.9/apis/{apiId}/api-keys/regenerate`.
       requestBody:
         $ref: "#/components/requestBodies/ApiKeyRegenerateBody"
       responses:
@@ -1652,7 +1654,7 @@ paths:
       summary: Revoke an MCP server API key
       description: >-
         Revokes an existing MCP server API key identified by `keyId` in the request body. Mirrors
-        `POST /api/v0.9/apis/{apiId}/api-keys/revoke`.
+        `POST /api-portal/api/v0.9/apis/{apiId}/api-keys/revoke`.
       requestBody:
         $ref: "#/components/requestBodies/ApiKeyRevokeBody"
       responses:
@@ -1688,7 +1690,7 @@ paths:
       summary: Associate an MCP server API key with an application
       description: >-
         Associates (or re-associates) an existing MCP server API key with an application, for analytics attribution
-        only. Mirrors `POST /api/v0.9/apis/{apiId}/api-keys/associate`.
+        only. Mirrors `POST /api-portal/api/v0.9/apis/{apiId}/api-keys/associate`.
       requestBody:
         $ref: "#/components/requestBodies/ApiKeyAssociateBody"
       responses:
@@ -1730,7 +1732,7 @@ paths:
       summary: Remove an MCP server API key's application association
       description: >-
         Removes the application association from an MCP server API key identified by `keyId` in the request body, if
-        any. Mirrors `POST /api/v0.9/apis/{apiId}/api-keys/dissociate`.
+        any. Mirrors `POST /api-portal/api/v0.9/apis/{apiId}/api-keys/dissociate`.
       requestBody:
         $ref: "#/components/requestBodies/ApiKeyDissociateBody"
       responses:

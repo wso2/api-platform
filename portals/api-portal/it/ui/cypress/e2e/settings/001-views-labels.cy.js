@@ -37,7 +37,7 @@ describe('Settings — Views & Labels', () => {
     const RENAME_FROM = `it-rename-from-${uid}`;
     const RENAME_TO = `it-rename-to-${uid}`;
 
-    const settingsUrl = () => `/${Cypress.env('ORG_HANDLE')}/settings`;
+    const settingsUrl = () => `${Cypress.env('BASE_PATH')}/${Cypress.env('ORG_HANDLE')}/settings`;
 
     before(() => {
         cy.login();
@@ -118,7 +118,7 @@ describe('Settings — Views & Labels', () => {
 
         // And the view is served at its new URL (visitPortal is pinned to the fixture's
         // own view, so this navigates explicitly).
-        cy.visit(`/${Cypress.env('ORG_HANDLE')}/views/${RENAME_TO}`);
+        cy.visit(`${Cypress.env('BASE_PATH')}/${Cypress.env('ORG_HANDLE')}/views/${RENAME_TO}`);
         cy.url().should('include', `/views/${RENAME_TO}`);
     });
 

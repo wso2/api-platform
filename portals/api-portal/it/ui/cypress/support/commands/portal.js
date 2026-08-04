@@ -23,9 +23,10 @@
 //   Build a URL under the ACME/default view without hardcoding the base path.
 // ---------------------------------------------------------------------------
 Cypress.Commands.add('portalUrl', (path = '') => {
+    const basePath = Cypress.env('BASE_PATH');
     const orgHandle = Cypress.env('ORG_HANDLE');
     const viewName = Cypress.env('VIEW_NAME');
-    return `/${orgHandle}/views/${viewName}${path}`;
+    return `${basePath}/${orgHandle}/views/${viewName}${path}`;
 });
 
 // ---------------------------------------------------------------------------
@@ -42,9 +43,12 @@ Cypress.Commands.add('portalUrl', (path = '') => {
 //   between tests, so before()/after() hooks need their own cy.login().
 // ---------------------------------------------------------------------------
 Cypress.Commands.add('apiRequest', (method, path, options = {}) => {
+    // Callers pass a bare REST path (e.g. "/api/v0.9/apis"); the portal is mounted under
+    // BASE_PATH, so prepend it here — mirroring the server's route mount.
+    const basePath = Cypress.env('BASE_PATH');
     return cy.getCookie('XSRF-TOKEN').then((csrf) => cy.request({
         method,
-        url: path,
+        url: `${basePath}${path}`,
         failOnStatusCode: options.failOnStatusCode !== false,
         ...options,
         headers: {
@@ -59,7 +63,8 @@ Cypress.Commands.add('apiRequest', (method, path, options = {}) => {
 //   Navigate to a path inside the ACME/default portal view.
 // ---------------------------------------------------------------------------
 Cypress.Commands.add('visitPortal', (path = '') => {
+    const basePath = Cypress.env('BASE_PATH');
     const orgHandle = Cypress.env('ORG_HANDLE');
     const viewName = Cypress.env('VIEW_NAME');
-    cy.visit(`/${orgHandle}/views/${viewName}${path}`);
+    cy.visit(`${basePath}/${orgHandle}/views/${viewName}${path}`);
 });

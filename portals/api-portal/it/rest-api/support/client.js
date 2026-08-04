@@ -35,7 +35,10 @@ const supertest = require('supertest');
 const { autoTrackFromResponse } = require('./cleanup');
 
 const BASE_URL = process.env.API_PORTAL_BASE_URL || 'http://localhost:9543';
-const API_PREFIX = '/api/v0.9';
+// The whole portal (pages + REST API) is mounted under this hardcoded prefix
+// (src/utils/constants.js ROUTE.BASE_PATH). Every request the suite makes carries it.
+const BASE_PATH = '/api-portal';
+const API_PREFIX = `${BASE_PATH}/api/v0.9`;
 const ORG_HANDLE = process.env.API_PORTAL_ORG_HANDLE || 'default';
 
 const CREDENTIALS = {
@@ -81,7 +84,7 @@ async function login(role) {
     loginPromises[role] = (async () => {
         const agent = supertest.agent(BASE_URL);
         const res = await agent
-            .post(`/${ORG_HANDLE}/views/default/login`)
+            .post(`${BASE_PATH}/${ORG_HANDLE}/views/default/login`)
             .type('form')
             .send({ username, password })
             .redirects(0);
@@ -144,14 +147,18 @@ function page(role) {
     const xsrf = xsrfTokens[role];
     const withXsrf = (req) => (xsrf ? req.set('X-CSRF-Token', xsrf) : req);
 
+    // Page routes live under BASE_PATH just like the REST API, but without the
+    // /api/v0.9 segment — callers pass the bare page path and BASE_PATH is prepended
+    // here, mirroring how API_PREFIX carries it for as(role).
     return {
-        get: (path) => agent.get(path),
-        put: (path, body) => withXsrf(agent.put(path)).send(body),
+        get: (path) => agent.get(`${BASE_PATH}${path}`),
+        put: (path, body) => withXsrf(agent.put(`${BASE_PATH}${path}`)).send(body),
     };
 }
 
 module.exports = {
     BASE_URL,
+    BASE_PATH,
     API_PREFIX,
     ORG_HANDLE,
     AUTH_MODE,

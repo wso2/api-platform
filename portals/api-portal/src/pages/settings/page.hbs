@@ -1,6 +1,6 @@
 {{#pageHead}}
-<link rel="stylesheet" href="/technical-styles/manage-api-workflows.css">
-<link rel="stylesheet" href="/technical-styles/settings-layout.css">
+<link rel="stylesheet" href="{{basePath}}/technical-styles/manage-api-workflows.css">
+<link rel="stylesheet" href="{{basePath}}/technical-styles/settings-layout.css">
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/codemirror.min.css"
   integrity="sha512-uf06llspW44/LZpHzHT6qBOIVODjWtv4MxCricRxkzvopAlSWnTf6hpZTFxuuZcuNE9CBQhqE0Seu1CoRk84nQ=="
   crossorigin="anonymous">
@@ -19,16 +19,16 @@
      order, so this partial (which registers alert.js) has to come first. --}}
 {{> alert}}
 {{#pageScripts}}
-<script src='/technical-scripts/manage-api-workflows.js' defer></script>
-<script src='/technical-scripts/settings-nav.js' defer></script>
-<script src='/technical-scripts/settings-apis.js' defer></script>
-<script src='/technical-scripts/paginate.js' defer></script>
-<script src='/technical-scripts/settings-labels.js' defer></script>
-<script src='/technical-scripts/settings-organization.js' defer></script>
-<script src='/technical-scripts/settings-views.js' defer></script>
-<script src='/technical-scripts/settings-plans.js' defer></script>
-<script src='/technical-scripts/settings-webhooks.js' defer></script>
-<script src='/technical-scripts/settings-keymanagers.js' defer></script>
+<script src='{{basePath}}/technical-scripts/manage-api-workflows.js' defer></script>
+<script src='{{basePath}}/technical-scripts/settings-nav.js' defer></script>
+<script src='{{basePath}}/technical-scripts/settings-apis.js' defer></script>
+<script src='{{basePath}}/technical-scripts/paginate.js' defer></script>
+<script src='{{basePath}}/technical-scripts/settings-labels.js' defer></script>
+<script src='{{basePath}}/technical-scripts/settings-organization.js' defer></script>
+<script src='{{basePath}}/technical-scripts/settings-views.js' defer></script>
+<script src='{{basePath}}/technical-scripts/settings-plans.js' defer></script>
+<script src='{{basePath}}/technical-scripts/settings-webhooks.js' defer></script>
+<script src='{{basePath}}/technical-scripts/settings-keymanagers.js' defer></script>
 {{/pageScripts}}
 
 <!-- Server-side data for JS -->

@@ -51,7 +51,7 @@ const loadCustomContent = async (req, res, next) => {
         }
         const layoutPath = config.designMode.pathToLayout;
         let templateContent = {};
-        templateContent[constants.BASE_URL_NAME] = constants.ROUTE.VIEWS_PATH + viewName;
+        templateContent[constants.BASE_URL_NAME] = constants.ROUTE.BASE_PATH + constants.ROUTE.VIEWS_PATH + viewName;
         //read all markdown content
         if (fs.existsSync(path.join(process.cwd(), layoutPath + 'pages', filePath, 'content'))) {
             const markdDownFiles = fs.readdirSync(path.join(process.cwd(), layoutPath + 'pages/' + filePath + '/content'));
@@ -98,7 +98,7 @@ const loadCustomContent = async (req, res, next) => {
                     content[tempKey] = markdown.parse(item.file_content.toString(constants.CHARSET_UTF8));
                 });
             }
-            content[constants.BASE_URL_NAME] = '/' + orgName + constants.ROUTE.VIEWS_PATH + viewName;
+            content[constants.BASE_URL_NAME] = constants.ROUTE.BASE_PATH + '/' + orgName + constants.ROUTE.VIEWS_PATH + viewName;
             html = await renderTemplateFromAPI(content, orgId, orgName, filePath, viewName);
         } catch (error) {
             logger.error('Error while loading custom content', {

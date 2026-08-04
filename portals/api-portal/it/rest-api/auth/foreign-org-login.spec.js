@@ -58,7 +58,7 @@ const otherOrg = () => supertest(OTHER_ORG_BASE_URL);
 
 function login(agent, orgHandle, username, password) {
     return agent
-        .post(`/${orgHandle}/views/default/login`)
+        .post(`${client.BASE_PATH}/${orgHandle}/views/default/login`)
         .type('form')
         .send({ username, password })
         .redirects(0);
@@ -69,13 +69,13 @@ describeOtherOrg('login against a portal pinned to a different organization', ()
         // Establishes the baseline for everything below: this portal works, it has
         // created its own `other-org` organization, and it is reachable. A failure
         // here means the fixture is broken, not that a rejection under test misfired.
-        const res = await otherOrg().get(`/${OTHER_ORG_HANDLE}/views/default`);
+        const res = await otherOrg().get(`${client.BASE_PATH}/${OTHER_ORG_HANDLE}/views/default`);
         expect(res.status).toBe(200);
     });
 
     it('404s the organization platform-api issues tokens for', async () => {
         // Same shared platform-api, but `default` is not this instance's organization.
-        const res = await otherOrg().get(`/${PLATFORM_API_ORG}/views/default`);
+        const res = await otherOrg().get(`${client.BASE_PATH}/${PLATFORM_API_ORG}/views/default`);
         expect(res.status).toBe(404);
     });
 

@@ -10,11 +10,10 @@
 
 ```shell
 
-curl -X POST https://localhost:9543/api/v0.9/organizations \
-  -u {username}:{password} \
+curl -X POST https://localhost:9543/api-portal/api/v0.9/organizations \
+  -H 'Authorization: Bearer {access_token}' \
   -H 'Content-Type: application/json' \
   -H 'Accept: application/json' \
-  -H 'Authorization: Bearer {access-token}' \
   -d @payload.json
 
 ```
@@ -51,7 +50,9 @@ configuration: {}
 ### Authentication
 
 <aside class="warning">
-This operation requires <strong>Basic Auth</strong> authentication.
+This operation requires a <strong>Bearer JWT</strong> access token in the <code>Authorization</code> header.
+
+Required scopes (the token must carry at least one of): `dp:organization:create`, `dp:organization:manage`
 
 </aside>
 
@@ -62,7 +63,7 @@ This operation requires <strong>Basic Auth</strong> authentication.
 |body|body|[OrganizationCreateRequest](schemas.md#schemaorganizationcreaterequest)|true|Organization creation payload. Send JSON or an organization YAML file in the `organization` multipart field. The JSON example below applies only to the `application/json` content type. When an organization YAML **file** is uploaded instead, its content must use `kind: Organization` with the nested shape `metadata.name` (handle, any top-level `id` is ignored) and `spec.displayName`; all other fields (including `cpRefId`) are read from `spec`. The YAML `spec` block additionally accepts `labels` (array of `{name, displayName}`) and `views` (array of `{id, displayName, labels}` — `id` becomes the view's handle) to bootstrap labels and views at creation time — these are not available via the `application/json` content type.|
 
 > Example responses
-
+>
 > Bad request. Validation and other bad-request errors are returned as a standard error object (field-level details, when present, are carried in its `errors` array); some legacy handlers return a message-only object.
 
 ```json
@@ -136,10 +137,9 @@ This operation requires <strong>Basic Auth</strong> authentication.
 
 ```shell
 
-curl -X GET https://localhost:9543/api/v0.9/organizations \
-  -u {username}:{password} \
-  -H 'Accept: application/json' \
-  -H 'Authorization: Bearer {access-token}'
+curl -X GET https://localhost:9543/api-portal/api/v0.9/organizations \
+  -H 'Authorization: Bearer {access_token}' \
+  -H 'Accept: application/json'
 
 ```
 
@@ -148,12 +148,14 @@ NOT SUPPORTED — always returns 405. Listing is inherently cross-organization, 
 ### Authentication
 
 <aside class="warning">
-This operation requires <strong>Basic Auth</strong> authentication.
+This operation requires a <strong>Bearer JWT</strong> access token in the <code>Authorization</code> header.
+
+Required scopes (the token must carry at least one of): `dp:organization:read`, `dp:organization:manage`
 
 </aside>
 
 > Example responses
-
+>
 > 405 Response
 
 ```json
@@ -191,16 +193,15 @@ This operation requires <strong>Basic Auth</strong> authentication.
 
 ```shell
 
-curl -X PUT https://localhost:9543/api/v0.9/organizations/{orgId} \
-  -u {username}:{password} \
+curl -X PUT https://localhost:9543/api-portal/api/v0.9/organizations/{orgId} \
+  -H 'Authorization: Bearer {access_token}' \
   -H 'Content-Type: application/json' \
   -H 'Accept: application/json' \
-  -H 'Authorization: Bearer {access-token}' \
   -d @payload.json
 
 ```
 
-Updates organization metadata, claim mappings, role mappings, and portal configuration. `orgId` must name this instance's own organization; any other returns 403. The `id` (handle) and `idpRefId` fields cannot be changed — they are what page URLs and incoming token organization claims are matched against, so a rename would leave the running instance unable to find its own organization. Sending a different value returns 400.
+Updates organization metadata, claim mappings, role mappings, and portal configuration. `orgId` must name this instance's own organization; any other returns 403. The `id` (handle) and `idpRefId` fields cannot be changed — they are what page URLs and incoming token organization claims are matched against, so a rename would leave the running instance unable to find its own organization. Sending a different value returns 400. `idpRefId` is owned by the portal's `auth.idp_org_id` configuration, which is re-applied on every restart; change it there rather than here.
 
 > Payload
 
@@ -232,7 +233,9 @@ configuration: {}
 ### Authentication
 
 <aside class="warning">
-This operation requires <strong>Basic Auth</strong> authentication.
+This operation requires a <strong>Bearer JWT</strong> access token in the <code>Authorization</code> header.
+
+Required scopes (the token must carry at least one of): `dp:organization:update`, `dp:organization:manage`
 
 </aside>
 
@@ -244,7 +247,7 @@ This operation requires <strong>Basic Auth</strong> authentication.
 |orgId|path|string|true|The organization's handle (also matches by name or IDP reference ID). Not the internal database uuid.|
 
 > Example responses
-
+>
 > 200 Response
 
 ```json
@@ -347,10 +350,9 @@ This operation requires <strong>Basic Auth</strong> authentication.
 
 ```shell
 
-curl -X GET https://localhost:9543/api/v0.9/organizations/{orgId} \
-  -u {username}:{password} \
-  -H 'Accept: application/json' \
-  -H 'Authorization: Bearer {access-token}'
+curl -X GET https://localhost:9543/api-portal/api/v0.9/organizations/{orgId} \
+  -H 'Authorization: Bearer {access_token}' \
+  -H 'Accept: application/json'
 
 ```
 
@@ -359,7 +361,9 @@ Retrieves this instance's organization by organization name, handle, or IDP refe
 ### Authentication
 
 <aside class="warning">
-This operation requires <strong>Basic Auth</strong> authentication.
+This operation requires a <strong>Bearer JWT</strong> access token in the <code>Authorization</code> header.
+
+Required scopes (the token must carry at least one of): `dp:organization:read`, `dp:organization:manage`
 
 </aside>
 
@@ -370,7 +374,7 @@ This operation requires <strong>Basic Auth</strong> authentication.
 |orgId|path|string|true|The organization's handle (also matches by name or IDP reference ID). Not the internal database uuid.|
 
 > Example responses
-
+>
 > 200 Response
 
 ```json
@@ -426,10 +430,9 @@ This operation requires <strong>Basic Auth</strong> authentication.
 
 ```shell
 
-curl -X DELETE https://localhost:9543/api/v0.9/organizations/{orgId} \
-  -u {username}:{password} \
-  -H 'Accept: application/json' \
-  -H 'Authorization: Bearer {access-token}'
+curl -X DELETE https://localhost:9543/api-portal/api/v0.9/organizations/{orgId} \
+  -H 'Authorization: Bearer {access_token}' \
+  -H 'Accept: application/json'
 
 ```
 
@@ -438,7 +441,9 @@ NOT SUPPORTED — always returns 405. This API Portal instance is bound to a sin
 ### Authentication
 
 <aside class="warning">
-This operation requires <strong>Basic Auth</strong> authentication.
+This operation requires a <strong>Bearer JWT</strong> access token in the <code>Authorization</code> header.
+
+Required scopes (the token must carry at least one of): `dp:organization:delete`, `dp:organization:manage`
 
 </aside>
 
@@ -449,7 +454,7 @@ This operation requires <strong>Basic Auth</strong> authentication.
 |orgId|path|string|true|The organization's handle (also matches by name or IDP reference ID). Not the internal database uuid.|
 
 > Example responses
-
+>
 > Bad request. Validation and other bad-request errors are returned as a standard error object (field-level details, when present, are carried in its `errors` array); some legacy handlers return a message-only object.
 
 ```json

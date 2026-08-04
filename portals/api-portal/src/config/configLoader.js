@@ -28,6 +28,9 @@ const { snakeToCamelDeep, mergeOver, parseConfigPaths } = require('./configMerge
 // Requires nothing from this module in return, so loading the grant table from the
 // startup validation below cannot cycle.
 const roleScopeMap = require('./roleScopeMap');
+// utils/constants.js has no imports of its own, so pulling the route constants in here
+// cannot create a cycle back through the config loader.
+const routeConstants = require('../utils/constants');
 
 // Load api-platform.env if present (silently ignored if absent)
 try {
@@ -458,6 +461,35 @@ validateDatabasePoolConfig(config.database);
 // SAFE_HANDLE guards against for the URL-supplied value.
 const ORG_HANDLE_PATTERN = /^[a-z0-9][a-z0-9._-]*$/;
 
+// Path segments the portal owns in the namespace `/:orgName` is matched in — i.e. the
+// first segment after ROUTE.BASE_PATH. A handle equal to any of these would shadow, or be
+// shadowed by, a real endpoint: a handle mounted before the org router makes the org
+// silently unreachable, one mounted after silently shadows the platform path. Enforced
+// fail-closed at startup so the collision surfaces as a refused boot rather than a page
+// that simply never loads. Compared against the already-lowercased handle. (View handles
+// need no such list — they sit behind a literal `views/` segment and so can't collide.)
+//
+// The ones that actually collide today are the sibling mounts on the portal router in
+// app.js — the API base (`api`), the static asset mounts, `mock`, `registry`, the dev
+// live-reload endpoint — plus the two bare page routes that authRoute registers AHEAD of
+// orgContentRoute: `signin` (the IdP callback) and `logout` (the post-logout landing).
+// Those two are the reason this is a list and not just "the static mounts": a handle of
+// `logout` boots fine and then answers the org's own front door by destroying the
+// session. The true-root paths (BASE_PATH itself, health/metrics, robots.txt) can no
+// longer collide now that the org router sits under the prefix, but they stay listed:
+// they are still reserved words operationally, and a handle matching one of them would
+// make every URL in the deployment confusing to read.
+// The mount prefix and the API base segment are derived from the route constants rather
+// than spelled out, so renaming either can't leave a stale word reserved and the real one
+// unguarded.
+const RESERVED_ORG_HANDLES = new Set([
+    routeConstants.ROUTE.BASE_PATH.replace(/^\//, ''),
+    routeConstants.API_PORTAL_API.BASE_SEGMENT,
+    'health', 'metrics', 'favicon.ico', 'styles', 'images',
+    'scripts', 'technical-styles', 'technical-scripts', 'mock', 'registry', 'portal',
+    'signin', 'logout', '__dev_reload', '.well-known', 'robots.txt',
+]);
+
 function resolveOrganizationConfig(cfg, tomlOrg) {
     const org = cfg.organization;
     // Read `handle` from the raw config.toml table, not from cfg: DEFAULTS always
@@ -509,9 +541,58 @@ function resolveOrganizationConfig(cfg, tomlOrg) {
         );
         process.exit(1);
     }
+
+    if (RESERVED_ORG_HANDLES.has(org.handle)) {
+        process.stderr.write(
+            `[FATAL] organization.handle ("${org.handle}") is a reserved word. It collides with a ` +
+            'path the portal owns (the mount prefix, the API base, health/metrics, the static asset ' +
+            'mounts, the MCP registry, the signin/logout routes, or a dev/well-known endpoint), ' +
+            'which would make the organization silently unreachable. Choose a different handle. Reserved: ' +
+            `${[...RESERVED_ORG_HANDLES].join(', ')}.\n`
+        );
+        process.exit(1);
+    }
 }
 
 resolveOrganizationConfig(config, interpolatedTomlConfig.organization);
+
+/**
+ * Refuses to start when auth.mode = "idp" is selected without the endpoints OIDC login
+ * actually needs.
+ *
+ * These four have no default (see configDefaults.js) because no default could be right,
+ * and passport-oauth2 throws on each of them anyway — this only turns that into a message
+ * that names the missing key instead of a constructor stack trace. Validating the
+ * *effective* config rather than trusting a per-field default is the same fail-closed rule
+ * the Go services follow (authentication_authorization.md, GO-AUTH-011).
+ *
+ * Deliberately not required here: jwks_url / certificate (token verification can also be
+ * satisfied by an issuer-derived JWKS), and logout_url / sign_up_url, which are optional
+ * features rather than prerequisites for logging in.
+ */
+function validateIdpConfig(cfg) {
+    if (cfg.auth?.mode !== 'idp') return;
+    const required = {
+        'auth.idp.client_id': cfg.auth.idp?.clientId,
+        'auth.idp.authorization_url': cfg.auth.idp?.authorizationUrl,
+        'auth.idp.token_url': cfg.auth.idp?.tokenUrl,
+        'auth.idp.callback_url': cfg.auth.idp?.callbackUrl,
+    };
+    const missing = Object.entries(required)
+        .filter(([, value]) => !String(value ?? '').trim())
+        .map(([key]) => key);
+    if (missing.length > 0) {
+        process.stderr.write(
+            `[FATAL] auth.mode is "idp" but required OIDC settings are missing: ${missing.join(', ')}. ` +
+            'These describe your identity provider and have no default. Set them in ' +
+            'configs/config.toml (see configs/config-template.toml), or switch to ' +
+            'auth.mode = "local" to sign in against the Platform API instead.\n'
+        );
+        process.exit(1);
+    }
+}
+
+validateIdpConfig(config);
 
 // Every artifact type this portal knows how to serve. `artifacts.enabled_types`
 // is an allowlist drawn from this set.

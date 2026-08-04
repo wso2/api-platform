@@ -51,7 +51,7 @@ const loadSettingsPage = async (req, res) => {
 
     const orgName = req.params.orgName;
     // Org-scoped self-links (view selector switches the two view-scoped panels client-side).
-    const settingsUrl = '/' + orgName + '/settings';
+    const settingsUrl = constants.ROUTE.BASE_PATH + '/' + orgName + '/settings';
     const csrfToken = getSessionCsrfToken(req);
     let templateContent = {
         settingsUrl,
@@ -100,7 +100,7 @@ const loadSettingsPage = async (req, res) => {
         templateContent.selectedView = viewName;
 
         // Portal chrome (sidebar/header/home link) is inherently view-scoped.
-        const baseUrl = '/' + orgName + '/views/' + viewName;
+        const baseUrl = constants.ROUTE.BASE_PATH + '/' + orgName + '/views/' + viewName;
         templateContent.baseUrl = baseUrl;
 
         const viewId = await viewDao.getId(orgId, viewName);

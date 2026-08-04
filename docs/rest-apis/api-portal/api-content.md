@@ -10,12 +10,13 @@
 
 ```shell
 
-curl -X POST https://localhost:9543/api/v0.9/apis/{apiId}/assets \
-  -u {username}:{password} \
+curl -X POST https://localhost:9543/api-portal/api/v0.9/apis/{apiId}/assets \
+  -H 'Authorization: Bearer {access_token}' \
   -H 'Content-Type: multipart/form-data' \
   -H 'Accept: application/json' \
-  -H 'Authorization: Bearer {access-token}' \
-  -d @payload.json
+  -F 'content=string' \
+  -F 'docMetadata=[{"name":"External guide","url":"https://example.com/docs/guide","type":"LINK"}]' \
+  -F 'imageMetadata={"api-icon":"icon.png"}'
 
 ```
 
@@ -28,20 +29,12 @@ The `content` ZIP must contain at least one of these root directories:
 Use `docMetadata` to add external document links that are stored alongside uploaded documents.
 Use `imageMetadata` to map uploaded images to API image roles such as the API icon.
 
-> Payload
-
-```yaml
-content: string
-docMetadata: '[{"name":"External
-  guide","url":"https://example.com/docs/guide","type":"LINK"}]'
-imageMetadata: '{"api-icon":"icon.png"}'
-
-```
-
 ### Authentication
 
 <aside class="warning">
-This operation requires <strong>Basic Auth</strong> authentication.
+This operation requires a <strong>Bearer JWT</strong> access token in the <code>Authorization</code> header.
+
+Required scopes (the token must carry at least one of): `dp:api_content:create`, `dp:api_content:manage`
 
 </aside>
 
@@ -67,7 +60,7 @@ At least one of `web/` or `docs/` must exist at the ZIP root.
 `docMetadata` and `imageMetadata` are JSON strings because they are submitted as multipart form fields.
 
 > Example responses
-
+>
 > 201 Response
 
 ```json
@@ -139,35 +132,28 @@ At least one of `web/` or `docs/` must exist at the ZIP root.
 
 ```shell
 
-curl -X PUT https://localhost:9543/api/v0.9/apis/{apiId}/assets \
-  -u {username}:{password} \
+curl -X PUT https://localhost:9543/api-portal/api/v0.9/apis/{apiId}/assets \
+  -H 'Authorization: Bearer {access_token}' \
   -H 'Content-Type: multipart/form-data' \
   -H 'Accept: application/json' \
-  -H 'Authorization: Bearer {access-token}' \
-  -d @payload.json
+  -F 'content=string' \
+  -F 'docMetadata=[{"name":"External guide","url":"https://example.com/docs/guide","type":"LINK"}]' \
+  -F 'imageMetadata={"api-icon":"icon.png"}'
 
 ```
 
 Replaces or adds static content files for an existing API.
 
-The upload format is the same as `POST /api/v0.9/apis/{apiId}/assets`.
+The upload format is the same as `POST /api-portal/api/v0.9/apis/{apiId}/assets`.
 Existing files with the same stored `type` and `fileName` are updated; new files are created.
 Image metadata is updated only when image metadata can be resolved from the upload or request body.
-
-> Payload
-
-```yaml
-content: string
-docMetadata: '[{"name":"External
-  guide","url":"https://example.com/docs/guide","type":"LINK"}]'
-imageMetadata: '{"api-icon":"icon.png"}'
-
-```
 
 ### Authentication
 
 <aside class="warning">
-This operation requires <strong>Basic Auth</strong> authentication.
+This operation requires a <strong>Bearer JWT</strong> access token in the <code>Authorization</code> header.
+
+Required scopes (the token must carry at least one of): `dp:api_content:update`, `dp:api_content:manage`
 
 </aside>
 
@@ -193,7 +179,7 @@ At least one of `web/` or `docs/` must exist at the ZIP root.
 `docMetadata` and `imageMetadata` are JSON strings because they are submitted as multipart form fields.
 
 > Example responses
-
+>
 > 201 Response
 
 ```json
@@ -265,7 +251,7 @@ At least one of `web/` or `docs/` must exist at the ZIP root.
 
 ```shell
 
-curl -X GET https://localhost:9543/api/v0.9/apis/{apiId}/assets?type=document&fileName=getting-started.md \
+curl -X GET https://localhost:9543/api-portal/api/v0.9/apis/{apiId}/assets?type=document&fileName=getting-started.md \
   -u {username}:{password} \
   -H 'Accept: text/css'
 
@@ -292,7 +278,7 @@ session: an anonymous request for a non-image type is rejected.
 |apiId|path|string|true|The API's handle (unique per org). Resolves only to REST/SOAP/WS/WebSub/GraphQL APIs — MCP servers are addressed via `/mcp-servers`.|
 
 > Example responses
-
+>
 > 200 Response
 
 ```
@@ -368,10 +354,9 @@ session: an anonymous request for a non-image type is rejected.
 
 ```shell
 
-curl -X DELETE https://localhost:9543/api/v0.9/apis/{apiId}/assets?type=document \
-  -u {username}:{password} \
-  -H 'Accept: application/json' \
-  -H 'Authorization: Bearer {access-token}'
+curl -X DELETE https://localhost:9543/api-portal/api/v0.9/apis/{apiId}/assets?type=document \
+  -H 'Authorization: Bearer {access_token}' \
+  -H 'Accept: application/json'
 
 ```
 
@@ -383,7 +368,9 @@ files matching that content category for the API.
 ### Authentication
 
 <aside class="warning">
-This operation requires <strong>Basic Auth</strong> authentication.
+This operation requires a <strong>Bearer JWT</strong> access token in the <code>Authorization</code> header.
+
+Required scopes (the token must carry at least one of): `dp:api_content:delete`, `dp:api_content:manage`
 
 </aside>
 
@@ -396,7 +383,7 @@ This operation requires <strong>Basic Auth</strong> authentication.
 |apiId|path|string|true|The API's handle (unique per org). Resolves only to REST/SOAP/WS/WebSub/GraphQL APIs — MCP servers are addressed via `/mcp-servers`.|
 
 > Example responses
-
+>
 > Bad request. Validation and other bad-request errors are returned as a standard error object (field-level details, when present, are carried in its `errors` array); some legacy handlers return a message-only object.
 
 ```json

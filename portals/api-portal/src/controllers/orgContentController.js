@@ -42,7 +42,7 @@ const loadOrgContentFromFile = async (req, res) => {
     const layoutPath = config.designMode.pathToLayout;
     const templateContent = {
         userProfiles: [],
-        baseUrl: constants.ROUTE.VIEWS_PATH + req.params.viewName,
+        baseUrl: constants.ROUTE.BASE_PATH + constants.ROUTE.VIEWS_PATH + req.params.viewName,
         devMode: true,
     };
 
@@ -66,7 +66,7 @@ const loadOrgContentFromAPI = async (req, res, next) => {
             }
         }
         templateContent = {
-            baseUrl: '/' + orgName + constants.ROUTE.VIEWS_PATH + req.params.viewName,
+            baseUrl: constants.ROUTE.BASE_PATH + '/' + orgName + constants.ROUTE.VIEWS_PATH + req.params.viewName,
             profile: req.isAuthenticated() ? profile : null,
         };
         html = await renderTemplateFromAPI(templateContent, orgId, orgName, 'pages/home', req.params.viewName);

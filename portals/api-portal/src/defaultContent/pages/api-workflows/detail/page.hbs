@@ -4,8 +4,8 @@
  * API Workflow Detail Page
  -->
 {{#pageHead}}
-    <link rel="stylesheet" href="/technical-styles/agent-prompt.css">
-    <link rel="stylesheet" href="/technical-styles/api-workflows.css">
+    <link rel="stylesheet" href="{{basePath}}/technical-styles/agent-prompt.css">
+    <link rel="stylesheet" href="{{basePath}}/technical-styles/api-workflows.css">
     {{#unless (eq flow.contentType "MD")}}
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@jentic/arazzo-ui@1.0.0-alpha.30/dist/arazzo-ui.css" integrity="sha256-WHPlCD3ecWnrluuPAx7VypEZtfvv4DrIMfdLYzLshsM=" crossorigin="anonymous">
     <script src="https://cdn.jsdelivr.net/npm/@jentic/arazzo-ui@1.0.0-alpha.30/dist/arazzo-ui.js" integrity="sha256-OYzURPQLK+lup5rGo+IQmVbjWOjVgjURBWDDtMHIOaw=" crossorigin="anonymous"></script>
@@ -36,7 +36,7 @@
                 {{#if aiEnabled}}
                 {{#unless (eq flow.agentVisibility "HIDDEN")}}
                 <button class="common-btn-primary discover-ai-btn" id="openPromptBtn" data-bs-toggle="modal" data-bs-target="#agentPromptModal">
-                    <img src="/images/ai-stars-icon.svg" width="16" height="16" aria-hidden="true" alt="" style="margin-right:6px;vertical-align:middle;">Try with AI
+                    <img src="{{basePath}}/images/ai-stars-icon.svg" width="16" height="16" aria-hidden="true" alt="" style="margin-right:6px;vertical-align:middle;">Try with AI
                 </button>
                 {{/unless}}
                 {{/if}}
@@ -70,5 +70,5 @@
     <textarea id="specContent" style="display: none;">{{flow.content}}</textarea>
 </div>
 {{#pageScripts}}
-<script src='/technical-scripts/api-workflow-detail.js' defer></script>
+<script src='{{basePath}}/technical-scripts/api-workflow-detail.js' defer></script>
 {{/pageScripts}}

@@ -37,7 +37,7 @@ const loadAPIApiKeys = async (req, res, next) => {
         const orgId = orgDetails.uuid;
 
         if (!req.user) {
-            return res.redirect(`/${orgName}${constants.ROUTE.VIEWS_PATH}${viewName}/login`);
+            return res.redirect(`${constants.ROUTE.BASE_PATH}/${orgName}${constants.ROUTE.VIEWS_PATH}${viewName}/login`);
         }
         // View-scoped: the per-API keys page hangs off a view URL, so it answers 404 for
         // an artifact that view doesn't include (apiDao.getIdInView).
@@ -135,7 +135,7 @@ const loadAPIApiKeys = async (req, res, next) => {
         };
 
         const templateContent = {
-            baseUrl: '/' + orgName + constants.ROUTE.VIEWS_PATH + viewName,
+            baseUrl: constants.ROUTE.BASE_PATH + '/' + orgName + constants.ROUTE.VIEWS_PATH + viewName,
             profile: profile,
             orgId: orgId,
             apiKeys: apiKeys,

@@ -15,17 +15,24 @@
  * specific language governing permissions and limitations
  * under the License.
  */
+// Hardcoded URL prefix the whole portal mounts itself under (see ROUTE.BASE_PATH).
+// Single-sourced here so the invocation-URL builders below and the route mount in
+// app.js can't disagree about it.
+const PORTAL_BASE_PATH = '/api-portal';
 // API Portal API base segment and version — single source of truth for the
 // invocation prefix `/api/v0.9`. Change these two to bump the base segment
 // (e.g. apiv2) or version (e.g. v2) everywhere.
 const API_PORTAL_BASE_SEGMENT = 'api';
 const API_PORTAL_VERSION = 'v0.9';
-// Express route prefix for API Portal REST routes, e.g. '/api/v0.9'
+// Express route prefix for API Portal REST routes, e.g. '/api/v0.9' (relative to the
+// mount prefix). Kept prefix-free: it names the version base only.
 const API_PORTAL_BASE_PATH = `/${API_PORTAL_BASE_SEGMENT}/${API_PORTAL_VERSION}`;
-// Builder for the API Portal base path used in server-side URL generation.
-// The orgId argument is accepted for backward-compatibility but not used —
-// org context is resolved from the token/session, not the URL.
-const apiPortalOrgPath = (_orgId) => `/${API_PORTAL_BASE_SEGMENT}/${API_PORTAL_VERSION}`;
+// Builder for the fully-qualified API Portal base path used in server-side URL
+// generation — includes the mount prefix, so URLs it builds are reachable through the
+// reverse proxy (e.g. `/api-portal/api/v0.9`). The orgId argument is accepted for
+// backward-compatibility but not used — org context is resolved from the
+// token/session, not the URL.
+const apiPortalOrgPath = (_orgId) => `${PORTAL_BASE_PATH}/${API_PORTAL_BASE_SEGMENT}/${API_PORTAL_VERSION}`;
 
 module.exports = {
     // Allowed algorithms for IdP JWT verification.
@@ -165,6 +172,13 @@ module.exports = {
         BASIC: 'BASIC'
     },
     ROUTE: {
+        // Hardcoded URL prefix the whole portal mounts itself under. A reverse proxy
+        // forwards only `${BASE_PATH}/*` to this service, so every server-generated
+        // route, static mount, cookie path, redirect target, OpenAPI server base, and
+        // asset URL is scoped under it. Referenced everywhere — never repeat the literal.
+        // Kept out of `organization.handle` (and every other root path segment) by the
+        // reserved-word check in src/config/configLoader.js so an org can never shadow it.
+        BASE_PATH: PORTAL_BASE_PATH,
         STYLES: '/styles',
         TECHNICAL_STYLES: '/technical-styles',
         TECHNICAL_SCRIPTS: '/technical-scripts',

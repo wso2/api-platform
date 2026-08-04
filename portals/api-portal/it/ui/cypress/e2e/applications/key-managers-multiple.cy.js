@@ -61,7 +61,7 @@ describe('Applications — multiple key managers', () => {
         cy.login();
         cy.request({
             method: 'DELETE',
-            url: `/api/v0.9/applications/${appHandle}`,
+            url: `${Cypress.env('BASE_PATH')}/api/v0.9/applications/${appHandle}`,
             failOnStatusCode: false,
         }).its('status').should('be.oneOf', [200, 404]);
         cy.deleteKeyManager(KM_A.id);

@@ -10,10 +10,9 @@
 
 ```shell
 
-curl -X GET https://localhost:9543/api/v0.9/webhook-events \
-  -u {username}:{password} \
-  -H 'Accept: application/json' \
-  -H 'Authorization: Bearer {access-token}'
+curl -X GET https://localhost:9543/api-portal/api/v0.9/webhook-events \
+  -H 'Authorization: Bearer {access_token}' \
+  -H 'Accept: application/json'
 
 ```
 
@@ -22,7 +21,9 @@ Returns a paginated list of webhook events for the organization. Each event incl
 ### Authentication
 
 <aside class="warning">
-This operation requires <strong>Basic Auth</strong> authentication.
+This operation requires a <strong>Bearer JWT</strong> access token in the <code>Authorization</code> header.
+
+Required scopes (the token must carry at least one of): `dp:event:read`
 
 </aside>
 
@@ -44,7 +45,7 @@ This operation requires <strong>Basic Auth</strong> authentication.
 |status|FAILED|
 
 > Example responses
-
+>
 > 200 Response
 
 ```json
@@ -161,10 +162,9 @@ Status Code **200**
 
 ```shell
 
-curl -X GET https://localhost:9543/api/v0.9/webhook-events/{eventId} \
-  -u {username}:{password} \
-  -H 'Accept: application/json' \
-  -H 'Authorization: Bearer {access-token}'
+curl -X GET https://localhost:9543/api-portal/api/v0.9/webhook-events/{eventId} \
+  -H 'Authorization: Bearer {access_token}' \
+  -H 'Accept: application/json'
 
 ```
 
@@ -173,7 +173,9 @@ Returns a single webhook event with the full details of all its delivery rows. R
 ### Authentication
 
 <aside class="warning">
-This operation requires <strong>Basic Auth</strong> authentication.
+This operation requires a <strong>Bearer JWT</strong> access token in the <code>Authorization</code> header.
+
+Required scopes (the token must carry at least one of): `dp:event:read`
 
 </aside>
 
@@ -184,7 +186,7 @@ This operation requires <strong>Basic Auth</strong> authentication.
 |eventId|path|string|true|Webhook event identifier.|
 
 > Example responses
-
+>
 > 200 Response
 
 ```json

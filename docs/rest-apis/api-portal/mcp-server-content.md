@@ -10,31 +10,24 @@
 
 ```shell
 
-curl -X POST https://localhost:9543/api/v0.9/mcp-servers/{mcpServerId}/assets \
-  -u {username}:{password} \
+curl -X POST https://localhost:9543/api-portal/api/v0.9/mcp-servers/{mcpServerId}/assets \
+  -H 'Authorization: Bearer {access_token}' \
   -H 'Content-Type: multipart/form-data' \
   -H 'Accept: application/json' \
-  -H 'Authorization: Bearer {access-token}' \
-  -d @payload.json
+  -F 'content=string' \
+  -F 'docMetadata=[{"name":"External guide","url":"https://example.com/docs/guide","type":"LINK"}]' \
+  -F 'imageMetadata={"api-icon":"icon.png"}'
 
 ```
 
-Uploads the static content package for an MCP server. Mirrors `POST /api/v0.9/apis/{apiId}/assets`.
-
-> Payload
-
-```yaml
-content: string
-docMetadata: '[{"name":"External
-  guide","url":"https://example.com/docs/guide","type":"LINK"}]'
-imageMetadata: '{"api-icon":"icon.png"}'
-
-```
+Uploads the static content package for an MCP server. Mirrors `POST /api-portal/api/v0.9/apis/{apiId}/assets`.
 
 ### Authentication
 
 <aside class="warning">
-This operation requires <strong>Basic Auth</strong> authentication.
+This operation requires a <strong>Bearer JWT</strong> access token in the <code>Authorization</code> header.
+
+Required scopes (the token must carry at least one of): `dp:mcp_server_content:create`, `dp:mcp_server_content:manage`
 
 </aside>
 
@@ -60,7 +53,7 @@ At least one of `web/` or `docs/` must exist at the ZIP root.
 `docMetadata` and `imageMetadata` are JSON strings because they are submitted as multipart form fields.
 
 > Example responses
-
+>
 > 201 Response
 
 ```json
@@ -132,31 +125,24 @@ At least one of `web/` or `docs/` must exist at the ZIP root.
 
 ```shell
 
-curl -X PUT https://localhost:9543/api/v0.9/mcp-servers/{mcpServerId}/assets \
-  -u {username}:{password} \
+curl -X PUT https://localhost:9543/api-portal/api/v0.9/mcp-servers/{mcpServerId}/assets \
+  -H 'Authorization: Bearer {access_token}' \
   -H 'Content-Type: multipart/form-data' \
   -H 'Accept: application/json' \
-  -H 'Authorization: Bearer {access-token}' \
-  -d @payload.json
+  -F 'content=string' \
+  -F 'docMetadata=[{"name":"External guide","url":"https://example.com/docs/guide","type":"LINK"}]' \
+  -F 'imageMetadata={"api-icon":"icon.png"}'
 
 ```
 
-Replaces or adds static content files for an existing MCP server. Mirrors `PUT /api/v0.9/apis/{apiId}/assets`.
-
-> Payload
-
-```yaml
-content: string
-docMetadata: '[{"name":"External
-  guide","url":"https://example.com/docs/guide","type":"LINK"}]'
-imageMetadata: '{"api-icon":"icon.png"}'
-
-```
+Replaces or adds static content files for an existing MCP server. Mirrors `PUT /api-portal/api/v0.9/apis/{apiId}/assets`.
 
 ### Authentication
 
 <aside class="warning">
-This operation requires <strong>Basic Auth</strong> authentication.
+This operation requires a <strong>Bearer JWT</strong> access token in the <code>Authorization</code> header.
+
+Required scopes (the token must carry at least one of): `dp:mcp_server_content:update`, `dp:mcp_server_content:manage`
 
 </aside>
 
@@ -182,7 +168,7 @@ At least one of `web/` or `docs/` must exist at the ZIP root.
 `docMetadata` and `imageMetadata` are JSON strings because they are submitted as multipart form fields.
 
 > Example responses
-
+>
 > 201 Response
 
 ```json
@@ -254,19 +240,20 @@ At least one of `web/` or `docs/` must exist at the ZIP root.
 
 ```shell
 
-curl -X GET https://localhost:9543/api/v0.9/mcp-servers/{mcpServerId}/assets?type=document&fileName=getting-started.md \
-  -u {username}:{password} \
-  -H 'Accept: text/css' \
-  -H 'Authorization: Bearer {access-token}'
+curl -X GET https://localhost:9543/api-portal/api/v0.9/mcp-servers/{mcpServerId}/assets?type=document&fileName=getting-started.md \
+  -H 'Authorization: Bearer {access_token}' \
+  -H 'Accept: text/css'
 
 ```
 
-Retrieves a single stored MCP server content file. Mirrors `GET /api/v0.9/apis/{apiId}/assets`.
+Retrieves a single stored MCP server content file. Mirrors `GET /api-portal/api/v0.9/apis/{apiId}/assets`.
 
 ### Authentication
 
 <aside class="warning">
-This operation requires <strong>Basic Auth</strong> authentication.
+This operation requires a <strong>Bearer JWT</strong> access token in the <code>Authorization</code> header.
+
+Required scopes (the token must carry at least one of): `dp:mcp_server_content:read`, `dp:mcp_server_content:manage`
 
 </aside>
 
@@ -279,7 +266,7 @@ This operation requires <strong>Basic Auth</strong> authentication.
 |mcpServerId|path|string|true|The MCP server's handle (unique per org).|
 
 > Example responses
-
+>
 > 200 Response
 
 ```
@@ -355,19 +342,20 @@ This operation requires <strong>Basic Auth</strong> authentication.
 
 ```shell
 
-curl -X DELETE https://localhost:9543/api/v0.9/mcp-servers/{mcpServerId}/assets?type=document \
-  -u {username}:{password} \
-  -H 'Accept: application/json' \
-  -H 'Authorization: Bearer {access-token}'
+curl -X DELETE https://localhost:9543/api-portal/api/v0.9/mcp-servers/{mcpServerId}/assets?type=document \
+  -H 'Authorization: Bearer {access_token}' \
+  -H 'Accept: application/json'
 
 ```
 
-Deletes stored MCP server content. Mirrors `DELETE /api/v0.9/apis/{apiId}/assets`.
+Deletes stored MCP server content. Mirrors `DELETE /api-portal/api/v0.9/apis/{apiId}/assets`.
 
 ### Authentication
 
 <aside class="warning">
-This operation requires <strong>Basic Auth</strong> authentication.
+This operation requires a <strong>Bearer JWT</strong> access token in the <code>Authorization</code> header.
+
+Required scopes (the token must carry at least one of): `dp:mcp_server_content:delete`, `dp:mcp_server_content:manage`
 
 </aside>
 
@@ -380,7 +368,7 @@ This operation requires <strong>Basic Auth</strong> authentication.
 |mcpServerId|path|string|true|The MCP server's handle (unique per org).|
 
 > Example responses
-
+>
 > Bad request. Validation and other bad-request errors are returned as a standard error object (field-level details, when present, are carried in its `errors` array); some legacy handlers return a message-only object.
 
 ```json

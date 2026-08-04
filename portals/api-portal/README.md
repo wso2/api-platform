@@ -33,7 +33,7 @@ docker compose up
 
 `../scripts/setup.sh` is a one-time step: it generates API Portal's and the Platform API's encryption/session/JWT secrets (written to `resources/keys/` as files, read via `{{ file }}` — never as env vars), a self-signed TLS certificate, and an admin user into `api-platform.env` (git-ignored). It prompts for an admin username/password interactively, or generates a random password if you press Enter; set `ADMIN_USERNAME`/`ADMIN_PASSWORD` env vars to skip the prompts (e.g. in CI). Safe to re-run — it only fills in what's missing and never overwrites an existing value; to build API Portal from source instead of using the published image, run `docker compose up --build`.
 
-Then open **https://localhost:9543/default/views/default** and log in with the admin credentials `../scripts/setup.sh` printed.
+Then open **https://localhost:9543/api-portal/default/views/default** and log in with the admin credentials `../scripts/setup.sh` printed.
 
 > **Browser warning:** the TLS certificate is self-signed. Click **Advanced → Proceed** (Chrome) or **Accept the Risk** (Firefox) to continue.
 
@@ -169,7 +169,7 @@ token_url = "https://<your-idp>/oauth2/token"
 user_info_url = "https://<your-idp>/oauth2/userinfo"
 jwks_url = "https://<your-idp>/oauth2/jwks"
 client_id = "<your-client-id>"
-callback_url = "http://localhost:9543/<handle>/callback"
+callback_url = "http://localhost:9543/api-portal/<handle>/callback"
 ```
 
 For local exploration you can skip IdP setup by using the Platform API sidecar instead (see [Local auth](#local-auth)).
@@ -225,7 +225,7 @@ npm install
 npm run start:local
 ```
 
-Open **http://localhost:9543/default/views/default**
+Open **http://localhost:9543/api-portal/default/views/default**
 
 ---
 
@@ -511,7 +511,7 @@ TOKEN=$(curl -sk -X POST "https://localhost:9243/api/portal/v0.9/auth/login" \
   -d "username=<admin-username>&password=<admin-password>" | jq -r .token)
 
 # Create the API
-curl -sk -X POST "https://localhost:9543/api/v0.9/apis" \
+curl -sk -X POST "https://localhost:9543/api-portal/api/v0.9/apis" \
   -H "Authorization: Bearer $TOKEN" \
   -F "metadata=@api.yaml;type=application/yaml" \
   -F "definition=@openapi.yaml;type=application/yaml"
@@ -525,6 +525,6 @@ Refresh the portal — the Reading-List-API now appears in the catalog. Click it
 |---|---|
 | Organization | `default` |
 | Default view | `default` |
-| Portal URL | `https://localhost:9543/default/views/default` |
+| Portal URL | `https://localhost:9543/api-portal/default/views/default` |
 | Admin credentials | printed by `../scripts/setup.sh` (local auth) |
 | Sample API | `Reading-List-API` visible in the catalog |

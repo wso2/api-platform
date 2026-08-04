@@ -45,7 +45,7 @@
 {{#if (eq apiType "WS")}}
 
 {{#pageHead}}
-  <link rel="stylesheet" href="/technical-styles/async-tryout.css">
+  <link rel="stylesheet" href="{{basePath}}/technical-styles/async-tryout.css">
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/wso2/api-developer-portal-core@refs/heads/main/libs/async-api-viewer/dist/async-api-viewer.css">
 {{/pageHead}}
 <main>
@@ -85,7 +85,7 @@
 {{else if (eq apiType "WebSubApi")}}
 
 {{#pageHead}}
-  <link rel="stylesheet" href="/technical-styles/async-tryout.css">
+  <link rel="stylesheet" href="{{basePath}}/technical-styles/async-tryout.css">
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/wso2/api-developer-portal-core@refs/heads/main/libs/async-api-viewer/dist/async-api-viewer.css">
 {{/pageHead}}
 <main>
@@ -126,7 +126,7 @@
 {{#pageHead}}
   <link rel="stylesheet" href="https://unpkg.com/graphiql@3/graphiql.min.css">
   <link rel="stylesheet" href="https://unpkg.com/@graphiql/plugin-explorer@3/dist/style.css">
-  <link rel="stylesheet" href="/technical-styles/graphql-tryout.css">
+  <link rel="stylesheet" href="{{basePath}}/technical-styles/graphql-tryout.css">
 {{/pageHead}}
 <main>
   <div class="graphql-tryout-container">

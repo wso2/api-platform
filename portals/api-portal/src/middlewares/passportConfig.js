@@ -75,7 +75,6 @@ function configurePassport(SERVER_ID) {
     if (config.auth.mode === 'idp') {
         const idpScope = config.auth.idp.scope;
         const strategy = new OAuth2Strategy({
-            name: config.auth.idp.name || 'oauth2',
             issuer: config.auth.idp.issuer,
             authorizationURL: config.auth.idp.authorizationUrl,
             tokenURL: config.auth.idp.tokenUrl,

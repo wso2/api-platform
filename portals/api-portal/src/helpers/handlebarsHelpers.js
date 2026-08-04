@@ -18,8 +18,15 @@
 
 const Handlebars = require('handlebars');
 const { config } = require('../config/configLoader');
+const constants = require('../utils/constants');
 
 const helpers = {
+    // The portal's hardcoded URL prefix (constants.ROUTE.BASE_PATH). Every absolute
+    // asset/link in a template is written as `{{basePath}}/styles/...` rather than a
+    // bare `/styles/...` so the single source of truth lives in constants and the 40+
+    // asset references can't drift out of sync with the mount point in app.js.
+    basePath: () => constants.ROUTE.BASE_PATH,
+
     // True only when the portal is running in file-based design mode. Partials use
     // it to disable nav/action buttons whose routes aren't served in design mode
     // (login, subscriptions, api-keys, api-workflows) so they don't lead to a 404.

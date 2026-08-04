@@ -10,10 +10,9 @@
 
 ```shell
 
-curl -X GET https://localhost:9543/api/v0.9/api-keys \
-  -u {username}:{password} \
-  -H 'Accept: application/json' \
-  -H 'Authorization: Bearer {access-token}'
+curl -X GET https://localhost:9543/api-portal/api/v0.9/api-keys \
+  -H 'Authorization: Bearer {access_token}' \
+  -H 'Accept: application/json'
 
 ```
 
@@ -22,7 +21,9 @@ Lists every API key created by the authenticated user across all APIs in the org
 ### Authentication
 
 <aside class="warning">
-This operation requires <strong>Basic Auth</strong> authentication.
+This operation requires a <strong>Bearer JWT</strong> access token in the <code>Authorization</code> header.
+
+Required scopes (the token must carry at least one of): `dp:api_key:read`, `dp:api_key:manage`
 
 </aside>
 
@@ -34,7 +35,7 @@ This operation requires <strong>Basic Auth</strong> authentication.
 |offset|query|integer|false|Number of records to skip before returning results.|
 
 > Example responses
-
+>
 > 200 Response
 
 ```json
@@ -140,11 +141,10 @@ Status Code **200**
 
 ```shell
 
-curl -X POST https://localhost:9543/api/v0.9/apis/{apiId}/api-keys/generate \
-  -u {username}:{password} \
+curl -X POST https://localhost:9543/api-portal/api/v0.9/apis/{apiId}/api-keys/generate \
+  -H 'Authorization: Bearer {access_token}' \
   -H 'Content-Type: application/json' \
   -H 'Accept: application/json' \
-  -H 'Authorization: Bearer {access-token}' \
   -d @payload.json
 
 ```
@@ -163,7 +163,9 @@ Generates an API key stored in the API Portal (devportal is source of truth). Th
 ### Authentication
 
 <aside class="warning">
-This operation requires <strong>Basic Auth</strong> authentication.
+This operation requires a <strong>Bearer JWT</strong> access token in the <code>Authorization</code> header.
+
+Required scopes (the token must carry at least one of): `dp:api_key:create`, `dp:api_key:manage`
 
 </aside>
 
@@ -175,7 +177,7 @@ This operation requires <strong>Basic Auth</strong> authentication.
 |apiId|path|string|true|The API's handle (unique per org). Resolves only to REST/SOAP/WS/WebSub/GraphQL APIs — MCP servers are addressed via `/mcp-servers`.|
 
 > Example responses
-
+>
 > 201 Response
 
 ```json
@@ -268,10 +270,9 @@ This operation requires <strong>Basic Auth</strong> authentication.
 
 ```shell
 
-curl -X GET https://localhost:9543/api/v0.9/apis/{apiId}/api-keys \
-  -u {username}:{password} \
-  -H 'Accept: application/json' \
-  -H 'Authorization: Bearer {access-token}'
+curl -X GET https://localhost:9543/api-portal/api/v0.9/apis/{apiId}/api-keys \
+  -H 'Authorization: Bearer {access_token}' \
+  -H 'Accept: application/json'
 
 ```
 
@@ -280,7 +281,9 @@ Lists API keys for the given API.
 ### Authentication
 
 <aside class="warning">
-This operation requires <strong>Basic Auth</strong> authentication.
+This operation requires a <strong>Bearer JWT</strong> access token in the <code>Authorization</code> header.
+
+Required scopes (the token must carry at least one of): `dp:api_key:read`, `dp:api_key:manage`
 
 </aside>
 
@@ -294,7 +297,7 @@ This operation requires <strong>Basic Auth</strong> authentication.
 |apiId|path|string|true|The API's handle (unique per org). Resolves only to REST/SOAP/WS/WebSub/GraphQL APIs — MCP servers are addressed via `/mcp-servers`.|
 
 > Example responses
-
+>
 > 200 Response
 
 ```json
@@ -400,11 +403,10 @@ Status Code **200**
 
 ```shell
 
-curl -X POST https://localhost:9543/api/v0.9/apis/{apiId}/api-keys/regenerate \
-  -u {username}:{password} \
+curl -X POST https://localhost:9543/api-portal/api/v0.9/apis/{apiId}/api-keys/regenerate \
+  -H 'Authorization: Bearer {access_token}' \
   -H 'Content-Type: application/json' \
   -H 'Accept: application/json' \
-  -H 'Authorization: Bearer {access-token}' \
   -d @payload.json
 
 ```
@@ -423,7 +425,9 @@ Regenerates the secret for an existing API key identified by `keyId` in the requ
 ### Authentication
 
 <aside class="warning">
-This operation requires <strong>Basic Auth</strong> authentication.
+This operation requires a <strong>Bearer JWT</strong> access token in the <code>Authorization</code> header.
+
+Required scopes (the token must carry at least one of): `dp:api_key:update`, `dp:api_key:manage`
 
 </aside>
 
@@ -439,7 +443,7 @@ This operation requires <strong>Basic Auth</strong> authentication.
 |apiId|path|string|true|The API's handle (unique per org). Resolves only to REST/SOAP/WS/WebSub/GraphQL APIs — MCP servers are addressed via `/mcp-servers`.|
 
 > Example responses
-
+>
 > 200 Response
 
 ```json
@@ -512,11 +516,10 @@ This operation requires <strong>Basic Auth</strong> authentication.
 
 ```shell
 
-curl -X POST https://localhost:9543/api/v0.9/apis/{apiId}/api-keys/revoke \
-  -u {username}:{password} \
+curl -X POST https://localhost:9543/api-portal/api/v0.9/apis/{apiId}/api-keys/revoke \
+  -H 'Authorization: Bearer {access_token}' \
   -H 'Content-Type: application/json' \
   -H 'Accept: application/json' \
-  -H 'Authorization: Bearer {access-token}' \
   -d @payload.json
 
 ```
@@ -534,7 +537,9 @@ Revokes an existing API key identified by `keyId` in the request body. An `apike
 ### Authentication
 
 <aside class="warning">
-This operation requires <strong>Basic Auth</strong> authentication.
+This operation requires a <strong>Bearer JWT</strong> access token in the <code>Authorization</code> header.
+
+Required scopes (the token must carry at least one of): `dp:api_key:revoke`, `dp:api_key:manage`
 
 </aside>
 
@@ -547,7 +552,7 @@ This operation requires <strong>Basic Auth</strong> authentication.
 |apiId|path|string|true|The API's handle (unique per org). Resolves only to REST/SOAP/WS/WebSub/GraphQL APIs — MCP servers are addressed via `/mcp-servers`.|
 
 > Example responses
-
+>
 > 403 Response
 
 ```json
@@ -608,11 +613,10 @@ This operation requires <strong>Basic Auth</strong> authentication.
 
 ```shell
 
-curl -X POST https://localhost:9543/api/v0.9/apis/{apiId}/api-keys/associate \
-  -u {username}:{password} \
+curl -X POST https://localhost:9543/api-portal/api/v0.9/apis/{apiId}/api-keys/associate \
+  -H 'Authorization: Bearer {access_token}' \
   -H 'Content-Type: application/json' \
   -H 'Accept: application/json' \
-  -H 'Authorization: Bearer {access-token}' \
   -d @payload.json
 
 ```
@@ -631,7 +635,9 @@ Associates (or re-associates) an existing API key with an application, for analy
 ### Authentication
 
 <aside class="warning">
-This operation requires <strong>Basic Auth</strong> authentication.
+This operation requires a <strong>Bearer JWT</strong> access token in the <code>Authorization</code> header.
+
+Required scopes (the token must carry at least one of): `dp:api_key:update`, `dp:api_key:manage`
 
 </aside>
 
@@ -645,7 +651,7 @@ This operation requires <strong>Basic Auth</strong> authentication.
 |apiId|path|string|true|The API's handle (unique per org). Resolves only to REST/SOAP/WS/WebSub/GraphQL APIs — MCP servers are addressed via `/mcp-servers`.|
 
 > Example responses
-
+>
 > 200 Response
 
 ```json
@@ -742,11 +748,10 @@ This operation requires <strong>Basic Auth</strong> authentication.
 
 ```shell
 
-curl -X POST https://localhost:9543/api/v0.9/apis/{apiId}/api-keys/dissociate \
-  -u {username}:{password} \
+curl -X POST https://localhost:9543/api-portal/api/v0.9/apis/{apiId}/api-keys/dissociate \
+  -H 'Authorization: Bearer {access_token}' \
   -H 'Content-Type: application/json' \
   -H 'Accept: application/json' \
-  -H 'Authorization: Bearer {access-token}' \
   -d @payload.json
 
 ```
@@ -764,7 +769,9 @@ Removes the application association from an API key identified by `keyId` in the
 ### Authentication
 
 <aside class="warning">
-This operation requires <strong>Basic Auth</strong> authentication.
+This operation requires a <strong>Bearer JWT</strong> access token in the <code>Authorization</code> header.
+
+Required scopes (the token must carry at least one of): `dp:api_key:update`, `dp:api_key:manage`
 
 </aside>
 
@@ -777,7 +784,7 @@ This operation requires <strong>Basic Auth</strong> authentication.
 |apiId|path|string|true|The API's handle (unique per org). Resolves only to REST/SOAP/WS/WebSub/GraphQL APIs — MCP servers are addressed via `/mcp-servers`.|
 
 > Example responses
-
+>
 > 403 Response
 
 ```json
@@ -827,10 +834,9 @@ This operation requires <strong>Basic Auth</strong> authentication.
 
 ```shell
 
-curl -X GET https://localhost:9543/api/v0.9/applications/{applicationId}/api-keys \
-  -u {username}:{password} \
-  -H 'Accept: application/json' \
-  -H 'Authorization: Bearer {access-token}'
+curl -X GET https://localhost:9543/api-portal/api/v0.9/applications/{applicationId}/api-keys \
+  -H 'Authorization: Bearer {access_token}' \
+  -H 'Accept: application/json'
 
 ```
 
@@ -839,7 +845,9 @@ Lists all API keys (across every API) currently associated with the given applic
 ### Authentication
 
 <aside class="warning">
-This operation requires <strong>Basic Auth</strong> authentication.
+This operation requires a <strong>Bearer JWT</strong> access token in the <code>Authorization</code> header.
+
+Required scopes (the token must carry at least one of): `dp:api_key:read`, `dp:api_key:manage`
 
 </aside>
 
@@ -852,7 +860,7 @@ This operation requires <strong>Basic Auth</strong> authentication.
 |applicationId|path|string|true|The application's handle (unique per org).|
 
 > Example responses
-
+>
 > 200 Response
 
 ```json

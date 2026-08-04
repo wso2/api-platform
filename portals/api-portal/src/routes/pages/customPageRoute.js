@@ -26,19 +26,10 @@ const { attachOrgGuard } = require('../../middlewares/orgGuard');
 // anything else is a 404 before the route's own handlers run.
 attachOrgGuard(router);
 
-// Exclude specific paths. Express 5 / path-to-regexp v8 no longer accepts bare `*`
-// or prefix globs in string paths, so the glob entries are expressed as RegExps
-// (a RegExp path is matched directly, bypassing path-to-regexp).
-router.get([
-    '/favicon.ico',
-    /^\/images\//,
-    /^\/technical-styles\//,
-    /^\/styles\//,
-    /^\/login/,
-    /^\/portal/,
-  ], (req, res) => {
-    res.status(404).send('Not found');
-  });
+// No reserved-path denylist here: the only route below requires a literal `/views/`
+// segment, so a root path like /favicon.ico or /images/x never matches it and simply
+// falls through to app.js's 404. The configLoader RESERVED_ORG_HANDLES check keeps the
+// org handle itself from colliding with those root paths.
 
 // Trailing `*` -> named wildcard `*splat` (v8 requires named wildcards). The handler
 // derives the file path from req.originalUrl, so the captured param is unused.

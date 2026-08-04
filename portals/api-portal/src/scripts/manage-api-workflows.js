@@ -767,14 +767,14 @@ function copySpecPrompt() {
     const apis = getSelectedAPIs();
     if (apis.length === 0) return;
 
-    const pathParts = window.location.pathname.split('/');
+    const pathParts = window.location.pathname.slice((window.apiPortalApi.basePath || '').length).split('/');
     const orgHandle = pathParts[1] || '';
     const viewName = currentViewName || 'default';
     const name = document.getElementById('apiWorkflowName')?.value?.trim() || '';
     const description = document.getElementById('apiWorkflowDescription')?.value?.trim() || '';
 
     const apiContext = apis.map(a => {
-        const url = `${window.location.origin}/${orgHandle}/views/${viewName}/api/${a.apiHandle}/docs/specification.json`;
+        const url = `${window.location.origin}${window.apiPortalApi.basePath}/${orgHandle}/views/${viewName}/api/${a.apiHandle}/docs/specification.json`;
         return `- **${a.apiName}** (${a.apiType || 'REST'}): ${a.apiDescription || 'No description provided'}\n  OpenAPI spec: ${url}`;
     }).join('\n');
 
@@ -863,13 +863,13 @@ function buildPromptContext() {
     const name = document.getElementById('apiWorkflowName')?.value?.trim() || '';
     const description = document.getElementById('apiWorkflowDescription')?.value?.trim() || '';
     const apis = getSelectedAPIs();
-    const pathParts = window.location.pathname.split('/');
+    const pathParts = window.location.pathname.slice((window.apiPortalApi.basePath || '').length).split('/');
     const orgHandle = pathParts[1] || '';
     const viewName = currentViewName || 'default';
 
     const apiContext = apis.length > 0
         ? apis.map(a => {
-            const url = `${window.location.origin}/${orgHandle}/views/${viewName}/api/${a.apiHandle}/docs/specification.json`;
+            const url = `${window.location.origin}${window.apiPortalApi.basePath}/${orgHandle}/views/${viewName}/api/${a.apiHandle}/docs/specification.json`;
             return `- **${a.apiName}** (${a.apiType || 'REST'}): ${a.apiDescription || 'No description provided'}\n  OpenAPI spec: ${url}`;
         }).join('\n')
         : '*(No APIs pre-selected — select the required APIs from the Associated APIs section above. For APIs published in the API Portal, the Source Description will be auto-generated.)*';
@@ -1092,7 +1092,7 @@ function renderApiCards(query) {
 
     const workflowVisibleToAgents = document.querySelector('input[name="apiWorkflowAgentVisibility"]:checked')?.value === 'VISIBLE';
 
-    const pathParts = window.location.pathname.split('/');
+    const pathParts = window.location.pathname.slice((window.apiPortalApi.basePath || '').length).split('/');
     const orgHandle = pathParts[1] || '';
     const viewName  = currentViewName || 'default';
 
@@ -1106,7 +1106,7 @@ function renderApiCards(query) {
         const disabledTooltip = isDisabled
             ? `<span class="af-api-card-tooltip">This API is not AI ready and cannot be selected for an AI-visible workflow</span>`
             : '';
-        const docsUrl = `/${orgHandle}/views/${viewName}/api/${cb.dataset.apiHandle}.md`;
+        const docsUrl = `${window.apiPortalApi.basePath}/${orgHandle}/views/${viewName}/api/${cb.dataset.apiHandle}.md`;
         const extLink = isAgentReady
             ? `<a class="af-api-card-ext-link" href="${docsUrl}" target="_blank" rel="noopener"
                   title="Open API docs" aria-label="Open ${sanitizeInput(cb.dataset.apiName)} docs in new tab">
@@ -1174,7 +1174,7 @@ async function updatePromptFromForm() {
     const name = document.getElementById('apiWorkflowName')?.value?.trim() || '';
     const description = document.getElementById('apiWorkflowDescription')?.value?.trim() || '';
     const apis = getSelectedAPIs();
-    const pathParts = window.location.pathname.split('/');
+    const pathParts = window.location.pathname.slice((window.apiPortalApi.basePath || '').length).split('/');
     const orgName = pathParts[1] || '';
     const viewName = currentViewName || 'default';
     const editingId = document.getElementById('editingApiWorkflowId')?.value || '';
@@ -1182,7 +1182,7 @@ async function updatePromptFromForm() {
     const handle = editingFlow?.id || getWorkflowHandle(name);
 
     try {
-        const response = await fetch(`/${orgName}/views/${viewName}/api-workflows/generate-prompt`, {
+        const response = await fetch(`${window.apiPortalApi.basePath}/${orgName}/views/${viewName}/api-workflows/generate-prompt`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': csrfToken },
             body: JSON.stringify({ displayName: name, description, apis, orgHandle: orgName, viewName, id: handle }),
@@ -1218,7 +1218,7 @@ function updateWorkflowMdPreview() {
         return;
     }
 
-    const pathParts = window.location.pathname.split('/');
+    const pathParts = window.location.pathname.slice((window.apiPortalApi.basePath || '').length).split('/');
     const orgHandle = pathParts[1] || '';
     const viewName = currentViewName || 'default';
     const editingId = document.getElementById('editingApiWorkflowId')?.value;
@@ -1234,7 +1234,7 @@ function updateWorkflowMdPreview() {
     if (apis.length > 0) {
         md += `\n## Sources\n\n`;
         apis.forEach(a => {
-            const url = `/${orgHandle}/views/${viewName}/api/${a.apiHandle}/docs/specification.json`;
+            const url = `${window.apiPortalApi.basePath}/${orgHandle}/views/${viewName}/api/${a.apiHandle}/docs/specification.json`;
             md += `- **${a.apiName}** — [API Documentation](${url})\n`;
         });
         md += `\n> Refer to each source for base URLs, endpoints, security schemes, and any additional documentation needed to execute this workflow.\n`;
@@ -1252,7 +1252,7 @@ function updateWorkflowMdPreview() {
     } else {
         const spec = arazoEditor ? arazoEditor.getValue().trim() : (document.getElementById('apiWorkflowDefinition')?.value?.trim() || '');
         md += `\n## API Workflow Specification\n\n`;
-        md += `[arazzo.json](/${orgHandle}/views/${viewName}/api-workflows/${handle}/arazzo.json)\n\n`;
+        md += `[arazzo.json](${window.apiPortalApi.basePath}/${orgHandle}/views/${viewName}/api-workflows/${handle}/arazzo.json)\n\n`;
         if (spec) {
             md += '``````\n' + spec + '\n``````\n'; // Use 6 backticks so rendering holds even if the spec contains up to 5
         } else {
@@ -1583,8 +1583,8 @@ function buildArazzoSpec(name, description, apis, orgHandle, viewName) {
     const sourceDescriptions = apis.map(api => {
         const handle = api.apiHandle || api.API_HANDLE || '';
         const path = orgHandle
-            ? `/${orgHandle}/views/${viewName}/api/${handle}/docs/specification.json`
-            : `/views/${viewName}/api/${handle}/docs/specification.json`;
+            ? `${window.apiPortalApi.basePath}/${orgHandle}/views/${viewName}/api/${handle}/docs/specification.json`
+            : `${window.apiPortalApi.basePath}/views/${viewName}/api/${handle}/docs/specification.json`;
         const url = `${window.location.origin}${path}`;
         const apiName = api.apiName || api.API_NAME || '';
         const sdName = apiName || handle || 'api-' + (apis.indexOf(api) + 1);
@@ -1635,7 +1635,7 @@ function generateArazzoSpec() {
     const name = document.getElementById('apiWorkflowName')?.value?.trim() || '';
     const description = document.getElementById('apiWorkflowDescription')?.value?.trim() || '';
     const apis = getSelectedAPIs();
-    const pathParts = window.location.pathname.split('/');
+    const pathParts = window.location.pathname.slice((window.apiPortalApi.basePath || '').length).split('/');
     const orgHandle = pathParts[1] || '';
     const viewName = currentViewName || 'default';
 

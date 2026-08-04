@@ -51,7 +51,7 @@ services:
     # build) instead of the last release — this fixture's config-platform-api-it.toml
     # tracks platform-api's current config schema, which a pinned old release may not
     # understand.
-    image: ${PLATFORM_API_IMAGE:-ghcr.io/wso2/api-platform/platform-api:0.14.0-SNAPSHOT}
+    image: ${PLATFORM_API_IMAGE:-ghcr.io/wso2/api-platform/platform-api:0.15.0}
     command: ["-config", "/etc/platform-api/config-platform-api.toml"]
     environment:
       APIP_CP_ENCRYPTION_KEY: "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"

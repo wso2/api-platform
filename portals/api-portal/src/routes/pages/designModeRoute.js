@@ -42,19 +42,11 @@ router.get('/views/:viewName/mcp/:apiHandle/docs/:docType/:docName', registerPar
 
 router.get('/views/:viewName/applications', registerPartials, applicationController.loadApplications);
 
-// Exclude specific paths (login, applications, org settings intentionally disabled in
-// design mode). Express 5 / path-to-regexp v8: bare `*`/prefix globs are expressed as
-// RegExps; the `:orgName/settings` param path stays a string.
-router.get([
-    '/favicon.ico',
-    /^\/images\//,
-    /^\/styles\//,
-    /^\/login/,
-    /^\/views\//,
-    '/:orgName/settings',
-], (req, res) => {
-    res.status(404).send('Not found');
-});
+// No reserved-path denylist: a root path that doesn't match one of the specific
+// /views/:viewName routes above falls through to the catch-all below, where
+// loadCustomContent resolves no orgName/viewName param and answers a clean 404 — so
+// login/images/styles/settings paths (all disabled in design mode) 404 without an
+// explicit exclusion list.
 
 // Trailing `*` -> named wildcard `*splat`; handler reads req.originalUrl, param unused.
 router.get('/:path/*splat', registerPartials, contentController.loadCustomContent);
