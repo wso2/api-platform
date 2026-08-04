@@ -35,8 +35,9 @@
 #                                      operation lists the parent :manage in its
 #                                      own accepted-scope set, so granting
 #                                      ap:llm_provider:manage already covers
-#                                      ap:llm_provider:api_key:* and
-#                                      ap:llm_provider:deployment:*. Grant a
+#                                      every ap:llm_provider:api_key:… and
+#                                      ap:llm_provider:deployment:… operation.
+#                                      Grant a
 #                                      subresource scope only to a role that does
 #                                      NOT hold the parent :manage — listing both
 #                                      is redundant.
@@ -49,6 +50,10 @@
 #   dp:<resource>:manage             — every action on that API Portal resource
 #                                      (API Portal read operations accept the
 #                                      :manage scope as well as :read)
+#
+# There is no wildcard form: a scope grants only the operations that list it, so
+# every scope a role needs must be spelled out here. A "*" in any segment is
+# rejected as malformed at startup.
 #
 # This file requires a server restart to take effect.
 

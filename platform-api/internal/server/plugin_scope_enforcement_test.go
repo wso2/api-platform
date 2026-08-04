@@ -162,7 +162,7 @@ func TestScopeEnforcementOnRealPluginRoutes(t *testing.T) {
 		{"delete scope on another resource", "ap:webbroker_api:delete", http.StatusForbidden},
 		{"declared delete scope", "ap:websub_api:delete", http.StatusOK},
 		{"declared manage scope", "ap:websub_api:manage", http.StatusOK},
-		{"resource wildcard", "ap:websub_api:*", http.StatusOK},
+		{"resource wildcard grants nothing", "ap:websub_api:*", http.StatusForbidden},
 	}
 
 	for _, tc := range tests {

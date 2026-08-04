@@ -159,7 +159,10 @@ func TestScopeEnforcer_DeniesWithoutRequiredScope(t *testing.T) {
 		{"read scope on a manage operation", "ap:gateway:read", http.MethodDelete, "/api/v0.9/gateways/gw-1"},
 		{"manage scope on another resource", "ap:organization:manage", http.MethodGet, "/api/v0.9/gateways/gw-1"},
 		{"neither of the accepted scopes", "ap:gateway:read ap:project:manage", http.MethodGet, "/api/v0.9/secrets"},
-		{"wildcard scoped to another resource", "ap:project:*", http.MethodGet, "/api/v0.9/gateways/gw-1"},
+		// Wildcards are not a scope form: only a scope declared in the spec and
+		// held outright grants an operation.
+		{"resource wildcard grants nothing", "ap:gateway:*", http.MethodDelete, "/api/v0.9/gateways/gw-1"},
+		{"root wildcard grants nothing", "ap:*", http.MethodGet, "/api/v0.9/gateways/gw-1"},
 	}
 
 	for _, tc := range tests {
@@ -188,8 +191,6 @@ func TestScopeEnforcer_AllowsWithRequiredScope(t *testing.T) {
 		{"one of several space-separated scopes", "ap:project:read ap:organization:manage ap:gateway:read", http.MethodPost, "/api/v0.9/organizations"},
 		{"first of two accepted scopes", "ap:secret:read", http.MethodGet, "/api/v0.9/secrets"},
 		{"second of two accepted scopes", "ap:secret:manage", http.MethodGet, "/api/v0.9/secrets"},
-		{"resource wildcard", "ap:gateway:*", http.MethodDelete, "/api/v0.9/gateways/gw-1"},
-		{"root wildcard covers a resource action", "ap:*", http.MethodGet, "/api/v0.9/gateways/gw-1"},
 		{"method-specific read scope on the read operation", "ap:organization:read", http.MethodGet, "/api/v0.9/organizations"},
 	}
 

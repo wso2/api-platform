@@ -43,23 +43,15 @@ A `GET` with no side effects is **always** `:read`, even if the URL segment look
 - `GET /rest-apis/validate` → `<prefix>:rest_api:read` (not `:validate`)
 - `GET /.../{id}/preview` → `<prefix>:...:read` (not `:preview`)
 
-**Rule 4 — Wildcards: `:*`, own-level only.**
-`:*` covers all actions directly at that level — never descends into sub-resources, never matches a prefix (e.g. `application*`), never transitive.
-
-| Wildcard | Covers |
-|---|---|
-| `<prefix>:*` | Every action on **root-level resources** (`gateway:create`, `rest_api:read`, …). Own-level like every `:*` — **not** sub-resources such as `gateway:token:*` or `application:api_key:*`. |
-| `<prefix>:<resource>:*` | All actions **directly** on the resource. **Not** its sub-resources. |
-| `<prefix>:<resource>:<sub>:*` | All actions directly on that sub-resource. |
-
-This means a token with `ap:gateway:*` satisfies `ap:gateway:create` but **not** `ap:gateway:token:create` — that sub-resource needs its own grant (`ap:gateway:token:*` or `ap:gateway:token:create`).
+**Rule 4 — No wildcards: every scope is spelled out.**
+There is no `:*` form. A held scope grants an operation only when it appears verbatim in that operation's accepted-scope list, so every scope a role needs must be declared in the spec and granted by name. Breadth comes from `:manage`: a resource's `:manage` scope is listed in its own and its sub-resources' accepted-scope sets, which is what makes `ap:gateway:manage` cover `ap:gateway:token:create`.
 
 **Rule 5 — URLs first, scopes follow.**
 Design the REST URL first, then derive the scope from the *subject being operated on* — not from literal URL path segments. Restructure the URL (e.g. move an action under its `{id}` path, filter with a query param instead of a nested read) before inventing a verb.
 
 ## Writing the path (design it first)
 
-Get the REST URL right *before* you name the scope (Rule 4):
+Get the REST URL right *before* you name the scope (Rule 5):
 
 - **Casing differs from scopes — don't force them to match.** URL segments stay **kebab-case**; scopes are **snake_case**. `POST /devportals/{id}/set-default` → scope `<prefix>:devportal:set_default`. `POST /rest-apis/import-openapi` → scope `<prefix>:rest_api:import`.
 - **Collections are plural nouns.** `/rest-apis`, `/projects`, `/gateways`, `/versions`. Item is `…/{id}`. Never add a literal sibling GET next to `GET /collection/{id}` (e.g. no `GET /rest-apis/validate` beside `GET /rest-apis/{id}`).

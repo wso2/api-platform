@@ -146,7 +146,7 @@ func ScopeEnforcer(registry *ScopeRegistry, cfg ScopeEnforcerConfig) (func(http.
 
 			for _, required := range requiredScopes {
 				for _, have := range effectiveScopes {
-					if scopeSatisfies(have, required) {
+					if have == required {
 						next.ServeHTTP(w, r)
 						return
 					}
@@ -171,29 +171,6 @@ func hasPathPrefix(reqPath string, prefixes []string) bool {
 	return authenticators.HasPathPrefix(reqPath, prefixes)
 }
 
-// scopeSatisfies reports whether a held scope grants a required scope.
-func scopeSatisfies(have, required string) bool {
-	if have == required {
-		return true
-	}
-	if !strings.HasSuffix(have, ":*") {
-		return false
-	}
-	base := strings.TrimSuffix(have, "*")
-	if !strings.HasPrefix(required, base) {
-		return false
-	}
-	remainder := required[len(base):]
-	if remainder == "" {
-		return false
-	}
-	segments := strings.Count(remainder, ":") + 1
-	if strings.Count(base, ":") == 1 {
-		return segments == 2
-	}
-	return segments == 1
-}
-
 // resolveEffectiveScopes returns the effective scopes for the request.
 func resolveEffectiveScopes(r *http.Request, mode string) []string {
 	if mode == ValidationModeRole {
@@ -206,11 +183,12 @@ func resolveEffectiveScopes(r *http.Request, mode string) []string {
 
 // HasEffectiveScope reports whether the request's effective scopes (the scope
 // claim in "scope" mode, or IDP roles expanded via the role-scope map in
-// "role" mode) satisfy the given scope, honoring ":*" wildcards the same way
-// ScopeEnforcer does.
+// "role" mode) include the given scope. Matching is exact, the same way
+// ScopeEnforcer matches: a scope grants only what it names, so every scope a
+// caller needs must be declared in the OpenAPI spec and held outright.
 func HasEffectiveScope(r *http.Request, mode, scope string) bool {
 	for _, have := range resolveEffectiveScopes(r, mode) {
-		if scopeSatisfies(have, scope) {
+		if have == scope {
 			return true
 		}
 	}

@@ -214,9 +214,10 @@ const NON_DERIVABLE_SCOPE_SUFFIX = ':all:manage';
  * Check whether a set of scopes grants a requested scope.
  *
  * Mirrors how platform-api actually authorizes a request: each operation in
- * openapi.yaml declares a list of accepted scopes, and
- * `scopeSatisfies` (`platform-api/internal/middleware/authorization.go`) admits
- * the caller if any held scope matches any entry in that list. Rules:
+ * openapi.yaml declares a list of accepted scopes, and `ScopeEnforcer`
+ * (`platform-api/internal/middleware/authorization.go`) admits the caller if a
+ * held scope matches an entry in that list exactly — there is no wildcard form.
+ * Rules:
  *
  *  1. Exact match — the scope is directly present.
  *  2. Own-level `:manage` — an operation accepting `<level>:<action>` also
@@ -229,19 +230,12 @@ const NON_DERIVABLE_SCOPE_SUFFIX = ':all:manage';
  *     `ap:llm_provider:api_key:create`, `ap:llm_provider:deployment:read`, etc.
  *     This holds for 47 of the 48 sub-resource operations in the spec; the sole
  *     exception is the override scope excluded above.
- *  4. Own-level `:*` wildcard — as on the backend, a wildcard covers only the
- *     actions directly at its level and never descends into a sub-resource
- *     (`ap:gateway:*` grants `ap:gateway:create`, not `ap:gateway:token:create`).
  */
 export function checkPermission(userScopes: string[], scope: string): boolean {
   if (userScopes.includes(scope)) return true;
 
   const parts = scope.split(':');
   if (parts.length < 2) return false;
-
-  // Own-level wildcard: `ap:gateway:*` covers `ap:gateway:create` only.
-  const ownLevel = parts.slice(0, -1).join(':');
-  if (userScopes.includes(`${ownLevel}:*`)) return true;
 
   if (scope.endsWith(NON_DERIVABLE_SCOPE_SUFFIX)) return false;
 
