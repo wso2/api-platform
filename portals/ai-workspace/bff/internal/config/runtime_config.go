@@ -88,9 +88,13 @@ func buildRuntimeConfig(cfg *Config, k *koanf.Koanf) map[string]string {
 		}
 	}
 
-	// Force the SPA's API base URLs through the BFF same-origin proxy.
-	out[runtimeKey("platform_api_base_url")] = cfg.ControlPlane.ProxyPrefix + "/api/v0.9"
-	out[runtimeKey("portal_api_base_url")] = cfg.ControlPlane.ProxyPrefix + "/api/portal/v0.9"
+	// Force the SPA's API base URLs through the BFF same-origin proxy, under the
+	// path prefix the app is served on — the SPA issues these as absolute paths, so
+	// a base-path deployment needs the prefix included or they would resolve at the
+	// origin root, outside anything this server routes.
+	proxyBase := BasePath + cfg.ControlPlane.ProxyPrefix
+	out[runtimeKey("platform_api_base_url")] = proxyBase + "/api/v0.9"
+	out[runtimeKey("portal_api_base_url")] = proxyBase + "/api/portal/v0.9"
 	out[runtimeKey("auth_mode")] = cfg.Auth.Mode
 
 	return out

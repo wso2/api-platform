@@ -29,6 +29,17 @@ declare global {
 
 import { getEnvOrDefault } from './utils/getEnvOrDefault';
 
+// URL path prefix this app is served under, with no trailing slash ('' when served at
+// the origin root). Read off Vite's BASE_URL rather than a runtime config value: the
+// prefix is fixed at build time (index.html references its assets by absolute path),
+// so BASE_URL is the one value that cannot disagree with how the bundle was built.
+//
+// Router paths do NOT need it — BrowserRouter is mounted with basename={BASE_PATH}, so
+// navigate()/<Link to> are already relative to it. It IS needed for anything the
+// router doesn't own: absolute fetch() paths to the BFF, window.location assignments,
+// and OIDC redirect URIs.
+export const BASE_PATH = import.meta.env.BASE_URL.replace(/\/$/, '');
+
 /*
  * Single line environment variable definitions with defaults using getEnvOrDefault utility to improve readability and maintainability.
  */
@@ -96,11 +107,11 @@ export const OIDC_SCOPE = getEnvOrDefault(
 // listener/domain it's actually being served from (unlike a static config value).
 export const OIDC_REDIRECT_URI = getEnvOrDefault(
   'APIP_AIW_OIDC_REDIRECT_URI',
-  `${window.location.origin}/signin`
+  `${window.location.origin}${BASE_PATH}/signin`
 );
 export const OIDC_POST_LOGOUT_REDIRECT_URI = getEnvOrDefault(
   'APIP_AIW_OIDC_POST_LOGOUT_REDIRECT_URI',
-  `${window.location.origin}/login`
+  `${window.location.origin}${BASE_PATH}/login`
 );
 
 // API Base URLs
@@ -176,13 +187,15 @@ export const POLICY_HUB_WEB_URL = getEnvOrDefault(
 // path to attach credentials to those calls.
 export const PLATFORM_API_BASE_URL = getEnvOrDefault(
   'APIP_AIW_PLATFORM_API_BASE_URL',
-  '/proxy/api/v0.9'
+  `${BASE_PATH}/proxy/api/v0.9`
 );
 
-// Base URL for BFF composite endpoints. These are handled directly by the BFF
-// (not forwarded to the Platform API) and provide server-side compensation logic
-// for multi-step operations such as secret creation + resource creation.
-export const BFF_COMPOSITE_BASE_URL = '/api/bff';
+// Base URL for the BFF's own API — the routes it answers itself instead of forwarding:
+// session/login/logout, and the handful of creates that span two Platform API calls
+// (secret + resource) and need server-side compensation when the second fails. Callers
+// use it exactly like PLATFORM_API_BASE_URL above; which of the two a resource lives
+// under is the only thing that says who handles the request.
+export const BFF_API_BASE_URL = `${BASE_PATH}/api`;
 
 // Control-plane host shown in gateway setup instructions (host:port).
 // Distinct from PLATFORM_API_BASE_URL which may be a relative nginx proxy path.
@@ -193,7 +206,7 @@ export const CONTROLPLANE_HOST = getEnvOrDefault(
 
 export const PORTAL_API_BASE_URL = getEnvOrDefault(
   'APIP_AIW_PORTAL_API_BASE_URL',
-  '/proxy/api/portal/v0.9'
+  `${BASE_PATH}/proxy/api/portal/v0.9`
 );
 
 // CSRF header sent on all BFF requests. Cross-site attackers cannot set a custom

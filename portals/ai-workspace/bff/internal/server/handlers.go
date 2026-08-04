@@ -22,10 +22,12 @@ import (
 	"errors"
 	"log/slog"
 	"net/http"
+	"net/url"
 	"strings"
 	"time"
 
 	"ai-workspace-bff/internal/auth"
+	"ai-workspace-bff/internal/config"
 	"ai-workspace-bff/internal/proxy"
 	"ai-workspace-bff/internal/session"
 )
@@ -41,7 +43,7 @@ type loginRequest struct {
 	Password string `json:"password"`
 }
 
-// handleLogin (POST /api/login) — file-based credentials → server-side session.
+// handleLogin (POST <base>/api/login) — file-based credentials → server-side session.
 func (s *Server) handleLogin(w http.ResponseWriter, r *http.Request) {
 	if s.fileBased == nil {
 		writeErrorJSON(w, http.StatusBadRequest, "AUTH_METHOD_DISABLED", "file-based auth is not enabled")
@@ -83,7 +85,7 @@ func (s *Server) handleLogin(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]any{"user": sess.User, "accessToken": sess.AccessToken})
 }
 
-// handleLogout (POST /api/logout) — clear the cookie and (OIDC) drop the
+// handleLogout (POST <base>/api/logout) — clear the cookie and (OIDC) drop the
 // refresh-state entry, returning the IDP end-session URL.
 func (s *Server) handleLogout(w http.ResponseWriter, r *http.Request) {
 	jwt, _ := s.tokenFromCookie(r)
@@ -101,7 +103,7 @@ func (s *Server) handleLogout(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNoContent)
 }
 
-// handleSession (GET /api/session) — hydrate the SPA, including the access token.
+// handleSession (GET <base>/api/session) — hydrate the SPA, including the access token.
 func (s *Server) handleSession(w http.ResponseWriter, r *http.Request) {
 	// Per-user authentication state (and the token it now carries) must never be
 	// cached by browsers or proxies.
@@ -122,13 +124,13 @@ func (s *Server) handleSession(w http.ResponseWriter, r *http.Request) {
 // OIDC
 // ---------------------------------------------------------------------------
 
-// handleOIDCLogin (GET /api/auth/login) — redirect to the IDP authorize endpoint.
+// handleOIDCLogin (GET <base>/api/auth/login) — redirect to the IDP authorize endpoint.
 func (s *Server) handleOIDCLogin(w http.ResponseWriter, r *http.Request) {
 	if s.oidc == nil {
 		writeErrorJSON(w, http.StatusBadRequest, "AUTH_METHOD_DISABLED", "oidc auth is not enabled")
 		return
 	}
-	ret := sanitizeReturn(r.URL.Query().Get("return"))
+	ret := s.sanitizeReturn(r.URL.Query().Get("return"))
 	authURL, txID, err := s.oidc.AuthCodeURL(ret)
 	if err != nil {
 		slog.Error("oidc authorize url failed", "err", err)
@@ -139,7 +141,7 @@ func (s *Server) handleOIDCLogin(w http.ResponseWriter, r *http.Request) {
 	http.Redirect(w, r, authURL, http.StatusFound)
 }
 
-// handleOIDCCallback (GET /api/auth/callback) — exchange code, create session.
+// handleOIDCCallback (GET <base>/api/auth/callback) — exchange code, create session.
 func (s *Server) handleOIDCCallback(w http.ResponseWriter, r *http.Request) {
 	if s.oidc == nil {
 		writeErrorJSON(w, http.StatusBadRequest, "AUTH_METHOD_DISABLED", "oidc auth is not enabled")
@@ -148,7 +150,7 @@ func (s *Server) handleOIDCCallback(w http.ResponseWriter, r *http.Request) {
 	q := r.URL.Query()
 	if errCode := q.Get("error"); errCode != "" {
 		slog.Warn("oidc callback error", "error", errCode, "desc", q.Get("error_description"))
-		http.Redirect(w, r, "/login?error="+errCode, http.StatusFound)
+		http.Redirect(w, r, s.path("/login")+"?error="+url.QueryEscape(errCode), http.StatusFound)
 		return
 	}
 
@@ -161,24 +163,24 @@ func (s *Server) handleOIDCCallback(w http.ResponseWriter, r *http.Request) {
 	sess, ret, err := s.oidc.Callback(r.Context(), txID, q.Get("state"), q.Get("code"))
 	if err != nil {
 		slog.Warn("oidc callback failed", "err", err)
-		http.Redirect(w, r, "/login?error=auth_failed", http.StatusFound)
+		http.Redirect(w, r, s.path("/login")+"?error=auth_failed", http.StatusFound)
 		return
 	}
 	// OIDC: the cookie carries the access JWT, while the refresh/id tokens are
 	// kept server-side keyed by that JWT so the proxy can renew it later.
 	if err := s.putRefreshState(r.Context(), sess); err != nil {
-		http.Redirect(w, r, "/login?error=session_failed", http.StatusFound)
+		http.Redirect(w, r, s.path("/login")+"?error=session_failed", http.StatusFound)
 		return
 	}
 	s.setSessionCookie(w, sess.AccessToken, sess.AbsoluteExpiry)
-	http.Redirect(w, r, sanitizeReturn(ret), http.StatusFound)
+	http.Redirect(w, r, s.sanitizeReturn(ret), http.StatusFound)
 }
 
 // ---------------------------------------------------------------------------
 // Reverse proxy
 // ---------------------------------------------------------------------------
 
-// handleProxy (/proxy/*) — take the JWT straight from the cookie and forward
+// handleProxy (<base>/proxy/*) — take the JWT straight from the cookie and forward
 // it upstream. No server-side lookup is involved unless the token is an OIDC
 // access token that is near expiry and must be refreshed.
 func (s *Server) handleProxy(w http.ResponseWriter, r *http.Request) {
@@ -214,7 +216,7 @@ func (s *Server) handleProxy(w http.ResponseWriter, r *http.Request) {
 // Runtime config / health
 // ---------------------------------------------------------------------------
 
-// handleRuntimeConfig (GET /runtime-config.js) — emit window.__RUNTIME_CONFIG__.
+// handleRuntimeConfig (GET <base>/runtime-config.js) — emit window.__RUNTIME_CONFIG__.
 func (s *Server) handleRuntimeConfig(w http.ResponseWriter, _ *http.Request) {
 	w.Header().Set("Content-Type", "application/javascript")
 	w.Header().Set("Cache-Control", "no-store")
@@ -373,10 +375,19 @@ func writeServerErrorJSON(w http.ResponseWriter, status int, code, message, trac
 	writeJSON(w, status, errorBody{Status: "error", Code: code, Message: message, TrackingID: trackingID})
 }
 
-// sanitizeReturn ensures redirect targets are local paths (no open redirect).
-func sanitizeReturn(p string) string {
+// sanitizeReturn ensures redirect targets are local paths inside this app (no open
+// redirect). The SPA sends its own window.location.pathname, which already carries
+// the base path, so anything landing outside the prefix — another portal on the same
+// host, or a scheme-relative "//host" that a browser would treat as absolute — is
+// replaced by the app root rather than followed or echoed back.
+func (s *Server) sanitizeReturn(p string) string {
+	home := s.path("/")
 	if p == "" || !strings.HasPrefix(p, "/") || strings.HasPrefix(p, "//") {
-		return "/"
+		return home
 	}
-	return strings.ReplaceAll(strings.ReplaceAll(p, "\r", ""), "\n", "")
+	p = strings.ReplaceAll(strings.ReplaceAll(p, "\r", ""), "\n", "")
+	if p != config.BasePath && !strings.HasPrefix(p, home) {
+		return home
+	}
+	return p
 }

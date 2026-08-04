@@ -20,6 +20,7 @@ import React, { useCallback, useMemo } from 'react';
 import { useAuth } from 'react-oidc-context';
 import { AppAuthContext, type AppUser, type AppOrg } from './AppAuthContext';
 import {
+  BASE_PATH,
   USERNAME_CLAIM,
   EMAIL_CLAIM,
   ORG_ID_CLAIM,
@@ -110,7 +111,7 @@ export function OIDCAppAuthProvider({ children }: { children: React.ReactNode })
     } catch {
       // IDP has no end_session_endpoint or the call failed — user is already
       // logged out locally, just send them to the sign-in page.
-      window.location.href = '/login';
+      window.location.href = `${BASE_PATH}/login`;
     }
   }, [auth]);
 

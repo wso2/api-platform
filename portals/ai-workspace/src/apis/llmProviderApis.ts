@@ -18,7 +18,7 @@
 
 import { get, post, put, del } from '../clients/choreoApiClient';
 import { logger } from '../utils/logger';
-import { PLATFORM_API_BASE_URL, BFF_COMPOSITE_BASE_URL } from '../config.env';
+import { PLATFORM_API_BASE_URL, BFF_API_BASE_URL } from '../config.env';
 
 // ============================================================================
 // Type Definitions (moved to `src/utils/types.ts`)
@@ -177,7 +177,7 @@ export async function createLLMProvider(
     const response = await post<LLMProvider>(
       `/llm-providers`,
       fullProvider,
-      BFF_COMPOSITE_BASE_URL
+      BFF_API_BASE_URL
     );
     return response;
   } catch (error) {

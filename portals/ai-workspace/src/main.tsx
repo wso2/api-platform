@@ -28,7 +28,7 @@ import {
 
 import App from './App.tsx';
 import './styles.css';
-import { AUTH_MODE } from './config.env';
+import { AUTH_MODE, BASE_PATH } from './config.env';
 import { BFFAuthProvider } from './contexts/BFFAuthProvider';
 import { useAppAuth } from './contexts/AppAuthContext';
 import BasicAuthLoginPage from './pages/login/BasicAuthLoginPage';
@@ -71,8 +71,13 @@ function AppGate() {
       // preserving the path the user originally requested (matching OIDC return
       // behaviour). Only avoid pinning to the login route itself.
       return <BasicAuthLoginPage onSuccess={() => {
+        // window.location is outside the router, so these paths carry the base path
+        // (BrowserRouter's basename) and the fallback has to add it back.
         const { pathname, search } = window.location;
-        const target = pathname === '/login' || pathname === '/signin' ? '/' : pathname + search;
+        const route = pathname.startsWith(BASE_PATH) ? pathname.slice(BASE_PATH.length) : pathname;
+        const target = route === '/login' || route === '/signin'
+          ? `${BASE_PATH}/`
+          : pathname + search;
         window.location.replace(target);
       }} />;
     }
@@ -102,7 +107,7 @@ root.render(
       ]}
       initialTheme="acrylicOrange"
     >
-      <BrowserRouter>
+      <BrowserRouter basename={BASE_PATH}>
         <BFFAuthProvider>
           <AppGate />
         </BFFAuthProvider>

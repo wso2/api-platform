@@ -16,7 +16,7 @@
 
 package server
 
-// Composite BFF handlers that orchestrate two Platform API calls atomically
+// BFF-owned creates that orchestrate two Platform API calls atomically
 // from the browser's perspective. The browser sends one request; the BFF
 // forwards it to the Platform API and, on failure, compensates by deleting
 // any secret that was already created before the main resource call.
@@ -178,14 +178,14 @@ func (s *Server) handleCreateWithSecretCompensation(w http.ResponseWriter, r *ht
 	_, _ = w.Write(respBody)
 }
 
-// handleCreateLLMProvider (POST /api/bff/llm-providers) — composite endpoint
+// handleCreateLLMProvider (POST <base>/api/llm-providers) — composite endpoint
 // that creates an LLM provider and compensates on failure by deleting the
 // pre-created secret.
 func (s *Server) handleCreateLLMProvider(w http.ResponseWriter, r *http.Request) {
 	s.handleCreateWithSecretCompensation(w, r, "/llm-providers", "/api/v0.9")
 }
 
-// handleCreateMCPServer (POST /api/bff/mcp-servers) — composite endpoint
+// handleCreateMCPServer (POST <base>/api/mcp-proxies) — composite endpoint
 // that creates an MCP server and compensates on failure by deleting the
 // pre-created secret.
 func (s *Server) handleCreateMCPServer(w http.ResponseWriter, r *http.Request) {

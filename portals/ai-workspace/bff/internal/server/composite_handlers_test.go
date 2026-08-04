@@ -283,7 +283,7 @@ func TestHandleCreateWithSecretCompensation_Unauthenticated(t *testing.T) {
 	}
 
 	w := httptest.NewRecorder()
-	r := httptest.NewRequest(http.MethodPost, "/api/bff/llm-providers", strings.NewReader(`{}`))
+	r := httptest.NewRequest(http.MethodPost, "/ai-workspace/api/llm-providers", strings.NewReader(`{}`))
 	// No cookie set → should get 401.
 	s.handleCreateWithSecretCompensation(w, r, "/llm-providers", "/api/v0.9")
 

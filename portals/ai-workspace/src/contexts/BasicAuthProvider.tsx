@@ -16,7 +16,7 @@
  * under the License.
  */
 
-import { CSRF_HEADER, CSRF_VALUE } from '../config.env';
+import { BASE_PATH, CSRF_HEADER, CSRF_VALUE } from '../config.env';
 
 export const BASIC_AUTH_SESSION_KEY = 'basic_auth_session';
 
@@ -32,7 +32,7 @@ export function clearBasicAuthSession() {
  * token ever reaches the browser.
  */
 export async function basicAuthLogin(username: string, password: string): Promise<void> {
-  const res = await fetch('/api/login', {
+  const res = await fetch(`${BASE_PATH}/api/login`, {
     method: 'POST',
     credentials: 'include',
     headers: {

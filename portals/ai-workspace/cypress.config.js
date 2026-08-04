@@ -18,7 +18,9 @@
 
 export default {
   e2e: {
-    baseUrl: process.env.CYPRESS_BASE_URL || 'https://localhost:9643',
+    // Includes the app's base path (the BFF serves nothing at the origin root but a
+    // redirect), so specs keep using prefix-free relative paths like '/proxy/api/v0.9'.
+    baseUrl: process.env.CYPRESS_BASE_URL || 'https://localhost:9643/ai-workspace',
     specPattern: 'cypress/e2e/**/*.cy.js',
     supportFile: 'cypress/support/e2e.js',
     videosFolder: 'reports/videos',

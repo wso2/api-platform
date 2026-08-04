@@ -18,7 +18,7 @@
 
 import { get, post, put, del } from '../../clients/choreoApiClient';
 import { logger } from '../../utils/logger';
-import { BFF_COMPOSITE_BASE_URL } from '../../config.env';
+import { BFF_API_BASE_URL } from '../../config.env';
 
 import type {
   MCPServer,
@@ -50,7 +50,7 @@ export async function createMCPServer(
     const response = await post<MCPServer>(
       '/mcp-proxies',
       mcpServer,
-      BFF_COMPOSITE_BASE_URL
+      BFF_API_BASE_URL
     );
     return response;
   } catch (error) {

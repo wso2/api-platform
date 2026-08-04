@@ -538,3 +538,24 @@ enabled = "maybe"
 		t.Fatal("Load() succeeded, want an error for a malformed boolean")
 	}
 }
+
+// The SPA's API base URLs are served under the app's base path — the SPA issues them
+// as absolute paths, so a missing prefix there would resolve outside everything the
+// BFF routes.
+func TestLoad_ProxyURLsCarryBasePath(t *testing.T) {
+	cfgPath := writeConfig(t, `
+[ai_workspace.control_plane]
+url = "https://platform-api:9243"
+`)
+
+	cfg, err := Load(cfgPath)
+	if err != nil {
+		t.Fatalf("Load() error = %v", err)
+	}
+	if got := cfg.RuntimeConfig["APIP_AIW_PLATFORM_API_BASE_URL"]; got != "/ai-workspace/proxy/api/v0.9" {
+		t.Errorf("platform_api_base_url = %q, want it under the base path", got)
+	}
+	if got := cfg.RuntimeConfig["APIP_AIW_PORTAL_API_BASE_URL"]; got != "/ai-workspace/proxy/api/portal/v0.9" {
+		t.Errorf("portal_api_base_url = %q, want it under the base path", got)
+	}
+}

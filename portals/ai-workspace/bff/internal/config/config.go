@@ -218,6 +218,25 @@ type CookieConfig struct {
 // cookieName is the session cookie's name.
 const cookieName = "_ai_workspace_session"
 
+// BasePath is the URL path prefix the whole app is served under: the SPA and its
+// assets, the auth endpoints, the runtime-config script and the same-origin proxy all
+// sit below it, so https://host:9643/ai-workspace/ is the UI and
+// /ai-workspace/proxy/... the API hop. One ingress rule can therefore route a single
+// prefix here with no path rewriting, and an all-in-one deployment can put several
+// portals behind one host and port without their routes colliding.
+//
+// Like CSRFHeaderName below, this is a fixed contract between the BFF and the SPA it
+// ships rather than a deployment concern, so it is a constant and not a config key.
+// The same prefix is baked into the SPA bundle at build time (Vite's `base` in
+// vite.config.ts) because index.html references its assets by absolute path — a server
+// that moved without a matching rebuild would serve a page whose assets all 404. The
+// two must be changed together, and the shipped image is built for this value.
+//
+// Health is the one route outside the prefix: /healthz answers at the origin root as
+// well, so container and Kubernetes probes — which dial the pod directly, bypassing
+// the ingress that adds the prefix — keep working.
+const BasePath = "/ai-workspace"
+
 // CSRFHeaderName is the header the SPA must set on every state-mutating request, and
 // the BFF checks for on the way in (see server/middleware.go requireCSRF). It is a
 // fixed contract between the BFF and the SPA it ships, not a deployment concern — an

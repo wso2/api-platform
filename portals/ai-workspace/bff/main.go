@@ -68,28 +68,30 @@ func printStartedMarker(url string) {
 		"\n\n")
 }
 
-// portalURL renders the browser-visitable address of the portal. When cfg.Domain is
-// set, it is used as-is: the BFF's own listen address is not what an operator should
-// visit when a reverse proxy (e.g. nginx) in front of it exposes a different host or
-// port. Otherwise a wildcard or empty listen host falls back to localhost, since
-// "https://:8081" and "https://0.0.0.0:8081" are not addresses a human can click.
+// portalURL renders the browser-visitable address of the portal, including the base
+// path the app is served under — that full URL, not the bare origin, is what an
+// operator should open. When cfg.Domain is set, it is used as-is: the BFF's own listen
+// address is not what an operator should visit when a reverse proxy (e.g. nginx) in
+// front of it exposes a different host or port. Otherwise a wildcard or empty listen
+// host falls back to localhost, since "https://:8081" and "https://0.0.0.0:8081" are
+// not addresses a human can click.
 func portalURL(addr, domain string, tlsEnabled bool) string {
 	scheme := "http"
 	if tlsEnabled {
 		scheme = "https"
 	}
 	if domain != "" {
-		return scheme + "://" + domain
+		return scheme + "://" + domain + config.BasePath + "/"
 	}
 	host, port, err := net.SplitHostPort(addr)
 	if err != nil {
-		return scheme + "://" + addr
+		return scheme + "://" + addr + config.BasePath + "/"
 	}
 	switch host {
 	case "", "0.0.0.0", "::", "[::]":
 		host = "localhost"
 	}
-	return scheme + "://" + net.JoinHostPort(host, port)
+	return scheme + "://" + net.JoinHostPort(host, port) + config.BasePath + "/"
 }
 
 // stringSliceFlag collects a repeatable string flag into a slice, preserving the
@@ -197,7 +199,7 @@ func runListeners(cfg *config.Config, handler http.Handler) error {
 		servers = append(servers, s)
 		url := portalURL(s.Addr, cfg.Domain, false)
 		slog.Info("AI Workspace BFF: starting HTTP listener",
-			"addr", s.Addr, "url", url, "auth_mode", cfg.Auth.Mode,
+			"addr", s.Addr, "url", url, "base_path", config.BasePath, "auth_mode", cfg.Auth.Mode,
 			"control_plane", cfg.ControlPlane.URL, "oidc_enabled", cfg.Auth.OIDCEnabled(),
 		)
 		if !httpsCfg.Enabled {
@@ -215,7 +217,7 @@ func runListeners(cfg *config.Config, handler http.Handler) error {
 		servers = append(servers, s)
 		url := portalURL(s.Addr, cfg.Domain, true)
 		slog.Info("AI Workspace BFF: starting HTTPS listener",
-			"addr", s.Addr, "url", url, "auth_mode", cfg.Auth.Mode,
+			"addr", s.Addr, "url", url, "base_path", config.BasePath, "auth_mode", cfg.Auth.Mode,
 			"control_plane", cfg.ControlPlane.URL, "oidc_enabled", cfg.Auth.OIDCEnabled(),
 		)
 		if !bannerPrinted {
