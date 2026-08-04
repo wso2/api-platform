@@ -20,6 +20,7 @@ package service
 import (
 	"context"
 	"errors"
+	"strings"
 	"testing"
 	"time"
 
@@ -276,6 +277,64 @@ func TestSecretService_Create_InvalidType_ReturnsError(t *testing.T) {
 	}
 }
 
+func TestSecretService_Create_InvalidHandle_ReturnsError(t *testing.T) {
+	cases := []struct {
+		name   string
+		handle string
+	}{
+		{"empty", ""},
+		{"contains space", "bad handle"},
+		{"contains slash", "foo/bar"},
+		{"uppercase", "Bad-Handle"},
+		{"leading hyphen", "-bad"},
+		{"trailing hyphen", "bad-"},
+		{"doubled hyphen", "bad--handle"},
+		{"special characters", "bad!@#$%^&*()"},
+		{"exceeds max length", strings.Repeat("a", 41)},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			repo := newMockRepo()
+			svc := NewSecretService(repo, &mockVault{}, newTestIdentityService())
+
+			_, err := svc.Create("org1", "alice", &dto.CreateSecretRequest{
+				Handle: tc.handle, DisplayName: "Test", Value: "v",
+			})
+			if err == nil {
+				t.Fatalf("expected validation error for handle %q, got nil", tc.handle)
+			}
+			if !apperror.ValidationFailed.Is(err) {
+				t.Errorf("expected VALIDATION_FAILED for handle %q, got: %v", tc.handle, err)
+			}
+			if _, exists := repo.secrets[tc.handle]; exists {
+				t.Errorf("invalid handle %q must not reach repo.Create", tc.handle)
+			}
+		})
+	}
+}
+
+// TestSecretService_Create_ValidHandle_Accepted guards against the handle
+// pattern/length check (added after a handle containing "/" was found to be
+// creatable but then permanently unreachable via GET/PUT/DELETE — the router
+// treats "/" as a path-segment boundary) becoming too strict for handles the
+// UI actually generates.
+func TestSecretService_Create_ValidHandle_Accepted(t *testing.T) {
+	cases := []string{"openai-key", "a", "a1-b2-c3", strings.Repeat("a", 40)}
+	for _, handle := range cases {
+		t.Run(handle, func(t *testing.T) {
+			repo := newMockRepo()
+			svc := NewSecretService(repo, &mockVault{}, newTestIdentityService())
+
+			if _, err := svc.Create("org1", "alice", &dto.CreateSecretRequest{
+				Handle: handle, DisplayName: "Test", Value: "v",
+			}); err != nil {
+				t.Fatalf("unexpected error for valid handle %q: %v", handle, err)
+			}
+		})
+	}
+}
+
 // ---- List tests -------------------------------------------------------------
 
 func TestSecretService_List_ReturnsPagination(t *testing.T) {
@@ -521,6 +580,45 @@ func TestSecretService_ValidateSecretRefs_DeduplicatesHandles(t *testing.T) {
 	}
 	if callCount != 1 {
 		t.Errorf("GetByHandle called %d times, want 1 (should deduplicate)", callCount)
+	}
+}
+
+// TestSecretService_ValidateSecretRefs_DeprecatedHandle_DistinctMessage guards
+// against a deprecated (existing, retired) secret being reported the same way
+// as a genuinely missing one — see §5.6: a deprecated secret still exists and
+// cannot be referenced by new/updated resources, which is a different failure
+// mode than a typo'd or never-created handle.
+func TestSecretService_ValidateSecretRefs_DeprecatedHandle_DistinctMessage(t *testing.T) {
+	repo := newMockRepo()
+	repo.secrets["retired-key"] = &model.Secret{Handle: "retired-key", Status: model.SecretStatusDeprecated}
+
+	svc := NewSecretService(repo, &mockVault{}, newTestIdentityService())
+	err := svc.ValidateSecretRefs("org1", `{{ secret "retired-key" }}`)
+	if err == nil {
+		t.Fatal("expected error for a deprecated secret reference")
+	}
+	if !apperror.ValidationFailed.Is(err) {
+		t.Errorf("expected VALIDATION_FAILED, got: %v", err)
+	}
+	if strings.Contains(err.Error(), "do not exist") {
+		t.Errorf("a deprecated (existing) secret must not be reported as nonexistent: %v", err)
+	}
+	if !strings.Contains(err.Error(), "deprecated") || !strings.Contains(err.Error(), "retired-key") {
+		t.Errorf("expected message to call out the deprecated handle by name, got: %v", err)
+	}
+}
+
+func TestSecretService_ValidateSecretRefs_MissingAndDeprecated_BothReported(t *testing.T) {
+	repo := newMockRepo()
+	repo.secrets["retired-key"] = &model.Secret{Handle: "retired-key", Status: model.SecretStatusDeprecated}
+
+	svc := NewSecretService(repo, &mockVault{}, newTestIdentityService())
+	err := svc.ValidateSecretRefs("org1", `{{ secret "retired-key" }} {{ secret "ghost-key" }}`)
+	if err == nil {
+		t.Fatal("expected error")
+	}
+	if !strings.Contains(err.Error(), "retired-key") || !strings.Contains(err.Error(), "ghost-key") {
+		t.Errorf("expected both handles named in the message, got: %v", err)
 	}
 }
 

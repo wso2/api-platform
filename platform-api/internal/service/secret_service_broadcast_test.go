@@ -287,3 +287,66 @@ func TestSecretService_Update_SkipsNilOrEmptyIDGateways(t *testing.T) {
 		t.Errorf("the one well-formed gateway must still receive its event, got %d", len(hub.published["gw-a"]))
 	}
 }
+
+// ---- Update: broadcast must not fire before the response is confirmed ---------
+
+// failingIdentityRepo fails GetSubByUUID for a specific uuid, letting a test force
+// SecretService.toSecretResponse to fail after the DB commit but before broadcast.
+type failingIdentityRepo struct {
+	failFor string
+}
+
+func (r failingIdentityRepo) GetOrCreateUUID(identity string) (string, error) {
+	return identity, nil
+}
+
+func (r failingIdentityRepo) GetSubByUUID(uuid string) (string, bool, error) {
+	if uuid == r.failFor {
+		return "", false, errors.New("identity lookup unavailable")
+	}
+	return uuid, true, nil
+}
+
+func (r failingIdentityRepo) GetSubsByUUIDs(uuids []string) (map[string]string, error) {
+	result := make(map[string]string, len(uuids))
+	for _, id := range uuids {
+		if id == r.failFor {
+			return nil, errors.New("identity lookup unavailable")
+		}
+		if id != "" {
+			result[id] = id
+		}
+	}
+	return result, nil
+}
+
+// TestSecretService_Update_ResponseBuildFailure_DoesNotBroadcast guards the
+// ordering fix in Update(): broadcastSecretEvent must run only after
+// toSecretResponse has succeeded, so an identity-lookup failure can't report
+// "rotation failed" to the caller after gateways have already been told about it.
+func TestSecretService_Update_ResponseBuildFailure_DoesNotBroadcast(t *testing.T) {
+	repo := newMockRepo()
+	repo.secrets["k1"] = &model.Secret{Handle: "k1", Status: model.SecretStatusActive, UpdatedBy: "alice"}
+
+	hub := newFakeEventHub()
+	events := NewGatewayEventsService(hub, nil, slog.Default())
+	identity := NewIdentityService(failingIdentityRepo{failFor: "alice"})
+	svc := NewSecretService(repo, &mockVault{}, identity).WithGatewayBroadcast(twoGateways(), events)
+
+	_, err := svc.Update("org1", "k1", "alice", &dto.UpdateSecretRequest{Value: "new-val"})
+	if err == nil {
+		t.Fatal("expected Update to fail when the response cannot be built")
+	}
+
+	// The DB commit already happened — the caller error must not mean the rotation
+	// didn't happen, only that we couldn't confirm it back to them synchronously.
+	if repo.secrets["k1"].Hash == "" {
+		t.Error("expected the DB row to still reflect the rotation despite the response-build failure")
+	}
+
+	// The whole point of the ordering fix: no gateway should have been told about a
+	// rotation that was reported back to the caller as a failure.
+	if total := len(hub.published["gw-a"]) + len(hub.published["gw-b"]); total != 0 {
+		t.Errorf("expected no broadcast when toSecretResponse fails, got %d events", total)
+	}
+}
