@@ -26,15 +26,21 @@ describe('API Portal — Smoke', () => {
     it('root redirects to the default organization view', () => {
         const orgHandle = Cypress.env('ORG_HANDLE');
         const viewName = Cypress.env('VIEW_NAME');
-        // The org selector was removed — `/` no longer serves a selector page;
-        // it redirects straight into the default organization's portal view.
         const basePath = Cypress.env('BASE_PATH');
+        // The true root (/) redirects into the portal mount (${BASE_PATH}/) as a
+        // convenience for direct container access; the portal root then redirects
+        // straight into the default organization's view.
+        cy.request({ url: '/', followRedirect: false, failOnStatusCode: false }).then((resp) => {
+            expect(resp.status).to.eq(302);
+            expect(resp.redirectedToUrl).to.contain(basePath);
+        });
+        // The portal mount root redirects on into the default view.
         cy.request({ url: basePath, followRedirect: false, failOnStatusCode: false }).then((resp) => {
             expect(resp.status).to.eq(302);
             expect(resp.redirectedToUrl).to.contain(`${basePath}/${orgHandle}/views/${viewName}`);
         });
-        // Following the redirect lands on a rendered page, not an error.
-        cy.request({ url: basePath, failOnStatusCode: false }).then((resp) => {
+        // Following all redirects from / lands on a rendered page, not an error.
+        cy.request({ url: '/', failOnStatusCode: false }).then((resp) => {
             expect(resp.status).to.eq(200);
         });
     });

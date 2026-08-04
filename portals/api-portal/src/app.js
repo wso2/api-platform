@@ -79,6 +79,15 @@ app.get('/health', (req, res) => {
     res.status(200).json({ status: 'ok' });
 });
 
+// Convenience redirect for anyone hitting the container's true root directly (a
+// path-routing proxy only ever forwards ${BASE_PATH}/*, so this never fires behind
+// one): send / into the portal, which then resolves to the org's default view.
+// Registered here — before the session/passport middleware below — deliberately: the
+// session cookie is scoped to BASE_PATH, so express-session does not initialise
+// req.session for a request to '/', and passport.session() would then throw. Answering
+// the redirect up front (like /health, /robots.txt, /llms.txt) sidesteps that entirely.
+app.get('/', (req, res) => res.redirect(constants.ROUTE.BASE_PATH + '/'));
+
 app.get('/robots.txt', (req, res) => {
     res.type('text/plain').send(
         'User-agent: *\nAllow: /\n\n' +

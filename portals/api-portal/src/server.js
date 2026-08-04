@@ -26,6 +26,7 @@ const webhookDeliveryWorker = require('./services/webhooks/deliveryWorker');
 const db = require('./db/driver');
 const { seedDefaultOrg } = require('./services/seederService');
 const orgContext = require('./utils/orgContext');
+const constants = require('./utils/constants');
 const app = require('./app');
 
 const liveReload = process.env.NODE_ENV === 'development' ? require('./liveReload') : null;
@@ -72,11 +73,13 @@ function printBanner(visitUrl) {
 }
 
 function logStartupBanner() {
-    // Non-design mode: the bare org URL (/{handle}) redirects server-side to
-    // /{handle}/views/default (orgContentRoute.js). Design mode has no organization
-    // segment and no such redirect, so point straight at the default view — the
-    // bare root 404s there (only /views/* is served).
-    const landingPath = config.designMode?.enabled ? '/views/default' : `/${orgContext.getHandle()}`;
+    // The whole portal is mounted under BASE_PATH, so every printed URL carries it.
+    // Non-design mode: the bare org URL (${BASE_PATH}/{handle}) redirects server-side to
+    // ${BASE_PATH}/{handle}/views/default (orgContentRoute.js). Design mode has no
+    // organization segment and no such redirect, so point straight at the default view —
+    // the bare prefix root 404s there (only /views/* is served).
+    const basePath = constants.ROUTE.BASE_PATH;
+    const landingPath = config.designMode?.enabled ? `${basePath}/views/default` : `${basePath}/${orgContext.getHandle()}`;
     const scheme = config.server.https.enabled && !config.designMode?.enabled ? 'https' : 'http';
     const visitUrl = `${scheme}://localhost:${PORT}${landingPath}`;
     printBanner(visitUrl);
