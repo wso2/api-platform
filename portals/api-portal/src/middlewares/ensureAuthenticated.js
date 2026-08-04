@@ -98,12 +98,25 @@ function enforceSecurity(scope) {
                 req[constants.USER_ID] = await resolveUserUuid(req, decodedAccessToken?.[constants.USER_ID]);
                 return validateAuthentication(scope)(req, res, next);
             } else if (typeof req.socket?.getPeerCertificate === 'function' && req.socket.getPeerCertificate(true)) {
-                enforceMTLS(req, res, next);
+                return enforceMTLS(req, res, next);
             } else {
                 req.session.returnTo = accessControlUrl(req) || `${constants.ROUTE.BASE_PATH}/${req.params.orgName}`;
                 if (req.params.orgName) {
-                    res.redirect(`${constants.ROUTE.BASE_PATH}/${req.params.orgName}/views/${req.session.view}/login`);
+                    return res.redirect(`${constants.ROUTE.BASE_PATH}/${req.params.orgName}/views/${req.session.view}/login`);
                 }
+                // No :orgName to build a login-page URL from. Not an edge case: the MCP
+                // registry names its org segment :orgHandle, so EVERY unauthenticated write
+                // to it lands here. Without this the function simply ran off the end —
+                // no response, no next() — and the request hung until the client gave up,
+                // holding a socket and its request context the whole time.
+                //
+                // Answered with the same uniform 401 body as every other credential failure
+                // (js-error-handling.md directive 4); the callers reaching this branch are
+                // programs, so an HTML login redirect would be wrong even if one could be built.
+                return res.status(401).json({
+                    error: 'unauthorized',
+                    message: 'Invalid or expired credentials.',
+                });
             }
         } catch (err) {
             logger.error("Error checking access token", { error: err.message, stack: err.stack, operation: "checkAccessToken" });
