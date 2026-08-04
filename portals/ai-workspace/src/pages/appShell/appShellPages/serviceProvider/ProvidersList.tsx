@@ -348,8 +348,26 @@ export default function ServiceProviders() {
           display="flex"
           justifyContent="flex-end"
         >
-          {!isDeveloper && !isProjectLevel && providers.length > 0 && (
-            <Tooltip title={isProviderQuotaReached ? providerQuotaTooltip : ''}>
+          {!isProjectLevel && providers.length > 0 && (
+            <Tooltip
+              title={
+                canCreateProvider ? (
+                  ''
+                ) : isDeveloper ? (
+                  <FormattedMessage
+                    id="aiWorkspace.pages.appShell.appShellPages.serviceProvider.ServiceProvidersSummaryCard.contact.admin.tooltip"
+                    defaultMessage={
+                      'This is an admin task. Please contact your admin.'
+                    }
+                  />
+                ) : (
+                  providerQuotaTooltip
+                )
+              }
+              disableHoverListener={canCreateProvider}
+              disableFocusListener={canCreateProvider}
+              disableTouchListener={canCreateProvider}
+            >
               <Box component="span">
                 <Button
                   variant="contained"
@@ -357,12 +375,12 @@ export default function ServiceProviders() {
                   component={RouterLink}
                   to={newProviderPath}
                   startIcon={<Plus size={20} />}
-                  disabled={isProviderQuotaReached}
+                  disabled={!canCreateProvider}
                   data-cyid="add-new-provider-button"
                   sx={{
-                    opacity: isProviderQuotaReached ? 0.55 : 1,
+                    opacity: canCreateProvider ? 1 : 0.55,
                     '&.Mui-disabled': {
-                      opacity: isProviderQuotaReached ? 0.55 : 1,
+                      opacity: 0.55,
                     },
                   }}
                 >

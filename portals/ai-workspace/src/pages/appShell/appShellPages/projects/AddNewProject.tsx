@@ -29,6 +29,7 @@ import {
   PageTitle,
   Stack,
   TextField,
+  Tooltip,
 } from '@wso2/oxygen-ui';
 import { ChevronLeft } from '@wso2/oxygen-ui-icons-react';
 import { ProjectsProvider, useProjects } from '../../../../contexts/ProjectsContext';
@@ -36,6 +37,8 @@ import { useAppShell } from '../../../../contexts/AppShellContext';
 import { buildOrgPath } from '../../../../utils/projectRouting';
 import useAIWorkspaceSnackbar from '../../../../hooks/aiWorkspaceSnackbar';
 import { getErrorMessage, getFieldErrors, fieldErrorsToMap } from '../../../../utils/apiError';
+import { useAppAuth } from '../../../../contexts/AppAuthContext';
+import { NO_PERMISSION_TOOLTIP, SCOPES } from '../../../../auth/permissions';
 
 // Backend field names (from CreateProjectRequest) mapped onto this form's state keys.
 const FIELD_NAME_MAP: Record<string, 'name' | 'description'> = {
@@ -48,6 +51,8 @@ function AddNewProjectForm() {
   const { currentOrganization } = useAppShell();
   const { createProject } = useProjects();
   const showSnackbar = useAIWorkspaceSnackbar();
+  const { hasPermission } = useAppAuth();
+  const canCreateProject = hasPermission(SCOPES.PROJECT_CREATE);
 
   const projectsListPath = buildOrgPath(currentOrganization, '/projects/list');
 
@@ -161,17 +166,24 @@ function AddNewProjectForm() {
           >
             Cancel
           </Button>
-          <Button
-            variant="contained"
-            onClick={handleCreate}
-            disabled={!name.trim() || isSubmitting}
-            data-cyid="create-project-button"
-          >
-            {isSubmitting ? (
-              <CircularProgress size={18} sx={{ color: 'inherit', mr: 1 }} />
-            ) : null}
-            Create
-          </Button>
+          <Tooltip title={canCreateProject ? '' : NO_PERMISSION_TOOLTIP}>
+            <Box component="span">
+              <Button
+                variant="contained"
+                onClick={handleCreate}
+                disabled={!name.trim() || isSubmitting || !canCreateProject}
+                data-cyid="create-project-button"
+              >
+                {isSubmitting ? (
+                  <CircularProgress
+                    size={18}
+                    sx={{ color: 'inherit', mr: 1 }}
+                  />
+                ) : null}
+                Create
+              </Button>
+            </Box>
+          </Tooltip>
         </Box>
       </Box>
     </PageContent>

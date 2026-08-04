@@ -150,8 +150,9 @@ roles:
   # API publisher — owns the full REST API, MCP proxy and LLM proxy lifecycle and
   # the Developer Portal content for it. LLM providers are read-only: a publisher
   # points proxies at an existing provider, but creating, editing, deleting and
-  # deploying providers are all admin tasks. Reads applications, subscriptions
-  # and plans.
+  # deploying providers are all admin tasks. Manages secrets, which back the
+  # upstream auth values on the proxies it configures. Reads applications,
+  # subscriptions and plans.
   - name: ap_publisher
     scopes:
       # Platform API
@@ -168,7 +169,7 @@ roles:
       - ap:subscription_plan:read
       - ap:application:read
       - ap:subscription:read
-      - ap:secret:read
+      - ap:secret:manage
       - ap:api_key:read
       # - ap:websub_api:manage   # event-gateway build only
       # - ap:webbroker_api:manage   # event-gateway build only

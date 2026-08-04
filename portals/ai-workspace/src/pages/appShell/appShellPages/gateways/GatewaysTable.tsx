@@ -35,8 +35,11 @@ import {
   DialogContentText,
   DialogActions,
   Button,
+  Tooltip,
 } from '@wso2/oxygen-ui';
 import { Edit, Trash2 } from '@wso2/oxygen-ui-icons-react';
+import { useAppAuth } from '../../../../contexts/AppAuthContext';
+import { NO_PERMISSION_TOOLTIP, SCOPES } from '../../../../auth/permissions';
 
 interface GatewayWithType {
   id: string;
@@ -67,6 +70,9 @@ export default function GatewaysTable({
   onDelete,
   isDeleting,
 }: GatewaysTableProps) {
+  const { hasPermission } = useAppAuth();
+  const canUpdateGateway = hasPermission(SCOPES.GATEWAY_UPDATE);
+  const canDeleteGateway = hasPermission(SCOPES.GATEWAY_DELETE);
   const [deletingId, setDeletingId] = useState<string | null>(null);
 
   const handleDeleteConfirm = () => {
@@ -165,25 +171,39 @@ export default function GatewaysTable({
                         gap: 1,
                       }}
                     >
-                      <IconButton
-                        size="small"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          onEdit?.(gateway.name);
-                        }}
+                      <Tooltip
+                        title={canUpdateGateway ? '' : NO_PERMISSION_TOOLTIP}
                       >
-                        <Edit size={18} />
-                      </IconButton>
-                      <IconButton
-                        size="small"
-                        color="error"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          setDeletingId(gateway.id);
-                        }}
+                        <Box component="span">
+                          <IconButton
+                            size="small"
+                            disabled={!canUpdateGateway}
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              onEdit?.(gateway.name);
+                            }}
+                          >
+                            <Edit size={18} />
+                          </IconButton>
+                        </Box>
+                      </Tooltip>
+                      <Tooltip
+                        title={canDeleteGateway ? '' : NO_PERMISSION_TOOLTIP}
                       >
-                        <Trash2 size={18} />
-                      </IconButton>
+                        <Box component="span">
+                          <IconButton
+                            size="small"
+                            color="error"
+                            disabled={!canDeleteGateway}
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setDeletingId(gateway.id);
+                            }}
+                          >
+                            <Trash2 size={18} />
+                          </IconButton>
+                        </Box>
+                      </Tooltip>
                     </Box>
                   )}
                 </TableCell>

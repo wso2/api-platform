@@ -53,6 +53,8 @@ import {
 } from '../../../../utils/projectRouting';
 import { useMCPServerValidation } from '../../../../contexts/MCP';
 import useAIWorkspaceSnackbar from '../../../../hooks/aiWorkspaceSnackbar';
+import { useAppAuth } from '../../../../contexts/AppAuthContext';
+import { SCOPES } from '../../../../auth/permissions';
 import { PLATFORM_API_BASE_URL } from '../../../../paths';
 import { mcpProxiesApis } from '../../../../apis/MCP/mcpProxiesApis';
 import {
@@ -118,6 +120,8 @@ export default function ExternalServersNew(): JSX.Element {
     reset: resetValidation,
   } = useMCPServerValidation();
   const showSnackbar = useAIWorkspaceSnackbar();
+  const { hasPermission } = useAppAuth();
+  const canCreateMcpProxy = hasPermission(SCOPES.MCP_PROXY_CREATE);
   const [isCreating, setIsCreating] = useState(false);
   const [createFieldErrors, setCreateFieldErrors] = useState<Record<string, string>>({});
   const routeProject = useMemo(
@@ -339,9 +343,33 @@ export default function ExternalServersNew(): JSX.Element {
 
   const isCreateDisabled =
     isCreating ||
+    !canCreateMcpProxy ||
     !serverName.trim() ||
     !serverVersion.trim() ||
     !serverTarget.trim();
+
+  if (!canCreateMcpProxy) {
+    return (
+      <PageContent fullWidth>
+        <Stack spacing={1}>
+          <Typography variant="h6">
+            <FormattedMessage
+              id="aiWorkspace.pages.appShell.appShellPages.externalServers.Main.creation.unavailable"
+              defaultMessage={'MCP Proxy creation is unavailable.'}
+            />
+          </Typography>
+          <Typography variant="body2" color="text.secondary">
+            <FormattedMessage
+              id="aiWorkspace.pages.appShell.appShellPages.externalServers.Main.creation.unavailable.description"
+              defaultMessage={
+                'You do not have permission to create MCP Proxies. Please contact your admin.'
+              }
+            />
+          </Typography>
+        </Stack>
+      </PageContent>
+    );
+  }
 
   return (
     <PageContent fullWidth>

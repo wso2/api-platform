@@ -35,6 +35,7 @@ import {
   Select,
   Stack,
   TextField,
+  Tooltip,
   Typography,
 } from '@wso2/oxygen-ui';
 import { ChevronDown, ChevronLeft } from '@wso2/oxygen-ui-icons-react';
@@ -43,6 +44,8 @@ import { useProviderTemplates } from '../../../../contexts/llmProvider/providerT
 import { useAppShell } from '../../../../contexts/AppShellContext';
 import { buildOrgPath } from '../../../../utils/projectRouting';
 import useAIWorkspaceSnackbar from '../../../../hooks/aiWorkspaceSnackbar';
+import { useAppAuth } from '../../../../contexts/AppAuthContext';
+import { NO_PERMISSION_TOOLTIP, SCOPES } from '../../../../auth/permissions';
 import type {
   CreateProviderTemplateRequest,
   ProviderTemplate,
@@ -107,6 +110,7 @@ export default function CreateProviderTemplate() {
   const { currentOrganization } = useAppShell();
   const { createTemplate } = useProviderTemplates();
   const showSnackbar = useAIWorkspaceSnackbar();
+  const { hasPermission } = useAppAuth();
 
   const copyFrom = (location.state as { copyFrom?: ProviderTemplate } | null)
     ?.copyFrom;
@@ -232,7 +236,9 @@ export default function CreateProviderTemplate() {
   const specUrlEntered = openapiSpecUrl.trim().length > 0;
   const isSpecUrlValid = isValidHttpUrl(openapiSpecUrl);
   const isSpecReady = !specUrlEntered || (isSpecUrlValid && specFetched);
+  const canCreateTemplate = hasPermission(SCOPES.LLM_TEMPLATE_CREATE);
   const isFormValid =
+    canCreateTemplate &&
     isNameValid &&
     Boolean(normalizedTemplateId) &&
     isDescriptionValid &&
@@ -556,24 +562,28 @@ export default function CreateProviderTemplate() {
                 defaultMessage={'Cancel'}
               />
             </Button>
-            <Button
-              variant="contained"
-              type="submit"
-              disabled={isSubmitting || !isFormValid}
-              data-cyid="create-provider-template-submit"
-            >
-              {isSubmitting ? (
-                <FormattedMessage
-                  id="aiWorkspace.pages.appShell.appShellPages.providerTemplate.CreateProviderTemplate.creating"
-                  defaultMessage={'Creating...'}
-                />
-              ) : (
-                <FormattedMessage
-                  id="aiWorkspace.pages.appShell.appShellPages.providerTemplate.CreateProviderTemplate.create"
-                  defaultMessage={'Create Template'}
-                />
-              )}
-            </Button>
+            <Tooltip title={canCreateTemplate ? '' : NO_PERMISSION_TOOLTIP}>
+              <Box component="span">
+                <Button
+                  variant="contained"
+                  type="submit"
+                  disabled={isSubmitting || !isFormValid}
+                  data-cyid="create-provider-template-submit"
+                >
+                  {isSubmitting ? (
+                    <FormattedMessage
+                      id="aiWorkspace.pages.appShell.appShellPages.providerTemplate.CreateProviderTemplate.creating"
+                      defaultMessage={'Creating...'}
+                    />
+                  ) : (
+                    <FormattedMessage
+                      id="aiWorkspace.pages.appShell.appShellPages.providerTemplate.CreateProviderTemplate.create"
+                      defaultMessage={'Create Template'}
+                    />
+                  )}
+                </Button>
+              </Box>
+            </Tooltip>
           </Box>
         </Box>
       </Box>

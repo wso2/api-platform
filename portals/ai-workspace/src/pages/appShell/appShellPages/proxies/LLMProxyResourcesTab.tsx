@@ -17,7 +17,7 @@
  */
 
 import React, { useMemo, useRef } from 'react';
-import { Box, Button, Stack, Typography } from '@wso2/oxygen-ui';
+import { Box, Button, Stack, Tooltip, Typography } from '@wso2/oxygen-ui';
 import { Upload } from '@wso2/oxygen-ui-icons-react';
 import YAML from 'yaml';
 import { useProxy } from '../../../../contexts/proxy';
@@ -25,6 +25,8 @@ import { logger } from '../../../../utils/logger';
 import NoData from '../../../../assets/images/NoData.svg';
 import { FormattedMessage } from 'react-intl';
 import SwaggerSpecViewer from '../../../../Components/SwaggerSpecViewer';
+import { useAppAuth } from '../../../../contexts/AppAuthContext';
+import { NO_PERMISSION_TOOLTIP, SCOPES } from '../../../../auth/permissions';
 
 // ─── Shared helpers ──────────────────────────────────────────────────────────
 
@@ -99,6 +101,8 @@ function parseOpenApiSpec(text: string): OpenApiSpec | null {
  */
 export default function LLMProxyResourcesTab() {
   const { proxy, setLocalProxy } = useProxy();
+  const { hasPermission } = useAppAuth();
+  const canEditProxy = hasPermission(SCOPES.LLM_PROXY_UPDATE);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const openApiSpecText = proxy?.openapi || '';
   const parsedOpenApiSpec = useMemo(
@@ -163,14 +167,19 @@ export default function LLMProxyResourcesTab() {
           </Typography>
 
           <Stack direction="row" spacing={1}>
-            <Button
-              variant="outlined"
-              size="small"
-              startIcon={<Upload size={16} />}
-              onClick={() => fileInputRef.current?.click()}
-            >
-              Import from file
-            </Button>
+            <Tooltip title={canEditProxy ? '' : NO_PERMISSION_TOOLTIP}>
+              <Box component="span">
+                <Button
+                  variant="outlined"
+                  size="small"
+                  startIcon={<Upload size={16} />}
+                  disabled={!canEditProxy}
+                  onClick={() => fileInputRef.current?.click()}
+                >
+                  Import from file
+                </Button>
+              </Box>
+            </Tooltip>
             <input
               ref={fileInputRef}
               type="file"

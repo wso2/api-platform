@@ -71,6 +71,8 @@ import type { AccessControl, PolicyHubPolicy } from '../../../../utils/types';
 import { parsePolicyYaml } from '../../PolicyParameterEditor/yamlParser';
 import { FormattedMessage } from 'react-intl';
 import ErrorAlert from '../../../../Components/common/ErrorAlert';
+import { useAppAuth } from '../../../../contexts/AppAuthContext';
+import { NO_PERMISSION_TOOLTIP, SCOPES } from '../../../../auth/permissions';
 import {
   DisabledActionTooltip,
 } from '../../../../utils/readOnlyArtifacts';
@@ -217,7 +219,12 @@ const buildPolicyDefinitionFromCustomPolicy = (item: {
 export default function ServiceProviderGuardrailsTab() {
   const { provider, isLoading, error, updateProvider, isDraftMode } =
     useLLMProvider();
-  const isReadOnlyProvider = Boolean(provider?.readOnly);
+  // An action is locked either because the artifact is gateway-managed or
+  // because the caller lacks the update scope; both disable the same controls.
+  const { hasPermission } = useAppAuth();
+  const canEditProvider = hasPermission(SCOPES.LLM_PROVIDER_UPDATE);
+  const isReadOnlyProvider = Boolean(provider?.readOnly) || !canEditProvider;
+  const lockedActionTooltip = canEditProvider ? undefined : NO_PERMISSION_TOOLTIP;
   const {
     guardrails: availableGuardrails = [],
     isLoading: isLoadingGuardrails,
@@ -800,7 +807,7 @@ export default function ServiceProviderGuardrailsTab() {
             </Grid>
 
             <Grid size={{ xs: 12, sm: 'auto' }}>
-              <DisabledActionTooltip disabled={isReadOnlyProvider}>
+              <DisabledActionTooltip disabled={isReadOnlyProvider} title={lockedActionTooltip}>
                 <Button
                   size="small"
                   variant="outlined"
@@ -1083,6 +1090,7 @@ export default function ServiceProviderGuardrailsTab() {
                               <Grid size={{ xs: 12, sm: 'auto' }}>
                                 <DisabledActionTooltip
                                   disabled={isReadOnlyProvider}
+                                  title={lockedActionTooltip}
                                 >
                                   <Button
                                     size="small"

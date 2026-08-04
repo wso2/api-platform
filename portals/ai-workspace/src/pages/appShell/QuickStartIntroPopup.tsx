@@ -215,7 +215,7 @@ export default function QuickStartIntroPopup({
               variant="text"
               size="small"
               component="a"
-              href="https://wso2.com/bijira/docs/ai-workspace/getting-started/"
+              href="https://wso2.com/api-platform/docs/next/ai-workspace/getting-started/"
               target="_blank"
               rel="noopener noreferrer"
             >

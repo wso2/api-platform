@@ -64,6 +64,8 @@ import NoProxies from '../../../../assets/images/NoProxies.svg';
 import ErrorAlert from '../../../../Components/common/ErrorAlert';
 import { useAIWorkspaceSnackbar } from '../../../../hooks/aiWorkspaceSnackbar';
 import { getErrorMessage } from '../../../../utils/apiError';
+import { useAppAuth } from '../../../../contexts/AppAuthContext';
+import { NO_PERMISSION_TOOLTIP, SCOPES } from '../../../../auth/permissions';
 
 function getHttpStatusCode(error?: Error | null): number | null {
   if (!error) return null;
@@ -89,6 +91,7 @@ export default function LLMProxiesList() {
   const navigate = useNavigate();
   const location = useLocation();
   const showSnackbar = useAIWorkspaceSnackbar();
+  const { hasPermission } = useAppAuth();
   const {
     proxiesResponse,
     isLoading: isProxiesLoading,
@@ -212,10 +215,18 @@ export default function LLMProxiesList() {
   const isProxyQuotaReached = false;
   const proxyQuotaTooltip =
     'You cannot create more App LLM Proxies because your organization has reached the maximum limit of 5 proxies.';
+  const canCreateProxy = hasPermission(SCOPES.LLM_PROXY_CREATE);
+  const canDeleteProxy = hasPermission(SCOPES.LLM_PROXY_DELETE);
+  const createProxyDisabled = !canCreateProxy || isProxyQuotaReached;
+  const createProxyTooltip = !canCreateProxy
+    ? NO_PERMISSION_TOOLTIP
+    : isProxyQuotaReached
+      ? proxyQuotaTooltip
+      : '';
   const createProxyButtonSx = {
-    opacity: isProxyQuotaReached ? 0.55 : 1,
+    opacity: createProxyDisabled ? 0.55 : 1,
     '&.Mui-disabled': {
-      opacity: isProxyQuotaReached ? 0.55 : 1,
+      opacity: 0.55,
     },
   };
   const proxyErrorStatusCode = getHttpStatusCode(proxiesError);
@@ -248,14 +259,14 @@ export default function LLMProxiesList() {
                 sx={{ ml: 'auto', flexShrink: 0 }}
               >
                 {proxies.length > 0 ? (
-                  <Tooltip title={isProxyQuotaReached ? proxyQuotaTooltip : ''}>
+                  <Tooltip title={createProxyTooltip}>
                     <Box component="span">
                       <Button
                         variant="contained"
                         component={RouterLink}
                         to={newProxyPath}
                         startIcon={<Plus size={20} />}
-                        disabled={isProxyQuotaReached}
+                        disabled={createProxyDisabled}
                         sx={createProxyButtonSx}
                       >
                         Create App LLM Proxy
@@ -393,14 +404,14 @@ export default function LLMProxiesList() {
                     }
                   />
                 </Typography>
-                <Tooltip title={isProxyQuotaReached ? proxyQuotaTooltip : ''}>
+                <Tooltip title={createProxyTooltip}>
                   <Box component="span">
                     <Button
                       variant="contained"
                       component={RouterLink}
                       to={newProxyPath}
                       startIcon={<Plus size={20} />}
-                      disabled={isProxyQuotaReached}
+                      disabled={createProxyDisabled}
                       sx={createProxyButtonSx}
                     >
                       Create App LLM Proxy
@@ -516,20 +527,29 @@ export default function LLMProxiesList() {
                               {formatRelativeTime(proxy.updatedAt)}
                             </TableCell>
                             <TableCell align="right">
-                              <IconButton
-                                size="small"
-                                color="error"
-                                onClick={(event) => {
-                                  event.stopPropagation();
-                                  setDeleteTarget({
-                                    id: proxy.id,
-                                    name: proxy.displayName,
-                                  });
-                                }}
-                                aria-label={`Delete ${proxy.displayName}`}
+                              <Tooltip
+                                title={
+                                  canDeleteProxy ? '' : NO_PERMISSION_TOOLTIP
+                                }
                               >
-                                <Trash2 size={16} />
-                              </IconButton>
+                                <Box component="span">
+                                  <IconButton
+                                    size="small"
+                                    color="error"
+                                    disabled={!canDeleteProxy}
+                                    onClick={(event) => {
+                                      event.stopPropagation();
+                                      setDeleteTarget({
+                                        id: proxy.id,
+                                        name: proxy.displayName,
+                                      });
+                                    }}
+                                    aria-label={`Delete ${proxy.displayName}`}
+                                  >
+                                    <Trash2 size={16} />
+                                  </IconButton>
+                                </Box>
+                              </Tooltip>
                             </TableCell>
                           </TableRow>
                         ))

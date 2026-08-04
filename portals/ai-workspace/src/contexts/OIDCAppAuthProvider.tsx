@@ -131,7 +131,15 @@ export function OIDCAppAuthProvider({ children }: { children: React.ReactNode })
       login,
       logout,
     }),
-    [auth.isAuthenticated, auth.isLoading, user, getAccessToken, hasPermission, login, logout]
+    [
+      auth.isAuthenticated,
+      auth.isLoading,
+      user,
+      getAccessToken,
+      hasPermission,
+      login,
+      logout,
+    ]
   );
 
   return <AppAuthContext.Provider value={value}>{children}</AppAuthContext.Provider>;
