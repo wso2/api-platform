@@ -24,6 +24,9 @@ const constants = require('../utils/constants');
 const { CustomError } = require('../utils/errors/customErrors');
 
 const VIEWS_TABLE = 'views';
+// The conventional handle of the view every org is seeded with, and the first choice of
+// getFallbackHandle. Not special-cased anywhere else — it can be renamed or deleted.
+const DEFAULT_VIEW_HANDLE = 'default';
 const VIEW_LABELS_TABLE = 'view_label_mappings';
 const LABELS_TABLE = 'labels';
 const ORG_ASSETS_TABLE = 'organization_assets';
@@ -157,6 +160,83 @@ const getId = async (orgId, viewName, t) => {
     return view.uuid;
 };
 
+// The handle of the view the portal falls back to when a URL names no view — the bare
+// org root (/{orgName}), the error page's home link, and the org-scoped settings page's
+// chrome. 'default' used to be hardcoded at each of those sites, which is why the
+// 'default' view could not be deleted or renamed; this resolves it instead:
+//
+//   1. the view whose handle is 'default', when it still exists (unchanged behaviour
+//      for every existing deployment, since the seeder creates it), else
+//   2. the org's earliest-created view, handle breaking a same-timestamp tie so the
+//      answer is stable across requests and dialects.
+//
+// Falls back to the literal 'default' only for an org with no views at all, which the
+// last-view delete guard (apiMetadataService.deleteView) prevents reaching through the
+// API — a fresh org is seeded with one.
+const getFallbackHandle = async (orgId, t) => {
+    const exec = t || db;
+    const preferred = await exec.queryOne(
+        `SELECT handle FROM ${VIEWS_TABLE} WHERE org_uuid = ? AND handle = ?`,
+        [orgId, DEFAULT_VIEW_HANDLE]
+    );
+    if (preferred) {
+        return preferred.handle;
+    }
+    const earliest = await exec.queryOne(
+        `SELECT handle FROM ${VIEWS_TABLE} WHERE org_uuid = ? ORDER BY created_at ASC, handle ASC`,
+        [orgId]
+    );
+    return earliest ? earliest.handle : DEFAULT_VIEW_HANDLE;
+};
+
+// Number of views in the org — the last-view delete guard's input.
+const count = async (orgId, t) => {
+    const exec = t || db;
+    const row = await exec.queryOne(`SELECT COUNT(*) AS total FROM ${VIEWS_TABLE} WHERE org_uuid = ?`, [orgId]);
+    return Number(row?.total ?? 0);
+};
+
+/**
+ * Renames a view's handle in place, keeping its uuid — so every reference survives:
+ * organization_assets, view_label_mappings and api_workflows all key on view_uuid and
+ * no table stores the handle, so this is a single-row update with nothing to migrate.
+ *
+ * URLs are the thing that does NOT survive: every portal page embeds the handle, so
+ * links to the old one 404 afterwards. That is the caller's (and the operator's)
+ * decision to make, which is why the settings UI warns before saving a rename.
+ *
+ * Returns null when no view carries `oldHandle`; throws CustomError(409) when
+ * `newHandle` is already taken in this organization.
+ */
+const rename = async (orgId, oldHandle, newHandle, updatedBy, t) => {
+    const exec = t || db;
+    const existing = await exec.queryOne(
+        `SELECT * FROM ${VIEWS_TABLE} WHERE handle = ? AND org_uuid = ?`,
+        [oldHandle, orgId]
+    );
+    if (!existing) {
+        return null;
+    }
+    if (newHandle === oldHandle) {
+        return existing;
+    }
+    const updatedAt = new Date();
+    try {
+        await db.withSavepoint(exec, () => exec.execute(
+            `UPDATE ${VIEWS_TABLE} SET handle = ?, updated_by = ?, updated_at = ? WHERE uuid = ? AND org_uuid = ?`,
+            [newHandle, updatedBy, updatedAt, existing.uuid, orgId]
+        ));
+    } catch (error) {
+        // uq_view_handle_org_uuid — another view already answers to this handle. Report
+        // it as a conflict rather than letting a raw driver error surface.
+        if (db.isDuplicateKeyError(error)) {
+            throw new CustomError(409, constants.ERROR_CODE[409], `A view with the handle '${newHandle}' already exists`);
+        }
+        throw error;
+    }
+    return { ...existing, handle: newHandle, updated_by: updatedBy, updated_at: updatedAt };
+};
+
 const list = async (orgId) => {
     const views = await db.query(`SELECT * FROM ${VIEWS_TABLE} WHERE org_uuid = ?`, [orgId]);
     if (views.length === 0) return views;
@@ -210,9 +290,12 @@ async function getLabelId(orgId, labels, t) {
 module.exports = {
     create,
     update,
+    rename,
     delete: deleteView,
     get,
     getId,
+    getFallbackHandle,
+    count,
     list,
     addLabels,
     replaceLabels,

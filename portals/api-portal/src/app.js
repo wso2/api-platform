@@ -219,7 +219,7 @@ app.use((req, res, next) => {
 });
 
 // Central error handler
-app.use((err, req, res, next) => {
+app.use(async (err, req, res, next) => {
     if (res.headersSent) return;
     const status = err.status || 500;
 
@@ -249,7 +249,10 @@ app.use((err, req, res, next) => {
     // failed request. A 404 from orgGuard means that segment named some *other*
     // organization, and echoing it back would point the error page's "home" link
     // outside this portal.
-    const baseUrl = '/' + orgContext.getHandle() + constants.ROUTE.VIEWS_PATH + 'default';
+    // Resolved rather than hardcoded to 'default', so the "home" link still points at a
+    // view that exists after that one has been renamed or deleted. Never throws — see
+    // orgContext.getFallbackViewHandle — which matters on this path above all others.
+    const baseUrl = '/' + orgContext.getHandle() + constants.ROUTE.VIEWS_PATH + await orgContext.getFallbackViewHandle();
     const templateContent = {
         baseUrl,
         errorType,

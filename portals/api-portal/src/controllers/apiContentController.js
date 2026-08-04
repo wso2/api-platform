@@ -220,7 +220,9 @@ const loadAPIContent = async (req, res, next) => {
         try {
             const orgDetails = await orgDao.get(orgName);
             const orgId = orgDetails.uuid;
-            const apiId = await apiDao.getId(orgId, apiHandle);
+            // View-scoped: an artifact the URL's view doesn't include is a 404 here, not
+            // a rendered page (util.resolveApiIdInView).
+            const apiId = await util.resolveApiIdInView(orgId, apiHandle, viewName);
             const metaData = await loadAPIMetaData(req, orgId, apiId);
             
             // Log API access for audit trail
@@ -462,8 +464,10 @@ const getAPIDefinition = async (orgName, viewName, apiHandle) => {
         }
     } else {
         const orgId = await orgDao.getId(orgName);
-        const apiId = await apiDao.getId(orgId, apiHandle);
-        metaData = await apiMetadataService.getMetadataFromDB(orgId, apiId, viewName);
+        // Docs and raw-specification routes are view-scoped page URLs too: a spec must
+        // not be downloadable through a view that doesn't include its API.
+        const apiId = await util.resolveApiIdInView(orgId, apiHandle, viewName);
+        metaData = await apiMetadataService.getMetadataFromDB(orgId, apiId);
         const data = metaData ? JSON.stringify(metaData) : {};
         metaData = JSON.parse(data);
         const apiType = metaData.type;
@@ -1176,7 +1180,12 @@ const loadAPIContentMd = async (req, res) => {
             return res.status(404).send('# Not Found\n\nThis resource is not available for agents.');
         }
 
-        const apiId = await apiDao.getId(orgId, apiHandle);
+        // View-scoped like the HTML page — the agent-facing markdown must not expose an
+        // artifact the view excludes either.
+        const apiId = await apiDao.getIdInView(orgId, apiHandle, viewName);
+        if (!apiId) {
+            return res.status(404).send('# Not Found\n\nThis API is not available in this view.');
+        }
         const metaData = await loadAPIMetaData(req, orgId, apiId);
 
         if (metaData?.agentVisibility === 'HIDDEN') {

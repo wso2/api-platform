@@ -25,6 +25,7 @@ const orgDao = require('../dao/organizationDao');
 const apiDao = require('../dao/apiDao');
 const apiFileDao = require('../dao/apiFileDao');
 const constants = require('../utils/constants');
+const orgContext = require('../utils/orgContext');
 const apiMetadataService = require('../services/apiMetadataService');
 const util = require('../utils/util');
 const { validationResult } = require('express-validator');
@@ -70,12 +71,14 @@ const registerPartials = async (req, res, next) => {
       if (isNonConfigure || isOrgSettings) {
         // The org-scoped settings route carries no view segment. Downstream partial
         // resolution (registerPartialsFromFile) reads req.params.viewName to look up
-        // per-view custom overrides, so default it to 'default' — the settings page
-        // renders the default view's chrome and its own default-content partials.
+        // per-view custom overrides, and the chrome's baseUrl needs a view to link to —
+        // so fill it from the resolved fallback view rather than a hardcoded 'default',
+        // which would build sidebar links to a view that may since have been renamed or
+        // deleted.
         if (isOrgSettings && !req.params.viewName) {
-          req.params.viewName = 'default';
+          req.params.viewName = await orgContext.getFallbackViewHandle();
         }
-        const viewSegment = req.params.viewName || 'default';
+        const viewSegment = req.params.viewName || await orgContext.getFallbackViewHandle();
         const baseUrl = "/" + req.params.orgName + constants.ROUTE.VIEWS_PATH + viewSegment;
         await registerAllPartialsFromFile(baseUrl, req, './src/defaultContent');
 
@@ -197,7 +200,10 @@ const registerPartialsFromAPI = async (req, orgId) => {
 async function registerAPILandingContent(req, orgId, partialObject) {
 
   const apiHandle = req.params.apiHandle;
-  const apiId = await apiDao.getId(orgId, apiHandle);
+  // Scoped to the view in the URL, matching the controllers that render these partials:
+  // otherwise this middleware would happily register the landing content of an artifact
+  // the view excludes, before the controller's own check ran.
+  const apiId = await apiDao.getIdInView(orgId, apiHandle, req.params.viewName);
   if (apiId === undefined || apiId === null) {
     throw new Error("API not found");
   }

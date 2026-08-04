@@ -107,6 +107,8 @@ paths:
         this instance's own organization; any other returns 403. The `id` (handle) and `idpRefId` fields cannot be
         changed — they are what page URLs and incoming token organization claims are matched against, so a rename
         would leave the running instance unable to find its own organization. Sending a different value returns 400.
+        `idpRefId` is owned by the portal's `auth.idp_org_id` configuration, which is re-applied on every
+        restart; change it there rather than here.
       operationId: updateOrganization
       requestBody:
         $ref: "#/components/requestBodies/OrganizationUpdateBody"
@@ -1822,9 +1824,11 @@ paths:
       operationId: updateView
       summary: Update a view
       description: >-
-        Updates the view display name and/or label associations. When `labels` is supplied, it fully replaces the
-        view's label set — labels present in the list are attached and any others are detached. The service returns
-        the accepted request payload.
+        Updates the view handle, display name and/or label associations. When `labels` is supplied, it fully
+        replaces the view's label set — labels present in the list are attached and any others are detached.
+        Supplying `id` renames the view's handle, which keeps the view's identity (labels, assets and API workflows
+        follow it) but invalidates every existing URL built from the old handle. The service returns the accepted
+        request payload.
       requestBody:
         $ref: "#/components/requestBodies/ViewUpdateBody"
       responses:
@@ -1866,7 +1870,11 @@ paths:
         - Views
       operationId: deleteView
       summary: Delete a view
-      description: Deletes a view by its `viewId` handle. A missing view is returned as a not-found error.
+      description: >-
+        Deletes a view by its `viewId` handle. A missing view is returned as a not-found error. Any view may be
+        deleted, including the one seeded as `default` — the portal resolves whichever view remains as its landing
+        view. The organization's LAST view cannot be deleted (`400`), since an organization with no views has no
+        page to serve. A view that still has API workflows is rejected with `409`; delete those first.
       responses:
         "204":
           description: View deleted successfully.
@@ -1874,6 +1882,8 @@ paths:
           $ref: "#/components/responses/BadRequest"
         "404":
           $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
         "500":
           $ref: "#/components/responses/InternalServerError"
       security:
@@ -2697,7 +2707,9 @@ components:
       schema:
         type: string
         example: default
-      description: API Portal view name used to filter visible APIs.
+      description: >-
+        The view's handle (unique per org), used to filter visible APIs. Not the view's
+        display name, and not the internal database uuid.
     artifactIdQueryOptional:
       name: artifactId
       in: query
@@ -5382,6 +5394,13 @@ components:
     ViewUpdateRequest:
       type: object
       properties:
+        id:
+          type: string
+          description: >-
+            New handle for the view (unique per org). Omit to leave the handle unchanged. The view keeps its
+            identity, so its labels, assets and API workflows follow the rename — but every portal URL embeds
+            the handle, so links to the old one stop resolving. Returns 409 if another view already uses it.
+          example: partner-apis
         displayName:
           type: string
           example: Partner and Public APIs

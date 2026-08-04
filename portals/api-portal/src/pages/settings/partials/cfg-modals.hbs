@@ -157,7 +157,15 @@
     <div class="cfg-form-group" style="margin-bottom:16px;">
       <label for="view-handle">Handle <span class="required">*</span></label>
       <input type="text" id="view-handle" class="cfg-form-input cfg-form-input--mono" placeholder="partner-apis" />
-      <p class="cfg-field-hint">Lowercase identifier used in URLs. Cannot be changed later.</p>
+      <p class="cfg-field-hint">Lowercase identifier used in URLs.</p>
+      {{!-- Shown by settings-views.js only when editing: the view keeps its labels,
+            assets and workflows across a rename, but its URL changes, so existing links
+            stop working. --}}
+      <p class="cfg-field-hint" id="view-handle-rename-warning" style="display:none;">
+        <i class="bi bi-exclamation-triangle"></i>
+        Renaming the handle changes this view's URL. Existing links and bookmarks to
+        <code id="view-handle-rename-old"></code> will stop working.
+      </p>
     </div>
     <div class="cfg-form-group" style="margin-bottom:24px;">
       <label>Labels</label>

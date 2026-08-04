@@ -1348,6 +1348,33 @@ function filterAllowedAPIs(searchResults, allowedAPIs) {
 }
 
 /**
+ * Resolves the API/MCP handle from a view-scoped page URL
+ * (`/{orgName}/views/{viewName}/api|mcp/{apiHandle}`) to its uuid, requiring that the
+ * artifact is actually visible in that view.
+ *
+ * Detail pages used to resolve on `handle + org_uuid` alone (apiDao.getId), so any
+ * published artifact in the organization rendered under ANY view's URL — the view
+ * segment was decoration, used only for theming and the base URL. Membership for
+ * APIs/MCP servers is a labels join rather than a column (`api_metadata` has no
+ * view_uuid, unlike `api_workflows` — which is why the workflow pages were already
+ * correct), so it has to be asked for explicitly: apiDao.getIdInView applies exactly
+ * the predicates the listing applies.
+ *
+ * Returns the uuid, or throws a 404 — the same answer a handle that doesn't exist at
+ * all gets, so the response can't be used to discover artifacts in other views.
+ */
+const resolveApiIdInView = async (orgId, apiHandle, viewName) => {
+    const apiDao = require('../dao/apiDao');
+    const apiId = await apiDao.getIdInView(orgId, apiHandle, viewName);
+    if (!apiId) {
+        const err = new Error('API not found in this view');
+        err.status = 404;
+        throw err;
+    }
+    return apiId;
+};
+
+/**
  * Route guard for a content type the portal can be configured not to serve.
  *
  * The capability is named explicitly by the caller rather than inferred from the
@@ -1402,6 +1429,7 @@ module.exports = {
     renderGivenTemplate,
     handleError,
     pageErrorStatus,
+    resolveApiIdInView,
     sendError,
     retrieveContentType,
     getAPIFileContent,

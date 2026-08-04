@@ -39,13 +39,15 @@ const loadAPIApiKeys = async (req, res, next) => {
         if (!req.user) {
             return res.redirect(`/${orgName}${constants.ROUTE.VIEWS_PATH}${viewName}/login`);
         }
-        const apiId = await apiDao.getId(orgId, apiHandle);
+        // View-scoped: the per-API keys page hangs off a view URL, so it answers 404 for
+        // an artifact that view doesn't include (apiDao.getIdInView).
+        const apiId = await apiDao.getIdInView(orgId, apiHandle, viewName);
         if (!apiId) {
             const err = new Error('API not found');
             err.status = 404;
             return next(err);
         }
-        let metaData = await apiMetadataService.getMetadataFromDB(orgId, apiId, viewName);
+        let metaData = await apiMetadataService.getMetadataFromDB(orgId, apiId);
         if (metaData && typeof metaData === 'object') {
             metaData = JSON.parse(JSON.stringify(metaData));
             const images = metaData.apiImageMetadata;

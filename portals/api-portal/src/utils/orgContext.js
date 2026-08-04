@@ -43,6 +43,7 @@
 const { config } = require('../config/configLoader');
 const logger = require('../config/logger');
 const orgDao = require('../dao/organizationDao');
+const viewDao = require('../dao/viewDao');
 const { CustomError, NotFoundError } = require('./errors/customErrors');
 
 // Resolved once and reused: getOrgUuid() is called on essentially every request,
@@ -73,6 +74,30 @@ function getHandle() {
  */
 function getDisplayName() {
     return config.organization?.displayName || getHandle();
+}
+
+/**
+ * Handle of the view to land on when a URL names no view — see
+ * viewDao.getFallbackHandle for the choice it makes.
+ *
+ * Never throws: two of its callers are the bare-org redirect and the error page's home
+ * link, and neither has anywhere useful to fail to. A lookup failure (database not yet
+ * reachable, organization not seeded) degrades to the conventional 'default' handle,
+ * which is what these sites hardcoded before this existed.
+ *
+ * @returns {Promise<string>}
+ */
+async function getFallbackViewHandle() {
+    try {
+        return await viewDao.getFallbackHandle(await getOrgUuid());
+    } catch (err) {
+        logger.warn('Falling back to the default view handle', {
+            handle: getHandle(),
+            error: err.message,
+            operation: 'getFallbackViewHandle',
+        });
+        return 'default';
+    }
 }
 
 /**
@@ -223,6 +248,7 @@ async function requirePinnedOrg(identifier) {
 module.exports = {
     getHandle,
     getDisplayName,
+    getFallbackViewHandle,
     getConfiguredIdpOrgId,
     getIdpOrgId,
     getOrgUuid,

@@ -38,12 +38,15 @@
                     <button class="cfg-icon-btn cfg-view-edit-btn" type="button" data-id="{{id}}" title="Edit">
                       <i class="bi bi-pencil"></i>
                     </button>
-                    {{#unless (eq id "default")}}
+                    {{!-- Every view is deletable, including the one seeded as 'default'
+                          (the portal resolves its landing view rather than assuming that
+                          handle). Only the last one is held back — the server enforces
+                          this too, with a 400. --}}
                     <button class="cfg-icon-btn cfg-icon-btn--danger cfg-view-delete-btn" type="button"
-                      data-id="{{id}}" data-name="{{displayName}}" title="Delete">
+                      data-id="{{id}}" data-name="{{displayName}}"
+                      {{#compare ../views.length "<=" 1}}disabled title="An organization must keep at least one view"{{else}}title="Delete"{{/compare}}>
                       <i class="bi bi-trash"></i>
                     </button>
-                    {{/unless}}
                   </div>
                 </td>
               </tr>
