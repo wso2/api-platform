@@ -285,12 +285,18 @@ const updateOrganization = async (req, res) => {
                 `The organization handle cannot be changed; it is fixed to '${currentHandle}' by this ` +
                 "portal's organization.handle configuration.");
         }
+        // idp_ref_id stays config-owned rather than immutable: auth.idp_org_id is
+        // re-applied by the startup seeder (seederService.reconcileIdpOrgId), so a
+        // write accepted here would be silently reverted on the next restart. Keeping
+        // config the single writer also means the value cannot drift between the file an
+        // operator reads and the row incoming token claims are matched against.
         if (payload.idpRefId !== undefined) {
             const existingIdpRefId = (await orgDao.getByHandle(currentHandle)).idp_ref_id;
             if (payload.idpRefId !== existingIdpRefId) {
                 return util.sendError(res, 400,
-                    'The organization IDP reference cannot be changed; it is what incoming ' +
-                    'tokens are matched against.');
+                    'The organization IDP reference cannot be changed through this API; it is what ' +
+                    "incoming tokens are matched against and is set by this portal's auth.idp_org_id " +
+                    'configuration.');
             }
         }
 

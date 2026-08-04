@@ -98,11 +98,14 @@ describe('organizations', () => {
         });
     });
 
-    describe('identity fields are immutable', () => {
+    describe('identity fields are not writable through this API', () => {
         // The handle and idp_ref_id are what page URLs and incoming token
         // organization claims are matched against. Renaming either would leave the
         // running instance unable to find its own organization — every page 404ing
-        // and every login 403ing until config was edited to match.
+        // and every login 403ing until config was edited to match. idp_ref_id is
+        // additionally re-applied from auth.idp_org_id by the startup seeder
+        // (seederService.reconcileIdpOrgId), so a write accepted here would be
+        // reverted on the next restart; config stays its single writer.
         it('rejects changing the organization handle', async () => {
             const res = await client.as('admin').put(`/organizations/${OWN_ORG}`, {
                 id: 'renamed-org',

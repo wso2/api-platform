@@ -170,6 +170,41 @@ const update = async (orgData, t) => {
     return [rowCount, [updatedOrg]];
 };
 
+/**
+ * Narrow, targeted write of idp_ref_id alone — used by the startup seeder to
+ * reconcile the stored value with auth.idp_org_id in config. update() above writes
+ * display_name, the business_owner fields, and cp_ref_id unconditionally, so
+ * reusing it here would clear whatever an operator set through the settings UI.
+ */
+const updateIdpRefId = async (orgUuid, idpRefId, actor, t) => {
+    const exec = t || db;
+    const { rowCount } = await exec.execute(
+        `UPDATE ${ORG_TABLE} SET idp_ref_id = ?, updated_by = ?, updated_at = ? WHERE uuid = ?`,
+        [idpRefId, actor, new Date(), orgUuid]
+    );
+    if (rowCount < 1) {
+        throw new NotFoundError('Organization not found');
+    }
+};
+
+/**
+ * Returns another organization that findOrgByIdentifier would resolve `value` to —
+ * i.e. one whose handle, display_name, or idp_ref_id already equals it — or null.
+ *
+ * A shared multi-organization database is the case this guards: pointing this
+ * instance's idp_ref_id at a value another organization already answers to would
+ * shadow that organization's own identifier resolution, so the seeder refuses the
+ * change rather than breaking a neighbouring tenant.
+ */
+const findOtherOrgClaimingIdentifier = async (value, excludeUuid, t) => {
+    const exec = t || db;
+    const rows = await exec.query(
+        `SELECT * FROM ${ORG_TABLE} WHERE (handle = ? OR display_name = ? OR idp_ref_id = ?) AND uuid <> ?`,
+        [String(value).toLowerCase(), value, value, excludeUuid]
+    );
+    return rows.length ? normalizeOrgRow(rows[0]) : null;
+};
+
 // Tables whose org_uuid FK is ON DELETE NO ACTION (database/schema.*.sql) block
 // deleting the organization row unless their rows are removed first. Tables with
 // ON DELETE CASCADE/SET NULL (api_metadata, subscription_plans, audit,
@@ -350,6 +385,8 @@ module.exports = {
     getId,
     list,
     update,
+    updateIdpRefId,
+    findOtherOrgClaimingIdentifier,
     delete: deleteOrg,
     createContent,
     updateContent,

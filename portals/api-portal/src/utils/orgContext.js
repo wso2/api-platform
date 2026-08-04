@@ -76,6 +76,49 @@ function getDisplayName() {
 }
 
 /**
+ * The explicitly configured auth.idp_org_id, or '' when unset.
+ *
+ * Kept separate from getIdpOrgId() because the two questions differ: "what should a
+ * brand-new organization row be seeded with" (getIdpOrgId, which falls back to the
+ * handle) versus "did the operator actually ask for a specific value" (this one). The
+ * startup reconcile in seederService.js needs the latter — with only the falling-back
+ * form it could not tell an unset setting from one deliberately set to the handle, and
+ * would silently rewrite a stored idp_ref_id back to the handle whenever the setting
+ * was absent.
+ *
+ * @returns {string}
+ */
+function getConfiguredIdpOrgId() {
+    const configured = config.auth?.idpOrgId;
+    return (typeof configured === 'string' && configured.trim()) || '';
+}
+
+/**
+ * The IdP's organization identifier for this instance's organization — the value of
+ * the org claim the IdP asserts at SSO login, which is what incoming tokens are
+ * matched against (see organizationDao.findOrgByIdentifier). Falls back to the handle
+ * when unset, so a deployment whose IdP claim equals the handle needs no extra config.
+ *
+ * Read from [api_portal.auth] rather than [api_portal.organization]: it describes the
+ * identity provider's naming of this organization, and pairs with
+ * auth.claim_mappings.organization — that names the claim, this is the value expected
+ * in it. It is persisted as the organization row's idp_ref_id column, which is the
+ * name the REST API and database schema use for the same thing.
+ *
+ * NOT lowercased, unlike the handle: the stored value is compared verbatim
+ * (case-sensitive) against the token claim, so config must be preserved exactly.
+ *
+ * Consulted at startup only: the seeder writes it when creating the organization and
+ * reconciles it on later boots (seederService.js). The admin API never changes it, so
+ * config stays the single writer of this field.
+ *
+ * @returns {string}
+ */
+function getIdpOrgId() {
+    return getConfiguredIdpOrgId() || getHandle();
+}
+
+/**
  * Resolves — and caches — the uuid of this instance's organization.
  *
  * Throws NotFoundError if the organization row doesn't exist. That is expected only
@@ -180,6 +223,8 @@ async function requirePinnedOrg(identifier) {
 module.exports = {
     getHandle,
     getDisplayName,
+    getConfiguredIdpOrgId,
+    getIdpOrgId,
     getOrgUuid,
     isPinnedOrg,
     requirePinnedOrg,

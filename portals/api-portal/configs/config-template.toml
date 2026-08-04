@@ -148,6 +148,21 @@ session_secret = ""     # 64-char hex — express-session signing secret
 # ([api_portal.auth.local] below). "idp" — external OIDC IDP (auth.idp below).
 mode = "local"          # local | idp
 
+# `idp_org_id` is your IdP's identifier for this organization — the VALUE expected in
+# the claim named by claim_mappings.organization below, which is what incoming tokens
+# are matched against. It defaults to organization.handle (leave it unset for the
+# common case, including local/platform-api-managed mode where the org_handle claim IS
+# the handle). Set it only when your IdP's org claim differs from the URL handle.
+#
+# This setting owns the value — stored as the organization's idp_ref_id, the name the
+# REST API uses. It is seeded on first boot and re-applied on every restart, so
+# correcting it here and restarting is how you change it. The admin API refuses to
+# change it, since a write there would be reverted at the next restart. Leaving it
+# unset does NOT reset a previously configured value back to the handle — remove it
+# only along with the IdP claim it mirrored. Anyone already logged in with the previous
+# claim value must log in again after a change.
+# idp_org_id = "default"
+
 # JWT claim name mappings — which token claim carries each field.
 # Dot-notation supported for nested claims (e.g. "realm_access.roles").
 [api_portal.auth.claim_mappings]
@@ -284,6 +299,10 @@ subscriber = "ap_subscriber"
 # [platform_api.auth.file.organization] id — that is what the Platform API puts in
 # the org_handle claim of the tokens this portal verifies. A mismatch means every
 # login is rejected with 403.
+#
+# The org identifier your IdP asserts for this organization is configured separately,
+# as `idp_org_id` in [api_portal.auth] — it belongs with the claim mapping that names
+# the claim it arrives in.
 
 [api_portal.organization]
 handle = "default"                       # URL slug: /{handle}/views/{viewName}
