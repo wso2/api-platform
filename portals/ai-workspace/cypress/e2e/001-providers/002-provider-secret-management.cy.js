@@ -16,6 +16,8 @@
  * under the License.
  */
 
+import { appPathPattern } from '../../support/appPath';
+
 /**
  * Secret management behaviour for LLM provider create and update flows.
  *
@@ -157,7 +159,7 @@ describe('AI Workspace — LLM provider secret management (create flow)', () => 
 
     cy.location('pathname', { timeout: 30000 }).should(
       'match',
-      new RegExp(`^/organizations/${orgHandle}/service-provider/[^/]+$`)
+      appPathPattern(`/organizations/${orgHandle}/service-provider/[^/]+$`)
     );
 
     // Plaintext key must never appear anywhere on the provider detail page.
@@ -367,7 +369,7 @@ describe('AI Workspace — LLM provider secret management (update flow)', () => 
     // route — exclude it explicitly so the wait doesn't resolve early.
     cy.location('pathname', { timeout: 30000 }).should(
       'match',
-      new RegExp(`^/organizations/${orgHandle}/service-provider/(?!new$)[^/]+$`)
+      appPathPattern(`/organizations/${orgHandle}/service-provider/(?!new$)[^/]+$`)
     );
 
     cy.contains('[role="tab"]', 'Connection', { timeout: 15000 }).click();
