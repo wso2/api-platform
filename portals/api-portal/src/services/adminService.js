@@ -479,6 +479,11 @@ const applyTheme = async (req, res) => {
         }
         await util.unzipDirectory(zipPath, extractPath);
         const files = await util.readFilesInDirectory(extractPath, orgId, req.protocol, req.get('host'), viewName);
+        if (files.length === 0) {
+            throw new CustomError(400, 'Bad Request',
+                'The uploaded archive contains no theme files. Check that the zip has the theme '
+                + 'directory at its root, and that it holds .hbs/.css/image files.');
+        }
         await db.withTransaction(async (t) => {
             await orgDao.deleteThemeContent(orgId, viewName, t);
             for (const { filePath, fileName, fileContent, fileType } of files) {

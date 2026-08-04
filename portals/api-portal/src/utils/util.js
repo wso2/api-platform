@@ -999,11 +999,25 @@ const rejectExtraProperties = (allowedKeys, payload) => {
     return extraKeys;
 };
 
+const IGNORED_THEME_ENTRIES = new Set(['.DS_Store', 'Thumbs.db', 'desktop.ini', '__MACOSX']);
+const isIgnoredThemeEntry = (name) => IGNORED_THEME_ENTRIES.has(name) || name.startsWith('._');
+
 async function readFilesInDirectory(directory, orgId, protocol, host, viewName, baseDir = '') {
     try {
         const files = await fs.promises.readdir(directory, { withFileTypes: true });
         let fileDetails = [];
         for (const file of files) {
+            // Checked before the isDirectory() split so `__MACOSX/` is skipped whole rather
+            // than walked into.
+            if (isIgnoredThemeEntry(file.name)) {
+                logger.debug('Skipping OS metadata entry in uploaded theme', {
+                    fileName: file.name,
+                    directory,
+                    orgId,
+                });
+                continue;
+            }
+
             const filePath = path.join(directory, file.name);
             const relativePath = path.join(baseDir, file.name);
 
@@ -1055,14 +1069,18 @@ async function readFilesInDirectory(directory, orgId, protocol, host, viewName, 
                 } else if (isImageFile(fileExtension)) {
                     fileType = "image";
                 } else {
-                    // Unexpected file type
-                    logger.error(`Unexpected file type detected: ${file.name}`, {
+                    // Not something a theme is built from. Skipped rather than rejecting the
+                    // whole upload: one stray file is no reason to throw away sixty good
+                    // ones, and a zip built on a desktop routinely picks strays up. Warned
+                    // rather than ignored so a file the author *did* mean to ship — a .js
+                    // they expected to be served, say — doesn't vanish without a trace.
+                    logger.warn('Skipping unsupported file in uploaded theme', {
                         fileName: file.name,
                         fileExtension: fileExtension,
                         directory: directory,
                         orgId: orgId
                     });
-                    throw new CustomError(400, `Bad Request`, `Unexpected file type: ${file.name}`);
+                    continue;
                 }
 
                 fileDetails.push({
