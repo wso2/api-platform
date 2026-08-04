@@ -29,6 +29,7 @@ const orgContext = require('../utils/orgContext');
 const { validationResult } = require('express-validator');
 const { verifyPlatformJwtClaims } = require('../utils/platformJwt');
 const { portalRoles, rolesFromClaims } = require('../middlewares/authorization');
+const { clearPortalCookies } = require('../utils/sessionCookies');
 
 
 
@@ -165,6 +166,7 @@ const handleLogOut = async (req, res) => {
                 if (destroyErr) {
                     logger.error('Session destroy failed on local-auth logout', { error: destroyErr.message });
                 }
+                clearPortalCookies(res);
                 res.redirect(req.originalUrl.replace('/logout', '/login'));
             });
         });
@@ -206,6 +208,9 @@ const handleLogOutLanding = async (req, res) => {
         if (err) {
             logger.error('Session destroy failed on logout landing', { error: err.message });
         }
+        // The IDP round-trip ends here, so this is the one place an idp-mode session is
+        // actually torn down — clear its cookies at every path they may exist at.
+        clearPortalCookies(res);
         res.redirect(currentPathURI);
     });
 }

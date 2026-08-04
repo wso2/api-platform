@@ -41,6 +41,7 @@ const crypto = require('crypto');
 const util = require('./utils/util');
 const orgContext = require('./utils/orgContext');
 const sessionStore = require('./db/sessionStoreConfig');
+const sessionCookies = require('./utils/sessionCookies');
 const { registerHelpers } = require('./helpers/handlebarsHelpers');
 const { configurePassport } = require('./middlewares/passportConfig');
 
@@ -59,19 +60,26 @@ app.set('view engine', 'hbs');
 
 registerHelpers();
 
-// The session middleware is mounted at BASE_PATH, not app-wide, and that placement is
-// load-bearing rather than tidiness. The cookie is scoped to `path: BASE_PATH` (the whole
-// portal, and every route that reads the session, lives under the prefix), so a browser
-// does NOT send it on a request to the true root. Left app-wide, such a request would
-// look like a brand-new visitor to express-session, which — with saveUninitialized —
-// mints a fresh session and emits `Set-Cookie: …; Path=/api-portal`. Cookie identity is
-// (name, domain, path), so that response REPLACES the signed-in cookie: visiting `/`,
-// `/robots.txt`, `/llms.txt` or any unmatched root path would silently log the user out.
-// Confining the middleware to the prefix means those paths never touch a session at all
-// (which also keeps container healthchecks from creating a session row per probe).
+// Session, passport and the XSRF cookie are mounted at BASE_PATH rather than app-wide,
+// and that placement is load-bearing rather than tidiness.
+//
+// express-session skips itself entirely when the request path falls outside its cookie's
+// `path` ("pathname mismatch" — it calls next() without creating req.session). With the
+// cookie scoped to BASE_PATH, that means req.session is undefined for every true-root
+// request. passport.session() then errors with "Login sessions require session support",
+// so any unmatched root path — `/nope`, and `/favicon.ico`, which browsers fetch on their
+// own — answered 500 with a logged stack trace instead of a plain 404. Confining all three
+// to the prefix keeps the root a clean 404 (and keeps healthcheck probes off the session
+// store entirely).
+//
+// The routes that DO answer at the root — /health, /, /robots.txt, /llms.txt — are
+// registered below and need no session, so they are unaffected either way.
 const sessionMiddleware = session({
     store: sessionStore,
     secret: sessionSecret,
+    // Spelled out rather than left to the library default, so the logout path can expire
+    // this exact cookie (utils/sessionCookies.js).
+    name: sessionCookies.SESSION_COOKIE_NAME,
     resave: false,
     saveUninitialized: true,
     cookie: {
@@ -83,9 +91,17 @@ const sessionMiddleware = session({
     },
 });
 
-app.get('/health', (req, res) => {
+// Registered at BOTH the true root and under the prefix, because the two ways this gets
+// probed see different paths: a container HEALTHCHECK or a Kubernetes probe dials the pod
+// directly, with no ingress to add the prefix, while anything routed through the ingress
+// that fronts a shared host only ever sees `${BASE_PATH}/*`. Registered up here so health
+// never touches the session store — a probe every few seconds otherwise churns a row per
+// check.
+const healthHandler = (req, res) => {
     res.status(200).json({ status: 'ok' });
-});
+};
+app.get('/health', healthHandler);
+app.get(`${constants.ROUTE.BASE_PATH}/health`, healthHandler);
 
 // Convenience redirect for anyone hitting the container's true root directly (a
 // path-routing proxy only ever forwards ${BASE_PATH}/*, so this never fires behind one):
@@ -140,7 +156,7 @@ app.use(skipForTryoutProxy(express.urlencoded({ extended: true, limit: bodyLimit
 // the real request paths; /health and /metrics stay at the true root.
 const BP = constants.ROUTE.BASE_PATH;
 app.use(auditMiddleware({
-    excludePaths: ['/health', '/metrics', '/favicon.ico',
+    excludePaths: ['/health', '/metrics', '/favicon.ico', `${BP}/health`,
         `${BP}/styles`, `${BP}/scripts`, `${BP}/images`, `${BP}/technical-styles`, `${BP}/technical-scripts`],
     sensitiveFields: ['password', 'token', 'secret', 'key', 'authorization', 'idToken', 'accessToken', 'refreshToken']
 }));
@@ -159,7 +175,7 @@ app.use(constants.ROUTE.BASE_PATH, passport.session());
 const { getSessionCsrfToken } = require('./middlewares/csrfProtection');
 app.use(constants.ROUTE.BASE_PATH, (req, res, next) => {
     if (req.session) {
-        res.cookie('XSRF-TOKEN', getSessionCsrfToken(req), {
+        res.cookie(sessionCookies.CSRF_COOKIE_NAME, getSessionCsrfToken(req), {
             sameSite: 'lax',
             secure: config.server.https.enabled && !config.designMode?.enabled,
             // Same scope as the session cookie above — the double-submit token is only
@@ -274,9 +290,13 @@ app.use(async (err, req, res, next) => {
         });
     }
 
-    // Destroy session on auth errors
+    // Destroy session on auth errors. The cookies go with it, at every path they may have
+    // been written at — express-session stops emitting Set-Cookie once req.session is gone,
+    // so without this the browser keeps presenting a cookie for a session that no longer
+    // exists (see utils/sessionCookies.js).
     if (status === 401 && req.session) {
         req.session.destroy(() => {});
+        sessionCookies.clearPortalCookies(res);
     }
 
     // Ensure chrome partials exist — registered by registerPartials for normal requests,
