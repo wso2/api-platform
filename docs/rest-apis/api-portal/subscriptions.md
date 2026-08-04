@@ -10,11 +10,10 @@
 
 ```shell
 
-curl -X POST https://localhost:9543/api/v0.9/subscriptions \
-  -u {username}:{password} \
+curl -X POST https://localhost:9543/api-portal/api/v0.9/subscriptions \
+  -H 'Authorization: Bearer {access_token}' \
   -H 'Content-Type: application/json' \
   -H 'Accept: application/json' \
-  -H 'Authorization: Bearer {access-token}' \
   -d @payload.json
 
 ```
@@ -33,7 +32,9 @@ Creates a subscription for an API. The API must exist in the API Portal and have
 ### Authentication
 
 <aside class="warning">
-This operation requires <strong>Basic Auth</strong> authentication.
+This operation requires a <strong>Bearer JWT</strong> access token in the <code>Authorization</code> header.
+
+Required scopes (the token must carry at least one of): `dp:subscription:create`, `dp:subscription:manage`
 
 </aside>
 
@@ -44,7 +45,7 @@ This operation requires <strong>Basic Auth</strong> authentication.
 |body|body|[SubscriptionCreateRequest](schemas.md#schemasubscriptioncreaterequest)|true|Subscription creation payload. `artifactId` is the API ID.|
 
 > Example responses
-
+>
 > 201 Response
 
 ```json
@@ -139,10 +140,9 @@ This operation requires <strong>Basic Auth</strong> authentication.
 
 ```shell
 
-curl -X GET https://localhost:9543/api/v0.9/subscriptions \
-  -u {username}:{password} \
-  -H 'Accept: application/json' \
-  -H 'Authorization: Bearer {access-token}'
+curl -X GET https://localhost:9543/api-portal/api/v0.9/subscriptions \
+  -H 'Authorization: Bearer {access_token}' \
+  -H 'Accept: application/json'
 
 ```
 
@@ -151,7 +151,9 @@ Lists subscriptions owned by the authenticated user. When `artifactId` is provid
 ### Authentication
 
 <aside class="warning">
-This operation requires <strong>Basic Auth</strong> authentication.
+This operation requires a <strong>Bearer JWT</strong> access token in the <code>Authorization</code> header.
+
+Required scopes (the token must carry at least one of): `dp:subscription:read`, `dp:subscription:manage`
 
 </aside>
 
@@ -164,7 +166,7 @@ This operation requires <strong>Basic Auth</strong> authentication.
 |offset|query|integer|false|Number of records to skip before returning results.|
 
 > Example responses
-
+>
 > 200 Response
 
 ```json
@@ -257,10 +259,9 @@ Status Code **200**
 
 ```shell
 
-curl -X GET https://localhost:9543/api/v0.9/subscriptions/{subId} \
-  -u {username}:{password} \
-  -H 'Accept: application/json' \
-  -H 'Authorization: Bearer {access-token}'
+curl -X GET https://localhost:9543/api-portal/api/v0.9/subscriptions/{subId} \
+  -H 'Authorization: Bearer {access_token}' \
+  -H 'Accept: application/json'
 
 ```
 
@@ -269,7 +270,9 @@ Retrieves a single subscription by subscription ID.
 ### Authentication
 
 <aside class="warning">
-This operation requires <strong>Basic Auth</strong> authentication.
+This operation requires a <strong>Bearer JWT</strong> access token in the <code>Authorization</code> header.
+
+Required scopes (the token must carry at least one of): `dp:subscription:read`, `dp:subscription:manage`
 
 </aside>
 
@@ -280,7 +283,7 @@ This operation requires <strong>Basic Auth</strong> authentication.
 |subId|path|string|true|none|
 
 > Example responses
-
+>
 > 200 Response
 
 ```json
@@ -335,11 +338,10 @@ This operation requires <strong>Basic Auth</strong> authentication.
 
 ```shell
 
-curl -X PUT https://localhost:9543/api/v0.9/subscriptions/{subId} \
-  -u {username}:{password} \
+curl -X PUT https://localhost:9543/api-portal/api/v0.9/subscriptions/{subId} \
+  -H 'Authorization: Bearer {access_token}' \
   -H 'Content-Type: application/json' \
   -H 'Accept: application/json' \
-  -H 'Authorization: Bearer {access-token}' \
   -d @payload.json
 
 ```
@@ -357,7 +359,9 @@ Updates the subscription status. Accepts only `ACTIVE` or `INACTIVE`.
 ### Authentication
 
 <aside class="warning">
-This operation requires <strong>Basic Auth</strong> authentication.
+This operation requires a <strong>Bearer JWT</strong> access token in the <code>Authorization</code> header.
+
+Required scopes (the token must carry at least one of): `dp:subscription:update`, `dp:subscription:manage`
 
 </aside>
 
@@ -369,7 +373,7 @@ This operation requires <strong>Basic Auth</strong> authentication.
 |subId|path|string|true|none|
 
 > Example responses
-
+>
 > 200 Response
 
 ```json
@@ -449,10 +453,9 @@ This operation requires <strong>Basic Auth</strong> authentication.
 
 ```shell
 
-curl -X DELETE https://localhost:9543/api/v0.9/subscriptions/{subId} \
-  -u {username}:{password} \
-  -H 'Accept: application/json' \
-  -H 'Authorization: Bearer {access-token}'
+curl -X DELETE https://localhost:9543/api-portal/api/v0.9/subscriptions/{subId} \
+  -H 'Authorization: Bearer {access_token}' \
+  -H 'Accept: application/json'
 
 ```
 
@@ -461,7 +464,9 @@ Deletes the subscription and returns a success message.
 ### Authentication
 
 <aside class="warning">
-This operation requires <strong>Basic Auth</strong> authentication.
+This operation requires a <strong>Bearer JWT</strong> access token in the <code>Authorization</code> header.
+
+Required scopes (the token must carry at least one of): `dp:subscription:delete`, `dp:subscription:manage`
 
 </aside>
 
@@ -472,7 +477,7 @@ This operation requires <strong>Basic Auth</strong> authentication.
 |subId|path|string|true|none|
 
 > Example responses
-
+>
 > 200 Response
 
 ```json
@@ -519,11 +524,10 @@ This operation requires <strong>Basic Auth</strong> authentication.
 
 ```shell
 
-curl -X POST https://localhost:9543/api/v0.9/subscriptions/{subId}/change-plan \
-  -u {username}:{password} \
+curl -X POST https://localhost:9543/api-portal/api/v0.9/subscriptions/{subId}/change-plan \
+  -H 'Authorization: Bearer {access_token}' \
   -H 'Content-Type: application/json' \
   -H 'Accept: application/json' \
-  -H 'Authorization: Bearer {access-token}' \
   -d @payload.json
 
 ```
@@ -542,7 +546,9 @@ Changes the subscription plan in-place. The subscription UUID and token remain u
 ### Authentication
 
 <aside class="warning">
-This operation requires <strong>Basic Auth</strong> authentication.
+This operation requires a <strong>Bearer JWT</strong> access token in the <code>Authorization</code> header.
+
+Required scopes (the token must carry at least one of): `dp:subscription:update`, `dp:subscription:manage`
 
 </aside>
 
@@ -554,7 +560,7 @@ This operation requires <strong>Basic Auth</strong> authentication.
 |subId|path|string|true|none|
 
 > Example responses
-
+>
 > 200 Response
 
 ```json
@@ -634,10 +640,9 @@ This operation requires <strong>Basic Auth</strong> authentication.
 
 ```shell
 
-curl -X POST https://localhost:9543/api/v0.9/subscriptions/{subId}/regenerate-token \
-  -u {username}:{password} \
-  -H 'Accept: application/json' \
-  -H 'Authorization: Bearer {access-token}'
+curl -X POST https://localhost:9543/api-portal/api/v0.9/subscriptions/{subId}/regenerate-token \
+  -H 'Authorization: Bearer {access_token}' \
+  -H 'Accept: application/json'
 
 ```
 
@@ -646,7 +651,9 @@ Regenerates the subscription token, immediately invalidating the old one. A `sub
 ### Authentication
 
 <aside class="warning">
-This operation requires <strong>Basic Auth</strong> authentication.
+This operation requires a <strong>Bearer JWT</strong> access token in the <code>Authorization</code> header.
+
+Required scopes (the token must carry at least one of): `dp:subscription:manage`
 
 </aside>
 
@@ -657,7 +664,7 @@ This operation requires <strong>Basic Auth</strong> authentication.
 |subId|path|string|true|none|
 
 > Example responses
-
+>
 > 200 Response
 
 ```json

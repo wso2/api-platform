@@ -10,11 +10,10 @@
 
 ```shell
 
-curl -X POST https://localhost:9543/api/v0.9/key-managers \
-  -u {username}:{password} \
+curl -X POST https://localhost:9543/api-portal/api/v0.9/key-managers \
+  -H 'Authorization: Bearer {access_token}' \
   -H 'Content-Type: application/json' \
   -H 'Accept: application/json' \
-  -H 'Authorization: Bearer {access-token}' \
   -d @payload.json
 
 ```
@@ -43,7 +42,9 @@ tokenEndpoint: https://api.asgardeo.io/t/myorg/oauth2/token
 ### Authentication
 
 <aside class="warning">
-This operation requires <strong>Basic Auth</strong> authentication.
+This operation requires a <strong>Bearer JWT</strong> access token in the <code>Authorization</code> header.
+
+Required scopes (the token must carry at least one of): `dp:key_manager:create`, `dp:key_manager:manage`
 
 </aside>
 
@@ -54,7 +55,7 @@ This operation requires <strong>Basic Auth</strong> authentication.
 |body|body|[KeyManagerRequest](schemas.md#schemakeymanagerrequest)|false|Key manager configuration payload. Submit as `application/json` or as `multipart/form-data` with a `keymanager` field containing a KeyManager YAML file.|
 
 > Example responses
-
+>
 > 201 Response
 
 ```json
@@ -140,10 +141,9 @@ This operation requires <strong>Basic Auth</strong> authentication.
 
 ```shell
 
-curl -X GET https://localhost:9543/api/v0.9/key-managers \
-  -u {username}:{password} \
-  -H 'Accept: application/json' \
-  -H 'Authorization: Bearer {access-token}'
+curl -X GET https://localhost:9543/api-portal/api/v0.9/key-managers \
+  -H 'Authorization: Bearer {access_token}' \
+  -H 'Accept: application/json'
 
 ```
 
@@ -152,7 +152,9 @@ Returns key manager configurations for the organization. Admins receive the full
 ### Authentication
 
 <aside class="warning">
-This operation requires <strong>Basic Auth</strong> authentication.
+This operation requires a <strong>Bearer JWT</strong> access token in the <code>Authorization</code> header.
+
+Required scopes (the token must carry at least one of): `dp:key_manager:read`, `dp:application_key_mapping:read`
 
 </aside>
 
@@ -164,7 +166,7 @@ This operation requires <strong>Basic Auth</strong> authentication.
 |offset|query|integer|false|Number of records to skip before returning results.|
 
 > Example responses
-
+>
 > 200 Response
 
 ```json
@@ -259,10 +261,9 @@ Status Code **200**
 
 ```shell
 
-curl -X GET https://localhost:9543/api/v0.9/key-managers/{kmId} \
-  -u {username}:{password} \
-  -H 'Accept: application/json' \
-  -H 'Authorization: Bearer {access-token}'
+curl -X GET https://localhost:9543/api-portal/api/v0.9/key-managers/{kmId} \
+  -H 'Authorization: Bearer {access_token}' \
+  -H 'Accept: application/json'
 
 ```
 
@@ -271,7 +272,9 @@ Retrieves a single key manager configuration by ID.
 ### Authentication
 
 <aside class="warning">
-This operation requires <strong>Basic Auth</strong> authentication.
+This operation requires a <strong>Bearer JWT</strong> access token in the <code>Authorization</code> header.
+
+Required scopes (the token must carry at least one of): `dp:key_manager:read`, `dp:key_manager:manage`
 
 </aside>
 
@@ -282,7 +285,7 @@ This operation requires <strong>Basic Auth</strong> authentication.
 |kmId|path|string|true|The key manager's handle (its `id` in request/response payloads), not the internal database uuid.|
 
 > Example responses
-
+>
 > 200 Response
 
 ```json
@@ -337,11 +340,10 @@ This operation requires <strong>Basic Auth</strong> authentication.
 
 ```shell
 
-curl -X PUT https://localhost:9543/api/v0.9/key-managers/{kmId} \
-  -u {username}:{password} \
+curl -X PUT https://localhost:9543/api-portal/api/v0.9/key-managers/{kmId} \
+  -H 'Authorization: Bearer {access_token}' \
   -H 'Content-Type: application/json' \
   -H 'Accept: application/json' \
-  -H 'Authorization: Bearer {access-token}' \
   -d @payload.json
 
 ```
@@ -370,7 +372,9 @@ tokenEndpoint: https://api.asgardeo.io/t/myorg/oauth2/token
 ### Authentication
 
 <aside class="warning">
-This operation requires <strong>Basic Auth</strong> authentication.
+This operation requires a <strong>Bearer JWT</strong> access token in the <code>Authorization</code> header.
+
+Required scopes (the token must carry at least one of): `dp:key_manager:update`, `dp:key_manager:manage`
 
 </aside>
 
@@ -382,7 +386,7 @@ This operation requires <strong>Basic Auth</strong> authentication.
 |kmId|path|string|true|The key manager's handle (its `id` in request/response payloads), not the internal database uuid.|
 
 > Example responses
-
+>
 > 200 Response
 
 ```json
@@ -473,10 +477,9 @@ This operation requires <strong>Basic Auth</strong> authentication.
 
 ```shell
 
-curl -X DELETE https://localhost:9543/api/v0.9/key-managers/{kmId} \
-  -u {username}:{password} \
-  -H 'Accept: application/json' \
-  -H 'Authorization: Bearer {access-token}'
+curl -X DELETE https://localhost:9543/api-portal/api/v0.9/key-managers/{kmId} \
+  -H 'Authorization: Bearer {access_token}' \
+  -H 'Accept: application/json'
 
 ```
 
@@ -485,7 +488,9 @@ Deletes a key manager configuration by ID.
 ### Authentication
 
 <aside class="warning">
-This operation requires <strong>Basic Auth</strong> authentication.
+This operation requires a <strong>Bearer JWT</strong> access token in the <code>Authorization</code> header.
+
+Required scopes (the token must carry at least one of): `dp:key_manager:delete`, `dp:key_manager:manage`
 
 </aside>
 
@@ -496,7 +501,7 @@ This operation requires <strong>Basic Auth</strong> authentication.
 |kmId|path|string|true|The key manager's handle (its `id` in request/response payloads), not the internal database uuid.|
 
 > Example responses
-
+>
 > 404 Response
 
 ```json

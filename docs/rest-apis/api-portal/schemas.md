@@ -1550,7 +1550,7 @@ A single delivery attempt made to a webhook subscriber.
 |---|---|---|---|---|
 |id|string|true|none|Desired handle for the view (unique per org), stored as-is.|
 |displayName|string|false|none|Optional display name. Defaults to the handle when omitted.|
-|labels|[string]|true|none|Label names to attach to the view.|
+|labels|[string]|false|none|Label names to attach to the view. Optional — omit or pass an empty array to create a view with no labels, which surfaces no APIs until labels are attached later via the update endpoint.|
 
 <h2 id="tocS_ViewUpdateRequest">ViewUpdateRequest</h2>
 
@@ -1561,6 +1561,7 @@ A single delivery attempt made to a webhook subscriber.
 
 ```json
 {
+  "id": "partner-apis",
   "displayName": "Partner and Public APIs",
   "labels": [
     "partner",
@@ -1574,6 +1575,7 @@ A single delivery attempt made to a webhook subscriber.
 
 |Name|Type|Required|Restrictions|Description|
 |---|---|---|---|---|
+|id|string|false|none|New handle for the view (unique per org). Omit to leave the handle unchanged. The view keeps its identity, so its labels, assets and API workflows follow the rename — but every portal URL embeds the handle, so links to the old one stop resolving. Returns 409 if another view already uses it.|
 |displayName|string|false|none|none|
 |labels|[string]|false|none|Full desired set of label names for the view. Labels present here but not currently attached are attached; labels currently attached but absent here are detached. Omit to leave labels unchanged.|
 

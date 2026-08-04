@@ -10,11 +10,10 @@
 
 ```shell
 
-curl -X POST https://localhost:9543/api/v0.9/webhook-subscribers \
-  -u {username}:{password} \
+curl -X POST https://localhost:9543/api-portal/api/v0.9/webhook-subscribers \
+  -H 'Authorization: Bearer {access_token}' \
   -H 'Content-Type: application/json' \
   -H 'Accept: application/json' \
-  -H 'Authorization: Bearer {access-token}' \
   -d @payload.json
 
 ```
@@ -41,7 +40,9 @@ Registers a webhook subscriber for the organization. Event deliveries (apikey.*,
 ### Authentication
 
 <aside class="warning">
-This operation requires <strong>Basic Auth</strong> authentication.
+This operation requires a <strong>Bearer JWT</strong> access token in the <code>Authorization</code> header.
+
+Required scopes (the token must carry at least one of): `dp:webhook_subscriber:create`, `dp:webhook_subscriber:manage`
 
 </aside>
 
@@ -52,7 +53,7 @@ This operation requires <strong>Basic Auth</strong> authentication.
 |body|body|[WebhookSubscriberRequest](schemas.md#schemawebhooksubscriberrequest)|true|Webhook subscriber configuration payload.|
 
 > Example responses
-
+>
 > 201 Response
 
 ```json
@@ -144,10 +145,9 @@ This operation requires <strong>Basic Auth</strong> authentication.
 
 ```shell
 
-curl -X GET https://localhost:9543/api/v0.9/webhook-subscribers \
-  -u {username}:{password} \
-  -H 'Accept: application/json' \
-  -H 'Authorization: Bearer {access-token}'
+curl -X GET https://localhost:9543/api-portal/api/v0.9/webhook-subscribers \
+  -H 'Authorization: Bearer {access_token}' \
+  -H 'Accept: application/json'
 
 ```
 
@@ -156,7 +156,9 @@ Returns all webhook subscriber configurations for the organization. Secrets are 
 ### Authentication
 
 <aside class="warning">
-This operation requires <strong>Basic Auth</strong> authentication.
+This operation requires a <strong>Bearer JWT</strong> access token in the <code>Authorization</code> header.
+
+Required scopes (the token must carry at least one of): `dp:webhook_subscriber:read`, `dp:webhook_subscriber:manage`
 
 </aside>
 
@@ -168,7 +170,7 @@ This operation requires <strong>Basic Auth</strong> authentication.
 |offset|query|integer|false|Number of records to skip before returning results.|
 
 > Example responses
-
+>
 > 200 Response
 
 ```json
@@ -253,10 +255,9 @@ Status Code **200**
 
 ```shell
 
-curl -X GET https://localhost:9543/api/v0.9/webhook-subscribers/{subscriberId} \
-  -u {username}:{password} \
-  -H 'Accept: application/json' \
-  -H 'Authorization: Bearer {access-token}'
+curl -X GET https://localhost:9543/api-portal/api/v0.9/webhook-subscribers/{subscriberId} \
+  -H 'Authorization: Bearer {access_token}' \
+  -H 'Accept: application/json'
 
 ```
 
@@ -265,7 +266,9 @@ Retrieves a single webhook subscriber configuration by ID.
 ### Authentication
 
 <aside class="warning">
-This operation requires <strong>Basic Auth</strong> authentication.
+This operation requires a <strong>Bearer JWT</strong> access token in the <code>Authorization</code> header.
+
+Required scopes (the token must carry at least one of): `dp:webhook_subscriber:read`, `dp:webhook_subscriber:manage`
 
 </aside>
 
@@ -276,7 +279,7 @@ This operation requires <strong>Basic Auth</strong> authentication.
 |subscriberId|path|string|true|The webhook subscriber's handle (its `id` in request/response payloads), not the internal database uuid.|
 
 > Example responses
-
+>
 > 200 Response
 
 ```json
@@ -337,11 +340,10 @@ This operation requires <strong>Basic Auth</strong> authentication.
 
 ```shell
 
-curl -X PUT https://localhost:9543/api/v0.9/webhook-subscribers/{subscriberId} \
-  -u {username}:{password} \
+curl -X PUT https://localhost:9543/api-portal/api/v0.9/webhook-subscribers/{subscriberId} \
+  -H 'Authorization: Bearer {access_token}' \
   -H 'Content-Type: application/json' \
   -H 'Accept: application/json' \
-  -H 'Authorization: Bearer {access-token}' \
   -d @payload.json
 
 ```
@@ -368,7 +370,9 @@ Updates an existing webhook subscriber configuration. Only supplied fields are u
 ### Authentication
 
 <aside class="warning">
-This operation requires <strong>Basic Auth</strong> authentication.
+This operation requires a <strong>Bearer JWT</strong> access token in the <code>Authorization</code> header.
+
+Required scopes (the token must carry at least one of): `dp:webhook_subscriber:update`, `dp:webhook_subscriber:manage`
 
 </aside>
 
@@ -380,7 +384,7 @@ This operation requires <strong>Basic Auth</strong> authentication.
 |subscriberId|path|string|true|The webhook subscriber's handle (its `id` in request/response payloads), not the internal database uuid.|
 
 > Example responses
-
+>
 > 200 Response
 
 ```json
@@ -477,10 +481,9 @@ This operation requires <strong>Basic Auth</strong> authentication.
 
 ```shell
 
-curl -X DELETE https://localhost:9543/api/v0.9/webhook-subscribers/{subscriberId} \
-  -u {username}:{password} \
-  -H 'Accept: application/json' \
-  -H 'Authorization: Bearer {access-token}'
+curl -X DELETE https://localhost:9543/api-portal/api/v0.9/webhook-subscribers/{subscriberId} \
+  -H 'Authorization: Bearer {access_token}' \
+  -H 'Accept: application/json'
 
 ```
 
@@ -489,7 +492,9 @@ Deletes a webhook subscriber configuration by ID.
 ### Authentication
 
 <aside class="warning">
-This operation requires <strong>Basic Auth</strong> authentication.
+This operation requires a <strong>Bearer JWT</strong> access token in the <code>Authorization</code> header.
+
+Required scopes (the token must carry at least one of): `dp:webhook_subscriber:delete`, `dp:webhook_subscriber:manage`
 
 </aside>
 
@@ -500,7 +505,7 @@ This operation requires <strong>Basic Auth</strong> authentication.
 |subscriberId|path|string|true|The webhook subscriber's handle (its `id` in request/response payloads), not the internal database uuid.|
 
 > Example responses
-
+>
 > 404 Response
 
 ```json
@@ -539,10 +544,9 @@ This operation requires <strong>Basic Auth</strong> authentication.
 
 ```shell
 
-curl -X GET https://localhost:9543/api/v0.9/webhook-subscribers/{subscriberId}/deliveries \
-  -u {username}:{password} \
-  -H 'Accept: application/json' \
-  -H 'Authorization: Bearer {access-token}'
+curl -X GET https://localhost:9543/api-portal/api/v0.9/webhook-subscribers/{subscriberId}/deliveries \
+  -H 'Authorization: Bearer {access_token}' \
+  -H 'Accept: application/json'
 
 ```
 
@@ -551,7 +555,9 @@ Returns the most recent webhook delivery attempts for a single subscriber, newes
 ### Authentication
 
 <aside class="warning">
-This operation requires <strong>Basic Auth</strong> authentication.
+This operation requires a <strong>Bearer JWT</strong> access token in the <code>Authorization</code> header.
+
+Required scopes (the token must carry at least one of): `dp:webhook_subscriber:read`, `dp:webhook_subscriber:manage`
 
 </aside>
 
@@ -562,7 +568,7 @@ This operation requires <strong>Basic Auth</strong> authentication.
 |subscriberId|path|string|true|The webhook subscriber's handle (its `id` in request/response payloads), not the internal database uuid.|
 
 > Example responses
-
+>
 > 200 Response
 
 ```json

@@ -10,11 +10,10 @@
 
 ```shell
 
-curl -X POST https://localhost:9543/api/v0.9/mcp-servers/{mcpServerId}/api-keys/generate \
-  -u {username}:{password} \
+curl -X POST https://localhost:9543/api-portal/api/v0.9/mcp-servers/{mcpServerId}/api-keys/generate \
+  -H 'Authorization: Bearer {access_token}' \
   -H 'Content-Type: application/json' \
   -H 'Accept: application/json' \
-  -H 'Authorization: Bearer {access-token}' \
   -d @payload.json
 
 ```
@@ -33,7 +32,9 @@ Generates an API key for an MCP server. Mirrors `POST /api/v0.9/apis/{apiId}/api
 ### Authentication
 
 <aside class="warning">
-This operation requires <strong>Basic Auth</strong> authentication.
+This operation requires a <strong>Bearer JWT</strong> access token in the <code>Authorization</code> header.
+
+Required scopes (the token must carry at least one of): `dp:mcp_server_key:create`, `dp:mcp_server_key:manage`
 
 </aside>
 
@@ -45,7 +46,7 @@ This operation requires <strong>Basic Auth</strong> authentication.
 |mcpServerId|path|string|true|The MCP server's handle (unique per org).|
 
 > Example responses
-
+>
 > 201 Response
 
 ```json
@@ -138,10 +139,9 @@ This operation requires <strong>Basic Auth</strong> authentication.
 
 ```shell
 
-curl -X GET https://localhost:9543/api/v0.9/mcp-servers/{mcpServerId}/api-keys \
-  -u {username}:{password} \
-  -H 'Accept: application/json' \
-  -H 'Authorization: Bearer {access-token}'
+curl -X GET https://localhost:9543/api-portal/api/v0.9/mcp-servers/{mcpServerId}/api-keys \
+  -H 'Authorization: Bearer {access_token}' \
+  -H 'Accept: application/json'
 
 ```
 
@@ -150,7 +150,9 @@ Lists API keys for the given MCP server. Mirrors `GET /api/v0.9/apis/{apiId}/api
 ### Authentication
 
 <aside class="warning">
-This operation requires <strong>Basic Auth</strong> authentication.
+This operation requires a <strong>Bearer JWT</strong> access token in the <code>Authorization</code> header.
+
+Required scopes (the token must carry at least one of): `dp:mcp_server_key:read`, `dp:mcp_server_key:manage`
 
 </aside>
 
@@ -164,7 +166,7 @@ This operation requires <strong>Basic Auth</strong> authentication.
 |mcpServerId|path|string|true|The MCP server's handle (unique per org).|
 
 > Example responses
-
+>
 > 200 Response
 
 ```json
@@ -270,11 +272,10 @@ Status Code **200**
 
 ```shell
 
-curl -X POST https://localhost:9543/api/v0.9/mcp-servers/{mcpServerId}/api-keys/regenerate \
-  -u {username}:{password} \
+curl -X POST https://localhost:9543/api-portal/api/v0.9/mcp-servers/{mcpServerId}/api-keys/regenerate \
+  -H 'Authorization: Bearer {access_token}' \
   -H 'Content-Type: application/json' \
   -H 'Accept: application/json' \
-  -H 'Authorization: Bearer {access-token}' \
   -d @payload.json
 
 ```
@@ -293,7 +294,9 @@ Regenerates the secret for an existing MCP server API key identified by `keyId` 
 ### Authentication
 
 <aside class="warning">
-This operation requires <strong>Basic Auth</strong> authentication.
+This operation requires a <strong>Bearer JWT</strong> access token in the <code>Authorization</code> header.
+
+Required scopes (the token must carry at least one of): `dp:mcp_server_key:update`, `dp:mcp_server_key:manage`
 
 </aside>
 
@@ -309,7 +312,7 @@ This operation requires <strong>Basic Auth</strong> authentication.
 |mcpServerId|path|string|true|The MCP server's handle (unique per org).|
 
 > Example responses
-
+>
 > 200 Response
 
 ```json
@@ -382,11 +385,10 @@ This operation requires <strong>Basic Auth</strong> authentication.
 
 ```shell
 
-curl -X POST https://localhost:9543/api/v0.9/mcp-servers/{mcpServerId}/api-keys/revoke \
-  -u {username}:{password} \
+curl -X POST https://localhost:9543/api-portal/api/v0.9/mcp-servers/{mcpServerId}/api-keys/revoke \
+  -H 'Authorization: Bearer {access_token}' \
   -H 'Content-Type: application/json' \
   -H 'Accept: application/json' \
-  -H 'Authorization: Bearer {access-token}' \
   -d @payload.json
 
 ```
@@ -404,7 +406,9 @@ Revokes an existing MCP server API key identified by `keyId` in the request body
 ### Authentication
 
 <aside class="warning">
-This operation requires <strong>Basic Auth</strong> authentication.
+This operation requires a <strong>Bearer JWT</strong> access token in the <code>Authorization</code> header.
+
+Required scopes (the token must carry at least one of): `dp:mcp_server_key:revoke`, `dp:mcp_server_key:manage`
 
 </aside>
 
@@ -417,7 +421,7 @@ This operation requires <strong>Basic Auth</strong> authentication.
 |mcpServerId|path|string|true|The MCP server's handle (unique per org).|
 
 > Example responses
-
+>
 > 403 Response
 
 ```json
@@ -478,11 +482,10 @@ This operation requires <strong>Basic Auth</strong> authentication.
 
 ```shell
 
-curl -X POST https://localhost:9543/api/v0.9/mcp-servers/{mcpServerId}/api-keys/associate \
-  -u {username}:{password} \
+curl -X POST https://localhost:9543/api-portal/api/v0.9/mcp-servers/{mcpServerId}/api-keys/associate \
+  -H 'Authorization: Bearer {access_token}' \
   -H 'Content-Type: application/json' \
   -H 'Accept: application/json' \
-  -H 'Authorization: Bearer {access-token}' \
   -d @payload.json
 
 ```
@@ -501,7 +504,9 @@ Associates (or re-associates) an existing MCP server API key with an application
 ### Authentication
 
 <aside class="warning">
-This operation requires <strong>Basic Auth</strong> authentication.
+This operation requires a <strong>Bearer JWT</strong> access token in the <code>Authorization</code> header.
+
+Required scopes (the token must carry at least one of): `dp:mcp_server_key:update`, `dp:mcp_server_key:manage`
 
 </aside>
 
@@ -515,7 +520,7 @@ This operation requires <strong>Basic Auth</strong> authentication.
 |mcpServerId|path|string|true|The MCP server's handle (unique per org).|
 
 > Example responses
-
+>
 > 200 Response
 
 ```json
@@ -612,11 +617,10 @@ This operation requires <strong>Basic Auth</strong> authentication.
 
 ```shell
 
-curl -X POST https://localhost:9543/api/v0.9/mcp-servers/{mcpServerId}/api-keys/dissociate \
-  -u {username}:{password} \
+curl -X POST https://localhost:9543/api-portal/api/v0.9/mcp-servers/{mcpServerId}/api-keys/dissociate \
+  -H 'Authorization: Bearer {access_token}' \
   -H 'Content-Type: application/json' \
   -H 'Accept: application/json' \
-  -H 'Authorization: Bearer {access-token}' \
   -d @payload.json
 
 ```
@@ -634,7 +638,9 @@ Removes the application association from an MCP server API key identified by `ke
 ### Authentication
 
 <aside class="warning">
-This operation requires <strong>Basic Auth</strong> authentication.
+This operation requires a <strong>Bearer JWT</strong> access token in the <code>Authorization</code> header.
+
+Required scopes (the token must carry at least one of): `dp:mcp_server_key:update`, `dp:mcp_server_key:manage`
 
 </aside>
 
@@ -647,7 +653,7 @@ This operation requires <strong>Basic Auth</strong> authentication.
 |mcpServerId|path|string|true|The MCP server's handle (unique per org).|
 
 > Example responses
-
+>
 > 403 Response
 
 ```json

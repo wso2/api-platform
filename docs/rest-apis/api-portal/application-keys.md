@@ -10,11 +10,10 @@
 
 ```shell
 
-curl -X POST https://localhost:9543/api/v0.9/applications/{applicationId}/generate-keys \
-  -u {username}:{password} \
+curl -X POST https://localhost:9543/api-portal/api/v0.9/applications/{applicationId}/generate-keys \
+  -H 'Authorization: Bearer {access_token}' \
   -H 'Content-Type: application/json' \
   -H 'Accept: application/json' \
-  -H 'Authorization: Bearer {access-token}' \
   -d @payload.json
 
 ```
@@ -34,7 +33,9 @@ Maps an OAuth client_id — created directly in the selected key manager — to 
 ### Authentication
 
 <aside class="warning">
-This operation requires <strong>Basic Auth</strong> authentication.
+This operation requires a <strong>Bearer JWT</strong> access token in the <code>Authorization</code> header.
+
+Required scopes (the token must carry at least one of): `dp:application_key:create`, `dp:application_key:manage`
 
 </aside>
 
@@ -46,7 +47,7 @@ This operation requires <strong>Basic Auth</strong> authentication.
 |applicationId|path|string|true|The application's handle (unique per org).|
 
 > Example responses
-
+>
 > 200 Response
 
 ```json
@@ -133,11 +134,10 @@ This operation requires <strong>Basic Auth</strong> authentication.
 
 ```shell
 
-curl -X POST https://localhost:9543/api/v0.9/applications/{applicationId}/oauth-keys/{keyMappingId}/generate-token \
-  -u {username}:{password} \
+curl -X POST https://localhost:9543/api-portal/api/v0.9/applications/{applicationId}/oauth-keys/{keyMappingId}/generate-token \
+  -H 'Authorization: Bearer {access_token}' \
   -H 'Content-Type: application/json' \
   -H 'Accept: application/json' \
-  -H 'Authorization: Bearer {access-token}' \
   -d @payload.json
 
 ```
@@ -159,7 +159,9 @@ Generates an access token for an existing application OAuth key mapping. The por
 ### Authentication
 
 <aside class="warning">
-This operation requires <strong>Basic Auth</strong> authentication.
+This operation requires a <strong>Bearer JWT</strong> access token in the <code>Authorization</code> header.
+
+Required scopes (the token must carry at least one of): `dp:application_key:create`, `dp:application_key:manage`
 
 </aside>
 
@@ -172,7 +174,7 @@ This operation requires <strong>Basic Auth</strong> authentication.
 |keyMappingId|path|string|true|none|
 
 > Example responses
-
+>
 > 200 Response
 
 ```json
@@ -248,10 +250,9 @@ This operation requires <strong>Basic Auth</strong> authentication.
 
 ```shell
 
-curl -X DELETE https://localhost:9543/api/v0.9/applications/{applicationId}/oauth-keys/{keyMappingId} \
-  -u {username}:{password} \
-  -H 'Accept: application/json' \
-  -H 'Authorization: Bearer {access-token}'
+curl -X DELETE https://localhost:9543/api-portal/api/v0.9/applications/{applicationId}/oauth-keys/{keyMappingId} \
+  -H 'Authorization: Bearer {access_token}' \
+  -H 'Accept: application/json'
 
 ```
 
@@ -260,7 +261,9 @@ Removes the local client_id mapping for an application. This does not affect the
 ### Authentication
 
 <aside class="warning">
-This operation requires <strong>Basic Auth</strong> authentication.
+This operation requires a <strong>Bearer JWT</strong> access token in the <code>Authorization</code> header.
+
+Required scopes (the token must carry at least one of): `dp:application_key:revoke`
 
 </aside>
 
@@ -272,7 +275,7 @@ This operation requires <strong>Basic Auth</strong> authentication.
 |keyMappingId|path|string|true|none|
 
 > Example responses
-
+>
 > 200 Response
 
 ```json

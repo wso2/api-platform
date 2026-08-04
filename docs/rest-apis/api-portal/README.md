@@ -5,12 +5,14 @@ Fine-grained API Portal REST API for managing organizations,
 API metadata and content, applications, subscriptions, application appKeyMappings, and API flows.
 
 All resources, including organization lifecycle endpoints
-(`/api/v0.9/organizations`, `/api/v0.9/organizations/{orgId}`), are served under `/api/v0.9`.
+(`/api-portal/api/v0.9/organizations`, `/api-portal/api/v0.9/organizations/{orgId}`), are
+served under `/api-portal/api/v0.9` — the portal mounts its whole surface, pages and REST
+API alike, beneath the `/api-portal` prefix.
 Operations declare the least-privilege OAuth2 scopes required for each resource action.
 
 Base URLs:
-* <a href="https://localhost:9543/api/v0.9">https://localhost:9543/api/v0.9</a>
-* <a href="http://localhost:9543/api/v0.9">http://localhost:9543/api/v0.9</a>
+* <a href="https://localhost:9543/api-portal/api/v0.9">https://localhost:9543/api-portal/api/v0.9</a>
+* <a href="http://localhost:9543/api-portal/api/v0.9">http://localhost:9543/api-portal/api/v0.9</a>
 
 ## Table of Contents
 
