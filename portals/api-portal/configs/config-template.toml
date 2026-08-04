@@ -191,21 +191,37 @@ tls_skip_verify  = '{{ env "APIP_AP_AUTH_LOCAL_TLS_SKIP_VERIFY" "true" }}'
 
 # Identity provider (OAuth2 / OIDC) — used when auth.mode = "idp".
 [api_portal.auth.idp]
-name = "IS"
-issuer = "https://localhost:9443/oauth2/token"
-authorization_url = "https://localhost:9443/oauth2/authorize"
-token_url = "https://localhost:9443/oauth2/token"
-user_info_url = "https://localhost:9443/oauth2/userinfo"
+# The endpoints below describe YOUR identity provider and have no default — there is no
+# value that is correct anywhere but one specific machine. client_id, authorization_url,
+# token_url and callback_url are REQUIRED when auth.mode = "idp"; the portal refuses to
+# start without them rather than booting and failing the login round-trip later.
+#
+# Example, for a WSO2 Identity Server on the same host:
+#   issuer            = "https://localhost:9443/oauth2/token"
+#   authorization_url = "https://localhost:9443/oauth2/authorize"
+#   token_url         = "https://localhost:9443/oauth2/token"
+#   user_info_url     = "https://localhost:9443/oauth2/userinfo"
+#   jwks_url          = "https://localhost:9443/oauth2/jwks"
+#   logout_url        = "https://localhost:9443/oidc/logout"
+#
+# callback_url and logout_redirect_uri must both sit under the portal's /api-portal mount
+# prefix, and must match what is registered for this client on the IDP:
+#   callback_url        = "http://localhost:9543/api-portal/<org-handle>/callback"
+#   logout_redirect_uri = "http://localhost:9543/api-portal/<org-handle>"
+issuer = ""
+authorization_url = ""
+token_url = ""
+user_info_url = ""
 client_id = ""
 client_secret = ""
 audience = ""
-callback_url = "http://localhost:9543/api-portal/default/callback"
+callback_url = ""
 scope = "openid profile email"
 sign_up_url = ""
-logout_url = "https://localhost:9443/oidc/logout"
-logout_redirect_uri = "http://localhost:9543/api-portal/default"
+logout_url = ""
+logout_redirect_uri = ""
 certificate = ""
-jwks_url = "https://localhost:9443/oauth2/jwks"
+jwks_url = ""
 token_refresh_timeout_ms = 10000
 silent_sso = true      # Enable silent SSO
 org_callback = false   # Redirect to the org's own landing page after login

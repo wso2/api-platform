@@ -556,6 +556,44 @@ function resolveOrganizationConfig(cfg, tomlOrg) {
 
 resolveOrganizationConfig(config, interpolatedTomlConfig.organization);
 
+/**
+ * Refuses to start when auth.mode = "idp" is selected without the endpoints OIDC login
+ * actually needs.
+ *
+ * These four have no default (see configDefaults.js) because no default could be right,
+ * and passport-oauth2 throws on each of them anyway — this only turns that into a message
+ * that names the missing key instead of a constructor stack trace. Validating the
+ * *effective* config rather than trusting a per-field default is the same fail-closed rule
+ * the Go services follow (authentication_authorization.md, GO-AUTH-011).
+ *
+ * Deliberately not required here: jwks_url / certificate (token verification can also be
+ * satisfied by an issuer-derived JWKS), and logout_url / sign_up_url, which are optional
+ * features rather than prerequisites for logging in.
+ */
+function validateIdpConfig(cfg) {
+    if (cfg.auth?.mode !== 'idp') return;
+    const required = {
+        'auth.idp.client_id': cfg.auth.idp?.clientId,
+        'auth.idp.authorization_url': cfg.auth.idp?.authorizationUrl,
+        'auth.idp.token_url': cfg.auth.idp?.tokenUrl,
+        'auth.idp.callback_url': cfg.auth.idp?.callbackUrl,
+    };
+    const missing = Object.entries(required)
+        .filter(([, value]) => !String(value ?? '').trim())
+        .map(([key]) => key);
+    if (missing.length > 0) {
+        process.stderr.write(
+            `[FATAL] auth.mode is "idp" but required OIDC settings are missing: ${missing.join(', ')}. ` +
+            'These describe your identity provider and have no default. Set them in ' +
+            'configs/config.toml (see configs/config-template.toml), or switch to ' +
+            'auth.mode = "local" to sign in against the Platform API instead.\n'
+        );
+        process.exit(1);
+    }
+}
+
+validateIdpConfig(config);
+
 // Every artifact type this portal knows how to serve. `artifacts.enabled_types`
 // is an allowlist drawn from this set.
 const KNOWN_ARTIFACT_TYPES = ['apis', 'mcp-servers', 'api-workflows'];

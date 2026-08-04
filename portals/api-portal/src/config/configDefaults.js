@@ -163,21 +163,31 @@ const DEFAULTS = {
         },
         // OIDC identity provider — used when mode = "idp".
         idp: {
-            name: 'IS',
-            issuer: 'https://localhost:9443/oauth2/token',
-            authorizationUrl: 'https://localhost:9443/oauth2/authorize',
-            tokenUrl: 'https://localhost:9443/oauth2/token',
-            userInfoUrl: 'https://localhost:9443/oauth2/userinfo',
+            // The OIDC endpoints below have NO default on purpose. They describe whichever
+            // identity provider a deployment actually uses, so there is no value that is
+            // right anywhere but one specific machine — and a wrong-but-present default is
+            // worse than an absent one: it applies silently. These used to ship pointing at
+            // https://localhost:9443 (a WSO2 IS on the same host) and http://localhost:9543,
+            // so an operator who set auth.mode = "idp" and missed one key got a portal that
+            // booted normally and then failed the login round-trip against a host that was
+            // never there, with nothing naming the key that was missing.
+            //
+            // Left empty, they are caught at startup instead — see validateIdpConfig in
+            // configLoader.js, which refuses to boot in idp mode without them.
+            issuer: '',
+            authorizationUrl: '',
+            tokenUrl: '',
+            userInfoUrl: '',
             clientId: '',
             clientSecret: '',
             audience: '',
-            callbackUrl: 'http://localhost:9543/api-portal/default/callback',
+            callbackUrl: '',
             scope: 'openid profile email',
             signUpUrl: '',
-            logoutUrl: 'https://localhost:9443/oidc/logout',
-            logoutRedirectUri: 'http://localhost:9543/api-portal/default',
+            logoutUrl: '',
+            logoutRedirectUri: '',
             certificate: '',
-            jwksUrl: 'https://localhost:9443/oauth2/jwks',
+            jwksUrl: '',
             tokenRefreshTimeoutMs: 10000,
             silentSso: true,     // was: advanced.disableSilentSSO, inverted
             orgCallback: false,  // was: advanced.disableOrgCallback, inverted
