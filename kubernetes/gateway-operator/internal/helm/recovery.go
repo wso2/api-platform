@@ -108,11 +108,14 @@ func planRelease(history []*release.Release) (recoveryPlan, error) {
 		}, nil
 
 	case release.StatusUninstalled:
-		// History was kept after an uninstall (--keep-history). There is no deployed
-		// revision to upgrade from, so install again.
+		// History was kept after an uninstall (--keep-history). A plain install would be
+		// rejected by Helm's availableName check ("cannot re-use a name that is still in
+		// use") because the retained history still holds the name, and this package does not
+		// set Install.Replace. Purging first drops that history; the resources were already
+		// removed by the uninstall, so nothing live is discarded.
 		return recoveryPlan{
-			operation: operationInstall,
-			reason:    fmt.Sprintf("latest revision %d is uninstalled", latest.Version),
+			operation: operationPurgeThenInstall,
+			reason:    fmt.Sprintf("latest revision %d is uninstalled with retained history", latest.Version),
 		}, nil
 
 	case release.StatusUninstalling:

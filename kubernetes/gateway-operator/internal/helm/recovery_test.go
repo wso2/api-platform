@@ -64,10 +64,12 @@ func TestPlanRelease(t *testing.T) {
 			wantOperation: operationUpgrade,
 		},
 		{
-			// History kept after an uninstall leaves no revision to upgrade from.
-			name:          "uninstalled installs",
+			// Retained history still holds the name, so Helm would reject a plain install
+			// with "cannot re-use a name that is still in use". The uninstall already
+			// removed the resources, so purging the history discards nothing live.
+			name:          "uninstalled purges retained history then installs",
 			history:       []*release.Release{rel(1, release.StatusUninstalled)},
-			wantOperation: operationInstall,
+			wantOperation: operationPurgeThenInstall,
 		},
 		{
 			// The interrupted first install: purging discards nothing successful.

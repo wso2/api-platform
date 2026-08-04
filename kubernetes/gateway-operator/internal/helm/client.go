@@ -190,9 +190,9 @@ func (c *Client) InstallOrUpgrade(ctx context.Context, opts InstallOrUpgradeOpti
 		return c.upgrade(ctx, actionConfig, opts)
 
 	case operationPurgeThenInstall:
-		// Drop the stuck release and its history so the install below is not itself
-		// rejected as an in-progress operation. Safe only because planRelease proved there
-		// is no successful revision to preserve.
+		// Drop the release and its history so the install below is not rejected, either as
+		// an in-progress operation or because the retained name is still in use. planRelease
+		// only plans this where nothing live is discarded.
 		if err := c.purge(ctx, actionConfig, opts); err != nil {
 			return err
 		}
@@ -212,8 +212,11 @@ func (c *Client) InstallOrUpgrade(ctx context.Context, opts InstallOrUpgradeOpti
 	}
 }
 
-// purge removes a release together with its history so that a subsequent install is not
-// rejected because an operation is still recorded as in progress.
+// purge removes a release together with its history so a subsequent install is not rejected
+// — either because an operation is still recorded as in progress, or because retained
+// history from an earlier uninstall still holds the release name. KeepHistory is false, which
+// is also what lets an already-uninstalled release be purged rather than reported as
+// "already deleted".
 func (c *Client) purge(ctx context.Context, actionConfig *action.Configuration, opts InstallOrUpgradeOptions) error {
 	log := log.FromContext(ctx)
 
@@ -334,8 +337,9 @@ func (c *Client) upgrade(ctx context.Context, actionConfig *action.Configuration
 	client.Namespace = opts.Namespace
 	client.Wait = opts.Wait
 	client.Version = opts.Version
-	// Roll partially-applied resources back when an upgrade fails, so a failed attempt
-	// leaves a usable revision rather than a half-applied one for the next reconcile.
+	// Delete resources the failed upgrade created, so a partway attempt does not leave
+	// orphaned objects behind. This does not roll the release back: it still records a
+	// failed revision, which planRelease upgrades from on the next reconcile.
 	client.CleanupOnFail = true
 
 	if opts.Timeout > 0 {
