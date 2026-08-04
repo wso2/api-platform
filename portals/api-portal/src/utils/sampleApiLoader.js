@@ -109,7 +109,8 @@ function parseApiYaml(apiHandle, samplesDir) {
                 : [{ limitType: 'REQUEST_COUNT', timeUnit: 'MINUTE', timeAmount: 1, limitCount: 1000 }],
         };
     });
-    // Collect images from web/ and expose them as /mock/{handle}/web/{filename} URLs
+    // Collect images from web/ and expose them as ${BASE_PATH}/mock/{handle}/web/{filename}
+    // URLs — the /mock static mount lives on the prefixed portal router (app.js).
     const webDir = path.join(apiHandleDir, constants.ARTIFACT_DIR.WEB);
     const imageExtensions = new Set(['.png', '.jpg', '.jpeg', '.gif', '.svg', '.webp']);
     const apiImageMetadata = {};
@@ -118,7 +119,7 @@ function parseApiYaml(apiHandle, samplesDir) {
             .filter(f => imageExtensions.has(path.extname(f).toLowerCase()))
             .forEach(f => {
                 const key = path.basename(f, path.extname(f)); // e.g. "api-icon"
-                apiImageMetadata[key] = `/mock/${apiHandle}/${constants.ARTIFACT_DIR.WEB}/${f}`;
+                apiImageMetadata[key] = `${constants.ROUTE.BASE_PATH}${constants.ROUTE.MOCK}/${apiHandle}/${constants.ARTIFACT_DIR.WEB}/${f}`;
             });
     }
 

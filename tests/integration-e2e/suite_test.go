@@ -69,9 +69,14 @@ var (
 // (PA_API_BASE / AP_API_BASE) so a version bump needs no code change. platformAPIBase
 // is prepended by the apiCall helper; devportalBase by dpDo — so their callers name
 // only the resource path (e.g. "/rest-apis").
+//
+// api-portal serves its whole surface — pages and REST API alike — under a hardcoded
+// /api-portal mount prefix (portals/api-portal/src/utils/constants.js ROUTE.BASE_PATH,
+// mirrored by servers[].url in its OpenAPI spec), so its base carries that prefix while
+// platform-api's does not.
 var (
 	platformAPIBase = envOr("PA_API_BASE", "/api/v0.9")
-	devportalBase   = envOr("AP_API_BASE", "/api/v0.9")
+	devportalBase   = envOr("AP_API_BASE", "/api-portal/api/v0.9")
 )
 
 // Additional platform-api path prefixes, distinct from the resource API version above

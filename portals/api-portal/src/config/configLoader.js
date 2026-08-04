@@ -458,18 +458,28 @@ validateDatabasePoolConfig(config.database);
 // SAFE_HANDLE guards against for the URL-supplied value.
 const ORG_HANDLE_PATTERN = /^[a-z0-9][a-z0-9._-]*$/;
 
-// Root path segments the portal owns. `/:orgName` is matched at the true root, so a
-// handle equal to any of these would shadow — or be shadowed by — a real endpoint: a
-// handle mounted before the org router makes the org silently unreachable, one mounted
-// after silently shadows the platform path (BASE_PATH, the API base, health/metrics,
-// the static mounts, the MCP registry, dev/well-known endpoints). Enforced fail-closed
-// at startup so the collision surfaces as a refused boot rather than a page that simply
-// never loads. Compared against the already-lowercased handle. (View handles need no
-// such list — they sit behind a literal `views/` segment and so can't collide.)
+// Path segments the portal owns in the namespace `/:orgName` is matched in — i.e. the
+// first segment after ROUTE.BASE_PATH. A handle equal to any of these would shadow, or be
+// shadowed by, a real endpoint: a handle mounted before the org router makes the org
+// silently unreachable, one mounted after silently shadows the platform path. Enforced
+// fail-closed at startup so the collision surfaces as a refused boot rather than a page
+// that simply never loads. Compared against the already-lowercased handle. (View handles
+// need no such list — they sit behind a literal `views/` segment and so can't collide.)
+//
+// The ones that actually collide today are the sibling mounts on the portal router in
+// app.js — the API base (`api`), the static asset mounts, `mock`, `registry`, the dev
+// live-reload endpoint — plus the two bare page routes that authRoute registers AHEAD of
+// orgContentRoute: `signin` (the IdP callback) and `logout` (the post-logout landing).
+// Those two are the reason this is a list and not just "the static mounts": a handle of
+// `logout` boots fine and then answers the org's own front door by destroying the
+// session. The true-root paths (BASE_PATH itself, health/metrics, robots.txt) can no
+// longer collide now that the org router sits under the prefix, but they stay listed:
+// they are still reserved words operationally, and a handle matching one of them would
+// make every URL in the deployment confusing to read.
 const RESERVED_ORG_HANDLES = new Set([
     'api', 'api-portal', 'health', 'metrics', 'favicon.ico', 'styles', 'images',
     'scripts', 'technical-styles', 'technical-scripts', 'mock', 'registry', 'portal',
-    '__dev_reload', '.well-known', 'robots.txt',
+    'signin', 'logout', '__dev_reload', '.well-known', 'robots.txt',
 ]);
 
 function resolveOrganizationConfig(cfg, tomlOrg) {
@@ -527,9 +537,9 @@ function resolveOrganizationConfig(cfg, tomlOrg) {
     if (RESERVED_ORG_HANDLES.has(org.handle)) {
         process.stderr.write(
             `[FATAL] organization.handle ("${org.handle}") is a reserved word. It collides with a ` +
-            'root path the portal owns (the mount prefix, the API base, health/metrics, the static ' +
-            'asset mounts, the MCP registry, or a dev/well-known endpoint), which would make the ' +
-            'organization silently unreachable. Choose a different handle. Reserved: ' +
+            'path the portal owns (the mount prefix, the API base, health/metrics, the static asset ' +
+            'mounts, the MCP registry, the signin/logout routes, or a dev/well-known endpoint), ' +
+            'which would make the organization silently unreachable. Choose a different handle. Reserved: ' +
             `${[...RESERVED_ORG_HANDLES].join(', ')}.\n`
         );
         process.exit(1);

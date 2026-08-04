@@ -208,7 +208,10 @@ const loadAPIContent = async (req, res, next) => {
             apiMetadata: metaData,
             subscriptionPlans: metaData.subscriptionPlans,
             baseUrl: constants.ROUTE.BASE_PATH + constants.ROUTE.VIEWS_PATH + viewName,
-            schemaUrl: `/mock/${apiHandle}/definition.yml`,
+            // The design-mode /mock routes hang off the BASE_PATH-mounted portal router
+            // (app.js), so this download link has to carry the prefix like every other
+            // server-generated URL.
+            schemaUrl: `${constants.ROUTE.BASE_PATH}${constants.ROUTE.MOCK}/${apiHandle}/definition.yml`,
             showApiKeysNav: await resolveShowApiKeysNav(null, null, apiType, metaData, definitionResponse.swagger ?? null),
             showSubscriptionsNav: (metaData.subscriptionPlans || []).length > 0,
         }
@@ -519,7 +522,7 @@ const loadDocsPage = async (req, res, next) => {
         const templateContent = {
             apiMD: '',
             baseUrl: constants.ROUTE.BASE_PATH + constants.ROUTE.VIEWS_PATH + viewName + '/api/' + apiHandle,
-            baseDocUrl: constants.ROUTE.VIEWS_PATH + viewName + '/api/' + apiHandle,
+            baseDocUrl: constants.ROUTE.BASE_PATH + constants.ROUTE.VIEWS_PATH + viewName + '/api/' + apiHandle,
             docTypes: docNames,
             apiType: apiMetadata.type,
             apiName: apiMetadata.name || '',
@@ -642,7 +645,7 @@ const loadDocument = async (req, res, next) => {
             templateContent.apiMD = raw ? require('marked').parse(raw) : '';
         }
         templateContent.baseUrl = constants.ROUTE.BASE_PATH + constants.ROUTE.VIEWS_PATH + viewName;
-        templateContent.baseDocUrl = constants.ROUTE.VIEWS_PATH + viewName + '/api/' + apiHandle;
+        templateContent.baseDocUrl = constants.ROUTE.BASE_PATH + constants.ROUTE.VIEWS_PATH + viewName + '/api/' + apiHandle;
         templateContent.docTypes = metaData.docTypes;
         templateContent.currentDocName = docName || null;
         templateContent.currentDocType = docType || null;

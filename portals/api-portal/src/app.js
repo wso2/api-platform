@@ -59,7 +59,17 @@ app.set('view engine', 'hbs');
 
 registerHelpers();
 
-app.use(session({
+// The session middleware is mounted at BASE_PATH, not app-wide, and that placement is
+// load-bearing rather than tidiness. The cookie is scoped to `path: BASE_PATH` (the whole
+// portal, and every route that reads the session, lives under the prefix), so a browser
+// does NOT send it on a request to the true root. Left app-wide, such a request would
+// look like a brand-new visitor to express-session, which — with saveUninitialized —
+// mints a fresh session and emits `Set-Cookie: …; Path=/api-portal`. Cookie identity is
+// (name, domain, path), so that response REPLACES the signed-in cookie: visiting `/`,
+// `/robots.txt`, `/llms.txt` or any unmatched root path would silently log the user out.
+// Confining the middleware to the prefix means those paths never touch a session at all
+// (which also keeps container healthchecks from creating a session row per probe).
+const sessionMiddleware = session({
     store: sessionStore,
     secret: sessionSecret,
     resave: false,
@@ -67,25 +77,20 @@ app.use(session({
     cookie: {
         secure: config.server.https.enabled && !config.designMode?.enabled,
         maxAge: 60 * 60 * 1000,
-        // Scoped to the mount prefix: the whole portal (and every route that reads the
-        // session) lives under BASE_PATH, so a root-scoped cookie would be sent to paths
-        // this service never serves and — more importantly — must match the paths the
-        // browser actually requests. Mismatched cookie path is a silent login loop.
+        // Must match the paths the browser actually requests — a mismatched cookie path
+        // is a silent login loop. See the note above on why the mount matches it.
         path: constants.ROUTE.BASE_PATH,
     },
-}));
+});
 
 app.get('/health', (req, res) => {
     res.status(200).json({ status: 'ok' });
 });
 
 // Convenience redirect for anyone hitting the container's true root directly (a
-// path-routing proxy only ever forwards ${BASE_PATH}/*, so this never fires behind
-// one): send / into the portal, which then resolves to the org's default view.
-// Registered here — before the session/passport middleware below — deliberately: the
-// session cookie is scoped to BASE_PATH, so express-session does not initialise
-// req.session for a request to '/', and passport.session() would then throw. Answering
-// the redirect up front (like /health, /robots.txt, /llms.txt) sidesteps that entirely.
+// path-routing proxy only ever forwards ${BASE_PATH}/*, so this never fires behind one):
+// send / into the portal, which then resolves to the org's default view. Needs no session
+// of its own, and deliberately gets none — see the sessionMiddleware note above.
 app.get('/', (req, res) => res.redirect(constants.ROUTE.BASE_PATH + '/'));
 
 app.get('/robots.txt', (req, res) => {
@@ -140,14 +145,19 @@ app.use(auditMiddleware({
     sensitiveFields: ['password', 'token', 'secret', 'key', 'authorization', 'idToken', 'accessToken', 'refreshToken']
 }));
 
-app.use(passport.initialize());
-app.use(passport.session());
+// Session and everything that reads it stay scoped to BASE_PATH. passport.session()
+// throws outright without req.session, and the XSRF cookie below is bound to the same
+// path, so all three must share the session middleware's mount rather than sitting
+// app-wide above it.
+app.use(constants.ROUTE.BASE_PATH, sessionMiddleware);
+app.use(constants.ROUTE.BASE_PATH, passport.initialize());
+app.use(constants.ROUTE.BASE_PATH, passport.session());
 
 // Expose the per-session CSRF token as a browser-readable cookie (double-submit
 // pattern). Mutating fetches echo it back as X-CSRF-Token; the value matches
 // what requireCsrfForMutatingApi expects (getSessionCsrfToken).
 const { getSessionCsrfToken } = require('./middlewares/csrfProtection');
-app.use((req, res, next) => {
+app.use(constants.ROUTE.BASE_PATH, (req, res, next) => {
     if (req.session) {
         res.cookie('XSRF-TOKEN', getSessionCsrfToken(req), {
             sameSite: 'lax',

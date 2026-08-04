@@ -70,8 +70,12 @@ const normalizeToJSON = (content) => {
  * @returns {string} Agent prompt with two sections (execution and app building)
  */
 const generateAgentPrompt = (name, description, apis = [], orgHandle = '', viewName = 'default', baseUrl = '', handle = '') => {
+    // baseUrl is the configured origin only (config.server.base_url, e.g.
+    // https://portal.example.com), so the portal's mount prefix has to be added here —
+    // an agent handed this prompt fetches the URL verbatim, and without the prefix it
+    // resolves to nothing.
     const workflowUrl = (handle && orgHandle && baseUrl)
-        ? `${baseUrl}/${orgHandle}/views/${viewName}/api-workflows/${handle}.md`
+        ? `${baseUrl}${constants.ROUTE.BASE_PATH}/${orgHandle}/views/${viewName}/api-workflows/${handle}.md`
         : '';
 
     const workflowReference = workflowUrl
