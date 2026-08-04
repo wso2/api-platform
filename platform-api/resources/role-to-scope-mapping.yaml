@@ -161,7 +161,7 @@ roles:
       - ap:rest_api:api_key:manage
       - ap:mcp_proxy:manage
       - ap:mcp_proxy:deployment:manage
-      - ap:llm_provider:manage
+      - ap:llm_provider:read
       - ap:llm_provider:deployment:manage
       - ap:llm_proxy:manage
       - ap:llm_proxy:deployment:manage

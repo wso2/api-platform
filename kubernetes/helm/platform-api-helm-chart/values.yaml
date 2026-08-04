@@ -136,17 +136,30 @@ config:
             - ap:organization:manage
             - ap:project:manage
             - ap:gateway:manage
+            - ap:gateway:token:manage
+            - ap:gateway:manifest:read
             - ap:gateway_custom_policy:manage
             - ap:rest_api:manage
-            - ap:llm_provider:manage
-            - ap:llm_proxy:manage
-            - ap:llm_template:manage
-            - ap:mcp_proxy:manage
+            - ap:rest_api:deployment:manage
+            - ap:rest_api:gateway:manage
+            - ap:rest_api:api_key:manage
             - ap:application:manage
+            - ap:application:api_key:manage
+            - ap:application:association:manage
             - ap:subscription:manage
             - ap:subscription_plan:manage
+            - ap:llm_template:manage
+            - ap:llm_provider:manage
+            - ap:llm_provider:deployment:manage
+            - ap:llm_provider:api_key:manage
+            - ap:llm_proxy:manage
+            - ap:llm_proxy:deployment:manage
+            - ap:llm_proxy:api_key:manage
+            - ap:mcp_proxy:manage
+            - ap:mcp_proxy:deployment:manage
             - ap:secret:manage
             - ap:api_key:read
+            # Administrative access to every user's API keys, not just the caller's.
             - ap:api_key:all:manage
     # Claim-name mappings shared by all modes.
     claimMappings:
