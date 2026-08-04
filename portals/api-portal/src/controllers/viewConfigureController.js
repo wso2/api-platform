@@ -22,6 +22,7 @@ const orgDao = require('../dao/organizationDao');
 const apiDao = require('../dao/apiDao');
 const apiFileDao = require('../dao/apiFileDao');
 const viewDao = require('../dao/viewDao');
+const orgContext = require('../utils/orgContext');
 const labelDao = require('../dao/labelDao');
 const subscriptionPlanDao = require('../dao/subscriptionPlanDao');
 const whDao = require('../dao/webhookSubscriberDao');
@@ -80,17 +81,20 @@ const loadSettingsPage = async (req, res) => {
         };
         // Views for the selector and the merged Views management tab. The in-page
         // view selector picks which view the LLM + API Workflow panels edit via the
-        // ?view= query param (the path stays org-scoped). Default to 'default', then
-        // fall back to the first view; ignore an unknown ?view value.
+        // ?view= query param (the path stays org-scoped); an unknown ?view value is
+        // ignored. With none given, the view comes from the single portal-wide resolver
+        // (orgContext.getFallbackViewHandle → viewDao.getFallbackHandle): prefer the view
+        // whose handle is 'default', else the earliest-created one. This page used to
+        // hardcode 'default' with its own views[0] fallback, so it could land on a
+        // different view than the bare-org redirect, the error page's home link and the
+        // chrome partials — all of which resolve through that resolver.
         const views = await apiMetadataService.getViewsFromDB(orgId);
         templateContent.views = views;
         const requestedView = typeof req.query.view === 'string' ? req.query.view : '';
         const viewExists = (name) => views.some(v => v.id === name);
-        let viewName = 'default';
+        let viewName = await orgContext.getFallbackViewHandle();
         if (requestedView && viewExists(requestedView)) {
             viewName = requestedView;
-        } else if (!viewExists('default') && views.length > 0) {
-            viewName = views[0].id;
         }
         templateContent.viewName = viewName;
         templateContent.selectedView = viewName;

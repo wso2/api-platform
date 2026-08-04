@@ -69,10 +69,8 @@ const loadApplicationData = async (req, orgName, applicationHandle, viewName) =>
     const applicationId = appRecord.uuid;
     const applicationList = await adminService.getApplicationKeyMap(orgId, applicationId, userId);
 
-    let applicationReference = "";
     let applicationKeyList;
     if (Array.isArray(applicationList.appKeyMappings) && applicationList.appKeyMappings.length > 0) {
-        applicationReference = applicationList.appKeyMappings[0].asClientId;
         try {
             const localMappings = await appDao.getKeyMappings(orgId, applicationId);
             const keyList = [];
@@ -127,7 +125,10 @@ const loadApplicationData = async (req, orgName, applicationHandle, viewName) =>
             consumerKey: key.consumerKey,
             keyMappingId: key.keyMappingId,
             keyType: key.keyType,
-            appRefId: applicationReference
+            // This key set's own client id. Previously appKeyMappings[0].asClientId,
+            // which stamped the first key manager's client id onto every key manager's
+            // card once an organization had more than one.
+            appRefId: key.consumerKey
         };
         if (key.keyType === constants.KEY_TYPE.PRODUCTION) {
             productionKeys.push(keyData);

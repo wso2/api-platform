@@ -41,6 +41,9 @@
     var oe = g('org-owner-email').value.trim();
     if (oe && !emailRe.test(oe)) { await showAlert('Business owner email is not a valid email address.', 'error'); return; }
     // displayName, id and idpRefId are required by the update schema; send them always.
+    // idpRefId is read back from its read-only input rather than being editable: it is
+    // owned by the auth.idp_org_id configuration and the API rejects any change with
+    // 400, so echoing the current value is what lets the rest of this form save.
     var body = {
       displayName: name,
       id: handle,

@@ -14,7 +14,11 @@
     </div>
 
     {{!-- Inner tab nav — only visible when credentials exist --}}
-    <div class="mk-km-tabnav" id="keyTabNav-{{keyType}}" role="tablist"
+    {{!-- Every id in this partial carries {{kmId}}: the card is rendered once per key
+          manager per key type, so an id keyed on {{keyType}} alone would be duplicated
+          across cards and getElementById would resolve every lookup to the
+          first-rendered key manager. --}}
+    <div class="mk-km-tabnav" id="keyTabNav-{{kmId}}-{{keyType}}" role="tablist"
         style="{{#unless keys.consumerKey}}display:none{{/unless}}">
         <button class="mk-km-tab active" type="button" role="tab"
             id="tab-btn-creds-{{kmId}}-{{keyType}}"
@@ -37,7 +41,7 @@
     </div>
 
     {{!-- Tab content — only rendered when credentials exist --}}
-    <div class="tab-content mk-km-tab-content" id="consumerKeyContainer-{{keyType}}"
+    <div class="tab-content mk-km-tab-content" id="consumerKeyContainer-{{kmId}}-{{keyType}}"
         style="{{#unless keys.consumerKey}}display:none{{/unless}}">
 
         {{!-- ── Credentials tab ── --}}
@@ -45,11 +49,11 @@
             role="tabpanel" aria-labelledby="tab-btn-creds-{{kmId}}-{{keyType}}" tabindex="0">
             <div class="mk-km-body">
                 <div class="mk-cred-grid mk-cred-grid-single">
-                    <div class="mk-field" id="consumerKey-{{keyType}}-view">
+                    <div class="mk-field" id="consumerKey-{{kmId}}-{{keyType}}-view">
                         <label class="mk-field-label">Consumer Key (Client ID)</label>
                         <div class="mk-input-row">
                             <input type="text" id="consumer-key-{{kmId}}-{{keyType}}-view"
-                                class="mk-input" name="consumerKey-{{keyType}}"
+                                class="mk-input" name="consumerKey-{{kmId}}-{{keyType}}"
                                 value="{{keys.consumerKey}}" readonly disabled />
                             <button class="mk-icon-btn copy-btn"
                                 onclick="copyConsumerKey('consumer-key-{{kmId}}-{{keyType}}-view')" title="Copy">
@@ -63,7 +67,7 @@
                 </div>
             </div>
             {{!-- Remove-keys footer — part of Credentials tab --}}
-            <div class="mk-km-footer" id="keyActionsContainer-{{keyType}}">
+            <div class="mk-km-footer" id="keyActionsContainer-{{kmId}}-{{keyType}}">
                 <span class="mk-secret-note">
                     <i class="bi bi-info-circle"></i>
                     Removing unlinks this client ID from the application. The OAuth client stays in the
@@ -71,7 +75,7 @@
                 </span>
                 <div class="mk-footer-actions">
                     <button class="mk-btn-danger"
-                        onclick="confirmAndRemoveKeys('{{appId}}', '{{keys.keyMappingId}}', '{{keyType}}')">
+                        onclick="confirmAndRemoveKeys('{{appId}}', '{{keys.keyMappingId}}', '{{keyType}}', '{{kmId}}')">
                         <i class="bi bi-trash3"></i> Remove keys
                     </button>
                 </div>
@@ -85,16 +89,16 @@
                 <div class="mk-field mk-field-wide">
                     <label class="mk-field-label">Request Permissions (Scopes)</label>
                     <div class="input-scopes mk-scope-input"
-                        id="scopeContainer-{{appId}}-{{keyType}}"
+                        id="scopeContainer-{{appId}}-{{kmId}}-{{keyType}}"
                         data-scopes="{{json subscriptionScopes}}">
                         <input type="text" class="text-input"
-                            id="scope-{{appId}}-{{keyType}}"
+                            id="scope-{{appId}}-{{kmId}}-{{keyType}}"
                             placeholder="Type scope and press Enter…">
                     </div>
                 </div>
                 <form id="inlineTokenForm-{{kmId}}-{{keyType}}" style="display:none"></form>
                 <div class="mk-token-actions">
-                    <button id="tokenKeyBtn-{{keyType}}"
+                    <button id="tokenKeyBtn-{{kmId}}-{{keyType}}"
                         class="mk-btn-primary"
                         data-app-id="{{appId}}"
                         data-keymappingid="{{keys.keyMappingId}}"
@@ -147,17 +151,18 @@
                         <span class="copy-btn-icon"><i class="bi bi-copy"></i></span>
                         <span class="copy-btn-check"><i class="bi bi-check"></i> Copied</span>
                     </button>
-                    <code id="curl_{{kmName}}_{{keyType}}">curl -k -X POST &lt;TOKEN_ENDPOINT_URL&gt; -d "grant_type=client_credentials" -H "Authorization: Basic Base64(&lt;CONSUMER_KEY&gt;:&lt;CONSUMER_SECRET&gt;)"</code>
+                    {{!-- Not curl_<km>_<type>: keys-instructions.hbs already uses that id. --}}
+                    <code id="curlCommand-{{kmId}}-{{keyType}}">curl -k -X POST &lt;TOKEN_ENDPOINT_URL&gt; -d "grant_type=client_credentials" -H "Authorization: Basic Base64(&lt;CONSUMER_KEY&gt;:&lt;CONSUMER_SECRET&gt;)"</code>
                 </div>
             </div>
         </div>
 
     </div>{{!-- /tab-content --}}
 
-    <div id="keyGenerationErrorContainer-{{keyType}}" class="mk-error" style="display:none"></div>
+    <div id="keyGenerationErrorContainer-{{kmId}}-{{keyType}}" class="mk-error" style="display:none"></div>
 
     {{!-- Empty state — paste an externally-created client_id --}}
-    <div class="mk-km-empty" id="generateKeyContainer-{{keyType}}"
+    <div class="mk-km-empty" id="generateKeyContainer-{{kmId}}-{{keyType}}"
         style="{{#if keys.consumerKey}}display:none{{/if}}">
         <div class="mk-empty-icon-wrap">
             <i class="bi bi-key"></i>
@@ -171,7 +176,7 @@
         <div class="mk-add-clientid-row">
             <input type="text" class="mk-input" id="addClientIdInput-{{kmId}}-{{keyType}}"
                 placeholder="Paste client ID" />
-            <button data-cyid="addClientId-{{keyType}}" id="addClientIdBtn-{{kmId}}-{{keyType}}"
+            <button data-cyid="addClientId-{{kmId}}-{{keyType}}" id="addClientIdBtn-{{kmId}}-{{keyType}}"
                 class="mk-btn-primary"
                 onclick="addClientId('{{kmId}}', '{{keyType}}', '{{appId}}', '{{orgId}}', '{{kmName}}')">
                 <span class="button-normal-state"><i class="bi bi-plus-lg me-1"></i>Add</span>

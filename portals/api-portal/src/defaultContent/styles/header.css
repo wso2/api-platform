@@ -7,18 +7,17 @@
   height: 2rem;
 }
 
-.nav-link {
-  color: var(--text);
-  margin: 0 0.3125rem;
-}
-
-.nav-item {
+.custom-navbar .nav-link {
   color: var(--text);
 }
 
-.nav-link:hover,
-.nav-link:focus,
-.nav-link.active {
+.custom-navbar .nav-item {
+  color: var(--text);
+}
+
+.custom-navbar .nav-link:hover,
+.custom-navbar .nav-link:focus,
+.custom-navbar .nav-link.active {
   color: var(--primary);
 }
 

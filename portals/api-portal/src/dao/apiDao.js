@@ -415,6 +415,44 @@ const getId = async (orgId, apiHandle) => {
     return api?.uuid;
 };
 
+/**
+ * Resolves an API/MCP handle to its uuid ONLY IF that artifact is visible in `viewName`,
+ * applying exactly the predicates list() applies: the view's label set must intersect the
+ * artifact's labels, and the status must be published/deprecated. Returns undefined
+ * otherwise, which callers turn into a 404.
+ *
+ * This is what the detail pages must use instead of getId. `api_metadata` has no
+ * view_uuid column (unlike api_workflows, which is why the workflow pages were already
+ * correct) — membership is the two-hop join below, so resolving on
+ * `handle + org_uuid` alone rendered any published API under any view's URL, and any
+ * non-published one too.
+ *
+ * `type` narrows the same lookup to one artifact kind, so /views/{v}/api/{handle} cannot
+ * resolve an MCP server's handle, nor /views/{v}/mcp/{handle} a REST API's.
+ */
+const getIdInView = async (orgId, apiHandle, viewName, { type, excludeType } = {}, t) => {
+    const exec = t || db;
+    const viewDao = require('./viewDao');
+    const viewId = await viewDao.getId(orgId, viewName, t);
+
+    const conditions = ['handle = ?', 'org_uuid = ?', `status IN (${STATUS_PLACEHOLDERS})`];
+    const params = [apiHandle, orgId, ...PUBLISHED_STATUSES];
+    if (type) { conditions.push('type = ?'); params.push(type); }
+    if (excludeType) { conditions.push('type != ?'); params.push(excludeType); }
+    conditions.push(
+        `EXISTS (SELECT 1 FROM ${API_LABEL_MAPPINGS_TABLE} alm
+                 WHERE alm.api_uuid = ${API_METADATA_TABLE}.uuid
+                 AND alm.label_uuid IN (SELECT label_uuid FROM ${VIEW_LABEL_MAPPINGS_TABLE} WHERE view_uuid = ?))`
+    );
+    params.push(viewId);
+
+    const api = await exec.queryOne(
+        `SELECT uuid FROM ${API_METADATA_TABLE} WHERE ${conditions.join(' AND ')}`,
+        params
+    );
+    return api?.uuid;
+};
+
 // Same as getId, but also constrains the match to a specific `type` (e.g. 'MCP') in a
 // single query — used by resource families that only manage one API type.
 const getIdByType = async (orgId, apiHandle, type) => {
@@ -497,6 +535,7 @@ module.exports = {
     search,
     searchFallback,
     getId,
+    getIdInView,
     getIdByType,
     getIdExcludingType,
     getHandle,

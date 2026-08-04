@@ -83,6 +83,21 @@ const DEFAULTS = {
         // "local" — username/password validated against the Platform API control
         // plane (auth.local below). "idp" — external OIDC IDP (auth.idp below).
         mode: 'local',   // local | idp
+        // The org identifier the IdP asserts at SSO login — the expected VALUE of the
+        // claim named by claimMappings.organization below, which is what incoming
+        // tokens are matched against (ensureAuthenticated.belongsToTargetOrg). Stored
+        // on the organization row as idp_ref_id, where token claims are compared
+        // against it.
+        //
+        // Applied at startup only: seeded with the organization and re-applied on
+        // every later boot (seederService.reconcileIdpOrgId), which makes this setting
+        // the single writer of that field — the admin API refuses to change it. Empty
+        // means "use organization.handle" for a fresh organization (the common case,
+        // incl. the platform-api-managed mode where the org_handle claim IS the
+        // handle) and "leave the stored value alone" for an existing one, so dropping
+        // the setting never silently resets it. Matched verbatim against the claim, so
+        // it is NOT lowercased, unlike the handle.
+        idpOrgId: '',
         // JWT claim name mappings — which token claim carries each field.
         // Dot-notation supported for nested claims (e.g. "realm_access.roles").
         claimMappings: {

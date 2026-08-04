@@ -66,7 +66,16 @@
     g('cfg-view-modal-title').textContent = mode === 'edit' ? 'Edit view' : 'Add view';
     g('cfg-view-modal-save').textContent  = mode === 'edit' ? 'Save changes' : 'Add view';
     g('view-handle').value    = view ? (view.id || '') : '';
-    g('view-handle').readOnly = mode === 'edit';
+    // Editable on edit too — a rename keeps the view's identity (labels, assets and
+    // workflows are all keyed on its uuid) and only changes its URL, so it is the
+    // operator's call, made with the warning below in front of them.
+    g('view-handle').readOnly = false;
+    var renameWarning = g('view-handle-rename-warning');
+    if (renameWarning) {
+        renameWarning.style.display = mode === 'edit' ? 'block' : 'none';
+        var oldHandleEl = g('view-handle-rename-old');
+        if (oldHandleEl) oldHandleEl.textContent = mode === 'edit' ? ('/views/' + (view ? view.id : '')) : '';
+    }
     g('view-display').value   = view ? (view.displayName || '') : '';
     setSelectedLabels(view ? view.labels : []);
     syncViewSave();
@@ -109,10 +118,14 @@
       try {
         var res;
         if (editHandle) {
+          // `id` is sent only when it actually changed, so an ordinary display-name or
+          // label edit never carries a rename the operator didn't ask for.
+          var editBody = { displayName: display, labels: labels };
+          if (handle !== editHandle) editBody.id = handle;
           res = await fetch(window.apiPortalApi.root('/views/' + encodeURIComponent(editHandle)), {
             method: 'PUT',
             headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': window.apiPortalApi.csrfToken() },
-            credentials: 'same-origin', body: JSON.stringify({ displayName: display, labels: labels }),
+            credentials: 'same-origin', body: JSON.stringify(editBody),
           });
         } else {
           res = await fetch(window.apiPortalApi.root('/views'), {

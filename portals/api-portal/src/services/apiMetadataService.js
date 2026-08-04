@@ -1672,6 +1672,14 @@ const updateView = async (req, res) => {
                 await viewDao.replaceLabels(orgId, viewId, labels, userId, t);
             }
             viewId = viewId ? viewId : await viewDao.getId(orgId, viewHandle, t);
+            // A handle rename keeps the uuid, so labels, assets and workflows (all
+            // view_uuid-keyed) follow the view; only URLs built from the old handle stop
+            // resolving, which the settings UI warns about before it sends this. Applied
+            // last so the display-name/label writes above still address the view by the
+            // handle the caller used. 409 on a collision with another view's handle.
+            if (req.body.id && req.body.id !== viewHandle) {
+                await viewDao.rename(orgId, viewHandle, req.body.id, userId, t);
+            }
             updatedViewId = viewId;
         });
         // After COMMIT, not inside the callback — see the note in addView. This is
@@ -1699,23 +1707,35 @@ const deleteView = async (req, res) => {
     const orgId = req.orgId;
     const name = req.params.viewId;
     try {
-        // The "default" view can't be deleted — required as a fallback view for the
-        // portal/settings UI. Rejected here regardless of what the UI already hides.
-        if (name === 'default') {
-            throw new CustomError(400, constants.ERROR_CODE[400], "The default view cannot be deleted");
-        }
-        const viewUuid = await viewDao.getId(orgId, name);
-        const workflows = await apiWorkflowDao.list(orgId, viewUuid);
-        if (workflows.length > 0) {
-            throw new CustomError(409, constants.ERROR_MESSAGE.ERR_WORKFLOW_EXIST, "View has API workflows.");
-        }
-        const viewDelete = await viewDao.delete(orgId, name);
-        if (viewDelete === 0) {
-            throw new NotFoundError("Resource not found to delete");
-        } else {
-            logUserAction('VIEW_DELETED', req, { orgId, viewId: name, resourceUuid: viewUuid, resourceType: 'view' });
-            res.status(204).send("View Deleted Successfully");
-        }
+        let viewUuid;
+        // Any view may be deleted, including 'default' — the portal resolves its
+        // fallback view (viewDao.getFallbackHandle) instead of assuming that handle
+        // exists. What is protected is the LAST one: an organization with zero views
+        // has no page to serve, and nothing in the UI could create one back without a
+        // view-scoped URL to get to.
+        //
+        // Count and delete inside one transaction so two concurrent deletes cannot both
+        // read a count of 2 and leave the organization with none.
+        await db.withTransaction(async (t) => {
+            // Resolve first, so a handle that doesn't exist answers 404 rather than being
+            // pre-empted by the last-view 400 whenever the org happens to hold one view.
+            viewUuid = await viewDao.getId(orgId, name, t);
+            if (await viewDao.count(orgId, t) <= 1) {
+                throw new CustomError(400, constants.ERROR_CODE[400], "The last view cannot be deleted");
+            }
+            // Takes no explicit handle — its bare db.query joins the ambient
+            // transaction opened above (see driver.js's `ambient` wrapper).
+            const workflows = await apiWorkflowDao.list(orgId, viewUuid);
+            if (workflows.length > 0) {
+                throw new CustomError(409, constants.ERROR_MESSAGE.ERR_WORKFLOW_EXIST, "View has API workflows.");
+            }
+            const viewDelete = await viewDao.delete(orgId, name, t);
+            if (viewDelete === 0) {
+                throw new NotFoundError("Resource not found to delete");
+            }
+        });
+        logUserAction('VIEW_DELETED', req, { orgId, viewId: name, resourceUuid: viewUuid, resourceType: 'view' });
+        res.status(204).send("View Deleted Successfully");
     } catch (error) {
         logger.error('view delete error failed', {
             error: error.message,

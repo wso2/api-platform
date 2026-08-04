@@ -35,18 +35,26 @@ router.get('/:orgName/views/:viewName', (req, res, next) => {
     next();
 }, authController.handleSilentSSO, registerPartials, orgController.loadOrganizationContent);
 
-router.get('/:orgName', (req, res, next) => {
+// The view segment is resolved, not hardcoded to 'default': that view can be renamed or
+// deleted (only the last view is protected), and a redirect to a view that no longer
+// exists would 404 the portal's own front door.
+router.get('/:orgName', async (req, res, next) => {
     if (req.params.orgName === 'favicon.ico' || req.params.orgName === 'images' || req.params.orgName === 'portal' || req.params.orgName === '__dev_reload') {
         return res.status(404).send('Not Found');
     }
-    return res.redirect(`${req.params.orgName}/views/default`);
+    // Absolute (leading slash), not relative: a relative Location is resolved against the
+    // current URL's directory, so `/default/` — which this route matches too, since
+    // Express strict routing is off — turned `default/views/x` into
+    // `/default/default/views/x`. Without the trailing slash it happened to work, which
+    // is why it went unnoticed.
+    return res.redirect(`/${req.params.orgName}${constants.ROUTE.VIEWS_PATH}${await orgContext.getFallbackViewHandle()}`);
 }, authController.handleSilentSSO, registerPartials, orgController.loadOrganizationContent);
 
 // The portal serves one organization, so the root is simply its front door —
 // there is nothing to choose between. The handle is validated at config load, so
 // this cannot redirect anywhere but into this instance's own portal.
-router.get('/', (req, res) => {
-    return res.redirect(`/${orgContext.getHandle()}${constants.ROUTE.VIEWS_PATH}default`);
+router.get('/', async (req, res) => {
+    return res.redirect(`/${orgContext.getHandle()}${constants.ROUTE.VIEWS_PATH}${await orgContext.getFallbackViewHandle()}`);
 });
 
 module.exports = router;

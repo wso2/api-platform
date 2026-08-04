@@ -84,7 +84,7 @@ curl -k -X PUT https://localhost:9543/api/v0.9/organizations/acme \
 |---|---|---|
 | `metadata.name` | Yes | The org handle. **Immutable** — must equal `organization.handle`; any other value returns `400` |
 | `spec.displayName` | Yes | Human-friendly organization name shown in the portal UI |
-| `spec.idpRefId` | No | The org claim value asserted by your Identity Provider at SSO login. **Immutable** — changing it returns `400` |
+| `spec.idpRefId` | No | The org identifier asserted by your Identity Provider at SSO login. **Configuration-owned** — changing it here returns `400`; change `auth.idp_org_id` and restart instead |
 | `spec.cpRefId` | No | Control Plane reference ID, included in outbound webhook event payloads. Not used for authentication |
 | `spec.businessOwner` | No | Contact name for the organization owner |
 | `spec.businessOwnerContact` | No | Business owner's phone or contact string |
@@ -92,7 +92,27 @@ curl -k -X PUT https://localhost:9543/api/v0.9/organizations/acme \
 | `spec.labels` | No | Labels to upsert (array of `{name, displayName}`) |
 | `spec.views` | No | Views to upsert (array of `{handle, name, labels}`) |
 
-The handle and `idpRefId` are immutable because they are what page URLs and incoming token organization claims are matched against. Renaming either would leave the running instance unable to find its own organization — every page returning `404` and every login `403` — until an operator edited the configuration to match.
+The handle and `idpRefId` cannot be changed through this API because they are what page URLs and incoming token organization claims are matched against. Renaming either here would leave the running instance unable to find its own organization — every page returning `404` and every login `403` — until an operator edited the configuration to match.
+
+### Changing `idpRefId`
+
+`idpRefId` is owned by the `auth.idp_org_id` configuration setting — it sits in `[api_portal.auth]` alongside `claim_mappings.organization`, which names the claim this value is expected to arrive in. Edit it and restart the portal:
+
+```toml
+[api_portal.auth]
+mode = "idp"
+idp_org_id = "ACME-PROD"
+
+[api_portal.auth.claim_mappings]
+organization = "org_name"    # the claim; idp_org_id above is the value expected in it
+```
+
+The startup seeder re-applies the configured value to the organization row on every boot, so this is also how a value that was wrong on first boot gets corrected. Two things to know:
+
+- Anyone already signed in with the previous claim value is rejected (`403`) until they log in again — their session carries the old org claim.
+- Leaving the setting unset does not reset a previously configured value back to the handle. Remove it only when the IdP claim it mirrored is gone too.
+
+In a shared multi-organization database, a configured value that another organization already answers to (as its handle, display name, or `idpRefId`) is refused: the seeder logs an error and keeps the stored value, rather than shadowing that organization's identifier resolution.
 
 ---
 

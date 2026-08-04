@@ -106,6 +106,57 @@ describe('views', () => {
         expect(get.status).toBe(404);
     });
 
+    it('renames a view handle, keeping its labels', async () => {
+        const id = uniqueHandle('view');
+        const renamed = uniqueHandle('view-renamed');
+        await client.as('admin').post('/views', { id, displayName: 'Renameable View', labels: [label.id] });
+
+        const res = await client.as('admin').put(`/views/${id}`, { id: renamed, displayName: 'Renameable View' });
+        expect(res.status).toBe(200);
+
+        // The view answers to its new handle and not the old one — same view, so the
+        // labels attached before the rename came with it (everything is keyed on the
+        // view's uuid, which the rename preserves).
+        const byNew = await client.as('admin').get(`/views/${renamed}`);
+        expect(byNew.status).toBe(200);
+        expect(byNew.body.labels).toContain(label.id);
+        const byOld = await client.as('admin').get(`/views/${id}`);
+        expect(byOld.status).toBe(404);
+
+        await client.as('admin').del(`/views/${renamed}`);
+    });
+
+    it('rejects a rename onto another view\'s handle with 409', async () => {
+        const first = uniqueHandle('view');
+        const second = uniqueHandle('view');
+        await client.as('admin').post('/views', { id: first, displayName: 'First View' });
+        await client.as('admin').post('/views', { id: second, displayName: 'Second View' });
+
+        const res = await client.as('admin').put(`/views/${second}`, { id: first, displayName: 'Second View' });
+        expect(res.status).toBe(409);
+
+        // Neither view moved.
+        expect((await client.as('admin').get(`/views/${first}`)).body.displayName).toBe('First View');
+        expect((await client.as('admin').get(`/views/${second}`)).body.displayName).toBe('Second View');
+
+        await client.as('admin').del(`/views/${first}`);
+        await client.as('admin').del(`/views/${second}`);
+    });
+
+    it('leaves the handle alone when the update omits id', async () => {
+        const id = uniqueHandle('view');
+        await client.as('admin').post('/views', { id, displayName: 'Keeps Its Handle' });
+
+        const res = await client.as('admin').put(`/views/${id}`, { displayName: 'Renamed Display Only' });
+        expect(res.status).toBe(200);
+
+        const get = await client.as('admin').get(`/views/${id}`);
+        expect(get.status).toBe(200);
+        expect(get.body.displayName).toBe('Renamed Display Only');
+
+        await client.as('admin').del(`/views/${id}`);
+    });
+
     it('lists views for an org', async () => {
         const id = uniqueHandle('view');
         await client.as('admin').post('/views', { id, displayName: 'Listed View', labels: [label.id] });

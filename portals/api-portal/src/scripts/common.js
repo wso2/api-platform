@@ -19,6 +19,22 @@
     };
 })();
 
+// Re-enable the sidebar's transitions once the restored state has been painted, in its own
+// listener registered BEFORE the main one: its callback then runs after that handler has
+// finished, but a throw in there (a page whose chrome has no #collapseBtn) can no longer
+// leave `no-transition` stuck on the element, which would kill hover-expand entirely.
+// Two frames, not one — a single frame can still land in the same style recalculation as
+// the class changes and animate what we are hiding.
+document.addEventListener("DOMContentLoaded", function () {
+    const sidebar = document.getElementById('sidebar');
+    if (!sidebar) return;
+    requestAnimationFrame(function () {
+        requestAnimationFrame(function () {
+            sidebar.classList.remove('no-transition');
+        });
+    });
+});
+
 document.addEventListener("DOMContentLoaded", function () {
     const sidebar = document.getElementById('sidebar');
     const collapseBtn = document.getElementById('collapseBtn');
@@ -60,12 +76,16 @@ document.addEventListener("DOMContentLoaded", function () {
             sidebar.classList.add('force-collapse');
             collapseBtn.querySelector('.collapse-text').textContent = "Expand";
             localStorage.setItem('sidebar-expanded', '0');
+            // Keep the pre-paint class in step, or the next navigation renders expanded
+            // from the root class and then collapses — the original glitch, inverted.
+            document.documentElement.classList.remove('sidebar-pinned');
         } else {
             // If currently collapsed, pin it expanded
             sidebar.classList.add('expanded');
             sidebar.classList.remove('force-collapse');
             collapseBtn.querySelector('.collapse-text').textContent = "Collapse";
             localStorage.setItem('sidebar-expanded', '1');
+            document.documentElement.classList.add('sidebar-pinned');
         }
     });
 

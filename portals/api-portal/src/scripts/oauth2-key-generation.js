@@ -58,7 +58,28 @@ async function addClientId(kmId, keyType, appId, orgId, keyManager) {
     }
 }
 
-function confirmAndRemoveKeys(applicationId, keyMappingId, keyType) {
+// ---------------------------------------------------------------------------
+// Element ids on the Manage Keys page are scoped by key manager AND key type,
+// because the KM card and the token modal are both rendered once per enabled key
+// manager (manage-keys.hbs loops keyManagersMetadata). An id keyed on the key type
+// alone is duplicated across cards, and getElementById then resolves every lookup to
+// the first-rendered key manager — which is why generating a token used to write the
+// result into the clicked card's modal but open the first card's empty one. Every
+// helper below therefore takes the key manager handle and builds its ids through
+// these two functions rather than concatenating inline.
+// ---------------------------------------------------------------------------
+
+/** `<base>-<kmId>-<keyType>` — the card/modal-scoped id shape. */
+function kmScopedId(base, kmId, keyType) {
+    return base + '-' + kmId + '-' + keyType;
+}
+
+/** `<base>-<appId>-<kmId>-<keyType>` — for the scope containers, which also carry the app id. */
+function kmScopedAppId(base, appId, kmId, keyType) {
+    return base + '-' + appId + '-' + kmId + '-' + keyType;
+}
+
+function confirmAndRemoveKeys(applicationId, keyMappingId, keyType, keyManager) {
     const modal = document.getElementById('deleteConfirmation');
     if (modal) {
         const titleEl = modal.querySelector('.modal-title');
@@ -80,7 +101,7 @@ function confirmAndRemoveKeys(applicationId, keyMappingId, keyType) {
                 confirmBtn.disabled = true;
                 confirmBtn.innerHTML = '<span class="spinner-border spinner-border-sm" role="status"></span> Removing…';
             }
-            await removeApplicationKeys(applicationId, keyMappingId, keyType);
+            await removeApplicationKeys(applicationId, keyMappingId, keyType, keyManager);
             if (confirmBtn) {
                 confirmBtn.disabled = false;
                 confirmBtn.innerHTML = originalConfirmHtml;
@@ -91,13 +112,15 @@ function confirmAndRemoveKeys(applicationId, keyMappingId, keyType) {
         const bsModal = new bootstrap.Modal(modal);
         bsModal.show();
     } else if (confirm('Are you sure you want to unlink this client ID from the application? The OAuth client remains in the key manager.')) {
-        removeApplicationKeys(applicationId, keyMappingId, keyType);
+        removeApplicationKeys(applicationId, keyMappingId, keyType, keyManager);
     }
 }
 
-async function removeApplicationKeys(applicationId, keyMappingId, keyType) {
-    if (!keyMappingId && keyType) {
-        const tokenBtn = document.getElementById('tokenKeyBtn-' + keyType);
+async function removeApplicationKeys(applicationId, keyMappingId, keyType, keyManager) {
+    if (!keyMappingId && keyType && keyManager) {
+        // Fall back to this key manager's own button — never a bare tokenKeyBtn-<keyType>
+        // lookup, which would delete the first key manager's mapping instead.
+        const tokenBtn = document.getElementById(kmScopedId('tokenKeyBtn', keyManager, keyType));
         keyMappingId = tokenBtn?.dataset?.keymappingid;
     }
     if (!applicationId || !keyMappingId) {
@@ -128,11 +151,13 @@ async function removeApplicationKeys(applicationId, keyMappingId, keyType) {
 }
 
 async function generateOauthKey(formId, appId, keyMappingId, keyManager, clientName, clientSecret, subscribedScopes, keyType) {
-    let tokenBtn = document.getElementById('tokenKeyBtn-' + keyType);
+    let tokenBtn = document.getElementById(kmScopedId('tokenKeyBtn', keyManager, keyType));
     let regenerateBtn = document.getElementById('regenerateButton_' + keyManager + '_' + keyType);
-    const devAppId = tokenBtn?.dataset?.appId
-    const scopeContainer = document.getElementById('scopeContainer-' + devAppId + '-' + keyType);
-    const scopeInput = document.getElementById('scope-' + devAppId + '-' + keyType);
+    // Prefer the caller-supplied appId: on a regenerate the click came from the modal's
+    // Regenerate button, and this key manager's card button may not carry the app id.
+    const devAppId = appId || tokenBtn?.dataset?.appId;
+    const scopeContainer = document.getElementById(kmScopedAppId('scopeContainer', devAppId, keyManager, keyType));
+    const scopeInput = document.getElementById(kmScopedAppId('scope', devAppId, keyManager, keyType));
 
     // Capture the scope chips the user currently sees in the token modal BEFORE the
     // re-render below rebuilds them, so scopes added/removed in the modal (e.g. via the
@@ -140,7 +165,7 @@ async function generateOauthKey(formId, appId, keyMappingId, keyManager, clientN
     // is set by loadKeysTokenModal after the first successful generate, so it's true only
     // when this call is a regenerate (the modal has been on screen and its chips are the
     // user's source of truth), and false on the first generate (modal never shown yet).
-    const openTokenModal = document.getElementById('keysTokenModal-' + keyType);
+    const openTokenModal = document.getElementById(kmScopedId('keysTokenModal', keyManager, keyType));
     const modalWasShown = openTokenModal?.dataset?.shown === 'true';
     const uiScopeChips = openTokenModal
         ? Array.from(openTokenModal.querySelectorAll('.input-scopes .span-tag'))
@@ -149,10 +174,10 @@ async function generateOauthKey(formId, appId, keyMappingId, keyManager, clientN
 
     if (!(subscribedScopes)) {
         // In the regenerate token request, the scopes are fetched from the span tags
-        const scopeElements = document.querySelectorAll(`#scopeContainer-${devAppId}-${keyType} .span-tag`);
+        const scopeElements = scopeContainer?.querySelectorAll('.span-tag') || [];
         subscribedScopes = Array.from(scopeElements).map(el => el.textContent.replace('×', '').trim());
         scopeContainer.setAttribute('data-scopes', JSON.stringify(subscribedScopes));
-        tokenBtn = document.getElementById('regenerateKeyBtn-' + keyType);
+        tokenBtn = document.getElementById(kmScopedId('regenerateKeyBtn', keyManager, keyType));
     } else {
         /**
          * During the intial generate token request, the data-scopes attribute is set with subcribed scopes
@@ -182,7 +207,7 @@ async function generateOauthKey(formId, appId, keyMappingId, keyManager, clientN
                 subscribedScopes = [];
             }
         }
-        tokenBtn = document.getElementById('tokenKeyBtn-' + keyType);
+        tokenBtn = document.getElementById(kmScopedId('tokenKeyBtn', keyManager, keyType));
         regenerateBtn = document.getElementById('regenerateButton_' + keyManager + '_' + keyType);
     }
 
@@ -248,8 +273,8 @@ async function generateOauthKey(formId, appId, keyMappingId, keyManager, clientN
         scopeInput.focus();
     });
 
-    const normalState = tokenBtn.querySelector('.button-normal-state');
-    const loadingState = tokenBtn.querySelector('.button-loading-state');
+    const normalState = tokenBtn?.querySelector('.button-normal-state');
+    const loadingState = tokenBtn?.querySelector('.button-loading-state');
 
     const regenerateNormalState = regenerateBtn?.querySelector('.button-normal-state');
     const regenerateLoadingState = regenerateBtn?.querySelector('.button-loading-state');
@@ -261,7 +286,7 @@ async function generateOauthKey(formId, appId, keyMappingId, keyManager, clientN
     }
 
     // Clear any previous error messages
-    const errorContainer = document.getElementById('keyGenerationErrorContainer-' + keyType);
+    const errorContainer = document.getElementById(kmScopedId('keyGenerationErrorContainer', keyManager, keyType));
     if (errorContainer) {
         errorContainer.style.display = 'none';
         errorContainer.textContent = '';
@@ -275,7 +300,9 @@ async function generateOauthKey(formId, appId, keyMappingId, keyManager, clientN
     }
 
     if (!keyMappingId) {
-        const tokenbtn = document.getElementById('tokenKeyBtn-' + keyType);
+        // This key manager's own button — a bare tokenKeyBtn-<keyType> lookup would
+        // resolve to the first key manager and mint a token against its mapping.
+        const tokenbtn = document.getElementById(kmScopedId('tokenKeyBtn', keyManager, keyType));
         keyMappingId = tokenbtn?.getAttribute("data-keymappingid") || tokenbtn?.getAttribute("data-keyMappingId");
         if (!appId) appId = tokenbtn?.getAttribute("data-app-id");
         if (!clientSecret) {
@@ -324,7 +351,7 @@ async function generateOauthKey(formId, appId, keyMappingId, keyManager, clientN
             if (copyButton) {
                 copyButton.style.display = "block";
             }
-            loadKeysTokenModal(keyType);
+            loadKeysTokenModal(keyManager, keyType);
 
             // Reset button state
             if (normalState && loadingState && tokenBtn) {
@@ -339,7 +366,7 @@ async function generateOauthKey(formId, appId, keyMappingId, keyManager, clientN
                 regenerateBtn.disabled = false;
             }
 
-            const responseScopeContainer = document.getElementById('responseScopeContainer-' + devAppId + '-' + keyType);
+            const responseScopeContainer = document.getElementById(kmScopedAppId('responseScopeContainer', devAppId, keyManager, keyType));
             if (responseScopeContainer) {
               responseScopeContainer.innerHTML = "";
               for (const scope of responseData.tokenScopes) {
@@ -352,7 +379,7 @@ async function generateOauthKey(formId, appId, keyMappingId, keyManager, clientN
 
               // If no scopes are present, hide the title
               const resScopeTitle = document.getElementById(
-                "resScopeTitle-" + keyType
+                kmScopedId('resScopeTitle', keyManager, keyType)
               );
               if (resScopeTitle) {
                 if (responseScopeContainer.innerHTML === "") {
@@ -506,7 +533,12 @@ let _pendingGenerateTokenParams = null;
  * Called by all "Generate" token buttons instead of generateOauthKey directly.
  */
 function openGenerateTokenModal(formId, appId, keyMappingId, keyManager, clientName, subscribedScopes, keyType) {
-    const tokenBtn = document.getElementById('tokenKeyBtn-' + keyType);
+    // Fill any missing parameter from the clicked key manager's own card button. Keyed on
+    // keyManager, not keyType alone: with more than one key manager configured, the
+    // unscoped lookup returned the first card's button, so a click on the second key
+    // manager could inherit the first one's keyMappingId — generating a token against
+    // the wrong key manager, or against an empty mapping when that card had no keys.
+    const tokenBtn = document.getElementById(kmScopedId('tokenKeyBtn', keyManager, keyType));
     if ((!appId || appId === 'undefined') && tokenBtn?.dataset?.appId) {
         appId = tokenBtn.dataset.appId;
     }
@@ -517,7 +549,7 @@ function openGenerateTokenModal(formId, appId, keyMappingId, keyManager, clientN
         subscribedScopes = tokenBtn?.dataset?.scopes || '[]';
     }
 
-    closeModal('keysTokenModal-' + keyType);
+    closeModal(kmScopedId('keysTokenModal', keyManager, keyType));
 
     _pendingGenerateTokenParams = { formId, appId, keyMappingId, keyManager, clientName, subscribedScopes, keyType };
     const input = document.getElementById('generateTokenPromptSecretInput');
@@ -551,8 +583,8 @@ function confirmGenerateTokenPrompt() {
     }
 }
 
-function loadKeysTokenModal(keyType) {
-    const modalId = 'keysTokenModal-' + keyType;
+function loadKeysTokenModal(keyManager, keyType) {
+    const modalId = kmScopedId('keysTokenModal', keyManager, keyType);
     const modal = document.getElementById(modalId);
     if (!modal) {
         console.error(`Modal ${modalId} not found`);
