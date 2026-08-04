@@ -51,6 +51,8 @@ import { formatRelativeTime } from '../../../../contexts/llmProvider';
 import { useProviderTemplates } from '../../../../contexts/llmProvider/providerTemplate';
 import { useAppShell } from '../../../../contexts/AppShellContext';
 import useAIWorkspaceSnackbar from '../../../../hooks/aiWorkspaceSnackbar';
+import { useAppAuth } from '../../../../contexts/AppAuthContext';
+import { NO_PERMISSION_TOOLTIP, SCOPES } from '../../../../auth/permissions';
 import * as providerTemplateApis from '../../../../apis/providerTemplateApis';
 import { getLLMProviders } from '../../../../apis/llmProviderApis';
 import { PLATFORM_API_BASE_URL } from '../../../../paths';
@@ -140,6 +142,7 @@ export default function ProviderTemplateOverview() {
   const { currentOrganization } = useAppShell();
   const { updateTemplate, refreshTemplates } = useProviderTemplates();
   const showSnackbar = useAIWorkspaceSnackbar();
+  const { hasPermission } = useAppAuth();
   const [tabIndex, setTabIndex] = useState(0);
 
   const [template, setTemplate] = useState<ProviderTemplate | undefined>();
@@ -543,8 +546,12 @@ export default function ProviderTemplateOverview() {
     })();
   const isBuiltIn = activeProvider === 'wso2';
   const isReadOnly = isBuiltIn;
-  const canEdit = !isReadOnly;
-  const canDelete = !isReadOnly;
+  // Read-only is a property of the template itself; the scope check is a
+  // property of the caller. Both must hold for an action to be offered.
+  const canEdit = !isReadOnly && hasPermission(SCOPES.LLM_TEMPLATE_UPDATE);
+  const canDelete = !isReadOnly && hasPermission(SCOPES.LLM_TEMPLATE_DELETE);
+  const canCreateTemplate = hasPermission(SCOPES.LLM_TEMPLATE_CREATE);
+  const canUpdateTemplate = hasPermission(SCOPES.LLM_TEMPLATE_UPDATE);
   // Data-plane-originated (gateway-pushed) template: the gateway owns the runtime
   // configuration, so the Connection (endpoint/auth) and Token Mapping (extraction +
   // resource mappings) sections are read-only in the control plane. Name/description/
@@ -831,16 +838,25 @@ export default function ProviderTemplateOverview() {
 
             <Stack direction="column" spacing={1.5} alignItems="flex-end">
               {isBuiltIn && (
-                <Button
-                  variant="outlined"
-                  startIcon={<Copy size={16} />}
-                  onClick={() =>
-                    navigate(`${listPath}/new`, { state: { copyFrom: template } })
-                  }
-                  data-cyid="provider-template-create-copy-button"
+                <Tooltip
+                  title={canCreateTemplate ? '' : NO_PERMISSION_TOOLTIP}
                 >
-                  Create a copy
-                </Button>
+                  <Box component="span">
+                    <Button
+                      variant="outlined"
+                      startIcon={<Copy size={16} />}
+                      disabled={!canCreateTemplate}
+                      onClick={() =>
+                        navigate(`${listPath}/new`, {
+                          state: { copyFrom: template },
+                        })
+                      }
+                      data-cyid="provider-template-create-copy-button"
+                    >
+                      Create a copy
+                    </Button>
+                  </Box>
+                </Tooltip>
               )}
               {!isBuiltIn && (
                 <Button
@@ -863,12 +879,22 @@ export default function ProviderTemplateOverview() {
                 <Typography variant="body2" color="text.primary">
                   {isEnabled ? 'Enabled' : 'Disabled'}
                 </Typography>
-                <Switch
-                  checked={isEnabled}
-                  disabled={isTogglingEnabled}
-                  onChange={(e) => void handleToggleEnabled(e.target.checked)}
-                  inputProps={{ 'aria-label': 'Enable or disable this version' }}
-                />
+                <Tooltip
+                  title={canUpdateTemplate ? '' : NO_PERMISSION_TOOLTIP}
+                >
+                  <Box component="span">
+                    <Switch
+                      checked={isEnabled}
+                      disabled={isTogglingEnabled || !canUpdateTemplate}
+                      onChange={(e) =>
+                        void handleToggleEnabled(e.target.checked)
+                      }
+                      inputProps={{
+                        'aria-label': 'Enable or disable this version',
+                      }}
+                    />
+                  </Box>
+                </Tooltip>
               </Stack>
               {/* Custom templates can be deleted entirely (all versions). */}
               {canDelete && (

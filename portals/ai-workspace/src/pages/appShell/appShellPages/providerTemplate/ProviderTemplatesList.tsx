@@ -32,6 +32,7 @@ import {
   Skeleton,
   Stack,
   TextField,
+  Tooltip,
   Typography,
 } from '@wso2/oxygen-ui';
 import { ChevronLeft, ChevronRight, Clock, Cpu, Plus, Search } from '@wso2/oxygen-ui-icons-react';
@@ -49,6 +50,8 @@ import type { ProviderTemplate } from '../../../../utils/types';
 import * as providerTemplateApis from '../../../../apis/providerTemplateApis';
 import { PLATFORM_API_BASE_URL } from '../../../../paths';
 import { logger } from '../../../../utils/logger';
+import { useAppAuth } from '../../../../contexts/AppAuthContext';
+import { NO_PERMISSION_TOOLTIP, SCOPES } from '../../../../auth/permissions';
 import AnthropicLogo from '../../../../assets/brands/Anthropic.jpg';
 import AWSBedrockLogo from '../../../../assets/brands/AWSBedrock.webp';
 import AzureLogo from '../../../../assets/brands/Azure.png';
@@ -95,6 +98,9 @@ export default function ProviderTemplatesList({
 } = {}) {
   const navigate = useNavigate();
   const { currentOrganization } = useAppShell();
+  const { hasPermission } = useAppAuth();
+  const canCreateTemplate = hasPermission(SCOPES.LLM_TEMPLATE_CREATE);
+  const createTemplateTooltip = canCreateTemplate ? '' : NO_PERMISSION_TOOLTIP;
 
   const { templatesResponse, isLoading, error, refreshTemplates } =
     useProviderTemplates();
@@ -365,18 +371,23 @@ export default function ProviderTemplatesList({
         </PageTitle>
 
         {templates.length > 0 && (
-          <Button
-            variant="contained"
-            color="primary"
-            onClick={() => navigate(newTemplatePath)}
-            startIcon={<Plus size={20} />}
-            data-cyid="add-provider-template-button"
-          >
-            <FormattedMessage
-              id="aiWorkspace.pages.appShell.appShellPages.providerTemplate.ProviderTemplatesList.create"
-              defaultMessage={'Create'}
-            />
-          </Button>
+          <Tooltip title={createTemplateTooltip}>
+            <Box component="span">
+              <Button
+                variant="contained"
+                color="primary"
+                onClick={() => navigate(newTemplatePath)}
+                startIcon={<Plus size={20} />}
+                disabled={!canCreateTemplate}
+                data-cyid="add-provider-template-button"
+              >
+                <FormattedMessage
+                  id="aiWorkspace.pages.appShell.appShellPages.providerTemplate.ProviderTemplatesList.create"
+                  defaultMessage={'Create'}
+                />
+              </Button>
+            </Box>
+          </Tooltip>
         )}
       </Box>
 
@@ -432,17 +443,22 @@ export default function ProviderTemplatesList({
                   }
                 />
               </Typography>
-              <Button
-                variant="contained"
-                onClick={() => navigate(newTemplatePath)}
-                startIcon={<Plus size={18} />}
-                data-cyid="add-provider-template-button"
-              >
-                <FormattedMessage
-                  id="aiWorkspace.pages.appShell.appShellPages.providerTemplate.ProviderTemplatesList.create"
-                  defaultMessage={'Create'}
-                />
-              </Button>
+              <Tooltip title={createTemplateTooltip}>
+                <Box component="span">
+                  <Button
+                    variant="contained"
+                    onClick={() => navigate(newTemplatePath)}
+                    startIcon={<Plus size={18} />}
+                    disabled={!canCreateTemplate}
+                    data-cyid="add-provider-template-button"
+                  >
+                    <FormattedMessage
+                      id="aiWorkspace.pages.appShell.appShellPages.providerTemplate.ProviderTemplatesList.create"
+                      defaultMessage={'Create'}
+                    />
+                  </Button>
+                </Box>
+              </Tooltip>
             </Stack>
           </Box>
         )}
@@ -579,17 +595,22 @@ export default function ProviderTemplatesList({
                       }
                     />
                   </Typography>
-                  <Button
-                    variant="contained"
-                    onClick={() => navigate(newTemplatePath)}
-                    startIcon={<Plus size={18} />}
-                    data-cyid="add-provider-template-button"
-                  >
-                    <FormattedMessage
-                      id="aiWorkspace.pages.appShell.appShellPages.providerTemplate.ProviderTemplatesList.create"
-                      defaultMessage={'Create'}
-                    />
-                  </Button>
+                  <Tooltip title={createTemplateTooltip}>
+                    <Box component="span">
+                      <Button
+                        variant="contained"
+                        onClick={() => navigate(newTemplatePath)}
+                        startIcon={<Plus size={18} />}
+                        disabled={!canCreateTemplate}
+                        data-cyid="add-provider-template-button"
+                      >
+                        <FormattedMessage
+                          id="aiWorkspace.pages.appShell.appShellPages.providerTemplate.ProviderTemplatesList.create"
+                          defaultMessage={'Create'}
+                        />
+                      </Button>
+                    </Box>
+                  </Tooltip>
                 </Stack>
               </Box>
             ) : (

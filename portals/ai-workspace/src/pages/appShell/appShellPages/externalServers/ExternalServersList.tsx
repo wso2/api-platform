@@ -46,6 +46,7 @@ import {
   TableHead,
   TableRow,
   TextField,
+  Tooltip,
   Typography,
 } from '@wso2/oxygen-ui';
 import { Plus, Search, Trash2 } from '@wso2/oxygen-ui-icons-react';
@@ -62,6 +63,8 @@ import { mcpProxiesApis } from '../../../../apis/MCP/mcpProxiesApis';
 import type { MCPServer } from '../../../../utils/types';
 import NoMCPServers from '../../../../assets/images/NoMCPServers.svg';
 import { getErrorMessage } from '../../../../utils/apiError';
+import { useAppAuth } from '../../../../contexts/AppAuthContext';
+import { DISABLED_ACTION_SX, NO_PERMISSION_TOOLTIP, SCOPES } from '../../../../auth/permissions';
 
 function getErrorDescription(error: unknown, fallbackMessage: string): string {
   return getErrorMessage(error, fallbackMessage);
@@ -78,6 +81,10 @@ export default function ExternalServersList(): React.JSX.Element {
     isProjectsLoading,
   } = useAppShell();
   const showSnackbar = useAIWorkspaceSnackbar();
+  const { hasPermission } = useAppAuth();
+  const canCreateMcpProxy = hasPermission(SCOPES.MCP_PROXY_CREATE);
+  const canDeleteMcpProxy = hasPermission(SCOPES.MCP_PROXY_DELETE);
+  const createMcpProxyTooltip = canCreateMcpProxy ? '' : NO_PERMISSION_TOOLTIP;
   const routeProject = useMemo(
     () =>
       projectsForCurrentOrganization.find(
@@ -299,22 +306,27 @@ export default function ExternalServersList(): React.JSX.Element {
           </PageTitle>
 
           {servers.length > 0 ? (
-            <Button
-              variant="contained"
-              component={RouterLink}
-              to={buildProjectPath(
-                currentOrganization,
-                effectiveProject,
-                '/mcp-proxy/create'
-              )}
-              startIcon={<Plus size={20} />}
-              sx={{ ml: 'auto', flexShrink: 0 }}
-            >
-              <FormattedMessage
-                id="aiWorkspace.pages.appShell.appShellPages.externalServers.Main.create.external.server"
-                defaultMessage="Create MCP Proxy"
-              />
-            </Button>
+            <Tooltip title={createMcpProxyTooltip}>
+              <Box component="span" sx={{ ml: 'auto', flexShrink: 0 }}>
+                <Button
+                  variant="contained"
+                  component={RouterLink}
+                  to={buildProjectPath(
+                    currentOrganization,
+                    effectiveProject,
+                    '/mcp-proxy/create'
+                  )}
+                  startIcon={<Plus size={20} />}
+                  disabled={!canCreateMcpProxy}
+                  sx={DISABLED_ACTION_SX}
+                >
+                  <FormattedMessage
+                    id="aiWorkspace.pages.appShell.appShellPages.externalServers.Main.create.external.server"
+                    defaultMessage="Create MCP Proxy"
+                  />
+                </Button>
+              </Box>
+            </Tooltip>
           ) : null}
         </Box>
       </Grid>
@@ -405,21 +417,27 @@ export default function ExternalServersList(): React.JSX.Element {
                   defaultMessage="Set up an MCP Proxy to expose tools, prompts, and resources through your AI gateway workflows."
                 />
               </Typography>
-              <Button
-                variant="contained"
-                component={RouterLink}
-                to={buildProjectPath(
-                  currentOrganization,
-                  effectiveProject,
-                  '/mcp-proxy/create'
-                )}
-                startIcon={<Plus size={20} />}
-              >
-                <FormattedMessage
-                  id="aiWorkspace.pages.appShell.appShellPages.externalServers.Main.create.external.server"
-                  defaultMessage="Create MCP Proxy"
-                />
-              </Button>
+              <Tooltip title={createMcpProxyTooltip}>
+                <Box component="span">
+                  <Button
+                    variant="contained"
+                    component={RouterLink}
+                    to={buildProjectPath(
+                      currentOrganization,
+                      effectiveProject,
+                      '/mcp-proxy/create'
+                    )}
+                    startIcon={<Plus size={20} />}
+                    disabled={!canCreateMcpProxy}
+                    sx={DISABLED_ACTION_SX}
+                  >
+                    <FormattedMessage
+                      id="aiWorkspace.pages.appShell.appShellPages.externalServers.Main.create.external.server"
+                      defaultMessage="Create MCP Proxy"
+                    />
+                  </Button>
+                </Box>
+              </Tooltip>
             </Stack>
           </Box>
         </Grid>
@@ -530,17 +548,26 @@ export default function ExternalServersList(): React.JSX.Element {
                             {formatRelativeTime(server.updatedAt)}
                           </TableCell>
                           <TableCell align="right">
-                            <IconButton
-                              size="small"
-                              color="error"
-                              onClick={(event) => {
-                                event.stopPropagation();
-                                setDeleteTarget(server);
-                              }}
-                              aria-label={`Delete ${server.displayName}`}
+                            <Tooltip
+                              title={
+                                canDeleteMcpProxy ? '' : NO_PERMISSION_TOOLTIP
+                              }
                             >
-                              <Trash2 size={16} />
-                            </IconButton>
+                              <Box component="span">
+                                <IconButton
+                                  size="small"
+                                  color="error"
+                                  disabled={!canDeleteMcpProxy}
+                                  onClick={(event) => {
+                                    event.stopPropagation();
+                                    setDeleteTarget(server);
+                                  }}
+                                  aria-label={`Delete ${server.displayName}`}
+                                >
+                                  <Trash2 size={16} />
+                                </IconButton>
+                              </Box>
+                            </Tooltip>
                           </TableCell>
                         </TableRow>
                       ))

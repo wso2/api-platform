@@ -95,6 +95,8 @@ import type { ColorScheme } from "../../../../utils/colorScheme";
 import AIGatewayStepBanner from "../quickStart/AIGatewayStepBanner";
 import ErrorAlert from "../../../../Components/common/ErrorAlert";
 import { GatewayPoliciesProvider } from "../../../../contexts/GatewayPoliciesContext";
+import { useAppAuth } from "../../../../contexts/AppAuthContext";
+import { NO_PERMISSION_TOOLTIP, SCOPES } from "../../../../auth/permissions";
 import GatewayPolicies from "./GatewayPolicies";
 
 const resolveGatewayVersion = (gatewayVersion?: string): string => {
@@ -228,6 +230,15 @@ export default function ViewGateway() {
   const { gatewayName } = useParams<{ gatewayName: string }>();
   const { currentOrganization } = useAppShell();
   const showSnackbar = useAIWorkspaceSnackbar();
+  const { hasPermission } = useAppAuth();
+  // Reconfigure runs three token operations in sequence — list the existing
+  // tokens, revoke each, then rotate. All three scopes are required, or the
+  // flow fails part-way through with some tokens already revoked. A caller with
+  // ap:gateway:token:manage (or ap:gateway:manage) satisfies all three.
+  const canRotateToken =
+    hasPermission(SCOPES.GATEWAY_TOKEN_READ) &&
+    hasPermission(SCOPES.GATEWAY_TOKEN_DELETE) &&
+    hasPermission(SCOPES.GATEWAY_TOKEN_CREATE);
 
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -1125,14 +1136,20 @@ export default function ViewGateway() {
                       updated Helm command, click Reconfigure. This will revoke
                       the previous token.
                     </Typography>
-                    <Button
-                      variant="outlined"
-                      color="primary"
-                      onClick={handleRegenerateToken}
-                      disabled={isRegeneratingToken}
+                    <Tooltip
+                      title={canRotateToken ? '' : NO_PERMISSION_TOOLTIP}
                     >
-                      Reconfigure
-                    </Button>
+                      <Box component="span">
+                        <Button
+                          variant="outlined"
+                          color="primary"
+                          onClick={handleRegenerateToken}
+                          disabled={isRegeneratingToken || !canRotateToken}
+                        >
+                          Reconfigure
+                        </Button>
+                      </Box>
+                    </Tooltip>
                   </>
                 )}
               </Box>

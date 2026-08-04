@@ -43,6 +43,8 @@ import { Inbox, Plus, Search, Trash2, X } from '@wso2/oxygen-ui-icons-react';
 import { useApplications } from '../../../../../contexts/ApplicationsContext';
 import { useAppShell } from '../../../../../contexts/AppShellContext';
 import useAIWorkspaceSnackbar from '../../../../../hooks/aiWorkspaceSnackbar';
+import { useAppAuth } from '../../../../../contexts/AppAuthContext';
+import { NO_PERMISSION_TOOLTIP, SCOPES } from '../../../../../auth/permissions';
 import { PLATFORM_API_BASE_URL } from '../../../../../paths';
 import { keyManagementApis } from '../../../../../apis/keyManagementApis';
 import type { MappedAPIKey, UserAPIKey } from '../../../../../utils/types';
@@ -110,6 +112,9 @@ export default function APIKeyTab({ applicationId }: APIKeyTabProps) {
     useApplications();
   const { currentOrganization } = useAppShell();
   const showSnackbar = useAIWorkspaceSnackbar();
+  const { hasPermission } = useAppAuth();
+  const canCreateApiKey = hasPermission(SCOPES.APPLICATION_API_KEY_CREATE);
+  const canDeleteApiKey = hasPermission(SCOPES.APPLICATION_API_KEY_DELETE);
   const apimBaseUrl = PLATFORM_API_BASE_URL;
 
   const [searchValue, setSearchValue] = useState('');
@@ -306,14 +311,19 @@ export default function APIKeyTab({ applicationId }: APIKeyTabProps) {
           searchPlaceholder="Search mapped API keys..."
           actions={
             hasApiKeys ? (
-              <Button
-                variant="contained"
-                size="small"
-                startIcon={<Plus size={16} />}
-                onClick={handleOpenAddDrawer}
-              >
-                Add API Key
-              </Button>
+              <Tooltip title={canCreateApiKey ? '' : NO_PERMISSION_TOOLTIP}>
+                <Box component="span">
+                  <Button
+                    variant="contained"
+                    size="small"
+                    startIcon={<Plus size={16} />}
+                    disabled={!canCreateApiKey}
+                    onClick={handleOpenAddDrawer}
+                  >
+                    Add API Key
+                  </Button>
+                </Box>
+              </Tooltip>
             ) : null
           }
         />
@@ -393,14 +403,21 @@ export default function APIKeyTab({ applicationId }: APIKeyTabProps) {
                         </Tooltip>
                       </ListingTable.Cell>
                       <ListingTable.Cell align="right">
-                        <IconButton
-                          size="small"
-                          color="error"
-                          onClick={() => setDeleteTarget(key)}
-                          aria-label={`Delete ${key.keyId}`}
+                        <Tooltip
+                          title={canDeleteApiKey ? '' : NO_PERMISSION_TOOLTIP}
                         >
-                          <Trash2 size={16} />
-                        </IconButton>
+                          <Box component="span">
+                            <IconButton
+                              size="small"
+                              color="error"
+                              disabled={!canDeleteApiKey}
+                              onClick={() => setDeleteTarget(key)}
+                              aria-label={`Delete ${key.keyId}`}
+                            >
+                              <Trash2 size={16} />
+                            </IconButton>
+                          </Box>
+                        </Tooltip>
                       </ListingTable.Cell>
                     </ListingTable.Row>
                   ))}
@@ -425,13 +442,18 @@ export default function APIKeyTab({ applicationId }: APIKeyTabProps) {
                   Clear search
                 </Button>
               ) : (
-                <Button
-                  variant="contained"
-                  startIcon={<Plus size={16} />}
-                  onClick={handleOpenAddDrawer}
-                >
-                  Add API Key
-                </Button>
+                <Tooltip title={canCreateApiKey ? '' : NO_PERMISSION_TOOLTIP}>
+                  <Box component="span">
+                    <Button
+                      variant="contained"
+                      startIcon={<Plus size={16} />}
+                      disabled={!canCreateApiKey}
+                      onClick={handleOpenAddDrawer}
+                    >
+                      Add API Key
+                    </Button>
+                  </Box>
+                </Tooltip>
               )
             }
           />

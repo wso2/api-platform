@@ -70,6 +70,8 @@ import { parsePolicyYaml } from '../../PolicyParameterEditor/yamlParser';
 import { FormattedMessage } from 'react-intl';
 import ErrorAlert from '../../../../Components/common/ErrorAlert';
 import { DisabledActionTooltip } from '../../../../utils/readOnlyArtifacts';
+import { useAppAuth } from '../../../../contexts/AppAuthContext';
+import { NO_PERMISSION_TOOLTIP, SCOPES } from '../../../../auth/permissions';
 
 // ─── Shared helpers ──────────────────────────────────────────────────────────
 
@@ -202,7 +204,12 @@ const buildPolicyDefinitionFromCustomPolicy = (item: {
  */
 export default function LLMProxyGuardrailsTab() {
   const { proxy, setLocalProxy } = useProxy();
-  const isReadOnlyProxy = Boolean(proxy?.readOnly);
+  // An action is locked either because the artifact is gateway-managed or
+  // because the caller lacks the update scope; both disable the same controls.
+  const { hasPermission } = useAppAuth();
+  const canEditProxy = hasPermission(SCOPES.LLM_PROXY_UPDATE);
+  const isReadOnlyProxy = Boolean(proxy?.readOnly) || !canEditProxy;
+  const lockedActionTooltip = canEditProxy ? undefined : NO_PERMISSION_TOOLTIP;
   const {
     guardrails: availableGuardrails = [],
     isLoading: isLoadingGuardrails,
@@ -752,7 +759,7 @@ export default function LLMProxyGuardrailsTab() {
             </Grid>
 
             <Grid size={{ xs: 12, sm: 'auto' }}>
-              <DisabledActionTooltip disabled={isReadOnlyProxy}>
+              <DisabledActionTooltip disabled={isReadOnlyProxy} title={lockedActionTooltip}>
                 <span>
                   <Button
                     size="small"
