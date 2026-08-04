@@ -77,8 +77,13 @@ paths:
 			scopes: []string{"dp:api-key_read"},
 		},
 		{
-			// "*" is a trailing segment, not a free-floating character.
-			name:    "wildcard outside the final segment is rejected",
+			// Wildcards are not a scope form: every scope is spelled out.
+			name:    "wildcard segment is rejected",
+			scopes:  []string{"ap:rest_api:*"},
+			wantErr: "malformed scope",
+		},
+		{
+			name:    "wildcard inside a segment is rejected",
 			scopes:  []string{"ap:rest_*:read"},
 			wantErr: "malformed scope",
 		},

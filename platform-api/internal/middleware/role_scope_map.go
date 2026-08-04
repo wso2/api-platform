@@ -67,12 +67,13 @@ func LoadRoleScopeMap(path string) (map[string][]string, error) {
 const PlatformScopePrefix = "ap:"
 
 // wellFormedScope matches "<namespace>:<name>" — one or more colon-separated
-// segments after the namespace, with "*" permitted only as the final segment.
-// Segments allow hyphens as well as underscores, since a foreign namespace
-// (the Developer Portal's "dp:", say) picks its own naming convention. This is
-// enough to catch a missing or malformed namespace on a foreign scope, which is
-// the only error class detectable without that component's spec.
-var wellFormedScope = regexp.MustCompile(`^[a-z0-9_-]+(?::[a-z0-9_-]+)+(?::\*)?$`)
+// segments after the namespace. Segments allow hyphens as well as underscores,
+// since a foreign namespace (the Developer Portal's "dp:", say) picks its own
+// naming convention. This is enough to catch a missing or malformed namespace on
+// a foreign scope, which is the only error class detectable without that
+// component's spec. Wildcards are not a scope form: every scope must be spelled
+// out, so "*" in any segment is malformed.
+var wellFormedScope = regexp.MustCompile(`^[a-z0-9_-]+(?::[a-z0-9_-]+)+$`)
 
 // ValidateRoleScopeMap checks the scopes referenced in the map, failing fast at
 // startup rather than at request time — an unrecognized scope name is almost
