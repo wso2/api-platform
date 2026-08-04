@@ -140,23 +140,17 @@ const get = async (orgId, handle) => {
 };
 
 const getId = async (orgId, viewName, t) => {
-    // `view` is an optional query param on /apis and /mcp-servers (apiViewQuery in the
-    // OpenAPI spec) — a bare handle/display_name lookup with `undefined` throws at the
-    // Sequelize layer ("WHERE parameter has invalid undefined value") rather than the
-    // 404 below, so short-circuit before ever building that query.
+    // `view` is an optional query param on /apis and /mcp-servers (viewQuery in the
+    // OpenAPI spec) — a bare handle lookup with `undefined` throws at the driver layer
+    // ("WHERE parameter has invalid undefined value") rather than the 404 below, so
+    // short-circuit before ever building that query.
     if (!viewName) return undefined;
 
     const exec = t || db;
-    let view = await exec.queryOne(
+    const view = await exec.queryOne(
         `SELECT uuid FROM ${VIEWS_TABLE} WHERE handle = ? AND org_uuid = ?`,
         [viewName, orgId]
     );
-    if (!view) {
-        view = await exec.queryOne(
-            `SELECT uuid FROM ${VIEWS_TABLE} WHERE display_name = ? AND org_uuid = ?`,
-            [viewName, orgId]
-        );
-    }
     if (!view) {
         throw new CustomError(404, constants.ERROR_CODE[404], "View not found");
     }
