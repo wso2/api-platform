@@ -64,7 +64,11 @@ import {
 } from '../../../../utils/projectRouting';
 import useAIWorkspaceSnackbar from '../../../../hooks/aiWorkspaceSnackbar';
 import { useAppAuth } from '../../../../contexts/AppAuthContext';
-import { NO_PERMISSION_TOOLTIP, SCOPES } from '../../../../auth/permissions';
+import {
+  DISABLED_ACTION_SX,
+  NO_PERMISSION_TOOLTIP,
+  SCOPES,
+} from '../../../../auth/permissions';
 import { truncateProviderDisplayName } from '../../../../utils/providerTemplateDisplay';
 import { FormattedMessage } from 'react-intl';
 import type {
@@ -154,6 +158,7 @@ function ProxyOverviewContent() {
   const showSnackbar = useAIWorkspaceSnackbar();
   const { hasPermission } = useAppAuth();
   const canDeleteProxy = hasPermission(SCOPES.LLM_PROXY_DELETE);
+  const canUpdateProxy = hasPermission(SCOPES.LLM_PROXY_UPDATE);
   const navigate = useNavigate();
   const location = useLocation();
   const { currentProject, currentOrganization } = useAppShell();
@@ -229,7 +234,7 @@ function ProxyOverviewContent() {
     // Runtime tabs (provider/security/guardrails & policies) are locked, so a save
     // from a gateway-created proxy only carries non-runtime edits (definition), which
     // the control plane accepts without altering the gateway runtime artifact.
-    if (!proxy || !hasUnsavedChanges || isSavingChanges) {
+    if (!proxy || !hasUnsavedChanges || isSavingChanges || !canUpdateProxy) {
       return;
     }
     try {
@@ -385,14 +390,22 @@ function ProxyOverviewContent() {
                     {/* Edit page (name/version/context/description). Enabled even
                         for gateway-created proxies — the page keeps the runtime
                         fields read-only and allows only the description. */}
-                    <Tooltip title="Edit Proxy">
-                      <IconButton
-                        component={RouterLink}
-                        to={`${proxiesPath}/${proxy.id}/edit`}
-                        size="small"
-                      >
-                        <Edit size={16} />
-                      </IconButton>
+                    <Tooltip
+                      title={
+                        canUpdateProxy ? 'Edit Proxy' : NO_PERMISSION_TOOLTIP
+                      }
+                    >
+                      <Box component="span">
+                        <IconButton
+                          component={RouterLink}
+                          to={`${proxiesPath}/${proxy.id}/edit`}
+                          size="small"
+                          disabled={!canUpdateProxy}
+                          sx={DISABLED_ACTION_SX}
+                        >
+                          <Edit size={16} />
+                        </IconButton>
+                      </Box>
                     </Tooltip>
                   </Stack>
                   <Stack spacing={0.1} sx={{ mt: 1 }}>
@@ -564,7 +577,9 @@ function ProxyOverviewContent() {
                 </Button>
                 <Button
                   variant="contained"
-                  disabled={!hasUnsavedChanges || isSavingChanges}
+                  disabled={
+                    !hasUnsavedChanges || isSavingChanges || !canUpdateProxy
+                  }
                   onClick={() => void handleSaveChanges()}
                 >
                   {isSavingChanges ? <CircularProgress size={20} /> : 'Save'}

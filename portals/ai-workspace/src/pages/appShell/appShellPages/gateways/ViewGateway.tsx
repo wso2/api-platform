@@ -96,7 +96,11 @@ import AIGatewayStepBanner from "../quickStart/AIGatewayStepBanner";
 import ErrorAlert from "../../../../Components/common/ErrorAlert";
 import { GatewayPoliciesProvider } from "../../../../contexts/GatewayPoliciesContext";
 import { useAppAuth } from "../../../../contexts/AppAuthContext";
-import { NO_PERMISSION_TOOLTIP, SCOPES } from "../../../../auth/permissions";
+import {
+  DISABLED_ACTION_SX,
+  NO_PERMISSION_TOOLTIP,
+  SCOPES,
+} from "../../../../auth/permissions";
 import GatewayPolicies from "./GatewayPolicies";
 
 const resolveGatewayVersion = (gatewayVersion?: string): string => {
@@ -231,6 +235,7 @@ export default function ViewGateway() {
   const { currentOrganization } = useAppShell();
   const showSnackbar = useAIWorkspaceSnackbar();
   const { hasPermission } = useAppAuth();
+  const canUpdateGateway = hasPermission(SCOPES.GATEWAY_UPDATE);
   // Reconfigure runs three token operations in sequence — list the existing
   // tokens, revoke each, then rotate. All three scopes are required, or the
   // flow fails part-way through with some tokens already revoked. A caller with
@@ -722,17 +727,25 @@ export default function ViewGateway() {
                   size="small"
                   color={gateway?.isActive ? "success" : "default"}
                 />
-                <Tooltip title="Edit Gateway">
-                  <IconButton
-                    component={RouterLink}
-                    to={buildOrgPath(
-                      currentOrganization,
-                      `/gateways/edit/${gatewayName}`,
-                    )}
-                    size="small"
-                  >
-                    <Edit size={16} />
-                  </IconButton>
+                <Tooltip
+                  title={
+                    canUpdateGateway ? "Edit Gateway" : NO_PERMISSION_TOOLTIP
+                  }
+                >
+                  <Box component="span">
+                    <IconButton
+                      component={RouterLink}
+                      to={buildOrgPath(
+                        currentOrganization,
+                        `/gateways/edit/${gatewayName}`,
+                      )}
+                      size="small"
+                      disabled={!canUpdateGateway}
+                      sx={DISABLED_ACTION_SX}
+                    >
+                      <Edit size={16} />
+                    </IconButton>
+                  </Box>
                 </Tooltip>
               </Stack>
               <Typography variant="body2" color="text.secondary">

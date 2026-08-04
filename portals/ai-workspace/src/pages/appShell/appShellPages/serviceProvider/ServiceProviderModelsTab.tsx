@@ -490,38 +490,41 @@ export default function ServiceProviderModelsTab() {
                     ))}
                   </Stack>
 
-                  <DisabledActionTooltip disabled={isReadOnlyProvider} title={lockedActionTooltip}>
-                    <Tooltip
-                      placement="top"
-                      title={
-                        disableAddProviderButton ? (
-                          <FormattedMessage
-                            id="aiWorkspace.pages.appShell.appShellPages.serviceProvider.ServiceProviderModelsTab.single.provider.support.tooltip"
-                            defaultMessage={
-                              'Only one model provider is supported for this service provider.'
-                            }
-                          />
-                        ) : (
-                          ''
-                        )
-                      }
-                    >
-                      <Box component="span">
-                        <Button
-                          size="small"
-                          variant="outlined"
-                          startIcon={<Plus size={16} />}
-                          disabled={disableAddProviderButton || isReadOnlyProvider}
-                          onClick={() => setDrawerOpen(true)}
-                        >
-                          <FormattedMessage
-                            id="aiWorkspace.pages.appShell.appShellPages.serviceProvider.ServiceProviderModelsTab.add.model.provider.2"
-                            defaultMessage={'Add Model Provider'}
-                          />
-                        </Button>
-                      </Box>
-                    </Tooltip>
-                  </DisabledActionTooltip>
+                  {/* One tooltip only — nesting two meant a missing-permission
+                      message and the single-provider-limit message could both
+                      render. Permission takes precedence. */}
+                  <Tooltip
+                    placement="top"
+                    title={
+                      isReadOnlyProvider ? (
+                        lockedActionTooltip
+                      ) : disableAddProviderButton ? (
+                        <FormattedMessage
+                          id="aiWorkspace.pages.appShell.appShellPages.serviceProvider.ServiceProviderModelsTab.single.provider.support.tooltip"
+                          defaultMessage={
+                            'Only one model provider is supported for this service provider.'
+                          }
+                        />
+                      ) : (
+                        ''
+                      )
+                    }
+                  >
+                    <Box component="span">
+                      <Button
+                        size="small"
+                        variant="outlined"
+                        startIcon={<Plus size={16} />}
+                        disabled={disableAddProviderButton || isReadOnlyProvider}
+                        onClick={() => setDrawerOpen(true)}
+                      >
+                        <FormattedMessage
+                          id="aiWorkspace.pages.appShell.appShellPages.serviceProvider.ServiceProviderModelsTab.add.model.provider.2"
+                          defaultMessage={'Add Model Provider'}
+                        />
+                      </Button>
+                    </Box>
+                  </Tooltip>
                 </Stack>
               ) : (
                 <Box

@@ -164,6 +164,11 @@ export default function AssociationsTable({
   const canRemoveAssociation = hasPermission(
     SCOPES.APPLICATION_ASSOCIATIONS_DELETE
   );
+  // Mapping/unmapping a key here hits the same POST/DELETE
+  // /applications/{id}/api-keys endpoints as APIKeyTab, so it needs the same
+  // scopes — the association scopes alone don't cover it.
+  const canCreateApiKey = hasPermission(SCOPES.APPLICATION_API_KEY_CREATE);
+  const canDeleteApiKey = hasPermission(SCOPES.APPLICATION_API_KEY_DELETE);
   return (
     <ListingTable.Container sx={{ minWidth: 600 }}>
       <ListingTable.Toolbar
@@ -250,7 +255,9 @@ export default function AssociationsTable({
                       !unavailableKeyNames.has(key.id)
                   );
                   const entityLabel = isProvider ? 'provider' : 'proxy';
-                  const addApiKeyTooltip = selectionBlockedMessage
+                  const addApiKeyTooltip = !canCreateApiKey
+                    ? NO_PERMISSION_TOOLTIP
+                    : selectionBlockedMessage
                     ? selectionBlockedMessage
                     : !canDetermineAddableKeys ||
                       isLoadingEntityKeys ||
@@ -262,6 +269,7 @@ export default function AssociationsTable({
                     ? `No unused API keys are available for this ${entityLabel}.`
                     : 'Add API Key';
                   const isAddApiKeyDisabled =
+                    !canCreateApiKey ||
                     Boolean(selectionBlockedMessage) ||
                     !canDetermineAddableKeys ||
                     isLoadingEntityKeys ||
@@ -462,14 +470,21 @@ export default function AssociationsTable({
                             </Typography>
                           </ListingTable.Cell>
                           <ListingTable.Cell>
-                            <Tooltip title="Remove API key">
+                            <Tooltip
+                              title={
+                                canDeleteApiKey
+                                  ? 'Remove API key'
+                                  : NO_PERMISSION_TOOLTIP
+                              }
+                            >
                               <span>
                                 <IconButton
                                   size="small"
                                   color="error"
-                                  disabled={removingKeyIds.has(
-                                    resolveMappedKeyId(key)
-                                  )}
+                                  disabled={
+                                    !canDeleteApiKey ||
+                                    removingKeyIds.has(resolveMappedKeyId(key))
+                                  }
                                   onClick={() =>
                                     void onRemoveKey(association.id, key)
                                   }

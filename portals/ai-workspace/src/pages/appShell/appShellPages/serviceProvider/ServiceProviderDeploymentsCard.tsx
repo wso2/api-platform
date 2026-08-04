@@ -564,7 +564,9 @@ export default function ServiceProviderDeploymentsCard({
                           <ListingTable.Cell align="right">
                             <Tooltip
                               title={
-                                key.id
+                                !canDeleteProviderApiKey
+                                  ? NO_PERMISSION_TOOLTIP
+                                  : key.id
                                   ? 'Delete API key'
                                   : 'Unable to delete key without an identifier'
                               }

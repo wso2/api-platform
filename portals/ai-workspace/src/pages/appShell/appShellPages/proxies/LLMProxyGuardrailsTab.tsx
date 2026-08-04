@@ -1071,6 +1071,7 @@ export default function LLMProxyGuardrailsTab() {
                                 <Grid size={{ xs: 12, sm: 'auto' }}>
                                   <DisabledActionTooltip
                                     disabled={isReadOnlyProxy}
+                                    title={lockedActionTooltip}
                                   >
                                     <span>
                                       <Button

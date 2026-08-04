@@ -1090,6 +1090,7 @@ export default function ServiceProviderGuardrailsTab() {
                               <Grid size={{ xs: 12, sm: 'auto' }}>
                                 <DisabledActionTooltip
                                   disabled={isReadOnlyProvider}
+                                  title={lockedActionTooltip}
                                 >
                                   <Button
                                     size="small"
