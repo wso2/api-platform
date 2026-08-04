@@ -74,11 +74,11 @@ function AppGate() {
       return <BasicAuthLoginPage onSuccess={() => {
         // window.location is outside the router, so these paths carry the base path
         // (BrowserRouter's basename) and the fallback has to add it back.
-        const { pathname, search } = window.location;
+        const { pathname, search, hash } = window.location;
         const route = pathname.startsWith(BASE_PATH) ? pathname.slice(BASE_PATH.length) : pathname;
         const target = route === '/login' || route === '/signin'
           ? `${BASE_PATH}/`
-          : pathname + search;
+          : pathname + search + hash;
         window.location.replace(target);
       }} />;
     }
