@@ -268,10 +268,22 @@ if (config.designMode?.enabled) {
 app.use(constants.ROUTE.BASE_PATH, portal);
 
 
-// 404 catch-all — must come after all page routes
+// 404 catch-all — must come after all page routes.
+//
+// A path outside BASE_PATH gets a plain 404, not the portal's branded error page. The few
+// root paths this service does own (/health, /, /robots.txt, /llms.txt) are answered by
+// their own routes above and never reach here, so anything left is either a stray request
+// or — on a host where an ingress fronts several portals under different prefixes —
+// someone else's path entirely. Rendering this portal's chrome and "home" link over it
+// would claim a page that isn't ours. Inside the prefix a 404 IS ours, so it still gets
+// the full page.
 app.use((req, res, next) => {
     const err = new Error('Not Found');
     err.status = 404;
+    const BASE = constants.ROUTE.BASE_PATH;
+    if (req.path !== BASE && !req.path.startsWith(BASE + '/')) {
+        return res.status(404).type('text/plain').send('Not Found');
+    }
     next(err);
 });
 

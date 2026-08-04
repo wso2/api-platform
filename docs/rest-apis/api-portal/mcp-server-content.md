@@ -20,7 +20,7 @@ curl -X POST https://localhost:9543/api-portal/api/v0.9/mcp-servers/{mcpServerId
 
 ```
 
-Uploads the static content package for an MCP server. Mirrors `POST /api/v0.9/apis/{apiId}/assets`.
+Uploads the static content package for an MCP server. Mirrors `POST /api-portal/api/v0.9/apis/{apiId}/assets`.
 
 ### Authentication
 
@@ -135,7 +135,7 @@ curl -X PUT https://localhost:9543/api-portal/api/v0.9/mcp-servers/{mcpServerId}
 
 ```
 
-Replaces or adds static content files for an existing MCP server. Mirrors `PUT /api/v0.9/apis/{apiId}/assets`.
+Replaces or adds static content files for an existing MCP server. Mirrors `PUT /api-portal/api/v0.9/apis/{apiId}/assets`.
 
 ### Authentication
 
@@ -246,7 +246,7 @@ curl -X GET https://localhost:9543/api-portal/api/v0.9/mcp-servers/{mcpServerId}
 
 ```
 
-Retrieves a single stored MCP server content file. Mirrors `GET /api/v0.9/apis/{apiId}/assets`.
+Retrieves a single stored MCP server content file. Mirrors `GET /api-portal/api/v0.9/apis/{apiId}/assets`.
 
 ### Authentication
 
@@ -348,7 +348,7 @@ curl -X DELETE https://localhost:9543/api-portal/api/v0.9/mcp-servers/{mcpServer
 
 ```
 
-Deletes stored MCP server content. Mirrors `DELETE /api/v0.9/apis/{apiId}/assets`.
+Deletes stored MCP server content. Mirrors `DELETE /api-portal/api/v0.9/apis/{apiId}/assets`.
 
 ### Authentication
 

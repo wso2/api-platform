@@ -127,8 +127,10 @@ For each step in the workflow:
 - Only call APIs explicitly listed in the workflow
 - Follow all instructions defined in the workflow`;
 
+    // Carries the mount prefix for the same reason workflowUrl above does: baseUrl is the
+    // configured origin only, and an agent fetches this URL verbatim.
     const llmsIndexUrl = (orgHandle && baseUrl)
-        ? `${baseUrl}/${orgHandle}/views/${viewName}/llms.txt`
+        ? `${baseUrl}${constants.ROUTE.BASE_PATH}/${orgHandle}/views/${viewName}/llms.txt`
         : '';
 
     const section2 = `You are a software development agent helping build a web application that implements the "${name}" workflow by integrating multiple backend APIs.

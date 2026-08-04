@@ -28,6 +28,9 @@ const { snakeToCamelDeep, mergeOver, parseConfigPaths } = require('./configMerge
 // Requires nothing from this module in return, so loading the grant table from the
 // startup validation below cannot cycle.
 const roleScopeMap = require('./roleScopeMap');
+// utils/constants.js has no imports of its own, so pulling the route constants in here
+// cannot create a cycle back through the config loader.
+const routeConstants = require('../utils/constants');
 
 // Load api-platform.env if present (silently ignored if absent)
 try {
@@ -476,8 +479,13 @@ const ORG_HANDLE_PATTERN = /^[a-z0-9][a-z0-9._-]*$/;
 // longer collide now that the org router sits under the prefix, but they stay listed:
 // they are still reserved words operationally, and a handle matching one of them would
 // make every URL in the deployment confusing to read.
+// The mount prefix and the API base segment are derived from the route constants rather
+// than spelled out, so renaming either can't leave a stale word reserved and the real one
+// unguarded.
 const RESERVED_ORG_HANDLES = new Set([
-    'api', 'api-portal', 'health', 'metrics', 'favicon.ico', 'styles', 'images',
+    routeConstants.ROUTE.BASE_PATH.replace(/^\//, ''),
+    routeConstants.API_PORTAL_API.BASE_SEGMENT,
+    'health', 'metrics', 'favicon.ico', 'styles', 'images',
     'scripts', 'technical-styles', 'technical-scripts', 'mock', 'registry', 'portal',
     'signin', 'logout', '__dev_reload', '.well-known', 'robots.txt',
 ]);

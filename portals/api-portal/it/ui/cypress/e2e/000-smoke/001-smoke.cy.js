@@ -53,13 +53,42 @@ describe('API Portal — Smoke', () => {
         cy.get('body').should('not.contain.text', 'Cannot GET');
     });
 
-    it('health endpoint returns 200', () => {
+    it('health endpoint returns 200 at the root and under the prefix', () => {
+        // Both exist on purpose: container/Kubernetes probes dial the pod directly with
+        // no ingress to add the prefix, while an ingress-routed check only sees the
+        // prefixed path.
+        ['/health', `${Cypress.env('BASE_PATH')}/health`].forEach((url) => {
+            cy.request({ url, failOnStatusCode: false }).then((resp) => {
+                expect(resp.status, url).to.eq(200);
+                expect(resp.body, url).to.have.property('status', 'ok');
+            });
+        });
+    });
+
+    it('404s paths outside the mount prefix without rendering the portal error page', () => {
+        // On a host where an ingress fronts several portals under different prefixes, an
+        // unprefixed path is not this portal's to answer — so it gets a plain 404 rather
+        // than this portal's branded error page with its "home" link. The root paths the
+        // service does own (/, /health, /robots.txt, /llms.txt) are asserted elsewhere in
+        // this file and are unaffected.
+        ['/nope', '/some-other-portal/apis', '/api/v0.9/apis'].forEach((url) => {
+            cy.request({ url, failOnStatusCode: false }).then((resp) => {
+                expect(resp.status, url).to.eq(404);
+                expect(resp.headers['content-type'], url).to.contain('text/plain');
+                expect(String(resp.body), url).to.not.contain('<html');
+            });
+        });
+    });
+
+    it('still renders the portal error page for a 404 inside the prefix', () => {
+        // The complement of the test above: a bad URL under the prefix IS this portal's,
+        // so it keeps the branded page rather than degrading to plain text.
         cy.request({
-            url: '/health',
+            url: `${Cypress.env('BASE_PATH')}/no-such-page-here`,
             failOnStatusCode: false,
         }).then((resp) => {
-            expect(resp.status).to.eq(200);
-            expect(resp.body).to.have.property('status', 'ok');
+            expect(resp.status).to.eq(404);
+            expect(resp.headers['content-type']).to.contain('text/html');
         });
     });
 

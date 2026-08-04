@@ -20,7 +20,7 @@ curl -X POST https://localhost:9543/api-portal/api/v0.9/mcp-servers \
 
 ```
 
-Creates API Portal MCP server metadata. Accepts the same metadata input formats as `POST /api/v0.9/apis` (artifact ZIP, `api.yaml` / `mcp.yaml`, or `metadata` JSON), but the created record is always typed `MCP`. An MCP server's contract is its `definition` (tools schema) — the tools, resources, and prompts it exposes — not an OpenAPI-style API contract; a `definition` is required. Via the JSON `metadata` field, `type` must be explicitly `MCP`; an omitted type or any other value is rejected with a 400 (use `POST /api/v0.9/apis`).
+Creates API Portal MCP server metadata. Accepts the same metadata input formats as `POST /api-portal/api/v0.9/apis` (artifact ZIP, `api.yaml` / `mcp.yaml`, or `metadata` JSON), but the created record is always typed `MCP`. An MCP server's contract is its `definition` (tools schema) — the tools, resources, and prompts it exposes — not an OpenAPI-style API contract; a `definition` is required. Via the JSON `metadata` field, `type` must be explicitly `MCP`; an omitted type or any other value is rejected with a 400 (use `POST /api-portal/api/v0.9/apis`).
 
 ### Authentication
 
@@ -159,7 +159,7 @@ curl -X GET https://localhost:9543/api-portal/api/v0.9/mcp-servers \
 
 ```
 
-Lists MCP server metadata for an organization. Mirrors `GET /api/v0.9/apis` but only returns MCP-typed records.
+Lists MCP server metadata for an organization. Mirrors `GET /api-portal/api/v0.9/apis` but only returns MCP-typed records.
 
 ### Authentication
 

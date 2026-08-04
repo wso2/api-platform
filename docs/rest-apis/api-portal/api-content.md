@@ -144,7 +144,7 @@ curl -X PUT https://localhost:9543/api-portal/api/v0.9/apis/{apiId}/assets \
 
 Replaces or adds static content files for an existing API.
 
-The upload format is the same as `POST /api/v0.9/apis/{apiId}/assets`.
+The upload format is the same as `POST /api-portal/api/v0.9/apis/{apiId}/assets`.
 Existing files with the same stored `type` and `fileName` are updated; new files are created.
 Image metadata is updated only when image metadata can be resolved from the upload or request body.
 

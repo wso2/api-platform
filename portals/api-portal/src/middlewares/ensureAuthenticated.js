@@ -333,7 +333,11 @@ const ensureAuthenticated = async (req, res, next) => {
                 if (req.params.orgName) {
                     res.redirect(`${constants.ROUTE.BASE_PATH}/${req.params.orgName}/views/${req.params.viewName}/login`);
                 } else {
-                    res.redirect(303, `${constants.ROUTE.BASE_PATH}/portal/login`);
+                    // No org segment to build a view-scoped login URL from, so hand off to
+                    // the generic entry point (routes/pages/authRoute.js), which resolves
+                    // the org and a view that exists. `/portal/login` used to be named
+                    // here and has never been a registered route — it 404'd.
+                    res.redirect(303, `${constants.ROUTE.BASE_PATH}/login`);
                 }
             });
         }

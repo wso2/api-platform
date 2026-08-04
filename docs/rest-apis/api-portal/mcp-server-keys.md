@@ -18,7 +18,7 @@ curl -X POST https://localhost:9543/api-portal/api/v0.9/mcp-servers/{mcpServerId
 
 ```
 
-Generates an API key for an MCP server. Mirrors `POST /api/v0.9/apis/{apiId}/api-keys/generate`.
+Generates an API key for an MCP server. Mirrors `POST /api-portal/api/v0.9/apis/{apiId}/api-keys/generate`.
 
 > Payload
 
@@ -145,7 +145,7 @@ curl -X GET https://localhost:9543/api-portal/api/v0.9/mcp-servers/{mcpServerId}
 
 ```
 
-Lists API keys for the given MCP server. Mirrors `GET /api/v0.9/apis/{apiId}/api-keys`.
+Lists API keys for the given MCP server. Mirrors `GET /api-portal/api/v0.9/apis/{apiId}/api-keys`.
 
 ### Authentication
 
@@ -280,7 +280,7 @@ curl -X POST https://localhost:9543/api-portal/api/v0.9/mcp-servers/{mcpServerId
 
 ```
 
-Regenerates the secret for an existing MCP server API key identified by `keyId` in the request body. Mirrors `POST /api/v0.9/apis/{apiId}/api-keys/regenerate`.
+Regenerates the secret for an existing MCP server API key identified by `keyId` in the request body. Mirrors `POST /api-portal/api/v0.9/apis/{apiId}/api-keys/regenerate`.
 
 > Payload
 
@@ -393,7 +393,7 @@ curl -X POST https://localhost:9543/api-portal/api/v0.9/mcp-servers/{mcpServerId
 
 ```
 
-Revokes an existing MCP server API key identified by `keyId` in the request body. Mirrors `POST /api/v0.9/apis/{apiId}/api-keys/revoke`.
+Revokes an existing MCP server API key identified by `keyId` in the request body. Mirrors `POST /api-portal/api/v0.9/apis/{apiId}/api-keys/revoke`.
 
 > Payload
 
@@ -490,7 +490,7 @@ curl -X POST https://localhost:9543/api-portal/api/v0.9/mcp-servers/{mcpServerId
 
 ```
 
-Associates (or re-associates) an existing MCP server API key with an application, for analytics attribution only. Mirrors `POST /api/v0.9/apis/{apiId}/api-keys/associate`.
+Associates (or re-associates) an existing MCP server API key with an application, for analytics attribution only. Mirrors `POST /api-portal/api/v0.9/apis/{apiId}/api-keys/associate`.
 
 > Payload
 
@@ -625,7 +625,7 @@ curl -X POST https://localhost:9543/api-portal/api/v0.9/mcp-servers/{mcpServerId
 
 ```
 
-Removes the application association from an MCP server API key identified by `keyId` in the request body, if any. Mirrors `POST /api/v0.9/apis/{apiId}/api-keys/dissociate`.
+Removes the application association from an MCP server API key identified by `keyId` in the request body, if any. Mirrors `POST /api-portal/api/v0.9/apis/{apiId}/api-keys/dissociate`.
 
 > Payload
 
