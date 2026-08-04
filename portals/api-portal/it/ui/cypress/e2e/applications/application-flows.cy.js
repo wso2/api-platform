@@ -148,13 +148,15 @@ describe('Applications', () => {
 
             // 2. Generate a token with the consumer secret (portal → mock key manager).
             cy.get(`#tab-btn-token-${KM_ID}-PRODUCTION`).click();
-            cy.get('#tokenKeyBtn-PRODUCTION').click();
+            // Every id on the Manage Keys page is scoped by key manager as well as key
+            // type — see key-managers-multiple.cy.js for why.
+            cy.get(`#tokenKeyBtn-${KM_ID}-PRODUCTION`).click();
             cy.get('#generateTokenPromptModal').should('be.visible');
             cy.get('#generateTokenPromptSecretInput').type(mockToken.secret);
             cy.get('#generateTokenPromptConfirmBtn').click();
             cy.get(`#token_${KM_ID}_PRODUCTION`, { timeout: 15000 })
                 .should('contain', mockToken.accessToken);
-            cy.get('[data-cyid="keysTokenModal-PRODUCTION-close"]').click();
+            cy.get(`[data-cyid="keysTokenModal-${KM_ID}-PRODUCTION-close"]`).click();
 
             // 3. Revoke the keys — confirm in the shared delete-confirmation modal.
             //    Scope the revoke button to the Production pane — the Sandbox card

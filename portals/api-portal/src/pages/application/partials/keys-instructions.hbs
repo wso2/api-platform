@@ -1,13 +1,14 @@
 {{#each keyManagersMetadata}}
 {{#if enabled}}
 {{#each applicationKeys}}
-<div class="modal custom-modal" id='keysInstructionsModal-{{keyType}}'>
+{{!-- Also rendered once per key manager per key type — see keys-token.hbs. --}}
+<div class="modal custom-modal" id='keysInstructionsModal-{{../id}}-{{keyType}}'>
     <div class="modal-dialog modal-xl" role="document">
         <div class="modal-content custom-modal-content">
             <div class="custom-modal-header">
                 <h2 class="custom-modal-title m-0">Instructions to Generate Access Token ({{keyType}})</h2>
                 <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"
-                    onclick="closeModal('keysInstructionsModal-{{keyType}}')"></button>
+                    onclick="closeModal('keysInstructionsModal-{{../id}}-{{keyType}}')"></button>
             </div>
             <div class="custom-modal-body">
                 <div class="container">
