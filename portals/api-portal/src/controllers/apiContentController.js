@@ -813,6 +813,7 @@ const loadDocument = async (req, res, next) => {
                     firstName: req.user.firstName,
                     lastName: req.user.lastName,
                     email: req.user.email,
+                    isAdmin: req.user.isAdmin,
                 }
             }
             templateContent.profile = req.isAuthenticated() ? profile : null;

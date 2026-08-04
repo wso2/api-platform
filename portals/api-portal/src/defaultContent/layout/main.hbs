@@ -16,6 +16,13 @@
       // Browser scripts build invocation URLs via window.apiPortalApi (common.js).
       window.__API_PORTAL_API__ = { base: "{{apiPortalApiConfig.base}}", version: "{{apiPortalApiConfig.version}}" };
     </script>
+    <script>
+      try {
+        if (localStorage.getItem('sidebar-expanded') === '1') {
+          document.documentElement.classList.add('sidebar-pinned');
+        }
+      } catch (e) { /* storage unavailable (private mode) — fall back to collapsed */ }
+    </script>
     {{{slots.head}}}
 </head>
 

@@ -5,6 +5,42 @@
 }
 
 /* ── Sidebar shell ── */
+.sidebar.no-transition,
+.sidebar.no-transition * {
+    transition: none !important;
+}
+
+@media (min-width: 861px) {
+    html.sidebar-pinned .sidebar {
+        width: 15.5rem;
+    }
+
+    html.sidebar-pinned .nav-link,
+    html.sidebar-pinned .collapse-btn {
+        justify-content: flex-start;
+    }
+
+    html.sidebar-pinned .nav-text,
+    html.sidebar-pinned .collapse-text {
+        margin-left: 0.875rem;
+        opacity: 1;
+        visibility: visible;
+        width: auto;
+    }
+
+    html.sidebar-pinned .collapse-btn i {
+        transform: rotate(180deg);
+    }
+
+    html.sidebar-pinned .nav-link:not(.has-active-submenu) .sidebar-chevron {
+        opacity: 0;
+        visibility: hidden;
+        width: 0;
+        margin-left: 0;
+        overflow: hidden;
+    }
+}
+
 .sidebar {
     flex: none;
     display: flex;
@@ -140,7 +176,7 @@
     background: var(--overlay);
     border-radius: 0 0 0.5rem 0.5rem;
     padding: 0.25rem 0.5rem 0.5rem;
-    margin: -0.25rem 0.3rem 0 0.3rem;
+    margin: -0.25rem 0 0 0;
 }
 
 .submenu.show {
