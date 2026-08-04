@@ -130,6 +130,11 @@ config:
       # ap_operator, ap_publisher, ap_subscriber, ap_viewer); copy the entries you
       # need from it. An ap: scope the Platform API's OpenAPI spec does not declare
       # fails startup; dp: scopes (Developer Portal) are checked for shape only.
+      # A resource-level :manage already covers that resource's subresources
+      # (each subresource operation lists the parent :manage in its own accepted
+      # scopes), so ap:llm_provider:manage needs no separate
+      # ap:llm_provider:api_key:manage. Kept in sync with the ap_admin entry in
+      # platform-api/resources/role-to-scope-mapping.yaml.
       roles:
         - name: ap_admin
           scopes:
@@ -147,6 +152,8 @@ config:
             - ap:subscription_plan:manage
             - ap:secret:manage
             - ap:api_key:read
+            # Ownership override — every user's API keys, not just the caller's.
+            # Never implied by ap:api_key:read, so it is listed explicitly.
             - ap:api_key:all:manage
     # Claim-name mappings shared by all modes.
     claimMappings:
