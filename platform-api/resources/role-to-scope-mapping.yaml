@@ -30,8 +30,22 @@
 #         enforces them, so it validates only their shape, not their existence.
 #
 # Scope convention:
-#   ap:<resource>:manage             — every action on that resource
+#   ap:<resource>:manage             — every action on that resource, INCLUDING
+#                                      its subresources: each subresource
+#                                      operation lists the parent :manage in its
+#                                      own accepted-scope set, so granting
+#                                      ap:llm_provider:manage already covers
+#                                      ap:llm_provider:api_key:* and
+#                                      ap:llm_provider:deployment:*. Grant a
+#                                      subresource scope only to a role that does
+#                                      NOT hold the parent :manage — listing both
+#                                      is redundant.
 #   ap:<resource>:<sub>:manage       — every action on the subresource only
+#   ap:<resource>:all:manage         — ownership override (widens which users'
+#                                      rows are reachable, not which actions). It
+#                                      is never implied by, and never implies,
+#                                      the plain :manage above — grant it
+#                                      explicitly alongside the base scope.
 #   dp:<resource>:manage             — every action on that API Portal resource
 #                                      (API Portal read operations accept the
 #                                      :manage scope as well as :read)
@@ -47,27 +61,15 @@ roles:
       - ap:organization:manage
       - ap:project:manage
       - ap:gateway:manage
-      - ap:gateway:token:manage
-      - ap:gateway:manifest:read
       - ap:gateway_custom_policy:manage
       - ap:rest_api:manage
-      - ap:rest_api:deployment:manage
-      - ap:rest_api:gateway:manage
-      - ap:rest_api:api_key:manage
       - ap:application:manage
-      - ap:application:api_key:manage
-      - ap:application:association:manage
       - ap:subscription:manage
       - ap:subscription_plan:manage
       - ap:llm_template:manage
       - ap:llm_provider:manage
-      - ap:llm_provider:deployment:manage
-      - ap:llm_provider:api_key:manage
       - ap:llm_proxy:manage
-      - ap:llm_proxy:deployment:manage
-      - ap:llm_proxy:api_key:manage
       - ap:mcp_proxy:manage
-      - ap:mcp_proxy:deployment:manage
       - ap:secret:manage
       - ap:api_key:read
       # Administrative access to every user's API keys, not just the caller's.
@@ -105,12 +107,9 @@ roles:
       - ap:organization:read
       - ap:project:read
       - ap:gateway:manage
-      - ap:gateway:token:manage
-      - ap:gateway:manifest:read
       - ap:gateway_custom_policy:manage
       - ap:rest_api:read
       - ap:rest_api:deployment:manage
-      - ap:rest_api:gateway:read
       - ap:llm_template:manage
       - ap:llm_provider:read
       - ap:llm_provider:deployment:manage
@@ -148,23 +147,20 @@ roles:
       - dp:api_workflow:read
       - dp:event:read
 
-  # API publisher — owns the full API/MCP/LLM lifecycle and the Developer
-  # Portal content for it; reads applications, subscriptions and plans.
+  # API publisher — owns the full REST API, MCP proxy and LLM proxy lifecycle and
+  # the Developer Portal content for it. LLM providers are read-only: a publisher
+  # points proxies at an existing provider, but creating, editing, deleting and
+  # deploying providers are all admin tasks. Reads applications, subscriptions
+  # and plans.
   - name: ap_publisher
     scopes:
       # Platform API
       - ap:organization:read
       - ap:project:manage
       - ap:rest_api:manage
-      - ap:rest_api:deployment:manage
-      - ap:rest_api:gateway:read
-      - ap:rest_api:api_key:manage
       - ap:mcp_proxy:manage
-      - ap:mcp_proxy:deployment:manage
       - ap:llm_provider:read
-      - ap:llm_provider:deployment:manage
       - ap:llm_proxy:manage
-      - ap:llm_proxy:deployment:manage
       - ap:llm_template:read
       - ap:gateway:read
       - ap:gateway:manifest:read
@@ -201,8 +197,6 @@ roles:
       - ap:organization:read
       - ap:project:read
       - ap:application:manage
-      - ap:application:api_key:manage
-      - ap:application:association:manage
       - ap:subscription:manage
       - ap:subscription_plan:read
       - ap:rest_api:read
@@ -239,7 +233,6 @@ roles:
       - ap:gateway_custom_policy:read
       - ap:rest_api:read
       - ap:rest_api:deployment:read
-      - ap:rest_api:gateway:read
       - ap:application:read
       - ap:application:api_key:read
       - ap:application:association:read
