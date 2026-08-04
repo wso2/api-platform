@@ -17,7 +17,8 @@
  */
 
 import { clearBasicAuthSession } from '../contexts/BasicAuthProvider';
-import { BASE_PATH, CSRF_HEADER, CSRF_VALUE } from '../config.env';
+import { CSRF_HEADER, CSRF_VALUE } from '../config.env';
+import { BASE_PATH } from '../paths';
 import { logger } from '../utils/logger';
 
 type SignOutFunction = () => Promise<void>;

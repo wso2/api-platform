@@ -32,7 +32,8 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { AppAuthContext, type AppUser, type AppOrg } from './AppAuthContext';
 import { checkPermission, isPlatformRole } from '../auth/permissions';
-import { AUTH_MODE, BASE_PATH, CSRF_HEADER, CSRF_VALUE } from '../config.env';
+import { AUTH_MODE, CSRF_HEADER, CSRF_VALUE } from '../config.env';
+import { BASE_PATH } from '../paths';
 
 // BFF auth endpoints are same-origin (the BFF serves this SPA), and mounted under the
 // same base path it serves the SPA on — these are absolute paths, not router routes,

@@ -101,8 +101,9 @@ type LoggingConfig struct {
 }
 
 // ControlPlaneConfig is [ai_workspace.control_plane]: everything about the upstream
-// Platform API hop — where it is, how its TLS certificate is trusted, and the
-// same-origin prefix the SPA calls.
+// Platform API hop — where it is and how its TLS certificate is trusted. The route
+// prefixes involved (the same-origin proxy prefix, the upstream's versioned API
+// prefixes) are fixed contracts, not deployment knobs — see the paths package.
 type ControlPlaneConfig struct {
 	// URL is the base URL, e.g. https://platform-api:9243. Its http/https scheme is
 	// the single source of truth for whether the outbound hop uses TLS — there is
@@ -114,12 +115,6 @@ type ControlPlaneConfig struct {
 	// TLSSkipVerify disables upstream certificate verification entirely. Last-resort
 	// escape hatch for dev/demo only; prefer CAFile.
 	TLSSkipVerify bool `koanf:"tls_skip_verify"`
-	// PortalBasePath is the Platform API's portal route prefix (e.g. /api/portal/v0.9),
-	// used to build paths for BFF-initiated calls (file-based login today).
-	PortalBasePath string `koanf:"portal_base_path"`
-	// ProxyPrefix is the same-origin reverse-proxy prefix the SPA calls; it is stripped
-	// before forwarding upstream, so the browser only ever talks to the app origin.
-	ProxyPrefix string `koanf:"proxy_prefix"`
 }
 
 // SessionConfig is [ai_workspace.session]: server-side session lifetime.
@@ -217,25 +212,6 @@ type CookieConfig struct {
 
 // cookieName is the session cookie's name.
 const cookieName = "_ai_workspace_session"
-
-// BasePath is the URL path prefix the whole app is served under: the SPA and its
-// assets, the auth endpoints, the runtime-config script and the same-origin proxy all
-// sit below it, so https://host:9643/ai-workspace/ is the UI and
-// /ai-workspace/proxy/... the API hop. One ingress rule can therefore route a single
-// prefix here with no path rewriting, and an all-in-one deployment can put several
-// portals behind one host and port without their routes colliding.
-//
-// Like CSRFHeaderName below, this is a fixed contract between the BFF and the SPA it
-// ships rather than a deployment concern, so it is a constant and not a config key.
-// The same prefix is baked into the SPA bundle at build time (Vite's `base` in
-// vite.config.ts) because index.html references its assets by absolute path — a server
-// that moved without a matching rebuild would serve a page whose assets all 404. The
-// two must be changed together, and the shipped image is built for this value.
-//
-// Health is the one route outside the prefix: /healthz answers at the origin root as
-// well, so container and Kubernetes probes — which dial the pod directly, bypassing
-// the ingress that adds the prefix — keep working.
-const BasePath = "/ai-workspace"
 
 // CSRFHeaderName is the header the SPA must set on every state-mutating request, and
 // the BFF checks for on the way in (see server/middleware.go requireCSRF). It is a
@@ -335,8 +311,6 @@ func (c *Config) normalize() {
 	c.Auth.Authorization.Mode = strings.ToLower(c.Auth.Authorization.Mode)
 
 	c.ControlPlane.URL = strings.TrimRight(c.ControlPlane.URL, "/")
-	c.ControlPlane.PortalBasePath = strings.TrimRight(c.ControlPlane.PortalBasePath, "/")
-	c.ControlPlane.ProxyPrefix = strings.TrimRight(c.ControlPlane.ProxyPrefix, "/")
 	c.Auth.OIDC.Issuer = strings.TrimRight(c.Auth.OIDC.Issuer, "/")
 
 	c.Cookie = CookieConfig{Name: cookieName, Secure: true, SameSite: "lax"}

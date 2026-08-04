@@ -140,15 +140,6 @@ browser_debug = "false"
 # compose, or localhost when running locally. The scheme decides if the hop uses TLS.
 url = "https://platform-api:9243"
 
-# Same-origin prefix the SPA calls; stripped before forwarding upstream, so the
-# browser only ever talks to the app origin and never sees the platform-api cert.
-# It sits under the app's /ai-workspace path prefix, so the browser calls
-# /ai-workspace/proxy/... and the Platform API sees neither part.
-proxy_prefix = "/proxy"
-
-# Platform API's portal route prefix. BFF-initiated calls (e.g. file-based login) are
-# built as this base path plus the route's own suffix, e.g. base + "/auth/login".
-portal_base_path = "/api/portal/v0.9"
 
 # --- Trust for the upstream's TLS certificate ---
 

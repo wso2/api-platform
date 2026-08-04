@@ -119,19 +119,32 @@ bypassing the ingress that adds the prefix. It is also served under the prefix, 
 through the ingress works too.
 
 The prefix is **not configurable** — it is a fixed contract between the BFF and the SPA it
-ships, like the CSRF header name, declared in two places that must stay in lockstep:
+ships, like the CSRF header name. Each side declares it once, and the two must stay in lockstep:
 
-- `config.BasePath` in `bff/internal/config/config.go` — where the server mounts its routes.
-- `basePath` in `vite.config.ts` (Vite's `base`) — the prefix baked into the bundle.
+- `paths.Base` in `bff/internal/paths/paths.go` — where the server mounts its routes.
+- `BASE_PATH` in `src/paths.ts` — what the SPA composes URLs from, and what `vite.config.ts`
+  imports for Vite's `base` (the prefix baked into the bundle), so the bundle and the code
+  cannot disagree.
 
 It has to be baked in because `index.html` references its assets by absolute path: a bundle built
 for one prefix and served under another 404s on every asset. Making it a config key would only let
 a deployment break itself, so there is no `base_path` setting in `config.toml`.
 
-Inside the SPA the prefix is `BASE_PATH` in `src/config.env.ts`, read off `import.meta.env.BASE_URL`
-so it can never disagree with how the bundle was built.
-Router navigation doesn't need it (`BrowserRouter` is mounted with `basename={BASE_PATH}`); absolute
-`fetch()` paths, `window.location` assignments and OIDC redirect URIs do.
+Every other path prefix is fixed for the same reason, and each side keeps its set in one file —
+`bff/internal/paths/paths.go` and `src/paths.ts` — mirroring the other name for name:
+
+| BFF | SPA | Value |
+|---|---|---|
+| `paths.Proxy` | (folded into the two below) | `/proxy` — the same-origin hop to the Platform API |
+| `paths.PlatformAPI` | `PLATFORM_API_BASE_URL` | `/api/v0.9` |
+| `paths.PortalAPI` | `PORTAL_API_BASE_URL` | `/api/portal/v0.9` |
+
+A different upstream prefix means a different Platform API version — a code change on both sides,
+not a config edit — so none of these are config keys or runtime-config values, and the SPA composes
+them from its own `BASE_PATH` rather than being told them at runtime.
+
+Router navigation doesn't need the prefix (`BrowserRouter` is mounted with `basename={BASE_PATH}`);
+absolute `fetch()` paths, `window.location` assignments and OIDC redirect URIs do.
 
 ---
 
@@ -148,9 +161,10 @@ portals/ai-workspace/
 │   └── README.md                        # Production setup guide (Asgardeo)
 ├── bff/                                # Go BFF — serves SPA, proxy, auth
 │   ├── main.go
-│   └── internal/{config,session,auth,proxy,server,tlsutil}
+│   └── internal/{config,paths,session,auth,proxy,server,tlsutil}
 ├── src/
 │   ├── config.env.ts                    # Centralised env/runtime config reads
+│   ├── paths.ts                         # URL path prefixes (fixed, mirrors bff/internal/paths)
 │   ├── contexts/BFFAuthProvider.tsx     # Single auth provider (hydrates from /api/session)
 │   ├── App.tsx
 │   └── ...

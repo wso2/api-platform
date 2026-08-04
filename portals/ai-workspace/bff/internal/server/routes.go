@@ -19,11 +19,11 @@ package server
 import (
 	"net/http"
 
-	"ai-workspace-bff/internal/config"
+	"ai-workspace-bff/internal/paths"
 )
 
 // routes builds the mux and wraps it with the global middleware chain. Every route
-// below is registered under config.BasePath via s.path, so an ingress can route one
+// below is registered under paths.Base via s.path, so an ingress can route one
 // prefix here without rewriting paths and an all-in-one deployment can host several
 // portals on a single host.
 func (s *Server) routes() http.Handler {
@@ -71,12 +71,12 @@ func (s *Server) routes() http.Handler {
 	// Same-origin reverse proxy to the Platform API. The proxy's Rewrite hook
 	// strips the base path and the proxy prefix before forwarding (see
 	// server.New), so we register the subtree directly.
-	mux.HandleFunc(s.path(s.cfg.ControlPlane.ProxyPrefix)+"/", s.handleProxy)
+	mux.HandleFunc(s.path(paths.Proxy)+"/", s.handleProxy)
 
 	// SPA static files + client-side routing fallback (must be last). The prefix is
 	// stripped so file lookups resolve against the static dir, not a directory named
 	// after the base path.
-	mux.Handle(s.path("/"), http.StripPrefix(config.BasePath, spaHandler(s.cfg.Server.StaticDir)))
+	mux.Handle(s.path("/"), http.StripPrefix(paths.Base, spaHandler(s.cfg.Server.StaticDir)))
 
 	return chain(mux,
 		recoverPanic,

@@ -47,7 +47,7 @@ import { Copy, Trash2 } from '@wso2/oxygen-ui-icons-react';
 import { FormattedMessage } from 'react-intl';
 import { createLLMProviderAPIKey } from '../../../../apis/llmProviderApis';
 import type { Gateway } from '../../../../apis/gatewayTypes';
-import { PLATFORM_API_BASE_URL } from '../../../../config.env';
+import { PLATFORM_API_BASE_URL } from '../../../../paths';
 import { useAppShell } from '../../../../contexts/AppShellContext';
 import { useGatewayDeploy } from '../../../../contexts/GatewayDeployContext';
 import { useLLMProvider } from '../../../../contexts/llmProvider';

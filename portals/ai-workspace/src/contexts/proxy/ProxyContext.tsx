@@ -32,7 +32,7 @@ import {
   generateSecretHandle,
 } from '../../apis/secretApis';
 import { useAppShell } from '../AppShellContext';
-import { PLATFORM_API_BASE_URL } from '../../config.env';
+import { PLATFORM_API_BASE_URL } from '../../paths';
 import { logger } from '../../utils/logger';
 
 // ============================================================================

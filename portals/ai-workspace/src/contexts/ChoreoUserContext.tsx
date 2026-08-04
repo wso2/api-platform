@@ -33,7 +33,7 @@ import React, {
 } from 'react';
 import { logger } from '../utils/logger';
 import type { Organization, ValidateUserResponse } from '../utils/types';
-import { PLATFORM_API_BASE_URL } from '../config.env';
+import { PLATFORM_API_BASE_URL } from '../paths';
 import { handleUnauthorizedResponse } from '../auth/logout';
 
 // ── Types ─────────────────────────────────────────────────────────────────────

@@ -19,14 +19,8 @@
 import React, { useCallback, useMemo } from 'react';
 import { useAuth } from 'react-oidc-context';
 import { AppAuthContext, type AppUser, type AppOrg } from './AppAuthContext';
-import {
-  BASE_PATH,
-  USERNAME_CLAIM,
-  EMAIL_CLAIM,
-  ORG_ID_CLAIM,
-  ORG_NAME_CLAIM,
-  ORG_HANDLE_CLAIM,
-} from '../config.env';
+import { USERNAME_CLAIM, EMAIL_CLAIM, ORG_ID_CLAIM, ORG_NAME_CLAIM, ORG_HANDLE_CLAIM } from '../config.env';
+import { BASE_PATH } from '../paths';
 import { checkPermission, isPlatformRole } from '../auth/permissions';
 import type { PlatformRole } from '../auth/permissions';
 import { clearAuthData } from '../auth/logout';

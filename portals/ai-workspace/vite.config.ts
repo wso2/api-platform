@@ -23,6 +23,8 @@ import basicSsl from '@vitejs/plugin-basic-ssl'
 import path from 'path'
 import { fileURLToPath } from 'url'
 
+import { BASE_PATH } from './src/paths'
+
 const __filename = fileURLToPath(import.meta.url)
 const __dirname = path.dirname(__filename)
 
@@ -33,14 +35,14 @@ const aiNodeModules = path.resolve(aiTemp, 'node_modules')
 const aiPnpm = path.resolve(aiNodeModules, '.pnpm')
 
 // URL path prefix the app is served under, with the trailing slash Vite's `base` wants.
-// It must stay in lockstep with the BFF's config.BasePath constant
-// (bff/internal/config/config.go), which mounts every server route — SPA, auth
-// endpoints, runtime-config.js, the proxy — beneath the same prefix. Baked in here
-// rather than configurable because index.html references its assets by absolute path: a
-// bundle built for one prefix and served under another 404s on every asset, so the two
-// are one fixed contract, not a deployment knob. The SPA reads it back off
-// import.meta.env.BASE_URL (see src/config.env.ts BASE_PATH).
-const basePath = '/ai-workspace/'
+// Taken from the SPA's own BASE_PATH constant (src/paths.ts) so the prefix baked into
+// the bundle and the prefix the app code composes URLs from are one value, not two that
+// could drift. It has to be baked in at all because index.html references its assets by
+// absolute path: a bundle built for one prefix and served under another 404s on every
+// asset, so this is a fixed contract rather than a deployment knob. It must also stay in
+// lockstep with the BFF's paths.Base (bff/internal/paths/paths.go), which mounts every
+// server route — SPA, auth endpoints, runtime-config.js, the proxy — under the same prefix.
+const basePath = `${BASE_PATH}/`
 
 const BANNER_WIDTH = 72
 
@@ -90,8 +92,6 @@ const browserSafeEnvVars = [
   'APIP_AIW_POLICY_HUB_WEB_URL',
   'APIP_AIW_MOESIF_WEB_URL',
   'APIP_AIW_MOESIF_APP_API_KEY',     // Moesif publishable Application Id
-  'APIP_AIW_PLATFORM_API_BASE_URL',
-  'APIP_AIW_PORTAL_API_BASE_URL',
 ]
 
 // The BFF serves window.__RUNTIME_CONFIG__ from <base>/runtime-config.js, generated per

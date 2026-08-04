@@ -51,7 +51,7 @@ import {
 import { getLLMProxyDeployments } from '../../../../../apis/llmProxiesApis';
 import type { Gateway } from '../../../../../apis/gatewayTypes';
 import type { DeploymentResponse, Proxy } from '../../../../../utils/types';
-import { PLATFORM_API_BASE_URL } from '../../../../../config.env';
+import { PLATFORM_API_BASE_URL } from '../../../../../paths';
 import { logger } from '../../../../../utils/logger';
 import {
   buildGatewayPath,

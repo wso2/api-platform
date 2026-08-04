@@ -67,8 +67,7 @@ func runtimeKey(configKey string) string {
 }
 
 // buildRuntimeConfig collects the browser-safe values the SPA reads from
-// window.__RUNTIME_CONFIG__, then forces the API base URLs onto the same-origin
-// proxy prefix so the browser only ever talks to the BFF.
+// window.__RUNTIME_CONFIG__.
 //
 // Values are read straight from the parsed config (k, rooted at [ai_workspace]), not
 // from the resolved Config struct, so only keys actually present in config.toml are
@@ -76,7 +75,7 @@ func runtimeKey(configKey string) string {
 // browser. Most browser-safe keys (gateway.*, moesif_*, dev_portal_base_url, ...) are
 // browser-only and not modeled on Config at all; this is where they flow out.
 func buildRuntimeConfig(cfg *Config, k *koanf.Koanf) map[string]string {
-	out := make(map[string]string, len(browserSafeKeys)+3)
+	out := make(map[string]string, len(browserSafeKeys)+1)
 	for _, key := range browserSafeKeys {
 		if !k.Exists(key) {
 			continue
@@ -88,13 +87,10 @@ func buildRuntimeConfig(cfg *Config, k *koanf.Koanf) map[string]string {
 		}
 	}
 
-	// Force the SPA's API base URLs through the BFF same-origin proxy, under the
-	// path prefix the app is served on — the SPA issues these as absolute paths, so
-	// a base-path deployment needs the prefix included or they would resolve at the
-	// origin root, outside anything this server routes.
-	proxyBase := BasePath + cfg.ControlPlane.ProxyPrefix
-	out[runtimeKey("platform_api_base_url")] = proxyBase + "/api/v0.9"
-	out[runtimeKey("portal_api_base_url")] = proxyBase + "/api/portal/v0.9"
+	// The API base URLs are deliberately NOT emitted here: the SPA composes them
+	// itself from import.meta.env.BASE_URL plus the same fixed prefixes (see
+	// src/config.env.ts), so there is no runtime value that could disagree with the
+	// prefix the BFF actually strips.
 	out[runtimeKey("auth_mode")] = cfg.Auth.Mode
 
 	return out

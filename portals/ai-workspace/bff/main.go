@@ -37,6 +37,7 @@ import (
 
 	"ai-workspace-bff/internal/config"
 	"ai-workspace-bff/internal/logger"
+	"ai-workspace-bff/internal/paths"
 	"ai-workspace-bff/internal/server"
 	"ai-workspace-bff/internal/tlsutil"
 )
@@ -81,17 +82,17 @@ func portalURL(addr, domain string, tlsEnabled bool) string {
 		scheme = "https"
 	}
 	if domain != "" {
-		return scheme + "://" + domain + config.BasePath + "/"
+		return scheme + "://" + domain + paths.Base + "/"
 	}
 	host, port, err := net.SplitHostPort(addr)
 	if err != nil {
-		return scheme + "://" + addr + config.BasePath + "/"
+		return scheme + "://" + addr + paths.Base + "/"
 	}
 	switch host {
 	case "", "0.0.0.0", "::", "[::]":
 		host = "localhost"
 	}
-	return scheme + "://" + net.JoinHostPort(host, port) + config.BasePath + "/"
+	return scheme + "://" + net.JoinHostPort(host, port) + paths.Base + "/"
 }
 
 // stringSliceFlag collects a repeatable string flag into a slice, preserving the
@@ -199,7 +200,7 @@ func runListeners(cfg *config.Config, handler http.Handler) error {
 		servers = append(servers, s)
 		url := portalURL(s.Addr, cfg.Domain, false)
 		slog.Info("AI Workspace BFF: starting HTTP listener",
-			"addr", s.Addr, "url", url, "base_path", config.BasePath, "auth_mode", cfg.Auth.Mode,
+			"addr", s.Addr, "url", url, "base_path", paths.Base, "auth_mode", cfg.Auth.Mode,
 			"control_plane", cfg.ControlPlane.URL, "oidc_enabled", cfg.Auth.OIDCEnabled(),
 		)
 		if !httpsCfg.Enabled {
@@ -217,7 +218,7 @@ func runListeners(cfg *config.Config, handler http.Handler) error {
 		servers = append(servers, s)
 		url := portalURL(s.Addr, cfg.Domain, true)
 		slog.Info("AI Workspace BFF: starting HTTPS listener",
-			"addr", s.Addr, "url", url, "base_path", config.BasePath, "auth_mode", cfg.Auth.Mode,
+			"addr", s.Addr, "url", url, "base_path", paths.Base, "auth_mode", cfg.Auth.Mode,
 			"control_plane", cfg.ControlPlane.URL, "oidc_enabled", cfg.Auth.OIDCEnabled(),
 		)
 		if !bannerPrinted {

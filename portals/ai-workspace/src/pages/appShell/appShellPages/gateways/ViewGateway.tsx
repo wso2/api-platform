@@ -62,11 +62,8 @@ import HelmIcon from "../../../../assets/icons/helm.svg";
 import { useAppShell } from "../../../../contexts/AppShellContext";
 import { buildOrgPath } from "../../../../utils/projectRouting";
 import { useAIWorkspaceSnackbar } from "../../../../hooks/aiWorkspaceSnackbar";
-import {
-  PLATFORM_GATEWAY_VERSIONS,
-  PLATFORM_API_BASE_URL,
-  CONTROLPLANE_HOST,
-} from "../../../../config.env";
+import { PLATFORM_GATEWAY_VERSIONS, CONTROLPLANE_HOST } from "../../../../config.env";
+import { PLATFORM_API_BASE_URL } from "../../../../paths";
 import {
   getGateways,
   getGatewayById,

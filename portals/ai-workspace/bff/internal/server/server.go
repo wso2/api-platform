@@ -28,6 +28,7 @@ import (
 
 	"ai-workspace-bff/internal/auth"
 	"ai-workspace-bff/internal/config"
+	"ai-workspace-bff/internal/paths"
 	"ai-workspace-bff/internal/proxy"
 	"ai-workspace-bff/internal/session"
 )
@@ -86,11 +87,11 @@ func New(ctx context.Context, cfg *config.Config) (*Server, error) {
 	s := &Server{
 		cfg:       cfg,
 		claims:    claims,
-		fileBased: auth.NewFileBased(upstream, cfg.ControlPlane.URL, cfg.ControlPlane.PortalBasePath, cfg.Session.AbsoluteTTL, claims),
+		fileBased: auth.NewFileBased(upstream, cfg.ControlPlane.URL, paths.PortalAPI, cfg.Session.AbsoluteTTL, claims),
 		// The browser calls the proxy under the app's base path, so the prefix stripped
 		// on the way upstream is the base path plus the proxy prefix — the Platform API
 		// knows nothing about either.
-		proxy:        proxy.ReverseProxy(target, config.BasePath+cfg.ControlPlane.ProxyPrefix, transport),
+		proxy:        proxy.ReverseProxy(target, paths.Base+paths.Proxy, transport),
 		refreshLocks: make(map[string]*refreshLock),
 	}
 
@@ -118,9 +119,9 @@ func New(ctx context.Context, cfg *config.Config) (*Server, error) {
 func (s *Server) Handler() http.Handler { return s.handler }
 
 // path prefixes an app-internal absolute path (route pattern, cookie Path, redirect
-// target) with config.BasePath, the prefix the whole app is served under. suffix must
+// target) with paths.Base, the prefix the whole app is served under. suffix must
 // start with "/".
-func (s *Server) path(suffix string) string { return config.BasePath + suffix }
+func (s *Server) path(suffix string) string { return paths.Base + suffix }
 
 // Close releases background resources (session sweeper and, when enabled, the
 // OIDC transaction sweeper).

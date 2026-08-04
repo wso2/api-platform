@@ -16,7 +16,8 @@
  * under the License.
  */
 
-import { BASE_PATH, CSRF_HEADER, CSRF_VALUE } from '../config.env';
+import { CSRF_HEADER, CSRF_VALUE } from '../config.env';
+import { BASE_PATH } from '../paths';
 
 export const BASIC_AUTH_SESSION_KEY = 'basic_auth_session';
 

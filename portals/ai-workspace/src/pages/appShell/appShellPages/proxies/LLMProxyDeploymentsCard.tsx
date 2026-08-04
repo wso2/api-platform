@@ -46,7 +46,7 @@ import {
   getLLMProxyDeployments,
   createLLMProxyAPIKey,
 } from '../../../../apis/llmProxiesApis';
-import { PLATFORM_API_BASE_URL } from '../../../../config.env';
+import { PLATFORM_API_BASE_URL } from '../../../../paths';
 import { logger } from '../../../../utils/logger';
 import { getErrorMessage } from '../../../../utils/apiError';
 import type { Gateway } from '../../../../apis/gatewayTypes';

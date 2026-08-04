@@ -92,10 +92,6 @@ config:
     # CA file to verify the Platform API's certificate instead of skipping
     # verification (mount it via deployment.extraVolumes/extraVolumeMounts).
     caFile: ""
-    # Browser-facing proxy prefix and the Platform API portal base path — the
-    # SPA never talks to the Platform API directly; the BFF proxies under these.
-    proxyPrefix: /proxy
-    portalBasePath: /api/portal/v0.9
 
   gateway:
     # Public host:port that DEPLOYED GATEWAYS dial to reach the Platform API.

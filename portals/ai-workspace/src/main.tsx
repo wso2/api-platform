@@ -28,7 +28,8 @@ import {
 
 import App from './App.tsx';
 import './styles.css';
-import { AUTH_MODE, BASE_PATH } from './config.env';
+import { AUTH_MODE } from './config.env';
+import { BASE_PATH } from './paths';
 import { BFFAuthProvider } from './contexts/BFFAuthProvider';
 import { useAppAuth } from './contexts/AppAuthContext';
 import BasicAuthLoginPage from './pages/login/BasicAuthLoginPage';

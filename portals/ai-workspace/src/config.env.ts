@@ -28,17 +28,9 @@ declare global {
 }
 
 import { getEnvOrDefault } from './utils/getEnvOrDefault';
+// Path prefixes are fixed contracts with the BFF, not configuration — see ./paths.
+import { BASE_PATH } from './paths';
 
-// URL path prefix this app is served under, with no trailing slash ('' when served at
-// the origin root). Read off Vite's BASE_URL rather than a runtime config value: the
-// prefix is fixed at build time (index.html references its assets by absolute path),
-// so BASE_URL is the one value that cannot disagree with how the bundle was built.
-//
-// Router paths do NOT need it — BrowserRouter is mounted with basename={BASE_PATH}, so
-// navigate()/<Link to> are already relative to it. It IS needed for anything the
-// router doesn't own: absolute fetch() paths to the BFF, window.location assignments,
-// and OIDC redirect URIs.
-export const BASE_PATH = import.meta.env.BASE_URL.replace(/\/$/, '');
 
 /*
  * Single line environment variable definitions with defaults using getEnvOrDefault utility to improve readability and maintainability.
@@ -178,36 +170,15 @@ export const POLICY_HUB_WEB_URL = getEnvOrDefault(
   'https://wso2.com/api-platform/policy-hub/'
 );
 
-// Platform API base URL. Defaults to a relative path routed same-origin through the
-// BFF reverse proxy (/proxy/* → Platform API) so the browser only ever talks to
-// the app origin, never holds a token, and never sees the platform-api self-signed cert.
-// Overrides should normally point at another BFF proxy base. Pointing this at the
-// Platform API directly bypasses the BFF session: the browser holds no token in this
-// BFF-only auth flow, so a direct override also requires a separate authentication
-// path to attach credentials to those calls.
-export const PLATFORM_API_BASE_URL = getEnvOrDefault(
-  'APIP_AIW_PLATFORM_API_BASE_URL',
-  `${BASE_PATH}/proxy/api/v0.9`
-);
-
-// Base URL for the BFF's own API — the routes it answers itself instead of forwarding:
-// session/login/logout, and the handful of creates that span two Platform API calls
-// (secret + resource) and need server-side compensation when the second fails. Callers
-// use it exactly like PLATFORM_API_BASE_URL above; which of the two a resource lives
-// under is the only thing that says who handles the request.
-export const BFF_API_BASE_URL = `${BASE_PATH}/api`;
 
 // Control-plane host shown in gateway setup instructions (host:port).
-// Distinct from PLATFORM_API_BASE_URL which may be a relative nginx proxy path.
+// Distinct from the BFF proxy base URLs in ./paths — this is a host:port an
+// externally deployed gateway dials, not a path this browser calls.
 export const CONTROLPLANE_HOST = getEnvOrDefault(
   'APIP_AIW_GATEWAY_CONTROLPLANE_HOST',
   'host.docker.internal:9243'
 );
 
-export const PORTAL_API_BASE_URL = getEnvOrDefault(
-  'APIP_AIW_PORTAL_API_BASE_URL',
-  `${BASE_PATH}/proxy/api/portal/v0.9`
-);
 
 // CSRF header sent on all BFF requests. Cross-site attackers cannot set a custom
 // header (CORS is closed), so its presence proves the request is same-origin.

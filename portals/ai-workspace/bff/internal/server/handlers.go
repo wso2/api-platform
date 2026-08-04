@@ -27,7 +27,7 @@ import (
 	"time"
 
 	"ai-workspace-bff/internal/auth"
-	"ai-workspace-bff/internal/config"
+	"ai-workspace-bff/internal/paths"
 	"ai-workspace-bff/internal/proxy"
 	"ai-workspace-bff/internal/session"
 )
@@ -386,7 +386,7 @@ func (s *Server) sanitizeReturn(p string) string {
 		return home
 	}
 	p = strings.ReplaceAll(strings.ReplaceAll(p, "\r", ""), "\n", "")
-	if p != config.BasePath && !strings.HasPrefix(p, home) {
+	if p != paths.Base && !strings.HasPrefix(p, home) {
 		return home
 	}
 	return p

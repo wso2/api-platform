@@ -34,7 +34,7 @@ import {
 } from '@wso2/oxygen-ui';
 import { Check } from '@wso2/oxygen-ui-icons-react';
 import * as providerTemplateApis from '../../../../../apis/providerTemplateApis';
-import { PLATFORM_API_BASE_URL } from '../../../../../config.env';
+import { PLATFORM_API_BASE_URL } from '../../../../../paths';
 import { useAppShell } from '../../../../../contexts/AppShellContext';
 import { formatRelativeTime } from '../../../../../contexts/llmProvider';
 import type { ProviderTemplate } from '../../../../../utils/types';

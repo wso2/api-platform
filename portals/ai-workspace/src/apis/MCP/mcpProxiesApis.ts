@@ -18,7 +18,7 @@
 
 import { get, post, put, del } from '../../clients/choreoApiClient';
 import { logger } from '../../utils/logger';
-import { BFF_API_BASE_URL } from '../../config.env';
+import { BFF_API_BASE_URL } from '../../paths';
 
 import type {
   MCPServer,

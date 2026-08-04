@@ -46,7 +46,7 @@ import { useAppShell } from '../../../../contexts/AppShellContext';
 import { useProxy } from '../../../../contexts/proxy';
 import { getGateways } from '../../../../apis/gatewayApis';
 import { getLLMProxyDeployments } from '../../../../apis/llmProxiesApis';
-import { PLATFORM_API_BASE_URL } from '../../../../config.env';
+import { PLATFORM_API_BASE_URL } from '../../../../paths';
 import { logger } from '../../../../utils/logger';
 import { getErrorMessage } from '../../../../utils/apiError';
 import NoData from '../../../../assets/images/NoData.svg';

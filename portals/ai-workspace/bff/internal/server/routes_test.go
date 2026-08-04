@@ -35,7 +35,6 @@ func routesTestServer(t *testing.T) *Server {
 		Server: config.ServerConfig{
 			StaticDir: newStaticTestDir(t),
 		},
-		ControlPlane:  config.ControlPlaneConfig{ProxyPrefix: "/proxy"},
 		RuntimeConfig: map[string]string{"APIP_AIW_AUTH_MODE": "basic"},
 	}}
 	s.handler = s.routes()

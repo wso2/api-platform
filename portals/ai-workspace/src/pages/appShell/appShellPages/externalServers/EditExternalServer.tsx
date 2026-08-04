@@ -36,7 +36,7 @@ import {
   buildProjectPath,
   getProjectSlug,
 } from '../../../../utils/projectRouting';
-import { PLATFORM_API_BASE_URL } from '../../../../config.env';
+import { PLATFORM_API_BASE_URL } from '../../../../paths';
 import { mcpProxiesApis } from '../../../../apis/MCP/mcpProxiesApis';
 import useAIWorkspaceSnackbar from '../../../../hooks/aiWorkspaceSnackbar';
 import type { MCPServer } from '../../../../utils/types';

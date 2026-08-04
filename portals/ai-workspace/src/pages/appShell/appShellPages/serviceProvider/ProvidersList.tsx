@@ -64,7 +64,7 @@ import {
 import { useProviderTemplates } from '../../../../contexts/llmProvider/providerTemplate';
 import useAIWorkspaceSnackbar from '../../../../hooks/aiWorkspaceSnackbar';
 import * as llmProviderApis from '../../../../apis/llmProviderApis';
-import { PLATFORM_API_BASE_URL } from '../../../../config.env';
+import { PLATFORM_API_BASE_URL } from '../../../../paths';
 
 import AnthropicLogo from '../../../../assets/brands/Anthropic.jpg';
 import AWSBedrockLogo from '../../../../assets/brands/AWSBedrock.webp';
