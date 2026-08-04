@@ -538,3 +538,27 @@ enabled = "maybe"
 		t.Fatal("Load() succeeded, want an error for a malformed boolean")
 	}
 }
+
+// The SPA composes its API base URLs itself, from import.meta.env.BASE_URL plus the
+// same fixed prefixes the BFF strips (src/config.env.ts). Emitting them here as well
+// would create a runtime value that could disagree with the prefix this server
+// actually routes and strips, so their absence is asserted, not incidental.
+func TestLoad_RuntimeConfigOmitsAPIBaseURLs(t *testing.T) {
+	cfgPath := writeConfig(t, `
+[ai_workspace.control_plane]
+url = "https://platform-api:9243"
+`)
+
+	cfg, err := Load(cfgPath)
+	if err != nil {
+		t.Fatalf("Load() error = %v", err)
+	}
+	for _, key := range []string{"APIP_AIW_PLATFORM_API_BASE_URL", "APIP_AIW_PORTAL_API_BASE_URL"} {
+		if got, ok := cfg.RuntimeConfig[key]; ok {
+			t.Errorf("RuntimeConfig[%s] = %q, want it absent — the SPA composes it from its own base path", key, got)
+		}
+	}
+	if got := cfg.RuntimeConfig["APIP_AIW_AUTH_MODE"]; got == "" {
+		t.Error("RuntimeConfig[APIP_AIW_AUTH_MODE] is empty, want the resolved auth mode")
+	}
+}

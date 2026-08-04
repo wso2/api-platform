@@ -101,8 +101,9 @@ type LoggingConfig struct {
 }
 
 // ControlPlaneConfig is [ai_workspace.control_plane]: everything about the upstream
-// Platform API hop — where it is, how its TLS certificate is trusted, and the
-// same-origin prefix the SPA calls.
+// Platform API hop — where it is and how its TLS certificate is trusted. The route
+// prefixes involved (the same-origin proxy prefix, the upstream's versioned API
+// prefixes) are fixed contracts, not deployment knobs — see the paths package.
 type ControlPlaneConfig struct {
 	// URL is the base URL, e.g. https://platform-api:9243. Its http/https scheme is
 	// the single source of truth for whether the outbound hop uses TLS — there is
@@ -114,12 +115,6 @@ type ControlPlaneConfig struct {
 	// TLSSkipVerify disables upstream certificate verification entirely. Last-resort
 	// escape hatch for dev/demo only; prefer CAFile.
 	TLSSkipVerify bool `koanf:"tls_skip_verify"`
-	// PortalBasePath is the Platform API's portal route prefix (e.g. /api/portal/v0.9),
-	// used to build paths for BFF-initiated calls (file-based login today).
-	PortalBasePath string `koanf:"portal_base_path"`
-	// ProxyPrefix is the same-origin reverse-proxy prefix the SPA calls; it is stripped
-	// before forwarding upstream, so the browser only ever talks to the app origin.
-	ProxyPrefix string `koanf:"proxy_prefix"`
 }
 
 // SessionConfig is [ai_workspace.session]: server-side session lifetime.
@@ -316,8 +311,6 @@ func (c *Config) normalize() {
 	c.Auth.Authorization.Mode = strings.ToLower(c.Auth.Authorization.Mode)
 
 	c.ControlPlane.URL = strings.TrimRight(c.ControlPlane.URL, "/")
-	c.ControlPlane.PortalBasePath = strings.TrimRight(c.ControlPlane.PortalBasePath, "/")
-	c.ControlPlane.ProxyPrefix = strings.TrimRight(c.ControlPlane.ProxyPrefix, "/")
 	c.Auth.OIDC.Issuer = strings.TrimRight(c.Auth.OIDC.Issuer, "/")
 
 	c.Cookie = CookieConfig{Name: cookieName, Secure: true, SameSite: "lax"}

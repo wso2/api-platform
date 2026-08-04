@@ -43,7 +43,7 @@ import { Inbox, Plus, Search, Trash2, X } from '@wso2/oxygen-ui-icons-react';
 import { useApplications } from '../../../../../contexts/ApplicationsContext';
 import { useAppShell } from '../../../../../contexts/AppShellContext';
 import useAIWorkspaceSnackbar from '../../../../../hooks/aiWorkspaceSnackbar';
-import { PLATFORM_API_BASE_URL } from '../../../../../config.env';
+import { PLATFORM_API_BASE_URL } from '../../../../../paths';
 import { keyManagementApis } from '../../../../../apis/keyManagementApis';
 import type { MappedAPIKey, UserAPIKey } from '../../../../../utils/types';
 import { getErrorMessage } from '../../../../../utils/apiError';

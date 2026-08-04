@@ -35,7 +35,7 @@ import {
   undeployMCPServerDeployment,
   deleteMCPServerDeployment,
 } from '../../apis/MCP/mcpServerDeployApis';
-import { PLATFORM_API_BASE_URL } from '../../config.env';
+import { PLATFORM_API_BASE_URL } from '../../paths';
 import type { HybridGateway, GatewayDeployment } from '../../apis/gatewayTypes';
 import type { DeploymentListResponse } from '../../utils/types';
 

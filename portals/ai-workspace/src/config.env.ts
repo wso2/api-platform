@@ -28,6 +28,9 @@ declare global {
 }
 
 import { getEnvOrDefault } from './utils/getEnvOrDefault';
+// Path prefixes are fixed contracts with the BFF, not configuration — see ./paths.
+import { BASE_PATH } from './paths';
+
 
 /*
  * Single line environment variable definitions with defaults using getEnvOrDefault utility to improve readability and maintainability.
@@ -96,11 +99,11 @@ export const OIDC_SCOPE = getEnvOrDefault(
 // listener/domain it's actually being served from (unlike a static config value).
 export const OIDC_REDIRECT_URI = getEnvOrDefault(
   'APIP_AIW_OIDC_REDIRECT_URI',
-  `${window.location.origin}/signin`
+  `${window.location.origin}${BASE_PATH}/signin`
 );
 export const OIDC_POST_LOGOUT_REDIRECT_URI = getEnvOrDefault(
   'APIP_AIW_OIDC_POST_LOGOUT_REDIRECT_URI',
-  `${window.location.origin}/login`
+  `${window.location.origin}${BASE_PATH}/login`
 );
 
 // API Base URLs
@@ -167,34 +170,15 @@ export const POLICY_HUB_WEB_URL = getEnvOrDefault(
   'https://wso2.com/api-platform/policy-hub/'
 );
 
-// Platform API base URL. Defaults to a relative path routed same-origin through the
-// BFF reverse proxy (/proxy/* → Platform API) so the browser only ever talks to
-// the app origin, never holds a token, and never sees the platform-api self-signed cert.
-// Overrides should normally point at another BFF proxy base. Pointing this at the
-// Platform API directly bypasses the BFF session: the browser holds no token in this
-// BFF-only auth flow, so a direct override also requires a separate authentication
-// path to attach credentials to those calls.
-export const PLATFORM_API_BASE_URL = getEnvOrDefault(
-  'APIP_AIW_PLATFORM_API_BASE_URL',
-  '/proxy/api/v0.9'
-);
-
-// Base URL for BFF composite endpoints. These are handled directly by the BFF
-// (not forwarded to the Platform API) and provide server-side compensation logic
-// for multi-step operations such as secret creation + resource creation.
-export const BFF_COMPOSITE_BASE_URL = '/api/bff';
 
 // Control-plane host shown in gateway setup instructions (host:port).
-// Distinct from PLATFORM_API_BASE_URL which may be a relative nginx proxy path.
+// Distinct from the BFF proxy base URLs in ./paths — this is a host:port an
+// externally deployed gateway dials, not a path this browser calls.
 export const CONTROLPLANE_HOST = getEnvOrDefault(
   'APIP_AIW_GATEWAY_CONTROLPLANE_HOST',
   'host.docker.internal:9243'
 );
 
-export const PORTAL_API_BASE_URL = getEnvOrDefault(
-  'APIP_AIW_PORTAL_API_BASE_URL',
-  '/proxy/api/portal/v0.9'
-);
 
 // CSRF header sent on all BFF requests. Cross-site attackers cannot set a custom
 // header (CORS is closed), so its presence proves the request is same-origin.

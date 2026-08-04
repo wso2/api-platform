@@ -30,7 +30,7 @@ import {
 import { useLLMProviders } from '../../../../contexts/llmProvider';
 import { useProxy } from '../../../../contexts/proxy';
 import * as llmProviderApis from '../../../../apis/llmProviderApis';
-import { PLATFORM_API_BASE_URL } from '../../../../config.env';
+import { PLATFORM_API_BASE_URL } from '../../../../paths';
 import { useAppShell } from '../../../../contexts/AppShellContext';
 import { logger } from '../../../../utils/logger';
 import useAIWorkspaceSnackbar from '../../../../hooks/aiWorkspaceSnackbar';

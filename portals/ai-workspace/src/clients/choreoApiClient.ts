@@ -29,7 +29,8 @@
 //   cross-site attackers cannot set.
 // ============================================================================
 
-import { PLATFORM_API_BASE_URL, CSRF_HEADER, CSRF_VALUE } from '../config.env';
+import { CSRF_HEADER, CSRF_VALUE } from '../config.env';
+import { PLATFORM_API_BASE_URL } from '../paths';
 import { logger } from '../utils/logger';
 import { HttpMethod, ApiRequestConfig, GQLResponse } from '../utils/types';
 import { buildApiError } from '../utils/apiError';

@@ -18,11 +18,12 @@
 
 import { clearBasicAuthSession } from '../contexts/BasicAuthProvider';
 import { CSRF_HEADER, CSRF_VALUE } from '../config.env';
+import { BASE_PATH } from '../paths';
 import { logger } from '../utils/logger';
 
 type SignOutFunction = () => Promise<void>;
 
-const BFF_LOGOUT_URL = '/api/logout';
+const BFF_LOGOUT_URL = `${BASE_PATH}/api/logout`;
 const LOGOUT_REQUEST_TIMEOUT_MS = 5000;
 
 const AUTH_SESSION_KEYS = [
@@ -141,5 +142,5 @@ export const forceLogoutAndRedirect = async (): Promise<void> => {
     window.location.replace(logoutUrl);
     return;
   }
-  window.location.replace('/login');
+  window.location.replace(`${BASE_PATH}/login`);
 };

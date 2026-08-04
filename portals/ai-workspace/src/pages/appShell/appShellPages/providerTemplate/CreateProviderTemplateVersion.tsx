@@ -44,7 +44,7 @@ import { useProviderTemplates } from '../../../../contexts/llmProvider/providerT
 import { useAppShell } from '../../../../contexts/AppShellContext';
 import useAIWorkspaceSnackbar from '../../../../hooks/aiWorkspaceSnackbar';
 import * as providerTemplateApis from '../../../../apis/providerTemplateApis';
-import { PLATFORM_API_BASE_URL } from '../../../../config.env';
+import { PLATFORM_API_BASE_URL } from '../../../../paths';
 import { buildOrgPath } from '../../../../utils/projectRouting';
 import type {
   ProviderTemplate,

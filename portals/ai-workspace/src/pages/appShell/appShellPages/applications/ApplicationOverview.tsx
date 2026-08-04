@@ -47,7 +47,7 @@ import {
   buildProjectPath,
 } from '../../../../utils/projectRouting';
 import useAIWorkspaceSnackbar from '../../../../hooks/aiWorkspaceSnackbar';
-import { PLATFORM_API_BASE_URL } from '../../../../config.env';
+import { PLATFORM_API_BASE_URL } from '../../../../paths';
 import { applicationApis } from '../../../../apis/applicationApis';
 import type { Application } from '../../../../utils/types';
 import { ApplicationAssociationsProvider } from '../../../../contexts/ApplicationAssociationsContext';

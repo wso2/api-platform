@@ -51,7 +51,7 @@ import {
   buildSecretPlaceholder,
   generateSecretHandle,
 } from '../../../../apis/secretApis';
-import { PLATFORM_API_BASE_URL } from '../../../../config.env';
+import { PLATFORM_API_BASE_URL } from '../../../../paths';
 import { useProxies } from '../../../../contexts/proxy';
 import {
   LLMProviderProvider,

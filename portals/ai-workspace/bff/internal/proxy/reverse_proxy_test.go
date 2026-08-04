@@ -92,3 +92,30 @@ func TestReverseProxy_NoTokenNoAuthHeader(t *testing.T) {
 		t.Errorf("upstream Authorization = %q, want empty when no session token", gotAuth)
 	}
 }
+
+// With the app served under a base path, the browser calls
+// /ai-workspace/proxy/... — the Platform API knows about neither segment, so both
+// must be stripped before the request goes upstream (server.New passes the two
+// concatenated as the prefix).
+func TestReverseProxy_StripsBasePathAndPrefix(t *testing.T) {
+	var gotPath string
+	backend := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotPath = r.URL.Path
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer backend.Close()
+
+	target, _ := url.Parse(backend.URL)
+	rp := ReverseProxy(target, "/ai-workspace/proxy", backend.Client().Transport)
+
+	req := httptest.NewRequest(http.MethodGet, "/ai-workspace/proxy/api/v0.9/projects", nil)
+	rec := httptest.NewRecorder()
+	rp.ServeHTTP(rec, WithToken(req, "tok"))
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200", rec.Code)
+	}
+	if gotPath != "/api/v0.9/projects" {
+		t.Errorf("upstream path = %q, want /api/v0.9/projects (base path + prefix not stripped)", gotPath)
+	}
+}

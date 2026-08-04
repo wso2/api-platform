@@ -21,7 +21,7 @@ token endpoint will reject the BFF's exchange).
 1. Create a **Standard-Based Application → OpenID Connect** (Traditional Web Application) named
    `AI Workspace` in the root organization.
 2. Add the authorized redirect URL — the **BFF callback**, not `/signin`:
-   `https://<your-domain>/api/auth/callback`
+   `https://<your-domain>/ai-workspace/api/auth/callback`
 3. In the **Protocol** tab:
    - **Allowed grant types**: Authorization Code + Refresh Token.
    - **PKCE**: enabled.
@@ -183,8 +183,8 @@ as a secret file (a Docker/Kubernetes secret) so the value never enters the envi
 ```toml
 [ai_workspace.auth.oidc]
 # BFF callback registered in the IDP (section 1.2) — NOT the SPA /signin route.
-redirect_url             = "https://<your-domain>/api/auth/callback"
-post_logout_redirect_url = "https://<your-domain>/login"
+redirect_url             = "https://<your-domain>/ai-workspace/api/auth/callback"
+post_logout_redirect_url = "https://<your-domain>/ai-workspace/login"
 
 # Preferred in production — a mounted secret file under an allowed directory.
 client_secret = '{{ file "/secrets/ai-workspace/oidc_client_secret" }}'

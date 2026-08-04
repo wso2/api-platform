@@ -31,7 +31,7 @@ import {
 import { Eye, EyeOff } from '@wso2/oxygen-ui-icons-react';
 import { useLLMProvider } from '../../../../contexts/llmProvider';
 import { useAppShell } from '../../../../contexts/AppShellContext';
-import { PLATFORM_API_BASE_URL } from '../../../../config.env';
+import { PLATFORM_API_BASE_URL } from '../../../../paths';
 import useAIWorkspaceSnackbar from '../../../../hooks/aiWorkspaceSnackbar';
 import * as providerTemplateApis from '../../../../apis/providerTemplateApis';
 import type { ProviderTemplate } from '../../../../utils/types';

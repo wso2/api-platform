@@ -26,7 +26,7 @@ import type { ProjectBase } from '../utils/types';
 import type { CreateProjectRequest, UpdateProjectRequest } from '../apis/projectApis';
 import * as projectApis from '../apis/projectApis';
 import { useAppShell } from './AppShellContext';
-import { PLATFORM_API_BASE_URL } from '../config.env';
+import { PLATFORM_API_BASE_URL } from '../paths';
 import { logger } from '../utils/logger';
 
 // ============================================================================

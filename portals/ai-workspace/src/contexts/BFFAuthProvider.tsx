@@ -33,11 +33,14 @@ import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { AppAuthContext, type AppUser, type AppOrg } from './AppAuthContext';
 import { checkPermission, isPlatformRole } from '../auth/permissions';
 import { AUTH_MODE, CSRF_HEADER, CSRF_VALUE } from '../config.env';
+import { BASE_PATH } from '../paths';
 
-// BFF auth endpoints are same-origin (the BFF serves this SPA).
-const SESSION_URL = '/api/session';
-const LOGOUT_URL = '/api/logout';
-const OIDC_LOGIN_URL = '/api/auth/login';
+// BFF auth endpoints are same-origin (the BFF serves this SPA), and mounted under the
+// same base path it serves the SPA on — these are absolute paths, not router routes,
+// so the prefix has to be spelled out.
+const SESSION_URL = `${BASE_PATH}/api/session`;
+const LOGOUT_URL = `${BASE_PATH}/api/logout`;
+const OIDC_LOGIN_URL = `${BASE_PATH}/api/auth/login`;
 
 interface SessionResponse {
   authenticated: boolean;
@@ -142,7 +145,7 @@ export function BFFAuthProvider({ children }: { children: React.ReactNode }) {
     } catch {
       /* fall through to local redirect */
     }
-    window.location.replace('/login');
+    window.location.replace(`${BASE_PATH}/login`);
   }, []);
 
   const hasPermission = useCallback(

@@ -47,7 +47,7 @@ import {
 } from '../../../../utils/providerTemplateDisplay';
 import type { ProviderTemplate } from '../../../../utils/types';
 import * as providerTemplateApis from '../../../../apis/providerTemplateApis';
-import { PLATFORM_API_BASE_URL } from '../../../../config.env';
+import { PLATFORM_API_BASE_URL } from '../../../../paths';
 import { logger } from '../../../../utils/logger';
 import AnthropicLogo from '../../../../assets/brands/Anthropic.jpg';
 import AWSBedrockLogo from '../../../../assets/brands/AWSBedrock.webp';

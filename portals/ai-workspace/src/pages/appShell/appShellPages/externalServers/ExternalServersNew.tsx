@@ -53,7 +53,7 @@ import {
 } from '../../../../utils/projectRouting';
 import { useMCPServerValidation } from '../../../../contexts/MCP';
 import useAIWorkspaceSnackbar from '../../../../hooks/aiWorkspaceSnackbar';
-import { PLATFORM_API_BASE_URL } from '../../../../config.env';
+import { PLATFORM_API_BASE_URL } from '../../../../paths';
 import { mcpProxiesApis } from '../../../../apis/MCP/mcpProxiesApis';
 import {
   createSecret,

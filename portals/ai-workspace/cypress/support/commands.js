@@ -16,6 +16,8 @@
  * under the License.
  */
 
+import { appPathPattern } from './appPath';
+
 // The BFF rejects state-mutating requests that lack a custom CSRF header
 // (CORS is closed, so cross-site attackers cannot set it). The SPA sends this
 // header on every request; mirror that here so `cy.request` calls that hit the
@@ -58,9 +60,10 @@ Cypress.Commands.add('login', (username, password) => {
   cy.get('input[type="password"]').should('be.visible').type(pwd);
   cy.contains('button', 'Sign In').click();
 
+  // pathname carries the app's base path; the router route does not (see appPath.js).
   cy.location('pathname', { timeout: 30000 }).should(
     'match',
-    new RegExp(`^/organizations/${orgHandle}(?:/|$)`)
+    appPathPattern(`/organizations/${orgHandle}(?:/|$)`)
   );
   cy.contains('Quick Start', { timeout: 30000 }).should('be.visible');
   cy.contains('Projects').should('be.visible');
