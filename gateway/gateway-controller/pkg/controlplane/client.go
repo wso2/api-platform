@@ -110,6 +110,7 @@ type ControlPlaneClient interface {
 // *secrets.SecretService satisfies this interface.
 type secretSyncer interface {
 	UpsertFromPlatform(handle, displayName, plaintext string) error
+	Delete(handle, correlationID string) error
 }
 
 // WebhookSecretSnapshotRefresher is the extension point through which an
@@ -1440,6 +1441,10 @@ func (c *Client) handleMessage(messageType int, message []byte) {
 		c.dispatchEventGatewayHook(event["type"], func(h ControlPlaneEventGatewayHooks) { h.HandleWebBrokerAPIDeleted(c, event) })
 	case "application.updated":
 		c.handleApplicationUpdatedEvent(event)
+	case "secret.updated":
+		c.handleSecretUpdatedEvent(event)
+	case "secret.deprecated":
+		c.handleSecretDeprecatedEvent(event)
 	default:
 		c.logger.Info("Received unknown event type (will be processed when handlers are implemented)",
 			slog.String("type", eventType),
@@ -3743,6 +3748,91 @@ func (c *Client) handleSubscriptionPlanDeletedEvent(event map[string]interface{}
 			slog.Any("error", err))
 		return
 	}
+}
+
+// handleSecretUpdatedEvent processes secret.updated events, pushed when a secret is
+// rotated. It re-fetches the plaintext over the authenticated internal secret-value
+// endpoint (the event payload never carries it) and upserts it into local storage, so
+// {{ secret "handle" }} placeholders resolve to the new value immediately instead of
+// waiting for the next reconnect's incremental sync.
+func (c *Client) handleSecretUpdatedEvent(event map[string]interface{}) {
+	baseLogger := c.logger
+	if c.apiUtilsService == nil || c.secretSyncer == nil {
+		baseLogger.Debug("Skipping secret.updated event: secret sync not configured")
+		return
+	}
+
+	var updated SecretUpdatedEvent
+	if err := utils.MapToStruct(event, &updated); err != nil {
+		baseLogger.Error("Failed to parse secret.updated event", slog.Any("error", err))
+		return
+	}
+	payload := updated.Payload
+	if payload.Handle == "" {
+		baseLogger.Error("secret.updated event missing handle")
+		return
+	}
+	logger := baseLogger.With(
+		slog.String("correlation_id", updated.CorrelationID),
+		slog.String("secret_handle", payload.Handle),
+	)
+
+	c.applySecretUpdatedPayload(payload, logger, c.apiUtilsService.FetchPlatformSecretValue)
+}
+
+// applySecretUpdatedPayload is the testable core of handleSecretUpdatedEvent: it
+// fetches the rotated plaintext via fetchValue and upserts it into local storage.
+// Extracted so unit tests can stub fetchValue instead of the concrete
+// *utils.APIUtilsService (mirroring syncSecretsIncrementalFromMetas in
+// sync_secrets_test.go, which works around the same constraint).
+func (c *Client) applySecretUpdatedPayload(payload SecretUpdatedEventPayload, logger *slog.Logger, fetchValue func(handle string) (string, error)) {
+	plaintext, err := fetchValue(payload.Handle)
+	if err != nil {
+		logger.Error("Failed to fetch rotated secret value", slog.Any("error", err))
+		return
+	}
+
+	if err := c.secretSyncer.UpsertFromPlatform(payload.Handle, payload.DisplayName, plaintext); err != nil {
+		logger.Error("Failed to upsert rotated secret", slog.Any("error", err))
+		return
+	}
+
+	c.secretHashCache.Store(payload.Handle, payload.Hash)
+	logger.Info("Applied secret rotation from secret.updated event")
+}
+
+// handleSecretDeprecatedEvent processes secret.deprecated events, pushed when a
+// secret is deleted (soft-deleted to DEPRECATED). Deletion only succeeds once no
+// artifact — current config or any deployed snapshot, on any gateway — still
+// references the handle, so evicting the local copy here is always safe.
+func (c *Client) handleSecretDeprecatedEvent(event map[string]interface{}) {
+	baseLogger := c.logger
+	if c.secretSyncer == nil {
+		baseLogger.Debug("Skipping secret.deprecated event: secret sync not configured")
+		return
+	}
+
+	var deprecated SecretDeprecatedEvent
+	if err := utils.MapToStruct(event, &deprecated); err != nil {
+		baseLogger.Error("Failed to parse secret.deprecated event", slog.Any("error", err))
+		return
+	}
+	payload := deprecated.Payload
+	if payload.Handle == "" {
+		baseLogger.Error("secret.deprecated event missing handle")
+		return
+	}
+	logger := baseLogger.With(
+		slog.String("correlation_id", deprecated.CorrelationID),
+		slog.String("secret_handle", payload.Handle),
+	)
+
+	if err := c.secretSyncer.Delete(payload.Handle, deprecated.CorrelationID); err != nil {
+		logger.Warn("Failed to evict deprecated secret from local store", slog.Any("error", err))
+		return
+	}
+	c.secretHashCache.Delete(payload.Handle)
+	logger.Info("Evicted deprecated secret from local store")
 }
 
 // setState updates the connection state

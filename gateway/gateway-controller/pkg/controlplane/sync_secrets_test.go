@@ -39,8 +39,10 @@ import (
 // wrapper on the Client for testing.
 
 type mockSecretSyncer struct {
-	upserted map[string]string // handle → plaintext
-	err      error             // if non-nil, UpsertFromPlatform returns this
+	upserted  map[string]string // handle → plaintext
+	deleted   []string          // handles passed to Delete, in call order
+	err       error             // if non-nil, UpsertFromPlatform returns this
+	deleteErr error             // if non-nil, Delete returns this
 }
 
 func newMockSecretSyncer() *mockSecretSyncer {
@@ -52,6 +54,15 @@ func (m *mockSecretSyncer) UpsertFromPlatform(handle, _, plaintext string) error
 		return m.err
 	}
 	m.upserted[handle] = plaintext
+	return nil
+}
+
+func (m *mockSecretSyncer) Delete(handle, _ string) error {
+	if m.deleteErr != nil {
+		return m.deleteErr
+	}
+	m.deleted = append(m.deleted, handle)
+	delete(m.upserted, handle)
 	return nil
 }
 
@@ -503,3 +514,145 @@ func TestSecretHashCache_IsolatedPerHandle(t *testing.T) {
 // Stub to make compilation succeed — the real time.Time argument is used by
 // syncSecretsIncremental but not needed by our extracted helpers.
 var _ = time.Now
+
+// ---------------------------------------------------------------------------
+// secret.updated / secret.deprecated push-event handlers
+// ---------------------------------------------------------------------------
+
+func TestApplySecretUpdatedPayload_FetchesAndUpserts_CachesHash(t *testing.T) {
+	syncer := newMockSecretSyncer()
+	c := stubClient(syncer)
+
+	payload := SecretUpdatedEventPayload{Handle: "openai-key", DisplayName: "OpenAI Key", Hash: "hmac-sha256:new"}
+	fetchValue := func(handle string) (string, error) {
+		assert.Equal(t, "openai-key", handle)
+		return "sk-rotated", nil
+	}
+
+	c.applySecretUpdatedPayload(payload, slog.Default(), fetchValue)
+
+	assert.Equal(t, "sk-rotated", syncer.upserted["openai-key"])
+	cached, ok := c.secretHashCache.Load("openai-key")
+	assert.True(t, ok)
+	assert.Equal(t, "hmac-sha256:new", cached)
+}
+
+func TestApplySecretUpdatedPayload_FetchError_DoesNotUpsertOrCacheHash(t *testing.T) {
+	syncer := newMockSecretSyncer()
+	c := stubClient(syncer)
+
+	payload := SecretUpdatedEventPayload{Handle: "openai-key", Hash: "hmac-sha256:new"}
+	fetchValue := func(handle string) (string, error) { return "", errors.New("upstream unreachable") }
+
+	c.applySecretUpdatedPayload(payload, slog.Default(), fetchValue)
+
+	assert.Empty(t, syncer.upserted, "must not upsert when the value fetch fails")
+	_, ok := c.secretHashCache.Load("openai-key")
+	assert.False(t, ok, "must not cache the new hash when the value fetch fails")
+}
+
+func TestApplySecretUpdatedPayload_UpsertError_DoesNotCacheHash(t *testing.T) {
+	syncer := newMockSecretSyncer()
+	syncer.err = errors.New("storage full")
+	c := stubClient(syncer)
+
+	payload := SecretUpdatedEventPayload{Handle: "openai-key", Hash: "hmac-sha256:new"}
+	fetchValue := func(handle string) (string, error) { return "sk-rotated", nil }
+
+	c.applySecretUpdatedPayload(payload, slog.Default(), fetchValue)
+
+	_, ok := c.secretHashCache.Load("openai-key")
+	assert.False(t, ok, "must not cache the new hash when the local upsert fails")
+}
+
+func TestHandleSecretUpdatedEvent_MissingHandle_NoFetchAttempted(t *testing.T) {
+	syncer := newMockSecretSyncer()
+	c := stubClient(syncer)
+	c.apiUtilsService = &utils.APIUtilsService{} // non-nil so the guard under test is the handle check, not this one
+
+	event := map[string]interface{}{
+		"type":          "secret.updated",
+		"correlationId": "corr-1",
+		"payload":       map[string]interface{}{"handle": "", "hash": "hmac-sha256:x"},
+	}
+
+	assert.NotPanics(t, func() { c.handleSecretUpdatedEvent(event) })
+	assert.Empty(t, syncer.upserted)
+}
+
+func TestHandleSecretUpdatedEvent_NilDependencies_NoPanic(t *testing.T) {
+	c := stubClient(newMockSecretSyncer())
+	// apiUtilsService left nil (zero value of *utils.APIUtilsService)
+
+	event := map[string]interface{}{
+		"type":          "secret.updated",
+		"correlationId": "corr-1",
+		"payload":       map[string]interface{}{"handle": "openai-key", "hash": "hmac-sha256:x"},
+	}
+
+	assert.NotPanics(t, func() { c.handleSecretUpdatedEvent(event) })
+}
+
+func TestHandleSecretDeprecatedEvent_EvictsFromLocalStoreAndHashCache(t *testing.T) {
+	syncer := newMockSecretSyncer()
+	syncer.upserted["old-key"] = "sk-stale"
+	c := stubClient(syncer)
+	populateCache(c, map[string]string{"old-key": "hmac-sha256:stale"})
+
+	event := map[string]interface{}{
+		"type":          "secret.deprecated",
+		"correlationId": "corr-2",
+		"payload":       map[string]interface{}{"handle": "old-key"},
+	}
+
+	c.handleSecretDeprecatedEvent(event)
+
+	assert.Equal(t, []string{"old-key"}, syncer.deleted)
+	assert.NotContains(t, syncer.upserted, "old-key", "local copy must be evicted")
+	_, ok := c.secretHashCache.Load("old-key")
+	assert.False(t, ok, "hash cache entry must be cleared on eviction")
+}
+
+func TestHandleSecretDeprecatedEvent_MissingHandle_NoEviction(t *testing.T) {
+	syncer := newMockSecretSyncer()
+	c := stubClient(syncer)
+
+	event := map[string]interface{}{
+		"type":          "secret.deprecated",
+		"correlationId": "corr-2",
+		"payload":       map[string]interface{}{"handle": ""},
+	}
+
+	assert.NotPanics(t, func() { c.handleSecretDeprecatedEvent(event) })
+	assert.Empty(t, syncer.deleted)
+}
+
+func TestHandleSecretDeprecatedEvent_NilSyncer_NoPanic(t *testing.T) {
+	c := &Client{logger: slog.Default()} // secretSyncer left nil
+
+	event := map[string]interface{}{
+		"type":          "secret.deprecated",
+		"correlationId": "corr-2",
+		"payload":       map[string]interface{}{"handle": "old-key"},
+	}
+
+	assert.NotPanics(t, func() { c.handleSecretDeprecatedEvent(event) })
+}
+
+func TestHandleSecretDeprecatedEvent_DeleteError_HashCacheNotCleared(t *testing.T) {
+	syncer := newMockSecretSyncer()
+	syncer.deleteErr = errors.New("storage locked")
+	c := stubClient(syncer)
+	populateCache(c, map[string]string{"old-key": "hmac-sha256:stale"})
+
+	event := map[string]interface{}{
+		"type":          "secret.deprecated",
+		"correlationId": "corr-2",
+		"payload":       map[string]interface{}{"handle": "old-key"},
+	}
+
+	c.handleSecretDeprecatedEvent(event)
+
+	_, ok := c.secretHashCache.Load("old-key")
+	assert.True(t, ok, "hash cache must be left intact when eviction fails, so a later retry doesn't skip it")
+}

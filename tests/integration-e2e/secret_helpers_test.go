@@ -24,9 +24,16 @@ package e2e
 // secret-backed artifact, then polls the gateway-controller's management API
 // until the artifact appears — confirming the controller resolved the
 // {{ secret "..." }} reference at deploy time.
+//
+// rotateSecret / waitGatewaySecretValue / waitGatewaySecretGone below back a
+// different scenario family — secret_lifecycle.feature — which exercises the
+// live secret.updated/secret.deprecated WebSocket push path (handleSecretUpdatedEvent /
+// handleSecretDeprecatedEvent) against an already-connected gateway, rather than the
+// on-demand fetch that happens at artifact-deploy time.
 
 import (
 	"bytes"
+	"encoding/json"
 	"fmt"
 	"io"
 	"mime/multipart"
@@ -126,4 +133,138 @@ func waitGatewayResource(resourcePath string, timeout time.Duration) error {
 	}
 	return fmt.Errorf("gateway did not configure resource %q within timeout: last status %d",
 		resourcePath, lastStatus)
+}
+
+// rotateSecret rotates an existing secret's value via PUT /secrets/:handle
+// (multipart/form-data) — the same call the AI Workspace UI's "Rotate secret"
+// action makes. platform-api broadcasts a secret.updated event to every gateway
+// in the org as part of this call.
+func rotateSecret(handle, newValue string) error {
+	buf := &bytes.Buffer{}
+	mw := multipart.NewWriter(buf)
+	if err := mw.WriteField("value", newValue); err != nil {
+		return err
+	}
+	mw.Close()
+
+	req, err := http.NewRequest(http.MethodPut, platformAPI+platformAPIBase+"/secrets/"+handle, buf)
+	if err != nil {
+		return err
+	}
+	req.Header.Set("Content-Type", mw.FormDataContentType())
+	req.Header.Set("Authorization", "Bearer "+suite.token)
+
+	resp, err := httpClient.Do(req)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+	body, _ := io.ReadAll(resp.Body)
+	if resp.StatusCode >= 300 {
+		return fmt.Errorf("rotate secret failed (%d): %s", resp.StatusCode, body)
+	}
+	return nil
+}
+
+// deleteSecret soft-deletes (deprecates) a secret via DELETE /secrets/:handle — the
+// same call the AI Workspace UI's "Delete secret" action makes. platform-api broadcasts
+// a secret.deprecated event to every gateway in the org once the delete actually
+// succeeds (it 409s instead if the handle is still referenced by any artifact, current
+// config or deployed snapshot, on any gateway).
+func deleteSecret(handle string) error {
+	req, err := http.NewRequest(http.MethodDelete, platformAPI+platformAPIBase+"/secrets/"+handle, nil)
+	if err != nil {
+		return err
+	}
+	req.Header.Set("Authorization", "Bearer "+suite.token)
+
+	resp, err := httpClient.Do(req)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+	body, _ := io.ReadAll(resp.Body)
+	if resp.StatusCode >= 300 {
+		return fmt.Errorf("delete secret failed (%d): %s", resp.StatusCode, body)
+	}
+	return nil
+}
+
+// gatewaySecretValue extracts spec.value from a gateway-controller GetSecret
+// response body (GET /api/management/v1/secrets/:handle — see
+// buildSecretResourceResponse in the gateway-controller source).
+func gatewaySecretValue(body []byte) string {
+	var r struct {
+		Spec struct {
+			Value string `json:"value"`
+		} `json:"spec"`
+	}
+	if json.Unmarshal(body, &r) != nil {
+		return ""
+	}
+	return r.Spec.Value
+}
+
+// waitGatewaySecretValue polls the gateway-controller's own secret store
+// (GET /api/management/v1/secrets/:handle, basic auth admin:admin) until its
+// decrypted value equals expectedValue or timeout expires. Confirms a
+// secret.updated push event caused an immediate re-fetch — not merely that the
+// gateway will eventually catch up on its next reconnect-triggered poll.
+func waitGatewaySecretValue(handle, expectedValue string, timeout time.Duration) error {
+	url := gwMgmtAPI + "/api/management/v1/secrets/" + handle
+	deadline := time.Now().Add(timeout)
+	var lastValue string
+	for time.Now().Before(deadline) {
+		req, err := http.NewRequest(http.MethodGet, url, nil)
+		if err != nil {
+			return err
+		}
+		req.SetBasicAuth("admin", "admin")
+		resp, err := httpClient.Do(req)
+		if err != nil {
+			time.Sleep(2 * time.Second)
+			continue
+		}
+		body, _ := io.ReadAll(resp.Body)
+		resp.Body.Close()
+		if resp.StatusCode == http.StatusOK {
+			lastValue = gatewaySecretValue(body)
+			if lastValue == expectedValue {
+				return nil
+			}
+		}
+		time.Sleep(2 * time.Second)
+	}
+	return fmt.Errorf("gateway secret %q did not reach the rotated value within timeout (last seen: %q)",
+		handle, lastValue)
+}
+
+// waitGatewaySecretGone polls the gateway-controller's own secret store until
+// GET /api/management/v1/secrets/:handle returns 404 or timeout expires.
+// Confirms a secret.deprecated push event caused the gateway to evict its local
+// copy of a secret that is no longer referenced by any artifact.
+func waitGatewaySecretGone(handle string, timeout time.Duration) error {
+	url := gwMgmtAPI + "/api/management/v1/secrets/" + handle
+	deadline := time.Now().Add(timeout)
+	var lastStatus int
+	for time.Now().Before(deadline) {
+		req, err := http.NewRequest(http.MethodGet, url, nil)
+		if err != nil {
+			return err
+		}
+		req.SetBasicAuth("admin", "admin")
+		resp, err := httpClient.Do(req)
+		if err != nil {
+			time.Sleep(2 * time.Second)
+			continue
+		}
+		io.Copy(io.Discard, resp.Body) //nolint:errcheck
+		resp.Body.Close()
+		lastStatus = resp.StatusCode
+		if lastStatus == http.StatusNotFound {
+			return nil
+		}
+		time.Sleep(2 * time.Second)
+	}
+	return fmt.Errorf("gateway did not evict secret %q within timeout: last status %d", handle, lastStatus)
 }

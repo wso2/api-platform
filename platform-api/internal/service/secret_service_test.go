@@ -509,9 +509,9 @@ func TestSecretService_ValidateSecretRefs_JSONEscapedForm_Missing(t *testing.T) 
 func TestSecretService_ValidateSecretRefs_DeduplicatesHandles(t *testing.T) {
 	callCount := 0
 	repo := newMockRepo()
-	repo.existsFn = func(orgID, handle string) (bool, error) {
+	repo.getByHandleFn = func(orgID, handle string) (*model.Secret, error) {
 		callCount++
-		return true, nil
+		return &model.Secret{Handle: handle, Status: model.SecretStatusActive}, nil
 	}
 
 	svc := NewSecretService(repo, &mockVault{}, newTestIdentityService())
@@ -520,7 +520,7 @@ func TestSecretService_ValidateSecretRefs_DeduplicatesHandles(t *testing.T) {
 		t.Errorf("unexpected error: %v", err)
 	}
 	if callCount != 1 {
-		t.Errorf("Exists called %d times, want 1 (should deduplicate)", callCount)
+		t.Errorf("GetByHandle called %d times, want 1 (should deduplicate)", callCount)
 	}
 }
 

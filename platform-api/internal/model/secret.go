@@ -68,3 +68,23 @@ type SecretReference struct {
 	Handle string `json:"handle"`
 	Name   string `json:"name"`
 }
+
+// SecretUpdatedEvent is broadcast to every gateway in the organization when a secret's
+// value is rotated. Hash is the HMAC-SHA256 change-detection digest (see hashSecret) —
+// safe to broadcast, since it never permits recovering the plaintext value. The
+// plaintext itself is deliberately never part of this payload: the EventHub persists
+// events to the shared DB, so gateways instead pull the fresh value over the
+// authenticated internal secret-value endpoint once they receive this notification.
+type SecretUpdatedEvent struct {
+	Handle      string `json:"handle"`
+	DisplayName string `json:"name"`
+	Hash        string `json:"hash"`
+}
+
+// SecretDeprecatedEvent is broadcast to every gateway in the organization when a
+// secret is deleted (soft-deleted to DEPRECATED). Deletion only succeeds once no
+// artifact — current config or any deployed snapshot, on any gateway — references
+// the handle, so every gateway can safely evict its local copy on receipt.
+type SecretDeprecatedEvent struct {
+	Handle string `json:"handle"`
+}
