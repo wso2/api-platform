@@ -1,0 +1,80 @@
+# ============================================================================
+# api-portal — product values
+# ============================================================================
+# This is the API Portal product package: the shared Platform API plus the
+# API Portal. You normally keep this file as-is and put your changes in a
+# separate `-f my_values.yaml`; both are layered at install time (later wins).
+#
+# How settings are organised:
+#   global.*         Settings shared by EVERY component (image pull secrets,
+#                    service account, the Platform API address, …).
+#   <component>.*    Settings for one component, keyed by its chart name in
+#                    kebab-case: `platform-api`, `api-portal-ui`. Each component
+#                    documents its full option list in charts/<name>/values.yaml —
+#                    override any of those keys under the same top-level key here.
+#
+# Secrets are never written in this file. Run ./generate-secrets.sh first: it
+# creates the Kubernetes Secrets and writes values-secrets.yaml holding only the
+# Secret *names*. Install with `-f values-secrets.yaml`. See README.md.
+
+# ----------------------------------------------------------------------------
+# global — merged into every component as `.Values.global`
+# ----------------------------------------------------------------------------
+global:
+  # Resource naming. By default every resource is prefixed with the Helm release
+  # name (e.g. `myrelease-platform-api`). Set fullnameOverride to force a fixed
+  # prefix regardless of release name; nameOverride tweaks the chart-name part.
+  nameOverride: ""
+  fullnameOverride: ""
+
+  # Extra labels / annotations stamped onto every rendered Kubernetes object.
+  commonLabels: {}
+  commonAnnotations: {}
+
+  # Names of image-pull Secrets to attach to every pod (for private registries).
+  # Merged with any per-component imagePullSecrets.
+  imagePullSecrets: []
+
+  # A single ServiceAccount is created once per release and shared by all pods.
+  serviceAccount:
+    create: true                        # false → use an existing SA (set name)
+    name: ""                            # "" → defaults to the release fullname
+    annotations: {}                     # e.g. an IRSA / workload-identity role ARN
+    automountServiceAccountToken: true
+
+  # WSO2 Subscription (https://wso2.com/subscription/). Set imagePullSecret to the
+  # name of a docker-registry Secret and two things happen automatically: it's
+  # added to every pod, and the default ghcr.io/wso2/api-platform/* image repos are
+  # rewritten to registry.wso2.com/wso2-api-platform/*. Leave "" for public images.
+  wso2:
+    subscription:
+      imagePullSecret: ""
+
+  # How the portal reaches the shared Platform API in-cluster. These build the URL
+  # the portal calls, so they MUST match the Platform API's actual service port and
+  # TLS setting below (platform-api.service.port / platform-api.config.tls.enabled).
+  platformApi:
+    port: 9243
+    tlsEnabled: true                    # true → https://, false → http://
+
+# ----------------------------------------------------------------------------
+# Components — turn each on/off with <component>.enabled
+# ----------------------------------------------------------------------------
+# `enabled` maps to the dependency condition in Chart.yaml, so a disabled
+# component is not installed at all. For anything deeper (image tag, database,
+# auth, resources, …) add keys under the same top-level key — see each
+# component's own values.yaml, e.g.:
+#
+#   api-portal-ui:
+#     config:
+#       server:
+#         baseUrl: https://devportal.example.com   # public URL browsers use
+
+# Shared control plane. Required by the portal; leave enabled unless you point the
+# portal at an external Platform API.
+platform-api:
+  enabled: true
+
+# The API Portal — this package's headline component.
+api-portal-ui:
+  enabled: true

@@ -1,0 +1,26 @@
+{{- $ap := .Values -}}
+{{- $persistence := $ap.persistence -}}
+{{- if and $ap.deployment.enabled $persistence.enabled (not $persistence.existingClaim) }}
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: {{ include "apip.apiPortal.fullname" . }}-data
+  labels:
+    {{- include "apip.componentLabels" (list . "api-portal" $persistence.labels) | nindent 4 }}
+  {{- with (include "apip.annotations" (list . $persistence.annotations)) }}
+  annotations:
+    {{- . | nindent 4 }}
+  {{- end }}
+spec:
+  accessModes:
+    {{- range $persistence.accessModes }}
+    - {{ . }}
+    {{- end }}
+  resources:
+    requests:
+      storage: {{ $persistence.size }}
+  {{- if $persistence.storageClass }}
+  storageClassName: {{ $persistence.storageClass | quote }}
+  {{- end }}
+{{- end }}
+
