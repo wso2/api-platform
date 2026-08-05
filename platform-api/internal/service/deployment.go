@@ -395,7 +395,7 @@ func (s *DeploymentService) RestoreDeployment(apiUUID, deploymentID, gatewayID, 
 	if err != nil {
 		return nil, fmt.Errorf("failed to get deployment status: %w", err)
 	}
-	if currentDeploymentID == deploymentID && status == model.DeploymentStatusDeployed {
+	if currentDeploymentID == deploymentID && status.IsDeployedOrDeploying() {
 		return nil, apperror.DeploymentRestoreConflict.New()
 	}
 
@@ -479,7 +479,7 @@ func (s *DeploymentService) UndeployDeployment(apiUUID, deploymentID, gatewayID,
 	}
 
 	// Verify deployment is currently DEPLOYED (status already populated by GetDeploymentWithState)
-	if deployment.Status == nil || *deployment.Status != model.DeploymentStatusDeployed {
+	if deployment.Status == nil || !deployment.Status.IsDeployedOrDeploying() {
 		return nil, apperror.DeploymentNotActive.New("API")
 	}
 
@@ -547,7 +547,7 @@ func (s *DeploymentService) DeleteDeployment(apiUUID, deploymentID, orgUUID, act
 	}
 
 	// Verify deployment is NOT currently DEPLOYED (status already populated by GetDeploymentWithState)
-	if deployment.Status != nil && *deployment.Status == model.DeploymentStatusDeployed {
+	if deployment.Status != nil && deployment.Status.IsDeployedOrDeploying() {
 		return apperror.DeploymentActive.New()
 	}
 

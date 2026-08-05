@@ -341,7 +341,7 @@ func (s *LLMProviderDeploymentService) RestoreLLMProviderDeployment(providerID, 
 	if err != nil {
 		return nil, fmt.Errorf("failed to get deployment status: %w", err)
 	}
-	if currentDeploymentID == deploymentID && status == model.DeploymentStatusDeployed {
+	if currentDeploymentID == deploymentID && status.IsDeployedOrDeploying() {
 		return nil, apperror.DeploymentRestoreConflict.New()
 	}
 
@@ -430,7 +430,7 @@ func (s *LLMProviderDeploymentService) UndeployLLMProviderDeployment(providerID,
 	if deployment.GatewayID != resolvedGateway.ID {
 		return nil, apperror.DeploymentGatewayMismatch.New()
 	}
-	if deployment.Status == nil || *deployment.Status != model.DeploymentStatusDeployed {
+	if deployment.Status == nil || !deployment.Status.IsDeployedOrDeploying() {
 		return nil, apperror.DeploymentNotActive.New("LLM provider")
 	}
 
@@ -498,7 +498,7 @@ func (s *LLMProviderDeploymentService) DeleteLLMProviderDeployment(providerID, d
 	if deployment == nil {
 		return apperror.DeploymentNotFound.New()
 	}
-	if deployment.Status != nil && *deployment.Status == model.DeploymentStatusDeployed {
+	if deployment.Status != nil && deployment.Status.IsDeployedOrDeploying() {
 		return apperror.DeploymentActive.New()
 	}
 
@@ -1483,7 +1483,7 @@ func (s *LLMProxyDeploymentService) RestoreLLMProxyDeployment(proxyID, deploymen
 	if err != nil {
 		return nil, fmt.Errorf("failed to get deployment status: %w", err)
 	}
-	if currentDeploymentID == deploymentID && status == model.DeploymentStatusDeployed {
+	if currentDeploymentID == deploymentID && status.IsDeployedOrDeploying() {
 		return nil, apperror.DeploymentRestoreConflict.New()
 	}
 
@@ -1572,7 +1572,7 @@ func (s *LLMProxyDeploymentService) UndeployLLMProxyDeployment(proxyID, deployme
 	if deployment.GatewayID != resolvedGateway.ID {
 		return nil, apperror.DeploymentGatewayMismatch.New()
 	}
-	if deployment.Status == nil || *deployment.Status != model.DeploymentStatusDeployed {
+	if deployment.Status == nil || !deployment.Status.IsDeployedOrDeploying() {
 		return nil, apperror.DeploymentNotActive.New("LLM proxy")
 	}
 
@@ -1640,7 +1640,7 @@ func (s *LLMProxyDeploymentService) DeleteLLMProxyDeployment(proxyID, deployment
 	if deployment == nil {
 		return apperror.DeploymentNotFound.New()
 	}
-	if deployment.Status != nil && *deployment.Status == model.DeploymentStatusDeployed {
+	if deployment.Status != nil && deployment.Status.IsDeployedOrDeploying() {
 		return apperror.DeploymentActive.New()
 	}
 

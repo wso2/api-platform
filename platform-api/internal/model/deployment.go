@@ -70,6 +70,15 @@ const (
 	DeploymentStatusArchived    DeploymentStatus = "ARCHIVED" // Derived state: exists in history but not in status table
 )
 
+// IsDeployedOrDeploying reports whether the status represents a deployment that is
+// live on the gateway or on its way there — i.e. one whose desired state is DEPLOYED.
+// A deploy is DEPLOYING until the gateway acknowledges it, so callers gating on
+// "is this deployment active?" must accept both: treating DEPLOYING as inactive makes
+// an in-flight deployment impossible to undeploy and, conversely, deletable mid-flight.
+func (s DeploymentStatus) IsDeployedOrDeploying() bool {
+	return s == DeploymentStatusDeployed || s == DeploymentStatusDeploying
+}
+
 // DeploymentInfo is a lightweight representation of a deployment
 // Contains only the essential fields needed for listing deployments
 type DeploymentInfo struct {

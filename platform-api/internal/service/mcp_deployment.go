@@ -440,7 +440,7 @@ func (s *MCPDeploymentService) undeployMCPProxyDeployment(proxyUUID string, depl
 	}
 
 	// Verify deployment is currently DEPLOYED (status already populated by GetWithState)
-	if deployment.Status == nil || *deployment.Status != model.DeploymentStatusDeployed {
+	if deployment.Status == nil || !deployment.Status.IsDeployedOrDeploying() {
 		return nil, apperror.DeploymentNotActive.New("MCP proxy")
 	}
 
@@ -519,7 +519,7 @@ func (s *MCPDeploymentService) restoreMCPProxyDeployment(proxyUUID string, deplo
 	if err != nil {
 		return nil, fmt.Errorf("failed to get deployment status: %w", err)
 	}
-	if currentDeploymentID == *deploymentId && status == model.DeploymentStatusDeployed {
+	if currentDeploymentID == *deploymentId && status.IsDeployedOrDeploying() {
 		return nil, apperror.DeploymentRestoreConflict.New()
 	}
 
@@ -691,7 +691,7 @@ func (s *MCPDeploymentService) deleteMCPProxyDeployment(proxyUUID string, deploy
 	}
 
 	// Verify deployment is NOT currently DEPLOYED (status already populated by GetWithState)
-	if deployment.Status != nil && *deployment.Status == model.DeploymentStatusDeployed {
+	if deployment.Status != nil && deployment.Status.IsDeployedOrDeploying() {
 		return apperror.DeploymentActive.New()
 	}
 

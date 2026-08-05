@@ -337,7 +337,7 @@ func (s *WebSubAPIDeploymentService) undeployWebSubAPIDeployment(apiUUID string,
 		return nil, apperror.DeploymentGatewayMismatch.New()
 	}
 
-	if deployment.Status == nil || *deployment.Status != model.DeploymentStatusDeployed {
+	if deployment.Status == nil || !deployment.Status.IsDeployedOrDeploying() {
 		return nil, apperror.DeploymentNotActive.New("WebSub API")
 	}
 
@@ -415,7 +415,7 @@ func (s *WebSubAPIDeploymentService) restoreWebSubAPIDeployment(apiUUID string, 
 	if err != nil {
 		return nil, fmt.Errorf("failed to get deployment status: %w", err)
 	}
-	if currentDeploymentID == *deploymentId && status == model.DeploymentStatusDeployed {
+	if currentDeploymentID == *deploymentId && status.IsDeployedOrDeploying() {
 		return nil, apperror.DeploymentRestoreConflict.New()
 	}
 
@@ -576,7 +576,7 @@ func (s *WebSubAPIDeploymentService) deleteWebSubAPIDeployment(apiUUID, deployme
 		return apperror.DeploymentNotFound.New()
 	}
 
-	if deployment.Status != nil && *deployment.Status == model.DeploymentStatusDeployed {
+	if deployment.Status != nil && deployment.Status.IsDeployedOrDeploying() {
 		return apperror.DeploymentActive.New()
 	}
 

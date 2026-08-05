@@ -337,7 +337,7 @@ func (s *WebBrokerAPIDeploymentService) undeployWebBrokerAPIDeployment(apiUUID s
 		return nil, apperror.DeploymentGatewayMismatch.New()
 	}
 
-	if deployment.Status == nil || *deployment.Status != model.DeploymentStatusDeployed {
+	if deployment.Status == nil || !deployment.Status.IsDeployedOrDeploying() {
 		return nil, apperror.DeploymentNotActive.New("WebBroker API")
 	}
 
@@ -416,7 +416,7 @@ func (s *WebBrokerAPIDeploymentService) restoreWebBrokerAPIDeployment(apiUUID st
 	if err != nil {
 		return nil, fmt.Errorf("failed to get deployment status: %w", err)
 	}
-	if currentDeploymentID == *deploymentId && status == model.DeploymentStatusDeployed {
+	if currentDeploymentID == *deploymentId && status.IsDeployedOrDeploying() {
 		return nil, apperror.DeploymentRestoreConflict.New()
 	}
 
@@ -578,7 +578,7 @@ func (s *WebBrokerAPIDeploymentService) deleteWebBrokerAPIDeployment(apiUUID, de
 		return apperror.DeploymentNotFound.New()
 	}
 
-	if deployment.Status != nil && *deployment.Status == model.DeploymentStatusDeployed {
+	if deployment.Status != nil && deployment.Status.IsDeployedOrDeploying() {
 		return apperror.DeploymentActive.New()
 	}
 
