@@ -176,9 +176,9 @@ samples/
 │   │   └── docs/
 │   └── …
 └── mcps/                          # MCP servers  →  /views/default/mcps
-    ├── travel-assistant-mcp-v1/
+    ├── everything-mcp-server-v1.0/
     │   ├── api.yaml
-    │   ├── schemaDefinition.yaml
+    │   ├── definition.yaml
     │   └── docs/
     └── …
 ```
@@ -237,7 +237,7 @@ spec:
     productionUrl: https://mcp.example.com
 ```
 
-The `schemaDefinition.yaml` alongside `api.yaml` defines the tools, resources, and prompts exposed by the server:
+The `definition.yaml` alongside `api.yaml` defines the tools, resources, and prompts exposed by the server:
 
 ```yaml
 - type: TOOL
