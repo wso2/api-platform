@@ -78,7 +78,12 @@ type DeploymentInfo struct {
 	Handle       string           `json:"handle" db:"handle"` // Artifact handle (apiId)
 	Type         string           `json:"type" db:"type"`     // Artifact type: RestAPI, LLMProvider, LLMProxy, MCPProxy
 	Status       DeploymentStatus `json:"status" db:"status"`
-	PerformedAt  time.Time        `json:"performedAt" db:"performed_at"` // When the deploy/undeploy action was initiated
+	// StatusDesired is the terminal state the operation is driving towards
+	// (DEPLOYED/UNDEPLOYED), which stays meaningful while Status is still
+	// transitional (DEPLOYING/UNDEPLOYING). Falls back to Status when the row
+	// predates the column.
+	StatusDesired DeploymentStatus `json:"statusDesired" db:"status_desired"`
+	PerformedAt   time.Time        `json:"performedAt" db:"performed_at"` // When the deploy/undeploy action was initiated
 }
 
 // DeploymentMetadata represents the metadata section of the API deployment YAML

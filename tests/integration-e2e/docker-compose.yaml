@@ -151,9 +151,9 @@ services:
       - APIP_GW_CONTROLLER_CONTROLPLANE_TOKEN=${GATEWAY_REGISTRATION_TOKEN:-}
       - APIP_GW_CONTROLLER_CONTROLPLANE_INSECURE_SKIP_VERIFY=true
     ports:
-      - "9090:9090"   # REST API
-      - "9092:9092"   # Admin API
-      - "18000:18000" # xDS gRPC
+      - "${GW_REST_PORT:-9090}:9090"   # REST API
+      - "${GW_ADMIN_PORT:-9092}:9092"   # Admin API
+      - "${GW_XDS_PORT:-18000}:18000" # xDS gRPC
     volumes:
       - ../../gateway/it/test-config.toml:/etc/gateway-controller/config.toml:ro
       - ../../gateway/it/it-aesgcm-keys/default-aesgcm256-v1.bin:/app/data/aesgcm-keys/default-aesgcm256-v1.bin:ro
@@ -175,7 +175,7 @@ services:
     ports:
       - "${GW_HTTP_PORT:-18080}:8080"   # HTTP ingress (data plane)
       - "${GW_HTTPS_PORT:-18443}:8443"  # HTTPS ingress
-      - "9002:9002"                     # Policy engine admin
+      - "${GW_POLICY_ADMIN_PORT:-9002}:9002" # Policy engine admin
     volumes:
       - ../../gateway/it/test-config.toml:/etc/policy-engine/config.toml:ro
     depends_on:

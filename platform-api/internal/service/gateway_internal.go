@@ -223,7 +223,15 @@ func (s *GatewayInternalAPIService) IsAPIDeployedOnGateway(apiID, gatewayID, org
 	if deploymentID == "" {
 		return apperror.DeploymentNotActive.New("API")
 	}
-	if status != model.DeploymentStatusDeployed && status != model.DeploymentStatusUndeployed {
+	// A transitional row (DEPLOYING/UNDEPLOYING) is still an association: the
+	// gateway fetches subscriptions while applying the artifact, before it has
+	// acknowledged the deploy, so rejecting it here would deny the gateway the
+	// data it needs to complete that very deployment. This matches the
+	// status_desired filter used by APIKeyRepo.ListByGatewayAndKind.
+	switch status {
+	case model.DeploymentStatusDeployed, model.DeploymentStatusUndeployed,
+		model.DeploymentStatusDeploying, model.DeploymentStatusUndeploying:
+	default:
 		return apperror.DeploymentNotActive.New("API")
 	}
 	return nil
@@ -422,9 +430,12 @@ func (s *GatewayInternalAPIService) GetDeploymentsByGateway(orgID, gatewayID str
 			ArtifactID:   dep.ArtifactID,
 			DeploymentID: dep.DeploymentID,
 			Kind:         dep.Type,
-			State:        string(dep.Status),
-			DeployedAt:   deployedAt,
-			Etag:         utils.GenerateDeterministicUUIDv7(dep.DeploymentID, deployedAt),
+			// The gateway reconciles towards the desired terminal state; sending a
+			// transitional DEPLOYING/UNDEPLOYING would not parse as a desired state
+			// and the deployment would be silently skipped by its sync diff.
+			State:      string(dep.StatusDesired),
+			DeployedAt: deployedAt,
+			Etag:       utils.GenerateDeterministicUUIDv7(dep.DeploymentID, deployedAt),
 		}
 	}
 
