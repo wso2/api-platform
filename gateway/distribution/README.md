@@ -116,7 +116,7 @@ This runs in the foreground — keep that terminal open and use a second one for
 ### 3. Verify
 
 ```bash
-curl -s http://localhost:9090/health
+curl -s http://localhost:8080/_gateway-health/healthy
 ```
 
 The controller REST API is now reachable at `http://localhost:9090`, and the gateway is listening for
