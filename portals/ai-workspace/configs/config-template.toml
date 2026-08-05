@@ -148,7 +148,7 @@ url = "https://platform-api:9243"
 tls_skip_verify = "false"
 
 # PEM bundle to trust for the upstream's TLS certificate, appended to system roots.
-ca_file = ""
+ca_file = "/etc/ai-workspace/tls/cert.pem"
 
 
 # ---------------------------------------------------------------------------

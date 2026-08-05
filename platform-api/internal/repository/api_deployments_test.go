@@ -611,6 +611,69 @@ func TestGetControlPlaneDeploymentsByGateway_ExcludesGatewayOrigin(t *testing.T)
 	}
 }
 
+// TestGetControlPlaneDeploymentsByGateway_ReportsDesiredStatus verifies the sync feed
+// carries the desired terminal status alongside the current one. The gateway reconciles
+// against the desired status, so a deployment still awaiting the gateway's acknowledgement
+// (DEPLOYING/UNDEPLOYING) must advertise the DEPLOYED/UNDEPLOYED it is driving towards —
+// otherwise the controller's sync diff cannot parse it and skips the deployment entirely.
+func TestGetControlPlaneDeploymentsByGateway_ReportsDesiredStatus(t *testing.T) {
+	db, cleanup := setupTestDB(t)
+	defer cleanup()
+
+	repo := NewDeploymentRepo(db, NewArtifactTableRegistry())
+
+	orgUUID := "org-001"
+	gatewayUUID := "gateway-001"
+
+	// createTestAPI seeds org + project, which the gateway row depends on.
+	deployingUUID := "api-deploying"
+	createTestAPI(t, db, deployingUUID, orgUUID)
+	createTestGateway(t, db, gatewayUUID, orgUUID)
+
+	insertDeployment(t, db, "deploy-transitional", "Transitional", deployingUUID, orgUUID, gatewayUUID, time.Now())
+	if _, err := repo.SetCurrentWithDetails(
+		deployingUUID, orgUUID, gatewayUUID, "deploy-transitional",
+		model.DeploymentStatusDeploying, string(model.DeploymentStatusDeployed), nil, "",
+	); err != nil {
+		t.Fatalf("SetCurrentWithDetails failed: %v", err)
+	}
+
+	// A row written before status_desired existed stores only status.
+	legacyUUID := "api-legacy"
+	createTestAPIWithOrigin(t, db, legacyUUID, "test-api-legacy", orgUUID, "control_plane")
+	insertDeployment(t, db, "deploy-legacy", "Legacy", legacyUUID, orgUUID, gatewayUUID, time.Now())
+	setDeploymentStatus(t, db, legacyUUID, orgUUID, gatewayUUID, "deploy-legacy", model.DeploymentStatusDeployed)
+
+	deployments, err := repo.GetControlPlaneDeploymentsByGateway(gatewayUUID, orgUUID, nil)
+	if err != nil {
+		t.Fatalf("GetControlPlaneDeploymentsByGateway failed: %v", err)
+	}
+
+	byArtifact := make(map[string]*model.DeploymentInfo, len(deployments))
+	for _, d := range deployments {
+		byArtifact[d.ArtifactID] = d
+	}
+
+	transitional, ok := byArtifact[deployingUUID]
+	if !ok {
+		t.Fatalf("transitional deployment %q missing from the gateway sync feed", deployingUUID)
+	}
+	if transitional.Status != model.DeploymentStatusDeploying {
+		t.Errorf("Status = %q, want %q", transitional.Status, model.DeploymentStatusDeploying)
+	}
+	if transitional.StatusDesired != model.DeploymentStatusDeployed {
+		t.Errorf("StatusDesired = %q, want %q", transitional.StatusDesired, model.DeploymentStatusDeployed)
+	}
+
+	legacy, ok := byArtifact[legacyUUID]
+	if !ok {
+		t.Fatalf("deployment %q missing from the gateway sync feed", legacyUUID)
+	}
+	if legacy.StatusDesired != model.DeploymentStatusDeployed {
+		t.Errorf("StatusDesired = %q, want fallback to Status %q", legacy.StatusDesired, model.DeploymentStatusDeployed)
+	}
+}
+
 func TestMain(m *testing.M) {
 	// APIP_CP_ENCRYPTION_KEY and APIP_CP_AUTH_JWT_SECRET_KEY are required.
 	os.Setenv("APIP_CP_ENCRYPTION_KEY", "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef")
