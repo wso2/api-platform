@@ -137,7 +137,11 @@ config:
     # How the BFF derives the effective scopes it reports to the SPA. Mirrors
     # the Platform API's own auth.authorization config.auth.mode key-for-key —
     # both MUST be set to the same mode, since the Platform API enforces
-    # authorization and this only decides what the UI believes it may do.
+    # authorization and this only decides what the UI believes it may do. The
+    # ai-workspace umbrella fails render on a mismatch, but only when its own
+    # platform-api subchart is enabled — against an EXTERNAL Platform API
+    # (platform-api.enabled=false) that check can't see the other side's mode,
+    # so set this to match it manually.
     authorization:
       mode: scope               # scope | role
       # Path to role-to-scope-mapping.yaml. REQUIRED when mode=role — mount the

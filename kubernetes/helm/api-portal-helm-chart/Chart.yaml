@@ -3,7 +3,7 @@ name: api-portal
 kubeVersion: ">=1.24.0-0"
 description: >-
   WSO2 API Platform — API Portal & MCP Hub product package. Chart whose
-  default profile is the shared Platform API control plane plus the Developer
+  default profile is the shared Platform API control plane plus the API
   Portal. Each component is a separately-released chart pulled as an OCI
   dependency; add other components (e.g. AI Workspace) later by appending a dependency.
 version: 1.0.0-alpha

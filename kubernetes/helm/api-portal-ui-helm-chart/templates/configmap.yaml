@@ -128,7 +128,7 @@ data:
     {{- $org := $cfg.organization }}
     {{- $orgHandle := $org.handle | default $org.defaultName }}
     {{- if not $orgHandle }}
-      {{- fail "apiPortal.config.organization.handle is required" }}
+      {{- fail "config.organization.handle is required" }}
     {{- end }}
     [api_portal.organization]
     handle = {{ $orgHandle | quote }}

@@ -275,10 +275,21 @@ configToml: ""
 # ----------------------------------------------------------------------------
 # The chart never creates or embeds secret values. Point existingSecret at a
 # Secret made by ./generate-secrets.sh. Render FAILS if it's unset. The Secret
-# must hold ENCRYPTION_KEY and the RS256 JWT key files jwt_public.pem /
-# jwt_private.pem (mounted into config.auth.jwt.*File), plus DATABASE_PASSWORD
-# when driver=postgres and WEBHOOK_SECRET when config.webhook.enabled. `keys`
+# must hold APIP_CP_ENCRYPTION_KEY and the RS256 JWT key files jwt_public.pem /
+# jwt_private.pem (mounted into config.auth.jwt.*File), plus APIP_CP_DATABASE_PASSWORD
+# when driver=postgres and APIP_CP_WEBHOOK_SECRET when config.webhook.enabled. `keys`
 # maps each logical name to the key inside that Secret.
+#
+# Upgrading from a chart version predating the APIP_CP_* rename: an existing
+# Secret still has the old generic key names (ENCRYPTION_KEY, DATABASE_PASSWORD,
+# WEBHOOK_SECRET, ADMIN_USERNAME, ADMIN_PASSWORD_HASH — the PEM entries were
+# never renamed). generate-secrets.sh never rewrites an existing Secret, so
+# `helm upgrade` alone will not migrate it and the deployment will look for keys
+# that aren't there. Either add the new-named keys to the existing Secret
+# (`kubectl patch secret <name> -p '{"data":{"APIP_CP_ENCRYPTION_KEY":"<same
+# base64 value as the old ENCRYPTION_KEY key>", ...}}'`), or override the `keys`
+# below back to your Secret's actual (old) key names until you're ready to
+# migrate it.
 secrets:
   existingSecret: ""
   # Each key inside the Secret is named EXACTLY like the env var the container

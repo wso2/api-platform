@@ -16,3 +16,18 @@ fails the install early with an actionable message on misconfiguration.
 {{- fail "api-portal-ui.enabled=true but platform-api.enabled=false and no external Platform API URL is set. Set platform-api.enabled=true, or set api-portal-ui.config.platformApi.baseUrl to an external control plane." }}
 {{- end }}
 {{- end }}
+{{/*
+The UI mirrors the Platform API's own authorization mode key-for-key (it only
+decides what the UI believes it may do; the Platform API is what actually
+enforces it) — a mismatch means the UI reports the wrong effective permissions.
+Only checkable when the local platform-api is enabled; an external Platform API's
+mode is outside this chart's visibility, so ai-workspace-ui.config.auth.authorization.mode
+must be set to match it manually in that case (documented in ai-workspace-ui's values.yaml).
+*/}}
+{{- if and $pa.enabled $aiw.enabled }}
+{{- $paAuthzMode := dig "config" "auth" "authorization" "mode" "scope" (default (dict) $pa) }}
+{{- $uiAuthzMode := dig "config" "auth" "authorization" "mode" "scope" (default (dict) $aiw) }}
+{{- if ne $paAuthzMode $uiAuthzMode }}
+{{- fail (printf "platform-api.config.auth.authorization.mode is %q but ai-workspace-ui.config.auth.authorization.mode is %q — both must match. Set ai-workspace-ui.config.auth.authorization.mode to %q." $paAuthzMode $uiAuthzMode $paAuthzMode) }}
+{{- end }}
+{{- end }}

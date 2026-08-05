@@ -1,10 +1,14 @@
 {{- $ap := .Values -}}
 {{- $pdb := $ap.podDisruptionBudget -}}
 {{- if and $ap.deployment.enabled $pdb.enabled }}
-{{- if and $pdb.minAvailable $pdb.maxUnavailable }}
+{{/* Compare against the "" sentinel, not truthiness — minAvailable/maxUnavailable
+     of 0 is a valid PDB value but is falsy under Go template and/or/not. */}}
+{{- $minSet := ne (toString $pdb.minAvailable) "" -}}
+{{- $maxSet := ne (toString $pdb.maxUnavailable) "" -}}
+{{- if and $minSet $maxSet }}
 {{- fail "api-portal.podDisruptionBudget: only one of minAvailable or maxUnavailable may be set" }}
 {{- end }}
-{{- if not (or $pdb.minAvailable $pdb.maxUnavailable) }}
+{{- if not (or $minSet $maxSet) }}
 {{- fail "api-portal.podDisruptionBudget: one of minAvailable or maxUnavailable must be set" }}
 {{- end }}
 apiVersion: policy/v1
@@ -21,9 +25,9 @@ spec:
   selector:
     matchLabels:
       {{- include "apip.componentSelectorLabels" (list . "api-portal") | nindent 6 }}
-  {{- if $pdb.minAvailable }}
+  {{- if $minSet }}
   minAvailable: {{ $pdb.minAvailable }}
-  {{- else if $pdb.maxUnavailable }}
+  {{- else if $maxSet }}
   maxUnavailable: {{ $pdb.maxUnavailable }}
   {{- end }}
 {{- end }}
