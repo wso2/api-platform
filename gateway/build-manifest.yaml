@@ -13,7 +13,7 @@ policies:
       version: v0.10.0
       gomodule: github.com/wso2/gateway-controllers/policies/aws-authentication@v0
     - name: aws-bedrock-guardrail
-      version: v1.0.2
+      version: v1.1.0
       gomodule: github.com/wso2/gateway-controllers/policies/aws-bedrock-guardrail@v1
     - name: azure-content-safety-content-moderation
       version: v1.0.2
