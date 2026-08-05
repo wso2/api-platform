@@ -48,7 +48,7 @@ This starts the API Portal (SQLite by default). On first boot the database schem
 Navigate to:
 
 ```
-https://localhost:9543/default/views/default
+https://localhost:9543/api-portal/default/views/default
 ```
 
 Sign in with the admin username and password you set when running `./scripts/setup.sh`.
@@ -245,7 +245,7 @@ TOKEN=$(curl -sk -X POST "https://localhost:9243/api/portal/v0.9/auth/login" \
   -d "username=<admin-username>&password=<admin-password>" | jq -r .token)
 
 # Publish the API (the token's org_handle claim scopes this to the "default" org)
-curl -sk -X POST "https://localhost:9543/api/v0.9/apis" \
+curl -sk -X POST "https://localhost:9543/api-portal/api/v0.9/apis" \
   -H "Authorization: Bearer $TOKEN" \
   -F "metadata=@api.yaml;type=application/yaml" \
   -F "definition=@openapi.yaml;type=application/yaml"
@@ -259,7 +259,7 @@ Refresh the portal — the Reading-List-API now appears in the catalog. Click it
 |---|---|
 | Organization | `default` |
 | Default view | `default` |
-| Portal URL | `https://localhost:9543/default/views/default` |
+| Portal URL | `https://localhost:9543/api-portal/default/views/default` |
 | Admin credentials | Set when you ran `./scripts/setup.sh` (stored bcrypt-hashed in `api-platform.env`) |
 | Sample API | `Reading-List-API` visible in the catalog |
 
