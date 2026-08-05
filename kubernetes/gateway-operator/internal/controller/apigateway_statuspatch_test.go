@@ -183,13 +183,18 @@ func TestHandleGatewayDeploymentError_exhaustionStatusPatchFailureStaysRecoverab
 	}
 	r, _ := newStatusFailureReconciler(t, gw, 1)
 
+	// Record the failure against the gateway's real deployment inputs, so the follow-up
+	// reconciles exercise the unchanged-input path rather than an accidental hash mismatch.
+	_, inputHash, err := r.deploymentInputs(context.Background(), gw)
+	if err != nil {
+		t.Fatalf("deploymentInputs: %v", err)
+	}
 	entry := &GatewayTrackingEntry{
-		Generation: 1, Status: GatewayTrackingStatusProcessing, RetryCount: 2, InputHash: "hash-1",
+		Generation: 1, Status: GatewayTrackingStatusProcessing, RetryCount: 2, InputHash: inputHash,
 	}
 	r.gatewayTracker.Set(testTrackKey, entry)
 
-	_, err := r.handleGatewayDeploymentError(context.Background(), gw, testTrackKey, entry, errors.New("boom"), 0)
-	if err == nil {
+	if _, err := r.handleGatewayDeploymentError(context.Background(), gw, testTrackKey, entry, errors.New("boom"), 0); err == nil {
 		t.Fatal("expected the failure status patch error to be returned")
 	}
 
@@ -203,20 +208,38 @@ func TestHandleGatewayDeploymentError_exhaustionStatusPatchFailureStaysRecoverab
 		t.Errorf("status = %q, want %q", stored.Status, GatewayTrackingStatusFailed)
 	}
 	if stored.NextRetryTime.IsZero() {
-		t.Error("expected a bounded next-retry time despite the failed status write")
+		t.Fatal("expected a bounded next-retry time despite the failed status write")
 	}
 
-	// Corrected inputs must still recover immediately, without waiting for the window.
 	deployCalls := 0
 	r.deployGateway = func(_ context.Context, _ *apiv1.APIGateway, _ string, _ int64, _, _ string) (ctrl.Result, error) {
 		deployCalls++
 		return ctrl.Result{}, nil
 	}
-	deployNow, _, _ := r.decideFailedRecovery(stored, "hash-2", stored.NextRetryTime.Add(-time.Hour))
-	if !deployNow {
-		t.Error("changed inputs must recover immediately even after a failed status write")
+
+	// Second reconcile, inside the retry window: the failure was never persisted, so the CR
+	// still carries no Programmed condition and this runs the real decision path.
+	res, err := callDecide(t, r, gw)
+	if err != nil {
+		t.Fatalf("reconcile inside the retry window returned an error: %v", err)
 	}
-	_ = deployCalls
+	if deployCalls != 0 {
+		t.Errorf("deploy attempts inside the retry window = %d, want 0", deployCalls)
+	}
+	if res.RequeueAfter <= 0 {
+		t.Errorf("RequeueAfter = %v, want a bounded retry despite the failed status write", res.RequeueAfter)
+	}
+
+	// Third reconcile, once the window has elapsed: exactly one bounded attempt.
+	stored.NextRetryTime = time.Now().Add(-time.Second)
+	r.gatewayTracker.Set(testTrackKey, stored)
+
+	if _, err := callDecide(t, r, gw); err != nil {
+		t.Fatalf("reconcile after the retry window returned an error: %v", err)
+	}
+	if deployCalls != 1 {
+		t.Errorf("deploy attempts after the retry window = %d, want exactly 1", deployCalls)
+	}
 }
 
 func findProgrammed(gw *apiv1.APIGateway) *metav1.Condition {

@@ -84,8 +84,9 @@ type GatewayTrackingEntry struct {
 	InputHash string
 }
 
-// GatewayTracker manages in-memory tracking of APIGateway deployment states
-// Entries persist until the APIGateway CR is deleted
+// GatewayTracker manages in-memory tracking of APIGateway deployment states.
+// Entries persist until the APIGateway CR is deleted, or until a status write fails and the
+// entry is dropped so the next reconcile re-derives state from the CR (see forgetTracking).
 type GatewayTracker struct {
 	mu      sync.RWMutex
 	entries map[string]*GatewayTrackingEntry // key: "namespace/name"
