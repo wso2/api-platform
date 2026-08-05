@@ -22,12 +22,6 @@ import (
 	"helm.sh/helm/v3/pkg/release"
 )
 
-// maxHistoryRevisions bounds how many stored revisions are read when planning. Helm's
-// action.History truncates to Max, and treats a Max of 0 as "return nothing", so this must
-// be a positive number large enough to cover any retained history (Helm keeps 10 by
-// default) rather than left unset.
-const maxHistoryRevisions = 1024
-
 // releaseOperation is the operation needed to move a release towards the desired chart.
 type releaseOperation int
 
@@ -37,7 +31,9 @@ const (
 	// operationUpgrade upgrades the release in place.
 	operationUpgrade
 	// operationPurgeThenInstall removes an unusable release (history included) and installs
-	// it again. Only planned when no successful revision would be discarded.
+	// it again. The safety property is that no *live resources* are discarded: either the
+	// release never deployed (revision-1 pending-install), or it was already uninstalled and
+	// only its history remains — which may still contain earlier successful revisions.
 	operationPurgeThenInstall
 	// operationRollbackThenUpgrade rolls the release back to a known-good revision so the
 	// storage leaves the pending state, then upgrades from there.

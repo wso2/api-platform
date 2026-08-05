@@ -118,7 +118,9 @@ func (t *GatewayTracker) Set(key string, entry *GatewayTrackingEntry) {
 	t.entries[key] = entry
 }
 
-// Delete removes a tracking entry (only called when APIGateway CR is deleted)
+// Delete removes a tracking entry. Called when the APIGateway CR is deleted, and when a
+// status write fails so the next reconcile re-derives state from the CR instead of trusting
+// a tracker state whose owning reconcile has already returned.
 func (t *GatewayTracker) Delete(key string) {
 	t.mu.Lock()
 	defer t.mu.Unlock()
@@ -149,6 +151,21 @@ func (r *GatewayReconciler) deploy(ctx context.Context, gatewayConfig *apiv1.API
 		return r.deployGateway(ctx, gatewayConfig, trackingKey, generation, configHash, inputHash)
 	}
 	return r.processGatewayDeployment(ctx, gatewayConfig, trackingKey, generation, configHash, inputHash)
+}
+
+// forgetTracking drops the in-memory entry so the next reconcile re-derives state from the CR.
+//
+// It is used when a status write fails. No tracker state may mean "another operation will
+// complete this" once the reconcile that owned that operation has returned: states like
+// Processing and Deployed cause the next reconcile to skip and return nil, which ends the
+// requeue chain that the returned error would otherwise have driven.
+func (r *GatewayReconciler) forgetTracking(trackingKey, reason string) {
+	r.gatewayTracker.Delete(trackingKey)
+	if r.Logger != nil {
+		r.Logger.Info("Cleared APIGateway tracking so the next reconcile can retry",
+			slog.String("key", trackingKey),
+			slog.String("reason", reason))
+	}
 }
 
 // retryCountFor returns the retry count a new attempt starts from. The budget carries over
@@ -502,6 +519,11 @@ func (r *GatewayReconciler) processGatewayDeployment(
 	// Set initial conditions (Accepted=True, Programmed=False/Pending)
 	if retryCount == 0 {
 		if err := r.setGatewayInitialConditions(ctx, gatewayConfig, generation); err != nil {
+			// The tracker still says Processing, which tells the next reconcile that another
+			// operation owns this generation — but this reconcile is returning, so nothing
+			// will. That next reconcile would skip and return nil, ending the requeue chain
+			// the returned error starts. Forget the entry so it re-derives from the CR.
+			r.forgetTracking(trackingKey, "initial status patch failed")
 			return ctrl.Result{}, err
 		}
 	}
@@ -630,6 +652,12 @@ func (r *GatewayReconciler) handleGatewayDeploymentSuccess(
 		Message:            readinessMsg,
 		LastTransitionTime: metav1.Now(),
 	}, &selectedCount, configHash); err != nil {
+		// Programmed=True never landed, so the CR still reports failure while the tracker
+		// says Deployed. Every reconcile would then skip on "status not yet propagated" and
+		// the gateway would stay false forever. Forget the entry so the next reconcile
+		// re-drives the deployment and rewrites the status; the Helm operation is safe to
+		// repeat because it upgrades an already-deployed release.
+		r.forgetTracking(trackingKey, "success status patch failed")
 		return ctrl.Result{}, err
 	}
 

@@ -366,7 +366,12 @@ func TestDecideAndProcess_configMapChangeRecoversImmediately(t *testing.T) {
 	}
 }
 
-func TestDecideAndProcess_annotationChangeRecoversImmediately(t *testing.T) {
+// TestDecideAndProcess_specInfrastructureAnnotationChangeRecoversImmediately covers a change
+// to spec.infrastructure.annotations, which is a deployment input: it becomes commonAnnotations
+// in the rendered values. Note this is a *spec* change, so on a real cluster it also bumps
+// metadata.generation; it is not the `kubectl annotate` route from the issue, which is covered
+// by TestDecideAndProcess_metadataAnnotationOnlyChangeWaitsForRetryWindow below.
+func TestDecideAndProcess_specInfrastructureAnnotationChangeRecoversImmediately(t *testing.T) {
 	gw := failedGateway(1)
 	r, calls := newRecoveryReconciler(t, gw)
 
@@ -392,7 +397,99 @@ func TestDecideAndProcess_annotationChangeRecoversImmediately(t *testing.T) {
 		t.Fatalf("unexpected error: %v", err)
 	}
 	if *calls != 1 {
-		t.Errorf("deploy attempts = %d, want 1 immediately after an annotation change", *calls)
+		t.Errorf("deploy attempts = %d, want 1 immediately after a spec.infrastructure annotation change", *calls)
+	}
+}
+
+// TestDecideAndProcess_metadataAnnotationOnlyChangeWaitsForRetryWindow pins down the exact
+// route the issue tried: `kubectl annotate apigateway ...`, which changes ObjectMeta.Annotations
+// without bumping metadata.generation.
+//
+// This is NOT an immediate retry trigger, and that is deliberate. Metadata annotations are not
+// deployment inputs — only spec.infrastructure labels/annotations reach the rendered values via
+// commonAnnotations — so fingerprinting them would mean retrying on changes that cannot alter
+// the outcome. It would also be a hot-loop risk: this codebase already writes operator-managed
+// annotations onto resources it reconciles (see httproute_controller.go), so any such annotation
+// added to APIGateway later would retrigger deployments on its own writes. Making
+// re-annotation a supported reset would mean introducing a documented reset annotation, which
+// is a public API decision for the maintainers.
+//
+// The gateway is still not wedged: it recovers on the bounded retry window, on an operator
+// restart, and on a ConfigMap correction. This test asserts the honest behaviour so the
+// limitation cannot be mistaken for a fix.
+func TestDecideAndProcess_metadataAnnotationOnlyChangeWaitsForRetryWindow(t *testing.T) {
+	gw := failedGateway(1)
+	r, calls := newRecoveryReconciler(t, gw)
+
+	_, baseHash, err := r.deploymentInputs(context.Background(), gw)
+	if err != nil {
+		t.Fatalf("deploymentInputs: %v", err)
+	}
+	r.gatewayTracker.Set(testTrackKey, &GatewayTrackingEntry{
+		Generation:    1,
+		Status:        GatewayTrackingStatusFailed,
+		RetryCount:    3,
+		InputHash:     baseHash,
+		NextRetryTime: time.Now().Add(testSyncPeriod),
+	})
+
+	// `kubectl annotate` — metadata only, generation unchanged.
+	generationBefore := gw.Generation
+	gw.ObjectMeta.Annotations = map[string]string{"ops.example.com/nudge": "1"}
+	if gw.Generation != generationBefore {
+		t.Fatalf("test setup changed the generation (%d -> %d); it must stay equal to observedGeneration",
+			generationBefore, gw.Generation)
+	}
+
+	res, err := callDecide(t, r, gw)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if *calls != 0 {
+		t.Errorf("deploy attempts = %d, want 0: a metadata annotation is not a deployment input", *calls)
+	}
+	// Crucially it is not wedged either — a bounded retry is still scheduled.
+	if res.RequeueAfter <= 0 {
+		t.Errorf("RequeueAfter = %v, want a bounded retry so the gateway still recovers", res.RequeueAfter)
+	}
+
+	// And the fingerprint must be unchanged by metadata annotations, so the retry budget is
+	// not silently reset by an unrelated edit.
+	_, afterHash, err := r.deploymentInputs(context.Background(), gw)
+	if err != nil {
+		t.Fatalf("deploymentInputs: %v", err)
+	}
+	if afterHash != baseHash {
+		t.Error("metadata annotations must not affect the deployment input fingerprint")
+	}
+}
+
+func TestDeploymentInputs_infrastructureAnnotationOrderIsStable(t *testing.T) {
+	// The overlay is marshalled YAML with sorted keys, so a differently-ordered literal must
+	// produce the same fingerprint; otherwise map iteration order would reset retry budgets.
+	gwA := failedGateway(1)
+	gwA.Spec.Infrastructure = &apiv1.GatewayInfrastructure{
+		Annotations: map[string]string{"a": "1", "b": "2", "c": "3"},
+	}
+	gwB := failedGateway(1)
+	gwB.Spec.Infrastructure = &apiv1.GatewayInfrastructure{
+		Annotations: map[string]string{"c": "3", "b": "2", "a": "1"},
+	}
+
+	r, _ := newRecoveryReconciler(t, gwA)
+	_, hashA, err := r.deploymentInputs(context.Background(), gwA)
+	if err != nil {
+		t.Fatalf("deploymentInputs A: %v", err)
+	}
+	// Repeat many times: a single comparison could pass by luck with random map ordering.
+	for i := 0; i < 50; i++ {
+		_, hashB, err := r.deploymentInputs(context.Background(), gwB)
+		if err != nil {
+			t.Fatalf("deploymentInputs B: %v", err)
+		}
+		if hashA != hashB {
+			t.Fatalf("iteration %d: fingerprint depends on map ordering (%s vs %s)", i, hashA, hashB)
+		}
 	}
 }
 

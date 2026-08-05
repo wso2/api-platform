@@ -250,11 +250,3 @@ func TestReleaseOperation_String(t *testing.T) {
 		}
 	}
 }
-
-func TestMaxHistoryRevisions_isPositive(t *testing.T) {
-	// action.History treats Max == 0 as "return nothing", which would make every release
-	// look absent and turn an upgrade into a fresh install.
-	if maxHistoryRevisions <= 0 {
-		t.Fatalf("maxHistoryRevisions = %d, want a positive limit", maxHistoryRevisions)
-	}
-}
