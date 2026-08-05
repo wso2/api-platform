@@ -66,7 +66,7 @@ export type { HybridGateway, GatewayDeployment };
 
 type GatewayDeployResourceType = 'provider' | 'proxy' | 'mcp-server';
 
-const POLL_INTERVAL_MS = 3000;
+const POLL_INTERVAL_MS = 2000;
 
 /**
  * Upper bound on polling a transitional (DEPLOYING/UNDEPLOYING) deployment,
@@ -255,6 +255,15 @@ export function GatewayDeployProvider({
   const startPolling = useCallback(
     (deploymentId: string, gatewayId: string, status: string) => {
       if (!isTransitionalStatus(status)) return;
+      // A new transitional phase gets a clean slate: drop any timed-out mark from
+      // an earlier phase of this same deploymentId, or the stale mark would paint
+      // it FAILED immediately and suppress the watch that resolves it.
+      setTimedOutDeployments((prev) => {
+        if (!prev.has(deploymentId)) return prev;
+        const next = new Set(prev);
+        next.delete(deploymentId);
+        return next;
+      });
       setPollingDeployments((prev) => {
         if (prev.has(deploymentId)) return prev;
         const next = new Map(prev);
@@ -435,10 +444,17 @@ export function GatewayDeployProvider({
       results.forEach((result, idx) => {
         const [key, entry] = entries[idx];
         if (result.status !== 'fulfilled') {
-          // Give up on this deployment rather than retrying a failing read — the
-          // status could not be read, so report it as failed.
-          resolved.push(key);
-          timedOut.push(key);
+          // A status read can fail transiently (network blip, brief 5xx). Keep the
+          // entry in the watch set and retry on the next tick; only give up once
+          // the poll window has expired.
+          logger.warn(
+            `Failed to read status for deployment ${entry.deploymentId}:`,
+            result.reason
+          );
+          if (Date.now() >= entry.expiresAt) {
+            resolved.push(key);
+            timedOut.push(key);
+          }
           return;
         }
 

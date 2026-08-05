@@ -592,8 +592,9 @@ func TestRestoreDeployment(t *testing.T) {
 				t.Errorf("RestoreDeployment() DeploymentID = %v, want %v", result.DeploymentId.String(), tt.deploymentID)
 			}
 
-			if string(result.Status) != string(model.DeploymentStatusDeployed) {
-				t.Errorf("RestoreDeployment() Status = %v, want %v", result.Status, model.DeploymentStatusDeployed)
+			// Restore is transitional until the gateway acknowledges the artifact.
+			if string(result.Status) != string(model.DeploymentStatusDeploying) {
+				t.Errorf("RestoreDeployment() Status = %v, want %v", result.Status, model.DeploymentStatusDeploying)
 			}
 
 			// Verify updatedAt is returned from SetCurrentDeployment
@@ -609,8 +610,8 @@ func TestRestoreDeployment(t *testing.T) {
 			if !mockDeploymentRepo.setCurrentCalled {
 				t.Error("SetCurrent was not called")
 			}
-			if mockDeploymentRepo.setCurrentStatus != model.DeploymentStatusDeployed {
-				t.Errorf("SetCurrent called with status %v, want %v", mockDeploymentRepo.setCurrentStatus, model.DeploymentStatusDeployed)
+			if mockDeploymentRepo.setCurrentStatus != model.DeploymentStatusDeploying {
+				t.Errorf("SetCurrent called with status %v, want %v", mockDeploymentRepo.setCurrentStatus, model.DeploymentStatusDeploying)
 			}
 		})
 	}
@@ -845,8 +846,9 @@ func TestUndeployDeployment(t *testing.T) {
 				t.Fatal("UndeployDeployment() result is nil, expected non-nil")
 			}
 
-			if string(result.Status) != string(model.DeploymentStatusUndeployed) {
-				t.Errorf("UndeployDeployment() Status = %v, want %v", result.Status, model.DeploymentStatusUndeployed)
+			// Undeploy is transitional until the gateway acknowledges the removal.
+			if string(result.Status) != string(model.DeploymentStatusUndeploying) {
+				t.Errorf("UndeployDeployment() Status = %v, want %v", result.Status, model.DeploymentStatusUndeploying)
 			}
 
 			// Verify updatedAt is returned from SetCurrentDeployment
@@ -858,12 +860,12 @@ func TestUndeployDeployment(t *testing.T) {
 				}
 			}
 
-			// Verify SetCurrentDeployment was called with UNDEPLOYED status
+			// Verify SetCurrentDeployment was called with UNDEPLOYING status
 			if !mockDeploymentRepo.setCurrentCalled {
 				t.Error("SetCurrentDeployment was not called")
 			}
-			if mockDeploymentRepo.setCurrentStatus != model.DeploymentStatusUndeployed {
-				t.Errorf("SetCurrentDeployment called with status %v, want %v", mockDeploymentRepo.setCurrentStatus, model.DeploymentStatusUndeployed)
+			if mockDeploymentRepo.setCurrentStatus != model.DeploymentStatusUndeploying {
+				t.Errorf("SetCurrentDeployment called with status %v, want %v", mockDeploymentRepo.setCurrentStatus, model.DeploymentStatusUndeploying)
 			}
 		})
 	}
@@ -1398,8 +1400,8 @@ func TestRollbackDeployment_WhenAllDeploymentsArchived(t *testing.T) {
 		t.Fatal("RestoreDeployment() result is nil, expected non-nil")
 	}
 
-	if string(result.Status) != string(model.DeploymentStatusDeployed) {
-		t.Errorf("Expected status DEPLOYED, got %s", result.Status)
+	if string(result.Status) != string(model.DeploymentStatusDeploying) {
+		t.Errorf("Expected status DEPLOYING, got %s", result.Status)
 	}
 
 	if !mockDeploymentRepo.setCurrentCalled {
@@ -1455,8 +1457,8 @@ func TestRollbackDeployment_ToArchivedWhenCurrentUndeployed(t *testing.T) {
 		t.Errorf("Expected deployment ID %s, got %s", testDeploymentID, result.DeploymentId.String())
 	}
 
-	if string(result.Status) != string(model.DeploymentStatusDeployed) {
-		t.Errorf("Expected status DEPLOYED, got %s", result.Status)
+	if string(result.Status) != string(model.DeploymentStatusDeploying) {
+		t.Errorf("Expected status DEPLOYING, got %s", result.Status)
 	}
 }
 
@@ -1639,11 +1641,11 @@ func TestUndeployDeployment_WhenOnlyOneDeploymentExists(t *testing.T) {
 		t.Fatalf("UndeployDeployment() unexpected error: %v", err)
 	}
 
-	if string(result.Status) != string(model.DeploymentStatusUndeployed) {
-		t.Errorf("Expected status UNDEPLOYED, got %s", result.Status)
+	if string(result.Status) != string(model.DeploymentStatusUndeploying) {
+		t.Errorf("Expected status UNDEPLOYING, got %s", result.Status)
 	}
 
-	// The deployment should transition to UNDEPLOYED, not be deleted
+	// The deployment should transition to UNDEPLOYING, not be deleted
 	if mockDeploymentRepo.deleteCalled {
 		t.Error("DeleteDeployment should not be called - undeploy should only change status")
 	}
