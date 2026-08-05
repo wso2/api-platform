@@ -103,8 +103,10 @@ import {
 } from '../../../../contexts/AIEntitiesContext';
 import {
   DisabledActionTooltip,
+  GatewayArtifactDeleteWarning,
   GatewayArtifactReadOnlyBanner,
 } from '../../../../utils/readOnlyArtifacts';
+import { getErrorMessage } from '../../../../utils/apiError';
 
 import AnthropicLogo from '../../../../assets/brands/Anthropic.jpg';
 import AWSBedrockLogo from '../../../../assets/brands/AWSBedrock.webp';
@@ -559,8 +561,11 @@ function ServiceProviderOverviewContent() {
       setDeleteTarget(null);
       setDeleteConfirmationInput('');
       navigate(providersPath, { replace: true });
-    } catch {
-      showSnackbar('Failed to delete provider. Please try again.', 'error');
+    } catch (error) {
+      showSnackbar(
+        getErrorMessage(error, 'Failed to delete provider. Please try again.'),
+        'error'
+      );
     } finally {
       setIsDeletingProvider(false);
     }
@@ -1048,6 +1053,12 @@ function ServiceProviderOverviewContent() {
         <strong>'{deleteTarget?.name ?? ''}'</strong>?
       </DialogTitle>
       <DialogContent>
+        {isReadOnlyProvider ? (
+          <GatewayArtifactDeleteWarning
+            artifactType="LLM Provider"
+            artifactName={deleteTarget?.name}
+          />
+        ) : null}
         <Typography sx={{ mt: 1 }} variant="body2" color="text.secondary">
           This action will be irreversible and all related details will be
           lost. Please type in the component name below to confirm.

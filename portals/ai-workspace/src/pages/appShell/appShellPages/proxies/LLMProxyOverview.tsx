@@ -77,6 +77,7 @@ import type {
 } from '../../../../utils/types';
 import { getErrorMessage } from '../../../../utils/apiError';
 import {
+  GatewayArtifactDeleteWarning,
   GatewayArtifactReadOnlyBanner,
 } from '../../../../utils/readOnlyArtifacts';
 
@@ -597,6 +598,12 @@ function ProxyOverviewContent() {
       >
         <DialogTitle>Delete App LLM Proxy</DialogTitle>
         <DialogContent>
+          {isReadOnlyProxy ? (
+            <GatewayArtifactDeleteWarning
+              artifactType="App LLM Proxy"
+              artifactName={proxy.displayName}
+            />
+          ) : null}
           <DialogContentText>
             Are you sure you want to delete <strong>{proxy.displayName}</strong>? This
             action cannot be undone.
