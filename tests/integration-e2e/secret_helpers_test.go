@@ -38,8 +38,28 @@ import (
 	"io"
 	"mime/multipart"
 	"net/http"
+	"os"
+	"strconv"
 	"time"
 )
+
+// defaultMaxSecretHelperRespBytes bounds how much of a platform-api response body
+// these secret helpers will buffer into memory — a safety ceiling against a
+// misbehaving server returning an unbounded stream, not an expected size.
+// Override via E2E_MAX_RESP_BYTES for scenarios that legitimately need more.
+const defaultMaxSecretHelperRespBytes = 10 << 20 // 10 MiB
+
+// maxSecretHelperRespBytes returns the configured response-body size ceiling
+// (E2E_MAX_RESP_BYTES), falling back to defaultMaxSecretHelperRespBytes when unset
+// or invalid.
+func maxSecretHelperRespBytes() int64 {
+	if v := os.Getenv("E2E_MAX_RESP_BYTES"); v != "" {
+		if n, err := strconv.ParseInt(v, 10, 64); err == nil && n > 0 {
+			return n
+		}
+	}
+	return defaultMaxSecretHelperRespBytes
+}
 
 // createSecret creates a GENERIC secret in platform-api via multipart/form-data
 // and returns its handle.
@@ -72,7 +92,7 @@ func createSecret(displayName, value string) (string, error) {
 		return "", err
 	}
 	defer resp.Body.Close()
-	body, _ := io.ReadAll(resp.Body)
+	body, _ := io.ReadAll(io.LimitReader(resp.Body, maxSecretHelperRespBytes()))
 	if resp.StatusCode >= 300 {
 		return "", fmt.Errorf("create secret failed (%d): %s", resp.StatusCode, body)
 	}
@@ -159,7 +179,7 @@ func rotateSecret(handle, newValue string) error {
 		return err
 	}
 	defer resp.Body.Close()
-	body, _ := io.ReadAll(resp.Body)
+	body, _ := io.ReadAll(io.LimitReader(resp.Body, maxSecretHelperRespBytes()))
 	if resp.StatusCode >= 300 {
 		return fmt.Errorf("rotate secret failed (%d): %s", resp.StatusCode, body)
 	}
@@ -183,7 +203,7 @@ func deleteSecret(handle string) error {
 		return err
 	}
 	defer resp.Body.Close()
-	body, _ := io.ReadAll(resp.Body)
+	body, _ := io.ReadAll(io.LimitReader(resp.Body, maxSecretHelperRespBytes()))
 	if resp.StatusCode >= 300 {
 		return fmt.Errorf("delete secret failed (%d): %s", resp.StatusCode, body)
 	}

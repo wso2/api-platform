@@ -231,12 +231,20 @@ func (s *SecretService) Update(orgID, handle, updatedBy string, req *dto.UpdateS
 		Handle:      existing.Handle,
 		DisplayName: existing.DisplayName,
 		Hash:        existing.Hash,
+		// existing.UpdatedAt was just set in-place by s.repo.Update above — see
+		// model.SecretUpdatedEvent.Revision for why UnixNano() is a safe ordering token.
+		Revision: existing.UpdatedAt.UnixNano(),
 	})
 
 	return resp, nil
 }
 
 func (s *SecretService) Delete(orgID, handle, updatedBy string) error {
+	// Captured before the soft-delete so the broadcast Revision reflects the same
+	// moment as the DB write; FindRefsAndSoftDelete does not return the row's new
+	// updated_at, so we compute the ordering token here instead of re-fetching it.
+	deletedAt := time.Now().UTC()
+
 	refs, err := s.repo.FindRefsAndSoftDelete(orgID, handle, updatedBy)
 	if err != nil {
 		return fmt.Errorf("failed to delete secret: %w", err)
@@ -245,7 +253,10 @@ func (s *SecretService) Delete(orgID, handle, updatedBy string) error {
 		return &SecretInUseError{References: refs}
 	}
 
-	s.broadcastSecretEvent(orgID, "deprecated", &model.SecretDeprecatedEvent{Handle: handle})
+	s.broadcastSecretEvent(orgID, "deprecated", &model.SecretDeprecatedEvent{
+		Handle:   handle,
+		Revision: deletedAt.UnixNano(),
+	})
 
 	return nil
 }

@@ -656,3 +656,123 @@ func TestHandleSecretDeprecatedEvent_DeleteError_HashCacheNotCleared(t *testing.
 	_, ok := c.secretHashCache.Load("old-key")
 	assert.True(t, ok, "hash cache must be left intact when eviction fails, so a later retry doesn't skip it")
 }
+
+// ---------------------------------------------------------------------------
+// Revision-based staleness rejection (out-of-order / redelivered events)
+// ---------------------------------------------------------------------------
+
+func TestApplySecretUpdatedPayload_StaleRevision_Ignored(t *testing.T) {
+	syncer := newMockSecretSyncer()
+	c := stubClient(syncer)
+	c.secretRevisionCache.Store("openai-key", int64(10))
+
+	payload := SecretUpdatedEventPayload{Handle: "openai-key", Hash: "hmac-sha256:new", Revision: 5}
+	fetchValue := func(handle string) (string, error) {
+		t.Fatal("fetchValue must not be called for a stale event")
+		return "", nil
+	}
+
+	c.applySecretUpdatedPayload(payload, slog.Default(), fetchValue)
+
+	assert.Empty(t, syncer.upserted, "a stale update must not be applied")
+	cached, _ := c.secretRevisionCache.Load("openai-key")
+	assert.Equal(t, int64(10), cached, "the cached revision must not regress")
+}
+
+func TestApplySecretUpdatedPayload_NewerRevision_AppliedAndRevisionAdvanced(t *testing.T) {
+	syncer := newMockSecretSyncer()
+	c := stubClient(syncer)
+	c.secretRevisionCache.Store("openai-key", int64(5))
+
+	payload := SecretUpdatedEventPayload{Handle: "openai-key", Hash: "hmac-sha256:new", Revision: 10}
+	fetchValue := func(handle string) (string, error) { return "sk-rotated", nil }
+
+	c.applySecretUpdatedPayload(payload, slog.Default(), fetchValue)
+
+	assert.Equal(t, "sk-rotated", syncer.upserted["openai-key"])
+	cached, _ := c.secretRevisionCache.Load("openai-key")
+	assert.Equal(t, int64(10), cached)
+}
+
+func TestApplySecretUpdatedPayload_EqualRevision_StillApplied(t *testing.T) {
+	// A redelivery of the exact same event (e.g. an at-least-once retry from the
+	// EventHub) must still be applied — only strictly older revisions are stale.
+	syncer := newMockSecretSyncer()
+	c := stubClient(syncer)
+	c.secretRevisionCache.Store("openai-key", int64(10))
+
+	payload := SecretUpdatedEventPayload{Handle: "openai-key", Hash: "hmac-sha256:new", Revision: 10}
+	fetchValue := func(handle string) (string, error) { return "sk-rotated", nil }
+
+	c.applySecretUpdatedPayload(payload, slog.Default(), fetchValue)
+
+	assert.Equal(t, "sk-rotated", syncer.upserted["openai-key"], "redelivery of the same revision must still apply")
+}
+
+func TestHandleSecretDeprecatedEvent_StaleRevision_NotEvicted(t *testing.T) {
+	syncer := newMockSecretSyncer()
+	syncer.upserted["old-key"] = "sk-active"
+	c := stubClient(syncer)
+	populateCache(c, map[string]string{"old-key": "hmac-sha256:active"})
+	c.secretRevisionCache.Store("old-key", int64(10))
+
+	event := map[string]interface{}{
+		"type":          "secret.deprecated",
+		"correlationId": "corr-stale",
+		"payload":       map[string]interface{}{"handle": "old-key", "revision": float64(5)},
+	}
+
+	c.handleSecretDeprecatedEvent(event)
+
+	assert.Empty(t, syncer.deleted, "a stale deletion must not evict")
+	assert.Contains(t, syncer.upserted, "old-key")
+	_, ok := c.secretHashCache.Load("old-key")
+	assert.True(t, ok, "hash cache must be left intact for a stale deletion")
+}
+
+// TestSecretLifecycle_DeleteThenReactivate_StaleDeleteRedelivery_DoesNotEvict covers
+// the exact sequence a reviewer flagged as unprotected: update (rev 1) establishes the
+// secret, deprecate (rev 2) evicts it, a rotation reactivates it (rev 3, e.g. the same
+// handle re-created after deletion), and then the rev-2 deprecation is redelivered late
+// (a realistic outcome of common/eventhub's poll-based, at-least-once delivery with no
+// cross-replica ordering guarantee). The redelivered deprecation must be rejected as
+// stale rather than undoing the reactivation.
+func TestSecretLifecycle_DeleteThenReactivate_StaleDeleteRedelivery_DoesNotEvict(t *testing.T) {
+	syncer := newMockSecretSyncer()
+	c := stubClient(syncer)
+
+	// rev 1: initial update establishes the secret.
+	updatePayload := func(revision int64, value string) SecretUpdatedEventPayload {
+		return SecretUpdatedEventPayload{Handle: "openai-key", DisplayName: "OpenAI Key", Hash: "hmac-sha256:" + value, Revision: revision}
+	}
+	fetchValue := func(value string) func(string) (string, error) {
+		return func(string) (string, error) { return value, nil }
+	}
+
+	c.applySecretUpdatedPayload(updatePayload(1, "v1"), slog.Default(), fetchValue("sk-v1"))
+	assert.Equal(t, "sk-v1", syncer.upserted["openai-key"])
+
+	// rev 2: deprecation evicts the secret.
+	deprecateEvent := func(revision int) map[string]interface{} {
+		return map[string]interface{}{
+			"type":          "secret.deprecated",
+			"correlationId": "corr-deprecate",
+			"payload":       map[string]interface{}{"handle": "openai-key", "revision": float64(revision)},
+		}
+	}
+	c.handleSecretDeprecatedEvent(deprecateEvent(2))
+	assert.NotContains(t, syncer.upserted, "openai-key", "secret must be evicted after deprecation")
+
+	// rev 3: the handle is reactivated by a fresh rotation.
+	c.applySecretUpdatedPayload(updatePayload(3, "v3"), slog.Default(), fetchValue("sk-v3"))
+	assert.Equal(t, "sk-v3", syncer.upserted["openai-key"], "secret must be reactivated by the newer update")
+
+	// The rev-2 deprecation is redelivered (late retry / at-least-once redelivery).
+	// It must be recognized as stale relative to rev 3 and must NOT re-evict.
+	c.handleSecretDeprecatedEvent(deprecateEvent(2))
+	assert.Equal(t, "sk-v3", syncer.upserted["openai-key"], "a stale, redelivered deprecation must not undo the reactivation")
+
+	cached, ok := c.secretRevisionCache.Load("openai-key")
+	assert.True(t, ok)
+	assert.Equal(t, int64(3), cached, "cached revision must remain at the reactivation's revision")
+}

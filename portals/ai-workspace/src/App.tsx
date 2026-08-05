@@ -20,12 +20,13 @@ import {
   Routes,
   Route,
   Navigate,
+  Outlet,
   useLocation,
   useNavigate,
 } from 'react-router-dom';
 import AutoLoginPage from './pages/login/AutoLoginPage';
 import AppShellMain from './pages/appShell/appShellMain';
-import { AppShellProvider } from './contexts/AppShellContext';
+import { AppShellProvider, useAppShell } from './contexts/AppShellContext';
 import { RoleProvider } from './contexts/RoleContext';
 import PageErrorBoundary from './Components/common/PageErrorBoundary';
 import { AIWorkspaceSnackbarProvider } from './contexts/AIWorkspaceSnackbarContext';
@@ -71,7 +72,7 @@ import CustomPoliciesList from './pages/appShell/appShellPages/gateways/CustomPo
 import OrgRegisterPage from './pages/register/OrgRegisterPage';
 import Insights from './pages/appShell/appShellPages/insights/Main';
 import QuickStart from './pages/appShell/appShellPages/quickStart/Main';
-import Settings, { SettingsIndexRedirect } from './pages/appShell/appShellPages/settings/Main';
+import Settings, { SettingsIndexRedirect, resolveSettingsFallbackPath } from './pages/appShell/appShellPages/settings/Main';
 import ProviderTemplatesList from './pages/appShell/appShellPages/providerTemplate/ProviderTemplatesList';
 import SecretsList from './pages/appShell/appShellPages/secret/SecretsList';
 import CreateSecret from './pages/appShell/appShellPages/secret/CreateSecret';
@@ -87,6 +88,8 @@ import { LLMProvidersProvider } from './contexts/llmProvider';
 import React, { useRef, useState } from 'react';
 import { ChoreoUserProvider } from './contexts/ChoreoUserContext';
 import { useAppAuth } from './contexts/AppAuthContext';
+import { SCOPES } from './auth/permissions';
+import { buildOrgPath } from './utils/projectRouting';
 import { Box, Button, Stack, Typography } from '@wso2/oxygen-ui';
 import OoopsImage from './assets/images/Ooops.svg';
 
@@ -127,6 +130,25 @@ function ProtectedRoute({ children }: { children: React.ReactNode }) {
   }
 
   return <>{children}</>;
+}
+
+/**
+ * Layout-route guard: denies the wrapped route branch (rendered via <Outlet />)
+ * unless the caller holds `scope`, redirecting to a settings section they can
+ * actually access rather than a hardcoded path. Unlike ProtectedRoute
+ * (authentication only), this enforces per-route authorization — needed so a
+ * direct navigation to a URL like /settings/secrets can't render the page for a
+ * caller who lacks the corresponding scope.
+ */
+function RequireScope({ scope }: { scope: string }) {
+  const { hasPermission } = useAppAuth();
+  const { currentOrganization } = useAppShell();
+
+  if (!hasPermission(scope)) {
+    return <Navigate to={buildOrgPath(currentOrganization, resolveSettingsFallbackPath(hasPermission))} replace />;
+  }
+
+  return <Outlet />;
 }
 
 // The OIDC ?code= callback is now handled server-side by the BFF at
@@ -594,38 +616,40 @@ export default function App() {
                     </WithPageBoundary>
                   }
                 />
-                <Route
-                  path="secrets"
-                  element={
-                    <WithPageBoundary>
-                      <SecretsList />
-                    </WithPageBoundary>
-                  }
-                />
-                <Route
-                  path="secrets/new"
-                  element={
-                    <WithPageBoundary>
-                      <CreateSecret />
-                    </WithPageBoundary>
-                  }
-                />
-                <Route
-                  path="secrets/:handle"
-                  element={
-                    <WithPageBoundary>
-                      <SecretOverview />
-                    </WithPageBoundary>
-                  }
-                />
-                <Route
-                  path="secrets/:handle/rotate"
-                  element={
-                    <WithPageBoundary>
-                      <RotateSecret />
-                    </WithPageBoundary>
-                  }
-                />
+                <Route element={<RequireScope scope={SCOPES.SECRET_READ} />}>
+                  <Route
+                    path="secrets"
+                    element={
+                      <WithPageBoundary>
+                        <SecretsList />
+                      </WithPageBoundary>
+                    }
+                  />
+                  <Route
+                    path="secrets/new"
+                    element={
+                      <WithPageBoundary>
+                        <CreateSecret />
+                      </WithPageBoundary>
+                    }
+                  />
+                  <Route
+                    path="secrets/:handle"
+                    element={
+                      <WithPageBoundary>
+                        <SecretOverview />
+                      </WithPageBoundary>
+                    }
+                  />
+                  <Route
+                    path="secrets/:handle/rotate"
+                    element={
+                      <WithPageBoundary>
+                        <RotateSecret />
+                      </WithPageBoundary>
+                    }
+                  />
+                </Route>
               </Route>
             </Route>
             <Route path="projects/:projectSlug" element={<ProjectShell />}>

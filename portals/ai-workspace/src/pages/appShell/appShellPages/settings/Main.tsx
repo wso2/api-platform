@@ -84,14 +84,32 @@ export default function Settings() {
   const { hasPermission } = useAppAuth();
 
   const visibleNavItems = NAV_ITEMS.filter((item) => hasPermission(item.scope));
-  const selectedKey = visibleNavItems.find((item) => location.pathname.includes(item.path))?.key
-    ?? visibleNavItems[0]?.key;
+
+  // Match against the full NAV_ITEMS list, not just visibleNavItems: a caller who
+  // navigates directly to a settings URL they lack the scope for must be denied
+  // access below, not merely have the sidebar fall back to highlighting a
+  // different item while the actual (unauthorized) page still renders via
+  // <Outlet />.
+  const matchedItem = NAV_ITEMS.find((item) => location.pathname.includes(item.path));
+  const selectedKey = matchedItem?.key ?? visibleNavItems[0]?.key;
 
   // Settings requires at least one visible section; send others to org home.
   if (visibleNavItems.length === 0) {
     return (
       <Navigate
         to={buildOrgPath(currentOrganization, '/home')}
+        replace
+      />
+    );
+  }
+
+  // The active route matched a known settings section the caller lacks the scope
+  // for (e.g. direct navigation to /settings/secrets without SECRET_READ) —
+  // redirect to a section they can actually access instead of rendering it.
+  if (matchedItem && !hasPermission(matchedItem.scope)) {
+    return (
+      <Navigate
+        to={buildOrgPath(currentOrganization, resolveSettingsFallbackPath(hasPermission))}
         replace
       />
     );
@@ -144,11 +162,19 @@ export default function Settings() {
   );
 }
 
+// resolveSettingsFallbackPath picks the settings-relative destination a caller with
+// `hasPermission` should land on: the first section they hold the scope for, or the
+// org home page if they hold none of them. Shared by SettingsIndexRedirect and any
+// route guard (see App.tsx's RequireScope) that needs to bounce an unauthorized
+// caller somewhere useful instead of a hardcoded path.
+export function resolveSettingsFallbackPath(hasPermission: (scope: string) => boolean): string {
+  const firstVisibleItem = NAV_ITEMS.find((item) => hasPermission(item.scope));
+  return firstVisibleItem ? firstVisibleItem.path : '/home';
+}
+
 export function SettingsIndexRedirect() {
   const { currentOrganization } = useAppShell();
   const { hasPermission } = useAppAuth();
-  const firstVisibleItem = NAV_ITEMS.find((item) => hasPermission(item.scope));
-  const target = firstVisibleItem ? firstVisibleItem.path : '/home';
 
-  return <Navigate to={buildOrgPath(currentOrganization, target)} replace />;
+  return <Navigate to={buildOrgPath(currentOrganization, resolveSettingsFallbackPath(hasPermission))} replace />;
 }

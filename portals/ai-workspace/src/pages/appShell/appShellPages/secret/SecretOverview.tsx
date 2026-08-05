@@ -16,7 +16,7 @@
  * under the License.
  */
 
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { Link as RouterLink, useNavigate, useParams } from 'react-router-dom';
 import { Box, Button, Card, Chip, PageContent, Skeleton, Stack, Typography } from '@wso2/oxygen-ui';
 import { ChevronLeft, RotateCw, Trash2 } from '@wso2/oxygen-ui-icons-react';
@@ -56,17 +56,25 @@ export default function SecretOverview(): React.JSX.Element {
 
   const listPath = buildOrgPath(currentOrganization, '/settings/secrets');
 
+  // Guards against out-of-order responses: if the handle changes while a fetch for
+  // the previous handle is still in flight, that response must not overwrite the
+  // metadata now on screen for the newly-active handle.
+  const requestIdRef = useRef(0);
+
   const fetchSecret = async () => {
     if (!handle) return;
+    const requestId = ++requestIdRef.current;
     try {
       setIsLoading(true);
       setError(null);
       const response = await getSecret(handle);
+      if (requestIdRef.current !== requestId) return; // superseded by a newer request
       setSecret(response);
     } catch (err) {
+      if (requestIdRef.current !== requestId) return;
       setError(err instanceof Error ? err : new Error('Failed to load secret.'));
     } finally {
-      setIsLoading(false);
+      if (requestIdRef.current === requestId) setIsLoading(false);
     }
   };
 

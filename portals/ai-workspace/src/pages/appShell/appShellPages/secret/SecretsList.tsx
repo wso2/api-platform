@@ -16,7 +16,7 @@
  * under the License.
  */
 
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { Link as RouterLink, useNavigate } from 'react-router-dom';
 import {
   Box,
@@ -74,16 +74,26 @@ export default function SecretsList(): React.JSX.Element {
   const organizationId = currentOrganization?.uuid ?? '';
   const basePath = buildOrgPath(currentOrganization, '/settings/secrets');
 
+  // Guards against out-of-order responses (e.g. two concurrent fetches from a
+  // double-click on Retry, or — defensively — an organization change): a response
+  // for a superseded request must not replace the list a more recent request
+  // already populated. Each mount gets its own counter, since OrgShell remounts
+  // this whole page (via a key on the organization id) on every organization switch.
+  const requestIdRef = useRef(0);
+
   const fetchSecrets = async () => {
+    const requestId = ++requestIdRef.current;
     try {
       setIsLoading(true);
       setError(null);
       const response = await listSecrets({ limit: 100 });
+      if (requestIdRef.current !== requestId) return; // superseded by a newer request
       setSecrets(response.list ?? []);
     } catch (err) {
+      if (requestIdRef.current !== requestId) return;
       setError(err instanceof Error ? err : new Error(getErrorMessage(err, 'Failed to load secrets.')));
     } finally {
-      setIsLoading(false);
+      if (requestIdRef.current === requestId) setIsLoading(false);
     }
   };
 

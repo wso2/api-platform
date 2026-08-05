@@ -159,6 +159,7 @@ type Client struct {
 	webhookSecretSnapshotManager WebhookSecretSnapshotRefresher
 	secretSyncer                 secretSyncer
 	secretHashCache              sync.Map // handle → last-known Platform API hash (string)
+	secretRevisionCache          sync.Map // handle → last-applied event Revision (int64); never cleared on evict, so a stale event can't undo a later one
 	eventGatewayHooks            ControlPlaneEventGatewayHooks
 
 	// DP->CP push retry tuning.
@@ -3786,6 +3787,10 @@ func (c *Client) handleSecretUpdatedEvent(event map[string]interface{}) {
 // *utils.APIUtilsService (mirroring syncSecretsIncrementalFromMetas in
 // sync_secrets_test.go, which works around the same constraint).
 func (c *Client) applySecretUpdatedPayload(payload SecretUpdatedEventPayload, logger *slog.Logger, fetchValue func(handle string) (string, error)) {
+	if c.isStaleSecretEvent(payload.Handle, payload.Revision, logger) {
+		return
+	}
+
 	plaintext, err := fetchValue(payload.Handle)
 	if err != nil {
 		logger.Error("Failed to fetch rotated secret value", slog.Any("error", err))
@@ -3798,7 +3803,28 @@ func (c *Client) applySecretUpdatedPayload(payload SecretUpdatedEventPayload, lo
 	}
 
 	c.secretHashCache.Store(payload.Handle, payload.Hash)
+	c.secretRevisionCache.Store(payload.Handle, payload.Revision)
 	logger.Info("Applied secret rotation from secret.updated event")
+}
+
+// isStaleSecretEvent reports whether revision is older than the last revision this
+// gateway already applied for handle. The comparison is strict-less-than so a
+// redelivery of the same event (revision equal to the cached one — e.g. at-least-once
+// retry from the EventHub) still applies normally, preserving existing idempotency.
+// The cache entry is never cleared on eviction (see handleSecretDeprecatedEvent), so a
+// deletion followed by a reactivation followed by a stale, redelivered deletion cannot
+// undo the reactivation: the stale deletion's revision is lower than the reactivation's.
+func (c *Client) isStaleSecretEvent(handle string, revision int64, logger *slog.Logger) bool {
+	if cached, ok := c.secretRevisionCache.Load(handle); ok {
+		if lastApplied, ok := cached.(int64); ok && revision < lastApplied {
+			logger.Warn("Ignoring stale secret event",
+				slog.Int64("event_revision", revision),
+				slog.Int64("last_applied_revision", lastApplied),
+			)
+			return true
+		}
+	}
+	return false
 }
 
 // handleSecretDeprecatedEvent processes secret.deprecated events, pushed when a
@@ -3827,11 +3853,20 @@ func (c *Client) handleSecretDeprecatedEvent(event map[string]interface{}) {
 		slog.String("secret_handle", payload.Handle),
 	)
 
+	if c.isStaleSecretEvent(payload.Handle, payload.Revision, logger) {
+		return
+	}
+
 	if err := c.secretSyncer.Delete(payload.Handle, deprecated.CorrelationID); err != nil {
 		logger.Warn("Failed to evict deprecated secret from local store", slog.Any("error", err))
 		return
 	}
 	c.secretHashCache.Delete(payload.Handle)
+	// Deliberately Store, not Delete: a later secret.updated for the same handle (a
+	// rotation reactivating it) must still be able to detect a subsequently-redelivered
+	// copy of *this* deletion event as stale. Clearing the cache entry here would let
+	// that stale redelivery through and re-evict the reactivated secret.
+	c.secretRevisionCache.Store(payload.Handle, payload.Revision)
 	logger.Info("Evicted deprecated secret from local store")
 }
 

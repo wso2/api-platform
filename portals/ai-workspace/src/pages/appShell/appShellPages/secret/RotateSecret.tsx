@@ -16,7 +16,7 @@
  * under the License.
  */
 
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { Link as RouterLink, useNavigate, useParams } from 'react-router-dom';
 import {
   Alert,
@@ -65,21 +65,28 @@ export default function RotateSecret(): React.JSX.Element {
   const listPath = buildOrgPath(currentOrganization, '/settings/secrets');
   const overviewPath = handle ? `${listPath}/${handle}` : listPath;
 
+  // Guards against out-of-order responses: if the handle changes while a fetch for
+  // the previous handle is still in flight, that response must not overwrite the
+  // form fields now shown for the newly-active handle — otherwise a submit could
+  // send the previous secret's display name/description to the current handle.
+  const requestIdRef = useRef(0);
+
   const fetchSecret = async () => {
     if (!handle) return;
+    const requestId = ++requestIdRef.current;
     try {
       setIsLoading(true);
       setLoadError(null);
       const response = await getSecret(handle);
-      if (!isMounted()) return;
+      if (!isMounted() || requestIdRef.current !== requestId) return; // superseded or unmounted
       setSecret(response);
       setDisplayName(response.displayName);
       setDescription(response.description ?? '');
     } catch (err) {
-      if (!isMounted()) return;
+      if (!isMounted() || requestIdRef.current !== requestId) return;
       setLoadError(err instanceof Error ? err : new Error('Failed to load secret.'));
     } finally {
-      if (isMounted()) setIsLoading(false);
+      if (isMounted() && requestIdRef.current === requestId) setIsLoading(false);
     }
   };
 

@@ -408,6 +408,9 @@ type SecretUpdatedEventPayload struct {
 	Handle      string `json:"handle"`
 	DisplayName string `json:"name"`
 	Hash        string `json:"hash"`
+	// Revision orders events for the same handle so a redelivered or reordered
+	// event cannot undo a change already applied locally. See Client.secretRevisionCache.
+	Revision int64 `json:"revision"`
 }
 
 // SecretUpdatedEvent represents the complete secret.updated event.
@@ -422,6 +425,9 @@ type SecretUpdatedEvent struct {
 // fired when a secret is deleted (soft-deleted to DEPRECATED).
 type SecretDeprecatedEventPayload struct {
 	Handle string `json:"handle"`
+	// Revision — see SecretUpdatedEventPayload.Revision. Compared against the same
+	// cache so a late deletion cannot undo a reactivation that happened after it.
+	Revision int64 `json:"revision"`
 }
 
 // SecretDeprecatedEvent represents the complete secret.deprecated event.
