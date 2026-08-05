@@ -50,7 +50,7 @@ global:
 enabled: false
 image:
   repository: ghcr.io/wso2/api-platform/ai-workspace
-  tag: "1.0.0-beta"
+  tag: "1.0.0"
   pullPolicy: IfNotPresent
 # Pull secrets for THIS component only (merged with global.imagePullSecrets).
 imagePullSecrets: []
@@ -66,8 +66,12 @@ config:
   defaultOrgRegion: us
 
   server:
-    # Public host (or host:port) the browser uses to reach the UI; shown in the
-    # SPA and used to build redirect URLs. Leave "" to derive from the service.
+    # Externally-reachable host[:port] for this deployment, used ONLY in the BFF's
+    # startup log banner ("Visit https://..."). Not sent to the browser — the SPA
+    # knows its own address from window.location. Set it when a proxy/ingress
+    # fronts the BFF on a different host:port than the listener binds to, so the
+    # banner shows an address an operator can actually reach. Leave "" to fall
+    # back to localhost:<containerPort>.
     domain: ""
     # Optional plain-HTTP listener — enable only behind a TLS-terminating
     # proxy/ingress. The HTTPS listener always runs on containerPort.
@@ -99,7 +103,15 @@ config:
     # externally reachable, not a proxy path).
     controlplaneHost: ""
     # Gateway build options offered in the create-gateway dropdown (JSON string).
-    platformGatewayVersions: '[{"version":"1.2","latestVersion":"v1.2.0-M1","channel":"STS"}]'
+    # Each entry: version (helm chart minor), latestVersion (image/chart tag, used
+    # in the helm --version flag and the download URL's release-tag path), channel
+    # ("LTS" | "STS"); the first entry is the default. distVersion overrides the
+    # version segment of the distribution zip name when the published asset differs
+    # from the release tag, and distFolderVersion the directory it unpacks into —
+    # both default sensibly from latestVersion, so set them only when a tag ships an
+    # asset named differently (e.g. v1.2.0-rc → wso2apip-ai-gateway-1.2.0-rc.zip).
+    # Kept in lockstep with portals/ai-workspace/configs/config-template.toml.
+    platformGatewayVersions: '[{"version":"1.2","latestVersion":"v1.2.0-rc","distVersion":"1.2.0-rc","distFolderVersion":"1.2.0","channel":"LTS"}]'
 
   session:
     # Server-side session store. Only "memory" is supported today.
@@ -122,6 +134,15 @@ config:
       email: email
       scope: scope
       roles: roles
+    # How the BFF derives the effective scopes it reports to the SPA. Mirrors
+    # the Platform API's own auth.authorization config.auth.mode key-for-key —
+    # both MUST be set to the same mode, since the Platform API enforces
+    # authorization and this only decides what the UI believes it may do.
+    authorization:
+      mode: scope               # scope | role
+      # Path to role-to-scope-mapping.yaml. REQUIRED when mode=role — mount the
+      # same file the Platform API reads, so the UI and API cannot disagree.
+      roleToScopeMapping: ""
     # OIDC settings — used only when mode=oidc. The client secret is NOT here;
     # it comes from the Secret (secrets.keys.oidcClientSecret).
     # Both URLs must include the /ai-workspace prefix — that is where the BFF serves
@@ -147,8 +168,12 @@ configToml: ""
 # created by ./generate-secrets.sh; the chart never embeds the value.
 secrets:
   existingSecret: ""
+  # The key inside the Secret is named EXACTLY like the env var the container
+  # receives and the {{ env "..." }} token in config.toml that reads it — one name
+  # for the whole chain (Secret key = env var = config token = generate-secrets.sh
+  # input), so there is nothing to map in your head.
   keys:
-    oidcClientSecret: OIDC_CLIENT_SECRET
+    oidcClientSecret: APIP_AIW_AUTH_OIDC_CLIENT_SECRET
 
 # ----------------------------------------------------------------------------
 # service — how the UI is exposed
@@ -264,7 +289,7 @@ deployment:
 # Autoscaling & disruption budget
 # ----------------------------------------------------------------------------
 # HorizontalPodAutoscaler. The UI is stateless (no database), so — unlike the
-# Platform API / Developer Portal — there is NO postgres requirement; it can scale
+# Platform API / API Portal — there is NO postgres requirement; it can scale
 # freely. Off by default.
 hpa:
   enabled: false

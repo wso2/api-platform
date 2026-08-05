@@ -56,6 +56,20 @@ data:
     [ai_workspace.auth]
     mode = {{ $cfg.auth.mode | quote }}
 
+    {{- $authz := $cfg.auth.authorization }}
+    {{- if and (ne $authz.mode "scope") (ne $authz.mode "role") }}
+    {{- fail (printf "config.auth.authorization.mode must be \"scope\" or \"role\", got %q" $authz.mode) }}
+    {{- end }}
+    [ai_workspace.auth.authorization]
+    mode = {{ $authz.mode | quote }}
+    {{- if eq $authz.mode "role" }}
+    role_to_scope_mapping = {{ required "config.auth.authorization.roleToScopeMapping is required when auth.authorization.mode is \"role\"" $authz.roleToScopeMapping | quote }}
+    {{- else }}
+    {{- with $authz.roleToScopeMapping }}
+    role_to_scope_mapping = {{ . | quote }}
+    {{- end }}
+    {{- end }}
+
     [ai_workspace.auth.claim_mappings]
     organization = {{ $cfg.auth.claimMappings.organization | quote }}
     org_name = {{ $cfg.auth.claimMappings.orgName | quote }}
@@ -68,7 +82,6 @@ data:
     {{- if eq $cfg.auth.mode "oidc" }}
 
     [ai_workspace.auth.oidc]
-    enabled = "true"
     authority = {{ required "config.auth.oidc.authority is required when auth.mode is \"oidc\"" $cfg.auth.oidc.authority | quote }}
     client_id = {{ required "config.auth.oidc.clientId is required when auth.mode is \"oidc\"" $cfg.auth.oidc.clientId | quote }}
     client_secret = {{ `'{{ env "APIP_AIW_AUTH_OIDC_CLIENT_SECRET" }}'` }}
