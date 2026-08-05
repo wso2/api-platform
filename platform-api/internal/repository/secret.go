@@ -245,10 +245,13 @@ func (r *SecretRepo) FindRefsAndSoftDelete(orgID, handle, updatedBy string) ([]m
 	case "postgres", "postgresql":
 		lockQuery = `SELECT uuid FROM secrets WHERE organization_uuid = $1 AND handle = $2 LIMIT 1 FOR UPDATE`
 	case database.DriverSQLServer:
-		// T-SQL has no LIMIT clause — SELECT TOP (1) is the equivalent. Using the
-		// shared LIMIT-based query here previously produced an invalid-syntax error
-		// on every SQL Server delete (surfaced to callers as a generic 500).
-		lockQuery = r.db.Rebind(`SELECT TOP (1) uuid FROM secrets WHERE organization_uuid = ? AND handle = ?`)
+		// T-SQL has no LIMIT clause — SELECT TOP (1) is the equivalent (fixing an
+		// invalid-syntax error previously surfaced to callers as a generic 500).
+		// WITH (UPDLOCK, ROWLOCK) is T-SQL's counterpart to Postgres's FOR UPDATE:
+		// without it, a plain SELECT takes no lock held for the transaction's
+		// lifetime, so two concurrent deletes/updates on the same secret would not
+		// serialize against each other on SQL Server the way they do on Postgres.
+		lockQuery = r.db.Rebind(`SELECT TOP (1) uuid FROM secrets WITH (UPDLOCK, ROWLOCK) WHERE organization_uuid = ? AND handle = ?`)
 	default:
 		lockQuery = r.db.Rebind(`SELECT uuid FROM secrets WHERE organization_uuid = ? AND handle = ? LIMIT 1`)
 	}

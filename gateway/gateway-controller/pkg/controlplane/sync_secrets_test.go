@@ -20,10 +20,12 @@ package controlplane
 
 import (
 	"errors"
+	"fmt"
 	"log/slog"
 	"testing"
 	"time"
 
+	"github.com/gorilla/websocket"
 	"github.com/stretchr/testify/assert"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/utils"
 )
@@ -775,4 +777,66 @@ func TestSecretLifecycle_DeleteThenReactivate_StaleDeleteRedelivery_DoesNotEvict
 	cached, ok := c.secretRevisionCache.Load("openai-key")
 	assert.True(t, ok)
 	assert.Equal(t, int64(3), cached, "cached revision must remain at the reactivation's revision")
+}
+
+// ---------------------------------------------------------------------------
+// Revision precision through the real WebSocket JSON decode (handleMessage)
+//
+// These go through client.handleMessage with raw JSON bytes rather than a
+// hand-built map[string]interface{}, because the precision bug they guard
+// against lives specifically in that decode step: handleMessage used to parse
+// the message with plain json.Unmarshal into map[string]interface{}, which
+// decodes JSON numbers as float64. float64 has ~53 bits of integer precision,
+// but a UnixNano revision is ~60 bits, so two revisions within ~256ns of each
+// other at that magnitude decoded to the identical value — verified empirically
+// before the fix. A test built from Go int64 literals instead of raw JSON text
+// would never exercise that decode path and would pass whether or not the bug
+// was present.
+// ---------------------------------------------------------------------------
+
+func deprecatedMessage(handle string, revision int64) []byte {
+	return []byte(fmt.Sprintf(
+		`{"type":"secret.deprecated","correlationId":"corr-precision","payload":{"handle":%q,"revision":%d}}`,
+		handle, revision,
+	))
+}
+
+func TestHandleMessage_SecretDeprecated_AdjacentRevisions_ReorderedStaleRejected(t *testing.T) {
+	syncer := newMockSecretSyncer()
+	syncer.upserted["openai-key"] = "sk-active"
+	c := stubClient(syncer)
+	populateCache(c, map[string]string{"openai-key": "hmac-sha256:active"})
+
+	// Realistic UnixNano magnitude (~10^18). newRevision and staleRevision differ
+	// by 100ns — inside the ~256ns window that collided under the float64 bug.
+	const newRevision int64 = 1735900000123456700
+	const staleRevision int64 = newRevision - 100
+
+	c.handleMessage(websocket.TextMessage, deprecatedMessage("openai-key", newRevision))
+	assert.Equal(t, []string{"openai-key"}, syncer.deleted, "the newer deprecation must evict")
+
+	// The older, adjacent revision arrives late (reordered/redelivered). It must
+	// be rejected as stale, not re-applied.
+	c.handleMessage(websocket.TextMessage, deprecatedMessage("openai-key", staleRevision))
+	assert.Equal(t, []string{"openai-key"}, syncer.deleted,
+		"a stale reordered deprecation adjacent in time to the last-applied one must not evict again")
+
+	cached, ok := c.secretRevisionCache.Load("openai-key")
+	assert.True(t, ok)
+	assert.Equal(t, newRevision, cached, "cached revision must remain exactly the newer value, not a float64-rounded approximation")
+}
+
+func TestHandleMessage_SecretDeprecated_EqualRevisionRedelivery_StillApplied(t *testing.T) {
+	syncer := newMockSecretSyncer()
+	syncer.upserted["openai-key"] = "sk-active"
+	c := stubClient(syncer)
+	populateCache(c, map[string]string{"openai-key": "hmac-sha256:active"})
+
+	const revision int64 = 1735900000123456700
+
+	c.handleMessage(websocket.TextMessage, deprecatedMessage("openai-key", revision))
+	c.handleMessage(websocket.TextMessage, deprecatedMessage("openai-key", revision))
+
+	assert.Equal(t, []string{"openai-key", "openai-key"}, syncer.deleted,
+		"an exact redelivery of the same revision must still be applied (idempotent), not rejected as stale")
 }

@@ -1344,9 +1344,19 @@ func (c *Client) handleMessage(messageType int, message []byte) {
 		return
 	}
 
-	// Parse as generic event to extract type
+	// Parse as generic event to extract type. UseNumber() keeps JSON numbers as
+	// json.Number (exact decimal text) instead of the default float64 — float64
+	// only has ~53 bits of integer precision, which silently rounds a UnixNano
+	// revision (~60 bits) to the nearest ~256ns at this magnitude. Two events for
+	// the same handle within that window would decode to the identical revision,
+	// letting a stale, reordered event's revision compare as "not older" than the
+	// newer one already applied (see isStaleSecretEvent). utils.MapToStruct's own
+	// marshal/unmarshal re-encodes json.Number as the original digits verbatim, so
+	// this one change is sufficient — no downstream struct/comparison needs to change.
 	var event map[string]interface{}
-	if err := json.Unmarshal(message, &event); err != nil {
+	dec := json.NewDecoder(bytes.NewReader(message))
+	dec.UseNumber()
+	if err := dec.Decode(&event); err != nil {
 		c.logger.Error("Failed to parse WebSocket message",
 			slog.Any("error", err),
 			slog.String("message", string(message)),
