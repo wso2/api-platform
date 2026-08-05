@@ -241,9 +241,15 @@ func (r *SecretRepo) FindRefsAndSoftDelete(orgID, handle, updatedBy string) ([]m
 	defer tx.Rollback() //nolint:errcheck
 
 	var lockQuery string
-	if r.db.Driver() == "postgres" || r.db.Driver() == "postgresql" {
+	switch r.db.Driver() {
+	case "postgres", "postgresql":
 		lockQuery = `SELECT uuid FROM secrets WHERE organization_uuid = $1 AND handle = $2 LIMIT 1 FOR UPDATE`
-	} else {
+	case database.DriverSQLServer:
+		// T-SQL has no LIMIT clause — SELECT TOP (1) is the equivalent. Using the
+		// shared LIMIT-based query here previously produced an invalid-syntax error
+		// on every SQL Server delete (surfaced to callers as a generic 500).
+		lockQuery = r.db.Rebind(`SELECT TOP (1) uuid FROM secrets WHERE organization_uuid = ? AND handle = ?`)
+	default:
 		lockQuery = r.db.Rebind(`SELECT uuid FROM secrets WHERE organization_uuid = ? AND handle = ? LIMIT 1`)
 	}
 	var lockedID string
