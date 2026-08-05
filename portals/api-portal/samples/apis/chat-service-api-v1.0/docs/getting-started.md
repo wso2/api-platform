@@ -15,12 +15,15 @@ paths or methods to choose between.
 
 ## Message format
 
-Every frame, in either direction, is a JSON object with two fields:
+Every frame, in either direction, is a JSON object. Only `type` is always present — it
+selects the frame's shape, and the service ignores any frame whose type it doesn't
+recognise. `message` carries the content of a chat frame, so frames of other types don't
+have one.
 
-| Field | Type | Description |
-|---|---|---|
-| `type` | string | Frame type, e.g. `connect` or `message` |
-| `message` | string | The message content |
+| Field | Type | Always present | Description |
+|---|---|---|---|
+| `type` | string | yes | Frame type, e.g. `connect` or `message` |
+| `message` | string | no | The message content, on chat frames |
 
 ```json
 { "type": "message", "message": "Hello from user1" }

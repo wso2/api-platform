@@ -121,11 +121,11 @@ curl -k -X POST "https://localhost:9543/api-portal/api/v0.9/apis" \
 
 ```bash
 # MCP server (note: MCP servers are created under /mcp-servers, not /apis).
-# An MCP server's contract is its tools schema (schemaDefinition) — it has no apiDefinition.
+# An MCP server's contract is its tools schema (definition.yaml) — it has no apiDefinition.
 curl -k -X POST "https://localhost:9543/api-portal/api/v0.9/mcp-servers" \
   -H "Authorization: Bearer $TOKEN" \
   -F "metadata=@mcp.yaml" \
-  -F "definition=@schemaDefinition.yaml;type=application/yaml"
+  -F "definition=@definition.yaml;type=application/yaml"
 ```
 
 | Field | Required | Description |

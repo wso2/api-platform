@@ -33,6 +33,8 @@ components:
       summary: A chat frame, sent in either direction over the same socket.
       payload:
         type: object
+        required:
+          - type
         properties:
           type:
             type: string
