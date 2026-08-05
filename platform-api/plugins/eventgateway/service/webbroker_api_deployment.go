@@ -247,10 +247,8 @@ func (s *WebBrokerAPIDeploymentService) deployWebBrokerAPI(apiUUID string, req *
 		s.slogger.Warn("Failed to ensure API-gateway association", "error", err)
 	}
 
-	initialStatus := model.DeploymentStatusDeployed
-	if s.cfg.Deployments.TransitionalStatusEnabled {
-		initialStatus = model.DeploymentStatusDeploying
-	}
+	// Transitional until the gateway acknowledges the artifact.
+	initialStatus := model.DeploymentStatusDeploying
 	performedAt := time.Now().UTC().Truncate(time.Millisecond)
 	if _, err := s.deploymentRepo.SetCurrentWithDetails(
 		apiUUID, orgID, gatewayID, deploymentID,
@@ -351,10 +349,8 @@ func (s *WebBrokerAPIDeploymentService) undeployWebBrokerAPIDeployment(apiUUID s
 		return nil, apperror.GatewayNotFound.New()
 	}
 
-	initialStatus := model.DeploymentStatusUndeployed
-	if s.cfg.Deployments.TransitionalStatusEnabled {
-		initialStatus = model.DeploymentStatusUndeploying
-	}
+	// Transitional until the gateway acknowledges the artifact.
+	initialStatus := model.DeploymentStatusUndeploying
 	performedAt := time.Now().UTC().Truncate(time.Millisecond)
 	newUpdatedAt, err := s.deploymentRepo.SetCurrentWithDetails(
 		apiUUID, orgID, deployment.GatewayID, deployment.DeploymentID,
@@ -432,10 +428,8 @@ func (s *WebBrokerAPIDeploymentService) restoreWebBrokerAPIDeployment(apiUUID st
 		return nil, apperror.GatewayNotFound.New()
 	}
 
-	initialStatus := model.DeploymentStatusDeployed
-	if s.cfg.Deployments.TransitionalStatusEnabled {
-		initialStatus = model.DeploymentStatusDeploying
-	}
+	// Transitional until the gateway acknowledges the artifact.
+	initialStatus := model.DeploymentStatusDeploying
 	performedAt := time.Now().UTC().Truncate(time.Millisecond)
 	updatedAt, err := s.deploymentRepo.SetCurrentWithDetails(
 		apiUUID, orgID, targetDeployment.GatewayID, *deploymentId,

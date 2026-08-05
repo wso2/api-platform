@@ -325,11 +325,8 @@ func (s *DeploymentService) DeployAPI(apiUUID string, req *api.DeployRequest, or
 		s.slogger.Warn("Failed to ensure API-gateway association", "error", err)
 	}
 
-	// Set initial status based on config; transitional (DEPLOYING) only when enabled
-	initialStatus := model.DeploymentStatusDeployed
-	if s.cfg.Deployments.TransitionalStatusEnabled {
-		initialStatus = model.DeploymentStatusDeploying
-	}
+	// Transitional until the gateway acknowledges the artifact.
+	initialStatus := model.DeploymentStatusDeploying
 	performedAt := time.Now().UTC().Truncate(time.Millisecond)
 	if _, err := s.deploymentRepo.SetCurrentWithDetails(
 		apiUUID, orgUUID, gatewayID, deploymentID,
@@ -411,11 +408,8 @@ func (s *DeploymentService) RestoreDeployment(apiUUID, deploymentID, gatewayID, 
 		return nil, apperror.GatewayNotFound.New()
 	}
 
-	// Set initial status based on config; transitional (DEPLOYING) only when enabled
-	initialStatus := model.DeploymentStatusDeployed
-	if s.cfg.Deployments.TransitionalStatusEnabled {
-		initialStatus = model.DeploymentStatusDeploying
-	}
+	// Transitional until the gateway acknowledges the artifact.
+	initialStatus := model.DeploymentStatusDeploying
 	performedAt := time.Now().UTC().Truncate(time.Millisecond)
 	updatedAt, err := s.deploymentRepo.SetCurrentWithDetails(
 		apiUUID, orgUUID, targetDeployment.GatewayID, deploymentID,
@@ -498,11 +492,8 @@ func (s *DeploymentService) UndeployDeployment(apiUUID, deploymentID, gatewayID,
 		return nil, apperror.GatewayNotFound.New()
 	}
 
-	// Set initial status based on config; transitional (UNDEPLOYING) only when enabled
-	initialStatus := model.DeploymentStatusUndeployed
-	if s.cfg.Deployments.TransitionalStatusEnabled {
-		initialStatus = model.DeploymentStatusUndeploying
-	}
+	// Transitional until the gateway acknowledges the artifact.
+	initialStatus := model.DeploymentStatusUndeploying
 	performedAt := time.Now().UTC().Truncate(time.Millisecond)
 	newUpdatedAt, err := s.deploymentRepo.SetCurrentWithDetails(
 		apiUUID, orgUUID, deployment.GatewayID, deploymentID,

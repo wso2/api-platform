@@ -69,23 +69,17 @@ type GatewayDeployResourceType = 'provider' | 'proxy' | 'mcp-server';
 const POLL_INTERVAL_MS = 3000;
 
 /**
- * How long a deployment keeps being polled after a deploy/redeploy/undeploy call
- * already answered with a terminal status.
+ * Upper bound on polling a transitional (DEPLOYING/UNDEPLOYING) deployment,
+ * mirroring platform-api's own deployment timeout: its sweeper marks a stuck
+ * deployment FAILED after `timeout_duration` (60s default) and runs every
+ * `timeout_interval` (20s default), so detection lands by 80s. Past that the
+ * record cannot still be transitional, and continuing to poll only keeps the tab
+ * busy — a lost acknowledgement would otherwise be polled forever.
  *
- * The platform API answers optimistically when transitional deployment statuses
- * are disabled (its default): the create call returns DEPLOYED before the gateway
- * has accepted the artifact, and a failure acknowledgement flips the record to
- * FAILED a moment later. Without this verification window the card would keep
- * claiming the deployment is active until the user reloads the page.
+ * Keep in step with [platform_api.deployments] in platform-api's config template;
+ * the values are not exposed over the API, so they cannot be read at runtime.
  */
-const ACK_VERIFY_WINDOW_MS = 20000;
-
-const TERMINAL_STATUSES: DeploymentStatus[] = [
-  'DEPLOYED',
-  'UNDEPLOYED',
-  'ARCHIVED',
-  'FAILED',
-];
+const TRANSITIONAL_POLL_TIMEOUT_MS = 80000;
 
 const isTransitionalStatus = (status: string): boolean =>
   status === 'DEPLOYING' || status === 'UNDEPLOYING';
@@ -93,13 +87,8 @@ const isTransitionalStatus = (status: string): boolean =>
 interface PollingEntry {
   deploymentId: string;
   gatewayId: string;
-  /** Last status observed for this deployment — a change is what polling waits for. */
-  lastStatus: string;
-  /**
-   * Epoch ms after which polling gives up. `null` means poll until a terminal
-   * status is reached (used for genuinely transitional deployments).
-   */
-  expiresAt: number | null;
+  /** Epoch ms after which polling gives up regardless of the status observed. */
+  expiresAt: number;
 }
 
 const normalizeGatewayNameForDeployment = (name: string): string =>
@@ -182,12 +171,6 @@ interface GatewayDeployContextValue {
   deployingGatewayId: string | null;
   isDeployingToGateway: boolean;
   isPollingGateway: (gatewayId: string) => boolean;
-  /**
-   * True while a gateway's latest deployment reports a terminal status that the
-   * gateway has not confirmed yet — the status shown is provisional and may still
-   * flip to FAILED.
-   */
-  isVerifyingGateway: (gatewayId: string) => boolean;
 
   /**
    * When true, the artifact is read-only (e.g. gateway-originated): its deployment
@@ -240,6 +223,16 @@ export function GatewayDeployProvider({
   const pollingDeploymentsRef = useRef(pollingDeployments);
   pollingDeploymentsRef.current = pollingDeployments;
 
+  /**
+   * Deployments whose poll window expired while still transitional — the gateway's
+   * acknowledgement never arrived, so they are surfaced as FAILED. The override only
+   * applies while platform-api still reports a transitional status, so a late
+   * acknowledgement replaces it with the real outcome on the next refetch.
+   */
+  const [timedOutDeployments, setTimedOutDeployments] = useState<Set<string>>(
+    new Set()
+  );
+
   const fetchSingleDeploymentStatus = useCallback(
     async (deploymentId: string): Promise<DeploymentResponse> => {
       if (resourceType === 'proxy') {
@@ -252,21 +245,23 @@ export function GatewayDeployProvider({
     [apiId, organizationId, resourceType]
   );
 
+  /**
+   * Watches a deployment whose status is still transitional (DEPLOYING/UNDEPLOYING)
+   * until platform-api reports a status that is no longer transitional, bounded by
+   * the server's own timeout (TRANSITIONAL_POLL_TIMEOUT_MS). A status that is
+   * already non-transitional is taken at face value — whatever platform-api
+   * reports is what the card shows.
+   */
   const startPolling = useCallback(
-    (
-      deploymentId: string,
-      gatewayId: string,
-      lastStatus: string,
-      verifyWindowMs: number | null
-    ) => {
+    (deploymentId: string, gatewayId: string, status: string) => {
+      if (!isTransitionalStatus(status)) return;
       setPollingDeployments((prev) => {
+        if (prev.has(deploymentId)) return prev;
         const next = new Map(prev);
         next.set(deploymentId, {
           deploymentId,
           gatewayId,
-          lastStatus,
-          expiresAt:
-            verifyWindowMs === null ? null : Date.now() + verifyWindowMs,
+          expiresAt: Date.now() + TRANSITIONAL_POLL_TIMEOUT_MS,
         });
         return next;
       });
@@ -274,40 +269,11 @@ export function GatewayDeployProvider({
     []
   );
 
-  /**
-   * Starts polling after a deploy/redeploy/undeploy call. A transitional response
-   * is polled until it settles; an already-terminal response is only provisional
-   * (see ACK_VERIFY_WINDOW_MS) and is polled for a bounded window so a late
-   * gateway failure acknowledgement surfaces without a page reload.
-   */
-  const startPostActionPolling = useCallback(
-    (deploymentId: string, gatewayId: string, status: string) => {
-      startPolling(
-        deploymentId,
-        gatewayId,
-        status,
-        isTransitionalStatus(status) ? null : ACK_VERIFY_WINDOW_MS
-      );
-    },
-    [startPolling]
-  );
-
+  /** True while a deployment on this gateway is still in a transitional status. */
   const isPollingGateway = useCallback(
     (gatewayId: string): boolean => {
       for (const entry of pollingDeployments.values()) {
         if (entry.gatewayId === gatewayId) return true;
-      }
-      return false;
-    },
-    [pollingDeployments]
-  );
-
-  const isVerifyingGateway = useCallback(
-    (gatewayId: string): boolean => {
-      for (const entry of pollingDeployments.values()) {
-        if (entry.gatewayId === gatewayId && entry.expiresAt !== null) {
-          return true;
-        }
       }
       return false;
     },
@@ -411,24 +377,48 @@ export function GatewayDeployProvider({
     }
   }, [apiId, refetchDeployments]);
 
+  /**
+   * Deployments as consumers see them: a record still reported as transitional after
+   * its poll window expired is shown as FAILED, since the status was never received.
+   */
+  const effectiveDeployments = useMemo<DeploymentListResponse | null>(() => {
+    if (!deployments?.list || timedOutDeployments.size === 0) return deployments;
+    return {
+      ...deployments,
+      list: deployments.list.map((d) =>
+        timedOutDeployments.has(d.deploymentId) && isTransitionalStatus(d.status)
+          ? { ...d, status: 'FAILED' as DeploymentStatus }
+          : d
+      ),
+    };
+  }, [deployments, timedOutDeployments]);
+
   // Auto-start polling for any deployments already in transitional state
   useEffect(() => {
-    if (!deployments?.list) return;
-    for (const d of deployments.list) {
+    if (!effectiveDeployments?.list) return;
+    for (const d of effectiveDeployments.list) {
       if (
         isTransitionalStatus(d.status) &&
         !pollingDeploymentsRef.current.has(d.deploymentId)
       ) {
-        startPolling(d.deploymentId, d.gatewayId, d.status, null);
+        startPolling(d.deploymentId, d.gatewayId, d.status);
       }
     }
-  }, [deployments, startPolling]);
+  }, [effectiveDeployments, startPolling]);
 
-  // Polling effect — 3s interval for each entry in pollingDeployments
+  /**
+   * Polling effect — one pass immediately when a deployment enters the watch set,
+   * then every POLL_INTERVAL_MS, so the first status read always lands well inside
+   * five seconds of the deploy/undeploy call rather than after an initial idle tick.
+   * An entry is dropped as soon as its status is no longer transitional, or once its
+   * poll window expires.
+   */
   useEffect(() => {
     if (pollingDeployments.size === 0) return;
 
-    const intervalId = setInterval(async () => {
+    let cancelled = false;
+
+    const poll = async () => {
       const current = pollingDeploymentsRef.current;
       if (current.size === 0) return;
 
@@ -438,41 +428,42 @@ export function GatewayDeployProvider({
           fetchSingleDeploymentStatus(deploymentId)
         )
       );
+      if (cancelled) return;
 
       const resolved: string[] = [];
-      const observed = new Map<string, string>();
+      const timedOut: string[] = [];
       results.forEach((result, idx) => {
         const [key, entry] = entries[idx];
         if (result.status !== 'fulfilled') {
+          // Give up on this deployment rather than retrying a failing read — the
+          // status could not be read, so report it as failed.
           resolved.push(key);
+          timedOut.push(key);
           return;
         }
 
-        const status = result.value.status;
-        const statusChanged = status !== entry.lastStatus;
-        if (statusChanged) {
-          observed.set(key, status);
-        }
-
-        if (statusChanged && TERMINAL_STATUSES.includes(status)) {
+        if (!isTransitionalStatus(result.value.status)) {
           // The gateway has reported the outcome — nothing further to wait for.
           resolved.push(key);
-        } else if (entry.expiresAt !== null && Date.now() >= entry.expiresAt) {
-          // Verification window elapsed with no contradicting acknowledgement:
-          // treat the status the API already reported as final.
+        } else if (Date.now() >= entry.expiresAt) {
+          // Still transitional past the server's own deployment timeout: the
+          // acknowledgement never arrived, so show it as failed.
           resolved.push(key);
+          timedOut.push(key);
         }
       });
 
-      if (resolved.length > 0 || observed.size > 0) {
+      if (timedOut.length > 0) {
+        setTimedOutDeployments((prev) => {
+          const next = new Set(prev);
+          for (const key of timedOut) next.add(key);
+          return next;
+        });
+      }
+
+      if (resolved.length > 0) {
         setPollingDeployments((prev) => {
           const next = new Map(prev);
-          for (const [key, status] of observed) {
-            const entry = next.get(key);
-            if (entry) {
-              next.set(key, { ...entry, lastStatus: status });
-            }
-          }
           for (const key of resolved) {
             next.delete(key);
           }
@@ -480,9 +471,15 @@ export function GatewayDeployProvider({
         });
         refetchDeployments();
       }
-    }, POLL_INTERVAL_MS);
+    };
 
-    return () => clearInterval(intervalId);
+    poll();
+    const intervalId = setInterval(poll, POLL_INTERVAL_MS);
+
+    return () => {
+      cancelled = true;
+      clearInterval(intervalId);
+    };
   }, [pollingDeployments, fetchSingleDeploymentStatus, refetchDeployments]);
 
   const deployToGateway = useCallback(
@@ -555,7 +552,7 @@ export function GatewayDeployProvider({
 
         // Keep watching the deployment: a terminal status here is still provisional
         // until the gateway acknowledges (or rejects) the artifact.
-        startPostActionPolling(result.deploymentId, gatewayId, result.status);
+        startPolling(result.deploymentId, gatewayId, result.status);
 
         await refetchDeployments();
 
@@ -573,7 +570,7 @@ export function GatewayDeployProvider({
       gateways,
       deployments,
       refetchDeployments,
-      startPostActionPolling,
+      startPolling,
       resourceType,
     ]
   );
@@ -622,7 +619,7 @@ export function GatewayDeployProvider({
         // the status read back here may still be overwritten with FAILED.
         try {
           const updated = await fetchSingleDeploymentStatus(deploymentId);
-          startPostActionPolling(deploymentId, gatewayId, updated.status);
+          startPolling(deploymentId, gatewayId, updated.status);
         } catch {
           // Ignore — the refetch below still reconciles the list.
         }
@@ -642,7 +639,7 @@ export function GatewayDeployProvider({
       organizationId,
       refetchDeployments,
       fetchSingleDeploymentStatus,
-      startPostActionPolling,
+      startPolling,
       resourceType,
     ]
   );
@@ -691,7 +688,7 @@ export function GatewayDeployProvider({
         });
 
         // A terminal status on the restore response is provisional as well.
-        startPostActionPolling(result.deploymentId, gatewayId, result.status);
+        startPolling(result.deploymentId, gatewayId, result.status);
 
         await refetchDeployments();
 
@@ -707,7 +704,7 @@ export function GatewayDeployProvider({
       apiId,
       organizationId,
       refetchDeployments,
-      startPostActionPolling,
+      startPolling,
       resourceType,
     ]
   );
@@ -773,7 +770,7 @@ export function GatewayDeployProvider({
       isLoading,
       error,
       refetchGateways: fetchGateways,
-      deployments,
+      deployments: effectiveDeployments,
       isLoadingDeployments,
       deploymentsError,
       refetchDeployments,
@@ -784,7 +781,6 @@ export function GatewayDeployProvider({
       deployingGatewayId,
       isDeployingToGateway,
       isPollingGateway,
-      isVerifyingGateway,
       readOnly,
     }),
     [
@@ -792,7 +788,7 @@ export function GatewayDeployProvider({
       isLoading,
       error,
       fetchGateways,
-      deployments,
+      effectiveDeployments,
       isLoadingDeployments,
       deploymentsError,
       refetchDeployments,
@@ -803,7 +799,6 @@ export function GatewayDeployProvider({
       deployingGatewayId,
       isDeployingToGateway,
       isPollingGateway,
-      isVerifyingGateway,
       readOnly,
     ]
   );

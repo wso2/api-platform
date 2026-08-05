@@ -146,7 +146,6 @@ data:
 
     [platform_api.deployments]
     max_per_api_gateway = {{ $cfg.deployments.maxPerApiGateway | int }}
-    transitional_status_enabled = {{ $cfg.deployments.transitionalStatusEnabled }}
     timeout_enabled = {{ $cfg.deployments.timeoutEnabled }}
     timeout_interval = {{ $cfg.deployments.timeoutInterval | int }}
     timeout_duration = {{ $cfg.deployments.timeoutDuration | int }}

@@ -260,11 +260,8 @@ func (s *LLMProviderDeploymentService) DeployLLMProvider(providerID string, req 
 		return nil, fmt.Errorf("failed to create deployment: %w", err)
 	}
 
-	// Set initial status based on config; transitional (DEPLOYING) only when enabled
-	initialStatus := model.DeploymentStatusDeployed
-	if s.cfg.Deployments.TransitionalStatusEnabled {
-		initialStatus = model.DeploymentStatusDeploying
-	}
+	// Transitional until the gateway acknowledges the artifact.
+	initialStatus := model.DeploymentStatusDeploying
 	performedAt := time.Now().UTC().Truncate(time.Millisecond)
 	if _, err := s.deploymentRepo.SetCurrentWithDetails(
 		provider.UUID, orgUUID, gatewayID, deploymentID,
@@ -356,11 +353,8 @@ func (s *LLMProviderDeploymentService) RestoreLLMProviderDeployment(providerID, 
 		return nil, apperror.GatewayNotFound.New()
 	}
 
-	// Set initial status based on config; transitional (DEPLOYING) only when enabled
-	initialStatus := model.DeploymentStatusDeployed
-	if s.cfg.Deployments.TransitionalStatusEnabled {
-		initialStatus = model.DeploymentStatusDeploying
-	}
+	// Transitional until the gateway acknowledges the artifact.
+	initialStatus := model.DeploymentStatusDeploying
 	performedAt := time.Now().UTC().Truncate(time.Millisecond)
 	updatedAt, err := s.deploymentRepo.SetCurrentWithDetails(
 		provider.UUID, orgUUID, targetDeployment.GatewayID, deploymentID,
@@ -448,11 +442,8 @@ func (s *LLMProviderDeploymentService) UndeployLLMProviderDeployment(providerID,
 		return nil, apperror.GatewayNotFound.New()
 	}
 
-	// Set initial status based on config; transitional (UNDEPLOYING) only when enabled
-	initialStatus := model.DeploymentStatusUndeployed
-	if s.cfg.Deployments.TransitionalStatusEnabled {
-		initialStatus = model.DeploymentStatusUndeploying
-	}
+	// Transitional until the gateway acknowledges the artifact.
+	initialStatus := model.DeploymentStatusUndeploying
 	performedAt := time.Now().UTC().Truncate(time.Millisecond)
 	newUpdatedAt, err := s.deploymentRepo.SetCurrentWithDetails(
 		provider.UUID, orgUUID, deployment.GatewayID, deploymentID,
@@ -1413,11 +1404,8 @@ func (s *LLMProxyDeploymentService) DeployLLMProxy(proxyID string, req *api.Depl
 		return nil, fmt.Errorf("failed to create deployment: %w", err)
 	}
 
-	// Set initial status based on config; transitional (DEPLOYING) only when enabled
-	initialStatus := model.DeploymentStatusDeployed
-	if s.cfg.Deployments.TransitionalStatusEnabled {
-		initialStatus = model.DeploymentStatusDeploying
-	}
+	// Transitional until the gateway acknowledges the artifact.
+	initialStatus := model.DeploymentStatusDeploying
 	performedAt := time.Now().UTC().Truncate(time.Millisecond)
 	if _, err := s.deploymentRepo.SetCurrentWithDetails(
 		proxy.UUID, orgUUID, gatewayID, deploymentID,
@@ -1507,11 +1495,8 @@ func (s *LLMProxyDeploymentService) RestoreLLMProxyDeployment(proxyID, deploymen
 		return nil, apperror.GatewayNotFound.New()
 	}
 
-	// Set initial status based on config; transitional (DEPLOYING) only when enabled
-	initialStatus := model.DeploymentStatusDeployed
-	if s.cfg.Deployments.TransitionalStatusEnabled {
-		initialStatus = model.DeploymentStatusDeploying
-	}
+	// Transitional until the gateway acknowledges the artifact.
+	initialStatus := model.DeploymentStatusDeploying
 	performedAt := time.Now().UTC().Truncate(time.Millisecond)
 	updatedAt, err := s.deploymentRepo.SetCurrentWithDetails(
 		proxy.UUID, orgUUID, targetDeployment.GatewayID, deploymentID,
@@ -1599,11 +1584,8 @@ func (s *LLMProxyDeploymentService) UndeployLLMProxyDeployment(proxyID, deployme
 		return nil, apperror.GatewayNotFound.New()
 	}
 
-	// Set initial status based on config; transitional (UNDEPLOYING) only when enabled
-	initialStatus := model.DeploymentStatusUndeployed
-	if s.cfg.Deployments.TransitionalStatusEnabled {
-		initialStatus = model.DeploymentStatusUndeploying
-	}
+	// Transitional until the gateway acknowledges the artifact.
+	initialStatus := model.DeploymentStatusUndeploying
 	performedAt := time.Now().UTC().Truncate(time.Millisecond)
 	newUpdatedAt, err := s.deploymentRepo.SetCurrentWithDetails(
 		proxy.UUID, orgUUID, deployment.GatewayID, deploymentID,
