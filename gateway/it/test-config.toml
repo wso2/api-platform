@@ -5,9 +5,6 @@
 # =============================================================================
 
 # AWS Bedrock Guardrail Policy Configuration
-awsbedrock_guardrail_region = "us-east-1"
-awsbedrock_guardrail_id = "test-guardrail-id"
-awsbedrock_guardrail_version = "DRAFT"
 awsbedrock_access_key_id = "test-access-key"
 awsbedrock_secret_access_key = "test-secret-key"
 awsbedrock_session_token = ""

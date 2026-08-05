@@ -51,6 +51,9 @@ Feature: AWS Bedrock Guardrail Policy
               - name: aws-bedrock-guardrail
                 version: v1
                 params:
+                  region: "us-east-1"
+                  guardrailID: "test-guardrail-id"
+                  guardrailVersion: "DRAFT"
                   request:
                     jsonPath: ""
                     redactPII: false
@@ -95,6 +98,9 @@ Feature: AWS Bedrock Guardrail Policy
               - name: aws-bedrock-guardrail
                 version: v1
                 params:
+                  region: "us-east-1"
+                  guardrailID: "test-guardrail-id"
+                  guardrailVersion: "DRAFT"
                   request:
                     jsonPath: ""
                     showAssessment: false
@@ -139,6 +145,9 @@ Feature: AWS Bedrock Guardrail Policy
               - name: aws-bedrock-guardrail
                 version: v1
                 params:
+                  region: "us-east-1"
+                  guardrailID: "test-guardrail-id"
+                  guardrailVersion: "DRAFT"
                   request:
                     showAssessment: true
       """
@@ -184,6 +193,9 @@ Feature: AWS Bedrock Guardrail Policy
               - name: aws-bedrock-guardrail
                 version: v1
                 params:
+                  region: "us-east-1"
+                  guardrailID: "test-guardrail-id"
+                  guardrailVersion: "DRAFT"
                   response:
                     jsonPath: ""
                     showAssessment: false
@@ -225,6 +237,9 @@ Feature: AWS Bedrock Guardrail Policy
               - name: aws-bedrock-guardrail
                 version: v1
                 params:
+                  region: "us-east-1"
+                  guardrailID: "test-guardrail-id"
+                  guardrailVersion: "DRAFT"
                   request:
                     jsonPath: "$.message"
       """
@@ -284,6 +299,9 @@ Feature: AWS Bedrock Guardrail Policy
               - name: aws-bedrock-guardrail
                 version: v1
                 params:
+                  region: "us-east-1"
+                  guardrailID: "test-guardrail-id"
+                  guardrailVersion: "DRAFT"
                   request:
                     jsonPath: ""
                     redactPII: false
@@ -334,6 +352,9 @@ Feature: AWS Bedrock Guardrail Policy
               - name: aws-bedrock-guardrail
                 version: v1
                 params:
+                  region: "us-east-1"
+                  guardrailID: "test-guardrail-id"
+                  guardrailVersion: "DRAFT"
                   request:
                     jsonPath: ""
                     redactPII: true
@@ -381,6 +402,9 @@ Feature: AWS Bedrock Guardrail Policy
               - name: aws-bedrock-guardrail
                 version: v1
                 params:
+                  region: "us-east-1"
+                  guardrailID: "test-guardrail-id"
+                  guardrailVersion: "DRAFT"
                   request:
                     jsonPath: ""
                   response:
@@ -428,6 +452,9 @@ Feature: AWS Bedrock Guardrail Policy
               - name: aws-bedrock-guardrail
                 version: v1
                 params:
+                  region: "us-east-1"
+                  guardrailID: "test-guardrail-id"
+                  guardrailVersion: "DRAFT"
                   request:
                     jsonPath: ""
       """
@@ -469,6 +496,9 @@ Feature: AWS Bedrock Guardrail Policy
               - name: aws-bedrock-guardrail
                 version: v1
                 params:
+                  region: "us-east-1"
+                  guardrailID: "test-guardrail-id"
+                  guardrailVersion: "DRAFT"
                   request:
                     jsonPath: ""
                     passthroughOnError: true
@@ -515,6 +545,9 @@ Feature: AWS Bedrock Guardrail Policy
               - name: aws-bedrock-guardrail
                 version: v1
                 params:
+                  region: "us-east-1"
+                  guardrailID: "test-guardrail-id"
+                  guardrailVersion: "DRAFT"
                   request:
                     jsonPath: "$.data.content"
       """
@@ -577,6 +610,9 @@ Feature: AWS Bedrock Guardrail Policy
               - name: aws-bedrock-guardrail
                 version: v1
                 params:
+                  region: "us-east-1"
+                  guardrailID: "test-guardrail-id"
+                  guardrailVersion: "DRAFT"
                   request:
                     jsonPath: "$.nonexistent.field"
       """
@@ -626,6 +662,9 @@ Feature: AWS Bedrock Guardrail Policy
               - name: aws-bedrock-guardrail
                 version: v1
                 params:
+                  region: "us-east-1"
+                  guardrailID: "test-guardrail-id"
+                  guardrailVersion: "DRAFT"
                   request:
                     showAssessment: true
       """
