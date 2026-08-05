@@ -15,26 +15,30 @@
  */
 
 // Command api-control-plane-bff is the Backend-for-Frontend for the api-control-plane
-// SPA. It serves the SPA, proxies all browser->backend traffic same-origin, and owns
-// authentication (Platform API's file-based login by default, or a confidential/PKCE
-// OIDC flow against a configured external IdP). Tokens live server-side; the browser
-// only ever holds an opaque HttpOnly session cookie.
+// SPA. It owns authentication (Platform API's file-based login by default, or a
+// confidential/PKCE OIDC flow against a configured external IdP): tokens live
+// server-side, and the browser only ever holds an opaque HttpOnly session cookie.
 //
-// Session, auth, and proxy handling land in later commits; this entrypoint currently
-// wires config loading and a health endpoint so the module builds and runs end to end
-// as each piece is added.
+// The same-origin reverse proxy to the Platform API and static SPA serving, plus the
+// HTTPS listener and graceful dual-listener shutdown, land in a follow-up commit —
+// today only the plain-HTTP listener is wired so local development can exercise the
+// auth flows end to end.
 package main
 
 import (
+	"context"
 	"flag"
 	"fmt"
 	"log/slog"
 	"net/http"
 	"os"
+	"os/signal"
 	"strings"
+	"syscall"
 	"time"
 
 	"api-control-plane-bff/internal/config"
+	"api-control-plane-bff/internal/server"
 )
 
 func main() {
@@ -52,42 +56,58 @@ func main() {
 		fmt.Fprintf(os.Stderr, "failed to load config: %v\n", err)
 		os.Exit(1)
 	}
-
 	setupLogging(cfg.Logging.Level, cfg.Logging.Format)
-	slog.Info("api-control-plane-bff config loaded",
-		slog.String("auth_mode", cfg.Auth.Mode),
-		slog.Bool("oidc_enabled", cfg.Auth.OIDC.Enabled),
-		slog.String("session_store", cfg.Session.Store))
 
-	mux := http.NewServeMux()
-	mux.HandleFunc("GET /healthz", func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Content-Type", "application/json")
-		_, _ = w.Write([]byte(`{"status":"ok"}`))
-	})
+	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
+	defer stop()
+
+	srv, err := server.New(ctx, cfg)
+	if err != nil {
+		slog.Error("failed to initialize server", "err", err)
+		os.Exit(1)
+	}
+	defer srv.Close()
 
 	addr, err := listen(cfg)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "%v\n", err)
 		os.Exit(1)
 	}
-	srv := &http.Server{
+	httpServer := &http.Server{
 		Addr:           addr,
-		Handler:        mux,
+		Handler:        srv.Handler(),
 		ReadTimeout:    15 * time.Second,
-		WriteTimeout:   15 * time.Second,
+		WriteTimeout:   0, // streamed/proxied responses (SSE) need no write deadline
 		IdleTimeout:    60 * time.Second,
 		MaxHeaderBytes: 1 << 20,
 	}
-	slog.Info("api-control-plane-bff listening", slog.String("addr", addr))
-	if err := srv.ListenAndServe(); err != nil {
-		fmt.Fprintf(os.Stderr, "server exited: %v\n", err)
-		os.Exit(1)
+
+	errCh := make(chan error, 1)
+	go func() { errCh <- httpServer.ListenAndServe() }()
+	slog.Info("api-control-plane-bff listening",
+		slog.String("addr", addr),
+		slog.String("auth_mode", cfg.Auth.Mode),
+		slog.Bool("oidc_enabled", cfg.Auth.OIDC.Enabled))
+
+	select {
+	case err := <-errCh:
+		if err != nil && err != http.ErrServerClosed {
+			fmt.Fprintf(os.Stderr, "server exited: %v\n", err)
+			os.Exit(1)
+		}
+	case <-ctx.Done():
+		slog.Info("shutting down")
+		shutdownCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		defer cancel()
+		if err := httpServer.Shutdown(shutdownCtx); err != nil {
+			slog.Error("graceful shutdown failed", "err", err)
+		}
 	}
 }
 
-// listen picks the listener address from config. HTTPS wiring (cert/key loading)
-// arrives with the session/proxy work; today only the plain-HTTP listener is wired
-// so local development can start end to end.
+// listen picks the listener address from config. The HTTPS listener (cert/key
+// loading, dual-listener shutdown) arrives with the proxy/deployment work; today
+// only the plain-HTTP listener is wired so local development can start end to end.
 func listen(cfg *config.Config) (string, error) {
 	if cfg.Server.HTTP.Enabled {
 		return fmt.Sprintf(":%d", cfg.Server.HTTP.Port), nil
