@@ -77,9 +77,17 @@ import type {
 } from '../../../../utils/types';
 import { getErrorMessage } from '../../../../utils/apiError';
 import {
+  activeDeploymentDeleteBlockedReason,
+  countActiveDeployments,
+} from '../../../../utils/artifactDeletion';
+import {
+  DisabledActionTooltip,
   GatewayArtifactDeleteWarning,
   GatewayArtifactReadOnlyBanner,
 } from '../../../../utils/readOnlyArtifacts';
+import { getLLMProxyDeployments } from '../../../../apis/llmProxiesApis';
+import { PLATFORM_API_BASE_URL } from '../../../../paths';
+import { logger } from '../../../../utils/logger';
 
 type TabPanelProps = {
   value: number;
@@ -175,6 +183,53 @@ function ProxyOverviewContent() {
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
   const isReadOnlyProxy = Boolean(proxy?.readOnly);
+  const [activeDeploymentCount, setActiveDeploymentCount] = useState<number | null>(null);
+
+  useEffect(() => {
+    const organizationId = currentOrganization?.uuid;
+    const proxyId = proxy?.id;
+    if (!organizationId || !proxyId || !isReadOnlyProxy || !canDeleteProxy) {
+      setActiveDeploymentCount(null);
+      return;
+    }
+
+    let isCancelled = false;
+
+    const resolveActiveDeployments = async () => {
+      const deployments = await getLLMProxyDeployments(
+        proxyId,
+        organizationId,
+        PLATFORM_API_BASE_URL
+      );
+
+      if (isCancelled) return;
+
+      setActiveDeploymentCount(countActiveDeployments(deployments.list));
+    };
+
+    resolveActiveDeployments().catch((err) => {
+      logger.error(
+        'Failed to resolve App LLM Proxy deployments for delete guard:',
+        err
+      );
+      if (isCancelled) return;
+      setActiveDeploymentCount(null);
+    });
+
+    return () => {
+      isCancelled = true;
+    };
+  }, [currentOrganization?.uuid, proxy?.id, isReadOnlyProxy, canDeleteProxy]);
+
+  const deleteBlockedReason = useMemo(() => {
+    if (!isReadOnlyProxy || activeDeploymentCount === null || activeDeploymentCount === 0) {
+      return null;
+    }
+    return activeDeploymentDeleteBlockedReason(
+      'App LLM Proxy',
+      activeDeploymentCount
+    );
+  }, [isReadOnlyProxy, activeDeploymentCount]);
 
   const getProviderId = (providerValue?: LLMProxy['provider']): string => {
     if (!providerValue) return '';
@@ -476,20 +531,21 @@ function ProxyOverviewContent() {
                 >
                   {isReadOnlyProxy ? 'View Deployments' : 'Deploy to Gateway'}
                 </Button>
-                <Tooltip
-                  title={canDeleteProxy ? '' : NO_PERMISSION_TOOLTIP}
+                <DisabledActionTooltip
+                  disabled={!canDeleteProxy || Boolean(deleteBlockedReason)}
+                  title={
+                    !canDeleteProxy ? NO_PERMISSION_TOOLTIP : deleteBlockedReason
+                  }
                 >
-                  <Box component="span">
-                    <IconButton
-                      color="error"
-                      disabled={!canDeleteProxy}
-                      onClick={() => setDeleteDialogOpen(true)}
-                      aria-label="Delete proxy"
-                    >
-                      <Trash2 size={16} />
-                    </IconButton>
-                  </Box>
-                </Tooltip>
+                  <IconButton
+                    color="error"
+                    disabled={!canDeleteProxy || Boolean(deleteBlockedReason)}
+                    onClick={() => setDeleteDialogOpen(true)}
+                    aria-label="Delete proxy"
+                  >
+                    <Trash2 size={16} />
+                  </IconButton>
+                </DisabledActionTooltip>
               </Stack>
             </Box>
           </Box>
