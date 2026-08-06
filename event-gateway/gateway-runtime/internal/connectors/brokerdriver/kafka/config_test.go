@@ -1,9 +1,11 @@
 package kafka
 
 import (
+	"math"
 	"os"
 	"path/filepath"
 	"reflect"
+	"strings"
 	"testing"
 
 	runtimeconfig "github.com/wso2/api-platform/event-gateway/gateway-runtime/internal/config"
@@ -17,13 +19,15 @@ func TestResolveConnectionConfig_MergesGlobalAndOverrides(t *testing.T) {
 	}
 
 	global := runtimeconfig.KafkaConfig{
-		Brokers:       []string{"broker-1:9092"},
-		TLS:           true,
-		TLSCAFile:     caPath,
-		TLSServerName: "global-kafka",
-		SASLMechanism: "plain",
-		SASLUsername:  "global-user",
-		SASLPassword:  "global-pass",
+		Brokers:                       []string{"broker-1:9092"},
+		CompactTopicPartitions:        1,
+		CompactTopicReplicationFactor: 1,
+		TLS:                           true,
+		TLSCAFile:                     caPath,
+		TLSServerName:                 "global-kafka",
+		SASLMechanism:                 "plain",
+		SASLUsername:                  "global-user",
+		SASLPassword:                  "global-pass",
 	}
 
 	resolved, err := ResolveConnectionConfig(global, map[string]interface{}{
@@ -57,7 +61,10 @@ func TestResolveConnectionConfig_MergesGlobalAndOverrides(t *testing.T) {
 }
 
 func TestResolveConnectionConfig_PreservesOpaqueCredentials(t *testing.T) {
-	resolved, err := ResolveConnectionConfig(runtimeconfig.KafkaConfig{}, map[string]interface{}{
+	resolved, err := ResolveConnectionConfig(runtimeconfig.KafkaConfig{
+		CompactTopicPartitions:        1,
+		CompactTopicReplicationFactor: 1,
+	}, map[string]interface{}{
 		"brokers":        []interface{}{"broker:9092"},
 		"sasl_mechanism": "plain",
 		"sasl_username":  "  user-with-spaces  ",
@@ -77,8 +84,10 @@ func TestResolveConnectionConfig_PreservesOpaqueCredentials(t *testing.T) {
 
 func TestResolveConnectionConfig_RequiresTLSWhenTLSFilesAreConfigured(t *testing.T) {
 	_, err := ResolveConnectionConfig(runtimeconfig.KafkaConfig{
-		Brokers:   []string{"broker:9092"},
-		TLSCAFile: "/tmp/ca.crt",
+		Brokers:                       []string{"broker:9092"},
+		CompactTopicPartitions:        1,
+		CompactTopicReplicationFactor: 1,
+		TLSCAFile:                     "/tmp/ca.crt",
 	}, nil)
 	if err == nil {
 		t.Fatalf("expected error when TLS files are set with TLS disabled")
@@ -93,18 +102,22 @@ func TestResolveConnectionConfig_ValidatesReadableTLSFiles(t *testing.T) {
 	}
 
 	_, err := ResolveConnectionConfig(runtimeconfig.KafkaConfig{
-		Brokers:   []string{"broker:9092"},
-		TLS:       true,
-		TLSCAFile: caPath,
+		Brokers:                       []string{"broker:9092"},
+		CompactTopicPartitions:        1,
+		CompactTopicReplicationFactor: 1,
+		TLS:                           true,
+		TLSCAFile:                     caPath,
 	}, nil)
 	if err != nil {
 		t.Fatalf("expected readable CA file to validate, got %v", err)
 	}
 
 	_, err = ResolveConnectionConfig(runtimeconfig.KafkaConfig{
-		Brokers:   []string{"broker:9092"},
-		TLS:       true,
-		TLSCAFile: filepath.Join(tempDir, "missing.crt"),
+		Brokers:                       []string{"broker:9092"},
+		CompactTopicPartitions:        1,
+		CompactTopicReplicationFactor: 1,
+		TLS:                           true,
+		TLSCAFile:                     filepath.Join(tempDir, "missing.crt"),
 	}, nil)
 	if err == nil {
 		t.Fatalf("expected missing CA file to fail validation")
@@ -112,12 +125,67 @@ func TestResolveConnectionConfig_ValidatesReadableTLSFiles(t *testing.T) {
 }
 
 func TestResolveConnectionConfig_RequiresSASLCredentials(t *testing.T) {
-	_, err := ResolveConnectionConfig(runtimeconfig.KafkaConfig{}, map[string]interface{}{
+	_, err := ResolveConnectionConfig(runtimeconfig.KafkaConfig{
+		CompactTopicPartitions:        1,
+		CompactTopicReplicationFactor: 1,
+	}, map[string]interface{}{
 		"brokers":        []interface{}{"broker:9092"},
 		"sasl_mechanism": "scram-sha-512",
 		"sasl_username":  "user",
 	})
 	if err == nil {
 		t.Fatalf("expected missing SASL password to fail validation")
+	}
+}
+
+func TestIntOverride_AcceptsIntegerFloat64(t *testing.T) {
+	got, ok, err := intOverride(float64(3))
+	if err != nil {
+		t.Fatalf("expected integer float64 override to succeed, got %v", err)
+	}
+	if !ok {
+		t.Fatalf("expected integer float64 override to be accepted")
+	}
+	if got != 3 {
+		t.Fatalf("expected integer float64 override to convert to 3, got %d", got)
+	}
+}
+
+func TestIntOverride_RejectsInvalidFloat64(t *testing.T) {
+	tests := []struct {
+		name    string
+		value   float64
+		wantErr string
+	}{
+		{
+			name:    "non integer",
+			value:   3.5,
+			wantErr: "non-integer",
+		},
+		{
+			name:    "out of bounds",
+			value:   float64(math.MaxInt32) + 1,
+			wantErr: "within",
+		},
+		{
+			name:    "non finite",
+			value:   math.NaN(),
+			wantErr: "non-finite",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			_, ok, err := intOverride(tt.value)
+			if err == nil {
+				t.Fatalf("expected float64 override %v to fail", tt.value)
+			}
+			if ok {
+				t.Fatalf("expected invalid float64 override %v to be rejected", tt.value)
+			}
+			if !strings.Contains(err.Error(), tt.wantErr) {
+				t.Fatalf("expected error %q to contain %q", err.Error(), tt.wantErr)
+			}
+		})
 	}
 }

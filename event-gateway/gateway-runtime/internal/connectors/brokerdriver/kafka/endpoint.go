@@ -145,9 +145,15 @@ func (e *KafkaBrokerDriver) EnsureTopics(ctx context.Context, topics []string, m
 
 // EnsureCompactedTopic creates a compacted topic if it does not already exist.
 func (e *KafkaBrokerDriver) EnsureCompactedTopic(ctx context.Context, topic string) error {
-	resp, err := e.admin.CreateTopics(ctx, 1, 1, map[string]*string{
-		"cleanup.policy": kadm.StringPtr("compact"),
-	}, topic)
+	resp, err := e.admin.CreateTopics(
+		ctx,
+		int32(e.cfg.CompactTopicPartitions),
+		int16(e.cfg.CompactTopicReplicationFactor),
+		map[string]*string{
+			"cleanup.policy": kadm.StringPtr("compact"),
+		},
+		topic,
+	)
 	if err != nil {
 		return fmt.Errorf("failed to create compacted topic %s: %w", topic, err)
 	}

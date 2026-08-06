@@ -218,8 +218,8 @@ func (cm *ConsumerManager) createConsumer(groupID string, topics []string, callb
 }
 
 // consumerGroupID generates a unique, safe consumer group ID for a callback URL.
-// Format: {prefix}-websub-{sha256(callbackURL)[:16]}
+// Format: {prefix}-websub-{sha256(callbackURL)[:32]}
 func (cm *ConsumerManager) consumerGroupID(callbackURL string) string {
 	h := sha256.Sum256([]byte(callbackURL))
-	return cm.groupPrefix + "-websub-" + hex.EncodeToString(h[:])[:16]
+	return cm.groupPrefix + "-websub-" + hex.EncodeToString(h[:])[:32]
 }
