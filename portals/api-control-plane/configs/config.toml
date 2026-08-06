@@ -1,0 +1,37 @@
+[api_control_plane]
+
+domain = '{{ env "APIP_ACP_DOMAIN" "localhost:8082" }}'
+
+[api_control_plane.server.http]
+
+enabled = '{{ env "APIP_ACP_SERVER_HTTP_ENABLED" "true" }}'
+port    = '{{ env "APIP_ACP_SERVER_HTTP_PORT" "8082" }}'
+
+[api_control_plane.server.https]
+
+enabled = '{{ env "APIP_ACP_SERVER_HTTPS_ENABLED" "false" }}'
+
+
+[api_control_plane.logging]
+
+level = '{{ env "APIP_ACP_LOGGING_LEVEL" "info" }}'   # debug | info | warn | error
+
+
+[api_control_plane.control_plane]
+
+url             = '{{ env "APIP_ACP_CONTROL_PLANE_URL" "https://localhost:9243" }}'
+tls_skip_verify = '{{ env "APIP_ACP_CONTROL_PLANE_TLS_SKIP_VERIFY" "true" }}'
+
+
+[api_control_plane.session]
+
+# Local dev runs the BFF over plain HTTP (no cert generation set up for this
+# portal yet) — a Secure cookie would never be sent back by the browser.
+# Never set this to false for a deployment reachable over a real network.
+[api_control_plane.session.cookie]
+secure = '{{ env "APIP_ACP_SESSION_COOKIE_SECURE" "false" }}'
+
+
+[api_control_plane.auth]
+
+mode = '{{ env "APIP_ACP_AUTH_MODE" "basic" }}'
