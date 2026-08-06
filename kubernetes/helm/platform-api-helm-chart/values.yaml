@@ -245,7 +245,6 @@ config:
   # --- Deployments ---
   deployments:
     maxPerApiGateway: 20
-    transitionalStatusEnabled: false
     timeoutEnabled: true
     timeoutInterval: 20
     timeoutDuration: 60

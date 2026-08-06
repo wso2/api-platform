@@ -4,30 +4,25 @@ default_org_region = "us"
 domain = '{{ env "APIP_AIW_DOMAIN" "localhost:9643" }}'
 
 [ai_workspace.server.https]
-
 port      = '{{ env "APIP_AIW_SERVER_HTTPS_PORT" "9643" }}'
 cert_file = "/etc/ai-workspace/tls/cert.pem"
 key_file  = "/etc/ai-workspace/tls/key.pem"
 
 
 [ai_workspace.logging]
-
 level = '{{ env "APIP_AIW_LOGGING_LEVEL" "info" }}'
 
 
 [ai_workspace.control_plane]
-
 url = '{{ env "APIP_AIW_CONTROL_PLANE_URL" "https://platform-api:9243" }}'
 tls_skip_verify = '{{ env "APIP_AIW_CONTROL_PLANE_TLS_SKIP_VERIFY" "false" }}'
 ca_file = "/etc/ai-workspace/tls/cert.pem"
 
 
 [ai_workspace.gateway]
-
 controlplane_host = '{{ env "APIP_AIW_GATEWAY_CONTROLPLANE_HOST" "host.docker.internal:9243" }}'
 platform_gateway_versions = "[{\"version\":\"1.2\",\"latestVersion\":\"v1.2.0\",\"channel\":\"LTS\"}]"
 
 
 [ai_workspace.auth]
-
 mode = '{{ env "APIP_AIW_AUTH_MODE" "basic" }}'

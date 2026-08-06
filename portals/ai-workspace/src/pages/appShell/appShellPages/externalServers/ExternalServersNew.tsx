@@ -87,16 +87,21 @@ function generateServerId(name: string): string {
     .replace(/^-+|-+$/g, '');
 }
 
+const MCP_VERSION_PATTERN = /^v?\d+(\.\d+)?(\.\d+)?$/;
+const MCP_VERSION_ERROR = 'Enter a valid version (e.g., v1.0)';
+
 /**
- * Normalize a version string to match the required format: v<major>.<minor>
- * e.g. "1.0.0" -> "v1.0", "v2.1" -> "v2.1", "3" -> "v3.0"
+ * Add the preferred `v` prefix and a missing minor component to numeric
+ * versions. Non-version server metadata is returned unchanged so the form can
+ * display it and report a validation error instead of disguising it as semver.
  */
 function normalizeVersion(version: string): string {
-  const stripped = version.replace(/^v/i, '');
-  const parts = stripped.split('.');
-  const major = parts[0] || '1';
-  const minor = parts[1] || '0';
-  return `v${major}.${minor}`;
+  const trimmed = version.trim();
+  const match = trimmed.match(/^v?(\d+)(?:\.(\d+))?(?:\.(\d+))?$/);
+  if (!match) return trimmed;
+
+  const [, major, minor = '0', patch] = match;
+  return `v${major}.${minor}${patch === undefined ? '' : `.${patch}`}`;
 }
 
 function getErrorDescription(error: unknown, fallback: string): string {
@@ -226,7 +231,7 @@ export default function ExternalServersNew(): JSX.Element {
   };
 
   const handleCreate = async () => {
-    if (!effectiveProject?.id) return;
+    if (!effectiveProject?.id || !MCP_VERSION_PATTERN.test(serverVersion.trim())) return;
 
     // Encrypt the upstream auth value as a secret so the plaintext credential is
     // never stored in the MCP server config. Skip if already a placeholder.
@@ -340,12 +345,21 @@ export default function ExternalServersNew(): JSX.Element {
     ? `/${effectiveProjectSlug}/${generateServerId(serverName)}`
     : `/${generateServerId(serverName)}`;
   const serverContext = serverContextOverride ?? computedContext;
+  const versionValidationError =
+    serverVersion.trim() && !MCP_VERSION_PATTERN.test(serverVersion.trim())
+      ? MCP_VERSION_ERROR
+      : undefined;
+  const formFieldErrors = {
+    ...createFieldErrors,
+    version: versionValidationError ?? createFieldErrors.version,
+  };
 
   const isCreateDisabled =
     isCreating ||
     !canCreateMcpProxy ||
     !serverName.trim() ||
     !serverVersion.trim() ||
+    Boolean(versionValidationError) ||
     !serverTarget.trim();
 
   if (!canCreateMcpProxy) {
@@ -405,7 +419,7 @@ export default function ExternalServersNew(): JSX.Element {
           serverName={serverName}
           serverTarget={serverTarget}
           serverVersion={serverVersion}
-          fieldErrors={createFieldErrors}
+          fieldErrors={formFieldErrors}
           onCancel={handleCancelCreate}
           onCreate={handleCreate}
           onContextChange={setServerContextOverride}

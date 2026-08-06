@@ -379,9 +379,14 @@ func (r *DeploymentRepo) SetCurrentWithDetails(artifactUUID, orgUUID, gatewayID,
 	}
 
 	// Maintain gateway-specific secret refs from the deployment snapshot.
-	// On DEPLOYED: derive handles from snapshot and insert; on UNDEPLOYED/ARCHIVED: clear only.
+	// Keyed on the desired status, not the current one: a deploy starts out
+	// DEPLOYING and is only acknowledged after the gateway has fetched the
+	// artifact's secrets, so gating on DEPLOYED here would leave the refs empty
+	// for exactly the window in which the gateway needs them.
+	// Desired DEPLOYED: derive handles from the snapshot and insert;
+	// UNDEPLOYED/FAILED/ARCHIVED: clear only.
 	var content []byte
-	if status == model.DeploymentStatusDeployed {
+	if statusDesired == string(model.DeploymentStatusDeployed) {
 		err = tx.QueryRow(r.db.Rebind(`SELECT content FROM deployments WHERE uuid = ?`), deploymentID).Scan(&content)
 		if err != nil && !errors.Is(err, sql.ErrNoRows) {
 			return time.Time{}, fmt.Errorf("failed to fetch deployment content for secret refs: %w", err)
@@ -831,8 +836,10 @@ func (r *DeploymentRepo) GetDeployedGatewayIDs(artifactUUID, orgUUID string) ([]
 // specific gateway. Data-plane-originated (gateway_api) artifacts are excluded because they are
 // owned by the gateway and pushed up to the CP (DP->CP); syncing them back down would make the
 // gateway try to re-create artifacts it already has.
-// Returns lightweight DeploymentInfo for listing deployments
-// Only returns deployments that have an active status (DEPLOYED or UNDEPLOYED)
+// Returns lightweight DeploymentInfo for listing deployments, carrying both the
+// current status and the desired terminal status. The gateway reconciles against
+// the desired status, so an operation still awaiting the gateway's acknowledgement
+// (DEPLOYING/UNDEPLOYING) is synced as the DEPLOYED/UNDEPLOYED it is driving towards.
 // Results are ordered by kind (RestApi -> LlmProvider -> LlmProxy -> Mcp) to ensure
 // dependencies are processed in correct order (LLM Proxies depend on LLM Providers)
 // If since is provided, only returns deployments updated after that timestamp
@@ -844,6 +851,7 @@ func (r *DeploymentRepo) GetControlPlaneDeploymentsByGateway(gatewayID, orgUUID 
 			src.handle,
 			a.type,
 			s.status,
+			s.status_desired,
 			s.performed_at
 		FROM deployment_status s
 		INNER JOIN artifacts a ON s.artifact_uuid = a.uuid
@@ -880,6 +888,7 @@ func (r *DeploymentRepo) GetControlPlaneDeploymentsByGateway(gatewayID, orgUUID 
 	for rows.Next() {
 		dep := &model.DeploymentInfo{}
 		var statusStr string
+		var statusDesired sql.NullString
 
 		err := rows.Scan(
 			&dep.DeploymentID,
@@ -887,6 +896,7 @@ func (r *DeploymentRepo) GetControlPlaneDeploymentsByGateway(gatewayID, orgUUID 
 			&dep.Handle,
 			&dep.Type,
 			&statusStr,
+			&statusDesired,
 			&dep.PerformedAt,
 		)
 		if err != nil {
@@ -894,6 +904,12 @@ func (r *DeploymentRepo) GetControlPlaneDeploymentsByGateway(gatewayID, orgUUID 
 		}
 
 		dep.Status = model.DeploymentStatus(statusStr)
+		// Rows written before status_desired existed carry only status.
+		if statusDesired.Valid && statusDesired.String != "" {
+			dep.StatusDesired = model.DeploymentStatus(statusDesired.String)
+		} else {
+			dep.StatusDesired = dep.Status
+		}
 		deployments = append(deployments, dep)
 	}
 

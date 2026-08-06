@@ -336,7 +336,6 @@ enable_functionality_type_verification = false
 # ---------------------------------------------------------------------------
 [platform_api.deployments]
 max_per_api_gateway         = 20      # maximum API deployments per gateway
-transitional_status_enabled = false   # expose "pending" deployment states in responses
 
 # Deployment timeout — mark stuck deployments as failed after timeout_duration seconds.
 timeout_enabled  = true
