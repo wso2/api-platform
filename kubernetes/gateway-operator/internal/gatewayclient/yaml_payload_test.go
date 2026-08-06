@@ -129,3 +129,53 @@ func TestBuildRestAPIYAML_CarriesUpstreamDefinitionsAndRef(t *testing.T) {
 	timeout := def0["timeout"].(map[string]interface{})
 	require.Equal(t, "6s", timeout["connect"])
 }
+
+// A per-operation upstream ref must survive the marshal to the management-API payload: the
+// overridden operation carries upstream.main.ref while operations without an override stay
+// unmodified, matching the platform-api's per-operation override.
+func TestBuildRestAPIYAML_CarriesPerOperationUpstreamRef(t *testing.T) {
+	spec := apiv1.APIConfigData{
+		Context:     "/hello",
+		DisplayName: "hello",
+		Version:     "v1.0",
+		Operations: []apiv1.Operation{
+			{
+				Method:   apiv1.OperationMethodGET,
+				Path:     "/whoami",
+				Upstream: &apiv1.OperationUpstream{Main: &apiv1.OperationUpstreamRef{Ref: "alt-backend"}},
+			},
+			{Method: apiv1.OperationMethodGET, Path: "/ping"},
+		},
+		UpstreamDefinitions: []apiv1.UpstreamDefinition{{
+			Name:      "alt-backend",
+			Upstreams: []apiv1.WeightedUpstream{{Url: "http://alt.default.svc.cluster.local:9090"}},
+		}},
+		Upstream: apiv1.UpstreamConfig{
+			Main: apiv1.Upstream{Url: stringPtr("http://main.default.svc.cluster.local:8080")},
+		},
+	}
+	md := RestAPIPayloadMetadata{Name: "api-handle"}
+
+	b, err := BuildRestAPIYAML(apiv1.GroupVersion.String(), "RestApi", md, spec)
+	require.NoError(t, err)
+
+	var got map[string]interface{}
+	require.NoError(t, yamlv3.Unmarshal(b, &got))
+	specMap, ok := got["spec"].(map[string]interface{})
+	require.True(t, ok)
+
+	ops, ok := specMap["operations"].([]interface{})
+	require.True(t, ok)
+	require.Len(t, ops, 2)
+
+	// The overridden operation carries upstream.main.ref.
+	whoami := ops[0].(map[string]interface{})
+	upstream := whoami["upstream"].(map[string]interface{})
+	main := upstream["main"].(map[string]interface{})
+	require.Equal(t, "alt-backend", main["ref"])
+
+	// The other operation stays untouched (no upstream override emitted).
+	ping := ops[1].(map[string]interface{})
+	_, hasUpstream := ping["upstream"]
+	require.False(t, hasUpstream, "operation without an override must not emit upstream")
+}
