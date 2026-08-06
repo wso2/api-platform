@@ -1,6 +1,6 @@
-name: Release Developer Portal UI Helm Chart
+name: Release API Portal UI Helm Chart
 
-# Publishes the `developer-portal-ui` component chart (from the packaging model)
+# Publishes the `api-portal-ui` component chart (from the packaging model)
 # to GHCR as an OCI artifact. Self-contained — embeds the shared apip.* helpers,
 # no chart dependencies.
 
@@ -17,8 +17,8 @@ on:
         type: string
 
 env:
-  CHART_NAME: developer-portal-ui
-  CHART_PATH: kubernetes/helm/developer-portal-ui-helm-chart
+  CHART_NAME: api-portal-ui
+  CHART_PATH: kubernetes/helm/api-portal-ui-helm-chart
   REGISTRY: ghcr.io
   REGISTRY_USERNAME: api-platform-bot
   ORGANIZATION: wso2
@@ -124,9 +124,9 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           tag_name: helm-${{ env.CHART_NAME }}-${{ inputs.version }}
-          name: Developer Portal UI Helm Chart ${{ inputs.version }}
+          name: API Portal UI Helm Chart ${{ inputs.version }}
           body: |
-            ## Developer Portal UI Helm Chart Release ${{ inputs.version }}
+            ## API Portal UI Helm Chart Release ${{ inputs.version }}
 
             **App Version:** `${{ inputs.appVersion }}`
 
@@ -144,7 +144,7 @@ jobs:
 
       - name: Chart Summary
         run: |
-          echo "### Developer Portal UI Helm Chart Released :rocket:" >> $GITHUB_STEP_SUMMARY
+          echo "### API Portal UI Helm Chart Released :rocket:" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "**Chart Name:** \`${CHART_NAME}\`" >> $GITHUB_STEP_SUMMARY
           echo "**Chart Version:** \`${CHART_VERSION}\`" >> $GITHUB_STEP_SUMMARY

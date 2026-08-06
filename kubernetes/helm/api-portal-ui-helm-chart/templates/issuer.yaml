@@ -8,9 +8,9 @@
 apiVersion: cert-manager.io/v1
 kind: Issuer
 metadata:
-  name: {{ include "apip.developerPortal.fullname" . }}-selfsigned-issuer
+  name: {{ include "apip.apiPortal.fullname" . }}-selfsigned-issuer
   labels:
-    {{- include "apip.componentLabels" (list . "developer-portal" dict) | nindent 4 }}
+    {{- include "apip.componentLabels" (list . "api-portal" dict) | nindent 4 }}
   {{- with (include "apip.annotations" (list . dict)) }}
   annotations:
     {{- . | nindent 4 }}

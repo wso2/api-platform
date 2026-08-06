@@ -1,7 +1,7 @@
 # ============================================================================
-# developer-portal — component chart values
+# api-portal — component chart values
 # ============================================================================
-# The Developer Portal (Node.js app). It has its OWN database (separate from the
+# The API Portal (Node.js app). It has its OWN database (separate from the
 # Platform API's) and authenticates users against the Platform API. Released on
 # its own; used as an umbrella subchart or standalone.
 #
@@ -39,11 +39,11 @@ global:
 # ----------------------------------------------------------------------------
 # Component toggle + container image
 # ----------------------------------------------------------------------------
-# Install the Developer Portal. Opt in per install (the umbrella sets this).
+# Install the API Portal. Opt in per install (the umbrella sets this).
 enabled: false
 image:
-  repository: ghcr.io/wso2/api-platform/developer-portal
-  tag: "1.0.0-beta"
+  repository: ghcr.io/wso2/api-platform/api-portal
+  tag: "1.0.0"
   pullPolicy: IfNotPresent
 # Pull secrets for THIS component only (merged with global.imagePullSecrets).
 imagePullSecrets: []
@@ -87,15 +87,6 @@ config:
     poolConnectionTimeoutMs: 30000
     poolRequestTimeoutMs: 30000
 
-  # --- Security ---
-  security:
-    # A shared API key some server-to-server callers present in a header.
-    serviceApiKey:
-      enabled: true
-      headerName: x-wso2-api-key
-      # The key value itself lives in the Secret (secrets.keys.serviceApiKeyValue),
-      # wired only when secrets.hasServiceApiKeyValue is true.
-
   # --- How the portal reaches the Platform API ---
   platformApi:
     # Leave "" to derive the in-cluster Platform API URL automatically. Set to
@@ -113,6 +104,11 @@ config:
     # supplied via the Secret (secrets.keys.publicKey) when secrets.hasPublicKey
     # is true, and mounted at this path.
     publicKeyPath: /etc/devportal/keys/jwt_public.pem
+    # Your IdP's identifier for this organization — the VALUE expected in the
+    # claim named by claimMappings.organization. Leave "" to default to
+    # organization.handle (the common case). Seeded once and re-applied on every
+    # restart; set it only when your IdP's org claim differs from the handle.
+    idpOrgId: ""
     # JWT claim-name mappings — which token claim carries each field.
     claimMappings:
       organization: org_name     # claim carrying the org ID
@@ -123,7 +119,6 @@ config:
     # comes from the Secret (secrets.keys.idpClientSecret), wired only when
     # secrets.hasIdpClientSecret=true.
     idp:
-      name: ""
       issuer: ""
       authorizationUrl: ""
       tokenUrl: ""
@@ -167,20 +162,42 @@ config:
       # Which role name in the token's roles claim grants each page tier. Was
       # auth.idp.roles, despite being read in local auth mode too. There were three
       # tiers; the superAdmin one gated pages this portal does not serve and is gone.
+      # These name roles from roleToScopeMapping rather than an IDP's own role names,
+      # so page gating and REST authorization are driven by the same roles — and
+      # ap_admin is the one role the sibling platform-api chart grants its file-mode
+      # admin, so local-auth logins match. Point them at your IDP's role names when
+      # running in idp mode with roles that differ.
       portalRoles:
-        admin: admin
-        subscriber: Internal/subscriber
+        admin: ap_admin
+        subscriber: ap_subscriber
 
   organization:
     handle: default                         # URL slug: /{handle}/views/{viewName}; required
     displayName: ""                         # seed-time only; empty means "use the handle"
     autoCreateSubscriptionPlans: true       # auto-create Bronze/Silver/Gold/Unlimited/AsyncUnlimited
 
+  # --- Artifacts: which types this portal serves (allowlist) ---
+  # A type left out gets no nav entry, no landing-page section, and 404s on its
+  # routes. An unrecognised entry aborts startup, so a typo can't silently drop
+  # a type. Valid entries: apis | mcp-servers | api-workflows.
+  artifacts:
+    enabledTypes:
+      - apis
+      - mcp-servers
+      - api-workflows
+
   # --- Webhook delivery tuning (global) ---
   webhooksDelivery:
     pollIntervalMs: 2000
     batchSize: 50
     signatureToleranceSec: 300
+
+  # --- Upload and archive-extraction limits ---
+  uploads:
+    maxBytes: 10485760          # 10 MiB — single upload / single archive entry
+    maxTotalBytes: 52428800     # 50 MiB — total extracted per archive
+    maxZipEntries: 500
+    maxDepth: 10
 
   # --- "Try It" console (calls user-supplied endpoints; SSRF-sensitive) ---
   tryout:
@@ -207,25 +224,28 @@ configToml: ""
 # Secret made by ./generate-secrets.sh. Render FAILS if it's unset. Required keys:
 # ENCRYPTION_KEY and SESSION_SECRET (both 64-char hex; the portal fails closed at
 # startup without them). Optional keys — DB password (postgres), OIDC client
-# secret, service API key value, and the Platform API RS256 public key PEM (to
-# verify Platform API-issued tokens; tokens are asymmetric, so there is no shared
-# HMAC secret) — are wired only when the matching has* flag below is true.
+# secret, and the Platform API RS256 public key PEM (to verify Platform
+# API-issued tokens; tokens are asymmetric, so there is no shared HMAC secret) —
+# are wired only when the matching has* flag below is true.
 # `keys` maps each logical name to the key inside that Secret.
 secrets:
   existingSecret: ""
+  # Each key inside the Secret is named EXACTLY like the env var the container
+  # receives and the {{ env "..." }} token in config.toml that reads it — one name
+  # for the whole chain (Secret key = env var = config token = generate-secrets.sh
+  # input), so there is nothing to map in your head. publicKey is the exception: it
+  # mounts as a FILE, so it keeps a filename — the config references its path.
   keys:
-    encryptionKey: ENCRYPTION_KEY          # → APIP_AP_SECURITY_ENCRYPTION_KEY
-    sessionSecret: SESSION_SECRET          # → APIP_AP_SECURITY_SESSION_SECRET
-    databasePassword: DATABASE_PASSWORD    # → APIP_AP_DATABASE_PASSWORD (postgres)
-    idpClientSecret: IDP_CLIENT_SECRET     # → APIP_AP_AUTH_IDP_CLIENT_SECRET (idp mode)
-    serviceApiKeyValue: SERVICE_API_KEY_VALUE  # → APIP_AP_SECURITY_SERVICE_API_KEY_VALUE
-    publicKey: jwt_public.pem              # mounted file → config.auth.publicKeyPath
+    encryptionKey: APIP_AP_SECURITY_ENCRYPTION_KEY
+    sessionSecret: APIP_AP_SECURITY_SESSION_SECRET
+    databasePassword: APIP_AP_DATABASE_PASSWORD        # postgres only
+    idpClientSecret: APIP_AP_AUTH_IDP_CLIENT_SECRET    # idp mode only
+    publicKey: jwt_public.pem                          # mounted file → config.auth.publicKeyPath
   # Flip to true ONLY if the referenced Secret actually carries that optional key,
   # so the deployment wires it. generate-secrets.sh sets these for you in the
   # values-secrets.yaml it writes.
   hasPublicKey: true
   hasIdpClientSecret: false
-  hasServiceApiKeyValue: false
 
 # ----------------------------------------------------------------------------
 # service — how the portal is exposed
@@ -234,7 +254,7 @@ service:
   type: LoadBalancer            # LoadBalancer | NodePort | ClusterIP
   annotations: {}
   labels: {}
-  port: 3000
+  port: 9543
   clusterIP: ""
   externalTrafficPolicy: ""
   loadBalancerClass: ""
@@ -243,8 +263,8 @@ service:
   ipFamilies: []
   nodePort: ""
 
-# Port the portal process listens on.
-containerPort: 3000
+# Port the portal process listens on (matches the image's native default/EXPOSE).
+containerPort: 9543
 
 # ----------------------------------------------------------------------------
 # tls — certificate for the portal's HTTPS listener (APIP_AP_TLS_*)
@@ -292,7 +312,7 @@ persistence:
   # resource-policy=keep annotation makes the PVC — and its data — SURVIVE
   # `helm uninstall`; a later `helm install` with the SAME release name re-adopts
   # it. To intentionally wipe it:
-  #   kubectl delete pvc <release>-developer-portal-data
+  #   kubectl delete pvc <release>-api-portal-data
   # Set to {} if you'd rather the PVC be deleted on uninstall.
   annotations:
     helm.sh/resource-policy: keep

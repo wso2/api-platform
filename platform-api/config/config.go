@@ -982,6 +982,9 @@ func validateFileBasedConfig(cfg *FileBased, authz *Authorization) error {
 var removedConfigKeys = map[string]string{
 	"webhook.private_key_path": "webhook payload fields are now encrypted with a key derived from webhook.secret " +
 		"instead of an RSA key pair; this setting has no effect and the PEM file/mount it points to can be deleted",
+	"deployments.transitional_status_enabled": "a deployment is now always treated as transitional until the gateway " +
+		"acknowledges it, so there is nothing left to toggle; this setting has no effect and can be deleted " +
+		"(deployments.timeout_duration bounds how long an unacknowledged deployment waits before being marked FAILED)",
 }
 
 // warnRemovedConfigKeys logs a warning for each removed key still present in the

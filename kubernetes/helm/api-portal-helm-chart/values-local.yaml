@@ -1,6 +1,6 @@
-# Local development values for the developer-portal umbrella chart.
+# Local development values for the api-portal umbrella chart.
 # Usage:
-#   helm install developer-portal ./developer-portal-helm-chart -f values-secrets.yaml -f values-local.yaml
+#   helm install api-portal ./api-portal-helm-chart -f values-secrets.yaml -f values-local.yaml
 #
 # Overrides the defaults for local development, per component:
 # - locally-built images (latest tag, IfNotPresent pull policy)
@@ -17,7 +17,7 @@ platform-api:
     logging:
       level: debug
 
-developer-portal-ui:
+api-portal-ui:
   image:
     tag: "latest"
     pullPolicy: IfNotPresent

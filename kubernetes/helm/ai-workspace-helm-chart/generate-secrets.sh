@@ -20,7 +20,7 @@
 # Platform API Secret so the portal keeps verifying its tokens), and
 # values-secrets.yaml is rebuilt to reference every component Secret that exists.
 #
-# The Platform API signs its RS256 JWTs with a private key; the Developer Portal
+# The Platform API signs its RS256 JWTs with a private key; the API Portal
 # verifies them with the matching PUBLIC key — the same keypair, no shared HMAC
 # secret. The file-mode admin credential is GENERATED here (random password,
 # bcrypt hash stored in the Secret) — there is no admin/admin default.
@@ -31,28 +31,36 @@
 #     [release-name]  Helm release name; names the Secrets (default: ai-workspace).
 #
 # Component flags:
-#   DEVELOPER_PORTAL=true   Also provision the Developer Portal Secret.
+#   API_PORTAL=true   Also provision the API Portal Secret.
 #   (The shared Platform API Secret is always ensured. The AI Workspace UI Secret
-#    is provisioned only when AIW_OIDC_CLIENT_SECRET is set — basic mode needs none.)
+#    is provisioned only when APIP_AIW_AUTH_OIDC_CLIENT_SECRET is set — basic mode needs none.)
 #
-# Optional inputs (only wired if set):
-#   ADMIN_USERNAME           File-mode admin username (default: admin).
-#   DATABASE_PASSWORD        Postgres password for the Platform API.
-#   WEBHOOK_SECRET           HMAC secret for the Platform API webhook receiver.
-#   AIW_OIDC_CLIENT_SECRET   AI Workspace BFF OIDC client secret (OIDC mode).
-#   DP_DATABASE_PASSWORD     Postgres password for the Developer Portal.
-#   DP_OIDC_CLIENT_SECRET    Developer Portal OIDC client secret.
-#   DP_SERVICE_API_KEY       Developer Portal service API key value.
+# Optional inputs (only wired if set). Each is named EXACTLY like the key it
+# becomes inside the Secret, the env var the container receives, and the
+# {{ env "..." }} token in config.toml that reads it — one name for the whole
+# chain, so there is nothing to translate between this script and the config.
+#
+#   Platform API ([platform_api.*], APIP_CP_*)
+#     APIP_CP_ADMIN_USERNAME             File-mode admin username (default: admin).
+#     APIP_CP_DATABASE_PASSWORD          Postgres password.
+#     APIP_CP_WEBHOOK_SECRET             HMAC secret for the webhook receiver.
+#
+#   AI Workspace BFF ([ai_workspace.*], APIP_AIW_*)
+#     APIP_AIW_AUTH_OIDC_CLIENT_SECRET   OIDC client secret (OIDC mode only).
+#
+#   API Portal ([api_portal.*], APIP_AP_*) — needs API_PORTAL=true
+#     APIP_AP_DATABASE_PASSWORD          Postgres password.
+#     APIP_AP_AUTH_IDP_CLIENT_SECRET     OIDC/IDP client secret (idp mode only).
 # --------------------------------------------------------------------
 set -euo pipefail
 
 NAMESPACE="${1:-}"
 RELEASE="${2:-ai-workspace}"
-DEVELOPER_PORTAL="${DEVELOPER_PORTAL:-false}"
-ADMIN_USERNAME="${ADMIN_USERNAME:-admin}"
+API_PORTAL="${API_PORTAL:-false}"
+APIP_CP_ADMIN_USERNAME="${APIP_CP_ADMIN_USERNAME:-admin}"
 
 if [[ -z "$NAMESPACE" ]]; then
-  echo "Usage: [DEVELOPER_PORTAL=true] $0 <namespace> [release-name]" >&2
+  echo "Usage: [API_PORTAL=true] $0 <namespace> [release-name]" >&2
   exit 1
 fi
 command -v kubectl  >/dev/null 2>&1 || { echo "error: kubectl not found in PATH" >&2; exit 1; }
@@ -60,7 +68,7 @@ command -v openssl  >/dev/null 2>&1 || { echo "error: openssl not found in PATH"
 
 PA_SECRET="${RELEASE}-platform-api-secrets"
 UI_SECRET="${RELEASE}-ai-workspace-ui-secrets"
-DP_SECRET="${RELEASE}-developer-portal-ui-secrets"
+AP_SECRET="${RELEASE}-api-portal-ui-secrets"
 OUT_FILE="values-secrets.yaml"
 
 TMP="$(mktemp -d)"; trap 'rm -rf "$TMP"' EXIT
@@ -96,50 +104,49 @@ else
   openssl genpkey -algorithm RSA -pkeyopt rsa_keygen_bits:2048 -out "$TMP/jwt_private.pem" 2>/dev/null
   openssl rsa -in "$TMP/jwt_private.pem" -pubout -out "$TMP/jwt_public.pem" 2>/dev/null
   ADMIN_PASSWORD="$(openssl rand -base64 24 | tr -dc 'A-Za-z0-9' | cut -c1-20)"
-  ADMIN_PASSWORD_HASH="$(bcrypt_hash "$ADMIN_PASSWORD")"
+  APIP_CP_ADMIN_PASSWORD_HASH="$(bcrypt_hash "$ADMIN_PASSWORD")"
   args=(
-    --from-literal=ENCRYPTION_KEY="$(gen_key)"
-    --from-literal=ADMIN_USERNAME="$ADMIN_USERNAME"
-    --from-literal=ADMIN_PASSWORD_HASH="$ADMIN_PASSWORD_HASH"
+    --from-literal=APIP_CP_ENCRYPTION_KEY="$(gen_key)"
+    --from-literal=APIP_CP_ADMIN_USERNAME="$APIP_CP_ADMIN_USERNAME"
+    --from-literal=APIP_CP_ADMIN_PASSWORD_HASH="$APIP_CP_ADMIN_PASSWORD_HASH"
     --from-file=jwt_public.pem="$TMP/jwt_public.pem"
     --from-file=jwt_private.pem="$TMP/jwt_private.pem"
   )
-  [[ -n "${DATABASE_PASSWORD:-}" ]] && args+=( --from-literal=DATABASE_PASSWORD="$DATABASE_PASSWORD" )
-  [[ -n "${WEBHOOK_SECRET:-}"   ]] && args+=( --from-literal=WEBHOOK_SECRET="$WEBHOOK_SECRET" )
+  [[ -n "${APIP_CP_DATABASE_PASSWORD:-}" ]] && args+=( --from-literal=APIP_CP_DATABASE_PASSWORD="$APIP_CP_DATABASE_PASSWORD" )
+  [[ -n "${APIP_CP_WEBHOOK_SECRET:-}"   ]] && args+=( --from-literal=APIP_CP_WEBHOOK_SECRET="$APIP_CP_WEBHOOK_SECRET" )
   kubectl -n "$NAMESPACE" create secret generic "$PA_SECRET" "${args[@]}"
   echo "    Generated file-mode admin credential (shown once — store it now):"
-  echo "      username: ${ADMIN_USERNAME}"
+  echo "      username: ${APIP_CP_ADMIN_USERNAME}"
   echo "      password: ${ADMIN_PASSWORD}"
 fi
 
 # --- AI Workspace UI: OIDC client secret (OIDC mode only) ---
-if [[ -n "${AIW_OIDC_CLIENT_SECRET:-}" ]]; then
+if [[ -n "${APIP_AIW_AUTH_OIDC_CLIENT_SECRET:-}" ]]; then
   if secret_exists "$UI_SECRET"; then
     echo "==> $UI_SECRET already exists — leaving it untouched"
   else
     echo "==> Creating $UI_SECRET"
     kubectl -n "$NAMESPACE" create secret generic "$UI_SECRET" \
-      --from-literal=OIDC_CLIENT_SECRET="$AIW_OIDC_CLIENT_SECRET"
+      --from-literal=APIP_AIW_AUTH_OIDC_CLIENT_SECRET="$APIP_AIW_AUTH_OIDC_CLIENT_SECRET"
   fi
 else
-  echo "==> AIW_OIDC_CLIENT_SECRET not set — skipping UI Secret (only needed for OIDC mode)"
+  echo "==> APIP_AIW_AUTH_OIDC_CLIENT_SECRET not set — skipping UI Secret (only needed for OIDC mode)"
 fi
 
-# --- Developer Portal: encryption key + session secret + PA public key (+optional) ---
-if [[ "$DEVELOPER_PORTAL" == "true" ]]; then
-  if secret_exists "$DP_SECRET"; then
-    echo "==> $DP_SECRET already exists — leaving it untouched"
+# --- API Portal: encryption key + session secret + PA public key (+optional) ---
+if [[ "$API_PORTAL" == "true" ]]; then
+  if secret_exists "$AP_SECRET"; then
+    echo "==> $AP_SECRET already exists — leaving it untouched"
   else
-    echo "==> Creating $DP_SECRET"
+    echo "==> Creating $AP_SECRET"
     args=(
-      --from-literal=ENCRYPTION_KEY="$(gen_key)"
-      --from-literal=SESSION_SECRET="$(gen_key)"
+      --from-literal=APIP_AP_SECURITY_ENCRYPTION_KEY="$(gen_key)"
+      --from-literal=APIP_AP_SECURITY_SESSION_SECRET="$(gen_key)"
       --from-file=jwt_public.pem="$TMP/jwt_public.pem"
     )
-    [[ -n "${DP_OIDC_CLIENT_SECRET:-}" ]] && args+=( --from-literal=IDP_CLIENT_SECRET="$DP_OIDC_CLIENT_SECRET" )
-    [[ -n "${DP_SERVICE_API_KEY:-}"    ]] && args+=( --from-literal=SERVICE_API_KEY_VALUE="$DP_SERVICE_API_KEY" )
-    [[ -n "${DP_DATABASE_PASSWORD:-}"  ]] && args+=( --from-literal=DATABASE_PASSWORD="$DP_DATABASE_PASSWORD" )
-    kubectl -n "$NAMESPACE" create secret generic "$DP_SECRET" "${args[@]}"
+    [[ -n "${APIP_AP_AUTH_IDP_CLIENT_SECRET:-}" ]] && args+=( --from-literal=APIP_AP_AUTH_IDP_CLIENT_SECRET="$APIP_AP_AUTH_IDP_CLIENT_SECRET" )
+    [[ -n "${APIP_AP_DATABASE_PASSWORD:-}"  ]] && args+=( --from-literal=APIP_AP_DATABASE_PASSWORD="$APIP_AP_DATABASE_PASSWORD" )
+    kubectl -n "$NAMESPACE" create secret generic "$AP_SECRET" "${args[@]}"
   fi
 fi
 
@@ -159,13 +166,12 @@ echo "==> Writing $OUT_FILE (references for all provisioned components)"
     echo "  secrets:"
     echo "    existingSecret: $UI_SECRET"
   fi
-  if secret_exists "$DP_SECRET"; then
-    echo "developer-portal-ui:"
+  if secret_exists "$AP_SECRET"; then
+    echo "api-portal-ui:"
     echo "  secrets:"
-    echo "    existingSecret: $DP_SECRET"
+    echo "    existingSecret: $AP_SECRET"
     echo "    hasPublicKey: true"
-    secret_has_key "$DP_SECRET" IDP_CLIENT_SECRET      && echo "    hasIdpClientSecret: true"
-    secret_has_key "$DP_SECRET" SERVICE_API_KEY_VALUE  && echo "    hasServiceApiKeyValue: true"
+    secret_has_key "$AP_SECRET" APIP_AP_AUTH_IDP_CLIENT_SECRET      && echo "    hasIdpClientSecret: true"
   fi
 } > "$OUT_FILE"
 

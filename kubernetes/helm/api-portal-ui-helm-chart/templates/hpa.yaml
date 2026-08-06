@@ -1,15 +1,15 @@
-{{- $dp := .Values -}}
-{{- $hpa := $dp.hpa -}}
-{{- if and $dp.deployment.enabled $hpa.enabled }}
-{{- if ne $dp.config.database.type "postgres" }}
-{{- fail "developer-portal.hpa requires developer-portal.config.database.type=postgres — SQLite does not support multiple replicas." }}
+{{- $ap := .Values -}}
+{{- $hpa := $ap.hpa -}}
+{{- if and $ap.deployment.enabled $hpa.enabled }}
+{{- if ne $ap.config.database.type "postgres" }}
+{{- fail "api-portal.hpa requires api-portal.config.database.type=postgres — SQLite does not support multiple replicas." }}
 {{- end }}
 apiVersion: autoscaling/v2
 kind: HorizontalPodAutoscaler
 metadata:
-  name: {{ include "apip.developerPortal.fullname" . }}
+  name: {{ include "apip.apiPortal.fullname" . }}
   labels:
-    {{- include "apip.componentLabels" (list . "developer-portal" dict) | nindent 4 }}
+    {{- include "apip.componentLabels" (list . "api-portal" dict) | nindent 4 }}
   {{- with (include "apip.annotations" (list . dict)) }}
   annotations:
     {{- . | nindent 4 }}
@@ -18,7 +18,7 @@ spec:
   scaleTargetRef:
     apiVersion: apps/v1
     kind: Deployment
-    name: {{ include "apip.developerPortal.fullname" . }}
+    name: {{ include "apip.apiPortal.fullname" . }}
   minReplicas: {{ $hpa.minReplicas }}
   maxReplicas: {{ $hpa.maxReplicas }}
   {{- if or $hpa.targetCPUUtilizationPercentage $hpa.targetMemoryUtilizationPercentage $hpa.customMetrics }}

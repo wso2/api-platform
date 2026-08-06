@@ -5,9 +5,9 @@
 apiVersion: v1
 kind: Service
 metadata:
-  name: {{ include "apip.developerPortal.fullname" . }}
+  name: {{ include "apip.apiPortal.fullname" . }}
   labels:
-    {{- include "apip.componentLabels" (list . "developer-portal" $service.labels) | nindent 4 }}
+    {{- include "apip.componentLabels" (list . "api-portal" $service.labels) | nindent 4 }}
   {{- with (include "apip.annotations" (list . $service.annotations)) }}
   annotations:
     {{- . | nindent 4 }}
@@ -37,7 +37,7 @@ spec:
     {{- toYaml . | nindent 4 }}
   {{- end }}
   selector:
-    {{- include "apip.componentSelectorLabels" (list . "developer-portal") | nindent 4 }}
+    {{- include "apip.componentSelectorLabels" (list . "api-portal") | nindent 4 }}
   ports:
     - name: http
       port: {{ $service.port }}

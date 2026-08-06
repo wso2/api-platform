@@ -1,6 +1,6 @@
-name: Release Developer Portal Helm Chart
+name: Release API Portal Helm Chart
 
-# Publishes the Developer Portal product umbrella (Platform API + Developer Portal
+# Publishes the API Portal product umbrella (Platform API + API Portal
 # UI) to GHCR as an OCI artifact. Its component dependencies reference the OCI
 # registry and are pinned in Chart.yaml, so the component charts must be published
 # FIRST. This workflow logs in, pulls the components (helm dependency update),
@@ -19,8 +19,8 @@ on:
         type: string
 
 env:
-  CHART_NAME: developer-portal
-  CHART_PATH: kubernetes/helm/developer-portal-helm-chart
+  CHART_NAME: api-portal
+  CHART_PATH: kubernetes/helm/api-portal-helm-chart
   REGISTRY: ghcr.io
   REGISTRY_USERNAME: api-platform-bot
   ORGANIZATION: wso2
@@ -118,13 +118,13 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           tag_name: helm-${{ env.CHART_NAME }}-${{ inputs.version }}
-          name: Developer Portal Helm Chart ${{ inputs.version }}
+          name: API Portal Helm Chart ${{ inputs.version }}
           body: |
-            ## Developer Portal Helm Chart Release ${{ inputs.version }}
+            ## API Portal Helm Chart Release ${{ inputs.version }}
 
             **App Version:** `${{ inputs.appVersion }}`
 
-            Developer Portal product package — shared Platform API + the Developer Portal UI.
+            API Portal product package — shared Platform API + the API Portal UI.
 
             ### Installation
             ```bash
@@ -140,7 +140,7 @@ jobs:
 
       - name: Chart Summary
         run: |
-          echo "### Developer Portal Helm Chart Released :rocket:" >> $GITHUB_STEP_SUMMARY
+          echo "### API Portal Helm Chart Released :rocket:" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "**Chart Name:** \`${CHART_NAME}\`" >> $GITHUB_STEP_SUMMARY
           echo "**Chart Version:** \`${CHART_VERSION}\`" >> $GITHUB_STEP_SUMMARY

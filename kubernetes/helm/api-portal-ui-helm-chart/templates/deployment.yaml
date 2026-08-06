@@ -1,25 +1,25 @@
-{{- $dp := .Values -}}
-{{- $deployment := $dp.deployment -}}
-{{- $cfg := $dp.config -}}
+{{- $ap := .Values -}}
+{{- $deployment := $ap.deployment -}}
+{{- $cfg := $ap.config -}}
 {{- $auth := $cfg.auth -}}
-{{- $secrets := $dp.secrets -}}
-{{- $tls := $dp.tls -}}
+{{- $secrets := $ap.secrets -}}
+{{- $tls := $ap.tls -}}
 {{- $selfSigned := eq $tls.certificateProvider "selfSigned" -}}
 {{- $tlsFromSecret := or (eq $tls.certificateProvider "cert-manager") (eq $tls.certificateProvider "secret") -}}
-{{- if and $dp.deployment.enabled (not (or $tlsFromSecret (eq $tls.certificateProvider "none"))) }}
-{{- fail "developer-portal-ui: tls.certificateProvider must be \"cert-manager\", \"secret\", or \"none\" (plain HTTP) — there is no self-signed fallback (the image does not generate a certificate at startup). Provide a TLS Secret (certificateProvider=secret), use cert-manager, or set certificateProvider=none to serve plain HTTP behind a TLS-terminating proxy." }}
+{{- if and $ap.deployment.enabled (not (or $tlsFromSecret (eq $tls.certificateProvider "none"))) }}
+{{- fail "api-portal-ui: tls.certificateProvider must be \"cert-manager\", \"secret\", or \"none\" (plain HTTP) — there is no self-signed fallback (the image does not generate a certificate at startup). Provide a TLS Secret (certificateProvider=secret), use cert-manager, or set certificateProvider=none to serve plain HTTP behind a TLS-terminating proxy." }}
 {{- end }}
-{{- $secretName := include "apip.developerPortal.secretName" . -}}
-{{- $imageTag := default .Chart.AppVersion $dp.image.tag -}}
+{{- $secretName := include "apip.apiPortal.secretName" . -}}
+{{- $imageTag := default .Chart.AppVersion $ap.image.tag -}}
 {{- $certDir := $tls.mountPath -}}
 {{- $jwtKeyDir := regexReplaceAll "/[^/]+$" $auth.publicKeyPath "" -}}
 {{- if $deployment.enabled }}
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: {{ include "apip.developerPortal.fullname" . }}
+  name: {{ include "apip.apiPortal.fullname" . }}
   labels:
-    {{- include "apip.componentLabels" (list . "developer-portal" $deployment.labels) | nindent 4 }}
+    {{- include "apip.componentLabels" (list . "api-portal" $deployment.labels) | nindent 4 }}
   {{- with (include "apip.annotations" (list . $deployment.annotations)) }}
   annotations:
     {{- . | nindent 4 }}
@@ -32,18 +32,18 @@ spec:
   {{- end }}
   selector:
     matchLabels:
-      {{- include "apip.componentSelectorLabels" (list . "developer-portal") | nindent 6 }}
+      {{- include "apip.componentSelectorLabels" (list . "api-portal") | nindent 6 }}
   template:
     metadata:
       labels:
-        {{- include "apip.componentPodLabels" (list . "developer-portal" $deployment.podLabels) | nindent 8 }}
+        {{- include "apip.componentPodLabels" (list . "api-portal" $deployment.podLabels) | nindent 8 }}
       {{- with (merge (dict) (default (dict) $deployment.podAnnotations) (default (dict) .Values.global.commonAnnotations)) }}
       annotations:
         {{- include "apip.renderStringMap" . | nindent 8 }}
       {{- end }}
     spec:
       serviceAccountName: {{ include "apip.serviceAccountName" . }}
-      {{- with (include "apip.componentImagePullSecretsBlock" (dict "root" . "componentPullSecrets" $dp.imagePullSecrets)) }}
+      {{- with (include "apip.componentImagePullSecretsBlock" (dict "root" . "componentPullSecrets" $ap.imagePullSecrets)) }}
       {{- . | nindent 6 }}
       {{- end }}
       {{- with $deployment.podSecurityContext }}
@@ -87,9 +87,9 @@ spec:
       automountServiceAccountToken: {{ $deployment.automountServiceAccountToken }}
       {{- end }}
       containers:
-        - name: devportal
-          image: {{ include "apip.componentImage" (dict "root" . "repository" $dp.image.repository "defaultRepository" "ghcr.io/wso2/api-platform/developer-portal" "tag" $imageTag) | quote }}
-          imagePullPolicy: {{ $dp.image.pullPolicy }}
+        - name: api-portal
+          image: {{ include "apip.componentImage" (dict "root" . "repository" $ap.image.repository "defaultRepository" "ghcr.io/wso2/api-platform/api-portal" "tag" $imageTag) | quote }}
+          imagePullPolicy: {{ $ap.image.pullPolicy }}
           {{- with $deployment.securityContext }}
           securityContext:
             {{- toYaml . | nindent 12 }}
@@ -115,13 +115,6 @@ spec:
                   name: {{ $secretName }}
                   key: {{ $secrets.keys.databasePassword }}
             {{- end }}
-            {{- if $secrets.hasServiceApiKeyValue }}
-            - name: APIP_AP_SECURITY_SERVICE_API_KEY_VALUE
-              valueFrom:
-                secretKeyRef:
-                  name: {{ $secretName }}
-                  key: {{ $secrets.keys.serviceApiKeyValue }}
-            {{- end }}
             {{- if and (ne $auth.idp.clientId "") $secrets.hasIdpClientSecret }}
             - name: APIP_AP_AUTH_IDP_CLIENT_SECRET
               valueFrom:
@@ -138,7 +131,7 @@ spec:
           {{- end }}
           ports:
             - name: http
-              containerPort: {{ $dp.containerPort }}
+              containerPort: {{ $ap.containerPort }}
               protocol: TCP
           livenessProbe:
             {{- toYaml $deployment.livenessProbe | nindent 12 }}
@@ -171,9 +164,9 @@ spec:
             {{- end }}
       volumes:
         - name: data
-          {{- if $dp.persistence.enabled }}
+          {{- if $ap.persistence.enabled }}
           persistentVolumeClaim:
-            claimName: {{ if $dp.persistence.existingClaim }}{{ $dp.persistence.existingClaim }}{{ else }}{{ include "apip.developerPortal.fullname" . }}-data{{ end }}
+            claimName: {{ if $ap.persistence.existingClaim }}{{ $ap.persistence.existingClaim }}{{ else }}{{ include "apip.apiPortal.fullname" . }}-data{{ end }}
           {{- else }}
           emptyDir: {}
           {{- end }}
@@ -181,7 +174,7 @@ spec:
           {{- if $tlsFromSecret }}
           secret:
             {{- if eq $tls.certificateProvider "cert-manager" }}
-            secretName: {{ include "apip.developerPortal.fullname" . }}-tls
+            secretName: {{ include "apip.apiPortal.fullname" . }}-tls
             {{- else }}
             secretName: {{ $tls.secret.name }}
             {{- end }}
@@ -196,7 +189,7 @@ spec:
           {{- end }}
         - name: config
           configMap:
-            name: {{ include "apip.developerPortal.fullname" . }}-config
+            name: {{ include "apip.apiPortal.fullname" . }}-config
             items:
               - key: config.toml
                 path: config.toml

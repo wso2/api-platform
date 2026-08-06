@@ -1,15 +1,15 @@
 # ============================================================================
-# developer-portal — product values
+# api-portal — product values
 # ============================================================================
-# This is the Developer Portal product package: the shared Platform API plus the
-# Developer Portal. You normally keep this file as-is and put your changes in a
+# This is the API Portal product package: the shared Platform API plus the
+# API Portal. You normally keep this file as-is and put your changes in a
 # separate `-f my_values.yaml`; both are layered at install time (later wins).
 #
 # How settings are organised:
 #   global.*         Settings shared by EVERY component (image pull secrets,
 #                    service account, the Platform API address, …).
 #   <component>.*    Settings for one component, keyed by its chart name in
-#                    kebab-case: `platform-api`, `developer-portal-ui`. Each component
+#                    kebab-case: `platform-api`, `api-portal-ui`. Each component
 #                    documents its full option list in charts/<name>/values.yaml —
 #                    override any of those keys under the same top-level key here.
 #
@@ -65,7 +65,7 @@ global:
 # auth, resources, …) add keys under the same top-level key — see each
 # component's own values.yaml, e.g.:
 #
-#   developer-portal-ui:
+#   api-portal-ui:
 #     config:
 #       server:
 #         baseUrl: https://devportal.example.com   # public URL browsers use
@@ -75,6 +75,6 @@ global:
 platform-api:
   enabled: true
 
-# The Developer Portal — this package's headline component.
-developer-portal-ui:
+# The API Portal — this package's headline component.
+api-portal-ui:
   enabled: true

@@ -1,20 +1,20 @@
-{{- $dp := .Values -}}
-{{- $cfg := $dp.config -}}
+{{- $ap := .Values -}}
+{{- $cfg := $ap.config -}}
 {{- $db := $cfg.database -}}
 {{- $auth := $cfg.auth -}}
-{{- $tls := $dp.tls -}}
+{{- $tls := $ap.tls -}}
 {{- $certDir := $tls.mountPath -}}
-{{- $baseUrl := default (printf "https://localhost:%d" (int $dp.containerPort)) $cfg.server.baseUrl -}}
+{{- $baseUrl := default (printf "https://localhost:%d" (int $ap.containerPort)) $cfg.server.baseUrl -}}
 {{- $platformApiUrl := default (include "apip.platformApi.internalURL" .) $cfg.platformApi.baseUrl -}}
 {{- $tlsEnabled := ne $tls.certificateProvider "none" -}}
-{{- if $dp.deployment.enabled }}
+{{- if $ap.deployment.enabled }}
 apiVersion: v1
 kind: ConfigMap
 metadata:
-  name: {{ include "apip.developerPortal.fullname" . }}-config
+  name: {{ include "apip.apiPortal.fullname" . }}-config
   labels:
-    {{- include "apip.componentLabels" (list . "developer-portal" $dp.configMap.labels) | nindent 4 }}
-  {{- with (include "apip.annotations" (list . $dp.configMap.annotations)) }}
+    {{- include "apip.componentLabels" (list . "api-portal" $ap.configMap.labels) | nindent 4 }}
+  {{- with (include "apip.annotations" (list . $ap.configMap.annotations)) }}
   annotations:
     {{- . | nindent 4 }}
   {{- end }}
@@ -26,7 +26,7 @@ data:
   # supplied as env vars from the referenced Secret (Secret -> env -> config).
   config.toml: |
     [api_portal.server]
-    port = {{ $dp.containerPort | int }}
+    port = {{ $ap.containerPort | int }}
     base_url = {{ $baseUrl | quote }}
 
     [api_portal.server.https]
@@ -66,15 +66,11 @@ data:
     encryption_key = {{ `'{{ env "APIP_AP_SECURITY_ENCRYPTION_KEY" }}'` }}
     session_secret = {{ `'{{ env "APIP_AP_SECURITY_SESSION_SECRET" }}'` }}
 
-    [api_portal.security.service_api_key]
-    enabled = {{ $cfg.security.serviceApiKey.enabled }}
-    header_name = {{ $cfg.security.serviceApiKey.headerName | quote }}
-    {{- if $dp.secrets.hasServiceApiKeyValue }}
-    value = {{ `'{{ env "APIP_AP_SECURITY_SERVICE_API_KEY_VALUE" }}'` }}
-    {{- end }}
-
     [api_portal.auth]
     mode = {{ ternary "idp" "local" (ne $auth.idp.clientId "") | quote }}
+    {{- with $auth.idpOrgId }}
+    idp_org_id = {{ . | quote }}
+    {{- end }}
 
     [api_portal.auth.claim_mappings]
     organization = {{ $auth.claimMappings.organization | quote }}
@@ -110,7 +106,6 @@ data:
     {{- if ne $auth.idp.clientId "" }}
 
     [api_portal.auth.idp]
-    name = {{ $auth.idp.name | quote }}
     issuer = {{ $auth.idp.issuer | quote }}
     authorization_url = {{ $auth.idp.authorizationUrl | quote }}
     token_url = {{ $auth.idp.tokenUrl | quote }}
@@ -133,17 +128,26 @@ data:
     {{- $org := $cfg.organization }}
     {{- $orgHandle := $org.handle | default $org.defaultName }}
     {{- if not $orgHandle }}
-      {{- fail "developerPortal.config.organization.handle is required" }}
+      {{- fail "config.organization.handle is required" }}
     {{- end }}
     [api_portal.organization]
     handle = {{ $orgHandle | quote }}
     display_name = {{ $org.displayName | default "" | quote }}
     auto_create_subscription_plans = {{ $org.autoCreateSubscriptionPlans }}
 
+    [api_portal.artifacts]
+    enabled_types = {{ toJson $cfg.artifacts.enabledTypes }}
+
     [api_portal.webhooks.delivery]
     poll_interval_ms = {{ $cfg.webhooksDelivery.pollIntervalMs | int }}
     batch_size = {{ $cfg.webhooksDelivery.batchSize | int }}
     signature_tolerance_sec = {{ $cfg.webhooksDelivery.signatureToleranceSec | int }}
+
+    [api_portal.uploads]
+    max_bytes = {{ $cfg.uploads.maxBytes | int }}
+    max_total_bytes = {{ $cfg.uploads.maxTotalBytes | int }}
+    max_zip_entries = {{ $cfg.uploads.maxZipEntries | int }}
+    max_depth = {{ $cfg.uploads.maxDepth | int }}
 
     [api_portal.tryout]
     enabled = {{ $cfg.tryout.enabled }}
@@ -153,7 +157,7 @@ data:
     timeout_ms = {{ $cfg.tryout.timeoutMs | int }}
     max_request_bytes = {{ $cfg.tryout.maxRequestBytes | int }}
     max_response_bytes = {{ $cfg.tryout.maxResponseBytes | int }}
-    {{- with $dp.configToml }}
+    {{- with $ap.configToml }}
 
     {{ . | nindent 4 | trim }}
     {{- end }}

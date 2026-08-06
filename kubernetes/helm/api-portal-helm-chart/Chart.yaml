@@ -1,9 +1,9 @@
 apiVersion: v2
-name: developer-portal
+name: api-portal
 kubeVersion: ">=1.24.0-0"
 description: >-
   WSO2 API Platform — API Portal & MCP Hub product package. Chart whose
-  default profile is the shared Platform API control plane plus the Developer
+  default profile is the shared Platform API control plane plus the API
   Portal. Each component is a separately-released chart pulled as an OCI
   dependency; add other components (e.g. AI Workspace) later by appending a dependency.
 version: 1.0.0-alpha
@@ -14,7 +14,7 @@ sources:
   - https://github.com/wso2/api-platform
 keywords:
   - api-platform
-  - developer-portal
+  - api-portal
   - platform-api
   - wso2
 maintainers:
@@ -29,11 +29,11 @@ dependencies:
   #
   # Shared control plane. On by default; the portal reaches it in-cluster.
   - name: platform-api
-    version: "0.13.0"
+    version: "0.16.0"
     repository: "oci://ghcr.io/wso2/api-platform/helm-charts"
     condition: platform-api.enabled
-  # Developer Portal — this package's headline component.
-  - name: developer-portal-ui
-    version: "1.0.0-alpha"
+  # API Portal — this package's headline component.
+  - name: api-portal-ui
+    version: "1.0.0"
     repository: "oci://ghcr.io/wso2/api-platform/helm-charts"
-    condition: developer-portal-ui.enabled
+    condition: api-portal-ui.enabled

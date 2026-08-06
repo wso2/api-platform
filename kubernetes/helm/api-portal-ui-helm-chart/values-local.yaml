@@ -1,7 +1,7 @@
-# Local development values for the developer-portal-ui chart.
+# Local development values for the api-portal-ui chart.
 # Usage (standalone, from kubernetes/helm/):
-#   helm install developer-portal-ui ./developer-portal-ui-helm-chart \
-#     -f developer-portal-ui-helm-chart/values.yaml -f developer-portal-ui-helm-chart/values-local.yaml
+#   helm install api-portal-ui ./api-portal-ui-helm-chart \
+#     -f api-portal-ui-helm-chart/values.yaml -f api-portal-ui-helm-chart/values-local.yaml
 #
 # Overrides the defaults for local development:
 # - locally-built image (latest tag, IfNotPresent pull policy)

@@ -552,7 +552,7 @@ gateway:
       # accepted by the api-key-auth policy. Defaults to "" (accept any issuer) to
       # match the gateway-controller's own code default. config-template.toml ships
       # "api-platform-devportal" instead; set this explicitly to that value if this
-      # gateway should only accept keys minted by the bundled WSO2 Developer Portal —
+      # gateway should only accept keys minted by the bundled WSO2 API Portal —
       # do not adopt it as the chart default, or existing deployments minting/accepting
       # keys with a different or absent issuer would start being rejected.
       issuer: ""

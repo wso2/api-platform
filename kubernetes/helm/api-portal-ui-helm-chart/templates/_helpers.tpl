@@ -33,8 +33,8 @@ in-cluster Service name even though it lives in a different subchart.
 {{- define "apip.aiWorkspace.fullname" -}}
 {{- printf "%s-ai-workspace" (include "apip.fullname" . | trunc 50 | trimSuffix "-") | trunc 63 | trimSuffix "-" -}}
 {{- end -}}
-{{- define "apip.developerPortal.fullname" -}}
-{{- printf "%s-developer-portal" (include "apip.fullname" . | trunc 45 | trimSuffix "-") | trunc 63 | trimSuffix "-" -}}
+{{- define "apip.apiPortal.fullname" -}}
+{{- printf "%s-api-portal" (include "apip.fullname" . | trunc 45 | trimSuffix "-") | trunc 63 | trimSuffix "-" -}}
 {{- end -}}
 
 {{- define "apip.chart" -}}
@@ -212,10 +212,10 @@ that component's secret. Fails the render when a required secret is unset.
 {{- $name -}}
 {{- end -}}
 
-{{- define "apip.developerPortal.secretName" -}}
+{{- define "apip.apiPortal.secretName" -}}
 {{- $name := .Values.secrets.existingSecret -}}
 {{- if not $name -}}
-{{- fail "developerPortal.secrets.existingSecret is required. Run ./generate-secrets.sh <namespace> to create the Secrets and write values-secrets.yaml, then install with -f values-secrets.yaml." -}}
+{{- fail "apiPortal.secrets.existingSecret is required. Run ./generate-secrets.sh <namespace> to create the Secrets and write values-secrets.yaml, then install with -f values-secrets.yaml." -}}
 {{- end -}}
 {{- $name -}}
 {{- end -}}

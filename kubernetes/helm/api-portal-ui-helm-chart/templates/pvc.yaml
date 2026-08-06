@@ -1,12 +1,12 @@
-{{- $dp := .Values -}}
-{{- $persistence := $dp.persistence -}}
-{{- if and $dp.deployment.enabled $persistence.enabled (not $persistence.existingClaim) }}
+{{- $ap := .Values -}}
+{{- $persistence := $ap.persistence -}}
+{{- if and $ap.deployment.enabled $persistence.enabled (not $persistence.existingClaim) }}
 apiVersion: v1
 kind: PersistentVolumeClaim
 metadata:
-  name: {{ include "apip.developerPortal.fullname" . }}-data
+  name: {{ include "apip.apiPortal.fullname" . }}-data
   labels:
-    {{- include "apip.componentLabels" (list . "developer-portal" $persistence.labels) | nindent 4 }}
+    {{- include "apip.componentLabels" (list . "api-portal" $persistence.labels) | nindent 4 }}
   {{- with (include "apip.annotations" (list . $persistence.annotations)) }}
   annotations:
     {{- . | nindent 4 }}

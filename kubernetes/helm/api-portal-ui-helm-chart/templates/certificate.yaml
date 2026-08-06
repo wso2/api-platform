@@ -4,15 +4,15 @@
 apiVersion: cert-manager.io/v1
 kind: Certificate
 metadata:
-  name: {{ include "apip.developerPortal.fullname" . }}-tls
+  name: {{ include "apip.apiPortal.fullname" . }}-tls
   labels:
-    {{- include "apip.componentLabels" (list . "developer-portal" dict) | nindent 4 }}
+    {{- include "apip.componentLabels" (list . "api-portal" dict) | nindent 4 }}
   {{- with (include "apip.annotations" (list . dict)) }}
   annotations:
     {{- . | nindent 4 }}
   {{- end }}
 spec:
-  secretName: {{ include "apip.developerPortal.fullname" . }}-tls
+  secretName: {{ include "apip.apiPortal.fullname" . }}-tls
   commonName: {{ $tls.certManager.commonName }}
   dnsNames:
     {{- range $tls.certManager.dnsNames }}
@@ -22,7 +22,7 @@ spec:
   renewBefore: {{ $tls.certManager.renewBefore | quote }}
   issuerRef:
     {{- if $tls.certManager.createIssuer }}
-    name: {{ include "apip.developerPortal.fullname" . }}-selfsigned-issuer
+    name: {{ include "apip.apiPortal.fullname" . }}-selfsigned-issuer
     {{- else }}
     name: {{ $tls.certManager.issuerRef.name }}
     {{- end }}
