@@ -22,10 +22,12 @@ import (
 	"errors"
 	"log/slog"
 	"net/http"
+	"net/http/httputil"
 	"strings"
 	"time"
 
 	"api-control-plane-bff/internal/auth"
+	"api-control-plane-bff/internal/proxy"
 	"api-control-plane-bff/internal/session"
 )
 
@@ -173,6 +175,46 @@ func (s *Server) handleOIDCCallback(w http.ResponseWriter, r *http.Request) {
 	}
 	s.setSessionCookie(w, sess.AccessToken, sess.AbsoluteExpiry)
 	http.Redirect(w, r, sanitizeReturn(ret), http.StatusFound)
+}
+
+// ---------------------------------------------------------------------------
+// Reverse proxy
+// ---------------------------------------------------------------------------
+
+// proxyHandler returns a handler that takes the token straight from the
+// cookie and forwards it via rp. No server-side lookup is involved unless the
+// token is an OIDC access token that is near expiry and must be refreshed —
+// the same refresh logic runs regardless of which mounted upstream (primary
+// or named) is being called, since all of them share the one session cookie.
+func (s *Server) proxyHandler(rp *httputil.ReverseProxy) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		token, ok := s.tokenFromCookie(r)
+		if !ok {
+			writeErrorJSON(w, http.StatusUnauthorized, "NOT_AUTHENTICATED", "not authenticated")
+			return
+		}
+
+		// Refresh near-expiry OIDC access tokens before proxying. The expiry is
+		// read from the token itself (not the store); the store is consulted
+		// only when an actual refresh is required.
+		if s.oidc != nil {
+			exp := session.ExpiryFromClaims(session.DecodeJWTClaims(token))
+			if needsRefreshSoon(exp) {
+				refreshed, err := s.refreshByToken(r.Context(), token)
+				if err != nil {
+					slog.Warn("token refresh failed", "err", err)
+					_ = s.store.Delete(r.Context(), token)
+					s.clearSessionCookie(w)
+					writeErrorJSON(w, http.StatusUnauthorized, "SESSION_EXPIRED", "session expired")
+					return
+				}
+				token = refreshed.AccessToken
+				s.setSessionCookie(w, token, refreshed.AbsoluteExpiry)
+			}
+		}
+
+		rp.ServeHTTP(w, proxy.WithToken(r, token))
+	}
 }
 
 // ---------------------------------------------------------------------------

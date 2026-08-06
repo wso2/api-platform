@@ -15,22 +15,22 @@
  */
 
 // Package server wires the BFF HTTP surface: the file-based / OIDC auth
-// endpoints and session lifecycle, and static SPA serving. The same-origin
-// reverse proxy to the Platform API lands in a follow-up commit.
+// endpoints and session lifecycle, static SPA serving, and the same-origin
+// reverse proxy to the Platform API and any additional named upstream.
 package server
 
 import (
 	"context"
-	"crypto/tls"
-	"crypto/x509"
 	"fmt"
 	"net/http"
-	"os"
+	"net/http/httputil"
+	"net/url"
 	"sync"
 	"time"
 
 	"api-control-plane-bff/internal/auth"
 	"api-control-plane-bff/internal/config"
+	"api-control-plane-bff/internal/proxy"
 	"api-control-plane-bff/internal/session"
 )
 
@@ -46,6 +46,12 @@ type refreshLock struct {
 	err    error
 }
 
+// mountedProxy pairs a same-origin prefix with the reverse proxy serving it.
+type mountedProxy struct {
+	prefix string
+	rp     *httputil.ReverseProxy
+}
+
 // Server holds the BFF dependencies and HTTP handler.
 type Server struct {
 	cfg       *config.Config
@@ -53,6 +59,7 @@ type Server struct {
 	store     session.Store
 	fileBased *auth.FileBased
 	oidc      *auth.OIDC
+	proxies   []mountedProxy
 	handler   http.Handler
 
 	refreshMu    sync.Mutex
@@ -64,11 +71,14 @@ type Server struct {
 // authenticator — discovering the IDP endpoints up front when discovery is
 // configured.
 func New(ctx context.Context, cfg *config.Config) (*Server, error) {
-	transport, err := newUpstreamTransport(cfg.ControlPlane.CAFile, cfg.ControlPlane.TLSSkipVerify)
+	primaryTransport, err := proxy.NewTransport(proxy.TLSClientOptions{
+		CAFile:     cfg.ControlPlane.CAFile,
+		SkipVerify: cfg.ControlPlane.TLSSkipVerify,
+	})
 	if err != nil {
 		return nil, err
 	}
-	upstream := &http.Client{Transport: transport, Timeout: 60 * time.Second}
+	upstream := &http.Client{Transport: primaryTransport, Timeout: 60 * time.Second}
 
 	// Shared by both auth modes: OIDC tokens from the configured IDP, and the
 	// tokens the Platform API's file-based login endpoint signs with these same
@@ -76,10 +86,42 @@ func New(ctx context.Context, cfg *config.Config) (*Server, error) {
 	// apart.
 	claims := buildClaimMapping(cfg.Auth.ClaimMappings)
 
+	primaryTarget, err := url.Parse(cfg.ControlPlane.URL)
+	if err != nil {
+		return nil, fmt.Errorf("parse control_plane.url: %w", err)
+	}
+	proxies := []mountedProxy{
+		{prefix: cfg.ControlPlane.ProxyPrefix, rp: proxy.ReverseProxy(primaryTarget, cfg.ControlPlane.ProxyPrefix, primaryTransport)},
+	}
+
+	// Additional named upstreams (e.g. a billing service) are proxied
+	// same-origin alongside the primary one, each with its own transport so a
+	// per-upstream TLS trust setting never leaks onto a different upstream.
+	// Optional; empty for every deployment that only talks to the primary.
+	for _, u := range cfg.ControlPlane.Upstreams {
+		upstreamTransport, err := proxy.NewTransport(proxy.TLSClientOptions{
+			CAFile:     u.CAFile,
+			SkipVerify: u.TLSSkipVerify,
+		})
+		if err != nil {
+			return nil, fmt.Errorf("build transport for upstream %q: %w", u.Name, err)
+		}
+		target, err := url.Parse(u.URL)
+		if err != nil {
+			return nil, fmt.Errorf("parse url for upstream %q: %w", u.Name, err)
+		}
+		prefix := u.Prefix
+		if prefix == "" {
+			prefix = cfg.ControlPlane.ProxyPrefix + "/" + u.Name
+		}
+		proxies = append(proxies, mountedProxy{prefix: prefix, rp: proxy.ReverseProxy(target, prefix, upstreamTransport)})
+	}
+
 	s := &Server{
 		cfg:          cfg,
 		claims:       claims,
 		fileBased:    auth.NewFileBased(upstream, cfg.ControlPlane.URL, cfg.ControlPlane.PortalBasePath, cfg.Session.AbsoluteTTL, claims),
+		proxies:      proxies,
 		refreshLocks: make(map[string]*refreshLock),
 	}
 
@@ -126,10 +168,7 @@ func (s *Server) Close() error {
 	return nil
 }
 
-// routes builds the mux and wraps it with the global middleware chain. The
-// reverse-proxy route is added by a follow-up commit; until then, API calls
-// the SPA makes to the Platform API will fail (auth and static serving both
-// already work end to end).
+// routes builds the mux and wraps it with the global middleware chain.
 func (s *Server) routes() http.Handler {
 	mux := http.NewServeMux()
 
@@ -146,9 +185,15 @@ func (s *Server) routes() http.Handler {
 	mux.HandleFunc("GET /api/auth/login", s.handleOIDCLogin)
 	mux.HandleFunc("GET /api/auth/callback", s.handleOIDCCallback)
 
-	// SPA static files + client-side routing fallback. Must be registered last
-	// (and, once the reverse proxy lands, after its prefix) since it's the
-	// catch-all for everything not matched above.
+	// Same-origin reverse proxy(ies): the primary control plane, plus any
+	// named upstream. Each Rewrite hook already strips its own prefix, so the
+	// subtree is registered directly.
+	for _, p := range s.proxies {
+		mux.HandleFunc(p.prefix+"/", s.proxyHandler(p.rp))
+	}
+
+	// SPA static files + client-side routing fallback. Must be registered
+	// last since it's the catch-all for everything not matched above.
 	mux.Handle("/", spaHandler(s.cfg.Server.StaticDir))
 
 	return chain(mux,
@@ -158,36 +203,6 @@ func (s *Server) routes() http.Handler {
 		s.securityHeaders,
 		s.requireCSRF,
 	)
-}
-
-// newUpstreamTransport builds the HTTP transport used for every outbound call
-// to the control plane / IdP. caFile, when set, is appended to the system root
-// pool (never replaces it); skipVerify is a last-resort dev/demo escape hatch.
-// Both come from validated config (Config.validate already rejects
-// tls_skip_verify/ca_file paired with a non-TLS scheme).
-func newUpstreamTransport(caFile string, skipVerify bool) (*http.Transport, error) {
-	transport := http.DefaultTransport.(*http.Transport).Clone()
-	if !skipVerify && caFile == "" {
-		return transport, nil
-	}
-
-	tlsConfig := &tls.Config{InsecureSkipVerify: skipVerify} //nolint:gosec // explicit, config-gated dev/demo opt-out only
-	if caFile != "" {
-		pem, err := os.ReadFile(caFile)
-		if err != nil {
-			return nil, fmt.Errorf("failed to read ca_file %q: %w", caFile, err)
-		}
-		pool, err := x509.SystemCertPool()
-		if err != nil || pool == nil {
-			pool = x509.NewCertPool()
-		}
-		if !pool.AppendCertsFromPEM(pem) {
-			return nil, fmt.Errorf("ca_file %q contains no usable certificates", caFile)
-		}
-		tlsConfig.RootCAs = pool
-	}
-	transport.TLSClientConfig = tlsConfig
-	return transport, nil
 }
 
 // buildClaimMapping builds the claim mapping shared by both auth modes from

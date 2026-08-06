@@ -300,6 +300,138 @@ func newMockIDP(t *testing.T) *httptest.Server {
 	return srv
 }
 
+// ---------------------------------------------------------------------------
+// Reverse proxy: authenticated forwarding, unauthenticated rejection, and a
+// named multi-upstream mount (mirroring cloud's billing-activation use case).
+// ---------------------------------------------------------------------------
+
+func TestHandlers_Proxy_UnauthenticatedRejected(t *testing.T) {
+	platform := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		t.Error("upstream must not be called for an unauthenticated proxy request")
+	}))
+	defer platform.Close()
+
+	cfg := newTestConfig(platform.URL)
+	srv, err := New(context.Background(), cfg)
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+	defer srv.Close()
+	bff := httptest.NewServer(srv.Handler())
+	defer bff.Close()
+
+	res, err := http.Get(bff.URL + "/proxy/api/v0.9/projects")
+	if err != nil {
+		t.Fatalf("proxy request: %v", err)
+	}
+	assertStatus(t, res, http.StatusUnauthorized)
+}
+
+func TestHandlers_Proxy_AuthenticatedForwardsAndInjectsBearer(t *testing.T) {
+	tok := makeJWT(map[string]any{"username": "admin"})
+	var gotAuth, gotCookie, gotPath string
+	platform := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if strings.HasSuffix(r.URL.Path, "/auth/login") {
+			json.NewEncoder(w).Encode(map[string]any{"token": tok, "expires_at": time.Now().Add(time.Hour).Unix()})
+			return
+		}
+		gotAuth = r.Header.Get("Authorization")
+		gotCookie = r.Header.Get("Cookie")
+		gotPath = r.URL.Path
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer platform.Close()
+
+	cfg := newTestConfig(platform.URL)
+	srv, err := New(context.Background(), cfg)
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+	defer srv.Close()
+	bff := httptest.NewServer(srv.Handler())
+	defer bff.Close()
+
+	jar, _ := cookiejar.New(nil)
+	client := &http.Client{Jar: jar}
+
+	loginReq, _ := http.NewRequest(http.MethodPost, bff.URL+"/api/login", strings.NewReader(`{"username":"admin","password":"secret"}`))
+	loginReq.Header.Set("Content-Type", "application/json")
+	loginReq.Header.Set(config.CSRFHeaderName, "api-control-plane")
+	res, err := client.Do(loginReq)
+	if err != nil {
+		t.Fatalf("login: %v", err)
+	}
+	assertStatus(t, res, http.StatusOK)
+
+	res, err = client.Get(bff.URL + "/proxy/api/v0.9/projects")
+	if err != nil {
+		t.Fatalf("proxy request: %v", err)
+	}
+	assertStatus(t, res, http.StatusOK)
+
+	if gotAuth != "Bearer "+tok {
+		t.Errorf("upstream Authorization = %q, want Bearer %s", gotAuth, tok)
+	}
+	if gotCookie != "" {
+		t.Errorf("upstream Cookie = %q, want empty (browser cookie must not leak upstream)", gotCookie)
+	}
+	if gotPath != "/api/v0.9/projects" {
+		t.Errorf("upstream path = %q, want /api/v0.9/projects (proxy prefix not stripped)", gotPath)
+	}
+}
+
+// A named upstream (e.g. cloud's billing service) must be reachable at its
+// own same-origin prefix, independently of the primary control-plane
+// upstream, with the same session token injected.
+func TestHandlers_Proxy_NamedUpstream(t *testing.T) {
+	tok := makeJWT(map[string]any{"username": "admin"})
+	platform := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		json.NewEncoder(w).Encode(map[string]any{"token": tok, "expires_at": time.Now().Add(time.Hour).Unix()})
+	}))
+	defer platform.Close()
+
+	var billingAuth, billingPath string
+	billing := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		billingAuth = r.Header.Get("Authorization")
+		billingPath = r.URL.Path
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer billing.Close()
+
+	cfg := newTestConfig(platform.URL)
+	cfg.ControlPlane.Upstreams = []config.UpstreamConfig{
+		{Name: "billing", URL: billing.URL},
+	}
+	srv, err := New(context.Background(), cfg)
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+	defer srv.Close()
+	bff := httptest.NewServer(srv.Handler())
+	defer bff.Close()
+
+	jar, _ := cookiejar.New(nil)
+	client := &http.Client{Jar: jar}
+	loginReq, _ := http.NewRequest(http.MethodPost, bff.URL+"/api/login", strings.NewReader(`{"username":"admin","password":"secret"}`))
+	loginReq.Header.Set("Content-Type", "application/json")
+	loginReq.Header.Set(config.CSRFHeaderName, "api-control-plane")
+	if _, err := client.Do(loginReq); err != nil {
+		t.Fatalf("login: %v", err)
+	}
+
+	res, err := client.Get(bff.URL + "/proxy/billing/organization")
+	if err != nil {
+		t.Fatalf("billing proxy request: %v", err)
+	}
+	assertStatus(t, res, http.StatusOK)
+	if billingAuth != "Bearer "+tok {
+		t.Errorf("billing upstream Authorization = %q, want Bearer %s", billingAuth, tok)
+	}
+	if billingPath != "/organization" {
+		t.Errorf("billing upstream path = %q, want /organization", billingPath)
+	}
+}
+
 func assertStatus(t *testing.T, res *http.Response, want int) {
 	t.Helper()
 	if res.StatusCode != want {
