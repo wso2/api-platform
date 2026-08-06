@@ -56,29 +56,6 @@ export const setApiHttpRequest = (httpRequest?: AuthHttpRequest) => {
   authHttpRequest = httpRequest;
 };
 
-// Token seam for the platform (BML/REST) client. Auth adapters register a
-// provider (the current bearer) and an optional refresher (invoked once on a
-// 401). This keeps `platformClient` decoupled from any specific IdP SDK so it
-// works identically under Asgardeo, Thunder, or local-file auth.
-type PlatformTokenFn = () => Promise<string | undefined>;
-let platformTokenProvider: PlatformTokenFn | undefined;
-let platformTokenRefresher: PlatformTokenFn | undefined;
-
-export const setPlatformTokenProvider = (provider?: PlatformTokenFn) => {
-  platformTokenProvider = provider;
-};
-
-export const setPlatformTokenRefresher = (refresher?: PlatformTokenFn) => {
-  platformTokenRefresher = refresher;
-};
-
-export const getPlatformToken = (): Promise<string | undefined> =>
-  platformTokenProvider ? platformTokenProvider() : Promise.resolve(undefined);
-
-/** Returns a fresh token on success, or undefined when no refresher is set. */
-export const refreshPlatformToken = (): Promise<string | undefined> =>
-  platformTokenRefresher ? platformTokenRefresher() : Promise.resolve(undefined);
-
 export const normalizeApiError = (error: unknown): ApiError => {
   if (error instanceof ApiError) {
     return error;

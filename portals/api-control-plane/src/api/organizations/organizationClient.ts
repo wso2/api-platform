@@ -1,53 +1,39 @@
 import { runtimeConfig } from '../../config/runtime';
+import type { AuthUser } from '../../features/auth/authTypes';
 import type { Organization } from '../../types/domain';
 import { toOrganization } from '../adapters';
-import { getJson, getPlatformToken } from '../client';
+import { getJson } from '../client';
 import { organizations } from '../mocks/data';
 import { usePlatformApi } from '../platform/platformClient';
 import { delay, useMockApi } from '../shared/apiClientUtils';
 
-/** Decodes a JWT payload (no signature check) into a claims object. */
-const decodeJwtClaims = (
-  token: string
-): Record<string, unknown> | undefined => {
-  const payload = token.split('.')[1];
-  if (!payload) return undefined;
-  try {
-    const base64 = payload.replace(/-/g, '+').replace(/_/g, '/');
-    const padded = base64.padEnd(Math.ceil(base64.length / 4) * 4, '=');
-    return JSON.parse(decodeURIComponent(escape(atob(padded)))) as Record<
-      string,
-      unknown
-    >;
-  } catch {
-    return undefined;
-  }
-};
-
 /**
- * Direct (no-BML) org resolution: derive the single organization from the IdP
- * access token's OU claims. In the wso2cloud model each user belongs to one
- * Organization Unit (= one organization), carried as ouId/ouName/ouHandle.
- * This stands in for the membership lookup that BML's `/validate/user` provides.
+ * Direct (no-BML) org resolution: the BFF already resolves the session
+ * token's org claims server-side (see `bff/internal/session/claims.go`'s
+ * `UserFromClaims`) and returns them as `user.org` on `/api/session` — the
+ * browser never holds the token itself to decode. This stands in for the
+ * membership lookup that BML's `/validate/user` provides, and is single-org
+ * (Platform API's file-based/OIDC claims carry exactly one org per token),
+ * matching how the AI Workspace BFF/frontend already do this.
  */
-const listOrganizationsFromToken = async (): Promise<Organization[]> => {
-  const token = await getPlatformToken();
-  if (!token) return [];
-  const claims = decodeJwtClaims(token);
-  if (!claims) return [];
-  const id =
-    (claims.ouId as string) ??
-    (claims.organization as string) ??
-    (claims.organizationID as string);
-  const handle = (claims.ouHandle as string) ?? (claims.org_handle as string);
-  const name = (claims.ouName as string) ?? (claims.org_name as string);
-  if (!id && !handle) return [];
+const listOrganizationsFromSession = async (): Promise<Organization[]> => {
+  let user: AuthUser | undefined;
+  try {
+    const response = await fetch('/api/session', { credentials: 'same-origin' });
+    if (!response.ok) return [];
+    const body = (await response.json()) as { user?: AuthUser };
+    user = body.user;
+  } catch {
+    return [];
+  }
+  const org = user?.org;
+  if (!org || (!org.id && !org.handle)) return [];
   return [
     toOrganization({
-      id,
-      uuid: id,
-      handle: handle ?? id,
-      name: name ?? handle ?? id,
+      id: org.id,
+      uuid: org.id,
+      handle: org.handle || org.id,
+      name: org.name || org.handle || org.id,
     }),
   ];
 };
@@ -119,10 +105,11 @@ export async function listOrganizations(): Promise<Organization[]> {
   }
 
   // Direct (no-BML) fallback: with no `/validate/user` membership source, derive
-  // the single org from the IdP token's OU claims so the console can proceed.
+  // the single org the BFF already resolved into the session, so the console
+  // can proceed.
   if (usePlatformApi()) {
-    const fromToken = await listOrganizationsFromToken();
-    if (fromToken.length > 0) return fromToken;
+    const fromSession = await listOrganizationsFromSession();
+    if (fromSession.length > 0) return fromSession;
   }
 
   // All sources returned empty without error → genuinely no organizations.
