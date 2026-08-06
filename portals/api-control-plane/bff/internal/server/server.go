@@ -15,8 +15,8 @@
  */
 
 // Package server wires the BFF HTTP surface: the file-based / OIDC auth
-// endpoints and session lifecycle today; the same-origin reverse proxy to the
-// Platform API and static SPA serving land in a follow-up commit.
+// endpoints and session lifecycle, and static SPA serving. The same-origin
+// reverse proxy to the Platform API lands in a follow-up commit.
 package server
 
 import (
@@ -127,8 +127,9 @@ func (s *Server) Close() error {
 }
 
 // routes builds the mux and wraps it with the global middleware chain. The
-// reverse-proxy and static-SPA routes are added by a follow-up commit; until
-// then, requests outside this set 404.
+// reverse-proxy route is added by a follow-up commit; until then, API calls
+// the SPA makes to the Platform API will fail (auth and static serving both
+// already work end to end).
 func (s *Server) routes() http.Handler {
 	mux := http.NewServeMux()
 
@@ -144,6 +145,11 @@ func (s *Server) routes() http.Handler {
 	mux.HandleFunc("GET /api/session", s.handleSession)
 	mux.HandleFunc("GET /api/auth/login", s.handleOIDCLogin)
 	mux.HandleFunc("GET /api/auth/callback", s.handleOIDCCallback)
+
+	// SPA static files + client-side routing fallback. Must be registered last
+	// (and, once the reverse proxy lands, after its prefix) since it's the
+	// catch-all for everything not matched above.
+	mux.Handle("/", spaHandler(s.cfg.Server.StaticDir))
 
 	return chain(mux,
 		recoverPanic,
