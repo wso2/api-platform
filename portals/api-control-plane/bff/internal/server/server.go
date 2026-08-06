@@ -177,6 +177,7 @@ func (s *Server) routes() http.Handler {
 
 	// Runtime config consumed by the SPA before app init.
 	mux.HandleFunc("GET /api-platform.env.config.js", s.handleRuntimeConfig)
+	mux.HandleFunc("GET /api-platform.common.config.js", s.handleCommonConfig)
 
 	// Auth endpoints.
 	mux.HandleFunc("POST /api/login", s.handleLogin)

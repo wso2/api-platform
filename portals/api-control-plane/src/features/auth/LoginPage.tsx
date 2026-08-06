@@ -2,14 +2,13 @@ import { Alert, Box, Button, Link, Typography } from '@wso2/oxygen-ui';
 import {
   Activity,
   ArrowRight,
-  Building2,
   PencilRuler,
   Rocket,
   ShieldCheck,
   Sparkles,
 } from '@wso2/oxygen-ui-icons-react';
 import type { ReactNode } from 'react';
-import { ChangeEvent, KeyboardEvent, useEffect, useMemo, useRef, useState } from 'react';
+import { ChangeEvent, KeyboardEvent, useMemo, useRef, useState } from 'react';
 import { Navigate, useLocation } from 'react-router-dom';
 
 import { runtimeConfig } from '../../config/runtime';
@@ -20,16 +19,8 @@ type LoginLocationState = {
   confirmationOrg?: string;
   displayOrgName?: string;
   from?: { pathname?: string };
-  returnToOrg?: string;
   returnToUrl?: string;
 };
-
-type LoginRegion = {
-  label: string;
-  url: string;
-};
-
-const AUTH_METHOD_BASIC = 'basic';
 
 const FEATURES: { icon: ReactNode; label: string }[] = [
   { icon: <PencilRuler size={18} />, label: 'Design API proxies or MCP servers' },
@@ -47,21 +38,16 @@ const isSupportedBrowser = () => {
   return /Chrome|Chromium|Firefox/.test(userAgent) && !/Edg\//.test(userAgent);
 };
 
-const parseLoginRegion = (value: string): LoginRegion | undefined => {
-  const [label, url] = value.split('::');
-  if (!label || !url) return undefined;
-  return { label, url };
+// The BFF's OIDC callback redirects back here with ?error=<code> on failure
+// (state/nonce mismatch, code exchange failure, or an error the IdP itself
+// returned) — there is no in-app exception to catch, since login() is a full
+// page navigation to the BFF.
+const OIDC_ERROR_MESSAGES: Record<string, string> = {
+  auth_failed: 'Unable to complete sign in. Please try again.',
+  session_failed: 'Unable to establish a session. Please try again.',
+  access_denied: 'Access was denied.',
 };
 
-const getLoginRegions = () =>
-  runtimeConfig.availableLoginRegions
-    .map(parseLoginRegion)
-    .filter(Boolean) as LoginRegion[];
-
-const isValidEmail = (value: string) =>
-  /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value.trim());
-
-// --- dark field + button styles (standalone branded sign-in page) ---
 const fieldSx = {
   bgcolor: 'rgba(255,255,255,0.04)',
   border: '1px solid rgba(255,255,255,0.14)',
@@ -81,24 +67,6 @@ const fieldSx = {
   },
 };
 
-const ssoButtonSx = {
-  bgcolor: 'rgba(255,255,255,0.04)',
-  border: '1px solid rgba(255,255,255,0.14)',
-  borderRadius: '22px',
-  color: 'rgba(255,255,255,0.92)',
-  fontSize: 13.5,
-  fontWeight: 500,
-  gap: 1.25,
-  height: 44,
-  textTransform: 'none',
-  width: '100%',
-  '&:hover': {
-    bgcolor: 'rgba(255,115,0,0.10)',
-    borderColor: 'rgba(255,115,0,0.45)',
-  },
-  '&.Mui-disabled': { color: 'rgba(255,255,255,0.4)' },
-};
-
 const primaryCtaSx = {
   background: ORANGE_GRADIENT,
   borderRadius: '23px',
@@ -114,31 +82,6 @@ const primaryCtaSx = {
   '&.Mui-disabled': { background: 'rgba(255,255,255,0.12)', color: 'rgba(255,255,255,0.4)' },
 };
 
-function ProviderButton({
-  disabled,
-  icon,
-  label,
-  onClick,
-}: {
-  disabled: boolean;
-  icon: ReactNode;
-  label: string;
-  onClick: () => void;
-}) {
-  return (
-    <Button className="sso" disabled={disabled} onClick={onClick} sx={ssoButtonSx} type="button">
-      <Box sx={{ alignItems: 'center', display: 'flex', height: 28, justifyContent: 'center', width: 28 }}>
-        {icon}
-      </Box>
-      {label}
-    </Button>
-  );
-}
-
-const imgIcon = (src: string) => (
-  <Box alt="" component="img" src={src} sx={{ height: 28, width: 28 }} />
-);
-
 export function LoginPage() {
   const auth = useAuth();
   const location = useLocation();
@@ -149,120 +92,38 @@ export function LoginPage() {
   );
   const from = state.returnToUrl || state.from?.pathname || '/';
   const isInvitation = Boolean(state.confirmationOrg && state.confirmationKey);
-  const autoLoginStarted = useRef(false);
-  const [enterpriseMode, setEnterpriseMode] = useState(false);
-  const [enterpriseEmail, setEnterpriseEmail] = useState('');
-  const [enterpriseEmailError, setEnterpriseEmailError] = useState('');
-  const [email, setEmail] = useState('');
-  const [selectedRegion, setSelectedRegion] = useState(window.location.origin);
-
-  const loginRegions = useMemo(getLoginRegions, []);
-  const isThunderLogin = runtimeConfig.authMode === 'thunder';
-  const isLoginEnabled =
-    runtimeConfig.authMode === 'local-file' ||
-    isThunderLogin ||
-    Boolean(runtimeConfig.asgardeoSdkConfig) ||
-    runtimeConfig.enableLocalAuthFallback;
   const isBrowserSupported = isSupportedBrowser();
-  const providerIds = new Set(auth.loginProviders.map((provider) => provider.id));
-  const showEmailLogin = providerIds.has(runtimeConfig.fidpEmail);
-  const showGoogleLogin = Boolean(
-    runtimeConfig.fidpGoogle && providerIds.has(runtimeConfig.fidpGoogle)
-  );
-  const showGithubLogin = Boolean(
-    runtimeConfig.fidpGithub && providerIds.has(runtimeConfig.fidpGithub)
-  );
-  const showMicrosoftLogin = Boolean(
-    runtimeConfig.fidpMicrosoft && providerIds.has(runtimeConfig.fidpMicrosoft)
-  );
-  const showEnterpriseLogin = Boolean(
-    runtimeConfig.fidpEnterprise && providerIds.has(runtimeConfig.fidpEnterprise)
-  );
-  const hasSso =
-    showGoogleLogin || showGithubLogin || showMicrosoftLogin || showEnterpriseLogin;
+  const isOidcMode = runtimeConfig.authMode === 'oidc';
+  const autoRedirectStarted = useRef(false);
+  const [username, setUsername] = useState('');
+  const [password, setPassword] = useState('');
+  const [submitting, setSubmitting] = useState(false);
 
-  useEffect(() => {
-    const matchingRegion = loginRegions.find(
-      (region) => region.url === window.location.origin
-    );
-    if (matchingRegion) setSelectedRegion(matchingRegion.url);
-  }, [loginRegions]);
-
-  useEffect(() => {
-    if (autoLoginStarted.current || !isLoginEnabled || auth.isAuthenticated) return;
-
-    const fidp = queryParams.get('fidp');
-    const method = queryParams.get('method');
-    const provider =
-      fidp || (method === AUTH_METHOD_BASIC ? runtimeConfig.fidpEmail : undefined);
-    if (provider) {
-      autoLoginStarted.current = true;
-      auth.loginWithProvider(provider, from);
-      return;
-    }
-
-    // In Thunder SSO mode this console's own page is just a redirect step to the
-    // IdP (which itself presents Google/GitHub), so skip it and go straight there.
-    // Exceptions that must still render the page: an invitation to accept, a
-    // multi-region choice, or an access error that would otherwise loop.
-    if (
-      isThunderLogin &&
-      !isInvitation &&
-      loginRegions.length <= 1 &&
-      auth.status !== 'forbidden' &&
-      !auth.error
-    ) {
-      autoLoginStarted.current = true;
-      auth.login(from);
-    }
-  }, [
-    auth,
-    from,
-    isLoginEnabled,
-    isThunderLogin,
-    isInvitation,
-    loginRegions.length,
-    queryParams,
-  ]);
+  const oidcErrorCode = queryParams.get('error');
+  const oidcError = oidcErrorCode
+    ? OIDC_ERROR_MESSAGES[oidcErrorCode] || 'Unable to complete sign in.'
+    : undefined;
 
   if (auth.isAuthenticated) return <Navigate to={from} replace />;
 
-  const message =
-    auth.status === 'expired'
-      ? 'Your session has expired. Sign in again to continue.'
-      : auth.status === 'forbidden'
-        ? 'You do not have access to this console.'
-        : 'Continue to your API Platform console.';
+  // In OIDC mode this page is just a redirect step to the IdP, so skip it and
+  // go straight there — unless there's an invitation to show or a failed
+  // attempt just redirected back here (retrying immediately would loop).
+  if (
+    isOidcMode &&
+    !isInvitation &&
+    !oidcError &&
+    !autoRedirectStarted.current
+  ) {
+    autoRedirectStarted.current = true;
+    auth.login(from);
+  }
 
-  const startProviderLogin = (providerId?: string) => {
-    if (!providerId) return;
-    auth.loginWithProvider(providerId, from);
-  };
-
-  const startEmailLogin = () => {
-    auth.loginWithProvider(runtimeConfig.fidpEmail, from, email.trim() || undefined);
-  };
-
-  const startEnterpriseLogin = () => {
-    if (!isValidEmail(enterpriseEmail)) {
-      setEnterpriseEmailError(
-        enterpriseEmail.trim()
-          ? 'Enter a valid email address in the format email@example.com'
-          : 'Enter the email address'
-      );
-      return;
-    }
-    auth.loginWithProvider(
-      runtimeConfig.fidpEnterprise || 'EnterpriseIDP',
-      from,
-      enterpriseEmail
-    );
-  };
-
-  const handleEnterpriseEmailChange = (event: ChangeEvent<HTMLInputElement>) => {
-    setEnterpriseEmail(event.target.value);
-    setEnterpriseEmailError('');
-  };
+  const message = auth.status === 'expired'
+    ? 'Your session has expired. Sign in again to continue.'
+    : auth.status === 'forbidden'
+      ? 'You do not have access to this console.'
+      : 'Continue to your API Platform console.';
 
   const handleKeyDown = (
     event: KeyboardEvent<HTMLInputElement>,
@@ -271,12 +132,11 @@ export function LoginPage() {
     if (event.key === 'Enter') action();
   };
 
-  const handleRegionChange = (event: ChangeEvent<HTMLSelectElement>) => {
-    const nextRegion = event.target.value;
-    setSelectedRegion(nextRegion);
-    if (nextRegion && nextRegion !== window.location.origin) {
-      window.location.href = `${nextRegion}${window.location.pathname}${window.location.search}`;
-    }
+  const startBasicLogin = async () => {
+    if (!username.trim() || !password) return;
+    setSubmitting(true);
+    await auth.loginWithCredentials(username.trim(), password);
+    setSubmitting(false);
   };
 
   return (
@@ -426,42 +286,12 @@ export function LoginPage() {
           </Box>
 
           {/* header */}
-          <Box sx={{ display: 'flex', gap: 2, justifyContent: 'space-between' }}>
-            <Box>
-              <Typography sx={{ fontSize: 24, fontWeight: 500, letterSpacing: '-.3px' }}>
-                {enterpriseMode ? 'Enterprise sign in' : 'Sign in'}
-              </Typography>
-              <Typography sx={{ color: 'rgba(255,255,255,0.55)', fontSize: 13, mt: 0.75 }}>
-                {message}
-              </Typography>
-            </Box>
-            {loginRegions.length > 1 && !enterpriseMode && (
-              <Box sx={{ display: 'flex', flex: 'none', flexDirection: 'column', gap: 0.5 }}>
-                <Typography
-                  sx={{
-                    color: 'rgba(255,255,255,0.5)',
-                    fontSize: 10,
-                    letterSpacing: '.5px',
-                    textTransform: 'uppercase',
-                  }}
-                >
-                  Region
-                </Typography>
-                <Box
-                  component="select"
-                  onChange={handleRegionChange}
-                  sx={{ ...fieldSx, fontSize: 13, height: 36, px: '8px', width: 90 }}
-                  value={selectedRegion}
-                >
-                  {loginRegions.map((region) => (
-                    <option key={region.url} value={region.url}>
-                      {region.label}
-                    </option>
-                  ))}
-                </Box>
-              </Box>
-            )}
-          </Box>
+          <Typography sx={{ fontSize: 24, fontWeight: 500, letterSpacing: '-.3px' }}>
+            Sign in
+          </Typography>
+          <Typography sx={{ color: 'rgba(255,255,255,0.55)', fontSize: 13, mt: 0.75 }}>
+            {message}
+          </Typography>
 
           {/* alerts */}
           <Box sx={{ '& > *': { mt: 2.5 } }}>
@@ -475,141 +305,55 @@ export function LoginPage() {
                 Invitation verified for {state.displayOrgName}. Sign in to accept it.
               </Alert>
             )}
-            {!isLoginEnabled && (
-              <Alert severity="error">
-                Runtime auth config is missing. Provide ASGARDEO_SDK_CONFIG or set
-                VITE_ENABLE_LOCAL_AUTH_FALLBACK=true for local-only development.
-              </Alert>
-            )}
+            {oidcError && <Alert severity="error">{oidcError}</Alert>}
             {auth.error && <Alert severity="error">{auth.error}</Alert>}
           </Box>
 
-          {enterpriseMode ? (
+          {isOidcMode ? (
+            <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1.5, mt: 2.75 }}>
+              <Button onClick={() => auth.login(from)} sx={primaryCtaSx}>
+                Sign in
+                <ArrowRight size={17} />
+              </Button>
+            </Box>
+          ) : (
             <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1.5, mt: 2.75 }}>
               <Box
                 autoFocus
                 component="input"
-                onChange={handleEnterpriseEmailChange}
-                onKeyDown={(event: KeyboardEvent<HTMLInputElement>) =>
-                  handleKeyDown(event, startEnterpriseLogin)
+                onChange={(event: ChangeEvent<HTMLInputElement>) =>
+                  setUsername(event.target.value)
                 }
-                placeholder="you@company.com"
-                sx={{
-                  ...fieldSx,
-                  ...(enterpriseEmailError
-                    ? { borderColor: '#EF4423', '&:focus': { borderColor: '#EF4423' } }
-                    : {}),
-                }}
-                type="email"
-                value={enterpriseEmail}
+                onKeyDown={(event: KeyboardEvent<HTMLInputElement>) =>
+                  handleKeyDown(event, () => void startBasicLogin())
+                }
+                placeholder="Username"
+                sx={fieldSx}
+                type="text"
+                value={username}
               />
-              {enterpriseEmailError && (
-                <Typography sx={{ color: '#FF8A33', fontSize: 12 }}>
-                  {enterpriseEmailError}
-                </Typography>
-              )}
-              <Button disabled={!isLoginEnabled} onClick={startEnterpriseLogin} sx={primaryCtaSx}>
-                Continue
+              <Box
+                component="input"
+                onChange={(event: ChangeEvent<HTMLInputElement>) =>
+                  setPassword(event.target.value)
+                }
+                onKeyDown={(event: KeyboardEvent<HTMLInputElement>) =>
+                  handleKeyDown(event, () => void startBasicLogin())
+                }
+                placeholder="Password"
+                sx={fieldSx}
+                type="password"
+                value={password}
+              />
+              <Button
+                disabled={submitting || !username.trim() || !password}
+                onClick={() => void startBasicLogin()}
+                sx={primaryCtaSx}
+              >
+                Sign in
                 <ArrowRight size={17} />
               </Button>
-              <Button
-                onClick={() => setEnterpriseMode(false)}
-                sx={{ color: 'rgba(255,255,255,0.7)', textTransform: 'none' }}
-              >
-                Back
-              </Button>
             </Box>
-          ) : (
-            <>
-              {isThunderLogin && (
-                <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1.5, mt: 2.75 }}>
-                  <Button
-                    disabled={!isLoginEnabled}
-                    onClick={() => auth.login(from)}
-                    sx={primaryCtaSx}
-                  >
-                    Sign in
-                    <ArrowRight size={17} />
-                  </Button>
-                </Box>
-              )}
-
-              {showEmailLogin && (
-                <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1.5, mt: 2.75 }}>
-                  <Box
-                    component="input"
-                    onChange={(event: ChangeEvent<HTMLInputElement>) =>
-                      setEmail(event.target.value)
-                    }
-                    onKeyDown={(event: KeyboardEvent<HTMLInputElement>) =>
-                      handleKeyDown(event, startEmailLogin)
-                    }
-                    placeholder="you@company.com"
-                    sx={fieldSx}
-                    type="email"
-                    value={email}
-                  />
-                  <Button disabled={!isLoginEnabled} onClick={startEmailLogin} sx={primaryCtaSx}>
-                    Continue with email
-                    <ArrowRight size={17} />
-                  </Button>
-                </Box>
-              )}
-
-              {showEmailLogin && hasSso && (
-                <Box sx={{ alignItems: 'center', display: 'flex', gap: 1.5, my: 2.75 }}>
-                  <Box sx={{ bgcolor: 'rgba(255,255,255,0.12)', flex: 1, height: '1px' }} />
-                  <Typography sx={{ color: 'rgba(255,255,255,0.4)', fontSize: 11, letterSpacing: '1px' }}>
-                    OR
-                  </Typography>
-                  <Box sx={{ bgcolor: 'rgba(255,255,255,0.12)', flex: 1, height: '1px' }} />
-                </Box>
-              )}
-
-              <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1.25, mt: hasSso && !showEmailLogin ? 2.75 : 0 }}>
-                {showGoogleLogin && (
-                  <ProviderButton
-                    disabled={!isLoginEnabled}
-                    icon={imgIcon('/images/google-logo.svg')}
-                    label="Continue with Google"
-                    onClick={() => startProviderLogin(runtimeConfig.fidpGoogle)}
-                  />
-                )}
-                {showGithubLogin && (
-                  <ProviderButton
-                    disabled={!isLoginEnabled}
-                    icon={imgIcon('/images/github.svg')}
-                    label="Continue with GitHub"
-                    onClick={() => startProviderLogin(runtimeConfig.fidpGithub)}
-                  />
-                )}
-                {showMicrosoftLogin && (
-                  <ProviderButton
-                    disabled={!isLoginEnabled}
-                    icon={imgIcon('/images/microsoft.svg')}
-                    label="Continue with Microsoft"
-                    onClick={() => startProviderLogin(runtimeConfig.fidpMicrosoft)}
-                  />
-                )}
-                {showEnterpriseLogin && (
-                  <ProviderButton
-                    disabled={!isLoginEnabled}
-                    icon={<Building2 color="#FF8A33" size={28} />}
-                    label="Continue with Enterprise ID"
-                    onClick={() => setEnterpriseMode(true)}
-                  />
-                )}
-              </Box>
-
-              {showEmailLogin && (
-                <Typography sx={{ color: 'rgba(255,255,255,0.6)', fontSize: 13, mt: 3, textAlign: 'center' }}>
-                  Don&apos;t have an account?{' '}
-                  <Link href={runtimeConfig.signupUrl} sx={{ color: '#FF7300', fontWeight: 600 }}>
-                    Sign up
-                  </Link>
-                </Typography>
-              )}
-            </>
           )}
 
           {/* footer */}

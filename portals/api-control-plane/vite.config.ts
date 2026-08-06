@@ -165,16 +165,19 @@ export default ({ mode }: { mode: string }) => {
         ],
         // Floor set just below the current baseline so the build fails on
         // regression but not on today's coverage. Ratchet these up as page
-        // tests land (target: lines/statements → 40+ once Tier 3 is complete).
-        // Floors sit just below the worst observed run. v8 coverage attribution
-        // varies run-to-run because the client-mode tests use vi.resetModules(),
-        // so the measured % swings ~42-44 (lines) / ~62-64 (functions) for the
-        // same tests; keep a margin so CI doesn't flake.
+        // tests land. Re-baselined after the BFF auth migration deleted
+        // ~700 lines of (tested) Asgardeo/Thunder/local-file adapter code —
+        // AuthProvider.tsx itself is now at ~92%/100% (statements/functions);
+        // the drop is LoginPage.tsx and ProductActivation.tsx, both untested
+        // before this migration too (no regression, just a smaller
+        // denominator). Floors sit a few points below the observed run — v8
+        // coverage attribution varies run-to-run because the client-mode
+        // tests use vi.resetModules(), so keep a margin so CI doesn't flake.
         thresholds: {
-          statements: 41,
-          branches: 77,
-          functions: 61,
-          lines: 41,
+          statements: 56,
+          branches: 73,
+          functions: 57,
+          lines: 56,
         },
       },
     },

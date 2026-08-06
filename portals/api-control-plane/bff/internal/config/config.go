@@ -289,7 +289,7 @@ func Load(paths ...string) (*Config, error) {
 		return nil, err
 	}
 
-	cfg.RuntimeConfig = buildRuntimeConfig(cfg, k)
+	cfg.RuntimeConfig = buildRuntimeConfig(cfg)
 	return cfg, nil
 }
 

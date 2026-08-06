@@ -1,13 +1,8 @@
-export type AuthMode = 'asgardeo' | 'local-file' | 'thunder';
+export type AuthMode = 'basic' | 'oidc';
 
 export type AuthUser = {
   name: string;
   email: string;
-};
-
-export type LoginProvider = {
-  id: string;
-  label: string;
 };
 
 export type AuthStatus =
@@ -24,30 +19,14 @@ export type AuthState = {
   isLoading: boolean;
   isAuthenticated: boolean;
   user?: AuthUser;
-  token?: string;
-  loginProviders: LoginProvider[];
+  /** oidc mode: redirects to the BFF, which performs the whole flow server-side. */
   login: (returnTo?: string) => void;
-  loginWithProvider: (fidp: string, returnTo?: string, username?: string) => void;
+  /** basic mode: posts credentials to the BFF. Resolves false on invalid credentials. */
+  loginWithCredentials: (
+    username: string,
+    password: string,
+    returnTo?: string
+  ) => Promise<boolean>;
   exchangeOrgToken: (orgHandle: string) => Promise<boolean>;
-  /**
-   * Attempts to restore an existing session without user interaction (e.g. via
-   * an Asgardeo silent iframe sign-in). Resolves `true` when a session is
-   * available afterwards, `false` otherwise. Callers should fall back to an
-   * interactive login on `false`.
-   */
-  signInSilently: () => Promise<boolean>;
-  completeLoginFromRedirect: () => string;
   logout: () => void;
-};
-
-export type StoredAuthSession = {
-  token: string;
-  user: AuthUser;
-  expiresAt: number;
-};
-
-export type LocalFileAuthSession = Partial<StoredAuthSession> & {
-  accessToken?: string;
-  email?: string;
-  name?: string;
 };

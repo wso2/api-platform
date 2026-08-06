@@ -33,14 +33,10 @@ const contextHeaders = (context?: ApiRequestContext): Record<string, string> => 
   return headers;
 };
 
-// When an Asgardeo session is active, requests are routed through
-// `authHttpRequest` (the SDK's httpRequest), which attaches the current bearer
-// token automatically — but ONLY for hosts listed in the SDK's
-// `resourceServerURLs` allowlist. Every backend this client targets
-// (`apiBaseUrl`, `projectApiBaseUrl`, `organizationApiUrl`,
-// `usersManagementApiUrl`, ...) MUST therefore appear in
-// `runtimeConfig.asgardeoSdkResourceServerUrls`, or the calls will be sent
-// unauthenticated and rejected with 401.
+// Optional transport override for this legacy GraphQL/REST client (distinct
+// from platformClient.ts, which is what actually calls the BFF's same-origin
+// proxy). Lets tests substitute a fake HTTP layer without mocking axios
+// directly; unset in production, where `apiClient` below is used as-is.
 let authHttpRequest: AuthHttpRequest | undefined;
 
 export const apiClient = axios.create({

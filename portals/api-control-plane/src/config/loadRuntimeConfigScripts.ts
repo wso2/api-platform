@@ -3,15 +3,19 @@ const CONFIG_SCRIPT_NAMES = [
   'api-platform.common.config.js',
 ];
 
-const hasAsgardeoRuntimeConfig = () =>
-  Boolean(window.__RUNTIME_CONFIG__?.ASGARDEO_SDK_CONFIG);
+// authMode is always emitted by the BFF's runtime config — its presence
+// means the synchronous inline <script> tags in index.html already ran
+// (they execute during HTML parsing, before this deferred module), so there
+// is nothing left to fetch.
+const hasRuntimeConfigLoaded = () =>
+  Boolean(window.__RUNTIME_CONFIG__?.authMode);
 
 const normalizeBasePath = (basePath: string) =>
   basePath === '/' ? '' : `/${basePath.replace(/^\/|\/$/g, '')}`;
 
 const getScriptCandidates = (scriptName: string) => {
   const basePath = normalizeBasePath(
-    import.meta.env.VITE_APP_BASE_PATH || import.meta.env.BASE_URL || '/oxygen-console'
+    import.meta.env.VITE_APP_BASE_PATH || import.meta.env.BASE_URL || '/'
   );
 
   return Array.from(
@@ -71,7 +75,7 @@ const loadFirstAvailableScript = async (scriptName: string) => {
 };
 
 export const loadRuntimeConfigScripts = async () => {
-  if (hasAsgardeoRuntimeConfig()) return;
+  if (hasRuntimeConfigLoaded()) return;
 
   for (const scriptName of CONFIG_SCRIPT_NAMES) {
     await loadFirstAvailableScript(scriptName);

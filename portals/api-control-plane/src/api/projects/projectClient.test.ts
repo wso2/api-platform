@@ -3,16 +3,6 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { server } from '../../test/server';
 
-// platformClient pulls the access token from the Asgardeo SDK singleton; a stub
-// instance lets these run in platform mode without the real SDK.
-vi.mock('@asgardeo/auth-react', () => {
-  const instance = {
-    getAccessToken: vi.fn().mockResolvedValue('tok'),
-    refreshAccessToken: vi.fn(),
-  };
-  return { AsgardeoSPAClient: { getInstance: () => instance } };
-});
-
 const BASE = 'http://platform.test';
 
 // platformApiBaseUrl is read at module load → set env then re-import.

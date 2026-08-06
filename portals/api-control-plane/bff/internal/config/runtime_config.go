@@ -16,61 +16,35 @@
 
 package config
 
-import (
-	"fmt"
-	"strings"
-
-	"github.com/knadh/koanf/v2"
-)
-
-// browserSafeKeys is the allowlist of config keys the SPA may read from
-// window.__RUNTIME_CONFIG__. It is an allowlist, not a filter: only these keys
-// ever reach the browser, so a new server-side key (a secret, an upstream URL, a
-// cookie setting) cannot leak into the page merely by being added to
-// config.toml.
+// buildRuntimeConfig collects the values the SPA reads from
+// window.__RUNTIME_CONFIG__ (see src/config/runtime.ts's fromWindow()). Unlike
+// ai-workspace's BFF — which invented its own APIP_AIW_* runtime-config
+// vocabulary because its SPA was written alongside it — api-control-plane's
+// SPA already has an established key vocabulary (camelCase, e.g.
+// "platformApiBaseUrl") predating this BFF. This bridges to THOSE exact names
+// rather than introducing a second convention the frontend would need to
+// learn.
 //
-// [auth.oidc] client_secret / client_id / authority are deliberately absent — the
-// BFF performs the whole OIDC handshake, so the SPA needs no client identity.
-var browserSafeKeys = []string{
-	"logging.browser_debug",
-	"auth.oidc.scope",
-	"auth.claim_mappings.username",
-	"auth.claim_mappings.email",
-	"auth.claim_mappings.organization",
-	"auth.claim_mappings.org_name",
-	"auth.claim_mappings.org_handle",
-}
-
-// runtimeKey converts a config key into the name the SPA reads: EnvPrefix + the
-// key's dotted path uppercased, with dots as underscores ("auth.oidc.scope" ->
-// APIP_ACP_AUTH_OIDC_SCOPE). It is the same spelling the key's {{ env }} token
-// conventionally names, so a value has one name across config.toml, the
-// environment, and window.__RUNTIME_CONFIG__.
-func runtimeKey(configKey string) string {
-	return EnvPrefix + strings.ToUpper(strings.ReplaceAll(configKey, ".", "_"))
-}
-
-// buildRuntimeConfig collects the browser-safe values the SPA reads from
-// window.__RUNTIME_CONFIG__, then forces the API base URL onto the same-origin
-// proxy prefix so the browser only ever talks to this BFF.
-//
-// Values are read straight from the parsed config (k, rooted at
-// [api_control_plane]), not from the resolved Config struct, so only keys
-// actually present in config.toml are surfaced — a code default is used
-// internally by the BFF but never pushed to the browser.
-func buildRuntimeConfig(cfg *Config, k *koanf.Koanf) map[string]string {
-	out := make(map[string]string, len(browserSafeKeys)+2)
-	for _, key := range browserSafeKeys {
-		if !k.Exists(key) {
-			continue
-		}
-		if v := fmt.Sprint(k.Get(key)); v != "" {
-			out[runtimeKey(key)] = v
-		}
+// Every backend call the SPA makes must go through this BFF's same-origin
+// proxy — the browser never holds a token — so platformApiBaseUrl is always
+// forced to the configured proxy prefix, never the upstream's real URL.
+func buildRuntimeConfig(cfg *Config) map[string]string {
+	out := map[string]string{
+		"authMode":           cfg.Auth.Mode,
+		"platformApiBaseUrl": cfg.ControlPlane.ProxyPrefix,
 	}
 
-	out[runtimeKey("platform_api_base_url")] = cfg.ControlPlane.ProxyPrefix + "/api/v0.9"
-	out[runtimeKey("auth_mode")] = cfg.Auth.Mode
+	// billingProxyEnabled tells the SPA a "billing" named upstream exists, so
+	// ProductActivation can call it (same-origin, via /proxy/billing/...)
+	// without ever knowing the real billing service URL. Absent (defaults
+	// false client-side) for every deployment that doesn't configure one —
+	// every standalone deployment today.
+	for _, u := range cfg.ControlPlane.Upstreams {
+		if u.Name == "billing" {
+			out["billingProxyEnabled"] = "true"
+			break
+		}
+	}
 
 	return out
 }

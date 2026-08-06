@@ -4,29 +4,23 @@ import type { AuthState, AuthStatus } from '../features/auth/authTypes';
 
 /**
  * Builds a complete `AuthState` for tests, with every callback as a `vi.fn()`
- * so component/route tests can render via `AuthStateContext.Provider` without
- * touching the real Asgardeo SDK. Defaults to an authenticated user.
- *
- * `signInSilently` resolves `true` by default; override per test as needed.
+ * so component/route tests can render via `AuthStateContext.Provider`
+ * without a real BFF. Defaults to an authenticated user.
  */
 export function makeAuthState(overrides: Partial<AuthState> = {}): AuthState {
   const status: AuthStatus = overrides.status ?? 'authenticated';
   const isAuthenticated = overrides.isAuthenticated ?? status === 'authenticated';
   return {
-    mode: 'asgardeo',
+    mode: 'basic',
     status,
     isLoading: status === 'loading',
     isAuthenticated,
     user: isAuthenticated
       ? { name: 'Test User', email: 'test.user@example.com' }
       : undefined,
-    token: isAuthenticated ? 'test-access-token' : undefined,
-    loginProviders: [],
     login: vi.fn(),
-    loginWithProvider: vi.fn(),
+    loginWithCredentials: vi.fn().mockResolvedValue(true),
     exchangeOrgToken: vi.fn().mockResolvedValue(true),
-    signInSilently: vi.fn().mockResolvedValue(true),
-    completeLoginFromRedirect: vi.fn(() => ''),
     logout: vi.fn(),
     ...overrides,
   };

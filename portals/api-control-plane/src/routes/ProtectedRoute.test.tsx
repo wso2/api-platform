@@ -43,15 +43,8 @@ describe('ProtectedRoute', () => {
     expect(screen.getByText('Unauthorized Page')).toBeInTheDocument();
   });
 
-  it('attempts silent sign-in then redirects to login when unauthenticated', async () => {
-    const authState = makeAuthState({
-      status: 'unauthenticated',
-      isAuthenticated: false,
-    });
-    renderGuard(authState);
-
-    // Loader shows during the silent attempt, then the guard lands on /login.
-    expect(await screen.findByText('Login Page')).toBeInTheDocument();
-    expect(authState.signInSilently).toHaveBeenCalledTimes(1);
+  it('redirects to login when unauthenticated', () => {
+    renderGuard(authStatePresets.unauthenticated());
+    expect(screen.getByText('Login Page')).toBeInTheDocument();
   });
 });

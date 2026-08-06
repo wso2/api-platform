@@ -3,14 +3,6 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { server } from '../../test/server';
 
-vi.mock('@asgardeo/auth-react', () => {
-  const instance = {
-    getAccessToken: vi.fn().mockResolvedValue('tok'),
-    refreshAccessToken: vi.fn(),
-  };
-  return { AsgardeoSPAClient: { getInstance: () => instance } };
-});
-
 const BASE = 'http://platform.test';
 
 async function loadClient() {

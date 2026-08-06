@@ -6,7 +6,6 @@ import { ApiClientProvider } from './api/ApiClientProvider';
 import { ErrorBoundary } from './components/ErrorBoundary';
 import { NotificationProvider } from './components/Notifications';
 import { runtimeConfig } from './config/runtime';
-import { ApiPlatformAsgardeoProvider } from './features/auth/AsgardeoProvider';
 import { AuthProvider } from './features/auth/AuthProvider';
 import { ProductActivation } from './features/billing/ProductActivation';
 import { AppRoutes } from './routes/AppRoutes';
@@ -29,14 +28,12 @@ export default function App() {
         <QueryClientProvider client={queryClient}>
           <ErrorBoundary>
             <BrowserRouter basename={runtimeConfig.appBasePath || undefined}>
-              <ApiPlatformAsgardeoProvider>
-                <AuthProvider>
-                  <ProductActivation />
-                  <NotificationProvider>
-                    <AppRoutes />
-                  </NotificationProvider>
-                </AuthProvider>
-              </ApiPlatformAsgardeoProvider>
+              <AuthProvider>
+                <ProductActivation />
+                <NotificationProvider>
+                  <AppRoutes />
+                </NotificationProvider>
+              </AuthProvider>
             </BrowserRouter>
           </ErrorBoundary>
         </QueryClientProvider>

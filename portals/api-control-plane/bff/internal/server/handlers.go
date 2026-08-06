@@ -235,6 +235,15 @@ func (s *Server) handleRuntimeConfig(w http.ResponseWriter, _ *http.Request) {
 	_, _ = w.Write([]byte(b.String()))
 }
 
+// handleCommonConfig (GET /api-platform.common.config.js) — index.html loads
+// this alongside the runtime config above; it's intentionally empty (all
+// runtime configuration lives in window.__RUNTIME_CONFIG__), and exists only
+// so the <script> tag resolves instead of 404ing.
+func (s *Server) handleCommonConfig(w http.ResponseWriter, _ *http.Request) {
+	w.Header().Set("Content-Type", "application/javascript")
+	w.Header().Set("Cache-Control", "no-store")
+}
+
 func handleHealth(w http.ResponseWriter, _ *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]string{"status": "ok"})
 }

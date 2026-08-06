@@ -21,13 +21,11 @@
     "test:coverage": "vitest run --coverage"
   },
   "dependencies": {
-    "@asgardeo/auth-react": "5.2.3",
     "@babel/runtime-corejs3": "7.29.7",
     "@tanstack/react-query": "5.101.0",
     "@wso2/oxygen-ui": "0.11.0",
     "@wso2/oxygen-ui-icons-react": "0.11.0",
     "axios": "0.21.4",
-    "oidc-client-ts": "3.5.0",
     "react": "19.2.3",
     "react-dom": "19.2.3",
     "react-router-dom": "7.9.4",

@@ -42,20 +42,6 @@ class IntersectionObserverStub {
 vi.stubGlobal('ResizeObserver', ResizeObserverStub);
 vi.stubGlobal('IntersectionObserver', IntersectionObserverStub);
 
-// @asgardeo/auth-react references Worker at import time (web-worker storage),
-// which jsdom does not provide. A no-op stub lets the module load in tests;
-// component tests inject auth via AuthStateContext so the worker never runs.
-class WorkerStub {
-  onmessage: ((e: unknown) => void) | null = null;
-  onerror: ((e: unknown) => void) | null = null;
-  postMessage = vi.fn();
-  terminate = vi.fn();
-  addEventListener = vi.fn();
-  removeEventListener = vi.fn();
-  dispatchEvent = vi.fn(() => true);
-}
-vi.stubGlobal('Worker', WorkerStub);
-
 // Node 25 ships an experimental global `localStorage` (file-backed) that
 // shadows jsdom's and throws without --localstorage-file. Replace both Web
 // Storage globals with a simple in-memory implementation for deterministic tests.
