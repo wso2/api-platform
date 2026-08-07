@@ -32,6 +32,9 @@ data:
     port = {{ $gc.admin_server.port }}
     allowed_ips = [{{- range $i, $ip := $gc.admin_server.allowed_ips }}{{- if gt $i 0 }}, {{ end }}{{ $ip | quote }}{{- end }}]
 
+    [controller.admin_server.config_dump]
+    enabled = {{ $gc.admin_server.config_dump.enabled }}
+
     [controller.admin_server.pprof]
     enabled = {{ $gc.admin_server.pprof.enabled }}
     block_profile_rate = {{ $gc.admin_server.pprof.block_profile_rate }}
@@ -299,6 +302,9 @@ data:
     enabled = {{ $pe.admin.enabled }}
     port = {{ $pe.admin.port }}
     allowed_ips = [{{- range $i, $ip := $pe.admin.allowed_ips }}{{- if gt $i 0 }}, {{ end }}{{ $ip | quote }}{{- end }}]
+
+    [policy_engine.admin.config_dump]
+    enabled = {{ $pe.admin.config_dump.enabled }}
 
     [policy_engine.admin.pprof]
     enabled = {{ $pe.admin.pprof.enabled }}

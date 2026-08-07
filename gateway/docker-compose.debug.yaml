@@ -70,6 +70,9 @@ services:
     environment:
       - GATEWAY_CONTROLLER_HOST=gateway-controller
       - LOG_LEVEL=info
+      # Envoy admin is disabled by default in the image; enabled here for local
+      # dev convenience since the port is already mapped to the host above.
+      - ROUTER_ADMIN_ENABLED=true
     volumes:
       - ./configs/config.toml:/etc/policy-engine/config.toml:ro
     networks:
