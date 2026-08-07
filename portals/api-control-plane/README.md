@@ -28,13 +28,21 @@ supports two auth modes (`[auth] mode` in `configs/config.toml`):
 
 ## Development
 
-Two processes, run side by side:
+Three processes, run side by side: Platform API, the BFF, then the portal's
+own dev server.
 
 ```bash
-# Terminal 1 — the BFF, proxying to a running Platform API
+# Terminal 1 — Platform API (one-time setup, then run it)
+cd <REPO_ROOT>/platform-api
+./scripts/setup-local-dev.sh          # first time only — generates local certs/keys/admin creds
+make run-local                        # or: make setup-local-dev && make run-local
+
+# Terminal 2 — the BFF, proxying to the running Platform API
+cd <REPO_ROOT>/portals/api-control-plane
 CONTROL_PLANE_URL=https://localhost:9243 make bff-run
 
-# Terminal 2 — the Vite dev server, proxying same-origin BFF paths to it
+# Terminal 3 — the Vite dev server, proxying same-origin BFF paths to it
+cd <REPO_ROOT>/portals/api-control-plane
 npm install
 npm run dev
 ```
