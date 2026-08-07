@@ -22,6 +22,18 @@ import (
 	"net/http"
 )
 
+// RouteDecorator wraps one core handler, receiving it as next.
+//
+// It shares Go's standard middleware signature but is deliberately a DISTINCT
+// type from Middleware, because the two seams have different contracts: a
+// Middleware runs in the request chain for every request at a ChainPosition,
+// while a RouteDecorator is bound to one route pattern and to the constraints
+// documented on RouteOverride. Being a defined type rather than a bare func
+// type, it makes passing a Middleware where a decorator belongs a compile
+// error instead of a silent mix-up — an ordinary func literal or a func with
+// this signature still assigns to it unchanged.
+type RouteDecorator func(next http.Handler) http.Handler
+
 // RouteOverride declares that a plugin decorates one existing core route.
 //
 // Pattern must be an EXISTING core route pattern, matched as an exact string
@@ -51,7 +63,7 @@ type RouteOverride struct {
 	// Pattern is an existing core route pattern, matched exactly.
 	Pattern string
 	// Wrap decorates the original core handler. It must not be nil.
-	Wrap func(next http.Handler) http.Handler
+	Wrap RouteDecorator
 }
 
 // RouteOverrideProvider is an OPTIONAL interface a Plugin may implement to

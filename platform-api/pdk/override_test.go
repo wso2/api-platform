@@ -20,6 +20,7 @@ package pdk
 import (
 	"net/http"
 	"net/http/httptest"
+	"reflect"
 	"testing"
 )
 
@@ -184,5 +185,32 @@ func TestWriteCaptured_NilResponseIsANoOp(t *testing.T) {
 
 	if rec.Body.Len() != 0 {
 		t.Fatalf("expected nothing to be written, got %q", rec.Body.String())
+	}
+}
+
+// RouteDecorator and Middleware share a signature but not a contract: a
+// Middleware runs in the request chain for every request, a RouteDecorator wraps
+// one core handler. Collapsing RouteDecorator into an alias of Middleware would
+// silently re-allow passing one where the other belongs, which is the mix-up the
+// separate type exists to catch.
+func TestRouteDecoratorIsADistinctTypeFromMiddleware(t *testing.T) {
+	if reflect.TypeOf(RouteDecorator(nil)) == reflect.TypeOf(Middleware(nil)) {
+		t.Fatal("RouteDecorator must stay a defined type distinct from Middleware, " +
+			"otherwise chain middleware assigns to RouteOverride.Wrap unnoticed")
+	}
+}
+
+// The distinctness above must not cost the ordinary case: a plain func literal,
+// and a func declared with the same signature, both still assign to Wrap.
+func TestRouteDecoratorAcceptsAPlainFunc(t *testing.T) {
+	passthrough := func(next http.Handler) http.Handler { return next }
+
+	for name, ov := range map[string]RouteOverride{
+		"literal": {Pattern: "GET /x", Wrap: func(next http.Handler) http.Handler { return next }},
+		"named":   {Pattern: "GET /x", Wrap: passthrough},
+	} {
+		if ov.Wrap == nil {
+			t.Fatalf("%s: expected a usable Wrap", name)
+		}
 	}
 }
