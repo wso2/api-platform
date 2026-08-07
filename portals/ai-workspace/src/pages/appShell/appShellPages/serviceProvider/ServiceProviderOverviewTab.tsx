@@ -54,8 +54,9 @@ import {
 } from '../../../../apis/llmProviderApis';
 import { getLLMProxyDeployments } from '../../../../apis/llmProxiesApis';
 import type { Gateway } from '../../../../apis/gatewayTypes';
-import { PLATFORM_API_BASE_URL } from '../../../../config.env';
+import { PLATFORM_API_BASE_URL } from '../../../../paths';
 import { logger } from '../../../../utils/logger';
+import { getErrorMessage } from '../../../../utils/apiError';
 import type {
   DeploymentResponse,
   Proxy,
@@ -65,7 +66,12 @@ import NoData from '../../../../assets/images/NoData.svg';
 import { FormattedMessage } from 'react-intl';
 import useAIWorkspaceSnackbar from '../../../../hooks/aiWorkspaceSnackbar';
 import SwaggerSpecViewer from '../../../../Components/SwaggerSpecViewer';
-import { buildProjectPath } from '../../../../utils/projectRouting';
+import {
+  buildGatewayPath,
+  buildProxyPath,
+} from '../../../../utils/projectRouting';
+import { useAppAuth } from '../../../../contexts/AppAuthContext';
+import { SCOPES } from '../../../../auth/permissions';
 import {
   formatPrefixedKey,
   resolveApiKeyAuthDisplay,
@@ -79,7 +85,7 @@ import {
   getProxyIdentifier,
 } from './ProviderMap/ProviderMapTab';
 import ResourceDrawerCards from './ResourceDrawerCards';
-import ApiTryOutCurlSnippet from '../../../../Components/common/ApiTryOutCurlSnippet';
+import ApiTryOutCurlSnippet, { hasTryOutCurlSnippet } from '../../../../Components/common/ApiTryOutCurlSnippet';
 
 type OpenApiSpec = Record<string, unknown>;
 
@@ -135,6 +141,9 @@ export default function ServiceProviderOverviewTab({
   const { provider, getProviderAPIKeys } = useLLMProvider();
   const { currentOrganization, projectsForCurrentOrganization } = useAppShell();
   const navigate = useNavigate();
+  const { hasPermission } = useAppAuth();
+  const canViewGateways = hasPermission(SCOPES.GATEWAY_READ);
+  const canViewProxies = hasPermission(SCOPES.LLM_PROXY_READ);
   const fetchedApiKeysProviderIdRef = useRef<string | null>(null);
   const fetchingApiKeysProviderIdRef = useRef<string | null>(null);
   const [gateways, setGateways] = useState<Gateway[]>([]);
@@ -540,7 +549,12 @@ export default function ServiceProviderOverviewTab({
       onApiKeyCreated?.();
     } catch (apiKeyError) {
       logger.error('Failed to generate API key:', apiKeyError);
-      setKeyError('Failed to generate API key. Please try again.');
+      setKeyError(
+        getErrorMessage(
+          apiKeyError,
+          'Failed to generate API key. Please try again.'
+        )
+      );
     } finally {
       setGeneratingKey(false);
     }
@@ -584,27 +598,71 @@ export default function ServiceProviderOverviewTab({
     }
   };
 
+  // A proxy lives inside a project, so there is no meaningful org-level route to
+  // fall back to: if the project can't be resolved, stay put and say why rather
+  // than navigating somewhere the proxy isn't.
   const handleProxyClick = useCallback(
     (proxyId: string, proxyProjectId?: string) => {
-      // removed: ProjectBase no longer carries a `handler` alias field, so
-      // match on `id` only.
-      const proxyProject = projectsForCurrentOrganization.find(
-        (project) => project.id === proxyProjectId
+      if (!currentOrganization) {
+        logger.error(
+          `Unable to navigate to proxy ${proxyId} because the current organization is unavailable.`
+        );
+        showSnackbar(
+          'Unable to open this proxy right now. Please refresh and try again.',
+          'error'
+        );
+        return;
+      }
+
+      const proxyPath = buildProxyPath(
+        currentOrganization,
+        projectsForCurrentOrganization,
+        proxyId,
+        proxyProjectId
       );
 
-      if (!currentOrganization || !proxyProject) {
+      if (!proxyPath) {
         logger.error(
           `Unable to navigate to proxy ${proxyId} because project ${
             proxyProjectId ?? ''
           } is unavailable.`
         );
+        showSnackbar(
+          "Unable to open this proxy because its project isn't available to you.",
+          'error'
+        );
         return;
       }
 
-      const proxyPath = `/proxies/${encodeURIComponent(proxyId)}`;
-      navigate(buildProjectPath(currentOrganization, proxyProject, proxyPath));
+      navigate(proxyPath);
     },
-    [currentOrganization, navigate, projectsForCurrentOrganization]
+    [
+      currentOrganization,
+      navigate,
+      projectsForCurrentOrganization,
+      showSnackbar,
+    ]
+  );
+
+  // Gateways are organization-scoped, so unlike a proxy there is no project to
+  // resolve. Non-readers get a non-clickable card rather than a click that
+  // lands on a view they can't load.
+  const handleGatewayClick = useCallback(
+    (gatewayId: string) => {
+      if (!currentOrganization) {
+        logger.error(
+          `Unable to navigate to gateway ${gatewayId} because the current organization is unavailable.`
+        );
+        showSnackbar(
+          'Unable to open this gateway right now. Please refresh and try again.',
+          'error'
+        );
+        return;
+      }
+
+      navigate(buildGatewayPath(currentOrganization, gatewayId));
+    },
+    [currentOrganization, navigate, showSnackbar]
   );
 
   const handleDeleteApiKey = async () => {
@@ -650,7 +708,8 @@ export default function ServiceProviderOverviewTab({
             gateways={gateways}
             gatewayDeployments={gatewayDeployments}
             proxyDeployments={proxyDeployments}
-            onProxyClick={handleProxyClick}
+            onProxyClick={canViewProxies ? handleProxyClick : undefined}
+            onGatewayClick={canViewGateways ? handleGatewayClick : undefined}
             onCreateProxy={onCreateProxy}
             onBlockedNavigation={onBlockedNavigation}
           />
@@ -1053,15 +1112,19 @@ export default function ServiceProviderOverviewTab({
                   </Box>
                 </Stack>
               </Alert>
-              <Divider sx={{ my: 2 }} />
-              <ApiTryOutCurlSnippet
-                apiKey={generatedKey}
-                gatewayUrl={generatedGatewayUrl}
-                apiKeyHeaderName={apiKeyName}
-                apiKeyLocation={apiKeyLocation}
-                apiKeyValuePrefix={apiKeyValuePrefix}
-                providerTemplate={provider?.template}
-              />
+              {hasTryOutCurlSnippet(provider?.template) && (
+                <>
+                  <Divider sx={{ my: 2 }} />
+                  <ApiTryOutCurlSnippet
+                    apiKey={generatedKey}
+                    gatewayUrl={generatedGatewayUrl}
+                    apiKeyHeaderName={apiKeyName}
+                    apiKeyLocation={apiKeyLocation}
+                    apiKeyValuePrefix={apiKeyValuePrefix}
+                    providerTemplate={provider?.template}
+                  />
+                </>
+              )}
             </>
           ) : (
             <Stack spacing={1}>
@@ -1138,6 +1201,12 @@ export default function ServiceProviderOverviewTab({
           <Typography variant="body2" sx={{ mt: 1, fontWeight: 600 }}>
             {deleteTargetKeyName}
           </Typography>
+          <Alert severity="warning" sx={{ mt: 2 }}>
+            <FormattedMessage
+              id="aiWorkspace.pages.appShell.appShellPages.serviceProvider.ServiceProviderDeploymentsCard.deleting.this.api.key.will.cause.any.llm.proxy.configured.to.use.it.to.fail"
+              defaultMessage="Deleting this API key will cause any LLM Proxy configured to use it to fail."
+            />
+          </Alert>
         </DialogContent>
         <DialogActions>
           <Button

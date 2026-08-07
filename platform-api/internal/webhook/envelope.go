@@ -17,8 +17,8 @@
 
 // Package webhook implements the Platform API control-plane webhook receiver.
 //
-// It is the receiver-side counterpart to the Developer Portal producer described in
-// docs-local/devportal-webhook-integration.md. The Developer Portal commits a domain
+// It is the receiver-side counterpart to the API Portal producer described in
+// docs-local/devportal-webhook-integration.md. The API Portal commits a domain
 // change, writes it to a transactional outbox, and delivers signed webhooks (at-least-once)
 // to this endpoint. Platform API verifies the request, decrypts any sensitive fields,
 // reconciles its own state by reusing the existing API-key / subscription services, and
@@ -34,11 +34,10 @@ import (
 // schema_version as forward-compat work, so a missing value must be tolerated (not rejected).
 const CurrentSchemaVersion = "1.0"
 
-// EncryptedKey is the hybrid-encrypted (AES-256-GCM + RSA-OAEP) representation of a sensitive
-// value (an API key secret, etc.). wrappedKey is the AES content key wrapped with the receiver's
-// RSA public key; iv/tag/ciphertext are the AES-GCM parts. See Decryptor.
+// EncryptedKey is the AES-256-GCM encrypted representation of a sensitive value (an API key
+// secret, etc.). The key is derived from the shared webhook secret via HKDF-SHA3-256, so no
+// asymmetric key material is involved; iv/tag/ciphertext are the AES-GCM parts. See Decryptor.
 type EncryptedKey struct {
-	WrappedKey string `json:"wrappedKey"`
 	IV         string `json:"iv"`
 	Tag        string `json:"tag"`
 	Ciphertext string `json:"ciphertext"`
@@ -46,17 +45,17 @@ type EncryptedKey struct {
 
 // Empty reports whether the encrypted field is unset.
 func (e *EncryptedKey) Empty() bool {
-	return e == nil || (e.WrappedKey == "" && e.Ciphertext == "")
+	return e == nil || e.Ciphertext == "" || e.IV == "" || e.Tag == ""
 }
 
 // orgRef identifies the organization an event targets. ref_id is the control-plane org
-// reference (the Platform API organization UUID); the Developer Portal falls back to its own
+// reference (the Platform API organization UUID); the API Portal falls back to its own
 // org UUID when the org has not been linked to the control plane.
 type orgRef struct {
 	RefID string `json:"ref_id"`
 }
 
-// Envelope is the common webhook event envelope. It mirrors the Developer Portal DP_EVENT
+// Envelope is the common webhook event envelope. It mirrors the API Portal DP_EVENT
 // outbox row. Data carries the event-type-specific payload and is decoded by each handler.
 type Envelope struct {
 	EventID    string `json:"event_id"`

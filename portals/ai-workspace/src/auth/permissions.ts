@@ -24,6 +24,28 @@ export function isPlatformRole(value: unknown): value is PlatformRole {
   return typeof value === 'string' && (PLATFORM_ROLES as readonly string[]).includes(value);
 }
 
+/**
+ * Tooltip shown on a control disabled purely because the signed-in user lacks
+ * the required scope. Deliberately does not name the missing scope — that would
+ * let a caller probe the authorization model.
+ */
+export const NO_PERMISSION_TOOLTIP =
+  'You do not have permission to perform this action. Please contact your admin.';
+
+/**
+ * `sx` for a permission-disabled action that renders as a link
+ * (`component={RouterLink}`), i.e. an `<a>` rather than a `<button>`.
+ *
+ * A disabled `<a>` still blocks the click, but it does not pick up the
+ * theme's disabled colouring the way a native disabled `<button>` does, so the
+ * control looks fully enabled while doing nothing — which reads as a broken
+ * button rather than a permission boundary. Dimming it makes the disabled state
+ * visible. Not needed for plain `<Button onClick=...>`.
+ */
+export const DISABLED_ACTION_SX = {
+  '&.Mui-disabled': { opacity: 0.55 },
+} as const;
+
 /** All platform API OAuth2 scopes derived from openapi.yaml x-required-scopes (ap: prefix). */
 export const SCOPES = {
   // Organization
@@ -89,13 +111,6 @@ export const SCOPES = {
   REST_API_API_KEY_DELETE:    'ap:rest_api:api_key:delete',
   REST_API_API_KEY_MANAGE:    'ap:rest_api:api_key:manage',
   REST_API_PUBLICATION_READ:  'ap:rest_api:publication:read',
-
-  // DevPortals
-  DEVPORTAL_READ:   'ap:devportal:read',
-  DEVPORTAL_CREATE: 'ap:devportal:create',
-  DEVPORTAL_UPDATE: 'ap:devportal:update',
-  DEVPORTAL_DELETE: 'ap:devportal:delete',
-  DEVPORTAL_MANAGE: 'ap:devportal:manage',
 
   // Subscriptions
   SUBSCRIPTION_READ:        'ap:subscription:read',
@@ -186,19 +201,51 @@ export const SCOPES = {
 } as const;
 
 /**
+ * Scopes that must be held explicitly and are never derived from a broader
+ * `:manage`. `ap:api_key:all:manage` is an ownership override (it widens which
+ * users' keys are reachable, not which actions), so holding `ap:api_key:manage`
+ * must not confer it — matching the service-layer rule in
+ * `platform-api/internal/service` and `/me/api-keys` in openapi.yaml, the one
+ * operation whose accepted-scope list omits its parent `:manage`.
+ */
+const NON_DERIVABLE_SCOPE_SUFFIX = ':all:manage';
+
+/**
  * Check whether a set of scopes grants a requested scope.
  *
+ * Mirrors how platform-api actually authorizes a request: each operation in
+ * openapi.yaml declares a list of accepted scopes, and `ScopeEnforcer`
+ * (`platform-api/internal/middleware/authorization.go`) admits the caller if a
+ * held scope matches an entry in that list exactly — there is no wildcard form.
  * Rules:
+ *
  *  1. Exact match — the scope is directly present.
- *  2. Parent :manage — `ap:<resource>:manage` covers all CRUD and sub-resource
- *     scopes under that resource (e.g. ap:gateway:manage covers ap:gateway:token:read).
+ *  2. Own-level `:manage` — an operation accepting `<level>:<action>` also
+ *     accepts `<level>:manage` (`ap:llm_provider:api_key:read` is satisfied by
+ *     `ap:llm_provider:api_key:manage`).
+ *  3. Ancestor `:manage` — a resource-level `:manage` also covers its
+ *     sub-resources' operations, because those operations list it explicitly.
+ *     `ap:llm_provider:manage` appears in the accepted list of every
+ *     `/llm-providers/{id}/api-keys` and `/deployments` operation, so it grants
+ *     `ap:llm_provider:api_key:create`, `ap:llm_provider:deployment:read`, etc.
+ *     This holds for 47 of the 48 sub-resource operations in the spec; the sole
+ *     exception is the override scope excluded above.
  */
 export function checkPermission(userScopes: string[], scope: string): boolean {
   if (userScopes.includes(scope)) return true;
+
   const parts = scope.split(':');
-  if (parts.length >= 3) {
-    const parentManage = `${parts[0]}:${parts[1]}:manage`;
-    if (parentManage !== scope && userScopes.includes(parentManage)) return true;
+  if (parts.length < 2) return false;
+
+  if (scope.endsWith(NON_DERIVABLE_SCOPE_SUFFIX)) return false;
+
+  // Own-level `:manage`, then each broader ancestor's `:manage`. For
+  // `ap:llm_provider:api_key:read` that is `ap:llm_provider:api_key:manage`
+  // followed by `ap:llm_provider:manage`.
+  for (let depth = parts.length - 1; depth >= 2; depth -= 1) {
+    const candidate = `${parts.slice(0, depth).join(':')}:manage`;
+    if (candidate !== scope && userScopes.includes(candidate)) return true;
   }
+
   return false;
 }

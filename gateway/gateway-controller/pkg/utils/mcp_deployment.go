@@ -341,6 +341,12 @@ func (s *MCPDeploymentService) parseValidateAndTransform(params MCPDeploymentPar
 		return nil, nil, fmt.Errorf("failed to parse configuration: %w", err)
 	}
 
+	// On update, inherit the persisted upstream credential when this request does
+	// not carry one. See credential_inheritance.go for the inheritance rules.
+	if err := s.inheritStoredMCPCredential(&mcpConfig, params); err != nil {
+		return nil, nil, err
+	}
+
 	// Render template expressions ({{ secret "..." }}, {{ env "..." }}, {{ default ... }}, etc.)
 	// BEFORE validation so the validator sees resolved values, not raw template syntax.
 	// We render in a temp StoredConfig then cast back. The original mcpConfig (unrendered)
@@ -536,11 +542,18 @@ func (s *MCPDeploymentService) pushDeployableArtifact(result *APIDeploymentResul
 		return
 	}
 	if result.StoredConfig.Origin == models.OriginGatewayAPI && s.canPushToControlPlane() {
-		go waitForDeploymentAndPush(s.store, s.controlPlaneClient, result.StoredConfig.UUID, correlationID, result.StoredConfig.DeployedAt, log)
+		pusher := s.controlPlaneClient
+		store := s.store
+		cfgID := result.StoredConfig.UUID
+		deployedAt := result.StoredConfig.DeployedAt
+		pusher.SubmitArtifactPush(func() {
+			waitForDeploymentAndPush(store, pusher, cfgID, correlationID, deployedAt, log)
+		})
 	}
 }
 
 // canPushToControlPlane reports whether a DP->CP push should be attempted now.
 func (s *MCPDeploymentService) canPushToControlPlane() bool {
-	return s.deploymentPushEnabled && s.controlPlaneClient != nil && s.controlPlaneClient.IsConnected()
+	return s.deploymentPushEnabled && s.controlPlaneClient != nil &&
+		s.controlPlaneClient.IsConnected() && !s.controlPlaneClient.IsOnPrem()
 }

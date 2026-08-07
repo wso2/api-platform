@@ -39,7 +39,7 @@ import {
   extractSecretHandle,
 } from '../../apis/secretApis';
 import { useAppShell } from '../AppShellContext';
-import { PLATFORM_API_BASE_URL } from '../../config.env';
+import { PLATFORM_API_BASE_URL } from '../../paths';
 import { logger } from '../../utils/logger';
 import {
   trackLLMProviderCreate,
@@ -147,18 +147,46 @@ export function LLMProvidersProvider({ children }: LLMProvidersProviderProps) {
         // a secret placeholder), encrypt it via the Platform API secrets endpoint
         // and substitute a {{ secret "..." }} placeholder before persisting.
         let providerPayload = provider;
-        const authValue = provider.upstream?.main?.auth?.value;
-        const isAlreadyPlaceholder =
-          typeof authValue === 'string' && authValue.includes('{{ secret ');
+        const rawAuthValue = provider.upstream?.main?.auth?.value;
+        const credential =
+          typeof rawAuthValue === 'string' ? rawAuthValue.trim() : '';
+        const hasCredential = credential !== '';
+        const isAlreadyPlaceholder = credential.includes('{{ secret ');
+        const authType = provider.upstream?.main?.auth?.type || '';
+        const isNoCredentialsAuthType =
+          authType === '' || authType === 'other' || authType === 'none';
 
-        if (authValue && !isAlreadyPlaceholder) {
+        // A create carries no credential the platform could already be holding, so a
+        // credential-bearing type with a blank value describes an injection that can
+        // never happen. Equally, a credential supplied under a type that injects
+        // nothing ('', 'other', 'none') has nowhere to go — storing a secret for it
+        // would leave the provider claiming credential-less auth while holding a
+        // secret reference. Both cases collapse to explicit no-credential auth.
+        if (isNoCredentialsAuthType || !hasCredential) {
+          providerPayload = {
+            ...provider,
+            upstream: {
+              ...provider.upstream,
+              main: {
+                ...provider.upstream.main,
+                auth: {
+                  // '' is not a type the gateway understands; anything else that
+                  // carries no credential ('other'/'none') keeps its own meaning.
+                  type: authType === '' ? 'none' : authType,
+                  header: '',
+                  value: '',
+                },
+              },
+            },
+          };
+        } else if (!isAlreadyPlaceholder) {
           const secretHandle = generateSecretHandle();
           const secretResponse = await createSecret(
             {
               id: secretHandle,
               displayName: `${provider.displayName} API Key`,
               description: `Auto-generated secret for LLM provider ${provider.displayName}`,
-              value: authValue,
+              value: credential,
               type: 'GENERIC',
             },
           );
@@ -174,7 +202,8 @@ export function LLMProvidersProvider({ children }: LLMProvidersProviderProps) {
               main: {
                 ...provider.upstream.main,
                 auth: {
-                  ...provider.upstream.main.auth,
+                  type: authType,
+                  header: provider.upstream.main.auth?.header ?? '',
                   value: buildSecretPlaceholder(secretResponse.id),
                 },
               },
@@ -224,13 +253,32 @@ export function LLMProvidersProvider({ children }: LLMProvidersProviderProps) {
         // placeholder), rotate the existing secret via PUT /secrets/:id or create a
         // new one, then substitute the placeholder before persisting.
         let updatesPayload = updates;
-        const authValue = updates.upstream?.main?.auth?.value;
-        const isAlreadyPlaceholder =
-          typeof authValue === 'string' && authValue.includes('{{ secret ');
+        const rawAuthValue = updates.upstream?.main?.auth?.value;
+        const credential =
+          typeof rawAuthValue === 'string' ? rawAuthValue.trim() : '';
+        const hasCredential = credential !== '';
+        const isAlreadyPlaceholder = credential.includes('{{ secret ');
+        const authType = updates.upstream?.main?.auth?.type ?? '';
+        const currentProvider = providersResponse.list.find((p) => p.id === providerId);
+        const resolvedUrl =
+          updates.upstream?.main?.url ?? currentProvider?.upstream?.main?.url ?? '';
 
-        if (authValue && !isAlreadyPlaceholder) {
-          const currentProvider = providersResponse.list.find((p) => p.id === providerId);
-
+        if (updates.upstream?.main?.auth && !hasCredential) {
+          // A blank (or whitespace-only) credential means there is nothing to inject,
+          // so record explicit 'none' auth rather than keeping a credential-bearing
+          // type whose value the gateway would reject at deployment time.
+          updatesPayload = {
+            ...updates,
+            upstream: {
+              ...updates.upstream,
+              main: {
+                ...updates.upstream?.main,
+                url: resolvedUrl,
+                auth: { type: 'none', header: '', value: '' },
+              },
+            },
+          };
+        } else if (hasCredential && !isAlreadyPlaceholder) {
           // Always create a fresh secret with a new unique handle so re-saving
           // with a different key never collides with an existing secret.
           const secretHandle = generateSecretHandle();
@@ -238,7 +286,7 @@ export function LLMProvidersProvider({ children }: LLMProvidersProviderProps) {
             id: secretHandle,
             displayName: `${providerId} API Key`,
             description: `Auto-generated secret for LLM provider ${providerId}`,
-            value: authValue,
+            value: credential,
             type: 'GENERIC',
           });
           logger.info('Created new secret for LLM provider update', { secretHandle, providerId });
@@ -249,9 +297,10 @@ export function LLMProvidersProvider({ children }: LLMProvidersProviderProps) {
               ...updates.upstream,
               main: {
                 ...updates.upstream?.main,
-                url: updates.upstream?.main?.url ?? currentProvider?.upstream?.main?.url ?? '',
+                url: resolvedUrl,
                 auth: {
-                  ...updates.upstream?.main?.auth,
+                  type: authType,
+                  header: updates.upstream?.main?.auth?.header ?? '',
                   value: buildSecretPlaceholder(secretResponse.id),
                 },
               },
@@ -269,8 +318,7 @@ export function LLMProvidersProvider({ children }: LLMProvidersProviderProps) {
         // Best-effort: delete the old secret only after the provider update has
         // succeeded. If the update failed we skip deletion so the provider keeps
         // a valid secret reference and does not end up with a dangling placeholder.
-        if (authValue && !isAlreadyPlaceholder) {
-          const currentProvider = providersResponse.list.find((p) => p.id === providerId);
+        if (hasCredential && !isAlreadyPlaceholder) {
           const existingPlaceholder = currentProvider?.upstream?.main?.auth?.value;
           const oldHandle = typeof existingPlaceholder === 'string'
             ? extractSecretHandle(existingPlaceholder)

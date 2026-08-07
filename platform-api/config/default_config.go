@@ -43,8 +43,15 @@ func defaultConfig() *Server {
 		Auth: Auth{
 			// Default mode verifies locally-issued, asymmetrically-signed (RS256) JWTs;
 			// the quickstart config selects "file" to add username/password login on top.
-			Mode:            AuthModeExternalToken,
-			ScopeValidation: true,
+			Mode: AuthModeInternalToken,
+			Authorization: Authorization{
+				Enabled: true,
+				Mode:    AuthzModeScope,
+				// RoleToScopeMapping is left empty on purpose: the mapping file is
+				// operator-owned and mounted (the packs ship a sample), so a
+				// built-in path would make startup depend on a file the image
+				// does not carry. The shipped config.toml points at the mount.
+			},
 			// SkipPaths bypasses JWT/IDP auth middleware. Paths below the health/metrics
 			// probes are internal gateway routes authenticated via gateway token instead.
 			SkipPaths: []string{
@@ -69,9 +76,6 @@ func defaultConfig() *Server {
 				Issuer:   "platform-api",
 				TokenTTL: time.Hour,
 			},
-			IDP: IDP{
-				ValidationMode: "scope",
-			},
 			ClaimMappings: ClaimMappings{
 				Organization: "organization",
 				OrgName:      "org_name",
@@ -80,6 +84,11 @@ func defaultConfig() *Server {
 				Username:     "username",
 				Email:        "email",
 				Scope:        "scope",
+				// Default to the flat "roles" claim — what Asgardeo and Entra ID
+				// emit, and what the file-mode login endpoint signs — so switching
+				// auth.authorization.mode to "role" needs no extra claim wiring.
+				// Keycloak overrides it with "realm_access.roles".
+				Roles: "roles",
 			},
 			File: FileBased{
 				Organization: FileBasedOrg{
@@ -89,13 +98,13 @@ func defaultConfig() *Server {
 					// UUID left empty: seedFileBasedOrg generates one at startup
 					// unless an operator pins it via config/env for a stable org.
 				},
-				Users: FileBasedUsers{
-					{
-						Username:     "admin",
-						PasswordHash: "$2y$10$U2yKMwGamGwDoMu0hRPT7u8nCuP8z/qxHFOKV6dhIxkJN9NJ0eVQ.",
-						Scopes:       "ap:organization:manage ap:gateway:manage ap:gateway_custom_policy:manage ap:rest_api:manage ap:llm_provider:manage ap:llm_proxy:manage ap:mcp_proxy:manage ap:webbroker_api:manage ap:websub_api:manage ap:application:manage ap:subscription:manage ap:subscription_plan:manage ap:project:manage ap:llm_template:manage ap:devportal:manage ap:api_key:read ap:secret:manage",
-					},
-				},
+				// No default user: shipping a functional username/password hash would give
+				// every fresh install a known-credential admin — one that now also holds
+				// ap:api_key:all:manage over every user's API keys. Operators supply the
+				// admin via config (see config.toml's fail-closed {{ env }} tokens), and
+				// validateFileBasedConfig refuses to start when auth.mode=file leaves this
+				// empty.
+				Users: FileBasedUsers{},
 			},
 		},
 		Deployments: Deployments{
@@ -150,7 +159,7 @@ func defaultConfig() *Server {
 			Enabled:            false,
 			SignatureTolerance: 5 * time.Minute,
 			MaxBodySize:        1 << 20, // 1 MiB
-			SignatureHeader:    "X-Devportal-Signature",
+			SignatureHeader:    "X-Api-Portal-Signature",
 		},
 	}
 }

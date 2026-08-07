@@ -78,6 +78,9 @@ func (h *APIHandler) CreateAPI(w http.ResponseWriter, r *http.Request) error {
 		return apperror.ValidationFailed.New("At least one upstream endpoint (main or sandbox) is required").
 			WithLogMessage(fmt.Sprintf("no upstream endpoints provided for org %s", orgId))
 	}
+	if err := validateUpstreamDefinitions(req.Upstream); err != nil {
+		return err
+	}
 
 	createdBy, err := resolveActorErr(r, h.identity, "create API")
 	if err != nil {
@@ -171,6 +174,9 @@ func (h *APIHandler) UpdateAPI(w http.ResponseWriter, r *http.Request) error {
 	// Validate upstream configuration if provided
 	if isEmptyUpstreamDefinition(req.Upstream.Main) && (req.Upstream.Sandbox == nil || isEmptyUpstreamDefinition(*req.Upstream.Sandbox)) {
 		return apperror.ValidationFailed.New("At least one upstream endpoint (main or sandbox) is required")
+	}
+	if err := validateUpstreamDefinitions(req.Upstream); err != nil {
+		return err
 	}
 
 	updatedBy, err := resolveActorErr(r, h.identity, "update API")
@@ -291,11 +297,25 @@ func (h *APIHandler) RegisterRoutes(mux router.Router) {
 }
 
 func isEmptyUpstreamDefinition(definition api.UpstreamDefinition) bool {
-	if definition.Url != nil && *definition.Url != "" {
-		return false
+	return !hasUpstreamURL(definition) && !hasUpstreamRef(definition)
+}
+
+func hasUpstreamURL(definition api.UpstreamDefinition) bool {
+	return definition.Url != nil && strings.TrimSpace(*definition.Url) != ""
+}
+
+func hasUpstreamRef(definition api.UpstreamDefinition) bool {
+	return definition.Ref != nil && strings.TrimSpace(*definition.Ref) != ""
+}
+
+// validateUpstreamDefinitions ensures every provided upstream definition specifies
+// exactly one of url or ref, as required by the UpstreamDefinition schema.
+func validateUpstreamDefinitions(upstream api.Upstream) error {
+	if hasUpstreamURL(upstream.Main) && hasUpstreamRef(upstream.Main) {
+		return apperror.ValidationFailed.New("The upstream main must specify either a url or a ref, not both.")
 	}
-	if definition.Ref != nil && *definition.Ref != "" {
-		return false
+	if upstream.Sandbox != nil && hasUpstreamURL(*upstream.Sandbox) && hasUpstreamRef(*upstream.Sandbox) {
+		return apperror.ValidationFailed.New("The upstream sandbox must specify either a url or a ref, not both.")
 	}
-	return true
+	return nil
 }

@@ -16,10 +16,12 @@
  * under the License.
  */
 
+import { appPath } from '../../support/appPath';
+
 describe('AI Workspace - Basic Auth Login', () => {
   it('loads the local workspace and signs in with quickstart credentials', () => {
     cy.login();
-    cy.location('pathname').should('not.eq', '/login');
+    cy.location('pathname').should('not.eq', appPath('/login'));
     cy.contains('Quick Start').should('be.visible');
   });
 });

@@ -30,20 +30,20 @@ import (
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/api/handlers"
 	api "github.com/wso2/api-platform/gateway/gateway-controller/pkg/api/management"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/api/middleware"
-	gohttpkit "github.com/wso2/go-httpkit/middleware"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/config"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/controlplane"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/immutable"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/logger"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/metrics"
-	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/policyxds"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/models"
+	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/policyxds"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/service/restapi"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/storage"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/transform"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/utils"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/version"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/xds"
+	gohttpkit "github.com/wso2/go-httpkit/middleware"
 )
 
 // API base paths for the gateway-controller HTTP surfaces.
@@ -566,6 +566,10 @@ func main() {
 	igw := immutable.NewImmutableGW(cfg.ImmutableGateway, restAPIService, llmSvc, mcpSvc)
 
 	authConfig := generateAuthConfig(cfg)
+	if cfg.Controller.Auth.IDP.Enabled && len(cfg.Controller.Auth.IDP.Audience) == 0 {
+		log.Warn("IDP auth is enabled but no auth.idp.audience is configured - token audience ('aud') will NOT be " +
+			"validated; set auth.idp.audience to the expected audience(s) to restrict this")
+	}
 	authMiddleWare, err := authenticators.AuthMiddleware(authConfig, log)
 	if err != nil {
 		log.Error("Failed to create auth middleware", slog.Any("error", err))
@@ -688,7 +692,19 @@ func main() {
 	// Start controller admin server for debug endpoints if enabled.
 	var controllerAdminServer *adminserver.Server
 	if cfg.Controller.AdminServer.Enabled {
-		controllerAdminServer = adminserver.NewServer(&cfg.Controller.AdminServer, apiServer, log)
+		// Gate the admin/debug server behind the same authentication middleware as
+		// the management API, plus a deny-by-default admin-role authorization check.
+		// The health probe stays public; every other admin
+		// endpoint (config_dump, xds_sync_status, pprof) requires an authenticated
+		// caller from controller.auth.basic who also holds the "admin" role.
+		// Authentication runs first (outermost) to populate the auth context, then
+		// authorization consumes it — the same ordering the management API uses.
+		adminAuthz := authenticators.AuthorizationMiddleware(
+			commonmodels.AuthConfig{ResourceRoles: adminResourceRoles()}, log)
+		adminProtect := func(next http.Handler) http.Handler {
+			return authMiddleWare(adminAuthz(next))
+		}
+		controllerAdminServer = adminserver.NewServer(&cfg.Controller.AdminServer, apiServer, adminProtect, log)
 		go func() {
 			if err := controllerAdminServer.Start(); err != nil {
 				log.Error("Controller admin server failed", slog.Any("error", err))
@@ -826,80 +842,80 @@ func generateAuthConfig(config *config.Config) commonmodels.AuthConfig {
 	}
 
 	relativeRoles := map[string][]string{
-		"POST /rest-apis":         {"admin", "developer"},
-		"GET /rest-apis":          {"admin", "developer"},
-		"GET /rest-apis/{id}":     {"admin", "developer"},
-		"PUT /rest-apis/{id}":     {"admin", "developer"},
-		"DELETE /rest-apis/{id}":  {"admin", "developer"},
+		"POST /rest-apis":        {"admin", "developer"},
+		"GET /rest-apis":         {"admin", "developer"},
+		"GET /rest-apis/{id}":    {"admin", "developer"},
+		"PUT /rest-apis/{id}":    {"admin", "developer"},
+		"DELETE /rest-apis/{id}": {"admin", "developer"},
 
-		"GET /certificates":          {"admin", "developer"},
-		"POST /certificates":         {"admin", "developer"},
-		"DELETE /certificates/{id}":  {"admin"},
-		"POST /certificates/reload":  {"admin"},
+		"GET /certificates":         {"admin", "developer"},
+		"POST /certificates":        {"admin"},
+		"DELETE /certificates/{id}": {"admin"},
+		"POST /certificates/reload": {"admin"},
 
 		"GET /policies": {"admin", "developer"},
 
-		"POST /mcp-proxies":         {"admin", "developer"},
-		"GET /mcp-proxies":          {"admin", "developer"},
-		"GET /mcp-proxies/{id}":     {"admin", "developer"},
-		"PUT /mcp-proxies/{id}":     {"admin", "developer"},
-		"DELETE /mcp-proxies/{id}":  {"admin", "developer"},
+		"POST /mcp-proxies":        {"admin", "developer"},
+		"GET /mcp-proxies":         {"admin", "developer"},
+		"GET /mcp-proxies/{id}":    {"admin", "developer"},
+		"PUT /mcp-proxies/{id}":    {"admin", "developer"},
+		"DELETE /mcp-proxies/{id}": {"admin", "developer"},
 
-		"POST /llm-provider-templates":         {"admin"},
-		"GET /llm-provider-templates":          {"admin"},
-		"GET /llm-provider-templates/{id}":     {"admin"},
-		"PUT /llm-provider-templates/{id}":     {"admin"},
-		"DELETE /llm-provider-templates/{id}":  {"admin"},
+		"POST /llm-provider-templates":        {"admin"},
+		"GET /llm-provider-templates":         {"admin"},
+		"GET /llm-provider-templates/{id}":    {"admin"},
+		"PUT /llm-provider-templates/{id}":    {"admin"},
+		"DELETE /llm-provider-templates/{id}": {"admin"},
 
-		"POST /llm-providers":         {"admin"},
-		"GET /llm-providers":          {"admin", "developer"},
-		"GET /llm-providers/{id}":     {"admin", "developer"},
-		"PUT /llm-providers/{id}":     {"admin"},
-		"DELETE /llm-providers/{id}":  {"admin"},
+		"POST /llm-providers":        {"admin"},
+		"GET /llm-providers":         {"admin", "developer"},
+		"GET /llm-providers/{id}":    {"admin", "developer"},
+		"PUT /llm-providers/{id}":    {"admin"},
+		"DELETE /llm-providers/{id}": {"admin"},
 
-		"POST /llm-proxies":         {"admin", "developer"},
-		"GET /llm-proxies":          {"admin", "developer"},
-		"GET /llm-proxies/{id}":     {"admin", "developer"},
-		"PUT /llm-proxies/{id}":     {"admin", "developer"},
-		"DELETE /llm-proxies/{id}":  {"admin", "developer"},
+		"POST /llm-proxies":        {"admin", "developer"},
+		"GET /llm-proxies":         {"admin", "developer"},
+		"GET /llm-proxies/{id}":    {"admin", "developer"},
+		"PUT /llm-proxies/{id}":    {"admin", "developer"},
+		"DELETE /llm-proxies/{id}": {"admin", "developer"},
 
-		"POST /rest-apis/{id}/api-keys":                          {"admin", "consumer"},
-		"GET /rest-apis/{id}/api-keys":                           {"admin", "consumer"},
-		"PUT /rest-apis/{id}/api-keys/{apiKeyName}":              {"admin", "consumer"},
-		"POST /rest-apis/{id}/api-keys/{apiKeyName}/regenerate":  {"admin", "consumer"},
-		"DELETE /rest-apis/{id}/api-keys/{apiKeyName}":           {"admin", "consumer"},
+		"POST /rest-apis/{id}/api-keys":                         {"admin", "consumer"},
+		"GET /rest-apis/{id}/api-keys":                          {"admin", "consumer"},
+		"PUT /rest-apis/{id}/api-keys/{apiKeyName}":             {"admin", "consumer"},
+		"POST /rest-apis/{id}/api-keys/{apiKeyName}/regenerate": {"admin", "consumer"},
+		"DELETE /rest-apis/{id}/api-keys/{apiKeyName}":          {"admin", "consumer"},
 
-		"POST /llm-providers/{id}/api-keys":                          {"admin", "consumer"},
-		"GET /llm-providers/{id}/api-keys":                           {"admin", "consumer"},
-		"PUT /llm-providers/{id}/api-keys/{apiKeyName}":              {"admin", "consumer"},
-		"POST /llm-providers/{id}/api-keys/{apiKeyName}/regenerate":  {"admin", "consumer"},
-		"DELETE /llm-providers/{id}/api-keys/{apiKeyName}":           {"admin", "consumer"},
+		"POST /llm-providers/{id}/api-keys":                         {"admin", "consumer"},
+		"GET /llm-providers/{id}/api-keys":                          {"admin", "consumer"},
+		"PUT /llm-providers/{id}/api-keys/{apiKeyName}":             {"admin", "consumer"},
+		"POST /llm-providers/{id}/api-keys/{apiKeyName}/regenerate": {"admin", "consumer"},
+		"DELETE /llm-providers/{id}/api-keys/{apiKeyName}":          {"admin", "consumer"},
 
-		"POST /llm-proxies/{id}/api-keys":                          {"admin", "consumer"},
-		"GET /llm-proxies/{id}/api-keys":                           {"admin", "consumer"},
-		"PUT /llm-proxies/{id}/api-keys/{apiKeyName}":              {"admin", "consumer"},
-		"POST /llm-proxies/{id}/api-keys/{apiKeyName}/regenerate":  {"admin", "consumer"},
-		"DELETE /llm-proxies/{id}/api-keys/{apiKeyName}":           {"admin", "consumer"},
+		"POST /llm-proxies/{id}/api-keys":                         {"admin", "consumer"},
+		"GET /llm-proxies/{id}/api-keys":                          {"admin", "consumer"},
+		"PUT /llm-proxies/{id}/api-keys/{apiKeyName}":             {"admin", "consumer"},
+		"POST /llm-proxies/{id}/api-keys/{apiKeyName}/regenerate": {"admin", "consumer"},
+		"DELETE /llm-proxies/{id}/api-keys/{apiKeyName}":          {"admin", "consumer"},
 
 		// Root-level subscription endpoints
-		"POST /subscriptions":                        {"admin", "developer"},
-		"GET /subscriptions":                         {"admin", "developer"},
-		"GET /subscriptions/{subscriptionId}":        {"admin", "developer"},
-		"PUT /subscriptions/{subscriptionId}":        {"admin", "developer"},
-		"DELETE /subscriptions/{subscriptionId}":     {"admin", "developer"},
+		"POST /subscriptions":                    {"admin"},
+		"GET /subscriptions":                     {"admin"},
+		"GET /subscriptions/{subscriptionId}":    {"admin"},
+		"PUT /subscriptions/{subscriptionId}":    {"admin"},
+		"DELETE /subscriptions/{subscriptionId}": {"admin"},
 
 		// Subscription plan endpoints
-		"POST /subscription-plans":             {"admin", "developer"},
-		"GET /subscription-plans":              {"admin", "developer"},
-		"GET /subscription-plans/{planId}":     {"admin", "developer"},
-		"PUT /subscription-plans/{planId}":     {"admin", "developer"},
-		"DELETE /subscription-plans/{planId}":  {"admin", "developer"},
+		"POST /subscription-plans":            {"admin"},
+		"GET /subscription-plans":             {"admin"},
+		"GET /subscription-plans/{planId}":    {"admin"},
+		"PUT /subscription-plans/{planId}":    {"admin"},
+		"DELETE /subscription-plans/{planId}": {"admin"},
 
-		"POST /secrets":          {"admin"},
-		"GET /secrets":           {"admin"},
-		"GET /secrets/{id}":      {"admin"},
-		"PUT /secrets/{id}":      {"admin"},
-		"DELETE /secrets/{id}":   {"admin"},
+		"POST /secrets":        {"admin"},
+		"GET /secrets":         {"admin"},
+		"GET /secrets/{id}":    {"admin"},
+		"PUT /secrets/{id}":    {"admin"},
+		"DELETE /secrets/{id}": {"admin"},
 	}
 
 	// Populate both the versioned and legacy (unprefixed) keys so the auth
@@ -930,12 +946,68 @@ func generateAuthConfig(config *config.Config) commonmodels.AuthConfig {
 			ScopeClaim:        config.Controller.Auth.IDP.RolesClaim,
 			PermissionMapping: &config.Controller.Auth.IDP.RoleMapping,
 		}
+		if len(config.Controller.Auth.IDP.Audience) > 0 {
+			idpAuth.Audience = &config.Controller.Auth.IDP.Audience
+		}
 	}
 	authConfig := commonmodels.AuthConfig{BasicAuth: &basicAuth,
 		JWTConfig:     &idpAuth,
 		ResourceRoles: DefaultResourceRoles,
 	}
 	return authConfig
+}
+
+// adminResourceRoles maps every non-public admin-server route to the roles allowed
+// to reach it, following the same shape as generateAuthConfig: relative
+// "METHOD /path" keys expanded into both the versioned (base-path-prefixed) and
+// legacy (unprefixed) forms that AuthorizationMiddleware matches against r.Pattern.
+// AuthorizationMiddleware denies by default, so any admin route absent from this map
+// is rejected with 403 — a route added later without an entry fails closed rather
+// than becoming world-readable. The health probe is intentionally omitted: it is
+// exempt from auth entirely and never reaches authorization.
+func adminResourceRoles() map[string][]string {
+	const adminRole = "admin"
+
+	// prefixed builds a resource key of the form "<METHOD> <adminAPIBasePath><path>"
+	// matching the versioned routes registered via HandlerWithOptions(BaseURL=adminAPIBasePath),
+	// mirroring the prefixed helper in generateAuthConfig.
+	prefixed := func(methodAndPath string) string {
+		idx := strings.Index(methodAndPath, " ")
+		if idx < 0 {
+			return methodAndPath
+		}
+		return methodAndPath[:idx+1] + adminAPIBasePath + methodAndPath[idx+1:]
+	}
+
+	relativeRoles := map[string][]string{
+		"GET /config_dump":     {adminRole},
+		"GET /xds_sync_status": {adminRole},
+	}
+
+	// pprof endpoints are registered directly on the mux (not via a BaseURL), so
+	// their r.Pattern carries no method and no base-path prefix — map them as-is.
+	// Only registered when admin_server.pprof is enabled, but mapping them
+	// unconditionally is harmless and keeps them admin-gated when it is.
+	pprofRoles := map[string][]string{
+		"/debug/pprof/":        {adminRole},
+		"/debug/pprof/cmdline": {adminRole},
+		"/debug/pprof/profile": {adminRole},
+		"/debug/pprof/symbol":  {adminRole},
+		"/debug/pprof/trace":   {adminRole},
+	}
+
+	// Populate both the versioned and legacy (unprefixed) keys for each relative
+	// route so the authz middleware matches either form, exactly as generateAuthConfig does.
+	resourceRoles := make(map[string][]string, len(relativeRoles)*2+len(pprofRoles))
+	for methodAndPath, roles := range relativeRoles {
+		resourceRoles[prefixed(methodAndPath)] = roles
+		resourceRoles[methodAndPath] = roles
+	}
+	for pattern, roles := range pprofRoles {
+		resourceRoles[pattern] = roles
+	}
+
+	return resourceRoles
 }
 
 // deprecatedManagementPathMiddleware marks responses served on the legacy

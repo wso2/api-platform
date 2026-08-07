@@ -22,9 +22,9 @@ import (
 	"fmt"
 	"log/slog"
 	"net/http"
-	"strings"
 	"time"
 
+	"github.com/wso2/api-platform/platform-api/config"
 	"github.com/wso2/api-platform/platform-api/internal/middleware"
 	"github.com/wso2/api-platform/platform-api/internal/plugin"
 	"github.com/wso2/api-platform/platform-api/pdk"
@@ -128,7 +128,7 @@ func initPlugins(
 		// list is complete when the chain is assembled.
 		if sp, ok := p.(plugin.AuthSkipPathProvider); ok {
 			for _, path := range sp.AuthSkipPaths() {
-				if err := validateAuthSkipPath(path); err != nil {
+				if err := config.ValidateAuthSkipPath(path); err != nil {
 					return fail("plugin %q declared an invalid auth skip path %q: %w", p.Name(), path, err)
 				}
 				w.authSkipPaths = append(w.authSkipPaths, path)
@@ -190,24 +190,6 @@ func initPlugins(
 
 	w.plugins = all
 	return w, nil
-}
-
-// validateAuthSkipPath rejects path prefixes that would widen the auth bypass
-// beyond the narrow, specific prefix a plugin is allowed to declare. Skip-path
-// matching is a prefix match (see middleware.LocalJWTAuthMiddleware), so "" or "/"
-// would disable authentication for every route on the server (GO-AUTH-004).
-func validateAuthSkipPath(path string) error {
-	switch {
-	case path == "":
-		return fmt.Errorf("path is empty, which matches every request")
-	case path == "/":
-		return fmt.Errorf("path is the root prefix, which matches every request")
-	case !strings.HasPrefix(path, "/"):
-		return fmt.Errorf("path must start with %q", "/")
-	case strings.Contains(path, ".."):
-		return fmt.Errorf("path must not contain %q", "..")
-	}
-	return nil
 }
 
 // shutdownPlugins shuts plugins down in reverse initialization order, logging but

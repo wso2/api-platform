@@ -16,6 +16,8 @@
  * under the License.
  */
 
+import { appPathPattern } from './appPath';
+
 // The BFF rejects state-mutating requests that lack a custom CSRF header
 // (CORS is closed, so cross-site attackers cannot set it). The SPA sends this
 // header on every request; mirror that here so `cy.request` calls that hit the
@@ -58,9 +60,10 @@ Cypress.Commands.add('login', (username, password) => {
   cy.get('input[type="password"]').should('be.visible').type(pwd);
   cy.contains('button', 'Sign In').click();
 
+  // pathname carries the app's base path; the router route does not (see appPath.js).
   cy.location('pathname', { timeout: 30000 }).should(
     'match',
-    new RegExp(`^/organizations/${orgHandle}(?:/|$)`)
+    appPathPattern(`/organizations/${orgHandle}(?:/|$)`)
   );
   cy.contains('Quick Start', { timeout: 30000 }).should('be.visible');
   cy.contains('Projects').should('be.visible');
@@ -177,5 +180,72 @@ Cypress.Commands.add('sweepE2EProviders', (authToken, organizationId) => {
           if (!orgId) return;
           return doSweep(token, orgId);
         });
+    });
+});
+
+/**
+ * Starts recording the notification snackbars the app renders from this point on
+ * (until the page reloads, i.e. the end of the test).
+ *
+ * The snackbar auto-hides after ~3.5s, so polling for the element with `cy.get()`
+ * after the triggering action is inherently racy: on a loaded machine the runner
+ * can stall long enough for the notification to be gone before the first retry
+ * queries the DOM, and the assertion then fails even though the notification did
+ * show. A MutationObserver records each snackbar's text as it appears, so the
+ * assertion no longer depends on when it runs.
+ *
+ * Call this *before* the action that triggers the notification, then assert with
+ * `cy.expectSnackbar(...)`.
+ */
+Cypress.Commands.add('recordSnackbars', () => {
+  const selector = '[data-testid="aiworkspace-snackbar-notification"]';
+
+  return cy.document({ log: false }).then((doc) => {
+    const recorded = [];
+
+    // Re-scan on every mutation rather than only inspecting addedNodes: a
+    // snackbar can arrive either as a fresh subtree (the provider remounts it
+    // with a new key) or as a text swap inside the mounted one.
+    const scan = () => {
+      doc.querySelectorAll(selector).forEach((element) => {
+        const text = (element.textContent || '').trim();
+        if (!text) return;
+        if (recorded.some((entry) => entry.element === element && entry.text === text)) return;
+        recorded.push({ element, text });
+      });
+    };
+
+    const observer = new doc.defaultView.MutationObserver(scan);
+    observer.observe(doc.body, {
+      childList: true,
+      subtree: true,
+      characterData: true,
+    });
+
+    return cy.wrap(recorded, { log: false }).as('recordedSnackbars');
+  });
+});
+
+/**
+ * Asserts a snackbar captured by `cy.recordSnackbars()` matches `expectedText`
+ * (string substring or RegExp). Retries until the command timeout, so it is safe
+ * to call immediately after the triggering action.
+ */
+Cypress.Commands.add('expectSnackbar', (expectedText, options = {}) => {
+  const matches = (text) =>
+    expectedText instanceof RegExp
+      ? expectedText.test(text)
+      : text.includes(expectedText);
+
+  // The timeout belongs on cy.get(): it is the alias re-query that retries, and
+  // each retry re-reads the same (observer-mutated) array.
+  return cy
+    .get('@recordedSnackbars', { log: false, timeout: options.timeout ?? 15000 })
+    .should((recorded) => {
+      const texts = recorded.map((entry) => entry.text);
+      expect(
+        texts.some(matches),
+        `a notification matching ${expectedText} was rendered (saw: ${JSON.stringify(texts)})`
+      ).to.be.true;
     });
 });

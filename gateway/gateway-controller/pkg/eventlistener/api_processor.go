@@ -24,6 +24,7 @@ import (
 	"time"
 
 	"github.com/wso2/api-platform/common/eventhub"
+	api "github.com/wso2/api-platform/gateway/gateway-controller/pkg/api/management"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/models"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/storage"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/templateengine"
@@ -83,6 +84,15 @@ func (l *EventListener) handleAPICreateOrUpdate(event eventhub.Event) {
 			slog.String("event_id", event.EventID),
 			slog.Any("error", err))
 		return
+	}
+
+	// RenderSpec JSON-roundtrips the config, which resets all policy params to strings.
+	// Coerce them back to their schema-declared types (integer, number, boolean).
+	if l.policyValidator != nil {
+		if restAPI, ok := storedConfig.Configuration.(api.RestAPI); ok {
+			l.policyValidator.CoerceRestAPIPolicies(&restAPI)
+			storedConfig.Configuration = restAPI
+		}
 	}
 
 	// Update in-memory store

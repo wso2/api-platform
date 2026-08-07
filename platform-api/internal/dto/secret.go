@@ -19,7 +19,7 @@ package dto
 
 import "time"
 
-// CreateSecretRequest is the request body for POST /api/v1/secrets.
+// CreateSecretRequest is the request body for POST /api/v0.9/secrets.
 // Accepts multipart/form-data to support file-based secret values in future.
 type CreateSecretRequest struct {
 	Handle      string `form:"id"          binding:"required"`
@@ -29,7 +29,7 @@ type CreateSecretRequest struct {
 	Type        string `form:"type"`
 }
 
-// UpdateSecretRequest is the request body for PUT /api/v1/secrets/:id.
+// UpdateSecretRequest is the request body for PUT /api/v0.9/secrets/{secretId}.
 // Accepts multipart/form-data to support file-based secret values in future.
 type UpdateSecretRequest struct {
 	DisplayName string `form:"displayName"`

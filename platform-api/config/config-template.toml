@@ -130,11 +130,11 @@ conn_max_lifetime = 300   # seconds before a connection is recycled
 # Authentication
 #
 # auth.mode selects exactly one mode:
-#   "external_token" — verify locally-issued, asymmetrically-signed (RS256) JWTs,
-#                       minted externally (e.g. by the Developer Portal) and
-#                       signed with the matching RSA private key; verified here
-#                       against auth.jwt.public_key_file.
-#   "file"            — external_token + local username/password login: the
+#   "internal_token" — verify asymmetrically-signed (RS256) JWTs minted by
+#                       another trusted platform component, signed with the
+#                       matching RSA private key; verified here against
+#                       auth.jwt.public_key_file.
+#   "file"            — internal_token + local username/password login: the
 #                       login endpoint authenticates from
 #                       [platform_api.auth.file] and issues RS256 JWTs signed
 #                       with auth.jwt.private_key_file.
@@ -145,37 +145,28 @@ conn_max_lifetime = 300   # seconds before a connection is recycled
 [platform_api.auth]
 mode = "file"
 
+# Authorization — how a verified token's privileges are checked. Independent of
+# the authentication mode above: these settings apply whether the token was
+# verified against an IDP's JWKS or with a local public key, because an
+# enterprise-IDP-minted token carries the same roles claim either way.
+[platform_api.auth.authorization]
 # Enforce per-endpoint OAuth2 scopes on validated tokens. Set false only to
 # temporarily bypass authorization during development.
-scope_validation = true
+enabled = true
 
-# Paths that bypass the auth middleware entirely. The list below is the
-# built-in default: health/metrics probes, the file-based login endpoint,
-# and internal gateway routes (which authenticate with a gateway token
-# instead). Setting this key REPLACES the default list — keep the entries
-# you still need.
-skip_paths = [
-    "/health",
-    "/metrics",
-    "/api/portal/v0.9/auth/login",
-    "/api/internal/v1/ws/gateways/connect",
-    "/api/internal/v1/apis",
-    "/api/internal/v1/llm-providers",
-    "/api/internal/v1/llm-proxies",
-    "/api/internal/v1/subscription-plans",
-    "/api/internal/v1/mcp-proxies",
-    "/api/internal/v1/gateways",
-    "/api/internal/v1/deployments",
-    "/api/internal/v1/artifacts",
-    "/api/internal/v1/secrets",
-    "/api/internal/v1/websub-apis",
-    "/api/internal/v1/webbroker-apis",
-    "/api/internal/v0.9/webhook/events",
-]
+# "scope" (default) checks the scope claim; "role" checks the roles claim
+# configured below at claim_mappings.roles, expanding each role via role_to_scope_mapping.
+mode = "scope"
+
+# Path to a YAML file mapping role names to platform scopes. Required when
+# mode = "role" (startup fails if unset), and also when any file-mode user below
+# names a role — the login endpoint expands that role through this same file.
+# The packs mount their editable sample at /etc/platform-api/role-to-scope-mapping.yaml.
+role_to_scope_mapping = ""
 
 # JWT claim name mappings — shared by all three auth modes ("idp" reads
 # incoming claims by these names; "file" mode's login endpoint signs tokens
-# using these names; "external_token" mode reads externally-minted tokens by
+# using these names; "internal_token" mode reads tokens minted elsewhere by
 # these names too), so issuance and validation never drift apart. Each value
 # is either a flat top-level claim name ("org_id") or a dot-separated path
 # into a nested claim ("realm_access.org_id") — useful for IDPs like
@@ -188,7 +179,12 @@ user_id      = "sub"            # claim used as the user's unique ID
 username     = "username"
 email        = "email"
 scope        = "scope"          # space-separated scope string
-roles        = ""               # e.g. "realm_access.roles" (Keycloak) or "roles" (Asgardeo)
+# Claim carrying the user's roles. Read in role authorization mode, and it is the
+# claim the file-mode login endpoint signs the user's roles into. Default suits
+# Asgardeo/Entra ID; Keycloak nests it: "realm_access.roles". A dotted path works
+# in both directions — file mode signs the nested object the reader resolves — so
+# the same mapping serves whichever auth mode is active.
+roles        = "roles"
 
 # IDP (JWKS-based) — used when mode = "idp" (Asgardeo, Keycloak, Auth0, etc.).
 # jwks_url and issuer are required in that mode.
@@ -197,11 +193,6 @@ name     = "asgardeo"                                # friendly name for logging
 jwks_url = "https://accounts.example.com/oauth2/jwks"
 issuer   = ["https://accounts.example.com"]          # list of accepted issuers
 audience = []                                        # accepted "aud" values; empty = skip audience check
-
-# Authorization mode: "scope" (default) checks the scope claim;
-# "role" checks the roles claim configured below at claim_mappings.roles.
-validation_mode = "scope"
-role_mappings   = ""   # path to a YAML file mapping IDP roles to platform scopes
 
 # File auth — local username/password login, used when mode = "file". Ideal
 # for initial / air-gapped setup; not recommended for production — prefer
@@ -221,18 +212,33 @@ uuid = "99089a17-72e0-4dd8-a2f4-c8dfbb085295"
 # starting with a blank or guessable credential.
 username      = ""
 password_hash = ""
-# Full scope set — trim to restrict permissions for this user.
-scopes = "ap:organization:manage ap:gateway:manage ap:gateway_custom_policy:manage ap:rest_api:manage ap:llm_provider:manage ap:llm_proxy:manage ap:mcp_proxy:manage ap:webbroker_api:manage ap:websub_api:manage ap:application:manage ap:subscription:manage ap:subscription_plan:manage ap:project:manage ap:llm_template:manage ap:devportal:manage ap:api_key:read ap:secret:manage"
+# REQUIRED — one or more roles from the auth.authorization.role_to_scope_mapping
+# file above, and this user's entire grant. The login endpoint expands them into
+# the token's scope claim (the union of what each grants — most-permissive wins)
+# and also emits the roles themselves as the roles claim, so the same token works
+# whether auth.authorization.mode is "scope" (default) or "role". A user with no
+# roles, or one naming a role the mapping file doesn't define, fails startup rather
+# than logging in successfully and then being denied every request.
+#
+# There is no per-user scope list: what a role grants is defined once, in the
+# mapping file, so no user can drift out of step with the roles it names. To grant
+# something no shipped role covers, name several roles, or add a role to that file
+# (see resources/role-to-scope-mapping.yaml for the shipped ones and the scope
+# namespaces it may use).
+#
+# Left empty here because role_to_scope_mapping above is empty in this template — set that
+# first, then name a role.
+roles         = []
 
 # Additional users — uncomment the WHOLE block (including the [[...]] header)
 # and replace the placeholder hash with a real bcrypt hash before use.
 # [[platform_api.auth.file.users]]
 # username      = "readonly"
 # password_hash = "$2a$12$<bcrypt-hash-of-your-password>"
-# scopes        = "ap:organization:read ap:gateway:read ap:rest_api:read ap:llm_provider:read"
+# roles         = ["ap_viewer"]
 
-# JWT (local RS256) — used by "external_token" and "file" modes. Tokens are
-# signed asymmetrically: "external_token" only verifies externally-minted tokens
+# JWT (local RS256) — used by "internal_token" and "file" modes. Tokens are
+# signed asymmetrically: "internal_token" only verifies tokens minted elsewhere
 # with the public key; "file" also signs the tokens its login endpoint issues
 # with the private key. Symmetric (HMAC) and unsigned ("none") tokens are
 # rejected. Keys are mounted PEM files, referenced here by path only — the
@@ -249,7 +255,7 @@ issuer = "platform-api"
 public_key_file  = "/etc/platform-api/keys/jwt_public.pem"
 private_key_file = "/etc/platform-api/keys/jwt_private.pem"
 # Lifetime of tokens issued by the file-mode login endpoint (Go duration
-# syntax). Not used for "external_token" tokens — their expiry is whatever
+# syntax). Not used for "internal_token" tokens — their expiry is whatever
 # "exp" claim the issuer set.
 token_ttl = "1h"
 
@@ -301,7 +307,7 @@ idle        = "120s"
 # CORS
 # ---------------------------------------------------------------------------
 # Origins allowed to make credentialed cross-origin requests, e.g. the
-# Developer Portal and AI Workspace origins. Must never contain "*"; leave
+# API Portal and AI Workspace origins. Must never contain "*"; leave
 # empty to disable cross-origin access (the default).
 [platform_api.server.cors]
 allowed_origins = ""   # comma-separated, e.g. "https://workspace.example.com,https://devportal.example.com"
@@ -330,7 +336,6 @@ enable_functionality_type_verification = false
 # ---------------------------------------------------------------------------
 [platform_api.deployments]
 max_per_api_gateway         = 20      # maximum API deployments per gateway
-transitional_status_enabled = false   # expose "pending" deployment states in responses
 
 # Deployment timeout — mark stuck deployments as failed after timeout_duration seconds.
 timeout_enabled  = true
@@ -350,16 +355,16 @@ retention_period = "1h"    # how long delivered events are retained
 # ---------------------------------------------------------------------------
 # Webhook — control-plane webhook receiver
 # ---------------------------------------------------------------------------
-# The Developer Portal delivers signed events (API key / subscription
+# The API Portal delivers signed events (API key / subscription
 # changes) to this endpoint.
 [platform_api.webhook]
 enabled = false
-# HMAC-SHA256 shared secret used to verify request signatures. REQUIRED when
-# enabled. The "" default below is only ever read while enabled = false.
+# Shared secret with the API Portal, used both to verify request
+# signatures (HMAC-SHA256) and to derive the AES key that decrypts encrypted
+# payload fields (API key generate/regenerate, subscription token). Must match
+# the secret configured on the API Portal's webhook subscriber. REQUIRED
+# when enabled. The "" default below is only ever read while enabled = false.
 secret = ""
-# PEM RSA private key used to decrypt encrypted_key fields. Required only
-# for events that carry encrypted secrets (API key generate/regenerate).
-private_key_path   = ""
 signature_tolerance = "5m"                       # max age of a signed request (replay protection)
 max_body_size       = 1048576                    # request body cap in bytes (1 MiB)
-signature_header    = "X-Devportal-Signature"     # header carrying the "t=...,v1=..." signature
+signature_header    = "X-Api-Portal-Signature"     # header carrying the "t=...,v1=..." signature

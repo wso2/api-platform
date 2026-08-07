@@ -1,0 +1,121 @@
+/*
+ * Copyright (c) 2024, WSO2 LLC. (http://www.wso2.com) All Rights Reserved.
+ *
+ * WSO2 LLC. licenses this file to you under the Apache License,
+ * Version 2.0 (the "License"); you may not use this file except
+ * in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing,
+ * software distributed under the License is distributed on an
+ * "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+ * KIND, either express or implied. See the License for the
+ * specific language governing permissions and limitations
+ * under the License.
+ */
+ 
+const { renderTemplate, renderTemplateFromAPI, loadMarkdown, filePrefix, pageErrorStatus } = require('../utils/util');
+const { config } = require('../config/configLoader');
+const markdown = require('marked');
+const fs = require('fs');
+const path = require('path');
+const orgDao = require('../dao/organizationDao');
+const constants = require('../utils/constants');
+const logger = require('../config/logger');
+
+
+const loadCustomContent = async (req, res, next) => {
+
+    let html = "";
+    const { orgName, viewName } = req.params;
+    let filePath = req.originalUrl.split("/" + orgName + constants.ROUTE.VIEWS_PATH + viewName + "/")[1];
+    
+    // Skip manage-keys routes - they should be handled by the application controller
+    // This is a safety check in case the route doesn't match properly
+    if (filePath && filePath.match(/^applications\/[^/]+\/manage-keys/)) {
+        logger.warn('Manage-keys route intercepted by catch-all route - this should not happen', {
+            orgName,
+            viewName,
+            filePath,
+            originalUrl: req.originalUrl
+        });
+        res.status(404).send('Not found');
+        return;
+    }
+    if (config.designMode?.enabled) {
+        if (!filePath) {
+            res.status(404).send('Not found');
+            return;
+        }
+        const layoutPath = config.designMode.pathToLayout;
+        let templateContent = {};
+        templateContent[constants.BASE_URL_NAME] = constants.ROUTE.BASE_PATH + constants.ROUTE.VIEWS_PATH + viewName;
+        //read all markdown content
+        if (fs.existsSync(path.join(process.cwd(), layoutPath + 'pages', filePath, 'content'))) {
+            const markdDownFiles = fs.readdirSync(path.join(process.cwd(), layoutPath + 'pages/' + filePath + '/content'));
+            for (const filename of markdDownFiles) {
+                const tempKey = filename.split('.md')[0];
+                templateContent[tempKey] = await loadMarkdown(filename, layoutPath + 'pages/' + filePath + '/content');
+            }
+        }
+        html = renderTemplate(layoutPath + 'pages/' + filePath + '/page.hbs', layoutPath + 'layout/main.hbs', templateContent, false)
+
+    } else {
+        let content = {};
+        try {
+            filePath = 'pages/' + filePath;
+            // Normalize application-specific manage-keys paths to the shared manage-keys page
+            const manageKeysMatch = filePath.match(/^pages\/applications\/[^/]+\/manage-keys/);
+            if (manageKeysMatch) {
+                filePath = 'pages/manage-keys';
+            }
+            // Check if the file exists before attempting to render
+            const resolvedPagePath = path.join(process.cwd(), filePrefix + filePath + '/page.hbs');
+            if (!fs.existsSync(resolvedPagePath)) {
+                // Both branches mean "this page does not exist", so they carry a 404.
+                // A bare Error has no status, and pageErrorStatus() below falls back to
+                // 500 — which rendered a server-error page for what is simply a bad URL.
+                const notFound = filePath.includes('manage-keys')
+                    // A manage-keys route that got here was not claimed by the
+                    // application controller, so there is nothing to render.
+                    ? new Error('Manage keys page not found. This route should be handled by the application controller.')
+                    : new Error(`Content page not found at ${resolvedPagePath}`);
+                notFound.status = 404;
+                throw notFound;
+            }
+            const orgDetails = await orgDao.get(orgName);
+            const orgId = orgDetails.uuid;
+            let markDownFiles = await orgDao.getContent({
+                orgId: orgId,
+                fileType: 'markDown',
+                viewName: viewName
+            });
+            if (markDownFiles.length > 0) {
+                markDownFiles.forEach((item) => {
+                    const tempKey = item.file_name.split('.md')[0];
+                    content[tempKey] = markdown.parse(item.file_content.toString(constants.CHARSET_UTF8));
+                });
+            }
+            content[constants.BASE_URL_NAME] = constants.ROUTE.BASE_PATH + '/' + orgName + constants.ROUTE.VIEWS_PATH + viewName;
+            html = await renderTemplateFromAPI(content, orgId, orgName, filePath, viewName);
+        } catch (error) {
+            logger.error('Error while loading custom content', {
+                orgName,
+                error: error.message,
+                stack: error.stack,
+                filePath: req.params.filePath,
+            });
+            error.status = pageErrorStatus(error);
+            return next(error);
+        }
+    }
+    res.send(html);
+}
+
+
+
+module.exports = {
+    loadCustomContent
+};

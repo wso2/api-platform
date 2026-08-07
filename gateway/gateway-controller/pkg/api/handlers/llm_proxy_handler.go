@@ -488,7 +488,6 @@ func rematerializeLLMProxyConfig(log *slog.Logger, id, displayName string, sourc
 		log.Error("Failed to marshal stored LLM proxy source configuration",
 			slog.String("id", id),
 			slog.String("displayName", displayName),
-			slog.Any("sourceConfiguration", source),
 			slog.Any("error", err))
 		return api.LLMProxyConfiguration{}, fmt.Errorf("marshal LLM proxy config: %w", err)
 	}
@@ -497,9 +496,9 @@ func rematerializeLLMProxyConfig(log *slog.Logger, id, displayName string, sourc
 		log.Error("Failed to unmarshal stored LLM proxy configuration",
 			slog.String("id", id),
 			slog.String("displayName", displayName),
-			slog.Any("sourceConfiguration", source),
 			slog.Any("error", err))
 		return api.LLMProxyConfiguration{}, fmt.Errorf("unmarshal LLM proxy config: %w", err)
 	}
+	redactLLMProxyCredentials(&proxy)
 	return proxy, nil
 }

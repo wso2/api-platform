@@ -22,59 +22,81 @@ services:
     container_name: postgres
     environment:
       POSTGRES_PASSWORD: postgres
-      POSTGRES_DB: devportal
+      POSTGRES_DB: api_portal
     ports:
       - "5432:5432"
     volumes:
       - postgres_data:/var/lib/postgresql
-      - ../../portals/developer-portal/artifacts/script.sql:/docker-entrypoint-initdb.d/01-init-devportal.sql
+      - ../../portals/api-portal/artifacts/script.sql:/docker-entrypoint-initdb.d/01-init-api-portal.sql
       - ../../platform-api/internal/database/init-platform-api-db.sql:/docker-entrypoint-initdb.d/02-init-platform-api.sql
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U postgres -d devportal"]
+      test: ["CMD-SHELL", "pg_isready -U postgres -d api_portal"]
       interval: 5s
       timeout: 5s
       retries: 5
 
-  devportal:
+  api-portal:
     build:
-      context: ../../portals/developer-portal
+      context: ../../portals/api-portal
       dockerfile: Dockerfile
-    container_name: devportal
+    container_name: api-portal
     environment:
-      - APIP_DP_SERVER_HTTPS_ENABLED=false
-      - APIP_DP_DATABASE_DRIVER=postgres
-      - APIP_DP_DATABASE_HOST=postgres
-      - APIP_DP_DATABASE_PORT=5432
-      - APIP_DP_DATABASE_NAME=devportal
-      - APIP_DP_DATABASE_USER=postgres
-      - APIP_DP_DATABASE_PASSWORD=postgres
+      - APIP_AP_SERVER_HTTPS_ENABLED=false
+      - APIP_AP_DATABASE_DRIVER=postgres
+      - APIP_AP_DATABASE_HOST=postgres
+      - APIP_AP_DATABASE_PORT=5432
+      - APIP_AP_DATABASE_NAME=api_portal
+      - APIP_AP_DATABASE_USER=postgres
+      - APIP_AP_DATABASE_PASSWORD=postgres
       # platform-api signs its tokens with RS256; the devportal verifies them
       # against jwt_public.pem from the shared keypair volume mounted below
       # (auth.local.jwt_public_key in devportal-config.toml). There is no shared
-      # HMAC secret. tls_skip_verify covers platform-api's self-signed cert.
-      - APIP_DP_AUTH_LOCAL_PLATFORM_API_URL=https://platform-api:9243
-      - APIP_DP_AUTH_LOCAL_TLS_SKIP_VERIFY=true
+      # HMAC secret.
+      - APIP_AP_AUTH_LOCAL_PLATFORM_API_URL=https://platform-api:9243
+      # Trust platform-api's self-signed cert at Node's trust-store level instead of
+      # skipping verification per client. NODE_EXTRA_CA_CERTS *appends* to Node's
+      # built-in CAs (public CAs keep working) and applies process-wide, so it covers
+      # BOTH the auth login client (authController's https.Agent passes no custom
+      # `ca`, so it honours this) AND the webhook delivery worker
+      # (src/services/webhooks/deliveryWorker.js), which POSTs events such as
+      # apikey.generated over Node's default TLS and has no tls_skip_verify hatch of
+      # its own. That is why APIP_AP_AUTH_LOCAL_TLS_SKIP_VERIFY is no longer set here:
+      # verification stays ON for every platform-api call, self-signed cert and all.
+      - NODE_EXTRA_CA_CERTS=/etc/api-portal/certs/cert.pem
       # Required — devportal fails closed at startup if either doesn't resolve
       # to a 64-char hex string. Set both before `docker compose up`, e.g.:
-      #   export APIP_DP_SECURITY_ENCRYPTION_KEY=$(openssl rand -hex 32)
-      #   export APIP_DP_SECURITY_SESSION_SECRET=$(openssl rand -hex 32)
-      - APIP_DP_SECURITY_ENCRYPTION_KEY=${APIP_DP_SECURITY_ENCRYPTION_KEY:-}
-      - APIP_DP_SECURITY_SESSION_SECRET=${APIP_DP_SECURITY_SESSION_SECRET:-}
-      - APIP_DP_SERVER_PORT=${APIP_DP_SERVER_PORT:-9543}
+      #   export APIP_AP_SECURITY_ENCRYPTION_KEY=$(openssl rand -hex 32)
+      #   export APIP_AP_SECURITY_SESSION_SECRET=$(openssl rand -hex 32)
+      - APIP_AP_SECURITY_ENCRYPTION_KEY=${APIP_AP_SECURITY_ENCRYPTION_KEY:-}
+      - APIP_AP_SECURITY_SESSION_SECRET=${APIP_AP_SECURITY_SESSION_SECRET:-}
+      - APIP_AP_SERVER_PORT=${APIP_AP_SERVER_PORT:-9543}
     ports:
-      - "${APIP_DP_SERVER_PORT:-9543}:${APIP_DP_SERVER_PORT:-9543}"
+      - "${APIP_AP_SERVER_PORT:-9543}:${APIP_AP_SERVER_PORT:-9543}"
     volumes:
       # Replaces the image's shipped configs/config.toml (SQLite-only, fails
       # closed on security secrets) — see devportal-config.toml for why.
       - ./devportal-config.toml:/app/configs/config.toml:ro
       # Same RS256 keypair volume platform-api signs with — the devportal reads
       # only jwt_public.pem (0644) from it to verify those tokens.
-      - platform-api-jwt-keys:/etc/devportal/keys:ro
+      - platform-api-jwt-keys:/etc/api-portal/keys:ro
+      # platform-api's self-signed TLS cert, trusted via NODE_EXTRA_CA_CERTS above.
+      # Subpath mount exposes only the public cert.pem — never the private key.pem
+      # that also lives in this volume (same pattern as the e2e compose).
+      - type: volume
+        source: platform-api-certs
+        target: /etc/api-portal/certs/cert.pem
+        read_only: true
+        volume:
+          subpath: cert.pem
     depends_on:
       postgres:
         condition: service_healthy
       platform-api:
         condition: service_healthy
+      # cert.pem must exist in the certs volume before Node reads NODE_EXTRA_CA_CERTS
+      # at startup (a missing file is silently ignored with a warning).
+      platform-api-certgen:
+        condition: service_completed_successfully
       platform-api-jwtkeygen:
         condition: service_completed_successfully
 
@@ -85,11 +107,20 @@ services:
     entrypoint: ["/bin/sh", "-c"]
     command:
       - |
-        [ -f /certs/cert.pem ] && [ -f /certs/key.pem ] && exit 0
-        openssl req -x509 -newkey rsa:2048 -sha256 -days 365 -nodes \
-          -keyout /certs/key.pem -out /certs/cert.pem \
-          -subj "/O=WSO2 API Platform/CN=platform-api" \
-          -addext "subjectAltName=DNS:localhost,DNS:platform-api,IP:127.0.0.1"
+        set -e
+        if [ ! -f /certs/cert.pem ] || [ ! -f /certs/key.pem ]; then
+          openssl req -x509 -newkey rsa:2048 -sha256 -days 365 -nodes \
+            -keyout /certs/key.pem -out /certs/cert.pem \
+            -subj "/O=WSO2 API Platform/CN=platform-api" \
+            -addext "subjectAltName=DNS:localhost,DNS:platform-api,IP:127.0.0.1"
+        fi
+        # platform-api runs as uid 10001 and reads both files. Keep the private key
+        # owned by that uid and non-world-readable; keep the public cert world-readable
+        # so api-portal can trust it via NODE_EXTRA_CA_CERTS. Applied every run (like
+        # platform-api-jwtkeygen) so a cached certs volume gets the same permissions.
+        chown 10001 /certs/key.pem
+        chmod 0600 /certs/key.pem
+        chmod 0644 /certs/cert.pem
     volumes:
       - platform-api-certs:/certs
 
@@ -137,13 +168,12 @@ services:
       - "9243:9243"
     volumes:
       - ../../platform-api/config/config.toml:/etc/platform-api/config.toml:ro
+      - ../../platform-api/resources/role-to-scope-mapping.yaml:/etc/platform-api/role-to-scope-mapping.yaml:ro
       - platform-api-data:/api-platform/data
       - platform-api-certs:/app/data/certs
-      # RS256 JWT signing/verification keys — on the Platform API's {{ file }}
-      # allowlist (/etc/platform-api).
       - platform-api-jwt-keys:/etc/platform-api/keys:ro
     environment:
-      - APIP_CP_DEFAULT_DEVPORTAL_API_URL=http://devportal:${APIP_DP_SERVER_PORT:-9543}
+      - APIP_CP_DEFAULT_API_PORTAL_API_URL=http://api-portal:${APIP_AP_SERVER_PORT:-9543}
       - APIP_CP_DATABASE_DRIVER=postgres
       - APIP_CP_DATABASE_HOST=postgres
       - APIP_CP_DATABASE_PORT=5432

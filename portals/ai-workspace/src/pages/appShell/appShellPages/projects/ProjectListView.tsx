@@ -62,6 +62,8 @@ import { useAIWorkspaceSnackbar } from '../../../../hooks/aiWorkspaceSnackbar';
 import { FormattedMessage } from 'react-intl';
 import NoProjects from '../../../../assets/images/NoProjects.svg';
 import { getErrorMessage } from '../../../../utils/apiError';
+import { useAppAuth } from '../../../../contexts/AppAuthContext';
+import { DISABLED_ACTION_SX, NO_PERMISSION_TOOLTIP, SCOPES } from '../../../../auth/permissions';
 
 
 function ProjectListViewInner() {
@@ -76,6 +78,10 @@ function ProjectListViewInner() {
   } = useAppShell();
   const { deleteProject } = useProjects();
   const showSnackbar = useAIWorkspaceSnackbar();
+  const { hasPermission } = useAppAuth();
+  const canCreateProject = hasPermission(SCOPES.PROJECT_CREATE);
+  const canUpdateProject = hasPermission(SCOPES.PROJECT_UPDATE);
+  const canDeleteProject = hasPermission(SCOPES.PROJECT_DELETE);
   const [searchQuery, setSearchQuery] = useState('');
   const [page, setPage] = useState(0);
   const [rowsPerPage, setRowsPerPage] = useState(10);
@@ -178,18 +184,24 @@ function ProjectListViewInner() {
           </PageTitle.SubHeader>
           {hasProjects && newProjectPath ? (
             <PageTitle.Actions>
-              <Button
-                variant="contained"
-                size="small"
-                startIcon={<Plus size={16} />}
-                component={RouterLink}
-                to={newProjectPath}
-              >
-                <FormattedMessage
-                  id="aiWorkspace.pages.appShell.appShellPages.projects.ProjectListView.new.project"
-                  defaultMessage="Add New Project"
-                />
-              </Button>
+              <Tooltip title={canCreateProject ? '' : NO_PERMISSION_TOOLTIP}>
+                <Box component="span">
+                  <Button
+                    variant="contained"
+                    size="small"
+                    startIcon={<Plus size={16} />}
+                    component={RouterLink}
+                    to={newProjectPath}
+                    disabled={!canCreateProject}
+                    sx={DISABLED_ACTION_SX}
+                  >
+                    <FormattedMessage
+                      id="aiWorkspace.pages.appShell.appShellPages.projects.ProjectListView.new.project"
+                      defaultMessage="Add New Project"
+                    />
+                  </Button>
+                </Box>
+              </Tooltip>
             </PageTitle.Actions>
           ) : null}
         </PageTitle>
@@ -266,17 +278,25 @@ function ProjectListViewInner() {
                     />
                   </Typography>
                   {newProjectPath ? (
-                    <Button
-                      variant="contained"
-                      component={RouterLink}
-                      to={newProjectPath}
-                      startIcon={<Plus size={20} />}
+                    <Tooltip
+                      title={canCreateProject ? '' : NO_PERMISSION_TOOLTIP}
                     >
-                      <FormattedMessage
-                        id="aiWorkspace.pages.appShell.appShellPages.projects.ProjectListView.create.project"
-                        defaultMessage="Create Project"
-                      />
-                    </Button>
+                      <Box component="span">
+                        <Button
+                          variant="contained"
+                          component={RouterLink}
+                          to={newProjectPath}
+                          startIcon={<Plus size={20} />}
+                          disabled={!canCreateProject}
+                          sx={DISABLED_ACTION_SX}
+                        >
+                          <FormattedMessage
+                            id="aiWorkspace.pages.appShell.appShellPages.projects.ProjectListView.create.project"
+                            defaultMessage="Create Project"
+                          />
+                        </Button>
+                      </Box>
+                    </Tooltip>
                   ) : null}
                 </Stack>
               </Box>
@@ -386,9 +406,17 @@ function ProjectListViewInner() {
                         </Stack>
 
                         <Stack direction="row" spacing={0.5}>
-                          <Tooltip title="Edit project">
+                          <Tooltip
+                            title={
+                              canUpdateProject
+                                ? 'Edit project'
+                                : NO_PERMISSION_TOOLTIP
+                            }
+                          >
+                           <Box component="span">
                             <IconButton
                               size="small"
+                              disabled={!canUpdateProject}
                               onClick={(e) => {
                                 e.stopPropagation();
                                 const path = buildOrgPath(
@@ -401,19 +429,29 @@ function ProjectListViewInner() {
                             >
                               <Pencil size={15} />
                             </IconButton>
+                           </Box>
                           </Tooltip>
-                          <Tooltip title="Delete project">
-                            <IconButton
-                              size="small"
-                              color="error"
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                setDeleteTargetId(project.id);
-                              }}
-                              aria-label="Delete project"
-                            >
-                              <Trash2 size={15} />
-                            </IconButton>
+                          <Tooltip
+                            title={
+                              canDeleteProject
+                                ? 'Delete project'
+                                : NO_PERMISSION_TOOLTIP
+                            }
+                          >
+                            <Box component="span">
+                              <IconButton
+                                size="small"
+                                color="error"
+                                disabled={!canDeleteProject}
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  setDeleteTargetId(project.id);
+                                }}
+                                aria-label="Delete project"
+                              >
+                                <Trash2 size={15} />
+                              </IconButton>
+                            </Box>
                           </Tooltip>
                         </Stack>
                       </Stack>

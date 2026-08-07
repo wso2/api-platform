@@ -67,6 +67,26 @@ func TestMCPProxyServiceCreateRejectsInvalidPolicyVersion(t *testing.T) {
 	}
 }
 
+// TestMCPProxyServiceGetReturnsProjectHandle guards the response contract:
+// projectId must be the project handle, never the internal project UUID.
+// Clients route on handles and have no way to resolve a UUID back to one.
+func TestMCPProxyServiceGetReturnsProjectHandle(t *testing.T) {
+	projectUUID := "550e8400-e29b-41d4-a716-446655440000"
+	repo := &mockMCPProxyRepository{getByHandleResult: &model.MCPProxy{
+		Handle:      "mcp-proxy-1",
+		Name:        "Test MCP Proxy",
+		Version:     "v1.0",
+		ProjectUUID: &projectUUID,
+	}}
+	projectRepo := &mockProjectRepo{project: &model.Project{ID: projectUUID, Handle: "test-project", OrganizationID: "org-1"}}
+	service := NewMCPProxyService(repo, projectRepo, nil, nil, nil, slog.Default(), &noopAuditRepo{}, &config.Server{}, newTestIdentityService())
+
+	resp, err := service.Get("org-1", "mcp-proxy-1")
+	require.NoError(t, err)
+	require.NotNil(t, resp.ProjectId)
+	assert.Equal(t, "test-project", *resp.ProjectId)
+}
+
 func TestMCPProxyServiceUpdateRejectsInvalidPolicyVersion(t *testing.T) {
 	repo := &mockMCPProxyRepository{getByHandleResult: &model.MCPProxy{Handle: "mcp-proxy-1"}}
 	service := NewMCPProxyService(repo, nil, nil, nil, nil, slog.Default(), &noopAuditRepo{}, &config.Server{}, newTestIdentityService())
@@ -138,5 +158,96 @@ func TestFetchServerInfoRefetchUsesStoredURLVerbatim(t *testing.T) {
 				assert.NotContains(t, p, "/mcp/mcp", "the /mcp resource path must not be doubled on the backend")
 			}
 		})
+	}
+}
+
+// TestFetchServerInfoRejectsAmbiguousTargets asserts the request-shape rules enforced by
+// FetchServerInfo: at least one of url/proxyId must select the target, and auth may not
+// accompany proxyId (where the stored auth is authoritative) — no branch may silently
+// ignore a supplied field.
+func TestFetchServerInfoRejectsAmbiguousTargets(t *testing.T) {
+	proxyID := "mcp-proxy-1"
+	header, value := "X-API-Key", "secret"
+
+	tests := []struct {
+		name string
+		req  *api.MCPServerInfoFetchRequest
+	}{
+		{"neither url nor proxyId", &api.MCPServerInfoFetchRequest{}},
+		{"auth supplied with proxyId", &api.MCPServerInfoFetchRequest{
+			ProxyId: &proxyID,
+			Auth:    &api.UpstreamAuth{Header: &header, Value: &value},
+		}},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			repo := &mockMCPProxyRepository{getByHandleResult: &model.MCPProxy{Handle: proxyID}}
+			service := NewMCPProxyService(repo, nil, nil, nil, nil, slog.Default(), &noopAuditRepo{}, &config.Server{}, newTestIdentityService())
+
+			_, err := service.FetchServerInfo("org-1", tt.req)
+			assert.True(t, apperror.ValidationFailed.Is(err), "expected a validation failure, got: %v", err)
+		})
+	}
+}
+
+// TestFetchServerInfoSuppliedURLWithStoredCredential covers the url+proxyId shape, which
+// lets the UI validate an unsaved endpoint edit using the proxy's stored (write-only)
+// credential. The supplied URL must override the stored one verbatim — no path
+// manipulation, same as the proxyId-only flow — while the stored auth header still rides
+// along, since that is the whole point of referencing the proxy.
+func TestFetchServerInfoSuppliedURLWithStoredCredential(t *testing.T) {
+	var mu sync.Mutex
+	var paths []string
+	var authHeaders []string
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		mu.Lock()
+		paths = append(paths, r.URL.Path)
+		// Only the MCP calls themselves carry credentials; CheckURLReachability's
+		// preceding HEAD probe is a deliberately unauthenticated diagnostic.
+		if r.Method != http.MethodHead {
+			authHeaders = append(authHeaders, r.Header.Get("X-API-Key"))
+		}
+		mu.Unlock()
+		w.Header().Set("Content-Type", "application/json")
+		w.Header().Set("mcp-session-id", "test-session")
+		_, _ = w.Write([]byte(`{"jsonrpc":"2.0","id":1,"result":{"protocolVersion":"2025-06-18","serverInfo":{"name":"test","version":"1.0"}}}`))
+	}))
+	defer srv.Close()
+
+	proxy := &model.MCPProxy{
+		Handle: "mcp-proxy-1",
+		Configuration: model.MCPProxyConfiguration{
+			Upstream: model.UpstreamConfig{
+				Main: &model.UpstreamEndpoint{
+					URL: srv.URL + "/mcp",
+					// A literal (non-placeholder) stored value, so this exercises the
+					// request shape without needing the secret store.
+					Auth: &model.UpstreamAuth{Header: "X-API-Key", Value: "stored-secret"},
+				},
+			},
+		},
+	}
+	repo := &mockMCPProxyRepository{getByHandleResult: proxy}
+	service := NewMCPProxyService(repo, nil, nil, nil, nil, slog.Default(), &noopAuditRepo{}, &config.Server{}, newTestIdentityService())
+
+	proxyID := "mcp-proxy-1"
+	editedURL := srv.URL + "/api/v2/mcp" // an unsaved endpoint edit
+	_, err := service.FetchServerInfo("org-1", &api.MCPServerInfoFetchRequest{
+		ProxyId: &proxyID,
+		Url:     &editedURL,
+	})
+	require.NoError(t, err)
+
+	mu.Lock()
+	defer mu.Unlock()
+	require.NotEmpty(t, paths, "backend should have received at least one request")
+	for _, p := range paths {
+		assert.Equal(t, "/api/v2/mcp", p, "the supplied URL must override the stored one, verbatim")
+	}
+	require.NotEmpty(t, authHeaders, "backend should have received at least one MCP call")
+	for _, h := range authHeaders {
+		assert.Equal(t, "stored-secret", h, "the proxy's stored credential must still be sent")
 	}
 }

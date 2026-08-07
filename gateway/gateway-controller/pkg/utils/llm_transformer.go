@@ -184,18 +184,31 @@ func (t *LLMProviderTransformer) transformProxy(proxy *api.LLMProxyConfiguration
 			if err != nil {
 				return nil, fmt.Errorf("failed to get context for additional provider '%s': %w", ap.Id, err)
 			}
-			if addProviderConfig, ok := addCfg.SourceConfiguration.(api.LLMProviderConfiguration); ok {
-				additionalValuePrefixByID[ap.Id] = apiKeyAuthValuePrefix(addProviderConfig.Spec.GlobalPolicies)
+			addProviderConfig, ok := addCfg.SourceConfiguration.(api.LLMProviderConfiguration)
+			if !ok {
+				return nil, fmt.Errorf("additional provider '%s' source configuration is not LLMProviderConfiguration", ap.Id)
 			}
-			addURL := fmt.Sprintf("%s://%s:%d%s",
-				constants.SchemeHTTP, constants.LocalhostIP, t.routerConfig.ListenerPort, addCtx)
-			defs = append(defs, api.UpstreamDefinition{
+			additionalValuePrefixByID[ap.Id] = apiKeyAuthValuePrefix(addProviderConfig.Spec.GlobalPolicies)
+			// UpstreamDefinition URLs are host[:port] only. Keep the provider's
+			// loopback context in BasePath so the router rewrites requests to the
+			// additional provider route instead of dropping the context.
+			normalizedAddCtx := strings.TrimRight(addCtx, "/")
+			if normalizedAddCtx != "" && !strings.HasPrefix(normalizedAddCtx, "/") {
+				normalizedAddCtx = "/" + normalizedAddCtx
+			}
+			addURL := fmt.Sprintf("%s://%s:%d",
+				constants.SchemeHTTP, constants.LocalhostIP, t.routerConfig.ListenerPort)
+			def := api.UpstreamDefinition{
 				Name: name,
 				Upstreams: []struct {
 					Url    string `json:"url" yaml:"url"`
 					Weight *int   `json:"weight,omitempty" yaml:"weight,omitempty"`
 				}{{Url: addURL}},
-			})
+			}
+			if normalizedAddCtx != "" && normalizedAddCtx != constants.BASE_PATH {
+				def.BasePath = &normalizedAddCtx
+			}
+			defs = append(defs, def)
 		}
 		spec.UpstreamDefinitions = &defs
 	}
@@ -366,6 +379,14 @@ func (t *LLMProviderTransformer) transformProxy(proxy *api.LLMProxyConfiguration
 				appendOperationPolicy(&ops[i], upstreamAuthPolicy)
 			}
 		}
+	}
+	// Phase 4: Attach loopback marker policy to all operations so the gateway can identify
+	loopbackMarkerPolicy, err := t.proxyInternalLoopbackMarkerPolicy()
+	if err != nil {
+		return nil, err
+	}
+	for i := range ops {
+		appendOperationPolicy(&ops[i], *loopbackMarkerPolicy)
 	}
 	// A proxy is always allow-all with no access control, so there are no deny routes:
 	// attach API-level resilience to all generated routes.
@@ -839,6 +860,27 @@ func (t *LLMProviderTransformer) proxyUpstreamAuthPolicy(auth *api.LLMUpstreamAu
 	default:
 		return nil, fmt.Errorf("unsupported upstream auth type: %s", auth.Type)
 	}
+}
+
+// proxyInternalLoopbackMarkerPolicy builds an unconditional set-headers policy that stamps the
+// internal loopback marker header on the proxy's loopback forward to its provider. The analytics
+// system policy reads it on the provider hop so the duplicate provider analytics event is dropped
+// from Moesif. It carries no ExecutionCondition, so it applies for the primary and every
+// additional provider; set-headers overwrites any client-supplied value.
+func (t *LLMProviderTransformer) proxyInternalLoopbackMarkerPolicy() (*api.Policy, error) {
+	params, err := GetUpstreamAuthApikeyPolicyParams(constants.InternalLoopbackHeader, "1")
+	if err != nil {
+		return nil, fmt.Errorf("failed to build internal loopback marker params: %w", err)
+	}
+	policyVersion, err := t.resolvePolicyVersion(constants.SET_HEADERS_POLICY_NAME)
+	if err != nil {
+		return nil, err
+	}
+	return &api.Policy{
+		Name:    constants.SET_HEADERS_POLICY_NAME,
+		Version: policyVersion,
+		Params:  &params,
+	}, nil
 }
 
 // proxyTransformerPolicy builds a translator policy for an additional provider's

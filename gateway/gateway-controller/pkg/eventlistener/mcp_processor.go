@@ -78,6 +78,14 @@ func (l *EventListener) handleMCPProxyCreateOrUpdate(event eventhub.Event) {
 		return
 	}
 
+	// Coerce rendered-template strings back to their schema-declared types.
+	if l.policyValidator != nil {
+		if mcpProxy, ok := storedConfig.Configuration.(api.MCPProxyConfiguration); ok {
+			l.policyValidator.CoerceMCPProxyPolicies(&mcpProxy)
+			storedConfig.Configuration = mcpProxy
+		}
+	}
+
 	existing, _ := l.store.Get(entityID)
 	if existing != nil {
 		if err := l.store.Update(storedConfig); err != nil {

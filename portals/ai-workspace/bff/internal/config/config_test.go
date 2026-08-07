@@ -368,7 +368,7 @@ absolute_ttl = "2h"
 }
 
 // A key in a table must not collide with the same key in another table — they are
-// distinct dotted paths, so [server.https] enabled and [auth.oidc] enabled are
+// distinct dotted paths, so [server.http] enabled and [server.https] enabled are
 // independent.
 func TestLoad_SameKeyInDifferentTables(t *testing.T) {
 	cfgPath := writeConfig(t, `
@@ -385,7 +385,6 @@ enabled = true
 enabled = false
 
 [ai_workspace.auth.oidc]
-enabled       = true
 authority     = "https://idp.example.com"
 client_id     = "client-id"
 client_secret = "s3cr3t"
@@ -396,11 +395,14 @@ redirect_url  = "https://localhost:9643/api/auth/callback"
 	if err != nil {
 		t.Fatalf("Load() error = %v", err)
 	}
-	if cfg.Server.HTTPS.Enabled {
-		t.Error("Server.HTTPS.Enabled = true, want false — [server.https] enabled must not read [auth.oidc] enabled")
+	if !cfg.Server.HTTP.Enabled {
+		t.Error("Server.HTTP.Enabled = false, want true")
 	}
-	if !cfg.Auth.OIDC.Enabled {
-		t.Error("OIDC.Enabled = false, want true")
+	if cfg.Server.HTTPS.Enabled {
+		t.Error("Server.HTTPS.Enabled = true, want false — [server.https] enabled must not read [server.http] enabled")
+	}
+	if !cfg.Auth.OIDCEnabled() {
+		t.Error("OIDCEnabled() = false, want true — [auth] mode is the only OIDC switch")
 	}
 }
 
@@ -443,6 +445,85 @@ roles        = "roles"
 	}
 }
 
+// Scope mode is the default, so an operator who never mentions [auth.authorization]
+// keeps today's behaviour.
+func TestLoad_AuthorizationModeDefaultsToScope(t *testing.T) {
+	cfgPath := writeConfig(t, `
+[ai_workspace.control_plane]
+url = "https://platform-api:9243"
+`)
+	cfg, err := Load(cfgPath)
+	if err != nil {
+		t.Fatalf("Load() error = %v", err)
+	}
+	if cfg.Auth.Authorization.Mode != AuthzModeScope {
+		t.Errorf("Authorization.Mode = %q, want %q", cfg.Auth.Authorization.Mode, AuthzModeScope)
+	}
+}
+
+func TestLoad_AuthorizationRoleMode(t *testing.T) {
+	cfgPath := writeConfig(t, `
+[ai_workspace.control_plane]
+url = "https://platform-api:9243"
+
+[ai_workspace.auth.authorization]
+mode = "role"
+role_to_scope_mapping = "/etc/ai-workspace/role-to-scope-mapping.yaml"
+`)
+	cfg, err := Load(cfgPath)
+	if err != nil {
+		t.Fatalf("Load() error = %v", err)
+	}
+	if cfg.Auth.Authorization.Mode != AuthzModeRole {
+		t.Errorf("Authorization.Mode = %q, want %q", cfg.Auth.Authorization.Mode, AuthzModeRole)
+	}
+	if cfg.Auth.Authorization.RoleToScopeMapping == "" {
+		t.Error("RoleToScopeMapping is empty, want the configured path")
+	}
+	// The grant table is a server-side concern; the SPA gates on the scopes
+	// /api/session reports, never on the table itself.
+	if _, ok := cfg.RuntimeConfig["APIP_AIW_AUTH_AUTHORIZATION_ROLE_TO_SCOPE_MAPPING"]; ok {
+		t.Error("role_to_scope_mapping must not reach the browser")
+	}
+}
+
+// Role mode with no grant table can only expand to zero scopes, which would present a
+// UI in which nothing is permitted. Refuse to start instead.
+func TestLoad_RoleModeWithoutMapping_Errors(t *testing.T) {
+	cfgPath := writeConfig(t, `
+[ai_workspace.control_plane]
+url = "https://platform-api:9243"
+
+[ai_workspace.auth.authorization]
+mode = "role"
+`)
+	_, err := Load(cfgPath)
+	if err == nil {
+		t.Fatal("Load() succeeded, want an error when role mode has no role_to_scope_mapping")
+	}
+	if !strings.Contains(err.Error(), "role_to_scope_mapping is required") {
+		t.Errorf("error = %v, want it to name role_to_scope_mapping", err)
+	}
+}
+
+// A typo'd mode must not silently degrade to reading the scope claim.
+func TestLoad_InvalidAuthorizationMode_Errors(t *testing.T) {
+	cfgPath := writeConfig(t, `
+[ai_workspace.control_plane]
+url = "https://platform-api:9243"
+
+[ai_workspace.auth.authorization]
+mode = "roles"
+`)
+	_, err := Load(cfgPath)
+	if err == nil {
+		t.Fatal("Load() succeeded, want an error for an unknown authorization mode")
+	}
+	if !strings.Contains(err.Error(), "[auth.authorization] mode") {
+		t.Errorf("error = %v, want it to name [auth.authorization] mode", err)
+	}
+}
+
 // A malformed boolean must fail startup rather than fall back to the default.
 func TestLoad_InvalidBool_Errors(t *testing.T) {
 	cfgPath := writeConfig(t, `
@@ -455,5 +536,29 @@ enabled = "maybe"
 
 	if _, err := Load(cfgPath); err == nil {
 		t.Fatal("Load() succeeded, want an error for a malformed boolean")
+	}
+}
+
+// The SPA composes its API base URLs itself, from import.meta.env.BASE_URL plus the
+// same fixed prefixes the BFF strips (src/config.env.ts). Emitting them here as well
+// would create a runtime value that could disagree with the prefix this server
+// actually routes and strips, so their absence is asserted, not incidental.
+func TestLoad_RuntimeConfigOmitsAPIBaseURLs(t *testing.T) {
+	cfgPath := writeConfig(t, `
+[ai_workspace.control_plane]
+url = "https://platform-api:9243"
+`)
+
+	cfg, err := Load(cfgPath)
+	if err != nil {
+		t.Fatalf("Load() error = %v", err)
+	}
+	for _, key := range []string{"APIP_AIW_PLATFORM_API_BASE_URL", "APIP_AIW_PORTAL_API_BASE_URL"} {
+		if got, ok := cfg.RuntimeConfig[key]; ok {
+			t.Errorf("RuntimeConfig[%s] = %q, want it absent — the SPA composes it from its own base path", key, got)
+		}
+	}
+	if got := cfg.RuntimeConfig["APIP_AIW_AUTH_MODE"]; got == "" {
+		t.Error("RuntimeConfig[APIP_AIW_AUTH_MODE] is empty, want the resolved auth mode")
 	}
 }

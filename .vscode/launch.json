@@ -5,11 +5,11 @@
     "version": "0.2.0",
     "configurations": [
         {
-            "name": "Developer Portal",
+            "name": "API Portal & MCP Hub",
             "type": "node",
             "request": "launch",
-            "program": "${workspaceFolder}/portals/developer-portal/src/server.js",
-            "cwd": "${workspaceFolder}/portals/developer-portal",
+            "program": "${workspaceFolder}/portals/api-portal/src/server.js",
+            "cwd": "${workspaceFolder}/portals/api-portal",
             "console": "integratedTerminal",
             "skipFiles": ["<node_internals>/**"]
         },
@@ -213,11 +213,11 @@
             ],
         },
         {
-            "name": "Developer Portal",
+            "name": "API Portal & MCP Hub",
             "type": "node",
             "request": "launch",
-            "program": "${workspaceFolder}/portals/developer-portal/src/server.js",
-            "cwd": "${workspaceFolder}/portals/developer-portal",
+            "program": "${workspaceFolder}/portals/api-portal/src/server.js",
+            "cwd": "${workspaceFolder}/portals/api-portal",
             "console": "integratedTerminal",
             "skipFiles": ["<node_internals>/**"]
         }

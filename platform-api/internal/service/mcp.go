@@ -24,6 +24,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"strings"
 	"time"
 
 	"github.com/wso2/api-platform/platform-api/api"
@@ -73,13 +74,55 @@ func NewMCPProxyService(repo repository.MCPProxyRepository, projectRepo reposito
 	}
 }
 
-// toMCPProxyAPI converts m via mapMCPProxyModelToAPI and resolves its
-// createdBy/updatedBy UUIDs to their raw external identity.
-func (s *MCPProxyService) toMCPProxyAPI(m *model.MCPProxy) (*api.MCPProxy, error) {
+// resolveProjectHandle maps a stored project UUID to the project handle the
+// API exposes as `projectId`. Requests identify a project by handle
+// (Create/ListByProject both take one), so responses must too — a client has
+// no way to resolve a project UUID back to a handle. Mirrors
+// LLMProxyService.resolveProjectHandle.
+//
+// The lookup is scoped to orgUUID so a project UUID belonging to another
+// organization never resolves — a stored UUID is not itself proof of tenancy.
+//
+// projectHandleCache is an optional per-request memo so a listing page doesn't
+// re-query the same project once per item; pass nil for single-item responses.
+func (s *MCPProxyService) resolveProjectHandle(orgUUID string, projectUUID *string, projectHandleCache map[string]string) (*string, error) {
+	if projectUUID == nil || strings.TrimSpace(*projectUUID) == "" {
+		return projectUUID, nil
+	}
+	uuid := strings.TrimSpace(*projectUUID)
+	if handle, ok := projectHandleCache[uuid]; ok {
+		return &handle, nil
+	}
+	if s.projectRepo == nil {
+		return nil, fmt.Errorf("cannot resolve project handle: project repository unavailable")
+	}
+	project, err := s.projectRepo.GetProjectByUUIDAndOrgID(uuid, orgUUID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to resolve project: %w", err)
+	}
+	if project == nil {
+		return nil, apperror.ProjectNotFound.New()
+	}
+	handle := project.Handle
+	if projectHandleCache != nil {
+		projectHandleCache[uuid] = handle
+	}
+	return &handle, nil
+}
+
+// toMCPProxyAPI converts m via mapMCPProxyModelToAPI, resolves its project
+// UUID to the project handle, and resolves its createdBy/updatedBy UUIDs to
+// their raw external identity.
+func (s *MCPProxyService) toMCPProxyAPI(orgUUID string, m *model.MCPProxy) (*api.MCPProxy, error) {
 	resp := mapMCPProxyModelToAPI(m)
 	if resp == nil {
 		return nil, nil
 	}
+	projectHandle, err := s.resolveProjectHandle(orgUUID, resp.ProjectId, nil)
+	if err != nil {
+		return nil, err
+	}
+	resp.ProjectId = projectHandle
 	if err := s.identity.ResolveIdentityField(&resp.CreatedBy); err != nil {
 		return nil, err
 	}
@@ -231,11 +274,17 @@ func (s *MCPProxyService) List(orgUUID string, limit, offset int) (*api.MCPProxy
 
 	resp.List = make([]api.MCPProxyListItem, 0, len(proxies))
 	createdByFields := make([]**string, 0, len(proxies))
+	projectHandles := make(map[string]string)
 	for _, p := range proxies {
 		item := mapMCPProxyModelToListItem(p)
 		if item == nil {
 			continue
 		}
+		projectHandle, err := s.resolveProjectHandle(orgUUID, item.ProjectId, projectHandles)
+		if err != nil {
+			return nil, err
+		}
+		item.ProjectId = projectHandle
 		resp.List = append(resp.List, *item)
 		createdByFields = append(createdByFields, &resp.List[len(resp.List)-1].CreatedBy)
 	}
@@ -286,11 +335,17 @@ func (s *MCPProxyService) ListByProject(orgUUID, projectHandle string, limit, of
 
 	resp.List = make([]api.MCPProxyListItem, 0, len(proxies))
 	createdByFields := make([]**string, 0, len(proxies))
+	projectHandles := make(map[string]string)
 	for _, p := range proxies {
 		item := mapMCPProxyModelToListItem(p)
 		if item == nil {
 			continue
 		}
+		projectHandle, err := s.resolveProjectHandle(orgUUID, item.ProjectId, projectHandles)
+		if err != nil {
+			return nil, err
+		}
+		item.ProjectId = projectHandle
 		resp.List = append(resp.List, *item)
 		createdByFields = append(createdByFields, &resp.List[len(resp.List)-1].CreatedBy)
 	}
@@ -315,7 +370,7 @@ func (s *MCPProxyService) Get(orgUUID, handle string) (*api.MCPProxy, error) {
 		return nil, apperror.MCPProxyNotFound.New()
 	}
 
-	return s.toMCPProxyAPI(m)
+	return s.toMCPProxyAPI(orgUUID, m)
 }
 
 // Update updates an existing MCP proxy
@@ -494,8 +549,16 @@ func (s *MCPProxyService) Delete(orgUUID, handle, deletedBy string) error {
 }
 
 // FetchServerInfo fetches server information from an MCP backend.
-// When proxyId is provided, the URL and auth are fetched from the stored proxy configuration.
-// When proxyId is not provided, url is required and auth is optional.
+//
+// The target and credentials are selected by which fields the caller supplies:
+//   - url alone, or url + auth: contact that URL with the caller's own credentials
+//     (the creation flow, where nothing is stored yet).
+//   - proxyId alone: contact the proxy's stored URL with its stored credentials.
+//   - proxyId + url: contact the caller's URL with the proxy's stored credentials, for
+//     validating an unsaved endpoint edit without re-entering a write-only secret.
+//
+// auth may never accompany proxyId: in any stored-credential flow the stored auth is
+// authoritative, so an override is rejected rather than silently ignored.
 func (s *MCPProxyService) FetchServerInfo(orgUUID string, req *api.MCPServerInfoFetchRequest) (*api.MCPServerInfoFetchResponse, error) {
 	if req == nil {
 		return nil, apperror.ValidationFailed.New("A request body is required.")
@@ -504,11 +567,18 @@ func (s *MCPProxyService) FetchServerInfo(orgUUID string, req *api.MCPServerInfo
 	var url string
 	var headerName, headerValue string
 
-	if req.ProxyId != nil && *req.ProxyId != "" {
-		if req.Auth != nil {
-			s.slogger.Warn("Auth override is not allowed when proxyId is provided. Ignoring auth in request and using stored auth from proxy configuration.", "org_id", orgUUID, "proxy_id", *req.ProxyId)
-		}
-		// ProxyId provided - fetch stored configuration (refetch flow)
+	hasProxyID := req.ProxyId != nil && *req.ProxyId != ""
+	hasURL := req.Url != nil && *req.Url != ""
+
+	if !hasProxyID && !hasURL {
+		return nil, apperror.ValidationFailed.New("Either url or proxyId is required.")
+	}
+	if hasProxyID && req.Auth != nil {
+		return nil, apperror.ValidationFailed.New("The auth field is not allowed when proxyId is provided.")
+	}
+
+	if hasProxyID {
+		// ProxyId provided - resolve stored configuration (refetch flow)
 		// Auth override is NOT allowed in refetch - use exactly what's stored
 		proxy, err := s.repo.GetByHandle(*req.ProxyId, orgUUID)
 		if err != nil {
@@ -526,16 +596,35 @@ func (s *MCPProxyService) FetchServerInfo(orgUUID string, req *api.MCPServerInfo
 			url = proxy.Configuration.Upstream.Main.URL
 		}
 
-		// Use stored auth from proxy configuration
+		// A caller-supplied URL overrides the stored one, and is used verbatim — this is
+		// what lets the UI validate an unsaved endpoint edit without re-entering a
+		// write-only credential.
+		if hasURL {
+			url = *req.Url
+		}
+
+		// Use stored auth from proxy configuration. The stored value is a
+		// {{ secret "handle" }} placeholder, not the plaintext credential — resolve it
+		// through the secret store before using it as the actual upstream header value.
 		if proxy.Configuration.Upstream.Main != nil && proxy.Configuration.Upstream.Main.Auth != nil {
 			headerName = proxy.Configuration.Upstream.Main.Auth.Header
-			headerValue = proxy.Configuration.Upstream.Main.Auth.Value
+			storedValue := proxy.Configuration.Upstream.Main.Auth.Value
+			if handle := extractSecretHandle(storedValue); handle != "" {
+				decrypted, err := s.secretService.Decrypt(orgUUID, handle)
+				if err != nil {
+					// Generic client-facing error (apperror.Internal's fixed message) with the
+					// handle and cause confined to the internal-only log line — never echo a
+					// secret handle back to the caller, per error-handling.md.
+					return nil, apperror.Internal.Wrap(err).
+						WithLogMessage("failed to resolve stored MCP upstream auth secret")
+				}
+				headerValue = decrypted
+			} else {
+				headerValue = storedValue
+			}
 		}
 	} else {
-		// No proxyId - initial creation flow, url is required
-		if req.Url == nil || *req.Url == "" {
-			return nil, apperror.ValidationFailed.New("The url field is required when proxyId is not provided.")
-		}
+		// No proxyId - initial creation flow, url selects the target
 		url = *req.Url
 
 		// Use provided auth (optional for initial fetch)

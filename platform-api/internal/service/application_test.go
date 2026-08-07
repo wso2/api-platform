@@ -568,7 +568,7 @@ func TestAddMappedAPIKeys_RejectsWhenRequesterIsNotCreator(t *testing.T) {
 		AssociatedEntity: api.APIKeyMappingAssociatedEntity{
 			Id: "orders-api",
 		},
-	}}}, "org-1", "different-user")
+	}}}, "org-1", "different-user", false)
 	if !apperror.ApplicationAPIKeyForbidden.Is(err) {
 		t.Fatalf("expected ErrAPIKeyForbidden, got %v", err)
 	}
@@ -624,7 +624,7 @@ func TestAddMappedAPIKeys_ResolvesByAssociatedEntityID(t *testing.T) {
 		AssociatedEntity: api.APIKeyMappingAssociatedEntity{
 			Id: "entity-b",
 		},
-	}}}, "org-1", "creator-user")
+	}}}, "org-1", "creator-user", false)
 	if err != nil {
 		t.Fatalf("expected nil error, got %v", err)
 	}
@@ -656,7 +656,7 @@ func TestAddMappedAPIKeys_DoesNotFailWhenBroadcastResolutionFails(t *testing.T) 
 		AssociatedEntity: api.APIKeyMappingAssociatedEntity{
 			Id: "orders-api",
 		},
-	}}}, "org-1", "creator-user")
+	}}}, "org-1", "creator-user", false)
 	if err != nil {
 		t.Fatalf("expected nil error when broadcast fails, got %v", err)
 	}

@@ -101,8 +101,9 @@ type LoggingConfig struct {
 }
 
 // ControlPlaneConfig is [ai_workspace.control_plane]: everything about the upstream
-// Platform API hop — where it is, how its TLS certificate is trusted, and the
-// same-origin prefix the SPA calls.
+// Platform API hop — where it is and how its TLS certificate is trusted. The route
+// prefixes involved (the same-origin proxy prefix, the upstream's versioned API
+// prefixes) are fixed contracts, not deployment knobs — see the paths package.
 type ControlPlaneConfig struct {
 	// URL is the base URL, e.g. https://platform-api:9243. Its http/https scheme is
 	// the single source of truth for whether the outbound hop uses TLS — there is
@@ -114,12 +115,6 @@ type ControlPlaneConfig struct {
 	// TLSSkipVerify disables upstream certificate verification entirely. Last-resort
 	// escape hatch for dev/demo only; prefer CAFile.
 	TLSSkipVerify bool `koanf:"tls_skip_verify"`
-	// PortalBasePath is the Platform API's portal route prefix (e.g. /api/portal/v0.9),
-	// used to build paths for BFF-initiated calls (file-based login today).
-	PortalBasePath string `koanf:"portal_base_path"`
-	// ProxyPrefix is the same-origin reverse-proxy prefix the SPA calls; it is stripped
-	// before forwarding upstream, so the browser only ever talks to the app origin.
-	ProxyPrefix string `koanf:"proxy_prefix"`
 }
 
 // SessionConfig is [ai_workspace.session]: server-side session lifetime.
@@ -131,16 +126,54 @@ type SessionConfig struct {
 
 // AuthConfig is [ai_workspace.auth]: the login mode and the claim/OIDC settings.
 type AuthConfig struct {
-	Mode          string             `koanf:"mode"` // "basic" | "oidc" — informs the SPA which login UX to show
-	OIDC          OIDCConfig         `koanf:"oidc"`
-	ClaimMappings ClaimMappingConfig `koanf:"claim_mappings"`
+	Mode          string              `koanf:"mode"` // "basic" | "oidc" — informs the SPA which login UX to show
+	OIDC          OIDCConfig          `koanf:"oidc"`
+	ClaimMappings ClaimMappingConfig  `koanf:"claim_mappings"`
+	Authorization AuthorizationConfig `koanf:"authorization"`
 }
 
+// AuthModeBasic and AuthModeOIDC are the supported [auth] modes.
+const (
+	AuthModeBasic = "basic"
+	AuthModeOIDC  = "oidc"
+)
+
+// OIDCEnabled reports whether the OIDC client is in use. It is derived from the mode
+// alone — there is no separate [auth.oidc] enabled key, so mode is the single switch
+// and the two can never disagree. validate rejects any mode outside the two constants
+// above, so a typo cannot silently degrade to basic auth.
+func (a AuthConfig) OIDCEnabled() bool { return a.Mode == AuthModeOIDC }
+
+// AuthorizationConfig is [ai_workspace.auth.authorization]: how the BFF derives the
+// effective scopes it reports to the SPA on /api/session, which is what the UI gates
+// every action on. It mirrors the Platform API's [platform_api.auth.authorization] key
+// for key and MUST be set to the same mode — the Platform API enforces authorization,
+// this only decides what the UI believes it may do. A mismatch either shows every
+// operation as blocked when the API would have allowed it (mode left at "scope" against
+// an IDP that mints no ap:* scopes), or offers actions that then fail with 403.
+type AuthorizationConfig struct {
+	// Mode is "scope" (default — read the scope claim) or "role" (expand the roles
+	// claim through RoleToScopeMapping). Required as "role" for any IDP that cannot
+	// mint the platform's ap:* scopes, which includes Microsoft Entra ID.
+	Mode string `koanf:"mode"`
+	// RoleToScopeMapping is the path to role-to-scope-mapping.yaml — the same file,
+	// in the same shape, that the Platform API reads. Required in role mode; mount
+	// the same file both services use so the UI and the API cannot disagree about
+	// what a role grants.
+	RoleToScopeMapping string `koanf:"role_to_scope_mapping"`
+}
+
+// AuthzModeScope and AuthzModeRole are the supported [auth.authorization] modes.
+const (
+	AuthzModeScope = "scope"
+	AuthzModeRole  = "role"
+)
+
 // OIDCConfig is [ai_workspace.auth.oidc]: the confidential-client settings. The client
-// secret lives only here on the BFF and is never emitted to the browser. Enabled is
-// both a config key and derived — Load ORs it with (auth.mode == "oidc").
+// secret lives only here on the BFF and is never emitted to the browser. Whether the
+// client is used at all is not a key here — see AuthConfig.OIDCEnabled, which derives it
+// from [auth] mode.
 type OIDCConfig struct {
-	Enabled               bool   `koanf:"enabled"`
 	Issuer                string `koanf:"authority"` // discovery base; {issuer}/.well-known/openid-configuration
 	ClientID              string `koanf:"client_id"`
 	ClientSecret          string `koanf:"client_secret"`
@@ -198,6 +231,7 @@ const CSRFHeaderName = "X-Requested-By"
 // Azure AD) issue no refresh token, so the BFF cannot silently renew the access
 // token and the user is logged out the moment it expires. Keep it in any override.
 const defaultOIDCScopes = "openid profile email offline_access" +
+	" ap:api_key:read" +
 	" ap:organization:read ap:organization:manage ap:organization:subscription:read" +
 	" ap:project:read ap:project:create ap:project:update ap:project:delete ap:project:manage" +
 	" ap:application:read ap:application:create ap:application:update ap:application:delete ap:application:manage" +
@@ -207,14 +241,6 @@ const defaultOIDCScopes = "openid profile email offline_access" +
 	" ap:gateway:token:read ap:gateway:token:create ap:gateway:token:delete ap:gateway:token:manage" +
 	" ap:gateway_custom_policy:read ap:gateway_custom_policy:create ap:gateway_custom_policy:delete ap:gateway_custom_policy:manage" +
 	" ap:gateway:artifact:read ap:gateway:manifest:read" +
-	" ap:rest_api:read ap:rest_api:create ap:rest_api:update ap:rest_api:delete ap:rest_api:manage ap:rest_api:import" +
-	" ap:rest_api:gateway:read ap:rest_api:gateway:create ap:rest_api:gateway:manage" +
-	" ap:rest_api:deployment:read ap:rest_api:deployment:create ap:rest_api:deployment:delete ap:rest_api:deployment:manage ap:rest_api:deployment:undeploy ap:rest_api:deployment:restore" +
-	" ap:rest_api:api_key:read ap:rest_api:api_key:create ap:rest_api:api_key:update ap:rest_api:api_key:delete ap:rest_api:api_key:manage" +
-	" ap:rest_api:publication:read ap:rest_api:publication:create ap:rest_api:publication:delete" +
-	" ap:devportal:read ap:devportal:create ap:devportal:update ap:devportal:delete ap:devportal:manage" +
-	" ap:subscription:read ap:subscription:create ap:subscription:update ap:subscription:delete ap:subscription:manage" +
-	" ap:subscription_plan:read ap:subscription_plan:create ap:subscription_plan:update ap:subscription_plan:delete ap:subscription_plan:manage" +
 	" ap:llm_template:read ap:llm_template:create ap:llm_template:update ap:llm_template:delete ap:llm_template:manage" +
 	" ap:llm_provider:read ap:llm_provider:create ap:llm_provider:update ap:llm_provider:delete ap:llm_provider:manage" +
 	" ap:llm_provider:api_key:read ap:llm_provider:api_key:create ap:llm_provider:api_key:delete ap:llm_provider:api_key:manage" +
@@ -224,16 +250,7 @@ const defaultOIDCScopes = "openid profile email offline_access" +
 	" ap:llm_proxy:deployment:read ap:llm_proxy:deployment:create ap:llm_proxy:deployment:delete ap:llm_proxy:deployment:manage ap:llm_proxy:deployment:undeploy ap:llm_proxy:deployment:restore" +
 	" ap:mcp_proxy:read ap:mcp_proxy:create ap:mcp_proxy:update ap:mcp_proxy:delete ap:mcp_proxy:manage" +
 	" ap:mcp_proxy:deployment:read ap:mcp_proxy:deployment:create ap:mcp_proxy:deployment:delete ap:mcp_proxy:deployment:manage ap:mcp_proxy:deployment:undeploy ap:mcp_proxy:deployment:restore" +
-	" ap:websub_api:read ap:websub_api:create ap:websub_api:update ap:websub_api:delete ap:websub_api:manage" +
-	" ap:websub_api:api_key:read ap:websub_api:api_key:create ap:websub_api:api_key:delete ap:websub_api:api_key:manage ap:websub_api:api_key:update" +
-	" ap:websub_api:deployment:read ap:websub_api:deployment:create ap:websub_api:deployment:delete ap:websub_api:deployment:manage ap:websub_api:deployment:undeploy ap:websub_api:deployment:restore" +
-	" ap:websub_api:publication:read ap:websub_api:publication:create ap:websub_api:publication:delete" +
-	" ap:webbroker_api:read ap:webbroker_api:create ap:webbroker_api:update ap:webbroker_api:delete ap:webbroker_api:manage" +
-	" ap:webbroker_api:api_key:read ap:webbroker_api:api_key:create ap:webbroker_api:api_key:delete ap:webbroker_api:api_key:manage ap:webbroker_api:api_key:update" +
-	" ap:webbroker_api:deployment:read ap:webbroker_api:deployment:create ap:webbroker_api:deployment:delete ap:webbroker_api:deployment:manage ap:webbroker_api:deployment:undeploy ap:webbroker_api:deployment:restore" +
-	" ap:webbroker_api:publication:read ap:webbroker_api:publication:create ap:webbroker_api:publication:delete" +
-	" ap:secret:read ap:secret:create ap:secret:update ap:secret:delete ap:secret:manage" +
-	" ap:git:read"
+	" ap:secret:read ap:secret:create ap:secret:update ap:secret:delete ap:secret:manage"
 
 // Load resolves configuration from one or more config.toml files. At least one path
 // is required and each must exist and parse — there is no default path and no
@@ -282,21 +299,19 @@ func Load(paths ...string) (*Config, error) {
 }
 
 // normalize resolves the derived fields that are not a straight copy of a config key:
-// case-folding (level/format/mode), trimming trailing slashes off URLs/prefixes, the
-// oidc-mode-implies-enabled rule, and the fixed cookie attributes.
+// case-folding (level/format/both auth modes), trimming trailing slashes off
+// URLs/prefixes, and the fixed cookie attributes.
 func (c *Config) normalize() {
 	c.Logging.Level = strings.ToLower(c.Logging.Level)
 	c.Logging.Format = strings.ToLower(c.Logging.Format)
 	c.Auth.Mode = strings.ToLower(c.Auth.Mode)
+	// Folded like the [auth] mode one line up: both are closed value sets compared
+	// against lowercase constants, so a capital letter must not be the difference
+	// between a config that starts and one that does not.
+	c.Auth.Authorization.Mode = strings.ToLower(c.Auth.Authorization.Mode)
 
 	c.ControlPlane.URL = strings.TrimRight(c.ControlPlane.URL, "/")
-	c.ControlPlane.PortalBasePath = strings.TrimRight(c.ControlPlane.PortalBasePath, "/")
-	c.ControlPlane.ProxyPrefix = strings.TrimRight(c.ControlPlane.ProxyPrefix, "/")
 	c.Auth.OIDC.Issuer = strings.TrimRight(c.Auth.OIDC.Issuer, "/")
-
-	// oidc mode implies the client is enabled even if the explicit flag is unset, so a
-	// typo'd mode cannot silently degrade to basic auth.
-	c.Auth.OIDC.Enabled = c.Auth.OIDC.Enabled || c.Auth.Mode == "oidc"
 
 	c.Cookie = CookieConfig{Name: cookieName, Secure: true, SameSite: "lax"}
 }
@@ -305,10 +320,23 @@ func (c *Config) normalize() {
 // runtime error (a bad port, an empty upstream URL, an incomplete OIDC set) and warns
 // on security-relevant downgrades.
 func (c *Config) validate() error {
-	// A typo'd mode must not silently degrade to basic auth: any value other than
-	// "oidc" would leave OIDC.Enabled false and hand the SPA an unknown login UX.
-	if c.Auth.Mode != "basic" && c.Auth.Mode != "oidc" {
-		return fmt.Errorf("invalid [auth] mode %q: must be \"basic\" or \"oidc\"", c.Auth.Mode)
+	// A typo'd mode must not silently degrade to basic auth: mode is the only switch
+	// for the OIDC client, so any unrecognized value would leave it off and hand the
+	// SPA an unknown login UX.
+	if c.Auth.Mode != AuthModeBasic && c.Auth.Mode != AuthModeOIDC {
+		return fmt.Errorf("invalid [auth] mode %q: must be %q or %q", c.Auth.Mode, AuthModeBasic, AuthModeOIDC)
+	}
+	// Fail closed on the authorization mode: an unrecognized value would fall through
+	// to reading the scope claim, which for a role-mode deployment means the SPA shows
+	// every operation as blocked with no error explaining why.
+	if c.Auth.Authorization.Mode != AuthzModeScope && c.Auth.Authorization.Mode != AuthzModeRole {
+		return fmt.Errorf("invalid [auth.authorization] mode %q: must be %q or %q",
+			c.Auth.Authorization.Mode, AuthzModeScope, AuthzModeRole)
+	}
+	// Role mode without a grant table can only ever expand to zero scopes, so refuse
+	// to start rather than serve a UI in which nothing is permitted.
+	if c.Auth.Authorization.Mode == AuthzModeRole && c.Auth.Authorization.RoleToScopeMapping == "" {
+		return fmt.Errorf("[auth.authorization] role_to_scope_mapping is required when mode = %q", AuthzModeRole)
 	}
 	if !c.Server.HTTP.Enabled && !c.Server.HTTPS.Enabled {
 		return fmt.Errorf("no listeners enabled: set [server.http] enabled = true and/or [server.https] enabled = true")
@@ -355,7 +383,7 @@ func (c *Config) validate() error {
 			"Trust the upstream certificate with [control_plane] ca_file instead.")
 	}
 
-	if c.Auth.OIDC.Enabled {
+	if c.Auth.OIDCEnabled() {
 		if c.Auth.OIDC.Issuer == "" || c.Auth.OIDC.ClientID == "" || c.Auth.OIDC.ClientSecret == "" || c.Auth.OIDC.RedirectURL == "" {
 			return fmt.Errorf("OIDC mode requires [auth.oidc] authority, client_id, client_secret and redirect_url")
 		}
@@ -372,7 +400,7 @@ func (c *Config) validate() error {
 
 	// Basic (file-based) auth is supported for quickstart deployments but is not
 	// recommended for production; point operators at OIDC.
-	if !c.Auth.OIDC.Enabled {
+	if !c.Auth.OIDCEnabled() {
 		slog.Warn("basic (file-based) auth is enabled — this is not recommended for production; " +
 			"configure OIDC (set [auth] mode = \"oidc\" and [auth.oidc] authority, client_id, client_secret, redirect_url)")
 	}

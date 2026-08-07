@@ -57,9 +57,9 @@ body:
       label: Severity Level of the Issue
       description: Mark the severity of the issue you are facing
       options:
+        - Severity/Major (Important functionality is broken. Should be prioritized. Doesn't need immediate attention)
         - Severity/Blocker (Core functionality is broken and consumer is blocked. Need immediate attention)
         - Severity/Critical (Core functionality is broken but there is a workaround. Need urgent attention)
-        - Severity/Major (Important functionality is broken. Should be prioritized. Doesn't need immediate attention)
         - Severity/Minor (Non-critical functionality. Can be fixed in future releases)
         - Severity/Trivial (Cosmetic issues. Can be fixed in future releases)
       default: 0

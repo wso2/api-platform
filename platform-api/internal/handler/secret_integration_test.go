@@ -132,7 +132,7 @@ func doRequest(r http.Handler, method, path string, fields map[string]string, wi
 
 // createSecret is a helper that POSTs a secret via multipart/form-data.
 func createSecret(r http.Handler, handle, displayName, value string) *httptest.ResponseRecorder {
-	return doRequest(r, http.MethodPost, "/api/v1/secrets", map[string]string{
+	return doRequest(r, http.MethodPost, "/api/v0.9/secrets", map[string]string{
 		"id":          handle,
 		"displayName": displayName,
 		"value":       value,
@@ -160,7 +160,7 @@ func TestSecretHandler_Create_201(t *testing.T) {
 		t.Errorf("expected id=it-key, got %v", resp["id"])
 	}
 	// Subsequent GET should not have value field.
-	wGet := doRequest(r, http.MethodGet, "/api/v1/secrets/it-key", nil, true)
+	wGet := doRequest(r, http.MethodGet, "/api/v0.9/secrets/it-key", nil, true)
 	if wGet.Code != http.StatusOK {
 		t.Fatalf("expected 200 on GET, got %d", wGet.Code)
 	}
@@ -190,7 +190,7 @@ func TestSecretHandler_Create_401_NoOrg(t *testing.T) {
 	defer cleanup()
 
 	body, ct := multipartForm(map[string]string{"id": "no-org-key", "displayName": "No Org Key", "value": "val"})
-	req, _ := http.NewRequest(http.MethodPost, "/api/v1/secrets", body)
+	req, _ := http.NewRequest(http.MethodPost, "/api/v0.9/secrets", body)
 	req.Header.Set("Content-Type", ct)
 	// Intentionally NOT setting X-Test-Org
 	w := httptest.NewRecorder()
@@ -210,7 +210,7 @@ func TestSecretHandler_List_ReturnsPaginationObject(t *testing.T) {
 		createSecret(r, fmt.Sprintf("key-%d", i), fmt.Sprintf("Key %d", i), "val")
 	}
 
-	w := doRequest(r, http.MethodGet, "/api/v1/secrets", nil, true)
+	w := doRequest(r, http.MethodGet, "/api/v0.9/secrets", nil, true)
 	if w.Code != http.StatusOK {
 		t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
 	}
@@ -250,7 +250,7 @@ func TestSecretHandler_List_LimitOffset(t *testing.T) {
 		createSecret(r, fmt.Sprintf("page-key-%d", i), fmt.Sprintf("Page Key %d", i), "val")
 	}
 
-	w1 := doRequest(r, http.MethodGet, "/api/v1/secrets?limit=2&offset=0", nil, true)
+	w1 := doRequest(r, http.MethodGet, "/api/v0.9/secrets?limit=2&offset=0", nil, true)
 	if w1.Code != http.StatusOK {
 		t.Fatalf("expected 200, got %d", w1.Code)
 	}
@@ -267,7 +267,7 @@ func TestSecretHandler_List_LimitOffset(t *testing.T) {
 		t.Errorf("expected limit=2, got %v", pagination1["limit"])
 	}
 
-	w2 := doRequest(r, http.MethodGet, "/api/v1/secrets?limit=2&offset=2", nil, true)
+	w2 := doRequest(r, http.MethodGet, "/api/v0.9/secrets?limit=2&offset=2", nil, true)
 	if w2.Code != http.StatusOK {
 		t.Fatalf("expected 200, got %d", w2.Code)
 	}
@@ -285,7 +285,7 @@ func TestSecretHandler_List_UpdatedAfter(t *testing.T) {
 
 	createSecret(r, "future-key", "Future Key", "val")
 
-	w := doRequest(r, http.MethodGet, "/api/v1/secrets?updatedAfter=2099-01-01T00:00:00Z", nil, true)
+	w := doRequest(r, http.MethodGet, "/api/v0.9/secrets?updatedAfter=2099-01-01T00:00:00Z", nil, true)
 	if w.Code != http.StatusOK {
 		t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
 	}
@@ -302,7 +302,7 @@ func TestSecretHandler_List_InvalidUpdatedAfter_400(t *testing.T) {
 	r, cleanup := setupSecretTestEnv(t)
 	defer cleanup()
 
-	w := doRequest(r, http.MethodGet, "/api/v1/secrets?updatedAfter=not-a-date", nil, true)
+	w := doRequest(r, http.MethodGet, "/api/v0.9/secrets?updatedAfter=not-a-date", nil, true)
 	if w.Code != http.StatusBadRequest {
 		t.Fatalf("expected 400, got %d", w.Code)
 	}
@@ -315,7 +315,7 @@ func TestSecretHandler_Get_200(t *testing.T) {
 
 	createSecret(r, "get-key", "Get Key", "secret-val")
 
-	w := doRequest(r, http.MethodGet, "/api/v1/secrets/get-key", nil, true)
+	w := doRequest(r, http.MethodGet, "/api/v0.9/secrets/get-key", nil, true)
 	if w.Code != http.StatusOK {
 		t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
 	}
@@ -334,7 +334,7 @@ func TestSecretHandler_Get_404_NotFound(t *testing.T) {
 	r, cleanup := setupSecretTestEnv(t)
 	defer cleanup()
 
-	w := doRequest(r, http.MethodGet, "/api/v1/secrets/ghost", nil, true)
+	w := doRequest(r, http.MethodGet, "/api/v0.9/secrets/ghost", nil, true)
 	if w.Code != http.StatusNotFound {
 		t.Fatalf("expected 404, got %d", w.Code)
 	}
@@ -347,7 +347,7 @@ func TestSecretHandler_Update_200(t *testing.T) {
 
 	createSecret(r, "update-key", "Update Key", "old-value")
 
-	w := doRequest(r, http.MethodPut, "/api/v1/secrets/update-key", map[string]string{"value": "new-value"}, true)
+	w := doRequest(r, http.MethodPut, "/api/v0.9/secrets/update-key", map[string]string{"value": "new-value"}, true)
 	if w.Code != http.StatusOK {
 		t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
 	}
@@ -381,7 +381,7 @@ func TestSecretHandler_Update_ReactivatesDeprecatedSecret(t *testing.T) {
 
 	// Create then soft-delete (deprecate) the secret.
 	body, ct := multipartForm(map[string]string{"id": "react-key", "displayName": "React Key", "value": "old-val"})
-	req, _ := http.NewRequest(http.MethodPost, "/api/v1/secrets", body)
+	req, _ := http.NewRequest(http.MethodPost, "/api/v0.9/secrets", body)
 	req.Header.Set("Content-Type", ct)
 	req.Header.Set("X-Test-Org", "org-react-it")
 	req.Header.Set("X-Test-User", "alice")
@@ -391,7 +391,7 @@ func TestSecretHandler_Update_ReactivatesDeprecatedSecret(t *testing.T) {
 		t.Fatalf("create: expected 201, got %d", w.Code)
 	}
 
-	delReq, _ := http.NewRequest(http.MethodDelete, "/api/v1/secrets/react-key", nil)
+	delReq, _ := http.NewRequest(http.MethodDelete, "/api/v0.9/secrets/react-key", nil)
 	delReq.Header.Set("X-Test-Org", "org-react-it")
 	delReq.Header.Set("X-Test-User", "alice")
 	wDel := httptest.NewRecorder()
@@ -409,7 +409,7 @@ func TestSecretHandler_Update_ReactivatesDeprecatedSecret(t *testing.T) {
 
 	// Rotate — PUT should reactivate.
 	putBody, putCT := multipartForm(map[string]string{"value": "new-val"})
-	putReq, _ := http.NewRequest(http.MethodPut, "/api/v1/secrets/react-key", putBody)
+	putReq, _ := http.NewRequest(http.MethodPut, "/api/v0.9/secrets/react-key", putBody)
 	putReq.Header.Set("Content-Type", putCT)
 	putReq.Header.Set("X-Test-Org", "org-react-it")
 	putReq.Header.Set("X-Test-User", "alice")
@@ -442,7 +442,7 @@ func TestSecretHandler_Delete_204_Unreferenced(t *testing.T) {
 
 	createSecret(r, "del-key", "Del Key", "val")
 
-	w := doRequest(r, http.MethodDelete, "/api/v1/secrets/del-key", nil, true)
+	w := doRequest(r, http.MethodDelete, "/api/v0.9/secrets/del-key", nil, true)
 	if w.Code != http.StatusNoContent {
 		t.Fatalf("expected 204, got %d: %s", w.Code, w.Body.String())
 	}
@@ -505,7 +505,7 @@ func TestSecretHandler_Delete_409_ReferencedByArtifact(t *testing.T) {
 	}
 
 	// Now delete should return 409
-	wDel := doRequest(r2, http.MethodDelete, "/api/v1/secrets/ref-key", nil, true)
+	wDel := doRequest(r2, http.MethodDelete, "/api/v0.9/secrets/ref-key", nil, true)
 	if wDel.Code != http.StatusConflict {
 		t.Fatalf("expected 409, got %d: %s", wDel.Code, wDel.Body.String())
 	}
@@ -541,7 +541,7 @@ func createSecretOnRouter(r http.Handler, handle, displayName, value string) *ht
 		"displayName": displayName,
 		"value":       value,
 	})
-	req, _ := http.NewRequest(http.MethodPost, "/api/v1/secrets", body)
+	req, _ := http.NewRequest(http.MethodPost, "/api/v0.9/secrets", body)
 	req.Header.Set("Content-Type", ct)
 	req.Header.Set("X-Test-Org", "org-it-001")
 	req.Header.Set("X-Test-User", "alice")
@@ -555,7 +555,7 @@ func TestSecretHandler_Delete_404_NotFound(t *testing.T) {
 	r, cleanup := setupSecretTestEnv(t)
 	defer cleanup()
 
-	w := doRequest(r, http.MethodDelete, "/api/v1/secrets/ghost", nil, true)
+	w := doRequest(r, http.MethodDelete, "/api/v0.9/secrets/ghost", nil, true)
 	if w.Code != http.StatusNotFound {
 		t.Fatalf("expected 404, got %d", w.Code)
 	}
@@ -573,7 +573,7 @@ func TestSecretHandler_List_DifferentOrg_Empty(t *testing.T) {
 	}
 
 	// List as org B — must return empty list, not org A's secret
-	w = doRequestAs(r, http.MethodGet, "/api/v1/secrets", "org-it-002")
+	w = doRequestAs(r, http.MethodGet, "/api/v0.9/secrets", "org-it-002")
 	if w.Code != http.StatusOK {
 		t.Fatalf("list: expected 200, got %d", w.Code)
 	}
@@ -608,7 +608,7 @@ func TestSecretHandler_Get_DifferentOrg_404(t *testing.T) {
 	}
 
 	// Attempt to GET that secret as org B — must get 404, not 403
-	w = doRequestAs(r, http.MethodGet, "/api/v1/secrets/org-a-only", "org-it-002")
+	w = doRequestAs(r, http.MethodGet, "/api/v0.9/secrets/org-a-only", "org-it-002")
 	if w.Code != http.StatusNotFound {
 		t.Errorf("expected 404 (no existence leak), got %d: %s", w.Code, w.Body.String())
 	}
@@ -621,7 +621,7 @@ func TestSecretHandler_Create_ValueNotInListResponse(t *testing.T) {
 
 	createSecret(r, "no-val-key", "No Val Key", "secret123")
 
-	w := doRequest(r, http.MethodGet, "/api/v1/secrets", nil, true)
+	w := doRequest(r, http.MethodGet, "/api/v0.9/secrets", nil, true)
 	if w.Code != http.StatusOK {
 		t.Fatalf("expected 200, got %d", w.Code)
 	}
@@ -677,7 +677,7 @@ func TestSecretHandler_Delete_SoftDeletesRow(t *testing.T) {
 	createBody, createCT := multipartForm(map[string]string{
 		"id": "soft-del-key", "displayName": "Soft Del Key", "value": "plaintext",
 	})
-	createReq, _ := http.NewRequest(http.MethodPost, "/api/v1/secrets", createBody)
+	createReq, _ := http.NewRequest(http.MethodPost, "/api/v0.9/secrets", createBody)
 	createReq.Header.Set("Content-Type", createCT)
 	createReq.Header.Set("X-Test-Org", "org-sd-it")
 	createReq.Header.Set("X-Test-User", "alice")
@@ -687,7 +687,7 @@ func TestSecretHandler_Delete_SoftDeletesRow(t *testing.T) {
 		t.Fatalf("create: expected 201, got %d", wCreate.Code)
 	}
 
-	delReq, _ := http.NewRequest(http.MethodDelete, "/api/v1/secrets/soft-del-key", nil)
+	delReq, _ := http.NewRequest(http.MethodDelete, "/api/v0.9/secrets/soft-del-key", nil)
 	delReq.Header.Set("X-Test-Org", "org-sd-it")
 	delReq.Header.Set("X-Test-User", "alice")
 	wDel := httptest.NewRecorder()
@@ -933,7 +933,7 @@ func TestSecretHandler_List_LimitCappedAt100(t *testing.T) {
 	r, cleanup := setupSecretTestEnv(t)
 	defer cleanup()
 
-	w := doRequest(r, http.MethodGet, "/api/v1/secrets?limit=999", nil, true)
+	w := doRequest(r, http.MethodGet, "/api/v0.9/secrets?limit=999", nil, true)
 	if w.Code != http.StatusOK {
 		t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
 	}

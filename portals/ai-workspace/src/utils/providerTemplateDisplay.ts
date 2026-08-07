@@ -58,6 +58,25 @@ export function isBuiltInProviderTemplate(id?: string | null): boolean {
   return BUILTIN_PROVIDER_TEMPLATE_IDS.has(normalized);
 }
 
+/** Handle of the built-in cost tracker policy attached automatically at creation. */
+export const COST_POLICY_NAME = 'llm-cost';
+
+/**
+ * Families that do NOT get `llm-cost` attached automatically at provider
+ * creation. For these the operator has to add it by hand, so an `llm-cost`
+ * policy on such a provider is a user-added guardrail rather than a default.
+ */
+const NO_AUTO_COST_POLICY_FAMILIES = new Set(['azure-openai', 'azureai-foundry']);
+
+/**
+ * Returns true if a provider created from this template gets the `llm-cost`
+ * policy attached automatically. An unknown or empty handle is treated as
+ * auto-attaching, which is the conservative default for legacy providers.
+ */
+export function autoAttachesCostPolicy(templateId?: string | null): boolean {
+  return !NO_AUTO_COST_POLICY_FAMILIES.has(familyHandle(templateId).toLowerCase());
+}
+
 export function getProviderTemplateDisplayName(template?: string | null): string {
   const normalizedTemplate = template?.trim().toLowerCase();
   if (!normalizedTemplate) {
@@ -89,6 +108,41 @@ export function resolveTemplateDisplayName(
   if (familyMatch?.displayName) return familyMatch.displayName;
 
   return getProviderTemplateDisplayName(h);
+}
+
+/**
+ * Resolve a provider's template handle to the template's own logo URL
+ * (`metadata.logoUrl`, falling back to `logoUrl`), matching the same template
+ * `resolveTemplateDisplayName` would. Returns undefined when the template can't
+ * be found or has no logo, so callers can fall back to a built-in vendor map.
+ * Used only for the "Template: …" label logo / template chip (NOT the provider
+ * avatar), so a provider created from a CUSTOM template shows that template's
+ * uploaded logo beside the template name.
+ */
+export function resolveTemplateLogo(
+  handle: string | null | undefined,
+  templates: Array<{
+    id?: string;
+    groupId?: string;
+    logoUrl?: string;
+    metadata?: { logoUrl?: string };
+  }>
+): string | undefined {
+  const h = (handle ?? '').trim();
+  if (!h) return undefined;
+
+  const exact = templates.find((t) => t.id === h);
+  const fam = familyHandle(h).toLowerCase();
+  const match =
+    exact ??
+    templates.find(
+      (t) =>
+        familyHandle(t.id).toLowerCase() === fam ||
+        (t.groupId ?? '').toLowerCase() === fam
+    );
+
+  const logo = match?.metadata?.logoUrl?.trim() || match?.logoUrl?.trim();
+  return logo || undefined;
 }
 
 export function truncateProviderDisplayName(

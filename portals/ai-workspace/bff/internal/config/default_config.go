@@ -43,10 +43,6 @@ func defaultConfig() *Config {
 			Level:  "info",
 			Format: "text",
 		},
-		ControlPlane: ControlPlaneConfig{
-			PortalBasePath: "/api/portal/v0.9",
-			ProxyPrefix:    "/proxy",
-		},
 		Session: SessionConfig{
 			Store:       "memory",
 			IdleTimeout: 30 * time.Minute,
@@ -68,6 +64,11 @@ func defaultConfig() *Config {
 				OrgID:     "organization",
 				OrgName:   "org_name",
 				OrgHandle: "org_handle",
+			},
+			// Mirrors the Platform API's [auth.authorization] default. Both sides must
+			// be switched to "role" together for an IDP that mints no ap:* scopes.
+			Authorization: AuthorizationConfig{
+				Mode: AuthzModeScope,
 			},
 		},
 	}

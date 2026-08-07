@@ -43,6 +43,7 @@ type OrganizationRepository interface {
 type ProjectRepository interface {
 	CreateProject(project *model.Project) error
 	GetProjectByUUID(projectId string) (*model.Project, error)
+	GetProjectByUUIDAndOrgID(projectId, orgID string) (*model.Project, error)
 	GetProjectByNameAndOrgID(name, orgID string) (*model.Project, error)
 	GetProjectByHandleAndOrgID(handle, orgID string) (*model.Project, error)
 	GetProjectsByOrganizationID(orgID string) ([]*model.Project, error)
@@ -269,7 +270,10 @@ type APIKeyRepository interface {
 	ListByArtifact(artifactUUID string) ([]*model.APIKey, error)
 	ListByGatewayAndKind(gatewayID, orgID, kind, issuer string) ([]*model.APIKey, error)
 	Delete(artifactUUID, name string) error
-	ListAPIKeysByUser(orgUUID, username string, kinds []string) ([]*model.UserAPIKey, error)
+	// ListAPIKeysByUser lists keys created by username, or every user's keys in the org when
+	// allUsers is true (callers must have verified constants.ScopeAPIKeyAllManage first).
+	// Errors rather than widening when username is empty and allUsers is false.
+	ListAPIKeysByUser(orgUUID, username string, allUsers bool, kinds []string) ([]*model.UserAPIKey, error)
 }
 
 // LLMProxyRepository defines the interface for LLM proxy persistence
@@ -363,8 +367,9 @@ type CustomPolicyRepository interface {
 	ListCustomPolicyByOrganization(orgUUID string) ([]*model.CustomPolicy, error)
 	DeleteCustomPolicy(orgUUID, name, version string) error
 	CountCustomPolicyUsages(policyUUID string) (int, error)
-	// DeleteCustomPolicyIfUnused atomically deletes the policy only when it has no active usages.
-	DeleteCustomPolicyIfUnused(orgUUID, policyUUID string) error
+	// DeleteCustomPolicyIfUnused atomically deletes the policy if unused, purging
+	// orphaned usage rows first; returns the number of orphans purged.
+	DeleteCustomPolicyIfUnused(orgUUID, policyUUID string) (int, error)
 	// Gateway Custom Policy usage tracking methods.
 	GetCustomPolicyUsagesByAPIUUID(apiUUID string) ([]string, error)
 	InsertCustomPolicyUsage(policyUUID, apiUUID string) error

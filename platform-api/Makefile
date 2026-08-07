@@ -34,7 +34,12 @@ MSSQL_PASSWORD ?= Strong!Passw0rd
 # On Apple Silicon, override with: MSSQL_IMAGE=mcr.microsoft.com/azure-sql-edge:latest
 MSSQL_IMAGE ?= mcr.microsoft.com/mssql/server:2022-latest
 
-.PHONY: help build test push build-and-push-multiarch it it-sqlite it-postgres it-sqlserver it-all-dbs
+# Doc generation
+REPO_ROOT := $(shell git rev-parse --show-toplevel)
+APIDOCS_TOOLS_DIR := $(REPO_ROOT)/tools/apidocs
+DOCS_OUT_DIR := $(REPO_ROOT)/docs/rest-apis/platform-api
+
+.PHONY: help build test push build-and-push-multiarch it it-sqlite it-postgres it-sqlserver it-all-dbs generate generate-apidocs
 
 help: ## Show this help message
 	@echo 'Platform API Build System (Version: $(VERSION))'
@@ -104,6 +109,17 @@ generate: ## Generate API server code from OpenAPI spec
 	@go run github.com/oapi-codegen/oapi-codegen/v2/cmd/oapi-codegen@v2.5.1 --config=oapi-codegen.yaml resources/openapi_with_binding.yaml
 	@echo "Generating API models for the eventgateway plugin spec..."
 	@go run github.com/oapi-codegen/oapi-codegen/v2/cmd/oapi-codegen@v2.5.1 --config=oapi-codegen-eventgateway.yaml plugins/eventgateway/openapi.yaml
+
+generate-apidocs: ## Generate REST API docs (Markdown) from the Platform API OpenAPI spec
+	@command -v widdershins >/dev/null 2>&1 || { echo "widdershins not found, installing..."; npm install -g widdershins; }
+	@echo "Generating REST API docs..."
+	@widdershins resources/openapi.yaml -o /tmp/platform-api-openapi.md \
+		--omitHeader --summary \
+		--language_tabs 'shell:Shell:curl' \
+		--user_templates $(APIDOCS_TOOLS_DIR)/widdershins_templates/
+	@bash $(APIDOCS_TOOLS_DIR)/split-openapi.sh /tmp/platform-api-openapi.md $(DOCS_OUT_DIR)
+	@rm -f /tmp/platform-api-openapi.md
+	@echo "REST API docs generated at $(DOCS_OUT_DIR)"
 
 push: ## Push Docker image to registry
 	@echo "Pushing Docker images..."

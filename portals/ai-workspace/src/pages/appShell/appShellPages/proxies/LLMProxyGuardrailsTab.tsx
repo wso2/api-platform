@@ -46,14 +46,18 @@ import {
   X,
 } from '@wso2/oxygen-ui-icons-react';
 import YAML from 'yaml';
-import { getGuardrails } from '../../../../apis/policyHubApis';
+import { getGuardrails, getPolicies } from '../../../../apis/policyHubApis';
 import { getGatewayCustomPolicies } from '../../../../apis/gatewayPolicyApis';
 import type { GatewayCustomPolicy } from '../../../../apis/gatewayPolicyApis';
 import { useProxy } from '../../../../contexts/proxy';
 import { useGuardrails } from '../../../../contexts/GuardrailsContext';
 import { logger } from '../../../../utils/logger';
 import NoData from '../../../../assets/images/NoData.svg';
-import { GuardrailPill, PolicyCategorySelector } from '../../../../Components/GuardrailPill';
+import {
+  GuardrailPill,
+  POLICY_CATEGORIES,
+  PolicyCategorySelector,
+} from '../../../../Components/GuardrailPill';
 import { ResourceRow } from '../../../../Components/ResourceView';
 import PolicyParameterEditor from '../../PolicyParameterEditor/PolicyParameterEditor';
 import type {
@@ -66,6 +70,8 @@ import { parsePolicyYaml } from '../../PolicyParameterEditor/yamlParser';
 import { FormattedMessage } from 'react-intl';
 import ErrorAlert from '../../../../Components/common/ErrorAlert';
 import { DisabledActionTooltip } from '../../../../utils/readOnlyArtifacts';
+import { useAppAuth } from '../../../../contexts/AppAuthContext';
+import { NO_PERMISSION_TOOLTIP, SCOPES } from '../../../../auth/permissions';
 
 // ─── Shared helpers ──────────────────────────────────────────────────────────
 
@@ -198,7 +204,12 @@ const buildPolicyDefinitionFromCustomPolicy = (item: {
  */
 export default function LLMProxyGuardrailsTab() {
   const { proxy, setLocalProxy } = useProxy();
-  const isReadOnlyProxy = Boolean(proxy?.readOnly);
+  // An action is locked either because the artifact is gateway-managed or
+  // because the caller lacks the update scope; both disable the same controls.
+  const { hasPermission } = useAppAuth();
+  const canEditProxy = hasPermission(SCOPES.LLM_PROXY_UPDATE);
+  const isReadOnlyProxy = Boolean(proxy?.readOnly) || !canEditProxy;
+  const lockedActionTooltip = canEditProxy ? undefined : NO_PERMISSION_TOOLTIP;
   const {
     guardrails: availableGuardrails = [],
     isLoading: isLoadingGuardrails,
@@ -238,13 +249,14 @@ export default function LLMProxyGuardrailsTab() {
   const [customPoliciesLoading, setCustomPoliciesLoading] = useState(false);
 
   const fetchDrawerGuardrails = useCallback(async (categories: string[]) => {
-    if (categories.length === 0) {
-      setDrawerGuardrails([]);
-      return;
-    }
     setDrawerGuardrailsLoading(true);
     try {
-      const response = await getGuardrails(categories.join(','));
+      const showAll =
+        categories.length === 0 ||
+        categories.length === POLICY_CATEGORIES.length;
+      const response = showAll
+        ? await getPolicies()
+        : await getGuardrails(categories.join(','));
       setDrawerGuardrails(response.data);
     } catch {
       setDrawerGuardrails([]);
@@ -747,7 +759,7 @@ export default function LLMProxyGuardrailsTab() {
             </Grid>
 
             <Grid size={{ xs: 12, sm: 'auto' }}>
-              <DisabledActionTooltip disabled={isReadOnlyProxy}>
+              <DisabledActionTooltip disabled={isReadOnlyProxy} title={lockedActionTooltip}>
                 <span>
                   <Button
                     size="small"
@@ -1059,6 +1071,7 @@ export default function LLMProxyGuardrailsTab() {
                                 <Grid size={{ xs: 12, sm: 'auto' }}>
                                   <DisabledActionTooltip
                                     disabled={isReadOnlyProxy}
+                                    title={lockedActionTooltip}
                                   >
                                     <span>
                                       <Button

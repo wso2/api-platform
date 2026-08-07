@@ -47,6 +47,7 @@ import (
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/storage"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/utils"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/version"
+	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/workerpool"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/xds"
 )
 
@@ -100,6 +101,9 @@ type ControlPlaneClient interface {
 	SyncArtifactsToOnPremAPIM(apimConfig *utils.APIMConfig) error
 	IsOnPrem() bool
 	GetAPIMConfig() *utils.APIMConfig
+	SubmitAPIMSync(task func())
+	SubmitAPIMSyncAndWait(task func())
+	SubmitArtifactPush(task func())
 }
 
 // secretSyncer is the narrow interface the sync loop needs from the secrets service.
@@ -160,6 +164,10 @@ type Client struct {
 	pushMaxAttempts   int
 	pushRetryBaseWait time.Duration
 	pushRetryMaxWait  time.Duration
+
+	// apimSyncPool for on-prem APIM bottom-up sync, aiWorkspaceSyncPool for platform-API (AI Workspace) artifact pushes.
+	apimSyncPool        *workerpool.Pool
+	aiWorkspaceSyncPool *workerpool.Pool
 }
 
 // NewClient creates a new control plane client
@@ -241,6 +249,9 @@ func NewClient(
 	}
 
 	client.isFirstConnect.Store(true)
+
+	client.apimSyncPool = workerpool.New("apim-sync", cfg.APIMSyncPoolSize, cfg.APIMSyncQueueSize, logger)
+	client.aiWorkspaceSyncPool = workerpool.New("ai-workspace-sync", cfg.AIWorkspaceSyncPoolSize, cfg.AIWorkspaceSyncQueueSize, logger)
 
 	// If the secretResolver also satisfies secretSyncer, store it so syncSecrets can
 	// upsert Platform API-sourced secrets into local encrypted storage.
@@ -366,6 +377,14 @@ func (c *Client) Stop() {
 	// Wait for goroutines to finish
 	c.wg.Wait()
 
+	// Drain and stop the DP->CP sync worker pools
+	if c.apimSyncPool != nil {
+		c.apimSyncPool.Stop()
+	}
+	if c.aiWorkspaceSyncPool != nil {
+		c.aiWorkspaceSyncPool.Stop()
+	}
+
 	c.logger.Info("Control plane client stopped")
 }
 
@@ -478,17 +497,19 @@ func (c *Client) Connect() error {
 			// Sync secrets before deployments so {{ secret "..." }} placeholders
 			// in API configs resolve correctly during the first render pass.
 			c.syncSecrets()
-			if c.config.DeploymentSyncEnabled {
+			if c.config.DeploymentSyncEnabled && !c.IsOnPrem() {
 				c.syncDeployments(gwID)
 			}
 			// Bottom-up sync: push gateway-created APIs to on-prem control plane
 			if c.IsOnPrem() && c.config.DeploymentSyncEnabled {
-				if err := c.SyncArtifactsToOnPremAPIM(c.GetAPIMConfig()); err != nil {
-					c.logger.Error("Failed to sync artifacts to on-prem APIM", slog.Any("error", err))
-				}
+				c.SubmitAPIMSync(func() {
+					if err := c.SyncArtifactsToOnPremAPIM(c.GetAPIMConfig()); err != nil {
+						c.logger.Error("Failed to sync artifacts to on-prem APIM", slog.Any("error", err))
+					}
+				})
 			}
 			// Push gateway-originated artifacts up to the platform-API control plane.
-			c.PushGatewayArtifactsToControlPlane()
+			c.SubmitArtifactPush(c.PushGatewayArtifactsToControlPlane)
 			c.syncSubscriptionPlans(gwID)
 			c.syncSubscriptionsForExistingAPIs(gwID)
 			// Sync API keys for LlmProvider, LlmProxy, and RestApi artifacts.
@@ -504,16 +525,18 @@ func (c *Client) Connect() error {
 			defer c.wg.Done()
 			// Bottom-up sync on reconnect
 			if c.IsOnPrem() && c.config.DeploymentSyncEnabled {
-				if err := c.SyncArtifactsToOnPremAPIM(c.GetAPIMConfig()); err != nil {
-					c.logger.Error("Failed to sync artifacts to on-prem APIM", slog.Any("error", err))
-				}
+				c.SubmitAPIMSync(func() {
+					if err := c.SyncArtifactsToOnPremAPIM(c.GetAPIMConfig()); err != nil {
+						c.logger.Error("Failed to sync artifacts to on-prem APIM", slog.Any("error", err))
+					}
+				})
 			}
 			// Re-sync secrets on reconnect so any rotated or newly added secrets
 			// are picked up. Hash-based change detection ensures only changed
 			// secrets trigger a plaintext fetch.
 			c.syncSecrets()
 			// Push gateway-originated artifacts up to the platform-API control plane.
-			c.PushGatewayArtifactsToControlPlane()
+			c.SubmitArtifactPush(c.PushGatewayArtifactsToControlPlane)
 			c.syncSubscriptionPlans(gwID)
 			c.syncSubscriptionsForExistingAPIs(gwID)
 			// Sync API keys for LlmProvider, LlmProxy, and RestApi artifacts.
@@ -533,6 +556,55 @@ func (c *Client) Connect() error {
 	go c.heartbeatMonitor()
 
 	return nil
+}
+
+// SubmitAPIMSync schedules an on-prem APIM bottom-up sync task on the bounded APIM-sync worker pool.
+func (c *Client) SubmitAPIMSync(task func()) {
+	if task == nil {
+		return
+	}
+	if c.apimSyncPool == nil {
+		go task()
+		return
+	}
+	if !c.apimSyncPool.Submit(task) {
+		c.logger.Warn("APIM sync task rejected: worker pool queue full; will retry on next resync")
+	}
+}
+
+// SubmitAPIMSyncAndWait runs an on-prem APIM sync task on the APIM-sync worker
+// pool and blocks until it completes.
+func (c *Client) SubmitAPIMSyncAndWait(task func()) {
+	if task == nil {
+		return
+	}
+	if c.apimSyncPool == nil {
+		task()
+		return
+	}
+	done := make(chan struct{})
+	if !c.apimSyncPool.Submit(func() {
+		defer close(done)
+		task()
+	}) {
+		c.logger.Warn("APIM sync (blocking) not scheduled: worker pool queue full; skipping (will retry on next resync)")
+		return
+	}
+	<-done
+}
+
+// SubmitArtifactPush schedules a platform-API (AI Workspace) artifact push task on the bounded artifact-push worker pool.
+func (c *Client) SubmitArtifactPush(task func()) {
+	if task == nil {
+		return
+	}
+	if c.aiWorkspaceSyncPool == nil {
+		go task()
+		return
+	}
+	if !c.aiWorkspaceSyncPool.Submit(task) {
+		c.logger.Warn("Artifact push task rejected: worker pool queue full; will retry on next resync")
+	}
 }
 
 // gatewayWellKnownResponse matches APIM well-known JSON: {"gatewayPath":"internal/data/v1"}.
@@ -3738,6 +3810,12 @@ func (c *Client) PushArtifact(apiID string, apiConfig *models.StoredConfig, depl
 	// Check if connected to control plane
 	if !c.IsConnected() {
 		c.logger.Debug("Not connected to control plane, skipping artifact push",
+			slog.String("artifact_id", apiID))
+		return nil
+	}
+
+	if c.IsOnPrem() {
+		c.logger.Debug("On-prem control plane; skipping platform-api artifact push (handled by APIM bottom-up sync)",
 			slog.String("artifact_id", apiID))
 		return nil
 	}

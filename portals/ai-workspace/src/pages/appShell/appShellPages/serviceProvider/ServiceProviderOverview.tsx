@@ -86,14 +86,16 @@ import {
   buildOrgPath,
   buildProjectPath,
 } from '../../../../utils/projectRouting';
-import { API_BASE_URLS, PLATFORM_API_BASE_URL } from '../../../../config.env';
+import { API_BASE_URLS } from '../../../../config.env';
+import { PLATFORM_API_BASE_URL } from '../../../../paths';
 import {
   resolveTemplateDisplayName,
+  resolveTemplateLogo,
   truncateProviderDisplayName,
 } from '../../../../utils/providerTemplateDisplay';
 import { useProviderTemplates } from '../../../../contexts/llmProvider/providerTemplate';
 import { useAppAuth } from '../../../../contexts/AppAuthContext';
-import { SCOPES } from '../../../../auth/permissions';
+import { NO_PERMISSION_TOOLTIP, SCOPES } from '../../../../auth/permissions';
 import useAIWorkspaceSnackbar from '../../../../hooks/aiWorkspaceSnackbar';
 import {
   AIEntityProvider,
@@ -488,10 +490,17 @@ function ServiceProviderOverviewContent() {
   const proxyQuotaTooltip =
     'You cannot create more App LLM Proxies because your organization has reached the maximum limit of 5 proxies.';
   const isReadOnlyProvider = Boolean(provider?.readOnly);
-  const createProxyTooltip = isProxyQuotaReached ? proxyQuotaTooltip : '';
+  const canCreateProxy = hasPermission(SCOPES.LLM_PROXY_CREATE);
+  const isCreateProxyDisabled =
+    !provider?.id || isProxyQuotaReached || !canCreateProxy;
+  const createProxyTooltip = !canCreateProxy
+    ? NO_PERMISSION_TOOLTIP
+    : isProxyQuotaReached
+      ? proxyQuotaTooltip
+      : '';
 
   const handleCreateProxyClick = () => {
-    if (!provider?.id || isProxyQuotaReached) {
+    if (!provider?.id || isProxyQuotaReached || !canCreateProxy) {
       return;
     }
 
@@ -866,7 +875,9 @@ function ServiceProviderOverviewContent() {
     templatesResponse.list
   );
   const templateKey = (provider.template ?? '').toLowerCase();
-  const templateLogo = TEMPLATE_LOGO_MAP[templateKey];
+  const templateLogo =
+    resolveTemplateLogo(provider.template, templatesResponse.list) ??
+    TEMPLATE_LOGO_MAP[templateKey];
   const hasTemplateLogo = Boolean(templateLogo);
   const descriptionText = provider.description?.trim() || '';
   const truncatedDescription =
@@ -1229,12 +1240,12 @@ function ServiceProviderOverviewContent() {
                 p={2}
                 sx={{ width: { xs: '100%', sm: 200 }, alignItems: 'stretch' }}
               >
-                <Tooltip title={isProxyQuotaReached ? proxyQuotaTooltip : ''}>
+                <Tooltip title={createProxyTooltip}>
                   <Box component="span">
                     <Button
                       variant="outlined"
                       onClick={handleCreateProxyClick}
-                      disabled={!provider.id || isProxyQuotaReached}
+                      disabled={isCreateProxyDisabled}
                       data-cyid="create-app-llm-proxy-button"
                     >
                       <FormattedMessage
@@ -1541,14 +1552,14 @@ function ServiceProviderOverviewContent() {
                   )}
                 </Button>
                 <DisabledActionTooltip
-                  disabled={isProxyQuotaReached}
+                  disabled={isProxyQuotaReached || !canCreateProxy}
                   title={createProxyTooltip}
                   fullWidth
                 >
                   <Button
                     variant="outlined"
                     onClick={handleCreateProxyClick}
-                    disabled={!provider.id || isProxyQuotaReached}
+                    disabled={isCreateProxyDisabled}
                     fullWidth
                   >
                     <FormattedMessage

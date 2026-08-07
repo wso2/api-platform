@@ -51,6 +51,9 @@ const (
 	McpSessionHeader    = "mcp-session-id"
 )
 
+// mcpRequestTimeout bounds each outbound MCP JSON-RPC call (DNS + connect + TLS + read).
+const mcpRequestTimeout = 10 * time.Second
+
 // JsonRPCRequest represents a JSON-RPC request
 type JsonRPCRequest struct {
 	JSONRPC string `json:"jsonrpc"`
@@ -276,9 +279,9 @@ func initializeMCPServer(url string, headerName string, headerValue string) (str
 			httpReq.Header.Set(headerName, headerValue)
 		}
 	}
-	client := &http.Client{
-		Timeout: 10 * time.Second,
-	}
+	// The MCP endpoint URL is user/tenant-supplied — dial through the SSRF-guarded client
+	// so scheme, resolved-IP and redirect restrictions apply to this call too.
+	client := NewUpstreamFetchClient(mcpRequestTimeout)
 	resp, err := client.Do(httpReq)
 	if err != nil {
 		return "", nil, fmt.Errorf("failed to reach MCP server for initialize: %w", err)
@@ -356,9 +359,9 @@ func postJSONRPCWithSession(url string, req any, sessionID string, headerName st
 	if sessionID != "" {
 		httpReq.Header.Set(McpSessionHeader, sessionID)
 	}
-	client := &http.Client{
-		Timeout: 10 * time.Second,
-	}
+	// Same SSRF-guarded client as the initialize call: the session/tools/prompts/resources
+	// requests target the same user-supplied URL and must be dialed under the same guard.
+	client := NewUpstreamFetchClient(mcpRequestTimeout)
 	resp, err := client.Do(httpReq)
 	if err != nil {
 		return nil, fmt.Errorf("failed to send request: %w", err)

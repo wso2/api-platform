@@ -1,0 +1,409 @@
+# =============================================================================
+# API PORTAL & MCP HUB CONFIGURATION TEMPLATE
+# =============================================================================
+# Documentation reference only — enumerates every supported config.toml key
+# with its default value, as plain literals. See configs/config.toml for the
+# concrete file this project actually ships, which wires some of these same
+# keys up to environment variables using the syntax below.
+#
+# Config files are loaded via a required, repeatable `--config <path>` flag —
+# at least one is mandatory (no default path, no silent-defaults fallback), and
+# passing it more than once layers overlays with last-wins precedence. Nested
+# tables deep-merge; list/array values are replaced wholesale by a later file.
+#
+# Precedence (lowest to highest):
+#   1. Built-in defaults (src/config/configDefaults.js)
+#   2. The merged --config files, with any {{ env }} / {{ file }} references
+#      resolved once after the merge
+#
+# There is no automatic environment-variable override. A key's value comes
+# from an env var or a file ONLY if you explicitly say so, using Handlebars-
+# style template syntax as the value. Use single-quoted TOML literal strings
+# (as below) so the inner double quotes need no backslash-escaping:
+#
+#   platform_api_url = '{{ env "APIP_AP_AUTH_LOCAL_PLATFORM_API_URL" }}'
+#   encryption_key = '{{ file "/etc/api-portal/keys/encryption.key" }}'
+#
+#   {{ env "NAME" }}            -> NAME's value. FAILS CLOSED (aborts startup)
+#                                   if NAME is unset or empty — it does not
+#                                   fall through to the built-in default shown
+#                                   below.
+#   {{ env "NAME" "default" }}  -> NAME's value if set, else the literal
+#                                   "default".
+#   {{ file "/path" }}          -> contents of /path, trimmed. Always
+#                                   required — a missing/unreadable/
+#                                   disallowed file is a hard startup error.
+#
+# Partial substitution works too: 'foo-{{ env "X" }}' resolves to "foo-bar"
+# if X=bar.
+
+# =============================================================================
+# SERVER CONFIGURATION
+# =============================================================================
+# Single listener on server.port. https.enabled toggles whether it terminates
+# TLS itself; set enabled=false only when a trusted upstream (proxy/LB/ingress)
+# terminates TLS — the listener then serves plain HTTP on that port.
+# cert_file/key_file are required only when enabled=true (no self-signed fallback).
+
+[api_portal.server]
+base_url = '{{ env "APIP_AP_SERVER_BASE_URL" "https://localhost:9543" }}'
+port = 9543
+
+[api_portal.server.https]
+enabled = false
+cert_file = "./resources/security/client-truststore.pem"
+key_file = "./resources/security/private-key.pem"
+
+# =============================================================================
+# LOGGING CONFIGURATION
+# =============================================================================
+
+[api_portal.logging]
+level = "info"          # debug | info | warn | error
+format = "text"         # text | json
+console_only = true     # true: log to stdout only. false: also write rotating log files to disk
+
+# =============================================================================
+# DATABASE CONFIGURATION
+# =============================================================================
+# Supported types: sqlite (default), postgres, mssql.
+#
+# SQLite is the shipped default, and the only driver configs/config.toml carries
+# keys for (driver + path). PostgreSQL and SQL Server are advanced setups: add the
+# keys you need to your own config.toml — the reference block below lists them all,
+# and the two ready-to-paste examples further down are the complete, working
+# versions.
+
+[api_portal.database]
+driver = "sqlite"             # sqlite | postgres | mssql
+path = "./api-portal.db"       # SQLite only
+host = "localhost"            # PostgreSQL / MSSQL only
+port = 5432                   # PostgreSQL / MSSQL only (Change to 1433 for MSSQL)
+name = "api_portal"            # PostgreSQL / MSSQL only
+user = ""                     # PostgreSQL / MSSQL only - REQUIRED for those drivers (no default; startup fails if empty)
+password = ""                 # PostgreSQL / MSSQL only
+ssl_mode = "disable"          # PostgreSQL / MSSQL only: disable | verify-full
+ssl_root_cert = "./resources/security/ca.pem"   # CA cert - used by verify-full
+max_open_conns = 50           # PostgreSQL / MSSQL only (matches platform-api's max_open_conns)
+min_open_conns = 2            # PostgreSQL / MSSQL only
+pool_idle_timeout_ms = 10000            # PostgreSQL / MSSQL only
+pool_connection_timeout_ms = 30000      # PostgreSQL / MSSQL only
+pool_request_timeout_ms = 30000         # MSSQL only - per-query execution timeout
+
+# -----------------------------------------------------------------------------
+# PostgreSQL - replace the [api_portal.database] block in your
+# configs/config.toml with this one. The {{ env }} tokens are what make the
+# APIP_AP_DATABASE_* variables take effect: an env var reaches config ONLY where
+# a key references it, so a variable set with no matching token here does nothing.
+# This is also what docker-compose.postgres.yaml's env block expects to find.
+#
+#   [api_portal.database]
+#   driver   = '{{ env "APIP_AP_DATABASE_DRIVER" "postgres" }}'
+#   host     = '{{ env "APIP_AP_DATABASE_HOST" "localhost" }}'
+#   port     = '{{ env "APIP_AP_DATABASE_PORT" "5432" }}'
+#   name     = '{{ env "APIP_AP_DATABASE_NAME" "api_portal" }}'
+#   # No fallback for the user: a non-SQLite driver with no user (or host, or
+#   # name) refuses to start, rather than silently connecting as a conventional
+#   # superuser name to whatever server the fallbacks happen to point at.
+#   user     = '{{ env "APIP_AP_DATABASE_USER" "" }}'
+#   password = '{{ env "APIP_AP_DATABASE_PASSWORD" "" }}'
+#
+# An empty password is accepted (peer/trust auth, or an IAM/Entra token supplied
+# out of band). Add ssl_mode/ssl_root_cert from the block above for TLS, and the
+# pool keys only to move off their defaults.
+#
+# SQL Server (advanced) - same shape, different driver and port:
+#
+#   [api_portal.database]
+#   driver   = '{{ env "APIP_AP_DATABASE_DRIVER" "mssql" }}'
+#   host     = '{{ env "APIP_AP_DATABASE_HOST" "localhost" }}'
+#   port     = '{{ env "APIP_AP_DATABASE_PORT" "1433" }}'
+#   name     = '{{ env "APIP_AP_DATABASE_NAME" "api_portal" }}'
+#   user     = '{{ env "APIP_AP_DATABASE_USER" "" }}'
+#   password = '{{ env "APIP_AP_DATABASE_PASSWORD" "" }}'
+#
+# Rather than editing config.toml, the same block can live in a separate file
+# passed as a second --config (repeatable, last-wins; nested tables deep-merge):
+#   node src/server.js --config configs/config.toml --config /path/to/my-db.toml
+# -----------------------------------------------------------------------------
+
+# =============================================================================
+# SECURITY CONFIGURATION
+# =============================================================================
+
+[api_portal.security]
+encryption_key = ""     # 64-char hex — AES-256-GCM key for encrypting secrets at rest
+session_secret = ""     # 64-char hex — express-session signing secret
+
+# =============================================================================
+# AUTHENTICATION
+# =============================================================================
+# HOW a token is verified: a mode gate plus the two backends it selects between,
+# local (the default) and idp. Configure the block matching your chosen mode; the
+# other is ignored. What a verified token may DO is authorization, configured in
+# its own mode-independent section further below.
+
+[api_portal.auth]
+# "local" — username/password validated against the Platform API control plane
+# ([api_portal.auth.local] below). "idp" — external OIDC IDP (auth.idp below).
+mode = "local"          # local | idp
+
+# `idp_org_id` is your IdP's identifier for this organization — the VALUE expected in
+# the claim named by claim_mappings.organization below, which is what incoming tokens
+# are matched against. It defaults to organization.handle (leave it unset for the
+# common case, including local/platform-api-managed mode where the org_handle claim IS
+# the handle). Set it only when your IdP's org claim differs from the URL handle.
+#
+# This setting owns the value — stored as the organization's idp_ref_id, the name the
+# REST API uses. It is seeded on first boot and re-applied on every restart, so
+# correcting it here and restarting is how you change it. The admin API refuses to
+# change it, since a write there would be reverted at the next restart. Leaving it
+# unset does NOT reset a previously configured value back to the handle — remove it
+# only along with the IdP claim it mirrored. Anyone already logged in with the previous
+# claim value must log in again after a change.
+# idp_org_id = "default"
+
+# JWT claim name mappings — which token claim carries each field.
+# Dot-notation supported for nested claims (e.g. "realm_access.roles").
+[api_portal.auth.claim_mappings]
+organization = "org_name"   # claim carrying the org ID
+roles = "roles"             # claim carrying the user's roles
+groups = "groups"
+
+# Local auth backend (the Platform API control plane) — used when auth.mode =
+# "local". Leave platform_api_url empty to disable local auth entirely.
+[api_portal.auth.local]
+# The upstream Platform API. Used for local auth credential validation when
+# auth.mode = "local".
+platform_api_url = '{{ env "APIP_AP_AUTH_LOCAL_PLATFORM_API_URL" "https://platform-api:9243" }}'
+# Filesystem path to the Platform API's RS256 public key PEM — the matching half
+# of its [platform_api.auth.jwt].private_key. scripts/setup.sh generates the
+# keypair and docker-compose.yaml mounts it at /etc/api-portal/keys; the API Portal
+# reads this file to verify Platform API-issued tokens. `npm run start:local`
+# points it at the host-side copy in resources/keys.
+public_key_path  = '{{ env "APIP_AP_AUTH_LOCAL_PUBLIC_KEY_PATH" "/etc/api-portal/keys/jwt_public.pem" }}'
+tls_skip_verify  = '{{ env "APIP_AP_AUTH_LOCAL_TLS_SKIP_VERIFY" "true" }}'
+
+# Authorization — what a verified token may do. Applies in every auth mode, which is
+# why it is not nested under auth.local or auth.idp. Plain literals, matching how
+# [platform_api.auth.authorization] is written: these are deployment policy an operator
+# edits in place, not per-environment values or secrets, so they get no {{ env }} token.
+
+# Identity provider (OAuth2 / OIDC) — used when auth.mode = "idp".
+[api_portal.auth.idp]
+# The endpoints below describe YOUR identity provider and have no default — there is no
+# value that is correct anywhere but one specific machine. client_id, authorization_url,
+# token_url and callback_url are REQUIRED when auth.mode = "idp"; the portal refuses to
+# start without them rather than booting and failing the login round-trip later.
+#
+# Example, for a WSO2 Identity Server on the same host:
+#   issuer            = "https://localhost:9443/oauth2/token"
+#   authorization_url = "https://localhost:9443/oauth2/authorize"
+#   token_url         = "https://localhost:9443/oauth2/token"
+#   user_info_url     = "https://localhost:9443/oauth2/userinfo"
+#   jwks_url          = "https://localhost:9443/oauth2/jwks"
+#   logout_url        = "https://localhost:9443/oidc/logout"
+#
+# callback_url and logout_redirect_uri must both sit under the portal's /api-portal mount
+# prefix, and must match what is registered for this client on the IDP:
+#   callback_url        = "http://localhost:9543/api-portal/<org-handle>/callback"
+#   logout_redirect_uri = "http://localhost:9543/api-portal/<org-handle>"
+issuer = ""
+authorization_url = ""
+token_url = ""
+user_info_url = ""
+client_id = ""
+client_secret = ""
+audience = ""
+callback_url = ""
+scope = "openid profile email"
+sign_up_url = ""
+logout_url = ""
+logout_redirect_uri = ""
+certificate = ""
+jwks_url = ""
+token_refresh_timeout_ms = 10000
+silent_sso = true      # Enable silent SSO
+org_callback = false   # Redirect to the org's own landing page after login
+
+# =============================================================================
+# AUTHORIZATION
+# =============================================================================
+# What a VERIFIED token may do. Deliberately its own section, outside both
+# auth.local and auth.idp: a token carries the same roles claim whether the portal
+# verified it against a JWKS endpoint or against the Platform API's public key, so
+# these settings apply in every auth mode.
+#
+# Retired keys (startup fails if either is still present, because an ignored key
+# would silently apply the default instead of what the file says):
+#   auth.role_validation  -> auth.authorization.page_role_validation
+#   auth.idp.roles        -> auth.authorization.portal_roles
+
+[api_portal.auth.authorization]
+# Master switch for REST API (/api/v0.9) authorization. false lets any
+# authenticated caller satisfy every operation's declared scope list — an explicit
+# development opt-out that logs a warning at startup.
+enabled = true
+# How a REST request's effective scopes are derived:
+#   "role"  — (the DEFAULT) by expanding the token's roles claim
+#             (auth.claim_mappings.roles) through role_to_scope_mapping below. Works
+#             for every issuer: an external IDP emits the roles its estate is
+#             organized around and has no reason to mint dp:* scopes, and the
+#             Platform API mints its own ap_* role names, which the shipped table
+#             aliases. The scope claim is ignored entirely in this mode, so a caller
+#             cannot widen a role's grant by requesting extra scopes.
+#   "scope" — from the token's own scope claim. Use this when the issuer mints dp:*
+#             scopes directly: an Asgardeo tenant set up with
+#             production/scripts/register_asgardeo_scopes.sh (which registers all
+#             dp:* scopes and lets you attach them to an Asgardeo role), or the
+#             Platform API in local auth mode.
+# Validated even when enabled = false, so a typo surfaces when it is written rather
+# than when enforcement is switched back on.
+mode = "role"           # scope | role
+# Path to the YAML role-to-scope grant table. REQUIRED when mode = "role", which is
+# the default — hence a real default rather than an empty string. The shipped table is
+# baked into the image at ./resources (and resolves from the project root for
+# `npm start`); docker-compose.yaml overrides this to the mounted /etc/api-portal copy
+# so operators can edit what a role grants without rebuilding.
+# Loaded and validated at startup whenever it is set (regardless of mode) against the
+# portal's OpenAPI spec: an undeclared dp:* scope fails startup rather than surfacing
+# later as a role that logs in fine and is denied every request.
+role_to_scope_mapping = "./resources/role-to-scope-mapping.yaml"
+# Per-page role-tier gating: requires the caller's roles claim to name the tier a
+# page demands (portal_roles below). Separate from `enabled` above, which governs
+# REST scopes — one switch for both would mean turning page gating off also
+# silently turned REST scope enforcement off.
+page_role_validation = false
+
+# Which role name, as it appears in the token's roles claim, grants each of the
+# portal's two page-access tiers. Was [api_portal.auth.idp.roles], despite being
+# read in local auth mode too. (There was a third tier, super_admin; it gated pages
+# this portal does not serve, so it guarded nothing and was removed.) Point these at your IDP's role names — or at the role
+# names in role_to_scope_mapping (e.g. admin = "dp_admin") to drive page gating and
+# REST authorization from the same roles.
+[api_portal.auth.authorization.portal_roles]
+admin = "ap_admin"
+subscriber = "ap_subscriber"
+
+# =============================================================================
+# PAGE ACCESS RULES
+# =============================================================================
+# Additions only — the portal always protects its own pages (applications,
+# api-keys, subscriptions, settings) regardless of what's listed here. Use these
+# lists to require login/authorization for a custom page you've added, e.g. a
+# design-mode page or a custom static route. Patterns are glob-matched (minimatch)
+# against the request URL and merged with (never replace) the built-in list.
+#
+# [api_portal.page_access_rules]
+# authenticated = ["**/my-custom-page"]
+# authorized = ["**/my-custom-page"]
+
+# =============================================================================
+# ORGANIZATION CONFIGURATION
+# =============================================================================
+# This portal instance serves exactly ONE organization. The database schema is
+# still multi-organization — one shared database can hold many, each served by its
+# own portal instance — but this instance is pinned to `handle`: every page route,
+# REST request, and background worker is scoped to it, and anything resolving to a
+# different organization is rejected. The organization is seeded on startup if it
+# doesn't exist yet (idempotent).
+#
+# `handle` is REQUIRED: the portal refuses to start without it (design mode
+# excepted, since it renders from disk and has no organization to pin).
+#
+# In auth.mode = "local", this MUST match the Platform API's
+# [platform_api.auth.file.organization] id — that is what the Platform API puts in
+# the org_handle claim of the tokens this portal verifies. A mismatch means every
+# login is rejected with 403.
+#
+# The org identifier your IdP asserts for this organization is configured separately,
+# as `idp_org_id` in [api_portal.auth] — it belongs with the claim mapping that names
+# the claim it arrives in.
+
+[api_portal.organization]
+handle = "default"                       # URL slug: /{handle}/views/{viewName}
+display_name = "Default"                 # Used only when first seeding the organization
+auto_create_subscription_plans = true    # Auto-create Bronze/Silver/Gold/Unlimited/AsyncUnlimited
+# default_name = "default"               # DEPRECATED alias for `handle` — rename it
+
+# =============================================================================
+# ARTIFACTS
+# =============================================================================
+# Which artifact types this portal serves — an allowlist. A type left out of the
+# list gets no nav entry, no landing-page section, and 404s on its routes rather
+# than rendering an empty page. Any combination is valid; an empty list leaves a
+# portal with nothing to browse.
+#
+# Valid entries: "apis", "mcp-servers", "api-workflows".
+# An unrecognised entry aborts startup, so a typo can't silently drop a type.
+# Omit the whole section to serve all of them.
+[api_portal.artifacts]
+enabled_types = ["apis", "mcp-servers", "api-workflows"]
+
+# =============================================================================
+# DESIGN MODE CONFIGURATION
+# =============================================================================
+# Local, file-based preview mode — APIs, MCP servers, layouts, and applications
+# render straight from the bundled sample files on disk (samples/,
+# src/defaultContent/) instead of the database. The portal opens no database
+# connection and never calls the Platform API in this mode, so it also waives the
+# encryption_key/session_secret requirement (sessions are in-memory and an
+# ephemeral secret is minted at startup). For content-authoring and theming
+# previews only; never enable it in a production environment. OFF by default.
+#
+# To turn it on, copy the whole [api_portal.design_mode] block below into your
+# active configs/config.toml (the same copy-it-from-the-template opt-in used for
+# AI Workspace) and restart. The sample paths are relative to the app's working
+# directory, where the bundled samples/ already live — leave them as-is unless
+# you're pointing at your own sample set.
+
+# [api_portal.design_mode]
+# enabled = true
+# path_to_layout = "./src/defaultContent/"
+# api_samples_path = "./samples/apis/"
+# mcp_samples_path = "./samples/mcps/"
+# subscription_plans_path = "./samples/subscription-plans.yaml"
+# applications_path = "./samples/applications.yaml"
+
+# =============================================================================
+# WEBHOOKS CONFIGURATION (gateway event delivery)
+# =============================================================================
+# Global delivery tuning only — subscribers are per-organization, managed via
+# the Webhook Subscribers API, not this file. Each delivery is attempted
+# exactly once; there is no retry/backoff.
+
+[api_portal.webhooks.delivery]
+poll_interval_ms = 2000
+batch_size = 50
+signature_tolerance_sec = 300
+
+# =============================================================================
+# API TRY-IT PROXY
+# =============================================================================
+# The "Try It" panel on an API's specification page runs in the browser and
+# calls the API's registered endpoint, which is a different origin from the
+# portal — so the browser blocks the response unless that endpoint returns CORS
+# headers naming this portal. Rather than requiring every gateway and backend to
+# trust the portal origin, the panel is pointed at a same-origin proxy that makes
+# the call server-side.
+#
+# The proxy will only call a URL contained by one of the endpoints registered for
+# that API (production/sandbox) — a caller cannot choose an arbitrary host.
+# Link-local and cloud-metadata addresses (169.254.169.254 and friends) are
+# refused at connection time regardless of the settings below.
+
+[api_portal.tryout]
+enabled = true
+allow_http_endpoints = true    # false: only https:// endpoints may be called
+# Deny-by-default. The registered-endpoint allowlist cannot protect against an
+# endpoint that was itself registered to point at an internal service, so the IP
+# denylist is the only control for that case — opt in explicitly. Set to true
+# when the gateway legitimately sits on a private address (docker-compose service
+# name, cluster IP, localhost), after confirming that only intended services are
+# reachable from the portal. Try-it against such a gateway fails while this is
+# false. Link-local/cloud-metadata addresses are refused either way.
+allow_private_endpoints = false
+tls_skip_verify = false        # development only
+timeout_ms = 15000
+max_request_bytes = 1048576    # 1 MiB
+max_response_bytes = 5242880   # 5 MiB

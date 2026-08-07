@@ -1,4 +1,4 @@
-name: Developer Portal Integration Test
+name: API Portal Integration Test
 
 on:
   workflow_dispatch:
@@ -6,7 +6,7 @@ on:
     branches:
       - main
     paths:
-      - 'portals/developer-portal/**'
+      - 'portals/api-portal/**'
       - '.github/workflows/devportal-integration-test.yml'
 
 concurrency:
@@ -18,12 +18,18 @@ permissions:
 
 jobs:
   rest-api-test:
-    name: REST API tests (${{ matrix.db }})
+    name: REST API tests (${{ matrix.db }}, ${{ matrix.mode }} mode)
     runs-on: ubuntu-24.04
     strategy:
       fail-fast: false
       matrix:
         db: [sqlite, postgres]
+        # auth.authorization.mode — the whole suite runs in each. "role" is the
+        # shipped default; "scope" is what an issuer minting dp:* scopes directly
+        # uses. A matrix dimension rather than the both-modes `make test-rest-api`
+        # target so the four combinations run in parallel and CI wall-clock stays
+        # where it was. See portals/api-portal/it/README.md "Authorization modes".
+        mode: [scope, role]
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -34,27 +40,27 @@ jobs:
         uses: docker/setup-buildx-action@v3
 
       - name: Build platform-api image
-        run: make -C platform-api build IMAGE_NAME=platform-api VERSION=it-devportal
+        run: make -C platform-api build IMAGE_NAME=platform-api VERSION=it-api-portal
 
-      - name: Build developer-portal image
-        run: make -C portals/developer-portal build
+      - name: Build API Portal image
+        run: make -C portals/api-portal build
 
-      - name: Run REST API integration tests (${{ matrix.db }})
+      - name: Run REST API integration tests (${{ matrix.db }}, ${{ matrix.mode }} mode)
         env:
-          PLATFORM_API_IMAGE: platform-api:it-devportal
+          PLATFORM_API_IMAGE: platform-api:it-api-portal
         run: |
           if [ "${{ matrix.db }}" = "postgres" ]; then
-            make -C portals/developer-portal/it test-rest-api-postgres
+            make -C portals/api-portal/it test-rest-api-postgres-${{ matrix.mode }}
           else
-            make -C portals/developer-portal/it test-rest-api
+            make -C portals/api-portal/it test-rest-api-${{ matrix.mode }}
           fi
 
       - name: Upload test reports
         uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: rest-api-test-reports-${{ matrix.db }}
-          path: portals/developer-portal/it/reports/
+          name: rest-api-test-reports-${{ matrix.db }}-${{ matrix.mode }}
+          path: portals/api-portal/it/reports/
           retention-days: 7
 
       - name: Debug on failure - dump container logs
@@ -76,22 +82,22 @@ jobs:
         uses: docker/setup-buildx-action@v3
 
       - name: Build platform-api image
-        run: make -C platform-api build IMAGE_NAME=platform-api VERSION=it-devportal
+        run: make -C platform-api build IMAGE_NAME=platform-api VERSION=it-api-portal
 
-      - name: Build developer-portal image
-        run: make -C portals/developer-portal build
+      - name: Build API Portal image
+        run: make -C portals/api-portal build
 
       - name: Run Cypress integration tests
         env:
-          PLATFORM_API_IMAGE: platform-api:it-devportal
-        run: make -C portals/developer-portal/it test
+          PLATFORM_API_IMAGE: platform-api:it-api-portal
+        run: make -C portals/api-portal/it test
 
       - name: Upload Cypress reports
         uses: actions/upload-artifact@v4
         if: always()
         with:
           name: cypress-reports
-          path: portals/developer-portal/it/reports/
+          path: portals/api-portal/it/reports/
           retention-days: 7
 
       - name: Debug on failure - dump container logs

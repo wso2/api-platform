@@ -29,10 +29,12 @@
 //   cross-site attackers cannot set.
 // ============================================================================
 
-import { PLATFORM_API_BASE_URL, CSRF_HEADER, CSRF_VALUE } from '../config.env';
+import { CSRF_HEADER, CSRF_VALUE } from '../config.env';
+import { PLATFORM_API_BASE_URL } from '../paths';
 import { logger } from '../utils/logger';
 import { HttpMethod, ApiRequestConfig, GQLResponse } from '../utils/types';
 import { buildApiError } from '../utils/apiError';
+import { handleUnauthorizedResponse } from '../auth/logout';
 
 export type { HttpMethod, ApiRequestConfig, GQLResponse };
 export type { ApiError, FieldError } from '../utils/apiError';
@@ -73,7 +75,7 @@ const buildUrl = (
   const full = path.startsWith('http') ? path : `${baseUrl}${path}`;
   if (!params || Object.keys(params).length === 0) return full;
 
-  const url = new URL(full);
+  const url = new URL(full, window.location.origin);
   for (const [k, v] of Object.entries(params)) {
     if (v !== undefined && v !== null) url.searchParams.append(k, String(v));
   }
@@ -100,6 +102,7 @@ export const request = async <T>(config: ApiRequestConfig): Promise<T> => {
   });
 
   if (!res.ok) {
+    handleUnauthorizedResponse(res);
     let data: unknown;
     try {
       data = await res.json();
@@ -149,6 +152,7 @@ const sendForm = async <T>(
   const res = await fetch(url, { method, credentials: 'include', headers, body: form });
 
   if (!res.ok) {
+    handleUnauthorizedResponse(res);
     let data: unknown;
     try {
       data = await res.json();

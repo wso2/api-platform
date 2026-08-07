@@ -5,7 +5,12 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <link rel="icon" type="image/x-icon" href="/src/assets/Favicon/favicon.ico" />
     <title>AI Workspace</title>
-    <script src="/runtime-config.js" onerror="console.warn('Runtime config not available, using build-time or default values')"></script>
+    <!-- The runtime-config script tag is injected here by vite.config.ts
+         (runtimeConfigScriptPlugin), not written inline: it points at a path the BFF
+         generates per request rather than a file on disk, so it has to carry the base
+         path itself, and Vite's own URL rewriting handles such a src inconsistently
+         between dev and build. Injecting it post-transform gives one correct URL in
+         both modes. -->
   </head>
   <body>
     <div id="root"></div>

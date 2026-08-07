@@ -46,8 +46,9 @@ import {
   getLLMProxyDeployments,
   createLLMProxyAPIKey,
 } from '../../../../apis/llmProxiesApis';
-import { PLATFORM_API_BASE_URL } from '../../../../config.env';
+import { PLATFORM_API_BASE_URL } from '../../../../paths';
 import { logger } from '../../../../utils/logger';
+import { getErrorMessage } from '../../../../utils/apiError';
 import type { Gateway } from '../../../../apis/gatewayTypes';
 import type { DeploymentResponse } from '../../../../utils/types';
 import { FormattedMessage } from 'react-intl';
@@ -176,7 +177,9 @@ export default function LLMProxyDeploymentsCard() {
       setGeneratedKey(response.apiKey);
     } catch (error) {
       logger.error('Failed to generate API key:', error);
-      setKeyError('Failed to generate API key. Please try again.');
+      setKeyError(
+        getErrorMessage(error, 'Failed to generate API key. Please try again.')
+      );
     } finally {
       setGeneratingKey(false);
     }

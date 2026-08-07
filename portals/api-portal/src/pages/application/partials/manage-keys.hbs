@@ -1,0 +1,110 @@
+{{#pageHead}}
+<link rel="stylesheet" href="{{basePath}}/technical-styles/manage-keys.css" />
+{{/pageHead}}
+<section class="section keys-section">
+    <div class="mk-header">
+        <h2 class="mk-title">Manage Keys</h2>
+        <p class="mk-subtitle">Generate and govern OAuth2 credentials for <strong>{{applicationMetadata.displayName}}</strong>. Each key manager issues its own consumer key &amp; secret.</p>
+    </div>
+
+    {{!-- Environment selector — card-style tab triggers --}}
+    <div class="mk-env-selector" role="tablist">
+        <button class="mk-env-card active" id="production-tab" role="tab"
+            data-bs-toggle="tab" data-bs-target="#production"
+            aria-controls="production" aria-selected="true">
+            <span class="mk-env-dot mk-env-dot-prod"></span>
+            <div class="mk-env-text">
+                <span class="mk-env-name">Production</span>
+                <span class="mk-env-desc">Live traffic</span>
+            </div>
+        </button>
+        <button class="mk-env-card" id="sandbox-tab" role="tab"
+            data-bs-toggle="tab" data-bs-target="#sandbox"
+            aria-controls="sandbox" aria-selected="false">
+            <span class="mk-env-dot mk-env-dot-sandbox"></span>
+            <div class="mk-env-text">
+                <span class="mk-env-name">Sandbox</span>
+                <span class="mk-env-desc">Safe to test</span>
+            </div>
+        </button>
+    </div>
+
+    <div class="tab-content mk-tab-content" id="keysTabContent">
+
+        {{!-- ── PRODUCTION ── --}}
+        <div class="tab-pane fade show active" id="production" role="tabpanel" aria-labelledby="production-tab">
+
+            <div class="mk-context-banner mk-context-banner-prod">
+                <i class="bi bi-circle-fill mk-env-dot-prod-icon"></i>
+                <span>You are viewing <strong>Production</strong> credentials. Tokens issued here are valid in the live environment.</span>
+            </div>
+
+            {{#if keyManagersMetadata}}
+
+            {{#each keyManagersMetadata}}
+            {{#if enabled}}
+            {{#let "keys" productionKeys}}
+            {{> manage-keys-km-card
+                kmName=../name
+                kmId=../id
+                keyType="PRODUCTION"
+                keys=keys
+                tokenEndpoint=../tokenEndpoint
+                appId=@root.applicationMetadata.id
+                appName=@root.applicationMetadata.displayName
+                orgId=@root.orgId
+                subscriptionScopes=@root.subscriptionScopes
+            }}
+            {{/let}}
+            {{/if}}
+            {{/each}}
+
+            {{else}}
+            <div class="mk-unavailable">
+                <i class="bi bi-exclamation-circle"></i>
+                <span>Key generation is unavailable. Please contact your organization administrator.</span>
+            </div>
+            {{/if}}
+        </div>
+
+        {{!-- ── SANDBOX ── --}}
+        <div class="tab-pane fade" id="sandbox" role="tabpanel" aria-labelledby="sandbox-tab">
+
+            <div class="mk-context-banner mk-context-banner-sandbox">
+                <i class="bi bi-circle-fill mk-env-dot-sandbox-icon"></i>
+                <span>You are viewing <strong>Sandbox</strong> credentials. These are for testing only and cannot be used in production.</span>
+            </div>
+
+            {{#if keyManagersMetadata}}
+
+            {{#each keyManagersMetadata}}
+            {{#if enabled}}
+            {{#let "keys" sandboxKeys}}
+            {{> manage-keys-km-card
+                kmName=../name
+                kmId=../id
+                keyType="SANDBOX"
+                keys=keys
+                tokenEndpoint=../tokenEndpoint
+                appId=@root.applicationMetadata.id
+                appName=@root.applicationMetadata.displayName
+                orgId=@root.orgId
+                subscriptionScopes=@root.subscriptionScopes
+                isSandbox=true
+            }}
+            {{/let}}
+            {{/if}}
+            {{/each}}
+
+            {{else}}
+            <div class="mk-unavailable">
+                <i class="bi bi-exclamation-circle"></i>
+                <span>Key generation is unavailable. Please contact your organization administrator.</span>
+            </div>
+            {{/if}}
+        </div>
+
+    </div>{{!-- /tab-content --}}
+
+    {{> warning }}
+</section>

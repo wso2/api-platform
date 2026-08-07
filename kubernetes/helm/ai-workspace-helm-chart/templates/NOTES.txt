@@ -14,7 +14,7 @@ Enabled components:
   • AI Workspace UI
 {{- end }}
 {{- if $dp.enabled }}
-  • Developer Portal
+  • API Portal & MCP Hub
 {{- end }}
 
 To learn more about the release, try:
@@ -61,7 +61,7 @@ To access it:
 
 {{- if $dp.enabled }}
 
-Developer Portal:
+API Portal & MCP Hub:
   - Service: {{ include "apip.developerPortal.fullname" . }} (port {{ dig "service" "port" 3000 $dp }}, type {{ dig "service" "type" "LoadBalancer" $dp }})
   - Platform API URL: {{ default (include "apip.platformApi.internalURL" .) (dig "config" "platformApi" "baseUrl" "" $dp) }}
 

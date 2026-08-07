@@ -108,13 +108,15 @@ Both scripts accept the same flags:
 ### 2. Start the stack
 
 ```bash
-docker compose up -d
+docker compose up
 ```
+
+This runs in the foreground — keep that terminal open and use a second one for the steps below, or start it detached with `docker compose up -d`.
 
 ### 3. Verify
 
 ```bash
-curl -s http://localhost:9090/health
+curl -s http://localhost:8080/_gateway-health/healthy
 ```
 
 The controller REST API is now reachable at `http://localhost:9090`, and the gateway is listening for
@@ -204,7 +206,7 @@ APIP_GW_CONTROLLER_CONTROLPLANE_TOKEN=<token-from-platform>
 Then start the stack:
 
 ```bash
-docker compose up -d
+docker compose up
 ```
 
 The gateway will register itself with the control plane, receive API deployments, and sync policy configurations automatically.
@@ -216,7 +218,7 @@ The `docker-compose.yaml` uses Compose profiles to keep the core stack minimal. 
 **Distributed tracing** (Jaeger + OpenTelemetry Collector):
 
 ```bash
-docker compose --profile tracing up -d
+docker compose --profile tracing up
 ```
 
 | URL | Description |
@@ -230,7 +232,7 @@ Enable tracing in `configs/config.toml` (`tracing.enabled = true`) and point the
 **Log shipping** (OpenSearch + Fluent Bit + Dashboards):
 
 ```bash
-docker compose --profile logging up -d
+docker compose --profile logging up
 ```
 
 | URL | Description |
@@ -243,7 +245,7 @@ Enable traffic logging in `configs/config.toml` (`traffic_logging.enabled = true
 **Metrics** (Prometheus + Grafana):
 
 ```bash
-docker compose --profile metrics up -d
+docker compose --profile metrics up
 ```
 
 | URL | Description |
@@ -254,7 +256,7 @@ docker compose --profile metrics up -d
 Multiple profiles can be combined:
 
 ```bash
-docker compose --profile metrics --profile tracing up -d
+docker compose --profile metrics --profile tracing up
 ```
 
 ## Analytics (Moesif)

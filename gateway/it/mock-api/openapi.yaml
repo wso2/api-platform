@@ -19,6 +19,9 @@ paths:
     $ref: ./paths/openai/chat.yaml
   /openai/v1/embeddings:
     $ref: ./paths/openai/embeddings.yaml
+  # Mock AWS Bedrock Converse
+  /model/{modelId}/converse:
+    $ref: ./paths/bedrock/converse.yaml
   # Mock Anthropic
   /anthropic/v1/messages:
     $ref: ./paths/anthropic/messages.yaml

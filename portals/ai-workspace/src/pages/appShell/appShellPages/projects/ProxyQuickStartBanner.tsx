@@ -41,7 +41,7 @@ import { getGateways } from '../../../../apis/gatewayApis';
 import { getLLMProviders } from '../../../../apis/llmProviderApis';
 import { getLLMProxyDeployments } from '../../../../apis/llmProxiesApis';
 import * as proxyApis from '../../../../apis/proxyApis';
-import { PLATFORM_API_BASE_URL } from '../../../../config.env';
+import { PLATFORM_API_BASE_URL } from '../../../../paths';
 import { useAppShell } from '../../../../contexts/AppShellContext';
 import { useAppAuth } from '../../../../contexts/AppAuthContext';
 import { SCOPES } from '../../../../auth/permissions';

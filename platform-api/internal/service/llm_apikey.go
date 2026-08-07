@@ -19,6 +19,7 @@ package service
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log/slog"
 	"strings"
@@ -61,10 +62,13 @@ func NewLLMProviderAPIKeyService(
 	}
 }
 
-// ListLLMProviderAPIKeys returns API keys for an LLM provider, filtered to those created by userID.
+// ListLLMProviderAPIKeys returns API keys for an LLM provider, filtered to those created by
+// userID — or every key on the provider when keyAdmin is true (the caller holds
+// constants.ScopeAPIKeyAllManage).
 func (s *LLMProviderAPIKeyService) ListLLMProviderAPIKeys(
 	ctx context.Context,
 	providerID, orgID, userID string,
+	keyAdmin bool,
 	limit, offset int,
 ) (*api.LLMProviderAPIKeyListResponse, error) {
 
@@ -83,7 +87,7 @@ func (s *LLMProviderAPIKeyService) ListLLMProviderAPIKeys(
 		return nil, fmt.Errorf("failed to list API keys: %w", err)
 	}
 
-	items, err := ownedAPIKeyItems(keys, userID, s.identity)
+	items, err := ownedAPIKeyItems(keys, userID, keyAdmin, s.identity)
 	if err != nil {
 		return nil, err
 	}
@@ -100,13 +104,14 @@ func (s *LLMProviderAPIKeyService) ListLLMProviderAPIKeys(
 	}, nil
 }
 
-// ownedAPIKeyItems keeps only the keys created by userID and maps them to their
-// API representation, resolving each creator UUID to its raw identity.
-func ownedAPIKeyItems(keys []*model.APIKey, userID string, identity *IdentityService) ([]api.APIKeyItem, error) {
+// ownedAPIKeyItems keeps only the keys the caller may see — those created by userID, or
+// every key when keyAdmin is true — and maps them to their API representation, resolving
+// each creator UUID to its raw identity.
+func ownedAPIKeyItems(keys []*model.APIKey, userID string, keyAdmin bool, identity *IdentityService) ([]api.APIKeyItem, error) {
 	items := make([]api.APIKeyItem, 0, len(keys))
 	createdByFields := make([]**string, 0, len(keys))
 	for _, k := range keys {
-		if k.CreatedBy != userID {
+		if !canManageAPIKey(k.CreatedBy, userID, keyAdmin) {
 			continue
 		}
 		item := api.APIKeyItem{
@@ -130,10 +135,13 @@ func ownedAPIKeyItems(keys []*model.APIKey, userID string, identity *IdentitySer
 	return items, nil
 }
 
-// DeleteLLMProviderAPIKey deletes the API key from the database and broadcasts a revoke event to gateways.
+// DeleteLLMProviderAPIKey deletes the API key from the database and broadcasts a revoke event
+// to gateways. Only the key's creator may delete it, unless keyAdmin is true (the caller holds
+// constants.ScopeAPIKeyAllManage).
 func (s *LLMProviderAPIKeyService) DeleteLLMProviderAPIKey(
 	ctx context.Context,
 	providerID, orgID, userID, keyName string,
+	keyAdmin bool,
 ) error {
 
 	provider, err := s.llmProviderRepo.GetByID(providerID, orgID)
@@ -154,7 +162,7 @@ func (s *LLMProviderAPIKeyService) DeleteLLMProviderAPIKey(
 		return apperror.LLMProviderAPIKeyNotFound.New()
 	}
 
-	if userID != "" && existingKey.CreatedBy != userID {
+	if !canManageAPIKey(existingKey.CreatedBy, userID, keyAdmin) {
 		return apperror.LLMProviderAPIKeyForbidden.New()
 	}
 
@@ -208,6 +216,14 @@ func (s *LLMProviderAPIKeyService) CreateLLMProviderAPIKey(
 	if provider == nil {
 		s.slogger.Warn("LLM provider not found", "providerId", providerID, "organizationId", orgID)
 		return nil, apperror.ArtifactNotFound.New()
+	}
+
+	// Reject an already-expired expiry before generating/hashing key material, so an
+	// invalid request never costs that work (same rule the REST key path applies via
+	// resolveExpiresAt).
+	if err := validateExpiryInFuture(req.ExpiresAt); err != nil {
+		s.slogger.Warn("Invalid expiration for LLM provider API key creation", "providerId", providerID)
+		return nil, err
 	}
 
 	apiKey, err := utils.GenerateAPIKey()
@@ -291,6 +307,9 @@ func (s *LLMProviderAPIKeyService) CreateLLMProviderAPIKey(
 		AllowedTargets: allowedTargets,
 	}
 	if err := s.apiKeyRepo.Create(dbKey); err != nil {
+		if errors.Is(err, repository.ErrAPIKeyNameConflict) {
+			return nil, apperror.LLMProviderAPIKeyConflict.New()
+		}
 		s.slogger.Error("Failed to persist LLM provider API key to database", "providerId", providerID, "keyName", name, "error", err)
 		return nil, fmt.Errorf("failed to persist API key: %w", err)
 	}

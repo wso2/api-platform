@@ -34,8 +34,8 @@ Envoy-based API gateway for securing and routing API traffic.
 ### Management Portal *(coming soon)*
 Central control plane for managing gateways, APIs, policies, and governance.
 
-### API Developer Portal *(coming soon)*
-Developer portal for API discovery, subscription, and consumption.
+### API Portal & MCP Hub *(coming soon)*
+API Portal for API discovery, subscription, and consumption.
 
 ### API Designer *(coming soon)*
 Standalone design tool for REST, GraphQL, and AsyncAPI specifications.

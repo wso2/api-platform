@@ -94,6 +94,8 @@ Feature: Semantic Cache Policy
                 version: v1
                 params:
                   similarityThreshold: 0.9
+                  # No auth attached - opt into the shared cache bucket this test exercises
+                  cacheUnauthenticated: true
       """
     Then the response should be successful
     And I wait for the endpoint "http://localhost:8080/semantic-cache-hit/v1.0/health" to be ready
@@ -145,6 +147,8 @@ Feature: Semantic Cache Policy
                 version: v1
                 params:
                   similarityThreshold: 0.8
+                  # No auth attached - opt into the shared cache bucket this test exercises
+                  cacheUnauthenticated: true
       """
     Then the response should be successful
     And I wait for the endpoint "http://localhost:8080/semantic-cache-similar/v1.0/health" to be ready
@@ -249,6 +253,8 @@ Feature: Semantic Cache Policy
                 version: v1
                 params:
                   similarityThreshold: 0.5
+                  # No auth attached - opt into the shared cache bucket this test exercises
+                  cacheUnauthenticated: true
       """
     Then the response should be successful
     And I wait for the endpoint "http://localhost:8080/semantic-cache-low-threshold/v1.0/health" to be ready
@@ -303,6 +309,8 @@ Feature: Semantic Cache Policy
                 params:
                   similarityThreshold: 0.9
                   jsonPath: "$.messages[0].content"
+                  # No auth attached - opt into the shared cache bucket this test exercises
+                  cacheUnauthenticated: true
       """
     Then the response should be successful
     And I wait for the endpoint "http://localhost:8080/semantic-cache-jsonpath/v1.0/health" to be ready
@@ -515,4 +523,92 @@ Feature: Semantic Cache Policy
     # Cleanup
     Given I authenticate using basic auth as "admin"
     When I delete the API "semantic-cache-embed-error-api"
+    Then the response should be successful
+
+  # Category 5: Cross-Caller Isolation
+
+  Scenario: A different authenticated caller does not receive another caller's cached response
+    Given I authenticate using basic auth as "admin"
+    When I deploy this API configuration:
+      """
+      apiVersion: gateway.api-platform.wso2.com/v1
+      kind: RestApi
+      metadata:
+        name: semantic-cache-isolation-api
+      spec:
+        displayName: Semantic Cache - Cross-Caller Isolation
+        version: v1.0
+        context: /semantic-cache-isolation/$version
+        upstream:
+          main:
+            url: http://sample-backend:9080/api/v1
+        operations:
+          - method: GET
+            path: /health
+          - method: POST
+            path: /chat
+            policies:
+              - name: api-key-auth
+                version: v1
+                params:
+                  key: API-Key
+                  in: header
+              - name: semantic-cache
+                version: v1
+                params:
+                  similarityThreshold: 0.9
+      """
+    Then the response should be successful
+    And I wait for the endpoint "http://localhost:8080/semantic-cache-isolation/v1.0/health" to be ready
+    And I wait for policy snapshot sync
+
+    # Provision caller A's API key
+    When I send a POST request to the "gateway-controller" service at "/rest-apis/semantic-cache-isolation-api/api-keys" with body:
+      """
+      {"name": "isolation-caller-a"}
+      """
+    Then the response status should be 201
+    And I set header "API-Key" to the JSON response field "apiKey.apiKey"
+    And I wait for 2 seconds
+
+    # Caller A - first request is a cache miss
+    When I set header "Content-Type" to "application/json"
+    And I send a POST request to "http://localhost:8080/semantic-cache-isolation/v1.0/chat" with body:
+      """
+      {"prompt": "isolation test prompt about coral reefs"}
+      """
+    Then the response status code should be 200
+    And the response header "X-Cache-Status" should not exist
+
+    # Caller A - identical repeat is a cache hit on their own entry
+    When I set header "Content-Type" to "application/json"
+    And I send a POST request to "http://localhost:8080/semantic-cache-isolation/v1.0/chat" with body:
+      """
+      {"prompt": "isolation test prompt about coral reefs"}
+      """
+    Then the response status code should be 200
+    And the response header "X-Cache-Status" should be "HIT"
+
+    # Provision caller B's API key
+    Given I authenticate using basic auth as "admin"
+    When I send a POST request to the "gateway-controller" service at "/rest-apis/semantic-cache-isolation-api/api-keys" with body:
+      """
+      {"name": "isolation-caller-b"}
+      """
+    Then the response status should be 201
+    And I set header "API-Key" to the JSON response field "apiKey.apiKey"
+    And I wait for 2 seconds
+
+    # Caller B - identical prompt must still be a cache miss
+    When I set header "Content-Type" to "application/json"
+    And I send a POST request to "http://localhost:8080/semantic-cache-isolation/v1.0/chat" with body:
+      """
+      {"prompt": "isolation test prompt about coral reefs"}
+      """
+    Then the response status code should be 200
+    And the response header "X-Cache-Status" should not exist
+
+    # Cleanup
+    Given I authenticate using basic auth as "admin"
+    When I delete the API "semantic-cache-isolation-api"
     Then the response should be successful

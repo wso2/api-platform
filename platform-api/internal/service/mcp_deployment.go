@@ -327,11 +327,8 @@ func (s *MCPDeploymentService) deployMCPProxy(proxyUUID string, req *api.DeployR
 		return nil, fmt.Errorf("failed to create deployment: %w", err)
 	}
 
-	// Set initial status based on config; transitional (DEPLOYING) only when enabled
-	initialStatus := model.DeploymentStatusDeployed
-	if s.cfg.Deployments.TransitionalStatusEnabled {
-		initialStatus = model.DeploymentStatusDeploying
-	}
+	// Transitional until the gateway acknowledges the artifact.
+	initialStatus := model.DeploymentStatusDeploying
 	performedAt := time.Now().UTC().Truncate(time.Millisecond)
 	if _, err := s.deploymentRepo.SetCurrentWithDetails(
 		proxyUUID, orgId, gatewayID, deploymentID,
@@ -443,7 +440,7 @@ func (s *MCPDeploymentService) undeployMCPProxyDeployment(proxyUUID string, depl
 	}
 
 	// Verify deployment is currently DEPLOYED (status already populated by GetWithState)
-	if deployment.Status == nil || *deployment.Status != model.DeploymentStatusDeployed {
+	if deployment.Status == nil || !deployment.Status.IsDeployedOrDeploying() {
 		return nil, apperror.DeploymentNotActive.New("MCP proxy")
 	}
 
@@ -456,11 +453,8 @@ func (s *MCPDeploymentService) undeployMCPProxyDeployment(proxyUUID string, depl
 		return nil, apperror.GatewayNotFound.New()
 	}
 
-	// Set initial status based on config; transitional (UNDEPLOYING) only when enabled
-	initialStatus := model.DeploymentStatusUndeployed
-	if s.cfg.Deployments.TransitionalStatusEnabled {
-		initialStatus = model.DeploymentStatusUndeploying
-	}
+	// Transitional until the gateway acknowledges the artifact.
+	initialStatus := model.DeploymentStatusUndeploying
 	performedAt := time.Now().UTC().Truncate(time.Millisecond)
 	newUpdatedAt, err := s.deploymentRepo.SetCurrentWithDetails(
 		proxyUUID, orgId, deployment.GatewayID, deployment.DeploymentID,
@@ -525,7 +519,7 @@ func (s *MCPDeploymentService) restoreMCPProxyDeployment(proxyUUID string, deplo
 	if err != nil {
 		return nil, fmt.Errorf("failed to get deployment status: %w", err)
 	}
-	if currentDeploymentID == *deploymentId && status == model.DeploymentStatusDeployed {
+	if currentDeploymentID == *deploymentId && status.IsDeployedOrDeploying() {
 		return nil, apperror.DeploymentRestoreConflict.New()
 	}
 
@@ -538,11 +532,8 @@ func (s *MCPDeploymentService) restoreMCPProxyDeployment(proxyUUID string, deplo
 		return nil, apperror.GatewayNotFound.New()
 	}
 
-	// Set initial status based on config; transitional (DEPLOYING) only when enabled
-	initialStatus := model.DeploymentStatusDeployed
-	if s.cfg.Deployments.TransitionalStatusEnabled {
-		initialStatus = model.DeploymentStatusDeploying
-	}
+	// Transitional until the gateway acknowledges the artifact.
+	initialStatus := model.DeploymentStatusDeploying
 	performedAt := time.Now().UTC().Truncate(time.Millisecond)
 	updatedAt, err := s.deploymentRepo.SetCurrentWithDetails(
 		proxyUUID, orgId, targetDeployment.GatewayID, *deploymentId,
@@ -700,7 +691,7 @@ func (s *MCPDeploymentService) deleteMCPProxyDeployment(proxyUUID string, deploy
 	}
 
 	// Verify deployment is NOT currently DEPLOYED (status already populated by GetWithState)
-	if deployment.Status != nil && *deployment.Status == model.DeploymentStatusDeployed {
+	if deployment.Status != nil && deployment.Status.IsDeployedOrDeploying() {
 		return apperror.DeploymentActive.New()
 	}
 

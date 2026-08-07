@@ -20,6 +20,20 @@ func TestMapModelAuthToAPI_NormalizesApiKeyType(t *testing.T) {
 	}
 }
 
+// TestMapModelAuthToAPI_KeepsApiKeyWhenCredentialPresent asserts the stored auth is
+// serialized as-is, including an unresolved secret placeholder.
+func TestMapModelAuthToAPI_KeepsApiKeyWhenCredentialPresent(t *testing.T) {
+	for _, value := range []string{"sk-live-123", "{{ secret \"my-handle\" }}"} {
+		out := mapModelAuthToAPI(&model.UpstreamAuth{Type: "api-key", Header: "Authorization", Value: value})
+		if out == nil || out.Type == nil || *out.Type != "api-key" {
+			t.Fatalf("expected auth type api-key for value %q, got %+v", value, out)
+		}
+		if out.Value == nil || *out.Value != value {
+			t.Fatalf("expected value %q to be preserved, got %v", value, out.Value)
+		}
+	}
+}
+
 func float32Ptr(f float32) *float32 { return &f }
 
 // TestGenerateLLMProviderDeploymentYAML_OtherAuthEmitsTypeOnly verifies that when the

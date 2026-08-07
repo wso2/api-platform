@@ -16,13 +16,14 @@ import type {
 } from '../apis/gatewayPolicyApis';
 import { getPolicies } from '../apis/policyHubApis';
 import type { PolicyHubPolicy } from '../utils/types';
+import { useAppAuth } from './AppAuthContext';
+import { SCOPES } from '../auth/permissions';
 
 export type GatewayPolicyRow = {
   key: string;
   policyName: string;
   name: string;
   version: string;
-  displayVersion: string;
   description: string;
   policyType: "Policy Hub" | "Custom";
   syncStatus: "N/A" | "Synced" | "Not synced";
@@ -36,12 +37,15 @@ type GatewayPoliciesContextValue = {
   refresh: () => Promise<void>;
   syncPolicy: (policyName: string, version: string) => Promise<GatewayCustomPolicy>;
   syncingPolicyKey: string | null;
+  /** False when the caller lacks the scopes the policy view reads. */
+  canViewPolicies: boolean;
+  /** False when the caller may view policies but not sync them into the org. */
+  canSyncPolicies: boolean;
 };
 
 const GatewayPoliciesContext = createContext<GatewayPoliciesContextValue | null>(null);
 
 const normalizedVersion = (version: string) => version.replace(/^v/i, "");
-const displayVersion = (version: string) => normalizedVersion(version).split(".")[0];
 const policyKey = (name: string, version: string) =>
   `${name.trim().toLowerCase()}@${normalizedVersion(version)}`;
 const isCustomManifestPolicy = (policy: GatewayManifestPolicy) => {
@@ -75,7 +79,6 @@ function mergePolicies(
       // Keep the controller-reported value (for example, "v1.0.0") for API
       // calls because SyncCustomPolicy matches the stored manifest version.
       version: policy.version,
-      displayVersion: displayVersion(policy.version),
       description: policy.description || hubPolicy?.description || "—",
       policyType: isCustomPolicy ? "Custom" : "Policy Hub",
       syncStatus: isCustomPolicy ? (syncedPolicy ? "Synced" : "Not synced") : "N/A",
@@ -92,8 +95,22 @@ export function GatewayPoliciesProvider({ gatewayId, children }: { gatewayId: st
   const [error, setError] = useState<Error | null>(null);
   const [syncingPolicyKey, setSyncingPolicyKey] = useState<string | null>(null);
 
+  // This view reads the gateway manifest and the org's custom policies. Without
+  // both scopes the platform API returns 403, so skip the request entirely and
+  // let the consumer render a permission notice instead of a load failure.
+  const { hasPermission } = useAppAuth();
+  const canViewPolicies =
+    hasPermission(SCOPES.GATEWAY_MANIFEST_READ) &&
+    hasPermission(SCOPES.GATEWAY_CUSTOM_POLICY_READ);
+  const canSyncPolicies = hasPermission(SCOPES.GATEWAY_CUSTOM_POLICY_CREATE);
+
   const refresh = useCallback(async () => {
     if (!gatewayId) return;
+    if (!canViewPolicies) {
+      setPolicies([]);
+      setIsLoading(false);
+      return;
+    }
     setIsLoading(true);
     setError(null);
     try {
@@ -114,7 +131,7 @@ export function GatewayPoliciesProvider({ gatewayId, children }: { gatewayId: st
     } finally {
       setIsLoading(false);
     }
-  }, [gatewayId]);
+  }, [gatewayId, canViewPolicies]);
 
   useEffect(() => { void refresh(); }, [refresh]);
 
@@ -139,8 +156,26 @@ export function GatewayPoliciesProvider({ gatewayId, children }: { gatewayId: st
   }, [gatewayId, refresh]);
 
   const value = useMemo(
-    () => ({ policies, isLoading, error, refresh, syncPolicy, syncingPolicyKey }),
-    [policies, isLoading, error, refresh, syncPolicy, syncingPolicyKey],
+    () => ({
+      policies,
+      isLoading,
+      error,
+      refresh,
+      syncPolicy,
+      syncingPolicyKey,
+      canViewPolicies,
+      canSyncPolicies,
+    }),
+    [
+      policies,
+      isLoading,
+      error,
+      refresh,
+      syncPolicy,
+      syncingPolicyKey,
+      canViewPolicies,
+      canSyncPolicies,
+    ],
   );
   return <GatewayPoliciesContext.Provider value={value}>{children}</GatewayPoliciesContext.Provider>;
 }

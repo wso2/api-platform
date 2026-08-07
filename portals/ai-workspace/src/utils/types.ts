@@ -748,7 +748,8 @@ export type APIKeyListResponse = ApiListResponse<UserAPIKey>;
 export interface MCPServerUpstreamAuth {
   type: string;
   header: string;
-  value: string;
+  // writeOnly server-side — never present on a GET response, only ever sent on write.
+  value?: string;
 }
 
 /**
@@ -836,18 +837,35 @@ export type MCPServerListResponse = ApiListResponse<MCPServer>;
 
 /**
  * MCP Server Info Fetch Request
+ *
+ * At least one of `url`/`proxyId` is required, and `auth` may never accompany `proxyId`
+ * — whenever a proxy is referenced its stored auth is authoritative and an override is
+ * rejected. Modelled as a union so that invalid combination doesn't compile. The three
+ * valid shapes are:
+ *
+ *   { url, auth? }      — contact this URL with these (or no) credentials
+ *   { proxyId }         — contact the stored URL with the stored credentials
+ *   { url, proxyId }    — contact this URL with the stored credentials, so an unsaved
+ *                         endpoint edit can be validated without re-sending the secret
  */
-export interface MCPServerInfoFetchRequest {
-  url: string;
-  proxyId?: string;
+interface MCPServerInfoFetchRequestBase {
   transportType?: string;
   headers?: Record<string, string>;
-  auth?: {
-    type: string;
-    header: string;
-    value: string;
-  };
 }
+
+export type MCPServerInfoFetchRequest = MCPServerInfoFetchRequestBase &
+  (
+    | {
+        url: string;
+        proxyId?: never;
+        auth?: {
+          type: string;
+          header: string;
+          value: string;
+        };
+      }
+    | { proxyId: string; url?: string; auth?: never }
+  );
 
 /**
  * MCP Server Info Fetch Response

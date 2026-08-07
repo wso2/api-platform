@@ -51,7 +51,8 @@ const (
 //     DNS-rebinding) — loopback, private (RFC 1918 / ULA), link-local (incl. the cloud
 //     metadata endpoint 169.254.169.254), unspecified, multicast and broadcast addresses
 //     are refused.
-//   - Redirects are bounded and each hop is dialed through the same guarded dialer.
+//   - Redirects are bounded, may not leave the original host, and each hop is dialed
+//     through the same guarded dialer.
 //   - The response body is read through an io.LimitReader capped at maxBytes.
 //   - Errors are returned sterile (no internal host/IP detail) so callers can log them
 //     internally without leaking infrastructure information to clients.
@@ -87,15 +88,7 @@ func FetchOpenAPISpecFromURL(ctx context.Context, rawURL string, maxBytes int64)
 			// that could bypass the IP checks.
 			Proxy: nil,
 		},
-		CheckRedirect: func(req *http.Request, via []*http.Request) error {
-			if len(via) >= openAPISpecMaxRedirects {
-				return fmt.Errorf("too many redirects")
-			}
-			if req.URL.Scheme != "http" && req.URL.Scheme != "https" {
-				return fmt.Errorf("redirect to a disallowed scheme")
-			}
-			return nil
-		},
+		CheckRedirect: checkRedirectPolicy(openAPISpecMaxRedirects),
 	}
 
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, parsed.String(), nil)
@@ -134,41 +127,12 @@ func FetchOpenAPISpecFromURL(ctx context.Context, rawURL string, maxBytes int64)
 var ipIsAllowed = isPublicIP
 
 // ssrfSafeDialContext resolves the target host and refuses to connect to any non-public
-// address. It performs the resolution itself and dials the resolved IP directly, so a
-// DNS name that resolves to a public IP during a pre-check cannot be re-resolved to an
-// internal IP at connect time (DNS rebinding).
+// address — the right policy here because an OpenAPI spec URL points at a vendor endpoint
+// on the public internet. A backend the operator deployed is a different case and uses the
+// more permissive isAllowedUpstreamIP policy instead (see NewUpstreamFetchClient).
 func ssrfSafeDialContext(ctx context.Context, network, addr string) (net.Conn, error) {
-	host, port, err := net.SplitHostPort(addr)
-	if err != nil {
-		return nil, fmt.Errorf("invalid address")
-	}
-
-	ips, err := net.DefaultResolver.LookupIPAddr(ctx, host)
-	if err != nil {
-		return nil, fmt.Errorf("failed to resolve host")
-	}
-	if len(ips) == 0 {
-		return nil, fmt.Errorf("host has no addresses")
-	}
-	for _, ip := range ips {
-		if !ipIsAllowed(ip.IP) {
-			return nil, fmt.Errorf("host resolves to a disallowed address")
-		}
-	}
-
-	dialer := &net.Dialer{Timeout: openAPISpecFetchTimeout}
-	var lastErr error
-	for _, ip := range ips {
-		conn, dialErr := dialer.DialContext(ctx, network, net.JoinHostPort(ip.IP.String(), port))
-		if dialErr == nil {
-			return conn, nil
-		}
-		lastErr = dialErr
-	}
-	if lastErr != nil {
-		return nil, fmt.Errorf("failed to connect to host")
-	}
-	return nil, fmt.Errorf("failed to connect to host")
+	dial := guardedDialContext(func(ip net.IP) bool { return ipIsAllowed(ip) }, openAPISpecFetchTimeout)
+	return dial(ctx, network, addr)
 }
 
 // cgnatRange is RFC 6598 shared address space (carrier-grade NAT): 100.64.0.0/10.

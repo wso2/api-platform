@@ -35,7 +35,7 @@ import {
 import { GatewayDeployMainSection } from '../../../../Components/GatewayDeploy';
 import { mcpProxiesApis } from '../../../../apis/MCP/mcpProxiesApis';
 import { useAppShell } from '../../../../contexts/AppShellContext';
-import { PLATFORM_API_BASE_URL } from '../../../../config.env';
+import { PLATFORM_API_BASE_URL } from '../../../../paths';
 import type { MCPServer } from '../../../../utils/types';
 import ExternalServerStepBanner from '../quickStart/ExternalServerStepBanner';
 import type { ExternalServerStepBannerStepId } from '../quickStart/ExternalServerStepBanner';

@@ -16,14 +16,14 @@
  * under the License.
  */
 
-import { clearStoredToken } from '../clients/choreoApiClient';
 import { clearBasicAuthSession } from '../contexts/BasicAuthProvider';
 import { CSRF_HEADER, CSRF_VALUE } from '../config.env';
+import { BASE_PATH } from '../paths';
 import { logger } from '../utils/logger';
 
 type SignOutFunction = () => Promise<void>;
 
-const BFF_LOGOUT_URL = '/api/logout';
+const BFF_LOGOUT_URL = `${BASE_PATH}/api/logout`;
 const LOGOUT_REQUEST_TIMEOUT_MS = 5000;
 
 const AUTH_SESSION_KEYS = [
@@ -50,9 +50,25 @@ export const handleLogout = async (signoutRedirect: SignOutFunction): Promise<vo
  * Only removes known auth keys — does not wipe unrelated sessionStorage entries.
  */
 export const clearAuthData = (): void => {
-  clearStoredToken();
   clearBasicAuthSession();
   AUTH_SESSION_KEYS.forEach((key) => sessionStorage.removeItem(key));
+};
+
+let unauthorizedRedirectStarted = false;
+
+/**
+ * Start the session-expiry flow once when an authenticated API call returns
+ * 401. Several requests can fail together when a session expires, so the
+ * guard prevents duplicate logout calls and competing redirects.
+ */
+export const handleUnauthorizedResponse = (response: Response): boolean => {
+  if (response.status !== 401) return false;
+
+  if (!unauthorizedRedirectStarted) {
+    unauthorizedRedirectStarted = true;
+    void forceLogoutAndRedirect();
+  }
+  return true;
 };
 
 /**
@@ -126,5 +142,5 @@ export const forceLogoutAndRedirect = async (): Promise<void> => {
     window.location.replace(logoutUrl);
     return;
   }
-  window.location.replace('/login');
+  window.location.replace(`${BASE_PATH}/login`);
 };

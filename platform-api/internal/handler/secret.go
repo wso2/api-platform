@@ -24,6 +24,7 @@ import (
 	"time"
 
 	"github.com/wso2/api-platform/platform-api/internal/apperror"
+	"github.com/wso2/api-platform/platform-api/internal/constants"
 	"github.com/wso2/api-platform/platform-api/internal/dto"
 	"github.com/wso2/api-platform/platform-api/internal/middleware"
 	"github.com/wso2/api-platform/platform-api/internal/router"
@@ -43,13 +44,11 @@ func NewSecretHandler(secretService *service.SecretService, identity *service.Id
 }
 
 func (h *SecretHandler) RegisterRoutes(mux router.Router) {
-	for _, version := range []string{"/api/v0.9", "/api/v1"} {
-		mux.HandleFunc("POST "+version+"/secrets", middleware.MapErrors(h.slogger, h.CreateSecret))
-		mux.HandleFunc("GET "+version+"/secrets", middleware.MapErrors(h.slogger, h.ListSecrets))
-		mux.HandleFunc("GET "+version+"/secrets/{secretId}", middleware.MapErrors(h.slogger, h.GetSecret))
-		mux.HandleFunc("PUT "+version+"/secrets/{secretId}", middleware.MapErrors(h.slogger, h.UpdateSecret))
-		mux.HandleFunc("DELETE "+version+"/secrets/{secretId}", middleware.MapErrors(h.slogger, h.DeleteSecret))
-	}
+	mux.HandleFunc("POST "+constants.APIBasePath+"/secrets", middleware.MapErrors(h.slogger, h.CreateSecret))
+	mux.HandleFunc("GET "+constants.APIBasePath+"/secrets", middleware.MapErrors(h.slogger, h.ListSecrets))
+	mux.HandleFunc("GET "+constants.APIBasePath+"/secrets/{secretId}", middleware.MapErrors(h.slogger, h.GetSecret))
+	mux.HandleFunc("PUT "+constants.APIBasePath+"/secrets/{secretId}", middleware.MapErrors(h.slogger, h.UpdateSecret))
+	mux.HandleFunc("DELETE "+constants.APIBasePath+"/secrets/{secretId}", middleware.MapErrors(h.slogger, h.DeleteSecret))
 }
 
 func (h *SecretHandler) CreateSecret(w http.ResponseWriter, r *http.Request) error {

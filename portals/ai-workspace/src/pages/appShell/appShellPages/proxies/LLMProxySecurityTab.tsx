@@ -195,11 +195,11 @@ export default function LLMProxySecurityTab() {
                 />
               </FormControl>
 
+              {/* Only "header" is supported by the api-key-auth policy */}
               <FormControl fullWidth size="small">
                 <FormLabel>Sent in</FormLabel>
                 <Select value={keyLocation} disabled={isFormDisabled} onChange={handleKeyLocationChange}>
                   <MenuItem value="header">Header</MenuItem>
-                  <MenuItem value="query">Query parameter</MenuItem>
                 </Select>
               </FormControl>
 

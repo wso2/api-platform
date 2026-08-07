@@ -37,11 +37,18 @@ import (
 type ApplicationHandler struct {
 	applicationService *service.ApplicationService
 	identity           *service.IdentityService
+	authzMode          string
 	slogger            *slog.Logger
 }
 
-func NewApplicationHandler(applicationService *service.ApplicationService, identity *service.IdentityService, slogger *slog.Logger) *ApplicationHandler {
-	return &ApplicationHandler{applicationService: applicationService, identity: identity, slogger: slogger}
+func NewApplicationHandler(applicationService *service.ApplicationService, identity *service.IdentityService, authzMode string, slogger *slog.Logger) *ApplicationHandler {
+	return &ApplicationHandler{applicationService: applicationService, identity: identity, authzMode: authzMode, slogger: slogger}
+}
+
+// isKeyAdmin reports whether the caller holds constants.ScopeAPIKeyAllManage and may
+// therefore bind API keys created by other users, not only their own.
+func (h *ApplicationHandler) isKeyAdmin(r *http.Request) bool {
+	return middleware.HasEffectiveScope(r, h.authzMode, constants.ScopeAPIKeyAllManage)
 }
 
 func (h *ApplicationHandler) CreateApplication(w http.ResponseWriter, r *http.Request) error {
@@ -328,7 +335,7 @@ func (h *ApplicationHandler) AddApplicationAPIKeys(w http.ResponseWriter, r *htt
 		return apperror.ValidationFailed.New("At least one API key mapping is required")
 	}
 
-	keys, err := h.applicationService.AddMappedAPIKeys(appID, &req, orgID, userID)
+	keys, err := h.applicationService.AddMappedAPIKeys(appID, &req, orgID, userID, h.isKeyAdmin(r))
 	if err != nil {
 		return serviceError(err, fmt.Sprintf("failed to add mapped API keys for application %s in org %s by user %s", appID, orgID, userID))
 	}

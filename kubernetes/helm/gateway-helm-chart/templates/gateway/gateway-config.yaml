@@ -204,6 +204,8 @@ data:
     server_header_transformation = {{ $router.http_listener.server_header_transformation | quote }}
     server_header_value = {{ $router.http_listener.server_header_value | quote }}
     per_connection_buffer_limit_bytes = {{ $router.http_listener.per_connection_buffer_limit_bytes | int64 }}
+    disable_path_normalization = {{ $router.http_listener.disable_path_normalization }}
+    path_with_escaped_slashes_action = {{ $router.http_listener.path_with_escaped_slashes_action | quote }}
 
     [router.http_listener.timeouts]
     request_timeout = {{ $router.http_listener.timeouts.request_timeout | quote }}
@@ -447,6 +449,9 @@ data:
     batch_timeout = {{ .Values.gateway.config.tracing.batch_timeout | quote }}
     max_export_batch_size = {{ .Values.gateway.config.tracing.max_export_batch_size }}
     sampling_rate = {{ .Values.gateway.config.tracing.sampling_rate }}
+    {{- if .Values.gateway.config.tracing.resource_attributes }}
+    resource_attributes = { {{- $first := true }}{{- range $key, $value := .Values.gateway.config.tracing.resource_attributes }}{{- if not $first }}, {{ end }}{{- $first = false }}{{ $key | quote }} = {{ $value | quote }}{{- end }} }
+    {{- end }}
     {{- end }}
 
     {{- if .Values.gateway.config.subscriptions }}
@@ -460,7 +465,12 @@ data:
     {{- end }}
 
     {{- if .Values.gateway.config.policy_configurations }}
-{{ dict "policy_configurations" .Values.gateway.config.policy_configurations | toToml | indent 4 }}
+    {{- $policyConfigToml := dict "policy_configurations" .Values.gateway.config.policy_configurations | toToml }}
+    {{- $policyConfigToml = regexReplaceAll "(?m)^[ \t]+" $policyConfigToml "" }}
+    {{- range $i := until 6 }}
+    {{- $policyConfigToml = regexReplaceAll "(?m)^\\[[^\\]\r\n]+\\]\r?\n(\\[)" $policyConfigToml "$1" }}
+    {{- end }}
+{{ $policyConfigToml | indent 4 }}
     {{- end }}
 
     {{- if .Values.gateway.config.api_key }}

@@ -1,0 +1,43 @@
+[api_portal.server]
+port = '{{ env "APIP_AP_SERVER_PORT" "9543" }}'
+base_url = "https://localhost:9543"
+
+[api_portal.server.https]
+enabled   = '{{ env "APIP_AP_SERVER_HTTPS_ENABLED" "true" }}'
+cert_file = "/etc/api-portal/tls/cert.pem"
+key_file  = "/etc/api-portal/tls/key.pem"
+
+[api_portal.logging]
+level        = '{{ env "APIP_AP_LOGGING_LEVEL" "info" }}'
+format       = "text"
+console_only = true
+
+[api_portal.database]
+driver = '{{ env "APIP_AP_DATABASE_DRIVER" "sqlite" }}'
+path = '{{ env "APIP_AP_DATABASE_PATH" "./data/api-portal.db" }}'
+
+[api_portal.security]
+encryption_key = '{{ file "/etc/api-portal/keys/encryption.key" }}'
+session_secret = '{{ file "/etc/api-portal/keys/session-secret" }}'
+
+[api_portal.auth]
+mode = "local"
+
+[api_portal.auth.local]
+platform_api_url = '{{ env "APIP_AP_AUTH_LOCAL_PLATFORM_API_URL" "https://platform-api:9243" }}'
+public_key_path  = '{{ env "APIP_AP_AUTH_LOCAL_PUBLIC_KEY_PATH" "/etc/api-portal/keys/jwt_public.pem" }}'
+tls_skip_verify  = '{{ env "APIP_AP_AUTH_LOCAL_TLS_SKIP_VERIFY" "true" }}'
+
+[api_portal.auth.authorization]
+enabled = true
+mode    = "role"
+role_to_scope_mapping = "./resources/role-to-scope-mapping.yaml"
+page_role_validation = true
+
+[api_portal.auth.authorization.portal_roles]
+admin      = "ap_admin"
+subscriber = "ap_subscriber"
+
+[api_portal.organization]
+handle       = '{{ env "APIP_AP_ORGANIZATION_HANDLE" "default" }}'
+display_name = '{{ env "APIP_AP_ORGANIZATION_DISPLAY_NAME" "Default" }}'

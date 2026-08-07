@@ -165,7 +165,7 @@ gateway:
   controller:
     image:
       repository: ghcr.io/wso2/api-platform/gateway-controller
-      tag: "1.1.0"
+      tag: "1.2.0"
       pullPolicy: Always
     imagePullSecrets: []
     service:
@@ -301,12 +301,11 @@ gateway:
       affinity: {}
 
   # Unified gateway-runtime (Envoy + policy-engine). Required for operator Helm merges:
-  # without this block, chart defaults use health-check.sh for liveness (Envoy /ready),
-  # which often fails until CDS completes and causes ~1min restarts under operator deploy.
+  # without this block, Helm's map merge drops the chart's own probe defaults.
   gatewayRuntime:
     image:
       repository: ghcr.io/wso2/api-platform/gateway-runtime
-      tag: "1.1.0"
+      tag: "1.2.0"
       pullPolicy: Always
     imagePullSecrets: []
     service:
@@ -340,17 +339,20 @@ gateway:
       podAnnotations: {}
       podLabels: {}
       priorityClassName: ""
-      # null removes chart default exec probe after Helm coalesce (only one probe handler allowed).
       livenessProbe:
-        exec:
-          command: ["health-check.sh"]
+        httpGet:
+          path: /_gateway-health/healthy
+          port: https
+          scheme: HTTPS
         initialDelaySeconds: 30
         periodSeconds: 10
         timeoutSeconds: 5
         failureThreshold: 3
       readinessProbe:
-        exec:
-          command: ["health-check.sh"]
+        httpGet:
+          path: /_gateway-health/ready
+          port: https
+          scheme: HTTPS
         initialDelaySeconds: 10
         periodSeconds: 5
         timeoutSeconds: 3

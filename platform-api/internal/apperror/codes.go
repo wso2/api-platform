@@ -48,6 +48,8 @@ const (
 	CodeLLMProxyDeploymentValidationFailed    = "LLM_PROXY_DEPLOYMENT_VALIDATION_FAILED"
 	CodeLLMProviderAPIKeyForbidden            = "LLM_PROVIDER_API_KEY_FORBIDDEN"
 	CodeLLMProxyAPIKeyForbidden               = "LLM_PROXY_API_KEY_FORBIDDEN"
+	CodeLLMProviderAPIKeyConflict             = "LLM_PROVIDER_API_KEY_CONFLICT"
+	CodeLLMProxyAPIKeyConflict                = "LLM_PROXY_API_KEY_CONFLICT"
 )
 
 // LLM provider template domain codes. The *_VERSION_* and *_REF_* codes keep
@@ -96,6 +98,8 @@ const (
 	CodeRESTAPINotFound                   = "REST_API_NOT_FOUND"
 	CodeRESTAPIExists                     = "REST_API_EXISTS"
 	CodeRESTAPIDeploymentValidationFailed = "REST_API_DEPLOYMENT_VALIDATION_FAILED"
+	CodeRESTAPIAPIKeyNotFound             = "REST_API_API_KEY_NOT_FOUND"
+	CodeRESTAPIAPIKeyForbidden            = "REST_API_API_KEY_FORBIDDEN"
 )
 
 // MCP proxy domain codes.

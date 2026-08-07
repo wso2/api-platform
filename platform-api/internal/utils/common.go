@@ -27,8 +27,11 @@ import (
 	"encoding/binary"
 	"errors"
 	"fmt"
+	"io"
+	"net"
 	"net/http"
 	"net/url"
+	"regexp"
 	"strconv"
 	"strings"
 	"time"
@@ -432,18 +435,43 @@ func ValidateURL(rawURL string) error {
 	return nil
 }
 
+var contextPathPattern = regexp.MustCompile(`^/([a-zA-Z0-9_\-/]*[^/])?$`)
+
+func ValidateContext(ctx string) error {
+	if !contextPathPattern.MatchString(ctx) {
+		return errors.New("context must be a valid path starting with '/'")
+	}
+	return nil
+}
+
+
+func ValidateExternalURL(_ context.Context, rawURL string) error {
+	if err := ValidateURL(rawURL); err != nil {
+		return err
+	}
+	parsed, err := url.ParseRequestURI(strings.TrimSpace(rawURL))
+	if err != nil {
+		return errors.New("Invalid URL format")
+	}
+	if ip := net.ParseIP(parsed.Hostname()); ip != nil && !isPublicIP(ip) {
+		return errors.New("URL host is not allowed")
+	}
+	return nil
+}
+
 // CheckURLReachability verifies that the given URL is reachable by sending an HTTP HEAD request.
 // It returns an error if the request fails or cannot complete within the given timeout.
 func CheckURLReachability(rawURL string, timeout time.Duration) error {
-	client := &http.Client{
-		Timeout: timeout,
-		CheckRedirect: func(req *http.Request, via []*http.Request) error {
-			if len(via) >= 5 {
-				return errors.New("too many redirects")
-			}
-			return nil
-		},
-	}
+	// The probed URL is user/tenant-supplied, so the connection goes through the guarded
+	// dialer: every resolved IP is checked at dial time under the upstream policy
+	// (link-local/metadata refused; private and in-cluster upstreams allowed, since that is
+	// what an MCP backend normally is) and every redirect hop is bounded and re-dialed
+	// through the same guard. The client also disables keep-alives — this is a one-off
+	// diagnostic probe with nothing to gain from connection reuse, and everything to lose:
+	// some servers answer a HEAD with an improperly terminated chunked response, and a
+	// pooled connection could then corrupt a later, unrelated request (e.g. the MCP
+	// initialize/tools/list calls FetchServerInfo makes right after this).
+	client := NewUpstreamFetchClient(timeout)
 
 	req, err := http.NewRequestWithContext(context.Background(), http.MethodHead, rawURL, nil)
 	if err != nil {
@@ -455,6 +483,9 @@ func CheckURLReachability(rawURL string, timeout time.Duration) error {
 		return fmt.Errorf("URL is not reachable")
 	}
 	defer resp.Body.Close() //nolint:errcheck
+	// Still drain before close as good practice, even though DisableKeepAlives
+	// above is what actually guarantees this connection is never reused.
+	_, _ = io.Copy(io.Discard, resp.Body)
 
 	return nil
 }

@@ -29,6 +29,7 @@ import {
   ParticleBackground,
   Skeleton,
   Stack,
+  Tooltip,
   Typography,
 } from '@wso2/oxygen-ui';
 import { Clock, Layers, Plus } from '@wso2/oxygen-ui-icons-react';
@@ -37,6 +38,8 @@ import { useMCPServers } from '../../../../contexts/MCP';
 import { formatRelativeTime } from '../../../../contexts/ApplicationsContext';
 import NoMCPServers from '../../../../assets/images/NoMCPServers.svg';
 import ErrorAlert from '../../../../Components/common/ErrorAlert';
+import { useAppAuth } from '../../../../contexts/AppAuthContext';
+import { DISABLED_ACTION_SX, NO_PERMISSION_TOOLTIP, SCOPES } from '../../../../auth/permissions';
 
 function truncateWords(text: string, maxWords: number): string {
   const words = text.trim().split(/\s+/);
@@ -67,6 +70,8 @@ export default function MCPProxiesSummaryCardSection({
   newMCPProxyPath,
   onMCPProxyClick,
 }: MCPProxiesSummaryCardSectionProps) {
+  const { hasPermission } = useAppAuth();
+  const canCreateMcpProxy = hasPermission(SCOPES.MCP_PROXY_CREATE);
   const { mcpServersResponse, isLoading, error, refreshMCPServers } =
     useMCPServers();
   const servers = mcpServersResponse.list;
@@ -115,9 +120,19 @@ export default function MCPProxiesSummaryCardSection({
                 See more
               </Button>
             ) : (
-              <Button component={RouterLink} to={newMCPProxyPath} size="small">
-                + Add New
-              </Button>
+              <Tooltip title={canCreateMcpProxy ? '' : NO_PERMISSION_TOOLTIP}>
+                <Box component="span">
+                  <Button
+                    component={RouterLink}
+                    to={newMCPProxyPath}
+                    size="small"
+                    disabled={!canCreateMcpProxy}
+                    sx={DISABLED_ACTION_SX}
+                  >
+                    + Add New
+                  </Button>
+                </Box>
+              </Tooltip>
             )
           }
         />
@@ -203,17 +218,23 @@ export default function MCPProxiesSummaryCardSection({
                 defaultMessage="Set up an MCP Proxy to expose tools, prompts, and resources through your AI gateway workflows."
               />
             </Typography>
-            <Button
-              variant="contained"
-              component={RouterLink}
-              to={newMCPProxyPath}
-              startIcon={<Plus size={20} />}
-            >
-              <FormattedMessage
-                id="aiWorkspace.pages.appShell.appShellPages.externalServers.Main.create.external.server"
-                defaultMessage="Create MCP Proxy"
-              />
-            </Button>
+            <Tooltip title={canCreateMcpProxy ? '' : NO_PERMISSION_TOOLTIP}>
+              <Box component="span">
+                <Button
+                  variant="contained"
+                  component={RouterLink}
+                  to={newMCPProxyPath}
+                  startIcon={<Plus size={20} />}
+                  disabled={!canCreateMcpProxy}
+                  sx={DISABLED_ACTION_SX}
+                >
+                  <FormattedMessage
+                    id="aiWorkspace.pages.appShell.appShellPages.externalServers.Main.create.external.server"
+                    defaultMessage="Create MCP Proxy"
+                  />
+                </Button>
+              </Box>
+            </Tooltip>
           </Stack>
         ) : (
           <Stack divider={<Divider />} spacing={1.5}>

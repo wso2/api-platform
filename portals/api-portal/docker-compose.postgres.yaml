@@ -1,0 +1,77 @@
+# --------------------------------------------------------------------
+# Copyright (c) 2026, WSO2 LLC. (https://www.wso2.com).
+#
+# WSO2 LLC. licenses this file to you under the Apache License,
+# Version 2.0 (the "License"); you may not use this file except
+# in compliance with the License.
+# You may obtain a copy of the License at
+#
+# http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing,
+# software distributed under the License is distributed on an
+# "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+# KIND, either express or implied.  See the License for the
+# specific language governing permissions and limitations
+# under the License.
+# --------------------------------------------------------------------
+
+# PostgreSQL override for the development variant.
+#
+# Usage:
+#   docker compose -f docker-compose.yaml -f docker-compose.postgres.yaml up
+#
+# PREREQUISITE: the shipped configs/config.toml is SQLite-only, and an env var
+# reaches config only where a key references it via {{ env }}. Copy the
+# PostgreSQL block from configs/config-template.toml into configs/config.toml
+# first, or the APIP_AP_DATABASE_* variables below do nothing and startup fails
+# closed on the missing user.
+#
+# This file merges with docker-compose.yaml:
+#   - Adds the postgres service.
+#   - Overrides api-portal DB env vars to point at postgres.
+#   - Adds a postgres depends_on condition to api-portal.
+
+services:
+  postgres:
+    image: postgres:16
+    environment:
+      POSTGRES_USER: api_portal
+      POSTGRES_PASSWORD: api_portal
+      POSTGRES_DB: api_portal
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      # Mount only this dialect's schema file — ./database also holds
+      # schema.sqlite.sql and schema.sqlserver.sql, and Postgres's
+      # docker-entrypoint-initdb.d runs every .sql file it finds there in
+      # alphabetical order, so mounting the directory made it also try (and
+      # fail on) schema.sqlserver.sql's T-SQL-only syntax.
+      - ./database/schema.postgres.sql:/docker-entrypoint-initdb.d/schema.postgres.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U api_portal -d api_portal"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 15s
+    # Without this, postgres joins compose's own implicit "default" network
+    # while api-portal/platform-api (which explicitly declare networks: in
+    # docker-compose.yaml) only join api-portal-network — two disjoint
+    # networks, so api-portal can't resolve "postgres" by hostname at all.
+    networks:
+      - api-portal-network
+
+  api-portal:
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      APIP_AP_DATABASE_DRIVER: postgres
+      APIP_AP_DATABASE_HOST: postgres
+      APIP_AP_DATABASE_PORT: 5432
+      APIP_AP_DATABASE_USER: api_portal
+      APIP_AP_DATABASE_PASSWORD: api_portal
+      APIP_AP_DATABASE_NAME: api_portal
+      APIP_AP_DATABASE_PATH: ""
+
+volumes:
+  postgres_data:

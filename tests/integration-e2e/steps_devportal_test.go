@@ -40,7 +40,7 @@ import (
 //
 // Trust/transport model (verified from source):
 //   - The devportal signs each webhook "t=<unix>,v1=<hmac>" over "<t>.<body>"
-//     (X-Devportal-Signature) with the shared secret, and encrypts the key/token
+//     (X-Api-Portal-Signature) with the shared secret, and encrypts the key/token
 //     with the platform-api webhook RSA public key (RSA-OAEP-SHA256 + AES-256-GCM).
 //   - platform-api resolves the event's org by HANDLE (org.ref_id) and the API /
 //     plan by HANDLE (data.api.ref_id / data.subscription_plan.ref_id). So the
@@ -62,17 +62,18 @@ import (
 // is a var too).
 var webhookReceiverURL = "https://platform-api:9243" + webhookReceiverPath
 
-// The devportal org handle seeded via APIP_DP_ORGANIZATION_DEFAULT_NAME; must match the platform-api
-// org handle so org.ref_id resolves.
+// The devportal org handle seeded via APIP_AP_ORGANIZATION_HANDLE; must match the platform-api
+// org handle so org.ref_id resolves — and so the devportal, which serves this one
+// organization, accepts logins carrying platform-api's org_handle claim.
 const devportalOrgHandle = "default"
 
 func (w *world) registerDevportalSteps(sc *godog.ScenarioContext) {
-	sc.Step(`^the subscription plan is synced to the developer portal$`, w.syncPlanToDevportal)
-	sc.Step(`^the API is published to the developer portal linked to the platform API$`, w.publishAPIToDevportal)
-	sc.Step(`^an application subscribed to the API is created in the developer portal$`, w.subscribeInDevportal)
-	sc.Step(`^an API key is generated in the developer portal$`, w.generateKeyInDevportal)
+	sc.Step(`^the subscription plan is synced to the API Portal$`, w.syncPlanToDevportal)
+	sc.Step(`^the API is published to the API Portal linked to the platform API$`, w.publishAPIToDevportal)
+	sc.Step(`^an application subscribed to the API is created in the API Portal$`, w.subscribeInDevportal)
+	sc.Step(`^an API key is generated in the API Portal$`, w.generateKeyInDevportal)
 	// The invocation assertions are shared with the platform-api-driven scenario.
-	sc.Step(`^invoking the secured API through the gateway with the developer portal credentials returns 200$`, w.invokeWithCredentialsSucceeds)
+	sc.Step(`^invoking the secured API through the gateway with the API Portal credentials returns 200$`, w.invokeWithCredentialsSucceeds)
 
 	// Credential-lifecycle steps (revoke / expiry / plan / pause / delete / token regen).
 	w.registerDevportalLifecycleSteps(sc)
@@ -80,7 +81,7 @@ func (w *world) registerDevportalSteps(sc *godog.ScenarioContext) {
 
 // --- suite bootstrap (called from bringUpStack) ----------------------------
 
-// bootstrapDevportal prepares the running developer portal so its webhooks are
+// bootstrapDevportal prepares the running API Portal so its webhooks are
 // accepted by platform-api: it links the portal org to the control-plane org
 // handle and registers the platform-api webhook subscriber.
 func bootstrapDevportal() error {
@@ -98,14 +99,14 @@ func waitDevportalHealthy() error {
 	var lastStatus int
 	var lastErr error
 	for time.Now().Before(deadline) {
-		st, _, err := dpCall(http.MethodGet, "/organizations", nil)
+		st, _, err := dpCall(http.MethodGet, "/organizations/"+devportalOrgHandle, nil)
 		if err == nil && st == http.StatusOK {
 			return nil
 		}
 		lastStatus, lastErr = st, err
 		time.Sleep(2 * time.Second)
 	}
-	return fmt.Errorf("developer portal did not become healthy (last status %d, err %v)", lastStatus, lastErr)
+	return fmt.Errorf("API Portal did not become healthy (last status %d, err %v)", lastStatus, lastErr)
 }
 
 // linkDevportalOrg sets the portal org's cpRefId to the platform-api org handle
@@ -141,28 +142,39 @@ func linkDevportalOrg() error {
 	return nil
 }
 
-// registerWebhookSubscriber points the portal at the platform-api receiver with
-// the shared HMAC secret and the run's generated RSA public key (see
-// prepareWebhookKey). Idempotent: a repeat registration (E2E_KEEP reruns) that
-// conflicts is treated as success.
+// registerWebhookSubscriber points the portal at the platform-api receiver with the shared
+// secret, which the portal uses both to sign deliveries and to encrypt sensitive key/token
+// fields. It must equal APIP_CP_WEBHOOK_SECRET in the compose file, or platform-api will
+// reject the signature and fail to decrypt those fields. Idempotent: a repeat registration
+// (E2E_KEEP reruns) that conflicts is treated as success.
 func registerWebhookSubscriber() error {
-	if webhookPublicKeyPEM == "" {
-		return fmt.Errorf("webhook public key not generated (prepareWebhookKey must run first)")
-	}
-	st, body, err := dpCall(http.MethodPost, "/webhook-subscribers", map[string]any{
+	payload := map[string]any{
 		"id":          "platform-api",
 		"displayName": "Platform API",
 		"targetUrl":   webhookReceiverURL,
 		"secret":      webhookSecret,
-		"publicKey":   webhookPublicKeyPEM,
 		"events":      []string{"apikey.*", "subscription.*"},
 		"enabled":     true,
-	})
+	}
+
+	st, body, err := dpCall(http.MethodPost, "/webhook-subscribers", payload)
 	if err != nil {
 		return err
 	}
 	if st == http.StatusConflict {
-		return nil // already registered on a kept stack
+		// Already registered by an earlier run on a kept stack (E2E_KEEP=1). Its stored
+		// secret is the *previous* run's, and webhookSecret is regenerated per run, so
+		// this cannot be treated as success: platform-api has already restarted with the
+		// new secret and would reject every delivery the portal signs with the old one.
+		// PUT to bring the stored subscriber back in sync.
+		st, body, err = dpCall(http.MethodPut, "/webhook-subscribers/platform-api", payload)
+		if err != nil {
+			return err
+		}
+		if st >= 300 {
+			return fmt.Errorf("re-sync webhook subscriber secret failed (%d): %s", st, body)
+		}
+		return nil
 	}
 	if st >= 300 {
 		return fmt.Errorf("register webhook subscriber failed (%d): %s", st, body)
@@ -236,7 +248,7 @@ func devportalAPIMultipart(name, refID string, plans []string) (string, []byte, 
 	for _, p := range plans {
 		plansYAML += "\n    - " + p
 	}
-	apiYAML := fmt.Sprintf(`apiVersion: devportal.api-platform.wso2.com/v1alpha2
+	apiYAML := fmt.Sprintf(`apiVersion: api-portal.api-platform.wso2.com/v1
 kind: RestApi
 metadata:
   name: %s
@@ -336,7 +348,7 @@ func (w *world) generateKeyInDevportal() error {
 
 // --- devportal HTTP helpers ------------------------------------------------
 
-// dpCall performs a JSON request against the developer portal with the admin
+// dpCall performs a JSON request against the API Portal with the admin
 // bearer token.
 func dpCall(method, path string, body any) (int, []byte, error) {
 	var payload []byte
@@ -350,7 +362,7 @@ func dpCall(method, path string, body any) (int, []byte, error) {
 	return dpDo(method, path, "application/json", payload)
 }
 
-// dpDo performs a request against the developer portal with the admin bearer token
+// dpDo performs a request against the API Portal with the admin bearer token
 // and an explicit content type (used for both JSON and multipart bodies). path is
 // the resource path relative to devportalBase (e.g. "/apis"), which is prepended.
 func dpDo(method, path, contentType string, body []byte) (int, []byte, error) {

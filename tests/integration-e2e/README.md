@@ -6,7 +6,7 @@ engine**, so a single scenario exercises both products integrated end to end:
 an API created in platform-api is deployed to a gateway and served by the data
 plane.
 
-On the postgres stack it additionally runs the **real developer portal**, so the
+On the postgres stack it additionally runs the **real API Portal**, so the
 `@devportal` scenario exercises all three planes together: a credential created
 in the portal reaches the gateway via the signed webhook to platform-api.
 
@@ -70,7 +70,7 @@ Build the component images once (tagged `it-e2e`), then run the suite:
 cd platform-api && docker build -t platform-api:it-e2e \
   --build-context common=../common --build-context httpkit=../httpkit .
 cd gateway      && make build VERSION=it-e2e   # gateway-controller / gateway-runtime :it-e2e
-cd portals/developer-portal && docker build -t developer-portal:it-e2e .  # only needed for @devportal
+cd portals/api-portal && docker build -t developer-portal:it-e2e .  # only needed for @devportal
 
 cd tests/integration-e2e
 go test -run TestFeatures -v ./...                                  # PostgreSQL (default)
@@ -83,6 +83,13 @@ Or via make (from `platform-api/`): `make e2e`, `make e2e-all-dbs`.
 
 - `E2E_DB` = `postgres` (default) | `sqlite` | `sqlserver`.
 - `E2E_KEEP=1` leaves the stack up after the run for inspection.
+- `E2E_WEBHOOK_SECRET` is the secret shared between the API Portal subscriber and
+  platform-api. **The suite generates a fresh one per run and exports it, so you normally
+  set nothing.** There is no committed default: compose declares the variable required, so
+  a manual `docker compose up` without it fails immediately rather than running on a
+  well-known secret. Export your own value to pin it — worth doing across repeated
+  `E2E_KEEP=1` runs, though the suite also re-syncs a kept subscriber's stored secret on
+  each run, so a rotating secret works either way.
 - `E2E_TAGS=@smoke` runs a tag subset (other tags: `@secured`, `@multigateway`,
   `@devportal`, `@lifecycle` for the credential-lifecycle scenario — run it alone
   with `E2E_TAGS="@devportal && @lifecycle"` —, and the on-demand secret fetch
@@ -90,14 +97,13 @@ Or via make (from `platform-api/`): `make e2e`, `make e2e-all-dbs`.
   `@policy_secret`). The `@multigateway` and `@devportal` scenarios run only on the
   postgres stack (the only one wired with a second gateway and the developer
   portal) and are otherwise skipped automatically.
-- `PA_HOST_PORT` / `GW_HTTP_PORT` / `GW2_HTTP_PORT` / `DP_HOST_PORT` override the
+- `PA_HOST_PORT` / `GW_HTTP_PORT` / `GW2_HTTP_PORT` / `AP_HOST_PORT` override the
   published host ports to avoid clashing with other local stacks (defaults 9243 /
   18080 / 18081 / 9543).
-- `DEVPORTAL_IMAGE` overrides the developer-portal image (default
-  `developer-portal:it-e2e`). `PA_WEBHOOK_KEY` is set automatically by the suite
-  (a container-readable copy of the webhook private key) — you don't normally set it.
-- `PA_API_BASE` / `DP_API_BASE` override the REST resource-API base path for
-  platform-api and the developer portal respectively (default `/api/v0.9` each) —
+- `API_PORTAL_IMAGE` overrides the developer-portal image (default
+  `developer-portal:it-e2e`).
+- `PA_API_BASE` / `AP_API_BASE` override the REST resource-API base path for
+  platform-api and the API Portal respectively (default `/api/v0.9` each) —
   set these when either product moves to a new API version, independently of the
   other. `PA_PORTAL_BASE` (login, default `/api/portal/v0.9`) and `PA_WEBHOOK_BASE`
   (webhook receiver, default `/api/internal/v0.9`) cover platform-api's other prefixes.
@@ -131,9 +137,9 @@ Or via make (from `platform-api/`): `make e2e`, `make e2e-all-dbs`.
      described above), subscriptions and API keys are pushed live over the
      control-plane WebSocket and applied immediately, so the scenario just polls
      the ingress until they propagate.
-5. **Full suite via developer portal** (`@devportal`, postgres,
+5. **Full suite via API Portal** (`@devportal`, postgres,
    `features/devportal-webhook.feature`) — the same secured API, but the
-   subscription and API key are created in the **developer portal**, which fires
+   subscription and API key are created in the **API Portal**, which fires
    signed webhooks to platform-api; platform-api decrypts them, persists the
    credentials, and propagates them to the gateway. The API is then invoked
    through the gateway with those **portal-issued** credentials → 200 (and a
@@ -150,26 +156,26 @@ Or via make (from `platform-api/`): `make e2e`, `make e2e-all-dbs`.
    - Auth: the devportal accepts the platform-api admin JWT directly (verified
      against the RS256 `jwt_public.pem` shared via the `platform-api-jwt-keys`
      volume, org from the token's `org_handle` claim). The
-     admin must carry `dp:*` scopes, which platform-api's built-in admin lacks —
-     so the suite injects an admin (ap:* *and* dp:*) via the
-     `AUTH_FILE_BASED_USERS` env var (a mounted config's users are ignored; only
-     that env override wins). Bearer auth (not API-key mode) is used because the
+     admin must carry `dp:*` scopes, which it gets from the `ap_admin` role in the
+     mounted `role-to-scope-mapping.yaml` — that role spans both the `ap:*` and `dp:*` namespaces,
+     so the one admin JWT authorizes both products. Bearer auth (not API-key mode) is used because the
      write paths need a resolved user for `created_by`.
-   - `BeforeSuite` generates a fresh RSA key pair per run (`prepareWebhookKey`),
-     links the portal org (`cpRefId = "default"`, the platform-api org handle), and
-     registers a webhook subscriber pointing at `…/api/internal/v0.9/webhook/events`
-     with the shared HMAC secret and the generated **public** key. platform-api
-     decrypts with the matching private key, which is written 0644 under the compose
-     dir and mounted in via `PA_WEBHOOK_KEY` (the container runs as uid 10001, and
-     `/tmp` isn't shared into the container VM). The key is generated rather than read
-     from the repo because the private key is gitignored (and absent in CI).
+   - `BeforeSuite` generates the shared webhook secret (`prepareWebhookSecret`, exported
+     as `E2E_WEBHOOK_SECRET` before the stack starts so compose interpolates the same
+     value into `APIP_CP_WEBHOOK_SECRET`), links the portal org (`cpRefId = "default"`,
+     the platform-api org handle), and registers a webhook subscriber pointing at
+     `…/api/internal/v0.9/webhook/events` with that secret. That one value both signs and
+     encrypts, so the portal and platform-api holding different values breaks both — which
+     is why a subscriber left over from an `E2E_KEEP=1` run is updated (PUT) rather than
+     skipped on conflict.
    - The delivery worker POSTs over raw https with the default agent, so the
      devportal container sets `NODE_TLS_REJECT_UNAUTHORIZED=0` to accept
      platform-api's self-signed cert.
    - Webhooks are signed `t=<unix>,v1=<hmac>` over `"<t>.<body>"` and the key /
-     token fields are hybrid-encrypted (RSA-OAEP-SHA256 + AES-256-GCM). platform-api
-     re-encrypts the subscription token at rest, so
-     `APIP_CP_ENCRYPTION_KEY` must be 32 bytes (64 hex chars).
+     token fields are encrypted with AES-256-GCM under a key both sides derive from
+     that same shared secret via HKDF-SHA3-256. platform-api re-encrypts the
+     subscription token at rest, so `APIP_CP_ENCRYPTION_KEY` must be 32 bytes
+     (64 hex chars).
    - platform-api resolves the event's **org, API and plan by handle**, so the
      devportal org's `cpRefId`, the published API's `referenceId`, and the synced
      plan's `refId` are each set to the corresponding platform-api handle.
@@ -177,7 +183,7 @@ Or via make (from `platform-api/`): `make e2e`, `make e2e-all-dbs`.
      credentials propagate.
 6. **Developer-portal credential lifecycle** (`@devportal @lifecycle`, postgres,
    same feature file) — after the same publish/deploy/subscribe/key setup, it drives
-   every credential-lifecycle change in the developer portal and verifies each via
+   every credential-lifecycle change in the API Portal and verifies each via
    the webhook propagation:
    - **Change API key expiry** — set a past expiry; the gateway must reject the now
      expired key (401), then serve again after the expiry is restored. (Verified at

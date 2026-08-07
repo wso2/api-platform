@@ -23,6 +23,8 @@ import basicSsl from '@vitejs/plugin-basic-ssl'
 import path from 'path'
 import { fileURLToPath } from 'url'
 
+import { BASE_PATH } from './src/paths'
+
 const __filename = fileURLToPath(import.meta.url)
 const __dirname = path.dirname(__filename)
 
@@ -31,6 +33,16 @@ const rushTemp = path.resolve(repoRoot, 'common/temp')
 const aiTemp = path.resolve(rushTemp, 'ai-workspace')
 const aiNodeModules = path.resolve(aiTemp, 'node_modules')
 const aiPnpm = path.resolve(aiNodeModules, '.pnpm')
+
+// URL path prefix the app is served under, with the trailing slash Vite's `base` wants.
+// Taken from the SPA's own BASE_PATH constant (src/paths.ts) so the prefix baked into
+// the bundle and the prefix the app code composes URLs from are one value, not two that
+// could drift. It has to be baked in at all because index.html references its assets by
+// absolute path: a bundle built for one prefix and served under another 404s on every
+// asset, so this is a fixed contract rather than a deployment knob. It must also stay in
+// lockstep with the BFF's paths.Base (bff/internal/paths/paths.go), which mounts every
+// server route — SPA, auth endpoints, runtime-config.js, the proxy — under the same prefix.
+const basePath = `${BASE_PATH}/`
 
 const BANNER_WIDTH = 72
 
@@ -51,7 +63,9 @@ const readyLogPlugin: PluginOption = {
         rule + '\n' +
         '\n' +
         centerInBanner('AI Workspace Started') + '\n' +
-        centerInBanner(`Visit ${scheme}://localhost:${port}`) + '\n' +
+        // The base path is part of the address to open — the origin root only
+        // redirects there in the BFF, not in this dev server.
+        centerInBanner(`Visit ${scheme}://localhost:${port}${basePath}`) + '\n' +
         '\n' +
         rule + '\n' +
         '\n'
@@ -78,22 +92,43 @@ const browserSafeEnvVars = [
   'APIP_AIW_POLICY_HUB_WEB_URL',
   'APIP_AIW_MOESIF_WEB_URL',
   'APIP_AIW_MOESIF_APP_API_KEY',     // Moesif publishable Application Id
-  'APIP_AIW_PLATFORM_API_BASE_URL',
-  'APIP_AIW_PORTAL_API_BASE_URL',
 ]
+
+// The BFF serves window.__RUNTIME_CONFIG__ from <base>/runtime-config.js, generated per
+// request. Because no such file exists on disk, Vite's index.html URL rewriting handles
+// a hand-written src for it inconsistently — in a build it leaves the path untouched
+// (missing the base path), in dev it prepends the base to an already-prefixed path
+// (doubling it). Injecting the tag from a post-enforced hook sidesteps that rewriting
+// entirely, so the URL is spelled once, here, and is identical in both modes.
+const runtimeConfigScriptPlugin: PluginOption = {
+  name: 'runtime-config-script',
+  enforce: 'post',
+  transformIndexHtml() {
+    return [{
+      tag: 'script',
+      attrs: {
+        src: `${basePath}runtime-config.js`,
+        onerror: "console.warn('Runtime config not available, using build-time or default values')",
+      },
+      injectTo: 'head-prepend',
+    }]
+  },
+}
 
 const plugins: PluginOption[] = [
   react() as unknown as PluginOption,
   basicSsl() as unknown as PluginOption,
   readyLogPlugin,
+  runtimeConfigScriptPlugin,
 ]
 
 export default defineConfig({
   plugins,
+  base: basePath,
   // Expose only the allowlisted APIP_AIW_ variables to client code via
   // import.meta.env, instead of Vite's default VITE_ prefix. The whole platform
   // namespaces its configuration this way (APIP_AIW_ here, APIP_CP_ for the Platform
-  // API, APIP_DP_ for the Developer Portal), and the BFF serves the same names in
+  // API, APIP_AP_ for the API Portal), and the BFF serves the same names in
   // window.__RUNTIME_CONFIG__, so one key spelling works at build time and at runtime.
   envPrefix: browserSafeEnvVars,
   resolve: {
@@ -111,26 +146,20 @@ export default defineConfig({
         aiPnpm
       ]
     },
-    proxy: {
-      // In dev, run the BFF locally (default https://localhost:8081) and route
-      // all same-origin BFF traffic to it, mirroring the production topology.
-      // `make bff-run` starts it against configs/config.toml, whose {{ env }} tokens read
-      // the APIP_AIW_* variables (CONTROL_PLANE_URL, SERVER_PORT, ...).
-      '/api': {
-        target: process.env.BFF_DEV_TARGET || 'https://localhost:8081',
-        changeOrigin: true,
-        secure: false,          // accept the BFF self-signed cert in dev
-      },
-      '/proxy': {
-        target: process.env.BFF_DEV_TARGET || 'https://localhost:8081',
-        changeOrigin: true,
-        secure: false,
-      },
-      '/runtime-config.js': {
-        target: process.env.BFF_DEV_TARGET || 'https://localhost:8081',
-        changeOrigin: true,
-        secure: false,
-      },
-    },
+    // In dev, run the BFF locally (default https://localhost:8081) and route all
+    // same-origin BFF traffic to it, mirroring the production topology. `make bff-run`
+    // starts it against configs/config.toml, whose {{ env }} tokens read the APIP_AIW_*
+    // variables (CONTROL_PLANE_URL, SERVER_PORT, ...). The BFF serves these routes under
+    // the same prefix, so each is forwarded prefix and all, with no rewriting either side.
+    proxy: Object.fromEntries(
+      ['api', 'proxy', 'runtime-config.js'].map((route) => [
+        `${basePath}${route}`,
+        {
+          target: process.env.BFF_DEV_TARGET || 'https://localhost:8081',
+          changeOrigin: true,
+          secure: false,        // accept the BFF self-signed cert in dev
+        },
+      ]),
+    ),
   }
 })

@@ -83,7 +83,7 @@ func genRSAKeyPEMs() (pubPEM, privPEM string) {
 // APIP_CP_ENCRYPTION_KEY / APIP_CP_AUTH_JWT_PUBLIC_KEY_FILE env vars via {{ env }}
 // interpolation. Environment variables reach config ONLY through these tokens now
 // (there is no direct env-key override), so tests must go through a config file.
-// The default auth mode is "external_token", which needs only the verification
+// The default auth mode is "internal_token", which needs only the verification
 // public key.
 const validKeysBase = `
 [platform_api.security]
@@ -144,7 +144,7 @@ public_key_file = '{{ env "APIP_CP_AUTH_JWT_PUBLIC_KEY_FILE" }}'
 	assert.Equal(t, validInlineKey, cfg.Security.EncryptionKey)
 }
 
-// A merged multi-component config file also carries a foreign [developer_portal]
+// A merged multi-component config file also carries a foreign [api_portal]
 // section with its own interpolation tokens — here deliberately poisonous ones: an
 // {{ env }} with no default that is left unset, and a {{ file }} path outside
 // platform-api's allowlist. LoadConfig must interpolate and consume ONLY the
@@ -152,16 +152,40 @@ public_key_file = '{{ env "APIP_CP_AUTH_JWT_PUBLIC_KEY_FILE" }}'
 // Guards the k.Cut(platformAPIConfigKey) scoping in LoadConfig: without it, the
 // whole-tree interpolation would fail closed on these tokens.
 func TestLoadConfig_IgnoresForeignComponentSection(t *testing.T) {
-	// APIP_DP_SECURITY_ENCRYPTION_KEY is intentionally never set, and /etc/devportal
+	// APIP_AP_SECURITY_ENCRYPTION_KEY is intentionally never set, and /etc/devportal
 	// is not on platform-api's {{ file }} allowlist.
 	cfg, err := loadWithKeys(t, `
-[developer_portal.security]
-encryption_key = '{{ env "APIP_DP_SECURITY_ENCRYPTION_KEY" }}'
-[developer_portal.auth.local]
+[api_portal.security]
+encryption_key = '{{ env "APIP_AP_SECURITY_ENCRYPTION_KEY" }}'
+[api_portal.auth.local]
 jwt_public_key = '{{ file "/etc/devportal/keys/jwt_public.pem" }}'
 `)
 	require.NoError(t, err)
 	assert.Equal(t, validInlineKey, cfg.Security.EncryptionKey)
+}
+
+// auth.skip_paths was removed from the operator-facing config surface: the list
+// is a property of the product's routing and a wrong entry is an auth bypass.
+// Unknown keys are otherwise ignored, so a stale entry must fail startup rather
+// than leave an operator believing it still takes effect.
+func TestLoadConfig_RemovedSkipPathsKey_Errors(t *testing.T) {
+	_, err := loadWithKeys(t, `
+[platform_api.auth]
+skip_paths = ["/health"]
+`)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "auth.skip_paths")
+	assert.Contains(t, err.Error(), "no longer supported")
+}
+
+// The built-in skip-path list still reaches the config even though the key is
+// no longer settable — dropping it would leave health probes and the internal
+// gateway routes behind a user-JWT check they cannot satisfy.
+func TestLoadConfig_SkipPathsDefaultsSurvive(t *testing.T) {
+	cfg, err := loadWithKeys(t, "")
+	require.NoError(t, err)
+	assert.Contains(t, cfg.Auth.SkipPaths, "/health")
+	assert.Contains(t, cfg.Auth.SkipPaths, "/api/internal/v1/secrets")
 }
 
 // The encryption key is required and never generated — a config that omits it fails startup.
@@ -192,7 +216,7 @@ public_key_file = '{{ env "APIP_CP_AUTH_JWT_PUBLIC_KEY_FILE" }}'
 	assert.Contains(t, err.Error(), "invalid EncryptionKey")
 }
 
-// The JWT public key is required (default auth mode is "external_token") and never generated.
+// The JWT public key is required (default auth mode is "internal_token") and never generated.
 func TestLoadConfig_MissingJWTPublicKey_Errors(t *testing.T) {
 	t.Setenv("APIP_CP_ENCRYPTION_KEY", validInlineKey)
 
@@ -266,12 +290,48 @@ func TestValidateAuthConfig(t *testing.T) {
 		wantErr string
 	}{
 		{
-			name: "external_token mode with valid public key",
-			auth: Auth{Mode: AuthModeExternalToken, JWT: JWT{PublicKeyFile: validJWTPublicKeyFile}},
+			name: "internal_token mode with valid public key",
+			auth: Auth{Mode: AuthModeInternalToken, JWT: JWT{PublicKeyFile: validJWTPublicKeyFile}},
 		},
 		{
-			name:    "external_token mode without public key",
-			auth:    Auth{Mode: AuthModeExternalToken},
+			name: "skip path exempting every route is rejected",
+			auth: Auth{
+				Mode:      AuthModeInternalToken,
+				JWT:       JWT{PublicKeyFile: validJWTPublicKeyFile},
+				SkipPaths: []string{"/health", "/"},
+			},
+			wantErr: "invalid entry in auth.skip_paths",
+		},
+		{
+			name: "empty skip path is rejected",
+			auth: Auth{
+				Mode:      AuthModeInternalToken,
+				JWT:       JWT{PublicKeyFile: validJWTPublicKeyFile},
+				SkipPaths: []string{""},
+			},
+			wantErr: "invalid entry in auth.skip_paths",
+		},
+		{
+			name: "relative skip path is rejected",
+			auth: Auth{
+				Mode:      AuthModeInternalToken,
+				JWT:       JWT{PublicKeyFile: validJWTPublicKeyFile},
+				SkipPaths: []string{"health"},
+			},
+			wantErr: "invalid entry in auth.skip_paths",
+		},
+		{
+			name: "traversal in skip path is rejected",
+			auth: Auth{
+				Mode:      AuthModeInternalToken,
+				JWT:       JWT{PublicKeyFile: validJWTPublicKeyFile},
+				SkipPaths: []string{"/health/../api"},
+			},
+			wantErr: "invalid entry in auth.skip_paths",
+		},
+		{
+			name:    "internal_token mode without public key",
+			auth:    Auth{Mode: AuthModeInternalToken},
 			wantErr: "Auth.JWT.PublicKeyFile is required",
 		},
 		{
@@ -303,25 +363,73 @@ func TestValidateAuthConfig(t *testing.T) {
 		{
 			name: "file mode fully configured",
 			auth: Auth{
-				Mode: AuthModeFile,
-				JWT:  JWT{PublicKeyFile: validJWTPublicKeyFile, PrivateKeyFile: validJWTPrivateKeyFile, TokenTTL: time.Hour},
+				Mode:          AuthModeFile,
+				JWT:           JWT{PublicKeyFile: validJWTPublicKeyFile, PrivateKeyFile: validJWTPrivateKeyFile, TokenTTL: time.Hour},
+				Authorization: Authorization{Enabled: true, Mode: AuthzModeScope, RoleToScopeMapping: "/etc/platform-api/role-to-scope-mapping.yaml"},
+				File: FileBased{
+					Organization: FileBasedOrg{ID: "default", DisplayName: "Default"},
+					Users:        FileBasedUsers{{Username: "admin", PasswordHash: "$2a$12$hash", Roles: []string{"ap_admin"}}},
+				},
+			},
+		},
+		{
+			// The roles are the whole grant, so a user without any authenticates
+			// successfully and is then denied every route — reject the config.
+			name: "file mode user without a role",
+			auth: Auth{
+				Mode:          AuthModeFile,
+				JWT:           JWT{PublicKeyFile: validJWTPublicKeyFile, PrivateKeyFile: validJWTPrivateKeyFile, TokenTTL: time.Hour},
+				Authorization: Authorization{Enabled: true, Mode: AuthzModeScope, RoleToScopeMapping: "/etc/platform-api/role-to-scope-mapping.yaml"},
 				File: FileBased{
 					Organization: FileBasedOrg{ID: "default", DisplayName: "Default"},
 					Users:        FileBasedUsers{{Username: "admin", PasswordHash: "$2a$12$hash"}},
 				},
 			},
+			wantErr: "roles is required",
+		},
+		{
+			// The role is expanded from the mapping file at login, so without the
+			// file it would grant nothing.
+			name: "file mode user with a role but no mapping file",
+			auth: Auth{
+				Mode:          AuthModeFile,
+				JWT:           JWT{PublicKeyFile: validJWTPublicKeyFile, PrivateKeyFile: validJWTPrivateKeyFile, TokenTTL: time.Hour},
+				Authorization: Authorization{Enabled: true, Mode: AuthzModeScope},
+				File: FileBased{
+					Organization: FileBasedOrg{ID: "default", DisplayName: "Default"},
+					Users:        FileBasedUsers{{Username: "admin", PasswordHash: "$2a$12$hash", Roles: []string{"ap_admin"}}},
+				},
+			},
+			wantErr: "auth.authorization.role_to_scope_mapping",
+		},
+		{
+			// A file-mode user's role is expanded into the scope claim at login, so
+			// it works while authorization itself runs in the default scope mode.
+			name: "file mode user with a role in scope authorization mode",
+			auth: Auth{
+				Mode: AuthModeFile,
+				JWT:  JWT{PublicKeyFile: validJWTPublicKeyFile, PrivateKeyFile: validJWTPrivateKeyFile, TokenTTL: time.Hour},
+				Authorization: Authorization{
+					Enabled:      true,
+					Mode:         AuthzModeScope,
+					RoleToScopeMapping: "/etc/platform-api/role-to-scope-mapping.yaml",
+				},
+				File: FileBased{
+					Organization: FileBasedOrg{ID: "default", DisplayName: "Default"},
+					Users:        FileBasedUsers{{Username: "admin", PasswordHash: "$2a$12$hash", Roles: []string{"ap_admin"}}},
+				},
+			},
 		},
 		{
 			name:    "idp mode requires jwks_url",
-			auth:    Auth{Mode: AuthModeIDP, IDP: IDP{ValidationMode: "scope"}},
+			auth:    Auth{Mode: AuthModeIDP},
 			wantErr: "auth.idp.jwks_url",
 		},
 		{
 			name: "idp mode fully configured",
 			auth: Auth{Mode: AuthModeIDP, IDP: IDP{
-				JWKSUrl:        "https://idp.example.com/jwks",
-				Issuer:         []string{"https://idp.example.com"},
-				ValidationMode: "scope",
+				JWKSUrl: "https://idp.example.com/jwks",
+				Issuer:  []string{"https://idp.example.com"},
 			}},
 		},
 		{
@@ -337,6 +445,13 @@ func TestValidateAuthConfig(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			// Every case exercises an authentication concern, so fill in the
+			// authorization mode DefaultConfig would supply unless the case
+			// sets one itself — TestValidateAuthorizationConfig covers that
+			// section on its own.
+			if tt.auth.Authorization.Mode == "" {
+				tt.auth.Authorization.Mode = AuthzModeScope
+			}
 			err := validateAuthConfig(&tt.auth)
 			if tt.wantErr != "" {
 				require.Error(t, err)
@@ -346,6 +461,80 @@ func TestValidateAuthConfig(t *testing.T) {
 			}
 		})
 	}
+}
+
+// validateAuthorizationConfig: [auth.authorization] is validated in every auth
+// mode, so role-based authorization is reachable whether tokens are verified
+// against an IDP's JWKS or with a local public key.
+func TestValidateAuthorizationConfig(t *testing.T) {
+	tests := []struct {
+		name    string
+		authz   Authorization
+		claims  ClaimMappings
+		wantErr string
+	}{
+		{
+			name:  "scope mode needs nothing else",
+			authz: Authorization{Enabled: true, Mode: AuthzModeScope},
+		},
+		{
+			name:   "role mode fully configured",
+			authz:  Authorization{Enabled: true, Mode: AuthzModeRole, RoleToScopeMapping: "/etc/platform-api/role-to-scope-mapping.yaml"},
+			claims: ClaimMappings{Roles: "realm_access.roles"},
+		},
+		{
+			name:    "role mode without roles claim mapping",
+			authz:   Authorization{Enabled: true, Mode: AuthzModeRole, RoleToScopeMapping: "/etc/platform-api/role-to-scope-mapping.yaml"},
+			wantErr: "auth.claim_mappings.roles",
+		},
+		{
+			name:    "role mode without role_to_scope_mapping file",
+			authz:   Authorization{Enabled: true, Mode: AuthzModeRole},
+			claims:  ClaimMappings{Roles: "roles"},
+			wantErr: "auth.authorization.role_to_scope_mapping",
+		},
+		{
+			name:    "unknown mode rejected",
+			authz:   Authorization{Enabled: true, Mode: "rbac"},
+			wantErr: "auth.authorization.mode must be",
+		},
+		{
+			name:    "empty mode rejected",
+			authz:   Authorization{Enabled: true},
+			wantErr: "auth.authorization.mode must be",
+		},
+		{
+			// Disabling enforcement doesn't excuse an invalid mode: flipping
+			// enabled back on must not be what surfaces the misconfiguration.
+			name:    "invalid mode rejected even when disabled",
+			authz:   Authorization{Mode: "rbac"},
+			wantErr: "auth.authorization.mode must be",
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			err := validateAuthorizationConfig(&tt.authz, &tt.claims)
+			if tt.wantErr != "" {
+				require.Error(t, err)
+				assert.Contains(t, err.Error(), tt.wantErr)
+			} else {
+				assert.NoError(t, err)
+			}
+		})
+	}
+}
+
+// Role-based authorization is configured independently of the authentication
+// mode, so it must validate in internal_token mode too — where it previously
+// lived under [auth.idp] and was unreachable.
+func TestValidateAuthConfig_RoleAuthorizationInInternalTokenMode(t *testing.T) {
+	auth := Auth{
+		Mode:          AuthModeInternalToken,
+		JWT:           JWT{PublicKeyFile: validJWTPublicKeyFile},
+		Authorization: Authorization{Enabled: true, Mode: AuthzModeRole, RoleToScopeMapping: "/etc/platform-api/role-to-scope-mapping.yaml"},
+		ClaimMappings: ClaimMappings{Roles: "roles"},
+	}
+	assert.NoError(t, validateAuthConfig(&auth))
 }
 
 // The HTTPS listener is on (and the plain-HTTP listener off) unless an operator
@@ -455,4 +644,110 @@ read        = "10s"
 		require.Error(t, err)
 		assert.Contains(t, err.Error(), "must not exceed")
 	})
+}
+
+// The shipped config must never carry a functional default admin credential: a
+// baked-in username/password hash gives every fresh install a known-password admin,
+// which now also holds ap:api_key:all:manage over every user's API keys
+// (authentication_authorization.md GO-AUTH-014). The credential comes from the
+// environment via the 1-arg {{ env }} form, which fails closed when unset.
+func TestNoDefaultAdminCredential(t *testing.T) {
+	t.Run("config.toml ships fail-closed tokens, not a default credential", func(t *testing.T) {
+		shipped, err := os.ReadFile("config.toml")
+		require.NoError(t, err)
+		assert.Contains(t, string(shipped), `username      = '{{ env "APIP_CP_ADMIN_USERNAME" }}'`)
+		assert.Contains(t, string(shipped), `password_hash = '{{ env "APIP_CP_ADMIN_PASSWORD_HASH" }}'`)
+		assert.NotContains(t, string(shipped), "$2y$10$U2yKMwG",
+			"config.toml must not ship a default admin password hash")
+	})
+
+	t.Run("defaults ship no built-in user", func(t *testing.T) {
+		assert.Empty(t, defaultConfig().Auth.File.Users,
+			"defaultConfig must not supply an admin user; auth.mode=file requires an operator-provided one")
+	})
+
+	t.Run("startup fails closed when the admin env vars are unset", func(t *testing.T) {
+		path := filepath.Join(t.TempDir(), "c.toml")
+		body := `[platform_api.security]
+encryption_key = "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
+
+[platform_api.auth]
+mode = "file"
+
+[platform_api.auth.authorization]
+role_to_scope_mapping = "/etc/platform-api/role-to-scope-mapping.yaml"
+
+[platform_api.auth.jwt]
+public_key_file = "` + validJWTPublicKeyFile + `"
+private_key_file = "` + validJWTPrivateKeyFile + `"
+token_ttl = "1h"
+
+[platform_api.auth.file.organization]
+id = "default"
+display_name = "Default"
+
+[[platform_api.auth.file.users]]
+username      = '{{ env "APIP_CP_ADMIN_USERNAME" }}'
+password_hash = '{{ env "APIP_CP_ADMIN_PASSWORD_HASH" }}'
+roles         = ["ap_admin"]
+`
+		require.NoError(t, os.WriteFile(path, []byte(body), 0o600))
+
+		// Capture before unsetting: t.Setenv below would otherwise "restore" to
+		// the already-cleared value, leaking the change to later tests.
+		for _, key := range []string{"APIP_CP_ADMIN_USERNAME", "APIP_CP_ADMIN_PASSWORD_HASH"} {
+			original, wasSet := os.LookupEnv(key)
+			t.Cleanup(func() {
+				if wasSet {
+					os.Setenv(key, original)
+				} else {
+					os.Unsetenv(key)
+				}
+			})
+			require.NoError(t, os.Unsetenv(key))
+		}
+		_, err := LoadConfig(path)
+		require.Error(t, err, "unset admin credentials must abort startup, never fall back to a default")
+		assert.Contains(t, err.Error(), "APIP_CP_ADMIN")
+
+		// Provisioned (as portals/scripts/setup.sh does) the same config loads cleanly.
+		t.Setenv("APIP_CP_ADMIN_USERNAME", "generated-admin")
+		// A real bcrypt digest (cost 12) so the fixture stays valid if the
+		// password_hash check ever tightens beyond "non-empty".
+		t.Setenv("APIP_CP_ADMIN_PASSWORD_HASH", "$2a$12$Ex32Q7Xl2pyyimAtsZUDaeoXkuUBhs5yDiEZsPRIafxSJYRncelz6")
+		cfg, err := LoadConfig(path)
+		require.NoError(t, err)
+		require.Len(t, cfg.Auth.File.Users, 1)
+		assert.Equal(t, "generated-admin", cfg.Auth.File.Users[0].Username)
+	})
+}
+
+// auth.file.users[].roles is a list, so a user whose persona spans two shipped
+// roles names both rather than needing a role defined for the combination. The
+// list is also written with an {{ env }} token in one element, pinning that
+// interpolation reaches into array elements and not just scalars — a regression
+// there would silently hand the raw "{{ env ... }}" string to the role lookup
+// and grant the user nothing.
+func TestLoadConfig_FileUserRolesList(t *testing.T) {
+	t.Setenv("APIP_CP_USER_ROLE", "ap_operator")
+	cfg, err := loadWithKeys(t, `private_key_file = "`+validJWTPrivateKeyFile+`"
+
+[platform_api.auth]
+mode = "file"
+
+[platform_api.auth.authorization]
+role_to_scope_mapping = "/etc/platform-api/role-to-scope-mapping.yaml"
+
+[platform_api.auth.file.organization]
+id = "default"
+display_name = "Default"
+
+[[platform_api.auth.file.users]]
+username      = "admin"
+password_hash = "$2a$12$hash"
+roles         = ['{{ env "APIP_CP_USER_ROLE" "ap_admin" }}', "ap_viewer"]
+`)
+	require.NoError(t, err)
+	require.Len(t, cfg.Auth.File.Users, 1)
+	assert.Equal(t, []string{"ap_operator", "ap_viewer"}, cfg.Auth.File.Users[0].Roles)
 }

@@ -21,6 +21,7 @@ package tracing
 import (
 	"context"
 	"net"
+	"sync"
 	"testing"
 	"time"
 
@@ -45,11 +46,34 @@ type testOTLPServer struct {
 	server   *grpc.Server
 	listener net.Listener
 	addr     string
+
+	mu       sync.Mutex
+	requests []*coltracepb.ExportTraceServiceRequest
 }
 
 // Export implements the OTLP trace service Export method
 func (s *testOTLPServer) Export(ctx context.Context, req *coltracepb.ExportTraceServiceRequest) (*coltracepb.ExportTraceServiceResponse, error) {
+	s.mu.Lock()
+	s.requests = append(s.requests, req)
+	s.mu.Unlock()
 	return &coltracepb.ExportTraceServiceResponse{}, nil
+}
+
+// resourceAttributes flattens the resource attributes of every exported batch into
+// a single map, so a test can assert what resource a span was actually tagged with.
+func (s *testOTLPServer) resourceAttributes() map[string]string {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	attrs := map[string]string{}
+	for _, req := range s.requests {
+		for _, rs := range req.GetResourceSpans() {
+			for _, attr := range rs.GetResource().GetAttributes() {
+				attrs[attr.GetKey()] = attr.GetValue().GetStringValue()
+			}
+		}
+	}
+	return attrs
 }
 
 // startTestOTLPServer starts a test OTLP server on a random port
@@ -430,6 +454,51 @@ func TestInitTracer_EnabledWithTestServer(t *testing.T) {
 
 	// Call shutdown to clean up
 	shutdown()
+}
+
+// TestInitTracer_ResourceAttributes asserts that exported spans carry both the
+// attributes configured under [tracing.resource_attributes] and any picked up from
+// OTEL_RESOURCE_ATTRIBUTES, with the configured values winning on a collision.
+// The environment half of that comes from sdktrace.WithResource merging over
+// resource.Environment() rather than from any detector passed to resource.New, so
+// this test also guards against a refactor that builds the resource differently and
+// silently drops environment attributes.
+func TestInitTracer_ResourceAttributes(t *testing.T) {
+	testServer := startTestOTLPServer(t)
+	defer testServer.stop()
+
+	t.Setenv("OTEL_RESOURCE_ATTRIBUTES", "deployment.environment=from-env,service.namespace=from-env")
+
+	cfg := &config.Config{
+		TracingConfig: config.TracingConfig{
+			Enabled:            true,
+			Endpoint:           testServer.addr,
+			Insecure:           true,
+			ServiceVersion:     "1.0.0",
+			BatchTimeout:       time.Second,
+			MaxExportBatchSize: 512,
+			SamplingRate:       1.0,
+			ResourceAttributes: map[string]string{"deployment.environment": "from-config"},
+		},
+		PolicyEngine: config.PolicyEngine{
+			TracingServiceName: "test-policy-engine",
+		},
+	}
+
+	shutdown, err := InitTracer(cfg)
+	require.NoError(t, err)
+	require.NotNil(t, shutdown)
+
+	_, span := otel.Tracer("test").Start(context.Background(), "test-span")
+	span.End()
+
+	shutdown() // flushes the batcher, so the export has landed by the time this returns
+
+	attrs := testServer.resourceAttributes()
+	assert.Equal(t, "from-config", attrs["deployment.environment"], "config must override OTEL_RESOURCE_ATTRIBUTES")
+	assert.Equal(t, "from-env", attrs["service.namespace"], "env-only attributes must still be picked up")
+	assert.Equal(t, "test-policy-engine", attrs["service.name"])
+	assert.Equal(t, "1.0.0", attrs["service.version"])
 }
 
 func TestInitTracer_EnabledInsecureConnection(t *testing.T) {

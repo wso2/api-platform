@@ -119,3 +119,38 @@ func TestFetchOpenAPISpecFromURL_FetchAndSizeLimit(t *testing.T) {
 		t.Fatal("expected size-limit error, got nil")
 	}
 }
+
+func TestValidateExternalURL(t *testing.T) {
+	ctx := context.Background()
+	cases := []struct {
+		name    string
+		url     string
+		wantErr bool
+	}{
+		{"public ipv4 literal", "https://8.8.8.8", false},
+		{"cloud metadata", "http://169.254.169.254/latest/meta-data/", true},
+		{"loopback ipv4", "http://127.0.0.1", true},
+		{"loopback ipv4 with port and path", "http://127.0.0.1:8080/x", true},
+		{"private rfc1918 10", "http://10.0.0.5", true},
+		{"private rfc1918 192", "http://192.168.1.10:9000", true},
+		{"cgnat rfc6598", "http://100.64.0.1", true},
+		{"loopback ipv6", "http://[::1]", true},
+		{"link-local ipv6", "http://[fe80::1]", true},
+		{"unspecified ipv4", "http://0.0.0.0", true},
+		{"malformed", "not-a-url", true},
+		{"non-http scheme", "ftp://8.8.8.8", true},
+		{"userinfo credentials", "http://admin:value@8.8.8.8", true},
+		{"empty", "", true},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			err := ValidateExternalURL(ctx, tc.url)
+			if tc.wantErr && err == nil {
+				t.Errorf("ValidateExternalURL(%q): expected error, got nil", tc.url)
+			}
+			if !tc.wantErr && err != nil {
+				t.Errorf("ValidateExternalURL(%q): expected no error, got %v", tc.url, err)
+			}
+		})
+	}
+}

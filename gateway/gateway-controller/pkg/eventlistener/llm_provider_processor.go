@@ -95,6 +95,14 @@ func (l *EventListener) handleLLMProviderCreateOrUpdate(event eventhub.Event) {
 		return
 	}
 
+	// Coerce rendered-template strings back to their schema-declared types.
+	if l.policyValidator != nil {
+		if restAPI, ok := storedConfig.Configuration.(api.RestAPI); ok {
+			l.policyValidator.CoerceRestAPIPolicies(&restAPI)
+			storedConfig.Configuration = restAPI
+		}
+	}
+
 	// After hydration the entry contains the derived RestAPI view used by the
 	// normal in-memory routing, xDS, and policy update pipelines.
 	existing, _ := l.store.Get(entityID)
@@ -165,6 +173,14 @@ func (l *EventListener) handleLLMProxyCreateOrUpdate(event eventhub.Event) {
 			slog.String("event_id", event.EventID),
 			slog.Any("error", err))
 		return
+	}
+
+	// Coerce rendered-template strings back to their schema-declared types.
+	if l.policyValidator != nil {
+		if restAPI, ok := storedConfig.Configuration.(api.RestAPI); ok {
+			l.policyValidator.CoerceRestAPIPolicies(&restAPI)
+			storedConfig.Configuration = restAPI
+		}
 	}
 
 	existing, _ := l.store.Get(entityID)

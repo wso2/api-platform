@@ -70,6 +70,15 @@ const (
 	DeploymentStatusArchived    DeploymentStatus = "ARCHIVED" // Derived state: exists in history but not in status table
 )
 
+// IsDeployedOrDeploying reports whether the status represents a deployment that is
+// live on the gateway or on its way there — i.e. one whose desired state is DEPLOYED.
+// A deploy is DEPLOYING until the gateway acknowledges it, so callers gating on
+// "is this deployment active?" must accept both: treating DEPLOYING as inactive makes
+// an in-flight deployment impossible to undeploy and, conversely, deletable mid-flight.
+func (s DeploymentStatus) IsDeployedOrDeploying() bool {
+	return s == DeploymentStatusDeployed || s == DeploymentStatusDeploying
+}
+
 // DeploymentInfo is a lightweight representation of a deployment
 // Contains only the essential fields needed for listing deployments
 type DeploymentInfo struct {
@@ -78,7 +87,12 @@ type DeploymentInfo struct {
 	Handle       string           `json:"handle" db:"handle"` // Artifact handle (apiId)
 	Type         string           `json:"type" db:"type"`     // Artifact type: RestAPI, LLMProvider, LLMProxy, MCPProxy
 	Status       DeploymentStatus `json:"status" db:"status"`
-	PerformedAt  time.Time        `json:"performedAt" db:"performed_at"` // When the deploy/undeploy action was initiated
+	// StatusDesired is the terminal state the operation is driving towards
+	// (DEPLOYED/UNDEPLOYED), which stays meaningful while Status is still
+	// transitional (DEPLOYING/UNDEPLOYING). Falls back to Status when the row
+	// predates the column.
+	StatusDesired DeploymentStatus `json:"statusDesired" db:"status_desired"`
+	PerformedAt   time.Time        `json:"performedAt" db:"performed_at"` // When the deploy/undeploy action was initiated
 }
 
 // DeploymentMetadata represents the metadata section of the API deployment YAML

@@ -6,7 +6,7 @@ Backend service that powers the API Platform portals, gateways, and automation f
 
 ### Prerequisites
 
-Before using the Platform API, obtain a bearer token for authentication. In `file` or `external_token` auth mode you can generate a token using the HMAC key configured at `platform_api.auth.jwt.secret_key`. In `idp` mode, obtain a token from your identity provider. See [Configuration](#configuration) below.
+Before using the Platform API, obtain a bearer token for authentication. In `file` auth mode you can obtain a token from the login endpoint. In `internal_token` mode the token is minted by another trusted platform component, signed with the RSA private key matching `platform_api.auth.jwt.public_key_file`. In `idp` mode, obtain a token from your identity provider. See [Configuration](#configuration) below.
 
 ### Build and Run
 
@@ -22,12 +22,20 @@ go run ./cmd/main.go
 
 `config/config.toml` is the local-development config, used with `platform_api.auth.mode = "file"`
 (username/password login backed by the organization/user block in that file) — the same mode the
-AI Workspace and Developer Portal quickstarts use, so it works out of the box with either, with no
-env vars set. It's the one Platform API config shared by every quickstart (both docker-compose
-setups mount it directly), so its admin user's scopes cover both the `ap:*` (AI Workspace /
-platform-admin) and `dp:*` (Developer Portal) namespaces. Set `APIP_CP_ADMIN_USERNAME` /
-`APIP_CP_ADMIN_PASSWORD_HASH` to pick your own login credentials (generate a hash with
-`htpasswd -bnBC 12 "" <password> | tr -d ':\n'`), or set `platform_api.auth.mode = "external_token"`
+AI Workspace and API Portal quickstarts use. It's the one Platform API config shared by every
+quickstart (both docker-compose setups mount it directly), so its admin user is granted the
+`ap_admin` role from the mounted [`resources/role-to-scope-mapping.yaml`](resources/role-to-scope-mapping.yaml), which covers both
+the `ap:*` (Platform API) and `dp:*` (API Portal) namespaces. That one role is the whole grant —
+replace it, name more roles alongside it, or edit what it grants in
+`role-to-scope-mapping.yaml`.
+
+There is no default admin credential: `APIP_CP_ADMIN_USERNAME` and `APIP_CP_ADMIN_PASSWORD_HASH` are
+**required** in this mode, and startup fails closed if either is unset or empty. `portals/scripts/setup.sh`
+provisions both for the quickstarts, printing the generated password once. To set them yourself,
+generate a hash with `htpasswd -nBC 12 "" | tr -d ':\n'`, which prompts for the password instead of
+taking it as an argument — a password on the command line lands in shell history, `ps` output, and CI
+logs. Alternatively set
+`platform_api.auth.mode = "internal_token"`
 for locally-signed HMAC tokens with no local users — see
 [`config/config-template.toml`](config/config-template.toml) for the full reference.
 
@@ -274,9 +282,10 @@ All settings live under `[platform_api]` / `[platform_api.*]`. The main sections
 | `[platform_api.security]` | `encryption_key` (**required** — at-rest AES-256 key, 32 bytes as hex or base64, never auto-generated) |
 | `[platform_api.security.api_key]` | `hashing_algorithms` accepted for API key verification |
 | `[platform_api.database]` | `driver` (`sqlite3` / `postgres` / `sqlserver`), connection fields, pool sizing |
-| `[platform_api.auth]` | `mode` — one of `external_token`, `file`, or `idp`; `scope_validation`; `skip_paths` |
-| `[platform_api.auth.jwt]` | Asymmetric (RS256) token settings: `issuer`, `public_key` (**required** — PEM RSA public key, verifies tokens), `private_key` (**required in `file` mode** — PEM RSA private key, signs login tokens), `token_ttl` |
-| `[platform_api.auth.idp]` / `[platform_api.auth.claim_mappings]` | JWKS endpoint, issuer/audience, validation mode, and JWT claim-name mappings for `idp` mode |
+| `[platform_api.auth]` | `mode` — one of `internal_token`, `file`, or `idp` |
+| `[platform_api.auth.authorization]` | `enabled`, `mode` (`scope` / `role`), `role_to_scope_mapping` — applies in every auth mode |
+| `[platform_api.auth.jwt]` | Asymmetric (RS256) token settings: `issuer`, `public_key_file` (**required** — path to a PEM RSA public key, verifies tokens), `private_key_file` (**required in `file` mode** — path to a PEM RSA private key, signs login tokens), `token_ttl` |
+| `[platform_api.auth.idp]` / `[platform_api.auth.claim_mappings]` | JWKS endpoint and issuer/audience for `idp` mode; JWT claim-name mappings (all modes) |
 | `[platform_api.auth.file.organization]` / `[[platform_api.auth.file.users]]` | Local org + username/password/scope entries for `file` mode |
 | `[platform_api.server.http]` / `[platform_api.server.https]` | Listener enablement, ports, and (HTTPS) `cert_file` / `key_file` paths (certificates are always required for HTTPS — no self-signed fallback) |
 | `[platform_api.server.timeouts]` | Read/write/idle timeouts |
@@ -285,43 +294,113 @@ All settings live under `[platform_api]` / `[platform_api.*]`. The main sections
 | `[platform_api.deployments]` | Deployment caps and stuck-deployment timeout handling |
 | `[platform_api.gateway]` | Gateway registration verification toggles |
 | `[platform_api.event_hub]` | Multi-replica event delivery polling/retention |
-| `[platform_api.webhook]` | Developer Portal webhook receiver: `enabled`, `secret` (required when enabled), signature/body limits |
+| `[platform_api.webhook]` | API Portal webhook receiver: `enabled`, `secret` (required when enabled), signature/body limits |
 
 #### Authentication modes
 
 `platform_api.auth.mode` selects exactly one mode; only that mode's section is read:
 
-- **`external_token`** — verify locally-issued, asymmetrically-signed (RS256) JWTs (`[platform_api.auth.jwt]`); tokens are minted externally (e.g. by the Developer Portal) and signed with the matching RSA private key, verified here against `public_key`. Symmetric (HMAC) and unsigned (`none`) tokens are rejected.
-- **`file`** — `external_token` plus local username/password login: the login endpoint authenticates against `[platform_api.auth.file]` and issues RS256 JWTs signed with `[platform_api.auth.jwt].private_key`, verified with the matching `public_key`. Used by the AI Workspace and Developer Portal quickstarts.
+- **`internal_token`** — verify asymmetrically-signed (RS256) JWTs (`[platform_api.auth.jwt]`); tokens are minted by another trusted platform component and signed with the matching RSA private key, verified here against `public_key_file`. Symmetric (HMAC) and unsigned (`none`) tokens are rejected.
+- **`file`** — `internal_token` plus local username/password login: the login endpoint authenticates against `[platform_api.auth.file]` and issues RS256 JWTs signed with `[platform_api.auth.jwt].private_key_file`, verified with the matching `public_key_file`. Used by the AI Workspace and API Portal quickstarts.
 - **`idp`** — validate tokens against an external IDP's JWKS endpoint (Thunder, Asgardeo, Keycloak, Azure AD, Okta, etc.) via `[platform_api.auth.idp]`; `jwks_url` and `issuer` are required.
 
-`platform_api.auth.skip_paths` is a structured list (not a scalar), so it's edited directly in
-the file rather than through a single token; setting it replaces the built-in default list.
+The paths that bypass authentication and scope enforcement — health/metrics probes, the login
+endpoint, and the internal routes authenticated by a gateway token instead of a user JWT — are not
+configurable: the list is a property of the product's own routing, and a wrong entry in it is an
+auth bypass. Plugins declare their own public prefixes through `AuthSkipPaths()`, which are
+validated at startup. Use `auth.authorization.enabled` to control authorization enforcement.
+A config file still carrying `platform_api.auth.skip_paths` fails startup rather than having the
+key silently ignored.
 
 #### Role-Based Access Control (RBAC)
 
-Per-route scope checks are enforced when `platform_api.auth.scope_validation = true`. Five built-in platform roles exist:
+Per-route scope checks are enforced when `platform_api.auth.authorization.enabled = true`. The
+shipped [`resources/role-to-scope-mapping.yaml`](resources/role-to-scope-mapping.yaml) defines five roles, each granting scopes in
+both the `ap:*` (Platform API) and `dp:*` (Developer Portal) namespaces — one role covers a persona
+across both components:
 
 | Role | Persona | Access level |
 |---|---|---|
-| `admin` | Platform administrator | Full access to all resources and operations |
-| `developer` | API designer | Full API lifecycle; cannot manage gateways or subscription plans |
-| `publisher` | DevPortal manager | Read APIs and publish/unpublish to DevPortals; cannot create or deploy |
-| `operator` | CI/CD service account | Deploy and undeploy operations only; cannot create resources or manage credentials |
-| `viewer` | Auditor | Read-only access to all resources |
+| `ap_admin` | Platform administrator | Every resource and operation, both components |
+| `ap_operator` | Platform operator / CI-CD service account | Gateways, deployments, subscription plans, key managers, webhooks; reads everything else |
+| `ap_publisher` | API publisher | Full API/MCP/LLM lifecycle and its Developer Portal content; reads applications, subscriptions, plans |
+| `ap_subscriber` | API consumer | Own applications, subscriptions and keys; reads the API/MCP catalog and plans |
+| `ap_viewer` | Auditor | Read-only across both components |
+
+The roles are named after the platform rather than after any one IDP's convention, since the same
+file serves every auth mode — map your IDP's groups onto these names via `claim_mappings.roles`.
+Edit the file to change what a role grants; it needs a server restart to take effect.
 
 All three modes read identity fields — including scope — through the same
 `[platform_api.auth.claim_mappings]` table (`scope` defaults to the `scope` claim); `file` mode's
 login endpoint also signs the tokens it issues using these same claim names, so issuance and
-validation never drift apart. In **`idp` mode**, `validation_mode` additionally controls whether
-authorization uses the scope claim directly or expands IDP roles from `claim_mappings.roles` via
-`role_mappings`.
+validation never drift apart.
+
+Authorization is configured separately from authentication, in
+`[platform_api.auth.authorization]`, and applies in **every** auth mode — an enterprise IDP's token
+carries the same roles claim whether the platform verifies it against a JWKS endpoint or with a
+local public key:
+
+```toml
+[platform_api.auth.authorization]
+enabled       = true
+mode          = "role"                          # "scope" (default) or "role"
+role_to_scope_mapping = "/etc/platform-api/role-to-scope-mapping.yaml"  # required when mode = "role"
+```
+
+`mode = "scope"` authorizes from the scope claim directly. `mode = "role"` expands the roles claim
+named by `claim_mappings.roles` into platform scopes via the `role_to_scope_mapping` YAML file; both that
+claim mapping and the file path are required in role mode, so startup fails rather than falling
+back to using role names verbatim as scopes.
+
+The mapping file is operator-owned config, not part of the image: the packs mount their editable
+sample (`resources/role-to-scope-mapping.yaml`) at `/etc/platform-api/role-to-scope-mapping.yaml`.
+
+Validation of that file is namespace-scoped. An `ap:` scope must be declared in this server's OpenAPI
+spec (plus any its compiled-in plugins declare) — an unknown one fails startup rather than silently
+denying requests later. A scope in
+another component's namespace (`dp:*`) is checked only for shape: this server mints it into the token
+but never enforces it, so it can neither confirm nor deny that it exists. That is what lets one role
+describe a persona across the whole platform — and what makes a per-user scope list unnecessary.
+
+##### Granting a file-mode user roles
+
+A `file`-mode user is granted **only** roles — there is no per-user scope list. The login endpoint
+expands them through the same `role_to_scope_mapping` file when it mints the token, unioning what
+each grants:
+
+```toml
+[[platform_api.auth.file.users]]
+username      = '{{ env "APIP_CP_ADMIN_USERNAME" }}'
+password_hash = '{{ env "APIP_CP_ADMIN_PASSWORD_HASH" }}'
+roles         = ["ap_admin"]               # expanded via auth.authorization.role_to_scope_mapping
+```
+
+`roles` is a list, so a user whose persona spans two shipped roles names both rather than needing a
+sixth role defined for the combination — `roles = ["ap_publisher", "ap_subscriber"]` grants the union
+of the two, most-permissive wins, with duplicate scopes collapsed.
+
+The issued token carries **both**: the expanded scopes as the `scope` claim, and the role names as the
+`roles` claim. So the same login works under either authorization mode — `scope` (the default) checks
+the expanded claim, and flipping `auth.authorization.mode = "role"` re-expands the roles from the same
+`role-to-scope-mapping.yaml` on every request instead. `claim_mappings.roles` defaults to the flat `roles` claim the
+login endpoint signs, so that switch needs no extra claim wiring.
+
+At least one role is required, and startup fails if a user has none or names one the mapping file
+doesn't define — either way that user would authenticate successfully and then be denied every route.
+Because the mapping is the only place a grant is expressed, no user can drift out of step with the
+roles it names, and widening or narrowing a persona is one edit in one file. To grant something no
+combination of shipped roles covers, add a role to `role-to-scope-mapping.yaml`.
+
+This is how the shipped `config/config.toml` grants its admin user: `roles = ["ap_admin"]` and nothing
+else. Changing what that user can do means editing the mounted `role-to-scope-mapping.yaml`, which makes that file the
+security-relevant one to review in a pack.
 
 ### Providing secrets via the config file
 
 Never write raw secret values into the config file, and never hardcode them as literals in a
-compose file. Reference each secret (`security.encryption_key`, `auth.jwt.secret_key`,
-`database.password`, `webhook.secret`, …) with an interpolation token, preferring a mounted file
+compose file. Reference each secret (`security.encryption_key`, `database.password`,
+`webhook.secret`, …) with an interpolation token, preferring a mounted file
 over an env var:
 
 ```toml

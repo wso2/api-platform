@@ -35,9 +35,9 @@ const (
 )
 
 // applicationData is the data payload for application.* events. description and type are absent on
-// application.deleted. handle is the Developer Portal application handle, which the Platform API
+// application.deleted. handle is the API Portal application handle, which the Platform API
 // stores as the application handle and uses as the resolution key across all application events.
-// application_id (the Developer Portal's internal id) is received but not used for resolution. type
+// application_id (the API Portal's internal id) is received but not used for resolution. type
 // is the application type (e.g. "genai", "web"), validated by the service layer.
 type applicationData struct {
 	ApplicationID string `json:"application_id"`
@@ -47,7 +47,7 @@ type applicationData struct {
 	Type          string `json:"type"`
 }
 
-// handleApplicationCreated reconciles an application created in the Developer Portal.
+// handleApplicationCreated reconciles an application created in the API Portal.
 func (r *Receiver) handleApplicationCreated(ctx context.Context, env *Envelope) error {
 	var d applicationData
 	if err := env.decodeData(&d); err != nil {
@@ -70,7 +70,7 @@ func (r *Receiver) handleApplicationCreated(ctx context.Context, env *Envelope) 
 	return nil
 }
 
-// handleApplicationUpdated reconciles an application renamed/updated in the Developer Portal.
+// handleApplicationUpdated reconciles an application renamed/updated in the API Portal.
 // Deliveries are at-least-once and fired once, so if the create event was missed this upserts.
 func (r *Receiver) handleApplicationUpdated(ctx context.Context, env *Envelope) error {
 	var d applicationData
@@ -107,7 +107,7 @@ func (r *Receiver) handleApplicationUpdated(ctx context.Context, env *Envelope) 
 	return nil
 }
 
-// handleApplicationDeleted reconciles an application deleted in the Developer Portal.
+// handleApplicationDeleted reconciles an application deleted in the API Portal.
 func (r *Receiver) handleApplicationDeleted(ctx context.Context, env *Envelope) error {
 	var d applicationData
 	if err := env.decodeData(&d); err != nil {

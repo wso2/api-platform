@@ -16,9 +16,11 @@
  * under the License.
  */
 
-import { PLATFORM_API_BASE_URL, CSRF_HEADER, CSRF_VALUE } from '../config.env';
+import { CSRF_HEADER, CSRF_VALUE } from '../config.env';
+import { PLATFORM_API_BASE_URL } from '../paths';
 import { logger } from '../utils/logger';
 import { ApiError, buildApiError } from '../utils/apiError';
+import { handleUnauthorizedResponse } from '../auth/logout';
 
 // ============================================================================
 // Platform API Types
@@ -80,6 +82,7 @@ const mutatingHeaders = (): Record<string, string> => ({
  * instead of string-matching the message.
  */
 const parseApiError = async (res: Response): Promise<ApiError> => {
+  handleUnauthorizedResponse(res);
   let body: unknown;
   try {
     body = await res.json();

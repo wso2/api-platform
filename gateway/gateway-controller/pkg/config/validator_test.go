@@ -199,8 +199,9 @@ func TestValidateAuthConfig_IDPAuthEnabled(t *testing.T) {
 					Enabled: false,
 				},
 				IDP: IDPConfig{
-					Enabled: true,
-					JWKSURL: "https://idp.example.com/jwks",
+					Enabled:    true,
+					JWKSURL:    "https://idp.example.com/jwks",
+					RolesClaim: "roles",
 				},
 			},
 		},
@@ -208,6 +209,29 @@ func TestValidateAuthConfig_IDPAuthEnabled(t *testing.T) {
 
 	err := config.validateAuthConfig()
 	assert.NoError(t, err)
+}
+
+func TestValidateAuthConfig_IDPAuthEnabledEmptyRolesClaim_FailsClosed(t *testing.T) {
+	// IDP enabled with an empty roles_claim is almost always a misconfiguration:
+	// the JWT authenticator retains authorization and resolves such tokens to
+	// zero roles, so every role-protected route would deny by default. Fail fast
+	// at startup with a clear error rather than starting in that state.
+	config := &Config{
+		Controller: Controller{
+			Auth: AuthConfig{
+				Basic: BasicAuth{Enabled: false},
+				IDP: IDPConfig{
+					Enabled:    true,
+					JWKSURL:    "https://idp.example.com/jwks",
+					RolesClaim: "",
+				},
+			},
+		},
+	}
+
+	err := config.validateAuthConfig()
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "roles_claim is empty")
 }
 
 func TestValidateAuthConfig_BothAuthEnabled(t *testing.T) {
@@ -222,8 +246,9 @@ func TestValidateAuthConfig_BothAuthEnabled(t *testing.T) {
 					},
 				},
 				IDP: IDPConfig{
-					Enabled: true,
-					JWKSURL: "https://idp.example.com/jwks",
+					Enabled:    true,
+					JWKSURL:    "https://idp.example.com/jwks",
+					RolesClaim: "roles",
 				},
 			},
 		},
@@ -855,6 +880,35 @@ func TestValidateUpstreamDefinitions_NoTimeout(t *testing.T) {
 
 	errors := validator.validateUpstreamDefinitions(definitions)
 	assert.Empty(t, errors, "No timeout should be valid")
+}
+
+// TestValidateUpstreamDefinitions_NonPositiveConnectTimeout asserts that a zero (or otherwise
+// non-positive) connect timeout is rejected at validation time. Zero does not disable a connect
+// timeout (Envoy requires connect_timeout > 0s and the transformer rejects it), so accepting it
+// here would let a definition deploy that can never be translated.
+func TestValidateUpstreamDefinitions_NonPositiveConnectTimeout(t *testing.T) {
+	validator := NewAPIValidator()
+
+	for _, zero := range []string{"0s", "0ms"} {
+		connect := zero
+		definitions := &[]api.UpstreamDefinition{
+			{
+				Name:    "my-upstream",
+				Timeout: &api.UpstreamTimeout{Connect: &connect},
+				Upstreams: []struct {
+					Url    string `json:"url" yaml:"url"`
+					Weight *int   `json:"weight,omitempty" yaml:"weight,omitempty"`
+				}{
+					{Url: "http://backend:8080"},
+				},
+			},
+		}
+
+		errors := validator.validateUpstreamDefinitions(definitions)
+		if assert.NotEmpty(t, errors, "connect timeout %q must be rejected (must be positive)", zero) {
+			assert.Contains(t, errors[0].Message, "must be positive")
+		}
+	}
 }
 
 func TestValidateUpstreamRef_ValidRef(t *testing.T) {

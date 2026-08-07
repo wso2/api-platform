@@ -1,0 +1,32 @@
+<!--
+ * Copyright (c) 2026, WSO2 LLC. (http://www.wso2.com) All Rights Reserved.
+ *
+ * API Workflows Gallery
+ -->
+
+<div class="page-container">
+  <div class="page-header">
+    <div>
+      <h1 class="page-title">API Workflows</h1>
+      <p class="page-desc">Pre-configured workflows let your AI agents reference these best practices to use your APIs correctly, every time — no hallucination, no manual setup.</p>
+    </div>
+  </div>
+
+  {{#if apiWorkflows.length}}
+  <div class="wf-grid">
+    {{#each apiWorkflows}}
+    {{> workflow-card}}
+    {{/each}}
+  </div>
+  {{else}}
+  <div class="dp-empty">
+    <span class="dp-empty-icon">
+      <i class="bi bi-diagram-3"></i>
+    </span>
+    <h2 class="dp-empty-title">No workflows yet</h2>
+    <p class="dp-empty-desc">There are no published workflows available right now. Once they're published, they'll appear here for your AI agents to follow.</p>
+  </div>
+  {{/if}}
+
+  {{> alert}}
+</div>

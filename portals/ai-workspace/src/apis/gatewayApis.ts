@@ -12,7 +12,7 @@
  */
 
 import { get, post, del } from '../clients/choreoApiClient';
-import { PLATFORM_API_BASE_URL } from '../config.env';
+import { PLATFORM_API_BASE_URL } from '../paths';
 import { logger } from '../utils/logger';
 import type {
   GatewayListResponse,

@@ -10,7 +10,7 @@ This document captures research findings and technical decisions for implementin
 
 ### 1. Envoy ext_proc Integration
 
-**Decision**: Use Envoy v1.36.2 ext_proc filter with gRPC streaming protocol
+**Decision**: Use Envoy v1.38.3 ext_proc filter with gRPC streaming protocol
 
 **Rationale**:
 - ext_proc is the official Envoy extension point for external request/response processing
@@ -30,7 +30,7 @@ This document captures research findings and technical decisions for implementin
 - Handle request headers, request body, response headers, and response body callbacks
 
 **References**:
-- Envoy ext_proc documentation: https://www.envoyproxy.io/docs/envoy/v1.36.2/configuration/http/http_filters/ext_proc_filter
+- Envoy ext_proc documentation: https://www.envoyproxy.io/docs/envoy/v1.38.3/configuration/http/http_filters/ext_proc_filter
 - go-control-plane library: https://github.com/envoyproxy/go-control-plane
 
 ---
@@ -57,7 +57,7 @@ This document captures research findings and technical decisions for implementin
 - Policy configurations represented as xDS resources
 
 **References**:
-- xDS protocol: https://www.envoyproxy.io/docs/envoy/v1.36.2/api-docs/xds_protocol
+- xDS protocol: https://www.envoyproxy.io/docs/envoy/v1.38.3/api-docs/xds_protocol
 - go-control-plane examples: https://github.com/envoyproxy/go-control-plane/tree/main/pkg/test/v3
 
 ---

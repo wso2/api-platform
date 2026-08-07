@@ -371,6 +371,8 @@ func validateUpstreamDefinitionsList(fieldPrefix string, definitions *[]api.Upst
 		// Timeout validation is limited to connect timeout. Enforce the same single-unit duration
 		// pattern as the CRD/OpenAPI so gateway validation cannot diverge from CRD admission, then
 		// a ParseDuration guard for pathological overflow — mirroring validateResilienceTimeouts.
+		// Unlike the resilience timeouts, zero does not disable a connect timeout: the transformer
+		// requires a positive value (and Envoy rejects connect_timeout <= 0s)
 		if def.Timeout != nil && def.Timeout.Connect != nil {
 			timeoutStr := strings.TrimSpace(*def.Timeout.Connect)
 			if timeoutStr != "" {
@@ -379,12 +381,17 @@ func validateUpstreamDefinitionsList(fieldPrefix string, definitions *[]api.Upst
 						Field:   fmt.Sprintf("%s[%d].timeout.connect", fieldPrefix, i),
 						Message: "Invalid timeout format (expected a single-unit duration like '30s', '1m', '500ms')",
 					})
-				} else if _, err := time.ParseDuration(timeoutStr); err != nil {
+				} else if duration, err := time.ParseDuration(timeoutStr); err != nil {
 					// The pattern guarantees a single-unit value; ParseDuration is a final guard
 					// against pathological overflow (e.g. "99999999999999999999s").
 					errors = append(errors, ValidationError{
 						Field:   fmt.Sprintf("%s[%d].timeout.connect", fieldPrefix, i),
 						Message: fmt.Sprintf("Invalid timeout format: %v", err),
+					})
+				} else if duration <= 0 {
+					errors = append(errors, ValidationError{
+						Field:   fmt.Sprintf("%s[%d].timeout.connect", fieldPrefix, i),
+						Message: "Connect timeout must be positive",
 					})
 				}
 			}
@@ -459,7 +466,7 @@ func (v *APIValidator) validateRestData(spec *api.APIConfigData) []ValidationErr
 	errors = append(errors, v.validateResilience("spec.resilience", spec.Resilience)...)
 
 	// Validate operations
-	errors = append(errors, v.validateOperations(spec.Operations)...)
+	errors = append(errors, v.validateOperations(spec.Context, spec.Operations)...)
 
 	return errors
 }
@@ -551,8 +558,14 @@ func (v *APIValidator) ValidateContext(context string) []ValidationError {
 	return errors
 }
 
-// validateOperations validates the operations configuration
-func (v *APIValidator) validateOperations(operations []api.Operation) []ValidationError {
+// validateOperations validates the operations configuration. context is the
+// API's own spec.Context, needed here (alongside each operation's own path) to
+// reject an operation whose combined route path falls under the reserved
+// constants.GatewayHealthPathPrefix namespace (see buildGatewayHealthRoutes in
+// gateway-controller/pkg/xds/translator.go) — that namespace is reserved for the
+// gateway's own /ready and /healthy direct-response routes, and must never be
+// reachable by anything an API defines.
+func (v *APIValidator) validateOperations(context string, operations []api.Operation) []ValidationError {
 	var errors []ValidationError
 
 	if len(operations) == 0 {
@@ -610,6 +623,10 @@ func (v *APIValidator) validateOperations(operations []api.Operation) []Validati
 			})
 		}
 
+		// The combined route path (context + operation path) must not fall under
+		// the reserved gateway health-check namespace.
+		errors = append(errors, validateNotReservedHealthPath(pathField, joinContextPath(context, path))...)
+
 		// Validate path parameters have balanced braces
 		if !v.validatePathParameters(path) {
 			errors = append(errors, ValidationError{
@@ -623,6 +640,15 @@ func (v *APIValidator) validateOperations(operations []api.Operation) []Validati
 	}
 
 	return errors
+}
+
+// joinContextPath concatenates a resource's context and an operation's path into
+// the combined route path. It does not canonicalize the result — canonicalization
+// (needed to catch dot-segment paths that resolve into the reserved health
+// namespace once Envoy's NormalizePath runs at request time) is handled by
+// validateNotReservedHealthPath itself, so every caller gets it uniformly.
+func joinContextPath(context, opPath string) string {
+	return strings.TrimSuffix(context, "/") + "/" + strings.TrimPrefix(opPath, "/")
 }
 
 // validatePathParameters checks if path parameters have balanced braces

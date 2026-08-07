@@ -35,14 +35,16 @@ import (
 type APIKeyUserHandler struct {
 	apiKeyUserService *service.APIKeyUserService
 	identity          *service.IdentityService
+	authzMode         string
 	slogger           *slog.Logger
 }
 
 // NewAPIKeyUserHandler creates a new APIKeyUserHandler.
-func NewAPIKeyUserHandler(apiKeyUserService *service.APIKeyUserService, identity *service.IdentityService, slogger *slog.Logger) *APIKeyUserHandler {
+func NewAPIKeyUserHandler(apiKeyUserService *service.APIKeyUserService, identity *service.IdentityService, authzMode string, slogger *slog.Logger) *APIKeyUserHandler {
 	return &APIKeyUserHandler{
 		apiKeyUserService: apiKeyUserService,
 		identity:          identity,
+		authzMode:         authzMode,
 		slogger:           slogger,
 	}
 }
@@ -67,7 +69,11 @@ func (h *APIKeyUserHandler) ListUserAPIKeys(w http.ResponseWriter, r *http.Reque
 
 	limit, offset := parsePagination(r)
 
-	response, err := h.apiKeyUserService.ListAPIKeysByUser(r.Context(), orgID, callerUserID, types, limit, offset)
+	// Holding constants.ScopeAPIKeyAllManage widens this listing from the caller's own keys
+	// to every user's keys in the organization.
+	keyAdmin := middleware.HasEffectiveScope(r, h.authzMode, constants.ScopeAPIKeyAllManage)
+
+	response, err := h.apiKeyUserService.ListAPIKeysByUser(r.Context(), orgID, callerUserID, keyAdmin, types, limit, offset)
 	if err != nil {
 		return apperror.Internal.Wrap(err).
 			WithLogMessage("failed to list API keys for user in org " + orgID)

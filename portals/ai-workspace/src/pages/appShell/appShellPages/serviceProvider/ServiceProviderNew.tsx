@@ -38,7 +38,7 @@ import { useAppAuth } from '../../../../contexts/AppAuthContext';
 import { SCOPES } from '../../../../auth/permissions';
 import { useAppShell } from '../../../../contexts/AppShellContext';
 import * as providerTemplateApis from '../../../../apis/providerTemplateApis';
-import { PLATFORM_API_BASE_URL } from '../../../../config.env';
+import { PLATFORM_API_BASE_URL } from '../../../../paths';
 import {
   buildOrgPath,
   buildProjectPath,
@@ -53,7 +53,10 @@ import type {
   GuardrailSelection,
 } from './AddNewProvider/serviceProviderTypes';
 import type { ProviderTemplate } from '../../../../utils/types';
-import { familyHandle } from '../../../../utils/providerTemplateDisplay';
+import {
+  COST_POLICY_NAME,
+  autoAttachesCostPolicy,
+} from '../../../../utils/providerTemplateDisplay';
 import TemplateVersionDialog from './AddNewProvider/TemplateVersionDialog';
 import { getErrorMessage, getFieldErrors } from '../../../../utils/apiError';
 import { FormattedMessage } from 'react-intl';
@@ -341,19 +344,36 @@ export default function ServiceProviderNew() {
       setFieldErrors({});
       const providerId = toProviderId(formState.name);
 
+      // The API key is optional. A credential-bearing auth type with no key
+      // entered stores nothing to inject, so record it as 'none'. Sending
+      // 'api-key' with an empty value creates a provider the gateway rejects
+      // at deployment time.
+      const hasCredential = Boolean(formState.upstreamAuthValue.trim());
+      const isNoCredentialsAuthType =
+        formState.upstreamAuthType === 'other' ||
+        formState.upstreamAuthType === 'none';
+      const auth =
+        isNoCredentialsAuthType || !hasCredential
+          ? {
+              type: isNoCredentialsAuthType
+                ? formState.upstreamAuthType
+                : 'none',
+              header: '',
+              value: '',
+            }
+          : {
+              type: formState.upstreamAuthType,
+              header: formState.upstreamAuthHeader,
+              value: formState.valuePrefix
+                ? `${formState.valuePrefix.trimEnd()} ${formState.upstreamAuthValue}`
+                : formState.upstreamAuthValue,
+            };
+
       const upstream = {
         main: {
           url: formState.upstreamUrl,
           ref: '',
-          auth: {
-            type: formState.upstreamAuthType,
-            header: formState.upstreamAuthHeader,
-
-            value:
-              formState.valuePrefix && formState.upstreamAuthValue.trim()
-                ? `${formState.valuePrefix.trimEnd()} ${formState.upstreamAuthValue}`
-                : formState.upstreamAuthValue,
-          },
+          auth,
         },
       };
 
@@ -377,9 +397,8 @@ export default function ServiceProviderNew() {
         upstream,
         security,
         globalPolicies: [
-          ...(familyHandle(selectedTemplateId) !== 'azure-openai' &&
-          familyHandle(selectedTemplateId) !== 'azureai-foundry'
-            ? [{ name: 'llm-cost', version: 'v1', params: {} }]
+          ...(autoAttachesCostPolicy(selectedTemplateId)
+            ? [{ name: COST_POLICY_NAME, version: 'v1', params: {} }]
             : []),
           ...guardrails.map((guardrail) => ({
             name: guardrail.name,

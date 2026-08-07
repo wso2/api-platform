@@ -19,6 +19,7 @@ package service
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log/slog"
 	"strings"
@@ -61,10 +62,13 @@ func NewLLMProxyAPIKeyService(
 	}
 }
 
-// ListLLMProxyAPIKeys returns API keys for an LLM proxy, filtered to those created by userID.
+// ListLLMProxyAPIKeys returns API keys for an LLM proxy, filtered to those created by userID —
+// or every key on the proxy when keyAdmin is true (the caller holds
+// constants.ScopeAPIKeyAllManage).
 func (s *LLMProxyAPIKeyService) ListLLMProxyAPIKeys(
 	ctx context.Context,
 	proxyID, orgID, userID string,
+	keyAdmin bool,
 	limit, offset int,
 ) (*api.LLMProxyAPIKeyListResponse, error) {
 
@@ -83,7 +87,7 @@ func (s *LLMProxyAPIKeyService) ListLLMProxyAPIKeys(
 		return nil, fmt.Errorf("failed to list API keys: %w", err)
 	}
 
-	items, err := ownedAPIKeyItems(keys, userID, s.identity)
+	items, err := ownedAPIKeyItems(keys, userID, keyAdmin, s.identity)
 	if err != nil {
 		return nil, err
 	}
@@ -100,10 +104,13 @@ func (s *LLMProxyAPIKeyService) ListLLMProxyAPIKeys(
 	}, nil
 }
 
-// DeleteLLMProxyAPIKey deletes the API key from the database and broadcasts a revoke event to gateways.
+// DeleteLLMProxyAPIKey deletes the API key from the database and broadcasts a revoke event to
+// gateways. Only the key's creator may delete it, unless keyAdmin is true (the caller holds
+// constants.ScopeAPIKeyAllManage).
 func (s *LLMProxyAPIKeyService) DeleteLLMProxyAPIKey(
 	ctx context.Context,
 	proxyID, orgID, userID, keyName string,
+	keyAdmin bool,
 ) error {
 
 	proxy, err := s.llmProxyRepo.GetByID(proxyID, orgID)
@@ -124,8 +131,7 @@ func (s *LLMProxyAPIKeyService) DeleteLLMProxyAPIKey(
 		return apperror.LLMProxyAPIKeyNotFound.New()
 	}
 
-	// Non-admin callers (userID != "") must be the key creator.
-	if userID != "" && existingKey.CreatedBy != userID {
+	if !canManageAPIKey(existingKey.CreatedBy, userID, keyAdmin) {
 		return apperror.LLMProxyAPIKeyForbidden.New()
 	}
 
@@ -179,6 +185,14 @@ func (s *LLMProxyAPIKeyService) CreateLLMProxyAPIKey(
 	if proxy == nil {
 		s.slogger.Warn("LLM proxy not found", "proxyId", proxyID, "organizationId", orgID)
 		return nil, apperror.ArtifactNotFound.New()
+	}
+
+	// Reject an already-expired expiry before generating/hashing key material, so an
+	// invalid request never costs that work (same rule the REST key path applies via
+	// resolveExpiresAt).
+	if err := validateExpiryInFuture(req.ExpiresAt); err != nil {
+		s.slogger.Warn("Invalid expiration for LLM proxy API key creation", "proxyId", proxyID)
+		return nil, err
 	}
 
 	apiKey, err := utils.GenerateAPIKey()
@@ -252,6 +266,9 @@ func (s *LLMProxyAPIKeyService) CreateLLMProxyAPIKey(
 		AllowedTargets: allowedTargets,
 	}
 	if err := s.apiKeyRepo.Create(dbKey); err != nil {
+		if errors.Is(err, repository.ErrAPIKeyNameConflict) {
+			return nil, apperror.LLMProxyAPIKeyConflict.New()
+		}
 		s.slogger.Error("Failed to persist LLM proxy API key to database", "proxyId", proxyID, "keyName", name, "error", err)
 		return nil, fmt.Errorf("failed to persist API key: %w", err)
 	}

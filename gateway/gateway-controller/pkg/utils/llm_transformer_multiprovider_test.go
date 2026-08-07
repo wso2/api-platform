@@ -101,7 +101,7 @@ func TestLLMProviderTransformer_TransformProxy_AdditionalProviderAuthIsCondition
 				},
 			}},
 			Policies: &[]api.LLMPolicy{{
-				Name:    "openai-header-router",
+				Name:    "llm-header-router",
 				Version: "v1",
 				Paths: []api.LLMPolicyPath{{
 					Path:    "/chat/completions",
@@ -119,6 +119,10 @@ func TestLLMProviderTransformer_TransformProxy_AdditionalProviderAuthIsCondition
 	require.NotNil(t, result.Spec.UpstreamDefinitions)
 	require.Len(t, *result.Spec.UpstreamDefinitions, 1)
 	assert.Equal(t, "anthropic-provider", (*result.Spec.UpstreamDefinitions)[0].Name)
+	require.NotNil(t, (*result.Spec.UpstreamDefinitions)[0].BasePath)
+	assert.Equal(t, "/anthropic-provider", *(*result.Spec.UpstreamDefinitions)[0].BasePath)
+	require.Len(t, (*result.Spec.UpstreamDefinitions)[0].Upstreams, 1)
+	assert.Equal(t, "http://127.0.0.1:8080", (*result.Spec.UpstreamDefinitions)[0].Upstreams[0].Url)
 
 	var chatOp *api.Operation
 	for i := range result.Spec.Operations {
@@ -133,7 +137,8 @@ func TestLLMProviderTransformer_TransformProxy_AdditionalProviderAuthIsCondition
 
 	var authPolicies []api.Policy
 	for _, pol := range *chatOp.Policies {
-		if pol.Name == constants.UPSTREAM_AUTH_APIKEY_POLICY_NAME {
+		// The unconditional internal loopback marker is also a set-headers policy; exclude it.
+		if pol.Name == constants.UPSTREAM_AUTH_APIKEY_POLICY_NAME && !hasInternalLoopbackMarkerPolicy([]api.Policy{pol}) {
 			authPolicies = append(authPolicies, pol)
 		}
 	}
@@ -240,6 +245,84 @@ func TestLLMProviderTransformer_TransformProxy_AdditionalProviderTransformerIsCo
 	require.NotNil(t, transformerPolicy.Params)
 	assert.Equal(t, "anthropic-provider", (*transformerPolicy.Params)["providerId"])
 	assert.Equal(t, "claude-sonnet-4-5-20250929", (*transformerPolicy.Params)["model"])
+}
+
+func TestLLMProviderTransformer_TransformProxy_RejectsInvalidAdditionalProviderSourceConfiguration(t *testing.T) {
+	store := storage.NewConfigStore()
+	db := newTestMockDB()
+
+	template := &models.StoredLLMProviderTemplate{
+		UUID: "0000-db-template-id-0000-000000000004",
+		Configuration: api.LLMProviderTemplate{
+			ApiVersion: api.LLMProviderTemplateApiVersionGatewayApiPlatformWso2Comv1,
+			Kind:       api.LLMProviderTemplateKindLlmProviderTemplate,
+			Metadata:   api.Metadata{Name: "openai"},
+			Spec:       api.LLMProviderTemplateData{DisplayName: "openai"},
+		},
+	}
+	require.NoError(t, db.SaveLLMProviderTemplate(template))
+
+	primaryProvider := api.LLMProviderConfiguration{
+		ApiVersion: api.LLMProviderConfigurationApiVersionGatewayApiPlatformWso2Comv1,
+		Kind:       api.LLMProviderConfigurationKindLlmProvider,
+		Metadata:   api.Metadata{Name: "openai-provider"},
+		Spec: api.LLMProviderConfigData{
+			DisplayName:   "openai-provider",
+			Version:       "v1.0",
+			Context:       stringPtr("/openai-provider"),
+			Template:      "openai",
+			Upstream:      api.LLMProviderConfigData_Upstream{Url: stringPtr("https://example.com")},
+			AccessControl: api.LLMAccessControl{Mode: api.AllowAll},
+		},
+	}
+	require.NoError(t, db.SaveConfig(&models.StoredConfig{
+		UUID:                "openai-provider-uuid",
+		Kind:                string(api.LLMProviderConfigurationKindLlmProvider),
+		Handle:              "openai-provider",
+		DisplayName:         "openai-provider",
+		Version:             "v1.0",
+		SourceConfiguration: primaryProvider,
+		DesiredState:        models.StateDeployed,
+	}))
+
+	require.NoError(t, db.SaveConfig(&models.StoredConfig{
+		UUID:        "invalid-provider-uuid",
+		Kind:        string(api.LLMProviderConfigurationKindLlmProvider),
+		Handle:      "invalid-provider",
+		DisplayName: "invalid-provider",
+		Version:     "v1.0",
+		SourceConfiguration: api.RestAPI{
+			ApiVersion: api.RestAPIApiVersionGatewayApiPlatformWso2Comv1,
+			Kind:       api.RestAPIKindRestApi,
+			Metadata:   api.Metadata{Name: "invalid-provider"},
+			Spec: api.APIConfigData{
+				DisplayName: "invalid-provider",
+				Version:     "v1.0",
+				Context:     "/invalid-provider",
+			},
+		},
+		DesiredState: models.StateDeployed,
+	}))
+
+	transformer := NewLLMProviderTransformer(store, db, &config.RouterConfig{ListenerPort: 8080}, newTestPolicyVersionResolver())
+	proxy := &api.LLMProxyConfiguration{
+		ApiVersion: api.LLMProxyConfigurationApiVersionGatewayApiPlatformWso2Comv1,
+		Kind:       api.LLMProxyConfigurationKindLlmProxy,
+		Metadata:   api.Metadata{Name: "openai-multi"},
+		Spec: api.LLMProxyConfigData{
+			DisplayName: "openai-multi",
+			Version:     "v1.0",
+			Provider:    api.LLMProxyProvider{Id: "openai-provider"},
+			AdditionalProviders: &[]api.LLMProxyAdditionalProvider{{
+				Id: "invalid-provider",
+			}},
+		},
+	}
+
+	result, err := transformer.Transform(proxy, &api.RestAPI{})
+	require.Error(t, err)
+	assert.Nil(t, result)
+	assert.Equal(t, "additional provider 'invalid-provider' source configuration is not LLMProviderConfiguration", err.Error())
 }
 
 // Test that a proxy that loops back into a provider with a downstream api-key-auth policy

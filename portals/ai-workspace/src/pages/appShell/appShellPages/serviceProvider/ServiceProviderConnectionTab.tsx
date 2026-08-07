@@ -31,11 +31,12 @@ import {
 import { Eye, EyeOff } from '@wso2/oxygen-ui-icons-react';
 import { useLLMProvider } from '../../../../contexts/llmProvider';
 import { useAppShell } from '../../../../contexts/AppShellContext';
-import { PLATFORM_API_BASE_URL } from '../../../../config.env';
+import { PLATFORM_API_BASE_URL } from '../../../../paths';
 import useAIWorkspaceSnackbar from '../../../../hooks/aiWorkspaceSnackbar';
 import * as providerTemplateApis from '../../../../apis/providerTemplateApis';
 import type { ProviderTemplate } from '../../../../utils/types';
 import { logger } from '../../../../utils/logger';
+import { isValidHttpUrl } from '../../../../utils/providerTemplateFields';
 
 const MASKED_CREDENTIAL_VALUE = '******';
 
@@ -59,6 +60,8 @@ export default function ServiceProviderConnectionTab() {
   const effectiveAuthType = authenticationType || 'none';
   const isOtherAuthType = effectiveAuthType === 'other';
   const isNoCredentialsAuthType = effectiveAuthType === 'other' || effectiveAuthType === 'none';
+  const isProviderEndpointInvalid =
+    providerEndpoint.trim().length > 0 && !isValidHttpUrl(providerEndpoint);
 
   const valuePrefix = useMemo(() => {
     return providerTemplate?.metadata?.auth?.valuePrefix || '';
@@ -117,6 +120,16 @@ export default function ServiceProviderConnectionTab() {
     if (!provider || isLoading || error || isReadOnlyProvider) return;
     const nextUrl = value.trim();
     if (!nextUrl || nextUrl === (provider.upstream?.main?.url || '')) return;
+
+    if (!isValidHttpUrl(nextUrl)) {
+      if (!isDraftMode) {
+        showSnackbar(
+          'Enter a valid HTTP or HTTPS URL for the Provider Endpoint.',
+          'error'
+        );
+      }
+      return;
+    }
     try {
       const {
         status,
@@ -288,6 +301,12 @@ export default function ServiceProviderConnectionTab() {
             size="small"
             value={providerEndpoint}
             disabled={isFormDisabled}
+            error={isProviderEndpointInvalid}
+            helperText={
+              isProviderEndpointInvalid
+                ? 'Enter a valid HTTP or HTTPS URL (e.g. https://api.openai.com).'
+                : undefined
+            }
             onChange={(e) => {
               const nextValue = e.target.value;
               setProviderEndpoint(nextValue);

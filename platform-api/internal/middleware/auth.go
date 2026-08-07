@@ -36,18 +36,18 @@ import (
 type contextKey string
 
 const (
-	keyUserID        contextKey = "user_id"
-	keyUsername      contextKey = "username"
-	keyEmail         contextKey = "email"
-	keyFirstName     contextKey = "first_name"
-	keyLastName      contextKey = "last_name"
-	keyOrganization  contextKey = "organization"
-	keyOrgName       contextKey = "org_name"
-	keyOrgHandle     contextKey = "org_handle"
-	keyScope         contextKey = "scope"
-	keyAudience      contextKey = "audience"
-	keyClaims        contextKey = "claims"
-	keyPlatformRoles contextKey = "platform_roles"
+	keyUserID       contextKey = "user_id"
+	keyUsername     contextKey = "username"
+	keyEmail        contextKey = "email"
+	keyFirstName    contextKey = "first_name"
+	keyLastName     contextKey = "last_name"
+	keyOrganization contextKey = "organization"
+	keyOrgName      contextKey = "org_name"
+	keyOrgHandle    contextKey = "org_handle"
+	keyScope        contextKey = "scope"
+	keyAudience     contextKey = "audience"
+	keyClaims       contextKey = "claims"
+	keyRoles        contextKey = "roles"
 )
 
 // CustomClaims represents the JWT claims structure used in local JWT (non-IDP) mode.
@@ -79,7 +79,7 @@ type AuthConfig struct {
 }
 
 // ClaimMappings holds the JWT claim names used to extract identity values,
-// shared by the local-JWT (external_token/file) and IDP auth paths.
+// shared by the local-JWT (internal_token/file) and IDP auth paths.
 type ClaimMappings struct {
 	OrganizationClaim string
 	OrgNameClaim      string
@@ -123,11 +123,15 @@ func writeError(w http.ResponseWriter, appErr *apperror.Error, reason string) {
 func LocalJWTAuthMiddleware(config AuthConfig) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			for _, path := range config.SkipPaths {
-				if strings.HasPrefix(r.URL.Path, path) {
-					next.ServeHTTP(w, r)
-					return
-				}
+			// hasPathPrefix, not strings.HasPrefix: a raw prefix match exempts
+			// any path that merely starts with a skip entry ("/health-probe" for
+			// "/health") and matches before ServeMux normalizes the path, so
+			// "/health/../api/v0.9/rest-apis" would bypass authentication
+			// (GO-AUTH-004). It is also the matcher ScopeEnforcer uses on this
+			// same list — the two must exempt exactly the same requests.
+			if hasPathPrefix(r.URL.Path, config.SkipPaths) {
+				next.ServeHTTP(w, r)
+				return
 			}
 
 			authHeader := r.Header.Get("Authorization")
@@ -237,7 +241,7 @@ func validateLocalJWT(r *http.Request, tokenString string, config AuthConfig) (*
 	ctx = context.WithValue(ctx, keyScope, claimsObj.Scope)
 	ctx = context.WithValue(ctx, keyAudience, claimsObj.Audience)
 	ctx = context.WithValue(ctx, keyClaims, claimsObj)
-	ctx = context.WithValue(ctx, keyPlatformRoles, platformRoles)
+	ctx = context.WithValue(ctx, keyRoles, platformRoles)
 	return r.WithContext(ctx), nil
 }
 
@@ -312,7 +316,7 @@ func PlatformClaimsMiddleware(claimNames ClaimMappings) func(http.Handler) http.
 			ctx = context.WithValue(ctx, keyScope, scope)
 			ctx = context.WithValue(ctx, keyAudience, aud)
 			ctx = context.WithValue(ctx, keyClaims, claimsObj)
-			ctx = context.WithValue(ctx, keyPlatformRoles, platformRoles)
+			ctx = context.WithValue(ctx, keyRoles, platformRoles)
 
 			next.ServeHTTP(w, r.WithContext(ctx))
 		})
@@ -571,7 +575,7 @@ func GetClaimsFromRequest(r *http.Request) (*CustomClaims, bool) {
 
 // GetPlatformRolesFromRequest extracts platform roles from the request context.
 func GetPlatformRolesFromRequest(r *http.Request) ([]string, bool) {
-	roles, ok := r.Context().Value(keyPlatformRoles).([]string)
+	roles, ok := r.Context().Value(keyRoles).([]string)
 	return roles, ok
 }
 
@@ -632,6 +636,13 @@ func WithOrganization(r *http.Request, org string) *http.Request {
 // WithUserID is a helper for tests to inject a user ID into the request context.
 func WithUserID(r *http.Request, id string) *http.Request {
 	return r.WithContext(context.WithValue(r.Context(), keyUserID, id))
+}
+
+// WithScope is a helper for tests to inject a space-separated scope claim into
+// the request context, as the authentication middleware does after validating a
+// token. Lets packages outside this one exercise ScopeEnforcer end to end.
+func WithScope(r *http.Request, scope string) *http.Request {
+	return r.WithContext(context.WithValue(r.Context(), keyScope, scope))
 }
 
 // --- Compatibility shims for common/authenticators ---

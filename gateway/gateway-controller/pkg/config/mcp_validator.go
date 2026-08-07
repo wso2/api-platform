@@ -178,6 +178,8 @@ func (v *MCPValidator) validateContextAndVhost(context, vhost *string) []Validat
 				Message: "Context must be 1-200 characters",
 			})
 		}
+
+		errors = append(errors, validateNotReservedHealthPath("spec.context", strings.TrimSpace(*context))...)
 	} else {
 		if vhost == nil || *vhost == "" {
 			errors = append(errors, ValidationError{

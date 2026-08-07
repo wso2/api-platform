@@ -70,6 +70,8 @@ var (
 	// project) — the call site supplies which one.
 	RESTAPIExists                     = def(CodeRESTAPIExists, http.StatusConflict, "%s")
 	RESTAPIDeploymentValidationFailed = def(CodeRESTAPIDeploymentValidationFailed, http.StatusBadRequest, "%s")
+	RESTAPIAPIKeyNotFound             = def(CodeRESTAPIAPIKeyNotFound, http.StatusNotFound, "The specified API key could not be found.")
+	RESTAPIAPIKeyForbidden            = def(CodeRESTAPIAPIKeyForbidden, http.StatusForbidden, "You do not have permission to access this API key.")
 )
 
 // LLM provider / proxy entries.
@@ -79,6 +81,8 @@ var (
 	LLMProviderExists                     = def(CodeLLMProviderExists, http.StatusConflict, "An LLM provider with this ID already exists.")
 	LLMProviderAPIKeyNotFound             = def(CodeLLMProviderAPIKeyNotFound, http.StatusNotFound, "The specified API key could not be found.")
 	LLMProviderAPIKeyForbidden            = def(CodeLLMProviderAPIKeyForbidden, http.StatusForbidden, "You do not have permission to access this API key.")
+	LLMProviderAPIKeyConflict             = def(CodeLLMProviderAPIKeyConflict, http.StatusConflict, "An API key with this name already exists.")
+	LLMProxyAPIKeyConflict                = def(CodeLLMProxyAPIKeyConflict, http.StatusConflict, "An API key with this name already exists.")
 	LLMProviderDeploymentValidationFailed = def(CodeLLMProviderDeploymentValidationFailed, http.StatusBadRequest, "%s")
 
 	LLMProxyNotFound                   = def(CodeLLMProxyNotFound, http.StatusNotFound, "The specified LLM proxy could not be found.")

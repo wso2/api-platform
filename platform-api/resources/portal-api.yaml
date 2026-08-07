@@ -3,7 +3,7 @@ info:
   title: Portal API
   description: |
     A **RESTful API** exposed by the WSO2 **API Platform - Platform API** exclusively for the
-    platform's portals (Developer Portal, AI Workspace, Management Portal, etc.) to connect to
+    platform's portals (API Portal, AI Workspace, Management Portal, etc.) to connect to
     the control plane.
 
     These endpoints are not intended for general client use — they back portal-specific flows

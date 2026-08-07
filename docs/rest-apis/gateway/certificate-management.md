@@ -95,7 +95,7 @@ Upload a new TLS certificate (PEM format) to the Gateway. The certificate is loa
 <aside class="warning">
 This operation requires <strong>Basic Auth</strong> authentication.
 
-Required roles: `admin`, `developer`
+Required roles: `admin`
 
 </aside>
 

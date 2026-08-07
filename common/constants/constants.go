@@ -32,3 +32,11 @@ const (
 	// ServerName for HCM listener in Gateway
 	ServerName = "WSO2 API Platform"
 )
+
+const (
+	// PathWithEscapedSlashesAction options for the HCM listener.
+	KEEP_UNCHANGED        = "KEEP_UNCHANGED"
+	REJECT_REQUEST        = "REJECT_REQUEST"
+	UNESCAPE_AND_REDIRECT = "UNESCAPE_AND_REDIRECT"
+	UNESCAPE_AND_FORWARD  = "UNESCAPE_AND_FORWARD"
+)

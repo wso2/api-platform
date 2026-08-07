@@ -52,9 +52,11 @@ import GoogleVertexLogo from '../../../../../assets/brands/GoogleVertex.png';
 import GoogleGeminiLogo from '../../../../../assets/brands/googlegemini.png';
 import MistralAILogo from '../../../../../assets/brands/mistralai.png';
 import OpenAILogo from '../../../../../assets/brands/openAI.png';
-import { PLATFORM_API_BASE_URL } from '../../../../../config.env';
+import { PLATFORM_API_BASE_URL } from '../../../../../paths';
 import { useApplicationAssociations } from '../../../../../contexts/ApplicationAssociationsContext';
 import { useAppShell } from '../../../../../contexts/AppShellContext';
+import { useAppAuth } from '../../../../../contexts/AppAuthContext';
+import { NO_PERMISSION_TOOLTIP, SCOPES } from '../../../../../auth/permissions';
 import useAIWorkspaceSnackbar from '../../../../../hooks/aiWorkspaceSnackbar';
 import { getProviderTemplateDisplayName } from '../../../../../utils/providerTemplateDisplay';
 import type {
@@ -395,6 +397,11 @@ export default function AssociationsTab() {
   const { currentOrganization, currentProject } = useAppShell();
   const showSnackbar = useAIWorkspaceSnackbar();
   const apimBaseUrl = PLATFORM_API_BASE_URL;
+  const { hasPermission } = useAppAuth();
+  // Mapping a key to an association posts to /applications/{id}/api-keys — the
+  // same endpoint APIKeyTab guards — so the association scopes are not enough.
+  const canCreateApiKey = hasPermission(SCOPES.APPLICATION_API_KEY_CREATE);
+  const canDeleteApiKey = hasPermission(SCOPES.APPLICATION_API_KEY_DELETE);
 
   const [reservedKeyOwners, setReservedKeyOwners] = useState<
     Map<string, Set<string>>
@@ -505,7 +512,11 @@ export default function AssociationsTab() {
     () => new Set(reservedKeyOwners.keys()),
     [reservedKeyOwners]
   );
-  const selectionBlockedMessage = isReservedKeysLoading
+  // Also gates key selection in the provider/proxy association drawers, which
+  // attach the selected keys via the same addAPIKeys call.
+  const selectionBlockedMessage = !canCreateApiKey
+    ? NO_PERMISSION_TOOLTIP
+    : isReservedKeysLoading
     ? 'Checking whether these API keys are already used in another application.'
     : reservedKeysLoadError;
 
@@ -906,7 +917,7 @@ export default function AssociationsTab() {
         ...linkedProviderKeyPayload,
       ];
 
-      if (keyPayload.length > 0) {
+      if (canCreateApiKey && keyPayload.length > 0) {
         await addAPIKeys({ apiKeys: keyPayload });
       }
 
@@ -1055,7 +1066,7 @@ export default function AssociationsTab() {
         ...linkedProxyKeyPayload,
       ];
 
-      if (keyPayload.length > 0) {
+      if (canCreateApiKey && keyPayload.length > 0) {
         await addAPIKeys({ apiKeys: keyPayload });
       }
 
@@ -1134,7 +1145,7 @@ export default function AssociationsTab() {
   };
 
   const handleOpenManageKeysDrawer = async (association: ApplicationAssociation) => {
-    if (!currentOrganization?.uuid) return;
+    if (!currentOrganization?.uuid || !canCreateApiKey) return;
 
     setManageKeysDrawerTarget(association);
     setSelectedManageKeyNames(new Set());
@@ -1169,7 +1180,13 @@ export default function AssociationsTab() {
   };
 
   const handleAddManagedKeys = async () => {
-    if (!manageKeysDrawerTarget || selectedManageKeyNames.size === 0) return;
+    if (
+      !manageKeysDrawerTarget ||
+      selectedManageKeyNames.size === 0 ||
+      !canCreateApiKey
+    ) {
+      return;
+    }
 
     setIsAddingManagedKeys(true);
 
@@ -1221,6 +1238,7 @@ export default function AssociationsTab() {
   };
 
   const handleRemoveKey = async (associationId: string, key: MappedAPIKey) => {
+    if (!canDeleteApiKey) return;
     const mappedKeyId = resolveMappedKeyId(key);
     if (removingKeyIds.has(mappedKeyId)) return;
     const entityID = resolveEntityId(key);

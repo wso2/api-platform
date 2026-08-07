@@ -58,12 +58,13 @@ import {
 } from '../../../../utils/projectRouting';
 import {
   resolveTemplateDisplayName,
+  resolveTemplateLogo,
   truncateProviderDisplayName,
 } from '../../../../utils/providerTemplateDisplay';
 import { useProviderTemplates } from '../../../../contexts/llmProvider/providerTemplate';
 import useAIWorkspaceSnackbar from '../../../../hooks/aiWorkspaceSnackbar';
 import * as llmProviderApis from '../../../../apis/llmProviderApis';
-import { PLATFORM_API_BASE_URL } from '../../../../config.env';
+import { PLATFORM_API_BASE_URL } from '../../../../paths';
 
 import AnthropicLogo from '../../../../assets/brands/Anthropic.jpg';
 import AWSBedrockLogo from '../../../../assets/brands/AWSBedrock.webp';
@@ -347,8 +348,26 @@ export default function ServiceProviders() {
           display="flex"
           justifyContent="flex-end"
         >
-          {!isDeveloper && !isProjectLevel && providers.length > 0 && (
-            <Tooltip title={isProviderQuotaReached ? providerQuotaTooltip : ''}>
+          {!isProjectLevel && providers.length > 0 && (
+            <Tooltip
+              title={
+                canCreateProvider ? (
+                  ''
+                ) : isDeveloper ? (
+                  <FormattedMessage
+                    id="aiWorkspace.pages.appShell.appShellPages.serviceProvider.ServiceProvidersSummaryCard.contact.admin.tooltip"
+                    defaultMessage={
+                      'This is an admin task. Please contact your admin.'
+                    }
+                  />
+                ) : (
+                  providerQuotaTooltip
+                )
+              }
+              disableHoverListener={canCreateProvider}
+              disableFocusListener={canCreateProvider}
+              disableTouchListener={canCreateProvider}
+            >
               <Box component="span">
                 <Button
                   variant="contained"
@@ -356,12 +375,12 @@ export default function ServiceProviders() {
                   component={RouterLink}
                   to={newProviderPath}
                   startIcon={<Plus size={20} />}
-                  disabled={isProviderQuotaReached}
+                  disabled={!canCreateProvider}
                   data-cyid="add-new-provider-button"
                   sx={{
-                    opacity: isProviderQuotaReached ? 0.55 : 1,
+                    opacity: canCreateProvider ? 1 : 0.55,
                     '&.Mui-disabled': {
-                      opacity: isProviderQuotaReached ? 0.55 : 1,
+                      opacity: 0.55,
                     },
                   }}
                 >
@@ -538,7 +557,12 @@ export default function ServiceProviders() {
                 provider.displayName
               );
               const templateKey = (provider.template ?? '').toLowerCase();
-              const templateLogo = PROVIDER_LOGO_MAP[templateKey];
+              // The "Template: …" label logo uses the template's own logo (so a
+              // custom template shows its uploaded logo), falling back to the
+              // built-in vendor map. The provider avatar above is unaffected.
+              const templateLogo =
+                resolveTemplateLogo(provider.template, templatesResponse.list) ??
+                PROVIDER_LOGO_MAP[templateKey];
               const hasTemplateLogo = Boolean(templateLogo);
 
               return (

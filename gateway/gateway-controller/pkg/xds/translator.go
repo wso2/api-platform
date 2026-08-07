@@ -24,6 +24,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"log/slog"
+	"maps"
 	"math"
 	"net"
 	"net/url"
@@ -52,8 +53,11 @@ import (
 	luav3 "github.com/envoyproxy/go-control-plane/envoy/extensions/filters/http/lua/v3"
 	router "github.com/envoyproxy/go-control-plane/envoy/extensions/filters/http/router/v3"
 	hcm "github.com/envoyproxy/go-control-plane/envoy/extensions/filters/network/http_connection_manager/v3"
+	otelresourcedetectorsv3 "github.com/envoyproxy/go-control-plane/envoy/extensions/tracers/opentelemetry/resource_detectors/v3"
 	tlsv3 "github.com/envoyproxy/go-control-plane/envoy/extensions/transport_sockets/tls/v3"
 	matcher "github.com/envoyproxy/go-control-plane/envoy/type/matcher/v3"
+	metadatav3 "github.com/envoyproxy/go-control-plane/envoy/type/metadata/v3"
+	tracingv3 "github.com/envoyproxy/go-control-plane/envoy/type/tracing/v3"
 	typev3 "github.com/envoyproxy/go-control-plane/envoy/type/v3"
 	"github.com/envoyproxy/go-control-plane/pkg/cache/types"
 	"github.com/envoyproxy/go-control-plane/pkg/resource/v3"
@@ -75,6 +79,15 @@ const (
 	ExternalProcessorGRPCServiceClusterName = "ext-processor-grpc-service"
 	OTELCollectorClusterName                = "otel_collector"
 	WebSubHubInternalClusterName            = "WEBSUBHUB_INTERNAL_CLUSTER"
+
+	// Upstream endpoint metadata carrying the backend hostname for tracing peer identity.
+	envoyLBMetadataNamespace   = "envoy.lb"
+	envoyLBHostnameMetadataKey = "hostname"
+
+	// Route filter metadata carrying the route's path template for tracing (http.route)
+	// and other route-scoped consumers.
+	envoyRouteMetadataNamespace = "wso2.route"
+	envoyRouteHTTPRouteKey      = "http.route"
 )
 
 func checkedUInt32FromPositiveInt(fieldName string, value int) (uint32, error) {
@@ -362,6 +375,7 @@ func (t *Translator) createRouteFromRDC(routeKey string, rdcRoute *models.Route,
 	// route match identical requests).
 	r.Match.Headers = buildMatchHeaders(method, rdcRoute)
 	t.setMatchPathSpecifier(r.Match, fullPath, operationPath, rdcRoute)
+	setRouteHTTPRoute(r, fullPath)
 
 	// Compute regex rewrite to strip context and prepend upstream path
 	upstreamPath := ""
@@ -546,6 +560,12 @@ func (t *Translator) createWeightedCluster(
 			lb.LoadBalancingWeight = &wrapperspb.UInt32Value{Value: uint32(*ep.Weight)}
 		}
 
+		// Each endpoint in a weighted upstream can have a different hostname (round-robin/
+		// failover across distinct backends), so peer.service metadata is stamped per-endpoint
+		// here too, mirroring processEndpoint (the single-endpoint path). Without this, any
+		// upstream with more than one endpoint would have no peer.service tracing tag at all.
+		setEndpointPeerHostname(lb, ep.Host)
+
 		// When the upstream definition is HTTPS, dial each endpoint over TLS. Endpoints in a
 		// weighted definition can have different hostnames, so each gets its own transport
 		// socket match carrying an UpstreamTlsContext with that endpoint's SNI, and the
@@ -574,15 +594,7 @@ func (t *Translator) createWeightedCluster(
 						},
 					},
 				})
-				lb.Metadata = &core.Metadata{
-					FilterMetadata: map[string]*structpb.Struct{
-						constants.TransportSocketMatchKey: {
-							Fields: map[string]*structpb.Value{
-								constants.LoadBalancerIDKey: structpb.NewStringValue(matchID),
-							},
-						},
-					},
-				}
+				setEndpointTransportSocketMatchID(lb, matchID)
 			}
 		}
 
@@ -620,6 +632,55 @@ func (t *Translator) createWeightedCluster(
 
 // TranslateConfigs translates all API configurations to Envoy resources
 // The correlationID parameter is optional and used for request tracing in logs
+// buildGatewayHealthRoutes builds the gateway's own readiness/liveness
+// direct-response routes (constants.GatewayReadyPath, constants.GatewayHealthyPath).
+// They are exact-path matches under a reserved namespace (constants.
+// GatewayHealthPathPrefix) that API/LLMProvider/LLMProxy path validation must
+// reject, bypass the policy-engine ext_proc filter like the "no-api-found"
+// catch-all, and return a static, sterile body — no internal state is ever
+// disclosed through them.
+func buildGatewayHealthRoutes() ([]*route.Route, error) {
+	disabledAny, err := anypb.New(&extproc.ExtProcPerRoute{
+		Override: &extproc.ExtProcPerRoute_Disabled{Disabled: true},
+	})
+	if err != nil {
+		return nil, fmt.Errorf("failed to marshal ExtProcPerRoute for gateway health routes: %w", err)
+	}
+
+	newHealthRoute := func(name, path, body string) *route.Route {
+		return &route.Route{
+			Name: name,
+			Match: &route.RouteMatch{
+				PathSpecifier: &route.RouteMatch_Path{Path: path},
+			},
+			Action: &route.Route_DirectResponse{
+				DirectResponse: &route.DirectResponseAction{
+					Status: 200,
+					Body: &core.DataSource{
+						Specifier: &core.DataSource_InlineString{InlineString: body},
+					},
+				},
+			},
+			ResponseHeadersToAdd: []*core.HeaderValueOption{
+				{
+					Header: &core.HeaderValue{
+						Key:   "content-type",
+						Value: "application/json",
+					},
+				},
+			},
+			TypedPerFilterConfig: map[string]*anypb.Any{
+				constants.ExtProcFilterName: disabledAny,
+			},
+		}
+	}
+
+	return []*route.Route{
+		newHealthRoute("gateway-ready", constants.GatewayReadyPath, `{"status":"ready"}`),
+		newHealthRoute("gateway-healthy", constants.GatewayHealthyPath, `{"status":"healthy"}`),
+	}, nil
+}
+
 func (t *Translator) TranslateConfigs(
 	configs []*models.StoredConfig,
 	correlationID string,
@@ -724,11 +785,29 @@ func (t *Translator) TranslateConfigs(
 		vhostMap[vhost] = append(vhostMap[vhost], r)
 	}
 
+	// Built once, after every API/LLMProvider/LLMProxy config above has
+	// contributed its routes to allRoutes, and reused for every vhost below —
+	// this is the single registration point for the gateway's own health routes.
+	gatewayHealthRoutes, err := buildGatewayHealthRoutes()
+	if err != nil {
+		return nil, err
+	}
+
 	// Create a virtual host for each vhost
 	var virtualHosts []*route.VirtualHost
 	for vhost, routes := range vhostMap {
 		// Sort routes by priority (highest priority first) before adding to vhost
 		routes = SortRoutesByPriority(routes)
+
+		// Prepend the gateway health routes ahead of every API route and the
+		// catch-all 404 below. vhostMap always contains at least the "*" wildcard
+		// vhost (pre-seeded above), so /ready and /healthy respond even when zero
+		// APIs/LLMProviders/LLMProxies are deployed. They match on an exact,
+		// reserved path (constants.GatewayHealthPathPrefix) that API/LLMProvider/
+		// LLMProxy path validation must reject, so ordering relative to API routes
+		// is never ambiguous — but they still must precede the "/" prefix catch-all
+		// appended below, or Envoy's first-match routing would shadow them.
+		routes = append(append([]*route.Route{}, gatewayHealthRoutes...), routes...)
 
 		// Append the catch-all 404 route as the last route for each vhost (lowest priority).
 		extProcDisabledAny, err := anypb.New(&extproc.ExtProcPerRoute{
@@ -1185,6 +1264,21 @@ func (t *Translator) resolveUpstreamCluster(upstreamName string, up *api.Upstrea
 // SharedRouteConfigName is the name of the shared route configuration used by both HTTP and HTTPS listeners
 const SharedRouteConfigName = "shared_route_config"
 
+// convertPathWithEscapedSlashesAction maps the configured string to the Envoy HCM enum.
+// Unknown values fall back to KEEP_UNCHANGED.
+func convertPathWithEscapedSlashesAction(action string) hcm.HttpConnectionManager_PathWithEscapedSlashesAction {
+	switch action {
+	case commonconstants.REJECT_REQUEST:
+		return hcm.HttpConnectionManager_REJECT_REQUEST
+	case commonconstants.UNESCAPE_AND_REDIRECT:
+		return hcm.HttpConnectionManager_UNESCAPE_AND_REDIRECT
+	case commonconstants.UNESCAPE_AND_FORWARD:
+		return hcm.HttpConnectionManager_UNESCAPE_AND_FORWARD
+	default:
+		return hcm.HttpConnectionManager_KEEP_UNCHANGED
+	}
+}
+
 // createListener creates an Envoy listener with access logging
 // If isHTTPS is true, creates an HTTPS listener with TLS configuration
 // Uses RDS (Route Discovery Service) to share route configuration between listeners
@@ -1251,6 +1345,13 @@ func (t *Translator) createListener(virtualHosts []*route.VirtualHost, isHTTPS b
 		CommonHttpProtocolOptions: &core.HttpProtocolOptions{
 			IdleTimeout: durationpb.New(t.routerConfig.HTTPListener.Timeouts.IdleTimeout),
 		},
+		// Resolve dot-segments and merge duplicate slashes before route matching (enabled unless
+		// explicitly disabled), so a request path never desynchronizes from what validators (see
+		// validateNotReservedHealthPath in pkg/config/validator.go) reasoned about at config time.
+		// Escaped slashes are handled separately via PathWithEscapedSlashesAction.
+		NormalizePath:                wrapperspb.Bool(!t.routerConfig.HTTPListener.DisablePathNormalization),
+		MergeSlashes:                 !t.routerConfig.HTTPListener.DisablePathNormalization,
+		PathWithEscapedSlashesAction: convertPathWithEscapedSlashesAction(t.routerConfig.HTTPListener.PathWithEscapedSlashesAction),
 	}
 
 	// Add access logs if enabled
@@ -1330,7 +1431,7 @@ func (t *Translator) createListener(virtualHosts []*route.VirtualHost, isHTTPS b
 				},
 			},
 		},
-		FilterChains: []*listener.FilterChain{filterChain},
+		FilterChains:                  []*listener.FilterChain{filterChain},
 		PerConnectionBufferLimitBytes: wrapperspb.UInt32(t.routerConfig.HTTPListener.PerConnectionBufferLimitBytes),
 	}, routeConfig, nil
 }
@@ -1662,6 +1763,7 @@ func (t *Translator) createRoute(apiId, apiName, apiVersion, context, method, pa
 			},
 		}
 	}
+	setRouteHTTPRoute(r, fullPath)
 
 	// Add path rewriting if upstream has a path prefix
 	// Strip the API context (with version if included) and prepend the upstream path
@@ -1736,6 +1838,7 @@ func (t *Translator) createRoute(apiId, apiName, apiVersion, context, method, pa
 // createRoutePerTopic creates a route for an operation
 func (t *Translator) createRoutePerTopic(apiId, apiName, apiVersion, context, method, channelName, clusterName, vhost, apiKind, projectID string) *route.Route {
 	routeName := GenerateRouteName(method, context, apiVersion, channelName, vhost)
+	fullPath := ConstructFullPath(context, apiVersion, channelName)
 	r := &route.Route{
 		Name: routeName,
 		Match: &route.RouteMatch{
@@ -1778,12 +1881,13 @@ func (t *Translator) createRoutePerTopic(apiId, apiName, apiVersion, context, me
 
 	if metaStruct, err := structpb.NewStruct(metaMap); err == nil {
 		r.Metadata = &core.Metadata{FilterMetadata: map[string]*structpb.Struct{
-			"wso2.route": metaStruct,
+			envoyRouteMetadataNamespace: metaStruct,
 		}}
 	}
+	setRouteHTTPRoute(r, fullPath)
 
 	r.Match.PathSpecifier = &route.RouteMatch_Path{
-		Path: ConstructFullPath(context, apiVersion, channelName),
+		Path: fullPath,
 	}
 
 	r.GetRoute().PrefixRewrite = "/hub"
@@ -2418,6 +2522,8 @@ func (t *Translator) processEndpoint(
 		}},
 	}
 
+	setEndpointPeerHostname(localityLbEndpoints.LbEndpoints[0], upstreamURL.Hostname())
+
 	if upstreamURL.Scheme == constants.SchemeHTTPS {
 		var epCert []byte
 		if cert, found := upstreamCerts[upstreamURL.String()]; found {
@@ -2455,15 +2561,7 @@ func (t *Translator) processEndpoint(
 
 		// Set metadata for transport socket matching
 		// This metadata links the endpoint to its transport socket configuration
-		localityLbEndpoints.LbEndpoints[0].Metadata = &core.Metadata{
-			FilterMetadata: map[string]*structpb.Struct{
-				constants.TransportSocketMatchKey: {
-					Fields: map[string]*structpb.Value{
-						constants.LoadBalancerIDKey: structpb.NewStringValue(matchID),
-					},
-				},
-			},
-		}
+		setEndpointTransportSocketMatchID(localityLbEndpoints.LbEndpoints[0], matchID)
 
 		return []*endpoint.LocalityLbEndpoints{localityLbEndpoints}, transportSocketMatch
 	}
@@ -2738,6 +2836,11 @@ func (t *Translator) createTracingConfig() (*hcm.HttpConnectionManager_Tracing, 
 	}
 	samplingPercentage := samplingRate * 100.0
 
+	resourceDetectors, err := t.createOTelResourceDetectors()
+	if err != nil {
+		return nil, err
+	}
+
 	// Create OpenTelemetry tracing configuration
 	otelConfig := &tracev3.OpenTelemetryConfig{
 		GrpcService: &core.GrpcService{
@@ -2747,7 +2850,8 @@ func (t *Translator) createTracingConfig() (*hcm.HttpConnectionManager_Tracing, 
 				},
 			},
 		},
-		ServiceName: serviceName,
+		ServiceName:       serviceName,
+		ResourceDetectors: resourceDetectors,
 	}
 
 	// Marshal to Any
@@ -2756,7 +2860,9 @@ func (t *Translator) createTracingConfig() (*hcm.HttpConnectionManager_Tracing, 
 		return nil, fmt.Errorf("failed to marshal OpenTelemetry config: %w", err)
 	}
 
-	// Create tracing configuration
+	// Tracing essentials for Datadog Dependencies:
+	// 1) spawn_upstream_span → CLIENT child span for the upstream call
+	// 2) peer.service → backend hostname Datadog can aggregate as a peer
 	tracingConfig := &hcm.HttpConnectionManager_Tracing{
 		Provider: &tracev3.Tracing_Http{
 			Name: "envoy.tracers.opentelemetry",
@@ -2768,6 +2874,7 @@ func (t *Translator) createTracingConfig() (*hcm.HttpConnectionManager_Tracing, 
 		RandomSampling: &typev3.Percent{
 			Value: samplingPercentage,
 		},
+		CustomTags: createTracingCustomTags(),
 	}
 
 	t.logger.Info("Tracing configuration created",
@@ -2776,6 +2883,211 @@ func (t *Translator) createTracingConfig() (*hcm.HttpConnectionManager_Tracing, 
 		slog.String("collector_cluster", OTELCollectorClusterName))
 
 	return tracingConfig, nil
+}
+
+// createOTelResourceDetectors builds the resource detectors attached to Envoy's
+// OpenTelemetry tracer, in the order Envoy merges them (later detectors win).
+//
+// The environment detector comes first: it reads OTEL_RESOURCE_ATTRIBUTES from the
+// Envoy process and contributes nothing when the variable is unset. The static
+// detector comes second, so attributes configured explicitly under
+// [tracing.resource_attributes] take precedence over ambient environment values.
+// The policy-engine applies the same precedence to its own spans, keeping the two
+// components' resource attributes consistent.
+func (t *Translator) createOTelResourceDetectors() ([]*core.TypedExtensionConfig, error) {
+	envDetector, err := createOTelEnvironmentResourceDetector()
+	if err != nil {
+		return nil, fmt.Errorf("failed to create environment resource detector: %w", err)
+	}
+	detectors := []*core.TypedExtensionConfig{envDetector}
+
+	attributes := t.config.TracingConfig.ResourceAttributes
+	if len(attributes) == 0 {
+		return detectors, nil
+	}
+
+	staticDetector, err := createOTelStaticResourceDetector(attributes)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create static resource detector: %w", err)
+	}
+	return append(detectors, staticDetector), nil
+}
+
+func createOTelEnvironmentResourceDetector() (*core.TypedExtensionConfig, error) {
+	envDetectorConfig := &otelresourcedetectorsv3.EnvironmentResourceDetectorConfig{}
+	envDetectorAny, err := anypb.New(envDetectorConfig)
+	if err != nil {
+		return nil, fmt.Errorf("failed to marshal environment resource detector config: %w", err)
+	}
+
+	return &core.TypedExtensionConfig{
+		Name:        "envoy.tracers.opentelemetry.resource_detectors.environment",
+		TypedConfig: envDetectorAny,
+	}, nil
+}
+
+func createOTelStaticResourceDetector(attributes map[string]string) (*core.TypedExtensionConfig, error) {
+	staticDetectorConfig := &otelresourcedetectorsv3.StaticConfigResourceDetectorConfig{
+		Attributes: maps.Clone(attributes),
+	}
+	staticDetectorAny, err := anypb.New(staticDetectorConfig)
+	if err != nil {
+		return nil, fmt.Errorf("failed to marshal static resource detector config: %w", err)
+	}
+
+	return &core.TypedExtensionConfig{
+		Name:        "envoy.tracers.opentelemetry.resource_detectors.static_config",
+		TypedConfig: staticDetectorAny,
+	}, nil
+}
+
+// createTracingCustomTags builds the HCM-level tracing custom tags:
+//
+//   - peer.service: a standard OTel semantic-convention attribute identifying the
+//     upstream dependency. The value comes from the selected upstream host's metadata
+//     rather than the Host header, so it stays correct for upstreams configured with
+//     hostRewrite: manual.
+//   - http.route: the route's path template (e.g. "/reading-list/v1.0/{id}"), read from
+//     route metadata set by setRouteHTTPRoute. This is the standard OTel semantic
+//     convention attribute for the matched route template, distinct from http.url/
+//     http.target which carry the concrete request path. APM backends commonly derive a
+//     span's display name/resource from "<http.method> <http.route>" and fall back to the
+//     bare method when http.route is absent. Sourced from route (not host) metadata,
+//     since the path template is a property of the matched route, not the selected
+//     upstream endpoint.
+func createTracingCustomTags() []*tracingv3.CustomTag {
+	return []*tracingv3.CustomTag{
+		{
+			Tag: "peer.service",
+			Type: &tracingv3.CustomTag_Metadata_{
+				Metadata: &tracingv3.CustomTag_Metadata{
+					Kind: &metadatav3.MetadataKind{
+						Kind: &metadatav3.MetadataKind_Host_{
+							Host: &metadatav3.MetadataKind_Host{},
+						},
+					},
+					MetadataKey: &metadatav3.MetadataKey{
+						Key: envoyLBMetadataNamespace,
+						Path: []*metadatav3.MetadataKey_PathSegment{
+							{
+								Segment: &metadatav3.MetadataKey_PathSegment_Key{
+									Key: envoyLBHostnameMetadataKey,
+								},
+							},
+						},
+					},
+				},
+			},
+		},
+		{
+			Tag: envoyRouteHTTPRouteKey,
+			Type: &tracingv3.CustomTag_Metadata_{
+				Metadata: &tracingv3.CustomTag_Metadata{
+					Kind: &metadatav3.MetadataKind{
+						Kind: &metadatav3.MetadataKind_Route_{
+							Route: &metadatav3.MetadataKind_Route{},
+						},
+					},
+					MetadataKey: &metadatav3.MetadataKey{
+						Key: envoyRouteMetadataNamespace,
+						Path: []*metadatav3.MetadataKey_PathSegment{
+							{
+								Segment: &metadatav3.MetadataKey_PathSegment_Key{
+									Key: envoyRouteHTTPRouteKey,
+								},
+							},
+						},
+					},
+				},
+			},
+		},
+	}
+}
+
+// ensureFilterMetadata returns lbEndpoint's FilterMetadata map, allocating Metadata/
+// FilterMetadata on demand. Every filter-metadata writer goes through this helper so no
+// writer depends on another having run first or on call ordering within a single endpoint.
+func ensureFilterMetadata(lbEndpoint *endpoint.LbEndpoint) map[string]*structpb.Struct {
+	if lbEndpoint.Metadata == nil {
+		lbEndpoint.Metadata = &core.Metadata{}
+	}
+	if lbEndpoint.Metadata.FilterMetadata == nil {
+		lbEndpoint.Metadata.FilterMetadata = map[string]*structpb.Struct{}
+	}
+	return lbEndpoint.Metadata.FilterMetadata
+}
+
+// setEndpointPeerHostname stamps the upstream hostname on an endpoint under the envoy.lb
+// namespace so the peer.service custom tag (createTracingCustomTags) can read it
+// as the upstream CLIENT span's peer identity. Routing is unaffected. Applies to both plaintext
+// and TLS endpoints — peer.service tracing doesn't depend on transport security. A nil endpoint
+// or empty hostname is a no-op, checked before any allocation, so an endpoint that genuinely has
+// no resolvable hostname doesn't gain an empty Metadata shell.
+func setEndpointPeerHostname(lbEndpoint *endpoint.LbEndpoint, hostname string) {
+	if lbEndpoint == nil || hostname == "" {
+		return
+	}
+
+	ensureFilterMetadata(lbEndpoint)[envoyLBMetadataNamespace] = &structpb.Struct{
+		Fields: map[string]*structpb.Value{
+			envoyLBHostnameMetadataKey: structpb.NewStringValue(hostname),
+		},
+	}
+}
+
+// ensureRouteFilterMetadata returns route r's FilterMetadata map, allocating Metadata/
+// FilterMetadata on demand — mirrors ensureFilterMetadata but for routes rather than
+// endpoints, so multiple writers (e.g. createRoutePerTopic's own metadata block and
+// setRouteHTTPRoute) can populate the same route without depending on call order.
+func ensureRouteFilterMetadata(r *route.Route) map[string]*structpb.Struct {
+	if r.Metadata == nil {
+		r.Metadata = &core.Metadata{}
+	}
+	if r.Metadata.FilterMetadata == nil {
+		r.Metadata.FilterMetadata = map[string]*structpb.Struct{}
+	}
+	return r.Metadata.FilterMetadata
+}
+
+// setRouteHTTPRoute records the route's path template under wso2.route/http.route so the
+// HCM tracing custom tag (see createTracingCustomTags) can surface it as the OTel
+// http.route attribute — the standard semantic-convention attribute for the matched
+// route template, as distinct from the concrete request path. Without it, APM backends
+// that key a span's display name/resource off "<http.method> <http.route>" fall back to
+// the bare method. A nil route or empty template is a no-op, so a route with nothing to
+// report doesn't gain an empty Metadata shell. Merges into any existing wso2.route
+// namespace struct rather than overwriting it, so this can run regardless of whether a
+// caller (e.g. createRoutePerTopic) already wrote other keys under the same namespace.
+func setRouteHTTPRoute(r *route.Route, pathTemplate string) {
+	if r == nil || pathTemplate == "" {
+		return
+	}
+
+	filterMetadata := ensureRouteFilterMetadata(r)
+	routeMeta := filterMetadata[envoyRouteMetadataNamespace]
+	if routeMeta == nil {
+		routeMeta = &structpb.Struct{Fields: map[string]*structpb.Value{}}
+		filterMetadata[envoyRouteMetadataNamespace] = routeMeta
+	} else if routeMeta.Fields == nil {
+		routeMeta.Fields = map[string]*structpb.Value{}
+	}
+	routeMeta.Fields[envoyRouteHTTPRouteKey] = structpb.NewStringValue(pathTemplate)
+}
+
+// setEndpointTransportSocketMatchID tags an endpoint with the lb_id its Cluster_
+// TransportSocketMatch was registered under, so Envoy selects the matching per-endpoint TLS
+// transport socket. Shared by the single-endpoint (processEndpoint) and weighted
+// (createWeightedCluster) cluster-building paths.
+func setEndpointTransportSocketMatchID(lbEndpoint *endpoint.LbEndpoint, matchID string) {
+	if lbEndpoint == nil {
+		return
+	}
+
+	ensureFilterMetadata(lbEndpoint)[constants.TransportSocketMatchKey] = &structpb.Struct{
+		Fields: map[string]*structpb.Value{
+			constants.LoadBalancerIDKey: structpb.NewStringValue(matchID),
+		},
+	}
 }
 
 // convertToInterface converts map[string]string to map[string]interface{} for structpb

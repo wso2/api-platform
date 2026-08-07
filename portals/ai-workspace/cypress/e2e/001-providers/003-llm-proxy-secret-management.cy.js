@@ -93,6 +93,11 @@ function createProjectViaUI(projectName) {
 
 function createProviderViaUI(providerName) {
   cy.intercept('POST', /\/llm-providers(\?|$)/).as('createProviderForProxy');
+  // Providers are an organization-level resource: with a project selected (which
+  // createProjectViaUI leaves behind), the Service Provider page renders the
+  // "available at the organization level" notice and no create button at all.
+  // currentProject is in-memory React state, so reloading the org root clears it.
+  cy.visitWorkspace(`/organizations/${Cypress.env('ORG_HANDLE')}`);
   cy.get('[data-cyid="nav-service-provider"]', { timeout: 30000 }).should('be.visible').click();
   cy.get('[data-cyid="add-new-provider-button"]', { timeout: 30000 }).should('be.visible').click();
   cy.get('[data-cyid="provider-template-openai-card"]', { timeout: 30000 }).should('be.visible').click();
@@ -278,12 +283,16 @@ describe('AI Workspace — LLM proxy secret management (create flow)', () => {
       .type(proxyName);
     cy.get('textarea[placeholder="Primary OpenAI provider"]').type('Cypress proxy secret abort test');
     cy.get('input[placeholder="Enter API key"]').type('sk-tc3-will-fail');
+
+    // Record notifications before the action: the snackbar auto-hides after
+    // ~3.5s, so polling for the element afterwards is racy under load.
+    cy.recordSnackbars();
+
     cy.contains('button', 'Create Proxy', { timeout: 30000 }).should('not.be.disabled').click();
 
     cy.wait('@failSecret');
 
-    cy.get('[data-testid="aiworkspace-snackbar-notification"]', { timeout: 15000 })
-      .should('be.visible');
+    cy.expectSnackbar(/HTTP 500|[Ff]ailed/);
 
     cy.wrap(null).then(() => {
       expect(proxyCallCount).to.equal(0);
@@ -492,12 +501,16 @@ describe('AI Workspace — LLM proxy secret management (update flow)', () => {
     });
 
     cy.get('input[placeholder="Enter API key"]').type('sk-tc6-will-fail');
+
+    // Record notifications before the action: the snackbar auto-hides after
+    // ~3.5s, so polling for the element afterwards is racy under load.
+    cy.recordSnackbars();
+
     cy.contains('button', /^Save$/).should('not.be.disabled').click();
 
     cy.wait('@failSecret');
 
-    cy.get('[data-testid="aiworkspace-snackbar-notification"]', { timeout: 15000 })
-      .should('be.visible');
+    cy.expectSnackbar(/HTTP 500|[Ff]ailed/);
 
     cy.wrap(null).then(() => {
       expect(proxyCallCount, 'PUT /llm-proxies not called').to.equal(0);

@@ -48,7 +48,14 @@ import {
   Tooltip,
   Typography,
 } from '@wso2/oxygen-ui';
-import { ChevronLeft, Clock, Copy, Edit } from '@wso2/oxygen-ui-icons-react';
+import {
+  ChevronLeft,
+  Clock,
+  Copy,
+  Edit,
+  Eye,
+  EyeOff,
+} from '@wso2/oxygen-ui-icons-react';
 import { FormattedMessage } from 'react-intl';
 import { useAppShell } from '../../../../contexts/AppShellContext';
 import { formatRelativeTime } from '../../../../contexts/llmProvider';
@@ -56,15 +63,29 @@ import {
   buildProjectPath,
   getProjectSlug,
 } from '../../../../utils/projectRouting';
-import { PLATFORM_API_BASE_URL } from '../../../../config.env';
+import { PLATFORM_API_BASE_URL } from '../../../../paths';
 import { mcpProxiesApis } from '../../../../apis/MCP/mcpProxiesApis';
+import * as mcpServerValidationApis from '../../../../apis/MCP/mcpServerValidationApis';
+import {
+  createSecret,
+  deleteSecret,
+  buildSecretPlaceholder,
+  generateSecretHandle,
+  extractSecretHandle,
+} from '../../../../apis/secretApis';
 import { getGuardrails } from '../../../../apis/policyHubApis';
 import { getMCPServerDeployments } from '../../../../apis/MCP/mcpServerDeployApis';
 import { getGateways } from '../../../../apis/gatewayApis';
 import type { Gateway } from '../../../../apis/gatewayTypes';
 import useAIWorkspaceSnackbar from '../../../../hooks/aiWorkspaceSnackbar';
 import { logger } from '../../../../utils/logger';
-import type { DeploymentResponse, MCPServer } from '../../../../utils/types';
+import { getErrorMessage } from '../../../../utils/apiError';
+import type {
+  DeploymentResponse,
+  MCPServer,
+  MCPServerCapabilities,
+  MCPServerInfoFetchRequest,
+} from '../../../../utils/types';
 import type { ParameterValues } from '../../PolicyParameterEditor/types';
 import PolicyMapper from './PolicyMapper';
 import type { SelectedPolicy } from './PolicyMapper';
@@ -85,6 +106,18 @@ function getInitials(name: string): string {
 
 function isNonArrayObject(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+
+// Normalizes possibly-undefined capability arrays to `[]` so a stored server's
+// capabilities and a freshly refetched result can be compared like-for-like.
+function normalizeCapabilities(
+  capabilities: MCPServerCapabilities | undefined
+): MCPServerCapabilities {
+  return {
+    tools: capabilities?.tools ?? [],
+    resources: capabilities?.resources ?? [],
+    prompts: capabilities?.prompts ?? [],
+  };
 }
 
 function pruneEmptyPolicyParamValues(value: unknown): unknown {
@@ -157,9 +190,13 @@ function TabPanel({ children, value, index }: TabPanelProps): JSX.Element {
   );
 }
 
-const TAB_LABELS = ['Overview', 'Policies'];
+const TAB_LABELS = ['Overview', 'Policies', 'Backend Connection'];
 const UNSAVED_CHANGES_MESSAGE =
   'You have unsaved changes. Please save or cancel before leaving this page.';
+// Sentinel shown in the auth header Value field in place of the real (write-only,
+// never-returned-by-the-API) secret value. Matches the convention already used for
+// LLM Provider credentials (ServiceProviderConnectionTab.tsx).
+const MASKED_CREDENTIAL_VALUE = '******';
 
 export default function ExternalServersOverview(): JSX.Element {
   const { serverId, projectSlug } = useParams<{
@@ -200,6 +237,20 @@ export default function ExternalServersOverview(): JSX.Element {
     []
   );
   const isReadOnlyServer = Boolean(server?.readOnly);
+
+  // Backend Connection tab
+  const [endpointUrl, setEndpointUrl] = useState('');
+  const [authHeaderName, setAuthHeaderName] = useState('');
+  const [authHeaderValue, setAuthHeaderValue] = useState('');
+  const [showAuthHeaderValue, setShowAuthHeaderValue] = useState(false);
+  const [isCredentialMasked, setIsCredentialMasked] = useState(false);
+  const [hasCredentialChanged, setHasCredentialChanged] = useState(false);
+  const [isRefetching, setIsRefetching] = useState(false);
+  // Staged tools/resources/prompts from the last successful Refetch Server Info,
+  // pending Save. Cleared whenever `server` is (re)loaded — including right after a
+  // successful save, since the newly saved server's own capabilities are then current.
+  const [refetchedCapabilities, setRefetchedCapabilities] =
+    useState<MCPServerCapabilities | null>(null);
 
   const selectedPoliciesRef = useRef<SelectedPolicy[]>([]);
   const [initialPolicies, setInitialPolicies] = useState<SelectedPolicy[]>([]);
@@ -422,7 +473,23 @@ export default function ExternalServersOverview(): JSX.Element {
     void mapPolicies();
   }, [server, updateSelectedPolicies]);
 
-  const hasUnsavedChanges = useMemo(() => {
+  // Populate the Backend Connection fields from the last-saved server config.
+  // Reruns after a successful save (setServer(updated)), so the fields always diff
+  // against the current persisted state rather than a snapshot taken once on mount.
+  useEffect(() => {
+    if (!server) return;
+    setEndpointUrl(server.upstream?.main?.url ?? '');
+    setAuthHeaderName(server.upstream?.main?.auth?.header ?? '');
+    // auth.value is write-only and never returned by GET — auth.header is the only
+    // signal the API gives us that a credential is already configured for this proxy.
+    const hasExistingAuth = Boolean(server.upstream?.main?.auth?.header);
+    setAuthHeaderValue(hasExistingAuth ? MASKED_CREDENTIAL_VALUE : '');
+    setIsCredentialMasked(hasExistingAuth);
+    setHasCredentialChanged(false);
+    setRefetchedCapabilities(null);
+  }, [server]);
+
+  const hasPolicyChanges = useMemo(() => {
     if (selectedPolicies.length !== initialPolicies.length) return true;
     return selectedPolicies.some(
       (p, i) =>
@@ -432,9 +499,50 @@ export default function ExternalServersOverview(): JSX.Element {
     );
   }, [selectedPolicies, initialPolicies]);
 
+  const hasBackendConnectionChanges = useMemo(() => {
+    if (!server) return false;
+    const savedUrl = server.upstream?.main?.url ?? '';
+    const savedHeaderName = server.upstream?.main?.auth?.header ?? '';
+    if (endpointUrl.trim() !== savedUrl.trim()) return true;
+    if (authHeaderName.trim() !== savedHeaderName.trim()) return true;
+    // The saved credential value is write-only and never returned by the API, so the
+    // only way to know it changed is that the user unmasked the field and typed in it.
+    if (!isCredentialMasked && hasCredentialChanged) return true;
+    return false;
+  }, [
+    server,
+    endpointUrl,
+    authHeaderName,
+    isCredentialMasked,
+    hasCredentialChanged,
+  ]);
+
+  // A staged refetch only actually counts as a change if it discovered something
+  // different from what's currently stored — an unedited refetch that finds the
+  // exact same tools/resources/prompts shouldn't flip Save on for no reason.
+  const hasCapabilitiesChanges = useMemo(() => {
+    if (!refetchedCapabilities) return false;
+    return (
+      JSON.stringify(refetchedCapabilities) !==
+      JSON.stringify(normalizeCapabilities(server?.capabilities))
+    );
+  }, [refetchedCapabilities, server]);
+
+  const hasUnsavedChanges =
+    hasPolicyChanges || hasBackendConnectionChanges || hasCapabilitiesChanges;
+
   const handleCancelChanges = () => {
     if (isReadOnlyServer) return;
     updateSelectedPolicies(initialPolicies);
+    if (server) {
+      setEndpointUrl(server.upstream?.main?.url ?? '');
+      setAuthHeaderName(server.upstream?.main?.auth?.header ?? '');
+      const hasExistingAuth = Boolean(server.upstream?.main?.auth?.header);
+      setAuthHeaderValue(hasExistingAuth ? MASKED_CREDENTIAL_VALUE : '');
+      setIsCredentialMasked(hasExistingAuth);
+      setHasCredentialChanged(false);
+    }
+    setRefetchedCapabilities(null);
   };
 
   const handleSaveChanges = async () => {
@@ -456,19 +564,203 @@ export default function ExternalServersOverview(): JSX.Element {
 
     const { createdAt, createdBy, updatedAt, updatedBy, ...updatePayload } = server;
 
+    // Rotating the credential (only when it was actually unmasked and edited): create a
+    // new secret up front so the update payload never carries plaintext, then best-effort
+    // delete the old secret once the update succeeds. Mirrors MCPServerProvider.updateMCPServer.
+    const isRotatingCredential = !isCredentialMasked && hasCredentialChanged;
+    let upstreamPayload = server.upstream;
+    // Tracks the handle created below (rotation flow only), so a subsequent failed
+    // updateMCPServer call can clean it up instead of leaking an orphaned secret.
+    let newlyCreatedSecretHandle: string | null = null;
+
+    if (hasBackendConnectionChanges) {
+      const trimmedUrl = endpointUrl.trim();
+      const trimmedHeaderName = authHeaderName.trim();
+      let authPayload = server.upstream?.main?.auth;
+
+      if (isRotatingCredential) {
+        const trimmedValue = authHeaderValue.trim();
+        if (trimmedHeaderName && trimmedValue) {
+          try {
+            const secretHandle = generateSecretHandle();
+            const secretResponse = await createSecret({
+              id: secretHandle,
+              displayName: `${server.displayName} upstream auth`,
+              description: `Auto-generated secret for MCP server ${server.displayName}`,
+              value: trimmedValue,
+              type: 'GENERIC',
+            });
+            newlyCreatedSecretHandle = secretResponse.id;
+            authPayload = {
+              type: 'header',
+              header: trimmedHeaderName,
+              value: buildSecretPlaceholder(secretResponse.id),
+            };
+          } catch {
+            showSnackbar('Failed to encrypt upstream auth credential', 'error');
+            return;
+          }
+        } else {
+          // Rotated to an empty header/value — the user is explicitly clearing auth.
+          authPayload = undefined;
+        }
+      } else if (trimmedHeaderName) {
+        // Not rotating: preserve the existing credential. auth.value is writeOnly and
+        // never present on the cached server object, so omitting it here (rather than
+        // reconstructing it) relies on the backend's preserveMCPUpstreamAuthValue to
+        // keep the stored value — the same fallback the Policies-only save path
+        // already depends on. Only the header name (URL-only/header-only edits) changes.
+        authPayload = { ...server.upstream?.main?.auth, type: 'header', header: trimmedHeaderName };
+      } else {
+        // Header name cleared — no credential to attach, so drop auth entirely.
+        authPayload = undefined;
+      }
+
+      upstreamPayload = {
+        main: {
+          ...server.upstream?.main,
+          url: trimmedUrl,
+          auth: authPayload,
+        },
+      };
+    }
+
+    // A staged refetch result (if any, and if it actually differs from what's
+    // stored) replaces the proxy's capabilities; otherwise the existing stored
+    // capabilities are resent as-is, same as before this field was ever staged.
+    const capabilitiesPayload = hasCapabilitiesChanges
+      ? (refetchedCapabilities ?? undefined)
+      : updatePayload.capabilities;
+
     try {
       setIsSavingChanges(true);
       const updated = await mcpProxiesApis.updateMCPServer(
         server.id,
-        { ...updatePayload, policies: policiesPayload },
+        {
+          ...updatePayload,
+          policies: policiesPayload,
+          upstream: upstreamPayload,
+          capabilities: capabilitiesPayload,
+        },
         apimBaseUrl
       );
       setServer(updated);
-      showSnackbar('Policies saved successfully.', 'success');
+
+      if (hasBackendConnectionChanges && isRotatingCredential) {
+        const oldHandle = server.upstream?.main?.auth?.value
+          ? extractSecretHandle(server.upstream.main.auth.value)
+          : null;
+        if (oldHandle) {
+          deleteSecret(oldHandle).catch((err) => {
+            logger.warn('Could not delete old secret after MCP proxy update', err);
+          });
+        }
+      }
+
+      showSnackbar('Changes saved successfully.', 'success');
     } catch {
-      showSnackbar('Failed to save policies.', 'error');
+      // The MCP proxy update failed after a new secret was already created for the
+      // rotation — clean it up (best-effort) so it doesn't leak as an orphaned,
+      // unreferenced credential. Only the newly created handle, never the old one.
+      if (newlyCreatedSecretHandle) {
+        deleteSecret(newlyCreatedSecretHandle).catch((err) => {
+          logger.warn('Could not clean up newly created secret after failed MCP proxy update', err);
+        });
+      }
+      showSnackbar('Failed to save changes.', 'error');
     } finally {
       setIsSavingChanges(false);
+    }
+  };
+
+  const handleRefetch = async () => {
+    if (!server) return;
+    const trimmedUrl = endpointUrl.trim();
+    if (!trimmedUrl) {
+      showSnackbar('Enter an endpoint URL before refetching.', 'error');
+      return;
+    }
+
+    const trimmedHeaderName = authHeaderName.trim();
+    const storedHeaderName = (server.upstream?.main?.auth?.header ?? '').trim();
+    const endpointUnchanged =
+      trimmedUrl === (server.upstream?.main?.url ?? '').trim();
+    const headerNameUnchanged = trimmedHeaderName === storedHeaderName;
+
+    setIsRefetching(true);
+    try {
+      // Which credential the fetch runs with is what picks the request shape. A live
+      // value the user just typed goes on the wire directly; otherwise the credential
+      // is write-only (masked as ******) and only the backend can resolve it, which it
+      // does from proxyId. auth never accompanies proxyId — whenever a proxy is
+      // referenced, its stored auth is authoritative and an override is rejected.
+      let request: MCPServerInfoFetchRequest;
+      if (trimmedHeaderName && !isCredentialMasked && authHeaderValue.trim()) {
+        // A new or rotated credential was typed — validate the endpoint against it
+        // directly, before anything is saved.
+        request = {
+          url: trimmedUrl,
+          auth: {
+            type: 'header',
+            header: trimmedHeaderName,
+            value: authHeaderValue.trim(),
+          },
+        };
+      } else if (!trimmedHeaderName) {
+        // No auth header configured, or the user is clearing it — validate the way the
+        // saved proxy would actually behave, unauthenticated.
+        request = { url: trimmedUrl };
+      } else if (!headerNameUnchanged) {
+        // The header was renamed but the value is still masked. proxyId would resolve
+        // the stored header name too, so there is no shape that pairs the new name with
+        // the stored value — the user has to supply one or the other.
+        showSnackbar(
+          'Enter the authentication header value, or save your changes first, to refetch with the renamed header.',
+          'error'
+        );
+        return;
+      } else if (endpointUnchanged) {
+        // Nothing to override — the backend resolves both the stored URL and the stored
+        // credential from the persisted config.
+        request = { proxyId: server.id };
+      } else {
+        // The endpoint was edited but the credential was not. Send both: the backend
+        // fetches the unsaved URL using the stored secret, so the user can verify an
+        // endpoint change without re-entering a credential they can never read back.
+        request = { url: trimmedUrl, proxyId: server.id };
+      }
+
+      const response = await mcpServerValidationApis.fetchMCPProxyServerInfo(
+        request,
+        apimBaseUrl
+      );
+      // Stage the discovered tools/resources/prompts so the user can Save them —
+      // the fetch-server-info response already uses the same MCPServerTool/
+      // MCPServerResource/MCPServerPrompt shapes as MCPServerCapabilities, so no
+      // remapping is needed here (unlike the creation flow's EndpointValidationResponse).
+      const discoveredCapabilities = {
+        tools: response.tools ?? [],
+        resources: response.resources ?? [],
+        prompts: response.prompts ?? [],
+      };
+      setRefetchedCapabilities(discoveredCapabilities);
+      // Only prompt to Save when the refetch actually found something different —
+      // hasCapabilitiesChanges won't reflect the state just set above until the next
+      // render, so this mirrors that same comparison directly against the response.
+      const capabilitiesChanged =
+        JSON.stringify(discoveredCapabilities) !==
+        JSON.stringify(normalizeCapabilities(server.capabilities));
+      showSnackbar(
+        `Connection verified — ${discoveredCapabilities.tools.length} tools, ${discoveredCapabilities.resources.length} resources, ${discoveredCapabilities.prompts.length} prompts found.` +
+          (capabilitiesChanged
+            ? " Click Save to update the proxy's stored capabilities."
+            : ''),
+        'success'
+      );
+    } catch (err) {
+      showSnackbar(getErrorMessage(err, 'Failed to fetch server info'), 'error');
+    } finally {
+      setIsRefetching(false);
     }
   };
 
@@ -877,6 +1169,108 @@ export default function ExternalServersOverview(): JSX.Element {
                 validationResult={validationResult}
                 readOnly={isReadOnlyServer}
               />
+            </TabPanel>
+
+            <TabPanel value={tabIndex} index={2}>
+              {isReadOnlyServer && (
+                <GatewayArtifactReadOnlyBanner message="Backend connection is managed by the gateway that created this MCP proxy and is read-only here." />
+              )}
+              <Stack spacing={2} sx={{ maxWidth: 640 }}>
+                <FormControl fullWidth>
+                  <FormLabel>MCP Proxy Endpoint URL</FormLabel>
+                  <TextField
+                    fullWidth
+                    value={endpointUrl}
+                    onChange={(event) => setEndpointUrl(event.target.value)}
+                    disabled={isReadOnlyServer}
+                    slotProps={{
+                      htmlInput: {
+                        'data-testid': 'backend-connection-endpoint-url',
+                      },
+                    }}
+                  />
+                </FormControl>
+                <Grid container spacing={1.5}>
+                  <Grid size={{ xs: 12, sm: 6 }}>
+                    <FormControl fullWidth>
+                      <FormLabel>Authentication Header</FormLabel>
+                      <TextField
+                        fullWidth
+                        value={authHeaderName}
+                        onChange={(event) =>
+                          setAuthHeaderName(event.target.value)
+                        }
+                        disabled={isReadOnlyServer}
+                        slotProps={{
+                          htmlInput: {
+                            'data-testid': 'backend-connection-auth-header',
+                          },
+                        }}
+                      />
+                    </FormControl>
+                  </Grid>
+                  <Grid size={{ xs: 12, sm: 6 }}>
+                    <FormControl fullWidth>
+                      <FormLabel>Value</FormLabel>
+                      <TextField
+                        fullWidth
+                        type={showAuthHeaderValue ? 'text' : 'password'}
+                        value={authHeaderValue}
+                        disabled={isReadOnlyServer}
+                        onFocus={() => {
+                          if (isCredentialMasked) {
+                            setAuthHeaderValue('');
+                            setIsCredentialMasked(false);
+                            setHasCredentialChanged(false);
+                          }
+                        }}
+                        onChange={(event) => {
+                          setAuthHeaderValue(event.target.value);
+                          setHasCredentialChanged(true);
+                        }}
+                        slotProps={{
+                          htmlInput: {
+                            'data-testid': 'backend-connection-auth-value',
+                          },
+                          input: {
+                            endAdornment: (
+                              <InputAdornment position="end">
+                                <IconButton
+                                  size="small"
+                                  onClick={() =>
+                                    setShowAuthHeaderValue((prev) => !prev)
+                                  }
+                                  aria-label={
+                                    showAuthHeaderValue
+                                      ? 'Hide header value'
+                                      : 'Show header value'
+                                  }
+                                >
+                                  {showAuthHeaderValue ? (
+                                    <EyeOff size={18} />
+                                  ) : (
+                                    <Eye size={18} />
+                                  )}
+                                </IconButton>
+                              </InputAdornment>
+                            ),
+                          },
+                        }}
+                      />
+                    </FormControl>
+                  </Grid>
+                </Grid>
+                <Box>
+                  <Button
+                    variant="outlined"
+                    disabled={isRefetching || !endpointUrl.trim()}
+                    onClick={() => void handleRefetch()}
+                    data-testid="backend-connection-refetch"
+                  >
+                    {isRefetching ? 'Refetching...' : 'Refetch Server Info'}
+                  </Button>
+                </Box>
+              </Stack>
             </TabPanel>
           </Box>
         </Card>

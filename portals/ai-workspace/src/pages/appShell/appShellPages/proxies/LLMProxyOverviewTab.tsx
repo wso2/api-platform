@@ -44,11 +44,11 @@ import { Copy, Trash2 } from '@wso2/oxygen-ui-icons-react';
 import YAML from 'yaml';
 import { useAppShell } from '../../../../contexts/AppShellContext';
 import { useProxy } from '../../../../contexts/proxy';
-import { useLLMProviders } from '../../../../contexts/llmProvider';
 import { getGateways } from '../../../../apis/gatewayApis';
 import { getLLMProxyDeployments } from '../../../../apis/llmProxiesApis';
-import { PLATFORM_API_BASE_URL } from '../../../../config.env';
+import { PLATFORM_API_BASE_URL } from '../../../../paths';
 import { logger } from '../../../../utils/logger';
+import { getErrorMessage } from '../../../../utils/apiError';
 import NoData from '../../../../assets/images/NoData.svg';
 import { FormattedMessage } from 'react-intl';
 import useAIWorkspaceSnackbar from '../../../../hooks/aiWorkspaceSnackbar';
@@ -59,7 +59,6 @@ import {
   DisabledActionTooltip,
   GATEWAY_MANAGED_ARTIFACT_TOOLTIP,
 } from '../../../../utils/readOnlyArtifacts';
-import ApiTryOutCurlSnippet from '../../../../Components/common/ApiTryOutCurlSnippet';
 import {
   formatPrefixedKey,
   resolveApiKeyAuthDisplay,
@@ -107,7 +106,6 @@ export default function LLMProxyOverviewTab() {
   const { currentOrganization } = useAppShell();
   const { proxy, getProxyAPIKeys, createProxyAPIKey, deleteProxyAPIKey } =
     useProxy();
-  const { getProviderById } = useLLMProviders();
   const showSnackbar = useAIWorkspaceSnackbar();
   const fetchedApiKeysProxyIdRef = useRef<string | null>(null);
   const fetchingApiKeysProxyIdRef = useRef<string | null>(null);
@@ -142,15 +140,6 @@ export default function LLMProxyOverviewTab() {
     () => resolveApiKeyAuthDisplay(proxy?.security, proxy?.globalPolicies),
     [proxy?.security, proxy?.globalPolicies]
   );
-  const providerTemplate = useMemo(() => {
-    const providerId =
-      typeof proxy?.provider === 'string'
-        ? proxy.provider
-        : proxy?.provider?.id ?? '';
-
-    return getProviderById(providerId)?.template ?? null;
-  }, [getProviderById, proxy?.provider]);
-
   const parsedOpenApiSpec = useMemo(
     () => parseOpenApiSpec(proxy?.openapi || ''),
     [proxy?.openapi]
@@ -441,7 +430,12 @@ export default function LLMProxyOverviewTab() {
       }
     } catch (apiKeyError) {
       logger.error('Failed to generate API key:', apiKeyError);
-      setKeyError('Failed to generate API key. Please try again.');
+      setKeyError(
+        getErrorMessage(
+          apiKeyError,
+          'Failed to generate API key. Please try again.'
+        )
+      );
     } finally {
       setGeneratingKey(false);
     }
@@ -941,15 +935,6 @@ export default function LLMProxyOverviewTab() {
                   </Box>
                 </Stack>
               </Alert>
-              <Divider sx={{ my: 2 }} />
-              <ApiTryOutCurlSnippet
-                apiKey={generatedKey}
-                gatewayUrl={generatedGatewayUrl}
-                apiKeyHeaderName={apiKeyName}
-                apiKeyLocation={apiKeyLocation}
-                apiKeyValuePrefix={apiKeyValuePrefix}
-                providerTemplate={providerTemplate}
-              />
             </>
           ) : (
             <Stack spacing={1}>

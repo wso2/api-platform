@@ -37,7 +37,7 @@ import type {
 export type { Application } from '../utils/types';
 import { applicationApis } from '../apis/applicationApis';
 import { useAppShell } from './AppShellContext';
-import { PLATFORM_API_BASE_URL } from '../config.env';
+import { PLATFORM_API_BASE_URL } from '../paths';
 import { logger } from '../utils/logger';
 
 // ============================================================================

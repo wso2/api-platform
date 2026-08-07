@@ -9,15 +9,16 @@ wso2apip-ai-workspace-<version>/
 ├── README.md
 ├── docker-compose.yaml                          # AI Workspace + Platform API
 ├── scripts/
-│   └── setup.sh                                 # One-time TLS + secrets provisioning
+│   ├── setup.sh                                 # One-time TLS + secrets provisioning
+│   └── setup.ps1                                # Same, for Windows (PowerShell)
 ├── configs/
 │   ├── config.toml                              # Active configuration for BOTH services —
 │   │                                             #   [platform_api.*] and [ai_workspace.*]
 │   │                                             #   tables side by side in one file
 │   └── config-template.toml                     # Full configuration reference for both,
-│                                                 #   plus optional [developer_portal] at the bottom
+│                                                 #   plus optional [api_portal] at the bottom
 └── resources/
-    ├── roles.yaml                               # Platform API role definitions
+    ├── role-to-scope-mapping.yaml                               # Platform API role-to-scope mapping (edit to change what a role grants)
     └── platform-api/
         └── db-scripts/                          # Platform API schema scripts (schema.*.sql)
 ```
@@ -34,8 +35,19 @@ Run the setup script once, from the distribution root, before the first start:
 
 ```bash
 ./scripts/setup.sh
-docker compose up -d
+docker compose up
 ```
+
+On **Windows**, use the PowerShell script instead — same flags, same generated files
+(Git for Windows and Docker Desktop both ship the `openssl` it needs):
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\scripts\setup.ps1
+# PowerShell 7+ is also fine:  pwsh -File .\scripts\setup.ps1
+docker compose up
+```
+
+`docker compose up` runs in the foreground — leave it running and use a second terminal for anything else, or press `Ctrl+C` to stop the stack. Which components it starts comes entirely from the `COMPOSE_PROFILES` line `setup.sh` wrote into `.env`; add profiles to that line (`ai-workspace`, `api-portal`, `platform-api`) to run more of them.
 
 `setup.sh` generates everything the stack needs — nothing is auto-generated at runtime:
 
@@ -45,6 +57,7 @@ docker compose up -d
 | `resources/keys/encryption.key` (git-ignored) | Platform API at-rest encryption key (32 bytes, 64 hex chars); read by `config.toml` via `{{ file }}`. **Retain it** — losing or changing it makes previously-encrypted secrets unreadable. |
 | `resources/keys/jwt_private.pem` + `jwt_public.pem` (git-ignored) | RS256 keypair signing/verifying login JWTs; read by `config.toml` via `{{ file }}` |
 | `resources/certificates/cert.pem` + `key.pem` | Self-signed TLS pair shared by both services (SAN: `localhost`, `platform-api`, `ai-workspace`) |
+| `.env` | `COMPOSE_PROFILES` and `COMPOSE_PROJECT_NAME` — read by the `docker compose` CLI from this directory |
 
 The admin password is generated and printed once by `setup.sh` — it is not stored anywhere; only its bcrypt hash lands in `api-platform.env`. Re-running `setup.sh` keeps existing files; pass `--force` to rotate keys and credentials, or `--certs-only` to (re)generate just the TLS pair. `ADMIN_USERNAME` / `ADMIN_PASSWORD` environment variables skip the interactive prompts (used by CI to pin known test credentials).
 
@@ -57,7 +70,7 @@ curl -fk https://localhost:9243/health    # Platform API
 curl -fk https://localhost:9643/healthz   # AI Workspace
 ```
 
-Open the AI Workspace in a browser at `https://localhost:9643` and log in with the admin credentials printed by `setup.sh`.
+Open the AI Workspace in a browser at `https://localhost:9643/ai-workspace` and log in with the admin credentials printed by `setup.sh`. (The UI is served under the `/ai-workspace` path prefix so one host can front several portals; the origin root just redirects there.)
 
 > **Browser trust warning?** Both services use a self-signed TLS certificate by default. Click **Advanced → Proceed** to continue. See [Custom TLS Certificates](#custom-tls-certificates) to remove the warning permanently.
 
@@ -65,31 +78,31 @@ Open the AI Workspace in a browser at `https://localhost:9643` and log in with t
 
 | Port | Service | Description |
 |------|---------|-------------|
-| `9643` | AI Workspace (BFF) | HTTPS — browser entry point |
+| `9643` | AI Workspace (BFF) | HTTPS — browser entry point, served under `/ai-workspace` |
 | `9243` | Platform API | HTTPS — backend REST API |
-| `9543` | Developer Portal | HTTPS — only when the `with-developer-portal` profile is enabled (see below) |
+| `9543` | API Portal | HTTPS — only when the `api-portal` profile is enabled (see below) |
 
-## Developer Portal (optional)
+## API Portal (optional)
 
-This package runs AI Workspace and the Platform API by default. The **Developer Portal** ships in the same `docker-compose.yaml` as an optional component behind the `with-developer-portal` [Compose profile](https://docs.docker.com/compose/how-tos/profiles/), sharing the one Platform API — so you can add it without standing up a second Platform API.
+AI Workspace and the Platform API start together via the `ai-workspace` [Compose profile](https://docs.docker.com/compose/how-tos/profiles/) shown in [Quick Start](#quick-start). The **API Portal** ships in the same `docker-compose.yaml` as an optional component behind its own `api-portal` profile, sharing the one Platform API — so you can add it without standing up a second Platform API.
 
-The portal mounts the **same** `configs/config.toml` the other services do and reads only its own `[developer_portal]` section (it ignores `[ai_workspace]`/`[platform_api]`, including their tokens). It is **off by default**: a plain `docker compose up -d` never starts it. Enabling it takes two one-time steps, because that shipped `config.toml` does **not** carry a `[developer_portal]` section:
+The portal mounts the **same** `configs/config.toml` the other services do and reads only its own `[api_portal]` section (it ignores `[ai_workspace]`/`[platform_api]`, including their tokens). It is **off by default**: `COMPOSE_PROFILES` in `.env` does not list it, so a plain `docker compose up` never starts it. Enabling it takes two one-time steps, because that shipped `config.toml` does **not** carry a `[api_portal]` section:
 
-1. **Add the `[developer_portal]` section to `configs/config.toml`.** Copy the `[developer_portal.*]` tables from the bottom of the shipped `configs/config-template.toml` (the "Developer Portal (optional)" section) and append them to this stack's `configs/config.toml`. The compose stack already provides everything they reference — the defaults point at `https://platform-api:9243` and read the JWT public key from `/etc/devportal/keys/jwt_public.pem`.
-2. **Add its required secrets** to `api-platform.env`. The portal fails closed at startup without them:
+1. **Add the `[api_portal]` section to `configs/config.toml`.** Copy the `[api_portal.*]` tables from the bottom of the shipped `configs/config-template.toml` (the "API Portal (optional)" section) and append them to this stack's `configs/config.toml`. The compose stack already provides everything they reference — the defaults point at `https://platform-api:9243`, read the JWT public key from `/etc/api-portal/keys/jwt_public.pem`, and read its encryption key/session secret from `/etc/api-portal/keys/encryption.key` / `session-secret` — files `setup.sh` already generated at `resources/keys/api-portal-encryption.key` / `api-portal-session-secret` regardless of which profile is enabled, so there's nothing further to provision.
 
-   ```bash
-   echo "APIP_DP_SECURITY_ENCRYPTION_KEY=$(openssl rand -hex 32)" >> api-platform.env
-   echo "APIP_DP_SECURITY_SESSION_SECRET=$(openssl rand -hex 32)" >> api-platform.env
-   ```
+2. **Add `api-portal` to the `COMPOSE_PROFILES` line in `.env`**, so it starts with the rest of the stack:
 
-Then start the stack with the profile enabled:
-
-```bash
-docker compose --profile with-developer-portal up -d
+```
+COMPOSE_PROFILES=ai-workspace,api-portal,platform-api
 ```
 
-The portal comes up at `https://localhost:9543`, verifying Platform API-issued tokens with the same RS256 public key the rest of the stack uses. It keeps its own data in the `developer-portal-data` volume. Omit `--profile with-developer-portal` on any later `docker compose` command to leave it stopped.
+Then start the stack:
+
+```bash
+docker compose up
+```
+
+The portal comes up at `https://localhost:9543`, verifying Platform API-issued tokens with the same RS256 public key the rest of the stack uses. It keeps its own data in the `api-portal-data` volume. Removing `api-portal` from `COMPOSE_PROFILES` again neither starts nor stops it on the spot — an already-running instance keeps running. To stop it explicitly, run `docker compose stop api-portal`, or `docker compose --profile api-portal down` to remove it.
 
 ## Configuration
 
@@ -120,15 +133,16 @@ Environment overrides go in `api-platform.env` (git-ignored; loaded into both co
 | `[platform_api.logging].level` | Log level (`debug`, `info`, `warn`, `error`; matched case-insensitively) |
 | `[platform_api.security].encryption_key` | Single 32-byte key (64 hex chars or base64) used for all at-rest encryption (secrets, subscription tokens, WebSub HMAC secrets). Generate with `openssl rand -hex 32` |
 | `[platform_api.database].driver` | `sqlite3` or `postgres` |
-| `[platform_api.auth].mode` | `file` (quickstart default), `external_token`, or `idp` — selects exactly one auth mode |
+| `[platform_api.auth].mode` | `file` (quickstart default), `internal_token`, or `idp` — selects exactly one auth mode |
 | `[platform_api.auth.jwt].public_key_file` / `private_key_file` | RS256 (asymmetric) PEM keys; `public_key_file` verifies every token, `private_key_file` signs login JWTs in `file` mode. Read via `{{ file }}` — HMAC and unsigned tokens are rejected |
 | `[platform_api.auth.idp]` | JWKS-based IDP auth — active when `mode = "idp"`; configure for Asgardeo, Keycloak, Auth0, etc. |
-| `[platform_api.auth.file.users]` | Local user credentials, active when `mode = "file"` (change the password hash before sharing) |
+| `[platform_api.auth.file.users]` | Local user credentials, active when `mode = "file"` (change the password hash before sharing). Each user names one or more `roles` from `resources/role-to-scope-mapping.yaml` — those roles are the whole grant, unioned |
+| `[platform_api.auth.authorization].role_to_scope_mapping` | Path to the mounted `resources/role-to-scope-mapping.yaml` — edit that file to change what a role grants |
 | `[platform_api.server.https]` | Listener on `:9243`; `cert_file`/`key_file` point at `cert.pem`/`key.pem` |
 
 Each key's default value is written inline in `configs/config-template.toml` — a
 fully-commented reference of every available setting and its default for both active
-components, plus the optional `[developer_portal]` section at the bottom, so defaults
+components, plus the optional `[api_portal]` section at the bottom, so defaults
 are not restated here.
 
 ## Authentication Modes
@@ -147,30 +161,34 @@ Replace the `password_hash` value under `[platform_api.auth.file.users]` in `con
 
 To delegate login to an external OIDC-compliant provider (Asgardeo, Keycloak, Auth0, etc.) instead of file-based auth, both services need to be reconfigured — the AI Workspace to send users to the IDP, and the Platform API to trust the tokens it issues.
 
-1. Register a **confidential** OIDC application in your IDP with redirect URL `https://<your-domain>/api/auth/callback` (use `https://localhost:9643/api/auth/callback` for local development), a post-logout redirect URL, and enable the **Authorization Code** and **Refresh Token** grants.
+1. Register a **confidential** OIDC application in your IDP with redirect URL `https://<your-domain>/ai-workspace/api/auth/callback` (use `https://localhost:9643/ai-workspace/api/auth/callback` for local development), a post-logout redirect URL, and enable the **Authorization Code** and **Refresh Token** grants.
 2. **AI Workspace** (`configs/config.toml`): set `[ai_workspace.auth] mode = "oidc"`. Every `[ai_workspace.auth.oidc]` key except `scope` defaults to empty and the server refuses to start in OIDC mode until each is set — either directly in the TOML or via its `APIP_AIW_AUTH_OIDC_*` token in `api-platform.env`:
 
    ```bash
    APIP_AIW_AUTH_OIDC_AUTHORITY=https://idp.example.com
    APIP_AIW_AUTH_OIDC_CLIENT_ID=<your-client-id>
    APIP_AIW_AUTH_OIDC_CLIENT_SECRET=<your-client-secret>
-   APIP_AIW_AUTH_OIDC_REDIRECT_URL=https://<your-domain>/api/auth/callback
-   APIP_AIW_AUTH_OIDC_POST_LOGOUT_REDIRECT_URL=https://<your-domain>/login
+   APIP_AIW_AUTH_OIDC_REDIRECT_URL=https://<your-domain>/ai-workspace/api/auth/callback
+   APIP_AIW_AUTH_OIDC_POST_LOGOUT_REDIRECT_URL=https://<your-domain>/ai-workspace/login
    ```
 
    Leaving `APIP_AIW_AUTH_OIDC_SCOPE` unset requests the full `ap:*` scope set.
 
 3. **Platform API** (`[platform_api.*]` tables in `configs/config.toml`): the `[platform_api.auth.idp]` fields have no env-var tokens in the quickstart file, so edit the TOML directly — set `[platform_api.auth] mode = "idp"` and fill in `jwks_url` and `issuer` for your IDP. `mode` selects exactly one auth mode, so switching to `"idp"` stops the file-based login endpoint from being used. Align `[platform_api.auth.claim_mappings]` with `[ai_workspace.auth.claim_mappings]` — both services must read the same claims out of the same token.
 
-See `configs/config-template.toml` for the full, per-field reference of both active components (and the optional `[developer_portal]` section at the bottom), and the [WSO2 API Platform documentation](https://wso2.com/api-platform/docs/) (AI Workspace section) for a full OIDC setup walkthrough including Asgardeo scope registration.
+See `configs/config-template.toml` for the full, per-field reference of both active components (and the optional `[api_portal]` section at the bottom), and the [WSO2 API Platform documentation](https://wso2.com/api-platform/docs/) (AI Workspace section) for a full OIDC setup walkthrough including Asgardeo scope registration.
 
 ## Custom TLS Certificates
 
 `resources/certificates/` holds the TLS pair shared by both services — `cert.pem` (certificate or full chain) and `key.pem` (private key), generated by `setup.sh`. This one directory is mounted read-only into both containers at their `/etc/<service>/tls` path. To remove the browser trust warning, replace both files with a certificate from your own CA (same file names) whose SAN list covers all three hostnames (`localhost`, `platform-api`, `ai-workspace`), then restart:
 
 ```bash
-docker compose up -d
+docker compose up --force-recreate
 ```
+
+## Compose project name
+
+`setup.sh` pins `COMPOSE_PROJECT_NAME=wso2apip-ai-workspace-<version>-<6 hex>` in `.env` on its first run and never changes it. Compose prefixes this stack's containers, network, and volumes with it, so unpacking this zip again elsewhere on the host gets its own volumes instead of adopting this copy's APIs, applications, and users. Don't edit that line or delete `.env` — the data lives in `<project>_platform-api-data` (and `<project>_api-portal-data` if you enable that profile), and a different name starts the stack empty. `down` keeps those volumes; only `down -v` deletes them. To choose the name yourself — including adopting an earlier release's volumes, whose prefix `docker volume ls` shows — set it for the first run only: `COMPOSE_PROJECT_NAME=<name> ./scripts/setup.sh` (PowerShell: `$env:COMPOSE_PROJECT_NAME = '<name>'; .\scripts\setup.ps1`). It must match `^[a-z0-9][a-z0-9_-]*$`. Two AI Workspace stacks still can't run at once: both bind ports `9243` and `9643`.
 
 ## Database
 

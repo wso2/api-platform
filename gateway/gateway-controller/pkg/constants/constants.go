@@ -106,6 +106,14 @@ const (
 	PolicyEngineClusterName       = "api-platform/policy-engine"
 	DefaultPolicyEngineSocketPath = "/var/run/api-platform/policy-engine.sock"
 
+	// GatewayHealthPathPrefix is reserved for the gateway's own readiness/liveness
+	// direct-response routes (see GatewayReadyPath/GatewayHealthyPath). No API,
+	// LLMProvider, or LLMProxy resource may register a path under this prefix —
+	// path validation for those resource kinds must reject it.
+	GatewayHealthPathPrefix = "/_gateway-health"
+	GatewayReadyPath        = GatewayHealthPathPrefix + "/ready"
+	GatewayHealthyPath      = GatewayHealthPathPrefix + "/healthy"
+
 	// gRPC Access Log Service
 	GRPCAccessLogClusterName = "apip_als_cluster"
 	DefaultALSSocketPath     = "/var/run/api-platform/gateway-analytics.sock"
@@ -130,6 +138,11 @@ const (
 	// This header is set by the policy engine when UpstreamName is used
 	// Routes can be configured with cluster_header to read this header and select the target cluster
 	TargetUpstreamHeader = "x-target-upstream"
+
+	// InternalLoopbackHeader marks the LLM proxy's internal loopback forward to its provider.
+	// The proxy stamps it via a set-headers policy; the analytics system policy reads it on the
+	// provider hop so the duplicate provider analytics event can be dropped from Moesif.
+	InternalLoopbackHeader = "x-wso2-internal-loopback"
 
 	// UpstreamDefinitionClusterPrefix is the prefix used for clusters created from upstreamDefinitions
 	// Cluster names follow the format: upstream_<definition_name>

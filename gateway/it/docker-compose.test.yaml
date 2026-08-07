@@ -67,6 +67,8 @@ services:
       - APIP_GW_CONTROLLER_CONTROLPLANE_INSECURE_SKIP_VERIFY=true
       # Used by template-functions IT to verify {{ env "..." }} resolution in spec fields
       - IT_TEMPLATE_PATH=/anything
+      - IT_RATE_LIMIT=5
+      - IT_ALLOW_CREDENTIALS=true
     volumes:
       - controller-data-tests:/app/data
       - ./it-aesgcm-keys/default-aesgcm256-v1.bin:/app/data/aesgcm-keys/default-aesgcm256-v1.bin:ro
@@ -138,6 +140,21 @@ services:
     container_name: mcp-server-backend
     ports:
       - "3001:3001"
+    networks:
+      - it-gateway-runtime-network
+
+  # Official MCP reference server (streamableHttp transport). Unlike
+  # mcp-server-backend above, its responses carry a content-length header on a
+  # chunked text/event-stream body, which triggers the Envoy content-length/
+  # mutated-body mismatch when the policy engine mis-negotiates streaming mode.
+  mcp-streamable-backend:
+    container_name: mcp-streamable-backend
+    image: ghcr.io/wso2/api-platform/mock-mcp-everything-streamable:test
+    build:
+      context: ../../tests/mock-servers/mcp-everything-streamable
+      dockerfile: Dockerfile
+    ports:
+      - "3002:3001"
     networks:
       - it-gateway-runtime-network
 

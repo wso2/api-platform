@@ -1,0 +1,35 @@
+Discover, Integrate, and Innovate with Scalable APIs
+
+Explore our extensive API catalog and discover how to integrate them seamlessly into your application.
+{{#if restAPIs}}
+
+# APIs
+
+{{#restAPIs}}
+- [{{name}} {{version}}]({{../baseUrl}}/api/{{id}}.md){{#if description}} - {{description}}{{/if}}
+{{/restAPIs}}
+{{/if}}
+{{#if graphqlAPIs}}
+
+# GraphQL APIs
+
+{{#graphqlAPIs}}
+- [{{name}} {{version}}]({{../baseUrl}}/api/{{id}}.md){{#if description}} - {{description}}{{/if}}
+{{/graphqlAPIs}}
+{{/if}}
+{{#if wsAPIs}}
+
+# Async / WebSocket APIs
+
+{{#wsAPIs}}
+- [{{name}} {{version}}]({{../baseUrl}}/api/{{id}}.md){{#if description}} - {{description}}{{/if}}
+{{/wsAPIs}}
+{{/if}}
+{{#if websubAPIs}}
+
+# WebSub APIs
+
+{{#websubAPIs}}
+- [{{name}} {{version}}]({{../baseUrl}}/api/{{id}}.md){{#if description}} - {{description}}{{/if}}
+{{/websubAPIs}}
+{{/if}}

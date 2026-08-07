@@ -1,0 +1,125 @@
+.custom-navbar {
+  background-color: var(--white);
+  padding: 0.5rem;
+}
+
+.navbar-logo {
+  height: 2rem;
+}
+
+.custom-navbar .nav-link {
+  color: var(--text);
+}
+
+.custom-navbar .nav-item {
+  color: var(--text);
+}
+
+.custom-navbar .nav-link:hover,
+.custom-navbar .nav-link:focus,
+.custom-navbar .nav-link.active {
+  color: var(--primary);
+}
+
+.profile-link {
+  color: var(--text);
+  text-decoration: none;
+}
+
+.profile-icon {
+  height: 1.875rem;
+  border-radius: 50%;
+}
+
+.profile-options {
+  right: 2rem !important;
+  font-size: small !important;
+}
+
+.profile-dropdown-link {
+  color: var(--text);
+  text-decoration: none;
+}
+
+.navbar-toggler:focus {
+  box-shadow: none;
+  border: 0.0625rem solid var(--primary);
+}
+
+@media (max-width: 61.5rem) {
+  .navbar-collapse {
+    text-align: left;
+  }
+
+  .navbar-nav {
+    justify-content: start;
+    width: 100%;
+  }
+
+  .nav-item {
+    width: 100%;
+  }
+}
+
+.login-btn {
+  display: inline-flex;
+  align-items: center;
+  background: var(--primary);
+  color: var(--white);
+  border: 1px solid var(--primary);
+  border-radius: 1.25rem;
+  padding: 0.5625rem 1.375rem;
+  font-size: 0.875rem;
+  font-weight: 600;
+  line-height: 1;
+  text-decoration: none;
+  cursor: pointer;
+  transition: opacity 0.2s;
+}
+
+.login-btn:hover {
+  opacity: 0.88;
+  color: var(--white);
+}
+
+/* Keep the header a single row on small screens.
+   Bootstrap's .container-fluid inside .navbar is flex-wrap: wrap, and the logo has
+   no upper bound, so on a phone the brand and the profile/login block each took a
+   row of their own — and the sidebar hamburger (see side-bar.css) would have made a
+   third, ~136px of header before any content. Letting the brand shrink keeps all
+   three on one line. */
+@media (max-width: 53.75rem) {
+  .custom-navbar .container-fluid {
+    flex-wrap: nowrap;
+    gap: 0.5rem;
+  }
+
+  .custom-navbar .navbar-brand {
+    /* min-width:0 is what actually permits a flex item to shrink below its
+       content size; without it the logo keeps its intrinsic width and wraps. */
+    min-width: 0;
+    flex: 0 1 auto;
+    margin-right: 0;
+    overflow: hidden;
+  }
+
+  .custom-navbar .navbar-logo {
+    max-width: 100%;
+    height: auto;
+    max-height: 2rem;
+  }
+}
+
+@media (max-width: 48rem) {
+  .navbar-brand span {
+    font-size: 1rem;
+  }
+
+  .nav-link {
+    font-size: 0.5625rem;
+  }
+
+  #auth-section {
+    flex-direction: column;
+  }
+}

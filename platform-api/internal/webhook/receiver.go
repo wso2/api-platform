@@ -46,8 +46,8 @@ const RoutePath = "/api/internal/" + constants.APIVersion + "/webhook/events"
 // and broadcast to the gateways where the API is deployed — exactly what the webhook needs.
 type apiKeyService interface {
 	CreateAPIKey(ctx context.Context, apiHandle, kind, orgID, userID string, req *api.CreateAPIKeyRequest) error
-	UpdateAPIKey(ctx context.Context, apiHandle, kind, orgID, keyName, userID string, req *api.UpdateAPIKeyRequest) error
-	RevokeAPIKey(ctx context.Context, apiHandle, kind, orgID, keyName, userID string) error
+	UpdateAPIKey(ctx context.Context, apiHandle, kind, orgID, keyName, userID string, keyAdmin, trustedOrigin bool, req *api.UpdateAPIKeyRequest) error
+	RevokeAPIKey(ctx context.Context, apiHandle, kind, orgID, keyName, userID string, keyAdmin, trustedOrigin bool) error
 }
 
 // subscriptionService is the subset of *service.SubscriptionService the receiver depends on.
@@ -60,14 +60,14 @@ type subscriptionService interface {
 	FindByArtifactKindAndSubscriber(orgUUID, apiHandle, kind, subscriberID string) (*model.Subscription, error)
 }
 
-// organizationResolver resolves the Developer Portal organization handle (delivered as org.ref_id)
+// organizationResolver resolves the API Portal organization handle (delivered as org.ref_id)
 // to the Platform API organization UUID that every downstream service and table is keyed by.
 type organizationResolver interface {
 	GetOrganizationByHandle(handle string) (*model.Organization, error)
 }
 
 // applicationService is the subset of *service.ApplicationService the receiver depends on to
-// reconcile Developer Portal application events. The webhook-specific create/reconcile logic (default
+// reconcile API Portal application events. The webhook-specific create/reconcile logic (default
 // project, "genai" type, DP-id-as-handle, single-app key mapping) lives in the service.
 type applicationService interface {
 	CreateApplicationFromWebhook(handle, name, description, appType, orgID string) (*api.Application, error)
@@ -91,15 +91,22 @@ type Receiver struct {
 }
 
 // NewReceiver wires the receiver and its event-type dispatch table.
+//
+// The verifier and the decryptor are both built from cfg.Secret here rather than passed in
+// separately: the producer signs with that secret and derives its field-encryption key from the
+// same secret, so keying the two off one config value is what keeps them from drifting apart.
 func NewReceiver(
 	cfg config.Webhook,
-	decryptor *Decryptor,
 	apiKeys apiKeyService,
 	subs subscriptionService,
 	apps applicationService,
 	orgs organizationResolver,
 	slogger *slog.Logger,
-) *Receiver {
+) (*Receiver, error) {
+	decryptor, err := NewDecryptor(cfg.Secret)
+	if err != nil {
+		return nil, err
+	}
 	r := &Receiver{
 		cfg:       cfg,
 		verifier:  NewVerifier(cfg.Secret, cfg.SignatureTolerance),
@@ -124,7 +131,7 @@ func NewReceiver(
 		EventApplicationDeleted:           r.handleApplicationDeleted,
 		EventAPIKeyApplicationUpdated:     r.handleAPIKeyApplicationUpdated,
 	}
-	return r
+	return r, nil
 }
 
 // RegisterRoutes registers the webhook endpoint on the mux. Only called when the webhook is enabled.
@@ -166,7 +173,7 @@ func (r *Receiver) ReceiveEvent(w http.ResponseWriter, req *http.Request) error 
 	log := r.slogger.With("eventId", env.EventID, "eventType", env.EventType, "orgHandle", env.OrgID)
 
 	// 3. Resolve the organization handle (org.ref_id) to the Platform API organization UUID that all
-	//    downstream persistence is keyed by. The Developer Portal sends the handle; the services expect
+	//    downstream persistence is keyed by. The API Portal sends the handle; the services expect
 	//    the UUID. An unknown handle is a terminal 404 (not retryable) since the event references an
 	//    organization that does not exist in the control plane.
 	if err := r.resolveOrgUUID(env); err != nil {

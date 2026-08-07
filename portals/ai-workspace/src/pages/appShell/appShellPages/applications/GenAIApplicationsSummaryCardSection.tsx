@@ -28,6 +28,7 @@ import {
   ParticleBackground,
   Skeleton,
   Stack,
+  Tooltip,
   Typography,
 } from '@wso2/oxygen-ui';
 import { Clock, Plus } from '@wso2/oxygen-ui-icons-react';
@@ -38,6 +39,8 @@ import {
 } from '../../../../contexts/ApplicationsContext';
 import NoApplications from '../../../../assets/images/NoApplications.svg';
 import ErrorAlert from '../../../../Components/common/ErrorAlert';
+import { useAppAuth } from '../../../../contexts/AppAuthContext';
+import { DISABLED_ACTION_SX, NO_PERMISSION_TOOLTIP, SCOPES } from '../../../../auth/permissions';
 
 function getInitials(name: string): string {
   const words = name.trim().split(/\s+/);
@@ -75,6 +78,8 @@ export default function GenAIApplicationsSummaryCardSection({
   newApplicationPath,
   onApplicationClick,
 }: GenAIApplicationsSummaryCardSectionProps) {
+  const { hasPermission } = useAppAuth();
+  const canCreateApplication = hasPermission(SCOPES.APPLICATION_CREATE);
   const {
     applicationsResponse,
     isLoading,
@@ -129,9 +134,21 @@ export default function GenAIApplicationsSummaryCardSection({
                 See more
               </Button>
             ) : (
-              <Button component={RouterLink} to={newApplicationPath} size="small">
-                + Add New
-              </Button>
+              <Tooltip
+                title={canCreateApplication ? '' : NO_PERMISSION_TOOLTIP}
+              >
+                <Box component="span">
+                  <Button
+                    component={RouterLink}
+                    to={newApplicationPath}
+                    size="small"
+                    disabled={!canCreateApplication}
+                    sx={DISABLED_ACTION_SX}
+                  >
+                    + Add New
+                  </Button>
+                </Box>
+              </Tooltip>
             )
           }
         />
@@ -217,17 +234,23 @@ export default function GenAIApplicationsSummaryCardSection({
                 defaultMessage="Set up a GenAI application to securely consume AI services through your workspace."
               />
             </Typography>
-            <Button
-              variant="contained"
-              component={RouterLink}
-              to={newApplicationPath}
-              startIcon={<Plus size={20} />}
-            >
-              <FormattedMessage
-                id="aiWorkspace.pages.appShell.appShellPages.applications.ApplicationsList.create.application"
-                defaultMessage="Create Application"
-              />
-            </Button>
+            <Tooltip title={canCreateApplication ? '' : NO_PERMISSION_TOOLTIP}>
+              <Box component="span">
+                <Button
+                  variant="contained"
+                  component={RouterLink}
+                  to={newApplicationPath}
+                  startIcon={<Plus size={20} />}
+                  disabled={!canCreateApplication}
+                  sx={DISABLED_ACTION_SX}
+                >
+                  <FormattedMessage
+                    id="aiWorkspace.pages.appShell.appShellPages.applications.ApplicationsList.create.application"
+                    defaultMessage="Create Application"
+                  />
+                </Button>
+              </Box>
+            </Tooltip>
           </Stack>
         ) : (
           <Stack divider={<Divider />} spacing={1.5}>
