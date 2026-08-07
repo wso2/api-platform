@@ -1,8 +1,8 @@
 {{- $controller := .Values.gateway.controller -}}
 {{- $hpa := $controller.hpa -}}
 {{- if and $controller.deployment.enabled $hpa.enabled }}
-{{- if ne .Values.gateway.config.controller.storage.type "postgres" }}
-{{- fail "gateway.controller.hpa requires gateway.config.controller.storage.type=postgres — SQLite does not support multiple replicas." }}
+{{- if not (has .Values.gateway.config.controller.storage.type (list "postgres" "sqlserver")) }}
+{{- fail "gateway.controller.hpa requires gateway.config.controller.storage.type to be postgres or sqlserver — SQLite does not support multiple replicas." }}
 {{- end }}
 apiVersion: autoscaling/v2
 kind: HorizontalPodAutoscaler
