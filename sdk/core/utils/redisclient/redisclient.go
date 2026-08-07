@@ -32,11 +32,15 @@ import (
 
 // redisConnKey identifies a distinct Redis connection configuration. Two policy
 // instances with identical connection settings share one *redis.Client (one pool).
+//
+// Excludes TLSConfig and any credentials-provider option - see
+// GetOrCreateRedisClient's bypass for those.
 type redisConnKey struct {
 	addr         string
 	username     string
 	passwordHash string // sha256 hex; keeps the secret out of the in-process map key
 	db           int
+	protocol     int
 	dialTimeout  time.Duration
 	readTimeout  time.Duration
 	writeTimeout time.Duration
@@ -65,26 +69,44 @@ func hashRedisPassword(p string) string {
 // failed. The client is registered and returned even on ping failure (go-redis
 // reconnects lazily). Clients are never closed — they live for the process lifetime.
 func GetOrCreateRedisClient(opts *redis.Options, pingTimeout time.Duration) (client *redis.Client, created bool, pingErr error) {
+	// TLSConfig and credentials-provider hooks can't be fingerprinted
+	// safely: a *tls.Config's pointer says nothing about its content, and
+	// Go func values aren't comparable at all. Bypass the registry rather
+	// than risk silently reusing a client built for a different config.
+	if opts.TLSConfig != nil || opts.CredentialsProvider != nil || opts.CredentialsProviderContext != nil || opts.StreamingCredentialsProvider != nil {
+		c := redis.NewClient(opts)
+		ctx, cancel := context.WithTimeout(context.Background(), pingTimeout)
+		defer cancel()
+		pingErr = c.Ping(ctx).Err()
+		return c, true, pingErr
+	}
+
 	key := redisConnKey{
 		addr:         opts.Addr,
 		username:     opts.Username,
 		passwordHash: hashRedisPassword(opts.Password),
 		db:           opts.DB,
+		protocol:     opts.Protocol,
 		dialTimeout:  opts.DialTimeout,
 		readTimeout:  opts.ReadTimeout,
 		writeTimeout: opts.WriteTimeout,
 		poolSize:     opts.PoolSize,
 	}
 
+	// Lock guards only the map lookup/insert, never the ping below - mu is
+	// process-wide, so holding it during a slow/down connection's ping
+	// would stall every other caller's get-or-create too. A concurrent
+	// caller for the same key may see the just-inserted client before this
+	// ping finishes - fine, since a reused client is already "assumed
+	// healthy" regardless of timing, never gated on this call's pingErr.
 	redisClients.mu.Lock()
-	defer redisClients.mu.Unlock()
-
 	if c, ok := redisClients.m[key]; ok {
+		redisClients.mu.Unlock()
 		return c, false, nil
 	}
-
 	c := redis.NewClient(opts)
 	redisClients.m[key] = c
+	redisClients.mu.Unlock()
 
 	ctx, cancel := context.WithTimeout(context.Background(), pingTimeout)
 	defer cancel()

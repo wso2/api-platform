@@ -20,6 +20,8 @@ package redisclient
 
 import (
 	"context"
+	"crypto/tls"
+	"net"
 	"testing"
 	"time"
 
@@ -75,10 +77,8 @@ func TestGetOrCreateClient_SharedAcrossSimulatedPolicies(t *testing.T) {
 	mr := miniredis.RunT(t)
 	opts := func() *redis.Options { return &redis.Options{Addr: mr.Addr(), DB: 0} }
 
-	// Two "different policies" (distinct call sites, distinct *redis.Options
-	// values) with identical connection settings must still land on the
-	// same underlying client - this is the whole point of centralizing the
-	// registry here instead of each policy keeping its own.
+	// Two distinct call sites with identical settings must share one
+	// client - the whole point of centralizing the registry.
 	fromPolicyA, _, _ := GetOrCreateRedisClient(opts(), time.Second)
 	fromPolicyB, _, _ := GetOrCreateRedisClient(opts(), time.Second)
 
@@ -99,10 +99,8 @@ func TestGetOrCreateClient_SharedAcrossSimulatedPolicies(t *testing.T) {
 	}
 }
 
-// TestGetOrCreateClient_ReuseSkipsPing locks in that only CREATION pings -
-// a reused client is assumed healthy (go-redis reconnects lazily) and must
-// never be re-pinged, or a client that legitimately reused a pool would
-// spuriously start reporting errors the moment Redis blips after creation.
+// TestGetOrCreateClient_ReuseSkipsPing locks in that only creation pings -
+// a reused client is assumed healthy and must never be re-pinged.
 func TestGetOrCreateClient_ReuseSkipsPing(t *testing.T) {
 	mr := miniredis.RunT(t)
 	addr := mr.Addr() // capture before mr.Close() below
@@ -120,6 +118,112 @@ func TestGetOrCreateClient_ReuseSkipsPing(t *testing.T) {
 	}
 }
 
+func TestGetOrCreateClient_DifferentProtocolProducesDistinctClient(t *testing.T) {
+	mr := miniredis.RunT(t)
+
+	c1, _, _ := GetOrCreateRedisClient(&redis.Options{Addr: mr.Addr(), Protocol: 2}, time.Second)
+	c2, _, _ := GetOrCreateRedisClient(&redis.Options{Addr: mr.Addr(), Protocol: 3}, time.Second)
+	c3, _, _ := GetOrCreateRedisClient(&redis.Options{Addr: mr.Addr(), Protocol: 2}, time.Second)
+
+	if c1 == c2 {
+		t.Error("expected different RESP protocol versions to produce distinct clients")
+	}
+	if c1 != c3 {
+		t.Error("expected the same protocol version to reuse the existing client")
+	}
+}
+
+// TestGetOrCreateClient_TLSConfigBypassesRegistry locks in that a TLSConfig
+// always gets a fresh, unshared client, even with otherwise-identical
+// options - neither it nor a credentials-provider func can be fingerprinted
+// safely, so sharing would risk a silent cross-config mixup.
+func TestGetOrCreateClient_TLSConfigBypassesRegistry(t *testing.T) {
+	mr := miniredis.RunT(t)
+
+	optsA := &redis.Options{Addr: mr.Addr(), TLSConfig: &tls.Config{}} //nolint:gosec // test-only, no real handshake asserted
+	optsB := &redis.Options{Addr: mr.Addr(), TLSConfig: &tls.Config{}} //nolint:gosec
+
+	c1, created1, _ := GetOrCreateRedisClient(optsA, time.Second)
+	c2, created2, _ := GetOrCreateRedisClient(optsB, time.Second)
+
+	if !created1 || !created2 {
+		t.Fatalf("expected every TLSConfig-bearing call to report created=true (never reused), got %v and %v", created1, created2)
+	}
+	if c1 == c2 {
+		t.Error("expected two TLSConfig-bearing calls to never share a client, even with identical-looking options")
+	}
+}
+
+func TestGetOrCreateClient_CredentialsProviderBypassesRegistry(t *testing.T) {
+	mr := miniredis.RunT(t)
+	provider := func() (string, string) { return "", "" }
+
+	c1, created1, err1 := GetOrCreateRedisClient(&redis.Options{Addr: mr.Addr(), CredentialsProvider: provider}, time.Second)
+	c2, created2, err2 := GetOrCreateRedisClient(&redis.Options{Addr: mr.Addr(), CredentialsProvider: provider}, time.Second)
+
+	if !created1 || err1 != nil {
+		t.Fatalf("first call: created=%v err=%v (want true,nil)", created1, err1)
+	}
+	if !created2 || err2 != nil {
+		t.Fatalf("second call: created=%v err=%v (want true,nil - bypassed, not reused)", created2, err2)
+	}
+	if c1 == c2 {
+		t.Error("expected two CredentialsProvider-bearing calls to never share a client")
+	}
+}
+
+// TestGetOrCreateClient_DoesNotHoldLockDuringPing proves the registry lock
+// guards only the map lookup/insert, never c.Ping - mu is process-wide, so
+// holding it during a slow/unreachable Redis's ping would stall every other
+// caller too, even for an unrelated, healthy endpoint.
+func TestGetOrCreateClient_DoesNotHoldLockDuringPing(t *testing.T) {
+	// Accepts but never responds, so Ping against it blocks until the
+	// deadline - a reliable window to prove a concurrent, unrelated key
+	// isn't blocked by it.
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatalf("failed to start hanging listener: %v", err)
+	}
+	defer ln.Close()
+	go func() {
+		for {
+			conn, err := ln.Accept()
+			if err != nil {
+				return
+			}
+			_ = conn // held open, never responded to
+		}
+	}()
+
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		// ReadTimeout set explicitly - the dial succeeds, it's the
+		// read-for-a-reply that hangs, and go-redis's default (5s) would
+		// otherwise bound that wait regardless of pingTimeout.
+		GetOrCreateRedisClient(&redis.Options{
+			Addr:         ln.Addr().String(),
+			DB:           0,
+			ReadTimeout:  time.Second,
+			WriteTimeout: time.Second,
+		}, time.Second)
+	}()
+
+	// Generous margin for the slow call to insert+unlock and enter Ping.
+	time.Sleep(100 * time.Millisecond)
+
+	mr := miniredis.RunT(t)
+	fastStart := time.Now()
+	if _, _, err := GetOrCreateRedisClient(&redis.Options{Addr: mr.Addr(), DB: 1}, 500*time.Millisecond); err != nil {
+		t.Fatalf("unexpected error on the fast, unrelated key: %v", err)
+	}
+	if elapsed := time.Since(fastStart); elapsed > 300*time.Millisecond {
+		t.Errorf("expected the unrelated key's get-or-create to complete quickly (the registry lock must not be held during the other call's ping), took %s", elapsed)
+	}
+
+	<-done // let the slow goroutine finish before the test exits
+}
+
 func TestHashPassword(t *testing.T) {
 	if hashRedisPassword("") != "" {
 		t.Error("expected an empty password to hash to empty, not sha256(\"\")")
@@ -127,8 +231,9 @@ func TestHashPassword(t *testing.T) {
 	if hashRedisPassword("secret") == "secret" {
 		t.Error("expected the password to actually be hashed, not passed through")
 	}
-	if hashRedisPassword("secret") != hashRedisPassword("secret") {
-		t.Error("expected hashing to be deterministic")
+	const wantSecretSHA256 = "2bb80d537b1da3e38bd30361aa855686bde0eacd7162fef6a25fe97bf527a25b"
+	if got := hashRedisPassword("secret"); got != wantSecretSHA256 {
+		t.Errorf("hashRedisPassword(%q) = %q, want %q", "secret", got, wantSecretSHA256)
 	}
 	if hashRedisPassword("secret") == hashRedisPassword("different") {
 		t.Error("expected different passwords to hash differently")
