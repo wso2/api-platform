@@ -159,7 +159,11 @@ func TestNewAnalytics_TrafficLoggingEnabled(t *testing.T) {
 	analytics := NewAnalytics(cfg)
 
 	require.NotNil(t, analytics)
-	assert.Len(t, analytics.publishers, 1) // traffic-logging publisher should be registered
+	require.Len(t, analytics.publishers, 1, "traffic-logging publisher should be registered")
+	// Asserted on the real constructor mapping, not a hand-assembled registration: traffic
+	// logging must receive the internal loopback provider hop.
+	assert.False(t, analytics.publishers[0].suppressInternalLoopback,
+		"traffic logging must be registered as non-suppressing")
 }
 
 // =============================================================================
@@ -263,7 +267,7 @@ func TestProcess_WithMockPublisher(t *testing.T) {
 
 	// Inject a mock publisher
 	mockPub := &mockPublisher{}
-	analytics.publishers = append(analytics.publishers, mockPub)
+	analytics.publishers = append(analytics.publishers, registeredPublisher{publisher: mockPub})
 
 	logEntry := createLogEntryWithMetadata(map[string]string{
 		APINameKey: "TestAPI",
@@ -284,7 +288,7 @@ func TestProcess_WithMockPublisher(t *testing.T) {
 func TestProcess_PublishesEvent(t *testing.T) {
 	analytics := NewAnalytics(&config.Config{})
 	mockPub := &mockPublisher{}
-	analytics.publishers = append(analytics.publishers, mockPub)
+	analytics.publishers = append(analytics.publishers, registeredPublisher{publisher: mockPub})
 
 	logEntry := &v3.HTTPAccessLogEntry{
 		Response: &v3.HTTPResponseProperties{ResponseCode: wrapperspb.UInt32(200)},
@@ -379,15 +383,57 @@ func loopbackEntry(apiType string, marker bool) *v3.HTTPAccessLogEntry {
 	return e
 }
 
-func TestProcess_SuppressesFlaggedLoopbackProvider(t *testing.T) {
-	// Marker + loopback + LlmProvider → the internal loopback hop is suppressed.
+func TestProcess_SuppressesFlaggedLoopbackProviderForSuppressingPublisher(t *testing.T) {
+	// Marker + loopback + LlmProvider → the internal loopback hop is suppressed, but only
+	// for a consumer registered as counting a client call once (the Moesif shape).
 	analytics := NewAnalytics(&config.Config{})
 	mockPub := &mockPublisher{}
-	analytics.publishers = append(analytics.publishers, mockPub)
+	analytics.publishers = append(analytics.publishers, registeredPublisher{
+		publisher:                mockPub,
+		suppressInternalLoopback: true,
+	})
 
 	analytics.Process(loopbackEntry("LlmProvider", true))
 
 	assert.False(t, mockPub.called, "flagged internal loopback provider event must be suppressed")
+}
+
+func TestProcess_FlaggedLoopbackProviderSuppressedPerPublisher(t *testing.T) {
+	// The provider hop is the only record of the real vendor round-trip, so suppression is
+	// scoped to the consumer that needs it and every other consumer still receives it.
+	analytics := NewAnalytics(&config.Config{})
+	suppressing := &mockPublisher{}
+	nonSuppressing := &mockPublisher{}
+	analytics.publishers = append(analytics.publishers,
+		registeredPublisher{publisher: suppressing, suppressInternalLoopback: true},
+		registeredPublisher{publisher: nonSuppressing, suppressInternalLoopback: false},
+	)
+
+	analytics.Process(loopbackEntry("LlmProvider", true))
+
+	assert.False(t, suppressing.called, "suppressing consumer must not receive the internal loopback provider hop")
+	assert.Equal(t, 0, suppressing.count, "suppressing consumer must receive zero events")
+	assert.True(t, nonSuppressing.called, "non-suppressing consumer must still receive the internal loopback provider hop")
+	assert.Equal(t, 1, nonSuppressing.count, "non-suppressing consumer must receive the hop exactly once")
+}
+
+func TestProcess_NonSuppressingLoopbackDoesNotLogSuppression(t *testing.T) {
+	// With no suppressing consumer registered nothing is dropped, so claiming suppression
+	// in the log would send an operator hunting for an event that was in fact delivered.
+	buf := captureLogs(t)
+	analytics := NewAnalytics(&config.Config{})
+	nonSuppressing := &mockPublisher{}
+	analytics.publishers = append(analytics.publishers, registeredPublisher{
+		publisher:                nonSuppressing,
+		suppressInternalLoopback: false,
+	})
+
+	analytics.Process(loopbackEntry("LlmProvider", true))
+
+	assert.True(t, nonSuppressing.called, "the only registered consumer must receive the flagged hop")
+	assert.Equal(t, 1, nonSuppressing.count, "the flagged hop must be published exactly once")
+	assert.NotContains(t, buf.String(), "Suppressing internal loopback provider analytics event",
+		"suppression must not be logged when no consumer was skipped")
 }
 
 func TestProcess_PublishesDirectProviderOverLoopback(t *testing.T) {
@@ -395,7 +441,7 @@ func TestProcess_PublishesDirectProviderOverLoopback(t *testing.T) {
 	// loopback — the sidecar/port-forward case the reviewer raised.
 	analytics := NewAnalytics(&config.Config{})
 	mockPub := &mockPublisher{}
-	analytics.publishers = append(analytics.publishers, mockPub)
+	analytics.publishers = append(analytics.publishers, registeredPublisher{publisher: mockPub})
 
 	analytics.Process(loopbackEntry("LlmProvider", false))
 
@@ -441,7 +487,7 @@ func TestProcess_PublishesWhenDirectRemoteIPMissing(t *testing.T) {
 	// duplicate) rather than suppressed on the strength of a forgeable marker alone.
 	analytics := NewAnalytics(&config.Config{})
 	mockPub := &mockPublisher{}
-	analytics.publishers = append(analytics.publishers, mockPub)
+	analytics.publishers = append(analytics.publishers, registeredPublisher{publisher: mockPub})
 
 	entry := createLogEntryWithMetadata(map[string]string{
 		APITypeKey:                  "LlmProvider",
@@ -463,7 +509,10 @@ func TestProcess_SuppressionLogsDebug(t *testing.T) {
 	buf := captureLogs(t)
 	analytics := NewAnalytics(&config.Config{})
 	mockPub := &mockPublisher{}
-	analytics.publishers = append(analytics.publishers, mockPub)
+	analytics.publishers = append(analytics.publishers, registeredPublisher{
+		publisher:                mockPub,
+		suppressInternalLoopback: true,
+	})
 
 	analytics.Process(loopbackEntry("LlmProvider", true))
 
@@ -473,13 +522,16 @@ func TestProcess_SuppressionLogsDebug(t *testing.T) {
 
 // TestProcess_ProxyCallPublishesExactlyOneEvent is the end-to-end shape of the bug this
 // suppression exists for: a single client call to an LLM proxy traverses the listener twice, so
-// the access-log service delivers two entries. Exactly one event must reach the publishers, and
-// it must be the proxy's — that is the hop carrying the user identity, application and
-// subscription; the provider hop is anonymous.
+// the access-log service delivers two entries. Exactly one event must reach a consumer that
+// counts a client call once, and it must be the proxy's — that is the hop carrying the user
+// identity, application and subscription; the provider hop is anonymous.
 func TestProcess_ProxyCallPublishesExactlyOneEvent(t *testing.T) {
 	analytics := NewAnalytics(&config.Config{})
 	mockPub := &mockPublisher{}
-	analytics.publishers = append(analytics.publishers, mockPub)
+	analytics.publishers = append(analytics.publishers, registeredPublisher{
+		publisher:                mockPub,
+		suppressInternalLoopback: true,
+	})
 
 	// Hop 1 — the proxy's own event: real client peer, no marker.
 	analytics.Process(createLogEntryWithAPITypeAndAddr("LlmProxy", "203.0.113.7"))
@@ -498,7 +550,7 @@ func TestProcess_ProxyCallPublishesExactlyOneEvent(t *testing.T) {
 func TestProcess_DirectProviderCallPublishesExactlyOneEvent(t *testing.T) {
 	analytics := NewAnalytics(&config.Config{})
 	mockPub := &mockPublisher{}
-	analytics.publishers = append(analytics.publishers, mockPub)
+	analytics.publishers = append(analytics.publishers, registeredPublisher{publisher: mockPub})
 
 	analytics.Process(createLogEntryWithAPITypeAndAddr("LlmProvider", "203.0.113.7"))
 
@@ -523,7 +575,7 @@ func TestProcess_PanicRecovery(t *testing.T) {
 
 	// Inject a panicking publisher
 	panicPub := &panicPublisher{}
-	analytics.publishers = append(analytics.publishers, panicPub)
+	analytics.publishers = append(analytics.publishers, registeredPublisher{publisher: panicPub})
 
 	logEntry := createLogEntryWithMetadata(map[string]string{
 		APINameKey: "TestAPI",
