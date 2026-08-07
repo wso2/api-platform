@@ -14,6 +14,34 @@
             "skipFiles": ["<node_internals>/**"]
         },
         {
+            // AI Workspace Go BFF on https://localhost:8081 — serves /api/*,
+            // proxies to the Platform API, and owns the session/OIDC flow.
+            // Mirrors `make bff-run`. Requires the TLS cert pair under
+            // resources/certificates — run `./setup.sh --certs-only` first if missing.
+            "name": "AI Workspace BFF",
+            "type": "go",
+            "request": "launch",
+            "mode": "auto",
+            "program": "${workspaceFolder}/portals/ai-workspace/bff",
+            "cwd": "${workspaceFolder}/portals/ai-workspace/bff",
+            "args": [
+                // Shipped base config + local debug overlay (repeatable -config, last-wins).
+                // The overlay flips the listener to :8081, points certs at resources/,
+                // enables debug logging, and targets the local Platform API — config.toml
+                // ships untouched.
+                "-config", "${workspaceFolder}/portals/ai-workspace/configs/config.toml",
+                "-config", "${workspaceFolder}/portals/ai-workspace/configs/config-debug.toml",
+                "-static-dir", "${workspaceFolder}/portals/ai-workspace/dist",
+            ],
+            "env": {
+                // All debug-only settings (listener port/cert/key, control-plane URL +
+                // tls_skip_verify, log level) live in configs/config-debug.toml, loaded via
+                // the second -config above. Its cert/key paths are relative to this config's
+                // cwd (portals/ai-workspace/bff); generate the pair once with
+                // `./setup.sh --certs-only` (gitignored under resources/certificates).
+            },
+        },
+        {
             "name": "Platform API",
             "type": "go",
             "request": "launch",
@@ -21,16 +49,23 @@
             "program": "${workspaceFolder}/platform-api/cmd",
             "cwd": "${workspaceFolder}/platform-api",
             "args": [
+                // Shipped base config + local debug overlay (repeatable -config, last-wins).
+                // The overlay carries every debug override — dev encryption key, admin login,
+                // debug logging, and the host JWT keypair paths — so config.toml ships
+                // untouched with its container-path defaults and no env keys.
                 "-config", "${workspaceFolder}/platform-api/config/config.toml",
+                "-config", "${workspaceFolder}/platform-api/config/config-debug.toml",
             ],
             "env": {
-                // Database configuration
-                "DATABASE_DRIVER": "sqlite3",
-                "DATABASE_DB_PATH": "${workspaceFolder}/platform-api/data/api_platform.db",
-                "DATABASE_EXECUTE_SCHEMA_DDL": "true",
-                "DB_SCHEMA_PATH": "./internal/database/schema.sqlite.sql",
-                // JWT - skip signature validation in development
-                "JWT_SKIP_VALIDATION": "true",
+                // Allow the {{ file }} interpolation in config-debug.toml to read the
+                // host-relative dev encryption key (data/keys/encryption.key). The shipped
+                // default allowlist is /etc/platform-api only; this widens it to data/keys
+                // (relative to the platform-api/ cwd above). Generate the key once with:
+                //   openssl rand -hex 32 > data/keys/encryption.key   (gitignored)
+                "APIP_CONFIG_FILE_SOURCE_ALLOWLIST": "data/keys",
+                // Other debug overrides (admin login, debug logging, JWT keypair paths)
+                // live in config/config-debug.toml; generate the JWT keys via
+                // platform-api/scripts/setup.sh.
             },
         },
         {
@@ -54,43 +89,36 @@
             "request": "launch",
             "mode": "auto",
             "program": "${workspaceFolder}/gateway/gateway-controller/cmd/controller",
+            "cwd": "${workspaceFolder}/gateway/gateway-controller",
             "args": [
-                "-config",
-                "${workspaceFolder}/gateway/configs/config.toml",
+                // Shipped base config first, then the local debug overlay. -config is
+                // repeatable, merged last-wins per key, so config-debug.toml flips the
+                // policy-engine/ALS connection modes to TCP without editing config.toml.
+                "-config", "${workspaceFolder}/gateway/configs/config.toml",
+                "-config", "${workspaceFolder}/gateway/configs/config-debug.toml",
             ],
             "env": {
-                // Controlplane connectivity details
-                "APIP_GW_CONTROLPLANE_HOST": "localhost:9243", // localhost:9243 for locally running Platform API
-                "APIP_GW_GATEWAY_REGISTRATION_TOKEN": "",
-                // Database configuration for the controller
-                "APIP_GW_CONTROLLER_STORAGE_TYPE": "sqlite", // sqlite, postgres
-                //// SQLite (default)
+                // Dev admin login - admin:admin
+                "APIP_GW_CONTROLLER_AUTH_BASIC_ADMIN_USERNAME": "admin",
+                "APIP_GW_CONTROLLER_AUTH_BASIC_ADMIN_PASSWORD_HASH": "$2y$10$14lPL4.LZJ0U8vwVGGBzpucXs2XqcDnnmQaTRgNRylCRlj81XuyGO",
+                // Control plane connectivity — empty = standalone (no registration)
+                "APIP_GW_CONTROLLER_CONTROLPLANE_HOST": "localhost:9243",
+                "APIP_GW_CONTROLLER_CONTROLPLANE_TOKEN": "",
+                // Storage (sqlite). config.toml carries the {{ env }} tokens for these.
+                "APIP_GW_CONTROLLER_STORAGE_TYPE": "sqlite",
                 "APIP_GW_CONTROLLER_STORAGE_SQLITE_PATH": "${workspaceFolder}/gateway/gateway-controller/data/gateway.db",
-                //// PostgreSQL
-                "APIP_GW_CONTROLLER_STORAGE_POSTGRES_HOST": "localhost",
-                "APIP_GW_CONTROLLER_STORAGE_POSTGRES_PORT": "5432",
-                "APIP_GW_CONTROLLER_STORAGE_POSTGRES_DATABASE": "gateway",
-                "APIP_GW_CONTROLLER_STORAGE_POSTGRES_USER": "gateway",
-                "APIP_GW_CONTROLLER_STORAGE_POSTGRES_PASSWORD": "gateway",
-                "APIP_GW_CONTROLLER_STORAGE_POSTGRES_SSLMODE": "disable",
-                // Paths for file-based configurations
-                "APIP_GW_CONTROLLER_LLM_TEMPLATE__DEFINITIONS__PATH": "${workspaceFolder}/gateway/gateway-controller/default-llm-provider-templates",
-                "APIP_GW_CONTROLLER_ROUTER_DOWNSTREAM__TLS_CERT__PATH": "${workspaceFolder}/gateway/gateway-controller/listener-certs/default-listener.crt",
-                "APIP_GW_CONTROLLER_ROUTER_DOWNSTREAM__TLS_KEY__PATH": "${workspaceFolder}/gateway/gateway-controller/listener-certs/default-listener.key",
-                "APIP_GW_ROUTER_DOWNSTREAM__TLS_CERT__PATH": "${workspaceFolder}/gateway/gateway-controller/listener-certs/default-listener.crt",
-                "APIP_GW_ROUTER_DOWNSTREAM__TLS_KEY__PATH": "${workspaceFolder}/gateway/gateway-controller/listener-certs/default-listener.key",
-                "APIP_GW_ROUTER_LUA_REQUEST__TRANSFORMATION_SCRIPT__PATH": "${workspaceFolder}/gateway/gateway-controller/lua/request_transformation.lua",
-                // Policy definitions path
-                "APIP_GW_CONTROLLER_POLICIES_DEFINITIONS__PATH": "${workspaceFolder}/gateway/gateway-builder/target/output/gateway-controller/policies",
-                // Policy Engine connectivity details
-                "APIP_GW_ROUTER_POLICY__ENGINE_MODE": "tcp",
-                "APIP_GW_ROUTER_POLICY__ENGINE_HOST": "host.docker.internal",
-                "APIP_GW_ANALYTICS_GRPC__EVENT__SERVER_MODE": "tcp",
-                // Enable development mode
-                "APIP_GW_DEVELOPMENT_MODE": "true",
-                // Immutable gateway mode
-                "APIP_GW_IMMUTABLE__GATEWAY_ENABLED": "false",
-                "APIP_GW_IMMUTABLE__GATEWAY_ARTIFACTS__DIR": "${workspaceFolder}/gateway/examples",
+                // Policy definitions path (built by gateway-builder; run it first)
+                "APIP_GW_CONTROLLER_POLICIES_DEFINITIONS_PATH": "${workspaceFolder}/gateway/gateway-builder/target/output/gateway-controller/policies",
+                // NOTE: only vars whose {{ env }} token exists in the shipped config.toml
+                // work here. Debug-only settings NOT in config.toml — policy-engine
+                // ext_proc/ALS TCP modes, the AES-GCM key, python-executor — live in
+                // configs/config-debug.toml (loaded via the second -config above), so
+                // config.toml ships untouched. To debug against Postgres, add a
+                // [controller.storage] + [controller.storage.postgres] block there.
+                // Relative paths resolve from cwd (gateway/gateway-controller/):
+                //   listener-certs/default-listener.{crt,key}  → router.downstream_tls
+                //   lua/request_transformation.lua              → router.lua
+                //   default-llm-provider-templates/             → controller.llm
             },
         },
         {
@@ -100,12 +128,16 @@
             "mode": "auto",
             "program": "${workspaceFolder}/gateway/gateway-runtime/policy-engine/cmd/policy-engine",
             "args": [
+                // Base config + local debug overlay (config-debug.toml sets ext_proc/ALS
+                // to TCP and points the python-executor bridge at localhost:9010).
                 "-config", "${workspaceFolder}/gateway/configs/config.toml",
+                "-config", "${workspaceFolder}/gateway/configs/config-debug.toml",
                 "-xds-server", "localhost:18001",
             ],
             "env": {
-                "APIP_GW_POLICY__ENGINE_SERVER_MODE": "tcp",
-                "APIP_GW_ANALYTICS_ACCESS__LOGS__SERVICE_MODE": "tcp",
+                // config-debug.toml (loaded above) supplies the TCP modes. To debug the
+                // llm-cost policy, add [policy_configurations.llm_cost_v1] pricing_file
+                // there — config.toml (shipped) intentionally carries no such block.
             },
         },
         {
@@ -115,12 +147,16 @@
             "mode": "auto",
             "program": "${workspaceFolder}/gateway/gateway-runtime/policy-engine/cmd/policy-engine",
             "args": [
+                // Base config + local debug overlay (config-debug.toml sets ext_proc/ALS
+                // to TCP and points the python-executor bridge at localhost:9010).
                 "-config", "${workspaceFolder}/gateway/configs/config.toml",
+                "-config", "${workspaceFolder}/gateway/configs/config-debug.toml",
                 "-policy-chains-file", "${workspaceFolder}/gateway/gateway-runtime/policy-engine/configs/policy-chains.yaml",
             ],
             "env": {
-                "APIP_GW_POLICY__ENGINE_SERVER_MODE": "tcp",
-                "APIP_GW_ANALYTICS_ACCESS__LOGS__SERVICE_MODE": "tcp",
+                // config-debug.toml (loaded above) supplies the TCP modes. To debug the
+                // llm-cost policy, add [policy_configurations.llm_cost_v1] pricing_file
+                // there — config.toml (shipped) intentionally carries no such block.
             },
         },
         {

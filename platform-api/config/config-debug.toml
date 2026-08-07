@@ -1,0 +1,44 @@
+# ── Local host-process debug overlay (Platform API) ───────────────────────────
+# Layered ON TOP of config/config.toml via a second `-config` flag in
+# .vscode/launch.json. `-config` is repeatable and the loader merges files in order
+# with last-wins precedence per key, so these values override the shipped defaults
+# while leaving every other key untouched.
+#
+# Purpose: keep debug-only values OUT of config.toml, which ships in the distribution
+# and is mounted into the container as-is. This file is loaded ONLY by the host-run
+# Platform API while debugging — it is never mounted into the container.
+#
+# Scope: debug-only values, plus the dev file paths a host-run process needs (the
+# shipped config.toml points these at container locations under /etc/platform-api).
+# File paths here are relative to this config's cwd — the platform-api/ directory set
+# in launch.json. Generate the JWT keypair with platform-api/scripts/setup.sh; it
+# lives under platform-api/data/keys, which is gitignored.
+
+[platform_api]
+
+[platform_api.logging]
+level = "debug"
+
+[platform_api.security]
+# Dev-only key, generated once and gitignored (not committed) — same pattern as the
+# JWT keypair below:  openssl rand -hex 32 > data/keys/encryption.key
+# The shipped config.toml sources this from a mounted file whose file-source allowlist
+# is /etc/platform-api only, so a host-run process points at a host-relative file and
+# launch.json widens APIP_CONFIG_FILE_SOURCE_ALLOWLIST to data/keys so the interpolator
+# may read it. Path is relative to this config's cwd (platform-api/, set in launch.json).
+encryption_key = "{{ file \"./data/keys/encryption.key\" }}"
+
+[platform_api.auth.jwt]
+# Shipped config.toml points at /etc/platform-api/keys/* (container paths). Override
+# with the host dev keypair, relative to the platform-api/ cwd. Generate it with
+# platform-api/scripts/setup.sh (gitignored under platform-api/data/keys).
+public_key_file  = "./data/keys/jwt_public.pem"
+private_key_file = "./data/keys/jwt_private.pem"
+
+# Dev admin login (admin / admin). This replaces config.toml's env-driven user entry;
+# koanf replaces arrays wholesale on merge, so the roles must be repeated here.
+# password_hash below is bcrypt of "admin".
+[[platform_api.auth.file.users]]
+username      = "admin"
+password_hash = "$2y$10$phptp63TInVnKh5d1RtQiuZ8W1E0BR1PQWAcpL6tXIgJE9Fz0aC1q"
+roles         = ["ap_admin"]

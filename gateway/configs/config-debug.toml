@@ -1,0 +1,66 @@
+# ── Local host-process debug overlay ──────────────────────────────────────────
+# Layered ON TOP of the shipped configs/config.toml via a second `-config` flag in
+# .vscode/launch.json — the loaders merge -config files in order with last-wins
+# precedence per key, so these values override the config.toml defaults while
+# leaving every other key untouched.
+#
+# Purpose: keep debug-only settings OUT of config.toml, which ships in the
+# distribution zip. This file is loaded ONLY by the host-run Gateway Controller and
+# Policy Engine while debugging — it is NEVER mounted into the gateway-runtime
+# container (that container reads config.toml directly, in UDS mode).
+#
+# Scope: connection modes/hosts, plus the one debug-only file the host-run
+# controller can't otherwise locate (the AES-GCM key). Component-agnostic — the
+# Controller reads [router.policy_engine] + [collector.server] + [controller.encryption];
+# the Policy Engine reads [policy_engine.server] + [collector.server] +
+# [policy_engine.python_executor]; each ignores the sections it doesn't use.
+# Workspace-relative paths that need VS Code's ${workspaceFolder} stay in launch.json
+# env vars; the encryption key path below is relative to the controller's debug
+# `cwd` (gateway/gateway-controller), set in launch.json.
+
+# Envoy runs in Docker and must reach the host-run policy-engine over TCP instead of
+# the shared UDS socket (there is no shared host socket in this topology).
+# host.docker.internal is the Docker → host loopback; the controller reuses this
+# host for BOTH the ext_proc cluster and the ALS (access-log) cluster it programs
+# into Envoy (see xds.createALSCluster).
+[router.policy_engine]
+mode = "tcp"
+host = "host.docker.internal"
+
+# policy-engine ext_proc gRPC server listens on TCP (default port 9001).
+[policy_engine.server]
+mode = "tcp"
+
+# Collector/ALS transport over TCP. Shared section: the controller reads it to
+# configure Envoy's ALS sender, the policy-engine reads it to configure its ALS
+# receiver (default port 18090). Both sides must agree, so it lives here once.
+[collector.server]
+mode = "tcp"
+
+# Python executor over TCP (Option 2B — Python policy debugging). Harmless for
+# Go-only debugging (Option 2A): the bridge connects lazily, only when a Python
+# policy is first triggered, so a Go-only session never dials it.
+[policy_engine.python_executor.server]
+mode = "tcp"
+port = 9010
+host = "localhost"
+
+# AES-GCM at-rest encryption key. The shipped config.toml has no encryption section,
+# so the host-run controller would fall back to its code-default provider path
+# (./data/aesgcm-keys/…), which doesn't exist under the debug cwd → startup fails.
+# Point it at the dev key instead (relative to gateway/gateway-controller, the
+# controller's launch.json `cwd`). The container never loads this overlay and keeps
+# using its own provisioned key, so this is debug-only.
+#
+# NOTE: this key file is gitignored (gateway/.gitignore) and NOT committed — it is a
+# real AES-256 secret. Generate it once from the gateway/ directory before starting
+# the controller:
+#   mkdir -p gateway-controller/aesgcm-keys
+#   ( umask 177; openssl rand 32 > gateway-controller/aesgcm-keys/default-aesgcm256-v1.bin )
+# See DEBUG_GUIDE.md → "Local debug config overlay".
+[[controller.encryption.providers]]
+type = "aesgcm"
+
+[[controller.encryption.providers.keys]]
+version = "aesgcm256-v1"
+file = "./aesgcm-keys/default-aesgcm256-v1.bin"

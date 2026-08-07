@@ -29,13 +29,8 @@ spec:
   context: /petstoretest
   upstream:
     main:
-      url: http://petstore.swagger.io/v2
+      url: https://petstore.swagger.io/v2
   policies:
-    - name: api-key-auth
-      version: v1
-      params:
-        key: X-API-Key
-        in: header
     - name: set-headers
       version: v1
       params:
@@ -43,6 +38,10 @@ spec:
           headers:
             - name: X-Client-Version
               value: "1.2.3"
+        response:
+          headers:
+            - name: X-Server-Version
+              value: "v1.1"
   operations:
     - method: GET
       path: /pet/{petId}
