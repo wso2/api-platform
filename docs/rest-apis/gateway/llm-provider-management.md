@@ -87,7 +87,7 @@ Required roles: `admin`
 |body|body|[LLMProviderConfigurationRequest](schemas.md#schemallmproviderconfigurationrequest)|true|LLM provider in YAML or JSON format|
 
 > Example responses
-
+>
 > 201 Response
 
 ```json
@@ -106,8 +106,7 @@ Required roles: `admin`
       "url": "https://api.openai.com/v1",
       "auth": {
         "type": "api-key",
-        "header": "Authorization",
-        "value": "Bearer sk-your-api-key"
+        "header": "Authorization"
       }
     },
     "accessControl": {
@@ -198,7 +197,7 @@ Required roles: `admin`, `developer`
 |status|undeployed|
 
 > Example responses
-
+>
 > 200 Response
 
 ```json
@@ -221,8 +220,7 @@ Required roles: `admin`, `developer`
           "url": "https://api.openai.com/v1",
           "auth": {
             "type": "api-key",
-            "header": "Authorization",
-            "value": "Bearer sk-your-api-key"
+            "header": "Authorization"
           }
         },
         "accessControl": {
@@ -336,7 +334,7 @@ Status Code **200**
 |»»»»»» auth|object|false|none|none|
 |»»»»»»» type|string|true|none|none|
 |»»»»»»» header|string|false|none|none|
-|»»»»»»» value|string|false|none|none|
+|»»»»»»» value|string|false|write-only|Upstream credential. Write-only: accepted on create/update and never returned by the management API on a read, for any role. Supply either a literal value or a secret reference (e.g. a `secret` template expression); either way the field is omitted from management API response bodies. An update that omits it inherits the stored value; set `type: none` to remove auth.|
 
 *continued*
 
@@ -436,7 +434,7 @@ Required roles: `admin`, `developer`
 |id|path|string|true|Unique identifier of the LLM provider|
 
 > Example responses
-
+>
 > 200 Response
 
 ```json
@@ -455,8 +453,7 @@ Required roles: `admin`, `developer`
       "url": "https://api.openai.com/v1",
       "auth": {
         "type": "api-key",
-        "header": "Authorization",
-        "value": "Bearer sk-your-api-key"
+        "header": "Authorization"
       }
     },
     "accessControl": {
@@ -587,7 +584,7 @@ Required roles: `admin`
 |body|body|[LLMProviderConfigurationRequest](schemas.md#schemallmproviderconfigurationrequest)|true|Updated LLM provider|
 
 > Example responses
-
+>
 > 200 Response
 
 ```json
@@ -606,8 +603,7 @@ Required roles: `admin`
       "url": "https://api.openai.com/v1",
       "auth": {
         "type": "api-key",
-        "header": "Authorization",
-        "value": "Bearer sk-your-api-key"
+        "header": "Authorization"
       }
     },
     "accessControl": {
@@ -687,7 +683,7 @@ Required roles: `admin`
 |id|path|string|true|Unique identifier of the LLM provider|
 
 > Example responses
-
+>
 > 200 Response
 
 ```json
@@ -761,7 +757,7 @@ Required roles: `admin`, `consumer`
 |body|body|[APIKeyCreationRequest](schemas.md#schemaapikeycreationrequest)|true|none|
 
 > Example responses
-
+>
 > 201 Response
 
 ```json
@@ -827,7 +823,7 @@ Required roles: `admin`, `consumer`
 |id|path|string|true|Unique handle of the LLM provider to retrieve keys for|
 
 > Example responses
-
+>
 > 200 Response
 
 ```json
@@ -902,7 +898,7 @@ Required roles: `admin`, `consumer`
 |body|body|[APIKeyRegenerationRequest](schemas.md#schemaapikeyregenerationrequest)|true|none|
 
 > Example responses
-
+>
 > 200 Response
 
 ```json
@@ -979,7 +975,7 @@ Required roles: `admin`, `consumer`
 |body|body|[APIKeyUpdateRequest](schemas.md#schemaapikeyupdaterequest)|true|none|
 
 > Example responses
-
+>
 > 200 Response
 
 ```json
@@ -1046,7 +1042,7 @@ Required roles: `admin`, `consumer`
 |apiKeyName|path|string|true|Name of the API key to revoke|
 
 > Example responses
-
+>
 > 200 Response
 
 ```json

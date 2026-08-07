@@ -1,4 +1,4 @@
-<h1 id="gateway-controller-management-api-websub-api-management">WebSub API Management</h1>
+<h1 id="event-gateway-controller-management-api-websub-api-management">WebSub API Management</h1>
 
 ## Create a new WebSubAPI
 
@@ -10,7 +10,7 @@
 
 ```shell
 
-curl -X POST http://localhost:9090/api/management/v1/websub-apis \
+curl -X POST https://localhost:9090/api/management/v1/websub-apis \
   -u {username}:{password} \
   -H 'Content-Type: application/json' \
   -H 'Accept: application/json' \
@@ -63,7 +63,7 @@ Required roles: `admin`, `developer`
 |body|body|[WebSubAPIRequest](schemas.md#schemawebsubapirequest)|true|none|
 
 > Example responses
-
+>
 > 201 Response
 
 ```json
@@ -117,7 +117,7 @@ Required roles: `admin`, `developer`
 
 ```shell
 
-curl -X GET http://localhost:9090/api/management/v1/websub-apis \
+curl -X GET https://localhost:9090/api/management/v1/websub-apis \
   -u {username}:{password} \
   -H 'Accept: application/json'
 
@@ -151,7 +151,7 @@ Required roles: `admin`, `developer`
 |status|undeployed|
 
 > Example responses
-
+>
 > 200 Response
 
 ```json
@@ -280,7 +280,7 @@ Status Code **200**
 
 ```shell
 
-curl -X POST http://localhost:9090/api/management/v1/websub-apis/{id}/api-keys \
+curl -X POST https://localhost:9090/api/management/v1/websub-apis/{id}/api-keys \
   -u {username}:{password} \
   -H 'Content-Type: application/json' \
   -H 'Accept: application/json' \
@@ -315,7 +315,7 @@ Required roles: `admin`, `consumer`
 |body|body|[APIKeyCreationRequest](schemas.md#schemaapikeycreationrequest)|true|none|
 
 > Example responses
-
+>
 > 201 Response
 
 ```json
@@ -357,7 +357,7 @@ Required roles: `admin`, `consumer`
 
 ```shell
 
-curl -X GET http://localhost:9090/api/management/v1/websub-apis/{id}/api-keys \
+curl -X GET https://localhost:9090/api/management/v1/websub-apis/{id}/api-keys \
   -u {username}:{password} \
   -H 'Accept: application/json'
 
@@ -381,7 +381,7 @@ Required roles: `admin`, `consumer`
 |id|path|string|true|Unique public identifier of the WebSub API to retrieve the keys for|
 
 > Example responses
-
+>
 > 200 Response
 
 ```json
@@ -422,7 +422,7 @@ Required roles: `admin`, `consumer`
 
 ```shell
 
-curl -X POST http://localhost:9090/api/management/v1/websub-apis/{id}/api-keys/{apiKeyName}/regenerate \
+curl -X POST https://localhost:9090/api/management/v1/websub-apis/{id}/api-keys/{apiKeyName}/regenerate \
   -u {username}:{password} \
   -H 'Content-Type: application/json' \
   -H 'Accept: application/json' \
@@ -456,7 +456,7 @@ Required roles: `admin`, `consumer`
 |body|body|[APIKeyRegenerationRequest](schemas.md#schemaapikeyregenerationrequest)|true|none|
 
 > Example responses
-
+>
 > 200 Response
 
 ```json
@@ -497,7 +497,7 @@ Required roles: `admin`, `consumer`
 
 ```shell
 
-curl -X PUT http://localhost:9090/api/management/v1/websub-apis/{id}/api-keys/{apiKeyName} \
+curl -X PUT https://localhost:9090/api/management/v1/websub-apis/{id}/api-keys/{apiKeyName} \
   -u {username}:{password} \
   -H 'Content-Type: application/json' \
   -H 'Accept: application/json' \
@@ -533,7 +533,7 @@ Required roles: `admin`, `consumer`
 |body|body|[APIKeyUpdateRequest](schemas.md#schemaapikeyupdaterequest)|true|none|
 
 > Example responses
-
+>
 > 200 Response
 
 ```json
@@ -575,7 +575,7 @@ Required roles: `admin`, `consumer`
 
 ```shell
 
-curl -X DELETE http://localhost:9090/api/management/v1/websub-apis/{id}/api-keys/{apiKeyName} \
+curl -X DELETE https://localhost:9090/api/management/v1/websub-apis/{id}/api-keys/{apiKeyName} \
   -u {username}:{password} \
   -H 'Accept: application/json'
 
@@ -600,7 +600,7 @@ Required roles: `admin`, `consumer`
 |apiKeyName|path|string|true|Name of the API key to revoke|
 
 > Example responses
-
+>
 > 200 Response
 
 ```json
@@ -629,7 +629,7 @@ Required roles: `admin`, `consumer`
 
 ```shell
 
-curl -X POST http://localhost:9090/api/management/v1/websub-apis/{id}/secrets \
+curl -X POST https://localhost:9090/api/management/v1/websub-apis/{id}/secrets \
   -u {username}:{password} \
   -H 'Content-Type: application/json' \
   -H 'Accept: application/json' \
@@ -667,7 +667,7 @@ Required roles: `admin`, `developer`
 |body|body|[WebhookSecretCreationRequest](schemas.md#schemawebhooksecretcreationrequest)|true|none|
 
 > Example responses
-
+>
 > 201 Response
 
 ```json
@@ -705,7 +705,7 @@ Required roles: `admin`, `developer`
 
 ```shell
 
-curl -X GET http://localhost:9090/api/management/v1/websub-apis/{id}/secrets \
+curl -X GET https://localhost:9090/api/management/v1/websub-apis/{id}/secrets \
   -u {username}:{password} \
   -H 'Accept: application/json'
 
@@ -729,7 +729,7 @@ Required roles: `admin`, `developer`
 |id|path|string|true|Unique public identifier of the WebSub API|
 
 > Example responses
-
+>
 > 200 Response
 
 ```json
@@ -766,7 +766,7 @@ Required roles: `admin`, `developer`
 
 ```shell
 
-curl -X POST http://localhost:9090/api/management/v1/websub-apis/{id}/secrets/{secretName}/regenerate \
+curl -X POST https://localhost:9090/api/management/v1/websub-apis/{id}/secrets/{secretName}/regenerate \
   -u {username}:{password} \
   -H 'Accept: application/json'
 
@@ -793,7 +793,7 @@ Required roles: `admin`, `developer`
 |secretName|path|string|true|Name of the secret to regenerate|
 
 > Example responses
-
+>
 > 200 Response
 
 ```json
@@ -829,7 +829,7 @@ Required roles: `admin`, `developer`
 
 ```shell
 
-curl -X DELETE http://localhost:9090/api/management/v1/websub-apis/{id}/secrets/{secretName} \
+curl -X DELETE https://localhost:9090/api/management/v1/websub-apis/{id}/secrets/{secretName} \
   -u {username}:{password} \
   -H 'Accept: application/json'
 
@@ -854,7 +854,7 @@ Required roles: `admin`, `developer`
 |secretName|path|string|true|Name of the secret to delete|
 
 > Example responses
-
+>
 > 404 Response
 
 ```json
@@ -888,7 +888,7 @@ Required roles: `admin`, `developer`
 
 ```shell
 
-curl -X GET http://localhost:9090/api/management/v1/websub-apis/{id} \
+curl -X GET https://localhost:9090/api/management/v1/websub-apis/{id} \
   -u {username}:{password} \
   -H 'Accept: application/json'
 
@@ -916,7 +916,7 @@ Required roles: `admin`, `developer`
 **id**: Unique public identifier for the WebSub API.
 
 > Example responses
-
+>
 > 200 Response
 
 ```json
@@ -969,7 +969,7 @@ Required roles: `admin`, `developer`
 
 ```shell
 
-curl -X PUT http://localhost:9090/api/management/v1/websub-apis/{id} \
+curl -X PUT https://localhost:9090/api/management/v1/websub-apis/{id} \
   -u {username}:{password} \
   -H 'Content-Type: application/json' \
   -H 'Accept: application/json' \
@@ -1027,7 +1027,7 @@ Required roles: `admin`, `developer`
 **id**: Unique public identifier of the WebSub API to update.
 
 > Example responses
-
+>
 > 200 Response
 
 ```json
@@ -1081,7 +1081,7 @@ Required roles: `admin`, `developer`
 
 ```shell
 
-curl -X DELETE http://localhost:9090/api/management/v1/websub-apis/{id} \
+curl -X DELETE https://localhost:9090/api/management/v1/websub-apis/{id} \
   -u {username}:{password} \
   -H 'Accept: application/json'
 
@@ -1109,7 +1109,7 @@ Required roles: `admin`, `developer`
 **id**: Unique public identifier of the WebSub API to delete.
 
 > Example responses
-
+>
 > 200 Response
 
 ```json

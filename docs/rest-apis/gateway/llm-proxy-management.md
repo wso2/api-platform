@@ -59,7 +59,7 @@ Required roles: `admin`, `developer`
 |body|body|[LLMProxyConfigurationRequest](schemas.md#schemallmproxyconfigurationrequest)|true|LLM proxy in YAML or JSON format|
 
 > Example responses
-
+>
 > 201 Response
 
 ```json
@@ -142,7 +142,7 @@ Required roles: `admin`, `developer`
 |status|undeployed|
 
 > Example responses
-
+>
 > 200 Response
 
 ```json
@@ -217,7 +217,7 @@ Status Code **200**
 |»»»»» auth|[LLMUpstreamAuth](schemas.md#schemallmupstreamauth)|false|none|none|
 |»»»»»» type|string|true|none|none|
 |»»»»»» header|string|false|none|none|
-|»»»»»» value|string|false|none|none|
+|»»»»»» value|string|false|write-only|Upstream credential. Write-only: accepted on create/update and never returned by the management API on a read, for any role. An update that omits it inherits the stored value; set `type: none` to remove auth.|
 |»»»» globalPolicies|[[Policy](schemas.md#schemapolicy)]|false|none|Global (api-level) policies applied across ALL operations as one shared scope, evaluated before operation-level policies.|
 |»»»»» name|string|true|none|Name of the policy|
 |»»»»» version|string|true|none|Version of the policy. Only major-only version is allowed (e.g., v0, v1). Full semantic version (e.g., v1.0.0) is not accepted and will be rejected. The Gateway Controller resolves the major version to the single matching full version installed in the gateway image.|
@@ -311,7 +311,7 @@ Required roles: `admin`, `developer`
 |id|path|string|true|Unique identifier of the LLM proxy|
 
 > Example responses
-
+>
 > 200 Response
 
 ```json
@@ -406,7 +406,7 @@ Required roles: `admin`, `developer`
 |body|body|[LLMProxyConfigurationRequest](schemas.md#schemallmproxyconfigurationrequest)|true|Updated LLM proxy|
 
 > Example responses
-
+>
 > 200 Response
 
 ```json
@@ -478,7 +478,7 @@ Required roles: `admin`, `developer`
 |id|path|string|true|Unique identifier of the LLM proxy|
 
 > Example responses
-
+>
 > 200 Response
 
 ```json
@@ -552,7 +552,7 @@ Required roles: `admin`, `consumer`
 |body|body|[APIKeyCreationRequest](schemas.md#schemaapikeycreationrequest)|true|none|
 
 > Example responses
-
+>
 > 201 Response
 
 ```json
@@ -618,7 +618,7 @@ Required roles: `admin`, `consumer`
 |id|path|string|true|Unique handle of the LLM proxy to retrieve keys for|
 
 > Example responses
-
+>
 > 200 Response
 
 ```json
@@ -693,7 +693,7 @@ Required roles: `admin`, `consumer`
 |body|body|[APIKeyRegenerationRequest](schemas.md#schemaapikeyregenerationrequest)|true|none|
 
 > Example responses
-
+>
 > 200 Response
 
 ```json
@@ -770,7 +770,7 @@ Required roles: `admin`, `consumer`
 |body|body|[APIKeyUpdateRequest](schemas.md#schemaapikeyupdaterequest)|true|none|
 
 > Example responses
-
+>
 > 200 Response
 
 ```json
@@ -837,7 +837,7 @@ Required roles: `admin`, `consumer`
 |apiKeyName|path|string|true|Name of the API key to revoke|
 
 > Example responses
-
+>
 > 200 Response
 
 ```json

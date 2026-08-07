@@ -165,7 +165,7 @@ License: <a href="https://www.apache.org/licenses/LICENSE-2.0.html">Apache 2.0</
 
 ### [API Keys](api-keys.md)
 
-- [List API keys for the current user](api-keys.md#list-api-keys-for-the-current-user)
+- [List API keys for the current user, or for all users with `ap:api_key:all:manage`](api-keys.md#list-api-keys-for-the-current-user-or-for-all-users-with-apapikeyallmanage)
 
 ### [MCP Proxies](mcp-proxies.md)
 

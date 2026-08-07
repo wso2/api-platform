@@ -31,7 +31,7 @@ Required roles: `admin`
 </aside>
 
 > Example responses
-
+>
 > 200 Response
 
 ```json
@@ -120,7 +120,7 @@ Required roles: `admin`
 |body|body|[SecretConfigurationRequest](schemas.md#schemasecretconfigurationrequest)|true|none|
 
 > Example responses
-
+>
 > Secret created successfully
 
 ```json
@@ -203,7 +203,7 @@ Required roles: `admin`
 |id|path|string|true|Unique secret identifier|
 
 > Example responses
-
+>
 > Secret retrieved and decrypted successfully
 
 ```json
@@ -306,7 +306,7 @@ Required roles: `admin`
 |id|path|string|true|Unique secret identifier|
 
 > Example responses
-
+>
 > Secret updated successfully
 
 ```json
@@ -389,7 +389,7 @@ Required roles: `admin`
 |id|path|string|true|Unique secret identifier|
 
 > Example responses
-
+>
 > 401 Response
 
 ```json

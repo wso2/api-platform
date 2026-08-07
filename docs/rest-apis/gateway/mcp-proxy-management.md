@@ -62,7 +62,7 @@ Required roles: `admin`, `developer`
 |body|body|[MCPProxyConfigurationRequest](schemas.md#schemamcpproxyconfigurationrequest)|true|none|
 
 > Example responses
-
+>
 > 201 Response
 
 ```json
@@ -147,7 +147,7 @@ Required roles: `admin`, `developer`
 |status|undeployed|
 
 > Example responses
-
+>
 > 200 Response
 
 ```json
@@ -260,7 +260,7 @@ Status Code **200**
 |»»»»»» auth|object|false|none|none|
 |»»»»»»» type|string|true|none|none|
 |»»»»»»» header|string|false|none|none|
-|»»»»»»» value|string|false|none|none|
+|»»»»»»» value|string|false|write-only|Upstream credential. Write-only: accepted on create/update and never returned by the management API on a read, for any role. Supply either a literal value or a secret reference (e.g. a `secret` template expression); either way the field is omitted from management API response bodies. An update that omits it inherits the stored value; set `type: none` to remove auth.|
 
 *continued*
 
@@ -364,7 +364,7 @@ Required roles: `admin`, `developer`
 **id**: Unique public identifier of the MCP Proxy.
 
 > Example responses
-
+>
 > 200 Response
 
 ```json
@@ -469,7 +469,7 @@ Required roles: `admin`, `developer`
 **id**: Unique public identifier of the MCP Proxy to update.
 
 > Example responses
-
+>
 > 200 Response
 
 ```json
@@ -548,7 +548,7 @@ Required roles: `admin`, `developer`
 **id**: Unique public identifier of the MCP Proxy to delete.
 
 > Example responses
-
+>
 > 200 Response
 
 ```json
