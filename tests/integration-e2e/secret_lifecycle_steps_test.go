@@ -39,8 +39,8 @@ package e2e
 //     row for it independently of the artifact's current config — so the explicit
 //     DELETE below would 409 as still-referenced). Once the redeploy clears that
 //     gateway-scoped row, the original secret is referenced by nothing and
-//     DELETE /secrets/:handle succeeds, broadcasting secret.deprecated; the
-//     controller's handleSecretDeprecatedEvent evicts its local copy. The assertion
+//     DELETE /secrets/:handle succeeds, broadcasting secret.deleted; the
+//     controller's handleSecretDeletedEvent evicts its local copy. The assertion
 //     polls the same management endpoint until it 404s.
 
 import (
@@ -123,8 +123,8 @@ func (w *world) iUpdateTheRestAPIToReferenceADifferentSecret() error {
 }
 
 // theGatewayEvictsTheOriginalSecretFromItsLocalStore polls the gateway-controller's
-// secret store until the original (now-unreferenced, deprecated) secret is gone,
-// confirming the secret.deprecated push event triggered eviction.
+// secret store until the original (now-unreferenced, permanently deleted) secret is
+// gone, confirming the secret.deleted push event triggered eviction.
 func (w *world) theGatewayEvictsTheOriginalSecretFromItsLocalStore() error {
 	return waitGatewaySecretGone(w.restAPISecretHandle, pollTimeout)
 }

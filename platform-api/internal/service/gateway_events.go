@@ -84,10 +84,10 @@ const (
 	// EventTypeSecretCreated: a freshly created secret is not yet referenced by any
 	// deployed artifact, so no connected gateway has anything to refresh — the first
 	// time a gateway needs it, the artifact-deploy path's syncSecretRefsFromYAML picks
-	// it up already. EventTypeSecretDeprecated fires on delete, which is always a
-	// soft-delete (status -> DEPRECATED) once no artifact references the handle.
-	EventTypeSecretUpdated    = "secret.updated"
-	EventTypeSecretDeprecated = "secret.deprecated"
+	// it up already. EventTypeSecretDeleted fires on delete, which permanently
+	// removes the secret once no artifact references the handle.
+	EventTypeSecretUpdated = "secret.updated"
+	EventTypeSecretDeleted = "secret.deleted"
 )
 
 // GatewayEventsService handles broadcasting events to connected gateways via EventHub.
@@ -270,9 +270,9 @@ func (s *GatewayEventsService) BroadcastSecretUpdatedEvent(gatewayID string, eve
 	return s.broadcastEvent(gatewayID, EventTypeSecretUpdated, event)
 }
 
-// BroadcastSecretDeprecatedEvent sends a secret.deprecated event to target gateway.
-func (s *GatewayEventsService) BroadcastSecretDeprecatedEvent(gatewayID string, event *model.SecretDeprecatedEvent) error {
-	return s.broadcastEvent(gatewayID, EventTypeSecretDeprecated, event)
+// BroadcastSecretDeletedEvent sends a secret.deleted event to target gateway.
+func (s *GatewayEventsService) BroadcastSecretDeletedEvent(gatewayID string, event *model.SecretDeletedEvent) error {
+	return s.broadcastEvent(gatewayID, EventTypeSecretDeleted, event)
 }
 
 // broadcastEvent is the generic helper for broadcasting gateway events without a userId.
@@ -360,7 +360,7 @@ func actionForEventType(eventType string) string {
 	switch {
 	case strings.HasSuffix(eventType, ".created"), strings.HasSuffix(eventType, ".deployed"):
 		return "CREATE"
-	case strings.HasSuffix(eventType, ".deleted"), strings.HasSuffix(eventType, ".undeployed"), strings.HasSuffix(eventType, ".deprecated"):
+	case strings.HasSuffix(eventType, ".deleted"), strings.HasSuffix(eventType, ".undeployed"):
 		return "DELETE"
 	default:
 		return "UPDATE"

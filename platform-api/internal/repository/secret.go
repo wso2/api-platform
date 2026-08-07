@@ -230,10 +230,10 @@ func (r *SecretRepo) Update(s *model.Secret) error {
 	return nil
 }
 
-// FindRefsAndSoftDelete checks for active artifact references and deprecates the
+// FindRefsAndDelete checks for active artifact references and permanently deletes the
 // secret in a single transaction, eliminating the TOCTOU window.
-// Returns the references without deprecating if any are found.
-func (r *SecretRepo) FindRefsAndSoftDelete(orgID, handle, updatedBy string) ([]model.SecretReference, error) {
+// Returns the references without deleting if any are found.
+func (r *SecretRepo) FindRefsAndDelete(orgID, handle string) ([]model.SecretReference, error) {
 	tx, err := r.db.Begin()
 	if err != nil {
 		return nil, fmt.Errorf("failed to begin transaction: %w", err)
@@ -298,14 +298,12 @@ func (r *SecretRepo) FindRefsAndSoftDelete(orgID, handle, updatedBy string) ([]m
 		return refs, nil
 	}
 
-	deleteQuery := r.db.Rebind(`
-		UPDATE secrets
-		SET status = 'DEPRECATED', updated_at = ?, updated_by = ?
-		WHERE organization_uuid = ? AND handle = ?
-	`)
-	result, err := tx.Exec(deleteQuery, time.Now().UTC(), updatedBy, orgID, handle)
+	// secret_scopes cascades from secrets.uuid on every dialect; artifact_secret_refs
+	// has no rows for this handle at this point (the zero-refs check above just passed).
+	deleteQuery := r.db.Rebind(`DELETE FROM secrets WHERE organization_uuid = ? AND handle = ?`)
+	result, err := tx.Exec(deleteQuery, orgID, handle)
 	if err != nil {
-		return nil, fmt.Errorf("failed to deprecate secret: %w", err)
+		return nil, fmt.Errorf("failed to delete secret: %w", err)
 	}
 	affected, err := result.RowsAffected()
 	if err != nil {

@@ -1454,8 +1454,8 @@ func (c *Client) handleMessage(messageType int, message []byte) {
 		c.handleApplicationUpdatedEvent(event)
 	case "secret.updated":
 		c.handleSecretUpdatedEvent(event)
-	case "secret.deprecated":
-		c.handleSecretDeprecatedEvent(event)
+	case "secret.deleted":
+		c.handleSecretDeletedEvent(event)
 	default:
 		c.logger.Info("Received unknown event type (will be processed when handlers are implemented)",
 			slog.String("type", eventType),
@@ -3821,9 +3821,10 @@ func (c *Client) applySecretUpdatedPayload(payload SecretUpdatedEventPayload, lo
 // gateway already applied for handle. The comparison is strict-less-than so a
 // redelivery of the same event (revision equal to the cached one — e.g. at-least-once
 // retry from the EventHub) still applies normally, preserving existing idempotency.
-// The cache entry is never cleared on eviction (see handleSecretDeprecatedEvent), so a
-// deletion followed by a reactivation followed by a stale, redelivered deletion cannot
-// undo the reactivation: the stale deletion's revision is lower than the reactivation's.
+// The cache entry is never cleared on eviction (see handleSecretDeletedEvent), so a
+// deletion followed by the same handle being reused by a later create, followed by a
+// stale, redelivered copy of the original deletion, cannot evict the newly created
+// secret: the stale deletion's revision is lower than the new secret's.
 func (c *Client) isStaleSecretEvent(handle string, revision int64, logger *slog.Logger) bool {
 	if cached, ok := c.secretRevisionCache.Load(handle); ok {
 		if lastApplied, ok := cached.(int64); ok && revision < lastApplied {
@@ -3837,29 +3838,29 @@ func (c *Client) isStaleSecretEvent(handle string, revision int64, logger *slog.
 	return false
 }
 
-// handleSecretDeprecatedEvent processes secret.deprecated events, pushed when a
-// secret is deleted (soft-deleted to DEPRECATED). Deletion only succeeds once no
-// artifact — current config or any deployed snapshot, on any gateway — still
-// references the handle, so evicting the local copy here is always safe.
-func (c *Client) handleSecretDeprecatedEvent(event map[string]interface{}) {
+// handleSecretDeletedEvent processes secret.deleted events, pushed when a secret is
+// permanently deleted. Deletion only succeeds once no artifact — current config or
+// any deployed snapshot, on any gateway — still references the handle, so evicting
+// the local copy here is always safe.
+func (c *Client) handleSecretDeletedEvent(event map[string]interface{}) {
 	baseLogger := c.logger
 	if c.secretSyncer == nil {
-		baseLogger.Debug("Skipping secret.deprecated event: secret sync not configured")
+		baseLogger.Debug("Skipping secret.deleted event: secret sync not configured")
 		return
 	}
 
-	var deprecated SecretDeprecatedEvent
-	if err := utils.MapToStruct(event, &deprecated); err != nil {
-		baseLogger.Error("Failed to parse secret.deprecated event", slog.Any("error", err))
+	var deleted SecretDeletedEvent
+	if err := utils.MapToStruct(event, &deleted); err != nil {
+		baseLogger.Error("Failed to parse secret.deleted event", slog.Any("error", err))
 		return
 	}
-	payload := deprecated.Payload
+	payload := deleted.Payload
 	if payload.Handle == "" {
-		baseLogger.Error("secret.deprecated event missing handle")
+		baseLogger.Error("secret.deleted event missing handle")
 		return
 	}
 	logger := baseLogger.With(
-		slog.String("correlation_id", deprecated.CorrelationID),
+		slog.String("correlation_id", deleted.CorrelationID),
 		slog.String("secret_handle", payload.Handle),
 	)
 
@@ -3867,17 +3868,17 @@ func (c *Client) handleSecretDeprecatedEvent(event map[string]interface{}) {
 		return
 	}
 
-	if err := c.secretSyncer.Delete(payload.Handle, deprecated.CorrelationID); err != nil {
-		logger.Warn("Failed to evict deprecated secret from local store", slog.Any("error", err))
+	if err := c.secretSyncer.Delete(payload.Handle, deleted.CorrelationID); err != nil {
+		logger.Warn("Failed to evict deleted secret from local store", slog.Any("error", err))
 		return
 	}
 	c.secretHashCache.Delete(payload.Handle)
-	// Deliberately Store, not Delete: a later secret.updated for the same handle (a
-	// rotation reactivating it) must still be able to detect a subsequently-redelivered
-	// copy of *this* deletion event as stale. Clearing the cache entry here would let
-	// that stale redelivery through and re-evict the reactivated secret.
+	// Deliberately Store, not Delete: a later secret.updated for the same handle (the
+	// handle reused by a newly created secret) must still be able to detect a
+	// subsequently-redelivered copy of *this* deletion event as stale. Clearing the
+	// cache entry here would let that stale redelivery through and evict the new secret.
 	c.secretRevisionCache.Store(payload.Handle, payload.Revision)
-	logger.Info("Evicted deprecated secret from local store")
+	logger.Info("Evicted deleted secret from local store")
 }
 
 // setState updates the connection state

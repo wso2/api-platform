@@ -37,15 +37,15 @@ import { getErrorMessage } from '../../../../utils/apiError';
 interface DeleteSecretDialogProps {
   secret: SecretMetadata | null;
   onClose: () => void;
-  /** Called after the secret has actually been deprecated on the server. */
+  /** Called after the secret has actually been permanently deleted on the server. */
   onDeleted: (handle: string) => void;
 }
 
 /**
- * Deleting a secret is a soft-delete on the backend (status -> DEPRECATED) and
- * is blocked with a 409 if the secret is still referenced by another resource.
- * This dialog handles both outcomes: a plain confirmation, or — once blocked —
- * the list of referencing resources returned on the conflict.
+ * Deleting a secret permanently removes it on the backend and is blocked with a
+ * 409 if the secret is still referenced by another resource. This dialog handles
+ * both outcomes: a plain confirmation, or — once blocked — the list of
+ * referencing resources returned on the conflict.
  */
 export default function DeleteSecretDialog({ secret, onClose, onDeleted }: DeleteSecretDialogProps): React.JSX.Element {
   const showSnackbar = useAIWorkspaceSnackbar();
@@ -63,7 +63,7 @@ export default function DeleteSecretDialog({ secret, onClose, onDeleted }: Delet
     try {
       await deleteSecret(secret.id);
       if (!isMounted()) return;
-      showSnackbar(`"${secret.displayName}" was deprecated and can no longer be referenced.`, 'success');
+      showSnackbar(`"${secret.displayName}" was deleted.`, 'success');
       onDeleted(secret.id);
       onClose();
     } catch (error) {
@@ -109,9 +109,6 @@ export default function DeleteSecretDialog({ secret, onClose, onDeleted }: Delet
                     <Typography variant="body2" sx={{ fontWeight: 600 }} noWrap>
                       {ref.name}
                     </Typography>
-                    <Typography variant="caption" color="text.secondary" noWrap>
-                      {ref.handle}
-                    </Typography>
                   </Box>
                 </Box>
               ))}
@@ -128,9 +125,8 @@ export default function DeleteSecretDialog({ secret, onClose, onDeleted }: Delet
           <DialogTitle>Delete secret</DialogTitle>
           <DialogContent>
             <DialogContentText>
-              Delete <strong>{secret?.displayName}</strong>? This marks it as deprecated — it can no longer be
-              referenced by new resources, though gateways that already resolved it keep working. Deletion is
-              blocked while any resource still references it.
+              Delete <strong>{secret?.displayName}</strong>? This permanently deletes the secret and cannot be
+              undone. Deletion is blocked while any resource still references it.
             </DialogContentText>
           </DialogContent>
           <DialogActions>

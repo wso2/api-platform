@@ -21,17 +21,17 @@ import { Link as RouterLink, useNavigate } from 'react-router-dom';
 import {
   Box,
   Button,
+  Chip,
   FormControl,
   FormLabel,
   Grid,
   IconButton,
   InputAdornment,
-  MenuItem,
   PageContent,
   PageTitle,
-  Select,
   Stack,
   TextField,
+  Typography,
 } from '@wso2/oxygen-ui';
 import { ChevronLeft, Eye, EyeOff } from '@wso2/oxygen-ui-icons-react';
 import { FormattedMessage } from 'react-intl';
@@ -67,7 +67,8 @@ export default function CreateSecret(): React.JSX.Element {
   const [description, setDescription] = useState('');
   const [value, setValue] = useState('');
   const [valueVisible, setValueVisible] = useState(false);
-  const [type, setType] = useState<SecretType>('GENERIC');
+  // Fixed until certificate secrets are implemented — see the Type field below.
+  const type: SecretType = 'GENERIC';
   const [nameTouched, setNameTouched] = useState(false);
   const [valueTouched, setValueTouched] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -111,14 +112,14 @@ export default function CreateSecret(): React.JSX.Element {
 
   return (
     <PageContent fullWidth>
-      <Button component={RouterLink} to={listPath} size="small" startIcon={<ChevronLeft size={20} />}>
+      <Button component={RouterLink} to={listPath} size="small" startIcon={<ChevronLeft size={24} />}>
         <FormattedMessage
           id="aiWorkspace.pages.appShell.appShellPages.secret.CreateSecret.back"
           defaultMessage="Back to Secrets"
         />
       </Button>
 
-      <Stack spacing={0.5} mt={2} mb={2}>
+      <Stack spacing={2} mt={2}>
         <PageTitle>
           <PageTitle.Header>
             <FormattedMessage
@@ -129,9 +130,21 @@ export default function CreateSecret(): React.JSX.Element {
         </PageTitle>
       </Stack>
 
-      <Box sx={{ maxWidth: 820 }}>
+      <Box sx={{ mt: 2, maxWidth: 820 }}>
         <Box component="form" onSubmit={handleSubmit} noValidate>
           <Grid container spacing={2}>
+            <Grid size={{ xs: 12 }}>
+              <FormControl fullWidth>
+                <FormLabel>Type</FormLabel>
+                <Stack direction="row" spacing={1.5} alignItems="center">
+                  <Chip label="Generic" size="small" color="primary" variant="outlined" />
+                  <Typography variant="caption" color="text.secondary">
+                    Certificate secrets are coming soon.
+                  </Typography>
+                </Stack>
+              </FormControl>
+            </Grid>
+
             <Grid size={{ xs: 12, sm: 6 }}>
               <FormControl fullWidth>
                 <FormLabel required>Display Name</FormLabel>
@@ -175,7 +188,7 @@ export default function CreateSecret(): React.JSX.Element {
                   helperText={
                     handle.length > 0 && !isHandleValid
                       ? 'Lowercase letters, numbers, and single hyphens only.'
-                      : 'Immutable after creation — referenced as {{ secret "' + (handle || 'handle') + '" }}.'
+                      : 'Immutable after creation. Referenced as {{ secret "' + (handle || 'handle') + '" }}.'
                   }
                   data-cyid="secret-handle-input"
                 />
@@ -184,7 +197,7 @@ export default function CreateSecret(): React.JSX.Element {
 
             <Grid size={{ xs: 12 }}>
               <FormControl fullWidth>
-                <FormLabel>Description (Optional)</FormLabel>
+                <FormLabel>Description</FormLabel>
                 <TextField
                   fullWidth
                   value={description}
@@ -200,7 +213,9 @@ export default function CreateSecret(): React.JSX.Element {
               </FormControl>
             </Grid>
 
-            <Grid size={{ xs: 12, sm: 8 }}>
+            {/* TODO(certificate-secrets): once implemented, branch on `type` here —
+                a file-upload control for CERTIFICATE, this text field for GENERIC. */}
+            <Grid size={{ xs: 12 }}>
               <FormControl fullWidth>
                 <FormLabel required>Value</FormLabel>
                 <TextField
@@ -213,11 +228,7 @@ export default function CreateSecret(): React.JSX.Element {
                   placeholder="Paste your credential here"
                   autoComplete="new-password"
                   error={valueTouched && !isValueValid}
-                  helperText={
-                    valueTouched && !isValueValid
-                      ? 'A value is required.'
-                      : 'Encrypted immediately on save — this is the only time it can be viewed. It is never returned by the API again.'
-                  }
+                  helperText={valueTouched && !isValueValid ? 'A value is required.' : ''}
                   slotProps={{
                     input: {
                       endAdornment: (
@@ -235,16 +246,6 @@ export default function CreateSecret(): React.JSX.Element {
                   }}
                   data-cyid="secret-value-input"
                 />
-              </FormControl>
-            </Grid>
-
-            <Grid size={{ xs: 12, sm: 4 }}>
-              <FormControl fullWidth>
-                <FormLabel>Type</FormLabel>
-                <Select value={type} onChange={(e) => setType(e.target.value as SecretType)}>
-                  <MenuItem value="GENERIC">Generic</MenuItem>
-                  <MenuItem value="CERTIFICATE">Certificate</MenuItem>
-                </Select>
               </FormControl>
             </Grid>
           </Grid>

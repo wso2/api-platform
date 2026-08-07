@@ -65,14 +65,14 @@ type mockSecretRepo struct {
 
 	secrets map[string]*model.Secret
 
-	createFn                func(*model.Secret) error
-	existsFn                func(orgID, handle string) (bool, error)
-	getByHandleFn           func(orgID, handle string) (*model.Secret, error)
-	updateFn                func(*model.Secret) error
-	findRefsAndSoftDeleteFn func(orgID, handle, by string) ([]model.SecretReference, error)
-	findRefsFn              func(orgID, handle string) ([]model.SecretReference, error)
-	listFn                  func(orgID string, limit, offset int, after *time.Time) ([]*model.Secret, error)
-	countFn                 func(orgID string) (int, error)
+	createFn            func(*model.Secret) error
+	existsFn            func(orgID, handle string) (bool, error)
+	getByHandleFn       func(orgID, handle string) (*model.Secret, error)
+	updateFn            func(*model.Secret) error
+	findRefsAndDeleteFn func(orgID, handle string) ([]model.SecretReference, error)
+	findRefsFn          func(orgID, handle string) ([]model.SecretReference, error)
+	listFn              func(orgID string, limit, offset int, after *time.Time) ([]*model.Secret, error)
+	countFn             func(orgID string) (int, error)
 }
 
 func newMockRepo() *mockSecretRepo {
@@ -123,9 +123,9 @@ func (m *mockSecretRepo) Update(s *model.Secret) error {
 	return nil
 }
 
-func (m *mockSecretRepo) FindRefsAndSoftDelete(orgID, handle, by string) ([]model.SecretReference, error) {
-	if m.findRefsAndSoftDeleteFn != nil {
-		return m.findRefsAndSoftDeleteFn(orgID, handle, by)
+func (m *mockSecretRepo) FindRefsAndDelete(orgID, handle string) ([]model.SecretReference, error) {
+	if m.findRefsAndDeleteFn != nil {
+		return m.findRefsAndDeleteFn(orgID, handle)
 	}
 	if m.findRefsFn != nil {
 		refs, err := m.findRefsFn(orgID, handle)
@@ -133,11 +133,10 @@ func (m *mockSecretRepo) FindRefsAndSoftDelete(orgID, handle, by string) ([]mode
 			return refs, err
 		}
 	}
-	s, ok := m.secrets[handle]
-	if !ok {
+	if _, ok := m.secrets[handle]; !ok {
 		return nil, apperror.SecretNotFound.New()
 	}
-	s.Status = model.SecretStatusDeprecated
+	delete(m.secrets, handle)
 	return nil, nil
 }
 
@@ -406,6 +405,51 @@ func TestSecretService_Get_ReturnsSecret(t *testing.T) {
 	}
 }
 
+// ---- GetReferences tests -----------------------------------------------------
+
+func TestSecretService_GetReferences_NotFound(t *testing.T) {
+	repo := newMockRepo()
+	svc := NewSecretService(repo, &mockVault{}, newTestIdentityService())
+
+	_, err := svc.GetReferences("org1", "missing")
+	if !apperror.SecretNotFound.Is(err) {
+		t.Errorf("expected ErrSecretNotFound, got %v", err)
+	}
+}
+
+func TestSecretService_GetReferences_ReturnsReferences(t *testing.T) {
+	repo := newMockRepo()
+	repo.secrets["s1"] = &model.Secret{Handle: "s1", Status: model.SecretStatusActive}
+	repo.findRefsFn = func(orgID, handle string) ([]model.SecretReference, error) {
+		return []model.SecretReference{
+			{Handle: "my-api", Name: "My API", Type: "RestApi"},
+		}, nil
+	}
+
+	svc := NewSecretService(repo, &mockVault{}, newTestIdentityService())
+	refs, err := svc.GetReferences("org1", "s1")
+	if err != nil {
+		t.Fatalf("GetReferences: %v", err)
+	}
+	if len(refs) != 1 || refs[0].Handle != "my-api" || refs[0].Type != "RestApi" {
+		t.Errorf("refs = %+v, want a single RestApi reference for my-api", refs)
+	}
+}
+
+func TestSecretService_GetReferences_NoUsages_ReturnsEmpty(t *testing.T) {
+	repo := newMockRepo()
+	repo.secrets["s1"] = &model.Secret{Handle: "s1", Status: model.SecretStatusActive}
+
+	svc := NewSecretService(repo, &mockVault{}, newTestIdentityService())
+	refs, err := svc.GetReferences("org1", "s1")
+	if err != nil {
+		t.Fatalf("GetReferences: %v", err)
+	}
+	if len(refs) != 0 {
+		t.Errorf("refs = %+v, want empty", refs)
+	}
+}
+
 // ---- Update tests -----------------------------------------------------------
 
 func TestSecretService_Update_NotFound(t *testing.T) {
@@ -432,6 +476,38 @@ func TestSecretService_Update_EncryptsNewValue(t *testing.T) {
 	}
 	if string(repo.secrets["upd"].Ciphertext) == "" {
 		t.Error("Ciphertext should be set after update")
+	}
+}
+
+func TestSecretService_Update_NoValue_UpdatesMetadataOnly_DoesNotReencryptOrReactivate(t *testing.T) {
+	repo := newMockRepo()
+	repo.secrets["upd"] = &model.Secret{
+		Handle:      "upd",
+		DisplayName: "Old Name",
+		Ciphertext:  []byte("cipher:original"),
+		Hash:        "hmac-sha256:original",
+		Status:      model.SecretStatusDeprecated,
+	}
+	svc := NewSecretService(repo, &mockVault{}, newTestIdentityService())
+
+	_, err := svc.Update("org1", "upd", "bob", &dto.UpdateSecretRequest{DisplayName: "New Name"})
+	if err != nil {
+		t.Fatalf("Update: %v", err)
+	}
+
+	got := repo.secrets["upd"]
+	if got.DisplayName != "New Name" {
+		t.Errorf("DisplayName = %q, want %q", got.DisplayName, "New Name")
+	}
+	if string(got.Ciphertext) != "cipher:original" {
+		t.Errorf("Ciphertext changed on a metadata-only update: got %q", got.Ciphertext)
+	}
+	if got.Hash != "hmac-sha256:original" {
+		t.Errorf("Hash changed on a metadata-only update: got %q", got.Hash)
+	}
+	if got.Status != model.SecretStatusDeprecated {
+		t.Errorf("Status = %q, want unchanged %q — a metadata-only update must not reactivate a deprecated secret",
+			got.Status, model.SecretStatusDeprecated)
 	}
 }
 
@@ -486,8 +562,8 @@ func TestSecretService_Delete_SucceedsWhenNotInUse(t *testing.T) {
 	if err := svc.Delete("org1", "unused", "alice"); err != nil {
 		t.Errorf("Delete: %v", err)
 	}
-	if repo.secrets["unused"].Status != model.SecretStatusDeprecated {
-		t.Error("expected status to be DEPRECATED after deletion")
+	if _, ok := repo.secrets["unused"]; ok {
+		t.Error("expected secret to be permanently removed after deletion")
 	}
 }
 

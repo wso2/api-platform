@@ -56,7 +56,7 @@ func NewSecretService(repo repository.SecretRepository, v vault.SecretVault, ide
 	return &SecretService{repo: repo, vault: v, identity: identity, slogger: slog.Default()}
 }
 
-// WithGatewayBroadcast enables best-effort secret.updated/secret.deprecated
+// WithGatewayBroadcast enables best-effort secret.updated/secret.deleted
 // notifications to every gateway in the organization on rotate/delete (see
 // broadcastSecretEvent). Optional: a SecretService built without this call simply
 // skips broadcasting — kept as a post-construction setter rather than a constructor
@@ -197,22 +197,25 @@ func (s *SecretService) Update(orgID, handle, updatedBy string, req *dto.UpdateS
 		return nil, err
 	}
 
-	ciphertext, err := s.vault.Encrypt(context.Background(), req.Value)
-	if err != nil {
-		return nil, fmt.Errorf("failed to encrypt secret: %w", err)
-	}
-
 	if req.DisplayName != "" {
 		existing.DisplayName = req.DisplayName
 	}
 	if req.Description != "" {
 		existing.Description = req.Description
 	}
-	existing.Ciphertext = ciphertext
-	existing.Hash = hashSecret(s.vault.HashKey(), req.Value)
+	// Value is optional: a metadata-only edit (no value) must not touch the
+	// ciphertext/hash or reactivate a deprecated secret — only an explicit
+	// rotation is an intent to put the secret back into service.
+	if req.Value != "" {
+		ciphertext, err := s.vault.Encrypt(context.Background(), req.Value)
+		if err != nil {
+			return nil, fmt.Errorf("failed to encrypt secret: %w", err)
+		}
+		existing.Ciphertext = ciphertext
+		existing.Hash = hashSecret(s.vault.HashKey(), req.Value)
+		existing.Status = model.SecretStatusActive
+	}
 	existing.UpdatedBy = updatedBy
-	// Rotation is an explicit intent to put the secret back into service.
-	existing.Status = model.SecretStatusActive
 
 	if err := s.repo.Update(existing); err != nil {
 		return nil, fmt.Errorf("failed to update secret: %w", err)
@@ -239,13 +242,33 @@ func (s *SecretService) Update(orgID, handle, updatedBy string, req *dto.UpdateS
 	return resp, nil
 }
 
+// GetReferences returns the resources that currently reference handle, so a
+// caller can show why a secret is in use before attempting a delete. Existence
+// is checked first so an unknown handle reports SecretNotFound rather than an
+// empty usages list indistinguishable from "not referenced".
+func (s *SecretService) GetReferences(orgID, handle string) ([]dto.SecretReferenceDTO, error) {
+	if _, err := s.repo.GetByHandle(orgID, handle); err != nil {
+		return nil, err
+	}
+
+	refs, err := s.repo.FindRefs(orgID, handle)
+	if err != nil {
+		return nil, fmt.Errorf("failed to find secret references: %w", err)
+	}
+
+	result := make([]dto.SecretReferenceDTO, 0, len(refs))
+	for _, ref := range refs {
+		result = append(result, dto.SecretReferenceDTO{Type: ref.Type, Handle: ref.Handle, Name: ref.Name})
+	}
+	return result, nil
+}
+
 func (s *SecretService) Delete(orgID, handle, updatedBy string) error {
-	// Captured before the soft-delete so the broadcast Revision reflects the same
-	// moment as the DB write; FindRefsAndSoftDelete does not return the row's new
-	// updated_at, so we compute the ordering token here instead of re-fetching it.
+	// Captured before the delete so the broadcast Revision reflects the same
+	// moment as the DB write.
 	deletedAt := time.Now().UTC()
 
-	refs, err := s.repo.FindRefsAndSoftDelete(orgID, handle, updatedBy)
+	refs, err := s.repo.FindRefsAndDelete(orgID, handle)
 	if err != nil {
 		return fmt.Errorf("failed to delete secret: %w", err)
 	}
@@ -253,12 +276,31 @@ func (s *SecretService) Delete(orgID, handle, updatedBy string) error {
 		return &SecretInUseError{References: refs}
 	}
 
-	s.broadcastSecretEvent(orgID, "deprecated", &model.SecretDeprecatedEvent{
+	s.broadcastSecretEvent(orgID, "deleted", &model.SecretDeletedEvent{
 		Handle:   handle,
 		Revision: deletedAt.UnixNano(),
 	})
 
 	return nil
+}
+
+// CleanupOrphanedSecrets permanently deletes any of the given handles that are no
+// longer referenced by anything, once the resource that used to hold one of these
+// references (an LLM provider/proxy or MCP proxy) has already been deleted. Best-effort:
+// a handle still referenced by some other resource, already gone, or any other error is
+// logged and skipped rather than failing the caller's delete — the resource is already
+// durably deleted by the time this runs.
+func (s *SecretService) CleanupOrphanedSecrets(orgID string, handles []string, deletedBy string) {
+	for _, handle := range handles {
+		if err := s.Delete(orgID, handle, deletedBy); err != nil {
+			var inUseErr *SecretInUseError
+			if errors.As(err, &inUseErr) || apperror.SecretNotFound.Is(err) {
+				continue // still referenced elsewhere, or already gone — expected, not a failure
+			}
+			s.slogger.Warn("failed to clean up orphaned secret after resource deletion",
+				"handle", handle, "orgId", orgID, "err", err)
+		}
+	}
 }
 
 // broadcastSecretEvent sends a secret.* event to every gateway in the organization.
@@ -285,8 +327,8 @@ func (s *SecretService) broadcastSecretEvent(orgUUID, action string, payload int
 		switch action {
 		case "updated":
 			broadcastErr = s.gatewayEvents.BroadcastSecretUpdatedEvent(gw.ID, payload.(*model.SecretUpdatedEvent))
-		case "deprecated":
-			broadcastErr = s.gatewayEvents.BroadcastSecretDeprecatedEvent(gw.ID, payload.(*model.SecretDeprecatedEvent))
+		case "deleted":
+			broadcastErr = s.gatewayEvents.BroadcastSecretDeletedEvent(gw.ID, payload.(*model.SecretDeletedEvent))
 		}
 		if broadcastErr != nil {
 			s.slogger.Warn("Failed to broadcast secret event",

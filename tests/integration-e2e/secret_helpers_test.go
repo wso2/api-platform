@@ -27,8 +27,8 @@ package e2e
 //
 // rotateSecret / waitGatewaySecretValue / waitGatewaySecretGone below back a
 // different scenario family — secret_lifecycle.feature — which exercises the
-// live secret.updated/secret.deprecated WebSocket push path (handleSecretUpdatedEvent /
-// handleSecretDeprecatedEvent) against an already-connected gateway, rather than the
+// live secret.updated/secret.deleted WebSocket push path (handleSecretUpdatedEvent /
+// handleSecretDeletedEvent) against an already-connected gateway, rather than the
 // on-demand fetch that happens at artifact-deploy time.
 
 import (
@@ -186,9 +186,9 @@ func rotateSecret(handle, newValue string) error {
 	return nil
 }
 
-// deleteSecret soft-deletes (deprecates) a secret via DELETE /secrets/:handle — the
+// deleteSecret permanently deletes a secret via DELETE /secrets/:handle — the
 // same call the AI Workspace UI's "Delete secret" action makes. platform-api broadcasts
-// a secret.deprecated event to every gateway in the org once the delete actually
+// a secret.deleted event to every gateway in the org once the delete actually
 // succeeds (it 409s instead if the handle is still referenced by any artifact, current
 // config or deployed snapshot, on any gateway).
 func deleteSecret(handle string) error {
@@ -261,7 +261,7 @@ func waitGatewaySecretValue(handle, expectedValue string, timeout time.Duration)
 
 // waitGatewaySecretGone polls the gateway-controller's own secret store until
 // GET /api/management/v1/secrets/:handle returns 404 or timeout expires.
-// Confirms a secret.deprecated push event caused the gateway to evict its local
+// Confirms a secret.deleted push event caused the gateway to evict its local
 // copy of a secret that is no longer referenced by any artifact.
 func waitGatewaySecretGone(handle string, timeout time.Duration) error {
 	url := gwMgmtAPI + "/api/management/v1/secrets/" + handle

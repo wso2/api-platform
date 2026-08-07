@@ -111,7 +111,10 @@ type APIRepository interface {
 	CountAPIsByOrganizationUUID(orgUUID, projectUUID, search string) (int, error)
 	GetAPIsByGatewayUUID(gatewayUUID, orgUUID string) ([]*model.API, error)
 	UpdateAPI(api *model.API) error
-	DeleteAPI(apiUUID, orgUUID string) error
+	// DeleteAPI removes the API and returns the secret handles it referenced, so the
+	// caller can check each for orphan cleanup now that this artifact no longer holds
+	// a reference to them.
+	DeleteAPI(apiUUID, orgUUID string) ([]string, error)
 
 	// API-Gateway association methods
 	GetAPIGatewaysWithDetails(apiUUID, orgUUID string) ([]*model.APIGatewayWithDetails, error)
@@ -254,7 +257,10 @@ type LLMProviderRepository interface {
 	Count(orgUUID string) (int, error)
 	Update(p *model.LLMProvider) error
 	UpdateWithCustomPolicyUsages(p *model.LLMProvider, policyUUIDs []string) error
-	Delete(providerID, orgUUID string) error
+	// Delete removes the provider and returns the secret handles it referenced, so the
+	// caller can check each for orphan cleanup now that this artifact no longer holds
+	// a reference to them.
+	Delete(providerID, orgUUID string) ([]string, error)
 	Exists(providerID, orgUUID string) (bool, error)
 	// EnsureGatewayAssociation creates a gateway association for the provider if one
 	// does not already exist and resolves the metadata to use for the deployment.
@@ -287,7 +293,10 @@ type LLMProxyRepository interface {
 	CountByProject(orgUUID, projectUUID string) (int, error)
 	CountByProvider(orgUUID, providerID string) (int, error)
 	Update(p *model.LLMProxy) error
-	Delete(proxyID, orgUUID string) error
+	// Delete removes the proxy and returns the secret handles it referenced, so the
+	// caller can check each for orphan cleanup now that this artifact no longer holds
+	// a reference to them.
+	Delete(proxyID, orgUUID string) ([]string, error)
 	Exists(proxyID, orgUUID string) (bool, error)
 	// EnsureGatewayAssociation creates a gateway association for the proxy if one does
 	// not already exist and resolves the metadata to use for the deployment.
@@ -304,7 +313,10 @@ type MCPProxyRepository interface {
 	Count(orgUUID string) (int, error)
 	CountByProject(orgUUID, projectUUID string) (int, error)
 	Update(p *model.MCPProxy) error
-	Delete(handle, orgUUID string) error
+	// Delete removes the proxy and returns the secret handles it referenced, so the
+	// caller can check each for orphan cleanup now that this artifact no longer holds
+	// a reference to them.
+	Delete(handle, orgUUID string) ([]string, error)
 	Exists(handle, orgUUID string) (bool, error)
 	EnsureGatewayAssociation(proxyUUID, gatewayUUID, orgUUID, createdBy, deployMetadata string, metadataProvided bool) (string, error)
 }
@@ -352,7 +364,7 @@ type SecretRepository interface {
 	ListByHandles(orgID string, handles []string, updatedAfter *time.Time) ([]*model.Secret, error)
 	Count(orgID string) (int, error)
 	Update(s *model.Secret) error
-	FindRefsAndSoftDelete(orgID, handle, updatedBy string) ([]model.SecretReference, error)
+	FindRefsAndDelete(orgID, handle string) ([]model.SecretReference, error)
 	FindRefs(orgID, handle string) ([]model.SecretReference, error)
 	Exists(orgID, handle string) (bool, error)
 }

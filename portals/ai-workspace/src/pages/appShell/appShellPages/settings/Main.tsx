@@ -81,7 +81,17 @@ export default function Settings() {
   const navigate = useNavigate();
   const location = useLocation();
   const { currentOrganization } = useAppShell();
-  const { hasPermission } = useAppAuth();
+  const { hasPermission, isLoading: isAuthLoading } = useAppAuth();
+
+  // A hard navigation/refresh straight to a nested settings URL mounts this
+  // component before the BFF session fetch resolves. ProtectedRoute already
+  // blocks rendering on isLoading for the top-level authenticated/not branch,
+  // but scope data can still be mid-flight on the very first render here — do
+  // not let a not-yet-loaded hasPermission()===false for everything read as
+  // "no access" and fire the one-shot <Navigate> redirects below.
+  if (isAuthLoading) {
+    return null;
+  }
 
   const visibleNavItems = NAV_ITEMS.filter((item) => hasPermission(item.scope));
 
@@ -174,7 +184,13 @@ export function resolveSettingsFallbackPath(hasPermission: (scope: string) => bo
 
 export function SettingsIndexRedirect() {
   const { currentOrganization } = useAppShell();
-  const { hasPermission } = useAppAuth();
+  const { hasPermission, isLoading: isAuthLoading } = useAppAuth();
+
+  // Same one-shot-redirect-before-scopes-load hazard as Settings()/RequireScope
+  // above — wait for the session fetch to settle before picking a destination.
+  if (isAuthLoading) {
+    return null;
+  }
 
   return <Navigate to={buildOrgPath(currentOrganization, resolveSettingsFallbackPath(hasPermission))} replace />;
 }

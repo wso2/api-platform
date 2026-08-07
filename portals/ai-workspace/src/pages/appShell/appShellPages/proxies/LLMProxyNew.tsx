@@ -72,6 +72,7 @@ import { logger } from '../../../../utils/logger';
 import { getErrorMessage, getFieldErrors } from '../../../../utils/apiError';
 import { useAppAuth } from '../../../../contexts/AppAuthContext';
 import { NO_PERMISSION_TOOLTIP, SCOPES } from '../../../../auth/permissions';
+import SecretValueField from '../../../../Components/common/SecretValueField';
 
 type FormState = {
   name: string;
@@ -806,18 +807,14 @@ function LLMProxyNewContent({
                           gap: 1,
                         }}
                       >
-                        <TextField
-                          fullWidth
+                        <SecretValueField
                           size="small"
-                          type="password"
                           placeholder={intl.formatMessage({
                             id: 'aiWorkspace.pages.appShell.appShellPages.proxies.LLMProxyNew.api.key.placeholder',
                             defaultMessage: 'Enter API key',
                           })}
                           value={manualApiKeyValue}
-                          onChange={(event) =>
-                            setManualApiKeyValue(event.target.value)
-                          }
+                          onChange={(nextValue) => setManualApiKeyValue(nextValue)}
                           data-cyid="proxy-api-key-input"
                         />
                         {isManualKeyReady && (

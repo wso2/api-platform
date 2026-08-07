@@ -77,8 +77,6 @@ const FIELD_NAME_MAP: Partial<Record<string, keyof FormState>> = {
 type TemplateBasedFormFieldsContainerProps = {
   formState: FormState;
   setFormState: React.Dispatch<React.SetStateAction<FormState>>;
-  showCredential: boolean;
-  setShowCredential: React.Dispatch<React.SetStateAction<boolean>>;
   setOpenapiSpec: React.Dispatch<React.SetStateAction<string>>;
   fieldErrors: Partial<Record<keyof FormState, string>>;
 };
@@ -86,8 +84,6 @@ type TemplateBasedFormFieldsContainerProps = {
 function TemplateBasedFormFieldsContainer({
   formState,
   setFormState,
-  showCredential,
-  setShowCredential,
   setOpenapiSpec,
   fieldErrors,
 }: TemplateBasedFormFieldsContainerProps) {
@@ -143,8 +139,6 @@ function TemplateBasedFormFieldsContainer({
     <ProviderTemplateFormFields
       formState={formState}
       setFormState={setFormState}
-      showCredential={showCredential}
-      setShowCredential={setShowCredential}
       template={template}
       isLoading={isLoading}
       error={error}
@@ -203,7 +197,6 @@ export default function ServiceProviderNew() {
   });
   const isVersionValid = VERSION_PATTERN.test(formState.version.trim());
   const [fieldErrors, setFieldErrors] = useState<Partial<Record<keyof FormState, string>>>({});
-  const [showCredential, setShowCredential] = useState(false);
   const [guardrails, setGuardrails] = useState<GuardrailSelection[]>([]);
   const [guardrailDrawerOpen, setGuardrailDrawerOpen] = useState(false);
   const [selectedGuardrail, setSelectedGuardrail] = useState<string | null>(
@@ -581,8 +574,6 @@ export default function ServiceProviderNew() {
               <TemplateBasedFormFieldsContainer
                 formState={formState}
                 setFormState={setFormState}
-                showCredential={showCredential}
-                setShowCredential={setShowCredential}
                 setOpenapiSpec={setOpenapiSpec}
                 fieldErrors={fieldErrors}
               />

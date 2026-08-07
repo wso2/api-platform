@@ -20,8 +20,10 @@ package controlplane
 
 import (
 	"log/slog"
+	"time"
 
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/constants"
+	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/utils"
 )
 
 // syncSecrets pulls secrets from the Platform API and upserts them into local
@@ -73,12 +75,14 @@ func (c *Client) syncSecretsBulk() {
 	}
 
 	synced, skipped, failed := 0, 0, 0
+	activeHandles := make(map[string]struct{}, len(metas))
 
 	for _, meta := range metas {
 		if meta.Status != "ACTIVE" {
 			skipped++
 			continue
 		}
+		activeHandles[meta.Handle] = struct{}{}
 
 		if meta.Value == nil {
 			c.logger.Warn("Bulk fetch returned no value for secret — skipping",
@@ -101,10 +105,13 @@ func (c *Client) syncSecretsBulk() {
 		synced++
 	}
 
+	evicted := c.evictSecretsNotIn(activeHandles)
+
 	c.logger.Info("Bulk Platform API secret sync complete",
 		slog.Int("synced", synced),
 		slog.Int("skipped", skipped),
 		slog.Int("failed", failed),
+		slog.Int("evicted", evicted),
 	)
 }
 
@@ -120,12 +127,14 @@ func (c *Client) syncSecretsIncremental() {
 	}
 
 	synced, skipped, failed := 0, 0, 0
+	activeHandles := make(map[string]struct{}, len(metas))
 
 	for _, meta := range metas {
 		if meta.Status != "ACTIVE" {
 			skipped++
 			continue
 		}
+		activeHandles[meta.Handle] = struct{}{}
 
 		// Skip if hash unchanged since last sync.
 		if cached, ok := c.secretHashCache.Load(meta.Handle); ok && cached.(string) == meta.Hash {
@@ -156,11 +165,58 @@ func (c *Client) syncSecretsIncremental() {
 		synced++
 	}
 
+	evicted := c.evictSecretsNotIn(activeHandles)
+
 	c.logger.Info("Incremental Platform API secret sync complete",
 		slog.Int("synced", synced),
 		slog.Int("skipped", skipped),
 		slog.Int("failed", failed),
+		slog.Int("evicted", evicted),
 	)
+}
+
+// evictSecretsNotIn is the poll-based recovery path for the same eviction that
+// handleSecretDeletedEvent applies live: a gateway that is disconnected at the
+// moment a secret is deleted only receives that secret.deleted WebSocket event if
+// it's connected when the event is broadcast. This diffs the
+// latest Platform API response against secretHashCache so that, on the next
+// reconnect/poll, any cached handle that is no longer ACTIVE (permanently deleted,
+// or flipped to a non-ACTIVE status) gets evicted from local storage even though
+// the live event was missed.
+//
+// activeHandles is the set of handles the just-completed poll returned with
+// status ACTIVE; every other handle currently in secretHashCache is stale.
+func (c *Client) evictSecretsNotIn(activeHandles map[string]struct{}) int {
+	var stale []string
+	c.secretHashCache.Range(func(key, _ any) bool {
+		handle, ok := key.(string)
+		if !ok {
+			return true
+		}
+		if _, ok := activeHandles[handle]; !ok {
+			stale = append(stale, handle)
+		}
+		return true
+	})
+
+	for _, handle := range stale {
+		correlationID := utils.GenerateDeterministicUUIDv7(handle, time.Now())
+		if err := c.secretSyncer.Delete(handle, correlationID); err != nil {
+			c.logger.Warn("Failed to evict stale secret from local store",
+				slog.String("secret_handle", handle),
+				slog.String("correlation_id", correlationID),
+				slog.Any("error", err),
+			)
+			continue
+		}
+		c.secretHashCache.Delete(handle)
+		c.logger.Info("Evicted stale secret from local store during poll sync",
+			slog.String("secret_handle", handle),
+			slog.String("correlation_id", correlationID),
+		)
+	}
+
+	return len(stale)
 }
 
 // syncSecretRefsFromYAML extracts {{ secret "handle" }} placeholders from the

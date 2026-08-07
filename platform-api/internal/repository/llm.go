@@ -1178,10 +1178,13 @@ func (r *LLMProviderRepo) update(p *model.LLMProvider, policyUUIDs []string, rec
 	return nil
 }
 
-func (r *LLMProviderRepo) Delete(providerID, orgUUID string) error {
+// Delete removes the LLM provider and returns the secret handles it referenced
+// (current config and any deployed snapshots), so the caller can check each for
+// orphan cleanup now that this artifact no longer holds a reference to them.
+func (r *LLMProviderRepo) Delete(providerID, orgUUID string) ([]string, error) {
 	tx, err := r.db.Begin()
 	if err != nil {
-		return err
+		return nil, err
 	}
 	defer tx.Rollback()
 
@@ -1193,25 +1196,30 @@ func (r *LLMProviderRepo) Delete(providerID, orgUUID string) error {
 	err = tx.QueryRow(r.db.Rebind(query), providerID, orgUUID).Scan(&providerUUID)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
-			return sql.ErrNoRows
+			return nil, sql.ErrNoRows
 		}
-		return err
+		return nil, err
+	}
+
+	secretHandles, err := secretHandlesForArtifact(tx, r.db, providerUUID)
+	if err != nil {
+		return nil, err
 	}
 
 	// Delete from llm_providers first, then artifacts
 	_, err = tx.Exec(r.db.Rebind(`DELETE FROM llm_providers WHERE uuid = ?`), providerUUID)
 	if err != nil {
-		return err
+		return nil, err
 	}
 
 	if err := r.artifactRepo.Delete(tx, providerUUID); err != nil {
-		return err
+		return nil, err
 	}
 
 	if err := tx.Commit(); err != nil {
-		return err
+		return nil, err
 	}
-	return nil
+	return secretHandles, nil
 }
 
 func (r *LLMProviderRepo) Exists(providerID, orgUUID string) (bool, error) {
@@ -1600,10 +1608,13 @@ func (r *LLMProxyRepo) EnsureGatewayAssociation(proxyUUID, gatewayUUID, orgUUID,
 	return ensureArtifactGatewayAssociation(r.db, proxyUUID, gatewayUUID, orgUUID, createdBy, deployMetadata, metadataProvided)
 }
 
-func (r *LLMProxyRepo) Delete(proxyID, orgUUID string) error {
+// Delete removes the LLM proxy and returns the secret handles it referenced
+// (current config and any deployed snapshots), so the caller can check each for
+// orphan cleanup now that this artifact no longer holds a reference to them.
+func (r *LLMProxyRepo) Delete(proxyID, orgUUID string) ([]string, error) {
 	tx, err := r.db.Begin()
 	if err != nil {
-		return err
+		return nil, err
 	}
 	defer tx.Rollback()
 
@@ -1615,25 +1626,30 @@ func (r *LLMProxyRepo) Delete(proxyID, orgUUID string) error {
 	err = tx.QueryRow(r.db.Rebind(query), proxyID, orgUUID).Scan(&proxyUUID)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
-			return sql.ErrNoRows
+			return nil, sql.ErrNoRows
 		}
-		return err
+		return nil, err
+	}
+
+	secretHandles, err := secretHandlesForArtifact(tx, r.db, proxyUUID)
+	if err != nil {
+		return nil, err
 	}
 
 	// Delete from llm_proxies first, then artifacts using artifactRepo
 	_, err = tx.Exec(r.db.Rebind(`DELETE FROM llm_proxies WHERE uuid = ?`), proxyUUID)
 	if err != nil {
-		return err
+		return nil, err
 	}
 
 	if err := r.artifactRepo.Delete(tx, proxyUUID); err != nil {
-		return err
+		return nil, err
 	}
 
 	if err := tx.Commit(); err != nil {
-		return err
+		return nil, err
 	}
-	return nil
+	return secretHandles, nil
 }
 
 func (r *LLMProxyRepo) Exists(proxyID, orgUUID string) (bool, error) {

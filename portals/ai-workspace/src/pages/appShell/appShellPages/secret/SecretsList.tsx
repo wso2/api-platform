@@ -33,6 +33,7 @@ import {
   TableCell,
   TableContainer,
   TableHead,
+  TablePagination,
   TableRow,
   TextField,
   Typography,
@@ -46,19 +47,13 @@ import { getErrorMessage } from '../../../../utils/apiError';
 import ErrorAlert from '../../../../Components/common/ErrorAlert';
 import DeleteSecretDialog from './DeleteSecretDialog';
 
+const ROWS_PER_PAGE_OPTIONS = [10, 25, 50];
+
 function formatDate(value?: string): string {
   if (!value) return '—';
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return '—';
   return date.toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' });
-}
-
-function StatusChip({ status }: { status: SecretMetadata['status'] }): React.JSX.Element {
-  return status === 'ACTIVE' ? (
-    <Chip label="Active" size="small" color="success" variant="outlined" />
-  ) : (
-    <Chip label="Deprecated" size="small" color="warning" variant="outlined" />
-  );
 }
 
 export default function SecretsList(): React.JSX.Element {
@@ -70,6 +65,8 @@ export default function SecretsList(): React.JSX.Element {
   const [error, setError] = useState<Error | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
   const [deleteTarget, setDeleteTarget] = useState<SecretMetadata | null>(null);
+  const [page, setPage] = useState(0);
+  const [rowsPerPage, setRowsPerPage] = useState(ROWS_PER_PAGE_OPTIONS[0]);
 
   const organizationId = currentOrganization?.uuid ?? '';
   const basePath = buildOrgPath(currentOrganization, '/settings/secrets');
@@ -110,6 +107,20 @@ export default function SecretsList(): React.JSX.Element {
       [secret.displayName, secret.id, secret.description].filter(Boolean).join(' ').toLowerCase().includes(query)
     );
   }, [searchQuery, secrets]);
+
+  useEffect(() => {
+    setPage(0);
+  }, [rowsPerPage, searchQuery]);
+
+  // Clamps to the last valid page when the list shrinks out from under the current
+  // page (e.g. deleting the only secret on the last page), instead of rendering blank.
+  const pageCount = Math.max(1, Math.ceil(filteredSecrets.length / rowsPerPage));
+  const safePage = Math.min(page, pageCount - 1);
+
+  const pageSecrets = useMemo(
+    () => filteredSecrets.slice(safePage * rowsPerPage, safePage * rowsPerPage + rowsPerPage),
+    [filteredSecrets, safePage, rowsPerPage]
+  );
 
   return (
     <PageContent fullWidth>
@@ -160,7 +171,6 @@ export default function SecretsList(): React.JSX.Element {
                   <TableCell>Name</TableCell>
                   <TableCell>Handle</TableCell>
                   <TableCell>Type</TableCell>
-                  <TableCell>Status</TableCell>
                   <TableCell>Last updated</TableCell>
                   <TableCell align="right">Actions</TableCell>
                 </TableRow>
@@ -170,7 +180,6 @@ export default function SecretsList(): React.JSX.Element {
                   <TableRow key={index}>
                     <TableCell><Skeleton variant="text" width="70%" /></TableCell>
                     <TableCell><Skeleton variant="text" width="60%" /></TableCell>
-                    <TableCell><Skeleton variant="text" width="50%" /></TableCell>
                     <TableCell><Skeleton variant="text" width="50%" /></TableCell>
                     <TableCell><Skeleton variant="text" width="60%" /></TableCell>
                     <TableCell align="right"><Skeleton variant="circular" width={24} height={24} /></TableCell>
@@ -237,7 +246,6 @@ export default function SecretsList(): React.JSX.Element {
                     <TableCell>Name</TableCell>
                     <TableCell>Handle</TableCell>
                     <TableCell>Type</TableCell>
-                    <TableCell>Status</TableCell>
                     <TableCell>Last updated</TableCell>
                     <TableCell align="right">Actions</TableCell>
                   </TableRow>
@@ -245,14 +253,14 @@ export default function SecretsList(): React.JSX.Element {
                 <TableBody>
                   {filteredSecrets.length === 0 ? (
                     <TableRow>
-                      <TableCell colSpan={6}>
+                      <TableCell colSpan={5}>
                         <Typography variant="body2" color="text.secondary">
                           No secrets match your search.
                         </Typography>
                       </TableCell>
                     </TableRow>
                   ) : (
-                    filteredSecrets.map((secret) => (
+                    pageSecrets.map((secret) => (
                       <TableRow
                         key={secret.uuid}
                         hover
@@ -278,9 +286,6 @@ export default function SecretsList(): React.JSX.Element {
                         <TableCell>
                           <Chip label={secret.type} size="small" variant="outlined" />
                         </TableCell>
-                        <TableCell>
-                          <StatusChip status={secret.status} />
-                        </TableCell>
                         <TableCell>{formatDate(secret.updatedAt)}</TableCell>
                         <TableCell align="right">
                           <IconButton
@@ -302,6 +307,17 @@ export default function SecretsList(): React.JSX.Element {
                 </TableBody>
               </Table>
             </TableContainer>
+            {filteredSecrets.length > 0 && (
+              <TablePagination
+                component="div"
+                count={filteredSecrets.length}
+                page={safePage}
+                onPageChange={(_event, nextPage) => setPage(nextPage)}
+                rowsPerPage={rowsPerPage}
+                onRowsPerPageChange={(event) => setRowsPerPage(parseInt(event.target.value, 10))}
+                rowsPerPageOptions={ROWS_PER_PAGE_OPTIONS}
+              />
+            )}
           </Card>
         </>
       ) : null}
@@ -309,9 +325,7 @@ export default function SecretsList(): React.JSX.Element {
       <DeleteSecretDialog
         secret={deleteTarget}
         onClose={() => setDeleteTarget(null)}
-        onDeleted={(handle) =>
-          setSecrets((prev) => prev.map((s) => (s.id === handle ? { ...s, status: 'DEPRECATED' } : s)))
-        }
+        onDeleted={(handle) => setSecrets((prev) => prev.filter((s) => s.id !== handle))}
       />
     </PageContent>
   );

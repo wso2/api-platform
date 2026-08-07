@@ -18,11 +18,11 @@
 package service
 
 // Covers the platform-api-side publish path left uncovered when secret.updated /
-// secret.deprecated broadcasting was added (see docs/specs/secrets-management-test-scenarios.csv
+// secret.deleted broadcasting was added (see docs/specs/secrets-management-test-scenarios.csv
 // rows 121-122, previously marked GAP): SecretService.Update / Delete calling
 // broadcastSecretEvent -> GatewayEventsService -> EventHub once WithGatewayBroadcast is
 // wired. The receiving side (gateway-controller's handleSecretUpdatedEvent /
-// handleSecretDeprecatedEvent) already has full coverage in
+// handleSecretDeletedEvent) already has full coverage in
 // gateway/gateway-controller/pkg/controlplane/sync_secrets_test.go (rows 124-132).
 
 import (
@@ -157,9 +157,9 @@ func TestSecretService_Update_BroadcastsSecretUpdatedEventToAllGateways(t *testi
 	}
 }
 
-// ---- Delete -> secret.deprecated ------------------------------------------------
+// ---- Delete -> secret.deleted ------------------------------------------------
 
-func TestSecretService_Delete_BroadcastsSecretDeprecatedEventToAllGateways(t *testing.T) {
+func TestSecretService_Delete_BroadcastsSecretDeletedEventToAllGateways(t *testing.T) {
 	repo := newMockRepo()
 	repo.secrets["unused-key"] = &model.Secret{Handle: "unused-key", Status: model.SecretStatusActive}
 
@@ -176,15 +176,15 @@ func TestSecretService_Delete_BroadcastsSecretDeprecatedEventToAllGateways(t *te
 			t.Fatalf("gateway %s: got %d published events, want 1", gw, len(events))
 		}
 		eventType, payload := decodedPayload(t, events[0])
-		if eventType != EventTypeSecretDeprecated {
-			t.Errorf("gateway %s: event type = %q, want %q", gw, eventType, EventTypeSecretDeprecated)
+		if eventType != EventTypeSecretDeleted {
+			t.Errorf("gateway %s: event type = %q, want %q", gw, eventType, EventTypeSecretDeleted)
 		}
-		var deprecated model.SecretDeprecatedEvent
-		if err := json.Unmarshal(payload, &deprecated); err != nil {
+		var deleted model.SecretDeletedEvent
+		if err := json.Unmarshal(payload, &deleted); err != nil {
 			t.Fatalf("unmarshal payload: %v", err)
 		}
-		if deprecated.Handle != "unused-key" {
-			t.Errorf("gateway %s: payload handle = %q, want %q", gw, deprecated.Handle, "unused-key")
+		if deleted.Handle != "unused-key" {
+			t.Errorf("gateway %s: payload handle = %q, want %q", gw, deleted.Handle, "unused-key")
 		}
 		wantAction := "DELETE"
 		if events[0].Action != wantAction {
@@ -195,7 +195,7 @@ func TestSecretService_Delete_BroadcastsSecretDeprecatedEventToAllGateways(t *te
 
 // TestSecretService_Delete_BlockedWhenInUse_DoesNotBroadcast confirms the 409
 // in-use path returns before broadcastSecretEvent is ever reached — a secret that
-// was not actually deprecated must not tell any gateway to evict it.
+// was not actually deleted must not tell any gateway to evict it.
 func TestSecretService_Delete_BlockedWhenInUse_DoesNotBroadcast(t *testing.T) {
 	repo := newMockRepo()
 	repo.secrets["in-use"] = &model.Secret{Handle: "in-use", Status: model.SecretStatusActive}

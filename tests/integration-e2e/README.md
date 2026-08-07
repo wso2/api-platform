@@ -266,9 +266,9 @@ The scenarios above cover secret resolution *at deploy time*. `secret_lifecycle.
 (`@secret_lifecycle`) covers the opposite direction: a secret that a gateway is
 **already** resolving gets rotated or deleted while that gateway stays connected, with
 no controller restart and no new deployment. platform-api pushes a
-`secret.updated`/`secret.deprecated` WebSocket event to every gateway in the org
+`secret.updated`/`secret.deleted` WebSocket event to every gateway in the org
 (`SecretService.broadcastSecretEvent`); the controller's `handleSecretUpdatedEvent` /
-`handleSecretDeprecatedEvent` (`pkg/controlplane/client.go`) react immediately instead of
+`handleSecretDeletedEvent` (`pkg/controlplane/client.go`) react immediately instead of
 waiting for the next reconnect's incremental sync. Both scenarios build on the same
 secret-backed REST API fixture as `rest_api_secret.feature` (shared Given steps), then
 poll the gateway-controller's own `GET /api/management/v1/secrets/:handle` — which

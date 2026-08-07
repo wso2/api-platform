@@ -184,7 +184,7 @@ func TestSecretRepo_Update(t *testing.T) {
 	}
 }
 
-func TestSecretRepo_SoftDelete(t *testing.T) {
+func TestSecretRepo_HardDelete(t *testing.T) {
 	db, cleanup := setupTestDB(t)
 	t.Cleanup(cleanup)
 
@@ -204,21 +204,25 @@ func TestSecretRepo_SoftDelete(t *testing.T) {
 		t.Fatalf("Create: %v", err)
 	}
 
-	refs, err := repo.FindRefsAndSoftDelete(orgID, "deletable", "admin")
+	refs, err := repo.FindRefsAndDelete(orgID, "deletable")
 	if err != nil {
-		t.Fatalf("FindRefsAndSoftDelete: %v", err)
+		t.Fatalf("FindRefsAndDelete: %v", err)
 	}
 	if len(refs) > 0 {
 		t.Fatalf("expected no refs blocking delete, got %v", refs)
 	}
 
-	// Exists should return false after soft-delete (status=DEPRECATED)
+	// The row must be gone entirely, not merely deprecated.
+	if _, err := repo.GetByHandle(orgID, "deletable"); !apperror.SecretNotFound.Is(err) {
+		t.Errorf("GetByHandle after delete: got %v, want SecretNotFound", err)
+	}
+
 	exists, err := repo.Exists(orgID, "deletable")
 	if err != nil {
 		t.Fatalf("Exists: %v", err)
 	}
 	if exists {
-		t.Error("expected secret to be inactive after soft-delete")
+		t.Error("expected secret to be gone after delete")
 	}
 }
 
@@ -862,11 +866,11 @@ func TestSecretRepo_Create_UniqueConstraint_409(t *testing.T) {
 	}
 }
 
-// TestSecretRepo_FindRefsAndSoftDelete_Transactional verifies the transactional
-// behaviour of FindRefsAndSoftDelete (scenario 87):
-//   - When refs exist the secret is NOT deprecated and the refs are returned.
-//   - After refs are removed a second call DOES deprecate the secret.
-func TestSecretRepo_FindRefsAndSoftDelete_Transactional(t *testing.T) {
+// TestSecretRepo_FindRefsAndDelete_Transactional verifies the transactional
+// behaviour of FindRefsAndDelete (scenario 87):
+//   - When refs exist the secret is NOT deleted and the refs are returned.
+//   - After refs are removed a second call DOES permanently delete the secret.
+func TestSecretRepo_FindRefsAndDelete_Transactional(t *testing.T) {
 	db, cleanup := setupTestDB(t)
 	t.Cleanup(cleanup)
 
@@ -900,10 +904,10 @@ func TestSecretRepo_FindRefsAndSoftDelete_Transactional(t *testing.T) {
 		t.Fatalf("insert ref: %v", err)
 	}
 
-	// (a) With refs present: FindRefsAndSoftDelete must return refs and must NOT deprecate.
-	refs, err := repo.FindRefsAndSoftDelete(orgID, "txn-secret", "admin")
+	// (a) With refs present: FindRefsAndDelete must return refs and must NOT delete.
+	refs, err := repo.FindRefsAndDelete(orgID, "txn-secret")
 	if err != nil {
-		t.Fatalf("FindRefsAndSoftDelete (with refs): %v", err)
+		t.Fatalf("FindRefsAndDelete (with refs): %v", err)
 	}
 	if len(refs) == 0 {
 		t.Fatal("expected refs to block deletion, got none")
@@ -918,27 +922,31 @@ func TestSecretRepo_FindRefsAndSoftDelete_Transactional(t *testing.T) {
 		t.Errorf("secret should still be ACTIVE, got %q", got.Status)
 	}
 
-	// (b) Remove the ref, then FindRefsAndSoftDelete must deprecate the secret.
+	// (b) Remove the ref, then FindRefsAndDelete must permanently delete the secret.
 	_, err = db.Exec(`DELETE FROM artifact_secret_refs WHERE organization_uuid = ? AND artifact_uuid = 'art-txn-001'`, orgID)
 	if err != nil {
 		t.Fatalf("delete ref: %v", err)
 	}
 
-	refs, err = repo.FindRefsAndSoftDelete(orgID, "txn-secret", "admin")
+	refs, err = repo.FindRefsAndDelete(orgID, "txn-secret")
 	if err != nil {
-		t.Fatalf("FindRefsAndSoftDelete (no refs): %v", err)
+		t.Fatalf("FindRefsAndDelete (no refs): %v", err)
 	}
 	if len(refs) != 0 {
 		t.Errorf("expected no refs after removal, got %d", len(refs))
 	}
 
-	// Secret must now be DEPRECATED (active Exists returns false).
+	// The row must be gone entirely, not merely deprecated.
+	if _, err := repo.GetByHandle(orgID, "txn-secret"); !apperror.SecretNotFound.Is(err) {
+		t.Errorf("GetByHandle after delete: got %v, want SecretNotFound", err)
+	}
+
 	exists, err := repo.Exists(orgID, "txn-secret")
 	if err != nil {
 		t.Fatalf("Exists: %v", err)
 	}
 	if exists {
-		t.Error("expected secret to be DEPRECATED (inactive) after successful soft-delete")
+		t.Error("expected secret to be gone after successful delete")
 	}
 }
 

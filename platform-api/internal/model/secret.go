@@ -90,16 +90,16 @@ type SecretUpdatedEvent struct {
 	Revision    int64  `json:"revision"`
 }
 
-// SecretDeprecatedEvent is broadcast to every gateway in the organization when a
-// secret is deleted (soft-deleted to DEPRECATED). Deletion only succeeds once no
-// artifact — current config or any deployed snapshot, on any gateway — references
-// the handle, so every gateway can safely evict its local copy on receipt.
+// SecretDeletedEvent is broadcast to every gateway in the organization when a
+// secret is permanently deleted. Deletion only succeeds once no artifact — current
+// config or any deployed snapshot, on any gateway — references the handle, so every
+// gateway can safely evict its local copy on receipt.
 //
 // Revision — see SecretUpdatedEvent.Revision. A gateway must keep comparing against
 // it even after evicting the secret locally, so a deletion event that arrives late
-// (after a subsequent rotation has already reactivated the handle) is not applied and
-// does not undo the reactivation.
-type SecretDeprecatedEvent struct {
+// (after the same handle has already been reused by a subsequent create) is not
+// applied and does not evict the newly created secret.
+type SecretDeletedEvent struct {
 	Handle   string `json:"handle"`
 	Revision int64  `json:"revision"`
 }

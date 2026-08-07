@@ -421,21 +421,22 @@ type SecretUpdatedEvent struct {
 	CorrelationID string                    `json:"correlationId"`
 }
 
-// SecretDeprecatedEventPayload represents the payload of a secret.deprecated event,
-// fired when a secret is deleted (soft-deleted to DEPRECATED).
-type SecretDeprecatedEventPayload struct {
+// SecretDeletedEventPayload represents the payload of a secret.deleted event,
+// fired when a secret is permanently deleted.
+type SecretDeletedEventPayload struct {
 	Handle string `json:"handle"`
 	// Revision — see SecretUpdatedEventPayload.Revision. Compared against the same
-	// cache so a late deletion cannot undo a reactivation that happened after it.
+	// cache so a late deletion cannot evict a secret that was recreated under the
+	// same handle after it.
 	Revision int64 `json:"revision"`
 }
 
-// SecretDeprecatedEvent represents the complete secret.deprecated event.
-type SecretDeprecatedEvent struct {
-	Type          string                       `json:"type"`
-	Payload       SecretDeprecatedEventPayload `json:"payload"`
-	Timestamp     string                       `json:"timestamp"`
-	CorrelationID string                       `json:"correlationId"`
+// SecretDeletedEvent represents the complete secret.deleted event.
+type SecretDeletedEvent struct {
+	Type          string                    `json:"type"`
+	Payload       SecretDeletedEventPayload `json:"payload"`
+	Timestamp     string                    `json:"timestamp"`
+	CorrelationID string                    `json:"correlationId"`
 }
 
 // ApplicationKeyMappingPayload represents a single application to API key mapping entry.

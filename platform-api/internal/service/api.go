@@ -473,8 +473,12 @@ func (s *APIService) DeleteAPI(apiUUID, orgUUID, deletedBy string) error {
 	}
 
 	// Delete API from repository (this also deletes associations)
-	if err := s.apiRepo.DeleteAPI(apiUUID, orgUUID); err != nil {
+	referencedSecrets, err := s.apiRepo.DeleteAPI(apiUUID, orgUUID)
+	if err != nil {
 		return fmt.Errorf("failed to delete api: %w", err)
+	}
+	if s.secretService != nil {
+		s.secretService.CleanupOrphanedSecrets(orgUUID, referencedSecrets, deletedBy)
 	}
 
 	_ = s.auditRepo.Record("DELETE", apiUUID, "rest_api", orgUUID, deletedBy)

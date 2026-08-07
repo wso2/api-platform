@@ -47,6 +47,7 @@ export interface SecretMetadata {
   type: SecretType;
   provider: string;
   status: SecretStatus;
+  createdBy?: string;
   createdAt: string;
   updatedAt: string;
 }
@@ -118,6 +119,15 @@ export async function listSecrets(
  */
 export async function getSecret(handle: string): Promise<SecretMetadata> {
   return get<SecretMetadata>(`/secrets/${handle}`);
+}
+
+/**
+ * Returns the resources (REST APIs, LLM providers, LLM proxies, MCP proxies) that
+ * currently reference this secret via a {{ secret "handle" }} placeholder.
+ */
+export async function getSecretUsages(handle: string): Promise<SecretReference[]> {
+  const response = await get<{ references: SecretReference[] }>(`/secrets/${handle}/usages`);
+  return response.references ?? [];
 }
 
 /**

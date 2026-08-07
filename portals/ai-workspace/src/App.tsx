@@ -141,8 +141,17 @@ function ProtectedRoute({ children }: { children: React.ReactNode }) {
  * caller who lacks the corresponding scope.
  */
 function RequireScope({ scope }: { scope: string }) {
-  const { hasPermission } = useAppAuth();
+  const { hasPermission, isLoading } = useAppAuth();
   const { currentOrganization } = useAppShell();
+
+  // A hard navigation/refresh straight to a guarded URL mounts this before the
+  // BFF session fetch resolves — hasPermission() reads as false for everything
+  // on that first render. Wait for it to settle before deciding, otherwise a
+  // legitimately-scoped caller gets bounced by this one-shot redirect before
+  // their scopes have even loaded.
+  if (isLoading) {
+    return null;
+  }
 
   if (!hasPermission(scope)) {
     return <Navigate to={buildOrgPath(currentOrganization, resolveSettingsFallbackPath(hasPermission))} replace />;

@@ -21,14 +21,11 @@ import {
   FormControl,
   FormHelperText,
   FormLabel,
-  IconButton,
-  InputAdornment,
   MenuItem,
   Select,
   Stack,
   TextField,
 } from '@wso2/oxygen-ui';
-import { Eye, EyeOff } from '@wso2/oxygen-ui-icons-react';
 import { useLLMProvider } from '../../../../contexts/llmProvider';
 import { useAppShell } from '../../../../contexts/AppShellContext';
 import { PLATFORM_API_BASE_URL } from '../../../../paths';
@@ -37,6 +34,7 @@ import * as providerTemplateApis from '../../../../apis/providerTemplateApis';
 import type { ProviderTemplate } from '../../../../utils/types';
 import { logger } from '../../../../utils/logger';
 import { isValidHttpUrl } from '../../../../utils/providerTemplateFields';
+import SecretValueField from '../../../../Components/common/SecretValueField';
 
 const MASKED_CREDENTIAL_VALUE = '******';
 
@@ -51,7 +49,6 @@ export default function ServiceProviderConnectionTab() {
   const [credentialValue, setCredentialValue] = useState('');
   const [isCredentialMasked, setIsCredentialMasked] = useState(false);
   const [hasCredentialChanged, setHasCredentialChanged] = useState(false);
-  const [showCredential, setShowCredential] = useState(false);
   const [providerTemplate, setProviderTemplate] =
     useState<ProviderTemplate | null>(null);
   const showSnackbar = useAIWorkspaceSnackbar();
@@ -382,9 +379,8 @@ export default function ServiceProviderConnectionTab() {
 
             <FormControl fullWidth>
               <FormLabel>Credentials</FormLabel>
-              <TextField
+              <SecretValueField
                 size="small"
-                type={showCredential ? 'text' : 'password'}
                 value={credentialValue}
                 disabled={isFormDisabled}
                 onFocus={() => {
@@ -394,8 +390,7 @@ export default function ServiceProviderConnectionTab() {
                     setHasCredentialChanged(false);
                   }
                 }}
-                onChange={(e) => {
-                  const nextValue = e.target.value;
+                onChange={(nextValue) => {
                   setCredentialValue(nextValue);
                   setHasCredentialChanged(true);
                   if (isDraftMode && !isCredentialMasked) {
@@ -410,30 +405,6 @@ export default function ServiceProviderConnectionTab() {
                   ) {
                     void handleUpdateCredential();
                   }
-                }}
-                slotProps={{
-                  input: {
-                    endAdornment: (
-                      <InputAdornment position="end">
-                        <IconButton
-                          size="small"
-                          disabled={isFormDisabled}
-                          onClick={() => setShowCredential((prev) => !prev)}
-                          aria-label={
-                            showCredential
-                              ? 'Hide credentials'
-                              : 'Show credentials'
-                          }
-                        >
-                          {showCredential ? (
-                            <EyeOff size={18} />
-                          ) : (
-                            <Eye size={18} />
-                          )}
-                        </IconButton>
-                      </InputAdornment>
-                    ),
-                  },
                 }}
               />
             </FormControl>
