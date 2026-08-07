@@ -55,8 +55,8 @@ generate-apidocs: ## Generate REST API docs (Markdown) from the Event Gateway Op
 	widdershins api/eventgateway-openapi.yaml -o "$$tmp_file" \
 		--omitHeader --summary \
 		--language_tabs 'shell:Shell:curl' \
-		--user_templates $(APIDOCS_TOOLS_DIR)/widdershins_templates/; \
-	bash $(APIDOCS_TOOLS_DIR)/split-openapi.sh "$$tmp_file" $(DOCS_OUT_DIR)
+		--user_templates "$(APIDOCS_TOOLS_DIR)/widdershins_templates/"; \
+	bash "$(APIDOCS_TOOLS_DIR)/split-openapi.sh" "$$tmp_file" "$(DOCS_OUT_DIR)"
 	@echo "REST API docs generated at $(DOCS_OUT_DIR)"
 
 test: ## Run unit tests
