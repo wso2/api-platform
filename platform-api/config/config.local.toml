@@ -1,21 +1,23 @@
 # Local (non-Docker) dev config: identical to config.toml except the file
-# paths below point at the secrets ../portals/ai-workspace/scripts/setup.sh
-# (actually ../portals/scripts/setup.sh, run from portals/ai-workspace) already
-# generates — reusing the same quickstart tooling instead of hand-rolling
-# openssl calls. Run `cd ../portals/ai-workspace && ../scripts/setup.sh` once
-# first (it needs a docker-compose.yaml next to it to find its root, which
-# platform-api doesn't have — ai-workspace is the nearest sibling that does).
-# You don't need to actually run docker compose afterward.
+# paths below point at the secrets scripts/setup-local-dev.sh generates
+# under this repo's own resources/ dir, instead of /etc/platform-api/... —
+# no docker-compose, and no dependency on any other portal's quickstart.
+# Run once first:
+#   ./scripts/setup-local-dev.sh
 #
 # encryption_key is sourced via {{ env }}, not {{ file }}: configinterpolate's
-# {{ file }} rejects any path containing ".." outright (path-traversal
-# hardening) before it ever reaches the allowlist check, so a relative
-# ../portals/... path can never work there regardless of
-# APIP_CONFIG_FILE_SOURCE_ALLOWLIST. public_key_file/private_key_file/cert_file
-# below aren't run through {{ file }} at all — the app os.ReadFile's those
-# literal paths directly — so relative paths are fine for them. Export the
-# setup.sh-generated key's bytes before `go run`:
-#   export APIP_CP_ENCRYPTION_KEY=$(cat ../portals/ai-workspace/resources/keys/encryption.key)
+# {{ file }} allowlist is two fixed absolute directories (/etc/platform-api,
+# /secrets/platform-api — see config/config.go's defaultFileSourceAllowlist),
+# so a relative path under this checkout is rejected there regardless of the
+# value. public_key_file/private_key_file/cert_file/key_file below aren't run
+# through that interpolation at all — the app os.ReadFile's those literal
+# paths directly — so relative paths are fine for them. Export the
+# setup-local-dev.sh-generated values before `go run`:
+#   export $(grep -v '^#' local-dev.env | xargs)
+#   export APIP_CP_ENCRYPTION_KEY=$(cat resources/keys/encryption.key)
+# (Do not `source local-dev.env` — its bcrypt hash contains literal
+# "$2y$12$...", which bash reinterprets as positional-parameter expansion and
+# corrupts it.)
 #
 # Not used by any docker-compose quickstart; those keep using config.toml as-is.
 
@@ -41,8 +43,8 @@ role_to_scope_mapping = "./resources/role-to-scope-mapping.yaml"
 
 [platform_api.auth.jwt]
 issuer            = "platform-api"
-public_key_file   = "../portals/ai-workspace/resources/keys/jwt_public.pem"
-private_key_file  = "../portals/ai-workspace/resources/keys/jwt_private.pem"
+public_key_file   = "./resources/keys/jwt_public.pem"
+private_key_file  = "./resources/keys/jwt_private.pem"
 
 [platform_api.auth.file.organization]
 id           = "default"
@@ -56,5 +58,5 @@ roles         = ["ap_admin"]
 
 [platform_api.server.https]
 enabled   = true
-cert_file = "../portals/ai-workspace/resources/certificates/cert.pem"
-key_file  = "../portals/ai-workspace/resources/certificates/key.pem"
+cert_file = "./resources/certificates/cert.pem"
+key_file  = "./resources/certificates/key.pem"

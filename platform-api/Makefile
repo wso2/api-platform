@@ -39,13 +39,23 @@ REPO_ROOT := $(shell git rev-parse --show-toplevel)
 APIDOCS_TOOLS_DIR := $(REPO_ROOT)/tools/apidocs
 DOCS_OUT_DIR := $(REPO_ROOT)/docs/rest-apis/platform-api
 
-.PHONY: help build test push build-and-push-multiarch it it-sqlite it-postgres it-sqlserver it-all-dbs generate generate-apidocs
+.PHONY: help build test push build-and-push-multiarch it it-sqlite it-postgres it-sqlserver it-all-dbs generate generate-apidocs setup-local-dev run-local
 
 help: ## Show this help message
 	@echo 'Platform API Build System (Version: $(VERSION))'
 	@echo ''
 	@echo 'Available targets:'
 	@awk 'BEGIN {FS = ":.*?## "} /^[a-zA-Z_-]+:.*?## / {printf "  %-25s %s\n", $$1, $$2}' $(MAKEFILE_LIST)
+
+setup-local-dev: ## One-time secret provisioning for `make run-local` (TLS cert, JWT keypair, encryption key, admin credentials)
+	@./scripts/setup-local-dev.sh
+
+run-local: ## Run Platform API standalone via `go run` against config/config.local.toml (run `make setup-local-dev` first)
+	@test -f local-dev.env || (echo "local-dev.env not found — run 'make setup-local-dev' first" >&2 && exit 1)
+	@test -f resources/keys/encryption.key || (echo "resources/keys/encryption.key not found — run 'make setup-local-dev' first" >&2 && exit 1)
+	export $$(grep -v '^#' local-dev.env | xargs) && \
+		export APIP_CP_ENCRYPTION_KEY=$$(cat resources/keys/encryption.key) && \
+		go run ./cmd/main.go -config config/config.local.toml
 
 test: ## Run tests
 	@echo "Running tests..."
