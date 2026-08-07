@@ -251,3 +251,26 @@ func TestFetchServerInfoSuppliedURLWithStoredCredential(t *testing.T) {
 		assert.Equal(t, "stored-secret", h, "the proxy's stored credential must still be sent")
 	}
 }
+
+// TestFetchServerInfoUpstreamUnauthorizedReturnsValidationFailed verifies that when the upstream
+// MCP server responds with 401 Unauthorized to the initialize request, FetchServerInfo returns an
+// apperror.ValidationFailed (HTTP 400 Bad Request) rather than apperror.Unauthorized (HTTP 401).
+// This prevents the frontend API client from treating the upstream credential failure as an
+// expired workspace session and logging out the user.
+func TestFetchServerInfoUpstreamUnauthorizedReturnsValidationFailed(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusUnauthorized)
+		_, _ = w.Write([]byte(`{"error":"Unauthorized"}`))
+	}))
+	defer srv.Close()
+
+	service := NewMCPProxyService(&mockMCPProxyRepository{}, nil, nil, nil, nil, slog.Default(), &noopAuditRepo{}, &config.Server{}, newTestIdentityService())
+
+	targetURL := srv.URL + "/mcp"
+	_, err := service.FetchServerInfo("org-1", &api.MCPServerInfoFetchRequest{
+		Url: &targetURL,
+	})
+	require.Error(t, err)
+	assert.True(t, apperror.ValidationFailed.Is(err), "expected apperror.ValidationFailed when upstream returns 401, got: %v", err)
+	assert.False(t, apperror.Unauthorized.Is(err), "should NOT be apperror.Unauthorized (which would log out workspace session)")
+}

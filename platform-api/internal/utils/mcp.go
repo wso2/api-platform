@@ -294,11 +294,16 @@ func initializeMCPServer(url string, headerName string, headerValue string) (str
 
 	// Check HTTP status code
 	if resp.StatusCode == http.StatusUnauthorized {
-		return "", nil, apperror.Unauthorized.New().
+		return "", nil, apperror.ValidationFailed.New("The MCP server requires authentication credentials or the provided credentials are invalid.").
 			WithLogMessage("MCP server returned 401 Unauthorized to the initialize request")
 	}
+	if resp.StatusCode == http.StatusForbidden {
+		return "", nil, apperror.ValidationFailed.New("Access to the MCP server was forbidden (403).").
+			WithLogMessage("MCP server returned 403 Forbidden to the initialize request")
+	}
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		return "", nil, fmt.Errorf("initialize request failed with status %d: %s", resp.StatusCode, string(body))
+		return "", nil, apperror.ValidationFailed.New(fmt.Sprintf("MCP server initialize request failed with status %d.", resp.StatusCode)).
+			WithLogMessage(fmt.Sprintf("initialize request failed with status %d: %s", resp.StatusCode, string(body)))
 	}
 
 	// Check if response is event stream and parse it
