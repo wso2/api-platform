@@ -442,6 +442,14 @@ gateway:
       # Service name reported to the tracing backend (see gateway.config.tracing below)
       tracing_service_name: policy-engine
 
+      # Caps decompressed bytes buffered per body (buffered mode) or per chunk
+      # (streaming)
+      request_body:
+        max_decompressed_bytes: 10485760
+
+      response_body:
+        max_decompressed_bytes: 10485760
+
       server:
         # ext_proc port for gRPC server
         extproc_port: 9001

@@ -277,6 +277,12 @@ data:
     [policy_engine]
     tracing_service_name = {{ $pe.tracing_service_name | default "" | quote }}
 
+    [policy_engine.request_body]
+    max_decompressed_bytes = {{ $pe.request_body.max_decompressed_bytes | int64 }}
+
+    [policy_engine.response_body]
+    max_decompressed_bytes = {{ $pe.response_body.max_decompressed_bytes | int64 }}
+
     [policy_engine.server]
     extproc_port = {{ $pe.server.extproc_port }}
 
