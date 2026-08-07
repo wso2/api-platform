@@ -63,6 +63,7 @@ import { mcpProxiesApis } from '../../../../apis/MCP/mcpProxiesApis';
 import type { MCPServer } from '../../../../utils/types';
 import NoMCPServers from '../../../../assets/images/NoMCPServers.svg';
 import { getErrorMessage } from '../../../../utils/apiError';
+import { GatewayArtifactDeleteWarning } from '../../../../utils/readOnlyArtifacts';
 import { useAppAuth } from '../../../../contexts/AppAuthContext';
 import { DISABLED_ACTION_SX, NO_PERMISSION_TOOLTIP, SCOPES } from '../../../../auth/permissions';
 
@@ -594,6 +595,12 @@ export default function ExternalServersList(): React.JSX.Element {
       >
         <DialogTitle>Delete external server</DialogTitle>
         <DialogContent>
+          {deleteTarget?.readOnly ? (
+            <GatewayArtifactDeleteWarning
+              artifactType="MCP Proxy"
+              artifactName={deleteTarget.displayName}
+            />
+          ) : null}
           <DialogContentText>
             Are you sure you want to delete {deleteTarget?.displayName}?
           </DialogContentText>
