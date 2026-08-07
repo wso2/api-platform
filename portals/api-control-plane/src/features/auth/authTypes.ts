@@ -1,21 +1,45 @@
-export type AuthMode = 'asgardeo' | 'local-file' | 'thunder';
+/*
+ * Copyright (c) 2026, WSO2 LLC. (https://www.wso2.com).
+ *
+ * WSO2 LLC. licenses this file to you under the Apache License,
+ * Version 2.0 (the "License"); you may not use this file except
+ * in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing,
+ * software distributed under the License is distributed on an
+ * "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+ * KIND, either express or implied.  See the License for the
+ * specific language governing permissions and limitations
+ * under the License.
+ */
+
+export type AuthMode = 'basic' | 'oidc';
+
+export type AuthOrg = {
+  id: string;
+  name: string;
+  handle: string;
+};
 
 export type AuthUser = {
   name: string;
   email: string;
-};
-
-export type LoginProvider = {
-  id: string;
-  label: string;
+  /**
+   * Resolved server-side by the BFF from the session token's org claims (see
+   * `bff/internal/session/claims.go`'s `UserFromClaims`) — never decoded from
+   * a token in the browser, which never holds one.
+   */
+  org?: AuthOrg | null;
 };
 
 export type AuthStatus =
   | 'loading'
   | 'authenticated'
   | 'unauthenticated'
-  | 'expired'
-  | 'forbidden';
+  | 'expired';
 
 export type AuthState = {
   error?: string;
@@ -24,30 +48,14 @@ export type AuthState = {
   isLoading: boolean;
   isAuthenticated: boolean;
   user?: AuthUser;
-  token?: string;
-  loginProviders: LoginProvider[];
+  /** oidc mode: redirects to the BFF, which performs the whole flow server-side. */
   login: (returnTo?: string) => void;
-  loginWithProvider: (fidp: string, returnTo?: string, username?: string) => void;
+  /** basic mode: posts credentials to the BFF. Resolves false on invalid credentials. */
+  loginWithCredentials: (
+    username: string,
+    password: string,
+    returnTo?: string
+  ) => Promise<boolean>;
   exchangeOrgToken: (orgHandle: string) => Promise<boolean>;
-  /**
-   * Attempts to restore an existing session without user interaction (e.g. via
-   * an Asgardeo silent iframe sign-in). Resolves `true` when a session is
-   * available afterwards, `false` otherwise. Callers should fall back to an
-   * interactive login on `false`.
-   */
-  signInSilently: () => Promise<boolean>;
-  completeLoginFromRedirect: () => string;
   logout: () => void;
-};
-
-export type StoredAuthSession = {
-  token: string;
-  user: AuthUser;
-  expiresAt: number;
-};
-
-export type LocalFileAuthSession = Partial<StoredAuthSession> & {
-  accessToken?: string;
-  email?: string;
-  name?: string;
 };

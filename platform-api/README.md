@@ -14,30 +14,63 @@ Before using the Platform API, obtain a bearer token for authentication. In `fil
 # Build
 cd platform-api
 go build ./cmd/main.go
-
-# Run (TLS with self-signed certificates)
-cd platform-api
-go run ./cmd/main.go
 ```
 
-`config/config.toml` is the local-development config, used with `platform_api.auth.mode = "file"`
-(username/password login backed by the organization/user block in that file) — the same mode the
-AI Workspace and API Portal quickstarts use. It's the one Platform API config shared by every
-quickstart (both docker-compose setups mount it directly), so its admin user is granted the
-`ap_admin` role from the mounted [`resources/role-to-scope-mapping.yaml`](resources/role-to-scope-mapping.yaml), which covers both
+`-config` is always required — there is no default path, and Platform API fails closed rather than
+guessing one. Which config file (and which secrets) you point it at depends on how you're running it:
+
+#### Option A — Fully standalone (no Docker)
+
+The quickest way to run Platform API entirely on its own, with no docker-compose, no other portal
+involved, and no mounted `/etc/platform-api/...` paths:
+
+```bash
+cd platform-api
+make setup-local-dev   # one-time: generates a TLS cert, JWT keypair, encryption key,
+                        # and admin credentials, all under ./resources (gitignored)
+make run-local          # runs `go run ./cmd/main.go -config config/config.local.toml`
+                        # with those secrets exported
+```
+
+`setup-local-dev.sh` prints the generated admin username/password once at the end — copy it before
+it scrolls away; it's only stored bcrypt-hashed afterward. Re-running the script is safe (idempotent
+by default); pass `--force` to rotate the TLS cert/JWT keypair/admin credentials, or
+`--rotate-encryption-key` to (destructively) rotate the at-rest encryption key. See
+[`scripts/setup-local-dev.sh`](scripts/setup-local-dev.sh) and
+[`config/config.local.toml`](config/config.local.toml) for the details — the config file is
+otherwise identical to `config/config.toml` below, just pointed at `./resources/...` instead of
+`/etc/platform-api/...`.
+
+Listens on `https://localhost:9243` (self-signed cert). If a previous run is still bound to that
+port, `lsof -ti:9243 | xargs -r kill -9` before restarting — `go run` spawns a child binary that
+outlives a plain `pkill`/Ctrl-C on the wrapper process.
+
+#### Option B — Alongside the AI Workspace / API Portal quickstarts
+
+`config/config.toml` is the config those docker-compose quickstarts mount directly, also using
+`platform_api.auth.mode = "file"` (username/password login backed by the organization/user block in
+that file). It's the one Platform API config shared by every quickstart, so its admin user is
+granted the `ap_admin` role from the mounted
+[`resources/role-to-scope-mapping.yaml`](resources/role-to-scope-mapping.yaml), which covers both
 the `ap:*` (Platform API) and `dp:*` (API Portal) namespaces. That one role is the whole grant —
-replace it, name more roles alongside it, or edit what it grants in
-`role-to-scope-mapping.yaml`.
+replace it, name more roles alongside it, or edit what it grants in `role-to-scope-mapping.yaml`.
 
 There is no default admin credential: `APIP_CP_ADMIN_USERNAME` and `APIP_CP_ADMIN_PASSWORD_HASH` are
 **required** in this mode, and startup fails closed if either is unset or empty. `portals/scripts/setup.sh`
-provisions both for the quickstarts, printing the generated password once. To set them yourself,
-generate a hash with `htpasswd -nBC 12 "" | tr -d ':\n'`, which prompts for the password instead of
-taking it as an argument — a password on the command line lands in shell history, `ps` output, and CI
-logs. Alternatively set
+provisions both (and the `/etc/platform-api/...`-mounted TLS cert/JWT keypair/encryption key) for the
+quickstarts, printing the generated password once — see `portals/ai-workspace/README.md` or
+`portals/api-portal/README.md`. To set the admin credential yourself instead, generate a hash with
+`htpasswd -nBC 12 "" | tr -d ':\n'`, which prompts for the password instead of taking it as an
+argument — a password on the command line lands in shell history, `ps` output, and CI logs.
+Alternatively set
 `platform_api.auth.mode = "internal_token"`
-for locally-signed HMAC tokens with no local users — see
+for locally-signed RS256 JWTs with no local users — see
 [`config/config-template.toml`](config/config-template.toml) for the full reference.
+
+```bash
+cd platform-api
+go run ./cmd/main.go -config config/config.toml
+```
 
 ### Database Configuration
 

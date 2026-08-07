@@ -1,6 +1,25 @@
+/*
+ * Copyright (c) 2026, WSO2 LLC. (https://www.wso2.com).
+ *
+ * WSO2 LLC. licenses this file to you under the Apache License,
+ * Version 2.0 (the "License"); you may not use this file except
+ * in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing,
+ * software distributed under the License is distributed on an
+ * "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+ * KIND, either express or implied.  See the License for the
+ * specific language governing permissions and limitations
+ * under the License.
+ */
+
 import { http, HttpResponse } from 'msw';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
+import { CSRF_HEADER, CSRF_HEADER_VALUE } from '../../features/auth/authConstants';
 import { server } from '../../test/server';
 
 const BASE = 'http://platform.test';
@@ -8,75 +27,77 @@ const BASE = 'http://platform.test';
 // verbatim (no base prepend), so PATH here is the full request URL.
 const PATH = `${BASE}/api/v0.9/test`;
 
-// platformClient reads runtimeConfig (platformApiBaseUrl) at module load, so the
-// env must be set before importing it. Re-import fresh per test, and register
-// the token provider/refresher seam (what an auth adapter would do at runtime).
+// platformClient reads runtimeConfig (platformApiBaseUrl) at module load, so
+// the env must be set before importing it. Re-import fresh per test.
 async function loadClient() {
   vi.stubEnv('VITE_PLATFORM_API_BASE_URL', BASE);
   vi.resetModules();
-  const clientMod = await import('../client');
-  const getAccessToken = vi.fn<() => Promise<string | undefined>>();
-  const refreshAccessToken = vi.fn<() => Promise<string | undefined>>();
-  clientMod.setPlatformTokenProvider(getAccessToken);
-  clientMod.setPlatformTokenRefresher(refreshAccessToken);
-  const mod = await import('./platformClient');
-  return { client: { getAccessToken, refreshAccessToken }, ...mod };
+  return import('./platformClient');
 }
 
 describe('platformClient.platformRequest', () => {
   beforeEach(() => vi.clearAllMocks());
   afterEach(() => vi.unstubAllEnvs());
 
-  it('refreshes the token once and retries on a 401, then succeeds', async () => {
-    const { client, platformGet } = await loadClient();
-    client.getAccessToken.mockResolvedValueOnce('stale-token');
-    // The refresher returns the fresh token used for the retry.
-    client.refreshAccessToken.mockResolvedValue('fresh-token');
-
-    const seenAuth: (string | null)[] = [];
-    let calls = 0;
+  // The BFF injects the bearer token server-side (from the session cookie)
+  // before ever forwarding the request — this client never holds or sends
+  // one, and never retries on 401 (the BFF already renews a near-expiry OIDC
+  // session before proxying, so a 401 reaching here means the session is
+  // genuinely gone).
+  it('never sends an Authorization header', async () => {
+    const { platformGet } = await loadClient();
+    let authHeader: string | null = 'unset';
     server.use(
       http.get(PATH, ({ request }) => {
-        calls += 1;
-        seenAuth.push(request.headers.get('Authorization'));
-        if (calls === 1) {
-          return HttpResponse.json(
-            { message: 'token expired' },
-            { status: 401 }
-          );
-        }
+        authHeader = request.headers.get('Authorization');
         return HttpResponse.json({ ok: true });
       })
     );
-
-    await expect(platformGet(PATH, 'org-1')).resolves.toEqual({ ok: true });
-    expect(client.refreshAccessToken).toHaveBeenCalledTimes(1);
-    expect(calls).toBe(2);
-    expect(seenAuth).toEqual(['Bearer stale-token', 'Bearer fresh-token']);
+    await platformGet(PATH, 'org-1');
+    expect(authHeader).toBeNull();
   });
 
-  it('surfaces the original 401 as an UNAUTHORIZED ApiError when refresh fails', async () => {
-    const { client, platformGet } = await loadClient();
-    client.getAccessToken.mockResolvedValue('stale-token');
-    client.refreshAccessToken.mockRejectedValue(new Error('no refresh'));
-
+  it('sends the CSRF header on a mutating request but not on GET', async () => {
+    const { platformGet, platformPost } = await loadClient();
+    let getCsrfHeader: string | null = 'unset';
+    let postCsrfHeader: string | null = 'unset';
     server.use(
-      http.get(PATH, () =>
-        HttpResponse.json({ message: 'token expired' }, { status: 401 })
-      )
+      http.get(PATH, ({ request }) => {
+        getCsrfHeader = request.headers.get(CSRF_HEADER);
+        return HttpResponse.json({ ok: true });
+      }),
+      http.post(PATH, ({ request }) => {
+        postCsrfHeader = request.headers.get(CSRF_HEADER);
+        return HttpResponse.json({ ok: true });
+      })
+    );
+    await platformGet(PATH, 'org-1');
+    await platformPost(PATH, 'org-1', { name: 'x' });
+    expect(getCsrfHeader).toBeNull();
+    expect(postCsrfHeader).toBe(CSRF_HEADER_VALUE);
+  });
+
+  it('surfaces a 401 as an UNAUTHORIZED ApiError, with no retry', async () => {
+    const { platformGet } = await loadClient();
+    let calls = 0;
+    server.use(
+      http.get(PATH, () => {
+        calls += 1;
+        return HttpResponse.json({ message: 'session expired' }, { status: 401 });
+      })
     );
 
     await expect(platformGet(PATH, 'org-1')).rejects.toMatchObject({
       name: 'ApiError',
       code: 'UNAUTHORIZED',
       status: 401,
-      message: 'token expired',
+      message: 'session expired',
     });
+    expect(calls).toBe(1);
   });
 
   it('returns undefined for a 204 response', async () => {
-    const { client, platformDelete } = await loadClient();
-    client.getAccessToken.mockResolvedValue('tok');
+    const { platformDelete } = await loadClient();
     server.use(
       http.delete(PATH, () => new HttpResponse(null, { status: 204 }))
     );
@@ -84,8 +105,7 @@ describe('platformClient.platformRequest', () => {
   });
 
   it('falls back to a generic message on a non-JSON error body', async () => {
-    const { client, platformGet } = await loadClient();
-    client.getAccessToken.mockResolvedValue('tok');
+    const { platformGet } = await loadClient();
     server.use(
       http.get(
         PATH,
@@ -100,8 +120,7 @@ describe('platformClient.platformRequest', () => {
   });
 
   it('sends the X-Org-Id header', async () => {
-    const { client, platformGet } = await loadClient();
-    client.getAccessToken.mockResolvedValue('tok');
+    const { platformGet } = await loadClient();
     let orgHeader: string | null = null;
     server.use(
       http.get(PATH, ({ request }) => {

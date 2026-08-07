@@ -1,3 +1,21 @@
+/*
+ * Copyright (c) 2026, WSO2 LLC. (https://www.wso2.com).
+ *
+ * WSO2 LLC. licenses this file to you under the Apache License,
+ * Version 2.0 (the "License"); you may not use this file except
+ * in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing,
+ * software distributed under the License is distributed on an
+ * "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+ * KIND, either express or implied.  See the License for the
+ * specific language governing permissions and limitations
+ * under the License.
+ */
+
 import axios, { AxiosError, type Method } from 'axios';
 
 import { runtimeConfig } from '../config/runtime';
@@ -33,14 +51,10 @@ const contextHeaders = (context?: ApiRequestContext): Record<string, string> => 
   return headers;
 };
 
-// When an Asgardeo session is active, requests are routed through
-// `authHttpRequest` (the SDK's httpRequest), which attaches the current bearer
-// token automatically — but ONLY for hosts listed in the SDK's
-// `resourceServerURLs` allowlist. Every backend this client targets
-// (`apiBaseUrl`, `projectApiBaseUrl`, `organizationApiUrl`,
-// `usersManagementApiUrl`, ...) MUST therefore appear in
-// `runtimeConfig.asgardeoSdkResourceServerUrls`, or the calls will be sent
-// unauthenticated and rejected with 401.
+// Optional transport override for this legacy GraphQL/REST client (distinct
+// from platformClient.ts, which is what actually calls the BFF's same-origin
+// proxy). Lets tests substitute a fake HTTP layer without mocking axios
+// directly; unset in production, where `apiClient` below is used as-is.
 let authHttpRequest: AuthHttpRequest | undefined;
 
 export const apiClient = axios.create({
@@ -59,29 +73,6 @@ export const setApiAccessToken = (token?: string) => {
 export const setApiHttpRequest = (httpRequest?: AuthHttpRequest) => {
   authHttpRequest = httpRequest;
 };
-
-// Token seam for the platform (BML/REST) client. Auth adapters register a
-// provider (the current bearer) and an optional refresher (invoked once on a
-// 401). This keeps `platformClient` decoupled from any specific IdP SDK so it
-// works identically under Asgardeo, Thunder, or local-file auth.
-type PlatformTokenFn = () => Promise<string | undefined>;
-let platformTokenProvider: PlatformTokenFn | undefined;
-let platformTokenRefresher: PlatformTokenFn | undefined;
-
-export const setPlatformTokenProvider = (provider?: PlatformTokenFn) => {
-  platformTokenProvider = provider;
-};
-
-export const setPlatformTokenRefresher = (refresher?: PlatformTokenFn) => {
-  platformTokenRefresher = refresher;
-};
-
-export const getPlatformToken = (): Promise<string | undefined> =>
-  platformTokenProvider ? platformTokenProvider() : Promise.resolve(undefined);
-
-/** Returns a fresh token on success, or undefined when no refresher is set. */
-export const refreshPlatformToken = (): Promise<string | undefined> =>
-  platformTokenRefresher ? platformTokenRefresher() : Promise.resolve(undefined);
 
 export const normalizeApiError = (error: unknown): ApiError => {
   if (error instanceof ApiError) {

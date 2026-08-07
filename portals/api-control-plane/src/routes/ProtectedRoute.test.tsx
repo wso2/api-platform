@@ -1,3 +1,21 @@
+/*
+ * Copyright (c) 2026, WSO2 LLC. (https://www.wso2.com).
+ *
+ * WSO2 LLC. licenses this file to you under the Apache License,
+ * Version 2.0 (the "License"); you may not use this file except
+ * in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing,
+ * software distributed under the License is distributed on an
+ * "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+ * KIND, either express or implied.  See the License for the
+ * specific language governing permissions and limitations
+ * under the License.
+ */
+
 import { describe, expect, it } from 'vitest';
 import { Route, Routes } from 'react-router-dom';
 
@@ -38,20 +56,8 @@ describe('ProtectedRoute', () => {
     expect(screen.getByText('Session Expired')).toBeInTheDocument();
   });
 
-  it('redirects to unauthorized when forbidden', () => {
-    renderGuard(authStatePresets.forbidden());
-    expect(screen.getByText('Unauthorized Page')).toBeInTheDocument();
-  });
-
-  it('attempts silent sign-in then redirects to login when unauthenticated', async () => {
-    const authState = makeAuthState({
-      status: 'unauthenticated',
-      isAuthenticated: false,
-    });
-    renderGuard(authState);
-
-    // Loader shows during the silent attempt, then the guard lands on /login.
-    expect(await screen.findByText('Login Page')).toBeInTheDocument();
-    expect(authState.signInSilently).toHaveBeenCalledTimes(1);
+  it('redirects to login when unauthenticated', () => {
+    renderGuard(authStatePresets.unauthenticated());
+    expect(screen.getByText('Login Page')).toBeInTheDocument();
   });
 });

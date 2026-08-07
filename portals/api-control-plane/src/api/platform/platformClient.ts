@@ -1,5 +1,23 @@
+/*
+ * Copyright (c) 2026, WSO2 LLC. (https://www.wso2.com).
+ *
+ * WSO2 LLC. licenses this file to you under the Apache License,
+ * Version 2.0 (the "License"); you may not use this file except
+ * in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing,
+ * software distributed under the License is distributed on an
+ * "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+ * KIND, either express or implied.  See the License for the
+ * specific language governing permissions and limitations
+ * under the License.
+ */
+
 import { runtimeConfig } from '../../config/runtime';
-import { getPlatformToken, refreshPlatformToken } from '../client';
+import { CSRF_HEADER, CSRF_HEADER_VALUE } from '../../features/auth/authConstants';
 import { ApiError, type ApiErrorCode } from '../types/errors';
 
 /** True when read flows should go to platform-api REST (via BML). */
@@ -27,12 +45,15 @@ const sendOnce = (
   method: string,
   path: string,
   orgRef: string,
-  token: string | undefined,
   body?: BodyInit,
   jsonContentType = true
 ) =>
   fetch(path, {
     method,
+    // Same-origin: the session cookie rides along automatically, and the BFF
+    // injects the bearer token upstream itself — this client never holds or
+    // sends one.
+    credentials: 'same-origin',
     headers: {
       Accept: 'application/json',
       'X-Org-Id': orgRef,
@@ -41,21 +62,22 @@ const sendOnce = (
       ...(body && jsonContentType
         ? { 'Content-Type': 'application/json' }
         : {}),
-      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      // The BFF requires this on every mutating request (GET/HEAD/OPTIONS are
+      // exempt) as its CSRF defense — safe because there is no CORS layer, so
+      // only same-origin script can set it.
+      ...(method !== 'GET' ? { [CSRF_HEADER]: CSRF_HEADER_VALUE } : {}),
     },
     ...(body ? { body } : {}),
   });
 
 /**
- * Issues a platform-api REST request through BML. Sends the RAW IdP access
- * token (BML verifies it, then either forwards it or mints an org-scoped token)
- * plus X-Org-Id so BML can resolve/validate the active organization.
- *
- * The IdP access token expires and the provider does not refresh it eagerly, so
- * on a 401 we refresh the token once (via the registered refresher) and retry —
- * otherwise calls start failing a few minutes into a session. The token
- * provider/refresher are registered by the active auth adapter, so this client
- * stays decoupled from the specific IdP SDK (Asgardeo / Thunder / local-file).
+ * Issues a platform-api REST request through the BFF's same-origin proxy
+ * (which forwards it to BML), plus X-Org-Id so BML can resolve/validate the
+ * active organization. A 401 here means the BFF's session itself is gone
+ * (expired/not authenticated) — the BFF already renews a near-expiry OIDC
+ * session server-side before ever proxying, so there is nothing for this
+ * client to refresh or retry; it surfaces as ApiError('UNAUTHORIZED') like
+ * any other failed request.
  */
 async function platformRequest<T>(
   method: string,
@@ -66,31 +88,7 @@ async function platformRequest<T>(
 ): Promise<T> {
   let response: Response;
   try {
-    response = await sendOnce(
-      method,
-      path,
-      orgRef,
-      await getPlatformToken(),
-      body,
-      jsonContentType
-    );
-    if (response.status === 401) {
-      try {
-        const refreshed = await refreshPlatformToken();
-        if (refreshed !== undefined) {
-          response = await sendOnce(
-            method,
-            path,
-            orgRef,
-            refreshed,
-            body,
-            jsonContentType
-          );
-        }
-      } catch {
-        // refresh failed — fall through and surface the original 401 below
-      }
-    }
+    response = await sendOnce(method, path, orgRef, body, jsonContentType);
   } catch (error) {
     throw new ApiError(
       error instanceof Error ? error.message : 'Network error',

@@ -1,0 +1,205 @@
+/*
+ * Copyright (c) 2026, WSO2 LLC. (https://www.wso2.com).
+ *
+ * WSO2 LLC. licenses this file to you under the Apache License,
+ * Version 2.0 (the "License"); you may not use this file except
+ * in compliance with the License. You may obtain a copy of the
+ * License at http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing,
+ * software distributed under the License is distributed on an
+ * "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+ * KIND, either express or implied. See the License for the
+ * specific language governing permissions and limitations
+ * under the License.
+ */
+
+package session
+
+import (
+	"encoding/base64"
+	"encoding/json"
+	"strings"
+	"time"
+)
+
+// ClaimMapping configures which claim names carry user/org fields. A value may
+// be a dotted path (e.g. "realm_access.roles") to reach a claim nested inside
+// an object — a plain name is just a one-segment path — so an IdP that nests
+// its claims (Keycloak's realm_access.roles is the canonical example) is
+// supported via config rather than code. Defaults match the Platform API
+// file-based JWT and the SPA's OIDC defaults.
+//
+// Username names the single claim that carries the display name; an IDP that
+// carries it under a non-standard claim can be supported via config rather than
+// code. When that claim is absent the display name falls back to email, then
+// the subject id.
+type ClaimMapping struct {
+	Username  string
+	Email     string
+	Roles     string
+	Scope     string
+	OrgID     string
+	OrgName   string
+	OrgHandle string
+}
+
+// DefaultClaimMapping returns the built-in fallback mapping, used whenever a
+// config.ClaimMappingConfig field is left unset — for both file-based and OIDC
+// tokens. Callers may override individual keys to match a specific IDP.
+func DefaultClaimMapping() ClaimMapping {
+	return ClaimMapping{
+		Username:  "username",
+		Email:     "email",
+		Roles:     "roles",
+		Scope:     "scope",
+		OrgID:     "organization",
+		OrgName:   "org_name",
+		OrgHandle: "org_handle",
+	}
+}
+
+// DecodeJWTClaims base64-decodes a JWT payload WITHOUT verifying the signature.
+// The BFF never validates tokens (the Platform API, or the gateway in front of
+// it, does); this only extracts claims for display and to read exp. Returns
+// nil on malformed input.
+func DecodeJWTClaims(token string) map[string]any {
+	parts := strings.Split(token, ".")
+	if len(parts) < 2 {
+		return nil
+	}
+	payload, err := base64.RawURLEncoding.DecodeString(strings.TrimRight(parts[1], "="))
+	if err != nil {
+		// Try standard (padded) URL encoding as a fallback.
+		payload, err = base64.URLEncoding.DecodeString(parts[1])
+		if err != nil {
+			return nil
+		}
+	}
+	var claims map[string]any
+	if err := json.Unmarshal(payload, &claims); err != nil {
+		return nil
+	}
+	return claims
+}
+
+// ExpiryFromClaims reads the standard "exp" claim (seconds since epoch).
+// Returns the zero time if absent. Callers should prefer a token response's
+// expires_in when available (set at issuance time) — this is a fallback for
+// when that isn't present.
+func ExpiryFromClaims(claims map[string]any) time.Time {
+	if claims == nil {
+		return time.Time{}
+	}
+	switch v := claims["exp"].(type) {
+	case float64:
+		return time.Unix(int64(v), 0)
+	case json.Number:
+		if n, err := v.Int64(); err == nil {
+			return time.Unix(n, 0)
+		}
+	}
+	return time.Time{}
+}
+
+// resolveClaimPath walks a dotted path ("realm_access.roles") through nested
+// claim maps and returns the value at that path, or nil if any segment is
+// missing or not itself a map. A path with no dot is a single-segment lookup.
+func resolveClaimPath(claims map[string]any, path string) any {
+	if path == "" || claims == nil {
+		return nil
+	}
+	var cur any = claims
+	for _, seg := range strings.Split(path, ".") {
+		m, ok := cur.(map[string]any)
+		if !ok {
+			return nil
+		}
+		v, ok := m[seg]
+		if !ok {
+			return nil
+		}
+		cur = v
+	}
+	return cur
+}
+
+// UserFromClaims builds the display User from decoded claims using the mapping.
+// idClaims (OIDC id_token) is optional and consulted first for name/email.
+func UserFromClaims(claims, idClaims map[string]any, m ClaimMapping) User {
+	get := func(key string) string {
+		if key == "" {
+			return ""
+		}
+		if idClaims != nil {
+			if s, ok := resolveClaimPath(idClaims, key).(string); ok && s != "" {
+				return s
+			}
+		}
+		if s, ok := resolveClaimPath(claims, key).(string); ok {
+			return s
+		}
+		return ""
+	}
+
+	// Resolve a human-friendly display name from the configured username claim,
+	// then email, and only as a last resort the opaque subject id (so the UI
+	// never shows a raw UUID when a readable claim is available).
+	u := User{
+		Name:   first(get(m.Username), get(m.Email), get("sub")),
+		Email:  get(m.Email),
+		Role:   strClaim(claims, m.Roles),
+		Scopes: scopes(claims, m.Scope),
+	}
+
+	orgID := strClaim(claims, m.OrgID)
+	orgName := strClaim(claims, m.OrgName)
+	orgHandle := strClaim(claims, m.OrgHandle)
+	if orgID != "" || orgHandle != "" {
+		name := orgName
+		if name == "" {
+			name = orgHandle
+		}
+		u.Org = &Org{ID: orgID, Name: name, Handle: orgHandle}
+	}
+	return u
+}
+
+func strClaim(claims map[string]any, path string) string {
+	if s, ok := resolveClaimPath(claims, path).(string); ok {
+		return s
+	}
+	return ""
+}
+
+// scopes reads the scope claim, which may be a space-delimited string ("scope")
+// or an array ("scp" on some IDPs, "roles"/"realm_access.roles" on others).
+// It checks the configured path and, as a fallback, the flat "scp" key.
+func scopes(claims map[string]any, path string) []string {
+	raw := resolveClaimPath(claims, path)
+	if raw == nil {
+		raw = claims["scp"]
+	}
+	switch v := raw.(type) {
+	case string:
+		return strings.Fields(v)
+	case []any:
+		out := make([]string, 0, len(v))
+		for _, item := range v {
+			if s, ok := item.(string); ok {
+				out = append(out, s)
+			}
+		}
+		return out
+	}
+	return []string{}
+}
+
+func first(vals ...string) string {
+	for _, v := range vals {
+		if v != "" {
+			return v
+		}
+	}
+	return ""
+}

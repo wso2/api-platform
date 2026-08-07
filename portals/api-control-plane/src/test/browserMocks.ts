@@ -1,3 +1,21 @@
+/*
+ * Copyright (c) 2026, WSO2 LLC. (https://www.wso2.com).
+ *
+ * WSO2 LLC. licenses this file to you under the Apache License,
+ * Version 2.0 (the "License"); you may not use this file except
+ * in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing,
+ * software distributed under the License is distributed on an
+ * "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+ * KIND, either express or implied.  See the License for the
+ * specific language governing permissions and limitations
+ * under the License.
+ */
+
 /**
  * Browser-API stubs that jsdom does not implement but Oxygen UI / MUI rely on.
  * Imported for its side effects from `src/test/setup.ts`.
@@ -41,20 +59,6 @@ class IntersectionObserverStub {
 
 vi.stubGlobal('ResizeObserver', ResizeObserverStub);
 vi.stubGlobal('IntersectionObserver', IntersectionObserverStub);
-
-// @asgardeo/auth-react references Worker at import time (web-worker storage),
-// which jsdom does not provide. A no-op stub lets the module load in tests;
-// component tests inject auth via AuthStateContext so the worker never runs.
-class WorkerStub {
-  onmessage: ((e: unknown) => void) | null = null;
-  onerror: ((e: unknown) => void) | null = null;
-  postMessage = vi.fn();
-  terminate = vi.fn();
-  addEventListener = vi.fn();
-  removeEventListener = vi.fn();
-  dispatchEvent = vi.fn(() => true);
-}
-vi.stubGlobal('Worker', WorkerStub);
 
 // Node 25 ships an experimental global `localStorage` (file-backed) that
 // shadows jsdom's and throws without --localstorage-file. Replace both Web
