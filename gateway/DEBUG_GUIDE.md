@@ -5,8 +5,8 @@ Three debug options are available:
 | Option | What runs locally | Best for |
 |--------|------------------|----------|
 | **[Option 1 — Remote Debug](#option-1-recommended-remote-debug--all-components-in-docker)** *(recommended)* | Nothing — everything runs in Docker, VS Code attaches via dlv | Production-like debugging, Go policies only |
-| **[Option 2A — Local Process (Go only)](#option-2a-local-process-debug--controller--policy-engine-in-vs-code)** | Controller + Policy Engine | Go policy development and iteration |
-| **[Option 2B — Local Process (Go + Python)](#option-2b-local-process-debug--controller--policy-engine--python-executor-in-vs-code)** | Controller + Policy Engine + Python Executor | Python policy development and debugging |
+| **[Option 2A — Local Process (Go only)](#option-2a-go-only)** | Controller + Policy Engine | Go policy development and iteration |
+| **[Option 2B — Local Process (Go + Python)](#option-2b-go-and-python)** | Controller + Policy Engine + Python Executor | Python policy development and debugging |
 
 > [!TIP]
 > **Choose Option 2B** if you are developing or debugging a Python policy and need breakpoints, print statements, or rapid iteration without rebuilding Docker images. It extends Option 2A with the Python Executor running on the host.
@@ -100,11 +100,12 @@ By default `build.yaml` uses `gomodule:` entries — policies compile from the G
 ```bash
 # Deploy a test API
 curl -X POST http://localhost:9090/api/management/v0.9/rest-apis \
-  -H "Content-Type: application/yaml" \
-  --data-binary @path/to/api.yaml
+  -H "Content-Type: application/json" \
+  --data-binary @examples/reading-list-v1.json
 
 # Send a request through the router
-curl http://localhost:8080/petstore/v1/pets
+# (-v prints the response headers, incl. the X-Served-By header the API's set-headers policy adds)
+curl -v http://localhost:8080/reading-list/books
 ```
 
 ### Notes
@@ -116,7 +117,11 @@ curl http://localhost:8080/petstore/v1/pets
 
 ---
 
-## Local debug config overlay
+## Option 2: Local Process Debug
+
+Two variants run the Gateway Controller and Policy Engine as local VS Code processes — only the Envoy Router stays in Docker Compose. **Option 2A** covers Go policy work; **Option 2B** extends it by also running the Python Executor on the host for Python policy work. Both variants share the config overlay and one-time file provisioning described first, so read those two sections before jumping to 2A or 2B.
+
+### Shared setup: config overlay
 
 Both local-process options (2A and 2B) need a handful of settings that differ from a production container — chiefly the policy-engine ext_proc, ALS, and Python-executor connections switching from **UDS to TCP**, because there is no shared Unix socket between the Docker router and the host-run processes.
 
@@ -139,9 +144,11 @@ Why an overlay instead of editing `config.toml` or setting env vars:
 
 Workspace-relative **file paths** (policy definitions, DB) stay as `launch.json` env vars — TOML can't expand VS Code's `${workspaceFolder}` — and the Controller's `cwd` is set to `gateway/gateway-controller` so `config.toml`'s relative defaults (certs, lua, LLM templates) resolve to the checked-in dirs there. The **one file the overlay does carry** is the AES-GCM encryption key (`[[controller.encryption.providers]]`): the shipped `config.toml` has no encryption section, so without it the host-run controller falls back to a code-default key path that doesn't exist under the debug `cwd` and fails to start. Its value is a stable, repo-relative path (not per-developer), so it lives in the overlay rather than an env var.
 
-### One-time key provisioning
+### Shared setup: one-time file provisioning
 
-The AES-256 at-rest encryption key the overlay points at is **gitignored and not committed** (it's a real secret — see `gateway/.gitignore`). The listener TLS cert/key are already committed, so this key is the only file you need to generate. Create it once from the `gateway/` directory:
+Two files that both local-process options depend on are **gitignored and not committed** (see `gateway/.gitignore`), so they don't exist on a fresh checkout. Generate them once from the `gateway/` directory — the listener TLS cert/key are already committed, so these are the only files you need to create.
+
+**1. AES-256 at-rest encryption key** — a real secret the config overlay points at:
 
 ```bash
 cd gateway
@@ -151,16 +158,25 @@ mkdir -p gateway-controller/aesgcm-keys
 
 This writes the 32-byte key to exactly the path the debug controller's `cwd` reads. Without it the Gateway Controller **exits at startup** while loading encryption providers.
 
+**2. Environment file** — `docker-compose.yaml` declares `api-platform.env` as a `required` `env_file` for the containerized services. In the debug flow it carries no values you need (every key `config.toml` reads has a default), so an **empty file** is enough — the file just has to exist:
+
+```bash
+cd gateway
+touch api-platform.env
+```
+
+Without it, `docker compose up gateway-runtime` **fails to start** with `env file .../api-platform.env not found`. Because the file is gitignored, creating it leaves nothing to revert.
+
 ---
 
-## Option 2A: Local Process Debug — Controller + Policy Engine in VS Code
+### Option 2A: Go only
 
 Gateway Controller and Policy Engine run as local VS Code processes. Only the Envoy Router runs in Docker Compose.
 
 > [!WARNING]
 > Processes run directly on the host, so Go resolves modules via `go.work`. Local versions of `sdk` and other workspace modules are used instead of the published Go module versions — including any uncommitted or untagged changes. Behavior may differ from a production build.
 
-### Architecture
+#### Architecture
 
 ```mermaid
 graph TB
@@ -179,20 +195,20 @@ graph TB
     GC -->|localhost:18001| PE
 ```
 
-### Prerequisites
+#### Prerequisites
 
 - VS Code with Go extension installed
 - Docker and Docker Compose
 - Control plane host and registration token (optional, for gateway registration)
-- **One-time key provisioning** — generate the gitignored AES-256 encryption key the controller loads (see [One-time key provisioning](#one-time-key-provisioning)). The controller **won't start** without it.
+- **One-time file provisioning** — generate the gitignored AES-256 encryption key and the empty `api-platform.env` (see [Shared setup: one-time file provisioning](#shared-setup-one-time-file-provisioning)). The controller **won't start**, and `docker compose up` **fails**, without them.
 
-### Step 1: Run Gateway Builder
+#### Step 1: Run Gateway Builder
 
 Run the **Gateway Builder** debug configuration from VS Code. This compiles all policies and generates the policy-engine binary into `gateway/gateway-builder/target/output/`. It also writes the policy **definition** files into `gateway/gateway-builder/target/output/gateway-controller/policies/` — the directory the controller reads via `APIP_GW_CONTROLLER_POLICIES_DEFINITIONS_PATH`.
 
 > **Note:** This is the slowest step, so start it first — it can compile in the background while you do Steps 2–3. It **must** finish before you start the Gateway Controller (Step 4): the controller loads these policy definitions once at startup (before it hydrates stored configs and builds the first xDS snapshot). If the directory is still empty because the builder hasn't finished, the controller starts with **zero** policy definitions — with no hard error — and you must restart it after the builder completes.
 
-### Step 2: Configure Control Plane Connection
+#### Step 2: Configure Control Plane Connection
 
 Update `.vscode/launch.json` in the **Gateway Controller** configuration with your control plane details:
 
@@ -213,7 +229,7 @@ Update `.vscode/launch.json` in the **Gateway Controller** configuration with yo
 > and the matching token for the registration token). Leave them empty (`""`) to run in standalone
 > mode without a control plane connection.
 
-### Step 3: Update Docker Compose Configuration
+#### Step 3: Update Docker Compose Configuration
 
 In `gateway/docker-compose.yaml`, make two changes to the `gateway-runtime` service:
 
@@ -244,15 +260,15 @@ services:
       # - "9003:9003"   # Metrics
 ```
 
-### Step 4: Start Gateway Controller
+#### Step 4: Start Gateway Controller
 
 Run the **Gateway Controller** debug configuration from VS Code.
 
-### Step 5: Start Policy Engine
+#### Step 5: Start Policy Engine
 
 Run the **Policy Engine - xDS** debug configuration from VS Code.
 
-### Step 6: Start Gateway Runtime (Router)
+#### Step 6: Start Gateway Runtime (Router)
 
 Run the router in Docker Compose:
 
@@ -262,26 +278,32 @@ docker compose up gateway-runtime sample-backend -d
 docker compose logs -ft gateway-runtime sample-backend
 ```
 
-### Step 7: Deploy an API and Test
+#### Step 7: Deploy an API and Test
 
 Deploy a test API via the Gateway Controller REST API. The `-u "admin:admin"` below is the **local-only** debug login set by the `Gateway Controller` launch config (`config-debug.toml`); it is never a shipped or deployable credential. Against a real control plane, pass your own instead, e.g. `-u "$APIP_ADMIN_USER:$APIP_ADMIN_PASS"`.
 
 ```bash
 curl -X POST http://localhost:9090/api/management/v1/rest-apis \
-  -H "Content-Type: application/yaml" \
+  -H "Content-Type: application/json" \
   -u "admin:admin" \
-  --data-binary @examples/petstore-api.yaml
+  --data-binary @examples/reading-list-v1.json
 ```
 
-Send a request to the deployed API:
+Send a request to the deployed API. The `-v` flag prints the response headers, so you can confirm the `X-Served-By` header injected by the API's `set-headers` policy:
 
 ```bash
-curl http://localhost:8080/petstoretest/pet/85964529
+curl -v http://localhost:8080/reading-list/books
+```
+
+In the verbose output you should see the gateway-added response header:
+
+```text
+< X-Served-By: wso2 api platform gateway
 ```
 
 ---
 
-## Option 2B: Local Process Debug — Controller + Policy Engine + Python Executor in VS Code
+### Option 2B: Go and Python
 
 This extends **Option 2A** by also running the Python Executor on the host, giving you full debugger access to the Python policy runtime.
 
@@ -291,7 +313,7 @@ This extends **Option 2A** by also running the Python Executor on the host, givi
 > [!WARNING]
 > Processes run directly on the host, so Go resolves modules via `go.work`. Local versions of `sdk` and other workspace modules are used instead of the published Go module versions — including any uncommitted or untagged changes. Behavior may differ from a production build.
 
-### Architecture
+#### Architecture
 
 ```mermaid
 graph TB
@@ -311,15 +333,15 @@ graph TB
     PE -->|"localhost:9010"| PYE
 ```
 
-### Prerequisites
+#### Prerequisites
 
 - Python 3.10+ with `venv`
 - VS Code with Go and Python extensions installed
 - Docker and Docker Compose
 - Control plane host and registration token (optional, for gateway registration)
-- **One-time key provisioning** — generate the gitignored AES-256 encryption key the controller loads (see [One-time key provisioning](#one-time-key-provisioning)). The controller **won't start** without it.
+- **One-time file provisioning** — generate the gitignored AES-256 encryption key and the empty `api-platform.env` (see [Shared setup: one-time file provisioning](#shared-setup-one-time-file-provisioning)). The controller **won't start**, and `docker compose up` **fails**, without them.
 
-### Step 1: TCP Mode (no action needed)
+#### Step 1: TCP Mode (no action needed)
 
 The Policy Engine reaches the host-run Python Executor over TCP at `localhost:9010`. This is **already configured** in the local debug overlay `configs/config-debug.toml`, which the **Policy Engine - xDS** launch config loads as a second `-config` on top of `config.toml`:
 
@@ -333,9 +355,9 @@ host = "localhost"
 
 No `config.toml` edit is required, and there is nothing to revert afterward. Because the overlay is passed only on the launch config's command line — never mounted into the container — the shipped `config.toml` stays in UDS mode, so the containerized Policy Engine is unaffected.
 
-> **How it works:** `-config` is repeatable; the loaders merge the files in order with last-wins precedence, so the overlay's `tcp` values override the `uds` defaults from `config.toml` for the host-run process only. See [Local debug config overlay](#local-debug-config-overlay).
+> **How it works:** `-config` is repeatable; the loaders merge the files in order with last-wins precedence, so the overlay's `tcp` values override the `uds` defaults from `config.toml` for the host-run process only. See [Shared setup: config overlay](#shared-setup-config-overlay).
 
-### Step 2: Run Gateway Builder
+#### Step 2: Run Gateway Builder
 
 Run the **Gateway Builder** debug configuration from VS Code. This compiles all policies (Go + Python) and generates:
 
@@ -345,7 +367,7 @@ Run the **Gateway Builder** debug configuration from VS Code. This compiles all 
 
 > **Note:** Wait for the builder to complete successfully before starting the other components.
 
-### Step 3: Prepare the Python Environment
+#### Step 3: Prepare the Python Environment
 
 ```bash
 cd gateway
@@ -365,7 +387,7 @@ cp gateway-builder/target/output/python-executor/python_policy_registry.py \
 > [!IMPORTANT]
 > Re-run the `pip install` and `cp` steps after every builder run if policies change.
 
-### Step 4: Update Docker Compose Configuration
+#### Step 4: Update Docker Compose Configuration
 
 In `gateway/docker-compose.yaml`, make two changes to the `gateway-runtime` service:
 
@@ -397,13 +419,13 @@ services:
 ```
 
 
-### Step 5: Start Gateway Controller
+#### Step 5: Start Gateway Controller
 
 Run the **Gateway Controller** debug configuration from VS Code.
 
 > **Note:** Leave `APIP_GW_CONTROLLER_CONTROLPLANE_HOST` and `APIP_GW_CONTROLLER_CONTROLPLANE_TOKEN` empty (`""`) in `.vscode/launch.json` if you want to run in standalone mode without control plane connection.
 
-### Step 6: Start the Python Executor
+#### Step 6: Start the Python Executor
 
 Run the **Python Executor** configuration from VS Code (see [Python debugging tips](#python-debugging-tips) below for breakpoint locations).
 
@@ -426,7 +448,7 @@ Loaded policy factory: prompt-compressor:v0 from prompt_compressor_v0.policy
 Python Executor ready on localhost:9010
 ```
 
-### Step 7: Start the Policy Engine
+#### Step 7: Start the Policy Engine
 
 Run the **Policy Engine - xDS** debug configuration from VS Code.
 
@@ -436,7 +458,7 @@ The Policy Engine will connect to the Python Executor over TCP when the first Py
 Python executor bridge initialized  address=localhost:9010  mode=tcp  timeout=30s
 ```
 
-### Step 8: Start the Gateway Runtime (Router)
+#### Step 8: Start the Gateway Runtime (Router)
 
 Run the router in Docker Compose:
 
@@ -446,7 +468,7 @@ docker compose up gateway-runtime sample-backend -d
 docker compose logs -ft gateway-runtime sample-backend
 ```
 
-### Step 9: Deploy and Test
+#### Step 9: Deploy and Test
 
 ```bash
 # Deploy an API with a Python policy (e.g., prompt-compressor)
@@ -461,7 +483,7 @@ curl -X POST http://localhost:8080/your-api/chat \
   -d '{"messages": [{"role": "user", "content": "Your test prompt here"}]}'
 ```
 
-### Step 10: Clean Up
+#### Step 10: Clean Up
 
 When you are done debugging, **revert the Docker Compose changes** from Step 4 (restore `GATEWAY_CONTROLLER_HOST` and uncomment the Policy Engine ports) so `docker compose up` runs the full containerized stack again.
 
