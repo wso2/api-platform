@@ -2081,8 +2081,7 @@ and
       "url": "https://api.openai.com/v1",
       "auth": {
         "type": "api-key",
-        "header": "Authorization",
-        "value": "Bearer sk-your-api-key"
+        "header": "Authorization"
       }
     },
     "accessControl": {
@@ -2300,7 +2299,7 @@ continued
 |auth|object|false|none|none|
 |» type|string|true|none|none|
 |» header|string|false|none|none|
-|» value|string|false|none|none|
+|» value|string|false|write-only|Upstream credential. Write-only: accepted on create/update and never returned by the management API on a read, for any role. Supply either a literal value or a secret reference (e.g. a `secret` template expression); either way the field is omitted from management API response bodies. An update that omits it inherits the stored value; set `type: none` to remove auth.|
 
 #### Enumerated Values
 
@@ -2332,7 +2331,7 @@ continued
 |---|---|---|---|---|
 |type|string|true|none|none|
 |header|string|false|none|none|
-|value|string|false|none|none|
+|value|string|false|write-only|Upstream credential. Write-only: accepted on create/update and never returned by the management API on a read, for any role. An update that omits it inherits the stored value; set `type: none` to remove auth.|
 
 #### Enumerated Values
 

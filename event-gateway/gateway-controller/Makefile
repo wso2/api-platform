@@ -29,7 +29,12 @@ IMAGE_NAME := $(DOCKER_REGISTRY)/event-gateway-controller
 # metadata, not compiled plugin code — unrelated to gateway/build.yaml).
 POLICIES_BUILD_CONTEXT ?= ../default-policies
 
-.PHONY: help generate-server-code test build push build-and-push-multiarch build-coverage-image build-debug clean
+# Doc generation
+REPO_ROOT := $(shell git rev-parse --show-toplevel)
+APIDOCS_TOOLS_DIR := $(REPO_ROOT)/tools/apidocs
+DOCS_OUT_DIR := $(REPO_ROOT)/docs/rest-apis/event-gateway
+
+.PHONY: help generate-server-code generate-apidocs test build push build-and-push-multiarch build-coverage-image build-debug clean
 
 help: ## Show this help message
 	@echo 'Usage: make [target]'
@@ -40,6 +45,17 @@ help: ## Show this help message
 generate-server-code: ## Generate WebSub/WebBroker API server code from OpenAPI spec
 	@echo "Generating event-gateway API server code from OpenAPI spec..."
 	@go run github.com/oapi-codegen/oapi-codegen/v2/cmd/oapi-codegen@v2.5.1 --config=oapi-codegen.yaml api/eventgateway-openapi.yaml
+
+generate-apidocs: ## Generate REST API docs (Markdown) from the Event Gateway OpenAPI spec
+	@command -v widdershins >/dev/null 2>&1 || { echo "widdershins not found, installing..."; npm install -g widdershins; }
+	@echo "Generating REST API docs..."
+	@widdershins api/eventgateway-openapi.yaml -o /tmp/eventgateway-openapi.md \
+		--omitHeader --summary \
+		--language_tabs 'shell:Shell:curl' \
+		--user_templates $(APIDOCS_TOOLS_DIR)/widdershins_templates/
+	@bash $(APIDOCS_TOOLS_DIR)/split-openapi.sh /tmp/eventgateway-openapi.md $(DOCS_OUT_DIR)
+	@rm -f /tmp/eventgateway-openapi.md
+	@echo "REST API docs generated at $(DOCS_OUT_DIR)"
 
 test: ## Run unit tests
 	@echo "Running tests..."

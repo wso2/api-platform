@@ -1023,7 +1023,7 @@ authenticate requests to the LLM proxy when API key validation is enabled.
 <aside class="warning">
 This operation requires a <strong>Bearer JWT</strong> access token in the <code>Authorization</code> header.
 
-Required scopes (the token must carry at least one of): `ap:llm_proxy:api_key:create`, `ap:llm_proxy:api_key:manage`, `ap:llm_proxy:manage`
+Required scopes (the token must carry at least one of): `ap:llm_proxy:api_key:create`, `ap:llm_proxy:api_key:manage`, `ap:llm_proxy:manage`, `ap:api_key:all:manage`
 
 </aside>
 
@@ -1145,7 +1145,7 @@ Returns all API keys associated with the specified LLM proxy. The plain key valu
 <aside class="warning">
 This operation requires a <strong>Bearer JWT</strong> access token in the <code>Authorization</code> header.
 
-Required scopes (the token must carry at least one of): `ap:llm_proxy:api_key:read`, `ap:llm_proxy:api_key:manage`, `ap:llm_proxy:manage`
+Required scopes (the token must carry at least one of): `ap:llm_proxy:api_key:read`, `ap:llm_proxy:api_key:manage`, `ap:llm_proxy:manage`, `ap:api_key:all:manage`
 
 </aside>
 
@@ -1249,7 +1249,7 @@ Deletes the key from the database and broadcasts a revoke event to the allowed g
 <aside class="warning">
 This operation requires a <strong>Bearer JWT</strong> access token in the <code>Authorization</code> header.
 
-Required scopes (the token must carry at least one of): `ap:llm_proxy:api_key:delete`, `ap:llm_proxy:api_key:manage`, `ap:llm_proxy:manage`
+Required scopes (the token must carry at least one of): `ap:llm_proxy:api_key:delete`, `ap:llm_proxy:api_key:manage`, `ap:llm_proxy:manage`, `ap:api_key:all:manage`
 
 </aside>
 

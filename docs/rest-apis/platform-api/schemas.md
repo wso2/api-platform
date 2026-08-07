@@ -35,7 +35,7 @@
 |createdBy|string|true|read-only|User identifier of the user who created this resource|
 |updatedAt|string(date-time)|true|none|Timestamp when the key was last updated|
 |expiresAt|string(date-time)|false|none|Optional expiration timestamp|
-|issuer|string|false|none|Optional identifier of the developer portal that provisioned this key|
+|issuer|string|false|none|Optional identifier of the API Portal that provisioned this key|
 |allowedTargets|string|true|none|Comma-separated list of allowed gateways; 'ALL' means unrestricted|
 
 #### Enumerated Values
@@ -2117,7 +2117,7 @@ Time unit for API key expiration duration
 |externalRefId|string¦null|false|none|Optional reference ID for tracing purposes (from external platforms)|
 |expiresAt|string(date-time)¦null|false|none|Optional expiration time in ISO 8601 format|
 |expiresIn|[ExpirationDuration](#schemaexpirationduration)|false|none|Optional expiration duration|
-|issuer|string¦null|false|none|Identifier of the developer portal that provisioned this API key. Null if not provided.|
+|issuer|string¦null|false|none|Identifier of the API Portal that provisioned this API key. Null if not provided.|
 
 <h2 id="tocS_CreateAPIKeyResponse">CreateAPIKeyResponse</h2>
 
@@ -4771,7 +4771,7 @@ Request/response translator applied when this provider is the selected upstream.
 |id|string|false|none|Unique identifier for the API key within the LLM provider. If not provided, generated from displayName.|
 |displayName|string|true|none|Human-readable name for the API key|
 |expiresAt|string(date-time)|false|none|Optional expiration time in ISO 8601 format|
-|issuer|string¦null|false|none|Identifier of the developer portal that provisioned this API key. Null if not provided.|
+|issuer|string¦null|false|none|Identifier of the API Portal that provisioned this API key. Null if not provided.|
 |allowedTargets|string¦null|false|none|Comma-separated list of gateways this key is valid for.<br>Use 'ALL' to allow all targets (default).|
 
 <h2 id="tocS_CreateLLMProviderAPIKeyResponse">CreateLLMProviderAPIKeyResponse</h2>
@@ -4825,7 +4825,7 @@ Request/response translator applied when this provider is the selected upstream.
 |id|string|false|none|Unique identifier for the API key within the LLM proxy. If not provided, generated from displayName.|
 |displayName|string|true|none|Human-readable name for the API key|
 |expiresAt|string(date-time)|false|none|Optional expiration time in ISO 8601 format|
-|issuer|string¦null|false|none|Identifier of the developer portal that provisioned this API key. Null if not provided.|
+|issuer|string¦null|false|none|Identifier of the API Portal that provisioned this API key. Null if not provided.|
 |allowedTargets|string¦null|false|none|Comma-separated list of gateways this key is valid for.<br>Use 'ALL' to allow all targets (default).|
 
 <h2 id="tocS_CreateLLMProxyAPIKeyResponse">CreateLLMProxyAPIKeyResponse</h2>
@@ -5072,26 +5072,24 @@ Request/response translator applied when this provider is the selected upstream.
 
 ```
 
-Target MCP server to introspect. Provide exactly one of `url` (a direct backend URL,
-optionally with `auth`) or `proxyId` (refetch using a stored proxy configuration) — never
-both. `auth` must not be sent together with `proxyId`; the stored auth is always used in
-the refetch flow.
+Target MCP server to introspect, and the credentials to introspect it with. At least
+one of `url`/`proxyId` must be provided
 
 ### Properties
 
 |Name|Type|Required|Restrictions|Description|
 |---|---|---|---|---|
-|url|string(uri)|false|none|Endpoint URL of the MCP server to fetch information from. Mutually exclusive<br>with `proxyId`; exactly one of the two must be provided.|
-|proxyId|string|false|none|MCP proxy handle (identifier) for refresh operations. When provided, the server<br>fetches URL and auth from the stored proxy configuration. Mutually exclusive<br>with `url`; exactly one of the two must be provided.|
-|auth|[UpstreamAuth](#schemaupstreamauth)|false|none|Authentication configuration for the fetch request. Allowed only alongside<br>`url` (initial creation flow); sending it with `proxyId` is rejected, as the<br>stored auth is used in the refetch flow.|
+|url|string(uri)|false|none|Endpoint URL of the MCP server to fetch information from. Required unless<br>`proxyId` is given. When sent together with `proxyId` it overrides that proxy's<br>stored upstream URL, while the proxy's stored credentials are still used — this<br>validates an unsaved endpoint edit without re-sending a write-only secret.|
+|proxyId|string|false|none|MCP proxy handle (identifier) for refresh operations. The stored credentials of<br>this proxy are used for the fetch, and its stored upstream URL too unless `url`<br>overrides it. Required unless `url` is given.|
+|auth|[UpstreamAuth](#schemaupstreamauth)|false|none|Authentication configuration for the fetch request. Allowed only when `proxyId`<br>is absent (initial creation flow); sending it with `proxyId` is rejected, as the<br>stored auth is used whenever a proxy is referenced.|
 
-oneOf
+anyOf
 
 |Name|Type|Required|Restrictions|Description|
 |---|---|---|---|---|
 |*anonymous*|object|false|none|none|
 
-xor
+or
 
 |Name|Type|Required|Restrictions|Description|
 |---|---|---|---|---|
@@ -5101,7 +5099,7 @@ not
 
 |Name|Type|Required|Restrictions|Description|
 |---|---|---|---|---|
-|» *anonymous*|object|false|none|none|
+|*anonymous*|object|false|none|none|
 
 <h2 id="tocS_MCPServerInfoFetchResponse">MCPServerInfoFetchResponse</h2>
 

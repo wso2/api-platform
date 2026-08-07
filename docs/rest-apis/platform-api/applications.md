@@ -664,7 +664,7 @@ Lists all API keys mapped to the specified application.
 <aside class="warning">
 This operation requires a <strong>Bearer JWT</strong> access token in the <code>Authorization</code> header.
 
-Required scopes (the token must carry at least one of): `ap:application:api_key:read`, `ap:application:api_key:manage`, `ap:application:manage`
+Required scopes (the token must carry at least one of): `ap:application:api_key:read`, `ap:application:api_key:manage`, `ap:application:manage`, `ap:api_key:all:manage`
 
 </aside>
 
@@ -817,7 +817,7 @@ Adds API key mappings to the specified application.
 <aside class="warning">
 This operation requires a <strong>Bearer JWT</strong> access token in the <code>Authorization</code> header.
 
-Required scopes (the token must carry at least one of): `ap:application:api_key:create`, `ap:application:api_key:manage`, `ap:application:manage`
+Required scopes (the token must carry at least one of): `ap:application:api_key:create`, `ap:application:api_key:manage`, `ap:application:manage`, `ap:api_key:all:manage`
 
 </aside>
 
@@ -952,7 +952,7 @@ Removes a mapped API key from the specified application.
 <aside class="warning">
 This operation requires a <strong>Bearer JWT</strong> access token in the <code>Authorization</code> header.
 
-Required scopes (the token must carry at least one of): `ap:application:api_key:delete`, `ap:application:api_key:manage`, `ap:application:manage`
+Required scopes (the token must carry at least one of): `ap:application:api_key:delete`, `ap:application:api_key:manage`, `ap:application:manage`, `ap:api_key:all:manage`
 
 </aside>
 
@@ -1442,7 +1442,7 @@ Lists API keys mapped to the specified application for the given associated targ
 <aside class="warning">
 This operation requires a <strong>Bearer JWT</strong> access token in the <code>Authorization</code> header.
 
-Required scopes (the token must carry at least one of): `ap:application:association:api_key:read`, `ap:application:association:manage`, `ap:application:manage`
+Required scopes (the token must carry at least one of): `ap:application:association:api_key:read`, `ap:application:association:manage`, `ap:application:manage`, `ap:api_key:all:manage`
 
 </aside>
 
