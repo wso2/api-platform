@@ -99,8 +99,9 @@ By default `build.yaml` uses `gomodule:` entries — policies compile from the G
 
 ```bash
 # Deploy a test API
-curl -X POST http://localhost:9090/api/management/v0.9/rest-apis \
+curl -X POST http://localhost:9090/api/management/v1/rest-apis \
   -H "Content-Type: application/json" \
+  -u "admin:admin" \
   --data-binary @examples/reading-list-v1.json
 
 # Send a request through the router
@@ -153,10 +154,18 @@ Two files that both local-process options depend on are **gitignored and not com
 ```bash
 cd gateway
 mkdir -p gateway-controller/aesgcm-keys
-( umask 177; openssl rand 32 > gateway-controller/aesgcm-keys/default-aesgcm256-v1.bin )
+key_path="gateway-controller/aesgcm-keys/default-aesgcm256-v1.bin"
+if [ -e "$key_path" ]; then
+  echo "Refusing to overwrite existing AES-GCM key: $key_path" >&2
+  exit 1
+fi
+( umask 177; set -o noclobber; openssl rand 32 > "$key_path" )
+chmod 600 "$key_path"
 ```
 
 This writes the 32-byte key to exactly the path the debug controller's `cwd` reads. Without it the Gateway Controller **exits at startup** while loading encryption providers.
+
+> The guard refuses to overwrite an existing key: it's provisioned **once** per checkout. Rerunning after the controller has encrypted stored data would replace the key and make that data undecryptable — rotate keys only through an explicit migration, never by regenerating this file.
 
 **2. Environment file** — `docker-compose.yaml` declares `api-platform.env` as a `required` `env_file` for the containerized services. In the debug flow it carries no values you need (every key `config.toml` reads has a default), so an **empty file** is enough — the file just has to exist:
 
