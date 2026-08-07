@@ -200,6 +200,33 @@ ConfigMap:
 
 A plain `APIP_GW_*` env var with no matching token in `config.toml` is ignored.
 
+### Storage backends and scaling
+
+`gateway.config.controller.storage.type` selects the controller's database:
+
+| Type | Config block | Replicas |
+| --- | --- | --- |
+| `sqlite` (default) | `storage.sqlite` | Single replica only — the DB is a file on a PersistentVolume |
+| `postgres` | `storage.postgres` | Multi-replica |
+| `sqlserver` | `storage.database` | Multi-replica |
+
+Notes:
+
+- `gateway.controller.hpa.enabled=true` requires `postgres` or `sqlserver`; the chart fails to
+  render with `sqlite`, which cannot serve multiple replicas.
+- The PersistentVolumeClaim backs the SQLite file only. With `postgres`/`sqlserver` no claim is
+  created or mounted regardless of `gateway.controller.persistence.enabled`, so replicas are not
+  pinned to a single node by a `ReadWriteOnce` volume. If you are switching an existing release
+  from `sqlite` to an external database and want to retain the old claim, annotate it with
+  `helm.sh/resource-policy: keep` before upgrading.
+- SQL Server connection encryption is on by default
+  (`storage.database.options.encrypt="true"`, `trust_server_certificate="false"`), matching the
+  gateway-controller binary. Relax these only for a local/dev SQL Server without a trusted
+  certificate.
+- Prefer the individual `host`/`port`/`database`/`user` fields over `dsn`: a DSN is rendered
+  verbatim into the ConfigMap, so an embedded password would be stored in plaintext instead of
+  being injected from the Secret above.
+
 ## At-rest Encryption (Required)
 
 At-rest encryption of stored secrets is **mandatory and fail-closed**: the gateway-controller

@@ -184,7 +184,7 @@ spec:
             {{- end }}
       volumes:
         - name: controller-data
-          {{- if $controller.persistence.enabled }}
+          {{- if and $controller.persistence.enabled (eq .Values.gateway.config.controller.storage.type "sqlite") }}
           persistentVolumeClaim:
             claimName: {{ if $controller.persistence.existingClaim }}{{ $controller.persistence.existingClaim }}{{ else }}{{ include "gateway-operator.fullname" . }}-controller-data{{ end }}
           {{- else }}

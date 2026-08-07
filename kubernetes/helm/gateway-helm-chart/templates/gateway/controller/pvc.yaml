@@ -1,6 +1,6 @@
 {{- $controller := .Values.gateway.controller -}}
 {{- $persistence := $controller.persistence -}}
-{{- if and $controller.deployment.enabled $persistence.enabled (not $persistence.existingClaim) }}
+{{- if and $controller.deployment.enabled $persistence.enabled (not $persistence.existingClaim) (eq .Values.gateway.config.controller.storage.type "sqlite") }}
 apiVersion: v1
 kind: PersistentVolumeClaim
 metadata:
