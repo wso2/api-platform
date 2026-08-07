@@ -49,12 +49,14 @@ generate-server-code: ## Generate WebSub/WebBroker API server code from OpenAPI 
 generate-apidocs: ## Generate REST API docs (Markdown) from the Event Gateway OpenAPI spec
 	@command -v widdershins >/dev/null 2>&1 || { echo "widdershins not found, installing..."; npm install -g widdershins; }
 	@echo "Generating REST API docs..."
-	@widdershins api/eventgateway-openapi.yaml -o /tmp/eventgateway-openapi.md \
+	@set -e; \
+	tmp_file=$$(mktemp "$${TMPDIR:-/tmp}/eventgateway-openapi.XXXXXX"); \
+	trap 'rm -f "$$tmp_file"' EXIT; \
+	widdershins api/eventgateway-openapi.yaml -o "$$tmp_file" \
 		--omitHeader --summary \
 		--language_tabs 'shell:Shell:curl' \
-		--user_templates $(APIDOCS_TOOLS_DIR)/widdershins_templates/
-	@bash $(APIDOCS_TOOLS_DIR)/split-openapi.sh /tmp/eventgateway-openapi.md $(DOCS_OUT_DIR)
-	@rm -f /tmp/eventgateway-openapi.md
+		--user_templates $(APIDOCS_TOOLS_DIR)/widdershins_templates/; \
+	bash $(APIDOCS_TOOLS_DIR)/split-openapi.sh "$$tmp_file" $(DOCS_OUT_DIR)
 	@echo "REST API docs generated at $(DOCS_OUT_DIR)"
 
 test: ## Run unit tests
