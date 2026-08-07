@@ -82,6 +82,19 @@ describe('AuthProvider', () => {
     );
   });
 
+  it('hydrates as expired when the BFF reports a stale session, not a plain unauthenticated', async () => {
+    server.use(
+      http.get('/api/session', () =>
+        HttpResponse.json({ authenticated: false, reason: 'expired' }, { status: 401 })
+      )
+    );
+    renderProvider();
+
+    await waitFor(() =>
+      expect(screen.getByTestId('status')).toHaveTextContent('expired')
+    );
+  });
+
   it('loginWithCredentials sends the CSRF header and updates state on success', async () => {
     server.use(
       http.get('/api/session', () =>
@@ -156,5 +169,32 @@ describe('AuthProvider', () => {
       expect(screen.getByTestId('status')).toHaveTextContent('unauthenticated')
     );
     expect(assign).toHaveBeenCalledWith('https://idp.example.com/logout');
+  });
+
+  it('logout falls back to a login path when the BFF returns no logoutUrl', async () => {
+    server.use(
+      http.get('/api/session', () =>
+        HttpResponse.json({ authenticated: true, user: { name: 'Alice', email: 'alice@example.com' } })
+      ),
+      // file-based mode: 204 No Content, no logoutUrl body at all.
+      http.post('/api/logout', () => new HttpResponse(null, { status: 204 }))
+    );
+    const assign = vi.fn();
+    vi.stubGlobal('location', { ...window.location, assign });
+    renderProvider();
+    await waitFor(() =>
+      expect(screen.getByTestId('status')).toHaveTextContent('authenticated')
+    );
+
+    fireEvent.click(screen.getByText('logout'));
+
+    await waitFor(() =>
+      expect(screen.getByTestId('status')).toHaveTextContent('unauthenticated')
+    );
+    // appBasePath is '' in this test environment (see config/runtime.test.ts),
+    // so the base-path-aware fallback resolves to a bare "/login" here — the
+    // non-empty-base-path case is covered at the unit level by
+    // normalizeBasePath's own tests in config/runtime.test.ts.
+    expect(assign).toHaveBeenCalledWith('/login');
   });
 });

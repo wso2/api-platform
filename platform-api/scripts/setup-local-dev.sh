@@ -39,8 +39,10 @@
 #
 # Usage (run from anywhere; resolves its own location):
 #   ./scripts/setup-local-dev.sh
-#   source scripts/local-dev.env.sh   # see the end of this script — exports
-#                                      # APIP_CP_ENCRYPTION_KEY for `go run`
+#   export $(grep -v '^#' local-dev.env | xargs)        # do NOT `source` this file —
+#   export APIP_CP_ENCRYPTION_KEY=$(cat resources/keys/encryption.key)  # see below
+#   go run ./cmd/main.go -config config/config.local.toml
+#   (or just `make setup-local-dev && make run-local`, which does the above for you)
 #
 # Flags:
 #   --force                   regenerate TLS cert, JWT signing keypair, and
@@ -58,6 +60,13 @@
 # resources/certificates / resources/keys) and re-run this script.
 
 set -euo pipefail
+
+# A secret file (the JWT private key, the encryption key) is briefly created
+# at the ambient umask before its own explicit chmod 600 below runs — under a
+# common umask like 022 that window leaves it world-readable. Setting a
+# restrictive umask up front closes that window instead of relying solely on
+# the chmod after the fact.
+umask 077
 
 FORCE=false
 ROTATE_ENCRYPTION_KEY=false
@@ -119,7 +128,11 @@ bcrypt_hash() {
   if command -v htpasswd >/dev/null 2>&1; then
     printf '%s' "$password" | htpasswd -niB -C 12 "$username" | cut -d: -f2 | tr -d '\r\n'
   elif command -v docker >/dev/null 2>&1; then
-    docker run --rm httpd:2.4-alpine htpasswd -nbBC 12 "$username" "$password" | cut -d: -f2 | tr -d '\r\n'
+    # -i (stdin) + htpasswd's own -i flag, not -b: passing the password as a
+    # docker/htpasswd argument would put it in this host's process list and
+    # the container's own argv, both visible to other local users.
+    printf '%s\n' "$password" | docker run --rm -i httpd:2.4-alpine \
+      htpasswd -niBC 12 "$username" | cut -d: -f2 | tr -d '\r\n'
   else
     fail "need either htpasswd (apache2-utils / httpd-tools) or docker to bcrypt-hash the admin password."
   fi

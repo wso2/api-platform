@@ -26,7 +26,7 @@ import {
   Sparkles,
 } from '@wso2/oxygen-ui-icons-react';
 import type { ReactNode } from 'react';
-import { ChangeEvent, KeyboardEvent, useMemo, useRef, useState } from 'react';
+import { ChangeEvent, KeyboardEvent, useEffect, useMemo, useRef, useState } from 'react';
 import { Navigate, useLocation } from 'react-router-dom';
 
 import { runtimeConfig } from '../../config/runtime';
@@ -122,26 +122,27 @@ export function LoginPage() {
     ? OIDC_ERROR_MESSAGES[oidcErrorCode] || 'Unable to complete sign in.'
     : undefined;
 
-  if (auth.isAuthenticated) return <Navigate to={from} replace />;
+  const shouldAutoRedirect =
+    !auth.isAuthenticated && isOidcMode && !isInvitation && !oidcError;
 
   // In OIDC mode this page is just a redirect step to the IdP, so skip it and
   // go straight there — unless there's an invitation to show or a failed
-  // attempt just redirected back here (retrying immediately would loop).
-  if (
-    isOidcMode &&
-    !isInvitation &&
-    !oidcError &&
-    !autoRedirectStarted.current
-  ) {
+  // attempt just redirected back here (retrying immediately would loop). Runs
+  // in an effect, not the render body: auth.login() navigates the page and
+  // mutates a ref, and React 19 requires render to stay pure — under
+  // StrictMode's double-render (or a compiler that reorders render output)
+  // a render-phase navigation is not reliable.
+  useEffect(() => {
+    if (!shouldAutoRedirect || autoRedirectStarted.current) return;
     autoRedirectStarted.current = true;
     auth.login(from);
-  }
+  }, [auth, from, shouldAutoRedirect]);
+
+  if (auth.isAuthenticated) return <Navigate to={from} replace />;
 
   const message = auth.status === 'expired'
     ? 'Your session has expired. Sign in again to continue.'
-    : auth.status === 'forbidden'
-      ? 'You do not have access to this console.'
-      : 'Continue to your API Platform console.';
+    : 'Continue to your API Platform console.';
 
   const handleKeyDown = (
     event: KeyboardEvent<HTMLInputElement>,
@@ -338,7 +339,10 @@ export function LoginPage() {
             <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1.5, mt: 2.75 }}>
               <Box
                 autoFocus
+                aria-label="Username"
+                autoComplete="username"
                 component="input"
+                name="username"
                 onChange={(event: ChangeEvent<HTMLInputElement>) =>
                   setUsername(event.target.value)
                 }
@@ -351,7 +355,10 @@ export function LoginPage() {
                 value={username}
               />
               <Box
+                aria-label="Password"
+                autoComplete="current-password"
                 component="input"
+                name="password"
                 onChange={(event: ChangeEvent<HTMLInputElement>) =>
                   setPassword(event.target.value)
                 }

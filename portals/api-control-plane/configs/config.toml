@@ -20,7 +20,11 @@ level = '{{ env "APIP_ACP_LOGGING_LEVEL" "info" }}'   # debug | info | warn | er
 [api_control_plane.control_plane]
 
 url             = '{{ env "APIP_ACP_CONTROL_PLANE_URL" "https://localhost:9243" }}'
-tls_skip_verify = '{{ env "APIP_ACP_CONTROL_PLANE_TLS_SKIP_VERIFY" "true" }}'
+# Secure by default: a deployment that sets a real control-plane URL keeps
+# certificate verification unless it explicitly opts out. `make bff-run`
+# overrides this to true for its own local-dev default (a self-signed cert),
+# not this file — see the Makefile.
+tls_skip_verify = '{{ env "APIP_ACP_CONTROL_PLANE_TLS_SKIP_VERIFY" "false" }}'
 
 
 [api_control_plane.session]

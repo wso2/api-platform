@@ -65,21 +65,26 @@ COPY --chown=$USER_UID:$USER_GID --from=bff /bff /usr/local/bin/bff
 
 USER $USER_UID
 
-# No ENV config defaults are baked in on purpose: the BFF's built-in defaults
-# already match what this image needs (static dir /app, listener :9743,
-# in-memory sessions, Secure/Lax cookies). Configure a deployment by mounting
-# a config.toml at /etc/api-control-plane/config.toml; its
+# No ENV config defaults are baked in on purpose: configure a deployment by
+# mounting a config.toml at /etc/api-control-plane/config.toml; its
 # '{{ env "APIP_ACP_..." }}' tokens are what pull values in from the
 # environment. The -config flag is required (there is no default path), so the
-# ENTRYPOINT passes the mounted path explicitly.
+# ENTRYPOINT passes the mounted path explicitly. This image ships no TLS
+# material of its own, so it matches configs/config.toml's own defaults
+# (plain HTTP on :8082, HTTPS disabled) rather than the Go-level
+# defaultConfig()'s HTTPS-on-9743 — that default needs a mounted cert/key pair
+# this image never provisions, so it cannot actually start unconfigured. A
+# deployment that does mount its own TLS material and config.toml enabling
+# [server.https] is fully supported by the binary; only this image's own
+# EXPOSE/HEALTHCHECK below assume the common, out-of-the-box HTTP case.
 
-EXPOSE 9743 9780
+EXPOSE 8082
 
-# Each protocol is probed on its own configured port (9743 https, 9780 http) —
-# unlike a fixed single port, this stays correct whichever listener(s) a given
-# deployment actually enables.
+# Reads the actually configured port at container start rather than a value
+# fixed at build time, so a deployment that overrides
+# APIP_ACP_SERVER_HTTP_PORT still gets a correct health probe.
 HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
-  CMD curl -fk https://localhost:9743/healthz || curl -f http://localhost:9780/healthz || exit 1
+  CMD curl -f "http://localhost:${APIP_ACP_SERVER_HTTP_PORT:-8082}/healthz" || exit 1
 
 STOPSIGNAL SIGTERM
 ENTRYPOINT ["/usr/local/bin/bff", "-config", "/etc/api-control-plane/config.toml"]

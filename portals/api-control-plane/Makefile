@@ -30,6 +30,13 @@ VERSION ?= $(shell cat VERSION 2>/dev/null || echo "0.0.0-SNAPSHOT")
 BFF_DIR           := bff
 BFF_DEV_PORT      ?= 8082
 CONTROL_PLANE_URL ?= https://localhost:9243
+# The default CONTROL_PLANE_URL above points at platform-api's local dev
+# listener, which uses a self-signed certificate (see
+# platform-api/scripts/setup-local-dev.sh) — no real CA can validate it, so
+# this defaults to true for that specific case. It is an explicit,
+# overridable opt-out, not forced: point CONTROL_PLANE_URL at a real
+# deployment and pass CONTROL_PLANE_TLS_SKIP_VERIFY=false alongside it.
+CONTROL_PLANE_TLS_SKIP_VERIFY ?= true
 
 help: ## Show this help message
 	@echo 'API Control Plane Build System (Version: $(VERSION))'
@@ -54,7 +61,7 @@ run: ## Start the console dev server locally (installs deps if needed; pair with
 bff-run: ## Run the BFF locally (proxies to CONTROL_PLANE_URL; pair with `make run`)
 	cd $(BFF_DIR) && \
 		APIP_ACP_CONTROL_PLANE_URL=$(CONTROL_PLANE_URL) \
-		APIP_ACP_CONTROL_PLANE_TLS_SKIP_VERIFY=true \
+		APIP_ACP_CONTROL_PLANE_TLS_SKIP_VERIFY=$(CONTROL_PLANE_TLS_SKIP_VERIFY) \
 		APIP_ACP_SERVER_HTTP_PORT=$(BFF_DEV_PORT) \
 		APIP_ACP_LOGGING_LEVEL=debug \
 		GOWORK=off go run . -config ../configs/config.toml

@@ -23,6 +23,7 @@ import (
 	"log/slog"
 	"net/http"
 	"net/http/httputil"
+	"net/url"
 	"strings"
 	"time"
 
@@ -32,6 +33,21 @@ import (
 )
 
 const txCookieName = "_bff_oidc_tx"
+
+// maxLoginBodyBytes bounds the file-based login request body. This is the
+// only BFF-owned handler that decodes a request body itself (the OIDC
+// endpoints carry no body, and proxied requests are bounded downstream by the
+// Platform API's own configured limits) — a generous ceiling for a
+// username/password payload, small enough that an unauthenticated flood of
+// oversized POST /api/login requests cannot drive BFF memory use.
+const maxLoginBodyBytes = 1 << 20 // 1 MiB
+
+// rotationGracePeriod is how long a just-rotated OIDC token's old key stays
+// resolvable in the session store after refresh. It closes the window where a
+// second request already in flight with the pre-rotation cookie (a parallel
+// tab, or the SPA's own fan-out) would otherwise find no store entry for the
+// old token and be logged out mid-refresh — see doRefresh.
+const rotationGracePeriod = 30 * time.Second
 
 // ---------------------------------------------------------------------------
 // File-based login / logout / session
@@ -49,15 +65,28 @@ func (s *Server) handleLogin(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	r.Body = http.MaxBytesReader(w, r.Body, maxLoginBodyBytes)
+
 	var req loginRequest
 	ct := r.Header.Get("Content-Type")
 	if strings.HasPrefix(ct, "application/json") {
 		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			if isBodyTooLarge(err) {
+				writeErrorJSON(w, http.StatusRequestEntityTooLarge, "REQUEST_TOO_LARGE", "request body too large")
+				return
+			}
 			writeErrorJSON(w, http.StatusBadRequest, "INVALID_REQUEST_BODY", "invalid request body")
 			return
 		}
 	} else {
-		_ = r.ParseForm()
+		if err := r.ParseForm(); err != nil {
+			if isBodyTooLarge(err) {
+				writeErrorJSON(w, http.StatusRequestEntityTooLarge, "REQUEST_TOO_LARGE", "request body too large")
+				return
+			}
+			writeErrorJSON(w, http.StatusBadRequest, "INVALID_REQUEST_BODY", "invalid request body")
+			return
+		}
 		req.Username = r.PostForm.Get("username")
 		req.Password = r.PostForm.Get("password")
 	}
@@ -115,6 +144,16 @@ func (s *Server) handleSession(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusUnauthorized, map[string]any{"authenticated": false})
 		return
 	}
+	// This endpoint never refreshes (unlike proxyHandler), so an expired token
+	// is treated as no session — otherwise the SPA would be told it holds a
+	// live session it does not, purely because the cookie's own MaxAge
+	// (derived from AbsoluteExpiry) can outlive the token's own exp. "reason"
+	// distinguishes this from "never had a session" so the SPA can show a
+	// "your session expired" message instead of a plain login screen.
+	if tokenExpired(token) {
+		writeJSON(w, http.StatusUnauthorized, map[string]any{"authenticated": false, "reason": "expired"})
+		return
+	}
 	writeJSON(w, http.StatusOK, map[string]any{
 		"authenticated": true,
 		"user":          s.userFromToken(r.Context(), token),
@@ -134,6 +173,11 @@ func (s *Server) handleOIDCLogin(w http.ResponseWriter, r *http.Request) {
 	ret := sanitizeReturn(r.URL.Query().Get("return"))
 	authURL, txID, err := s.oidc.AuthCodeURL(ret)
 	if err != nil {
+		var tooMany auth.ErrTooManyPendingLogins
+		if errors.As(err, &tooMany) {
+			writeErrorJSON(w, http.StatusServiceUnavailable, "TOO_MANY_PENDING_LOGINS", "too many pending logins, try again shortly")
+			return
+		}
 		slog.Error("oidc authorize url failed", "err", err)
 		writeServerErrorJSON(w, http.StatusInternalServerError, "LOGIN_INIT_FAILED", "login init failed", w.Header().Get("X-Request-Id"))
 		return
@@ -191,6 +235,16 @@ func (s *Server) proxyHandler(rp *httputil.ReverseProxy) http.HandlerFunc {
 		token, ok := s.tokenFromCookie(r)
 		if !ok {
 			writeErrorJSON(w, http.StatusUnauthorized, "NOT_AUTHENTICATED", "not authenticated")
+			return
+		}
+
+		// File-based sessions have no refresh path to fall back on, so an
+		// expired token must be rejected here — forwarding it would just bounce
+		// off the Platform API as a 401 anyway, while leaving the SPA under the
+		// impression its session is still good.
+		if s.oidc == nil && tokenExpired(token) {
+			s.clearSessionCookie(w)
+			writeErrorJSON(w, http.StatusUnauthorized, "SESSION_EXPIRED", "session expired")
 			return
 		}
 
@@ -253,12 +307,26 @@ func handleHealth(w http.ResponseWriter, _ *http.Request) {
 // ---------------------------------------------------------------------------
 
 // tokenFromCookie returns the token stored directly in the session cookie.
+// Deliberately does not check the token's own expiry: an OIDC access token
+// past its exp with a still-valid refresh token must reach proxyHandler's
+// refresh logic below, not be rejected here before it gets the chance. Expiry
+// is instead checked at each of this function's two call sites, matched to
+// what each one can actually do about an expired token — see tokenExpired.
 func (s *Server) tokenFromCookie(r *http.Request) (string, bool) {
 	c, err := r.Cookie(s.cfg.Session.Cookie.Name)
 	if err != nil || c.Value == "" {
 		return "", false
 	}
 	return c.Value, true
+}
+
+// tokenExpired reports whether token carries a readable exp claim that has
+// passed. A token with no exp claim (an opaque OIDC access token, or a decode
+// failure) is treated as not expired — callers that can, still refresh OIDC
+// tokens via the refresh token rather than relying on this.
+func tokenExpired(token string) bool {
+	exp := session.ExpiryFromClaims(session.DecodeJWTClaims(token))
+	return !exp.IsZero() && time.Now().After(exp)
 }
 
 // userFromToken builds the display User for /api/session. File-based claims
@@ -338,6 +406,18 @@ func (s *Server) doRefresh(ctx context.Context, token string) (*session.Session,
 	if !ok {
 		return nil, errors.New("session no longer exists")
 	}
+	// cur is a tombstone left by a refresh that already happened — a request
+	// still carrying the pre-rotation cookie (a parallel tab, or the SPA's own
+	// fan-out) raced this one. Follow the pointer to the live session instead
+	// of re-refreshing or failing; this is what closes the window described in
+	// rotationGracePeriod's own comment.
+	if cur.RotatedTo != "" {
+		live, ok, _ := s.store.Get(ctx, cur.RotatedTo)
+		if !ok {
+			return nil, errors.New("session no longer exists")
+		}
+		return live, nil
+	}
 	if cur.RefreshToken == "" {
 		return nil, errors.New("session has no refresh token")
 	}
@@ -354,12 +434,23 @@ func (s *Server) doRefresh(ctx context.Context, token string) (*session.Session,
 	// Preserve the original absolute deadline: the hard cap must bound total
 	// session lifetime, not slide forward on every refresh (which would let an
 	// active session live indefinitely and disagree with the cookie's MaxAge).
+	// MaxAbsoluteExpiry must travel with it — SessionFromToken computed a new
+	// one from "now", which would otherwise silently raise the true ceiling
+	// Touch clamps against on every refresh.
 	updated.AbsoluteExpiry = cur.AbsoluteExpiry
+	updated.MaxAbsoluteExpiry = cur.MaxAbsoluteExpiry
 	if err := s.store.Put(ctx, updated); err != nil {
 		return nil, err
 	}
-	// Drop the old entry now that the token rotated.
-	_ = s.store.Delete(ctx, token)
+	// Leave a short-lived tombstone at the old key instead of deleting it
+	// outright, so a late request still holding the pre-rotation cookie
+	// resolves to the rotated session above rather than being logged out.
+	// Self-cleans via the store's normal expiry sweep.
+	_ = s.store.Put(ctx, &session.Session{
+		ID:             token,
+		RotatedTo:      updated.ID,
+		AbsoluteExpiry: time.Now().Add(rotationGracePeriod),
+	})
 	return updated, nil
 }
 
@@ -392,10 +483,30 @@ func writeServerErrorJSON(w http.ResponseWriter, status int, code, message, trac
 	writeJSON(w, status, errorBody{Status: "error", Code: code, Message: message, TrackingID: trackingID})
 }
 
+// isBodyTooLarge reports whether err came from a body wrapped in
+// http.MaxBytesReader hitting its limit, as opposed to any other decode
+// failure (malformed JSON, a client disconnect, ...).
+func isBodyTooLarge(err error) bool {
+	var mbe *http.MaxBytesError
+	return errors.As(err, &mbe)
+}
+
 // sanitizeReturn ensures redirect targets are local paths (no open redirect).
 func sanitizeReturn(p string) string {
-	if p == "" || !strings.HasPrefix(p, "/") || strings.HasPrefix(p, "//") {
+	if p == "" || strings.ContainsAny(p, "\r\n\x00") {
 		return "/"
 	}
-	return strings.ReplaceAll(strings.ReplaceAll(p, "\r", ""), "\n", "")
+	// Reject anything that is not a bare, root-relative path. Browsers that
+	// follow WHATWG URL parsing treat a leading "//" or "/\" as introducing an
+	// authority (host), not a path — e.g. "/\evil.com" resolves to
+	// "https://evil.com" — so a plain HasPrefix(p, "/") check alone is not
+	// enough to rule out an open redirect.
+	if !strings.HasPrefix(p, "/") || strings.HasPrefix(p, "//") || strings.HasPrefix(p, `/\`) {
+		return "/"
+	}
+	u, err := url.Parse(p)
+	if err != nil || u.Scheme != "" || u.Host != "" || !strings.HasPrefix(u.Path, "/") {
+		return "/"
+	}
+	return u.RequestURI()
 }

@@ -53,16 +53,20 @@ func (s *Server) securityHeaders(next http.Handler) http.Handler {
 	})
 }
 
-// requestID injects a correlation id and exposes it on the response.
+// requestID always generates a fresh, server-side correlation id and exposes
+// it on the response — never an inbound X-Request-Id, which is echoed
+// verbatim into access logs and returned to the client as trackingId on
+// server errors. Trusting a client-supplied value there would let a caller
+// pick its own correlation key, collide with another request's, or inject
+// arbitrary text into log records and error payloads.
 func requestID(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		id := r.Header.Get("X-Request-Id")
-		if id == "" {
-			b := make([]byte, 8)
-			_, _ = rand.Read(b)
-			id = hex.EncodeToString(b)
+		b := make([]byte, 16)
+		if _, err := rand.Read(b); err != nil {
+			http.Error(w, "internal server error", http.StatusInternalServerError)
+			return
 		}
-		w.Header().Set("X-Request-Id", id)
+		w.Header().Set("X-Request-Id", hex.EncodeToString(b))
 		next.ServeHTTP(w, r)
 	})
 }

@@ -52,6 +52,4 @@ export const authStatePresets = {
   loading: () => makeAuthState({ status: 'loading', isAuthenticated: false }),
   expired: () =>
     makeAuthState({ status: 'expired', isAuthenticated: false }),
-  forbidden: () =>
-    makeAuthState({ status: 'forbidden', isAuthenticated: false }),
 };

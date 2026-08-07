@@ -19,10 +19,10 @@
 // confidential/PKCE OIDC flow against a configured external IdP): tokens live
 // server-side, and the browser only ever holds an opaque HttpOnly session cookie.
 //
-// The same-origin reverse proxy to the Platform API and static SPA serving, plus the
-// HTTPS listener and graceful dual-listener shutdown, land in a follow-up commit —
-// today only the plain-HTTP listener is wired so local development can exercise the
-// auth flows end to end.
+// Config.validate requires at least one of [server.http]/[server.https] enabled
+// (the default config enables HTTPS only, matching go-network-service-hardening's
+// "default to TLS, plaintext is an explicit opt-out"); both may run at once, each
+// on its own port.
 package main
 
 import (
@@ -68,26 +68,25 @@ func main() {
 	}
 	defer srv.Close()
 
-	addr, err := listen(cfg)
+	servers, err := buildServers(cfg, srv.Handler())
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "%v\n", err)
 		os.Exit(1)
 	}
-	httpServer := &http.Server{
-		Addr:           addr,
-		Handler:        srv.Handler(),
-		ReadTimeout:    15 * time.Second,
-		WriteTimeout:   0, // streamed/proxied responses (SSE) need no write deadline
-		IdleTimeout:    60 * time.Second,
-		MaxHeaderBytes: 1 << 20,
-	}
 
-	errCh := make(chan error, 1)
-	go func() { errCh <- httpServer.ListenAndServe() }()
-	slog.Info("api-control-plane-bff listening",
-		slog.String("addr", addr),
-		slog.String("auth_mode", cfg.Auth.Mode),
-		slog.Bool("oidc_enabled", cfg.Auth.OIDC.Enabled))
+	// Buffered to len(servers): each listener goroutine below sends exactly
+	// once, and a send must never block on a select that already moved on to
+	// the ctx.Done() shutdown path.
+	errCh := make(chan error, len(servers))
+	for _, ls := range servers {
+		ls := ls
+		go func() { errCh <- ls.listenAndServe() }()
+		slog.Info("api-control-plane-bff listening",
+			slog.String("protocol", ls.protocol),
+			slog.String("addr", ls.httpServer.Addr),
+			slog.String("auth_mode", cfg.Auth.Mode),
+			slog.Bool("oidc_enabled", cfg.Auth.OIDC.Enabled))
+	}
 
 	select {
 	case err := <-errCh:
@@ -99,20 +98,74 @@ func main() {
 		slog.Info("shutting down")
 		shutdownCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 		defer cancel()
-		if err := httpServer.Shutdown(shutdownCtx); err != nil {
-			slog.Error("graceful shutdown failed", "err", err)
+		for _, ls := range servers {
+			if err := ls.httpServer.Shutdown(shutdownCtx); err != nil {
+				slog.Error("graceful shutdown failed", "protocol", ls.protocol, "err", err)
+			}
 		}
 	}
 }
 
-// listen picks the listener address from config. The HTTPS listener (cert/key
-// loading, dual-listener shutdown) arrives with the proxy/deployment work; today
-// only the plain-HTTP listener is wired so local development can start end to end.
-func listen(cfg *config.Config) (string, error) {
+// listener pairs a configured http.Server with however it needs to be
+// started — ListenAndServe for plain HTTP, ListenAndServeTLS for HTTPS.
+type listener struct {
+	protocol       string
+	httpServer     *http.Server
+	listenAndServe func() error
+}
+
+// buildServers constructs one *http.Server per enabled listener.
+// Config.validate already guarantees at least one of HTTP/HTTPS is enabled,
+// with valid, non-colliding ports; it does not check cert_file/key_file are
+// set, so buildServers checks that itself before ever calling
+// ListenAndServeTLS with an empty path.
+//
+// WriteTimeout is deliberately 0 (no server-wide deadline) on both: the
+// reverse proxy streams long-lived SSE responses (e.g. runtime logs) through
+// to the Platform API, and every other handler already bounds itself via
+// withWriteDeadline in routes() — a server-wide timeout here would cut off
+// the former to bound the latter, when the latter is already bounded.
+func buildServers(cfg *config.Config, handler http.Handler) ([]listener, error) {
+	var servers []listener
+
 	if cfg.Server.HTTP.Enabled {
-		return fmt.Sprintf(":%d", cfg.Server.HTTP.Port), nil
+		httpServer := &http.Server{
+			Addr:           fmt.Sprintf(":%d", cfg.Server.HTTP.Port),
+			Handler:        handler,
+			ReadTimeout:    15 * time.Second,
+			WriteTimeout:   0,
+			IdleTimeout:    60 * time.Second,
+			MaxHeaderBytes: 1 << 20,
+		}
+		servers = append(servers, listener{
+			protocol:       "http",
+			httpServer:     httpServer,
+			listenAndServe: httpServer.ListenAndServe,
+		})
 	}
-	return "", fmt.Errorf("only [server.http] is wired up so far; enable it for now (set enabled = true)")
+
+	if cfg.Server.HTTPS.Enabled {
+		if cfg.Server.HTTPS.CertFile == "" || cfg.Server.HTTPS.KeyFile == "" {
+			return nil, fmt.Errorf("[server.https] cert_file and key_file are required when enabled = true")
+		}
+		httpsServer := &http.Server{
+			Addr:           fmt.Sprintf(":%d", cfg.Server.HTTPS.Port),
+			Handler:        handler,
+			ReadTimeout:    15 * time.Second,
+			WriteTimeout:   0,
+			IdleTimeout:    60 * time.Second,
+			MaxHeaderBytes: 1 << 20,
+		}
+		servers = append(servers, listener{
+			protocol:   "https",
+			httpServer: httpsServer,
+			listenAndServe: func() error {
+				return httpsServer.ListenAndServeTLS(cfg.Server.HTTPS.CertFile, cfg.Server.HTTPS.KeyFile)
+			},
+		})
+	}
+
+	return servers, nil
 }
 
 func setupLogging(level, format string) {

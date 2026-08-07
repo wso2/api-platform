@@ -39,8 +39,7 @@ export type AuthStatus =
   | 'loading'
   | 'authenticated'
   | 'unauthenticated'
-  | 'expired'
-  | 'forbidden';
+  | 'expired';
 
 export type AuthState = {
   error?: string;

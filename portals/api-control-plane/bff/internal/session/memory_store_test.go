@@ -83,3 +83,26 @@ func TestMemoryStore_TouchExtends(t *testing.T) {
 		t.Errorf("Touch shrank expiry to %v", got.AbsoluteExpiry)
 	}
 }
+
+func TestMemoryStore_TouchClampsToMaxAbsoluteExpiry(t *testing.T) {
+	s := NewMemoryStore()
+	defer s.Close()
+	ctx := context.Background()
+
+	hardCap := time.Now().Add(time.Hour)
+	s.Put(ctx, &Session{
+		ID:                "x",
+		AbsoluteExpiry:    time.Now().Add(time.Minute),
+		MaxAbsoluteExpiry: hardCap,
+	})
+
+	// A caller asking to extend past the hard cap must be clamped to it, not
+	// granted in full.
+	if err := s.Touch(ctx, "x", time.Now().Add(24*time.Hour)); err != nil {
+		t.Fatalf("Touch: %v", err)
+	}
+	got, _, _ := s.Get(ctx, "x")
+	if !got.AbsoluteExpiry.Equal(hardCap) {
+		t.Errorf("AbsoluteExpiry = %v, want clamped to MaxAbsoluteExpiry %v", got.AbsoluteExpiry, hardCap)
+	}
+}

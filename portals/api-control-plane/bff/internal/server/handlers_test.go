@@ -30,6 +30,7 @@ import (
 	"time"
 
 	"api-control-plane-bff/internal/config"
+	"api-control-plane-bff/internal/session"
 )
 
 func makeJWT(claims map[string]any) string {
@@ -298,6 +299,49 @@ func newMockIDP(t *testing.T) *httptest.Server {
 	})
 	srv = httptest.NewServer(mux)
 	return srv
+}
+
+// TestHandlers_DoRefresh_FollowsRotationTombstone is the regression test for
+// the refresh race: a request arriving with a pre-rotation cookie after
+// another request already rotated the token must resolve to the live
+// session, not "session no longer exists". Exercises doRefresh directly
+// against a seeded tombstone, so it covers the pointer-following logic
+// without needing a second concurrent HTTP round trip through a real token
+// exchange.
+func TestHandlers_DoRefresh_FollowsRotationTombstone(t *testing.T) {
+	idp := newMockIDP(t)
+	defer idp.Close()
+
+	cfg := newTestConfig("https://unused.example.com")
+	cfg.Auth.Mode = "oidc"
+	cfg.Auth.OIDC = config.OIDCConfig{
+		Enabled: true, Discovery: true, Authority: idp.URL, Issuer: idp.URL,
+		ClientID: "client-1", ClientSecret: "s3cret", ClientAuthMethod: "client_secret_post",
+		RedirectURL: "http://bff.example.com/api/auth/callback", Scopes: "openid",
+	}
+	srv, err := New(context.Background(), cfg)
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+	defer srv.Close()
+
+	ctx := context.Background()
+	live := &session.Session{ID: "new-token", AccessToken: "new-token", AbsoluteExpiry: time.Now().Add(time.Hour)}
+	if err := srv.store.Put(ctx, live); err != nil {
+		t.Fatalf("seed live session: %v", err)
+	}
+	tombstone := &session.Session{ID: "old-token", RotatedTo: "new-token", AbsoluteExpiry: time.Now().Add(rotationGracePeriod)}
+	if err := srv.store.Put(ctx, tombstone); err != nil {
+		t.Fatalf("seed tombstone: %v", err)
+	}
+
+	got, err := srv.doRefresh(ctx, "old-token")
+	if err != nil {
+		t.Fatalf("doRefresh with the pre-rotation token: %v, want it to resolve via the tombstone", err)
+	}
+	if got.AccessToken != "new-token" {
+		t.Errorf("AccessToken = %q, want the rotated token new-token", got.AccessToken)
+	}
 }
 
 // ---------------------------------------------------------------------------

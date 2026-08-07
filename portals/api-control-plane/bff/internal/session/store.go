@@ -60,8 +60,20 @@ type Session struct {
 	RefreshToken   string    // oidc only
 	IDToken        string    // oidc only (for end-session id_token_hint)
 	AccessExpiry   time.Time // from the token response's expires_in, or exp claim as a fallback
-	AbsoluteExpiry time.Time // hard cap
-	User           User
+	AbsoluteExpiry time.Time // hard cap; Touch may extend this, up to MaxAbsoluteExpiry
+	// MaxAbsoluteExpiry is login time + AbsoluteTTL, set once at session
+	// creation and never moved afterward (including across a refresh — see
+	// doRefresh) — the true, immutable ceiling Touch clamps AbsoluteExpiry to,
+	// so an idle-window extension can never outlive the configured hard cap.
+	MaxAbsoluteExpiry time.Time
+	User              User
+	// RotatedTo is set on a short-lived tombstone left behind at the OLD
+	// access token's key when a refresh rotates it. A request that arrives
+	// with the pre-rotation cookie (a parallel tab, or the SPA's own fan-out,
+	// racing the rotation) resolves through this pointer to the live session
+	// under the new key instead of finding no entry and being logged out.
+	// Empty on every normal session record. See doRefresh.
+	RotatedTo string
 }
 
 // Expired reports whether the session has passed its absolute lifetime.

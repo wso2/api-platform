@@ -31,6 +31,11 @@ const OIDC_LOGIN_URL = '/api/auth/login';
 type SessionResponse = {
   authenticated: boolean;
   user?: AuthUser;
+  /** Set by the BFF only on a 401 for a token that existed but expired —
+   * distinguishes that from never having had a session at all, so the SPA
+   * can show a "your session expired" message instead of a plain login
+   * screen. */
+  reason?: 'expired';
 };
 
 type ErrorResponse = {
@@ -62,12 +67,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const hydrate = useCallback(async () => {
     try {
       const response = await fetch(SESSION_URL, { credentials: 'same-origin' });
+      const body = (await response.json().catch(() => ({}))) as SessionResponse;
       if (!response.ok) {
-        setStatus('unauthenticated');
         setUser(undefined);
+        setStatus(body.reason === 'expired' ? 'expired' : 'unauthenticated');
         return;
       }
-      const body = (await response.json()) as SessionResponse;
       setUser(body.user);
       setStatus(body.authenticated ? 'authenticated' : 'unauthenticated');
     } catch {
@@ -129,7 +134,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       }
       setUser(undefined);
       setStatus('unauthenticated');
-      window.location.assign(logoutUrl || '/login');
+      // App.tsx mounts the SPA under runtimeConfig.appBasePath (already
+      // normalized to '' or '/sub-path', see config/runtime.ts) as the router
+      // basename — a bare "/login" would send the browser to the app's own
+      // root path instead of {basePath}/login when that's set to a sub-path.
+      window.location.assign(logoutUrl || `${runtimeConfig.appBasePath}/login`);
     })();
   }, []);
 

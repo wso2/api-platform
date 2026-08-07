@@ -106,11 +106,11 @@ type OIDCOptions struct {
 // JWKS. The id_token is decoded only to populate the session's display claims;
 // state+nonce binding and PKCE still protect the login flow itself.
 type OIDC struct {
-	client   *http.Client
-	opts     OIDCOptions
-	disco    discoveryDoc
-	mapping  session.ClaimMapping
-	absTTL   time.Duration
+	client  *http.Client
+	opts    OIDCOptions
+	disco   discoveryDoc
+	mapping session.ClaimMapping
+	absTTL  time.Duration
 
 	mu        sync.Mutex
 	txs       map[string]*txn
@@ -195,6 +195,18 @@ func fetchDiscovery(ctx context.Context, client *http.Client, authority, expecte
 	return d, nil
 }
 
+// maxPendingTxns caps in-flight authorization requests so an unauthenticated
+// flood of GET /api/auth/login cannot grow o.txs without bound and exhaust
+// process memory. Each entry is small and lives at most 10 minutes; this
+// ceiling is generous for real traffic while still being a real ceiling.
+const maxPendingTxns = 10000
+
+// ErrTooManyPendingLogins indicates the in-flight transaction limit was
+// reached even after sweeping expired entries.
+type ErrTooManyPendingLogins struct{}
+
+func (ErrTooManyPendingLogins) Error() string { return "too many pending logins" }
+
 // AuthCodeURL creates a new login transaction and returns the IDP authorize URL
 // plus the opaque tx id to store in the short-lived tx cookie.
 func (o *OIDC) AuthCodeURL(returnURL string) (authURL, txID string, err error) {
@@ -216,6 +228,13 @@ func (o *OIDC) AuthCodeURL(returnURL string) (authURL, txID string, err error) {
 	}
 
 	o.mu.Lock()
+	if len(o.txs) >= maxPendingTxns {
+		o.sweepLocked(time.Now())
+	}
+	if len(o.txs) >= maxPendingTxns {
+		o.mu.Unlock()
+		return "", "", ErrTooManyPendingLogins{}
+	}
 	o.txs[txID] = &txn{
 		State:        state,
 		Nonce:        nonce,
@@ -249,6 +268,39 @@ type ErrNonceMismatch struct{}
 
 func (ErrNonceMismatch) Error() string { return "oidc nonce mismatch" }
 
+// ErrIDTokenBinding indicates the id_token's issuer or audience did not match
+// the configured expectation.
+type ErrIDTokenBinding struct{}
+
+func (ErrIDTokenBinding) Error() string { return "oidc id_token issuer/audience mismatch" }
+
+// validateIDTokenBinding checks iss and aud against the configured issuer and
+// client ID. A claim the IdP omits is not enforced, matching the existing
+// tolerance elsewhere for IdPs that publish an incomplete discovery document.
+func (o *OIDC) validateIDTokenBinding(claims map[string]any) error {
+	if want := o.opts.Issuer; want != "" {
+		if got, ok := claims["iss"].(string); ok && got != want {
+			return ErrIDTokenBinding{}
+		}
+	}
+	if want := o.opts.ClientID; want != "" {
+		switch aud := claims["aud"].(type) {
+		case string:
+			if aud != want {
+				return ErrIDTokenBinding{}
+			}
+		case []any:
+			for _, a := range aud {
+				if s, ok := a.(string); ok && s == want {
+					return nil
+				}
+			}
+			return ErrIDTokenBinding{}
+		}
+	}
+	return nil
+}
+
 // Callback validates the tx/state, exchanges the code for tokens, and returns a
 // populated session plus the sanitized return URL. txID comes from the tx cookie.
 func (o *OIDC) Callback(ctx context.Context, txID, state, code string) (*session.Session, string, error) {
@@ -274,6 +326,9 @@ func (o *OIDC) Callback(ctx context.Context, txID, state, code string) (*session
 	idClaims := session.DecodeJWTClaims(tok.IDToken)
 	if n, _ := idClaims["nonce"].(string); n != tx.Nonce {
 		return nil, "", ErrNonceMismatch{}
+	}
+	if err := o.validateIDTokenBinding(idClaims); err != nil {
+		return nil, "", err
 	}
 
 	sess := o.sessionFromToken(tok)
@@ -375,13 +430,14 @@ func (o *OIDC) sessionFromToken(tok *tokenResponse) *session.Session {
 
 	abs := time.Now().Add(o.absTTL)
 	return &session.Session{
-		Mode:           session.ModeOIDC,
-		AccessToken:    tok.AccessToken,
-		RefreshToken:   tok.RefreshToken,
-		IDToken:        tok.IDToken,
-		AccessExpiry:   accessExpiry,
-		AbsoluteExpiry: abs,
-		User:           session.UserFromClaims(atClaims, idClaims, o.mapping),
+		Mode:              session.ModeOIDC,
+		AccessToken:       tok.AccessToken,
+		RefreshToken:      tok.RefreshToken,
+		IDToken:           tok.IDToken,
+		AccessExpiry:      accessExpiry,
+		AbsoluteExpiry:    abs,
+		MaxAbsoluteExpiry: abs,
+		User:              session.UserFromClaims(atClaims, idClaims, o.mapping),
 	}
 }
 
@@ -411,12 +467,17 @@ func (o *OIDC) sweepTxns() {
 			return
 		case now := <-t.C:
 			o.mu.Lock()
-			for id, tx := range o.txs {
-				if tx.Expiry.Before(now) {
-					delete(o.txs, id)
-				}
-			}
+			o.sweepLocked(now)
 			o.mu.Unlock()
+		}
+	}
+}
+
+// sweepLocked removes expired transactions. The caller must hold o.mu.
+func (o *OIDC) sweepLocked(now time.Time) {
+	for id, tx := range o.txs {
+		if tx.Expiry.Before(now) {
+			delete(o.txs, id)
 		}
 	}
 }

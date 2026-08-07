@@ -78,7 +78,16 @@ func (m *MemoryStore) Delete(_ context.Context, id string) error {
 func (m *MemoryStore) Touch(_ context.Context, id string, extendTo time.Time) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	if s, ok := m.sessions[id]; ok && extendTo.After(s.AbsoluteExpiry) {
+	s, ok := m.sessions[id]
+	if !ok {
+		return nil
+	}
+	// MaxAbsoluteExpiry is the immutable hard cap set at login; never let an
+	// idle-window extension push AbsoluteExpiry past it.
+	if !s.MaxAbsoluteExpiry.IsZero() && extendTo.After(s.MaxAbsoluteExpiry) {
+		extendTo = s.MaxAbsoluteExpiry
+	}
+	if extendTo.After(s.AbsoluteExpiry) {
 		s.AbsoluteExpiry = extendTo
 	}
 	return nil

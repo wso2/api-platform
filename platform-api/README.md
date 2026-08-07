@@ -64,7 +64,7 @@ quickstarts, printing the generated password once — see `portals/ai-workspace/
 argument — a password on the command line lands in shell history, `ps` output, and CI logs.
 Alternatively set
 `platform_api.auth.mode = "internal_token"`
-for locally-signed HMAC tokens with no local users — see
+for locally-signed RS256 JWTs with no local users — see
 [`config/config-template.toml`](config/config-template.toml) for the full reference.
 
 ```bash

@@ -37,10 +37,6 @@ export function ProtectedRoute() {
     return <Navigate to={routes.sessionExpired} replace />;
   }
 
-  if (auth.status === 'forbidden') {
-    return <Navigate to={routes.unauthorized} replace />;
-  }
-
   if (!auth.isAuthenticated) {
     return <Navigate to={routes.login} replace state={{ from: location }} />;
   }

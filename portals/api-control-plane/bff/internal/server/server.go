@@ -120,9 +120,19 @@ func New(ctx context.Context, cfg *config.Config) (*Server, error) {
 	s := &Server{
 		cfg:          cfg,
 		claims:       claims,
-		fileBased:    auth.NewFileBased(upstream, cfg.ControlPlane.URL, cfg.ControlPlane.PortalBasePath, cfg.Session.AbsoluteTTL, claims),
 		proxies:      proxies,
 		refreshLocks: make(map[string]*refreshLock),
+	}
+
+	// Construct exactly the authenticator the configured mode selects — never
+	// both. cfg.Auth.OIDC.Enabled already incorporates Auth.Mode == "oidc" (see
+	// Config.normalize), so it alone is the authoritative gate. Leaving
+	// fileBased non-nil in OIDC mode would keep POST /api/login reachable
+	// (handleLogin's only guard is fileBased == nil) — a second, unintended
+	// credential path the operator never enabled, forwarding those credentials
+	// to the Platform API.
+	if !cfg.Auth.OIDC.Enabled {
+		s.fileBased = auth.NewFileBased(upstream, cfg.ControlPlane.URL, cfg.ControlPlane.PortalBasePath, cfg.Session.AbsoluteTTL, claims)
 	}
 
 	if cfg.Auth.OIDC.Enabled {
@@ -168,27 +178,47 @@ func (s *Server) Close() error {
 	return nil
 }
 
+// nonStreamingWriteDeadline bounds how long one of this BFF's own handlers
+// (auth, session, runtime config, health — never the reverse proxy) may take
+// to write its response. The http.Server itself is deliberately left with no
+// WriteTimeout, because the reverse proxy streams long-lived SSE responses
+// (e.g. runtime logs) through to the Platform API and a server-wide deadline
+// would cut those off; this per-route deadline is what actually bounds every
+// other handler instead of leaving them unbounded too.
+const nonStreamingWriteDeadline = 30 * time.Second
+
+// withWriteDeadline caps a non-streaming handler's response write time using
+// the per-request deadline http.ResponseController exposes — the reverse
+// proxy handler is intentionally never wrapped with this.
+func withWriteDeadline(next http.HandlerFunc) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		_ = http.NewResponseController(w).SetWriteDeadline(time.Now().Add(nonStreamingWriteDeadline))
+		next.ServeHTTP(w, r)
+	}
+}
+
 // routes builds the mux and wraps it with the global middleware chain.
 func (s *Server) routes() http.Handler {
 	mux := http.NewServeMux()
 
 	// Health (no auth, no CSRF).
-	mux.HandleFunc("GET /healthz", handleHealth)
+	mux.HandleFunc("GET /healthz", withWriteDeadline(handleHealth))
 
 	// Runtime config consumed by the SPA before app init.
-	mux.HandleFunc("GET /api-platform.env.config.js", s.handleRuntimeConfig)
-	mux.HandleFunc("GET /api-platform.common.config.js", s.handleCommonConfig)
+	mux.HandleFunc("GET /api-platform.env.config.js", withWriteDeadline(s.handleRuntimeConfig))
+	mux.HandleFunc("GET /api-platform.common.config.js", withWriteDeadline(s.handleCommonConfig))
 
 	// Auth endpoints.
-	mux.HandleFunc("POST /api/login", s.handleLogin)
-	mux.HandleFunc("POST /api/logout", s.handleLogout)
-	mux.HandleFunc("GET /api/session", s.handleSession)
-	mux.HandleFunc("GET /api/auth/login", s.handleOIDCLogin)
-	mux.HandleFunc("GET /api/auth/callback", s.handleOIDCCallback)
+	mux.HandleFunc("POST /api/login", withWriteDeadline(s.handleLogin))
+	mux.HandleFunc("POST /api/logout", withWriteDeadline(s.handleLogout))
+	mux.HandleFunc("GET /api/session", withWriteDeadline(s.handleSession))
+	mux.HandleFunc("GET /api/auth/login", withWriteDeadline(s.handleOIDCLogin))
+	mux.HandleFunc("GET /api/auth/callback", withWriteDeadline(s.handleOIDCCallback))
 
 	// Same-origin reverse proxy(ies): the primary control plane, plus any
 	// named upstream. Each Rewrite hook already strips its own prefix, so the
-	// subtree is registered directly.
+	// subtree is registered directly. Deliberately NOT wrapped in
+	// withWriteDeadline — see its doc comment.
 	for _, p := range s.proxies {
 		mux.HandleFunc(p.prefix+"/", s.proxyHandler(p.rp))
 	}

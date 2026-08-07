@@ -56,11 +56,6 @@ describe('ProtectedRoute', () => {
     expect(screen.getByText('Session Expired')).toBeInTheDocument();
   });
 
-  it('redirects to unauthorized when forbidden', () => {
-    renderGuard(authStatePresets.forbidden());
-    expect(screen.getByText('Unauthorized Page')).toBeInTheDocument();
-  });
-
   it('redirects to login when unauthenticated', () => {
     renderGuard(authStatePresets.unauthenticated());
     expect(screen.getByText('Login Page')).toBeInTheDocument();
