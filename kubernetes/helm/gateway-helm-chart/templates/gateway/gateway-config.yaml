@@ -86,7 +86,7 @@ data:
     max_open_conns = {{ default 25 $db.max_open_conns | int }}
     max_idle_conns = {{ default 5 $db.max_idle_conns | int }}
     conn_max_lifetime = {{ default "30m" $db.conn_max_lifetime | quote }}
-    conn_max_idle_time = {{ default "5m" $db.conn_max_idle_time | qu`ote }}
+    conn_max_idle_time = {{ default "5m" $db.conn_max_idle_time | quote }}
     application_name = {{ default "gateway-controller" $db.application_name | quote }}
     {{- $encrypt := "true" }}
     {{- if hasKey $dbOpts "encrypt" }}{{- $v := toString (index $dbOpts "encrypt") }}{{- if $v }}{{- $encrypt = $v }}{{- end }}{{- end }}
