@@ -135,18 +135,30 @@ func Invoke(next http.Handler, r *http.Request) *CapturedResponse {
 // would flatten core's error DTO.
 //
 // The captured Content-Length is dropped and left for net/http to recompute: a
-// decorator that rewrote the body would otherwise emit a stale length.
+// decorator that rewrote the body would otherwise emit a stale length. Other
+// headers describing the captured bytes — Content-Encoding, ETag, Content-Range
+// — cannot be recomputed and are forwarded as-is, so a decorator that reshapes
+// the body must clear them itself.
+//
+// A captured header replaces, rather than appends to, any value the decorator
+// already set on w, so passing a response through cannot produce a duplicated
+// Content-Type. Set-Cookie is the exception: multiple cookies are legitimate, so
+// captured ones are appended to the decorator's.
 func WriteCaptured(w http.ResponseWriter, res *CapturedResponse) {
 	if res == nil {
 		return
 	}
 	dst := w.Header()
 	for k, vs := range res.Header {
-		if http.CanonicalHeaderKey(k) == "Content-Length" {
+		key := http.CanonicalHeaderKey(k)
+		if key == "Content-Length" {
 			continue
 		}
+		if key != "Set-Cookie" {
+			dst.Del(key)
+		}
 		for _, v := range vs {
-			dst.Add(k, v)
+			dst.Add(key, v)
 		}
 	}
 	status := res.Status

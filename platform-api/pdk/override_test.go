@@ -143,6 +143,41 @@ func TestWriteCaptured_DropsStaleContentLength(t *testing.T) {
 	}
 }
 
+// A decorator that set a header before passing core's response through must not
+// end up with both values on the wire. Header().Get returns only the first, so
+// this asserts on the slice.
+func TestWriteCaptured_ReplacesAHeaderTheDecoratorAlreadySet(t *testing.T) {
+	res := Invoke(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{}`))
+	}), request())
+
+	rec := httptest.NewRecorder()
+	rec.Header().Set("Content-Type", "application/json")
+	WriteCaptured(rec, res)
+
+	if got := rec.Header().Values("Content-Type"); len(got) != 1 {
+		t.Fatalf("expected a single Content-Type, got %v", got)
+	}
+}
+
+// Multiple cookies are legitimate, so Set-Cookie appends where every other
+// header replaces.
+func TestWriteCaptured_AppendsSetCookie(t *testing.T) {
+	res := Invoke(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Add("Set-Cookie", "core=1")
+		_, _ = w.Write([]byte(`{}`))
+	}), request())
+
+	rec := httptest.NewRecorder()
+	rec.Header().Add("Set-Cookie", "decorator=1")
+	WriteCaptured(rec, res)
+
+	if got := rec.Header().Values("Set-Cookie"); len(got) != 2 {
+		t.Fatalf("expected both cookies to survive, got %v", got)
+	}
+}
+
 func TestWriteCaptured_NilResponseIsANoOp(t *testing.T) {
 	rec := httptest.NewRecorder()
 	WriteCaptured(rec, nil)
