@@ -22,6 +22,7 @@ import (
 	"context"
 	"crypto/tls"
 	"net"
+	"sync"
 	"testing"
 	"time"
 
@@ -184,13 +185,20 @@ func TestGetOrCreateClient_DoesNotHoldLockDuringPing(t *testing.T) {
 	if err != nil {
 		t.Fatalf("failed to start hanging listener: %v", err)
 	}
-	defer ln.Close()
+	defer func() { _ = ln.Close() }()
+
+	// Signaled once the slow client's connection is actually accepted -
+	// proof it has dialed and is now blocked reading the Ping reply, rather
+	// than guessing via a fixed sleep how long that takes to happen.
+	accepted := make(chan struct{})
+	var acceptedOnce sync.Once
 	go func() {
 		for {
 			conn, err := ln.Accept()
 			if err != nil {
 				return
 			}
+			acceptedOnce.Do(func() { close(accepted) })
 			_ = conn // held open, never responded to
 		}
 	}()
@@ -201,7 +209,7 @@ func TestGetOrCreateClient_DoesNotHoldLockDuringPing(t *testing.T) {
 		// ReadTimeout set explicitly - the dial succeeds, it's the
 		// read-for-a-reply that hangs, and go-redis's default (5s) would
 		// otherwise bound that wait regardless of pingTimeout.
-		GetOrCreateRedisClient(&redis.Options{
+		_, _, _ = GetOrCreateRedisClient(&redis.Options{
 			Addr:         ln.Addr().String(),
 			DB:           0,
 			ReadTimeout:  time.Second,
@@ -209,8 +217,11 @@ func TestGetOrCreateClient_DoesNotHoldLockDuringPing(t *testing.T) {
 		}, time.Second)
 	}()
 
-	// Generous margin for the slow call to insert+unlock and enter Ping.
-	time.Sleep(100 * time.Millisecond)
+	select {
+	case <-accepted:
+	case <-time.After(2 * time.Second):
+		t.Fatal("timed out waiting for the slow client's connection to be accepted")
+	}
 
 	mr := miniredis.RunT(t)
 	fastStart := time.Now()
