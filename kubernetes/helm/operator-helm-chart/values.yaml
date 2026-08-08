@@ -131,7 +131,9 @@ gateway:
                   roles: ["admin"]
             idp:
               enabled: false
-              roles_claim: ""
+              jwks_url: ""
+              issuer: ""
+              roles_claim: "scope"
               role_mapping: {}
           # Server configuration
           server:

@@ -18,6 +18,7 @@ All operator CRDs live in the API group **`gateway.api-platform.wso2.com`**, ser
 - Kubernetes 1.19+
 - Helm 3.0+
 - cert-manager v1.0+ (optional, for gateway TLS certificate management)
+- An AES-256 at-rest encryption key Secret in every namespace a gateway will be deployed into.
 
 ## Installation
 
