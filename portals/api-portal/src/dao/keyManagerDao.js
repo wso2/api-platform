@@ -170,9 +170,11 @@ const getIdByHandle = async (orgId, handle) => {
 /**
  * Delete a key manager.
  */
-const deleteKm = async (kmId) => {
+const deleteKm = async (kmId, t) => {
+    const exec = t || db;
     try {
-        const { rowCount: deleted } = await db.execute(`DELETE FROM ${TABLE} WHERE uuid = ?`, [kmId]);
+        await exec.execute('DELETE FROM app_key_mappings WHERE km_uuid = ?', [kmId]);
+        const { rowCount: deleted } = await exec.execute(`DELETE FROM ${TABLE} WHERE uuid = ?`, [kmId]);
         if (deleted < 1) {
             throw new NotFoundError('Key manager not found');
         }
