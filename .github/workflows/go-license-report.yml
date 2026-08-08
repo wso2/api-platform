@@ -1,0 +1,84 @@
+name: Go Third-party License Report
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - 'gateway/gateway-controller/go.mod'
+      - 'gateway/gateway-controller/go.sum'
+      - 'gateway/gateway-runtime/policy-engine/go.mod'
+      - 'gateway/gateway-runtime/policy-engine/go.sum'
+      - 'gateway/gateway-builder/go.mod'
+      - 'gateway/gateway-builder/go.sum'
+      - 'platform-api/go.mod'
+      - 'platform-api/go.sum'
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  generate-go-license-report:
+    name: Generate Go License Report
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.API_PLATFORM_BOT_TOKEN || github.token }}
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.26.5'
+
+      - name: Install go-licenses
+        run: go install github.com/google/go-licenses/v2@latest
+
+      - name: Generate third-party Go license report
+        run: make go-license-report
+
+      - name: Create Go license report PR
+        env:
+          BRANCH_NAME: ${{ github.ref_name }}
+          GH_TOKEN: ${{ secrets.API_PLATFORM_BOT_TOKEN || github.token }}
+        run: |
+          git config user.name "api-platform-bot"
+          git config user.email "api-platform-bot@users.noreply.github.com"
+          git add license-reports/go
+
+          if git diff --cached --quiet; then
+            echo "No Go license report changes to commit."
+            exit 0
+          fi
+
+          REPORT_BRANCH="automation/go-third-party-license-report-${BRANCH_NAME//\//-}"
+          git checkout -B "${REPORT_BRANCH}"
+          git commit -m "Update Go third-party license reports"
+          git push --force-with-lease origin "HEAD:${REPORT_BRANCH}"
+
+          EXISTING_PR="$(gh pr list \
+            --head "${REPORT_BRANCH}" \
+            --base "${BRANCH_NAME}" \
+            --json number \
+            --jq '.[0].number')"
+
+          if [ -n "${EXISTING_PR}" ]; then
+            echo "Go license report PR already exists: #${EXISTING_PR}"
+            exit 0
+          fi
+
+          gh pr create \
+            --base "${BRANCH_NAME}" \
+            --head "${REPORT_BRANCH}" \
+            --title "Update Go third-party license reports" \
+            --body "Regenerated Go third-party license reports for gateway-controller, gateway-runtime, gateway-builder, and platform-api."
+
+      - name: Upload Go license report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: go-third-party-license-report
+          path: license-reports/go
+          if-no-files-found: error
