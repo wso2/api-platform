@@ -267,7 +267,7 @@ const deleteKeyManager = async (req, res) => {
         if (!kmId) {
             return util.sendError(res, 404, constants.ERROR_MESSAGE.KEY_MANAGER_NOT_FOUND);
         }
-        await kmDao.delete(kmId);
+        await db.withTransaction((t) => kmDao.delete(kmId, t));
         logUserAction('KEY_MANAGER_DELETED', req, { orgId, kmId, resourceUuid: kmId, resourceType: 'key_manager' });
         return res.status(204).send();
     } catch (error) {
