@@ -64,6 +64,7 @@ help: ## Show this help message
 	@echo 'Utility Targets:'
 	@echo '  make update-images COMPONENT=X VERSION=Y - Update docker-compose and Helm images'
 	@echo '  make validate-versions                - Validate version consistency'
+	@echo '  make go-license-report                - Generate third-party Go license report'
 	@echo '  make clean-gateway                    - Clean gateway build artifacts'
 
 # Version Management Targets
@@ -200,6 +201,10 @@ update-versions: ## Update docker-compose and Helm charts (alias for update-imag
 .PHONY: validate-versions
 validate-versions: ## Validate version consistency
 	@bash scripts/validate-versions.sh
+
+.PHONY: go-license-report
+go-license-report: ## Generate third-party Go license report
+	@bash scripts/generate-go-license-report.sh
 
 # Clean Targets
 .PHONY: clean-gateway
