@@ -157,13 +157,14 @@ data:
           mountPath: /app/data/aesgcm-keys
         deployment:
           extraEnvFrom: []
+          # Admin API is served under /api/admin/v1 (bare /health is the deprecated alias).
           livenessProbe:
             httpGet:
-              path: /health
+              path: /api/admin/v1/health
               port: admin
           readinessProbe:
             httpGet:
-              path: /health
+              path: /api/admin/v1/health
               port: admin
 
       # Unified gateway-runtime (Envoy + policy-engine) (recommended for operator deploys)
