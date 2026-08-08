@@ -37,7 +37,7 @@ jobs:
         run: go install github.com/google/go-licenses/v2@latest
 
       - name: Generate third-party Go license report
-        run: make go-license-report
+        run: bash scripts/generate-go-license-report.sh
 
       - name: Create Go license report PR
         env:
