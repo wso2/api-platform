@@ -25,6 +25,7 @@ import (
 	"github.com/wso2/api-platform/platform-api/internal/apperror"
 	"github.com/wso2/api-platform/platform-api/internal/constants"
 	"github.com/wso2/api-platform/platform-api/internal/middleware"
+	"github.com/wso2/api-platform/platform-api/internal/router"
 	"github.com/wso2/api-platform/platform-api/internal/service"
 
 	"github.com/wso2/go-httpkit/httputil"
@@ -83,6 +84,6 @@ func (h *APIKeyUserHandler) ListUserAPIKeys(w http.ResponseWriter, r *http.Reque
 }
 
 // RegisterRoutes registers the user API key routes.
-func (h *APIKeyUserHandler) RegisterRoutes(mux *http.ServeMux) {
+func (h *APIKeyUserHandler) RegisterRoutes(mux router.Router) {
 	mux.HandleFunc("GET "+constants.APIBasePath+"/me/api-keys", middleware.MapErrors(h.slogger, h.ListUserAPIKeys))
 }

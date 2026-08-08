@@ -28,6 +28,7 @@ import (
 	"github.com/wso2/api-platform/platform-api/internal/apperror"
 	"github.com/wso2/api-platform/platform-api/internal/constants"
 	"github.com/wso2/api-platform/platform-api/internal/middleware"
+	"github.com/wso2/api-platform/platform-api/internal/router"
 	"github.com/wso2/api-platform/platform-api/internal/service"
 	"github.com/wso2/api-platform/platform-api/internal/utils"
 
@@ -48,7 +49,7 @@ func NewMCPProxyHandler(service *service.MCPProxyService, identity *service.Iden
 	}
 }
 
-func (h *MCPProxyHandler) RegisterRoutes(mux *http.ServeMux) {
+func (h *MCPProxyHandler) RegisterRoutes(mux router.Router) {
 	mux.HandleFunc("POST "+constants.APIBasePath+"/mcp-proxies", middleware.MapErrors(h.slogger, h.CreateMCPProxy))
 	mux.HandleFunc("GET "+constants.APIBasePath+"/mcp-proxies", middleware.MapErrors(h.slogger, h.ListMCPProxies))
 	mux.HandleFunc("POST "+constants.APIBasePath+"/mcp-proxies/fetch-server-info", middleware.MapErrors(h.slogger, h.FetchMCPProxyServerInfo))

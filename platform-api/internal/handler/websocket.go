@@ -29,6 +29,7 @@ import (
 	"github.com/wso2/api-platform/platform-api/internal/dto"
 	"github.com/wso2/api-platform/platform-api/internal/middleware"
 	"github.com/wso2/api-platform/platform-api/internal/model"
+	"github.com/wso2/api-platform/platform-api/internal/router"
 	"github.com/wso2/api-platform/platform-api/internal/service"
 	ws "github.com/wso2/api-platform/platform-api/internal/websocket"
 
@@ -283,6 +284,6 @@ func (h *WebSocketHandler) checkRateLimit(clientIP string) bool {
 }
 
 // RegisterRoutes registers WebSocket routes with the mux.
-func (h *WebSocketHandler) RegisterRoutes(mux *http.ServeMux) {
+func (h *WebSocketHandler) RegisterRoutes(mux router.Router) {
 	mux.HandleFunc("GET /api/internal/v1/ws/gateways/connect", middleware.MapErrors(h.slogger, h.Connect))
 }

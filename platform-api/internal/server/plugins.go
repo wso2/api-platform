@@ -47,6 +47,18 @@ type pluginWiring struct {
 	preChain, postChain []pdk.Middleware
 	// authSkipPaths are validated public path prefixes contributed by plugins.
 	authSkipPaths []string
+	// overrides maps a core route pattern to the plugin decorator claiming it.
+	// Only shape and uniqueness are checked here; the patterns are validated
+	// against the recorded core routes by installCoreRoutes, which is what holds
+	// the recorder.
+	overrides map[string]routeOverride
+}
+
+// routeOverride is one plugin's claim on a core route pattern.
+type routeOverride struct {
+	// plugin names the claiming plugin, for startup logging and conflict errors.
+	plugin string
+	wrap   func(http.Handler) http.Handler
 }
 
 // initPlugins initializes both plugin tiers against the shared mux and scope
@@ -79,7 +91,7 @@ func initPlugins(
 		all = append(all, &externalPlugin{p: ep, pdkDeps: pdkDeps})
 	}
 
-	w := &pluginWiring{}
+	w := &pluginWiring{overrides: make(map[string]routeOverride)}
 	// Plugins whose Init has already succeeded. If a later plugin aborts startup,
 	// these are shut down in reverse initialization order before returning, so a
 	// failed startup does not leave plugin-owned goroutines or connections behind.
@@ -145,6 +157,33 @@ func initPlugins(
 				default:
 					return fail("plugin %q declared middleware at unknown chain position %d", p.Name(), m.Position)
 				}
+			}
+		}
+
+		// Collect route overrides. pdk mirrors this interface and externalPlugin
+		// forwards it, so both tiers are handled by this one assertion. Whether
+		// the claimed pattern actually exists is checked later, by
+		// installCoreRoutes — it is what holds the recorded core routes.
+		if op, ok := p.(plugin.RouteOverrideProvider); ok {
+			for _, ov := range op.RouteOverrides() {
+				// A nil Wrap is a malformed entry, not a way to opt out — same
+				// reasoning as the middleware case above: the author believes
+				// the route is decorated and gets no signal that it is not.
+				if ov.Wrap == nil {
+					return fail("plugin %q declared a route override for %q with a nil Wrap; "+
+						"return an empty slice to override no routes", p.Name(), ov.Pattern)
+				}
+				if ov.Pattern == "" {
+					return fail("plugin %q declared a route override with an empty pattern", p.Name())
+				}
+				// Two decorators on one route would have to be ordered by
+				// something — plugin order, declaration order — that no plugin
+				// author can see. Refuse instead of picking silently.
+				if prev, claimed := w.overrides[ov.Pattern]; claimed {
+					return fail("route %q is overridden by both plugin %q and plugin %q; "+
+						"only one plugin may override a route", ov.Pattern, prev.plugin, p.Name())
+				}
+				w.overrides[ov.Pattern] = routeOverride{plugin: p.Name(), wrap: ov.Wrap}
 			}
 		}
 	}

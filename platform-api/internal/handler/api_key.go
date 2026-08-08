@@ -28,6 +28,7 @@ import (
 	"github.com/wso2/api-platform/platform-api/internal/apperror"
 	"github.com/wso2/api-platform/platform-api/internal/constants"
 	"github.com/wso2/api-platform/platform-api/internal/middleware"
+	"github.com/wso2/api-platform/platform-api/internal/router"
 	"github.com/wso2/api-platform/platform-api/internal/service"
 	"github.com/wso2/api-platform/platform-api/internal/utils"
 
@@ -239,7 +240,7 @@ func (h *APIKeyHandler) RevokeAPIKey(w http.ResponseWriter, r *http.Request) err
 }
 
 // RegisterRoutes registers API key routes with the router
-func (h *APIKeyHandler) RegisterRoutes(mux *http.ServeMux) {
+func (h *APIKeyHandler) RegisterRoutes(mux router.Router) {
 	h.slogger.Debug("Registering API key routes")
 	base := constants.APIBasePath + "/rest-apis/{restApiId}/api-keys"
 	mux.HandleFunc("POST "+base, middleware.MapErrors(h.slogger, h.CreateAPIKey))

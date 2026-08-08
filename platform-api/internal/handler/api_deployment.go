@@ -28,6 +28,7 @@ import (
 	"github.com/wso2/api-platform/platform-api/internal/apperror"
 	"github.com/wso2/api-platform/platform-api/internal/constants"
 	"github.com/wso2/api-platform/platform-api/internal/middleware"
+	"github.com/wso2/api-platform/platform-api/internal/router"
 	"github.com/wso2/api-platform/platform-api/internal/service"
 
 	"github.com/wso2/go-httpkit/httputil"
@@ -271,7 +272,7 @@ func (h *DeploymentHandler) GetDeployments(w http.ResponseWriter, r *http.Reques
 }
 
 // RegisterRoutes registers all deployment-related routes
-func (h *DeploymentHandler) RegisterRoutes(mux *http.ServeMux) {
+func (h *DeploymentHandler) RegisterRoutes(mux router.Router) {
 	h.slogger.Debug("Registering deployment routes")
 	base := constants.APIBasePath + "/rest-apis/{restApiId}"
 	mux.HandleFunc("POST "+base+"/deployments", middleware.MapErrors(h.slogger, h.DeployAPI))
