@@ -30,7 +30,7 @@ Then start the portal normally:
 npm start
 ```
 
-Visit **http://localhost:9543/views/default**.
+Visit **http://localhost:9543/api-portal/views/default**.
 
 > The portal always starts on plain HTTP in design mode — no TLS certificate setup required.
 
@@ -143,7 +143,7 @@ TOKEN=$(curl -sk -X POST "https://localhost:9243/api/portal/v0.9/auth/login" \
 Initial upload:
 
 ```bash
-curl -X POST "http://localhost:9543/api/v0.9/views/{viewName}/layout" \
+curl -X POST "http://localhost:9543/api-portal/api/v0.9/views/{viewName}/layout" \
   -H "Authorization: Bearer $TOKEN" \
   -F "zipFile=@my-theme.zip"
 ```
@@ -151,7 +151,7 @@ curl -X POST "http://localhost:9543/api/v0.9/views/{viewName}/layout" \
 Update an existing layout:
 
 ```bash
-curl -X PUT "http://localhost:9543/api/v0.9/views/{viewName}/layout" \
+curl -X PUT "http://localhost:9543/api-portal/api/v0.9/views/{viewName}/layout" \
   -H "Authorization: Bearer $TOKEN" \
   -F "zipFile=@my-theme.zip"
 ```
@@ -159,7 +159,7 @@ curl -X PUT "http://localhost:9543/api/v0.9/views/{viewName}/layout" \
 Revert to the default layout:
 
 ```bash
-curl -X DELETE "http://localhost:9543/api/v0.9/views/{viewName}/layout/template" \
+curl -X DELETE "http://localhost:9543/api-portal/api/v0.9/views/{viewName}/layout/template" \
   -H "Authorization: Bearer $TOKEN"
 ```
 
@@ -176,9 +176,9 @@ samples/
 │   │   └── docs/
 │   └── …
 └── mcps/                          # MCP servers  →  /views/default/mcps
-    ├── travel-assistant-mcp-v1/
+    ├── everything-mcp-server-v1.0/
     │   ├── api.yaml
-    │   ├── schemaDefinition.yaml
+    │   ├── definition.yaml
     │   └── docs/
     └── …
 ```
@@ -237,7 +237,7 @@ spec:
     productionUrl: https://mcp.example.com
 ```
 
-The `schemaDefinition.yaml` alongside `api.yaml` defines the tools, resources, and prompts exposed by the server:
+The `definition.yaml` alongside `api.yaml` defines the tools, resources, and prompts exposed by the server:
 
 ```yaml
 - type: TOOL

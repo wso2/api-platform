@@ -1,0 +1,46 @@
+asyncapi: '2.0.0'
+
+info:
+  title: Chat Service API
+  version: 1.0.0
+  description: Real-time chat between multiple users over a WebSocket connection.
+
+servers:
+  production:
+    url: wss://db720294-98fd-40f4-85a1-cc6a3b65bc9a-prod.e1-us-east-azure.choreoapis.dev/godzilla/chat-service-api/v1.0
+    protocol: wss
+    description: Production WebSocket server
+
+channels:
+  /:
+    description: Chat channel. Messages sent by any client are broadcast to every other connected client.
+    publish:
+      summary: Send a message to the chat room
+      operationId: SendMessage
+      message:
+        $ref: '#/components/messages/message'
+    subscribe:
+      summary: Receive messages from the chat room
+      operationId: ReceiveMessage
+      message:
+        $ref: '#/components/messages/message'
+
+components:
+  messages:
+    message:
+      name: message
+      title: message
+      summary: A chat frame, sent in either direction over the same socket.
+      payload:
+        type: object
+        required:
+          - type
+        properties:
+          type:
+            type: string
+            description: Type of the message
+            example: connect
+          message:
+            type: string
+            description: Message content
+            example: Hello from user1

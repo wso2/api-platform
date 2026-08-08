@@ -73,7 +73,7 @@ Verify the Platform API is healthy:
 curl -fk https://localhost:9243/health
 ```
 
-Open the API Portal in a browser at `https://localhost:9543/default/views/default` and log in with the admin credentials printed by `setup.sh`.
+Open the API Portal in a browser at `https://localhost:9543/api-portal/default/views/default` and log in with the admin credentials printed by `setup.sh`.
 
 > **Browser trust warning?** Both services use a self-signed TLS certificate by default. Click **Advanced → Proceed** to continue. See [Custom TLS Certificates](#custom-tls-certificates) to remove the warning permanently.
 
@@ -133,7 +133,7 @@ Like AI Workspace, it's an opt-in you turn on by editing `configs/config.toml` �
 1. **Copy the `[api_portal.design_mode]` block** from the "DESIGN MODE CONFIGURATION" section of the shipped `configs/config-template.toml` into `configs/config.toml` (keep `enabled = true`). The sample paths are already correct for the bundled samples — leave them as-is.
 2. **Restart the API Portal:** `docker compose up` (or `docker compose restart api-portal`).
 
-The portal then serves from disk at `/views/default` (e.g. `http://localhost:9543/views/default`). Because design mode never touches the database, the accompanying Platform API and its database go unused while it's on — set `enabled` back to `false` and restart to return to the normal, database-backed portal.
+The portal then serves from disk at `/views/default` (e.g. `http://localhost:9543/api-portal/views/default`). Because design mode never touches the database, the accompanying Platform API and its database go unused while it's on — set `enabled` back to `false` and restart to return to the normal, database-backed portal.
 
 The sample content lives in **`resources/samples/`** (`apis/`, `mcps/`, `applications.yaml`, `subscription-plans.yaml`), which the API Portal container mounts at `/app/samples`. To preview **your own** APIs and MCP servers, add or edit files there and restart — no image rebuild needed.
 
