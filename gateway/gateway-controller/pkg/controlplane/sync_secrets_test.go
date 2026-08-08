@@ -19,12 +19,19 @@
 package controlplane
 
 import (
+	"encoding/json"
 	"errors"
+	"fmt"
 	"log/slog"
+	"net/http"
+	"net/http/httptest"
+	"strings"
 	"testing"
 	"time"
 
+	"github.com/gorilla/websocket"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/utils"
 )
 
@@ -39,8 +46,10 @@ import (
 // wrapper on the Client for testing.
 
 type mockSecretSyncer struct {
-	upserted map[string]string // handle → plaintext
-	err      error             // if non-nil, UpsertFromPlatform returns this
+	upserted  map[string]string // handle → plaintext
+	deleted   []string          // handles passed to Delete, in call order
+	err       error             // if non-nil, UpsertFromPlatform returns this
+	deleteErr error             // if non-nil, Delete returns this
 }
 
 func newMockSecretSyncer() *mockSecretSyncer {
@@ -52,6 +61,15 @@ func (m *mockSecretSyncer) UpsertFromPlatform(handle, _, plaintext string) error
 		return m.err
 	}
 	m.upserted[handle] = plaintext
+	return nil
+}
+
+func (m *mockSecretSyncer) Delete(handle, _ string) error {
+	if m.deleteErr != nil {
+		return m.deleteErr
+	}
+	m.deleted = append(m.deleted, handle)
+	delete(m.upserted, handle)
 	return nil
 }
 
@@ -503,3 +521,596 @@ func TestSecretHashCache_IsolatedPerHandle(t *testing.T) {
 // Stub to make compilation succeed — the real time.Time argument is used by
 // syncSecretsIncremental but not needed by our extracted helpers.
 var _ = time.Now
+
+// ---------------------------------------------------------------------------
+// secret.updated / secret.deleted push-event handlers
+// ---------------------------------------------------------------------------
+
+func TestApplySecretUpdatedPayload_FetchesAndUpserts_CachesHash(t *testing.T) {
+	syncer := newMockSecretSyncer()
+	c := stubClient(syncer)
+
+	payload := SecretUpdatedEventPayload{Handle: "openai-key", DisplayName: "OpenAI Key", Hash: "hmac-sha256:new"}
+	fetchValue := func(handle string) (string, error) {
+		assert.Equal(t, "openai-key", handle)
+		return "sk-rotated", nil
+	}
+
+	c.applySecretUpdatedPayload(payload, slog.Default(), fetchValue)
+
+	assert.Equal(t, "sk-rotated", syncer.upserted["openai-key"])
+	cached, ok := c.secretHashCache.Load("openai-key")
+	assert.True(t, ok)
+	assert.Equal(t, "hmac-sha256:new", cached)
+}
+
+func TestApplySecretUpdatedPayload_FetchError_DoesNotUpsertOrCacheHash(t *testing.T) {
+	syncer := newMockSecretSyncer()
+	c := stubClient(syncer)
+
+	payload := SecretUpdatedEventPayload{Handle: "openai-key", Hash: "hmac-sha256:new"}
+	fetchValue := func(handle string) (string, error) { return "", errors.New("upstream unreachable") }
+
+	c.applySecretUpdatedPayload(payload, slog.Default(), fetchValue)
+
+	assert.Empty(t, syncer.upserted, "must not upsert when the value fetch fails")
+	_, ok := c.secretHashCache.Load("openai-key")
+	assert.False(t, ok, "must not cache the new hash when the value fetch fails")
+}
+
+func TestApplySecretUpdatedPayload_UpsertError_DoesNotCacheHash(t *testing.T) {
+	syncer := newMockSecretSyncer()
+	syncer.err = errors.New("storage full")
+	c := stubClient(syncer)
+
+	payload := SecretUpdatedEventPayload{Handle: "openai-key", Hash: "hmac-sha256:new"}
+	fetchValue := func(handle string) (string, error) { return "sk-rotated", nil }
+
+	c.applySecretUpdatedPayload(payload, slog.Default(), fetchValue)
+
+	_, ok := c.secretHashCache.Load("openai-key")
+	assert.False(t, ok, "must not cache the new hash when the local upsert fails")
+}
+
+func TestHandleSecretUpdatedEvent_MissingHandle_NoFetchAttempted(t *testing.T) {
+	syncer := newMockSecretSyncer()
+	c := stubClient(syncer)
+	c.apiUtilsService = &utils.APIUtilsService{} // non-nil so the guard under test is the handle check, not this one
+
+	event := map[string]interface{}{
+		"type":          "secret.updated",
+		"correlationId": "corr-1",
+		"payload":       map[string]interface{}{"handle": "", "hash": "hmac-sha256:x"},
+	}
+
+	assert.NotPanics(t, func() { c.handleSecretUpdatedEvent(event) })
+	assert.Empty(t, syncer.upserted)
+}
+
+func TestHandleSecretUpdatedEvent_NilDependencies_NoPanic(t *testing.T) {
+	c := stubClient(newMockSecretSyncer())
+	// apiUtilsService left nil (zero value of *utils.APIUtilsService)
+
+	event := map[string]interface{}{
+		"type":          "secret.updated",
+		"correlationId": "corr-1",
+		"payload":       map[string]interface{}{"handle": "openai-key", "hash": "hmac-sha256:x"},
+	}
+
+	assert.NotPanics(t, func() { c.handleSecretUpdatedEvent(event) })
+}
+
+func TestHandleSecretDeletedEvent_EvictsFromLocalStoreAndHashCache(t *testing.T) {
+	syncer := newMockSecretSyncer()
+	syncer.upserted["old-key"] = "sk-stale"
+	c := stubClient(syncer)
+	populateCache(c, map[string]string{"old-key": "hmac-sha256:stale"})
+
+	event := map[string]interface{}{
+		"type":          "secret.deleted",
+		"correlationId": "corr-2",
+		"payload":       map[string]interface{}{"handle": "old-key"},
+	}
+
+	c.handleSecretDeletedEvent(event)
+
+	assert.Equal(t, []string{"old-key"}, syncer.deleted)
+	assert.NotContains(t, syncer.upserted, "old-key", "local copy must be evicted")
+	_, ok := c.secretHashCache.Load("old-key")
+	assert.False(t, ok, "hash cache entry must be cleared on eviction")
+}
+
+func TestHandleSecretDeletedEvent_MissingHandle_NoEviction(t *testing.T) {
+	syncer := newMockSecretSyncer()
+	c := stubClient(syncer)
+
+	event := map[string]interface{}{
+		"type":          "secret.deleted",
+		"correlationId": "corr-2",
+		"payload":       map[string]interface{}{"handle": ""},
+	}
+
+	assert.NotPanics(t, func() { c.handleSecretDeletedEvent(event) })
+	assert.Empty(t, syncer.deleted)
+}
+
+func TestHandleSecretDeletedEvent_NilSyncer_NoPanic(t *testing.T) {
+	c := &Client{logger: slog.Default()} // secretSyncer left nil
+
+	event := map[string]interface{}{
+		"type":          "secret.deleted",
+		"correlationId": "corr-2",
+		"payload":       map[string]interface{}{"handle": "old-key"},
+	}
+
+	assert.NotPanics(t, func() { c.handleSecretDeletedEvent(event) })
+}
+
+func TestHandleSecretDeletedEvent_DeleteError_HashCacheNotCleared(t *testing.T) {
+	syncer := newMockSecretSyncer()
+	syncer.deleteErr = errors.New("storage locked")
+	c := stubClient(syncer)
+	populateCache(c, map[string]string{"old-key": "hmac-sha256:stale"})
+
+	event := map[string]interface{}{
+		"type":          "secret.deleted",
+		"correlationId": "corr-2",
+		"payload":       map[string]interface{}{"handle": "old-key"},
+	}
+
+	c.handleSecretDeletedEvent(event)
+
+	_, ok := c.secretHashCache.Load("old-key")
+	assert.True(t, ok, "hash cache must be left intact when eviction fails, so a later retry doesn't skip it")
+}
+
+// ---------------------------------------------------------------------------
+// Revision-based staleness rejection (out-of-order / redelivered events)
+// ---------------------------------------------------------------------------
+
+func TestApplySecretUpdatedPayload_StaleRevision_Ignored(t *testing.T) {
+	syncer := newMockSecretSyncer()
+	c := stubClient(syncer)
+	c.secretRevisionCache.Store("openai-key", int64(10))
+
+	payload := SecretUpdatedEventPayload{Handle: "openai-key", Hash: "hmac-sha256:new", Revision: 5}
+	fetchValue := func(handle string) (string, error) {
+		t.Fatal("fetchValue must not be called for a stale event")
+		return "", nil
+	}
+
+	c.applySecretUpdatedPayload(payload, slog.Default(), fetchValue)
+
+	assert.Empty(t, syncer.upserted, "a stale update must not be applied")
+	cached, _ := c.secretRevisionCache.Load("openai-key")
+	assert.Equal(t, int64(10), cached, "the cached revision must not regress")
+}
+
+func TestApplySecretUpdatedPayload_NewerRevision_AppliedAndRevisionAdvanced(t *testing.T) {
+	syncer := newMockSecretSyncer()
+	c := stubClient(syncer)
+	c.secretRevisionCache.Store("openai-key", int64(5))
+
+	payload := SecretUpdatedEventPayload{Handle: "openai-key", Hash: "hmac-sha256:new", Revision: 10}
+	fetchValue := func(handle string) (string, error) { return "sk-rotated", nil }
+
+	c.applySecretUpdatedPayload(payload, slog.Default(), fetchValue)
+
+	assert.Equal(t, "sk-rotated", syncer.upserted["openai-key"])
+	cached, _ := c.secretRevisionCache.Load("openai-key")
+	assert.Equal(t, int64(10), cached)
+}
+
+func TestApplySecretUpdatedPayload_EqualRevision_StillApplied(t *testing.T) {
+	// A redelivery of the exact same event (e.g. an at-least-once retry from the
+	// EventHub) must still be applied — only strictly older revisions are stale.
+	syncer := newMockSecretSyncer()
+	c := stubClient(syncer)
+	c.secretRevisionCache.Store("openai-key", int64(10))
+
+	payload := SecretUpdatedEventPayload{Handle: "openai-key", Hash: "hmac-sha256:new", Revision: 10}
+	fetchValue := func(handle string) (string, error) { return "sk-rotated", nil }
+
+	c.applySecretUpdatedPayload(payload, slog.Default(), fetchValue)
+
+	assert.Equal(t, "sk-rotated", syncer.upserted["openai-key"], "redelivery of the same revision must still apply")
+}
+
+func TestHandleSecretDeletedEvent_StaleRevision_NotEvicted(t *testing.T) {
+	syncer := newMockSecretSyncer()
+	syncer.upserted["old-key"] = "sk-active"
+	c := stubClient(syncer)
+	populateCache(c, map[string]string{"old-key": "hmac-sha256:active"})
+	c.secretRevisionCache.Store("old-key", int64(10))
+
+	event := map[string]interface{}{
+		"type":          "secret.deleted",
+		"correlationId": "corr-stale",
+		"payload":       map[string]interface{}{"handle": "old-key", "revision": float64(5)},
+	}
+
+	c.handleSecretDeletedEvent(event)
+
+	assert.Empty(t, syncer.deleted, "a stale deletion must not evict")
+	assert.Contains(t, syncer.upserted, "old-key")
+	_, ok := c.secretHashCache.Load("old-key")
+	assert.True(t, ok, "hash cache must be left intact for a stale deletion")
+}
+
+// TestSecretLifecycle_DeleteThenRecreate_StaleDeleteRedelivery_DoesNotEvict covers
+// the exact sequence a reviewer flagged as unprotected: update (rev 1) establishes the
+// secret, delete (rev 2) evicts it, the same handle is reused by a freshly created
+// secret (rev 3), and then the rev-2 deletion is redelivered late (a realistic outcome
+// of common/eventhub's poll-based, at-least-once delivery with no cross-replica
+// ordering guarantee). The redelivered deletion must be rejected as stale rather than
+// evicting the new secret.
+func TestSecretLifecycle_DeleteThenRecreate_StaleDeleteRedelivery_DoesNotEvict(t *testing.T) {
+	syncer := newMockSecretSyncer()
+	c := stubClient(syncer)
+
+	// rev 1: initial update establishes the secret.
+	updatePayload := func(revision int64, value string) SecretUpdatedEventPayload {
+		return SecretUpdatedEventPayload{Handle: "openai-key", DisplayName: "OpenAI Key", Hash: "hmac-sha256:" + value, Revision: revision}
+	}
+	fetchValue := func(value string) func(string) (string, error) {
+		return func(string) (string, error) { return value, nil }
+	}
+
+	c.applySecretUpdatedPayload(updatePayload(1, "v1"), slog.Default(), fetchValue("sk-v1"))
+	assert.Equal(t, "sk-v1", syncer.upserted["openai-key"])
+
+	// rev 2: deletion evicts the secret.
+	deleteEvent := func(revision int) map[string]interface{} {
+		return map[string]interface{}{
+			"type":          "secret.deleted",
+			"correlationId": "corr-delete",
+			"payload":       map[string]interface{}{"handle": "openai-key", "revision": float64(revision)},
+		}
+	}
+	c.handleSecretDeletedEvent(deleteEvent(2))
+	assert.NotContains(t, syncer.upserted, "openai-key", "secret must be evicted after deletion")
+
+	// rev 3: the handle is reused by a freshly created secret.
+	c.applySecretUpdatedPayload(updatePayload(3, "v3"), slog.Default(), fetchValue("sk-v3"))
+	assert.Equal(t, "sk-v3", syncer.upserted["openai-key"], "the new secret under the reused handle must be applied")
+
+	// The rev-2 deletion is redelivered (late retry / at-least-once redelivery). It
+	// must be recognized as stale relative to rev 3 and must NOT re-evict.
+	c.handleSecretDeletedEvent(deleteEvent(2))
+	assert.Equal(t, "sk-v3", syncer.upserted["openai-key"], "a stale, redelivered deletion must not evict the newly created secret")
+
+	cached, ok := c.secretRevisionCache.Load("openai-key")
+	assert.True(t, ok)
+	assert.Equal(t, int64(3), cached, "cached revision must remain at the new secret's revision")
+}
+
+// ---------------------------------------------------------------------------
+// Revision precision through the real WebSocket JSON decode (handleMessage)
+//
+// These go through client.handleMessage with raw JSON bytes rather than a
+// hand-built map[string]interface{}, because the precision bug they guard
+// against lives specifically in that decode step: handleMessage used to parse
+// the message with plain json.Unmarshal into map[string]interface{}, which
+// decodes JSON numbers as float64. float64 has ~53 bits of integer precision,
+// but a UnixNano revision is ~60 bits, so two revisions within ~256ns of each
+// other at that magnitude decoded to the identical value — verified empirically
+// before the fix. A test built from Go int64 literals instead of raw JSON text
+// would never exercise that decode path and would pass whether or not the bug
+// was present.
+// ---------------------------------------------------------------------------
+
+func deletedMessage(handle string, revision int64) []byte {
+	return []byte(fmt.Sprintf(
+		`{"type":"secret.deleted","correlationId":"corr-precision","payload":{"handle":%q,"revision":%d}}`,
+		handle, revision,
+	))
+}
+
+func TestHandleMessage_SecretDeleted_AdjacentRevisions_ReorderedStaleRejected(t *testing.T) {
+	syncer := newMockSecretSyncer()
+	syncer.upserted["openai-key"] = "sk-active"
+	c := stubClient(syncer)
+	populateCache(c, map[string]string{"openai-key": "hmac-sha256:active"})
+
+	// Realistic UnixNano magnitude (~10^18). newRevision and staleRevision differ
+	// by 100ns — inside the ~256ns window that collided under the float64 bug.
+	const newRevision int64 = 1735900000123456700
+	const staleRevision int64 = newRevision - 100
+
+	c.handleMessage(websocket.TextMessage, deletedMessage("openai-key", newRevision))
+	assert.Equal(t, []string{"openai-key"}, syncer.deleted, "the newer deletion must evict")
+
+	// The older, adjacent revision arrives late (reordered/redelivered). It must
+	// be rejected as stale, not re-applied.
+	c.handleMessage(websocket.TextMessage, deletedMessage("openai-key", staleRevision))
+	assert.Equal(t, []string{"openai-key"}, syncer.deleted,
+		"a stale reordered deletion adjacent in time to the last-applied one must not evict again")
+
+	cached, ok := c.secretRevisionCache.Load("openai-key")
+	assert.True(t, ok)
+	assert.Equal(t, newRevision, cached, "cached revision must remain exactly the newer value, not a float64-rounded approximation")
+}
+
+func TestHandleMessage_SecretDeleted_EqualRevisionRedelivery_StillApplied(t *testing.T) {
+	syncer := newMockSecretSyncer()
+	syncer.upserted["openai-key"] = "sk-active"
+	c := stubClient(syncer)
+	populateCache(c, map[string]string{"openai-key": "hmac-sha256:active"})
+
+	const revision int64 = 1735900000123456700
+
+	c.handleMessage(websocket.TextMessage, deletedMessage("openai-key", revision))
+	c.handleMessage(websocket.TextMessage, deletedMessage("openai-key", revision))
+
+	assert.Equal(t, []string{"openai-key", "openai-key"}, syncer.deleted,
+		"an exact redelivery of the same revision must still be applied (idempotent), not rejected as stale")
+}
+
+// ---------------------------------------------------------------------------
+// Poll-based eviction (evictSecretsNotIn, and its wiring into
+// syncSecretsBulk / syncSecretsIncremental)
+//
+// A gateway that is disconnected at the moment a secret is deleted only learns
+// about it via the live secret.deleted event if it's connected when the event is
+// broadcast. evictSecretsNotIn is the poll-based recovery path: on the next
+// reconnect/poll it diffs the Platform API response against secretHashCache and
+// evicts anything no longer ACTIVE, using the same secretSyncer.Delete +
+// secretHashCache.Delete calls handleSecretDeletedEvent uses for the live path.
+// ---------------------------------------------------------------------------
+
+func TestEvictSecretsNotIn_HandleMissingFromActiveSet_Evicted(t *testing.T) {
+	syncer := newMockSecretSyncer()
+	c := stubClient(syncer)
+	populateCache(c, map[string]string{"gone-handle": "hmac-sha256:old"})
+
+	evicted := c.evictSecretsNotIn(map[string]struct{}{})
+
+	assert.Equal(t, 1, evicted)
+	assert.Equal(t, []string{"gone-handle"}, syncer.deleted)
+	_, ok := c.secretHashCache.Load("gone-handle")
+	assert.False(t, ok, "evicted handle must be removed from secretHashCache")
+}
+
+func TestEvictSecretsNotIn_HandleFlippedNonActive_Evicted(t *testing.T) {
+	// A handle still present in the Platform API response but no longer ACTIVE
+	// (e.g. DEPRECATED) is represented the same way as a missing handle: it's
+	// simply absent from activeHandles, since the caller only adds ACTIVE handles.
+	syncer := newMockSecretSyncer()
+	c := stubClient(syncer)
+	populateCache(c, map[string]string{"deprecated-handle": "hmac-sha256:x"})
+
+	evicted := c.evictSecretsNotIn(map[string]struct{}{})
+
+	assert.Equal(t, 1, evicted)
+	assert.True(t, syncer.wasDeleted("deprecated-handle"))
+	_, ok := c.secretHashCache.Load("deprecated-handle")
+	assert.False(t, ok)
+}
+
+func TestEvictSecretsNotIn_UnrelatedActiveHandle_LeftAlone(t *testing.T) {
+	syncer := newMockSecretSyncer()
+	c := stubClient(syncer)
+	populateCache(c, map[string]string{"stable-handle": "hmac-sha256:stable"})
+
+	evicted := c.evictSecretsNotIn(map[string]struct{}{"stable-handle": {}})
+
+	assert.Equal(t, 0, evicted)
+	assert.Empty(t, syncer.deleted)
+	cached, ok := c.secretHashCache.Load("stable-handle")
+	require.True(t, ok, "unrelated ACTIVE, unchanged handle must remain cached")
+	assert.Equal(t, "hmac-sha256:stable", cached)
+}
+
+func TestEvictSecretsNotIn_MixedSet(t *testing.T) {
+	syncer := newMockSecretSyncer()
+	c := stubClient(syncer)
+	populateCache(c, map[string]string{
+		"gone-handle":       "hmac-sha256:old",
+		"deprecated-handle": "hmac-sha256:x",
+		"stable-handle":     "hmac-sha256:stable",
+	})
+
+	evicted := c.evictSecretsNotIn(map[string]struct{}{"stable-handle": {}})
+
+	assert.Equal(t, 2, evicted)
+	assert.True(t, syncer.wasDeleted("gone-handle"))
+	assert.True(t, syncer.wasDeleted("deprecated-handle"))
+	assert.False(t, syncer.wasDeleted("stable-handle"))
+
+	_, stableOk := c.secretHashCache.Load("stable-handle")
+	assert.True(t, stableOk)
+}
+
+func TestEvictSecretsNotIn_DeleteError_HashCacheNotCleared(t *testing.T) {
+	syncer := newMockSecretSyncer()
+	syncer.deleteErr = errors.New("storage locked")
+	c := stubClient(syncer)
+	populateCache(c, map[string]string{"gone-handle": "hmac-sha256:old"})
+
+	evicted := c.evictSecretsNotIn(map[string]struct{}{})
+
+	assert.Equal(t, 1, evicted, "the handle is still counted as stale even though eviction failed")
+	_, ok := c.secretHashCache.Load("gone-handle")
+	assert.True(t, ok, "hash cache must be left intact so a later poll retries the eviction")
+}
+
+// wasDeleted reports whether Delete was called for handle, for readability in
+// the mixed-set assertions above.
+func (m *mockSecretSyncer) wasDeleted(handle string) bool {
+	for _, h := range m.deleted {
+		if h == handle {
+			return true
+		}
+	}
+	return false
+}
+
+// --- End-to-end coverage through the real HTTP-backed sync methods ---
+
+// platformSecretJSON mirrors PlatformSecretMeta's wire shape for building test
+// server responses.
+type platformSecretJSON struct {
+	ID          string  `json:"uuid"`
+	Handle      string  `json:"handle"`
+	DisplayName string  `json:"name"`
+	Hash        string  `json:"hash"`
+	Status      string  `json:"status"`
+	Value       *string `json:"value,omitempty"`
+}
+
+// newSecretSyncHTTPClient spins up an httptest TLS server serving
+// GET /api/internal/v1/secrets (and, if valueHandler is non-nil,
+// GET /api/internal/v1/secrets/{handle}/value) and returns a *Client wired to
+// it via a real *utils.APIUtilsService, with a mockSecretSyncer installed.
+func newSecretSyncHTTPClient(t *testing.T, listHandler http.HandlerFunc, valueHandler http.HandlerFunc) (*Client, *mockSecretSyncer) {
+	t.Helper()
+
+	mux := http.NewServeMux()
+	mux.HandleFunc("/api/internal/v1/secrets", listHandler)
+	if valueHandler != nil {
+		mux.HandleFunc("/api/internal/v1/secrets/", func(w http.ResponseWriter, r *http.Request) {
+			if strings.HasSuffix(r.URL.Path, "/value") {
+				valueHandler(w, r)
+				return
+			}
+			http.NotFound(w, r)
+		})
+	}
+
+	server := httptest.NewTLSServer(mux)
+	t.Cleanup(server.Close)
+
+	syncer := newMockSecretSyncer()
+	c := stubClient(syncer)
+	c.apiUtilsService = utils.NewAPIUtilsService(utils.PlatformAPIConfig{
+		BaseURL:            server.URL + "/api/internal/v1",
+		InsecureSkipVerify: true,
+	}, slog.Default())
+
+	return c, syncer
+}
+
+func writeSecretsList(t *testing.T, w http.ResponseWriter, secrets []platformSecretJSON) {
+	t.Helper()
+	w.Header().Set("Content-Type", "application/json")
+	require.NoError(t, json.NewEncoder(w).Encode(map[string]any{"list": secrets, "count": len(secrets)}))
+}
+
+// TestSyncSecretsIncremental_EndToEnd_EvictsHandleMissingFromResponse proves the
+// real syncSecretsIncremental wiring — not just evictSecretsNotIn in isolation —
+// evicts a handle that was cached ACTIVE previously but has since been
+// permanently deleted (absent from the poll response entirely).
+func TestSyncSecretsIncremental_EndToEnd_EvictsHandleMissingFromResponse(t *testing.T) {
+	c, syncer := newSecretSyncHTTPClient(t, func(w http.ResponseWriter, r *http.Request) {
+		writeSecretsList(t, w, []platformSecretJSON{})
+	}, nil)
+	populateCache(c, map[string]string{"gone-handle": "hmac-sha256:old"})
+
+	c.syncSecretsIncremental()
+
+	assert.True(t, syncer.wasDeleted("gone-handle"))
+	_, ok := c.secretHashCache.Load("gone-handle")
+	assert.False(t, ok)
+}
+
+// TestSyncSecretsIncremental_EndToEnd_EvictsHandleFlippedToDeprecated proves a
+// handle still present in the response but flipped to DEPRECATED is evicted.
+func TestSyncSecretsIncremental_EndToEnd_EvictsHandleFlippedToDeprecated(t *testing.T) {
+	c, syncer := newSecretSyncHTTPClient(t, func(w http.ResponseWriter, r *http.Request) {
+		writeSecretsList(t, w, []platformSecretJSON{
+			{ID: "uuid-1", Handle: "deprecated-handle", Hash: "hmac-sha256:x", Status: "DEPRECATED"},
+		})
+	}, nil)
+	populateCache(c, map[string]string{"deprecated-handle": "hmac-sha256:x"})
+
+	c.syncSecretsIncremental()
+
+	assert.True(t, syncer.wasDeleted("deprecated-handle"))
+	_, ok := c.secretHashCache.Load("deprecated-handle")
+	assert.False(t, ok)
+}
+
+// TestSyncSecretsIncremental_EndToEnd_UnrelatedActiveUnchangedHandleLeftAlone
+// proves a cached handle that's still ACTIVE with an unchanged hash is neither
+// evicted nor re-upserted.
+func TestSyncSecretsIncremental_EndToEnd_UnrelatedActiveUnchangedHandleLeftAlone(t *testing.T) {
+	c, syncer := newSecretSyncHTTPClient(t, func(w http.ResponseWriter, r *http.Request) {
+		writeSecretsList(t, w, []platformSecretJSON{
+			{ID: "uuid-2", Handle: "stable-handle", Hash: "hmac-sha256:stable", Status: "ACTIVE"},
+		})
+	}, nil)
+	populateCache(c, map[string]string{"stable-handle": "hmac-sha256:stable"})
+
+	c.syncSecretsIncremental()
+
+	assert.False(t, syncer.wasDeleted("stable-handle"))
+	assert.NotContains(t, syncer.upserted, "stable-handle", "unchanged hash must be skipped, not re-upserted")
+	cached, ok := c.secretHashCache.Load("stable-handle")
+	require.True(t, ok)
+	assert.Equal(t, "hmac-sha256:stable", cached)
+}
+
+// TestSyncSecretsIncremental_EndToEnd_MixedBatch exercises deletion, deprecation,
+// an untouched ACTIVE handle, and a changed ACTIVE handle together in one poll.
+func TestSyncSecretsIncremental_EndToEnd_MixedBatch(t *testing.T) {
+	c, syncer := newSecretSyncHTTPClient(t,
+		func(w http.ResponseWriter, r *http.Request) {
+			writeSecretsList(t, w, []platformSecretJSON{
+				{ID: "uuid-2", Handle: "stable-handle", Hash: "hmac-sha256:stable", Status: "ACTIVE"},
+				{ID: "uuid-3", Handle: "deprecated-handle", Hash: "hmac-sha256:x", Status: "DEPRECATED"},
+				{ID: "uuid-4", Handle: "changed-handle", Hash: "hmac-sha256:new", Status: "ACTIVE"},
+			})
+		},
+		func(w http.ResponseWriter, r *http.Request) {
+			w.Header().Set("Content-Type", "application/json")
+			_ = json.NewEncoder(w).Encode(map[string]string{"value": "new-plaintext"})
+		},
+	)
+	populateCache(c, map[string]string{
+		"stable-handle":     "hmac-sha256:stable",
+		"deprecated-handle": "hmac-sha256:x",
+		"gone-handle":       "hmac-sha256:old", // absent from the response entirely
+		"changed-handle":    "hmac-sha256:old",
+	})
+
+	c.syncSecretsIncremental()
+
+	assert.True(t, syncer.wasDeleted("gone-handle"))
+	assert.True(t, syncer.wasDeleted("deprecated-handle"))
+	assert.False(t, syncer.wasDeleted("stable-handle"))
+	assert.False(t, syncer.wasDeleted("changed-handle"))
+
+	_, goneOk := c.secretHashCache.Load("gone-handle")
+	assert.False(t, goneOk)
+	_, depOk := c.secretHashCache.Load("deprecated-handle")
+	assert.False(t, depOk)
+
+	changedCached, ok := c.secretHashCache.Load("changed-handle")
+	require.True(t, ok)
+	assert.Equal(t, "hmac-sha256:new", changedCached)
+	assert.Equal(t, "new-plaintext", syncer.upserted["changed-handle"])
+}
+
+// TestSyncSecretsBulk_EndToEnd_EvictsPreExistingCacheNotInResponse covers the
+// (mostly defensive) eviction path in the bulk/startup sync: any handle already
+// in secretHashCache before the bulk fetch runs that the Platform API no longer
+// returns as ACTIVE gets evicted too, for consistency with the incremental path.
+func TestSyncSecretsBulk_EndToEnd_EvictsPreExistingCacheNotInResponse(t *testing.T) {
+	value := "plaintext-value"
+	c, syncer := newSecretSyncHTTPClient(t, func(w http.ResponseWriter, r *http.Request) {
+		writeSecretsList(t, w, []platformSecretJSON{
+			{ID: "uuid-1", Handle: "active-handle", Hash: "hmac-sha256:1", Status: "ACTIVE", Value: &value},
+		})
+	}, nil)
+	populateCache(c, map[string]string{"stale-handle": "hmac-sha256:old"})
+
+	c.syncSecretsBulk()
+
+	assert.True(t, syncer.wasDeleted("stale-handle"))
+	_, staleOk := c.secretHashCache.Load("stale-handle")
+	assert.False(t, staleOk)
+
+	activeCached, ok := c.secretHashCache.Load("active-handle")
+	require.True(t, ok)
+	assert.Equal(t, "hmac-sha256:1", activeCached)
+}

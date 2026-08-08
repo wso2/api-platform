@@ -47,6 +47,7 @@ export interface SecretMetadata {
   type: SecretType;
   provider: string;
   status: SecretStatus;
+  createdBy?: string;
   createdAt: string;
   updatedAt: string;
 }
@@ -121,6 +122,15 @@ export async function getSecret(handle: string): Promise<SecretMetadata> {
 }
 
 /**
+ * Returns the resources (REST APIs, LLM providers, LLM proxies, MCP proxies) that
+ * currently reference this secret via a {{ secret "handle" }} placeholder.
+ */
+export async function getSecretUsages(handle: string): Promise<SecretReference[]> {
+  const response = await get<{ references: SecretReference[] }>(`/secrets/${handle}/usages`);
+  return response.references ?? [];
+}
+
+/**
  * Rotates a secret's value. All {{ secret "handle" }} references remain valid —
  * the gateway picks up the new value on its next sync cycle.
  * Sent as multipart/form-data; the new plaintext value is never returned.
@@ -131,7 +141,7 @@ export async function updateSecret(
 ): Promise<UpdateSecretResponse> {
   const form = new FormData();
   form.append('value', request.value);
-  if (request.name) form.append('name', request.name);
+  if (request.name) form.append('displayName', request.name);
   if (request.description) form.append('description', request.description);
   return putForm<UpdateSecretResponse>(`/secrets/${handle}`, form);
 }

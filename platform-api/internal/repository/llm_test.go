@@ -149,7 +149,7 @@ func TestLLMProviderRepoDeleteRemovesCustomPolicyUsagesWithoutForeignKeys(t *tes
 		t.Fatalf("DeleteCustomPolicyIfUnused() before provider delete = nil error, want PolicyInUse")
 	}
 
-	if err := providerRepo.Delete(provider.ID, orgUUID); err != nil {
+	if _, err := providerRepo.Delete(provider.ID, orgUUID); err != nil {
 		t.Fatalf("delete provider: %v", err)
 	}
 

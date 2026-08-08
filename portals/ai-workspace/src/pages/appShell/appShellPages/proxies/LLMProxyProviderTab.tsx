@@ -24,7 +24,6 @@ import {
   MenuItem,
   Select,
   Stack,
-  TextField,
   Typography,
 } from '@wso2/oxygen-ui';
 import { useLLMProviders } from '../../../../contexts/llmProvider';
@@ -36,6 +35,7 @@ import { logger } from '../../../../utils/logger';
 import useAIWorkspaceSnackbar from '../../../../hooks/aiWorkspaceSnackbar';
 import type { LLMProvider, ProxyApiKeySecurity } from '../../../../utils/types';
 import { FormattedMessage } from 'react-intl';
+import SecretValueField from '../../../../Components/common/SecretValueField';
 
 /**
  * Provider tab – lets the user select / change the LLM Service Provider
@@ -269,13 +269,11 @@ export default function LLMProxyProviderTab() {
                           defaultMessage={'API Key'}
                         />
                       </FormLabel>
-                      <TextField
-                        type="password"
+                      <SecretValueField
                         placeholder="Enter API key"
                         value={apiKey}
                         disabled={isReadOnlyProxy}
-                        onChange={(e) => handleApiKeyChange(e.target.value)}
-                        fullWidth
+                        onChange={handleApiKeyChange}
                       />
                     </FormControl>
                   </Grid>

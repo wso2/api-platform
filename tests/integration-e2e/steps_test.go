@@ -77,6 +77,11 @@ type world struct {
 	policySecretApiID   string // id of the created REST API
 	policySecretContext string // e.g. /e2e-policy-ab12cd34
 	policySecretDepID   string // deploymentId returned when the API is deployed
+
+	// Secret rotation/deletion push-event scenario state (see
+	// secret_lifecycle_steps_test.go). Reuses the restAPISecret* fields above,
+	// populated by the shared rest_api_secret.feature background steps.
+	restAPISecretRotatedValue string // the new plaintext value after rotation
 }
 
 // initializeScenario is invoked by godog for each scenario; it binds a fresh
@@ -138,6 +143,13 @@ func initializeScenario(sc *godog.ScenarioContext) {
 	sc.Step(`^a REST API with a set-headers policy referencing the secret$`, w.aRestAPIWithPolicyReferencingSecret)
 	sc.Step(`^I deploy the policy-secret REST API to the gateway$`, w.deployPolicySecretRestAPI)
 	sc.Step(`^the gateway has the policy-secret REST API configured$`, w.gatewayHasPolicySecretRestAPIConfigured)
+
+	// Secret rotation/deletion push-event steps (secret_lifecycle.feature). The
+	// Given steps are shared with rest_api_secret.feature (registered above).
+	sc.Step(`^I rotate the secret to a new value$`, w.iRotateTheSecretToANewValue)
+	sc.Step(`^the gateway's local copy of the secret has the rotated value$`, w.theGatewaysLocalSecretHasTheRotatedValue)
+	sc.Step(`^I update the REST API to reference a different secret instead$`, w.iUpdateTheRestAPIToReferenceADifferentSecret)
+	sc.Step(`^the gateway evicts the original secret from its local store$`, w.theGatewayEvictsTheOriginalSecretFromItsLocalStore)
 }
 
 // --- Background steps ------------------------------------------------------

@@ -110,6 +110,7 @@ type ControlPlaneClient interface {
 // *secrets.SecretService satisfies this interface.
 type secretSyncer interface {
 	UpsertFromPlatform(handle, displayName, plaintext string) error
+	Delete(handle, correlationID string) error
 }
 
 // WebhookSecretSnapshotRefresher is the extension point through which an
@@ -158,6 +159,7 @@ type Client struct {
 	webhookSecretSnapshotManager WebhookSecretSnapshotRefresher
 	secretSyncer                 secretSyncer
 	secretHashCache              sync.Map // handle → last-known Platform API hash (string)
+	secretRevisionCache          sync.Map // handle → last-applied event Revision (int64); never cleared on evict, so a stale event can't undo a later one
 	eventGatewayHooks            ControlPlaneEventGatewayHooks
 
 	// DP->CP push retry tuning.
@@ -1342,9 +1344,19 @@ func (c *Client) handleMessage(messageType int, message []byte) {
 		return
 	}
 
-	// Parse as generic event to extract type
+	// Parse as generic event to extract type. UseNumber() keeps JSON numbers as
+	// json.Number (exact decimal text) instead of the default float64 — float64
+	// only has ~53 bits of integer precision, which silently rounds a UnixNano
+	// revision (~60 bits) to the nearest ~256ns at this magnitude. Two events for
+	// the same handle within that window would decode to the identical revision,
+	// letting a stale, reordered event's revision compare as "not older" than the
+	// newer one already applied (see isStaleSecretEvent). utils.MapToStruct's own
+	// marshal/unmarshal re-encodes json.Number as the original digits verbatim, so
+	// this one change is sufficient — no downstream struct/comparison needs to change.
 	var event map[string]interface{}
-	if err := json.Unmarshal(message, &event); err != nil {
+	dec := json.NewDecoder(bytes.NewReader(message))
+	dec.UseNumber()
+	if err := dec.Decode(&event); err != nil {
 		c.logger.Error("Failed to parse WebSocket message",
 			slog.Any("error", err),
 			slog.String("message", string(message)),
@@ -1440,6 +1452,10 @@ func (c *Client) handleMessage(messageType int, message []byte) {
 		c.dispatchEventGatewayHook(event["type"], func(h ControlPlaneEventGatewayHooks) { h.HandleWebBrokerAPIDeleted(c, event) })
 	case "application.updated":
 		c.handleApplicationUpdatedEvent(event)
+	case "secret.updated":
+		c.handleSecretUpdatedEvent(event)
+	case "secret.deleted":
+		c.handleSecretDeletedEvent(event)
 	default:
 		c.logger.Info("Received unknown event type (will be processed when handlers are implemented)",
 			slog.String("type", eventType),
@@ -3743,6 +3759,126 @@ func (c *Client) handleSubscriptionPlanDeletedEvent(event map[string]interface{}
 			slog.Any("error", err))
 		return
 	}
+}
+
+// handleSecretUpdatedEvent processes secret.updated events, pushed when a secret is
+// rotated. It re-fetches the plaintext over the authenticated internal secret-value
+// endpoint (the event payload never carries it) and upserts it into local storage, so
+// {{ secret "handle" }} placeholders resolve to the new value immediately instead of
+// waiting for the next reconnect's incremental sync.
+func (c *Client) handleSecretUpdatedEvent(event map[string]interface{}) {
+	baseLogger := c.logger
+	if c.apiUtilsService == nil || c.secretSyncer == nil {
+		baseLogger.Debug("Skipping secret.updated event: secret sync not configured")
+		return
+	}
+
+	var updated SecretUpdatedEvent
+	if err := utils.MapToStruct(event, &updated); err != nil {
+		baseLogger.Error("Failed to parse secret.updated event", slog.Any("error", err))
+		return
+	}
+	payload := updated.Payload
+	if payload.Handle == "" {
+		baseLogger.Error("secret.updated event missing handle")
+		return
+	}
+	logger := baseLogger.With(
+		slog.String("correlation_id", updated.CorrelationID),
+		slog.String("secret_handle", payload.Handle),
+	)
+
+	c.applySecretUpdatedPayload(payload, logger, c.apiUtilsService.FetchPlatformSecretValue)
+}
+
+// applySecretUpdatedPayload is the testable core of handleSecretUpdatedEvent: it
+// fetches the rotated plaintext via fetchValue and upserts it into local storage.
+// Extracted so unit tests can stub fetchValue instead of the concrete
+// *utils.APIUtilsService (mirroring syncSecretsIncrementalFromMetas in
+// sync_secrets_test.go, which works around the same constraint).
+func (c *Client) applySecretUpdatedPayload(payload SecretUpdatedEventPayload, logger *slog.Logger, fetchValue func(handle string) (string, error)) {
+	if c.isStaleSecretEvent(payload.Handle, payload.Revision, logger) {
+		return
+	}
+
+	plaintext, err := fetchValue(payload.Handle)
+	if err != nil {
+		logger.Error("Failed to fetch rotated secret value", slog.Any("error", err))
+		return
+	}
+
+	if err := c.secretSyncer.UpsertFromPlatform(payload.Handle, payload.DisplayName, plaintext); err != nil {
+		logger.Error("Failed to upsert rotated secret", slog.Any("error", err))
+		return
+	}
+
+	c.secretHashCache.Store(payload.Handle, payload.Hash)
+	c.secretRevisionCache.Store(payload.Handle, payload.Revision)
+	logger.Info("Applied secret rotation from secret.updated event")
+}
+
+// isStaleSecretEvent reports whether revision is older than the last revision this
+// gateway already applied for handle. The comparison is strict-less-than so a
+// redelivery of the same event (revision equal to the cached one — e.g. at-least-once
+// retry from the EventHub) still applies normally, preserving existing idempotency.
+// The cache entry is never cleared on eviction (see handleSecretDeletedEvent), so a
+// deletion followed by the same handle being reused by a later create, followed by a
+// stale, redelivered copy of the original deletion, cannot evict the newly created
+// secret: the stale deletion's revision is lower than the new secret's.
+func (c *Client) isStaleSecretEvent(handle string, revision int64, logger *slog.Logger) bool {
+	if cached, ok := c.secretRevisionCache.Load(handle); ok {
+		if lastApplied, ok := cached.(int64); ok && revision < lastApplied {
+			logger.Warn("Ignoring stale secret event",
+				slog.Int64("event_revision", revision),
+				slog.Int64("last_applied_revision", lastApplied),
+			)
+			return true
+		}
+	}
+	return false
+}
+
+// handleSecretDeletedEvent processes secret.deleted events, pushed when a secret is
+// permanently deleted. Deletion only succeeds once no artifact — current config or
+// any deployed snapshot, on any gateway — still references the handle, so evicting
+// the local copy here is always safe.
+func (c *Client) handleSecretDeletedEvent(event map[string]interface{}) {
+	baseLogger := c.logger
+	if c.secretSyncer == nil {
+		baseLogger.Debug("Skipping secret.deleted event: secret sync not configured")
+		return
+	}
+
+	var deleted SecretDeletedEvent
+	if err := utils.MapToStruct(event, &deleted); err != nil {
+		baseLogger.Error("Failed to parse secret.deleted event", slog.Any("error", err))
+		return
+	}
+	payload := deleted.Payload
+	if payload.Handle == "" {
+		baseLogger.Error("secret.deleted event missing handle")
+		return
+	}
+	logger := baseLogger.With(
+		slog.String("correlation_id", deleted.CorrelationID),
+		slog.String("secret_handle", payload.Handle),
+	)
+
+	if c.isStaleSecretEvent(payload.Handle, payload.Revision, logger) {
+		return
+	}
+
+	if err := c.secretSyncer.Delete(payload.Handle, deleted.CorrelationID); err != nil {
+		logger.Warn("Failed to evict deleted secret from local store", slog.Any("error", err))
+		return
+	}
+	c.secretHashCache.Delete(payload.Handle)
+	// Deliberately Store, not Delete: a later secret.updated for the same handle (the
+	// handle reused by a newly created secret) must still be able to detect a
+	// subsequently-redelivered copy of *this* deletion event as stale. Clearing the
+	// cache entry here would let that stale redelivery through and evict the new secret.
+	c.secretRevisionCache.Store(payload.Handle, payload.Revision)
+	logger.Info("Evicted deleted secret from local store")
 }
 
 // setState updates the connection state

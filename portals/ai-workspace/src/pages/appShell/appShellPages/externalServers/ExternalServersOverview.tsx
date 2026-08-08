@@ -58,8 +58,6 @@ import {
   Clock,
   Copy,
   Edit,
-  Eye,
-  EyeOff,
   Trash2,
 } from '@wso2/oxygen-ui-icons-react';
 import { FormattedMessage } from 'react-intl';
@@ -110,6 +108,7 @@ import {
 } from '../../../../utils/artifactDeletion';
 import { useAppAuth } from '../../../../contexts/AppAuthContext';
 import { NO_PERMISSION_TOOLTIP, SCOPES } from '../../../../auth/permissions';
+import SecretValueField from '../../../../Components/common/SecretValueField';
 
 function getInitials(name: string): string {
   const words = name.trim().split(/\s+/);
@@ -261,7 +260,6 @@ export default function ExternalServersOverview(): JSX.Element {
   const [endpointUrl, setEndpointUrl] = useState('');
   const [authHeaderName, setAuthHeaderName] = useState('');
   const [authHeaderValue, setAuthHeaderValue] = useState('');
-  const [showAuthHeaderValue, setShowAuthHeaderValue] = useState(false);
   const [isCredentialMasked, setIsCredentialMasked] = useState(false);
   const [hasCredentialChanged, setHasCredentialChanged] = useState(false);
   const [isRefetching, setIsRefetching] = useState(false);
@@ -1306,9 +1304,7 @@ export default function ExternalServersOverview(): JSX.Element {
                   <Grid size={{ xs: 12, sm: 6 }}>
                     <FormControl fullWidth>
                       <FormLabel>Value</FormLabel>
-                      <TextField
-                        fullWidth
-                        type={showAuthHeaderValue ? 'text' : 'password'}
+                      <SecretValueField
                         value={authHeaderValue}
                         disabled={isReadOnlyServer}
                         onFocus={() => {
@@ -1318,38 +1314,11 @@ export default function ExternalServersOverview(): JSX.Element {
                             setHasCredentialChanged(false);
                           }
                         }}
-                        onChange={(event) => {
-                          setAuthHeaderValue(event.target.value);
+                        onChange={(nextValue) => {
+                          setAuthHeaderValue(nextValue);
                           setHasCredentialChanged(true);
                         }}
-                        slotProps={{
-                          htmlInput: {
-                            'data-testid': 'backend-connection-auth-value',
-                          },
-                          input: {
-                            endAdornment: (
-                              <InputAdornment position="end">
-                                <IconButton
-                                  size="small"
-                                  onClick={() =>
-                                    setShowAuthHeaderValue((prev) => !prev)
-                                  }
-                                  aria-label={
-                                    showAuthHeaderValue
-                                      ? 'Hide header value'
-                                      : 'Show header value'
-                                  }
-                                >
-                                  {showAuthHeaderValue ? (
-                                    <EyeOff size={18} />
-                                  ) : (
-                                    <Eye size={18} />
-                                  )}
-                                </IconButton>
-                              </InputAdornment>
-                            ),
-                          },
-                        }}
+                        data-testid="backend-connection-auth-value"
                       />
                     </FormControl>
                   </Grid>

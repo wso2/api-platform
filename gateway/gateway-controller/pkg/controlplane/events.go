@@ -399,6 +399,46 @@ type SubscriptionPlanDeletedEvent struct {
 	CorrelationID string                              `json:"correlationId"`
 }
 
+// SecretUpdatedEventPayload represents the payload of a secret.updated event, fired
+// when a secret is rotated. It never carries the plaintext value — Hash is the
+// HMAC-SHA256 change-detection digest, safe to transmit since it cannot be reversed
+// into the plaintext. The receiving handler fetches the fresh plaintext separately
+// over the authenticated internal secret-value endpoint.
+type SecretUpdatedEventPayload struct {
+	Handle      string `json:"handle"`
+	DisplayName string `json:"name"`
+	Hash        string `json:"hash"`
+	// Revision orders events for the same handle so a redelivered or reordered
+	// event cannot undo a change already applied locally. See Client.secretRevisionCache.
+	Revision int64 `json:"revision"`
+}
+
+// SecretUpdatedEvent represents the complete secret.updated event.
+type SecretUpdatedEvent struct {
+	Type          string                    `json:"type"`
+	Payload       SecretUpdatedEventPayload `json:"payload"`
+	Timestamp     string                    `json:"timestamp"`
+	CorrelationID string                    `json:"correlationId"`
+}
+
+// SecretDeletedEventPayload represents the payload of a secret.deleted event,
+// fired when a secret is permanently deleted.
+type SecretDeletedEventPayload struct {
+	Handle string `json:"handle"`
+	// Revision — see SecretUpdatedEventPayload.Revision. Compared against the same
+	// cache so a late deletion cannot evict a secret that was recreated under the
+	// same handle after it.
+	Revision int64 `json:"revision"`
+}
+
+// SecretDeletedEvent represents the complete secret.deleted event.
+type SecretDeletedEvent struct {
+	Type          string                    `json:"type"`
+	Payload       SecretDeletedEventPayload `json:"payload"`
+	Timestamp     string                    `json:"timestamp"`
+	CorrelationID string                    `json:"correlationId"`
+}
+
 // ApplicationKeyMappingPayload represents a single application to API key mapping entry.
 type ApplicationKeyMappingPayload struct {
 	ApiKeyUuid string `json:"apiKeyUuid"`

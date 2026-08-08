@@ -31,10 +31,12 @@ type CreateSecretRequest struct {
 
 // UpdateSecretRequest is the request body for PUT /api/v0.9/secrets/{secretId}.
 // Accepts multipart/form-data to support file-based secret values in future.
+// Value is optional: an empty Value updates only DisplayName/Description without
+// rotating the underlying credential or reactivating a deprecated secret.
 type UpdateSecretRequest struct {
 	DisplayName string `form:"displayName"`
 	Description string `form:"description"`
-	Value       string `form:"value" binding:"required"`
+	Value       string `form:"value"`
 }
 
 // SecretResponse is returned on POST and PUT.
@@ -100,5 +102,11 @@ type SecretReferenceDTO struct {
 
 // SecretInUseDetails is the `details` payload for a SECRET_IN_USE error.
 type SecretInUseDetails struct {
+	References []SecretReferenceDTO `json:"references"`
+}
+
+// SecretUsagesResponse is returned by GET /api/v0.9/secrets/{secretId}/usages —
+// the resources that currently reference the secret.
+type SecretUsagesResponse struct {
 	References []SecretReferenceDTO `json:"references"`
 }

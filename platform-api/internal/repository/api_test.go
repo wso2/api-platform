@@ -86,7 +86,7 @@ func TestAPIRepo_CreateAndRead(t *testing.T) {
 		t.Fatalf("CreateAPI failed: %v", err)
 	}
 	defer func() {
-		if err := repo.DeleteAPI(api.ID, orgUUID); err != nil {
+		if _, err := repo.DeleteAPI(api.ID, orgUUID); err != nil {
 			t.Errorf("DeleteAPI cleanup failed: %v", err)
 		}
 	}()
@@ -152,7 +152,7 @@ func TestAPIRepo_CreateAPI_SetsUpdatedBy(t *testing.T) {
 		t.Fatalf("CreateAPI failed: %v", err)
 	}
 	defer func() {
-		if err := repo.DeleteAPI(api.ID, orgUUID); err != nil {
+		if _, err := repo.DeleteAPI(api.ID, orgUUID); err != nil {
 			t.Errorf("DeleteAPI cleanup failed: %v", err)
 		}
 	}()
@@ -282,7 +282,7 @@ func TestAPIRepo_Update(t *testing.T) {
 		t.Fatalf("CreateAPI failed: %v", err)
 	}
 	defer func() {
-		if err := repo.DeleteAPI(api.ID, orgUUID); err != nil {
+		if _, err := repo.DeleteAPI(api.ID, orgUUID); err != nil {
 			t.Errorf("DeleteAPI cleanup failed: %v", err)
 		}
 	}()
@@ -353,7 +353,7 @@ func TestAPIRepo_Delete(t *testing.T) {
 		t.Fatalf("CreateAPI failed: %v", err)
 	}
 
-	if err := repo.DeleteAPI(api.ID, orgUUID); err != nil {
+	if _, err := repo.DeleteAPI(api.ID, orgUUID); err != nil {
 		t.Fatalf("DeleteAPI failed: %v", err)
 	}
 
@@ -434,7 +434,7 @@ func TestAPIRepo_DeleteAPIRemovesCustomPolicyUsagesWithoutForeignKeys(t *testing
 		t.Fatalf("DeleteCustomPolicyIfUnused() before API delete = nil error, want PolicyInUse")
 	}
 
-	if err := repo.DeleteAPI(api.ID, orgUUID); err != nil {
+	if _, err := repo.DeleteAPI(api.ID, orgUUID); err != nil {
 		t.Fatalf("DeleteAPI failed: %v", err)
 	}
 
@@ -481,7 +481,7 @@ func TestAPIRepo_CheckAPIExistsByNameAndVersionInOrganization(t *testing.T) {
 		t.Fatalf("CreateAPI failed: %v", err)
 	}
 	defer func() {
-		if err := repo.DeleteAPI(api.ID, orgUUID); err != nil {
+		if _, err := repo.DeleteAPI(api.ID, orgUUID); err != nil {
 			t.Errorf("DeleteAPI cleanup failed: %v", err)
 		}
 	}()
@@ -541,7 +541,7 @@ func TestAPIRepo_CheckAPIExistsByHandleInOrganization(t *testing.T) {
 		t.Fatalf("CreateAPI failed: %v", err)
 	}
 	defer func() {
-		if err := repo.DeleteAPI(api.ID, orgUUID); err != nil {
+		if _, err := repo.DeleteAPI(api.ID, orgUUID); err != nil {
 			t.Errorf("DeleteAPI cleanup failed: %v", err)
 		}
 	}()
@@ -601,7 +601,7 @@ func TestAPIRepo_CreateSetsArtifactKind(t *testing.T) {
 		t.Fatalf("CreateAPI failed: %v", err)
 	}
 	t.Cleanup(func() {
-		if err := repo.DeleteAPI(api.ID, orgUUID); err != nil {
+		if _, err := repo.DeleteAPI(api.ID, orgUUID); err != nil {
 			t.Errorf("DeleteAPI cleanup failed: %v", err)
 		}
 	})
@@ -697,7 +697,7 @@ func TestAPIRepo_CreateAndRead_FullConfiguration(t *testing.T) {
 		t.Fatalf("CreateAPI failed: %v", err)
 	}
 	defer func() {
-		if err := repo.DeleteAPI(api.ID, orgUUID); err != nil {
+		if _, err := repo.DeleteAPI(api.ID, orgUUID); err != nil {
 			t.Errorf("DeleteAPI cleanup failed: %v", err)
 		}
 	}()

@@ -92,9 +92,10 @@ Or via make (from `platform-api/`): `make e2e`, `make e2e-all-dbs`.
   each run, so a rotating secret works either way.
 - `E2E_TAGS=@smoke` runs a tag subset (other tags: `@secured`, `@multigateway`,
   `@devportal`, `@lifecycle` for the credential-lifecycle scenario — run it alone
-  with `E2E_TAGS="@devportal && @lifecycle"` —, and the on-demand secret fetch
+  with `E2E_TAGS="@devportal && @lifecycle"` —, the on-demand secret fetch
   scenarios `@llm_provider`, `@llm_proxy`, `@mcp_proxy`, `@rest_api_secret` and
-  `@policy_secret`). The `@multigateway` and `@devportal` scenarios run only on the
+  `@policy_secret`, and `@secret_lifecycle` for the secret rotation/deletion push-event
+  scenarios). The `@multigateway` and `@devportal` scenarios run only on the
   postgres stack (the only one wired with a second gateway and the developer
   portal) and are otherwise skipped automatically.
 - `PA_HOST_PORT` / `GW_HTTP_PORT` / `GW2_HTTP_PORT` / `AP_HOST_PORT` override the
@@ -258,6 +259,27 @@ resolution keeps the artifact from ever rendering, so it never shows up).
     fields must be major-only (e.g. `"v1"`) — the gateway-controller resolves that
     against the single matching registered version in `gateway/build-manifest.yaml`
     and rejects a full semver string like `"v1.1.0"`.
+
+### Secret rotation/deletion push-event scenarios
+
+The scenarios above cover secret resolution *at deploy time*. `secret_lifecycle.feature`
+(`@secret_lifecycle`) covers the opposite direction: a secret that a gateway is
+**already** resolving gets rotated or deleted while that gateway stays connected, with
+no controller restart and no new deployment. platform-api pushes a
+`secret.updated`/`secret.deleted` WebSocket event to every gateway in the org
+(`SecretService.broadcastSecretEvent`); the controller's `handleSecretUpdatedEvent` /
+`handleSecretDeletedEvent` (`pkg/controlplane/client.go`) react immediately instead of
+waiting for the next reconnect's incremental sync. Both scenarios build on the same
+secret-backed REST API fixture as `rest_api_secret.feature` (shared Given steps), then
+poll the gateway-controller's own `GET /api/management/v1/secrets/:handle` — which
+returns the gateway's locally decrypted value, not platform-api's — to observe the
+effect directly:
+
+12. **Rotation** — `PUT /secrets/:handle` with a new value. Asserts the gateway's local
+    copy reaches the rotated value.
+13. **Deletion** — `PUT /rest-apis/:id` swaps the upstream auth to a brand-new secret,
+    leaving the original referenced by nothing; platform-api's `cleanupRotatedSecret`
+    deprecates it automatically. Asserts the gateway's local copy is evicted (404).
 
 ## Status — passing on all three databases
 

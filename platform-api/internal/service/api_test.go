@@ -755,8 +755,8 @@ func TestAPIServiceUpdate_CleansUpRotatedSecret(t *testing.T) {
 	if err != nil {
 		t.Fatalf("expected no error, got: %v", err)
 	}
-	if secretRepo.secrets["old-handle"].Status != model.SecretStatusDeprecated {
-		t.Errorf("expected old secret to be deprecated, got status=%v", secretRepo.secrets["old-handle"].Status)
+	if _, ok := secretRepo.secrets["old-handle"]; ok {
+		t.Error("expected old secret to be permanently deleted after rotation cleanup")
 	}
 }
 

@@ -29,7 +29,6 @@ import {
   FormControl,
   FormLabel,
   Grid,
-  IconButton,
   InputAdornment,
   PageContent,
   PageTitle,
@@ -41,8 +40,6 @@ import {
 import {
   ChevronDown,
   ChevronLeft,
-  Eye,
-  EyeOff,
   HelpCircle,
 } from '@wso2/oxygen-ui-icons-react';
 import { FormattedMessage, useIntl } from 'react-intl';
@@ -67,6 +64,7 @@ import ExternalServersCreateForm from './ExternalServersCreateForm';
 import ExternalServersValidationDetails from './ExternalServersValidationDetails';
 import type { EndpointValidationResponse } from './externalServersValidationTypes';
 import { getErrorMessage, getFieldErrors } from '../../../../utils/apiError';
+import SecretValueField from '../../../../Components/common/SecretValueField';
 
 // Backend field names (from CreateMCPServerRequest) mapped onto this form's state keys.
 // "displayName" maps to the server name field; the rest match one-to-one.
@@ -144,7 +142,6 @@ export default function ExternalServersNew(): JSX.Element {
   const [isCreateStep, setIsCreateStep] = useState(false);
   const [authHeaderName, setAuthHeaderName] = useState('');
   const [authHeaderValue, setAuthHeaderValue] = useState('');
-  const [showAuthHeaderValue, setShowAuthHeaderValue] = useState(false);
   const [serverName, setServerName] = useState('');
   const [serverVersion, setServerVersion] = useState('');
   const [serverDescription, setServerDescription] = useState('');
@@ -538,44 +535,13 @@ export default function ExternalServersNew(): JSX.Element {
                                 defaultMessage="Value"
                               />
                             </FormLabel>
-                            <TextField
-                              fullWidth
+                            <SecretValueField
                               placeholder={intl.formatMessage({
                                 id: 'aiWorkspace.pages.appShell.appShellPages.externalServers.Main.authentication.value.placeholder',
                                 defaultMessage: 'Value',
                               })}
-                              type={showAuthHeaderValue ? 'text' : 'password'}
                               value={authHeaderValue}
-                              onChange={(event) =>
-                                setAuthHeaderValue(event.target.value)
-                              }
-                              slotProps={{
-                                input: {
-                                  endAdornment: (
-                                    <InputAdornment position="end">
-                                      <IconButton
-                                        size="small"
-                                        onClick={() =>
-                                          setShowAuthHeaderValue(
-                                            (prev) => !prev
-                                          )
-                                        }
-                                        aria-label={
-                                          showAuthHeaderValue
-                                            ? 'Hide header value'
-                                            : 'Show header value'
-                                        }
-                                      >
-                                        {showAuthHeaderValue ? (
-                                          <EyeOff size={18} />
-                                        ) : (
-                                          <Eye size={18} />
-                                        )}
-                                      </IconButton>
-                                    </InputAdornment>
-                                  ),
-                                },
-                              }}
+                              onChange={setAuthHeaderValue}
                             />
                           </FormControl>
                         </Grid>
