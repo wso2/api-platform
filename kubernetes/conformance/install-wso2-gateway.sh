@@ -28,8 +28,9 @@
 # -----------------------------------------------------------------------------
 set -euo pipefail
 
-# This script lives at kubernetes/conformance/, so the repo root is two levels up.
-REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
+# Sets REPO_ROOT, REGISTRY, GW_VERSION and OPERATOR_VERSION.
+# shellcheck source=versions.sh
+source "$(dirname "${BASH_SOURCE[0]}")/versions.sh"
 
 OPERATOR_CHART="${OPERATOR_CHART:-${REPO_ROOT}/kubernetes/helm/operator-helm-chart}"
 OPERATOR_NS="${OPERATOR_NS:-gateway-system}"
@@ -156,19 +157,8 @@ kubectl wait --namespace cert-manager \
   --for=condition=available deployment --all --timeout=180s
 
 # --- 2. Gateway operator (installs the bundled Gateway API CRDs too) --------
-# Derive the image tags from the same sources the build and load-images.sh use, so helm
-# deploys exactly the images that were built and loaded (imagePullPolicy=IfNotPresent).
-# Hardcoding these caused the loaded (freshly built) images to be ignored. Overridable
-# via env to stay in lock-step with load-images.sh.
-REGISTRY="${REGISTRY:-ghcr.io/wso2/api-platform}"
-GW_VERSION="${GW_VERSION:-$(cat "${REPO_ROOT}/gateway/VERSION")}"
-OPERATOR_VERSION="${OPERATOR_VERSION:-$(sed -nE 's/^VERSION[[:space:]]*\?=[[:space:]]*([^[:space:]]+).*/\1/p' \
-  "${REPO_ROOT}/kubernetes/gateway-operator/Makefile" | head -1)}"
-
-if [ -z "${GW_VERSION}" ] || [ -z "${OPERATOR_VERSION}" ]; then
-  echo "error: could not determine image versions (GW_VERSION='${GW_VERSION}', OPERATOR_VERSION='${OPERATOR_VERSION}')." >&2
-  exit 1
-fi
+# Tags come from versions.sh so helm deploys exactly the images load-images.sh loaded
+# (imagePullPolicy=IfNotPresent); hardcoding them made the freshly built images be ignored.
 
 # Provision the mandatory at-rest encryption key before the gateway is reconciled.
 provision_encryption_key

@@ -24,21 +24,11 @@
 # -----------------------------------------------------------------------------
 set -euo pipefail
 
-# This script lives at kubernetes/conformance/, so the repo root is two levels up.
-REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
+# Sets REPO_ROOT, REGISTRY, GW_VERSION and OPERATOR_VERSION.
+# shellcheck source=versions.sh
+source "$(dirname "${BASH_SOURCE[0]}")/versions.sh"
 
 CLUSTER_NAME="${CLUSTER_NAME:-wso2-conformance}"
-REGISTRY="${REGISTRY:-ghcr.io/wso2/api-platform}"
-
-# Derive tags from the build's own sources so they match install-wso2-gateway.sh.
-GW_VERSION="${GW_VERSION:-$(cat "${REPO_ROOT}/gateway/VERSION")}"
-OPERATOR_VERSION="${OPERATOR_VERSION:-$(sed -nE 's/^VERSION[[:space:]]*\?=[[:space:]]*([^[:space:]]+).*/\1/p' \
-  "${REPO_ROOT}/kubernetes/gateway-operator/Makefile" | head -1)}"
-
-if [ -z "${GW_VERSION}" ] || [ -z "${OPERATOR_VERSION}" ]; then
-  echo "error: could not determine image versions (GW_VERSION='${GW_VERSION}', OPERATOR_VERSION='${OPERATOR_VERSION}')." >&2
-  exit 1
-fi
 
 IMAGES=(
   "${REGISTRY}/gateway-controller:${GW_VERSION}"

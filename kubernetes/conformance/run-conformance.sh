@@ -16,7 +16,7 @@
 #   GATEWAY_CLASS        GatewayClass name              (default: wso2-api-platform)
 #   PROFILE              conformance profile            (default: GATEWAY-HTTP)
 #   SUPPORTED_FEATURES   comma-separated features       (default: Gateway,HTTPRoute)
-#   IMPL_VERSION         implementation version string  (default: 1.1.0)
+#   IMPL_VERSION         implementation version string  (default: gateway/VERSION)
 #   REPORT_OUT           report output path
 # -----------------------------------------------------------------------------
 set -euo pipefail
@@ -24,13 +24,19 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 RUNNER_DIR="${SCRIPT_DIR}/runner"
 
+# Sets GW_VERSION (among others) from gateway/VERSION.
+# shellcheck source=versions.sh
+source "${SCRIPT_DIR}/versions.sh"
+
 GATEWAY_CLASS="${GATEWAY_CLASS:-wso2-api-platform}"
 PROFILE="${PROFILE:-GATEWAY-HTTP}"
 # Keep this on ONE line: a line break (even with a trailing backslash) leaves the
 # continuation's leading whitespace inside the value, corrupting the feature name
 # right after each break so that feature silently fails to register.
 SUPPORTED_FEATURES="${SUPPORTED_FEATURES:-Gateway,HTTPRoute,HTTPRouteSchemeRedirect,HTTPRoutePortRedirect,HTTPRoute303RedirectStatusCode,HTTPRoute307RedirectStatusCode,HTTPRoute308RedirectStatusCode}"
-IMPL_VERSION="${IMPL_VERSION:-1.2.0-milestone}"
+# Report the gateway actually under test; lowercased since gateway/VERSION uses the
+# Maven-style "1.2.0-SNAPSHOT" spelling and SemVer pre-releases are conventionally lowercase.
+IMPL_VERSION="${IMPL_VERSION:-$(printf '%s' "${GW_VERSION}" | tr '[:upper:]' '[:lower:]')}"
 REPORT_OUT="${REPORT_OUT:-${SCRIPT_DIR}/wso2-api-platform-${IMPL_VERSION}-report.yaml}"
 # Resolve a relative REPORT_OUT against the caller's directory NOW, before we cd into
 # the runner module. Otherwise `go test` would write it relative to runner/ while the
