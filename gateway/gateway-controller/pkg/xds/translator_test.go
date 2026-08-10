@@ -1436,21 +1436,127 @@ func TestTranslator_CreateListener_PathWithEscapedSlashesAction(t *testing.T) {
 }
 
 func TestTranslator_CreateAccessLogConfig_Disabled(t *testing.T) {
-	// Note: createAccessLogConfig should only be called when access logs are enabled.
-	// The check for enabled is done at the caller level. When called directly with disabled
-	// access logs (format defaults to empty, which falls through to text format check),
-	// it should return an error about missing text_format.
+	// Both consumers off: no stdout sink, and no ALS sink either. The stdout
+	// format fields are left unset on purpose — with access logs disabled they
+	// are never read, so an empty format must not surface as an error.
 	logger := createTestLogger()
 	routerCfg := testRouterConfig()
 	routerCfg.AccessLogs.Enabled = false
-	// When format is empty, it falls through to text format check
 	cfg := testConfig()
+	cfg.Router = *routerCfg
 	translator := NewTranslator(logger, routerCfg, nil, cfg)
 
 	logs, err := translator.createAccessLogConfig()
-	// Without format configured, it returns error (this is expected behavior)
-	assert.Error(t, err)
-	assert.Nil(t, logs)
+	assert.NoError(t, err)
+	assert.Empty(t, logs)
+}
+
+// TestTranslator_AccessLogSinks_DecoupledFromStdoutToggle pins the invariant that
+// router.access_logs.enabled governs only the operator-facing stdout log line,
+// never the gRPC ALS sink. ALS is the sole data source for traffic logging and
+// analytics (the policy-engine publishes exclusively on receipt of an ALS entry),
+// so gating it on the stdout toggle silently disables both with no error anywhere.
+func TestTranslator_AccessLogSinks_DecoupledFromStdoutToggle(t *testing.T) {
+	const (
+		fileSink = "envoy.access_loggers.file"
+		grpcSink = "envoy.access_loggers.http_grpc"
+	)
+
+	tests := []struct {
+		name             string
+		stdoutEnabled    bool
+		trafficLogging   bool
+		analytics        bool
+		wantSinkNames    []string
+		wantManagerSinks bool
+	}{
+		{
+			name:             "stdout off, traffic logging on -> ALS sink only",
+			stdoutEnabled:    false,
+			trafficLogging:   true,
+			wantSinkNames:    []string{grpcSink},
+			wantManagerSinks: true,
+		},
+		{
+			name:             "stdout off, analytics on -> ALS sink only",
+			stdoutEnabled:    false,
+			analytics:        true,
+			wantSinkNames:    []string{grpcSink},
+			wantManagerSinks: true,
+		},
+		{
+			name:             "stdout on, traffic logging on -> both sinks",
+			stdoutEnabled:    true,
+			trafficLogging:   true,
+			wantSinkNames:    []string{fileSink, grpcSink},
+			wantManagerSinks: true,
+		},
+		{
+			name:             "stdout on, collector off -> stdout sink only",
+			stdoutEnabled:    true,
+			wantSinkNames:    []string{fileSink},
+			wantManagerSinks: true,
+		},
+		{
+			name:             "both off -> no sinks at all",
+			stdoutEnabled:    false,
+			wantSinkNames:    nil,
+			wantManagerSinks: false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			logger := createTestLogger()
+			routerCfg := testRouterConfig()
+			routerCfg.AccessLogs = config.AccessLogsConfig{
+				Enabled:    tt.stdoutEnabled,
+				Format:     "text",
+				TextFormat: "[%START_TIME%] %RESPONSE_CODE%",
+			}
+			cfg := testConfig()
+			cfg.Router = *routerCfg
+			cfg.TrafficLogging.Enabled = tt.trafficLogging
+			cfg.Analytics.Enabled = tt.analytics
+			cfg.Collector.Server = config.GRPCEventServerConfig{
+				Mode:                "tcp",
+				BufferFlushInterval: 1000,
+				BufferSizeBytes:     16384,
+				GRPCRequestTimeout:  5000,
+			}
+			translator := NewTranslator(logger, routerCfg, nil, cfg)
+
+			logs, err := translator.createAccessLogConfig()
+			require.NoError(t, err)
+
+			gotNames := make([]string, 0, len(logs))
+			for _, l := range logs {
+				gotNames = append(gotNames, l.Name)
+			}
+			assert.Equal(t, tt.wantSinkNames, nilIfEmpty(gotNames), "access log sinks")
+
+			// The sinks must actually reach the HCM — the caller's gate is half the fix.
+			lis, _, err := translator.createListener(nil, false)
+			require.NoError(t, err)
+			manager := extractHCM(t, lis)
+			if !tt.wantManagerSinks {
+				assert.Empty(t, manager.GetAccessLog(), "no sink should be attached to the HCM")
+				return
+			}
+			managerNames := make([]string, 0, len(manager.GetAccessLog()))
+			for _, l := range manager.GetAccessLog() {
+				managerNames = append(managerNames, l.Name)
+			}
+			assert.Equal(t, tt.wantSinkNames, managerNames, "access log sinks attached to the HCM")
+		})
+	}
+}
+
+func nilIfEmpty(s []string) []string {
+	if len(s) == 0 {
+		return nil
+	}
+	return s
 }
 
 func TestTranslator_CreateAccessLogConfig_JSON(t *testing.T) {
