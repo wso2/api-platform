@@ -303,7 +303,7 @@ jobs:
 
           # Create the final message payload
           MESSAGE="${HEADLINE}\n*Repository:* ${REPO}\n*Ref:* ${REF_NAME}\n*Trigger:* ${EVENT}\n*Run:* ${RUN_URL}${UPSTREAM_LINE}"
-          PAYLOAD="{\"text\": \"${MESSAGE}\"}"
+          PAYLOAD="$(jq -cn --arg text "${MESSAGE}" '{text: $text}')"
 
           echo "${PAYLOAD}" | curl --fail --silent --show-error \
             -X POST \
