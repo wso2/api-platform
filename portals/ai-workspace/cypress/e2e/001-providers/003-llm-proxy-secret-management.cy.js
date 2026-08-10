@@ -424,9 +424,9 @@ describe('AI Workspace — LLM proxy secret management (update flow)', () => {
       expect(text, 'plaintext absent from page').not.to.include(UPDATED_KEY);
     });
 
-    // The old secret backing INITIAL_KEY must be soft-deleted server-side —
-    // GetByHandle doesn't filter by status, so it still 200s but flips to
-    // DEPRECATED. This closes the gap left untested on the LLM Provider side.
+    // The old secret backing INITIAL_KEY must be permanently deleted server-side
+    // once the update leaves it unreferenced — GetByHandle 404s on a hard-deleted
+    // row. This closes the gap left untested on the LLM Provider side.
     cy.wrap(null).then(() => {
       expect(initialSecretHandle, 'captured the initial secret handle in beforeEach').to.not.equal('');
       cy.request({
@@ -434,8 +434,7 @@ describe('AI Workspace — LLM proxy secret management (update flow)', () => {
         headers: { Authorization: `Bearer ${authToken}` },
         failOnStatusCode: false,
       }).then((r) => {
-        expect(r.status, 'old secret still resolvable').to.eq(200);
-        expect(r.body?.status, 'old secret marked deprecated after cleanup').to.eq('DEPRECATED');
+        expect(r.status, 'old secret permanently deleted after cleanup').to.eq(404);
       });
     });
   });

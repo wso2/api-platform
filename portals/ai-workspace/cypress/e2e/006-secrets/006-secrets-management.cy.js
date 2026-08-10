@@ -142,7 +142,7 @@ describe('AI Workspace — Secrets management pages', () => {
   // -------------------------------------------------------------------------
   it('TC-1: creates a secret via the Create Secret form and lands on its Overview page', () => {
     const secretName = `E2E Secret Create ${suffix}`;
-    const secretHandle = `e2e-secret-${suffix}`;
+    const secretHandle = `e2e-secret-create-${suffix}`;
     const secretValue = `sk-e2e-secret-value-${suffix}`;
 
     cy.intercept('POST', '**/secrets').as('createSecret');
@@ -296,7 +296,7 @@ describe('AI Workspace — Secrets management pages', () => {
       createdHandles.push(providerSecretHandle);
 
       cy.visitWorkspace(`/organizations/${orgHandle}/settings/secrets/${providerSecretHandle}`);
-      cy.get('[data-cyid="delete-secret-button"]', { timeout: 30000 }).should('be.visible').click();
+      cy.get('[data-cyid="delete-secret-button"]', { timeout: 30000 }).scrollIntoView().should('be.visible').click();
       cy.get('[role="dialog"]').within(() => {
         cy.contains('button', /^Delete$/).click();
       });
@@ -325,7 +325,7 @@ describe('AI Workspace — Secrets management pages', () => {
         createdProviderId = '';
       });
 
-      cy.get('[data-cyid="delete-secret-button"]', { timeout: 30000 }).should('be.visible').click();
+      cy.get('[data-cyid="delete-secret-button"]', { timeout: 30000 }).scrollIntoView().should('be.visible').click();
       cy.get('[role="dialog"]').within(() => {
         cy.contains('button', /^Delete$/).click();
       });
