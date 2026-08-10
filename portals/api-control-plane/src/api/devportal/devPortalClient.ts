@@ -35,9 +35,16 @@ export async function listDevPortals(): Promise<DevPortal[]> {
 export async function createDevPortal(
   input: CreateDevPortalInput
 ): Promise<DevPortal> {
+  // Picked explicitly (not `...input`) so idp_client_credentials secrets
+  // (stsTokenUrl/clientId/clientSecret) never end up on the stored/returned
+  // record — those are write-only, forwarded to the real backend once it exists.
   const devPortal: DevPortal = {
-    ...input,
     id: input.handle,
+    name: input.name,
+    handle: input.handle,
+    description: input.description,
+    url: input.url,
+    authType: input.authType,
     workflowStatus: 'pending',
     createdAt: new Date().toISOString(),
   };

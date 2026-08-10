@@ -22,13 +22,17 @@ import {
   Button,
   FormControl,
   FormLabel,
+  IconButton,
+  InputAdornment,
   MenuItem,
   PageContent,
   PageTitle,
   Select,
   Stack,
   TextField,
+  Typography,
 } from '@wso2/oxygen-ui';
+import { Eye, EyeOff } from '@wso2/oxygen-ui-icons-react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 
 import { useCreateDevPortal } from '../../api/hooks/useMvpQueries';
@@ -64,6 +68,10 @@ export function DevPortalCreatePage() {
     AUTH_TYPES[0].value
   );
   const [url, setUrl] = useState('');
+  const [stsTokenUrl, setStsTokenUrl] = useState('');
+  const [clientId, setClientId] = useState('');
+  const [clientSecret, setClientSecret] = useState('');
+  const [secretVisible, setSecretVisible] = useState(false);
 
   const onDisplayNameChange = (value: string) => {
     setDisplayName(value);
@@ -71,10 +79,17 @@ export function DevPortalCreatePage() {
   };
 
   const handleValid = HANDLE_PATTERN.test(handle);
+  const isIdpAuth = authType === 'idp_client_credentials';
+  const idpFieldsValid =
+    !isIdpAuth ||
+    (stsTokenUrl.trim() !== '' &&
+      clientId.trim() !== '' &&
+      clientSecret.trim() !== '');
   const canSubmit =
     displayName.trim() !== '' &&
     handleValid &&
     url.trim() !== '' &&
+    idpFieldsValid &&
     !createDevPortal.isPending;
 
   const submit = () => {
@@ -85,6 +100,13 @@ export function DevPortalCreatePage() {
         url: url.trim(),
         authType,
         description: description || undefined,
+        ...(isIdpAuth
+          ? {
+              stsTokenUrl: stsTokenUrl.trim(),
+              clientId: clientId.trim(),
+              clientSecret,
+            }
+          : {}),
       },
       {
         onSuccess: (devPortal) => {
@@ -165,6 +187,80 @@ export function DevPortalCreatePage() {
               ))}
             </Select>
           </FormControl>
+
+          {isIdpAuth && (
+            <Box
+              sx={{
+                border: '1px solid',
+                borderColor: 'divider',
+                borderRadius: 2,
+                p: 2.25,
+              }}
+            >
+              <Typography
+                color="text.secondary"
+                sx={{
+                  display: 'block',
+                  fontWeight: 600,
+                  letterSpacing: '.12em',
+                  mb: 1.5,
+                }}
+                variant="caption"
+              >
+                IDP CLIENT CREDENTIALS
+              </Typography>
+              <Stack spacing={2}>
+                <FormControl fullWidth>
+                  <FormLabel>STS token URL</FormLabel>
+                  <TextField
+                    onChange={(event) => setStsTokenUrl(event.target.value)}
+                    placeholder="https://idp.example.com/oauth2/token"
+                    value={stsTokenUrl}
+                  />
+                </FormControl>
+
+                <FormControl fullWidth>
+                  <FormLabel>Client ID</FormLabel>
+                  <TextField
+                    onChange={(event) => setClientId(event.target.value)}
+                    value={clientId}
+                  />
+                </FormControl>
+
+                <FormControl fullWidth>
+                  <FormLabel>Client secret</FormLabel>
+                  <TextField
+                    onChange={(event) => setClientSecret(event.target.value)}
+                    slotProps={{
+                      input: {
+                        endAdornment: (
+                          <InputAdornment position="end">
+                            <IconButton
+                              aria-label={
+                                secretVisible
+                                  ? 'Hide client secret'
+                                  : 'Show client secret'
+                              }
+                              onClick={() => setSecretVisible((v) => !v)}
+                              size="small"
+                            >
+                              {secretVisible ? (
+                                <EyeOff size={16} />
+                              ) : (
+                                <Eye size={16} />
+                              )}
+                            </IconButton>
+                          </InputAdornment>
+                        ),
+                      },
+                    }}
+                    type={secretVisible ? 'text' : 'password'}
+                    value={clientSecret}
+                  />
+                </FormControl>
+              </Stack>
+            </Box>
+          )}
 
           <FormControl fullWidth>
             <FormLabel>URL</FormLabel>

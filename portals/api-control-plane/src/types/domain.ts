@@ -270,6 +270,10 @@ export type CreateDevPortalInput = {
   url: string;
   authType: DevPortalAuthType;
   description?: string;
+  /** Required when authType is 'idp_client_credentials'. */
+  stsTokenUrl?: string;
+  clientId?: string;
+  clientSecret?: string;
 };
 
 /**
