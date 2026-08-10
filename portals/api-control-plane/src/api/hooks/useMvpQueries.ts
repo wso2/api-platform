@@ -25,6 +25,7 @@ import type {
   ApiDetail,
   CreateApiInput,
   CreateApiKeyInput,
+  CreateDevPortalInput,
   CreateGatewayInput,
   CreateProjectInput,
   DeployApiInput,
@@ -58,6 +59,7 @@ export const queryKeys = {
   gateways: (orgHandle: string) => ['gateways', orgHandle] as const,
   gateway: (orgHandle: string, gatewayId: string) =>
     ['gateway', orgHandle, gatewayId] as const,
+  devPortals: (orgHandle: string) => ['devPortals', orgHandle] as const,
 };
 
 /**
@@ -529,6 +531,35 @@ export const useCreateGatewayToken = (
   const { orgHandle = '' } = useScopeArgs(orgHandleArg);
   return useMutation({
     mutationFn: () => client.createGatewayToken(orgHandle, gatewayId),
+  });
+};
+
+export const useDevPortals = (orgHandleArg?: string) => {
+  const client = useApiClient();
+  const { orgHandle } = useScopeArgs(orgHandleArg);
+  return useQuery({
+    queryKey: queryKeys.devPortals(orgHandle || ''),
+    queryFn: () => {
+      if (!orgHandle) {
+        throw new Error('orgHandle is required to list dev portals');
+      }
+      return client.listDevPortals();
+    },
+    enabled: !!orgHandle,
+  });
+};
+
+export const useCreateDevPortal = (orgHandleArg?: string) => {
+  const client = useApiClient();
+  const queryClient = useQueryClient();
+  const { orgHandle = '' } = useScopeArgs(orgHandleArg);
+  return useMutation({
+    mutationFn: (input: CreateDevPortalInput) => client.createDevPortal(input),
+    onSuccess: () => {
+      queryClient.invalidateQueries({
+        queryKey: queryKeys.devPortals(orgHandle),
+      });
+    },
   });
 };
 

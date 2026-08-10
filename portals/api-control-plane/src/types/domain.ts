@@ -246,6 +246,32 @@ export type GatewayToken = {
   message?: string;
 };
 
+/** How the platform authenticates to a Developer Portal instance. */
+export type DevPortalAuthType = 'local' | 'idp_client_credentials';
+
+/** Provisioning state of a devportal (platform-api DevPortalResponse.workflowStatus). */
+export type DevPortalWorkflowStatus = 'pending' | 'active' | 'failed';
+
+/** Maps 1:1 to platform-api's DevPortalResponse schema. */
+export type DevPortal = {
+  id: string;
+  name: string;
+  handle: string;
+  description?: string;
+  url?: string;
+  workflowStatus: DevPortalWorkflowStatus;
+  authType: DevPortalAuthType;
+  createdAt?: string;
+};
+
+export type CreateDevPortalInput = {
+  name: string;
+  handle: string;
+  url: string;
+  authType: DevPortalAuthType;
+  description?: string;
+};
+
 /**
  * How the API definition is sourced on create. `scratch` builds an empty proxy;
  * the import variants create from an OpenAPI definition (URL or uploaded file).

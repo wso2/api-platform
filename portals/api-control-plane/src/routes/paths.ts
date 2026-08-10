@@ -36,6 +36,8 @@ export const routes = {
     `/organizations/${orgHandle}/gateways/${gatewayId}`,
   devportal: (orgHandle = ':orgHandle') =>
     `/organizations/${orgHandle}/devportal`,
+  newDevportal: (orgHandle = ':orgHandle') =>
+    `/organizations/${orgHandle}/devportal/new`,
   projectHome: (orgHandle = ':orgHandle', projectHandler = ':projectHandler') =>
     `/organizations/${orgHandle}/projects/${projectHandler}/home`,
   apis: (orgHandle = ':orgHandle', projectHandler = ':projectHandler') =>

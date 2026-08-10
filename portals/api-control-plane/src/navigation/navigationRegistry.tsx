@@ -69,7 +69,8 @@ export const navigationRegistry: NavigationDefinition[] = [
     icon: <Globe />,
     to: ({ params }) =>
       params.orgHandle ? routes.devportal(params.orgHandle) : undefined,
-    match: (pathname) => /\/organizations\/[^/]+\/devportal$/.test(pathname),
+    match: (pathname) =>
+      /\/organizations\/[^/]+\/devportal(\/[^/]+)?$/.test(pathname),
   },
   {
     id: 'project-home',

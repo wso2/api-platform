@@ -22,6 +22,9 @@ import type {
   ApiKind,
   ApiStatus,
   Deployment,
+  DevPortal,
+  DevPortalAuthType,
+  DevPortalWorkflowStatus,
   Environment,
   Gateway,
   GatewayDeployment,
@@ -295,6 +298,48 @@ export const toGateway = (value: unknown): Gateway => {
     organizationId: asOptionalString(source.organizationId),
     createdAt: asOptionalString(source.createdAt),
     updatedAt: asOptionalString(source.updatedAt),
+  };
+};
+
+const DEV_PORTAL_AUTH_TYPES: DevPortalAuthType[] = [
+  'local',
+  'idp_client_credentials',
+];
+
+const asDevPortalAuthType = (value: unknown): DevPortalAuthType => {
+  const normalized = asString(value).toLowerCase();
+  return DEV_PORTAL_AUTH_TYPES.includes(normalized as DevPortalAuthType)
+    ? (normalized as DevPortalAuthType)
+    : DEV_PORTAL_AUTH_TYPES[0];
+};
+
+const DEV_PORTAL_WORKFLOW_STATUSES: DevPortalWorkflowStatus[] = [
+  'pending',
+  'active',
+  'failed',
+];
+
+const asDevPortalWorkflowStatus = (value: unknown): DevPortalWorkflowStatus => {
+  const normalized = asString(value).toLowerCase();
+  return DEV_PORTAL_WORKFLOW_STATUSES.includes(
+    normalized as DevPortalWorkflowStatus
+  )
+    ? (normalized as DevPortalWorkflowStatus)
+    : DEV_PORTAL_WORKFLOW_STATUSES[0];
+};
+
+export const toDevPortal = (value: unknown): DevPortal => {
+  const source = asRecord(value);
+  const name = asString(source.name, 'unknown-devportal');
+  return {
+    id: asString(source.id, name),
+    name,
+    handle: asString(source.handle, name),
+    description: asOptionalString(source.description),
+    url: asOptionalString(source.url),
+    workflowStatus: asDevPortalWorkflowStatus(source.workflowStatus),
+    authType: asDevPortalAuthType(source.authType),
+    createdAt: asOptionalString(source.createdAt),
   };
 };
 

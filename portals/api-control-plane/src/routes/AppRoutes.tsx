@@ -65,6 +65,11 @@ const DevPortalPage = lazy(() =>
     default: m.DevPortalPage,
   }))
 );
+const DevPortalCreatePage = lazy(() =>
+  import('../features/devportal/DevPortalCreatePage').then((m) => ({
+    default: m.DevPortalCreatePage,
+  }))
+);
 const ProjectHomePage = lazy(() =>
   import('../features/projects/ProjectHomePage').then((m) => ({
     default: m.ProjectHomePage,
@@ -130,6 +135,10 @@ export function AppRoutes() {
           <Route path={routes.newGateway()} element={<GatewayCreatePage />} />
           <Route path={routes.gateway()} element={<GatewayDetailPage />} />
           <Route path={routes.devportal()} element={<DevPortalPage />} />
+          <Route
+            path={routes.newDevportal()}
+            element={<DevPortalCreatePage />}
+          />
           <Route path={routes.projectHome()} element={<ProjectHomePage />} />
           <Route path={routes.apis()} element={<ApiListPage />} />
           <Route path={routes.newApi()} element={<ApiCreatePage />} />

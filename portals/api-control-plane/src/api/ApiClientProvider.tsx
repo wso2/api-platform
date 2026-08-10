@@ -21,6 +21,7 @@ import { createContext, type ReactNode, useContext } from 'react';
 import {
   createApi,
   createApiKey,
+  createDevPortal,
   createGateway,
   createGatewayToken,
   createProject,
@@ -37,6 +38,7 @@ import {
   listApiKeys,
   listApis,
   listDeployments,
+  listDevPortals,
   listEnvironments,
   listGatewayDeployments,
   listGateways,
@@ -79,6 +81,9 @@ export const realApiClient = {
   getGateway,
   createGateway,
   createGatewayToken,
+  // dev portals
+  listDevPortals,
+  createDevPortal,
   // gateway deployments (the deploy path)
   listGatewayDeployments,
   deployApi,

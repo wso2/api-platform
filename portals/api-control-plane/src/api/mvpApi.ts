@@ -44,6 +44,7 @@ export {
   getGateway,
   listGateways,
 } from './gateways/gatewayClient';
+export { createDevPortal, listDevPortals } from './devportal/devPortalClient';
 export { listEnvironments } from './environments/environmentClient';
 export {
   getOrganization,
