@@ -24,6 +24,7 @@ import (
 	"time"
 
 	"api-control-plane-bff/internal/config"
+	"api-control-plane-bff/internal/session"
 )
 
 // chain applies middlewares in order (outermost first).
@@ -96,6 +97,26 @@ func (s *Server) requireCSRF(next http.Handler) http.Handler {
 				writeErrorJSON(w, http.StatusForbidden, "MISSING_CSRF_HEADER", "missing CSRF header")
 				return
 			}
+		}
+		next.ServeHTTP(w, r)
+	})
+}
+
+// sessionContext resolves the caller's session (if any) once per request and
+// stashes it on the request context via session.WithContext, using the exact
+// same cookie lookup + decode path handleSession itself uses. Runs for every
+// route on this mux — including a host's Options.ExtraRoutes handlers — so
+// any of them can read identity via session.FromContext the same way a
+// default handler would, with no per-feature auth wiring. A request with no
+// (or an invalid) session cookie simply proceeds with nothing stashed;
+// FromContext's ok=false is how a handler distinguishes that case, and
+// whether that's an error is up to the handler — this middleware never
+// rejects a request itself (routes below decide their own auth requirement).
+func (s *Server) sessionContext(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if token, ok := s.tokenFromCookie(r); ok && !tokenExpired(token) {
+			u := s.userFromToken(r.Context(), token)
+			r = r.WithContext(session.WithContext(r.Context(), u))
 		}
 		next.ServeHTTP(w, r)
 	})
