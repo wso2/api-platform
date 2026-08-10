@@ -41,6 +41,7 @@ import { ErrorState, LoadingState } from '../../components/StateViews';
 import { routes } from '../../routes/paths';
 import type { DevPortal, DevPortalAuthType } from '../../types/domain';
 import { relativeTime } from '../../utils/relativeTime';
+import { isValidUrl } from '../apis/develop/developEdit';
 import {
   AUTH_TYPE_OPTIONS,
   STATUS_CHIP_COLOR,
@@ -99,15 +100,17 @@ export function DevPortalDetailPage() {
   // when switching into idp from a different auth type is there no existing
   // credential to fall back to, so all three are required in that case.
   const switchingToIdp = isIdpAuth && devPortal.authType !== 'idp_client_credentials';
+  const urlValid = url.trim() !== '' && isValidUrl(url);
   const stsTokenUrlEntered = stsTokenUrl.trim() !== '';
+  const stsTokenUrlValid = !stsTokenUrlEntered || isValidUrl(stsTokenUrl);
   const clientIdEntered = clientId.trim() !== '';
   const clientSecretEntered = clientSecret.trim() !== '';
   const anyCredentialEntered =
     stsTokenUrlEntered || clientIdEntered || clientSecretEntered;
   const idpFieldsValid =
     !isIdpAuth ||
-    !switchingToIdp ||
-    (stsTokenUrlEntered && clientIdEntered && clientSecretEntered);
+    (stsTokenUrlValid &&
+      (!switchingToIdp || (stsTokenUrlEntered && clientIdEntered && clientSecretEntered)));
   // Gate on the fields actually having changed from the loaded record — not
   // just "is currently valid" — otherwise Save starts enabled on page load
   // with zero edits. Only compare once this record's fields have been seeded
@@ -123,7 +126,7 @@ export function DevPortalDetailPage() {
   const canSave =
     isDirty &&
     name.trim() !== '' &&
-    url.trim() !== '' &&
+    urlValid &&
     idpFieldsValid &&
     !updateDevPortal.isPending;
 
@@ -249,6 +252,10 @@ export function DevPortalDetailPage() {
                 <FormControl fullWidth>
                   <FormLabel>URL</FormLabel>
                   <TextField
+                    error={url !== '' && !isValidUrl(url)}
+                    helperText={
+                      url !== '' && !isValidUrl(url) ? 'Enter a valid URL' : undefined
+                    }
                     onChange={(event) => setUrl(event.target.value)}
                     placeholder="https://devportal.example.com"
                     value={url}

@@ -29,6 +29,8 @@ import {
 } from '@wso2/oxygen-ui';
 import { Eye, EyeOff } from '@wso2/oxygen-ui-icons-react';
 
+import { isValidUrl } from '../apis/develop/developEdit';
+
 type IdpCredentialsFieldsProps = {
   stsTokenUrl: string;
   onStsTokenUrlChange: (value: string) => void;
@@ -52,6 +54,7 @@ export function IdpCredentialsFields({
   onClientSecretChange,
 }: IdpCredentialsFieldsProps) {
   const [secretVisible, setSecretVisible] = useState(false);
+  const stsTokenUrlInvalid = stsTokenUrl.trim() !== '' && !isValidUrl(stsTokenUrl);
 
   return (
     <Box
@@ -78,6 +81,8 @@ export function IdpCredentialsFields({
         <FormControl fullWidth>
           <FormLabel>STS token URL</FormLabel>
           <TextField
+            error={stsTokenUrlInvalid}
+            helperText={stsTokenUrlInvalid ? 'Enter a valid URL' : undefined}
             onChange={(event) => onStsTokenUrlChange(event.target.value)}
             placeholder="https://idp.example.com/oauth2/token"
             value={stsTokenUrl}

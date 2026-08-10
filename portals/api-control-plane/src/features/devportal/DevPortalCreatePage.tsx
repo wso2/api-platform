@@ -35,6 +35,7 @@ import { useCreateDevPortal } from '../../api/hooks/useMvpQueries';
 import { useNotifications } from '../../components/Notifications';
 import { routes } from '../../routes/paths';
 import type { DevPortalAuthType } from '../../types/domain';
+import { isValidUrl } from '../apis/develop/developEdit';
 import { AUTH_TYPE_OPTIONS } from './devPortalDisplay';
 import { IdpCredentialsFields } from './IdpCredentialsFields';
 
@@ -71,16 +72,18 @@ export function DevPortalCreatePage() {
   };
 
   const handleValid = HANDLE_PATTERN.test(handle);
+  const urlValid = url.trim() !== '' && isValidUrl(url);
   const isIdpAuth = authType === 'idp_client_credentials';
   const idpFieldsValid =
     !isIdpAuth ||
     (stsTokenUrl.trim() !== '' &&
+      isValidUrl(stsTokenUrl) &&
       clientId.trim() !== '' &&
       clientSecret.trim() !== '');
   const canSubmit =
     displayName.trim() !== '' &&
     handleValid &&
-    url.trim() !== '' &&
+    urlValid &&
     idpFieldsValid &&
     !createDevPortal.isPending;
 
@@ -194,6 +197,10 @@ export function DevPortalCreatePage() {
           <FormControl fullWidth>
             <FormLabel>URL</FormLabel>
             <TextField
+              error={url !== '' && !isValidUrl(url)}
+              helperText={
+                url !== '' && !isValidUrl(url) ? 'Enter a valid URL' : undefined
+              }
               onChange={(event) => setUrl(event.target.value)}
               placeholder="https://devportal.example.com"
               value={url}
