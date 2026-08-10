@@ -47,7 +47,9 @@ export {
 export {
   createDevPortal,
   deleteDevPortal,
+  getDevPortal,
   listDevPortals,
+  updateDevPortal,
 } from './devportal/devPortalClient';
 export { listEnvironments } from './environments/environmentClient';
 export {

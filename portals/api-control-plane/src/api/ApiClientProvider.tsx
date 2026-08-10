@@ -33,6 +33,7 @@ import {
   getApi,
   getApiDetail,
   getApiProxy,
+  getDevPortal,
   getGateway,
   getOrganization,
   getProject,
@@ -49,6 +50,7 @@ import {
   revokeApiKey,
   undeployGatewayDeployment,
   updateApi,
+  updateDevPortal,
 } from './mvpApi';
 import {
   getPolicyDefinition,
@@ -84,7 +86,9 @@ export const realApiClient = {
   createGatewayToken,
   // dev portals
   listDevPortals,
+  getDevPortal,
   createDevPortal,
+  updateDevPortal,
   deleteDevPortal,
   // gateway deployments (the deploy path)
   listGatewayDeployments,

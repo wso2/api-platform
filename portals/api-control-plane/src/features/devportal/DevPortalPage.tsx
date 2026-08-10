@@ -57,28 +57,8 @@ import {
 } from '../../components/StateViews';
 import { routes } from '../../routes/paths';
 import { relativeTime } from '../../utils/relativeTime';
-import type {
-  DevPortal,
-  DevPortalAuthType,
-  DevPortalWorkflowStatus,
-} from '../../types/domain';
-
-const AUTH_LABEL: Record<DevPortalAuthType, string> = {
-  local: 'Local',
-  idp_client_credentials: 'IdP Client Credentials',
-};
-
-const STATUS_LABEL: Record<DevPortalWorkflowStatus, string> = {
-  pending: 'Pending',
-  active: 'Active',
-  failed: 'Failed',
-};
-
-const STATUS_COLOR: Record<DevPortalWorkflowStatus, string> = {
-  pending: 'warning.main',
-  active: 'success.main',
-  failed: 'error.main',
-};
+import type { DevPortal } from '../../types/domain';
+import { AUTH_LABEL, STATUS_COLOR, STATUS_LABEL } from './devPortalDisplay';
 
 /** A small KPI summary tile. */
 function StatCard({
@@ -125,9 +105,11 @@ function StatCard({
 
 function DevPortalCard({
   devPortal,
+  onOpen,
   onDelete,
 }: {
   devPortal: DevPortal;
+  onOpen: (devPortal: DevPortal) => void;
   onDelete?: (devPortal: DevPortal) => void;
 }) {
   const [copied, setCopied] = useState(false);
@@ -164,12 +146,20 @@ function DevPortalCard({
 
   return (
     <Box
+      onClick={() => onOpen(devPortal)}
       sx={{
         bgcolor: 'background.paper',
         border: '1px solid',
         borderColor: 'divider',
         borderRadius: 2,
+        cursor: 'pointer',
         p: 2.5,
+        transition: 'border-color .2s, box-shadow .2s, transform .2s',
+        '&:hover': {
+          borderColor: 'primary.main',
+          boxShadow: 3,
+          transform: 'translateY(-2px)',
+        },
       }}
     >
       <Stack direction="row" spacing={1.75}>
@@ -343,6 +333,8 @@ export function DevPortalPage() {
   const [toDelete, setToDelete] = useState<DevPortal | null>(null);
 
   const provision = () => navigate(routes.newDevportal(orgHandle));
+  const openDevPortal = (devPortal: DevPortal) =>
+    navigate(routes.devportalDetail(orgHandle, devPortal.id));
 
   const confirmDelete = () => {
     if (!toDelete) return;
@@ -466,6 +458,7 @@ export function DevPortalPage() {
                   devPortal={devPortal}
                   key={devPortal.id}
                   onDelete={setToDelete}
+                  onOpen={openDevPortal}
                 />
               ))}
             </Box>

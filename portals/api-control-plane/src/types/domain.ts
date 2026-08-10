@@ -276,6 +276,18 @@ export type CreateDevPortalInput = {
   clientSecret?: string;
 };
 
+/** `handle` is set at creation and not editable afterwards. */
+export type UpdateDevPortalInput = {
+  name: string;
+  url: string;
+  authType: DevPortalAuthType;
+  description?: string;
+  /** Required when authType is 'idp_client_credentials'. */
+  stsTokenUrl?: string;
+  clientId?: string;
+  clientSecret?: string;
+};
+
 /**
  * How the API definition is sourced on create. `scratch` builds an empty proxy;
  * the import variants create from an OpenAPI definition (URL or uploaded file).

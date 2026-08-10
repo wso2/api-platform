@@ -32,6 +32,7 @@ import type {
   DevPortal,
   GatewayDeployment,
   Project,
+  UpdateDevPortalInput,
 } from '../../types/domain';
 import { useApiClient } from '../ApiClientProvider';
 
@@ -61,6 +62,8 @@ export const queryKeys = {
   gateway: (orgHandle: string, gatewayId: string) =>
     ['gateway', orgHandle, gatewayId] as const,
   devPortals: (orgHandle: string) => ['devPortals', orgHandle] as const,
+  devPortal: (orgHandle: string, devPortalId: string) =>
+    ['devPortal', orgHandle, devPortalId] as const,
 };
 
 /**
@@ -550,6 +553,21 @@ export const useDevPortals = (orgHandleArg?: string) => {
   });
 };
 
+export const useDevPortal = (orgHandleArg?: string, devPortalId?: string) => {
+  const client = useApiClient();
+  const { orgHandle } = useScopeArgs(orgHandleArg);
+  return useQuery({
+    queryKey: queryKeys.devPortal(orgHandle || '', devPortalId || ''),
+    queryFn: () => {
+      if (!devPortalId) {
+        throw new Error('devPortalId is required to fetch a dev portal');
+      }
+      return client.getDevPortal(devPortalId);
+    },
+    enabled: !!orgHandle && !!devPortalId,
+  });
+};
+
 export const useCreateDevPortal = (orgHandleArg?: string) => {
   const client = useApiClient();
   const queryClient = useQueryClient();
@@ -557,6 +575,27 @@ export const useCreateDevPortal = (orgHandleArg?: string) => {
   return useMutation({
     mutationFn: (input: CreateDevPortalInput) => client.createDevPortal(input),
     onSuccess: () => {
+      queryClient.invalidateQueries({
+        queryKey: queryKeys.devPortals(orgHandle),
+      });
+    },
+  });
+};
+
+export const useUpdateDevPortal = (
+  orgHandleArg?: string,
+  devPortalId = ''
+) => {
+  const client = useApiClient();
+  const queryClient = useQueryClient();
+  const { orgHandle = '' } = useScopeArgs(orgHandleArg);
+  return useMutation({
+    mutationFn: (input: UpdateDevPortalInput) =>
+      client.updateDevPortal(devPortalId, input),
+    onSuccess: (updated) => {
+      queryClient.invalidateQueries({
+        queryKey: queryKeys.devPortal(orgHandle, updated.id),
+      });
       queryClient.invalidateQueries({
         queryKey: queryKeys.devPortals(orgHandle),
       });

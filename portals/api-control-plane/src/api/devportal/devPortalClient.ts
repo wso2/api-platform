@@ -16,7 +16,11 @@
  * under the License.
  */
 
-import type { CreateDevPortalInput, DevPortal } from '../../types/domain';
+import type {
+  CreateDevPortalInput,
+  DevPortal,
+  UpdateDevPortalInput,
+} from '../../types/domain';
 import { toDevPortal } from '../adapters';
 import { devPortals } from '../mocks/data';
 import { ApiError } from '../types/errors';
@@ -30,6 +34,11 @@ import { ApiError } from '../types/errors';
  */
 export async function listDevPortals(): Promise<DevPortal[]> {
   return devPortals.map(toDevPortal);
+}
+
+export async function getDevPortal(id: string): Promise<DevPortal | undefined> {
+  const found = devPortals.find((item) => item.id === id);
+  return found ? toDevPortal(found) : undefined;
 }
 
 export async function createDevPortal(
@@ -50,6 +59,27 @@ export async function createDevPortal(
   };
   devPortals.push(devPortal);
   return toDevPortal(devPortal);
+}
+
+export async function updateDevPortal(
+  id: string,
+  input: UpdateDevPortalInput
+): Promise<DevPortal> {
+  const index = devPortals.findIndex((item) => item.id === id);
+  if (index < 0) {
+    throw new ApiError('Devportal not found', 'NOT_FOUND', 404);
+  }
+  // Picked explicitly, same reasoning as createDevPortal: idp_client_credentials
+  // secrets are write-only and never end up on the stored/returned record.
+  const updated: DevPortal = {
+    ...devPortals[index],
+    name: input.name,
+    description: input.description,
+    url: input.url,
+    authType: input.authType,
+  };
+  devPortals[index] = updated;
+  return toDevPortal(updated);
 }
 
 export async function deleteDevPortal(id: string): Promise<void> {

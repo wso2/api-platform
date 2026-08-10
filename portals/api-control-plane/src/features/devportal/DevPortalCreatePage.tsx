@@ -22,23 +22,21 @@ import {
   Button,
   FormControl,
   FormLabel,
-  IconButton,
-  InputAdornment,
   MenuItem,
   PageContent,
   PageTitle,
   Select,
   Stack,
   TextField,
-  Typography,
 } from '@wso2/oxygen-ui';
-import { Eye, EyeOff } from '@wso2/oxygen-ui-icons-react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 
 import { useCreateDevPortal } from '../../api/hooks/useMvpQueries';
 import { useNotifications } from '../../components/Notifications';
 import { routes } from '../../routes/paths';
 import type { DevPortalAuthType } from '../../types/domain';
+import { AUTH_TYPE_OPTIONS } from './devPortalDisplay';
+import { IdpCredentialsFields } from './IdpCredentialsFields';
 
 const HANDLE_PATTERN = /^[a-z0-9-]{3,64}$/;
 
@@ -48,11 +46,6 @@ const slugify = (value: string) =>
     .replace(/[^a-z0-9]+/g, '-')
     .replace(/^-+|-+$/g, '')
     .slice(0, 64);
-
-const AUTH_TYPES: { value: DevPortalAuthType; label: string }[] = [
-  { value: 'local', label: 'Local' },
-  { value: 'idp_client_credentials', label: 'IdP Client Credentials' },
-];
 
 export function DevPortalCreatePage() {
   const { orgHandle = '' } = useParams();
@@ -65,13 +58,12 @@ export function DevPortalCreatePage() {
   const [handleEdited, setHandleEdited] = useState(false);
   const [description, setDescription] = useState('');
   const [authType, setAuthType] = useState<DevPortalAuthType>(
-    AUTH_TYPES[0].value
+    AUTH_TYPE_OPTIONS[0].value
   );
   const [url, setUrl] = useState('');
   const [stsTokenUrl, setStsTokenUrl] = useState('');
   const [clientId, setClientId] = useState('');
   const [clientSecret, setClientSecret] = useState('');
-  const [secretVisible, setSecretVisible] = useState(false);
 
   const onDisplayNameChange = (value: string) => {
     setDisplayName(value);
@@ -180,7 +172,7 @@ export function DevPortalCreatePage() {
               size="small"
               value={authType}
             >
-              {AUTH_TYPES.map((option) => (
+              {AUTH_TYPE_OPTIONS.map((option) => (
                 <MenuItem key={option.value} value={option.value}>
                   {option.label}
                 </MenuItem>
@@ -189,77 +181,14 @@ export function DevPortalCreatePage() {
           </FormControl>
 
           {isIdpAuth && (
-            <Box
-              sx={{
-                border: '1px solid',
-                borderColor: 'divider',
-                borderRadius: 2,
-                p: 2.25,
-              }}
-            >
-              <Typography
-                color="text.secondary"
-                sx={{
-                  display: 'block',
-                  fontWeight: 600,
-                  letterSpacing: '.12em',
-                  mb: 1.5,
-                }}
-                variant="caption"
-              >
-                IDP CLIENT CREDENTIALS
-              </Typography>
-              <Stack spacing={2}>
-                <FormControl fullWidth>
-                  <FormLabel>STS token URL</FormLabel>
-                  <TextField
-                    onChange={(event) => setStsTokenUrl(event.target.value)}
-                    placeholder="https://idp.example.com/oauth2/token"
-                    value={stsTokenUrl}
-                  />
-                </FormControl>
-
-                <FormControl fullWidth>
-                  <FormLabel>Client ID</FormLabel>
-                  <TextField
-                    onChange={(event) => setClientId(event.target.value)}
-                    value={clientId}
-                  />
-                </FormControl>
-
-                <FormControl fullWidth>
-                  <FormLabel>Client secret</FormLabel>
-                  <TextField
-                    onChange={(event) => setClientSecret(event.target.value)}
-                    slotProps={{
-                      input: {
-                        endAdornment: (
-                          <InputAdornment position="end">
-                            <IconButton
-                              aria-label={
-                                secretVisible
-                                  ? 'Hide client secret'
-                                  : 'Show client secret'
-                              }
-                              onClick={() => setSecretVisible((v) => !v)}
-                              size="small"
-                            >
-                              {secretVisible ? (
-                                <EyeOff size={16} />
-                              ) : (
-                                <Eye size={16} />
-                              )}
-                            </IconButton>
-                          </InputAdornment>
-                        ),
-                      },
-                    }}
-                    type={secretVisible ? 'text' : 'password'}
-                    value={clientSecret}
-                  />
-                </FormControl>
-              </Stack>
-            </Box>
+            <IdpCredentialsFields
+              clientId={clientId}
+              clientSecret={clientSecret}
+              onClientIdChange={setClientId}
+              onClientSecretChange={setClientSecret}
+              onStsTokenUrlChange={setStsTokenUrl}
+              stsTokenUrl={stsTokenUrl}
+            />
           )}
 
           <FormControl fullWidth>
