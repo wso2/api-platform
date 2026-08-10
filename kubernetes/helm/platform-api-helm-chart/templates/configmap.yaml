@@ -96,11 +96,15 @@ data:
     roles = {{ $auth.claimMappings.roles | quote }}
     {{- end }}
 
+    {{- if ne $auth.mode "idp" }}
     [platform_api.auth.jwt]
     issuer = {{ $auth.jwt.issuer | quote }}
-    public_key_file = {{ $auth.jwt.publicKeyFile | quote }}
-    private_key_file = {{ $auth.jwt.privateKeyFile | quote }}
+    public_key_file = {{ required "config.auth.jwt.publicKeyFile is required when auth.mode is \"internal_token\" or \"file\"" $auth.jwt.publicKeyFile | quote }}
+    {{- if eq $auth.mode "file" }}
+    private_key_file = {{ required "config.auth.jwt.privateKeyFile is required when auth.mode is \"file\"" $auth.jwt.privateKeyFile | quote }}
+    {{- end }}
     token_ttl = {{ $auth.jwt.tokenTtl | quote }}
+    {{- end }}
 
     {{- if eq $auth.mode "idp" }}
 

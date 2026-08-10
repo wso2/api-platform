@@ -110,7 +110,9 @@ config:
     #                    component, using the public key.
     #   file           — internal_token + local username/password login (issues
     #                    RS256 tokens signed with the private key).
-    #   idp            — validate tokens against an external IDP's JWKS.
+    #   idp            — validate tokens against an external IDP's JWKS. No local
+    #                    RS256 keys are read or mounted in this mode, so the
+    #                    Secret needn't carry jwt_public.pem / jwt_private.pem.
     mode: file
     # --- Authorization --- applies in every auth mode above: an enterprise-IDP
     # token carries the same roles claim whether it is verified against a JWKS
@@ -167,9 +169,14 @@ config:
       # Claim carrying the user's roles — read in role authorization mode, and the
       # claim the file-mode login endpoint signs auth.file.admin.roles into.
       roles: roles               # Keycloak nests it: "realm_access.roles"
-    # Local RS256 JWT keys. public_key_file verifies tokens (every mode);
-    # private_key_file signs login tokens (file mode only). Both are mounted as
-    # PEM files from the Secret (secrets.keys.jwtPublicKey / jwtPrivateKey).
+    # Local RS256 JWT keys, mounted as PEM files from the Secret
+    # (secrets.keys.jwtPublicKey / jwtPrivateKey). Which of them the chart mounts
+    # follows the mode, because only the mode's own code path opens them:
+    #   internal_token — public_key_file only (verifies tokens minted elsewhere)
+    #   file           — both (also signs its login tokens)
+    #   idp            — neither; validation goes to the IDP's JWKS instead, so
+    #                    these paths are not rendered into config either
+    # The paths below are container mount points, not host paths.
     jwt:
       issuer: platform-api
       publicKeyFile: /etc/platform-api/keys/jwt_public.pem
@@ -275,10 +282,20 @@ configToml: ""
 # ----------------------------------------------------------------------------
 # The chart never creates or embeds secret values. Point existingSecret at a
 # Secret made by ./generate-secrets.sh. Render FAILS if it's unset. The Secret
-# must hold APIP_CP_ENCRYPTION_KEY and the RS256 JWT key files jwt_public.pem /
-# jwt_private.pem (mounted into config.auth.jwt.*File), plus APIP_CP_DATABASE_PASSWORD
-# when driver=postgres and APIP_CP_WEBHOOK_SECRET when config.webhook.enabled. `keys`
-# maps each logical name to the key inside that Secret.
+# must always hold APIP_CP_ENCRYPTION_KEY; the rest are conditional, and a key
+# the chart doesn't reference for your settings can simply be absent:
+#   APIP_CP_DATABASE_PASSWORD  — driver=postgres only
+#   APIP_CP_WEBHOOK_SECRET     — config.webhook.enabled only
+#   jwt_public.pem             — auth.mode internal_token or file only
+#   jwt_private.pem            — auth.mode file only
+# The PEMs are mounted as files into config.auth.jwt.*File. In auth.mode=idp
+# neither is mounted or referenced, so an idp-mode Secret needs no PEMs at all.
+# `keys` maps each logical name to the key inside that Secret.
+#
+# Note the asymmetry between a missing Secret KEY and a missing Secret: only the
+# keys the chart actually references matter, but a referenced-and-absent key
+# leaves the pod in ContainerCreating ("references non-existent secret key")
+# rather than surfacing a config error — which is why the mounts follow the mode.
 #
 # Upgrading from a chart version predating the APIP_CP_* rename: an existing
 # Secret still has the old generic key names (ENCRYPTION_KEY, DATABASE_PASSWORD,
@@ -302,7 +319,7 @@ secrets:
     encryptionKey: APIP_CP_ENCRYPTION_KEY
     databasePassword: APIP_CP_DATABASE_PASSWORD      # postgres only
     webhookSecret: APIP_CP_WEBHOOK_SECRET            # config.webhook.enabled only
-    jwtPublicKey: jwt_public.pem                     # mounted file → config.auth.jwt.publicKeyFile
+    jwtPublicKey: jwt_public.pem                     # mounted file → config.auth.jwt.publicKeyFile (internal_token/file modes)
     jwtPrivateKey: jwt_private.pem                   # mounted file → config.auth.jwt.privateKeyFile (file mode)
     adminUsername: APIP_CP_ADMIN_USERNAME            # auth.mode=file only
     adminPasswordHash: APIP_CP_ADMIN_PASSWORD_HASH   # auth.mode=file only

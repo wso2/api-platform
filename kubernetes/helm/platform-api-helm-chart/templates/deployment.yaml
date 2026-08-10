@@ -4,7 +4,11 @@
 {{- $tls := $pa.tls -}}
 {{- $https := $pa.config.server.https -}}
 {{- $jwt := $pa.config.auth.jwt -}}
-{{- $jwtKeyDir := regexReplaceAll "/[^/]+$" $jwt.publicKeyFile "" -}}
+{{- $jwtKeysMounted := has $pa.config.auth.mode (list "internal_token" "file") -}}
+{{- $jwtKeyDir := "" -}}
+{{- if $jwtKeysMounted -}}
+{{- $jwtKeyDir = regexReplaceAll "/[^/]+$" (required "platform-api: config.auth.jwt.publicKeyFile is required when config.auth.mode is \"internal_token\" or \"file\" — it is the mount path of the PEM that verifies token signatures." $jwt.publicKeyFile) "" -}}
+{{- end -}}
 {{- $tlsMounted := and $https.enabled (or (eq $tls.certificateProvider "cert-manager") (eq $tls.certificateProvider "secret")) -}}
 {{- if and $deployment.enabled $https.enabled (not (or (eq $tls.certificateProvider "cert-manager") (eq $tls.certificateProvider "secret"))) }}
 {{- fail "platform-api: config.server.https.enabled=true requires tls.certificateProvider to be \"cert-manager\" or \"secret\" — the Platform API has no self-signed fallback." }}
@@ -164,9 +168,11 @@ spec:
               mountPath: {{ $pa.config.auth.authorization.roleToScopeMapping }}
               subPath: role-to-scope-mapping.yaml
             {{- end }}
+            {{- if $jwtKeysMounted }}
             - name: jwt-keys
               mountPath: {{ $jwtKeyDir }}
               readOnly: true
+            {{- end }}
             {{- if $tlsMounted }}
             - name: tls-certs
               mountPath: {{ $https.certDir }}
@@ -193,9 +199,10 @@ spec:
               - key: role-to-scope-mapping.yaml
                 path: role-to-scope-mapping.yaml
               {{- end }}
+        {{- if $jwtKeysMounted }}
         # RS256 JWT keys mounted as PEM files from the external Secret. The
-        # public key verifies tokens (every mode); the private key signs
-        # file-mode login tokens (mounted only in file mode).
+        # public key verifies tokens in internal_token and file modes; the
+        # private key signs file-mode login tokens (mounted only in file mode).
         - name: jwt-keys
           secret:
             secretName: {{ $secretName }}
@@ -204,8 +211,9 @@ spec:
                 path: {{ base $jwt.publicKeyFile }}
               {{- if eq $pa.config.auth.mode "file" }}
               - key: {{ $secrets.keys.jwtPrivateKey }}
-                path: {{ base $jwt.privateKeyFile }}
+                path: {{ base (required "platform-api: config.auth.jwt.privateKeyFile is required when config.auth.mode is \"file\" — it is the mount path of the PEM that signs login tokens." $jwt.privateKeyFile) }}
               {{- end }}
+        {{- end }}
         {{- if $tlsMounted }}
         - name: tls-certs
           secret:
