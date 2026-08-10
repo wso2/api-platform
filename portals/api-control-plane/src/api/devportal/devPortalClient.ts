@@ -44,9 +44,9 @@ export async function getDevPortal(id: string): Promise<DevPortal | undefined> {
 export async function createDevPortal(
   input: CreateDevPortalInput
 ): Promise<DevPortal> {
-  // Picked explicitly (not `...input`) so idp_client_credentials secrets
-  // (stsTokenUrl/clientId/clientSecret) never end up on the stored/returned
-  // record — those are write-only, forwarded to the real backend once it exists.
+  // Picked explicitly (not `...input`) so `clientSecret` — the one genuinely
+  // write-only field — never ends up on the stored/returned record.
+  // stsTokenUrl/clientId are not secret and are stored/returned normally.
   const devPortal: DevPortal = {
     id: input.handle,
     name: input.name,
@@ -54,6 +54,8 @@ export async function createDevPortal(
     description: input.description,
     url: input.url,
     authType: input.authType,
+    stsTokenUrl: input.stsTokenUrl,
+    clientId: input.clientId,
     workflowStatus: 'pending',
     createdAt: new Date().toISOString(),
   };
@@ -69,14 +71,15 @@ export async function updateDevPortal(
   if (index < 0) {
     throw new ApiError('Devportal not found', 'NOT_FOUND', 404);
   }
-  // Picked explicitly, same reasoning as createDevPortal: idp_client_credentials
-  // secrets are write-only and never end up on the stored/returned record.
+  // Same reasoning as createDevPortal: only clientSecret is excluded.
   const updated: DevPortal = {
     ...devPortals[index],
     name: input.name,
     description: input.description,
     url: input.url,
     authType: input.authType,
+    stsTokenUrl: input.stsTokenUrl,
+    clientId: input.clientId,
   };
   devPortals[index] = updated;
   return toDevPortal(updated);

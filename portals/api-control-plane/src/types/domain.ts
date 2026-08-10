@@ -262,6 +262,13 @@ export type DevPortal = {
   workflowStatus: DevPortalWorkflowStatus;
   authType: DevPortalAuthType;
   createdAt?: string;
+  /**
+   * Set when authType is 'idp_client_credentials'. Not secret — safe to
+   * store/return. clientSecret is the one write-only field: it's never
+   * echoed back, so it's intentionally absent from this response type.
+   */
+  stsTokenUrl?: string;
+  clientId?: string;
 };
 
 export type CreateDevPortalInput = {

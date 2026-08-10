@@ -340,6 +340,8 @@ export const toDevPortal = (value: unknown): DevPortal => {
     workflowStatus: asDevPortalWorkflowStatus(source.workflowStatus),
     authType: asDevPortalAuthType(source.authType),
     createdAt: asOptionalString(source.createdAt),
+    stsTokenUrl: asOptionalString(source.stsTokenUrl),
+    clientId: asOptionalString(source.clientId),
   };
 };
 

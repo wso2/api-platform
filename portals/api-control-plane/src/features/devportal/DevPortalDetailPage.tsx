@@ -74,8 +74,11 @@ export function DevPortalDetailPage() {
     setDescription(devPortal.description || '');
     setUrl(devPortal.url || '');
     setAuthType(devPortal.authType);
-    setStsTokenUrl('');
-    setClientId('');
+    // stsTokenUrl/clientId aren't secret and are returned by the backend, so
+    // they seed from the record like any other field. clientSecret is the
+    // one write-only field — it always seeds blank.
+    setStsTokenUrl(devPortal.stsTokenUrl || '');
+    setClientId(devPortal.clientId || '');
     setClientSecret('');
     setSeededId(devPortal.id);
   }, [devPortalQuery.data, seededId]);
@@ -92,25 +95,23 @@ export function DevPortalDetailPage() {
 
   const devPortal: DevPortal = devPortalQuery.data;
   const isIdpAuth = authType === 'idp_client_credentials';
-  // Credentials are never returned by the backend (write-only), so an
-  // already-idp devportal always reloads with these three fields blank.
-  // Once idp is already the active auth type, each field updates
-  // independently — leaving one blank keeps its existing value, so changing
-  // just the secret (say) doesn't require re-entering the other two. Only
-  // when switching into idp from a different auth type is there no existing
-  // credential to fall back to, so all three are required in that case.
+  // stsTokenUrl/clientId aren't secret — they're stored/returned and behave
+  // like any other required field once idp is active. clientSecret is the
+  // one write-only field: it's never returned, so blank means "keep the
+  // existing secret" whenever one already exists — only when switching into
+  // idp from a different auth type is there no existing secret to fall back
+  // to, so it's required in that case.
   const switchingToIdp = isIdpAuth && devPortal.authType !== 'idp_client_credentials';
   const urlValid = url.trim() !== '' && isValidUrl(url);
   const stsTokenUrlEntered = stsTokenUrl.trim() !== '';
-  const stsTokenUrlValid = !stsTokenUrlEntered || isValidUrl(stsTokenUrl);
+  const stsTokenUrlValid = stsTokenUrlEntered && isValidUrl(stsTokenUrl);
   const clientIdEntered = clientId.trim() !== '';
   const clientSecretEntered = clientSecret.trim() !== '';
-  const anyCredentialEntered =
-    stsTokenUrlEntered || clientIdEntered || clientSecretEntered;
   const idpFieldsValid =
     !isIdpAuth ||
     (stsTokenUrlValid &&
-      (!switchingToIdp || (stsTokenUrlEntered && clientIdEntered && clientSecretEntered)));
+      clientIdEntered &&
+      (!switchingToIdp || clientSecretEntered));
   // Gate on the fields actually having changed from the loaded record — not
   // just "is currently valid" — otherwise Save starts enabled on page load
   // with zero edits. Only compare once this record's fields have been seeded
@@ -122,7 +123,9 @@ export function DevPortalDetailPage() {
       description !== (devPortal.description || '') ||
       url !== (devPortal.url || '') ||
       authType !== devPortal.authType ||
-      anyCredentialEntered);
+      stsTokenUrl !== (devPortal.stsTokenUrl || '') ||
+      clientId !== (devPortal.clientId || '') ||
+      clientSecretEntered);
   const canSave =
     isDirty &&
     name.trim() !== '' &&
@@ -137,19 +140,19 @@ export function DevPortalDetailPage() {
         url: url.trim(),
         authType,
         description: description || undefined,
-        // Only the fields the user actually typed into are sent — an
-        // untouched field must never overwrite the existing value with ''.
-        ...(isIdpAuth && stsTokenUrlEntered
-          ? { stsTokenUrl: stsTokenUrl.trim() }
+        ...(isIdpAuth
+          ? {
+              stsTokenUrl: stsTokenUrl.trim(),
+              clientId: clientId.trim(),
+              // Only sent when the user actually typed a new one — blank
+              // must never overwrite the existing secret with ''.
+              ...(clientSecretEntered ? { clientSecret } : {}),
+            }
           : {}),
-        ...(isIdpAuth && clientIdEntered ? { clientId: clientId.trim() } : {}),
-        ...(isIdpAuth && clientSecretEntered ? { clientSecret } : {}),
       },
       {
         onSuccess: (updated) => {
           notify(`Devportal "${updated.name}" updated.`, 'success');
-          setStsTokenUrl('');
-          setClientId('');
           setClientSecret('');
         },
         onError: (error) =>
@@ -166,8 +169,8 @@ export function DevPortalDetailPage() {
     setDescription(devPortal.description || '');
     setUrl(devPortal.url || '');
     setAuthType(devPortal.authType);
-    setStsTokenUrl('');
-    setClientId('');
+    setStsTokenUrl(devPortal.stsTokenUrl || '');
+    setClientId(devPortal.clientId || '');
     setClientSecret('');
   };
 
@@ -233,9 +236,9 @@ export function DevPortalDetailPage() {
                   <Stack spacing={1}>
                     {!switchingToIdp && (
                       <Typography color="text.secondary" variant="caption">
-                        Credentials are never displayed after saving. Leave a
-                        field blank to keep its existing value — fill in only
-                        the ones you want to change.
+                        Client secret is never displayed after saving — leave
+                        it blank to keep the existing one, or enter a new
+                        value to replace it.
                       </Typography>
                     )}
                     <IdpCredentialsFields
