@@ -293,8 +293,12 @@ func initializeMCPServer(url string, headerName string, headerValue string) (str
 	}
 
 	// Check HTTP status code
+	// The upstream's 401 is reported as MCP_PROXY_UPSTREAM_UNAUTHORIZED (400),
+	// never as our own Unauthorized: clients treat a 401 from this API as their
+	// session expiring and force a logout, so relaying a remote peer's 401
+	// verbatim would let any auth-requiring MCP server sign the user out.
 	if resp.StatusCode == http.StatusUnauthorized {
-		return "", nil, apperror.Unauthorized.New().
+		return "", nil, apperror.MCPProxyUpstreamUnauthorized.New().
 			WithLogMessage("MCP server returned 401 Unauthorized to the initialize request")
 	}
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
