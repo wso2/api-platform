@@ -26,6 +26,7 @@ import {
   createGatewayToken,
   createProject,
   deleteApi,
+  deleteDevPortal,
   deleteGatewayDeployment,
   deleteProject,
   deployApi,
@@ -84,6 +85,7 @@ export const realApiClient = {
   // dev portals
   listDevPortals,
   createDevPortal,
+  deleteDevPortal,
   // gateway deployments (the deploy path)
   listGatewayDeployments,
   deployApi,

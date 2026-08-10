@@ -23,6 +23,10 @@ import {
   Button,
   IconButton,
   InputAdornment,
+  ListItemIcon,
+  ListItemText,
+  Menu,
+  MenuItem,
   PageContent,
   PageTitle,
   Stack,
@@ -35,13 +39,17 @@ import {
   Clock,
   Copy,
   Globe,
+  MoreVertical,
   Plus,
   Search,
   ShieldCheck,
+  Trash2,
 } from '@wso2/oxygen-ui-icons-react';
 import { useNavigate, useParams } from 'react-router-dom';
 
-import { useDevPortals } from '../../api/hooks/useMvpQueries';
+import { useDeleteDevPortal, useDevPortals } from '../../api/hooks/useMvpQueries';
+import { ConfirmDialog } from '../../components/ConfirmDialog';
+import { useNotifications } from '../../components/Notifications';
 import {
   EmptyState,
   ErrorState,
@@ -115,8 +123,15 @@ function StatCard({
   );
 }
 
-function DevPortalCard({ devPortal }: { devPortal: DevPortal }) {
+function DevPortalCard({
+  devPortal,
+  onDelete,
+}: {
+  devPortal: DevPortal;
+  onDelete?: (devPortal: DevPortal) => void;
+}) {
   const [copied, setCopied] = useState(false);
+  const [menuAnchor, setMenuAnchor] = useState<HTMLElement | null>(null);
   const statusColor = STATUS_COLOR[devPortal.workflowStatus];
 
   const copyUrl = (event: React.MouseEvent) => {
@@ -125,6 +140,11 @@ function DevPortalCard({ devPortal }: { devPortal: DevPortal }) {
     navigator.clipboard?.writeText(devPortal.url).catch(() => undefined);
     setCopied(true);
     setTimeout(() => setCopied(false), 1400);
+  };
+
+  const closeMenu = (event?: React.MouseEvent) => {
+    event?.stopPropagation();
+    setMenuAnchor(null);
   };
 
   const chipSx = {
@@ -170,7 +190,7 @@ function DevPortalCard({ devPortal }: { devPortal: DevPortal }) {
         >
           <Globe size={22} />
         </Box>
-        <Box sx={{ minWidth: 0 }}>
+        <Box sx={{ flex: 1, minWidth: 0 }}>
           <Typography noWrap sx={{ fontWeight: 600 }} variant="subtitle1">
             {devPortal.name}
           </Typography>
@@ -203,6 +223,41 @@ function DevPortalCard({ devPortal }: { devPortal: DevPortal }) {
             </Stack>
           )}
         </Box>
+        {onDelete && (
+          <>
+            <Tooltip title="Devportal actions">
+              <IconButton
+                aria-label="Devportal actions"
+                onClick={(event) => {
+                  event.stopPropagation();
+                  setMenuAnchor(event.currentTarget);
+                }}
+                size="small"
+                sx={{ alignSelf: 'flex-start', flex: 'none' }}
+              >
+                <MoreVertical size={16} />
+              </IconButton>
+            </Tooltip>
+            <Menu
+              anchorEl={menuAnchor}
+              onClose={() => closeMenu()}
+              open={Boolean(menuAnchor)}
+            >
+              <MenuItem
+                onClick={(event) => {
+                  closeMenu(event);
+                  onDelete(devPortal);
+                }}
+                sx={{ color: 'error.main' }}
+              >
+                <ListItemIcon sx={{ color: 'inherit' }}>
+                  <Trash2 size={16} />
+                </ListItemIcon>
+                <ListItemText>Delete</ListItemText>
+              </MenuItem>
+            </Menu>
+          </>
+        )}
       </Stack>
 
       {devPortal.description && (
@@ -281,10 +336,28 @@ function DevPortalCard({ devPortal }: { devPortal: DevPortal }) {
 export function DevPortalPage() {
   const { orgHandle = '' } = useParams();
   const navigate = useNavigate();
+  const { notify } = useNotifications();
   const devPortalsQuery = useDevPortals();
+  const deleteDevPortalMutation = useDeleteDevPortal();
   const [search, setSearch] = useState('');
+  const [toDelete, setToDelete] = useState<DevPortal | null>(null);
 
   const provision = () => navigate(routes.newDevportal(orgHandle));
+
+  const confirmDelete = () => {
+    if (!toDelete) return;
+    deleteDevPortalMutation.mutate(toDelete, {
+      onSuccess: () => {
+        notify(`Deleted "${toDelete.name}".`, 'success');
+        setToDelete(null);
+      },
+      onError: (error) =>
+        notify(
+          error instanceof Error ? error.message : 'Delete failed',
+          'error'
+        ),
+    });
+  };
 
   const devPortals = useMemo(
     () => devPortalsQuery.data || [],
@@ -389,12 +462,33 @@ export function DevPortalPage() {
               }}
             >
               {filtered.map((devPortal) => (
-                <DevPortalCard devPortal={devPortal} key={devPortal.id} />
+                <DevPortalCard
+                  devPortal={devPortal}
+                  key={devPortal.id}
+                  onDelete={setToDelete}
+                />
               ))}
             </Box>
           )}
         </Stack>
       )}
+
+      <ConfirmDialog
+        confirmInputLabel={`Type "${toDelete?.name ?? ''}" to confirm`}
+        confirmLabel="Delete"
+        confirmPhrase={toDelete?.name ?? ''}
+        destructive
+        loading={deleteDevPortalMutation.isPending}
+        message={
+          toDelete
+            ? `This permanently deletes the devportal "${toDelete.name}". This action is irreversible.`
+            : ''
+        }
+        onCancel={() => setToDelete(null)}
+        onConfirm={confirmDelete}
+        open={toDelete !== null}
+        title="Delete devportal"
+      />
     </PageContent>
   );
 }

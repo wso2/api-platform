@@ -29,6 +29,7 @@ import type {
   CreateGatewayInput,
   CreateProjectInput,
   DeployApiInput,
+  DevPortal,
   GatewayDeployment,
   Project,
 } from '../../types/domain';
@@ -555,6 +556,20 @@ export const useCreateDevPortal = (orgHandleArg?: string) => {
   const { orgHandle = '' } = useScopeArgs(orgHandleArg);
   return useMutation({
     mutationFn: (input: CreateDevPortalInput) => client.createDevPortal(input),
+    onSuccess: () => {
+      queryClient.invalidateQueries({
+        queryKey: queryKeys.devPortals(orgHandle),
+      });
+    },
+  });
+};
+
+export const useDeleteDevPortal = (orgHandleArg?: string) => {
+  const client = useApiClient();
+  const queryClient = useQueryClient();
+  const { orgHandle = '' } = useScopeArgs(orgHandleArg);
+  return useMutation({
+    mutationFn: (devPortal: DevPortal) => client.deleteDevPortal(devPortal.id),
     onSuccess: () => {
       queryClient.invalidateQueries({
         queryKey: queryKeys.devPortals(orgHandle),

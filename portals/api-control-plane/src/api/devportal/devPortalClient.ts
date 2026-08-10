@@ -19,6 +19,7 @@
 import type { CreateDevPortalInput, DevPortal } from '../../types/domain';
 import { toDevPortal } from '../adapters';
 import { devPortals } from '../mocks/data';
+import { ApiError } from '../types/errors';
 
 /**
  * Devportal management has no platform-api backend yet (console-only feature
@@ -42,4 +43,12 @@ export async function createDevPortal(
   };
   devPortals.push(devPortal);
   return toDevPortal(devPortal);
+}
+
+export async function deleteDevPortal(id: string): Promise<void> {
+  const index = devPortals.findIndex((item) => item.id === id);
+  if (index < 0) {
+    throw new ApiError('Devportal not found', 'NOT_FOUND', 404);
+  }
+  devPortals.splice(index, 1);
 }
