@@ -16,7 +16,7 @@
  * under the License.
  */
 
-import { useMemo, useState } from 'react';
+import { useMemo, useRef, useState } from 'react';
 import {
   alpha,
   Box,
@@ -115,6 +115,13 @@ function DevPortalCard({
   const [copied, setCopied] = useState(false);
   const [menuAnchor, setMenuAnchor] = useState<HTMLElement | null>(null);
   const statusColor = STATUS_COLOR[devPortal.workflowStatus];
+  // MUI's Menu closes on an outside click via a document-level listener that
+  // doesn't reliably block the same click from also reaching this card's
+  // onClick underneath it — dismissing the menu by clicking just off it would
+  // otherwise also open the devportal. mousedown always fires before click,
+  // so capturing "was the menu open" there is a deterministic guard
+  // regardless of exactly when the menu's own close logic runs.
+  const wasMenuOpenRef = useRef(false);
 
   const copyUrl = (event: React.MouseEvent) => {
     event.stopPropagation();
@@ -146,7 +153,16 @@ function DevPortalCard({
 
   return (
     <Box
-      onClick={() => onOpen(devPortal)}
+      onClick={() => {
+        if (wasMenuOpenRef.current) {
+          wasMenuOpenRef.current = false;
+          return;
+        }
+        onOpen(devPortal);
+      }}
+      onMouseDown={() => {
+        wasMenuOpenRef.current = menuAnchor !== null;
+      }}
       sx={{
         bgcolor: 'background.paper',
         border: '1px solid',
