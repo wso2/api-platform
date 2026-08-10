@@ -160,8 +160,14 @@ export default function RotateSecret(): React.JSX.Element {
               <Grid container spacing={2}>
                 <Grid size={{ xs: 12, sm: 6 }}>
                   <FormControl fullWidth>
-                    <FormLabel>Display Name</FormLabel>
-                    <TextField fullWidth value={displayName} onChange={(e) => setDisplayName(e.target.value)} />
+                    <FormLabel required>Display Name</FormLabel>
+                    <TextField
+                      fullWidth
+                      required
+                      value={displayName}
+                      onChange={(e) => setDisplayName(e.target.value)}
+                      data-cyid="rotate-secret-name-input"
+                    />
                   </FormControl>
                 </Grid>
 
