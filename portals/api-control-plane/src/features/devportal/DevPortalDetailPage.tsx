@@ -297,7 +297,7 @@ export function DevPortalDetailPage() {
                 />
               </Stack>
               <Typography color="text.secondary" variant="body2">
-                Handle: {devPortal.handle}
+                Identifier: {devPortal.handle}
               </Typography>
               {devPortal.createdAt && (
                 <Typography

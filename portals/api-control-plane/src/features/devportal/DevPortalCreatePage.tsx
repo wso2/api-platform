@@ -134,7 +134,7 @@ export function DevPortalCreatePage() {
       <Box sx={{ maxWidth: 720 }}>
         <Stack spacing={3}>
           <FormControl fullWidth>
-            <FormLabel>Display name</FormLabel>
+            <FormLabel>Name</FormLabel>
             <TextField
               onChange={(event) => onDisplayNameChange(event.target.value)}
               placeholder="Production Devportal"
@@ -143,7 +143,7 @@ export function DevPortalCreatePage() {
           </FormControl>
 
           <FormControl fullWidth>
-            <FormLabel>Name</FormLabel>
+            <FormLabel>Identifier</FormLabel>
             <TextField
               error={handle !== '' && !handleValid}
               helperText="Lowercase letters, numbers, hyphens; 3–64 chars (unique per org)."
