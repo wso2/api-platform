@@ -2163,7 +2163,13 @@ func TestTranslator_CreateGRPCAccessLog(t *testing.T) {
 	accessLog, err := translator.createGRPCAccessLog()
 	assert.NoError(t, err)
 	assert.NotNil(t, accessLog)
-	assert.Nil(t, accessLog.Filter, "no ignore_path_prefixes configured -> no filter")
+	require.NotNil(t, accessLog.Filter, "reserved health-path suppression filter is always attached")
+	assert.False(t, evalAccessLogFilter(t, accessLog.Filter, map[string]string{
+		":path": constants.GatewayHealthyPath,
+	}), "gateway health-check path is suppressed even with no ignore_path_prefixes configured")
+	assert.True(t, evalAccessLogFilter(t, accessLog.Filter, map[string]string{
+		":path": "/orders",
+	}), "non-health path is still logged")
 }
 
 func TestTranslator_CreateGRPCAccessLog_WithIgnorePathPrefixes(t *testing.T) {
@@ -2295,6 +2301,52 @@ func TestBuildIgnorePathsAccessLogFilter(t *testing.T) {
 		assert.True(t, evalAccessLogFilter(t, filter, map[string]string{
 			"x-envoy-original-path": "/orders",
 		}), "matches neither prefix -> logged")
+	})
+}
+
+func TestBuildReservedHealthPathAccessLogFilter(t *testing.T) {
+	filter := buildReservedHealthPathAccessLogFilter()
+	require.NotNil(t, filter)
+
+	assert.False(t, evalAccessLogFilter(t, filter, map[string]string{
+		":path": constants.GatewayHealthyPath,
+	}), "healthy probe path is suppressed")
+	assert.False(t, evalAccessLogFilter(t, filter, map[string]string{
+		":path": constants.GatewayReadyPath,
+	}), "ready probe path is suppressed")
+	assert.True(t, evalAccessLogFilter(t, filter, map[string]string{
+		":path": "/orders",
+	}), "unrelated path is logged")
+	assert.True(t, evalAccessLogFilter(t, filter, map[string]string{}),
+		"no :path header at all is logged (fails open, never suppresses by default)")
+}
+
+func TestBuildAccessLogFilter(t *testing.T) {
+	t.Run("no ignore prefixes -> health-only suppression", func(t *testing.T) {
+		filter := buildAccessLogFilter(nil)
+		require.NotNil(t, filter, "reserved health-path filter is always attached")
+		assert.False(t, evalAccessLogFilter(t, filter, map[string]string{
+			":path": constants.GatewayHealthyPath,
+		}))
+		assert.True(t, evalAccessLogFilter(t, filter, map[string]string{
+			":path": "/orders",
+		}))
+	})
+
+	t.Run("with ignore prefixes -> both health path and configured prefix suppressed", func(t *testing.T) {
+		filter := buildAccessLogFilter([]string{"/metrics"})
+		require.NotNil(t, filter)
+		assert.False(t, evalAccessLogFilter(t, filter, map[string]string{
+			":path": constants.GatewayHealthyPath,
+		}), "reserved health path still suppressed alongside a configured prefix")
+		assert.False(t, evalAccessLogFilter(t, filter, map[string]string{
+			"x-envoy-original-path": "/metrics/scrape",
+			":path":                 "/orders",
+		}), "configured ignore prefix still suppressed")
+		assert.True(t, evalAccessLogFilter(t, filter, map[string]string{
+			"x-envoy-original-path": "/orders",
+			":path":                 "/orders",
+		}), "unrelated path with neither match is logged")
 	})
 }
 

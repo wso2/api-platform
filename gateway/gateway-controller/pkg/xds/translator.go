@@ -2721,11 +2721,33 @@ func (t *Translator) createGRPCAccessLog() (*accesslog.AccessLog, error) {
 
 	return &accesslog.AccessLog{
 		Name:   "envoy.access_loggers.http_grpc",
-		Filter: buildIgnorePathsAccessLogFilter(t.config.Collector.IgnorePathPrefixes),
+		Filter: buildAccessLogFilter(t.config.Collector.IgnorePathPrefixes),
 		ConfigType: &accesslog.AccessLog_TypedConfig{
 			TypedConfig: grpcAccessLogAny,
 		},
 	}, nil
+}
+
+
+func buildAccessLogFilter(prefixes []string) *accesslog.AccessLogFilter {
+	filters := []*accesslog.AccessLogFilter{buildReservedHealthPathAccessLogFilter()}
+	if userFilter := buildIgnorePathsAccessLogFilter(prefixes); userFilter != nil {
+		filters = append(filters, userFilter)
+	}
+	if len(filters) == 1 {
+		return filters[0]
+	}
+	return &accesslog.AccessLogFilter{
+		FilterSpecifier: &accesslog.AccessLogFilter_AndFilter{
+			AndFilter: &accesslog.AndFilter{Filters: filters},
+		},
+	}
+}
+
+const envoyPathPseudoHeader = ":path"
+
+func buildReservedHealthPathAccessLogFilter() *accesslog.AccessLogFilter {
+	return headerPrefixFilter(envoyPathPseudoHeader, constants.GatewayHealthPathPrefix, true)
 }
 
 // envoyOriginalPathHeader is the header Envoy's router sets to the pre-rewrite,
