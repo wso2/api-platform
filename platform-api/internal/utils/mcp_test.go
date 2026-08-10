@@ -124,8 +124,7 @@ func TestFetchMCPServerInfoUpstream401IsNotOurUnauthorized(t *testing.T) {
 	if appErr.Code != apperror.CodeMCPProxyUpstreamUnauthorized {
 		t.Errorf("Code = %q, want %q", appErr.Code, apperror.CodeMCPProxyUpstreamUnauthorized)
 	}
-	if appErr.HTTPStatus == http.StatusUnauthorized {
-		t.Error("an upstream MCP server's 401 must not reach the caller as a 401 — " +
-			"clients treat that as their own session expiring")
+	if appErr.HTTPStatus != http.StatusBadRequest {
+		t.Errorf("HTTPStatus = %d, want %d", appErr.HTTPStatus, http.StatusBadRequest)
 	}
 }
