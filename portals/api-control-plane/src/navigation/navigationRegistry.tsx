@@ -19,6 +19,7 @@
 import {
   Boxes,
   ClipboardList,
+  Globe,
   Home,
   Network,
   Rocket,
@@ -59,6 +60,16 @@ export const navigationRegistry: NavigationDefinition[] = [
     to: ({ params }) =>
       params.orgHandle ? routes.gateways(params.orgHandle) : undefined,
     match: (pathname) => /\/organizations\/[^/]+\/gateways(\/[^/]+)?$/.test(pathname),
+  },
+  {
+    id: 'devportal',
+    label: 'Dev Portal',
+    level: 'organization',
+    order: 35,
+    icon: <Globe />,
+    to: ({ params }) =>
+      params.orgHandle ? routes.devportal(params.orgHandle) : undefined,
+    match: (pathname) => /\/organizations\/[^/]+\/devportal$/.test(pathname),
   },
   {
     id: 'project-home',
