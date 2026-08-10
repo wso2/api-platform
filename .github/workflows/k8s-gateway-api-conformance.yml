@@ -199,9 +199,74 @@ jobs:
     if: always() && github.event_name == 'schedule'
     runs-on: ubuntu-24.04
     steps:
+      - name: Checkout conformance pin
+        uses: actions/checkout@v4
+        with:
+          sparse-checkout: kubernetes/conformance/runner/go.mod
+          sparse-checkout-cone-mode: false
+
+      # Compares the Gateway API version this suite is pinned to against the latest
+      # upstream release, so a new release is noticed by the weekly run instead of by
+      # someone remembering to check kubernetes-sigs/gateway-api by hand.
+      - name: Check for a newer Gateway API release
+        id: upstream
+        env:
+          # Raises the API rate limit from the shared-IP anonymous quota and needs no
+          # scope beyond the workflow's top-level `contents: read`.
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -uo pipefail
+
+          GOMOD="kubernetes/conformance/runner/go.mod"
+
+          # The `require sigs.k8s.io/gateway-api/conformance vX.Y.Z` line is the single
+          # source of truth for what the suite actually runs (run-conformance.sh resolves
+          # the suite from the module cache, not from a checkout of the upstream repo).
+          PINNED=$(grep -oE 'sigs\.k8s\.io/gateway-api/conformance v[0-9]+\.[0-9]+\.[0-9]+' "${GOMOD}" \
+            | head -n1 | awk '{print $2}')
+          if [ -z "${PINNED:-}" ]; then
+            echo "::warning::Could not read the Gateway API conformance pin from ${GOMOD}; skipping the release check."
+            echo "latest=" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          echo "pinned=${PINNED}" >> "$GITHUB_OUTPUT"
+
+          # /releases/latest excludes drafts and pre-releases, so release candidates
+          # (v1.6.0-rc1 and friends) never raise a false alarm.
+          LATEST=$(curl --fail --silent --show-error --max-time 30 \
+            -H "Accept: application/vnd.github+json" \
+            -H "X-GitHub-Api-Version: 2022-11-28" \
+            -H "Authorization: Bearer ${GH_TOKEN}" \
+            https://api.github.com/repos/kubernetes-sigs/gateway-api/releases/latest \
+            | jq -r '.tag_name // empty') || LATEST=""
+
+          # Validate before the value is ever interpolated into the chat payload
+          if ! printf '%s' "${LATEST}" | grep -qE '^v[0-9]+\.[0-9]+\.[0-9]+$'; then
+            echo "::warning::Could not resolve a usable latest Gateway API release tag (got '${LATEST}'); skipping the release check."
+            echo "latest=" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          echo "Pinned Gateway API conformance version: ${PINNED}"
+          echo "Latest upstream Gateway API release:    ${LATEST}"
+
+          # sort -V orders semver correctly (Ex: 1.10.0 after 1.9.0)
+          NEWEST=$(printf '%s\n%s\n' "${PINNED#v}" "${LATEST#v}" | sort -V | tail -n1)
+          if [ "${NEWEST}" = "${PINNED#v}" ]; then
+            echo "Pin is up to date."
+            echo "latest=" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          echo "::notice::Gateway API ${LATEST} is available; the conformance suite is pinned to ${PINNED}."
+          echo "latest=${LATEST}" >> "$GITHUB_OUTPUT"
+
       - name: Send Google Chat notification
         env:
           WEBHOOK_URL: ${{ secrets.GOOGLE_CHATSPACE_WEBHOOK_URL }}
+          # UPSTREAM_LATEST is empty unless a strictly newer Gateway API release exists;
+          UPSTREAM_LATEST: ${{ steps.upstream.outputs.latest }}
+          UPSTREAM_PINNED: ${{ steps.upstream.outputs.pinned }}
           # needs.<job>.result is success/failure/cancelled; the status output adds
           # detail (passed/failed/error). Passed via env to keep untrusted-looking
           # context out of the inline shell.
@@ -230,10 +295,14 @@ jobs:
             HEADLINE="🔥 *Gateway API Conformance Errored*"
           fi
 
-          # Google Chat webhook expects {"text": "..."}; \n renders as a line break and
-          # *text* as bold. The message is fully controlled (no quotes/backslashes other
-          # than the intended \n), so a plain JSON string is safe here.
-          MESSAGE="${HEADLINE}\n*Repository:* ${REPO}\n*Ref:* ${REF_NAME}\n*Trigger:* ${EVENT}\n*Run:* ${RUN_URL}"
+          # Appended only when the release check found a newer upstream version. 
+          UPSTREAM_LINE=""
+          if [ -n "${UPSTREAM_LATEST}" ]; then
+            UPSTREAM_LINE="\n🔔 *(Alert):* Gateway-API ${UPSTREAM_LATEST} is now available — this suite is pinned to ${UPSTREAM_PINNED}."
+          fi
+
+          # Create the final message payload
+          MESSAGE="${HEADLINE}\n*Repository:* ${REPO}\n*Ref:* ${REF_NAME}\n*Trigger:* ${EVENT}\n*Run:* ${RUN_URL}${UPSTREAM_LINE}"
           PAYLOAD="{\"text\": \"${MESSAGE}\"}"
 
           echo "${PAYLOAD}" | curl --fail --silent --show-error \
