@@ -67,20 +67,30 @@ config:
   # --- Database (the portal's OWN store, separate from the Platform API's) ---
   database:
     # sqlite   → file on the PVC; single replica; HPA unavailable.
-    # postgres → external server (configured below); enables multi-replica + HPA.
+    # postgres → external PostgreSQL (configured below); enables multi-replica + HPA.
+    # mssql    → external SQL Server (configured below); enables multi-replica + HPA.
+    #
+    # Aliases are accepted and normalized by the portal at startup, so you can use
+    # the same spelling here as in the platform-api values block:
+    #   sqlite3 → sqlite,  postgresql/pgx → postgres,  sqlserver → mssql
     type: sqlite
     # SQLite file (type=sqlite). Must sit under the mounted data volume.
     file: /app/data/devportal.db
-    # PostgreSQL connection (type=postgres only). The password is NOT here — it
-    # comes from the Secret key secrets.keys.databasePassword. Leave host empty
-    # for sqlite.
+    # Server connection — used by BOTH postgres and mssql. The password is NOT
+    # here; it comes from the Secret key secrets.keys.databasePassword. Leave host
+    # empty for sqlite.
     host: ""
-    port: 5432
+    port: 5432                   # 1433 for SQL Server
     database: devportal          # database (schema) name → rendered as `name`
     user: postgres               # login role; password from the Secret
-    sslmode: disable             # disable | require | verify-ca | verify-full
-    sslRootCert: ""              # CA cert — used by verify-ca / verify-full
-    # Connection-pool tuning (postgres only).
+    # TLS to the database. Only these two values are supported:
+    #   disable      → no TLS
+    #   verify-full  → encrypt AND verify the certificate chain + hostname
+    # On SQL Server, anything other than verify-full connects UNENCRYPTED with
+    # certificate verification off, so there is no partial mode — use verify-full.
+    sslmode: disable             # disable | verify-full
+    sslRootCert: ""              # CA cert — used by verify-full
+    # Connection-pool tuning (postgres / mssql only).
     maxOpenConns: 50
     minOpenConns: 2
     poolIdleTimeoutMs: 10000

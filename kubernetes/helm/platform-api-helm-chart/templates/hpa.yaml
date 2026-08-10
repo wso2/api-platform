@@ -1,8 +1,8 @@
 {{- $pa := .Values -}}
 {{- $hpa := $pa.hpa -}}
 {{- if and $pa.deployment.enabled $hpa.enabled }}
-{{- if ne $pa.config.database.driver "postgres" }}
-{{- fail "platformApi.hpa requires platformApi.config.database.driver=postgres — SQLite does not support multiple replicas." }}
+{{- if eq (include "apip.platformApi.dbDriver" $pa.config.database.driver) "sqlite3" }}
+{{- fail "platformApi.hpa requires an external database (config.database.driver=postgres or sqlserver) — SQLite is a per-pod file and does not support multiple replicas." }}
 {{- end }}
 apiVersion: autoscaling/v2
 kind: HorizontalPodAutoscaler

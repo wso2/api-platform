@@ -219,3 +219,24 @@ that component's secret. Fails the render when a required secret is unset.
 {{- end -}}
 {{- $name -}}
 {{- end -}}
+
+{{/*
+Canonical database driver for a configured config.database.driver.
+
+Takes the raw driver string, returns one of "sqlite3" / "postgres" /
+"sqlserver" — the three names platform-api's own code canonicalizes to 
+and fails the render on anything else, so a typo is an install-time error 
+instead of a crash-looping pod.
+*/}}
+{{- define "apip.platformApi.dbDriver" -}}
+{{- $raw := . | toString | trim | lower -}}
+{{- $aliases := dict
+      "sqlite" "sqlite3" "sqlite3" "sqlite3"
+      "postgres" "postgres" "postgresql" "postgres" "pgx" "postgres"
+      "mssql" "sqlserver" "sqlserver" "sqlserver" -}}
+{{- $canonical := get $aliases $raw -}}
+{{- if not $canonical -}}
+{{- fail (printf "config.database.driver must be one of: sqlite, sqlite3, postgres, postgresql, pgx, mssql, sqlserver (got %q)" $raw) -}}
+{{- end -}}
+{{- $canonical -}}
+{{- end -}}

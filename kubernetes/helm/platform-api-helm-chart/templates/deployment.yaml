@@ -108,7 +108,7 @@ spec:
                 secretKeyRef:
                   name: {{ $secretName }}
                   key: {{ $secrets.keys.encryptionKey }}
-            {{- if ne $pa.config.database.driver "sqlite3" }}
+            {{- if ne (include "apip.platformApi.dbDriver" $pa.config.database.driver) "sqlite3" }}
             - name: APIP_CP_DATABASE_PASSWORD
               valueFrom:
                 secretKeyRef:

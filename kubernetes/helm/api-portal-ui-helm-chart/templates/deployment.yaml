@@ -108,7 +108,7 @@ spec:
                 secretKeyRef:
                   name: {{ $secretName }}
                   key: {{ $secrets.keys.sessionSecret }}
-            {{- if eq $cfg.database.type "postgres" }}
+            {{- if ne (include "apip.apiPortal.dbDialect" $cfg.database.type) "sqlite" }}
             - name: APIP_AP_DATABASE_PASSWORD
               valueFrom:
                 secretKeyRef:

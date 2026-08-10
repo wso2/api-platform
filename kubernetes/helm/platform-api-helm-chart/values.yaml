@@ -81,15 +81,22 @@ config:
 
   # --- Database ---
   database:
-    # sqlite3  — no external DB; the file lives on the PVC (see persistence).
-    #            Single replica only → the HPA cannot be used.
-    # postgres — external PostgreSQL (configured below); enables multi-replica + HPA.
+    # sqlite3   — no external DB; the file lives on the PVC (see persistence).
+    #             Single replica only → the HPA cannot be used.
+    # postgres  — external PostgreSQL (configured below); enables multi-replica + HPA.
+    # sqlserver — external SQL Server (configured below); enables multi-replica + HPA.
+    #
+    # Aliases are accepted and normalized by the chart, so the same spelling works
+    # here and in the api-portal values block:
+    #   sqlite → sqlite3,  postgresql/pgx → postgres,  mssql → sqlserver
     driver: sqlite3
     # SQLite database file (driver=sqlite3 only). Must sit under the mounted data
     # volume (deployment.volumeMountPath), so it persists on the PVC.
     path: /app/data/api_platform.db
-    # PostgreSQL connection (driver=postgres only). The password is NOT set here —
-    # it comes from the Secret key secrets.keys.databasePassword.
+    # Server connection — used by BOTH postgres and sqlserver (the block keeps its
+    # `postgres` name for values compatibility; renaming it would break existing
+    # overrides). Set port: 1433 for SQL Server. The password is NOT set here — it
+    # comes from the Secret key secrets.keys.databasePassword.
     postgres:
       host: ""                   # in-cluster Service or external endpoint
       port: 5432
@@ -401,7 +408,7 @@ persistence:
 # ----------------------------------------------------------------------------
 deployment:
   enabled: true
-  replicaCount: 1                # >1 requires driver=postgres
+  replicaCount: 1                # >1 requires an external DB (postgres/sqlserver)
   # Where the data volume mounts. Must contain config.database.path and
   # config.tls.certDir.
   volumeMountPath: /app/data
@@ -465,10 +472,11 @@ deployment:
 # ----------------------------------------------------------------------------
 # Autoscaling & disruption budget
 # ----------------------------------------------------------------------------
-# HorizontalPodAutoscaler. REQUIRES config.database.driver=postgres — on sqlite3
-# the chart refuses to render it (SQLite is single-replica). Enable only after
-# switching to postgres, and set deployment.resources.requests.cpu so the HPA has
-# a baseline to measure against.
+# HorizontalPodAutoscaler. REQUIRES an external database — config.database.driver
+# of postgres or sqlserver. On sqlite3 the chart refuses to render it (SQLite is a
+# per-pod file, so it is single-replica). Enable only after switching to an
+# external database, and set deployment.resources.requests.cpu so the HPA has a
+# baseline to measure against.
 hpa:
   enabled: false
   minReplicas: 2

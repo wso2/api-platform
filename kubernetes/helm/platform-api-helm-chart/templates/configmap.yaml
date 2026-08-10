@@ -1,6 +1,7 @@
 {{- $pa := .Values -}}
 {{- $cfg := $pa.config -}}
 {{- $db := $cfg.database -}}
+{{- $dbDriver := include "apip.platformApi.dbDriver" $db.driver -}}
 {{- $auth := $cfg.auth -}}
 {{- $srv := $cfg.server -}}
 {{- $https := $srv.https -}}
@@ -39,8 +40,11 @@ data:
     hashing_algorithms = {{ $cfg.security.apiKey.hashingAlgorithms | quote }}
 
     [platform_api.database]
-    driver = {{ $db.driver | quote }}
-    {{- if eq $db.driver "sqlite3" }}
+    # Rendered as the canonical driver rather than the raw values.yaml spelling,
+    # so an alias resolves to the one name this component's config validator
+    # expects regardless of which spelling the shared values file used.
+    driver = {{ $dbDriver | quote }}
+    {{- if eq $dbDriver "sqlite3" }}
     path = {{ $db.path | quote }}
     {{- else }}
     host = {{ required "config.database.postgres.host is required when database.driver is not sqlite3" $db.postgres.host | quote }}
