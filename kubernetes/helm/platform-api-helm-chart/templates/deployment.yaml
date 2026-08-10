@@ -7,11 +7,27 @@
 {{- $jwtKeysMounted := has $pa.config.auth.mode (list "internal_token" "file") -}}
 {{- $jwtKeyDir := "" -}}
 {{- if $jwtKeysMounted -}}
-{{- $jwtKeyDir = regexReplaceAll "/[^/]+$" (required "platform-api: config.auth.jwt.publicKeyFile is required when config.auth.mode is \"internal_token\" or \"file\" — it is the mount path of the PEM that verifies token signatures." $jwt.publicKeyFile) "" -}}
+{{- $jwtPublicKeyFile := required "platform-api: config.auth.jwt.publicKeyFile is required when config.auth.mode is \"internal_token\" or \"file\" — it is the mount path of the PEM that verifies token signatures." $jwt.publicKeyFile -}}
+{{- if not (hasPrefix "/" $jwtPublicKeyFile) -}}
+{{- fail (printf "platform-api: config.auth.jwt.publicKeyFile must be an absolute path (got %q) — the chart derives the jwt-keys volume mountPath from its parent directory." $jwtPublicKeyFile) -}}
+{{- end -}}
+{{- $jwtKeyDir = regexReplaceAll "/[^/]+$" $jwtPublicKeyFile "" -}}
+{{- if or (eq $jwtKeyDir "") (eq $jwtKeyDir "/") -}}
+{{- fail (printf "platform-api: config.auth.jwt.publicKeyFile must sit in a subdirectory, not directly at the filesystem root (got %q) — the chart mounts its parent directory as the jwt-keys volume and cannot mount \"/\". Use e.g. /etc/platform-api/keys/jwt_public.pem." $jwtPublicKeyFile) -}}
+{{- end -}}
+{{- if eq $pa.config.auth.mode "file" -}}
+{{- $jwtPrivateKeyFile := required "platform-api: config.auth.jwt.privateKeyFile is required when config.auth.mode is \"file\" — it is the mount path of the PEM that signs login tokens." $jwt.privateKeyFile -}}
+{{- if ne (regexReplaceAll "/[^/]+$" $jwtPrivateKeyFile "") $jwtKeyDir -}}
+{{- fail (printf "platform-api: config.auth.jwt.privateKeyFile must be in the same directory as publicKeyFile (public %q, private %q) — both PEMs come from one Secret mounted as a single jwt-keys volume at %q, so a private key elsewhere would be written into that directory while the config kept reading it from its own." $jwtPublicKeyFile $jwtPrivateKeyFile $jwtKeyDir) -}}
+{{- end -}}
+{{- end -}}
 {{- end -}}
 {{- $tlsMounted := and $https.enabled (or (eq $tls.certificateProvider "cert-manager") (eq $tls.certificateProvider "secret")) -}}
 {{- if and $deployment.enabled $https.enabled (not (or (eq $tls.certificateProvider "cert-manager") (eq $tls.certificateProvider "secret"))) }}
 {{- fail "platform-api: config.server.https.enabled=true requires tls.certificateProvider to be \"cert-manager\" or \"secret\" — the Platform API has no self-signed fallback." }}
+{{- end }}
+{{- if and $deployment.enabled (gt (int $deployment.replicaCount) 1) (eq (include "apip.platformApi.dbDriver" $pa.config.database.driver) "sqlite3") }}
+{{- fail "platform-api: deployment.replicaCount > 1 requires an external database (config.database.driver=postgres or sqlserver) — SQLite is a per-pod file and cannot be shared across replicas. Set replicaCount: 1 or switch to an external database." }}
 {{- end }}
 {{- $secretName := include "apip.platformApi.secretName" . -}}
 {{- if $deployment.enabled }}

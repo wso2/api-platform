@@ -291,29 +291,13 @@ configToml: ""
 # Secret made by ./generate-secrets.sh. Render FAILS if it's unset. The Secret
 # must always hold APIP_CP_ENCRYPTION_KEY; the rest are conditional, and a key
 # the chart doesn't reference for your settings can simply be absent:
-#   APIP_CP_DATABASE_PASSWORD  — driver=postgres only
+#   APIP_CP_DATABASE_PASSWORD  — every non-sqlite3 driver (postgres/sqlserver)
 #   APIP_CP_WEBHOOK_SECRET     — config.webhook.enabled only
 #   jwt_public.pem             — auth.mode internal_token or file only
 #   jwt_private.pem            — auth.mode file only
 # The PEMs are mounted as files into config.auth.jwt.*File. In auth.mode=idp
 # neither is mounted or referenced, so an idp-mode Secret needs no PEMs at all.
 # `keys` maps each logical name to the key inside that Secret.
-#
-# Note the asymmetry between a missing Secret KEY and a missing Secret: only the
-# keys the chart actually references matter, but a referenced-and-absent key
-# leaves the pod in ContainerCreating ("references non-existent secret key")
-# rather than surfacing a config error — which is why the mounts follow the mode.
-#
-# Upgrading from a chart version predating the APIP_CP_* rename: an existing
-# Secret still has the old generic key names (ENCRYPTION_KEY, DATABASE_PASSWORD,
-# WEBHOOK_SECRET, ADMIN_USERNAME, ADMIN_PASSWORD_HASH — the PEM entries were
-# never renamed). generate-secrets.sh never rewrites an existing Secret, so
-# `helm upgrade` alone will not migrate it and the deployment will look for keys
-# that aren't there. Either add the new-named keys to the existing Secret
-# (`kubectl patch secret <name> -p '{"data":{"APIP_CP_ENCRYPTION_KEY":"<same
-# base64 value as the old ENCRYPTION_KEY key>", ...}}'`), or override the `keys`
-# below back to your Secret's actual (old) key names until you're ready to
-# migrate it.
 secrets:
   existingSecret: ""
   # Each key inside the Secret is named EXACTLY like the env var the container
@@ -324,7 +308,7 @@ secrets:
   # their path, not an env var.
   keys:
     encryptionKey: APIP_CP_ENCRYPTION_KEY
-    databasePassword: APIP_CP_DATABASE_PASSWORD      # postgres only
+    databasePassword: APIP_CP_DATABASE_PASSWORD      # any non-sqlite3 driver (postgres/sqlserver)
     webhookSecret: APIP_CP_WEBHOOK_SECRET            # config.webhook.enabled only
     jwtPublicKey: jwt_public.pem                     # mounted file → config.auth.jwt.publicKeyFile (internal_token/file modes)
     jwtPrivateKey: jwt_private.pem                   # mounted file → config.auth.jwt.privateKeyFile (file mode)

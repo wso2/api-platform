@@ -53,6 +53,25 @@ test('normalizeDriver returns null for anything unrecognised', () => {
     }
 });
 
+test('normalizeDriver rejects inherited Object.prototype members', () => {
+    // A plain object literal would resolve these to inherited functions —
+    // truthy values normalizeDatabaseDriver would accept as a real driver,
+    // letting startup validation pass on a database that does not exist.
+    for (const inherited of [
+        'constructor', 'toString', '__proto__', 'hasOwnProperty', 'valueOf',
+        'isPrototypeOf', 'propertyIsEnumerable', 'toLocaleString',
+    ]) {
+        assert.equal(
+            normalizeDriver(inherited), null,
+            `expected null for inherited member ${JSON.stringify(inherited)}`,
+        );
+    }
+});
+
+test('DRIVER_ALIASES has no prototype chain to inherit from', () => {
+    assert.equal(Object.getPrototypeOf(DRIVER_ALIASES), null);
+});
+
 test('normalizeDriver returns null for non-string input', () => {
     // A TOML table or number reaching this field must fail closed, not throw
     // a TypeError out of startup validation.

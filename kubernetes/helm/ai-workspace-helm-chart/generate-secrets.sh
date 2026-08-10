@@ -42,14 +42,14 @@
 #
 #   Platform API ([platform_api.*], APIP_CP_*)
 #     APIP_CP_ADMIN_USERNAME             File-mode admin username (default: admin).
-#     APIP_CP_DATABASE_PASSWORD          Postgres password.
+#     APIP_CP_DATABASE_PASSWORD          Database password (postgres/sqlserver).
 #     APIP_CP_WEBHOOK_SECRET             HMAC secret for the webhook receiver.
 #
 #   AI Workspace BFF ([ai_workspace.*], APIP_AIW_*)
 #     APIP_AIW_AUTH_OIDC_CLIENT_SECRET   OIDC client secret (OIDC mode only).
 #
 #   API Portal ([api_portal.*], APIP_AP_*) — needs API_PORTAL=true
-#     APIP_AP_DATABASE_PASSWORD          Postgres password.
+#     APIP_AP_DATABASE_PASSWORD          Database password (postgres/mssql).
 #     APIP_AP_AUTH_IDP_CLIENT_SECRET     OIDC/IDP client secret (idp mode only).
 # --------------------------------------------------------------------
 set -euo pipefail

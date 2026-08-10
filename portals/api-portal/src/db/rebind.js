@@ -54,7 +54,8 @@ const DIALECTS = Object.freeze({
  * Normalization happens once at startup (config/configLoader.js), so nothing
  * downstream of that ever sees an alias.
  */
-const DRIVER_ALIASES = Object.freeze({
+
+const DRIVER_ALIASES = Object.freeze(Object.assign(Object.create(null), {
     sqlite: DIALECTS.SQLITE,
     sqlite3: DIALECTS.SQLITE,
     postgres: DIALECTS.POSTGRES,
@@ -62,7 +63,7 @@ const DRIVER_ALIASES = Object.freeze({
     pgx: DIALECTS.POSTGRES,
     mssql: DIALECTS.MSSQL,
     sqlserver: DIALECTS.MSSQL,
-});
+}));
 
 /**
  * Resolves an operator-supplied database.driver to its canonical dialect, or
@@ -77,7 +78,11 @@ function normalizeDriver(rawDriver) {
     if (typeof rawDriver !== 'string') {
         return null;
     }
-    return DRIVER_ALIASES[rawDriver.trim().toLowerCase()] || null;
+    const key = rawDriver.trim().toLowerCase();
+    if (!Object.prototype.hasOwnProperty.call(DRIVER_ALIASES, key)) {
+        return null;
+    }
+    return DRIVER_ALIASES[key] || null;
 }
 
 /**
