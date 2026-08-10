@@ -22,13 +22,17 @@ import {
   Button,
   FormControl,
   FormLabel,
+  IconButton,
+  InputAdornment,
   MenuItem,
   PageContent,
   PageTitle,
   Select,
   Stack,
   TextField,
+  Tooltip,
 } from '@wso2/oxygen-ui';
+import { Pencil } from '@wso2/oxygen-ui-icons-react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 
 import { useCreateDevPortal } from '../../api/hooks/useMvpQueries';
@@ -57,6 +61,11 @@ export function DevPortalCreatePage() {
   const [displayName, setDisplayName] = useState('');
   const [handle, setHandle] = useState('');
   const [handleEdited, setHandleEdited] = useState(false);
+  // Auto-derived from Name and locked by default; the identifier is
+  // permanent once the devportal is created, so editing it directly is an
+  // explicit, deliberate action rather than something you fall into while
+  // typing the Name.
+  const [handleLocked, setHandleLocked] = useState(true);
   const [description, setDescription] = useState('');
   const [authType, setAuthType] = useState<DevPortalAuthType>(
     AUTH_TYPE_OPTIONS[0].value
@@ -145,13 +154,30 @@ export function DevPortalCreatePage() {
           <FormControl fullWidth>
             <FormLabel>Identifier</FormLabel>
             <TextField
+              disabled={handleLocked}
               error={handle !== '' && !handleValid}
-              helperText="Lowercase letters, numbers, hyphens; 3–64 chars (unique per org)."
               onChange={(event) => {
                 setHandleEdited(true);
                 setHandle(event.target.value);
               }}
               placeholder="prod-devportal"
+              slotProps={{
+                input: {
+                  endAdornment: handleLocked && (
+                    <InputAdornment position="end">
+                      <Tooltip title="Edit identifier">
+                        <IconButton
+                          aria-label="Edit identifier"
+                          onClick={() => setHandleLocked(false)}
+                          size="small"
+                        >
+                          <Pencil size={16} />
+                        </IconButton>
+                      </Tooltip>
+                    </InputAdornment>
+                  ),
+                },
+              }}
               value={handle}
             />
           </FormControl>

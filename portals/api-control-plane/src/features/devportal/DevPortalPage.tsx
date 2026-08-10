@@ -21,6 +21,7 @@ import {
   alpha,
   Box,
   Button,
+  Card,
   IconButton,
   InputAdornment,
   ListItemIcon,
@@ -31,6 +32,8 @@ import {
   PageTitle,
   Stack,
   TextField,
+  ToggleButton,
+  ToggleButtonGroup,
   Tooltip,
   Typography,
 } from '@wso2/oxygen-ui';
@@ -39,6 +42,8 @@ import {
   Clock,
   Copy,
   Globe,
+  LayoutGrid,
+  List,
   MoreVertical,
   Plus,
   Search,
@@ -59,6 +64,8 @@ import { routes } from '../../routes/paths';
 import { relativeTime } from '../../utils/relativeTime';
 import type { DevPortal } from '../../types/domain';
 import { AUTH_LABEL, STATUS_COLOR, STATUS_LABEL } from './devPortalDisplay';
+
+type ViewMode = 'grid' | 'list';
 
 /** A small KPI summary tile. */
 function StatCard({
@@ -339,6 +346,188 @@ function DevPortalCard({
   );
 }
 
+function DevPortalRow({
+  devPortal,
+  onOpen,
+  onDelete,
+}: {
+  devPortal: DevPortal;
+  onOpen: (devPortal: DevPortal) => void;
+  onDelete?: (devPortal: DevPortal) => void;
+}) {
+  const [menuAnchor, setMenuAnchor] = useState<HTMLElement | null>(null);
+  const statusColor = STATUS_COLOR[devPortal.workflowStatus];
+  // Same click-away guard as DevPortalCard — see the comment there.
+  const wasMenuOpenRef = useRef(false);
+
+  const closeMenu = (event?: React.MouseEvent) => {
+    event?.stopPropagation();
+    setMenuAnchor(null);
+  };
+
+  return (
+    <Box
+      onClick={() => {
+        if (wasMenuOpenRef.current) {
+          wasMenuOpenRef.current = false;
+          return;
+        }
+        onOpen(devPortal);
+      }}
+      onMouseDown={() => {
+        wasMenuOpenRef.current = menuAnchor !== null;
+      }}
+      sx={{
+        alignItems: 'center',
+        borderBottom: '1px solid',
+        borderColor: 'divider',
+        cursor: 'pointer',
+        display: 'flex',
+        gap: 2,
+        px: 2.5,
+        py: 1.75,
+        transition: 'background-color 250ms',
+        '&:hover': { bgcolor: 'action.hover' },
+        '&:last-of-type': { borderBottom: 0 },
+      }}
+    >
+      <Box
+        sx={{
+          alignItems: 'center',
+          bgcolor: 'action.hover',
+          border: '1px solid',
+          borderColor: 'divider',
+          borderRadius: 1.5,
+          color: 'text.secondary',
+          display: 'flex',
+          flex: 'none',
+          height: 36,
+          justifyContent: 'center',
+          width: 36,
+        }}
+      >
+        <Globe size={18} />
+      </Box>
+      <Box sx={{ flex: 1, minWidth: 140 }}>
+        <Typography noWrap sx={{ fontWeight: 500 }} variant="subtitle2">
+          {devPortal.name}
+        </Typography>
+        <Typography
+          color="text.secondary"
+          component="div"
+          noWrap
+          sx={{ fontFamily: 'monospace' }}
+          variant="caption"
+        >
+          {devPortal.url || devPortal.handle}
+        </Typography>
+      </Box>
+      <Box
+        sx={{
+          alignItems: 'center',
+          color: 'text.secondary',
+          display: { sm: 'flex', xs: 'none' },
+          flexShrink: 0,
+          gap: 0.75,
+        }}
+      >
+        <ShieldCheck size={13} />
+        <Typography noWrap variant="caption">
+          {AUTH_LABEL[devPortal.authType]}
+        </Typography>
+      </Box>
+      <Box
+        sx={{
+          alignItems: 'center',
+          color: statusColor,
+          display: 'flex',
+          flexShrink: 0,
+          gap: 0.75,
+        }}
+      >
+        <Box
+          sx={{ bgcolor: statusColor, borderRadius: '50%', height: 8, width: 8 }}
+        />
+        <Typography noWrap sx={{ fontWeight: 500 }} variant="caption">
+          {STATUS_LABEL[devPortal.workflowStatus]}
+        </Typography>
+      </Box>
+      <Box
+        sx={{
+          alignItems: 'center',
+          color: 'text.secondary',
+          display: { md: 'flex', xs: 'none' },
+          flexShrink: 0,
+          gap: 0.75,
+          ml: 'auto',
+        }}
+      >
+        <Clock size={12} />
+        <Typography color="text.secondary" noWrap variant="caption">
+          {devPortal.createdAt ? relativeTime(devPortal.createdAt) : '—'}
+        </Typography>
+      </Box>
+      {onDelete && (
+        <>
+          <IconButton
+            aria-label="Devportal actions"
+            onClick={(event) => {
+              event.stopPropagation();
+              setMenuAnchor(event.currentTarget);
+            }}
+            size="small"
+            sx={{ ml: { md: 0, xs: 'auto' } }}
+          >
+            <MoreVertical size={18} />
+          </IconButton>
+          <Menu
+            anchorEl={menuAnchor}
+            onClose={() => closeMenu()}
+            open={Boolean(menuAnchor)}
+          >
+            <MenuItem
+              onClick={(event) => {
+                closeMenu(event);
+                onDelete(devPortal);
+              }}
+              sx={{ color: 'error.main' }}
+            >
+              <ListItemIcon sx={{ color: 'inherit' }}>
+                <Trash2 size={16} />
+              </ListItemIcon>
+              <ListItemText>Delete</ListItemText>
+            </MenuItem>
+          </Menu>
+        </>
+      )}
+    </Box>
+  );
+}
+
+/** Compact row layout for devportals — the list-view counterpart of the card grid. */
+function DevPortalListView({
+  devPortals,
+  onOpen,
+  onDelete,
+}: {
+  devPortals: DevPortal[];
+  onOpen: (devPortal: DevPortal) => void;
+  onDelete?: (devPortal: DevPortal) => void;
+}) {
+  return (
+    <Card variant="outlined">
+      {devPortals.map((devPortal) => (
+        <DevPortalRow
+          devPortal={devPortal}
+          key={devPortal.id}
+          onDelete={onDelete}
+          onOpen={onOpen}
+        />
+      ))}
+    </Card>
+  );
+}
+
 export function DevPortalPage() {
   const { orgHandle = '' } = useParams();
   const navigate = useNavigate();
@@ -346,6 +535,7 @@ export function DevPortalPage() {
   const devPortalsQuery = useDevPortals();
   const deleteDevPortalMutation = useDeleteDevPortal();
   const [search, setSearch] = useState('');
+  const [view, setView] = useState<ViewMode>('grid');
   const [toDelete, setToDelete] = useState<DevPortal | null>(null);
 
   const provision = () => navigate(routes.newDevportal(orgHandle));
@@ -439,29 +629,54 @@ export function DevPortalPage() {
           </Box>
 
           {/* Toolbar */}
-          <TextField
-            onChange={(event) => setSearch(event.target.value)}
-            placeholder="Search Dev Portal"
-            size="small"
-            slotProps={{
-              input: {
-                startAdornment: (
-                  <InputAdornment position="start">
-                    <Search size={18} />
-                  </InputAdornment>
-                ),
-              },
+          <Box
+            sx={{
+              alignItems: 'center',
+              display: 'flex',
+              flexWrap: 'wrap',
+              gap: 1.5,
             }}
-            sx={{ maxWidth: 420, minWidth: 240, width: '100%' }}
-            value={search}
-          />
+          >
+            <TextField
+              onChange={(event) => setSearch(event.target.value)}
+              placeholder="Search Dev Portal"
+              size="small"
+              slotProps={{
+                input: {
+                  startAdornment: (
+                    <InputAdornment position="start">
+                      <Search size={18} />
+                    </InputAdornment>
+                  ),
+                },
+              }}
+              sx={{ flex: 1, maxWidth: 420, minWidth: 240 }}
+              value={search}
+            />
+            <ToggleButtonGroup
+              exclusive
+              onChange={(_event, value: ViewMode | null) => {
+                if (value) setView(value);
+              }}
+              size="small"
+              sx={{ ml: 'auto' }}
+              value={view}
+            >
+              <ToggleButton aria-label="Grid view" value="grid">
+                <LayoutGrid size={16} />
+              </ToggleButton>
+              <ToggleButton aria-label="List view" value="list">
+                <List size={16} />
+              </ToggleButton>
+            </ToggleButtonGroup>
+          </Box>
 
           {filtered.length === 0 ? (
             <EmptyState
               description="Try a different search term."
               title="No matching dev portals"
             />
-          ) : (
+          ) : view === 'grid' ? (
             <Box
               sx={{
                 display: 'grid',
@@ -478,6 +693,12 @@ export function DevPortalPage() {
                 />
               ))}
             </Box>
+          ) : (
+            <DevPortalListView
+              devPortals={filtered}
+              onDelete={setToDelete}
+              onOpen={openDevPortal}
+            />
           )}
         </Stack>
       )}
