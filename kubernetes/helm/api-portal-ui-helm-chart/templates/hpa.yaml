@@ -1,8 +1,8 @@
 {{- $ap := .Values -}}
 {{- $hpa := $ap.hpa -}}
 {{- if and $ap.deployment.enabled $hpa.enabled }}
-{{- if eq (include "apip.apiPortal.dbDialect" $ap.config.database.type) "sqlite" }}
-{{- fail "api-portal.hpa requires an external database (config.database.type=postgres or mssql) — SQLite is a per-pod file and does not support multiple replicas." }}
+{{- if eq (include "apip.apiPortal.dbDriver" $ap.config.database.driver) "sqlite" }}
+{{- fail "api-portal.hpa requires an external database (config.database.driver=postgres or mssql) — SQLite is a per-pod file and does not support multiple replicas." }}
 {{- end }}
 apiVersion: autoscaling/v2
 kind: HorizontalPodAutoscaler

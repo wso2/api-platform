@@ -73,8 +73,8 @@ config:
     # Aliases are accepted and normalized by the portal at startup, so you can use
     # the same spelling here as in the platform-api values block:
     #   sqlite3 → sqlite,  postgresql/pgx → postgres,  sqlserver → mssql
-    type: sqlite
-    # SQLite file (type=sqlite). Must sit under the mounted data volume.
+    driver: sqlite
+    # SQLite file (driver=sqlite). Must sit under the mounted data volume.
     file: /app/data/devportal.db
     # Server connection — used by BOTH postgres and mssql. The password is NOT
     # here; it comes from the Secret key secrets.keys.databasePassword. Leave host
@@ -311,7 +311,7 @@ tls:
 # persistence — the PVC backing SQLite
 # ----------------------------------------------------------------------------
 persistence:
-  enabled: true                 # required for database.type=sqlite
+  enabled: true                 # required for database.driver=sqlite
   existingClaim: ""             # reuse a PVC you created yourself instead
   accessModes:
     - ReadWriteOnce
@@ -332,7 +332,7 @@ persistence:
 # ----------------------------------------------------------------------------
 deployment:
   enabled: true
-  replicaCount: 1               # >1 requires database.type=postgres
+  replicaCount: 1               # >1 requires an external DB (postgres/mssql)
   volumeMountPath: /app/data
   extraEnv: []
   extraEnvFrom: []
@@ -371,9 +371,10 @@ deployment:
 # ----------------------------------------------------------------------------
 # Autoscaling & disruption budget
 # ----------------------------------------------------------------------------
-# HorizontalPodAutoscaler. REQUIRES config.database.type=postgres — on sqlite the
-# chart refuses to render it (SQLite is single-replica). Enable only after
-# switching to postgres, and set deployment.resources.requests.cpu.
+# HorizontalPodAutoscaler. REQUIRES an external database — config.database.driver
+# of postgres or mssql. On sqlite the chart refuses to render it (SQLite is a
+# per-pod file, so it is single-replica). Enable only after switching to an
+# external database, and set deployment.resources.requests.cpu.
 hpa:
   enabled: false
   minReplicas: 2

@@ -1,7 +1,7 @@
 {{- $ap := .Values -}}
 {{- $cfg := $ap.config -}}
 {{- $db := $cfg.database -}}
-{{- $dbDialect := include "apip.apiPortal.dbDialect" $db.type -}}
+{{- $dbDriver := include "apip.apiPortal.dbDriver" $db.driver -}}
 {{- $auth := $cfg.auth -}}
 {{- $tls := $ap.tls -}}
 {{- $certDir := $tls.mountPath -}}
@@ -46,14 +46,14 @@ data:
     # Rendered as the canonical dialect rather than the raw values.yaml spelling,
     # so an alias (sqlserver, postgresql, pgx, sqlite3) also works against a
     # portal image predating the config-loader's own alias normalization.
-    driver = {{ $dbDialect | quote }}
-    {{- if eq $dbDialect "sqlite" }}
+    driver = {{ $dbDriver | quote }}
+    {{- if eq $dbDriver "sqlite" }}
     path = {{ $db.file | quote }}
     {{- else }}
     {{- if and (ne $db.sslmode "disable") (ne $db.sslmode "verify-full") }}
     {{- fail (printf "config.database.sslmode must be \"disable\" or \"verify-full\" (got %q). The portal supports no partial TLS mode: on postgres an unrecognised value aborts startup, and on mssql it silently connects unencrypted with certificate verification off." $db.sslmode) }}
     {{- end }}
-    host = {{ required (printf "config.database.host is required when database.type is %q" $db.type) $db.host | quote }}
+    host = {{ required (printf "config.database.host is required when database.driver is %q" $db.driver) $db.host | quote }}
     port = {{ $db.port | int }}
     name = {{ $db.database | quote }}
     user = {{ $db.user | quote }}

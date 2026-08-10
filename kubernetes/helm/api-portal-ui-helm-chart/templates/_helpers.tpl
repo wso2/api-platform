@@ -221,13 +221,13 @@ that component's secret. Fails the render when a required secret is unset.
 {{- end -}}
 
 {{/*
-Canonical database dialect for a configured config.database.type.
+Canonical database driver for a configured config.database.driver.
 
-Takes the raw type string, returns one of "sqlite" / "postgres" / "mssql", and
-fails the render on anything else — so a typo is an install-time error rather
+Takes the raw driver string, returns one of "sqlite" / "postgres" / "mssql", and 
+fails the render on anything else - so a typo is an install-time error rather
 than a crash-looping pod whose real cause is buried in container logs.
 */}}
-{{- define "apip.apiPortal.dbDialect" -}}
+{{- define "apip.apiPortal.dbDriver" -}}
 {{- $raw := . | toString | trim | lower -}}
 {{- $aliases := dict
       "sqlite" "sqlite" "sqlite3" "sqlite"
@@ -235,7 +235,7 @@ than a crash-looping pod whose real cause is buried in container logs.
       "mssql" "mssql" "sqlserver" "mssql" -}}
 {{- $canonical := get $aliases $raw -}}
 {{- if not $canonical -}}
-{{- fail (printf "config.database.type must be one of: sqlite, sqlite3, postgres, postgresql, pgx, mssql, sqlserver (got %q)" $raw) -}}
+{{- fail (printf "config.database.driver must be one of: sqlite, sqlite3, postgres, postgresql, pgx, mssql, sqlserver (got %q)" $raw) -}}
 {{- end -}}
 {{- $canonical -}}
 {{- end -}}
