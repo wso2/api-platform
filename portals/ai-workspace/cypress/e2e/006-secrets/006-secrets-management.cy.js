@@ -28,9 +28,12 @@
  *         the whole list, not just the visible page)
  *   TC-3  Rotate: submitting with a blank display name is rejected client-side with
  *         no PUT request; a valid edit (new name/value/description) persists
- *   TC-4  Delete: the "in use" conflict dialog names the blocking resource but never
- *         its internal handle/UUID; once unreferenced, delete succeeds and the
- *         secret is permanently gone (404), not merely deprecated
+ *   TC-4a Delete (blocked): the "in use" conflict dialog names the blocking resource
+ *         but never its internal handle/UUID; once its provider is deleted, the
+ *         now-orphaned secret is auto-cleaned-up and permanently gone (404), not
+ *         merely deprecated
+ *   TC-4b Delete (unblocked): a plain, unreferenced secret's delete succeeds via
+ *         the UI and redirects to the list
  */
 
 import { appPathPattern } from '../../support/appPath';
@@ -113,6 +116,29 @@ describe('AI Workspace — Secrets management pages', () => {
       headers: { Authorization: `Bearer ${authToken}` },
       failOnStatusCode: false,
     });
+  }
+
+  // Deleting the resource that referenced an auto-generated secret doesn't
+  // remove that secret synchronously within the same request/response —
+  // platform-api's cleanup (SecretService.CleanupOrphanedSecrets) runs as a
+  // best-effort follow-up that itself permanently deletes the now-orphaned
+  // secret. Poll for that instead of retrying a manual delete, which would
+  // 404 once cleanup has already removed it.
+  function pollUntilSecretGone(handle, attemptsLeft = 15) {
+    return cy
+      .request({
+        url: `/proxy/api/v0.9/secrets/${encodeURIComponent(handle)}?organizationId=${encodeURIComponent(organizationId)}`,
+        headers: { Authorization: `Bearer ${authToken}` },
+        failOnStatusCode: false,
+      })
+      .then((r) => {
+        if (r.status === 404) return;
+        if (attemptsLeft <= 1) {
+          throw new Error(`secret ${handle} was not cleaned up after its referencing resource was deleted`);
+        }
+        cy.wait(1000, { log: false });
+        return pollUntilSecretGone(handle, attemptsLeft - 1);
+      });
   }
 
   beforeEach(() => {
@@ -211,8 +237,10 @@ describe('AI Workspace — Secrets management pages', () => {
 
     // Narrowing the search further isolates the single uniquely-named fixture —
     // proving search filters across the whole fetched list, not just whichever
-    // page happens to be showing.
-    cy.get('input[placeholder="Search secrets..."]').clear().type('Findme Unique');
+    // page happens to be showing. Searching by the exact handle (unique to this
+    // run) rather than the generic "Findme Unique" text avoids matching a
+    // same-named fixture left behind by an earlier, unrelated run.
+    cy.get('input[placeholder="Search secrets..."]').clear().type(findableHandle);
     cy.get('table tbody tr').should('have.length', 1);
     cy.contains('td', findableName).should('be.visible');
 
@@ -275,9 +303,11 @@ describe('AI Workspace — Secrets management pages', () => {
   });
 
   // -------------------------------------------------------------------------
-  // TC-4: Delete — "in use" conflict never names the handle; succeeds once free
+  // TC-4a: Delete — "in use" conflict never names the handle; the secret is
+  // auto-cleaned-up (permanently, not merely deprecated) once its owning
+  // provider is deleted.
   // -------------------------------------------------------------------------
-  it('TC-4: the in-use conflict dialog omits the handle, and delete succeeds once unreferenced', () => {
+  it('TC-4a: the in-use conflict dialog omits the handle, and cleanup permanently deletes it once unreferenced', () => {
     const providerName = `E2E Secrets Page Provider ${suffix}`;
 
     cy.intercept('POST', '**/secrets').as('createProviderSecret');
@@ -314,8 +344,11 @@ describe('AI Workspace — Secrets management pages', () => {
         cy.contains('button', /^Got it$/).click();
       });
 
-      // Free the secret, then delete succeeds and it's permanently gone (404),
-      // not merely deprecated — see 003-llm-proxy-secret-management.cy.js TC-4.
+      // Deleting the provider frees the secret. An auto-generated,
+      // provider-backing secret is then cleaned up automatically by
+      // platform-api (SecretService.CleanupOrphanedSecrets) — there is no
+      // separate manual delete step for this one; a manual delete's own
+      // success path is covered by TC-4b below against a plain secret instead.
       cy.request({
         method: 'DELETE',
         url: `/proxy/api/v0.9/llm-providers/${encodeURIComponent(createdProviderId)}?organizationId=${encodeURIComponent(organizationId)}`,
@@ -325,22 +358,38 @@ describe('AI Workspace — Secrets management pages', () => {
         createdProviderId = '';
       });
 
-      cy.get('[data-cyid="delete-secret-button"]', { timeout: 30000 }).scrollIntoView().should('be.visible').click();
-      cy.get('[role="dialog"]').within(() => {
-        cy.contains('button', /^Delete$/).click();
-      });
+      // Permanently gone (404), not merely flipped to deprecated — see
+      // 003-llm-proxy-secret-management.cy.js TC-4 for the same assertion
+      // against the hard-delete-on-cleanup behavior.
+      pollUntilSecretGone(providerSecretHandle);
+    });
+  });
 
-      cy.location('pathname', { timeout: 30000 }).should(
-        'match',
-        appPathPattern(`/organizations/${orgHandle}/settings/secrets$`)
-      );
-      cy.request({
-        url: `/proxy/api/v0.9/secrets/${encodeURIComponent(providerSecretHandle)}?organizationId=${encodeURIComponent(organizationId)}`,
-        headers: { Authorization: `Bearer ${authToken}` },
-        failOnStatusCode: false,
-      }).then((r) => {
-        expect(r.status, 'secret permanently deleted').to.eq(404);
-      });
+  // -------------------------------------------------------------------------
+  // TC-4b: Delete — a plain, unreferenced secret: confirming deletes it and
+  // redirects to the list.
+  // -------------------------------------------------------------------------
+  it('TC-4b: deleting an unreferenced secret succeeds and redirects to the list', () => {
+    const plainHandle = `e2e-delete-${suffix}`;
+
+    apiCreateSecret(plainHandle, `E2E Secret Delete ${suffix}`, 'sk-e2e-delete-me');
+
+    cy.visitWorkspace(`/organizations/${orgHandle}/settings/secrets/${plainHandle}`);
+    cy.get('[data-cyid="delete-secret-button"]', { timeout: 30000 }).scrollIntoView().should('be.visible').click();
+    cy.get('[role="dialog"]').within(() => {
+      cy.contains('button', /^Delete$/).click();
+    });
+
+    cy.location('pathname', { timeout: 30000 }).should(
+      'match',
+      appPathPattern(`/organizations/${orgHandle}/settings/secrets$`)
+    );
+    cy.request({
+      url: `/proxy/api/v0.9/secrets/${encodeURIComponent(plainHandle)}?organizationId=${encodeURIComponent(organizationId)}`,
+      headers: { Authorization: `Bearer ${authToken}` },
+      failOnStatusCode: false,
+    }).then((r) => {
+      expect(r.status, 'secret permanently deleted').to.eq(404);
     });
   });
 });
