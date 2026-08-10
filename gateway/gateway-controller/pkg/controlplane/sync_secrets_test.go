@@ -862,8 +862,9 @@ func TestEvictSecretsNotIn_HandleMissingFromActiveSet_Evicted(t *testing.T) {
 	syncer := newMockSecretSyncer()
 	c := stubClient(syncer)
 	populateCache(c, map[string]string{"gone-handle": "hmac-sha256:old"})
+	preFetchHandles := c.snapshotSecretHashCacheKeys()
 
-	evicted := c.evictSecretsNotIn(map[string]struct{}{})
+	evicted := c.evictSecretsNotIn(map[string]struct{}{}, preFetchHandles)
 
 	assert.Equal(t, 1, evicted)
 	assert.Equal(t, []string{"gone-handle"}, syncer.deleted)
@@ -878,8 +879,9 @@ func TestEvictSecretsNotIn_HandleFlippedNonActive_Evicted(t *testing.T) {
 	syncer := newMockSecretSyncer()
 	c := stubClient(syncer)
 	populateCache(c, map[string]string{"deprecated-handle": "hmac-sha256:x"})
+	preFetchHandles := c.snapshotSecretHashCacheKeys()
 
-	evicted := c.evictSecretsNotIn(map[string]struct{}{})
+	evicted := c.evictSecretsNotIn(map[string]struct{}{}, preFetchHandles)
 
 	assert.Equal(t, 1, evicted)
 	assert.True(t, syncer.wasDeleted("deprecated-handle"))
@@ -891,8 +893,9 @@ func TestEvictSecretsNotIn_UnrelatedActiveHandle_LeftAlone(t *testing.T) {
 	syncer := newMockSecretSyncer()
 	c := stubClient(syncer)
 	populateCache(c, map[string]string{"stable-handle": "hmac-sha256:stable"})
+	preFetchHandles := c.snapshotSecretHashCacheKeys()
 
-	evicted := c.evictSecretsNotIn(map[string]struct{}{"stable-handle": {}})
+	evicted := c.evictSecretsNotIn(map[string]struct{}{"stable-handle": {}}, preFetchHandles)
 
 	assert.Equal(t, 0, evicted)
 	assert.Empty(t, syncer.deleted)
@@ -909,8 +912,9 @@ func TestEvictSecretsNotIn_MixedSet(t *testing.T) {
 		"deprecated-handle": "hmac-sha256:x",
 		"stable-handle":     "hmac-sha256:stable",
 	})
+	preFetchHandles := c.snapshotSecretHashCacheKeys()
 
-	evicted := c.evictSecretsNotIn(map[string]struct{}{"stable-handle": {}})
+	evicted := c.evictSecretsNotIn(map[string]struct{}{"stable-handle": {}}, preFetchHandles)
 
 	assert.Equal(t, 2, evicted)
 	assert.True(t, syncer.wasDeleted("gone-handle"))
@@ -921,13 +925,34 @@ func TestEvictSecretsNotIn_MixedSet(t *testing.T) {
 	assert.True(t, stableOk)
 }
 
+func TestEvictSecretsNotIn_HandleAddedDuringFetch_NotEvicted(t *testing.T) {
+	// preFetchHandles is captured before "new-handle" is added to secretHashCache
+	// (simulating syncSecretRefsFromYAML racing a concurrent deployment event
+	// while a platform fetch is in flight on another goroutine). Even though
+	// "new-handle" is absent from activeHandles — the just-completed fetch started
+	// before it existed and so could never have reported it — it must survive.
+	syncer := newMockSecretSyncer()
+	c := stubClient(syncer)
+	populateCache(c, map[string]string{"stable-handle": "hmac-sha256:stable"})
+	preFetchHandles := c.snapshotSecretHashCacheKeys()
+	populateCache(c, map[string]string{"new-handle": "hmac-sha256:new"})
+
+	evicted := c.evictSecretsNotIn(map[string]struct{}{"stable-handle": {}}, preFetchHandles)
+
+	assert.Equal(t, 0, evicted)
+	assert.Empty(t, syncer.deleted)
+	_, ok := c.secretHashCache.Load("new-handle")
+	assert.True(t, ok, "a handle added while the fetch was in flight must not be evicted")
+}
+
 func TestEvictSecretsNotIn_DeleteError_HashCacheNotCleared(t *testing.T) {
 	syncer := newMockSecretSyncer()
 	syncer.deleteErr = errors.New("storage locked")
 	c := stubClient(syncer)
 	populateCache(c, map[string]string{"gone-handle": "hmac-sha256:old"})
+	preFetchHandles := c.snapshotSecretHashCacheKeys()
 
-	evicted := c.evictSecretsNotIn(map[string]struct{}{})
+	evicted := c.evictSecretsNotIn(map[string]struct{}{}, preFetchHandles)
 
 	assert.Equal(t, 1, evicted, "the handle is still counted as stale even though eviction failed")
 	_, ok := c.secretHashCache.Load("gone-handle")

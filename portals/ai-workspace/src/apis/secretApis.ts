@@ -141,8 +141,8 @@ export async function updateSecret(
 ): Promise<UpdateSecretResponse> {
   const form = new FormData();
   form.append('value', request.value);
-  if (request.name) form.append('displayName', request.name);
-  if (request.description) form.append('description', request.description);
+  if (request.name !== undefined) form.append('displayName', request.name);
+  if (request.description !== undefined) form.append('description', request.description);
   return putForm<UpdateSecretResponse>(`/secrets/${handle}`, form);
 }
 

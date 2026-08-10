@@ -181,7 +181,6 @@ export default function SecretValueField({
                     size="small"
                     onClick={() => setShowValue((prev) => !prev)}
                     aria-label={showValue ? 'Hide value' : 'Show value'}
-                    tabIndex={-1}
                   >
                     {showValue ? <EyeOff size={18} /> : <Eye size={18} />}
                   </IconButton>

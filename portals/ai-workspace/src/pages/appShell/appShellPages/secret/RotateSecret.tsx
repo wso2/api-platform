@@ -97,12 +97,20 @@ export default function RotateSecret(): React.JSX.Element {
     if (event) event.preventDefault();
     if (!handle || isSubmitting) return;
 
+    const trimmedName = displayName.trim();
+    if (!trimmedName) {
+      showSnackbar('Display name is required.', 'error');
+      return;
+    }
+
     setIsSubmitting(true);
     try {
       await updateSecret(handle, {
         value: value.trim(),
-        name: displayName.trim() || undefined,
-        description: description.trim() || undefined,
+        name: trimmedName,
+        // Sent even when '' so an explicit clear reaches the backend — unlike
+        // name, an empty description is a valid, meaningful value here.
+        description: description.trim(),
       });
       if (!isMounted()) return;
       showSnackbar('Secret updated successfully.', 'success');
