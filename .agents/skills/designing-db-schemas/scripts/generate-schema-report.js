@@ -35,9 +35,15 @@ const path = require('path');
 
 // ---------- arg parsing ----------
 const args = process.argv.slice(2);
+// Returns the token after `name`, or null when the option is absent, has no
+// following token, or is followed by another option — so `--schema --out x`
+// fails the usage check below instead of silently taking "--out" as a path.
 function flag(name) {
   const i = args.indexOf(name);
-  return i !== -1 ? args[i + 1] : null;
+  if (i === -1) return null;
+  const value = args[i + 1];
+  if (value === undefined || value.startsWith('--')) return null;
+  return value;
 }
 
 if (args.includes('--help') || args.includes('-h')) {
@@ -74,16 +80,33 @@ if (!Array.isArray(findings)) {
 const ORDER = { HIGH: 0, MEDIUM: 1, LOW: 2, 'LEGACY-ACCEPTED': 3 };
 
 // ---------- normalise (no ids yet) ----------
-const normalised = findings.map(f => {
-  const rule = f.rule || 'UNKNOWN';
-  const sev  = String(f.severity || 'MEDIUM').toUpperCase();
+// Malformed records are rejected outright rather than coerced to a default — a
+// silently-defaulted severity or an 'UNKNOWN' rule would land in the report as
+// if it were a real finding.
+const normalised = findings.map((f, i) => {
+  if (f === null || typeof f !== 'object' || Array.isArray(f)) {
+    console.error(`--findings[${i}] must be an object`);
+    process.exit(1);
+  }
+  if (typeof f.rule !== 'string' || f.rule.trim() === '') {
+    console.error(`--findings[${i}] must have a non-empty string "rule"`);
+    process.exit(1);
+  }
+  const sev = String(f.severity ?? 'MEDIUM').toUpperCase();
+  if (ORDER[sev] === undefined) {
+    console.error(`--findings[${i}] has unsupported severity ${JSON.stringify(f.severity)}; ` +
+                  `expected one of ${Object.keys(ORDER).join(', ')}`);
+    process.exit(1);
+  }
   return {
-    severity: ORDER[sev] !== undefined ? sev : 'MEDIUM',
-    rule,
+    severity: sev,
+    rule:     f.rule.trim(),
     table:    f.table  || null,
     column:   f.column || null,
     finding:  f.finding || '',
-    fix:      f.fix     || '',
+    // A LEGACY-ACCEPTED finding records an R0-frozen deviation and is never
+    // remediated, so it carries no fix even if one was supplied.
+    fix:      sev === 'LEGACY-ACCEPTED' ? '' : (f.fix || ''),
   };
 });
 
@@ -96,7 +119,8 @@ normalised.sort((a, b) =>
   cmp(a.rule, b.rule) ||
   cmp(a.table, b.table) ||
   cmp(a.column, b.column) ||
-  cmp(a.finding, b.finding)
+  cmp(a.finding, b.finding) ||
+  cmp(a.fix, b.fix)
 );
 
 // ---------- assign ids from the sorted order ----------

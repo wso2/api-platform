@@ -53,7 +53,7 @@ find . -name "*.sql" -not -path "*/node_modules/*" -not -path "*/target/*" | sor
 grep -rln "<table_name>" --include="*.sql" .
 ```
 
-**R0-UPGRADE-PATH** — `CREATE TABLE IF NOT EXISTS` is a no-op against a database that already exists, so a column added to a `CREATE TABLE` body reaches fresh installs only. Every additive change ships a matching per-dialect `ALTER TABLE`, nullable or defaulted so it applies while the previous release is still running:
+**R0-UPGRADE-PATH** — `CREATE TABLE IF NOT EXISTS` is a no-op against a database that already exists, so a column added to a `CREATE TABLE` body reaches fresh installs only. A **column added to an existing table** therefore ships a matching per-dialect `ALTER TABLE`, nullable or defaulted so it applies while the previous release is still running. A **new table** or a **new index** needs no `ALTER` — its guarded `CREATE ... IF NOT EXISTS` (R9) already runs against both fresh and existing databases:
 
 ```sql
 ALTER TABLE <t> ADD COLUMN <col> <type> NULL;   -- postgres / sqlite
@@ -66,7 +66,7 @@ If a component has no upgrade-script location, create one beside its schema file
 
 ## R1 · Primary Key & Identity
 
-Every table must have a single UUID primary key and, where it is a named resource, the standard identity triple.
+Every **entity** table must have a single UUID primary key and, where it is a named resource, the standard identity triple. Pure junction/mapping tables are excluded — they carry a composite PK instead (R1-COMPOSITE-PK).
 
 **R1-UUID** — Primary key must be `uuid VARCHAR(40) PRIMARY KEY`. Do not use `SERIAL`, `BIGINT`, or `INTEGER` as a primary key for domain entities. Junction/mapping tables must use a composite PK (see R1-COMPOSITE-PK).
 
@@ -153,14 +153,16 @@ Do **not** raise R3-NO-TEXT against SQLite or SQL Server schema files: per R8, `
 
 **R3-LARGE-PAYLOAD** — Any payload that can grow large or is variable-length must use the engine-appropriate large type, never a wide VARCHAR. Apply: binary payloads → `BYTEA` (Postgres) / `BLOB` (SQLite) / `VARBINARY(MAX)` (SQL Server); large text payloads → `BYTEA` (Postgres) / `TEXT` (SQLite) / `NVARCHAR(MAX)` (SQL Server), per the R8 divergence table. Columns that always need this: `openapi_spec`, `model_list`, `content`, `configuration`, `properties`, `manifest`, `policy_definition`, `metadata`, `api_key_hashes`, or any future column whose value can exceed a few hundred bytes. (The SQLite/SQL Server forms above are the intended divergences — do not flag them as R3-NO-TEXT.)
 
-**R3-JSONB** — In PostgreSQL, use `JSONB` only when the application queries inside the JSON using Postgres JSON operators. Evidence that a column is actively queried inside:
-1. The `DEFAULT` is a JSON literal like `'{}'`
-2. The column name implies structure: `settings`, `event_data`
-3. The same column in a sibling table already uses `JSONB`
+**R3-JSONB** — In PostgreSQL, use `JSONB` only when the application demonstrably queries inside the JSON using Postgres JSON operators. The evidence must be a concrete query in the repository layer using `->`, `->>`, `#>`, `#>>`, `@>`, `?`, `jsonb_path_*`, or an equivalent JSONB operator/function against that column. A JSON-literal `DEFAULT`, a structured-sounding column name, or a sibling table already using `JSONB` are **not** evidence — they are how columns end up `JSONB` without anything ever querying inside them. Absent such a query, store the payload per R3-LARGE-PAYLOAD instead. Once direct query evidence exists, R3-JSONB-SCAN-COMPAT still applies to the scan target.
 
 SQLite and SQL Server equivalents (`TEXT` / `NVARCHAR(MAX)`) are intentional type-level divergences — not findings.
 
-**R3-JSONB-SCAN-COMPAT** — **PostgreSQL only** (`JSONB` does not exist in SQLite or SQL Server, so this rule never applies to those files). Do not use `JSONB` if the application layer scans it into a plain `string` variable and calls `json.Unmarshal` manually. Postgres drivers return JSONB as binary, which breaks `string` scan targets at runtime. Only use `JSONB` when the scan target implements `sql.Scanner` (e.g. `pgtype.JSONB`, `json.RawMessage`, or a custom struct).
+**R3-JSONB-SCAN-COMPAT** — **PostgreSQL only** (`JSONB` does not exist in SQLite or SQL Server, so this rule never applies to those files). Whether a `JSONB` column can be scanned into a given Go type is **driver-specific**; check the driver before raising a finding.
+
+- **`github.com/jackc/pgx/v5` (v5.9.2, the driver `platform-api` uses).** `JSONBCodec` scans into `*string` and `*[]byte`, into any `sql.Scanner` implementation, and — as a fallback — into any other pointer target by `json.Unmarshal`. So `var s string` plus a manual `json.Unmarshal(s)` is supported here, as is `*json.RawMessage` (which is a `[]byte` alias, not an `sql.Scanner` implementation). Do not flag either as a scan-compatibility violation under pgx v5.
+- **Other PostgreSQL drivers** (e.g. `lib/pq`, or pgx used through `database/sql` with a different codec registration) do not all convert JSONB to text for a `*string` target. When a schema targets one of those, restrict the scan target to `[]byte` or a type that implements `database/sql.Scanner` (a custom struct with a `Scan(src any) error` method, or `pgtype.JSON`/`pgtype.JSONB`-style wrapper types provided by that driver).
+
+The rule that survives across drivers: pick the scan target deliberately and confirm it against the driver in use — never assume a `string` target works, and never assume it fails.
 
 **R3-BOOLEAN-AS-INT** — Do not use the `BOOLEAN` type. Represent boolean flags as `0`/`1` in:
 - `SMALLINT` — PostgreSQL and SQL Server
@@ -277,7 +279,7 @@ Index every column (or compound) that appears in a `WHERE`, `JOIN`, or `ORDER BY
 CREATE INDEX IF NOT EXISTS idx_<table>_<fk_col> ON <table>(<fk_col>);
 ```
 
-**R6-ORG-INDEX** — Every org-scoped table must have an index on `organization_uuid`:
+**R6-ORG-INDEX** — Every org-scoped table must have an index on `organization_uuid`, unless it is already the leftmost column of the PK or of a covering UNIQUE constraint — in which case that index already serves `organization_uuid` lookups and a separate one is redundant (R6-NO-REDUNDANT-INDEX). This is the normal case for junction tables built per R1-COMPOSITE-PK, which put `organization_uuid` first.
 
 ```sql
 CREATE INDEX IF NOT EXISTS idx_<table>_org ON <table>(organization_uuid);
@@ -319,7 +321,7 @@ SQL Server spells a partial index `WHERE ...` as a filtered index with the same 
 
 **R7-PARAMETERIZED** — Every query built from request input uses `?`/named placeholders, never `fmt.Sprintf` of a value; dynamic identifiers (sort columns, table names) resolve through an explicit allowlist (`GO-AUTH-008`).
 
-**R7-JSONB-SCAN** — A `JSONB` column must be scanned into a type that implements `sql.Scanner`. Scanning into `string` bypasses Postgres validation.
+**R7-JSONB-SCAN** — A `JSONB` column's scan target must be one the configured driver actually supports; see R3-JSONB-SCAN-COMPAT for the pgx-v5 vs other-driver split before raising a finding.
 
 **R7-HANDLE-IMMUTABLE** — `handle` must be set on INSERT and never appear in `UPDATE` statements.
 
@@ -459,7 +461,7 @@ CREATE TABLE dbo.<table> (
 
 ### Standard column types & widths
 
-```
+```text
 VARCHAR(20)   — status, lifecycle_status, kind, short enums
               — data_version (audit column, DEFAULT '1.0')
 VARCHAR(30)   — version (resource version, DEFAULT 'v1.0')
