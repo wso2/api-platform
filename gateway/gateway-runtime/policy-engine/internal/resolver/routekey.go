@@ -18,20 +18,30 @@
 
 package resolver
 
-// RouteKeyResolver trivially returns the route key as the policy chain key.
-// Used by RestAPI, LLM Provider, and LLM Proxy kinds where each route has
-// exactly one policy chain, keyed by the same route name.
+// RouteKeyResolver is the identity resolver: the request carries no operation
+// identifier of its own, so the route's canonical chain key is the answer.
+// Used by RestApi, WebSubApi, Mcp-as-shipped-today, LlmProvider and LlmProxy,
+// where each route has exactly one policy chain.
+//
+// It exists for registry symmetry — so "route-key" appears in the capability
+// advertisement and the admin config dump like any other resolver — but it is
+// never actually invoked: ResolveChainKey short-circuits identity routes before
+// looking the resolver up, so the hot path for every kind shipping today costs
+// one string comparison and a field read.
 type RouteKeyResolver struct{}
 
-func (r *RouteKeyResolver) Name() string { return "route-key" }
+// Name returns the wire value for identity resolution.
+func (r *RouteKeyResolver) Name() string { return RouteKeyResolverName }
 
-func (r *RouteKeyResolver) Requirements() ResolverRequirements {
-	return ResolverRequirements{
-		BufferBody: false,
-		Headers:    false,
-	}
+// Requirements reports that nothing about the request is needed.
+func (r *RouteKeyResolver) Requirements() Requirements {
+	return Requirements{BufferBody: false, Headers: false}
 }
 
-func (r *RouteKeyResolver) Resolve(ctx ResolverContext) (string, error) {
-	return ctx.RouteKey, nil
+// Identify returns the route key as the single operation candidate. Reached only
+// if a caller bypasses ResolveChainKey's identity short-circuit; the result is
+// still correct, because for an identity route the operation map is absent and the
+// canonical chain key is the route key.
+func (r *RouteKeyResolver) Identify(view RequestView) (Resolution, error) {
+	return Resolution{Operations: []Operation{{Candidates: []string{view.RouteKey}}}}, nil
 }
