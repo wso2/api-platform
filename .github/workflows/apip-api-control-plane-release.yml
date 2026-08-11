@@ -1,0 +1,109 @@
+name: API Control Plane Release
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Version to release (e.g., 0.1.0)'
+        required: true
+        type: string
+      next_dev_version:
+        description: 'Next development version (with -SNAPSHOT suffix, e.g. 0.2.0-SNAPSHOT)'
+        required: true
+        type: string
+
+env:
+  DOCKER_REGISTRY: ghcr.io/wso2/api-platform
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set version
+        env:
+          VERSION: ${{ inputs.version }}
+        run: |
+          make -C portals/api-control-plane version-set "VERSION=${VERSION}"
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.26.5'
+          cache: false
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+        with:
+          install: true
+          driver: docker-container
+
+      - name: Run tests
+        run: make test-api-control-plane
+
+      - name: Login to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.API_PLATFORM_BOT_TOKEN }}
+
+      - name: Build and push multi arch Docker images
+        run: make build-and-push-api-control-plane-multiarch
+
+      - name: Create and push tag
+        env:
+          VERSION: ${{ inputs.version }}
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git commit -am "Release api-control-plane version ${VERSION}"
+          git tag -a "apip-api-control-plane/v${VERSION}" -m "API Control Plane ${VERSION}"
+          git push origin "apip-api-control-plane/v${VERSION}"
+
+      - name: Set next dev version
+        env:
+          NEXT_DEV_VERSION: ${{ inputs.next_dev_version }}
+        run: |
+          if [ -z "${NEXT_DEV_VERSION}" ]; then
+            echo "Error: next_dev_version input is required"
+            exit 1
+          fi
+          if [[ "${NEXT_DEV_VERSION}" != *-SNAPSHOT ]]; then
+            echo "Error: next_dev_version must end with -SNAPSHOT (e.g. 0.2.0-SNAPSHOT)"
+            exit 1
+          fi
+          echo "Setting api-control-plane to next dev version: ${NEXT_DEV_VERSION}"
+          make -C portals/api-control-plane version-set "VERSION=${NEXT_DEV_VERSION}"
+
+      - name: Commit version bump
+        run: |
+          if [ -n "$(git status --porcelain --untracked-files=no)" ]; then
+            git commit -am "Bump api-control-plane to next dev version"
+          else
+            echo "No changes to commit"
+          fi
+
+      - name: Create PR for version bump
+        id: create-pr
+        uses: peter-evans/create-pull-request@v6
+        with:
+          commit-message: "Bump api-control-plane to next dev version"
+          title: "chore: Bump api-control-plane to next dev version"
+          body: |
+            Automated version bump after release `apip-api-control-plane/v${{ inputs.version }}`
+
+            This PR bumps the api-control-plane version to the next development version `${{ inputs.next_dev_version }}`.
+          branch: api-control-plane-version-bump-${{ github.run_id }}
+          base: main
+          delete-branch: true
+          labels: |
+            automated
+            version-bump

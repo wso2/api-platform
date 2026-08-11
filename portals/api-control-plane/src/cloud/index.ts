@@ -14,26 +14,14 @@
  * KIND, either express or implied.  See the License for the
  * specific language governing permissions and limitations
  * under the License.
+ *
+ * Injection seam for cloud-only extensions. `main.tsx` imports
+ * `cloudExtensions` from here unconditionally, so this file must always
+ * exist and export a valid (possibly empty) array — this is what lets a
+ * downstream build overlay just this one file/directory with real cloud
+ * features, without ever touching App.tsx/main.tsx/extensions.tsx.
  */
 
-import React from 'react';
-import ReactDOM from 'react-dom/client';
+import type { ApiControlPlaneExtension } from '../extensions';
 
-import { loadRuntimeConfigScripts } from './config/loadRuntimeConfigScripts';
-
-const root = ReactDOM.createRoot(document.getElementById('root')!);
-
-loadRuntimeConfigScripts()
-  .catch((error) => {
-    console.warn('Runtime config scripts could not be loaded.', error);
-  })
-  .finally(async () => {
-    const { default: App } = await import('./App');
-    const { cloudExtensions } = await import('./cloud');
-
-    root.render(
-      <React.StrictMode>
-        <App extensions={cloudExtensions} />
-      </React.StrictMode>
-    );
-  });
+export const cloudExtensions: ApiControlPlaneExtension[] = [];
