@@ -264,7 +264,7 @@ func main() {
 		slog.InfoContext(ctx, "Policy Engine listening on TCP port", "port", cfg.PolicyEngine.Server.ExtProcPort)
 	}
 
-	grpcServer := grpc.NewServer()
+	grpcServer := grpc.NewServer(extProcServerOptions(cfg)...)
 	extprocv3.RegisterExternalProcessorServer(grpcServer, extprocServer)
 
 	// Enable block/mutex profiling sampling when pprof is enabled. These are the
@@ -466,4 +466,24 @@ func initializeFileConfig(ctx context.Context, cfg *config.Config, k *kernel.Ker
 	}
 
 	return nil
+}
+
+// extProcServerOptions bounds the ext_proc gRPC server explicitly, rather than taking
+// gRPC's defaults: the receive default is 4 MiB whatever the body ceilings are configured
+// to be, the send default is unbounded, and the concurrent-stream default is effectively
+// unlimited. This is the hottest gRPC server in the data plane, so all three are set from
+// validated configuration (see config.Config.Validate, which refuses to start when a
+// message limit is below what the body ceilings require).
+func extProcServerOptions(cfg *config.Config) []grpc.ServerOption {
+	server := cfg.PolicyEngine.Server
+	slog.Info("ext_proc gRPC server limits",
+		"max_recv_msg_bytes", server.MaxRecvMsgBytes,
+		"max_send_msg_bytes", server.MaxSendMsgBytes,
+		"max_concurrent_streams", server.MaxConcurrentStreams)
+
+	return []grpc.ServerOption{
+		grpc.MaxRecvMsgSize(int(server.MaxRecvMsgBytes)),
+		grpc.MaxSendMsgSize(int(server.MaxSendMsgBytes)),
+		grpc.MaxConcurrentStreams(server.MaxConcurrentStreams),
+	}
 }

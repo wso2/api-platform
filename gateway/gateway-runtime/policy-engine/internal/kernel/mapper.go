@@ -53,8 +53,10 @@ type RouteConfig struct {
 	// gateway hold: that is Envoy's listener-wide
 	// router.http_listener.per_connection_buffer_limit_bytes (1 MiB by default) and the
 	// ext_proc gRPC server's receive limit, neither of which is per-route. Lowering
-	// this value does not lower that. See §8 R3 in the design plan for the two
-	// mechanisms that would.
+	// this value does not lower that. Making it a real buffering bound needs either an
+	// Envoy-side per-route cap (the buffer filter's max_request_bytes, which returns 413
+	// before ext_proc collects the body) or streamed accumulation in the engine; neither
+	// is built.
 	MaxRequestBodyBytes int64
 }
 

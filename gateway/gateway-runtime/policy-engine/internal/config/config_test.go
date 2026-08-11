@@ -1654,3 +1654,73 @@ func TestDefaultConfig(t *testing.T) {
 	err := cfg.Validate()
 	assert.NoError(t, err)
 }
+
+// The ext_proc gRPC server carries every request and response body, so its message
+// limits have to be coherent with the body ceilings. Incoherent config must stop the
+// process at startup rather than fail mid-request with ResourceExhausted, which on live
+// traffic looks like a gateway fault instead of a setting that needs changing.
+func TestValidate_ExtProcMessageLimits(t *testing.T) {
+	baseline := func() *Config {
+		c := defaultConfig()
+		c.PolicyEngine.Server.Mode = "uds"
+		return c
+	}
+
+	t.Run("defaults are coherent with the default ceilings", func(t *testing.T) {
+		c := baseline()
+		require.NoError(t, c.Validate())
+		assert.Equal(t, DefaultMaxDecompressedBytes+ExtProcMessageOverheadBytes,
+			c.PolicyEngine.Server.MaxRecvMsgBytes)
+		assert.Equal(t, DefaultMaxConcurrentStreams, c.PolicyEngine.Server.MaxConcurrentStreams)
+	})
+
+	// Unset derives rather than rejects, so a Config built in code stays usable and an
+	// operator who raises a body ceiling need not restate the message limits.
+	t.Run("unset limits are derived from the ceilings", func(t *testing.T) {
+		c := baseline()
+		c.PolicyEngine.RequestBody.MaxDecompressedBytes = 50 * 1024 * 1024
+		c.PolicyEngine.Server.MaxRecvMsgBytes = 0
+		c.PolicyEngine.Server.MaxSendMsgBytes = 0
+		c.PolicyEngine.Server.MaxConcurrentStreams = 0
+
+		require.NoError(t, c.Validate())
+		want := int64(50*1024*1024) + ExtProcMessageOverheadBytes
+		assert.Equal(t, want, c.PolicyEngine.Server.MaxRecvMsgBytes)
+		assert.Equal(t, want, c.PolicyEngine.Server.MaxSendMsgBytes)
+		assert.Equal(t, DefaultMaxConcurrentStreams, c.PolicyEngine.Server.MaxConcurrentStreams)
+	})
+
+	// Both directions are sized off the *larger* ceiling, because each carries request
+	// and response bodies alike: the engine receives a request body and may return a
+	// mutated one, then receives a response body and may return a mutated one.
+	t.Run("the larger ceiling sets the requirement for both directions", func(t *testing.T) {
+		c := baseline()
+		c.PolicyEngine.RequestBody.MaxDecompressedBytes = 2 * 1024 * 1024
+		c.PolicyEngine.ResponseBody.MaxDecompressedBytes = 40 * 1024 * 1024
+
+		assert.Equal(t, int64(40*1024*1024)+ExtProcMessageOverheadBytes,
+			c.PolicyEngine.RequiredExtProcMessageBytes())
+	})
+
+	for name, mutate := range map[string]func(*Config){
+		"recv below the ceiling": func(c *Config) {
+			c.PolicyEngine.Server.MaxRecvMsgBytes = DefaultMaxDecompressedBytes
+		},
+		"send below the ceiling": func(c *Config) {
+			c.PolicyEngine.Server.MaxSendMsgBytes = DefaultMaxDecompressedBytes
+		},
+		"recv below a raised ceiling": func(c *Config) {
+			c.PolicyEngine.ResponseBody.MaxDecompressedBytes = 100 * 1024 * 1024
+		},
+	} {
+		t.Run("rejected: "+name, func(t *testing.T) {
+			c := baseline()
+			mutate(c)
+			err := c.Validate()
+			require.Error(t, err)
+			// The error has to name the two settings that disagree, or the operator is
+			// left guessing which of them to change.
+			assert.Regexp(t, `max_(recv|send)_msg_bytes is \d+, which is below the \d+ required`, err.Error())
+		})
+	}
+}

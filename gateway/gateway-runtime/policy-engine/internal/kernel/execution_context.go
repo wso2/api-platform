@@ -989,8 +989,9 @@ func (ec *PolicyExecutionContext) processResponseHeaders(
 	//   - The operation must have *declared* itself streaming. An Auto route is every kind
 	//     shipping today, and one with a buffered-only response policy meeting a chunked or
 	//     SSE upstream response has always simply buffered it. Turning that into a 500
-	//     would be a behavioural change for existing kinds, which §5.6 forbids outright —
-	//     the fail-closed behaviour is opt-in with the declaration, not a new global rule.
+	//     would be a behavioural change for existing kinds, which this must not introduce
+	//     — the fail-closed behaviour is opt-in with the declaration, not a new global
+	//     rule.
 	//   - responseNeedsStreaming looks at *this* response, not merely at the operation. A
 	//     streaming operation is entitled to answer with a 400 and a JSON error body, or a
 	//     bodyless 204; buffering those is correct, and the error the agent was trying to

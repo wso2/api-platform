@@ -546,7 +546,7 @@ func TestBodyResolver_DefersAndAsksEnvoyToBuffer(t *testing.T) {
 
 // Envoy sends no request-body callback when the request headers are end-of-stream,
 // so a pending request would wait forever. Resolve or deny during the header
-// callback instead (risk R7).
+// callback instead.
 func TestBodyResolver_HeaderEndOfStreamResolvesImmediately(t *testing.T) {
 	r := &fakeOperationResolver{name: "body", reqs: resolver.Requirements{BufferBody: true}, bodyField: "method"}
 	f := newResolutionFixture(t, r)
@@ -717,7 +717,7 @@ func TestDeferredBinding_ConfigurationFailureIgnoresResolverRenderer(t *testing.
 	assert.Zero(t, r.renderedFailures, "a missing chain is not a protocol-level error")
 }
 
-// ─── Body ceilings on the deferred path (risk R3) ─────────────────────────────
+// ─── Body ceilings on the deferred path ───────────────────────────────────────
 
 func TestDeferredBinding_WireLimitRejectsBeforeResolving(t *testing.T) {
 	r := &fakeOperationResolver{name: "body", reqs: resolver.Requirements{BufferBody: true}, bodyField: "method"}
@@ -2034,7 +2034,8 @@ func TestResponseKind_StreamingWithNoResponseBodyPolicyProceeds(t *testing.T) {
 	assert.NotNil(t, resp.GetResponseHeaders())
 }
 
-// §5.6, the case that matters: an existing kind's route with a *buffered-only* response
+// No behavioural change for existing kinds, in the case that matters: a route with a
+// *buffered-only* response
 // policy meeting a chunked or SSE upstream response. That combination has always simply
 // buffered, and it must keep doing so — the fail-closed behaviour is opt-in with an explicit
 // streaming declaration, not a new global rule. The weaker version of this test used a
@@ -2086,7 +2087,7 @@ func TestResponseKind_StreamingWithChunkedJSONIsNotAStream(t *testing.T) {
 	assert.False(t, execCtx.isStreamingResponse)
 }
 
-// §5.6: a route that declares nothing behaves exactly as it did before the field existed.
+// A route that declares nothing behaves exactly as it did before the field existed.
 func TestResponseKind_AutoPreservesExistingBehaviour(t *testing.T) {
 	f := newResolutionFixture(t)
 	f.route("GET|/pets|example.com", resolver.RouteResolution{})

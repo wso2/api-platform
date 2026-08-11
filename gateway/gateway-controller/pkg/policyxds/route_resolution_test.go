@@ -151,7 +151,7 @@ func TestEmptyResolutionFieldsAreOmitted(t *testing.T) {
 	}
 }
 
-// The §5.2 golden: the complete emitted content for an existing kind's route, pinned
+// Golden test: the complete emitted content for an existing kind's route, pinned
 // value by value. It is a content comparison rather than a byte comparison on purpose
 // — the resource bytes are produced by anypb.New over a Struct whose map fields have
 // no defined wire order, and the LinearCache re-versions every resource it is handed
@@ -301,11 +301,36 @@ func TestValidateResolution(t *testing.T) {
 			},
 		},
 		{
-			name: "identity route with an explicit canonical key",
+			name: "identity route with an explicit canonical key equal to its route key",
+			rdc: &models.RuntimeDeployConfig{
+				Routes:       map[string]*models.Route{"GET|/pets|h": {CanonicalChainKey: "GET|/pets|h"}},
+				PolicyChains: chains("GET|/pets|h"),
+			},
+		},
+		{
+			// A chain that exists but is neither this route's key nor a composed operation
+			// key. Existence alone would accept it, and the route would then run whatever
+			// policies that chain carries — the borrowed-policies failure is silent, so it
+			// has to be refused here.
+			name: "identity route pointed at an arbitrary existing chain",
 			rdc: &models.RuntimeDeployConfig{
 				Routes:       map[string]*models.Route{"GET|/pets|h": {CanonicalChainKey: "shared-chain"}},
-				PolicyChains: chains("shared-chain"),
+				PolicyChains: chains("GET|/pets|h", "shared-chain"),
 			},
+			wantErr: `is neither the route key nor a composed operation key`,
+		},
+		{
+			// The concrete shape of that mistake: a public route carrying another route's
+			// key, which would silently borrow that route's authentication.
+			name: "identity route pointed at another route's chain",
+			rdc: &models.RuntimeDeployConfig{
+				Routes: map[string]*models.Route{
+					"GET|/pets|h":  {CanonicalChainKey: "GET|/admin|h"},
+					"GET|/admin|h": {},
+				},
+				PolicyChains: chains("GET|/pets|h", "GET|/admin|h"),
+			},
+			wantErr: `canonical chain key "GET|/admin|h" is neither the route key nor a composed operation key`,
 		},
 		{
 			// An identity route deliberately redirected to a composed operation key:

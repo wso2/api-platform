@@ -23,6 +23,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"log/slog"
+	"math"
 	"strconv"
 	"strings"
 
@@ -523,8 +524,9 @@ func getStringFromMap(m map[string]interface{}, key string) string {
 
 // getInt64FromMap safely extracts an integer value from a map. protojson renders
 // every Struct number as a float64, and a JSON producer may also emit it as a
-// string, so both are accepted. A negative or unparseable value reads as 0, which
-// callers treat as "not configured".
+// string, so both are accepted. Anything that is not a positive whole number
+// representable as an int64 reads as 0, which callers treat as "not configured" and
+// resolve to their own default.
 func getInt64FromMap(m map[string]interface{}, key string) int64 {
 	v, ok := m[key]
 	if !ok {
@@ -532,7 +534,17 @@ func getInt64FromMap(m map[string]interface{}, key string) int64 {
 	}
 	switch n := v.(type) {
 	case float64:
-		if n <= 0 {
+		// The range check has to happen before the conversion, not after. Go leaves
+		// float-to-int conversion undefined when the value does not fit, and on this
+		// platform it *saturates*: int64(float64(1<<63)) yields math.MaxInt64. A
+		// nonsense value would therefore become the largest possible ceiling rather
+		// than falling back to the default — the wrong direction for a limit that
+		// bounds unauthenticated work.
+		//
+		// A fractional value is rejected rather than truncated: a byte count of 4096.5
+		// is malformed config, and silently serving 4096 hides the producer's bug.
+		// NaN falls out of the Trunc comparison, since NaN != NaN.
+		if n < 1 || n >= math.Ldexp(1, 63) || n != math.Trunc(n) {
 			return 0
 		}
 		return int64(n)

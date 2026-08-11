@@ -28,6 +28,7 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"google.golang.org/grpc"
 
 	"github.com/wso2/api-platform/gateway/gateway-runtime/policy-engine/internal/config"
 	"github.com/wso2/api-platform/gateway/gateway-runtime/policy-engine/internal/kernel"
@@ -331,4 +332,24 @@ func TestInitializeXDSClient_ValidConfig(t *testing.T) {
 
 	// Note: Not calling Stop/Wait due to potential issues with context in test environment
 	// The client will be cleaned up when the test exits
+}
+
+// The ext_proc server must be constructed with all three bounds set. The values
+// themselves are validated in internal/config; what this pins is that none of the three
+// options is dropped from the construction, which is how this server silently ran on
+// gRPC's defaults — a 4 MiB receive cap and unbounded streams — before.
+func TestExtProcServerOptions(t *testing.T) {
+	cfg := &config.Config{}
+	cfg.PolicyEngine.Server.MaxRecvMsgBytes = 11 << 20
+	cfg.PolicyEngine.Server.MaxSendMsgBytes = 11 << 20
+	cfg.PolicyEngine.Server.MaxConcurrentStreams = 4096
+
+	opts := extProcServerOptions(cfg)
+	assert.Len(t, opts, 3, "MaxRecvMsgSize, MaxSendMsgSize and MaxConcurrentStreams")
+
+	// And the real constructor accepts them, rather than this merely being a slice of
+	// the right length.
+	srv := grpc.NewServer(opts...)
+	require.NotNil(t, srv)
+	srv.Stop()
 }

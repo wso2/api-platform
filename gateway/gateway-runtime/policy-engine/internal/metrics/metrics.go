@@ -80,9 +80,10 @@ var (
 	ResolutionFailuresTotal CounterVec
 
 	// RouteResolutionIngestFailuresTotal counts routes dropped at xDS ingest
-	// because their resolution config is unusable (unknown resolver, empty or
-	// malformed operation map, failing Prepare). A non-zero value here means part
-	// of a deployment is not being served, which no request-time metric shows.
+	// because their resolution config is unusable — the reason labels emitted today
+	// are unknown_resolver, invalid_resolver_config and prepare_failed. A non-zero
+	// value here means part of a deployment is not being served, which no
+	// request-time metric shows.
 	RouteResolutionIngestFailuresTotal CounterVec
 )
 

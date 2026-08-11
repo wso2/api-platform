@@ -333,6 +333,17 @@ func (rdc *RuntimeDeployConfig) ValidateResolution() error {
 						"route %q: canonical chain key %q belongs to routing partition (vhost) %q, but the route serves %q",
 						routeKey, canonical, vhost, route.Vhost)
 				}
+			} else if canonical != routeKey {
+				// A composed operation key is the one redirect an identity route may
+				// carry. Any other key that merely happens to exist is refused, because
+				// the failure it hides is silent: a route pointed at another route's
+				// chain — a public route carrying "GET|/admin|h", say — passes the
+				// existence check above and then runs that route's authentication and
+				// rate limits instead of its own. Same class as the cross-partition case,
+				// without a composed key's structure to detect it from.
+				return fmt.Errorf(
+					"route %q: canonical chain key %q is neither the route key nor a composed operation key",
+					routeKey, canonical)
 			}
 			continue
 		}

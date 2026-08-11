@@ -226,7 +226,7 @@ func (ec *PolicyExecutionContext) bindPendingChainAndProcess(
 	// collected the whole body and sent it here in one message by the time this runs.
 	// The memory an unauthenticated caller can pin is bounded by Envoy's listener-wide
 	// per_connection_buffer_limit_bytes and the ext_proc gRPC receive limit, neither of
-	// which is per-route. See RouteConfig.MaxRequestBodyBytes and §8 R3.
+	// which is per-route. See RouteConfig.MaxRequestBodyBytes.
 	if limit := pending.route.EffectiveMaxRequestBodyBytes(); int64(len(wire)) > limit {
 		return ec.denyResolution(ctx, &resolver.ResolutionError{
 			Kind: resolver.FailurePayloadTooLarge,

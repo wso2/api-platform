@@ -367,3 +367,65 @@ func TestDiscoveryNode_NoRegistryAdvertisesEmptyList(t *testing.T) {
 	require.NotNil(t, node.Metadata)
 	assert.Empty(t, node.Metadata.Fields["supported_resolvers"].GetListValue().Values)
 }
+
+// A malformed byte ceiling must read as "not configured" so the route falls back to the
+// engine's own low default, rather than being truncated to a nearby value or — worse —
+// saturating. int64(float64(1<<63)) yields math.MaxInt64 on this platform, which would turn
+// a nonsense value into an effectively unbounded ceiling on a limit whose whole job is
+// bounding unauthenticated work.
+func TestRouteConfigUpdate_MalformedBodyLimitReadsAsUnconfigured(t *testing.T) {
+	for name, limit := range map[string]interface{}{
+		"fractional below one": 0.5,
+		"fractional":           4096.5,
+		"above int64 range":    float64(1 << 63),
+		"negative":             -4096.0,
+		"zero":                 0.0,
+		"not a number":         "not-a-number",
+	} {
+		t.Run(name, func(t *testing.T) {
+			h, k := newRouteHandler(t, registryWithResolvers(t, &stubResolver{name: "fake-jsonrpc"}))
+
+			require.NoError(t, h.HandleRouteConfigUpdate(context.Background(),
+				[]*anypb.Any{routeConfigResource(t, map[string]interface{}{
+					"route_key":              "POST|/rpc|example.com",
+					"resolver_name":          "fake-jsonrpc",
+					"max_request_body_bytes": limit,
+				})}, "v1"))
+
+			rc := k.GetRouteConfig("POST|/rpc|example.com")
+			require.NotNil(t, rc, "a malformed limit must not drop the route")
+			assert.Zero(t, rc.MaxRequestBodyBytes, "malformed limits read as not configured")
+			assert.Equal(t, kernel.DefaultMaxResolverRequestBodyBytes, rc.EffectiveMaxRequestBodyBytes(),
+				"and the route falls back to the engine default")
+		})
+	}
+}
+
+// The whole-number values a producer legitimately sends still arrive intact, including one
+// emitted as a string.
+func TestRouteConfigUpdate_ValidBodyLimitsAreAccepted(t *testing.T) {
+	for name, tc := range map[string]struct {
+		limit interface{}
+		want  int64
+	}{
+		"float":         {limit: 4096.0, want: 4096},
+		"string":        {limit: "4096", want: 4096},
+		"one byte":      {limit: 1.0, want: 1},
+		"largest int64": {limit: "9223372036854775807", want: 9223372036854775807},
+	} {
+		t.Run(name, func(t *testing.T) {
+			h, k := newRouteHandler(t, registryWithResolvers(t, &stubResolver{name: "fake-jsonrpc"}))
+
+			require.NoError(t, h.HandleRouteConfigUpdate(context.Background(),
+				[]*anypb.Any{routeConfigResource(t, map[string]interface{}{
+					"route_key":              "POST|/rpc|example.com",
+					"resolver_name":          "fake-jsonrpc",
+					"max_request_body_bytes": tc.limit,
+				})}, "v1"))
+
+			rc := k.GetRouteConfig("POST|/rpc|example.com")
+			require.NotNil(t, rc)
+			assert.Equal(t, tc.want, rc.MaxRequestBodyBytes)
+		})
+	}
+}

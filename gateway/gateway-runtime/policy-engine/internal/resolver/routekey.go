@@ -38,10 +38,16 @@ func (r *RouteKeyResolver) Requirements() Requirements {
 	return Requirements{BufferBody: false, Headers: false}
 }
 
-// Identify returns the route key as the single operation candidate. Reached only
-// if a caller bypasses ResolveChainKey's identity short-circuit; the result is
-// still correct, because for an identity route the operation map is absent and the
-// canonical chain key is the route key.
+// Identify returns the route key as the single operation candidate. Reached only if a
+// caller bypasses ResolveChainKey's identity short-circuit.
+//
+// That candidate names the right chain only when the route's CanonicalChainKey equals its
+// RouteKey, which holds for every kind shipping today but is not a property of identity
+// resolution: an operation route can be identity-resolved and still point at a *composed*
+// canonical key (one A2A HTTP+JSON route per operation), and for those the route key is
+// not the chain key. A caller that composes a key from this candidate gets a third string
+// again — ChainKeyFor(apiID, vhost, routeKey) — which is neither. Read
+// RouteResolution.CanonicalChainKey instead of routing an identity route through here.
 func (r *RouteKeyResolver) Identify(view RequestView) (Resolution, error) {
 	return Resolution{Operations: []Operation{{Candidates: []string{view.RouteKey}}}}, nil
 }

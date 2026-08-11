@@ -417,8 +417,8 @@ func (t *Translator) createRouteConfigResource(
 		data["resolver_config"] = decoded
 	}
 	// Omitted when empty, like every other resolution field: a route that declares
-	// nothing must serialise byte-identically to how it did before the field existed
-	// (§5.2), or every existing kind's RouteConfig re-versions for no reason.
+	// nothing must serialise exactly as it did before the field existed, or every
+	// existing kind's RouteConfig re-versions for no reason.
 	if route.ResponseKind != "" {
 		data["response_kind"] = route.ResponseKind
 	}
