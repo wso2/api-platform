@@ -12,7 +12,7 @@ The rules live in **`references/api-platform-db-schema-rules.md`** (next to this
 
 ## Usage
 
-```
+```text
 /designing-db-schemas [table-name | path-to-schema-file]
 ```
 
@@ -93,9 +93,10 @@ Read `references/api-platform-db-schema-rules.md`. The rules you need depend on 
 
 #### Step A3 — Self-review checklist
 
-```
+```text
 [ ] R0  Change is additive — no retype/rename/PK-FK change/NOT NULL/UNIQUE on a shipped table
-[ ] R0  Per-dialect ALTER TABLE written for already-provisioned databases
+[ ] R0  Column added to an existing table: per-dialect ALTER TABLE written for already-provisioned
+        databases (new tables/indexes need none — their guarded CREATE covers both cases)
 [ ] R1  Entity tables: uuid VARCHAR(40) PRIMARY KEY
 [ ] R1  Junction/mapping tables: composite PRIMARY KEY — not UNIQUE-only, not surrogate UUID
 [ ] R1  Non-leading FK columns of a composite PK have their own indexes
@@ -115,7 +116,8 @@ Read `references/api-platform-db-schema-rules.md`. The rules you need depend on 
 [ ] R4  Every FK has an explicit ON DELETE clause
 [ ] R5  User-initiated table → all four audit columns; system-managed → created_by/updated_by ABSENT
 [ ] R5  Every domain entity table has data_version VARCHAR(20) NOT NULL DEFAULT '1.0'
-[ ] R6  FK columns, organization_uuid, and filtered status columns have indexes
+[ ] R6  FK columns, organization_uuid, and filtered status columns have indexes — except where the
+        column is already the leftmost part of the PK or a covering UNIQUE constraint
 [ ] R7  Go model/repository/DTO updated in the same commit; named columns, no SELECT *
 [ ] R8  Change applied to every dialect file (or divergence is intentional and documented)
 [ ] R9  All DDL is idempotent (IF NOT EXISTS / OBJECT_ID / sys.indexes guards)
@@ -143,7 +145,9 @@ Keep `CREATE INDEX` statements in a dedicated block after all `CREATE TABLE` sta
 
 #### Step A5 — Apply to all schema files, then ship the upgrade path
 
-Apply to every in-scope dialect file, same column order, same position. Only the R8 divergences may differ. Then write the per-dialect `ALTER TABLE` (R0-UPGRADE-PATH) — `CREATE TABLE IF NOT EXISTS` does nothing to a database that already exists.
+Apply to every in-scope dialect file, same column order, same position. Only the R8 divergences may differ.
+
+Then, **if the change adds a column to an existing table**, write the per-dialect `ALTER TABLE` (R0-UPGRADE-PATH) — `CREATE TABLE IF NOT EXISTS` does nothing to a database that already exists, so a column added to a `CREATE TABLE` body reaches fresh installs only. A new table or a new index needs no `ALTER`: its guarded `CREATE ... IF NOT EXISTS` / `OBJECT_ID` / `sys.indexes` form (R9, Step A4) already applies to fresh and already-provisioned databases alike.
 
 #### Step A6 — Verify on more than one dialect
 
