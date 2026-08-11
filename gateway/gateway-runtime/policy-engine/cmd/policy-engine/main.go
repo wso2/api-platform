@@ -45,6 +45,7 @@ import (
 	"github.com/wso2/api-platform/gateway/gateway-runtime/policy-engine/internal/pkg/cel"
 	"github.com/wso2/api-platform/gateway/gateway-runtime/policy-engine/internal/pythonbridge"
 	"github.com/wso2/api-platform/gateway/gateway-runtime/policy-engine/internal/registry"
+	"github.com/wso2/api-platform/gateway/gateway-runtime/policy-engine/internal/resolver"
 	"github.com/wso2/api-platform/gateway/gateway-runtime/policy-engine/internal/tracing"
 	"github.com/wso2/api-platform/gateway/gateway-runtime/policy-engine/internal/utils"
 	"github.com/wso2/api-platform/gateway/gateway-runtime/policy-engine/internal/xdsclient"
@@ -158,6 +159,14 @@ func main() {
 	k := kernel.NewKernel()
 	reg := registry.GetRegistry()
 
+	// Freeze the operation-resolver registry before anything reads it: no resolver
+	// can be registered once the kernel and the xDS client are running, so what the
+	// runtime advertises to the control plane and what it can actually serve are the
+	// same set for the whole process lifetime.
+	resolvers := resolver.DefaultRegistry()
+	slog.InfoContext(ctx, "Operation resolvers registered",
+		"resolvers", resolvers.Names(), "protocol_version", resolver.ProtocolVersion)
+
 	// Set config in registry for ${config} CEL resolution
 	if err := reg.SetConfig(cfg.PolicyEngine.RawConfig); err != nil {
 		slog.ErrorContext(ctx, "Failed to set config in registry", "error", err)
@@ -197,7 +206,7 @@ func main() {
 			slog.ErrorContext(ctx, "Error: -xds-server flag is required when config mode is 'xds'")
 			os.Exit(1)
 		}
-		xdsClient, err = initializeXDSClient(ctx, cfg, *xdsServerAddr, k, reg)
+		xdsClient, err = initializeXDSClient(ctx, cfg, *xdsServerAddr, k, reg, resolvers)
 		if err != nil {
 			slog.ErrorContext(ctx, "Failed to initialize xDS client", "error", err)
 			os.Exit(1)
@@ -220,7 +229,7 @@ func main() {
 	}
 
 	// Create and start ext_proc gRPC server
-	extprocServer := kernel.NewExternalProcessorServer(k, chainExecutor, cfg.TracingConfig, cfg.PolicyEngine.TracingServiceName, cfg.PolicyEngine.RequestBody.MaxDecompressedBytes, cfg.PolicyEngine.ResponseBody.MaxDecompressedBytes)
+	extprocServer := kernel.NewExternalProcessorServer(k, chainExecutor, cfg.TracingConfig, cfg.PolicyEngine.TracingServiceName, cfg.PolicyEngine.RequestBody.MaxDecompressedBytes, cfg.PolicyEngine.ResponseBody.MaxDecompressedBytes, resolvers)
 
 	// Create listener based on mode (same pattern as gateway-controller)
 	var lis net.Listener
@@ -419,7 +428,7 @@ func setupLogger(cfg *config.Config) *slog.Logger {
 }
 
 // initializeXDSClient initializes and starts the xDS client
-func initializeXDSClient(ctx context.Context, cfg *config.Config, serverAddr string, k *kernel.Kernel, reg *registry.PolicyRegistry) (*xdsclient.Client, error) {
+func initializeXDSClient(ctx context.Context, cfg *config.Config, serverAddr string, k *kernel.Kernel, reg *registry.PolicyRegistry, resolvers resolver.ResolverRegistry) (*xdsclient.Client, error) {
 	slog.InfoContext(ctx, "Initializing xDS client",
 		"server", serverAddr)
 
@@ -435,7 +444,7 @@ func initializeXDSClient(ctx context.Context, cfg *config.Config, serverAddr str
 		TLSCAPath:             cfg.PolicyEngine.XDS.TLS.CAPath,
 	}
 
-	client, err := xdsclient.NewClient(xdsConfig, k, reg)
+	client, err := xdsclient.NewClient(xdsConfig, k, reg, resolvers)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create xDS client: %w", err)
 	}

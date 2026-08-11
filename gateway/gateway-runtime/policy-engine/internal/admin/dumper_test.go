@@ -19,13 +19,16 @@
 package admin
 
 import (
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/wso2/api-platform/common/chainkey"
 	"github.com/wso2/api-platform/gateway/gateway-runtime/policy-engine/internal/kernel"
 	"github.com/wso2/api-platform/gateway/gateway-runtime/policy-engine/internal/registry"
+	"github.com/wso2/api-platform/gateway/gateway-runtime/policy-engine/internal/resolver"
 	policy "github.com/wso2/api-platform/sdk/core/policy/v1alpha2"
 )
 
@@ -344,4 +347,79 @@ func TestDumpLazyResources(t *testing.T) {
 	require.NotNil(t, result)
 	// The lazy resource store is a singleton, so we just verify structure
 	assert.NotNil(t, result.ResourcesByType)
+}
+
+// =============================================================================
+// Policy chain resolution in the route dump
+// =============================================================================
+
+// An identity route — every kind shipping today — echoes its chain key and reports
+// nothing else, so the dump is effectively unchanged for existing deployments.
+func TestDumpRouteMetadata_IdentityRouteReportsChainKeyOnly(t *testing.T) {
+	k := kernel.NewKernel()
+	k.ApplyWholeRouteConfigs(map[string]*kernel.RouteConfig{
+		"GET|/pets|localhost": {
+			Metadata: kernel.RouteMetadata{APIName: "PetStore"},
+			RouteResolution: resolver.RouteResolution{
+				RouteKey:          "GET|/pets|localhost",
+				CanonicalChainKey: "GET|/pets|localhost",
+				ResolverName:      resolver.RouteKeyResolverName,
+			},
+		},
+	})
+
+	entry := dumpRouteMetadata(k).Routes[0]
+	assert.Equal(t, "GET|/pets|localhost", entry.CanonicalChainKey)
+	assert.Equal(t, resolver.RouteKeyResolverName, entry.ResolverName)
+	assert.Empty(t, entry.ChainKeyPrefix, "an identity route composes nothing")
+	assert.Zero(t, entry.MaxRequestBodyBytes,
+		"the buffer limit only governs bodies buffered before the chain is known, which identity routes never do")
+	assert.False(t, entry.ResolverPrepared)
+}
+
+// On a multiplexed route the dump is the only way to answer "why did this request get
+// that chain?" from outside the process. Under composed keys there is no per-route
+// mapping to show, so what an operator needs is the prefix the engine joins a resolved
+// operation onto — enough to match a dumped chain key back to the route that reaches it.
+func TestDumpRouteMetadata_MultiplexedRouteReportsChainKeyPrefix(t *testing.T) {
+	k := kernel.NewKernel()
+	k.ApplyWholeRouteConfigs(map[string]*kernel.RouteConfig{
+		"POST|/rpc|localhost": {
+			Metadata: kernel.RouteMetadata{APIName: "Assistant", APIId: "agent-1", Vhost: "localhost"},
+			RouteResolution: resolver.RouteResolution{
+				RouteKey:     "POST|/rpc|localhost",
+				ResolverName: "a2a-jsonrpc",
+				RouteState:   "compiled",
+			},
+		},
+	})
+
+	entry := dumpRouteMetadata(k).Routes[0]
+	assert.Equal(t, "a2a-jsonrpc", entry.ResolverName)
+	assert.True(t, entry.ResolverPrepared)
+
+	// Built from the same helper as the keys themselves, so the dump cannot drift from
+	// what is actually probed: a composed key for any operation starts with this.
+	assert.Equal(t, chainkey.For("agent-1", "localhost", ""), entry.ChainKeyPrefix)
+	assert.True(t, strings.HasPrefix(
+		chainkey.For("agent-1", "localhost", "SendMessage"), entry.ChainKeyPrefix))
+
+	// The default is resolved rather than reported as 0: an operator needs the bound
+	// that actually applies, not the raw configured value.
+	assert.Equal(t, kernel.DefaultMaxResolverRequestBodyBytes, entry.MaxRequestBodyBytes)
+}
+
+func TestDumpRouteMetadata_ExplicitBufferLimitIsReported(t *testing.T) {
+	k := kernel.NewKernel()
+	k.ApplyWholeRouteConfigs(map[string]*kernel.RouteConfig{
+		"POST|/rpc|localhost": {
+			RouteResolution: resolver.RouteResolution{
+				RouteKey:     "POST|/rpc|localhost",
+				ResolverName: "a2a-jsonrpc",
+			},
+			MaxRequestBodyBytes: 4096,
+		},
+	})
+
+	assert.Equal(t, int64(4096), dumpRouteMetadata(k).Routes[0].MaxRequestBodyBytes)
 }

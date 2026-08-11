@@ -21,6 +21,7 @@ package admin
 import (
 	"time"
 
+	"github.com/wso2/api-platform/common/chainkey"
 	"github.com/wso2/api-platform/gateway/gateway-runtime/policy-engine/internal/kernel"
 	"github.com/wso2/api-platform/gateway/gateway-runtime/policy-engine/internal/registry"
 	policy "github.com/wso2/api-platform/sdk/core/policy/v1alpha2"
@@ -102,6 +103,13 @@ func dumpRouteMetadata(k *kernel.Kernel) RouteMetadataDump {
 			UpstreamBasePath:        cfg.Metadata.UpstreamBasePath,
 			UpstreamDefinitionPaths: cfg.Metadata.UpstreamDefinitionPaths,
 			DefaultUpstream:         cfg.Metadata.DefaultUpstream,
+
+			CanonicalChainKey:   cfg.CanonicalChainKey,
+			ResolverName:        cfg.ResolverName,
+			ChainKeyPrefix:      resolverChainKeyPrefix(cfg),
+			ResponseKind:        string(cfg.ResponseKind),
+			MaxRequestBodyBytes: resolverBufferLimit(cfg),
+			ResolverPrepared:    cfg.RouteState != nil,
 		})
 	}
 
@@ -109,6 +117,29 @@ func dumpRouteMetadata(k *kernel.Kernel) RouteMetadataDump {
 		TotalRoutes: len(entries),
 		Routes:      entries,
 	}
+}
+
+// resolverChainKeyPrefix returns the apiID/vhost prefix the engine composes this
+// route's operation chain keys from, or "" for an identity route, which composes
+// nothing. Built with the same shared helper as the keys themselves — passing an empty
+// operation yields exactly the prefix — so the dump cannot drift from what is probed.
+func resolverChainKeyPrefix(cfg *kernel.RouteConfig) string {
+	if cfg == nil || cfg.IsIdentity() {
+		return ""
+	}
+	return chainkey.For(cfg.Metadata.APIId, cfg.Metadata.Vhost, "")
+}
+
+// resolverBufferLimit reports the wire-byte ceiling in force on a body-resolved
+// route, resolving the default rather than reporting 0 — an operator reading the dump
+// needs the bound that actually applies. Identity routes report nothing, since the
+// limit only governs bodies buffered before the chain (and therefore authentication)
+// is known.
+func resolverBufferLimit(cfg *kernel.RouteConfig) int64 {
+	if cfg.IsIdentity() {
+		return 0
+	}
+	return cfg.EffectiveMaxRequestBodyBytes()
 }
 
 // dumpPolicySpecs converts SDK PolicySpecs to admin PolicySpecs

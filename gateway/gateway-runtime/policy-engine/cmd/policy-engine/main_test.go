@@ -32,6 +32,7 @@ import (
 	"github.com/wso2/api-platform/gateway/gateway-runtime/policy-engine/internal/config"
 	"github.com/wso2/api-platform/gateway/gateway-runtime/policy-engine/internal/kernel"
 	"github.com/wso2/api-platform/gateway/gateway-runtime/policy-engine/internal/registry"
+	"github.com/wso2/api-platform/gateway/gateway-runtime/policy-engine/internal/resolver"
 )
 
 // =============================================================================
@@ -296,7 +297,7 @@ func TestInitializeXDSClient_InvalidConfig(t *testing.T) {
 		},
 	}
 
-	_, err := initializeXDSClient(context.Background(), cfg, "", k, reg)
+	_, err := initializeXDSClient(context.Background(), cfg, "", k, reg, resolver.DefaultRegistry())
 
 	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "failed to create xDS client")
@@ -322,7 +323,7 @@ func TestInitializeXDSClient_ValidConfig(t *testing.T) {
 
 	// Note: This will fail to actually connect since there's no server,
 	// but the client creation and start attempt should work
-	client, err := initializeXDSClient(context.Background(), cfg, "localhost:18000", k, reg)
+	client, err := initializeXDSClient(context.Background(), cfg, "localhost:18000", k, reg, resolver.DefaultRegistry())
 
 	// Client should be created successfully even if it can't connect
 	require.NoError(t, err)

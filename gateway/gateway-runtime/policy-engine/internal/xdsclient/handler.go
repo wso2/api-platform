@@ -23,6 +23,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"log/slog"
+	"strconv"
 	"strings"
 
 	"google.golang.org/protobuf/encoding/protojson"
@@ -34,6 +35,7 @@ import (
 	"github.com/wso2/api-platform/gateway/gateway-runtime/policy-engine/internal/kernel"
 	"github.com/wso2/api-platform/gateway/gateway-runtime/policy-engine/internal/metrics"
 	"github.com/wso2/api-platform/gateway/gateway-runtime/policy-engine/internal/registry"
+	"github.com/wso2/api-platform/gateway/gateway-runtime/policy-engine/internal/resolver"
 	policy "github.com/wso2/api-platform/sdk/core/policy/v1alpha2"
 	policyenginev1 "github.com/wso2/api-platform/sdk/core/policyengine"
 )
@@ -64,6 +66,7 @@ type appliedRoute struct {
 type ResourceHandler struct {
 	kernel              *kernel.Kernel
 	registry            *registry.PolicyRegistry
+	resolvers           resolver.ResolverRegistry
 	configLoader        *kernel.ConfigLoader
 	apiKeyHandler       *APIKeyOperationHandler
 	lazyResourceHandler *LazyResourceHandler
@@ -78,14 +81,18 @@ type ResourceHandler struct {
 	lastApplied map[string]appliedRoute
 }
 
-// NewResourceHandler creates a new ResourceHandler
-func NewResourceHandler(k *kernel.Kernel, reg *registry.PolicyRegistry) *ResourceHandler {
+// NewResourceHandler creates a new ResourceHandler.
+// resolvers is the frozen operation-resolver registry; a nil value is treated as
+// an identity-only registry, so a route naming any other resolver is skipped at
+// ingest rather than resolving by identity behind the operator's back.
+func NewResourceHandler(k *kernel.Kernel, reg *registry.PolicyRegistry, resolvers resolver.ResolverRegistry) *ResourceHandler {
 	apiKeyStore := apikey.GetAPIkeyStoreInstance()
 	lazyResourceStore := policy.GetLazyResourceStoreInstance()
 	subStore := policyenginev1.GetSubscriptionStoreInstance()
 	return &ResourceHandler{
 		kernel:              k,
 		registry:            reg,
+		resolvers:           resolvers,
 		configLoader:        kernel.NewConfigLoader(k, reg),
 		apiKeyHandler:       NewAPIKeyOperationHandler(apiKeyStore, slog.Default()),
 		lazyResourceHandler: NewLazyResourceHandler(lazyResourceStore, slog.Default()),
@@ -368,6 +375,14 @@ func (h *ResourceHandler) HandleRouteConfigUpdate(ctx context.Context, resources
 			}
 		}
 
+		// Resolution config: how this route's policy chain key is derived.
+		// A route the resolver registry cannot serve is skipped entirely rather
+		// than silently falling back to identity resolution, which would select
+		// the route-level chain for every logical operation and look like it works.
+		if !h.applyRouteResolution(ctx, routeKey, rc, data) {
+			continue
+		}
+
 		rc.Metadata.DefaultUpstreamCluster = getStringFromMap(data, "default_upstream_cluster")
 		rc.Metadata.UpstreamBasePath = getStringFromMap(data, "upstream_base_path")
 
@@ -399,6 +414,103 @@ func (h *ResourceHandler) HandleRouteConfigUpdate(ctx context.Context, resources
 	return nil
 }
 
+// applyRouteResolution parses a route's resolution fields (resolver_name,
+// canonical_chain_key, resolver_config, max_request_body_bytes) onto rc and runs
+// the resolver's Prepare hook.
+//
+// It reports whether the route is usable. A false return skips this one route with
+// a logged reason and a metric — it never fails the whole update, because under
+// State-of-the-World a NACK keeps the previous version of *every* RouteConfig, so
+// one bad deployment would freeze route updates for every API on the gateway. This
+// matches the existing per-entry convention in HandleRouteConfigUpdate, where
+// structural failures (proto/protojson unmarshal) return an error but per-entry
+// semantic problems (unknown type URL, empty route_key) log and continue.
+func (h *ResourceHandler) applyRouteResolution(
+	ctx context.Context,
+	routeKey string,
+	rc *kernel.RouteConfig,
+	data map[string]interface{},
+) bool {
+	rc.RouteKey = routeKey
+
+	// canonical_chain_key is emitted on every route by a current controller. An
+	// older controller omits it, in which case the route key is the chain key —
+	// which is exactly what the pre-resolution policy engine assumed.
+	rc.CanonicalChainKey = getStringFromMap(data, "canonical_chain_key")
+	if rc.CanonicalChainKey == "" {
+		rc.CanonicalChainKey = routeKey
+	}
+
+	rc.ResolverName = getStringFromMap(data, "resolver_name")
+	rc.MaxRequestBodyBytes = getInt64FromMap(data, "max_request_body_bytes")
+
+	// response_kind is how this route's operation delivers its response, set by the
+	// controller on a route whose operation is known at deploy time. An unrecognised
+	// value is dropped to Auto rather than dropping the route: Auto is the behaviour
+	// that predates the field, so a newer controller's unknown kind degrades instead of
+	// taking the route out of service.
+	if kind := resolver.ResponseKind(getStringFromMap(data, "response_kind")); kind.Valid() {
+		rc.ResponseKind = kind
+	} else {
+		slog.WarnContext(ctx, "Ignoring unrecognised response_kind on route",
+			"route", routeKey, "response_kind", getStringFromMap(data, "response_kind"))
+	}
+
+	if rc.IsIdentity() {
+		// Identity route: nothing else to parse, nothing to prepare. Resolution
+		// returns CanonicalChainKey without running any resolver code.
+		return true
+	}
+
+	res, ok := resolverFrom(h.resolvers, rc.ResolverName)
+	if !ok {
+		slog.WarnContext(ctx, "Skipping route: unknown operation resolver",
+			"route", routeKey, "resolver", rc.ResolverName)
+		metrics.RouteResolutionIngestFailuresTotal.WithLabelValues("unknown_resolver").Inc()
+		return false
+	}
+
+	// There is no operation map to parse or validate: a resolver-bearing route's chain
+	// key is composed from the identified operation at request time, so completeness
+	// is a question about the *chains*, which only the controller can answer at deploy
+	// time. An unrecognised operation is a per-request outcome, not a bad route.
+
+	if raw, present := data["resolver_config"]; present && raw != nil {
+		encoded, err := json.Marshal(raw)
+		if err != nil {
+			slog.WarnContext(ctx, "Skipping route: resolver_config could not be re-encoded",
+				"route", routeKey, "resolver", rc.ResolverName, "error", err)
+			metrics.RouteResolutionIngestFailuresTotal.WithLabelValues("invalid_resolver_config").Inc()
+			return false
+		}
+		rc.ResolverConfig = encoded
+	}
+
+	// Prepare runs once per route at ingest, so a resolver that must compile a
+	// schema or build an index never does it per request.
+	if preparer, implements := res.(resolver.Preparer); implements {
+		state, err := preparer.Prepare(rc.ResolverConfig)
+		if err != nil {
+			slog.WarnContext(ctx, "Skipping route: resolver Prepare failed",
+				"route", routeKey, "resolver", rc.ResolverName, "error", err)
+			metrics.RouteResolutionIngestFailuresTotal.WithLabelValues("prepare_failed").Inc()
+			return false
+		}
+		rc.RouteState = state
+	}
+
+	return true
+}
+
+// resolverFrom looks a resolver up, treating a nil registry as identity-only so a
+// partially-wired handler fails closed rather than panicking.
+func resolverFrom(reg resolver.ResolverRegistry, name string) (resolver.OperationResolver, bool) {
+	if reg == nil {
+		return nil, false
+	}
+	return reg.Get(name)
+}
+
 // getStringFromMap safely extracts a string value from a map.
 func getStringFromMap(m map[string]interface{}, key string) string {
 	if v, ok := m[key]; ok {
@@ -407,6 +519,32 @@ func getStringFromMap(m map[string]interface{}, key string) string {
 		}
 	}
 	return ""
+}
+
+// getInt64FromMap safely extracts an integer value from a map. protojson renders
+// every Struct number as a float64, and a JSON producer may also emit it as a
+// string, so both are accepted. A negative or unparseable value reads as 0, which
+// callers treat as "not configured".
+func getInt64FromMap(m map[string]interface{}, key string) int64 {
+	v, ok := m[key]
+	if !ok {
+		return 0
+	}
+	switch n := v.(type) {
+	case float64:
+		if n <= 0 {
+			return 0
+		}
+		return int64(n)
+	case string:
+		parsed, err := strconv.ParseInt(n, 10, 64)
+		if err != nil || parsed <= 0 {
+			return 0
+		}
+		return parsed
+	default:
+		return 0
+	}
 }
 
 // convertStoredConfigToPolicyChains extracts PolicyChain configurations from StoredPolicyConfig
