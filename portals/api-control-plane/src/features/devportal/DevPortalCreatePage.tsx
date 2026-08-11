@@ -156,6 +156,11 @@ export function DevPortalCreatePage() {
             <TextField
               disabled={handleLocked}
               error={handle !== '' && !handleValid}
+              helperText={
+                handle !== '' && !handleValid
+                  ? 'Lowercase letters, numbers, hyphens only; 3–64 chars.'
+                  : undefined
+              }
               onChange={(event) => {
                 setHandleEdited(true);
                 setHandle(event.target.value);
