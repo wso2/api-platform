@@ -154,7 +154,6 @@ export function DevPortalCreatePage() {
           <FormControl fullWidth>
             <FormLabel>Identifier</FormLabel>
             <TextField
-              disabled={handleLocked}
               error={handle !== '' && !handleValid}
               helperText={
                 handle !== '' && !handleValid
@@ -181,6 +180,7 @@ export function DevPortalCreatePage() {
                       </Tooltip>
                     </InputAdornment>
                   ),
+                  readOnly: handleLocked,
                 },
               }}
               value={handle}
