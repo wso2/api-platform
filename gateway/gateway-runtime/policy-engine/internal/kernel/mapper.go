@@ -23,12 +23,55 @@ import (
 	"sync"
 
 	"github.com/wso2/api-platform/gateway/gateway-runtime/policy-engine/internal/registry"
+	"github.com/wso2/api-platform/gateway/gateway-runtime/policy-engine/internal/resolver"
 )
 
 // RouteConfig holds metadata and resolver info for a single route.
 // Metadata is pre-populated at deploy time; no request-time parsing needed.
 type RouteConfig struct {
 	Metadata RouteMetadata
+
+	// RouteResolution carries how this route's policy chain key is derived —
+	// RouteKey, CanonicalChainKey, ResolverName, ResolverConfig and the Prepare
+	// result. Embedded so the fields read directly off the route
+	// (rc.CanonicalChainKey) while ResolveChainKey can take &rc.RouteResolution
+	// without copying the struct per request.
+	resolver.RouteResolution
+
+	// MaxRequestBodyBytes is the largest request body, in wire bytes before any
+	// decompression, that this route will accept for operation resolution. Zero means
+	// DefaultMaxResolverRequestBodyBytes applies.
+	//
+	// It is an *acceptance* ceiling, not a buffering one, and the distinction matters.
+	// A body-resolved route asks Envoy for BUFFERED mode, so by the time this is
+	// checked Envoy has already collected the whole body and shipped it here in one
+	// ext_proc message. What this bounds is therefore the work done *on* the body —
+	// decompression, resolver parsing, and the copies those make — plus it returns a
+	// clean 413 instead of letting an oversized body reach a resolver.
+	//
+	// What it does NOT bound is the memory an unauthenticated caller can make the
+	// gateway hold: that is Envoy's listener-wide
+	// router.http_listener.per_connection_buffer_limit_bytes (1 MiB by default) and the
+	// ext_proc gRPC server's receive limit, neither of which is per-route. Lowering
+	// this value does not lower that. See §8 R3 in the design plan for the two
+	// mechanisms that would.
+	MaxRequestBodyBytes int64
+}
+
+// DefaultMaxResolverRequestBodyBytes is the acceptance ceiling applied to a
+// body-resolved route whose RouteConfig carries no explicit limit. Deliberately far
+// below Envoy's per-connection buffer limit: on these routes the body is resolved, and
+// therefore parsed, before any authentication policy has run.
+const DefaultMaxResolverRequestBodyBytes int64 = 64 * 1024
+
+// EffectiveMaxRequestBodyBytes returns the acceptance ceiling actually in force for this
+// route, resolving the default. Exported so the admin config dump can report the bound
+// that applies rather than the raw (possibly zero) configured value.
+func (rc *RouteConfig) EffectiveMaxRequestBodyBytes() int64 {
+	if rc == nil || rc.MaxRequestBodyBytes <= 0 {
+		return DefaultMaxResolverRequestBodyBytes
+	}
+	return rc.MaxRequestBodyBytes
 }
 
 // RouteMapping maps Envoy metadata keys to PolicyChains for route-specific processing

@@ -39,6 +39,7 @@ import (
 	"github.com/wso2/api-platform/gateway/gateway-runtime/policy-engine/internal/executor"
 	"github.com/wso2/api-platform/gateway/gateway-runtime/policy-engine/internal/metrics"
 	"github.com/wso2/api-platform/gateway/gateway-runtime/policy-engine/internal/registry"
+	"github.com/wso2/api-platform/gateway/gateway-runtime/policy-engine/internal/resolver"
 	policy "github.com/wso2/api-platform/sdk/core/policy/v1alpha2"
 )
 
@@ -199,6 +200,7 @@ func newBenchServer(routes map[string]*registry.PolicyChain) *ExternalProcessorS
 		"bench-policy-engine",
 		testMaxDecompressedBytes,
 		testMaxDecompressedBytes,
+		resolver.DefaultRegistry(),
 	)
 }
 
@@ -213,11 +215,11 @@ func buildPolicyChain(policies []policy.Policy, specs []policy.PolicySpec) *regi
 		}
 	}
 	return &registry.PolicyChain{
-		Policies:             policies,
-		PolicySpecs:          specs,
-		RequiresRequestBody:  false,
-		RequiresResponseBody: false,
-		HasExecutionConditions:     hasExecutionConditions,
+		Policies:               policies,
+		PolicySpecs:            specs,
+		RequiresRequestBody:    false,
+		RequiresResponseBody:   false,
+		HasExecutionConditions: hasExecutionConditions,
 	}
 }
 
@@ -496,9 +498,9 @@ func BenchmarkGetModeOverride(b *testing.B) {
 			buildPolicySpec("p1", "v1.0", nil),
 			buildPolicySpec("p2", "v1.0", nil),
 		},
-		RequiresRequestBody:  false,
-		RequiresResponseBody: false,
-		HasExecutionConditions:     false,
+		RequiresRequestBody:    false,
+		RequiresResponseBody:   false,
+		HasExecutionConditions: false,
 	}
 
 	server := newBenchServer(nil)
