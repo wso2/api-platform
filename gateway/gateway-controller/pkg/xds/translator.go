@@ -2635,16 +2635,17 @@ func (t *Translator) createAccessLogConfig() ([]*accesslog.AccessLog, error) {
 		accessLogs = append(accessLogs, fileAccessLog)
 	}
 
-	// If the collector is active, create the gRPC access log config and append to existing access logs
+	// If the collector is active, create the gRPC access log config and append to existing access logs.
+	// The failure is fatal rather than a warning: ALS is the collector's only data
+	// source, so continuing without it would push a listener that silently reports
+	// nothing to traffic logging and analytics while both are enabled in config.
 	if t.config.IsCollectorEnabled() {
 		t.logger.Info("Creating gRPC access log configuration")
 		grpcAccessLog, err := t.createGRPCAccessLog()
 		if err != nil {
-			t.logger.Warn("Failed to create gRPC access log config, continuing without it",
-				slog.Any("error", err))
-		} else {
-			accessLogs = append(accessLogs, grpcAccessLog)
+			return nil, fmt.Errorf("failed to create gRPC access log config: %w", err)
 		}
+		accessLogs = append(accessLogs, grpcAccessLog)
 	}
 
 	return accessLogs, nil
