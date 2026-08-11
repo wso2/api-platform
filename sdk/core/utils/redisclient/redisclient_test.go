@@ -22,6 +22,7 @@ import (
 	"context"
 	"crypto/tls"
 	"net"
+	"strconv"
 	"sync"
 	"testing"
 	"time"
@@ -233,6 +234,261 @@ func TestGetOrCreateClient_DoesNotHoldLockDuringPing(t *testing.T) {
 	}
 
 	<-done // let the slow goroutine finish before the test exits
+}
+
+// resetSharedForTest clears the package-level shared client state before a
+// test runs (so InitFromConfig can be called again despite its once-only
+// guard) and restores whatever was there before once the test ends. White-box
+// access is fine here - this file is part of the package.
+func resetSharedForTest(t *testing.T) {
+	t.Helper()
+	shared.mu.Lock()
+	prevClient, prevInited := shared.client, shared.inited
+	shared.client, shared.inited = nil, false
+	shared.mu.Unlock()
+	t.Cleanup(func() {
+		shared.mu.Lock()
+		shared.client, shared.inited = prevClient, prevInited
+		shared.mu.Unlock()
+	})
+}
+
+func TestResolveOptionsFromConfig_NoRedisSectionReturnsNil(t *testing.T) {
+	opts, err := resolveOptionsFromConfig(map[string]interface{}{})
+	if err != nil || opts != nil {
+		t.Fatalf("got opts=%v err=%v, want nil,nil when \"redis\" is absent entirely", opts, err)
+	}
+}
+
+// TestResolveOptionsFromConfig_IgnoresSiblingSections proves resolveOptionsFromConfig
+// looks at the top-level "redis" key only - other top-level sections (including
+// policy_configurations, which is a separate, policy-engine-internal namespace
+// this package deliberately does NOT nest under) have no bearing on it.
+func TestResolveOptionsFromConfig_IgnoresSiblingSections(t *testing.T) {
+	raw := map[string]interface{}{
+		"router":                map[string]interface{}{"gateway_host": "*"},
+		"policy_configurations": map[string]interface{}{"oauth2_generator_v1": map[string]interface{}{"redis": map[string]interface{}{"key_prefix": "x:"}}},
+	}
+	opts, err := resolveOptionsFromConfig(raw)
+	if err != nil || opts != nil {
+		t.Fatalf("got opts=%v err=%v, want nil,nil when top-level \"redis\" is absent (unrelated sibling sections present)", opts, err)
+	}
+}
+
+func TestResolveOptionsFromConfig_AppliesDefaults(t *testing.T) {
+	opts, err := resolveOptionsFromConfig(map[string]interface{}{"redis": map[string]interface{}{}})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	want := &redis.Options{
+		Addr:         "localhost:6379",
+		DialTimeout:  5 * time.Second,
+		ReadTimeout:  3 * time.Second,
+		WriteTimeout: 3 * time.Second,
+	}
+	if opts.Addr != want.Addr || opts.DialTimeout != want.DialTimeout ||
+		opts.ReadTimeout != want.ReadTimeout || opts.WriteTimeout != want.WriteTimeout ||
+		opts.Username != "" || opts.Password != "" || opts.DB != 0 || opts.PoolSize != 0 {
+		t.Errorf("got %+v, want defaults %+v (username/password/db/poolSize zero-valued)", opts, want)
+	}
+}
+
+// TestResolveOptionsFromConfig_ParsesConfiguredValues covers both the string
+// (typical koanf/TOML decode) and numeric (int64/float64 - decoder-dependent)
+// shapes a value might arrive in.
+func TestResolveOptionsFromConfig_ParsesConfiguredValues(t *testing.T) {
+	raw := map[string]interface{}{
+		"redis": map[string]interface{}{
+			"host":               "redis.example.com",
+			"port":               int64(6380),
+			"username":           "app",
+			"password":           "secret",
+			"db":                 float64(2),
+			"connection_timeout": "10s",
+			"read_timeout":       "7s",
+			"write_timeout":      "7s",
+			"pool_size":          20,
+		},
+	}
+	opts, err := resolveOptionsFromConfig(raw)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if opts.Addr != "redis.example.com:6380" || opts.Username != "app" || opts.Password != "secret" ||
+		opts.DB != 2 || opts.DialTimeout != 10*time.Second || opts.ReadTimeout != 7*time.Second ||
+		opts.WriteTimeout != 7*time.Second || opts.PoolSize != 20 {
+		t.Errorf("got %+v, did not match configured values", opts)
+	}
+}
+
+// TestResolveOptionsFromConfig_ParsesNumericStringPort locks in the shape
+// gateway-runtime's own config interpolation actually produces: a TOML value
+// written as {{ env "VAR" "6379" }} must be a quoted string literal (TOML has
+// no unquoted template syntax), and interpolation resolves the token in place
+// without ever changing the field's type - so a "numeric" config.toml value
+// arrives here as a numeric string, not an int, even though int/int64/float64
+// are also accepted (e.g. from a JSON-sourced config path).
+func TestResolveOptionsFromConfig_ParsesNumericStringPort(t *testing.T) {
+	raw := map[string]interface{}{
+		"redis": map[string]interface{}{
+			"host": "redis.example.com",
+			"port": "6380",
+			"db":   "2",
+		},
+	}
+	opts, err := resolveOptionsFromConfig(raw)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if opts.Addr != "redis.example.com:6380" || opts.DB != 2 {
+		t.Errorf("got %+v, want port 6380 and db 2 parsed from numeric strings", opts)
+	}
+}
+
+func TestResolveOptionsFromConfig_RejectsWrongShapedValue(t *testing.T) {
+	_, err := resolveOptionsFromConfig(map[string]interface{}{
+		"redis": map[string]interface{}{"port": "not-a-number"},
+	})
+	if err == nil {
+		t.Error("expected an error for a non-numeric port, so a config typo surfaces at startup instead of silently defaulting")
+	}
+}
+
+func TestResolveOptionsFromConfig_RejectsNonTableSection(t *testing.T) {
+	_, err := resolveOptionsFromConfig(map[string]interface{}{"redis": "not-a-table"})
+	if err == nil {
+		t.Error("expected an error when \"redis\" isn't a table")
+	}
+}
+
+func TestInitFromConfig_NoRedisSectionLeavesSharedUnconfigured(t *testing.T) {
+	resetSharedForTest(t)
+
+	if err := InitFromConfig(map[string]interface{}{}); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if _, err := Shared(); err == nil {
+		t.Error("expected Shared() to report a config-gap error when no redis section was ever configured")
+	}
+}
+
+func TestInitFromConfig_CalledTwiceErrors(t *testing.T) {
+	resetSharedForTest(t)
+
+	if err := InitFromConfig(map[string]interface{}{}); err != nil {
+		t.Fatalf("first call: unexpected error: %v", err)
+	}
+	if err := InitFromConfig(map[string]interface{}{}); err == nil {
+		t.Error("expected a second InitFromConfig call to error - it must run exactly once")
+	}
+}
+
+func TestSharedBeforeInitFromConfigErrors(t *testing.T) {
+	resetSharedForTest(t)
+
+	if _, err := Shared(); err == nil {
+		t.Error("expected Shared() to error when InitFromConfig was never called")
+	}
+}
+
+// TestSharedReturnsIdenticalPointer is the actual "single instance" contract:
+// not merely "these two configs happen to compare equal" (GetOrCreateRedisClient's
+// dedup guarantee) but "there is exactly one gateway-level client, full stop."
+func TestSharedReturnsIdenticalPointer(t *testing.T) {
+	resetSharedForTest(t)
+	mr := miniredis.RunT(t)
+
+	port, err := strconv.Atoi(mr.Port())
+	if err != nil {
+		t.Fatalf("failed to parse miniredis port: %v", err)
+	}
+	raw := map[string]interface{}{"redis": map[string]interface{}{"host": mr.Host(), "port": port}}
+	if err := InitFromConfig(raw); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	c1, err1 := Shared()
+	c2, err2 := Shared()
+	if err1 != nil || err2 != nil {
+		t.Fatalf("unexpected errors: %v, %v", err1, err2)
+	}
+	if c1 != c2 {
+		t.Error("expected every Shared() call to return the identical *redis.Client pointer")
+	}
+}
+
+func TestResolve_NilOptsFallsBackToShared(t *testing.T) {
+	resetSharedForTest(t)
+	mr := miniredis.RunT(t)
+	sharedClient := redis.NewClient(&redis.Options{Addr: mr.Addr()})
+	SetSharedForTesting(t, sharedClient)
+
+	got, err := Resolve(nil, time.Second)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if got != sharedClient {
+		t.Error("expected Resolve(nil, ...) to return the gateway-level Shared client")
+	}
+}
+
+func TestResolve_NonNilOptsBypassesShared(t *testing.T) {
+	resetSharedForTest(t)
+	sharedMR := miniredis.RunT(t)
+	SetSharedForTesting(t, redis.NewClient(&redis.Options{Addr: sharedMR.Addr()}))
+
+	overrideMR := miniredis.RunT(t)
+	got, err := Resolve(&redis.Options{Addr: overrideMR.Addr()}, time.Second)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if got.Options().Addr != overrideMR.Addr() {
+		t.Errorf("expected a policy-supplied override to take precedence over the shared client, got client for %q", got.Options().Addr)
+	}
+}
+
+// TestResolve_NonNilOptsStillDedupes proves Resolve's override branch keeps
+// GetOrCreateRedisClient's existing sharing behavior - two policies that both
+// explicitly override to the same config still get one pool between them,
+// not one pool each.
+func TestResolve_NonNilOptsStillDedupes(t *testing.T) {
+	resetSharedForTest(t)
+	mr := miniredis.RunT(t)
+
+	c1, err1 := Resolve(&redis.Options{Addr: mr.Addr()}, time.Second)
+	c2, err2 := Resolve(&redis.Options{Addr: mr.Addr()}, time.Second)
+	if err1 != nil || err2 != nil {
+		t.Fatalf("unexpected errors: %v, %v", err1, err2)
+	}
+	if c1 != c2 {
+		t.Error("expected two identical explicit overrides to still share one client")
+	}
+}
+
+// TestSetSharedForTesting_RestoresPreviousStateAfterTest proves the override
+// is scoped to one (sub)test: a subtest's t.Cleanup runs when that subtest
+// returns, before the parent continues, so the parent sees the pre-override
+// "unconfigured" state again immediately afterward.
+func TestSetSharedForTesting_RestoresPreviousStateAfterTest(t *testing.T) {
+	resetSharedForTest(t)
+	if err := InitFromConfig(map[string]interface{}{}); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if _, err := Shared(); err == nil {
+		t.Fatal("expected Shared() to error before any override is set")
+	}
+
+	t.Run("override active inside subtest", func(t *testing.T) {
+		mr := miniredis.RunT(t)
+		SetSharedForTesting(t, redis.NewClient(&redis.Options{Addr: mr.Addr()}))
+		if _, err := Shared(); err != nil {
+			t.Fatalf("unexpected error while override was active: %v", err)
+		}
+	})
+
+	if _, err := Shared(); err == nil {
+		t.Error("expected the override to be reverted once the subtest returned")
+	}
 }
 
 func TestHashPassword(t *testing.T) {

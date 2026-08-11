@@ -17,14 +17,21 @@
  */
 
 // Package redisclient shares one process-wide *redis.Client (one connection
-// pool) per distinct connection configuration, across every Redis-using
-// policy that imports it - see GetOrCreateRedisClient.
+// pool) per distinct connection configuration, across every caller that
+// imports it - see GetOrCreateRedisClient. It also exposes a single
+// gateway-wide default client (Shared, backed by the operator's top-level
+// "redis" config section - gateway infrastructure, not something scoped to
+// policies) that a policy falls back to when it has no Redis config of its
+// own - see Resolve.
 package redisclient
 
 import (
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
+	"fmt"
+	"strconv"
+	"strings"
 	"sync"
 	"time"
 
@@ -75,11 +82,7 @@ func GetOrCreateRedisClient(opts *redis.Options, pingTimeout time.Duration) (cli
 	// Go func values aren't comparable at all. Bypass the registry rather
 	// than risk silently reusing a client built for a different config.
 	if opts.TLSConfig != nil || opts.CredentialsProvider != nil || opts.CredentialsProviderContext != nil || opts.StreamingCredentialsProvider != nil {
-		c := redis.NewClient(opts)
-		ctx, cancel := context.WithTimeout(context.Background(), pingTimeout)
-		defer cancel()
-		pingErr = c.Ping(ctx).Err()
-		return c, true, pingErr
+		return newAndPingClient(opts, pingTimeout)
 	}
 
 	key := redisConnKey{
@@ -109,8 +112,243 @@ func GetOrCreateRedisClient(opts *redis.Options, pingTimeout time.Duration) (cli
 	redisClients.m[key] = c
 	redisClients.mu.Unlock()
 
+	pingErr = pingClient(c, pingTimeout)
+	return c, true, pingErr
+}
+
+// defaultSharedPingTimeout bounds the one-time creation ping for the shared
+// client. Not configurable: it only affects how long InitFromConfig blocks
+// during gateway-runtime startup, never a per-request path.
+const defaultSharedPingTimeout = 5 * time.Second
+
+// shared holds the process-wide gateway-level default client. inited
+// distinguishes "InitFromConfig ran and found no redis section" (client nil,
+// inited true - Shared reports a config-gap error) from "InitFromConfig was
+// never called at all" (a gateway-runtime wiring bug - Shared reports that
+// distinctly, since it means something programming-level is missing, not an
+// operator config gap).
+var shared struct {
+	mu     sync.Mutex
+	client *redis.Client
+	inited bool
+}
+
+// InitFromConfig resolves the operator-level top-level "redis" section from
+// raw (e.g. cfg.PolicyEngine.RawConfig - raw's other top-level sections like
+// "analytics"/"router"/"policy_configurations" are ignored here) and creates
+// the process-wide shared client. This is gateway-wide infrastructure, not
+// something scoped to policies - deliberately NOT nested under
+// "policy_configurations" (that namespace is policy-engine's own ${config...}
+// CEL-resolution mechanism for per-policy system parameters; a shared
+// resource other gateway components could reach doesn't belong inside it).
+// Must be called exactly once, at gateway-runtime startup, before any policy
+// factory runs - see Shared and Resolve. A missing "redis" key is not an
+// error: most gateways may have zero Redis-consuming policies configured,
+// and that absence only matters lazily, the first time some policy actually
+// calls Shared. A connection/ping failure is likewise not fatal here - the
+// client is still created and stored (go-redis reconnects lazily), matching
+// GetOrCreateRedisClient's own create-time philosophy.
+func InitFromConfig(raw map[string]interface{}) error {
+	shared.mu.Lock()
+	defer shared.mu.Unlock()
+	if shared.inited {
+		return fmt.Errorf("redisclient: InitFromConfig called more than once")
+	}
+	shared.inited = true
+
+	opts, err := resolveOptionsFromConfig(raw)
+	if err != nil {
+		return fmt.Errorf("redisclient: invalid \"redis\" config: %w", err)
+	}
+	if opts == nil {
+		return nil
+	}
+
+	c, _, _ := newAndPingClient(opts, defaultSharedPingTimeout)
+	shared.client = c
+	return nil
+}
+
+// Shared returns the process-wide gateway-level default client, backed by
+// the top-level "redis" config section. It errors if InitFromConfig was
+// never called (a gateway-runtime wiring bug, not a normal runtime
+// condition) or if no "redis" section was configured at all - callers must
+// treat the latter as a real configuration gap rather than assuming a
+// shared Redis is always available.
+func Shared() (*redis.Client, error) {
+	shared.mu.Lock()
+	defer shared.mu.Unlock()
+	if !shared.inited {
+		return nil, fmt.Errorf("redisclient: Shared() called before InitFromConfig")
+	}
+	if shared.client == nil {
+		return nil, fmt.Errorf(`redisclient: no shared redis configured ("redis" section)`)
+	}
+	return shared.client, nil
+}
+
+// Resolve returns the client a policy instance should use: opts's own
+// connection settings when the policy resolved one from its own config
+// section, otherwise the gateway-level Shared client.
+//
+// opts must be nil - never a zero-value *redis.Options - when the policy's
+// own section was absent. A struct pre-filled with the policy's schema
+// defaults would always look "configured," and this fallback would never
+// trigger; the presence check belongs to the caller's own config-extraction
+// code, on whichever field has no default (e.g. host).
+func Resolve(opts *redis.Options, pingTimeout time.Duration) (*redis.Client, error) {
+	if opts == nil {
+		return Shared()
+	}
+	client, _, _ := GetOrCreateRedisClient(opts, pingTimeout)
+	return client, nil
+}
+
+// newAndPingClient creates a client and pings it once. created is always
+// true - only present so this matches GetOrCreateRedisClient's own return
+// shape at its call sites.
+func newAndPingClient(opts *redis.Options, pingTimeout time.Duration) (client *redis.Client, created bool, pingErr error) {
+	c := redis.NewClient(opts)
+	return c, true, pingClient(c, pingTimeout)
+}
+
+// pingClient pings an already-constructed client once, bounded by
+// pingTimeout. Split out from newAndPingClient because GetOrCreateRedisClient's
+// main path must insert the client into the registry BEFORE pinging (so a
+// concurrent caller for the same key sees it immediately), not create-then-ping
+// as one atomic step.
+func pingClient(c *redis.Client, pingTimeout time.Duration) error {
 	ctx, cancel := context.WithTimeout(context.Background(), pingTimeout)
 	defer cancel()
-	pingErr = c.Ping(ctx).Err()
-	return c, true, pingErr
+	return c.Ping(ctx).Err()
+}
+
+// resolveOptionsFromConfig extracts *redis.Options from raw["redis"] - a
+// top-level section, sibling to "router"/"analytics"/etc in the gateway's
+// complete config tree, not nested under "policy_configurations" (this is
+// gateway-wide infrastructure, not a per-policy setting) - using the
+// operator-facing defaults (host "localhost", port 6379, db 0, poolSize 0
+// (go-redis default), connectionTimeout 5s, readTimeout/writeTimeout 3s).
+// Returns (nil, nil) - not an error - when raw has no "redis" key at all.
+func resolveOptionsFromConfig(raw map[string]interface{}) (*redis.Options, error) {
+	section, ok := raw["redis"]
+	if !ok || section == nil {
+		return nil, nil
+	}
+	m, ok := section.(map[string]interface{})
+	if !ok {
+		return nil, fmt.Errorf(`"redis" must be a table, got %T`, section)
+	}
+
+	connectionTimeout, err := durationParam(m, "connection_timeout", 5*time.Second)
+	if err != nil {
+		return nil, fmt.Errorf("connection_timeout: %w", err)
+	}
+	readTimeout, err := durationParam(m, "read_timeout", 3*time.Second)
+	if err != nil {
+		return nil, fmt.Errorf("read_timeout: %w", err)
+	}
+	writeTimeout, err := durationParam(m, "write_timeout", 3*time.Second)
+	if err != nil {
+		return nil, fmt.Errorf("write_timeout: %w", err)
+	}
+	port, err := intParam(m, "port", 6379)
+	if err != nil {
+		return nil, fmt.Errorf("port: %w", err)
+	}
+	db, err := intParam(m, "db", 0)
+	if err != nil {
+		return nil, fmt.Errorf("db: %w", err)
+	}
+	poolSize, err := intParam(m, "pool_size", 0)
+	if err != nil {
+		return nil, fmt.Errorf("pool_size: %w", err)
+	}
+
+	host, err := stringParam(m, "host", "localhost")
+	if err != nil {
+		return nil, fmt.Errorf("host: %w", err)
+	}
+	username, err := stringParam(m, "username", "")
+	if err != nil {
+		return nil, fmt.Errorf("username: %w", err)
+	}
+	password, err := stringParam(m, "password", "")
+	if err != nil {
+		return nil, fmt.Errorf("password: %w", err)
+	}
+
+	return &redis.Options{
+		Addr:         fmt.Sprintf("%s:%d", host, port),
+		Username:     username,
+		Password:     password,
+		DB:           db,
+		DialTimeout:  connectionTimeout,
+		ReadTimeout:  readTimeout,
+		WriteTimeout: writeTimeout,
+		PoolSize:     poolSize,
+	}, nil
+}
+
+// stringParam/intParam/durationParam read key from m, applying def when the
+// key is absent or nil. They error on a present-but-wrong-shaped value
+// rather than silently falling back to def - a typo'd config value should
+// surface at startup, not resolve to a default the operator never asked for.
+func stringParam(m map[string]interface{}, key, def string) (string, error) {
+	v, ok := m[key]
+	if !ok || v == nil {
+		return def, nil
+	}
+	s, ok := v.(string)
+	if !ok {
+		return "", fmt.Errorf("expected a string, got %T", v)
+	}
+	return s, nil
+}
+
+func intParam(m map[string]interface{}, key string, def int) (int, error) {
+	v, ok := m[key]
+	if !ok || v == nil {
+		return def, nil
+	}
+	switch n := v.(type) {
+	case int:
+		return n, nil
+	case int64:
+		return int(n), nil
+	case float64:
+		return int(n), nil
+	case string:
+		// A TOML value written as {{ env "VAR" "default" }} must be a quoted
+		// string literal (TOML has no unquoted template syntax) - gateway-runtime's
+		// config interpolation resolves the token in place but never changes the
+		// field's type, so a numeric config value arrives here as a numeric
+		// string, not an int. Reject anything that isn't actually numeric.
+		parsed, err := strconv.Atoi(strings.TrimSpace(n))
+		if err != nil {
+			return 0, fmt.Errorf("expected an integer, got non-numeric string %q", n)
+		}
+		return parsed, nil
+	default:
+		return 0, fmt.Errorf("expected an integer, got %T", v)
+	}
+}
+
+func durationParam(m map[string]interface{}, key string, def time.Duration) (time.Duration, error) {
+	v, ok := m[key]
+	if !ok || v == nil {
+		return def, nil
+	}
+	switch d := v.(type) {
+	case string:
+		parsed, err := time.ParseDuration(d)
+		if err != nil {
+			return 0, fmt.Errorf("invalid duration %q: %w", d, err)
+		}
+		return parsed, nil
+	case time.Duration:
+		return d, nil
+	default:
+		return 0, fmt.Errorf("expected a duration string, got %T", v)
+	}
 }
