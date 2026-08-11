@@ -85,6 +85,10 @@ import { ChoreoUserProvider } from './contexts/ChoreoUserContext';
 import { useAppAuth } from './contexts/AppAuthContext';
 import { Box, Button, Stack, Typography } from '@wso2/oxygen-ui';
 import OoopsImage from './assets/images/Ooops.svg';
+import {
+  ExtensionsProvider,
+  type AIWorkspaceExtension,
+} from './extensions';
 
 /**
  * Only allow same-origin relative paths as return URLs to prevent open redirects.
@@ -275,7 +279,17 @@ function WithPageBoundary({ children }: { children: React.ReactNode }) {
   return <RoutePageBoundary>{children}</RoutePageBoundary>;
 }
 
-export default function App() {
+export type AppProps = {
+  extensions?: readonly AIWorkspaceExtension[];
+};
+
+function WorkspaceRoutes({ extensions = [] }: AppProps) {
+  const extensionRoutes = extensions.map((extension) => (
+    <Route key={extension.id} path={extension.path} element={
+      <WithPageBoundary>{extension.element}</WithPageBoundary>
+    } />
+  ));
+
   return (
     <ChoreoUserProvider>
       <Routes>
@@ -592,6 +606,7 @@ export default function App() {
                 />
               </Route>
             </Route>
+            {extensionRoutes}
             <Route path="projects/:projectSlug" element={<ProjectShell />}>
               <Route index element={<Navigate to="home" replace />} />
               <Route
@@ -803,6 +818,7 @@ export default function App() {
                   />
                 </Route>
               </Route>
+              {extensionRoutes}
             </Route>
           </Route>
         </Route>
@@ -810,5 +826,13 @@ export default function App() {
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
     </ChoreoUserProvider>
+  );
+}
+
+export default function App({ extensions = [] }: AppProps) {
+  return (
+    <ExtensionsProvider extensions={extensions}>
+      <WorkspaceRoutes extensions={extensions} />
+    </ExtensionsProvider>
   );
 }
