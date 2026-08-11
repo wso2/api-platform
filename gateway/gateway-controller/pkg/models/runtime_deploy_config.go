@@ -19,8 +19,11 @@
 package models
 
 import (
+	"encoding/json"
+	"fmt"
 	"time"
 
+	"github.com/wso2/api-platform/common/chainkey"
 	policyenginev1 "github.com/wso2/api-platform/sdk/core/policyengine"
 )
 
@@ -28,8 +31,13 @@ import (
 // each transformer (RestAPI, LLM Provider, LLM Proxy). Both the Envoy xDS translator
 // and the policy xDS translator consume this struct.
 type RuntimeDeployConfig struct {
-	Metadata            Metadata
-	Context             string // API base path (e.g. "/weather/$version"); "" for kinds with no context
+	Metadata Metadata
+	Context  string // API base path (e.g. "/weather/$version"); "" for kinds with no context
+	// PolicyChainResolver is the RDC-level default resolver name, used by every route
+	// that does not set Route.ResolverName. It is a compatibility default: every
+	// transformer shipping today sets it once and leaves the per-route field empty, so
+	// their emitted resolver_name is byte-identical to before per-route resolvers
+	// existed. Once every transformer writes the route field, this can be deprecated.
 	PolicyChainResolver string // name of resolver registered in PE (e.g. "route-key", "mcp-tool")
 	Routes              map[string]*Route
 	PolicyChains        map[string]*PolicyChain
@@ -77,6 +85,54 @@ type Route struct {
 	// precedence (same path, method, and header-match count). Routes are emitted in
 	// ascending Order so the stable route sorter preserves rule order for ties.
 	Order int
+
+	// ─── Policy chain resolution ─────────────────────────────────────────────
+
+	// CanonicalChainKey is the key of the policy chain this route's requests use
+	// when the operation is determined by the route itself. It equals the route key
+	// for every kind shipping today, but it is emitted as its own explicit field
+	// rather than left implicit, because that is what lets an identity route be
+	// pointed at a *composed* operation key without a wire change — which is exactly
+	// what an A2A HTTP+JSON operation route does, one route per operation path.
+	// Empty means "same as the route key".
+	//
+	// A resolver-bearing route must leave this empty: it has no chain of its own, its
+	// chain being composed per request from the operation the resolver identifies.
+	CanonicalChainKey string
+
+	// ResolverName overrides RuntimeDeployConfig.PolicyChainResolver for this one
+	// route. It exists because a multiplexed API has both kinds of route at once: an
+	// A2A deployment serves identity HTTP+JSON routes and a body-resolved JSON-RPC
+	// route side by side. Empty inherits the RDC-level default.
+	ResolverName string
+
+	// ResponseKind is how this route's operation delivers its response: "unary",
+	// "streaming", or empty for "the policy engine derives it as it always has".
+	//
+	// It exists because buffering a streaming response is not a slow path but a broken
+	// one — the caller gets nothing until the upstream closes, which for a long-running
+	// agent task may be never — and the policy chain alone cannot tell the engine which
+	// it is. Set it on a route whose operation is known at deploy time (one A2A HTTP+JSON
+	// path per operation). On a multiplexed route leave it empty: both kinds of operation
+	// arrive on the same route, so only the resolver can say which this request is.
+	ResponseKind string
+
+	// ResolverConfig is opaque, resolver-specific per-route configuration. The policy
+	// engine passes it to the resolver's Prepare hook once at xDS ingest, so a
+	// resolver that must compile a schema or build an index does it there rather than
+	// per request. Nil when the route's resolver needs none.
+	ResolverConfig json.RawMessage
+
+	// MaxRequestBodyBytes is the largest request body, in wire bytes before any
+	// decompression, that the policy engine will accept for operation resolution on
+	// this route. Zero lets the engine apply its own low default.
+	//
+	// Only meaningful on a route whose resolver reads the body, and it is an acceptance
+	// ceiling rather than a buffering one: the engine checks it after Envoy has already
+	// buffered the body, so it bounds the unauthenticated decompression and parsing work
+	// on that route, not the memory a caller can make the gateway hold. That is bounded
+	// listener-wide by per_connection_buffer_limit_bytes.
+	MaxRequestBodyBytes int64
 }
 
 // RouteTimeout holds parsed timeout values for a route.
@@ -139,4 +195,170 @@ type UpstreamTLS struct {
 // ConfigTransformer transforms a StoredConfig into a RuntimeDeployConfig.
 type ConfigTransformer interface {
 	Transform(cfg *StoredConfig) (*RuntimeDeployConfig, error)
+}
+
+// Response kinds a route may declare. They must match the policy engine's
+// resolver.ResponseKind values; the two are separate declarations because the controller
+// and the runtime are separate modules agreeing on a wire value, and a mismatch here is
+// caught loudly — the engine ignores a kind it does not recognise and logs it, and
+// ValidateResolution refuses to emit one in the first place.
+const (
+	ResponseKindUnary     = "unary"
+	ResponseKindStreaming = "streaming"
+)
+
+var validResponseKinds = map[string]bool{"": true, ResponseKindUnary: true, ResponseKindStreaming: true}
+
+// RouteKeyResolverName is the resolver name meaning "the route determines the
+// operation" — the identity case. It must match the policy engine's
+// resolver.RouteKeyResolverName; the two are separate constants because the
+// controller and the runtime are separate modules that agree on a wire value.
+const RouteKeyResolverName = "route-key"
+
+// EffectiveResolverName returns the resolver this route actually uses: its own
+// override, or the RDC-level compatibility default. This is the single place the
+// precedence is expressed, so the wire value and any validation of it cannot disagree.
+func (rdc *RuntimeDeployConfig) EffectiveResolverName(route *Route) string {
+	if route.ResolverName != "" {
+		return route.ResolverName
+	}
+	return rdc.PolicyChainResolver
+}
+
+// EffectiveCanonicalChainKey returns the chain key for a route resolved by identity,
+// falling back to the route key when the transformer left it unset.
+func (rdc *RuntimeDeployConfig) EffectiveCanonicalChainKey(routeKey string, route *Route) string {
+	if route.CanonicalChainKey != "" {
+		return route.CanonicalChainKey
+	}
+	return routeKey
+}
+
+// isIdentityResolver reports whether a resolver name means "the route determines the
+// operation". An empty name does, because that is what every RDC looked like before
+// resolvers existed.
+func isIdentityResolver(name string) bool {
+	return name == "" || name == RouteKeyResolverName
+}
+
+// ValidateResolution checks that a RuntimeDeployConfig's chain references actually
+// resolve, and must pass before the RDC is stored or published.
+//
+// It exists because the RouteConfig and PolicyChain resources travel to the policy
+// engine on two independent xDS streams: a route that reaches a chain key which was
+// never built produces a deployment that looks accepted and then fails — or, worse,
+// silently applies no policy — on every request to that operation. Catching a
+// controller construction error here turns a runtime mystery into a deploy-time error
+// naming the route.
+//
+// Under composed keys there is no operation map to validate. The failure mode moved
+// from "the map points at a missing chain" to "a key the engine will compose has no
+// chain", so the checks moved with it:
+//
+//   - an identity route's canonical key must name a chain (this covers a redirected
+//     HTTP+JSON operation route, whose composed key must resolve like any other);
+//   - a resolver-bearing route must not carry a canonical key, and must have at least
+//     one operation chain in its own partition — otherwise no request to it can ever
+//     resolve;
+//   - every composed chain key must be well formed and belong to this RDC.
+//
+// Exhaustiveness over a *closed* operation set — "a chain exists for every operation
+// the protocol defines" — needs the protocol's operation enum and lands with the first
+// resolver that has one. It is not expressible here for an open set (an MCP tool name
+// is deployment data), which is why the generic check is reachability, not completeness.
+func (rdc *RuntimeDeployConfig) ValidateResolution() error {
+	// One pass over the chains: validate every composed key and collect which
+	// partitions have operation chains, so the per-route check below is a map lookup
+	// rather than a scan of every chain per route.
+	partitionsWithOperationChains := make(map[string]struct{})
+	for chainKey, chain := range rdc.PolicyChains {
+		// A present key with a nil value passes every reachability check below and then
+		// panics the snapshot translator, which dereferences it to read Policies. A chain
+		// with no policies is legitimate and common (an operation whose policies are all
+		// inherited); a nil one is a construction mistake, and this is the layer that is
+		// supposed to name it.
+		if chain == nil {
+			return fmt.Errorf("policy chain %q is nil", chainKey)
+		}
+		if !chainkey.IsComposed(chainKey) {
+			continue // a route-key chain, not a composed one
+		}
+		apiID, vhost, _, ok := chainkey.Split(chainKey)
+		if !ok {
+			return fmt.Errorf("policy chain key %q is not a well-formed composed key (apiID, vhost, operation)",
+				chainKey)
+		}
+		if apiID != rdc.Metadata.UUID {
+			return fmt.Errorf("policy chain key %q is composed for API %q, not this API (%q)",
+				chainKey, apiID, rdc.Metadata.UUID)
+		}
+		partitionsWithOperationChains[vhost] = struct{}{}
+	}
+
+	for routeKey, route := range rdc.Routes {
+		if route == nil {
+			return fmt.Errorf("route %q: nil route", routeKey)
+		}
+
+		if !validResponseKinds[route.ResponseKind] {
+			return fmt.Errorf("route %q: unknown response kind %q (expected %q, %q, or empty)",
+				routeKey, route.ResponseKind, ResponseKindUnary, ResponseKindStreaming)
+		}
+
+		resolverName := rdc.EffectiveResolverName(route)
+
+		if isIdentityResolver(resolverName) {
+			canonical := rdc.EffectiveCanonicalChainKey(routeKey, route)
+			if _, ok := rdc.PolicyChains[canonical]; !ok {
+				return fmt.Errorf("route %q: canonical chain key %q names no policy chain", routeKey, canonical)
+			}
+			// Existing is not enough. A redirected identity route (an A2A HTTP+JSON
+			// operation route) points at a composed key, and a chain composed for another
+			// routing partition is a perfectly valid chain that belongs to someone else:
+			// a production route pointed at a sandbox operation chain would run the
+			// sandbox's authentication, authorization and rate limits. Existence checks
+			// catch a missing chain; only this catches the wrong one.
+			if chainkey.IsComposed(canonical) {
+				apiID, vhost, _, ok := chainkey.Split(canonical)
+				if !ok {
+					return fmt.Errorf("route %q: canonical chain key %q is not a well-formed composed key",
+						routeKey, canonical)
+				}
+				if apiID != rdc.Metadata.UUID {
+					return fmt.Errorf("route %q: canonical chain key %q belongs to API %q, not this API (%q)",
+						routeKey, canonical, apiID, rdc.Metadata.UUID)
+				}
+				if vhost != route.Vhost {
+					return fmt.Errorf(
+						"route %q: canonical chain key %q belongs to routing partition (vhost) %q, but the route serves %q",
+						routeKey, canonical, vhost, route.Vhost)
+				}
+			}
+			continue
+		}
+
+		// A resolver-bearing route resolves its chain per request, so a canonical key
+		// on it would be read by nothing — it is a construction mistake, not dead
+		// weight to tolerate.
+		if route.CanonicalChainKey != "" {
+			return fmt.Errorf(
+				"route %q: resolver %q composes its chain key per request and must not carry a canonical chain key (%q)",
+				routeKey, resolverName, route.CanonicalChainKey)
+		}
+		if _, ok := partitionsWithOperationChains[route.Vhost]; !ok {
+			return fmt.Errorf(
+				"route %q: resolver %q has no operation chains in its routing partition (vhost %q), so no request to it can resolve",
+				routeKey, resolverName, route.Vhost)
+		}
+	}
+	return nil
+}
+
+// ChainKeyFor composes the policy chain key for one operation of this RDC, for the
+// given routing partition. Transformers that build operation chains must key them with
+// this rather than formatting the string themselves: the policy engine composes the
+// same key at request time from the same shared helper, and a chain emitted under any
+// other spelling is one it will never find.
+func (rdc *RuntimeDeployConfig) ChainKeyFor(vhost, operation string) string {
+	return chainkey.For(rdc.Metadata.UUID, vhost, operation)
 }

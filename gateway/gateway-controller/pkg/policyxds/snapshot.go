@@ -245,6 +245,17 @@ func (t *Translator) TranslateRuntimeConfigs(rdcs []*models.RuntimeDeployConfig)
 	for _, rdc := range rdcs {
 		// Build policy chain resources (one per chain, including empty chains)
 		for routeKey, chain := range rdc.PolicyChains {
+			// Skip-and-log rather than dereference. models.ValidateResolution rejects a nil
+			// chain at deploy time, but this translator also runs over configs read back
+			// from the store — including ones written before that check existed — and a
+			// panic here takes down snapshot generation for every API, not just this one.
+			if chain == nil {
+				t.logger.Error("Skipping nil policy chain",
+					slog.String("route_key", routeKey),
+					slog.String("kind", rdc.Metadata.Kind),
+					slog.String("name", rdc.Metadata.DisplayName))
+				continue
+			}
 			resource, err := t.createPolicyChainResource(routeKey, chain, rdc.Metadata, rdc.SensitiveValues)
 			if err != nil {
 				t.logger.Error("Failed to create policy chain resource",
@@ -257,6 +268,16 @@ func (t *Translator) TranslateRuntimeConfigs(rdcs []*models.RuntimeDeployConfig)
 
 		// Build route config resources (one per route)
 		for routeKey, route := range rdc.Routes {
+			// Same reasoning as the nil chain above: route.Upstream is dereferenced on the
+			// next line, before createRouteConfigResource is even reached.
+			if route == nil {
+				t.logger.Error("Skipping nil route",
+					slog.String("route_key", routeKey),
+					slog.String("kind", rdc.Metadata.Kind),
+					slog.String("name", rdc.Metadata.DisplayName))
+				continue
+			}
+
 			// Find upstream base path from the route's cluster
 			upstreamBasePath := "/"
 			if uc, ok := rdc.UpstreamClusters[route.Upstream.ClusterKey]; ok {
@@ -368,11 +389,41 @@ func (t *Translator) createRouteConfigResource(
 	}
 
 	data := map[string]interface{}{
-		"route_key":                 routeKey,
-		"metadata":                  metadataMap,
-		"resolver_name":             rdc.PolicyChainResolver,
+		"route_key": routeKey,
+		"metadata":  metadataMap,
+		// The effective resolver: the route's own override, or the RDC-level
+		// compatibility default. Every transformer shipping today leaves the route
+		// field empty, so this is byte-identical to what it emitted before per-route
+		// resolvers existed.
+		"resolver_name": rdc.EffectiveResolverName(route),
+		// Emitted explicitly on every route, including identity routes where it equals
+		// the route key. The policy engine reads this field and never reconstructs the
+		// key, which is what keeps a later move of operation chains into their own key
+		// namespace a controller-only change.
+		"canonical_chain_key":       rdc.EffectiveCanonicalChainKey(routeKey, route),
 		"upstream_base_path":        upstreamBasePath,
 		"upstream_definition_paths": upstreamDefPaths,
+	}
+
+	// Omitted when empty, deliberately. A field serialising as {} or 0 changes the
+	// resource's content, which re-versions it and pushes a RouteConfig update to every
+	// connected runtime for no behavioural reason. Only routes that actually need
+	// request-time resolution carry these.
+	if len(route.ResolverConfig) > 0 {
+		var decoded interface{}
+		if err := json.Unmarshal(route.ResolverConfig, &decoded); err != nil {
+			return nil, fmt.Errorf("route %q: resolver_config is not valid JSON: %w", routeKey, err)
+		}
+		data["resolver_config"] = decoded
+	}
+	// Omitted when empty, like every other resolution field: a route that declares
+	// nothing must serialise byte-identically to how it did before the field existed
+	// (§5.2), or every existing kind's RouteConfig re-versions for no reason.
+	if route.ResponseKind != "" {
+		data["response_kind"] = route.ResponseKind
+	}
+	if route.MaxRequestBodyBytes > 0 {
+		data["max_request_body_bytes"] = float64(route.MaxRequestBodyBytes)
 	}
 
 	// Add default upstream cluster info
