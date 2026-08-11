@@ -37,6 +37,55 @@ const DIALECTS = Object.freeze({
 });
 
 /**
+ * Every spelling of a driver an operator may write in config.toml, mapped to
+ * the canonical dialect the adapters and DAOs switch on.
+ *
+ * The alias set is deliberately identical to platform-api's
+ * (internal/database/connection.go: pgx/postgresql -> postgres, mssql ->
+ * sqlserver), because both components are installed by the same umbrella chart
+ * (kubernetes/helm/api-portal-helm-chart) and an operator configures one
+ * database for both. Without this, the same SQL Server deployment had to be
+ * spelled `sqlserver` in the platform-api values block and `mssql` in the
+ * portal's — a difference with no meaning behind it.
+ *
+ * Canonical names stay this component's own (`sqlite`, not `sqlite3`;
+ * `mssql`, not `sqlserver`): they are what `mssql`/`better-sqlite3` call
+ * themselves, and every DAO dialect branch already compares against them.
+ * Normalization happens once at startup (config/configLoader.js), so nothing
+ * downstream of that ever sees an alias.
+ */
+
+const DRIVER_ALIASES = Object.freeze(Object.assign(Object.create(null), {
+    sqlite: DIALECTS.SQLITE,
+    sqlite3: DIALECTS.SQLITE,
+    postgres: DIALECTS.POSTGRES,
+    postgresql: DIALECTS.POSTGRES,
+    pgx: DIALECTS.POSTGRES,
+    mssql: DIALECTS.MSSQL,
+    sqlserver: DIALECTS.MSSQL,
+}));
+
+/**
+ * Resolves an operator-supplied database.driver to its canonical dialect, or
+ * null when it is not a recognised spelling. Case- and whitespace-insensitive,
+ * matching platform-api's strings.ToLower() handling of the same field.
+ *
+ * Returning null rather than falling back to a default is deliberate: the
+ * caller fails closed on it. A driver that silently defaulted to sqlite would
+ * hand a multi-replica deployment its own private, empty database file per pod.
+ */
+function normalizeDriver(rawDriver) {
+    if (typeof rawDriver !== 'string') {
+        return null;
+    }
+    const key = rawDriver.trim().toLowerCase();
+    if (!Object.prototype.hasOwnProperty.call(DRIVER_ALIASES, key)) {
+        return null;
+    }
+    return DRIVER_ALIASES[key] || null;
+}
+
+/**
  * Converts a SQL string written with positional `?` placeholders into the
  * placeholder syntax the active dialect's driver expects.
  *
@@ -232,6 +281,8 @@ function isDuplicateKeyError(dialect, err) {
 
 module.exports = {
     DIALECTS,
+    DRIVER_ALIASES,
+    normalizeDriver,
     rebind,
     paginationClause,
     buildUpsert,

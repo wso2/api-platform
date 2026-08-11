@@ -67,20 +67,30 @@ config:
   # --- Database (the portal's OWN store, separate from the Platform API's) ---
   database:
     # sqlite   → file on the PVC; single replica; HPA unavailable.
-    # postgres → external server (configured below); enables multi-replica + HPA.
-    type: sqlite
-    # SQLite file (type=sqlite). Must sit under the mounted data volume.
+    # postgres → external PostgreSQL (configured below); enables multi-replica + HPA.
+    # mssql    → external SQL Server (configured below); enables multi-replica + HPA.
+    #
+    # Aliases are accepted and normalized by the portal at startup, so you can use
+    # the same spelling here as in the platform-api values block:
+    #   sqlite3 → sqlite,  postgresql/pgx → postgres,  sqlserver → mssql
+    driver: sqlite
+    # SQLite file (driver=sqlite). Must sit under the mounted data volume.
     file: /app/data/devportal.db
-    # PostgreSQL connection (type=postgres only). The password is NOT here — it
-    # comes from the Secret key secrets.keys.databasePassword. Leave host empty
-    # for sqlite.
+    # Server connection — used by BOTH postgres and mssql. The password is NOT
+    # here; it comes from the Secret key secrets.keys.databasePassword. Leave host
+    # empty for sqlite.
     host: ""
-    port: 5432
+    port: 5432                   # 1433 for SQL Server
     database: devportal          # database (schema) name → rendered as `name`
     user: postgres               # login role; password from the Secret
-    sslmode: disable             # disable | require | verify-ca | verify-full
-    sslRootCert: ""              # CA cert — used by verify-ca / verify-full
-    # Connection-pool tuning (postgres only).
+    # TLS to the database. Only these two values are supported:
+    #   disable      → no TLS
+    #   verify-full  → encrypt AND verify the certificate chain + hostname
+    # On SQL Server, anything other than verify-full connects UNENCRYPTED with
+    # certificate verification off, so there is no partial mode — use verify-full.
+    sslmode: disable             # disable | verify-full
+    sslRootCert: ""              # CA cert — used by verify-full
+    # Connection-pool tuning (postgres / mssql only).
     maxOpenConns: 50
     minOpenConns: 2
     poolIdleTimeoutMs: 10000
@@ -238,7 +248,7 @@ secrets:
   keys:
     encryptionKey: APIP_AP_SECURITY_ENCRYPTION_KEY
     sessionSecret: APIP_AP_SECURITY_SESSION_SECRET
-    databasePassword: APIP_AP_DATABASE_PASSWORD        # postgres only
+    databasePassword: APIP_AP_DATABASE_PASSWORD        # any non-sqlite driver (postgres/mssql)
     idpClientSecret: APIP_AP_AUTH_IDP_CLIENT_SECRET    # idp mode only
     publicKey: jwt_public.pem                          # mounted file → config.auth.publicKeyPath
   # Flip to true ONLY if the referenced Secret actually carries that optional key,
@@ -301,7 +311,7 @@ tls:
 # persistence — the PVC backing SQLite
 # ----------------------------------------------------------------------------
 persistence:
-  enabled: true                 # required for database.type=sqlite
+  enabled: true                 # required for database.driver=sqlite
   existingClaim: ""             # reuse a PVC you created yourself instead
   accessModes:
     - ReadWriteOnce
@@ -322,7 +332,7 @@ persistence:
 # ----------------------------------------------------------------------------
 deployment:
   enabled: true
-  replicaCount: 1               # >1 requires database.type=postgres
+  replicaCount: 1               # >1 requires an external DB (postgres/mssql)
   volumeMountPath: /app/data
   extraEnv: []
   extraEnvFrom: []
@@ -361,9 +371,10 @@ deployment:
 # ----------------------------------------------------------------------------
 # Autoscaling & disruption budget
 # ----------------------------------------------------------------------------
-# HorizontalPodAutoscaler. REQUIRES config.database.type=postgres — on sqlite the
-# chart refuses to render it (SQLite is single-replica). Enable only after
-# switching to postgres, and set deployment.resources.requests.cpu.
+# HorizontalPodAutoscaler. REQUIRES an external database — config.database.driver
+# of postgres or mssql. On sqlite the chart refuses to render it (SQLite is a
+# per-pod file, so it is single-replica). Enable only after switching to an
+# external database, and set deployment.resources.requests.cpu.
 hpa:
   enabled: false
   minReplicas: 2

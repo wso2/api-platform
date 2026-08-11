@@ -9,6 +9,9 @@
 {{- if and $ap.deployment.enabled (not (or $tlsFromSecret (eq $tls.certificateProvider "none"))) }}
 {{- fail "api-portal-ui: tls.certificateProvider must be \"cert-manager\", \"secret\", or \"none\" (plain HTTP) — there is no self-signed fallback (the image does not generate a certificate at startup). Provide a TLS Secret (certificateProvider=secret), use cert-manager, or set certificateProvider=none to serve plain HTTP behind a TLS-terminating proxy." }}
 {{- end }}
+{{- if and $ap.deployment.enabled (gt (int $deployment.replicaCount) 1) (eq (include "apip.apiPortal.dbDriver" $cfg.database.driver) "sqlite") }}
+{{- fail "api-portal-ui: deployment.replicaCount > 1 requires an external database (config.database.driver=postgres or mssql) — SQLite is a per-pod file and cannot be shared across replicas. Set replicaCount: 1 or switch to an external database." }}
+{{- end }}
 {{- $secretName := include "apip.apiPortal.secretName" . -}}
 {{- $imageTag := default .Chart.AppVersion $ap.image.tag -}}
 {{- $certDir := $tls.mountPath -}}
@@ -108,7 +111,7 @@ spec:
                 secretKeyRef:
                   name: {{ $secretName }}
                   key: {{ $secrets.keys.sessionSecret }}
-            {{- if eq $cfg.database.type "postgres" }}
+            {{- if ne (include "apip.apiPortal.dbDriver" $cfg.database.driver) "sqlite" }}
             - name: APIP_AP_DATABASE_PASSWORD
               valueFrom:
                 secretKeyRef:
