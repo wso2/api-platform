@@ -97,6 +97,19 @@ export const onSessionExpired = (listener: SessionExpiredListener): (() => void)
  * triggers one redirect to login, not eight.
  */
 let sessionExpiredNotifiedAt = 0;
+
+/**
+ * Clears the debounce window so the next 401 notifies again.
+ *
+ * Test seam, like `resetHttpClient`: the window is module state, so without
+ * this a spec that triggers a 401 would silently suppress the notification in
+ * every spec that runs within the next few seconds — making the tests
+ * order-dependent.
+ */
+export const resetSessionExpiryNotice = (): void => {
+  sessionExpiredNotifiedAt = 0;
+};
+
 const notifySessionExpired = () => {
   const now = Date.now();
   if (now - sessionExpiredNotifiedAt < 3_000) return;
@@ -137,13 +150,6 @@ const attachRequestContext = (
 
   return config;
 };
-
-/**
- * Converts anything axios can throw into exactly one `ApiError`. This is the
- * only place in the app that inspects an `AxiosError`, which is what keeps the
- * error contract stable no matter what the transport does.
- */
-// const toApiError = (error: unknown): ApiError => {
 //   if (error instanceof ApiError) return error;
 
 //   if (axios.isCancel(error)) {
@@ -326,8 +332,30 @@ export const createHttpClient = (
   return instance;
 };
 
-/** The application-wide platform-api client. */
-export const _http = createHttpClient();
+/**
+ * The application-wide client, created on first use rather than at module load.
+ *
+ * `createHttpClient()` reads `runtimeConfig` to build its `baseURL`, and that
+ * config is populated by a script the BFF serves at runtime. Instantiating at
+ * import time would freeze whatever happened to be present when the module was
+ * first pulled in — which in tests is "nothing", forcing every spec to
+ * `vi.resetModules()` and re-import the module under test just to change a URL.
+ * Deferring to first call means the instance sees the config that is actually
+ * in effect when a request is made.
+ */
+let clientInstance: AxiosInstance | undefined;
+
+export const getHttpClient = (): AxiosInstance =>
+  (clientInstance ??= createHttpClient());
+
+/**
+ * Drops the memoized instance so the next request rebuilds it from current
+ * config. Intended for tests (`afterEach`); harmless in production, where
+ * nothing calls it.
+ */
+export const resetHttpClient = (): void => {
+  clientInstance = undefined;
+};
 
 /**
  * Options every generated endpoint function accepts. `signal` is the important
@@ -344,17 +372,6 @@ export type RequestOptions = {
   headers?: Record<string, string>;
   body?: unknown;
 };
-
-/** Narrows `RequestOptions` into an axios config. */
-export const toAxiosConfig = (
-  options: RequestOptions = {}
-): AxiosRequestConfig => ({
-  orgId: options.orgId,
-  signal: options.signal,
-  timeout: options.timeout,
-  operationName: options.operationName,
-  headers: options.headers,
-});
 
 const isFormData = (value: unknown): value is FormData =>
   typeof FormData !== 'undefined' && value instanceof FormData;
@@ -439,7 +456,7 @@ export async function request<T>(
 
   let response: AxiosResponse<unknown>;
   try {
-    response = await _http.request<unknown>(config);
+    response = await getHttpClient().request<unknown>(config);
   } catch (error) {
       throw platformErrorFromTransport(
         error,
