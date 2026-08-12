@@ -21,6 +21,7 @@ package redisclient
 import (
 	"context"
 	"crypto/tls"
+	"math"
 	"net"
 	"strconv"
 	"sync"
@@ -345,12 +346,65 @@ func TestResolveOptionsFromConfig_ParsesNumericStringPort(t *testing.T) {
 	}
 }
 
+// TestResolveOptionsFromConfig_BracketsIPv6Host proves Addr is built via
+// net.JoinHostPort - a plain fmt.Sprintf("%s:%d", host, port) would produce
+// "::1:6380", which is ambiguous/invalid, instead of the required
+// "[::1]:6380".
+func TestResolveOptionsFromConfig_BracketsIPv6Host(t *testing.T) {
+	raw := map[string]interface{}{
+		"redis": map[string]interface{}{"host": "::1", "port": 6380},
+	}
+	opts, err := resolveOptionsFromConfig(raw)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if want := "[::1]:6380"; opts.Addr != want {
+		t.Errorf("got Addr %q, want %q", opts.Addr, want)
+	}
+}
+
 func TestResolveOptionsFromConfig_RejectsWrongShapedValue(t *testing.T) {
 	_, err := resolveOptionsFromConfig(map[string]interface{}{
 		"redis": map[string]interface{}{"port": "not-a-number"},
 	})
 	if err == nil {
 		t.Error("expected an error for a non-numeric port, so a config typo surfaces at startup instead of silently defaulting")
+	}
+}
+
+// TestIntParam_RejectsInvalidFloat64 locks in that intParam validates a
+// float64 before converting it - NaN/Inf/fractional/out-of-range values must
+// error rather than silently truncating or converting a NaN/Inf into
+// undefined behavior.
+func TestIntParam_RejectsInvalidFloat64(t *testing.T) {
+	cases := []struct {
+		name string
+		v    float64
+	}{
+		{"NaN", math.NaN()},
+		{"+Inf", math.Inf(1)},
+		{"-Inf", math.Inf(-1)},
+		{"fractional", 1.5},
+		{"aboveMaxInt", 1e19},
+		{"belowMinInt", -1e19},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			_, err := intParam(map[string]interface{}{"port": c.v}, "port", 6379)
+			if err == nil {
+				t.Errorf("expected an error for float64 value %v, got nil", c.v)
+			}
+		})
+	}
+}
+
+func TestIntParam_AcceptsIntegralFloat64(t *testing.T) {
+	got, err := intParam(map[string]interface{}{"port": float64(6380)}, "port", 6379)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if got != 6380 {
+		t.Errorf("got %d, want 6380", got)
 	}
 }
 

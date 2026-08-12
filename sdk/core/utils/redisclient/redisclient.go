@@ -30,6 +30,8 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"fmt"
+	"math"
+	"net"
 	"strconv"
 	"strings"
 	"sync"
@@ -116,10 +118,21 @@ func GetOrCreateRedisClient(opts *redis.Options, pingTimeout time.Duration) (cli
 	return c, true, pingErr
 }
 
-// defaultSharedPingTimeout bounds the one-time creation ping for the shared
-// client. Not configurable: it only affects how long InitFromConfig blocks
-// during gateway-runtime startup, never a per-request path.
-const defaultSharedPingTimeout = 5 * time.Second
+// pingTimeoutMargin is added on top of a client's own configured dial/read/
+// write timeouts to derive the one-time creation ping's timeout (see
+// pingTimeoutFor) - enough for the ping's own command round-trip on top of
+// whatever the connection attempt itself is allowed to take.
+const pingTimeoutMargin = 2 * time.Second
+
+// pingTimeoutFor derives the creation-ping timeout from opts's own configured
+// timeouts, so the ping's context stays alive at least as long as the
+// connection attempt permitted by DialTimeout (plus the read/write round-trip
+// and a safety margin) - a fixed constant shorter than an operator's
+// configured DialTimeout would cut the ping's context before a legitimately
+// slow-but-successful connection attempt could complete.
+func pingTimeoutFor(opts *redis.Options) time.Duration {
+	return opts.DialTimeout + opts.ReadTimeout + opts.WriteTimeout + pingTimeoutMargin
+}
 
 // shared holds the process-wide gateway-level default client. inited
 // distinguishes "InitFromConfig ran and found no redis section" (client nil,
@@ -164,7 +177,7 @@ func InitFromConfig(raw map[string]interface{}) error {
 		return nil
 	}
 
-	c, _, _ := newAndPingClient(opts, defaultSharedPingTimeout)
+	c, _, _ := newAndPingClient(opts, pingTimeoutFor(opts))
 	shared.client = c
 	return nil
 }
@@ -279,7 +292,7 @@ func resolveOptionsFromConfig(raw map[string]interface{}) (*redis.Options, error
 	}
 
 	return &redis.Options{
-		Addr:         fmt.Sprintf("%s:%d", host, port),
+		Addr:         net.JoinHostPort(host, strconv.Itoa(port)),
 		Username:     username,
 		Password:     password,
 		DB:           db,
@@ -317,6 +330,15 @@ func intParam(m map[string]interface{}, key string, def int) (int, error) {
 	case int64:
 		return int(n), nil
 	case float64:
+		if math.IsNaN(n) || math.IsInf(n, 0) {
+			return 0, fmt.Errorf("expected an integer, got %v", n)
+		}
+		if n != math.Trunc(n) {
+			return 0, fmt.Errorf("expected an integer, got non-integer value %v", n)
+		}
+		if n < float64(math.MinInt) || n > float64(math.MaxInt) {
+			return 0, fmt.Errorf("value %v out of range for int", n)
+		}
 		return int(n), nil
 	case string:
 		// A TOML value written as {{ env "VAR" "default" }} must be a quoted
