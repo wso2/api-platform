@@ -2197,6 +2197,21 @@ func TestValidateLLMProxy_Resilience(t *testing.T) {
 		errs := validator.Validate(validProxyWithResilience(&api.Resilience{IdleTimeout: stringPtr("-1s")}))
 		assertHasFieldError(t, errs, "spec.resilience.idleTimeout")
 	})
+
+	t.Run("retry with empty statusCodes is rejected", func(t *testing.T) {
+		errs := validator.Validate(validProxyWithResilience(&api.Resilience{
+			Retry: &api.Retry{StatusCodes: []int{}},
+		}))
+		assertHasFieldError(t, errs, "spec.resilience.retry.statusCodes")
+	})
+
+	t.Run("retry with valid statusCodes and numRetries is accepted", func(t *testing.T) {
+		numRetries := 2
+		errs := validator.Validate(validProxyWithResilience(&api.Resilience{
+			Retry: &api.Retry{StatusCodes: []int{401, 503}, NumRetries: &numRetries},
+		}))
+		assert.Empty(t, errs)
+	})
 }
 
 // validProxyWithAuth builds an LlmProxy whose primary provider.auth is set - the
