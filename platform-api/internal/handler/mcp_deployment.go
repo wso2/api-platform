@@ -30,6 +30,7 @@ import (
 	"github.com/wso2/api-platform/platform-api/internal/apperror"
 	"github.com/wso2/api-platform/platform-api/internal/constants"
 	"github.com/wso2/api-platform/platform-api/internal/middleware"
+	"github.com/wso2/api-platform/platform-api/internal/router"
 	"github.com/wso2/api-platform/platform-api/internal/service"
 
 	"github.com/wso2/go-httpkit/httputil"
@@ -52,7 +53,7 @@ func NewMCPProxyDeploymentHandler(deploymentService *service.MCPDeploymentServic
 }
 
 // RegisterRoutes registers all MCP proxy deployment-related routes
-func (h *MCPProxyDeploymentHandler) RegisterRoutes(mux *http.ServeMux) {
+func (h *MCPProxyDeploymentHandler) RegisterRoutes(mux router.Router) {
 	mux.HandleFunc("POST "+constants.APIBasePath+"/mcp-proxies/{mcpProxyId}/deployments", middleware.MapErrors(h.slogger, h.DeployMCPProxy))
 	mux.HandleFunc("POST "+constants.APIBasePath+"/mcp-proxies/{mcpProxyId}/deployments/{deploymentId}/undeploy", middleware.MapErrors(h.slogger, h.UndeployMCPProxyDeployment))
 	mux.HandleFunc("POST "+constants.APIBasePath+"/mcp-proxies/{mcpProxyId}/deployments/{deploymentId}/restore", middleware.MapErrors(h.slogger, h.RestoreMCPProxyDeployment))

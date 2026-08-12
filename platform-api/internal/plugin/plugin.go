@@ -120,6 +120,18 @@ type MiddlewareProvider interface {
 	Middleware() []pdk.PositionedMiddleware
 }
 
+// RouteOverrideProvider is an optional interface a Plugin may implement to
+// decorate an existing core route. It mirrors pdk.RouteOverrideProvider and
+// reuses the pdk value type, so internal and external plugins share one wiring
+// path in the server: the externalPlugin wrapper in
+// internal/server/external_plugin.go implements this by forwarding the pdk one.
+//
+// Overriding a route is an auth-sensitive surface — see the doc comment on
+// pdk.RouteOverride.
+type RouteOverrideProvider interface {
+	RouteOverrides() []pdk.RouteOverride
+}
+
 // HmacSecretServicer is the minimal interface for WebSub API HMAC secret
 // operations used by the internal gateway handler. Defined here (neutral package)
 // to avoid an import cycle between internal/handler and plugins/.
