@@ -117,3 +117,35 @@ export const createResourceKeys = <const Name extends string>(name: Name) => ({
 });
 
 export type ResourceKeys = ReturnType<typeof createResourceKeys>;
+
+/** Segment every non-org-scoped resource is filed under. */
+export const GLOBAL_SCOPE = 'global' as const;
+
+/**
+ * Key factory for the few resources that exist *outside* any organization.
+ *
+ * Organizations are the case that matters: the list is what populates the org
+ * switcher, so it is fetched before an org is known and its endpoint is the one
+ * request that deliberately carries no `X-Org-Id`. Forcing it through
+ * `createResourceKeys` would mean inventing an `OrgScope` that does not exist
+ * yet — exactly the empty-scope key the branded type is there to prevent.
+ *
+ * The `global` segment keeps these entries clear of `scopeKey(org)`, so
+ * evicting one organization on a switch cannot drop the switcher's own data.
+ */
+export const createGlobalResourceKeys = <const Name extends string>(name: Name) => ({
+  name,
+
+  all: () => [ROOT_KEY, GLOBAL_SCOPE, name] as const,
+
+  lists: () => [ROOT_KEY, GLOBAL_SCOPE, name, 'list'] as const,
+
+  list: (params?: Record<string, unknown>) =>
+    [ROOT_KEY, GLOBAL_SCOPE, name, 'list', normalizeParams(params)] as const,
+
+  details: () => [ROOT_KEY, GLOBAL_SCOPE, name, 'detail'] as const,
+
+  detail: (id: string) => [ROOT_KEY, GLOBAL_SCOPE, name, 'detail', id] as const,
+});
+
+export type GlobalResourceKeys = ReturnType<typeof createGlobalResourceKeys>;

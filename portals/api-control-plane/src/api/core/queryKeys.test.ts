@@ -20,6 +20,7 @@ import { hashKey } from '@tanstack/react-query';
 import { describe, expect, it } from 'vitest';
 
 import {
+  createGlobalResourceKeys,
   createResourceKeys,
   normalizeParams,
   orgScope,
@@ -128,6 +129,43 @@ describe('key hierarchy', () => {
 
     expect(hashKey(restApis.detail(acme, 'shared-id'))).not.toBe(
       hashKey(gateways.detail(acme, 'shared-id'))
+    );
+  });
+});
+
+describe('global resources — the few that exist outside any organization', () => {
+  const organizations = createGlobalResourceKeys('organizations');
+
+  it('keeps global keys outside every organization prefix', () => {
+    // This is the guarantee the factory exists for: switching organizations
+    // evicts `scopeKey(previousOrg)`, and that must not take the switcher's own
+    // list of organizations with it.
+    const globalList = organizations.list();
+
+    expect(globalList.slice(0, scopeKey(acme).length)).not.toEqual([...scopeKey(acme)]);
+    expect(globalList.slice(0, scopeKey(globex).length)).not.toEqual([...scopeKey(globex)]);
+  });
+
+  it('still nests its list and detail under one root, so the resource can be invalidated as a whole', () => {
+    const root = organizations.all();
+
+    expect(organizations.list().slice(0, root.length)).toEqual([...root]);
+    expect(organizations.detail('acme-org').slice(0, root.length)).toEqual([...root]);
+  });
+
+  it('keeps two global resources distinct', () => {
+    const regions = createGlobalResourceKeys('regions');
+
+    expect(hashKey(organizations.detail('shared-id'))).not.toBe(
+      hashKey(regions.detail('shared-id'))
+    );
+  });
+
+  it('does not collide with an org-scoped resource of the same name', () => {
+    const orgScopedOrganizations = createResourceKeys('organizations');
+
+    expect(hashKey(organizations.detail('acme-org'))).not.toBe(
+      hashKey(orgScopedOrganizations.detail(acme, 'acme-org'))
     );
   });
 });
