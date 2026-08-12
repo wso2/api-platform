@@ -17,6 +17,8 @@
 
 package policyv1alpha2
 
+import "context"
+
 // DropHeaderAction controls which headers appear in the analytics event.
 type DropHeaderAction struct {
 	Action  string   // "allow" (allowlist) or "deny" (denylist)
@@ -283,3 +285,38 @@ type TerminateResponseChunk struct {
 
 func (TerminateResponseChunk) isStreamingResponseAction() {}
 func (TerminateResponseChunk) TerminateStream() bool      { return true }
+
+// ─── Upstream-attempt action (sealed oneof, one variant) ─────────────────────
+//
+// UpstreamAttemptAction is deliberately a sealed interface with exactly one
+// concrete variant, unlike RequestHeaderAction's two (Modifications |
+// ImmediateResponse): this phase runs after routing and authentication are
+// already resolved, mid-retry-loop inside Envoy's router filter, where there
+// is no sensible notion of "reject this request" — only "optionally change
+// headers for this one attempt."
+
+// UpstreamAttemptAction is the sealed oneof returned by
+// UpstreamAttemptPolicy.OnUpstreamAttemptRequestHeaders.
+type UpstreamAttemptAction interface {
+	isUpstreamAttemptAction()
+}
+
+// UpstreamAttemptHeaderModifications sets the given headers on this specific
+// upstream attempt. An empty/nil HeadersToSet is a valid, common no-op (e.g.
+// AttemptCount == 1, nothing to refresh yet, or a fail-open path after an
+// error).
+type UpstreamAttemptHeaderModifications struct {
+	HeadersToSet map[string]string
+}
+
+func (UpstreamAttemptHeaderModifications) isUpstreamAttemptAction() {}
+
+// UpstreamAttemptPolicy is implemented by any policy that wants to attach
+// fresh, per-attempt state (e.g. a refreshed credential) to an Envoy-native
+// retry. Discovery is a plain type assertion by the kernel — see Task 3 —
+// never a hardcoded policy name. A policy implements this in addition to,
+// not instead of, its normal RequestHeaderPolicy/ResponseHeaderPolicy
+// interfaces.
+type UpstreamAttemptPolicy interface {
+	OnUpstreamAttemptRequestHeaders(ctx context.Context, actx *UpstreamAttemptContext) UpstreamAttemptAction
+}
