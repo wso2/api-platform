@@ -534,6 +534,46 @@ func TestAPIValidator_ValidateAllHTTPMethods(t *testing.T) {
 	}
 }
 
+func TestValidateResilience_RetryRequiresNonEmptyStatusCodes(t *testing.T) {
+	r := &api.Resilience{Retry: &api.Retry{StatusCodes: []int{}}}
+	errs := validateResilienceRetry("spec.resilience", r.Retry)
+	if len(errs) == 0 {
+		t.Error("expected an error for empty resilience.retry.statusCodes")
+	}
+	if len(errs) > 0 && !strings.Contains(errs[0].Field, "statusCodes") {
+		t.Errorf("expected error field to mention statusCodes, got %q", errs[0].Field)
+	}
+}
+
+func TestValidateResilience_RetryValidConfigPasses(t *testing.T) {
+	numRetries := 2
+	r := &api.Resilience{Retry: &api.Retry{StatusCodes: []int{401, 503}, NumRetries: &numRetries}}
+	errs := validateResilienceRetry("spec.resilience", r.Retry)
+	if len(errs) != 0 {
+		t.Errorf("expected no errors, got %v", errs)
+	}
+}
+
+func TestValidateResilience_RetryRejectsInvalidStatusCode(t *testing.T) {
+	r := &api.Resilience{Retry: &api.Retry{StatusCodes: []int{200}}} // 200 is not a valid retry status
+	errs := validateResilienceRetry("spec.resilience", r.Retry)
+	if len(errs) == 0 {
+		t.Error("expected an error for invalid status code 200")
+	}
+}
+
+func TestValidateResilience_RetryRejectsNegativeNumRetries(t *testing.T) {
+	numRetries := 0
+	r := &api.Resilience{Retry: &api.Retry{StatusCodes: []int{503}, NumRetries: &numRetries}}
+	errs := validateResilienceRetry("spec.resilience", r.Retry)
+	if len(errs) == 0 {
+		t.Error("expected an error for numRetries < 1")
+	}
+	if len(errs) > 0 && !strings.Contains(errs[0].Field, "numRetries") {
+		t.Errorf("expected error field to mention numRetries, got %q", errs[0].Field)
+	}
+}
+
 func createValidRestAPIConfig() *api.RestAPI {
 	return &api.RestAPI{
 		ApiVersion: api.RestAPIApiVersionGatewayApiPlatformWso2Comv1,

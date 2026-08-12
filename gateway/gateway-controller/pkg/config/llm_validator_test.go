@@ -2158,6 +2158,21 @@ func TestValidateLLMProvider_Resilience(t *testing.T) {
 		errs := validator.Validate(validProviderWithResilience(&api.Resilience{IdleTimeout: stringPtr("abc")}))
 		assertHasFieldError(t, errs, "spec.resilience.idleTimeout")
 	})
+
+	t.Run("retry with empty statusCodes is rejected", func(t *testing.T) {
+		errs := validator.Validate(validProviderWithResilience(&api.Resilience{
+			Retry: &api.Retry{StatusCodes: []int{}},
+		}))
+		assertHasFieldError(t, errs, "spec.resilience.retry.statusCodes")
+	})
+
+	t.Run("retry with valid statusCodes and numRetries is accepted", func(t *testing.T) {
+		numRetries := 2
+		errs := validator.Validate(validProviderWithResilience(&api.Resilience{
+			Retry: &api.Retry{StatusCodes: []int{401, 503}, NumRetries: &numRetries},
+		}))
+		assert.Empty(t, errs)
+	})
 }
 
 func TestValidateLLMProxy_Resilience(t *testing.T) {
