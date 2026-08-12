@@ -450,6 +450,27 @@ CREATE TABLE dbo.mcp_proxies (
     UNIQUE(organization_uuid, handle)
 );
 
+-- API Portals table (registration of an API Portal instance for an organization)
+IF OBJECT_ID(N'dbo.api_portals', N'U') IS NULL
+CREATE TABLE dbo.api_portals (
+    uuid              VARCHAR(40)   PRIMARY KEY,
+    organization_uuid VARCHAR(40)   NOT NULL,
+    handle            VARCHAR(40)   NOT NULL,
+    display_name      VARCHAR(255)  NOT NULL,
+    description       VARCHAR(1023),
+    url               VARCHAR(500),
+    workflow_status   VARCHAR(20)   NOT NULL DEFAULT 'pending',
+    auth_type         VARCHAR(20)   NOT NULL,
+    configuration     VARBINARY(MAX) NOT NULL,
+    data_version      VARCHAR(20)   NOT NULL DEFAULT '1.0',
+    created_by        VARCHAR(200),
+    created_at        DATETIME2(7)  DEFAULT SYSUTCDATETIME(),
+    updated_by        VARCHAR(200),
+    updated_at        DATETIME2(7)  DEFAULT SYSUTCDATETIME(),
+    FOREIGN KEY (organization_uuid) REFERENCES organizations(uuid) ON DELETE CASCADE,
+    UNIQUE (organization_uuid, handle)
+);
+
 IF OBJECT_ID(N'dbo.api_keys', N'U') IS NULL
 CREATE TABLE dbo.api_keys (
     uuid VARCHAR(40) PRIMARY KEY,
@@ -554,6 +575,8 @@ IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = N'idx_mcp_proxies_project'
 CREATE INDEX idx_mcp_proxies_project ON dbo.mcp_proxies(project_uuid);
 IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = N'idx_mcp_proxies_org' AND object_id = OBJECT_ID(N'dbo.mcp_proxies'))
 CREATE INDEX idx_mcp_proxies_org ON dbo.mcp_proxies(organization_uuid);
+IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = N'idx_api_portals_org' AND object_id = OBJECT_ID(N'dbo.api_portals'))
+CREATE INDEX idx_api_portals_org ON dbo.api_portals(organization_uuid);
 IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = N'idx_api_keys_artifact' AND object_id = OBJECT_ID(N'dbo.api_keys'))
 CREATE INDEX idx_api_keys_artifact ON dbo.api_keys(artifact_uuid);
 IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = N'idx_api_keys_status' AND object_id = OBJECT_ID(N'dbo.api_keys'))
