@@ -105,7 +105,8 @@ Read `references/api-platform-db-schema-rules.md`. The rules you need depend on 
 [ ] R2  organization_uuid FK present; UNIQUE constraints include it (if org-scoped)
 [ ] R3  No bare TEXT in Postgres — SQLite TEXT / SQL Server NVARCHAR(MAX) are intentional (R8)
 [ ] R3  Large/variable payloads use BYTEA/BLOB/VARBINARY(MAX) — not wide VARCHAR
-[ ] R3  JSONB only when queried with JSON operators AND the scan target implements sql.Scanner
+[ ] R3  JSONB only when a repository query reads inside it with JSON operators; scan target checked
+        against the driver in use (pgx v5 also takes *string/*[]byte — see R3-JSONB-SCAN-COMPAT)
 [ ] R3  Boolean flags: SMALLINT (Postgres/SQL Server) or INTEGER (SQLite), 0/1 — no BOOLEAN
 [ ] R3  VARCHAR widths match R3-VARCHAR-SIZES; nothing above VARCHAR(1023) for plain storage
 [ ] R3  Indexed/UNIQUE columns ≤ VARCHAR(255); hashes are VARCHAR(255)

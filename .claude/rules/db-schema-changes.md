@@ -19,7 +19,7 @@ Applies whenever adding or altering a table, column, index, or constraint in any
 > **Before outputting any schema change:**
 > * Does it touch a shipped table in any way other than adding a nullable/defaulted column or an index? (If so, stop — that's a migration.)
 > * Is a shipped table's non-conformance being "fixed" instead of recorded in Appendix A?
-> * Is there a per-dialect `ALTER TABLE` for already-provisioned databases?
+> * Does a column added to an existing table ship a per-dialect `ALTER TABLE` for already-provisioned databases? (New tables and indexes need none — their guarded `CREATE` covers both cases.)
 > * Have R1–R10 been applied to the new table/column via the `designing-db-schemas` skill?
 
 ---
