@@ -52,9 +52,11 @@ import (
 	extproc "github.com/envoyproxy/go-control-plane/envoy/extensions/filters/http/ext_proc/v3"
 	luav3 "github.com/envoyproxy/go-control-plane/envoy/extensions/filters/http/lua/v3"
 	router "github.com/envoyproxy/go-control-plane/envoy/extensions/filters/http/router/v3"
+	upstreamcodecv3 "github.com/envoyproxy/go-control-plane/envoy/extensions/filters/http/upstream_codec/v3"
 	hcm "github.com/envoyproxy/go-control-plane/envoy/extensions/filters/network/http_connection_manager/v3"
 	otelresourcedetectorsv3 "github.com/envoyproxy/go-control-plane/envoy/extensions/tracers/opentelemetry/resource_detectors/v3"
 	tlsv3 "github.com/envoyproxy/go-control-plane/envoy/extensions/transport_sockets/tls/v3"
+	httpv3 "github.com/envoyproxy/go-control-plane/envoy/extensions/upstreams/http/v3"
 	matcher "github.com/envoyproxy/go-control-plane/envoy/type/matcher/v3"
 	metadatav3 "github.com/envoyproxy/go-control-plane/envoy/type/metadata/v3"
 	tracingv3 "github.com/envoyproxy/go-control-plane/envoy/type/tracing/v3"
@@ -88,6 +90,10 @@ const (
 	// and other route-scoped consumers.
 	envoyRouteMetadataNamespace = "wso2.route"
 	envoyRouteHTTPRouteKey      = "http.route"
+
+	// upstreamHTTPProtocolOptionsKey is the TypedExtensionProtocolOptions map key Envoy
+	// expects for a cluster's upstream HTTP filter chain (see attachUpstreamRefreshFilter).
+	upstreamHTTPProtocolOptionsKey = "envoy.extensions.upstreams.http.v3.HttpProtocolOptions"
 )
 
 func checkedUInt32FromPositiveInt(fieldName string, value int) (uint32, error) {
@@ -706,6 +712,17 @@ func (t *Translator) TranslateConfigs(
 	allRoutes := make([]*route.Route, 0)
 	clusterMap := make(map[string]*cluster.Cluster)
 
+	// clustersNeedingUpstreamFilter accumulates, across every deployed config, the name of
+	// any cluster backing at least one route with a native RetryPolicy (resilience.retry).
+	// A cluster is shared/deduped by name across operations and even across unrelated APIs
+	// (see clusterMap above), so this must be OR'd once across every sharer, not decided
+	// per-operation. It is populated generically from the already-built route.Route objects
+	// (see collectClustersNeedingUpstreamFilter) rather than re-deriving "does this route
+	// have retry" from source config, which automatically covers both the legacy
+	// (translateAPIConfig/createRoute) and RuntimeDeployConfig (translateRuntimeConfig/
+	// createRouteFromRDC) paths — both already emit RouteAction.RetryPolicy identically.
+	clustersNeedingUpstreamFilter := make(map[string]bool)
+
 	for _, cfg := range configs {
 		// Skip undeployed APIs - they should not appear in xDS routes
 		if cfg.DesiredState == models.StateUndeployed {
@@ -769,6 +786,11 @@ func (t *Translator) TranslateConfigs(
 		for _, c := range clusterList {
 			clusterMap[c.Name] = c
 		}
+		collectClustersNeedingUpstreamFilter(routesList, clustersNeedingUpstreamFilter)
+	}
+
+	if err := t.attachUpstreamRefreshFilter(clusterMap, clustersNeedingUpstreamFilter); err != nil {
+		return nil, err
 	}
 
 	// Group routes by vhost. Pre-seed the wildcard vhost so no-api-found is
@@ -972,6 +994,98 @@ func (t *Translator) TranslateConfigs(
 	}
 
 	return resources, nil
+}
+
+// collectClustersNeedingUpstreamFilter scans a set of already-built Envoy routes and marks,
+// in dest, the name of every statically-specified cluster (RouteAction_Cluster) backing at
+// least one route with a native RetryPolicy set. Routes using dynamic cluster_header
+// selection (RouteAction_ClusterHeader) are skipped: that cluster identity is resolved only
+// per-request, with no policy-chain/cluster access at xDS-build time, so it can never be
+// marked here — consistent with this feature's existing exclusion of upstream-definition
+// clusters reached the same way. dest is mutated in place so callers can accumulate across
+// every config translated in a single TranslateConfigs pass (a cluster can be shared/deduped
+// across unrelated APIs, so eligibility must be OR'd once across every sharer).
+func collectClustersNeedingUpstreamFilter(routes []*route.Route, dest map[string]bool) {
+	for _, r := range routes {
+		ra := r.GetRoute()
+		if ra == nil || ra.GetRetryPolicy() == nil {
+			continue
+		}
+		if clusterName := ra.GetCluster(); clusterName != "" {
+			dest[clusterName] = true
+		}
+	}
+}
+
+// attachUpstreamRefreshFilter attaches the per-cluster upstream ext_proc filter (chained with
+// the mandatory terminal envoy.filters.http.upstream_codec filter) to every cluster in
+// clusterMap named in clustersNeedingUpstreamFilter, and unconditionally registers the
+// internal cluster the filter targets. A cluster referenced by clustersNeedingUpstreamFilter
+// but absent from clusterMap (cluster resolution failed elsewhere) is silently skipped —
+// nothing to attach to. No-op when clustersNeedingUpstreamFilter is empty, so deployments
+// with no resilience.retry configured anywhere pay zero cost.
+func (t *Translator) attachUpstreamRefreshFilter(clusterMap map[string]*cluster.Cluster, clustersNeedingUpstreamFilter map[string]bool) error {
+	if len(clustersNeedingUpstreamFilter) == 0 {
+		return nil
+	}
+
+	upstreamFilter, err := t.createUpstreamRefreshExtProcFilter()
+	if err != nil {
+		return fmt.Errorf("failed to create upstream refresh ext_proc filter: %w", err)
+	}
+
+	// The upstream_codec filter is Envoy's built-in terminal filter: any non-empty upstream
+	// http_filters chain MUST end with it, or Envoy rejects the cluster config outright.
+	codecAny, err := anypb.New(&upstreamcodecv3.UpstreamCodec{})
+	if err != nil {
+		return fmt.Errorf("failed to marshal upstream codec filter: %w", err)
+	}
+	codecFilter := &hcm.HttpFilter{
+		Name:       constants.UpstreamCodecFilterName,
+		ConfigType: &hcm.HttpFilter_TypedConfig{TypedConfig: codecAny},
+	}
+
+	// ExplicitHttpConfig with an explicit (empty-fields) Http1ProtocolOptions pins the
+	// upstream protocol to HTTP/1.1 — this repo's existing clusters never set explicit
+	// protocol options (createCluster/createWeightedCluster set none), so this preserves
+	// today's default behavior exactly rather than switching to UseDownstreamProtocolConfig,
+	// which would make the upstream protocol track whatever the downstream connection
+	// negotiated — a real behavior change, not a safe no-op, for any listener that can
+	// negotiate HTTP/2 with the client.
+	protocolOptions := &httpv3.HttpProtocolOptions{
+		UpstreamProtocolOptions: &httpv3.HttpProtocolOptions_ExplicitHttpConfig_{
+			ExplicitHttpConfig: &httpv3.HttpProtocolOptions_ExplicitHttpConfig{
+				ProtocolConfig: &httpv3.HttpProtocolOptions_ExplicitHttpConfig_HttpProtocolOptions{
+					HttpProtocolOptions: &core.Http1ProtocolOptions{},
+				},
+			},
+		},
+		HttpFilters: []*hcm.HttpFilter{upstreamFilter, codecFilter},
+	}
+	protocolOptionsAny, err := anypb.New(protocolOptions)
+	if err != nil {
+		return fmt.Errorf("failed to marshal upstream HttpProtocolOptions: %w", err)
+	}
+
+	for clusterName := range clustersNeedingUpstreamFilter {
+		c, ok := clusterMap[clusterName]
+		if !ok {
+			continue // cluster resolution failed elsewhere; nothing to attach to
+		}
+		if c.TypedExtensionProtocolOptions == nil {
+			c.TypedExtensionProtocolOptions = make(map[string]*anypb.Any)
+		}
+		c.TypedExtensionProtocolOptions[upstreamHTTPProtocolOptionsKey] = protocolOptionsAny
+	}
+
+	// Always register the internal cluster the filter targets, once, unconditionally — cheap,
+	// and only ever added when at least one real cluster needs the filter (the len==0 guard
+	// above).
+	if _, ok := clusterMap[constants.UpstreamRefreshPolicyEngineClusterName]; !ok {
+		clusterMap[constants.UpstreamRefreshPolicyEngineClusterName] = t.createUpstreamRefreshExtProcCluster()
+	}
+
+	return nil
 }
 
 // getVHostDomains returns Envoy domain patterns for a resolved vhost.
@@ -2080,6 +2194,64 @@ func (t *Translator) createPolicyEngineCluster() *cluster.Cluster {
 		c.DnsLookupFamily = cluster.Cluster_V4_PREFERRED
 	}
 
+	return c
+}
+
+// createUpstreamRefreshExtProcCluster creates the internal Envoy cluster pointing at
+// policy-engine's second, upstream-attempt ext_proc endpoint (see
+// gateway-runtime/policy-engine/internal/kernel/upstream_extproc.go). Mirrors
+// createPolicyEngineCluster's addressing (UDS by default, TCP via
+// t.routerConfig.PolicyEngine.Mode) — this is a DIFFERENT socket/port on the same
+// policy-engine process, not a different service. Unlike createPolicyEngineCluster, this
+// intentionally has no TLS branch: policy-engine's upstream ext_proc server
+// (cmd/policy-engine/main.go) is a bare grpc.NewServer() with no transport credentials,
+// so mirroring the downstream cluster's full TLS complexity here would be dead code.
+func (t *Translator) createUpstreamRefreshExtProcCluster() *cluster.Cluster {
+	policyEngine := t.routerConfig.PolicyEngine
+
+	var address *core.Address
+	if policyEngine.Mode == "tcp" {
+		address = &core.Address{
+			Address: &core.Address_SocketAddress{
+				SocketAddress: &core.SocketAddress{
+					Protocol: core.SocketAddress_TCP,
+					Address:  policyEngine.Host,
+					PortSpecifier: &core.SocketAddress_PortValue{
+						PortValue: policyEngine.UpstreamRefreshPort,
+					},
+				},
+			},
+		}
+	} else {
+		address = &core.Address{
+			Address: &core.Address_Pipe{
+				Pipe: &core.Pipe{Path: constants.DefaultUpstreamExtProcSocketPath},
+			},
+		}
+	}
+
+	lbEndpoint := &endpoint.LbEndpoint{
+		HostIdentifier: &endpoint.LbEndpoint_Endpoint{Endpoint: &endpoint.Endpoint{Address: address}},
+	}
+	clusterType := cluster.Cluster_STATIC
+	if policyEngine.Mode == "tcp" {
+		clusterType = cluster.Cluster_STRICT_DNS
+	}
+
+	c := &cluster.Cluster{
+		Name:                 constants.UpstreamRefreshPolicyEngineClusterName,
+		ConnectTimeout:       durationpb.New(5 * time.Second),
+		ClusterDiscoveryType: &cluster.Cluster_Type{Type: clusterType},
+		LbPolicy:             cluster.Cluster_ROUND_ROBIN,
+		LoadAssignment: &endpoint.ClusterLoadAssignment{
+			ClusterName: constants.UpstreamRefreshPolicyEngineClusterName,
+			Endpoints:   []*endpoint.LocalityLbEndpoints{{LbEndpoints: []*endpoint.LbEndpoint{lbEndpoint}}},
+		},
+		Http2ProtocolOptions: &core.Http2ProtocolOptions{},
+	}
+	if policyEngine.Mode == "tcp" {
+		c.DnsLookupFamily = cluster.Cluster_V4_PREFERRED
+	}
 	return c
 }
 
@@ -3197,6 +3369,38 @@ func (t *Translator) createExtProcFilter() (*hcm.HttpFilter, error) {
 		ConfigType: &hcm.HttpFilter_TypedConfig{
 			TypedConfig: extProcAny,
 		},
+	}, nil
+}
+
+// createUpstreamRefreshExtProcFilter creates the per-cluster upstream ext_proc filter that
+// lets any UpstreamAttemptPolicy-implementing policy attach fresh per-attempt state to a
+// native Envoy retry. Unlike the main downstream filter, this one only ever needs the
+// request-headers phase, and it fails OPEN (FailureModeAllow: true) rather than closed: a
+// failure here must never block the retry itself, whereas the downstream filter gates
+// auth/access-control and must fail closed. This asymmetry is intentional.
+func (t *Translator) createUpstreamRefreshExtProcFilter() (*hcm.HttpFilter, error) {
+	policyEngine := t.routerConfig.PolicyEngine
+	extProcConfig := &extproc.ExternalProcessor{
+		GrpcService: &core.GrpcService{
+			TargetSpecifier: &core.GrpcService_EnvoyGrpc_{
+				EnvoyGrpc: &core.GrpcService_EnvoyGrpc{ClusterName: constants.UpstreamRefreshPolicyEngineClusterName},
+			},
+			Timeout: durationpb.New(time.Duration(policyEngine.TimeoutMs) * time.Millisecond),
+		},
+		FailureModeAllow: true, // fail open — a failure here must never block the retry
+		ProcessingMode: &extproc.ProcessingMode{
+			RequestHeaderMode: extproc.ProcessingMode_SEND,
+		},
+		MessageTimeout:    durationpb.New(time.Duration(policyEngine.MessageTimeoutMs) * time.Millisecond),
+		RequestAttributes: []string{constants.ExtProcRequestAttributeRouteName},
+	}
+	extProcAny, err := anypb.New(extProcConfig)
+	if err != nil {
+		return nil, fmt.Errorf("failed to marshal upstream ext_proc config: %w", err)
+	}
+	return &hcm.HttpFilter{
+		Name:       constants.ExtProcFilterName + "_upstream_refresh",
+		ConfigType: &hcm.HttpFilter_TypedConfig{TypedConfig: extProcAny},
 	}, nil
 }
 

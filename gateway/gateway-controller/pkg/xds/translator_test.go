@@ -19,6 +19,7 @@
 package xds
 
 import (
+	"fmt"
 	"math"
 	"net/url"
 	"regexp"
@@ -32,9 +33,11 @@ import (
 	listener "github.com/envoyproxy/go-control-plane/envoy/config/listener/v3"
 	route "github.com/envoyproxy/go-control-plane/envoy/config/route/v3"
 	tracev3 "github.com/envoyproxy/go-control-plane/envoy/config/trace/v3"
+	extproc "github.com/envoyproxy/go-control-plane/envoy/extensions/filters/http/ext_proc/v3"
 	hcm "github.com/envoyproxy/go-control-plane/envoy/extensions/filters/network/http_connection_manager/v3"
 	otelresourcedetectorsv3 "github.com/envoyproxy/go-control-plane/envoy/extensions/tracers/opentelemetry/resource_detectors/v3"
 	tlsv3 "github.com/envoyproxy/go-control-plane/envoy/extensions/transport_sockets/tls/v3"
+	httpv3 "github.com/envoyproxy/go-control-plane/envoy/extensions/upstreams/http/v3"
 	matcher "github.com/envoyproxy/go-control-plane/envoy/type/matcher/v3"
 	metadatav3 "github.com/envoyproxy/go-control-plane/envoy/type/metadata/v3"
 	tracingv3 "github.com/envoyproxy/go-control-plane/envoy/type/tracing/v3"
@@ -1659,6 +1662,170 @@ func TestTranslator_CreateExtProcFilter(t *testing.T) {
 	})
 }
 
+func TestTranslator_CreateUpstreamRefreshExtProcCluster(t *testing.T) {
+	logger := createTestLogger()
+
+	t.Run("UDS mode (default)", func(t *testing.T) {
+		routerCfg := testRouterConfig()
+		routerCfg.PolicyEngine = config.PolicyEngineConfig{
+			Mode:             "uds",
+			TimeoutMs:        1000,
+			MessageTimeoutMs: 500,
+		}
+		cfg := testConfig()
+		cfg.Router = *routerCfg
+		translator := NewTranslator(logger, routerCfg, nil, cfg)
+
+		c := translator.createUpstreamRefreshExtProcCluster()
+		require.NotNil(t, c)
+		assert.Equal(t, constants.UpstreamRefreshPolicyEngineClusterName, c.Name)
+		assert.Equal(t, cluster.Cluster_STATIC, c.ClusterDiscoveryType.(*cluster.Cluster_Type).Type)
+
+		lbEndpoint := c.LoadAssignment.Endpoints[0].LbEndpoints[0]
+		pipe := lbEndpoint.GetEndpoint().Address.GetPipe()
+		require.NotNil(t, pipe, "expected Pipe address for UDS mode")
+		assert.Equal(t, constants.DefaultUpstreamExtProcSocketPath, pipe.Path)
+		// Must be a distinct socket from the main downstream ext_proc server.
+		assert.NotEqual(t, constants.DefaultPolicyEngineSocketPath, pipe.Path)
+	})
+
+	t.Run("TCP mode with host:port", func(t *testing.T) {
+		routerCfg := testRouterConfig()
+		routerCfg.PolicyEngine = config.PolicyEngineConfig{
+			Mode:                "tcp",
+			Host:                "policy-engine",
+			Port:                9001,
+			UpstreamRefreshPort: 9004,
+			TimeoutMs:           1000,
+			MessageTimeoutMs:    500,
+		}
+		cfg := testConfig()
+		cfg.Router = *routerCfg
+		translator := NewTranslator(logger, routerCfg, nil, cfg)
+
+		c := translator.createUpstreamRefreshExtProcCluster()
+		require.NotNil(t, c)
+		assert.Equal(t, cluster.Cluster_STRICT_DNS, c.ClusterDiscoveryType.(*cluster.Cluster_Type).Type)
+
+		lbEndpoint := c.LoadAssignment.Endpoints[0].LbEndpoints[0]
+		socketAddr := lbEndpoint.GetEndpoint().Address.GetSocketAddress()
+		require.NotNil(t, socketAddr, "expected SocketAddress for TCP mode")
+		assert.Equal(t, "policy-engine", socketAddr.Address)
+		// Must dial the upstream-refresh port, not the main downstream ext_proc port.
+		assert.Equal(t, uint32(9004), socketAddr.GetPortValue())
+	})
+}
+
+func TestTranslator_CreateUpstreamRefreshExtProcFilter(t *testing.T) {
+	logger := createTestLogger()
+	routerCfg := testRouterConfig()
+	routerCfg.PolicyEngine = config.PolicyEngineConfig{
+		Host:             "localhost",
+		Port:             50051,
+		TimeoutMs:        1000,
+		MessageTimeoutMs: 500,
+	}
+	cfg := testConfig()
+	cfg.Router = *routerCfg
+	translator := NewTranslator(logger, routerCfg, nil, cfg)
+
+	filter, err := translator.createUpstreamRefreshExtProcFilter()
+	require.NoError(t, err)
+	require.NotNil(t, filter)
+	assert.Equal(t, constants.ExtProcFilterName+"_upstream_refresh", filter.Name)
+	assert.NotEqual(t, constants.ExtProcFilterName, filter.Name, "must not collide with the main downstream filter's name")
+
+	var extProcConfig extproc.ExternalProcessor
+	require.NoError(t, filter.GetTypedConfig().UnmarshalTo(&extProcConfig))
+	assert.True(t, extProcConfig.FailureModeAllow, "upstream refresh filter must fail open, unlike the downstream filter")
+	assert.Equal(t, extproc.ProcessingMode_SEND, extProcConfig.ProcessingMode.RequestHeaderMode)
+	assert.Equal(t, extproc.ProcessingMode_DEFAULT, extProcConfig.ProcessingMode.ResponseHeaderMode,
+		"must only ever request the headers phase")
+	assert.Equal(t, constants.UpstreamRefreshPolicyEngineClusterName,
+		extProcConfig.GrpcService.GetEnvoyGrpc().ClusterName)
+}
+
+// TestCollectClustersNeedingUpstreamFilter unit-tests the OR-across-sharers eligibility scan
+// directly against hand-built route.Route objects, independent of which translation path
+// (legacy createRoute or RDC createRouteFromRDC) produced them — both emit the identical
+// RouteAction shape, which is exactly what makes this scan path-agnostic.
+func TestCollectClustersNeedingUpstreamFilter(t *testing.T) {
+	staticRouteWithRetry := &route.Route{
+		Action: &route.Route_Route{
+			Route: &route.RouteAction{
+				ClusterSpecifier: &route.RouteAction_Cluster{Cluster: "cluster-a"},
+				RetryPolicy:      &route.RetryPolicy{RetryOn: "retriable-status-codes"},
+			},
+		},
+	}
+	staticRouteNoRetry := &route.Route{
+		Action: &route.Route_Route{
+			Route: &route.RouteAction{
+				ClusterSpecifier: &route.RouteAction_Cluster{Cluster: "cluster-b"},
+			},
+		},
+	}
+	dynamicRouteWithRetry := &route.Route{
+		Action: &route.Route_Route{
+			Route: &route.RouteAction{
+				ClusterSpecifier: &route.RouteAction_ClusterHeader{ClusterHeader: "x-target-upstream"},
+				RetryPolicy:      &route.RetryPolicy{RetryOn: "retriable-status-codes"},
+			},
+		},
+	}
+	directResponseRoute := &route.Route{
+		Action: &route.Route_DirectResponse{DirectResponse: &route.DirectResponseAction{Status: 404}},
+	}
+
+	t.Run("marks a static cluster backing a retry-configured route", func(t *testing.T) {
+		dest := make(map[string]bool)
+		collectClustersNeedingUpstreamFilter([]*route.Route{staticRouteWithRetry}, dest)
+		assert.Equal(t, map[string]bool{"cluster-a": true}, dest)
+	})
+
+	t.Run("does not mark a cluster with no retry configured", func(t *testing.T) {
+		dest := make(map[string]bool)
+		collectClustersNeedingUpstreamFilter([]*route.Route{staticRouteNoRetry}, dest)
+		assert.Empty(t, dest)
+	})
+
+	t.Run("skips dynamic cluster_header routing even with retry configured", func(t *testing.T) {
+		dest := make(map[string]bool)
+		collectClustersNeedingUpstreamFilter([]*route.Route{dynamicRouteWithRetry}, dest)
+		assert.Empty(t, dest, "cluster identity is resolved only per-request; must never be marked at xDS-build time")
+	})
+
+	t.Run("ignores non-RouteAction actions (e.g. direct response)", func(t *testing.T) {
+		dest := make(map[string]bool)
+		collectClustersNeedingUpstreamFilter([]*route.Route{directResponseRoute}, dest)
+		assert.Empty(t, dest)
+	})
+
+	t.Run("OR's across sharers: one retry-configured route is enough to mark a shared cluster", func(t *testing.T) {
+		sharedRetry := &route.Route{
+			Action: &route.Route_Route{
+				Route: &route.RouteAction{
+					ClusterSpecifier: &route.RouteAction_Cluster{Cluster: "shared-cluster"},
+					RetryPolicy:      &route.RetryPolicy{RetryOn: "retriable-status-codes"},
+				},
+			},
+		}
+		sharedNoRetry := &route.Route{
+			Action: &route.Route_Route{
+				Route: &route.RouteAction{
+					ClusterSpecifier: &route.RouteAction_Cluster{Cluster: "shared-cluster"},
+				},
+			},
+		}
+		dest := make(map[string]bool)
+		// Simulate two separate configs contributing routes to the same cluster across two
+		// separate accumulation calls, exactly as TranslateConfigs does per-cfg.
+		collectClustersNeedingUpstreamFilter([]*route.Route{sharedNoRetry}, dest)
+		collectClustersNeedingUpstreamFilter([]*route.Route{sharedRetry}, dest)
+		assert.Equal(t, map[string]bool{"shared-cluster": true}, dest)
+	})
+}
+
 func TestTranslator_CreateRouteConfiguration(t *testing.T) {
 	logger := createTestLogger()
 	routerCfg := testRouterConfig()
@@ -1795,6 +1962,203 @@ func TestTranslator_TranslateConfigs_GatewayHealthRoutes(t *testing.T) {
 		require.True(t, vhostsSeen["localhost"], "expected the API's own vhost to carry the health routes too")
 		require.True(t, vhostsSeen["*"], "expected the wildcard vhost to still be present")
 	})
+}
+
+// makeRestAPIWithUpstreamAndRetry is like makeRestAPI but allows a custom upstream URL (so
+// two configs can be made to share a deduped Envoy cluster, per resolveUpstreamCluster's
+// host+scheme dedup) and an optional API-level resilience.retry.
+func makeRestAPIWithUpstreamAndRetry(uuid, name, ctx, upstreamURL string, retry *api.Retry) *models.StoredConfig {
+	cfg := api.RestAPI{
+		Kind:     api.RestAPIKindRestApi,
+		Metadata: api.Metadata{Name: name},
+		Spec: api.APIConfigData{
+			DisplayName: name,
+			Version:     "v1.0",
+			Context:     ctx,
+			Upstream: struct {
+				Main    api.Upstream  `json:"main" yaml:"main"`
+				Sandbox *api.Upstream `json:"sandbox,omitempty" yaml:"sandbox,omitempty"`
+			}{
+				Main: api.Upstream{Url: api.Ptr(upstreamURL)},
+			},
+			Operations: []api.Operation{
+				{Method: api.Ptr(api.OperationMethodGET), Path: api.Ptr("/resource")},
+			},
+		},
+	}
+	if retry != nil {
+		cfg.Spec.Resilience = &api.Resilience{Retry: retry}
+	}
+	return &models.StoredConfig{
+		UUID:                uuid,
+		Kind:                models.KindRestApi,
+		Handle:              name,
+		DisplayName:         name,
+		Version:             "v1.0",
+		DesiredState:        models.StateDeployed,
+		Configuration:       cfg,
+		SourceConfiguration: cfg,
+	}
+}
+
+// TestTranslateConfigs_ClusterGetsUpstreamFilterWhenAnyRouteHasRetryConfigured exercises the
+// LEGACY translation path (translateAPIConfig/createRoute — no transformer registered, same
+// as every other TranslateConfigs test in this file). Two RestApi configs share the identical
+// upstream host+scheme, so resolveUpstreamCluster/sanitizeClusterName dedupe them into ONE
+// Envoy cluster; only one of the two configs has resilience.retry set. This proves the
+// OR-across-sharers behavior: the shared cluster must get the upstream filter attached
+// because at least one sharer needs it.
+func TestTranslateConfigs_ClusterGetsUpstreamFilterWhenAnyRouteHasRetryConfigured(t *testing.T) {
+	logger := createTestLogger()
+	translator := NewTranslator(logger, testRouterConfig(), nil, testConfig())
+
+	const sharedUpstream = "http://shared-backend:9999"
+	configs := []*models.StoredConfig{
+		makeRestAPIWithUpstreamAndRetry("uuid-legacy-1", "api-one", "/api-one", sharedUpstream, nil),
+		makeRestAPIWithUpstreamAndRetry("uuid-legacy-2", "api-two", "/api-two", sharedUpstream, &api.Retry{StatusCodes: []int{503}}),
+	}
+
+	resources, err := translator.TranslateConfigs(configs, "test-correlation-id")
+	require.NoError(t, err)
+
+	expectedClusterName := translator.sanitizeClusterName("shared-backend:9999", "http")
+
+	var sharedEnvoyCluster *cluster.Cluster
+	internalClusterPresent := false
+	for _, res := range resources[resource.ClusterType] {
+		c, ok := res.(*cluster.Cluster)
+		require.True(t, ok)
+		if c.Name == expectedClusterName {
+			sharedEnvoyCluster = c
+		}
+		if c.Name == constants.UpstreamRefreshPolicyEngineClusterName {
+			internalClusterPresent = true
+		}
+	}
+
+	require.NotNil(t, sharedEnvoyCluster, "expected to find the deduped shared cluster %q", expectedClusterName)
+	assert.True(t, internalClusterPresent, "expected the internal upstream-refresh policy-engine cluster to be registered")
+
+	protocolOptionsAny, ok := sharedEnvoyCluster.TypedExtensionProtocolOptions[upstreamHTTPProtocolOptionsKey]
+	require.True(t, ok, "expected TypedExtensionProtocolOptions on the shared cluster")
+
+	var protocolOptions httpv3.HttpProtocolOptions
+	require.NoError(t, protocolOptionsAny.UnmarshalTo(&protocolOptions))
+	require.Len(t, protocolOptions.HttpFilters, 2)
+	assert.Equal(t, constants.ExtProcFilterName+"_upstream_refresh", protocolOptions.HttpFilters[0].Name)
+	assert.Equal(t, constants.UpstreamCodecFilterName, protocolOptions.HttpFilters[1].Name,
+		"upstream_codec must be the terminal filter or Envoy rejects the config")
+}
+
+// TestTranslateConfigs_ClusterWithNoRetryConfiguredAnywhereGetsNoUpstreamFilter is the negative
+// counterpart: same shared-cluster shape, but NEITHER config has resilience.retry set.
+func TestTranslateConfigs_ClusterWithNoRetryConfiguredAnywhereGetsNoUpstreamFilter(t *testing.T) {
+	logger := createTestLogger()
+	translator := NewTranslator(logger, testRouterConfig(), nil, testConfig())
+
+	const sharedUpstream = "http://shared-backend-2:9999"
+	configs := []*models.StoredConfig{
+		makeRestAPIWithUpstreamAndRetry("uuid-legacy-3", "api-three", "/api-three", sharedUpstream, nil),
+		makeRestAPIWithUpstreamAndRetry("uuid-legacy-4", "api-four", "/api-four", sharedUpstream, nil),
+	}
+
+	resources, err := translator.TranslateConfigs(configs, "test-correlation-id")
+	require.NoError(t, err)
+
+	expectedClusterName := translator.sanitizeClusterName("shared-backend-2:9999", "http")
+
+	var sharedEnvoyCluster *cluster.Cluster
+	for _, res := range resources[resource.ClusterType] {
+		c, ok := res.(*cluster.Cluster)
+		require.True(t, ok)
+		if c.Name == expectedClusterName {
+			sharedEnvoyCluster = c
+		}
+		assert.NotEqual(t, constants.UpstreamRefreshPolicyEngineClusterName, c.Name,
+			"internal upstream-refresh cluster must not be registered when nothing needs it")
+	}
+
+	require.NotNil(t, sharedEnvoyCluster)
+	assert.Empty(t, sharedEnvoyCluster.TypedExtensionProtocolOptions)
+}
+
+// fakeRDCTransformer is a minimal models.ConfigTransformer that returns a hand-built
+// RuntimeDeployConfig keyed by StoredConfig.UUID, letting tests exercise the RDC path
+// (translateRuntimeConfig/createRouteFromRDC) without the full RestAPITransformer.Transform
+// machinery (policy definitions, secrets, etc.) — mirroring how Task 7's
+// TestTranslator_CreateRouteFromRDC_ResilienceRetryEmitsNativeRetryPolicy hand-builds a
+// RuntimeDeployConfig directly rather than going through Transform().
+type fakeRDCTransformer map[string]*models.RuntimeDeployConfig
+
+func (f fakeRDCTransformer) Transform(cfg *models.StoredConfig) (*models.RuntimeDeployConfig, error) {
+	rdc, ok := f[cfg.UUID]
+	if !ok {
+		return nil, fmt.Errorf("no fake RuntimeDeployConfig registered for %s", cfg.UUID)
+	}
+	return rdc, nil
+}
+
+// TestTranslateConfigs_RDCPath_ClusterGetsUpstreamFilterWhenAnyRouteHasRetryConfigured proves
+// the RDC path (translateRuntimeConfig, the one RestApi/Mcp/LlmProvider/LlmProxy actually use
+// in production via a registered transformer) gets the same OR-across-sharers upstream filter
+// attachment as the legacy path above — the two are entirely separate cluster-building loops
+// in translator.go, so this must be verified independently, not assumed from the legacy-path
+// test alone.
+func TestTranslateConfigs_RDCPath_ClusterGetsUpstreamFilterWhenAnyRouteHasRetryConfigured(t *testing.T) {
+	logger := createTestLogger()
+	translator := NewTranslator(logger, testRouterConfig(), nil, testConfig())
+
+	sharedCluster := &models.UpstreamCluster{Endpoints: []models.Endpoint{{Host: "shared-rdc-backend", Port: 9999}}}
+
+	rdcNoRetry := &models.RuntimeDeployConfig{
+		Metadata:         models.Metadata{Kind: "RestApi"},
+		UpstreamClusters: map[string]*models.UpstreamCluster{"shared": sharedCluster},
+		Routes: map[string]*models.Route{
+			"GET|/api-two/v1.0/items|localhost": {
+				Method: "GET", Path: "/api-two/v1.0/items", OperationPath: "/items",
+				Upstream: models.RouteUpstream{ClusterKey: "shared"},
+			},
+		},
+	}
+	rdcWithRetry := &models.RuntimeDeployConfig{
+		Metadata:         models.Metadata{Kind: "RestApi"},
+		UpstreamClusters: map[string]*models.UpstreamCluster{"shared": sharedCluster},
+		Routes: map[string]*models.Route{
+			"GET|/api-one/v1.0/items|localhost": {
+				Method: "GET", Path: "/api-one/v1.0/items", OperationPath: "/items",
+				Timeout:  &models.RouteTimeout{Retry: &api.Retry{StatusCodes: []int{503}}},
+				Upstream: models.RouteUpstream{ClusterKey: "shared"},
+			},
+		},
+	}
+
+	translator.SetTransformers(map[string]models.ConfigTransformer{
+		"RestApi": fakeRDCTransformer{
+			"uuid-rdc-1": rdcNoRetry,
+			"uuid-rdc-2": rdcWithRetry,
+		},
+	})
+
+	configs := []*models.StoredConfig{
+		{UUID: "uuid-rdc-1", Kind: "RestApi", DesiredState: models.StateDeployed},
+		{UUID: "uuid-rdc-2", Kind: "RestApi", DesiredState: models.StateDeployed},
+	}
+
+	resources, err := translator.TranslateConfigs(configs, "test-correlation-id")
+	require.NoError(t, err)
+
+	var sharedEnvoyCluster *cluster.Cluster
+	for _, res := range resources[resource.ClusterType] {
+		c, ok := res.(*cluster.Cluster)
+		require.True(t, ok)
+		if c.Name == "shared" {
+			sharedEnvoyCluster = c
+		}
+	}
+	require.NotNil(t, sharedEnvoyCluster, "expected the RDC-path cluster 'shared' to be present")
+
+	_, ok := sharedEnvoyCluster.TypedExtensionProtocolOptions[upstreamHTTPProtocolOptionsKey]
+	assert.True(t, ok, "RDC-path cluster must also get the upstream filter attached — both translation paths must be covered")
 }
 
 func TestTranslator_GetVHostDomains(t *testing.T) {

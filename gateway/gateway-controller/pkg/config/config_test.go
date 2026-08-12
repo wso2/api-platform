@@ -91,8 +91,9 @@ func validConfig() *Config {
 				},
 			},
 			PolicyEngine: PolicyEngineConfig{
-				TimeoutMs:        1000,
-				MessageTimeoutMs: 500,
+				TimeoutMs:           1000,
+				MessageTimeoutMs:    500,
+				UpstreamRefreshPort: 9004, // valid default so TCP-mode test cases below that don't touch this field stay valid
 			},
 			VHosts: VHostsConfig{
 				Main:    VHostEntry{Default: "localhost"},
@@ -1076,6 +1077,41 @@ func TestConfig_ValidatePolicyEngineConfig(t *testing.T) {
 			cfg.Router.PolicyEngine.Port = tt.port
 			cfg.Router.PolicyEngine.TimeoutMs = tt.timeoutMs
 			cfg.Router.PolicyEngine.MessageTimeoutMs = tt.messageTimeoutMs
+			err := cfg.Validate()
+			if tt.wantErr {
+				assert.Error(t, err)
+				assert.Contains(t, err.Error(), tt.errContains)
+			} else {
+				assert.NoError(t, err)
+			}
+		})
+	}
+}
+
+// TestConfig_ValidatePolicyEngineUpstreamRefreshPort covers the second, upstream-attempt
+// ext_proc port (UpstreamRefreshPort) validated alongside the existing Port field in TCP
+// mode — mirrors TestConfig_ValidatePolicyEngineConfig's Port cases exactly.
+func TestConfig_ValidatePolicyEngineUpstreamRefreshPort(t *testing.T) {
+	tests := []struct {
+		name                string
+		upstreamRefreshPort uint32
+		wantErr             bool
+		errContains         string
+	}{
+		{name: "Valid upstream refresh port", upstreamRefreshPort: 50052, wantErr: false},
+		{name: "Zero upstream refresh port", upstreamRefreshPort: 0, wantErr: true, errContains: "upstream_refresh_port is required"},
+		{name: "Upstream refresh port too high", upstreamRefreshPort: 70000, wantErr: true, errContains: "upstream_refresh_port must be between"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			cfg := validConfig()
+			cfg.Router.PolicyEngine.Mode = "tcp"
+			cfg.Router.PolicyEngine.Host = "localhost"
+			cfg.Router.PolicyEngine.Port = 50051
+			cfg.Router.PolicyEngine.TimeoutMs = 1000
+			cfg.Router.PolicyEngine.MessageTimeoutMs = 500
+			cfg.Router.PolicyEngine.UpstreamRefreshPort = tt.upstreamRefreshPort
 			err := cfg.Validate()
 			if tt.wantErr {
 				assert.Error(t, err)

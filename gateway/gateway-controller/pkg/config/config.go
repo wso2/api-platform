@@ -627,6 +627,11 @@ type PolicyEngineConfig struct {
 	TimeoutMs        uint32          `koanf:"timeout_ms"`
 	MessageTimeoutMs uint32          `koanf:"message_timeout_ms"`
 	TLS              PolicyEngineTLS `koanf:"tls"` // TLS configuration (TCP mode only)
+	// UpstreamRefreshPort is the port for policy-engine's second, upstream-attempt
+	// ext_proc endpoint (TCP mode only; UDS mode uses the fixed
+	// constants.DefaultUpstreamExtProcSocketPath instead). Mirrors Port, which
+	// targets the main downstream ext_proc endpoint on the same process.
+	UpstreamRefreshPort uint32 `koanf:"upstream_refresh_port"`
 }
 
 // PolicyEngineTLS holds policy engine TLS configuration
@@ -997,11 +1002,12 @@ func defaultConfig() *Config {
 				},
 			},
 			PolicyEngine: PolicyEngineConfig{
-				Mode:             "uds",           // UDS mode by default
-				Host:             "policy-engine", // Only used in TCP mode
-				Port:             9001,            // Only used in TCP mode
-				TimeoutMs:        60000,
-				MessageTimeoutMs: 60000,
+				Mode:                "uds",           // UDS mode by default
+				Host:                "policy-engine", // Only used in TCP mode
+				Port:                9001,            // Only used in TCP mode
+				UpstreamRefreshPort: 9004,            // Only used in TCP mode
+				TimeoutMs:           60000,
+				MessageTimeoutMs:    60000,
 				TLS: PolicyEngineTLS{
 					Enabled:    false,
 					CertPath:   "",
@@ -1741,6 +1747,12 @@ func (c *Config) validatePolicyEngineConfig() error {
 		}
 		if policyEngine.Port > 65535 {
 			return fmt.Errorf("router.policy_engine.port must be between 1 and 65535, got: %d", policyEngine.Port)
+		}
+		if policyEngine.UpstreamRefreshPort == 0 {
+			return fmt.Errorf("router.policy_engine.upstream_refresh_port is required when mode is tcp")
+		}
+		if policyEngine.UpstreamRefreshPort > 65535 {
+			return fmt.Errorf("router.policy_engine.upstream_refresh_port must be between 1 and 65535, got: %d", policyEngine.UpstreamRefreshPort)
 		}
 	default:
 		return fmt.Errorf("router.policy_engine.mode must be 'uds' or 'tcp', got: %s", policyEngine.Mode)

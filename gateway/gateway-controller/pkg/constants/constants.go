@@ -102,9 +102,29 @@ const (
 	ExtProcHeaderModeSkip            = "SKIP"
 	ExtProcRequestAttributeRouteName = "xds.route_name"
 
+	// UpstreamCodecFilterName is Envoy's built-in terminal filter. Any cluster's
+	// upstream HTTP filter chain (TypedExtensionProtocolOptions.HttpFilters) that
+	// is non-empty MUST end with this filter, or Envoy rejects the config at
+	// listener/cluster warming time.
+	UpstreamCodecFilterName = "envoy.filters.http.upstream_codec"
+
 	// Policy Engine
 	PolicyEngineClusterName       = "api-platform/policy-engine"
 	DefaultPolicyEngineSocketPath = "/var/run/api-platform/policy-engine.sock"
+
+	// UpstreamRefreshPolicyEngineClusterName is the internal Envoy cluster
+	// pointing at policy-engine's second, upstream-attempt ext_proc endpoint
+	// (see gateway-runtime/policy-engine/internal/kernel/upstream_extproc.go).
+	// Attached only to clusters backing at least one resilience.retry-configured
+	// route (see xds.TranslateConfigs).
+	UpstreamRefreshPolicyEngineClusterName = "policy_engine_upstream_refresh_cluster"
+
+	// DefaultUpstreamExtProcSocketPath must match, byte-for-byte, policy-engine's
+	// own copy of this literal in its internal/constants/constants.go
+	// (DefaultUpstreamExtProcSocketPath) — gateway-controller and policy-engine
+	// are separate Go modules, so the path cannot be shared via import and is
+	// duplicated here deliberately, mirroring DefaultPolicyEngineSocketPath above.
+	DefaultUpstreamExtProcSocketPath = "/var/run/api-platform/policy-engine-upstream.sock"
 
 	// GatewayHealthPathPrefix is reserved for the gateway's own readiness/liveness
 	// direct-response routes (see GatewayReadyPath/GatewayHealthyPath). No API,
