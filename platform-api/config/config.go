@@ -330,6 +330,37 @@ type JWT struct {
 	TokenTTL       time.Duration `koanf:"token_ttl"`
 }
 
+// skipJWTValidation is stamped in at BUILD time via ldflags, exactly like the
+// binary's version (-X ...config.skipJWTValidation=true) — it is deliberately NOT
+// a config-file field. Disabling JWT signature validation is a property of a
+// specific build (the cloud build fronted by a trusted mediation layer on a
+// private network that has already authenticated the caller and forwards an
+// unsigned internal token carrying the org context), never a runtime toggle an
+// operator could flip on an internet-facing deployment. The empty default that
+// every normal build carries means strict validation.
+var skipJWTValidation string
+
+// skipJWTValidationEnabled is the parsed skipJWTValidation, evaluated once at
+// package initialization (the ldflags value is fixed at link time) so
+// SkipJWTValidation() is a plain field read on the hot authentication path.
+var skipJWTValidationEnabled = parseSkipJWTValidation(skipJWTValidation)
+
+// parseSkipJWTValidation reports whether the build-time flag value enables the
+// bypass: true only for the literal "true" (case-insensitive, surrounding space
+// trimmed); any other value keeps strict validation.
+func parseSkipJWTValidation(v string) bool {
+	return strings.EqualFold(strings.TrimSpace(v), "true")
+}
+
+// SkipJWTValidation reports whether this build disables JWT signature and issuer
+// verification in "internal_token" mode (see skipJWTValidation). DANGEROUS: it
+// makes unsigned ("none") tokens acceptable, so it must only be true in a build
+// deployed behind a trusted mediation layer on a private network. Ignored in
+// "file" and "idp" modes.
+func SkipJWTValidation() bool {
+	return skipJWTValidationEnabled
+}
+
 // LoadPublicKey reads and parses the PEM-encoded RSA public key from
 // PublicKeyFile. The file is read fresh on every call rather than cached,
 // so PublicKeyFile is a mounted-file path, never inlined PEM content.
