@@ -56,13 +56,13 @@ export default [
                 'Query keys are constructed inside the API layer so scope prefixing cannot be bypassed. If you need to invalidate or reset cache from the UI, expose a hook from src/api/resources/<resource> instead.',
             },
             {
-              group: ['**/api/resources/*/*.endpoints'],
+              group: ['**/api/resources/**/*.endpoints'],
               allowTypeImports: true,
               message:
-                'Endpoints are the raw transport layer — they carry no scope, no cache and no error surfacing. Use the matching hook. (Importing its types is fine.)',
+                'Endpoints are the raw transport layer; they carry no scope, no cache and no error surfacing. Use the matching hook. (Importing its types is fine.)',
             },
             {
-              group: ['**/api/resources/*/*.queries'],
+              group: ['**/api/resources/**/*.queries'],
               allowTypeImports: true,
               message:
                 'queryOptions are consumed by hooks, which own scope resolution and `enabled` gating. Use the hook. A route loader that genuinely needs queryOptions should get them from a hook-adjacent export added for that purpose.',
