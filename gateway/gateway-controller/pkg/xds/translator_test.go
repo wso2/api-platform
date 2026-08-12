@@ -41,6 +41,7 @@ import (
 	matcher "github.com/envoyproxy/go-control-plane/envoy/type/matcher/v3"
 	metadatav3 "github.com/envoyproxy/go-control-plane/envoy/type/metadata/v3"
 	tracingv3 "github.com/envoyproxy/go-control-plane/envoy/type/tracing/v3"
+	"github.com/envoyproxy/go-control-plane/pkg/cache/types"
 	resource "github.com/envoyproxy/go-control-plane/pkg/resource/v3"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -2183,17 +2184,20 @@ func TestTranslateConfigs_VirtualHostIncludesRequestAttemptCountWhenAnyRouteHasR
 	resources, err := translator.TranslateConfigs(configs, "test-correlation-id")
 	require.NoError(t, err)
 
-	found := false
-	for _, res := range resources[resource.RouteType] {
-		rc, ok := res.(*route.RouteConfiguration)
-		require.True(t, ok)
-		for _, vh := range rc.VirtualHosts {
-			found = true
-			assert.True(t, vh.IncludeRequestAttemptCount,
-				"virtual host %q must set IncludeRequestAttemptCount when any route has resilience.retry configured", vh.Name)
-		}
+	byName := virtualHostsByName(t, resources)
+	require.Contains(t, byName, "localhost", "expected the API's own vhost ('localhost', neither config sets a custom Vhosts.Main) to be present")
+	assert.True(t, byName["localhost"].IncludeRequestAttemptCount,
+		"the 'localhost' vhost carries the retry-configured route and must set IncludeRequestAttemptCount")
+	// The pre-seeded wildcard vhost carries neither API's routes at all (see
+	// vhostMap's pre-seeding in TranslateConfigs) - it must NOT be flagged just
+	// because some OTHER vhost happens to need it. This is exactly the gap a
+	// global (rather than per-vhost) scoping would miss - see
+	// TestTranslateConfigs_MultipleVhosts_OnlyTheOneWithRetryGetsRequestAttemptCount
+	// for the sharper, explicit-multi-vhost version of this same proof.
+	if wildcard, ok := byName["*"]; ok {
+		assert.False(t, wildcard.IncludeRequestAttemptCount,
+			"the wildcard vhost carries no API routes and must not set IncludeRequestAttemptCount just because 'localhost' needs it")
 	}
-	require.True(t, found, "expected at least one virtual host to be present")
 }
 
 // TestTranslateConfigs_VirtualHostOmitsRequestAttemptCountWhenNoRetryConfiguredAnywhere is the
@@ -2222,6 +2226,75 @@ func TestTranslateConfigs_VirtualHostOmitsRequestAttemptCountWhenNoRetryConfigur
 		}
 	}
 	require.True(t, found, "expected at least one virtual host to be present")
+}
+
+// makeRestAPIWithUpstreamRetryAndVhost is makeRestAPIWithUpstreamAndRetry plus an explicit
+// Vhosts.Main override, so a test can put two configs on two DIFFERENT vhosts (the default
+// helper always lands every config on the same vhost - config.RouterConfig's VHosts.Main.Default,
+// "localhost" in testRouterConfig() - which cannot exercise cross-vhost scoping at all).
+func makeRestAPIWithUpstreamRetryAndVhost(uuid, name, ctx, upstreamURL string, retry *api.Retry, vhost string) *models.StoredConfig {
+	cfg := makeRestAPIWithUpstreamAndRetry(uuid, name, ctx, upstreamURL, retry)
+	restAPI := cfg.Configuration.(api.RestAPI)
+	restAPI.Spec.Vhosts = &struct {
+		Main    string  `json:"main" yaml:"main"`
+		Sandbox *string `json:"sandbox,omitempty" yaml:"sandbox,omitempty"`
+	}{Main: vhost}
+	cfg.Configuration = restAPI
+	cfg.SourceConfiguration = restAPI
+	return cfg
+}
+
+// virtualHostsByName flattens every RouteConfiguration resource's VirtualHosts into a
+// name-keyed map, for tests that need to assert on one specific vhost rather than looping
+// over all of them (which is exactly the kind of loose assertion that let the original,
+// globally-scoped IncludeRequestAttemptCount bug slip past both existing tests above - see
+// the code-review finding this helper and the test below were added to address).
+func virtualHostsByName(t *testing.T, resources map[resource.Type][]types.Resource) map[string]*route.VirtualHost {
+	t.Helper()
+	byName := make(map[string]*route.VirtualHost)
+	for _, res := range resources[resource.RouteType] {
+		rc, ok := res.(*route.RouteConfiguration)
+		require.True(t, ok)
+		for _, vh := range rc.VirtualHosts {
+			byName[vh.Name] = vh
+		}
+	}
+	return byName
+}
+
+// TestTranslateConfigs_MultipleVhosts_OnlyTheOneWithRetryGetsRequestAttemptCount is the sharp
+// regression test for the code-review finding: IncludeRequestAttemptCount must be scoped
+// per-vhost, not globally across the whole TranslateConfigs call. Two configs on two entirely
+// different, explicit vhosts (simulating two unrelated tenants) - only ONE has resilience.retry
+// configured. A global (rather than per-vhost) implementation would incorrectly flag BOTH
+// vhosts, since clustersNeedingUpstreamFilter (keyed by cluster name, with no vhost affinity)
+// would be non-empty for the whole call the moment either config needs it.
+func TestTranslateConfigs_MultipleVhosts_OnlyTheOneWithRetryGetsRequestAttemptCount(t *testing.T) {
+	logger := createTestLogger()
+	translator := NewTranslator(logger, testRouterConfig(), nil, testConfig())
+
+	configs := []*models.StoredConfig{
+		makeRestAPIWithUpstreamRetryAndVhost("uuid-vhost-a", "api-vhost-a", "/api-vhost-a",
+			"http://backend-vhost-a:9999", &api.Retry{StatusCodes: []int{503}}, "vhost-a.example.com"),
+		makeRestAPIWithUpstreamRetryAndVhost("uuid-vhost-b", "api-vhost-b", "/api-vhost-b",
+			"http://backend-vhost-b:9999", nil, "vhost-b.example.com"),
+	}
+
+	resources, err := translator.TranslateConfigs(configs, "test-correlation-id")
+	require.NoError(t, err)
+
+	byName := virtualHostsByName(t, resources)
+	require.Contains(t, byName, "vhost-a.example.com")
+	require.Contains(t, byName, "vhost-b.example.com")
+
+	assert.True(t, byName["vhost-a.example.com"].IncludeRequestAttemptCount,
+		"vhost-a has the retry-configured route and must set IncludeRequestAttemptCount")
+	assert.False(t, byName["vhost-b.example.com"].IncludeRequestAttemptCount,
+		"vhost-b has NO retry-configured route of its own and must not be affected by vhost-a's")
+	if wildcard, ok := byName["*"]; ok {
+		assert.False(t, wildcard.IncludeRequestAttemptCount,
+			"the wildcard vhost carries neither tenant's routes and must not be flagged either")
+	}
 }
 
 func TestTranslator_GetVHostDomains(t *testing.T) {

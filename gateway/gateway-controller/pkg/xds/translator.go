@@ -827,6 +827,21 @@ func (t *Translator) TranslateConfigs(
 		// Sort routes by priority (highest priority first) before adding to vhost
 		routes = SortRoutesByPriority(routes)
 
+		// Scoped to THIS vhost's own routes only - clustersNeedingUpstreamFilter (above)
+		// is keyed by cluster name with no vhost affinity at all, so reusing it here
+		// would leak IncludeRequestAttemptCount onto every vhost the moment ANY vhost,
+		// anywhere, has a retry-configured route. Checked directly against
+		// RouteAction.RetryPolicy (the same field collectClustersNeedingUpstreamFilter
+		// already checks) rather than via the cluster map, since a cluster can be
+		// shared/deduped across vhosts but this flag must not be.
+		vhostHasRetryConfiguredRoute := false
+		for _, r := range routes {
+			if r.GetRoute().GetRetryPolicy() != nil {
+				vhostHasRetryConfiguredRoute = true
+				break
+			}
+		}
+
 		// Prepend the gateway health routes ahead of every API route and the
 		// catch-all 404 below. vhostMap always contains at least the "*" wildcard
 		// vhost (pre-seeded above), so /ready and /healthy respond even when zero
@@ -884,11 +899,14 @@ func (t *Translator) TranslateConfigs(
 			// see gateway-runtime/policy-engine/internal/kernel/upstream_extproc.go) has
 			// to tell a native retry attempt apart from the original one, since it has no
 			// other way to observe RouteAction.RetryPolicy at request-processing time.
-			// Gated on the same clustersNeedingUpstreamFilter signal already computed
-			// above (true iff at least one route anywhere has resilience.retry set) -
-			// VirtualHost is the only level this flag exists at (there is no per-route
-			// equivalent), so it can't be scoped tighter than "any route needs it".
-			IncludeRequestAttemptCount: len(clustersNeedingUpstreamFilter) > 0,
+			// Scoped to whether THIS vhost has any retry-configured route
+			// (vhostHasRetryConfiguredRoute, computed above) - VirtualHost is the only
+			// level this flag exists at (there is no per-route equivalent), so it can't
+			// be scoped any tighter than per-vhost, but it must not be scoped any
+			// LOOSER either (e.g. globally across every vhost in this TranslateConfigs
+			// call) or an unrelated tenant's vhost would get x-envoy-attempt-count sent
+			// to its own backend for no reason.
+			IncludeRequestAttemptCount: vhostHasRetryConfiguredRoute,
 			// Strip any client-supplied x-envoy-original-path so it cannot survive to
 			// the collector.ignore_path_prefixes access-log filter (buildIgnorePathsAccessLogFilter):
 			// on a route that performs a path rewrite, Envoy's router unconditionally
