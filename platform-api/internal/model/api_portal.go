@@ -37,7 +37,6 @@ type APIPortal struct {
 	WorkflowStatus string                 `json:"workflowStatus" db:"workflow_status"`
 	AuthType       string                 `json:"authType" db:"auth_type"`
 	Configuration  map[string]interface{} `json:"configuration,omitempty" db:"configuration"`
-	DataVersion    string                 `json:"-" db:"data_version"`
 	CreatedBy      string                 `json:"createdBy,omitempty" db:"created_by"`
 	UpdatedBy      string                 `json:"updatedBy,omitempty" db:"updated_by"`
 	CreatedAt      time.Time              `json:"createdAt" db:"created_at"`

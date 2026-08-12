@@ -410,7 +410,6 @@ CREATE TABLE IF NOT EXISTS api_portals (
     workflow_status   VARCHAR(20)  NOT NULL DEFAULT 'pending',
     auth_type         VARCHAR(20)  NOT NULL,
     configuration     BLOB         NOT NULL,
-    data_version      VARCHAR(20)  NOT NULL DEFAULT '1.0',
     created_by        VARCHAR(200),
     created_at        DATETIME     DEFAULT CURRENT_TIMESTAMP,
     updated_by        VARCHAR(200),
