@@ -3071,10 +3071,10 @@ components:
     Resilience:
       type: object
       description: >
-        Backend/route timeout configuration. Maps to Envoy RouteAction timeouts.
-        Can be set at the API level (applies to all routes) and/or the operation level
-        (applies to that operation's route). When set at both levels, the operation-level
-        value takes precedence. When unset, the gateway's global route timeout defaults apply.
+        Backend/route timeout and retry configuration. Maps to Envoy RouteAction
+        timeouts and RetryPolicy. Can be set at the API level (applies to all
+        routes) and/or the operation level (applies to that operation's route).
+        When set at both levels, the operation-level value takes precedence.
       properties:
         timeout:
           type: string
@@ -3086,6 +3086,31 @@ components:
           description: Per-route stream idle timeout (overrides the listener stream idle timeout for this route). "0s" disables the timeout.
           pattern: '^\d+(\.\d+)?(ms|s|m|h)$'
           example: 0s
+        retry:
+          type: object
+          description: >
+            Native Envoy retry on the listed response status codes. When set,
+            any policy on this route implementing the upstream-attempt refresh
+            mechanism (see UpstreamAttemptPolicy in the policy SDK) gets a
+            chance to attach fresh per-attempt state (e.g. a refreshed
+            credential) before each retried attempt goes out.
+          required:
+            - statusCodes
+          properties:
+            statusCodes:
+              type: array
+              items:
+                type: integer
+                minimum: 400
+                maximum: 599
+              minItems: 1
+              description: Response status codes that trigger a retry.
+              example: [401]
+            numRetries:
+              type: integer
+              minimum: 1
+              default: 1
+              description: Maximum number of retry attempts.
 
     Upstream:
       type: object
