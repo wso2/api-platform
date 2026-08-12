@@ -26,7 +26,7 @@ services:
     image: ghcr.io/wso2/api-platform/gateway-controller:1.2.0-SNAPSHOT
     mem_limit: 60m
     mem_reservation: 60m
-    cpus: 0.25
+    cpus: 0.1
     command: ["-config", "/etc/gateway-controller/config.toml"]
     ports:
       - "9090:9090"   # REST API
