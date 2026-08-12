@@ -3087,30 +3087,33 @@ components:
           pattern: '^\d+(\.\d+)?(ms|s|m|h)$'
           example: 0s
         retry:
-          type: object
-          description: >
-            Native Envoy retry on the listed response status codes. When set,
-            any policy on this route implementing the upstream-attempt refresh
-            mechanism (see UpstreamAttemptPolicy in the policy SDK) gets a
-            chance to attach fresh per-attempt state (e.g. a refreshed
-            credential) before each retried attempt goes out.
-          required:
-            - statusCodes
-          properties:
-            statusCodes:
-              type: array
-              items:
-                type: integer
-                minimum: 400
-                maximum: 599
-              minItems: 1
-              description: Response status codes that trigger a retry.
-              example: [401]
-            numRetries:
-              type: integer
-              minimum: 1
-              default: 1
-              description: Maximum number of retry attempts.
+          $ref: "#/components/schemas/Retry"
+
+    Retry:
+      type: object
+      description: >
+        Native Envoy retry on the listed response status codes. When set,
+        any policy on this route implementing the upstream-attempt refresh
+        mechanism (see UpstreamAttemptPolicy in the policy SDK) gets a
+        chance to attach fresh per-attempt state (e.g. a refreshed
+        credential) before each retried attempt goes out.
+      required:
+        - statusCodes
+      properties:
+        statusCodes:
+          type: array
+          items:
+            type: integer
+            minimum: 400
+            maximum: 599
+          minItems: 1
+          description: Response status codes that trigger a retry.
+          example: [401]
+        numRetries:
+          type: integer
+          minimum: 1
+          default: 1
+          description: Maximum number of retry attempts.
 
     Upstream:
       type: object
