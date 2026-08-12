@@ -2161,6 +2161,69 @@ func TestTranslateConfigs_RDCPath_ClusterGetsUpstreamFilterWhenAnyRouteHasRetryC
 	assert.True(t, ok, "RDC-path cluster must also get the upstream filter attached — both translation paths must be covered")
 }
 
+// TestTranslateConfigs_VirtualHostIncludesRequestAttemptCountWhenAnyRouteHasRetryConfigured proves
+// the VirtualHost carries IncludeRequestAttemptCount whenever at least one route anywhere has
+// resilience.retry set. Without this, Envoy never emits x-envoy-attempt-count on the upstream
+// request, so UpstreamExternalProcessorServer.processRequestHeaders (policy-engine) can never tell
+// a native retry attempt apart from the original one — silently defeating the whole
+// upstream-attempt refresh mechanism (oauth2-generator's OnUpstreamAttemptRequestHeaders gates
+// entirely on AttemptCount > 1) even though the route's own RetryPolicy and the cluster's upstream
+// ext_proc filter are both present and correct. Confirmed live via e2e (Task 10): without this
+// flag, a native retry silently reused the same already-rejected cached token.
+func TestTranslateConfigs_VirtualHostIncludesRequestAttemptCountWhenAnyRouteHasRetryConfigured(t *testing.T) {
+	logger := createTestLogger()
+	translator := NewTranslator(logger, testRouterConfig(), nil, testConfig())
+
+	const sharedUpstream = "http://shared-backend-attempt-count:9999"
+	configs := []*models.StoredConfig{
+		makeRestAPIWithUpstreamAndRetry("uuid-attempt-count-1", "api-one", "/api-one", sharedUpstream, nil),
+		makeRestAPIWithUpstreamAndRetry("uuid-attempt-count-2", "api-two", "/api-two", sharedUpstream, &api.Retry{StatusCodes: []int{503}}),
+	}
+
+	resources, err := translator.TranslateConfigs(configs, "test-correlation-id")
+	require.NoError(t, err)
+
+	found := false
+	for _, res := range resources[resource.RouteType] {
+		rc, ok := res.(*route.RouteConfiguration)
+		require.True(t, ok)
+		for _, vh := range rc.VirtualHosts {
+			found = true
+			assert.True(t, vh.IncludeRequestAttemptCount,
+				"virtual host %q must set IncludeRequestAttemptCount when any route has resilience.retry configured", vh.Name)
+		}
+	}
+	require.True(t, found, "expected at least one virtual host to be present")
+}
+
+// TestTranslateConfigs_VirtualHostOmitsRequestAttemptCountWhenNoRetryConfiguredAnywhere is the
+// negative counterpart: same shared-cluster shape, but NEITHER config has resilience.retry set.
+func TestTranslateConfigs_VirtualHostOmitsRequestAttemptCountWhenNoRetryConfiguredAnywhere(t *testing.T) {
+	logger := createTestLogger()
+	translator := NewTranslator(logger, testRouterConfig(), nil, testConfig())
+
+	const sharedUpstream = "http://shared-backend-no-attempt-count:9999"
+	configs := []*models.StoredConfig{
+		makeRestAPIWithUpstreamAndRetry("uuid-no-attempt-count-1", "api-three", "/api-three", sharedUpstream, nil),
+		makeRestAPIWithUpstreamAndRetry("uuid-no-attempt-count-2", "api-four", "/api-four", sharedUpstream, nil),
+	}
+
+	resources, err := translator.TranslateConfigs(configs, "test-correlation-id")
+	require.NoError(t, err)
+
+	found := false
+	for _, res := range resources[resource.RouteType] {
+		rc, ok := res.(*route.RouteConfiguration)
+		require.True(t, ok)
+		for _, vh := range rc.VirtualHosts {
+			found = true
+			assert.False(t, vh.IncludeRequestAttemptCount,
+				"virtual host %q must not set IncludeRequestAttemptCount when nothing needs it", vh.Name)
+		}
+	}
+	require.True(t, found, "expected at least one virtual host to be present")
+}
+
 func TestTranslator_GetVHostDomains(t *testing.T) {
 	logger := createTestLogger()
 

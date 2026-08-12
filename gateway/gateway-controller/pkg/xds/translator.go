@@ -878,6 +878,17 @@ func (t *Translator) TranslateConfigs(
 			Name:    vhost,
 			Domains: t.getVHostDomains(vhost),
 			Routes:  routes,
+			// IncludeRequestAttemptCount makes Envoy set x-envoy-attempt-count on the
+			// upstream request, starting at 1 and incrementing per retry - this is the
+			// ONLY signal the upstream ext_proc filter (UpstreamExternalProcessorServer,
+			// see gateway-runtime/policy-engine/internal/kernel/upstream_extproc.go) has
+			// to tell a native retry attempt apart from the original one, since it has no
+			// other way to observe RouteAction.RetryPolicy at request-processing time.
+			// Gated on the same clustersNeedingUpstreamFilter signal already computed
+			// above (true iff at least one route anywhere has resilience.retry set) -
+			// VirtualHost is the only level this flag exists at (there is no per-route
+			// equivalent), so it can't be scoped tighter than "any route needs it".
+			IncludeRequestAttemptCount: len(clustersNeedingUpstreamFilter) > 0,
 			// Strip any client-supplied x-envoy-original-path so it cannot survive to
 			// the collector.ignore_path_prefixes access-log filter (buildIgnorePathsAccessLogFilter):
 			// on a route that performs a path rewrite, Envoy's router unconditionally
