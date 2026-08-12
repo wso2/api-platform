@@ -301,6 +301,42 @@ func TestInstallCoreRoutes_UnknownPatternAbortsStartup(t *testing.T) {
 	}
 }
 
+// One unmatched pattern per error would mean fixing a typo, restarting, and
+// finding the next one — so the error names every unmatched override at once.
+func TestInstallCoreRoutes_UnknownPatternErrorNamesEveryOverride(t *testing.T) {
+	patterns := []string{
+		"GET /api/v1/gateways/{gatewayId}",
+		"GET /api/v0.9/gateways/{id}",
+		"POST /api/v0.9/gateways",
+	}
+	cloud := &overridePlugin{
+		fakePlugin: &fakePlugin{name: "cloud", spec: specWithScopes},
+		overrides: []pdk.RouteOverride{
+			{Pattern: patterns[0], Wrap: passthrough},
+			{Pattern: patterns[1], Wrap: passthrough},
+		},
+	}
+	audit := &overridePlugin{
+		fakePlugin: &fakePlugin{name: "audit", spec: specWithScopes},
+		overrides:  []pdk.RouteOverride{{Pattern: patterns[2], Wrap: passthrough}},
+	}
+
+	_, err := startup(t, coreRecorder(map[string]int{}), cloud, audit)
+	if err == nil {
+		t.Fatal("expected startup to abort, got nil error")
+	}
+	for _, pattern := range patterns {
+		if !strings.Contains(err.Error(), pattern) {
+			t.Fatalf("error should name every unmatched pattern, %q missing from: %v", pattern, err)
+		}
+	}
+	for _, plugin := range []string{"cloud", "audit"} {
+		if !strings.Contains(err.Error(), plugin) {
+			t.Fatalf("error should name every claiming plugin, %q missing from: %v", plugin, err)
+		}
+	}
+}
+
 // Two decorators on one route would have to be ordered by something no plugin
 // author can see, so this is a startup error naming both claimants.
 func TestInitPlugins_TwoPluginsClaimingOnePatternAbortStartup(t *testing.T) {
