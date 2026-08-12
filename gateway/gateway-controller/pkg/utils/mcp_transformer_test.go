@@ -166,14 +166,17 @@ func TestMCPTransformer_Transform_WithPoliciesAndUpstreamAuth(t *testing.T) {
 	url := "http://backend:8080"
 	authHeader := "Authorization"
 	authValue := "Bearer token-xyz"
-	authType := api.MCPProxyConfigDataUpstreamAuthType("bearer")
+	authType := api.MCPProxyConfigDataUpstreamAuthTypeApiKey
 
 	upstream := api.MCPProxyConfigData_Upstream{
 		Url: &url,
 		Auth: &struct {
-			Header *string                                `json:"header,omitempty" yaml:"header,omitempty"`
-			Type   api.MCPProxyConfigDataUpstreamAuthType `json:"type" yaml:"type"`
-			Value  *string                                `json:"value,omitempty" yaml:"value,omitempty"`
+			Header        *string                                `json:"header,omitempty" yaml:"header,omitempty"`
+			PolicyName    *string                                `json:"policyName,omitempty" yaml:"policyName,omitempty"`
+			PolicyParams  *map[string]interface{}                `json:"policyParams,omitempty" yaml:"policyParams,omitempty"`
+			PolicyVersion *string                                `json:"policyVersion,omitempty" yaml:"policyVersion,omitempty"`
+			Type          api.MCPProxyConfigDataUpstreamAuthType `json:"type" yaml:"type"`
+			Value         *string                                `json:"value,omitempty" yaml:"value,omitempty"`
 		}{
 			Header: &authHeader,
 			Type:   authType,
@@ -226,6 +229,151 @@ func TestMCPTransformer_Transform_WithPoliciesAndUpstreamAuth(t *testing.T) {
 	if resPolicies[1].Name != constants.SET_HEADERS_POLICY_NAME {
 		t.Errorf("Expected last policy to be %s, got %s", constants.SET_HEADERS_POLICY_NAME, resPolicies[1].Name)
 	}
+}
+
+func TestMCPTransformer_Transform_WithOAuth2UpstreamAuth(t *testing.T) {
+	name := "petstore"
+	version := "1.0.0"
+	context := "/petstore"
+	url := "http://backend:8080"
+	authType := api.MCPProxyConfigDataUpstreamAuthTypeOauth2
+	tokenEndpoint := "https://idp.example.com/oauth2/token"
+	clientID := "client-id"
+	clientSecret := "client-secret"
+
+	upstream := api.MCPProxyConfigData_Upstream{
+		Url: &url,
+		Auth: &struct {
+			Header        *string                                `json:"header,omitempty" yaml:"header,omitempty"`
+			PolicyName    *string                                `json:"policyName,omitempty" yaml:"policyName,omitempty"`
+			PolicyParams  *map[string]interface{}                `json:"policyParams,omitempty" yaml:"policyParams,omitempty"`
+			PolicyVersion *string                                `json:"policyVersion,omitempty" yaml:"policyVersion,omitempty"`
+			Type          api.MCPProxyConfigDataUpstreamAuthType `json:"type" yaml:"type"`
+			Value         *string                                `json:"value,omitempty" yaml:"value,omitempty"`
+		}{
+			Type: authType,
+			PolicyParams: &map[string]interface{}{
+				"tokenEndpoint": tokenEndpoint,
+				"clientId":      clientID,
+				"clientSecret":  clientSecret,
+			},
+		},
+	}
+
+	latest := LATEST_SUPPORTED_MCP_SPEC_VERSION
+	in := &api.MCPProxyConfiguration{
+		Spec: api.MCPProxyConfigData{
+			DisplayName: name,
+			Version:     version,
+			Context:     &context,
+			Upstream:    upstream,
+			SpecVersion: &latest,
+		},
+	}
+
+	var out api.RestAPI
+	tr := &MCPTransformer{}
+	res, err := tr.Transform(in, &out)
+	require.NoError(t, err)
+
+	apiData := res.Spec
+	require.NotNil(t, apiData.Policies)
+	resPolicies := *apiData.Policies
+	require.Len(t, resPolicies, 1)
+
+	pol := resPolicies[0]
+	assert.Equal(t, constants.UPSTREAM_AUTH_OAUTH2_POLICY_NAME, pol.Name)
+	require.NotNil(t, pol.Params)
+	params := *pol.Params
+	// policyParams is forwarded verbatim - no CRD-level defaulting of
+	// grantType anymore, that's the oauth2-generator policy's own
+	// responsibility now (see its GetPolicy).
+	assert.Equal(t, tokenEndpoint, params["tokenEndpoint"])
+	assert.Equal(t, clientID, params["clientId"])
+	assert.Equal(t, clientSecret, params["clientSecret"])
+}
+
+// TestMCPTransformer_Transform_WithOAuth2UpstreamAuth_MissingPolicyParams locks
+// in the only CRD-level requirement left for type: oauth2 - policyParams must
+// be present.
+func TestMCPTransformer_Transform_WithOAuth2UpstreamAuth_MissingPolicyParams(t *testing.T) {
+	context := "/petstore"
+	url := "http://backend:8080"
+	authType := api.MCPProxyConfigDataUpstreamAuthTypeOauth2
+
+	upstream := api.MCPProxyConfigData_Upstream{
+		Url: &url,
+		Auth: &struct {
+			Header        *string                                `json:"header,omitempty" yaml:"header,omitempty"`
+			PolicyName    *string                                `json:"policyName,omitempty" yaml:"policyName,omitempty"`
+			PolicyParams  *map[string]interface{}                `json:"policyParams,omitempty" yaml:"policyParams,omitempty"`
+			PolicyVersion *string                                `json:"policyVersion,omitempty" yaml:"policyVersion,omitempty"`
+			Type          api.MCPProxyConfigDataUpstreamAuthType `json:"type" yaml:"type"`
+			Value         *string                                `json:"value,omitempty" yaml:"value,omitempty"`
+		}{
+			Type: authType,
+			// PolicyParams deliberately omitted.
+		},
+	}
+
+	latest := LATEST_SUPPORTED_MCP_SPEC_VERSION
+	in := &api.MCPProxyConfiguration{
+		Spec: api.MCPProxyConfigData{
+			DisplayName: "petstore",
+			Version:     "1.0.0",
+			Context:     &context,
+			Upstream:    upstream,
+			SpecVersion: &latest,
+		},
+	}
+
+	var out api.RestAPI
+	tr := &MCPTransformer{}
+	_, err := tr.Transform(in, &out)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "policyParams")
+}
+
+// TestMCPTransformer_Transform_WithNoneUpstreamAuth locks in that type: none
+// is a no-op at transform time - no auth policy is attached.
+func TestMCPTransformer_Transform_WithNoneUpstreamAuth(t *testing.T) {
+	context := "/petstore"
+	url := "http://backend:8080"
+	authType := api.MCPProxyConfigDataUpstreamAuthTypeNone
+
+	upstream := api.MCPProxyConfigData_Upstream{
+		Url: &url,
+		Auth: &struct {
+			Header        *string                                `json:"header,omitempty" yaml:"header,omitempty"`
+			PolicyName    *string                                `json:"policyName,omitempty" yaml:"policyName,omitempty"`
+			PolicyParams  *map[string]interface{}                `json:"policyParams,omitempty" yaml:"policyParams,omitempty"`
+			PolicyVersion *string                                `json:"policyVersion,omitempty" yaml:"policyVersion,omitempty"`
+			Type          api.MCPProxyConfigDataUpstreamAuthType `json:"type" yaml:"type"`
+			Value         *string                                `json:"value,omitempty" yaml:"value,omitempty"`
+		}{
+			Type: authType,
+		},
+	}
+
+	latest := LATEST_SUPPORTED_MCP_SPEC_VERSION
+	in := &api.MCPProxyConfiguration{
+		Spec: api.MCPProxyConfigData{
+			DisplayName: "petstore",
+			Version:     "1.0.0",
+			Context:     &context,
+			Upstream:    upstream,
+			SpecVersion: &latest,
+		},
+	}
+
+	var out api.RestAPI
+	tr := &MCPTransformer{}
+	res, err := tr.Transform(in, &out)
+	require.NoError(t, err)
+
+	apiData := res.Spec
+	require.NotNil(t, apiData.Policies)
+	assert.Empty(t, *apiData.Policies)
 }
 
 func TestNewMCPTransformer(t *testing.T) {

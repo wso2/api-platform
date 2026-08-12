@@ -41,9 +41,12 @@ func storedProvider() api.LLMProviderConfiguration {
 	var cfg api.LLMProviderConfiguration
 	cfg.Spec.Upstream.Url = sp("https://api.openai.com/v1")
 	cfg.Spec.Upstream.Auth = &struct {
-		Header *string                                   `json:"header,omitempty" yaml:"header,omitempty"`
-		Type   api.LLMProviderConfigDataUpstreamAuthType `json:"type" yaml:"type"`
-		Value  *string                                   `json:"value,omitempty" yaml:"value,omitempty"`
+		Header        *string                                   `json:"header,omitempty" yaml:"header,omitempty"`
+		PolicyName    *string                                   `json:"policyName,omitempty" yaml:"policyName,omitempty"`
+		PolicyParams  *map[string]interface{}                   `json:"policyParams,omitempty" yaml:"policyParams,omitempty"`
+		PolicyVersion *string                                   `json:"policyVersion,omitempty" yaml:"policyVersion,omitempty"`
+		Type          api.LLMProviderConfigDataUpstreamAuthType `json:"type" yaml:"type"`
+		Value         *string                                   `json:"value,omitempty" yaml:"value,omitempty"`
 	}{Header: sp("Authorization"), Type: "api-key", Value: sp(storedCred)}
 	return cfg
 }
@@ -278,9 +281,12 @@ func TestInheritMCPProxyCredential(t *testing.T) {
 	stored := func() api.MCPProxyConfiguration {
 		var cfg api.MCPProxyConfiguration
 		cfg.Spec.Upstream.Auth = &struct {
-			Header *string                                `json:"header,omitempty" yaml:"header,omitempty"`
-			Type   api.MCPProxyConfigDataUpstreamAuthType `json:"type" yaml:"type"`
-			Value  *string                                `json:"value,omitempty" yaml:"value,omitempty"`
+			Header        *string                                `json:"header,omitempty" yaml:"header,omitempty"`
+			PolicyName    *string                                `json:"policyName,omitempty" yaml:"policyName,omitempty"`
+			PolicyParams  *map[string]interface{}                `json:"policyParams,omitempty" yaml:"policyParams,omitempty"`
+			PolicyVersion *string                                `json:"policyVersion,omitempty" yaml:"policyVersion,omitempty"`
+			Type          api.MCPProxyConfigDataUpstreamAuthType `json:"type" yaml:"type"`
+			Value         *string                                `json:"value,omitempty" yaml:"value,omitempty"`
 		}{Header: sp("Authorization"), Type: "api-key", Value: sp(storedCred)}
 		return cfg
 	}

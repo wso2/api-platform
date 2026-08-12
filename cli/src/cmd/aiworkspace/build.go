@@ -570,7 +570,14 @@ func buildLLMProviderPayload(name string, metadata aiWorkspaceMetadata, runtime 
 	if up := runtime.Spec.Upstream; up != nil {
 		target := llmUpstreamTarget{URL: strings.TrimSpace(up.URL)}
 		if up.Auth != nil {
-			target.Auth = &llmUpstreamAuth{Type: up.Auth.Type, Header: up.Auth.Header, Value: up.Auth.Value}
+			target.Auth = &llmUpstreamAuth{
+				Type:          up.Auth.Type,
+				Header:        up.Auth.Header,
+				Value:         up.Auth.Value,
+				PolicyName:    up.Auth.PolicyName,
+				PolicyVersion: up.Auth.PolicyVersion,
+				PolicyParams:  up.Auth.PolicyParams,
+			}
 		}
 		payload.Upstream = &llmUpstream{Main: target}
 	}
@@ -643,7 +650,14 @@ func buildMCPProxyPayload(name string, metadata aiWorkspaceMetadata, runtime aiW
 	if up := runtime.Spec.Upstream; up != nil {
 		target := llmUpstreamTarget{URL: strings.TrimSpace(up.URL)}
 		if up.Auth != nil {
-			target.Auth = &llmUpstreamAuth{Type: up.Auth.Type, Header: up.Auth.Header, Value: up.Auth.Value}
+			target.Auth = &llmUpstreamAuth{
+				Type:          up.Auth.Type,
+				Header:        up.Auth.Header,
+				Value:         up.Auth.Value,
+				PolicyName:    up.Auth.PolicyName,
+				PolicyVersion: up.Auth.PolicyVersion,
+				PolicyParams:  up.Auth.PolicyParams,
+			}
 		}
 		payload.Upstream = &llmUpstream{Main: target}
 	}
@@ -991,11 +1005,15 @@ func buildLLMProxyPayload(proxyName string, metadata aiWorkspaceMetadata, runtim
 	}
 
 	// The proxy references its provider by id; the provider owns the credential
-	// value, so only the auth type/header are carried here (never the secret).
+	// value, so only non-secret fields are carried here - type/header/policyName/
+	// policyVersion, never value or policyParams (which for oauth2 holds the
+	// client secret/token endpoint credentials).
 	if auth := runtime.Spec.Provider.Auth; auth != nil {
 		payload.Provider.Auth = &llmUpstreamAuth{
-			Type:   auth.Type,
-			Header: auth.Header,
+			Type:          auth.Type,
+			Header:        auth.Header,
+			PolicyName:    auth.PolicyName,
+			PolicyVersion: auth.PolicyVersion,
 		}
 	}
 
@@ -1105,9 +1123,12 @@ type runtimeProvider struct {
 }
 
 type runtimeProviderAuth struct {
-	Type   string `yaml:"type"`
-	Header string `yaml:"header"`
-	Value  string `yaml:"value"`
+	Type          string                 `yaml:"type"`
+	Header        string                 `yaml:"header"`
+	Value         string                 `yaml:"value"`
+	PolicyName    string                 `yaml:"policyName"`
+	PolicyVersion string                 `yaml:"policyVersion"`
+	PolicyParams  map[string]interface{} `yaml:"policyParams"`
 }
 
 type runtimeUpstream struct {
@@ -1172,9 +1193,12 @@ type llmProxyProvider struct {
 }
 
 type llmUpstreamAuth struct {
-	Type   string `json:"type,omitempty"`
-	Header string `json:"header,omitempty"`
-	Value  string `json:"value,omitempty"`
+	Type          string                 `json:"type,omitempty"`
+	Header        string                 `json:"header,omitempty"`
+	Value         string                 `json:"value,omitempty"`
+	PolicyName    string                 `json:"policyName,omitempty"`
+	PolicyVersion string                 `json:"policyVersion,omitempty"`
+	PolicyParams  map[string]interface{} `json:"policyParams,omitempty"`
 }
 
 type llmPolicy struct {

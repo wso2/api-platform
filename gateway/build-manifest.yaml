@@ -1,8 +1,8 @@
 version: v1
 policies:
     - name: advanced-ratelimit
-      version: v1.1.2
-      gomodule: github.com/wso2/gateway-controllers/policies/advanced-ratelimit@v1
+      version: v1.1.0
+      filePath: ./dev-policies/advanced-ratelimit
     - name: analytics-header-filter
       version: v1.0.1
       gomodule: github.com/wso2/gateway-controllers/policies/analytics-header-filter@v1
@@ -13,7 +13,7 @@ policies:
       version: v0.10.0
       gomodule: github.com/wso2/gateway-controllers/policies/aws-authentication@v0
     - name: aws-bedrock-guardrail
-      version: v1.0.2
+      version: v1.1.0
       gomodule: github.com/wso2/gateway-controllers/policies/aws-bedrock-guardrail@v1
     - name: azure-content-safety-content-moderation
       version: v1.0.2
@@ -90,6 +90,9 @@ policies:
     - name: nvidia-nemoguard-content-safety
       version: v0.9.0
       pipPackage: git+https://github.com/wso2/gateway-controllers.git@policies/nvidia-nemoguard-content-safety/v0.9.0#subdirectory=policies/nvidia-nemoguard-content-safety
+    - name: oauth2-generator
+      version: v0.1.0
+      filePath: ./dev-policies/oauth2-generator
     - name: opaque-token-auth
       version: v1.0.1
       gomodule: github.com/wso2/gateway-controllers/policies/opaque-token-auth@v1

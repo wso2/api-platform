@@ -8,6 +8,38 @@ application_id = '{{ env "APIP_GW_ANALYTICS_PUBLISHERS_MOESIF_APPLICATION_ID" "<
 [router]
 gateway_host = "*"
 
+# Gateway-wide shared Redis client (sdk/core/utils/redisclient.Shared()) —
+# deliberately a top-level section, not nested under [policy_configurations],
+# since it's shared infrastructure any policy can fall back to, not a
+# per-policy setting. Backs oauth2-generator's cacheStrategy: redis when a
+# provider doesn't set its own systemParameters.redis.host override (see
+# dev-policies/oauth2-generator/policy-definition.yaml and e2e/TESTING.md
+# Part C / E.10 / E.14 / E.29 / E.30). Only takes effect when the stack is
+# started with `docker compose --profile redis up -d ... redis`
+# (docker-compose.yaml) — harmless if that service isn't running and no
+# policy on this gateway ever resolves a Redis client.
+[redis]
+host = "redis"
+
+# advanced-ratelimit's systemParameters — operator/gateway-wide, resolved via
+# ${config.policy_configurations.ratelimit_v1.*} in
+# dev-policies/advanced-ratelimit/policy-definition.yaml, uniform across
+# every advanced-ratelimit instance (not something a policy attachment's
+# params can override per-API). backend defaults to "memory" (no Redis
+# involved at all) so this section is a no-op until explicitly opted into.
+# redis.host has no default here either — unset means "use the gateway-wide
+# [redis] section above", never a silent policy-level connection. Overridden
+# per-phase by dev-policies/advanced-ratelimit/e2e/run-e2e.sh via
+# gateway/api-platform.env to prove override precedence against the
+# redis-override-test service (docker-compose.yaml).
+[policy_configurations.ratelimit_v1]
+backend = '{{ env "APIP_GW_RATELIMIT_V1_BACKEND" "memory" }}'
+
+[policy_configurations.ratelimit_v1.redis]
+host = '{{ env "APIP_GW_RATELIMIT_V1_REDIS_HOST" "" }}'
+port = '{{ env "APIP_GW_RATELIMIT_V1_REDIS_PORT" "6379" }}'
+failure_mode = '{{ env "APIP_GW_RATELIMIT_V1_REDIS_FAILURE_MODE" "open" }}'
+
 [router.access_logs]
 enabled = true
 

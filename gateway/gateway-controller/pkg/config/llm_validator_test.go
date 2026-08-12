@@ -587,9 +587,12 @@ func TestValidateLLMProvider_Valid(t *testing.T) {
 					Upstream: api.LLMProviderConfigData_Upstream{
 						Url: stringPtr("https://api.openai.com"),
 						Auth: &struct {
-							Header *string                                   `json:"header,omitempty" yaml:"header,omitempty"`
-							Type   api.LLMProviderConfigDataUpstreamAuthType `json:"type" yaml:"type"`
-							Value  *string                                   `json:"value,omitempty" yaml:"value,omitempty"`
+							Header        *string                                   `json:"header,omitempty" yaml:"header,omitempty"`
+							PolicyName    *string                                   `json:"policyName,omitempty" yaml:"policyName,omitempty"`
+							PolicyParams  *map[string]interface{}                   `json:"policyParams,omitempty" yaml:"policyParams,omitempty"`
+							PolicyVersion *string                                   `json:"policyVersion,omitempty" yaml:"policyVersion,omitempty"`
+							Type          api.LLMProviderConfigDataUpstreamAuthType `json:"type" yaml:"type"`
+							Value         *string                                   `json:"value,omitempty" yaml:"value,omitempty"`
 						}{
 							Type:   api.LLMProviderConfigDataUpstreamAuthTypeApiKey,
 							Header: stringPtr("Authorization"),
@@ -1253,9 +1256,12 @@ func TestValidateLLMProvider_UpstreamAuth(t *testing.T) {
 	tests := []struct {
 		name string
 		auth *struct {
-			Header *string                                   `json:"header,omitempty" yaml:"header,omitempty"`
-			Type   api.LLMProviderConfigDataUpstreamAuthType `json:"type" yaml:"type"`
-			Value  *string                                   `json:"value,omitempty" yaml:"value,omitempty"`
+			Header        *string                                   `json:"header,omitempty" yaml:"header,omitempty"`
+			PolicyName    *string                                   `json:"policyName,omitempty" yaml:"policyName,omitempty"`
+			PolicyParams  *map[string]interface{}                   `json:"policyParams,omitempty" yaml:"policyParams,omitempty"`
+			PolicyVersion *string                                   `json:"policyVersion,omitempty" yaml:"policyVersion,omitempty"`
+			Type          api.LLMProviderConfigDataUpstreamAuthType `json:"type" yaml:"type"`
+			Value         *string                                   `json:"value,omitempty" yaml:"value,omitempty"`
 		}
 		expectError bool
 		errorField  string
@@ -1264,9 +1270,12 @@ func TestValidateLLMProvider_UpstreamAuth(t *testing.T) {
 		{
 			name: "missing auth type",
 			auth: &struct {
-				Header *string                                   `json:"header,omitempty" yaml:"header,omitempty"`
-				Type   api.LLMProviderConfigDataUpstreamAuthType `json:"type" yaml:"type"`
-				Value  *string                                   `json:"value,omitempty" yaml:"value,omitempty"`
+				Header        *string                                   `json:"header,omitempty" yaml:"header,omitempty"`
+				PolicyName    *string                                   `json:"policyName,omitempty" yaml:"policyName,omitempty"`
+				PolicyParams  *map[string]interface{}                   `json:"policyParams,omitempty" yaml:"policyParams,omitempty"`
+				PolicyVersion *string                                   `json:"policyVersion,omitempty" yaml:"policyVersion,omitempty"`
+				Type          api.LLMProviderConfigDataUpstreamAuthType `json:"type" yaml:"type"`
+				Value         *string                                   `json:"value,omitempty" yaml:"value,omitempty"`
 			}{
 				Type:   "",
 				Header: stringPtr("Authorization"),
@@ -1279,9 +1288,12 @@ func TestValidateLLMProvider_UpstreamAuth(t *testing.T) {
 		{
 			name: "invalid auth type",
 			auth: &struct {
-				Header *string                                   `json:"header,omitempty" yaml:"header,omitempty"`
-				Type   api.LLMProviderConfigDataUpstreamAuthType `json:"type" yaml:"type"`
-				Value  *string                                   `json:"value,omitempty" yaml:"value,omitempty"`
+				Header        *string                                   `json:"header,omitempty" yaml:"header,omitempty"`
+				PolicyName    *string                                   `json:"policyName,omitempty" yaml:"policyName,omitempty"`
+				PolicyParams  *map[string]interface{}                   `json:"policyParams,omitempty" yaml:"policyParams,omitempty"`
+				PolicyVersion *string                                   `json:"policyVersion,omitempty" yaml:"policyVersion,omitempty"`
+				Type          api.LLMProviderConfigDataUpstreamAuthType `json:"type" yaml:"type"`
+				Value         *string                                   `json:"value,omitempty" yaml:"value,omitempty"`
 			}{
 				Type:   "bearer",
 				Header: stringPtr("Authorization"),
@@ -1294,9 +1306,12 @@ func TestValidateLLMProvider_UpstreamAuth(t *testing.T) {
 		{
 			name: "api-key without header",
 			auth: &struct {
-				Header *string                                   `json:"header,omitempty" yaml:"header,omitempty"`
-				Type   api.LLMProviderConfigDataUpstreamAuthType `json:"type" yaml:"type"`
-				Value  *string                                   `json:"value,omitempty" yaml:"value,omitempty"`
+				Header        *string                                   `json:"header,omitempty" yaml:"header,omitempty"`
+				PolicyName    *string                                   `json:"policyName,omitempty" yaml:"policyName,omitempty"`
+				PolicyParams  *map[string]interface{}                   `json:"policyParams,omitempty" yaml:"policyParams,omitempty"`
+				PolicyVersion *string                                   `json:"policyVersion,omitempty" yaml:"policyVersion,omitempty"`
+				Type          api.LLMProviderConfigDataUpstreamAuthType `json:"type" yaml:"type"`
+				Value         *string                                   `json:"value,omitempty" yaml:"value,omitempty"`
 			}{
 				Type:  api.LLMProviderConfigDataUpstreamAuthTypeApiKey,
 				Value: stringPtr("sk-test"),
@@ -1308,9 +1323,12 @@ func TestValidateLLMProvider_UpstreamAuth(t *testing.T) {
 		{
 			name: "api-key with empty header",
 			auth: &struct {
-				Header *string                                   `json:"header,omitempty" yaml:"header,omitempty"`
-				Type   api.LLMProviderConfigDataUpstreamAuthType `json:"type" yaml:"type"`
-				Value  *string                                   `json:"value,omitempty" yaml:"value,omitempty"`
+				Header        *string                                   `json:"header,omitempty" yaml:"header,omitempty"`
+				PolicyName    *string                                   `json:"policyName,omitempty" yaml:"policyName,omitempty"`
+				PolicyParams  *map[string]interface{}                   `json:"policyParams,omitempty" yaml:"policyParams,omitempty"`
+				PolicyVersion *string                                   `json:"policyVersion,omitempty" yaml:"policyVersion,omitempty"`
+				Type          api.LLMProviderConfigDataUpstreamAuthType `json:"type" yaml:"type"`
+				Value         *string                                   `json:"value,omitempty" yaml:"value,omitempty"`
 			}{
 				Type:   api.LLMProviderConfigDataUpstreamAuthTypeApiKey,
 				Header: stringPtr(""),
@@ -1323,9 +1341,12 @@ func TestValidateLLMProvider_UpstreamAuth(t *testing.T) {
 		{
 			name: "api-key without value",
 			auth: &struct {
-				Header *string                                   `json:"header,omitempty" yaml:"header,omitempty"`
-				Type   api.LLMProviderConfigDataUpstreamAuthType `json:"type" yaml:"type"`
-				Value  *string                                   `json:"value,omitempty" yaml:"value,omitempty"`
+				Header        *string                                   `json:"header,omitempty" yaml:"header,omitempty"`
+				PolicyName    *string                                   `json:"policyName,omitempty" yaml:"policyName,omitempty"`
+				PolicyParams  *map[string]interface{}                   `json:"policyParams,omitempty" yaml:"policyParams,omitempty"`
+				PolicyVersion *string                                   `json:"policyVersion,omitempty" yaml:"policyVersion,omitempty"`
+				Type          api.LLMProviderConfigDataUpstreamAuthType `json:"type" yaml:"type"`
+				Value         *string                                   `json:"value,omitempty" yaml:"value,omitempty"`
 			}{
 				Type:   api.LLMProviderConfigDataUpstreamAuthTypeApiKey,
 				Header: stringPtr("Authorization"),
@@ -1337,9 +1358,12 @@ func TestValidateLLMProvider_UpstreamAuth(t *testing.T) {
 		{
 			name: "api-key with empty value",
 			auth: &struct {
-				Header *string                                   `json:"header,omitempty" yaml:"header,omitempty"`
-				Type   api.LLMProviderConfigDataUpstreamAuthType `json:"type" yaml:"type"`
-				Value  *string                                   `json:"value,omitempty" yaml:"value,omitempty"`
+				Header        *string                                   `json:"header,omitempty" yaml:"header,omitempty"`
+				PolicyName    *string                                   `json:"policyName,omitempty" yaml:"policyName,omitempty"`
+				PolicyParams  *map[string]interface{}                   `json:"policyParams,omitempty" yaml:"policyParams,omitempty"`
+				PolicyVersion *string                                   `json:"policyVersion,omitempty" yaml:"policyVersion,omitempty"`
+				Type          api.LLMProviderConfigDataUpstreamAuthType `json:"type" yaml:"type"`
+				Value         *string                                   `json:"value,omitempty" yaml:"value,omitempty"`
 			}{
 				Type:   api.LLMProviderConfigDataUpstreamAuthTypeApiKey,
 				Header: stringPtr("Authorization"),
@@ -1352,9 +1376,12 @@ func TestValidateLLMProvider_UpstreamAuth(t *testing.T) {
 		{
 			name: "valid api-key auth",
 			auth: &struct {
-				Header *string                                   `json:"header,omitempty" yaml:"header,omitempty"`
-				Type   api.LLMProviderConfigDataUpstreamAuthType `json:"type" yaml:"type"`
-				Value  *string                                   `json:"value,omitempty" yaml:"value,omitempty"`
+				Header        *string                                   `json:"header,omitempty" yaml:"header,omitempty"`
+				PolicyName    *string                                   `json:"policyName,omitempty" yaml:"policyName,omitempty"`
+				PolicyParams  *map[string]interface{}                   `json:"policyParams,omitempty" yaml:"policyParams,omitempty"`
+				PolicyVersion *string                                   `json:"policyVersion,omitempty" yaml:"policyVersion,omitempty"`
+				Type          api.LLMProviderConfigDataUpstreamAuthType `json:"type" yaml:"type"`
+				Value         *string                                   `json:"value,omitempty" yaml:"value,omitempty"`
 			}{
 				Type:   api.LLMProviderConfigDataUpstreamAuthTypeApiKey,
 				Header: stringPtr("Authorization"),
@@ -1363,24 +1390,161 @@ func TestValidateLLMProvider_UpstreamAuth(t *testing.T) {
 			expectError: false,
 		},
 		{
-			name: "valid other auth without header or value",
+			name: "oauth2 without policyParams",
 			auth: &struct {
-				Header *string                                   `json:"header,omitempty" yaml:"header,omitempty"`
-				Type   api.LLMProviderConfigDataUpstreamAuthType `json:"type" yaml:"type"`
-				Value  *string                                   `json:"value,omitempty" yaml:"value,omitempty"`
+				Header        *string                                   `json:"header,omitempty" yaml:"header,omitempty"`
+				PolicyName    *string                                   `json:"policyName,omitempty" yaml:"policyName,omitempty"`
+				PolicyParams  *map[string]interface{}                   `json:"policyParams,omitempty" yaml:"policyParams,omitempty"`
+				PolicyVersion *string                                   `json:"policyVersion,omitempty" yaml:"policyVersion,omitempty"`
+				Type          api.LLMProviderConfigDataUpstreamAuthType `json:"type" yaml:"type"`
+				Value         *string                                   `json:"value,omitempty" yaml:"value,omitempty"`
 			}{
-				Type: api.LLMProviderConfigDataUpstreamAuthTypeOther,
+				Type: api.LLMProviderConfigDataUpstreamAuthTypeOauth2,
+			},
+			expectError: true,
+			errorField:  "spec.upstream.auth.policyParams",
+			errorPart:   "required",
+		},
+		{
+			name: "valid oauth2 auth via policyParams",
+			auth: &struct {
+				Header        *string                                   `json:"header,omitempty" yaml:"header,omitempty"`
+				PolicyName    *string                                   `json:"policyName,omitempty" yaml:"policyName,omitempty"`
+				PolicyParams  *map[string]interface{}                   `json:"policyParams,omitempty" yaml:"policyParams,omitempty"`
+				PolicyVersion *string                                   `json:"policyVersion,omitempty" yaml:"policyVersion,omitempty"`
+				Type          api.LLMProviderConfigDataUpstreamAuthType `json:"type" yaml:"type"`
+				Value         *string                                   `json:"value,omitempty" yaml:"value,omitempty"`
+			}{
+				Type: api.LLMProviderConfigDataUpstreamAuthTypeOauth2,
+				PolicyParams: &map[string]interface{}{
+					"tokenEndpoint": "https://idp.example.com/oauth2/token",
+					"clientId":      "client-id",
+					"clientSecret":  "client-secret",
+				},
+			},
+			expectError: false,
+		},
+		{
+			name: "oauth2 with policyName override and policyVersion",
+			auth: &struct {
+				Header        *string                                   `json:"header,omitempty" yaml:"header,omitempty"`
+				PolicyName    *string                                   `json:"policyName,omitempty" yaml:"policyName,omitempty"`
+				PolicyParams  *map[string]interface{}                   `json:"policyParams,omitempty" yaml:"policyParams,omitempty"`
+				PolicyVersion *string                                   `json:"policyVersion,omitempty" yaml:"policyVersion,omitempty"`
+				Type          api.LLMProviderConfigDataUpstreamAuthType `json:"type" yaml:"type"`
+				Value         *string                                   `json:"value,omitempty" yaml:"value,omitempty"`
+			}{
+				Type:          api.LLMProviderConfigDataUpstreamAuthTypeOauth2,
+				PolicyName:    stringPtr("my-oauth2-fork"),
+				PolicyVersion: stringPtr("v2"),
+				PolicyParams: &map[string]interface{}{
+					"bearerToken": "static-token",
+				},
 			},
 			expectError: false,
 		},
 		{
 			name: "valid none auth without header or value",
 			auth: &struct {
-				Header *string                                   `json:"header,omitempty" yaml:"header,omitempty"`
-				Type   api.LLMProviderConfigDataUpstreamAuthType `json:"type" yaml:"type"`
-				Value  *string                                   `json:"value,omitempty" yaml:"value,omitempty"`
+				Header        *string                                   `json:"header,omitempty" yaml:"header,omitempty"`
+				PolicyName    *string                                   `json:"policyName,omitempty" yaml:"policyName,omitempty"`
+				PolicyParams  *map[string]interface{}                   `json:"policyParams,omitempty" yaml:"policyParams,omitempty"`
+				PolicyVersion *string                                   `json:"policyVersion,omitempty" yaml:"policyVersion,omitempty"`
+				Type          api.LLMProviderConfigDataUpstreamAuthType `json:"type" yaml:"type"`
+				Value         *string                                   `json:"value,omitempty" yaml:"value,omitempty"`
 			}{
 				Type: api.LLMProviderConfigDataUpstreamAuthTypeNone,
+			},
+			expectError: false,
+		},
+		{
+			name: "invalid policyVersion format",
+			auth: &struct {
+				Header        *string                                   `json:"header,omitempty" yaml:"header,omitempty"`
+				PolicyName    *string                                   `json:"policyName,omitempty" yaml:"policyName,omitempty"`
+				PolicyParams  *map[string]interface{}                   `json:"policyParams,omitempty" yaml:"policyParams,omitempty"`
+				PolicyVersion *string                                   `json:"policyVersion,omitempty" yaml:"policyVersion,omitempty"`
+				Type          api.LLMProviderConfigDataUpstreamAuthType `json:"type" yaml:"type"`
+				Value         *string                                   `json:"value,omitempty" yaml:"value,omitempty"`
+			}{
+				Type:          api.LLMProviderConfigDataUpstreamAuthTypeOauth2,
+				PolicyVersion: stringPtr("v1.0.0"),
+				PolicyParams: &map[string]interface{}{
+					"bearerToken": "static-token",
+				},
+			},
+			expectError: true,
+			errorField:  "spec.upstream.auth.policyVersion",
+			errorPart:   "major-only",
+		},
+		{
+			name: "api-key with both header/value and policyParams",
+			auth: &struct {
+				Header        *string                                   `json:"header,omitempty" yaml:"header,omitempty"`
+				PolicyName    *string                                   `json:"policyName,omitempty" yaml:"policyName,omitempty"`
+				PolicyParams  *map[string]interface{}                   `json:"policyParams,omitempty" yaml:"policyParams,omitempty"`
+				PolicyVersion *string                                   `json:"policyVersion,omitempty" yaml:"policyVersion,omitempty"`
+				Type          api.LLMProviderConfigDataUpstreamAuthType `json:"type" yaml:"type"`
+				Value         *string                                   `json:"value,omitempty" yaml:"value,omitempty"`
+			}{
+				Type:   api.LLMProviderConfigDataUpstreamAuthTypeApiKey,
+				Header: stringPtr("Authorization"),
+				Value:  stringPtr("Bearer sk-test"),
+				PolicyParams: &map[string]interface{}{
+					"request": map[string]interface{}{"headers": []interface{}{}},
+				},
+			},
+			expectError: true,
+			errorField:  "spec.upstream.auth.policyParams",
+			errorPart:   "cannot be combined",
+		},
+		{
+			name: "other without policyName",
+			auth: &struct {
+				Header        *string                                   `json:"header,omitempty" yaml:"header,omitempty"`
+				PolicyName    *string                                   `json:"policyName,omitempty" yaml:"policyName,omitempty"`
+				PolicyParams  *map[string]interface{}                   `json:"policyParams,omitempty" yaml:"policyParams,omitempty"`
+				PolicyVersion *string                                   `json:"policyVersion,omitempty" yaml:"policyVersion,omitempty"`
+				Type          api.LLMProviderConfigDataUpstreamAuthType `json:"type" yaml:"type"`
+				Value         *string                                   `json:"value,omitempty" yaml:"value,omitempty"`
+			}{
+				Type:         api.LLMProviderConfigDataUpstreamAuthTypeOther,
+				PolicyParams: &map[string]interface{}{"foo": "bar"},
+			},
+			expectError: true,
+			errorField:  "spec.upstream.auth.policyName",
+			errorPart:   "required",
+		},
+		{
+			name: "other without policyParams",
+			auth: &struct {
+				Header        *string                                   `json:"header,omitempty" yaml:"header,omitempty"`
+				PolicyName    *string                                   `json:"policyName,omitempty" yaml:"policyName,omitempty"`
+				PolicyParams  *map[string]interface{}                   `json:"policyParams,omitempty" yaml:"policyParams,omitempty"`
+				PolicyVersion *string                                   `json:"policyVersion,omitempty" yaml:"policyVersion,omitempty"`
+				Type          api.LLMProviderConfigDataUpstreamAuthType `json:"type" yaml:"type"`
+				Value         *string                                   `json:"value,omitempty" yaml:"value,omitempty"`
+			}{
+				Type:       api.LLMProviderConfigDataUpstreamAuthTypeOther,
+				PolicyName: stringPtr("my-custom-auth-policy"),
+			},
+			expectError: true,
+			errorField:  "spec.upstream.auth.policyParams",
+			errorPart:   "required",
+		},
+		{
+			name: "valid other auth",
+			auth: &struct {
+				Header        *string                                   `json:"header,omitempty" yaml:"header,omitempty"`
+				PolicyName    *string                                   `json:"policyName,omitempty" yaml:"policyName,omitempty"`
+				PolicyParams  *map[string]interface{}                   `json:"policyParams,omitempty" yaml:"policyParams,omitempty"`
+				PolicyVersion *string                                   `json:"policyVersion,omitempty" yaml:"policyVersion,omitempty"`
+				Type          api.LLMProviderConfigDataUpstreamAuthType `json:"type" yaml:"type"`
+				Value         *string                                   `json:"value,omitempty" yaml:"value,omitempty"`
+			}{
+				Type:         api.LLMProviderConfigDataUpstreamAuthTypeOther,
+				PolicyName:   stringPtr("my-custom-auth-policy"),
+				PolicyParams: &map[string]interface{}{"foo": "bar"},
 			},
 			expectError: false,
 		},
@@ -2017,6 +2181,85 @@ func TestValidateLLMProxy_Resilience(t *testing.T) {
 	t.Run("negative idleTimeout is rejected", func(t *testing.T) {
 		errs := validator.Validate(validProxyWithResilience(&api.Resilience{IdleTimeout: stringPtr("-1s")}))
 		assertHasFieldError(t, errs, "spec.resilience.idleTimeout")
+	})
+}
+
+// validProxyWithAuth builds an LlmProxy whose primary provider.auth is set - the
+// shared entry point for both validateLLMUpstreamAuth call sites is exercised
+// separately below via additionalProviders.
+func validProxyWithAuth(auth *api.LLMUpstreamAuth) api.LLMProxyConfiguration {
+	return api.LLMProxyConfiguration{
+		ApiVersion: api.LLMProxyConfigurationApiVersionGatewayApiPlatformWso2Comv1,
+		Kind:       api.LLMProxyConfigurationKindLlmProxy,
+		Metadata:   api.Metadata{Name: "openai-proxy"},
+		Spec: api.LLMProxyConfigData{
+			DisplayName: "my-proxy",
+			Version:     "v1.0",
+			Provider:    api.LLMProxyProvider{Id: "openai", Auth: auth},
+		},
+	}
+}
+
+// TestValidateLLMProxy_ProviderAuth covers validateLLMUpstreamAuth, the
+// LlmProxy-side counterpart to validateUpstreamWithAuth's LlmProvider
+// upstream.auth handling - previously exercised by no test at all (0%
+// coverage), even though it shares validateUpstreamAuthFields with the
+// LlmProvider/Mcp paths that were already covered.
+func TestValidateLLMProxy_ProviderAuth(t *testing.T) {
+	validator := NewLLMValidator()
+
+	t.Run("oauth2 with policyParams is valid", func(t *testing.T) {
+		errs := validator.Validate(validProxyWithAuth(&api.LLMUpstreamAuth{
+			Type:         "oauth2",
+			PolicyParams: &map[string]interface{}{"tokenEndpoint": "https://idp.example.com/token"},
+		}))
+		assert.Empty(t, errs)
+	})
+
+	t.Run("oauth2 without policyParams is rejected", func(t *testing.T) {
+		errs := validator.Validate(validProxyWithAuth(&api.LLMUpstreamAuth{Type: "oauth2"}))
+		assertHasFieldError(t, errs, "spec.provider.auth.policyParams")
+	})
+
+	t.Run("other without policyName is rejected", func(t *testing.T) {
+		errs := validator.Validate(validProxyWithAuth(&api.LLMUpstreamAuth{
+			Type:         "other",
+			PolicyParams: &map[string]interface{}{"foo": "bar"},
+		}))
+		assertHasFieldError(t, errs, "spec.provider.auth.policyName")
+	})
+
+	t.Run("nil auth is fine", func(t *testing.T) {
+		errs := validator.Validate(validProxyWithAuth(nil))
+		assert.Empty(t, errs)
+	})
+}
+
+// TestValidateLLMProxy_AdditionalProviderAuth covers the second
+// validateLLMUpstreamAuth call site (spec.additionalProviders[].auth),
+// distinct from the primary provider's - also previously untested.
+func TestValidateLLMProxy_AdditionalProviderAuth(t *testing.T) {
+	validator := NewLLMValidator()
+
+	proxyWithAdditional := func(auth *api.LLMUpstreamAuth) api.LLMProxyConfiguration {
+		p := validProxyWithAuth(nil)
+		p.Spec.AdditionalProviders = &[]api.LLMProxyAdditionalProvider{
+			{Id: "anthropic", Auth: auth},
+		}
+		return p
+	}
+
+	t.Run("oauth2 with policyParams is valid", func(t *testing.T) {
+		errs := validator.Validate(proxyWithAdditional(&api.LLMUpstreamAuth{
+			Type:         "oauth2",
+			PolicyParams: &map[string]interface{}{"tokenEndpoint": "https://idp.example.com/token"},
+		}))
+		assert.Empty(t, errs)
+	})
+
+	t.Run("oauth2 without policyParams is rejected on the additional provider's own field path", func(t *testing.T) {
+		errs := validator.Validate(proxyWithAdditional(&api.LLMUpstreamAuth{Type: "oauth2"}))
+		assertHasFieldError(t, errs, "spec.additionalProviders[0].auth.policyParams")
 	})
 }
 

@@ -194,15 +194,53 @@ func (t *MCPTransformer) Transform(input any, output *api.RestAPI) (*api.RestAPI
 	// Set upstream auth if present
 	upstream := mcpConfig.Spec.Upstream
 	if upstream.Auth != nil {
-		params, err := GetParamsOfPolicy(constants.SET_HEADERS_POLICY_PARAMS, *upstream.Auth.Header, *upstream.Auth.Value)
-		if err != nil {
-			return nil, fmt.Errorf("failed to build upstream auth params: %w", err)
+		auth := upstream.Auth
+		// MCPTransformer has no policyVersionResolver, so policyVersion is
+		// passed through as-is and resolved downstream instead.
+		policyVersion := ""
+		if auth.PolicyVersion != nil {
+			policyVersion = strings.TrimSpace(*auth.PolicyVersion)
 		}
-		pol := api.Policy{
-			Name:   constants.SET_HEADERS_POLICY_NAME,
-			Params: &params,
+		switch auth.Type {
+		case api.MCPProxyConfigDataUpstreamAuthTypeApiKey:
+			name := resolveUpstreamAuthPolicyName(auth.PolicyName, constants.SET_HEADERS_POLICY_NAME)
+			params, err := resolveUpstreamAuthPolicyParams(auth.PolicyParams, func() (map[string]interface{}, error) {
+				if auth.Header == nil || *auth.Header == "" {
+					return nil, fmt.Errorf("upstream.auth.header is required")
+				}
+				if auth.Value == nil || *auth.Value == "" {
+					return nil, fmt.Errorf("upstream.auth.value is required")
+				}
+				return GetParamsOfPolicy(constants.SET_HEADERS_POLICY_PARAMS, *auth.Header, *auth.Value)
+			})
+			if err != nil {
+				return nil, fmt.Errorf("failed to build upstream auth params: %w", err)
+			}
+			pol := api.Policy{Name: name, Version: policyVersion, Params: &params}
+			policies = append(policies, pol)
+		case api.MCPProxyConfigDataUpstreamAuthTypeOauth2:
+			// No typed-field fallback for oauth2 - policyParams is always required.
+			if auth.PolicyParams == nil {
+				return nil, fmt.Errorf("upstream.auth.policyParams is required when type is 'oauth2'")
+			}
+			name := resolveUpstreamAuthPolicyName(auth.PolicyName, constants.UPSTREAM_AUTH_OAUTH2_POLICY_NAME)
+			pol := api.Policy{Name: name, Version: policyVersion, Params: auth.PolicyParams}
+			policies = append(policies, pol)
+		case api.MCPProxyConfigDataUpstreamAuthTypeOther:
+			if auth.PolicyName == nil || strings.TrimSpace(*auth.PolicyName) == "" {
+				return nil, fmt.Errorf("upstream.auth.policyName is required when type is 'other'")
+			}
+			if auth.PolicyParams == nil {
+				return nil, fmt.Errorf("upstream.auth.policyParams is required when type is 'other'")
+			}
+			pol := api.Policy{Name: strings.TrimSpace(*auth.PolicyName), Version: policyVersion, Params: auth.PolicyParams}
+			policies = append(policies, pol)
+		case api.MCPProxyConfigDataUpstreamAuthTypeNone:
+			// No upstream authentication - no auth policy is attached; auth
+			// (if any) is handled entirely by user-attached policies elsewhere.
+		default:
+			return nil, fmt.Errorf("unsupported upstream auth type: %s", auth.Type)
 		}
-		policies = append(policies, pol)
 	}
 
 	apiData.Policies = &policies

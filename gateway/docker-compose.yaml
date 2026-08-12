@@ -26,7 +26,7 @@ services:
     image: ghcr.io/wso2/api-platform/gateway-controller:1.2.0-SNAPSHOT
     mem_limit: 60m
     mem_reservation: 60m
-    cpus: 0.025
+    cpus: 0.25
     command: ["-config", "/etc/gateway-controller/config.toml"]
     ports:
       - "9090:9090"   # REST API
@@ -69,8 +69,48 @@ services:
     volumes:
       - ./configs/config.toml:/etc/policy-engine/config.toml:ro
       - ./configs/llm-pricing/model_prices.json:/etc/policy-engine/llm-pricing/model_prices.json:ro
+      # Read-only mount of the oauth2-generator e2e mock IdP's own directory —
+      # its TLS CA cert (mock-idp-ca.crt, regenerated per e2e run by
+      # run-e2e.sh's generate_tls_idp_cert) becomes readable at
+      # /etc/gateway/certs/mock-idp-ca.crt for the tlsCaCertPath e2e flow
+      # (dev-policies/oauth2-generator/e2e/TESTING.md, E.27). Not needed for
+      # any other flow/policy.
+      - ./dev-policies/oauth2-generator/e2e/mocks/mock-oauth2-idp:/etc/gateway/certs:ro
     networks:
       - gateway-network
+
+  # Shared Redis cache, backing sdk/core/utils/redisclient's gateway-level
+  # "redis" config section (configs/config.toml's top-level [redis] table) —
+  # used by any policy that resolves via redisclient.Resolve/Shared() with no
+  # policy-level override of its own, e.g. oauth2-generator's cacheStrategy:
+  # redis (see dev-policies/oauth2-generator/e2e/TESTING.md Part C / E.10 /
+  # E.14 / E.29 / E.30). Starts with a plain `docker compose up` — no profile
+  # needed.
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+    networks:
+      - gateway-network
+
+  # TEST-ONLY second Redis instance, distinct from "redis" above — used to
+  # prove advanced-ratelimit's per-policy connection override
+  # (systemParameters.redis.host, config.policy_configurations.ratelimit_v1.redis.*)
+  # actually gets dialed instead of the gateway-wide shared client, rather
+  # than silently falling back to it. See
+  # dev-policies/advanced-ratelimit/e2e/run-e2e.sh (its "Redis-precedence"
+  # suite), which flips APIP_GW_RATELIMIT_V1_REDIS_HOST between "redis" (no
+  # override) and "redis-override-test" (override) across phases and checks
+  # via redis-cli which instance actually received the rate-limit key.
+  # Still opt-in (unlike "redis" above) since it's only needed for that one
+  # precedence test: `docker compose --profile redis up -d ... redis-override-test`.
+  redis-override-test:
+    image: redis:7-alpine
+    ports:
+      - "6380:6379"
+    networks:
+      - gateway-network
+    profiles: ["redis"]
 
   sample-backend:
     image: ghcr.io/wso2/api-platform/sample-service:latest

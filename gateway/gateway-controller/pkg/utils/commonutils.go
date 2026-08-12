@@ -53,6 +53,24 @@ func GetParamsOfPolicy(policyDef string, params ...string) (map[string]any, erro
 	return m, nil
 }
 
+// resolveUpstreamAuthPolicyName returns the caller-supplied policyName override
+// if non-empty, otherwise defaultName.
+func resolveUpstreamAuthPolicyName(policyName *string, defaultName string) string {
+	if policyName != nil && strings.TrimSpace(*policyName) != "" {
+		return strings.TrimSpace(*policyName)
+	}
+	return defaultName
+}
+
+// resolveUpstreamAuthPolicyParams returns policyParams verbatim if supplied,
+// otherwise falls back to buildLegacyParams (the deprecated header/value path).
+func resolveUpstreamAuthPolicyParams(policyParams *map[string]interface{}, buildLegacyParams func() (map[string]interface{}, error)) (map[string]interface{}, error) {
+	if policyParams != nil {
+		return *policyParams, nil
+	}
+	return buildLegacyParams()
+}
+
 // APIKeyETag produces a deterministic UUID v7-formatted ETag from the unique
 // (artifactUUID, name, updatedAt) tuple. Uses SHA-256 of the tuple as the source
 // bytes, then stamps version=7 and RFC 4122 variant bits.

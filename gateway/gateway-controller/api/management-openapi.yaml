@@ -4352,19 +4352,74 @@ components:
           properties:
             type:
               type: string
-              enum: [ api-key, other, none ]
+              enum: [ api-key, oauth2, other, none ]
+              description: >
+                "api-key" attaches the built-in set-headers policy by
+                default (overridable via policyName) and accepts either the
+                generic policyParams bucket or its own deprecated header/value
+                fields below. "oauth2" attaches the built-in oauth2-generator
+                policy by default (overridable via policyName) and always
+                requires policyParams - there is no typed-field fallback for
+                it. "other" attaches any policy by name - policyName and
+                policyParams are both required in that case, since there is
+                no built-in default or typed-field fallback for a
+                non-built-in auth scheme. "none": no upstream authentication -
+                the gateway attaches no auth policy of its own; auth (if any)
+                is handled entirely by user-attached policies elsewhere.
+            policyName:
+              type: string
+              description: >
+                Name of the policy that implements this upstream auth.
+                Optional for "api-key"/"oauth2" (defaults to the built-in
+                policy for that type - api-key -> set-headers, oauth2 ->
+                oauth2-generator); set it to point at your own fork or a
+                newer major version's replacement instead. Required when
+                type is "other".
+            policyVersion:
+              type: string
+              pattern: '^v\d+$'
+              description: >
+                Major version of policyName to attach (e.g. "v1"), same
+                format and resolution rules as Policy.version. Optional -
+                defaults to the highest version available in the gateway
+                image when omitted. If set, it must match a version
+                actually loaded in this gateway build, or config validation
+                fails.
+            policyParams:
+              type: object
+              additionalProperties: true
+              description: >
+                Parameters passed verbatim to policyName (or the built-in
+                default for type). Required when type is "oauth2" or
+                "other" - oauth2 has no typed fields at all, only this
+                bucket (e.g. {tokenEndpoint: ..., clientId: ...,
+                clientSecret: ...} for the token-endpoint path, or
+                {bearerToken: ...} for a directly-supplied credential).
+                For "api-key", optional: replaces the deprecated header/value
+                fields below when set; do not set both at once.
             header:
               type: string
+              deprecated: true
+              description: >
+                Deprecated: use policyParams (e.g. {request: {headers:
+                [{name: ..., value: ...}]}} - the set-headers policy's own
+                param shape) instead. HTTP header to set on outbound
+                requests. Applies when type is api-key. Still honored when
+                policyParams is omitted, for backward compatibility.
             value:
               type: string
+              deprecated: true
               writeOnly: true
               description: >
-                Upstream credential. Write-only: accepted on create/update and
-                never returned by the management API on a read, for any role.
-                Supply either a literal value or a secret reference (e.g. a
-                `secret` template expression); either way the field is omitted
-                from management API response bodies. An update that omits it
-                inherits the stored value; set `type: none` to remove auth.
+                Deprecated: use policyParams instead. Upstream credential.
+                Applies when type is api-key. Still honored when policyParams
+                is omitted, for backward compatibility. Write-only: accepted
+                on create/update and never returned by the management API on
+                a read, for any role. Supply either a literal value or a
+                secret reference (e.g. a `secret` template expression);
+                either way the field is omitted from management API response
+                bodies. An update that omits it inherits the stored value;
+                set `type: none` to remove auth.
 
     LLMUpstreamAuth:
       type: object
@@ -4373,16 +4428,69 @@ components:
       properties:
         type:
           type: string
-          enum: [ api-key, other, none ]
+          enum: [ api-key, oauth2, other, none ]
+          description: >
+            "api-key" attaches the built-in set-headers policy by default
+            (overridable via policyName) and accepts either the generic
+            policyParams bucket or its own deprecated header/value fields
+            below. "oauth2" attaches the built-in oauth2-generator policy
+            by default (overridable via policyName) and always requires
+            policyParams - there is no typed-field fallback for it. "other"
+            attaches any policy by name - policyName and policyParams are
+            both required in that case, since there is no built-in default
+            or typed-field fallback for a non-built-in auth scheme. "none":
+            no upstream authentication - the gateway attaches no auth policy
+            of its own; auth (if any) is handled entirely by user-attached
+            policies elsewhere.
+        policyName:
+          type: string
+          description: >
+            Name of the policy that implements this upstream auth. Optional
+            for "api-key"/"oauth2" (defaults to the built-in policy for that
+            type - api-key -> set-headers, oauth2 -> oauth2-generator); set
+            it to point at your own fork or a newer major version's
+            replacement instead. Required when type is "other".
+        policyVersion:
+          type: string
+          pattern: '^v\d+$'
+          description: >
+            Major version of policyName to attach (e.g. "v1"), same format
+            and resolution rules as Policy.version. Optional - defaults to
+            the highest version available in the gateway image when
+            omitted. If set, it must match a version actually loaded in
+            this gateway build, or config validation fails.
+        policyParams:
+          type: object
+          additionalProperties: true
+          description: >
+            Parameters passed verbatim to policyName (or the built-in
+            default for type). Required when type is "oauth2" or "other" -
+            oauth2 has no typed fields at all, only this bucket (e.g.
+            {tokenEndpoint: ..., clientId: ..., clientSecret: ...} for the
+            token-endpoint path, or {bearerToken: ...} for a
+            directly-supplied credential). For "api-key", optional:
+            replaces the deprecated header/value fields below when set; do
+            not set both at once.
         header:
           type: string
+          deprecated: true
+          description: >
+            Deprecated: use policyParams (e.g. {request: {headers: [{name:
+            ..., value: ...}]}} - the set-headers policy's own param shape)
+            instead. HTTP header to set on outbound requests. Applies when
+            type is api-key. Still honored when policyParams is omitted,
+            for backward compatibility.
         value:
           type: string
+          deprecated: true
           writeOnly: true
           description: >
-            Upstream credential. Write-only: accepted on create/update and never
-            returned by the management API on a read, for any role. An update that
-            omits it inherits the stored value; set `type: none` to remove auth.
+            Deprecated: use policyParams instead. Upstream credential.
+            Applies when type is api-key. Still honored when policyParams is
+            omitted, for backward compatibility. Write-only: accepted on
+            create/update and never returned by the management API on a
+            read, for any role. An update that omits it inherits the stored
+            value; set `type: none` to remove auth.
 
     LLMProxyProvider:
       type: object

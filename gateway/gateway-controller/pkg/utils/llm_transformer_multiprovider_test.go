@@ -418,6 +418,160 @@ func TestLLMProviderTransformer_TransformProxy_LoopbackAuthCarriesProviderValueP
 	assert.Equal(t, `Bearer {{ secret "sec-1" }}`, firstRequestHeaderValue(t, authPolicy.Params))
 }
 
+// TestLLMProviderTransformer_TransformProxy_AdditionalProviderOAuth2AuthIsIsolated
+// is the transformer-side half of the regression coverage for the
+// cross-provider Redis token cache collision bug (see
+// gateway/spec/prds/oauth2-upstream-auth.md and
+// oauth2ConfigDiscriminator in gateway/dev-policies/oauth2-generator/token_cache.go).
+//
+// The runtime fix (keying the oauth2 policy's cache by its own config
+// instead of by API identity) is verified in isolation by
+// token_cache_test.go's TestRedisCachingTokenSource_DifferentConfigs_
+// GetIsolatedCacheEntries, which feeds two distinct oauth2Params directly to
+// the cache. That test can't by itself prove the transformer actually
+// produces two distinct params blocks for this scenario in the first place -
+// this test closes that gap: a single LlmProxy's primary provider and its
+// one additionalProviders entry, each with independent oauth2 credentials,
+// must be emitted as two separate oauth2 Policy attachments carrying
+// different clientId/tokenEndpoint/clientSecret values (gated by different
+// ExecutionCondition), not a single shared one - anything else would mean
+// there's only one set of params for the runtime cache key to isolate by,
+// silently reintroducing the collision regardless of how correct the
+// runtime-side keying is.
+func TestLLMProviderTransformer_TransformProxy_AdditionalProviderOAuth2AuthIsIsolated(t *testing.T) {
+	store := storage.NewConfigStore()
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
+	db := newTestSQLiteStorage(t, logger)
+
+	template := &models.StoredLLMProviderTemplate{
+		UUID: "0000-db-template-id-0000-000000000004",
+		Configuration: api.LLMProviderTemplate{
+			ApiVersion: api.LLMProviderTemplateApiVersionGatewayApiPlatformWso2Comv1,
+			Kind:       api.LLMProviderTemplateKindLlmProviderTemplate,
+			Metadata:   api.Metadata{Name: "openai"},
+			Spec:       api.LLMProviderTemplateData{DisplayName: "openai"},
+		},
+	}
+	require.NoError(t, db.SaveLLMProviderTemplate(template))
+
+	saveProvider := func(name, context string) {
+		providerSourceConfig := api.LLMProviderConfiguration{
+			ApiVersion: api.LLMProviderConfigurationApiVersionGatewayApiPlatformWso2Comv1,
+			Kind:       api.LLMProviderConfigurationKindLlmProvider,
+			Metadata:   api.Metadata{Name: name},
+			Spec: api.LLMProviderConfigData{
+				DisplayName:   name,
+				Version:       "v1.0",
+				Context:       stringPtr(context),
+				Template:      "openai",
+				Upstream:      api.LLMProviderConfigData_Upstream{Url: stringPtr("https://example.com")},
+				AccessControl: api.LLMAccessControl{Mode: api.AllowAll},
+			},
+		}
+		require.NoError(t, db.SaveConfig(&models.StoredConfig{
+			UUID:                name + "-uuid",
+			Kind:                string(api.LLMProviderConfigurationKindLlmProvider),
+			Handle:              name,
+			DisplayName:         name,
+			Version:             "v1.0",
+			SourceConfiguration: providerSourceConfig,
+			DesiredState:        models.StateDeployed,
+		}))
+	}
+	saveProvider("provider-a", "/provider-a")
+	saveProvider("provider-b", "/provider-b")
+
+	transformer := NewLLMProviderTransformer(store, db, &config.RouterConfig{ListenerPort: 8080}, newTestPolicyVersionResolver())
+
+	// Deliberately give provider-b a DIFFERENT clientId, tokenEndpoint AND
+	// clientSecret than provider-a - not just a different name - so this
+	// locks in isolation on every field the cache key discriminates by, not
+	// just one.
+	proxy := &api.LLMProxyConfiguration{
+		ApiVersion: api.LLMProxyConfigurationApiVersionGatewayApiPlatformWso2Comv1,
+		Kind:       api.LLMProxyConfigurationKindLlmProxy,
+		Metadata:   api.Metadata{Name: "oauth2-multi"},
+		Spec: api.LLMProxyConfigData{
+			DisplayName: "oauth2-multi",
+			Version:     "v1.0",
+			Provider: api.LLMProxyProvider{
+				Id: "provider-a",
+				Auth: &api.LLMUpstreamAuth{
+					Type: api.LLMUpstreamAuthTypeOauth2,
+					PolicyParams: &map[string]interface{}{
+						"tokenEndpoint": "https://idp-a.example.com/token",
+						"clientId":      "client-a",
+						"clientSecret":  "secret-a",
+					},
+				},
+			},
+			AdditionalProviders: &[]api.LLMProxyAdditionalProvider{{
+				Id: "provider-b",
+				Auth: &api.LLMUpstreamAuth{
+					Type: api.LLMUpstreamAuthTypeOauth2,
+					PolicyParams: &map[string]interface{}{
+						"tokenEndpoint": "https://idp-b.example.com/token",
+						"clientId":      "client-b",
+						"clientSecret":  "secret-b",
+					},
+				},
+			}},
+		},
+	}
+
+	result, err := transformer.Transform(proxy, &api.RestAPI{})
+	require.NoError(t, err)
+
+	// No operationPolicies/policies are attached in this proxy spec, so the
+	// only operations the transformer generates are the wildcard catch-all
+	// routes (one per HTTP method) - the proxy's upstream-auth policies are
+	// attached to every one of those (see transformProxy's final loop over
+	// ops), so any POST operation carries both oauth2 attachments.
+	var postOp *api.Operation
+	for i := range result.Spec.Operations {
+		if result.Spec.Operations[i].Method != nil && *result.Spec.Operations[i].Method == api.OperationMethod("POST") {
+			postOp = &result.Spec.Operations[i]
+			break
+		}
+	}
+	require.NotNil(t, postOp)
+	require.NotNil(t, postOp.Policies)
+
+	var oauth2Policies []api.Policy
+	for _, pol := range *postOp.Policies {
+		if pol.Name == constants.UPSTREAM_AUTH_OAUTH2_POLICY_NAME {
+			oauth2Policies = append(oauth2Policies, pol)
+		}
+	}
+	// Two separate oauth2 policy attachments on the SAME operation - this is
+	// exactly the shape that collided under the old API-identity-keyed
+	// cache: one route, two independent oauth2 configs.
+	require.Len(t, oauth2Policies, 2)
+	require.NotNil(t, oauth2Policies[0].ExecutionCondition)
+	require.NotNil(t, oauth2Policies[1].ExecutionCondition)
+	assert.Contains(t, *oauth2Policies[0].ExecutionCondition, "provider-a")
+	assert.Contains(t, *oauth2Policies[1].ExecutionCondition, "provider-b")
+
+	require.NotNil(t, oauth2Policies[0].Params)
+	require.NotNil(t, oauth2Policies[1].Params)
+	paramsA := *oauth2Policies[0].Params
+	paramsB := *oauth2Policies[1].Params
+
+	// Every field the runtime cache key discriminates by (see
+	// oauth2ConfigDiscriminator) must actually differ here - if any of these
+	// silently matched, the two would collide on the same Redis key
+	// regardless of how correct the runtime-side keying logic is.
+	assert.NotEqual(t, paramsA["clientId"], paramsB["clientId"])
+	assert.NotEqual(t, paramsA["tokenEndpoint"], paramsB["tokenEndpoint"])
+	assert.NotEqual(t, paramsA["clientSecret"], paramsB["clientSecret"])
+	assert.Equal(t, "client-a", paramsA["clientId"])
+	assert.Equal(t, "client-b", paramsB["clientId"])
+	assert.Equal(t, "https://idp-a.example.com/token", paramsA["tokenEndpoint"])
+	assert.Equal(t, "https://idp-b.example.com/token", paramsB["tokenEndpoint"])
+	assert.Equal(t, "secret-a", paramsA["clientSecret"])
+	assert.Equal(t, "secret-b", paramsB["clientSecret"])
+}
+
 func firstRequestHeaderValue(t *testing.T, params *map[string]interface{}) string {
 	t.Helper()
 	require.NotNil(t, params)

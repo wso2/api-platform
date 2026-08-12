@@ -2019,9 +2019,12 @@ func TestTransformProvider_WithUpstreamAuth(t *testing.T) {
 			Upstream: api.LLMProviderConfigData_Upstream{
 				Url: &upstreamURL,
 				Auth: &struct {
-					Header *string                                   `json:"header,omitempty" yaml:"header,omitempty"`
-					Type   api.LLMProviderConfigDataUpstreamAuthType `json:"type" yaml:"type"`
-					Value  *string                                   `json:"value,omitempty" yaml:"value,omitempty"`
+					Header        *string                                   `json:"header,omitempty" yaml:"header,omitempty"`
+					PolicyName    *string                                   `json:"policyName,omitempty" yaml:"policyName,omitempty"`
+					PolicyParams  *map[string]interface{}                   `json:"policyParams,omitempty" yaml:"policyParams,omitempty"`
+					PolicyVersion *string                                   `json:"policyVersion,omitempty" yaml:"policyVersion,omitempty"`
+					Type          api.LLMProviderConfigDataUpstreamAuthType `json:"type" yaml:"type"`
+					Value         *string                                   `json:"value,omitempty" yaml:"value,omitempty"`
 				}{
 					Type:   api.LLMProviderConfigDataUpstreamAuthTypeApiKey,
 					Header: &authHeader,
@@ -2052,6 +2055,439 @@ func TestTransformProvider_WithUpstreamAuth(t *testing.T) {
 		}
 		assert.True(t, found, "operation %s %s should include upstream auth policy", op.EffectiveMethod(), op.EffectivePath())
 	}
+}
+
+// TestTransformProvider_ApiKeyWithPolicyParams covers type: api-key configured via
+// the generic policyParams bucket instead of the deprecated header/value fields -
+// the headline migration this CRD change exists for, previously untested at the
+// transformer level (every other api-key test here uses header/value).
+func TestTransformProvider_ApiKeyWithPolicyParams(t *testing.T) {
+	store := storage.NewConfigStore()
+	db := newTestMockDB()
+	routerConfig := &config.RouterConfig{ListenerPort: 8080}
+	transformer := NewLLMProviderTransformer(store, db, routerConfig, newTestPolicyVersionResolver())
+
+	template := &models.StoredLLMProviderTemplate{
+		UUID: "0000-template-1-0000-000000000000",
+		Configuration: api.LLMProviderTemplate{
+			Metadata: api.Metadata{Name: "openai"},
+			Spec:     api.LLMProviderTemplateData{},
+		},
+	}
+	db.SaveLLMProviderTemplate(template)
+	err := store.AddTemplate(template)
+	require.NoError(t, err)
+
+	upstreamURL := "https://api.openai.com"
+	provider := &api.LLMProviderConfiguration{
+		Metadata: api.Metadata{Name: "openai-provider-apikey-policyparams"},
+		Spec: api.LLMProviderConfigData{
+			DisplayName: "OpenAI Provider (api-key via policyParams)",
+			Version:     "1.0.0",
+			Template:    "openai",
+			Upstream: api.LLMProviderConfigData_Upstream{
+				Url: &upstreamURL,
+				Auth: &struct {
+					Header        *string                                   `json:"header,omitempty" yaml:"header,omitempty"`
+					PolicyName    *string                                   `json:"policyName,omitempty" yaml:"policyName,omitempty"`
+					PolicyParams  *map[string]interface{}                   `json:"policyParams,omitempty" yaml:"policyParams,omitempty"`
+					PolicyVersion *string                                   `json:"policyVersion,omitempty" yaml:"policyVersion,omitempty"`
+					Type          api.LLMProviderConfigDataUpstreamAuthType `json:"type" yaml:"type"`
+					Value         *string                                   `json:"value,omitempty" yaml:"value,omitempty"`
+				}{
+					Type: api.LLMProviderConfigDataUpstreamAuthTypeApiKey,
+					// set-headers' own native param shape - policyParams for api-key is
+					// forwarded verbatim, with no header/value defaulting at all.
+					PolicyParams: &map[string]interface{}{
+						"request": map[string]interface{}{
+							"headers": []interface{}{
+								map[string]interface{}{"name": "X-Api-Key", "value": "sk-from-policyparams"},
+							},
+						},
+					},
+				},
+			},
+			AccessControl: api.LLMAccessControl{Mode: api.AllowAll},
+		},
+	}
+
+	output := &api.RestAPI{}
+	result, err := transformer.Transform(provider, output)
+	assert.NoError(t, err)
+	assert.NotNil(t, result)
+
+	require.NotEmpty(t, result.Spec.Operations)
+	for _, op := range result.Spec.Operations {
+		require.NotNil(t, op.Policies)
+		var found *api.Policy
+		for _, p := range *op.Policies {
+			if p.Name == constants.UPSTREAM_AUTH_APIKEY_POLICY_NAME {
+				found = &p
+				break
+			}
+		}
+		require.NotNil(t, found, "operation %s %s should include the set-headers policy", op.EffectiveMethod(), op.EffectivePath())
+		require.NotNil(t, found.Params)
+		// The configured policyParams must reach set-headers unchanged - not the
+		// GetUpstreamAuthApikeyPolicyParams-rendered shape header/value would produce.
+		request, ok := (*found.Params)["request"].(map[string]interface{})
+		require.True(t, ok, "expected policyParams.request to survive verbatim, got %+v", *found.Params)
+		headers, ok := request["headers"].([]interface{})
+		require.True(t, ok)
+		require.Len(t, headers, 1)
+		entry := headers[0].(map[string]interface{})
+		assert.Equal(t, "X-Api-Key", entry["name"])
+		assert.Equal(t, "sk-from-policyparams", entry["value"])
+	}
+}
+
+func TestTransformProvider_WithOAuth2UpstreamAuth(t *testing.T) {
+	store := storage.NewConfigStore()
+	db := newTestMockDB()
+	routerConfig := &config.RouterConfig{
+		ListenerPort: 8080,
+	}
+	transformer := NewLLMProviderTransformer(store, db, routerConfig, newTestPolicyVersionResolver())
+
+	template := &models.StoredLLMProviderTemplate{
+		UUID: "0000-template-1-0000-000000000000",
+		Configuration: api.LLMProviderTemplate{
+			Metadata: api.Metadata{Name: "openai"},
+			Spec:     api.LLMProviderTemplateData{},
+		},
+	}
+	db.SaveLLMProviderTemplate(template)
+	err := store.AddTemplate(template)
+	require.NoError(t, err)
+
+	upstreamURL := "https://api.openai.com"
+	tokenEndpoint := "https://idp.example.com/oauth2/token"
+	clientID := "gateway-client"
+	clientSecret := "s3cr3t"
+	purgeStatusCodes := []int{401, 403}
+	provider := &api.LLMProviderConfiguration{
+		Metadata: api.Metadata{Name: "openai-provider-oauth2"},
+		Spec: api.LLMProviderConfigData{
+			DisplayName: "OpenAI Provider (OAuth2)",
+			Version:     "1.0.0",
+			Template:    "openai",
+			Upstream: api.LLMProviderConfigData_Upstream{
+				Url: &upstreamURL,
+				Auth: &struct {
+					Header        *string                                   `json:"header,omitempty" yaml:"header,omitempty"`
+					PolicyName    *string                                   `json:"policyName,omitempty" yaml:"policyName,omitempty"`
+					PolicyParams  *map[string]interface{}                   `json:"policyParams,omitempty" yaml:"policyParams,omitempty"`
+					PolicyVersion *string                                   `json:"policyVersion,omitempty" yaml:"policyVersion,omitempty"`
+					Type          api.LLMProviderConfigDataUpstreamAuthType `json:"type" yaml:"type"`
+					Value         *string                                   `json:"value,omitempty" yaml:"value,omitempty"`
+				}{
+					Type: api.LLMProviderConfigDataUpstreamAuthTypeOauth2,
+					PolicyParams: &map[string]interface{}{
+						"tokenEndpoint":         tokenEndpoint,
+						"clientId":              clientID,
+						"clientSecret":          clientSecret,
+						"tokenPurgeStatusCodes": purgeStatusCodes,
+					},
+				},
+			},
+			AccessControl: api.LLMAccessControl{
+				Mode: api.AllowAll,
+			},
+		},
+	}
+
+	output := &api.RestAPI{}
+	result, err := transformer.Transform(provider, output)
+	assert.NoError(t, err)
+	assert.NotNil(t, result)
+
+	require.NotEmpty(t, result.Spec.Operations)
+	for _, op := range result.Spec.Operations {
+		require.NotNil(t, op.Policies)
+		found := false
+		var foundParams *map[string]interface{}
+		for _, p := range *op.Policies {
+			if p.Name == constants.UPSTREAM_AUTH_OAUTH2_POLICY_NAME {
+				found = true
+				foundParams = p.Params
+				break
+			}
+		}
+		assert.True(t, found, "operation %s %s should include the oauth2 policy", op.EffectiveMethod(), op.EffectivePath())
+		require.NotNil(t, foundParams)
+		// policyParams is forwarded verbatim - no CRD-level defaulting of
+		// grantType/clientAuthMethod anymore, that's the oauth2-generator
+		// policy's own responsibility now (see its GetPolicy).
+		assert.Equal(t, tokenEndpoint, (*foundParams)["tokenEndpoint"])
+		assert.Equal(t, clientID, (*foundParams)["clientId"])
+		assert.Equal(t, clientSecret, (*foundParams)["clientSecret"])
+		assert.Equal(t, purgeStatusCodes, (*foundParams)["tokenPurgeStatusCodes"], "policyParams should reach the policy unchanged")
+	}
+}
+
+// TestTransformProvider_PolicyVersionOverride covers resolvePolicyVersionOverride's
+// two branches beyond the always-omitted-override default every other test here
+// uses: a matching pin succeeds, and a pin that doesn't match what's actually
+// loaded (testOAuth2AuthenticationVersion, "v9.9.7") fails loudly instead of
+// silently resolving to the wrong version.
+func TestTransformProvider_PolicyVersionOverride(t *testing.T) {
+	newProvider := func(policyVersion *string) *api.LLMProviderConfiguration {
+		upstreamURL := "https://api.openai.com"
+		return &api.LLMProviderConfiguration{
+			Metadata: api.Metadata{Name: "openai-provider-pinned"},
+			Spec: api.LLMProviderConfigData{
+				DisplayName: "OpenAI Provider (pinned policyVersion)",
+				Version:     "1.0.0",
+				Template:    "openai",
+				Upstream: api.LLMProviderConfigData_Upstream{
+					Url: &upstreamURL,
+					Auth: &struct {
+						Header        *string                                   `json:"header,omitempty" yaml:"header,omitempty"`
+						PolicyName    *string                                   `json:"policyName,omitempty" yaml:"policyName,omitempty"`
+						PolicyParams  *map[string]interface{}                   `json:"policyParams,omitempty" yaml:"policyParams,omitempty"`
+						PolicyVersion *string                                   `json:"policyVersion,omitempty" yaml:"policyVersion,omitempty"`
+						Type          api.LLMProviderConfigDataUpstreamAuthType `json:"type" yaml:"type"`
+						Value         *string                                   `json:"value,omitempty" yaml:"value,omitempty"`
+					}{
+						Type:          api.LLMProviderConfigDataUpstreamAuthTypeOauth2,
+						PolicyParams:  &map[string]interface{}{"tokenEndpoint": "https://idp.example.com/oauth2/token"},
+						PolicyVersion: policyVersion,
+					},
+				},
+				AccessControl: api.LLMAccessControl{Mode: api.AllowAll},
+			},
+		}
+	}
+
+	newTransformer := func(t *testing.T) *LLMProviderTransformer {
+		store := storage.NewConfigStore()
+		db := newTestMockDB()
+		transformer := NewLLMProviderTransformer(store, db, &config.RouterConfig{ListenerPort: 8080}, newTestPolicyVersionResolver())
+		template := &models.StoredLLMProviderTemplate{
+			UUID:          "0000-template-1-0000-000000000000",
+			Configuration: api.LLMProviderTemplate{Metadata: api.Metadata{Name: "openai"}, Spec: api.LLMProviderTemplateData{}},
+		}
+		db.SaveLLMProviderTemplate(template)
+		require.NoError(t, store.AddTemplate(template))
+		return transformer
+	}
+
+	t.Run("matching pin succeeds", func(t *testing.T) {
+		transformer := newTransformer(t)
+		result, err := transformer.Transform(newProvider(stringPtr("v9.9.7")), &api.RestAPI{})
+		require.NoError(t, err)
+		require.NotEmpty(t, result.Spec.Operations)
+		for _, op := range result.Spec.Operations {
+			require.NotNil(t, op.Policies)
+			for _, p := range *op.Policies {
+				if p.Name == constants.UPSTREAM_AUTH_OAUTH2_POLICY_NAME {
+					assert.Equal(t, "v9.9.7", p.Version)
+				}
+			}
+		}
+	})
+
+	t.Run("mismatched pin fails loudly instead of silently using the loaded version", func(t *testing.T) {
+		transformer := newTransformer(t)
+		_, err := transformer.Transform(newProvider(stringPtr("v1")), &api.RestAPI{})
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "v1")
+		assert.Contains(t, err.Error(), "v9.9.7")
+	})
+}
+
+// TestTransformProvider_OAuth2PolicyNameOverride covers
+// resolveUpstreamAuthPolicyName's non-empty-override branch for oauth2 - e.g.
+// pointing at a fork or a newer major version's replacement instead of the
+// built-in oauth2-generator default. Every other oauth2 test here omits
+// policyName entirely.
+func TestTransformProvider_OAuth2PolicyNameOverride(t *testing.T) {
+	store := storage.NewConfigStore()
+	db := newTestMockDB()
+	transformer := NewLLMProviderTransformer(store, db, &config.RouterConfig{ListenerPort: 8080}, newTestPolicyVersionResolver())
+	template := &models.StoredLLMProviderTemplate{
+		UUID:          "0000-template-1-0000-000000000000",
+		Configuration: api.LLMProviderTemplate{Metadata: api.Metadata{Name: "openai"}, Spec: api.LLMProviderTemplateData{}},
+	}
+	db.SaveLLMProviderTemplate(template)
+	require.NoError(t, store.AddTemplate(template))
+
+	upstreamURL := "https://api.openai.com"
+	provider := &api.LLMProviderConfiguration{
+		Metadata: api.Metadata{Name: "openai-provider-oauth2-fork"},
+		Spec: api.LLMProviderConfigData{
+			DisplayName: "OpenAI Provider (oauth2, forked policy)",
+			Version:     "1.0.0",
+			Template:    "openai",
+			Upstream: api.LLMProviderConfigData_Upstream{
+				Url: &upstreamURL,
+				Auth: &struct {
+					Header        *string                                   `json:"header,omitempty" yaml:"header,omitempty"`
+					PolicyName    *string                                   `json:"policyName,omitempty" yaml:"policyName,omitempty"`
+					PolicyParams  *map[string]interface{}                   `json:"policyParams,omitempty" yaml:"policyParams,omitempty"`
+					PolicyVersion *string                                   `json:"policyVersion,omitempty" yaml:"policyVersion,omitempty"`
+					Type          api.LLMProviderConfigDataUpstreamAuthType `json:"type" yaml:"type"`
+					Value         *string                                   `json:"value,omitempty" yaml:"value,omitempty"`
+				}{
+					Type:         api.LLMProviderConfigDataUpstreamAuthTypeOauth2,
+					PolicyName:   stringPtr(testCustomAuthPolicyName),
+					PolicyParams: &map[string]interface{}{"tokenEndpoint": "https://idp.example.com/oauth2/token"},
+				},
+			},
+			AccessControl: api.LLMAccessControl{Mode: api.AllowAll},
+		},
+	}
+
+	result, err := transformer.Transform(provider, &api.RestAPI{})
+	require.NoError(t, err)
+	require.NotEmpty(t, result.Spec.Operations)
+	for _, op := range result.Spec.Operations {
+		require.NotNil(t, op.Policies)
+		found := false
+		for _, p := range *op.Policies {
+			if p.Name == testCustomAuthPolicyName {
+				found = true
+				assert.Equal(t, testCustomAuthPolicyVersion, p.Version)
+			}
+			assert.NotEqual(t, constants.UPSTREAM_AUTH_OAUTH2_POLICY_NAME, p.Name,
+				"the built-in oauth2-generator policy must not also be attached alongside the override")
+		}
+		assert.True(t, found, "operation %s %s should include the overridden policy", op.EffectiveMethod(), op.EffectivePath())
+	}
+}
+
+func TestTransformProvider_WithOAuth2PasswordGrant(t *testing.T) {
+	store := storage.NewConfigStore()
+	db := newTestMockDB()
+	routerConfig := &config.RouterConfig{ListenerPort: 8080}
+	transformer := NewLLMProviderTransformer(store, db, routerConfig, newTestPolicyVersionResolver())
+
+	template := &models.StoredLLMProviderTemplate{
+		UUID: "0000-template-1-0000-000000000000",
+		Configuration: api.LLMProviderTemplate{
+			Metadata: api.Metadata{Name: "openai"},
+			Spec:     api.LLMProviderTemplateData{},
+		},
+	}
+	db.SaveLLMProviderTemplate(template)
+	err := store.AddTemplate(template)
+	require.NoError(t, err)
+
+	upstreamURL := "https://api.openai.com"
+	tokenEndpoint := "https://legacy-idp.example.com/oauth2/token"
+	clientID := "gateway-client"
+	clientSecret := "s3cr3t"
+	username := "resource-owner"
+	password := "hunter2"
+	provider := &api.LLMProviderConfiguration{
+		Metadata: api.Metadata{Name: "openai-provider-oauth2-password"},
+		Spec: api.LLMProviderConfigData{
+			DisplayName: "OpenAI Provider (OAuth2 password grant)",
+			Version:     "1.0.0",
+			Template:    "openai",
+			Upstream: api.LLMProviderConfigData_Upstream{
+				Url: &upstreamURL,
+				Auth: &struct {
+					Header        *string                                   `json:"header,omitempty" yaml:"header,omitempty"`
+					PolicyName    *string                                   `json:"policyName,omitempty" yaml:"policyName,omitempty"`
+					PolicyParams  *map[string]interface{}                   `json:"policyParams,omitempty" yaml:"policyParams,omitempty"`
+					PolicyVersion *string                                   `json:"policyVersion,omitempty" yaml:"policyVersion,omitempty"`
+					Type          api.LLMProviderConfigDataUpstreamAuthType `json:"type" yaml:"type"`
+					Value         *string                                   `json:"value,omitempty" yaml:"value,omitempty"`
+				}{
+					Type: api.LLMProviderConfigDataUpstreamAuthTypeOauth2,
+					PolicyParams: &map[string]interface{}{
+						"grantType":     "password",
+						"tokenEndpoint": tokenEndpoint,
+						"clientId":      clientID,
+						"clientSecret":  clientSecret,
+						"username":      username,
+						"password":      password,
+					},
+				},
+			},
+			AccessControl: api.LLMAccessControl{
+				Mode: api.AllowAll,
+			},
+		},
+	}
+
+	output := &api.RestAPI{}
+	result, err := transformer.Transform(provider, output)
+	assert.NoError(t, err)
+	assert.NotNil(t, result)
+
+	require.NotEmpty(t, result.Spec.Operations)
+	for _, op := range result.Spec.Operations {
+		require.NotNil(t, op.Policies)
+		var foundParams *map[string]interface{}
+		for _, p := range *op.Policies {
+			if p.Name == constants.UPSTREAM_AUTH_OAUTH2_POLICY_NAME {
+				foundParams = p.Params
+				break
+			}
+		}
+		require.NotNil(t, foundParams)
+		assert.Equal(t, "password", (*foundParams)["grantType"])
+		assert.Equal(t, username, (*foundParams)["username"])
+		assert.Equal(t, password, (*foundParams)["password"])
+	}
+}
+
+// TestTransformProvider_WithOAuth2UpstreamAuth_MissingPolicyParams locks in
+// the only CRD-level requirement left for type: oauth2 - policyParams itself
+// must be present. There is no more granular validation of its contents at
+// this layer (tokenEndpoint/clientId/clientSecret/grantType/
+// clientAuthMethod, previously validated here via the now-removed typed
+// oauth2* fields) - policyParams is forwarded to the oauth2-generator policy
+// verbatim, and that policy validates its own contents at GetPolicy time.
+func TestTransformProvider_WithOAuth2UpstreamAuth_MissingPolicyParams(t *testing.T) {
+	store := storage.NewConfigStore()
+	db := newTestMockDB()
+	routerConfig := &config.RouterConfig{ListenerPort: 8080}
+	transformer := NewLLMProviderTransformer(store, db, routerConfig, newTestPolicyVersionResolver())
+
+	template := &models.StoredLLMProviderTemplate{
+		UUID: "0000-template-1-0000-000000000000",
+		Configuration: api.LLMProviderTemplate{
+			Metadata: api.Metadata{Name: "openai"},
+			Spec:     api.LLMProviderTemplateData{},
+		},
+	}
+	db.SaveLLMProviderTemplate(template)
+	err := store.AddTemplate(template)
+	require.NoError(t, err)
+
+	upstreamURL := "https://api.openai.com"
+	provider := &api.LLMProviderConfiguration{
+		Metadata: api.Metadata{Name: "openai-provider-oauth2-invalid"},
+		Spec: api.LLMProviderConfigData{
+			DisplayName: "OpenAI Provider (OAuth2, invalid)",
+			Version:     "1.0.0",
+			Template:    "openai",
+			Upstream: api.LLMProviderConfigData_Upstream{
+				Url: &upstreamURL,
+				Auth: &struct {
+					Header        *string                                   `json:"header,omitempty" yaml:"header,omitempty"`
+					PolicyName    *string                                   `json:"policyName,omitempty" yaml:"policyName,omitempty"`
+					PolicyParams  *map[string]interface{}                   `json:"policyParams,omitempty" yaml:"policyParams,omitempty"`
+					PolicyVersion *string                                   `json:"policyVersion,omitempty" yaml:"policyVersion,omitempty"`
+					Type          api.LLMProviderConfigDataUpstreamAuthType `json:"type" yaml:"type"`
+					Value         *string                                   `json:"value,omitempty" yaml:"value,omitempty"`
+				}{
+					Type: api.LLMProviderConfigDataUpstreamAuthTypeOauth2,
+					// PolicyParams deliberately omitted
+				},
+			},
+			AccessControl: api.LLMAccessControl{Mode: api.AllowAll},
+		},
+	}
+
+	output := &api.RestAPI{}
+	result, err := transformer.Transform(provider, output)
+	assert.Error(t, err)
+	assert.Nil(t, result)
+	assert.Contains(t, err.Error(), "policyParams")
 }
 
 func TestTransformProxy_WithUpstreamAuth(t *testing.T) {
@@ -2148,14 +2584,23 @@ func TestTransformProxy_WithUpstreamAuth(t *testing.T) {
 }
 
 // TestTransformProxy_OtherAndNoneUpstreamAuth verifies that a proxy-level
-// upstream auth override of "other" or "none" transforms successfully and
-// attaches no upstream auth policy.
+// upstream auth override of "other" (with a named policy) or "none"
+// transforms successfully and attaches no *built-in* upstream auth policy.
 func TestTransformProxy_OtherAndNoneUpstreamAuth(t *testing.T) {
-	for _, authType := range []api.LLMUpstreamAuthType{
-		api.LLMUpstreamAuthTypeOther,
-		api.LLMUpstreamAuthTypeNone,
-	} {
-		t.Run(string(authType), func(t *testing.T) {
+	tests := []struct {
+		authType     api.LLMUpstreamAuthType
+		policyName   *string
+		policyParams *map[string]interface{}
+	}{
+		{
+			authType:     api.LLMUpstreamAuthTypeOther,
+			policyName:   stringPtr(testCustomAuthPolicyName),
+			policyParams: &map[string]interface{}{"foo": "bar"},
+		},
+		{authType: api.LLMUpstreamAuthTypeNone},
+	}
+	for _, tc := range tests {
+		t.Run(string(tc.authType), func(t *testing.T) {
 			store := storage.NewConfigStore()
 			db := newTestMockDB()
 			routerConfig := &config.RouterConfig{ListenerPort: 8080}
@@ -2205,8 +2650,12 @@ func TestTransformProxy_OtherAndNoneUpstreamAuth(t *testing.T) {
 					DisplayName: "OpenAI Proxy",
 					Version:     "v1.0",
 					Provider: api.LLMProxyProvider{
-						Id:   "openai-provider",
-						Auth: &api.LLMUpstreamAuth{Type: authType},
+						Id: "openai-provider",
+						Auth: &api.LLMUpstreamAuth{
+							Type:         tc.authType,
+							PolicyName:   tc.policyName,
+							PolicyParams: tc.policyParams,
+						},
 					},
 				},
 			}
@@ -2227,10 +2676,313 @@ func TestTransformProxy_OtherAndNoneUpstreamAuth(t *testing.T) {
 						continue
 					}
 					assert.NotEqual(t, constants.UPSTREAM_AUTH_APIKEY_POLICY_NAME, p.Name,
-						"proxy auth type %q should not attach an upstream auth policy", authType)
+						"proxy auth type %q should not attach the built-in upstream auth policy", tc.authType)
 				}
 			}
 		})
+	}
+}
+
+func TestTransformProxy_WithOAuth2UpstreamAuth(t *testing.T) {
+	store := storage.NewConfigStore()
+	db := newTestMockDB()
+	routerConfig := &config.RouterConfig{ListenerPort: 8080}
+	transformer := NewLLMProviderTransformer(store, db, routerConfig, newTestPolicyVersionResolver())
+
+	template := &models.StoredLLMProviderTemplate{
+		UUID: "0000-template-1-0000-000000000000",
+		Configuration: api.LLMProviderTemplate{
+			Metadata: api.Metadata{Name: "openai"},
+			Spec:     api.LLMProviderTemplateData{},
+		},
+	}
+	db.SaveLLMProviderTemplate(template)
+	err := store.AddTemplate(template)
+	require.NoError(t, err)
+
+	upstreamURL := "https://api.openai.com"
+	provider := &api.LLMProviderConfiguration{
+		Metadata: api.Metadata{Name: "openai-provider-oauth2-proxy"},
+		Spec: api.LLMProviderConfigData{
+			DisplayName: "OpenAI Provider",
+			Version:     "v1.0",
+			Template:    "openai",
+			Upstream: api.LLMProviderConfigData_Upstream{
+				Url: &upstreamURL,
+			},
+			AccessControl: api.LLMAccessControl{Mode: api.AllowAll},
+		},
+	}
+
+	providerOut := &api.RestAPI{}
+	providerAPI, err := transformer.Transform(provider, providerOut)
+	require.NoError(t, err)
+	require.NotNil(t, providerAPI)
+
+	storedProvider := &models.StoredConfig{
+		UUID:                "0000-prov-cfg-2-0000-000000000000",
+		Kind:                string(api.LLMProviderConfigurationKindLlmProvider),
+		Handle:              "openai-provider-oauth2-proxy",
+		DisplayName:         "OpenAI Provider",
+		Version:             "v1.0",
+		Configuration:       *providerAPI,
+		SourceConfiguration: *provider,
+		DesiredState:        models.StateDeployed,
+		Origin:              models.OriginGatewayAPI,
+	}
+	db.SaveConfig(storedProvider)
+	err = store.Add(storedProvider)
+	require.NoError(t, err)
+
+	tokenEndpoint := "https://idp.example.com/oauth2/token"
+	clientID := "proxy-client"
+	clientSecret := "proxy-secret"
+	purgeStatusCodes := []int{401, 403}
+	proxy := &api.LLMProxyConfiguration{
+		Metadata: api.Metadata{Name: "openai-proxy-oauth2"},
+		Spec: api.LLMProxyConfigData{
+			DisplayName: "OpenAI Proxy (OAuth2)",
+			Version:     "v1.0",
+			Provider: api.LLMProxyProvider{
+				Id: "openai-provider-oauth2-proxy",
+				Auth: &api.LLMUpstreamAuth{
+					Type: api.LLMUpstreamAuthTypeOauth2,
+					PolicyParams: &map[string]interface{}{
+						"tokenEndpoint":         tokenEndpoint,
+						"clientId":              clientID,
+						"clientSecret":          clientSecret,
+						"tokenPurgeStatusCodes": purgeStatusCodes,
+					},
+				},
+			},
+		},
+	}
+
+	output := &api.RestAPI{}
+	result, err := transformer.Transform(proxy, output)
+	require.NoError(t, err)
+	require.NotNil(t, result)
+
+	require.NotEmpty(t, result.Spec.Operations)
+	for _, op := range result.Spec.Operations {
+		require.NotNil(t, op.Policies)
+		found := false
+		var foundParams *map[string]interface{}
+		for _, p := range *op.Policies {
+			if p.Name == constants.UPSTREAM_AUTH_OAUTH2_POLICY_NAME {
+				found = true
+				foundParams = p.Params
+				break
+			}
+		}
+		assert.True(t, found, "operation %s %s should include the oauth2 policy", op.EffectiveMethod(), op.EffectivePath())
+		require.NotNil(t, foundParams)
+		assert.Equal(t, []int{401, 403}, (*foundParams)["tokenPurgeStatusCodes"], "oauth2TokenPurgeStatusCodes should reach the policy params unchanged via the LlmProxy path too")
+	}
+}
+
+// TestTransformProxy_ApiKeyWithPolicyParams is proxyUpstreamAuthPolicy's
+// counterpart to TestTransformProvider_ApiKeyWithPolicyParams: type: api-key
+// configured via the generic policyParams bucket instead of header/value, but
+// through the LlmProxy provider.auth call site - previously untested; every
+// other proxy api-key test here uses header/value.
+func TestTransformProxy_ApiKeyWithPolicyParams(t *testing.T) {
+	store := storage.NewConfigStore()
+	db := newTestMockDB()
+	routerConfig := &config.RouterConfig{ListenerPort: 8080}
+	transformer := NewLLMProviderTransformer(store, db, routerConfig, newTestPolicyVersionResolver())
+
+	template := &models.StoredLLMProviderTemplate{
+		UUID: "0000-template-1-0000-000000000000",
+		Configuration: api.LLMProviderTemplate{
+			Metadata: api.Metadata{Name: "openai"},
+			Spec:     api.LLMProviderTemplateData{},
+		},
+	}
+	db.SaveLLMProviderTemplate(template)
+	require.NoError(t, store.AddTemplate(template))
+
+	upstreamURL := "https://api.openai.com"
+	provider := &api.LLMProviderConfiguration{
+		Metadata: api.Metadata{Name: "openai-provider-apikey-pp"},
+		Spec: api.LLMProviderConfigData{
+			DisplayName:   "OpenAI Provider",
+			Version:       "v1.0",
+			Template:      "openai",
+			Upstream:      api.LLMProviderConfigData_Upstream{Url: &upstreamURL},
+			AccessControl: api.LLMAccessControl{Mode: api.AllowAll},
+		},
+	}
+	providerAPI, err := transformer.Transform(provider, &api.RestAPI{})
+	require.NoError(t, err)
+
+	storedProvider := &models.StoredConfig{
+		UUID:                "0000-prov-cfg-3-0000-000000000000",
+		Kind:                string(api.LLMProviderConfigurationKindLlmProvider),
+		Handle:              "openai-provider-apikey-pp",
+		DisplayName:         "OpenAI Provider",
+		Version:             "v1.0",
+		Configuration:       *providerAPI,
+		SourceConfiguration: *provider,
+		DesiredState:        models.StateDeployed,
+		Origin:              models.OriginGatewayAPI,
+	}
+	db.SaveConfig(storedProvider)
+	require.NoError(t, store.Add(storedProvider))
+
+	proxy := &api.LLMProxyConfiguration{
+		Metadata: api.Metadata{Name: "openai-proxy-apikey-pp"},
+		Spec: api.LLMProxyConfigData{
+			DisplayName: "OpenAI Proxy (api-key via policyParams)",
+			Version:     "v1.0",
+			Provider: api.LLMProxyProvider{
+				Id: "openai-provider-apikey-pp",
+				Auth: &api.LLMUpstreamAuth{
+					Type: api.LLMUpstreamAuthTypeApiKey,
+					PolicyParams: &map[string]interface{}{
+						"request": map[string]interface{}{
+							"headers": []interface{}{
+								map[string]interface{}{"name": "X-Api-Key", "value": "sk-proxy-from-policyparams"},
+							},
+						},
+					},
+				},
+			},
+		},
+	}
+
+	result, err := transformer.Transform(proxy, &api.RestAPI{})
+	require.NoError(t, err)
+	require.NotNil(t, result)
+
+	require.NotEmpty(t, result.Spec.Operations)
+	for _, op := range result.Spec.Operations {
+		require.NotNil(t, op.Policies)
+		var found *api.Policy
+		for _, p := range *op.Policies {
+			if p.Name == constants.UPSTREAM_AUTH_APIKEY_POLICY_NAME {
+				found = &p
+				break
+			}
+		}
+		require.NotNil(t, found, "operation %s %s should include the set-headers policy", op.EffectiveMethod(), op.EffectivePath())
+		require.NotNil(t, found.Params)
+		request, ok := (*found.Params)["request"].(map[string]interface{})
+		require.True(t, ok, "expected policyParams.request to survive verbatim, got %+v", *found.Params)
+		headers, ok := request["headers"].([]interface{})
+		require.True(t, ok)
+		require.Len(t, headers, 1)
+		entry := headers[0].(map[string]interface{})
+		assert.Equal(t, "X-Api-Key", entry["name"])
+		assert.Equal(t, "sk-proxy-from-policyparams", entry["value"])
+	}
+}
+
+// TestTransformProxy_WithOAuth2PasswordGrantScope locks in that policyParams
+// (including a password grant and a nested "params" map) reaches the built
+// policy params verbatim via the LlmProxy path (LLMUpstreamAuth), not just
+// via LlmProvider's upstream.auth - buildLegacyOrGenericPolicy is shared
+// code, but nothing exercised this combination through the proxy call site
+// before.
+func TestTransformProxy_WithOAuth2PasswordGrantScope(t *testing.T) {
+	store := storage.NewConfigStore()
+	db := newTestMockDB()
+	routerConfig := &config.RouterConfig{ListenerPort: 8080}
+	transformer := NewLLMProviderTransformer(store, db, routerConfig, newTestPolicyVersionResolver())
+
+	template := &models.StoredLLMProviderTemplate{
+		UUID: "0000-template-1-0000-000000000000",
+		Configuration: api.LLMProviderTemplate{
+			Metadata: api.Metadata{Name: "openai"},
+			Spec:     api.LLMProviderTemplateData{},
+		},
+	}
+	db.SaveLLMProviderTemplate(template)
+	err := store.AddTemplate(template)
+	require.NoError(t, err)
+
+	upstreamURL := "https://api.openai.com"
+	provider := &api.LLMProviderConfiguration{
+		Metadata: api.Metadata{Name: "openai-provider-oauth2-proxy-password"},
+		Spec: api.LLMProviderConfigData{
+			DisplayName: "OpenAI Provider",
+			Version:     "v1.0",
+			Template:    "openai",
+			Upstream: api.LLMProviderConfigData_Upstream{
+				Url: &upstreamURL,
+			},
+			AccessControl: api.LLMAccessControl{Mode: api.AllowAll},
+		},
+	}
+
+	providerOut := &api.RestAPI{}
+	providerAPI, err := transformer.Transform(provider, providerOut)
+	require.NoError(t, err)
+	require.NotNil(t, providerAPI)
+
+	storedProvider := &models.StoredConfig{
+		UUID:                "0000-prov-cfg-3-0000-000000000000",
+		Kind:                string(api.LLMProviderConfigurationKindLlmProvider),
+		Handle:              "openai-provider-oauth2-proxy-password",
+		DisplayName:         "OpenAI Provider",
+		Version:             "v1.0",
+		Configuration:       *providerAPI,
+		SourceConfiguration: *provider,
+		DesiredState:        models.StateDeployed,
+		Origin:              models.OriginGatewayAPI,
+	}
+	db.SaveConfig(storedProvider)
+	err = store.Add(storedProvider)
+	require.NoError(t, err)
+
+	tokenEndpoint := "https://idp.example.com/oauth2/token"
+	clientID := "proxy-client"
+	clientSecret := "proxy-secret"
+	username := "resource-owner"
+	password := "hunter2"
+	proxy := &api.LLMProxyConfiguration{
+		Metadata: api.Metadata{Name: "openai-proxy-oauth2-password"},
+		Spec: api.LLMProxyConfigData{
+			DisplayName: "OpenAI Proxy (OAuth2 password grant)",
+			Version:     "v1.0",
+			Provider: api.LLMProxyProvider{
+				Id: "openai-provider-oauth2-proxy-password",
+				Auth: &api.LLMUpstreamAuth{
+					Type: api.LLMUpstreamAuthTypeOauth2,
+					PolicyParams: &map[string]interface{}{
+						"grantType":     "password",
+						"tokenEndpoint": tokenEndpoint,
+						"clientId":      clientID,
+						"clientSecret":  clientSecret,
+						"username":      username,
+						"password":      password,
+						"params":        map[string]string{"scope": "read write"},
+					},
+				},
+			},
+		},
+	}
+
+	output := &api.RestAPI{}
+	result, err := transformer.Transform(proxy, output)
+	require.NoError(t, err)
+	require.NotNil(t, result)
+
+	require.NotEmpty(t, result.Spec.Operations)
+	for _, op := range result.Spec.Operations {
+		require.NotNil(t, op.Policies)
+		var foundParams *map[string]interface{}
+		for _, p := range *op.Policies {
+			if p.Name == constants.UPSTREAM_AUTH_OAUTH2_POLICY_NAME {
+				foundParams = p.Params
+				break
+			}
+		}
+		require.NotNil(t, foundParams)
+		assert.Equal(t, "password", (*foundParams)["grantType"])
+		assert.Equal(t, username, (*foundParams)["username"])
+		assert.Equal(t, password, (*foundParams)["password"])
+		assert.Equal(t, map[string]string{"scope": "read write"}, (*foundParams)["params"])
 	}
 }
 

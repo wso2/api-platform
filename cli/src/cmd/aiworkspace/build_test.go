@@ -106,6 +106,31 @@ func TestBuildLLMProxyPayload_UsesRuntimeDescriptionWhenSet(t *testing.T) {
 	}
 }
 
+func TestBuildLLMProxyPayload_ProviderAuthOmitsSecretFields(t *testing.T) {
+	rt := newProxyRuntime()
+	rt.Spec.Provider.Auth = &runtimeProviderAuth{
+		Type:          "oauth2",
+		PolicyName:    "oauth2-generator",
+		PolicyVersion: "v1",
+		Value:         "should-never-be-copied",
+		PolicyParams: map[string]interface{}{
+			"clientSecret": "should-never-be-copied",
+		},
+	}
+
+	payload := buildLLMProxyPayload("claude-proxy2", newProxyMetadata(), rt, "")
+	auth := payload.Provider.Auth
+	if auth == nil {
+		t.Fatalf("expected provider auth to be set")
+	}
+	if auth.Type != "oauth2" || auth.PolicyName != "oauth2-generator" || auth.PolicyVersion != "v1" {
+		t.Fatalf("expected non-secret fields to pass through, got %+v", auth)
+	}
+	if auth.Value != "" || auth.PolicyParams != nil {
+		t.Fatalf("expected secret-bearing fields (value/policyParams) to be omitted, got %+v", auth)
+	}
+}
+
 func TestBuildLLMProxyPayload_OmitsPoliciesWhenNone(t *testing.T) {
 	var md aiWorkspaceMetadata
 	md.Spec.DisplayName = "p"
@@ -186,6 +211,37 @@ func TestBuildLLMProviderPayload_OmitsModelProvidersForUnknownTemplate(t *testin
 	payload := buildLLMProviderPayload("p", metadata, runtime, "")
 	if payload.ModelProviders != nil {
 		t.Fatalf("expected no modelProviders for unknown template, got %#v", payload.ModelProviders)
+	}
+}
+
+func TestBuildLLMProviderPayload_UpstreamOAuth2CarriesPolicyParams(t *testing.T) {
+	var metadata aiWorkspaceMetadata
+	metadata.Spec.Version = "v1.0"
+
+	var runtime aiWorkspaceRuntime
+	runtime.Spec.Upstream = &runtimeUpstream{
+		URL: "https://upstream.example.com",
+		Auth: &runtimeProviderAuth{
+			Type:          "oauth2",
+			PolicyVersion: "v1",
+			PolicyParams: map[string]interface{}{
+				"tokenEndpoint": "https://idp.example.com/token",
+				"clientId":      "abc",
+				"clientSecret":  "{{ secret \"upstream-oauth2\" }}",
+			},
+		},
+	}
+
+	payload := buildLLMProviderPayload("p", metadata, runtime, "")
+	if payload.Upstream == nil || payload.Upstream.Main.Auth == nil {
+		t.Fatalf("expected upstream auth to be set, got %+v", payload.Upstream)
+	}
+	auth := payload.Upstream.Main.Auth
+	if auth.Type != "oauth2" || auth.PolicyVersion != "v1" {
+		t.Fatalf("unexpected auth type/policyVersion: %+v", auth)
+	}
+	if auth.PolicyParams["tokenEndpoint"] != "https://idp.example.com/token" || auth.PolicyParams["clientId"] != "abc" {
+		t.Fatalf("expected policyParams to pass through verbatim, got %+v", auth.PolicyParams)
 	}
 }
 

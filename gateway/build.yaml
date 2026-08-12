@@ -3,7 +3,7 @@ gateway:
   version: 1.2.0-SNAPSHOT
 policies:
   - name: advanced-ratelimit
-    gomodule: github.com/wso2/gateway-controllers/policies/advanced-ratelimit@v1
+    filePath: ./dev-policies/advanced-ratelimit
   - name: analytics-header-filter
     gomodule: github.com/wso2/gateway-controllers/policies/analytics-header-filter@v1
   - name: api-key-auth
@@ -62,6 +62,8 @@ policies:
     gomodule: github.com/wso2/gateway-controllers/policies/model-weighted-round-robin@v1
   - name: nvidia-nemoguard-content-safety
     pipPackage: github.com/wso2/gateway-controllers/policies/nvidia-nemoguard-content-safety@v0
+  - name: oauth2-generator
+    filePath: ./dev-policies/oauth2-generator
   - name: opaque-token-auth
     gomodule: github.com/wso2/gateway-controllers/policies/opaque-token-auth@v1
   - name: openai-to-anthropic-transformer
