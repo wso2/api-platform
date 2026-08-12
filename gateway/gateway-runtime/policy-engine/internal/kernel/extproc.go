@@ -516,9 +516,11 @@ func (s *ExternalProcessorServer) initializeExecutionContext(ctx context.Context
 	return &routeMetadata
 }
 
-// extractRouteKey extracts just the route key (xds.route_name) from the request attributes.
-// This is a lightweight extraction that avoids parsing route metadata.
-func (s *ExternalProcessorServer) extractRouteKey(req *extprocv3.ProcessingRequest) string {
+// extractRouteKeyFromAttributes extracts just the route key (xds.route_name)
+// from the request attributes — shared by both the downstream ExternalProcessorServer
+// and the upstream-attempt UpstreamExternalProcessorServer (Task 3), since both
+// receive the identical ext_proc request-attributes shape.
+func extractRouteKeyFromAttributes(req *extprocv3.ProcessingRequest) string {
 	if req.Attributes == nil {
 		return "default"
 	}
@@ -532,6 +534,12 @@ func (s *ExternalProcessorServer) extractRouteKey(req *extprocv3.ProcessingReque
 		}
 	}
 	return "default"
+}
+
+// extractRouteKey extracts just the route key (xds.route_name) from the request attributes.
+// This is a lightweight extraction that avoids parsing route metadata.
+func (s *ExternalProcessorServer) extractRouteKey(req *extprocv3.ProcessingRequest) string {
+	return extractRouteKeyFromAttributes(req)
 }
 
 // skipAllProcessing returns a response that skips all processing phases

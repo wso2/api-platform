@@ -497,3 +497,13 @@ func TestInitializeExecutionContext_WithPolicyChain(t *testing.T) {
 	assert.Equal(t, "/api/v1/pets", execCtx.requestBodyCtx.Path)
 	assert.Equal(t, "GET", execCtx.requestBodyCtx.Method)
 }
+
+// TestExtractRouteKeyFromAttributes_MissingAttributesReturnsDefault tests that
+// the free function extractRouteKeyFromAttributes returns "default" when the
+// request has no attributes.
+func TestExtractRouteKeyFromAttributes_MissingAttributesReturnsDefault(t *testing.T) {
+	req := &extprocv3.ProcessingRequest{}
+	if got := extractRouteKeyFromAttributes(req); got != "default" {
+		t.Errorf("got %q, want %q", got, "default")
+	}
+}
