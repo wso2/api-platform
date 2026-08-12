@@ -116,6 +116,7 @@ type resolvedTimeout struct {
 	Connect *time.Duration
 	Route   *time.Duration
 	Idle    *time.Duration
+	Retry   *api.Retry // nil when resilience.retry is not configured
 }
 
 // NewTranslator creates a new translator
@@ -331,15 +332,20 @@ func (t *Translator) createRouteFromRDC(routeKey string, rdcRoute *models.Route,
 	// Build route action with timeouts. Per-route resilience values (from the API/operation
 	// resilience block) take precedence; otherwise fall back to the global route defaults.
 	var routeResilienceTimeout, routeResilienceIdle *time.Duration
+	var routeResilienceRetry *api.Retry
 	if rdcRoute.Timeout != nil {
 		routeResilienceTimeout = rdcRoute.Timeout.Timeout
 		routeResilienceIdle = rdcRoute.Timeout.IdleTimeout
+		routeResilienceRetry = rdcRoute.Timeout.Retry
 	}
 	routeAction := &route.Route_Route{
 		Route: &route.RouteAction{
 			Timeout:     t.routeTimeoutOrDefault(routeResilienceTimeout, t.routerConfig.Upstream.Timeouts.RouteTimeoutMs),
 			IdleTimeout: t.routeTimeoutOrDefault(routeResilienceIdle, t.routerConfig.Upstream.Timeouts.RouteIdleTimeoutMs),
 		},
+	}
+	if routeResilienceRetry != nil {
+		routeAction.Route.RetryPolicy = buildRetryPolicy(routeResilienceRetry)
 	}
 
 	// Set cluster specifier
@@ -1076,7 +1082,7 @@ func (t *Translator) translateAPIConfig(cfg *models.StoredConfig, allConfigs []*
 	}
 
 	// Resolve API-level resilience timeouts once; operation-level values override per field.
-	apiTimeout, apiIdleTimeout, err := ResolveResilience(apiData.Resilience)
+	apiTimeout, apiIdleTimeout, apiRetry, err := ResolveResilience(apiData.Resilience)
 	if err != nil {
 		return nil, nil, fmt.Errorf("invalid API-level resilience: %w", err)
 	}
@@ -1093,11 +1099,11 @@ func (t *Translator) translateAPIConfig(cfg *models.StoredConfig, allConfigs []*
 	useClusterHeader := hasUpstreamDefinitions || hasSandboxForClusterHeader
 
 	for _, op := range apiData.Operations {
-		opTimeout, opIdleTimeout, err := ResolveResilience(op.Resilience)
+		opTimeout, opIdleTimeout, opRetry, err := ResolveResilience(op.Resilience)
 		if err != nil {
 			return nil, nil, fmt.Errorf("invalid resilience for operation %s %s: %w", op.EffectiveMethod(), op.EffectivePath(), err)
 		}
-		opTimeoutCfg := combineRouteResilience(mainTimeout, apiTimeout, apiIdleTimeout, opTimeout, opIdleTimeout)
+		opTimeoutCfg := combineRouteResilience(mainTimeout, apiTimeout, apiIdleTimeout, opTimeout, opIdleTimeout, apiRetry, opRetry)
 
 		r := t.createRoute(cfg.UUID, apiData.DisplayName, apiData.Version, apiData.Context, op.EffectiveMethod(), op.EffectivePath(),
 			mainClusterName, parsedMainURL.Path, effectiveMainVHost, cfg.Kind, templateHandle, providerName, apiData.Upstream.Main.HostRewrite, apiProjectID, opTimeoutCfg, useClusterHeader, upstreamDefPaths)
@@ -1125,11 +1131,11 @@ func (t *Translator) translateAPIConfig(cfg *models.StoredConfig, allConfigs []*
 		// is on whenever upstreamDefinitions exist or a sandbox upstream is configured).
 		sbRoutesList := make([]*route.Route, 0)
 		for _, op := range apiData.Operations {
-			opTimeout, opIdleTimeout, err := ResolveResilience(op.Resilience)
+			opTimeout, opIdleTimeout, opRetry, err := ResolveResilience(op.Resilience)
 			if err != nil {
 				return nil, nil, fmt.Errorf("invalid resilience for operation %s %s: %w", op.EffectiveMethod(), op.EffectivePath(), err)
 			}
-			opTimeoutCfg := combineRouteResilience(sbTimeout, apiTimeout, apiIdleTimeout, opTimeout, opIdleTimeout)
+			opTimeoutCfg := combineRouteResilience(sbTimeout, apiTimeout, apiIdleTimeout, opTimeout, opIdleTimeout, apiRetry, opRetry)
 
 			r := t.createRoute(cfg.UUID, apiData.DisplayName, apiData.Version, apiData.Context, op.EffectiveMethod(), op.EffectivePath(),
 				sbClusterName, parsedSbURL.Path, effectiveSandboxVHost, cfg.Kind, templateHandle, providerName, apiData.Upstream.Sandbox.HostRewrite, apiProjectID, opTimeoutCfg, useClusterHeader, upstreamDefPaths)
@@ -1702,6 +1708,9 @@ func (t *Translator) createRoute(apiId, apiName, apiVersion, context, method, pa
 			Timeout:     t.routeTimeoutOrDefault(routeTimeout, t.routerConfig.Upstream.Timeouts.RouteTimeoutMs),
 			IdleTimeout: t.routeTimeoutOrDefault(routeIdleTimeout, t.routerConfig.Upstream.Timeouts.RouteIdleTimeoutMs),
 		},
+	}
+	if timeoutCfg != nil && timeoutCfg.Retry != nil {
+		routeAction.Route.RetryPolicy = buildRetryPolicy(timeoutCfg.Retry)
 	}
 
 	// Set cluster specifier based on whether dynamic cluster selection is enabled
@@ -3249,27 +3258,47 @@ func parseDurationAllowZero(timeoutStr *string) (*time.Duration, error) {
 	return &duration, nil
 }
 
-// ResolveResilience parses a resilience block into route timeout and idle-timeout durations.
+// buildRetryPolicy converts a resolved api.Retry into a native Envoy RouteAction.RetryPolicy
+// that retries on the configured response status codes. NumRetries defaults to 1 attempt
+// when not explicitly configured.
+func buildRetryPolicy(retry *api.Retry) *route.RetryPolicy {
+	numRetries := uint32(1)
+	if retry.NumRetries != nil {
+		numRetries = uint32(*retry.NumRetries)
+	}
+	statusCodes := make([]uint32, len(retry.StatusCodes))
+	for i, code := range retry.StatusCodes {
+		statusCodes[i] = uint32(code)
+	}
+	return &route.RetryPolicy{
+		RetryOn:              "retriable-status-codes",
+		RetriableStatusCodes: statusCodes,
+		NumRetries:           wrapperspb.UInt32(numRetries),
+	}
+}
+
+// ResolveResilience parses a resilience block into route timeout and idle-timeout durations,
+// plus the retry configuration (surfaced as-is; validation happens elsewhere).
 // A nil block, or unset fields, yield nil durations (meaning "use the global default").
 // "0s" yields a non-nil zero duration (meaning "explicitly disabled").
-func ResolveResilience(r *api.Resilience) (timeout *time.Duration, idleTimeout *time.Duration, err error) {
+func ResolveResilience(r *api.Resilience) (timeout *time.Duration, idleTimeout *time.Duration, retry *api.Retry, err error) {
 	if r == nil {
-		return nil, nil, nil
+		return nil, nil, nil, nil
 	}
 	if timeout, err = parseDurationAllowZero(r.Timeout); err != nil {
-		return nil, nil, fmt.Errorf("invalid resilience.timeout: %w", err)
+		return nil, nil, nil, fmt.Errorf("invalid resilience.timeout: %w", err)
 	}
 	if idleTimeout, err = parseDurationAllowZero(r.IdleTimeout); err != nil {
-		return nil, nil, fmt.Errorf("invalid resilience.idleTimeout: %w", err)
+		return nil, nil, nil, fmt.Errorf("invalid resilience.idleTimeout: %w", err)
 	}
-	return timeout, idleTimeout, nil
+	return timeout, idleTimeout, r.Retry, nil
 }
 
 // combineRouteResilience returns a resolvedTimeout for a single route, preserving the
-// upstream connect timeout from base and applying the effective route/idle timeouts
-// (operation-level overriding API-level, per field). It returns base unchanged when no
-// resilience is configured at either level.
-func combineRouteResilience(base *resolvedTimeout, apiTimeout, apiIdle, opTimeout, opIdle *time.Duration) *resolvedTimeout {
+// upstream connect timeout from base and applying the effective route/idle timeouts and
+// retry config (operation-level overriding API-level, per field). It returns base unchanged
+// when no resilience is configured at either level.
+func combineRouteResilience(base *resolvedTimeout, apiTimeout, apiIdle, opTimeout, opIdle *time.Duration, apiRetry, opRetry *api.Retry) *resolvedTimeout {
 	effTimeout := opTimeout
 	if effTimeout == nil {
 		effTimeout = apiTimeout
@@ -3278,10 +3307,14 @@ func combineRouteResilience(base *resolvedTimeout, apiTimeout, apiIdle, opTimeou
 	if effIdle == nil {
 		effIdle = apiIdle
 	}
-	if effTimeout == nil && effIdle == nil {
+	effRetry := opRetry
+	if effRetry == nil {
+		effRetry = apiRetry
+	}
+	if effTimeout == nil && effIdle == nil && effRetry == nil {
 		return base
 	}
-	rt := resolvedTimeout{Route: effTimeout, Idle: effIdle}
+	rt := resolvedTimeout{Route: effTimeout, Idle: effIdle, Retry: effRetry}
 	if base != nil {
 		rt.Connect = base.Connect
 	}

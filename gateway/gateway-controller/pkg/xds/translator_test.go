@@ -843,6 +843,56 @@ func TestTranslator_RouteResilienceTimeoutsFromRDC(t *testing.T) {
 	}
 }
 
+// TestTranslator_CreateRouteFromRDC_ResilienceRetryEmitsNativeRetryPolicy verifies that the
+// RuntimeDeployConfig path (used by RestApi/LLM kinds, see RestAPITransformer) also emits a
+// native Envoy RouteAction.RetryPolicy from a resolved models.RouteTimeout.Retry, and leaves
+// RetryPolicy nil when resilience.retry was not configured.
+func TestTranslator_CreateRouteFromRDC_ResilienceRetryEmitsNativeRetryPolicy(t *testing.T) {
+	logger := createTestLogger()
+	routerCfg := testRouterConfig()
+	cfg := testConfig()
+	translator := NewTranslator(logger, routerCfg, nil, cfg)
+
+	rdc := &models.RuntimeDeployConfig{
+		UpstreamClusters: map[string]*models.UpstreamCluster{
+			"main": {Endpoints: []models.Endpoint{{Host: "echo", Port: 80}}},
+		},
+	}
+
+	t.Run("retry configured", func(t *testing.T) {
+		numRetries := 2
+		rdcRoute := &models.Route{
+			Method:          "GET",
+			Path:            "/api/v1.0/items",
+			OperationPath:   "/items",
+			AutoHostRewrite: true,
+			Timeout:         &models.RouteTimeout{Retry: &api.Retry{StatusCodes: []int{401, 503}, NumRetries: &numRetries}},
+			Upstream:        models.RouteUpstream{ClusterKey: "main"},
+		}
+		r := translator.createRouteFromRDC("GET|/api/v1.0/items|", rdcRoute, rdc)
+		require.NotNil(t, r)
+		rp := r.GetRoute().GetRetryPolicy()
+		require.NotNil(t, rp)
+		assert.Equal(t, "retriable-status-codes", rp.RetryOn)
+		require.NotNil(t, rp.NumRetries)
+		assert.EqualValues(t, 2, rp.NumRetries.Value)
+		assert.Equal(t, []uint32{401, 503}, rp.RetriableStatusCodes)
+	})
+
+	t.Run("retry not configured", func(t *testing.T) {
+		rdcRoute := &models.Route{
+			Method:          "GET",
+			Path:            "/api/v1.0/items",
+			OperationPath:   "/items",
+			AutoHostRewrite: true,
+			Upstream:        models.RouteUpstream{ClusterKey: "main"},
+		}
+		r := translator.createRouteFromRDC("GET|/api/v1.0/items|", rdcRoute, rdc)
+		require.NotNil(t, r)
+		assert.Nil(t, r.GetRoute().GetRetryPolicy())
+	})
+}
+
 // TestTranslator_MCPUpstreamRewriteFromRDC verifies the MCP "/mcp"-not-appended behavior on the
 // RuntimeDeployConfig path (createRouteFromRDC), which the policy/runtime xDS pipeline uses.
 func TestTranslator_MCPUpstreamRewriteFromRDC(t *testing.T) {
@@ -2536,6 +2586,40 @@ func TestTranslator_CreateRoute_Basic(t *testing.T) {
 	require.NotNil(t, route.Metadata)
 	assert.Equal(t, "/api/users",
 		route.Metadata.FilterMetadata["wso2.route"].Fields["http.route"].GetStringValue())
+}
+
+// TestCreateRoute_ResilienceRetryEmitsNativeRetryPolicy verifies that a resolvedTimeout
+// carrying a non-nil Retry field (resolved from resilience.retry) causes createRoute to
+// set a native Envoy RouteAction.RetryPolicy on the resulting route.
+func TestCreateRoute_ResilienceRetryEmitsNativeRetryPolicy(t *testing.T) {
+	logger := createTestLogger()
+	routerCfg := testRouterConfig()
+	cfg := testConfig()
+	translator := NewTranslator(logger, routerCfg, nil, cfg)
+
+	numRetries := 2
+	timeoutCfg := &resolvedTimeout{Retry: &api.Retry{StatusCodes: []int{401, 503}, NumRetries: &numRetries}}
+
+	r := translator.createRoute("api-id", "TestAPI", "v1", "/test", "GET", "/foo", "test-cluster",
+		"", "localhost", "RestApi", "", "", nil, "project-1", timeoutCfg, false, nil)
+
+	routeAction, ok := r.Action.(*route.Route_Route)
+	if !ok {
+		t.Fatalf("expected a Route_Route action, got %T", r.Action)
+	}
+	rp := routeAction.Route.RetryPolicy
+	if rp == nil {
+		t.Fatal("expected a non-nil RetryPolicy")
+	}
+	if rp.RetryOn != "retriable-status-codes" {
+		t.Errorf("got RetryOn %q, want %q", rp.RetryOn, "retriable-status-codes")
+	}
+	if rp.NumRetries == nil || rp.NumRetries.Value != 2 {
+		t.Errorf("got NumRetries %v, want 2", rp.NumRetries)
+	}
+	if len(rp.RetriableStatusCodes) != 2 || rp.RetriableStatusCodes[0] != 401 || rp.RetriableStatusCodes[1] != 503 {
+		t.Errorf("got RetriableStatusCodes %v, want [401 503]", rp.RetriableStatusCodes)
+	}
 }
 
 // TestTranslator_CreateRouteFromRDC_HTTPRouteMetadata guards the http.route tracing fix:

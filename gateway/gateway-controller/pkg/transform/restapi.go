@@ -172,7 +172,7 @@ func (t *RestAPITransformer) Transform(cfg *models.StoredConfig) (*models.Runtim
 	}
 
 	// Resolve API-level resilience timeouts once; operation-level values override these.
-	apiTimeout, apiIdleTimeout, err := xds.ResolveResilience(apiData.Resilience)
+	apiTimeout, apiIdleTimeout, apiRetry, err := xds.ResolveResilience(apiData.Resilience)
 	if err != nil {
 		return nil, fmt.Errorf("invalid API-level resilience: %w", err)
 	}
@@ -181,11 +181,11 @@ func (t *RestAPITransformer) Transform(cfg *models.StoredConfig) (*models.Runtim
 	for i, op := range apiData.Operations {
 		// Operation-level resilience overrides API-level (per field); nil leaves the
 		// global route timeout default in effect.
-		opTimeout, opIdleTimeout, err := xds.ResolveResilience(op.Resilience)
+		opTimeout, opIdleTimeout, opRetry, err := xds.ResolveResilience(op.Resilience)
 		if err != nil {
 			return nil, fmt.Errorf("invalid resilience for operation %s %s: %w", op.EffectiveMethod(), op.EffectivePath(), err)
 		}
-		routeTimeout := buildRouteTimeout(opTimeout, apiTimeout, opIdleTimeout, apiIdleTimeout)
+		routeTimeout := buildRouteTimeout(opTimeout, apiTimeout, opIdleTimeout, apiIdleTimeout, opRetry, apiRetry)
 
 		vhosts := append([]string{}, mainVhosts...)
 		if hasSandbox {
@@ -381,9 +381,9 @@ func routeHeaderMatches(op api.Operation) []models.RouteHeaderMatch {
 
 // collectAPIPolicies validates and collects API-level policies into SDK format.
 // buildRouteTimeout applies operation-over-API precedence (per field) and returns a
-// *models.RouteTimeout, or nil when neither level configured any timeout (so the global
-// route timeout default applies).
-func buildRouteTimeout(opTimeout, apiTimeout, opIdle, apiIdle *time.Duration) *models.RouteTimeout {
+// *models.RouteTimeout, or nil when neither level configured any timeout/retry (so the
+// global route timeout default applies and no RetryPolicy is emitted).
+func buildRouteTimeout(opTimeout, apiTimeout, opIdle, apiIdle *time.Duration, opRetry, apiRetry *api.Retry) *models.RouteTimeout {
 	timeout := opTimeout
 	if timeout == nil {
 		timeout = apiTimeout
@@ -392,10 +392,14 @@ func buildRouteTimeout(opTimeout, apiTimeout, opIdle, apiIdle *time.Duration) *m
 	if idle == nil {
 		idle = apiIdle
 	}
-	if timeout == nil && idle == nil {
+	retry := opRetry
+	if retry == nil {
+		retry = apiRetry
+	}
+	if timeout == nil && idle == nil && retry == nil {
 		return nil
 	}
-	return &models.RouteTimeout{Timeout: timeout, IdleTimeout: idle}
+	return &models.RouteTimeout{Timeout: timeout, IdleTimeout: idle, Retry: retry}
 }
 
 // collectAPIPolicies returns the resolved API-level policies as a slice in spec order.

@@ -21,6 +21,7 @@ package models
 import (
 	"time"
 
+	api "github.com/wso2/api-platform/gateway/gateway-controller/pkg/api/management"
 	policyenginev1 "github.com/wso2/api-platform/sdk/core/policyengine"
 )
 
@@ -79,14 +80,16 @@ type Route struct {
 	Order int
 }
 
-// RouteTimeout holds parsed timeout values for a route.
-// Timeout and IdleTimeout come from the resilience block (operation-level overriding
-// API-level). A nil field means "not configured" — the global route timeout default
-// applies. A non-nil zero value means "explicitly disabled".
+// RouteTimeout holds parsed timeout and retry values for a route.
+// Timeout, IdleTimeout, and Retry all come from the resilience block (operation-level
+// overriding API-level, per field). A nil Timeout/IdleTimeout means "not configured" —
+// the global route timeout default applies. A non-nil zero value means "explicitly
+// disabled". A nil Retry means no native RouteAction.RetryPolicy is emitted.
 type RouteTimeout struct {
 	Connect     *time.Duration
 	Timeout     *time.Duration // route timeout -> RouteAction.Timeout
 	IdleTimeout *time.Duration // route idle timeout -> RouteAction.IdleTimeout
+	Retry       *api.Retry     // route retry -> RouteAction.RetryPolicy; nil when not configured
 }
 
 // RouteUpstream links a route to its upstream cluster.
