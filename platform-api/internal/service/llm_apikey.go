@@ -235,6 +235,10 @@ func (s *LLMProviderAPIKeyService) CreateLLMProviderAPIKey(
 	var name string
 	if req.Id != nil && *req.Id != "" {
 		name = *req.Id
+		if err := validateAPIKeyName(name); err != nil {
+			s.slogger.Warn("Invalid API key id for LLM provider API key creation", "providerId", providerID)
+			return nil, err
+		}
 	} else {
 		if req.DisplayName == "" {
 			return nil, apperror.ValidationFailed.New("Either id or displayName is required.").

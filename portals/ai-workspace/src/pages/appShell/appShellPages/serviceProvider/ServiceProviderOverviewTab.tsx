@@ -76,6 +76,7 @@ import {
   formatPrefixedKey,
   resolveApiKeyAuthDisplay,
 } from '../../../../utils/apiKeyAuthDisplay';
+import { slugifyApiKeyName, validateApiKeyName } from '../../../../utils/apiKeyName';
 import {
   DisabledActionTooltip,
   GATEWAY_MANAGED_ARTIFACT_TOOLTIP,
@@ -114,15 +115,6 @@ function formatDate(value?: string): string {
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return '-';
   return date.toLocaleDateString();
-}
-
-function buildApiKeyResourceName(displayName: string): string {
-  const normalizedDisplayName = displayName
-    .trim()
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, '-')
-    .replace(/^-+|-+$/g, '');
-  return normalizedDisplayName || 'api-key';
 }
 
 type ServiceProviderOverviewTabProps = {
@@ -514,6 +506,13 @@ export default function ServiceProviderOverviewTab({
       return;
     }
 
+    const keyName = slugifyApiKeyName(trimmedDisplayName);
+    const nameError = validateApiKeyName(keyName);
+    if (nameError) {
+      setKeyError(nameError);
+      return;
+    }
+
     try {
       setGeneratingKey(true);
       setKeyError(null);
@@ -525,7 +524,7 @@ export default function ServiceProviderOverviewTab({
         provider.id,
         currentOrganization.uuid,
         {
-          id: buildApiKeyResourceName(trimmedDisplayName),
+          id: keyName,
           displayName: apiKeyDisplayName,
           expiresAt: expiresAt.toISOString(),
           issuer: 'api-platform-ai-workspace',

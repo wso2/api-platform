@@ -156,7 +156,7 @@ type APIKeyCreatedEventPayload struct {
 	ApiId         string  `json:"apiId"`
 	ApiKeyHashes  string  `json:"apiKeyHashes"`   // JSON string of hashed API key values keyed by algorithm e.g. {"sha256": "<hash>"}
 	MaskedApiKey  string  `json:"maskedApiKey"`   // Masked representation of the API key for display
-	Name          string  `json:"name,omitempty"` // URL-safe identifier (3-63 chars, lowercase alphanumeric with hyphens)
+	Name          string  `json:"name,omitempty"` // URL-safe identifier (see constants.APIKeyNameMinLength/MaxLength; lowercase alphanumeric with hyphens)
 	ExternalRefId *string `json:"externalRefId,omitempty"`
 	ExpiresAt     *string `json:"expiresAt,omitempty"` // ISO 8601 format
 	ExpiresIn     *struct {

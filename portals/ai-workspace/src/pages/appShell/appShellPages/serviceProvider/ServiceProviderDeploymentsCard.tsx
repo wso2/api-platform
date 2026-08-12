@@ -57,6 +57,7 @@ import { NO_PERMISSION_TOOLTIP, SCOPES } from '../../../../auth/permissions';
 import type { UserAPIKey } from '../../../../utils/types';
 import { logger } from '../../../../utils/logger';
 import { getErrorMessage } from '../../../../utils/apiError';
+import { slugifyApiKeyName, validateApiKeyName } from '../../../../utils/apiKeyName';
 import {
   DisabledActionTooltip,
   GATEWAY_MANAGED_ARTIFACT_TOOLTIP,
@@ -78,15 +79,6 @@ function formatDate(value?: string): string {
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return '-';
   return date.toLocaleDateString();
-}
-
-function buildApiKeyResourceName(displayName: string): string {
-  const normalizedDisplayName = displayName
-    .trim()
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, '-')
-    .replace(/^-+|-+$/g, '');
-  return normalizedDisplayName || 'api-key';
 }
 
 export default function ServiceProviderDeploymentsCard({
@@ -220,7 +212,12 @@ export default function ServiceProviderDeploymentsCard({
       return;
     }
 
-    const keyName = buildApiKeyResourceName(trimmedDisplayName);
+    const keyName = slugifyApiKeyName(trimmedDisplayName);
+    const nameError = validateApiKeyName(keyName);
+    if (nameError) {
+      setKeyError(nameError);
+      return;
+    }
 
     try {
       setGeneratingKey(true);

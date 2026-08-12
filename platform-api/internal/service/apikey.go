@@ -37,8 +37,8 @@ import (
 )
 
 const (
-	apiKeyNameMinLength     = 3
-	apiKeyNameMaxLength     = 63
+	apiKeyNameMinLength     = 1
+	apiKeyNameMaxLength     = 100
 	hashingAlgorithmSHA256  = "sha256"
 	defaultHashingAlgorithm = hashingAlgorithmSHA256
 )
@@ -260,7 +260,7 @@ func randomHexString(n int) (string, error) {
 //   - Remove all non-[a-z0-9-] characters
 //   - Collapse consecutive hyphens
 //   - Trim leading/trailing hyphens
-//   - Enforce length [3, 63]; pad with random hex if too short
+//   - Enforce length [apiKeyNameMinLength, apiKeyNameMaxLength]; pad with random hex if too short
 func generateAPIKeyName(displayName string) (string, error) {
 	name := strings.ToLower(strings.TrimSpace(displayName))
 	name = strings.ReplaceAll(name, " ", "-")
@@ -289,6 +289,34 @@ func generateAPIKeyName(displayName string) (string, error) {
 	return name, nil
 }
 
+// Must stay in sync with gateway/gateway-controller/pkg/utils/api_key_validation.go's
+// validAPIKeyNameRegex — that's the rule the gateway enforces on apikey.created events;
+// drifting here silently strands keys platform-api accepts but the gateway rejects.
+var validAPIKeyNameRegex = regexp.MustCompile(`^[a-z0-9]+([_-][a-z0-9]+)*$`)
+
+// validateAPIKeyName validates a caller-supplied API key id/name. Only for the
+// caller-supplied path — generateAPIKeyName/GenerateHandle already produce a
+// conforming name by construction and don't need this check.
+func validateAPIKeyName(name string) error {
+	if name == "" {
+		return apperror.ValidationFailed.New("The API key id cannot be empty.")
+	}
+	if len(name) < apiKeyNameMinLength {
+		return apperror.ValidationFailed.New(
+			fmt.Sprintf("The API key id must be at least %d characters.", apiKeyNameMinLength))
+	}
+	if len(name) > apiKeyNameMaxLength {
+		return apperror.ValidationFailed.New(
+			fmt.Sprintf("The API key id must be at most %d characters.", apiKeyNameMaxLength))
+	}
+	if !validAPIKeyNameRegex.MatchString(name) {
+		return apperror.ValidationFailed.New(
+			"The API key id must be lowercase alphanumeric with hyphens or underscores as " +
+				"internal separators only (no consecutive separators, cannot start or end with one).")
+	}
+	return nil
+}
+
 // resolveUniqueKeyName uses the caller-supplied name if present, otherwise derives one
 // from the display name (or the API handle as a fallback) using the same slug algorithm
 // as the gateway controller. Either way, it retries with a short random suffix on collision.
@@ -296,6 +324,9 @@ func (s *APIKeyService) resolveUniqueKeyName(artifactUUID string, req *api.Creat
 	var baseName string
 	if req.Id != nil && strings.TrimSpace(*req.Id) != "" {
 		baseName = strings.TrimSpace(*req.Id)
+		if err := validateAPIKeyName(baseName); err != nil {
+			return "", err
+		}
 	} else {
 		// Determine display name to slug from
 		var displayName string

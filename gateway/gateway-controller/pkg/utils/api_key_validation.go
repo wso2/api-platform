@@ -89,7 +89,7 @@ func ValidateDisplayName(displayName string) error {
 // - No special characters
 // - No consecutive separators (hyphens/underscores)
 // - Cannot start or end with hyphen or underscore
-// - Length between 3 and 63 characters
+// - Length between APIKeyNameMinLength and APIKeyNameMaxLength characters
 func ValidateAPIKeyName(name string) error {
 	if name == "" {
 		return fmt.Errorf("API key name cannot be empty")
@@ -114,7 +114,7 @@ func ValidateAPIKeyName(name string) error {
 // - Removing invalid characters
 // - Collapsing consecutive hyphens
 // - Trimming leading/trailing hyphens
-// - Enforcing length constraints (3-63 chars)
+// - Enforcing length constraints (APIKeyNameMinLength-APIKeyNameMaxLength chars)
 func GenerateAPIKeyName(displayName string) (string, error) {
 	trimmed := strings.TrimSpace(displayName)
 	// Convert to lowercase

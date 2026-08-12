@@ -204,6 +204,10 @@ func (s *LLMProxyAPIKeyService) CreateLLMProxyAPIKey(
 	var name string
 	if req.Id != nil && *req.Id != "" {
 		name = *req.Id
+		if err := validateAPIKeyName(name); err != nil {
+			s.slogger.Warn("Invalid API key id for LLM proxy API key creation", "proxyId", proxyID)
+			return nil, err
+		}
 	} else {
 		name, err = utils.GenerateHandle(req.DisplayName, nil)
 		if err != nil {

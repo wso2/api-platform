@@ -186,8 +186,8 @@ const (
 	DefaultMaxAPIKeyLength = 128
 
 	// API Key name and display name length constants
-	APIKeyNameMinLength  = 3
-	APIKeyNameMaxLength  = 63
+	APIKeyNameMinLength  = 1
+	APIKeyNameMaxLength  = 100
 	DisplayNameMaxLength = 100
 
 	// HashingAlgorithm constants

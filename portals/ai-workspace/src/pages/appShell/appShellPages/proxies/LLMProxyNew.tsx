@@ -66,6 +66,7 @@ import {
 } from '../../../../utils/projectRouting';
 import { truncateProviderDisplayName } from '../../../../utils/providerTemplateDisplay';
 import { resolveApiKeyAuthDisplay } from '../../../../utils/apiKeyAuthDisplay';
+import { slugifyApiKeyName, validateApiKeyName } from '../../../../utils/apiKeyName';
 import type { CreateProxyRequest, LLMProvider } from '../../../../utils/types';
 import { useAIWorkspaceSnackbar } from '../../../../hooks/aiWorkspaceSnackbar';
 import { logger } from '../../../../utils/logger';
@@ -99,15 +100,6 @@ const toProxyId = (name: string): string =>
     .trim()
     .replace(/[^a-z0-9]+/g, '-')
     .replace(/^-+|-+$/g, '');
-
-const buildApiKeyResourceName = (displayName: string): string => {
-  const normalizedDisplayName = displayName
-    .trim()
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, '-')
-    .replace(/^-+|-+$/g, '');
-  return normalizedDisplayName || 'api-key';
-};
 
 type LLMProxyNewContentProps = {
   selectedProviderId: string;
@@ -539,6 +531,13 @@ function LLMProxyNewContent({
       return;
     }
 
+    const keyName = slugifyApiKeyName(trimmedDisplayName);
+    const nameError = validateApiKeyName(keyName);
+    if (nameError) {
+      setApiKeyError(nameError);
+      return;
+    }
+
     try {
       setIsGeneratingApiKey(true);
       setApiKeyError(null);
@@ -550,7 +549,7 @@ function LLMProxyNewContent({
         formState.providerId,
         currentOrganization.uuid,
         {
-          id: buildApiKeyResourceName(trimmedDisplayName),
+          id: keyName,
           displayName: trimmedDisplayName,
           expiresAt: expiresAt.toISOString(),
           issuer: 'api-platform-ai-workspace',

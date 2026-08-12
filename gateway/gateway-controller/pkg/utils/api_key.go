@@ -1683,7 +1683,7 @@ func (s *APIKeyService) generateUniqueAPIKeyName(apiId, displayName string, maxR
 
 		uniqueName := baseName + "-" + suffix
 
-		// Enforce max length (name field is typically 63 chars max)
+		// Enforce max length (see constants.APIKeyNameMaxLength)
 		if len(uniqueName) > constants.APIKeyNameMaxLength {
 			// Truncate base name to make room for suffix
 			truncatedBase := baseName[:constants.APIKeyNameMaxLength-len(suffix)-1]
