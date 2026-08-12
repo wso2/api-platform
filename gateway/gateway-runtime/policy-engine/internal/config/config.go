@@ -239,6 +239,10 @@ type ServerConfig struct {
 
 	// ExtProcPort is the port for the ext_proc gRPC server (TCP mode only)
 	ExtProcPort int `koanf:"extproc_port"`
+
+	// UpstreamExtProcPort is the port for the upstream-attempt ext_proc gRPC
+	// server (TCP mode only) — see internal/kernel/upstream_extproc.go.
+	UpstreamExtProcPort int `koanf:"upstream_extproc_port"`
 }
 
 // PythonExecutorConfig holds configuration for the Python executor bridge.
@@ -511,8 +515,9 @@ func defaultConfig() *Config {
 	return &Config{
 		PolicyEngine: PolicyEngine{
 			Server: ServerConfig{
-				Mode:        "",
-				ExtProcPort: 9001,
+				Mode:                "",
+				ExtProcPort:         9001,
+				UpstreamExtProcPort: 9004,
 			},
 			Admin: AdminConfig{
 				Enabled:    true,
@@ -626,6 +631,9 @@ func (c *Config) Validate() error {
 		if c.PolicyEngine.Server.ExtProcPort <= 0 || c.PolicyEngine.Server.ExtProcPort > 65535 {
 			return fmt.Errorf("invalid extproc_port: %d (must be 1-65535)", c.PolicyEngine.Server.ExtProcPort)
 		}
+		if c.PolicyEngine.Server.UpstreamExtProcPort <= 0 || c.PolicyEngine.Server.UpstreamExtProcPort > 65535 {
+			return fmt.Errorf("invalid upstream_extproc_port: %d (must be 1-65535)", c.PolicyEngine.Server.UpstreamExtProcPort)
+		}
 	default:
 		return fmt.Errorf("server.mode must be 'uds' or 'tcp', got: %s", c.PolicyEngine.Server.Mode)
 	}
@@ -656,6 +664,9 @@ func (c *Config) Validate() error {
 		if c.PolicyEngine.Server.Mode == "tcp" && c.PolicyEngine.Admin.Port == c.PolicyEngine.Server.ExtProcPort {
 			return fmt.Errorf("admin.port cannot be same as server.extproc_port")
 		}
+		if c.PolicyEngine.Server.Mode == "tcp" && c.PolicyEngine.Admin.Port == c.PolicyEngine.Server.UpstreamExtProcPort {
+			return fmt.Errorf("admin.port cannot be same as server.upstream_extproc_port")
+		}
 		if len(c.PolicyEngine.Admin.AllowedIPs) == 0 {
 			return fmt.Errorf("admin.allowed_ips cannot be empty when admin is enabled")
 		}
@@ -669,6 +680,9 @@ func (c *Config) Validate() error {
 		// Only check port conflict if using TCP mode
 		if c.PolicyEngine.Server.Mode == "tcp" && c.PolicyEngine.Metrics.Port == c.PolicyEngine.Server.ExtProcPort {
 			return fmt.Errorf("metrics.port cannot be same as server.extproc_port")
+		}
+		if c.PolicyEngine.Server.Mode == "tcp" && c.PolicyEngine.Metrics.Port == c.PolicyEngine.Server.UpstreamExtProcPort {
+			return fmt.Errorf("metrics.port cannot be same as server.upstream_extproc_port")
 		}
 		if c.PolicyEngine.Metrics.Port == c.PolicyEngine.Admin.Port {
 			return fmt.Errorf("metrics.port cannot be same as admin.port")

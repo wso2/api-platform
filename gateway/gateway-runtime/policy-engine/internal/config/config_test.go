@@ -34,7 +34,8 @@ func validConfig() *Config {
 	return &Config{
 		PolicyEngine: PolicyEngine{
 			Server: ServerConfig{
-				ExtProcPort: 9001,
+				ExtProcPort:         9001,
+				UpstreamExtProcPort: 9004,
 			},
 			Admin: AdminConfig{
 				Enabled:    true,

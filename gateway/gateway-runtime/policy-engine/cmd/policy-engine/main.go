@@ -271,6 +271,58 @@ func main() {
 	grpcServer := grpc.NewServer()
 	extprocv3.RegisterExternalProcessorServer(grpcServer, extprocServer)
 
+	// Channel used by every gRPC server started below to signal an unexpected
+	// Serve() failure back to the shutdown-select loop. Declared here (rather
+	// than alongside sigChan further down) so the upstream ext_proc server's
+	// goroutine, started next, can already reference it.
+	serverErrCh := make(chan error, 1)
+
+	// Create and start the upstream-attempt ext_proc gRPC server (second,
+	// minimal endpoint — see internal/kernel/upstream_extproc.go). Uses the same
+	// serverMode (uds/tcp) as the main ext_proc server, but its own socket/port,
+	// and its own explicit message/stream limits sized for its headers-only
+	// message shape (go-network-service-hardening.md directive 2) — not copied
+	// from the main server's larger ceiling.
+	upstreamExtprocServer := kernel.NewUpstreamExternalProcessorServer(k)
+
+	var upstreamLis net.Listener
+	switch serverMode {
+	case "uds":
+		socketPath := constants.DefaultUpstreamExtProcSocketPath
+		if err := os.Remove(socketPath); err != nil && !os.IsNotExist(err) {
+			slog.WarnContext(ctx, "Failed to remove existing upstream ext_proc socket file", "path", socketPath, "error", err)
+		}
+		upstreamLis, err = net.Listen("unix", socketPath)
+		if err != nil {
+			slog.ErrorContext(ctx, "Failed to listen on upstream ext_proc Unix socket", "path", socketPath, "error", err)
+			os.Exit(1)
+		}
+		if err := os.Chmod(socketPath, 0660); err != nil {
+			slog.WarnContext(ctx, "Failed to set upstream ext_proc socket permissions", "path", socketPath, "error", err)
+		}
+		slog.InfoContext(ctx, "Upstream ext_proc server listening on Unix socket", "path", socketPath)
+	case "tcp":
+		upstreamLis, err = net.Listen("tcp", fmt.Sprintf(":%d", cfg.PolicyEngine.Server.UpstreamExtProcPort))
+		if err != nil {
+			slog.ErrorContext(ctx, "Failed to listen on upstream ext_proc port", "port", cfg.PolicyEngine.Server.UpstreamExtProcPort, "error", err)
+			os.Exit(1)
+		}
+		slog.InfoContext(ctx, "Upstream ext_proc server listening on TCP port", "port", cfg.PolicyEngine.Server.UpstreamExtProcPort)
+	}
+
+	upstreamGrpcServer := grpc.NewServer(
+		grpc.MaxRecvMsgSize(64*1024), // headers-only messages; far smaller than the body-carrying main server's ceiling
+		grpc.MaxSendMsgSize(64*1024),
+		grpc.MaxConcurrentStreams(1000),
+	)
+	extprocv3.RegisterExternalProcessorServer(upstreamGrpcServer, upstreamExtprocServer)
+
+	go func() {
+		if err := upstreamGrpcServer.Serve(upstreamLis); err != nil {
+			serverErrCh <- err
+		}
+	}()
+
 	// Enable block/mutex profiling sampling when pprof is enabled. These are the
 	// only profiles that need explicit rate setup; 0 leaves them disabled. Gated so
 	// the sampling overhead is never paid unless pprof is deliberately turned on.
@@ -323,8 +375,8 @@ func main() {
 	sigChan := make(chan os.Signal, 1)
 	signal.Notify(sigChan, syscall.SIGINT, syscall.SIGTERM)
 
-	// Start server in goroutine
-	serverErrCh := make(chan error, 1)
+	// Start server in goroutine (serverErrCh declared earlier, shared with the
+	// upstream ext_proc server's goroutine above)
 	go func() {
 		if err := grpcServer.Serve(lis); err != nil {
 			serverErrCh <- err
@@ -367,6 +419,9 @@ func main() {
 		alsServer.GracefulStop()
 	}
 
+	slog.InfoContext(ctx, "Stopping upstream ext_proc gRPC server")
+	upstreamGrpcServer.GracefulStop()
+
 	grpcServer.GracefulStop()
 
 	// Cleanup Unix socket if used (UDS mode)
@@ -374,6 +429,10 @@ func main() {
 		if err := os.Remove(constants.DefaultPolicyEngineSocketPath); err != nil && !os.IsNotExist(err) {
 			slog.WarnContext(ctx, "Failed to cleanup socket file on shutdown",
 				"path", constants.DefaultPolicyEngineSocketPath, "error", err)
+		}
+		if err := os.Remove(constants.DefaultUpstreamExtProcSocketPath); err != nil && !os.IsNotExist(err) {
+			slog.WarnContext(ctx, "Failed to cleanup upstream ext_proc socket file on shutdown",
+				"path", constants.DefaultUpstreamExtProcSocketPath, "error", err)
 		}
 	}
 

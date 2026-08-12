@@ -310,6 +310,7 @@ max_decompressed_bytes = 10485760
 
 [policy_engine.server]
 extproc_port = 9001
+upstream_extproc_port = 9004
 
 [policy_engine.admin]
 enabled = true

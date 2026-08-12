@@ -4,6 +4,8 @@
 [policy_engine.server]
 # Port for ext_proc gRPC server (receives requests from Envoy)
 extproc_port = 9001
+# Port for the upstream-attempt ext_proc gRPC server (see internal/kernel/upstream_extproc.go)
+upstream_extproc_port = 9004
 
 [policy_engine.config_mode]
 # Configuration mode: "file" or "xds"

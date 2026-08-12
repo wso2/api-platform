@@ -50,6 +50,12 @@ const (
 	// Policy Engine Socket Path (matches gateway-controller constant)
 	DefaultPolicyEngineSocketPath = "/var/run/api-platform/policy-engine.sock"
 
+	// DefaultUpstreamExtProcSocketPath is the Unix socket for the second,
+	// upstream-attempt ext_proc server (see internal/kernel/upstream_extproc.go),
+	// distinct from DefaultPolicyEngineSocketPath's per-listener downstream
+	// server.
+	DefaultUpstreamExtProcSocketPath = "/var/run/api-platform/policy-engine-upstream.sock"
+
 	// Gateway Analytics Socket Path (matches gateway-controller constant)
 	DefaultALSSocketPath = "/var/run/api-platform/gateway-analytics.sock"
 
