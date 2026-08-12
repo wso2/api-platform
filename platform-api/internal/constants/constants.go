@@ -207,6 +207,32 @@ var ValidGatewayTokenStatuses = map[string]bool{
 	GatewayTokenStatusRevoked: true,
 }
 
+// API Portal workflow status constants
+const (
+	APIPortalWorkflowStatusPending = "pending"
+	APIPortalWorkflowStatusActive  = "active"
+	APIPortalWorkflowStatusFailed  = "failed"
+)
+
+// ValidAPIPortalWorkflowStatuses holds accepted values for api_portals.workflow_status
+var ValidAPIPortalWorkflowStatuses = map[string]bool{
+	APIPortalWorkflowStatusPending: true,
+	APIPortalWorkflowStatusActive:  true,
+	APIPortalWorkflowStatusFailed:  true,
+}
+
+// API Portal auth type constants
+const (
+	APIPortalAuthTypeLocal  = "local"
+	APIPortalAuthTypeOAuth2 = "oauth2"
+)
+
+// ValidAPIPortalAuthTypes holds accepted values for api_portals.auth_type
+var ValidAPIPortalAuthTypes = map[string]bool{
+	APIPortalAuthTypeLocal:  true,
+	APIPortalAuthTypeOAuth2: true,
+}
+
 // ValidArtifactKinds holds accepted values for artifacts.type for the core (non-plugin)
 // artifact kinds. Plugin-owned kinds (e.g. WebSubApi, WebBrokerApi) are registered
 // into the ArtifactTableRegistry during plugin Init.
