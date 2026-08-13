@@ -26,6 +26,10 @@ jobs:
         env:
           VERSION: ${{ inputs.version }}
         run: |
+          if [ -z "$(printf '%s' "${VERSION}" | tr -d '[:space:]')" ] || [[ "${VERSION}" == *-SNAPSHOT ]]; then
+            echo "Error: version must be a non-snapshot release version"
+            exit 1
+          fi
           make -C portals/api-control-plane version-set "VERSION=${VERSION}"
 
       - name: Set up Node.js
@@ -42,8 +46,11 @@ jobs:
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
         with:
-          install: true
           driver: docker-container
+
+      - name: Install frontend dependencies
+        working-directory: portals/api-control-plane
+        run: npm ci
 
       - name: Run tests
         run: make test-api-control-plane

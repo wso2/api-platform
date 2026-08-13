@@ -54,7 +54,9 @@ export const useNavigationItems = (): NavigationItem[] => {
     // pipeline instead of a parallel "Cloud category" implementation.
     const extensionDefinitions: NavigationDefinition[] = extensions.map(
       (extension) => {
+        const isDescendantRoute = extension.routePath.endsWith('/*');
         const routeSuffix = extension.routePath.replace(/\/\*$/, '');
+        const routeSegment = `/${routeSuffix}`;
         return {
           group: extension.group,
           icon: extension.icon,
@@ -62,7 +64,14 @@ export const useNavigationItems = (): NavigationItem[] => {
           isVisible: extension.isVisible,
           label: extension.label,
           level: extension.level,
-          match: (pathname) => pathname.includes(`/${routeSuffix}`),
+          match: (pathname) => {
+            const index = pathname.indexOf(routeSegment);
+            if (index === -1) return false;
+            const charAfter = pathname[index + routeSegment.length];
+            // Match only a complete path segment: nothing after it, or (for
+            // a `/*` route) a further `/` continuing into a descendant path.
+            return charAfter === undefined || (isDescendantRoute && charAfter === '/');
+          },
           order: extension.order,
           to: (navScope) => {
             const { orgHandle, projectHandler, apiHandler } = navScope.params;

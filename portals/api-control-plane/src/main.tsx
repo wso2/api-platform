@@ -29,7 +29,12 @@ loadRuntimeConfigScripts()
   })
   .finally(async () => {
     const { default: App } = await import('./App');
-    const { cloudExtensions } = await import('./cloud');
+    const cloudExtensions = await import('./cloud')
+      .then((module) => module.cloudExtensions)
+      .catch((error) => {
+        console.warn('Cloud extensions could not be loaded.', error);
+        return [];
+      });
 
     root.render(
       <React.StrictMode>
