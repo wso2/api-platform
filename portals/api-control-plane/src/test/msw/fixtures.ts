@@ -76,7 +76,33 @@ export const aGateway = (
 ): GatewayFixture => ({
   id: 'shared-gateway',
   displayName: 'Shared Gateway',
+  endpoints: ['https://gw.test'],
+  functionalityType: 'regular',
+  isCritical: false,
   isActive: true,
+  version: '1.0.0',
+  ...overrides,
+});
+
+/** Body for creating a gateway, which requires more than the response carries. */
+export const aCreateGatewayBody = (
+  overrides: Partial<Schema<'CreateGatewayRequest'>> = {}
+): Schema<'CreateGatewayRequest'> => ({
+  displayName: 'Edge Gateway',
+  endpoints: ['https://edge.test'],
+  functionalityType: 'regular',
+  isCritical: false,
+  version: '1.0.0',
+  ...overrides,
+});
+
+/** Body for deploying an API; `name` and `base` are required alongside the gateway. */
+export const aDeployRequest = (
+  overrides: Partial<Schema<'DeployRequest'>> = {}
+): Schema<'DeployRequest'> => ({
+  name: 'pizza-shack-v1',
+  base: 'v1',
+  gatewayId: 'shared-gateway',
   ...overrides,
 });
 
@@ -91,6 +117,64 @@ export const aDeployment = (
   ...overrides,
 });
 
+export type ApplicationFixture = Schema<'Application'>;
+export type SubscriptionFixture = Schema<'Subscription'>;
+export type SubscriptionPlanFixture = Schema<'SubscriptionPlan'>;
+export type SecretFixture = Schema<'SecretSummary'>;
+export type CustomPolicyFixture = Schema<'CustomPolicyResponse'>;
+
+export const anApplication = (
+  overrides: Partial<ApplicationFixture> = {}
+): ApplicationFixture => ({
+  id: 'checkout-app',
+  displayName: 'Checkout App',
+  projectId: 'retail',
+  type: 'genai',
+  ...overrides,
+});
+
+export const aSubscription = (
+  overrides: Partial<SubscriptionFixture> = {}
+): SubscriptionFixture => ({
+  id: 'subscription-1',
+  artifactId: 'pizza-shack',
+  applicationId: 'checkout-app',
+  subscriberId: 'user-1',
+  subscriptionPlanId: 'gold',
+  status: 'ACTIVE',
+  ...overrides,
+});
+
+export const aSubscriptionPlan = (
+  overrides: Partial<SubscriptionPlanFixture> = {}
+): SubscriptionPlanFixture => ({
+  id: 'gold',
+  displayName: 'Gold',
+  status: 'ACTIVE',
+  ...overrides,
+});
+
+export const aSecret = (
+  overrides: Partial<SecretFixture> = {}
+): SecretFixture => ({
+  id: 'signing-key',
+  displayName: 'Signing Key',
+  type: 'GENERIC',
+  status: 'ACTIVE',
+  ...overrides,
+});
+
+export const aCustomPolicy = (
+  overrides: Partial<CustomPolicyFixture> = {}
+): CustomPolicyFixture => ({
+  uuid: 'policy-uuid-1',
+  organizationUuid: 'acme-org',
+  name: 'rate-limit',
+  version: 'v1',
+  policyDefinition: {},
+  ...overrides,
+});
+
 /**
  * Generates `count` sequentially-named entities, for paging tests.
  *
@@ -99,4 +183,9 @@ export const aDeployment = (
 export const manyRestApis = (count: number): RestApiFixture[] =>
   Array.from({ length: count }, (_unused, index) =>
     aRestApi({ id: `api-${index + 1}`, displayName: `API ${index + 1}` })
+  );
+
+export const manyProjects = (count: number): ProjectFixture[] =>
+  Array.from({ length: count }, (_unused, index) =>
+    aProject({ id: `project-${index + 1}`, displayName: `Project ${index + 1}` })
   );

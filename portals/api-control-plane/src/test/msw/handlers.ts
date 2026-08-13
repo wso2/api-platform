@@ -118,7 +118,7 @@ type WithRecorder = { record?: Recorder };
  * `matches` decides what `query` filters on; it defaults to a case-insensitive
  * substring match against `displayName`, mirroring the spec's description.
  */
-export const collection = <T extends { displayName?: string }>(
+export const collection = <T>(
   path: string,
   items: T[],
   options: WithRecorder & { matches?: (item: T, term: string) => boolean } = {}
@@ -128,10 +128,16 @@ export const collection = <T extends { displayName?: string }>(
 
     const params = new URL(request.url).searchParams;
     const term = params.get('query')?.toLowerCase();
+    // Unconstrained in `T`: several collections (deployments, subscriptions,
+    // custom policies) have no `displayName` at all, so requiring one would
+    // exclude exactly the resources whose paging most needs covering. Entities
+    // without one simply never match a `query` term unless `matches` is given.
     const matches =
       options.matches ??
-      ((item: T, value: string) =>
-        (item.displayName ?? '').toLowerCase().includes(value));
+      ((item: T, value: string) => {
+        const label = (item as { displayName?: unknown } | null)?.displayName;
+        return typeof label === 'string' && label.toLowerCase().includes(value);
+      });
 
     const filtered = term ? items.filter((item) => matches(item, term)) : items;
     const offset = Number(params.get('offset') ?? 0);
