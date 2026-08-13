@@ -136,7 +136,7 @@ export function ApiPortalCreatePage() {
         </Link>
         <PageTitle.Header>Provision an API Portal</PageTitle.Header>
         <PageTitle.SubHeader>
-          Register a developer portal, then connect it to the platform.
+          Register an API Portal, then connect it to the platform.
         </PageTitle.SubHeader>
       </PageTitle>
 

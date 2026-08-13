@@ -581,7 +581,7 @@ export function ApiPortalPage() {
       <PageTitle>
         <PageTitle.Header>API Portal</PageTitle.Header>
         <PageTitle.SubHeader>
-          Provision and manage the developer portal for your organization.
+          Provision and manage the API Portal for your organization.
         </PageTitle.SubHeader>
         <PageTitle.Actions>
           <Button
@@ -602,7 +602,7 @@ export function ApiPortalPage() {
       ) : apiPortals.length === 0 ? (
         <EmptyState
           actionLabel="Provision API Portal"
-          description="Provision a developer portal to publish APIs for external developers."
+          description="Provision an API Portal to publish APIs for external developers."
           onAction={provision}
           title="No API Portal provisioned yet"
         />
