@@ -564,10 +564,13 @@ type UpstreamTLS struct {
 	MinimumProtocolVersion string `koanf:"minimum_protocol_version"`
 	MaximumProtocolVersion string `koanf:"maximum_protocol_version"`
 	Ciphers                string `koanf:"ciphers"`
-	// EcdhCurves is a comma-separated list of ECDH curves, most preferred first. Defaults to a
-	// hybrid post-quantum group ("X25519MLKEM768", FIPS 203 ML-KEM-768 + X25519) followed by
-	// classical curves, so key exchange degrades gracefully to classical for peers that don't yet
-	// support the hybrid group.
+	// EcdhCurves is a comma-separated list of ECDH curves (e.g. "X25519,P-256"), most preferred
+	// first. Defaults to classical curves only — a hybrid post-quantum group (e.g.
+	// "X25519MLKEM768") can be added as the first preference, but only as an explicit opt-in per
+	// deployment: an already-running Envoy instance that doesn't recognize the curve name will
+	// NACK the xDS update and keep serving its last-known-good config, silently freezing that
+	// instance out of any further config changes until the operator fixes it. Confirm the
+	// deployed Envoy/BoringSSL build supports the group before enabling it.
 	EcdhCurves      string `koanf:"ecdh_curves"`
 	TrustedCertPath string `koanf:"trusted_cert_path"`
 	CustomCertsPath        string `koanf:"custom_certs_path"` // Directory containing custom trusted certificates
@@ -599,10 +602,13 @@ type DownstreamTLS struct {
 	MinimumProtocolVersion string `koanf:"minimum_protocol_version"`
 	MaximumProtocolVersion string `koanf:"maximum_protocol_version"`
 	Ciphers                string `koanf:"ciphers"`
-	// EcdhCurves is a comma-separated list of ECDH curves, most preferred first. Defaults to a
-	// hybrid post-quantum group ("X25519MLKEM768", FIPS 203 ML-KEM-768 + X25519) followed by
-	// classical curves, so key exchange degrades gracefully to classical for peers that don't yet
-	// support the hybrid group.
+	// EcdhCurves is a comma-separated list of ECDH curves (e.g. "X25519,P-256"), most preferred
+	// first. Defaults to classical curves only — a hybrid post-quantum group (e.g.
+	// "X25519MLKEM768") can be added as the first preference, but only as an explicit opt-in per
+	// deployment: an already-running Envoy instance that doesn't recognize the curve name will
+	// NACK the xDS update and keep serving its last-known-good config, silently freezing that
+	// instance out of any further config changes until the operator fixes it. Confirm the
+	// deployed Envoy/BoringSSL build supports the group before enabling it.
 	EcdhCurves string `koanf:"ecdh_curves"`
 }
 
@@ -999,7 +1005,7 @@ func defaultConfig() *Config {
 				MinimumProtocolVersion: "TLS1_2",
 				MaximumProtocolVersion: "TLS1_3",
 				Ciphers:                "ECDHE-ECDSA-AES128-GCM-SHA256,ECDHE-RSA-AES128-GCM-SHA256,ECDHE-ECDSA-AES128-SHA,ECDHE-RSA-AES128-SHA,AES128-GCM-SHA256,AES128-SHA,ECDHE-ECDSA-AES256-GCM-SHA384,ECDHE-RSA-AES256-GCM-SHA384,ECDHE-ECDSA-AES256-SHA,ECDHE-RSA-AES256-SHA,AES256-GCM-SHA384,AES256-SHA",
-				EcdhCurves:             "X25519MLKEM768,X25519,P-256",
+				EcdhCurves:             "X25519,P-256",
 			},
 			GatewayHost: "*",
 			Upstream: RouterUpstream{
@@ -1007,7 +1013,7 @@ func defaultConfig() *Config {
 					MinimumProtocolVersion: "TLS1_2",
 					MaximumProtocolVersion: "TLS1_3",
 					Ciphers:                "ECDHE-ECDSA-AES128-GCM-SHA256,ECDHE-RSA-AES128-GCM-SHA256,ECDHE-ECDSA-AES128-SHA,ECDHE-RSA-AES128-SHA,AES128-GCM-SHA256,AES128-SHA,ECDHE-ECDSA-AES256-GCM-SHA384,ECDHE-RSA-AES256-GCM-SHA384,ECDHE-ECDSA-AES256-SHA,ECDHE-RSA-AES256-SHA,AES256-GCM-SHA384,AES256-SHA",
-					EcdhCurves:             "X25519MLKEM768,X25519,P-256",
+					EcdhCurves:             "X25519,P-256",
 					TrustedCertPath:        "/etc/ssl/certs/ca-certificates.crt",
 					CustomCertsPath:        "./certificates",
 					VerifyHostName:         true,

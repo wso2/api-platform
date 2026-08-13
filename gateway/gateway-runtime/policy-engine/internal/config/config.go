@@ -565,6 +565,67 @@ type AdminConfig struct {
 
 	// ConfigDump gates the /config_dump endpoint served on this admin server.
 	ConfigDump ConfigDumpConfig `koanf:"config_dump"`
+
+	// TLS starts a second, TLS-only listener on TLS.Port serving the same
+	// routes as the plaintext listener on Port. Off by default.
+	TLS AdminTLSConfig `koanf:"tls"`
+}
+
+// AdminTLSConfig holds configuration for an additional TLS listener for the
+// admin HTTP server. It is served alongside — not instead of — the plaintext
+// listener on AdminConfig.Port, so enabling it never breaks an existing
+// plaintext deployment.
+type AdminTLSConfig struct {
+	// Enabled starts the TLS listener on Port. Off by default: no certificate
+	// is provisioned by default, and the plaintext listener keeps working
+	// either way.
+	Enabled bool `koanf:"enabled"`
+
+	// Port is the port for the TLS admin listener. Must differ from every
+	// other configured policy-engine port (admin.port, server.extproc_port,
+	// metrics.port).
+	Port int `koanf:"port"`
+
+	// CertPath and KeyPath are the PEM-encoded server certificate and private
+	// key for the TLS listener. Required when Enabled.
+	CertPath string `koanf:"cert_path"`
+	KeyPath  string `koanf:"key_path"`
+
+	// MinimumProtocolVersion and MaximumProtocolVersion bound the negotiated
+	// TLS version: one of "TLS1_0", "TLS1_1", "TLS1_2", "TLS1_3". Same
+	// vocabulary as the router's downstream_tls/upstream_tls for consistency
+	// within this shared config file.
+	MinimumProtocolVersion string `koanf:"minimum_protocol_version"`
+	MaximumProtocolVersion string `koanf:"maximum_protocol_version"`
+
+	// Ciphers is a comma-separated list of Go crypto/tls cipher suite names
+	// (e.g. "TLS_ECDHE_ECDSA_WITH_AES_128_GCM_SHA256"), restricting which
+	// suites this listener will negotiate. Empty by default, meaning Go's own
+	// secure default set/order applies. Only affects TLS 1.2 and below —
+	// TLS 1.3 suite selection is not configurable in Go's crypto/tls.
+	//
+	// Note this is a different naming scheme than the router's ciphers field
+	// (OpenSSL/BoringSSL names like "ECDHE-ECDSA-AES128-GCM-SHA256"): this
+	// listener is served by Go's own crypto/tls, not Envoy, so it uses Go's
+	// canonical cipher suite names — see crypto/tls.CipherSuites for the
+	// supported list.
+	Ciphers string `koanf:"ciphers"`
+
+	// EcdhCurves is a comma-separated list of TLS 1.3 key-exchange groups,
+	// most preferred first (e.g. "X25519,P-256"). Classical curves only by
+	// default. A hybrid post-quantum group ("X25519MLKEM768", FIPS 203
+	// ML-KEM-768 + X25519) can be prepended as an explicit opt-in once the
+	// clients that reach this listener are confirmed to support it.
+	//
+	// Unlike the router's EcdhCurves (gateway-controller/pkg/config), this
+	// listener is served directly by this process's own Go crypto/tls
+	// (1.23+ implements X25519MLKEM768 natively) rather than pushed as xDS
+	// config to a separate Envoy process, so enabling the hybrid group here
+	// carries none of the "already-running peer NACKs the update" risk
+	// documented on the router's EcdhCurves field — TLS 1.3 negotiation
+	// simply falls back to a later classical entry in this same list for a
+	// client that doesn't offer the hybrid group.
+	EcdhCurves string `koanf:"ecdh_curves"`
 }
 
 // ConfigDumpConfig gates the /config_dump endpoint served on the admin HTTP
@@ -867,6 +928,14 @@ func defaultConfig() *Config {
 				ConfigDump: ConfigDumpConfig{
 					Enabled: false,
 				},
+				TLS: AdminTLSConfig{
+					Enabled:                false,
+					Port:                   9004,
+					MinimumProtocolVersion: "TLS1_2",
+					MaximumProtocolVersion: "TLS1_3",
+					Ciphers:                "",
+					EcdhCurves:             "X25519,P-256",
+				},
 			},
 			Metrics: MetricsConfig{
 				Enabled: false,
@@ -1009,6 +1078,34 @@ func (c *Config) Validate() error {
 		if len(c.PolicyEngine.Admin.AllowedIPs) == 0 {
 			return fmt.Errorf("admin.allowed_ips cannot be empty when admin is enabled")
 		}
+
+		// Validate admin TLS config
+		if c.PolicyEngine.Admin.TLS.Enabled {
+			if c.PolicyEngine.Admin.TLS.Port <= 0 || c.PolicyEngine.Admin.TLS.Port > 65535 {
+				return fmt.Errorf("invalid admin.tls.port: %d (must be 1-65535)", c.PolicyEngine.Admin.TLS.Port)
+			}
+			if c.PolicyEngine.Admin.TLS.Port == c.PolicyEngine.Admin.Port {
+				return fmt.Errorf("admin.tls.port cannot be same as admin.port")
+			}
+			if c.PolicyEngine.Server.Mode == "tcp" && c.PolicyEngine.Admin.TLS.Port == c.PolicyEngine.Server.ExtProcPort {
+				return fmt.Errorf("admin.tls.port cannot be same as server.extproc_port")
+			}
+			if c.PolicyEngine.Admin.TLS.CertPath == "" {
+				return fmt.Errorf("admin.tls.cert_path is required when admin.tls.enabled")
+			}
+			if c.PolicyEngine.Admin.TLS.KeyPath == "" {
+				return fmt.Errorf("admin.tls.key_path is required when admin.tls.enabled")
+			}
+			if err := ValidateAdminTLSVersions(c.PolicyEngine.Admin.TLS.MinimumProtocolVersion, c.PolicyEngine.Admin.TLS.MaximumProtocolVersion); err != nil {
+				return fmt.Errorf("admin.tls: %w", err)
+			}
+			if _, err := ParseAdminCiphers(c.PolicyEngine.Admin.TLS.Ciphers); err != nil {
+				return fmt.Errorf("admin.tls.ciphers: %w", err)
+			}
+			if _, err := ParseAdminEcdhCurves(c.PolicyEngine.Admin.TLS.EcdhCurves); err != nil {
+				return fmt.Errorf("admin.tls.ecdh_curves: %w", err)
+			}
+		}
 	}
 
 	// Validate metrics config
@@ -1022,6 +1119,9 @@ func (c *Config) Validate() error {
 		}
 		if c.PolicyEngine.Metrics.Port == c.PolicyEngine.Admin.Port {
 			return fmt.Errorf("metrics.port cannot be same as admin.port")
+		}
+		if c.PolicyEngine.Admin.TLS.Enabled && c.PolicyEngine.Metrics.Port == c.PolicyEngine.Admin.TLS.Port {
+			return fmt.Errorf("metrics.port cannot be same as admin.tls.port")
 		}
 	}
 

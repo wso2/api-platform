@@ -265,12 +265,13 @@ minimum_protocol_version = "TLS1_2"
 maximum_protocol_version = "TLS1_3"
 ciphers = "ECDHE-ECDSA-AES128-GCM-SHA256,ECDHE-RSA-AES128-GCM-SHA256,ECDHE-ECDSA-AES128-SHA,ECDHE-RSA-AES128-SHA,AES128-GCM-SHA256,AES128-SHA,ECDHE-ECDSA-AES256-GCM-SHA384,ECDHE-RSA-AES256-GCM-SHA384,ECDHE-ECDSA-AES256-SHA,ECDHE-RSA-AES256-SHA,AES256-GCM-SHA384,AES256-SHA"
 # Comma-separated ECDH curves for the TLS key exchange, most preferred first.
-# Defaults to the hybrid post-quantum group X25519MLKEM768 (FIPS 203 ML-KEM-768
-# + X25519) followed by classical curves X25519 and P-256, so key exchange
-# degrades gracefully to classical for peers that don't yet support the
-# hybrid group. An unsupported curve name is rejected by Envoy when it
-# applies the resulting config, not by this file.
-ecdh_curves = "X25519MLKEM768,X25519,P-256"
+# Classical curves only by default. A hybrid post-quantum group (e.g.
+# "X25519MLKEM768", FIPS 203 ML-KEM-768 + X25519) can be prepended as an
+# explicit per-deployment opt-in once the deployed Envoy/BoringSSL build is
+# confirmed to support it -- an already-running Envoy that doesn't recognize
+# the curve name will NACK this config and keep serving its last-known-good
+# state instead of picking up any further changes.
+ecdh_curves = "X25519,P-256"
 trusted_cert_path = "/etc/ssl/certs/ca-certificates.crt"
 custom_certs_path = "./certificates"
 verify_host_name = true
@@ -349,6 +350,42 @@ allowed_ips = ["*", "127.0.0.1"]
 # prefer reaching it via `kubectl port-forward` over exposing the admin
 # Service port.
 enabled = false
+
+[policy_engine.admin.tls]
+# Starts a second, TLS-only admin listener on `port` below, serving the same
+# routes (/health, /xds_sync_status, /config_dump when enabled) as the
+# plaintext listener above. Off by default: no certificate is provisioned by
+# default, and the plaintext listener keeps working either way.
+enabled = false
+port = 9004
+cert_path = "./listener-certs/default-listener.crt"
+key_path = "./listener-certs/default-listener.key"
+# TLS version bounds, one of "TLS1_0", "TLS1_1", "TLS1_2", "TLS1_3". Same
+# vocabulary as router.downstream_tls/upstream_tls above for consistency
+# within this file, though enforced by a different TLS stack (Go's own
+# crypto/tls here, Envoy/BoringSSL there).
+minimum_protocol_version = "TLS1_2"
+maximum_protocol_version = "TLS1_3"
+# Comma-separated Go crypto/tls cipher suite names (e.g.
+# "TLS_ECDHE_ECDSA_WITH_AES_128_GCM_SHA256"), restricting which suites this
+# listener negotiates. Empty by default -- Go's own secure default set/order
+# applies. Only affects TLS 1.2 and below; TLS 1.3 suite selection is fixed
+# and not configurable in Go's crypto/tls. Note this is a different naming
+# scheme than router.downstream_tls's `ciphers` above (OpenSSL/BoringSSL
+# names like "ECDHE-ECDSA-AES128-GCM-SHA256") -- see crypto/tls.CipherSuites
+# for the names this listener accepts.
+ciphers = ""
+# Comma-separated TLS 1.3 key-exchange groups, most preferred first.
+# Classical curves only by default. A hybrid post-quantum group (e.g.
+# "X25519MLKEM768", FIPS 203 ML-KEM-768 + X25519) can be prepended as an
+# explicit opt-in once the clients reaching this listener are confirmed to
+# support it. This listener is served by this process's own Go crypto/tls
+# (1.23+ implements X25519MLKEM768 natively), not pushed as xDS config to a
+# separate Envoy process, so enabling it here does not carry the "already-
+# running peer NACKs the update" risk documented on router.downstream_tls's
+# ecdh_curves above -- TLS 1.3 negotiation just falls back to a later
+# classical entry in this same list for a client that doesn't offer it.
+ecdh_curves = "X25519,P-256"
 
 [policy_engine.admin.pprof]
 # Go runtime profiling (net/http/pprof) served on the admin server, off by default.
