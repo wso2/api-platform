@@ -38,7 +38,7 @@ import { Link, useNavigate, useParams } from 'react-router-dom';
 import { useCreateApiPortal } from '../../api/hooks/useMvpQueries';
 import { useNotifications } from '../../components/Notifications';
 import { routes } from '../../routes/paths';
-import type { ApiPortalAuthType } from '../../types/domain';
+import type { ApiPortalAuthType, CreateApiPortalInput } from '../../types/domain';
 import { isValidUrl } from '../apis/develop/developEdit';
 import { AUTH_TYPE_OPTIONS } from './apiPortalDisplay';
 import { IdpCredentialsFields } from './IdpCredentialsFields';
@@ -98,35 +98,34 @@ export function ApiPortalCreatePage() {
     !createApiPortal.isPending;
 
   const submit = () => {
-    createApiPortal.mutate(
-      {
-        name: displayName,
-        handle,
-        url: url.trim(),
-        authType,
-        description: description || undefined,
-        ...(isIdpAuth
-          ? {
-              stsTokenUrl: stsTokenUrl.trim(),
-              clientId: clientId.trim(),
-              clientSecret,
-            }
-          : {}),
+    const basePayload = {
+      name: displayName,
+      handle,
+      url: url.trim(),
+      description: description || undefined,
+    };
+    const input: CreateApiPortalInput = isIdpAuth
+      ? {
+          ...basePayload,
+          authType: 'idp_client_credentials',
+          stsTokenUrl: stsTokenUrl.trim(),
+          clientId: clientId.trim(),
+          clientSecret,
+        }
+      : { ...basePayload, authType: 'local' };
+    createApiPortal.mutate(input, {
+      onSuccess: (apiPortal) => {
+        notify(`API Portal "${apiPortal.name}" provisioned.`, 'success');
+        navigate(routes.apiPortal(orgHandle));
       },
-      {
-        onSuccess: (apiPortal) => {
-          notify(`API Portal "${apiPortal.name}" provisioned.`, 'success');
-          navigate(routes.apiPortal(orgHandle));
-        },
-        onError: (error) =>
-          notify(
-            error instanceof Error
-              ? error.message
-              : 'Failed to provision API Portal',
-            'error'
-          ),
-      }
-    );
+      onError: (error) =>
+        notify(
+          error instanceof Error
+            ? error.message
+            : 'Failed to provision API Portal',
+          'error'
+        ),
+    });
   };
 
   return (

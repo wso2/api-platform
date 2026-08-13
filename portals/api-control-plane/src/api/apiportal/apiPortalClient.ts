@@ -76,8 +76,10 @@ export async function createApiPortal(
     description: input.description,
     url: input.url,
     authType: input.authType,
-    stsTokenUrl: input.stsTokenUrl,
-    clientId: input.clientId,
+    stsTokenUrl:
+      input.authType === 'idp_client_credentials' ? input.stsTokenUrl : undefined,
+    clientId:
+      input.authType === 'idp_client_credentials' ? input.clientId : undefined,
     workflowStatus: 'pending',
     createdAt: new Date().toISOString(),
     organizationId: orgId,
@@ -105,8 +107,10 @@ export async function updateApiPortal(
     description: input.description,
     url: input.url,
     authType: input.authType,
-    stsTokenUrl: input.stsTokenUrl,
-    clientId: input.clientId,
+    stsTokenUrl:
+      input.authType === 'idp_client_credentials' ? input.stsTokenUrl : undefined,
+    clientId:
+      input.authType === 'idp_client_credentials' ? input.clientId : undefined,
   };
   apiPortals[index] = updated;
   return toApiPortal(updated);

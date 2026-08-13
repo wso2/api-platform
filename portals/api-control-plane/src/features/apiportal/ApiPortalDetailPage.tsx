@@ -39,7 +39,11 @@ import { useApiPortal, useUpdateApiPortal } from '../../api/hooks/useMvpQueries'
 import { useNotifications } from '../../components/Notifications';
 import { ErrorState, LoadingState } from '../../components/StateViews';
 import { routes } from '../../routes/paths';
-import type { ApiPortal, ApiPortalAuthType } from '../../types/domain';
+import type {
+  ApiPortal,
+  ApiPortalAuthType,
+  UpdateApiPortalInput,
+} from '../../types/domain';
 import { relativeTime } from '../../utils/relativeTime';
 import { isValidUrl } from '../apis/develop/developEdit';
 import {
@@ -134,43 +138,42 @@ export function ApiPortalDetailPage() {
     !updateApiPortal.isPending;
 
   const save = () => {
-    updateApiPortal.mutate(
-      {
-        name: name.trim(),
-        url: url.trim(),
-        authType,
-        description: description || undefined,
-        ...(isIdpAuth
-          ? {
-              stsTokenUrl: stsTokenUrl.trim(),
-              clientId: clientId.trim(),
-              // Only sent when the user actually typed a new one — blank
-              // must never overwrite the existing secret with ''.
-              ...(clientSecretEntered ? { clientSecret } : {}),
-            }
-          : {}),
+    const basePayload = {
+      name: name.trim(),
+      url: url.trim(),
+      description: description || undefined,
+    };
+    const input: UpdateApiPortalInput = isIdpAuth
+      ? {
+          ...basePayload,
+          authType: 'idp_client_credentials',
+          stsTokenUrl: stsTokenUrl.trim(),
+          clientId: clientId.trim(),
+          // Only sent when the user actually typed a new one — blank
+          // must never overwrite the existing secret with ''.
+          ...(clientSecretEntered ? { clientSecret } : {}),
+        }
+      : { ...basePayload, authType: 'local' };
+    updateApiPortal.mutate(input, {
+      onSuccess: (updated) => {
+        notify(`API Portal "${updated.name}" updated.`, 'success');
+        // Re-seed local fields from the saved record so isDirty compares
+        // against what was actually persisted (e.g. a server-trimmed url)
+        // instead of the pre-save local strings.
+        setName(updated.name);
+        setDescription(updated.description || '');
+        setUrl(updated.url || '');
+        setAuthType(updated.authType);
+        setStsTokenUrl(updated.stsTokenUrl || '');
+        setClientId(updated.clientId || '');
+        setClientSecret('');
       },
-      {
-        onSuccess: (updated) => {
-          notify(`API Portal "${updated.name}" updated.`, 'success');
-          // Re-seed local fields from the saved record so isDirty compares
-          // against what was actually persisted (e.g. a server-trimmed url)
-          // instead of the pre-save local strings.
-          setName(updated.name);
-          setDescription(updated.description || '');
-          setUrl(updated.url || '');
-          setAuthType(updated.authType);
-          setStsTokenUrl(updated.stsTokenUrl || '');
-          setClientId(updated.clientId || '');
-          setClientSecret('');
-        },
-        onError: (error) =>
-          notify(
-            error instanceof Error ? error.message : 'Failed to update API Portal',
-            'error'
-          ),
-      }
-    );
+      onError: (error) =>
+        notify(
+          error instanceof Error ? error.message : 'Failed to update API Portal',
+          'error'
+        ),
+    });
   };
 
   const cancel = () => {

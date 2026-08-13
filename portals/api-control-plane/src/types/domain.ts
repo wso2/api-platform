@@ -272,29 +272,46 @@ export type ApiPortal = {
   organizationId?: string;
 };
 
-export type CreateApiPortalInput = {
-  name: string;
-  handle: string;
-  url: string;
-  authType: ApiPortalAuthType;
-  description?: string;
-  /** Required when authType is 'idp_client_credentials'. */
-  stsTokenUrl?: string;
-  clientId?: string;
-  clientSecret?: string;
-};
+export type CreateApiPortalInput =
+  | {
+      name: string;
+      handle: string;
+      url: string;
+      authType: 'local';
+      description?: string;
+    }
+  | {
+      name: string;
+      handle: string;
+      url: string;
+      authType: 'idp_client_credentials';
+      description?: string;
+      stsTokenUrl: string;
+      clientId: string;
+      clientSecret: string;
+    };
 
-/** `handle` is set at creation and not editable afterwards. */
-export type UpdateApiPortalInput = {
-  name: string;
-  url: string;
-  authType: ApiPortalAuthType;
-  description?: string;
-  /** Required when authType is 'idp_client_credentials'. */
-  stsTokenUrl?: string;
-  clientId?: string;
-  clientSecret?: string;
-};
+/**
+ * `handle` is set at creation and not editable afterwards. clientSecret stays
+ * optional even for 'idp_client_credentials' — it's write-only and never
+ * returned, so omitting it means "keep the existing secret".
+ */
+export type UpdateApiPortalInput =
+  | {
+      name: string;
+      url: string;
+      authType: 'local';
+      description?: string;
+    }
+  | {
+      name: string;
+      url: string;
+      authType: 'idp_client_credentials';
+      description?: string;
+      stsTokenUrl: string;
+      clientId: string;
+      clientSecret?: string;
+    };
 
 /**
  * How the API definition is sourced on create. `scratch` builds an empty proxy;
