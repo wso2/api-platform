@@ -37,15 +37,20 @@ import { ApiError } from '../types/errors';
  * platform-api adds one.
  */
 
-const findOrganizationId = (orgHandle: string): string | undefined =>
-  organizations.find((item) => item.handle === orgHandle)?.id;
+const requireOrganizationId = (orgHandle: string): string => {
+  const organization = organizations.find((item) => item.handle === orgHandle);
+  if (!organization) {
+    throw new ApiError('Organization not found', 'NOT_FOUND', 404);
+  }
+  return organization.id;
+};
 
 export async function listApiPortals(orgHandle: string): Promise<ApiPortal[]> {
   if (!useMockApi()) {
     return [];
   }
   await delay();
-  const orgId = findOrganizationId(orgHandle);
+  const orgId = requireOrganizationId(orgHandle);
   return apiPortals
     .filter((item) => item.organizationId === orgId)
     .map(toApiPortal);
@@ -59,7 +64,7 @@ export async function getApiPortal(
     return undefined;
   }
   await delay();
-  const orgId = findOrganizationId(orgHandle);
+  const orgId = requireOrganizationId(orgHandle);
   const found = apiPortals.find(
     (item) => item.id === id && item.organizationId === orgId
   );
@@ -74,7 +79,7 @@ export async function createApiPortal(
     throw new ApiError('API Portal creation requires the platform API', 'UNKNOWN');
   }
   await delay();
-  const orgId = findOrganizationId(orgHandle);
+  const orgId = requireOrganizationId(orgHandle);
   if (apiPortals.some((item) => item.organizationId === orgId && item.handle === input.handle)) {
     throw new ApiError(
       'API Portal handle already exists in organization',
@@ -113,7 +118,7 @@ export async function updateApiPortal(
     throw new ApiError('API Portal update requires the platform API', 'UNKNOWN');
   }
   await delay();
-  const orgId = findOrganizationId(orgHandle);
+  const orgId = requireOrganizationId(orgHandle);
   const index = apiPortals.findIndex(
     (item) => item.id === id && item.organizationId === orgId
   );
@@ -144,7 +149,7 @@ export async function deleteApiPortal(
     throw new ApiError('API Portal deletion requires the platform API', 'UNKNOWN');
   }
   await delay();
-  const orgId = findOrganizationId(orgHandle);
+  const orgId = requireOrganizationId(orgHandle);
   const index = apiPortals.findIndex(
     (item) => item.id === id && item.organizationId === orgId
   );
