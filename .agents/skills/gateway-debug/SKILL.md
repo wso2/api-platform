@@ -467,25 +467,17 @@ Most bugs surface in logs or config dumps without needing to step through code.
 | Envoy router (in Docker) — `[rtr]` lines | `cd <REPO_ROOT>/gateway && docker compose logs --no-log-prefix gateway-runtime 2>&1 \| grep '^\[rtr\]'` |
 | Python executor (Option 2B) | `/tmp/python_executor.log` |
 
-> Why the `grep`: human-readable lines in the `gateway-runtime` container carry a
-> tag naming the emitting process — `[rtr]` (Envoy router), `[pol]` (in-container
-> PE, which still receives xDS pushes even in debug mode), `[pye]` (Python
-> executor), `[ent]` (the entrypoint itself). When debugging traffic you only want
-> `[rtr]` — Envoy's access log is where each request's status, upstream, and
-> policy verdict actually surface. `--no-log-prefix` drops Docker's
-> `gateway-runtime-1  |` per-line prefix so the `[rtr]` anchor is at column 0.
+> Why the `grep`: the `gateway-runtime` container stamps every human-readable log
+> line with one of three prefixes — `[rtr]` (Envoy router), `[pol]` (in-container PE,
+> still receives xDS pushes even in debug mode), unprefixed (the entrypoint).
+> When debugging traffic you only want `[rtr]` — Envoy's access log is where
+> each request's status, upstream, and policy verdict actually surface.
+> `--no-log-prefix` drops Docker's `gateway-runtime-1  |` per-line prefix so
+> the `[rtr]` anchor is at column 0.
 >
-> Machine-readable stdout is untagged, so `grep '^\['` will not match it: the
-> policy engine's JSON traffic log, and Envoy's access log when
-> `router.access_logs.format = "json"`, are emitted as bare JSON for log
-> processors. They carry the tag as a field instead — `"component":"rtr"` for
-> Envoy, `"component":"pol"` for the policy engine — so match with `jq`:
-> `docker compose logs --no-log-prefix gateway-runtime | grep '^{' | jq -c 'select(.correlationId)'`
->
-> Tags come from each process's own logger (Envoy `text_format` / `--log-format`,
-> the PE's `slog` handler, the executor's `logging.Formatter`). The entrypoint tags
-> only **stderr** — that is where panics, tracebacks and fatals appear, because
-> they bypass those loggers.
+> JSON output on stdout is not prefixed — the policy engine's traffic log, and
+> Envoy's access log when `router.access_logs.format = "json"` — so `grep '^\['`
+> will not match it. Those records carry a `"component"` field instead.
 
 **Controller log lines** carry `correlation_id=<uuid>` — grep on it to follow
 one request end-to-end across handler → service → xDS push:
