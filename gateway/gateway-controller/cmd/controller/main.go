@@ -469,6 +469,22 @@ func main() {
 		slog.Int("total_apis", len(loadedAPIs)),
 		slog.Int("configs_loaded", loadedCount))
 
+	// Regenerate the Envoy xDS snapshot now that the transformers are wired (above)
+	// and runtime configs are loaded. The initial snapshot generated earlier ran
+	// before SetTransformers, so it fell back to the legacy translation path — naming
+	// clusters "cluster_<scheme>_<host>" and routes without the header-hash
+	// discriminator. The policy engine's resources are keyed off the transformer path
+	// ("upstream_<name>_<host>_<port>" clusters, header-hashed route names), so without
+	// this rebuild Envoy and the policy engine disagree: cluster-header APIs fail with
+	// cluster_not_found and header-matched routes 500 with "policy chain not found"
+	// until the first redeploy happens to re-run the transformer path.
+	log.Info("Regenerating xDS snapshot via transformer path after wiring transformers")
+	ctx, cancel = context.WithTimeout(context.Background(), 10*time.Second)
+	if err := snapshotManager.UpdateSnapshot(ctx, ""); err != nil {
+		log.Warn("Failed to regenerate xDS snapshot after transformer init", slog.Any("error", err))
+	}
+	cancel()
+
 	// Generate initial policy snapshot
 	log.Info("Generating initial policy xDS snapshot")
 	ctx, cancel = context.WithTimeout(context.Background(), 10*time.Second)
