@@ -4861,9 +4861,14 @@ components:
       properties:
         id:
           type: string
-          description: URL-safe handle (identifier) of the API key (generated from displayName when not supplied)
-          minLength: 3
-          maxLength: 40
+          description: |
+            URL-safe handle (identifier) of the API key (generated from displayName
+            when not supplied). Lowercase alphanumeric with hyphens as internal
+            separators for any key created after this constraint was introduced; a
+            key created earlier may still contain a legacy underscore. The pattern
+            enforced when choosing a *new* id is documented on CreateAPIKeyRequest.id.
+          minLength: 1
+          maxLength: 128
         displayName:
           type: string
           description: Human-readable display name of the API key
@@ -6221,6 +6226,7 @@ components:
             generated from displayName)
           minLength: 1
           maxLength: 128
+          pattern: '^[a-z0-9]+(-[a-z0-9]+)*$'
           example: "production-key-01"
         displayName:
           type: string
