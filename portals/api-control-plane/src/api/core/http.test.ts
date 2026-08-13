@@ -30,10 +30,9 @@ import { ApiError, ClientErrorCode, ErrorCode } from './errors';
 import {
   buildQueryString,
   http,
-  onSessionExpired,
   resetHttpClient,
-  resetSessionExpiryNotice,
 } from './http';
+import { onSessionExpired, resetSessionExpiryNotice } from './sessionEvents';
 
 /**
  * Transport-level behaviour, exercised through MSW rather than by stubbing

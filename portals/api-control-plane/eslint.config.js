@@ -40,7 +40,10 @@ export default [
               // clients live one dir deep (api/<resource>/<x>Client); this
               // avoids matching api/client.ts, the token seam the auth
               // adapters legitimately import.
-              group: ['**/api/*/*Client', '**/api/mvpApi'],
+              // `!(core|resources)` matters: without it this pattern also
+              // matches `api/core/queryClient`, which is not a legacy client
+              // and which the composition root legitimately imports.
+              group: ['**/api/!(core|resources)/*Client', '**/api/mvpApi'],
               allowTypeImports: true,
               message:
                 'Do not import API clients directly. Use a hook from src/api/hooks (it resolves the client via useApiClient). See src/api/README.md.',
@@ -59,7 +62,7 @@ export default [
               group: ['**/api/resources/**/*.endpoints'],
               allowTypeImports: true,
               message:
-                'Endpoints are the raw transport layer; they carry no scope, no cache and no error surfacing. Use the matching hook. (Importing its types is fine.)',
+                'Endpoints are the raw transport layer — they carry no scope, no cache and no error surfacing. Use the matching hook. (Importing its types is fine.)',
             },
             {
               group: ['**/api/resources/**/*.queries'],

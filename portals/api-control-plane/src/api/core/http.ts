@@ -30,6 +30,7 @@ import {
   CSRF_HEADER_VALUE,
 } from '../../features/auth/authConstants';
 import { ApiErrorKind, platformErrorFromBody, platformErrorFromTransport } from './errors';
+import { notifySessionExpired } from './sessionEvents';
 
 /**
  * Per-request context carried on the axios config. Declared via module
@@ -77,45 +78,6 @@ const newRequestId = (): string =>
   typeof crypto !== 'undefined' && 'randomUUID' in crypto
     ? crypto.randomUUID()
     : `${Date.now().toString(16)}-${Math.random().toString(16).slice(2, 10)}`;
-
-/**
- * Listeners notified exactly once when the BFF reports the session is gone.
- * The transport must not import the auth provider (that would be a cycle and
- * would make the client un-testable), so it publishes an event instead and
- * `AuthProvider` subscribes.
- */
-type SessionExpiredListener = () => void;
-const sessionExpiredListeners = new Set<SessionExpiredListener>();
-
-export const onSessionExpired = (listener: SessionExpiredListener): (() => void) => {
-  sessionExpiredListeners.add(listener);
-  return () => sessionExpiredListeners.delete(listener);
-};
-
-/**
- * Debounced so a dashboard firing eight parallel queries against a dead session
- * triggers one redirect to login, not eight.
- */
-let sessionExpiredNotifiedAt = 0;
-
-/**
- * Clears the debounce window so the next 401 notifies again.
- *
- * Test seam, like `resetHttpClient`: the window is module state, so without
- * this a spec that triggers a 401 would silently suppress the notification in
- * every spec that runs within the next few seconds — making the tests
- * order-dependent.
- */
-export const resetSessionExpiryNotice = (): void => {
-  sessionExpiredNotifiedAt = 0;
-};
-
-const notifySessionExpired = () => {
-  const now = Date.now();
-  if (now - sessionExpiredNotifiedAt < 3_000) return;
-  sessionExpiredNotifiedAt = now;
-  for (const listener of sessionExpiredListeners) listener();
-};
 
 const attachRequestContext = (
   config: InternalAxiosRequestConfig
