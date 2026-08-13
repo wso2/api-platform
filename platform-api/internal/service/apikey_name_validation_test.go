@@ -53,7 +53,8 @@ func TestValidateAPIKeyName(t *testing.T) {
 		{name: "consecutive hyphens rejected", input: "ab--c", wantErr: true},
 		{name: "consecutive underscores rejected", input: "ab__c", wantErr: true},
 		{name: "mixed consecutive separators rejected", input: "ab-_c", wantErr: true},
-		{name: "internal hyphen and underscore valid", input: "my-key_1"},
+		{name: "internal hyphen valid", input: "my-key-1"},
+		{name: "internal underscore rejected", input: "my-key_1", wantErr: true},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

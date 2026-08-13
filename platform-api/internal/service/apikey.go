@@ -292,7 +292,7 @@ func generateAPIKeyName(displayName string) (string, error) {
 // Must stay in sync with gateway/gateway-controller/pkg/utils/api_key_validation.go's
 // validAPIKeyNameRegex — that's the rule the gateway enforces on apikey.created events;
 // drifting here silently strands keys platform-api accepts but the gateway rejects.
-var validAPIKeyNameRegex = regexp.MustCompile(`^[a-z0-9]+([_-][a-z0-9]+)*$`)
+var validAPIKeyNameRegex = regexp.MustCompile(`^[a-z0-9]+(-[a-z0-9]+)*$`)
 
 // validateAPIKeyName validates a caller-supplied API key id/name. Only for the
 // caller-supplied path — generateAPIKeyName/GenerateHandle already produce a
@@ -311,8 +311,8 @@ func validateAPIKeyName(name string) error {
 	}
 	if !validAPIKeyNameRegex.MatchString(name) {
 		return apperror.ValidationFailed.New(
-			"The API key id must be lowercase alphanumeric with hyphens or underscores as " +
-				"internal separators only (no consecutive separators, cannot start or end with one).")
+			"The API key id must be lowercase alphanumeric with hyphens as internal " +
+				"separators only (no consecutive separators, cannot start or end with one).")
 	}
 	return nil
 }
