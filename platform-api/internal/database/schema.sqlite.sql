@@ -403,7 +403,7 @@ CREATE TABLE IF NOT EXISTS mcp_proxies (
 CREATE TABLE IF NOT EXISTS api_keys (
     uuid VARCHAR(40) PRIMARY KEY,
     artifact_uuid VARCHAR(40) NOT NULL,
-    handle VARCHAR(40) NOT NULL,
+    handle VARCHAR(128) NOT NULL,
     display_name VARCHAR(255) NOT NULL,
     masked_api_key VARCHAR(8) NOT NULL,
     api_key_hashes BLOB NOT NULL,

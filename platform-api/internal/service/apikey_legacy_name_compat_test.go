@@ -43,10 +43,12 @@ func (r legacyNameArtifactRepo) GetAPIMetadataByHandleAndKind(_, _, _ string) (*
 // and records whether Update/Revoke were reached without error.
 type legacyNameAPIKeyRepo struct {
 	repository.APIKeyRepository
-	key       *model.APIKey
-	updated   bool
-	revoked   bool
-	revokedBy string
+	key         *model.APIKey
+	updated     bool
+	updatedName string
+	revoked     bool
+	revokedName string
+	revokedBy   string
 }
 
 func (r *legacyNameAPIKeyRepo) GetByArtifactAndName(_, name string) (*model.APIKey, error) {
@@ -56,13 +58,15 @@ func (r *legacyNameAPIKeyRepo) GetByArtifactAndName(_, name string) (*model.APIK
 	return nil, nil
 }
 
-func (r *legacyNameAPIKeyRepo) Update(_ *model.APIKey) error {
+func (r *legacyNameAPIKeyRepo) Update(key *model.APIKey) error {
 	r.updated = true
+	r.updatedName = key.Name
 	return nil
 }
 
-func (r *legacyNameAPIKeyRepo) Revoke(_, _, updatedBy string) error {
+func (r *legacyNameAPIKeyRepo) Revoke(_, name, updatedBy string) error {
 	r.revoked = true
+	r.revokedName = name
 	r.revokedBy = updatedBy
 	return nil
 }
@@ -119,6 +123,9 @@ func TestLegacyUnderscoreNamedKey_SurvivesUpdateAndRevoke(t *testing.T) {
 		if !keyRepo.updated {
 			t.Fatal("UpdateAPIKey() did not reach the repository Update call")
 		}
+		if keyRepo.updatedName != legacyName {
+			t.Fatalf("Update() received name = %q, want %q", keyRepo.updatedName, legacyName)
+		}
 	})
 
 	t.Run("revoke succeeds without re-validating the legacy name", func(t *testing.T) {
@@ -131,6 +138,9 @@ func TestLegacyUnderscoreNamedKey_SurvivesUpdateAndRevoke(t *testing.T) {
 		}
 		if !keyRepo.revoked {
 			t.Fatal("RevokeAPIKey() did not reach the repository Revoke call")
+		}
+		if keyRepo.revokedName != legacyName {
+			t.Fatalf("Revoke() received name = %q, want %q", keyRepo.revokedName, legacyName)
 		}
 	})
 }

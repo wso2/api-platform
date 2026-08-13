@@ -454,7 +454,7 @@ IF OBJECT_ID(N'dbo.api_keys', N'U') IS NULL
 CREATE TABLE dbo.api_keys (
     uuid VARCHAR(40) PRIMARY KEY,
     artifact_uuid VARCHAR(40) NOT NULL,
-    handle VARCHAR(40) NOT NULL,
+    handle VARCHAR(128) NOT NULL,
     display_name VARCHAR(255) NOT NULL,
     masked_api_key VARCHAR(8) NOT NULL,
     api_key_hashes VARBINARY(MAX) NOT NULL,
