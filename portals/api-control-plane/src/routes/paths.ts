@@ -34,14 +34,14 @@ export const routes = {
     `/organizations/${orgHandle}/gateways/new`,
   gateway: (orgHandle = ':orgHandle', gatewayId = ':gatewayId') =>
     `/organizations/${orgHandle}/gateways/${gatewayId}`,
-  devportal: (orgHandle = ':orgHandle') =>
-    `/organizations/${orgHandle}/devportal`,
-  newDevportal: (orgHandle = ':orgHandle') =>
-    `/organizations/${orgHandle}/devportal/new`,
-  devportalDetail: (
+  apiPortal: (orgHandle = ':orgHandle') =>
+    `/organizations/${orgHandle}/api-portal`,
+  newApiPortal: (orgHandle = ':orgHandle') =>
+    `/organizations/${orgHandle}/api-portal/new`,
+  apiPortalDetail: (
     orgHandle = ':orgHandle',
-    devPortalId = ':devPortalId'
-  ) => `/organizations/${orgHandle}/devportal/${devPortalId}`,
+    apiPortalId = ':apiPortalId'
+  ) => `/organizations/${orgHandle}/api-portal/${apiPortalId}`,
   projectHome: (orgHandle = ':orgHandle', projectHandler = ':projectHandler') =>
     `/organizations/${orgHandle}/projects/${projectHandler}/home`,
   apis: (orgHandle = ':orgHandle', projectHandler = ':projectHandler') =>

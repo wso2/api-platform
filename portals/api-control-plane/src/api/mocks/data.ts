@@ -20,7 +20,7 @@ import type {
   ApiProxy,
   Api,
   Deployment,
-  DevPortal,
+  ApiPortal,
   Environment,
   Gateway,
   Organization,
@@ -126,7 +126,7 @@ export const gateways: Gateway[] = [
   },
 ];
 
-export const devPortals: DevPortal[] = [];
+export const apiPortals: ApiPortal[] = [];
 
 export const apiProxies: ApiProxy[] = [
   {

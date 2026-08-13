@@ -62,15 +62,15 @@ export const navigationRegistry: NavigationDefinition[] = [
     match: (pathname) => /\/organizations\/[^/]+\/gateways(\/[^/]+)?$/.test(pathname),
   },
   {
-    id: 'devportal',
-    label: 'Dev Portal',
+    id: 'api-portal',
+    label: 'API Portal',
     level: 'organization',
     order: 35,
     icon: <Globe />,
     to: ({ params }) =>
-      params.orgHandle ? routes.devportal(params.orgHandle) : undefined,
+      params.orgHandle ? routes.apiPortal(params.orgHandle) : undefined,
     match: (pathname) =>
-      /\/organizations\/[^/]+\/devportal(\/[^/]+)?$/.test(pathname),
+      /\/organizations\/[^/]+\/api-portal(\/[^/]+)?$/.test(pathname),
   },
   {
     id: 'project-home',

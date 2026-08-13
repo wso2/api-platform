@@ -246,21 +246,21 @@ export type GatewayToken = {
   message?: string;
 };
 
-/** How the platform authenticates to a Developer Portal instance. */
-export type DevPortalAuthType = 'local' | 'idp_client_credentials';
+/** How the platform authenticates to an API Portal instance. */
+export type ApiPortalAuthType = 'local' | 'idp_client_credentials';
 
-/** Provisioning state of a devportal (platform-api DevPortalResponse.workflowStatus). */
-export type DevPortalWorkflowStatus = 'pending' | 'active' | 'failed';
+/** Provisioning state of an API Portal (platform-api ApiPortalResponse.workflowStatus). */
+export type ApiPortalWorkflowStatus = 'pending' | 'active' | 'failed';
 
-/** Maps 1:1 to platform-api's DevPortalResponse schema. */
-export type DevPortal = {
+/** Maps 1:1 to platform-api's ApiPortalResponse schema. */
+export type ApiPortal = {
   id: string;
   name: string;
   handle: string;
   description?: string;
   url?: string;
-  workflowStatus: DevPortalWorkflowStatus;
-  authType: DevPortalAuthType;
+  workflowStatus: ApiPortalWorkflowStatus;
+  authType: ApiPortalAuthType;
   createdAt?: string;
   /**
    * Set when authType is 'idp_client_credentials'. Not secret — safe to
@@ -271,11 +271,11 @@ export type DevPortal = {
   clientId?: string;
 };
 
-export type CreateDevPortalInput = {
+export type CreateApiPortalInput = {
   name: string;
   handle: string;
   url: string;
-  authType: DevPortalAuthType;
+  authType: ApiPortalAuthType;
   description?: string;
   /** Required when authType is 'idp_client_credentials'. */
   stsTokenUrl?: string;
@@ -284,10 +284,10 @@ export type CreateDevPortalInput = {
 };
 
 /** `handle` is set at creation and not editable afterwards. */
-export type UpdateDevPortalInput = {
+export type UpdateApiPortalInput = {
   name: string;
   url: string;
-  authType: DevPortalAuthType;
+  authType: ApiPortalAuthType;
   description?: string;
   /** Required when authType is 'idp_client_credentials'. */
   stsTokenUrl?: string;

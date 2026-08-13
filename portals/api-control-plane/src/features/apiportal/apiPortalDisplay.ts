@@ -16,33 +16,33 @@
  * under the License.
  */
 
-import type { DevPortalAuthType, DevPortalWorkflowStatus } from '../../types/domain';
+import type { ApiPortalAuthType, ApiPortalWorkflowStatus } from '../../types/domain';
 
 /** Shared across the list, create, and detail/edit pages so the three never drift. */
-export const AUTH_TYPE_OPTIONS: { value: DevPortalAuthType; label: string }[] = [
+export const AUTH_TYPE_OPTIONS: { value: ApiPortalAuthType; label: string }[] = [
   { value: 'local', label: 'Local' },
   { value: 'idp_client_credentials', label: 'IdP Client Credentials' },
 ];
 
-export const AUTH_LABEL: Record<DevPortalAuthType, string> = {
+export const AUTH_LABEL: Record<ApiPortalAuthType, string> = {
   local: 'Local',
   idp_client_credentials: 'IdP Client Credentials',
 };
 
-export const STATUS_LABEL: Record<DevPortalWorkflowStatus, string> = {
+export const STATUS_LABEL: Record<ApiPortalWorkflowStatus, string> = {
   pending: 'Pending',
   active: 'Active',
   failed: 'Failed',
 };
 
-export const STATUS_COLOR: Record<DevPortalWorkflowStatus, string> = {
+export const STATUS_COLOR: Record<ApiPortalWorkflowStatus, string> = {
   pending: 'warning.main',
   active: 'success.main',
   failed: 'error.main',
 };
 
 export const STATUS_CHIP_COLOR: Record<
-  DevPortalWorkflowStatus,
+  ApiPortalWorkflowStatus,
   'warning' | 'success' | 'error'
 > = {
   pending: 'warning',

@@ -17,37 +17,37 @@
  */
 
 import type {
-  CreateDevPortalInput,
-  DevPortal,
-  UpdateDevPortalInput,
+  CreateApiPortalInput,
+  ApiPortal,
+  UpdateApiPortalInput,
 } from '../../types/domain';
-import { toDevPortal } from '../adapters';
-import { devPortals } from '../mocks/data';
+import { toApiPortal } from '../adapters';
+import { apiPortals } from '../mocks/data';
 import { ApiError } from '../types/errors';
 
 /**
- * Devportal management has no platform-api backend yet (console-only feature
+ * API Portal management has no platform-api backend yet (console-only feature
  * for now), so this always operates on the in-memory mock store — unlike
  * gatewayClient, there is no real REST endpoint to call. Swap this for a real
- * client (platformGet/platformPost against DevPortalResponse) once
+ * client (platformGet/platformPost against ApiPortalResponse) once
  * platform-api adds one.
  */
-export async function listDevPortals(): Promise<DevPortal[]> {
-  return devPortals.map(toDevPortal);
+export async function listApiPortals(): Promise<ApiPortal[]> {
+  return apiPortals.map(toApiPortal);
 }
 
-export async function getDevPortal(id: string): Promise<DevPortal | undefined> {
-  const found = devPortals.find((item) => item.id === id);
-  return found ? toDevPortal(found) : undefined;
+export async function getApiPortal(id: string): Promise<ApiPortal | undefined> {
+  const found = apiPortals.find((item) => item.id === id);
+  return found ? toApiPortal(found) : undefined;
 }
 
-export async function createDevPortal(
-  input: CreateDevPortalInput
-): Promise<DevPortal> {
+export async function createApiPortal(
+  input: CreateApiPortalInput
+): Promise<ApiPortal> {
   // Picked explicitly (not `...input`) so `clientSecret` — the one genuinely
   // write-only field — never ends up on the stored/returned record.
   // stsTokenUrl/clientId are not secret and are stored/returned normally.
-  const devPortal: DevPortal = {
+  const apiPortal: ApiPortal = {
     id: input.handle,
     name: input.name,
     handle: input.handle,
@@ -59,21 +59,21 @@ export async function createDevPortal(
     workflowStatus: 'pending',
     createdAt: new Date().toISOString(),
   };
-  devPortals.push(devPortal);
-  return toDevPortal(devPortal);
+  apiPortals.push(apiPortal);
+  return toApiPortal(apiPortal);
 }
 
-export async function updateDevPortal(
+export async function updateApiPortal(
   id: string,
-  input: UpdateDevPortalInput
-): Promise<DevPortal> {
-  const index = devPortals.findIndex((item) => item.id === id);
+  input: UpdateApiPortalInput
+): Promise<ApiPortal> {
+  const index = apiPortals.findIndex((item) => item.id === id);
   if (index < 0) {
-    throw new ApiError('Devportal not found', 'NOT_FOUND', 404);
+    throw new ApiError('API Portal not found', 'NOT_FOUND', 404);
   }
-  // Same reasoning as createDevPortal: only clientSecret is excluded.
-  const updated: DevPortal = {
-    ...devPortals[index],
+  // Same reasoning as createApiPortal: only clientSecret is excluded.
+  const updated: ApiPortal = {
+    ...apiPortals[index],
     name: input.name,
     description: input.description,
     url: input.url,
@@ -81,14 +81,14 @@ export async function updateDevPortal(
     stsTokenUrl: input.stsTokenUrl,
     clientId: input.clientId,
   };
-  devPortals[index] = updated;
-  return toDevPortal(updated);
+  apiPortals[index] = updated;
+  return toApiPortal(updated);
 }
 
-export async function deleteDevPortal(id: string): Promise<void> {
-  const index = devPortals.findIndex((item) => item.id === id);
+export async function deleteApiPortal(id: string): Promise<void> {
+  const index = apiPortals.findIndex((item) => item.id === id);
   if (index < 0) {
-    throw new ApiError('Devportal not found', 'NOT_FOUND', 404);
+    throw new ApiError('API Portal not found', 'NOT_FOUND', 404);
   }
-  devPortals.splice(index, 1);
+  apiPortals.splice(index, 1);
 }

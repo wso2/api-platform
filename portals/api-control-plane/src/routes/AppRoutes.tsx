@@ -60,19 +60,19 @@ const GatewayDetailPage = lazy(() =>
     default: m.GatewayDetailPage,
   }))
 );
-const DevPortalPage = lazy(() =>
-  import('../features/devportal/DevPortalPage').then((m) => ({
-    default: m.DevPortalPage,
+const ApiPortalPage = lazy(() =>
+  import('../features/apiportal/ApiPortalPage').then((m) => ({
+    default: m.ApiPortalPage,
   }))
 );
-const DevPortalCreatePage = lazy(() =>
-  import('../features/devportal/DevPortalCreatePage').then((m) => ({
-    default: m.DevPortalCreatePage,
+const ApiPortalCreatePage = lazy(() =>
+  import('../features/apiportal/ApiPortalCreatePage').then((m) => ({
+    default: m.ApiPortalCreatePage,
   }))
 );
-const DevPortalDetailPage = lazy(() =>
-  import('../features/devportal/DevPortalDetailPage').then((m) => ({
-    default: m.DevPortalDetailPage,
+const ApiPortalDetailPage = lazy(() =>
+  import('../features/apiportal/ApiPortalDetailPage').then((m) => ({
+    default: m.ApiPortalDetailPage,
   }))
 );
 const ProjectHomePage = lazy(() =>
@@ -139,14 +139,14 @@ export function AppRoutes() {
           <Route path={routes.gateways()} element={<GatewaysPage />} />
           <Route path={routes.newGateway()} element={<GatewayCreatePage />} />
           <Route path={routes.gateway()} element={<GatewayDetailPage />} />
-          <Route path={routes.devportal()} element={<DevPortalPage />} />
+          <Route path={routes.apiPortal()} element={<ApiPortalPage />} />
           <Route
-            path={routes.newDevportal()}
-            element={<DevPortalCreatePage />}
+            path={routes.newApiPortal()}
+            element={<ApiPortalCreatePage />}
           />
           <Route
-            path={routes.devportalDetail()}
-            element={<DevPortalDetailPage />}
+            path={routes.apiPortalDetail()}
+            element={<ApiPortalDetailPage />}
           />
           <Route path={routes.projectHome()} element={<ProjectHomePage />} />
           <Route path={routes.apis()} element={<ApiListPage />} />

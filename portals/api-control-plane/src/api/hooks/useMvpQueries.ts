@@ -25,14 +25,14 @@ import type {
   ApiDetail,
   CreateApiInput,
   CreateApiKeyInput,
-  CreateDevPortalInput,
+  CreateApiPortalInput,
   CreateGatewayInput,
   CreateProjectInput,
   DeployApiInput,
-  DevPortal,
+  ApiPortal,
   GatewayDeployment,
   Project,
-  UpdateDevPortalInput,
+  UpdateApiPortalInput,
 } from '../../types/domain';
 import { useApiClient } from '../ApiClientProvider';
 
@@ -61,9 +61,9 @@ export const queryKeys = {
   gateways: (orgHandle: string) => ['gateways', orgHandle] as const,
   gateway: (orgHandle: string, gatewayId: string) =>
     ['gateway', orgHandle, gatewayId] as const,
-  devPortals: (orgHandle: string) => ['devPortals', orgHandle] as const,
-  devPortal: (orgHandle: string, devPortalId: string) =>
-    ['devPortal', orgHandle, devPortalId] as const,
+  apiPortals: (orgHandle: string) => ['apiPortals', orgHandle] as const,
+  apiPortal: (orgHandle: string, apiPortalId: string) =>
+    ['apiPortal', orgHandle, apiPortalId] as const,
 };
 
 /**
@@ -538,80 +538,80 @@ export const useCreateGatewayToken = (
   });
 };
 
-export const useDevPortals = (orgHandleArg?: string) => {
+export const useApiPortals = (orgHandleArg?: string) => {
   const client = useApiClient();
   const { orgHandle } = useScopeArgs(orgHandleArg);
   return useQuery({
-    queryKey: queryKeys.devPortals(orgHandle || ''),
+    queryKey: queryKeys.apiPortals(orgHandle || ''),
     queryFn: () => {
       if (!orgHandle) {
-        throw new Error('orgHandle is required to list dev portals');
+        throw new Error('orgHandle is required to list API Portals');
       }
-      return client.listDevPortals();
+      return client.listApiPortals();
     },
     enabled: !!orgHandle,
   });
 };
 
-export const useDevPortal = (orgHandleArg?: string, devPortalId?: string) => {
+export const useApiPortal = (orgHandleArg?: string, apiPortalId?: string) => {
   const client = useApiClient();
   const { orgHandle } = useScopeArgs(orgHandleArg);
   return useQuery({
-    queryKey: queryKeys.devPortal(orgHandle || '', devPortalId || ''),
+    queryKey: queryKeys.apiPortal(orgHandle || '', apiPortalId || ''),
     queryFn: () => {
-      if (!devPortalId) {
-        throw new Error('devPortalId is required to fetch a dev portal');
+      if (!apiPortalId) {
+        throw new Error('apiPortalId is required to fetch an API Portal');
       }
-      return client.getDevPortal(devPortalId);
+      return client.getApiPortal(apiPortalId);
     },
-    enabled: !!orgHandle && !!devPortalId,
+    enabled: !!orgHandle && !!apiPortalId,
   });
 };
 
-export const useCreateDevPortal = (orgHandleArg?: string) => {
+export const useCreateApiPortal = (orgHandleArg?: string) => {
   const client = useApiClient();
   const queryClient = useQueryClient();
   const { orgHandle = '' } = useScopeArgs(orgHandleArg);
   return useMutation({
-    mutationFn: (input: CreateDevPortalInput) => client.createDevPortal(input),
+    mutationFn: (input: CreateApiPortalInput) => client.createApiPortal(input),
     onSuccess: () => {
       queryClient.invalidateQueries({
-        queryKey: queryKeys.devPortals(orgHandle),
+        queryKey: queryKeys.apiPortals(orgHandle),
       });
     },
   });
 };
 
-export const useUpdateDevPortal = (
+export const useUpdateApiPortal = (
   orgHandleArg?: string,
-  devPortalId = ''
+  apiPortalId = ''
 ) => {
   const client = useApiClient();
   const queryClient = useQueryClient();
   const { orgHandle = '' } = useScopeArgs(orgHandleArg);
   return useMutation({
-    mutationFn: (input: UpdateDevPortalInput) =>
-      client.updateDevPortal(devPortalId, input),
+    mutationFn: (input: UpdateApiPortalInput) =>
+      client.updateApiPortal(apiPortalId, input),
     onSuccess: (updated) => {
       queryClient.invalidateQueries({
-        queryKey: queryKeys.devPortal(orgHandle, updated.id),
+        queryKey: queryKeys.apiPortal(orgHandle, updated.id),
       });
       queryClient.invalidateQueries({
-        queryKey: queryKeys.devPortals(orgHandle),
+        queryKey: queryKeys.apiPortals(orgHandle),
       });
     },
   });
 };
 
-export const useDeleteDevPortal = (orgHandleArg?: string) => {
+export const useDeleteApiPortal = (orgHandleArg?: string) => {
   const client = useApiClient();
   const queryClient = useQueryClient();
   const { orgHandle = '' } = useScopeArgs(orgHandleArg);
   return useMutation({
-    mutationFn: (devPortal: DevPortal) => client.deleteDevPortal(devPortal.id),
+    mutationFn: (apiPortal: ApiPortal) => client.deleteApiPortal(apiPortal.id),
     onSuccess: () => {
       queryClient.invalidateQueries({
-        queryKey: queryKeys.devPortals(orgHandle),
+        queryKey: queryKeys.apiPortals(orgHandle),
       });
     },
   });

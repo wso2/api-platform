@@ -52,7 +52,7 @@ import {
 } from '@wso2/oxygen-ui-icons-react';
 import { useNavigate, useParams } from 'react-router-dom';
 
-import { useDeleteDevPortal, useDevPortals } from '../../api/hooks/useMvpQueries';
+import { useDeleteApiPortal, useApiPortals } from '../../api/hooks/useMvpQueries';
 import { ConfirmDialog } from '../../components/ConfirmDialog';
 import { useNotifications } from '../../components/Notifications';
 import {
@@ -62,8 +62,8 @@ import {
 } from '../../components/StateViews';
 import { routes } from '../../routes/paths';
 import { relativeTime } from '../../utils/relativeTime';
-import type { DevPortal } from '../../types/domain';
-import { AUTH_LABEL, STATUS_COLOR, STATUS_LABEL } from './devPortalDisplay';
+import type { ApiPortal } from '../../types/domain';
+import { AUTH_LABEL, STATUS_COLOR, STATUS_LABEL } from './apiPortalDisplay';
 
 type ViewMode = 'grid' | 'list';
 
@@ -110,30 +110,30 @@ function StatCard({
   );
 }
 
-function DevPortalCard({
-  devPortal,
+function ApiPortalCard({
+  apiPortal,
   onOpen,
   onDelete,
 }: {
-  devPortal: DevPortal;
-  onOpen: (devPortal: DevPortal) => void;
-  onDelete?: (devPortal: DevPortal) => void;
+  apiPortal: ApiPortal;
+  onOpen: (apiPortal: ApiPortal) => void;
+  onDelete?: (apiPortal: ApiPortal) => void;
 }) {
   const [copied, setCopied] = useState(false);
   const [menuAnchor, setMenuAnchor] = useState<HTMLElement | null>(null);
-  const statusColor = STATUS_COLOR[devPortal.workflowStatus];
+  const statusColor = STATUS_COLOR[apiPortal.workflowStatus];
   // MUI's Menu closes on an outside click via a document-level listener that
   // doesn't reliably block the same click from also reaching this card's
   // onClick underneath it — dismissing the menu by clicking just off it would
-  // otherwise also open the devportal. mousedown always fires before click,
+  // otherwise also open the API Portal. mousedown always fires before click,
   // so capturing "was the menu open" there is a deterministic guard
   // regardless of exactly when the menu's own close logic runs.
   const wasMenuOpenRef = useRef(false);
 
   const copyUrl = (event: React.MouseEvent) => {
     event.stopPropagation();
-    if (!devPortal.url) return;
-    navigator.clipboard?.writeText(devPortal.url).catch(() => undefined);
+    if (!apiPortal.url) return;
+    navigator.clipboard?.writeText(apiPortal.url).catch(() => undefined);
     setCopied(true);
     setTimeout(() => setCopied(false), 1400);
   };
@@ -165,7 +165,7 @@ function DevPortalCard({
           wasMenuOpenRef.current = false;
           return;
         }
-        onOpen(devPortal);
+        onOpen(apiPortal);
       }}
       onMouseDown={() => {
         wasMenuOpenRef.current = menuAnchor !== null;
@@ -205,9 +205,9 @@ function DevPortalCard({
         </Box>
         <Box sx={{ flex: 1, minWidth: 0 }}>
           <Typography noWrap sx={{ fontWeight: 600 }} variant="subtitle1">
-            {devPortal.name}
+            {apiPortal.name}
           </Typography>
-          {devPortal.url && (
+          {apiPortal.url && (
             <Stack
               alignItems="center"
               direction="row"
@@ -222,7 +222,7 @@ function DevPortalCard({
                   fontSize: 12.5,
                 }}
               >
-                {devPortal.url}
+                {apiPortal.url}
               </Typography>
               <Tooltip title={copied ? 'Copied' : 'Copy URL'}>
                 <IconButton
@@ -238,9 +238,9 @@ function DevPortalCard({
         </Box>
         {onDelete && (
           <>
-            <Tooltip title="Devportal actions">
+            <Tooltip title="API Portal actions">
               <IconButton
-                aria-label="Devportal actions"
+                aria-label="API Portal actions"
                 onClick={(event) => {
                   event.stopPropagation();
                   setMenuAnchor(event.currentTarget);
@@ -259,7 +259,7 @@ function DevPortalCard({
               <MenuItem
                 onClick={(event) => {
                   closeMenu(event);
-                  onDelete(devPortal);
+                  onDelete(apiPortal);
                 }}
                 sx={{ color: 'error.main' }}
               >
@@ -273,7 +273,7 @@ function DevPortalCard({
         )}
       </Stack>
 
-      {devPortal.description && (
+      {apiPortal.description && (
         <Typography
           color="text.secondary"
           sx={{
@@ -285,7 +285,7 @@ function DevPortalCard({
           }}
           variant="body2"
         >
-          {devPortal.description}
+          {apiPortal.description}
         </Typography>
       )}
 
@@ -300,7 +300,7 @@ function DevPortalCard({
           }}
         >
           <ShieldCheck size={13} />
-          {AUTH_LABEL[devPortal.authType]}
+          {AUTH_LABEL[apiPortal.authType]}
         </Box>
       </Stack>
 
@@ -325,10 +325,10 @@ function DevPortalCard({
             }}
           />
           <Typography sx={{ fontSize: 12.5, fontWeight: 500 }}>
-            {STATUS_LABEL[devPortal.workflowStatus]}
+            {STATUS_LABEL[apiPortal.workflowStatus]}
           </Typography>
         </Stack>
-        {devPortal.createdAt && (
+        {apiPortal.createdAt && (
           <Stack
             alignItems="center"
             direction="row"
@@ -337,7 +337,7 @@ function DevPortalCard({
           >
             <Clock size={13} />
             <Typography sx={{ fontSize: 12 }}>
-              {relativeTime(devPortal.createdAt)}
+              {relativeTime(apiPortal.createdAt)}
             </Typography>
           </Stack>
         )}
@@ -346,18 +346,18 @@ function DevPortalCard({
   );
 }
 
-function DevPortalRow({
-  devPortal,
+function ApiPortalRow({
+  apiPortal,
   onOpen,
   onDelete,
 }: {
-  devPortal: DevPortal;
-  onOpen: (devPortal: DevPortal) => void;
-  onDelete?: (devPortal: DevPortal) => void;
+  apiPortal: ApiPortal;
+  onOpen: (apiPortal: ApiPortal) => void;
+  onDelete?: (apiPortal: ApiPortal) => void;
 }) {
   const [menuAnchor, setMenuAnchor] = useState<HTMLElement | null>(null);
-  const statusColor = STATUS_COLOR[devPortal.workflowStatus];
-  // Same click-away guard as DevPortalCard — see the comment there.
+  const statusColor = STATUS_COLOR[apiPortal.workflowStatus];
+  // Same click-away guard as ApiPortalCard — see the comment there.
   const wasMenuOpenRef = useRef(false);
 
   const closeMenu = (event?: React.MouseEvent) => {
@@ -372,7 +372,7 @@ function DevPortalRow({
           wasMenuOpenRef.current = false;
           return;
         }
-        onOpen(devPortal);
+        onOpen(apiPortal);
       }}
       onMouseDown={() => {
         wasMenuOpenRef.current = menuAnchor !== null;
@@ -410,7 +410,7 @@ function DevPortalRow({
       </Box>
       <Box sx={{ flex: 1, minWidth: 140 }}>
         <Typography noWrap sx={{ fontWeight: 500 }} variant="subtitle2">
-          {devPortal.name}
+          {apiPortal.name}
         </Typography>
         <Typography
           color="text.secondary"
@@ -419,7 +419,7 @@ function DevPortalRow({
           sx={{ fontFamily: 'monospace' }}
           variant="caption"
         >
-          {devPortal.url || devPortal.handle}
+          {apiPortal.url || apiPortal.handle}
         </Typography>
       </Box>
       <Box
@@ -433,7 +433,7 @@ function DevPortalRow({
       >
         <ShieldCheck size={13} />
         <Typography noWrap variant="caption">
-          {AUTH_LABEL[devPortal.authType]}
+          {AUTH_LABEL[apiPortal.authType]}
         </Typography>
       </Box>
       <Box
@@ -449,7 +449,7 @@ function DevPortalRow({
           sx={{ bgcolor: statusColor, borderRadius: '50%', height: 8, width: 8 }}
         />
         <Typography noWrap sx={{ fontWeight: 500 }} variant="caption">
-          {STATUS_LABEL[devPortal.workflowStatus]}
+          {STATUS_LABEL[apiPortal.workflowStatus]}
         </Typography>
       </Box>
       <Box
@@ -464,13 +464,13 @@ function DevPortalRow({
       >
         <Clock size={12} />
         <Typography color="text.secondary" noWrap variant="caption">
-          {devPortal.createdAt ? relativeTime(devPortal.createdAt) : '—'}
+          {apiPortal.createdAt ? relativeTime(apiPortal.createdAt) : '—'}
         </Typography>
       </Box>
       {onDelete && (
         <>
           <IconButton
-            aria-label="Devportal actions"
+            aria-label="API Portal actions"
             onClick={(event) => {
               event.stopPropagation();
               setMenuAnchor(event.currentTarget);
@@ -488,7 +488,7 @@ function DevPortalRow({
             <MenuItem
               onClick={(event) => {
                 closeMenu(event);
-                onDelete(devPortal);
+                onDelete(apiPortal);
               }}
               sx={{ color: 'error.main' }}
             >
@@ -504,22 +504,22 @@ function DevPortalRow({
   );
 }
 
-/** Compact row layout for devportals — the list-view counterpart of the card grid. */
-function DevPortalListView({
-  devPortals,
+/** Compact row layout for API Portals — the list-view counterpart of the card grid. */
+function ApiPortalListView({
+  apiPortals,
   onOpen,
   onDelete,
 }: {
-  devPortals: DevPortal[];
-  onOpen: (devPortal: DevPortal) => void;
-  onDelete?: (devPortal: DevPortal) => void;
+  apiPortals: ApiPortal[];
+  onOpen: (apiPortal: ApiPortal) => void;
+  onDelete?: (apiPortal: ApiPortal) => void;
 }) {
   return (
     <Card variant="outlined">
-      {devPortals.map((devPortal) => (
-        <DevPortalRow
-          devPortal={devPortal}
-          key={devPortal.id}
+      {apiPortals.map((apiPortal) => (
+        <ApiPortalRow
+          apiPortal={apiPortal}
+          key={apiPortal.id}
           onDelete={onDelete}
           onOpen={onOpen}
         />
@@ -528,23 +528,23 @@ function DevPortalListView({
   );
 }
 
-export function DevPortalPage() {
+export function ApiPortalPage() {
   const { orgHandle = '' } = useParams();
   const navigate = useNavigate();
   const { notify } = useNotifications();
-  const devPortalsQuery = useDevPortals();
-  const deleteDevPortalMutation = useDeleteDevPortal();
+  const apiPortalsQuery = useApiPortals();
+  const deleteApiPortalMutation = useDeleteApiPortal();
   const [search, setSearch] = useState('');
   const [view, setView] = useState<ViewMode>('grid');
-  const [toDelete, setToDelete] = useState<DevPortal | null>(null);
+  const [toDelete, setToDelete] = useState<ApiPortal | null>(null);
 
-  const provision = () => navigate(routes.newDevportal(orgHandle));
-  const openDevPortal = (devPortal: DevPortal) =>
-    navigate(routes.devportalDetail(orgHandle, devPortal.id));
+  const provision = () => navigate(routes.newApiPortal(orgHandle));
+  const openApiPortal = (apiPortal: ApiPortal) =>
+    navigate(routes.apiPortalDetail(orgHandle, apiPortal.id));
 
   const confirmDelete = () => {
     if (!toDelete) return;
-    deleteDevPortalMutation.mutate(toDelete, {
+    deleteApiPortalMutation.mutate(toDelete, {
       onSuccess: () => {
         notify(`Deleted "${toDelete.name}".`, 'success');
         setToDelete(null);
@@ -557,29 +557,29 @@ export function DevPortalPage() {
     });
   };
 
-  const devPortals = useMemo(
-    () => devPortalsQuery.data || [],
-    [devPortalsQuery.data]
+  const apiPortals = useMemo(
+    () => apiPortalsQuery.data || [],
+    [apiPortalsQuery.data]
   );
 
   const filtered = useMemo(() => {
     const term = search.trim().toLowerCase();
-    if (!term) return devPortals;
-    return devPortals.filter((devPortal) =>
-      [devPortal.name, devPortal.handle, devPortal.url]
+    if (!term) return apiPortals;
+    return apiPortals.filter((apiPortal) =>
+      [apiPortal.name, apiPortal.handle, apiPortal.url]
         .filter(Boolean)
         .some((field) => field!.toLowerCase().includes(term))
     );
-  }, [devPortals, search]);
+  }, [apiPortals, search]);
 
-  const activeCount = devPortals.filter(
-    (devPortal) => devPortal.workflowStatus === 'active'
+  const activeCount = apiPortals.filter(
+    (apiPortal) => apiPortal.workflowStatus === 'active'
   ).length;
 
   return (
     <PageContent fullWidth>
       <PageTitle>
-        <PageTitle.Header>Dev Portal</PageTitle.Header>
+        <PageTitle.Header>API Portal</PageTitle.Header>
         <PageTitle.SubHeader>
           Provision and manage the developer portal for your organization.
         </PageTitle.SubHeader>
@@ -590,21 +590,21 @@ export function DevPortalPage() {
             sx={{ borderRadius: 5 }}
             variant="contained"
           >
-            Provision Devportal
+            Provision API Portal
           </Button>
         </PageTitle.Actions>
       </PageTitle>
 
-      {devPortalsQuery.isLoading ? (
-        <LoadingState label="Loading dev portals" />
-      ) : devPortalsQuery.error ? (
-        <ErrorState message="Unable to load dev portals" />
-      ) : devPortals.length === 0 ? (
+      {apiPortalsQuery.isLoading ? (
+        <LoadingState label="Loading API Portals" />
+      ) : apiPortalsQuery.error ? (
+        <ErrorState message="Unable to load API Portals" />
+      ) : apiPortals.length === 0 ? (
         <EmptyState
-          actionLabel="Provision Devportal"
+          actionLabel="Provision API Portal"
           description="Provision a developer portal to publish APIs for external developers."
           onAction={provision}
-          title="No Dev Portal provisioned yet"
+          title="No API Portal provisioned yet"
         />
       ) : (
         <Stack spacing={4}>
@@ -618,8 +618,8 @@ export function DevPortalPage() {
           >
             <StatCard
               dotColor="primary.main"
-              label="Total devportals"
-              value={devPortals.length}
+              label="Total API Portals"
+              value={apiPortals.length}
             />
             <StatCard
               dotColor="success.main"
@@ -639,7 +639,7 @@ export function DevPortalPage() {
           >
             <TextField
               onChange={(event) => setSearch(event.target.value)}
-              placeholder="Search Dev Portal"
+              placeholder="Search API Portal"
               size="small"
               slotProps={{
                 input: {
@@ -674,7 +674,7 @@ export function DevPortalPage() {
           {filtered.length === 0 ? (
             <EmptyState
               description="Try a different search term."
-              title="No matching dev portals"
+              title="No matching API Portals"
             />
           ) : view === 'grid' ? (
             <Box
@@ -684,20 +684,20 @@ export function DevPortalPage() {
                 gridTemplateColumns: 'repeat(auto-fill, minmax(360px, 1fr))',
               }}
             >
-              {filtered.map((devPortal) => (
-                <DevPortalCard
-                  devPortal={devPortal}
-                  key={devPortal.id}
+              {filtered.map((apiPortal) => (
+                <ApiPortalCard
+                  apiPortal={apiPortal}
+                  key={apiPortal.id}
                   onDelete={setToDelete}
-                  onOpen={openDevPortal}
+                  onOpen={openApiPortal}
                 />
               ))}
             </Box>
           ) : (
-            <DevPortalListView
-              devPortals={filtered}
+            <ApiPortalListView
+              apiPortals={filtered}
               onDelete={setToDelete}
-              onOpen={openDevPortal}
+              onOpen={openApiPortal}
             />
           )}
         </Stack>
@@ -708,16 +708,16 @@ export function DevPortalPage() {
         confirmLabel="Delete"
         confirmPhrase={toDelete?.name ?? ''}
         destructive
-        loading={deleteDevPortalMutation.isPending}
+        loading={deleteApiPortalMutation.isPending}
         message={
           toDelete
-            ? `This permanently deletes the devportal "${toDelete.name}". This action is irreversible.`
+            ? `This permanently deletes the API Portal "${toDelete.name}". This action is irreversible.`
             : ''
         }
         onCancel={() => setToDelete(null)}
         onConfirm={confirmDelete}
         open={toDelete !== null}
-        title="Delete devportal"
+        title="Delete API Portal"
       />
     </PageContent>
   );

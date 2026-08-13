@@ -35,12 +35,12 @@ import {
 import { Pencil } from '@wso2/oxygen-ui-icons-react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 
-import { useCreateDevPortal } from '../../api/hooks/useMvpQueries';
+import { useCreateApiPortal } from '../../api/hooks/useMvpQueries';
 import { useNotifications } from '../../components/Notifications';
 import { routes } from '../../routes/paths';
-import type { DevPortalAuthType } from '../../types/domain';
+import type { ApiPortalAuthType } from '../../types/domain';
 import { isValidUrl } from '../apis/develop/developEdit';
-import { AUTH_TYPE_OPTIONS } from './devPortalDisplay';
+import { AUTH_TYPE_OPTIONS } from './apiPortalDisplay';
 import { IdpCredentialsFields } from './IdpCredentialsFields';
 
 const HANDLE_PATTERN = /^[a-z0-9-]{3,64}$/;
@@ -52,22 +52,22 @@ const slugify = (value: string) =>
     .replace(/^-+|-+$/g, '')
     .slice(0, 64);
 
-export function DevPortalCreatePage() {
+export function ApiPortalCreatePage() {
   const { orgHandle = '' } = useParams();
   const navigate = useNavigate();
   const { notify } = useNotifications();
-  const createDevPortal = useCreateDevPortal();
+  const createApiPortal = useCreateApiPortal();
 
   const [displayName, setDisplayName] = useState('');
   const [handle, setHandle] = useState('');
   const [handleEdited, setHandleEdited] = useState(false);
   // Auto-derived from Name and locked by default; the identifier is
-  // permanent once the devportal is created, so editing it directly is an
+  // permanent once the API Portal is created, so editing it directly is an
   // explicit, deliberate action rather than something you fall into while
   // typing the Name.
   const [handleLocked, setHandleLocked] = useState(true);
   const [description, setDescription] = useState('');
-  const [authType, setAuthType] = useState<DevPortalAuthType>(
+  const [authType, setAuthType] = useState<ApiPortalAuthType>(
     AUTH_TYPE_OPTIONS[0].value
   );
   const [url, setUrl] = useState('');
@@ -94,10 +94,10 @@ export function DevPortalCreatePage() {
     handleValid &&
     urlValid &&
     idpFieldsValid &&
-    !createDevPortal.isPending;
+    !createApiPortal.isPending;
 
   const submit = () => {
-    createDevPortal.mutate(
+    createApiPortal.mutate(
       {
         name: displayName,
         handle,
@@ -113,15 +113,15 @@ export function DevPortalCreatePage() {
           : {}),
       },
       {
-        onSuccess: (devPortal) => {
-          notify(`Devportal "${devPortal.name}" provisioned.`, 'success');
-          navigate(routes.devportal(orgHandle));
+        onSuccess: (apiPortal) => {
+          notify(`API Portal "${apiPortal.name}" provisioned.`, 'success');
+          navigate(routes.apiPortal(orgHandle));
         },
         onError: (error) =>
           notify(
             error instanceof Error
               ? error.message
-              : 'Failed to provision devportal',
+              : 'Failed to provision API Portal',
             'error'
           ),
       }
@@ -131,10 +131,10 @@ export function DevPortalCreatePage() {
   return (
     <PageContent fullWidth>
       <PageTitle>
-        <Link to={routes.devportal(orgHandle)}>
-          <PageTitle.BackButton>Back to Dev Portal</PageTitle.BackButton>
+        <Link to={routes.apiPortal(orgHandle)}>
+          <PageTitle.BackButton>Back to API Portal</PageTitle.BackButton>
         </Link>
-        <PageTitle.Header>Provision a devportal</PageTitle.Header>
+        <PageTitle.Header>Provision an API Portal</PageTitle.Header>
         <PageTitle.SubHeader>
           Register a developer portal, then connect it to the platform.
         </PageTitle.SubHeader>
@@ -146,7 +146,7 @@ export function DevPortalCreatePage() {
             <FormLabel>Name</FormLabel>
             <TextField
               onChange={(event) => onDisplayNameChange(event.target.value)}
-              placeholder="Production Devportal"
+              placeholder="Production API Portal"
               value={displayName}
             />
           </FormControl>
@@ -164,7 +164,7 @@ export function DevPortalCreatePage() {
                 setHandleEdited(true);
                 setHandle(event.target.value);
               }}
-              placeholder="prod-devportal"
+              placeholder="prod-api-portal"
               slotProps={{
                 input: {
                   endAdornment: handleLocked && (
@@ -201,7 +201,7 @@ export function DevPortalCreatePage() {
             <FormLabel>Authentication</FormLabel>
             <Select
               onChange={(event) =>
-                setAuthType(event.target.value as DevPortalAuthType)
+                setAuthType(event.target.value as ApiPortalAuthType)
               }
               size="small"
               value={authType}
@@ -233,7 +233,7 @@ export function DevPortalCreatePage() {
                 url !== '' && !isValidUrl(url) ? 'Enter a valid URL' : undefined
               }
               onChange={(event) => setUrl(event.target.value)}
-              placeholder="https://devportal.example.com"
+              placeholder="https://api-portal.example.com"
               value={url}
             />
           </FormControl>
@@ -241,15 +241,15 @@ export function DevPortalCreatePage() {
           <Stack direction="row" justifyContent="flex-end" spacing={1.5}>
             <Button
               component={Link}
-              to={routes.devportal(orgHandle)}
+              to={routes.apiPortal(orgHandle)}
               variant="outlined"
             >
               Cancel
             </Button>
             <Button disabled={!canSubmit} onClick={submit} variant="contained">
-              {createDevPortal.isPending
+              {createApiPortal.isPending
                 ? 'Provisioning…'
-                : 'Provision devportal'}
+                : 'Provision API Portal'}
             </Button>
           </Stack>
         </Stack>

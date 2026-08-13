@@ -22,9 +22,9 @@ import type {
   ApiKind,
   ApiStatus,
   Deployment,
-  DevPortal,
-  DevPortalAuthType,
-  DevPortalWorkflowStatus,
+  ApiPortal,
+  ApiPortalAuthType,
+  ApiPortalWorkflowStatus,
   Environment,
   Gateway,
   GatewayDeployment,
@@ -301,44 +301,44 @@ export const toGateway = (value: unknown): Gateway => {
   };
 };
 
-const DEV_PORTAL_AUTH_TYPES: DevPortalAuthType[] = [
+const DEV_PORTAL_AUTH_TYPES: ApiPortalAuthType[] = [
   'local',
   'idp_client_credentials',
 ];
 
-const asDevPortalAuthType = (value: unknown): DevPortalAuthType => {
+const asApiPortalAuthType = (value: unknown): ApiPortalAuthType => {
   const normalized = asString(value).toLowerCase();
-  return DEV_PORTAL_AUTH_TYPES.includes(normalized as DevPortalAuthType)
-    ? (normalized as DevPortalAuthType)
+  return DEV_PORTAL_AUTH_TYPES.includes(normalized as ApiPortalAuthType)
+    ? (normalized as ApiPortalAuthType)
     : DEV_PORTAL_AUTH_TYPES[0];
 };
 
-const DEV_PORTAL_WORKFLOW_STATUSES: DevPortalWorkflowStatus[] = [
+const DEV_PORTAL_WORKFLOW_STATUSES: ApiPortalWorkflowStatus[] = [
   'pending',
   'active',
   'failed',
 ];
 
-const asDevPortalWorkflowStatus = (value: unknown): DevPortalWorkflowStatus => {
+const asApiPortalWorkflowStatus = (value: unknown): ApiPortalWorkflowStatus => {
   const normalized = asString(value).toLowerCase();
   return DEV_PORTAL_WORKFLOW_STATUSES.includes(
-    normalized as DevPortalWorkflowStatus
+    normalized as ApiPortalWorkflowStatus
   )
-    ? (normalized as DevPortalWorkflowStatus)
+    ? (normalized as ApiPortalWorkflowStatus)
     : DEV_PORTAL_WORKFLOW_STATUSES[0];
 };
 
-export const toDevPortal = (value: unknown): DevPortal => {
+export const toApiPortal = (value: unknown): ApiPortal => {
   const source = asRecord(value);
-  const name = asString(source.name, 'unknown-devportal');
+  const name = asString(source.name, 'unknown-api-portal');
   return {
     id: asString(source.id, name),
     name,
     handle: asString(source.handle, name),
     description: asOptionalString(source.description),
     url: asOptionalString(source.url),
-    workflowStatus: asDevPortalWorkflowStatus(source.workflowStatus),
-    authType: asDevPortalAuthType(source.authType),
+    workflowStatus: asApiPortalWorkflowStatus(source.workflowStatus),
+    authType: asApiPortalAuthType(source.authType),
     createdAt: asOptionalString(source.createdAt),
     stsTokenUrl: asOptionalString(source.stsTokenUrl),
     clientId: asOptionalString(source.clientId),

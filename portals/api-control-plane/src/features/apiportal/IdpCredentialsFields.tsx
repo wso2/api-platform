@@ -43,7 +43,7 @@ type IdpCredentialsFieldsProps = {
 /**
  * Grouped STS token URL / client ID / client secret inputs shown once
  * `authType` is `idp_client_credentials` — shared by the create and
- * detail/edit devportal pages so the group never drifts between the two.
+ * detail/edit API Portal pages so the group never drifts between the two.
  */
 export function IdpCredentialsFields({
   stsTokenUrl,

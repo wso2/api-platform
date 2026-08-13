@@ -45,12 +45,12 @@ export {
   listGateways,
 } from './gateways/gatewayClient';
 export {
-  createDevPortal,
-  deleteDevPortal,
-  getDevPortal,
-  listDevPortals,
-  updateDevPortal,
-} from './devportal/devPortalClient';
+  createApiPortal,
+  deleteApiPortal,
+  getApiPortal,
+  listApiPortals,
+  updateApiPortal,
+} from './apiportal/apiPortalClient';
 export { listEnvironments } from './environments/environmentClient';
 export {
   getOrganization,
