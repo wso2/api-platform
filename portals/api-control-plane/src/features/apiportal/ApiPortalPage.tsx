@@ -114,20 +114,26 @@ function ApiPortalCard({
   apiPortal,
   onOpen,
   onDelete,
+  openMenuId,
+  onMenuOpenChange,
 }: {
   apiPortal: ApiPortal;
   onOpen: (apiPortal: ApiPortal) => void;
   onDelete?: (apiPortal: ApiPortal) => void;
+  openMenuId: string | null;
+  onMenuOpenChange: (id: string | null) => void;
 }) {
   const [copied, setCopied] = useState(false);
   const [menuAnchor, setMenuAnchor] = useState<HTMLElement | null>(null);
   const statusColor = STATUS_COLOR[apiPortal.workflowStatus];
   // MUI's Menu closes on an outside click via a document-level listener that
-  // doesn't reliably block the same click from also reaching this card's
-  // onClick underneath it — dismissing the menu by clicking just off it would
-  // otherwise also open the API Portal. mousedown always fires before click,
-  // so capturing "was the menu open" there is a deterministic guard
-  // regardless of exactly when the menu's own close logic runs.
+  // doesn't reliably block the same click from also reaching a card's
+  // onClick underneath it — dismissing a menu by clicking elsewhere would
+  // otherwise also open whichever API Portal was clicked, including a
+  // different card than the one whose menu was open. mousedown always fires
+  // before click, so capturing the page-level "was some menu open" state
+  // there is a deterministic guard regardless of exactly when the menu's own
+  // close logic runs.
   const wasMenuOpenRef = useRef(false);
 
   const copyUrl = (event: React.MouseEvent) => {
@@ -145,6 +151,7 @@ function ApiPortalCard({
   const closeMenu = (event?: React.MouseEvent) => {
     event?.stopPropagation();
     setMenuAnchor(null);
+    onMenuOpenChange(null);
   };
 
   const chipSx = {
@@ -164,6 +171,7 @@ function ApiPortalCard({
 
   return (
     <Box
+      aria-label={`Open ${apiPortal.name}`}
       onClick={() => {
         if (wasMenuOpenRef.current) {
           wasMenuOpenRef.current = false;
@@ -171,9 +179,18 @@ function ApiPortalCard({
         }
         onOpen(apiPortal);
       }}
-      onMouseDown={() => {
-        wasMenuOpenRef.current = menuAnchor !== null;
+      onKeyDown={(event) => {
+        if (event.target !== event.currentTarget) return;
+        if (event.key === 'Enter' || event.key === ' ') {
+          event.preventDefault();
+          onOpen(apiPortal);
+        }
       }}
+      onMouseDown={() => {
+        wasMenuOpenRef.current = openMenuId !== null;
+      }}
+      role="button"
+      tabIndex={0}
       sx={{
         bgcolor: 'background.paper',
         border: '1px solid',
@@ -186,6 +203,10 @@ function ApiPortalCard({
           borderColor: 'primary.main',
           boxShadow: 3,
           transform: 'translateY(-2px)',
+        },
+        '&:focus-visible': {
+          outline: (t) => `2px solid ${t.palette.primary.main}`,
+          outlineOffset: 2,
         },
       }}
     >
@@ -248,6 +269,7 @@ function ApiPortalCard({
                 onClick={(event) => {
                   event.stopPropagation();
                   setMenuAnchor(event.currentTarget);
+                  onMenuOpenChange(apiPortal.id);
                 }}
                 size="small"
                 sx={{ alignSelf: 'flex-start', flex: 'none' }}
@@ -354,10 +376,14 @@ function ApiPortalRow({
   apiPortal,
   onOpen,
   onDelete,
+  openMenuId,
+  onMenuOpenChange,
 }: {
   apiPortal: ApiPortal;
   onOpen: (apiPortal: ApiPortal) => void;
   onDelete?: (apiPortal: ApiPortal) => void;
+  openMenuId: string | null;
+  onMenuOpenChange: (id: string | null) => void;
 }) {
   const [menuAnchor, setMenuAnchor] = useState<HTMLElement | null>(null);
   const statusColor = STATUS_COLOR[apiPortal.workflowStatus];
@@ -367,10 +393,12 @@ function ApiPortalRow({
   const closeMenu = (event?: React.MouseEvent) => {
     event?.stopPropagation();
     setMenuAnchor(null);
+    onMenuOpenChange(null);
   };
 
   return (
     <Box
+      aria-label={`Open ${apiPortal.name}`}
       onClick={() => {
         if (wasMenuOpenRef.current) {
           wasMenuOpenRef.current = false;
@@ -378,9 +406,18 @@ function ApiPortalRow({
         }
         onOpen(apiPortal);
       }}
-      onMouseDown={() => {
-        wasMenuOpenRef.current = menuAnchor !== null;
+      onKeyDown={(event) => {
+        if (event.target !== event.currentTarget) return;
+        if (event.key === 'Enter' || event.key === ' ') {
+          event.preventDefault();
+          onOpen(apiPortal);
+        }
       }}
+      onMouseDown={() => {
+        wasMenuOpenRef.current = openMenuId !== null;
+      }}
+      role="button"
+      tabIndex={0}
       sx={{
         alignItems: 'center',
         borderBottom: '1px solid',
@@ -393,6 +430,10 @@ function ApiPortalRow({
         transition: 'background-color 250ms',
         '&:hover': { bgcolor: 'action.hover' },
         '&:last-of-type': { borderBottom: 0 },
+        '&:focus-visible': {
+          outline: (t) => `2px solid ${t.palette.primary.main}`,
+          outlineOffset: 2,
+        },
       }}
     >
       <Box
@@ -478,6 +519,7 @@ function ApiPortalRow({
             onClick={(event) => {
               event.stopPropagation();
               setMenuAnchor(event.currentTarget);
+              onMenuOpenChange(apiPortal.id);
             }}
             size="small"
             sx={{ ml: { md: 0, xs: 'auto' } }}
@@ -513,10 +555,14 @@ function ApiPortalListView({
   apiPortals,
   onOpen,
   onDelete,
+  openMenuId,
+  onMenuOpenChange,
 }: {
   apiPortals: ApiPortal[];
   onOpen: (apiPortal: ApiPortal) => void;
   onDelete?: (apiPortal: ApiPortal) => void;
+  openMenuId: string | null;
+  onMenuOpenChange: (id: string | null) => void;
 }) {
   return (
     <Card variant="outlined">
@@ -525,7 +571,9 @@ function ApiPortalListView({
           apiPortal={apiPortal}
           key={apiPortal.id}
           onDelete={onDelete}
+          onMenuOpenChange={onMenuOpenChange}
           onOpen={onOpen}
+          openMenuId={openMenuId}
         />
       ))}
     </Card>
@@ -541,6 +589,10 @@ export function ApiPortalPage() {
   const [search, setSearch] = useState('');
   const [view, setView] = useState<ViewMode>('grid');
   const [toDelete, setToDelete] = useState<ApiPortal | null>(null);
+  // Shared across every card/row so opening one item's actions menu, then
+  // clicking a DIFFERENT item, dismisses the menu instead of also opening
+  // that item — see the click-away guard comment in ApiPortalCard.
+  const [openMenuId, setOpenMenuId] = useState<string | null>(null);
 
   const provision = () => navigate(routes.newApiPortal(orgHandle));
   const openApiPortal = (apiPortal: ApiPortal) =>
@@ -693,7 +745,9 @@ export function ApiPortalPage() {
                   apiPortal={apiPortal}
                   key={apiPortal.id}
                   onDelete={setToDelete}
+                  onMenuOpenChange={setOpenMenuId}
                   onOpen={openApiPortal}
+                  openMenuId={openMenuId}
                 />
               ))}
             </Box>
@@ -701,7 +755,9 @@ export function ApiPortalPage() {
             <ApiPortalListView
               apiPortals={filtered}
               onDelete={setToDelete}
+              onMenuOpenChange={setOpenMenuId}
               onOpen={openApiPortal}
+              openMenuId={openMenuId}
             />
           )}
         </Stack>
