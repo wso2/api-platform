@@ -153,6 +153,15 @@ export function ApiPortalDetailPage() {
       {
         onSuccess: (updated) => {
           notify(`API Portal "${updated.name}" updated.`, 'success');
+          // Re-seed local fields from the saved record so isDirty compares
+          // against what was actually persisted (e.g. a server-trimmed url)
+          // instead of the pre-save local strings.
+          setName(updated.name);
+          setDescription(updated.description || '');
+          setUrl(updated.url || '');
+          setAuthType(updated.authType);
+          setStsTokenUrl(updated.stsTokenUrl || '');
+          setClientId(updated.clientId || '');
           setClientSecret('');
         },
         onError: (error) =>

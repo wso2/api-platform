@@ -593,6 +593,13 @@ export const useUpdateApiPortal = (
     mutationFn: (input: UpdateApiPortalInput) =>
       client.updateApiPortal(apiPortalId, input),
     onSuccess: (updated) => {
+      // Write the response into the cache synchronously so callers reading
+      // this query (e.g. a dirty-state check) see the saved values
+      // immediately, rather than waiting on the background refetch below.
+      queryClient.setQueryData(
+        queryKeys.apiPortal(orgHandle, updated.id),
+        updated
+      );
       queryClient.invalidateQueries({
         queryKey: queryKeys.apiPortal(orgHandle, updated.id),
       });
