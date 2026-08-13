@@ -50,7 +50,8 @@ const slugify = (value: string) =>
     .toLowerCase()
     .replace(/[^a-z0-9]+/g, '-')
     .replace(/^-+|-+$/g, '')
-    .slice(0, 64);
+    .slice(0, 64)
+    .replace(/^-+|-+$/g, '');
 
 export function ApiPortalCreatePage() {
   const { orgHandle = '' } = useParams();
