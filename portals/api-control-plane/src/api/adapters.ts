@@ -301,19 +301,19 @@ export const toGateway = (value: unknown): Gateway => {
   };
 };
 
-const DEV_PORTAL_AUTH_TYPES: ApiPortalAuthType[] = [
+const API_PORTAL_AUTH_TYPES: ApiPortalAuthType[] = [
   'local',
   'idp_client_credentials',
 ];
 
 const asApiPortalAuthType = (value: unknown): ApiPortalAuthType => {
   const normalized = asString(value).toLowerCase();
-  return DEV_PORTAL_AUTH_TYPES.includes(normalized as ApiPortalAuthType)
+  return API_PORTAL_AUTH_TYPES.includes(normalized as ApiPortalAuthType)
     ? (normalized as ApiPortalAuthType)
-    : DEV_PORTAL_AUTH_TYPES[0];
+    : API_PORTAL_AUTH_TYPES[0];
 };
 
-const DEV_PORTAL_WORKFLOW_STATUSES: ApiPortalWorkflowStatus[] = [
+const API_PORTAL_WORKFLOW_STATUSES: ApiPortalWorkflowStatus[] = [
   'pending',
   'active',
   'failed',
@@ -321,11 +321,11 @@ const DEV_PORTAL_WORKFLOW_STATUSES: ApiPortalWorkflowStatus[] = [
 
 const asApiPortalWorkflowStatus = (value: unknown): ApiPortalWorkflowStatus => {
   const normalized = asString(value).toLowerCase();
-  return DEV_PORTAL_WORKFLOW_STATUSES.includes(
+  return API_PORTAL_WORKFLOW_STATUSES.includes(
     normalized as ApiPortalWorkflowStatus
   )
     ? (normalized as ApiPortalWorkflowStatus)
-    : DEV_PORTAL_WORKFLOW_STATUSES[0];
+    : API_PORTAL_WORKFLOW_STATUSES[0];
 };
 
 export const toApiPortal = (value: unknown): ApiPortal => {
