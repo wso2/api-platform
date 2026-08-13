@@ -70,16 +70,7 @@ type Server struct {
 // session store, the file-based authenticator, and (when enabled) the OIDC
 // authenticator — discovering the IDP endpoints up front when discovery is
 // configured.
-//
-// opts is variadic so every existing caller (this module's own main.go, its
-// tests) keeps compiling unchanged; at most the first value is used. A host
-// binary that embeds this module (see the exported bff/app package) passes
-// one Options to add, hide, or override routes — see options.go.
-func New(ctx context.Context, cfg *config.Config, opts ...Options) (*Server, error) {
-	var o Options
-	if len(opts) > 0 {
-		o = opts[0]
-	}
+func New(ctx context.Context, cfg *config.Config) (*Server, error) {
 	primaryTransport, err := proxy.NewTransport(proxy.TLSClientOptions{
 		CAFile:     cfg.ControlPlane.CAFile,
 		SkipVerify: cfg.ControlPlane.TLSSkipVerify,
@@ -168,7 +159,7 @@ func New(ctx context.Context, cfg *config.Config, opts ...Options) (*Server, err
 		s.oidc = o
 	}
 
-	s.handler = s.routes(o)
+	s.handler = s.routes()
 	return s, nil
 }
 
@@ -207,61 +198,29 @@ func withWriteDeadline(next http.HandlerFunc) http.HandlerFunc {
 }
 
 // routes builds the mux and wraps it with the global middleware chain.
-//
-// Every default route is registered through register() rather than calling
-// mux.Handle/HandleFunc directly, so opts.DisabledRoutes/RouteOverrides/
-// WrapRoute apply uniformly without touching each handler's own logic.
-// opts.ExtraRoutes bypasses register() deliberately — those patterns are the
-// addition, not subject to being disabled/overridden/wrapped themselves.
-func (s *Server) routes(opts Options) http.Handler {
+func (s *Server) routes() http.Handler {
 	mux := http.NewServeMux()
 
-	disabled := make(map[string]bool, len(opts.DisabledRoutes))
-	for _, p := range opts.DisabledRoutes {
-		disabled[p] = true
-	}
-
-	register := func(pattern string, h http.Handler) {
-		if disabled[pattern] {
-			return
-		}
-		if override, ok := opts.RouteOverrides[pattern]; ok {
-			h = override
-		}
-		if wrap, ok := opts.WrapRoute[pattern]; ok {
-			h = wrap(h)
-		}
-		mux.Handle(pattern, h)
-	}
-
 	// Health (no auth, no CSRF).
-	register("GET /healthz", withWriteDeadline(handleHealth))
+	mux.HandleFunc("GET /healthz", withWriteDeadline(handleHealth))
 
 	// Runtime config consumed by the SPA before app init.
-	register("GET /api-platform.env.config.js", withWriteDeadline(s.handleRuntimeConfig))
-	register("GET /api-platform.common.config.js", withWriteDeadline(s.handleCommonConfig))
+	mux.HandleFunc("GET /api-platform.env.config.js", withWriteDeadline(s.handleRuntimeConfig))
+	mux.HandleFunc("GET /api-platform.common.config.js", withWriteDeadline(s.handleCommonConfig))
 
 	// Auth endpoints.
-	register("POST /api/login", withWriteDeadline(s.handleLogin))
-	register("POST /api/logout", withWriteDeadline(s.handleLogout))
-	register("GET /api/session", withWriteDeadline(s.handleSession))
-	register("GET /api/auth/login", withWriteDeadline(s.handleOIDCLogin))
-	register("GET /api/auth/callback", withWriteDeadline(s.handleOIDCCallback))
+	mux.HandleFunc("POST /api/login", withWriteDeadline(s.handleLogin))
+	mux.HandleFunc("POST /api/logout", withWriteDeadline(s.handleLogout))
+	mux.HandleFunc("GET /api/session", withWriteDeadline(s.handleSession))
+	mux.HandleFunc("GET /api/auth/login", withWriteDeadline(s.handleOIDCLogin))
+	mux.HandleFunc("GET /api/auth/callback", withWriteDeadline(s.handleOIDCCallback))
 
 	// Same-origin reverse proxy(ies): the primary control plane, plus any
 	// named upstream. Each Rewrite hook already strips its own prefix, so the
 	// subtree is registered directly. Deliberately NOT wrapped in
 	// withWriteDeadline — see its doc comment.
 	for _, p := range s.proxies {
-		register(p.prefix+"/", s.proxyHandler(p.rp))
-	}
-
-	// Host-supplied additions. Registered directly (not through register())
-	// since Disabled/RouteOverrides/WrapRoute target default routes, not
-	// these — they run through the same middleware chain as every route
-	// above regardless.
-	for pattern, h := range opts.ExtraRoutes {
-		mux.Handle(pattern, h)
+		mux.HandleFunc(p.prefix+"/", s.proxyHandler(p.rp))
 	}
 
 	// SPA static files + client-side routing fallback. Must be registered
@@ -274,7 +233,6 @@ func (s *Server) routes(opts Options) http.Handler {
 		logRequests,
 		s.securityHeaders,
 		s.requireCSRF,
-		s.sessionContext,
 	)
 }
 
