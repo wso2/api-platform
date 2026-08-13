@@ -2352,6 +2352,7 @@ func TestTranslator_CreateSDSCluster(t *testing.T) {
 func TestTranslator_CreateUpstreamTLSContext(t *testing.T) {
 	logger := createTestLogger()
 	routerCfg := testRouterConfig()
+	routerCfg.Upstream.TLS.EcdhCurves = "X25519,P-256"
 	cfg := testConfig()
 	translator := NewTranslator(logger, routerCfg, nil, cfg)
 
@@ -2359,6 +2360,7 @@ func TestTranslator_CreateUpstreamTLSContext(t *testing.T) {
 	tlsContext := translator.createUpstreamTLSContext(nil, "example.com")
 	assert.NotNil(t, tlsContext)
 	assert.Equal(t, "example.com", tlsContext.Sni)
+	assert.Equal(t, []string{"X25519", "P-256"}, tlsContext.CommonTlsContext.TlsParams.EcdhCurves)
 
 	// Test with certificate
 	certPem := []byte("-----BEGIN CERTIFICATE-----\ntest\n-----END CERTIFICATE-----")
