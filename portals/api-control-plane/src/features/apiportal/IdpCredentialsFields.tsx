@@ -79,8 +79,9 @@ export function IdpCredentialsFields({
       </Typography>
       <Stack spacing={2}>
         <FormControl fullWidth>
-          <FormLabel>STS token URL</FormLabel>
+          <FormLabel htmlFor="idp-sts-token-url">STS token URL</FormLabel>
           <TextField
+            id="idp-sts-token-url"
             error={stsTokenUrlInvalid}
             helperText={stsTokenUrlInvalid ? 'Enter a valid URL' : undefined}
             onChange={(event) => onStsTokenUrlChange(event.target.value)}
@@ -90,16 +91,18 @@ export function IdpCredentialsFields({
         </FormControl>
 
         <FormControl fullWidth>
-          <FormLabel>Client ID</FormLabel>
+          <FormLabel htmlFor="idp-client-id">Client ID</FormLabel>
           <TextField
+            id="idp-client-id"
             onChange={(event) => onClientIdChange(event.target.value)}
             value={clientId}
           />
         </FormControl>
 
         <FormControl fullWidth>
-          <FormLabel>Client secret</FormLabel>
+          <FormLabel htmlFor="idp-client-secret">Client secret</FormLabel>
           <TextField
+            id="idp-client-secret"
             onChange={(event) => onClientSecretChange(event.target.value)}
             slotProps={{
               input: {

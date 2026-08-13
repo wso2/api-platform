@@ -53,12 +53,8 @@ function submitButton() {
   return screen.getByRole('button', { name: 'Provision API Portal' });
 }
 
-// FormLabel here isn't wired to its TextField via `htmlFor`/`aria-labelledby`,
-// so getByLabelText can't find these fields — locate the input via the
-// shared FormControl wrapper instead.
 function getFieldInput(labelText: string): HTMLInputElement {
-  const label = screen.getByText(labelText, { selector: 'label' });
-  return label.parentElement!.querySelector('input') as HTMLInputElement;
+  return screen.getByLabelText(labelText) as HTMLInputElement;
 }
 
 describe('ApiPortalCreatePage', () => {

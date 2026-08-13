@@ -143,8 +143,9 @@ export function ApiPortalCreatePage() {
       <Box sx={{ maxWidth: 720 }}>
         <Stack spacing={3}>
           <FormControl fullWidth>
-            <FormLabel>Name</FormLabel>
+            <FormLabel htmlFor="api-portal-name">Name</FormLabel>
             <TextField
+              id="api-portal-name"
               onChange={(event) => onDisplayNameChange(event.target.value)}
               placeholder="Production API Portal"
               value={displayName}
@@ -152,8 +153,9 @@ export function ApiPortalCreatePage() {
           </FormControl>
 
           <FormControl fullWidth>
-            <FormLabel>Identifier</FormLabel>
+            <FormLabel htmlFor="api-portal-handle">Identifier</FormLabel>
             <TextField
+              id="api-portal-handle"
               error={handle !== '' && !handleValid}
               helperText={
                 handle !== '' && !handleValid
@@ -188,8 +190,11 @@ export function ApiPortalCreatePage() {
           </FormControl>
 
           <FormControl fullWidth>
-            <FormLabel>Description (optional)</FormLabel>
+            <FormLabel htmlFor="api-portal-description">
+              Description (optional)
+            </FormLabel>
             <TextField
+              id="api-portal-description"
               multiline
               minRows={2}
               onChange={(event) => setDescription(event.target.value)}
@@ -198,8 +203,9 @@ export function ApiPortalCreatePage() {
           </FormControl>
 
           <FormControl fullWidth>
-            <FormLabel>Authentication</FormLabel>
+            <FormLabel htmlFor="api-portal-auth-type">Authentication</FormLabel>
             <Select
+              id="api-portal-auth-type"
               onChange={(event) =>
                 setAuthType(event.target.value as ApiPortalAuthType)
               }
@@ -226,8 +232,9 @@ export function ApiPortalCreatePage() {
           )}
 
           <FormControl fullWidth>
-            <FormLabel>URL</FormLabel>
+            <FormLabel htmlFor="api-portal-url">URL</FormLabel>
             <TextField
+              id="api-portal-url"
               error={url !== '' && !isValidUrl(url)}
               helperText={
                 url !== '' && !isValidUrl(url) ? 'Enter a valid URL' : undefined
