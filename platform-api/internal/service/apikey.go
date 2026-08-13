@@ -38,7 +38,7 @@ import (
 
 const (
 	apiKeyNameMinLength     = 1
-	apiKeyNameMaxLength     = 100
+	apiKeyNameMaxLength     = 128
 	hashingAlgorithmSHA256  = "sha256"
 	defaultHashingAlgorithm = hashingAlgorithmSHA256
 )

@@ -6220,7 +6220,7 @@ components:
             Unique identifier for this API key within the API (optional; if omitted,
             generated from displayName)
           minLength: 1
-          maxLength: 100
+          maxLength: 128
           example: "production-key-01"
         displayName:
           type: string
@@ -8091,7 +8091,7 @@ components:
           type: string
           description: Unique identifier for the API key within the LLM provider. If not provided, generated from displayName.
           minLength: 1
-          maxLength: 100
+          maxLength: 128
           pattern: '^[a-z0-9]+(-[a-z0-9]+)*$'
           example: "production-key"
         displayName:
@@ -8150,7 +8150,7 @@ components:
           type: string
           description: Unique identifier for the API key within the LLM proxy. If not provided, generated from displayName.
           minLength: 1
-          maxLength: 100
+          maxLength: 128
           pattern: '^[a-z0-9]+(-[a-z0-9]+)*$'
           example: "production-key"
         displayName:

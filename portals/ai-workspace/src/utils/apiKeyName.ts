@@ -17,7 +17,7 @@
 // Must match apiKeyNameMinLength/apiKeyNameMaxLength in platform-api's apikey.go,
 // which itself mirrors the gateway's ValidateAPIKeyName rule — keep all three in sync.
 export const API_KEY_NAME_MIN_LENGTH = 1;
-export const API_KEY_NAME_MAX_LENGTH = 100;
+export const API_KEY_NAME_MAX_LENGTH = 128;
 
 /**
  * Slugifies a display name into a candidate API key id. Does NOT pad short results —

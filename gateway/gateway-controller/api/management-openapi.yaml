@@ -3326,7 +3326,7 @@ components:
           description: Identifier of the API key. If not provided, a default identifier will be generated
           pattern: "^[a-z0-9]+(-[a-z0-9]+)*$"
           minLength: 1
-          maxLength: 100
+          maxLength: 128
           example: my-production-key
         apiKey:
           type: string
@@ -3427,7 +3427,7 @@ components:
           description: URL-safe identifier for the API key (auto-generated from displayName, immutable, used as path parameter)
           pattern: "^[a-z0-9]+(-[a-z0-9]+)*$"
           minLength: 1
-          maxLength: 100
+          maxLength: 128
           example: my-production-key
         displayName:
           type: string

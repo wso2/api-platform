@@ -40,8 +40,8 @@ func TestValidateAPIKeyName(t *testing.T) {
 		{name: "1 char lower boundary valid", input: "a"},
 		{name: "2 chars valid", input: "ab"},
 		{name: "3 chars valid", input: "abc"},
-		{name: "100 chars upper boundary valid", input: repeatChar('a', 100)},
-		{name: "101 chars too long", input: repeatChar('a', 101), wantErr: true},
+		{name: "128 chars upper boundary valid", input: repeatChar('a', 128)},
+		{name: "129 chars too long", input: repeatChar('a', 129), wantErr: true},
 		{name: "uppercase rejected", input: "ABC", wantErr: true},
 		{name: "dot rejected", input: "my.key", wantErr: true},
 		{name: "space rejected", input: "my key", wantErr: true},
@@ -87,9 +87,9 @@ func TestResolveUniqueKeyName_ValidatesCallerSuppliedId(t *testing.T) {
 	svc := &APIKeyService{apiKeyRepo: nameValidationAPIKeyRepo{}}
 
 	t.Run("too long id rejected", func(t *testing.T) {
-		_, err := svc.resolveUniqueKeyName("artifact-1", &api.CreateAPIKeyRequest{Id: strPtr(repeatChar('a', 101))}, "my-api")
+		_, err := svc.resolveUniqueKeyName("artifact-1", &api.CreateAPIKeyRequest{Id: strPtr(repeatChar('a', 129))}, "my-api")
 		if err == nil {
-			t.Fatal("resolveUniqueKeyName() = nil error, want rejection for a 101-char id")
+			t.Fatal("resolveUniqueKeyName() = nil error, want rejection for a 129-char id")
 		}
 		assertBadRequest(t, err)
 	})
@@ -139,9 +139,9 @@ func TestCreateLLMProviderAPIKey_RejectsInvalidId(t *testing.T) {
 
 	t.Run("too long id rejected", func(t *testing.T) {
 		_, err := svc.CreateLLMProviderAPIKey(context.Background(), "prov", "org-1", "",
-			&api.CreateLLMProviderAPIKeyRequest{DisplayName: "x", Id: strPtr(repeatChar('a', 101))})
+			&api.CreateLLMProviderAPIKeyRequest{DisplayName: "x", Id: strPtr(repeatChar('a', 129))})
 		if err == nil {
-			t.Fatal("CreateLLMProviderAPIKey() = nil error, want rejection for a 101-char id")
+			t.Fatal("CreateLLMProviderAPIKey() = nil error, want rejection for a 129-char id")
 		}
 		assertBadRequest(t, err)
 	})
@@ -180,9 +180,9 @@ func TestCreateLLMProxyAPIKey_RejectsInvalidId(t *testing.T) {
 
 	t.Run("too long id rejected", func(t *testing.T) {
 		_, err := svc.CreateLLMProxyAPIKey(context.Background(), "proxy", "org-1", "",
-			&api.CreateLLMProxyAPIKeyRequest{DisplayName: "x", Id: strPtr(repeatChar('a', 101))})
+			&api.CreateLLMProxyAPIKeyRequest{DisplayName: "x", Id: strPtr(repeatChar('a', 129))})
 		if err == nil {
-			t.Fatal("CreateLLMProxyAPIKey() = nil error, want rejection for a 101-char id")
+			t.Fatal("CreateLLMProxyAPIKey() = nil error, want rejection for a 129-char id")
 		}
 		assertBadRequest(t, err)
 	})
