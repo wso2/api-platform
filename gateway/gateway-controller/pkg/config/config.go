@@ -564,7 +564,12 @@ type UpstreamTLS struct {
 	MinimumProtocolVersion string `koanf:"minimum_protocol_version"`
 	MaximumProtocolVersion string `koanf:"maximum_protocol_version"`
 	Ciphers                string `koanf:"ciphers"`
-	TrustedCertPath        string `koanf:"trusted_cert_path"`
+	// EcdhCurves is a comma-separated list of ECDH curves, most preferred first. Defaults to a
+	// hybrid post-quantum group ("X25519MLKEM768", FIPS 203 ML-KEM-768 + X25519) followed by
+	// classical curves, so key exchange degrades gracefully to classical for peers that don't yet
+	// support the hybrid group.
+	EcdhCurves      string `koanf:"ecdh_curves"`
+	TrustedCertPath string `koanf:"trusted_cert_path"`
 	CustomCertsPath        string `koanf:"custom_certs_path"` // Directory containing custom trusted certificates
 	VerifyHostName         bool   `koanf:"verify_host_name"`
 	DisableSslVerification bool   `koanf:"disable_ssl_verification"`
@@ -594,6 +599,11 @@ type DownstreamTLS struct {
 	MinimumProtocolVersion string `koanf:"minimum_protocol_version"`
 	MaximumProtocolVersion string `koanf:"maximum_protocol_version"`
 	Ciphers                string `koanf:"ciphers"`
+	// EcdhCurves is a comma-separated list of ECDH curves, most preferred first. Defaults to a
+	// hybrid post-quantum group ("X25519MLKEM768", FIPS 203 ML-KEM-768 + X25519) followed by
+	// classical curves, so key exchange degrades gracefully to classical for peers that don't yet
+	// support the hybrid group.
+	EcdhCurves string `koanf:"ecdh_curves"`
 }
 
 // VHostsConfig for vhosts configuration
@@ -989,6 +999,7 @@ func defaultConfig() *Config {
 				MinimumProtocolVersion: "TLS1_2",
 				MaximumProtocolVersion: "TLS1_3",
 				Ciphers:                "ECDHE-ECDSA-AES128-GCM-SHA256,ECDHE-RSA-AES128-GCM-SHA256,ECDHE-ECDSA-AES128-SHA,ECDHE-RSA-AES128-SHA,AES128-GCM-SHA256,AES128-SHA,ECDHE-ECDSA-AES256-GCM-SHA384,ECDHE-RSA-AES256-GCM-SHA384,ECDHE-ECDSA-AES256-SHA,ECDHE-RSA-AES256-SHA,AES256-GCM-SHA384,AES256-SHA",
+				EcdhCurves:             "X25519MLKEM768,X25519,P-256",
 			},
 			GatewayHost: "*",
 			Upstream: RouterUpstream{
@@ -996,6 +1007,7 @@ func defaultConfig() *Config {
 					MinimumProtocolVersion: "TLS1_2",
 					MaximumProtocolVersion: "TLS1_3",
 					Ciphers:                "ECDHE-ECDSA-AES128-GCM-SHA256,ECDHE-RSA-AES128-GCM-SHA256,ECDHE-ECDSA-AES128-SHA,ECDHE-RSA-AES128-SHA,AES128-GCM-SHA256,AES128-SHA,ECDHE-ECDSA-AES256-GCM-SHA384,ECDHE-RSA-AES256-GCM-SHA384,ECDHE-ECDSA-AES256-SHA,ECDHE-RSA-AES256-SHA,AES256-GCM-SHA384,AES256-SHA",
+					EcdhCurves:             "X25519MLKEM768,X25519,P-256",
 					TrustedCertPath:        "/etc/ssl/certs/ca-certificates.crt",
 					CustomCertsPath:        "./certificates",
 					VerifyHostName:         true,
@@ -1570,6 +1582,11 @@ func (c *Config) validateTLSConfig() error {
 		}
 	}
 
+	// Validate ECDH curves
+	if err := validateEcdhCurves("router.upstream.tls.ecdh_curves", c.Router.Upstream.TLS.EcdhCurves); err != nil {
+		return err
+	}
+
 	// Validate trusted cert path if SSL verification is enabled
 	if !c.Router.Upstream.TLS.DisableSslVerification && c.Router.Upstream.TLS.TrustedCertPath == "" {
 		return fmt.Errorf("router.upstream.tls.trusted_cert_path is required when SSL verification is enabled")
@@ -1667,6 +1684,36 @@ func (c *Config) validateDownstreamTLSConfig() error {
 		}
 	}
 
+	// Validate ECDH curves
+	if err := validateEcdhCurves("router.downstream_tls.ecdh_curves", c.Router.DownstreamTLS.EcdhCurves); err != nil {
+		return err
+	}
+
+	return nil
+}
+
+// validateEcdhCurves validates the format of a comma-separated ecdh_curves config value.
+// It deliberately does not check curve names against a fixed allowlist — the set of curves
+// Envoy/BoringSSL accepts (including newer hybrid post-quantum groups such as
+// "X25519MLKEM768") evolves independently of this codebase, so Envoy itself is the source of
+// truth for which names are valid; an unsupported name is rejected when Envoy applies the
+// resulting listener/cluster config. fieldPath is used to prefix any returned error.
+func validateEcdhCurves(fieldPath, curves string) error {
+	if curves == "" {
+		return nil
+	}
+	// Basic validation: ensure curves don't contain invalid characters
+	if strings.Contains(curves, constants.CipherInvalidChars1) || strings.Contains(curves, constants.CipherInvalidChars2) {
+		return fmt.Errorf("%s contains invalid characters (use comma-separated values)", fieldPath)
+	}
+	if strings.TrimSpace(curves) == "" {
+		return fmt.Errorf("%s cannot be empty or whitespace only", fieldPath)
+	}
+	for _, curve := range strings.Split(curves, constants.CipherSuiteSeparator) {
+		if strings.TrimSpace(curve) == "" {
+			return fmt.Errorf("%s cannot contain an empty curve name (use comma-separated values)", fieldPath)
+		}
+	}
 	return nil
 }
 
