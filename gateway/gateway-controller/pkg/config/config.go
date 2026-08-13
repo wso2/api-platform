@@ -943,6 +943,9 @@ func defaultConfig() *Config {
 				Enabled: true,
 				Format:  "text",
 				JSONFields: map[string]string{
+					// Deployer-supplied json_fields merge into these defaults rather than
+					// replacing them, so "component" survives unless explicitly overridden.
+					"component":  "rtr",
 					"t":          "%START_TIME%",
 					"meth":       "%REQ(:METHOD)%",
 					"path":       "%REQ(X-ENVOY-ORIGINAL-PATH?:PATH)%",
@@ -967,7 +970,9 @@ func defaultConfig() *Config {
 					"reqDur":     "%REQUEST_DURATION%",
 					"respDur":    "%RESPONSE_DURATION%",
 				},
-				TextFormat: "[%START_TIME%] \"%REQ(:METHOD)% %REQ(X-ENVOY-ORIGINAL-PATH?:PATH)% %PROTOCOL%\" " +
+				// "[rtr] " identifies the router on the container's shared stdout; keep it
+				// when overriding. The JSON variant uses the "component" field instead.
+				TextFormat: "[rtr] [%START_TIME%] \"%REQ(:METHOD)% %REQ(X-ENVOY-ORIGINAL-PATH?:PATH)% %PROTOCOL%\" " +
 					"%REQ(:PATH)% %UPSTREAM_PROTOCOL% %RESPONSE_CODE% %RESPONSE_FLAGS% %RESPONSE_CODE_DETAILS% " +
 					"%CONNECTION_TERMINATION_DETAILS% %BYTES_RECEIVED% %BYTES_SENT% %DURATION% " +
 					"%REQUEST_TX_DURATION% %RESPONSE_TX_DURATION% %REQUEST_DURATION% %RESPONSE_DURATION% " +

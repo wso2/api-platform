@@ -19,10 +19,14 @@
 package main
 
 import (
+	"bytes"
 	"context"
+	"encoding/json"
+	"errors"
 	"log/slog"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -330,4 +334,116 @@ func TestInitializeXDSClient_ValidConfig(t *testing.T) {
 
 	// Note: Not calling Stop/Wait due to potential issues with context in test environment
 	// The client will be cleaned up when the test exits
+}
+
+// =============================================================================
+// componentPrefixWriter Tests
+// =============================================================================
+
+func TestComponentPrefixWriter_PrefixesEachWrite(t *testing.T) {
+	var buf bytes.Buffer
+	w := newComponentPrefixWriter(&buf, "[pol] ")
+
+	n, err := w.Write([]byte("time=... level=INFO msg=hello\n"))
+
+	require.NoError(t, err)
+	// n must equal len(p); io.Writer callers treat any other count as a failed
+	// write.
+	assert.Equal(t, len("time=... level=INFO msg=hello\n"), n)
+	assert.Equal(t, "[pol] time=... level=INFO msg=hello\n", buf.String())
+}
+
+func TestComponentPrefixWriter_OneUnderlyingWritePerRecord(t *testing.T) {
+	counting := &countingWriter{}
+	w := newComponentPrefixWriter(counting, "[pol] ")
+
+	_, err := w.Write([]byte("first\n"))
+	require.NoError(t, err)
+	_, err = w.Write([]byte("second\n"))
+	require.NoError(t, err)
+
+	// One underlying write per record, so another writer on the same descriptor
+	// cannot interleave between tag and line.
+	assert.Equal(t, 2, counting.writes)
+	assert.Equal(t, "[pol] first\n[pol] second\n", counting.buf.String())
+}
+
+func TestComponentPrefixWriter_PropagatesError(t *testing.T) {
+	w := newComponentPrefixWriter(failingWriter{}, "[pol] ")
+
+	n, err := w.Write([]byte("boom\n"))
+
+	require.Error(t, err)
+	assert.Zero(t, n)
+}
+
+func TestSetupLogger_TextFormatIsComponentTagged(t *testing.T) {
+	cfg := &config.Config{
+		PolicyEngine: config.PolicyEngine{
+			Logging: config.LoggingConfig{Level: "info", Format: "text"},
+		},
+	}
+
+	out := captureStdout(t, func() {
+		setupLogger(cfg).Info("hello")
+	})
+
+	assert.True(t, strings.HasPrefix(out, "[pol] "), "text log line must be [pol]-tagged, got: %q", out)
+	assert.Contains(t, out, "msg=hello")
+}
+
+func TestSetupLogger_JSONFormatCarriesComponentField(t *testing.T) {
+	cfg := &config.Config{
+		PolicyEngine: config.PolicyEngine{
+			Logging: config.LoggingConfig{Level: "info", Format: "json"},
+		},
+	}
+
+	out := captureStdout(t, func() {
+		setupLogger(cfg).Info("hello")
+	})
+
+	assert.False(t, strings.HasPrefix(out, "[pol] "), "JSON log line must not be text-prefixed, got: %q", out)
+
+	var rec map[string]any
+	require.NoError(t, json.Unmarshal([]byte(strings.TrimSpace(out)), &rec), "JSON log line must parse, got: %q", out)
+	assert.Equal(t, "pol", rec["component"])
+	assert.Equal(t, "hello", rec["msg"])
+}
+
+type countingWriter struct {
+	buf    bytes.Buffer
+	writes int
+}
+
+func (c *countingWriter) Write(p []byte) (int, error) {
+	c.writes++
+	return c.buf.Write(p)
+}
+
+type failingWriter struct{}
+
+func (failingWriter) Write([]byte) (int, error) {
+	return 0, errors.New("write failed")
+}
+
+// captureStdout redirects os.Stdout for the duration of fn. setupLogger binds to
+// os.Stdout at construction, so the swap must precede the call.
+func captureStdout(t *testing.T, fn func()) string {
+	t.Helper()
+
+	r, w, err := os.Pipe()
+	require.NoError(t, err)
+
+	orig := os.Stdout
+	os.Stdout = w
+	defer func() { os.Stdout = orig }()
+
+	fn()
+	require.NoError(t, w.Close())
+
+	var buf bytes.Buffer
+	_, err = buf.ReadFrom(r)
+	require.NoError(t, err)
+	return buf.String()
 }

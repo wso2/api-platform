@@ -41,6 +41,27 @@ log() {
     echo "[ent] $(date '+%Y-%m-%d %H:%M:%S') $1"
 }
 
+prefix_stream() {
+    local tag="$1"
+    local line
+    while IFS= read -r line; do
+        printf '%s %s\n' "$tag" "$line"
+    done
+}
+
+# Runs "$@" in the background, tagging its stderr, and sets LAUNCHED_PID.
+#
+# stdout is not wrapped: it carries structured JSON (access and traffic logs)
+# that a line prefix would make unparseable, and each process tags its own stdout
+# lines. stderr is wrapped because panics, tracebacks and fatals bypass the
+# process loggers.
+LAUNCHED_PID=""
+launch_tagged() {
+    local tag="$1"; shift
+    "$@" 2> >(prefix_stream "$tag" >&2) &
+    LAUNCHED_PID=$!
+}
+
 # Parse process-specific args from command line.
 # Uses dot (.) as the prefix separator (e.g. --rtr.flag, --pol.flag, --py.flag) because no
 # standard CLI flag contains a dot, making prefix detection unambiguous.
@@ -271,10 +292,8 @@ trap shutdown SIGTERM SIGINT SIGQUIT
 if [ -f /app/python-executor/python_policy_registry.py ]; then
     log "Starting Python Executor..."
     unset PYTHON_EXECUTOR_LISTEN
-    python3 /app/python-executor/main.py --listen "${PYTHON_EXECUTOR_SOCKET}" "${PY_ARGS[@]}" \
-        > >(while IFS= read -r line; do echo "[pye] $line"; done) \
-        2> >(while IFS= read -r line; do echo "[pye] $line" >&2; done) &
-    PY_PID=$!
+    launch_tagged "[pye]" python3 /app/python-executor/main.py --listen "${PYTHON_EXECUTOR_SOCKET}" "${PY_ARGS[@]}"
+    PY_PID=$LAUNCHED_PID
     log "Python Executor started (PID $PY_PID)"
 
     # Wait for Python socket
@@ -298,12 +317,10 @@ else
     log "No Python policies detected, skipping Python Executor"
 fi
 
-# Start Policy Engine with [pol] log prefix
+# Start Policy Engine
 log "Starting Policy Engine..."
-/app/policy-engine -xds-server "${PE_XDS_SERVER}" "${PE_ARGS[@]}" \
-    > >(while IFS= read -r line; do echo "[pol] $line"; done) \
-    2> >(while IFS= read -r line; do echo "[pol] $line" >&2; done) &
-PE_PID=$!
+launch_tagged "[pol]" /app/policy-engine -xds-server "${PE_XDS_SERVER}" "${PE_ARGS[@]}"
+PE_PID=$LAUNCHED_PID
 log "Policy Engine started (PID $PE_PID)"
 
 # Wait for Policy Engine to create the socket (with timeout)
@@ -330,17 +347,15 @@ while [ ! -S "${POLICY_ENGINE_SOCKET}" ]; do
 done
 log "Policy Engine socket ready: ${POLICY_ENGINE_SOCKET}"
 
-# Start Envoy (Router) with [rtr] log prefix
+# Start Envoy (Router)
 log "Starting Envoy..."
-/usr/local/bin/envoy \
+launch_tagged "[rtr]" /usr/local/bin/envoy \
     -c /etc/envoy/envoy.yaml \
     --config-yaml "${CONFIG_OVERRIDE}" \
     --log-level "${LOG_LEVEL}" \
     --concurrency "${ROUTER_CONCURRENCY}" \
-    "${ROUTER_ARGS[@]}" \
-    > >(while IFS= read -r line; do echo "[rtr] $line"; done) \
-    2> >(while IFS= read -r line; do echo "[rtr] $line" >&2; done) &
-ENVOY_PID=$!
+    "${ROUTER_ARGS[@]}"
+ENVOY_PID=$LAUNCHED_PID
 log "Envoy started (PID $ENVOY_PID)"
 
 log "Gateway Runtime running"

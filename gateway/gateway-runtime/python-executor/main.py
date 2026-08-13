@@ -121,9 +121,9 @@ def setup_logging():
     handler = logging.StreamHandler(sys.stdout)
     handler.setLevel(level)
 
-    # Simple format with [pye] prefix for the entrypoint to identify
+    # [pye] identifies this process on the container's shared stdout.
     formatter = logging.Formatter(
-        fmt='%(asctime)s [%(levelname)s] %(name)s: %(message)s',
+        fmt='[pye] %(asctime)s [%(levelname)s] %(name)s: %(message)s',
         datefmt='%Y-%m-%d %H:%M:%S'
     )
     handler.setFormatter(formatter)

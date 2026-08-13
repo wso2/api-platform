@@ -38,6 +38,24 @@ log() {
     echo "[ent] $(date '+%Y-%m-%d %H:%M:%S') $1"
 }
 
+prefix_stream() {
+    local tag="$1"
+    local line
+    while IFS= read -r line; do
+        printf '%s %s\n' "$tag" "$line"
+    done
+}
+
+# Runs "$@" in the background, tagging its stderr, and sets LAUNCHED_PID.
+# stdout is left unwrapped so structured output stays parseable; see
+# docker-entrypoint.sh.
+LAUNCHED_PID=""
+launch_tagged() {
+    local tag="$1"; shift
+    "$@" 2> >(prefix_stream "$tag" >&2) &
+    LAUNCHED_PID=$!
+}
+
 # Parse process-specific args from command line.
 # Uses dot (.) as the prefix separator (e.g. --rtr.flag, --pol.flag) because no
 # standard CLI flag contains a dot, making prefix detection unambiguous.
@@ -221,13 +239,11 @@ trap shutdown SIGTERM SIGINT SIGQUIT
 
 # Start Policy Engine under dlv for remote debugging (port 2346)
 log "Starting Policy Engine under dlv (listening on :2346, headless)..."
-/usr/local/bin/dlv exec /app/policy-engine \
+launch_tagged "[pol]" /usr/local/bin/dlv exec /app/policy-engine \
     --listen=:2346 --headless=true \
     --api-version=2 --accept-multiclient -- \
-    -xds-server "${PE_XDS_SERVER}" "${PE_ARGS[@]}" \
-    > >(while IFS= read -r line; do echo "[pol] $line"; done) \
-    2> >(while IFS= read -r line; do echo "[pol] $line" >&2; done) &
-PE_PID=$!
+    -xds-server "${PE_XDS_SERVER}" "${PE_ARGS[@]}"
+PE_PID=$LAUNCHED_PID
 log "Policy Engine (dlv) started (PID $PE_PID)"
 
 # Wait for Policy Engine to create the socket (with timeout)
@@ -261,15 +277,13 @@ log "Policy Engine socket ready: ${POLICY_ENGINE_SOCKET}"
 
 # Start Envoy (Router) with [rtr] log prefix
 log "Starting Envoy..."
-/usr/local/bin/envoy \
+launch_tagged "[rtr]" /usr/local/bin/envoy \
     -c /etc/envoy/envoy.yaml \
     --config-yaml "${CONFIG_OVERRIDE}" \
     --log-level "${LOG_LEVEL}" \
     --concurrency "${ROUTER_CONCURRENCY}" \
-    "${ROUTER_ARGS[@]}" \
-    > >(while IFS= read -r line; do echo "[rtr] $line"; done) \
-    2> >(while IFS= read -r line; do echo "[rtr] $line" >&2; done) &
-ENVOY_PID=$!
+    "${ROUTER_ARGS[@]}"
+ENVOY_PID=$LAUNCHED_PID
 log "Envoy started (PID $ENVOY_PID)"
 
 log "Gateway Runtime running (DEBUG) - Policy Engine/dlv (PID $PE_PID), Envoy (PID $ENVOY_PID)"
