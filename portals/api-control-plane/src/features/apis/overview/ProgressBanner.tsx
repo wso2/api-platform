@@ -58,7 +58,7 @@ type ProgressStep = {
  *   Create   → always done (the API record exists)
  *   Deploy   → live on a gateway, or staged/published
  *   Test     → staged (PENDING) or published (ACTIVE)
- *   Publish  → published to the dev portal (ACTIVE)
+ *   Publish  → published to the API Portal (ACTIVE)
  * The steps double as the navigation the old Deploy/Test/Manage buttons gave.
  */
 export function ProgressBanner({
@@ -96,7 +96,7 @@ export function ProgressBanner({
     },
     {
       key: 'publish',
-      label: 'Publish to Devportal',
+      label: 'Publish to API Portal',
       Icon: Globe,
       complete: published,
       onClick: () =>
