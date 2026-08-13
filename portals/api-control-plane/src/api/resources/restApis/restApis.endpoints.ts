@@ -38,7 +38,29 @@ import type {
 export type RestApi = Schema<'RESTAPI'>;
 export type RestApiListResponse = ResponseOf<'ListRESTAPIs'>;
 export type ListRestApisQuery = QueryOf<'ListRESTAPIs'>;
-export type CreateRestApiBody = BodyOf<'CreateRESTAPI'>;
+/**
+ * Body for `CreateRESTAPI`.
+ *
+ * Deliberately **not** `BodyOf<'CreateRESTAPI'>`, which is the one place in
+ * this layer where the generated type cannot be used. The spec defines:
+ *
+ *   CreateRESTAPIRequest:
+ *     allOf:
+ *       - $ref: RESTAPI
+ *       - type: object
+ *         required: [displayName, context, version, projectId]   # no `properties`
+ *
+ * An object schema carrying `required` but no `properties` generates as
+ * `Record<string, never>`, so the intersection resolves to
+ * `RESTAPI & Record<string, never>` — every property becomes `never` and the
+ * body is uninhabitable. Nothing could be passed to this function at all.
+ *
+ * `RESTAPI` is an exact substitute rather than a loosening: all four fields the
+ * second member names are already required on `RESTAPI`, so that member adds no
+ * constraint and only breaks codegen. Restore the derived type once the spec is
+ * corrected upstream.
+ */
+export type CreateRestApiBody = Schema<'RESTAPI'>;
 export type UpdateRestApiBody = BodyOf<'UpdateRESTAPI'>;
 
 const BASE = '/rest-apis';
