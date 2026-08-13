@@ -16,7 +16,7 @@
  * under the License.
  */
 
-import { QueryClient } from '@tanstack/react-query';
+import { MutationCache, QueryCache, QueryClient } from '@tanstack/react-query';
 
 import { ApiError, isApiError } from './errors';
 
@@ -80,6 +80,35 @@ export type QueryClientHandlers = {
 
 export const createQueryClient = (handlers: QueryClientHandlers = {}) =>
   new QueryClient({
+    /**
+     * Global handlers belong on the caches, not in `defaultOptions`.
+     *
+     * A mutation's own `onError` *replaces* `defaultOptions.mutations.onError`
+     * rather than running alongside it; so putting the global handler there
+     * would silence it for exactly the mutations that define one, which is
+     * every mutation doing an optimistic rollback. `MutationCache.onError`
+     * fires for all of them regardless.
+     */
+    mutationCache: new MutationCache({
+      onError: (error) => {
+        if (isApiError(error)) handlers.onMutationError?.(error);
+      },
+    }),
+
+    /**
+     * Query errors reach here only when the query already has data on screen.
+     * A background refetch that failed. A first-load failure is surfaced by the
+     * component through `isError`, or thrown to an error boundary; reporting
+     * both here would double up.
+     */
+    queryCache: new QueryCache({
+      onError: (error, query) => {
+        if (isApiError(error) && query.state.data !== undefined) {
+          handlers.onBackgroundError?.(error);
+        }
+      },
+    }),
+
     defaultOptions: {
       queries: {
         staleTime: staleTimes.standard,
@@ -87,7 +116,7 @@ export const createQueryClient = (handlers: QueryClientHandlers = {}) =>
         retry: shouldRetry,
         retryDelay,
         // Refetch when the user comes back to a tab that has been idle, but
-        // only if the data is actually stale — with `staleTime` set per tier,
+        // only if the data is actually stale; with `staleTime` set per tier,
         // this costs nothing for stable resources and keeps volatile ones live.
         refetchOnWindowFocus: true,
         // Reconnect refetch is the cheap fix for the laptop-lid case: data
@@ -106,9 +135,6 @@ export const createQueryClient = (handlers: QueryClientHandlers = {}) =>
           isApiError(error) &&
           (error.kind === 'network' || error.kind === 'timeout'),
         retryDelay,
-        onError: (error) => {
-          if (isApiError(error)) handlers.onMutationError?.(error);
-        },
       },
     },
   });

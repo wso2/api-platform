@@ -16,7 +16,7 @@
  * under the License.
  */
 
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 
 import { ApiError } from './errors';
 import { createQueryClient, retryDelay, shouldRetry, staleTimes } from './queryClient';
@@ -127,17 +127,43 @@ describe('mutation retry policy', () => {
 });
 
 describe('query defaults', () => {
-  it('reports every mutation failure to the handler, so none can fail silently', () => {
-    // The previous layer had no onError at all: a failed mutation showed nothing
-    // unless the calling component happened to handle it.
+  it('reports every mutation failure to the handler, so none can fail silently', async () => {
+    // The previous layer had no onError at all: a failed mutation showed
+    // nothing unless the calling component happened to handle it.
     const seen: ApiError[] = [];
     const client = createQueryClient({ onMutationError: (error) => seen.push(error) });
-    const onError = client.getDefaultOptions().mutations?.onError;
 
-    onError?.(httpError(500), undefined, undefined, undefined as never);
+    await client
+      .getMutationCache()
+      .build(client, { mutationFn: () => Promise.reject(httpError(500)), retry: false })
+      .execute(undefined)
+      .catch(() => undefined);
 
     expect(seen).toHaveLength(1);
     expect(seen[0].status).toBe(500);
+  });
+
+  it('still reports a failure when the mutation defines its own onError', async () => {
+    // The reason the handler lives on the MutationCache rather than in
+    // defaultOptions: a mutation's own onError *replaces* the default one, and
+    // every mutation doing an optimistic rollback defines one. Putting the
+    // global handler in defaultOptions would silence it for exactly those.
+    const seen: ApiError[] = [];
+    const rollback = vi.fn();
+    const client = createQueryClient({ onMutationError: (error) => seen.push(error) });
+
+    await client
+      .getMutationCache()
+      .build(client, {
+        mutationFn: () => Promise.reject(httpError(500)),
+        onError: rollback,
+        retry: false,
+      })
+      .execute(undefined)
+      .catch(() => undefined);
+
+    expect(rollback).toHaveBeenCalledTimes(1);
+    expect(seen).toHaveLength(1);
   });
 
   it('keeps unused data in memory longer than it stays fresh, so back-navigation is instant', () => {
