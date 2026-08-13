@@ -547,7 +547,7 @@ export const useApiPortals = (orgHandleArg?: string) => {
       if (!orgHandle) {
         throw new Error('orgHandle is required to list API Portals');
       }
-      return client.listApiPortals();
+      return client.listApiPortals(orgHandle);
     },
     enabled: !!orgHandle,
   });
@@ -559,10 +559,13 @@ export const useApiPortal = (orgHandleArg?: string, apiPortalId?: string) => {
   return useQuery({
     queryKey: queryKeys.apiPortal(orgHandle || '', apiPortalId || ''),
     queryFn: () => {
+      if (!orgHandle) {
+        throw new Error('orgHandle is required to fetch an API Portal');
+      }
       if (!apiPortalId) {
         throw new Error('apiPortalId is required to fetch an API Portal');
       }
-      return client.getApiPortal(apiPortalId);
+      return client.getApiPortal(orgHandle, apiPortalId);
     },
     enabled: !!orgHandle && !!apiPortalId,
   });
@@ -573,7 +576,8 @@ export const useCreateApiPortal = (orgHandleArg?: string) => {
   const queryClient = useQueryClient();
   const { orgHandle = '' } = useScopeArgs(orgHandleArg);
   return useMutation({
-    mutationFn: (input: CreateApiPortalInput) => client.createApiPortal(input),
+    mutationFn: (input: CreateApiPortalInput) =>
+      client.createApiPortal(orgHandle, input),
     onSuccess: () => {
       queryClient.invalidateQueries({
         queryKey: queryKeys.apiPortals(orgHandle),
@@ -591,7 +595,7 @@ export const useUpdateApiPortal = (
   const { orgHandle = '' } = useScopeArgs(orgHandleArg);
   return useMutation({
     mutationFn: (input: UpdateApiPortalInput) =>
-      client.updateApiPortal(apiPortalId, input),
+      client.updateApiPortal(orgHandle, apiPortalId, input),
     onSuccess: (updated) => {
       // Write the response into the cache synchronously so callers reading
       // this query (e.g. a dirty-state check) see the saved values
@@ -615,7 +619,8 @@ export const useDeleteApiPortal = (orgHandleArg?: string) => {
   const queryClient = useQueryClient();
   const { orgHandle = '' } = useScopeArgs(orgHandleArg);
   return useMutation({
-    mutationFn: (apiPortal: ApiPortal) => client.deleteApiPortal(apiPortal.id),
+    mutationFn: (apiPortal: ApiPortal) =>
+      client.deleteApiPortal(orgHandle, apiPortal.id),
     onSuccess: () => {
       queryClient.invalidateQueries({
         queryKey: queryKeys.apiPortals(orgHandle),

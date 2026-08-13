@@ -269,6 +269,7 @@ export type ApiPortal = {
    */
   stsTokenUrl?: string;
   clientId?: string;
+  organizationId?: string;
 };
 
 export type CreateApiPortalInput = {

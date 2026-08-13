@@ -22,7 +22,7 @@ import type {
   UpdateApiPortalInput,
 } from '../../types/domain';
 import { toApiPortal } from '../adapters';
-import { apiPortals } from '../mocks/data';
+import { apiPortals, organizations } from '../mocks/data';
 import { ApiError } from '../types/errors';
 
 /**
@@ -32,18 +32,40 @@ import { ApiError } from '../types/errors';
  * client (platformGet/platformPost against ApiPortalResponse) once
  * platform-api adds one.
  */
-export async function listApiPortals(): Promise<ApiPortal[]> {
-  return apiPortals.map(toApiPortal);
+
+const findOrganizationId = (orgHandle: string): string | undefined =>
+  organizations.find((item) => item.handle === orgHandle)?.id;
+
+export async function listApiPortals(orgHandle: string): Promise<ApiPortal[]> {
+  const orgId = findOrganizationId(orgHandle);
+  return apiPortals
+    .filter((item) => item.organizationId === orgId)
+    .map(toApiPortal);
 }
 
-export async function getApiPortal(id: string): Promise<ApiPortal | undefined> {
-  const found = apiPortals.find((item) => item.id === id);
+export async function getApiPortal(
+  orgHandle: string,
+  id: string
+): Promise<ApiPortal | undefined> {
+  const orgId = findOrganizationId(orgHandle);
+  const found = apiPortals.find(
+    (item) => item.id === id && item.organizationId === orgId
+  );
   return found ? toApiPortal(found) : undefined;
 }
 
 export async function createApiPortal(
+  orgHandle: string,
   input: CreateApiPortalInput
 ): Promise<ApiPortal> {
+  const orgId = findOrganizationId(orgHandle);
+  if (apiPortals.some((item) => item.organizationId === orgId && item.handle === input.handle)) {
+    throw new ApiError(
+      'API Portal handle already exists in organization',
+      'CONFLICT',
+      409
+    );
+  }
   // Picked explicitly (not `...input`) so `clientSecret` — the one genuinely
   // write-only field — never ends up on the stored/returned record.
   // stsTokenUrl/clientId are not secret and are stored/returned normally.
@@ -58,16 +80,21 @@ export async function createApiPortal(
     clientId: input.clientId,
     workflowStatus: 'pending',
     createdAt: new Date().toISOString(),
+    organizationId: orgId,
   };
   apiPortals.push(apiPortal);
   return toApiPortal(apiPortal);
 }
 
 export async function updateApiPortal(
+  orgHandle: string,
   id: string,
   input: UpdateApiPortalInput
 ): Promise<ApiPortal> {
-  const index = apiPortals.findIndex((item) => item.id === id);
+  const orgId = findOrganizationId(orgHandle);
+  const index = apiPortals.findIndex(
+    (item) => item.id === id && item.organizationId === orgId
+  );
   if (index < 0) {
     throw new ApiError('API Portal not found', 'NOT_FOUND', 404);
   }
@@ -85,8 +112,14 @@ export async function updateApiPortal(
   return toApiPortal(updated);
 }
 
-export async function deleteApiPortal(id: string): Promise<void> {
-  const index = apiPortals.findIndex((item) => item.id === id);
+export async function deleteApiPortal(
+  orgHandle: string,
+  id: string
+): Promise<void> {
+  const orgId = findOrganizationId(orgHandle);
+  const index = apiPortals.findIndex(
+    (item) => item.id === id && item.organizationId === orgId
+  );
   if (index < 0) {
     throw new ApiError('API Portal not found', 'NOT_FOUND', 404);
   }

@@ -342,6 +342,7 @@ export const toApiPortal = (value: unknown): ApiPortal => {
     createdAt: asOptionalString(source.createdAt),
     stsTokenUrl: asOptionalString(source.stsTokenUrl),
     clientId: asOptionalString(source.clientId),
+    organizationId: asOptionalString(source.organizationId),
   };
 };
 
