@@ -57,7 +57,7 @@ export function ApiPortalCreatePage() {
   const { orgHandle = '' } = useParams();
   const navigate = useNavigate();
   const { notify } = useNotifications();
-  const createApiPortal = useCreateApiPortal();
+  const createApiPortal = useCreateApiPortal(orgHandle);
 
   const [displayName, setDisplayName] = useState('');
   const [handle, setHandle] = useState('');
