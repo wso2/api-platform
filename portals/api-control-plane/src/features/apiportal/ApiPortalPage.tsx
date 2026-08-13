@@ -133,9 +133,13 @@ function ApiPortalCard({
   const copyUrl = (event: React.MouseEvent) => {
     event.stopPropagation();
     if (!apiPortal.url) return;
-    navigator.clipboard?.writeText(apiPortal.url).catch(() => undefined);
-    setCopied(true);
-    setTimeout(() => setCopied(false), 1400);
+    navigator.clipboard
+      ?.writeText(apiPortal.url)
+      .then(() => {
+        setCopied(true);
+        setTimeout(() => setCopied(false), 1400);
+      })
+      .catch(() => undefined);
   };
 
   const closeMenu = (event?: React.MouseEvent) => {
