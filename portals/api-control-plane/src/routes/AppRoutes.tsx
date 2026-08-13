@@ -28,6 +28,7 @@ import {
   SessionExpiredPage,
   UnauthorizedPage,
 } from '../features/system/SystemPages';
+import { useMockApi } from '../api/shared/apiClientUtils';
 import { ConsoleScopeProvider } from '../scope/ConsoleScopeProvider';
 import AppLayout from '../layouts/AppLayout';
 import { ProtectedRoute } from './ProtectedRoute';
@@ -139,15 +140,19 @@ export function AppRoutes() {
           <Route path={routes.gateways()} element={<GatewaysPage />} />
           <Route path={routes.newGateway()} element={<GatewayCreatePage />} />
           <Route path={routes.gateway()} element={<GatewayDetailPage />} />
-          <Route path={routes.apiPortal()} element={<ApiPortalPage />} />
-          <Route
-            path={routes.newApiPortal()}
-            element={<ApiPortalCreatePage />}
-          />
-          <Route
-            path={routes.apiPortalDetail()}
-            element={<ApiPortalDetailPage />}
-          />
+          {useMockApi() && (
+            <>
+              <Route path={routes.apiPortal()} element={<ApiPortalPage />} />
+              <Route
+                path={routes.newApiPortal()}
+                element={<ApiPortalCreatePage />}
+              />
+              <Route
+                path={routes.apiPortalDetail()}
+                element={<ApiPortalDetailPage />}
+              />
+            </>
+          )}
           <Route path={routes.projectHome()} element={<ProjectHomePage />} />
           <Route path={routes.apis()} element={<ApiListPage />} />
           <Route path={routes.newApi()} element={<ApiCreatePage />} />

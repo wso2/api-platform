@@ -27,6 +27,7 @@ import {
   Terminal,
 } from '@wso2/oxygen-ui-icons-react';
 
+import { useMockApi as isMockApiEnabled } from '../api/shared/apiClientUtils';
 import { routes } from '../routes/paths';
 import type { NavigationDefinition } from './navigationTypes';
 
@@ -67,6 +68,9 @@ export const navigationRegistry: NavigationDefinition[] = [
     level: 'organization',
     order: 35,
     icon: <Globe />,
+    // API Portal has no platform-api backend yet — see apiPortalClient.ts.
+    // Hide the nav entry outside mock mode until a real backend exists.
+    isVisible: () => isMockApiEnabled(),
     to: ({ params }) =>
       params.orgHandle ? routes.apiPortal(params.orgHandle) : undefined,
     match: (pathname) =>
