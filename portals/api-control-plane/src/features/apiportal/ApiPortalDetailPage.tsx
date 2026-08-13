@@ -136,7 +136,7 @@ export function ApiPortalDetailPage() {
   const save = () => {
     updateApiPortal.mutate(
       {
-        name,
+        name: name.trim(),
         url: url.trim(),
         authType,
         description: description || undefined,
