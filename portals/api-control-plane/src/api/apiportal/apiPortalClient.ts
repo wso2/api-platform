@@ -23,12 +23,16 @@ import type {
 } from '../../types/domain';
 import { toApiPortal } from '../adapters';
 import { apiPortals, organizations } from '../mocks/data';
+import { delay, useMockApi } from '../shared/apiClientUtils';
 import { ApiError } from '../types/errors';
 
 /**
  * API Portal management has no platform-api backend yet (console-only feature
- * for now), so this always operates on the in-memory mock store — unlike
- * gatewayClient, there is no real REST endpoint to call. Swap this for a real
+ * for now) — unlike gatewayClient, there is no real REST endpoint to call, so
+ * there's no usePlatformApi() branch. Every method still gates on
+ * useMockApi() so a non-mock deployment gets an explicit error/empty result
+ * instead of silently writing to (and reading back from) the in-memory mock
+ * store as if it were persisted. Swap the `!useMockApi()` branches for a real
  * client (platformGet/platformPost against ApiPortalResponse) once
  * platform-api adds one.
  */
@@ -37,6 +41,10 @@ const findOrganizationId = (orgHandle: string): string | undefined =>
   organizations.find((item) => item.handle === orgHandle)?.id;
 
 export async function listApiPortals(orgHandle: string): Promise<ApiPortal[]> {
+  if (!useMockApi()) {
+    return [];
+  }
+  await delay();
   const orgId = findOrganizationId(orgHandle);
   return apiPortals
     .filter((item) => item.organizationId === orgId)
@@ -47,6 +55,10 @@ export async function getApiPortal(
   orgHandle: string,
   id: string
 ): Promise<ApiPortal | undefined> {
+  if (!useMockApi()) {
+    return undefined;
+  }
+  await delay();
   const orgId = findOrganizationId(orgHandle);
   const found = apiPortals.find(
     (item) => item.id === id && item.organizationId === orgId
@@ -58,6 +70,10 @@ export async function createApiPortal(
   orgHandle: string,
   input: CreateApiPortalInput
 ): Promise<ApiPortal> {
+  if (!useMockApi()) {
+    throw new ApiError('API Portal creation requires the platform API', 'UNKNOWN');
+  }
+  await delay();
   const orgId = findOrganizationId(orgHandle);
   if (apiPortals.some((item) => item.organizationId === orgId && item.handle === input.handle)) {
     throw new ApiError(
@@ -93,6 +109,10 @@ export async function updateApiPortal(
   id: string,
   input: UpdateApiPortalInput
 ): Promise<ApiPortal> {
+  if (!useMockApi()) {
+    throw new ApiError('API Portal update requires the platform API', 'UNKNOWN');
+  }
+  await delay();
   const orgId = findOrganizationId(orgHandle);
   const index = apiPortals.findIndex(
     (item) => item.id === id && item.organizationId === orgId
@@ -120,6 +140,10 @@ export async function deleteApiPortal(
   orgHandle: string,
   id: string
 ): Promise<void> {
+  if (!useMockApi()) {
+    throw new ApiError('API Portal deletion requires the platform API', 'UNKNOWN');
+  }
+  await delay();
   const orgId = findOrganizationId(orgHandle);
   const index = apiPortals.findIndex(
     (item) => item.id === id && item.organizationId === orgId
