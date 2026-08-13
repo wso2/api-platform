@@ -1812,14 +1812,18 @@ func TestDefaultConfig(t *testing.T) {
 	assert.Equal(t, 5*time.Minute, hcm.StreamIdleTimeout, "default stream_idle_timeout should be 5m")
 	assert.Equal(t, time.Hour, hcm.IdleTimeout, "default idle_timeout should be 1h")
 
-	// TLS 1.2-1.3 with a hybrid post-quantum + classical ECDH curve preference
-	// list must be available by default on both upstream and downstream.
+	// TLS 1.2-1.3 must be available by default on both upstream and downstream.
+	// ECDH curves default to classical only (X25519, P-256): prepending a hybrid
+	// post-quantum group is an explicit per-deployment opt-in (see the EcdhCurves
+	// field doc), not a default, because an already-running Envoy instance that
+	// doesn't recognize the curve name would NACK the xDS update rather than
+	// picking up the change.
 	assert.Equal(t, "TLS1_2", cfg.Router.DownstreamTLS.MinimumProtocolVersion)
 	assert.Equal(t, "TLS1_3", cfg.Router.DownstreamTLS.MaximumProtocolVersion)
-	assert.Equal(t, "X25519MLKEM768,X25519,P-256", cfg.Router.DownstreamTLS.EcdhCurves)
+	assert.Equal(t, "X25519,P-256", cfg.Router.DownstreamTLS.EcdhCurves)
 	assert.Equal(t, "TLS1_2", cfg.Router.Upstream.TLS.MinimumProtocolVersion)
 	assert.Equal(t, "TLS1_3", cfg.Router.Upstream.TLS.MaximumProtocolVersion)
-	assert.Equal(t, "X25519MLKEM768,X25519,P-256", cfg.Router.Upstream.TLS.EcdhCurves)
+	assert.Equal(t, "X25519,P-256", cfg.Router.Upstream.TLS.EcdhCurves)
 }
 
 func TestLoadConfig_HCMTimeouts(t *testing.T) {

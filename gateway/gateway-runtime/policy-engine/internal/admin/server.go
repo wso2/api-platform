@@ -20,6 +20,7 @@ package admin
 
 import (
 	"context"
+	"crypto/tls"
 	"fmt"
 	"log/slog"
 	"net"
@@ -37,6 +38,7 @@ import (
 type Server struct {
 	cfg        *config.AdminConfig
 	httpServer *http.Server
+	tlsServer  *http.Server // nil unless cfg.TLS.Enabled
 }
 
 // NewServer creates a new admin server
@@ -69,14 +71,80 @@ func NewServer(cfg *config.AdminConfig, k *kernel.Kernel, reg *registry.PolicyRe
 		ReadHeaderTimeout: 30 * time.Second,
 	}
 
+	// TLS listener is additive: served alongside, not instead of, the
+	// plaintext listener above, on the same mux — every route keeps the same
+	// IP-allowlist/config_dump gating regardless of which listener it's
+	// reached through. Config validation (Config.Validate) already rejects a
+	// bad EcdhCurves/Ciphers/protocol-version value before this ever runs in
+	// production, so a parse failure here can only come from a caller that
+	// bypassed validation — fail safe by leaving the TLS listener disabled
+	// rather than panicking.
+	var tlsServer *http.Server
+	if cfg.TLS.Enabled {
+		tlsConfig, err := buildAdminTLSConfig(&cfg.TLS)
+		if err != nil {
+			slog.Error("invalid admin.tls config, admin TLS listener disabled", "error", err)
+		} else {
+			tlsServer = &http.Server{
+				Addr:              fmt.Sprintf(":%d", cfg.TLS.Port),
+				Handler:           mux,
+				ReadHeaderTimeout: 30 * time.Second,
+				TLSConfig:         tlsConfig,
+			}
+		}
+	}
+
 	return &Server{
 		cfg:        cfg,
 		httpServer: httpServer,
+		tlsServer:  tlsServer,
 	}
 }
 
-// Start starts the admin HTTP server
+// buildAdminTLSConfig translates an AdminTLSConfig into a tls.Config: bounded
+// protocol version range, an optional cipher-suite restriction (TLS 1.2 and
+// below only — TLS 1.3 suite selection isn't configurable in Go's
+// crypto/tls), and the ECDH/group preference list, PQC hybrid group included
+// when the operator has opted in.
+func buildAdminTLSConfig(cfg *config.AdminTLSConfig) (*tls.Config, error) {
+	if err := config.ValidateAdminTLSVersions(cfg.MinimumProtocolVersion, cfg.MaximumProtocolVersion); err != nil {
+		return nil, err
+	}
+	minVersion, _ := config.ParseAdminTLSVersion(cfg.MinimumProtocolVersion)
+	maxVersion, _ := config.ParseAdminTLSVersion(cfg.MaximumProtocolVersion)
+
+	cipherSuites, err := config.ParseAdminCiphers(cfg.Ciphers)
+	if err != nil {
+		return nil, err
+	}
+
+	curves, err := config.ParseAdminEcdhCurves(cfg.EcdhCurves)
+	if err != nil {
+		return nil, err
+	}
+
+	return &tls.Config{
+		MinVersion:       minVersion,
+		MaxVersion:       maxVersion,
+		CipherSuites:     cipherSuites, // nil == Go's own secure default set/order
+		CurvePreferences: curves,
+	}, nil
+}
+
+// Start starts the admin HTTP server(s): the plaintext listener always, and —
+// when configured — the TLS listener in the background alongside it. Blocks
+// on the plaintext listener, matching the previous single-listener behavior
+// callers already depend on.
 func (s *Server) Start(ctx context.Context) error {
+	if s.tlsServer != nil {
+		go func() {
+			slog.InfoContext(ctx, "Starting admin TLS HTTP server", "port", s.cfg.TLS.Port)
+			if err := s.tlsServer.ListenAndServeTLS(s.cfg.TLS.CertPath, s.cfg.TLS.KeyPath); err != nil && err != http.ErrServerClosed {
+				slog.ErrorContext(ctx, "Admin TLS server error", "error", err)
+			}
+		}()
+	}
+
 	slog.InfoContext(ctx, "Starting admin HTTP server",
 		"port", s.cfg.Port,
 		"allowed_ips", s.cfg.AllowedIPs)
@@ -88,10 +156,16 @@ func (s *Server) Start(ctx context.Context) error {
 	return nil
 }
 
-// Stop gracefully stops the admin HTTP server
+// Stop gracefully stops the admin HTTP server(s)
 func (s *Server) Stop(ctx context.Context) error {
 	slog.InfoContext(ctx, "Stopping admin HTTP server")
-	return s.httpServer.Shutdown(ctx)
+	err := s.httpServer.Shutdown(ctx)
+	if s.tlsServer != nil {
+		if tlsErr := s.tlsServer.Shutdown(ctx); tlsErr != nil && err == nil {
+			err = tlsErr
+		}
+	}
+	return err
 }
 
 // configDumpEnabledMiddleware gates /config_dump behind an explicit enable flag
