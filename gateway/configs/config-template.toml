@@ -13,6 +13,42 @@ shutdown_timeout = "15s"
 # It is recommended to use a uuid_v7 for this to improve db efficiency.
 gateway_id = '{{ env "APIP_GW_CONTROLLER_SERVER_GATEWAY_ID" "platform-gateway-id" }}'
 
+[controller.server.tls]
+# Starts a second, TLS-only REST API listener on `port` below, serving the
+# same management API as the plaintext listener on server.api_port above.
+# Off by default: no certificate is provisioned by default, and the
+# plaintext listener keeps working either way.
+enabled = false
+port = 9093
+cert_path = ""
+key_path = ""
+# TLS version bounds, one of "TLS1_0", "TLS1_1", "TLS1_2", "TLS1_3". Same
+# vocabulary as router.downstream_tls/upstream_tls below for consistency
+# within this file, though enforced by a different TLS stack (Go's own
+# crypto/tls here, Envoy/BoringSSL there).
+minimum_protocol_version = "TLS1_2"
+maximum_protocol_version = "TLS1_3"
+# Comma-separated Go crypto/tls cipher suite names (e.g.
+# "TLS_ECDHE_ECDSA_WITH_AES_128_GCM_SHA256"), restricting which suites this
+# listener negotiates. Empty by default -- Go's own secure default set/order
+# applies. Only affects TLS 1.2 and below; TLS 1.3 suite selection is fixed
+# and not configurable in Go's crypto/tls. Note this is a different naming
+# scheme than router.downstream_tls's `ciphers` below (OpenSSL/BoringSSL
+# names like "ECDHE-ECDSA-AES128-GCM-SHA256") -- see crypto/tls.CipherSuites
+# for the names this listener accepts.
+ciphers = ""
+# Comma-separated TLS 1.3 key-exchange groups, most preferred first.
+# Classical curves only by default. A hybrid post-quantum group (e.g.
+# "X25519MLKEM768", FIPS 203 ML-KEM-768 + X25519) can be prepended as an
+# explicit opt-in once the clients reaching this listener are confirmed to
+# support it. This listener is served by this process's own Go crypto/tls
+# (1.23+ implements X25519MLKEM768 natively), not pushed as xDS config to a
+# separate Envoy process, so enabling it here does not carry the "already-
+# running peer NACKs the update" risk documented on router.downstream_tls's
+# ecdh_curves below -- TLS 1.3 negotiation just falls back to a later
+# classical entry in this same list for a client that doesn't offer it.
+ecdh_curves = "X25519,P-256"
+
 [controller.admin_server]
 # Dedicated admin/debug HTTP server for config dump and xDS sync endpoints.
 # Kept enabled by default because it also serves /health, used by Kubernetes
