@@ -31,6 +31,9 @@ const roleScopeMap = require('./roleScopeMap');
 // utils/constants.js has no imports of its own, so pulling the route constants in here
 // cannot create a cycle back through the config loader.
 const routeConstants = require('../utils/constants');
+// db/rebind.js is a pure helper module with no requires of its own (db/driver.js is
+// what requires *this* module), so taking the dialect name table from it cannot cycle.
+const { DIALECTS, DRIVER_ALIASES, normalizeDriver } = require('../db/rebind');
 
 // Load api-platform.env if present (silently ignored if absent)
 try {
@@ -391,6 +394,37 @@ if (config.designMode?.enabled) {
     requireHexSecret(config.security.encryptionKey, 'encryptionKey');
     requireHexSecret(config.security.sessionSecret, 'sessionSecret');
 }
+
+/**
+ * Fail-closed startup check: database.driver must be a recognised spelling, and
+ * is rewritten in place to its canonical dialect before anything reads it.
+ *
+ * This runs BEFORE validateDatabasePoolConfig below, and that ordering is
+ * load-bearing: the pool check applies only to the server-backed dialects, so
+ * against an un-normalized `sqlserver` it would take its early return and skip
+ * validation entirely — an invalid pool setting would then reach
+ * mssql.ConnectionPool() unchecked, which is exactly what that check exists to
+ * prevent.
+ *
+ * An unrecognised driver aborts startup here rather than at the first query.
+ * db/driver.js does throw on an unknown dialect, but only when the adapter is
+ * first loaded — late enough to look like a runtime fault (and, in Kubernetes,
+ * a crash-loop with the real cause buried) instead of a plain config error.
+ */
+function normalizeDatabaseDriver(database) {
+    const canonical = normalizeDriver(database.driver);
+    if (!canonical) {
+        fatalConfig(
+            `database.driver must be one of: ${Object.keys(DRIVER_ALIASES).join(', ')} ` +
+            `(got ${JSON.stringify(database.driver)}). Aliases are accepted and normalized — ` +
+            `sqlite3 -> ${DIALECTS.SQLITE}, postgresql/pgx -> ${DIALECTS.POSTGRES}, ` +
+            `sqlserver -> ${DIALECTS.MSSQL} — so the same spelling works here and in platform-api.`
+        );
+    }
+    database.driver = canonical;
+}
+
+normalizeDatabaseDriver(config.database);
 
 /**
  * Fail-closed startup check: database connection-pool settings must resolve to

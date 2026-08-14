@@ -21,6 +21,7 @@ import { useLocation } from 'react-router-dom';
 
 import { runtimeConfig } from '../config/runtime';
 import { useConsoleScope } from '../scope/ConsoleScopeProvider';
+import { buildScopedExtensionPath, useExtensions } from '../extensions';
 import { navigationRegistry } from './navigationRegistry';
 import {
   NAVIGATION_GROUP_BY_LEVEL,
@@ -45,37 +46,81 @@ const isFeatureEnabled = (definition: NavigationDefinition) =>
 export const useNavigationItems = (): NavigationItem[] => {
   const scope = useConsoleScope();
   const location = useLocation();
+  const extensions = useExtensions();
 
-  return useMemo(
-    () =>
-      navigationRegistry
-        .filter((definition) => isLevelAvailable(definition, scope))
-        .filter(isFeatureEnabled)
-        .filter((definition) => definition.isVisible?.(scope) ?? true)
-        .map((definition) => {
-          const to = definition.to(scope);
-          if (!to) return undefined;
-          return {
-            group: definition.group ?? NAVIGATION_GROUP_BY_LEVEL[definition.level],
-            icon: definition.icon,
-            id: definition.id,
-            isActive: definition.match
-              ? definition.match(location.pathname)
-              : location.pathname === to,
-            label: definition.label,
-            to,
-          };
-        })
-        .filter(Boolean)
-        .sort((left, right) => {
-          const leftOrder =
-            navigationRegistry.find((item) => item.id === left?.id)?.order ?? 0;
-          const rightOrder =
-            navigationRegistry.find((item) => item.id === right?.id)?.order ?? 0;
-          return leftOrder - rightOrder;
-        }) as NavigationItem[],
-    [location.pathname, scope]
-  );
+  return useMemo(() => {
+    // Host-injected extensions are converted to the same NavigationDefinition
+    // shape the built-in registry uses, so they run through one filter/sort
+    // pipeline instead of a parallel "Cloud category" implementation.
+    const extensionDefinitions: NavigationDefinition[] = extensions.map(
+      (extension) => {
+        const isDescendantRoute = extension.routePath.endsWith('/*');
+        const routeSuffix = extension.routePath.replace(/\/\*$/, '');
+        const routeSegment = `/${routeSuffix}`;
+        return {
+          group: extension.group,
+          icon: extension.icon,
+          id: extension.id,
+          isVisible: extension.isVisible,
+          label: extension.label,
+          level: extension.level,
+          match: (pathname) => {
+            const index = pathname.indexOf(routeSegment);
+            if (index === -1) return false;
+            const charAfter = pathname[index + routeSegment.length];
+            // Match only a complete path segment: nothing after it, or (for
+            // a `/*` route) a further `/` continuing into a descendant path.
+            return charAfter === undefined || (isDescendantRoute && charAfter === '/');
+          },
+          order: extension.order,
+          to: (navScope) => {
+            const { orgHandle, projectHandler, apiHandler } = navScope.params;
+            if (!orgHandle) return undefined;
+            if (extension.level === 'project' && !projectHandler) return undefined;
+            if (
+              extension.level === 'api' &&
+              (!projectHandler || !apiHandler)
+            ) {
+              return undefined;
+            }
+            return buildScopedExtensionPath(extension.level, routeSuffix, {
+              apiHandler,
+              orgHandle,
+              projectHandler,
+            });
+          },
+        };
+      }
+    );
+    const combinedRegistry = [...navigationRegistry, ...extensionDefinitions];
+
+    return combinedRegistry
+      .filter((definition) => isLevelAvailable(definition, scope))
+      .filter(isFeatureEnabled)
+      .filter((definition) => definition.isVisible?.(scope) ?? true)
+      .map((definition) => {
+        const to = definition.to(scope);
+        if (!to) return undefined;
+        return {
+          group: definition.group ?? NAVIGATION_GROUP_BY_LEVEL[definition.level],
+          icon: definition.icon,
+          id: definition.id,
+          isActive: definition.match
+            ? definition.match(location.pathname)
+            : location.pathname === to,
+          label: definition.label,
+          to,
+        };
+      })
+      .filter(Boolean)
+      .sort((left, right) => {
+        const leftOrder =
+          combinedRegistry.find((item) => item.id === left?.id)?.order ?? 0;
+        const rightOrder =
+          combinedRegistry.find((item) => item.id === right?.id)?.order ?? 0;
+        return leftOrder - rightOrder;
+      }) as NavigationItem[];
+  }, [location.pathname, scope, extensions]);
 };
 
 /**

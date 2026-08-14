@@ -52,16 +52,22 @@ const DEFAULTS = {
         format: 'text',  // text | json
         consoleOnly: true,
     },
-    // driver uses Sequelize's dialect values (sqlite | postgres).
+    // driver selects the dialect adapter in db/driver.js. Aliases are accepted
+    // and normalized at startup (see db/rebind.js DRIVER_ALIASES), so any spelling
+    // platform-api takes works here too: sqlite3 -> sqlite, postgresql/pgx ->
+    // postgres, sqlserver -> mssql.
     database: {
-        driver: 'sqlite',        // sqlite | postgres
+        driver: 'sqlite',        // sqlite | postgres | mssql
         path: './api-portal.db', // SQLite only
-        host: 'localhost',       // PostgreSQL only
-        port: 5432,              // PostgreSQL only
-        name: 'api_portal',      // PostgreSQL only
-        user: '',                // PostgreSQL / MSSQL only
-        password: '',            // PostgreSQL only
-        // PostgreSQL TLS: disable | verify-full.
+        // Connection settings below apply to both server-backed dialects
+        // (PostgreSQL and SQL Server); SQLite uses `path` instead.
+        host: 'localhost',
+        port: 5432,              // 1433 for SQL Server
+        name: 'api_portal',
+        user: '',
+        password: '',
+        // TLS: disable | verify-full. On SQL Server, verify-full maps to
+        // encrypt + server-certificate verification (see db/adapters/mssqlAdapter.js).
         sslMode: 'disable',
         sslRootCert: './resources/security/ca.pem',  // CA cert — used by verify-full
         // Connection pool — PostgreSQL / MSSQL only. Same defaults both adapters

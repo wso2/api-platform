@@ -83,9 +83,20 @@ gateway:
       # config.toml — see defaultConfig() in pkg/config/config.go. Adding it here
       # only makes the existing implicit default explicit and overridable.
       admin_server:
+        # Kept enabled by default because it also serves /health, used by the
+        # controller's livenessProbe/readinessProbe (see deployment.livenessProbe
+        # above) — disabling this would crash-loop the pod. Gate the sensitive
+        # /config_dump route specifically via config_dump.enabled below instead.
         enabled: true
         port: 9092
         allowed_ips: ["*"]
+        config_dump:
+          # The /config_dump route returns a full snapshot of deployed APIs,
+          # policies, and resolved configuration. Off by default — enable only
+          # when needed for debugging, and prefer reaching it via
+          # `kubectl port-forward` over exposing the admin Service port
+          # (see gateway.controller.service.expose.admin).
+          enabled: false
         pprof:
           # Go runtime profiling (net/http/pprof) served on the admin server, off by
           # default. When enabling, also restrict allowed_ips above or reach it via
@@ -151,7 +162,7 @@ gateway:
         database:
           driver: sqlserver
           # Full DSN takes precedence over individual fields when set.
-          # Example: "sqlserver://user:password@host:1433?database=gateway&encrypt=disable&TrustServerCertificate=true"
+          # Example: "sqlserver://gateway@host:1433?database=gateway"
           dsn: ""
 
           host: ""
@@ -167,26 +178,10 @@ gateway:
           application_name: gateway-controller
 
           options:
-            # Encryption mode: disable, false, true, strict
-            encrypt: disable
-            trust_server_certificate: "true"
-
-        # Legacy SQL Server configuration (backward compatible fallback).
-        # Prefer gateway.config.controller.storage.database for new deployments.
-        sqlserver:
-          dsn: ""
-          host: ""
-          port: 1433
-          database: ""
-          user: ""
-          encrypt: disable
-          trust_server_certificate: true
-          connect_timeout: 5s
-          max_open_conns: 25
-          max_idle_conns: 5
-          conn_max_lifetime: 30m
-          conn_max_idle_time: 5m
-          application_name: gateway-controller
+            # Encryption mode for the connection to SQL Server: disable, false, true, strict.
+            # Defaults to "true" (encrypted). Only set "disable"/"false" for a local/dev SQL Server without TLS.
+            encrypt: "true"
+            trust_server_certificate: "false"
 
       # Policy configuration
       policies:
@@ -262,7 +257,7 @@ gateway:
       # Logging configuration
       logging:
         # Log level: "debug", "info", "warn", or "error"
-        level: debug
+        level: info
 
         # Log format: "json" or "text"
         # - json: Structured JSON format (recommended for production)
@@ -439,8 +434,16 @@ gateway:
           skip_verify: false
 
     policy_engine:
-      # Service name reported to the tracing backend (see gateway.config.tracing below)
+      # Service name reported to the tracing backend
       tracing_service_name: policy-engine
+
+      # Caps decompressed bytes buffered per body (buffered mode) or per chunk
+      # (streaming)
+      request_body:
+        max_decompressed_bytes: 10485760
+
+      response_body:
+        max_decompressed_bytes: 10485760
 
       server:
         # ext_proc port for gRPC server
@@ -448,7 +451,10 @@ gateway:
 
       # Admin HTTP server configuration
       admin:
-        # Enable admin HTTP server for debugging endpoints
+        # Kept enabled by default because it also serves /health, used by the
+        # gateway-runtime's exec health-check.sh probe — disabling this would
+        # crash-loop the pod. Gate the sensitive /config_dump route
+        # specifically via config_dump.enabled below instead.
         enabled: true
 
         # Port for admin HTTP server
@@ -459,6 +465,14 @@ gateway:
         allowed_ips:
           - "*"
           - "127.0.0.1"
+
+        config_dump:
+          # The /config_dump route returns the resolved policy chain and route
+          # configuration. Off by default — enable only when needed for
+          # debugging, and prefer reaching it via `kubectl port-forward` over
+          # exposing the admin Service port (see
+          # gateway.gatewayRuntime.service.expose.policyEngineAdmin).
+          enabled: false
 
         pprof:
           # Go runtime profiling (net/http/pprof), off by default. When enabling,
@@ -596,6 +610,9 @@ gateway:
       # server serves config_dump and xds_sync_status, so keep it pod-internal (reach it
       # via `kubectl port-forward`) unless you need in-cluster Service access. Liveness/
       # readiness probes are unaffected: they hit the container port directly, not the Service.
+      # Independent of gateway.config.controller.admin_server.config_dump.enabled, which
+      # gates whether /config_dump responds at all (off by default) rather than whether
+      # the Service publishes the port.
       expose:
         admin: false
       # Static cluster IP (e.g. "None" for a headless Service). Empty = auto-assign.
@@ -710,6 +727,8 @@ gateway:
       # Prometheus metrics on `port` below.
       enabled: false
       port: 9091
+    # Persistent volume backing the controller's SQLite database file.
+    # Only used when gateway.config.controller.storage.type=sqlite
     persistence:
       enabled: true
       existingClaim: ""
@@ -811,7 +830,8 @@ gateway:
       # over serviceAccount.automountServiceAccountToken). Uncomment to set.
       # automountServiceAccountToken: false
     # Horizontal Pod Autoscaler for the controller.
-    # Requires gateway.config.controller.storage.type=postgres — SQLite does not support multiple replicas.
+    # Requires gateway.config.controller.storage.type=postgres or sqlserver — SQLite does not
+    # support multiple replicas
     # When enabled, replicaCount is managed by HPA and the Deployment's replicas field is omitted.
     hpa:
       enabled: false
@@ -856,6 +876,12 @@ gateway:
         policyEngineMetrics: 9003
       # Publish the runtime admin/debug ports on the Service. Off by default — these serve
       # config_dump and health; keep them pod-internal unless needed. Probes are unaffected.
+      # This is independent of, and in addition to, the process-level defaults: Envoy's
+      # admin interface itself is off unless deployment.env.routerAdminEnabled=true (and
+      # even then binds loopback-only), and policy-engine's /config_dump route is off
+      # unless gateway.config.policy_engine.admin.config_dump.enabled=true. Leave both
+      # OFF here regardless of those flags — this toggle controls k8s Service/network
+      # reachability, not the admin interface's own enablement.
       expose:
         # Router (Envoy) admin: exposes MUTATING endpoints (/quitquitquit, /healthcheck/fail,
         # /runtime_modify) — leave OFF unless you fully trust in-cluster network access.
@@ -902,6 +928,15 @@ gateway:
         gatewayControllerHost: ""
         logLevel: info
         moesifKey: ""
+        # Router (Envoy) admin interface (config_dump, stats, /runtime_modify, etc.).
+        # Off by default — it isn't even present in the static Envoy bootstrap unless
+        # this is true, and is bound to loopback-only when enabled, so it's never
+        # reachable outside the pod's network namespace either way. Enabling it also
+        # restores graceful-drain-on-SIGTERM (see docker-entrypoint.sh), at the cost of
+        # health-check.sh falling back to a raw TCP check instead of Envoy's own
+        # /ready when this is off. See also gateway.gatewayRuntime.service.expose.routerAdmin
+        # to control whether the port is published on the k8s Service (separate concern).
+        routerAdminEnabled: false
       extraEnv: []
       # extraEnvFrom:
       #   - configMapRef:

@@ -17,7 +17,7 @@
  */
 
 import type { ReactNode } from 'react';
-import { Box, Card, Stack, Tooltip, Typography } from '@wso2/oxygen-ui';
+import { Alert, Box, Card, Stack, Tooltip, Typography } from '@wso2/oxygen-ui';
 import { Lock } from '@wso2/oxygen-ui-icons-react';
 
 export const GATEWAY_MANAGED_ARTIFACT_TOOLTIP =
@@ -47,6 +47,29 @@ export function GatewayArtifactReadOnlyBanner({
         </Typography>
       </Stack>
     </Card>
+  );
+}
+
+/**
+ * Warning shown inside the delete confirmation dialog of a gateway-created
+ * (data-plane-originated) artifact.
+ * `artifactType` is the user-facing kind ("LLM Provider", "App LLM Proxy",
+ * "MCP Proxy"); `artifactName` is the artifact's display name.
+ */
+export function GatewayArtifactDeleteWarning({
+  artifactType,
+  artifactName,
+}: {
+  artifactType: string;
+  artifactName?: string;
+}) {
+  return (
+    <Alert severity="warning" sx={{ mb: 2 }}>
+      This {artifactType} was created from a gateway. Make sure you have
+      undeployed{' '}
+      {artifactName ? <strong>{artifactName}</strong> : `this ${artifactType}`}{' '}
+      from the gateways first.
+    </Alert>
   );
 }
 

@@ -30,6 +30,10 @@ import {
 } from '../features/system/SystemPages';
 import { ConsoleScopeProvider } from '../scope/ConsoleScopeProvider';
 import AppLayout from '../layouts/AppLayout';
+import {
+  buildScopedExtensionPath,
+  type ApiControlPlaneExtension,
+} from '../extensions';
 import { ProtectedRoute } from './ProtectedRoute';
 import { routes } from './paths';
 
@@ -100,7 +104,23 @@ const SettingsPage = lazy(() =>
   }))
 );
 
-export function AppRoutes() {
+export type AppRoutesProps = {
+  extensions?: readonly ApiControlPlaneExtension[];
+};
+
+export function AppRoutes({ extensions = [] }: AppRoutesProps) {
+  const extensionRoutes = extensions.map((extension) => (
+    <Route
+      key={extension.id}
+      path={buildScopedExtensionPath(extension.level, extension.routePath, {
+        apiHandler: ':apiHandler',
+        orgHandle: ':orgHandle',
+        projectHandler: ':projectHandler',
+      })}
+      element={extension.element}
+    />
+  ));
+
   return (
     <Routes>
       <Route path={routes.login} element={<LoginPage />} />
@@ -133,6 +153,7 @@ export function AppRoutes() {
           <Route path={routes.apiManage()} element={<ManagePage />} />
           <Route path={routes.runtimeLogs()} element={<RuntimeLogsPage />} />
           <Route path={routes.settings()} element={<SettingsPage />} />
+          {extensionRoutes}
           <Route path="*" element={<NotFoundPage />} />
         </Route>
       </Route>

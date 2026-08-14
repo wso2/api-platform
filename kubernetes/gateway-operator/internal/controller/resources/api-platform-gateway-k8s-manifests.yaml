@@ -34,9 +34,10 @@ spec:
     - name: "8080"
       port: 8080
       targetPort: 8080
-    - name: "9901"
-      port: 9901
-      targetPort: 9901
+    # Envoy admin (9901) is intentionally NOT published here — it's disabled by
+    # default in the image (ROUTER_ADMIN_ENABLED=false) and, even when enabled,
+    # binds loopback-only; publishing it on a Service would defeat that. See
+    # kubernetes/helm/gateway-helm-chart's expose.routerAdmin (default false).
   selector:
     io.kompose.service: router
 
@@ -266,16 +267,20 @@ spec:
           imagePullPolicy: IfNotPresent
           livenessProbe:
             httpGet:
-              path: /ready
-              port: 9901
+              # Direct-response route served by the router (Envoy) on the main
+              # traffic listener — see constants.GatewayHealthyPath. Does not
+              # depend on the admin interface, which is disabled by default.
+              path: /_gateway-health/healthy
+              port: 8080
             failureThreshold: 3
             initialDelaySeconds: 30
             periodSeconds: 10
             timeoutSeconds: 5
           readinessProbe:
             httpGet:
-              path: /ready
-              port: 9901
+              # See constants.GatewayReadyPath.
+              path: /_gateway-health/ready
+              port: 8080
             failureThreshold: 3
             initialDelaySeconds: 10
             periodSeconds: 5
@@ -283,8 +288,6 @@ spec:
           name: router
           ports:
             - containerPort: 8080
-              protocol: TCP
-            - containerPort: 9901
               protocol: TCP
       restartPolicy: Always
 

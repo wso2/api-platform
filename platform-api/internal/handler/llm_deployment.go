@@ -28,6 +28,7 @@ import (
 	"github.com/wso2/api-platform/platform-api/internal/apperror"
 	"github.com/wso2/api-platform/platform-api/internal/constants"
 	"github.com/wso2/api-platform/platform-api/internal/middleware"
+	"github.com/wso2/api-platform/platform-api/internal/router"
 	"github.com/wso2/api-platform/platform-api/internal/service"
 
 	"github.com/wso2/go-httpkit/httputil"
@@ -240,7 +241,7 @@ func (h *LLMProviderDeploymentHandler) GetLLMProviderDeployments(w http.Response
 }
 
 // RegisterRoutes registers all LLM provider deployment-related routes
-func (h *LLMProviderDeploymentHandler) RegisterRoutes(mux *http.ServeMux) {
+func (h *LLMProviderDeploymentHandler) RegisterRoutes(mux router.Router) {
 	base := constants.APIBasePath + "/llm-providers/{llmProviderId}"
 	mux.HandleFunc("POST "+base+"/deployments", middleware.MapErrors(h.slogger, h.DeployLLMProvider))
 	mux.HandleFunc("POST "+base+"/deployments/{deploymentId}/undeploy", middleware.MapErrors(h.slogger, h.UndeployLLMProviderDeployment))
@@ -433,7 +434,7 @@ func (h *LLMProxyDeploymentHandler) GetLLMProxyDeployments(w http.ResponseWriter
 }
 
 // RegisterRoutes registers all LLM proxy deployment-related routes
-func (h *LLMProxyDeploymentHandler) RegisterRoutes(mux *http.ServeMux) {
+func (h *LLMProxyDeploymentHandler) RegisterRoutes(mux router.Router) {
 	base := constants.APIBasePath + "/llm-proxies/{llmProxyId}"
 	mux.HandleFunc("POST "+base+"/deployments", middleware.MapErrors(h.slogger, h.DeployLLMProxy))
 	mux.HandleFunc("POST "+base+"/deployments/{deploymentId}/undeploy", middleware.MapErrors(h.slogger, h.UndeployLLMProxyDeployment))

@@ -24,14 +24,27 @@
 #
 # Exit 0 = healthy, Exit 1 = unhealthy
 
+ROUTER_ADMIN_ENABLED="${ROUTER_ADMIN_ENABLED:-false}"
 ROUTER_ADMIN_PORT="${ROUTER_ADMIN_PORT:-9901}"
+ROUTER_HTTP_PORT="${ROUTER_HTTP_PORT:-8080}"
 POLICY_ENGINE_ADMIN_PORT="${POLICY_ENGINE_ADMIN_PORT:-9002}"
 
-# Check Router (Envoy) readiness — expect HTTP 200
-ROUTER_STATUS=$(curl -s -o /dev/null -w '%{http_code}' "http://localhost:${ROUTER_ADMIN_PORT}/ready")
-if [ "$ROUTER_STATUS" != "200" ]; then
-  echo "Router not ready (HTTP ${ROUTER_STATUS})"
-  exit 1
+# Check Router (Envoy) readiness.
+# The admin interface (/ready) is disabled by default (see docker-entrypoint.sh /
+# ROUTER_ADMIN_ENABLED) — fall back to a raw TCP check against the main listener,
+# which confirms Envoy is up and accepting connections.
+if [ "${ROUTER_ADMIN_ENABLED}" = "true" ]; then
+  ROUTER_STATUS=$(curl -s -o /dev/null -w '%{http_code}' "http://localhost:${ROUTER_ADMIN_PORT}/ready")
+  if [ "$ROUTER_STATUS" != "200" ]; then
+    echo "Router not ready (HTTP ${ROUTER_STATUS})"
+    exit 1
+  fi
+else
+  if ! (exec 3<>"/dev/tcp/127.0.0.1/${ROUTER_HTTP_PORT}") 2>/dev/null; then
+    echo "Router not accepting connections on port ${ROUTER_HTTP_PORT}"
+    exit 1
+  fi
+  exec 3<&- 3>&- 2>/dev/null || true
 fi
 
 # Check Policy Engine health — expect HTTP 200

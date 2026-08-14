@@ -27,6 +27,7 @@ import (
 	"github.com/wso2/api-platform/platform-api/internal/constants"
 	"github.com/wso2/api-platform/platform-api/internal/dto"
 	"github.com/wso2/api-platform/platform-api/internal/middleware"
+	"github.com/wso2/api-platform/platform-api/internal/router"
 	"github.com/wso2/api-platform/platform-api/internal/service"
 
 	"github.com/wso2/go-httpkit/httputil"
@@ -42,7 +43,7 @@ func NewSecretHandler(secretService *service.SecretService, identity *service.Id
 	return &SecretHandler{secretService: secretService, identity: identity, slogger: slogger}
 }
 
-func (h *SecretHandler) RegisterRoutes(mux *http.ServeMux) {
+func (h *SecretHandler) RegisterRoutes(mux router.Router) {
 	mux.HandleFunc("POST "+constants.APIBasePath+"/secrets", middleware.MapErrors(h.slogger, h.CreateSecret))
 	mux.HandleFunc("GET "+constants.APIBasePath+"/secrets", middleware.MapErrors(h.slogger, h.ListSecrets))
 	mux.HandleFunc("GET "+constants.APIBasePath+"/secrets/{secretId}", middleware.MapErrors(h.slogger, h.GetSecret))

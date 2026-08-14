@@ -23,4 +23,7 @@
 // hot-reloading edits across both apps in a single dev server, with no
 // separate "build api-control-plane, then run the host" step.
 export { default as App } from './App';
+export type { AppProps } from './App';
 export { loadRuntimeConfigScripts } from './config/loadRuntimeConfigScripts';
+export type { ApiControlPlaneExtension } from './extensions';
+export { buildScopedExtensionPath } from './extensions';

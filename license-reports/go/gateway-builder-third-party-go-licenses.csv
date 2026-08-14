@@ -1,0 +1,5 @@
+github.com/davecgh/go-spew/spew,https://github.com/davecgh/go-spew/blob/d8f796af33cc/LICENSE,ISC
+github.com/pmezard/go-difflib/difflib,https://github.com/pmezard/go-difflib/blob/5d4384ee4fb2/LICENSE,BSD-3-Clause
+github.com/stretchr/testify,https://github.com/stretchr/testify/blob/v1.11.1/LICENSE,MIT
+golang.org/x/mod,https://cs.opensource.google/go/x/mod/+/v0.37.0:LICENSE,BSD-3-Clause
+gopkg.in/yaml.v3,https://github.com/go-yaml/yaml/blob/v3.0.1/LICENSE,MIT

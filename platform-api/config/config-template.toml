@@ -247,11 +247,16 @@ roles         = []
 # keys at these paths, or point elsewhere by editing the path directly.
 [platform_api.auth.jwt]
 issuer = "platform-api"
-# public_key_file is REQUIRED in every mode (verifies token signatures);
-# private_key_file is REQUIRED only in "file" mode (signs login tokens) and
-# must be the matching half of the pair. Neither is generated — a missing
-# path, unreadable file, or malformed key fails config load. Both files must
-# contain a PEM-encoded RSA key.
+# public_key_file is REQUIRED in "internal_token" and "file" modes (it verifies
+# token signatures); private_key_file is REQUIRED only in "file" mode (signs
+# login tokens) and must be the matching half of the pair. This whole table is
+# unused in "idp" mode — validation goes to the IDP's JWKS there and neither
+# file is ever opened, so neither is required. Neither key is generated — in the
+# modes that need it, a missing path, unreadable file, or malformed key fails
+# config load. Whichever key a mode requires must be a PEM-encoded RSA key; in
+# "file" mode the two must be the matching halves of one pair. When deploying via
+# the Helm chart, both paths must also be absolute and share the same parent
+# directory — the chart mounts that one directory as a single jwt-keys volume.
 public_key_file  = "/etc/platform-api/keys/jwt_public.pem"
 private_key_file = "/etc/platform-api/keys/jwt_private.pem"
 # Lifetime of tokens issued by the file-mode login endpoint (Go duration

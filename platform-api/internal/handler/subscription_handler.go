@@ -30,6 +30,7 @@ import (
 	"github.com/wso2/api-platform/platform-api/internal/constants"
 	"github.com/wso2/api-platform/platform-api/internal/middleware"
 	"github.com/wso2/api-platform/platform-api/internal/model"
+	"github.com/wso2/api-platform/platform-api/internal/router"
 	"github.com/wso2/api-platform/platform-api/internal/service"
 
 	"github.com/wso2/go-httpkit/httputil"
@@ -317,7 +318,7 @@ func requireSubscriptionSubscriberQuery(r *http.Request) (string, error) {
 	return q, nil
 }
 
-func (h *SubscriptionHandler) RegisterRoutes(mux *http.ServeMux) {
+func (h *SubscriptionHandler) RegisterRoutes(mux router.Router) {
 	mux.HandleFunc("POST "+constants.APIBasePath+"/subscriptions", middleware.MapErrors(h.slogger, h.CreateSubscription))
 	mux.HandleFunc("GET "+constants.APIBasePath+"/subscriptions", middleware.MapErrors(h.slogger, h.ListSubscriptions))
 	mux.HandleFunc("GET "+constants.APIBasePath+"/subscriptions/{subscriptionId}", middleware.MapErrors(h.slogger, h.GetSubscription))

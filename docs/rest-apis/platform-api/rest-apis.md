@@ -1512,7 +1512,7 @@ allows external platforms to inject API keys to hybrid gateways.
 <aside class="warning">
 This operation requires a <strong>Bearer JWT</strong> access token in the <code>Authorization</code> header.
 
-Required scopes (the token must carry at least one of): `ap:rest_api:api_key:create`, `ap:rest_api:api_key:manage`, `ap:rest_api:manage`
+Required scopes (the token must carry at least one of): `ap:rest_api:api_key:create`, `ap:rest_api:api_key:manage`, `ap:rest_api:manage`, `ap:api_key:all:manage`
 
 </aside>
 
@@ -1669,7 +1669,7 @@ This endpoint allows external platforms to rotate API keys on hybrid gateways.
 <aside class="warning">
 This operation requires a <strong>Bearer JWT</strong> access token in the <code>Authorization</code> header.
 
-Required scopes (the token must carry at least one of): `ap:rest_api:api_key:update`, `ap:rest_api:api_key:manage`, `ap:rest_api:manage`
+Required scopes (the token must carry at least one of): `ap:rest_api:api_key:update`, `ap:rest_api:api_key:manage`, `ap:rest_api:manage`, `ap:api_key:all:manage`
 
 </aside>
 
@@ -1802,7 +1802,7 @@ to revoke API keys on hybrid gateways.
 <aside class="warning">
 This operation requires a <strong>Bearer JWT</strong> access token in the <code>Authorization</code> header.
 
-Required scopes (the token must carry at least one of): `ap:rest_api:api_key:delete`, `ap:rest_api:api_key:manage`, `ap:rest_api:manage`
+Required scopes (the token must carry at least one of): `ap:rest_api:api_key:delete`, `ap:rest_api:api_key:manage`, `ap:rest_api:manage`, `ap:api_key:all:manage`
 
 </aside>
 

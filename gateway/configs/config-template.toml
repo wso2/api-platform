@@ -14,10 +14,20 @@ shutdown_timeout = "15s"
 gateway_id = '{{ env "APIP_GW_CONTROLLER_SERVER_GATEWAY_ID" "platform-gateway-id" }}'
 
 [controller.admin_server]
-# Dedicated admin/debug HTTP server for config dump and xDS sync endpoints
+# Dedicated admin/debug HTTP server for config dump and xDS sync endpoints.
+# Kept enabled by default because it also serves /health, used by Kubernetes
+# liveness/readiness probes; see admin_server.config_dump below to gate the
+# sensitive /config_dump route specifically.
 enabled = true
 port = 9092
 allowed_ips = ["*"]
+
+[controller.admin_server.config_dump]
+# The /config_dump route returns a full snapshot of deployed APIs, policies,
+# and resolved configuration. Off by default — enable only when needed for
+# debugging, and prefer reaching it via `kubectl port-forward` over exposing
+# the admin Service port.
+enabled = false
 
 [controller.admin_server.pprof]
 # Go runtime profiling (net/http/pprof) served on the admin server, off by default.
@@ -312,9 +322,19 @@ max_decompressed_bytes = 10485760
 extproc_port = 9001
 
 [policy_engine.admin]
+# Kept enabled by default because it also serves /health, used by Kubernetes
+# liveness/readiness probes; see admin.config_dump below to gate the
+# sensitive /config_dump route specifically.
 enabled = true
 port = 9002
 allowed_ips = ["*", "127.0.0.1"]
+
+[policy_engine.admin.config_dump]
+# The /config_dump route returns the resolved policy chain and route
+# configuration. Off by default — enable only when needed for debugging, and
+# prefer reaching it via `kubectl port-forward` over exposing the admin
+# Service port.
+enabled = false
 
 [policy_engine.admin.pprof]
 # Go runtime profiling (net/http/pprof) served on the admin server, off by default.

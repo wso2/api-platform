@@ -29,6 +29,10 @@ import { runtimeConfig } from './config/runtime';
 import { AuthProvider } from './features/auth/AuthProvider';
 import { ProductActivation } from './features/billing/ProductActivation';
 import { AppRoutes } from './routes/AppRoutes';
+import {
+  ExtensionsProvider,
+  type ApiControlPlaneExtension,
+} from './extensions';
 
 /**
  * Builds the app's QueryClient with the notification handler already attached,
@@ -56,7 +60,11 @@ function AppQueryProvider({ children }: { children: ReactNode }) {
   );
 }
 
-export default function App() {
+export type AppProps = {
+  extensions?: readonly ApiControlPlaneExtension[];
+};
+
+export default function App({ extensions = [] }: AppProps) {
   return (
     <OxygenUIThemeProvider theme={OxygenTheme}>
       {/*
@@ -71,7 +79,9 @@ export default function App() {
               <BrowserRouter basename={runtimeConfig.appBasePath || undefined}>
                 <AuthProvider>
                   <ProductActivation />
-                  <AppRoutes />
+                  <ExtensionsProvider extensions={extensions}>
+                    <AppRoutes extensions={extensions} />
+                  </ExtensionsProvider>
                 </AuthProvider>
               </BrowserRouter>
             </ErrorBoundary>
