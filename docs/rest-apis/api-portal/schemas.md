@@ -1,6 +1,6 @@
 # Schemas
 
-<h2 id="tocS_Pagination">Pagination</h2>
+## Pagination
 
 <a id="schemapagination"></a>
 <a id="schema_Pagination"></a>
@@ -18,7 +18,7 @@
 
 Standard pagination metadata returned with collection responses.
 
-### Properties
+#### Properties
 
 |Name|Type|Required|Restrictions|Description|
 |---|---|---|---|---|
@@ -26,7 +26,7 @@ Standard pagination metadata returned with collection responses.
 |limit|integer|true|none|Maximum number of records returned in this response.|
 |offset|integer|true|none|Number of records skipped before this page.|
 
-<h2 id="tocS_MessageResponse">MessageResponse</h2>
+## MessageResponse
 
 <a id="schemamessageresponse"></a>
 <a id="schema_MessageResponse"></a>
@@ -40,13 +40,13 @@ Standard pagination metadata returned with collection responses.
 
 ```
 
-### Properties
+#### Properties
 
 |Name|Type|Required|Restrictions|Description|
 |---|---|---|---|---|
 |message|string|true|none|none|
 
-<h2 id="tocS_GenericValue">GenericValue</h2>
+## GenericValue
 
 <a id="schemagenericvalue"></a>
 <a id="schema_GenericValue"></a>
@@ -58,7 +58,7 @@ Standard pagination metadata returned with collection responses.
 
 ```
 
-### Properties
+#### Properties
 
 oneOf
 
@@ -90,7 +90,7 @@ xor
 |---|---|---|---|---|
 |*anonymous*|boolean|false|none|none|
 
-<h2 id="tocS_GenericObject">GenericObject</h2>
+## GenericObject
 
 <a id="schemagenericobject"></a>
 <a id="schema_GenericObject"></a>
@@ -102,11 +102,11 @@ xor
 
 ```
 
-### Properties
+#### Properties
 
 *None*
 
-<h2 id="tocS_ErrorResponse">ErrorResponse</h2>
+## ErrorResponse
 
 <a id="schemaerrorresponse"></a>
 <a id="schema_ErrorResponse"></a>
@@ -128,7 +128,7 @@ xor
 
 ```
 
-### Properties
+#### Properties
 
 |Name|Type|Required|Restrictions|Description|
 |---|---|---|---|---|
@@ -139,13 +139,13 @@ xor
 |» field|string|true|none|none|
 |» message|string|true|none|none|
 
-#### Enumerated Values
+##### Enumerated Values
 
 |Property|Value|
 |---|---|
 |status|error|
 
-<h2 id="tocS_OrganizationResponse">OrganizationResponse</h2>
+## OrganizationResponse
 
 <a id="schemaorganizationresponse"></a>
 <a id="schema_OrganizationResponse"></a>
@@ -168,7 +168,7 @@ xor
 
 ```
 
-### Properties
+#### Properties
 
 |Name|Type|Required|Restrictions|Description|
 |---|---|---|---|---|
@@ -183,7 +183,7 @@ xor
 |createdAt|string(date-time)¦null|false|none|none|
 |updatedAt|string(date-time)¦null|false|none|none|
 
-<h2 id="tocS_OrganizationContentUploadResponse">OrganizationContentUploadResponse</h2>
+## OrganizationContentUploadResponse
 
 <a id="schemaorganizationcontentuploadresponse"></a>
 <a id="schema_OrganizationContentUploadResponse"></a>
@@ -198,14 +198,14 @@ xor
 
 ```
 
-### Properties
+#### Properties
 
 |Name|Type|Required|Restrictions|Description|
 |---|---|---|---|---|
 |id|string|true|none|none|
 |fileName|string|true|none|Original ZIP file name uploaded in the `file` multipart field.|
 
-<h2 id="tocS_OrganizationContentListItemResponse">OrganizationContentListItemResponse</h2>
+## OrganizationContentListItemResponse
 
 <a id="schemaorganizationcontentlistitemresponse"></a>
 <a id="schema_OrganizationContentListItemResponse"></a>
@@ -221,7 +221,7 @@ xor
 
 ```
 
-### Properties
+#### Properties
 
 |Name|Type|Required|Restrictions|Description|
 |---|---|---|---|---|
@@ -229,7 +229,7 @@ xor
 |fileName|string|false|none|none|
 |fileContent|string¦null|false|none|UTF-8 content string returned for stored organization content records.|
 
-<h2 id="tocS_ApiMetadataCreateResponse">ApiMetadataCreateResponse</h2>
+## ApiMetadataCreateResponse
 
 <a id="schemaapimetadatacreateresponse"></a>
 <a id="schema_ApiMetadataCreateResponse"></a>
@@ -302,7 +302,7 @@ xor
 
 ```
 
-### Properties
+#### Properties
 
 allOf
 
@@ -320,7 +320,7 @@ and
 |» endPoints|[ApiEndpointsResponse](#schemaapiendpointsresponse)|false|none|none|
 |» subscriptionPlans|[[SubscriptionPlanResponse](#schemasubscriptionplanresponse)]|false|none|none|
 
-<h2 id="tocS_ApiMetadataResponse">ApiMetadataResponse</h2>
+## ApiMetadataResponse
 
 <a id="schemaapimetadataresponse"></a>
 <a id="schema_ApiMetadataResponse"></a>
@@ -399,7 +399,7 @@ and
 
 ```
 
-### Properties
+#### Properties
 
 allOf
 
@@ -423,7 +423,7 @@ and
 |» createdAt|string(date-time)|false|none|none|
 |» updatedAt|string(date-time)|false|none|none|
 
-<h2 id="tocS_ApiInfoResponse">ApiInfoResponse</h2>
+## ApiInfoResponse
 
 <a id="schemaapiinforesponse"></a>
 <a id="schema_ApiInfoResponse"></a>
@@ -471,7 +471,7 @@ and
 
 Fields are returned at the root of ApiMetadataResponse / ApiMetadataCreateResponse (not nested under an `apiInfo` key) — this schema exists only to share the field set between the two via `allOf`.
 
-### Properties
+#### Properties
 
 |Name|Type|Required|Restrictions|Description|
 |---|---|---|---|---|
@@ -491,7 +491,7 @@ Fields are returned at the root of ApiMetadataResponse / ApiMetadataCreateRespon
 |tags|[string]|false|none|none|
 |labels|[string]|false|none|none|
 
-#### Enumerated Values
+##### Enumerated Values
 
 |Property|Value|
 |---|---|
@@ -506,7 +506,7 @@ Fields are returned at the root of ApiMetadataResponse / ApiMetadataCreateRespon
 |agentVisibility|VISIBLE|
 |agentVisibility|HIDDEN|
 
-<h2 id="tocS_ApiOwnersResponse">ApiOwnersResponse</h2>
+## ApiOwnersResponse
 
 <a id="schemaapiownersresponse"></a>
 <a id="schema_ApiOwnersResponse"></a>
@@ -523,7 +523,7 @@ Fields are returned at the root of ApiMetadataResponse / ApiMetadataCreateRespon
 
 ```
 
-### Properties
+#### Properties
 
 |Name|Type|Required|Restrictions|Description|
 |---|---|---|---|---|
@@ -532,7 +532,7 @@ Fields are returned at the root of ApiMetadataResponse / ApiMetadataCreateRespon
 |businessOwnerEmail|string|false|none|none|
 |technicalOwnerEmail|string|false|none|none|
 
-<h2 id="tocS_ApiEndpointsResponse">ApiEndpointsResponse</h2>
+## ApiEndpointsResponse
 
 <a id="schemaapiendpointsresponse"></a>
 <a id="schema_ApiEndpointsResponse"></a>
@@ -547,14 +547,14 @@ Fields are returned at the root of ApiMetadataResponse / ApiMetadataCreateRespon
 
 ```
 
-### Properties
+#### Properties
 
 |Name|Type|Required|Restrictions|Description|
 |---|---|---|---|---|
 |sandboxURL|string|false|none|none|
 |productionURL|string|false|none|none|
 
-<h2 id="tocS_ApiImageMetadataResponse">ApiImageMetadataResponse</h2>
+## ApiImageMetadataResponse
 
 <a id="schemaapiimagemetadataresponse"></a>
 <a id="schema_ApiImageMetadataResponse"></a>
@@ -569,13 +569,13 @@ Fields are returned at the root of ApiMetadataResponse / ApiMetadataCreateRespon
 
 ```
 
-### Properties
+#### Properties
 
 |Name|Type|Required|Restrictions|Description|
 |---|---|---|---|---|
 |**additionalProperties**|string|false|none|none|
 
-<h2 id="tocS_SubscriptionPlanResponse">SubscriptionPlanResponse</h2>
+## SubscriptionPlanResponse
 
 <a id="schemasubscriptionplanresponse"></a>
 <a id="schema_SubscriptionPlanResponse"></a>
@@ -605,7 +605,7 @@ Fields are returned at the root of ApiMetadataResponse / ApiMetadataCreateRespon
 
 ```
 
-### Properties
+#### Properties
 
 |Name|Type|Required|Restrictions|Description|
 |---|---|---|---|---|
@@ -641,7 +641,7 @@ continued
 |createdAt|string(date-time)|false|none|none|
 |updatedAt|string(date-time)|false|none|none|
 
-#### Enumerated Values
+##### Enumerated Values
 
 |Property|Value|
 |---|---|
@@ -655,7 +655,7 @@ continued
 |timeUnit|MONTH|
 |timeUnit|null|
 
-<h2 id="tocS_LabelResponse">LabelResponse</h2>
+## LabelResponse
 
 <a id="schemalabelresponse"></a>
 <a id="schema_LabelResponse"></a>
@@ -670,14 +670,14 @@ continued
 
 ```
 
-### Properties
+#### Properties
 
 |Name|Type|Required|Restrictions|Description|
 |---|---|---|---|---|
 |id|string|false|none|The label's handle (unique per org). Not the internal database uuid.|
 |displayName|string|false|none|none|
 
-<h2 id="tocS_ApplicationResponse">ApplicationResponse</h2>
+## ApplicationResponse
 
 <a id="schemaapplicationresponse"></a>
 <a id="schema_ApplicationResponse"></a>
@@ -704,7 +704,7 @@ continued
 
 ```
 
-### Properties
+#### Properties
 
 |Name|Type|Required|Restrictions|Description|
 |---|---|---|---|---|
@@ -717,7 +717,7 @@ continued
 |createdAt|string(date-time)|false|none|none|
 |updatedAt|string(date-time)|false|none|none|
 
-<h2 id="tocS_ApplicationKeyMappingSummary">ApplicationKeyMappingSummary</h2>
+## ApplicationKeyMappingSummary
 
 <a id="schemaapplicationkeymappingsummary"></a>
 <a id="schema_ApplicationKeyMappingSummary"></a>
@@ -735,7 +735,7 @@ continued
 
 OAuth client ID mapping entry attached to an application.
 
-### Properties
+#### Properties
 
 |Name|Type|Required|Restrictions|Description|
 |---|---|---|---|---|
@@ -743,14 +743,14 @@ OAuth client ID mapping entry attached to an application.
 |kmId|string|false|none|UUID of the key manager this client ID is linked to.|
 |type|string|false|none|Key type for this mapping.|
 
-#### Enumerated Values
+##### Enumerated Values
 
 |Property|Value|
 |---|---|
 |type|PRODUCTION|
 |type|SANDBOX|
 
-<h2 id="tocS_ViewResponse">ViewResponse</h2>
+## ViewResponse
 
 <a id="schemaviewresponse"></a>
 <a id="schema_ViewResponse"></a>
@@ -773,7 +773,7 @@ OAuth client ID mapping entry attached to an application.
 
 ```
 
-### Properties
+#### Properties
 
 |Name|Type|Required|Restrictions|Description|
 |---|---|---|---|---|
@@ -785,7 +785,7 @@ OAuth client ID mapping entry attached to an application.
 |createdAt|string(date-time)|false|none|none|
 |updatedAt|string(date-time)|false|none|none|
 
-<h2 id="tocS_OrganizationCreateRequest">OrganizationCreateRequest</h2>
+## OrganizationCreateRequest
 
 <a id="schemaorganizationcreaterequest"></a>
 <a id="schema_OrganizationCreateRequest"></a>
@@ -806,7 +806,7 @@ OAuth client ID mapping entry attached to an application.
 
 ```
 
-### Properties
+#### Properties
 
 |Name|Type|Required|Restrictions|Description|
 |---|---|---|---|---|
@@ -819,7 +819,7 @@ OAuth client ID mapping entry attached to an application.
 |cpRefId|string¦null|false|none|Control Plane reference ID, included in outbound webhook event payloads. Not used for authentication.|
 |configuration|object|false|none|Free-form organization configuration.|
 
-<h2 id="tocS_OrganizationUpdateRequest">OrganizationUpdateRequest</h2>
+## OrganizationUpdateRequest
 
 <a id="schemaorganizationupdaterequest"></a>
 <a id="schema_OrganizationUpdateRequest"></a>
@@ -840,7 +840,7 @@ OAuth client ID mapping entry attached to an application.
 
 ```
 
-### Properties
+#### Properties
 
 |Name|Type|Required|Restrictions|Description|
 |---|---|---|---|---|
@@ -853,7 +853,7 @@ OAuth client ID mapping entry attached to an application.
 |cpRefId|string¦null|false|none|Control Plane reference ID, included in outbound webhook event payloads. Not used for authentication.|
 |configuration|object|false|none|Free-form organization configuration.|
 
-<h2 id="tocS_SubscriptionPlanRequest">SubscriptionPlanRequest</h2>
+## SubscriptionPlanRequest
 
 <a id="schemasubscriptionplanrequest"></a>
 <a id="schema_SubscriptionPlanRequest"></a>
@@ -878,7 +878,7 @@ OAuth client ID mapping entry attached to an application.
 
 ```
 
-### Properties
+#### Properties
 
 |Name|Type|Required|Restrictions|Description|
 |---|---|---|---|---|
@@ -924,7 +924,7 @@ xor
 |---|---|---|---|---|
 |» *anonymous*|string|false|none|none|
 
-#### Enumerated Values
+##### Enumerated Values
 
 |Property|Value|
 |---|---|
@@ -940,7 +940,7 @@ xor
 |type|requestcount|
 |type|eventcount|
 
-<h2 id="tocS_LabelRequest">LabelRequest</h2>
+## LabelRequest
 
 <a id="schemalabelrequest"></a>
 <a id="schema_LabelRequest"></a>
@@ -955,14 +955,14 @@ xor
 
 ```
 
-### Properties
+#### Properties
 
 |Name|Type|Required|Restrictions|Description|
 |---|---|---|---|---|
 |id|string|true|none|Desired handle for the label (unique per org), stored as-is.|
 |displayName|string|true|none|none|
 
-<h2 id="tocS_ApplicationRequest">ApplicationRequest</h2>
+## ApplicationRequest
 
 <a id="schemaapplicationrequest"></a>
 <a id="schema_ApplicationRequest"></a>
@@ -978,7 +978,7 @@ xor
 
 ```
 
-### Properties
+#### Properties
 
 |Name|Type|Required|Restrictions|Description|
 |---|---|---|---|---|
@@ -986,7 +986,7 @@ xor
 |id|string|false|none|Immutable, org-scoped slug for the application, stored as its handle. Optional — defaults to the application's `displayName` when omitted.|
 |description|string|true|none|none|
 
-<h2 id="tocS_SubscriptionCreateRequest">SubscriptionCreateRequest</h2>
+## SubscriptionCreateRequest
 
 <a id="schemasubscriptioncreaterequest"></a>
 <a id="schema_SubscriptionCreateRequest"></a>
@@ -1001,14 +1001,14 @@ xor
 
 ```
 
-### Properties
+#### Properties
 
 |Name|Type|Required|Restrictions|Description|
 |---|---|---|---|---|
 |artifactId|string|true|none|API ID.|
 |subscriptionPlanId|string|true|none|API Portal subscription plan ID.|
 
-<h2 id="tocS_SubscriptionUpdateRequest">SubscriptionUpdateRequest</h2>
+## SubscriptionUpdateRequest
 
 <a id="schemasubscriptionupdaterequest"></a>
 <a id="schema_SubscriptionUpdateRequest"></a>
@@ -1022,20 +1022,20 @@ xor
 
 ```
 
-### Properties
+#### Properties
 
 |Name|Type|Required|Restrictions|Description|
 |---|---|---|---|---|
 |status|string|true|none|none|
 
-#### Enumerated Values
+##### Enumerated Values
 
 |Property|Value|
 |---|---|
 |status|ACTIVE|
 |status|INACTIVE|
 
-<h2 id="tocS_SubscriptionChangePlanRequest">SubscriptionChangePlanRequest</h2>
+## SubscriptionChangePlanRequest
 
 <a id="schemasubscriptionchangeplanrequest"></a>
 <a id="schema_SubscriptionChangePlanRequest"></a>
@@ -1050,14 +1050,14 @@ xor
 
 ```
 
-### Properties
+#### Properties
 
 |Name|Type|Required|Restrictions|Description|
 |---|---|---|---|---|
 |artifactId|string|false|none|API ID the subscription belongs to. Optional — if provided, it is validated against the API derived from the existing subscription record and the request is rejected with 400 if they don't match. It is never used as a fallback: if the API cannot be derived from the subscription record, the request fails with 400 regardless of this value.|
 |planId|string|true|none|API Portal subscription plan ID to switch to.|
 
-<h2 id="tocS_SubscriptionResponse">SubscriptionResponse</h2>
+## SubscriptionResponse
 
 <a id="schemasubscriptionresponse"></a>
 <a id="schema_SubscriptionResponse"></a>
@@ -1081,7 +1081,7 @@ xor
 
 Subscription payload.
 
-### Properties
+#### Properties
 
 |Name|Type|Required|Restrictions|Description|
 |---|---|---|---|---|
@@ -1095,14 +1095,14 @@ Subscription payload.
 |createdAt|string(date-time)|false|none|none|
 |updatedAt|string(date-time)|false|none|none|
 
-#### Enumerated Values
+##### Enumerated Values
 
 |Property|Value|
 |---|---|
 |status|ACTIVE|
 |status|INACTIVE|
 
-<h2 id="tocS_ApiKeyRequest">ApiKeyRequest</h2>
+## ApiKeyRequest
 
 <a id="schemaapikeyrequest"></a>
 <a id="schema_ApiKeyRequest"></a>
@@ -1120,7 +1120,7 @@ Subscription payload.
 
 ```
 
-### Properties
+#### Properties
 
 |Name|Type|Required|Restrictions|Description|
 |---|---|---|---|---|
@@ -1142,7 +1142,7 @@ xor
 |---|---|---|---|---|
 |» *anonymous*|number|false|none|none|
 
-<h2 id="tocS_ApiKeyMetadataResponse">ApiKeyMetadataResponse</h2>
+## ApiKeyMetadataResponse
 
 <a id="schemaapikeymetadataresponse"></a>
 <a id="schema_ApiKeyMetadataResponse"></a>
@@ -1166,7 +1166,7 @@ xor
 
 API key metadata returned by list operations. Secret material is omitted.
 
-### Properties
+#### Properties
 
 |Name|Type|Required|Restrictions|Description|
 |---|---|---|---|---|
@@ -1180,14 +1180,14 @@ API key metadata returned by list operations. Secret material is omitted.
 |createdAt|string(date-time)|false|none|none|
 |revokedAt|string(date-time)¦null|false|none|none|
 
-#### Enumerated Values
+##### Enumerated Values
 
 |Property|Value|
 |---|---|
 |status|ACTIVE|
 |status|REVOKED|
 
-<h2 id="tocS_ApiKeyResponse">ApiKeyResponse</h2>
+## ApiKeyResponse
 
 <a id="schemaapikeyresponse"></a>
 <a id="schema_ApiKeyResponse"></a>
@@ -1207,7 +1207,7 @@ API key metadata returned by list operations. Secret material is omitted.
 
 API key response returned by generate/regenerate only. Unlike ApiKeyMetadataResponse, this does not include apiId, appId, appDisplayName, createdAt, or revokedAt — generate/regenerate return only these five fields.
 
-### Properties
+#### Properties
 
 |Name|Type|Required|Restrictions|Description|
 |---|---|---|---|---|
@@ -1217,14 +1217,14 @@ API key response returned by generate/regenerate only. Unlike ApiKeyMetadataResp
 |expiresAt|string(date-time)¦null|false|none|none|
 |status|string|false|none|none|
 
-#### Enumerated Values
+##### Enumerated Values
 
 |Property|Value|
 |---|---|
 |status|ACTIVE|
 |status|REVOKED|
 
-<h2 id="tocS_ApiKeyApplicationResponse">ApiKeyApplicationResponse</h2>
+## ApiKeyApplicationResponse
 
 <a id="schemaapikeyapplicationresponse"></a>
 <a id="schema_ApiKeyApplicationResponse"></a>
@@ -1241,7 +1241,7 @@ API key response returned by generate/regenerate only. Unlike ApiKeyMetadataResp
 
 ```
 
-### Properties
+#### Properties
 
 |Name|Type|Required|Restrictions|Description|
 |---|---|---|---|---|
@@ -1249,7 +1249,7 @@ API key response returned by generate/regenerate only. Unlike ApiKeyMetadataResp
 |» id|string|false|none|none|
 |» displayName|string|false|none|none|
 
-<h2 id="tocS_KeyManagerRequest">KeyManagerRequest</h2>
+## KeyManagerRequest
 
 <a id="schemakeymanagerrequest"></a>
 <a id="schema_KeyManagerRequest"></a>
@@ -1266,7 +1266,7 @@ API key response returned by generate/regenerate only. Unlike ApiKeyMetadataResp
 
 ```
 
-### Properties
+#### Properties
 
 |Name|Type|Required|Restrictions|Description|
 |---|---|---|---|---|
@@ -1275,7 +1275,7 @@ API key response returned by generate/regenerate only. Unlike ApiKeyMetadataResp
 |enabled|boolean|false|none|none|
 |tokenEndpoint|string(uri)|true|none|OAuth2 token endpoint. The OAuth application itself must be created directly in this key manager; the portal only proxies `client_appKeyMappings` token requests to this endpoint.|
 
-<h2 id="tocS_KeyManagerUpdateRequest">KeyManagerUpdateRequest</h2>
+## KeyManagerUpdateRequest
 
 <a id="schemakeymanagerupdaterequest"></a>
 <a id="schema_KeyManagerUpdateRequest"></a>
@@ -1294,7 +1294,7 @@ API key response returned by generate/regenerate only. Unlike ApiKeyMetadataResp
 
 Partial update payload for a key manager. All fields are optional; only supplied fields are applied. Omitted fields retain their stored values.
 
-### Properties
+#### Properties
 
 |Name|Type|Required|Restrictions|Description|
 |---|---|---|---|---|
@@ -1303,7 +1303,7 @@ Partial update payload for a key manager. All fields are optional; only supplied
 |enabled|boolean|false|none|none|
 |tokenEndpoint|string(uri)|false|none|none|
 
-<h2 id="tocS_KeyManagerResponseSchema">KeyManagerResponseSchema</h2>
+## KeyManagerResponseSchema
 
 <a id="schemakeymanagerresponseschema"></a>
 <a id="schema_KeyManagerResponseSchema"></a>
@@ -1327,7 +1327,7 @@ Partial update payload for a key manager. All fields are optional; only supplied
 
 Key manager configuration.
 
-### Properties
+#### Properties
 
 |Name|Type|Required|Restrictions|Description|
 |---|---|---|---|---|
@@ -1341,7 +1341,7 @@ Key manager configuration.
 |createdAt|string(date-time)|false|none|none|
 |updatedAt|string(date-time)|false|none|none|
 
-<h2 id="tocS_KeyManagerPublicResponseSchema">KeyManagerPublicResponseSchema</h2>
+## KeyManagerPublicResponseSchema
 
 <a id="schemakeymanagerpublicresponseschema"></a>
 <a id="schema_KeyManagerPublicResponseSchema"></a>
@@ -1359,7 +1359,7 @@ Key manager configuration.
 
 Minimal developer-facing key manager view.
 
-### Properties
+#### Properties
 
 |Name|Type|Required|Restrictions|Description|
 |---|---|---|---|---|
@@ -1367,7 +1367,7 @@ Minimal developer-facing key manager view.
 |displayName|string|false|none|none|
 |tokenEndpoint|string(uri)|false|none|none|
 
-<h2 id="tocS_WebhookSubscriberRequest">WebhookSubscriberRequest</h2>
+## WebhookSubscriberRequest
 
 <a id="schemawebhooksubscriberrequest"></a>
 <a id="schema_WebhookSubscriberRequest"></a>
@@ -1390,7 +1390,7 @@ Minimal developer-facing key manager view.
 
 ```
 
-### Properties
+#### Properties
 
 |Name|Type|Required|Restrictions|Description|
 |---|---|---|---|---|
@@ -1402,7 +1402,7 @@ Minimal developer-facing key manager view.
 |enabled|boolean|false|none|none|
 |timeoutMs|integer|false|none|none|
 
-<h2 id="tocS_WebhookSubscriberResponseSchema">WebhookSubscriberResponseSchema</h2>
+## WebhookSubscriberResponseSchema
 
 <a id="schemawebhooksubscriberresponseschema"></a>
 <a id="schema_WebhookSubscriberResponseSchema"></a>
@@ -1432,7 +1432,7 @@ Minimal developer-facing key manager view.
 
 Webhook subscriber configuration. The secret is never included.
 
-### Properties
+#### Properties
 
 |Name|Type|Required|Restrictions|Description|
 |---|---|---|---|---|
@@ -1449,7 +1449,7 @@ Webhook subscriber configuration. The secret is never included.
 |createdAt|string(date-time)|false|none|none|
 |updatedAt|string(date-time)|false|none|none|
 
-<h2 id="tocS_WebhookSubscriberDeliverySummary">WebhookSubscriberDeliverySummary</h2>
+## WebhookSubscriberDeliverySummary
 
 <a id="schemawebhooksubscriberdeliverysummary"></a>
 <a id="schema_WebhookSubscriberDeliverySummary"></a>
@@ -1472,7 +1472,7 @@ Webhook subscriber configuration. The secret is never included.
 
 A single delivery attempt made to a webhook subscriber.
 
-### Properties
+#### Properties
 
 |Name|Type|Required|Restrictions|Description|
 |---|---|---|---|---|
@@ -1485,7 +1485,7 @@ A single delivery attempt made to a webhook subscriber.
 |lastAttemptAt|string(date-time)¦null|false|none|none|
 |deliveredAt|string(date-time)¦null|false|none|none|
 
-#### Enumerated Values
+##### Enumerated Values
 
 |Property|Value|
 |---|---|
@@ -1494,7 +1494,7 @@ A single delivery attempt made to a webhook subscriber.
 |status|DELIVERED|
 |status|FAILED|
 
-<h2 id="tocS_AppKeyMappingRequest">AppKeyMappingRequest</h2>
+## AppKeyMappingRequest
 
 <a id="schemaappkeymappingrequest"></a>
 <a id="schema_AppKeyMappingRequest"></a>
@@ -1510,7 +1510,7 @@ A single delivery attempt made to a webhook subscriber.
 
 ```
 
-### Properties
+#### Properties
 
 |Name|Type|Required|Restrictions|Description|
 |---|---|---|---|---|
@@ -1518,14 +1518,14 @@ A single delivery attempt made to a webhook subscriber.
 |type|string|false|none|none|
 |consumerKey|string|true|none|The OAuth client_id, created directly in the key manager. The portal does not store or persist the client secret — it is supplied per-request when generating a token and is only seen transiently during that request.|
 
-#### Enumerated Values
+##### Enumerated Values
 
 |Property|Value|
 |---|---|
 |type|PRODUCTION|
 |type|SANDBOX|
 
-<h2 id="tocS_ViewCreateRequest">ViewCreateRequest</h2>
+## ViewCreateRequest
 
 <a id="schemaviewcreaterequest"></a>
 <a id="schema_ViewCreateRequest"></a>
@@ -1544,7 +1544,7 @@ A single delivery attempt made to a webhook subscriber.
 
 ```
 
-### Properties
+#### Properties
 
 |Name|Type|Required|Restrictions|Description|
 |---|---|---|---|---|
@@ -1552,7 +1552,7 @@ A single delivery attempt made to a webhook subscriber.
 |displayName|string|false|none|Optional display name. Defaults to the handle when omitted.|
 |labels|[string]|false|none|Label names to attach to the view. Optional — omit or pass an empty array to create a view with no labels, which surfaces no APIs until labels are attached later via the update endpoint.|
 
-<h2 id="tocS_ViewUpdateRequest">ViewUpdateRequest</h2>
+## ViewUpdateRequest
 
 <a id="schemaviewupdaterequest"></a>
 <a id="schema_ViewUpdateRequest"></a>
@@ -1571,7 +1571,7 @@ A single delivery attempt made to a webhook subscriber.
 
 ```
 
-### Properties
+#### Properties
 
 |Name|Type|Required|Restrictions|Description|
 |---|---|---|---|---|
@@ -1579,7 +1579,7 @@ A single delivery attempt made to a webhook subscriber.
 |displayName|string|false|none|none|
 |labels|[string]|false|none|Full desired set of label names for the view. Labels present here but not currently attached are attached; labels currently attached but absent here are detached. Omit to leave labels unchanged.|
 
-<h2 id="tocS_OAuthGenerateTokenRequest">OAuthGenerateTokenRequest</h2>
+## OAuthGenerateTokenRequest
 
 <a id="schemaoauthgeneratetokenrequest"></a>
 <a id="schema_OAuthGenerateTokenRequest"></a>
@@ -1599,7 +1599,7 @@ A single delivery attempt made to a webhook subscriber.
 
 OAuth access token generation payload. `consumerSecret` is required — the portal uses it to call the Authorization Server token endpoint directly.
 
-### Properties
+#### Properties
 
 |Name|Type|Required|Restrictions|Description|
 |---|---|---|---|---|
@@ -1607,7 +1607,7 @@ OAuth access token generation payload. `consumerSecret` is required — the port
 |scopes|[string]|false|none|none|
 |validityPeriod|integer|false|none|none|
 
-<h2 id="tocS_ApplicationOAuthKeyResponse">ApplicationOAuthKeyResponse</h2>
+## ApplicationOAuthKeyResponse
 
 <a id="schemaapplicationoauthkeyresponse"></a>
 <a id="schema_ApplicationOAuthKeyResponse"></a>
@@ -1627,7 +1627,7 @@ OAuth access token generation payload. `consumerSecret` is required — the port
 
 OAuth key mapping payload.
 
-### Properties
+#### Properties
 
 |Name|Type|Required|Restrictions|Description|
 |---|---|---|---|---|
@@ -1637,7 +1637,7 @@ OAuth key mapping payload.
 |consumerKey|string|false|none|none|
 |tokenEndpoint|string(uri)|false|none|none|
 
-<h2 id="tocS_OAuthTokenResponse">OAuthTokenResponse</h2>
+## OAuthTokenResponse
 
 <a id="schemaoauthtokenresponse"></a>
 <a id="schema_OAuthTokenResponse"></a>
@@ -1657,7 +1657,7 @@ OAuth key mapping payload.
 
 Access token response proxied from the key manager's token endpoint. Field names are the portal's own camelCase, not the underlying OAuth2 token response's snake_case.
 
-### Properties
+#### Properties
 
 |Name|Type|Required|Restrictions|Description|
 |---|---|---|---|---|
@@ -1665,7 +1665,7 @@ Access token response proxied from the key manager's token endpoint. Field names
 |validityTime|integer¦null|false|none|Token lifetime in seconds, as reported by the key manager (`expires_in`).|
 |tokenScopes|[string]|false|none|none|
 
-<h2 id="tocS_APIWorkflowCreateResponse">APIWorkflowCreateResponse</h2>
+## APIWorkflowCreateResponse
 
 <a id="schemaapiworkflowcreateresponse"></a>
 <a id="schema_APIWorkflowCreateResponse"></a>
@@ -1681,7 +1681,7 @@ Access token response proxied from the key manager's token endpoint. Field names
 
 ```
 
-### Properties
+#### Properties
 
 |Name|Type|Required|Restrictions|Description|
 |---|---|---|---|---|
@@ -1689,14 +1689,14 @@ Access token response proxied from the key manager's token endpoint. Field names
 |displayName|string|false|none|none|
 |status|string|false|none|none|
 
-#### Enumerated Values
+##### Enumerated Values
 
 |Property|Value|
 |---|---|
 |status|DRAFT|
 |status|PUBLISHED|
 
-<h2 id="tocS_APIWorkflowResponse">APIWorkflowResponse</h2>
+## APIWorkflowResponse
 
 <a id="schemaapiworkflowresponse"></a>
 <a id="schema_APIWorkflowResponse"></a>
@@ -1722,7 +1722,7 @@ Access token response proxied from the key manager's token endpoint. Field names
 
 ```
 
-### Properties
+#### Properties
 
 |Name|Type|Required|Restrictions|Description|
 |---|---|---|---|---|
@@ -1740,7 +1740,7 @@ Access token response proxied from the key manager's token endpoint. Field names
 |createdBy|string¦null|false|none|none|
 |updatedBy|string¦null|false|none|none|
 
-#### Enumerated Values
+##### Enumerated Values
 
 |Property|Value|
 |---|---|
@@ -1751,7 +1751,7 @@ Access token response proxied from the key manager's token endpoint. Field names
 |contentType|ARAZZO|
 |contentType|MD|
 
-<h2 id="tocS_APIWorkflowPromptResponse">APIWorkflowPromptResponse</h2>
+## APIWorkflowPromptResponse
 
 <a id="schemaapiworkflowpromptresponse"></a>
 <a id="schema_APIWorkflowPromptResponse"></a>
@@ -1765,13 +1765,13 @@ Access token response proxied from the key manager's token endpoint. Field names
 
 ```
 
-### Properties
+#### Properties
 
 |Name|Type|Required|Restrictions|Description|
 |---|---|---|---|---|
 |agentPrompt|string|false|none|none|
 
-<h2 id="tocS_APIWorkflowCreateRequest">APIWorkflowCreateRequest</h2>
+## APIWorkflowCreateRequest
 
 <a id="schemaapiworkflowcreaterequest"></a>
 <a id="schema_APIWorkflowCreateRequest"></a>
@@ -1793,7 +1793,7 @@ Access token response proxied from the key manager's token endpoint. Field names
 
 ```
 
-### Properties
+#### Properties
 
 |Name|Type|Required|Restrictions|Description|
 |---|---|---|---|---|
@@ -1824,7 +1824,7 @@ continued
 |---|---|---|---|---|
 |markdownContent|string|false|none|Markdown content when `contentType` is `MD`.|
 
-#### Enumerated Values
+##### Enumerated Values
 
 |Property|Value|
 |---|---|
@@ -1835,7 +1835,7 @@ continued
 |contentType|ARAZZO|
 |contentType|MD|
 
-<h2 id="tocS_APIWorkflowUpdateRequest">APIWorkflowUpdateRequest</h2>
+## APIWorkflowUpdateRequest
 
 <a id="schemaapiworkflowupdaterequest"></a>
 <a id="schema_APIWorkflowUpdateRequest"></a>
@@ -1857,7 +1857,7 @@ continued
 
 ```
 
-### Properties
+#### Properties
 
 |Name|Type|Required|Restrictions|Description|
 |---|---|---|---|---|
@@ -1888,7 +1888,7 @@ continued
 |---|---|---|---|---|
 |markdownContent|string|false|none|none|
 
-#### Enumerated Values
+##### Enumerated Values
 
 |Property|Value|
 |---|---|
@@ -1899,7 +1899,7 @@ continued
 |contentType|ARAZZO|
 |contentType|MD|
 
-<h2 id="tocS_APIWorkflowPromptRequest">APIWorkflowPromptRequest</h2>
+## APIWorkflowPromptRequest
 
 <a id="schemaapiworkflowpromptrequest"></a>
 <a id="schema_APIWorkflowPromptRequest"></a>
@@ -1920,7 +1920,7 @@ continued
 
 ```
 
-### Properties
+#### Properties
 
 |Name|Type|Required|Restrictions|Description|
 |---|---|---|---|---|
@@ -1931,7 +1931,7 @@ continued
 |viewName|string|false|none|none|
 |id|string|false|none|The workflow's (would-be) handle, used only to build the workflow detail URL referenced in the generated prompt.|
 
-<h2 id="tocS_WebhookEventDelivery">WebhookEventDelivery</h2>
+## WebhookEventDelivery
 
 <a id="schemawebhookeventdelivery"></a>
 <a id="schema_WebhookEventDelivery"></a>
@@ -1954,7 +1954,7 @@ continued
 
 A single webhook delivery attempt.
 
-### Properties
+#### Properties
 
 |Name|Type|Required|Restrictions|Description|
 |---|---|---|---|---|
@@ -1967,7 +1967,7 @@ A single webhook delivery attempt.
 |lastAttemptAt|string(date-time)¦null|false|none|none|
 |deliveredAt|string(date-time)¦null|false|none|none|
 
-#### Enumerated Values
+##### Enumerated Values
 
 |Property|Value|
 |---|---|
@@ -1976,7 +1976,7 @@ A single webhook delivery attempt.
 |status|DELIVERED|
 |status|FAILED|
 
-<h2 id="tocS_WebhookEvent">WebhookEvent</h2>
+## WebhookEvent
 
 <a id="schemawebhookevent"></a>
 <a id="schema_WebhookEvent"></a>
@@ -2010,7 +2010,7 @@ A single webhook delivery attempt.
 
 A webhook event with its delivery rows.
 
-### Properties
+#### Properties
 
 |Name|Type|Required|Restrictions|Description|
 |---|---|---|---|---|
@@ -2023,7 +2023,7 @@ A webhook event with its delivery rows.
 |occurredAt|string(date-time)|false|none|none|
 |deliveries|[[WebhookEventDelivery](#schemawebhookeventdelivery)]|false|none|[A single webhook delivery attempt.]|
 
-#### Enumerated Values
+##### Enumerated Values
 
 |Property|Value|
 |---|---|

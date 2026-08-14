@@ -1,6 +1,6 @@
 # Schemas
 
-<h2 id="tocS_APIKeyItem">APIKeyItem</h2>
+## APIKeyItem
 
 <a id="schemaapikeyitem"></a>
 <a id="schema_APIKeyItem"></a>
@@ -23,7 +23,7 @@
 
 ```
 
-### Properties
+#### Properties
 
 |Name|Type|Required|Restrictions|Description|
 |---|---|---|---|---|
@@ -38,7 +38,7 @@
 |issuer|string|false|none|Optional identifier of the API Portal that provisioned this key|
 |allowedTargets|string|true|none|Comma-separated list of allowed gateways; 'ALL' means unrestricted|
 
-#### Enumerated Values
+##### Enumerated Values
 
 |Property|Value|
 |---|---|
@@ -46,7 +46,7 @@
 |status|revoked|
 |status|expired|
 
-<h2 id="tocS_UserAPIKeyItem">UserAPIKeyItem</h2>
+## UserAPIKeyItem
 
 <a id="schemauserapikeyitem"></a>
 <a id="schema_UserAPIKeyItem"></a>
@@ -71,7 +71,7 @@
 
 ```
 
-### Properties
+#### Properties
 
 allOf
 
@@ -87,7 +87,7 @@ and
 |» artifactId|string|true|none|Handle (ID) of the artifact this key belongs to|
 |» artifactType|string|true|none|Type of the artifact this key belongs to|
 
-#### Enumerated Values
+##### Enumerated Values
 
 |Property|Value|
 |---|---|
@@ -95,7 +95,7 @@ and
 |artifactType|LlmProvider|
 |artifactType|LlmProxy|
 
-<h2 id="tocS_UserAPIKeyListResponse">UserAPIKeyListResponse</h2>
+## UserAPIKeyListResponse
 
 <a id="schemauserapikeylistresponse"></a>
 <a id="schema_UserAPIKeyListResponse"></a>
@@ -130,7 +130,7 @@ and
 
 ```
 
-### Properties
+#### Properties
 
 |Name|Type|Required|Restrictions|Description|
 |---|---|---|---|---|
@@ -138,7 +138,7 @@ and
 |count|integer|true|none|Number of API keys in current response|
 |pagination|[Pagination](#schemapagination)|true|none|none|
 
-<h2 id="tocS_LLMProviderAPIKeyListResponse">LLMProviderAPIKeyListResponse</h2>
+## LLMProviderAPIKeyListResponse
 
 <a id="schemallmproviderapikeylistresponse"></a>
 <a id="schema_LLMProviderAPIKeyListResponse"></a>
@@ -171,7 +171,7 @@ and
 
 ```
 
-### Properties
+#### Properties
 
 |Name|Type|Required|Restrictions|Description|
 |---|---|---|---|---|
@@ -179,7 +179,7 @@ and
 |count|integer|true|none|Number of API keys in current response|
 |pagination|[Pagination](#schemapagination)|true|none|none|
 
-<h2 id="tocS_LLMProxyAPIKeyListResponse">LLMProxyAPIKeyListResponse</h2>
+## LLMProxyAPIKeyListResponse
 
 <a id="schemallmproxyapikeylistresponse"></a>
 <a id="schema_LLMProxyAPIKeyListResponse"></a>
@@ -212,7 +212,7 @@ and
 
 ```
 
-### Properties
+#### Properties
 
 |Name|Type|Required|Restrictions|Description|
 |---|---|---|---|---|
@@ -220,7 +220,7 @@ and
 |count|integer|true|none|Number of API keys in current response|
 |pagination|[Pagination](#schemapagination)|true|none|none|
 
-<h2 id="tocS_Organization">Organization</h2>
+## Organization
 
 <a id="schemaorganization"></a>
 <a id="schema_Organization"></a>
@@ -240,7 +240,7 @@ and
 
 ```
 
-### Properties
+#### Properties
 
 |Name|Type|Required|Restrictions|Description|
 |---|---|---|---|---|
@@ -252,7 +252,7 @@ and
 |createdAt|string(date-time)|false|read-only|Timestamp when the organization was created|
 |updatedAt|string(date-time)|false|read-only|Timestamp when the organization was last updated|
 
-<h2 id="tocS_CreateProjectRequest">CreateProjectRequest</h2>
+## CreateProjectRequest
 
 <a id="schemacreateprojectrequest"></a>
 <a id="schema_CreateProjectRequest"></a>
@@ -271,7 +271,7 @@ and
 Request body for creating a project. Organization ID is automatically extracted
 from the JWT token and does not need to be provided.
 
-### Properties
+#### Properties
 
 |Name|Type|Required|Restrictions|Description|
 |---|---|---|---|---|
@@ -279,7 +279,7 @@ from the JWT token and does not need to be provided.
 |displayName|string|true|none|Human-readable name for the project|
 |description|string|false|none|Description of the project|
 
-<h2 id="tocS_Project">Project</h2>
+## Project
 
 <a id="schemaproject"></a>
 <a id="schema_Project"></a>
@@ -300,7 +300,7 @@ from the JWT token and does not need to be provided.
 
 ```
 
-### Properties
+#### Properties
 
 |Name|Type|Required|Restrictions|Description|
 |---|---|---|---|---|
@@ -313,7 +313,7 @@ from the JWT token and does not need to be provided.
 |createdAt|string(date-time)|false|read-only|Timestamp when the project was created|
 |updatedAt|string(date-time)|false|read-only|Timestamp when the project was last updated|
 
-<h2 id="tocS_ApplicationType">ApplicationType</h2>
+## ApplicationType
 
 <a id="schemaapplicationtype"></a>
 <a id="schema_ApplicationType"></a>
@@ -327,19 +327,19 @@ from the JWT token and does not need to be provided.
 
 Type of the application
 
-### Properties
+#### Properties
 
 |Name|Type|Required|Restrictions|Description|
 |---|---|---|---|---|
 |*anonymous*|string|false|none|Type of the application|
 
-#### Enumerated Values
+##### Enumerated Values
 
 |Property|Value|
 |---|---|
 |*anonymous*|genai|
 
-<h2 id="tocS_CreateApplicationRequest">CreateApplicationRequest</h2>
+## CreateApplicationRequest
 
 <a id="schemacreateapplicationrequest"></a>
 <a id="schema_CreateApplicationRequest"></a>
@@ -359,7 +359,7 @@ Type of the application
 
 Request body for creating an application.
 
-### Properties
+#### Properties
 
 |Name|Type|Required|Restrictions|Description|
 |---|---|---|---|---|
@@ -369,7 +369,7 @@ Request body for creating an application.
 |type|[ApplicationType](#schemaapplicationtype)|true|none|Type of the application|
 |description|string|false|none|Description of the application|
 
-<h2 id="tocS_Application">Application</h2>
+## Application
 
 <a id="schemaapplication"></a>
 <a id="schema_Application"></a>
@@ -391,7 +391,7 @@ Request body for creating an application.
 
 ```
 
-### Properties
+#### Properties
 
 |Name|Type|Required|Restrictions|Description|
 |---|---|---|---|---|
@@ -405,7 +405,7 @@ Request body for creating an application.
 |createdAt|string(date-time)|false|read-only|none|
 |updatedAt|string(date-time)|false|read-only|none|
 
-<h2 id="tocS_ApplicationListResponse">ApplicationListResponse</h2>
+## ApplicationListResponse
 
 <a id="schemaapplicationlistresponse"></a>
 <a id="schema_ApplicationListResponse"></a>
@@ -437,7 +437,7 @@ Request body for creating an application.
 
 ```
 
-### Properties
+#### Properties
 
 |Name|Type|Required|Restrictions|Description|
 |---|---|---|---|---|
@@ -445,7 +445,7 @@ Request body for creating an application.
 |list|[[Application](#schemaapplication)]|true|none|none|
 |pagination|[Pagination](#schemapagination)|true|none|none|
 
-<h2 id="tocS_AddApplicationAPIKeysRequest">AddApplicationAPIKeysRequest</h2>
+## AddApplicationAPIKeysRequest
 
 <a id="schemaaddapplicationapikeysrequest"></a>
 <a id="schema_AddApplicationAPIKeysRequest"></a>
@@ -466,13 +466,13 @@ Request body for creating an application.
 
 ```
 
-### Properties
+#### Properties
 
 |Name|Type|Required|Restrictions|Description|
 |---|---|---|---|---|
 |apiKeys|[[APIKeyMappingSelector](#schemaapikeymappingselector)]|true|none|List of API key selectors to add to the application mappings|
 
-<h2 id="tocS_AddApplicationAssociationsRequest">AddApplicationAssociationsRequest</h2>
+## AddApplicationAssociationsRequest
 
 <a id="schemaaddapplicationassociationsrequest"></a>
 <a id="schema_AddApplicationAssociationsRequest"></a>
@@ -491,13 +491,13 @@ Request body for creating an application.
 
 ```
 
-### Properties
+#### Properties
 
 |Name|Type|Required|Restrictions|Description|
 |---|---|---|---|---|
 |associations|[[ApplicationAssociationSelector](#schemaapplicationassociationselector)]|true|none|List of association selectors to add to the application|
 
-<h2 id="tocS_ApplicationAssociationSelector">ApplicationAssociationSelector</h2>
+## ApplicationAssociationSelector
 
 <a id="schemaapplicationassociationselector"></a>
 <a id="schema_ApplicationAssociationSelector"></a>
@@ -512,21 +512,21 @@ Request body for creating an application.
 
 ```
 
-### Properties
+#### Properties
 
 |Name|Type|Required|Restrictions|Description|
 |---|---|---|---|---|
 |id|string|true|none|ID or handle of the association target|
 |kind|string|true|none|Type of the association target|
 
-#### Enumerated Values
+##### Enumerated Values
 
 |Property|Value|
 |---|---|
 |kind|LlmProvider|
 |kind|LlmProxy|
 
-<h2 id="tocS_ApplicationAssociation">ApplicationAssociation</h2>
+## ApplicationAssociation
 
 <a id="schemaapplicationassociation"></a>
 <a id="schema_ApplicationAssociation"></a>
@@ -545,7 +545,7 @@ Request body for creating an application.
 
 ```
 
-### Properties
+#### Properties
 
 |Name|Type|Required|Restrictions|Description|
 |---|---|---|---|---|
@@ -556,7 +556,7 @@ Request body for creating an application.
 |createdAt|string(date-time)|false|none|Timestamp when the association was created|
 |updatedAt|string(date-time)|false|none|Timestamp when the association was updated|
 
-<h2 id="tocS_ApplicationAssociationListResponse">ApplicationAssociationListResponse</h2>
+## ApplicationAssociationListResponse
 
 <a id="schemaapplicationassociationlistresponse"></a>
 <a id="schema_ApplicationAssociationListResponse"></a>
@@ -585,7 +585,7 @@ Request body for creating an application.
 
 ```
 
-### Properties
+#### Properties
 
 |Name|Type|Required|Restrictions|Description|
 |---|---|---|---|---|
@@ -593,7 +593,7 @@ Request body for creating an application.
 |list|[[ApplicationAssociation](#schemaapplicationassociation)]|true|none|none|
 |pagination|[Pagination](#schemapagination)|true|none|none|
 
-<h2 id="tocS_APIKeyMappingSelector">APIKeyMappingSelector</h2>
+## APIKeyMappingSelector
 
 <a id="schemaapikeymappingselector"></a>
 <a id="schema_APIKeyMappingSelector"></a>
@@ -610,14 +610,14 @@ Request body for creating an application.
 
 ```
 
-### Properties
+#### Properties
 
 |Name|Type|Required|Restrictions|Description|
 |---|---|---|---|---|
 |keyId|string|true|none|API key name|
 |associatedEntity|[APIKeyMappingAssociatedEntity](#schemaapikeymappingassociatedentity)|true|none|none|
 
-<h2 id="tocS_APIKeyMappingAssociatedEntity">APIKeyMappingAssociatedEntity</h2>
+## APIKeyMappingAssociatedEntity
 
 <a id="schemaapikeymappingassociatedentity"></a>
 <a id="schema_APIKeyMappingAssociatedEntity"></a>
@@ -631,13 +631,13 @@ Request body for creating an application.
 
 ```
 
-### Properties
+#### Properties
 
 |Name|Type|Required|Restrictions|Description|
 |---|---|---|---|---|
 |id|string|true|none|ID of the entity that owns the API key|
 
-<h2 id="tocS_AssociatedEntity">AssociatedEntity</h2>
+## AssociatedEntity
 
 <a id="schemaassociatedentity"></a>
 <a id="schema_AssociatedEntity"></a>
@@ -652,14 +652,14 @@ Request body for creating an application.
 
 ```
 
-### Properties
+#### Properties
 
 |Name|Type|Required|Restrictions|Description|
 |---|---|---|---|---|
 |id|string|true|none|ID of the associated entity|
 |kind|string|true|none|Type of the associated entity|
 
-<h2 id="tocS_MappedAPIKey">MappedAPIKey</h2>
+## MappedAPIKey
 
 <a id="schemamappedapikey"></a>
 <a id="schema_MappedAPIKey"></a>
@@ -682,7 +682,7 @@ Request body for creating an application.
 
 ```
 
-### Properties
+#### Properties
 
 |Name|Type|Required|Restrictions|Description|
 |---|---|---|---|---|
@@ -694,7 +694,7 @@ Request body for creating an application.
 |updatedAt|string(date-time)|false|none|Timestamp when the API key was updated|
 |expiresAt|string(date-time)|false|none|Expiration timestamp of the API key|
 
-<h2 id="tocS_MappedAPIKeyListResponse">MappedAPIKeyListResponse</h2>
+## MappedAPIKeyListResponse
 
 <a id="schemamappedapikeylistresponse"></a>
 <a id="schema_MappedAPIKeyListResponse"></a>
@@ -727,7 +727,7 @@ Request body for creating an application.
 
 ```
 
-### Properties
+#### Properties
 
 |Name|Type|Required|Restrictions|Description|
 |---|---|---|---|---|
@@ -735,7 +735,7 @@ Request body for creating an application.
 |list|[[MappedAPIKey](#schemamappedapikey)]|true|none|none|
 |pagination|[Pagination](#schemapagination)|true|none|none|
 
-<h2 id="tocS_RESTAPI">RESTAPI</h2>
+## RESTAPI
 
 <a id="schemarestapi"></a>
 <a id="schema_RESTAPI"></a>
@@ -842,7 +842,7 @@ Request body for creating an application.
 
 API object
 
-### Properties
+#### Properties
 
 |Name|Type|Required|Restrictions|Description|
 |---|---|---|---|---|
@@ -866,7 +866,7 @@ API object
 |channels|[[Channel](#schemachannel)]|false|none|List of channels exposed by this API|
 |subscriptionPlans|[string]|false|none|List of subscription plan names enabled for this API (e.g. Gold, Silver).<br>When set, only these plans can be used when subscribing to the API.|
 
-#### Enumerated Values
+##### Enumerated Values
 
 |Property|Value|
 |---|---|
@@ -877,7 +877,7 @@ API object
 |lifeCycleStatus|RETIRED|
 |lifeCycleStatus|BLOCKED|
 
-<h2 id="tocS_SecurityConfig">SecurityConfig</h2>
+## SecurityConfig
 
 <a id="schemasecurityconfig"></a>
 <a id="schema_SecurityConfig"></a>
@@ -899,14 +899,14 @@ API object
 
 Security Configuration
 
-### Properties
+#### Properties
 
 |Name|Type|Required|Restrictions|Description|
 |---|---|---|---|---|
 |enabled|boolean|false|none|Whether security is enabled|
 |apiKey|[APIKeySecurity](#schemaapikeysecurity)|false|none|Configuration for API key based authentication|
 
-<h2 id="tocS_APIKeySecurity">APIKeySecurity</h2>
+## APIKeySecurity
 
 <a id="schemaapikeysecurity"></a>
 <a id="schema_APIKeySecurity"></a>
@@ -925,7 +925,7 @@ Security Configuration
 
 API Key Security
 
-### Properties
+#### Properties
 
 |Name|Type|Required|Restrictions|Description|
 |---|---|---|---|---|
@@ -934,14 +934,14 @@ API Key Security
 |valuePrefix|string|false|none|Optional prefix to strip from the inbound API key value before validation, for example "Bearer"|
 |in|string|false|none|Location of the API key (header or query)|
 
-#### Enumerated Values
+##### Enumerated Values
 
 |Property|Value|
 |---|---|
 |in|header|
 |in|query|
 
-<h2 id="tocS_Operation">Operation</h2>
+## Operation
 
 <a id="schemaoperation"></a>
 <a id="schema_Operation"></a>
@@ -973,7 +973,7 @@ API Key Security
 
 API Operation
 
-### Properties
+#### Properties
 
 |Name|Type|Required|Restrictions|Description|
 |---|---|---|---|---|
@@ -981,7 +981,7 @@ API Operation
 |description|string|false|none|Description of the operation|
 |request|[OperationRequest](#schemaoperationrequest)|true|none|Request details for an API operation|
 
-<h2 id="tocS_Channel">Channel</h2>
+## Channel
 
 <a id="schemachannel"></a>
 <a id="schema_Channel"></a>
@@ -1013,7 +1013,7 @@ API Operation
 
 Async API Channel
 
-### Properties
+#### Properties
 
 |Name|Type|Required|Restrictions|Description|
 |---|---|---|---|---|
@@ -1021,7 +1021,7 @@ Async API Channel
 |description|string|false|none|Description of the channel|
 |request|[ChannelRequest](#schemachannelrequest)|true|none|Request details for a channel within the Async API|
 
-<h2 id="tocS_OperationRequest">OperationRequest</h2>
+## OperationRequest
 
 <a id="schemaoperationrequest"></a>
 <a id="schema_OperationRequest"></a>
@@ -1049,7 +1049,7 @@ Async API Channel
 
 Operation Request
 
-### Properties
+#### Properties
 
 |Name|Type|Required|Restrictions|Description|
 |---|---|---|---|---|
@@ -1057,7 +1057,7 @@ Operation Request
 |path|string|true|none|Resource path for the operation|
 |policies|[[Policy](#schemapolicy)]|false|none|List of policies to be applied on the operation|
 
-#### Enumerated Values
+##### Enumerated Values
 
 |Property|Value|
 |---|---|
@@ -1069,7 +1069,7 @@ Operation Request
 |method|HEAD|
 |method|OPTIONS|
 
-<h2 id="tocS_ChannelRequest">ChannelRequest</h2>
+## ChannelRequest
 
 <a id="schemachannelrequest"></a>
 <a id="schema_ChannelRequest"></a>
@@ -1097,7 +1097,7 @@ Operation Request
 
 Channel Request
 
-### Properties
+#### Properties
 
 |Name|Type|Required|Restrictions|Description|
 |---|---|---|---|---|
@@ -1105,13 +1105,13 @@ Channel Request
 |name|string|true|none|Channel name for the event|
 |policies|[[Policy](#schemapolicy)]|false|none|List of policies to be applied on the operation|
 
-#### Enumerated Values
+##### Enumerated Values
 
 |Property|Value|
 |---|---|
 |method|SUB|
 
-<h2 id="tocS_Policy">Policy</h2>
+## Policy
 
 <a id="schemapolicy"></a>
 <a id="schema_Policy"></a>
@@ -1133,7 +1133,7 @@ Channel Request
 
 Policy Configuration
 
-### Properties
+#### Properties
 
 |Name|Type|Required|Restrictions|Description|
 |---|---|---|---|---|
@@ -1142,7 +1142,7 @@ Policy Configuration
 |params|object|false|none|Key-value pairs of parameters for the policy|
 |version|string|true|none|Version of the policy. Only major-only version is allowed (e.g., v0, v1). Full semantic version (e.g., v1.0.0) is not accepted and will be rejected.|
 
-<h2 id="tocS_AddGatewayToRESTAPIRequest">AddGatewayToRESTAPIRequest</h2>
+## AddGatewayToRESTAPIRequest
 
 <a id="schemaaddgatewaytorestapirequest"></a>
 <a id="schema_AddGatewayToRESTAPIRequest"></a>
@@ -1158,13 +1158,13 @@ Policy Configuration
 
 AddGatewayToAPIRequest object with basic gateway details
 
-### Properties
+#### Properties
 
 |Name|Type|Required|Restrictions|Description|
 |---|---|---|---|---|
 |gatewayId|string|true|none|Handle (URL-friendly slug) of the gateway to associate with the REST API|
 
-<h2 id="tocS_RESTAPIGatewayListResponse">RESTAPIGatewayListResponse</h2>
+## RESTAPIGatewayListResponse
 
 <a id="schemarestapigatewaylistresponse"></a>
 <a id="schema_RESTAPIGatewayListResponse"></a>
@@ -1213,7 +1213,7 @@ AddGatewayToAPIRequest object with basic gateway details
 
 ```
 
-### Properties
+#### Properties
 
 |Name|Type|Required|Restrictions|Description|
 |---|---|---|---|---|
@@ -1221,7 +1221,7 @@ AddGatewayToAPIRequest object with basic gateway details
 |list|[[RESTAPIGatewayResponse](#schemarestapigatewayresponse)]|true|none|List of gateways associated with the API, including deployment details when deployed|
 |pagination|[Pagination](#schemapagination)|true|none|none|
 
-<h2 id="tocS_RESTAPIGatewayResponse">RESTAPIGatewayResponse</h2>
+## RESTAPIGatewayResponse
 
 <a id="schemarestapigatewayresponse"></a>
 <a id="schema_RESTAPIGatewayResponse"></a>
@@ -1260,7 +1260,7 @@ AddGatewayToAPIRequest object with basic gateway details
 
 ```
 
-### Properties
+#### Properties
 
 allOf
 
@@ -1277,7 +1277,7 @@ and
 |» isDeployed|boolean|true|none|Whether the API is currently deployed to this gateway|
 |» deployment|[RESTAPIDeploymentDetails](#schemarestapideploymentdetails)|false|none|Deployment details (only present when isDeployed is true)|
 
-<h2 id="tocS_RESTAPIDeploymentDetails">RESTAPIDeploymentDetails</h2>
+## RESTAPIDeploymentDetails
 
 <a id="schemarestapideploymentdetails"></a>
 <a id="schema_RESTAPIDeploymentDetails"></a>
@@ -1294,14 +1294,14 @@ and
 
 Details about API deployment to a specific gateway
 
-### Properties
+#### Properties
 
 |Name|Type|Required|Restrictions|Description|
 |---|---|---|---|---|
 |status|string|true|none|Current deployment status|
 |deployedAt|string(date-time)|true|none|Timestamp when the API was deployed|
 
-#### Enumerated Values
+##### Enumerated Values
 
 |Property|Value|
 |---|---|
@@ -1309,7 +1309,7 @@ Details about API deployment to a specific gateway
 |status|APPROVED|
 |status|REJECTED|
 
-<h2 id="tocS_CreateGatewayRequest">CreateGatewayRequest</h2>
+## CreateGatewayRequest
 
 <a id="schemacreategatewayrequest"></a>
 <a id="schema_CreateGatewayRequest"></a>
@@ -1339,7 +1339,7 @@ Details about API deployment to a specific gateway
 Request body for creating a gateway. Organization ID is automatically extracted
 from the JWT token and does not need to be provided.
 
-### Properties
+#### Properties
 
 |Name|Type|Required|Restrictions|Description|
 |---|---|---|---|---|
@@ -1352,7 +1352,7 @@ from the JWT token and does not need to be provided.
 |properties|object|false|none|Custom key-value properties for the gateway|
 |version|string|false|none|Gateway version in `major.minor` format (e.g. `1.0`) or CalVer `YYYY.MM.DD` format (e.g. `2026.05.13`). Defaults to `1.0` if not provided.|
 
-#### Enumerated Values
+##### Enumerated Values
 
 |Property|Value|
 |---|---|
@@ -1360,7 +1360,7 @@ from the JWT token and does not need to be provided.
 |functionalityType|ai|
 |functionalityType|event|
 
-<h2 id="tocS_CustomPolicyResponse">CustomPolicyResponse</h2>
+## CustomPolicyResponse
 
 <a id="schemacustompolicyresponse"></a>
 <a id="schema_CustomPolicyResponse"></a>
@@ -1383,7 +1383,7 @@ from the JWT token and does not need to be provided.
 
 A custom policy stored in the platform's custom policy registry.
 
-### Properties
+#### Properties
 
 |Name|Type|Required|Restrictions|Description|
 |---|---|---|---|---|
@@ -1396,7 +1396,7 @@ A custom policy stored in the platform's custom policy registry.
 |createdAt|string(date-time)|false|none|none|
 |updatedAt|string(date-time)|false|none|none|
 
-<h2 id="tocS_GatewayPolicyDefinition">GatewayPolicyDefinition</h2>
+## GatewayPolicyDefinition
 
 <a id="schemagatewaypolicydefinition"></a>
 <a id="schema_GatewayPolicyDefinition"></a>
@@ -1416,7 +1416,7 @@ A custom policy stored in the platform's custom policy registry.
 
 A policy installed on a gateway controller.
 
-### Properties
+#### Properties
 
 |Name|Type|Required|Restrictions|Description|
 |---|---|---|---|---|
@@ -1426,7 +1426,7 @@ A policy installed on a gateway controller.
 |isCustomPolicy|boolean|true|none|Whether this is a user-installed custom policy.|
 |policyDefinition|object|false|none|The full policy schema as declared in the policy's policy-definition.yaml.<br>Contains `parameters` and `systemParameters` JSON Schema documents.<br>Only present for custom policies.|
 
-<h2 id="tocS_ManifestSyncResponse">ManifestSyncResponse</h2>
+## ManifestSyncResponse
 
 <a id="schemamanifestsyncresponse"></a>
 <a id="schema_ManifestSyncResponse"></a>
@@ -1448,13 +1448,13 @@ A policy installed on a gateway controller.
 
 ```
 
-### Properties
+#### Properties
 
 |Name|Type|Required|Restrictions|Description|
 |---|---|---|---|---|
 |policies|[[GatewayPolicyDefinition](#schemagatewaypolicydefinition)]|false|none|All policies installed on the gateway. Each entry includes name, version, and isCustomPolicy.<br>Custom policies additionally include policyDefinition with their parameters and systemParameters schemas.|
 
-<h2 id="tocS_GatewayResponse">GatewayResponse</h2>
+## GatewayResponse
 
 <a id="schemagatewayresponse"></a>
 <a id="schema_GatewayResponse"></a>
@@ -1487,7 +1487,7 @@ A policy installed on a gateway controller.
 
 ```
 
-### Properties
+#### Properties
 
 |Name|Type|Required|Restrictions|Description|
 |---|---|---|---|---|
@@ -1506,7 +1506,7 @@ A policy installed on a gateway controller.
 |createdAt|string(date-time)|false|none|Timestamp when gateway was registered|
 |updatedAt|string(date-time)|false|none|Timestamp when gateway was last updated|
 
-#### Enumerated Values
+##### Enumerated Values
 
 |Property|Value|
 |---|---|
@@ -1514,7 +1514,7 @@ A policy installed on a gateway controller.
 |functionalityType|ai|
 |functionalityType|event|
 
-<h2 id="tocS_Pagination">Pagination</h2>
+## Pagination
 
 <a id="schemapagination"></a>
 <a id="schema_Pagination"></a>
@@ -1530,7 +1530,7 @@ A policy installed on a gateway controller.
 
 ```
 
-### Properties
+#### Properties
 
 |Name|Type|Required|Restrictions|Description|
 |---|---|---|---|---|
@@ -1538,7 +1538,7 @@ A policy installed on a gateway controller.
 |offset|integer|true|none|Zero-based index of first item in current response|
 |limit|integer|true|none|Maximum number of items returned per page|
 
-<h2 id="tocS_GatewayListResponse">GatewayListResponse</h2>
+## GatewayListResponse
 
 <a id="schemagatewaylistresponse"></a>
 <a id="schema_GatewayListResponse"></a>
@@ -1583,7 +1583,7 @@ A policy installed on a gateway controller.
 
 GatewayListResponse for paginated gateway results
 
-### Properties
+#### Properties
 
 |Name|Type|Required|Restrictions|Description|
 |---|---|---|---|---|
@@ -1591,7 +1591,7 @@ GatewayListResponse for paginated gateway results
 |list|[[GatewayResponse](#schemagatewayresponse)]|true|none|none|
 |pagination|[Pagination](#schemapagination)|true|none|none|
 
-<h2 id="tocS_GatewayStatusResponse">GatewayStatusResponse</h2>
+## GatewayStatusResponse
 
 <a id="schemagatewaystatusresponse"></a>
 <a id="schema_GatewayStatusResponse"></a>
@@ -1609,7 +1609,7 @@ GatewayListResponse for paginated gateway results
 
 Lightweight gateway status information optimized for frequent polling
 
-### Properties
+#### Properties
 
 |Name|Type|Required|Restrictions|Description|
 |---|---|---|---|---|
@@ -1617,7 +1617,7 @@ Lightweight gateway status information optimized for frequent polling
 |isActive|boolean|false|none|Indicates if the gateway is currently connected to the platform via WebSocket|
 |isCritical|boolean|false|none|Whether the gateway is critical for production|
 
-<h2 id="tocS_GatewayStatusListResponse">GatewayStatusListResponse</h2>
+## GatewayStatusListResponse
 
 <a id="schemagatewaystatuslistresponse"></a>
 <a id="schema_GatewayStatusListResponse"></a>
@@ -1645,7 +1645,7 @@ Lightweight gateway status information optimized for frequent polling
 
 List of gateway status information for polling
 
-### Properties
+#### Properties
 
 |Name|Type|Required|Restrictions|Description|
 |---|---|---|---|---|
@@ -1653,7 +1653,7 @@ List of gateway status information for polling
 |list|[[GatewayStatusResponse](#schemagatewaystatusresponse)]|true|none|[Lightweight gateway status information optimized for frequent polling]|
 |pagination|[Pagination](#schemapagination)|true|none|none|
 
-<h2 id="tocS_ProjectListResponse">ProjectListResponse</h2>
+## ProjectListResponse
 
 <a id="schemaprojectlistresponse"></a>
 <a id="schema_ProjectListResponse"></a>
@@ -1684,7 +1684,7 @@ List of gateway status information for polling
 
 ```
 
-### Properties
+#### Properties
 
 |Name|Type|Required|Restrictions|Description|
 |---|---|---|---|---|
@@ -1692,7 +1692,7 @@ List of gateway status information for polling
 |list|[[Project](#schemaproject)]|true|none|none|
 |pagination|[Pagination](#schemapagination)|true|none|none|
 
-<h2 id="tocS_OrganizationListResponse">OrganizationListResponse</h2>
+## OrganizationListResponse
 
 <a id="schemaorganizationlistresponse"></a>
 <a id="schema_OrganizationListResponse"></a>
@@ -1722,7 +1722,7 @@ List of gateway status information for polling
 
 ```
 
-### Properties
+#### Properties
 
 |Name|Type|Required|Restrictions|Description|
 |---|---|---|---|---|
@@ -1730,7 +1730,7 @@ List of gateway status information for polling
 |list|[[Organization](#schemaorganization)]|true|none|none|
 |pagination|[Pagination](#schemapagination)|true|none|none|
 
-<h2 id="tocS_RESTAPIListResponse">RESTAPIListResponse</h2>
+## RESTAPIListResponse
 
 <a id="schemarestapilistresponse"></a>
 <a id="schema_RESTAPIListResponse"></a>
@@ -1845,7 +1845,7 @@ List of gateway status information for polling
 
 ```
 
-### Properties
+#### Properties
 
 |Name|Type|Required|Restrictions|Description|
 |---|---|---|---|---|
@@ -1853,7 +1853,7 @@ List of gateway status information for polling
 |list|[[RESTAPI](#schemarestapi)]|true|none|none|
 |pagination|[Pagination](#schemapagination)|true|none|none|
 
-<h2 id="tocS_TokenRotationResponse">TokenRotationResponse</h2>
+## TokenRotationResponse
 
 <a id="schematokenrotationresponse"></a>
 <a id="schema_TokenRotationResponse"></a>
@@ -1870,7 +1870,7 @@ List of gateway status information for polling
 
 ```
 
-### Properties
+#### Properties
 
 |Name|Type|Required|Restrictions|Description|
 |---|---|---|---|---|
@@ -1879,7 +1879,7 @@ List of gateway status information for polling
 |createdAt|string(date-time)|false|none|Timestamp when new token was created|
 |message|string|false|none|Informational message about token rotation|
 
-<h2 id="tocS_TokenInfoResponse">TokenInfoResponse</h2>
+## TokenInfoResponse
 
 <a id="schematokeninforesponse"></a>
 <a id="schema_TokenInfoResponse"></a>
@@ -1896,7 +1896,7 @@ List of gateway status information for polling
 
 ```
 
-### Properties
+#### Properties
 
 |Name|Type|Required|Restrictions|Description|
 |---|---|---|---|---|
@@ -1905,14 +1905,14 @@ List of gateway status information for polling
 |createdAt|string(date-time)|false|none|Timestamp when token was created|
 |revokedAt|string(date-time)¦null|false|none|Timestamp when token was revoked (null if active)|
 
-#### Enumerated Values
+##### Enumerated Values
 
 |Property|Value|
 |---|---|
 |status|active|
 |status|revoked|
 
-<h2 id="tocS_CreateRESTAPIRequest">CreateRESTAPIRequest</h2>
+## CreateRESTAPIRequest
 
 <a id="schemacreaterestapirequest"></a>
 <a id="schema_CreateRESTAPIRequest"></a>
@@ -2017,7 +2017,7 @@ List of gateway status information for polling
 
 ```
 
-### Properties
+#### Properties
 
 allOf
 
@@ -2031,7 +2031,7 @@ and
 |---|---|---|---|---|
 |*anonymous*|object|false|none|none|
 
-<h2 id="tocS_TimeUnit">TimeUnit</h2>
+## TimeUnit
 
 <a id="schematimeunit"></a>
 <a id="schema_TimeUnit"></a>
@@ -2045,13 +2045,13 @@ and
 
 Time unit for API key expiration duration
 
-### Properties
+#### Properties
 
 |Name|Type|Required|Restrictions|Description|
 |---|---|---|---|---|
 |*anonymous*|string|false|none|Time unit for API key expiration duration|
 
-#### Enumerated Values
+##### Enumerated Values
 
 |Property|Value|
 |---|---|
@@ -2062,7 +2062,7 @@ Time unit for API key expiration duration
 |*anonymous*|weeks|
 |*anonymous*|months|
 
-<h2 id="tocS_ExpirationDuration">ExpirationDuration</h2>
+## ExpirationDuration
 
 <a id="schemaexpirationduration"></a>
 <a id="schema_ExpirationDuration"></a>
@@ -2077,14 +2077,14 @@ Time unit for API key expiration duration
 
 ```
 
-### Properties
+#### Properties
 
 |Name|Type|Required|Restrictions|Description|
 |---|---|---|---|---|
 |duration|integer|true|none|Duration value (must be positive)|
 |unit|[TimeUnit](#schematimeunit)|true|none|Time unit for API key expiration duration|
 
-<h2 id="tocS_CreateAPIKeyRequest">CreateAPIKeyRequest</h2>
+## CreateAPIKeyRequest
 
 <a id="schemacreateapikeyrequest"></a>
 <a id="schema_CreateAPIKeyRequest"></a>
@@ -2107,7 +2107,7 @@ Time unit for API key expiration duration
 
 ```
 
-### Properties
+#### Properties
 
 |Name|Type|Required|Restrictions|Description|
 |---|---|---|---|---|
@@ -2119,7 +2119,7 @@ Time unit for API key expiration duration
 |expiresIn|[ExpirationDuration](#schemaexpirationduration)|false|none|Optional expiration duration|
 |issuer|string¦null|false|none|Identifier of the API Portal that provisioned this API key. Null if not provided.|
 
-<h2 id="tocS_CreateAPIKeyResponse">CreateAPIKeyResponse</h2>
+## CreateAPIKeyResponse
 
 <a id="schemacreateapikeyresponse"></a>
 <a id="schema_CreateAPIKeyResponse"></a>
@@ -2135,7 +2135,7 @@ Time unit for API key expiration duration
 
 ```
 
-### Properties
+#### Properties
 
 |Name|Type|Required|Restrictions|Description|
 |---|---|---|---|---|
@@ -2143,14 +2143,14 @@ Time unit for API key expiration duration
 |message|string|true|none|Additional details about the operation result|
 |keyId|string|false|none|The internal ID generated for tracking|
 
-#### Enumerated Values
+##### Enumerated Values
 
 |Property|Value|
 |---|---|
 |status|success|
 |status|error|
 
-<h2 id="tocS_UpdateAPIKeyRequest">UpdateAPIKeyRequest</h2>
+## UpdateAPIKeyRequest
 
 <a id="schemaupdateapikeyrequest"></a>
 <a id="schema_UpdateAPIKeyRequest"></a>
@@ -2173,7 +2173,7 @@ Time unit for API key expiration duration
 
 ```
 
-### Properties
+#### Properties
 
 |Name|Type|Required|Restrictions|Description|
 |---|---|---|---|---|
@@ -2185,7 +2185,7 @@ Time unit for API key expiration duration
 |expiresIn|[ExpirationDuration](#schemaexpirationduration)|false|none|Optional expiration duration|
 |issuer|string|false|none|Identifies the portal that created this key|
 
-<h2 id="tocS_UpdateAPIKeyResponse">UpdateAPIKeyResponse</h2>
+## UpdateAPIKeyResponse
 
 <a id="schemaupdateapikeyresponse"></a>
 <a id="schema_UpdateAPIKeyResponse"></a>
@@ -2201,7 +2201,7 @@ Time unit for API key expiration duration
 
 ```
 
-### Properties
+#### Properties
 
 |Name|Type|Required|Restrictions|Description|
 |---|---|---|---|---|
@@ -2209,14 +2209,14 @@ Time unit for API key expiration duration
 |message|string|true|none|Additional details about the operation result|
 |keyId|string|false|none|The internal ID of the updated key|
 
-#### Enumerated Values
+##### Enumerated Values
 
 |Property|Value|
 |---|---|
 |status|success|
 |status|error|
 
-<h2 id="tocS_SubscriptionPlanLimit">SubscriptionPlanLimit</h2>
+## SubscriptionPlanLimit
 
 <a id="schemasubscriptionplanlimit"></a>
 <a id="schema_SubscriptionPlanLimit"></a>
@@ -2235,7 +2235,7 @@ Time unit for API key expiration duration
 
 ```
 
-### Properties
+#### Properties
 
 |Name|Type|Required|Restrictions|Description|
 |---|---|---|---|---|
@@ -2246,7 +2246,7 @@ Time unit for API key expiration duration
 |limitCountUnit|string|false|none|Unit for limitCount when limitType is BANDWIDTH (e.g. MB, GB)|
 |stopOnQuotaReach|boolean|false|none|Whether to block requests when this limit's quota is exhausted|
 
-#### Enumerated Values
+##### Enumerated Values
 
 |Property|Value|
 |---|---|
@@ -2258,7 +2258,7 @@ Time unit for API key expiration duration
 |timeUnit|DAY|
 |timeUnit|MONTH|
 
-<h2 id="tocS_CreateSubscriptionPlanRequest">CreateSubscriptionPlanRequest</h2>
+## CreateSubscriptionPlanRequest
 
 <a id="schemacreatesubscriptionplanrequest"></a>
 <a id="schema_CreateSubscriptionPlanRequest"></a>
@@ -2285,7 +2285,7 @@ Time unit for API key expiration duration
 
 ```
 
-### Properties
+#### Properties
 
 |Name|Type|Required|Restrictions|Description|
 |---|---|---|---|---|
@@ -2295,14 +2295,14 @@ Time unit for API key expiration duration
 |expiryTime|string(date-time)|false|none|Optional plan expiry time (RFC3339)|
 |status|string|false|none|none|
 
-#### Enumerated Values
+##### Enumerated Values
 
 |Property|Value|
 |---|---|
 |status|ACTIVE|
 |status|INACTIVE|
 
-<h2 id="tocS_SubscriptionPlan">SubscriptionPlan</h2>
+## SubscriptionPlan
 
 <a id="schemasubscriptionplan"></a>
 <a id="schema_SubscriptionPlan"></a>
@@ -2334,7 +2334,7 @@ Time unit for API key expiration duration
 
 ```
 
-### Properties
+#### Properties
 
 |Name|Type|Required|Restrictions|Description|
 |---|---|---|---|---|
@@ -2349,14 +2349,14 @@ Time unit for API key expiration duration
 |createdAt|string(date-time)|false|none|none|
 |updatedAt|string(date-time)|false|none|none|
 
-#### Enumerated Values
+##### Enumerated Values
 
 |Property|Value|
 |---|---|
 |status|ACTIVE|
 |status|INACTIVE|
 
-<h2 id="tocS_SubscriptionPlanListResponse">SubscriptionPlanListResponse</h2>
+## SubscriptionPlanListResponse
 
 <a id="schemasubscriptionplanlistresponse"></a>
 <a id="schema_SubscriptionPlanListResponse"></a>
@@ -2398,7 +2398,7 @@ Time unit for API key expiration duration
 
 ```
 
-### Properties
+#### Properties
 
 |Name|Type|Required|Restrictions|Description|
 |---|---|---|---|---|
@@ -2406,7 +2406,7 @@ Time unit for API key expiration duration
 |count|integer|true|none|Number of subscription plans in current response|
 |pagination|[Pagination](#schemapagination)|true|none|none|
 
-<h2 id="tocS_CreateSubscriptionRequest">CreateSubscriptionRequest</h2>
+## CreateSubscriptionRequest
 
 <a id="schemacreatesubscriptionrequest"></a>
 <a id="schema_CreateSubscriptionRequest"></a>
@@ -2425,7 +2425,7 @@ Time unit for API key expiration duration
 
 ```
 
-### Properties
+#### Properties
 
 |Name|Type|Required|Restrictions|Description|
 |---|---|---|---|---|
@@ -2436,7 +2436,7 @@ Time unit for API key expiration duration
 |subscriptionPlanId|string|false|none|Handle (slug) of the subscription plan. Links the subscription to rate limit and billing configuration.|
 |status|string|false|none|Subscription status (default ACTIVE)|
 
-#### Enumerated Values
+##### Enumerated Values
 
 |Property|Value|
 |---|---|
@@ -2448,7 +2448,7 @@ Time unit for API key expiration duration
 |status|INACTIVE|
 |status|REVOKED|
 
-<h2 id="tocS_Subscription">Subscription</h2>
+## Subscription
 
 <a id="schemasubscription"></a>
 <a id="schema_Subscription"></a>
@@ -2475,7 +2475,7 @@ Time unit for API key expiration duration
 
 ```
 
-### Properties
+#### Properties
 
 |Name|Type|Required|Restrictions|Description|
 |---|---|---|---|---|
@@ -2494,7 +2494,7 @@ Time unit for API key expiration duration
 |createdAt|string(date-time)|false|none|none|
 |updatedAt|string(date-time)|false|none|none|
 
-#### Enumerated Values
+##### Enumerated Values
 
 |Property|Value|
 |---|---|
@@ -2506,7 +2506,7 @@ Time unit for API key expiration duration
 |status|INACTIVE|
 |status|REVOKED|
 
-<h2 id="tocS_SubscriptionListResponse">SubscriptionListResponse</h2>
+## SubscriptionListResponse
 
 <a id="schemasubscriptionlistresponse"></a>
 <a id="schema_SubscriptionListResponse"></a>
@@ -2543,7 +2543,7 @@ Time unit for API key expiration duration
 
 ```
 
-### Properties
+#### Properties
 
 |Name|Type|Required|Restrictions|Description|
 |---|---|---|---|---|
@@ -2551,7 +2551,7 @@ Time unit for API key expiration duration
 |count|integer|true|none|Number of subscriptions in current response|
 |pagination|[Pagination](#schemapagination)|true|none|none|
 
-<h2 id="tocS_Error">Error</h2>
+## Error
 
 <a id="schemaerror"></a>
 <a id="schema_Error"></a>
@@ -2577,7 +2577,7 @@ Time unit for API key expiration duration
 
 Standard error response
 
-### Properties
+#### Properties
 
 |Name|Type|Required|Restrictions|Description|
 |---|---|---|---|---|
@@ -2588,13 +2588,13 @@ Standard error response
 |details|object|false|none|Optional structured metadata specific to this error condition (e.g. the resources referencing a secret that blocked its deletion). Shape varies by `code`; absent when not applicable.|
 |trackingId|string(uuid)|false|none|Correlation ID for server-side failures. Present only on 5xx responses; quote it when reporting the error so operators can find the corresponding server log entry.|
 
-#### Enumerated Values
+##### Enumerated Values
 
 |Property|Value|
 |---|---|
 |status|error|
 
-<h2 id="tocS_FieldError">FieldError</h2>
+## FieldError
 
 <a id="schemafielderror"></a>
 <a id="schema_FieldError"></a>
@@ -2611,14 +2611,14 @@ Standard error response
 
 Field-level validation error
 
-### Properties
+#### Properties
 
 |Name|Type|Required|Restrictions|Description|
 |---|---|---|---|---|
 |field|string|true|none|Path of the offending field.|
 |message|string|true|none|Why the field failed validation.|
 
-<h2 id="tocS_DeployRequest">DeployRequest</h2>
+## DeployRequest
 
 <a id="schemadeployrequest"></a>
 <a id="schema_DeployRequest"></a>
@@ -2635,7 +2635,7 @@ Field-level validation error
 
 ```
 
-### Properties
+#### Properties
 
 |Name|Type|Required|Restrictions|Description|
 |---|---|---|---|---|
@@ -2644,7 +2644,7 @@ Field-level validation error
 |gatewayId|string|true|none|Handle (URL-friendly slug) of the target gateway for this deployment|
 |metadata|object|false|none|Optional metadata for the deployment. Supported keys include `endpointUrl`, `vhostMain`, and `vhostSandbox`.|
 
-<h2 id="tocS_DeploymentResponse">DeploymentResponse</h2>
+## DeploymentResponse
 
 <a id="schemadeploymentresponse"></a>
 <a id="schema_DeploymentResponse"></a>
@@ -2666,7 +2666,7 @@ Field-level validation error
 
 ```
 
-### Properties
+#### Properties
 
 |Name|Type|Required|Restrictions|Description|
 |---|---|---|---|---|
@@ -2680,7 +2680,7 @@ Field-level validation error
 |statusReason|string¦null|false|none|Error code explaining the failure reason. Null unless status is FAILED (e.g. DEPLOYMENT_TIMEOUT, GATEWAY_PROCESSING_ERROR)|
 |updatedAt|string(date-time)¦null|false|none|Timestamp when the deployment status last changed (null for ARCHIVED deployments)|
 
-#### Enumerated Values
+##### Enumerated Values
 
 |Property|Value|
 |---|---|
@@ -2691,7 +2691,7 @@ Field-level validation error
 |status|FAILED|
 |status|ARCHIVED|
 
-<h2 id="tocS_DeploymentListResponse">DeploymentListResponse</h2>
+## DeploymentListResponse
 
 <a id="schemadeploymentlistresponse"></a>
 <a id="schema_DeploymentListResponse"></a>
@@ -2723,7 +2723,7 @@ Field-level validation error
 
 ```
 
-### Properties
+#### Properties
 
 |Name|Type|Required|Restrictions|Description|
 |---|---|---|---|---|
@@ -2731,7 +2731,7 @@ Field-level validation error
 |list|[[DeploymentResponse](#schemadeploymentresponse)]|true|none|List of deployments|
 |pagination|[Pagination](#schemapagination)|true|none|none|
 
-<h2 id="tocS_Upstream">Upstream</h2>
+## Upstream
 
 <a id="schemaupstream"></a>
 <a id="schema_Upstream"></a>
@@ -2762,14 +2762,14 @@ Field-level validation error
 
 Upstream backend configuration with main and sandbox endpoints
 
-### Properties
+#### Properties
 
 |Name|Type|Required|Restrictions|Description|
 |---|---|---|---|---|
 |main|[UpstreamDefinition](#schemaupstreamdefinition)|true|none|Upstream endpoint configuration. Provide exactly one of `url` (a direct backend URL) or<br>`ref` (a reference to a predefined upstream definition) — never both.|
 |sandbox|[UpstreamDefinition](#schemaupstreamdefinition)|false|none|Upstream endpoint configuration. Provide exactly one of `url` (a direct backend URL) or<br>`ref` (a reference to a predefined upstream definition) — never both.|
 
-<h2 id="tocS_UpstreamDefinition">UpstreamDefinition</h2>
+## UpstreamDefinition
 
 <a id="schemaupstreamdefinition"></a>
 <a id="schema_UpstreamDefinition"></a>
@@ -2791,7 +2791,7 @@ Upstream backend configuration with main and sandbox endpoints
 Upstream endpoint configuration. Provide exactly one of `url` (a direct backend URL) or
 `ref` (a reference to a predefined upstream definition) — never both.
 
-### Properties
+#### Properties
 
 |Name|Type|Required|Restrictions|Description|
 |---|---|---|---|---|
@@ -2811,7 +2811,7 @@ xor
 |---|---|---|---|---|
 |*anonymous*|object|false|none|none|
 
-<h2 id="tocS_UpstreamAuth">UpstreamAuth</h2>
+## UpstreamAuth
 
 <a id="schemaupstreamauth"></a>
 <a id="schema_UpstreamAuth"></a>
@@ -2829,7 +2829,7 @@ xor
 
 Authentication configuration for upstream endpoints
 
-### Properties
+#### Properties
 
 |Name|Type|Required|Restrictions|Description|
 |---|---|---|---|---|
@@ -2837,7 +2837,7 @@ Authentication configuration for upstream endpoints
 |header|string|false|none|Header name for api-key authentication (e.g., 'Authorization' for bearer/basic, custom header for api-key)|
 |value|string(password)|false|write-only|Authentication value (API key, Bearer token, or Base64 encoded credentials for basic auth)|
 
-#### Enumerated Values
+##### Enumerated Values
 
 |Property|Value|
 |---|---|
@@ -2847,7 +2847,7 @@ Authentication configuration for upstream endpoints
 |type|other|
 |type|none|
 
-<h2 id="tocS_ExtractionIdentifier">ExtractionIdentifier</h2>
+## ExtractionIdentifier
 
 <a id="schemaextractionidentifier"></a>
 <a id="schema_ExtractionIdentifier"></a>
@@ -2862,14 +2862,14 @@ Authentication configuration for upstream endpoints
 
 ```
 
-### Properties
+#### Properties
 
 |Name|Type|Required|Restrictions|Description|
 |---|---|---|---|---|
 |location|string|true|none|Where to find the token information|
 |identifier|string|true|none|JSONPath expression or header name to identify the token value|
 
-#### Enumerated Values
+##### Enumerated Values
 
 |Property|Value|
 |---|---|
@@ -2878,7 +2878,7 @@ Authentication configuration for upstream endpoints
 |location|queryParam|
 |location|pathParam|
 
-<h2 id="tocS_LLMProviderTemplateAuth">LLMProviderTemplateAuth</h2>
+## LLMProviderTemplateAuth
 
 <a id="schemallmprovidertemplateauth"></a>
 <a id="schema_LLMProviderTemplateAuth"></a>
@@ -2894,7 +2894,7 @@ Authentication configuration for upstream endpoints
 
 ```
 
-### Properties
+#### Properties
 
 |Name|Type|Required|Restrictions|Description|
 |---|---|---|---|---|
@@ -2902,7 +2902,7 @@ Authentication configuration for upstream endpoints
 |header|string|false|none|Header name to send the auth value|
 |valuePrefix|string|false|none|Prefix to attach before the auth value|
 
-<h2 id="tocS_LLMProviderTemplateMetadata">LLMProviderTemplateMetadata</h2>
+## LLMProviderTemplateMetadata
 
 <a id="schemallmprovidertemplatemetadata"></a>
 <a id="schema_LLMProviderTemplateMetadata"></a>
@@ -2923,7 +2923,7 @@ Authentication configuration for upstream endpoints
 
 ```
 
-### Properties
+#### Properties
 
 |Name|Type|Required|Restrictions|Description|
 |---|---|---|---|---|
@@ -2932,7 +2932,7 @@ Authentication configuration for upstream endpoints
 |logoUrl|string(uri)|false|none|URL of the provider logo|
 |openapiSpecUrl|string(uri)|false|none|URL to the OpenAPI specification for the provider|
 
-<h2 id="tocS_LLMProviderTemplateResourceMapping">LLMProviderTemplateResourceMapping</h2>
+## LLMProviderTemplateResourceMapping
 
 <a id="schemallmprovidertemplateresourcemapping"></a>
 <a id="schema_LLMProviderTemplateResourceMapping"></a>
@@ -2970,7 +2970,7 @@ Authentication configuration for upstream endpoints
 
 ```
 
-### Properties
+#### Properties
 
 |Name|Type|Required|Restrictions|Description|
 |---|---|---|---|---|
@@ -2982,7 +2982,7 @@ Authentication configuration for upstream endpoints
 |requestModel|[ExtractionIdentifier](#schemaextractionidentifier)|false|none|none|
 |responseModel|[ExtractionIdentifier](#schemaextractionidentifier)|false|none|none|
 
-<h2 id="tocS_LLMProviderTemplateResourceMappings">LLMProviderTemplateResourceMappings</h2>
+## LLMProviderTemplateResourceMappings
 
 <a id="schemallmprovidertemplateresourcemappings"></a>
 <a id="schema_LLMProviderTemplateResourceMappings"></a>
@@ -3024,13 +3024,13 @@ Authentication configuration for upstream endpoints
 
 ```
 
-### Properties
+#### Properties
 
 |Name|Type|Required|Restrictions|Description|
 |---|---|---|---|---|
 |resources|[[LLMProviderTemplateResourceMapping](#schemallmprovidertemplateresourcemapping)]|false|none|none|
 
-<h2 id="tocS_LLMProviderTemplate">LLMProviderTemplate</h2>
+## LLMProviderTemplate
 
 <a id="schemallmprovidertemplate"></a>
 <a id="schema_LLMProviderTemplate"></a>
@@ -3122,7 +3122,7 @@ Authentication configuration for upstream endpoints
 
 ```
 
-### Properties
+#### Properties
 
 |Name|Type|Required|Restrictions|Description|
 |---|---|---|---|---|
@@ -3149,7 +3149,7 @@ Authentication configuration for upstream endpoints
 |createdAt|string(date-time)|false|read-only|Timestamp when the resource was created|
 |updatedAt|string(date-time)|false|read-only|Timestamp when the resource was last updated|
 
-<h2 id="tocS_CreateLLMProviderTemplateVersionRequest">CreateLLMProviderTemplateVersionRequest</h2>
+## CreateLLMProviderTemplateVersionRequest
 
 <a id="schemacreatellmprovidertemplateversionrequest"></a>
 <a id="schema_CreateLLMProviderTemplateVersionRequest"></a>
@@ -3232,7 +3232,7 @@ Authentication configuration for upstream endpoints
 
 ```
 
-### Properties
+#### Properties
 
 |Name|Type|Required|Restrictions|Description|
 |---|---|---|---|---|
@@ -3250,7 +3250,7 @@ Authentication configuration for upstream endpoints
 |responseModel|[ExtractionIdentifier](#schemaextractionidentifier)|false|none|none|
 |resourceMappings|[LLMProviderTemplateResourceMappings](#schemallmprovidertemplateresourcemappings)|false|none|none|
 
-<h2 id="tocS_LLMProviderTemplateListItem">LLMProviderTemplateListItem</h2>
+## LLMProviderTemplateListItem
 
 <a id="schemallmprovidertemplatelistitem"></a>
 <a id="schema_LLMProviderTemplateListItem"></a>
@@ -3276,7 +3276,7 @@ Authentication configuration for upstream endpoints
 
 ```
 
-### Properties
+#### Properties
 
 |Name|Type|Required|Restrictions|Description|
 |---|---|---|---|---|
@@ -3294,7 +3294,7 @@ Authentication configuration for upstream endpoints
 |updatedAt|string(date-time)|false|none|none|
 |readOnly|boolean|false|none|True when the artifact originated from a data-plane gateway (origin gateway_api) and is read-only in the control plane.|
 
-<h2 id="tocS_LLMProviderTemplateListResponse">LLMProviderTemplateListResponse</h2>
+## LLMProviderTemplateListResponse
 
 <a id="schemallmprovidertemplatelistresponse"></a>
 <a id="schema_LLMProviderTemplateListResponse"></a>
@@ -3330,7 +3330,7 @@ Authentication configuration for upstream endpoints
 
 ```
 
-### Properties
+#### Properties
 
 |Name|Type|Required|Restrictions|Description|
 |---|---|---|---|---|
@@ -3338,7 +3338,7 @@ Authentication configuration for upstream endpoints
 |list|[[LLMProviderTemplateListItem](#schemallmprovidertemplatelistitem)]|true|none|none|
 |pagination|[Pagination](#schemapagination)|true|none|none|
 
-<h2 id="tocS_LLMAccessControl">LLMAccessControl</h2>
+## LLMAccessControl
 
 <a id="schemallmaccesscontrol"></a>
 <a id="schema_LLMAccessControl"></a>
@@ -3360,21 +3360,21 @@ Authentication configuration for upstream endpoints
 
 ```
 
-### Properties
+#### Properties
 
 |Name|Type|Required|Restrictions|Description|
 |---|---|---|---|---|
 |mode|string|true|none|Access control mode|
 |exceptions|[[RouteException](#schemarouteexception)]|false|none|Path exceptions to the access control mode|
 
-#### Enumerated Values
+##### Enumerated Values
 
 |Property|Value|
 |---|---|
 |mode|allow_all|
 |mode|deny_all|
 
-<h2 id="tocS_RouteException">RouteException</h2>
+## RouteException
 
 <a id="schemarouteexception"></a>
 <a id="schema_RouteException"></a>
@@ -3391,14 +3391,14 @@ Authentication configuration for upstream endpoints
 
 ```
 
-### Properties
+#### Properties
 
 |Name|Type|Required|Restrictions|Description|
 |---|---|---|---|---|
 |path|string|true|none|Path pattern|
 |methods|[string]|true|none|HTTP methods|
 
-<h2 id="tocS_LLMPolicy">LLMPolicy</h2>
+## LLMPolicy
 
 <a id="schemallmpolicy"></a>
 <a id="schema_LLMPolicy"></a>
@@ -3422,7 +3422,7 @@ Authentication configuration for upstream endpoints
 
 ```
 
-### Properties
+#### Properties
 
 |Name|Type|Required|Restrictions|Description|
 |---|---|---|---|---|
@@ -3430,7 +3430,7 @@ Authentication configuration for upstream endpoints
 |version|string|true|none|Version of the policy. Only major-only version is allowed (e.g., v0, v1). Full semantic version (e.g., v1.0.0) is not accepted and will be rejected.|
 |paths|[[LLMPolicyPath](#schemallmpolicypath)]|true|none|none|
 
-<h2 id="tocS_LLMPolicyPath">LLMPolicyPath</h2>
+## LLMPolicyPath
 
 <a id="schemallmpolicypath"></a>
 <a id="schema_LLMPolicyPath"></a>
@@ -3448,7 +3448,7 @@ Authentication configuration for upstream endpoints
 
 ```
 
-### Properties
+#### Properties
 
 |Name|Type|Required|Restrictions|Description|
 |---|---|---|---|---|
@@ -3456,7 +3456,7 @@ Authentication configuration for upstream endpoints
 |methods|[string]|true|none|none|
 |params|object|true|none|JSON Schema describing the parameters accepted by this policy. This itself is a JSON Schema document.|
 
-<h2 id="tocS_OperationPolicy">OperationPolicy</h2>
+## OperationPolicy
 
 <a id="schemaoperationpolicy"></a>
 <a id="schema_OperationPolicy"></a>
@@ -3481,7 +3481,7 @@ Authentication configuration for upstream endpoints
 
 ```
 
-### Properties
+#### Properties
 
 |Name|Type|Required|Restrictions|Description|
 |---|---|---|---|---|
@@ -3490,7 +3490,7 @@ Authentication configuration for upstream endpoints
 |executionCondition|string|false|none|Optional per-request CEL expression controlling whether the policy runs|
 |paths|[[OperationPolicyPath](#schemaoperationpolicypath)]|true|none|none|
 
-<h2 id="tocS_OperationPolicyPath">OperationPolicyPath</h2>
+## OperationPolicyPath
 
 <a id="schemaoperationpolicypath"></a>
 <a id="schema_OperationPolicyPath"></a>
@@ -3508,7 +3508,7 @@ Authentication configuration for upstream endpoints
 
 ```
 
-### Properties
+#### Properties
 
 |Name|Type|Required|Restrictions|Description|
 |---|---|---|---|---|
@@ -3516,7 +3516,7 @@ Authentication configuration for upstream endpoints
 |methods|[string]|true|none|none|
 |params|object|true|none|Policy parameters|
 
-<h2 id="tocS_LLMRateLimitingConfig">LLMRateLimitingConfig</h2>
+## LLMRateLimitingConfig
 
 <a id="schemallmratelimitingconfig"></a>
 <a id="schema_LLMRateLimitingConfig"></a>
@@ -3617,14 +3617,14 @@ Authentication configuration for upstream endpoints
 
 Rate limiting configuration for an LLM provider at provider and consumer levels.
 
-### Properties
+#### Properties
 
 |Name|Type|Required|Restrictions|Description|
 |---|---|---|---|---|
 |providerLevel|[RateLimitingScopeConfig](#schemaratelimitingscopeconfig)|false|none|Rate limiting configuration for a scope (provider or consumer). Either global or resource-wise limits can be defined.|
 |consumerLevel|[RateLimitingScopeConfig](#schemaratelimitingscopeconfig)|false|none|Rate limiting configuration for a scope (provider or consumer). Either global or resource-wise limits can be defined.|
 
-<h2 id="tocS_RateLimitingScopeConfig">RateLimitingScopeConfig</h2>
+## RateLimitingScopeConfig
 
 <a id="schemaratelimitingscopeconfig"></a>
 <a id="schema_RateLimitingScopeConfig"></a>
@@ -3724,7 +3724,7 @@ Rate limiting configuration for an LLM provider at provider and consumer levels.
 
 Rate limiting configuration for a scope (provider or consumer). Either global or resource-wise limits can be defined.
 
-### Properties
+#### Properties
 
 |Name|Type|Required|Restrictions|Description|
 |---|---|---|---|---|
@@ -3743,7 +3743,7 @@ xor
 |---|---|---|---|---|
 |*anonymous*|object|false|none|none|
 
-<h2 id="tocS_ResourceWiseRateLimitingConfig">ResourceWiseRateLimitingConfig</h2>
+## ResourceWiseRateLimitingConfig
 
 <a id="schemaresourcewiseratelimitingconfig"></a>
 <a id="schema_ResourceWiseRateLimitingConfig"></a>
@@ -3815,14 +3815,14 @@ xor
 
 Resource-specific limits with a required default limit.
 
-### Properties
+#### Properties
 
 |Name|Type|Required|Restrictions|Description|
 |---|---|---|---|---|
 |default|[RateLimitingLimitConfig](#schemaratelimitinglimitconfig)|true|none|Limit definition with independent request/token/cost dimensions. If all dimensions are disabled (or absent), rate limiting is off for that scope.|
 |resources|[[RateLimitingResourceLimit](#schemaratelimitingresourcelimit)]|true|none|Explicit resource limits that override the default limit.|
 
-<h2 id="tocS_RateLimitingResourceLimit">RateLimitingResourceLimit</h2>
+## RateLimitingResourceLimit
 
 <a id="schemaratelimitingresourcelimit"></a>
 <a id="schema_RateLimitingResourceLimit"></a>
@@ -3862,14 +3862,14 @@ Resource-specific limits with a required default limit.
 
 ```
 
-### Properties
+#### Properties
 
 |Name|Type|Required|Restrictions|Description|
 |---|---|---|---|---|
 |resource|string|true|none|Explicit resource path to apply the limit to.|
 |limit|[RateLimitingLimitConfig](#schemaratelimitinglimitconfig)|true|none|Limit definition with independent request/token/cost dimensions. If all dimensions are disabled (or absent), rate limiting is off for that scope.|
 
-<h2 id="tocS_RateLimitResetWindow">RateLimitResetWindow</h2>
+## RateLimitResetWindow
 
 <a id="schemaratelimitresetwindow"></a>
 <a id="schema_RateLimitResetWindow"></a>
@@ -3884,14 +3884,14 @@ Resource-specific limits with a required default limit.
 
 ```
 
-### Properties
+#### Properties
 
 |Name|Type|Required|Restrictions|Description|
 |---|---|---|---|---|
 |duration|integer|true|none|Reset duration for the limit window.|
 |unit|string|true|none|Reset time unit for the limit window.|
 
-#### Enumerated Values
+##### Enumerated Values
 
 |Property|Value|
 |---|---|
@@ -3901,7 +3901,7 @@ Resource-specific limits with a required default limit.
 |unit|week|
 |unit|month|
 
-<h2 id="tocS_RequestRateLimitDimension">RequestRateLimitDimension</h2>
+## RequestRateLimitDimension
 
 <a id="schemarequestratelimitdimension"></a>
 <a id="schema_RequestRateLimitDimension"></a>
@@ -3920,7 +3920,7 @@ Resource-specific limits with a required default limit.
 
 ```
 
-### Properties
+#### Properties
 
 |Name|Type|Required|Restrictions|Description|
 |---|---|---|---|---|
@@ -3928,7 +3928,7 @@ Resource-specific limits with a required default limit.
 |count|integer|false|none|Maximum number of requests in the reset window.|
 |reset|[RateLimitResetWindow](#schemaratelimitresetwindow)|false|none|none|
 
-<h2 id="tocS_TokenRateLimitDimension">TokenRateLimitDimension</h2>
+## TokenRateLimitDimension
 
 <a id="schematokenratelimitdimension"></a>
 <a id="schema_TokenRateLimitDimension"></a>
@@ -3947,7 +3947,7 @@ Resource-specific limits with a required default limit.
 
 ```
 
-### Properties
+#### Properties
 
 |Name|Type|Required|Restrictions|Description|
 |---|---|---|---|---|
@@ -3955,7 +3955,7 @@ Resource-specific limits with a required default limit.
 |count|integer|false|none|Maximum number of tokens in the reset window.|
 |reset|[RateLimitResetWindow](#schemaratelimitresetwindow)|false|none|none|
 
-<h2 id="tocS_CostRateLimitDimension">CostRateLimitDimension</h2>
+## CostRateLimitDimension
 
 <a id="schemacostratelimitdimension"></a>
 <a id="schema_CostRateLimitDimension"></a>
@@ -3974,7 +3974,7 @@ Resource-specific limits with a required default limit.
 
 ```
 
-### Properties
+#### Properties
 
 |Name|Type|Required|Restrictions|Description|
 |---|---|---|---|---|
@@ -3982,7 +3982,7 @@ Resource-specific limits with a required default limit.
 |amount|number(float)|false|none|Maximum cost in the reset window.|
 |reset|[RateLimitResetWindow](#schemaratelimitresetwindow)|false|none|none|
 
-<h2 id="tocS_RateLimitingLimitConfig">RateLimitingLimitConfig</h2>
+## RateLimitingLimitConfig
 
 <a id="schemaratelimitinglimitconfig"></a>
 <a id="schema_RateLimitingLimitConfig"></a>
@@ -4021,7 +4021,7 @@ Resource-specific limits with a required default limit.
 
 Limit definition with independent request/token/cost dimensions. If all dimensions are disabled (or absent), rate limiting is off for that scope.
 
-### Properties
+#### Properties
 
 |Name|Type|Required|Restrictions|Description|
 |---|---|---|---|---|
@@ -4029,7 +4029,7 @@ Limit definition with independent request/token/cost dimensions. If all dimensio
 |token|[TokenRateLimitDimension](#schematokenratelimitdimension)|false|none|none|
 |cost|[CostRateLimitDimension](#schemacostratelimitdimension)|false|none|none|
 
-<h2 id="tocS_LLMProvider">LLMProvider</h2>
+## LLMProvider
 
 <a id="schemallmprovider"></a>
 <a id="schema_LLMProvider"></a>
@@ -4250,7 +4250,7 @@ Limit definition with independent request/token/cost dimensions. If all dimensio
 
 ```
 
-### Properties
+#### Properties
 
 |Name|Type|Required|Restrictions|Description|
 |---|---|---|---|---|
@@ -4277,7 +4277,7 @@ Limit definition with independent request/token/cost dimensions. If all dimensio
 |createdAt|string(date-time)|false|read-only|Timestamp when the resource was created|
 |updatedAt|string(date-time)|false|read-only|Timestamp when the resource was last updated|
 
-<h2 id="tocS_AssociatedGateway">AssociatedGateway</h2>
+## AssociatedGateway
 
 <a id="schemaassociatedgateway"></a>
 <a id="schema_AssociatedGateway"></a>
@@ -4294,14 +4294,14 @@ Limit definition with independent request/token/cost dimensions. If all dimensio
 
 ```
 
-### Properties
+#### Properties
 
 |Name|Type|Required|Restrictions|Description|
 |---|---|---|---|---|
 |id|string|true|none|Handle of the gateway this artifact can be deployed to|
 |configurations|object|false|none|Per-gateway configuration overrides for this artifact. This is a free-form object; the supported keys depend on the deployed artifact type.|
 
-<h2 id="tocS_LLMProviderListItem">LLMProviderListItem</h2>
+## LLMProviderListItem
 
 <a id="schemallmproviderlistitem"></a>
 <a id="schema_LLMProviderListItem"></a>
@@ -4324,7 +4324,7 @@ Limit definition with independent request/token/cost dimensions. If all dimensio
 
 ```
 
-### Properties
+#### Properties
 
 |Name|Type|Required|Restrictions|Description|
 |---|---|---|---|---|
@@ -4339,7 +4339,7 @@ Limit definition with independent request/token/cost dimensions. If all dimensio
 |createdAt|string(date-time)|false|none|none|
 |updatedAt|string(date-time)|false|none|none|
 
-#### Enumerated Values
+##### Enumerated Values
 
 |Property|Value|
 |---|---|
@@ -4347,7 +4347,7 @@ Limit definition with independent request/token/cost dimensions. If all dimensio
 |status|deployed|
 |status|failed|
 
-<h2 id="tocS_LLMModelProvider">LLMModelProvider</h2>
+## LLMModelProvider
 
 <a id="schemallmmodelprovider"></a>
 <a id="schema_LLMModelProvider"></a>
@@ -4369,7 +4369,7 @@ Limit definition with independent request/token/cost dimensions. If all dimensio
 
 ```
 
-### Properties
+#### Properties
 
 |Name|Type|Required|Restrictions|Description|
 |---|---|---|---|---|
@@ -4377,7 +4377,7 @@ Limit definition with independent request/token/cost dimensions. If all dimensio
 |displayName|string|true|none|Human-readable model provider name|
 |models|[[LLMModel](#schemallmmodel)]|false|none|Models under this model provider|
 
-<h2 id="tocS_LLMModel">LLMModel</h2>
+## LLMModel
 
 <a id="schemallmmodel"></a>
 <a id="schema_LLMModel"></a>
@@ -4393,7 +4393,7 @@ Limit definition with independent request/token/cost dimensions. If all dimensio
 
 ```
 
-### Properties
+#### Properties
 
 |Name|Type|Required|Restrictions|Description|
 |---|---|---|---|---|
@@ -4401,7 +4401,7 @@ Limit definition with independent request/token/cost dimensions. If all dimensio
 |displayName|string|true|none|Human-readable model name|
 |description|string|false|none|Model description|
 
-<h2 id="tocS_LLMProviderListResponse">LLMProviderListResponse</h2>
+## LLMProviderListResponse
 
 <a id="schemallmproviderlistresponse"></a>
 <a id="schema_LLMProviderListResponse"></a>
@@ -4434,7 +4434,7 @@ Limit definition with independent request/token/cost dimensions. If all dimensio
 
 ```
 
-### Properties
+#### Properties
 
 |Name|Type|Required|Restrictions|Description|
 |---|---|---|---|---|
@@ -4442,7 +4442,7 @@ Limit definition with independent request/token/cost dimensions. If all dimensio
 |list|[[LLMProviderListItem](#schemallmproviderlistitem)]|true|none|none|
 |pagination|[Pagination](#schemapagination)|true|none|none|
 
-<h2 id="tocS_LLMProxy">LLMProxy</h2>
+## LLMProxy
 
 <a id="schemallmproxy"></a>
 <a id="schema_LLMProxy"></a>
@@ -4546,7 +4546,7 @@ Limit definition with independent request/token/cost dimensions. If all dimensio
 
 ```
 
-### Properties
+#### Properties
 
 |Name|Type|Required|Restrictions|Description|
 |---|---|---|---|---|
@@ -4571,7 +4571,7 @@ Limit definition with independent request/token/cost dimensions. If all dimensio
 |createdAt|string(date-time)|false|read-only|Timestamp when the resource was created|
 |updatedAt|string(date-time)|false|read-only|Timestamp when the resource was last updated|
 
-<h2 id="tocS_LLMProxyListItem">LLMProxyListItem</h2>
+## LLMProxyListItem
 
 <a id="schemallmproxylistitem"></a>
 <a id="schema_LLMProxyListItem"></a>
@@ -4596,7 +4596,7 @@ Limit definition with independent request/token/cost dimensions. If all dimensio
 
 ```
 
-### Properties
+#### Properties
 
 |Name|Type|Required|Restrictions|Description|
 |---|---|---|---|---|
@@ -4613,7 +4613,7 @@ Limit definition with independent request/token/cost dimensions. If all dimensio
 |updatedAt|string(date-time)|false|none|none|
 |readOnly|boolean|false|none|True when the artifact originated from a data-plane gateway (origin gateway_api) and is read-only in the control plane.|
 
-#### Enumerated Values
+##### Enumerated Values
 
 |Property|Value|
 |---|---|
@@ -4621,7 +4621,7 @@ Limit definition with independent request/token/cost dimensions. If all dimensio
 |status|deployed|
 |status|failed|
 
-<h2 id="tocS_LLMProxyListResponse">LLMProxyListResponse</h2>
+## LLMProxyListResponse
 
 <a id="schemallmproxylistresponse"></a>
 <a id="schema_LLMProxyListResponse"></a>
@@ -4656,7 +4656,7 @@ Limit definition with independent request/token/cost dimensions. If all dimensio
 
 ```
 
-### Properties
+#### Properties
 
 |Name|Type|Required|Restrictions|Description|
 |---|---|---|---|---|
@@ -4664,7 +4664,7 @@ Limit definition with independent request/token/cost dimensions. If all dimensio
 |list|[[LLMProxyListItem](#schemallmproxylistitem)]|true|none|none|
 |pagination|[Pagination](#schemapagination)|true|none|none|
 
-<h2 id="tocS_LLMProxyProvider">LLMProxyProvider</h2>
+## LLMProxyProvider
 
 <a id="schemallmproxyprovider"></a>
 <a id="schema_LLMProxyProvider"></a>
@@ -4683,14 +4683,14 @@ Limit definition with independent request/token/cost dimensions. If all dimensio
 
 ```
 
-### Properties
+#### Properties
 
 |Name|Type|Required|Restrictions|Description|
 |---|---|---|---|---|
 |id|string|true|none|Unique id of a deployed llm provider|
 |auth|[UpstreamAuth](#schemaupstreamauth)|false|none|Authentication configuration for upstream endpoints|
 
-<h2 id="tocS_LLMProxyAdditionalProvider">LLMProxyAdditionalProvider</h2>
+## LLMProxyAdditionalProvider
 
 <a id="schemallmproxyadditionalprovider"></a>
 <a id="schema_LLMProxyAdditionalProvider"></a>
@@ -4712,7 +4712,7 @@ Limit definition with independent request/token/cost dimensions. If all dimensio
 
 Additional LLM provider attached to this proxy as a selectable upstream. Policies route to it by referring to the `as` name (defaults to `id`).
 
-### Properties
+#### Properties
 
 |Name|Type|Required|Restrictions|Description|
 |---|---|---|---|---|
@@ -4720,7 +4720,7 @@ Additional LLM provider attached to this proxy as a selectable upstream. Policie
 |as|string|false|none|Logical LLM Provider name used by policies to select this provider. Must be unique within the proxy. Defaults to `id` when omitted.|
 |transformer|[LLMProxyTransformer](#schemallmproxytransformer)|false|none|Request/response translator applied when this provider is the selected upstream. The proxy injects the translator as a conditional policy whose execution condition matches this provider, so it runs only when the provider is selected. The provider's `as` name (defaults to `id`) is passed to the translator as its target upstream.|
 
-<h2 id="tocS_LLMProxyTransformer">LLMProxyTransformer</h2>
+## LLMProxyTransformer
 
 <a id="schemallmproxytransformer"></a>
 <a id="schema_LLMProxyTransformer"></a>
@@ -4738,7 +4738,7 @@ Additional LLM provider attached to this proxy as a selectable upstream. Policie
 
 Request/response translator applied when this provider is the selected upstream. The proxy injects the translator as a conditional policy whose execution condition matches this provider, so it runs only when the provider is selected. The provider's `as` name (defaults to `id`) is passed to the translator as its target upstream.
 
-### Properties
+#### Properties
 
 |Name|Type|Required|Restrictions|Description|
 |---|---|---|---|---|
@@ -4746,7 +4746,7 @@ Request/response translator applied when this provider is the selected upstream.
 |version|string|true|none|Major-only translator policy version (for example v1). The Gateway Controller resolves it to the installed full version.|
 |params|object|false|none|Translator-specific parameters (for example model, apiVersion).|
 
-<h2 id="tocS_CreateLLMProviderAPIKeyRequest">CreateLLMProviderAPIKeyRequest</h2>
+## CreateLLMProviderAPIKeyRequest
 
 <a id="schemacreatellmproviderapikeyrequest"></a>
 <a id="schema_CreateLLMProviderAPIKeyRequest"></a>
@@ -4764,7 +4764,7 @@ Request/response translator applied when this provider is the selected upstream.
 
 ```
 
-### Properties
+#### Properties
 
 |Name|Type|Required|Restrictions|Description|
 |---|---|---|---|---|
@@ -4774,7 +4774,7 @@ Request/response translator applied when this provider is the selected upstream.
 |issuer|string¦null|false|none|Identifier of the API Portal that provisioned this API key. Null if not provided.|
 |allowedTargets|string¦null|false|none|Comma-separated list of gateways this key is valid for.<br>Use 'ALL' to allow all targets (default).|
 
-<h2 id="tocS_CreateLLMProviderAPIKeyResponse">CreateLLMProviderAPIKeyResponse</h2>
+## CreateLLMProviderAPIKeyResponse
 
 <a id="schemacreatellmproviderapikeyresponse"></a>
 <a id="schema_CreateLLMProviderAPIKeyResponse"></a>
@@ -4791,7 +4791,7 @@ Request/response translator applied when this provider is the selected upstream.
 
 ```
 
-### Properties
+#### Properties
 
 |Name|Type|Required|Restrictions|Description|
 |---|---|---|---|---|
@@ -4800,7 +4800,7 @@ Request/response translator applied when this provider is the selected upstream.
 |id|string|true|none|Unique identifier of the generated key|
 |apiKey|string|true|none|The generated API key value — 64 hexadecimal characters, returned only in this creation response and never retrievable afterwards. The example value is a non-functional placeholder.|
 
-<h2 id="tocS_CreateLLMProxyAPIKeyRequest">CreateLLMProxyAPIKeyRequest</h2>
+## CreateLLMProxyAPIKeyRequest
 
 <a id="schemacreatellmproxyapikeyrequest"></a>
 <a id="schema_CreateLLMProxyAPIKeyRequest"></a>
@@ -4818,7 +4818,7 @@ Request/response translator applied when this provider is the selected upstream.
 
 ```
 
-### Properties
+#### Properties
 
 |Name|Type|Required|Restrictions|Description|
 |---|---|---|---|---|
@@ -4828,7 +4828,7 @@ Request/response translator applied when this provider is the selected upstream.
 |issuer|string¦null|false|none|Identifier of the API Portal that provisioned this API key. Null if not provided.|
 |allowedTargets|string¦null|false|none|Comma-separated list of gateways this key is valid for.<br>Use 'ALL' to allow all targets (default).|
 
-<h2 id="tocS_CreateLLMProxyAPIKeyResponse">CreateLLMProxyAPIKeyResponse</h2>
+## CreateLLMProxyAPIKeyResponse
 
 <a id="schemacreatellmproxyapikeyresponse"></a>
 <a id="schema_CreateLLMProxyAPIKeyResponse"></a>
@@ -4845,7 +4845,7 @@ Request/response translator applied when this provider is the selected upstream.
 
 ```
 
-### Properties
+#### Properties
 
 |Name|Type|Required|Restrictions|Description|
 |---|---|---|---|---|
@@ -4854,7 +4854,7 @@ Request/response translator applied when this provider is the selected upstream.
 |id|string|true|none|Unique identifier of the generated key|
 |apiKey|string|true|none|The generated API key value — 64 hexadecimal characters, returned only in this creation response and never retrievable afterwards. The example value is a non-functional placeholder.|
 
-<h2 id="tocS_MCPProxy">MCPProxy</h2>
+## MCPProxy
 
 <a id="schemamcpproxy"></a>
 <a id="schema_MCPProxy"></a>
@@ -4929,7 +4929,7 @@ Request/response translator applied when this provider is the selected upstream.
 
 ```
 
-### Properties
+#### Properties
 
 |Name|Type|Required|Restrictions|Description|
 |---|---|---|---|---|
@@ -4952,14 +4952,14 @@ Request/response translator applied when this provider is the selected upstream.
 |createdAt|string(date-time)|false|read-only|Timestamp when the resource was created|
 |updatedAt|string(date-time)|false|read-only|Timestamp when the resource was last updated|
 
-#### Enumerated Values
+##### Enumerated Values
 
 |Property|Value|
 |---|---|
 |mcpSpecVersion|2025-06-18|
 |mcpSpecVersion|2025-11-25|
 
-<h2 id="tocS_MCPProxyListItem">MCPProxyListItem</h2>
+## MCPProxyListItem
 
 <a id="schemamcpproxylistitem"></a>
 <a id="schema_MCPProxyListItem"></a>
@@ -4984,7 +4984,7 @@ Request/response translator applied when this provider is the selected upstream.
 
 ```
 
-### Properties
+#### Properties
 
 |Name|Type|Required|Restrictions|Description|
 |---|---|---|---|---|
@@ -5001,7 +5001,7 @@ Request/response translator applied when this provider is the selected upstream.
 |updatedAt|string(date-time)|false|none|none|
 |readOnly|boolean|false|none|True when the artifact originated from a data-plane gateway (origin gateway_api) and is read-only in the control plane.|
 
-#### Enumerated Values
+##### Enumerated Values
 
 |Property|Value|
 |---|---|
@@ -5009,7 +5009,7 @@ Request/response translator applied when this provider is the selected upstream.
 |status|deployed|
 |status|failed|
 
-<h2 id="tocS_MCPProxyListResponse">MCPProxyListResponse</h2>
+## MCPProxyListResponse
 
 <a id="schemamcpproxylistresponse"></a>
 <a id="schema_MCPProxyListResponse"></a>
@@ -5044,7 +5044,7 @@ Request/response translator applied when this provider is the selected upstream.
 
 ```
 
-### Properties
+#### Properties
 
 |Name|Type|Required|Restrictions|Description|
 |---|---|---|---|---|
@@ -5052,7 +5052,7 @@ Request/response translator applied when this provider is the selected upstream.
 |list|[[MCPProxyListItem](#schemamcpproxylistitem)]|true|none|none|
 |pagination|[Pagination](#schemapagination)|true|none|none|
 
-<h2 id="tocS_MCPServerInfoFetchRequest">MCPServerInfoFetchRequest</h2>
+## MCPServerInfoFetchRequest
 
 <a id="schemamcpserverinfofetchrequest"></a>
 <a id="schema_MCPServerInfoFetchRequest"></a>
@@ -5075,7 +5075,7 @@ Request/response translator applied when this provider is the selected upstream.
 Target MCP server to introspect, and the credentials to introspect it with. At least
 one of `url`/`proxyId` must be provided
 
-### Properties
+#### Properties
 
 |Name|Type|Required|Restrictions|Description|
 |---|---|---|---|---|
@@ -5101,7 +5101,7 @@ not
 |---|---|---|---|---|
 |*anonymous*|object|false|none|none|
 
-<h2 id="tocS_MCPServerInfoFetchResponse">MCPServerInfoFetchResponse</h2>
+## MCPServerInfoFetchResponse
 
 <a id="schemamcpserverinfofetchresponse"></a>
 <a id="schema_MCPServerInfoFetchResponse"></a>
@@ -5124,7 +5124,7 @@ not
 
 ```
 
-### Properties
+#### Properties
 
 |Name|Type|Required|Restrictions|Description|
 |---|---|---|---|---|
@@ -5133,7 +5133,7 @@ not
 |resources|[object]|false|none|none|
 |prompts|[object]|false|none|none|
 
-<h2 id="tocS_MCPProxyCapabilities">MCPProxyCapabilities</h2>
+## MCPProxyCapabilities
 
 <a id="schemamcpproxycapabilities"></a>
 <a id="schema_MCPProxyCapabilities"></a>
@@ -5155,7 +5155,7 @@ not
 
 ```
 
-### Properties
+#### Properties
 
 |Name|Type|Required|Restrictions|Description|
 |---|---|---|---|---|
@@ -5163,7 +5163,7 @@ not
 |resources|[object]|false|none|List of resource capabilities supported by this proxy|
 |prompts|[object]|false|none|List of prompt capabilities supported by this proxy|
 
-<h2 id="tocS_SecretCreateRequest">SecretCreateRequest</h2>
+## SecretCreateRequest
 
 <a id="schemasecretcreaterequest"></a>
 <a id="schema_SecretCreateRequest"></a>
@@ -5181,7 +5181,7 @@ not
 
 ```
 
-### Properties
+#### Properties
 
 |Name|Type|Required|Restrictions|Description|
 |---|---|---|---|---|
@@ -5191,14 +5191,14 @@ not
 |value|string|true|write-only|Plaintext secret value — encrypted at rest, never returned in any response|
 |type|string|false|none|none|
 
-#### Enumerated Values
+##### Enumerated Values
 
 |Property|Value|
 |---|---|
 |type|GENERIC|
 |type|CERTIFICATE|
 
-<h2 id="tocS_SecretUpdateRequest">SecretUpdateRequest</h2>
+## SecretUpdateRequest
 
 <a id="schemasecretupdaterequest"></a>
 <a id="schema_SecretUpdateRequest"></a>
@@ -5215,7 +5215,7 @@ not
 
 ```
 
-### Properties
+#### Properties
 
 |Name|Type|Required|Restrictions|Description|
 |---|---|---|---|---|
@@ -5224,7 +5224,7 @@ not
 |description|string|false|none|none|
 |value|string|true|write-only|New plaintext secret value — re-encrypted at rest|
 
-<h2 id="tocS_SecretResponse">SecretResponse</h2>
+## SecretResponse
 
 <a id="schemasecretresponse"></a>
 <a id="schema_SecretResponse"></a>
@@ -5245,7 +5245,7 @@ not
 
 Returned on create (201) and rotate (200). The plaintext value is never included.
 
-### Properties
+#### Properties
 
 |Name|Type|Required|Restrictions|Description|
 |---|---|---|---|---|
@@ -5256,7 +5256,7 @@ Returned on create (201) and rotate (200). The plaintext value is never included
 |createdAt|string(date-time)|false|none|none|
 |updatedAt|string(date-time)|false|none|none|
 
-<h2 id="tocS_SecretSummary">SecretSummary</h2>
+## SecretSummary
 
 <a id="schemasecretsummary"></a>
 <a id="schema_SecretSummary"></a>
@@ -5281,7 +5281,7 @@ Returned on create (201) and rotate (200). The plaintext value is never included
 
 Secret metadata — never includes the plaintext value.
 
-### Properties
+#### Properties
 
 |Name|Type|Required|Restrictions|Description|
 |---|---|---|---|---|
@@ -5296,7 +5296,7 @@ Secret metadata — never includes the plaintext value.
 |createdAt|string(date-time)|false|none|none|
 |updatedAt|string(date-time)|false|none|none|
 
-#### Enumerated Values
+##### Enumerated Values
 
 |Property|Value|
 |---|---|
@@ -5306,7 +5306,7 @@ Secret metadata — never includes the plaintext value.
 |status|ACTIVE|
 |status|DEPRECATED|
 
-<h2 id="tocS_SecretListResponse">SecretListResponse</h2>
+## SecretListResponse
 
 <a id="schemasecretlistresponse"></a>
 <a id="schema_SecretListResponse"></a>
@@ -5339,7 +5339,7 @@ Secret metadata — never includes the plaintext value.
 
 ```
 
-### Properties
+#### Properties
 
 |Name|Type|Required|Restrictions|Description|
 |---|---|---|---|---|
@@ -5347,7 +5347,7 @@ Secret metadata — never includes the plaintext value.
 |list|[[SecretSummary](#schemasecretsummary)]|true|none|[Secret metadata — never includes the plaintext value.]|
 |pagination|[Pagination](#schemapagination)|true|none|none|
 
-<h2 id="tocS_GatewayTokenListResponse">GatewayTokenListResponse</h2>
+## GatewayTokenListResponse
 
 <a id="schemagatewaytokenlistresponse"></a>
 <a id="schema_GatewayTokenListResponse"></a>
@@ -5374,7 +5374,7 @@ Secret metadata — never includes the plaintext value.
 
 ```
 
-### Properties
+#### Properties
 
 |Name|Type|Required|Restrictions|Description|
 |---|---|---|---|---|
@@ -5382,7 +5382,7 @@ Secret metadata — never includes the plaintext value.
 |list|[[TokenInfoResponse](#schematokeninforesponse)]|true|none|List of active tokens|
 |pagination|[Pagination](#schemapagination)|true|none|none|
 
-<h2 id="tocS_CustomPolicyListResponse">CustomPolicyListResponse</h2>
+## CustomPolicyListResponse
 
 <a id="schemacustompolicylistresponse"></a>
 <a id="schema_CustomPolicyListResponse"></a>
@@ -5413,7 +5413,7 @@ Secret metadata — never includes the plaintext value.
 
 ```
 
-### Properties
+#### Properties
 
 |Name|Type|Required|Restrictions|Description|
 |---|---|---|---|---|
