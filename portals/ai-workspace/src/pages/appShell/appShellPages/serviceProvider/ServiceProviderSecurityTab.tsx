@@ -34,7 +34,13 @@ import { useLLMProvider } from '../../../../contexts/llmProvider';
 import useAIWorkspaceSnackbar from '../../../../hooks/aiWorkspaceSnackbar';
 import { FormattedMessage } from 'react-intl';
 
-export default function ServiceProviderSecurityTab() {
+interface ServiceProviderSecurityTabProps {
+  onValidityChange?: (isValid: boolean) => void;
+}
+
+export default function ServiceProviderSecurityTab({
+  onValidityChange,
+}: ServiceProviderSecurityTabProps = {}) {
   const { provider, isLoading, error, updateProvider, isDraftMode } =
     useLLMProvider();
   const [authenticationType, setAuthenticationType] = useState('');
@@ -46,6 +52,11 @@ export default function ServiceProviderSecurityTab() {
   const isReadOnlyProvider = Boolean(provider?.readOnly);
   const isSecurityFormDisabled =
     !apiKeyEnabled || isLoading || Boolean(error) || isReadOnlyProvider;
+  const isKeyValueInvalid = apiKeyEnabled && keyValue.trim().length === 0;
+
+  useEffect(() => {
+    onValidityChange?.(!isKeyValueInvalid);
+  }, [isKeyValueInvalid, onValidityChange]);
 
   useEffect(() => {
     if (!provider) return;
@@ -107,6 +118,7 @@ export default function ServiceProviderSecurityTab() {
     const nextType = String(event.target.value || '').trim();
     if (!nextType || nextType === authenticationType) return;
     setAuthenticationType(nextType);
+    if (keyValue.trim().length === 0) return;
     await updateSecurity(keyValue.trim(), keyIn, apiKeyEnabled, valuePrefix.trim());
   };
 
@@ -116,20 +128,36 @@ export default function ServiceProviderSecurityTab() {
     const nextEnabled = event.target.checked;
     if (nextEnabled === apiKeyEnabled) return;
     setApiKeyEnabled(nextEnabled);
+    if (nextEnabled && keyValue.trim().length === 0) {
+      showSnackbar(
+        'Enter a header or query parameter name for the API key before enabling it.',
+        'error'
+      );
+      return;
+    }
     await updateSecurity(keyValue.trim(), keyIn, nextEnabled, valuePrefix.trim());
   };
 
   const handleKeyBlur = async () => {
     if (!provider || isLoading || error) return;
     const nextKey = keyValue.trim();
-    if (!nextKey || nextKey === (provider.security?.apiKey?.key || '')) {
+    if (!nextKey) {
+      if (apiKeyEnabled) {
+        showSnackbar(
+          'Enter a header or query parameter name for the API key.',
+          'error'
+        );
+      }
+      return;
+    }
+    if (nextKey === (provider.security?.apiKey?.key || '')) {
       return;
     }
     await updateSecurity(nextKey, keyIn, apiKeyEnabled, valuePrefix.trim());
   };
 
   const handleValuePrefixBlur = async () => {
-    if (!provider || isLoading || error) return;
+    if (!provider || isLoading || error || isKeyValueInvalid) return;
     const nextValuePrefix = valuePrefix.trim();
     if (nextValuePrefix === (provider.security?.apiKey?.valuePrefix || '')) {
       return;
@@ -141,6 +169,7 @@ export default function ServiceProviderSecurityTab() {
     const nextIn = event.target.value as 'header' | 'query';
     if (nextIn === keyIn) return;
     setKeyIn(nextIn);
+    if (isKeyValueInvalid) return;
     await updateSecurity(keyValue.trim(), nextIn, apiKeyEnabled, valuePrefix.trim());
   };
 
@@ -214,10 +243,17 @@ export default function ServiceProviderSecurityTab() {
                 size="small"
                 value={keyValue}
                 disabled={isSecurityFormDisabled}
+                required={apiKeyEnabled}
+                error={isKeyValueInvalid}
+                helperText={
+                  isKeyValueInvalid
+                    ? 'Enter a header or query parameter name for the API key.'
+                    : undefined
+                }
                 onChange={(event) => {
                   const nextKey = event.target.value;
                   setKeyValue(nextKey);
-                  if (isDraftMode) {
+                  if (isDraftMode && nextKey.trim().length > 0) {
                     void updateSecurity(nextKey.trim(), keyIn, apiKeyEnabled, valuePrefix.trim());
                   }
                 }}
@@ -243,7 +279,7 @@ export default function ServiceProviderSecurityTab() {
                 onChange={(event) => {
                   const nextValuePrefix = event.target.value;
                   setValuePrefix(nextValuePrefix);
-                  if (isDraftMode) {
+                  if (isDraftMode && !isKeyValueInvalid) {
                     void updateSecurity(
                       keyValue.trim(),
                       keyIn,
