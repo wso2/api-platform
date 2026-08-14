@@ -61,8 +61,7 @@ func installCoreRoutes(
 		for _, pattern := range unknown {
 			claims = append(claims, fmt.Sprintf("plugin %q -> %q", overrides[pattern].plugin, pattern))
 		}
-		return fmt.Errorf("%d route override(s) name a pattern that is not a core route "+
-			"(patterns are matched exactly, including method and path): %s",
+		return fmt.Errorf("%d route override(s) name a pattern that is not a core route: %s",
 			len(unknown), strings.Join(claims, "; "))
 	}
 
