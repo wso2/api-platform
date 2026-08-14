@@ -111,4 +111,10 @@ const (
 	GuardrailNameMetadataKey = "guardrailName"
 	LLMCostMetadataKey       = "x-llm-cost"
 	LLMCostPropertyKey       = "llmCost"
+
+	// AICost carries a per-category cost breakdown whose shape follows the
+	// provider's response body, so it is forwarded as it arrives rather than
+	// through a fixed type.
+	AICostMetadataKey = "aiCost"
+	AICostPropertyKey = "aiCost"
 )

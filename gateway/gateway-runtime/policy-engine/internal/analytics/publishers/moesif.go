@@ -284,6 +284,17 @@ func (m *Moesif) Publish(event *dto.Event) {
 		} else {
 			slog.Warn("AI Token Usage data cannot be found in the event properties")
 		}
+
+		// Per-category cost breakdown. Its shape follows the provider's response
+		// body rather than a fixed type, so it is forwarded as it arrives.
+		if aiCostVal, exists := event.Properties[constants.AICostPropertyKey]; exists && aiCostVal != nil {
+			if aiCost, ok := aiCostVal.(map[string]interface{}); ok && len(aiCost) > 0 {
+				slog.Debug("aiCost from publisher", "aiCost", aiCost)
+				metadataMap[constants.AICostPropertyKey] = aiCost
+			} else {
+				slog.Warn("AI cost property cannot be converted to the required format")
+			}
+		}
 	}
 
 	// MCP Analytics

@@ -649,3 +649,54 @@ func TestMoesif_CloseHonoursShutdownDeadline(t *testing.T) {
 	// than a misleading nil.
 	assert.Equal(t, err, m.Close(context.Background()))
 }
+
+// The publisher copies event properties into its own metadata map by naming each
+// key, so a property absent from that map never reaches Moesif even though the
+// analytics pipeline set it. This pins aiCost to that map.
+func TestPublish_WithAICost(t *testing.T) {
+	moesif := createTestMoesifWithoutAPI()
+
+	event := createBaseEvent()
+	event.API.APIType = "LlmProvider"
+	event.Properties[constants.AICostPropertyKey] = map[string]interface{}{
+		"serviceTier":     "priority",
+		"promptTokenCost": 0.009,
+		"prompt_tokens_details": map[string]interface{}{
+			"cached_tokens_cost": 0.0005,
+		},
+	}
+
+	moesif.Publish(event)
+
+	require.Len(t, moesif.events, 1)
+	md, ok := moesif.events[0].Metadata.(map[string]interface{})
+	require.True(t, ok, "metadata is %T", moesif.events[0].Metadata)
+
+	raw, exists := md[constants.AICostPropertyKey]
+	require.True(t, exists, "aiCost absent from the metadata sent to Moesif: %#v", md)
+	aiCost, ok := raw.(map[string]interface{})
+	require.True(t, ok, "aiCost is %T", raw)
+
+	assert.Equal(t, "priority", aiCost["serviceTier"])
+	assert.Equal(t, 0.009, aiCost["promptTokenCost"])
+	nested, ok := aiCost["prompt_tokens_details"].(map[string]interface{})
+	require.True(t, ok, "nesting lost: %#v", aiCost)
+	assert.Equal(t, 0.0005, nested["cached_tokens_cost"])
+}
+
+// A non-LLM event must not carry the AI cost breakdown.
+func TestPublish_AICostOmittedForNonLLMAPI(t *testing.T) {
+	moesif := createTestMoesifWithoutAPI()
+
+	event := createBaseEvent()
+	event.API.APIType = "RestApi"
+	event.Properties[constants.AICostPropertyKey] = map[string]interface{}{"promptTokenCost": 1.0}
+
+	moesif.Publish(event)
+
+	require.Len(t, moesif.events, 1)
+	if md, ok := moesif.events[0].Metadata.(map[string]interface{}); ok {
+		_, exists := md[constants.AICostPropertyKey]
+		assert.False(t, exists, "aiCost should not be sent for a non-LLM API")
+	}
+}

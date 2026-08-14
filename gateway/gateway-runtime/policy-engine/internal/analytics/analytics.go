@@ -528,6 +528,15 @@ func (c *Analytics) prepareAnalyticEvent(logEntry *v3.HTTPAccessLogEntry) *dto.E
 		}
 		event.Properties["aiMetadata"] = aiMetadata
 
+		// The per-category cost breakdown is keyed by the field names the
+		// provider returns the matching token counts at, so its shape varies by
+		// provider and is forwarded unchanged.
+		if raw, exists := typedValuePairsFromMetadata[constants.AICostMetadataKey]; exists {
+			if aiCost, ok := raw.(map[string]interface{}); ok && len(aiCost) > 0 {
+				event.Properties[constants.AICostPropertyKey] = aiCost
+			}
+		}
+
 		aiTokenUsage := dto.AITokenUsage{}
 		// Prompt tokens
 		if raw, ok := keyValuePairsFromMetadata[PromptTokenCountMetadataKey]; !ok {

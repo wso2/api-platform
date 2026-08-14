@@ -1312,3 +1312,41 @@ func createLogEntryWithStreamID(streamID string) *v3.HTTPAccessLogEntry {
 		},
 	}
 }
+
+// The cost breakdown mirrors the provider's response body, so its shape varies
+// by provider and must reach analytics with its nesting intact rather than being
+// flattened or stringified.
+func TestPrepareAnalyticEvent_WithAICost(t *testing.T) {
+	cfg := &config.Config{}
+	analytics := NewAnalytics(cfg)
+
+	aiCost, err := structpb.NewStruct(map[string]interface{}{
+		"serviceTier":     "priority",
+		"promptTokenCost": 0.009,
+		"prompt_tokens_details": map[string]interface{}{
+			"cached_tokens_cost": 0.0005,
+		},
+	})
+	require.NoError(t, err)
+
+	logEntry := createLogEntryWithMetadataValues(map[string]*structpb.Value{
+		AIProviderNameMetadataKey:   structpb.NewStringValue("gemini"),
+		ModelIDMetadataKey:          structpb.NewStringValue("gemini-3-flash-preview"),
+		constants.AICostMetadataKey: structpb.NewStructValue(aiCost),
+	})
+
+	event := analytics.prepareAnalyticEvent(logEntry)
+
+	require.NotNil(t, event)
+	raw, ok := event.Properties[constants.AICostPropertyKey]
+	require.True(t, ok, "aiCost absent from Properties")
+	got, ok := raw.(map[string]interface{})
+	require.True(t, ok, "aiCost is %T, want map[string]interface{}", raw)
+
+	assert.Equal(t, "priority", got["serviceTier"])
+	assert.Equal(t, 0.009, got["promptTokenCost"])
+
+	nested, ok := got["prompt_tokens_details"].(map[string]interface{})
+	require.True(t, ok, "nesting lost: %#v", got)
+	assert.Equal(t, 0.0005, nested["cached_tokens_cost"])
+}
