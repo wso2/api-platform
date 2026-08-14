@@ -883,6 +883,9 @@ func (s *LLMProviderService) Create(orgUUID, createdBy string, req *api.LLMProvi
 	if err := validateLLMPolicyVersions(req.Policies); err != nil {
 		return nil, err
 	}
+	if err := validateSecurityConfig(req.Security); err != nil {
+		return nil, err
+	}
 	if err := validateModelProviders(req.Template, req.ModelProviders); err != nil {
 		return nil, err
 	}
@@ -1142,6 +1145,9 @@ func (s *LLMProviderService) Update(orgUUID, handle, updatedBy string, req *api.
 		return nil, err
 	}
 	if err := validateLLMPolicyVersions(req.Policies); err != nil {
+		return nil, err
+	}
+	if err := validateSecurityConfig(req.Security); err != nil {
 		return nil, err
 	}
 	if err := validateModelProviders(req.Template, req.ModelProviders); err != nil {
@@ -1445,6 +1451,9 @@ func (s *LLMProxyService) Create(orgUUID, createdBy string, req *api.LLMProxy) (
 		return nil, err
 	}
 	if err := validateLLMPolicyVersions(req.Policies); err != nil {
+		return nil, err
+	}
+	if err := validateSecurityConfig(req.Security); err != nil {
 		return nil, err
 	}
 	// req.ProjectId is the project handle; resolve it to the project UUID so the
@@ -1756,6 +1765,9 @@ func (s *LLMProxyService) Update(orgUUID, handle, updatedBy string, req *api.LLM
 	if err := validateLLMPolicyVersions(req.Policies); err != nil {
 		return nil, err
 	}
+	if err := validateSecurityConfig(req.Security); err != nil {
+		return nil, err
+	}
 
 	existing, err := s.repo.GetByID(handle, orgUUID)
 	if err != nil {
@@ -1972,6 +1984,27 @@ func validateUpstreamDefinition(name string, definition api.UpstreamDefinition) 
 	hasRef := strings.TrimSpace(utils.ValueOrEmpty(definition.Ref)) != ""
 	if hasUrl == hasRef {
 		return apperror.ValidationFailed.New(fmt.Sprintf("The upstream %s must specify either a url or a ref, not both.", name))
+	}
+	return nil
+}
+
+// validateSecurityConfig enforces that an enabled API-key security config carries a
+// non-empty header/query key name — mirrors the check generateLLM{Provider,Proxy}DeploymentYAML
+// performs at deploy time, run here so the request fails fast with a 400 instead of only
+// surfacing as an error at deploy.
+func validateSecurityConfig(sec *api.SecurityConfig) error {
+	if sec == nil || !isBoolTrue(sec.Enabled) || sec.ApiKey == nil || !isBoolTrue(sec.ApiKey.Enabled) {
+		return nil
+	}
+	if strings.TrimSpace(utils.ValueOrEmpty(sec.ApiKey.Key)) == "" {
+		return apperror.ValidationFailed.New("The security.apiKey.key field is required when API key security is enabled.")
+	}
+	in := ""
+	if sec.ApiKey.In != nil {
+		in = strings.ToLower(strings.TrimSpace(string(*sec.ApiKey.In)))
+	}
+	if in != "" && in != "header" && in != "query" {
+		return apperror.ValidationFailed.New("The security.apiKey.in field must be 'header' or 'query'.")
 	}
 	return nil
 }
