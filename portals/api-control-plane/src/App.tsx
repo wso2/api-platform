@@ -27,6 +27,10 @@ import { runtimeConfig } from './config/runtime';
 import { AuthProvider } from './features/auth/AuthProvider';
 import { ProductActivation } from './features/billing/ProductActivation';
 import { AppRoutes } from './routes/AppRoutes';
+import {
+  ExtensionsProvider,
+  type ApiControlPlaneExtension,
+} from './extensions';
 
 const isProduction = import.meta.env.PROD;
 
@@ -39,7 +43,11 @@ const queryClient = new QueryClient({
   },
 });
 
-export default function App() {
+export type AppProps = {
+  extensions?: readonly ApiControlPlaneExtension[];
+};
+
+export default function App({ extensions = [] }: AppProps) {
   return (
     <OxygenUIThemeProvider theme={WSO2Theme}>
       <ApiClientProvider>
@@ -49,7 +57,9 @@ export default function App() {
               <AuthProvider>
                 <ProductActivation />
                 <NotificationProvider>
-                  <AppRoutes />
+                  <ExtensionsProvider extensions={extensions}>
+                    <AppRoutes extensions={extensions} />
+                  </ExtensionsProvider>
                 </NotificationProvider>
               </AuthProvider>
             </BrowserRouter>

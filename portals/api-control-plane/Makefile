@@ -21,7 +21,10 @@ SHELL := /bin/bash
 
 VERSION ?= $(shell cat VERSION 2>/dev/null || echo "0.0.0-SNAPSHOT")
 
-.PHONY: help run build bff-build bff-run bff-test bff-tidy
+DOCKER_REGISTRY ?= ghcr.io/wso2/api-platform
+IMAGE_NAME := $(DOCKER_REGISTRY)/api-control-plane
+
+.PHONY: help run build bff-build bff-run bff-test bff-tidy test build-and-push-multiarch version-set version-bump-patch version-bump-minor version-bump-major version-bump-next-dev version-get-release
 
 # BFF (Backend-for-Frontend) — Go server that serves the SPA, proxies all
 # browser->backend traffic, and owns authentication. Local dev runs it over
@@ -75,5 +78,47 @@ bff-test: ## Run BFF unit tests
 bff-tidy: ## Tidy the BFF module
 	cd $(BFF_DIR) && GOWORK=off go mod tidy
 
+test: ## Run frontend and BFF tests
+	npm test
+	$(MAKE) bff-test
+
 build: ## Build the production Docker image
-	docker build -t api-control-plane:$(VERSION) .
+	docker build -t $(IMAGE_NAME):$(VERSION) -t api-control-plane:$(VERSION) .
+
+build-and-push-multiarch: ## Build and push multi-architecture Docker image (linux/amd64, linux/arm64)
+	@echo "Building and pushing multi-arch api-control-plane Docker image: $(IMAGE_NAME):$(VERSION)"
+	docker buildx build \
+		--platform linux/amd64,linux/arm64 \
+		--build-arg VERSION=$(VERSION) \
+		-t $(IMAGE_NAME):$(VERSION) \
+		--push \
+		.
+
+version-set: ## Set api-control-plane version
+	@if [ -z "$(VERSION)" ]; then \
+		echo "Error: VERSION required"; \
+		echo "Usage: make version-set VERSION=1.0.0"; \
+		exit 1; \
+	fi
+	@echo "$(VERSION)" > VERSION
+	@echo "✓ Set api-control-plane version to $(VERSION)"
+
+version-bump-patch: ## Bump patch version
+	@$(MAKE) version-set VERSION=$$(cd ../.. && bash scripts/next-version.sh patch portals/api-control-plane)
+
+version-bump-minor: ## Bump minor version
+	@$(MAKE) version-set VERSION=$$(cd ../.. && bash scripts/next-version.sh minor portals/api-control-plane)
+
+version-bump-major: ## Bump major version
+	@$(MAKE) version-set VERSION=$$(cd ../.. && bash scripts/next-version.sh major portals/api-control-plane)
+
+version-bump-next-dev: ## Bump to next minor dev version with SNAPSHOT suffix
+	@$(MAKE) version-set VERSION=$$(cd ../.. && bash scripts/next-version.sh next-dev portals/api-control-plane)
+
+version-get-release: ## Get release version (strips SNAPSHOT suffix)
+	@VERSION=$$(cat VERSION 2>/dev/null | tr -d '[:space:]' | sed 's/-SNAPSHOT//'); \
+	if [ -z "$$VERSION" ]; then \
+		echo "Error: VERSION is empty or contains only whitespace. Check portals/api-control-plane/VERSION file." >&2; \
+		exit 1; \
+	fi; \
+	echo "$$VERSION"
