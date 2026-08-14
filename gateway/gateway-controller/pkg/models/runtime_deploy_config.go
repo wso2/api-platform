@@ -91,31 +91,23 @@ type Route struct {
 	// CanonicalChainKey is the key of the policy chain this route's requests use
 	// when the operation is determined by the route itself. It equals the route key
 	// for every kind shipping today, but it is emitted as its own explicit field
-	// rather than left implicit, because that is what lets an identity route be
-	// pointed at a *composed* operation key without a wire change — which is exactly
-	// what an A2A HTTP+JSON operation route does, one route per operation path.
-	// Empty means "same as the route key".
+	// rather than left implicit, because that is what lets a directly-resolved route be
+	// pointed at a *composed* operation key without a wire change. Empty means "same as
+	// the route key".
 	//
-	// A resolver-bearing route must leave this empty: it has no chain of its own, its
-	// chain being composed per request from the operation the resolver identifies.
+	// A route naming a protocol resolver must leave this empty. Its key is derived from
+	// its own ResolverConfig by the resolver that owns the protocol, so a key here would
+	// be a second copy of the same fact with nothing to arbitrate between them — see
+	// ValidateResolution, which rejects the combination.
 	CanonicalChainKey string
 
 	// ResolverName overrides RuntimeDeployConfig.PolicyChainResolver for this one
-	// route. It exists because a multiplexed API has both kinds of route at once: an
-	// A2A deployment serves identity HTTP+JSON routes and a body-resolved JSON-RPC
-	// route side by side. Empty inherits the RDC-level default.
+	// route. It exists because one API can hold both shapes at once: routes whose
+	// operation is only knowable from the request name a protocol resolver, while the
+	// routes that are not operations at all — a well-known metadata document, a CORS
+	// preflight — stay directly resolved beside them. Empty inherits the RDC-level
+	// default.
 	ResolverName string
-
-	// ResponseKind is how this route's operation delivers its response: "unary",
-	// "streaming", or empty for "the policy engine derives it as it always has".
-	//
-	// It exists because buffering a streaming response is not a slow path but a broken
-	// one — the caller gets nothing until the upstream closes, which for a long-running
-	// agent task may be never — and the policy chain alone cannot tell the engine which
-	// it is. Set it on a route whose operation is known at deploy time (one A2A HTTP+JSON
-	// path per operation). On a multiplexed route leave it empty: both kinds of operation
-	// arrive on the same route, so only the resolver can say which this request is.
-	ResponseKind string
 
 	// ResolverConfig is opaque, resolver-specific per-route configuration. The policy
 	// engine passes it to the resolver's Prepare hook once at xDS ingest, so a
@@ -197,18 +189,6 @@ type ConfigTransformer interface {
 	Transform(cfg *StoredConfig) (*RuntimeDeployConfig, error)
 }
 
-// Response kinds a route may declare. They must match the policy engine's
-// resolver.ResponseKind values; the two are separate declarations because the controller
-// and the runtime are separate modules agreeing on a wire value, and a mismatch here is
-// caught loudly — the engine ignores a kind it does not recognise and logs it, and
-// ValidateResolution refuses to emit one in the first place.
-const (
-	ResponseKindUnary     = "unary"
-	ResponseKindStreaming = "streaming"
-)
-
-var validResponseKinds = map[string]bool{"": true, ResponseKindUnary: true, ResponseKindStreaming: true}
-
 // RouteKeyResolverName is the resolver name meaning "the route determines the
 // operation" — the identity case. It must match the policy engine's
 // resolver.RouteKeyResolverName; the two are separate constants because the
@@ -234,10 +214,14 @@ func (rdc *RuntimeDeployConfig) EffectiveCanonicalChainKey(routeKey string, rout
 	return routeKey
 }
 
-// isIdentityResolver reports whether a resolver name means "the route determines the
-// operation". An empty name does, because that is what every RDC looked like before
-// resolvers existed.
-func isIdentityResolver(name string) bool {
+// IsDirectlyResolved reports whether a resolver name means "the route itself determines
+// the chain key", so the route carries that key rather than deriving one per request. An
+// empty name does, because that is what every RDC looked like before resolvers existed.
+//
+// Exported because the snapshot translator decides from it whether to put
+// canonical_chain_key on the wire at all, and that decision has to agree with the
+// validation rule below — two predicates could disagree.
+func IsDirectlyResolved(name string) bool {
 	return name == "" || name == RouteKeyResolverName
 }
 
@@ -255,8 +239,8 @@ func isIdentityResolver(name string) bool {
 // from "the map points at a missing chain" to "a key the engine will compose has no
 // chain", so the checks moved with it:
 //
-//   - an identity route's canonical key must name a chain (this covers a redirected
-//     HTTP+JSON operation route, whose composed key must resolve like any other);
+//   - a directly-resolved route's canonical key must name a chain (including one pointed
+//     at a composed operation key, whose key must resolve like any other);
 //   - a resolver-bearing route must not carry a canonical key, and must have at least
 //     one operation chain in its own partition — otherwise no request to it can ever
 //     resolve;
@@ -300,21 +284,16 @@ func (rdc *RuntimeDeployConfig) ValidateResolution() error {
 			return fmt.Errorf("route %q: nil route", routeKey)
 		}
 
-		if !validResponseKinds[route.ResponseKind] {
-			return fmt.Errorf("route %q: unknown response kind %q (expected %q, %q, or empty)",
-				routeKey, route.ResponseKind, ResponseKindUnary, ResponseKindStreaming)
-		}
-
 		resolverName := rdc.EffectiveResolverName(route)
 
-		if isIdentityResolver(resolverName) {
+		if IsDirectlyResolved(resolverName) {
 			canonical := rdc.EffectiveCanonicalChainKey(routeKey, route)
 			if _, ok := rdc.PolicyChains[canonical]; !ok {
 				return fmt.Errorf("route %q: canonical chain key %q names no policy chain", routeKey, canonical)
 			}
-			// Existing is not enough. A redirected identity route (an A2A HTTP+JSON
-			// operation route) points at a composed key, and a chain composed for another
-			// routing partition is a perfectly valid chain that belongs to someone else:
+			// Existing is not enough. A directly-resolved route may be pointed at a
+			// composed operation key, and a chain composed for another routing partition
+			// is a perfectly valid chain that belongs to someone else:
 			// a production route pointed at a sandbox operation chain would run the
 			// sandbox's authentication, authorization and rate limits. Existence checks
 			// catch a missing chain; only this catches the wrong one.

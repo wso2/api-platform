@@ -19,6 +19,7 @@
 package admin
 
 import (
+	"context"
 	"strings"
 	"testing"
 
@@ -353,19 +354,54 @@ func TestDumpLazyResources(t *testing.T) {
 // Policy chain resolution in the route dump
 // =============================================================================
 
+// bodyResolver is a stand-in for a real multiplexed resolver: it reads the request body,
+// so the routes it prepares are the ones the buffer limit and the deferred path govern.
+// The shipped binary registers only route-key, so nothing like this is reachable in
+// production yet.
+type bodyResolver struct{ name string }
+
+func (r *bodyResolver) Name() string { return r.name }
+
+func (r *bodyResolver) Prepare(resolver.ResolverRouteConfig) (resolver.PreparedResolver, error) {
+	return &preparedBodyResolver{}, nil
+}
+
+type preparedBodyResolver struct{}
+
+func (*preparedBodyResolver) Requirements() resolver.RequestRequirements {
+	return resolver.RequestRequirements{Body: resolver.BodyBuffered}
+}
+
+func (*preparedBodyResolver) Resolve(context.Context, resolver.RequestView) (resolver.Resolution, error) {
+	return resolver.Resolution{}, nil
+}
+
+// prepareRoute prepares rc the way xDS ingest does, so the dump reads the same prepared
+// state a running engine would.
+func prepareRoute(t *testing.T, routeKey string, rc *kernel.RouteConfig, resolvers ...resolver.Resolver) *kernel.RouteConfig {
+	t.Helper()
+	reg := resolver.NewRegistry()
+	require.NoError(t, reg.Register(&resolver.RouteKeyResolver{}))
+	for _, r := range resolvers {
+		require.NoError(t, reg.Register(r))
+	}
+	reg.Freeze()
+	require.NoError(t, kernel.PrepareRoute(reg, routeKey, rc))
+	return rc
+}
+
 // An identity route — every kind shipping today — echoes its chain key and reports
 // nothing else, so the dump is effectively unchanged for existing deployments.
 func TestDumpRouteMetadata_IdentityRouteReportsChainKeyOnly(t *testing.T) {
 	k := kernel.NewKernel()
 	k.ApplyWholeRouteConfigs(map[string]*kernel.RouteConfig{
-		"GET|/pets|localhost": {
+		"GET|/pets|localhost": prepareRoute(t, "GET|/pets|localhost", &kernel.RouteConfig{
 			Metadata: kernel.RouteMetadata{APIName: "PetStore"},
 			RouteResolution: resolver.RouteResolution{
-				RouteKey:          "GET|/pets|localhost",
 				CanonicalChainKey: "GET|/pets|localhost",
 				ResolverName:      resolver.RouteKeyResolverName,
 			},
-		},
+		}),
 	})
 
 	entry := dumpRouteMetadata(k).Routes[0]
@@ -374,7 +410,8 @@ func TestDumpRouteMetadata_IdentityRouteReportsChainKeyOnly(t *testing.T) {
 	assert.Empty(t, entry.ChainKeyPrefix, "an identity route composes nothing")
 	assert.Zero(t, entry.MaxRequestBodyBytes,
 		"the buffer limit only governs bodies buffered before the chain is known, which identity routes never do")
-	assert.False(t, entry.ResolverPrepared)
+	assert.True(t, entry.ResolverStatic, "an identity route resolves entirely at ingest")
+	assert.False(t, entry.ResolverBuffersBody)
 }
 
 // On a multiplexed route the dump is the only way to answer "why did this request get
@@ -384,19 +421,18 @@ func TestDumpRouteMetadata_IdentityRouteReportsChainKeyOnly(t *testing.T) {
 func TestDumpRouteMetadata_MultiplexedRouteReportsChainKeyPrefix(t *testing.T) {
 	k := kernel.NewKernel()
 	k.ApplyWholeRouteConfigs(map[string]*kernel.RouteConfig{
-		"POST|/rpc|localhost": {
+		"POST|/rpc|localhost": prepareRoute(t, "POST|/rpc|localhost", &kernel.RouteConfig{
 			Metadata: kernel.RouteMetadata{APIName: "Assistant", APIId: "agent-1", Vhost: "localhost"},
 			RouteResolution: resolver.RouteResolution{
-				RouteKey:     "POST|/rpc|localhost",
-				ResolverName: "a2a-jsonrpc",
-				RouteState:   "compiled",
+				ResolverName: "fake-multiplexed",
 			},
-		},
+		}, &bodyResolver{name: "fake-multiplexed"}),
 	})
 
 	entry := dumpRouteMetadata(k).Routes[0]
-	assert.Equal(t, "a2a-jsonrpc", entry.ResolverName)
-	assert.True(t, entry.ResolverPrepared)
+	assert.Equal(t, "fake-multiplexed", entry.ResolverName)
+	assert.False(t, entry.ResolverStatic, "a multiplexed route resolves per request")
+	assert.True(t, entry.ResolverBuffersBody)
 
 	// Built from the same helper as the keys themselves, so the dump cannot drift from
 	// what is actually probed: a composed key for any operation starts with this.
@@ -412,13 +448,10 @@ func TestDumpRouteMetadata_MultiplexedRouteReportsChainKeyPrefix(t *testing.T) {
 func TestDumpRouteMetadata_ExplicitBufferLimitIsReported(t *testing.T) {
 	k := kernel.NewKernel()
 	k.ApplyWholeRouteConfigs(map[string]*kernel.RouteConfig{
-		"POST|/rpc|localhost": {
-			RouteResolution: resolver.RouteResolution{
-				RouteKey:     "POST|/rpc|localhost",
-				ResolverName: "a2a-jsonrpc",
-			},
+		"POST|/rpc|localhost": prepareRoute(t, "POST|/rpc|localhost", &kernel.RouteConfig{
+			RouteResolution:     resolver.RouteResolution{ResolverName: "fake-multiplexed"},
 			MaxRequestBodyBytes: 4096,
-		},
+		}, &bodyResolver{name: "fake-multiplexed"}),
 	})
 
 	assert.Equal(t, int64(4096), dumpRouteMetadata(k).Routes[0].MaxRequestBodyBytes)

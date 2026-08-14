@@ -35,7 +35,6 @@ import (
 	"github.com/wso2/api-platform/gateway/gateway-runtime/policy-engine/internal/constants"
 	"github.com/wso2/api-platform/gateway/gateway-runtime/policy-engine/internal/executor"
 	"github.com/wso2/api-platform/gateway/gateway-runtime/policy-engine/internal/registry"
-	"github.com/wso2/api-platform/gateway/gateway-runtime/policy-engine/internal/resolver"
 	policy "github.com/wso2/api-platform/sdk/core/policy/v1alpha2"
 	policyenginev1 "github.com/wso2/api-platform/sdk/core/policyengine"
 )
@@ -247,7 +246,7 @@ func translateRequestActionsCore(result *executor.RequestExecutionResult, execCt
 
 			response := &extprocv3.ProcessingResponse{
 				Response: &extprocv3.ProcessingResponse_ImmediateResponse{
-					ImmediateResponse: buildImmediateResponse(execCtx, immResp),
+					ImmediateResponse: buildImmediateResponse(immResp),
 				},
 			}
 
@@ -471,60 +470,18 @@ func recompressModifiedRequestBody(
 
 // buildImmediateResponse is the single construction site for an ext_proc
 // ImmediateResponse produced by a policy short-circuit — an auth denial, a rate
-// limit, a guardrail rejection. Every phase routes through it so that a route
-// whose transport needs its rejections re-shaped (a JSON-RPC route returning a
-// JSON-RPC error object rather than a raw HTTP body) gets that at every phase,
-// and so a new short-circuit path cannot be added that silently bypasses it.
+// limit, a guardrail rejection. Every phase routes through it so a new
+// short-circuit path cannot be added that builds one a different way.
 //
 // Engine-generated faults (handlePolicyError, handlePayloadTooLarge) deliberately
 // do NOT come through here: an internal failure stays a sterile generic response
-// and never takes its shape from resolver-supplied state (error-handling.md).
-func buildImmediateResponse(execCtx *PolicyExecutionContext, immResp policy.ImmediateResponse) *extprocv3.ImmediateResponse {
-	immResp = renderImmediate(execCtx, immResp)
+// built from nothing but its own error kind (error-handling.md).
+func buildImmediateResponse(immResp policy.ImmediateResponse) *extprocv3.ImmediateResponse {
 	return &extprocv3.ImmediateResponse{
 		Status:  &typev3.HttpStatus{Code: typev3.StatusCode(immResp.StatusCode)},
 		Headers: buildHeaderValueOptions(immResp.Headers),
 		Body:    immResp.Body,
 	}
-}
-
-// renderImmediate re-renders a policy rejection into the route's transport error
-// shape, using the resolver-validated protocol state captured at resolution time.
-//
-// The early nil-renderer return is what makes "no behavioural change for the kinds
-// shipping today" structural rather than dependent on test coverage: this helper
-// sits on the path of every 401, 429 and guardrail rejection for every kind, and a
-// route without a resolver-provided renderer leaves the response untouched by an
-// explicit branch, not by a renderer that happens to be an identity function.
-func renderImmediate(execCtx *PolicyExecutionContext, in policy.ImmediateResponse) policy.ImmediateResponse {
-	if execCtx == nil || execCtx.rejectionRenderer == nil {
-		return in
-	}
-
-	out := execCtx.rejectionRenderer.RenderRejection(
-		execCtx.requestView,
-		execCtx.protocolState,
-		resolver.RenderedFailure{StatusCode: in.StatusCode, Headers: in.Headers, Body: in.Body},
-	)
-
-	// The HTTP status is preserved, not taken from the renderer: a jwt-auth
-	// rejection stays a 401 and a rate-limit rejection stays a 429, so the ALS
-	// access log, the analytics outcome field and operator dashboards stay keyed on
-	// a status that still means what it meant. Only the body — and any headers the
-	// renderer adds, typically content-type — is replaced. The protocol error body
-	// is a strict superset a client may ignore.
-	in.Body = out.Body
-	if len(out.Headers) > 0 {
-		merged := make(map[string]string, len(in.Headers)+len(out.Headers))
-		for k, v := range in.Headers {
-			merged[k] = v
-		}
-		for k, v := range out.Headers {
-			merged[k] = v
-		}
-		in.Headers = merged
-	}
-	return in
 }
 
 // collectShortCircuitAnalytics builds the analytics payload for a rejection raised
@@ -603,7 +560,7 @@ func requestHeaderShortCircuitResponse(
 
 	response := &extprocv3.ProcessingResponse{
 		Response: &extprocv3.ProcessingResponse_ImmediateResponse{
-			ImmediateResponse: buildImmediateResponse(execCtx, immResp),
+			ImmediateResponse: buildImmediateResponse(immResp),
 		},
 	}
 
@@ -844,7 +801,7 @@ func mergeRequestHeaderAndBodyResults(
 		if immResp, ok := bodyResult.FinalAction.(policy.ImmediateResponse); ok {
 			response := &extprocv3.ProcessingResponse{
 				Response: &extprocv3.ProcessingResponse_ImmediateResponse{
-					ImmediateResponse: buildImmediateResponse(execCtx, immResp),
+					ImmediateResponse: buildImmediateResponse(immResp),
 				},
 			}
 			// Both phases' earlier results count here: on the deferred path the
@@ -1031,7 +988,7 @@ func TranslateResponseHeaderActions(result *executor.ResponseHeaderExecutionResu
 		if immResp, ok := result.FinalAction.(policy.ImmediateResponse); ok {
 			response := &extprocv3.ProcessingResponse{
 				Response: &extprocv3.ProcessingResponse_ImmediateResponse{
-					ImmediateResponse: buildImmediateResponse(execCtx, immResp),
+					ImmediateResponse: buildImmediateResponse(immResp),
 				},
 			}
 			analyticsStruct, err := buildAnalyticsStruct(immResp.AnalyticsMetadata, execCtx)
@@ -1127,7 +1084,7 @@ func TranslateResponseHeaderActionsWithBodyMerge(
 		if immResp, ok := bodyResult.FinalAction.(policy.ImmediateResponse); ok {
 			response := &extprocv3.ProcessingResponse{
 				Response: &extprocv3.ProcessingResponse_ImmediateResponse{
-					ImmediateResponse: buildImmediateResponse(execCtx, immResp),
+					ImmediateResponse: buildImmediateResponse(immResp),
 				},
 			}
 			analyticsStruct, err := buildAnalyticsStruct(immResp.AnalyticsMetadata, execCtx)
@@ -1363,7 +1320,7 @@ func translateResponseActionsCore(result *executor.ResponseExecutionResult, exec
 		if immResp, ok := result.FinalAction.(policy.ImmediateResponse); ok {
 			response := &extprocv3.ProcessingResponse{
 				Response: &extprocv3.ProcessingResponse_ImmediateResponse{
-					ImmediateResponse: buildImmediateResponse(execCtx, immResp),
+					ImmediateResponse: buildImmediateResponse(immResp),
 				},
 			}
 

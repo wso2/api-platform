@@ -23,19 +23,30 @@
 // JSON-RPC, MCP, GraphQL) carry many logical operations on one HTTP route, so the
 // operation has to be read out of the request itself.
 //
-// The split of responsibility is deliberate and load-bearing: a resolver
-// identifies the *operation*, and this package composes the chain key from it. A
-// resolver never builds a key itself, so there is exactly one construction site per
-// process. The controller composes the same key with the same shared helper
-// (common/chainkey) when it emits the chains, which is what makes two transports of
-// one logical operation select one chain without either being told about the other.
+// The registry holds resolver *factories*. Each route is prepared once, at xDS
+// ingest, into an immutable PreparedResolver that captures everything static about
+// that route — its API ID, vhost, context, and its own configuration. Two routes
+// prepared by one factory are independent: one may need a buffered body while its
+// sibling needs nothing at all. That is what lets a single factory serve both a
+// transport that multiplexes every operation onto one route — where the operation is
+// only knowable from the request — and one with a route per operation, whose operation
+// is fixed at deploy time and needs no request inspection whatsoever.
 //
-//	kind-specific:   request                    ──extract──▶  canonical operation identifier
-//	generic:         (apiID, vhost, operation)  ──compose──▶  chain key
+// A prepared resolver composes its own chain key, with the shared helper
+// (common/chainkey) and the partition it captured at preparation. What stays central
+// is *validation*: this package checks that key against the route's own target and
+// partition before the chain is looked up, so a resolver cannot reach a chain belonging
+// to another API or vhost. The controller composes keys with the same helper when it
+// emits the chains, which is what makes two transports of one logical operation select
+// one chain without either being told about the other.
+//
+//	at ingest:    route config  ──prepare──▶  immutable prepared resolver
+//	per request:  request       ──resolve──▶  one chain key
+//	per request:  chain key     ──validate──▶ bound chain
 package resolver
 
 import (
-	"encoding/json"
+	"context"
 	"errors"
 	"fmt"
 	"sort"
@@ -59,156 +70,216 @@ const RouteKeyResolverName = "route-key"
 // one. Adding a resolver is covered by the advertised resolver list, not by this.
 const ProtocolVersion = 1
 
-// OperationResolver identifies the logical operation a request carries, for routes
-// whose HTTP method+path does not determine it. Implementations do not build chain
-// keys — see ResolveChainKey.
-type OperationResolver interface {
+// Resolver is a registered resolver factory. It holds no per-route state: the
+// registry stores one instance per name for the process lifetime, and every route
+// that names it gets its own PreparedResolver.
+type Resolver interface {
 	// Name returns the resolver's registered name; it must match the
 	// resolver_name emitted on the wire by the controller.
 	Name() string
 
-	// Requirements declares what must be available before Identify is called.
-	Requirements() Requirements
-
-	// Identify reads the request and returns the operation(s) it carries.
-	Identify(RequestView) (Resolution, error)
-}
-
-// Requirements declares what request data a resolver needs before it can run.
-// A resolver that needs the body forces the kernel to defer chain selection to
-// the request-body phase (see the deferred-binding path in internal/kernel).
-type Requirements struct {
-	Headers    bool
-	BufferBody bool
-}
-
-// RequestView is the read-only view of the request handed to a resolver.
-type RequestView struct {
-	RouteKey string
-
-	// APIID and Vhost are the composition inputs for ChainKeyFor, taken from route
-	// metadata the engine already receives. APIContext is here because a path-based
-	// resolver needs it to strip the API's prefix before matching.
+	// Prepare builds the immutable resolver for one route. It runs once per route at
+	// xDS ingest, so a resolver that must validate configuration, compile a schema or
+	// build an index does it here rather than per request.
 	//
-	// A resolver may read all three but must not build a chain key from them — that
-	// is ResolveChainKey's job, so the composition happens in one place.
-	APIID      string
-	Vhost      string
-	APIContext string
-
-	Method     string // upper-cased at extraction (GO-AUTH-006)
-	Path       string
-	Headers    map[string][]string
-	Body       []byte // non-nil only when Requirements().BufferBody
-	RouteState any    // whatever Prepare returned for this route; nil if unused
+	// An error skips that one route — its requests then take the existing sterile 500
+	// path — and increments an ingest failure metric. It must NOT NACK the snapshot:
+	// under State-of-the-World that keeps the previous version of every RouteConfig, so
+	// one bad deployment would freeze route updates for every API on the gateway.
+	Prepare(ResolverRouteConfig) (PreparedResolver, error)
 }
 
-// ResponseKind is how an operation's response is delivered. It is a property of the
-// *operation*, known once the operation is identified, and it is what keeps a streaming
-// operation from being buffered.
+// PreparedResolver is one route's resolver, fixed at ingest. Implementations must be
+// safe for concurrent use and must not mutate after Prepare returns.
+type PreparedResolver interface {
+	// Requirements declares what must be available before Resolve is called. It is a
+	// property of this prepared route, not of the factory, and cannot be overridden by
+	// configuration: letting a transport that must read the body opt out of buffering
+	// would make correct resolution impossible.
+	Requirements() RequestRequirements
+
+	// Resolve reads the request and returns the chain key it binds to.
+	Resolve(context.Context, RequestView) (Resolution, error)
+}
+
+// StaticPreparedResolver is an optional optimisation for a route whose resolution is
+// entirely known at ingest. The kernel stores the result and neither builds a
+// RequestView nor calls Resolve on the request path.
 //
-// Buffering a stream is not a slow path, it is a broken one: the caller receives nothing
-// until the upstream closes, which for a long-running agent task can be minutes or never.
-// The response body mode therefore cannot be derived from the policy chain alone.
-type ResponseKind string
+// route-key implements it, which is what keeps every kind shipping today on a path
+// that costs a field read and a string comparison.
+type StaticPreparedResolver interface {
+	PreparedResolver
+
+	// StaticResolution returns the resolution every request on this route produces.
+	StaticResolution() Resolution
+}
+
+// BodyRequirement is whether a prepared resolver needs the request body.
+type BodyRequirement uint8
 
 const (
-	// ResponseKindAuto means the operation does not declare how its response is
-	// delivered, so the engine derives the mode exactly as it did before this field
-	// existed: from the chain's capabilities and the shape of the upstream response.
-	// Every kind shipping today resolves to this, which is what makes the field additive.
-	ResponseKindAuto ResponseKind = ""
+	// BodyNotRequired means the resolver decides from headers, path and its own
+	// configuration alone, so its chain is bound at the request-headers callback.
+	BodyNotRequired BodyRequirement = iota
 
-	// ResponseKindUnary means one complete response. Safe to buffer, and buffering is
-	// what a response-body policy needs, so this is the deterministic form of what Auto
-	// usually infers.
-	ResponseKindUnary ResponseKind = "unary"
-
-	// ResponseKindStreaming means the response is delivered incrementally (SSE, a
-	// long-running task subscription). A chain whose response-body policies cannot run
-	// in streaming mode is incompatible with this operation and must not silently
-	// buffer it — see the fail-closed check in the kernel's response-header handling.
-	ResponseKindStreaming ResponseKind = "streaming"
+	// BodyBuffered means the resolver reads the whole request body, which forces the
+	// kernel to defer chain selection to the request-body callback (see the deferred
+	// binding path in internal/kernel).
+	BodyBuffered
 )
 
-// Valid reports whether k is a kind this binary understands. An unrecognised value from
-// a newer controller is not guessed at.
-func (k ResponseKind) Valid() bool {
-	switch k {
-	case ResponseKindAuto, ResponseKindUnary, ResponseKindStreaming:
+// Valid reports whether b is a requirement this binary understands. An unrecognised
+// value is rejected at preparation rather than guessed at: guessing "no body" would let a
+// resolver that declared it needs the body run without one and select a chain from
+// nothing.
+func (b BodyRequirement) Valid() bool {
+	switch b {
+	case BodyNotRequired, BodyBuffered:
 		return true
 	default:
 		return false
 	}
 }
 
-// Resolution is what the request resolved to.
-type Resolution struct {
-	// Operations carried by this request. Exactly one is supported today; more than
-	// one is rejected. The slice exists so a protocol where a single request carries
-	// several operations can be added without changing this interface — only the
-	// composition rule above it. Its real first consumer is the JSON-RPC batch
-	// request, not GraphQL.
-	Operations []Operation
-
-	// ProtocolState is optional resolver-owned, already-validated state that a
-	// renderer may use to shape an error response (e.g. a validated JSON-RPC
-	// request id). It must never carry raw request bytes.
-	ProtocolState any
-
-	// ResponseKind is how the identified operation delivers its response. A protocol
-	// where one operation streams and its sibling does not (A2A's SendMessage versus
-	// SendStreamingMessage) is exactly why this belongs to the resolution rather than to the
-	// route: on a multiplexed transport both arrive on the same route.
-	//
-	// Left at ResponseKindAuto by a resolver that has nothing to say, which is the
-	// pre-existing behaviour.
-	ResponseKind ResponseKind
+// String names the requirement for error text.
+func (b BodyRequirement) String() string {
+	switch b {
+	case BodyNotRequired:
+		return "not-required"
+	case BodyBuffered:
+		return "buffered"
+	default:
+		return fmt.Sprintf("unknown(%d)", uint8(b))
+	}
 }
 
-// Operation is one logical operation, expressed as a specificity ladder: a chain key
-// is composed for each candidate in turn and the first that has a chain wins. A kind
-// with an unbounded identifier space (MCP tool names) uses this to fall back from a
-// specific chain to a generic one.
+// RequestRequirements declares what request data a prepared resolver needs.
 //
-// Note the two shapes are deliberately distinguished:
-//   - Candidates within one Operation = alternatives, first hit wins.
-//   - The Operations slice = conjunction, all apply (reserved, rejected today).
-type Operation struct {
-	// Candidates are canonical operation identifiers, most specific first. Each must
-	// satisfy chainkey.ValidComponent; a resolver over a user-controlled identifier
-	// space must reject an identifier that does not, rather than escape it.
-	Candidates []string
+// A static resolution needs none of it, so a StaticPreparedResolver must declare the
+// zero value; PrepareRoute rejects any other combination rather than letting the static
+// branch silently win over a stated requirement.
+type RequestRequirements struct {
+	// Headers is currently advisory: the request view a resolver receives always carries
+	// the headers, so nothing in the engine reads this field. It is kept because a
+	// resolver declaring its inputs is the contract, and a future path that builds a
+	// narrower view would have to honour it.
+	Headers bool
 
-	// KnownToProtocol reports that the last candidate is a valid operation of the
-	// protocol itself. It decides how "no chain for any candidate" is classified: for
-	// a closed operation set (A2A's fixed operation enum) a missing chain means the
-	// deployment was built wrong, because the protocol says the operation exists; for
-	// an open one (MCP tool names) it means the client named something that does not
-	// exist.
+	Body BodyRequirement
+}
+
+// BuffersBody reports whether this route defers chain selection to the body phase.
+//
+// Anything other than an explicit BodyNotRequired counts as needing the body. That is
+// the conservative direction: providing a body to a resolver that did not want it costs
+// a buffered callback, while withholding one from a resolver that did means it resolves
+// from nothing. PrepareRoute rejects unrecognised values outright, so this is
+// defence-in-depth rather than the primary guard.
+func (r RequestRequirements) BuffersBody() bool { return r.Body != BodyNotRequired }
+
+// RequestView is the read-only view of the request handed to a prepared resolver.
+//
+// It carries only what varies per request. Static partition data (API ID, vhost, API
+// context) is not copied in here: the prepared resolver captured it at ingest, which
+// is both cheaper and narrower — a resolver cannot be handed a partition that differs
+// from the one its keys are validated against.
+type RequestView struct {
+	RouteKey string
+
+	Method  string // upper-cased at extraction (GO-AUTH-006)
+	Path    string
+	Headers map[string][]string
+	Body    []byte // non-nil only when Requirements().Body == BodyBuffered
+}
+
+// TargetKind is what a resolution's keys name, which decides how they are validated
+// and how a missing chain is classified.
+type TargetKind uint8
+
+const (
+	// TargetInvalid is the zero value and is always rejected. A resolver that forgets
+	// to set a target fails closed rather than defaulting into either set of semantics.
+	TargetInvalid TargetKind = iota
+
+	// TargetDirectRoute means the key is the route's own chain key. A miss keeps the
+	// pre-resolution outcome for a route with no chain: the kernel's sterile 500, not a
+	// protocol-level error.
+	TargetDirectRoute
+
+	// TargetOperation means the key is composed from a canonical protocol operation. A
+	// miss is classified from KnownToProtocol: a deployment problem when the protocol
+	// says the operation exists, and an unknown operation when it does not.
+	TargetOperation
+)
+
+// String names the target for logs and error text.
+func (t TargetKind) String() string {
+	switch t {
+	case TargetDirectRoute:
+		return "direct-route"
+	case TargetOperation:
+		return "operation"
+	default:
+		return "invalid"
+	}
+}
+
+// Resolution is what a prepared resolver made of the request.
+type Resolution struct {
+	// Target is what ChainKey names. Required: an unset target is rejected.
+	Target TargetKind
+
+	// ChainKey is the one chain this request binds to. Exactly one chain runs per
+	// request, so the binder does no selecting — it validates this key and looks it up.
 	//
-	// This is the distinction the controller-supplied operation map used to carry.
-	// Answering it from the protocol definition instead does not depend on deployment
-	// data being complete.
+	// Empty means the resolver could not identify anything to bind to, which is
+	// rejected as FailureInvalidRequest.
+	ChainKey string
+
+	// KnownToProtocol reports that the operation is one the protocol itself defines.
+	// It decides how "no chain under this key" is classified: for a closed operation
+	// set (A2A's fixed operation enum) a missing chain means the deployment was built
+	// wrong, because the protocol says the operation exists; for an open one (MCP tool
+	// names) it means the client named something that does not exist.
 	KnownToProtocol bool
 }
 
-// FailureKind classifies why resolution failed, so the kernel can decide between a
-// protocol-shaped response and a sterile generic one without inspecting error text.
+// BoundResolution is the outcome of binding a resolution to a chain that exists.
+type BoundResolution struct {
+	// ChainKey is the key whose chain was selected.
+	ChainKey string
+
+	// Operation is the canonical operation whose chain ran, for telemetry. It is
+	// *derived* from ChainKey rather than reported separately by the resolver: with one
+	// key per resolution the two cannot legitimately differ, and a resolver that could
+	// name a third value would let telemetry say SendMessage while the GetTask chain —
+	// its authentication, its rate limits — actually ran.
+	//
+	// Empty for a direct route: there the route determined the chain, so the resolver
+	// identified no operation, and the chain key is already on the span.
+	Operation string
+}
+
+// FailureKind classifies why resolution failed, so the kernel can pick a status and
+// label a metric without inspecting error text. It never reaches the client: every
+// failure is answered with the same sterile generic response.
 type FailureKind string
 
 const (
 	// FailureParse means the request payload could not be parsed at all.
 	FailureParse FailureKind = "parse"
 	// FailureInvalidRequest means the payload parsed but is not a valid request
-	// envelope for this protocol (this covers a resolver returning no operation).
+	// envelope for this protocol (this covers a resolver returning no chain key).
 	FailureInvalidRequest FailureKind = "invalid-request"
 	// FailureUnknownOperation means a well-formed request named an operation the
 	// protocol does not define — the client asked for something that does not exist.
 	// Distinct from FailureChainMissing, which is a deployment problem.
 	FailureUnknownOperation FailureKind = "unknown-operation"
-	// FailureMultiOperation means the request carries more than one operation,
-	// which no composition rule supports yet.
+	// FailureMultiOperation means the request envelope carries more than one
+	// operation (a JSON-RPC batch), which no composition rule supports: one request
+	// selects one chain. Raised by the resolver that recognises the envelope, since
+	// only it can tell a batch from a single call.
 	FailureMultiOperation FailureKind = "multi-operation-unsupported"
 	// FailurePayloadTooLarge means the request body exceeded a configured ceiling
 	// before the resolver could run.
@@ -222,30 +293,23 @@ const (
 	// but the body does not decode under it.
 	FailureUndecodableBody FailureKind = "undecodable-body"
 	// FailureUnknownResolver means the route names a resolver this binary does not
-	// have. Always rendered generically — never protocol-shaped, since the
-	// protocol is exactly what is unknown.
+	// have, so nothing about the request could be interpreted at all.
 	FailureUnknownResolver FailureKind = "unknown-resolver"
-	// FailureStreamingUnsupported means the identified operation streams its response
-	// but the chain bound to it cannot run its response-body policies in streaming
-	// mode. Like FailureChainMissing this is a deployment problem, not something the
-	// caller did, so it renders as a sterile 500 and never as a protocol error.
-	FailureStreamingUnsupported FailureKind = "streaming-unsupported"
 	// FailureChainMissing means resolution succeeded — the operation is one the
 	// protocol defines — but no chain exists under its composed key. That is a
 	// controller construction error or xDS skew, not the protocol's "unknown
-	// operation" case, so it renders generically rather than as a protocol error the
-	// client could act on.
+	// operation" case — so it answers 500 rather than blaming the caller with a 404.
 	FailureChainMissing FailureKind = "chain-missing"
-	// FailureInternal is every unclassified resolver error.
+	// FailureInternal is every unclassified resolver error, and every key a resolver
+	// returned that this package refused to accept.
 	FailureInternal FailureKind = "internal"
 )
 
-// ResolutionError preserves the reason and any protocol state needed to render a
-// correct response. Unclassified resolver errors are wrapped as FailureInternal.
+// ResolutionError carries the classified reason a resolution failed. Unclassified
+// resolver errors are wrapped as FailureInternal. The Cause is for internal logs only.
 type ResolutionError struct {
-	Kind          FailureKind
-	ProtocolState any
-	Cause         error
+	Kind  FailureKind
+	Cause error
 }
 
 func (e *ResolutionError) Error() string {
@@ -259,71 +323,11 @@ func (e *ResolutionError) Error() string {
 // logs only; it is never rendered to a client (error-handling.md directive 1).
 func (e *ResolutionError) Unwrap() error { return e.Cause }
 
-// ProtocolVisible reports whether this failure is one the protocol itself can
-// describe, and therefore a candidate for a resolver-supplied FailureRenderer.
-// Everything else — unknown resolver, payload limits, missing chain, internal —
-// uses the kernel's sterile generic response.
-func (e *ResolutionError) ProtocolVisible() bool {
-	switch e.Kind {
-	case FailureParse, FailureInvalidRequest, FailureUnknownOperation:
-		return true
-	default:
-		return false
-	}
-}
-
-// RenderedFailure is a transport-shaped response body, built by a resolver.
-type RenderedFailure struct {
-	StatusCode int
-	Headers    map[string]string
-	Body       []byte
-}
-
-// FailureRenderer is optional. The kernel uses a sterile generic renderer when the
-// selected resolver does not implement it or when no resolver can be selected.
-//
-// It stays a method on OperationResolver rather than moving to its own route-keyed
-// registry because protocol-shaped rendering is scoped to body-resolved transports
-// only. Identity routes have no resolver and therefore render raw HTTP.
-//
-// A renderer may use only resolver-validated ProtocolState; it must not echo
-// arbitrary request bytes back to the client.
-type FailureRenderer interface {
-	RenderFailure(RequestView, *ResolutionError) RenderedFailure
-}
-
-// PolicyRejectionRenderer is optional and separate from FailureRenderer: it
-// re-renders a rejection produced by a *policy* (auth, rate limit, guardrail) into
-// the transport's error shape, preserving the validated protocol state captured at
-// resolution time.
-//
-// The HTTP status is preserved by the caller — only the body (and any headers the
-// renderer sets) is replaced. A jwt-auth rejection stays a 401 and a rate-limit
-// rejection stays a 429 so access logs, analytics outcomes, and operator
-// dashboards stay keyed on a status that still means what it meant.
-type PolicyRejectionRenderer interface {
-	RenderRejection(view RequestView, protocolState any, in RenderedFailure) RenderedFailure
-}
-
-// Preparer is optional. When implemented, the kernel calls Prepare once per route
-// at xDS ingest and hands the result back as RequestView.RouteState. A resolver
-// that must compile a schema, build an index, or validate configuration does it
-// here, not per request.
-//
-// A Prepare error skips that one route — its requests then take the existing
-// sterile 500 path — and increments a failure metric. It must NOT NACK the
-// snapshot: under State-of-the-World that keeps the previous version of every
-// RouteConfig, so one bad deployment would freeze route updates for every API on
-// the gateway.
-type Preparer interface {
-	Prepare(cfg json.RawMessage) (any, error)
-}
-
 // ResolverRegistry is injected into the kernel and the xDS handler. Production uses
 // one immutable default instance; tests construct independent registries with fake
 // resolvers rather than mutating the production one.
 type ResolverRegistry interface {
-	Get(name string) (OperationResolver, bool)
+	Get(name string) (Resolver, bool)
 	Names() []string
 }
 
@@ -332,19 +336,19 @@ type ResolverRegistry interface {
 // the xDS client have started reading it.
 type Registry struct {
 	mu     sync.RWMutex
-	byName map[string]OperationResolver
+	byName map[string]Resolver
 	frozen bool
 }
 
 // NewRegistry returns an empty, unfrozen registry. Tests use this to build
 // independent registries; production uses DefaultRegistry.
 func NewRegistry() *Registry {
-	return &Registry{byName: make(map[string]OperationResolver)}
+	return &Registry{byName: make(map[string]Resolver)}
 }
 
 // Register adds a resolver. It fails on a duplicate name (two resolvers answering
 // to one wire value is always a build mistake) and on a frozen registry.
-func (r *Registry) Register(res OperationResolver) error {
+func (r *Registry) Register(res Resolver) error {
 	if res == nil {
 		return errors.New("resolver: cannot register a nil resolver")
 	}
@@ -367,7 +371,7 @@ func (r *Registry) Register(res OperationResolver) error {
 
 // MustRegister is Register for package init() use, where a failure is a build
 // error rather than a runtime condition.
-func (r *Registry) MustRegister(res OperationResolver) {
+func (r *Registry) MustRegister(res Resolver) {
 	if err := r.Register(res); err != nil {
 		panic(err)
 	}
@@ -387,8 +391,8 @@ func (r *Registry) Frozen() bool {
 	return r.frozen
 }
 
-// Get returns the resolver registered under name.
-func (r *Registry) Get(name string) (OperationResolver, bool) {
+// Get returns the resolver factory registered under name.
+func (r *Registry) Get(name string) (Resolver, bool) {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
 	res, ok := r.byName[name]
@@ -416,7 +420,7 @@ var defaultRegistry = NewRegistry()
 // RegisterDefault adds a resolver to the production registry. Intended for
 // package init() only — it panics on a duplicate name or after the registry has
 // been frozen, both of which are build-time mistakes rather than runtime states.
-func RegisterDefault(res OperationResolver) {
+func RegisterDefault(res Resolver) {
 	defaultRegistry.MustRegister(res)
 }
 
@@ -430,53 +434,10 @@ func DefaultRegistry() ResolverRegistry {
 }
 
 func init() {
-	// The identity resolver is registered for registry symmetry and so it shows up
-	// in the capability advertisement and the admin config dump. ResolveChainKey
-	// short-circuits identity before ever looking it up.
+	// The identity resolver every kind shipping today prepares to. It is a real
+	// registry entry, not a special case: PrepareRoute normalises an empty
+	// resolver_name to this name and prepares it like any other.
 	RegisterDefault(&RouteKeyResolver{})
-}
-
-// RouteResolution is a route's resolution configuration, as delivered by the
-// controller over xDS. It is embedded in the kernel's RouteConfig so the fields are
-// reachable directly off the route (rc.CanonicalChainKey, rc.ResolverName, …) while
-// ResolveChainKey can take a pointer to it without copying per request.
-type RouteResolution struct {
-	// RouteKey is the Envoy route name (METHOD|fullPath|vhost).
-	RouteKey string
-
-	// CanonicalChainKey is the chain key an identity route's requests use, as
-	// composed by the controller. It equals RouteKey for every kind shipping today,
-	// but it is always read from this field and never reconstructed: that is what
-	// lets an identity route be pointed at a composed operation key (an A2A
-	// HTTP+JSON operation route) without a wire change.
-	//
-	// It is not read for a resolver-bearing route, which has no chain of its own.
-	CanonicalChainKey string
-
-	// ResolverName is the effective resolver for this route. Empty and
-	// RouteKeyResolverName both mean identity.
-	ResolverName string
-
-	// ResponseKind is how this route's operation delivers its response, for a route
-	// where the operation is known at deploy time and no resolver runs — an A2A
-	// HTTP+JSON operation route, one route per operation. A resolver-bearing route
-	// leaves this at Auto and the answer comes from Resolution.ResponseKind instead,
-	// since there one route carries operations of both kinds.
-	ResponseKind ResponseKind
-
-	// ResolverConfig is opaque per-route resolver configuration, passed to
-	// Preparer.Prepare at ingest.
-	ResolverConfig json.RawMessage
-
-	// RouteState is whatever Prepare returned for this route; nil when the
-	// resolver does not implement Preparer.
-	RouteState any
-}
-
-// IsIdentity reports whether this route resolves its chain by route identity, with
-// no request inspection.
-func (r *RouteResolution) IsIdentity() bool {
-	return r.ResolverName == "" || r.ResolverName == RouteKeyResolverName
 }
 
 // ChainKeyFor composes the policy chain key for one operation.
@@ -493,101 +454,20 @@ func ChainKeyFor(apiID, vhost, operation string) string {
 	return chainkey.For(apiID, vhost, operation)
 }
 
-// ResolveChainKey returns the policy chain key for a request.
-//
-// The identity path — every kind that ships today — returns before touching
-// anything else: no allocation, no composition, no resolver call.
-//
-// For a resolver-bearing route the key is *composed* from the identified operation
-// rather than looked up in controller-supplied data. hasChain reports whether a
-// composed key has a chain; it is injected rather than read from a package-level map
-// so this function stays testable and the kernel keeps one locking discipline over
-// its chain map.
-//
-// Falling back to identity when resolution fails is forbidden: it would silently
-// select a route-level chain for every logical operation and appear to work.
-func ResolveChainKey(
-	reg ResolverRegistry,
-	rc *RouteResolution,
-	req RequestView,
-	hasChain func(string) bool,
-) (string, Resolution, error) {
-	if rc.IsIdentity() {
-		return rc.CanonicalChainKey, Resolution{}, nil
-	}
-
-	r, ok := lookup(reg, rc.ResolverName)
-	if !ok {
-		return "", Resolution{}, &ResolutionError{Kind: FailureUnknownResolver}
-	}
-
-	res, err := r.Identify(req)
-	if err != nil {
-		return "", res, NormalizeResolutionError(err, res.ProtocolState)
-	}
-	if len(res.Operations) == 0 {
-		return "", res, &ResolutionError{
-			Kind: FailureInvalidRequest, ProtocolState: res.ProtocolState,
-		}
-	}
-	if len(res.Operations) > 1 {
-		return "", res, &ResolutionError{
-			Kind: FailureMultiOperation, ProtocolState: res.ProtocolState,
-		}
-	}
-
-	// Compose, do not look up: the key is a pure function of the operation, which is
-	// what makes the two A2A transports converge without either being told about the
-	// other. A candidate that cannot be a key component is skipped rather than
-	// composed — composing it could otherwise produce the key of a *different*
-	// (apiID, vhost, operation) triple.
-	op := res.Operations[0]
-	for _, candidate := range op.Candidates {
-		if !chainkey.ValidComponent(candidate) {
-			continue
-		}
-		if key := ChainKeyFor(req.APIID, req.Vhost, candidate); hasChain != nil && hasChain(key) {
-			return key, res, nil
-		}
-	}
-
-	// No candidate has a chain. Which failure that is depends on whether the
-	// protocol's operation set is closed (see Operation.KnownToProtocol).
-	kind := FailureUnknownOperation
-	if op.KnownToProtocol {
-		kind = FailureChainMissing
-	}
-	return "", res, &ResolutionError{Kind: kind, ProtocolState: res.ProtocolState}
-}
-
-// lookup guards against a nil registry so a partially-wired test or an
-// identity-only binary fails closed with FailureUnknownResolver rather than
-// panicking on the hot path.
-func lookup(reg ResolverRegistry, name string) (OperationResolver, bool) {
-	if reg == nil {
-		return nil, false
-	}
-	return reg.Get(name)
-}
-
 // NormalizeResolutionError guarantees the kernel always has a typed failure to
-// render from. A resolver that returns a *ResolutionError keeps its classification
-// (and its own protocol state, if it set one); anything else becomes
-// FailureInternal, which renders generically and never reaches the client.
-func NormalizeResolutionError(err error, protocolState any) *ResolutionError {
+// classify. A resolver that returns a *ResolutionError keeps its classification;
+// anything else becomes FailureInternal, which renders as the generic sterile response
+// and never reaches the client.
+func NormalizeResolutionError(err error) *ResolutionError {
 	if err == nil {
 		return nil
 	}
-	var re *ResolutionError
-	if errors.As(err, &re) {
+	if re, ok := errors.AsType[*ResolutionError](err); ok {
 		out := *re
 		if out.Kind == "" {
 			out.Kind = FailureInternal
 		}
-		if out.ProtocolState == nil {
-			out.ProtocolState = protocolState
-		}
 		return &out
 	}
-	return &ResolutionError{Kind: FailureInternal, ProtocolState: protocolState, Cause: err}
+	return &ResolutionError{Kind: FailureInternal, Cause: err}
 }

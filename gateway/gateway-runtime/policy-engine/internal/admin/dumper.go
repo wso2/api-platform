@@ -107,9 +107,9 @@ func dumpRouteMetadata(k *kernel.Kernel) RouteMetadataDump {
 			CanonicalChainKey:   cfg.CanonicalChainKey,
 			ResolverName:        cfg.ResolverName,
 			ChainKeyPrefix:      resolverChainKeyPrefix(cfg),
-			ResponseKind:        string(cfg.ResponseKind),
 			MaxRequestBodyBytes: resolverBufferLimit(cfg),
-			ResolverPrepared:    cfg.RouteState != nil,
+			ResolverStatic:      cfg.Prepared.IsStatic(),
+			ResolverBuffersBody: resolverBuffersBody(cfg),
 		})
 	}
 
@@ -130,13 +130,23 @@ func resolverChainKeyPrefix(cfg *kernel.RouteConfig) string {
 	return chainkey.For(cfg.Metadata.APIId, cfg.Metadata.Vhost, "")
 }
 
+// resolverBuffersBody reports whether this route's resolver reads the request body,
+// which is what defers chain selection — and every policy on it — to the request-body
+// callback.
+func resolverBuffersBody(cfg *kernel.RouteConfig) bool {
+	if cfg == nil || cfg.Prepared == nil {
+		return false
+	}
+	return cfg.Prepared.Requirements.BuffersBody()
+}
+
 // resolverBufferLimit reports the wire-byte ceiling in force on a body-resolved
 // route, resolving the default rather than reporting 0 — an operator reading the dump
-// needs the bound that actually applies. Identity routes report nothing, since the
+// needs the bound that actually applies. Every other route reports nothing, since the
 // limit only governs bodies buffered before the chain (and therefore authentication)
 // is known.
 func resolverBufferLimit(cfg *kernel.RouteConfig) int64 {
-	if cfg.IsIdentity() {
+	if !resolverBuffersBody(cfg) {
 		return 0
 	}
 	return cfg.EffectiveMaxRequestBodyBytes()

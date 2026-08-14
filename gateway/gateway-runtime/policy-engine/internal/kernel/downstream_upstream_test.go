@@ -29,7 +29,6 @@ import (
 	"github.com/wso2/api-platform/gateway/gateway-runtime/policy-engine/internal/config"
 	"github.com/wso2/api-platform/gateway/gateway-runtime/policy-engine/internal/executor"
 	"github.com/wso2/api-platform/gateway/gateway-runtime/policy-engine/internal/registry"
-	"github.com/wso2/api-platform/gateway/gateway-runtime/policy-engine/internal/resolver"
 	policy "github.com/wso2/api-platform/sdk/core/policy/v1alpha2"
 )
 
@@ -38,7 +37,7 @@ import (
 func newDownstreamTestExecCtx() *PolicyExecutionContext {
 	kernel := NewKernel()
 	chainExecutor := executor.NewChainExecutor(nil, nil, nil)
-	server := NewExternalProcessorServer(kernel, chainExecutor, config.TracingConfig{}, "", testMaxDecompressedBytes, testMaxDecompressedBytes, resolver.DefaultRegistry())
+	server := NewExternalProcessorServer(kernel, chainExecutor, config.TracingConfig{}, "", testMaxDecompressedBytes, testMaxDecompressedBytes)
 	return newPolicyExecutionContext(server, "test-route", &registry.PolicyChain{})
 }
 

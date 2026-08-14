@@ -20,7 +20,6 @@ package xdsclient
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"testing"
 
@@ -37,32 +36,38 @@ import (
 
 // ─── Fakes ───────────────────────────────────────────────────────────────────
 
+// stubResolver is a factory that records what ingest handed it. err, when set, is what
+// Prepare fails with, so a preparation failure can be driven from a test.
 type stubResolver struct {
 	name string
-	reqs resolver.Requirements
+	reqs resolver.RequestRequirements
+	err  error
+
+	calls       int
+	seenConfigs []string
+	seenRoutes  []resolver.ResolverRouteConfig
 }
 
-func (s *stubResolver) Name() string                        { return s.name }
-func (s *stubResolver) Requirements() resolver.Requirements { return s.reqs }
-func (s *stubResolver) Identify(resolver.RequestView) (resolver.Resolution, error) {
-	return resolver.Resolution{}, nil
-}
+func (s *stubResolver) Name() string { return s.name }
 
-type preparingStubResolver struct {
-	stubResolver
-	err          error
-	calls        int
-	seenConfigs  []string
-	returnedName string
-}
-
-func (p *preparingStubResolver) Prepare(cfg json.RawMessage) (any, error) {
-	p.calls++
-	p.seenConfigs = append(p.seenConfigs, string(cfg))
-	if p.err != nil {
-		return nil, p.err
+func (s *stubResolver) Prepare(cfg resolver.ResolverRouteConfig) (resolver.PreparedResolver, error) {
+	s.calls++
+	s.seenConfigs = append(s.seenConfigs, string(cfg.ResolverConfig))
+	s.seenRoutes = append(s.seenRoutes, cfg)
+	if s.err != nil {
+		return nil, s.err
 	}
-	return p.returnedName, nil
+	return &stubPrepared{reqs: s.reqs}, nil
+}
+
+type stubPrepared struct {
+	reqs resolver.RequestRequirements
+}
+
+func (s *stubPrepared) Requirements() resolver.RequestRequirements { return s.reqs }
+
+func (s *stubPrepared) Resolve(context.Context, resolver.RequestView) (resolver.Resolution, error) {
+	return resolver.Resolution{}, nil
 }
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
@@ -74,9 +79,12 @@ func newRouteHandler(t *testing.T, resolvers resolver.ResolverRegistry) (*Resour
 	return NewResourceHandler(k, reg, resolvers), k
 }
 
-func registryWithResolvers(t *testing.T, resolvers ...resolver.OperationResolver) resolver.ResolverRegistry {
+func registryWithResolvers(t *testing.T, resolvers ...resolver.Resolver) resolver.ResolverRegistry {
 	t.Helper()
 	reg := resolver.NewRegistry()
+	// route-key is always present, exactly as it is in production: a route with no
+	// resolver_name normalises to it.
+	require.NoError(t, reg.Register(&resolver.RouteKeyResolver{}))
 	for _, r := range resolvers {
 		require.NoError(t, reg.Register(r))
 	}
@@ -157,9 +165,9 @@ func TestRouteConfigUpdate_EmptyResolverNameIsIdentity(t *testing.T) {
 // ─── Non-identity routes ─────────────────────────────────────────────────────
 
 func TestRouteConfigUpdate_ParsesResolverConfigAndBufferLimit(t *testing.T) {
-	prep := &preparingStubResolver{
-		stubResolver: stubResolver{name: "fake-jsonrpc", reqs: resolver.Requirements{BufferBody: true}},
-		returnedName: "compiled",
+	prep := &stubResolver{
+		name: "fake-jsonrpc",
+		reqs: resolver.RequestRequirements{Body: resolver.BodyBuffered},
 	}
 	h, k := newRouteHandler(t, registryWithResolvers(t, prep))
 
@@ -169,6 +177,9 @@ func TestRouteConfigUpdate_ParsesResolverConfigAndBufferLimit(t *testing.T) {
 			"resolver_name":          "fake-jsonrpc",
 			"max_request_body_bytes": 4096,
 			"resolver_config":        map[string]interface{}{"protocolVersion": "1.0"},
+			"metadata": map[string]interface{}{
+				"uuid": "agent-1", "vhost": "example.com", "path": "/rpc",
+			},
 		}),
 	}, "v1")
 	require.NoError(t, err)
@@ -179,10 +190,56 @@ func TestRouteConfigUpdate_ParsesResolverConfigAndBufferLimit(t *testing.T) {
 	assert.Equal(t, int64(4096), rc.MaxRequestBodyBytes)
 	assert.JSONEq(t, `{"protocolVersion":"1.0"}`, string(rc.ResolverConfig))
 
-	// Prepare runs once per route at ingest, so no request pays for it, and its
-	// result is what the resolver later reads as RequestView.RouteState.
+	// Prepare runs once per route at ingest, so no request pays for it, and the route
+	// stores the requirements it declared.
 	assert.Equal(t, 1, prep.calls)
-	assert.Equal(t, "compiled", rc.RouteState)
+	require.NotNil(t, rc.Prepared)
+	assert.True(t, rc.Prepared.Requirements.BuffersBody())
+	assert.False(t, rc.Prepared.IsStatic(), "this route resolves per request")
+
+	// The whole static route reaches Prepare, so a resolver captures its partition and
+	// configuration once instead of receiving them per request.
+	seen := prep.seenRoutes[0]
+	assert.Equal(t, "agent-1", seen.APIID)
+	assert.Equal(t, "example.com", seen.Vhost)
+	assert.Equal(t, "/rpc", seen.Path)
+	assert.JSONEq(t, `{"protocolVersion":"1.0"}`, string(seen.ResolverConfig))
+}
+
+// GO-AUTH-006: the method is upper-cased before Prepare sees it, so no Prepare
+// implementation can miss on case. Its only source is the route name, which the wire
+// carries as METHOD|fullPath|vhost.
+func TestRouteConfigUpdate_MethodReachesPrepareUpperCased(t *testing.T) {
+	prep := &stubResolver{name: "fake-jsonrpc"}
+	h, _ := newRouteHandler(t, registryWithResolvers(t, prep))
+
+	require.NoError(t, h.HandleRouteConfigUpdate(context.Background(), []*anypb.Any{
+		routeConfigResource(t, map[string]interface{}{
+			"route_key":     "post|/rpc|example.com",
+			"resolver_name": "fake-jsonrpc",
+		}),
+	}, "v1"))
+
+	require.Len(t, prep.seenRoutes, 1)
+	assert.Equal(t, "POST", prep.seenRoutes[0].Method)
+}
+
+// Every route is prepared, including an identity one — that is what removes the special
+// case from the request path.
+func TestRouteConfigUpdate_IdentityRouteIsPreparedStatically(t *testing.T) {
+	h, k := newRouteHandler(t, resolver.DefaultRegistry())
+
+	require.NoError(t, h.HandleRouteConfigUpdate(context.Background(), []*anypb.Any{
+		routeConfigResource(t, map[string]interface{}{"route_key": "GET|/pets|example.com"}),
+	}, "v1"))
+
+	rc := k.GetRouteConfig("GET|/pets|example.com")
+	require.NotNil(t, rc)
+	require.NotNil(t, rc.Prepared)
+	assert.True(t, rc.Prepared.IsStatic(), "an identity route resolves entirely at ingest")
+	assert.False(t, rc.Prepared.Requirements.BuffersBody())
+	assert.Equal(t, resolver.RouteKeyResolverName, rc.Prepared.ResolverName,
+		"an empty resolver_name is normalised to the identity resolver")
 }
 
 // A route naming a resolver this binary does not have is dropped. Keeping it would
@@ -241,14 +298,8 @@ func TestRouteConfigUpdate_StaleOperationMapIsIgnored(t *testing.T) {
 // the previous version of every RouteConfig, so failing the whole update would freeze
 // route updates for every API on the gateway.
 func TestRouteConfigUpdate_PrepareErrorSkipsOnlyThatRoute(t *testing.T) {
-	failing := &preparingStubResolver{
-		stubResolver: stubResolver{name: "failing"},
-		err:          errors.New("schema does not compile"),
-	}
-	ok := &preparingStubResolver{
-		stubResolver: stubResolver{name: "working"},
-		returnedName: "state",
-	}
+	failing := &stubResolver{name: "failing", err: errors.New("schema does not compile")}
+	ok := &stubResolver{name: "working"}
 	h, k := newRouteHandler(t, registryWithResolvers(t, failing, ok))
 
 	err := h.HandleRouteConfigUpdate(context.Background(), []*anypb.Any{
@@ -289,22 +340,24 @@ func TestRouteConfigUpdate_NilResolverRegistryIsIdentityOnly(t *testing.T) {
 	assert.Nil(t, k.GetRouteConfig("POST|/rpc|example.com"))
 }
 
-// A resolver that does not implement Preparer gets no per-route state, and the route
-// is admitted regardless.
-func TestRouteConfigUpdate_ResolverWithoutPreparer(t *testing.T) {
-	h, k := newRouteHandler(t, registryWithResolvers(t, &stubResolver{name: "no-prepare"}))
+// A resolver that ignores its configuration still gets it: whether to read
+// resolver_config is the resolver's business, and the route is admitted either way.
+func TestRouteConfigUpdate_ResolverConfigReachesPrepareEvenIfUnused(t *testing.T) {
+	stub := &stubResolver{name: "ignores-config"}
+	h, k := newRouteHandler(t, registryWithResolvers(t, stub))
 
 	require.NoError(t, h.HandleRouteConfigUpdate(context.Background(), []*anypb.Any{
 		routeConfigResource(t, map[string]interface{}{
 			"route_key":       "POST|/rpc|example.com",
-			"resolver_name":   "no-prepare",
+			"resolver_name":   "ignores-config",
 			"resolver_config": map[string]interface{}{"ignored": true},
 		}),
 	}, "v1"))
 
 	rc := k.GetRouteConfig("POST|/rpc|example.com")
 	require.NotNil(t, rc)
-	assert.Nil(t, rc.RouteState)
+	require.NotNil(t, rc.Prepared)
+	assert.JSONEq(t, `{"ignored":true}`, stub.seenConfigs[0])
 }
 
 // ─── Numeric field parsing ───────────────────────────────────────────────────
@@ -354,7 +407,7 @@ func TestDiscoveryNode_AdvertisesResolverCapabilities(t *testing.T) {
 	for _, v := range list.Values {
 		names = append(names, v.GetStringValue())
 	}
-	assert.Equal(t, []string{"alpha", "zeta"}, names,
+	assert.Equal(t, []string{"alpha", resolver.RouteKeyResolverName, "zeta"}, names,
 		"the advertised list is sorted so the control plane can compare it cheaply")
 }
 

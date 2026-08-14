@@ -20,6 +20,7 @@ package kernel
 
 import (
 	"log/slog"
+	"strings"
 	"sync"
 
 	"github.com/wso2/api-platform/gateway/gateway-runtime/policy-engine/internal/registry"
@@ -32,10 +33,10 @@ type RouteConfig struct {
 	Metadata RouteMetadata
 
 	// RouteResolution carries how this route's policy chain key is derived —
-	// RouteKey, CanonicalChainKey, ResolverName, ResolverConfig and the Prepare
-	// result. Embedded so the fields read directly off the route
-	// (rc.CanonicalChainKey) while ResolveChainKey can take &rc.RouteResolution
-	// without copying the struct per request.
+	// RouteKey, CanonicalChainKey, ResolverName, ResolverConfig and the prepared
+	// resolver built from them at ingest. Embedded so the fields read directly off
+	// the route (rc.CanonicalChainKey, rc.Prepared) without copying the struct per
+	// request.
 	resolver.RouteResolution
 
 	// MaxRequestBodyBytes is the largest request body, in wire bytes before any
@@ -58,6 +59,59 @@ type RouteConfig struct {
 	// before ext_proc collects the body) or streamed accumulation in the engine; neither
 	// is built.
 	MaxRequestBodyBytes int64
+}
+
+// PrepareRoute prepares rc's resolver from the fields that arrived over the wire, and
+// stores the result on rc.
+//
+// It is the one place a ResolverRouteConfig is built, so a Prepare implementation and
+// the binder's own validation always see the same values. Two of those values are
+// derived here rather than read from the wire:
+//
+//   - the effective chain key, applying the older-controller fallback to the route key
+//     exactly once — nothing downstream re-applies it, so nothing can disagree with it;
+//   - the HTTP method, read out of the Envoy route name (METHOD|fullPath|vhost), which
+//     is its only source: a route carries its path in metadata but not its method.
+//
+// An error means the route is unusable and its caller must drop it. Callers distinguish
+// an unknown resolver from a resolver's own failure via resolver.FailureUnknownResolver.
+func PrepareRoute(reg resolver.ResolverRegistry, routeKey string, rc *RouteConfig) error {
+	rc.RouteKey = routeKey
+	if rc.CanonicalChainKey == "" {
+		rc.CanonicalChainKey = routeKey
+	}
+
+	prepared, err := resolver.PrepareRoute(reg, resolver.ResolverRouteConfig{
+		RouteKey:          routeKey,
+		CanonicalChainKey: rc.CanonicalChainKey,
+		ResolverName:      rc.ResolverName,
+		APIID:             rc.Metadata.APIId,
+		Vhost:             rc.Metadata.Vhost,
+		APIContext:        rc.Metadata.Context,
+		// Normalised once, here, so no Prepare implementation can miss on case
+		// (GO-AUTH-006).
+		Method:         strings.ToUpper(methodFromRouteKey(routeKey)),
+		Path:           rc.Metadata.OperationPath,
+		ResolverConfig: rc.ResolverConfig,
+	})
+	if err != nil {
+		return err
+	}
+	rc.Prepared = prepared
+	return nil
+}
+
+// methodFromRouteKey reads the HTTP method out of an Envoy route name.
+//
+// A key with no separator yields no method rather than the whole key, so a
+// differently-shaped route name degrades to "unknown" instead of handing a resolver a
+// method that is really a path.
+func methodFromRouteKey(routeKey string) string {
+	method, _, found := strings.Cut(routeKey, "|")
+	if !found {
+		return ""
+	}
+	return method
 }
 
 // DefaultMaxResolverRequestBodyBytes is the acceptance ceiling applied to a

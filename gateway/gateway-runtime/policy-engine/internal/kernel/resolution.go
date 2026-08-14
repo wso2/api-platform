@@ -61,9 +61,8 @@ const (
 	// 500 path and its response must stay byte-identical.
 	bindNoChain
 
-	// bindFailed means resolution ran and failed. The response is protocol-shaped
-	// when the resolver supplies a renderer and the failure is one the protocol can
-	// describe, and sterile-generic otherwise.
+	// bindFailed means resolution ran and failed. The response is the sterile generic
+	// one; the failure kind reaches the log, the metric and the span, never the client.
 	bindFailed
 )
 
@@ -71,32 +70,13 @@ const (
 // a resolution failure, captured at the point of failure so the caller never has to
 // look the resolver up a second time (and cannot look up a different one).
 type resolutionDenial struct {
-	resolverName  string
-	view          resolver.RequestView
-	protocolState any
-	renderer      resolver.FailureRenderer
-	failure       *resolver.ResolutionError
+	resolverName string
+	failure      *resolver.ResolutionError
 }
 
-// newResolutionDenial records a failure together with the resolver's own renderer,
-// if it has one.
-func newResolutionDenial(
-	resolverName string,
-	res resolver.OperationResolver,
-	view resolver.RequestView,
-	protocolState any,
-	failure *resolver.ResolutionError,
-) *resolutionDenial {
-	d := &resolutionDenial{
-		resolverName:  resolverName,
-		view:          view,
-		protocolState: protocolState,
-		failure:       failure,
-	}
-	if fr, ok := res.(resolver.FailureRenderer); ok {
-		d.renderer = fr
-	}
-	return d
+// newResolutionDenial records a failure against the route that produced it.
+func newResolutionDenial(pr *resolver.PreparedRoute, failure *resolver.ResolutionError) *resolutionDenial {
+	return &resolutionDenial{resolverName: pr.ResolverName, failure: failure}
 }
 
 // pendingResolution is the retained state of a request whose policy chain cannot be
@@ -107,9 +87,8 @@ func newResolutionDenial(
 // to the backend still hold: the resolved chain's request-header policies simply run
 // one callback later than they would on an identity route.
 type pendingResolution struct {
-	route        *RouteConfig
-	res          resolver.OperationResolver
-	requirements resolver.Requirements
+	route    *RouteConfig
+	prepared *resolver.PreparedRoute
 
 	// view is the header-phase request view, retained so the resolver observes the
 	// headers, method and path as the client actually sent them rather than values
@@ -118,20 +97,16 @@ type pendingResolution struct {
 }
 
 // buildRequestView snapshots what a resolver is allowed to see about a request.
-// Only called for non-identity routes: an identity route resolves from a field read
-// and must not pay for this allocation (see invariant 5.1).
-func buildRequestView(routeKey string, rc *RouteConfig, headers *extprocv3.HttpHeaders) resolver.RequestView {
-	view := resolver.RequestView{
-		RouteKey: routeKey,
-		// The composition inputs for the chain key, taken from metadata xDS already
-		// populated on the route — nothing new is parsed per request. A resolver reads
-		// APIContext to strip the API prefix from a path; it must not compose a key
-		// itself (resolver.ResolveChainKey does that, once).
-		APIID:      rc.Metadata.APIId,
-		Vhost:      rc.Metadata.Vhost,
-		APIContext: rc.Metadata.Context,
-		RouteState: rc.RouteState,
-	}
+//
+// Only called for a route whose resolution is not already known: a statically-resolved
+// route (every kind shipping today, via route-key) binds from the result captured at
+// ingest and must not pay for this allocation.
+//
+// The route's partition — API ID, vhost, API context — is deliberately absent: the
+// prepared resolver captured it at ingest, so a resolver cannot be handed a partition
+// that differs from the one its keys are validated against.
+func buildRequestView(routeKey string, headers *extprocv3.HttpHeaders) resolver.RequestView {
+	view := resolver.RequestView{RouteKey: routeKey}
 
 	if headers == nil || headers.Headers == nil {
 		return view
@@ -154,39 +129,26 @@ func buildRequestView(routeKey string, rc *RouteConfig, headers *extprocv3.HttpH
 	return view
 }
 
-// attachRenderers records the optional renderers this resolver supplies, so a
-// resolution failure and a later policy rejection can both be shaped by the
-// transport. Both stay nil for a resolver that implements neither, which is what
-// keeps rendering a structural no-op elsewhere.
-func (ec *PolicyExecutionContext) attachRenderers(res resolver.OperationResolver) {
-	if fr, ok := res.(resolver.FailureRenderer); ok {
-		ec.failureRenderer = fr
-	}
-	if rr, ok := res.(resolver.PolicyRejectionRenderer); ok {
-		ec.rejectionRenderer = rr
-	}
-}
-
 // pendingModeOverride is the ProcessingMode returned from the request-headers
 // callback of a route whose chain is not selected yet.
 //
-// It is derived from the resolver's Requirements, not from a policy chain — there
-// is no chain yet. That is also why no controller-side ExtProcPerRoute processing
-// mode override (or equivalent route flag) is used for this: it would duplicate
-// Requirements().BufferBody in a second place that can disagree with it.
+// It is derived from the prepared resolver's Requirements, not from a policy chain —
+// there is no chain yet. That is also why no controller-side ExtProcPerRoute processing
+// mode override (or equivalent route flag) is used for this: it would duplicate the
+// route's body requirement in a second place that can disagree with it.
 //
 // Response modes are left at NONE and revisited from the response-header callback,
 // once the chain is known: Envoy applies a ModeOverride only on responses to header
 // callbacks, and the response-header callback still precedes its decision about how
 // to deliver the upstream response body.
-func pendingModeOverride(reqs resolver.Requirements) *extprocconfigv3.ProcessingMode {
+func pendingModeOverride(reqs resolver.RequestRequirements) *extprocconfigv3.ProcessingMode {
 	mode := &extprocconfigv3.ProcessingMode{
 		ResponseHeaderMode:  extprocconfigv3.ProcessingMode_SEND,
 		RequestTrailerMode:  extprocconfigv3.ProcessingMode_SKIP,
 		ResponseTrailerMode: extprocconfigv3.ProcessingMode_SKIP,
 		ResponseBodyMode:    extprocconfigv3.ProcessingMode_NONE,
 	}
-	if reqs.BufferBody {
+	if reqs.BuffersBody() {
 		mode.RequestBodyMode = extprocconfigv3.ProcessingMode_BUFFERED
 	} else {
 		mode.RequestBodyMode = extprocconfigv3.ProcessingMode_NONE
@@ -197,7 +159,7 @@ func pendingModeOverride(reqs resolver.Requirements) *extprocconfigv3.Processing
 // pendingResolutionResponse is the request-headers response for a deferred route:
 // no mutation, no policy result, no analytics — only the instruction to buffer the
 // body and call back.
-func pendingResolutionResponse(reqs resolver.Requirements) *extprocv3.ProcessingResponse {
+func pendingResolutionResponse(reqs resolver.RequestRequirements) *extprocv3.ProcessingResponse {
 	return &extprocv3.ProcessingResponse{
 		Response: &extprocv3.ProcessingResponse_RequestHeaders{
 			RequestHeaders: &extprocv3.HeadersResponse{},
@@ -244,42 +206,36 @@ func (ec *PolicyExecutionContext) bindPendingChainAndProcess(
 	view := pending.view
 	view.Body = decoded
 
-	key, resolution, err := resolver.ResolveChainKey(
-		ec.server.resolvers, &pending.route.RouteResolution, view, ec.server.hasPolicyChain)
+	resolution, err := pending.prepared.Resolver.Resolve(ctx, view)
 	if err != nil {
-		ec.requestView = view
-		ec.protocolState = resolution.ProtocolState
-		return ec.denyResolution(ctx, resolver.NormalizeResolutionError(err, resolution.ProtocolState)), nil
+		return ec.denyResolution(ctx, resolver.NormalizeResolutionError(err)), nil
 	}
 
-	chain := ec.server.kernel.GetPolicyChain(key)
-	if chain == nil {
-		// ResolveChainKey only returns a key whose chain existed when it probed, so
-		// reaching here means the chain was removed between the probe and this read —
-		// two separate acquisitions of the kernel's lock. Rare, but it renders the
-		// same way as any other skew: generically, never as a protocol-level error the
-		// client could act on.
-		ec.requestView = view
-		ec.protocolState = resolution.ProtocolState
-		return ec.denyResolution(ctx, &resolver.ResolutionError{
-			Kind:  resolver.FailureChainMissing,
-			Cause: fmt.Errorf("no policy chain for resolved key"),
-		}), nil
+	bound, chain, err := resolver.Bind(pending.prepared, resolution, ec.server.kernel.GetPolicyChain)
+	if err != nil {
+		if errors.Is(err, resolver.ErrDirectRouteChainMissing) {
+			// A route whose resolution is direct has no chain of its own. Not reachable
+			// from a deferred route today — the only direct resolver is static and never
+			// defers — but it is classified as the same deployment fault a direct route
+			// gets elsewhere rather than as something the caller did.
+			return ec.denyResolution(ctx, &resolver.ResolutionError{
+				Kind:  resolver.FailureChainMissing,
+				Cause: err,
+			}), nil
+		}
+		return ec.denyResolution(ctx, resolver.NormalizeResolutionError(err)), nil
 	}
 
 	// Bind.
 	ec.policyChain = chain
-	ec.chainKey = key
-	ec.requestView = view
-	ec.protocolState = resolution.ProtocolState
-	ec.responseKind = effectiveResponseKind(pending.route, resolution)
-	ec.attachRenderers(pending.res)
+	ec.chainKey = bound.ChainKey
+	ec.operation = bound.Operation
 	ec.pending = nil
 	ec.boundAtBodyPhase = true
 
 	slog.DebugContext(ctx, "[resolution] chain bound at request-body phase",
-		"route", ec.routeKey, "resolver", ec.resolverName, "chain_key", key,
-		"decoded_bytes", len(decoded))
+		"route", ec.routeKey, "resolver", ec.resolverName, "chain_key", bound.ChainKey,
+		"operation", bound.Operation, "decoded_bytes", len(decoded))
 
 	// Reuse the decoded body for the body policies so it is never decompressed
 	// twice. EndOfStream is true here by construction: the mode is BUFFERED, so
@@ -342,8 +298,7 @@ func (ec *PolicyExecutionContext) denyResolution(
 	ctx context.Context,
 	failure *resolver.ResolutionError,
 ) *extprocv3.ProcessingResponse {
-	resp, outcome := renderResolutionFailure(ctx, ec.resolverName, ec.routeKey, ec.requestID,
-		ec.requestView, ec.protocolState, ec.failureRenderer, failure)
+	resp, outcome := renderResolutionFailure(ctx, ec.resolverName, ec.routeKey, ec.requestID, failure)
 
 	// The chain is never bound for this request. Later phases check this so a
 	// response callback that arrives anyway cannot dereference a nil chain.
@@ -358,20 +313,15 @@ func (ec *PolicyExecutionContext) denyResolution(
 // renderResolutionFailure turns a typed resolution failure into an ext_proc
 // ImmediateResponse plus the span outcome that describes it.
 //
-// A protocol-visible failure (parse, invalid request, unknown operation) is handed
-// to the resolver's FailureRenderer when it has one, so a JSON-RPC client gets a
-// JSON-RPC error object instead of a body its library cannot parse. Everything else
-// — unknown resolver, payload limits, a resolved-but-missing chain, an internal
-// error — is sterile and generic. The failure's Cause is logged, never returned
-// (error-handling.md directive 1).
+// Every failure renders as the sterile generic response: an HTTP status derived from the
+// FailureKind, a fixed reason phrase and a correlation id that also appears in the
+// warning log. The kind survives in the log and the metric, never in the body, and the
+// failure's Cause is logged and never returned (error-handling.md directive 1).
 func renderResolutionFailure(
 	ctx context.Context,
 	resolverName string,
 	routeKey string,
 	requestID string,
-	view resolver.RequestView,
-	protocolState any,
-	renderer resolver.FailureRenderer,
 	failure *resolver.ResolutionError,
 ) (*extprocv3.ProcessingResponse, tracing.HTTPOutcome) {
 	errorID := uuid.New().String()
@@ -386,7 +336,7 @@ func renderResolutionFailure(
 	)
 	metrics.ResolutionFailuresTotal.WithLabelValues(resolverName, string(failure.Kind)).Inc()
 
-	rendered, protocolShaped := resolutionFailureBody(view, protocolState, renderer, failure, errorID)
+	rendered := genericResolutionFailure(failure.Kind, errorID)
 
 	imm := &extprocv3.ImmediateResponse{
 		Status:  &typev3.HttpStatus{Code: typev3.StatusCode(rendered.StatusCode)},
@@ -396,46 +346,25 @@ func renderResolutionFailure(
 	resp := &extprocv3.ProcessingResponse{
 		Response: &extprocv3.ProcessingResponse_ImmediateResponse{ImmediateResponse: imm},
 	}
-
-	reason := constants.TerminalReasonResolutionFailed
-	if protocolShaped {
-		reason = constants.TerminalReasonResolutionFailedProtocol
-	}
 	return resp, tracing.HTTPOutcome{
 		StatusCode: rendered.StatusCode,
-		Reason:     reason,
+		Reason:     constants.TerminalReasonResolutionFailed,
 		ErrorID:    errorID,
 	}
 }
 
-// resolutionFailureBody picks between the resolver's protocol-shaped rendering and
-// the sterile generic one, and reports which was used.
-func resolutionFailureBody(
-	view resolver.RequestView,
-	protocolState any,
-	renderer resolver.FailureRenderer,
-	failure *resolver.ResolutionError,
-	errorID string,
-) (resolver.RenderedFailure, bool) {
-	if renderer != nil && failure.ProtocolVisible() {
-		withState := *failure
-		if withState.ProtocolState == nil {
-			withState.ProtocolState = protocolState
-		}
-		rendered := renderer.RenderFailure(view, &withState)
-		if rendered.StatusCode > 0 {
-			return rendered, true
-		}
-		// A renderer that produced no status is treated as having declined; the
-		// generic response below is used rather than emitting a 0 status.
-	}
-	return genericResolutionFailure(failure.Kind, errorID), false
+// sterileFailure is the kernel's own generic error response. It is deliberately not part
+// of the resolver contract: a resolver classifies a failure and never shapes one.
+type sterileFailure struct {
+	StatusCode int
+	Headers    map[string]string
+	Body       []byte
 }
 
 // genericResolutionFailure is the sterile response for a resolution failure: an
 // HTTP status, a fixed reason phrase, and a correlation id that also appears in the
 // warning log. It never names the resolver, the operation, or the underlying cause.
-func genericResolutionFailure(kind resolver.FailureKind, errorID string) resolver.RenderedFailure {
+func genericResolutionFailure(kind resolver.FailureKind, errorID string) sterileFailure {
 	status := http.StatusInternalServerError
 	message := "Internal Server Error"
 
@@ -453,62 +382,13 @@ func genericResolutionFailure(kind resolver.FailureKind, errorID string) resolve
 		status, message = http.StatusUnsupportedMediaType, "Unsupported Media Type"
 	}
 
-	return resolver.RenderedFailure{
+	return sterileFailure{
 		StatusCode: status,
 		Headers: map[string]string{
 			"content-type": "application/json",
 			"x-error-id":   errorID,
 		},
 		Body: []byte(fmt.Sprintf(`{"error":%q,"error_id":%q}`, message, errorID)),
-	}
-}
-
-// effectiveResponseKind decides how this request's response is delivered.
-//
-// A resolver's answer wins over the route's, because a multiplexed route carries
-// operations of both kinds and only the resolver knows which one this request is. The
-// route's value is for the opposite case: an operation known at deploy time with no
-// resolver to ask (an A2A HTTP+JSON operation route). An unrecognised value from a newer
-// controller is treated as Auto rather than guessed at — Auto is the pre-existing
-// behaviour, so an unknown kind degrades to "derive it as before" instead of forcing a
-// mode that may be wrong.
-func effectiveResponseKind(route *RouteConfig, res resolver.Resolution) resolver.ResponseKind {
-	if res.ResponseKind.Valid() && res.ResponseKind != resolver.ResponseKindAuto {
-		return res.ResponseKind
-	}
-	if route != nil && route.ResponseKind.Valid() {
-		return route.ResponseKind
-	}
-	return resolver.ResponseKindAuto
-}
-
-// streamingConflictResponse replaces the upstream response when a streaming operation
-// is bound to a chain that cannot stream. It is deliberately the same sterile shape as
-// any other internal resolution failure: a 500, a fixed reason phrase, and a correlation
-// id that also appears in the error log. The client is not told which policy is
-// incompatible, or that the mismatch is about streaming at all — that is operator
-// information, and naming it would describe the gateway's internal policy wiring to a
-// caller (error-handling.md directive 1).
-func (ec *PolicyExecutionContext) streamingConflictResponse() *extprocv3.ProcessingResponse {
-	errorID := uuid.New().String()
-	rendered := genericResolutionFailure(resolver.FailureStreamingUnsupported, errorID)
-
-	slog.Error("[resolution] streaming operation cannot be served by its policy chain",
-		"error_id", errorID,
-		"route", ec.routeKey,
-		"chain_key", ec.chainKey,
-		"resolver", ec.resolverName)
-	metrics.ResolutionFailuresTotal.WithLabelValues(
-		ec.resolverName, string(resolver.FailureStreamingUnsupported)).Inc()
-
-	return &extprocv3.ProcessingResponse{
-		Response: &extprocv3.ProcessingResponse_ImmediateResponse{
-			ImmediateResponse: &extprocv3.ImmediateResponse{
-				Status:  &typev3.HttpStatus{Code: typev3.StatusCode(rendered.StatusCode)},
-				Headers: buildHeaderValueOptions(rendered.Headers),
-				Body:    rendered.Body,
-			},
-		},
 	}
 }
 
@@ -544,14 +424,14 @@ func (ec *PolicyExecutionContext) noChainPassThroughResponseBody() *extprocv3.Pr
 	}
 }
 
-// recordResolutionAttributes stamps the resolver name and the selected chain key on a
-// span, skipping whichever is not known yet.
+// recordResolutionAttributes stamps the resolver name, the selected chain key and the
+// resolved operation on a span, skipping whichever is not known yet.
 //
 // It is called twice for a body-resolved route — once at the request-headers callback,
 // where only the resolver is known, and again at the request-body callback once the
-// chain has actually been selected. Skipping an empty chain key rather than recording
-// one keeps the attribute meaningful: an operator filtering on it sees only spans where
-// a chain was really chosen, instead of every deferred request carrying "".
+// chain has actually been selected. Skipping an empty attribute rather than recording
+// one keeps them meaningful: an operator filtering on the chain key sees only spans
+// where a chain was really chosen, instead of every deferred request carrying "".
 func (ec *PolicyExecutionContext) recordResolutionAttributes(span trace.Span) {
 	if span == nil || !span.IsRecording() || ec.resolverName == "" {
 		// An identity route has no resolver, and its chain key equals the route name
@@ -563,6 +443,9 @@ func (ec *PolicyExecutionContext) recordResolutionAttributes(span trace.Span) {
 	}
 	if ec.chainKey != "" {
 		attrs = append(attrs, attribute.String(constants.AttrPolicyChainKey, ec.chainKey))
+	}
+	if ec.operation != "" {
+		attrs = append(attrs, attribute.String(constants.AttrResolvedOperation, ec.operation))
 	}
 	span.SetAttributes(attrs...)
 }

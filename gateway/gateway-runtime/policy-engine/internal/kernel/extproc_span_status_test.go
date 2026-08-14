@@ -115,7 +115,7 @@ func newSpanStatusServerWithCEL(t *testing.T, cel executor.CELEvaluator) (*Exter
 
 	k := NewKernel()
 	chainExecutor := executor.NewChainExecutor(nil, cel, tp.Tracer("test"))
-	server := NewExternalProcessorServer(k, chainExecutor, config.TracingConfig{}, "", testMaxDecompressedBytes, testMaxDecompressedBytes, resolver.DefaultRegistry())
+	server := NewExternalProcessorServer(k, chainExecutor, config.TracingConfig{}, "", testMaxDecompressedBytes, testMaxDecompressedBytes)
 	server.tracer = tp.Tracer("test") // package-internal field; avoids mutating global otel state
 	return server, k, sr
 }
@@ -124,9 +124,13 @@ func newSpanStatusServerWithCEL(t *testing.T, cel executor.CELEvaluator) (*Exter
 // RouteConfig lookup that initializeExecutionContext needs.
 func registerTestRoute(k *Kernel, routeName string, chain *registry.PolicyChain) {
 	k.RegisterRoute(routeName, chain)
-	k.ApplyWholeRouteConfigs(map[string]*RouteConfig{
-		routeName: {Metadata: RouteMetadata{RouteName: routeName}},
-	})
+	rc := &RouteConfig{Metadata: RouteMetadata{RouteName: routeName}}
+	// Prepared the same way ingest prepares it: an unprepared route is one the kernel
+	// refuses to serve.
+	if err := PrepareRoute(resolver.DefaultRegistry(), routeName, rc); err != nil {
+		panic(err)
+	}
+	k.ApplyWholeRouteConfigs(map[string]*RouteConfig{routeName: rc})
 }
 
 // buildChainWithPolicy constructs a single-policy chain via the real
@@ -728,7 +732,7 @@ func TestProcessSpanStatus_TracingDisabled(t *testing.T) {
 	// server's own tracer coming from the untouched global (no-op-by-default)
 	// TracerProvider rather than a real SDK one.
 	chainExecutor := executor.NewChainExecutor(nil, nil, noop.NewTracerProvider().Tracer("test"))
-	server := NewExternalProcessorServer(k, chainExecutor, config.TracingConfig{}, "", testMaxDecompressedBytes, testMaxDecompressedBytes, resolver.DefaultRegistry())
+	server := NewExternalProcessorServer(k, chainExecutor, config.TracingConfig{}, "", testMaxDecompressedBytes, testMaxDecompressedBytes)
 
 	stream := newMockStream([]*extprocv3.ProcessingRequest{
 		requestHeadersReq("test-route", "GET", "/pets"),

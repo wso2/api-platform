@@ -23,10 +23,7 @@ import (
 	"compress/gzip"
 	"context"
 	"encoding/json"
-	"errors"
 	"fmt"
-	"os"
-	"regexp"
 	"strings"
 	"testing"
 
@@ -61,37 +58,64 @@ import (
 // fakeOperationResolver reads the operation out of a request in whichever way the
 // test needs: from a header (header-only, resolves at the header phase) or from a
 // JSON body field (body-reading, defers to the body phase).
+// It is its own factory and its own prepared resolver: Prepare captures the route's
+// partition and returns the same value. That keeps the fixtures small, and the
+// independence of two routes prepared by one factory is covered where it belongs, in
+// the resolver package's own tests.
 type fakeOperationResolver struct {
 	name      string
-	reqs      resolver.Requirements
+	reqs      resolver.RequestRequirements
 	bodyField string // when set, the operation is read from this top-level JSON field
 	header    string // when set, the operation is read from this header
 	forcedErr *resolver.ResolutionError
+
+	// apiID and vhost are captured at Prepare, exactly as a real resolver captures the
+	// partition it composes keys from.
+	apiID string
+	vhost string
 
 	// knownToProtocol mirrors a closed operation set (A2A's fixed enum), where a
 	// missing chain is a deployment error rather than the client naming something that
 	// does not exist. Left false, this fake behaves like an open set (MCP tool names).
 	knownToProtocol bool
 
-	// responseKindByOperation mirrors a protocol where one operation streams and its
-	// sibling does not (A2A SendMessage versus SendStreamingMessage). Absent means Auto.
-	responseKindByOperation map[string]resolver.ResponseKind
-
 	seenBody   []byte
 	seenView   resolver.RequestView
 	identified int
 }
 
-func (f *fakeOperationResolver) Name() string                        { return f.name }
-func (f *fakeOperationResolver) Requirements() resolver.Requirements { return f.reqs }
+func (f *fakeOperationResolver) Name() string { return f.name }
 
-func (f *fakeOperationResolver) Identify(view resolver.RequestView) (resolver.Resolution, error) {
+func (f *fakeOperationResolver) Prepare(cfg resolver.ResolverRouteConfig) (resolver.PreparedResolver, error) {
+	f.capture(cfg)
+	return f, nil
+}
+
+// capture records the static route data a real Prepare would keep.
+func (f *fakeOperationResolver) capture(cfg resolver.ResolverRouteConfig) {
+	f.apiID, f.vhost = cfg.APIID, cfg.Vhost
+}
+
+func (f *fakeOperationResolver) Requirements() resolver.RequestRequirements { return f.reqs }
+
+// resolveOperation composes the resolution for one identified operation, the way a real
+// resolver does: with the partition captured at Prepare, never with anything from the
+// request.
+func (f *fakeOperationResolver) resolveOperation(operation string) resolver.Resolution {
+	return resolver.Resolution{
+		Target:          resolver.TargetOperation,
+		ChainKey:        resolver.ChainKeyFor(f.apiID, f.vhost, operation),
+		KnownToProtocol: f.knownToProtocol,
+	}
+}
+
+func (f *fakeOperationResolver) Resolve(_ context.Context, view resolver.RequestView) (resolver.Resolution, error) {
 	f.identified++
 	f.seenView = view
 	f.seenBody = view.Body
 
 	if f.forcedErr != nil {
-		return resolver.Resolution{ProtocolState: "forced"}, f.forcedErr
+		return resolver.Resolution{}, f.forcedErr
 	}
 
 	if f.header != "" {
@@ -99,13 +123,7 @@ func (f *fakeOperationResolver) Identify(view resolver.RequestView) (resolver.Re
 		if len(values) == 0 {
 			return resolver.Resolution{}, &resolver.ResolutionError{Kind: resolver.FailureInvalidRequest}
 		}
-		return resolver.Resolution{
-			Operations: []resolver.Operation{
-				{Candidates: []string{values[0]}, KnownToProtocol: f.knownToProtocol},
-			},
-			ProtocolState: "header-state",
-			ResponseKind:  f.responseKindByOperation[values[0]],
-		}, nil
+		return f.resolveOperation(values[0]), nil
 	}
 
 	var envelope map[string]any
@@ -114,46 +132,9 @@ func (f *fakeOperationResolver) Identify(view resolver.RequestView) (resolver.Re
 	}
 	op, ok := envelope[f.bodyField].(string)
 	if !ok {
-		return resolver.Resolution{ProtocolState: "body-state"},
-			&resolver.ResolutionError{Kind: resolver.FailureInvalidRequest}
+		return resolver.Resolution{}, &resolver.ResolutionError{Kind: resolver.FailureInvalidRequest}
 	}
-	return resolver.Resolution{
-		Operations: []resolver.Operation{
-			{Candidates: []string{op}, KnownToProtocol: f.knownToProtocol},
-		},
-		ProtocolState: "body-state",
-		ResponseKind:  f.responseKindByOperation[op],
-	}, nil
-}
-
-// renderingResolver additionally shapes both failures and policy rejections, the way
-// a real JSON-RPC resolver does.
-type renderingResolver struct {
-	fakeOperationResolver
-	renderedFailures   int
-	renderedRejections int
-	lastRejectionState any
-}
-
-func (r *renderingResolver) RenderFailure(_ resolver.RequestView, err *resolver.ResolutionError) resolver.RenderedFailure {
-	r.renderedFailures++
-	return resolver.RenderedFailure{
-		StatusCode: 418,
-		Headers:    map[string]string{"content-type": "application/fake+json"},
-		Body:       []byte(fmt.Sprintf(`{"kind":%q}`, err.Kind)),
-	}
-}
-
-func (r *renderingResolver) RenderRejection(_ resolver.RequestView, protocolState any, in resolver.RenderedFailure) resolver.RenderedFailure {
-	r.renderedRejections++
-	r.lastRejectionState = protocolState
-	return resolver.RenderedFailure{
-		// Deliberately a different status: the caller must ignore it and keep the
-		// policy's own status, so dashboards stay keyed on 401/429.
-		StatusCode: 599,
-		Headers:    map[string]string{"content-type": "application/fake+json"},
-		Body:       []byte(fmt.Sprintf(`{"rejected":true,"state":%q}`, protocolState)),
-	}
+	return f.resolveOperation(op), nil
 }
 
 // headerPolicy runs at the request-header phase, so the deferred path can prove
@@ -205,37 +186,55 @@ func (p *bodyPolicy) OnRequestBody(_ context.Context, ctx *policy.RequestContext
 // ─── Fixtures ────────────────────────────────────────────────────────────────
 
 type resolutionFixture struct {
-	server *ExternalProcessorServer
-	kernel *Kernel
+	server    *ExternalProcessorServer
+	kernel    *Kernel
+	resolvers resolver.ResolverRegistry
+	t         *testing.T
 }
 
-func newResolutionFixture(t *testing.T, resolvers ...resolver.OperationResolver) *resolutionFixture {
+func newResolutionFixture(t *testing.T, resolvers ...resolver.Resolver) *resolutionFixture {
 	t.Helper()
 	reg := resolver.NewRegistry()
 	for _, r := range resolvers {
 		require.NoError(t, reg.Register(r))
+	}
+	// The identity resolver is always available, exactly as it is in production: a route
+	// with no resolver_name normalises to it.
+	if _, taken := reg.Get(resolver.RouteKeyResolverName); !taken {
+		require.NoError(t, reg.Register(&resolver.RouteKeyResolver{}))
 	}
 	reg.Freeze()
 
 	k := NewKernel()
 	return &resolutionFixture{
 		server: NewExternalProcessorServer(k, newTestExecutor(), config.TracingConfig{}, "",
-			testMaxDecompressedBytes, testMaxDecompressedBytes, reg),
-		kernel: k,
+			testMaxDecompressedBytes, testMaxDecompressedBytes),
+		kernel:    k,
+		resolvers: reg,
+		t:         t,
 	}
 }
 
-// route registers a single RouteConfig. The resolution fields live on the embedded
-// resolver.RouteResolution, so they are passed as one value; the returned pointer is
-// the stored one, so a test can adjust a non-resolution field (a buffer limit) after.
+// route registers a single RouteConfig, preparing its resolver the way xDS ingest does.
+// The resolution fields live on the embedded resolver.RouteResolution, so they are
+// passed as one value; the returned pointer is the stored one, so a test can adjust a
+// non-resolution field (a buffer limit) after.
 func (f *resolutionFixture) route(routeKey string, rr resolver.RouteResolution) *RouteConfig {
+	f.t.Helper()
+	rc := f.unpreparedRoute(routeKey, rr)
+	require.NoError(f.t, PrepareRoute(f.resolvers, routeKey, rc))
+
+	f.kernel.ApplyWholeRouteConfigs(map[string]*RouteConfig{routeKey: rc})
+	return rc
+}
+
+// unpreparedRoute builds the RouteConfig without preparing it, for the tests that need
+// a route the kernel would refuse. Ingest never produces one; a non-xDS load path could.
+func (f *resolutionFixture) unpreparedRoute(routeKey string, rr resolver.RouteResolution) *RouteConfig {
 	rr.RouteKey = routeKey
-	if rr.IsIdentity() && rr.CanonicalChainKey == "" {
-		rr.CanonicalChainKey = routeKey
-	}
-	// APIId and Vhost are the chain-key composition inputs the kernel copies into the
-	// request view, so a resolver-bearing route needs them to compose anything at all.
-	rc := &RouteConfig{
+	// APIId and Vhost are the partition a prepared resolver captures, so a route whose
+	// resolver composes operation keys needs them to compose anything at all.
+	return &RouteConfig{
 		Metadata: RouteMetadata{
 			RouteName: routeKey,
 			APIId:     testAPIID,
@@ -243,8 +242,6 @@ func (f *resolutionFixture) route(routeKey string, rr resolver.RouteResolution) 
 		},
 		RouteResolution: rr,
 	}
-	f.kernel.ApplyWholeRouteConfigs(map[string]*RouteConfig{routeKey: rc})
-	return rc
 }
 
 // Composition inputs shared by every fixture in this file, so a composed key in an
@@ -325,13 +322,15 @@ func gzipBytes(t *testing.T, in []byte) []byte {
 
 // ─── Identity routes (invariant 5.1 / 5.4) ───────────────────────────────────
 
-// The identity path must not build a request view, consult a map, or call a
-// resolver — a fake registered under the identity name would be a bug if invoked.
-func TestIdentityRoute_NeverCallsAResolver(t *testing.T) {
-	trap := &fakeOperationResolver{name: resolver.RouteKeyResolverName, header: "x-op"}
-	f := newResolutionFixture(t, trap)
-	f.route("GET|/pets|example.com", resolver.RouteResolution{ResolverName: resolver.RouteKeyResolverName})
+// An identity route's whole resolution happened at ingest, so the request path must not
+// build a request view, buffer a body, acquire a renderer, or call Resolve.
+func TestIdentityRoute_DoesNoRequestTimeResolverWork(t *testing.T) {
+	f := newResolutionFixture(t)
+	rc := f.route("GET|/pets|example.com", resolver.RouteResolution{ResolverName: resolver.RouteKeyResolverName})
 	f.chain("GET|/pets|example.com", &testutils.NoopPolicy{})
+
+	require.True(t, rc.Prepared.IsStatic(), "route-key must resolve entirely at ingest")
+	assert.False(t, rc.Prepared.Requirements.BuffersBody())
 
 	var execCtx *PolicyExecutionContext
 	_, outcome, denial := f.server.initializeExecutionContext(context.Background(),
@@ -339,11 +338,55 @@ func TestIdentityRoute_NeverCallsAResolver(t *testing.T) {
 
 	assert.Equal(t, bindReady, outcome)
 	assert.Nil(t, denial)
-	assert.Zero(t, trap.identified, "the identity path must short-circuit before any resolver runs")
 	require.NotNil(t, execCtx)
-	assert.Nil(t, execCtx.rejectionRenderer, "an identity route must never acquire a renderer")
-	assert.Nil(t, execCtx.failureRenderer)
 	assert.Nil(t, execCtx.pending)
+	assert.Empty(t, execCtx.operation, "a direct route has no operation to report")
+}
+
+// A statically-prepared resolver cannot name a chain other than its own route's — and
+// that is settled at ingest, not per request: PrepareRoute refuses the route, so it never
+// reaches the kernel and no request to it can bind the other route's chain.
+//
+// Checking it here rather than only in the resolver package covers the wrapper both
+// ingest and these fixtures go through, which is where the route's partition and
+// effective key are assembled.
+func TestPrepareRoute_RefusesAStaticResolutionNamingAnotherRoutesChain(t *testing.T) {
+	factory := &staticKeyResolver{name: "bad-static", key: "GET|/admin|example.com"}
+	f := newResolutionFixture(t, factory)
+	f.chain("GET|/admin|example.com", &testutils.NoopPolicy{})
+
+	routeKey := "GET|/pets|example.com"
+	rc := f.unpreparedRoute(routeKey, resolver.RouteResolution{ResolverName: "bad-static"})
+
+	err := PrepareRoute(f.resolvers, routeKey, rc)
+	require.Error(t, err, "the route must be refused at ingest, not fail on every request")
+	assert.Contains(t, err.Error(), "invalid static resolution")
+	assert.Nil(t, rc.Prepared, "a refused route stores no prepared resolver")
+}
+
+// staticKeyResolver prepares a static direct resolution naming whatever key it was given,
+// so a test can drive PrepareRoute's validation of that resolution.
+type staticKeyResolver struct {
+	name string
+	key  string
+}
+
+func (r *staticKeyResolver) Name() string { return r.name }
+
+func (r *staticKeyResolver) Prepare(resolver.ResolverRouteConfig) (resolver.PreparedResolver, error) {
+	return r, nil
+}
+
+func (r *staticKeyResolver) Requirements() resolver.RequestRequirements {
+	return resolver.RequestRequirements{}
+}
+
+func (r *staticKeyResolver) Resolve(context.Context, resolver.RequestView) (resolver.Resolution, error) {
+	return r.StaticResolution(), nil
+}
+
+func (r *staticKeyResolver) StaticResolution() resolver.Resolution {
+	return resolver.Resolution{Target: resolver.TargetDirectRoute, ChainKey: r.key}
 }
 
 // Invariant 5.1: an empty resolver_name and the explicit identity name behave the
@@ -389,9 +432,9 @@ func TestIdentityRoute_MissingChainStillYieldsNoChainOutcome(t *testing.T) {
 // *is* the chain key.
 func TestIdentityRoute_AbsentCanonicalKeyFallsBackToRouteKey(t *testing.T) {
 	f := newResolutionFixture(t)
-	f.kernel.ApplyWholeRouteConfigs(map[string]*RouteConfig{
-		"GET|/pets|example.com": {Metadata: RouteMetadata{RouteName: "GET|/pets|example.com"}},
-	})
+	// No CanonicalChainKey on the wire: the fixture applies the same one-time fallback
+	// ingest does, and the prepared resolver reads the effective value from there.
+	f.route("GET|/pets|example.com", resolver.RouteResolution{})
 	f.chain("GET|/pets|example.com", &testutils.NoopPolicy{})
 
 	var execCtx *PolicyExecutionContext
@@ -405,7 +448,7 @@ func TestIdentityRoute_AbsentCanonicalKeyFallsBackToRouteKey(t *testing.T) {
 // ─── Header-only resolution ──────────────────────────────────────────────────
 
 func TestHeaderOnlyResolver_ResolvesAtHeaderPhase(t *testing.T) {
-	r := &fakeOperationResolver{name: "hdr", reqs: resolver.Requirements{Headers: true}, header: "x-op"}
+	r := &fakeOperationResolver{name: "hdr", reqs: resolver.RequestRequirements{Headers: true}, header: "x-op"}
 	f := newResolutionFixture(t, r)
 	f.route("POST|/rpc|example.com", resolver.RouteResolution{
 		ResolverName: "hdr",
@@ -422,7 +465,6 @@ func TestHeaderOnlyResolver_ResolvesAtHeaderPhase(t *testing.T) {
 	assert.Nil(t, denial)
 	require.NotNil(t, execCtx)
 	assert.Equal(t, operationChainKey("SendMessage"), execCtx.chainKey)
-	assert.Equal(t, "header-state", execCtx.protocolState)
 	assert.Nil(t, execCtx.pending, "a header-only resolver must not defer")
 
 	// GO-AUTH-006: the method reaches the resolver upper-cased, so no downstream
@@ -432,7 +474,7 @@ func TestHeaderOnlyResolver_ResolvesAtHeaderPhase(t *testing.T) {
 }
 
 func TestHeaderOnlyResolver_UnknownOperationDenies(t *testing.T) {
-	r := &fakeOperationResolver{name: "hdr", reqs: resolver.Requirements{Headers: true}, header: "x-op"}
+	r := &fakeOperationResolver{name: "hdr", reqs: resolver.RequestRequirements{Headers: true}, header: "x-op"}
 	f := newResolutionFixture(t, r)
 	f.route("POST|/rpc|example.com", resolver.RouteResolution{
 		ResolverName: "hdr",
@@ -449,23 +491,40 @@ func TestHeaderOnlyResolver_UnknownOperationDenies(t *testing.T) {
 	assert.Nil(t, execCtx, "a denied request must leave no execution context")
 }
 
-// A route naming a resolver this binary lacks must deny, never quietly resolve by
-// identity — that would apply the route-level chain to every multiplexed operation.
-func TestUnknownResolver_DeniesWithoutFallingBackToIdentity(t *testing.T) {
+// A route naming a resolver this binary lacks is dropped at ingest, so it never reaches
+// the kernel at all.
+func TestUnknownResolver_IsRefusedAtPreparation(t *testing.T) {
 	f := newResolutionFixture(t)
-	f.route("POST|/rpc|example.com", resolver.RouteResolution{
-		ResolverName:      "a2a-jsonrpc",
+	_, err := resolver.PrepareRoute(f.resolvers, resolver.ResolverRouteConfig{
+		RouteKey:          "POST|/rpc|example.com",
+		CanonicalChainKey: "route-level-chain",
+		ResolverName:      "not-registered",
+	})
+	var re *resolver.ResolutionError
+	require.ErrorAs(t, err, &re)
+	assert.Equal(t, resolver.FailureUnknownResolver, re.Kind)
+}
+
+// If such a route reaches the kernel anyway — a non-xDS load path — it must deny, never
+// quietly resolve by route key, which would apply the route-level chain to every
+// operation the route multiplexes.
+func TestUnpreparedRoute_DeniesWithoutFallingBackToTheRouteKey(t *testing.T) {
+	f := newResolutionFixture(t)
+	routeKey := "POST|/rpc|example.com"
+	rc := f.unpreparedRoute(routeKey, resolver.RouteResolution{
+		ResolverName:      "not-registered",
 		CanonicalChainKey: "route-level-chain",
 	})
+	f.kernel.ApplyWholeRouteConfigs(map[string]*RouteConfig{routeKey: rc})
 	routeLevel := f.chain("route-level-chain", &testutils.NoopPolicy{})
 
 	var execCtx *PolicyExecutionContext
 	_, outcome, denial := f.server.initializeExecutionContext(context.Background(),
-		headersRequest("POST|/rpc|example.com", true, map[string]string{":method": "POST"}), &execCtx)
+		headersRequest(routeKey, true, map[string]string{":method": "POST"}), &execCtx)
 
 	require.Equal(t, bindFailed, outcome)
+	require.NotNil(t, denial)
 	assert.Equal(t, resolver.FailureUnknownResolver, denial.failure.Kind)
-	assert.Nil(t, denial.renderer, "an unknown resolver cannot supply a renderer")
 	assert.Nil(t, execCtx)
 	assert.NotNil(t, routeLevel, "the route-level chain exists but must not have been selected")
 }
@@ -476,7 +535,7 @@ func TestResolvedButMissingChain_IsAConfigurationFailure(t *testing.T) {
 	// A closed operation set: the protocol says SendMessage exists, so no chain for it
 	// means the controller built the deployment wrong.
 	r := &fakeOperationResolver{
-		name: "hdr", reqs: resolver.Requirements{Headers: true}, header: "x-op",
+		name: "hdr", reqs: resolver.RequestRequirements{Headers: true}, header: "x-op",
 		knownToProtocol: true,
 	}
 	f := newResolutionFixture(t, r)
@@ -490,8 +549,8 @@ func TestResolvedButMissingChain_IsAConfigurationFailure(t *testing.T) {
 		headersRequest("POST|/rpc|example.com", true, map[string]string{":method": "POST", "x-op": "SendMessage"}), &execCtx)
 
 	require.Equal(t, bindFailed, outcome)
-	assert.Equal(t, resolver.FailureChainMissing, denial.failure.Kind)
-	assert.False(t, denial.failure.ProtocolVisible(), "a missing chain must render generically")
+	assert.Equal(t, resolver.FailureChainMissing, denial.failure.Kind,
+		"a missing chain is a deployment fault, distinct from the client naming something unknown")
 }
 
 // The other side of the same branch: an *open* operation set, where no chain for the
@@ -500,7 +559,7 @@ func TestResolvedButMissingChain_IsAConfigurationFailure(t *testing.T) {
 // the protocol definition — and it decides whether the caller or the deployment is at
 // fault, so the two must not collapse into one failure kind.
 func TestResolvedButMissingChain_OpenOperationSetBlamesTheClient(t *testing.T) {
-	r := &fakeOperationResolver{name: "hdr", reqs: resolver.Requirements{Headers: true}, header: "x-op"}
+	r := &fakeOperationResolver{name: "hdr", reqs: resolver.RequestRequirements{Headers: true}, header: "x-op"}
 	f := newResolutionFixture(t, r)
 	f.route("POST|/rpc|example.com", resolver.RouteResolution{ResolverName: "hdr"})
 	f.operationChain("tools/call", &testutils.NoopPolicy{})
@@ -512,15 +571,14 @@ func TestResolvedButMissingChain_OpenOperationSetBlamesTheClient(t *testing.T) {
 
 	require.Equal(t, bindFailed, outcome)
 	require.NotNil(t, denial)
-	assert.Equal(t, resolver.FailureUnknownOperation, denial.failure.Kind)
-	assert.True(t, denial.failure.ProtocolVisible(),
-		"an unknown operation is describable by the protocol, unlike a missing chain")
+	assert.Equal(t, resolver.FailureUnknownOperation, denial.failure.Kind,
+		"the client named something that does not exist, distinct from a missing chain")
 }
 
 // ─── Deferred (body-phase) binding ───────────────────────────────────────────
 
 func TestBodyResolver_DefersAndAsksEnvoyToBuffer(t *testing.T) {
-	r := &fakeOperationResolver{name: "body", reqs: resolver.Requirements{BufferBody: true}, bodyField: "method"}
+	r := &fakeOperationResolver{name: "body", reqs: resolver.RequestRequirements{Body: resolver.BodyBuffered}, bodyField: "method"}
 	f := newResolutionFixture(t, r)
 	f.route("POST|/rpc|example.com", resolver.RouteResolution{
 		ResolverName: "body",
@@ -536,7 +594,7 @@ func TestBodyResolver_DefersAndAsksEnvoyToBuffer(t *testing.T) {
 	assert.Nil(t, execCtx.policyChain, "no chain may be selected before the body arrives")
 	assert.Zero(t, r.identified, "the resolver must not run before it has the body")
 
-	resp := pendingResolutionResponse(execCtx.pending.requirements)
+	resp := pendingResolutionResponse(execCtx.pending.prepared.Requirements)
 	assert.Equal(t, extprocconfigv3.ProcessingMode_BUFFERED, resp.ModeOverride.RequestBodyMode)
 	assert.Equal(t, extprocconfigv3.ProcessingMode_SEND, resp.ModeOverride.ResponseHeaderMode,
 		"the response-header callback is where the resolved chain's response mode is returned")
@@ -548,7 +606,7 @@ func TestBodyResolver_DefersAndAsksEnvoyToBuffer(t *testing.T) {
 // so a pending request would wait forever. Resolve or deny during the header
 // callback instead.
 func TestBodyResolver_HeaderEndOfStreamResolvesImmediately(t *testing.T) {
-	r := &fakeOperationResolver{name: "body", reqs: resolver.Requirements{BufferBody: true}, bodyField: "method"}
+	r := &fakeOperationResolver{name: "body", reqs: resolver.RequestRequirements{Body: resolver.BodyBuffered}, bodyField: "method"}
 	f := newResolutionFixture(t, r)
 	f.route("POST|/rpc|example.com", resolver.RouteResolution{
 		ResolverName: "body",
@@ -566,7 +624,7 @@ func TestBodyResolver_HeaderEndOfStreamResolvesImmediately(t *testing.T) {
 }
 
 func TestDeferredBinding_RunsHeaderThenBodyPoliciesAtBodyPhase(t *testing.T) {
-	r := &fakeOperationResolver{name: "body", reqs: resolver.Requirements{BufferBody: true}, bodyField: "method"}
+	r := &fakeOperationResolver{name: "body", reqs: resolver.RequestRequirements{Body: resolver.BodyBuffered}, bodyField: "method"}
 	f := newResolutionFixture(t, r)
 	f.route("POST|/rpc|example.com", resolver.RouteResolution{
 		ResolverName: "body",
@@ -611,7 +669,7 @@ func TestDeferredBinding_RunsHeaderThenBodyPoliciesAtBodyPhase(t *testing.T) {
 // A policy rejection raised by the deferred chain's header policies still becomes an
 // ImmediateResponse, even though those policies ran at the body callback.
 func TestDeferredBinding_HeaderPolicyShortCircuitAtBodyPhase(t *testing.T) {
-	r := &fakeOperationResolver{name: "body", reqs: resolver.Requirements{BufferBody: true}, bodyField: "method"}
+	r := &fakeOperationResolver{name: "body", reqs: resolver.RequestRequirements{Body: resolver.BodyBuffered}, bodyField: "method"}
 	f := newResolutionFixture(t, r)
 	f.route("POST|/rpc|example.com", resolver.RouteResolution{
 		ResolverName: "body",
@@ -644,7 +702,7 @@ func TestDeferredBinding_ResolutionFailureDenies(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			r := &fakeOperationResolver{name: "body", reqs: resolver.Requirements{BufferBody: true}, bodyField: "method"}
+			r := &fakeOperationResolver{name: "body", reqs: resolver.RequestRequirements{Body: resolver.BodyBuffered}, bodyField: "method"}
 			f := newResolutionFixture(t, r)
 			f.route("POST|/rpc|example.com", resolver.RouteResolution{
 				ResolverName: "body",
@@ -669,58 +727,10 @@ func TestDeferredBinding_ResolutionFailureDenies(t *testing.T) {
 	}
 }
 
-// A resolver that supplies a FailureRenderer shapes the protocol-visible failures,
-// so a client library gets a body it can parse.
-func TestDeferredBinding_ProtocolVisibleFailureUsesResolverRenderer(t *testing.T) {
-	r := &renderingResolver{fakeOperationResolver: fakeOperationResolver{
-		name: "body", reqs: resolver.Requirements{BufferBody: true}, bodyField: "method",
-	}}
-	f := newResolutionFixture(t, r)
-	f.route("POST|/rpc|example.com", resolver.RouteResolution{
-		ResolverName: "body",
-	})
-	f.operationChain("SendMessage", &testutils.NoopPolicy{})
-
-	execCtx := f.bindPending(t, "POST|/rpc|example.com")
-	resp, err := execCtx.processRequestBody(context.Background(),
-		&extprocv3.HttpBody{Body: []byte(`{"method":"NoSuchOp"}`), EndOfStream: true})
-	require.NoError(t, err)
-
-	imm := resp.GetImmediateResponse()
-	require.NotNil(t, imm)
-	assert.Equal(t, typev3.StatusCode(418), imm.Status.Code)
-	assert.JSONEq(t, `{"kind":"unknown-operation"}`, string(imm.Body))
-	assert.Equal(t, 1, r.renderedFailures)
-}
-
-// A configuration failure must stay sterile even when the resolver has a renderer:
-// the protocol has nothing to say about a chain the operator failed to deploy.
-func TestDeferredBinding_ConfigurationFailureIgnoresResolverRenderer(t *testing.T) {
-	r := &renderingResolver{fakeOperationResolver: fakeOperationResolver{
-		name: "body", reqs: resolver.Requirements{BufferBody: true}, bodyField: "method",
-		knownToProtocol: true,
-	}}
-	f := newResolutionFixture(t, r)
-	f.route("POST|/rpc|example.com", resolver.RouteResolution{
-		ResolverName: "body",
-	})
-	// The operation's chain deliberately absent.
-
-	execCtx := f.bindPending(t, "POST|/rpc|example.com")
-	resp, err := execCtx.processRequestBody(context.Background(),
-		&extprocv3.HttpBody{Body: []byte(`{"method":"SendMessage"}`), EndOfStream: true})
-	require.NoError(t, err)
-
-	imm := resp.GetImmediateResponse()
-	require.NotNil(t, imm)
-	assert.Equal(t, typev3.StatusCode_InternalServerError, imm.Status.Code)
-	assert.Zero(t, r.renderedFailures, "a missing chain is not a protocol-level error")
-}
-
 // ─── Body ceilings on the deferred path ───────────────────────────────────────
 
 func TestDeferredBinding_WireLimitRejectsBeforeResolving(t *testing.T) {
-	r := &fakeOperationResolver{name: "body", reqs: resolver.Requirements{BufferBody: true}, bodyField: "method"}
+	r := &fakeOperationResolver{name: "body", reqs: resolver.RequestRequirements{Body: resolver.BodyBuffered}, bodyField: "method"}
 	f := newResolutionFixture(t, r)
 	rc := f.route("POST|/rpc|example.com", resolver.RouteResolution{
 		ResolverName: "body",
@@ -756,7 +766,7 @@ func TestDeferredBinding_DefaultWireLimitApplies(t *testing.T) {
 }
 
 func TestDeferredBinding_ResolvesFromDecodedGzipBody(t *testing.T) {
-	r := &fakeOperationResolver{name: "body", reqs: resolver.Requirements{BufferBody: true}, bodyField: "method"}
+	r := &fakeOperationResolver{name: "body", reqs: resolver.RequestRequirements{Body: resolver.BodyBuffered}, bodyField: "method"}
 	f := newResolutionFixture(t, r)
 	f.route("POST|/rpc|example.com", resolver.RouteResolution{
 		ResolverName: "body",
@@ -781,7 +791,7 @@ func TestDeferredBinding_ResolvesFromDecodedGzipBody(t *testing.T) {
 // A body that claims a supported coding but does not decode under it must fail closed:
 // passing the raw bytes on would resolve to whatever they happen to look like.
 func TestDeferredBinding_UndecodableBodyFailsClosed(t *testing.T) {
-	r := &fakeOperationResolver{name: "body", reqs: resolver.Requirements{BufferBody: true}, bodyField: "method"}
+	r := &fakeOperationResolver{name: "body", reqs: resolver.RequestRequirements{Body: resolver.BodyBuffered}, bodyField: "method"}
 	f := newResolutionFixture(t, r)
 	f.route("POST|/rpc|example.com", resolver.RouteResolution{
 		ResolverName: "body",
@@ -819,7 +829,7 @@ func TestDeferredBinding_UndecodableEncodingsRejectedBeforeResolving(t *testing.
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			r := &fakeOperationResolver{name: "body", reqs: resolver.Requirements{BufferBody: true}, bodyField: "method"}
+			r := &fakeOperationResolver{name: "body", reqs: resolver.RequestRequirements{Body: resolver.BodyBuffered}, bodyField: "method"}
 			f := newResolutionFixture(t, r)
 			f.route("POST|/rpc|example.com", resolver.RouteResolution{
 				ResolverName: "body",
@@ -853,7 +863,7 @@ func TestDeferredBinding_UndecodableEncodingsRejectedBeforeResolving(t *testing.
 // header line was ever examined.
 func TestDeferredBinding_ContentCodingHeaderNormalization(t *testing.T) {
 	t.Run("uppercase coding decodes", func(t *testing.T) {
-		r := &fakeOperationResolver{name: "body", reqs: resolver.Requirements{BufferBody: true}, bodyField: "method"}
+		r := &fakeOperationResolver{name: "body", reqs: resolver.RequestRequirements{Body: resolver.BodyBuffered}, bodyField: "method"}
 		f := newResolutionFixture(t, r)
 		f.route("POST|/rpc|example.com", resolver.RouteResolution{
 			ResolverName: "body",
@@ -875,7 +885,7 @@ func TestDeferredBinding_ContentCodingHeaderNormalization(t *testing.T) {
 	})
 
 	t.Run("identity means no coding", func(t *testing.T) {
-		r := &fakeOperationResolver{name: "body", reqs: resolver.Requirements{BufferBody: true}, bodyField: "method"}
+		r := &fakeOperationResolver{name: "body", reqs: resolver.RequestRequirements{Body: resolver.BodyBuffered}, bodyField: "method"}
 		f := newResolutionFixture(t, r)
 		f.route("POST|/rpc|example.com", resolver.RouteResolution{
 			ResolverName: "body",
@@ -968,7 +978,7 @@ func TestIdentityRoute_UndecodableBodyKeepsLenientBehaviour(t *testing.T) {
 // The decoded ceiling applies to an uncompressed body too, so the resolver's input
 // is bounded by the same number either way.
 func TestDeferredBinding_DecodedLimitAppliesToUncompressedBody(t *testing.T) {
-	r := &fakeOperationResolver{name: "body", reqs: resolver.Requirements{BufferBody: true}, bodyField: "method"}
+	r := &fakeOperationResolver{name: "body", reqs: resolver.RequestRequirements{Body: resolver.BodyBuffered}, bodyField: "method"}
 	reg := resolver.NewRegistry()
 	require.NoError(t, reg.Register(r))
 	reg.Freeze()
@@ -976,8 +986,8 @@ func TestDeferredBinding_DecodedLimitAppliesToUncompressedBody(t *testing.T) {
 	k := NewKernel()
 	// A decoded ceiling well below the wire ceiling, so only the decoded check fires.
 	server := NewExternalProcessorServer(k, newTestExecutor(), config.TracingConfig{}, "", 8,
-		testMaxDecompressedBytes, reg)
-	f := &resolutionFixture{server: server, kernel: k}
+		testMaxDecompressedBytes)
+	f := &resolutionFixture{server: server, kernel: k, resolvers: reg, t: t}
 	rc := f.route("POST|/rpc|example.com", resolver.RouteResolution{
 		ResolverName: "body",
 	})
@@ -1001,7 +1011,7 @@ func TestDeferredBinding_DecodedLimitAppliesToUncompressedBody(t *testing.T) {
 // Envoy should not send response callbacks after an ImmediateResponse, but if one
 // arrives it must not dereference the nil chain.
 func TestDeniedRequest_ResponsePhasesDoNotDereferenceNilChain(t *testing.T) {
-	r := &fakeOperationResolver{name: "body", reqs: resolver.Requirements{BufferBody: true}, bodyField: "method"}
+	r := &fakeOperationResolver{name: "body", reqs: resolver.RequestRequirements{Body: resolver.BodyBuffered}, bodyField: "method"}
 	f := newResolutionFixture(t, r)
 	f.route("POST|/rpc|example.com", resolver.RouteResolution{
 		ResolverName: "body",
@@ -1033,13 +1043,13 @@ func TestDeniedRequest_ResponsePhasesDoNotDereferenceNilChain(t *testing.T) {
 // ─── Mode overrides ──────────────────────────────────────────────────────────
 
 func TestPendingModeOverride(t *testing.T) {
-	buffered := pendingModeOverride(resolver.Requirements{BufferBody: true})
+	buffered := pendingModeOverride(resolver.RequestRequirements{Body: resolver.BodyBuffered})
 	assert.Equal(t, extprocconfigv3.ProcessingMode_BUFFERED, buffered.RequestBodyMode)
 	assert.Equal(t, extprocconfigv3.ProcessingMode_NONE, buffered.ResponseBodyMode)
 	assert.Equal(t, extprocconfigv3.ProcessingMode_SKIP, buffered.RequestTrailerMode)
 	assert.Equal(t, extprocconfigv3.ProcessingMode_SKIP, buffered.ResponseTrailerMode)
 
-	headerOnly := pendingModeOverride(resolver.Requirements{Headers: true})
+	headerOnly := pendingModeOverride(resolver.RequestRequirements{Headers: true})
 	assert.Equal(t, extprocconfigv3.ProcessingMode_NONE, headerOnly.RequestBodyMode)
 }
 
@@ -1109,122 +1119,10 @@ func TestGenericResolutionFailure_StatusPerKind(t *testing.T) {
 
 // A renderer that returns no status has declined; the generic response is used
 // rather than emitting an HTTP 0.
-func TestResolutionFailureBody_RendererWithoutStatusFallsBackToGeneric(t *testing.T) {
-	declining := &decliningRenderer{}
-	out, protocolShaped := resolutionFailureBody(resolver.RequestView{}, nil, declining,
-		&resolver.ResolutionError{Kind: resolver.FailureParse}, "id")
-
-	assert.False(t, protocolShaped)
-	assert.Equal(t, 400, out.StatusCode)
-}
-
-type decliningRenderer struct{}
-
-func (decliningRenderer) RenderFailure(resolver.RequestView, *resolver.ResolutionError) resolver.RenderedFailure {
-	return resolver.RenderedFailure{}
-}
-
-// ─── Policy-rejection rendering (invariant 5.6) ──────────────────────────────
-
-// The structural guarantee: without a renderer the rejection is returned by an early
-// branch, not by a renderer that happens to be an identity function.
-func TestRenderImmediate_NoRendererIsAnEarlyReturn(t *testing.T) {
-	in := policy.ImmediateResponse{
-		StatusCode: 429,
-		Headers:    map[string]string{"retry-after": "30"},
-		Body:       []byte(`{"error":"too many requests"}`),
-	}
-
-	assert.Equal(t, in, renderImmediate(nil, in), "a nil execution context must not be rendered")
-
-	ec := &PolicyExecutionContext{}
-	out := renderImmediate(ec, in)
-	assert.Equal(t, in, out)
-	// Same backing array: nothing was copied or rebuilt on this path.
-	assert.Equal(t, fmt.Sprintf("%p", in.Body), fmt.Sprintf("%p", out.Body))
-}
-
-func TestRenderImmediate_PreservesStatusAndReplacesBody(t *testing.T) {
-	r := &renderingResolver{}
-	ec := &PolicyExecutionContext{rejectionRenderer: r, protocolState: "req-id-7"}
-
-	out := renderImmediate(ec, policy.ImmediateResponse{
-		StatusCode: 401,
-		Headers:    map[string]string{"www-authenticate": "Bearer"},
-		Body:       []byte(`{"error":"unauthorized"}`),
-	})
-
-	// Status preserved even though the renderer returned 599: the ALS access log,
-	// the analytics outcome and operator dashboards stay keyed on the 401.
-	assert.Equal(t, 401, out.StatusCode)
-	assert.JSONEq(t, `{"rejected":true,"state":"req-id-7"}`, string(out.Body))
-	// Renderer headers merge over the policy's rather than replacing them wholesale.
-	assert.Equal(t, "Bearer", out.Headers["www-authenticate"])
-	assert.Equal(t, "application/fake+json", out.Headers["content-type"])
-	assert.Equal(t, "req-id-7", r.lastRejectionState)
-}
-
-// A rejection raised at any phase must still be re-renderable, which is why the
-// request view and protocol state are retained for the whole stream.
-func TestRenderImmediate_WorksAtEveryPhase(t *testing.T) {
-	r := &renderingResolver{}
-	ec := &PolicyExecutionContext{rejectionRenderer: r, protocolState: "state"}
-
-	for _, phase := range []processingPhase{phaseRequestHeaders, phaseRequestBody, phaseResponseHeaders, phaseResponseBody} {
-		ec.phase = phase
-		out := renderImmediate(ec, policy.ImmediateResponse{StatusCode: 403, Body: []byte(`{}`)})
-		assert.Equal(t, 403, out.StatusCode)
-		assert.Contains(t, string(out.Body), "rejected")
-	}
-	assert.Equal(t, 4, r.renderedRejections)
-}
-
-// Invariant 5.6, structurally: every policy short-circuit in translator.go must go
-// through buildImmediateResponse. A seventh construction site added later would fail
-// this test rather than silently bypass rendering.
-func TestNoImmediateResponseConstructionBypassesTheSharedHelper(t *testing.T) {
-	src, err := os.ReadFile("translator.go")
-	require.NoError(t, err)
-
-	literal := regexp.MustCompile(`&extprocv3\.ImmediateResponse\{`)
-	assert.Equal(t, 1, len(literal.FindAll(src, -1)),
-		"translator.go must construct extprocv3.ImmediateResponse in exactly one place "+
-			"(buildImmediateResponse); every policy short-circuit routes through it")
-
-	// And every short-circuit branch that produces one goes through the helper.
-	helperUses := bytes.Count(src, []byte("buildImmediateResponse(execCtx, immResp)"))
-	assert.Equal(t, 6, helperUses,
-		"all six policy short-circuit sites must call buildImmediateResponse")
-}
-
-// The engine's own sterile faults must NOT be reshaped by a resolver: an internal
-// failure never takes its shape from resolver-supplied state.
-func TestEngineGeneratedFaultsAreNotRendered(t *testing.T) {
-	r := &renderingResolver{}
-	f := newResolutionFixture(t)
-	ec := newPolicyExecutionContext(f.server, "POST|/rpc|example.com", &registry.PolicyChain{})
-	ec.rejectionRenderer = r
-	ec.requestID = "req-1"
-
-	resp := ec.handlePolicyError(context.Background(), errors.New("boom"), "request_headers")
-	imm := resp.GetImmediateResponse()
-	require.NotNil(t, imm)
-	assert.Equal(t, typev3.StatusCode_InternalServerError, imm.Status.Code)
-	assert.Contains(t, string(imm.Body), "Internal Server Error")
-	assert.Zero(t, r.renderedRejections, "an engine-generated fault must stay sterile")
-
-	tooLarge := ec.handlePayloadTooLarge(context.Background(), errors.New("too big"), "request_body")
-	assert.Equal(t, typev3.StatusCode_PayloadTooLarge, tooLarge.GetImmediateResponse().Status.Code)
-	assert.Zero(t, r.renderedRejections)
-}
-
 // ─── Request view construction ───────────────────────────────────────────────
 
 func TestBuildRequestView(t *testing.T) {
-	rc := &RouteConfig{}
-	rc.RouteState = "prepared"
-
-	view := buildRequestView("POST|/rpc|example.com", rc, &extprocv3.HttpHeaders{
+	view := buildRequestView("POST|/rpc|example.com", &extprocv3.HttpHeaders{
 		Headers: &corev3.HeaderMap{Headers: []*corev3.HeaderValue{
 			{Key: ":method", RawValue: []byte("post")},
 			{Key: ":path", RawValue: []byte("/rpc?x=1")},
@@ -1237,12 +1135,11 @@ func TestBuildRequestView(t *testing.T) {
 	assert.Equal(t, "POST", view.Method, "the method must be upper-cased at extraction (GO-AUTH-006)")
 	assert.Equal(t, "/rpc?x=1", view.Path)
 	assert.Equal(t, []string{"application/json", "text/plain"}, view.Headers["accept"])
-	assert.Equal(t, "prepared", view.RouteState)
 	assert.Nil(t, view.Body, "the body is attached only once it has been decoded")
 }
 
 func TestBuildRequestView_NilHeaders(t *testing.T) {
-	view := buildRequestView("r", &RouteConfig{}, nil)
+	view := buildRequestView("r", nil)
 	assert.Equal(t, "r", view.RouteKey)
 	assert.Nil(t, view.Headers)
 }
@@ -1250,7 +1147,7 @@ func TestBuildRequestView_NilHeaders(t *testing.T) {
 // The resolver must observe the retained header-phase view at the body callback, not
 // values re-derived there.
 func TestDeferredBinding_ResolverSeesRetainedHeaderView(t *testing.T) {
-	r := &fakeOperationResolver{name: "body", reqs: resolver.Requirements{BufferBody: true}, bodyField: "method"}
+	r := &fakeOperationResolver{name: "body", reqs: resolver.RequestRequirements{Body: resolver.BodyBuffered}, bodyField: "method"}
 	f := newResolutionFixture(t, r)
 	f.route("POST|/rpc|example.com", resolver.RouteResolution{
 		ResolverName: "body",
@@ -1289,171 +1186,6 @@ func (f *resolutionFixture) bindPendingWithHeaders(t *testing.T, routeKey string
 // Guard against a stray "strings" import removal breaking the method-normalization
 // assertion above: buildRequestView must actually be doing the upper-casing.
 var _ = strings.ToUpper
-
-// ─── Invariant 5.6: existing kinds' rejections are byte-identical ─────────────
-
-// The shared rendering helper sits on the path of every 401, 429 and guardrail
-// rejection for every kind shipping today. This drives all six translator entry
-// points that can produce one and asserts the emitted ImmediateResponse carries the
-// policy's own status, headers and body verbatim when the route has no renderer —
-// which is every route that resolves by identity.
-func TestExistingKindImmediateResponsesAreUnchanged(t *testing.T) {
-	rejection := policy.ImmediateResponse{
-		StatusCode: 429,
-		Headers:    map[string]string{"retry-after": "30", "content-type": "application/json"},
-		Body:       []byte(`{"error":"too many requests","policy":"advanced-ratelimit"}`),
-	}
-
-	assertVerbatim := func(t *testing.T, resp *extprocv3.ProcessingResponse) {
-		t.Helper()
-		imm := resp.GetImmediateResponse()
-		require.NotNil(t, imm)
-		assert.Equal(t, typev3.StatusCode(429), imm.Status.Code)
-		assert.Equal(t, rejection.Body, imm.Body, "the policy's body must reach the client unmodified")
-
-		got := make(map[string]string, len(imm.Headers.GetSetHeaders()))
-		for _, h := range imm.Headers.GetSetHeaders() {
-			got[h.Header.Key] = string(h.Header.RawValue)
-		}
-		assert.Equal(t, rejection.Headers, got, "the policy's headers must reach the client unmodified")
-	}
-
-	newCtx := func(t *testing.T) *PolicyExecutionContext {
-		t.Helper()
-		f := newResolutionFixture(t)
-		ec := newPolicyExecutionContext(f.server, "GET|/pets|example.com", &registry.PolicyChain{})
-		ec.buildRequestContexts(&extprocv3.HttpHeaders{
-			Headers: &corev3.HeaderMap{Headers: []*corev3.HeaderValue{
-				{Key: ":method", RawValue: []byte("GET")},
-				{Key: ":path", RawValue: []byte("/pets")},
-			}},
-		}, RouteMetadata{RouteName: "GET|/pets|example.com"})
-		ec.buildResponseContexts(&extprocv3.HttpHeaders{
-			Headers: &corev3.HeaderMap{Headers: []*corev3.HeaderValue{{Key: ":status", RawValue: []byte("200")}}},
-		})
-		require.Nil(t, ec.rejectionRenderer, "an identity route must have no renderer")
-		return ec
-	}
-
-	headerResult := &executor.RequestHeaderExecutionResult{ShortCircuited: true, FinalAction: rejection}
-	bodyResult := &executor.RequestExecutionResult{ShortCircuited: true, FinalAction: rejection}
-	respHeaderResult := &executor.ResponseHeaderExecutionResult{ShortCircuited: true, FinalAction: rejection}
-	respBodyResult := &executor.ResponseExecutionResult{ShortCircuited: true, FinalAction: rejection}
-
-	t.Run("request headers", func(t *testing.T) {
-		ec := newCtx(t)
-		resp, err := TranslateRequestHeaderActions(headerResult, ec.policyChain, ec)
-		require.NoError(t, err)
-		assertVerbatim(t, resp)
-	})
-
-	t.Run("request body", func(t *testing.T) {
-		ec := newCtx(t)
-		resp, err := TranslateRequestBodyActions(bodyResult, ec.policyChain, ec)
-		require.NoError(t, err)
-		assertVerbatim(t, resp)
-	})
-
-	t.Run("request headers with inline body merge", func(t *testing.T) {
-		ec := newCtx(t)
-		resp, err := TranslateRequestHeaderActionsWithBodyMerge(
-			&executor.RequestHeaderExecutionResult{}, bodyResult, ec)
-		require.NoError(t, err)
-		assertVerbatim(t, resp)
-	})
-
-	t.Run("response headers", func(t *testing.T) {
-		ec := newCtx(t)
-		resp, err := TranslateResponseHeaderActions(respHeaderResult, ec)
-		require.NoError(t, err)
-		assertVerbatim(t, resp)
-	})
-
-	t.Run("response headers with inline body merge", func(t *testing.T) {
-		ec := newCtx(t)
-		resp, err := TranslateResponseHeaderActionsWithBodyMerge(
-			&executor.ResponseHeaderExecutionResult{}, respBodyResult, ec)
-		require.NoError(t, err)
-		assertVerbatim(t, resp)
-	})
-
-	t.Run("response body", func(t *testing.T) {
-		ec := newCtx(t)
-		resp, err := TranslateResponseBodyActions(respBodyResult, ec)
-		require.NoError(t, err)
-		assertVerbatim(t, resp)
-	})
-
-	// The new body-phase merge path, for a route whose chain binds late. With no
-	// renderer it must behave exactly like the others.
-	t.Run("request body with header merge", func(t *testing.T) {
-		ec := newCtx(t)
-		resp, err := TranslateRequestBodyActionsWithHeaderMerge(headerResult, &executor.RequestExecutionResult{}, ec)
-		require.NoError(t, err)
-		assertVerbatim(t, resp)
-	})
-}
-
-// The mirror of the above: with a renderer attached, every one of those same paths
-// re-renders the body while keeping the policy's status.
-func TestRendererBearingRouteRewritesEveryPhase(t *testing.T) {
-	rejection := policy.ImmediateResponse{
-		StatusCode: 401,
-		Headers:    map[string]string{"www-authenticate": "Bearer"},
-		Body:       []byte(`{"error":"unauthorized"}`),
-	}
-
-	newCtx := func(t *testing.T) (*PolicyExecutionContext, *renderingResolver) {
-		t.Helper()
-		f := newResolutionFixture(t)
-		r := &renderingResolver{}
-		ec := newPolicyExecutionContext(f.server, "POST|/rpc|example.com", &registry.PolicyChain{})
-		ec.buildRequestContexts(&extprocv3.HttpHeaders{
-			Headers: &corev3.HeaderMap{Headers: []*corev3.HeaderValue{{Key: ":method", RawValue: []byte("POST")}}},
-		}, RouteMetadata{RouteName: "POST|/rpc|example.com"})
-		ec.buildResponseContexts(&extprocv3.HttpHeaders{
-			Headers: &corev3.HeaderMap{Headers: []*corev3.HeaderValue{{Key: ":status", RawValue: []byte("200")}}},
-		})
-		ec.protocolState = "req-9"
-		ec.attachRenderers(r)
-		return ec, r
-	}
-
-	assertRendered := func(t *testing.T, resp *extprocv3.ProcessingResponse) {
-		t.Helper()
-		imm := resp.GetImmediateResponse()
-		require.NotNil(t, imm)
-		assert.Equal(t, typev3.StatusCode(401), imm.Status.Code, "the policy's status must survive rendering")
-		assert.JSONEq(t, `{"rejected":true,"state":"req-9"}`, string(imm.Body))
-	}
-
-	t.Run("request headers", func(t *testing.T) {
-		ec, r := newCtx(t)
-		resp, err := TranslateRequestHeaderActions(
-			&executor.RequestHeaderExecutionResult{ShortCircuited: true, FinalAction: rejection}, ec.policyChain, ec)
-		require.NoError(t, err)
-		assertRendered(t, resp)
-		assert.Equal(t, 1, r.renderedRejections)
-	})
-
-	t.Run("request body", func(t *testing.T) {
-		ec, r := newCtx(t)
-		resp, err := TranslateRequestBodyActions(
-			&executor.RequestExecutionResult{ShortCircuited: true, FinalAction: rejection}, ec.policyChain, ec)
-		require.NoError(t, err)
-		assertRendered(t, resp)
-		assert.Equal(t, 1, r.renderedRejections)
-	})
-
-	t.Run("response phase", func(t *testing.T) {
-		ec, r := newCtx(t)
-		resp, err := TranslateResponseBodyActions(
-			&executor.ResponseExecutionResult{ShortCircuited: true, FinalAction: rejection}, ec)
-		require.NoError(t, err)
-		assertRendered(t, resp)
-		assert.Equal(t, 1, r.renderedRejections)
-	})
-}
 
 // ─── Compressed-body mutation on the deferred path ───────────────────────────
 
@@ -1495,7 +1227,7 @@ func requestBodyMutation(t *testing.T, resp *extprocv3.ProcessingResponse) (body
 // Forwarding plaintext while keeping `content-encoding: gzip` is silently wrong: the
 // upstream fails to inflate a body it was told is compressed.
 func TestDeferredBinding_ModifiedCompressedBodyIsRecompressed(t *testing.T) {
-	r := &fakeOperationResolver{name: "body", reqs: resolver.Requirements{BufferBody: true}, bodyField: "method"}
+	r := &fakeOperationResolver{name: "body", reqs: resolver.RequestRequirements{Body: resolver.BodyBuffered}, bodyField: "method"}
 	f := newResolutionFixture(t, r)
 	f.route("POST|/rpc|example.com", resolver.RouteResolution{
 		ResolverName: "body",
@@ -1533,7 +1265,7 @@ func TestDeferredBinding_ModifiedCompressedBodyIsRecompressed(t *testing.T) {
 // An uncompressed request on the deferred path forwards the modified body as-is and
 // must not acquire a Content-Encoding.
 func TestDeferredBinding_ModifiedUncompressedBodyIsForwardedVerbatim(t *testing.T) {
-	r := &fakeOperationResolver{name: "body", reqs: resolver.Requirements{BufferBody: true}, bodyField: "method"}
+	r := &fakeOperationResolver{name: "body", reqs: resolver.RequestRequirements{Body: resolver.BodyBuffered}, bodyField: "method"}
 	f := newResolutionFixture(t, r)
 	f.route("POST|/rpc|example.com", resolver.RouteResolution{
 		ResolverName: "body",
@@ -1671,7 +1403,7 @@ func analyticsFromResponse(t *testing.T, resp *extprocv3.ProcessingResponse) map
 // So it has to carry everything the policies that already ran contributed, or the
 // request loses fields in traffic logging.
 func TestDeferredBinding_ShortCircuitKeepsEarlierAnalytics(t *testing.T) {
-	r := &fakeOperationResolver{name: "body", reqs: resolver.Requirements{BufferBody: true}, bodyField: "method"}
+	r := &fakeOperationResolver{name: "body", reqs: resolver.RequestRequirements{Body: resolver.BodyBuffered}, bodyField: "method"}
 	f := newResolutionFixture(t, r)
 	f.route("POST|/rpc|example.com", resolver.RouteResolution{
 		ResolverName: "body",
@@ -1743,12 +1475,12 @@ func TestRecordResolutionAttributes_SkipsUnknownChainKey(t *testing.T) {
 	assert.Equal(t, map[string]string{constants.AttrResolverName: "a2a-jsonrpc"}, rec.attrs,
 		"no chain key is stamped before one has been selected")
 
-	pending.chainKey = "POST|/message:send|example.com"
+	pending.chainKey = "POST|/op-one|example.com"
 	bound := &recordingSpan{}
 	pending.recordResolutionAttributes(bound)
 	assert.Equal(t, map[string]string{
 		constants.AttrResolverName:   "a2a-jsonrpc",
-		constants.AttrPolicyChainKey: "POST|/message:send|example.com",
+		constants.AttrPolicyChainKey: "POST|/op-one|example.com",
 	}, bound.attrs)
 
 	// An identity route stamps nothing: it has no resolver, and its chain key is the
@@ -1762,7 +1494,7 @@ func TestRecordResolutionAttributes_SkipsUnknownChainKey(t *testing.T) {
 
 // The bound chain key really does reach a span once the body callback has run.
 func TestDeferredBinding_ChainKeyIsRecordedAfterBinding(t *testing.T) {
-	r := &fakeOperationResolver{name: "body", reqs: resolver.Requirements{BufferBody: true}, bodyField: "method"}
+	r := &fakeOperationResolver{name: "body", reqs: resolver.RequestRequirements{Body: resolver.BodyBuffered}, bodyField: "method"}
 	f := newResolutionFixture(t, r)
 	f.route("POST|/rpc|example.com", resolver.RouteResolution{
 		ResolverName: "body",
@@ -1812,17 +1544,17 @@ func TestDeferredBinding_SpanCarriesResolvedChainKeyEndToEnd(t *testing.T) {
 	tp := sdktrace.NewTracerProvider(sdktrace.WithSpanProcessor(sr))
 	t.Cleanup(func() { _ = tp.Shutdown(context.Background()) })
 
-	r := &fakeOperationResolver{name: "body", reqs: resolver.Requirements{BufferBody: true}, bodyField: "method"}
+	r := &fakeOperationResolver{name: "body", reqs: resolver.RequestRequirements{Body: resolver.BodyBuffered}, bodyField: "method"}
 	reg := resolver.NewRegistry()
 	require.NoError(t, reg.Register(r))
 	reg.Freeze()
 
 	k := NewKernel()
 	server := NewExternalProcessorServer(k, executor.NewChainExecutor(nil, nil, tp.Tracer("test")),
-		config.TracingConfig{}, "", testMaxDecompressedBytes, testMaxDecompressedBytes, reg)
+		config.TracingConfig{}, "", testMaxDecompressedBytes, testMaxDecompressedBytes)
 	server.tracer = tp.Tracer("test")
 
-	f := &resolutionFixture{server: server, kernel: k}
+	f := &resolutionFixture{server: server, kernel: k, resolvers: reg, t: t}
 	f.route("POST|/rpc|example.com", resolver.RouteResolution{
 		ResolverName: "body",
 	})
@@ -1864,11 +1596,9 @@ func TestDeferredBinding_SpanCarriesResolvedChainKeyEndToEnd(t *testing.T) {
 		"the resolved chain key must reach the span, which only the body callback can do")
 }
 
-// ─── Response kind (streaming semantics from the operation) ──────────────────
+// ─── Existing-kind response compatibility ────────────────────────────────────
 
 // bufferedResponsePolicy needs the whole response body — a guardrail or a redaction step.
-// It does not implement policy.StreamingResponsePolicy, so a chain containing it reports
-// SupportsResponseStreaming == false.
 type bufferedResponsePolicy struct{ testutils.NoopPolicy }
 
 func (p *bufferedResponsePolicy) Mode() policy.ProcessingMode {
@@ -1876,30 +1606,13 @@ func (p *bufferedResponsePolicy) Mode() policy.ProcessingMode {
 }
 
 // chunkedJSONHeaders is an ordinary unary response that happens to use chunked transfer
-// framing — common, and not a stream.
+// framing.
 func chunkedJSONHeaders() *extprocv3.HttpHeaders {
 	return &extprocv3.HttpHeaders{Headers: &corev3.HeaderMap{Headers: []*corev3.HeaderValue{
-		{Key: ":status", RawValue: []byte("400")},
+		{Key: ":status", RawValue: []byte("200")},
 		{Key: "content-type", RawValue: []byte("application/json")},
 		{Key: "transfer-encoding", RawValue: []byte("chunked")},
 	}}}
-}
-
-// jsonErrorHeaders is an ordinary unary response: exactly what a streaming operation
-// returns when the request was bad. A body follows, so EndOfStream is false.
-func jsonErrorHeaders() *extprocv3.HttpHeaders {
-	return &extprocv3.HttpHeaders{Headers: &corev3.HeaderMap{Headers: []*corev3.HeaderValue{
-		{Key: ":status", RawValue: []byte("400")},
-		{Key: "content-type", RawValue: []byte("application/json")},
-	}}}
-}
-
-// bodylessHeaders is a 204: the response is complete at the headers.
-func bodylessHeaders() *extprocv3.HttpHeaders {
-	return &extprocv3.HttpHeaders{
-		Headers:     &corev3.HeaderMap{Headers: []*corev3.HeaderValue{{Key: ":status", RawValue: []byte("204")}}},
-		EndOfStream: true,
-	}
 }
 
 // sseHeaders is an upstream response that is genuinely a stream.
@@ -1910,317 +1623,32 @@ func sseHeaders() *extprocv3.HttpHeaders {
 	}}}
 }
 
-// A multiplexed route carries operations of both kinds, so the resolver's answer is what
-// decides — the route cannot, and neither can the chain.
-func TestResponseKind_ResolverDecidesPerOperation(t *testing.T) {
-	for _, tc := range []struct {
-		operation string
-		kind      resolver.ResponseKind
-	}{
-		{"SendMessage", resolver.ResponseKindUnary},
-		{"SendStreamingMessage", resolver.ResponseKindStreaming},
-	} {
-		t.Run(tc.operation, func(t *testing.T) {
-			r := &fakeOperationResolver{
-				name: "body", reqs: resolver.Requirements{BufferBody: true}, bodyField: "method",
-				responseKindByOperation: map[string]resolver.ResponseKind{
-					"SendMessage":          resolver.ResponseKindUnary,
-					"SendStreamingMessage": resolver.ResponseKindStreaming,
-				},
-			}
-			f := newResolutionFixture(t, r)
-			f.route("POST|/rpc|example.com", resolver.RouteResolution{ResolverName: "body"})
-			f.operationChain(tc.operation, &testutils.NoopPolicy{})
-
-			execCtx := f.bindPending(t, "POST|/rpc|example.com")
-			_, err := execCtx.processRequestBody(context.Background(), &extprocv3.HttpBody{
-				Body: []byte(`{"method":"` + tc.operation + `"}`), EndOfStream: true,
-			})
-			require.NoError(t, err)
-			require.NotNil(t, execCtx.policyChain, "the request must have bound a chain")
-			assert.Equal(t, tc.kind, execCtx.responseKind)
-		})
-	}
-}
-
-// An identity route can be an operation route too (one A2A HTTP+JSON path per operation),
-// where no resolver runs and the controller stamped the kind at deploy time.
-func TestResponseKind_IdentityRouteCarriesItsOwn(t *testing.T) {
-	f := newResolutionFixture(t)
-	f.route("POST|/message:stream|example.com", resolver.RouteResolution{
-		ResponseKind: resolver.ResponseKindStreaming,
-	})
-	f.chain("POST|/message:stream|example.com", &testutils.NoopPolicy{})
-
-	var execCtx *PolicyExecutionContext
-	_, outcome, _ := f.server.initializeExecutionContext(context.Background(),
-		headersRequest("POST|/message:stream|example.com", true,
-			map[string]string{":method": "POST"}), &execCtx)
-
-	require.Equal(t, bindReady, outcome)
-	require.NotNil(t, execCtx)
-	assert.Equal(t, resolver.ResponseKindStreaming, execCtx.responseKind)
-}
-
-// A unary operation is never streamed even when the upstream response looks like a
-// stream: the operation says one complete response is coming, and a response-body policy
-// needs it whole.
-func TestResponseKind_UnaryIsNeverStreamed(t *testing.T) {
-	f := newResolutionFixture(t)
-	f.route("POST|/rpc|example.com", resolver.RouteResolution{ResponseKind: resolver.ResponseKindUnary})
-	f.chain("POST|/rpc|example.com", &testutils.NoopPolicy{})
-
-	var execCtx *PolicyExecutionContext
-	_, _, _ = f.server.initializeExecutionContext(context.Background(),
-		headersRequest("POST|/rpc|example.com", true, map[string]string{":method": "POST"}), &execCtx)
-	require.NotNil(t, execCtx)
-
-	_, err := execCtx.processResponseHeaders(context.Background(), sseHeaders())
-	require.NoError(t, err)
-	assert.False(t, execCtx.isStreamingResponse)
-}
-
-// The requirement this whole field exists for: a streaming operation bound to a chain
-// that cannot stream its response body must fail closed.
-//
-// Buffering would hand the caller nothing until the upstream closes — indefinitely, for a
-// long-running task — and present as a hang rather than an error. Skipping the offending
-// policy would silently drop a guardrail, selectable by asking for a streaming operation.
-func TestResponseKind_StreamingWithBufferedOnlyChainFailsClosed(t *testing.T) {
-	f := newResolutionFixture(t)
-	f.route("POST|/message:stream|example.com", resolver.RouteResolution{
-		ResponseKind: resolver.ResponseKindStreaming,
-	})
-	f.chain("POST|/message:stream|example.com", &bufferedResponsePolicy{})
-
-	var execCtx *PolicyExecutionContext
-	_, _, _ = f.server.initializeExecutionContext(context.Background(),
-		headersRequest("POST|/message:stream|example.com", true, map[string]string{":method": "POST"}), &execCtx)
-	require.NotNil(t, execCtx)
-
-	resp, err := execCtx.processResponseHeaders(context.Background(), sseHeaders())
-	require.NoError(t, err)
-
-	imm := resp.GetImmediateResponse()
-	require.NotNil(t, imm, "the response must be replaced, not buffered and not passed through")
-	assert.Equal(t, typev3.StatusCode_InternalServerError, imm.Status.Code,
-		"a deployment problem, so 500 — the caller did nothing wrong")
-
-	// Sterile: the body names no policy, no chain, and not even streaming. An operator
-	// correlates via the error id, which is also in the log.
-	assert.Regexp(t, `^\{"error":"Internal Server Error","error_id":"[0-9a-f-]{36}"\}$`, string(imm.Body))
-	assert.NotContains(t, string(imm.Body), "stream")
-}
-
-// The most ordinary streaming deployment there is: a chain that only authenticates, with
-// no response-body policy at all. BuildPolicyChain reports SupportsResponseStreaming ==
-// false for it — there is nothing to stream — so gating on that flag alone would reject
-// this. It must proceed, with Envoy told to send no response body.
-func TestResponseKind_StreamingWithNoResponseBodyPolicyProceeds(t *testing.T) {
-	f := newResolutionFixture(t)
-	f.route("POST|/message:stream|example.com", resolver.RouteResolution{
-		ResponseKind: resolver.ResponseKindStreaming,
-	})
-	f.chain("POST|/message:stream|example.com", &testutils.NoopPolicy{})
-
-	var execCtx *PolicyExecutionContext
-	_, _, _ = f.server.initializeExecutionContext(context.Background(),
-		headersRequest("POST|/message:stream|example.com", true, map[string]string{":method": "POST"}), &execCtx)
-	require.NotNil(t, execCtx)
-
-	resp, err := execCtx.processResponseHeaders(context.Background(), sseHeaders())
-	require.NoError(t, err)
-	assert.Nil(t, resp.GetImmediateResponse())
-	assert.NotNil(t, resp.GetResponseHeaders())
-}
-
-// No behavioural change for existing kinds, in the case that matters: a route with a
-// *buffered-only* response
-// policy meeting a chunked or SSE upstream response. That combination has always simply
-// buffered, and it must keep doing so — the fail-closed behaviour is opt-in with an explicit
-// streaming declaration, not a new global rule. The weaker version of this test used a
-// no-body policy and therefore never reached the conflict check at all.
-func TestResponseKind_AutoWithBufferedOnlyChainStillBuffers(t *testing.T) {
+// A resolved route must not change how the response body is delivered. The decision comes
+// from the chain and the upstream response headers, exactly as it did before resolution
+// existed: a chain that can only buffer buffers, and is never failed closed over the
+// shape of the response.
+func TestResolvedRoute_ResponseDeliveryIsUnchanged(t *testing.T) {
 	for name, headers := range map[string]*extprocv3.HttpHeaders{
 		"sse upstream":     sseHeaders(),
 		"chunked upstream": chunkedJSONHeaders(),
 	} {
 		t.Run(name, func(t *testing.T) {
 			f := newResolutionFixture(t)
-			f.route("GET|/chat|example.com", resolver.RouteResolution{}) // no declared kind
+			f.route("GET|/chat|example.com", resolver.RouteResolution{})
 			f.chain("GET|/chat|example.com", &bufferedResponsePolicy{})
 
 			var execCtx *PolicyExecutionContext
 			_, _, _ = f.server.initializeExecutionContext(context.Background(),
 				headersRequest("GET|/chat|example.com", true, map[string]string{":method": "GET"}), &execCtx)
 			require.NotNil(t, execCtx)
-			require.Equal(t, resolver.ResponseKindAuto, execCtx.responseKind)
 
 			resp, err := execCtx.processResponseHeaders(context.Background(), headers)
 			require.NoError(t, err)
 			assert.Nil(t, resp.GetImmediateResponse(),
-				"an existing kind must never be failed closed by a check it never opted into")
+				"resolution must not introduce a response-phase failure")
 			assert.NotNil(t, resp.GetResponseHeaders())
-			assert.False(t, execCtx.isStreamingResponse, "and it buffers, exactly as before")
-		})
-	}
-}
-
-// A declared streaming operation is held to the positive SSE signal, so a chunked JSON
-// error body is the unary response it actually is rather than a stream that cannot be
-// served.
-func TestResponseKind_StreamingWithChunkedJSONIsNotAStream(t *testing.T) {
-	f := newResolutionFixture(t)
-	f.route("POST|/message:stream|example.com", resolver.RouteResolution{
-		ResponseKind: resolver.ResponseKindStreaming,
-	})
-	f.chain("POST|/message:stream|example.com", &bufferedResponsePolicy{})
-
-	var execCtx *PolicyExecutionContext
-	_, _, _ = f.server.initializeExecutionContext(context.Background(),
-		headersRequest("POST|/message:stream|example.com", true, map[string]string{":method": "POST"}), &execCtx)
-	require.NotNil(t, execCtx)
-
-	resp, err := execCtx.processResponseHeaders(context.Background(), chunkedJSONHeaders())
-	require.NoError(t, err)
-	assert.Nil(t, resp.GetImmediateResponse())
-	assert.False(t, execCtx.isStreamingResponse)
-}
-
-// A route that declares nothing behaves exactly as it did before the field existed.
-func TestResponseKind_AutoPreservesExistingBehaviour(t *testing.T) {
-	f := newResolutionFixture(t)
-	f.route("GET|/pets|example.com", resolver.RouteResolution{})
-	f.chain("GET|/pets|example.com", &testutils.NoopPolicy{})
-
-	var execCtx *PolicyExecutionContext
-	_, _, _ = f.server.initializeExecutionContext(context.Background(),
-		headersRequest("GET|/pets|example.com", true, map[string]string{":method": "GET"}), &execCtx)
-	require.NotNil(t, execCtx)
-	assert.Equal(t, resolver.ResponseKindAuto, execCtx.responseKind)
-
-	// Derived exactly as before: this chain has no response-body policy, so there is
-	// nothing to stream and the body is not sent to the engine at all.
-	_, err := execCtx.processResponseHeaders(context.Background(), sseHeaders())
-	require.NoError(t, err)
-	assert.False(t, execCtx.isStreamingResponse)
-	assert.Nil(t, resp2ImmediateResponse(t, execCtx), "an Auto route is never failed closed")
-}
-
-// resp2ImmediateResponse re-runs the response-header phase and returns any immediate
-// response, so a test can assert the fail-closed branch was not taken.
-func resp2ImmediateResponse(t *testing.T, execCtx *PolicyExecutionContext) *extprocv3.ImmediateResponse {
-	t.Helper()
-	resp, err := execCtx.processResponseHeaders(context.Background(), sseHeaders())
-	require.NoError(t, err)
-	return resp.GetImmediateResponse()
-}
-
-func TestEffectiveResponseKind(t *testing.T) {
-	route := func(k resolver.ResponseKind) *RouteConfig {
-		return &RouteConfig{RouteResolution: resolver.RouteResolution{ResponseKind: k}}
-	}
-	res := func(k resolver.ResponseKind) resolver.Resolution {
-		return resolver.Resolution{ResponseKind: k}
-	}
-
-	// The resolver wins: a multiplexed route carries both kinds, so only the resolver
-	// knows which one this request is.
-	assert.Equal(t, resolver.ResponseKindStreaming,
-		effectiveResponseKind(route(resolver.ResponseKindUnary), res(resolver.ResponseKindStreaming)))
-	// The route answers when the resolver has nothing to say.
-	assert.Equal(t, resolver.ResponseKindStreaming,
-		effectiveResponseKind(route(resolver.ResponseKindStreaming), res(resolver.ResponseKindAuto)))
-	// An unrecognised value degrades to Auto — the pre-existing behaviour — rather than
-	// being guessed at in either direction.
-	assert.Equal(t, resolver.ResponseKindAuto,
-		effectiveResponseKind(route("chunked-maybe"), res("who-knows")))
-	assert.Equal(t, resolver.ResponseKindAuto, effectiveResponseKind(nil, res(resolver.ResponseKindAuto)))
-}
-
-// A streaming operation is entitled to answer with an ordinary unary response, and a
-// buffered-only chain handles that perfectly well. Failing closed on the operation alone
-// would replace the agent's own 400 with a gateway 500 — hiding the actual error from the
-// caller and blaming us for their bad request.
-func TestResponseKind_StreamingOperationWithUnaryErrorResponseIsNotAConflict(t *testing.T) {
-	f := newResolutionFixture(t)
-	f.route("POST|/message:stream|example.com", resolver.RouteResolution{
-		ResponseKind: resolver.ResponseKindStreaming,
-	})
-	f.chain("POST|/message:stream|example.com", &bufferedResponsePolicy{})
-
-	var execCtx *PolicyExecutionContext
-	_, _, _ = f.server.initializeExecutionContext(context.Background(),
-		headersRequest("POST|/message:stream|example.com", true, map[string]string{":method": "POST"}), &execCtx)
-	require.NotNil(t, execCtx)
-
-	resp, err := execCtx.processResponseHeaders(context.Background(), jsonErrorHeaders())
-	require.NoError(t, err)
-	assert.Nil(t, resp.GetImmediateResponse(), "the upstream's own 400 must survive")
-	assert.NotNil(t, resp.GetResponseHeaders())
-
-	// And the response-body policy still gets its buffered body, which is the whole
-	// reason not to fail here: a guardrail should inspect the error body too.
-	assert.False(t, execCtx.isStreamingResponse)
-	assert.True(t, execCtx.policyChain.RequiresResponseBody)
-}
-
-// The same for a bodyless response: there is nothing to stream and nothing to buffer, so
-// a 204 on a streaming operation must pass through rather than become a 500.
-func TestResponseKind_StreamingOperationWithBodylessResponseIsNotAConflict(t *testing.T) {
-	f := newResolutionFixture(t)
-	f.route("POST|/message:stream|example.com", resolver.RouteResolution{
-		ResponseKind: resolver.ResponseKindStreaming,
-	})
-	f.chain("POST|/message:stream|example.com", &bufferedResponsePolicy{})
-
-	var execCtx *PolicyExecutionContext
-	_, _, _ = f.server.initializeExecutionContext(context.Background(),
-		headersRequest("POST|/message:stream|example.com", true, map[string]string{":method": "POST"}), &execCtx)
-	require.NotNil(t, execCtx)
-
-	resp, err := execCtx.processResponseHeaders(context.Background(), bodylessHeaders())
-	require.NoError(t, err)
-	assert.Nil(t, resp.GetImmediateResponse())
-	assert.NotNil(t, resp.GetResponseHeaders())
-	assert.False(t, execCtx.isStreamingResponse)
-}
-
-// responseNeedsStreaming is about the response, not the operation. Pinning it directly
-// keeps the conflict check from drifting back to "the operation says streaming, therefore
-// this response is a stream".
-func TestResponseNeedsStreaming(t *testing.T) {
-	newCtx := func(kind resolver.ResponseKind) *PolicyExecutionContext {
-		f := newResolutionFixture(t)
-		f.route("POST|/rpc|example.com", resolver.RouteResolution{ResponseKind: kind})
-		f.chain("POST|/rpc|example.com", &bufferedResponsePolicy{})
-
-		var execCtx *PolicyExecutionContext
-		_, _, _ = f.server.initializeExecutionContext(context.Background(),
-			headersRequest("POST|/rpc|example.com", true, map[string]string{":method": "POST"}), &execCtx)
-		require.NotNil(t, execCtx)
-		return execCtx
-	}
-
-	tests := []struct {
-		name    string
-		kind    resolver.ResponseKind
-		headers *extprocv3.HttpHeaders
-		want    bool
-	}{
-		{"streaming operation, SSE response", resolver.ResponseKindStreaming, sseHeaders(), true},
-		{"streaming operation, JSON error response", resolver.ResponseKindStreaming, jsonErrorHeaders(), false},
-		{"streaming operation, bodyless response", resolver.ResponseKindStreaming, bodylessHeaders(), false},
-		{"streaming operation, chunked JSON response", resolver.ResponseKindStreaming, chunkedJSONHeaders(), false},
-		{"auto operation, SSE response", resolver.ResponseKindAuto, sseHeaders(), true},
-		{"auto operation, chunked response", resolver.ResponseKindAuto, chunkedJSONHeaders(), true},
-		{"unary operation, SSE response", resolver.ResponseKindUnary, sseHeaders(), false},
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			execCtx := newCtx(tt.kind)
-			execCtx.buildResponseContexts(tt.headers)
-			assert.Equal(t, tt.want, execCtx.responseNeedsStreaming(tt.headers.EndOfStream))
+			assert.False(t, execCtx.isStreamingResponse,
+				"a buffered-only chain buffers, exactly as before")
 		})
 	}
 }

@@ -21,6 +21,7 @@ package xdsclient
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log/slog"
 	"math"
@@ -432,44 +433,13 @@ func (h *ResourceHandler) applyRouteResolution(
 	rc *kernel.RouteConfig,
 	data map[string]interface{},
 ) bool {
-	rc.RouteKey = routeKey
-
-	// canonical_chain_key is emitted on every route by a current controller. An
-	// older controller omits it, in which case the route key is the chain key —
-	// which is exactly what the pre-resolution policy engine assumed.
+	// canonical_chain_key is emitted on every directly-resolved route by a current
+	// controller. An older controller omits it, in which case the route key is the
+	// chain key — which is exactly what the pre-resolution policy engine assumed.
+	// kernel.PrepareRoute applies that fallback, once, below.
 	rc.CanonicalChainKey = getStringFromMap(data, "canonical_chain_key")
-	if rc.CanonicalChainKey == "" {
-		rc.CanonicalChainKey = routeKey
-	}
-
 	rc.ResolverName = getStringFromMap(data, "resolver_name")
 	rc.MaxRequestBodyBytes = getInt64FromMap(data, "max_request_body_bytes")
-
-	// response_kind is how this route's operation delivers its response, set by the
-	// controller on a route whose operation is known at deploy time. An unrecognised
-	// value is dropped to Auto rather than dropping the route: Auto is the behaviour
-	// that predates the field, so a newer controller's unknown kind degrades instead of
-	// taking the route out of service.
-	if kind := resolver.ResponseKind(getStringFromMap(data, "response_kind")); kind.Valid() {
-		rc.ResponseKind = kind
-	} else {
-		slog.WarnContext(ctx, "Ignoring unrecognised response_kind on route",
-			"route", routeKey, "response_kind", getStringFromMap(data, "response_kind"))
-	}
-
-	if rc.IsIdentity() {
-		// Identity route: nothing else to parse, nothing to prepare. Resolution
-		// returns CanonicalChainKey without running any resolver code.
-		return true
-	}
-
-	res, ok := resolverFrom(h.resolvers, rc.ResolverName)
-	if !ok {
-		slog.WarnContext(ctx, "Skipping route: unknown operation resolver",
-			"route", routeKey, "resolver", rc.ResolverName)
-		metrics.RouteResolutionIngestFailuresTotal.WithLabelValues("unknown_resolver").Inc()
-		return false
-	}
 
 	// There is no operation map to parse or validate: a resolver-bearing route's chain
 	// key is composed from the identified operation at request time, so completeness
@@ -487,29 +457,25 @@ func (h *ResourceHandler) applyRouteResolution(
 		rc.ResolverConfig = encoded
 	}
 
-	// Prepare runs once per route at ingest, so a resolver that must compile a
-	// schema or build an index never does it per request.
-	if preparer, implements := res.(resolver.Preparer); implements {
-		state, err := preparer.Prepare(rc.ResolverConfig)
-		if err != nil {
-			slog.WarnContext(ctx, "Skipping route: resolver Prepare failed",
-				"route", routeKey, "resolver", rc.ResolverName, "error", err)
-			metrics.RouteResolutionIngestFailuresTotal.WithLabelValues("prepare_failed").Inc()
+	// Prepare runs once per route, here, so a resolver that must validate
+	// configuration, compile a schema or build an index never does it per request. It
+	// is mandatory: even an identity route is prepared, which is what removes the
+	// special case from the request path.
+	if err := kernel.PrepareRoute(h.resolvers, routeKey, rc); err != nil {
+		var re *resolver.ResolutionError
+		if errors.As(err, &re) && re.Kind == resolver.FailureUnknownResolver {
+			slog.WarnContext(ctx, "Skipping route: unknown operation resolver",
+				"route", routeKey, "resolver", rc.ResolverName)
+			metrics.RouteResolutionIngestFailuresTotal.WithLabelValues("unknown_resolver").Inc()
 			return false
 		}
-		rc.RouteState = state
+		slog.WarnContext(ctx, "Skipping route: resolver preparation failed",
+			"route", routeKey, "resolver", rc.ResolverName, "error", err)
+		metrics.RouteResolutionIngestFailuresTotal.WithLabelValues("prepare_failed").Inc()
+		return false
 	}
 
 	return true
-}
-
-// resolverFrom looks a resolver up, treating a nil registry as identity-only so a
-// partially-wired handler fails closed rather than panicking.
-func resolverFrom(reg resolver.ResolverRegistry, name string) (resolver.OperationResolver, bool) {
-	if reg == nil {
-		return nil, false
-	}
-	return reg.Get(name)
 }
 
 // getStringFromMap safely extracts a string value from a map.

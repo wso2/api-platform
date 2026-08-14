@@ -190,50 +190,62 @@ func TestExistingKindGoldenRouteConfigContent(t *testing.T) {
 
 // ─── Per-route resolver selection ────────────────────────────────────────────
 
-// The reason resolver selection moved onto the route: a multiplexed API has both
-// kinds at once. Its identity HTTP+JSON routes and its body-resolved JSON-RPC route
-// must emit different resolver_name values from one RDC.
-func TestMixedRoutesEmitPerRouteResolvers(t *testing.T) {
+// The reason resolver selection moved onto the route: one API can hold both shapes at
+// once. Routes that need request-time resolution name a protocol resolver and are
+// configured per route; routes that do not stay ordinary directly-resolved routes with
+// their own chain key.
+//
+// No real protocol resolver exists yet, so this uses a placeholder name and asserts only
+// the *wire shape* the model already enforces. What it pins is the pairing rule: a route
+// naming a protocol resolver carries `resolver_config` and no `canonical_chain_key`,
+// because the resolver's own configuration is the single source of the key and a second
+// copy could disagree with nothing to arbitrate.
+func TestProtocolResolvedRoutesCarryConfigAndNoChainKey(t *testing.T) {
+	const resolverName = "fake-protocol"
+
 	rdc := &models.RuntimeDeployConfig{
-		Metadata: models.Metadata{UUID: "agent-1", Kind: "Agent", Handle: "assistant", Version: "v1"},
-		Context:  "/assistant",
-		// The RDC-level default stays identity; only the JSON-RPC route overrides it.
+		Metadata: models.Metadata{UUID: "api-2", Kind: "RestApi", Handle: "svc", Version: "v1"},
+		Context:  "/svc",
+		// The RDC-level default stays directly-resolved; only the routes that need
+		// request-time resolution override it.
 		PolicyChainResolver: models.RouteKeyResolverName,
 		Routes: map[string]*models.Route{
-			// The JSON-RPC route multiplexes every operation onto one HTTP route, so it
-			// holds no chain of its own: the engine composes one per request from the
-			// operation it reads out of the body. It therefore carries no canonical key.
-			"POST|/assistant/v1|localhost": {
-				Method: "POST", Path: "/assistant/v1", Vhost: "localhost",
-				ResolverName:        "a2a-jsonrpc",
-				ResolverConfig:      json.RawMessage(`{"protocolVersion":"1.0"}`),
+			// Many operations on one HTTP route: the operation is only knowable from the
+			// request, so the resolver composes a key per request.
+			"POST|/svc/v1/rpc|localhost": {
+				Method: "POST", Path: "/svc/v1/rpc", Vhost: "localhost",
+				ResolverName:        resolverName,
+				ResolverConfig:      json.RawMessage(`{"mode":"multiplexed"}`),
 				MaxRequestBodyBytes: 65536,
 				Upstream:            models.RouteUpstream{ClusterKey: "upstream_main"},
 			},
-			// The HTTP+JSON transport of the same operation: an identity route — route
-			// identity already determines the operation — pointed at the operation's
-			// composed chain key.
-			"POST|/assistant/v1/message:send|localhost": {
-				Method: "POST", Path: "/assistant/v1/message:send", Vhost: "localhost",
-				CanonicalChainKey: chainkey.For("agent-1", "localhost", "SendMessage"),
-				Upstream:          models.RouteUpstream{ClusterKey: "upstream_main"},
+			// One route per operation, named in the route's own config. Same resolver,
+			// different configuration — which is what makes two routes of one resolver
+			// independent rather than forcing one shape on both.
+			"POST|/svc/v1/op-one|localhost": {
+				Method: "POST", Path: "/svc/v1/op-one", Vhost: "localhost",
+				ResolverName:   resolverName,
+				ResolverConfig: json.RawMessage(`{"mode":"single","operation":"OperationOne"}`),
+				Upstream:       models.RouteUpstream{ClusterKey: "upstream_main"},
 			},
-			// An ordinary non-operation route keeps its own route-key chain.
-			"GET|/assistant/v1/.well-known/agent-card.json|localhost": {
-				Method: "GET", Path: "/assistant/v1/.well-known/agent-card.json", Vhost: "localhost",
+			// Needs no resolution at all, so it keeps its own route-key chain.
+			"GET|/svc/v1/status|localhost": {
+				Method: "GET", Path: "/svc/v1/status", Vhost: "localhost",
 				Upstream: models.RouteUpstream{ClusterKey: "upstream_main"},
 			},
 		},
 		PolicyChains: map[string]*models.PolicyChain{
-			chainkey.For("agent-1", "localhost", "SendMessage"):       {Policies: []models.Policy{{Name: "jwt-auth", Version: "v1"}}},
-			chainkey.For("agent-1", "localhost", "GetTask"):           {Policies: []models.Policy{{Name: "jwt-auth", Version: "v1"}}},
-			"GET|/assistant/v1/.well-known/agent-card.json|localhost": {},
+			chainkey.For("api-2", "localhost", "OperationOne"): {Policies: []models.Policy{{Name: "jwt-auth", Version: "v1"}}},
+			chainkey.For("api-2", "localhost", "OperationTwo"): {Policies: []models.Policy{{Name: "jwt-auth", Version: "v1"}}},
+			"GET|/svc/v1/status|localhost":                     {},
 		},
 		UpstreamClusters: map[string]*models.UpstreamCluster{
 			"upstream_main": {BasePath: "/", Endpoints: []models.Endpoint{{Host: "localhost", Port: 8080}}},
 		},
 	}
 
+	// A regression test for the pairing rule: emitting a canonical key beside
+	// resolver_config would make the controller reject its own artifact.
 	require.NoError(t, rdc.ValidateResolution())
 
 	resources, err := testTranslator().TranslateRuntimeConfigs([]*models.RuntimeDeployConfig{rdc})
@@ -241,26 +253,31 @@ func TestMixedRoutesEmitPerRouteResolvers(t *testing.T) {
 	routes := resources[RouteConfigTypeURL]
 	require.Len(t, routes, 3)
 
-	jsonRPC := decodeRouteConfig(t, routes["POST|/assistant/v1|localhost"])
-	assert.Equal(t, "a2a-jsonrpc", jsonRPC["resolver_name"])
-	assert.Equal(t, map[string]interface{}{"protocolVersion": "1.0"}, jsonRPC["resolver_config"])
-	assert.Equal(t, float64(65536), jsonRPC["max_request_body_bytes"])
-	_, hasMap := jsonRPC["operation_map"]
+	multiplexed := decodeRouteConfig(t, routes["POST|/svc/v1/rpc|localhost"])
+	assert.Equal(t, resolverName, multiplexed["resolver_name"])
+	assert.Equal(t, map[string]interface{}{"mode": "multiplexed"}, multiplexed["resolver_config"])
+	assert.Equal(t, float64(65536), multiplexed["max_request_body_bytes"])
+	_, hasMap := multiplexed["operation_map"]
 	assert.False(t, hasMap, "there is no operation map on the wire under composed keys")
 
-	// The HTTP+JSON transport of the same operation is an identity route pointed at the
-	// operation's composed chain key. The two transports converge because both sides
-	// call one composition function on one canonical operation name — not because either
-	// route was pointed at the other's key.
-	httpJSON := decodeRouteConfig(t, routes["POST|/assistant/v1/message:send|localhost"])
-	assert.Equal(t, models.RouteKeyResolverName, httpJSON["resolver_name"])
-	assert.Equal(t, rdc.ChainKeyFor("localhost", "SendMessage"), httpJSON["canonical_chain_key"])
-	assert.Contains(t, rdc.PolicyChains, httpJSON["canonical_chain_key"],
-		"the key the engine will look up must be one the controller actually emitted")
+	perOperation := decodeRouteConfig(t, routes["POST|/svc/v1/op-one|localhost"])
+	assert.Equal(t, resolverName, perOperation["resolver_name"])
+	assert.Equal(t, map[string]interface{}{"mode": "single", "operation": "OperationOne"},
+		perOperation["resolver_config"])
 
-	card := decodeRouteConfig(t, routes["GET|/assistant/v1/.well-known/agent-card.json|localhost"])
-	assert.Equal(t, models.RouteKeyResolverName, card["resolver_name"])
-	assert.Equal(t, "GET|/assistant/v1/.well-known/agent-card.json|localhost", card["canonical_chain_key"])
+	for routeKey, data := range map[string]map[string]interface{}{
+		"POST|/svc/v1/rpc|localhost":    multiplexed,
+		"POST|/svc/v1/op-one|localhost": perOperation,
+	} {
+		_, hasKey := data["canonical_chain_key"]
+		assert.False(t, hasKey,
+			"route %q names a protocol resolver, so its key comes from resolver_config alone", routeKey)
+	}
+
+	status := decodeRouteConfig(t, routes["GET|/svc/v1/status|localhost"])
+	assert.Equal(t, models.RouteKeyResolverName, status["resolver_name"])
+	assert.Equal(t, "GET|/svc/v1/status|localhost", status["canonical_chain_key"],
+		"a route that needs no resolution still carries its own key")
 }
 
 func TestEffectiveResolverName(t *testing.T) {
@@ -268,7 +285,7 @@ func TestEffectiveResolverName(t *testing.T) {
 
 	assert.Equal(t, models.RouteKeyResolverName, rdc.EffectiveResolverName(&models.Route{}),
 		"an empty route override inherits the RDC default")
-	assert.Equal(t, "a2a-jsonrpc", rdc.EffectiveResolverName(&models.Route{ResolverName: "a2a-jsonrpc"}))
+	assert.Equal(t, "fake-multiplexed", rdc.EffectiveResolverName(&models.Route{ResolverName: "fake-multiplexed"}))
 
 	// An RDC that sets no default at all still emits the empty value the policy engine
 	// treats as identity, so nothing changes for a transformer that never set it.
@@ -333,16 +350,19 @@ func TestValidateResolution(t *testing.T) {
 			wantErr: `canonical chain key "GET|/admin|h" is neither the route key nor a composed operation key`,
 		},
 		{
-			// An identity route deliberately redirected to a composed operation key:
-			// the A2A HTTP+JSON case. Identity resolution, but not its own route key.
-			name: "identity route redirected to a composed operation key",
+			// A directly-resolved route deliberately pointed at a composed operation key:
+			// resolution still comes from the route, but the chain it names is an
+			// operation's rather than its own route key. Accepted because the key is well
+			// formed and belongs to this API and this route's vhost — the checks the two
+			// rejection cases above exercise.
+			name: "directly-resolved route pointed at a composed operation key",
 			rdc: &models.RuntimeDeployConfig{
 				Metadata: models.Metadata{UUID: "api-1"},
-				Routes: map[string]*models.Route{"POST|/v1/message:send|h": {
+				Routes: map[string]*models.Route{"POST|/v1/op-one|h": {
 					Vhost:             "h",
-					CanonicalChainKey: chainkey.For("api-1", "h", "SendMessage"),
+					CanonicalChainKey: chainkey.For("api-1", "h", "OperationOne"),
 				}},
-				PolicyChains: chains(chainkey.For("api-1", "h", "SendMessage")),
+				PolicyChains: chains(chainkey.For("api-1", "h", "OperationOne")),
 			},
 		},
 		{
@@ -351,10 +371,10 @@ func TestValidateResolution(t *testing.T) {
 				Metadata: models.Metadata{UUID: "api-1"},
 				Routes: map[string]*models.Route{"POST|/rpc|h": {
 					Vhost:        "h",
-					ResolverName: "a2a-jsonrpc",
+					ResolverName: "fake-multiplexed",
 				}},
 				PolicyChains: chains(
-					chainkey.For("api-1", "h", "SendMessage"),
+					chainkey.For("api-1", "h", "OperationOne"),
 					chainkey.For("api-1", "h", "GetTask"),
 				),
 			},
@@ -368,7 +388,7 @@ func TestValidateResolution(t *testing.T) {
 				Metadata: models.Metadata{UUID: "api-1"},
 				Routes: map[string]*models.Route{"POST|/rpc|h": {
 					Vhost:        "h",
-					ResolverName: "a2a-jsonrpc",
+					ResolverName: "fake-multiplexed",
 				}},
 				PolicyChains: chains("GET|/pets|h"),
 			},
@@ -382,9 +402,9 @@ func TestValidateResolution(t *testing.T) {
 				Metadata: models.Metadata{UUID: "api-1"},
 				Routes: map[string]*models.Route{"POST|/rpc|sandbox": {
 					Vhost:        "sandbox",
-					ResolverName: "a2a-jsonrpc",
+					ResolverName: "fake-multiplexed",
 				}},
-				PolicyChains: chains(chainkey.For("api-1", "main", "SendMessage")),
+				PolicyChains: chains(chainkey.For("api-1", "main", "OperationOne")),
 			},
 			wantErr: `no operation chains in its routing partition (vhost "sandbox")`,
 		},
@@ -396,10 +416,10 @@ func TestValidateResolution(t *testing.T) {
 				Metadata: models.Metadata{UUID: "api-1"},
 				Routes: map[string]*models.Route{"POST|/rpc|h": {
 					Vhost:             "h",
-					ResolverName:      "a2a-jsonrpc",
-					CanonicalChainKey: chainkey.For("api-1", "h", "SendMessage"),
+					ResolverName:      "fake-multiplexed",
+					CanonicalChainKey: chainkey.For("api-1", "h", "OperationOne"),
 				}},
-				PolicyChains: chains(chainkey.For("api-1", "h", "SendMessage")),
+				PolicyChains: chains(chainkey.For("api-1", "h", "OperationOne")),
 			},
 			wantErr: "must not carry a canonical chain key",
 		},
@@ -420,9 +440,9 @@ func TestValidateResolution(t *testing.T) {
 				Metadata: models.Metadata{UUID: "api-1"},
 				Routes: map[string]*models.Route{"POST|/rpc|h": {
 					Vhost:        "h",
-					ResolverName: "a2a-jsonrpc",
+					ResolverName: "fake-multiplexed",
 				}},
-				PolicyChains: chains(chainkey.For("api-2", "h", "SendMessage")),
+				PolicyChains: chains(chainkey.For("api-2", "h", "OperationOne")),
 			},
 			wantErr: `is composed for API "api-2", not this API ("api-1")`,
 		},
@@ -433,9 +453,9 @@ func TestValidateResolution(t *testing.T) {
 			rdc: &models.RuntimeDeployConfig{
 				Metadata: models.Metadata{UUID: "api-1"},
 				Routes: map[string]*models.Route{"POST|/rpc|": {
-					ResolverName: "a2a-jsonrpc",
+					ResolverName: "fake-multiplexed",
 				}},
-				PolicyChains: chains(chainkey.For("api-1", "", "SendMessage")),
+				PolicyChains: chains(chainkey.For("api-1", "", "OperationOne")),
 			},
 		},
 		{
@@ -447,12 +467,12 @@ func TestValidateResolution(t *testing.T) {
 			rdc: &models.RuntimeDeployConfig{
 				Metadata: models.Metadata{UUID: "api-1"},
 				Routes: map[string]*models.Route{
-					"POST|/v1/message:send|prod": {
+					"POST|/v1/op-one|prod": {
 						Vhost:             "prod",
-						CanonicalChainKey: chainkey.For("api-1", "sandbox", "SendMessage"),
+						CanonicalChainKey: chainkey.For("api-1", "sandbox", "OperationOne"),
 					},
 				},
-				PolicyChains: chains(chainkey.For("api-1", "sandbox", "SendMessage")),
+				PolicyChains: chains(chainkey.For("api-1", "sandbox", "OperationOne")),
 			},
 			wantErr: `belongs to routing partition (vhost) "sandbox", but the route serves "prod"`,
 		},
@@ -463,12 +483,12 @@ func TestValidateResolution(t *testing.T) {
 			rdc: &models.RuntimeDeployConfig{
 				Metadata: models.Metadata{UUID: "api-1"},
 				Routes: map[string]*models.Route{
-					"POST|/v1/message:send|h": {
+					"POST|/v1/op-one|h": {
 						Vhost:             "h",
-						CanonicalChainKey: chainkey.For("api-2", "h", "SendMessage"),
+						CanonicalChainKey: chainkey.For("api-2", "h", "OperationOne"),
 					},
 				},
-				PolicyChains: chains(chainkey.For("api-2", "h", "SendMessage")),
+				PolicyChains: chains(chainkey.For("api-2", "h", "OperationOne")),
 			},
 			wantErr: `is composed for API "api-2"`,
 		},
@@ -479,9 +499,9 @@ func TestValidateResolution(t *testing.T) {
 			rdc: &models.RuntimeDeployConfig{
 				Metadata: models.Metadata{UUID: "api-1"},
 				Routes: map[string]*models.Route{
-					"POST|/v1/message:send|": {CanonicalChainKey: chainkey.For("api-1", "", "SendMessage")},
+					"POST|/v1/op-one|": {CanonicalChainKey: chainkey.For("api-1", "", "OperationOne")},
 				},
-				PolicyChains: chains(chainkey.For("api-1", "", "SendMessage")),
+				PolicyChains: chains(chainkey.For("api-1", "", "OperationOne")),
 			},
 		},
 		{
@@ -489,9 +509,9 @@ func TestValidateResolution(t *testing.T) {
 			rdc: &models.RuntimeDeployConfig{
 				Metadata: models.Metadata{UUID: "api-1"},
 				Routes: map[string]*models.Route{
-					"POST|/v1/message:send|": {CanonicalChainKey: chainkey.For("api-1", "prod", "SendMessage")},
+					"POST|/v1/op-one|": {CanonicalChainKey: chainkey.For("api-1", "prod", "OperationOne")},
 				},
-				PolicyChains: chains(chainkey.For("api-1", "prod", "SendMessage")),
+				PolicyChains: chains(chainkey.For("api-1", "prod", "OperationOne")),
 			},
 			wantErr: `but the route serves ""`,
 		},
@@ -553,7 +573,7 @@ func TestAddRuntimeConfigRejectsUnresolvableReferences(t *testing.T) {
 		Metadata: models.Metadata{UUID: "agent-1", Kind: "Agent", Handle: "assistant"},
 		Routes: map[string]*models.Route{"POST|/rpc|h": {
 			Vhost:        "h",
-			ResolverName: "a2a-jsonrpc",
+			ResolverName: "fake-multiplexed",
 		}},
 		// No operation chains were built, so no request to this route could resolve.
 		PolicyChains: map[string]*models.PolicyChain{},

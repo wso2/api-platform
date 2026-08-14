@@ -99,6 +99,7 @@ const (
 	AttrPolicyShortCircuit        = "policy.short_circuit"
 	AttrResolverName              = "resolver.name"
 	AttrPolicyChainKey            = "policy_chain_key"
+	AttrResolvedOperation         = "resolver.operation"
 
 	// Terminal-outcome attributes. The status code itself is recorded under the
 	// OTel semantic-convention key http.response.status_code by
@@ -117,14 +118,10 @@ const (
 	TerminalReasonUnknownMessageType   = "unknown_message_type"   // unrecognised ext_proc message
 	TerminalReasonProcessingFailed     = "processing_failed"      // a phase returned a fatal (stream-ending) error with no ImmediateResponse to classify
 
-	// TerminalReasonResolutionFailed marks a request whose logical operation could
-	// not be resolved to a policy chain and was answered with the sterile generic
-	// response; TerminalReasonResolutionFailedProtocol marks the same failure
-	// answered in the transport's own error shape by a resolver-supplied renderer.
-	// They are distinct because the status alone cannot tell them apart — an
-	// unknown-operation failure is an HTTP 404 just like an Envoy route miss.
-	TerminalReasonResolutionFailed         = "resolution_failed"
-	TerminalReasonResolutionFailedProtocol = "resolution_failed_protocol"
+	// TerminalReasonResolutionFailed marks a request whose logical operation could not
+	// be resolved to a policy chain. It exists because the status alone cannot identify
+	// one — an unknown-operation failure is an HTTP 404 just like an Envoy route miss.
+	TerminalReasonResolutionFailed = "resolution_failed"
 
 	// Analytics metadata and property keys shared across packages.
 	GuardrailHitMetadataKey  = "isGuardrailHit"

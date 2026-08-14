@@ -18,36 +18,55 @@
 
 package resolver
 
+import (
+	"context"
+	"errors"
+)
+
 // RouteKeyResolver is the identity resolver: the request carries no operation
-// identifier of its own, so the route's canonical chain key is the answer.
-// Used by RestApi, WebSubApi, Mcp-as-shipped-today, LlmProvider and LlmProxy,
-// where each route has exactly one policy chain.
+// identifier of its own, so the route's canonical chain key is the answer. Used by
+// RestApi, WebSubApi, Mcp-as-shipped-today, LlmProvider and LlmProxy, where each route
+// has exactly one policy chain.
 //
-// It exists for registry symmetry — so "route-key" appears in the capability
-// advertisement and the admin config dump like any other resolver — but it is
-// never actually invoked: ResolveChainKey short-circuits identity routes before
-// looking the resolver up, so the hot path for every kind shipping today costs
-// one string comparison and a field read.
+// It is a real registry entry rather than a special case in the binding path, and it
+// still costs nothing per request: the resolution it prepares is entirely static, so
+// the kernel binds from the stored result without building a request view or calling
+// Resolve.
 type RouteKeyResolver struct{}
 
 // Name returns the wire value for identity resolution.
-func (r *RouteKeyResolver) Name() string { return RouteKeyResolverName }
+func (*RouteKeyResolver) Name() string { return RouteKeyResolverName }
 
-// Requirements reports that nothing about the request is needed.
-func (r *RouteKeyResolver) Requirements() Requirements {
-	return Requirements{BufferBody: false, Headers: false}
+// Prepare captures the route's effective chain key.
+//
+// It deliberately does not re-apply the fallback to RouteKey: ingest already resolved
+// the effective value, so an empty one here means the ingest layer is broken, not that
+// this route wants its route key. Applying it a second time would create a second
+// place for the two to disagree.
+func (*RouteKeyResolver) Prepare(cfg ResolverRouteConfig) (PreparedResolver, error) {
+	if cfg.CanonicalChainKey == "" {
+		return nil, errors.New("route-key resolver requires an effective chain key")
+	}
+	return &preparedRouteKey{key: cfg.CanonicalChainKey}, nil
 }
 
-// Identify returns the route key as the single operation candidate. Reached only if a
-// caller bypasses ResolveChainKey's identity short-circuit.
-//
-// That candidate names the right chain only when the route's CanonicalChainKey equals its
-// RouteKey, which holds for every kind shipping today but is not a property of identity
-// resolution: an operation route can be identity-resolved and still point at a *composed*
-// canonical key (one A2A HTTP+JSON route per operation), and for those the route key is
-// not the chain key. A caller that composes a key from this candidate gets a third string
-// again — ChainKeyFor(apiID, vhost, routeKey) — which is neither. Read
-// RouteResolution.CanonicalChainKey instead of routing an identity route through here.
-func (r *RouteKeyResolver) Identify(view RequestView) (Resolution, error) {
-	return Resolution{Operations: []Operation{{Candidates: []string{view.RouteKey}}}}, nil
+// preparedRouteKey is one identity route, holding only the key its requests bind to.
+type preparedRouteKey struct {
+	key string
+}
+
+// Requirements reports that nothing about the request is needed.
+func (*preparedRouteKey) Requirements() RequestRequirements {
+	return RequestRequirements{Body: BodyNotRequired}
+}
+
+// StaticResolution is the whole of this resolver's work, done once at ingest.
+func (r *preparedRouteKey) StaticResolution() Resolution {
+	return Resolution{Target: TargetDirectRoute, ChainKey: r.key}
+}
+
+// Resolve returns the same static resolution. Reached only by a caller that ignores
+// StaticPreparedResolver; the kernel does not, so this never runs on the request path.
+func (r *preparedRouteKey) Resolve(context.Context, RequestView) (Resolution, error) {
+	return r.StaticResolution(), nil
 }

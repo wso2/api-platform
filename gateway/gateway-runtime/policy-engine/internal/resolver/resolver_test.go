@@ -19,6 +19,7 @@
 package resolver
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -34,45 +35,60 @@ import (
 // multiplexed kind ships: the production binary registers only "route-key", so
 // nothing below is reachable in production.
 
-// fakeResolver reports whatever it is configured to return, so the tests can drive
-// every branch of ResolveChainKey without a protocol implementation.
+// fakeResolver is a factory whose prepared resolvers report whatever the test
+// configured, per route. prepare is optional; without it the factory prepares a
+// resolver that returns `resolution`/`err` for every request.
 type fakeResolver struct {
 	name       string
-	reqs       Requirements
+	reqs       RequestRequirements
+	resolution Resolution
+	err        error
+
+	// prepare, when set, overrides the default and receives the route's config, so a
+	// test can prove two routes prepared by one factory are independent.
+	prepare func(ResolverRouteConfig) (PreparedResolver, error)
+
+	prepareCalls int
+	lastConfig   ResolverRouteConfig
+}
+
+func (f *fakeResolver) Name() string { return f.name }
+
+func (f *fakeResolver) Prepare(cfg ResolverRouteConfig) (PreparedResolver, error) {
+	f.prepareCalls++
+	f.lastConfig = cfg
+	if f.prepare != nil {
+		return f.prepare(cfg)
+	}
+	return &fakePrepared{reqs: f.reqs, resolution: f.resolution, err: f.err}, nil
+}
+
+// fakePrepared is one prepared route.
+type fakePrepared struct {
+	reqs       RequestRequirements
 	resolution Resolution
 	err        error
 	calls      int
+	lastView   RequestView
 }
 
-func (f *fakeResolver) Name() string               { return f.name }
-func (f *fakeResolver) Requirements() Requirements { return f.reqs }
-func (f *fakeResolver) Identify(RequestView) (Resolution, error) {
+func (f *fakePrepared) Requirements() RequestRequirements { return f.reqs }
+
+func (f *fakePrepared) Resolve(_ context.Context, view RequestView) (Resolution, error) {
 	f.calls++
+	f.lastView = view
 	return f.resolution, f.err
 }
 
-// preparingResolver additionally implements Preparer.
-type preparingResolver struct {
-	fakeResolver
-	prepareErr   error
-	prepareCalls int
-	lastConfig   json.RawMessage
+// fakeStatic is a prepared resolver whose answer is fixed at ingest.
+type fakeStatic struct {
+	fakePrepared
+	static Resolution
 }
 
-func (p *preparingResolver) Prepare(cfg json.RawMessage) (any, error) {
-	p.prepareCalls++
-	p.lastConfig = cfg
-	if p.prepareErr != nil {
-		return nil, p.prepareErr
-	}
-	return "prepared-state", nil
-}
+func (f *fakeStatic) StaticResolution() Resolution { return f.static }
 
-func oneOperation(candidates ...string) Resolution {
-	return Resolution{Operations: []Operation{{Candidates: candidates}}}
-}
-
-func registryWith(t *testing.T, resolvers ...OperationResolver) *Registry {
+func registryWith(t *testing.T, resolvers ...Resolver) *Registry {
 	t.Helper()
 	reg := NewRegistry()
 	for _, r := range resolvers {
@@ -82,17 +98,84 @@ func registryWith(t *testing.T, resolvers ...OperationResolver) *Registry {
 	return reg
 }
 
+// prepareWith prepares one route through reg, failing the test if it cannot.
+func prepareWith(t *testing.T, reg ResolverRegistry, cfg ResolverRouteConfig) *PreparedRoute {
+	t.Helper()
+	pr, err := PrepareRoute(reg, cfg)
+	require.NoError(t, err)
+	return pr
+}
+
+// fakeChain stands in for the kernel's policy chain: the binder is generic over the
+// chain type and only ever checks whether the accessor produced one.
+type fakeChain struct{ key string }
+
+// chainsPresent builds the chain accessor Bind selects against, recording every key it
+// was asked for so a test can assert how many lookups a binding actually cost.
+type chainStore struct {
+	present  map[string]struct{}
+	lookedUp []string
+}
+
+func chainsPresent(keys ...string) *chainStore {
+	s := &chainStore{present: make(map[string]struct{}, len(keys))}
+	for _, k := range keys {
+		s.present[k] = struct{}{}
+	}
+	return s
+}
+
+func (s *chainStore) get(key string) *fakeChain {
+	s.lookedUp = append(s.lookedUp, key)
+	if _, ok := s.present[key]; !ok {
+		return nil
+	}
+	return &fakeChain{key: key}
+}
+
+// noChains is the accessor for a route whose partition has no chains at all.
+func noChains(string) *fakeChain { return nil }
+
 // ─── Identity resolver ───────────────────────────────────────────────────────
 
-func TestRouteKeyResolver_Contract(t *testing.T) {
+func TestRouteKeyResolver_PreparesAStaticDirectResolution(t *testing.T) {
 	r := &RouteKeyResolver{}
 	assert.Equal(t, "route-key", r.Name())
-	assert.Equal(t, Requirements{}, r.Requirements())
 
-	res, err := r.Identify(RequestView{RouteKey: "GET|/api/v1/users|example.com"})
+	prepared, err := r.Prepare(ResolverRouteConfig{
+		RouteKey:          "GET|/api/v1/users|example.com",
+		CanonicalChainKey: "GET|/api/v1/users|example.com",
+	})
 	require.NoError(t, err)
-	require.Len(t, res.Operations, 1)
-	assert.Equal(t, []string{"GET|/api/v1/users|example.com"}, res.Operations[0].Candidates)
+	assert.Equal(t, RequestRequirements{Body: BodyNotRequired}, prepared.Requirements())
+	assert.False(t, prepared.Requirements().BuffersBody(), "an identity route must never buffer a body")
+
+	static, ok := prepared.(StaticPreparedResolver)
+	require.True(t, ok, "route-key must be static so the request path never calls Resolve")
+	res := static.StaticResolution()
+	assert.Equal(t, TargetDirectRoute, res.Target)
+	assert.Equal(t, "GET|/api/v1/users|example.com", res.ChainKey)
+}
+
+// The canonical key is read from the config, never rebuilt from the route key: that is
+// the seam that keeps a later move to a separate key namespace a controller-only change.
+func TestRouteKeyResolver_UsesTheCanonicalKeyNotTheRouteKey(t *testing.T) {
+	prepared, err := (&RouteKeyResolver{}).Prepare(ResolverRouteConfig{
+		RouteKey:          "POST|/op-one|example.com",
+		CanonicalChainKey: "operation-chain-key",
+	})
+	require.NoError(t, err)
+	assert.Equal(t, "operation-chain-key",
+		prepared.(StaticPreparedResolver).StaticResolution().ChainKey)
+}
+
+// Ingest applies the older-controller fallback to the route key, exactly once. Applying
+// it a second time here would create a second place for the two to disagree, so an
+// empty effective key is a wiring fault and the route is refused.
+func TestRouteKeyResolver_RefusesToReapplyTheFallback(t *testing.T) {
+	_, err := (&RouteKeyResolver{}).Prepare(ResolverRouteConfig{RouteKey: "GET|/pets|h"})
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "effective chain key")
 }
 
 // ─── Registry ────────────────────────────────────────────────────────────────
@@ -127,17 +210,13 @@ func TestRegistry_RejectsNilAndEmptyName(t *testing.T) {
 	require.Error(t, reg.Register(&fakeResolver{name: ""}))
 }
 
-// Freezing is what guarantees that what the runtime advertised to the control plane
-// and what it can serve stay the same set for the process lifetime.
-func TestRegistry_FrozenRejectsMutation(t *testing.T) {
+func TestRegistry_FreezeBlocksRegistration(t *testing.T) {
 	reg := NewRegistry()
 	require.NoError(t, reg.Register(&fakeResolver{name: "before"}))
 	reg.Freeze()
-
 	assert.True(t, reg.Frozen())
-	err := reg.Register(&fakeResolver{name: "after"})
-	require.Error(t, err)
-	assert.Contains(t, err.Error(), "frozen")
+
+	require.Error(t, reg.Register(&fakeResolver{name: "after"}))
 
 	_, ok := reg.Get("after")
 	assert.False(t, ok)
@@ -170,79 +249,282 @@ func TestIndependentRegistryDoesNotAffectDefault(t *testing.T) {
 	assert.Equal(t, []string{RouteKeyResolverName}, DefaultRegistry().Names())
 }
 
-// ─── ResolveChainKey: identity ───────────────────────────────────────────────
+// ─── PrepareRoute ────────────────────────────────────────────────────────────
 
-func TestResolveChainKey_Identity(t *testing.T) {
-	// A nil registry proves the identity path never consults one.
+// An empty resolver_name is identity, normalised once here so nothing downstream has
+// to know that "" and "route-key" mean the same thing.
+func TestPrepareRoute_NormalizesEmptyResolverName(t *testing.T) {
 	for _, name := range []string{"", RouteKeyResolverName} {
 		t.Run(fmt.Sprintf("resolver_name=%q", name), func(t *testing.T) {
-			rc := &RouteResolution{
+			pr := prepareWith(t, DefaultRegistry(), ResolverRouteConfig{
 				RouteKey:          "GET|/pets|example.com",
 				CanonicalChainKey: "GET|/pets|example.com",
 				ResolverName:      name,
-			}
-			key, res, err := ResolveChainKey(nil, rc, RequestView{}, noChains)
-			require.NoError(t, err)
-			assert.Equal(t, "GET|/pets|example.com", key)
-			assert.Empty(t, res.Operations)
+			})
+			assert.Equal(t, RouteKeyResolverName, pr.ResolverName)
+			assert.True(t, pr.IsStatic())
 		})
 	}
 }
 
-// The canonical key is read from the field, never rebuilt from the route key: that
-// is the seam that keeps a later move to a separate key namespace a controller-only
-// change.
-func TestResolveChainKey_IdentityReadsCanonicalKeyNotRouteKey(t *testing.T) {
-	rc := &RouteResolution{
-		RouteKey:          "POST|/message:send|example.com",
-		CanonicalChainKey: "operation-chain-key",
+func TestPrepareRoute_CapturesThePartitionAndConfig(t *testing.T) {
+	fake := &fakeResolver{name: "fake"}
+	cfg := ResolverRouteConfig{
+		RouteKey:          "POST|/rpc|api.example.com",
+		CanonicalChainKey: "POST|/rpc|api.example.com",
+		ResolverName:      "fake",
+		APIID:             "api-1",
+		Vhost:             "api.example.com",
+		APIContext:        "/agent/v1",
+		Method:            "POST",
+		Path:              "/rpc",
+		ResolverConfig:    json.RawMessage(`{"transport":"jsonrpc"}`),
 	}
-	key, _, err := ResolveChainKey(nil, rc, RequestView{}, noChains)
+
+	pr := prepareWith(t, registryWith(t, fake), cfg)
+	assert.Equal(t, 1, fake.prepareCalls, "Prepare runs once per route, at ingest")
+	assert.Equal(t, cfg, fake.lastConfig, "the whole route config reaches Prepare unchanged")
+	assert.Equal(t, "api-1", pr.APIID)
+	assert.Equal(t, "api.example.com", pr.Vhost)
+	assert.Equal(t, "POST|/rpc|api.example.com", pr.DirectChainKey)
+}
+
+func TestPrepareRoute_UnknownResolverIsClassified(t *testing.T) {
+	_, err := PrepareRoute(registryWith(t, &fakeResolver{name: "known"}), ResolverRouteConfig{
+		RouteKey:     "r",
+		ResolverName: "not-registered",
+	})
+	var re *ResolutionError
+	require.True(t, errors.As(err, &re))
+	assert.Equal(t, FailureUnknownResolver, re.Kind)
+}
+
+// A nil registry is identity-only: a partially-wired server keeps serving every kind
+// that resolves by route key rather than dropping every route on the gateway, but no
+// protocol resolver is ever substituted for another.
+func TestPrepareRoute_NilRegistryIsIdentityOnly(t *testing.T) {
+	pr, err := PrepareRoute(nil, ResolverRouteConfig{
+		RouteKey: "GET|/pets|h", CanonicalChainKey: "GET|/pets|h",
+	})
 	require.NoError(t, err)
-	assert.Equal(t, "operation-chain-key", key)
-}
+	assert.True(t, pr.IsStatic())
 
-// ─── ResolveChainKey: non-identity ───────────────────────────────────────────
-
-func TestResolveChainKey_UnknownResolver(t *testing.T) {
-	reg := registryWith(t, &fakeResolver{name: "known"})
-	rc := &RouteResolution{RouteKey: "r", CanonicalChainKey: "r", ResolverName: "not-registered"}
-
-	key, _, err := ResolveChainKey(reg, rc, RequestView{}, noChains)
-	assert.Empty(t, key, "an unresolved request must never fall back to the route-level chain")
-
-	var re *ResolutionError
-	require.True(t, errors.As(err, &re))
-	assert.Equal(t, FailureUnknownResolver, re.Kind)
-	assert.False(t, re.ProtocolVisible(), "the protocol is exactly what is unknown; it must render generically")
-}
-
-// A nil registry on a non-identity route must fail closed, not panic and not resolve.
-func TestResolveChainKey_NilRegistryFailsClosed(t *testing.T) {
-	rc := &RouteResolution{RouteKey: "r", CanonicalChainKey: "r", ResolverName: "a2a-jsonrpc"}
-	_, _, err := ResolveChainKey(nil, rc, RequestView{}, noChains)
-
+	_, err = PrepareRoute(nil, ResolverRouteConfig{RouteKey: "r", ResolverName: "fake-protocol"})
 	var re *ResolutionError
 	require.True(t, errors.As(err, &re))
 	assert.Equal(t, FailureUnknownResolver, re.Kind)
 }
 
-// chainsPresent builds the chain-existence probe ResolveChainKey composes against.
-func chainsPresent(keys ...string) func(string) bool {
-	present := make(map[string]struct{}, len(keys))
-	for _, k := range keys {
-		present[k] = struct{}{}
+func TestPrepareRoute_ResolverErrorIsReturned(t *testing.T) {
+	fake := &fakeResolver{name: "fake", prepare: func(ResolverRouteConfig) (PreparedResolver, error) {
+		return nil, errors.New("bad schema")
+	}}
+	_, err := PrepareRoute(registryWith(t, fake), ResolverRouteConfig{ResolverName: "fake"})
+	require.Error(t, err)
+	assert.EqualError(t, err, "bad schema")
+
+	var re *ResolutionError
+	assert.False(t, errors.As(err, &re),
+		"a resolver's own failure must not be mistaken for an unknown resolver")
+}
+
+// A factory returning (nil, nil) would otherwise store a route whose every request
+// dereferences nil on the hot path.
+func TestPrepareRoute_RejectsANilPreparedResolver(t *testing.T) {
+	fake := &fakeResolver{name: "fake", prepare: func(ResolverRouteConfig) (PreparedResolver, error) {
+		return nil, nil
+	}}
+	_, err := PrepareRoute(registryWith(t, fake), ResolverRouteConfig{ResolverName: "fake", RouteKey: "r"})
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "nil resolver")
+}
+
+// An unrecognised body requirement is refused rather than guessed at. Guessing the
+// lenient way — "not required" — would let a resolver that asked for the body run without
+// one and select a chain from nothing.
+func TestPrepareRoute_RejectsAnUnknownBodyRequirement(t *testing.T) {
+	factory := &fakeResolver{name: "future", prepare: func(ResolverRouteConfig) (PreparedResolver, error) {
+		return &fakePrepared{reqs: RequestRequirements{Body: BodyRequirement(7)}}, nil
+	}}
+
+	_, err := PrepareRoute(registryWith(t, factory), ResolverRouteConfig{
+		ResolverName: "future", RouteKey: "POST|/rpc|h", CanonicalChainKey: "POST|/rpc|h",
+	})
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "unrecognised body requirement")
+	assert.Contains(t, err.Error(), "unknown(7)")
+}
+
+// Whatever the requirement, an unrecognised one must never read as "needs nothing": the
+// helper the request path uses is conservative, so even if such a value reached it the
+// body would be provided rather than withheld.
+func TestBuffersBody_TreatsAnUnknownRequirementAsNeedingTheBody(t *testing.T) {
+	assert.False(t, RequestRequirements{}.BuffersBody(), "the zero value needs no body")
+	assert.False(t, RequestRequirements{Body: BodyNotRequired}.BuffersBody())
+	assert.True(t, RequestRequirements{Body: BodyBuffered}.BuffersBody())
+	assert.True(t, RequestRequirements{Body: BodyRequirement(7)}.BuffersBody(),
+		"an unknown requirement must not silently mean the body can be withheld")
+}
+
+// A resolver cannot be static and also need the request. The static branch is taken
+// before the body-buffering check, so the declared requirement would be skipped silently
+// — the request would resolve from a stored answer while the resolver believed it was
+// being handed a body.
+func TestPrepareRoute_RejectsAStaticResolverThatNeedsTheRequest(t *testing.T) {
+	tests := []struct {
+		name string
+		reqs RequestRequirements
+	}{
+		{"buffered body", RequestRequirements{Body: BodyBuffered}},
+		{"headers", RequestRequirements{Headers: true}},
 	}
-	return func(key string) bool {
-		_, ok := present[key]
-		return ok
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			factory := &fakeResolver{name: "contradictory", prepare: func(ResolverRouteConfig) (PreparedResolver, error) {
+				return &fakeStatic{
+					fakePrepared: fakePrepared{reqs: tt.reqs},
+					static: Resolution{
+						Target: TargetDirectRoute, ChainKey: "POST|/rpc|h",
+					},
+				}, nil
+			}}
+
+			_, err := PrepareRoute(registryWith(t, factory), ResolverRouteConfig{
+				ResolverName: "contradictory", RouteKey: "POST|/rpc|h", CanonicalChainKey: "POST|/rpc|h",
+			})
+			require.Error(t, err)
+			assert.Contains(t, err.Error(), "static resolution needs nothing from the request")
+		})
 	}
 }
 
-// noChains is the probe for a route whose partition has no operation chains at all.
-func noChains(string) bool { return false }
+// route-key is the shape a static resolver must have: it declares nothing, so nothing it
+// declared can be skipped.
+func TestRouteKeyResolver_DeclaresNoRequestRequirements(t *testing.T) {
+	pr := prepareWith(t, DefaultRegistry(), ResolverRouteConfig{
+		RouteKey: "GET|/pets|h", CanonicalChainKey: "GET|/pets|h",
+	})
+	require.True(t, pr.IsStatic())
+	assert.Equal(t, RequestRequirements{}, pr.Requirements)
+}
 
-func TestResolveChainKey_CandidateLadder(t *testing.T) {
+// The point of preparing per route: one factory, two routes, different requirements.
+// This is what lets one resolver read the body on a route that multiplexes operations
+// while needing nothing at all on a route whose operation is fixed at deploy time.
+func TestPrepareRoute_RequirementsArePerRouteNotPerFactory(t *testing.T) {
+	factory := &fakeResolver{name: "fake-protocol", prepare: func(cfg ResolverRouteConfig) (PreparedResolver, error) {
+		if cfg.Path == "/rpc" {
+			return &fakePrepared{reqs: RequestRequirements{Body: BodyBuffered}}, nil
+		}
+		return &fakeStatic{
+			static: Resolution{Target: TargetOperation, ChainKey: ChainKeyFor("api-1", "h", "OperationOne")},
+		}, nil
+	}}
+	reg := registryWith(t, factory)
+
+	multiplexed := prepareWith(t, reg, ResolverRouteConfig{ResolverName: "fake-protocol", Path: "/rpc", APIID: "api-1", Vhost: "h"})
+	perOperation := prepareWith(t, reg, ResolverRouteConfig{ResolverName: "fake-protocol", Path: "/op-one", APIID: "api-1", Vhost: "h"})
+
+	assert.True(t, multiplexed.Requirements.BuffersBody(),
+		"a route carrying many operations can only know which one from the body")
+	assert.False(t, multiplexed.IsStatic())
+
+	assert.False(t, perOperation.Requirements.BuffersBody(),
+		"a route dedicated to one operation knows it at deploy time")
+	assert.True(t, perOperation.IsStatic(), "and therefore never runs on the request path")
+}
+
+// ─── Bind: direct targets ────────────────────────────────────────────────────
+
+func TestBind_DirectTargetSelectsTheRoutesOwnChain(t *testing.T) {
+	pr := prepareWith(t, DefaultRegistry(), ResolverRouteConfig{
+		RouteKey:          "GET|/pets|h",
+		CanonicalChainKey: "GET|/pets|h",
+	})
+
+	store := chainsPresent("GET|/pets|h")
+	bound, chain, err := BindStatic(pr, store.get)
+	require.NoError(t, err)
+	assert.Equal(t, "GET|/pets|h", bound.ChainKey)
+
+	// The binding returns the chain it selected rather than reporting that one exists,
+	// so this is the only lookup the request needs — and no eviction can slip between a
+	// probe and a read.
+	require.NotNil(t, chain)
+	assert.Equal(t, "GET|/pets|h", chain.key)
+	assert.Equal(t, []string{"GET|/pets|h"}, store.lookedUp,
+		"the static fast path must cost exactly one chain lookup")
+}
+
+// The static fast path does no structural work per request: PrepareRoute validated the
+// resolution once, so binding is a lookup and a struct copy. A resolution that would not
+// validate never reaches this point — the route is refused at preparation.
+func TestBindStatic_DoesNoPerRequestValidation(t *testing.T) {
+	// A resolver whose static resolution names a chain outside its own route.
+	factory := &fakeResolver{name: "bad-static", prepare: func(ResolverRouteConfig) (PreparedResolver, error) {
+		return &fakeStatic{static: Resolution{
+			Target:   TargetDirectRoute,
+			ChainKey: "GET|/admin|h",
+		}}, nil
+	}}
+
+	_, err := PrepareRoute(registryWith(t, factory), ResolverRouteConfig{
+		ResolverName:      "bad-static",
+		RouteKey:          "GET|/pets|h",
+		CanonicalChainKey: "GET|/pets|h",
+	})
+	require.Error(t, err, "an invalid static resolution must be caught at ingest, not per request")
+	assert.Contains(t, err.Error(), "invalid static resolution")
+	assert.Contains(t, err.Error(), "route's own chain key")
+
+	// It must not be mistaken for an unknown resolver: the resolver was found and it is
+	// the resolution it produced that is wrong, which ingest reports and counts separately.
+	var re *ResolutionError
+	require.ErrorAs(t, err, &re)
+	assert.Equal(t, FailureInternal, re.Kind)
+	assert.NotEqual(t, FailureUnknownResolver, re.Kind)
+}
+
+// A direct route with no chain keeps the pre-resolution outcome: the kernel's own
+// sterile 500, not a resolution failure the client could read anything into.
+func TestBind_DirectTargetWithNoChainIsNotAResolutionFailure(t *testing.T) {
+	pr := prepareWith(t, DefaultRegistry(), ResolverRouteConfig{
+		RouteKey:          "GET|/pets|h",
+		CanonicalChainKey: "GET|/pets|h",
+	})
+
+	_, _, err := BindStatic(pr, noChains)
+	require.ErrorIs(t, err, ErrDirectRouteChainMissing)
+
+	var re *ResolutionError
+	assert.False(t, errors.As(err, &re),
+		"this is the existing no-chain path, not a classified resolution failure")
+}
+
+// A resolver claiming a direct target for anything other than this route's own key is
+// reaching for a chain it was not given.
+func TestBind_DirectTargetRejectsAnyOtherKey(t *testing.T) {
+	fake := &fakeResolver{name: "fake", resolution: Resolution{
+		Target:   TargetDirectRoute,
+		ChainKey: "GET|/admin|h",
+	}}
+	pr := prepareWith(t, registryWith(t, fake), ResolverRouteConfig{
+		ResolverName:      "fake",
+		RouteKey:          "GET|/pets|h",
+		CanonicalChainKey: "GET|/pets|h",
+	})
+
+	_, _, err := Bind(pr, fake.resolution, chainsPresent("GET|/admin|h").get)
+	var re *ResolutionError
+	require.True(t, errors.As(err, &re))
+	assert.Equal(t, FailureInternal, re.Kind)
+	assert.Contains(t, re.Cause.Error(), "route's own chain key")
+}
+
+// ─── Bind: operation targets ─────────────────────────────────────────────────
+
+func TestBind_OperationTarget(t *testing.T) {
 	const (
 		apiID = "api-1"
 		vhost = "api.example.com"
@@ -251,296 +533,324 @@ func TestResolveChainKey_CandidateLadder(t *testing.T) {
 
 	tests := []struct {
 		name            string
-		candidates      []string
+		operation       string // the operation embedded in the key, and so the one reported
 		knownToProtocol bool
 		chains          []string
-		wantOperation   string
 		wantKind        FailureKind
 	}{
 		{
-			name:          "single candidate hit",
-			candidates:    []string{"SendMessage"},
-			chains:        []string{key("SendMessage")},
-			wantOperation: "SendMessage",
-		},
-		{
-			// The whole point of the ladder: a specific chain wins over the generic
-			// fallback when it exists.
-			name:          "first candidate wins over later ones",
-			candidates:    []string{"tools/call:add", "tools/call"},
-			chains:        []string{key("tools/call:add"), key("tools/call")},
-			wantOperation: "tools/call:add",
-		},
-		{
-			name:          "falls back to the next candidate",
-			candidates:    []string{"tools/call:unlisted", "tools/call"},
-			chains:        []string{key("tools/call")},
-			wantOperation: "tools/call",
+			name:      "the named chain exists",
+			operation: "OperationOne",
+			chains:    []string{key("OperationOne")},
 		},
 		{
 			// Open operation set: the client named a tool that does not exist, so this
 			// is a 404-shaped failure rather than a deployment error.
-			name:       "no candidate has a chain, open operation set",
-			candidates: []string{"tools/call:unlisted"},
-			chains:     []string{key("tools/call:add")},
-			wantKind:   FailureUnknownOperation,
+			name:      "no chain, open operation set",
+			operation: "tools/call:unlisted",
+			chains:    []string{key("tools/call:add")},
+			wantKind:  FailureUnknownOperation,
 		},
 		{
 			// Closed operation set: the protocol says this operation exists, so a
 			// missing chain means the controller built the deployment wrong. Rendering
 			// it as "unknown operation" would blame the client for a server bug.
-			name:            "no candidate has a chain, closed operation set",
-			candidates:      []string{"SendMessage"},
+			name:            "no chain, closed operation set",
+			operation:       "OperationOne",
 			knownToProtocol: true,
 			chains:          []string{key("GetTask")},
 			wantKind:        FailureChainMissing,
-		},
-		{
-			// A candidate carrying the key separator could otherwise compose the key of
-			// a different (apiID, vhost, operation) triple, so it is skipped entirely.
-			name:          "candidate containing the separator is skipped",
-			candidates:    []string{"forged\x1fmessage/send", "SendMessage"},
-			chains:        []string{key("SendMessage")},
-			wantOperation: "SendMessage",
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			fake := &fakeResolver{name: "fake", resolution: Resolution{
-				Operations: []Operation{{Candidates: tt.candidates, KnownToProtocol: tt.knownToProtocol}},
-			}}
-			reg := registryWith(t, fake)
-			rc := &RouteResolution{
-				RouteKey:     "POST|/rpc|" + vhost,
-				ResolverName: "fake",
+			resolution := Resolution{
+				Target:          TargetOperation,
+				ChainKey:        key(tt.operation),
+				KnownToProtocol: tt.knownToProtocol,
 			}
-			view := RequestView{APIID: apiID, Vhost: vhost}
+			fake := &fakeResolver{name: "fake", resolution: resolution}
+			pr := prepareWith(t, registryWith(t, fake), ResolverRouteConfig{
+				ResolverName:      "fake",
+				RouteKey:          "POST|/rpc|" + vhost,
+				CanonicalChainKey: "POST|/rpc|" + vhost,
+				APIID:             apiID,
+				Vhost:             vhost,
+			})
 
-			got, _, err := ResolveChainKey(reg, rc, view, chainsPresent(tt.chains...))
+			store := chainsPresent(tt.chains...)
+			bound, _, err := Bind(pr, resolution, store.get)
 			if tt.wantKind == "" {
 				require.NoError(t, err)
-				assert.Equal(t, key(tt.wantOperation), got)
+				assert.Equal(t, key(tt.operation), bound.ChainKey)
+				assert.Equal(t, tt.operation, bound.Operation,
+					"the reported operation is read back out of the key that ran")
+				assert.Equal(t, []string{key(tt.operation)}, store.lookedUp,
+					"one resolution names one key, so binding costs exactly one lookup")
 				return
 			}
 			var re *ResolutionError
 			require.True(t, errors.As(err, &re))
 			assert.Equal(t, tt.wantKind, re.Kind)
-			assert.Empty(t, got)
+			assert.Empty(t, bound.ChainKey, "an unresolved request must never bind another chain")
 		})
 	}
 }
 
-// The convergence property the whole design exists for: the JSON-RPC transport composes
-// its key at request time from the parsed body, and the HTTP+JSON transport carries the
-// key its transformer composed at deploy time. They must be the same string.
-func TestResolveChainKey_TransportsConverge(t *testing.T) {
+// The reported operation always names the chain that actually ran. This is the divergence
+// the derivation exists to make unrepresentable: a resolver returning the GetTask chain key
+// cannot also report SendMessage, because there is no field with which to say so — so
+// telemetry can never name one operation while another operation's authentication,
+// authorization and rate limits are the ones enforced.
+func TestBind_ReportedOperationAlwaysNamesTheChainThatRan(t *testing.T) {
 	const (
-		apiID     = "agent-1"
+		apiID = "api-1"
+		vhost = "api.example.com"
+	)
+	getTask := ChainKeyFor(apiID, vhost, "GetTask")
+
+	// A resolver that meant SendMessage but composed the GetTask key: the mistake is in
+	// the key, and the key is what runs, so that is what must be reported.
+	resolution := Resolution{Target: TargetOperation, ChainKey: getTask, KnownToProtocol: true}
+	fake := &fakeResolver{name: "fake", resolution: resolution}
+	pr := prepareWith(t, registryWith(t, fake), ResolverRouteConfig{
+		ResolverName: "fake", RouteKey: "POST|/rpc|" + vhost,
+		CanonicalChainKey: "POST|/rpc|" + vhost, APIID: apiID, Vhost: vhost,
+	})
+
+	bound, chain, err := Bind(pr, resolution, chainsPresent(getTask, ChainKeyFor(apiID, vhost, "SendMessage")).get)
+	require.NoError(t, err)
+	require.NotNil(t, chain)
+
+	assert.Equal(t, getTask, bound.ChainKey)
+	assert.Equal(t, "GetTask", bound.Operation,
+		"the operation is read out of the key that ran, never asserted alongside it")
+	assert.Equal(t, getTask, chain.key,
+		"and the chain executed is the one the reported operation names")
+}
+
+// A direct route reports no operation: the route chose the chain, not the resolver. It holds
+// even when the route is pointed at a composed operation key, which a directly-resolved
+// route may be.
+func TestBind_DirectRouteReportsNoOperation(t *testing.T) {
+	const (
+		apiID = "api-1"
+		vhost = "h"
+	)
+	composed := ChainKeyFor(apiID, vhost, "OperationOne")
+	pr := prepareWith(t, DefaultRegistry(), ResolverRouteConfig{
+		RouteKey: "POST|/op-one|" + vhost, CanonicalChainKey: composed,
+		APIID: apiID, Vhost: vhost,
+	})
+
+	bound, _, err := BindStatic(pr, chainsPresent(composed).get)
+	require.NoError(t, err)
+	assert.Equal(t, composed, bound.ChainKey)
+	assert.Empty(t, bound.Operation,
+		"a direct route identified no operation, and the chain key is already on the span")
+}
+
+// A resolver cannot reach a chain outside its own route's partition, however it
+// composed the key.
+func TestBind_OperationTargetCannotCrossAPartition(t *testing.T) {
+	const vhost = "api.example.com"
+	tests := []struct {
+		name string
+		key  string
+	}{
+		{"another API's operation", ChainKeyFor("other-api", vhost, "OperationOne")},
+		{"another vhost's operation", ChainKeyFor("api-1", "other.example.com", "OperationOne")},
+		{"not a composed key at all", "OperationOne"},
+		{"composed but with no operation", ChainKeyFor("api-1", vhost, "")},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			resolution := Resolution{Target: TargetOperation, ChainKey: tt.key}
+			fake := &fakeResolver{name: "fake", resolution: resolution}
+			pr := prepareWith(t, registryWith(t, fake), ResolverRouteConfig{
+				ResolverName: "fake", RouteKey: "POST|/rpc|" + vhost,
+				CanonicalChainKey: "POST|/rpc|" + vhost, APIID: "api-1", Vhost: vhost,
+			})
+
+			// The probe says the key exists, so only validation can stop it.
+			_, _, err := Bind(pr, resolution, chainsPresent(tt.key).get)
+			var re *ResolutionError
+			require.True(t, errors.As(err, &re))
+			assert.Equal(t, FailureInternal, re.Kind)
+		})
+	}
+}
+
+// A malformed key fails the resolution and binds nothing. With one key per resolution
+// there is nothing to fall back to, so this is simply a resolver bug — and it must not
+// reach for some other chain that happens to exist.
+func TestBind_MalformedKeyBindsNothing(t *testing.T) {
+	const (
+		apiID = "api-1"
+		vhost = "api.example.com"
+	)
+	// A chain that does exist, to prove the failure does not quietly land on it.
+	existing := ChainKeyFor(apiID, vhost, "tools/call")
+	resolution := Resolution{
+		Target:   TargetOperation,
+		ChainKey: "forged-not-a-composed-key",
+	}
+	fake := &fakeResolver{name: "fake", resolution: resolution}
+	pr := prepareWith(t, registryWith(t, fake), ResolverRouteConfig{
+		ResolverName: "fake", RouteKey: "POST|/rpc|" + vhost,
+		CanonicalChainKey: "POST|/rpc|" + vhost, APIID: apiID, Vhost: vhost,
+	})
+
+	store := chainsPresent(existing)
+	bound, chain, err := Bind(pr, resolution, store.get)
+	var re *ResolutionError
+	require.True(t, errors.As(err, &re))
+	assert.Equal(t, FailureInternal, re.Kind)
+	assert.Empty(t, bound.ChainKey)
+	assert.Nil(t, chain)
+	assert.Empty(t, store.lookedUp, "validation fails before any chain is looked up")
+}
+
+// An unset target is rejected rather than defaulting into either set of semantics, so a
+// resolver that forgets to set one fails closed.
+func TestBind_UnsetTargetIsRejected(t *testing.T) {
+	resolution := Resolution{ChainKey: "GET|/pets|h"}
+	fake := &fakeResolver{name: "fake", resolution: resolution}
+	pr := prepareWith(t, registryWith(t, fake), ResolverRouteConfig{
+		ResolverName: "fake", RouteKey: "GET|/pets|h", CanonicalChainKey: "GET|/pets|h",
+	})
+
+	_, _, err := Bind(pr, resolution, chainsPresent("GET|/pets|h").get)
+	var re *ResolutionError
+	require.True(t, errors.As(err, &re))
+	assert.Equal(t, FailureInternal, re.Kind)
+	assert.Contains(t, re.Cause.Error(), "unset resolution target")
+}
+
+func TestBind_RejectsAResolutionWithNoChainKey(t *testing.T) {
+	pr := prepareWith(t, DefaultRegistry(), ResolverRouteConfig{
+		RouteKey: "GET|/pets|h", CanonicalChainKey: "GET|/pets|h",
+	})
+
+	_, _, err := Bind(pr, Resolution{Target: TargetDirectRoute}, noChains)
+	var re *ResolutionError
+	require.True(t, errors.As(err, &re))
+	assert.Equal(t, FailureInvalidRequest, re.Kind,
+		"a resolver that identified nothing is a bad request, not an engine fault")
+}
+
+// A nil chain accessor must fail closed rather than resolve or panic: without it the chain
+// would appear not to exist, which for an operation target would render as "unknown
+// operation" — a client-facing answer to an engine wiring fault.
+func TestBind_NilChainAccessorFailsClosedAsInternal(t *testing.T) {
+	resolution := Resolution{Target: TargetOperation, ChainKey: ChainKeyFor("a", "v", "Op")}
+	fake := &fakeResolver{name: "fake", resolution: resolution}
+	pr := prepareWith(t, registryWith(t, fake), ResolverRouteConfig{
+		ResolverName: "fake", RouteKey: "r", CanonicalChainKey: "r", APIID: "a", Vhost: "v",
+	})
+
+	_, _, err := Bind[fakeChain](pr, resolution, nil)
+	var re *ResolutionError
+	require.True(t, errors.As(err, &re))
+	assert.Equal(t, FailureInternal, re.Kind)
+}
+
+func TestBind_NilPreparedRouteFailsClosed(t *testing.T) {
+	var pr *PreparedRoute
+	_, _, err := Bind(pr, Resolution{Target: TargetDirectRoute, ChainKey: "k"}, noChains)
+	var re *ResolutionError
+	require.True(t, errors.As(err, &re))
+	assert.Equal(t, FailureInternal, re.Kind)
+}
+
+// The convergence property the whole design exists for: two routes reaching the same
+// logical operation must select the same chain, whether the operation was read out of the
+// request or fixed at deploy time. They converge because both compose from one canonical
+// operation name with one shared helper — not because either was pointed at the other's
+// key.
+func TestBind_RoutesForOneOperationConverge(t *testing.T) {
+	const (
+		apiID     = "api-1"
 		vhost     = "api.example.com"
-		operation = "SendMessage"
+		operation = "OperationOne"
 	)
 	composed := ChainKeyFor(apiID, vhost, operation)
+	probe := chainsPresent(composed)
 
-	// JSON-RPC: a resolver identifies the operation and the engine composes.
-	fake := &fakeResolver{name: "a2a-jsonrpc", resolution: Resolution{
-		Operations: []Operation{{Candidates: []string{operation}, KnownToProtocol: true}},
-	}}
-	fromJSONRPC, _, err := ResolveChainKey(
-		registryWith(t, fake),
-		&RouteResolution{RouteKey: "POST|/agent|" + vhost, ResolverName: "a2a-jsonrpc"},
-		RequestView{APIID: apiID, Vhost: vhost},
-		chainsPresent(composed),
-	)
+	// Resolved from the request: many operations share this route.
+	perRequestResolution := Resolution{
+		Target: TargetOperation, ChainKey: composed, KnownToProtocol: true,
+	}
+	multiplexed := prepareWith(t,
+		registryWith(t, &fakeResolver{name: "fake-multiplexed", resolution: perRequestResolution}),
+		ResolverRouteConfig{
+			ResolverName: "fake-multiplexed", RouteKey: "POST|/rpc|" + vhost,
+			CanonicalChainKey: "POST|/rpc|" + vhost, APIID: apiID, Vhost: vhost,
+		})
+	fromPerRequest, _, err := Bind(multiplexed, perRequestResolution, probe.get)
 	require.NoError(t, err)
 
-	// HTTP+JSON: an identity route pointed at the key the controller composed.
-	fromHTTPJSON, _, err := ResolveChainKey(
-		nil,
-		&RouteResolution{RouteKey: "POST|/agent/message:send|" + vhost, CanonicalChainKey: composed},
-		RequestView{APIID: apiID, Vhost: vhost},
-		noChains,
-	)
+	// Fixed at ingest: this route serves one operation, named in its configuration.
+	staticResolution := Resolution{
+		Target: TargetOperation, ChainKey: composed, KnownToProtocol: true,
+	}
+	perOperation := prepareWith(t,
+		registryWith(t, &fakeResolver{name: "fake-per-operation", prepare: func(ResolverRouteConfig) (PreparedResolver, error) {
+			return &fakeStatic{static: staticResolution}, nil
+		}}),
+		ResolverRouteConfig{
+			ResolverName: "fake-per-operation", RouteKey: "POST|/op-one|" + vhost,
+			CanonicalChainKey: "POST|/op-one|" + vhost, APIID: apiID, Vhost: vhost,
+		})
+	require.True(t, perOperation.IsStatic())
+	fromStatic, _, err := BindStatic(perOperation, probe.get)
 	require.NoError(t, err)
 
-	assert.Equal(t, fromJSONRPC, fromHTTPJSON)
-	assert.Equal(t, composed, fromJSONRPC)
+	assert.Equal(t, fromPerRequest.ChainKey, fromStatic.ChainKey)
+	assert.Equal(t, composed, fromPerRequest.ChainKey)
 }
 
-// An identity route never consults the probe: it has no operation to compose, and its
-// chain is looked up by the kernel from the key it returns.
-func TestResolveChainKey_IdentityIgnoresTheProbe(t *testing.T) {
-	rc := &RouteResolution{RouteKey: "GET|/pets|h", CanonicalChainKey: "GET|/pets|h"}
+// ─── Errors ──────────────────────────────────────────────────────────────────
 
-	key, _, err := ResolveChainKey(nil, rc, RequestView{}, func(string) bool {
-		t.Fatal("the probe must not be called on an identity route")
-		return false
-	})
-	require.NoError(t, err)
-	assert.Equal(t, "GET|/pets|h", key)
-}
+func TestNormalizeResolutionError(t *testing.T) {
+	assert.Nil(t, NormalizeResolutionError(nil))
 
-// A nil probe must fail closed rather than panic: a partially-wired caller then gets a
-// resolution failure instead of taking the whole process down on the hot path.
-func TestResolveChainKey_NilProbeFailsClosed(t *testing.T) {
-	fake := &fakeResolver{name: "fake", resolution: oneOperation("SendMessage")}
-	rc := &RouteResolution{ResolverName: "fake"}
+	// A typed error with no kind is still classified rather than left blank.
+	re := NormalizeResolutionError(&ResolutionError{})
+	assert.Equal(t, FailureInternal, re.Kind)
 
-	_, _, err := ResolveChainKey(registryWith(t, fake), rc, RequestView{APIID: "a", Vhost: "v"}, nil)
-	var re *ResolutionError
-	require.True(t, errors.As(err, &re))
-	assert.Equal(t, FailureUnknownOperation, re.Kind)
-}
-
-func TestResolveChainKey_NoOperationIsInvalidRequest(t *testing.T) {
-	fake := &fakeResolver{name: "fake", resolution: Resolution{ProtocolState: "state"}}
-	reg := registryWith(t, fake)
-	rc := &RouteResolution{ResolverName: "fake"}
-
-	_, _, err := ResolveChainKey(reg, rc, RequestView{}, noChains)
-	var re *ResolutionError
-	require.True(t, errors.As(err, &re))
-	assert.Equal(t, FailureInvalidRequest, re.Kind)
-	assert.Equal(t, "state", re.ProtocolState, "protocol state must survive to the renderer")
-}
-
-// The Operations slice is a conjunction, reserved for a protocol where one request
-// carries several operations (JSON-RPC batch). There is no composition rule yet, so
-// it is refused rather than silently applying only the first.
-func TestResolveChainKey_MultipleOperationsRejected(t *testing.T) {
-	fake := &fakeResolver{name: "fake", resolution: Resolution{
-		Operations:    []Operation{{Candidates: []string{"A"}}, {Candidates: []string{"B"}}},
-		ProtocolState: "state",
-	}}
-	reg := registryWith(t, fake)
-	rc := &RouteResolution{ResolverName: "fake"}
-
-	key, _, err := ResolveChainKey(reg, rc, RequestView{}, noChains)
-	assert.Empty(t, key)
-	var re *ResolutionError
-	require.True(t, errors.As(err, &re))
-	assert.Equal(t, FailureMultiOperation, re.Kind)
-}
-
-func TestResolveChainKey_ResolverErrorIsPropagated(t *testing.T) {
-	typed := &ResolutionError{Kind: FailureParse, Cause: errors.New("bad json")}
-	fake := &fakeResolver{name: "fake", err: typed}
-	reg := registryWith(t, fake)
-	rc := &RouteResolution{ResolverName: "fake"}
-
-	_, _, err := ResolveChainKey(reg, rc, RequestView{}, noChains)
-	var re *ResolutionError
-	require.True(t, errors.As(err, &re))
+	// A typed error keeps its own classification.
+	re = NormalizeResolutionError(&ResolutionError{Kind: FailureParse})
 	assert.Equal(t, FailureParse, re.Kind)
-	assert.True(t, re.ProtocolVisible())
+
+	// Normalizing must not mutate the resolver's error value.
+	original := &ResolutionError{Kind: FailureParse}
+	_ = NormalizeResolutionError(original)
+	assert.Equal(t, FailureParse, original.Kind)
+
+	// A wrapped typed error keeps its classification.
+	re = NormalizeResolutionError(fmt.Errorf("wrapped: %w", &ResolutionError{Kind: FailureUnknownOperation}))
+	assert.Equal(t, FailureUnknownOperation, re.Kind)
 }
 
 // An untyped resolver error must not be guessed at: it becomes FailureInternal,
 // which renders generically and never reaches the client.
-func TestResolveChainKey_UntypedResolverErrorBecomesInternal(t *testing.T) {
-	fake := &fakeResolver{name: "fake", err: errors.New("boom")}
-	reg := registryWith(t, fake)
-	rc := &RouteResolution{ResolverName: "fake"}
-
-	_, _, err := ResolveChainKey(reg, rc, RequestView{}, noChains)
-	var re *ResolutionError
-	require.True(t, errors.As(err, &re))
+func TestNormalizeResolutionError_UntypedBecomesInternal(t *testing.T) {
+	re := NormalizeResolutionError(errors.New("boom"))
 	assert.Equal(t, FailureInternal, re.Kind)
-	assert.False(t, re.ProtocolVisible())
 	assert.EqualError(t, re.Cause, "boom", "the cause is kept for the internal log only")
-}
-
-func TestNormalizeResolutionError(t *testing.T) {
-	assert.Nil(t, NormalizeResolutionError(nil, nil))
-
-	// A typed error with no kind is still classified rather than left blank.
-	re := NormalizeResolutionError(&ResolutionError{}, "state")
-	assert.Equal(t, FailureInternal, re.Kind)
-	assert.Equal(t, "state", re.ProtocolState)
-
-	// A typed error's own protocol state wins over the resolution's.
-	re = NormalizeResolutionError(&ResolutionError{Kind: FailureParse, ProtocolState: "own"}, "outer")
-	assert.Equal(t, "own", re.ProtocolState)
-
-	// Normalizing must not mutate the resolver's error value.
-	original := &ResolutionError{Kind: FailureParse}
-	_ = NormalizeResolutionError(original, "state")
-	assert.Nil(t, original.ProtocolState)
-
-	// A wrapped typed error keeps its classification.
-	re = NormalizeResolutionError(fmt.Errorf("wrapped: %w", &ResolutionError{Kind: FailureUnknownOperation}), nil)
-	assert.Equal(t, FailureUnknownOperation, re.Kind)
-}
-
-func TestProtocolVisible(t *testing.T) {
-	visible := []FailureKind{FailureParse, FailureInvalidRequest, FailureUnknownOperation}
-	// Transport-level and configuration failures all render generically. An encoding
-	// problem in particular happened below the protocol layer, so a protocol renderer
-	// must not dress it up as a protocol-level error the client could act on.
-	generic := []FailureKind{
-		FailureMultiOperation, FailurePayloadTooLarge, FailureUnknownResolver,
-		FailureChainMissing, FailureInternal,
-		FailureUnsupportedEncoding, FailureUndecodableBody,
-	}
-	for _, k := range visible {
-		assert.True(t, (&ResolutionError{Kind: k}).ProtocolVisible(), "%s should be protocol-visible", k)
-	}
-	for _, k := range generic {
-		assert.False(t, (&ResolutionError{Kind: k}).ProtocolVisible(), "%s must render generically", k)
-	}
 }
 
 func TestRouteResolution_IsIdentity(t *testing.T) {
 	assert.True(t, (&RouteResolution{}).IsIdentity())
 	assert.True(t, (&RouteResolution{ResolverName: RouteKeyResolverName}).IsIdentity())
-	assert.False(t, (&RouteResolution{ResolverName: "a2a-jsonrpc"}).IsIdentity())
+	assert.False(t, (&RouteResolution{ResolverName: "fake-multiplexed"}).IsIdentity())
 }
 
-// ─── Preparer ────────────────────────────────────────────────────────────────
-
-func TestPreparer_ReceivesRouteConfig(t *testing.T) {
-	p := &preparingResolver{fakeResolver: fakeResolver{name: "prep"}}
-	cfg := json.RawMessage(`{"schema":"x"}`)
-
-	state, err := p.Prepare(cfg)
-	require.NoError(t, err)
-	assert.Equal(t, "prepared-state", state)
-	assert.Equal(t, 1, p.prepareCalls)
-	assert.JSONEq(t, `{"schema":"x"}`, string(p.lastConfig))
-}
-
-func TestPreparer_ErrorIsReturned(t *testing.T) {
-	p := &preparingResolver{fakeResolver: fakeResolver{name: "prep"}, prepareErr: errors.New("bad schema")}
-	_, err := p.Prepare(nil)
-	require.Error(t, err)
-}
-
-// RouteState is how a Prepare result reaches the resolver, so per-route work happens
-// once at ingest rather than per request.
-func TestRequestView_CarriesRouteState(t *testing.T) {
-	var seen any
-	capturing := &captureResolver{name: "capture", onIdentify: func(v RequestView) { seen = v.RouteState }}
-	reg := registryWith(t, capturing)
-	rc := &RouteResolution{
-		ResolverName: "capture",
-		RouteState:   "prepared-state",
-	}
-
-	view := RequestView{APIID: "api-1", Vhost: "h", RouteState: rc.RouteState}
-	key, _, err := ResolveChainKey(reg, rc, view, chainsPresent(ChainKeyFor("api-1", "h", "Op")))
-	require.NoError(t, err)
-	assert.Equal(t, ChainKeyFor("api-1", "h", "Op"), key)
-	assert.Equal(t, "prepared-state", seen)
-}
-
-type captureResolver struct {
-	name       string
-	onIdentify func(RequestView)
-}
-
-func (c *captureResolver) Name() string               { return c.name }
-func (c *captureResolver) Requirements() Requirements { return Requirements{} }
-func (c *captureResolver) Identify(v RequestView) (Resolution, error) {
-	c.onIdentify(v)
-	return oneOperation("Op"), nil
+func TestTargetKind_String(t *testing.T) {
+	assert.Equal(t, "direct-route", TargetDirectRoute.String())
+	assert.Equal(t, "operation", TargetOperation.String())
+	assert.Equal(t, "invalid", TargetInvalid.String())
 }

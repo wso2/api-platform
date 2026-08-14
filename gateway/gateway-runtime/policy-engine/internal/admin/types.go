@@ -139,21 +139,19 @@ type RouteMetadataEntry struct {
 	// composed keys there is no per-route mapping to show, so what an operator needs
 	// instead is the prefix to match a dumped chain key against.
 	ChainKeyPrefix string `json:"chain_key_prefix,omitempty"`
-	// ResponseKind is how this route's operation delivers its response, when the route
-	// itself declares it. Absent means the engine derives the mode from the chain and the
-	// upstream response, as it always has. A multiplexed route leaves this absent even
-	// when its operations stream, because there the answer comes per request from the
-	// resolver — so an operator reading this dump should not read absent as "unary".
-	ResponseKind string `json:"response_kind,omitempty"`
 	// MaxRequestBodyBytes is the effective acceptance ceiling on a body-resolved route,
 	// reported even when it came from the default so an operator can see the bound that
 	// is actually in force rather than having to infer it. It caps unauthenticated
 	// decompression and parsing work, not how much Envoy buffers.
 	MaxRequestBodyBytes int64 `json:"max_request_body_bytes,omitempty"`
-	// ResolverPrepared reports whether the route's resolver produced per-route state
-	// at ingest. A resolver that implements Prepare and shows false here means the
-	// route was admitted without it, which should not happen.
-	ResolverPrepared bool `json:"resolver_prepared,omitempty"`
+	// ResolverStatic reports that this route's resolution was fully determined at
+	// ingest, so no resolver runs per request. True for every route of every kind
+	// shipping today; false means the route inspects each request to pick its chain.
+	ResolverStatic bool `json:"resolver_static,omitempty"`
+	// ResolverBuffersBody reports that this route's resolver reads the request body,
+	// which defers chain selection — and therefore every policy, including
+	// authentication — to the request-body callback.
+	ResolverBuffersBody bool `json:"resolver_buffers_body,omitempty"`
 }
 
 // PolicySpec contains specification for a policy instance

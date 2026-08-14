@@ -194,29 +194,9 @@ type PolicyExecutionContext struct {
 	// identity route.
 	chainKey string
 
-	// requestView is the retained header-phase view of the request. Kept for the
-	// lifetime of the stream so a rejection raised at any later phase can still be
-	// re-rendered in the transport's error shape.
-	requestView resolver.RequestView
-
-	// protocolState is resolver-owned, already-validated state captured at
-	// resolution time (e.g. a validated JSON-RPC request id). Never raw request
-	// bytes.
-	protocolState any
-
-	// responseKind is how the resolved operation delivers its response, retained from
-	// request time because the decision it feeds — the response body mode — is made
-	// later, at the response-header callback. Auto for every kind shipping today.
-	responseKind resolver.ResponseKind
-
-	// failureRenderer shapes a resolution failure into a protocol error response.
-	// Nil means the sterile generic response is used.
-	failureRenderer resolver.FailureRenderer
-
-	// rejectionRenderer re-renders a *policy* rejection into the transport's error
-	// shape. Nil for every route without a resolver-provided renderer — which is
-	// the early branch in renderImmediate that keeps existing kinds out of new code.
-	rejectionRenderer resolver.PolicyRejectionRenderer
+	// operation is the canonical protocol operation the caller invoked. Empty for a
+	// directly-resolved route, whose chain key is already the route name on the span.
+	operation string
 }
 
 // generatedResponse ties a policy-engine-generated ImmediateResponse to the span
@@ -492,10 +472,10 @@ func (ec *PolicyExecutionContext) requestPayloadTooLargeError(
 // ModeOverride sent to Envoy could disagree with which body-phase handler actually runs
 // (see processResponseBody), which Envoy rejects as a content-length/body mismatch.
 func (ec *PolicyExecutionContext) getModeOverride() *extprocconfigv3.ProcessingMode {
-	// No chain yet: the mode comes from the resolver's requirements instead, since
-	// there is nothing else to derive it from.
+	// No chain yet: the mode comes from the prepared resolver's requirements instead,
+	// since there is nothing else to derive it from.
 	if ec.pending != nil {
-		return pendingModeOverride(ec.pending.requirements)
+		return pendingModeOverride(ec.pending.prepared.Requirements)
 	}
 
 	// A chain bound at the request-body callback must not return a ModeOverride from
@@ -510,7 +490,7 @@ func (ec *PolicyExecutionContext) getModeOverride() *extprocconfigv3.ProcessingM
 	if ec.policyChain == nil {
 		// Resolution denied, or a callback arrived for a request that never bound a
 		// chain. Ask Envoy for nothing further rather than dereferencing nil.
-		return pendingModeOverride(resolver.Requirements{})
+		return pendingModeOverride(resolver.RequestRequirements{})
 	}
 
 	mode := &extprocconfigv3.ProcessingMode{
@@ -973,45 +953,6 @@ func (ec *PolicyExecutionContext) processResponseHeaders(
 		return ec.noChainPassThroughResponseHeaders(), nil
 	}
 	ec.buildResponseContexts(headers)
-
-	// A response that must be delivered incrementally, on a chain that needs the response
-	// body but cannot process it in chunks, has no correct behaviour left — so it fails
-	// closed rather than hanging the caller or silently skipping the policy. Buffering the
-	// stream leaves the caller with nothing until the upstream closes, which for a
-	// long-running agent task is indefinite and presents as a hang rather than an error;
-	// skipping the offending policy would silently drop whatever it enforces, and a
-	// response-body policy is typically a guardrail or a redaction step, so that would be
-	// a policy bypass selectable by asking for a streaming operation.
-	//
-	// Every part of this condition is doing work, and dropping any of them turns a
-	// legitimate response into a gateway error:
-	//
-	//   - The operation must have *declared* itself streaming. An Auto route is every kind
-	//     shipping today, and one with a buffered-only response policy meeting a chunked or
-	//     SSE upstream response has always simply buffered it. Turning that into a 500
-	//     would be a behavioural change for existing kinds, which this must not introduce
-	//     — the fail-closed behaviour is opt-in with the declaration, not a new global
-	//     rule.
-	//   - responseNeedsStreaming looks at *this* response, not merely at the operation. A
-	//     streaming operation is entitled to answer with a 400 and a JSON error body, or a
-	//     bodyless 204; buffering those is correct, and the error the agent was trying to
-	//     report must not be replaced by a 500 of ours.
-	//   - RequiresResponseBody, because a chain with no response-body policy also reports
-	//     SupportsResponseStreaming == false (BuildPolicyChain clears the flag — there is
-	//     nothing to stream). Envoy is told ResponseBodyMode: NONE and the stream passes
-	//     through untouched. Gating on the flag alone would reject the most ordinary
-	//     streaming deployment there is, one whose chain only authenticates.
-	//
-	// This lives here, and not at deploy time, because this is the first point where all of
-	// it is in hand: the chain's real response-body modes come from the policy
-	// implementations (see body_mode.go), which the controller does not have; routes and
-	// chains arrive on independent xDS streams, so an ingest-time cross-check would race;
-	// and the shape of the actual response is not knowable before now at all.
-	if ec.responseKind == resolver.ResponseKindStreaming &&
-		ec.responseNeedsStreaming(headers.EndOfStream) &&
-		ec.policyChain.RequiresResponseBody && !ec.policyChain.SupportsResponseStreaming {
-		return ec.streamingConflictResponse(), nil
-	}
 
 	// Detect streaming response: upgrade when chain supports streaming AND
 	// upstream signals chunked/SSE AND body is coming (not EndOfStream).
@@ -1599,38 +1540,10 @@ func isServerSentEventResponse(headers *policy.Headers) bool {
 // (processResponseBody), so the two can never disagree. Callable only once
 // responseHeaderCtx has been populated (i.e. from processResponseHeaders).
 func (ec *PolicyExecutionContext) responseStreamingEnabled(endOfStream bool) bool {
-	return ec.responseNeedsStreaming(endOfStream) && ec.policyChain.SupportsResponseStreaming
-}
-
-// responseNeedsStreaming reports whether *this* upstream response is one that has to be
-// delivered incrementally, ignoring whether the chain can cope with that.
-//
-// It is split out from responseStreamingEnabled so the two questions stay distinct: this
-// one is about the response, that one folds in the chain's capability. The streaming
-// conflict check needs this one alone — a streaming *operation* can still answer with an
-// ordinary unary response, and buffering that is correct rather than a conflict.
-func (ec *PolicyExecutionContext) responseNeedsStreaming(endOfStream bool) bool {
-	// A unary operation is never streamed, regardless of what the upstream response
-	// looks like: the operation itself says one complete response is coming, and
-	// buffering it is what a response-body policy needs.
-	if ec.responseKind == resolver.ResponseKindUnary {
+	if !ec.policyChain.SupportsResponseStreaming || endOfStream {
 		return false
 	}
-	// No body is coming — a 204, or a complete response delivered in the headers. Nothing
-	// to stream, and nothing to buffer either.
-	if endOfStream {
-		return false
-	}
-	// Is this response actually a stream? Which signal counts depends on what the
-	// operation declared, and the difference matters:
-	//
-	//   - A declared streaming operation is held to the positive signal, SSE. Chunked is
-	//     only a transfer framing, and a chunked application/json error body is an
-	//     ordinary unary response that must be buffered normally rather than treated as a
-	//     stream (AGENT_GATEWAY_README.md:323 makes SSE the mechanism).
-	//   - An Auto route keeps the pre-existing heuristic, chunked or SSE, unchanged. It is
-	//     load-bearing for kinds shipping today and this is not the place to retune it.
-	if !ec.upstreamResponseIsStream() {
+	if !isStreamingUpstreamResponse(ec.responseHeaderCtx.ResponseHeaders) {
 		return false
 	}
 	// MCP is kept buffered: when an upstream MCP server sends a Transfer-Encoding: chunked
@@ -1640,15 +1553,6 @@ func (ec *PolicyExecutionContext) responseNeedsStreaming(endOfStream bool) bool 
 		return false
 	}
 	return true
-}
-
-// upstreamResponseIsStream applies the streaming signal appropriate to the operation's
-// declared kind. See responseNeedsStreaming for why the two differ.
-func (ec *PolicyExecutionContext) upstreamResponseIsStream() bool {
-	if ec.responseKind == resolver.ResponseKindStreaming {
-		return isServerSentEventResponse(ec.responseHeaderCtx.ResponseHeaders)
-	}
-	return isStreamingUpstreamResponse(ec.responseHeaderCtx.ResponseHeaders)
 }
 
 // cloneHeaders returns an independent copy of h — both the map and every

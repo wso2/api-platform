@@ -39,7 +39,6 @@ import (
 	"github.com/wso2/api-platform/gateway/gateway-runtime/policy-engine/internal/executor"
 	"github.com/wso2/api-platform/gateway/gateway-runtime/policy-engine/internal/metrics"
 	"github.com/wso2/api-platform/gateway/gateway-runtime/policy-engine/internal/registry"
-	"github.com/wso2/api-platform/gateway/gateway-runtime/policy-engine/internal/resolver"
 	policy "github.com/wso2/api-platform/sdk/core/policy/v1alpha2"
 )
 
@@ -200,7 +199,6 @@ func newBenchServer(routes map[string]*registry.PolicyChain) *ExternalProcessorS
 		"bench-policy-engine",
 		testMaxDecompressedBytes,
 		testMaxDecompressedBytes,
-		resolver.DefaultRegistry(),
 	)
 }
 

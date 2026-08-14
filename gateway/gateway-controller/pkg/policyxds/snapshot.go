@@ -395,14 +395,23 @@ func (t *Translator) createRouteConfigResource(
 		// compatibility default. Every transformer shipping today leaves the route
 		// field empty, so this is byte-identical to what it emitted before per-route
 		// resolvers existed.
-		"resolver_name": rdc.EffectiveResolverName(route),
-		// Emitted explicitly on every route, including identity routes where it equals
-		// the route key. The policy engine reads this field and never reconstructs the
-		// key, which is what keeps a later move of operation chains into their own key
-		// namespace a controller-only change.
-		"canonical_chain_key":       rdc.EffectiveCanonicalChainKey(routeKey, route),
+		"resolver_name":             rdc.EffectiveResolverName(route),
 		"upstream_base_path":        upstreamBasePath,
 		"upstream_definition_paths": upstreamDefPaths,
+	}
+
+	// Emitted explicitly on every *directly-resolved* route, including one where it
+	// equals the route key. The policy engine reads this field and never reconstructs
+	// the key, which is what keeps a later move of operation chains into their own key
+	// namespace a controller-only change.
+	//
+	// Omitted on a route naming a protocol resolver: that route derives its key from its
+	// own resolver_config, so a canonical key beside it would be a second copy of the
+	// same fact, and two copies can disagree with nothing to say which wins.
+	// ValidateResolution rejects such a route for carrying one, so emitting the route-key
+	// fallback here would put on the wire exactly what the model refuses to accept.
+	if models.IsDirectlyResolved(rdc.EffectiveResolverName(route)) {
+		data["canonical_chain_key"] = rdc.EffectiveCanonicalChainKey(routeKey, route)
 	}
 
 	// Omitted when empty, deliberately. A field serialising as {} or 0 changes the
@@ -415,12 +424,6 @@ func (t *Translator) createRouteConfigResource(
 			return nil, fmt.Errorf("route %q: resolver_config is not valid JSON: %w", routeKey, err)
 		}
 		data["resolver_config"] = decoded
-	}
-	// Omitted when empty, like every other resolution field: a route that declares
-	// nothing must serialise exactly as it did before the field existed, or every
-	// existing kind's RouteConfig re-versions for no reason.
-	if route.ResponseKind != "" {
-		data["response_kind"] = route.ResponseKind
 	}
 	if route.MaxRequestBodyBytes > 0 {
 		data["max_request_body_bytes"] = float64(route.MaxRequestBodyBytes)
