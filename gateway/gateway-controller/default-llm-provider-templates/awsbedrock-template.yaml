@@ -28,15 +28,42 @@ spec:
   promptTokens:
     location: payload
     identifier: $.usage.inputTokens
+    fallbackIdentifiers:
+      - $.usage.input_tokens
+      - $.usage.prompt_tokens
+      - $.inputTextTokenCount
   completionTokens:
     location: payload
     identifier: $.usage.outputTokens
+    fallbackIdentifiers:
+      - $.usage.output_tokens
+      - $.usage.completion_tokens
+      - $.results[0].tokenCount
   totalTokens:
     location: payload
     identifier: $.usage.totalTokens
   requestModel:
     location: pathParam
-    identifier: model/([A-Za-z0-9.:-]+)/
+    identifier: model/([A-Za-z0-9.:%-]+)/
   responseModel:
     location: pathParam
-    identifier: model/([A-Za-z0-9.:-]+)/
+    identifier: model/([A-Za-z0-9.:%-]+)/
+  cachedTokens:
+    location: payload
+    identifier: $.usage.cacheReadInputTokens
+    fallbackIdentifiers:
+      - $.usage.cache_read_input_tokens
+      - $.usage.prompt_tokens_details.cached_tokens
+  cacheWriteTokens:
+    location: payload
+    identifier: $.usage.cacheWriteInputTokens
+    fallbackIdentifiers:
+      - $.usage.cache_creation_input_tokens
+      - $.usage.prompt_tokens_details.cache_write_tokens
+  serviceTier:
+    location: payload
+    identifier: $.serviceTier.type
+    valueMap:
+      priority: priority
+      flex: flex
+  cacheAccounting: additive

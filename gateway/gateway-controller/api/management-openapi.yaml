@@ -4113,6 +4113,27 @@ components:
           $ref: '#/components/schemas/ExtractionIdentifier'
         responseModel:
           $ref: '#/components/schemas/ExtractionIdentifier'
+        cachedTokens:
+          $ref: '#/components/schemas/ExtractionIdentifier'
+        cacheWriteTokens:
+          $ref: '#/components/schemas/ExtractionIdentifier'
+        cacheWrite1hTokens:
+          $ref: '#/components/schemas/ExtractionIdentifier'
+        reasoningTokens:
+          $ref: '#/components/schemas/ExtractionIdentifier'
+        audioInputTokens:
+          $ref: '#/components/schemas/ExtractionIdentifier'
+        audioOutputTokens:
+          $ref: '#/components/schemas/ExtractionIdentifier'
+        serviceTier:
+          $ref: '#/components/schemas/ExtractionIdentifier'
+        cacheAccounting:
+          type: string
+          description: |
+            Whether the cached token count reported by the provider is already
+            part of the input token total, or additional to it. One of
+            'inclusive' or 'additive'. Defaults to inclusive when omitted.
+          example: inclusive
         resourceMappings:
           $ref: '#/components/schemas/LLMProviderTemplateResourceMappings'
 
@@ -4146,6 +4167,28 @@ components:
           $ref: '#/components/schemas/ExtractionIdentifier'
         responseModel:
           $ref: '#/components/schemas/ExtractionIdentifier'
+        cachedTokens:
+          $ref: '#/components/schemas/ExtractionIdentifier'
+        cacheWriteTokens:
+          $ref: '#/components/schemas/ExtractionIdentifier'
+        cacheWrite1hTokens:
+          $ref: '#/components/schemas/ExtractionIdentifier'
+        reasoningTokens:
+          $ref: '#/components/schemas/ExtractionIdentifier'
+        audioInputTokens:
+          $ref: '#/components/schemas/ExtractionIdentifier'
+        audioOutputTokens:
+          $ref: '#/components/schemas/ExtractionIdentifier'
+        serviceTier:
+          $ref: '#/components/schemas/ExtractionIdentifier'
+        cacheAccounting:
+          type: string
+          description: |
+            Whether the cached token count reported by the provider is already
+            part of the input token total, or additional to it. One of
+            'inclusive' or 'additive'. Overrides the template-level setting for
+            this resource; when omitted, the template-level value is inherited.
+          example: inclusive
 
     ExtractionIdentifier:
       type: object
@@ -4166,6 +4209,28 @@ components:
           type: string
           description: JSONPath expression or header name to identify the token value
           example: $.usage.inputTokens
+        fallbackIdentifiers:
+          type: array
+          items:
+            type: string
+          description: |
+            Additional locations to try when the primary identifier yields no
+            value, in order. Used where one provider returns several response
+            shapes on the same path.
+          example:
+            - $.usage.input_tokens
+            - $.usage.prompt_tokens
+        valueMap:
+          type: object
+          additionalProperties:
+            type: string
+          description: |
+            Maps values this provider reports onto the vocabulary the gateway
+            bills on. A reported value that is not a key is used unchanged.
+            Used where providers name the same billing tier differently.
+          example:
+            ON_DEMAND_PRIORITY: priority
+            ON_DEMAND_FLEX: flex
 
     LLMProviderConfigurationRequest:
       type: object

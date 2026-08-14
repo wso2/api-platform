@@ -43,6 +43,26 @@ spec:
   responseModel:
     location: payload
     identifier: $.model
+  cachedTokens:
+    location: payload
+    identifier: $.usage.prompt_tokens_details.cached_tokens
+  reasoningTokens:
+    location: payload
+    identifier: $.usage.completion_tokens_details.reasoning_tokens
+  audioInputTokens:
+    location: payload
+    identifier: $.usage.prompt_tokens_details.audio_tokens
+  audioOutputTokens:
+    location: payload
+    identifier: $.usage.completion_tokens_details.audio_tokens
+  serviceTier:
+    location: payload
+    identifier: $.service_tier
+    valueMap:
+      priority: priority
+      flex: flex
+      fast: priority
+  cacheAccounting: inclusive
   resourceMappings:
     resources:
       - resource: /responses

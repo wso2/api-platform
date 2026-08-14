@@ -43,3 +43,4 @@ spec:
   responseModel:
     location: payload
     identifier: $.model
+  cacheAccounting: inclusive

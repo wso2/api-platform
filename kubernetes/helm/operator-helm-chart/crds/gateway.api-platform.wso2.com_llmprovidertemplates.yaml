@@ -45,11 +45,18 @@ spec:
               payload. The non-resource extractor fields apply when no resourceMappings
               entry matches the request path.
             properties:
-              completionTokens:
+              audioInputTokens:
                 description: |-
                   ExtractionIdentifier locates a value within an HTTP request or response.
                   Mirrors the gateway-controller management API ExtractionIdentifier model.
                 properties:
+                  fallbackIdentifiers:
+                    description: |-
+                      FallbackIdentifiers are additional locations to try, in order, when the
+                      primary identifier yields no value.
+                    items:
+                      type: string
+                    type: array
                   identifier:
                     description: Identifier is a JSONPath expression or header name.
                     type: string
@@ -61,6 +68,191 @@ spec:
                     - payload
                     - queryParam
                     type: string
+                  valueMap:
+                    additionalProperties:
+                      type: string
+                    description: |-
+                      ValueMap translates values the provider reports into the vocabulary the
+                      gateway works in. A reported value that is not a key is used unchanged.
+                    type: object
+                required:
+                - identifier
+                - location
+                type: object
+              audioOutputTokens:
+                description: |-
+                  ExtractionIdentifier locates a value within an HTTP request or response.
+                  Mirrors the gateway-controller management API ExtractionIdentifier model.
+                properties:
+                  fallbackIdentifiers:
+                    description: |-
+                      FallbackIdentifiers are additional locations to try, in order, when the
+                      primary identifier yields no value.
+                    items:
+                      type: string
+                    type: array
+                  identifier:
+                    description: Identifier is a JSONPath expression or header name.
+                    type: string
+                  location:
+                    description: Location is where to look for the value.
+                    enum:
+                    - header
+                    - pathParam
+                    - payload
+                    - queryParam
+                    type: string
+                  valueMap:
+                    additionalProperties:
+                      type: string
+                    description: |-
+                      ValueMap translates values the provider reports into the vocabulary the
+                      gateway works in. A reported value that is not a key is used unchanged.
+                    type: object
+                required:
+                - identifier
+                - location
+                type: object
+              cacheAccounting:
+                description: |-
+                  CacheAccounting states whether the provider's cached token count is part
+                  of the input total or additional to it. Defaults to inclusive.
+                enum:
+                - inclusive
+                - additive
+                type: string
+              cacheWrite1hTokens:
+                description: |-
+                  ExtractionIdentifier locates a value within an HTTP request or response.
+                  Mirrors the gateway-controller management API ExtractionIdentifier model.
+                properties:
+                  fallbackIdentifiers:
+                    description: |-
+                      FallbackIdentifiers are additional locations to try, in order, when the
+                      primary identifier yields no value.
+                    items:
+                      type: string
+                    type: array
+                  identifier:
+                    description: Identifier is a JSONPath expression or header name.
+                    type: string
+                  location:
+                    description: Location is where to look for the value.
+                    enum:
+                    - header
+                    - pathParam
+                    - payload
+                    - queryParam
+                    type: string
+                  valueMap:
+                    additionalProperties:
+                      type: string
+                    description: |-
+                      ValueMap translates values the provider reports into the vocabulary the
+                      gateway works in. A reported value that is not a key is used unchanged.
+                    type: object
+                required:
+                - identifier
+                - location
+                type: object
+              cacheWriteTokens:
+                description: |-
+                  ExtractionIdentifier locates a value within an HTTP request or response.
+                  Mirrors the gateway-controller management API ExtractionIdentifier model.
+                properties:
+                  fallbackIdentifiers:
+                    description: |-
+                      FallbackIdentifiers are additional locations to try, in order, when the
+                      primary identifier yields no value.
+                    items:
+                      type: string
+                    type: array
+                  identifier:
+                    description: Identifier is a JSONPath expression or header name.
+                    type: string
+                  location:
+                    description: Location is where to look for the value.
+                    enum:
+                    - header
+                    - pathParam
+                    - payload
+                    - queryParam
+                    type: string
+                  valueMap:
+                    additionalProperties:
+                      type: string
+                    description: |-
+                      ValueMap translates values the provider reports into the vocabulary the
+                      gateway works in. A reported value that is not a key is used unchanged.
+                    type: object
+                required:
+                - identifier
+                - location
+                type: object
+              cachedTokens:
+                description: |-
+                  ExtractionIdentifier locates a value within an HTTP request or response.
+                  Mirrors the gateway-controller management API ExtractionIdentifier model.
+                properties:
+                  fallbackIdentifiers:
+                    description: |-
+                      FallbackIdentifiers are additional locations to try, in order, when the
+                      primary identifier yields no value.
+                    items:
+                      type: string
+                    type: array
+                  identifier:
+                    description: Identifier is a JSONPath expression or header name.
+                    type: string
+                  location:
+                    description: Location is where to look for the value.
+                    enum:
+                    - header
+                    - pathParam
+                    - payload
+                    - queryParam
+                    type: string
+                  valueMap:
+                    additionalProperties:
+                      type: string
+                    description: |-
+                      ValueMap translates values the provider reports into the vocabulary the
+                      gateway works in. A reported value that is not a key is used unchanged.
+                    type: object
+                required:
+                - identifier
+                - location
+                type: object
+              completionTokens:
+                description: |-
+                  ExtractionIdentifier locates a value within an HTTP request or response.
+                  Mirrors the gateway-controller management API ExtractionIdentifier model.
+                properties:
+                  fallbackIdentifiers:
+                    description: |-
+                      FallbackIdentifiers are additional locations to try, in order, when the
+                      primary identifier yields no value.
+                    items:
+                      type: string
+                    type: array
+                  identifier:
+                    description: Identifier is a JSONPath expression or header name.
+                    type: string
+                  location:
+                    description: Location is where to look for the value.
+                    enum:
+                    - header
+                    - pathParam
+                    - payload
+                    - queryParam
+                    type: string
+                  valueMap:
+                    additionalProperties:
+                      type: string
+                    description: |-
+                      ValueMap translates values the provider reports into the vocabulary the
+                      gateway works in. A reported value that is not a key is used unchanged.
+                    type: object
                 required:
                 - identifier
                 - location
@@ -73,6 +265,13 @@ spec:
                   ExtractionIdentifier locates a value within an HTTP request or response.
                   Mirrors the gateway-controller management API ExtractionIdentifier model.
                 properties:
+                  fallbackIdentifiers:
+                    description: |-
+                      FallbackIdentifiers are additional locations to try, in order, when the
+                      primary identifier yields no value.
+                    items:
+                      type: string
+                    type: array
                   identifier:
                     description: Identifier is a JSONPath expression or header name.
                     type: string
@@ -84,6 +283,47 @@ spec:
                     - payload
                     - queryParam
                     type: string
+                  valueMap:
+                    additionalProperties:
+                      type: string
+                    description: |-
+                      ValueMap translates values the provider reports into the vocabulary the
+                      gateway works in. A reported value that is not a key is used unchanged.
+                    type: object
+                required:
+                - identifier
+                - location
+                type: object
+              reasoningTokens:
+                description: |-
+                  ExtractionIdentifier locates a value within an HTTP request or response.
+                  Mirrors the gateway-controller management API ExtractionIdentifier model.
+                properties:
+                  fallbackIdentifiers:
+                    description: |-
+                      FallbackIdentifiers are additional locations to try, in order, when the
+                      primary identifier yields no value.
+                    items:
+                      type: string
+                    type: array
+                  identifier:
+                    description: Identifier is a JSONPath expression or header name.
+                    type: string
+                  location:
+                    description: Location is where to look for the value.
+                    enum:
+                    - header
+                    - pathParam
+                    - payload
+                    - queryParam
+                    type: string
+                  valueMap:
+                    additionalProperties:
+                      type: string
+                    description: |-
+                      ValueMap translates values the provider reports into the vocabulary the
+                      gateway works in. A reported value that is not a key is used unchanged.
+                    type: object
                 required:
                 - identifier
                 - location
@@ -93,6 +333,13 @@ spec:
                   ExtractionIdentifier locates a value within an HTTP request or response.
                   Mirrors the gateway-controller management API ExtractionIdentifier model.
                 properties:
+                  fallbackIdentifiers:
+                    description: |-
+                      FallbackIdentifiers are additional locations to try, in order, when the
+                      primary identifier yields no value.
+                    items:
+                      type: string
+                    type: array
                   identifier:
                     description: Identifier is a JSONPath expression or header name.
                     type: string
@@ -104,6 +351,13 @@ spec:
                     - payload
                     - queryParam
                     type: string
+                  valueMap:
+                    additionalProperties:
+                      type: string
+                    description: |-
+                      ValueMap translates values the provider reports into the vocabulary the
+                      gateway works in. A reported value that is not a key is used unchanged.
+                    type: object
                 required:
                 - identifier
                 - location
@@ -113,6 +367,13 @@ spec:
                   ExtractionIdentifier locates a value within an HTTP request or response.
                   Mirrors the gateway-controller management API ExtractionIdentifier model.
                 properties:
+                  fallbackIdentifiers:
+                    description: |-
+                      FallbackIdentifiers are additional locations to try, in order, when the
+                      primary identifier yields no value.
+                    items:
+                      type: string
+                    type: array
                   identifier:
                     description: Identifier is a JSONPath expression or header name.
                     type: string
@@ -124,6 +385,13 @@ spec:
                     - payload
                     - queryParam
                     type: string
+                  valueMap:
+                    additionalProperties:
+                      type: string
+                    description: |-
+                      ValueMap translates values the provider reports into the vocabulary the
+                      gateway works in. A reported value that is not a key is used unchanged.
+                    type: object
                 required:
                 - identifier
                 - location
@@ -138,11 +406,18 @@ spec:
                         LLMProviderTemplateResourceMapping maps a resource path pattern to per-field
                         extraction identifiers for a given LLM API resource.
                       properties:
-                        completionTokens:
+                        audioInputTokens:
                           description: |-
                             ExtractionIdentifier locates a value within an HTTP request or response.
                             Mirrors the gateway-controller management API ExtractionIdentifier model.
                           properties:
+                            fallbackIdentifiers:
+                              description: |-
+                                FallbackIdentifiers are additional locations to try, in order, when the
+                                primary identifier yields no value.
+                              items:
+                                type: string
+                              type: array
                             identifier:
                               description: Identifier is a JSONPath expression or
                                 header name.
@@ -155,6 +430,196 @@ spec:
                               - payload
                               - queryParam
                               type: string
+                            valueMap:
+                              additionalProperties:
+                                type: string
+                              description: |-
+                                ValueMap translates values the provider reports into the vocabulary the
+                                gateway works in. A reported value that is not a key is used unchanged.
+                              type: object
+                          required:
+                          - identifier
+                          - location
+                          type: object
+                        audioOutputTokens:
+                          description: |-
+                            ExtractionIdentifier locates a value within an HTTP request or response.
+                            Mirrors the gateway-controller management API ExtractionIdentifier model.
+                          properties:
+                            fallbackIdentifiers:
+                              description: |-
+                                FallbackIdentifiers are additional locations to try, in order, when the
+                                primary identifier yields no value.
+                              items:
+                                type: string
+                              type: array
+                            identifier:
+                              description: Identifier is a JSONPath expression or
+                                header name.
+                              type: string
+                            location:
+                              description: Location is where to look for the value.
+                              enum:
+                              - header
+                              - pathParam
+                              - payload
+                              - queryParam
+                              type: string
+                            valueMap:
+                              additionalProperties:
+                                type: string
+                              description: |-
+                                ValueMap translates values the provider reports into the vocabulary the
+                                gateway works in. A reported value that is not a key is used unchanged.
+                              type: object
+                          required:
+                          - identifier
+                          - location
+                          type: object
+                        cacheAccounting:
+                          description: |-
+                            CacheAccounting overrides the template-level cache accounting mode for
+                            this resource. When omitted, the template-level value is inherited.
+                          enum:
+                          - inclusive
+                          - additive
+                          type: string
+                        cacheWrite1hTokens:
+                          description: |-
+                            ExtractionIdentifier locates a value within an HTTP request or response.
+                            Mirrors the gateway-controller management API ExtractionIdentifier model.
+                          properties:
+                            fallbackIdentifiers:
+                              description: |-
+                                FallbackIdentifiers are additional locations to try, in order, when the
+                                primary identifier yields no value.
+                              items:
+                                type: string
+                              type: array
+                            identifier:
+                              description: Identifier is a JSONPath expression or
+                                header name.
+                              type: string
+                            location:
+                              description: Location is where to look for the value.
+                              enum:
+                              - header
+                              - pathParam
+                              - payload
+                              - queryParam
+                              type: string
+                            valueMap:
+                              additionalProperties:
+                                type: string
+                              description: |-
+                                ValueMap translates values the provider reports into the vocabulary the
+                                gateway works in. A reported value that is not a key is used unchanged.
+                              type: object
+                          required:
+                          - identifier
+                          - location
+                          type: object
+                        cacheWriteTokens:
+                          description: |-
+                            ExtractionIdentifier locates a value within an HTTP request or response.
+                            Mirrors the gateway-controller management API ExtractionIdentifier model.
+                          properties:
+                            fallbackIdentifiers:
+                              description: |-
+                                FallbackIdentifiers are additional locations to try, in order, when the
+                                primary identifier yields no value.
+                              items:
+                                type: string
+                              type: array
+                            identifier:
+                              description: Identifier is a JSONPath expression or
+                                header name.
+                              type: string
+                            location:
+                              description: Location is where to look for the value.
+                              enum:
+                              - header
+                              - pathParam
+                              - payload
+                              - queryParam
+                              type: string
+                            valueMap:
+                              additionalProperties:
+                                type: string
+                              description: |-
+                                ValueMap translates values the provider reports into the vocabulary the
+                                gateway works in. A reported value that is not a key is used unchanged.
+                              type: object
+                          required:
+                          - identifier
+                          - location
+                          type: object
+                        cachedTokens:
+                          description: |-
+                            ExtractionIdentifier locates a value within an HTTP request or response.
+                            Mirrors the gateway-controller management API ExtractionIdentifier model.
+                          properties:
+                            fallbackIdentifiers:
+                              description: |-
+                                FallbackIdentifiers are additional locations to try, in order, when the
+                                primary identifier yields no value.
+                              items:
+                                type: string
+                              type: array
+                            identifier:
+                              description: Identifier is a JSONPath expression or
+                                header name.
+                              type: string
+                            location:
+                              description: Location is where to look for the value.
+                              enum:
+                              - header
+                              - pathParam
+                              - payload
+                              - queryParam
+                              type: string
+                            valueMap:
+                              additionalProperties:
+                                type: string
+                              description: |-
+                                ValueMap translates values the provider reports into the vocabulary the
+                                gateway works in. A reported value that is not a key is used unchanged.
+                              type: object
+                          required:
+                          - identifier
+                          - location
+                          type: object
+                        completionTokens:
+                          description: |-
+                            ExtractionIdentifier locates a value within an HTTP request or response.
+                            Mirrors the gateway-controller management API ExtractionIdentifier model.
+                          properties:
+                            fallbackIdentifiers:
+                              description: |-
+                                FallbackIdentifiers are additional locations to try, in order, when the
+                                primary identifier yields no value.
+                              items:
+                                type: string
+                              type: array
+                            identifier:
+                              description: Identifier is a JSONPath expression or
+                                header name.
+                              type: string
+                            location:
+                              description: Location is where to look for the value.
+                              enum:
+                              - header
+                              - pathParam
+                              - payload
+                              - queryParam
+                              type: string
+                            valueMap:
+                              additionalProperties:
+                                type: string
+                              description: |-
+                                ValueMap translates values the provider reports into the vocabulary the
+                                gateway works in. A reported value that is not a key is used unchanged.
+                              type: object
                           required:
                           - identifier
                           - location
@@ -164,6 +629,13 @@ spec:
                             ExtractionIdentifier locates a value within an HTTP request or response.
                             Mirrors the gateway-controller management API ExtractionIdentifier model.
                           properties:
+                            fallbackIdentifiers:
+                              description: |-
+                                FallbackIdentifiers are additional locations to try, in order, when the
+                                primary identifier yields no value.
+                              items:
+                                type: string
+                              type: array
                             identifier:
                               description: Identifier is a JSONPath expression or
                                 header name.
@@ -176,6 +648,48 @@ spec:
                               - payload
                               - queryParam
                               type: string
+                            valueMap:
+                              additionalProperties:
+                                type: string
+                              description: |-
+                                ValueMap translates values the provider reports into the vocabulary the
+                                gateway works in. A reported value that is not a key is used unchanged.
+                              type: object
+                          required:
+                          - identifier
+                          - location
+                          type: object
+                        reasoningTokens:
+                          description: |-
+                            ExtractionIdentifier locates a value within an HTTP request or response.
+                            Mirrors the gateway-controller management API ExtractionIdentifier model.
+                          properties:
+                            fallbackIdentifiers:
+                              description: |-
+                                FallbackIdentifiers are additional locations to try, in order, when the
+                                primary identifier yields no value.
+                              items:
+                                type: string
+                              type: array
+                            identifier:
+                              description: Identifier is a JSONPath expression or
+                                header name.
+                              type: string
+                            location:
+                              description: Location is where to look for the value.
+                              enum:
+                              - header
+                              - pathParam
+                              - payload
+                              - queryParam
+                              type: string
+                            valueMap:
+                              additionalProperties:
+                                type: string
+                              description: |-
+                                ValueMap translates values the provider reports into the vocabulary the
+                                gateway works in. A reported value that is not a key is used unchanged.
+                              type: object
                           required:
                           - identifier
                           - location
@@ -185,6 +699,13 @@ spec:
                             ExtractionIdentifier locates a value within an HTTP request or response.
                             Mirrors the gateway-controller management API ExtractionIdentifier model.
                           properties:
+                            fallbackIdentifiers:
+                              description: |-
+                                FallbackIdentifiers are additional locations to try, in order, when the
+                                primary identifier yields no value.
+                              items:
+                                type: string
+                              type: array
                             identifier:
                               description: Identifier is a JSONPath expression or
                                 header name.
@@ -197,6 +718,13 @@ spec:
                               - payload
                               - queryParam
                               type: string
+                            valueMap:
+                              additionalProperties:
+                                type: string
+                              description: |-
+                                ValueMap translates values the provider reports into the vocabulary the
+                                gateway works in. A reported value that is not a key is used unchanged.
+                              type: object
                           required:
                           - identifier
                           - location
@@ -206,6 +734,13 @@ spec:
                             ExtractionIdentifier locates a value within an HTTP request or response.
                             Mirrors the gateway-controller management API ExtractionIdentifier model.
                           properties:
+                            fallbackIdentifiers:
+                              description: |-
+                                FallbackIdentifiers are additional locations to try, in order, when the
+                                primary identifier yields no value.
+                              items:
+                                type: string
+                              type: array
                             identifier:
                               description: Identifier is a JSONPath expression or
                                 header name.
@@ -218,6 +753,13 @@ spec:
                               - payload
                               - queryParam
                               type: string
+                            valueMap:
+                              additionalProperties:
+                                type: string
+                              description: |-
+                                ValueMap translates values the provider reports into the vocabulary the
+                                gateway works in. A reported value that is not a key is used unchanged.
+                              type: object
                           required:
                           - identifier
                           - location
@@ -231,6 +773,13 @@ spec:
                             ExtractionIdentifier locates a value within an HTTP request or response.
                             Mirrors the gateway-controller management API ExtractionIdentifier model.
                           properties:
+                            fallbackIdentifiers:
+                              description: |-
+                                FallbackIdentifiers are additional locations to try, in order, when the
+                                primary identifier yields no value.
+                              items:
+                                type: string
+                              type: array
                             identifier:
                               description: Identifier is a JSONPath expression or
                                 header name.
@@ -243,6 +792,48 @@ spec:
                               - payload
                               - queryParam
                               type: string
+                            valueMap:
+                              additionalProperties:
+                                type: string
+                              description: |-
+                                ValueMap translates values the provider reports into the vocabulary the
+                                gateway works in. A reported value that is not a key is used unchanged.
+                              type: object
+                          required:
+                          - identifier
+                          - location
+                          type: object
+                        serviceTier:
+                          description: |-
+                            ExtractionIdentifier locates a value within an HTTP request or response.
+                            Mirrors the gateway-controller management API ExtractionIdentifier model.
+                          properties:
+                            fallbackIdentifiers:
+                              description: |-
+                                FallbackIdentifiers are additional locations to try, in order, when the
+                                primary identifier yields no value.
+                              items:
+                                type: string
+                              type: array
+                            identifier:
+                              description: Identifier is a JSONPath expression or
+                                header name.
+                              type: string
+                            location:
+                              description: Location is where to look for the value.
+                              enum:
+                              - header
+                              - pathParam
+                              - payload
+                              - queryParam
+                              type: string
+                            valueMap:
+                              additionalProperties:
+                                type: string
+                              description: |-
+                                ValueMap translates values the provider reports into the vocabulary the
+                                gateway works in. A reported value that is not a key is used unchanged.
+                              type: object
                           required:
                           - identifier
                           - location
@@ -252,6 +843,13 @@ spec:
                             ExtractionIdentifier locates a value within an HTTP request or response.
                             Mirrors the gateway-controller management API ExtractionIdentifier model.
                           properties:
+                            fallbackIdentifiers:
+                              description: |-
+                                FallbackIdentifiers are additional locations to try, in order, when the
+                                primary identifier yields no value.
+                              items:
+                                type: string
+                              type: array
                             identifier:
                               description: Identifier is a JSONPath expression or
                                 header name.
@@ -264,6 +862,13 @@ spec:
                               - payload
                               - queryParam
                               type: string
+                            valueMap:
+                              additionalProperties:
+                                type: string
+                              description: |-
+                                ValueMap translates values the provider reports into the vocabulary the
+                                gateway works in. A reported value that is not a key is used unchanged.
+                              type: object
                           required:
                           - identifier
                           - location
@@ -278,6 +883,13 @@ spec:
                   ExtractionIdentifier locates a value within an HTTP request or response.
                   Mirrors the gateway-controller management API ExtractionIdentifier model.
                 properties:
+                  fallbackIdentifiers:
+                    description: |-
+                      FallbackIdentifiers are additional locations to try, in order, when the
+                      primary identifier yields no value.
+                    items:
+                      type: string
+                    type: array
                   identifier:
                     description: Identifier is a JSONPath expression or header name.
                     type: string
@@ -289,6 +901,47 @@ spec:
                     - payload
                     - queryParam
                     type: string
+                  valueMap:
+                    additionalProperties:
+                      type: string
+                    description: |-
+                      ValueMap translates values the provider reports into the vocabulary the
+                      gateway works in. A reported value that is not a key is used unchanged.
+                    type: object
+                required:
+                - identifier
+                - location
+                type: object
+              serviceTier:
+                description: |-
+                  ExtractionIdentifier locates a value within an HTTP request or response.
+                  Mirrors the gateway-controller management API ExtractionIdentifier model.
+                properties:
+                  fallbackIdentifiers:
+                    description: |-
+                      FallbackIdentifiers are additional locations to try, in order, when the
+                      primary identifier yields no value.
+                    items:
+                      type: string
+                    type: array
+                  identifier:
+                    description: Identifier is a JSONPath expression or header name.
+                    type: string
+                  location:
+                    description: Location is where to look for the value.
+                    enum:
+                    - header
+                    - pathParam
+                    - payload
+                    - queryParam
+                    type: string
+                  valueMap:
+                    additionalProperties:
+                      type: string
+                    description: |-
+                      ValueMap translates values the provider reports into the vocabulary the
+                      gateway works in. A reported value that is not a key is used unchanged.
+                    type: object
                 required:
                 - identifier
                 - location
@@ -298,6 +951,13 @@ spec:
                   ExtractionIdentifier locates a value within an HTTP request or response.
                   Mirrors the gateway-controller management API ExtractionIdentifier model.
                 properties:
+                  fallbackIdentifiers:
+                    description: |-
+                      FallbackIdentifiers are additional locations to try, in order, when the
+                      primary identifier yields no value.
+                    items:
+                      type: string
+                    type: array
                   identifier:
                     description: Identifier is a JSONPath expression or header name.
                     type: string
@@ -309,6 +969,13 @@ spec:
                     - payload
                     - queryParam
                     type: string
+                  valueMap:
+                    additionalProperties:
+                      type: string
+                    description: |-
+                      ValueMap translates values the provider reports into the vocabulary the
+                      gateway works in. A reported value that is not a key is used unchanged.
+                    type: object
                 required:
                 - identifier
                 - location
@@ -431,11 +1098,18 @@ spec:
               payload. The non-resource extractor fields apply when no resourceMappings
               entry matches the request path.
             properties:
-              completionTokens:
+              audioInputTokens:
                 description: |-
                   ExtractionIdentifier locates a value within an HTTP request or response.
                   Mirrors the gateway-controller management API ExtractionIdentifier model.
                 properties:
+                  fallbackIdentifiers:
+                    description: |-
+                      FallbackIdentifiers are additional locations to try, in order, when the
+                      primary identifier yields no value.
+                    items:
+                      type: string
+                    type: array
                   identifier:
                     description: Identifier is a JSONPath expression or header name.
                     type: string
@@ -447,6 +1121,191 @@ spec:
                     - payload
                     - queryParam
                     type: string
+                  valueMap:
+                    additionalProperties:
+                      type: string
+                    description: |-
+                      ValueMap translates values the provider reports into the vocabulary the
+                      gateway works in. A reported value that is not a key is used unchanged.
+                    type: object
+                required:
+                - identifier
+                - location
+                type: object
+              audioOutputTokens:
+                description: |-
+                  ExtractionIdentifier locates a value within an HTTP request or response.
+                  Mirrors the gateway-controller management API ExtractionIdentifier model.
+                properties:
+                  fallbackIdentifiers:
+                    description: |-
+                      FallbackIdentifiers are additional locations to try, in order, when the
+                      primary identifier yields no value.
+                    items:
+                      type: string
+                    type: array
+                  identifier:
+                    description: Identifier is a JSONPath expression or header name.
+                    type: string
+                  location:
+                    description: Location is where to look for the value.
+                    enum:
+                    - header
+                    - pathParam
+                    - payload
+                    - queryParam
+                    type: string
+                  valueMap:
+                    additionalProperties:
+                      type: string
+                    description: |-
+                      ValueMap translates values the provider reports into the vocabulary the
+                      gateway works in. A reported value that is not a key is used unchanged.
+                    type: object
+                required:
+                - identifier
+                - location
+                type: object
+              cacheAccounting:
+                description: |-
+                  CacheAccounting states whether the provider's cached token count is part
+                  of the input total or additional to it. Defaults to inclusive.
+                enum:
+                - inclusive
+                - additive
+                type: string
+              cacheWrite1hTokens:
+                description: |-
+                  ExtractionIdentifier locates a value within an HTTP request or response.
+                  Mirrors the gateway-controller management API ExtractionIdentifier model.
+                properties:
+                  fallbackIdentifiers:
+                    description: |-
+                      FallbackIdentifiers are additional locations to try, in order, when the
+                      primary identifier yields no value.
+                    items:
+                      type: string
+                    type: array
+                  identifier:
+                    description: Identifier is a JSONPath expression or header name.
+                    type: string
+                  location:
+                    description: Location is where to look for the value.
+                    enum:
+                    - header
+                    - pathParam
+                    - payload
+                    - queryParam
+                    type: string
+                  valueMap:
+                    additionalProperties:
+                      type: string
+                    description: |-
+                      ValueMap translates values the provider reports into the vocabulary the
+                      gateway works in. A reported value that is not a key is used unchanged.
+                    type: object
+                required:
+                - identifier
+                - location
+                type: object
+              cacheWriteTokens:
+                description: |-
+                  ExtractionIdentifier locates a value within an HTTP request or response.
+                  Mirrors the gateway-controller management API ExtractionIdentifier model.
+                properties:
+                  fallbackIdentifiers:
+                    description: |-
+                      FallbackIdentifiers are additional locations to try, in order, when the
+                      primary identifier yields no value.
+                    items:
+                      type: string
+                    type: array
+                  identifier:
+                    description: Identifier is a JSONPath expression or header name.
+                    type: string
+                  location:
+                    description: Location is where to look for the value.
+                    enum:
+                    - header
+                    - pathParam
+                    - payload
+                    - queryParam
+                    type: string
+                  valueMap:
+                    additionalProperties:
+                      type: string
+                    description: |-
+                      ValueMap translates values the provider reports into the vocabulary the
+                      gateway works in. A reported value that is not a key is used unchanged.
+                    type: object
+                required:
+                - identifier
+                - location
+                type: object
+              cachedTokens:
+                description: |-
+                  ExtractionIdentifier locates a value within an HTTP request or response.
+                  Mirrors the gateway-controller management API ExtractionIdentifier model.
+                properties:
+                  fallbackIdentifiers:
+                    description: |-
+                      FallbackIdentifiers are additional locations to try, in order, when the
+                      primary identifier yields no value.
+                    items:
+                      type: string
+                    type: array
+                  identifier:
+                    description: Identifier is a JSONPath expression or header name.
+                    type: string
+                  location:
+                    description: Location is where to look for the value.
+                    enum:
+                    - header
+                    - pathParam
+                    - payload
+                    - queryParam
+                    type: string
+                  valueMap:
+                    additionalProperties:
+                      type: string
+                    description: |-
+                      ValueMap translates values the provider reports into the vocabulary the
+                      gateway works in. A reported value that is not a key is used unchanged.
+                    type: object
+                required:
+                - identifier
+                - location
+                type: object
+              completionTokens:
+                description: |-
+                  ExtractionIdentifier locates a value within an HTTP request or response.
+                  Mirrors the gateway-controller management API ExtractionIdentifier model.
+                properties:
+                  fallbackIdentifiers:
+                    description: |-
+                      FallbackIdentifiers are additional locations to try, in order, when the
+                      primary identifier yields no value.
+                    items:
+                      type: string
+                    type: array
+                  identifier:
+                    description: Identifier is a JSONPath expression or header name.
+                    type: string
+                  location:
+                    description: Location is where to look for the value.
+                    enum:
+                    - header
+                    - pathParam
+                    - payload
+                    - queryParam
+                    type: string
+                  valueMap:
+                    additionalProperties:
+                      type: string
+                    description: |-
+                      ValueMap translates values the provider reports into the vocabulary the
+                      gateway works in. A reported value that is not a key is used unchanged.
+                    type: object
                 required:
                 - identifier
                 - location
@@ -459,6 +1318,13 @@ spec:
                   ExtractionIdentifier locates a value within an HTTP request or response.
                   Mirrors the gateway-controller management API ExtractionIdentifier model.
                 properties:
+                  fallbackIdentifiers:
+                    description: |-
+                      FallbackIdentifiers are additional locations to try, in order, when the
+                      primary identifier yields no value.
+                    items:
+                      type: string
+                    type: array
                   identifier:
                     description: Identifier is a JSONPath expression or header name.
                     type: string
@@ -470,6 +1336,47 @@ spec:
                     - payload
                     - queryParam
                     type: string
+                  valueMap:
+                    additionalProperties:
+                      type: string
+                    description: |-
+                      ValueMap translates values the provider reports into the vocabulary the
+                      gateway works in. A reported value that is not a key is used unchanged.
+                    type: object
+                required:
+                - identifier
+                - location
+                type: object
+              reasoningTokens:
+                description: |-
+                  ExtractionIdentifier locates a value within an HTTP request or response.
+                  Mirrors the gateway-controller management API ExtractionIdentifier model.
+                properties:
+                  fallbackIdentifiers:
+                    description: |-
+                      FallbackIdentifiers are additional locations to try, in order, when the
+                      primary identifier yields no value.
+                    items:
+                      type: string
+                    type: array
+                  identifier:
+                    description: Identifier is a JSONPath expression or header name.
+                    type: string
+                  location:
+                    description: Location is where to look for the value.
+                    enum:
+                    - header
+                    - pathParam
+                    - payload
+                    - queryParam
+                    type: string
+                  valueMap:
+                    additionalProperties:
+                      type: string
+                    description: |-
+                      ValueMap translates values the provider reports into the vocabulary the
+                      gateway works in. A reported value that is not a key is used unchanged.
+                    type: object
                 required:
                 - identifier
                 - location
@@ -479,6 +1386,13 @@ spec:
                   ExtractionIdentifier locates a value within an HTTP request or response.
                   Mirrors the gateway-controller management API ExtractionIdentifier model.
                 properties:
+                  fallbackIdentifiers:
+                    description: |-
+                      FallbackIdentifiers are additional locations to try, in order, when the
+                      primary identifier yields no value.
+                    items:
+                      type: string
+                    type: array
                   identifier:
                     description: Identifier is a JSONPath expression or header name.
                     type: string
@@ -490,6 +1404,13 @@ spec:
                     - payload
                     - queryParam
                     type: string
+                  valueMap:
+                    additionalProperties:
+                      type: string
+                    description: |-
+                      ValueMap translates values the provider reports into the vocabulary the
+                      gateway works in. A reported value that is not a key is used unchanged.
+                    type: object
                 required:
                 - identifier
                 - location
@@ -499,6 +1420,13 @@ spec:
                   ExtractionIdentifier locates a value within an HTTP request or response.
                   Mirrors the gateway-controller management API ExtractionIdentifier model.
                 properties:
+                  fallbackIdentifiers:
+                    description: |-
+                      FallbackIdentifiers are additional locations to try, in order, when the
+                      primary identifier yields no value.
+                    items:
+                      type: string
+                    type: array
                   identifier:
                     description: Identifier is a JSONPath expression or header name.
                     type: string
@@ -510,6 +1438,13 @@ spec:
                     - payload
                     - queryParam
                     type: string
+                  valueMap:
+                    additionalProperties:
+                      type: string
+                    description: |-
+                      ValueMap translates values the provider reports into the vocabulary the
+                      gateway works in. A reported value that is not a key is used unchanged.
+                    type: object
                 required:
                 - identifier
                 - location
@@ -524,11 +1459,18 @@ spec:
                         LLMProviderTemplateResourceMapping maps a resource path pattern to per-field
                         extraction identifiers for a given LLM API resource.
                       properties:
-                        completionTokens:
+                        audioInputTokens:
                           description: |-
                             ExtractionIdentifier locates a value within an HTTP request or response.
                             Mirrors the gateway-controller management API ExtractionIdentifier model.
                           properties:
+                            fallbackIdentifiers:
+                              description: |-
+                                FallbackIdentifiers are additional locations to try, in order, when the
+                                primary identifier yields no value.
+                              items:
+                                type: string
+                              type: array
                             identifier:
                               description: Identifier is a JSONPath expression or
                                 header name.
@@ -541,6 +1483,196 @@ spec:
                               - payload
                               - queryParam
                               type: string
+                            valueMap:
+                              additionalProperties:
+                                type: string
+                              description: |-
+                                ValueMap translates values the provider reports into the vocabulary the
+                                gateway works in. A reported value that is not a key is used unchanged.
+                              type: object
+                          required:
+                          - identifier
+                          - location
+                          type: object
+                        audioOutputTokens:
+                          description: |-
+                            ExtractionIdentifier locates a value within an HTTP request or response.
+                            Mirrors the gateway-controller management API ExtractionIdentifier model.
+                          properties:
+                            fallbackIdentifiers:
+                              description: |-
+                                FallbackIdentifiers are additional locations to try, in order, when the
+                                primary identifier yields no value.
+                              items:
+                                type: string
+                              type: array
+                            identifier:
+                              description: Identifier is a JSONPath expression or
+                                header name.
+                              type: string
+                            location:
+                              description: Location is where to look for the value.
+                              enum:
+                              - header
+                              - pathParam
+                              - payload
+                              - queryParam
+                              type: string
+                            valueMap:
+                              additionalProperties:
+                                type: string
+                              description: |-
+                                ValueMap translates values the provider reports into the vocabulary the
+                                gateway works in. A reported value that is not a key is used unchanged.
+                              type: object
+                          required:
+                          - identifier
+                          - location
+                          type: object
+                        cacheAccounting:
+                          description: |-
+                            CacheAccounting overrides the template-level cache accounting mode for
+                            this resource. When omitted, the template-level value is inherited.
+                          enum:
+                          - inclusive
+                          - additive
+                          type: string
+                        cacheWrite1hTokens:
+                          description: |-
+                            ExtractionIdentifier locates a value within an HTTP request or response.
+                            Mirrors the gateway-controller management API ExtractionIdentifier model.
+                          properties:
+                            fallbackIdentifiers:
+                              description: |-
+                                FallbackIdentifiers are additional locations to try, in order, when the
+                                primary identifier yields no value.
+                              items:
+                                type: string
+                              type: array
+                            identifier:
+                              description: Identifier is a JSONPath expression or
+                                header name.
+                              type: string
+                            location:
+                              description: Location is where to look for the value.
+                              enum:
+                              - header
+                              - pathParam
+                              - payload
+                              - queryParam
+                              type: string
+                            valueMap:
+                              additionalProperties:
+                                type: string
+                              description: |-
+                                ValueMap translates values the provider reports into the vocabulary the
+                                gateway works in. A reported value that is not a key is used unchanged.
+                              type: object
+                          required:
+                          - identifier
+                          - location
+                          type: object
+                        cacheWriteTokens:
+                          description: |-
+                            ExtractionIdentifier locates a value within an HTTP request or response.
+                            Mirrors the gateway-controller management API ExtractionIdentifier model.
+                          properties:
+                            fallbackIdentifiers:
+                              description: |-
+                                FallbackIdentifiers are additional locations to try, in order, when the
+                                primary identifier yields no value.
+                              items:
+                                type: string
+                              type: array
+                            identifier:
+                              description: Identifier is a JSONPath expression or
+                                header name.
+                              type: string
+                            location:
+                              description: Location is where to look for the value.
+                              enum:
+                              - header
+                              - pathParam
+                              - payload
+                              - queryParam
+                              type: string
+                            valueMap:
+                              additionalProperties:
+                                type: string
+                              description: |-
+                                ValueMap translates values the provider reports into the vocabulary the
+                                gateway works in. A reported value that is not a key is used unchanged.
+                              type: object
+                          required:
+                          - identifier
+                          - location
+                          type: object
+                        cachedTokens:
+                          description: |-
+                            ExtractionIdentifier locates a value within an HTTP request or response.
+                            Mirrors the gateway-controller management API ExtractionIdentifier model.
+                          properties:
+                            fallbackIdentifiers:
+                              description: |-
+                                FallbackIdentifiers are additional locations to try, in order, when the
+                                primary identifier yields no value.
+                              items:
+                                type: string
+                              type: array
+                            identifier:
+                              description: Identifier is a JSONPath expression or
+                                header name.
+                              type: string
+                            location:
+                              description: Location is where to look for the value.
+                              enum:
+                              - header
+                              - pathParam
+                              - payload
+                              - queryParam
+                              type: string
+                            valueMap:
+                              additionalProperties:
+                                type: string
+                              description: |-
+                                ValueMap translates values the provider reports into the vocabulary the
+                                gateway works in. A reported value that is not a key is used unchanged.
+                              type: object
+                          required:
+                          - identifier
+                          - location
+                          type: object
+                        completionTokens:
+                          description: |-
+                            ExtractionIdentifier locates a value within an HTTP request or response.
+                            Mirrors the gateway-controller management API ExtractionIdentifier model.
+                          properties:
+                            fallbackIdentifiers:
+                              description: |-
+                                FallbackIdentifiers are additional locations to try, in order, when the
+                                primary identifier yields no value.
+                              items:
+                                type: string
+                              type: array
+                            identifier:
+                              description: Identifier is a JSONPath expression or
+                                header name.
+                              type: string
+                            location:
+                              description: Location is where to look for the value.
+                              enum:
+                              - header
+                              - pathParam
+                              - payload
+                              - queryParam
+                              type: string
+                            valueMap:
+                              additionalProperties:
+                                type: string
+                              description: |-
+                                ValueMap translates values the provider reports into the vocabulary the
+                                gateway works in. A reported value that is not a key is used unchanged.
+                              type: object
                           required:
                           - identifier
                           - location
@@ -550,6 +1682,13 @@ spec:
                             ExtractionIdentifier locates a value within an HTTP request or response.
                             Mirrors the gateway-controller management API ExtractionIdentifier model.
                           properties:
+                            fallbackIdentifiers:
+                              description: |-
+                                FallbackIdentifiers are additional locations to try, in order, when the
+                                primary identifier yields no value.
+                              items:
+                                type: string
+                              type: array
                             identifier:
                               description: Identifier is a JSONPath expression or
                                 header name.
@@ -562,6 +1701,48 @@ spec:
                               - payload
                               - queryParam
                               type: string
+                            valueMap:
+                              additionalProperties:
+                                type: string
+                              description: |-
+                                ValueMap translates values the provider reports into the vocabulary the
+                                gateway works in. A reported value that is not a key is used unchanged.
+                              type: object
+                          required:
+                          - identifier
+                          - location
+                          type: object
+                        reasoningTokens:
+                          description: |-
+                            ExtractionIdentifier locates a value within an HTTP request or response.
+                            Mirrors the gateway-controller management API ExtractionIdentifier model.
+                          properties:
+                            fallbackIdentifiers:
+                              description: |-
+                                FallbackIdentifiers are additional locations to try, in order, when the
+                                primary identifier yields no value.
+                              items:
+                                type: string
+                              type: array
+                            identifier:
+                              description: Identifier is a JSONPath expression or
+                                header name.
+                              type: string
+                            location:
+                              description: Location is where to look for the value.
+                              enum:
+                              - header
+                              - pathParam
+                              - payload
+                              - queryParam
+                              type: string
+                            valueMap:
+                              additionalProperties:
+                                type: string
+                              description: |-
+                                ValueMap translates values the provider reports into the vocabulary the
+                                gateway works in. A reported value that is not a key is used unchanged.
+                              type: object
                           required:
                           - identifier
                           - location
@@ -571,6 +1752,13 @@ spec:
                             ExtractionIdentifier locates a value within an HTTP request or response.
                             Mirrors the gateway-controller management API ExtractionIdentifier model.
                           properties:
+                            fallbackIdentifiers:
+                              description: |-
+                                FallbackIdentifiers are additional locations to try, in order, when the
+                                primary identifier yields no value.
+                              items:
+                                type: string
+                              type: array
                             identifier:
                               description: Identifier is a JSONPath expression or
                                 header name.
@@ -583,6 +1771,13 @@ spec:
                               - payload
                               - queryParam
                               type: string
+                            valueMap:
+                              additionalProperties:
+                                type: string
+                              description: |-
+                                ValueMap translates values the provider reports into the vocabulary the
+                                gateway works in. A reported value that is not a key is used unchanged.
+                              type: object
                           required:
                           - identifier
                           - location
@@ -592,6 +1787,13 @@ spec:
                             ExtractionIdentifier locates a value within an HTTP request or response.
                             Mirrors the gateway-controller management API ExtractionIdentifier model.
                           properties:
+                            fallbackIdentifiers:
+                              description: |-
+                                FallbackIdentifiers are additional locations to try, in order, when the
+                                primary identifier yields no value.
+                              items:
+                                type: string
+                              type: array
                             identifier:
                               description: Identifier is a JSONPath expression or
                                 header name.
@@ -604,6 +1806,13 @@ spec:
                               - payload
                               - queryParam
                               type: string
+                            valueMap:
+                              additionalProperties:
+                                type: string
+                              description: |-
+                                ValueMap translates values the provider reports into the vocabulary the
+                                gateway works in. A reported value that is not a key is used unchanged.
+                              type: object
                           required:
                           - identifier
                           - location
@@ -617,6 +1826,13 @@ spec:
                             ExtractionIdentifier locates a value within an HTTP request or response.
                             Mirrors the gateway-controller management API ExtractionIdentifier model.
                           properties:
+                            fallbackIdentifiers:
+                              description: |-
+                                FallbackIdentifiers are additional locations to try, in order, when the
+                                primary identifier yields no value.
+                              items:
+                                type: string
+                              type: array
                             identifier:
                               description: Identifier is a JSONPath expression or
                                 header name.
@@ -629,6 +1845,48 @@ spec:
                               - payload
                               - queryParam
                               type: string
+                            valueMap:
+                              additionalProperties:
+                                type: string
+                              description: |-
+                                ValueMap translates values the provider reports into the vocabulary the
+                                gateway works in. A reported value that is not a key is used unchanged.
+                              type: object
+                          required:
+                          - identifier
+                          - location
+                          type: object
+                        serviceTier:
+                          description: |-
+                            ExtractionIdentifier locates a value within an HTTP request or response.
+                            Mirrors the gateway-controller management API ExtractionIdentifier model.
+                          properties:
+                            fallbackIdentifiers:
+                              description: |-
+                                FallbackIdentifiers are additional locations to try, in order, when the
+                                primary identifier yields no value.
+                              items:
+                                type: string
+                              type: array
+                            identifier:
+                              description: Identifier is a JSONPath expression or
+                                header name.
+                              type: string
+                            location:
+                              description: Location is where to look for the value.
+                              enum:
+                              - header
+                              - pathParam
+                              - payload
+                              - queryParam
+                              type: string
+                            valueMap:
+                              additionalProperties:
+                                type: string
+                              description: |-
+                                ValueMap translates values the provider reports into the vocabulary the
+                                gateway works in. A reported value that is not a key is used unchanged.
+                              type: object
                           required:
                           - identifier
                           - location
@@ -638,6 +1896,13 @@ spec:
                             ExtractionIdentifier locates a value within an HTTP request or response.
                             Mirrors the gateway-controller management API ExtractionIdentifier model.
                           properties:
+                            fallbackIdentifiers:
+                              description: |-
+                                FallbackIdentifiers are additional locations to try, in order, when the
+                                primary identifier yields no value.
+                              items:
+                                type: string
+                              type: array
                             identifier:
                               description: Identifier is a JSONPath expression or
                                 header name.
@@ -650,6 +1915,13 @@ spec:
                               - payload
                               - queryParam
                               type: string
+                            valueMap:
+                              additionalProperties:
+                                type: string
+                              description: |-
+                                ValueMap translates values the provider reports into the vocabulary the
+                                gateway works in. A reported value that is not a key is used unchanged.
+                              type: object
                           required:
                           - identifier
                           - location
@@ -664,6 +1936,13 @@ spec:
                   ExtractionIdentifier locates a value within an HTTP request or response.
                   Mirrors the gateway-controller management API ExtractionIdentifier model.
                 properties:
+                  fallbackIdentifiers:
+                    description: |-
+                      FallbackIdentifiers are additional locations to try, in order, when the
+                      primary identifier yields no value.
+                    items:
+                      type: string
+                    type: array
                   identifier:
                     description: Identifier is a JSONPath expression or header name.
                     type: string
@@ -675,6 +1954,47 @@ spec:
                     - payload
                     - queryParam
                     type: string
+                  valueMap:
+                    additionalProperties:
+                      type: string
+                    description: |-
+                      ValueMap translates values the provider reports into the vocabulary the
+                      gateway works in. A reported value that is not a key is used unchanged.
+                    type: object
+                required:
+                - identifier
+                - location
+                type: object
+              serviceTier:
+                description: |-
+                  ExtractionIdentifier locates a value within an HTTP request or response.
+                  Mirrors the gateway-controller management API ExtractionIdentifier model.
+                properties:
+                  fallbackIdentifiers:
+                    description: |-
+                      FallbackIdentifiers are additional locations to try, in order, when the
+                      primary identifier yields no value.
+                    items:
+                      type: string
+                    type: array
+                  identifier:
+                    description: Identifier is a JSONPath expression or header name.
+                    type: string
+                  location:
+                    description: Location is where to look for the value.
+                    enum:
+                    - header
+                    - pathParam
+                    - payload
+                    - queryParam
+                    type: string
+                  valueMap:
+                    additionalProperties:
+                      type: string
+                    description: |-
+                      ValueMap translates values the provider reports into the vocabulary the
+                      gateway works in. A reported value that is not a key is used unchanged.
+                    type: object
                 required:
                 - identifier
                 - location
@@ -684,6 +2004,13 @@ spec:
                   ExtractionIdentifier locates a value within an HTTP request or response.
                   Mirrors the gateway-controller management API ExtractionIdentifier model.
                 properties:
+                  fallbackIdentifiers:
+                    description: |-
+                      FallbackIdentifiers are additional locations to try, in order, when the
+                      primary identifier yields no value.
+                    items:
+                      type: string
+                    type: array
                   identifier:
                     description: Identifier is a JSONPath expression or header name.
                     type: string
@@ -695,6 +2022,13 @@ spec:
                     - payload
                     - queryParam
                     type: string
+                  valueMap:
+                    additionalProperties:
+                      type: string
+                    description: |-
+                      ValueMap translates values the provider reports into the vocabulary the
+                      gateway works in. A reported value that is not a key is used unchanged.
+                    type: object
                 required:
                 - identifier
                 - location

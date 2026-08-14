@@ -1,6 +1,7 @@
 package config
 
 import (
+	"fmt"
 	"testing"
 
 	api "github.com/wso2/api-platform/gateway/gateway-controller/pkg/api/management"
@@ -593,5 +594,227 @@ func TestLLMValidator_ValidateTemplateResourceMapping_WithSpaceInResource(t *tes
 	}
 	if !found {
 		t.Errorf("Expected error for resource with spaces, got: %v", errors)
+	}
+}
+
+func TestLLMValidator_ValidateTemplateSpec_NewUsageFields_Valid(t *testing.T) {
+	v := NewLLMValidator()
+	accounting := "additive"
+	spec := &api.LLMProviderTemplateData{
+		DisplayName: "anthropic",
+		CachedTokens: &api.ExtractionIdentifier{
+			Location:   api.Payload,
+			Identifier: "$.usage.cache_read_input_tokens",
+		},
+		CacheWriteTokens: &api.ExtractionIdentifier{
+			Location:   api.Payload,
+			Identifier: "$.usage.cache_creation.ephemeral_5m_input_tokens",
+		},
+		ServiceTier: &api.ExtractionIdentifier{
+			Location:   api.Payload,
+			Identifier: "$.usage.service_tier",
+		},
+		CacheAccounting: &accounting,
+	}
+
+	errs := v.validateTemplateSpec(spec)
+	if len(errs) != 0 {
+		t.Fatalf("expected no validation errors, got %v", errs)
+	}
+}
+
+func TestLLMValidator_ValidateTemplateSpec_NewUsageFields_MissingIdentifier(t *testing.T) {
+	v := NewLLMValidator()
+	spec := &api.LLMProviderTemplateData{
+		DisplayName: "openai",
+		CachedTokens: &api.ExtractionIdentifier{
+			Location:   api.Payload,
+			Identifier: "",
+		},
+	}
+
+	errs := v.validateTemplateSpec(spec)
+	if len(errs) != 1 {
+		t.Fatalf("expected 1 validation error, got %d: %v", len(errs), errs)
+	}
+	if errs[0].Field != "spec.cachedTokens.identifier" {
+		t.Errorf("expected field spec.cachedTokens.identifier, got %s", errs[0].Field)
+	}
+}
+
+func TestLLMValidator_ValidateTemplateSpec_CacheAccounting_Invalid(t *testing.T) {
+	v := NewLLMValidator()
+	accounting := "sometimes"
+	spec := &api.LLMProviderTemplateData{
+		DisplayName:     "openai",
+		CacheAccounting: &accounting,
+	}
+
+	errs := v.validateTemplateSpec(spec)
+	if len(errs) != 1 {
+		t.Fatalf("expected 1 validation error, got %d: %v", len(errs), errs)
+	}
+	if errs[0].Field != "spec.cacheAccounting" {
+		t.Errorf("expected field spec.cacheAccounting, got %s", errs[0].Field)
+	}
+}
+
+func TestLLMValidator_ValidateTemplateSpec_CacheAccounting_OmittedIsValid(t *testing.T) {
+	v := NewLLMValidator()
+	spec := &api.LLMProviderTemplateData{DisplayName: "openai"}
+
+	errs := v.validateTemplateSpec(spec)
+	if len(errs) != 0 {
+		t.Fatalf("expected no validation errors, got %v", errs)
+	}
+}
+
+func TestLLMValidator_ValidateTemplateResourceMapping_NewUsageFields(t *testing.T) {
+	v := NewLLMValidator()
+	accounting := "inclusive"
+	mapping := &api.LLMProviderTemplateResourceMapping{
+		Resource: "/responses",
+		CachedTokens: &api.ExtractionIdentifier{
+			Location:   api.Payload,
+			Identifier: "$.usage.input_tokens_details.cached_tokens",
+		},
+		CacheAccounting: &accounting,
+	}
+
+	errs := v.validateTemplateResourceMapping("spec.resourceMappings.resources[0]", mapping)
+	if len(errs) != 0 {
+		t.Fatalf("expected no validation errors, got %v", errs)
+	}
+}
+
+// TestLLMValidator_ValidateTemplateResourceMapping_FieldPaths pins the exact
+// error field path built for each mapping-level identifier field, so a wrong
+// field-name prefix in validateTemplateResourceMapping cannot pass silently.
+func TestLLMValidator_ValidateTemplateResourceMapping_FieldPaths(t *testing.T) {
+	const prefix = "spec.resourceMappings.resources[0]"
+
+	badIdentifier := &api.ExtractionIdentifier{
+		Location:   api.Payload,
+		Identifier: "",
+	}
+
+	tests := []struct {
+		name      string
+		fieldName string
+		build     func() *api.LLMProviderTemplateResourceMapping
+	}{
+		{
+			name:      "cachedTokens",
+			fieldName: "cachedTokens",
+			build: func() *api.LLMProviderTemplateResourceMapping {
+				return &api.LLMProviderTemplateResourceMapping{Resource: "/responses", CachedTokens: badIdentifier}
+			},
+		},
+		{
+			name:      "cacheWriteTokens",
+			fieldName: "cacheWriteTokens",
+			build: func() *api.LLMProviderTemplateResourceMapping {
+				return &api.LLMProviderTemplateResourceMapping{Resource: "/responses", CacheWriteTokens: badIdentifier}
+			},
+		},
+		{
+			name:      "cacheWrite1hTokens",
+			fieldName: "cacheWrite1hTokens",
+			build: func() *api.LLMProviderTemplateResourceMapping {
+				return &api.LLMProviderTemplateResourceMapping{Resource: "/responses", CacheWrite1hTokens: badIdentifier}
+			},
+		},
+		{
+			name:      "reasoningTokens",
+			fieldName: "reasoningTokens",
+			build: func() *api.LLMProviderTemplateResourceMapping {
+				return &api.LLMProviderTemplateResourceMapping{Resource: "/responses", ReasoningTokens: badIdentifier}
+			},
+		},
+		{
+			name:      "audioInputTokens",
+			fieldName: "audioInputTokens",
+			build: func() *api.LLMProviderTemplateResourceMapping {
+				return &api.LLMProviderTemplateResourceMapping{Resource: "/responses", AudioInputTokens: badIdentifier}
+			},
+		},
+		{
+			name:      "audioOutputTokens",
+			fieldName: "audioOutputTokens",
+			build: func() *api.LLMProviderTemplateResourceMapping {
+				return &api.LLMProviderTemplateResourceMapping{Resource: "/responses", AudioOutputTokens: badIdentifier}
+			},
+		},
+		{
+			name:      "serviceTier",
+			fieldName: "serviceTier",
+			build: func() *api.LLMProviderTemplateResourceMapping {
+				return &api.LLMProviderTemplateResourceMapping{Resource: "/responses", ServiceTier: badIdentifier}
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			v := NewLLMValidator()
+			mapping := tt.build()
+
+			errs := v.validateTemplateResourceMapping(prefix, mapping)
+			if len(errs) != 1 {
+				t.Fatalf("expected exactly 1 validation error, got %d: %v", len(errs), errs)
+			}
+
+			wantField := fmt.Sprintf("%s.%s.identifier", prefix, tt.fieldName)
+			if errs[0].Field != wantField {
+				t.Errorf("expected field %q, got %q", wantField, errs[0].Field)
+			}
+		})
+	}
+}
+
+// TestLLMValidator_ValidateTemplateResourceMapping_CacheAccounting_Invalid pins
+// the exact error field path for an invalid mapping-level cacheAccounting value.
+func TestLLMValidator_ValidateTemplateResourceMapping_CacheAccounting_Invalid(t *testing.T) {
+	const prefix = "spec.resourceMappings.resources[0]"
+	v := NewLLMValidator()
+	accounting := "sometimes"
+	mapping := &api.LLMProviderTemplateResourceMapping{
+		Resource:        "/responses",
+		CacheAccounting: &accounting,
+	}
+
+	errs := v.validateTemplateResourceMapping(prefix, mapping)
+	if len(errs) != 1 {
+		t.Fatalf("expected exactly 1 validation error, got %d: %v", len(errs), errs)
+	}
+
+	wantField := prefix + ".cacheAccounting"
+	if errs[0].Field != wantField {
+		t.Errorf("expected field %q, got %q", wantField, errs[0].Field)
+	}
+}
+
+// TestLLMValidator_ValidateExtractionIdentifier_EmptyFallback pins the exact
+// error field path for an empty entry inside fallbackIdentifiers.
+func TestLLMValidator_ValidateExtractionIdentifier_EmptyFallback(t *testing.T) {
+	v := NewLLMValidator()
+	fallbacks := []string{"$.usage.prompt_tokens", ""}
+	spec := &api.LLMProviderTemplateData{
+		DisplayName: "bedrock",
+		PromptTokens: &api.ExtractionIdentifier{
+			Location:            api.Payload,
+			Identifier:          "$.usage.inputTokens",
+			FallbackIdentifiers: &fallbacks,
+		},
+	}
+
+	errs := v.validateTemplateSpec(spec)
+	if len(errs) != 1 {
+		t.Fatalf("expected exactly 1 validation error, got %d: %v", len(errs), errs)
+	}
+
+	wantField := "spec.promptTokens.fallbackIdentifiers[1]"
+	if errs[0].Field != wantField {
+		t.Errorf("expected field %q, got %q", wantField, errs[0].Field)
 	}
 }

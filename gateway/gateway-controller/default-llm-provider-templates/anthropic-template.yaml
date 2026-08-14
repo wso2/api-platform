@@ -40,3 +40,21 @@ spec:
   responseModel:
     location: payload
     identifier: $.model
+    fallbackIdentifiers:
+      - $.message.model
+  cachedTokens:
+    location: payload
+    identifier: $.usage.cache_read_input_tokens
+  cacheWriteTokens:
+    location: payload
+    identifier: $.usage.cache_creation.ephemeral_5m_input_tokens
+  cacheWrite1hTokens:
+    location: payload
+    identifier: $.usage.cache_creation.ephemeral_1h_input_tokens
+  serviceTier:
+    location: payload
+    identifier: $.usage.service_tier
+    valueMap:
+      priority: priority
+      batch: batch
+  cacheAccounting: additive

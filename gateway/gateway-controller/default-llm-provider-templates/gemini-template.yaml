@@ -43,3 +43,20 @@ spec:
   responseModel:
     location: payload
     identifier: $.modelVersion
+  serviceTier:
+    location: payload
+    identifier: $.usageMetadata.serviceTier  # Developer API
+    fallbackIdentifiers:
+      - $.usageMetadata.trafficType # Vertex API
+    valueMap:
+      priority: priority
+      flex: flex
+      ON_DEMAND_PRIORITY: priority
+      ON_DEMAND_FLEX: flex
+  cachedTokens:
+    location: payload
+    identifier: $.usageMetadata.cachedContentTokenCount
+  reasoningTokens:
+    location: payload
+    identifier: $.usageMetadata.thoughtsTokenCount
+  cacheAccounting: inclusive

@@ -1807,6 +1807,35 @@ and
     "location": "payload",
     "identifier": "$.usage.inputTokens"
   },
+  "cachedTokens": {
+    "location": "payload",
+    "identifier": "$.usage.inputTokens"
+  },
+  "cacheWriteTokens": {
+    "location": "payload",
+    "identifier": "$.usage.inputTokens"
+  },
+  "cacheWrite1hTokens": {
+    "location": "payload",
+    "identifier": "$.usage.inputTokens"
+  },
+  "reasoningTokens": {
+    "location": "payload",
+    "identifier": "$.usage.inputTokens"
+  },
+  "audioInputTokens": {
+    "location": "payload",
+    "identifier": "$.usage.inputTokens"
+  },
+  "audioOutputTokens": {
+    "location": "payload",
+    "identifier": "$.usage.inputTokens"
+  },
+  "serviceTier": {
+    "location": "payload",
+    "identifier": "$.usage.inputTokens"
+  },
+  "cacheAccounting": "inclusive",
   "resourceMappings": {
     "resources": [
       {
@@ -1834,7 +1863,36 @@ and
         "responseModel": {
           "location": "payload",
           "identifier": "$.usage.inputTokens"
-        }
+        },
+        "cachedTokens": {
+          "location": "payload",
+          "identifier": "$.usage.inputTokens"
+        },
+        "cacheWriteTokens": {
+          "location": "payload",
+          "identifier": "$.usage.inputTokens"
+        },
+        "cacheWrite1hTokens": {
+          "location": "payload",
+          "identifier": "$.usage.inputTokens"
+        },
+        "reasoningTokens": {
+          "location": "payload",
+          "identifier": "$.usage.inputTokens"
+        },
+        "audioInputTokens": {
+          "location": "payload",
+          "identifier": "$.usage.inputTokens"
+        },
+        "audioOutputTokens": {
+          "location": "payload",
+          "identifier": "$.usage.inputTokens"
+        },
+        "serviceTier": {
+          "location": "payload",
+          "identifier": "$.usage.inputTokens"
+        },
+        "cacheAccounting": "inclusive"
       }
     ]
   }
@@ -1856,6 +1914,14 @@ and
 |remainingTokens|[ExtractionIdentifier](#schemaextractionidentifier)|false|none|none|
 |requestModel|[ExtractionIdentifier](#schemaextractionidentifier)|false|none|none|
 |responseModel|[ExtractionIdentifier](#schemaextractionidentifier)|false|none|none|
+|cachedTokens|[ExtractionIdentifier](#schemaextractionidentifier)|false|none|none|
+|cacheWriteTokens|[ExtractionIdentifier](#schemaextractionidentifier)|false|none|none|
+|cacheWrite1hTokens|[ExtractionIdentifier](#schemaextractionidentifier)|false|none|none|
+|reasoningTokens|[ExtractionIdentifier](#schemaextractionidentifier)|false|none|none|
+|audioInputTokens|[ExtractionIdentifier](#schemaextractionidentifier)|false|none|none|
+|audioOutputTokens|[ExtractionIdentifier](#schemaextractionidentifier)|false|none|none|
+|serviceTier|[ExtractionIdentifier](#schemaextractionidentifier)|false|none|none|
+|cacheAccounting|string|false|none|Whether the cached token count reported by the provider is already<br>part of the input token total, or additional to it. One of<br>'inclusive' or 'additive'. Defaults to inclusive when omitted.|
 |resourceMappings|[LLMProviderTemplateResourceMappings](#schemallmprovidertemplateresourcemappings)|false|none|none|
 
 ## LLMProviderTemplateResourceMappings
@@ -1893,7 +1959,36 @@ and
       "responseModel": {
         "location": "payload",
         "identifier": "$.usage.inputTokens"
-      }
+      },
+      "cachedTokens": {
+        "location": "payload",
+        "identifier": "$.usage.inputTokens"
+      },
+      "cacheWriteTokens": {
+        "location": "payload",
+        "identifier": "$.usage.inputTokens"
+      },
+      "cacheWrite1hTokens": {
+        "location": "payload",
+        "identifier": "$.usage.inputTokens"
+      },
+      "reasoningTokens": {
+        "location": "payload",
+        "identifier": "$.usage.inputTokens"
+      },
+      "audioInputTokens": {
+        "location": "payload",
+        "identifier": "$.usage.inputTokens"
+      },
+      "audioOutputTokens": {
+        "location": "payload",
+        "identifier": "$.usage.inputTokens"
+      },
+      "serviceTier": {
+        "location": "payload",
+        "identifier": "$.usage.inputTokens"
+      },
+      "cacheAccounting": "inclusive"
     }
   ]
 }
@@ -1939,7 +2034,36 @@ and
   "responseModel": {
     "location": "payload",
     "identifier": "$.usage.inputTokens"
-  }
+  },
+  "cachedTokens": {
+    "location": "payload",
+    "identifier": "$.usage.inputTokens"
+  },
+  "cacheWriteTokens": {
+    "location": "payload",
+    "identifier": "$.usage.inputTokens"
+  },
+  "cacheWrite1hTokens": {
+    "location": "payload",
+    "identifier": "$.usage.inputTokens"
+  },
+  "reasoningTokens": {
+    "location": "payload",
+    "identifier": "$.usage.inputTokens"
+  },
+  "audioInputTokens": {
+    "location": "payload",
+    "identifier": "$.usage.inputTokens"
+  },
+  "audioOutputTokens": {
+    "location": "payload",
+    "identifier": "$.usage.inputTokens"
+  },
+  "serviceTier": {
+    "location": "payload",
+    "identifier": "$.usage.inputTokens"
+  },
+  "cacheAccounting": "inclusive"
 }
 
 ```
@@ -1955,6 +2079,14 @@ and
 |remainingTokens|[ExtractionIdentifier](#schemaextractionidentifier)|false|none|none|
 |requestModel|[ExtractionIdentifier](#schemaextractionidentifier)|false|none|none|
 |responseModel|[ExtractionIdentifier](#schemaextractionidentifier)|false|none|none|
+|cachedTokens|[ExtractionIdentifier](#schemaextractionidentifier)|false|none|none|
+|cacheWriteTokens|[ExtractionIdentifier](#schemaextractionidentifier)|false|none|none|
+|cacheWrite1hTokens|[ExtractionIdentifier](#schemaextractionidentifier)|false|none|none|
+|reasoningTokens|[ExtractionIdentifier](#schemaextractionidentifier)|false|none|none|
+|audioInputTokens|[ExtractionIdentifier](#schemaextractionidentifier)|false|none|none|
+|audioOutputTokens|[ExtractionIdentifier](#schemaextractionidentifier)|false|none|none|
+|serviceTier|[ExtractionIdentifier](#schemaextractionidentifier)|false|none|none|
+|cacheAccounting|string|false|none|Whether the cached token count reported by the provider is already<br>part of the input token total, or additional to it. One of<br>'inclusive' or 'additive'. Overrides the template-level setting for<br>this resource; when omitted, the template-level value is inherited.|
 
 ## ExtractionIdentifier
 
