@@ -75,6 +75,28 @@ describe('key managers', () => {
         expect(get.status).toBe(404);
     });
 
+    it('deletes a key manager linked to applications by client ID', async () => {
+        await client.login('developer');
+        const kmId = uniqueHandle('km');
+        await client.as('admin').post('/key-managers', {
+            id: kmId, displayName: 'Linked KM', tokenEndpoint: 'https://asgardeo.example.invalid/oauth2/token',
+        });
+
+        const appId = uniqueHandle('app');
+        await client.as('developer').post('/applications', { id: appId, displayName: 'Linked App', description: 'd' });
+        await client.as('developer').post(`/applications/${appId}/generate-keys`, {
+            keyManager: kmId,
+            type: 'PRODUCTION',
+            consumerKey: 'test-client-id',
+        });
+
+        const del = await client.as('admin').del(`/key-managers/${kmId}`);
+        expect(del.status).toBe(204);
+
+        const get = await client.as('admin').get(`/key-managers/${kmId}`);
+        expect(get.status).toBe(404);
+    });
+
     it('lists key managers for an org', async () => {
         const id = uniqueHandle('km');
         await client.as('admin').post('/key-managers', {
