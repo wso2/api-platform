@@ -25,7 +25,8 @@ BUILD_DATE := $(shell date -u +"%Y-%m-%dT%H:%M:%SZ")
 
 # Docker image configuration
 DOCKER_REGISTRY ?= ghcr.io/wso2/api-platform
-IMAGE_NAME := $(DOCKER_REGISTRY)/platform-api
+IMAGE_SUFFIX ?= platform-api
+IMAGE_NAME := $(DOCKER_REGISTRY)/$(IMAGE_SUFFIX)
 PORT ?= 9243
 
 # Integration test configuration
@@ -39,7 +40,7 @@ REPO_ROOT := $(shell git rev-parse --show-toplevel)
 APIDOCS_TOOLS_DIR := $(REPO_ROOT)/tools/apidocs
 DOCS_OUT_DIR := $(REPO_ROOT)/docs/rest-apis/platform-api
 
-.PHONY: help build test push build-and-push-multiarch it it-sqlite it-postgres it-sqlserver it-all-dbs generate generate-apidocs setup-local-dev run-local
+.PHONY: help build test push build-and-push-multiarch build-and-push-cloud-multiarch it it-sqlite it-postgres it-sqlserver it-all-dbs generate generate-apidocs setup-local-dev run-local
 
 help: ## Show this help message
 	@echo 'Platform API Build System (Version: $(VERSION))'
@@ -145,6 +146,20 @@ build-and-push-multiarch: ## Build and push multi-architecture Docker image (lin
 		--build-arg VERSION=$(VERSION) \
 		--build-arg GIT_COMMIT=$(GIT_COMMIT) \
 		--build-arg PORT=$(PORT) \
+		-t $(IMAGE_NAME):$(VERSION) \
+		--push \
+		.
+
+build-and-push-cloud-multiarch: ## Build and push multi-architecture Docker image for cloud (linux/amd64, linux/arm64); supports EXTRA_BUILD_ARGS
+	@echo "Building and pushing multi-arch cloud Docker image: $(IMAGE_NAME):$(VERSION)"
+	docker buildx build -f Dockerfile \
+		--platform linux/amd64,linux/arm64 \
+		--build-context common=../common \
+		--build-context httpkit=../httpkit \
+		--build-arg VERSION=$(VERSION) \
+		--build-arg GIT_COMMIT=$(GIT_COMMIT) \
+		--build-arg PORT=$(PORT) \
+		$(EXTRA_BUILD_ARGS) \
 		-t $(IMAGE_NAME):$(VERSION) \
 		--push \
 		.

@@ -113,6 +113,12 @@ build-and-push-platform-api-multiarch: ## Build and push platform-api Docker ima
 	$(MAKE) -C platform-api build-and-push-multiarch VERSION=$(PLATFORM_API_VERSION)
 	@echo "Successfully built and pushed multi-arch platform-api"
 
+.PHONY: build-and-push-platform-api-cloud-multiarch
+build-and-push-platform-api-cloud-multiarch: ## Build and push platform-api cloud Docker image; pass DOCKER_REGISTRY and EXTRA_BUILD_ARGS for cloud-specific config
+	@echo "Building and pushing multi-arch cloud platform-api ($(PLATFORM_API_VERSION))..."
+	$(MAKE) -C platform-api build-and-push-cloud-multiarch VERSION=$(PLATFORM_API_VERSION) DOCKER_REGISTRY=$(DOCKER_REGISTRY) IMAGE_SUFFIX=$(IMAGE_SUFFIX) EXTRA_BUILD_ARGS="$(EXTRA_BUILD_ARGS)"
+	@echo "Successfully built and pushed multi-arch cloud platform-api"
+
 .PHONY: build-and-push-api-portal-multiarch
 build-and-push-api-portal-multiarch: ## Build and push API Portal Docker image for multiple architectures (amd64, arm64)
 	@echo "Building and pushing multi-arch API Portal ($(API_PORTAL_VERSION))..."
