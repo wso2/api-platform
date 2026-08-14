@@ -16,46 +16,68 @@
  * under the License.
  */
 
-import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { OxygenUIThemeProvider, WSO2Theme } from '@wso2/oxygen-ui';
+import { type ReactNode, useState } from 'react';
+import { QueryClientProvider } from '@tanstack/react-query';
+import { OxygenUIThemeProvider, OxygenTheme } from '@wso2/oxygen-ui';
 import { BrowserRouter } from 'react-router-dom';
 
 import { ApiClientProvider } from './api/ApiClientProvider';
+import { createQueryClient } from './api/core/queryClient';
 import { ErrorBoundary } from './components/ErrorBoundary';
-import { NotificationProvider } from './components/Notifications';
+import { NotificationProvider, useNotifications } from './components/Notifications';
 import { runtimeConfig } from './config/runtime';
 import { AuthProvider } from './features/auth/AuthProvider';
 import { ProductActivation } from './features/billing/ProductActivation';
 import { AppRoutes } from './routes/AppRoutes';
 
-const isProduction = import.meta.env.PROD;
+/**
+ * Builds the app's QueryClient with the notification handler already attached,
+ * which is why it lives below `NotificationProvider` rather than at module
+ * scope.
+ *
+ * The handler is what stops a failed mutation from failing silently: it fires
+ * for every mutation error, including ones whose own `onError` performs an
+ * optimistic rollback, so a component that forgets to surface an error still
+ * cannot swallow it.
+ *
+ * `useState` with an initializer creates the client exactly once per mount —
+ * building it inline on every render would discard the whole cache each time.
+ */
+function AppQueryProvider({ children }: { children: ReactNode }) {
+  const { notify } = useNotifications();
+  const [queryClient] = useState(() =>
+    createQueryClient({
+      onMutationError: (error) => notify(error.message, 'error'),
+    })
+  );
 
-const queryClient = new QueryClient({
-  defaultOptions: {
-    queries: {
-      retry: isProduction ? 2 : false,
-      refetchOnWindowFocus: isProduction,
-    },
-  },
-});
+  return (
+    <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>
+  );
+}
 
 export default function App() {
   return (
-    <OxygenUIThemeProvider theme={WSO2Theme}>
-      <ApiClientProvider>
-        <QueryClientProvider client={queryClient}>
-          <ErrorBoundary>
-            <BrowserRouter basename={runtimeConfig.appBasePath || undefined}>
-              <AuthProvider>
-                <ProductActivation />
-                <NotificationProvider>
+    <OxygenUIThemeProvider theme={OxygenTheme}>
+      {/*
+        NotificationProvider sits above the query client so the client can be
+        constructed with a handler that reports mutation failures to the user.
+        It depends on nothing below it, so hoisting it is free.
+      */}
+      <NotificationProvider>
+        <AppQueryProvider>
+          <ApiClientProvider>
+            <ErrorBoundary>
+              <BrowserRouter basename={runtimeConfig.appBasePath || undefined}>
+                <AuthProvider>
+                  <ProductActivation />
                   <AppRoutes />
-                </NotificationProvider>
-              </AuthProvider>
-            </BrowserRouter>
-          </ErrorBoundary>
-        </QueryClientProvider>
-      </ApiClientProvider>
+                </AuthProvider>
+              </BrowserRouter>
+            </ErrorBoundary>
+          </ApiClientProvider>
+        </AppQueryProvider>
+      </NotificationProvider>
     </OxygenUIThemeProvider>
   );
 }

@@ -22,6 +22,7 @@ import { runtimeConfig } from '../../config/runtime';
 import { CSRF_HEADER, CSRF_HEADER_VALUE } from './authConstants';
 import { AuthStateContext } from './AuthStateContext';
 import type { AuthState, AuthStatus, AuthUser } from './authTypes';
+import { onSessionExpired } from '../../api/core/sessionEvents';
 
 const SESSION_URL = '/api/session';
 const LOGIN_URL = '/api/login';
@@ -84,6 +85,23 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     void hydrate();
   }, [hydrate]);
+
+  /**
+   * Re-checks the session when the API layer reports a 401.
+   *
+   * Without this, an expired session surfaced only as individual failed
+   * requests: the user sat on a screen where nothing worked and nothing
+   * explained why. Re-hydrating asks the BFF what is actually true; it may
+   * have renewed the session server-side, in which case the answer is
+   * "still authenticated" and nothing further happens; otherwise `status`
+   * becomes unauthenticated (or `expired`) and `ProtectedRoute` redirects.
+   *
+   * The transport publishes rather than calling in, so it never imports this
+   * provider; that would be a cycle and would make the client untestable. It
+   * also debounces, so a screen firing eight parallel requests against a dead
+   * session triggers one re-check, not eight.
+   */
+  useEffect(() => onSessionExpired(() => void hydrate()), [hydrate]);
 
   const login = useCallback((returnTo = window.location.pathname) => {
     window.location.assign(`${OIDC_LOGIN_URL}?return=${encodeURIComponent(returnTo)}`);

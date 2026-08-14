@@ -25,6 +25,7 @@ import {
   useProject,
   useProjects,
 } from '../api/hooks/useMvpQueries';
+import { ApiScopeProvider } from '../api/core/ApiScopeProvider';
 import { useAuth } from '../features/auth/AuthProvider';
 import { getApiCapabilities } from '../features/apis/apiCapabilities';
 import {
@@ -216,7 +217,26 @@ export function ConsoleScopeProvider({ children }: { children: ReactNode }) {
 
   return (
     <ConsoleScopeContext.Provider value={value}>
-      {children}
+      {/*
+        Bridges route scope into the new API layer, whose hooks read
+        `ApiScopeContext` and stay gated until an organization is known.
+
+        Mounted here, inside this provider, because this component already owns
+        the (currently two-source) route-param derivation. That is transitional:
+        once the contexts are split properly, `ApiScopeProvider` moves above
+        this one and takes its ids straight from the router, and this nesting
+        goes away.
+
+        Note the ids differ from the ones above deliberately — the API layer
+        wants the raw route params, not the token-gated `queryOrgHandle` the old
+        hooks need, because it has no token exchange to wait on.
+      */}
+      <ApiScopeProvider
+        orgId={params.orgHandle}
+        projectId={params.projectHandler}
+      >
+        {children}
+      </ApiScopeProvider>
     </ConsoleScopeContext.Provider>
   );
 }
