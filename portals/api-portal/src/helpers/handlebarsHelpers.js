@@ -107,7 +107,13 @@ const helpers = {
     },
 
     // Comparison / logic helpers
-    eq: (a, b) => a === b || (a != null && b != null && (a === b.toString() || a.toString() === b)),
+    eq: (a, b) => {
+        if (a === b) return true;
+        const normA = (a == null ? '' : a);
+        const normB = (b == null ? '' : b);
+        if (normA === '' && normB === '') return true;
+        return a != null && b != null && (a === b.toString() || a.toString() === b);
+    },
     compare: function (a, operator, b, options) {
         if (arguments.length < 4) throw new Error('Handlebars Helper "compare" needs 3 parameters');
         const ops = { '===': a === b, '!==': a !== b, '<': a < b, '>': a > b, '<=': a <= b, '>=': a >= b };
