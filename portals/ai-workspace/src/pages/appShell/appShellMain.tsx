@@ -48,6 +48,7 @@ import {
 import { logger } from '../../utils/logger';
 import { FormattedMessage } from 'react-intl';
 import OoopsImage from '../../assets/images/Ooops.svg';
+import { useAIWorkspaceExtensions } from '../../extensions';
 
 type SelectableOrg = {
   id: string;
@@ -64,6 +65,7 @@ type SelectableProject = {
 export default function AppLayout(): JSX.Element {
   const navigate = useNavigate();
   const location = useLocation();
+  const extensions = useAIWorkspaceExtensions();
   const { logout } = useAppAuth();
   // [standalone] const { signOut } = useAuthContext();
 
@@ -142,6 +144,16 @@ export default function AppLayout(): JSX.Element {
       ? segments[3] ?? ''
       : segments[1] ?? '';
     const tertiarySegment = isOrgScoped ? segments[4] ?? '' : segments[2] ?? '';
+    const extensionSegment = primarySegment === 'projects'
+      ? tertiarySegment
+      : primarySegment;
+    const activeExtension = extensions.find(
+      (extension) => extension.path.split('/')[0] === extensionSegment
+    );
+    if (activeExtension) {
+      shellActions.setActiveMenuItem(activeExtension.id);
+      return;
+    }
 
     if (!primarySegment || primarySegment === 'home') {
       shellActions.setActiveMenuItem('overview');
@@ -240,7 +252,7 @@ export default function AppLayout(): JSX.Element {
     if (primarySegment === 'settings') {
       shellActions.setActiveMenuItem('settings');
     }
-  }, [location.pathname, shellActions, currentProject, currentOrganization]);
+  }, [location.pathname, shellActions, currentProject, currentOrganization, extensions]);
 
   useEffect(() => {
     const legalLinks = [
