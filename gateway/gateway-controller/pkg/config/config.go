@@ -305,6 +305,71 @@ type ServerConfig struct {
 	ShutdownTimeout                 time.Duration `koanf:"shutdown_timeout"`
 	GatewayID                       string        `koanf:"gateway_id"`
 	SkipInvalidDeploymentsOnStartup bool          `koanf:"skip_invalid_deployments_on_startup"`
+
+	// TLS starts a second, TLS-only listener on TLS.Port serving the same
+	// REST management API as the plaintext listener on APIPort. Off by
+	// default.
+	TLS ServerTLSConfig `koanf:"tls"`
+}
+
+// ServerTLSConfig holds configuration for an additional TLS listener for the
+// REST management API. It is served alongside — not instead of — the
+// plaintext listener on ServerConfig.APIPort, so enabling it never breaks an
+// existing plaintext deployment. Same shape and naming conventions as
+// policy-engine's AdminTLSConfig (gateway-runtime/policy-engine/internal/config) —
+// keep the two in sync if either changes, they are independent implementations
+// (different Go modules) of the same pattern.
+type ServerTLSConfig struct {
+	// Enabled starts the TLS listener on Port. Off by default: no
+	// certificate is provisioned by default, and the plaintext listener
+	// keeps working either way.
+	Enabled bool `koanf:"enabled"`
+
+	// Port is the port for the TLS REST API listener. Must differ from every
+	// other configured controller port (server.api_port, server.xds_port,
+	// admin_server.port, metrics.port).
+	Port int `koanf:"port"`
+
+	// CertPath and KeyPath are the PEM-encoded server certificate and
+	// private key for the TLS listener. Required when Enabled.
+	CertPath string `koanf:"cert_path"`
+	KeyPath  string `koanf:"key_path"`
+
+	// MinimumProtocolVersion and MaximumProtocolVersion bound the negotiated
+	// TLS version: one of "TLS1_0", "TLS1_1", "TLS1_2", "TLS1_3". Same
+	// vocabulary as router.downstream_tls/upstream_tls for consistency
+	// within the shared config file.
+	MinimumProtocolVersion string `koanf:"minimum_protocol_version"`
+	MaximumProtocolVersion string `koanf:"maximum_protocol_version"`
+
+	// Ciphers is a comma-separated list of Go crypto/tls cipher suite names
+	// (e.g. "TLS_ECDHE_ECDSA_WITH_AES_128_GCM_SHA256"), restricting which
+	// suites this listener will negotiate. Empty by default, meaning Go's
+	// own secure default set/order applies. Only affects TLS 1.2 and below —
+	// TLS 1.3 suite selection is not configurable in Go's crypto/tls.
+	//
+	// Note this is a different naming scheme than router.downstream_tls's
+	// ciphers field (OpenSSL/BoringSSL names like
+	// "ECDHE-ECDSA-AES128-GCM-SHA256"): this listener is served by Go's own
+	// crypto/tls, not Envoy, so it uses Go's canonical cipher suite names —
+	// see crypto/tls.CipherSuites for the supported list.
+	Ciphers string `koanf:"ciphers"`
+
+	// EcdhCurves is a comma-separated list of TLS 1.3 key-exchange groups,
+	// most preferred first (e.g. "X25519,P-256"). Classical curves only by
+	// default. A hybrid post-quantum group ("X25519MLKEM768", FIPS 203
+	// ML-KEM-768 + X25519) can be prepended as an explicit opt-in once the
+	// clients that reach this listener are confirmed to support it.
+	//
+	// Unlike router.downstream_tls/upstream_tls's EcdhCurves, this listener
+	// is served directly by this process's own Go crypto/tls (1.23+
+	// implements X25519MLKEM768 natively) rather than pushed as xDS config
+	// to a separate Envoy process, so enabling the hybrid group here carries
+	// none of the "already-running peer NACKs the update" risk documented on
+	// those fields — TLS 1.3 negotiation simply falls back to a later
+	// classical entry in this same list for a client that doesn't offer the
+	// hybrid group.
+	EcdhCurves string `koanf:"ecdh_curves"`
 }
 
 // AdminServerConfig holds controller admin HTTP server configuration.
@@ -571,8 +636,8 @@ type UpstreamTLS struct {
 	// NACK the xDS update and keep serving its last-known-good config, silently freezing that
 	// instance out of any further config changes until the operator fixes it. Confirm the
 	// deployed Envoy/BoringSSL build supports the group before enabling it.
-	EcdhCurves      string `koanf:"ecdh_curves"`
-	TrustedCertPath string `koanf:"trusted_cert_path"`
+	EcdhCurves             string `koanf:"ecdh_curves"`
+	TrustedCertPath        string `koanf:"trusted_cert_path"`
 	CustomCertsPath        string `koanf:"custom_certs_path"` // Directory containing custom trusted certificates
 	VerifyHostName         bool   `koanf:"verify_host_name"`
 	DisableSslVerification bool   `koanf:"disable_ssl_verification"`
@@ -848,6 +913,14 @@ func defaultConfig() *Config {
 				ShutdownTimeout:                 15 * time.Second,
 				GatewayID:                       constants.PlatformGatewayId,
 				SkipInvalidDeploymentsOnStartup: false,
+				TLS: ServerTLSConfig{
+					Enabled:                false,
+					Port:                   9093,
+					MinimumProtocolVersion: "TLS1_2",
+					MaximumProtocolVersion: "TLS1_3",
+					Ciphers:                "",
+					EcdhCurves:             "X25519,P-256",
+				},
 			},
 			AdminServer: AdminServerConfig{
 				Enabled:    true,
@@ -1373,6 +1446,34 @@ func (c *Config) Validate() error {
 		return fmt.Errorf("server.gateway_id is required and cannot be empty")
 	}
 
+	// Validate REST API TLS config
+	if c.Controller.Server.TLS.Enabled {
+		if c.Controller.Server.TLS.Port < 1 || c.Controller.Server.TLS.Port > 65535 {
+			return fmt.Errorf("server.tls.port must be between 1 and 65535, got: %d", c.Controller.Server.TLS.Port)
+		}
+		if c.Controller.Server.TLS.Port == c.Controller.Server.APIPort {
+			return fmt.Errorf("server.tls.port cannot be same as server.api_port")
+		}
+		if c.Controller.Server.TLS.Port == c.Controller.Server.XDSPort {
+			return fmt.Errorf("server.tls.port cannot be same as server.xds_port")
+		}
+		if c.Controller.Server.TLS.CertPath == "" {
+			return fmt.Errorf("server.tls.cert_path is required when server.tls.enabled")
+		}
+		if c.Controller.Server.TLS.KeyPath == "" {
+			return fmt.Errorf("server.tls.key_path is required when server.tls.enabled")
+		}
+		if err := ValidateServerTLSVersions(c.Controller.Server.TLS.MinimumProtocolVersion, c.Controller.Server.TLS.MaximumProtocolVersion); err != nil {
+			return fmt.Errorf("server.tls: %w", err)
+		}
+		if _, err := ParseServerCiphers(c.Controller.Server.TLS.Ciphers); err != nil {
+			return fmt.Errorf("server.tls.ciphers: %w", err)
+		}
+		if _, err := ParseServerEcdhCurves(c.Controller.Server.TLS.EcdhCurves); err != nil {
+			return fmt.Errorf("server.tls.ecdh_curves: %w", err)
+		}
+	}
+
 	if c.Controller.AdminServer.Enabled {
 		if c.Controller.AdminServer.Port < 1 || c.Controller.AdminServer.Port > 65535 {
 			return fmt.Errorf("admin_server.port must be between 1 and 65535, got: %d", c.Controller.AdminServer.Port)
@@ -1382,6 +1483,9 @@ func (c *Config) Validate() error {
 		}
 		if c.Controller.AdminServer.Port == c.Controller.Server.XDSPort {
 			return fmt.Errorf("admin_server.port cannot be same as server.xds_port")
+		}
+		if c.Controller.Server.TLS.Enabled && c.Controller.AdminServer.Port == c.Controller.Server.TLS.Port {
+			return fmt.Errorf("admin_server.port cannot be same as server.tls.port")
 		}
 	}
 
@@ -1398,6 +1502,9 @@ func (c *Config) Validate() error {
 		}
 		if c.Controller.AdminServer.Enabled && c.Controller.Metrics.Port == c.Controller.AdminServer.Port {
 			return fmt.Errorf("metrics.port cannot be same as admin_server.port")
+		}
+		if c.Controller.Server.TLS.Enabled && c.Controller.Metrics.Port == c.Controller.Server.TLS.Port {
+			return fmt.Errorf("metrics.port cannot be same as server.tls.port")
 		}
 	}
 

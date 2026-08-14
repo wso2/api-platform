@@ -752,6 +752,31 @@ func main() {
 		}
 	}()
 
+	// Optional TLS listener for the REST API, additive to the plaintext one
+	// above — never instead of it. A misconfigured/missing certificate here
+	// disables just this listener rather than exiting the process, since the
+	// plaintext listener remains the required one.
+	var tlsSrv *http.Server
+	if cfg.Controller.Server.TLS.Enabled {
+		tlsConfig, err := buildRESTAPITLSConfig(&cfg.Controller.Server.TLS)
+		if err != nil {
+			log.Error("invalid server.tls config, REST API TLS listener disabled", slog.Any("error", err))
+		} else {
+			tlsSrv = &http.Server{
+				Addr:              fmt.Sprintf(":%d", cfg.Controller.Server.TLS.Port),
+				Handler:           handler,
+				ReadHeaderTimeout: 30 * time.Second,
+				TLSConfig:         tlsConfig,
+			}
+			go func() {
+				log.Info("Starting REST API TLS server", slog.Int("port", cfg.Controller.Server.TLS.Port))
+				if err := tlsSrv.ListenAndServeTLS(cfg.Controller.Server.TLS.CertPath, cfg.Controller.Server.TLS.KeyPath); err != nil && err != http.ErrServerClosed {
+					log.Error("REST API TLS server error", slog.Any("error", err))
+				}
+			}()
+		}
+	}
+
 	log.Info("Gateway Controller started successfully")
 
 	// Print banner when both router and policy engine have sent their first ACK,
@@ -801,6 +826,12 @@ func main() {
 
 	if err := srv.Shutdown(ctx); err != nil {
 		log.Error("Server forced to shutdown", slog.Any("error", err))
+	}
+
+	if tlsSrv != nil {
+		if err := tlsSrv.Shutdown(ctx); err != nil {
+			log.Error("REST API TLS server forced to shutdown", slog.Any("error", err))
+		}
 	}
 
 	xdsServer.Stop()

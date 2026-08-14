@@ -19,6 +19,7 @@
 package config
 
 import (
+	"crypto/tls"
 	"os"
 	"path/filepath"
 	"strings"
@@ -662,6 +663,274 @@ func TestConfig_Validate_Ports(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestConfig_Validate_ServerTLS(t *testing.T) {
+	validTLS := func() ServerTLSConfig {
+		return ServerTLSConfig{
+			Enabled:                true,
+			Port:                   9093,
+			CertPath:               "./certs/rest-api.crt",
+			KeyPath:                "./certs/rest-api.key",
+			MinimumProtocolVersion: "TLS1_2",
+			MaximumProtocolVersion: "TLS1_3",
+			EcdhCurves:             "X25519,P-256",
+		}
+	}
+
+	tests := []struct {
+		name        string
+		mutate      func(*ServerTLSConfig)
+		wantErr     bool
+		errContains string
+	}{
+		{name: "valid config", mutate: func(tls *ServerTLSConfig) {}, wantErr: false},
+		{
+			name:    "PQC hybrid group opt-in",
+			mutate:  func(tls *ServerTLSConfig) { tls.EcdhCurves = "X25519MLKEM768,X25519,P-256" },
+			wantErr: false,
+		},
+		{
+			name: "restricted cipher suite list",
+			mutate: func(tls *ServerTLSConfig) {
+				tls.Ciphers = "TLS_ECDHE_ECDSA_WITH_AES_128_GCM_SHA256,TLS_ECDHE_RSA_WITH_AES_128_GCM_SHA256"
+			},
+			wantErr: false,
+		},
+		{
+			name:        "invalid port zero",
+			mutate:      func(tls *ServerTLSConfig) { tls.Port = 0 },
+			wantErr:     true,
+			errContains: "server.tls.port must be between",
+		},
+		{
+			name:        "port conflicts with api_port",
+			mutate:      func(tls *ServerTLSConfig) { tls.Port = 8080 },
+			wantErr:     true,
+			errContains: "server.tls.port cannot be same as server.api_port",
+		},
+		{
+			name:        "port conflicts with xds_port",
+			mutate:      func(tls *ServerTLSConfig) { tls.Port = 18000 },
+			wantErr:     true,
+			errContains: "server.tls.port cannot be same as server.xds_port",
+		},
+		{
+			name:        "missing cert path",
+			mutate:      func(tls *ServerTLSConfig) { tls.CertPath = "" },
+			wantErr:     true,
+			errContains: "server.tls.cert_path is required",
+		},
+		{
+			name:        "missing key path",
+			mutate:      func(tls *ServerTLSConfig) { tls.KeyPath = "" },
+			wantErr:     true,
+			errContains: "server.tls.key_path is required",
+		},
+		{
+			name:        "missing minimum protocol version",
+			mutate:      func(tls *ServerTLSConfig) { tls.MinimumProtocolVersion = "" },
+			wantErr:     true,
+			errContains: "minimum_protocol_version",
+		},
+		{
+			name: "minimum protocol version greater than maximum",
+			mutate: func(tls *ServerTLSConfig) {
+				tls.MinimumProtocolVersion = "TLS1_3"
+				tls.MaximumProtocolVersion = "TLS1_2"
+			},
+			wantErr:     true,
+			errContains: "cannot be greater than maximum_protocol_version",
+		},
+		{
+			name:        "unsupported cipher suite",
+			mutate:      func(tls *ServerTLSConfig) { tls.Ciphers = "TLS_RSA_WITH_RC4_128_SHA" },
+			wantErr:     true,
+			errContains: "server.tls.ciphers",
+		},
+		{
+			name:        "unsupported ecdh curve",
+			mutate:      func(tls *ServerTLSConfig) { tls.EcdhCurves = "not-a-curve" },
+			wantErr:     true,
+			errContains: "server.tls.ecdh_curves",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			cfg := validConfig()
+			cfg.Controller.Server.APIPort = 8080
+			cfg.Controller.Server.XDSPort = 18000
+			tlsCfg := validTLS()
+			tt.mutate(&tlsCfg)
+			cfg.Controller.Server.TLS = tlsCfg
+
+			err := cfg.Validate()
+			if tt.wantErr {
+				assert.Error(t, err)
+				assert.Contains(t, err.Error(), tt.errContains)
+			} else {
+				assert.NoError(t, err)
+			}
+		})
+	}
+
+	t.Run("disabled - no validation", func(t *testing.T) {
+		cfg := validConfig()
+		cfg.Controller.Server.TLS = ServerTLSConfig{Enabled: false, Port: 0} // invalid but should pass since disabled
+		assert.NoError(t, cfg.Validate())
+	})
+
+	t.Run("conflicts with admin_server.port", func(t *testing.T) {
+		cfg := validConfig()
+		cfg.Controller.Server.APIPort = 8080
+		cfg.Controller.Server.XDSPort = 18000
+		cfg.Controller.AdminServer.Enabled = true
+		cfg.Controller.AdminServer.Port = 9092
+		tlsCfg := validTLS()
+		tlsCfg.Port = 9092
+		cfg.Controller.Server.TLS = tlsCfg
+		err := cfg.Validate()
+		assert.Error(t, err)
+		assert.Contains(t, err.Error(), "admin_server.port cannot be same as server.tls.port")
+	})
+
+	t.Run("conflicts with metrics.port", func(t *testing.T) {
+		cfg := validConfig()
+		cfg.Controller.Server.APIPort = 8080
+		cfg.Controller.Server.XDSPort = 18000
+		cfg.Controller.Metrics.Enabled = true
+		cfg.Controller.Metrics.Port = 9091
+		tlsCfg := validTLS()
+		tlsCfg.Port = 9091
+		cfg.Controller.Server.TLS = tlsCfg
+		err := cfg.Validate()
+		assert.Error(t, err)
+		assert.Contains(t, err.Error(), "metrics.port cannot be same as server.tls.port")
+	})
+}
+
+// TestParseServerEcdhCurves tests the ECDH curve preference parser used by
+// ServerTLSConfig.EcdhCurves.
+func TestParseServerEcdhCurves(t *testing.T) {
+	t.Run("classical curves only", func(t *testing.T) {
+		curves, err := ParseServerEcdhCurves("X25519,P-256")
+		require.NoError(t, err)
+		assert.Equal(t, []tls.CurveID{tls.X25519, tls.CurveP256}, curves)
+	})
+
+	t.Run("PQC hybrid group prepended", func(t *testing.T) {
+		curves, err := ParseServerEcdhCurves("X25519MLKEM768,X25519,P-256")
+		require.NoError(t, err)
+		assert.Equal(t, []tls.CurveID{tls.X25519MLKEM768, tls.X25519, tls.CurveP256}, curves)
+	})
+
+	t.Run("whitespace tolerated", func(t *testing.T) {
+		curves, err := ParseServerEcdhCurves(" X25519 , P-256 ")
+		require.NoError(t, err)
+		assert.Equal(t, []tls.CurveID{tls.X25519, tls.CurveP256}, curves)
+	})
+
+	t.Run("unsupported curve name rejected", func(t *testing.T) {
+		_, err := ParseServerEcdhCurves("X25519,not-a-curve")
+		assert.Error(t, err)
+		assert.Contains(t, err.Error(), "unsupported ecdh curve")
+	})
+
+	t.Run("empty string rejected", func(t *testing.T) {
+		_, err := ParseServerEcdhCurves("")
+		assert.Error(t, err)
+	})
+}
+
+// TestValidateServerTLSVersions tests the min/max protocol version
+// validation used by ServerTLSConfig.
+func TestValidateServerTLSVersions(t *testing.T) {
+	t.Run("valid TLS1_2 to TLS1_3 range", func(t *testing.T) {
+		assert.NoError(t, ValidateServerTLSVersions("TLS1_2", "TLS1_3"))
+	})
+
+	t.Run("equal min and max", func(t *testing.T) {
+		assert.NoError(t, ValidateServerTLSVersions("TLS1_2", "TLS1_2"))
+	})
+
+	t.Run("unrecognized minimum version", func(t *testing.T) {
+		err := ValidateServerTLSVersions("bogus", "TLS1_3")
+		assert.Error(t, err)
+		assert.Contains(t, err.Error(), "minimum_protocol_version")
+	})
+
+	t.Run("unrecognized maximum version", func(t *testing.T) {
+		err := ValidateServerTLSVersions("TLS1_2", "bogus")
+		assert.Error(t, err)
+		assert.Contains(t, err.Error(), "maximum_protocol_version")
+	})
+
+	t.Run("minimum greater than maximum", func(t *testing.T) {
+		err := ValidateServerTLSVersions("TLS1_3", "TLS1_2")
+		assert.Error(t, err)
+		assert.Contains(t, err.Error(), "cannot be greater than maximum_protocol_version")
+	})
+}
+
+// TestParseServerTLSVersion tests the version-name to crypto/tls-identifier
+// conversion used by ServerTLSConfig.
+func TestParseServerTLSVersion(t *testing.T) {
+	tests := []struct {
+		name    string
+		version string
+		want    uint16
+	}{
+		{"TLS1_0", "TLS1_0", tls.VersionTLS10},
+		{"TLS1_1", "TLS1_1", tls.VersionTLS11},
+		{"TLS1_2", "TLS1_2", tls.VersionTLS12},
+		{"TLS1_3", "TLS1_3", tls.VersionTLS13},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, ok := ParseServerTLSVersion(tt.version)
+			require.True(t, ok)
+			assert.Equal(t, tt.want, got)
+		})
+	}
+
+	t.Run("unrecognized version", func(t *testing.T) {
+		_, ok := ParseServerTLSVersion("bogus")
+		assert.False(t, ok)
+	})
+}
+
+// TestParseServerCiphers tests the cipher-suite-name parser used by
+// ServerTLSConfig.Ciphers.
+func TestParseServerCiphers(t *testing.T) {
+	t.Run("empty string is valid and means Go's defaults", func(t *testing.T) {
+		suites, err := ParseServerCiphers("")
+		require.NoError(t, err)
+		assert.Nil(t, suites)
+	})
+
+	t.Run("restricts to the named secure suites", func(t *testing.T) {
+		suites, err := ParseServerCiphers("TLS_ECDHE_ECDSA_WITH_AES_128_GCM_SHA256,TLS_ECDHE_RSA_WITH_AES_128_GCM_SHA256")
+		require.NoError(t, err)
+		assert.Equal(t, []uint16{tls.TLS_ECDHE_ECDSA_WITH_AES_128_GCM_SHA256, tls.TLS_ECDHE_RSA_WITH_AES_128_GCM_SHA256}, suites)
+	})
+
+	t.Run("whitespace tolerated", func(t *testing.T) {
+		suites, err := ParseServerCiphers(" TLS_ECDHE_ECDSA_WITH_AES_128_GCM_SHA256 ")
+		require.NoError(t, err)
+		assert.Equal(t, []uint16{tls.TLS_ECDHE_ECDSA_WITH_AES_128_GCM_SHA256}, suites)
+	})
+
+	t.Run("insecure cipher suite rejected", func(t *testing.T) {
+		_, err := ParseServerCiphers("TLS_RSA_WITH_RC4_128_SHA")
+		assert.Error(t, err)
+		assert.Contains(t, err.Error(), "unsupported or insecure cipher suite")
+	})
+
+	t.Run("unrecognized cipher suite name rejected", func(t *testing.T) {
+		_, err := ParseServerCiphers("NOT_A_REAL_SUITE")
+		assert.Error(t, err)
+	})
 }
 
 func TestConfig_Validate_MetricsConfig(t *testing.T) {
