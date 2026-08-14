@@ -99,6 +99,13 @@ type PreparedResolver interface {
 	Requirements() RequestRequirements
 
 	// Resolve reads the request and returns the chain key it binds to.
+	//
+	// It must tolerate a RequestView whose Body is nil or empty, even on a route that
+	// declared BodyBuffered: a bodyless request (a GET, or any request whose headers are
+	// end-of-stream) gets no request-body callback from Envoy, so the kernel resolves at
+	// the header phase rather than waiting for a callback that cannot arrive. Treat that
+	// as the invalid request it usually is — return a classified *ResolutionError — and
+	// never index into Body without checking its length.
 	Resolve(context.Context, RequestView) (Resolution, error)
 }
 
@@ -126,6 +133,10 @@ const (
 	// BodyBuffered means the resolver reads the whole request body, which forces the
 	// kernel to defer chain selection to the request-body callback (see the deferred
 	// binding path in internal/kernel).
+	//
+	// It is a request for the body, not a guarantee of one. A request whose headers are
+	// end-of-stream carries no body and produces no body callback, so such a request is
+	// resolved at the header phase with RequestView.Body nil — see Resolve.
 	BodyBuffered
 )
 
@@ -190,7 +201,13 @@ type RequestView struct {
 	Method  string // upper-cased at extraction (GO-AUTH-006)
 	Path    string
 	Headers map[string][]string
-	Body    []byte // non-nil only when Requirements().Body == BodyBuffered
+
+	// Body is the decoded request body, populated only for a route that declared
+	// BodyBuffered — and not even always then: it is nil when the request had no body at
+	// all, because a request whose headers are end-of-stream never reaches a body
+	// callback. A BodyBuffered resolver must therefore handle nil and empty alike, and
+	// must not assume a non-empty slice (see PreparedResolver.Resolve).
+	Body []byte
 }
 
 // TargetKind is what a resolution's keys name, which decides how they are validated

@@ -138,6 +138,64 @@ func TestValidate_MaxDecompressedBytes(t *testing.T) {
 	}
 }
 
+// A body ceiling is bounded above as well as below, because
+// RequiredExtProcMessageBytes adds ExtProcMessageOverheadBytes to the larger of the two.
+// Without the bound that addition wraps, and the wrap is worse than a wrong number: the sum
+// goes *negative*, a negative requirement compares below every configured message limit, and
+// the coherence checks downstream would accept the absurd ceiling instead of refusing it.
+func TestValidate_MaxDecompressedBytesOverflowBound(t *testing.T) {
+	directions := []struct {
+		name string
+		set  func(cfg *Config, v int64)
+	}{
+		{name: "request", set: func(cfg *Config, v int64) { cfg.PolicyEngine.RequestBody.MaxDecompressedBytes = v }},
+		{name: "response", set: func(cfg *Config, v int64) { cfg.PolicyEngine.ResponseBody.MaxDecompressedBytes = v }},
+	}
+
+	for _, dir := range directions {
+		// Exactly at the bound: accepted, and the sum is the largest int64 rather than a
+		// wrapped negative. The message limits must be raised to match, since the
+		// coherence check refuses a limit below the requirement.
+		t.Run(dir.name+"/at the bound", func(t *testing.T) {
+			cfg := validConfig()
+			dir.set(cfg, maxConfigurableDecompressedBytes)
+			cfg.PolicyEngine.Server.MaxRecvMsgBytes = math.MaxInt64
+			cfg.PolicyEngine.Server.MaxSendMsgBytes = math.MaxInt64
+
+			require.NoError(t, cfg.Validate())
+			assert.Equal(t, int64(math.MaxInt64), cfg.PolicyEngine.RequiredExtProcMessageBytes(),
+				"the boundary value must sum to MaxInt64, not wrap")
+			assert.Positive(t, cfg.PolicyEngine.RequiredExtProcMessageBytes())
+		})
+
+		// One byte over: rejected at startup, naming the setting and the bound.
+		t.Run(dir.name+"/one over the bound", func(t *testing.T) {
+			cfg := validConfig()
+			dir.set(cfg, maxConfigurableDecompressedBytes+1)
+
+			err := cfg.Validate()
+			require.Error(t, err)
+			assert.Contains(t, err.Error(), "max_decompressed_bytes")
+			assert.Contains(t, err.Error(), "without overflowing")
+		})
+
+		// The extreme case, and the one that would wrap furthest.
+		t.Run(dir.name+"/max int64", func(t *testing.T) {
+			cfg := validConfig()
+			dir.set(cfg, math.MaxInt64)
+
+			require.Error(t, cfg.Validate(), "MaxInt64 leaves no room for the message overhead")
+		})
+	}
+}
+
+// The bound is derived from the overhead it must accommodate rather than restated, so the
+// two cannot drift apart.
+func TestMaxConfigurableDecompressedBytes_LeavesRoomForTheOverhead(t *testing.T) {
+	assert.Equal(t, int64(math.MaxInt64),
+		maxConfigurableDecompressedBytes+ExtProcMessageOverheadBytes)
+}
+
 // TestDefaultConfig_MaxDecompressedBytes verifies the default is applied to both
 // directions so the decompression guard is active out of the box.
 func TestDefaultConfig_MaxDecompressedBytes(t *testing.T) {
@@ -1502,6 +1560,73 @@ format = "json"
 
 // TestLoad_TokenResolvesFromEnv verifies the {{ env }} interpolation path: a config
 // value written as a token is resolved from the environment at load time.
+// Raising a body ceiling must carry the ext_proc message limits up with it. An operator
+// who raises request_body.max_decompressed_bytes and says nothing about the message limits
+// should get a working gateway, not a startup error demanding they restate two more
+// settings — the failure mode a non-zero default in defaultConfig produced, since Load
+// starts from that config and a default is indistinguishable from a stated value.
+func TestLoad_RaisedBodyCeilingDerivesMessageLimits(t *testing.T) {
+	tmpDir := t.TempDir()
+	configPath := filepath.Join(tmpDir, "config.toml")
+
+	const raised = 50 * 1024 * 1024
+	// Deliberately no [policy_engine.server] max_recv_msg_bytes / max_send_msg_bytes.
+	configContent := `
+[policy_engine.config_mode]
+mode = "file"
+
+[policy_engine.file_config]
+path = "/tmp/policies.yaml"
+
+[policy_engine.request_body]
+max_decompressed_bytes = 52428800
+`
+	require.NoError(t, os.WriteFile(configPath, []byte(configContent), 0644))
+
+	cfg, err := Load(configPath)
+	require.NoError(t, err, "a raised ceiling with no message limits stated must load")
+
+	assert.Equal(t, int64(raised), cfg.PolicyEngine.RequestBody.MaxDecompressedBytes)
+
+	want := int64(raised) + ExtProcMessageOverheadBytes
+	assert.Equal(t, want, cfg.PolicyEngine.Server.MaxRecvMsgBytes,
+		"the receive limit must follow the raised ceiling")
+	assert.Equal(t, want, cfg.PolicyEngine.Server.MaxSendMsgBytes,
+		"and so must the send limit — both directions carry both bodies")
+
+	// The response ceiling was left at its default, so it must not have dragged the
+	// requirement back down: the requirement comes from the *larger* of the two.
+	assert.Equal(t, DefaultMaxDecompressedBytes, cfg.PolicyEngine.ResponseBody.MaxDecompressedBytes)
+	assert.Equal(t, want, cfg.PolicyEngine.RequiredExtProcMessageBytes())
+}
+
+// An explicitly configured message limit is preserved, never overwritten by the
+// derivation — the derivation fills a gap, it does not take the setting over.
+func TestLoad_ExplicitMessageLimitsArePreserved(t *testing.T) {
+	tmpDir := t.TempDir()
+	configPath := filepath.Join(tmpDir, "config.toml")
+
+	// Both stated, and comfortably above the default ceiling's requirement.
+	configContent := `
+[policy_engine.config_mode]
+mode = "file"
+
+[policy_engine.file_config]
+path = "/tmp/policies.yaml"
+
+[policy_engine.server]
+max_recv_msg_bytes = 99000000
+max_send_msg_bytes = 88000000
+`
+	require.NoError(t, os.WriteFile(configPath, []byte(configContent), 0644))
+
+	cfg, err := Load(configPath)
+	require.NoError(t, err)
+
+	assert.Equal(t, int64(99000000), cfg.PolicyEngine.Server.MaxRecvMsgBytes)
+	assert.Equal(t, int64(88000000), cfg.PolicyEngine.Server.MaxSendMsgBytes)
+}
+
 func TestLoad_TokenResolvesFromEnv(t *testing.T) {
 	tmpDir := t.TempDir()
 	configPath := filepath.Join(tmpDir, "config.toml")
@@ -1668,9 +1793,15 @@ func TestValidate_ExtProcMessageLimits(t *testing.T) {
 
 	t.Run("defaults are coherent with the default ceilings", func(t *testing.T) {
 		c := baseline()
+		// defaultConfig leaves both message limits zero on purpose, so this is the
+		// derivation running — not a default that happens to agree with the ceiling.
+		require.Zero(t, c.PolicyEngine.Server.MaxRecvMsgBytes)
+		require.Zero(t, c.PolicyEngine.Server.MaxSendMsgBytes)
+
 		require.NoError(t, c.Validate())
-		assert.Equal(t, DefaultMaxDecompressedBytes+ExtProcMessageOverheadBytes,
-			c.PolicyEngine.Server.MaxRecvMsgBytes)
+		want := DefaultMaxDecompressedBytes + ExtProcMessageOverheadBytes
+		assert.Equal(t, want, c.PolicyEngine.Server.MaxRecvMsgBytes)
+		assert.Equal(t, want, c.PolicyEngine.Server.MaxSendMsgBytes)
 		assert.Equal(t, DefaultMaxConcurrentStreams, c.PolicyEngine.Server.MaxConcurrentStreams)
 	})
 
@@ -1709,8 +1840,15 @@ func TestValidate_ExtProcMessageLimits(t *testing.T) {
 		"send below the ceiling": func(c *Config) {
 			c.PolicyEngine.Server.MaxSendMsgBytes = DefaultMaxDecompressedBytes
 		},
-		"recv below a raised ceiling": func(c *Config) {
+		// An explicit limit is honoured, not raised to fit: an operator who states one
+		// below the ceiling has two settings that disagree and must be told which.
+		"explicit recv below a raised ceiling": func(c *Config) {
 			c.PolicyEngine.ResponseBody.MaxDecompressedBytes = 100 * 1024 * 1024
+			c.PolicyEngine.Server.MaxRecvMsgBytes = DefaultMaxDecompressedBytes + ExtProcMessageOverheadBytes
+		},
+		"explicit send below a raised ceiling": func(c *Config) {
+			c.PolicyEngine.ResponseBody.MaxDecompressedBytes = 100 * 1024 * 1024
+			c.PolicyEngine.Server.MaxSendMsgBytes = DefaultMaxDecompressedBytes + ExtProcMessageOverheadBytes
 		},
 	} {
 		t.Run("rejected: "+name, func(t *testing.T) {

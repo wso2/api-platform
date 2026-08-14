@@ -584,6 +584,9 @@ func (s *ExternalProcessorServer) initializeExecutionContext(
 	// request-body callback for a bodyless request, so a pending request would wait
 	// for a callback that cannot occur. Resolve (or deny) here instead — for a
 	// JSON-RPC route an empty body is an invalid request anyway.
+	//
+	// So a BodyBuffered resolver can be called with RequestView.Body nil, which is why
+	// resolver.PreparedResolver.Resolve requires every resolver to tolerate that.
 	if prepared.Requirements.BuffersBody() && !req.GetRequestHeaders().GetEndOfStream() {
 		ec := s.newBoundExecutionContext(routeKey, rc, "", nil, req, routeMetadata)
 		ec.pending = &pendingResolution{route: rc, prepared: prepared, view: view}

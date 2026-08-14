@@ -621,6 +621,11 @@ func TestBodyResolver_HeaderEndOfStreamResolvesImmediately(t *testing.T) {
 	assert.Equal(t, resolver.FailureParse, denial.failure.Kind)
 	assert.Equal(t, 1, r.identified, "the resolver must run at the header phase rather than wait")
 	assert.Nil(t, execCtx)
+
+	// The contract a BodyBuffered resolver is held to here: it is handed a view with no
+	// body and must classify that rather than assume a non-empty slice. See
+	// resolver.PreparedResolver.Resolve.
+	assert.Nil(t, r.seenBody, "a bodyless request reaches Resolve with Body nil")
 }
 
 func TestDeferredBinding_RunsHeaderThenBodyPoliciesAtBodyPhase(t *testing.T) {

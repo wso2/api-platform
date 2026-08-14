@@ -54,6 +54,13 @@ const (
 	// large — a failure that looks like a gateway fault rather than a misconfiguration.
 	ExtProcMessageOverheadBytes int64 = 1 * 1024 * 1024 // 1 MiB
 
+	// maxConfigurableDecompressedBytes is the largest body ceiling that can still have
+	// ExtProcMessageOverheadBytes added to it without overflowing int64. Validate rejects
+	// anything above it, which is what lets RequiredExtProcMessageBytes add without
+	// checking. Far beyond any real deployment — the point is that the arithmetic is
+	// total, not that the number is reachable.
+	maxConfigurableDecompressedBytes int64 = math.MaxInt64 - ExtProcMessageOverheadBytes
+
 	// DefaultMaxConcurrentStreams bounds in-flight ext_proc calls on the Envoy
 	// connection, one stream per request being processed. gRPC's own default is
 	// effectively unlimited, so an explicit value is what makes the stream budget a
@@ -505,6 +512,12 @@ type ServerConfig struct {
 // RequiredExtProcMessageBytes is the smallest message limit coherent with the
 // configured body ceilings. Both directions are sized off the larger ceiling, since
 // each carries request and response bodies alike.
+//
+// The addition cannot overflow: Validate rejects a ceiling above
+// maxConfigurableDecompressedBytes before reaching here. That ordering matters — an
+// overflowed sum would be *negative*, and a negative requirement compares below every
+// configured message limit, so the coherence checks that follow would pass an absurd
+// ceiling instead of refusing it.
 func (p PolicyEngine) RequiredExtProcMessageBytes() int64 {
 	ceiling := p.RequestBody.MaxDecompressedBytes
 	if p.ResponseBody.MaxDecompressedBytes > ceiling {
@@ -832,10 +845,14 @@ func defaultConfig() *Config {
 	return &Config{
 		PolicyEngine: PolicyEngine{
 			Server: ServerConfig{
-				Mode:                 "",
-				ExtProcPort:          9001,
-				MaxRecvMsgBytes:      DefaultMaxDecompressedBytes + ExtProcMessageOverheadBytes,
-				MaxSendMsgBytes:      DefaultMaxDecompressedBytes + ExtProcMessageOverheadBytes,
+				Mode:        "",
+				ExtProcPort: 9001,
+				// MaxRecvMsgBytes and MaxSendMsgBytes are deliberately left zero: Validate
+				// derives them from the effective body ceilings, and a default here would
+				// pre-empt that derivation. Since Load starts from this config, a non-zero
+				// default is indistinguishable from an operator's explicit choice — so
+				// raising request_body.max_decompressed_bytes would fail startup demanding
+				// the message limits be restated, instead of following the ceiling up.
 				MaxConcurrentStreams: DefaultMaxConcurrentStreams,
 			},
 			Admin: AdminConfig{
@@ -1013,6 +1030,22 @@ func (c *Config) Validate() error {
 	}
 	if c.PolicyEngine.ResponseBody.MaxDecompressedBytes <= 0 {
 		return fmt.Errorf("policy_engine.response_body.max_decompressed_bytes must be positive, got %d", c.PolicyEngine.ResponseBody.MaxDecompressedBytes)
+	}
+
+	// Both ceilings feed RequiredExtProcMessageBytes, which adds
+	// ExtProcMessageOverheadBytes to the larger of them. Bounding them here, before that
+	// addition happens, is what keeps it total.
+	for name, v := range map[string]int64{
+		"request_body":  c.PolicyEngine.RequestBody.MaxDecompressedBytes,
+		"response_body": c.PolicyEngine.ResponseBody.MaxDecompressedBytes,
+	} {
+		if v > maxConfigurableDecompressedBytes {
+			return fmt.Errorf(
+				"policy_engine.%s.max_decompressed_bytes is %d, which exceeds the maximum %d — "+
+					"a larger ceiling cannot have the %d of ext_proc message overhead added to it "+
+					"without overflowing",
+				name, v, maxConfigurableDecompressedBytes, ExtProcMessageOverheadBytes)
+		}
 	}
 
 	// ext_proc gRPC message and stream limits.
