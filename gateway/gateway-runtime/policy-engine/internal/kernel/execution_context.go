@@ -703,7 +703,7 @@ func (ec *PolicyExecutionContext) processRequestHeaders(
 	// upstream. Only matters when the chain actually inspects the request body —
 	// with no body policy attached there is nothing to bypass, so an encoding the
 	// kernel cannot read is simply none of its business and passes through.
-	if ec.requestEncodingUnsupported && ec.policyChain.RequiresRequestBody && !ec.requestHasNoBody() {
+	if ec.requestEncodingBlocksBodyPolicies() {
 		return ec.rejectUnsupportedRequestEncoding(ctx), nil
 	}
 
@@ -773,6 +773,21 @@ func (ec *PolicyExecutionContext) requestHasNoBody() bool {
 		return true
 	}
 	return false
+}
+
+// requestEncodingBlocksBodyPolicies reports whether the request carries a Content-Encoding
+// the kernel cannot decode while the chain needs to inspect the request body. With no body
+// policy attached there is nothing to bypass, and a bodyless request has nothing to decode,
+// so both cases pass through untouched.
+func (ec *PolicyExecutionContext) requestEncodingBlocksBodyPolicies() bool {
+	return ec.requestEncodingUnsupported && ec.policyChain.RequiresRequestBody && !ec.requestHasNoBody()
+}
+
+// responseEncodingBlocksBodyPolicies is the response-side counterpart of
+// requestEncodingBlocksBodyPolicies. Header and body phases must agree on it: a response the
+// header phase let through must not be failed later at the body phase.
+func (ec *PolicyExecutionContext) responseEncodingBlocksBodyPolicies() bool {
+	return ec.responseEncodingUnsupported && ec.policyChain.RequiresResponseBody && !ec.responseHasNoBody()
 }
 
 // processRequestBodyForEmptyRequest executes body policies inline during the headers phase
@@ -1092,7 +1107,7 @@ func (ec *PolicyExecutionContext) processResponseHeaders(
 	// headers have not been forwarded downstream yet, so this becomes a clean 502
 	// rather than a mid-stream reset. As on the request side, this only applies
 	// when the chain actually inspects the response body.
-	if ec.responseEncodingUnsupported && ec.policyChain.RequiresResponseBody && !ec.responseHasNoBody() {
+	if ec.responseEncodingBlocksBodyPolicies() {
 		return ec.rejectUnsupportedResponseEncoding(ctx), nil
 	}
 
@@ -1153,8 +1168,10 @@ func (ec *PolicyExecutionContext) processResponseBody(
 	// Defence in depth. processResponseHeaders already rejected this response, so
 	// reaching the body phase with an undecodable encoding means the header-phase
 	// guard was bypassed or removed. Fail the stream rather than fall through to
-	// policies that would receive compressed bytes as if they were plaintext.
-	if ec.responseEncodingUnsupported && ec.policyChain.RequiresResponseBody {
+	// policies that would receive compressed bytes as if they were plaintext. Uses the same
+	// predicate as the header phase so a response that phase deliberately let through (no
+	// body to decode) is not failed here instead.
+	if ec.responseEncodingBlocksBodyPolicies() {
 		return nil, fmt.Errorf("response body phase reached with undecodable Content-Encoding; refusing to run body policies")
 	}
 
