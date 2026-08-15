@@ -1595,21 +1595,46 @@ func TranslateStreamingResponseChunkAction(result *executor.StreamingResponseExe
 		outputBody = originalChunk.Chunk
 	}
 
+	// If a policy terminated the stream early (e.g. guardrail intervention), force
+	// EndOfStream so Envoy closes the connection cleanly after delivering the final
+	// chunk. This is also the end of stream for the compressor below: finalising it
+	// on originalChunk.EndOfStream alone would send a terminated gzip/brotli stream
+	// without its footer, which the client reads as a truncated body.
+	endOfStream := originalChunk.EndOfStream || result.StreamTerminated
+	if result.StreamTerminated {
+		slog.Info("[streaming] stream terminated by policy; forcing EndOfStream on final chunk")
+	}
+
 	// Re-compress the output if the original response was Content-Encoded.
 	// Response headers (including Content-Encoding) are already committed downstream
 	// in streaming mode and cannot be changed — the body must match the encoding
 	// the client expects.
+	//
+	// The whole response must form ONE compressed stream, so the compressor is
+	// held on the execution context across chunks and finalised at end of stream.
+	// Compressing each chunk independently would emit one gzip member (or brotli
+	// stream) per chunk; clients stop decoding after the first, so the client sees
+	// a truncated body even though every byte was transmitted.
 	if execCtx.responseContentEncoding != "" {
-		recompressed, err := recompressBody(outputBody, execCtx.responseContentEncoding)
+		if execCtx.responseStreamComp == nil {
+			// Never nil: responseContentEncoding is only ever set to an encoding
+			// isRecompressibleEncoding accepts (see buildResponseContexts).
+			execCtx.responseStreamComp = newStreamCompressor(execCtx.responseContentEncoding)
+		}
+		recompressed, err := execCtx.responseStreamComp.Compress(outputBody, endOfStream)
 		if err != nil {
-			slog.Warn("[streaming] failed to re-compress response body; sending uncompressed — Content-Encoding mismatch",
+			// The client is mid-stream with a committed Content-Encoding header, so
+			// falling back to plaintext here would corrupt the response. Fail the
+			// stream instead and let Envoy reset it.
+			slog.Error("[streaming] failed to re-compress response chunk; failing stream",
 				"encoding", execCtx.responseContentEncoding,
 				"error", err,
 			)
-			execCtx.responseContentEncoding = ""
-		} else {
-			outputBody = recompressed
+			execCtx.responseStreamComp.Close()
+			execCtx.responseStreamComp = nil
+			return nil, fmt.Errorf("streaming response re-compression failed: %w", err)
 		}
+		outputBody = recompressed
 	}
 
 	analyticsData := make(map[string]any)
@@ -1642,13 +1667,6 @@ func TranslateStreamingResponseChunkAction(result *executor.StreamingResponseExe
 		}
 		mergeDynamicMetadata(dynamicMetadata, dm)
 		mergeDynamicMetadata(execCtx.dynamicMetadata, dm)
-	}
-
-	// If a policy terminated the stream early (e.g. guardrail intervention), force
-	// EndOfStream so Envoy closes the connection cleanly after delivering the final chunk.
-	endOfStream := originalChunk.EndOfStream || result.StreamTerminated
-	if result.StreamTerminated {
-		slog.Info("[streaming] stream terminated by policy; forcing EndOfStream on final chunk")
 	}
 
 	resp := &extprocv3.ProcessingResponse{

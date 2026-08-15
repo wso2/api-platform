@@ -344,8 +344,120 @@ func (sd *streamDecompressor) Close() {
 	}
 }
 
+// ─── Streaming re-compression ────────────────────────────────────────────────
+//
+// A streamed response must be re-compressed as ONE compressed stream spanning
+// the whole body, not one per chunk. Calling recompressBody per chunk produces
+// N independent members: for gzip that is a multi-member stream which most HTTP
+// clients (Go's transport, httpx/urllib3, curl) do not read past the first
+// member, so the client silently sees a truncated body; for brotli, which has
+// no multi-member concatenation at all, the remainder is undecodable.
+//
+// streamCompressor keeps a single writer alive for the lifetime of the response
+// and flushes after each chunk so data still reaches the client incrementally.
+type streamCompressor struct {
+	encoding string
+	buf      bytes.Buffer
+	gzip     *gzip.Writer
+	brotli   *brotli.Writer
+	closed   bool
+}
+
+// newStreamCompressor returns a compressor for the encoding, or nil when the
+// encoding needs no re-compression (callers then forward bytes unchanged).
+func newStreamCompressor(encoding string) *streamCompressor {
+	sc := &streamCompressor{encoding: encoding}
+	switch encoding {
+	case "gzip":
+		sc.gzip = gzip.NewWriter(&sc.buf)
+	case "br":
+		sc.brotli = brotli.NewWriter(&sc.buf)
+	default:
+		return nil
+	}
+	return sc
+}
+
+// Compress writes one chunk into the single ongoing compressed stream and
+// returns the bytes produced so far. When endOfStream is set the stream is
+// finalised (footer/checksum written) and the compressor must not be reused.
+//
+// A flush is emitted per chunk so the client receives data incrementally; this
+// costs a few bytes of framing per chunk versus a single whole-body compress,
+// which is the correct trade for a streaming response.
+func (sc *streamCompressor) Compress(body []byte, endOfStream bool) ([]byte, error) {
+	if sc.closed {
+		return nil, fmt.Errorf("%s stream compressor already closed", sc.encoding)
+	}
+	sc.buf.Reset()
+
+	switch {
+	case sc.gzip != nil:
+		if len(body) > 0 {
+			if _, err := sc.gzip.Write(body); err != nil {
+				return nil, fmt.Errorf("gzip write: %w", err)
+			}
+		}
+		if endOfStream {
+			if err := sc.gzip.Close(); err != nil {
+				return nil, fmt.Errorf("gzip close: %w", err)
+			}
+			sc.closed = true
+		} else if err := sc.gzip.Flush(); err != nil {
+			return nil, fmt.Errorf("gzip flush: %w", err)
+		}
+	case sc.brotli != nil:
+		if len(body) > 0 {
+			if _, err := sc.brotli.Write(body); err != nil {
+				return nil, fmt.Errorf("brotli write: %w", err)
+			}
+		}
+		if endOfStream {
+			if err := sc.brotli.Close(); err != nil {
+				return nil, fmt.Errorf("brotli close: %w", err)
+			}
+			sc.closed = true
+		} else if err := sc.brotli.Flush(); err != nil {
+			return nil, fmt.Errorf("brotli flush: %w", err)
+		}
+	}
+
+	out := make([]byte, sc.buf.Len())
+	copy(out, sc.buf.Bytes())
+	return out, nil
+}
+
+// Close finalises the stream on error paths where endOfStream never arrives.
+func (sc *streamCompressor) Close() {
+	if sc.closed {
+		return
+	}
+	sc.closed = true
+	if sc.gzip != nil {
+		_ = sc.gzip.Close()
+	}
+	if sc.brotli != nil {
+		_ = sc.brotli.Close()
+	}
+}
+
+// isRecompressibleEncoding reports whether the kernel can decompress and
+// re-compress this Content-Encoding. Anything else must be left untouched —
+// see execution_context.go, which refuses to run body policies on it rather
+// than handing policies bytes they cannot read.
+func isRecompressibleEncoding(encoding string) bool {
+	switch encoding {
+	case "gzip", "br":
+		return true
+	default:
+		return false
+	}
+}
+
 // recompressBody re-compresses body bytes using the original Content-Encoding.
-// Used to restore compression after policies have processed the decompressed body.
+// Used for the BUFFERED response path, where the whole body is compressed in a
+// single call. Streaming responses must use streamCompressor instead so the
+// response is one compressed stream rather than one per chunk.
 // Supported encodings: "gzip", "br" (Brotli). Unknown encodings are returned as-is.
 func recompressBody(body []byte, encoding string) ([]byte, error) {
 	switch encoding {

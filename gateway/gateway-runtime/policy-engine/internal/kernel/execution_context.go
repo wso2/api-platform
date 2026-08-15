@@ -137,6 +137,12 @@ type PolicyExecutionContext struct {
 	// responseStreamDecomp performs per-chunk decompression for compressed streaming
 	// response bodies. Nil when the response is not Content-Encoded.
 	responseStreamDecomp *streamDecompressor
+	// responseStreamComp re-compresses streaming response chunks into a SINGLE
+	// compressed stream for the whole response. It must outlive individual chunks:
+	// compressing each chunk independently yields one gzip member (or brotli
+	// stream) per chunk, and clients stop reading after the first one — the body
+	// then looks truncated to the client even though every byte was sent.
+	responseStreamComp *streamCompressor
 	// streamTerminated is set when a policy returns TerminateStream=true. Any
 	// subsequent upstream chunks that Envoy delivers after EndOfStream was sent
 	// downstream are silently suppressed — forwarding more data would be undefined.
@@ -200,6 +206,10 @@ func (ec *PolicyExecutionContext) closeStreamDecompressors() {
 	if ec.responseStreamDecomp != nil {
 		ec.responseStreamDecomp.Close()
 		ec.responseStreamDecomp = nil
+	}
+	if ec.responseStreamComp != nil {
+		ec.responseStreamComp.Close()
+		ec.responseStreamComp = nil
 	}
 }
 
@@ -1042,9 +1052,16 @@ func (ec *PolicyExecutionContext) processStreamingResponseBody(
 		EndOfStream: body.EndOfStream,
 	}
 
-	// Compressed response: decompress this chunk, pass directly to policies,
-	// recompress the output. No kernel accumulation — policy implementations
-	// handle their own internal state across chunks.
+	// Decompression is a transform applied BEFORE the shared accumulation logic
+	// below, not a separate processing path. Policies must observe exactly the same
+	// contract — same accumulation, same NeedsMoreResponseData consultation —
+	// whether or not the upstream compressed the response. When this was a second
+	// path that fed chunks straight to policies, NeedsMoreResponseData was never
+	// called on a compressed response, so any policy relying on it (the documented
+	// SDK hook for cross-chunk buffering) worked on plaintext and silently degraded
+	// on gzip: word-count/sentence-count guardrails evaluated isolated fragments
+	// instead of assembled content, and content-rewriting policies never saw a
+	// placeholder that straddled a chunk boundary.
 	if ec.responseContentEncoding != "" {
 		if ec.responseStreamDecomp == nil {
 			ec.responseStreamDecomp = newStreamDecompressor(ec.responseContentEncoding, ec.server.maxResponseDecompressedBytes)
@@ -1064,64 +1081,44 @@ func (ec *PolicyExecutionContext) processStreamingResponseBody(
 				return nil, ec.responsePayloadTooLargeError(ctx, err, "response_body_streaming")
 			}
 			return nil, fmt.Errorf("streaming upstream response decompression failed: %w", err)
-		} else {
-			chunk.Chunk = decompressed
 		}
-
-		// Suppress empty intermediate chunks — the decoder needed more input to
-		// produce a full block. The client already expects compressed data so
-		// sending nothing is correct here.
-		if len(chunk.Chunk) == 0 && !chunk.EndOfStream {
-			return &extprocv3.ProcessingResponse{
-				Response: &extprocv3.ProcessingResponse_ResponseBody{
-					ResponseBody: &extprocv3.BodyResponse{
-						Response: &extprocv3.CommonResponse{
-							BodyMutation: &extprocv3.BodyMutation{
-								Mutation: &extprocv3.BodyMutation_StreamedResponse{
-									StreamedResponse: &extprocv3.StreamedBodyResponse{},
-								},
-							},
-						},
-					},
-				},
-			}, nil
-		}
+		chunk.Chunk = decompressed
 
 		slog.Debug("[streaming] response chunk decompressed",
 			"route", ec.routeKey,
 			"decompressed_bytes", len(chunk.Chunk),
 			"end_of_stream", chunk.EndOfStream,
 		)
-
-		execResult, err := ec.server.executor.ExecuteStreamingResponsePolicies(
-			ctx,
-			ec.policyChain.Policies,
-			ec.responseStreamContext,
-			chunk,
-			ec.policyChain.PolicySpecs,
-			ec.sharedCtx.APIName,
-			ec.routeKey,
-			ec.policyChain.HasExecutionConditions,
-		)
-		if err != nil {
-			return ec.handlePolicyError(ctx, err, "response_body_streaming"), nil
-		}
-		if execResult.StreamTerminated {
-			ec.streamTerminated = true
-		}
-		return TranslateStreamingResponseChunkAction(execResult, chunk, ec)
 	}
 
-	// Uncompressed (SSE / plain chunked): use the existing accumulation path so
-	// policies that need multiple chunks (e.g. waiting for a full SSE event) still work.
 	if len(chunk.Chunk) > 0 {
 		ec.streamAccumulator = append(ec.streamAccumulator, chunk.Chunk...)
+	}
+
+	// Nothing to hand policies yet. For a compressed stream this is the common
+	// case: the decoder needs more input before it can emit a block. Forwarding an
+	// empty streamed response keeps Envoy's chunk accounting intact.
+	if len(ec.streamAccumulator) == 0 && !chunk.EndOfStream {
+		return &extprocv3.ProcessingResponse{
+			Response: &extprocv3.ProcessingResponse_ResponseBody{
+				ResponseBody: &extprocv3.BodyResponse{
+					Response: &extprocv3.CommonResponse{
+						BodyMutation: &extprocv3.BodyMutation{
+							Mutation: &extprocv3.BodyMutation_StreamedResponse{
+								StreamedResponse: &extprocv3.StreamedBodyResponse{},
+							},
+						},
+					},
+				},
+			},
+		}, nil
 	}
 
 	slog.Debug("[streaming] response chunk received",
 		"route", ec.routeKey,
 		"chunk_bytes", len(chunk.Chunk),
 		"accumulated_bytes", len(ec.streamAccumulator),
+		"encoding", ec.responseContentEncoding,
 		"end_of_stream", chunk.EndOfStream,
 	)
 
@@ -1348,7 +1345,26 @@ func (ec *PolicyExecutionContext) buildResponseContexts(headers *extprocv3.HttpH
 					)
 				}
 			case "content-encoding":
-				ec.responseContentEncoding = value
+				// Only encodings the kernel can actually decompress AND re-compress
+				// are recorded. For anything else (deflate, zstd, …) the decompressor
+				// would fall through to a passthrough reader, handing policies raw
+				// compressed bytes: content-rewriting policies then silently match
+				// nothing — e.g. pii-masking-regex would deliver "[EMAIL_0000]" to the
+				// client instead of restoring it — with no error anywhere. Leaving this
+				// empty keeps the body untouched end to end, which is the safe outcome.
+				//
+				// Content codings are case-insensitive tokens (RFC 9110 §8.4.1), so
+				// normalise before matching — the decompressor/compressor switches are
+				// lowercase-only and would otherwise miss a "GZIP" response.
+				encoding := strings.ToLower(strings.TrimSpace(value))
+				if isRecompressibleEncoding(encoding) {
+					ec.responseContentEncoding = encoding
+				} else if encoding != "" && encoding != "identity" {
+					slog.Warn("unsupported response Content-Encoding; body policies will not inspect or modify this response",
+						"request_id", ec.requestID,
+						"encoding", value,
+					)
+				}
 			}
 		}
 	}
