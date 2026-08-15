@@ -53,9 +53,9 @@ import { restApiKeys } from './restApis.queries';
  *
  * What is covered here is specifically what a component test *cannot* see:
  * scope gating before a request, the optimistic write and its rollback, cache
- * seeding (visible only as a request that does not happen), and the breadth of
- * invalidation (a single-page component cannot tell a root invalidation from a
- * current-page one).
+ * seeding (visible only as a loading state that does not happen), and the
+ * breadth of invalidation (a single-page component cannot tell a root
+ * invalidation from a current-page one).
  */
 
 const API_ID = 'pizza-shack';
@@ -149,10 +149,14 @@ describe('useCreateRestApi — cache seeding', () => {
     );
   });
 
-  it('means opening the new resource costs no extra request', async () => {
+  it('means opening the new resource renders without a loading state', async () => {
     // This is the whole point of seeding, and it is invisible to a component
     // test: the page renders correctly either way, just with a spinner and a
     // round trip that need not have happened.
+    //
+    // Mount detail (not just cache checks) to verify opening behavior from
+    // seeding. `id` starts undefined so the query stays disabled until the
+    // seed lands, mirroring navigation to the new API page.
     server.use(
       accepts('post', '/rest-apis', aRestApi({ id: 'new-api' })),
       resource('/rest-apis/new-api', aRestApi({ id: 'new-api' }), {
@@ -160,14 +164,28 @@ describe('useCreateRestApi — cache seeding', () => {
       })
     );
 
-    const { result, queryClient, org } = renderApiHook(() => useCreateRestApi());
-    result.current.mutate(aRestApi());
-    await waitFor(() => expect(result.current.isSuccess).toBe(true));
+    // Mutable holder rather than `let`: the closure below reads it on every
+    // render, so it cannot be a `const` the linter would otherwise ask for.
+    const opened: { id?: string } = {};
+    const { result, rerender, queryClient, org } = renderApiHook(() => ({
+      create: useCreateRestApi(),
+      detail: useRestApi(opened.id),
+    }));
 
-    const seeded = queryClient.getQueryData(restApiKeys.detail(org, 'new-api'));
+    result.current.create.mutate(aRestApi());
+    await waitFor(() => expect(result.current.create.isSuccess).toBe(true));
 
-    expect(seeded).toBeDefined();
-    expect(requests.count()).toBe(0);
+    opened.id = 'new-api';
+    rerender();
+
+    // Data is already present on first render, so assert synchronously.
+    expect(result.current.detail.data).toMatchObject({ id: 'new-api' });
+    expect(result.current.detail.isLoading).toBe(false);
+    expect(queryClient.getQueryData(restApiKeys.detail(org, 'new-api'))).toBeDefined();
+
+    // Keep the background revalidation check: it ensures create still seeds
+    // detail data and invalidates the resource root.
+    await waitFor(() => expect(requests.count()).toBe(1));
   });
 
   it('invalidates every list variant, not only the one on screen', async () => {

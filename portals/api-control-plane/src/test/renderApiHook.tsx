@@ -59,7 +59,16 @@ export function renderApiHook<TResult>(
     ...renderHook(hook, { wrapper }),
     queryClient,
     /** The branded scope the hooks build their keys from. */
-    org: orgScope(orgId) as OrgScope,
+    get org(): OrgScope {
+      const scoped = orgScope(orgId);          // OrgScope | undefined
+      if (!scoped) {
+        throw new Error(
+          'renderApiHook was rendered without an organization scope, so `org` ' +
+            'has no value. Drop `orgId: undefined` or stop reading `org`.'
+        );
+      }
+      return scoped;
+    },
   };
 }
 
