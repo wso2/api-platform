@@ -50,7 +50,9 @@ export const deploymentQueries = {
 
   detail: (org: OrgScope, restApiId: string, deploymentId: string) =>
     queryOptions({
-      queryKey: restApiKeys.child(org, restApiId, `deployments/${deploymentId}`),
+      // Keeps the detail query under the deployments prefix so invalidations
+      // reach it, while avoiding collisions with the list key.
+      queryKey: restApiKeys.child(org, restApiId, 'deployments', { deploymentId }),
       queryFn: ({ signal }) =>
         getDeployment(restApiId, deploymentId, { orgId: org, signal }),
       staleTime: staleTimes.realtime,

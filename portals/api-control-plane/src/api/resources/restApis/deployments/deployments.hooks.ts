@@ -136,8 +136,9 @@ export const useDeployment = (
 /**
  * Invalidation helper shared by every deployment mutation.
  *
- * Invalidates the parent API's `deployments` child key, which covers every
- * filtered variant of the list plus the individual detail entries beneath it.
+ * Invalidates the API's `deployments` prefix so list variants and detail
+ * entries are refreshed; `children(...)` is required to cover filtered lists.
+ *
  * The API's own detail is invalidated too, because its summary carries
  * deployment state the list change has just made stale.
  */
@@ -148,7 +149,7 @@ const useInvalidateDeployments = (orgId?: string) => {
   return (restApiId: string) => {
     if (!org) return;
     void queryClient.invalidateQueries({
-      queryKey: restApiKeys.child(org, restApiId, 'deployments'),
+      queryKey: restApiKeys.children(org, restApiId, 'deployments'),
     });
     void queryClient.invalidateQueries({
       queryKey: restApiKeys.detail(org, restApiId),
@@ -217,7 +218,9 @@ export const useDeleteDeployment = (overrides: { orgId?: string } = {}) => {
         // to receive a 404 is a wasted round trip and an error the user would
         // briefly see.
         queryClient.removeQueries({
-          queryKey: restApiKeys.child(org, restApiId, `deployments/${deploymentId}`),
+          queryKey: restApiKeys.child(org, restApiId, 'deployments', {
+            deploymentId,
+          }),
         });
       }
       invalidate(restApiId);

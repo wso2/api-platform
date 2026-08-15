@@ -17,7 +17,7 @@
  */
 
 import { waitFor } from '@testing-library/react';
-import { beforeEach, describe, expect, it } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import {
   aDeployRequest,
@@ -31,8 +31,11 @@ import {
 import { renderApiHook, settle } from '../../../../test/renderApiHook';
 import { server } from '../../../../test/server';
 import { resetHttpClient } from '../../../core/http';
-import { useDeployApi, useDeployments } from './deployments.hooks';
-import { hasTransitioningDeployment } from './deployments.queries';
+import { useDeleteDeployment, useDeployApi, useDeployments } from './deployments.hooks';
+import {
+  deploymentQueries,
+  hasTransitioningDeployment,
+} from './deployments.queries';
 import { restApiKeys } from '../restApis.queries';
 
 /**
@@ -196,6 +199,85 @@ describe('useDeployApi — invalidation reaches the parent too', () => {
   });
 });
 
+describe('one invalidation reaches every deployment key', () => {
+  /**
+   * Verifies both invalidations: one makes filtered deployment lists stale,
+   * and one makes a single deployment detail stale. The cache assertions below
+   * cover the end-to-end behavior, while the key-passing prefix behavior is
+   * tested separately in `core/queryKeys.test.ts`.
+   */
+  it('reaches a list the user has filtered', async () => {
+    server.use(accepts('post', DEPLOYMENTS, aDeployment({ status: 'DEPLOYING' })));
+
+    const { result, queryClient, org } = renderApiHook(() => useDeployApi());
+    const filteredKey = deploymentQueries.list(org, API_ID, {
+      status: 'DEPLOYED',
+    }).queryKey;
+    // Typed from the query's own key, so the envelope has to be a real one.
+    queryClient.setQueryData(filteredKey, {
+      count: 0,
+      list: [],
+      pagination: { total: 0, offset: 0, limit: 10 },
+    });
+
+    result.current.mutate({ restApiId: API_ID, body: aDeployRequest() });
+    await waitFor(() => expect(result.current.isSuccess).toBe(true));
+
+    await waitFor(() =>
+      expect(queryClient.getQueryState(filteredKey)?.isInvalidated).toBe(true)
+    );
+  });
+
+  it('reaches a single deployment’s detail entry', async () => {
+    // What `useDeployment` renders. Keyed outside the prefix it would keep
+    // showing the status the deployment held before this mutation.
+    server.use(accepts('post', DEPLOYMENTS, aDeployment({ status: 'DEPLOYING' })));
+
+    const { result, queryClient, org } = renderApiHook(() => useDeployApi());
+    const detailKey = deploymentQueries.detail(org, API_ID, 'deployment-1').queryKey;
+    queryClient.setQueryData(detailKey, aDeployment({ status: 'DEPLOYED' }));
+
+    result.current.mutate({ restApiId: API_ID, body: aDeployRequest() });
+    await waitFor(() => expect(result.current.isSuccess).toBe(true));
+
+    await waitFor(() =>
+      expect(queryClient.getQueryState(detailKey)?.isInvalidated).toBe(true)
+    );
+  });
+
+  it('files that detail entry under the deployments prefix, not beside it', async () => {
+    const { org } = renderApiHook(() => useDeployApi());
+    const prefix = restApiKeys.children(org, API_ID, 'deployments');
+    const detailKey = deploymentQueries.detail(org, API_ID, 'deployment-1').queryKey;
+
+    expect(detailKey.slice(0, prefix.length)).toEqual([...prefix]);
+  });
+
+  it('invalidates the deployments sub-resource by a prefix, not by an exact key', async () => {
+    // Ensures the helper invalidates the deployments prefix, not just an
+    // unfiltered list or a single detail entry.
+    server.use(accepts('post', DEPLOYMENTS, aDeployment()));
+
+    const { result, queryClient, org } = renderApiHook(() => useDeployApi());
+    const invalidateQueries = vi.spyOn(queryClient, 'invalidateQueries');
+
+    result.current.mutate({ restApiId: API_ID, body: aDeployRequest() });
+    await waitFor(() => expect(result.current.isSuccess).toBe(true));
+
+    const filters = invalidateQueries.mock.calls.map(([call]) => call?.queryKey);
+    expect(filters).toContainEqual(restApiKeys.children(org, API_ID, 'deployments'));
+  });
+
+  it('does not extend over a sibling sub-resource of the same API', async () => {
+    // Structural assertion avoids the broader parent-detail invalidation.
+    const { org } = renderApiHook(() => useDeployApi());
+    const prefix = restApiKeys.children(org, API_ID, 'deployments');
+    const gatewaysKey = restApiKeys.child(org, API_ID, 'gateways');
+
+    expect(gatewaysKey.slice(0, prefix.length)).not.toEqual([...prefix]);
+  });
+});
+
 describe('hasTransitioningDeployment — the predicate polling keys on', () => {
   it.each([
     ['DEPLOYING', true],
@@ -228,21 +310,45 @@ describe('hasTransitioningDeployment — the predicate polling keys on', () => {
   });
 });
 
-describe('useDeleteDeployment via the shared invalidation helper', () => {
-  it('invalidates the parent’s deployment list after removal', async () => {
-    server.use(noContent('delete', `${DEPLOYMENTS}/deployment-1`));
+describe('useDeleteDeployment', () => {
+  const DEPLOYMENT_ID = 'deployment-1';
 
-    const { result, queryClient, org } = renderApiHook(() => useDeployApi());
+  it('invalidates the parent’s deployment list after removal', async () => {
+    server.use(
+      noContent('delete', `${DEPLOYMENTS}/${DEPLOYMENT_ID}`, { record: requests })
+    );
+
+    const { result, queryClient, org } = renderApiHook(() => useDeleteDeployment());
     const listKey = restApiKeys.child(org, API_ID, 'deployments');
     queryClient.setQueryData(listKey, { count: 0, list: [], pagination: {} });
 
-    // Deploy and delete share one invalidation helper; exercising either proves
-    // the shared path, and deploy is already covered above.
-    server.use(accepts('post', DEPLOYMENTS, aDeployment()));
-    result.current.mutate({ restApiId: API_ID, body: aDeployRequest() });
+    result.current.mutate({ restApiId: API_ID, deploymentId: DEPLOYMENT_ID });
+    await waitFor(() => expect(result.current.isSuccess).toBe(true));
 
+    // The delete really went out, the invalidation below is this mutation's,
+    // not a deploy standing in for it through the shared helper.
+    expect(requests.last()?.method).toBe('DELETE');
     await waitFor(() =>
       expect(queryClient.getQueryState(listKey)?.isInvalidated).toBe(true)
     );
+  });
+
+  it('drops the deleted deployment’s detail entry rather than refetching it', async () => {
+    // Delete's own branch, and the one the shared helper cannot cover:
+    // invalidating this key would refetch a deployment that is gone and show
+    // the user a 404 on the way past.
+    server.use(noContent('delete', `${DEPLOYMENTS}/${DEPLOYMENT_ID}`));
+
+    const { result, queryClient, org } = renderApiHook(() => useDeleteDeployment());
+    // The query's own key, not a hand-built copy: if the hook and the query
+    // definition ever disagree about the shape, this fails instead of removing
+    // a key nothing reads.
+    const detailKey = deploymentQueries.detail(org, API_ID, DEPLOYMENT_ID).queryKey;
+    queryClient.setQueryData(detailKey, aDeployment({ deploymentId: DEPLOYMENT_ID }));
+
+    result.current.mutate({ restApiId: API_ID, deploymentId: DEPLOYMENT_ID });
+    await waitFor(() => expect(result.current.isSuccess).toBe(true));
+
+    expect(queryClient.getQueryData(detailKey)).toBeUndefined();
   });
 });

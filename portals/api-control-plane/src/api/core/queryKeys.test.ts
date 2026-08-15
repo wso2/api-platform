@@ -118,6 +118,26 @@ describe('key hierarchy', () => {
     expect(children.slice(0, parent.length)).toEqual([...parent]);
   });
 
+  it('places every variant of a sub-resource under its `children` prefix', () => {
+    // `child` is not a shared prefix; `children` is the common prefix.
+    const prefix = restApis.children(acme, 'pizza-shack', 'deployments');
+
+    for (const variant of [
+      restApis.child(acme, 'pizza-shack', 'deployments'),
+      restApis.child(acme, 'pizza-shack', 'deployments', { status: 'DEPLOYED' }),
+      restApis.child(acme, 'pizza-shack', 'deployments', { deploymentId: 'dep-1' }),
+    ]) {
+      expect(variant.slice(0, prefix.length)).toEqual([...prefix]);
+    }
+  });
+
+  it('keeps a `children` prefix clear of a sibling sub-resource', () => {
+    const prefix = restApis.children(acme, 'pizza-shack', 'deployments');
+    const sibling = restApis.child(acme, 'pizza-shack', 'api-keys');
+
+    expect(sibling.slice(0, prefix.length)).not.toEqual([...prefix]);
+  });
+
   it('keeps two sub-resources of the same parent distinct', () => {
     expect(hashKey(restApis.child(acme, 'pizza-shack', 'deployments'))).not.toBe(
       hashKey(restApis.child(acme, 'pizza-shack', 'api-keys'))

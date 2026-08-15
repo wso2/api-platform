@@ -81,7 +81,8 @@ export const normalizeParams = <T extends Record<string, unknown>>(
  *   restApiKeys.all(org)            // ['platform', org, 'restApis']
  *   restApiKeys.list(org, filters)  // ['platform', org, 'restApis', 'list', {…}]
  *   restApiKeys.detail(org, id)     // ['platform', org, 'restApis', 'detail', id]
- *   restApiKeys.child(org, id, 'deployments')
+ *   restApiKeys.children(org, id, 'deployments')      // prefix for all of them
+ *   restApiKeys.child(org, id, 'deployments', params) // one variant
  *
  * Invalidating `all(org)` covers every list, detail and child of the resource —
  * the correct default after a mutation, because a create/delete can change
@@ -107,10 +108,17 @@ export const createResourceKeys = <const Name extends string>(name: Name) => ({
   detail: (org: OrgScope, id: string) =>
     [...scopeKey(org), name, 'detail', id] as const,
 
+  /** Every variant of one sub-resource, regardless of params. */
+  children: (org: OrgScope, id: string, child: string) =>
+    [...scopeKey(org), name, 'detail', id, child] as const,
+
   /**
-   * A sub-resource of one instance (`/rest-apis/{id}/deployments`). Keying it
-   * *under* the parent detail means deleting the parent invalidates its
-   * children in one call, with no bookkeeping.
+   * A sub-resource of one instance (e.g. `/rest-apis/{id}/deployments`).
+   *
+   * Keyed under the parent detail so deleting the parent invalidates its
+   * children. `params` selects the variant (list filters or nested id).
+   * Invalidate an entire sub-resource via `children`; use `child` for one
+   * specific variant.
    */
   child: (org: OrgScope, id: string, child: string, params?: Record<string, unknown>) =>
     [...scopeKey(org), name, 'detail', id, child, normalizeParams(params)] as const,

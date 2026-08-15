@@ -127,7 +127,7 @@ export const useSyncCustomPolicy = (overrides: { orgId?: string } = {}) => {
         queryClient.setQueryData(
           gatewayCustomPolicyKeys.detail(
             org,
-            policyVersionId(synced.name, synced.version)
+            policyVersionId(synced.uuid, synced.version)
           ),
           synced
         );

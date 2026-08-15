@@ -95,6 +95,8 @@ export const useCreateSecret = (overrides: { orgId?: string } = {}) => {
 
   return useMutation<SecretResponse, ApiError, CreateSecretBody>({
     mutationFn: (body) => createSecret(body, { orgId }),
+    // Drop plaintext mutation variables as soon as the last observer unmounts.
+    gcTime: 0,
     // Deliberately no `setQueryData` seeding here, unlike other resources: the
     // create response describes a secret, and secrets stay out of the store.
     onSuccess: () => invalidate(),
@@ -112,6 +114,9 @@ export const useRotateSecret = (overrides: { orgId?: string } = {}) => {
     { secretId: string; body: RotateSecretBody }
   >({
     mutationFn: ({ secretId, body }) => rotateSecret(secretId, body, { orgId }),
+    // Carries the replacement plaintext, so it is released on unmount for the
+    // same reason as `useCreateSecret`.
+    gcTime: 0,
     // No optimistic write either: rotation changes server-managed metadata
     // (updatedAt, version) that cannot be predicted client-side.
     onSuccess: () => invalidate(),

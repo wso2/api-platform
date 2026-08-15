@@ -38,7 +38,10 @@ export const gatewayCustomPolicyKeys = createResourceKeys('gatewayCustomPolicies
 export const policyVersionId = (
   gatewayCustomPolicyId: string,
   version: string
-): string => `${gatewayCustomPolicyId}@${version}`;
+): string => {
+    const escape = (s: string) => s.replace(/([,()])/g, '\\$1');
+    return `(${escape(gatewayCustomPolicyId)},${escape(version)})`;
+}
 
 /**
  * Query definitions, expressed as `queryOptions` objects rather than hooks, so
