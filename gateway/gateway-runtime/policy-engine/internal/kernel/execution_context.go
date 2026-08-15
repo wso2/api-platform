@@ -120,6 +120,17 @@ type PolicyExecutionContext struct {
 	// before being sent back to the downstream client.
 	responseContentEncoding string
 
+	// requestEncodingUnsupported / responseEncodingUnsupported are set when a
+	// non-identity Content-Encoding arrives that the kernel can neither decompress
+	// nor re-compress. When the policy chain requires that body, the message is
+	// rejected at the header phase rather than forwarded: passing it through would
+	// let an unreadable encoding silently skip every body policy — on the request
+	// side that is a caller-chosen header disabling guardrails and content
+	// moderation, and on the response side it is a masking/redaction policy that
+	// never runs on data already on its way to the client.
+	requestEncodingUnsupported  bool
+	responseEncodingUnsupported bool
+
 	// isStreamingRequest is set when SupportsRequestStreaming is true and the client
 	// sends a streaming body — the request body will be processed chunk-by-chunk.
 	isStreamingRequest       bool
@@ -128,6 +139,11 @@ type PolicyExecutionContext struct {
 	// requestStreamDecomp performs per-chunk decompression for compressed streaming
 	// request bodies. Nil when the request is not Content-Encoded.
 	requestStreamDecomp *streamDecompressor
+	// requestStreamComp re-compresses streaming request chunks into a SINGLE
+	// compressed stream for the whole request, for the same reason
+	// responseStreamComp does downstream: one writer per chunk would emit N
+	// independent members and the upstream would read only the first.
+	requestStreamComp *streamCompressor
 
 	// isStreamingResponse is set to true during response headers processing when
 	// streaming indicators are detected AND the policy chain supports streaming.
@@ -206,6 +222,10 @@ func (ec *PolicyExecutionContext) closeStreamDecompressors() {
 	if ec.responseStreamDecomp != nil {
 		ec.responseStreamDecomp.Close()
 		ec.responseStreamDecomp = nil
+	}
+	if ec.requestStreamComp != nil {
+		ec.requestStreamComp.Close()
+		ec.requestStreamComp = nil
 	}
 	if ec.responseStreamComp != nil {
 		ec.responseStreamComp.Close()
@@ -309,6 +329,164 @@ func (ec *PolicyExecutionContext) handlePayloadTooLarge(
 		},
 	}
 	return resp
+}
+
+// rejectUnsupportedEncoding builds an immediate response for a message whose
+// Content-Encoding the kernel cannot round-trip, on a body the policy chain
+// requires.
+//
+// This fails closed by design. The alternative — forward the body untouched —
+// means every body policy on the route silently does not run while the message
+// still completes with a success status. On the request side the encoding is
+// chosen by the caller, so that would be a bypass primitive: send
+// "Content-Encoding: <anything unrecognised>" and guardrails, content moderation
+// and schema validation all stop applying to the payload. On the response side
+// it means a masking or redaction policy never runs on data already on its way
+// to the client. Neither is a decision the kernel can make on the operator's
+// behalf, so the message is rejected instead.
+//
+// The client payload stays generic — no encoding name, no policy names, nothing
+// about which side failed (per error-handling.md directive 1); specifics go to
+// the log under the correlation id.
+func (ec *PolicyExecutionContext) rejectUnsupportedEncoding(
+	ctx context.Context,
+	encoding []string,
+	phase string,
+	statusCode typev3.StatusCode,
+	httpStatus int,
+	clientError string,
+) *extprocv3.ProcessingResponse {
+	errorID := uuid.New().String()
+
+	slog.WarnContext(ctx, "Rejecting message: Content-Encoding cannot be decoded, and body policies are attached to this route",
+		"error_id", errorID,
+		"request_id", ec.requestID,
+		"phase", phase,
+		"route_key", ec.routeKey,
+		"encoding", encoding,
+	)
+
+	errorBody := fmt.Sprintf(`{"error":%q,"error_id":"%s"}`, clientError, errorID)
+
+	resp := &extprocv3.ProcessingResponse{
+		Response: &extprocv3.ProcessingResponse_ImmediateResponse{
+			ImmediateResponse: &extprocv3.ImmediateResponse{
+				Status: &typev3.HttpStatus{
+					Code: statusCode,
+				},
+				Headers: buildHeaderValueOptions(map[string]string{
+					"content-type": "application/json",
+					"x-error-id":   errorID,
+				}),
+				Body: []byte(errorBody),
+			},
+		},
+	}
+
+	ec.generated = generatedResponse{
+		resp: resp,
+		outcome: tracing.HTTPOutcome{
+			StatusCode: httpStatus,
+			Reason:     constants.TerminalReasonUnsupportedEncoding,
+			ErrorID:    errorID,
+		},
+	}
+	return resp
+}
+
+// rejectUnsupportedRequestEncoding rejects an undecodable request body with 415.
+// The caller picked the encoding, so this is a client error and is safe to
+// surface as one — no part of the request has been forwarded upstream yet.
+func (ec *PolicyExecutionContext) rejectUnsupportedRequestEncoding(ctx context.Context) *extprocv3.ProcessingResponse {
+	return ec.rejectUnsupportedEncoding(
+		ctx,
+		ec.requestHeaderCtx.Headers.Get("content-encoding"),
+		"request_headers",
+		typev3.StatusCode_UnsupportedMediaType,
+		http.StatusUnsupportedMediaType,
+		"Unsupported Media Type",
+	)
+}
+
+// rejectUnsupportedResponseEncoding rejects an undecodable upstream response with
+// 502. The client did nothing wrong — the upstream answered in a coding this
+// gateway cannot inspect — and response headers have not been committed
+// downstream yet at the point this runs, so a clean status is still possible.
+func (ec *PolicyExecutionContext) rejectUnsupportedResponseEncoding(ctx context.Context) *extprocv3.ProcessingResponse {
+	return ec.rejectUnsupportedEncoding(
+		ctx,
+		ec.responseHeaderCtx.ResponseHeaders.Get("content-encoding"),
+		"response_headers",
+		typev3.StatusCode_BadGateway,
+		http.StatusBadGateway,
+		"Bad Gateway",
+	)
+}
+
+// rejectUndecodableBody builds an immediate response for a body that declared a
+// supported Content-Encoding but failed to decode as it. The reasoning is the
+// same as rejectUnsupportedEncoding: forwarding the raw bytes would leave every
+// body policy on the route silently inapplicable while the message still
+// succeeds. The decoder's error goes to the log only — it can describe stream
+// internals, and the client learns nothing beyond the status.
+func (ec *PolicyExecutionContext) rejectUndecodableBody(
+	ctx context.Context,
+	err error,
+	phase string,
+	statusCode typev3.StatusCode,
+	httpStatus int,
+	clientError string,
+) *extprocv3.ProcessingResponse {
+	errorID := uuid.New().String()
+
+	slog.WarnContext(ctx, "Rejecting body: does not decode as its declared Content-Encoding",
+		"error_id", errorID,
+		"request_id", ec.requestID,
+		"phase", phase,
+		"route_key", ec.routeKey,
+		"error", err,
+	)
+
+	errorBody := fmt.Sprintf(`{"error":%q,"error_id":"%s"}`, clientError, errorID)
+
+	resp := &extprocv3.ProcessingResponse{
+		Response: &extprocv3.ProcessingResponse_ImmediateResponse{
+			ImmediateResponse: &extprocv3.ImmediateResponse{
+				Status: &typev3.HttpStatus{
+					Code: statusCode,
+				},
+				Headers: buildHeaderValueOptions(map[string]string{
+					"content-type": "application/json",
+					"x-error-id":   errorID,
+				}),
+				Body: []byte(errorBody),
+			},
+		},
+	}
+
+	ec.generated = generatedResponse{
+		resp: resp,
+		outcome: tracing.HTTPOutcome{
+			StatusCode: httpStatus,
+			Reason:     constants.TerminalReasonUnsupportedEncoding,
+			ErrorID:    errorID,
+		},
+	}
+	return resp
+}
+
+// resolveEncodingFromBody pins "deflate" to the concrete variant the peer
+// actually sent, using the first bytes of the body. Every other encoding is
+// self-describing and passes through unchanged.
+//
+// This runs at the first body bytes rather than at the header phase because the
+// header alone cannot distinguish the two: both arrive as
+// "Content-Encoding: deflate".
+func resolveEncodingFromBody(encoding string, firstBytes []byte) string {
+	if encoding != encodingDeflate {
+		return encoding
+	}
+	return resolveDeflateVariant(firstBytes)
 }
 
 // finalResponseStatus returns the HTTP status the downstream client will
@@ -520,6 +698,15 @@ func (ec *PolicyExecutionContext) processRequestHeaders(
 	ctx context.Context,
 ) (*extprocv3.ProcessingResponse, error) {
 	ec.phase = phaseRequestHeaders
+
+	// Reject before any policy runs and before a single body byte is forwarded
+	// upstream. Only matters when the chain actually inspects the request body —
+	// with no body policy attached there is nothing to bypass, so an encoding the
+	// kernel cannot read is simply none of its business and passes through.
+	if ec.requestEncodingUnsupported && ec.policyChain.RequiresRequestBody && !ec.requestHasNoBody() {
+		return ec.rejectUnsupportedRequestEncoding(ctx), nil
+	}
+
 	execResult, err := ec.server.executor.ExecuteRequestHeaderPolicies(
 		ctx,
 		ec.policyChain.Policies,
@@ -669,22 +856,22 @@ func (ec *PolicyExecutionContext) processRequestBody(
 		// Decompress body if Content-Encoding was set, so policies receive plain bytes.
 		bodyContent := body.Body
 		if ec.requestContentEncoding != "" {
+			ec.requestContentEncoding = resolveEncodingFromBody(ec.requestContentEncoding, body.Body)
 			decompressed, err := decompressBody(body.Body, ec.requestContentEncoding, ec.server.maxRequestDecompressedBytes)
 			if err != nil {
 				// Over-limit bodies must be rejected, never forwarded raw.
 				if errors.Is(err, ErrDecompressedTooLarge) {
 					return ec.handlePayloadTooLarge(ctx, err, "request_body"), nil
 				}
-				slog.Warn("Failed to decompress request body, passing raw bytes to policies",
-					"request_id", ec.requestID,
-					"encoding", ec.requestContentEncoding,
-					"error", err,
-				)
-				// Clear encoding so translator doesn't attempt to recompress raw compressed bytes
-				ec.requestContentEncoding = ""
-			} else {
-				bodyContent = decompressed
+				// A body that does not decode as its declared encoding is rejected,
+				// not handed to policies raw. Falling through would let any caller
+				// disable every request-body policy by labelling arbitrary bytes
+				// "Content-Encoding: gzip" — the policies see bytes they cannot
+				// parse, match nothing, and the body is forwarded upstream anyway.
+				return ec.rejectUndecodableBody(ctx, err, "request_body",
+					typev3.StatusCode_BadRequest, http.StatusBadRequest, "Bad Request"), nil
 			}
+			bodyContent = decompressed
 		}
 
 		// Update request context with body data
@@ -730,8 +917,15 @@ func (ec *PolicyExecutionContext) processStreamingRequestBody(
 	// Compressed request: decompress this chunk, pass directly to policies,
 	// recompress the output. No kernel accumulation — policy implementations
 	// handle their own internal state across chunks.
-	if ec.requestContentEncoding != "" {
+	// An empty leading chunk carries no encoding evidence, so the decoder is not
+	// built from it: the deflate variant would be guessed from zero bytes and
+	// cannot be corrected once the decoder is running. Nothing is lost by waiting
+	// — feeding an empty chunk produces no output either.
+	if ec.requestContentEncoding != "" && (len(chunk.Chunk) > 0 || ec.requestStreamDecomp != nil) {
 		if ec.requestStreamDecomp == nil {
+			// Pin the deflate variant from the first chunk, before the decoder for
+			// it is built — the decoder cannot be swapped once running.
+			ec.requestContentEncoding = resolveEncodingFromBody(ec.requestContentEncoding, chunk.Chunk)
 			ec.requestStreamDecomp = newStreamDecompressor(ec.requestContentEncoding, ec.server.maxRequestDecompressedBytes)
 		}
 		decompressed, err := ec.requestStreamDecomp.FeedChunk(chunk.Chunk, chunk.EndOfStream)
@@ -894,6 +1088,14 @@ func (ec *PolicyExecutionContext) processResponseHeaders(
 	ec.phase = phaseResponseHeaders
 	ec.buildResponseContexts(headers)
 
+	// Reject here, at the last point an HTTP status can still be chosen: response
+	// headers have not been forwarded downstream yet, so this becomes a clean 502
+	// rather than a mid-stream reset. As on the request side, this only applies
+	// when the chain actually inspects the response body.
+	if ec.responseEncodingUnsupported && ec.policyChain.RequiresResponseBody && !ec.responseHasNoBody() {
+		return ec.rejectUnsupportedResponseEncoding(ctx), nil
+	}
+
 	// Detect streaming response: upgrade when chain supports streaming AND
 	// upstream signals chunked/SSE AND body is coming (not EndOfStream).
 	slog.Debug("[mode] response headers received — streaming detection",
@@ -947,6 +1149,15 @@ func (ec *PolicyExecutionContext) processResponseBody(
 	body *extprocv3.HttpBody,
 ) (*extprocv3.ProcessingResponse, error) {
 	ec.phase = phaseResponseBody
+
+	// Defence in depth. processResponseHeaders already rejected this response, so
+	// reaching the body phase with an undecodable encoding means the header-phase
+	// guard was bypassed or removed. Fail the stream rather than fall through to
+	// policies that would receive compressed bytes as if they were plaintext.
+	if ec.responseEncodingUnsupported && ec.policyChain.RequiresResponseBody {
+		return nil, fmt.Errorf("response body phase reached with undecodable Content-Encoding; refusing to run body policies")
+	}
+
 	if ec.isStreamingResponse {
 		slog.Debug("[body] routing to streaming response body handler",
 			"route", ec.routeKey,
@@ -965,21 +1176,20 @@ func (ec *PolicyExecutionContext) processResponseBody(
 		// Decompress body if Content-Encoding was set, so policies receive plain JSON.
 		bodyContent := body.Body
 		if ec.responseContentEncoding != "" {
+			ec.responseContentEncoding = resolveEncodingFromBody(ec.responseContentEncoding, body.Body)
 			decompressed, err := decompressBody(body.Body, ec.responseContentEncoding, ec.server.maxResponseDecompressedBytes)
 			if err != nil {
 				if errors.Is(err, ErrDecompressedTooLarge) {
 					return nil, ec.responsePayloadTooLargeError(ctx, err, "response_body")
 				}
-				slog.Warn("Failed to decompress response body, passing raw bytes to policies",
-					"request_id", ec.requestID,
-					"encoding", ec.responseContentEncoding,
-					"error", err,
-				)
-				// Clear encoding so translator doesn't attempt to recompress raw compressed bytes
-				ec.responseContentEncoding = ""
-			} else {
-				bodyContent = decompressed
+				// As on the request side: a response that does not decode as its
+				// declared encoding is rejected rather than handed to policies raw,
+				// so a malformed upstream body cannot silently skip masking or
+				// redaction on its way to the client.
+				return ec.rejectUndecodableBody(ctx, err, "response_body",
+					typev3.StatusCode_BadGateway, http.StatusBadGateway, "Bad Gateway"), nil
 			}
+			bodyContent = decompressed
 		}
 
 		// Update response context with body data
@@ -1062,8 +1272,14 @@ func (ec *PolicyExecutionContext) processStreamingResponseBody(
 	// on gzip: word-count/sentence-count guardrails evaluated isolated fragments
 	// instead of assembled content, and content-rewriting policies never saw a
 	// placeholder that straddled a chunk boundary.
-	if ec.responseContentEncoding != "" {
+	// As on the request path: an empty leading chunk is no evidence of the deflate
+	// variant, and the decoder cannot be swapped once running — so defer building
+	// it until a chunk actually carries bytes.
+	if ec.responseContentEncoding != "" && (len(chunk.Chunk) > 0 || ec.responseStreamDecomp != nil) {
 		if ec.responseStreamDecomp == nil {
+			// Pin the deflate variant from the first chunk, before the decoder for
+			// it is built — the decoder cannot be swapped once running.
+			ec.responseContentEncoding = resolveEncodingFromBody(ec.responseContentEncoding, chunk.Chunk)
 			ec.responseStreamDecomp = newStreamDecompressor(ec.responseContentEncoding, ec.server.maxResponseDecompressedBytes)
 		}
 		decompressed, err := ec.responseStreamDecomp.FeedChunk(chunk.Chunk, chunk.EndOfStream)
@@ -1219,7 +1435,24 @@ func (ec *PolicyExecutionContext) buildRequestContexts(headers *extprocv3.HttpHe
 					requestID = value
 				}
 			case "content-encoding":
-				ec.requestContentEncoding = value
+				// Only encodings the kernel can round-trip are recorded; anything
+				// else is flagged so the request is rejected outright before any
+				// body policy runs (see rejectUnsupportedRequestEncoding).
+				//
+				// This value is chosen by the caller, so treating an unrecognised
+				// one as "no encoding" would be a policy bypass primitive: the body
+				// would reach policies as opaque compressed bytes, match nothing,
+				// and be forwarded to the upstream unchanged — guardrails, content
+				// moderation and schema validation all silently skipped by setting
+				// a header. Content codings are case-insensitive tokens
+				// (RFC 9110 §8.4.1), so normalise before matching or "GZIP" alone
+				// would take that path.
+				encoding := strings.ToLower(strings.TrimSpace(value))
+				if isRecompressibleEncoding(encoding) {
+					ec.requestContentEncoding = encoding
+				} else if encoding != "" && encoding != encodingIdentity {
+					ec.requestEncodingUnsupported = true
+				}
 			}
 		}
 	}
@@ -1346,12 +1579,12 @@ func (ec *PolicyExecutionContext) buildResponseContexts(headers *extprocv3.HttpH
 				}
 			case "content-encoding":
 				// Only encodings the kernel can actually decompress AND re-compress
-				// are recorded. For anything else (deflate, zstd, …) the decompressor
-				// would fall through to a passthrough reader, handing policies raw
-				// compressed bytes: content-rewriting policies then silently match
-				// nothing — e.g. pii-masking-regex would deliver "[EMAIL_0000]" to the
-				// client instead of restoring it — with no error anywhere. Leaving this
-				// empty keeps the body untouched end to end, which is the safe outcome.
+				// are recorded. Anything else is flagged and the response is rejected
+				// at the header phase when the chain requires the body — the
+				// decompressor would otherwise hand policies raw compressed bytes, so
+				// a content-rewriting policy silently matches nothing (pii-masking-regex
+				// delivering "[EMAIL_0000]" to the client instead of restoring it, with
+				// no error anywhere).
 				//
 				// Content codings are case-insensitive tokens (RFC 9110 §8.4.1), so
 				// normalise before matching — the decompressor/compressor switches are
@@ -1359,11 +1592,8 @@ func (ec *PolicyExecutionContext) buildResponseContexts(headers *extprocv3.HttpH
 				encoding := strings.ToLower(strings.TrimSpace(value))
 				if isRecompressibleEncoding(encoding) {
 					ec.responseContentEncoding = encoding
-				} else if encoding != "" && encoding != "identity" {
-					slog.Warn("unsupported response Content-Encoding; body policies will not inspect or modify this response",
-						"request_id", ec.requestID,
-						"encoding", value,
-					)
+				} else if encoding != "" && encoding != encodingIdentity {
+					ec.responseEncodingUnsupported = true
 				}
 			}
 		}

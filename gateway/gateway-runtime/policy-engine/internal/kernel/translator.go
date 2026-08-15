@@ -1524,17 +1524,41 @@ func TranslateStreamingRequestChunkAction(result *executor.StreamingRequestExecu
 	// Re-compress the output if the original request was Content-Encoded.
 	// The upstream receives the Content-Encoding header as-is, so the body
 	// bytes must match the encoding the upstream expects.
+	//
+	// The whole request must form ONE compressed stream, so the compressor is
+	// held on the execution context across chunks and finalised at end of stream —
+	// the same contract the response path uses. Calling recompressBody per chunk
+	// emits one gzip member (or brotli/zstd/zlib stream) per chunk; the upstream
+	// stops decoding after the first, so it sees a truncated body while every byte
+	// was in fact sent.
 	if execCtx.requestContentEncoding != "" {
-		recompressed, err := recompressBody(outputBody, execCtx.requestContentEncoding)
+		if execCtx.requestStreamComp == nil {
+			// Same guard as the response path: buildRequestContexts only stores an
+			// encoding isRecompressibleEncoding accepts, but newStreamCompressor can
+			// still return nil if the codec rejects its options.
+			comp := newStreamCompressor(execCtx.requestContentEncoding)
+			if comp == nil {
+				slog.Error("[streaming] no compressor available for request encoding; failing stream",
+					"encoding", execCtx.requestContentEncoding,
+				)
+				return nil, fmt.Errorf("no stream compressor for request encoding %q", execCtx.requestContentEncoding)
+			}
+			execCtx.requestStreamComp = comp
+		}
+		recompressed, err := execCtx.requestStreamComp.Compress(outputBody, originalChunk.EndOfStream)
 		if err != nil {
-			slog.Warn("[streaming] failed to re-compress request body; sending uncompressed — Content-Encoding mismatch",
+			// The Content-Encoding header is already on its way upstream, so
+			// falling back to plaintext here would corrupt the request. Fail the
+			// stream instead and let Envoy reset it.
+			slog.Error("[streaming] failed to re-compress request chunk; failing stream",
 				"encoding", execCtx.requestContentEncoding,
 				"error", err,
 			)
-			execCtx.requestContentEncoding = ""
-		} else {
-			outputBody = recompressed
+			execCtx.requestStreamComp.Close()
+			execCtx.requestStreamComp = nil
+			return nil, fmt.Errorf("streaming request re-compression failed: %w", err)
 		}
+		outputBody = recompressed
 	}
 
 	analyticsData := make(map[string]any)
@@ -1617,9 +1641,19 @@ func TranslateStreamingResponseChunkAction(result *executor.StreamingResponseExe
 	// a truncated body even though every byte was transmitted.
 	if execCtx.responseContentEncoding != "" {
 		if execCtx.responseStreamComp == nil {
-			// Never nil: responseContentEncoding is only ever set to an encoding
-			// isRecompressibleEncoding accepts (see buildResponseContexts).
-			execCtx.responseStreamComp = newStreamCompressor(execCtx.responseContentEncoding)
+			// buildResponseContexts only ever stores an encoding
+			// isRecompressibleEncoding accepts, but newStreamCompressor can still
+			// return nil for one of those if the codec rejects its options. Fail the
+			// stream rather than dereference nil: the alternative is a panic in the
+			// ext_proc handler mid-response.
+			comp := newStreamCompressor(execCtx.responseContentEncoding)
+			if comp == nil {
+				slog.Error("[streaming] no compressor available for response encoding; failing stream",
+					"encoding", execCtx.responseContentEncoding,
+				)
+				return nil, fmt.Errorf("no stream compressor for response encoding %q", execCtx.responseContentEncoding)
+			}
+			execCtx.responseStreamComp = comp
 		}
 		recompressed, err := execCtx.responseStreamComp.Compress(outputBody, endOfStream)
 		if err != nil {

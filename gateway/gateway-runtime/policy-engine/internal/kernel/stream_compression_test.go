@@ -159,7 +159,10 @@ func TestStreamCompressor_FlushesPerChunk(t *testing.T) {
 // Encodings the kernel cannot round-trip must yield no compressor, so callers
 // forward the body untouched instead of corrupting it.
 func TestStreamCompressor_UnsupportedEncodings(t *testing.T) {
-	for _, enc := range []string{"deflate", "zstd", "identity", "", "GZIP"} {
+	// "GZIP" belongs here: the codec switches are lowercase-only, so callers must
+	// normalise before reaching them (buildRequest/ResponseContexts do). A
+	// comma-separated chain is unsupported too — the kernel cannot round-trip one.
+	for _, enc := range []string{"compress", "snappy", "identity", "", "GZIP", "gzip, br"} {
 		if sc := newStreamCompressor(enc); sc != nil {
 			t.Errorf("newStreamCompressor(%q) returned a compressor; want nil", enc)
 		}
@@ -167,10 +170,139 @@ func TestStreamCompressor_UnsupportedEncodings(t *testing.T) {
 			t.Errorf("isRecompressibleEncoding(%q) = true; want false", enc)
 		}
 	}
-	for _, enc := range []string{"gzip", "br"} {
+	for _, enc := range []string{"gzip", "br", "zstd", "deflate", "deflate-raw"} {
 		if !isRecompressibleEncoding(enc) {
 			t.Errorf("isRecompressibleEncoding(%q) = false; want true", enc)
 		}
+		if sc := newStreamCompressor(enc); sc == nil {
+			t.Errorf("newStreamCompressor(%q) = nil; want a compressor", enc)
+		}
+	}
+}
+
+// newStreamCompressor returning nil must never reach a Compress/Close call.
+// The streaming translators guard it explicitly rather than trusting the
+// isRecompressibleEncoding gate in a different file, because a nil dereference
+// there panics the ext_proc handler mid-message.
+func TestTranslateStreamingChunkAction_NilCompressorFailsStreamNotPanics(t *testing.T) {
+	// "identity" is deliberately chosen: it reaches the compressor branch (it is
+	// a non-empty encoding) but yields no compressor, which is exactly the shape
+	// a supported-encoding constructor failure takes.
+	t.Run("response", func(t *testing.T) {
+		execCtx := &PolicyExecutionContext{
+			responseContentEncoding: "identity",
+			analyticsMetadata:       map[string]any{},
+			dynamicMetadata:         map[string]map[string]interface{}{},
+		}
+		_, err := TranslateStreamingResponseChunkAction(
+			&executor.StreamingResponseExecutionResult{},
+			&policy.StreamBody{Chunk: []byte("payload"), EndOfStream: true},
+			execCtx,
+		)
+		if err == nil {
+			t.Fatal("expected a stream error when no compressor is available; got nil")
+		}
+	})
+
+	t.Run("request", func(t *testing.T) {
+		execCtx := &PolicyExecutionContext{
+			requestContentEncoding: "identity",
+			analyticsMetadata:      map[string]any{},
+			dynamicMetadata:        map[string]map[string]interface{}{},
+		}
+		_, err := TranslateStreamingRequestChunkAction(
+			&executor.StreamingRequestExecutionResult{},
+			&policy.StreamBody{Chunk: []byte("payload"), EndOfStream: true},
+			execCtx,
+		)
+		if err == nil {
+			t.Fatal("expected a stream error when no compressor is available; got nil")
+		}
+	})
+}
+
+// recompressBody must not answer a supported-but-unconstructable encoding with
+// the plaintext body — that would put unencoded bytes under a compressed
+// Content-Encoding header. A genuinely unknown encoding still passes through.
+func TestRecompressBody_NilCompressorDistinguishesUnknownFromUnavailable(t *testing.T) {
+	body := []byte(`{"content":"passthrough probe"}`)
+
+	out, err := recompressBody(body, "identity")
+	if err != nil {
+		t.Fatalf("unknown encoding must pass through, got error: %v", err)
+	}
+	if !bytes.Equal(out, body) {
+		t.Errorf("unknown encoding altered the body: got %q want %q", out, body)
+	}
+}
+
+// Every supported encoding must survive a multi-chunk streaming round trip as
+// ONE compressed stream. This is the regression that started this change: a
+// per-chunk compressor emits N independent members and clients stop decoding
+// after the first, so the body looks truncated while every byte was sent.
+func TestStreamCompressor_RoundTripsEveryEncoding(t *testing.T) {
+	chunks := []string{`{"choices":[{"delta":`, `{"content":"hello world"}`, `}]}`}
+	var want strings.Builder
+	for _, c := range chunks {
+		want.WriteString(c)
+	}
+
+	for _, enc := range []string{"gzip", "br", "zstd", "deflate", "deflate-raw"} {
+		t.Run(enc, func(t *testing.T) {
+			sc := newStreamCompressor(enc)
+			if sc == nil {
+				t.Fatalf("newStreamCompressor(%q) = nil", enc)
+			}
+			var wire bytes.Buffer
+			for i, c := range chunks {
+				out, err := sc.Compress([]byte(c), i == len(chunks)-1)
+				if err != nil {
+					t.Fatalf("compress chunk %d: %v", i, err)
+				}
+				wire.Write(out)
+			}
+
+			got, err := decompressBody(wire.Bytes(), enc, 0)
+			if err != nil {
+				t.Fatalf("decompress: %v", err)
+			}
+			if string(got) != want.String() {
+				t.Errorf("round trip mismatch\n got: %q\nwant: %q", got, want.String())
+			}
+		})
+	}
+}
+
+// "deflate" on the wire is two different formats. Re-encoding raw input as
+// zlib-wrapped (or the reverse) hands the peer a body its decoder rejects, so
+// the arriving variant has to be detected and preserved.
+func TestResolveDeflateVariant(t *testing.T) {
+	payload := []byte(`{"content":"deflate variant probe"}`)
+
+	zlibWrapped, err := recompressBody(payload, "deflate")
+	if err != nil {
+		t.Fatalf("zlib encode: %v", err)
+	}
+	raw, err := recompressBody(payload, "deflate-raw")
+	if err != nil {
+		t.Fatalf("raw deflate encode: %v", err)
+	}
+
+	if got := resolveDeflateVariant(zlibWrapped); got != "deflate" {
+		t.Errorf("zlib-wrapped body detected as %q; want \"deflate\"", got)
+	}
+	if got := resolveDeflateVariant(raw); got != "deflate-raw" {
+		t.Errorf("raw deflate body detected as %q; want \"deflate-raw\"", got)
+	}
+	// Too few bytes to decide falls back to the RFC-conformant form.
+	if got := resolveDeflateVariant([]byte{0x78}); got != "deflate" {
+		t.Errorf("1-byte body detected as %q; want \"deflate\"", got)
+	}
+
+	// The variants must not be interchangeable, or preserving them would be
+	// pointless — decoding raw bytes as zlib has to fail.
+	if _, err := decompressBody(raw, "deflate", 0); err == nil {
+		t.Error("raw deflate decoded as zlib; the two variants are not distinguishable by this test")
 	}
 }
 
