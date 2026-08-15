@@ -152,6 +152,15 @@ describe('request context headers', () => {
 
     expect(first).not.toBe(second);
   });
+
+  it('puts the correlation id on the error, matching the header', async () => {
+    server.use(recording('get', '/rest-apis/pizza-shack', () =>
+        HttpResponse.json(
+            { status: 'error', code: 'INTERNAL_ERROR', message: 'x' }, {status: 500})
+    ));
+    const error = await rejection(http.get('/rest-apis/pizza-shack'));
+    expect(error.requestId).toBeTruthy();
+});
 });
 
 describe('CSRF protection', () => {

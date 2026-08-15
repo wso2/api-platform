@@ -280,7 +280,7 @@ export const createHttpClient = (
 ): AxiosInstance => {
   const instance = axios.create({
     baseURL: platformApiBaseUrl(),
-    timeout: DEFAULT_TIMEOUT_MS,
+    timeout: 0,
     // Same-origin: the BFF session cookie rides along automatically and the BFF
     // injects the upstream bearer token server-side. The browser never holds a
     // token, so there is nothing here to attach, refresh, or leak.
@@ -393,6 +393,7 @@ export async function request<T>(
   options: RequestOptions = {}
 ) : Promise<T> {
   const verb = method.toUpperCase();
+  const requestId = newRequestId();
   const deadline = withDeadline(
     options.signal,
     options.timeout ?? DEFAULT_TIMEOUT_MS
@@ -404,6 +405,7 @@ export async function request<T>(
     headers: options.headers,
     signal: deadline.signal,
     orgId: options.orgId,
+    requestId,
     operationName: options.operationName,
     // FormData is passed through untouched; anything else is serialized here
     // so the Content-Type set above is always accurate.
@@ -423,7 +425,7 @@ export async function request<T>(
       throw platformErrorFromTransport(
         error,
         classifyTransportFailure(error, deadline),
-        config.requestId,
+        requestId,
         options.operationName
       )
   } finally {
@@ -442,7 +444,7 @@ export async function request<T>(
 
     if (response.status === 401) notifySessionExpired();
 
-    throw platformErrorFromBody(response.status, body, config.requestId, options.operationName);
+    throw platformErrorFromBody(response.status, body, requestId, options.operationName);
   }
 
   return parseBody<T>(response);

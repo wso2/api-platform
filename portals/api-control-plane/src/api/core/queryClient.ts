@@ -123,17 +123,18 @@ export const createQueryClient = (handlers: QueryClientHandlers = {}) =>
         // fetched before a network drop is silently wrong until refreshed.
         refetchOnReconnect: true,
         refetchOnMount: true,
-        // Keep the previous page's rows on screen while the next page loads,
-        // instead of collapsing the table to a spinner on every page change.
-        placeholderData: (previous: unknown) => previous,
+        // No global `placeholderData`; use it only for pagination-specific queries
+        // so route changes do not show stale data from the previous key.
       },
       mutations: {
-        // A mutation is not idempotent; retrying a failed POST risks creating
-        // two resources. Retry only genuine transport failures, and only once.
+        // A mutation is not idempotent. A timeout means the request may have
+        // reached the server and succeeded, so retrying it risks a duplicate
+        // resource. Only a request that provably never left is retried, and
+        // only once.
         retry: (failureCount, error) =>
           failureCount < 1 &&
           isApiError(error) &&
-          (error.kind === 'network' || error.kind === 'timeout'),
+          (error.kind === 'network'),
         retryDelay,
       },
     },

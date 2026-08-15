@@ -413,10 +413,12 @@ export function platformErrorFromTransport(
     isRecord(cause) && (cause as { name?: unknown }).name === 'AbortError';
   const inferred: ApiErrorKind = kind ?? (abortLike ? 'aborted' : 'network');
 
-  return new ApiError(GENERIC_MESSAGE, {
+  const { code, message } = TRANSPORT_FAILURES[inferred];
+
+  return new ApiError(message, {
     kind: inferred,
     status: 0,
-    ...TRANSPORT_FAILURES[inferred],
+    code,
     cause,
     requestId,
     operation: operationName  ,

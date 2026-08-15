@@ -82,10 +82,12 @@ describe('retryDelay — backoff that does not synchronise across queries', () =
   );
 
   it('grows with each successive attempt', () => {
-    // Compared at the floor of each range, which is monotonic even though any
-    // individual pair of samples may not be.
-    expect(ceiling(0) * 0.5).toBeLessThan(ceiling(1) * 0.5);
-    expect(ceiling(1) * 0.5).toBeLessThan(ceiling(2) * 0.5);
+    // Any individual pair of samples may not be ordered, so compare the
+    // observed minimum of each attempt over many samples.
+    const minimum = (attempt: number) =>
+      Math.min(...Array.from({ length: 200 }, () => retryDelay(attempt)));
+    expect(minimum(0)).toBeLessThan(minimum(1));
+    expect(minimum(1)).toBeLessThan(minimum(2));
   });
 
   it('caps at thirty seconds, so a long outage does not produce absurd waits', () => {
@@ -107,12 +109,18 @@ describe('mutation retry policy', () => {
     return options?.retry as (count: number, error: unknown) => boolean;
   };
 
-  it.each([
-    ['a network failure', new ApiError('offline', { kind: 'network' })],
-    ['a timeout', new ApiError('slow', { kind: 'timeout' })],
-  ])('retries %s once, since the request may never have reached the server', (_label, error) => {
+  it('retries a network failure once, since the request never reached the server', () => {
+    const error = new ApiError('offline', { kind: 'network' });
+
     expect(mutationRetry()(0, error)).toBe(true);
     expect(mutationRetry()(1, error)).toBe(false);
+  });
+
+  it('never retries a timeout, because the request may have arrived and succeeded', () => {
+    // The distinction from a network failure: nothing left the client there, so
+    // a retry is free. A timeout only proves no response came back in time —
+    // the write may already have been applied, and retrying duplicates it.
+    expect(mutationRetry()(0, new ApiError('slow', { kind: 'timeout' }))).toBe(false);
   });
 
   it('never retries a server error, because a POST is not idempotent', () => {
@@ -184,5 +192,12 @@ describe('query defaults', () => {
     const defaults = createQueryClient().getDefaultOptions().queries;
 
     expect(defaults?.refetchOnReconnect).toBe(true);
+  });
+
+  it('sets no global placeholderData, so no query renders another key’s data', () => {
+    // Keep paging local to the query; a global default can show the previous tenant's data after a route change.
+    const defaults = createQueryClient().getDefaultOptions().queries;
+
+    expect(defaults?.placeholderData).toBeUndefined();
   });
 });
