@@ -98,6 +98,9 @@ export const ClientErrorCode = {
   CLIENT_REQUEST_ABORTED: 'CLIENT_REQUEST_ABORTED',
   /** A failure response whose body is absent, non-JSON, or not the Error shape. */
   CLIENT_MALFORMED_ERROR: 'CLIENT_MALFORMED_ERROR',
+  /** A scoped operation was invoked before an organization was resolved. The request is refused client-side rather than sent unscoped: see `requireOrgScope` in `core/scope`. */
+  CLIENT_MISSING_ORG_SCOPE: 'CLIENT_MISSING_ORG_SCOPE',
+
 } as const;
 
 /**

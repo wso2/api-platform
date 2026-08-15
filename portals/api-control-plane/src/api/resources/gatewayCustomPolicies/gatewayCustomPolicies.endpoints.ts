@@ -38,6 +38,9 @@ export type CustomPolicy = Schema<'CustomPolicyResponse'>;
 export type CustomPolicyListResponse = ResponseOf<'ListGatewayCustomPolicies'>;
 export type ListCustomPoliciesQuery = QueryOf<'ListGatewayCustomPolicies'>;
 export type SyncCustomPolicyQuery = QueryOf<'SyncCustomPolicy'>;
+export type SyncCustomPolicyOptions = RequestOptions & {
+  query: SyncCustomPolicyQuery;
+};
 
 const BASE = '/gateway-custom-policies';
 
@@ -92,12 +95,12 @@ export const deleteGatewayCustomPolicy = async (
  * Pulls a policy definition from a gateway into the control plane.
  *
  * All three of `gatewayId`, `policyName` and `policyVersion` are **required
- * query parameters** — this POST carries no path segment and no body, which is
+ * query parameters**; this POST carries no path segment and no body, which is
  * unusual enough to be worth stating rather than leaving to be discovered from
  * a 400.
  */
 export const syncCustomPolicy = async (
-  options?: RequestOptions
+  options?: SyncCustomPolicyOptions
 ): Promise<CustomPolicy> => {
   return http.post<CustomPolicy>(`${BASE}/sync`, undefined, {
     ...options,

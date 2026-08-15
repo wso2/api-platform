@@ -29,7 +29,7 @@ import {
 } from '../../../test/msw';
 import { server } from '../../../test/server';
 import { ApiError } from '../../core/errors';
-import { resetHttpClient } from '../../core/http';
+import { resetHttpClient, type RequestOptions } from '../../core/http';
 import {
   getOrganization,
   listOrganizations,
@@ -51,6 +51,20 @@ beforeEach(() => {
   requests = recorder();
   resetHttpClient();
 });
+
+/**
+ * An org scope these endpoints must drop, plus a second option that must
+ * survive the dropping.
+ *
+ * Deliberately typed as the full `RequestOptions` instead of cast: that is how
+ * a stray scope actually arrives, since the endpoints' narrower
+ * `Omit<RequestOptions, 'orgId'>` parameter still accepts a wider value
+ * structurally. Only the runtime strip keeps the header off the wire.
+ */
+const strayOrgScope: RequestOptions = {
+  orgId: 'acme-org',
+  query: { limit: 5 },
+};
 
 describe('listOrganizations', () => {
   it('GETs the collection', async () => {
@@ -81,6 +95,15 @@ describe('listOrganizations', () => {
       limit: '50',
       offset: '100',
     });
+  });
+
+  it('drops a caller-supplied organization scope, keeping the rest', async () => {
+    server.use(collection('/organizations', [], { record: requests }));
+
+    await listOrganizations(strayOrgScope);
+
+    expect(requests.last()?.headers.get('X-Org-Id')).toBeNull();
+    expect(Object.fromEntries(requests.last()!.params)).toEqual({ limit: '5' });
   });
 
   it('returns the collection envelope, pagination included', async () => {
@@ -118,6 +141,17 @@ describe('getOrganization', () => {
     expect(requests.last()?.url.pathname).toBe('/api/v0.9/organizations/weird%2Fid');
   });
 
+  it('drops a caller-supplied organization scope, keeping the rest', async () => {
+    server.use(
+      resource('/organizations/acme-org', anOrganization(), { record: requests })
+    );
+
+    await getOrganization('acme-org', strayOrgScope);
+
+    expect(requests.last()?.headers.get('X-Org-Id')).toBeNull();
+    expect(Object.fromEntries(requests.last()!.params)).toEqual({ limit: '5' });
+  });
+
   it('resolves to the organization itself', async () => {
     server.use(resource('/organizations/acme-org', anOrganization()));
 
@@ -141,6 +175,17 @@ describe('registerOrganization', () => {
     expect(JSON.parse(requests.last()!.body)).toMatchObject({
       displayName: 'New Corp',
     });
+  });
+
+  it('drops a caller-supplied organization scope, keeping the rest', async () => {
+    server.use(
+      accepts('post', '/organizations', anOrganization(), { record: requests })
+    );
+
+    await registerOrganization(anOrganization(), strayOrgScope);
+
+    expect(requests.last()?.headers.get('X-Org-Id')).toBeNull();
+    expect(Object.fromEntries(requests.last()!.params)).toEqual({ limit: '5' });
   });
 
   it('returns the registered organization, so onboarding can route into it', async () => {

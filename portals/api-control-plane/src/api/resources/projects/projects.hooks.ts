@@ -19,7 +19,7 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 
 import type { ApiError } from '../../core/errors';
-import { useApiScope } from '../../core/scope';
+import { requireOrgScope, useApiScope } from '../../core/scope';
 import {
   createProject,
   deleteProject,
@@ -105,7 +105,11 @@ export const useCreateProject = (overrides: { orgId?: string } = {}) => {
   const invalidate = useInvalidateProjects(orgId);
 
   return useMutation<Project, ApiError, CreateProjectBody>({
-    mutationFn: (body) => createProject(body, { orgId }),
+    // `async` so a missing scope rejects the mutation rather than throwing
+    // synchronously into the caller — the error belongs on `mutation.error`,
+    // where the form already renders it.
+    mutationFn: async (body) =>
+      createProject(body, { orgId: requireOrgScope(orgId, 'CreateProject') }),
     onSuccess: (created) => {
       // Seed the detail cache from the create response so navigating straight
       // to the new project renders instantly instead of showing a loading
@@ -130,7 +134,10 @@ export const useUpdateProject = (overrides: { orgId?: string } = {}) => {
     { projectId: string; body: UpdateProjectBody },
     { previous?: Project }
   >({
-    mutationFn: ({ projectId, body }) => updateProject(projectId, body, { orgId }),
+    mutationFn: async ({ projectId, body }) =>
+      updateProject(projectId, body, {
+        orgId: requireOrgScope(orgId, 'UpdateProject'),
+      }),
 
     // Optimistic update: the edit appears immediately, and rolls back exactly
     // if the server rejects it. `cancelQueries` first is not optional — an
@@ -175,7 +182,8 @@ export const useDeleteProject = (overrides: { orgId?: string } = {}) => {
   const invalidate = useInvalidateProjects(orgId);
 
   return useMutation<void, ApiError, { projectId: string }>({
-    mutationFn: ({ projectId }) => deleteProject(projectId, { orgId }),
+    mutationFn: async ({ projectId }) =>
+      deleteProject(projectId, { orgId: requireOrgScope(orgId, 'DeleteProject') }),
     onSuccess: (_result, { projectId }) => {
       if (org) {
         // Drop the detail entry outright — refetching a deleted resource just

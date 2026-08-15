@@ -48,21 +48,39 @@ const resourcePath = (
   organizationId: PathOf<'GetOrganization'>['organizationId']
 ): string => `${BASE}/${encodeURIComponent(organizationId)}`;
 
+/**
+ * Options for a global (non-organization-scoped) operation: everything
+ * `RequestOptions` offers except the org scope, which has no meaning here.
+ */
+export type GlobalRequestOptions = Omit<RequestOptions, 'orgId'>;
+
+/**
+ * Removes `orgId` so no `X-Org-Id` header is sent.
+ */
+const withoutOrgScope = (
+  options?: GlobalRequestOptions
+): GlobalRequestOptions => {
+  if (!options) return {};
+  const { orgId: _orgId, ...rest } = options as RequestOptions;
+  void _orgId;
+  return rest;
+};
+
 export const listOrganizations = async (
-  options?: RequestOptions
+  options?: GlobalRequestOptions
 ): Promise<OrganizationListResponse> => {
   return http.get<OrganizationListResponse>(BASE, {
-    ...options,
+    ...withoutOrgScope(options),
     operationName: 'ListOrganizations',
   });
 };
 
 export const getOrganization = async (
   organizationId: string,
-  options?: RequestOptions
+  options?: GlobalRequestOptions
 ): Promise<Organization> => {
   return http.get<Organization>(resourcePath(organizationId), {
-    ...options,
+    ...withoutOrgScope(options),
     operationName: 'GetOrganization',
   });
 };
@@ -70,10 +88,10 @@ export const getOrganization = async (
 /** Onboarding only: registers a new organization and returns it. */
 export const registerOrganization = async (
   body: RegisterOrganizationBody,
-  options?: RequestOptions
+  options?: GlobalRequestOptions
 ): Promise<Organization> => {
   return http.post<Organization>(BASE, body, {
-    ...options,
+    ...withoutOrgScope(options),
     operationName: 'RegisterOrganization',
   });
 };

@@ -80,11 +80,19 @@ export const createSubscription = async (
   });
 };
 
+type UpdateSubscriptionOptions = Omit<RequestOptions, 'query'> & {
+  query: QueryOf<'UpdateSubscription'>;
+};
+
+type DeleteSubscriptionOptions = Omit<RequestOptions, 'query'> & {
+  query: QueryOf<'DeleteSubscription'>;
+};
+
 /** Requires `subscriberId` in `options.query`; omitting it is a 400. */
 export const updateSubscription = async (
   subscriptionId: string,
   body: UpdateSubscriptionBody,
-  options?: RequestOptions
+  options?: UpdateSubscriptionOptions
 ): Promise<Subscription> => {
   return http.put<Subscription>(resourcePath(subscriptionId), body, {
     ...options,
@@ -95,7 +103,7 @@ export const updateSubscription = async (
 /** Requires `subscriberId` in `options.query`; omitting it is a 400. */
 export const deleteSubscription = async (
   subscriptionId: string,
-  options?: RequestOptions
+  options?: DeleteSubscriptionOptions
 ): Promise<void> => {
   await http.delete<void>(resourcePath(subscriptionId), {
     ...options,

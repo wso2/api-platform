@@ -18,6 +18,7 @@
 
 import { createContext, useContext, useMemo } from 'react';
 
+import { ApiError, ClientErrorCode } from './errors';
 import { orgScope, type OrgScope } from './queryKeys';
 
 /**
@@ -77,6 +78,34 @@ export const requireScope = (orgId: string | undefined, operation: string): stri
       `${operation} requires an organization scope but none was resolved. ` +
         'This indicates a missing `enabled` guard on the query.'
     );
+  }
+  return orgId;
+};
+
+/**
+ * Asserts scope inside a `mutationFn`, returning the org id so it can be passed
+ * straight to the endpoint.
+ *
+ * The mutation counterpart to `requireScope`, and deliberately a different kind
+ * of failure. A query has `enabled` to hold it back, so a missing scope there is
+ * a programming error and throws a bare `Error`. A mutation has no such gate:
+ * the user can click a button while the route is still resolving, which is
+ * reachable at runtime rather than a bug. So this throws the same `ApiError`
+ * every other failure in this layer produces — components keep one error type,
+ * and the global mutation handler can surface it — instead of letting an
+ * unscoped write reach the server with no `X-Org-Id` at all.
+ */
+export const requireOrgScope = (
+  orgId: string | undefined,
+  operation: string
+): string => {
+  if (!orgId) {
+    throw new ApiError('No organization is selected.', {
+      kind: 'http',
+      status: 0,
+      code: ClientErrorCode.CLIENT_MISSING_ORG_SCOPE,
+      operation,
+    });
   }
   return orgId;
 };
