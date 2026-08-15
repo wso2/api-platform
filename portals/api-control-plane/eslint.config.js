@@ -36,14 +36,13 @@ export default [
         {
           patterns: [
             {
-              // Legacy layer, removed as each resource is migrated. Resource
-              // clients live one dir deep (api/<resource>/<x>Client); this
-              // avoids matching api/client.ts, the token seam the auth
-              // adapters legitimately import.
-              // `!(core|resources)` matters: without it this pattern also
-              // matches `api/core/queryClient`, which is not a legacy client
-              // and which the composition root legitimately imports.
-              group: ['**/api/!(core|resources)/*Client', '**/api/mvpApi'],
+              // Legacy clients are one dir deep (api/<resource>/<x>Client), which
+              // `*/` matches. It leaves api/client.ts alone, and excludes
+              // api/resources/<resource>/*. The `!` carve-out is needed because
+              // api/core is also one deep, and otherwise queryClient would be
+              // blocked from the composition root. Order matters in gitignore-style
+              // patterns; do not use an extglob here because it is unsupported.
+              group: ['**/api/*/*Client', '!**/api/core/*Client', '**/api/mvpApi'],
               allowTypeImports: true,
               message:
                 'Do not import API clients directly. Use a hook from src/api/hooks (it resolves the client via useApiClient). See src/api/README.md.',

@@ -56,6 +56,7 @@ Rules that keep this useful:
   are deleted with the legacy layer.
 
 ### Which layer to test how
+
 | Testing | Needs | Example |
 |---|---|---|
 | `*.endpoints.ts` | MSW only — no React | `restApis.endpoints.test.ts` |

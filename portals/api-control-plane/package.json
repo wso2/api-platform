@@ -14,7 +14,7 @@
     "build": "tsc --noEmit && vite build",
     "preview": "vite preview --host localhost --port 3000",
     "api:codegen": "openapi-typescript ../../platform-api/resources/openapi.yaml -o src/api/generated/platform.d.ts",
-    "api:codegen:check": "npm run api:codegen && git diff --exit-code --stat src/api/generated/platform.d.ts",
+    "api:codegen:check": "npm run api:codegen && git add --intent-to-add src/api/generated/platform.d.ts && git diff --exit-code --stat HEAD -- src/api/generated/platform.d.ts",
     "typecheck": "tsc --noEmit",
     "lint": "eslint . --quiet",
     "lint:fix": "eslint . --fix",
