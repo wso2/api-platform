@@ -52,10 +52,16 @@ export default function ServiceProviderSecurityTab({
   const isReadOnlyProvider = Boolean(provider?.readOnly);
   const isSecurityFormDisabled =
     !apiKeyEnabled || isLoading || Boolean(error) || isReadOnlyProvider;
-  const isKeyValueInvalid = apiKeyEnabled && keyValue.trim().length === 0;
+  const isKeyValueInvalid =
+    authenticationType === 'apiKey' &&
+    apiKeyEnabled &&
+    keyValue.trim().length === 0;
 
   useEffect(() => {
     onValidityChange?.(!isKeyValueInvalid);
+    return () => {
+      onValidityChange?.(true);
+    };
   }, [isKeyValueInvalid, onValidityChange]);
 
   useEffect(() => {

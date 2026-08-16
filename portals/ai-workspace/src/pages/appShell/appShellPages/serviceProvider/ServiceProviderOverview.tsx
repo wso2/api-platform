@@ -281,7 +281,6 @@ function ServiceProviderOverviewContent() {
   const draftProviderRef = useRef<LLMProvider | null>(null);
   const [hasDraftChanges, setHasDraftChanges] = useState(false);
   const [isRateLimitingDirty, setIsRateLimitingDirty] = useState(false);
-  const [isSecurityValid, setIsSecurityValid] = useState(true);
   const [isSavingChanges, setIsSavingChanges] = useState(false);
   const [rateLimitingActions, setRateLimitingActions] =
     useState<RateLimitingDraftActions | null>(null);
@@ -310,6 +309,12 @@ function ServiceProviderOverviewContent() {
   const [linkedProxyCount, setLinkedProxyCount] = useState<number | null>(null);
   const showSnackbar = useAIWorkspaceSnackbar();
   const hasUnsavedChanges = hasDraftChanges || isRateLimitingDirty;
+  const stagedSecurity = (draftProvider ?? provider)?.security;
+  const isSecurityConfigValid =
+    !(
+      stagedSecurity?.enabled === true &&
+      stagedSecurity?.apiKey?.enabled === true
+    ) || Boolean(stagedSecurity?.apiKey?.key?.trim());
   const selectedGateway = useMemo(
     () => gateways.find((gateway) => gateway.id === selectedGatewayId) ?? null,
     [gateways, selectedGatewayId]
@@ -406,7 +411,7 @@ function ServiceProviderOverviewContent() {
   const handleSaveChanges = async () => {
     if (!provider || isSavingChanges) return;
 
-    if (!isSecurityValid) {
+    if (!isSecurityConfigValid) {
       showSnackbar(
         'Enter a header or query parameter name for the API key before saving.',
         'error'
@@ -1719,9 +1724,7 @@ function ServiceProviderOverviewContent() {
                 {isReadOnlyProvider && (
                   <GatewayArtifactReadOnlyBanner message="Security settings are managed by the gateway that created this provider and are read-only here." />
                 )}
-                <ServiceProviderSecurityTab
-                  onValidityChange={setIsSecurityValid}
-                />
+                <ServiceProviderSecurityTab />
               </TabPanel>
 
               <TabPanel value={tabIndex} index={4}>
@@ -1780,7 +1783,7 @@ function ServiceProviderOverviewContent() {
                 </Button>
                 <Button
                   variant="contained"
-                  disabled={!hasUnsavedChanges || isSavingChanges || !isSecurityValid}
+                  disabled={!hasUnsavedChanges || isSavingChanges || !isSecurityConfigValid}
                   onClick={() => void handleSaveChanges()}
                 >
                   Save

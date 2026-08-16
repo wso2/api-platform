@@ -3328,7 +3328,7 @@ func mapSecurityAPIToModel(in *api.SecurityConfig) *model.SecurityConfig {
 	out := &model.SecurityConfig{Enabled: in.Enabled}
 	if in.ApiKey != nil {
 		key := utils.ValueOrEmpty(in.ApiKey.Key)
-		inLoc := ""
+		inLoc := "header"
 		if in.ApiKey.In != nil {
 			inLoc = string(*in.ApiKey.In)
 		}
