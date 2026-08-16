@@ -36,6 +36,7 @@ import (
 	"google.golang.org/grpc"
 
 	"github.com/wso2/api-platform/gateway/gateway-runtime/policy-engine/internal/admin"
+	"github.com/wso2/api-platform/gateway/gateway-runtime/policy-engine/internal/analytics"
 	"github.com/wso2/api-platform/gateway/gateway-runtime/policy-engine/internal/config"
 	"github.com/wso2/api-platform/gateway/gateway-runtime/policy-engine/internal/constants"
 	"github.com/wso2/api-platform/gateway/gateway-runtime/policy-engine/internal/executor"
@@ -298,11 +299,12 @@ func main() {
 	// collector is the shared transport that carries collected data to its
 	// consumers (analytics, traffic logging).
 	var alsServer *grpc.Server
+	var alsAnalytics *analytics.Analytics
 	slog.DebugContext(ctx, "Policy engine ALS server config", "config", cfg.Collector.Server)
 	if cfg.IsCollectorEnabled() {
 		// Start the access log service server
 		slog.Info("Starting the ALS gRPC server...")
-		alsServer = utils.StartAccessLogServiceServer(cfg)
+		alsServer, alsAnalytics = utils.StartAccessLogServiceServer(cfg)
 	}
 
 	// Setup graceful shutdown
@@ -351,6 +353,19 @@ func main() {
 	if alsServer != nil {
 		slog.InfoContext(ctx, "Stopping ALS gRPC server")
 		alsServer.GracefulStop()
+	}
+
+	// Flush analytics publishers only after the ALS server has stopped, so the
+	// flush cannot race newly arriving events. Publishers that buffer (the
+	// traffic-log HTTP sink, Moesif) would otherwise lose their in-flight batch on
+	// every restart, rolling update and scale-down.
+	if alsAnalytics != nil {
+		shutdownCtx, cancel := context.WithTimeout(context.Background(),
+			cfg.TrafficLogging.EffectiveShutdownTimeout())
+		if err := alsAnalytics.Close(shutdownCtx); err != nil {
+			slog.ErrorContext(ctx, "Error flushing analytics publishers", "error", err)
+		}
+		cancel()
 	}
 
 	grpcServer.GracefulStop()

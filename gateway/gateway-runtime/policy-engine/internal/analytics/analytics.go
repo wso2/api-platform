@@ -18,7 +18,9 @@
 package analytics
 
 import (
+	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log/slog"
 	"maps"
@@ -128,8 +130,21 @@ func NewAnalytics(cfg *config.Config) *Analytics {
 
 	// Traffic logging is a standalone consumer, independent of analytics.
 	if cfg.TrafficLogging.Enabled {
-		publishers = append(publishers, analytics_publisher.NewLog(&cfg.TrafficLogging))
-		slog.Info("Traffic logging (stdout) publisher added")
+		logPublisher, err := analytics_publisher.NewLog(&cfg.TrafficLogging)
+		if err != nil {
+			// Fail closed. Continuing without the configured sinks would leave
+			// traffic logging on stdout or on nothing at all, and the stdout path
+			// writes request and response bodies into the container log — the
+			// exact disclosure a file or http sink is configured to prevent. This
+			// is a startup-time condition verified locally, so refusing to run is
+			// the correct outcome; config.Validate has already proven every sink
+			// is constructible, which makes this branch defensive rather than
+			// reachable in practice.
+			slog.Error("Failed to initialize traffic-logging sinks; refusing to start", "error", err)
+			panic(fmt.Sprintf("traffic logging configuration is unusable: %v", err))
+		}
+		publishers = append(publishers, logPublisher)
+		slog.Info("Traffic logging publisher added", "outputs", cfg.TrafficLogging.Outputs)
 	}
 
 	if len(publishers) == 0 {
@@ -181,6 +196,27 @@ func (c *Analytics) Process(event *v3.HTTPAccessLogEntry) {
 		publisher.Publish(analyticEvent)
 	}
 
+}
+
+// Close shuts down every publisher that holds resources or buffers events,
+// bounded by ctx. Publishers that do not implement Closer are skipped.
+//
+// Call this only after the ALS server has stopped accepting events, so the flush
+// does not race new arrivals. Without it, a buffering publisher (the traffic-log
+// HTTP sink, Moesif) loses its in-flight batch on every pod restart, rolling update
+// and scale-down.
+func (c *Analytics) Close(ctx context.Context) error {
+	var errs []error
+	for _, publisher := range c.publishers {
+		closer, ok := publisher.(analytics_publisher.Closer)
+		if !ok {
+			continue
+		}
+		if err := closer.Close(ctx); err != nil {
+			errs = append(errs, err)
+		}
+	}
+	return errors.Join(errs...)
 }
 
 // isInternalLoopbackHop identifies the provider-side hop of an LLM proxy loopback call by requiring

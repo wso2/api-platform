@@ -18,11 +18,14 @@
 package publishers
 
 import (
+	"context"
+	"net/http"
 	"os"
 	"sync"
 	"testing"
 	"time"
 
+	moesifapi "github.com/moesif/moesifapi-go"
 	"github.com/moesif/moesifapi-go/models"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -122,7 +125,7 @@ func TestNewMoesif_DefaultBaseURL(t *testing.T) {
 	result := NewMoesif(pubCfg)
 	require.NotNil(t, result, "NewMoesif should return a valid publisher")
 	t.Cleanup(func() {
-		result.Close()
+		_ = result.Close(context.Background())
 	})
 }
 
@@ -143,7 +146,7 @@ func TestNewMoesif_EnvVarOverridesConfig(t *testing.T) {
 	result := NewMoesif(pubCfg)
 	require.NotNil(t, result, "NewMoesif should return a valid publisher")
 	t.Cleanup(func() {
-		result.Close()
+		_ = result.Close(context.Background())
 	})
 }
 
@@ -534,4 +537,77 @@ func TestPublish_SubTypeMirrorsAPIType(t *testing.T) {
 			assert.Equal(t, metadata["apiType"], metadata["subType"])
 		})
 	}
+}
+
+// fakeMoesifAPI records what Close hands to the client. Only the two methods
+// Close exercises do anything; the rest satisfy the interface.
+type fakeMoesifAPI struct {
+	mu      sync.Mutex
+	queued  [][]*models.EventModel
+	flushes int
+}
+
+func (f *fakeMoesifAPI) QueueEvents(e []*models.EventModel) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.queued = append(f.queued, e)
+	return nil
+}
+func (f *fakeMoesifAPI) Flush() { f.mu.Lock(); f.flushes++; f.mu.Unlock() }
+func (f *fakeMoesifAPI) snapshot() (int, int) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	n := 0
+	for _, b := range f.queued {
+		n += len(b)
+	}
+	return n, f.flushes
+}
+
+func (f *fakeMoesifAPI) QueueEvent(*models.EventModel) error                  { return nil }
+func (f *fakeMoesifAPI) QueueUser(*models.UserModel) error                    { return nil }
+func (f *fakeMoesifAPI) QueueUsers([]*models.UserModel) error                 { return nil }
+func (f *fakeMoesifAPI) QueueCompany(*models.CompanyModel) error              { return nil }
+func (f *fakeMoesifAPI) QueueCompanies([]*models.CompanyModel) error          { return nil }
+func (f *fakeMoesifAPI) QueueSubscription(*models.SubscriptionModel) error    { return nil }
+func (f *fakeMoesifAPI) QueueSubscriptions([]*models.SubscriptionModel) error { return nil }
+func (f *fakeMoesifAPI) CreateEvent(*models.EventModel) (http.Header, error)  { return nil, nil }
+func (f *fakeMoesifAPI) CreateEventsBatch([]*models.EventModel) (http.Header, error) {
+	return nil, nil
+}
+func (f *fakeMoesifAPI) UpdateUser(*models.UserModel) error                         { return nil }
+func (f *fakeMoesifAPI) UpdateUsersBatch([]*models.UserModel) error                 { return nil }
+func (f *fakeMoesifAPI) GetAppConfig() (*http.Response, error)                      { return nil, nil }
+func (f *fakeMoesifAPI) UpdateCompany(*models.CompanyModel) error                   { return nil }
+func (f *fakeMoesifAPI) UpdateCompaniesBatch([]*models.CompanyModel) error          { return nil }
+func (f *fakeMoesifAPI) UpdateSubscription(*models.SubscriptionModel) error         { return nil }
+func (f *fakeMoesifAPI) UpdateSubscriptionsBatch([]*models.SubscriptionModel) error { return nil }
+func (f *fakeMoesifAPI) GetGovernanceRules() (moesifapi.GovernanceRulesResponse, error) {
+	return moesifapi.GovernanceRulesResponse{}, nil
+}
+func (f *fakeMoesifAPI) SetEventsHeaderCallback(string, func(string)) {}
+func (f *fakeMoesifAPI) Close()                                       {}
+
+// TestMoesif_CloseFlushesBufferedEvents pins that shutdown does not abandon the
+// events accumulated between publish ticks. Close previously only stopped the
+// ticker goroutine, so up to one full publish_interval of events was silently
+// lost on every restart, rolling update and scale-down.
+func TestMoesif_CloseFlushesBufferedEvents(t *testing.T) {
+	fake := &fakeMoesifAPI{}
+	m := &Moesif{
+		api:    fake,
+		done:   make(chan struct{}),
+		events: []*models.EventModel{{}, {}, {}},
+	}
+
+	require.NoError(t, m.Close(context.Background()))
+
+	queued, flushes := fake.snapshot()
+	assert.Equal(t, 3, queued, "buffered events must be handed to the client on shutdown")
+	assert.Equal(t, 1, flushes, "the client queue must be flushed, not left to its own timer")
+
+	// Idempotent: a second Close must not re-queue the same events.
+	require.NoError(t, m.Close(context.Background()))
+	queued2, _ := fake.snapshot()
+	assert.Equal(t, 3, queued2, "Close must be idempotent and never double-publish")
 }
