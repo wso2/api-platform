@@ -121,7 +121,8 @@ WORKDIR /api-platform
 # Cache mounts let the builder's internal go build reuse compiled packages
 RUN --mount=type=cache,target=/go/pkg/mod \
     --mount=type=cache,target=/root/.cache/go-build \
-    [ "$ENABLE_COVERAGE" = "true" ] && export COVERAGE=true || true; \
+    [ "$ENABLE_COVERAGE" = "true" ] && export COVERAGE=true \
+        COVERPKG="github.com/wso2/api-platform/gateway/gateway-runtime/policy-engine/...,github.com/wso2/gateway-controllers/policies/..." || true; \
     [ "$ENABLE_DEBUG" = "true" ] && export DEBUG=true || true; \
     /usr/local/bin/gateway-builder \
         -build-file /api-platform/gateway/build.yaml \

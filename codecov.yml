@@ -1,0 +1,30 @@
+# Maps Go module import paths in coverage profiles to repository paths, so Codecov can
+# attach coverage to real files. The v2 integration suite's server-side profiles carry
+# paths like github.com/wso2/api-platform/gateway/gateway-controller/pkg/...
+fixes:
+  - "github.com/wso2/api-platform/::"
+
+# Monorepo: per-component coverage, grouped by path regardless of which upload carried the
+# lines, so unit and integration flags roll up into the same component view.
+component_management:
+  individual_components:
+    - component_id: gateway-controller
+      name: gateway-controller
+      paths:
+        - gateway/gateway-controller/**
+    - component_id: policy-engine
+      name: policy-engine
+      paths:
+        - gateway/gateway-runtime/policy-engine/**
+    - component_id: gateway-builder
+      name: gateway-builder
+      paths:
+        - gateway/gateway-builder/**
+    - component_id: common
+      name: common
+      paths:
+        - common/**
+    - component_id: cli
+      name: cli
+      paths:
+        - cli/**

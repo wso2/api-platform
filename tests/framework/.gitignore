@@ -1,0 +1,5 @@
+# Coverage artifacts a -coverage run collects and `make coverage-report` renders.
+coverage-out/
+
+# Failure evidence (screenshot + DOM) the UI suite drops per failing scenario.
+suites/ui/artifacts/

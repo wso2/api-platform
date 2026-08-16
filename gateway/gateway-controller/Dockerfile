@@ -53,7 +53,7 @@ RUN --mount=type=cache,target=/go/pkg/mod \
         export CC=gcc; \
     fi && \
     if [ "$ENABLE_COVERAGE" = "true" ]; then \
-        COVER_FLAG="-cover"; \
+        COVER_FLAG="-cover -covermode=atomic -coverpkg=github.com/wso2/api-platform/gateway/gateway-controller/..."; \
     else \
         COVER_FLAG=""; \
     fi && \

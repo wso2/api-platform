@@ -1,0 +1,55 @@
+# --------------------------------------------------------------------
+# Copyright (c) 2026, WSO2 LLC. (https://www.wso2.com).
+#
+# WSO2 LLC. licenses this file to you under the Apache License,
+# Version 2.0 (the "License"); you may not use this file except
+# in compliance with the License.
+# You may obtain a copy of the License at
+#
+# http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing,
+# software distributed under the License is distributed on an
+# "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+# KIND, either express or implied.  See the License for the
+# specific language governing permissions and limitations
+# under the License.
+# --------------------------------------------------------------------
+
+suite: ui-suite
+
+defaults:
+  parallel: 1
+  components:
+    platform-api:
+      db: sqlite
+    platform-gateway:
+      db: sqlite
+  timeouts:
+    boot: 6m
+    propagation: 180s
+
+blocks:
+  # The AI Workspace journey topology: the workspace UI against the real control plane,
+  # a real AI gateway registered with it, the testbench as every upstream (its openai
+  # service is the LLM the journeys invoke), and the browser that drives it all — on the
+  # SAME network, so the browser resolves the aliases the products address each other by.
+  - name: ai-core
+    parallel: 1
+    components:
+      - name: platform-api
+      - name: platform-gateway
+        dependsOn: [platform-api]
+      - name: testbench
+      - name: ai-workspace
+      - name: browser
+    runners:
+      - name: smoke
+        features:
+          - features/workspace_smoke.feature
+      - name: auth
+        features:
+          - features/login.feature
+      - name: provider-proxy
+        features:
+          - features/provider_proxy.feature

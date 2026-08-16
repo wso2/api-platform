@@ -108,8 +108,9 @@ type CompilationOptions struct {
 	CGOEnabled     bool
 	TargetOS       string
 	TargetArch     string
-	EnableCoverage bool // Enable coverage instrumentation for integration tests
-	EnableDebug    bool // Disable optimizations/inlining for dlv remote debugging
+	EnableCoverage bool   // Enable coverage instrumentation for integration tests
+	CoverPkg       string // -coverpkg patterns; without it -cover skips the policy modules (dependencies, not main module)
+	EnableDebug    bool   // Disable optimizations/inlining for dlv remote debugging
 }
 
 // PackagingMetadata contains Docker image metadata

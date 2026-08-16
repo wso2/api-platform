@@ -1,0 +1,196 @@
+# --------------------------------------------------------------------
+# Copyright (c) 2026, WSO2 LLC. (https://www.wso2.com).
+#
+# WSO2 LLC. licenses this file to you under the Apache License,
+# Version 2.0 (the "License"); you may not use this file except
+# in compliance with the License.
+# You may obtain a copy of the License at
+#
+# http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing,
+# software distributed under the License is distributed on an
+# "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+# KIND, either express or implied.  See the License for the
+# specific language governing permissions and limitations
+# under the License.
+# --------------------------------------------------------------------
+
+suite: it-suite
+
+defaults:
+  parallel: 3
+  # Component-specific fallbacks. Database matrices belong on block components.
+  components:
+    platform-gateway:
+      db: sqlite
+  timeouts:
+    boot: 5m
+    propagation: 180s
+
+blocks:
+  - name: gateway-core
+    # 10 = total runner work / slowest runner.
+    parallel: 10
+    components:
+      - name: platform-gateway
+        db:
+          matrix: [sqlite, postgres, sqlserver]
+      - name: testbench
+    runners:
+      - name: deploy
+        features:
+          - features/api_deploy.feature
+      - name: routing
+        features:
+          - features/dynamic_endpoint.feature
+      - name: content-length-guardrail
+        features:
+          - features/content_length_guardrail.feature
+      - name: word-count-guardrail
+        features:
+          - features/word_count_guardrail.feature
+      - name: sentence-count-guardrail
+        features:
+          - features/sentence_count_guardrail.feature
+      - name: url-guardrail
+        features:
+          - features/url_guardrail.feature
+      - name: respond
+        features:
+          - features/respond.feature
+      - name: json-schema-guardrail
+        features:
+          - features/json_schema_guardrail.feature
+      - name: regex-guardrail
+        features:
+          - features/regex_guardrail.feature
+      - name: prompt-template
+        features:
+          - features/prompt_template.feature
+      - name: log-message
+        features:
+          - features/log_message.feature
+      - name: prompt-decorator
+        features:
+          - features/prompt_decorator.feature
+      - name: pii-masking-regex
+        features:
+          - features/pii_masking_regex.feature
+      - name: templates
+        features:
+          - features/template_functions.feature
+      - name: cel-conditions
+        features:
+          - features/cel_conditions.feature
+      - name: model-round-robin
+        features:
+          - features/model_round_robin.feature
+      - name: backend-timeout
+        features:
+          - features/backend_timeout.feature
+      - name: llm-backend-timeout
+        features:
+          - features/llm_backend_timeout.feature
+      - name: upstream-connect-timeout
+        features:
+          - features/upstream_connect_timeout.feature
+
+      # Separate runners only because their buckets are disjoint — the literal keys ("shared",
+      # "shared-group", "group-A", "group-B") all live inside ratelimit.feature. Features that
+      # DO share a bucket must stay in one runner, where scenarios are sequential.
+      - name: basic-ratelimit
+        features:
+          - features/basic_ratelimit.feature
+      - name: ratelimit
+        features:
+          - features/ratelimit.feature
+      - name: token-based-ratelimit
+        features:
+          - features/token_based_ratelimit.feature
+      - name: weighted-round-robin
+        features:
+          - features/model_weighted_round_robin.feature
+      - name: round-robin-multi-provider
+        features:
+          - features/model_round_robin_multi_provider.feature
+      - name: weighted-round-robin-multi-provider
+        features:
+          - features/model_weighted_round_robin_multi_provider.feature
+      - name: llm-provider-global-ratelimit
+        features:
+          - features/llm_provider_global_ratelimit.feature
+
+      # PARKED: 4 scenarios assert most-specific-path-wins, which the gateway does not do — a
+      # wildcard policy is fanned onto the specific operation, so the tighter quota also applies
+      # and blocks the 2nd request. They document the defect and fail until it is fixed.
+      - name: llm-policy-path-specificity
+        tags: "~@needs-settle-primitive"
+        features:
+          - features/llm_policy_path_specificity.feature
+      - name: llm-provider
+        features:
+          - features/llm_provider.feature
+      - name: llm-provider-templates
+        features:
+          - features/llm_provider_templates.feature
+      # PARKED: 1 scenario excluded — updating an existing LLM proxy with a malformed body
+      # returns 500 (Finding 7). Drop the tag when fixed. docs/FINDINGS.md.
+      - name: llm-proxies
+        tags: "~@parked-finding-7"
+        features:
+          - features/llm_proxies.feature
+      - name: request-rewrite
+        features:
+          - features/request_rewrite.feature
+      - name: api-with-policies
+        features:
+          - features/api_with_policies.feature
+      - name: path-normalization
+        features:
+          - features/path_normalization.feature
+      - name: header-routing
+        features:
+          - features/header_routing.feature
+      - name: redirect
+        features:
+          - features/redirect.feature
+      - name: route-path-matching
+        features:
+          - features/route_path_matching.feature
+      - name: cors
+        features:
+          - features/cors.feature
+      - name: host-rewrite
+        features:
+          - features/host_rewrite.feature
+      - name: api-error-responses
+        features:
+          - features/api_error_responses.feature
+      - name: search-deployments
+        features:
+          - features/search_deployments.feature
+      - name: analytics-header-filter
+        features:
+          - features/analytics_header_filter.feature
+      - name: health
+        features:
+          - features/health.feature
+      - name: api-management
+        features:
+          - features/api_management.feature
+      # PARKED: 1 scenario excluded — a certificate seeded on the filesystem is not
+      # bootstrapped into the store. Drop the tag when Finding 6 is fixed. docs/FINDINGS.md.
+      - name: certificates
+        tags: "~@parked-finding-6"
+        features:
+          - features/certificates.feature
+      - name: api-keys
+        features:
+          - features/api_keys.feature
+      - name: secrets
+        features:
+          - features/secrets.feature
+      - name: sandbox
+        features:
+          - features/sandbox_routing.feature

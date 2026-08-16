@@ -96,6 +96,7 @@ yarn-debug.log*
 
 # Docker
 **/.dockerignore
+!tests/framework/.dockerignore
 
 # Go-specific patterns
 *.exe

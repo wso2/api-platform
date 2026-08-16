@@ -1,0 +1,177 @@
+# Curated capability skeleton — the source of truth for @cap / @feat tags.
+#
+# Hand-maintained from the product's understanding; DISCONNECTED from code. The renderer reads this
+# to build the coverage tree and to lint scenario tags: a @cap/@feat pair not defined here fails lint.
+# A feature listed here with no scenarios renders as an empty branch — a visible gap to fill by eye.
+#
+# Add/rename/reorder freely as the product grows. Keep ids short, lowercase, kebab-case, stable.
+# Non-product scenarios use @infra / @framework / @migration / @setup instead and are excluded.
+#
+# Derived from the existing corpus (gateway/it 70 features/~836 scenarios,
+# event-gateway/it 6/46, tests/integration-e2e 8/11, cli/it 5/35, api-portal it 59 specs,
+# ai-workspace 11 specs, platform-api internal/integration 8 files, operator + conformance).
+# Scenario counts in comments are current corpus size, for sizing only — not targets.
+#
+# REVIEWED AND CONFIRMED. The three open questions from the draft are decided; do not
+# reopen them without a reason that has changed:
+#
+#   1. gateway-control stays SEPARATE from platform-api. The gateway-controller's own
+#      management REST API, xDS delivery and persistence are a different surface from
+#      the control-plane product's API. Consequence, accepted: the feature id
+#      `api-management` exists under both capabilities, and a scenario's @cap is what
+#      states which product's API is under test. This is also the only sensible home for
+#      gateway/gateway-controller/tests/integration (schema, storage, vhost, concurrency).
+#
+#   2. Kubernetes is OUT of this vocabulary entirely — no `operator` capability, no
+#      conformance feature. SUPERSEDES an earlier decision to keep operator/conformance as
+#      a placeholder branch: once the operator was ruled out of the framework's scope,
+#      keeping one Kubernetes feature while dropping the other seven made the tree less
+#      honest, not more. Neither the operator suite (inline bash in a workflow, zero
+#      .feature files) nor the upstream SIG conformance suite (a Go module, not Gherkin)
+#      can carry @cap/@feat tags, so both are reported independently of this tree.
+#
+#   3. login stays SEPARATE per product (api-portal/login, ai-workspace/login) rather
+#      than being merged into one shared auth capability. Different products, different
+#      auth surfaces — file-based/Asgardeo/ThunderID for the portal, session auth for the
+#      workspace — and per-product coverage stays countable.
+
+capabilities:
+
+  # ── Data plane ────────────────────────────────────────────────────────────────
+  gateway:
+    name: Gateway — runtime invocation & enforcement (non-AI data plane)
+    features:
+      rest-invocation:         { name: REST API invocation through the gateway }
+      mcp-invocation:          { name: MCP tool invocation (proxy / from-OpenAPI / from-API) }
+      routing:                 { name: Header, path-match, normalization, host-rewrite, redirect, dynamic endpoint }
+      sandbox-routing:         { name: Sandbox vs production endpoint routing }
+      vhost-routing:           { name: Virtual-host routing (single & multi vhost profiles) }
+      request-transformation:  { name: Request rewrite & direct respond }
+      jwt-auth:                { name: JWT authentication & scope enforcement }
+      api-keys:                { name: API key authentication }
+      subscription-enforcement: { name: Subscription validation at the gateway }
+      rate-limiting:           { name: Request & token-based rate limiting }
+      timeouts:                { name: Backend and upstream-connect timeouts }
+      cors:                    { name: CORS handling }
+      fault-handling:          { name: Error responses & fault paths }
+      interceptor:             { name: Interceptor service invocation }
+      policies:                { name: Policy attachment, CEL conditions, template functions, log-message }
+      secrets:                 { name: Secret resolution for upstream credentials }
+      certificates:            { name: Endpoint & listener certificates }
+
+  # ── AI data plane — ~44% of the current gateway corpus, hence top-level ──────
+  ai-gateway:
+    name: AI Gateway — LLM/MCP runtime, guardrails & prompt policies
+    features:
+      llm-providers:           { name: LLM provider configuration & invocation }
+      llm-proxies:             { name: LLM proxy configuration & invocation }
+      provider-templates:      { name: LLM provider templates (built-in & custom) }
+      model-routing:           { name: Model round-robin & weighted round-robin (single/multi provider) }
+      ai-rate-limiting:        { name: Cost-based and provider-global LLM rate limiting }
+      ai-timeouts:             { name: LLM backend timeouts }
+      guardrails-content:      { name: Content guardrails — regex, URL, JSON schema, word/sentence/length }
+      guardrails-external:     { name: External guardrails — AWS Bedrock, Azure Content Safety }
+      pii-masking:             { name: PII detection & masking }
+      prompt-policies:         { name: Prompt template, decorator & compressor }
+      semantic-cache:          { name: Semantic response caching }
+      semantic-guard:          { name: Semantic prompt guard & tool filtering }
+      policy-specificity:      { name: LLM policy path-specificity resolution }
+
+  # ── Gateway control plane (the controller's own surface) ─────────────────────
+  gateway-control:
+    name: Gateway Control — controller management API, xDS & persistence
+    features:
+      api-management:          { name: Controller management REST API (API/MCP CRUD) }
+      deployment-search:       { name: Deployment search & listing }
+      xds:                     { name: xDS resource delivery, lazy resources, config dump }
+      dp-cp-sync:              { name: Data-plane to control-plane artifact sync (incl. sync-disabled) }
+      policy-engine-admin:     { name: Policy engine admin API }
+      persistence:             { name: Storage schema, migrations, vhost persistence, concurrency }
+      bootstrap:               { name: Startup DB bootstrap & pre-provisioned schema }
+      health:                  { name: Health & readiness endpoints }
+
+  # ── Control plane product ───────────────────────────────────────────────────
+  platform-api:
+    name: Platform API — control plane authoring, deployment & governance
+    features:
+      api-lifecycle:           { name: API CRUD & lifecycle transitions }
+      api-deployment:          { name: Deployment to one or many gateways }
+      gateway-environments:    { name: Gateway & environment registration }
+      secrets-management:      { name: Secret CRUD and reference resolution }
+      llm-provider-config:     { name: LLM provider & proxy configuration }
+      mcp-config:              { name: MCP server configuration }
+      cascade-delete:          { name: Delete cascades (incl. WebSub) }
+      version-translation:     { name: Gateway version translation }
+      audit:                   { name: Audit trail & actor identity }
+      subscriptions:           { name: Subscriptions & credential lifecycle }
+
+  # ── Developer portal ────────────────────────────────────────────────────────
+  api-portal:
+    name: API Portal — discovery & consumption
+    features:
+      discovery:               { name: Browse & search APIs }
+      api-content:             { name: API detail, documents & content override }
+      applications:            { name: Application CRUD }
+      subscriptions:           { name: Subscribe / unsubscribe & subscription management }
+      api-keys:                { name: API key generation & revocation }
+      key-managers:            { name: Key manager configuration & token generation }
+      organizations:           { name: Organizations & cross-org isolation }
+      views-labels:            { name: Views, labels & handle resolution }
+      webhooks:                { name: Webhook subscribers & delivery }
+      mcp-servers:             { name: MCP server listing & try-out }
+      ai-discovery:            { name: AI API discovery }
+      try-out:                 { name: Try-out console (REST/GraphQL/WebSocket) }
+      auth-modes:              { name: Authorization mode — token scope vs role grant table }
+      login:                   { name: Login flows (file-based, Asgardeo, ThunderID) }
+      theming:                 { name: Theming & design-mode overrides }
+      workflows:               { name: Approval workflows }
+
+  # ── AI workspace ────────────────────────────────────────────────────────────
+  ai-workspace:
+    name: AI Workspace — provider, proxy & MCP authoring
+    features:
+      providers:               { name: LLM provider creation & configuration }
+      llm-proxies:             { name: LLM proxy creation & configuration }
+      mcp-proxies:             { name: MCP proxy creation, sample URL & backend refetch }
+      secrets:                 { name: Secret management for providers, proxies & MCP }
+      gateways:                { name: AI gateway registration & association }
+      genai-applications:      { name: GenAI application creation & keys }
+      provider-templates:      { name: Custom provider templates }
+      login:                   { name: Authentication & session }
+
+  # ── Event gateway ───────────────────────────────────────────────────────────
+  event-gateway:
+    name: Event Gateway — WebSub & WebBroker
+    features:
+      websub-management:       { name: WebSub API CRUD & management }
+      websub-delivery:         { name: WebSub publish/subscribe delivery end-to-end }
+      webhook-secrets:         { name: Webhook secret handling & signature verification }
+      webbroker-management:    { name: WebBroker (Kafka) API CRUD & management }
+      webbroker-delivery:      { name: WebBroker publish/consume end-to-end }
+      health:                  { name: Health & readiness }
+
+  # ── CLI ─────────────────────────────────────────────────────────────────────
+  cli:
+    name: CLI — project, artifact & gateway commands
+    features:
+      project:                 { name: Project init & structure }
+      apply:                   { name: Artifact apply / get / list }
+      api-commands:            { name: API authoring commands }
+      mcp-commands:            { name: MCP authoring commands }
+      gateway-build:           { name: Custom gateway image build }
+      gateway-management:      { name: Gateway management commands }
+      ai-workspace-build:      { name: AI workspace artifact build & apply }
+
+  # NOTE: there is deliberately no `operator` capability. Kubernetes coverage — operator
+  # CRD reconciliation and Gateway API conformance — is out of scope for this framework
+  # and therefore absent from this vocabulary rather than present as branches that can
+  # never populate. See the task list; the entries to restore are recorded there.
+
+  # ── Cross-cutting observability ─────────────────────────────────────────────
+  observability:
+    name: Observability — analytics, metrics & logging
+    features:
+      analytics-events:        { name: Analytics event publishing & header filtering }
+      subscription-analytics:  { name: Subscription-scoped analytics }
+      metrics:                 { name: Prometheus metrics exposure }
+      request-logging:         { name: Request & access logging }
