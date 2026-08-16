@@ -3,19 +3,26 @@ name: Platform API Cloud Release
 on:
   workflow_dispatch:
 
+permissions:
+  contents: read
+  packages: write
+
 jobs:
   release:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
+        with:
+          persist-credentials: false
 
       - name: Compute image version
         id: version
         run: |
-          BRANCH="${GITHUB_REF_NAME//\//-}"
+          BRANCH="${GITHUB_REF_NAME//[^a-zA-Z0-9._-]/-}"
+          BRANCH="${BRANCH:0:87}"
           COMMIT="${GITHUB_SHA}"
-          echo "IMAGE_VERSION=${BRANCH}-${COMMIT}" >> "$GITHUB_OUTPUT"
+          printf 'IMAGE_VERSION=%s-%s\n' "$BRANCH" "$COMMIT" >> "$GITHUB_OUTPUT"
 
       - name: Set up Go
         uses: actions/setup-go@v5
@@ -26,7 +33,6 @@ jobs:
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
         with:
-          install: true
           driver: docker-container
 
       - name: Run tests
