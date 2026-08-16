@@ -663,7 +663,10 @@ func TestLog_Publish_GlobalFallback_PropertiesDoNotLeakAcrossRequests(t *testing
 		path := filepath.Join(t.TempDir(), "out.log")
 		f, err := os.Create(path)
 		require.NoError(t, err)
-		defer f.Close()
+		// Assert on Close: an error here would mean a write never reached the
+		// file, which would otherwise surface as a confusing decode failure
+		// rather than as the write problem it actually is.
+		defer func() { require.NoError(t, f.Close()) }()
 		useWriterSink(l, f)
 
 		l.Publish(event)

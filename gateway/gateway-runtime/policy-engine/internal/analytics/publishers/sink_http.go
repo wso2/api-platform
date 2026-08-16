@@ -35,7 +35,6 @@ import (
 	"time"
 
 	"github.com/wso2/api-platform/gateway/gateway-runtime/policy-engine/internal/config"
-	"github.com/wso2/api-platform/gateway/gateway-runtime/policy-engine/internal/metrics"
 )
 
 const (
@@ -102,6 +101,29 @@ type httpSink struct {
 // It returns an error rather than degrading: an HTTP sink that cannot be built must
 // fail startup, never silently leave the operator writing bodies to stdout.
 func newHTTPSink(cfg config.TrafficLogHTTPConfig) (*httpSink, error) {
+	// config.Validate already rejects these, but this constructor is documented
+	// fail-closed and must behave that way for any caller. Without the check a
+	// non-positive FlushInterval panics inside time.NewTicker and a negative
+	// QueueCapacity panics in make — a panic is not failing closed.
+	if cfg.FlushInterval <= 0 {
+		return nil, fmt.Errorf("flush_interval must be positive, got %s", cfg.FlushInterval)
+	}
+	if cfg.RequestTimeout <= 0 {
+		return nil, fmt.Errorf("request_timeout must be positive, got %s", cfg.RequestTimeout)
+	}
+	if cfg.QueueCapacity <= 0 {
+		return nil, fmt.Errorf("queue_capacity must be positive, got %d", cfg.QueueCapacity)
+	}
+	if cfg.BatchMaxEvents <= 0 {
+		return nil, fmt.Errorf("batch_max_events must be positive, got %d", cfg.BatchMaxEvents)
+	}
+	if cfg.BatchMaxBytes <= 0 {
+		return nil, fmt.Errorf("batch_max_bytes must be positive, got %d", cfg.BatchMaxBytes)
+	}
+	if cfg.MaxRetries < 0 {
+		return nil, fmt.Errorf("max_retries must not be negative, got %d", cfg.MaxRetries)
+	}
+
 	tlsCfg, err := buildTrafficLogTLSConfig(cfg.TLS)
 	if err != nil {
 		return nil, err
@@ -141,9 +163,7 @@ func newHTTPSink(cfg config.TrafficLogHTTPConfig) (*httpSink, error) {
 	// every capacity but one. Set here, next to the config it describes, rather
 	// than in the factory — otherwise any sink built by another path reports a
 	// depth with nothing to divide it by.
-	if metrics.TrafficLogQueueCapacity != nil {
-		metrics.TrafficLogQueueCapacity.WithLabelValues(sinkNameHTTP).Set(float64(cfg.QueueCapacity))
-	}
+	mQueueCapacity(sinkNameHTTP, cfg.QueueCapacity)
 
 	go s.run()
 	slog.Info("Traffic logging HTTP sink ready",
@@ -169,7 +189,7 @@ func (s *httpSink) Write(line []byte) {
 	// it explicitly instead, matching the file sink's closed-handle behaviour.
 	select {
 	case <-s.done:
-		metrics.TrafficLogDroppedTotal.WithLabelValues(sinkNameHTTP, dropReasonSendFailed).Inc()
+		mDropped(sinkNameHTTP, dropReasonSendFailed, 1)
 		return
 	default:
 	}
@@ -179,7 +199,7 @@ func (s *httpSink) Write(line []byte) {
 
 	select {
 	case s.queue <- queued:
-		metrics.TrafficLogQueueDepth.WithLabelValues(sinkNameHTTP).Set(float64(len(s.queue)))
+		mQueueDepth(sinkNameHTTP, len(s.queue))
 		return
 	default:
 	}
@@ -190,18 +210,18 @@ func (s *httpSink) Write(line []byte) {
 		// non-blocking Write into an unbounded one.
 		select {
 		case <-s.queue:
-			metrics.TrafficLogDroppedTotal.WithLabelValues(sinkNameHTTP, dropReasonQueueFull).Inc()
+			mDropped(sinkNameHTTP, dropReasonQueueFull, 1)
 		default:
 		}
 		select {
 		case s.queue <- queued:
-			metrics.TrafficLogQueueDepth.WithLabelValues(sinkNameHTTP).Set(float64(len(s.queue)))
+			mQueueDepth(sinkNameHTTP, len(s.queue))
 			return
 		default:
 		}
 	}
 
-	metrics.TrafficLogDroppedTotal.WithLabelValues(sinkNameHTTP, dropReasonQueueFull).Inc()
+	mDropped(sinkNameHTTP, dropReasonQueueFull, 1)
 	s.throttle.logError("Traffic-log HTTP queue is full; dropping event", sinkNameHTTP,
 		fmt.Errorf("queue capacity %d exhausted", s.cfg.QueueCapacity))
 }
@@ -217,13 +237,13 @@ func (s *httpSink) run() {
 		for {
 			select {
 			case <-s.queue:
-				metrics.TrafficLogDroppedTotal.WithLabelValues(sinkNameHTTP, dropReasonSendFailed).Inc()
+				mDropped(sinkNameHTTP, dropReasonSendFailed, 1)
 				continue
 			default:
 			}
 			break
 		}
-		metrics.TrafficLogQueueDepth.WithLabelValues(sinkNameHTTP).Set(0)
+		mQueueDepth(sinkNameHTTP, 0)
 		close(s.stopped)
 	}()
 
@@ -264,7 +284,7 @@ func (s *httpSink) run() {
 			return
 
 		case line := <-s.queue:
-			metrics.TrafficLogQueueDepth.WithLabelValues(sinkNameHTTP).Set(float64(len(s.queue)))
+			mQueueDepth(sinkNameHTTP, len(s.queue))
 			batch = append(batch, line)
 			batchBytes += len(line) + 1
 			if len(batch) >= s.cfg.BatchMaxEvents || batchBytes >= s.cfg.BatchMaxBytes {
@@ -284,8 +304,7 @@ func (s *httpSink) deliver(batch [][]byte) {
 	body := encodeNDJSON(batch)
 	start := time.Now()
 	defer func() {
-		metrics.TrafficLogFlushDurationSecond.WithLabelValues(sinkNameHTTP).
-			Observe(time.Since(start).Seconds())
+		mFlushDuration(sinkNameHTTP, time.Since(start).Seconds())
 	}()
 
 	var lastErr error
@@ -307,7 +326,7 @@ func (s *httpSink) deliver(batch [][]byte) {
 
 		retryAfter, err := s.post(body)
 		if err == nil {
-			metrics.TrafficLogWrittenTotal.WithLabelValues(sinkNameHTTP).Add(float64(len(batch)))
+			mWritten(sinkNameHTTP, len(batch))
 			return
 		}
 		lastErr = err
@@ -319,8 +338,7 @@ func (s *httpSink) deliver(batch [][]byte) {
 		nextDelay = retryAfter // 0 unless the receiver asked for a specific delay
 	}
 
-	metrics.TrafficLogDroppedTotal.WithLabelValues(sinkNameHTTP, dropReasonSendFailed).
-		Add(float64(len(batch)))
+	mDropped(sinkNameHTTP, dropReasonSendFailed, len(batch))
 	s.throttle.logError("Failed to deliver traffic-log batch; dropping events", sinkNameHTTP,
 		fmt.Errorf("%d event(s) dropped after %d attempt(s): %w", len(batch), s.cfg.MaxRetries+1, lastErr))
 }
@@ -350,7 +368,7 @@ func (s *httpSink) post(body []byte) (time.Duration, error) {
 
 	resp, err := s.client.Do(req)
 	if err != nil {
-		metrics.TrafficLogWriteErrorsTotal.WithLabelValues(sinkNameHTTP, errCodeTransport).Inc()
+		mWriteError(sinkNameHTTP, errCodeTransport, 1)
 		// The error can embed the endpoint URL but never the body, so no
 		// request/response payload can leak into the application log here.
 		return 0, fmt.Errorf("posting batch: %w", err)
@@ -363,7 +381,7 @@ func (s *httpSink) post(body []byte) (time.Duration, error) {
 	if resp.StatusCode >= 200 && resp.StatusCode < 300 {
 		return 0, nil
 	}
-	metrics.TrafficLogWriteErrorsTotal.WithLabelValues(sinkNameHTTP, strconv.Itoa(resp.StatusCode)).Inc()
+	mWriteError(sinkNameHTTP, strconv.Itoa(resp.StatusCode), 1)
 
 	if resp.StatusCode == http.StatusTooManyRequests {
 		return parseRetryAfter(resp.Header.Get("Retry-After")), fmt.Errorf("receiver is rate limiting (429)")
@@ -455,6 +473,13 @@ func parseRetryAfter(v string) time.Duration {
 		if secs < 0 {
 			return 0
 		}
+		// Clamp BEFORE converting: time.Duration(secs) * time.Second overflows
+		// int64 for a large Retry-After and wraps negative, which would then slip
+		// past capDuration's upper bound and skip the wait entirely — turning a
+		// receiver's request to back off into an immediate retry.
+		if maxSecs := int(retryAfterCap / time.Second); secs > maxSecs {
+			return retryAfterCap
+		}
 		return capDuration(time.Duration(secs) * time.Second)
 	}
 	if t, err := http.ParseTime(v); err == nil {
@@ -468,6 +493,10 @@ func parseRetryAfter(v string) time.Duration {
 func capDuration(d time.Duration) time.Duration {
 	if d > retryAfterCap {
 		return retryAfterCap
+	}
+	if d < 0 {
+		// Defence in depth against an overflowed conversion reaching here.
+		return 0
 	}
 	return d
 }

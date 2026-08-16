@@ -611,3 +611,41 @@ func TestMoesif_CloseFlushesBufferedEvents(t *testing.T) {
 	queued2, _ := fake.snapshot()
 	assert.Equal(t, 3, queued2, "Close must be idempotent and never double-publish")
 }
+
+// slowMoesifAPI blocks in Flush until released, standing in for an unreachable
+// Moesif endpoint. moesifapi-go's Flush is synchronous with no context, so this
+// is the only way the sink can be held.
+type slowMoesifAPI struct {
+	fakeMoesifAPI
+	release chan struct{}
+}
+
+func (s *slowMoesifAPI) Flush() {
+	<-s.release
+	s.fakeMoesifAPI.Flush()
+}
+
+// TestMoesif_CloseHonoursShutdownDeadline pins CodeRabbit #2: a hung Moesif
+// endpoint must not hold shutdown open past the operator's budget. Doing so
+// would also cost the traffic-log sinks their own flush, since Analytics.Close
+// runs them in sequence.
+func TestMoesif_CloseHonoursShutdownDeadline(t *testing.T) {
+	api := &slowMoesifAPI{release: make(chan struct{})}
+	t.Cleanup(func() { close(api.release) }) // let the goroutine finish after the test
+	m := &Moesif{api: api, done: make(chan struct{}), events: []*models.EventModel{{}}}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 150*time.Millisecond)
+	defer cancel()
+
+	start := time.Now()
+	err := m.Close(ctx)
+	elapsed := time.Since(start)
+
+	require.Error(t, err, "an unfinished flush must be reported, not swallowed")
+	assert.Contains(t, err.Error(), "shutdown budget")
+	assert.Less(t, elapsed, time.Second, "Close must return on the deadline, not block on Flush")
+
+	// The error is remembered, so a second Close reports the same outcome rather
+	// than a misleading nil.
+	assert.Equal(t, err, m.Close(context.Background()))
+}

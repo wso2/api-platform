@@ -140,12 +140,12 @@ func (s *writerSink) Write(line []byte) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if _, err := fmt.Fprintln(s.w, string(line)); err != nil {
-		metrics.TrafficLogDroppedTotal.WithLabelValues(s.name, dropReasonWriteFailed).Inc()
-		metrics.TrafficLogWriteErrorsTotal.WithLabelValues(s.name, errCodeWrite).Inc()
+		mDropped(s.name, dropReasonWriteFailed, 1)
+		mWriteError(s.name, errCodeWrite, 1)
 		s.throttle.logError("Failed to write traffic-log event", s.name, err)
 		return
 	}
-	metrics.TrafficLogWrittenTotal.WithLabelValues(s.name).Inc()
+	mWritten(s.name, 1)
 }
 
 // Close releases the underlying writer when this sink owns it. Writes go straight
@@ -159,4 +159,52 @@ func (s *writerSink) Close(context.Context) error {
 	closer := s.closer
 	s.closer = nil // idempotent: a second Close is a no-op
 	return closer.Close()
+}
+
+// Metric helpers.
+//
+// Every traffic-log metric goes through these rather than touching the package
+// vars directly. The vars are nil until metrics.Init() runs — main() calls it
+// long before any sink exists, but a sink constructor must not depend on that
+// ordering, and guarding only in the constructor while the write path
+// dereferences freely is worse than either choice made consistently: it turns a
+// startup panic into a first-request panic.
+//
+// The nil check is a single interface comparison against a write path that
+// already does a syscall, so the cost is not measurable.
+
+func mWritten(sink string, n int) {
+	if metrics.TrafficLogWrittenTotal != nil {
+		metrics.TrafficLogWrittenTotal.WithLabelValues(sink).Add(float64(n))
+	}
+}
+
+func mDropped(sink, reason string, n int) {
+	if metrics.TrafficLogDroppedTotal != nil {
+		metrics.TrafficLogDroppedTotal.WithLabelValues(sink, reason).Add(float64(n))
+	}
+}
+
+func mWriteError(sink, code string, n int) {
+	if metrics.TrafficLogWriteErrorsTotal != nil {
+		metrics.TrafficLogWriteErrorsTotal.WithLabelValues(sink, code).Add(float64(n))
+	}
+}
+
+func mQueueDepth(sink string, depth int) {
+	if metrics.TrafficLogQueueDepth != nil {
+		metrics.TrafficLogQueueDepth.WithLabelValues(sink).Set(float64(depth))
+	}
+}
+
+func mQueueCapacity(sink string, capacity int) {
+	if metrics.TrafficLogQueueCapacity != nil {
+		metrics.TrafficLogQueueCapacity.WithLabelValues(sink).Set(float64(capacity))
+	}
+}
+
+func mFlushDuration(sink string, seconds float64) {
+	if metrics.TrafficLogFlushDurationSecond != nil {
+		metrics.TrafficLogFlushDurationSecond.WithLabelValues(sink).Observe(seconds)
+	}
 }

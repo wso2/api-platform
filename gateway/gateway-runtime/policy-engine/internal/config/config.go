@@ -158,9 +158,11 @@ type TrafficLoggingConfig struct {
 	Enabled bool `koanf:"enabled"`
 	// Outputs names the sinks each line is written to. Valid entries are
 	// "stdout", "file" and "http" (see the TrafficLogSink* constants); order is
-	// irrelevant and duplicates are rejected. Defaults to ["stdout"], which
-	// preserves the historical behavior exactly. An empty list is rejected at
-	// startup rather than silently discarding every line.
+	// irrelevant and duplicates are rejected. Unset or empty resolves to
+	// ["stdout"] with a warning, preserving the historical behavior exactly; an
+	// unknown name is rejected at startup. Only a typo can be mistaken for an
+	// intent that was not honoured, so only a typo fails — an empty list
+	// expresses no intent to keep bodies out of the container log.
 	Outputs []string `koanf:"outputs"`
 	// File configures the "file" sink. Only read when Outputs contains "file".
 	File TrafficLogFileConfig `koanf:"file"`
@@ -1286,8 +1288,56 @@ func validateTrafficLogFileConfig(cfg TrafficLogFileConfig) error {
 	if err != nil {
 		return fmt.Errorf("cannot open %q for append: %w", path, err)
 	}
+	permErr := VerifyTrafficLogPerms(f, path)
 	if err := f.Close(); err != nil {
 		return fmt.Errorf("cannot close %q: %w", path, err)
+	}
+	return permErr
+}
+
+// TrafficLogPermMask is the set of permission bits that must be clear on the
+// traffic-log file and its directory: anything readable by group or other.
+const TrafficLogPermMask os.FileMode = 0o077
+
+// VerifyTrafficLogPerms fails when the traffic-log file or its directory is more
+// permissive than the modes this sink creates.
+//
+// MkdirAll and O_CREATE apply their mode only when they actually create; a path
+// left behind by an earlier run, restored from a backup, or pre-created on a
+// mounted volume silently keeps its old permissions. That file holds request and
+// response bodies, so a world-readable one left over from before defeats the
+// entire reason for choosing the file sink.
+//
+// The file is a hard failure, per GO-AUTH-018: it is the confidentiality
+// boundary, and it fails rather than chmod'ing because the restrictive mode must
+// be established at creation time — a chmod after the descriptor is open leaves a
+// window in which the file is both populated and readable.
+//
+// The containing directory only warns. A 0600 file is unreadable regardless of
+// its directory's mode, so a permissive directory is an integrity and
+// defence-in-depth concern rather than a disclosure. It cannot be an error
+// because the directory is frequently not ours: under Kubernetes an emptyDir
+// mount point is created 0777 by the kubelet, so an operator who points
+// file.path straight at the mount root would otherwise be unable to start at all.
+func VerifyTrafficLogPerms(f *os.File, path string) error {
+	fi, err := f.Stat()
+	if err != nil {
+		return fmt.Errorf("cannot stat %q: %w", path, err)
+	}
+	if perm := fi.Mode().Perm(); perm&TrafficLogPermMask != 0 {
+		return fmt.Errorf("%q has permissions %#o, which allow group/other access to logged "+
+			"request and response bodies; it already existed so it kept its previous mode. "+
+			"Fix it with `chmod 600 %s` (or remove the file) and restart", path, perm, path)
+	}
+
+	dir := filepath.Dir(path)
+	if di, err := os.Stat(dir); err == nil {
+		if perm := di.Mode().Perm(); perm&TrafficLogPermMask != 0 {
+			slog.Warn("traffic-log directory is group/other accessible; the log file itself is "+
+				"0600 so its contents are not exposed, but consider placing the file in a "+
+				"dedicated 0700 subdirectory of the mount rather than at its root",
+				"dir", dir, "mode", fmt.Sprintf("%#o", perm))
+		}
 	}
 	return nil
 }

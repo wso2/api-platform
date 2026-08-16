@@ -531,12 +531,15 @@ data:
       {{- $allowPlain = eq (toString .allow_plaintext_credentials) "true" -}}
     {{- end -}}
     {{- if not $allowPlain -}}
+      {{- $whole := "^\\{\\{-? *(env|file) [^{}]*\\}\\}$" -}}
+      {{- $suffixed := "^[^{}]*\\{\\{-? *(env|file) [^{}]*\\}\\}$" -}}
       {{- $sensitive := dict -}}
-      {{- with .bearer }}{{- if .token }}{{- $sensitive = set $sensitive "auth.bearer.token" .token }}{{- end }}{{- end -}}
-      {{- with .basic }}{{- if .password }}{{- $sensitive = set $sensitive "auth.basic.password" .password }}{{- end }}{{- end -}}
-      {{- with .header }}{{- if .value }}{{- $sensitive = set $sensitive "auth.header.value" .value }}{{- end }}{{- end -}}
-      {{- range $field, $val := $sensitive -}}
-        {{- if not (regexMatch "{{-?[ ]*(env|file)[ ]" $val) -}}
+      {{- with .bearer }}{{- if .token }}{{- $sensitive = set $sensitive "auth.bearer.token" (dict "v" .token "re" $whole) }}{{- end }}{{- end -}}
+      {{- with .basic }}{{- if .password }}{{- $sensitive = set $sensitive "auth.basic.password" (dict "v" .password "re" $whole) }}{{- end }}{{- end -}}
+      {{- with .header }}{{- if .value }}{{- $sensitive = set $sensitive "auth.header.value" (dict "v" .value "re" $suffixed) }}{{- end }}{{- end -}}
+      {{- range $field, $spec := $sensitive -}}
+        {{- $val := toString $spec.v -}}
+        {{- if not (regexMatch $spec.re (trim $val)) -}}
           {{- fail (printf "gateway.config.traffic_logging.http.%s holds a literal value, which would be written in plaintext into the gateway ConfigMap. Supply it as an interpolation token resolved at runtime instead, e.g. '{{ env \"APIP_GW_TRAFFIC_LOG_TOKEN\" }}' or '{{ file \"/secrets/gateway-runtime/hec-token\" }}' (allowed source dirs: /etc/gateway-runtime, /secrets/gateway-runtime). Set gateway.config.traffic_logging.http.auth.allow_plaintext_credentials=true only for local development." $field) -}}
         {{- end -}}
       {{- end -}}

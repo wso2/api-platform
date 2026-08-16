@@ -26,7 +26,6 @@ import (
 	"sync"
 
 	"github.com/wso2/api-platform/gateway/gateway-runtime/policy-engine/internal/config"
-	"github.com/wso2/api-platform/gateway/gateway-runtime/policy-engine/internal/metrics"
 )
 
 const (
@@ -96,6 +95,13 @@ func newFileSink(cfg config.TrafficLogFileConfig) (*fileSink, error) {
 	if err != nil {
 		return nil, fmt.Errorf("cannot open %q for append: %w", path, err)
 	}
+	// A pre-existing file or directory kept its old mode: O_CREATE and MkdirAll
+	// only apply theirs when they create. Refuse to write bodies into something
+	// group- or world-readable.
+	if err := config.VerifyTrafficLogPerms(f, path); err != nil {
+		_ = f.Close()
+		return nil, err
+	}
 	info, err := f.Stat()
 	if err != nil {
 		_ = f.Close()
@@ -124,7 +130,7 @@ func (s *fileSink) Write(line []byte) {
 	defer s.mu.Unlock()
 
 	if s.f == nil { // closed
-		metrics.TrafficLogDroppedTotal.WithLabelValues(sinkNameFile, dropReasonWriteFailed).Inc()
+		mDropped(sinkNameFile, dropReasonWriteFailed, 1)
 		return
 	}
 
@@ -133,10 +139,10 @@ func (s *fileSink) Write(line []byte) {
 	// rotation on every subsequent write and churning the backup away each time.
 	if s.maxBytes > 0 && s.size > 0 && s.size+int64(len(line))+1 > s.maxBytes {
 		if err := s.rotate(); err != nil {
-			metrics.TrafficLogWriteErrorsTotal.WithLabelValues(sinkNameFile, errCodeRotate).Inc()
+			mWriteError(sinkNameFile, errCodeRotate, 1)
 			if s.f == nil {
 				// No usable handle: the line genuinely cannot be written.
-				metrics.TrafficLogDroppedTotal.WithLabelValues(sinkNameFile, dropReasonRotateFailed).Inc()
+				mDropped(sinkNameFile, dropReasonRotateFailed, 1)
 				s.throttle.logError("Failed to rotate traffic-log file; dropping event", sinkNameFile, err)
 				return
 			}
@@ -155,12 +161,12 @@ func (s *fileSink) Write(line []byte) {
 	// below the real length and defeat the rotation threshold.
 	s.size += int64(n)
 	if err != nil {
-		metrics.TrafficLogDroppedTotal.WithLabelValues(sinkNameFile, dropReasonWriteFailed).Inc()
-		metrics.TrafficLogWriteErrorsTotal.WithLabelValues(sinkNameFile, errCodeWrite).Inc()
+		mDropped(sinkNameFile, dropReasonWriteFailed, 1)
+		mWriteError(sinkNameFile, errCodeWrite, 1)
 		s.throttle.logError("Failed to write traffic-log event to file; dropping event", sinkNameFile, err)
 		return
 	}
-	metrics.TrafficLogWrittenTotal.WithLabelValues(sinkNameFile).Inc()
+	mWritten(sinkNameFile, 1)
 }
 
 // rotate renames the live file to <path>.1 and reopens a fresh one. Callers must

@@ -733,3 +733,42 @@ func gatherCounter(t *testing.T, name, sink string) float64 {
 	}
 	return total
 }
+
+// TestHTTPSink_RejectsInvalidTuning pins CodeRabbit #5: the constructor is
+// documented fail-closed, and a panic is not failing closed. A non-positive
+// FlushInterval previously panicked inside time.NewTicker.
+func TestHTTPSink_RejectsInvalidTuning(t *testing.T) {
+	cases := map[string]func(*config.TrafficLogHTTPConfig){
+		"flush_interval":   func(c *config.TrafficLogHTTPConfig) { c.FlushInterval = 0 },
+		"request_timeout":  func(c *config.TrafficLogHTTPConfig) { c.RequestTimeout = 0 },
+		"queue_capacity":   func(c *config.TrafficLogHTTPConfig) { c.QueueCapacity = -1 },
+		"batch_max_events": func(c *config.TrafficLogHTTPConfig) { c.BatchMaxEvents = 0 },
+		"batch_max_bytes":  func(c *config.TrafficLogHTTPConfig) { c.BatchMaxBytes = 0 },
+		"max_retries":      func(c *config.TrafficLogHTTPConfig) { c.MaxRetries = -1 },
+	}
+	for name, mutate := range cases {
+		t.Run(name, func(t *testing.T) {
+			cfg := httpSinkCfg("http://127.0.0.1:1")
+			mutate(&cfg)
+			s, err := newHTTPSink(cfg) // must return, never panic
+			if err == nil {
+				_ = s.Close(context.Background())
+			}
+			require.Error(t, err)
+			assert.Contains(t, err.Error(), name)
+		})
+	}
+}
+
+// TestParseRetryAfter_ClampsOverflow pins CodeRabbit #6: time.Duration(secs) *
+// time.Second overflows int64 for a huge Retry-After and wraps negative, which
+// slipped past capDuration's upper bound and skipped the wait entirely — turning
+// a request to back off into an immediate retry.
+func TestParseRetryAfter_ClampsOverflow(t *testing.T) {
+	for _, v := range []string{"9223372036854775807", "10000000000", "999999999"} {
+		got := parseRetryAfter(v)
+		assert.GreaterOrEqual(t, got, time.Duration(0), "Retry-After %q must never be negative", v)
+		assert.LessOrEqual(t, got, retryAfterCap, "Retry-After %q must be capped", v)
+	}
+	assert.Equal(t, 5*time.Second, parseRetryAfter("5"), "an ordinary value is unchanged")
+}

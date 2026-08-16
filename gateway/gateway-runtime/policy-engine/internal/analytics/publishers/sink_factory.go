@@ -20,9 +20,9 @@ package publishers
 import (
 	"context"
 	"fmt"
+	"time"
 
 	"github.com/wso2/api-platform/gateway/gateway-runtime/policy-engine/internal/config"
-	"github.com/wso2/api-platform/gateway/gateway-runtime/policy-engine/internal/metrics"
 )
 
 // Sink names, matching the config.TrafficLogSink* constants. Duplicated as local
@@ -55,6 +55,12 @@ const (
 	errCodeTransport = "transport"
 )
 
+// sinkCleanupTimeout bounds the rollback close when one sink in the set fails to
+// build. This is startup, not shutdown: nothing has been written yet, so the
+// close should be near-instant and this exists only so a wedged sink cannot mask
+// the construction error the operator actually needs to see.
+const sinkCleanupTimeout = 5 * time.Second
+
 // newSinks builds the sink set named by traffic_logging.outputs.
 //
 // It fails closed: any sink that cannot be constructed returns an error, and the
@@ -74,8 +80,14 @@ func newSinks(cfg *config.TrafficLoggingConfig) ([]Sink, error) {
 
 	sinks := make([]Sink, 0, len(outputs))
 	closeAll := func() {
+		// Bounded, and deliberately shared across every sink so the whole cleanup
+		// is capped rather than each sink getting its own budget. httpSink.Close
+		// waits for its sender goroutine; an unbounded context here would let a
+		// failed startup hang instead of reporting the error that caused it.
+		ctx, cancel := context.WithTimeout(context.Background(), sinkCleanupTimeout)
+		defer cancel()
 		for _, s := range sinks {
-			_ = s.Close(context.Background())
+			_ = s.Close(ctx)
 		}
 	}
 
@@ -141,23 +153,17 @@ var sinkFailureLabels = map[string]struct {
 // makes silent traffic-log loss visible. Creating the series up front costs a
 // handful of samples and removes the ambiguity.
 func initSinkMetrics(sink string) {
-	// The metric vars are nil until metrics.Init() runs. main() calls it long
-	// before analytics is constructed, but this is a constructor and must not
-	// depend on that ordering — an embedder or a test that builds a publisher
-	// without initialising metrics should get no metrics, not a panic.
-	if metrics.TrafficLogWrittenTotal == nil || metrics.TrafficLogDroppedTotal == nil ||
-		metrics.TrafficLogWriteErrorsTotal == nil {
-		return
-	}
-	metrics.TrafficLogWrittenTotal.WithLabelValues(sink).Add(0)
+	// No nil guard needed here: every m* helper is guarded, so this is safe
+	// before metrics.Init() and consistent with the write paths.
+	mWritten(sink, 0)
 	labels, ok := sinkFailureLabels[sink]
 	if !ok {
 		return
 	}
 	for _, reason := range labels.dropReasons {
-		metrics.TrafficLogDroppedTotal.WithLabelValues(sink, reason).Add(0)
+		mDropped(sink, reason, 0)
 	}
 	for _, code := range labels.errCodes {
-		metrics.TrafficLogWriteErrorsTotal.WithLabelValues(sink, code).Add(0)
+		mWriteError(sink, code, 0)
 	}
 }

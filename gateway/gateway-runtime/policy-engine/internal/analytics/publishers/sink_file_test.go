@@ -282,3 +282,26 @@ func TestFileSink_RenameFailureKeepsWriting(t *testing.T) {
 		"a line must still be written when rotation fails but the handle is usable")
 	assert.NoFileExists(t, path+rotatedSuffix, "the rename did not succeed, so no backup should exist")
 }
+
+// TestFileSink_RejectsPreExistingPermissiveFile pins CodeRabbit #4: O_CREATE
+// applies its mode only when it creates, so a file left behind by an earlier run
+// keeps its old mode. A world-readable file holding request and response bodies
+// defeats the reason for choosing this sink, so construction must fail.
+func TestFileSink_RejectsPreExistingPermissiveFile(t *testing.T) {
+	if os.Geteuid() == 0 {
+		t.Skip("running as root: permission checks do not apply")
+	}
+	dir := t.TempDir()
+	path := filepath.Join(dir, "traffic.log")
+	require.NoError(t, os.WriteFile(path, []byte("from a previous run\n"), 0o644))
+
+	_, err := newFileSink(config.TrafficLogFileConfig{Path: path, MaxSizeMB: 10})
+	require.Error(t, err, "a group/other-readable traffic log must not be opened")
+	assert.Contains(t, err.Error(), "chmod 600", "the error must say how to fix it")
+
+	// Tightening it makes the same path acceptable.
+	require.NoError(t, os.Chmod(path, 0o600))
+	s, err := newFileSink(config.TrafficLogFileConfig{Path: path, MaxSizeMB: 10})
+	require.NoError(t, err)
+	_ = s.Close(context.Background())
+}

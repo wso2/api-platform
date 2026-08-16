@@ -24,6 +24,7 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -269,4 +270,29 @@ func TestNewSinks_PublishesQueueCapacity(t *testing.T) {
 	}
 	assert.Equal(t, float64(4242), got,
 		"the configured queue_capacity must be published as a gauge")
+}
+
+// TestNewSinks_CleanupIsBounded pins CodeRabbit #3: the rollback close when a
+// later sink fails to build uses a bounded context, so a wedged sink cannot hang
+// startup and hide the construction error the operator needs to see.
+func TestNewSinks_CleanupIsBounded(t *testing.T) {
+	srv := httptest.NewServer(&receiver{status: http.StatusOK})
+	t.Cleanup(srv.Close)
+
+	// http builds, file then fails on a relative path -> closeAll runs.
+	cfg := &config.TrafficLoggingConfig{
+		Outputs: []string{config.TrafficLogSinkHTTP, config.TrafficLogSinkFile},
+		HTTP:    httpSinkCfg(srv.URL),
+		File:    config.TrafficLogFileConfig{Path: "relative/traffic.log"},
+	}
+	done := make(chan error, 1)
+	go func() { _, err := newSinks(cfg); done <- err }()
+
+	select {
+	case err := <-done:
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "traffic_logging.file")
+	case <-time.After(sinkCleanupTimeout + 5*time.Second):
+		t.Fatal("newSinks did not return: the cleanup close is not bounded")
+	}
 }
