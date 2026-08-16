@@ -839,6 +839,24 @@ gateway:
       tag: "1.2.0"
       pullPolicy: Always
     imagePullSecrets: []
+
+    # Writable volume backing the traffic_logging "file" sink.
+    #
+    # An emptyDir lives outside the /var/log/pods glob node-level collectors
+    # read, which is the point — bodies written here are invisible to both
+    # `kubectl logs` and any DaemonSet shipping container logs onward.
+    #
+    # Keep sizeLimit above 2 x traffic_logging.file.max_size_mb so rotation
+    # bounds the file, not the kubelet — the kubelet's limit EVICTS the pod.
+    trafficLogVolume:
+      # enabled is auto-derived from whether traffic_logging.outputs contains "file".
+      # Uncomment only to override; leaving it commented is what keeps the auto-provisioning working.
+      # enabled: true
+      mountPath: /var/log/wso2
+      sizeLimit: 512Mi
+      # medium: "Memory"         # tmpfs — off disk entirely, but counts against
+                                 # the container's memory limit.
+
     service:
       type: LoadBalancer
       annotations: {}

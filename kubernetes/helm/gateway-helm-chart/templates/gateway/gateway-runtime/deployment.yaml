@@ -2,6 +2,34 @@
 {{- $deployment := $unified.deployment -}}
 {{- $policies := $unified.policies -}}
 {{- $config := .Values.gateway.config -}}
+{{- $trafficLogVolume := $unified.trafficLogVolume | default dict -}}
+{{- $fileSinkSelected := false -}}
+{{- if and $config.traffic_logging $config.traffic_logging.outputs -}}
+  {{- range $config.traffic_logging.outputs -}}
+    {{- if eq (lower (trim .)) "file" -}}{{- $fileSinkSelected = true -}}{{- end -}}
+  {{- end -}}
+{{- end -}}
+{{- $trafficLogVolume = merge (dict) $trafficLogVolume (dict "mountPath" "/var/log/wso2" "sizeLimit" "512Mi") -}}
+{{- $tlvEnabled := $fileSinkSelected -}}
+{{- if hasKey $trafficLogVolume "enabled" -}}
+  {{- $tlvEnabled = $trafficLogVolume.enabled -}}
+{{- end -}}
+{{- $trafficLogVolume = set $trafficLogVolume "enabled" $tlvEnabled -}}
+{{- if and $trafficLogVolume.enabled $fileSinkSelected -}}
+  {{- $logPath := "" -}}
+  {{- if $config.traffic_logging.file -}}{{- $logPath = $config.traffic_logging.file.path | default "" -}}{{- end -}}
+  {{- /*
+    Normalize before comparing. hasPrefix on the raw string would accept
+    "/var/log/wso2/../../etc/x.log", which shares the mount prefix textually but
+    resolves outside it. `clean` collapses the traversal so the check sees the
+    path the process will actually open.
+  */ -}}
+  {{- $logPath = clean $logPath -}}
+  {{- $mount := printf "%s/" (trimSuffix "/" (clean $trafficLogVolume.mountPath)) -}}
+  {{- if and $logPath (not (hasPrefix $mount $logPath)) -}}
+    {{- fail (printf "gateway.config.traffic_logging.file.path (%q) is not under gateway.gatewayRuntime.trafficLogVolume.mountPath (%q), so it would not land on the mounted volume and the gateway-runtime pod would fail to start. Move the path under the mount, change the mountPath, or set trafficLogVolume.enabled=false if you are mounting your own volume." $logPath $trafficLogVolume.mountPath) -}}
+  {{- end -}}
+{{- end -}}
 {{- if $deployment.enabled }}
 apiVersion: apps/v1
 kind: Deployment
@@ -173,6 +201,10 @@ spec:
               subPath: model_prices.json
               readOnly: true
             {{- end }}
+            {{- if $trafficLogVolume.enabled }}
+            - name: traffic-log
+              mountPath: {{ $trafficLogVolume.mountPath | quote }}
+            {{- end }}
             {{- with $deployment.extraVolumeMounts }}
             {{- toYaml . | nindent 12 }}
             {{- end }}
@@ -184,6 +216,23 @@ spec:
         - name: llm-pricing
           configMap:
             name: {{ default (printf "%s-llm-pricing" (include "gateway-operator.fullname" .)) $policies.llmPricing.configMapName }}
+        {{- end }}
+        {{- if $trafficLogVolume.enabled }}
+        {{- /*
+        Writable volume for the traffic_logging "file" sink.
+        request and response bodies written here are invisible
+        to `kubectl logs` and to any DaemonSet or host forwarder shipping
+        container logs onward.
+        sizeLimit must stay comfortably ABOVE 2 x traffic_logging.file.max_size_mb
+        */}}
+        - name: traffic-log
+          emptyDir:
+            {{- if $trafficLogVolume.sizeLimit }}
+            sizeLimit: {{ $trafficLogVolume.sizeLimit }}
+            {{- end }}
+            {{- if $trafficLogVolume.medium }}
+            medium: {{ $trafficLogVolume.medium | quote }}
+            {{- end }}
         {{- end }}
         {{- with $deployment.extraVolumes }}
         {{- toYaml . | nindent 8 }}

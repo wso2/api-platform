@@ -446,11 +446,147 @@ data:
     {{- if .Values.gateway.config.traffic_logging.exclude_fields }}
     exclude_fields = [{{- range $i, $f := .Values.gateway.config.traffic_logging.exclude_fields }}{{- if gt $i 0 }}, {{ end }}{{ $f | quote }}{{- end }}]
     {{- end }}
+    {{- if .Values.gateway.config.traffic_logging.outputs }}
+    outputs = [{{- range $i, $o := .Values.gateway.config.traffic_logging.outputs }}{{- if gt $i 0 }}, {{ end }}{{ $o | quote }}{{- end }}]
+    {{- end }}
+    {{- if .Values.gateway.config.traffic_logging.shutdown_timeout }}
+    shutdown_timeout = {{ .Values.gateway.config.traffic_logging.shutdown_timeout | quote }}
+    {{- end }}
     {{- if .Values.gateway.config.traffic_logging.properties }}
 
     [traffic_logging.properties]
     {{- range $key, $value := .Values.gateway.config.traffic_logging.properties }}
     {{ $key }} = {{ $value | quote }}
+    {{- end }}
+    {{- end }}
+    {{- with .Values.gateway.config.traffic_logging.file }}
+
+    [traffic_logging.file]
+    {{- if .path }}
+    path = {{ .path | quote }}
+    {{- end }}
+    {{- if not (kindIs "invalid" .max_size_mb) }}
+    max_size_mb = {{ .max_size_mb | int64 }}
+    {{- end }}
+    {{- end }}
+    {{- with .Values.gateway.config.traffic_logging.http }}
+
+    [traffic_logging.http]
+    {{- if .endpoint }}
+    endpoint = {{ .endpoint | quote }}
+    {{- end }}
+    {{- if .content_type }}
+    content_type = {{ .content_type | quote }}
+    {{- end }}
+    {{- if kindIs "bool" .allow_insecure_transport }}
+    allow_insecure_transport = {{ .allow_insecure_transport }}
+    {{- end }}
+    {{- if .batch_max_events }}
+    batch_max_events = {{ .batch_max_events | int64 }}
+    {{- end }}
+    {{- if .batch_max_bytes }}
+    batch_max_bytes = {{ .batch_max_bytes | int64 }}
+    {{- end }}
+    {{- if .flush_interval }}
+    flush_interval = {{ .flush_interval | quote }}
+    {{- end }}
+    {{- if .queue_capacity }}
+    queue_capacity = {{ .queue_capacity | int64 }}
+    {{- end }}
+    {{- if .on_queue_full }}
+    on_queue_full = {{ .on_queue_full | quote }}
+    {{- end }}
+    {{- if .request_timeout }}
+    request_timeout = {{ .request_timeout | quote }}
+    {{- end }}
+    {{- if not (kindIs "invalid" .max_retries) }}
+    max_retries = {{ .max_retries | int64 }}
+    {{- end }}
+    {{- if .retry_backoff }}
+    retry_backoff = {{ .retry_backoff | quote }}
+    {{- end }}
+    {{- with .auth }}
+    {{- /*
+      config.toml is rendered into a ConfigMap, which is not a Secret: it is
+      readable by anything with configmap read access in the namespace, stored
+      unencrypted in etcd by default, and echoed by `helm get values`. Every
+      other credential in this file (postgres/database password, controlplane
+      token) is therefore rendered as an `{{ env ... }}` interpolation token and
+      injected from a Secret at runtime, never as a literal.
+
+      Hold the traffic-log credentials to the same standard: require an
+      `{{ env }}` or `{{ file }}` token, which the policy engine resolves at load
+      time and never logs. Fail rather than quietly writing the secret into the
+      ConfigMap. allow_plaintext_credentials exists as a deliberate, off-by-default
+      escape hatch for local development.
+    */ -}}
+    {{- /*
+      Compare as a string: any non-empty string is truthy in a Go template, so a
+      quoted `allow_plaintext_credentials: "false"` would otherwise DISABLE this
+      guard and leak the credential — the opposite of what it says. Only a real
+      true (bare or quoted) opts out; anything else stays default-deny.
+    */ -}}
+    {{- $allowPlain := false -}}
+    {{- if hasKey . "allow_plaintext_credentials" -}}
+      {{- $allowPlain = eq (toString .allow_plaintext_credentials) "true" -}}
+    {{- end -}}
+    {{- if not $allowPlain -}}
+      {{- $sensitive := dict -}}
+      {{- with .bearer }}{{- if .token }}{{- $sensitive = set $sensitive "auth.bearer.token" .token }}{{- end }}{{- end -}}
+      {{- with .basic }}{{- if .password }}{{- $sensitive = set $sensitive "auth.basic.password" .password }}{{- end }}{{- end -}}
+      {{- with .header }}{{- if .value }}{{- $sensitive = set $sensitive "auth.header.value" .value }}{{- end }}{{- end -}}
+      {{- range $field, $val := $sensitive -}}
+        {{- if not (regexMatch "{{-?[ ]*(env|file)[ ]" $val) -}}
+          {{- fail (printf "gateway.config.traffic_logging.http.%s holds a literal value, which would be written in plaintext into the gateway ConfigMap. Supply it as an interpolation token resolved at runtime instead, e.g. '{{ env \"APIP_GW_TRAFFIC_LOG_TOKEN\" }}' or '{{ file \"/secrets/gateway-runtime/hec-token\" }}' (allowed source dirs: /etc/gateway-runtime, /secrets/gateway-runtime). Set gateway.config.traffic_logging.http.auth.allow_plaintext_credentials=true only for local development." $field) -}}
+        {{- end -}}
+      {{- end -}}
+    {{- end }}
+
+    [traffic_logging.http.auth]
+    type = {{ .type | default "none" | quote }}
+    {{- with .bearer }}
+
+    [traffic_logging.http.auth.bearer]
+    {{- if .token }}
+    token = {{ .token | quote }}
+    {{- end }}
+    {{- end }}
+    {{- with .basic }}
+
+    [traffic_logging.http.auth.basic]
+    {{- if .username }}
+    username = {{ .username | quote }}
+    {{- end }}
+    {{- if .password }}
+    password = {{ .password | quote }}
+    {{- end }}
+    {{- end }}
+    {{- with .header }}
+
+    [traffic_logging.http.auth.header]
+    {{- if .name }}
+    name = {{ .name | quote }}
+    {{- end }}
+    {{- if .value }}
+    value = {{ .value | quote }}
+    {{- end }}
+    {{- end }}
+    {{- end }}
+    {{- with .tls }}
+
+    [traffic_logging.http.tls]
+    {{- if .ca_file }}
+    ca_file = {{ .ca_file | quote }}
+    {{- end }}
+    {{- if .cert_file }}
+    cert_file = {{ .cert_file | quote }}
+    {{- end }}
+    {{- if .key_file }}
+    key_file = {{ .key_file | quote }}
+    {{- end }}
+    {{- if kindIs "bool" .insecure_skip_verify }}
+    insecure_skip_verify = {{ .insecure_skip_verify }}
+    {{- end }}
     {{- end }}
     {{- end }}
     {{- end }}
