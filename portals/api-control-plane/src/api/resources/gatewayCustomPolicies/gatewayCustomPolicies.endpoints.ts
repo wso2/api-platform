@@ -100,7 +100,7 @@ export const deleteGatewayCustomPolicy = async (
  * a 400.
  */
 export const syncCustomPolicy = async (
-  options?: SyncCustomPolicyOptions
+  options: SyncCustomPolicyOptions
 ): Promise<CustomPolicy> => {
   return http.post<CustomPolicy>(`${BASE}/sync`, undefined, {
     ...options,

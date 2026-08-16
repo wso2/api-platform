@@ -148,6 +148,34 @@ describe('useCreateSecret — deliberately does not seed the cache', () => {
     );
     expect(everythingCached).not.toContain('super-secret-value');
   });
+
+  it('releases the submitted value from the mutation cache once the form unmounts', async () => {
+    // React Query also keeps a settled mutation's `variables` (the plaintext).
+    // `gcTime: 0` ensures those variables are released; this test preserves that.
+    server.use(accepts('post', '/secrets', aSecret({ id: 'new-secret' })));
+
+    const { result, queryClient, unmount } = renderApiHook(() => useCreateSecret());
+    result.current.mutate({
+      displayName: 'New Secret',
+      value: 'super-secret-value',
+      type: 'GENERIC',
+    });
+    await waitFor(() => expect(result.current.isSuccess).toBe(true));
+
+    // While mounted, `useMutation` still exposes submitted `variables`.
+    // Clearing them requires `reset()`, which also clears rendered success.
+    // Forms can call `reset()` after showing the result.
+    expect(JSON.stringify(result.current.variables)).toContain('super-secret-value');
+
+    unmount();
+
+    await waitFor(() => {
+      const retained = JSON.stringify(
+        queryClient.getMutationCache().getAll().map((mutation) => mutation.state.variables)
+      );
+      expect(retained).not.toContain('super-secret-value');
+    });
+  });
 });
 
 describe('useRotateSecret', () => {

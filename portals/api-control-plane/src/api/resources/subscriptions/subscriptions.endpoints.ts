@@ -92,7 +92,7 @@ type DeleteSubscriptionOptions = Omit<RequestOptions, 'query'> & {
 export const updateSubscription = async (
   subscriptionId: string,
   body: UpdateSubscriptionBody,
-  options?: UpdateSubscriptionOptions
+  options: UpdateSubscriptionOptions
 ): Promise<Subscription> => {
   return http.put<Subscription>(resourcePath(subscriptionId), body, {
     ...options,
@@ -103,7 +103,7 @@ export const updateSubscription = async (
 /** Requires `subscriberId` in `options.query`; omitting it is a 400. */
 export const deleteSubscription = async (
   subscriptionId: string,
-  options?: DeleteSubscriptionOptions
+  options: DeleteSubscriptionOptions
 ): Promise<void> => {
   await http.delete<void>(resourcePath(subscriptionId), {
     ...options,
