@@ -675,8 +675,8 @@ func buildClaimMappings(cm config.ClaimMappings, roleScopeMap map[string][]strin
 func buildAuthenticator(cfg *config.Server, slogger *slog.Logger, roleScopeMap map[string][]string) (middleware.Authenticator, error) {
 	if cfg.Auth.Mode != config.AuthModeIDP {
 		var publicKey *rsa.PublicKey
-		if cfg.Auth.InternalToken.SkipSignatureValidation {
-			slogger.Warn("Auth mode: internal_token (signature validation DISABLED — not suitable for production)")
+		if cfg.Auth.InternalToken.SkipValidation {
+			slogger.Warn("Auth mode: internal_token (JWT validation DISABLED — not suitable for production)")
 		} else {
 			slogger.Info("Auth mode: internal_token (asymmetric RS256 signature validation enabled)")
 			var err error
@@ -690,7 +690,7 @@ func buildAuthenticator(cfg *config.Server, slogger *slog.Logger, roleScopeMap m
 				PublicKey:      publicKey,
 				TokenIssuer:    cfg.Auth.JWT.Issuer,
 				SkipPaths:      cfg.Auth.SkipPaths,
-				SkipValidation: cfg.Auth.InternalToken.SkipSignatureValidation,
+				SkipValidation: cfg.Auth.InternalToken.SkipValidation,
 				ClaimMappings:  buildClaimMappings(cfg.Auth.ClaimMappings, roleScopeMap),
 			}),
 		), nil

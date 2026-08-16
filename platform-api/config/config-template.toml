@@ -267,13 +267,11 @@ token_ttl = "1h"
 # internal_token mode — settings specific to the "internal_token" auth mode.
 # Ignored when auth.mode is "file" or "idp".
 [platform_api.auth.internal_token]
-# Skip asymmetric RSA signature verification. When true, the token is still
-# parsed and its registered claims (exp, iss) are checked; only the RSA
-# signature is bypassed, and auth.jwt.public_key_file is not required.
-# Intended for local development or trusted co-located deployments where the
-# signing keypair is not available. MUST be false in production — a startup
-# warning is emitted when true.
-skip_signature_validation = false
+# Skip all JWT validation — signature, expiry, and issuer checks are bypassed,
+# and auth.jwt.public_key_file is not required. Intended for local development
+# where the signing keypair is not available. MUST be false in production — a
+# startup warning is emitted when true.
+skip_validation = false
 
 # ---------------------------------------------------------------------------
 # Server listeners (HTTP + HTTPS)

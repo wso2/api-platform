@@ -308,12 +308,11 @@ type CORS struct {
 
 // InternalToken holds settings specific to the "internal_token" auth mode.
 type InternalToken struct {
-	// SkipSignatureValidation bypasses RSA signature verification. The token is
-	// still parsed and its registered claims (exp, iss) are checked; only the
-	// cryptographic signature is skipped and auth.jwt.public_key_file is not
-	// required. Intended for local development where the signing keypair is
-	// unavailable. Must be false in production.
-	SkipSignatureValidation bool `koanf:"skip_signature_validation"`
+	// SkipValidation bypasses all JWT validation — signature, expiry, and
+	// issuer checks are skipped and auth.jwt.public_key_file is not required.
+	// Intended for local development where the signing keypair is unavailable.
+	// Must be false in production.
+	SkipValidation bool `koanf:"skip_validation"`
 }
 
 // JWT holds configuration for local asymmetric (RS256) JWT authentication.
@@ -724,7 +723,7 @@ func validateAuthConfig(auth *Auth) error {
 func validateAuthModeConfig(auth *Auth) error {
 	switch auth.Mode {
 	case AuthModeInternalToken:
-		if auth.InternalToken.SkipSignatureValidation {
+		if auth.InternalToken.SkipValidation {
 			// No key material needed — startup warning emitted in server.go.
 			return nil
 		}
