@@ -151,8 +151,9 @@ type Auth struct {
 	// JWT is shared by two modes — "internal_token" mode only verifies
 	// tokens minted elsewhere with the public key, "file" mode both signs (with
 	// the private key) and verifies (with the public key) using the RSA key pair.
-	JWT  JWT       `koanf:"jwt"`
-	File FileBased `koanf:"file"`
+	JWT           JWT           `koanf:"jwt"`
+	File          FileBased     `koanf:"file"`
+	InternalToken InternalToken `koanf:"internal_token"`
 	// ClaimMappings names the JWT claims that carry each identity field. It is
 	// shared by all three auth modes: "idp" reads incoming claims by these
 	// names, "file" mode's login endpoint signs tokens using these names, and
@@ -303,6 +304,16 @@ type CORS struct {
 	// cross-origin requests. Must never be ["*"] — wildcard
 	// origins cannot be combined with credentialed requests.
 	AllowedOrigins []string `koanf:"allowed_origins"`
+}
+
+// InternalToken holds settings specific to the "internal_token" auth mode.
+type InternalToken struct {
+	// SkipSignatureValidation bypasses RSA signature verification. The token is
+	// still parsed and its registered claims (exp, iss) are checked; only the
+	// cryptographic signature is skipped and auth.jwt.public_key_file is not
+	// required. Intended for local development where the signing keypair is
+	// unavailable. Must be false in production.
+	SkipSignatureValidation bool `koanf:"skip_signature_validation"`
 }
 
 // JWT holds configuration for local asymmetric (RS256) JWT authentication.
@@ -713,6 +724,10 @@ func validateAuthConfig(auth *Auth) error {
 func validateAuthModeConfig(auth *Auth) error {
 	switch auth.Mode {
 	case AuthModeInternalToken:
+		if auth.InternalToken.SkipSignatureValidation {
+			// No key material needed — startup warning emitted in server.go.
+			return nil
+		}
 		// Verify-only: a public key is sufficient (tokens are minted elsewhere).
 		return validateJWTConfig(&auth.JWT, false)
 	case AuthModeFile:

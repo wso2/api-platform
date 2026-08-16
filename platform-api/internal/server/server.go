@@ -19,6 +19,7 @@ package server
 
 import (
 	"context"
+	"crypto/rsa"
 	"crypto/tls"
 	"errors"
 	"fmt"
@@ -673,17 +674,23 @@ func buildClaimMappings(cm config.ClaimMappings, roleScopeMap map[string][]strin
 // its own local-JWT middleware).
 func buildAuthenticator(cfg *config.Server, slogger *slog.Logger, roleScopeMap map[string][]string) (middleware.Authenticator, error) {
 	if cfg.Auth.Mode != config.AuthModeIDP {
-		slogger.Info("Auth mode: jwt (asymmetric RS256 signature validation enabled)")
-		publicKey, err := cfg.Auth.JWT.LoadPublicKey()
-		if err != nil {
-			return nil, fmt.Errorf("failed to load auth.jwt.public_key_file: %w", err)
+		var publicKey *rsa.PublicKey
+		if cfg.Auth.InternalToken.SkipSignatureValidation {
+			slogger.Warn("Auth mode: internal_token (signature validation DISABLED — not suitable for production)")
+		} else {
+			slogger.Info("Auth mode: internal_token (asymmetric RS256 signature validation enabled)")
+			var err error
+			publicKey, err = cfg.Auth.JWT.LoadPublicKey()
+			if err != nil {
+				return nil, fmt.Errorf("failed to load auth.jwt.public_key_file: %w", err)
+			}
 		}
 		return middleware.NewJWTAuthenticator(
 			middleware.LocalJWTAuthMiddleware(middleware.AuthConfig{
 				PublicKey:      publicKey,
 				TokenIssuer:    cfg.Auth.JWT.Issuer,
 				SkipPaths:      cfg.Auth.SkipPaths,
-				SkipValidation: false,
+				SkipValidation: cfg.Auth.InternalToken.SkipSignatureValidation,
 				ClaimMappings:  buildClaimMappings(cfg.Auth.ClaimMappings, roleScopeMap),
 			}),
 		), nil
