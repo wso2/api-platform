@@ -137,9 +137,7 @@ push: ## Push Docker image to registry
 	docker push $(IMAGE_NAME):$(VERSION)
 	docker push $(IMAGE_NAME):latest
 
-EXTRA_BUILD_ARGS ?=
-
-build-and-push-multiarch: ## Build and push multi-architecture Docker image (linux/amd64, linux/arm64); supports EXTRA_BUILD_ARGS
+build-and-push-multiarch: ## Build and push multi-architecture Docker image (linux/amd64, linux/arm64)
 	@echo "Building and pushing multi-arch Docker image: $(IMAGE_NAME):$(VERSION)"
 	docker buildx build -f Dockerfile \
 		--platform linux/amd64,linux/arm64 \
@@ -148,7 +146,6 @@ build-and-push-multiarch: ## Build and push multi-architecture Docker image (lin
 		--build-arg VERSION=$(VERSION) \
 		--build-arg GIT_COMMIT=$(GIT_COMMIT) \
 		--build-arg PORT=$(PORT) \
-		$(EXTRA_BUILD_ARGS) \
 		-t $(IMAGE_NAME):$(VERSION) \
 		--push \
 		.
