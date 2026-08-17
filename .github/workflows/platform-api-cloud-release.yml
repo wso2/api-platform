@@ -20,6 +20,7 @@ jobs:
         id: version
         run: |
           BRANCH="${GITHUB_REF_NAME//[^a-zA-Z0-9._-]/-}"
+          if [[ ! "$BRANCH" =~ ^[a-zA-Z0-9_] ]]; then BRANCH="_${BRANCH}"; fi
           BRANCH="${BRANCH:0:87}"
           COMMIT="${GITHUB_SHA}"
           printf 'IMAGE_VERSION=%s-%s\n' "$BRANCH" "$COMMIT" >> "$GITHUB_OUTPUT"
