@@ -59,6 +59,7 @@ import {
   POLICY_CATEGORIES,
   PolicyCategorySelector,
   reorderItem,
+  reorderItemsWithinIndexes,
 } from '../../../../Components/GuardrailPill';
 import { ResourceRow } from '../../../../Components/ResourceView';
 import PolicyParameterEditor from '../../PolicyParameterEditor/PolicyParameterEditor';
@@ -751,11 +752,14 @@ export default function LLMProxyGuardrailsTab() {
     }
   };
 
-  const handleReorderGlobalPolicy = (targetIndex: number) => {
+  const handleReorderGlobalPolicy = (
+    targetIndex: number,
+    sourceIndex = draggedGlobalPolicyIndex
+  ) => {
     if (
       isReadOnlyProxy ||
-      draggedGlobalPolicyIndex === null ||
-      draggedGlobalPolicyIndex === targetIndex
+      sourceIndex === null ||
+      sourceIndex === targetIndex
     ) {
       setDraggedGlobalPolicyIndex(null);
       setDragOverGlobalPolicyIndex(null);
@@ -766,7 +770,7 @@ export default function LLMProxyGuardrailsTab() {
       if (!prev) return prev;
       const globalPolicies = reorderItem(
         prev.globalPolicies ?? [],
-        draggedGlobalPolicyIndex,
+        sourceIndex,
         targetIndex
       );
       return globalPolicies ? { ...prev, globalPolicies } : prev;
@@ -777,13 +781,16 @@ export default function LLMProxyGuardrailsTab() {
 
   const handleReorderResourcePolicy = (
     resourceKey: string,
-    targetIndex: number
+    targetIndex: number,
+    visiblePolicyIndexes: number[],
+    sourceIndex = draggedResourcePolicy?.policyIndex
   ) => {
     if (
       isReadOnlyProxy ||
-      !draggedResourcePolicy ||
-      draggedResourcePolicy.resourceKey !== resourceKey ||
-      draggedResourcePolicy.policyIndex === targetIndex
+      sourceIndex === undefined ||
+      (draggedResourcePolicy !== null &&
+        draggedResourcePolicy.resourceKey !== resourceKey) ||
+      sourceIndex === targetIndex
     ) {
       setDraggedResourcePolicy(null);
       setDragOverResourcePolicy(null);
@@ -792,9 +799,10 @@ export default function LLMProxyGuardrailsTab() {
 
     setLocalProxy((prev) => {
       if (!prev) return prev;
-      const operationPolicies = reorderItem(
+      const operationPolicies = reorderItemsWithinIndexes(
         prev.operationPolicies ?? [],
-        draggedResourcePolicy.policyIndex,
+        visiblePolicyIndexes,
+        sourceIndex,
         targetIndex
       );
       return operationPolicies ? { ...prev, operationPolicies } : prev;
@@ -872,7 +880,10 @@ export default function LLMProxyGuardrailsTab() {
                   id={g.id}
                   label={`${g.displayName} (${g.version.replace(/^v/, '')})`}
                   reorderable={isReorderable}
-                  isDragging={draggedGlobalPolicyIndex === g.policyIndex}
+                  isDragging={
+                    isReorderable &&
+                    draggedGlobalPolicyIndex === g.policyIndex
+                  }
                   isDragOver={isDragOver}
                   onDragStart={() =>
                     setDraggedGlobalPolicyIndex(g.policyIndex)
@@ -885,6 +896,12 @@ export default function LLMProxyGuardrailsTab() {
                     setDragOverGlobalPolicyIndex(g.policyIndex)
                   }
                   onDrop={() => handleReorderGlobalPolicy(g.policyIndex)}
+                  onKeyboardMove={(direction) =>
+                    handleReorderGlobalPolicy(
+                      g.policyIndex + direction,
+                      g.policyIndex
+                    )
+                  }
                   onClick={() =>
                     handleEditGuardrailPill(g.policyIndex, g.pathIndex, {
                       scope: 'global',
@@ -1099,6 +1116,9 @@ export default function LLMProxyGuardrailsTab() {
                       });
                       return items;
                     })();
+                    const visibleOperationPolicyIndexes = resourceGuardrails
+                      .filter((item) => item.source === 'operation')
+                      .map((item) => item.policyIndex);
 
                     return (
                       <Box key={key}>
@@ -1201,6 +1221,7 @@ export default function LLMProxyGuardrailsTab() {
                                           !isReadOnlyProxy &&
                                           g.source === 'operation';
                                         const isDragging =
+                                          isReorderable &&
                                           draggedResourcePolicy?.resourceKey ===
                                             key &&
                                           draggedResourcePolicy.policyIndex ===
@@ -1247,9 +1268,28 @@ export default function LLMProxyGuardrailsTab() {
                                             onDrop={() =>
                                               handleReorderResourcePolicy(
                                                 key,
-                                                g.policyIndex
+                                                g.policyIndex,
+                                                visibleOperationPolicyIndexes
                                               )
                                             }
+                                            onKeyboardMove={(direction) => {
+                                              const position =
+                                                visibleOperationPolicyIndexes.indexOf(
+                                                  g.policyIndex
+                                                );
+                                              const targetIndex =
+                                                visibleOperationPolicyIndexes[
+                                                  position + direction
+                                                ];
+                                              if (targetIndex !== undefined) {
+                                                handleReorderResourcePolicy(
+                                                  key,
+                                                  targetIndex,
+                                                  visibleOperationPolicyIndexes,
+                                                  g.policyIndex
+                                                );
+                                              }
+                                            }}
                                             onClick={() =>
                                               handleEditGuardrailPill(
                                                 g.policyIndex,

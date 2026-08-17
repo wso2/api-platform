@@ -16,7 +16,7 @@
  * under the License.
  */
 
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   Box,
   Button,
@@ -61,6 +61,7 @@ import {
   POLICY_CATEGORIES,
   PolicyCategorySelector,
   reorderItem,
+  reorderItemsWithinIndexes,
 } from '../../../../Components/GuardrailPill';
 import { ResourceRow } from '../../../../Components/ResourceView';
 import PolicyParameterEditor from '../../PolicyParameterEditor/PolicyParameterEditor';
@@ -278,6 +279,7 @@ export default function ServiceProviderGuardrailsTab() {
     resourceKey: string;
     policyIndex: number;
   } | null>(null);
+  const reorderInFlightRef = useRef(false);
   const showSnackbar = useAIWorkspaceSnackbar();
 
   const fetchDrawerGuardrails = useCallback(async (categories: string[]) => {
@@ -797,14 +799,18 @@ export default function ServiceProviderGuardrailsTab() {
     }
   };
 
-  const handleReorderGlobalPolicy = async (targetIndex: number) => {
+  const handleReorderGlobalPolicy = async (
+    targetIndex: number,
+    sourceIndex = draggedGlobalPolicyIndex
+  ) => {
     if (
       !provider ||
       isLoading ||
       error ||
       isReadOnlyProvider ||
-      draggedGlobalPolicyIndex === null ||
-      draggedGlobalPolicyIndex === targetIndex
+      reorderInFlightRef.current ||
+      sourceIndex === null ||
+      sourceIndex === targetIndex
     ) {
       setDraggedGlobalPolicyIndex(null);
       setDragOverGlobalPolicyIndex(null);
@@ -813,7 +819,7 @@ export default function ServiceProviderGuardrailsTab() {
 
     const globalPolicies = reorderItem(
       provider.globalPolicies ?? [],
-      draggedGlobalPolicyIndex,
+      sourceIndex,
       targetIndex
     );
     if (!globalPolicies) {
@@ -835,39 +841,50 @@ export default function ServiceProviderGuardrailsTab() {
     setDraggedGlobalPolicyIndex(null);
     setDragOverGlobalPolicyIndex(null);
 
+    reorderInFlightRef.current = true;
     try {
       // In draft mode this stages the reordered array. The page-level Save
       // action then sends globalPolicies in this exact visual order.
       await updateProvider({ ...updatePayload, globalPolicies });
+      if (!isDraftMode) {
+        showSnackbar('Guardrails reordered successfully.', 'success');
+      }
     } catch (e) {
       logger.error('Failed to reorder global policies:', e);
       if (!isDraftMode) {
         showSnackbar('Failed to reorder guardrails.', 'error');
       }
+    } finally {
+      reorderInFlightRef.current = false;
     }
   };
 
   const handleReorderResourcePolicy = async (
     resourceKey: string,
-    targetIndex: number
+    targetIndex: number,
+    visiblePolicyIndexes: number[],
+    sourceIndex = draggedResourcePolicy?.policyIndex
   ) => {
     if (
       !provider ||
       isLoading ||
       error ||
       isReadOnlyProvider ||
-      !draggedResourcePolicy ||
-      draggedResourcePolicy.resourceKey !== resourceKey ||
-      draggedResourcePolicy.policyIndex === targetIndex
+      reorderInFlightRef.current ||
+      sourceIndex === undefined ||
+      (draggedResourcePolicy !== null &&
+        draggedResourcePolicy.resourceKey !== resourceKey) ||
+      sourceIndex === targetIndex
     ) {
       setDraggedResourcePolicy(null);
       setDragOverResourcePolicy(null);
       return;
     }
 
-    const operationPolicies = reorderItem(
+    const operationPolicies = reorderItemsWithinIndexes(
       provider.operationPolicies ?? [],
-      draggedResourcePolicy.policyIndex,
+      visiblePolicyIndexes,
+      sourceIndex,
       targetIndex
     );
     if (!operationPolicies) {
@@ -889,13 +906,19 @@ export default function ServiceProviderGuardrailsTab() {
     setDraggedResourcePolicy(null);
     setDragOverResourcePolicy(null);
 
+    reorderInFlightRef.current = true;
     try {
       await updateProvider({ ...updatePayload, operationPolicies });
+      if (!isDraftMode) {
+        showSnackbar('Resource guardrails reordered successfully.', 'success');
+      }
     } catch (e) {
       logger.error('Failed to reorder resource policies:', e);
       if (!isDraftMode) {
         showSnackbar('Failed to reorder resource guardrails.', 'error');
       }
+    } finally {
+      reorderInFlightRef.current = false;
     }
   };
 
@@ -972,7 +995,10 @@ export default function ServiceProviderGuardrailsTab() {
                   id={g.id}
                   label={`${g.displayName} (${g.version})`}
                   reorderable={isReorderable}
-                  isDragging={draggedGlobalPolicyIndex === g.policyIndex}
+                  isDragging={
+                    isReorderable &&
+                    draggedGlobalPolicyIndex === g.policyIndex
+                  }
                   isDragOver={isDragOver}
                   onDragStart={() =>
                     setDraggedGlobalPolicyIndex(g.policyIndex)
@@ -986,6 +1012,12 @@ export default function ServiceProviderGuardrailsTab() {
                   }
                   onDrop={() =>
                     void handleReorderGlobalPolicy(g.policyIndex)
+                  }
+                  onKeyboardMove={(direction) =>
+                    void handleReorderGlobalPolicy(
+                      g.policyIndex + direction,
+                      g.policyIndex
+                    )
                   }
                   onClick={() =>
                     handleEditGuardrailPill(g.policyIndex, g.pathIndex, {
@@ -1136,7 +1168,7 @@ export default function ServiceProviderGuardrailsTab() {
                   const method = resource.method.toUpperCase();
                   const key = `${method}-${resource.path}`;
                   const isOpen = openKey === key;
-                  const resourceGuardrails = (() => {
+                    const resourceGuardrails = (() => {
                     const items: Array<{
                       id: string;
                       name: string;
@@ -1185,8 +1217,11 @@ export default function ServiceProviderGuardrailsTab() {
                         });
                       });
                     });
-                    return items;
-                  })();
+                      return items;
+                    })();
+                    const visibleOperationPolicyIndexes = resourceGuardrails
+                      .filter((item) => item.source === 'operation')
+                      .map((item) => item.policyIndex);
 
                   return (
                     <Box key={key}>
@@ -1275,6 +1310,7 @@ export default function ServiceProviderGuardrailsTab() {
                                         !isReadOnlyProvider &&
                                         guardrail.source === 'operation';
                                       const isDragging =
+                                        isReorderable &&
                                         draggedResourcePolicy?.resourceKey ===
                                           key &&
                                         draggedResourcePolicy.policyIndex ===
@@ -1326,9 +1362,28 @@ export default function ServiceProviderGuardrailsTab() {
                                           onDrop={() =>
                                             void handleReorderResourcePolicy(
                                               key,
-                                              guardrail.policyIndex
+                                              guardrail.policyIndex,
+                                              visibleOperationPolicyIndexes
                                             )
                                           }
+                                          onKeyboardMove={(direction) => {
+                                            const position =
+                                              visibleOperationPolicyIndexes.indexOf(
+                                                guardrail.policyIndex
+                                              );
+                                            const targetIndex =
+                                              visibleOperationPolicyIndexes[
+                                                position + direction
+                                              ];
+                                            if (targetIndex !== undefined) {
+                                              void handleReorderResourcePolicy(
+                                                key,
+                                                targetIndex,
+                                                visibleOperationPolicyIndexes,
+                                                guardrail.policyIndex
+                                              );
+                                            }
+                                          }}
                                           onClick={() =>
                                             handleEditGuardrailPill(
                                               guardrail.policyIndex,

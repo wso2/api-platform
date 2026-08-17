@@ -386,13 +386,17 @@ export default function GuardrailsSection({
               </Box>
 
               {(showCostPolicy || guardrails.length > 0) ? (
-                <Stack direction="row" spacing={1} flexWrap="wrap">
+                <Stack
+                  direction="row"
+                  useFlexGap
+                  sx={{ flexWrap: 'wrap', columnGap: 1, rowGap: 1.25 }}
+                >
                   {showCostPolicy && (
-                    <Box sx={{ mr: 1.5, mb: 1.5 }}>
+                    <Box>
                       <GuardrailPill label="llm-cost (v1)" />
                     </Box>
                   )}
-                  {guardrails.map((guardrail) => (
+                  {guardrails.map((guardrail, index) => (
                     <DraggableGuardrailPill
                       key={guardrail.id}
                       id={guardrail.id}
@@ -422,6 +426,12 @@ export default function GuardrailsSection({
                         }
                         setDraggedGuardrailId(null);
                         setDragOverGuardrailId(null);
+                      }}
+                      onKeyboardMove={(direction) => {
+                        const target = guardrails[index + direction];
+                        if (target) {
+                          onReorderGuardrail(guardrail.id, target.id);
+                        }
                       }}
                       onRemove={() => onRemoveGuardrail(guardrail.id)}
                     />
