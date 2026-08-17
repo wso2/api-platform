@@ -268,6 +268,95 @@ func TestAPIPortalService_CreateAPIPortal_RaceOnUniqueConstraint(t *testing.T) {
 	}
 }
 
+func TestAPIPortalService_CreateAPIPortal_InvalidURL(t *testing.T) {
+	cases := []struct {
+		name string
+		url  string
+	}{
+		{"http_rejected", "http://portal.example.com"},
+		{"file_scheme", "file:///etc/passwd"},
+		{"metadata_service_http", "http://169.254.169.254/latest/meta-data/"},
+		{"javascript_scheme", "javascript:alert(1)"},
+		{"relative_url", "portal.example.com"},
+		{"scheme_only", "https://"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			svc := newTestAPIPortalService(
+				&mockAPIPortalRepository{},
+				&mockAPIPortalOrgRepository{result: &model.Organization{}},
+				&mockAPIPortalAuditRepository{},
+			)
+			_, err := svc.CreateAPIPortal(&CreateAPIPortalRequest{
+				Handle:   "acme",
+				Name:     "Acme",
+				AuthType: constants.APIPortalAuthTypeLocal,
+				URL:      tc.url,
+			}, "org-1", "user-1")
+			if err == nil || !apperror.ValidationFailed.Is(err) {
+				t.Errorf("want ValidationFailed for %q, got %v", tc.url, err)
+			}
+		})
+	}
+}
+
+func TestAPIPortalService_CreateAPIPortal_ValidHTTPSAccepted(t *testing.T) {
+	svc := newTestAPIPortalService(
+		&mockAPIPortalRepository{},
+		&mockAPIPortalOrgRepository{result: &model.Organization{}},
+		&mockAPIPortalAuditRepository{},
+	)
+	got, err := svc.CreateAPIPortal(&CreateAPIPortalRequest{
+		Handle:   "acme",
+		Name:     "Acme",
+		AuthType: constants.APIPortalAuthTypeLocal,
+		URL:      "https://portal.example.com:9443/base",
+	}, "org-1", "user-1")
+	if err != nil {
+		t.Fatalf("valid https URL rejected: %v", err)
+	}
+	if got.URL != "https://portal.example.com:9443/base" {
+		t.Errorf("URL not preserved: %q", got.URL)
+	}
+}
+
+func TestAPIPortalService_CreateAPIPortal_EmptyURLAllowed(t *testing.T) {
+	// Cloud provisioning starts with URL null; empty must pass validation.
+	svc := newTestAPIPortalService(
+		&mockAPIPortalRepository{},
+		&mockAPIPortalOrgRepository{result: &model.Organization{}},
+		&mockAPIPortalAuditRepository{},
+	)
+	_, err := svc.CreateAPIPortal(&CreateAPIPortalRequest{
+		Handle:   "acme",
+		Name:     "Acme",
+		AuthType: constants.APIPortalAuthTypeLocal,
+		URL:      "",
+	}, "org-1", "user-1")
+	if err != nil {
+		t.Fatalf("empty URL rejected: %v", err)
+	}
+}
+
+func TestAPIPortalService_UpdateAPIPortal_InvalidURLRejected(t *testing.T) {
+	existing := &model.APIPortal{
+		ID: "p1", Handle: "acme", OrganizationID: "org-1",
+		Name: "Acme", WorkflowStatus: constants.APIPortalWorkflowStatusActive,
+		AuthType: constants.APIPortalAuthTypeLocal,
+	}
+	svc := newTestAPIPortalService(
+		&mockAPIPortalRepository{getResult: existing},
+		&mockAPIPortalOrgRepository{},
+		&mockAPIPortalAuditRepository{},
+	)
+	_, err := svc.UpdateAPIPortal("acme", &UpdateAPIPortalRequest{
+		URL: apiPortalStrPtr("http://insecure.example.com"),
+	}, "org-1", "editor")
+	if err == nil || !apperror.ValidationFailed.Is(err) {
+		t.Fatalf("want ValidationFailed for http URL on Update, got %v", err)
+	}
+}
+
 // --- Get tests ---
 
 func TestAPIPortalService_GetAPIPortal_HappyPath(t *testing.T) {

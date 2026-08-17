@@ -20,6 +20,7 @@ package service
 import (
 	"fmt"
 	"log/slog"
+	"net/url"
 	"strings"
 
 	"github.com/google/uuid"
@@ -30,6 +31,37 @@ import (
 	"github.com/wso2/api-platform/platform-api/internal/repository"
 	"github.com/wso2/api-platform/platform-api/internal/utils"
 )
+
+// validateAPIPortalURL enforces input-time constraints on a caller-supplied
+// portal URL:
+//   - Empty is valid — the URL is populated later by the provisioner in the
+//     cloud flow, and OSS may register a portal before the URL is known.
+//   - Non-empty must parse as an absolute URL with a host, and use the https
+//     scheme. This blocks stored SSRF via `file://`, `javascript:`, and any
+//     plain-http URL that could be pointed at instance-metadata endpoints such
+//     as http://169.254.169.254/.
+//
+// Deeper outbound-hardening (private-IP blocklist, DNS-rebinding checks,
+// redirect controls) is intentionally NOT enforced here — it belongs in the
+// shared outbound HTTP client the publisher will build later, so every
+// outbound integration gets the same protection uniformly.
+func validateAPIPortalURL(raw string) (string, error) {
+	trimmed := strings.TrimSpace(raw)
+	if trimmed == "" {
+		return "", nil
+	}
+	u, err := url.Parse(trimmed)
+	if err != nil {
+		return "", apperror.ValidationFailed.New("The url field is not a valid URL.")
+	}
+	if !u.IsAbs() || u.Host == "" {
+		return "", apperror.ValidationFailed.New("The url field must be an absolute URL with a host.")
+	}
+	if u.Scheme != "https" {
+		return "", apperror.ValidationFailed.New("The url field must use the https scheme.")
+	}
+	return u.String(), nil
+}
 
 // APIPortalService encapsulates business logic for the /api-portals resource.
 // The handler layer translates OpenAPI-generated request/response DTOs into
@@ -132,6 +164,10 @@ func (s *APIPortalService) CreateAPIPortal(req *CreateAPIPortalRequest, orgID, c
 		return nil, apperror.ValidationFailed.New(
 			fmt.Sprintf("The workflowStatus %q is not supported.", workflowStatus))
 	}
+	portalURL, err := validateAPIPortalURL(req.URL)
+	if err != nil {
+		return nil, err
+	}
 
 	org, err := s.orgRepo.GetOrganizationByUUID(orgID)
 	if err != nil {
@@ -156,7 +192,7 @@ func (s *APIPortalService) CreateAPIPortal(req *CreateAPIPortalRequest, orgID, c
 		Handle:         strings.TrimSpace(req.Handle),
 		Name:           name,
 		Description:    strings.TrimSpace(req.Description),
-		URL:            strings.TrimSpace(req.URL),
+		URL:            portalURL,
 		WorkflowStatus: workflowStatus,
 		AuthType:       authType,
 		Configuration:  req.Configuration,
@@ -258,7 +294,11 @@ func (s *APIPortalService) UpdateAPIPortal(handle string, req *UpdateAPIPortalRe
 		portal.Description = strings.TrimSpace(*req.Description)
 	}
 	if req.URL != nil {
-		portal.URL = strings.TrimSpace(*req.URL)
+		portalURL, err := validateAPIPortalURL(*req.URL)
+		if err != nil {
+			return nil, err
+		}
+		portal.URL = portalURL
 	}
 	if req.WorkflowStatus != nil {
 		ws := strings.TrimSpace(*req.WorkflowStatus)
