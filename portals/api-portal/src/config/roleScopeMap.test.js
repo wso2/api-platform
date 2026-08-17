@@ -181,9 +181,13 @@ test('the shipped role-to-scope-mapping.yaml validates against the shipped OpenA
     const map = roleScopeMap.loadRoleScopeMap(SHIPPED_MAPPING_PATH, SPEC_PATH);
     // Two grants by design — the portal recognises an administrator and a consumer,
     // which is exactly what its page gate has tiers for — plus aliases for the role
-    // names other components mint. The publisher/operator/viewer personas belong to
+    // names other components mint, and a service identity used by Platform API for
+    // outbound publish calls. The publisher/operator/viewer personas belong to
     // platform-api's own grant table.
-    assert.deepEqual([...map.keys()], ['dp_admin', 'dp_subscriber', 'ap_admin', 'ap_subscriber']);
+    assert.deepEqual(
+        [...map.keys()],
+        ['dp_admin', 'dp_subscriber', 'ap_admin', 'ap_subscriber', 'platform-api-system'],
+    );
 });
 
 test('the shipped admin role covers every resource the shipped subscriber role touches', () => {

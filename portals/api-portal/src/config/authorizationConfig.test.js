@@ -182,14 +182,14 @@ role_to_scope_mapping = ${JSON.stringify(SHIPPED_MAPPING_PATH)}
     assert.match(stderr, /requires auth\.claim_mappings\.roles/);
 });
 
-test('role mode with the shipped mapping starts and loads its two roles', () => {
+test('role mode with the shipped mapping starts and loads its five roles', () => {
     const { status, stderr } = loadConfig(`
 [api_portal.auth.authorization]
 mode = "role"
 role_to_scope_mapping = ${JSON.stringify(SHIPPED_MAPPING_PATH)}
 `);
     assert.equal(status, 0, stderr);
-    assert.match(stderr, /loaded 4 role\(s\)/);
+    assert.match(stderr, /loaded 5 role\(s\)/);
 });
 
 test('a mapping file is loaded and validated even in scope mode', () => {
