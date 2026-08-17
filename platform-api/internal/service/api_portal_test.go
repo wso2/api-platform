@@ -471,6 +471,40 @@ func TestAPIPortalService_UpdateAPIPortal_ActivateWithNewURL(t *testing.T) {
 	}
 }
 
+func TestAPIPortalService_UpdateAPIPortal_SwitchOAuth2ToLocal(t *testing.T) {
+	// Regression: switching authType from oauth2 to local must clear the stored
+	// oauth2 authConfig — otherwise the post-mutation validator rejects the
+	// carried-over keys and no wire body can satisfy the request.
+	existing := &model.APIPortal{
+		ID: "p1", Handle: "acme", OrganizationID: "org-1",
+		Name: "Acme", URL: "https://acme.example.com",
+		WorkflowStatus: constants.APIPortalWorkflowStatusActive,
+		AuthType:       constants.APIPortalAuthTypeOAuth2,
+		AuthConfig: map[string]interface{}{
+			"stsTokenUrl":  "https://sts.example.com/token",
+			"clientId":     "abc",
+			"clientSecret": "already-ciphertext-base64",
+		},
+	}
+	svc := newTestAPIPortalService(t,
+		&mockAPIPortalRepository{getResult: existing},
+		&mockAPIPortalOrgRepository{},
+		&mockAPIPortalAuditRepository{},
+	)
+	got, err := svc.UpdateAPIPortal("acme", &UpdateAPIPortalRequest{
+		AuthType: apiPortalStrPtr(constants.APIPortalAuthTypeLocal),
+	}, "org-1", "editor")
+	if err != nil {
+		t.Fatalf("switch oauth2 → local: %v", err)
+	}
+	if got.AuthType != constants.APIPortalAuthTypeLocal {
+		t.Errorf("authType not applied: %q", got.AuthType)
+	}
+	if len(got.AuthConfig) != 0 {
+		t.Errorf("stored authConfig not cleared on transition to local: %+v", got.AuthConfig)
+	}
+}
+
 func TestAPIPortalService_UpdateAPIPortal_InvalidURLRejected(t *testing.T) {
 	existing := &model.APIPortal{
 		ID: "p1", Handle: "acme", OrganizationID: "org-1",

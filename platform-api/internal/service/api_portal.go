@@ -480,6 +480,14 @@ func (s *APIPortalService) UpdateAPIPortal(handle string, req *UpdateAPIPortalRe
 		// Metadata is opaque pass-through; supplied map fully replaces stored.
 		portal.Metadata = copyStringMap(req.Metadata)
 	}
+	// authType owns the shape of authConfig. When the effective type is `local`,
+	// authConfig keys carried over from a previous `oauth2` configuration are
+	// dropped rather than left to fail a validation the caller cannot satisfy
+	// (they can't send authConfig=null on the wire to clear it while nil-vs-
+	// absent are the same shape in JSON).
+	if portal.AuthType == constants.APIPortalAuthTypeLocal {
+		portal.AuthConfig = nil
+	}
 	// Re-validate authConfig against the effective authType after all mutations.
 	if err := validateAPIPortalAuthConfig(portal.AuthType, portal.AuthConfig); err != nil {
 		return nil, err
