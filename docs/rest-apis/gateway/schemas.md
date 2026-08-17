@@ -1,6 +1,6 @@
 # Schemas
 
-<h2 id="tocS_ResourceStatus">ResourceStatus</h2>
+## ResourceStatus
 
 <a id="schemaresourcestatus"></a>
 <a id="schema_ResourceStatus"></a>
@@ -20,7 +20,7 @@
 
 Server-managed lifecycle information for a resource
 
-### Properties
+#### Properties
 
 |Name|Type|Required|Restrictions|Description|
 |---|---|---|---|---|
@@ -30,14 +30,14 @@ Server-managed lifecycle information for a resource
 |updatedAt|string(date-time)|false|none|Timestamp when the resource was last updated (UTC)|
 |deployedAt|string(date-time)|false|none|Timestamp when the resource was last deployed (omitted when undeployed)|
 
-#### Enumerated Values
+##### Enumerated Values
 
 |Property|Value|
 |---|---|
 |state|deployed|
 |state|undeployed|
 
-<h2 id="tocS_RestAPIRequest">RestAPIRequest</h2>
+## RestAPIRequest
 
 <a id="schemarestapirequest"></a>
 <a id="schema_RestAPIRequest"></a>
@@ -111,7 +111,7 @@ Server-managed lifecycle information for a resource
 
 ```
 
-### Properties
+#### Properties
 
 |Name|Type|Required|Restrictions|Description|
 |---|---|---|---|---|
@@ -120,14 +120,14 @@ Server-managed lifecycle information for a resource
 |metadata|[Metadata](#schemametadata)|true|none|none|
 |spec|[APIConfigData](#schemaapiconfigdata)|true|none|none|
 
-#### Enumerated Values
+##### Enumerated Values
 
 |Property|Value|
 |---|---|
 |apiVersion|gateway.api-platform.wso2.com/v1|
 |kind|RestApi|
 
-<h2 id="tocS_RestAPI">RestAPI</h2>
+## RestAPI
 
 <a id="schemarestapi"></a>
 <a id="schema_RestAPI"></a>
@@ -208,7 +208,7 @@ Server-managed lifecycle information for a resource
 
 ```
 
-### Properties
+#### Properties
 
 allOf
 
@@ -223,7 +223,7 @@ and
 |*anonymous*|object|false|none|none|
 |» status|[ResourceStatus](#schemaresourcestatus)|false|read-only|Server-managed lifecycle fields. Populated on responses.|
 
-<h2 id="tocS_Metadata">Metadata</h2>
+## Metadata
 
 <a id="schemametadata"></a>
 <a id="schema_Metadata"></a>
@@ -245,7 +245,7 @@ and
 
 ```
 
-### Properties
+#### Properties
 
 |Name|Type|Required|Restrictions|Description|
 |---|---|---|---|---|
@@ -255,7 +255,7 @@ and
 |annotations|object|false|none|Annotations are arbitrary non-identifying metadata. Use domain-prefixed keys.|
 |» **additionalProperties**|string|false|none|none|
 
-<h2 id="tocS_APIConfigData">APIConfigData</h2>
+## APIConfigData
 
 <a id="schemaapiconfigdata"></a>
 <a id="schema_APIConfigData"></a>
@@ -351,7 +351,7 @@ and
 
 ```
 
-### Properties
+#### Properties
 
 |Name|Type|Required|Restrictions|Description|
 |---|---|---|---|---|
@@ -371,14 +371,14 @@ and
 |operations|[[Operation](#schemaoperation)]|true|none|List of HTTP operations/routes|
 |deploymentState|string|false|none|Desired deployment state - 'deployed' (default) or 'undeployed'. When set to 'undeployed', the API is removed from router traffic but configuration, API keys, and policies are preserved for potential redeployment.|
 
-#### Enumerated Values
+##### Enumerated Values
 
 |Property|Value|
 |---|---|
 |deploymentState|deployed|
 |deploymentState|undeployed|
 
-<h2 id="tocS_UpstreamDefinition">UpstreamDefinition</h2>
+## UpstreamDefinition
 
 <a id="schemaupstreamdefinition"></a>
 <a id="schema_UpstreamDefinition"></a>
@@ -404,7 +404,7 @@ and
 
 Reusable upstream configuration with optional timeout and load balancing settings
 
-### Properties
+#### Properties
 
 |Name|Type|Required|Restrictions|Description|
 |---|---|---|---|---|
@@ -415,7 +415,7 @@ Reusable upstream configuration with optional timeout and load balancing setting
 |» url|string(uri)|true|none|Backend URL (host and port only, path comes from basePath)|
 |» weight|integer|false|none|Relative weight for load balancing across multiple upstream targets. Reserved for future multi-target load balancing; not applied yet (only the first target is currently used).|
 
-<h2 id="tocS_UpstreamTimeout">UpstreamTimeout</h2>
+## UpstreamTimeout
 
 <a id="schemaupstreamtimeout"></a>
 <a id="schema_UpstreamTimeout"></a>
@@ -431,13 +431,13 @@ Reusable upstream configuration with optional timeout and load balancing setting
 
 Timeout configuration for upstream requests
 
-### Properties
+#### Properties
 
 |Name|Type|Required|Restrictions|Description|
 |---|---|---|---|---|
 |connect|string|false|none|Connection timeout duration (e.g., "5s", "500ms")|
 
-<h2 id="tocS_Resilience">Resilience</h2>
+## Resilience
 
 <a id="schemaresilience"></a>
 <a id="schema_Resilience"></a>
@@ -454,14 +454,14 @@ Timeout configuration for upstream requests
 
 Backend/route timeout configuration. Maps to Envoy RouteAction timeouts. Can be set at the API level (applies to all routes) and/or the operation level (applies to that operation's route). When set at both levels, the operation-level value takes precedence. When unset, the gateway's global route timeout defaults apply.
 
-### Properties
+#### Properties
 
 |Name|Type|Required|Restrictions|Description|
 |---|---|---|---|---|
 |timeout|string|false|none|Maximum time for the entire route (request to upstream response). "0s" disables the timeout.|
 |idleTimeout|string|false|none|Per-route stream idle timeout (overrides the listener stream idle timeout for this route). "0s" disables the timeout.|
 
-<h2 id="tocS_Upstream">Upstream</h2>
+## Upstream
 
 <a id="schemaupstream"></a>
 <a id="schema_Upstream"></a>
@@ -479,7 +479,7 @@ Backend/route timeout configuration. Maps to Envoy RouteAction timeouts. Can be 
 
 Upstream backend configuration (single target or reference)
 
-### Properties
+#### Properties
 
 |Name|Type|Required|Restrictions|Description|
 |---|---|---|---|---|
@@ -499,14 +499,14 @@ xor
 |---|---|---|---|---|
 |*anonymous*|object|false|none|none|
 
-#### Enumerated Values
+##### Enumerated Values
 
 |Property|Value|
 |---|---|
 |hostRewrite|auto|
 |hostRewrite|manual|
 
-<h2 id="tocS_Operation">Operation</h2>
+## Operation
 
 <a id="schemaoperation"></a>
 <a id="schema_Operation"></a>
@@ -549,7 +549,7 @@ xor
 
 An operation is matched either by the simple top-level method+path form, or by the richer 'match' block (method + path + headers). When 'match' is present it is authoritative and the top-level method/path are ignored. At least one form must be provided.
 
-### Properties
+#### Properties
 
 |Name|Type|Required|Restrictions|Description|
 |---|---|---|---|---|
@@ -559,7 +559,7 @@ An operation is matched either by the simple top-level method+path form, or by t
 |policies|[[Policy](#schemapolicy)]|false|none|List of policies applied only to this operation (overrides or adds to API-level policies)|
 |resilience|[Resilience](#schemaresilience)|false|none|Backend/route timeout configuration. Maps to Envoy RouteAction timeouts. Can be set at the API level (applies to all routes) and/or the operation level (applies to that operation's route). When set at both levels, the operation-level value takes precedence. When unset, the gateway's global route timeout defaults apply.|
 
-<h2 id="tocS_OperationMethod">OperationMethod</h2>
+## OperationMethod
 
 <a id="schemaoperationmethod"></a>
 <a id="schema_OperationMethod"></a>
@@ -573,13 +573,13 @@ An operation is matched either by the simple top-level method+path form, or by t
 
 HTTP method
 
-### Properties
+#### Properties
 
 |Name|Type|Required|Restrictions|Description|
 |---|---|---|---|---|
 |*anonymous*|string|false|none|HTTP method|
 
-#### Enumerated Values
+##### Enumerated Values
 
 |Property|Value|
 |---|---|
@@ -591,7 +591,7 @@ HTTP method
 |*anonymous*|HEAD|
 |*anonymous*|OPTIONS|
 
-<h2 id="tocS_OperationMatch">OperationMatch</h2>
+## OperationMatch
 
 <a id="schemaoperationmatch"></a>
 <a id="schema_OperationMatch"></a>
@@ -618,7 +618,7 @@ HTTP method
 
 Request matching criteria for an operation. Extensible with query params, cookies, etc.
 
-### Properties
+#### Properties
 
 |Name|Type|Required|Restrictions|Description|
 |---|---|---|---|---|
@@ -626,7 +626,7 @@ Request matching criteria for an operation. Extensible with query params, cookie
 |path|[OperationPathMatch](#schemaoperationpathmatch)|true|none|none|
 |headers|[[OperationHeaderMatch](#schemaoperationheadermatch)]|false|none|Header matchers ANDed with the path match for Envoy route selection|
 
-<h2 id="tocS_OperationPathMatch">OperationPathMatch</h2>
+## OperationPathMatch
 
 <a id="schemaoperationpathmatch"></a>
 <a id="schema_OperationPathMatch"></a>
@@ -641,21 +641,21 @@ Request matching criteria for an operation. Extensible with query params, cookie
 
 ```
 
-### Properties
+#### Properties
 
 |Name|Type|Required|Restrictions|Description|
 |---|---|---|---|---|
 |value|string|true|none|Route path with optional {param} placeholders|
 |type|string|false|none|Path matching semantics for the operation route|
 
-#### Enumerated Values
+##### Enumerated Values
 
 |Property|Value|
 |---|---|
 |type|Exact|
 |type|PathPrefix|
 
-<h2 id="tocS_OperationHeaderMatch">OperationHeaderMatch</h2>
+## OperationHeaderMatch
 
 <a id="schemaoperationheadermatch"></a>
 <a id="schema_OperationHeaderMatch"></a>
@@ -671,7 +671,7 @@ Request matching criteria for an operation. Extensible with query params, cookie
 
 ```
 
-### Properties
+#### Properties
 
 |Name|Type|Required|Restrictions|Description|
 |---|---|---|---|---|
@@ -679,14 +679,14 @@ Request matching criteria for an operation. Extensible with query params, cookie
 |value|string|true|none|Header value to match|
 |type|string|false|none|Header match type|
 
-#### Enumerated Values
+##### Enumerated Values
 
 |Property|Value|
 |---|---|
 |type|Exact|
 |type|RegularExpression|
 
-<h2 id="tocS_Policy">Policy</h2>
+## Policy
 
 <a id="schemapolicy"></a>
 <a id="schema_Policy"></a>
@@ -703,7 +703,7 @@ Request matching criteria for an operation. Extensible with query params, cookie
 
 ```
 
-### Properties
+#### Properties
 
 |Name|Type|Required|Restrictions|Description|
 |---|---|---|---|---|
@@ -712,7 +712,7 @@ Request matching criteria for an operation. Extensible with query params, cookie
 |executionCondition|string|false|none|Expression controlling conditional execution of the policy|
 |params|object|false|none|Arbitrary parameters for the policy (free-form key/value structure)|
 
-<h2 id="tocS_Channel">Channel</h2>
+## Channel
 
 <a id="schemachannel"></a>
 <a id="schema_Channel"></a>
@@ -737,7 +737,7 @@ Request matching criteria for an operation. Extensible with query params, cookie
 
 Channel (topic/event stream) definition for async APIs.
 
-### Properties
+#### Properties
 
 |Name|Type|Required|Restrictions|Description|
 |---|---|---|---|---|
@@ -745,13 +745,13 @@ Channel (topic/event stream) definition for async APIs.
 |method|string|true|none|Operation method type.|
 |policies|[[Policy](#schemapolicy)]|false|none|List of policies applied only to this channel (overrides or adds to API-level policies)|
 
-#### Enumerated Values
+##### Enumerated Values
 
 |Property|Value|
 |---|---|
 |method|SUB|
 
-<h2 id="tocS_APIKeyCreationRequest">APIKeyCreationRequest</h2>
+## APIKeyCreationRequest
 
 <a id="schemaapikeycreationrequest"></a>
 <a id="schema_APIKeyCreationRequest"></a>
@@ -765,7 +765,7 @@ Channel (topic/event stream) definition for async APIs.
 
 ```
 
-### Properties
+#### Properties
 
 |Name|Type|Required|Restrictions|Description|
 |---|---|---|---|---|
@@ -779,7 +779,7 @@ Channel (topic/event stream) definition for async APIs.
 |externalRefId|string|false|none|External reference ID for the API key.<br>This field is optional and used for tracing purposes only.<br>The gateway generates its own internal ID for tracking.|
 |issuer|string|false|none|Identifies the portal that created this key. If provided, only api keys generated from<br>the same portal will be accepted. If not provided, there is no portal restriction.|
 
-#### Enumerated Values
+##### Enumerated Values
 
 |Property|Value|
 |---|---|
@@ -790,7 +790,7 @@ Channel (topic/event stream) definition for async APIs.
 |unit|weeks|
 |unit|months|
 
-<h2 id="tocS_APIKeyCreationResponse">APIKeyCreationResponse</h2>
+## APIKeyCreationResponse
 
 <a id="schemaapikeycreationresponse"></a>
 <a id="schema_APIKeyCreationResponse"></a>
@@ -817,7 +817,7 @@ Channel (topic/event stream) definition for async APIs.
 
 ```
 
-### Properties
+#### Properties
 
 |Name|Type|Required|Restrictions|Description|
 |---|---|---|---|---|
@@ -826,7 +826,7 @@ Channel (topic/event stream) definition for async APIs.
 |remainingApiKeyQuota|integer|false|none|Remaining API key quota for the user|
 |apiKey|[APIKey](#schemaapikey)|false|none|Details of an API key|
 
-<h2 id="tocS_APIKey">APIKey</h2>
+## APIKey
 
 <a id="schemaapikey"></a>
 <a id="schema_APIKey"></a>
@@ -850,7 +850,7 @@ Channel (topic/event stream) definition for async APIs.
 
 Details of an API key
 
-### Properties
+#### Properties
 
 |Name|Type|Required|Restrictions|Description|
 |---|---|---|---|---|
@@ -865,7 +865,7 @@ Details of an API key
 |source|string|true|none|Source of the API key (local or external)|
 |externalRefId|string|false|none|External reference ID for the API key|
 
-#### Enumerated Values
+##### Enumerated Values
 
 |Property|Value|
 |---|---|
@@ -875,7 +875,7 @@ Details of an API key
 |source|local|
 |source|external|
 
-<h2 id="tocS_APIKeyRegenerationRequest">APIKeyRegenerationRequest</h2>
+## APIKeyRegenerationRequest
 
 <a id="schemaapikeyregenerationrequest"></a>
 <a id="schema_APIKeyRegenerationRequest"></a>
@@ -887,7 +887,7 @@ Details of an API key
 
 ```
 
-### Properties
+#### Properties
 
 |Name|Type|Required|Restrictions|Description|
 |---|---|---|---|---|
@@ -896,7 +896,7 @@ Details of an API key
 |» duration|integer|true|none|Duration value for expiration|
 |expiresAt|string(date-time)|false|none|Expiration timestamp|
 
-#### Enumerated Values
+##### Enumerated Values
 
 |Property|Value|
 |---|---|
@@ -907,7 +907,7 @@ Details of an API key
 |unit|weeks|
 |unit|months|
 
-<h2 id="tocS_APIKeyUpdateRequest">APIKeyUpdateRequest</h2>
+## APIKeyUpdateRequest
 
 <a id="schemaapikeyupdaterequest"></a>
 <a id="schema_APIKeyUpdateRequest"></a>
@@ -921,11 +921,11 @@ Details of an API key
 
 ```
 
-### Properties
+#### Properties
 
 *None*
 
-<h2 id="tocS_APIKeyRevocationResponse">APIKeyRevocationResponse</h2>
+## APIKeyRevocationResponse
 
 <a id="schemaapikeyrevocationresponse"></a>
 <a id="schema_APIKeyRevocationResponse"></a>
@@ -940,14 +940,14 @@ Details of an API key
 
 ```
 
-### Properties
+#### Properties
 
 |Name|Type|Required|Restrictions|Description|
 |---|---|---|---|---|
 |status|string|true|none|none|
 |message|string|true|none|none|
 
-<h2 id="tocS_SubscriptionPlanCreateRequest">SubscriptionPlanCreateRequest</h2>
+## SubscriptionPlanCreateRequest
 
 <a id="schemasubscriptionplancreaterequest"></a>
 <a id="schema_SubscriptionPlanCreateRequest"></a>
@@ -967,7 +967,7 @@ Details of an API key
 
 ```
 
-### Properties
+#### Properties
 
 |Name|Type|Required|Restrictions|Description|
 |---|---|---|---|---|
@@ -979,7 +979,7 @@ Details of an API key
 |expiryTime|string(date-time)|false|none|none|
 |status|string|false|none|none|
 
-#### Enumerated Values
+##### Enumerated Values
 
 |Property|Value|
 |---|---|
@@ -990,7 +990,7 @@ Details of an API key
 |status|ACTIVE|
 |status|INACTIVE|
 
-<h2 id="tocS_SubscriptionPlanUpdateRequest">SubscriptionPlanUpdateRequest</h2>
+## SubscriptionPlanUpdateRequest
 
 <a id="schemasubscriptionplanupdaterequest"></a>
 <a id="schema_SubscriptionPlanUpdateRequest"></a>
@@ -1010,7 +1010,7 @@ Details of an API key
 
 ```
 
-### Properties
+#### Properties
 
 |Name|Type|Required|Restrictions|Description|
 |---|---|---|---|---|
@@ -1022,7 +1022,7 @@ Details of an API key
 |expiryTime|string(date-time)|false|none|none|
 |status|string|false|none|none|
 
-#### Enumerated Values
+##### Enumerated Values
 
 |Property|Value|
 |---|---|
@@ -1033,7 +1033,7 @@ Details of an API key
 |status|ACTIVE|
 |status|INACTIVE|
 
-<h2 id="tocS_SubscriptionPlanResponse">SubscriptionPlanResponse</h2>
+## SubscriptionPlanResponse
 
 <a id="schemasubscriptionplanresponse"></a>
 <a id="schema_SubscriptionPlanResponse"></a>
@@ -1057,7 +1057,7 @@ Details of an API key
 
 ```
 
-### Properties
+#### Properties
 
 |Name|Type|Required|Restrictions|Description|
 |---|---|---|---|---|
@@ -1073,14 +1073,14 @@ Details of an API key
 |createdAt|string(date-time)|false|none|none|
 |updatedAt|string(date-time)|false|none|none|
 
-#### Enumerated Values
+##### Enumerated Values
 
 |Property|Value|
 |---|---|
 |status|ACTIVE|
 |status|INACTIVE|
 
-<h2 id="tocS_SubscriptionPlanListResponse">SubscriptionPlanListResponse</h2>
+## SubscriptionPlanListResponse
 
 <a id="schemasubscriptionplanlistresponse"></a>
 <a id="schema_SubscriptionPlanListResponse"></a>
@@ -1109,14 +1109,14 @@ Details of an API key
 
 ```
 
-### Properties
+#### Properties
 
 |Name|Type|Required|Restrictions|Description|
 |---|---|---|---|---|
 |subscriptionPlans|[[SubscriptionPlanResponse](#schemasubscriptionplanresponse)]|false|none|none|
 |count|integer|false|none|none|
 
-<h2 id="tocS_SubscriptionCreateRequest">SubscriptionCreateRequest</h2>
+## SubscriptionCreateRequest
 
 <a id="schemasubscriptioncreaterequest"></a>
 <a id="schema_SubscriptionCreateRequest"></a>
@@ -1136,7 +1136,7 @@ Details of an API key
 
 ```
 
-### Properties
+#### Properties
 
 |Name|Type|Required|Restrictions|Description|
 |---|---|---|---|---|
@@ -1148,7 +1148,7 @@ Details of an API key
 |billingSubscriptionId|string|false|none|Billing subscription identifier (optional, for analytics tracking).|
 |status|string|false|none|none|
 
-#### Enumerated Values
+##### Enumerated Values
 
 |Property|Value|
 |---|---|
@@ -1156,7 +1156,7 @@ Details of an API key
 |status|INACTIVE|
 |status|REVOKED|
 
-<h2 id="tocS_SubscriptionUpdateRequest">SubscriptionUpdateRequest</h2>
+## SubscriptionUpdateRequest
 
 <a id="schemasubscriptionupdaterequest"></a>
 <a id="schema_SubscriptionUpdateRequest"></a>
@@ -1170,13 +1170,13 @@ Details of an API key
 
 ```
 
-### Properties
+#### Properties
 
 |Name|Type|Required|Restrictions|Description|
 |---|---|---|---|---|
 |status|string|false|none|none|
 
-#### Enumerated Values
+##### Enumerated Values
 
 |Property|Value|
 |---|---|
@@ -1184,7 +1184,7 @@ Details of an API key
 |status|INACTIVE|
 |status|REVOKED|
 
-<h2 id="tocS_SubscriptionResponse">SubscriptionResponse</h2>
+## SubscriptionResponse
 
 <a id="schemasubscriptionresponse"></a>
 <a id="schema_SubscriptionResponse"></a>
@@ -1208,7 +1208,7 @@ Details of an API key
 
 ```
 
-### Properties
+#### Properties
 
 |Name|Type|Required|Restrictions|Description|
 |---|---|---|---|---|
@@ -1224,7 +1224,7 @@ Details of an API key
 |createdAt|string(date-time)|false|none|none|
 |updatedAt|string(date-time)|false|none|none|
 
-#### Enumerated Values
+##### Enumerated Values
 
 |Property|Value|
 |---|---|
@@ -1232,7 +1232,7 @@ Details of an API key
 |status|INACTIVE|
 |status|REVOKED|
 
-<h2 id="tocS_SubscriptionListResponse">SubscriptionListResponse</h2>
+## SubscriptionListResponse
 
 <a id="schemasubscriptionlistresponse"></a>
 <a id="schema_SubscriptionListResponse"></a>
@@ -1261,14 +1261,14 @@ Details of an API key
 
 ```
 
-### Properties
+#### Properties
 
 |Name|Type|Required|Restrictions|Description|
 |---|---|---|---|---|
 |subscriptions|[[SubscriptionResponse](#schemasubscriptionresponse)]|false|none|none|
 |count|integer|false|none|none|
 
-<h2 id="tocS_MCPProxyConfigurationRequest">MCPProxyConfigurationRequest</h2>
+## MCPProxyConfigurationRequest
 
 <a id="schemamcpproxyconfigurationrequest"></a>
 <a id="schema_MCPProxyConfigurationRequest"></a>
@@ -1298,7 +1298,7 @@ Details of an API key
 
 ```
 
-### Properties
+#### Properties
 
 |Name|Type|Required|Restrictions|Description|
 |---|---|---|---|---|
@@ -1307,14 +1307,14 @@ Details of an API key
 |metadata|[Metadata](#schemametadata)|true|none|none|
 |spec|[MCPProxyConfigData](#schemamcpproxyconfigdata)|true|none|none|
 
-#### Enumerated Values
+##### Enumerated Values
 
 |Property|Value|
 |---|---|
 |apiVersion|gateway.api-platform.wso2.com/v1|
 |kind|Mcp|
 
-<h2 id="tocS_MCPProxyConfiguration">MCPProxyConfiguration</h2>
+## MCPProxyConfiguration
 
 <a id="schemamcpproxyconfiguration"></a>
 <a id="schema_MCPProxyConfiguration"></a>
@@ -1351,7 +1351,7 @@ Details of an API key
 
 ```
 
-### Properties
+#### Properties
 
 allOf
 
@@ -1366,7 +1366,7 @@ and
 |*anonymous*|object|false|none|none|
 |» status|[ResourceStatus](#schemaresourcestatus)|false|read-only|Server-managed lifecycle fields. Populated on responses.|
 
-<h2 id="tocS_MCPProxyConfigData">MCPProxyConfigData</h2>
+## MCPProxyConfigData
 
 <a id="schemamcpproxyconfigdata"></a>
 <a id="schema_MCPProxyConfigData"></a>
@@ -1456,7 +1456,7 @@ and
 
 ```
 
-### Properties
+#### Properties
 
 |Name|Type|Required|Restrictions|Description|
 |---|---|---|---|---|
@@ -1491,14 +1491,14 @@ continued
 |deploymentState|string|false|none|Desired deployment state - 'deployed' (default) or 'undeployed'. When set to 'undeployed', the MCP Proxy is removed from router traffic but configuration and policies are preserved for potential redeployment.|
 |resilience|[Resilience](#schemaresilience)|false|none|API-level backend/route timeout configuration. Applies to the traffic-forwarding routes generated for this MCP proxy (GET/POST/DELETE on the MCP resource path). Supported at the API level only. Because MCP transports are long-lived streams, the route timeout defaults to disabled ("0s") for MCP unless a timeout is set here (unlike REST/LLM, which fall back to the gateway's global route timeout); the idle timeout remains the liveness guard.|
 
-#### Enumerated Values
+##### Enumerated Values
 
 |Property|Value|
 |---|---|
 |deploymentState|deployed|
 |deploymentState|undeployed|
 
-<h2 id="tocS_MCPTool">MCPTool</h2>
+## MCPTool
 
 <a id="schemamcptool"></a>
 <a id="schema_MCPTool"></a>
@@ -1516,7 +1516,7 @@ continued
 
 ```
 
-### Properties
+#### Properties
 
 |Name|Type|Required|Restrictions|Description|
 |---|---|---|---|---|
@@ -1526,7 +1526,7 @@ continued
 |inputSchema|string|true|none|JSON Schema defining expected parameters|
 |outputSchema|string|false|none|Optional JSON Schema defining expected output structure|
 
-<h2 id="tocS_MCPResource">MCPResource</h2>
+## MCPResource
 
 <a id="schemamcpresource"></a>
 <a id="schema_MCPResource"></a>
@@ -1545,7 +1545,7 @@ continued
 
 ```
 
-### Properties
+#### Properties
 
 |Name|Type|Required|Restrictions|Description|
 |---|---|---|---|---|
@@ -1556,7 +1556,7 @@ continued
 |mimeType|string|false|none|Optional MIME type|
 |size|integer|false|none|Optional size in bytes|
 
-<h2 id="tocS_MCPPrompt">MCPPrompt</h2>
+## MCPPrompt
 
 <a id="schemamcpprompt"></a>
 <a id="schema_MCPPrompt"></a>
@@ -1580,7 +1580,7 @@ continued
 
 ```
 
-### Properties
+#### Properties
 
 |Name|Type|Required|Restrictions|Description|
 |---|---|---|---|---|
@@ -1593,7 +1593,7 @@ continued
 |» required|boolean|false|none|Whether the argument is required|
 |» title|string|false|none|Optional human-readable title of the argument|
 
-<h2 id="tocS_ErrorResponse">ErrorResponse</h2>
+## ErrorResponse
 
 <a id="schemaerrorresponse"></a>
 <a id="schema_ErrorResponse"></a>
@@ -1614,7 +1614,7 @@ continued
 
 ```
 
-### Properties
+#### Properties
 
 |Name|Type|Required|Restrictions|Description|
 |---|---|---|---|---|
@@ -1622,7 +1622,7 @@ continued
 |message|string|true|none|High-level error description|
 |errors|[[ValidationError](#schemavalidationerror)]|false|none|Detailed validation errors|
 
-<h2 id="tocS_ValidationError">ValidationError</h2>
+## ValidationError
 
 <a id="schemavalidationerror"></a>
 <a id="schema_ValidationError"></a>
@@ -1637,14 +1637,14 @@ continued
 
 ```
 
-### Properties
+#### Properties
 
 |Name|Type|Required|Restrictions|Description|
 |---|---|---|---|---|
 |field|string|false|none|Field that failed validation|
 |message|string|false|none|Human-readable error message|
 
-<h2 id="tocS_LLMProviderTemplateRequest">LLMProviderTemplateRequest</h2>
+## LLMProviderTemplateRequest
 
 <a id="schemallmprovidertemplaterequest"></a>
 <a id="schema_LLMProviderTemplateRequest"></a>
@@ -1689,7 +1689,7 @@ continued
 
 ```
 
-### Properties
+#### Properties
 
 |Name|Type|Required|Restrictions|Description|
 |---|---|---|---|---|
@@ -1698,14 +1698,14 @@ continued
 |metadata|[Metadata](#schemametadata)|true|none|none|
 |spec|[LLMProviderTemplateData](#schemallmprovidertemplatedata)|true|none|none|
 
-#### Enumerated Values
+##### Enumerated Values
 
 |Property|Value|
 |---|---|
 |apiVersion|gateway.api-platform.wso2.com/v1|
 |kind|LlmProviderTemplate|
 
-<h2 id="tocS_LLMProviderTemplate">LLMProviderTemplate</h2>
+## LLMProviderTemplate
 
 <a id="schemallmprovidertemplate"></a>
 <a id="schema_LLMProviderTemplate"></a>
@@ -1755,7 +1755,7 @@ continued
 
 ```
 
-### Properties
+#### Properties
 
 allOf
 
@@ -1770,7 +1770,7 @@ and
 |*anonymous*|object|false|none|none|
 |» status|[ResourceStatus](#schemaresourcestatus)|false|read-only|Server-managed lifecycle fields. Populated on responses.|
 
-<h2 id="tocS_LLMProviderTemplateData">LLMProviderTemplateData</h2>
+## LLMProviderTemplateData
 
 <a id="schemallmprovidertemplatedata"></a>
 <a id="schema_LLMProviderTemplateData"></a>
@@ -1842,7 +1842,7 @@ and
 
 ```
 
-### Properties
+#### Properties
 
 |Name|Type|Required|Restrictions|Description|
 |---|---|---|---|---|
@@ -1858,7 +1858,7 @@ and
 |responseModel|[ExtractionIdentifier](#schemaextractionidentifier)|false|none|none|
 |resourceMappings|[LLMProviderTemplateResourceMappings](#schemallmprovidertemplateresourcemappings)|false|none|none|
 
-<h2 id="tocS_LLMProviderTemplateResourceMappings">LLMProviderTemplateResourceMappings</h2>
+## LLMProviderTemplateResourceMappings
 
 <a id="schemallmprovidertemplateresourcemappings"></a>
 <a id="schema_LLMProviderTemplateResourceMappings"></a>
@@ -1900,13 +1900,13 @@ and
 
 ```
 
-### Properties
+#### Properties
 
 |Name|Type|Required|Restrictions|Description|
 |---|---|---|---|---|
 |resources|[[LLMProviderTemplateResourceMapping](#schemallmprovidertemplateresourcemapping)]|false|none|none|
 
-<h2 id="tocS_LLMProviderTemplateResourceMapping">LLMProviderTemplateResourceMapping</h2>
+## LLMProviderTemplateResourceMapping
 
 <a id="schemallmprovidertemplateresourcemapping"></a>
 <a id="schema_LLMProviderTemplateResourceMapping"></a>
@@ -1944,7 +1944,7 @@ and
 
 ```
 
-### Properties
+#### Properties
 
 |Name|Type|Required|Restrictions|Description|
 |---|---|---|---|---|
@@ -1956,7 +1956,7 @@ and
 |requestModel|[ExtractionIdentifier](#schemaextractionidentifier)|false|none|none|
 |responseModel|[ExtractionIdentifier](#schemaextractionidentifier)|false|none|none|
 
-<h2 id="tocS_ExtractionIdentifier">ExtractionIdentifier</h2>
+## ExtractionIdentifier
 
 <a id="schemaextractionidentifier"></a>
 <a id="schema_ExtractionIdentifier"></a>
@@ -1971,14 +1971,14 @@ and
 
 ```
 
-### Properties
+#### Properties
 
 |Name|Type|Required|Restrictions|Description|
 |---|---|---|---|---|
 |location|string|true|none|Where to find the token information|
 |identifier|string|true|none|JSONPath expression or header name to identify the token value|
 
-#### Enumerated Values
+##### Enumerated Values
 
 |Property|Value|
 |---|---|
@@ -1987,7 +1987,7 @@ and
 |location|queryParam|
 |location|pathParam|
 
-<h2 id="tocS_LLMProviderConfigurationRequest">LLMProviderConfigurationRequest</h2>
+## LLMProviderConfigurationRequest
 
 <a id="schemallmproviderconfigurationrequest"></a>
 <a id="schema_LLMProviderConfigurationRequest"></a>
@@ -2042,7 +2042,7 @@ and
 
 ```
 
-### Properties
+#### Properties
 
 |Name|Type|Required|Restrictions|Description|
 |---|---|---|---|---|
@@ -2051,14 +2051,14 @@ and
 |metadata|[Metadata](#schemametadata)|true|none|none|
 |spec|[LLMProviderConfigData](#schemallmproviderconfigdata)|true|none|none|
 
-#### Enumerated Values
+##### Enumerated Values
 
 |Property|Value|
 |---|---|
 |apiVersion|gateway.api-platform.wso2.com/v1|
 |kind|LlmProvider|
 
-<h2 id="tocS_LLMProviderConfiguration">LLMProviderConfiguration</h2>
+## LLMProviderConfiguration
 
 <a id="schemallmproviderconfiguration"></a>
 <a id="schema_LLMProviderConfiguration"></a>
@@ -2119,7 +2119,7 @@ and
 
 ```
 
-### Properties
+#### Properties
 
 allOf
 
@@ -2134,7 +2134,7 @@ and
 |*anonymous*|object|false|none|none|
 |» status|[ResourceStatus](#schemaresourcestatus)|false|read-only|Server-managed lifecycle fields. Populated on responses.|
 
-<h2 id="tocS_LLMProviderConfigData">LLMProviderConfigData</h2>
+## LLMProviderConfigData
 
 <a id="schemallmproviderconfigdata"></a>
 <a id="schema_LLMProviderConfigData"></a>
@@ -2232,7 +2232,7 @@ and
 
 ```
 
-### Properties
+#### Properties
 
 |Name|Type|Required|Restrictions|Description|
 |---|---|---|---|---|
@@ -2267,14 +2267,14 @@ continued
 |deploymentState|string|false|none|Desired deployment state - 'deployed' (default) or 'undeployed'. When set to 'undeployed', the LLM Provider is removed from router traffic but configuration and policies are preserved for potential redeployment.|
 |resilience|[Resilience](#schemaresilience)|false|none|API-level backend/route timeout configuration. Applies to all routes generated for this LLM Provider (the routes that forward traffic upstream). Supported at the API level only - LLM routes are synthesized by the gateway, so there is no operation-level override.|
 
-#### Enumerated Values
+##### Enumerated Values
 
 |Property|Value|
 |---|---|
 |deploymentState|deployed|
 |deploymentState|undeployed|
 
-<h2 id="tocS_UpstreamAuth">UpstreamAuth</h2>
+## UpstreamAuth
 
 <a id="schemaupstreamauth"></a>
 <a id="schema_UpstreamAuth"></a>
@@ -2292,7 +2292,7 @@ continued
 
 ```
 
-### Properties
+#### Properties
 
 |Name|Type|Required|Restrictions|Description|
 |---|---|---|---|---|
@@ -2301,7 +2301,7 @@ continued
 |» header|string|false|none|none|
 |» value|string|false|write-only|Upstream credential. Write-only: accepted on create/update and never returned by the management API on a read, for any role. Supply either a literal value or a secret reference (e.g. a `secret` template expression); either way the field is omitted from management API response bodies. An update that omits it inherits the stored value; set `type: none` to remove auth.|
 
-#### Enumerated Values
+##### Enumerated Values
 
 |Property|Value|
 |---|---|
@@ -2309,7 +2309,7 @@ continued
 |type|other|
 |type|none|
 
-<h2 id="tocS_LLMUpstreamAuth">LLMUpstreamAuth</h2>
+## LLMUpstreamAuth
 
 <a id="schemallmupstreamauth"></a>
 <a id="schema_LLMUpstreamAuth"></a>
@@ -2325,7 +2325,7 @@ continued
 
 ```
 
-### Properties
+#### Properties
 
 |Name|Type|Required|Restrictions|Description|
 |---|---|---|---|---|
@@ -2333,7 +2333,7 @@ continued
 |header|string|false|none|none|
 |value|string|false|write-only|Upstream credential. Write-only: accepted on create/update and never returned by the management API on a read, for any role. An update that omits it inherits the stored value; set `type: none` to remove auth.|
 
-#### Enumerated Values
+##### Enumerated Values
 
 |Property|Value|
 |---|---|
@@ -2341,7 +2341,7 @@ continued
 |type|other|
 |type|none|
 
-<h2 id="tocS_LLMProxyProvider">LLMProxyProvider</h2>
+## LLMProxyProvider
 
 <a id="schemallmproxyprovider"></a>
 <a id="schema_LLMProxyProvider"></a>
@@ -2360,14 +2360,14 @@ continued
 
 ```
 
-### Properties
+#### Properties
 
 |Name|Type|Required|Restrictions|Description|
 |---|---|---|---|---|
 |id|string|true|none|Unique id of a deployed llm provider|
 |auth|[LLMUpstreamAuth](#schemallmupstreamauth)|false|none|none|
 
-<h2 id="tocS_LLMProxyAdditionalProvider">LLMProxyAdditionalProvider</h2>
+## LLMProxyAdditionalProvider
 
 <a id="schemallmproxyadditionalprovider"></a>
 <a id="schema_LLMProxyAdditionalProvider"></a>
@@ -2394,7 +2394,7 @@ continued
 
 Additional LLM provider attached to this proxy as a selectable upstream. Policies route to it by referring to the `as` name (defaults to `id`). Optional auth config is used by the proxy when calling a protected LlmProvider over the internal loopback route.
 
-### Properties
+#### Properties
 
 |Name|Type|Required|Restrictions|Description|
 |---|---|---|---|---|
@@ -2403,7 +2403,7 @@ Additional LLM provider attached to this proxy as a selectable upstream. Policie
 |auth|[LLMUpstreamAuth](#schemallmupstreamauth)|false|none|none|
 |transformer|[LLMProxyTransformer](#schemallmproxytransformer)|false|none|Request/response translator applied when this provider is the selected upstream. The proxy injects the translator as a conditional policy whose execution condition matches this provider, so it runs only when the provider is selected. The provider's `as` name (defaults to `id`) is passed to the translator as its target upstream.|
 
-<h2 id="tocS_LLMProxyTransformer">LLMProxyTransformer</h2>
+## LLMProxyTransformer
 
 <a id="schemallmproxytransformer"></a>
 <a id="schema_LLMProxyTransformer"></a>
@@ -2421,7 +2421,7 @@ Additional LLM provider attached to this proxy as a selectable upstream. Policie
 
 Request/response translator applied when this provider is the selected upstream. The proxy injects the translator as a conditional policy whose execution condition matches this provider, so it runs only when the provider is selected. The provider's `as` name (defaults to `id`) is passed to the translator as its target upstream.
 
-### Properties
+#### Properties
 
 |Name|Type|Required|Restrictions|Description|
 |---|---|---|---|---|
@@ -2429,7 +2429,7 @@ Request/response translator applied when this provider is the selected upstream.
 |version|string|true|none|Major-only translator policy version (for example v1). The Gateway Controller resolves it to the installed full version.|
 |params|object|false|none|Translator-specific parameters (for example model, apiVersion).|
 
-<h2 id="tocS_LLMAccessControl">LLMAccessControl</h2>
+## LLMAccessControl
 
 <a id="schemallmaccesscontrol"></a>
 <a id="schema_LLMAccessControl"></a>
@@ -2451,21 +2451,21 @@ Request/response translator applied when this provider is the selected upstream.
 
 ```
 
-### Properties
+#### Properties
 
 |Name|Type|Required|Restrictions|Description|
 |---|---|---|---|---|
 |mode|string|true|none|Access control mode|
 |exceptions|[[RouteException](#schemarouteexception)]|false|none|Path exceptions to the access control mode|
 
-#### Enumerated Values
+##### Enumerated Values
 
 |Property|Value|
 |---|---|
 |mode|allow_all|
 |mode|deny_all|
 
-<h2 id="tocS_RouteException">RouteException</h2>
+## RouteException
 
 <a id="schemarouteexception"></a>
 <a id="schema_RouteException"></a>
@@ -2482,14 +2482,14 @@ Request/response translator applied when this provider is the selected upstream.
 
 ```
 
-### Properties
+#### Properties
 
 |Name|Type|Required|Restrictions|Description|
 |---|---|---|---|---|
 |path|string|true|none|Path pattern|
 |methods|[string]|true|none|HTTP methods|
 
-<h2 id="tocS_LLMPolicy">LLMPolicy</h2>
+## LLMPolicy
 
 <a id="schemallmpolicy"></a>
 <a id="schema_LLMPolicy"></a>
@@ -2513,7 +2513,7 @@ Request/response translator applied when this provider is the selected upstream.
 
 ```
 
-### Properties
+#### Properties
 
 |Name|Type|Required|Restrictions|Description|
 |---|---|---|---|---|
@@ -2521,7 +2521,7 @@ Request/response translator applied when this provider is the selected upstream.
 |version|string|true|none|none|
 |paths|[[LLMPolicyPath](#schemallmpolicypath)]|true|none|none|
 
-<h2 id="tocS_LLMPolicyPath">LLMPolicyPath</h2>
+## LLMPolicyPath
 
 <a id="schemallmpolicypath"></a>
 <a id="schema_LLMPolicyPath"></a>
@@ -2539,7 +2539,7 @@ Request/response translator applied when this provider is the selected upstream.
 
 ```
 
-### Properties
+#### Properties
 
 |Name|Type|Required|Restrictions|Description|
 |---|---|---|---|---|
@@ -2547,7 +2547,7 @@ Request/response translator applied when this provider is the selected upstream.
 |methods|[string]|true|none|none|
 |params|object|true|none|JSON Schema describing the parameters accepted by this policy. This itself is a JSON Schema document.|
 
-<h2 id="tocS_OperationPolicy">OperationPolicy</h2>
+## OperationPolicy
 
 <a id="schemaoperationpolicy"></a>
 <a id="schema_OperationPolicy"></a>
@@ -2572,7 +2572,7 @@ Request/response translator applied when this provider is the selected upstream.
 
 ```
 
-### Properties
+#### Properties
 
 |Name|Type|Required|Restrictions|Description|
 |---|---|---|---|---|
@@ -2581,7 +2581,7 @@ Request/response translator applied when this provider is the selected upstream.
 |executionCondition|string|false|none|Expression controlling conditional execution of the policy|
 |paths|[[OperationPolicyPath](#schemaoperationpolicypath)]|true|none|none|
 
-<h2 id="tocS_OperationPolicyPath">OperationPolicyPath</h2>
+## OperationPolicyPath
 
 <a id="schemaoperationpolicypath"></a>
 <a id="schema_OperationPolicyPath"></a>
@@ -2599,7 +2599,7 @@ Request/response translator applied when this provider is the selected upstream.
 
 ```
 
-### Properties
+#### Properties
 
 |Name|Type|Required|Restrictions|Description|
 |---|---|---|---|---|
@@ -2607,7 +2607,7 @@ Request/response translator applied when this provider is the selected upstream.
 |methods|[string]|true|none|none|
 |params|object|true|none|JSON Schema describing the parameters accepted by this policy. This itself is a JSON Schema document.|
 
-<h2 id="tocS_LLMProxyConfigurationRequest">LLMProxyConfigurationRequest</h2>
+## LLMProxyConfigurationRequest
 
 <a id="schemallmproxyconfigurationrequest"></a>
 <a id="schema_LLMProxyConfigurationRequest"></a>
@@ -2634,7 +2634,7 @@ Request/response translator applied when this provider is the selected upstream.
 
 ```
 
-### Properties
+#### Properties
 
 |Name|Type|Required|Restrictions|Description|
 |---|---|---|---|---|
@@ -2643,14 +2643,14 @@ Request/response translator applied when this provider is the selected upstream.
 |metadata|[Metadata](#schemametadata)|true|none|none|
 |spec|[LLMProxyConfigData](#schemallmproxyconfigdata)|true|none|none|
 
-#### Enumerated Values
+##### Enumerated Values
 
 |Property|Value|
 |---|---|
 |apiVersion|gateway.api-platform.wso2.com/v1|
 |kind|LlmProxy|
 
-<h2 id="tocS_LLMProxyConfiguration">LLMProxyConfiguration</h2>
+## LLMProxyConfiguration
 
 <a id="schemallmproxyconfiguration"></a>
 <a id="schema_LLMProxyConfiguration"></a>
@@ -2684,7 +2684,7 @@ Request/response translator applied when this provider is the selected upstream.
 
 ```
 
-### Properties
+#### Properties
 
 allOf
 
@@ -2699,7 +2699,7 @@ and
 |*anonymous*|object|false|none|none|
 |» status|[ResourceStatus](#schemaresourcestatus)|false|read-only|Server-managed lifecycle fields. Populated on responses.|
 
-<h2 id="tocS_LLMProxyConfigData">LLMProxyConfigData</h2>
+## LLMProxyConfigData
 
 <a id="schemallmproxyconfigdata"></a>
 <a id="schema_LLMProxyConfigData"></a>
@@ -2784,7 +2784,7 @@ and
 
 ```
 
-### Properties
+#### Properties
 
 |Name|Type|Required|Restrictions|Description|
 |---|---|---|---|---|
@@ -2800,14 +2800,14 @@ and
 |deploymentState|string|false|none|Desired deployment state - 'deployed' (default) or 'undeployed'. When set to 'undeployed', the LLM Proxy is removed from router traffic but configuration and policies are preserved for potential redeployment.|
 |resilience|[Resilience](#schemaresilience)|false|none|API-level backend/route timeout configuration. Applies to all routes generated for this LLM Proxy (the routes that forward traffic upstream). Supported at the API level only - LLM routes are synthesized by the gateway, so there is no operation-level override.|
 
-#### Enumerated Values
+##### Enumerated Values
 
 |Property|Value|
 |---|---|
 |deploymentState|deployed|
 |deploymentState|undeployed|
 
-<h2 id="tocS_SecretConfigurationRequest">SecretConfigurationRequest</h2>
+## SecretConfigurationRequest
 
 <a id="schemasecretconfigurationrequest"></a>
 <a id="schema_SecretConfigurationRequest"></a>
@@ -2830,7 +2830,7 @@ and
 
 ```
 
-### Properties
+#### Properties
 
 |Name|Type|Required|Restrictions|Description|
 |---|---|---|---|---|
@@ -2839,14 +2839,14 @@ and
 |metadata|[Metadata](#schemametadata)|true|none|none|
 |spec|[SecretConfigData](#schemasecretconfigdata)|true|none|none|
 
-#### Enumerated Values
+##### Enumerated Values
 
 |Property|Value|
 |---|---|
 |apiVersion|gateway.api-platform.wso2.com/v1|
 |kind|Secret|
 
-<h2 id="tocS_SecretConfiguration">SecretConfiguration</h2>
+## SecretConfiguration
 
 <a id="schemasecretconfiguration"></a>
 <a id="schema_SecretConfiguration"></a>
@@ -2879,7 +2879,7 @@ For actual HTTP response shapes, use `SecretConfigurationResponseCreateUpdate`,
 `SecretConfigurationResponseRetrieved`, or `SecretListItem` (see
 `SecretResourceServiceStatus` for the id/timestamp-only status on secret APIs).
 
-### Properties
+#### Properties
 
 allOf
 
@@ -2894,7 +2894,7 @@ and
 |*anonymous*|object|false|none|none|
 |» status|[ResourceStatus](#schemaresourcestatus)|false|read-only|Server-managed lifecycle fields. Populated on responses.|
 
-<h2 id="tocS_SecretConfigData">SecretConfigData</h2>
+## SecretConfigData
 
 <a id="schemasecretconfigdata"></a>
 <a id="schema_SecretConfigData"></a>
@@ -2910,7 +2910,7 @@ and
 
 ```
 
-### Properties
+#### Properties
 
 |Name|Type|Required|Restrictions|Description|
 |---|---|---|---|---|
@@ -2918,7 +2918,7 @@ and
 |description|string|false|none|Description of the secret|
 |value|string(password)|true|none|Secret value (stored encrypted)|
 
-<h2 id="tocS_SecretConfigListData">SecretConfigListData</h2>
+## SecretConfigListData
 
 <a id="schemasecretconfiglistdata"></a>
 <a id="schema_SecretConfigListData"></a>
@@ -2933,14 +2933,14 @@ and
 
 ```
 
-### Properties
+#### Properties
 
 |Name|Type|Required|Restrictions|Description|
 |---|---|---|---|---|
 |displayName|string|true|none|Human-readable secret name (must be URL-friendly - only letters, numbers, spaces, hyphens, underscores, and dots allowed)|
 |description|string|false|none|Description of the secret, if the server includes it|
 
-<h2 id="tocS_SecretListItem">SecretListItem</h2>
+## SecretListItem
 
 <a id="schemasecretlistitem"></a>
 <a id="schema_SecretListItem"></a>
@@ -2966,7 +2966,7 @@ and
 
 ```
 
-### Properties
+#### Properties
 
 |Name|Type|Required|Restrictions|Description|
 |---|---|---|---|---|
@@ -2976,14 +2976,14 @@ and
 |spec|[SecretConfigListData](#schemasecretconfiglistdata)|true|none|none|
 |status|[ResourceStatus](#schemaresourcestatus)|false|read-only|Server-managed lifecycle fields. Omitted in list items may vary; the secret value is never included here.|
 
-#### Enumerated Values
+##### Enumerated Values
 
 |Property|Value|
 |---|---|
 |apiVersion|gateway.api-platform.wso2.com/v1|
 |kind|Secret|
 
-<h2 id="tocS_CertificateUploadRequest">CertificateUploadRequest</h2>
+## CertificateUploadRequest
 
 <a id="schemacertificateuploadrequest"></a>
 <a id="schema_CertificateUploadRequest"></a>
@@ -2998,14 +2998,14 @@ and
 
 ```
 
-### Properties
+#### Properties
 
 |Name|Type|Required|Restrictions|Description|
 |---|---|---|---|---|
 |name|string|true|none|Unique name for the certificate. Must be unique across all certificates.|
 |certificate|string|true|none|PEM-encoded X.509 certificate(s). Can contain multiple certificates.|
 
-<h2 id="tocS_CertificateResponse">CertificateResponse</h2>
+## CertificateResponse
 
 <a id="schemacertificateresponse"></a>
 <a id="schema_CertificateResponse"></a>
@@ -3026,7 +3026,7 @@ and
 
 ```
 
-### Properties
+#### Properties
 
 |Name|Type|Required|Restrictions|Description|
 |---|---|---|---|---|
@@ -3039,14 +3039,14 @@ and
 |message|string|false|none|Success or informational message|
 |status|string|false|none|none|
 
-#### Enumerated Values
+##### Enumerated Values
 
 |Property|Value|
 |---|---|
 |status|success|
 |status|error|
 
-<h2 id="tocS_CertificateListResponse">CertificateListResponse</h2>
+## CertificateListResponse
 
 <a id="schemacertificatelistresponse"></a>
 <a id="schema_CertificateListResponse"></a>
@@ -3074,7 +3074,7 @@ and
 
 ```
 
-### Properties
+#### Properties
 
 |Name|Type|Required|Restrictions|Description|
 |---|---|---|---|---|
@@ -3083,7 +3083,7 @@ and
 |totalBytes|integer|false|none|Total bytes of all certificate files|
 |status|string|false|none|none|
 
-<h2 id="tocS_APIKeyListResponse">APIKeyListResponse</h2>
+## APIKeyListResponse
 
 <a id="schemaapikeylistresponse"></a>
 <a id="schema_APIKeyListResponse"></a>
@@ -3111,7 +3111,7 @@ and
 
 ```
 
-### Properties
+#### Properties
 
 |Name|Type|Required|Restrictions|Description|
 |---|---|---|---|---|
@@ -3119,7 +3119,7 @@ and
 |totalCount|integer|false|none|Total number of API keys|
 |status|string|false|none|none|
 
-<h2 id="tocS_SecretListResponse">SecretListResponse</h2>
+## SecretListResponse
 
 <a id="schemasecretlistresponse"></a>
 <a id="schema_SecretListResponse"></a>
@@ -3151,7 +3151,7 @@ and
 
 ```
 
-### Properties
+#### Properties
 
 |Name|Type|Required|Restrictions|Description|
 |---|---|---|---|---|
@@ -3159,7 +3159,7 @@ and
 |count|integer|false|none|Total number of secrets|
 |secrets|[[SecretListItem](#schemasecretlistitem)]|false|none|List of secrets. For security, the spec.value field is omitted for every item in the list; retrieve a single secret by id to obtain the decrypted value.|
 
-<h2 id="tocS_SecretResourceServiceStatus">SecretResourceServiceStatus</h2>
+## SecretResourceServiceStatus
 
 <a id="schemasecretresourceservicestatus"></a>
 <a id="schema_SecretResourceServiceStatus"></a>
@@ -3178,7 +3178,7 @@ and
 Id and optional timestamps. Not the full ResourceStatus model (no `state` or
 `deployedAt`).
 
-### Properties
+#### Properties
 
 |Name|Type|Required|Restrictions|Description|
 |---|---|---|---|---|
@@ -3186,7 +3186,7 @@ Id and optional timestamps. Not the full ResourceStatus model (no `state` or
 |createdAt|string(date-time)|false|none|none|
 |updatedAt|string(date-time)|false|none|none|
 
-<h2 id="tocS_SecretConfigurationResponseCreateUpdate">SecretConfigurationResponseCreateUpdate</h2>
+## SecretConfigurationResponseCreateUpdate
 
 <a id="schemasecretconfigurationresponsecreateupdate"></a>
 <a id="schema_SecretConfigurationResponseCreateUpdate"></a>
@@ -3215,7 +3215,7 @@ Id and optional timestamps. Not the full ResourceStatus model (no `state` or
 
 POST/PUT /secrets response. `spec.value` is not returned; see SecretConfigurationRequest for create/update request bodies.
 
-### Properties
+#### Properties
 
 |Name|Type|Required|Restrictions|Description|
 |---|---|---|---|---|
@@ -3225,14 +3225,14 @@ POST/PUT /secrets response. `spec.value` is not returned; see SecretConfiguratio
 |spec|[SecretConfigListData](#schemasecretconfiglistdata)|true|none|none|
 |status|[SecretResourceServiceStatus](#schemasecretresourceservicestatus)|true|none|Id and optional timestamps. Not the full ResourceStatus model (no `state` or<br>`deployedAt`).|
 
-#### Enumerated Values
+##### Enumerated Values
 
 |Property|Value|
 |---|---|
 |apiVersion|gateway.api-platform.wso2.com/v1|
 |kind|Secret|
 
-<h2 id="tocS_SecretConfigurationResponseRetrieved">SecretConfigurationResponseRetrieved</h2>
+## SecretConfigurationResponseRetrieved
 
 <a id="schemasecretconfigurationresponseretrieved"></a>
 <a id="schema_SecretConfigurationResponseRetrieved"></a>
@@ -3262,7 +3262,7 @@ POST/PUT /secrets response. `spec.value` is not returned; see SecretConfiguratio
 
 GET /secrets/{id} response including decrypted `spec.value`.
 
-### Properties
+#### Properties
 
 |Name|Type|Required|Restrictions|Description|
 |---|---|---|---|---|
@@ -3272,7 +3272,7 @@ GET /secrets/{id} response including decrypted `spec.value`.
 |spec|[SecretConfigData](#schemasecretconfigdata)|true|none|none|
 |status|[SecretResourceServiceStatus](#schemasecretresourceservicestatus)|true|none|Id and optional timestamps. Not the full ResourceStatus model (no `state` or<br>`deployedAt`).|
 
-#### Enumerated Values
+##### Enumerated Values
 
 |Property|Value|
 |---|---|
