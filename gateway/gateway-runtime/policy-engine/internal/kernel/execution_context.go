@@ -966,12 +966,17 @@ func (ec *PolicyExecutionContext) processStreamingRequestBody(
 	// Compressed request: decompress this chunk, pass directly to policies,
 	// recompress the output. No kernel accumulation — policy implementations
 	// handle their own internal state across chunks.
-	// An empty leading chunk carries no encoding evidence, so the decoder is not
-	// built from it: the deflate variant would be guessed from zero bytes and
+	// An empty NON-TERMINAL chunk carries no encoding evidence, so the decoder is
+	// not built from it: the deflate variant would be guessed from zero bytes and
 	// cannot be corrected once the decoder is running. Nothing is lost by waiting
 	// — feeding an empty chunk produces no output either.
+	// An empty chunk that IS terminal is different: it means the whole encoded body
+	// was zero bytes, which no codec produces. Building the decoder and feeding it
+	// the end-of-stream is what turns that into a rejection, matching the buffered
+	// path (decompressBody fails on empty input) — skipping it would forward an
+	// unvalidated body under a Content-Encoding no policy ever read.
 	if ec.requestContentEncoding != "" &&
-		(len(chunk.Chunk) > 0 || ec.requestStreamDecomp != nil || len(ec.requestDeflatePending) > 0) {
+		(len(chunk.Chunk) > 0 || chunk.EndOfStream || ec.requestStreamDecomp != nil || len(ec.requestDeflatePending) > 0) {
 		if ec.requestStreamDecomp == nil {
 			// Pin the deflate variant before the decoder for it is built — the
 			// decoder cannot be swapped once running. A first chunk may legally
@@ -1369,11 +1374,13 @@ func (ec *PolicyExecutionContext) processStreamingResponseBody(
 	// on gzip: word-count/sentence-count guardrails evaluated isolated fragments
 	// instead of assembled content, and content-rewriting policies never saw a
 	// placeholder that straddled a chunk boundary.
-	// As on the request path: an empty leading chunk is no evidence of the deflate
-	// variant, and the decoder cannot be swapped once running — so defer building
-	// it until a chunk actually carries bytes.
+	// As on the request path: an empty non-terminal chunk is no evidence of the
+	// deflate variant, and the decoder cannot be swapped once running — so defer
+	// building it until a chunk actually carries bytes. A terminal empty chunk is
+	// still decoded, so a zero-byte body under a declared Content-Encoding is
+	// rejected here rather than forwarded as one no policy could read.
 	if ec.responseContentEncoding != "" &&
-		(len(chunk.Chunk) > 0 || ec.responseStreamDecomp != nil || len(ec.responseDeflatePending) > 0) {
+		(len(chunk.Chunk) > 0 || chunk.EndOfStream || ec.responseStreamDecomp != nil || len(ec.responseDeflatePending) > 0) {
 		if ec.responseStreamDecomp == nil {
 			// Pin the deflate variant before the decoder for it is built — the
 			// decoder cannot be swapped once running. As on the request path, a

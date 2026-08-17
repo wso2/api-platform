@@ -1668,3 +1668,58 @@ func TestProcessStreamingRequestBody_RawDeflateWithOneByteFirstChunk(t *testing.
 	assert.Equal(t, plaintext, string(got),
 		"the upstream-bound body must round-trip in the variant the client sent")
 }
+
+// A streaming body that declares a Content-Encoding but delivers zero bytes must
+// reach the decoder rather than skipping it: the streaming and buffered paths
+// must agree on whether such a body is valid for that codec (gzip/br/deflate
+// have a mandatory header and fail; zstd's decoder accepts an empty stream).
+// Skipping decoder construction entirely made streaming silently forward a body
+// under a Content-Encoding nothing had validated or read.
+func TestProcessStreamingBody_EmptyEncodedStreamMatchesBufferedVerdict(t *testing.T) {
+	for _, encoding := range []string{"gzip", "br", "zstd", "deflate"} {
+		t.Run(encoding, func(t *testing.T) {
+			// The buffered path is the reference verdict for this codec.
+			_, bufferedErr := decompressBody(nil, encoding, testMaxDecompressedBytes)
+
+			kernel := NewKernel()
+			server := NewExternalProcessorServer(kernel, newTestExecutor(), config.TracingConfig{}, "", testMaxDecompressedBytes, testMaxDecompressedBytes)
+			chain := &registry.PolicyChain{
+				RequiresRequestBody:       true,
+				RequiresResponseBody:      true,
+				SupportsRequestStreaming:  true,
+				SupportsResponseStreaming: true,
+				Policies:                  []policy.Policy{&testutils.NoopPolicy{}},
+				PolicySpecs:               []policy.PolicySpec{{Enabled: true}},
+			}
+
+			reqCtx := newPolicyExecutionContext(server, "test-route", chain)
+			reqCtx.buildRequestContexts(postRequestHeaders(encoding), RouteMetadata{})
+			reqCtx.isStreamingRequest = true
+			_, reqErr := reqCtx.processStreamingRequestBody(context.Background(), &extprocv3.HttpBody{
+				Body:        nil,
+				EndOfStream: true,
+			})
+
+			respCtx := newPolicyExecutionContext(server, "test-route", chain)
+			respCtx.buildRequestContexts(postRequestHeaders(""), RouteMetadata{})
+			respCtx.buildResponseContexts(okResponseHeaders(encoding))
+			respCtx.isStreamingResponse = true
+			_, respErr := respCtx.processStreamingResponseBody(context.Background(), &extprocv3.HttpBody{
+				Body:        nil,
+				EndOfStream: true,
+			})
+
+			if bufferedErr != nil {
+				require.Error(t, reqErr, "empty encoded request stream must fail as it does when buffered")
+				require.Error(t, respErr, "empty encoded response stream must fail as it does when buffered")
+				assert.Nil(t, reqCtx.requestStreamDecomp)
+				assert.Nil(t, respCtx.responseStreamDecomp)
+				return
+			}
+			require.NoError(t, reqErr)
+			require.NoError(t, respErr)
+			assert.NotNil(t, reqCtx.requestStreamDecomp, "the decoder must be built and consulted, not skipped")
+			assert.NotNil(t, respCtx.responseStreamDecomp)
+		})
+	}
+}
