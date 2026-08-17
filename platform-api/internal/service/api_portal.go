@@ -160,13 +160,17 @@ func (s *APIPortalService) CreateAPIPortal(req *CreateAPIPortalRequest, orgID, c
 	workflowStatus := strings.TrimSpace(req.WorkflowStatus)
 	if workflowStatus == "" {
 		workflowStatus = constants.APIPortalWorkflowStatusPending
-	} else if !constants.ValidAPIPortalWorkflowStatuses[workflowStatus] {
+	} else if !constants.ValidAPIPortalCreateWorkflowStatuses[workflowStatus] {
 		return nil, apperror.ValidationFailed.New(
-			fmt.Sprintf("The workflowStatus %q is not supported.", workflowStatus))
+			fmt.Sprintf("The workflowStatus %q is not supported on create.", workflowStatus))
 	}
 	portalURL, err := validateAPIPortalURL(req.URL)
 	if err != nil {
 		return nil, err
+	}
+	if workflowStatus == constants.APIPortalWorkflowStatusActive && portalURL == "" {
+		return nil, apperror.ValidationFailed.New(
+			"The workflowStatus cannot be active when url is empty.")
 	}
 
 	org, err := s.orgRepo.GetOrganizationByUUID(orgID)
@@ -318,6 +322,14 @@ func (s *APIPortalService) UpdateAPIPortal(handle string, req *UpdateAPIPortalRe
 	}
 	if req.Configuration != nil {
 		portal.Configuration = req.Configuration
+	}
+	// After applying all whitelisted mutations, enforce the cross-field rule:
+	// a portal cannot be in the active state without a URL. This catches both
+	// "set workflowStatus=active while url is empty" and "clear url while
+	// status is currently active".
+	if portal.WorkflowStatus == constants.APIPortalWorkflowStatusActive && portal.URL == "" {
+		return nil, apperror.ValidationFailed.New(
+			"The workflowStatus cannot be active when url is empty.")
 	}
 	portal.UpdatedBy = strings.TrimSpace(updatedBy)
 

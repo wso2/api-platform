@@ -221,6 +221,15 @@ var ValidAPIPortalWorkflowStatuses = map[string]bool{
 	APIPortalWorkflowStatusFailed:  true,
 }
 
+// ValidAPIPortalCreateWorkflowStatuses holds accepted values for workflow_status
+// at Create time. `failed` is intentionally excluded — a portal is never
+// created in a failed state; that state is only reachable via a subsequent
+// update once provisioning or a health check reports failure.
+var ValidAPIPortalCreateWorkflowStatuses = map[string]bool{
+	APIPortalWorkflowStatusPending: true,
+	APIPortalWorkflowStatusActive:  true,
+}
+
 // API Portal auth type constants
 const (
 	APIPortalAuthTypeLocal  = "local"

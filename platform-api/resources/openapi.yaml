@@ -8980,6 +8980,14 @@ components:
         authType:
           type: string
           enum: [local, oauth2]
+        workflowStatus:
+          type: string
+          enum: [pending, active]
+          description: >-
+            Optional. Defaults to `pending` when omitted. Setting `active`
+            requires a non-empty `url`; the request is rejected otherwise.
+            `failed` cannot be set on create — a portal is never created in a
+            failed state.
         config:
           $ref: '#/components/schemas/ApiPortalConfig'
 

@@ -83,6 +83,12 @@ const (
 	CreateApiPortalRequestAuthTypeOauth2 CreateApiPortalRequestAuthType = "oauth2"
 )
 
+// Defines values for CreateApiPortalRequestWorkflowStatus.
+const (
+	CreateApiPortalRequestWorkflowStatusActive  CreateApiPortalRequestWorkflowStatus = "active"
+	CreateApiPortalRequestWorkflowStatusPending CreateApiPortalRequestWorkflowStatus = "pending"
+)
+
 // Defines values for CreateGatewayRequestFunctionalityType.
 const (
 	CreateGatewayRequestFunctionalityTypeAi      CreateGatewayRequestFunctionalityType = "ai"
@@ -424,9 +430,9 @@ const (
 
 // Defines values for ListApiPortalsParamsWorkflowStatus.
 const (
-	Active  ListApiPortalsParamsWorkflowStatus = "active"
-	Failed  ListApiPortalsParamsWorkflowStatus = "failed"
-	Pending ListApiPortalsParamsWorkflowStatus = "pending"
+	ListApiPortalsParamsWorkflowStatusActive  ListApiPortalsParamsWorkflowStatus = "active"
+	ListApiPortalsParamsWorkflowStatusFailed  ListApiPortalsParamsWorkflowStatus = "failed"
+	ListApiPortalsParamsWorkflowStatusPending ListApiPortalsParamsWorkflowStatus = "pending"
 )
 
 // Defines values for ListApplicationsParamsSortBy.
@@ -871,10 +877,16 @@ type CreateApiPortalRequest struct {
 
 	// Url Public URL of an existing API Portal to register. Omit to have a new portal provisioned; the URL will be populated once the instance is reachable.
 	Url *string `json:"url" yaml:"url"`
+
+	// WorkflowStatus Optional. Defaults to `pending` when omitted. Setting `active` requires a non-empty `url`; the request is rejected otherwise. `failed` cannot be set on create — a portal is never created in a failed state.
+	WorkflowStatus *CreateApiPortalRequestWorkflowStatus `json:"workflowStatus,omitempty" yaml:"workflowStatus,omitempty"`
 }
 
 // CreateApiPortalRequestAuthType defines model for CreateApiPortalRequest.AuthType.
 type CreateApiPortalRequestAuthType string
+
+// CreateApiPortalRequestWorkflowStatus Optional. Defaults to `pending` when omitted. Setting `active` requires a non-empty `url`; the request is rejected otherwise. `failed` cannot be set on create — a portal is never created in a failed state.
+type CreateApiPortalRequestWorkflowStatus string
 
 // CreateApplicationRequest Request body for creating an application.
 type CreateApplicationRequest struct {

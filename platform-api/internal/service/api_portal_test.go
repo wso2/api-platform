@@ -338,6 +338,124 @@ func TestAPIPortalService_CreateAPIPortal_EmptyURLAllowed(t *testing.T) {
 	}
 }
 
+func TestAPIPortalService_CreateAPIPortal_ActiveWithURL(t *testing.T) {
+	svc := newTestAPIPortalService(
+		&mockAPIPortalRepository{},
+		&mockAPIPortalOrgRepository{result: &model.Organization{}},
+		&mockAPIPortalAuditRepository{},
+	)
+	got, err := svc.CreateAPIPortal(&CreateAPIPortalRequest{
+		Handle: "acme", Name: "Acme", AuthType: constants.APIPortalAuthTypeLocal,
+		URL:            "https://acme.example.com",
+		WorkflowStatus: constants.APIPortalWorkflowStatusActive,
+	}, "org-1", "user-1")
+	if err != nil {
+		t.Fatalf("CreateAPIPortal: %v", err)
+	}
+	if got.WorkflowStatus != constants.APIPortalWorkflowStatusActive {
+		t.Errorf("want active, got %q", got.WorkflowStatus)
+	}
+}
+
+func TestAPIPortalService_CreateAPIPortal_ActiveWithoutURLRejected(t *testing.T) {
+	svc := newTestAPIPortalService(
+		&mockAPIPortalRepository{},
+		&mockAPIPortalOrgRepository{result: &model.Organization{}},
+		&mockAPIPortalAuditRepository{},
+	)
+	_, err := svc.CreateAPIPortal(&CreateAPIPortalRequest{
+		Handle: "acme", Name: "Acme", AuthType: constants.APIPortalAuthTypeLocal,
+		URL:            "",
+		WorkflowStatus: constants.APIPortalWorkflowStatusActive,
+	}, "org-1", "user-1")
+	if err == nil || !apperror.ValidationFailed.Is(err) {
+		t.Fatalf("want ValidationFailed for active + empty url, got %v", err)
+	}
+}
+
+func TestAPIPortalService_CreateAPIPortal_FailedStatusRejected(t *testing.T) {
+	svc := newTestAPIPortalService(
+		&mockAPIPortalRepository{},
+		&mockAPIPortalOrgRepository{result: &model.Organization{}},
+		&mockAPIPortalAuditRepository{},
+	)
+	_, err := svc.CreateAPIPortal(&CreateAPIPortalRequest{
+		Handle: "acme", Name: "Acme", AuthType: constants.APIPortalAuthTypeLocal,
+		URL:            "https://acme.example.com",
+		WorkflowStatus: constants.APIPortalWorkflowStatusFailed,
+	}, "org-1", "user-1")
+	if err == nil || !apperror.ValidationFailed.Is(err) {
+		t.Fatalf("want ValidationFailed for failed status on create, got %v", err)
+	}
+}
+
+func TestAPIPortalService_UpdateAPIPortal_ActivateWithoutURLRejected(t *testing.T) {
+	// Existing row has no URL; caller tries to flip status to active.
+	existing := &model.APIPortal{
+		ID: "p1", Handle: "acme", OrganizationID: "org-1",
+		Name: "Acme", URL: "",
+		WorkflowStatus: constants.APIPortalWorkflowStatusPending,
+		AuthType:       constants.APIPortalAuthTypeLocal,
+	}
+	svc := newTestAPIPortalService(
+		&mockAPIPortalRepository{getResult: existing},
+		&mockAPIPortalOrgRepository{},
+		&mockAPIPortalAuditRepository{},
+	)
+	_, err := svc.UpdateAPIPortal("acme", &UpdateAPIPortalRequest{
+		WorkflowStatus: apiPortalStrPtr(constants.APIPortalWorkflowStatusActive),
+	}, "org-1", "editor")
+	if err == nil || !apperror.ValidationFailed.Is(err) {
+		t.Fatalf("want ValidationFailed activating without URL, got %v", err)
+	}
+}
+
+func TestAPIPortalService_UpdateAPIPortal_ClearURLWhileActiveRejected(t *testing.T) {
+	// Existing row is active with a URL; caller tries to clear the URL.
+	existing := &model.APIPortal{
+		ID: "p1", Handle: "acme", OrganizationID: "org-1",
+		Name: "Acme", URL: "https://acme.example.com",
+		WorkflowStatus: constants.APIPortalWorkflowStatusActive,
+		AuthType:       constants.APIPortalAuthTypeLocal,
+	}
+	svc := newTestAPIPortalService(
+		&mockAPIPortalRepository{getResult: existing},
+		&mockAPIPortalOrgRepository{},
+		&mockAPIPortalAuditRepository{},
+	)
+	_, err := svc.UpdateAPIPortal("acme", &UpdateAPIPortalRequest{
+		URL: apiPortalStrPtr(""),
+	}, "org-1", "editor")
+	if err == nil || !apperror.ValidationFailed.Is(err) {
+		t.Fatalf("want ValidationFailed clearing URL while active, got %v", err)
+	}
+}
+
+func TestAPIPortalService_UpdateAPIPortal_ActivateWithNewURL(t *testing.T) {
+	// Provisioner-callback scenario: single PUT sets both URL and status.
+	existing := &model.APIPortal{
+		ID: "p1", Handle: "acme", OrganizationID: "org-1",
+		Name: "Acme", URL: "",
+		WorkflowStatus: constants.APIPortalWorkflowStatusPending,
+		AuthType:       constants.APIPortalAuthTypeLocal,
+	}
+	svc := newTestAPIPortalService(
+		&mockAPIPortalRepository{getResult: existing},
+		&mockAPIPortalOrgRepository{},
+		&mockAPIPortalAuditRepository{},
+	)
+	got, err := svc.UpdateAPIPortal("acme", &UpdateAPIPortalRequest{
+		URL:            apiPortalStrPtr("https://acme.example.com"),
+		WorkflowStatus: apiPortalStrPtr(constants.APIPortalWorkflowStatusActive),
+	}, "org-1", "editor")
+	if err != nil {
+		t.Fatalf("UpdateAPIPortal: %v", err)
+	}
+	if got.URL != "https://acme.example.com" || got.WorkflowStatus != constants.APIPortalWorkflowStatusActive {
+		t.Errorf("provisioner-callback path did not apply both fields: %+v", got)
+	}
+}
+
 func TestAPIPortalService_UpdateAPIPortal_InvalidURLRejected(t *testing.T) {
 	existing := &model.APIPortal{
 		ID: "p1", Handle: "acme", OrganizationID: "org-1",
@@ -443,8 +561,9 @@ func TestAPIPortalService_ListAPIPortals_InvalidWorkflowStatus(t *testing.T) {
 func TestAPIPortalService_UpdateAPIPortal_HappyPath(t *testing.T) {
 	existing := &model.APIPortal{
 		ID: "p1", Handle: "acme", OrganizationID: "org-1",
-		Name: "old", WorkflowStatus: constants.APIPortalWorkflowStatusPending,
-		AuthType: constants.APIPortalAuthTypeLocal,
+		Name: "old", URL: "https://acme.example.com",
+		WorkflowStatus: constants.APIPortalWorkflowStatusPending,
+		AuthType:       constants.APIPortalAuthTypeLocal,
 	}
 	portalRepo := &mockAPIPortalRepository{getResult: existing}
 	auditRepo := &mockAPIPortalAuditRepository{}

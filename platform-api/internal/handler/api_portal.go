@@ -74,6 +74,9 @@ func (h *APIPortalHandler) CreateAPIPortal(w http.ResponseWriter, r *http.Reques
 		AuthType:      string(req.AuthType),
 		Configuration: derefConfig(req.Config),
 	}
+	if req.WorkflowStatus != nil {
+		svcReq.WorkflowStatus = string(*req.WorkflowStatus)
+	}
 	portal, err := h.svc.CreateAPIPortal(svcReq, orgID, createdBy)
 	if err != nil {
 		return serviceError(err, fmt.Sprintf("failed to create api portal %q for org %s by user %s", svcReq.Handle, orgID, createdBy))

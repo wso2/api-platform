@@ -187,6 +187,50 @@ func TestAPIPortalHandler_Create_MissingName(t *testing.T) {
 	}
 }
 
+func TestAPIPortalHandler_Create_WithActiveStatus(t *testing.T) {
+	r, _, cleanup := setupAPIPortalHandlerEnv(t)
+	t.Cleanup(cleanup)
+
+	body := mustJSON(t, map[string]any{
+		"name":           "Acme Portal",
+		"handle":         "acme-active",
+		"authType":       "local",
+		"url":            "https://acme.example.com",
+		"workflowStatus": "active",
+	})
+	req := apiPortalTestRequest(t, http.MethodPost, apiPortalTestBase, body)
+	rec := httptest.NewRecorder()
+	r.ServeHTTP(rec, req)
+	if rec.Code != http.StatusCreated {
+		t.Fatalf("Create: want 201, got %d: %s", rec.Code, rec.Body.String())
+	}
+	var got apiPortalResp
+	if err := json.Unmarshal(rec.Body.Bytes(), &got); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if got.WorkflowStatus != "active" {
+		t.Errorf("want active, got %q", got.WorkflowStatus)
+	}
+}
+
+func TestAPIPortalHandler_Create_ActiveWithoutURL(t *testing.T) {
+	r, _, cleanup := setupAPIPortalHandlerEnv(t)
+	t.Cleanup(cleanup)
+
+	body := mustJSON(t, map[string]any{
+		"name":           "Acme Portal",
+		"handle":         "acme-bad",
+		"authType":       "local",
+		"workflowStatus": "active",
+	})
+	req := apiPortalTestRequest(t, http.MethodPost, apiPortalTestBase, body)
+	rec := httptest.NewRecorder()
+	r.ServeHTTP(rec, req)
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("Create: want 400 for active without url, got %d: %s", rec.Code, rec.Body.String())
+	}
+}
+
 func TestAPIPortalHandler_Create_HandleConflict(t *testing.T) {
 	r, _, cleanup := setupAPIPortalHandlerEnv(t)
 	t.Cleanup(cleanup)
