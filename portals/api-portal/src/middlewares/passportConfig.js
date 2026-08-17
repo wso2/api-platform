@@ -18,13 +18,45 @@
 
 const passport = require('passport');
 const OAuth2Strategy = require('passport-oauth2');
-const { safeDecodeJwt, getNestedClaim } = require('../utils/jwtDecode');
+const { jwtVerify, createRemoteJWKSet } = require('jose');
+const { getNestedClaim } = require('../utils/jwtDecode');
 const { config } = require('../config/configLoader');
 const { portalRoles } = require('./authorization');
 const constants = require('../utils/constants');
 const logger = require('../config/logger');
 const orgContext = require('../utils/orgContext');
 const { CustomError } = require('../utils/errors/customErrors');
+
+/**
+ * Verifies an IDP-issued JWT against the configured JWKS. Returns the parsed
+ * payload on success, or throws when signature, algorithm, issuer, audience,
+ * or expiry checks fail.
+ *
+ * The passport-oauth2 callback previously decoded the id_token and access_token
+ * without verification, so a tampered token — or one issued for a different
+ * audience by the same IDP — would still be accepted as the login identity.
+ * This helper closes that gap by using jose's jwtVerify against the same JWKS
+ * URL the OAuth strategy is configured with.
+ *
+ * `audience` is optional so the caller can decide the appropriate audience
+ * per token type (id_token → clientId per OpenID Connect Core §3.1.3.7; access
+ * token → whatever the IDP is configured to stamp for this deployment).
+ */
+async function verifyIdpJwt(token, audience) {
+    if (!token) {
+        return {};
+    }
+    const jwksURL = config.auth.idp?.jwksUrl;
+    if (!jwksURL) {
+        throw new Error('IDP jwksUrl is not configured; cannot verify token');
+    }
+    const jwks = createRemoteJWKSet(new URL(jwksURL));
+    const options = { algorithms: constants.JWT_ASYMMETRIC_ALGORITHMS };
+    if (config.auth.idp?.issuer) options.issuer = config.auth.idp.issuer;
+    if (audience) options.audience = audience;
+    const { payload } = await jwtVerify(token, jwks, options);
+    return payload;
+}
 
 /**
  * Checks an IDP-asserted organization claim against the organization this instance
@@ -97,8 +129,28 @@ function configurePassport(SERVER_ID) {
                 return done(new Error('Access token missing'));
             }
             let isAdmin = false;
-            const decodedJWT = safeDecodeJwt(params.id_token) || {};
-            const decodedAccessToken = safeDecodeJwt(accessToken);
+            // Verify the id_token and access_token against the IDP's JWKS
+            // before trusting any claim in them. Prior code called safeDecodeJwt
+            // which only decoded the payload, leaving signature / issuer /
+            // audience / expiry checks entirely unenforced.
+            //
+            // id_token: audience is the client_id per OIDC Core §3.1.3.7.
+            // access_token: audience defaults to the IDP-configured value when
+            // present; some IDPs (e.g. Asgardeo default) stamp the client_id
+            // there too. When not configured, skip aud validation for the
+            // access_token — the signature + issuer + expiry checks still run.
+            let decodedJWT = {};
+            let decodedAccessToken = {};
+            try {
+                decodedJWT = await verifyIdpJwt(params.id_token, config.auth.idp?.clientId);
+                decodedAccessToken = await verifyIdpJwt(accessToken, config.auth.idp?.audience);
+            } catch (err) {
+                logger.error('IDP token verification failed during login', {
+                    error: err.message,
+                    code: err.code,
+                });
+                return done(new Error(`IDP token verification failed: ${err.message}`));
+            }
             const firstName = decodedJWT['given_name'] || decodedJWT['nickname'];
             const lastName = decodedJWT['family_name'];
             const organizationId = getNestedClaim(decodedJWT, config.auth.claimMappings.organization) ?? '';
