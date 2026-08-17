@@ -376,6 +376,33 @@ func main() {
 		}
 	}
 
+	// Build transformer registry for StoredConfig → RuntimeDeployConfig conversion.
+	// This MUST happen before the initial xDS snapshot below: the Envoy translator
+	// and the policy engine must agree on cluster names ("upstream_<name>_<host>_<port>"
+	// from the transformer path). With no transformers wired the translator silently
+	// falls back to the legacy path, which names clusters "cluster_<scheme>_<host>" —
+	// the policy engine then routes to upstream_* clusters that don't exist in Envoy,
+	// and every API returns 503 cluster_not_found until it is redeployed (issue #3197).
+	policyVersionResolver := utils.NewLoadedPolicyVersionResolver(policyDefinitions)
+	restTransformer := transform.NewRestAPITransformer(&cfg.Router, cfg, policyDefinitions)
+	llmTransformer := transform.NewLLMTransformer(configStore, db, &cfg.Router, cfg, policyDefinitions, policyVersionResolver)
+	transformerRegistry := transform.NewRegistry(restTransformer, llmTransformer)
+
+	// Wire the transformer into the Envoy xDS translator so Envoy routes are built from the
+	// RuntimeDeployConfig (RDC) path — identical to how the policy engine's RouteConfig/PolicyChain
+	// resources are keyed. Without this the Envoy translator falls back to the legacy per-operation
+	// path, which (a) does not render header matchers and (b) names routes "method|path|vhost"
+	// (3 segments), while the policy resources are keyed "method|path|vhost|<header-hash>". The
+	// policy engine resolves the chain by the Envoy route name, so the mismatch makes every
+	// header-matched route fail with 500 ("policy chain not found"). WebSubApi is intentionally
+	// excluded so it keeps using the async-specific legacy translation path.
+	translator.SetTransformers(map[string]models.ConfigTransformer{
+		"RestApi":     transformerRegistry,
+		"Mcp":         transformerRegistry,
+		"LlmProvider": transformerRegistry,
+		"LlmProxy":    transformerRegistry,
+	})
+
 	// Generate initial xDS snapshot
 	log.Info("Generating initial xDS snapshot")
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
@@ -426,27 +453,9 @@ func main() {
 	policyManager := policyxds.NewPolicyManager(policySnapshotManager, log)
 	policyManager.SetRuntimeStore(runtimeStore)
 
-	// Build transformer registry for StoredConfig → RuntimeDeployConfig conversion
-	policyVersionResolver := utils.NewLoadedPolicyVersionResolver(policyDefinitions)
-	restTransformer := transform.NewRestAPITransformer(&cfg.Router, cfg, policyDefinitions)
-	llmTransformer := transform.NewLLMTransformer(configStore, db, &cfg.Router, cfg, policyDefinitions, policyVersionResolver)
-	transformerRegistry := transform.NewRegistry(restTransformer, llmTransformer)
+	// Share the transformer registry (built before the initial xDS snapshot above)
+	// with the policy manager so both snapshot paths key resources identically.
 	policyManager.SetTransformers(transformerRegistry)
-
-	// Wire the same transformer into the Envoy xDS translator so Envoy routes are built from the
-	// RuntimeDeployConfig (RDC) path — identical to how the policy engine's RouteConfig/PolicyChain
-	// resources are keyed. Without this the Envoy translator falls back to the legacy per-operation
-	// path, which (a) does not render header matchers and (b) names routes "method|path|vhost"
-	// (3 segments), while the policy resources are keyed "method|path|vhost|<header-hash>". The
-	// policy engine resolves the chain by the Envoy route name, so the mismatch makes every
-	// header-matched route fail with 500 ("policy chain not found"). WebSubApi is intentionally
-	// excluded so it keeps using the async-specific legacy translation path.
-	translator.SetTransformers(map[string]models.ConfigTransformer{
-		"RestApi":     transformerRegistry,
-		"Mcp":         transformerRegistry,
-		"LlmProvider": transformerRegistry,
-		"LlmProxy":    transformerRegistry,
-	})
 
 	// Load runtime configs from existing API configurations on startup.
 	// We write directly to runtimeStore to avoid triggering N separate snapshot updates;
