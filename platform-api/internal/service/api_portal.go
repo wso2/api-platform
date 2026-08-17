@@ -71,12 +71,13 @@ func validateAPIPortalURL(raw string) (string, error) {
 // the service's own request structs so the service stays independent of the
 // generated code.
 type APIPortalService struct {
-	portalRepo repository.APIPortalRepository
-	orgRepo    repository.OrganizationRepository
-	auditRepo  repository.AuditRepository
-	vault      vault.SecretVault
-	identity   *IdentityService
-	slogger    *slog.Logger
+	portalRepo   repository.APIPortalRepository
+	orgRepo      repository.OrganizationRepository
+	auditRepo    repository.AuditRepository
+	vault        vault.SecretVault
+	authRegistry *APIPortalAuthRegistry
+	identity     *IdentityService
+	slogger      *slog.Logger
 }
 
 // NewAPIPortalService constructs an APIPortalService.
@@ -85,17 +86,29 @@ func NewAPIPortalService(
 	orgRepo repository.OrganizationRepository,
 	auditRepo repository.AuditRepository,
 	secretVault vault.SecretVault,
+	authRegistry *APIPortalAuthRegistry,
 	identity *IdentityService,
 	slogger *slog.Logger,
 ) *APIPortalService {
 	return &APIPortalService{
-		portalRepo: portalRepo,
-		orgRepo:    orgRepo,
-		auditRepo:  auditRepo,
-		vault:      secretVault,
-		identity:   identity,
-		slogger:    slogger,
+		portalRepo:   portalRepo,
+		orgRepo:      orgRepo,
+		auditRepo:    auditRepo,
+		vault:        secretVault,
+		authRegistry: authRegistry,
+		identity:     identity,
+		slogger:      slogger,
 	}
+}
+
+// invalidateCachedAuthProvider is a no-op when the service was constructed
+// without a registry (e.g. in unit tests that don't need outbound auth). Keeps
+// call sites clean of nil checks.
+func (s *APIPortalService) invalidateCachedAuthProvider(portalHandle string) {
+	if s.authRegistry == nil {
+		return
+	}
+	s.authRegistry.Invalidate(portalHandle)
 }
 
 // validateAPIPortalAuthConfig enforces per-authType constraints on the config
@@ -485,6 +498,9 @@ func (s *APIPortalService) UpdateAPIPortal(handle string, req *UpdateAPIPortalRe
 		return nil, err
 	}
 	_ = s.auditRepo.Record("UPDATE", portal.ID, "api_portal", orgID, portal.UpdatedBy)
+	// Config may have changed; drop any cached AuthProvider so the next
+	// outbound call rebuilds from the new stored values.
+	s.invalidateCachedAuthProvider(portal.Handle)
 	return portal, nil
 }
 
@@ -501,5 +517,6 @@ func (s *APIPortalService) DeleteAPIPortal(handle, orgID, actor string) error {
 		return err
 	}
 	_ = s.auditRepo.Record("DELETE", portal.ID, "api_portal", orgID, strings.TrimSpace(actor))
+	s.invalidateCachedAuthProvider(portal.Handle)
 	return nil
 }

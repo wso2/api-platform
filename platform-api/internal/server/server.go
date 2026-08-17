@@ -325,7 +325,8 @@ func StartPlatformAPIServer(cfg *config.Server, slogger *slog.Logger,
 		return nil, fmt.Errorf("failed to initialize secret vault: %w", vaultErr)
 	}
 	secretService := service.NewSecretService(secretRepo, secretVault, identityService)
-	apiPortalService := service.NewAPIPortalService(apiPortalRepo, orgRepo, auditRepo, secretVault, identityService, slogger)
+	apiPortalAuthRegistry := service.NewAPIPortalAuthRegistry(&cfg.Auth.JWT, secretVault, nil)
+	apiPortalService := service.NewAPIPortalService(apiPortalRepo, orgRepo, auditRepo, secretVault, apiPortalAuthRegistry, identityService, slogger)
 
 	// Initialize handlers
 	orgHandler := handler.NewOrganizationHandler(orgService, identityService, cfg.Auth.Authorization.Mode, slogger)
