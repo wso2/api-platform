@@ -16,6 +16,69 @@ security:
   - basicAuth: []
 
 paths:
+  /mcp:
+    post:
+      summary: Model Context Protocol endpoint
+      description: Single MCP endpoint implementing the Streamable HTTP transport of the Model Context Protocol (2026-07-28).
+      operationId: handleMcp
+      x-basicauth-roles: [admin, developer]
+      tags:
+        - MCP
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              description: A single JSON-RPC 2.0 request object.
+      responses:
+        "200":
+          description: |
+            JSON-RPC response. Returned as a single JSON object, or as an SSE
+            stream carrying request-scoped notifications followed by the response.
+          content:
+            application/json:
+              schema:
+                type: object
+            text/event-stream:
+              schema:
+                type: string
+        "400":
+          description: Malformed JSON-RPC message, header/body mismatch, or unsupported protocol version
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          description: |
+            Missing or invalid credentials. Carries a `WWW-Authenticate: Bearer`
+            challenge with `resource_metadata` and the scopes to request.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "403":
+          description: |
+            The credential is valid but lacks a scope required for the requested
+            tool. Carries a `WWW-Authenticate: Bearer` challenge with
+            `error="insufficient_scope"` and the required scope.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: The MCP endpoint is not enabled on this gateway
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "413":
+          description: Request body exceeds the configured maximum
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
   /rest-apis:
     post:
       summary: Create a new RestAPI
