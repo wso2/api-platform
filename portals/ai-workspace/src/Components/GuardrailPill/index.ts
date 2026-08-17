@@ -18,5 +18,9 @@
 
 export { default as GuardrailPill } from './GuardrailPill';
 export type { GuardrailPillProps } from './GuardrailPill';
+export { default as DraggableGuardrailPill } from './DraggableGuardrailPill';
+export { reorderItem } from './DraggableGuardrailPill';
+export type { DraggableGuardrailPillProps } from './DraggableGuardrailPill';
+export { default as PoliciesReorderHelp } from './PoliciesReorderHelp';
 export { default as PolicyCategorySelector, POLICY_CATEGORIES } from './PolicyCategorySelector';
 export type { PolicyCategorySelectorProps } from './PolicyCategorySelector';

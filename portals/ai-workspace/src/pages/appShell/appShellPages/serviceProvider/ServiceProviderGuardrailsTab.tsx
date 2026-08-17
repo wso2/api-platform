@@ -56,9 +56,11 @@ import useAIWorkspaceSnackbar from '../../../../hooks/aiWorkspaceSnackbar';
 import { logger } from '../../../../utils/logger';
 import { filterOpenApiSpecByAccessControl } from '../../../../utils/openApiAccessControl';
 import {
-  GuardrailPill,
+  DraggableGuardrailPill,
+  PoliciesReorderHelp,
   POLICY_CATEGORIES,
   PolicyCategorySelector,
+  reorderItem,
 } from '../../../../Components/GuardrailPill';
 import { ResourceRow } from '../../../../Components/ResourceView';
 import PolicyParameterEditor from '../../PolicyParameterEditor/PolicyParameterEditor';
@@ -262,6 +264,20 @@ export default function ServiceProviderGuardrailsTab() {
   const [drawerGuardrailsLoading, setDrawerGuardrailsLoading] = useState(false);
   const [customPolicies, setCustomPolicies] = useState<GatewayCustomPolicy[]>([]);
   const [customPoliciesLoading, setCustomPoliciesLoading] = useState(false);
+  const [draggedGlobalPolicyIndex, setDraggedGlobalPolicyIndex] = useState<
+    number | null
+  >(null);
+  const [dragOverGlobalPolicyIndex, setDragOverGlobalPolicyIndex] = useState<
+    number | null
+  >(null);
+  const [draggedResourcePolicy, setDraggedResourcePolicy] = useState<{
+    resourceKey: string;
+    policyIndex: number;
+  } | null>(null);
+  const [dragOverResourcePolicy, setDragOverResourcePolicy] = useState<{
+    resourceKey: string;
+    policyIndex: number;
+  } | null>(null);
   const showSnackbar = useAIWorkspaceSnackbar();
 
   const fetchDrawerGuardrails = useCallback(async (categories: string[]) => {
@@ -781,6 +797,108 @@ export default function ServiceProviderGuardrailsTab() {
     }
   };
 
+  const handleReorderGlobalPolicy = async (targetIndex: number) => {
+    if (
+      !provider ||
+      isLoading ||
+      error ||
+      isReadOnlyProvider ||
+      draggedGlobalPolicyIndex === null ||
+      draggedGlobalPolicyIndex === targetIndex
+    ) {
+      setDraggedGlobalPolicyIndex(null);
+      setDragOverGlobalPolicyIndex(null);
+      return;
+    }
+
+    const globalPolicies = reorderItem(
+      provider.globalPolicies ?? [],
+      draggedGlobalPolicyIndex,
+      targetIndex
+    );
+    if (!globalPolicies) {
+      setDraggedGlobalPolicyIndex(null);
+      setDragOverGlobalPolicyIndex(null);
+      return;
+    }
+
+    const {
+      status,
+      createdAt,
+      createdBy,
+      updatedAt,
+      updatedBy,
+      lastUpdated,
+      ...updatePayload
+    } = provider;
+
+    setDraggedGlobalPolicyIndex(null);
+    setDragOverGlobalPolicyIndex(null);
+
+    try {
+      // In draft mode this stages the reordered array. The page-level Save
+      // action then sends globalPolicies in this exact visual order.
+      await updateProvider({ ...updatePayload, globalPolicies });
+    } catch (e) {
+      logger.error('Failed to reorder global policies:', e);
+      if (!isDraftMode) {
+        showSnackbar('Failed to reorder guardrails.', 'error');
+      }
+    }
+  };
+
+  const handleReorderResourcePolicy = async (
+    resourceKey: string,
+    targetIndex: number
+  ) => {
+    if (
+      !provider ||
+      isLoading ||
+      error ||
+      isReadOnlyProvider ||
+      !draggedResourcePolicy ||
+      draggedResourcePolicy.resourceKey !== resourceKey ||
+      draggedResourcePolicy.policyIndex === targetIndex
+    ) {
+      setDraggedResourcePolicy(null);
+      setDragOverResourcePolicy(null);
+      return;
+    }
+
+    const operationPolicies = reorderItem(
+      provider.operationPolicies ?? [],
+      draggedResourcePolicy.policyIndex,
+      targetIndex
+    );
+    if (!operationPolicies) {
+      setDraggedResourcePolicy(null);
+      setDragOverResourcePolicy(null);
+      return;
+    }
+
+    const {
+      status,
+      createdAt,
+      createdBy,
+      updatedAt,
+      updatedBy,
+      lastUpdated,
+      ...updatePayload
+    } = provider;
+
+    setDraggedResourcePolicy(null);
+    setDragOverResourcePolicy(null);
+
+    try {
+      await updateProvider({ ...updatePayload, operationPolicies });
+    } catch (e) {
+      logger.error('Failed to reorder resource policies:', e);
+      if (!isDraftMode) {
+        showSnackbar('Failed to reorder resource guardrails.', 'error');
+      }
+    }
+  };
+
   return (
     <>
       <Grid container spacing={3}>
@@ -792,16 +910,21 @@ export default function ServiceProviderGuardrailsTab() {
             sx={{ alignItems: 'center' }}
           >
             <Grid size={{ xs: 12, sm: 'grow' }}>
-              <Typography variant="h6" sx={{ mb: 0.5, fontWeight: 600 }}>
-                <FormattedMessage
-                  id="aiWorkspace.pages.appShell.appShellPages.serviceProvider.ServiceProviderGuardrailsTab.apply.global.guardrails"
-                  defaultMessage="Global Guardrails & Policies"
-                />
-              </Typography>
+              <Stack direction="row" alignItems="center" spacing={0.5}>
+                <Typography variant="h6" sx={{ fontWeight: 600 }}>
+                  <FormattedMessage
+                    id="aiWorkspace.pages.appShell.appShellPages.serviceProvider.ServiceProviderGuardrailsTab.apply.global.guardrails"
+                    defaultMessage="Global Guardrails & Policies"
+                  />
+                </Typography>
+                <PoliciesReorderHelp />
+              </Stack>
               <Typography variant="body2" color="text.secondary">
                 <FormattedMessage
                   id="aiWorkspace.pages.appShell.appShellPages.serviceProvider.ServiceProviderGuardrailsTab.applies.for.all.resources"
-                  defaultMessage={'Applies for all resources'}
+                  defaultMessage={
+                    'Applies to all resources. Drag policies to change their execution order.'
+                  }
                 />
               </Typography>
             </Grid>
@@ -835,26 +958,53 @@ export default function ServiceProviderGuardrailsTab() {
               rowGap: 1.25,
             }}
           >
-            {globalGuardrails.map((g) => (
-              <GuardrailPill
-                key={g.id}
-                label={`${g.displayName} (${g.version})`}
-                onClick={() =>
-                  handleEditGuardrailPill(g.policyIndex, g.pathIndex, {
-                    scope: 'global',
-                  }, g.source)
-                }
-                onRemove={
-                  isReadOnlyProvider
-                    ? undefined
-                    : () =>
-                      void handleRemoveAppliedGuardrail(
+            {globalGuardrails.map((g) => {
+              const isReorderable =
+                !isReadOnlyProvider && g.source === 'global';
+              const isDragOver =
+                isReorderable &&
+                dragOverGlobalPolicyIndex === g.policyIndex &&
+                draggedGlobalPolicyIndex !== g.policyIndex;
+
+              return (
+                <DraggableGuardrailPill
+                  key={g.id}
+                  id={g.id}
+                  label={`${g.displayName} (${g.version})`}
+                  reorderable={isReorderable}
+                  isDragging={draggedGlobalPolicyIndex === g.policyIndex}
+                  isDragOver={isDragOver}
+                  onDragStart={() =>
+                    setDraggedGlobalPolicyIndex(g.policyIndex)
+                  }
+                  onDragEnd={() => {
+                    setDraggedGlobalPolicyIndex(null);
+                    setDragOverGlobalPolicyIndex(null);
+                  }}
+                  onDragOver={() =>
+                    setDragOverGlobalPolicyIndex(g.policyIndex)
+                  }
+                  onDrop={() =>
+                    void handleReorderGlobalPolicy(g.policyIndex)
+                  }
+                  onClick={() =>
+                    handleEditGuardrailPill(g.policyIndex, g.pathIndex, {
+                      scope: 'global',
+                    }, g.source)
+                  }
+                  onRemove={
+                    isReadOnlyProvider
+                      ? undefined
+                      : () =>
+                        void handleRemoveAppliedGuardrail(
                           g.policyIndex,
-                          g.pathIndex, g.source
-                      )
-                }
-              />
-            ))}
+                          g.pathIndex,
+                          g.source
+                        )
+                  }
+                />
+              );
+            })}
           </Stack>
         </Grid>
 
@@ -1120,39 +1270,90 @@ export default function ServiceProviderGuardrailsTab() {
                                   sx={{ flexWrap: 'wrap' }}
                                 >
                                   {resourceGuardrails.length > 0 ? (
-                                    resourceGuardrails.map((guardrail) => (
-                                      <GuardrailPill
-                                        key={guardrail.id}
-                                        label={`${
-                                          guardrail.displayName
-                                        } (v${guardrail.version.replace(
-                                          /^v/,
-                                          ''
-                                        )})`}
-                                        onClick={() =>
-                                          handleEditGuardrailPill(
-                                            guardrail.policyIndex,
-                                            guardrail.pathIndex,
-                                            {
-                                              scope: 'resource',
-                                              method,
-                                              path: resource.path,
-                                            },
-                                            guardrail.source
-                                          )
-                                        }
-                                        onRemove={
-                                          isReadOnlyProvider
-                                            ? undefined
-                                            : () =>
-                                              void handleRemoveAppliedGuardrail(
+                                    resourceGuardrails.map((guardrail) => {
+                                      const isReorderable =
+                                        !isReadOnlyProvider &&
+                                        guardrail.source === 'operation';
+                                      const isDragging =
+                                        draggedResourcePolicy?.resourceKey ===
+                                          key &&
+                                        draggedResourcePolicy.policyIndex ===
+                                          guardrail.policyIndex;
+                                      const isDragOver =
+                                        isReorderable &&
+                                        dragOverResourcePolicy?.resourceKey ===
+                                          key &&
+                                        dragOverResourcePolicy.policyIndex ===
+                                          guardrail.policyIndex &&
+                                        !isDragging;
+
+                                      return (
+                                        <DraggableGuardrailPill
+                                          key={guardrail.id}
+                                          id={guardrail.id}
+                                          label={`${
+                                            guardrail.displayName
+                                          } (v${guardrail.version.replace(
+                                            /^v/,
+                                            ''
+                                          )})`}
+                                          reorderable={isReorderable}
+                                          isDragging={isDragging}
+                                          isDragOver={isDragOver}
+                                          onDragStart={() =>
+                                            setDraggedResourcePolicy({
+                                              resourceKey: key,
+                                              policyIndex:
                                                 guardrail.policyIndex,
-                                                guardrail.pathIndex,
-                                                guardrail.source
-                                              )
-                                        }
-                                      />
-                                    ))
+                                            })
+                                          }
+                                          onDragEnd={() => {
+                                            setDraggedResourcePolicy(null);
+                                            setDragOverResourcePolicy(null);
+                                          }}
+                                          onDragOver={() => {
+                                            if (
+                                              draggedResourcePolicy?.resourceKey ===
+                                              key
+                                            ) {
+                                              setDragOverResourcePolicy({
+                                                resourceKey: key,
+                                                policyIndex:
+                                                  guardrail.policyIndex,
+                                              });
+                                            }
+                                          }}
+                                          onDrop={() =>
+                                            void handleReorderResourcePolicy(
+                                              key,
+                                              guardrail.policyIndex
+                                            )
+                                          }
+                                          onClick={() =>
+                                            handleEditGuardrailPill(
+                                              guardrail.policyIndex,
+                                              guardrail.pathIndex,
+                                              {
+                                                scope: 'resource',
+                                                method,
+                                                path: resource.path,
+                                              },
+                                              guardrail.source
+                                            )
+                                          }
+                                          onRemove={
+                                            isReadOnlyProvider
+                                              ? undefined
+                                              : () =>
+                                                void handleRemoveAppliedGuardrail(
+                                                  guardrail.policyIndex,
+                                                  guardrail.pathIndex,
+                                                  guardrail.source
+                                                )
+                                          }
+                                        />
+                                      );
+                                    })
                                   ) : (
                                     <Typography
                                       variant="body2"
