@@ -8824,13 +8824,42 @@ components:
         pagination:
           $ref: '#/components/schemas/Pagination'
 
-    ApiPortalConfig:
-      title: API Portal auth-type-specific config
+    ApiPortalAuthConfig:
+      title: API Portal outbound authentication material
       type: object
       description: |
-        Configuration for how Platform API authenticates to the portal's admin
-        API. Shape depends on `authType`; treated as an opaque object at the
-        wire level.
+        Platform-API's outbound authentication material for the portal admin
+        API. Shape depends on `authType`:
+          - `local`  → must be empty.
+          - `oauth2` → `stsTokenUrl`, `clientId`, `clientSecret` are all required.
+        `clientSecret` is write-only: accepted on create/update requests, persisted
+        encrypted at rest, and never returned on read.
+      additionalProperties: false
+      properties:
+        stsTokenUrl:
+          type: string
+          format: uri
+          description: Token endpoint of the STS Platform-API POSTs the client_credentials grant to.
+          example: "https://sts.example.com/oauth2/token"
+        clientId:
+          type: string
+          description: Registered client identifier in the STS.
+          example: "acme-portal-client"
+        clientSecret:
+          type: string
+          writeOnly: true
+          description: >-
+            Registered client secret. Accepted only in create/update requests;
+            never returned in responses. Persisted encrypted server-side.
+
+    ApiPortalMetadata:
+      title: API Portal metadata
+      type: object
+      description: >-
+        Free-form pass-through metadata for the portal pod (e.g. cloud-side OIDC
+        endpoints the portal uses for consumer login). Platform-API stores and
+        returns this as-is; it is not consumed by the outbound authentication
+        path.
       additionalProperties: true
 
     ApiPortalResponse:
@@ -8894,8 +8923,10 @@ components:
             Determines how Platform API authenticates to the portal's admin API
             and selects the shape of the `config` object.
           example: "oauth2"
-        config:
-          $ref: '#/components/schemas/ApiPortalConfig'
+        authConfig:
+          $ref: '#/components/schemas/ApiPortalAuthConfig'
+        metadata:
+          $ref: '#/components/schemas/ApiPortalMetadata'
         createdAt:
           type: string
           format: date-time
@@ -8988,8 +9019,10 @@ components:
             requires a non-empty `url`; the request is rejected otherwise.
             `failed` cannot be set on create — a portal is never created in a
             failed state.
-        config:
-          $ref: '#/components/schemas/ApiPortalConfig'
+        authConfig:
+          $ref: '#/components/schemas/ApiPortalAuthConfig'
+        metadata:
+          $ref: '#/components/schemas/ApiPortalMetadata'
 
     UpdateApiPortalRequest:
       title: Update API Portal request
@@ -9014,8 +9047,10 @@ components:
         authType:
           type: string
           enum: [local, oauth2]
-        config:
-          $ref: '#/components/schemas/ApiPortalConfig'
+        authConfig:
+          $ref: '#/components/schemas/ApiPortalAuthConfig'
+        metadata:
+          $ref: '#/components/schemas/ApiPortalMetadata'
 
     ApiPortalListResponse:
       title: API Portal list response

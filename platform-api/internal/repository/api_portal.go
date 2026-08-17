@@ -42,7 +42,7 @@ func NewAPIPortalRepo(db *database.DB) APIPortalRepository {
 // apiPortalSelectColumns are the api_portals columns selected in every query, in scan order.
 const apiPortalSelectColumns = `
 	uuid, organization_uuid, handle, display_name, description, url,
-	workflow_status, auth_type, configuration,
+	workflow_status, auth_type, auth_configuration, metadata,
 	created_by, updated_by, created_at, updated_at
 `
 
@@ -52,10 +52,10 @@ func scanAPIPortalRow(scanner interface {
 }) (*model.APIPortal, error) {
 	portal := &model.APIPortal{}
 	var description, url, createdBy, updatedBy sql.NullString
-	var configurationBytes []byte
+	var authConfigBytes, metadataBytes []byte
 	if err := scanner.Scan(
 		&portal.ID, &portal.OrganizationID, &portal.Handle, &portal.Name, &description, &url,
-		&portal.WorkflowStatus, &portal.AuthType, &configurationBytes,
+		&portal.WorkflowStatus, &portal.AuthType, &authConfigBytes, &metadataBytes,
 		&createdBy, &updatedBy, &portal.CreatedAt, &portal.UpdatedAt,
 	); err != nil {
 		return nil, err
@@ -64,33 +64,47 @@ func scanAPIPortalRow(scanner interface {
 	portal.URL = url.String
 	portal.CreatedBy = createdBy.String
 	portal.UpdatedBy = updatedBy.String
-	if len(configurationBytes) > 0 {
-		if err := json.Unmarshal(configurationBytes, &portal.Configuration); err != nil {
-			return nil, fmt.Errorf("failed to unmarshal configuration: %w", err)
-		}
+	authConfig, err := unmarshalAPIPortalBlob(authConfigBytes, "auth_configuration")
+	if err != nil {
+		return nil, err
 	}
-	// Normalize to a non-nil empty map so callers can range/read/write without
-	// nil-guarding. Handles both the empty-bytes case (defensive) and the
-	// unlikely case where json.Unmarshal returns a nil map.
-	if portal.Configuration == nil {
-		portal.Configuration = map[string]interface{}{}
+	portal.AuthConfig = authConfig
+	metadata, err := unmarshalAPIPortalBlob(metadataBytes, "metadata")
+	if err != nil {
+		return nil, err
 	}
+	portal.Metadata = metadata
 	return portal, nil
 }
 
-// marshalAPIPortalConfiguration serializes the configuration map to JSON bytes for the
-// configuration BYTEA/BLOB/VARBINARY column. A nil map is stored as an empty JSON object
-// so the NOT NULL column always has valid content; readers (scanAPIPortalRow) mirror
-// this by normalizing empty/{} back to an empty map, keeping the round-trip stable.
-func marshalAPIPortalConfiguration(cfg map[string]interface{}) ([]byte, error) {
-	if cfg == nil {
+// marshalAPIPortalBlob serializes a JSON blob column value. A nil map becomes an
+// empty JSON object so the NOT NULL BYTEA/BLOB/VARBINARY column always has
+// valid content; readers (unmarshalAPIPortalBlob) mirror this by normalizing
+// empty/{} back to an empty map so callers never nil-check.
+func marshalAPIPortalBlob(m map[string]interface{}, field string) ([]byte, error) {
+	if m == nil {
 		return []byte("{}"), nil
 	}
-	b, err := json.Marshal(cfg)
+	b, err := json.Marshal(m)
 	if err != nil {
-		return nil, fmt.Errorf("failed to marshal configuration: %w", err)
+		return nil, fmt.Errorf("failed to marshal %s: %w", field, err)
 	}
 	return b, nil
+}
+
+// unmarshalAPIPortalBlob deserializes a JSON blob and normalizes the result to
+// a non-nil map.
+func unmarshalAPIPortalBlob(b []byte, field string) (map[string]interface{}, error) {
+	m := map[string]interface{}{}
+	if len(b) > 0 {
+		if err := json.Unmarshal(b, &m); err != nil {
+			return nil, fmt.Errorf("failed to unmarshal %s: %w", field, err)
+		}
+	}
+	if m == nil {
+		m = map[string]interface{}{}
+	}
+	return m, nil
 }
 
 // Create inserts a new API Portal row.
@@ -98,19 +112,23 @@ func (r *APIPortalRepo) Create(portal *model.APIPortal) error {
 	now := time.Now().UTC()
 	portal.CreatedAt = now
 	portal.UpdatedAt = now
-	configBytes, err := marshalAPIPortalConfiguration(portal.Configuration)
+	authConfigBytes, err := marshalAPIPortalBlob(portal.AuthConfig, "auth_configuration")
+	if err != nil {
+		return err
+	}
+	metadataBytes, err := marshalAPIPortalBlob(portal.Metadata, "metadata")
 	if err != nil {
 		return err
 	}
 	query := `
 		INSERT INTO api_portals (uuid, organization_uuid, handle, display_name, description, url,
-		                          workflow_status, auth_type, configuration,
+		                          workflow_status, auth_type, auth_configuration, metadata,
 		                          created_by, updated_by, created_at, updated_at)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 	`
 	_, err = r.db.Exec(r.db.Rebind(query),
 		portal.ID, portal.OrganizationID, portal.Handle, portal.Name, portal.Description, portal.URL,
-		portal.WorkflowStatus, portal.AuthType, configBytes,
+		portal.WorkflowStatus, portal.AuthType, authConfigBytes, metadataBytes,
 		portal.CreatedBy, portal.UpdatedBy, portal.CreatedAt, portal.UpdatedAt,
 	)
 	return err
@@ -218,19 +236,25 @@ func (r *APIPortalRepo) Count(orgUUID string, workflowStatus *string, search str
 // responsible for populating UpdatedBy before invoking.
 func (r *APIPortalRepo) Update(portal *model.APIPortal) error {
 	portal.UpdatedAt = time.Now().UTC()
-	configBytes, err := marshalAPIPortalConfiguration(portal.Configuration)
+	authConfigBytes, err := marshalAPIPortalBlob(portal.AuthConfig, "auth_configuration")
+	if err != nil {
+		return err
+	}
+	metadataBytes, err := marshalAPIPortalBlob(portal.Metadata, "metadata")
 	if err != nil {
 		return err
 	}
 	query := `
 		UPDATE api_portals
 		SET display_name = ?, description = ?, url = ?, workflow_status = ?,
-		    auth_type = ?, configuration = ?, updated_by = ?, updated_at = ?
+		    auth_type = ?, auth_configuration = ?, metadata = ?,
+		    updated_by = ?, updated_at = ?
 		WHERE uuid = ? AND organization_uuid = ?
 	`
 	result, err := r.db.Exec(r.db.Rebind(query),
 		portal.Name, portal.Description, portal.URL, portal.WorkflowStatus,
-		portal.AuthType, configBytes, portal.UpdatedBy, portal.UpdatedAt,
+		portal.AuthType, authConfigBytes, metadataBytes,
+		portal.UpdatedBy, portal.UpdatedAt,
 		portal.ID, portal.OrganizationID,
 	)
 	if err != nil {

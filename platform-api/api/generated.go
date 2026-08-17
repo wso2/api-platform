@@ -623,10 +623,23 @@ type AddGatewayToRESTAPIRequest struct {
 	GatewayId string `binding:"required" json:"gatewayId" yaml:"gatewayId"`
 }
 
-// ApiPortalConfig Configuration for how Platform API authenticates to the portal's admin
-// API. Shape depends on `authType`; treated as an opaque object at the
-// wire level.
-type ApiPortalConfig map[string]interface{}
+// ApiPortalAuthConfig Platform-API's outbound authentication material for the portal admin
+// API. Shape depends on `authType`:
+//   - `local`  → must be empty.
+//   - `oauth2` → `stsTokenUrl`, `clientId`, `clientSecret` are all required.
+//
+// `clientSecret` is write-only: accepted on create/update requests, persisted
+// encrypted at rest, and never returned on read.
+type ApiPortalAuthConfig struct {
+	// ClientId Registered client identifier in the STS.
+	ClientId *string `json:"clientId,omitempty" yaml:"clientId,omitempty"`
+
+	// ClientSecret Registered client secret. Accepted only in create/update requests; never returned in responses. Persisted encrypted server-side.
+	ClientSecret *string `json:"clientSecret,omitempty" yaml:"clientSecret,omitempty"`
+
+	// StsTokenUrl Token endpoint of the STS Platform-API POSTs the client_credentials grant to.
+	StsTokenUrl *string `json:"stsTokenUrl,omitempty" yaml:"stsTokenUrl,omitempty"`
+}
 
 // ApiPortalListItem Lightweight projection returned in collection responses (excludes the `config` blob).
 type ApiPortalListItem struct {
@@ -654,23 +667,32 @@ type ApiPortalListResponse struct {
 	Pagination Pagination          `json:"pagination" yaml:"pagination"`
 }
 
+// ApiPortalMetadata Free-form pass-through metadata for the portal pod (e.g. cloud-side OIDC endpoints the portal uses for consumer login). Platform-API stores and returns this as-is; it is not consumed by the outbound authentication path.
+type ApiPortalMetadata map[string]interface{}
+
 // ApiPortalResponse defines model for ApiPortalResponse.
 type ApiPortalResponse struct {
-	// AuthType Determines how Platform API authenticates to the portal's admin API and selects the shape of the `config` object.
-	AuthType ApiPortalResponseAuthType `binding:"required" json:"authType" yaml:"authType"`
+	// AuthConfig Platform-API's outbound authentication material for the portal admin
+	// API. Shape depends on `authType`:
+	//   - `local`  → must be empty.
+	//   - `oauth2` → `stsTokenUrl`, `clientId`, `clientSecret` are all required.
+	// `clientSecret` is write-only: accepted on create/update requests, persisted
+	// encrypted at rest, and never returned on read.
+	AuthConfig *ApiPortalAuthConfig `json:"authConfig,omitempty" yaml:"authConfig,omitempty"`
 
-	// Config Configuration for how Platform API authenticates to the portal's admin
-	// API. Shape depends on `authType`; treated as an opaque object at the
-	// wire level.
-	Config      *ApiPortalConfig `json:"config,omitempty" yaml:"config,omitempty"`
-	CreatedAt   *time.Time       `binding:"required" json:"createdAt,omitempty" yaml:"createdAt,omitempty"`
-	Description *string          `json:"description" yaml:"description"`
+	// AuthType Determines how Platform API authenticates to the portal's admin API and selects the shape of the `config` object.
+	AuthType    ApiPortalResponseAuthType `binding:"required" json:"authType" yaml:"authType"`
+	CreatedAt   *time.Time                `binding:"required" json:"createdAt,omitempty" yaml:"createdAt,omitempty"`
+	Description *string                   `json:"description" yaml:"description"`
 
 	// Handle URL-friendly slug. Immutable after creation. Equal to `id`.
 	Handle *string `binding:"required" json:"handle,omitempty" yaml:"handle,omitempty"`
 
 	// Id Handle (URL-friendly slug) of the API Portal — primary identifier.
 	Id *string `binding:"required" json:"id,omitempty" yaml:"id,omitempty"`
+
+	// Metadata Free-form pass-through metadata for the portal pod (e.g. cloud-side OIDC endpoints the portal uses for consumer login). Platform-API stores and returns this as-is; it is not consumed by the outbound authentication path.
+	Metadata *ApiPortalMetadata `json:"metadata,omitempty" yaml:"metadata,omitempty"`
 
 	// Name Display name.
 	Name      string     `binding:"required" json:"name" yaml:"name"`
@@ -863,17 +885,22 @@ type CreateAPIKeyResponseStatus string
 
 // CreateApiPortalRequest defines model for CreateApiPortalRequest.
 type CreateApiPortalRequest struct {
-	AuthType CreateApiPortalRequestAuthType `binding:"required" json:"authType" yaml:"authType"`
-
-	// Config Configuration for how Platform API authenticates to the portal's admin
-	// API. Shape depends on `authType`; treated as an opaque object at the
-	// wire level.
-	Config      *ApiPortalConfig `json:"config,omitempty" yaml:"config,omitempty"`
-	Description *string          `json:"description" yaml:"description"`
+	// AuthConfig Platform-API's outbound authentication material for the portal admin
+	// API. Shape depends on `authType`:
+	//   - `local`  → must be empty.
+	//   - `oauth2` → `stsTokenUrl`, `clientId`, `clientSecret` are all required.
+	// `clientSecret` is write-only: accepted on create/update requests, persisted
+	// encrypted at rest, and never returned on read.
+	AuthConfig  *ApiPortalAuthConfig           `json:"authConfig,omitempty" yaml:"authConfig,omitempty"`
+	AuthType    CreateApiPortalRequestAuthType `binding:"required" json:"authType" yaml:"authType"`
+	Description *string                        `json:"description" yaml:"description"`
 
 	// Handle URL-friendly slug. Must be unique within the org. Immutable after creation.
 	Handle string `binding:"required" json:"handle" yaml:"handle"`
-	Name   string `binding:"required" json:"name" yaml:"name"`
+
+	// Metadata Free-form pass-through metadata for the portal pod (e.g. cloud-side OIDC endpoints the portal uses for consumer login). Platform-API stores and returns this as-is; it is not consumed by the outbound authentication path.
+	Metadata *ApiPortalMetadata `json:"metadata,omitempty" yaml:"metadata,omitempty"`
+	Name     string             `binding:"required" json:"name" yaml:"name"`
 
 	// Url Public URL of an existing API Portal to register. Omit to have a new portal provisioned; the URL will be populated once the instance is reachable.
 	Url *string `json:"url" yaml:"url"`
@@ -2721,13 +2748,18 @@ type UpdateAPIKeyResponseStatus string
 
 // UpdateApiPortalRequest All fields optional. Only mutable fields are accepted — see field permissions in the design doc.
 type UpdateApiPortalRequest struct {
-	AuthType *UpdateApiPortalRequestAuthType `json:"authType,omitempty" yaml:"authType,omitempty"`
+	// AuthConfig Platform-API's outbound authentication material for the portal admin
+	// API. Shape depends on `authType`:
+	//   - `local`  → must be empty.
+	//   - `oauth2` → `stsTokenUrl`, `clientId`, `clientSecret` are all required.
+	// `clientSecret` is write-only: accepted on create/update requests, persisted
+	// encrypted at rest, and never returned on read.
+	AuthConfig  *ApiPortalAuthConfig            `json:"authConfig,omitempty" yaml:"authConfig,omitempty"`
+	AuthType    *UpdateApiPortalRequestAuthType `json:"authType,omitempty" yaml:"authType,omitempty"`
+	Description *string                         `json:"description" yaml:"description"`
 
-	// Config Configuration for how Platform API authenticates to the portal's admin
-	// API. Shape depends on `authType`; treated as an opaque object at the
-	// wire level.
-	Config         *ApiPortalConfig                      `json:"config,omitempty" yaml:"config,omitempty"`
-	Description    *string                               `json:"description" yaml:"description"`
+	// Metadata Free-form pass-through metadata for the portal pod (e.g. cloud-side OIDC endpoints the portal uses for consumer login). Platform-API stores and returns this as-is; it is not consumed by the outbound authentication path.
+	Metadata       *ApiPortalMetadata                    `json:"metadata,omitempty" yaml:"metadata,omitempty"`
 	Name           *string                               `json:"name,omitempty" yaml:"name,omitempty"`
 	Url            *string                               `json:"url" yaml:"url"`
 	WorkflowStatus *UpdateApiPortalRequestWorkflowStatus `json:"workflowStatus,omitempty" yaml:"workflowStatus,omitempty"`

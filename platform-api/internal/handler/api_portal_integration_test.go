@@ -36,9 +36,20 @@ import (
 	"github.com/wso2/api-platform/platform-api/internal/middleware"
 	"github.com/wso2/api-platform/platform-api/internal/repository"
 	"github.com/wso2/api-platform/platform-api/internal/service"
+	"github.com/wso2/api-platform/platform-api/internal/vault"
 
 	_ "github.com/mattn/go-sqlite3"
 )
+
+// apiPortalTestVault returns a deterministic in-house vault for integration tests.
+func apiPortalTestVault(t *testing.T) vault.SecretVault {
+	t.Helper()
+	v, err := vault.NewInHouseVault(bytes.Repeat([]byte("t"), 32))
+	if err != nil {
+		t.Fatalf("test vault: %v", err)
+	}
+	return v
+}
 
 const apiPortalTestBase = "/api/v0.9/api-portals"
 const apiPortalTestOrg = "org-portal-it"
@@ -74,7 +85,7 @@ func setupAPIPortalHandlerEnv(t *testing.T) (http.Handler, *database.DB, func())
 	portalRepo := repository.NewAPIPortalRepo(db)
 	orgRepo := repository.NewOrganizationRepo(db)
 	identityService := service.NewIdentityService(repository.NewUserIdentityMappingRepo(db))
-	svc := service.NewAPIPortalService(portalRepo, orgRepo, noopAudit{}, identityService, slog.Default())
+	svc := service.NewAPIPortalService(portalRepo, orgRepo, noopAudit{}, apiPortalTestVault(t), identityService, slog.Default())
 	h := NewAPIPortalHandler(svc, identityService, slog.Default())
 
 	mux := http.NewServeMux()
@@ -116,7 +127,8 @@ type apiPortalResp struct {
 	Url            *string                `json:"url,omitempty"`
 	WorkflowStatus string                 `json:"workflowStatus"`
 	AuthType       string                 `json:"authType"`
-	Config         map[string]interface{} `json:"config,omitempty"`
+	AuthConfig     map[string]interface{} `json:"authConfig,omitempty"`
+	Metadata       map[string]interface{} `json:"metadata,omitempty"`
 }
 
 type apiPortalListResp struct {
@@ -140,11 +152,12 @@ func TestAPIPortalHandler_Create_HappyPath(t *testing.T) {
 	r, _, cleanup := setupAPIPortalHandlerEnv(t)
 	t.Cleanup(cleanup)
 
+	// local auth type must have empty authConfig; use metadata for round-trip check.
 	body := mustJSON(t, map[string]any{
 		"name":     "Acme Portal",
 		"handle":   "acme",
 		"authType": "local",
-		"config":   map[string]any{"foo": "bar"},
+		"metadata": map[string]any{"stsIssuer": "https://sts.example.com"},
 	})
 	req := apiPortalTestRequest(t, http.MethodPost, apiPortalTestBase, body)
 	rec := httptest.NewRecorder()
@@ -165,8 +178,53 @@ func TestAPIPortalHandler_Create_HappyPath(t *testing.T) {
 		got.AuthType != "local" || got.WorkflowStatus != "pending" {
 		t.Errorf("response fields wrong: %+v", got)
 	}
-	if got.Config["foo"] != "bar" {
-		t.Errorf("config round-trip failed: %v", got.Config)
+	if got.Metadata["stsIssuer"] != "https://sts.example.com" {
+		t.Errorf("metadata round-trip failed: %v", got.Metadata)
+	}
+}
+
+func TestAPIPortalHandler_Create_OAuth2_EncryptsClientSecret(t *testing.T) {
+	r, db, cleanup := setupAPIPortalHandlerEnv(t)
+	t.Cleanup(cleanup)
+
+	// oauth2 authConfig with a plaintext clientSecret.
+	body := mustJSON(t, map[string]any{
+		"name":     "Acme OAuth",
+		"handle":   "acme-oauth",
+		"authType": "oauth2",
+		"url":      "https://acme.example.com",
+		"authConfig": map[string]any{
+			"stsTokenUrl":  "https://sts.example.com/token",
+			"clientId":     "abc",
+			"clientSecret": "s3cr3t-plaintext",
+		},
+	})
+	rec := httptest.NewRecorder()
+	r.ServeHTTP(rec, apiPortalTestRequest(t, http.MethodPost, apiPortalTestBase, body))
+	if rec.Code != http.StatusCreated {
+		t.Fatalf("Create: want 201, got %d: %s", rec.Code, rec.Body.String())
+	}
+
+	// Response must NOT include clientSecret; other authConfig fields visible.
+	var got apiPortalResp
+	if err := json.Unmarshal(rec.Body.Bytes(), &got); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if got.AuthConfig["stsTokenUrl"] != "https://sts.example.com/token" ||
+		got.AuthConfig["clientId"] != "abc" {
+		t.Errorf("non-secret authConfig fields missing in response: %+v", got.AuthConfig)
+	}
+	if _, present := got.AuthConfig["clientSecret"]; present {
+		t.Errorf("clientSecret leaked in response body: %v", got.AuthConfig)
+	}
+
+	// DB must NOT contain plaintext secret.
+	var authCfgBlob []byte
+	if err := db.QueryRow(`SELECT auth_configuration FROM api_portals WHERE handle = 'acme-oauth'`).Scan(&authCfgBlob); err != nil {
+		t.Fatalf("query auth_configuration: %v", err)
+	}
+	if strings.Contains(string(authCfgBlob), "s3cr3t-plaintext") {
+		t.Errorf("plaintext clientSecret found in DB blob: %s", authCfgBlob)
 	}
 }
 
@@ -401,8 +459,16 @@ func TestAPIPortalHandler_Update_HappyPath(t *testing.T) {
 		t.Fatalf("seed: %d %s", rec.Code, rec.Body.String())
 	}
 
-	// Update name + authType.
-	patch := mustJSON(t, map[string]any{"name": "new", "authType": "oauth2"})
+	// Update name + authType — swapping to oauth2 requires supplying a full authConfig.
+	patch := mustJSON(t, map[string]any{
+		"name":     "new",
+		"authType": "oauth2",
+		"authConfig": map[string]any{
+			"stsTokenUrl":  "https://sts.example.com/token",
+			"clientId":     "abc",
+			"clientSecret": "s3cr3t",
+		},
+	})
 	putRec := httptest.NewRecorder()
 	r.ServeHTTP(putRec, apiPortalTestRequest(t, http.MethodPut, apiPortalTestBase+"/acme", patch))
 	if putRec.Code != http.StatusOK {

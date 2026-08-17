@@ -67,12 +67,13 @@ func (h *APIPortalHandler) CreateAPIPortal(w http.ResponseWriter, r *http.Reques
 	}
 
 	svcReq := &service.CreateAPIPortalRequest{
-		Handle:        strings.TrimSpace(req.Handle),
-		Name:          strings.TrimSpace(req.Name),
-		Description:   deref(req.Description),
-		URL:           deref(req.Url),
-		AuthType:      string(req.AuthType),
-		Configuration: derefConfig(req.Config),
+		Handle:      strings.TrimSpace(req.Handle),
+		Name:        strings.TrimSpace(req.Name),
+		Description: deref(req.Description),
+		URL:         deref(req.Url),
+		AuthType:    string(req.AuthType),
+		AuthConfig:  authConfigStructToMap(req.AuthConfig),
+		Metadata:    derefMetadata(req.Metadata),
 	}
 	if req.WorkflowStatus != nil {
 		svcReq.WorkflowStatus = string(*req.WorkflowStatus)
@@ -150,10 +151,11 @@ func (h *APIPortalHandler) UpdateAPIPortal(w http.ResponseWriter, r *http.Reques
 	}
 
 	svcReq := &service.UpdateAPIPortalRequest{
-		Name:          req.Name,
-		Description:   req.Description,
-		URL:           req.Url,
-		Configuration: derefConfig(req.Config),
+		Name:        req.Name,
+		Description: req.Description,
+		URL:         req.Url,
+		AuthConfig:  authConfigStructToMap(req.AuthConfig),
+		Metadata:    derefMetadata(req.Metadata),
 	}
 	if req.WorkflowStatus != nil {
 		v := string(*req.WorkflowStatus)
@@ -215,11 +217,75 @@ func deref(p *string) string {
 	return *p
 }
 
-func derefConfig(c *api.ApiPortalConfig) map[string]interface{} {
+// derefMetadata converts the generated Metadata type (a map alias) into a plain
+// map[string]interface{} for the service layer, dropping the nil pointer.
+func derefMetadata(m *api.ApiPortalMetadata) map[string]interface{} {
+	if m == nil {
+		return nil
+	}
+	return map[string]interface{}(*m)
+}
+
+// authConfigStructToMap flattens the generated ApiPortalAuthConfig struct into
+// the map shape the service layer expects. Nil pointer fields are dropped so
+// downstream validation sees "missing" (rather than "present but empty").
+func authConfigStructToMap(c *api.ApiPortalAuthConfig) map[string]interface{} {
 	if c == nil {
 		return nil
 	}
-	return map[string]interface{}(*c)
+	out := map[string]interface{}{}
+	if c.StsTokenUrl != nil {
+		out[constants.APIPortalAuthConfigKeySTSTokenURL] = *c.StsTokenUrl
+	}
+	if c.ClientId != nil {
+		out[constants.APIPortalAuthConfigKeyClientID] = *c.ClientId
+	}
+	if c.ClientSecret != nil {
+		out[constants.APIPortalAuthConfigKeyClientSecret] = *c.ClientSecret
+	}
+	return out
+}
+
+// stripSensitiveAuthConfig deletes any keys that carry secret material before
+// the config leaves the server. Belt-and-suspenders alongside the OAS
+// `writeOnly: true` marker on ClientSecret — even if a client somehow round-
+// trips a plaintext secret through storage (e.g. during migration or if the
+// storage-encrypt step is ever skipped), the response strip guarantees it
+// never appears on the wire.
+func stripSensitiveAuthConfig(cfg map[string]interface{}) map[string]interface{} {
+	if cfg == nil {
+		return nil
+	}
+	out := make(map[string]interface{}, len(cfg))
+	for k, v := range cfg {
+		out[k] = v
+	}
+	for _, key := range constants.APIPortalAuthConfigSensitiveKeys {
+		delete(out, key)
+	}
+	return out
+}
+
+// mapToAuthConfigStruct rebuilds the generated struct from the stored map for
+// response serialization. Sensitive keys are stripped first, so the generated
+// ClientSecret pointer stays nil (and — since it's marked omitempty — won't
+// appear in the JSON output).
+func mapToAuthConfigStruct(m map[string]interface{}) *api.ApiPortalAuthConfig {
+	stripped := stripSensitiveAuthConfig(m)
+	if stripped == nil {
+		return nil
+	}
+	c := &api.ApiPortalAuthConfig{}
+	if v, ok := stripped[constants.APIPortalAuthConfigKeySTSTokenURL].(string); ok && v != "" {
+		s := v
+		c.StsTokenUrl = &s
+	}
+	if v, ok := stripped[constants.APIPortalAuthConfigKeyClientID].(string); ok && v != "" {
+		s := v
+		c.ClientId = &s
+	}
+	// ClientSecret is intentionally never populated on the response side.
+	return c
 }
 
 func modelToAPIPortalResponse(p *model.APIPortal) *api.ApiPortalResponse {
@@ -248,9 +314,12 @@ func modelToAPIPortalResponse(p *model.APIPortal) *api.ApiPortalResponse {
 		url := p.URL
 		resp.Url = &url
 	}
-	if p.Configuration != nil {
-		cfg := api.ApiPortalConfig(p.Configuration)
-		resp.Config = &cfg
+	if p.AuthConfig != nil {
+		resp.AuthConfig = mapToAuthConfigStruct(p.AuthConfig)
+	}
+	if p.Metadata != nil {
+		m := api.ApiPortalMetadata(p.Metadata)
+		resp.Metadata = &m
 	}
 	return resp
 }

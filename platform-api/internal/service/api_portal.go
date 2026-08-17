@@ -18,6 +18,8 @@
 package service
 
 import (
+	"context"
+	"encoding/base64"
 	"fmt"
 	"log/slog"
 	"net/url"
@@ -30,6 +32,7 @@ import (
 	"github.com/wso2/api-platform/platform-api/internal/model"
 	"github.com/wso2/api-platform/platform-api/internal/repository"
 	"github.com/wso2/api-platform/platform-api/internal/utils"
+	"github.com/wso2/api-platform/platform-api/internal/vault"
 )
 
 // validateAPIPortalURL enforces input-time constraints on a caller-supplied
@@ -71,6 +74,7 @@ type APIPortalService struct {
 	portalRepo repository.APIPortalRepository
 	orgRepo    repository.OrganizationRepository
 	auditRepo  repository.AuditRepository
+	vault      vault.SecretVault
 	identity   *IdentityService
 	slogger    *slog.Logger
 }
@@ -80,6 +84,7 @@ func NewAPIPortalService(
 	portalRepo repository.APIPortalRepository,
 	orgRepo repository.OrganizationRepository,
 	auditRepo repository.AuditRepository,
+	secretVault vault.SecretVault,
 	identity *IdentityService,
 	slogger *slog.Logger,
 ) *APIPortalService {
@@ -87,9 +92,115 @@ func NewAPIPortalService(
 		portalRepo: portalRepo,
 		orgRepo:    orgRepo,
 		auditRepo:  auditRepo,
+		vault:      secretVault,
 		identity:   identity,
 		slogger:    slogger,
 	}
+}
+
+// validateAPIPortalAuthConfig enforces per-authType constraints on the config
+// map. For `local` the map must be empty; for `oauth2` all required keys must
+// be present and non-empty strings, and no unknown keys are allowed.
+func validateAPIPortalAuthConfig(authType string, cfg map[string]interface{}) error {
+	switch authType {
+	case constants.APIPortalAuthTypeLocal:
+		if len(cfg) > 0 {
+			return apperror.ValidationFailed.New(
+				"authConfig must be empty when authType is local.")
+		}
+		return nil
+	case constants.APIPortalAuthTypeOAuth2:
+		for _, key := range constants.APIPortalOAuth2RequiredAuthConfigKeys {
+			v, ok := cfg[key]
+			if !ok {
+				return apperror.ValidationFailed.New(
+					fmt.Sprintf("authConfig field %q is required for authType %q.", key, authType))
+			}
+			s, isString := v.(string)
+			if !isString || strings.TrimSpace(s) == "" {
+				return apperror.ValidationFailed.New(
+					fmt.Sprintf("authConfig field %q must be a non-empty string.", key))
+			}
+		}
+		allowed := map[string]bool{
+			constants.APIPortalAuthConfigKeySTSTokenURL:  true,
+			constants.APIPortalAuthConfigKeyClientID:     true,
+			constants.APIPortalAuthConfigKeyClientSecret: true,
+		}
+		for k := range cfg {
+			if !allowed[k] {
+				return apperror.ValidationFailed.New(
+					fmt.Sprintf("authConfig field %q is not supported for authType %q.", k, authType))
+			}
+		}
+		return nil
+	}
+	return apperror.ValidationFailed.New(
+		fmt.Sprintf("The authType %q is not supported.", authType))
+}
+
+// encryptAPIPortalAuthConfigSecrets walks the sensitive-key list and encrypts
+// each key's value in place. Values are base64-encoded ciphertext strings
+// after this returns. Empty / nil values are removed rather than encrypted so
+// we never store an encrypted empty string.
+func encryptAPIPortalAuthConfigSecrets(v vault.SecretVault, cfg map[string]interface{}) error {
+	if cfg == nil {
+		return nil
+	}
+	for _, key := range constants.APIPortalAuthConfigSensitiveKeys {
+		raw, ok := cfg[key]
+		if !ok {
+			continue
+		}
+		if raw == nil {
+			delete(cfg, key)
+			continue
+		}
+		plaintext, isString := raw.(string)
+		if !isString {
+			return apperror.ValidationFailed.New(
+				fmt.Sprintf("authConfig field %q must be a string.", key))
+		}
+		if plaintext == "" {
+			delete(cfg, key)
+			continue
+		}
+		ciphertext, err := v.Encrypt(context.Background(), plaintext)
+		if err != nil {
+			return fmt.Errorf("failed to encrypt authConfig field %q: %w", key, err)
+		}
+		cfg[key] = base64.StdEncoding.EncodeToString(ciphertext)
+	}
+	return nil
+}
+
+// mergeAPIPortalAuthConfig returns existing + incoming, with incoming keys
+// overwriting existing ones. Used on Update so a caller can rotate a single
+// field (e.g. only stsTokenUrl) without having to re-send fields they don't
+// want to change — including clientSecret, which they can't fetch back.
+func mergeAPIPortalAuthConfig(existing, incoming map[string]interface{}) map[string]interface{} {
+	merged := make(map[string]interface{}, len(existing)+len(incoming))
+	for k, v := range existing {
+		merged[k] = v
+	}
+	for k, v := range incoming {
+		merged[k] = v
+	}
+	return merged
+}
+
+// copyStringMap returns a shallow copy so the service can encrypt/mutate its
+// own working set without touching the caller's map (which lives in the
+// generated request DTO the handler translated).
+func copyStringMap(m map[string]interface{}) map[string]interface{} {
+	if m == nil {
+		return nil
+	}
+	out := make(map[string]interface{}, len(m))
+	for k, v := range m {
+		out[k] = v
+	}
+	return out
 }
 
 // CreateAPIPortalRequest is the service-layer input for creating an API Portal.
@@ -102,20 +213,31 @@ type CreateAPIPortalRequest struct {
 	URL            string
 	WorkflowStatus string // optional; defaults to "pending"
 	AuthType       string
-	Configuration  map[string]interface{}
+	AuthConfig     map[string]interface{}
+	Metadata       map[string]interface{}
 }
 
 // UpdateAPIPortalRequest carries mutable fields for a partial update. Pointer
 // fields distinguish "not sent" (nil) from "sent as empty" (non-nil, empty).
 // Only whitelisted fields are respected here; Handle, ID, OrganizationID,
 // CreatedAt, CreatedBy are ignored per the design's immutability rules.
+//
+// AuthConfig on update uses merge semantics: supplied keys overwrite existing
+// keys, missing keys retain their stored values. This lets a caller rotate a
+// single field without re-supplying clientSecret (which they can't fetch back
+// after it's been stored encrypted).
+//
+// Metadata on update uses replace semantics: if supplied (non-nil), it fully
+// replaces the stored metadata. Callers that want a partial-update on metadata
+// should GET, modify, PUT the whole thing.
 type UpdateAPIPortalRequest struct {
 	Name           *string
 	Description    *string
 	URL            *string
 	WorkflowStatus *string
 	AuthType       *string
-	Configuration  map[string]interface{} // when nil, the existing configuration is preserved
+	AuthConfig     map[string]interface{} // when nil, existing preserved; when non-nil, merged in
+	Metadata       map[string]interface{} // when nil, existing preserved; when non-nil, replaces
 }
 
 // APIPortalListOptions bundles the pagination + filter inputs for List.
@@ -172,6 +294,15 @@ func (s *APIPortalService) CreateAPIPortal(req *CreateAPIPortalRequest, orgID, c
 		return nil, apperror.ValidationFailed.New(
 			"The workflowStatus cannot be active when url is empty.")
 	}
+	// Copy the incoming authConfig so we don't mutate the caller's map when we
+	// encrypt secret fields in place.
+	authConfig := copyStringMap(req.AuthConfig)
+	if err := validateAPIPortalAuthConfig(authType, authConfig); err != nil {
+		return nil, err
+	}
+	if err := encryptAPIPortalAuthConfigSecrets(s.vault, authConfig); err != nil {
+		return nil, err
+	}
 
 	org, err := s.orgRepo.GetOrganizationByUUID(orgID)
 	if err != nil {
@@ -199,7 +330,8 @@ func (s *APIPortalService) CreateAPIPortal(req *CreateAPIPortalRequest, orgID, c
 		URL:            portalURL,
 		WorkflowStatus: workflowStatus,
 		AuthType:       authType,
-		Configuration:  req.Configuration,
+		AuthConfig:     authConfig,
+		Metadata:       req.Metadata,
 		CreatedBy:      actor,
 		UpdatedBy:      actor,
 	}
@@ -320,8 +452,24 @@ func (s *APIPortalService) UpdateAPIPortal(handle string, req *UpdateAPIPortalRe
 		}
 		portal.AuthType = at
 	}
-	if req.Configuration != nil {
-		portal.Configuration = req.Configuration
+	if req.AuthConfig != nil {
+		// Merge into the stored authConfig — supplied keys overwrite existing,
+		// missing keys are retained. Encrypt any newly supplied sensitive
+		// fields before persistence; existing encrypted values pass through
+		// untouched because their key isn't in the incoming map.
+		incoming := copyStringMap(req.AuthConfig)
+		if err := encryptAPIPortalAuthConfigSecrets(s.vault, incoming); err != nil {
+			return nil, err
+		}
+		portal.AuthConfig = mergeAPIPortalAuthConfig(portal.AuthConfig, incoming)
+	}
+	if req.Metadata != nil {
+		// Metadata is opaque pass-through; supplied map fully replaces stored.
+		portal.Metadata = copyStringMap(req.Metadata)
+	}
+	// Re-validate authConfig against the effective authType after all mutations.
+	if err := validateAPIPortalAuthConfig(portal.AuthType, portal.AuthConfig); err != nil {
+		return nil, err
 	}
 	// After applying all whitelisted mutations, enforce the cross-field rule:
 	// a portal cannot be in the active state without a URL. This catches both

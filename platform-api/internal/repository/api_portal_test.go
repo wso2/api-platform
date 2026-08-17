@@ -52,7 +52,7 @@ func newTestAPIPortal(uuid, orgUUID, handle string) *model.APIPortal {
 		URL:            "https://" + handle + ".example.com",
 		WorkflowStatus: constants.APIPortalWorkflowStatusPending,
 		AuthType:       constants.APIPortalAuthTypeLocal,
-		Configuration:  map[string]interface{}{"foo": "bar"},
+		AuthConfig:     map[string]interface{}{"foo": "bar"},
 		CreatedBy:      "tester",
 		UpdatedBy:      "tester",
 	}
@@ -82,8 +82,8 @@ func TestAPIPortalRepo_CreateAndGet(t *testing.T) {
 	if got.Handle != portal.Handle || got.Name != portal.Name || got.URL != portal.URL {
 		t.Errorf("GetByUUID: field mismatch; got %+v", got)
 	}
-	if got.Configuration["foo"] != "bar" {
-		t.Errorf("configuration not round-tripped; got %v", got.Configuration)
+	if got.AuthConfig["foo"] != "bar" {
+		t.Errorf("configuration not round-tripped; got %v", got.AuthConfig)
 	}
 
 	// Get by handle.
@@ -123,7 +123,7 @@ func TestAPIPortalRepo_Create_SetsDefaults(t *testing.T) {
 	}
 }
 
-func TestAPIPortalRepo_Create_ConfigurationRoundTrip_Nil(t *testing.T) {
+func TestAPIPortalRepo_Create_AuthConfigRoundTrip_Nil(t *testing.T) {
 	db, cleanup := setupTestDB(t)
 	defer cleanup()
 
@@ -132,7 +132,7 @@ func TestAPIPortalRepo_Create_ConfigurationRoundTrip_Nil(t *testing.T) {
 
 	repo := NewAPIPortalRepo(db)
 	portal := newTestAPIPortal("portal-cfg-nil", orgUUID, "cfg-nil")
-	portal.Configuration = nil // will be stored as {} and read back as empty map
+	portal.AuthConfig = nil // will be stored as {} and read back as empty map
 
 	if err := repo.Create(portal); err != nil {
 		t.Fatalf("Create: %v", err)
@@ -141,15 +141,15 @@ func TestAPIPortalRepo_Create_ConfigurationRoundTrip_Nil(t *testing.T) {
 	if err != nil {
 		t.Fatalf("GetByUUID: %v", err)
 	}
-	if got.Configuration == nil {
-		t.Fatal("Configuration is nil after round-trip; expected non-nil empty map")
+	if got.AuthConfig == nil {
+		t.Fatal("AuthConfig is nil after round-trip; expected non-nil empty map")
 	}
-	if len(got.Configuration) != 0 {
-		t.Errorf("Configuration expected empty; got %v", got.Configuration)
+	if len(got.AuthConfig) != 0 {
+		t.Errorf("AuthConfig expected empty; got %v", got.AuthConfig)
 	}
 }
 
-func TestAPIPortalRepo_Create_ConfigurationRoundTrip_Populated(t *testing.T) {
+func TestAPIPortalRepo_Create_AuthConfigRoundTrip_Populated(t *testing.T) {
 	db, cleanup := setupTestDB(t)
 	defer cleanup()
 
@@ -158,7 +158,7 @@ func TestAPIPortalRepo_Create_ConfigurationRoundTrip_Populated(t *testing.T) {
 
 	repo := NewAPIPortalRepo(db)
 	portal := newTestAPIPortal("portal-cfg-full", orgUUID, "cfg-full")
-	portal.Configuration = map[string]interface{}{
+	portal.AuthConfig = map[string]interface{}{
 		"stsTokenUrl": "https://sts.example.com/token",
 		"clientId":    "abc",
 		"audience":    []interface{}{"aud-1", "aud-2"},
@@ -171,15 +171,15 @@ func TestAPIPortalRepo_Create_ConfigurationRoundTrip_Populated(t *testing.T) {
 	if err != nil {
 		t.Fatalf("GetByUUID: %v", err)
 	}
-	if got.Configuration["stsTokenUrl"] != "https://sts.example.com/token" {
-		t.Errorf("stsTokenUrl round-trip failed; got %v", got.Configuration["stsTokenUrl"])
+	if got.AuthConfig["stsTokenUrl"] != "https://sts.example.com/token" {
+		t.Errorf("stsTokenUrl round-trip failed; got %v", got.AuthConfig["stsTokenUrl"])
 	}
-	if got.Configuration["clientId"] != "abc" {
-		t.Errorf("clientId round-trip failed; got %v", got.Configuration["clientId"])
+	if got.AuthConfig["clientId"] != "abc" {
+		t.Errorf("clientId round-trip failed; got %v", got.AuthConfig["clientId"])
 	}
-	aud, ok := got.Configuration["audience"].([]interface{})
+	aud, ok := got.AuthConfig["audience"].([]interface{})
 	if !ok || len(aud) != 2 || aud[0] != "aud-1" || aud[1] != "aud-2" {
-		t.Errorf("audience round-trip failed; got %v", got.Configuration["audience"])
+		t.Errorf("audience round-trip failed; got %v", got.AuthConfig["audience"])
 	}
 }
 
@@ -394,7 +394,7 @@ func TestAPIPortalRepo_Update(t *testing.T) {
 	portal.URL = "https://renamed.example.com"
 	portal.WorkflowStatus = constants.APIPortalWorkflowStatusActive
 	portal.AuthType = constants.APIPortalAuthTypeOAuth2
-	portal.Configuration = map[string]interface{}{"stsTokenUrl": "https://sts/x"}
+	portal.AuthConfig = map[string]interface{}{"stsTokenUrl": "https://sts/x"}
 	portal.UpdatedBy = "editor"
 	portal.Handle = "attempted-rename" // immutable — must NOT stick
 
@@ -416,8 +416,8 @@ func TestAPIPortalRepo_Update(t *testing.T) {
 		got.UpdatedBy != "editor" {
 		t.Errorf("mutable fields not persisted; got %+v", got)
 	}
-	if got.Configuration["stsTokenUrl"] != "https://sts/x" {
-		t.Errorf("configuration not persisted; got %v", got.Configuration)
+	if got.AuthConfig["stsTokenUrl"] != "https://sts/x" {
+		t.Errorf("configuration not persisted; got %v", got.AuthConfig)
 	}
 	if got.Handle != "upd" {
 		t.Errorf("handle was mutated despite being immutable; want %q, got %q", "upd", got.Handle)

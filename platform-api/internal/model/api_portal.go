@@ -24,9 +24,15 @@ import (
 )
 
 // APIPortal represents an API Portal registered within an organization.
-// The Configuration blob carries auth-type-specific fields:
-//   - auth_type=local  : may hold key material references (local JWT minting).
-//   - auth_type=oauth2 : holds STS token URL, client credentials, optional audience.
+//
+// Two persisted blobs, split by consumer:
+//   - AuthConfig is consumed by Platform-API's outbound AuthProvider path.
+//     Shape depends on auth_type: `local` = empty; `oauth2` = stsTokenUrl,
+//     clientId, clientSecret. Sensitive values (clientSecret) are stored
+//     encrypted; the plaintext key is never returned in responses.
+//   - Metadata is opaque pass-through data (never encrypted, always returned).
+//     Typically carries the cloud-side OIDC endpoints that the portal pod uses
+//     for consumer login (stsIssuer, stsJwksUrl, etc.); usually empty in OSS.
 type APIPortal struct {
 	ID             string                 `json:"id" db:"uuid"`
 	OrganizationID string                 `json:"organizationId" db:"organization_uuid"`
@@ -36,7 +42,8 @@ type APIPortal struct {
 	URL            string                 `json:"url,omitempty" db:"url"`
 	WorkflowStatus string                 `json:"workflowStatus" db:"workflow_status"`
 	AuthType       string                 `json:"authType" db:"auth_type"`
-	Configuration  map[string]interface{} `json:"configuration,omitempty" db:"configuration"`
+	AuthConfig     map[string]interface{} `json:"authConfig,omitempty" db:"auth_configuration"`
+	Metadata       map[string]interface{} `json:"metadata,omitempty" db:"metadata"`
 	CreatedBy      string                 `json:"createdBy,omitempty" db:"created_by"`
 	UpdatedBy      string                 `json:"updatedBy,omitempty" db:"updated_by"`
 	CreatedAt      time.Time              `json:"createdAt" db:"created_at"`
