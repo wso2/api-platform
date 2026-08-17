@@ -4127,6 +4127,14 @@ components:
           $ref: '#/components/schemas/ExtractionIdentifier'
         serviceTier:
           $ref: '#/components/schemas/ExtractionIdentifier'
+        providerFields:
+          type: object
+          additionalProperties:
+            $ref: '#/components/schemas/ExtractionIdentifier'
+          description: |
+            Named locations a provider-specific calculator needs but the closed
+            vocabulary does not cover. The value at each location is handed to
+            the calculator as-is; only its position is declared here.
         cacheAccounting:
           type: string
           description: |

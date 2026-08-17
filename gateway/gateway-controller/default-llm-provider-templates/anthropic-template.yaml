@@ -57,4 +57,24 @@ spec:
     valueMap:
       priority: priority
       batch: batch
+  providerFields:
+    # The streaming envelope nests usage under "message", so both locations are
+    # declared and the calculator never sees the difference.
+    inferenceGeo:
+      location: payload
+      identifier: $.usage.inference_geo
+      fallbackIdentifiers:
+        - $.message.usage.inference_geo
+    webSearchRequests:
+      location: payload
+      identifier: $.usage.server_tool_use.web_search_requests
+      fallbackIdentifiers:
+        - $.message.usage.server_tool_use.web_search_requests
+    # Request-side parameters Anthropic does not echo in the response.
+    speed:
+      location: payload
+      identifier: $.speed
+    searchContextSize:
+      location: payload
+      identifier: $.web_search_options.search_context_size
   cacheAccounting: additive

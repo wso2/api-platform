@@ -125,6 +125,10 @@ type PolicyExecutionContext struct {
 	isStreamingRequest       bool
 	requestStreamAccumulator []byte
 	requestStreamContext     *policy.RequestStreamContext
+	// requestChunkIndex numbers the chunks handed to the policy chain. Policies
+	// that stitch chunks together use it to tell a new chunk from a redelivery,
+	// so it must advance on every delivery.
+	requestChunkIndex uint64
 	// requestStreamDecomp performs per-chunk decompression for compressed streaming
 	// request bodies. Nil when the request is not Content-Encoded.
 	requestStreamDecomp *streamDecompressor
@@ -134,6 +138,9 @@ type PolicyExecutionContext struct {
 	isStreamingResponse   bool
 	streamAccumulator     []byte
 	responseStreamContext *policy.ResponseStreamContext
+	// responseChunkIndex numbers the chunks handed to the policy chain. See
+	// requestChunkIndex.
+	responseChunkIndex uint64
 	// responseStreamDecomp performs per-chunk decompression for compressed streaming
 	// response bodies. Nil when the response is not Content-Encoded.
 	responseStreamDecomp *streamDecompressor
@@ -712,9 +719,11 @@ func (ec *PolicyExecutionContext) processStreamingRequestBody(
 	ctx context.Context,
 	body *extprocv3.HttpBody,
 ) (*extprocv3.ProcessingResponse, error) {
+	ec.requestChunkIndex++
 	chunk := &policy.StreamBody{
 		Chunk:       body.Body,
 		EndOfStream: body.EndOfStream,
+		Index:       ec.requestChunkIndex,
 	}
 
 	// Compressed request: decompress this chunk, pass directly to policies,
@@ -832,9 +841,11 @@ func (ec *PolicyExecutionContext) processStreamingRequestBody(
 		}, nil
 	}
 
+	ec.requestChunkIndex++
 	flushChunk := &policy.StreamBody{
 		Chunk:       ec.requestStreamAccumulator,
 		EndOfStream: chunk.EndOfStream,
+		Index:       ec.requestChunkIndex,
 	}
 	slog.Debug("[streaming] flushing accumulated request data to policies",
 		"route", ec.routeKey,
@@ -1037,9 +1048,11 @@ func (ec *PolicyExecutionContext) processStreamingResponseBody(
 		}, nil
 	}
 
+	ec.responseChunkIndex++
 	chunk := &policy.StreamBody{
 		Chunk:       body.Body,
 		EndOfStream: body.EndOfStream,
+		Index:       ec.responseChunkIndex,
 	}
 
 	// Compressed response: decompress this chunk, pass directly to policies,
@@ -1155,9 +1168,11 @@ func (ec *PolicyExecutionContext) processStreamingResponseBody(
 		}, nil
 	}
 
+	ec.responseChunkIndex++
 	flushChunk := &policy.StreamBody{
 		Chunk:       ec.streamAccumulator,
 		EndOfStream: chunk.EndOfStream,
+		Index:       ec.responseChunkIndex,
 	}
 	slog.Debug("[streaming] flushing accumulated response data to policies",
 		"route", ec.routeKey,

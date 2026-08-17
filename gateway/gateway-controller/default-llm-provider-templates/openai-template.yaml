@@ -62,6 +62,15 @@ spec:
       priority: priority
       flex: flex
       fast: priority
+  providerFields:
+    # A url_citation annotation inside a choice marks a web search call.
+    choices:
+      location: payload
+      identifier: $.choices
+    # The search depth is request-side only.
+    searchContextSize:
+      location: payload
+      identifier: $.web_search_options.search_context_size
   cacheAccounting: inclusive
   resourceMappings:
     resources:

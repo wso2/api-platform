@@ -59,4 +59,27 @@ spec:
   reasoningTokens:
     location: payload
     identifier: $.usageMetadata.thoughtsTokenCount
+  providerFields:
+    # Per-modality token lists. Only their position is declared; the calculator
+    # picks the modality it needs out of the entries.
+    promptTokensDetails:
+      location: payload
+      identifier: $.usageMetadata.promptTokensDetails
+    cacheTokensDetails:
+      location: payload
+      identifier: $.usageMetadata.cacheTokensDetails
+    candidatesTokensDetails:
+      location: payload
+      identifier: $.usageMetadata.candidatesTokensDetails
+    responseTokensDetails:
+      location: payload
+      identifier: $.usageMetadata.responseTokensDetails
+    toolUsePromptTokenCount:
+      location: payload
+      identifier: $.usageMetadata.toolUsePromptTokenCount
+    # Grounding searches are billed per query and no field reports the number,
+    # so the calculator counts the entries.
+    candidates:
+      location: payload
+      identifier: $.candidates
   cacheAccounting: inclusive

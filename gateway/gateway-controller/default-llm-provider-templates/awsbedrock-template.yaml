@@ -66,4 +66,11 @@ spec:
     valueMap:
       priority: priority
       flex: flex
+  providerFields:
+    # The per-entry cache array. Bedrock reports one entry per TTL, so the
+    # 5-minute and 1-hour split is read from here rather than from a single
+    # field. Only its position is declared; the calculator walks the entries.
+    cacheDetails:
+      location: payload
+      identifier: $.usage.cacheDetails
   cacheAccounting: additive
