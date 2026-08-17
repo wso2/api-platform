@@ -23,6 +23,7 @@ use (
 	./portals/api-control-plane/bff
 	./samples/sample-service
 	./sdk/ai
+	./sdk/ai/llmusage
 	./sdk/core
 	./tests/ai-workspace-cli-e2e
 	./tests/integration-e2e
