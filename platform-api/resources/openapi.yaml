@@ -8870,7 +8870,7 @@ components:
         description:
           type: string
           nullable: true
-          maxLength: 4000
+          maxLength: 1023
         url:
           type: string
           format: uri
@@ -8968,7 +8968,7 @@ components:
         description:
           type: string
           nullable: true
-          maxLength: 4000
+          maxLength: 1023
         url:
           type: string
           format: uri
@@ -8995,7 +8995,7 @@ components:
         description:
           type: string
           nullable: true
-          maxLength: 4000
+          maxLength: 1023
         url:
           type: string
           format: uri
