@@ -136,10 +136,9 @@ export default function ServiceProviderSecurityTab({
     setApiKeyEnabled(nextEnabled);
     if (nextEnabled && keyValue.trim().length === 0) {
       showSnackbar(
-        'Enter a header or query parameter name for the API key before enabling it.',
+        'Add an API key name before enabling API key authentication.',
         'error'
       );
-      return;
     }
     await updateSecurity(keyValue.trim(), keyIn, nextEnabled, valuePrefix.trim());
   };
@@ -147,16 +146,7 @@ export default function ServiceProviderSecurityTab({
   const handleKeyBlur = async () => {
     if (!provider || isLoading || error) return;
     const nextKey = keyValue.trim();
-    if (!nextKey) {
-      if (apiKeyEnabled) {
-        showSnackbar(
-          'Enter a header or query parameter name for the API key.',
-          'error'
-        );
-      }
-      return;
-    }
-    if (nextKey === (provider.security?.apiKey?.key || '')) {
+    if (!nextKey || nextKey === (provider.security?.apiKey?.key || '')) {
       return;
     }
     await updateSecurity(nextKey, keyIn, apiKeyEnabled, valuePrefix.trim());
@@ -253,13 +243,13 @@ export default function ServiceProviderSecurityTab({
                 error={isKeyValueInvalid}
                 helperText={
                   isKeyValueInvalid
-                    ? 'Enter a header or query parameter name for the API key.'
+                    ? 'API key name is required'
                     : undefined
                 }
                 onChange={(event) => {
                   const nextKey = event.target.value;
                   setKeyValue(nextKey);
-                  if (isDraftMode && nextKey.trim().length > 0) {
+                  if (isDraftMode) {
                     void updateSecurity(nextKey.trim(), keyIn, apiKeyEnabled, valuePrefix.trim());
                   }
                 }}

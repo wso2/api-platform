@@ -2003,7 +2003,7 @@ func validateSecurityConfig(sec *api.SecurityConfig) error {
 	if sec.ApiKey.In != nil {
 		in = strings.ToLower(strings.TrimSpace(string(*sec.ApiKey.In)))
 	}
-	if in != "" && in != "header" && in != "query" {
+	if in != "header" && in != "query" {
 		return apperror.ValidationFailed.New("The security.apiKey.in field must be 'header' or 'query'.")
 	}
 	return nil
@@ -3328,7 +3328,7 @@ func mapSecurityAPIToModel(in *api.SecurityConfig) *model.SecurityConfig {
 	out := &model.SecurityConfig{Enabled: in.Enabled}
 	if in.ApiKey != nil {
 		key := utils.ValueOrEmpty(in.ApiKey.Key)
-		inLoc := "header"
+		inLoc := ""
 		if in.ApiKey.In != nil {
 			inLoc = string(*in.ApiKey.In)
 		}

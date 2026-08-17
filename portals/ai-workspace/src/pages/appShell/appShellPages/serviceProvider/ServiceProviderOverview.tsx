@@ -310,11 +310,13 @@ function ServiceProviderOverviewContent() {
   const showSnackbar = useAIWorkspaceSnackbar();
   const hasUnsavedChanges = hasDraftChanges || isRateLimitingDirty;
   const stagedSecurity = (draftProvider ?? provider)?.security;
+  const isApiKeyEffectivelyEnabled =
+    stagedSecurity?.apiKey?.enabled ?? stagedSecurity?.enabled ?? true;
   const isSecurityConfigValid =
-    !(
-      stagedSecurity?.enabled === true &&
-      stagedSecurity?.apiKey?.enabled === true
-    ) || Boolean(stagedSecurity?.apiKey?.key?.trim());
+    !isApiKeyEffectivelyEnabled ||
+    (Boolean(stagedSecurity?.apiKey?.key?.trim()) &&
+      (stagedSecurity?.apiKey?.in === 'header' ||
+        stagedSecurity?.apiKey?.in === 'query'));
   const selectedGateway = useMemo(
     () => gateways.find((gateway) => gateway.id === selectedGatewayId) ?? null,
     [gateways, selectedGatewayId]
@@ -410,14 +412,6 @@ function ServiceProviderOverviewContent() {
 
   const handleSaveChanges = async () => {
     if (!provider || isSavingChanges) return;
-
-    if (!isSecurityConfigValid) {
-      showSnackbar(
-        'Enter a header or query parameter name for the API key before saving.',
-        'error'
-      );
-      return;
-    }
 
     let hasChangesToPersist = hasDraftChanges;
     if (isRateLimitingDirty) {
