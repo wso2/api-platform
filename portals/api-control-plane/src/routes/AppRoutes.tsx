@@ -76,6 +76,11 @@ const ApiPortalDetailPage = lazy(() =>
     default: m.ApiPortalDetailPage,
   }))
 );
+const ApiPortalEditPage = lazy(() =>
+  import('../features/apiportal/ApiPortalEditPage').then((m) => ({
+    default: m.ApiPortalEditPage,
+  }))
+);
 const ProjectHomePage = lazy(() =>
   import('../features/projects/ProjectHomePage').then((m) => ({
     default: m.ProjectHomePage,
@@ -150,6 +155,10 @@ export function AppRoutes() {
               <Route
                 path={routes.apiPortalDetail()}
                 element={<ApiPortalDetailPage />}
+              />
+              <Route
+                path={routes.apiPortalEdit()}
+                element={<ApiPortalEditPage />}
               />
             </>
           )}

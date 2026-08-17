@@ -16,76 +16,110 @@
  * under the License.
  */
 
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 import {
+  Box,
   Button,
   Card,
   CardContent,
   Chip,
-  FormControl,
-  FormLabel,
   Grid,
+  IconButton,
+  ListItemIcon,
+  ListItemText,
+  Menu,
   MenuItem,
   PageContent,
   PageTitle,
-  Select,
   Stack,
-  TextField,
+  Tooltip,
   Typography,
 } from '@wso2/oxygen-ui';
-import { Link, useParams } from 'react-router-dom';
+import {
+  Check,
+  Copy,
+  MoreVertical,
+  Pencil,
+  Trash2,
+} from '@wso2/oxygen-ui-icons-react';
+import { Link, useNavigate, useParams } from 'react-router-dom';
 
-import { useApiPortal, useUpdateApiPortal } from '../../api/hooks/useMvpQueries';
+import { useApiPortal, useDeleteApiPortal } from '../../api/hooks/useMvpQueries';
+import { ConfirmDialog } from '../../components/ConfirmDialog';
 import { useNotifications } from '../../components/Notifications';
 import { ErrorState, LoadingState } from '../../components/StateViews';
 import { routes } from '../../routes/paths';
-import type {
-  ApiPortal,
-  ApiPortalAuthType,
-  UpdateApiPortalInput,
-} from '../../types/domain';
+import type { ApiPortal } from '../../types/domain';
 import { relativeTime } from '../../utils/relativeTime';
-import { isValidUrl } from '../apis/develop/developEdit';
 import {
-  AUTH_TYPE_OPTIONS,
+  AUTH_LABEL,
   STATUS_CHIP_COLOR,
   STATUS_LABEL,
 } from './apiPortalDisplay';
-import { IdpCredentialsFields } from './IdpCredentialsFields';
+
+function CopyableInline({ value }: { value: string }) {
+  const [copied, setCopied] = useState(false);
+  const copy = async () => {
+    try {
+      await navigator.clipboard.writeText(value);
+      setCopied(true);
+      window.setTimeout(() => setCopied(false), 1400);
+    } catch {
+      /* clipboard blocked — swallow rather than surface an error toast */
+    }
+  };
+  return (
+    <Stack alignItems="center" direction="row" spacing={0.5}>
+      <Typography sx={{ fontFamily: 'monospace', fontSize: 13.5 }}>
+        {value}
+      </Typography>
+      <Tooltip title={copied ? 'Copied' : 'Copy'}>
+        <IconButton onClick={copy} size="small">
+          {copied ? <Check size={14} /> : <Copy size={14} />}
+        </IconButton>
+      </Tooltip>
+    </Stack>
+  );
+}
+
+function ReadOnlyRow({
+  label,
+  value,
+  copyable,
+  monospace,
+}: {
+  label: string;
+  value: React.ReactNode;
+  copyable?: string;
+  monospace?: boolean;
+}) {
+  return (
+    <Box>
+      <Typography color="text.secondary" sx={{ fontSize: 12, mb: 0.5 }}>
+        {label}
+      </Typography>
+      {copyable !== undefined ? (
+        <CopyableInline value={copyable} />
+      ) : monospace ? (
+        <Typography sx={{ fontFamily: 'monospace', fontSize: 13.5 }}>
+          {value}
+        </Typography>
+      ) : (
+        <Typography sx={{ fontSize: 14 }}>{value}</Typography>
+      )}
+    </Box>
+  );
+}
 
 export function ApiPortalDetailPage() {
   const { orgHandle = '', apiPortalId = '' } = useParams();
+  const navigate = useNavigate();
   const { notify } = useNotifications();
   const apiPortalQuery = useApiPortal(orgHandle, apiPortalId);
-  const updateApiPortal = useUpdateApiPortal(orgHandle, apiPortalId);
+  const deleteApiPortal = useDeleteApiPortal(orgHandle);
 
-  const [name, setName] = useState('');
-  const [description, setDescription] = useState('');
-  const [url, setUrl] = useState('');
-  const [authType, setAuthType] = useState<ApiPortalAuthType>('local');
-  const [stsTokenUrl, setStsTokenUrl] = useState('');
-  const [clientId, setClientId] = useState('');
-  const [clientSecret, setClientSecret] = useState('');
-  const [seededId, setSeededId] = useState<string>();
-
-  // Seed the editable fields once per loaded record — a poll/refetch after
-  // save must not clobber in-progress edits, so this only re-seeds when the
-  // API Portal id itself changes (i.e. navigating to a different one).
-  useEffect(() => {
-    if (!apiPortalQuery.data || apiPortalQuery.data.id === seededId) return;
-    const apiPortal = apiPortalQuery.data;
-    setName(apiPortal.name);
-    setDescription(apiPortal.description || '');
-    setUrl(apiPortal.url || '');
-    setAuthType(apiPortal.authType);
-    // stsTokenUrl/clientId aren't secret and are returned by the backend, so
-    // they seed from the record like any other field. clientSecret is the
-    // one write-only field — it always seeds blank.
-    setStsTokenUrl(apiPortal.stsTokenUrl || '');
-    setClientId(apiPortal.clientId || '');
-    setClientSecret('');
-    setSeededId(apiPortal.id);
-  }, [apiPortalQuery.data, seededId]);
+  const [menuAnchor, setMenuAnchor] = useState<HTMLElement | null>(null);
+  const [confirmDelete, setConfirmDelete] = useState(false);
 
   if (apiPortalQuery.isLoading) {
     return <LoadingState label="Loading API Portal" />;
@@ -98,92 +132,23 @@ export function ApiPortalDetailPage() {
   }
 
   const apiPortal: ApiPortal = apiPortalQuery.data;
-  const isIdpAuth = authType === 'idp_client_credentials';
-  // stsTokenUrl/clientId aren't secret — they're stored/returned and behave
-  // like any other required field once idp is active. clientSecret is the
-  // one write-only field: it's never returned, so blank means "keep the
-  // existing secret" whenever one already exists — only when switching into
-  // idp from a different auth type is there no existing secret to fall back
-  // to, so it's required in that case.
-  const switchingToIdp = isIdpAuth && apiPortal.authType !== 'idp_client_credentials';
-  const urlValid = url.trim() !== '' && isValidUrl(url);
-  const stsTokenUrlEntered = stsTokenUrl.trim() !== '';
-  const stsTokenUrlValid = stsTokenUrlEntered && isValidUrl(stsTokenUrl);
-  const clientIdEntered = clientId.trim() !== '';
-  const clientSecretEntered = clientSecret.trim() !== '';
-  const idpFieldsValid =
-    !isIdpAuth ||
-    (stsTokenUrlValid &&
-      clientIdEntered &&
-      (!switchingToIdp || clientSecretEntered));
-  // Gate on the fields actually having changed from the loaded record — not
-  // just "is currently valid" — otherwise Save starts enabled on page load
-  // with zero edits. Only compare once this record's fields have been seeded
-  // (seededId === apiPortal.id), so the one render before the seeding effect
-  // runs can't momentarily read as dirty.
-  const isDirty =
-    seededId === apiPortal.id &&
-    (name !== apiPortal.name ||
-      description !== (apiPortal.description || '') ||
-      url !== (apiPortal.url || '') ||
-      authType !== apiPortal.authType ||
-      stsTokenUrl !== (apiPortal.stsTokenUrl || '') ||
-      clientId !== (apiPortal.clientId || '') ||
-      clientSecretEntered);
-  const canSave =
-    isDirty &&
-    name.trim() !== '' &&
-    urlValid &&
-    idpFieldsValid &&
-    !updateApiPortal.isPending;
+  const isOAuth2 = apiPortal.authType === 'oauth2';
 
-  const save = () => {
-    const basePayload = {
-      name: name.trim(),
-      url: url.trim(),
-      description: description || undefined,
-    };
-    const input: UpdateApiPortalInput = isIdpAuth
-      ? {
-          ...basePayload,
-          authType: 'idp_client_credentials',
-          stsTokenUrl: stsTokenUrl.trim(),
-          clientId: clientId.trim(),
-          // Only sent when the user actually typed a new one — blank
-          // must never overwrite the existing secret with ''.
-          ...(clientSecretEntered ? { clientSecret } : {}),
-        }
-      : { ...basePayload, authType: 'local' };
-    updateApiPortal.mutate(input, {
-      onSuccess: (updated) => {
-        notify(`API Portal "${updated.name}" updated.`, 'success');
-        // Re-seed local fields from the saved record so isDirty compares
-        // against what was actually persisted (e.g. a server-trimmed url)
-        // instead of the pre-save local strings.
-        setName(updated.name);
-        setDescription(updated.description || '');
-        setUrl(updated.url || '');
-        setAuthType(updated.authType);
-        setStsTokenUrl(updated.stsTokenUrl || '');
-        setClientId(updated.clientId || '');
-        setClientSecret('');
+  const goEdit = () =>
+    navigate(routes.apiPortalEdit(orgHandle, apiPortal.id));
+
+  const doDelete = () => {
+    deleteApiPortal.mutate(apiPortal, {
+      onSuccess: () => {
+        notify(`Deleted "${apiPortal.name}".`, 'success');
+        navigate(routes.apiPortal(orgHandle));
       },
       onError: (error) =>
         notify(
-          error instanceof Error ? error.message : 'Failed to update API Portal',
+          error instanceof Error ? error.message : 'Delete failed',
           'error'
         ),
     });
-  };
-
-  const cancel = () => {
-    setName(apiPortal.name);
-    setDescription(apiPortal.description || '');
-    setUrl(apiPortal.url || '');
-    setAuthType(apiPortal.authType);
-    setStsTokenUrl(apiPortal.stsTokenUrl || '');
-    setClientId(apiPortal.clientId || '');
-    setClientSecret('');
   };
 
   return (
@@ -193,137 +158,181 @@ export function ApiPortalDetailPage() {
           <PageTitle.BackButton>Back to API Portal</PageTitle.BackButton>
         </Link>
         <PageTitle.Header>{apiPortal.name}</PageTitle.Header>
-        <PageTitle.SubHeader>{apiPortal.url || apiPortal.handle}</PageTitle.SubHeader>
+        <PageTitle.SubHeader>
+          {apiPortal.url || apiPortal.handle}
+        </PageTitle.SubHeader>
+        <PageTitle.Actions>
+          <Stack direction="row" spacing={1}>
+            <Button
+              onClick={goEdit}
+              startIcon={<Pencil size={16} />}
+              variant="contained"
+            >
+              Edit
+            </Button>
+            <IconButton
+              aria-label="API Portal actions"
+              onClick={(event) => setMenuAnchor(event.currentTarget)}
+              size="small"
+            >
+              <MoreVertical size={18} />
+            </IconButton>
+            <Menu
+              anchorEl={menuAnchor}
+              onClose={() => setMenuAnchor(null)}
+              open={Boolean(menuAnchor)}
+            >
+              <MenuItem
+                onClick={() => {
+                  setMenuAnchor(null);
+                  setConfirmDelete(true);
+                }}
+                sx={{ color: 'error.main' }}
+              >
+                <ListItemIcon sx={{ color: 'inherit' }}>
+                  <Trash2 size={16} />
+                </ListItemIcon>
+                <ListItemText>Delete</ListItemText>
+              </MenuItem>
+            </Menu>
+          </Stack>
+        </PageTitle.Actions>
       </PageTitle>
 
       <Grid container spacing={3}>
-        {/* Editable form */}
+        {/* Overview */}
         <Grid size={{ xs: 12, md: 8 }}>
           <Card>
             <CardContent>
               <Typography sx={{ fontWeight: 700 }} variant="h6">
-                API Portal settings
+                Overview
               </Typography>
               <Typography color="text.secondary" sx={{ mt: 0.5 }} variant="body2">
-                Update the API Portal's details and authentication.
+                Read-only view of the registered API Portal. Use Edit to change
+                any field.
               </Typography>
 
-              <Stack spacing={3} sx={{ mt: 3 }}>
-                <FormControl fullWidth>
-                  <FormLabel>Name</FormLabel>
-                  <TextField
-                    onChange={(event) => setName(event.target.value)}
-                    value={name}
+              <Stack spacing={2.5} sx={{ mt: 3 }}>
+                <ReadOnlyRow
+                  label="URL"
+                  value={apiPortal.url || '—'}
+                  copyable={apiPortal.url}
+                />
+
+                {apiPortal.description && (
+                  <ReadOnlyRow
+                    label="Description"
+                    value={apiPortal.description}
                   />
-                </FormControl>
-
-                <FormControl fullWidth>
-                  <FormLabel>Description (optional)</FormLabel>
-                  <TextField
-                    multiline
-                    minRows={2}
-                    onChange={(event) => setDescription(event.target.value)}
-                    value={description}
-                  />
-                </FormControl>
-
-                <FormControl fullWidth>
-                  <FormLabel>Authentication</FormLabel>
-                  <Select
-                    onChange={(event) =>
-                      setAuthType(event.target.value as ApiPortalAuthType)
-                    }
-                    size="small"
-                    value={authType}
-                  >
-                    {AUTH_TYPE_OPTIONS.map((option) => (
-                      <MenuItem key={option.value} value={option.value}>
-                        {option.label}
-                      </MenuItem>
-                    ))}
-                  </Select>
-                </FormControl>
-
-                {isIdpAuth && (
-                  <Stack spacing={1}>
-                    {!switchingToIdp && (
-                      <Typography color="text.secondary" variant="caption">
-                        Client secret is never displayed after saving — leave
-                        it blank to keep the existing one, or enter a new
-                        value to replace it.
-                      </Typography>
-                    )}
-                    <IdpCredentialsFields
-                      clientId={clientId}
-                      clientSecret={clientSecret}
-                      onClientIdChange={setClientId}
-                      onClientSecretChange={setClientSecret}
-                      onStsTokenUrlChange={setStsTokenUrl}
-                      stsTokenUrl={stsTokenUrl}
-                    />
-                  </Stack>
                 )}
 
-                <FormControl fullWidth>
-                  <FormLabel>URL</FormLabel>
-                  <TextField
-                    error={url !== '' && !isValidUrl(url)}
-                    helperText={
-                      url !== '' && !isValidUrl(url) ? 'Enter a valid URL' : undefined
-                    }
-                    onChange={(event) => setUrl(event.target.value)}
-                    placeholder="https://api-portal.example.com"
-                    value={url}
-                  />
-                </FormControl>
+                <ReadOnlyRow
+                  label="Authentication"
+                  value={
+                    <Chip
+                      color="primary"
+                      label={AUTH_LABEL[apiPortal.authType]}
+                      size="small"
+                      variant="outlined"
+                    />
+                  }
+                />
 
-                <Stack direction="row" justifyContent="flex-end" spacing={1.5}>
-                  <Button
-                    disabled={!isDirty || updateApiPortal.isPending}
-                    onClick={cancel}
-                    variant="outlined"
+                {isOAuth2 ? (
+                  <Box
+                    sx={{
+                      border: '1px solid',
+                      borderColor: 'divider',
+                      borderRadius: 2,
+                      p: 2.25,
+                    }}
                   >
-                    Cancel
-                  </Button>
-                  <Button disabled={!canSave} onClick={save} variant="contained">
-                    {updateApiPortal.isPending ? 'Saving…' : 'Save changes'}
-                  </Button>
-                </Stack>
+                    <Typography
+                      color="text.secondary"
+                      sx={{
+                        display: 'block',
+                        fontWeight: 600,
+                        letterSpacing: '.12em',
+                        mb: 1.5,
+                      }}
+                      variant="caption"
+                    >
+                      IDP CLIENT CREDENTIALS
+                    </Typography>
+                    <Stack spacing={2}>
+                      <ReadOnlyRow
+                        label="STS token URL"
+                        value={apiPortal.authConfig?.stsTokenUrl || '—'}
+                        copyable={apiPortal.authConfig?.stsTokenUrl}
+                      />
+                      <ReadOnlyRow
+                        label="Client ID"
+                        value={apiPortal.authConfig?.clientId || '—'}
+                        monospace
+                      />
+                      <ReadOnlyRow
+                        label="Client secret"
+                        value="•••••••••••• (never displayed after save)"
+                      />
+                    </Stack>
+                  </Box>
+                ) : (
+                  <Typography color="text.secondary" variant="body2">
+                    Platform API mints its own signed JWT with its configured
+                    key to authenticate to this portal.
+                  </Typography>
+                )}
               </Stack>
             </CardContent>
           </Card>
         </Grid>
 
-        {/* Details */}
+        {/* Details rail */}
         <Grid size={{ xs: 12, md: 4 }}>
           <Card sx={{ height: '100%' }}>
             <CardContent>
-              <Typography sx={{ fontWeight: 700, mb: 1 }} variant="h6">
+              <Typography sx={{ fontWeight: 700, mb: 1.5 }} variant="h6">
                 Details
               </Typography>
-              <Stack direction="row" sx={{ flexWrap: 'wrap', gap: 1, mb: 2 }}>
+              <Stack direction="row" sx={{ flexWrap: 'wrap', gap: 1, mb: 2.25 }}>
                 <Chip
                   color={STATUS_CHIP_COLOR[apiPortal.workflowStatus]}
                   label={STATUS_LABEL[apiPortal.workflowStatus]}
                   size="small"
                 />
               </Stack>
-              <Typography color="text.secondary" variant="body2">
-                Identifier: {apiPortal.handle}
-              </Typography>
-              {apiPortal.createdAt && (
-                <Typography
-                  color="text.secondary"
-                  sx={{ display: 'block', mt: 2 }}
-                  variant="caption"
-                >
-                  Created {relativeTime(apiPortal.createdAt)}
-                </Typography>
-              )}
+              <Stack spacing={1.75}>
+                <ReadOnlyRow label="Identifier" value={apiPortal.handle} monospace />
+                {apiPortal.createdAt && (
+                  <ReadOnlyRow
+                    label="Created"
+                    value={relativeTime(apiPortal.createdAt)}
+                  />
+                )}
+                {apiPortal.updatedAt && (
+                  <ReadOnlyRow
+                    label="Last updated"
+                    value={relativeTime(apiPortal.updatedAt)}
+                  />
+                )}
+              </Stack>
             </CardContent>
           </Card>
         </Grid>
       </Grid>
+
+      <ConfirmDialog
+        confirmInputLabel={`Type "${apiPortal.name}" to confirm`}
+        confirmLabel="Delete"
+        confirmPhrase={apiPortal.name}
+        destructive
+        loading={deleteApiPortal.isPending}
+        message={`This permanently deletes the API Portal "${apiPortal.name}". This action is irreversible.`}
+        onCancel={() => setConfirmDelete(false)}
+        onConfirm={doDelete}
+        open={confirmDelete}
+        title="Delete API Portal"
+      />
     </PageContent>
   );
 }
