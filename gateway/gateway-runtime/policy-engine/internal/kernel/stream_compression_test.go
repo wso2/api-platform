@@ -30,10 +30,13 @@ import (
 	policy "github.com/wso2/api-platform/sdk/core/policy/v1alpha2"
 )
 
-// singlePassGunzip decodes exactly like a normal HTTP client: one reader over
-// the whole payload, stopping at the end of the first gzip member. This is what
-// httpx/urllib3, curl and Go's own transport do — so it is the invariant that
-// actually matters, not whether the bytes are on the wire somewhere.
+// singlePassGunzip decodes only the FIRST gzip member of the payload, modelling
+// a client that stops there. Multistream(false) is what makes it stop — Go's
+// gzip.Reader is multistream by default and net/http's transport does not disable
+// it, so this is not a reproduction of Go transport behaviour. It stands in for
+// clients that read a single member (and for the general case where concatenated
+// members are not guaranteed to be read), which is why "one member spans the
+// whole response" is the invariant asserted here.
 func singlePassGunzip(t *testing.T, wire []byte) []byte {
 	t.Helper()
 	zr, err := gzip.NewReader(bytes.NewReader(wire))

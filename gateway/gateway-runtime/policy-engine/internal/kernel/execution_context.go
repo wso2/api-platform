@@ -120,6 +120,17 @@ type PolicyExecutionContext struct {
 	// before being sent back to the downstream client.
 	responseContentEncoding string
 
+	// requestHeadersEndOfStream / responseHeadersEndOfStream record Envoy's
+	// EndOfStream flag from the request/response headers message. This is the
+	// authoritative framing signal for "does a body follow": Envoy sets it from
+	// what is actually on the wire, whereas method/status/Content-Length are only
+	// what the peer *should* have sent. A GET carrying a body (RFC 9110 permits it
+	// syntactically) arrives with EndOfStream=false and Envoy does deliver a body
+	// phase for it — inferring "bodyless" from the method alone would skip the
+	// encoding guard and hand those bytes to policies unchecked.
+	requestHeadersEndOfStream  bool
+	responseHeadersEndOfStream bool
+
 	// requestEncodingUnsupported / responseEncodingUnsupported are set when a
 	// non-identity Content-Encoding arrives that the kernel can neither decompress
 	// nor re-compress. When the policy chain requires that body, the message is
@@ -139,6 +150,10 @@ type PolicyExecutionContext struct {
 	// requestStreamDecomp performs per-chunk decompression for compressed streaming
 	// request bodies. Nil when the request is not Content-Encoded.
 	requestStreamDecomp *streamDecompressor
+	// requestDeflatePending holds the leading compressed bytes of a "deflate"
+	// request body until enough have arrived to tell the two wire variants apart
+	// (see deflateVariantProbeBytes). Always empty once requestStreamDecomp exists.
+	requestDeflatePending []byte
 	// requestStreamComp re-compresses streaming request chunks into a SINGLE
 	// compressed stream for the whole request, for the same reason
 	// responseStreamComp does downstream: one writer per chunk would emit N
@@ -153,6 +168,9 @@ type PolicyExecutionContext struct {
 	// responseStreamDecomp performs per-chunk decompression for compressed streaming
 	// response bodies. Nil when the response is not Content-Encoded.
 	responseStreamDecomp *streamDecompressor
+	// responseDeflatePending is the response-side counterpart of
+	// requestDeflatePending.
+	responseDeflatePending []byte
 	// responseStreamComp re-compresses streaming response chunks into a SINGLE
 	// compressed stream for the whole response. It must outlive individual chunks:
 	// compressing each chunk independently yields one gzip member (or brotli
@@ -397,11 +415,14 @@ func (ec *PolicyExecutionContext) rejectUnsupportedEncoding(
 // rejectUnsupportedRequestEncoding rejects an undecodable request body with 415.
 // The caller picked the encoding, so this is a client error and is safe to
 // surface as one — no part of the request has been forwarded upstream yet.
-func (ec *PolicyExecutionContext) rejectUnsupportedRequestEncoding(ctx context.Context) *extprocv3.ProcessingResponse {
+func (ec *PolicyExecutionContext) rejectUnsupportedRequestEncoding(
+	ctx context.Context,
+	phase string,
+) *extprocv3.ProcessingResponse {
 	return ec.rejectUnsupportedEncoding(
 		ctx,
 		ec.requestHeaderCtx.Headers.Get("content-encoding"),
-		"request_headers",
+		phase,
 		typev3.StatusCode_UnsupportedMediaType,
 		http.StatusUnsupportedMediaType,
 		"Unsupported Media Type",
@@ -704,7 +725,7 @@ func (ec *PolicyExecutionContext) processRequestHeaders(
 	// with no body policy attached there is nothing to bypass, so an encoding the
 	// kernel cannot read is simply none of its business and passes through.
 	if ec.requestEncodingBlocksBodyPolicies() {
-		return ec.rejectUnsupportedRequestEncoding(ctx), nil
+		return ec.rejectUnsupportedRequestEncoding(ctx, "request_headers"), nil
 	}
 
 	execResult, err := ec.server.executor.ExecuteRequestHeaderPolicies(
@@ -740,6 +761,12 @@ func (ec *PolicyExecutionContext) processRequestHeaders(
 // deliver a ResponseBody ext_proc phase for this response.
 // Note: this is called during the response-headers phase so responseBodyCtx is not yet populated.
 func (ec *PolicyExecutionContext) responseHasNoBody() bool {
+	// Envoy's response-headers EndOfStream flag is the authoritative signal: it
+	// reflects the actual framing, so a header-only response is recognised as
+	// bodyless even when status/method/Content-Length say nothing about it.
+	if ec.responseHeadersEndOfStream {
+		return true
+	}
 	// 1xx, 204, and 304 responses must not carry a body (RFC 9110).
 	status := ec.responseHeaderCtx.ResponseStatus
 	if status == 204 || status == 304 || (status >= 100 && status < 200) {
@@ -758,21 +785,17 @@ func (ec *PolicyExecutionContext) responseHasNoBody() bool {
 
 // requestHasNoBody returns true when the request carries no body and Envoy will not
 // deliver a RequestBody ext_proc phase for this request.
+// The decision rests solely on Envoy's EndOfStream flag from the request-headers
+// message, which is set from the framing actually observed on the wire — for a
+// bodyless GET, a HEAD, or Content-Length: 0 that flag is already true.
+// Method and Content-Length are deliberately NOT consulted: a GET may carry a
+// body, Envoy then reports EndOfStream=false and does deliver a body phase for
+// it, and treating such a request as bodyless would skip
+// requestEncodingBlocksBodyPolicies (an unreadable Content-Encoding reaching
+// policies unchecked) and run body policies twice — once inline here with a nil
+// body and again when the body arrives.
 func (ec *PolicyExecutionContext) requestHasNoBody() bool {
-	// Envoy sets EndOfStream=true in the request-headers message when no body follows.
-	if ec.requestBodyCtx.Body != nil && ec.requestBodyCtx.Body.EndOfStream {
-		return true
-	}
-	// GET and HEAD requests must not carry a body (RFC 9110).
-	switch strings.ToUpper(ec.requestHeaderCtx.Method) {
-	case "GET", "HEAD":
-		return true
-	}
-	// Content-Length: 0 explicitly signals an empty body.
-	if cl := ec.requestHeaderCtx.Headers.Get("content-length"); len(cl) > 0 && cl[0] == "0" {
-		return true
-	}
-	return false
+	return ec.requestHeadersEndOfStream
 }
 
 // requestEncodingBlocksBodyPolicies reports whether the request carries a Content-Encoding
@@ -863,6 +886,17 @@ func (ec *PolicyExecutionContext) processRequestBody(
 	body *extprocv3.HttpBody,
 ) (*extprocv3.ProcessingResponse, error) {
 	ec.phase = phaseRequestBody
+
+	// Mirror of the response-body guard below: if a body arrives under a
+	// Content-Encoding the kernel cannot decode while the chain inspects request
+	// bodies, reject it here too. The header phase normally catches this, but it
+	// can only act on what the headers message said — a request whose framing
+	// promised no body and then delivered one must not slip past on that basis.
+	// Nothing has been forwarded upstream yet, so a clean 415 is still possible.
+	if ec.requestEncodingUnsupported && ec.policyChain.RequiresRequestBody {
+		return ec.rejectUnsupportedRequestEncoding(ctx, "request_body"), nil
+	}
+
 	if ec.isStreamingRequest {
 		return ec.processStreamingRequestBody(ctx, body)
 	}
@@ -936,10 +970,19 @@ func (ec *PolicyExecutionContext) processStreamingRequestBody(
 	// built from it: the deflate variant would be guessed from zero bytes and
 	// cannot be corrected once the decoder is running. Nothing is lost by waiting
 	// — feeding an empty chunk produces no output either.
-	if ec.requestContentEncoding != "" && (len(chunk.Chunk) > 0 || ec.requestStreamDecomp != nil) {
+	if ec.requestContentEncoding != "" &&
+		(len(chunk.Chunk) > 0 || ec.requestStreamDecomp != nil || len(ec.requestDeflatePending) > 0) {
 		if ec.requestStreamDecomp == nil {
-			// Pin the deflate variant from the first chunk, before the decoder for
-			// it is built — the decoder cannot be swapped once running.
+			// Pin the deflate variant before the decoder for it is built — the
+			// decoder cannot be swapped once running. A first chunk may legally
+			// carry a single byte, which is not enough to tell the two variants
+			// apart, so hold the leading bytes back until it is.
+			ec.requestDeflatePending = append(ec.requestDeflatePending, chunk.Chunk...)
+			if needsMoreDeflateVariantEvidence(ec.requestContentEncoding, ec.requestDeflatePending, chunk.EndOfStream) {
+				return suppressedRequestChunk(), nil
+			}
+			chunk.Chunk = ec.requestDeflatePending
+			ec.requestDeflatePending = nil
 			ec.requestContentEncoding = resolveEncodingFromBody(ec.requestContentEncoding, chunk.Chunk)
 			ec.requestStreamDecomp = newStreamDecompressor(ec.requestContentEncoding, ec.server.maxRequestDecompressedBytes)
 		}
@@ -1091,6 +1134,43 @@ func (ec *PolicyExecutionContext) processStreamingRequestBody(
 	}
 
 	return TranslateStreamingRequestChunkAction(execResult, flushChunk, ec)
+}
+
+// suppressedRequestChunk emits nothing for this request chunk while keeping
+// Envoy's FULL_DUPLEX_STREAMED accounting intact. In that mode an empty
+// BodyResponse would pass the chunk through unchanged, so withholding data has
+// to be spelled out as an empty StreamedBodyResponse.
+func suppressedRequestChunk() *extprocv3.ProcessingResponse {
+	return &extprocv3.ProcessingResponse{
+		Response: &extprocv3.ProcessingResponse_RequestBody{
+			RequestBody: &extprocv3.BodyResponse{
+				Response: &extprocv3.CommonResponse{
+					BodyMutation: &extprocv3.BodyMutation{
+						Mutation: &extprocv3.BodyMutation_StreamedResponse{
+							StreamedResponse: &extprocv3.StreamedBodyResponse{},
+						},
+					},
+				},
+			},
+		},
+	}
+}
+
+// suppressedResponseChunk is the response-side counterpart of suppressedRequestChunk.
+func suppressedResponseChunk() *extprocv3.ProcessingResponse {
+	return &extprocv3.ProcessingResponse{
+		Response: &extprocv3.ProcessingResponse_ResponseBody{
+			ResponseBody: &extprocv3.BodyResponse{
+				Response: &extprocv3.CommonResponse{
+					BodyMutation: &extprocv3.BodyMutation{
+						Mutation: &extprocv3.BodyMutation_StreamedResponse{
+							StreamedResponse: &extprocv3.StreamedBodyResponse{},
+						},
+					},
+				},
+			},
+		},
+	}
 }
 
 // processResponseHeaders processes response headers phase.
@@ -1292,10 +1372,19 @@ func (ec *PolicyExecutionContext) processStreamingResponseBody(
 	// As on the request path: an empty leading chunk is no evidence of the deflate
 	// variant, and the decoder cannot be swapped once running — so defer building
 	// it until a chunk actually carries bytes.
-	if ec.responseContentEncoding != "" && (len(chunk.Chunk) > 0 || ec.responseStreamDecomp != nil) {
+	if ec.responseContentEncoding != "" &&
+		(len(chunk.Chunk) > 0 || ec.responseStreamDecomp != nil || len(ec.responseDeflatePending) > 0) {
 		if ec.responseStreamDecomp == nil {
-			// Pin the deflate variant from the first chunk, before the decoder for
-			// it is built — the decoder cannot be swapped once running.
+			// Pin the deflate variant before the decoder for it is built — the
+			// decoder cannot be swapped once running. As on the request path, a
+			// one-byte first chunk carries too little evidence, so hold the leading
+			// bytes back until deflateVariantProbeBytes have arrived.
+			ec.responseDeflatePending = append(ec.responseDeflatePending, chunk.Chunk...)
+			if needsMoreDeflateVariantEvidence(ec.responseContentEncoding, ec.responseDeflatePending, chunk.EndOfStream) {
+				return suppressedResponseChunk(), nil
+			}
+			chunk.Chunk = ec.responseDeflatePending
+			ec.responseDeflatePending = nil
 			ec.responseContentEncoding = resolveEncodingFromBody(ec.responseContentEncoding, chunk.Chunk)
 			ec.responseStreamDecomp = newStreamDecompressor(ec.responseContentEncoding, ec.server.maxResponseDecompressedBytes)
 		}
@@ -1527,6 +1616,7 @@ func (ec *PolicyExecutionContext) buildRequestContexts(headers *extprocv3.HttpHe
 	}
 
 	// requestBodyCtx shares the same shared context and headers; Body is set later.
+	ec.requestHeadersEndOfStream = headers.EndOfStream
 	var bodyEOS *policy.Body
 	if headers.EndOfStream {
 		bodyEOS = &policy.Body{EndOfStream: true}
@@ -1642,6 +1732,7 @@ func (ec *PolicyExecutionContext) buildResponseContexts(headers *extprocv3.HttpH
 		Upstream:        upstream,
 	}
 
+	ec.responseHeadersEndOfStream = headers.EndOfStream
 	var responseBodyEOS *policy.Body
 	if headers.EndOfStream {
 		responseBodyEOS = &policy.Body{EndOfStream: true}

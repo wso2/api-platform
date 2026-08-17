@@ -64,16 +64,32 @@ const (
 	zstdEncoderConcurrency = 1
 )
 
+// deflateVariantProbeBytes is how many leading compressed bytes are needed to
+// tell zlib-wrapped deflate from raw deflate: the RFC 1950 header is two bytes.
+const deflateVariantProbeBytes = 2
+
+// needsMoreDeflateVariantEvidence reports whether a streaming decoder for this
+// encoding must wait for more compressed input before it can be constructed.
+// Only "deflate" is ambiguous, and only until deflateVariantProbeBytes have
+// accumulated; at end-of-stream nothing more is coming, so whatever arrived is
+// what the decision is made on.
+func needsMoreDeflateVariantEvidence(encoding string, buffered []byte, endOfStream bool) bool {
+	return encoding == encodingDeflate && !endOfStream && len(buffered) < deflateVariantProbeBytes
+}
+
 // resolveDeflateVariant inspects the first bytes of a "deflate" body and reports
 // the concrete variant token to record for it.
 //
 // A zlib stream (RFC 1950) starts with a 2-byte header: the low nibble of the
 // first byte is the compression method (8 == DEFLATE) and the big-endian pair is
 // a multiple of 31. Bare DEFLATE data effectively never satisfies both, so this
-// check distinguishes the two reliably. Too few bytes to tell yet is treated as
-// the RFC-conformant zlib form.
+// check distinguishes the two reliably. Too few bytes to tell yet falls back to
+// the RFC-conformant zlib form — a streaming caller must instead buffer
+// deflateVariantProbeBytes before deciding (see needsMoreDeflateVariantEvidence),
+// because a first chunk of one byte would otherwise pin a raw-deflate stream to
+// the zlib decoder for good.
 func resolveDeflateVariant(body []byte) string {
-	if len(body) < 2 {
+	if len(body) < deflateVariantProbeBytes {
 		return encodingDeflate
 	}
 	if body[0]&0x0f == 0x08 && (uint16(body[0])<<8|uint16(body[1]))%31 == 0 {
@@ -452,9 +468,10 @@ func (sd *streamDecompressor) Close() {
 //
 // A streamed response must be re-compressed as ONE compressed stream spanning
 // the whole body, not one per chunk. Calling recompressBody per chunk produces
-// N independent members: for gzip that is a multi-member stream which most HTTP
-// clients (Go's transport, httpx/urllib3, curl) do not read past the first
-// member, so the client silently sees a truncated body; for brotli, which has
+// N independent members: for gzip that is a multi-member stream, and a client
+// that stops at the end of the first member silently sees a truncated body
+// (multi-member support is not something a server may assume — Go's gzip reader
+// happens to be multistream by default, others are not); for brotli, which has
 // no multi-member concatenation at all, the remainder is undecodable.
 //
 // streamCompressor keeps a single writer alive for the lifetime of the response
