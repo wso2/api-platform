@@ -87,9 +87,10 @@ export async function createApiPortal(
       409
     );
   }
-  // Picked explicitly (not `...input`) so `clientSecret` — the one genuinely
-  // write-only field — never ends up on the stored/returned record.
+  // Picked explicitly (not `...input`) so `authConfig.clientSecret` — the one
+  // genuinely write-only field — never ends up on the stored/returned record.
   // stsTokenUrl/clientId are not secret and are stored/returned normally.
+  const now = new Date().toISOString();
   const apiPortal: ApiPortal = {
     id: input.handle,
     name: input.name,
@@ -97,12 +98,17 @@ export async function createApiPortal(
     description: input.description,
     url: input.url,
     authType: input.authType,
-    stsTokenUrl:
-      input.authType === 'idp_client_credentials' ? input.stsTokenUrl : undefined,
-    clientId:
-      input.authType === 'idp_client_credentials' ? input.clientId : undefined,
-    workflowStatus: 'pending',
-    createdAt: new Date().toISOString(),
+    authConfig:
+      input.authType === 'oauth2'
+        ? {
+            stsTokenUrl: input.authConfig.stsTokenUrl,
+            clientId: input.authConfig.clientId,
+          }
+        : undefined,
+    metadata: input.metadata,
+    workflowStatus: input.workflowStatus ?? 'pending',
+    createdAt: now,
+    updatedAt: now,
     organizationId: orgId,
   };
   apiPortals.push(apiPortal);
@@ -125,17 +131,23 @@ export async function updateApiPortal(
   if (index < 0) {
     throw new ApiError('API Portal not found', 'NOT_FOUND', 404);
   }
-  // Same reasoning as createApiPortal: only clientSecret is excluded.
+  // Same reasoning as createApiPortal: only authConfig.clientSecret is excluded.
   const updated: ApiPortal = {
     ...apiPortals[index],
     name: input.name,
     description: input.description,
     url: input.url,
     authType: input.authType,
-    stsTokenUrl:
-      input.authType === 'idp_client_credentials' ? input.stsTokenUrl : undefined,
-    clientId:
-      input.authType === 'idp_client_credentials' ? input.clientId : undefined,
+    authConfig:
+      input.authType === 'oauth2'
+        ? {
+            stsTokenUrl: input.authConfig.stsTokenUrl,
+            clientId: input.authConfig.clientId,
+          }
+        : undefined,
+    metadata: input.metadata ?? apiPortals[index].metadata,
+    workflowStatus: input.workflowStatus ?? apiPortals[index].workflowStatus,
+    updatedAt: new Date().toISOString(),
   };
   apiPortals[index] = updated;
   return toApiPortal(updated);

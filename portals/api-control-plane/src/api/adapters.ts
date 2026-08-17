@@ -23,7 +23,9 @@ import type {
   ApiStatus,
   Deployment,
   ApiPortal,
+  ApiPortalAuthConfig,
   ApiPortalAuthType,
+  ApiPortalMetadata,
   ApiPortalWorkflowStatus,
   Environment,
   Gateway,
@@ -301,10 +303,7 @@ export const toGateway = (value: unknown): Gateway => {
   };
 };
 
-const API_PORTAL_AUTH_TYPES: ApiPortalAuthType[] = [
-  'local',
-  'idp_client_credentials',
-];
+const API_PORTAL_AUTH_TYPES: ApiPortalAuthType[] = ['local', 'oauth2'];
 
 const asApiPortalAuthType = (value: unknown): ApiPortalAuthType => {
   const normalized = asString(value).toLowerCase();
@@ -328,6 +327,24 @@ const asApiPortalWorkflowStatus = (value: unknown): ApiPortalWorkflowStatus => {
     : API_PORTAL_WORKFLOW_STATUSES[0];
 };
 
+const toApiPortalAuthConfig = (
+  value: unknown
+): ApiPortalAuthConfig | undefined => {
+  const source = asRecord(value);
+  const stsTokenUrl = asOptionalString(source.stsTokenUrl);
+  const clientId = asOptionalString(source.clientId);
+  if (!stsTokenUrl && !clientId) return undefined;
+  return { stsTokenUrl, clientId };
+};
+
+const toApiPortalMetadata = (
+  value: unknown
+): ApiPortalMetadata | undefined => {
+  if (!value || typeof value !== 'object') return undefined;
+  const source = value as ApiPortalMetadata;
+  return Object.keys(source).length > 0 ? source : undefined;
+};
+
 export const toApiPortal = (value: unknown): ApiPortal => {
   const source = asRecord(value);
   const name = asString(source.name, 'unknown-api-portal');
@@ -339,9 +356,10 @@ export const toApiPortal = (value: unknown): ApiPortal => {
     url: asOptionalString(source.url),
     workflowStatus: asApiPortalWorkflowStatus(source.workflowStatus),
     authType: asApiPortalAuthType(source.authType),
+    authConfig: toApiPortalAuthConfig(source.authConfig),
+    metadata: toApiPortalMetadata(source.metadata),
     createdAt: asOptionalString(source.createdAt),
-    stsTokenUrl: asOptionalString(source.stsTokenUrl),
-    clientId: asOptionalString(source.clientId),
+    updatedAt: asOptionalString(source.updatedAt),
     organizationId: asOptionalString(source.organizationId),
   };
 };

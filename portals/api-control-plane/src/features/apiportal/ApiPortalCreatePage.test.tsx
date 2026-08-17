@@ -133,9 +133,11 @@ describe('ApiPortalCreatePage', () => {
     expect(submitButton()).toBeEnabled();
 
     await user.click(screen.getByRole('combobox'));
-    await user.click(screen.getByRole('option', { name: 'IdP Client Credentials' }));
+    await user.click(
+      screen.getByRole('option', { name: 'OAuth 2.0 Client Credentials' })
+    );
 
-    // Local auth was valid, but switching to IdP auth requires its own fields.
+    // Local auth was valid, but switching to OAuth2 requires its own fields.
     expect(submitButton()).toBeDisabled();
 
     await user.type(
@@ -176,7 +178,7 @@ describe('ApiPortalCreatePage', () => {
     );
   });
 
-  it('submits an IdP-auth CreateApiPortalInput with trimmed fields', async () => {
+  it('submits an OAuth2 CreateApiPortalInput with trimmed fields', async () => {
     const { user } = renderPage();
     await user.type(
       screen.getByPlaceholderText('Production API Portal'),
@@ -188,7 +190,9 @@ describe('ApiPortalCreatePage', () => {
     );
 
     await user.click(screen.getByRole('combobox'));
-    await user.click(screen.getByRole('option', { name: 'IdP Client Credentials' }));
+    await user.click(
+      screen.getByRole('option', { name: 'OAuth 2.0 Client Credentials' })
+    );
     await user.type(
       screen.getByPlaceholderText('https://idp.example.com/oauth2/token'),
       '  https://idp.example.com/oauth2/token  '
@@ -204,10 +208,12 @@ describe('ApiPortalCreatePage', () => {
         handle: 'production-api-portal',
         url: 'https://api-portal.example.com',
         description: undefined,
-        authType: 'idp_client_credentials',
-        stsTokenUrl: 'https://idp.example.com/oauth2/token',
-        clientId: 'client-123',
-        clientSecret: 'shh',
+        authType: 'oauth2',
+        authConfig: {
+          stsTokenUrl: 'https://idp.example.com/oauth2/token',
+          clientId: 'client-123',
+          clientSecret: 'shh',
+        },
       },
       expect.any(Object)
     );

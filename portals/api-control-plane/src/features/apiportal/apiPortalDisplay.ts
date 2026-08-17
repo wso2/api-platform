@@ -21,12 +21,12 @@ import type { ApiPortalAuthType, ApiPortalWorkflowStatus } from '../../types/dom
 /** Shared across the list, create, and detail/edit pages so the three never drift. */
 export const AUTH_TYPE_OPTIONS: { value: ApiPortalAuthType; label: string }[] = [
   { value: 'local', label: 'Local' },
-  { value: 'idp_client_credentials', label: 'IdP Client Credentials' },
+  { value: 'oauth2', label: 'OAuth 2.0 Client Credentials' },
 ];
 
 export const AUTH_LABEL: Record<ApiPortalAuthType, string> = {
   local: 'Local',
-  idp_client_credentials: 'IdP Client Credentials',
+  oauth2: 'OAuth 2.0 Client Credentials',
 };
 
 export const STATUS_LABEL: Record<ApiPortalWorkflowStatus, string> = {

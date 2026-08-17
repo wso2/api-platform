@@ -247,10 +247,29 @@ export type GatewayToken = {
 };
 
 /** How the platform authenticates to an API Portal instance. */
-export type ApiPortalAuthType = 'local' | 'idp_client_credentials';
+export type ApiPortalAuthType = 'local' | 'oauth2';
 
 /** Provisioning state of an API Portal (platform-api ApiPortalResponse.workflowStatus). */
 export type ApiPortalWorkflowStatus = 'pending' | 'active' | 'failed';
+
+/**
+ * Outbound-auth material Platform API uses when calling the portal admin API.
+ * Shape depends on the portal's authType:
+ *   - 'local'  → empty.
+ *   - 'oauth2' → stsTokenUrl + clientId (clientSecret is write-only, never
+ *     returned in responses, so it's intentionally absent from this type).
+ */
+export type ApiPortalAuthConfig = {
+  stsTokenUrl?: string;
+  clientId?: string;
+};
+
+/**
+ * Free-form pass-through metadata for the portal instance (e.g. cloud-side
+ * OIDC endpoints written by the cloud plugin). Platform API stores and
+ * returns this as-is; it does not participate in outbound authentication.
+ */
+export type ApiPortalMetadata = Record<string, unknown>;
 
 /** Maps 1:1 to platform-api's ApiPortalResponse schema. */
 export type ApiPortal = {
@@ -261,17 +280,18 @@ export type ApiPortal = {
   url?: string;
   workflowStatus: ApiPortalWorkflowStatus;
   authType: ApiPortalAuthType;
+  authConfig?: ApiPortalAuthConfig;
+  metadata?: ApiPortalMetadata;
   createdAt?: string;
-  /**
-   * Set when authType is 'idp_client_credentials'. Not secret — safe to
-   * store/return. clientSecret is the one write-only field: it's never
-   * echoed back, so it's intentionally absent from this response type.
-   */
-  stsTokenUrl?: string;
-  clientId?: string;
+  updatedAt?: string;
   organizationId?: string;
 };
 
+/**
+ * `workflowStatus` on create is restricted to 'pending' or 'active'; a portal
+ * is never created in a failed state. 'active' additionally requires a
+ * non-empty url — platform-api rejects the request otherwise.
+ */
 export type CreateApiPortalInput =
   | {
       name: string;
@@ -279,22 +299,28 @@ export type CreateApiPortalInput =
       url: string;
       authType: 'local';
       description?: string;
+      workflowStatus?: 'pending' | 'active';
+      metadata?: ApiPortalMetadata;
     }
   | {
       name: string;
       handle: string;
       url: string;
-      authType: 'idp_client_credentials';
+      authType: 'oauth2';
       description?: string;
-      stsTokenUrl: string;
-      clientId: string;
-      clientSecret: string;
+      workflowStatus?: 'pending' | 'active';
+      authConfig: {
+        stsTokenUrl: string;
+        clientId: string;
+        clientSecret: string;
+      };
+      metadata?: ApiPortalMetadata;
     };
 
 /**
  * `handle` is set at creation and not editable afterwards. clientSecret stays
- * optional even for 'idp_client_credentials' — it's write-only and never
- * returned, so omitting it means "keep the existing secret".
+ * optional even for 'oauth2' — it's write-only and never returned, so
+ * omitting it means "keep the existing secret".
  */
 export type UpdateApiPortalInput =
   | {
@@ -302,15 +328,21 @@ export type UpdateApiPortalInput =
       url: string;
       authType: 'local';
       description?: string;
+      workflowStatus?: ApiPortalWorkflowStatus;
+      metadata?: ApiPortalMetadata;
     }
   | {
       name: string;
       url: string;
-      authType: 'idp_client_credentials';
+      authType: 'oauth2';
       description?: string;
-      stsTokenUrl: string;
-      clientId: string;
-      clientSecret?: string;
+      workflowStatus?: ApiPortalWorkflowStatus;
+      authConfig: {
+        stsTokenUrl: string;
+        clientId: string;
+        clientSecret?: string;
+      };
+      metadata?: ApiPortalMetadata;
     };
 
 /**

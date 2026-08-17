@@ -83,9 +83,9 @@ export function ApiPortalCreatePage() {
 
   const handleValid = HANDLE_PATTERN.test(handle);
   const urlValid = url.trim() !== '' && isValidUrl(url);
-  const isIdpAuth = authType === 'idp_client_credentials';
+  const isOAuth2 = authType === 'oauth2';
   const idpFieldsValid =
-    !isIdpAuth ||
+    !isOAuth2 ||
     (stsTokenUrl.trim() !== '' &&
       isValidUrl(stsTokenUrl) &&
       clientId.trim() !== '' &&
@@ -104,13 +104,15 @@ export function ApiPortalCreatePage() {
       url: url.trim(),
       description: description || undefined,
     };
-    const input: CreateApiPortalInput = isIdpAuth
+    const input: CreateApiPortalInput = isOAuth2
       ? {
           ...basePayload,
-          authType: 'idp_client_credentials',
-          stsTokenUrl: stsTokenUrl.trim(),
-          clientId: clientId.trim(),
-          clientSecret,
+          authType: 'oauth2',
+          authConfig: {
+            stsTokenUrl: stsTokenUrl.trim(),
+            clientId: clientId.trim(),
+            clientSecret,
+          },
         }
       : { ...basePayload, authType: 'local' };
     createApiPortal.mutate(input, {
@@ -220,7 +222,7 @@ export function ApiPortalCreatePage() {
             </Select>
           </FormControl>
 
-          {isIdpAuth && (
+          {isOAuth2 && (
             <IdpCredentialsFields
               clientId={clientId}
               clientSecret={clientSecret}
