@@ -1,22 +1,15 @@
 [analytics]
-enabled = false
-enabled_publishers = []
+enabled = true
+enabled_publishers = ["moesif"]
 
 [analytics.publishers.moesif]
 application_id = '{{ env "APIP_GW_ANALYTICS_PUBLISHERS_MOESIF_APPLICATION_ID" "<your-moesif-application-id>" }}'
-
-[traffic_logging]
-enabled = true
-
-[collector]
-ignore_path_prefixes = ["/_gateway-health"]
 
 [router]
 gateway_host = "*"
 
 [router.access_logs]
 enabled = true
-format = "json"
 
 [controller.server]
 gateway_id = '{{ env "APIP_GW_CONTROLLER_SERVER_GATEWAY_ID" "platform-gateway-id" }}'
@@ -29,7 +22,6 @@ path = '{{ env "APIP_GW_CONTROLLER_STORAGE_SQLITE_PATH" "./data/gateway.db" }}'
 
 [policy_engine.logging]
 level = "info"
-format = "json"
 
 [controller.logging]
 level = '{{ env "APIP_GW_CONTROLLER_LOGGING_LEVEL" "info" }}'
