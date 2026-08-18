@@ -724,11 +724,74 @@ func main() {
 	// same mux — HandlerWithOptions registers routes on the BaseRouter in-place.
 	mux := http.NewServeMux()
 
+	// MCP endpoint wiring. Built before route registration because the
+	// challenge middleware needs the resolved scope sets.
+	var (
+		mcpChallenge        api.MiddlewareFunc
+		mcpResourceMetadata string
+	)
+
+	var mcpRoutePatterns = map[string]bool{
+		"POST " + managementAPIBasePath + "/mcp": true,
+	}
+
+	if cfg.Controller.MCPServer.Enabled {
+		base := strings.TrimRight(cfg.Controller.Server.ExternalBaseURL, "/")
+		const mcpRelPath = "/mcp"
+		mcpResource := base + managementAPIBasePath + mcpRelPath
+		// RFC 9728 path-insertion form, for a resource whose URI has a path.
+		mcpResourceMetadata = base + "/.well-known/oauth-protected-resource" +
+			managementAPIBasePath + mcpRelPath
+
+		mcpHandler, err := apiServer.EnableMCP(authConfig.ResourceRoles, mcpResourceMetadata)
+		if err != nil {
+			log.Error("Failed to initialize the MCP endpoint", slog.Any("error", err))
+			os.Exit(1)
+		}
+
+		advertisedScopes := cfg.Controller.MCPServer.AdvertisedScopes
+		if len(advertisedScopes) == 0 {
+			advertisedScopes = mcpHandler.MCPBaselineRoles()
+		}
+		mcpChallenge = onlyForPatterns(
+			handlers.MCPChallengeMiddleware(mcpResourceMetadata, advertisedScopes),
+			mcpRoutePatterns)
+
+		// Unauthenticated discovery document. Registered directly on the mux,
+		// outside every auth middleware: a client with no token must be able to
+		// read it to begin the OAuth flow. Exact patterns, not a prefix, so
+		// metadata is never served for some other path.
+		prHandler := handlers.NewProtectedResourceMetadataHandler(handlers.ProtectedResourceMetadata{
+			Resource:               mcpResource,
+			AuthorizationServers:   []string{cfg.Controller.Auth.IDP.Issuer},
+			ScopesSupported:        advertisedScopes,
+			BearerMethodsSupported: []string{"header"},
+		})
+		mux.HandleFunc("GET /.well-known/oauth-protected-resource"+managementAPIBasePath+mcpRelPath, prHandler)
+		mux.HandleFunc("GET /.well-known/oauth-protected-resource", prHandler)
+
+	}
+
+	// Per-route middleware. The generated wrapper applies these as
+	// `handler = mw(handler)`, so the LAST entry is outermost and runs first.
+	// Order, outermost inward: MCP challenge -> immutable -> authn -> authz.
+	// Slices are built explicitly rather than appended to a shared base, so the
+	// two registrations cannot alias one backing array.
+	versionedMW := []api.MiddlewareFunc{
+		authenticators.AuthorizationMiddleware(authConfig, log),
+		authMiddleWare,
+		exceptPatterns(igw.Middleware(), mcpRoutePatterns),
+	}
+
+	if mcpChallenge != nil {
+		versionedMW = append(versionedMW, mcpChallenge)
+	}
+
 	// Versioned routes under managementAPIBasePath.
 	api.HandlerWithOptions(apiServer, api.StdHTTPServerOptions{
 		BaseURL:     managementAPIBasePath,
 		BaseRouter:  mux,
-		Middlewares: append(perRouteMiddlewares, igw.Middleware()),
+		Middlewares: versionedMW,
 	})
 
 	// Legacy unprefixed routes — deprecated; responses include RFC 8594 headers.
@@ -1040,6 +1103,8 @@ func generateAuthConfig(config *config.Config) (commonmodels.AuthConfig, error) 
 		"GET /secrets/{id}":    {"admin"},
 		"PUT /secrets/{id}":    {"admin"},
 		"DELETE /secrets/{id}": {"admin"},
+
+		"POST /mcp": {"admin", "developer"},
 	}
 
 	// Populate both the versioned and legacy (unprefixed) keys so the auth
@@ -1158,6 +1223,39 @@ func deprecatedManagementPathMiddleware(newBasePath string) api.MiddlewareFunc {
 			w.Header().Set("Warning",
 				fmt.Sprintf("299 - \"Deprecated API: migrate to %s prefix\"", newBasePath))
 			next.ServeHTTP(w, r)
+		})
+	}
+}
+
+// onlyForPatterns applies mw on the listed routes and is a pass-through on every
+// other route. Used to keep the MCP OAuth challenge off the REST routes, whose
+// 401s have nothing to do with the MCP endpoint's protected-resource metadata.
+func onlyForPatterns(mw func(http.Handler) http.Handler, patterns map[string]bool) api.MiddlewareFunc {
+	return func(next http.Handler) http.Handler {
+		wrapped := mw(next)
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			if patterns[r.Pattern] {
+				wrapped.ServeHTTP(w, r)
+				return
+			}
+			next.ServeHTTP(w, r)
+		})
+	}
+}
+
+// exceptPatterns is used for the immutable-mode middleware, which
+// rejects every POST: because every MCP message is a POST, applying it to the
+// MCP route would disable reads as well as writes. The MCP write tools enforce
+// immutability themselves instead.
+func exceptPatterns(mw func(http.Handler) http.Handler, patterns map[string]bool) api.MiddlewareFunc {
+	return func(next http.Handler) http.Handler {
+		wrapped := mw(next)
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			if patterns[r.Pattern] {
+				next.ServeHTTP(w, r)
+				return
+			}
+			wrapped.ServeHTTP(w, r)
 		})
 	}
 }

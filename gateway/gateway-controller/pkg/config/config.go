@@ -21,6 +21,7 @@ package config
 import (
 	"fmt"
 	"log/slog"
+	"net/url"
 	"strconv"
 	"strings"
 	"time"
@@ -208,6 +209,17 @@ type Controller struct {
 	Metrics      MetricsConfig      `koanf:"metrics"`
 	Encryption   EncryptionConfig   `koanf:"encryption"`
 	EventHub     EventHubConfig     `koanf:"event_hub"`
+	MCPServer    MCPServerConfig    `koanf:"mcp_server"`
+}
+
+type MCPServerConfig struct {
+	Enabled bool `koanf:"enabled"`
+
+	// MaxRequestBytes bounds the JSON-RPC body the authorization gate buffers
+	MaxRequestBytes int64 `koanf:"max_request_bytes"`
+
+	// AdvertisedScopes is published as `scopes_supported` in the RFC 9728
+	AdvertisedScopes []string `koanf:"advertised_scopes"`
 }
 
 // MetricsConfig holds Prometheus metrics server configuration
@@ -306,6 +318,7 @@ type ServerConfig struct {
 	ShutdownTimeout                 time.Duration `koanf:"shutdown_timeout"`
 	GatewayID                       string        `koanf:"gateway_id"`
 	SkipInvalidDeploymentsOnStartup bool          `koanf:"skip_invalid_deployments_on_startup"`
+	ExternalBaseURL                 string        `koanf:"external_base_url"`
 
 	// TLS starts a second, TLS-only listener on TLS.Port serving the same
 	// REST management API as the plaintext listener on APIPort. Off by
@@ -1058,6 +1071,7 @@ func defaultConfig() *Config {
 				ShutdownTimeout:                 15 * time.Second,
 				GatewayID:                       constants.PlatformGatewayId,
 				SkipInvalidDeploymentsOnStartup: false,
+				ExternalBaseURL:                 "",
 				ReadTimeout:                     30 * time.Second,
 				ReadHeaderTimeout:               30 * time.Second,
 				WriteTimeout:                    60 * time.Second,
@@ -1810,6 +1824,10 @@ func (c *Config) Validate() error {
 		return err
 	}
 
+	if err := c.validateMCPServerConfig(); err != nil {
+		return err
+	}
+
 	return nil
 }
 
@@ -2236,6 +2254,41 @@ func (c *Config) validateCollectorConfig() error {
 	if c.IsCollectorEnabled() {
 		if err := validateGRPCEventServerConfig(c.Collector.Server); err != nil {
 			return err
+		}
+	}
+	return nil
+
+}
+
+// validateMCPServerConfig fails startup on a configuration that would expose the
+// MCP endpoint without the discovery data the OAuth flow depends on, or without
+// the audience binding the MCP specification requires. It validates the
+// effective outcome, not each flag in isolation (GO-AUTH-011).
+func (c *Config) validateMCPServerConfig() error {
+	if !c.Controller.MCPServer.Enabled {
+		return nil
+	}
+	base := strings.TrimSpace(c.Controller.Server.ExternalBaseURL)
+	if base == "" {
+		return fmt.Errorf("controller.mcp_server.enabled=true requires controller.server.external_base_url " +
+			"(the public origin clients reach this controller on) — it is the canonical resource URI " +
+			"MCP clients bind their tokens to and the base of the RFC 9728 metadata document")
+	}
+	u, err := url.Parse(base)
+	if err != nil || u.Scheme == "" || u.Host == "" || u.Fragment != "" {
+		return fmt.Errorf("controller.server.external_base_url must be an absolute URL with no fragment")
+	}
+	if c.Controller.Auth.IDP.Enabled && len(c.Controller.Auth.IDP.Audience) == 0 {
+		return fmt.Errorf("controller.mcp_server.enabled=true with auth.idp.enabled=true requires " +
+			"auth.idp.audience — the MCP specification requires a resource server to verify a token " +
+			"was issued for it; without it any token from this issuer is accepted")
+	}
+	if c.Controller.MCPServer.MaxRequestBytes < 0 {
+		return fmt.Errorf("controller.mcp_server.max_request_bytes must not be negative")
+	}
+	for _, s := range c.Controller.MCPServer.AdvertisedScopes {
+		if strings.TrimSpace(s) == "" {
+			return fmt.Errorf("controller.mcp_server.advertised_scopes must not contain an empty entry")
 		}
 	}
 	return nil
