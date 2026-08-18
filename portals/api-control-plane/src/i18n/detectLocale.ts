@@ -16,6 +16,8 @@
  * under the License.
  */
 
+import { runtimeConfig } from '../config/runtime';
+
 import { DEFAULT_LOCALE, SupportedLocale, isSupportedLocale } from './config';
 import { readStoredLocale } from './localePreference';
 
@@ -73,11 +75,11 @@ function fromNavigatorLanguages(): LocaleCandidate {
   return null;
 }
 
-/**
- * Per-deployment default from `./config`; runtime config would override `'en'`.
- */
+/** Per-deployment default from `window.config.DEFAULT_LOCALE` or `VITE_DEFAULT_LOCALE`. */
 function fromRuntimeConfig(): LocaleCandidate {
-  return DEFAULT_LOCALE;
+  const configured: unknown = runtimeConfig.defaultLocale;
+  if (typeof configured !== 'string' || !configured.trim()) return null;
+  return configured;
 }
 
 /** Highest precedence first. */

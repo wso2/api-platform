@@ -16,7 +16,7 @@
  * under the License.
  */
 
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import {
   DEFAULT_LOCALE,
@@ -27,12 +27,25 @@ import {
 } from './config';
 import { clearLocaleQueryParam, detectLocale } from './detectLocale';
 
+/** Simulates deployment default by stubbing `runtimeConfig` at import time. */
+const setDeploymentLocale = async (value: unknown) => {
+  const { runtimeConfig } = await import('../config/runtime');
+  vi.spyOn(runtimeConfig, 'defaultLocale', 'get').mockReturnValue(
+    value as string
+  );
+};
+
+/** jsdom reports en-US, which outranks the deployment default. */
+const setBrowserLanguages = (languages: readonly string[]) =>
+  vi.spyOn(navigator, 'languages', 'get').mockReturnValue(languages as string[]);
+
 const setQuery = (search: string) =>
   window.history.replaceState({}, '', `/${search}`);
 
 afterEach(() => {
   window.history.replaceState({}, '', '/');
   localStorage.clear();
+  vi.restoreAllMocks();
 });
 
 describe('detectLocale precedence', () => {
@@ -67,6 +80,49 @@ describe('detectLocale precedence', () => {
     localStorage.setItem(LOCALE_STORAGE_KEY, 'en-XA');
 
     expect(detectLocale()).toBe('en-XA');
+  });
+});
+
+describe('deployment default from runtime config', () => {
+  it('applies when the browser asks for nothing we ship', async () => {
+    setBrowserLanguages(['fr-CA']);
+    await setDeploymentLocale('en-XA');
+
+    expect(detectLocale()).toBe('en-XA');
+  });
+
+  it('loses to the browser languages, and to everything above them', async () => {
+    setBrowserLanguages(['en-GB']);
+    await setDeploymentLocale('en-XA');
+
+    // en-GB widens to en; the deployment default only sets the floor.
+    expect(detectLocale()).toBe('en');
+  });
+
+  it('loses to a stored preference', async () => {
+    setBrowserLanguages(['fr-CA']);
+    await setDeploymentLocale('en-XA');
+    localStorage.setItem(LOCALE_STORAGE_KEY, 'en');
+
+    expect(detectLocale()).toBe('en');
+  });
+
+  it('falls back to English when the configured locale is unsupported', async () => {
+    setBrowserLanguages(['fr-CA']);
+    await setDeploymentLocale('de-DE');
+
+    expect(detectLocale()).toBe(DEFAULT_LOCALE);
+  });
+
+  it('falls back to English when the injected value is not a usable tag', async () => {
+    // window.config is untyped JS: a blank string or a non-string must not
+    // reach negotiate() and must not throw.
+    setBrowserLanguages(['fr-CA']);
+    for (const injected of ['', '   ', 'not!a!tag', 42, null, undefined, {}]) {
+      await setDeploymentLocale(injected);
+
+      expect(detectLocale()).toBe(DEFAULT_LOCALE);
+    }
   });
 });
 

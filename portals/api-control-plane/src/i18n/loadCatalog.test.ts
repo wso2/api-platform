@@ -18,9 +18,12 @@
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
+import sourceMessages from './messages/en.json';
+
 import { DEFAULT_LOCALE, type SupportedLocale } from './config';
 import {
   bundledCatalogFor,
+  loadCatalog,
   loadCatalogWithFallback,
   type MessageCatalog,
 } from './loadCatalog';
@@ -42,6 +45,35 @@ describe('bundledCatalogFor', () => {
     expect(bundledCatalogFor(DEFAULT_LOCALE)).toBe(
       bundledCatalogFor(DEFAULT_LOCALE)
     );
+  });
+});
+
+// `compiled/` is gitignored; `pre*` hooks populate the pseudo catalog.
+describe('loadCatalog against the generated catalogs', () => {
+  const PSEUDO_LOCALE = 'en-XA' as SupportedLocale;
+
+  it('resolves the pseudo catalog, which only i18n:pseudo produces', async () => {
+    // If the chunk is missing the call fails — the fallback would hide it.
+    await expect(loadCatalog(PSEUDO_LOCALE)).resolves.toEqual(
+      expect.any(Object)
+    );
+  });
+
+  it('covers exactly the message IDs the English source defines', async () => {
+    const pseudo = await loadCatalog(PSEUDO_LOCALE);
+
+    // Derived from source; ensures keys match the English messages.
+    expect(Object.keys(pseudo).sort()).toEqual(
+      Object.keys(sourceMessages).sort()
+    );
+  });
+
+  it('compiles to AST nodes, not raw strings, like every --ast catalog', async () => {
+    const pseudo = await loadCatalog(PSEUDO_LOCALE);
+
+    for (const ast of Object.values(pseudo)) {
+      expect(Array.isArray(ast)).toBe(true);
+    }
   });
 });
 
