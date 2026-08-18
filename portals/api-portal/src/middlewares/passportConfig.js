@@ -27,30 +27,44 @@ const logger = require('../config/logger');
 const orgContext = require('../utils/orgContext');
 const { CustomError } = require('../utils/errors/customErrors');
 
+// One JWKS resolver per URL, kept at module scope. `createRemoteJWKSet`
+// keeps an in-memory key cache + rate-limits refreshes; recreating it per
+// call throws that state away and pushes the JWKS endpoint on every login.
+// Keyed by URL so a config change (or a test overriding the URL) creates a
+// new resolver rather than serving stale keys from another endpoint.
+const jwksResolvers = new Map();
+function getJwksResolver(jwksURL) {
+    let resolver = jwksResolvers.get(jwksURL);
+    if (!resolver) {
+        resolver = createRemoteJWKSet(new URL(jwksURL));
+        jwksResolvers.set(jwksURL, resolver);
+    }
+    return resolver;
+}
+
 /**
  * Verifies an IDP-issued JWT against the configured JWKS. Returns the parsed
- * payload on success, or throws when signature, algorithm, issuer, audience,
- * or expiry checks fail.
- *
- * The passport-oauth2 callback previously decoded the id_token and access_token
- * without verification, so a tampered token — or one issued for a different
- * audience by the same IDP — would still be accepted as the login identity.
- * This helper closes that gap by using jose's jwtVerify against the same JWKS
- * URL the OAuth strategy is configured with.
+ * payload on success, or throws when the token is missing / malformed, or
+ * when signature, algorithm, issuer, audience, or expiry checks fail.
  *
  * `audience` is optional so the caller can decide the appropriate audience
  * per token type (id_token → clientId per OpenID Connect Core §3.1.3.7; access
  * token → whatever the IDP is configured to stamp for this deployment).
+ *
+ * Fails closed on a falsy `token`: an OAuth2 code-flow callback that reaches
+ * here without a token would otherwise continue with empty claims and land the
+ * user in a session that 403s on every subsequent request. Better to refuse
+ * the login than to create the empty session.
  */
 async function verifyIdpJwt(token, audience) {
     if (!token) {
-        return {};
+        throw new Error('token is required');
     }
     const jwksURL = config.auth.idp?.jwksUrl;
     if (!jwksURL) {
         throw new Error('IDP jwksUrl is not configured; cannot verify token');
     }
-    const jwks = createRemoteJWKSet(new URL(jwksURL));
+    const jwks = getJwksResolver(jwksURL);
     const options = { algorithms: constants.JWT_ASYMMETRIC_ALGORITHMS };
     if (config.auth.idp?.issuer) options.issuer = config.auth.idp.issuer;
     if (audience) options.audience = audience;
@@ -145,11 +159,16 @@ function configurePassport(SERVER_ID) {
                 decodedJWT = await verifyIdpJwt(params.id_token, config.auth.idp?.clientId);
                 decodedAccessToken = await verifyIdpJwt(accessToken, config.auth.idp?.audience);
             } catch (err) {
+                // Full detail (jose error code, JWKS URL parse failures,
+                // network errors) stays in the log; the message handed back
+                // to Passport — and potentially rendered by the callback
+                // route — is a fixed string, so operational details cannot
+                // reach the browser.
                 logger.error('IDP token verification failed during login', {
                     error: err.message,
                     code: err.code,
                 });
-                return done(new Error(`IDP token verification failed: ${err.message}`));
+                return done(new Error('Login failed: token verification error'));
             }
             const firstName = decodedJWT['given_name'] || decodedJWT['nickname'];
             const lastName = decodedJWT['family_name'];
