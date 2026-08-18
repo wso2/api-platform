@@ -136,6 +136,9 @@ export default function LLMProxyOverviewTab() {
   const { hasPermission } = useAppAuth();
   const canCreateProxyApiKey = hasPermission(SCOPES.LLM_PROXY_API_KEY_CREATE);
   const canDeleteProxyApiKey = hasPermission(SCOPES.LLM_PROXY_API_KEY_DELETE);
+  const canViewProxyDeployments = hasPermission(
+    SCOPES.LLM_PROXY_DEPLOYMENT_READ
+  );
 
   const {
     headerName: apiKeyName,
@@ -229,7 +232,9 @@ export default function LLMProxyOverviewTab() {
     const organizationId = currentOrganization?.uuid;
     const proxyId = proxy?.id;
 
-    if (!organizationId || !proxyId) {
+    // Without the deployment-read scope there is nothing to show here, so skip
+    // the gateway/deployment reads rather than issuing calls that only 403.
+    if (!organizationId || !proxyId || !canViewProxyDeployments) {
       setGateways([]);
       setSelectedGatewayId('');
       setIsGatewaysLoading(false);
@@ -323,7 +328,7 @@ export default function LLMProxyOverviewTab() {
     return () => {
       isMounted = false;
     };
-  }, [currentOrganization?.uuid, proxy?.id]);
+  }, [currentOrganization?.uuid, proxy?.id, canViewProxyDeployments]);
 
   useEffect(() => {
     setLatestGeneratedKey(null);

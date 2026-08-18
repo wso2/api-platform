@@ -313,7 +313,10 @@ export function GatewayDeployProvider({
   );
 
   const fetchGateways = useCallback(async () => {
-    if (!organizationId) {
+    // A user without the deployment-read scope has no readable deploy surface,
+    // so don't issue the gateway/deployment reads at all — they would only 403.
+    if (!organizationId || !canViewDeployments) {
+      setGateways([]);
       setIsLoading(false);
       return;
     }
@@ -339,14 +342,14 @@ export function GatewayDeployProvider({
     } finally {
       setIsLoading(false);
     }
-  }, [organizationId]);
+  }, [organizationId, canViewDeployments]);
 
   useEffect(() => {
     fetchGateways();
   }, [fetchGateways]);
 
   const refetchDeployments = useCallback(async () => {
-    if (!apiId || !organizationId) {
+    if (!apiId || !organizationId || !canViewDeployments) {
       setDeployments(null);
       return;
     }
@@ -399,7 +402,7 @@ export function GatewayDeployProvider({
     } finally {
       setIsLoadingDeployments(false);
     }
-  }, [apiId, organizationId, resourceType, gateways]);
+  }, [apiId, organizationId, resourceType, gateways, canViewDeployments]);
 
   useEffect(() => {
     if (apiId) {
