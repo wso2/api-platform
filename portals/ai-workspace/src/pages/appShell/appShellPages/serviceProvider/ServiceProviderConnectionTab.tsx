@@ -53,6 +53,9 @@ export default function ServiceProviderConnectionTab() {
     authHeader: string;
   } | null>(null);
   const [providerEndpoint, setProviderEndpoint] = useState('');
+  const [connectionProviderId, setConnectionProviderId] = useState<
+    string | null
+  >(null);
   const [authenticationType, setAuthenticationType] = useState('');
   const [authenticationHeader, setAuthenticationHeader] = useState('');
   const [credentialValue, setCredentialValue] = useState('');
@@ -137,6 +140,7 @@ export default function ServiceProviderConnectionTab() {
         ? nextConnection.authHeader
         : currentValue
     );
+    setConnectionProviderId(provider.id);
     lastProviderConnectionRef.current = nextConnection;
 
     if (initializedProviderIdRef.current === provider.id) {
@@ -341,6 +345,11 @@ export default function ServiceProviderConnectionTab() {
 
   useEffect(() => {
     const templateAuthHeader = providerTemplate?.metadata?.auth?.header || '';
+    const isCurrentProviderState = connectionProviderId === provider?.id;
+    const isCurrentProviderTemplate =
+      providerTemplate?.id === provider?.template;
+    if (!isCurrentProviderState || !isCurrentProviderTemplate) return;
+
     if (authenticationType !== 'api-key') {
       appliedTemplateAuthHeaderRef.current = null;
       return;
@@ -364,8 +373,10 @@ export default function ServiceProviderConnectionTab() {
   }, [
     authenticationHeader,
     authenticationType,
+    connectionProviderId,
     isDraftMode,
     provider?.id,
+    provider?.template,
     providerTemplate,
   ]);
 
