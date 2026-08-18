@@ -428,7 +428,7 @@ data:
     {{- if .Values.gateway.config.traffic_logging.masked_headers }}
     masked_headers = [{{- range $i, $h := .Values.gateway.config.traffic_logging.masked_headers }}{{- if gt $i 0 }}, {{ end }}{{ $h | quote }}{{- end }}]
     {{- end }}
-    {{- if .Values.gateway.config.traffic_logging.max_payload_size }}
+    {{- if not (kindIs "invalid" .Values.gateway.config.traffic_logging.max_payload_size) }}
     max_payload_size = {{ .Values.gateway.config.traffic_logging.max_payload_size | int64 }}
     {{- end }}
     {{- if .Values.gateway.config.traffic_logging.request_headers }}
@@ -449,7 +449,7 @@ data:
     {{- if .Values.gateway.config.traffic_logging.outputs }}
     outputs = [{{- range $i, $o := .Values.gateway.config.traffic_logging.outputs }}{{- if gt $i 0 }}, {{ end }}{{ $o | quote }}{{- end }}]
     {{- end }}
-    {{- if .Values.gateway.config.traffic_logging.shutdown_timeout }}
+    {{- if not (kindIs "invalid" .Values.gateway.config.traffic_logging.shutdown_timeout) }}
     shutdown_timeout = {{ .Values.gateway.config.traffic_logging.shutdown_timeout | quote }}
     {{- end }}
     {{- if .Values.gateway.config.traffic_logging.properties }}
@@ -481,29 +481,32 @@ data:
     {{- if kindIs "bool" .allow_insecure_transport }}
     allow_insecure_transport = {{ .allow_insecure_transport }}
     {{- end }}
-    {{- if .batch_max_events }}
+    {{- if not (kindIs "invalid" .batch_max_events) }}
     batch_max_events = {{ .batch_max_events | int64 }}
     {{- end }}
-    {{- if .batch_max_bytes }}
+    {{- if not (kindIs "invalid" .batch_max_bytes) }}
     batch_max_bytes = {{ .batch_max_bytes | int64 }}
     {{- end }}
-    {{- if .flush_interval }}
+    {{- if not (kindIs "invalid" .flush_interval) }}
     flush_interval = {{ .flush_interval | quote }}
     {{- end }}
-    {{- if .queue_capacity }}
+    {{- if not (kindIs "invalid" .queue_capacity) }}
     queue_capacity = {{ .queue_capacity | int64 }}
     {{- end }}
     {{- if .on_queue_full }}
     on_queue_full = {{ .on_queue_full | quote }}
     {{- end }}
-    {{- if .request_timeout }}
+    {{- if not (kindIs "invalid" .request_timeout) }}
     request_timeout = {{ .request_timeout | quote }}
     {{- end }}
     {{- if not (kindIs "invalid" .max_retries) }}
     max_retries = {{ .max_retries | int64 }}
     {{- end }}
-    {{- if .retry_backoff }}
+    {{- if not (kindIs "invalid" .retry_backoff) }}
     retry_backoff = {{ .retry_backoff | quote }}
+    {{- end }}
+    {{- if not (kindIs "invalid" .retry_abort_queue_ratio) }}
+    retry_abort_queue_ratio = {{ .retry_abort_queue_ratio }}
     {{- end }}
     {{- with .auth }}
     {{- /*
