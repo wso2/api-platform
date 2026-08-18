@@ -32,7 +32,7 @@ import (
 	"strings"
 
 	"github.com/wso2/api-platform/common/authenticators"
-	"github.com/wso2/go-httpkit/httputil"
+	"github.com/wso2/api-platform/httpkit/httputil"
 )
 
 // routeKey builds the management REST route key that governs an MCP operation
