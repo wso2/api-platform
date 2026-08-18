@@ -82,6 +82,7 @@ type APIServer struct {
 	gatewayID                   string
 	subscriptionSnapshotUpdater utils.SubscriptionSnapshotUpdater
 	subscriptionResourceService *utils.SubscriptionResourceService
+	mcpHandler                  *McpHandler
 }
 
 // NewAPIServer creates a new API server with dependencies
@@ -629,4 +630,44 @@ func toGenericMap(value interface{}) (map[string]interface{}, error) {
 		return nil, err
 	}
 	return result, nil
+}
+
+// HandleMcp implements ServerInterface.HandleMcp (POST /mcp).
+// The route is registered unconditionally by the generated router, so the
+// disabled case is handled here rather than by skipping registration. It
+// answers 404 rather than 501: a gateway with MCP switched off should be
+// indistinguishable from one that does not implement it.
+func (s *APIServer) HandleMcp(w http.ResponseWriter, r *http.Request) {
+	if s.mcpHandler == nil {
+		httputil.WriteError(w, http.StatusNotFound, "not_found", "The requested resource was not found.")
+		return
+	}
+	s.mcpHandler.ServeHTTP(w, r)
+}
+
+// EnableMCP builds the MCP endpoint handler. Called from main only when
+// controller.mcp_server.enabled is true, so the whole MCP surface — including
+// the SDK — stays inert in a default deployment.
+//
+// resourceRoles is the same route->roles map the authorization middleware uses,
+// so an MCP call is authorized exactly as the equivalent REST call.
+func (s *APIServer) EnableMCP(resourceRoles map[string][]string, resourceMetadataURL string) (*McpHandler, error) {
+	h, err := newMcpHandler(McpHandlerParams{
+		RestAPIService:       s.restAPIService,
+		MCPDeploymentService: s.mcpDeploymentService,
+		LLMDeploymentService: s.llmDeploymentService,
+		ResourceRoles:        resourceRoles,
+		ResourceMetadataURL:  resourceMetadataURL,
+		Immutable:            s.systemConfig.ImmutableGateway.Enabled,
+		MaxRequestBytes:      s.systemConfig.Controller.MCPServer.MaxRequestBytes,
+		Logger:               s.logger,
+	})
+	if err != nil {
+		return nil, err
+	}
+	// Same DP->CP undeploy push the REST handlers use, so an artifact deleted
+	// through an MCP tool is marked undeployed upstream too.
+	h.pushArtifactUndeploy = s.pushArtifactUndeploy
+	s.mcpHandler = h
+	return h, nil
 }
