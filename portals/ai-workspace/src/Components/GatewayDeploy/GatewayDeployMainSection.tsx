@@ -13,7 +13,13 @@
 
 import React, { useMemo, useState } from 'react';
 import { Link as RouterLink } from 'react-router-dom';
-import { Box, Button, CircularProgress, Typography } from '@wso2/oxygen-ui';
+import {
+  Alert,
+  Box,
+  Button,
+  CircularProgress,
+  Typography,
+} from '@wso2/oxygen-ui';
 import { Plus } from '@wso2/oxygen-ui-icons-react';
 import { FormattedMessage } from 'react-intl';
 import type { Gateway } from '../../apis/gateway/types';
@@ -39,7 +45,7 @@ interface GatewayDeployMainSectionProps {
 export default function GatewayDeployMainSection({
   showConfigureOption = true,
 }: GatewayDeployMainSectionProps = {}) {
-  const { gateways, isLoading, error } = useGatewayDeploy();
+  const { gateways, isLoading, error, canDeploy } = useGatewayDeploy();
   const { currentOrganization } = useAppShell();
   const [searchQuery, setSearchQuery] = useState('');
   const [configDrawerOpen, setConfigDrawerOpen] = useState(false);
@@ -123,6 +129,17 @@ export default function GatewayDeployMainSection({
 
   return (
     <Box sx={{ display: 'flex', flexDirection: 'column' }}>
+      {/* The deploy/redeploy/restore/undeploy controls below are all disabled in
+          this case; without this the page would read as broken rather than as a
+          permission boundary. */}
+      {!canDeploy && (
+        <Alert severity="info" sx={{ mb: 2 }}>
+          <FormattedMessage
+            id="aiWorkspace.components.GatewayDeploy.GatewayDeployMainSection.read.only.deployments"
+            defaultMessage="You have read-only access to deployments. Please contact your admin to deploy this artifact."
+          />
+        </Alert>
+      )}
       <GatewayDeployList
         searchQuery={searchQuery}
         onSearchChange={setSearchQuery}

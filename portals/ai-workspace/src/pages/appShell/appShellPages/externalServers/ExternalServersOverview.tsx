@@ -109,7 +109,11 @@ import {
   countActiveDeployments,
 } from '../../../../utils/artifactDeletion';
 import { useAppAuth } from '../../../../contexts/AppAuthContext';
-import { NO_PERMISSION_TOOLTIP, SCOPES } from '../../../../auth/permissions';
+import {
+  DISABLED_ACTION_SX,
+  NO_PERMISSION_TOOLTIP,
+  SCOPES,
+} from '../../../../auth/permissions';
 
 function getInitials(name: string): string {
   const words = name.trim().split(/\s+/);
@@ -242,6 +246,8 @@ export default function ExternalServersOverview(): JSX.Element {
   const showSnackbar = useAIWorkspaceSnackbar();
   const { hasPermission } = useAppAuth();
   const canDeleteMcpProxy = hasPermission(SCOPES.MCP_PROXY_DELETE);
+  const canDeployMcpProxy = hasPermission(SCOPES.MCP_PROXY_DEPLOYMENT_CREATE);
+  const canViewDeployments = hasPermission(SCOPES.MCP_PROXY_DEPLOYMENT_READ);
   const [server, setServer] = useState<MCPServer | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [isSavingChanges, setIsSavingChanges] = useState(false);
@@ -1085,27 +1091,36 @@ export default function ExternalServersOverview(): JSX.Element {
               alignItems="flex-end"
               sx={{ alignSelf: 'stretch' }}
             >
-              {/* For gateway-created (read-only) proxies the deployments remain viewable
-                  (deploy/redeploy/restore/undeploy are disabled on the page itself), so
-                  the button navigates but is relabelled "View Deployments". */}
-              <Button
-                variant="contained"
-                component={RouterLink}
-                to="deploy"
-                onClick={isReadOnlyServer ? undefined : handleBlockedNavigation}
+              {/* For gateway-created (read-only) proxies, and for users holding only
+                  the deployment-read scope, the deployments remain viewable (deploy/
+                  redeploy/restore/undeploy are disabled on the page itself), so the
+                  button navigates but is relabelled "View Deployments". Without even
+                  deployment-read there is nothing to see, so it is disabled. */}
+              <DisabledActionTooltip
+                disabled={!canViewDeployments}
+                title={NO_PERMISSION_TOOLTIP}
               >
-                {isReadOnlyServer ? (
-                  <FormattedMessage
-                    id="aiWorkspace.pages.appShell.appShellPages.externalServers.overview.viewDeployments"
-                    defaultMessage="View Deployments"
-                  />
-                ) : (
-                  <FormattedMessage
-                    id="aiWorkspace.pages.appShell.appShellPages.externalServers.overview.deployToGateway"
-                    defaultMessage="Deploy to Gateway"
-                  />
-                )}
-              </Button>
+                <Button
+                  variant="contained"
+                  component={RouterLink}
+                  to="deploy"
+                  onClick={isReadOnlyServer ? undefined : handleBlockedNavigation}
+                  disabled={!canViewDeployments}
+                  sx={DISABLED_ACTION_SX}
+                >
+                  {isReadOnlyServer || !canDeployMcpProxy ? (
+                    <FormattedMessage
+                      id="aiWorkspace.pages.appShell.appShellPages.externalServers.overview.viewDeployments"
+                      defaultMessage="View Deployments"
+                    />
+                  ) : (
+                    <FormattedMessage
+                      id="aiWorkspace.pages.appShell.appShellPages.externalServers.overview.deployToGateway"
+                      defaultMessage="Deploy to Gateway"
+                    />
+                  )}
+                </Button>
+              </DisabledActionTooltip>
               <DisabledActionTooltip
                 disabled={!canDeleteMcpProxy || Boolean(deleteBlockedReason)}
                 title={

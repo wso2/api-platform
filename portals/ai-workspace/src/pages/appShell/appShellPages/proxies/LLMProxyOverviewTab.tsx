@@ -59,6 +59,8 @@ import {
   DisabledActionTooltip,
   GATEWAY_MANAGED_ARTIFACT_TOOLTIP,
 } from '../../../../utils/readOnlyArtifacts';
+import { useAppAuth } from '../../../../contexts/AppAuthContext';
+import { NO_PERMISSION_TOOLTIP, SCOPES } from '../../../../auth/permissions';
 import {
   formatPrefixedKey,
   resolveApiKeyAuthDisplay,
@@ -131,6 +133,9 @@ export default function LLMProxyOverviewTab() {
   // proxy — NOT part of the gateway runtime artifact. So key generation/deletion stays
   // available even for gateway-created (read-only) proxies.
   const isReadOnlyProxy = false;
+  const { hasPermission } = useAppAuth();
+  const canCreateProxyApiKey = hasPermission(SCOPES.LLM_PROXY_API_KEY_CREATE);
+  const canDeleteProxyApiKey = hasPermission(SCOPES.LLM_PROXY_API_KEY_DELETE);
 
   const {
     headerName: apiKeyName,
@@ -686,12 +691,18 @@ export default function LLMProxyOverviewTab() {
                         </Typography>
                       </Box>
                       <DisabledActionTooltip
-                        disabled={isReadOnlyProxy}
-                        title={GATEWAY_MANAGED_ARTIFACT_TOOLTIP}
+                        disabled={isReadOnlyProxy || !canCreateProxyApiKey}
+                        title={
+                          isReadOnlyProxy
+                            ? GATEWAY_MANAGED_ARTIFACT_TOOLTIP
+                            : NO_PERMISSION_TOOLTIP
+                        }
                       >
                         <Tooltip
                           title={
-                            !isReadOnlyProxy && deployedGateways.length === 0
+                            !isReadOnlyProxy &&
+                            canCreateProxyApiKey &&
+                            deployedGateways.length === 0
                               ? 'No deployed gateways available. Deploy to a gateway first to generate an API key.'
                               : ''
                           }
@@ -703,7 +714,9 @@ export default function LLMProxyOverviewTab() {
                               size="medium"
                               onClick={handleOpenApiKeyModal}
                               disabled={
-                                isReadOnlyProxy || deployedGateways.length === 0
+                                isReadOnlyProxy ||
+                                !canCreateProxyApiKey ||
+                                deployedGateways.length === 0
                               }
                             >
                               Generate API Key
@@ -786,12 +799,18 @@ export default function LLMProxyOverviewTab() {
                                 </ListingTable.Cell>
                                 <ListingTable.Cell align="right">
                                   <DisabledActionTooltip
-                                    disabled={isReadOnlyProxy}
-                                    title={GATEWAY_MANAGED_ARTIFACT_TOOLTIP}
+                                    disabled={
+                                      isReadOnlyProxy || !canDeleteProxyApiKey
+                                    }
+                                    title={
+                                      isReadOnlyProxy
+                                        ? GATEWAY_MANAGED_ARTIFACT_TOOLTIP
+                                        : NO_PERMISSION_TOOLTIP
+                                    }
                                   >
                                     <Tooltip
                                       title={
-                                        isReadOnlyProxy
+                                        isReadOnlyProxy || !canDeleteProxyApiKey
                                           ? ''
                                           : key.id
                                             ? 'Delete API key'
@@ -809,6 +828,7 @@ export default function LLMProxyOverviewTab() {
                                           }
                                           disabled={
                                             isReadOnlyProxy ||
+                                            !canDeleteProxyApiKey ||
                                             !key.id ||
                                             isDeletingKey
                                           }
