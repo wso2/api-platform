@@ -21,7 +21,7 @@ package handlers
 import (
 	"net/http"
 
-	"github.com/wso2/go-httpkit/httputil"
+	"github.com/wso2/api-platform/httpkit/httputil"
 )
 
 // ProtectedResourceMetadata is the OAuth 2.0 Protected Resource Metadata
