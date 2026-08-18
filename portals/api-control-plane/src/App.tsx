@@ -31,6 +31,7 @@ import {
   ExtensionsProvider,
   type ApiControlPlaneExtension,
 } from './extensions';
+import { I18nProvider } from './i18n';
 
 const isProduction = import.meta.env.PROD;
 
@@ -49,23 +50,25 @@ export type AppProps = {
 
 export default function App({ extensions = [] }: AppProps) {
   return (
-    <OxygenUIThemeProvider theme={WSO2Theme}>
-      <ApiClientProvider>
-        <QueryClientProvider client={queryClient}>
-          <ErrorBoundary>
-            <BrowserRouter basename={runtimeConfig.appBasePath || undefined}>
-              <AuthProvider>
-                <ProductActivation />
-                <NotificationProvider>
-                  <ExtensionsProvider extensions={extensions}>
-                    <AppRoutes extensions={extensions} />
-                  </ExtensionsProvider>
-                </NotificationProvider>
-              </AuthProvider>
-            </BrowserRouter>
-          </ErrorBoundary>
-        </QueryClientProvider>
-      </ApiClientProvider>
-    </OxygenUIThemeProvider>
+    <I18nProvider>
+      <OxygenUIThemeProvider theme={WSO2Theme}>
+        <ApiClientProvider>
+          <QueryClientProvider client={queryClient}>
+            <ErrorBoundary>
+              <BrowserRouter basename={runtimeConfig.appBasePath || undefined}>
+                <AuthProvider>
+                  <ProductActivation />
+                  <NotificationProvider>
+                    <ExtensionsProvider extensions={extensions}>
+                      <AppRoutes extensions={extensions} />
+                    </ExtensionsProvider>
+                  </NotificationProvider>
+                </AuthProvider>
+              </BrowserRouter>
+            </ErrorBoundary>
+          </QueryClientProvider>
+        </ApiClientProvider>
+      </OxygenUIThemeProvider>
+    </I18nProvider>
   );
 }

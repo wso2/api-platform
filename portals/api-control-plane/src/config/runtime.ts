@@ -26,6 +26,11 @@ export type RuntimeConfig = {
    * never sees a token; the BFF holds the session server-side.
    */
   authMode: 'basic' | 'oidc';
+  /**
+   * Per-deployment default locale (BCP 47, e.g. "en"). Falls through
+   * to `DEFAULT_LOCALE` in `src/i18n/config.ts` if empty or unsupported.
+   */
+  defaultLocale: string;
   environmentName: string;
   featureFlags: string[];
   apiPlatformHomePage: string;
@@ -72,6 +77,8 @@ type LegacyWindowConfig = Partial<{
   ORGANIZATION_API_URL: string;
   BILLING_PROXY_ENABLED: string;
   billingProxyEnabled: boolean | string;
+  DEFAULT_LOCALE: string;
+  defaultLocale: string;
   PLATFORM_API_BASE_URL: string;
   platformApiBaseUrl: string;
   PLATFORM_API_VERSION: string;
@@ -159,6 +166,11 @@ export const runtimeConfig: RuntimeConfig = {
       fromWindow().AUTH_MODE ||
       import.meta.env.VITE_AUTH_MODE
   ),
+  defaultLocale:
+    fromWindow().DEFAULT_LOCALE ||
+    fromWindow().defaultLocale ||
+    import.meta.env.VITE_DEFAULT_LOCALE ||
+    '',
   environmentName:
     fromWindow().environmentName ||
     import.meta.env.VITE_ENVIRONMENT_NAME ||

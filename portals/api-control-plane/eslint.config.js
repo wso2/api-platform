@@ -1,5 +1,6 @@
 import js from '@eslint/js';
 import globals from 'globals';
+import formatjs from 'eslint-plugin-formatjs';
 import reactHooks from 'eslint-plugin-react-hooks';
 import tseslint from 'typescript-eslint';
 
@@ -39,6 +40,35 @@ export default [
           ],
         },
       ],
+    },
+  },
+  {
+    // i18n message hygiene: see src/i18n/README.md for the rules these enforce.
+    files: ['src/**/*.{ts,tsx}'],
+    plugins: { formatjs },
+    rules: {
+      // ICU and placeholder correctness.
+      'formatjs/no-invalid-icu': 'error',
+      'formatjs/enforce-placeholders': 'error',
+      'formatjs/no-missing-icu-plural-one-placeholders': 'error',
+      'formatjs/prefer-pound-in-plural': 'error',
+
+      // Extraction and translator safety.
+      'formatjs/enforce-default-message': ['error', 'literal'],
+      'formatjs/no-useless-message': 'error',
+      'formatjs/no-multiple-plurals': 'error',
+      'formatjs/no-offset': 'error',
+
+      // Temporary migration rule; promote to error when the sweep is complete.
+      'formatjs/no-literal-string-in-jsx': 'warn',
+    },
+  },
+  {
+    // Tests and fixtures intentionally use literals; message-shaped objects aren't catalog entries.
+    files: ['src/**/*.test.{ts,tsx}', 'src/test/**'],
+    rules: {
+      'formatjs/no-literal-string-in-jsx': 'off',
+      'no-restricted-syntax': 'off',
     },
   },
   {

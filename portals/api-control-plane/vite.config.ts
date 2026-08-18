@@ -42,7 +42,14 @@ export default ({ mode }: { mode: string }) => {
 
   return defineConfig({
     base: basePath,
-    plugins: [react(), basicSsl()],
+    plugins: [
+      react({
+        babel: {
+          plugins: [["formatjs", { ast: true }]],
+        },
+      }),
+      basicSsl(),
+    ],
     build: {
       outDir: 'build',
       sourcemap: false,
