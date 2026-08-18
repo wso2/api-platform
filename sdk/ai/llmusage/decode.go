@@ -65,12 +65,7 @@ func mergeSSEEvents(body []byte) ([]byte, bool) {
 				continue
 			}
 			found = true
-			for key, value := range event {
-				if str, ok := value.(string); ok && str == "" {
-					continue
-				}
-				merged[key] = value
-			}
+			mergeEventFields(merged, event)
 		}
 		fields = nil
 	}
@@ -100,6 +95,27 @@ func mergeSSEEvents(body []byte) ([]byte, bool) {
 		return nil, false
 	}
 	return out, true
+}
+
+// mergeEventFields folds one event into the merged view. Object values are
+// merged member by member rather than replaced, because a provider may split a
+// field across events: a "usage" carrying only completion tokens must not erase
+// the prompt tokens an earlier event reported. Arrays and scalars are replaced,
+// so the latest event wins, and an empty string never displaces a value already
+// seen.
+func mergeEventFields(dst, src map[string]interface{}) {
+	for key, value := range src {
+		if str, ok := value.(string); ok && str == "" {
+			continue
+		}
+		if srcObject, ok := value.(map[string]interface{}); ok {
+			if dstObject, ok := dst[key].(map[string]interface{}); ok {
+				mergeEventFields(dstObject, srcObject)
+				continue
+			}
+		}
+		dst[key] = value
+	}
 }
 
 // eventPayloads returns the documents to read out of one event's data fields:

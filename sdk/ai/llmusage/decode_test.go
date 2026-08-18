@@ -17,7 +17,10 @@
  */
 package llmusage
 
-import "testing"
+import (
+	"bytes"
+	"testing"
+)
 
 func openAITemplate() map[string]interface{} {
 	return map[string]interface{}{
@@ -439,5 +442,57 @@ func TestResolveModel_PathParamRequestModelWithoutRequestBody(t *testing.T) {
 	}
 	if len(got.ModelCandidates) != 1 || got.ModelCandidates[0] != want {
 		t.Errorf("ModelCandidates = %v, want [%s]", got.ModelCandidates, want)
+	}
+}
+
+// A provider may report one field across several events: prompt tokens in an
+// early event and completion tokens in a later one. Replacing the object rather
+// than merging its members drops the earlier count, so the request bills only
+// the tokens the last event happened to carry.
+func TestExtractUsage_SSEUsageSplitAcrossEvents(t *testing.T) {
+	body := []byte(`data: {"model":"gpt-4o-mini","usage":{"prompt_tokens":50}}
+
+data: {"usage":{"completion_tokens":10}}
+
+data: {"usage":{"total_tokens":60}}
+
+data: [DONE]
+`)
+
+	got, err := extractUsage(openAITemplate(), body, nil, "/chat/completions")
+	if err != nil {
+		t.Fatalf("extractUsage returned error: %v", err)
+	}
+
+	if got.TotalInputTokens != 50 {
+		t.Errorf("TotalInputTokens = %d, want 50 — an earlier event's count was dropped", got.TotalInputTokens)
+	}
+	if got.OutputTokens != 10 {
+		t.Errorf("OutputTokens = %d, want 10", got.OutputTokens)
+	}
+	if got.TotalTokens != 60 {
+		t.Errorf("TotalTokens = %d, want 60", got.TotalTokens)
+	}
+	if got.Model != "gpt-4o-mini" {
+		t.Errorf("Model = %q, want gpt-4o-mini", got.Model)
+	}
+}
+
+// Merging must not turn a later scalar or array into a merge target: the newest
+// event still wins for anything that is not an object.
+func TestExtractUsage_SSELaterScalarsAndArraysStillReplace(t *testing.T) {
+	body := []byte(`data: {"model":"first","usage":{"prompt_tokens":1},"choices":[{"index":0}]}
+
+data: {"model":"second","usage":{"prompt_tokens":9},"choices":[{"index":7}]}
+`)
+
+	merged, ok := mergeSSEEvents(body)
+	if !ok {
+		t.Fatal("mergeSSEEvents reported no events")
+	}
+	for _, want := range []string{`"model":"second"`, `"prompt_tokens":9`, `"index":7`} {
+		if !bytes.Contains(merged, []byte(want)) {
+			t.Errorf("merged view is missing %s; got %s", want, merged)
+		}
 	}
 }
