@@ -822,7 +822,6 @@ func defaultGRPCEventServerConfig() GRPCEventServerConfig {
 	}
 }
 
-// defaultConfig returns a Config struct with default configuration values
 // routerLogComponentTag prefixes the router's text access-log lines so they stay
 // separable from the policy engine's and the Python executor's output on the
 // container's shared stdout.
@@ -838,6 +837,7 @@ func textAccessLogStartsWithComponentTag(textFormat string) bool {
 	return strings.HasPrefix(textFormat, routerLogComponentTag)
 }
 
+// defaultConfig returns a Config struct with default configuration values
 func defaultConfig() *Config {
 	return &Config{
 		Controller: Controller{
@@ -1346,7 +1346,7 @@ func (c *Config) Validate() error {
 			// and refusing to start over a log-formatting choice would be worse than
 			// the ambiguity it causes.
 			if !textAccessLogStartsWithComponentTag(c.Router.AccessLogs.TextFormat) {
-				slog.Warn("router.access_logs.text_format does not start with "+routerLogComponentTag+
+				slog.Warn("router.access_logs.text_format does not start with " + routerLogComponentTag +
 					"; router access-log lines will not be attributable on the container's shared stdout")
 			}
 		}
