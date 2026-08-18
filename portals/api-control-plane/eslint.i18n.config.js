@@ -1,3 +1,4 @@
+
 /*
  * Copyright (c) 2026, WSO2 LLC. (https://www.wso2.com).
  *
@@ -16,11 +17,22 @@
  * under the License.
  */
 
-export { default as GuardrailPill } from './GuardrailPill';
-export type { GuardrailPillProps } from './GuardrailPill';
-export { default as DraggableGuardrailPill } from './DraggableGuardrailPill';
-export { reorderItem, reorderItemsWithinIndexes } from './DraggableGuardrailPill';
-export type { DraggableGuardrailPillProps } from './DraggableGuardrailPill';
-export { default as PoliciesReorderHelp } from './PoliciesReorderHelp';
-export { default as PolicyCategorySelector, POLICY_CATEGORIES } from './PolicyCategorySelector';
-export type { PolicyCategorySelectorProps } from './PolicyCategorySelector';
+import formatjs from 'eslint-plugin-formatjs';
+
+import baseConfig from './eslint.config.js';
+
+/*
+ * Promotes `formatjs/no-literal-string-in-jsx` to error for the i18n sweep.
+ * `--quiet` skips warn rules, so `lint:i18n` keeps reporting remaining literals.
+ */
+export default [
+  ...baseConfig,
+  {
+    // Mirrors the base config's exemption: tests and fixtures use literals
+    // deliberately, and appending to `files` alone would re-enable them.
+    files: ['src/**/*.{ts,tsx}'],
+    ignores: ['src/**/*.test.{ts,tsx}', 'src/test/**'],
+    plugins: { formatjs },
+    rules: { 'formatjs/no-literal-string-in-jsx': 'error' },
+  },
+];

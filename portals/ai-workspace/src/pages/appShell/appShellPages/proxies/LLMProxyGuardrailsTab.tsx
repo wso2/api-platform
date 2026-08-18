@@ -54,9 +54,12 @@ import { useGuardrails } from '../../../../contexts/GuardrailsContext';
 import { logger } from '../../../../utils/logger';
 import NoData from '../../../../assets/images/NoData.svg';
 import {
-  GuardrailPill,
+  DraggableGuardrailPill,
+  PoliciesReorderHelp,
   POLICY_CATEGORIES,
   PolicyCategorySelector,
+  reorderItem,
+  reorderItemsWithinIndexes,
 } from '../../../../Components/GuardrailPill';
 import { ResourceRow } from '../../../../Components/ResourceView';
 import PolicyParameterEditor from '../../PolicyParameterEditor/PolicyParameterEditor';
@@ -247,6 +250,20 @@ export default function LLMProxyGuardrailsTab() {
   const [drawerGuardrailsLoading, setDrawerGuardrailsLoading] = useState(false);
   const [customPolicies, setCustomPolicies] = useState<GatewayCustomPolicy[]>([]);
   const [customPoliciesLoading, setCustomPoliciesLoading] = useState(false);
+  const [draggedGlobalPolicyIndex, setDraggedGlobalPolicyIndex] = useState<
+    number | null
+  >(null);
+  const [dragOverGlobalPolicyIndex, setDragOverGlobalPolicyIndex] = useState<
+    number | null
+  >(null);
+  const [draggedResourcePolicy, setDraggedResourcePolicy] = useState<{
+    resourceKey: string;
+    policyIndex: number;
+  } | null>(null);
+  const [dragOverResourcePolicy, setDragOverResourcePolicy] = useState<{
+    resourceKey: string;
+    policyIndex: number;
+  } | null>(null);
 
   const fetchDrawerGuardrails = useCallback(async (categories: string[]) => {
     setDrawerGuardrailsLoading(true);
@@ -735,6 +752,65 @@ export default function LLMProxyGuardrailsTab() {
     }
   };
 
+  const handleReorderGlobalPolicy = (
+    targetIndex: number,
+    sourceIndex = draggedGlobalPolicyIndex
+  ) => {
+    if (
+      isReadOnlyProxy ||
+      sourceIndex === null ||
+      sourceIndex === targetIndex
+    ) {
+      setDraggedGlobalPolicyIndex(null);
+      setDragOverGlobalPolicyIndex(null);
+      return;
+    }
+
+    setLocalProxy((prev) => {
+      if (!prev) return prev;
+      const globalPolicies = reorderItem(
+        prev.globalPolicies ?? [],
+        sourceIndex,
+        targetIndex
+      );
+      return globalPolicies ? { ...prev, globalPolicies } : prev;
+    });
+    setDraggedGlobalPolicyIndex(null);
+    setDragOverGlobalPolicyIndex(null);
+  };
+
+  const handleReorderResourcePolicy = (
+    resourceKey: string,
+    targetIndex: number,
+    visiblePolicyIndexes: number[],
+    sourceIndex = draggedResourcePolicy?.policyIndex
+  ) => {
+    if (
+      isReadOnlyProxy ||
+      sourceIndex === undefined ||
+      (draggedResourcePolicy !== null &&
+        draggedResourcePolicy.resourceKey !== resourceKey) ||
+      sourceIndex === targetIndex
+    ) {
+      setDraggedResourcePolicy(null);
+      setDragOverResourcePolicy(null);
+      return;
+    }
+
+    setLocalProxy((prev) => {
+      if (!prev) return prev;
+      const operationPolicies = reorderItemsWithinIndexes(
+        prev.operationPolicies ?? [],
+        visiblePolicyIndexes,
+        sourceIndex,
+        targetIndex
+      );
+      return operationPolicies ? { ...prev, operationPolicies } : prev;
+    });
+    setDraggedResourcePolicy(null);
+    setDragOverResourcePolicy(null);
+  };
+
   // ── Render ──────────────────────────────────────────────────────────────
 
   return (
@@ -744,16 +820,21 @@ export default function LLMProxyGuardrailsTab() {
         <Grid size={{ xs: 12 }}>
           <Grid container spacing={2} sx={{ alignItems: 'center' }}>
             <Grid size={{ xs: 12, sm: 'grow' }}>
-              <Typography variant="h6" sx={{ fontWeight: 600 }}>
-                <FormattedMessage
-                  id="aiWorkspace.pages.appShell.appShellPages.proxies.LLMProxyGuardrailsTab.apply.global.guardrails"
-                  defaultMessage={'Global Guardrails & Policies'}
-                />
-              </Typography>
+              <Stack direction="row" alignItems="center" spacing={0.5}>
+                <Typography variant="h6" sx={{ fontWeight: 600 }}>
+                  <FormattedMessage
+                    id="aiWorkspace.pages.appShell.appShellPages.proxies.LLMProxyGuardrailsTab.apply.global.guardrails"
+                    defaultMessage={'Global Guardrails & Policies'}
+                  />
+                </Typography>
+                <PoliciesReorderHelp />
+              </Stack>
               <Typography variant="body2" color="text.secondary">
                 <FormattedMessage
                   id="aiWorkspace.pages.appShell.appShellPages.proxies.LLMProxyGuardrailsTab.applies.for.all.resources"
-                  defaultMessage={'Applies for all resources'}
+                  defaultMessage={
+                    'Applies to all resources. Drag policies to change their execution order.'
+                  }
                 />
               </Typography>
             </Grid>
@@ -786,26 +867,59 @@ export default function LLMProxyGuardrailsTab() {
               rowGap: 1.25,
             }}
           >
-            {globalGuardrails.map((g) => (
-              <GuardrailPill
-                key={g.id}
-                label={`${g.displayName} (${g.version.replace(/^v/, '')})`}
-                onClick={() =>
-                  handleEditGuardrailPill(g.policyIndex, g.pathIndex, {
-                    scope: 'global',
-                  }, g.source)
-                }
-                onRemove={
-                  isReadOnlyProxy
-                    ? undefined
-                    : () =>
-                        void handleRemoveAppliedGuardrail(
+            {globalGuardrails.map((g) => {
+              const isReorderable = !isReadOnlyProxy && g.source === 'global';
+              const isDragOver =
+                isReorderable &&
+                dragOverGlobalPolicyIndex === g.policyIndex &&
+                draggedGlobalPolicyIndex !== g.policyIndex;
+
+              return (
+                <DraggableGuardrailPill
+                  key={g.id}
+                  id={g.id}
+                  label={`${g.displayName} (${g.version.replace(/^v/, '')})`}
+                  reorderable={isReorderable}
+                  isDragging={
+                    isReorderable &&
+                    draggedGlobalPolicyIndex === g.policyIndex
+                  }
+                  isDragOver={isDragOver}
+                  onDragStart={() =>
+                    setDraggedGlobalPolicyIndex(g.policyIndex)
+                  }
+                  onDragEnd={() => {
+                    setDraggedGlobalPolicyIndex(null);
+                    setDragOverGlobalPolicyIndex(null);
+                  }}
+                  onDragOver={() =>
+                    setDragOverGlobalPolicyIndex(g.policyIndex)
+                  }
+                  onDrop={() => handleReorderGlobalPolicy(g.policyIndex)}
+                  onKeyboardMove={(direction) =>
+                    handleReorderGlobalPolicy(
+                      g.policyIndex + direction,
+                      g.policyIndex
+                    )
+                  }
+                  onClick={() =>
+                    handleEditGuardrailPill(g.policyIndex, g.pathIndex, {
+                      scope: 'global',
+                    }, g.source)
+                  }
+                  onRemove={
+                    isReadOnlyProxy
+                      ? undefined
+                      : () =>
+                        handleRemoveAppliedGuardrail(
                           g.policyIndex,
-                          g.pathIndex, g.source
+                          g.pathIndex,
+                          g.source
                         )
-                }
-              />
-            ))}
+                  }
+                />
+              );
+            })}
           </Stack>
         </Grid>
 
@@ -1002,6 +1116,9 @@ export default function LLMProxyGuardrailsTab() {
                       });
                       return items;
                     })();
+                    const visibleOperationPolicyIndexes = resourceGuardrails
+                      .filter((item) => item.source === 'operation')
+                      .map((item) => item.policyIndex);
 
                     return (
                       <Box key={key}>
@@ -1099,36 +1216,105 @@ export default function LLMProxyGuardrailsTab() {
                                     sx={{ flexWrap: 'wrap' }}
                                   >
                                     {resourceGuardrails.length > 0 ? (
-                                      resourceGuardrails.map((g) => (
-                                        <GuardrailPill
-                                          key={g.id}
-                                          label={`${
-                                            g.displayName
-                                          } (${g.version.replace(/^v/, '')})`}
-                                          onClick={() =>
-                                            handleEditGuardrailPill(
-                                              g.policyIndex,
-                                              g.pathIndex,
-                                              {
-                                                scope: 'resource',
-                                                method,
-                                                path: resource.path,
-                                              },
-                                              g.source
-                                            )
-                                          }
-                                          onRemove={
-                                            isReadOnlyProxy
-                                              ? undefined
-                                              : () =>
-                                                void handleRemoveAppliedGuardrail(
-                                                  g.policyIndex,
-                                                  g.pathIndex,
-                                                  g.source
-                                                )
-                                          }
-                                        />
-                                      ))
+                                      resourceGuardrails.map((g) => {
+                                        const isReorderable =
+                                          !isReadOnlyProxy &&
+                                          g.source === 'operation';
+                                        const isDragging =
+                                          isReorderable &&
+                                          draggedResourcePolicy?.resourceKey ===
+                                            key &&
+                                          draggedResourcePolicy.policyIndex ===
+                                            g.policyIndex;
+                                        const isDragOver =
+                                          isReorderable &&
+                                          dragOverResourcePolicy?.resourceKey ===
+                                            key &&
+                                          dragOverResourcePolicy.policyIndex ===
+                                            g.policyIndex &&
+                                          !isDragging;
+
+                                        return (
+                                          <DraggableGuardrailPill
+                                            key={g.id}
+                                            id={g.id}
+                                            label={`${
+                                              g.displayName
+                                            } (${g.version.replace(/^v/, '')})`}
+                                            reorderable={isReorderable}
+                                            isDragging={isDragging}
+                                            isDragOver={isDragOver}
+                                            onDragStart={() =>
+                                              setDraggedResourcePolicy({
+                                                resourceKey: key,
+                                                policyIndex: g.policyIndex,
+                                              })
+                                            }
+                                            onDragEnd={() => {
+                                              setDraggedResourcePolicy(null);
+                                              setDragOverResourcePolicy(null);
+                                            }}
+                                            onDragOver={() => {
+                                              if (
+                                                draggedResourcePolicy?.resourceKey ===
+                                                key
+                                              ) {
+                                                setDragOverResourcePolicy({
+                                                  resourceKey: key,
+                                                  policyIndex: g.policyIndex,
+                                                });
+                                              }
+                                            }}
+                                            onDrop={() =>
+                                              handleReorderResourcePolicy(
+                                                key,
+                                                g.policyIndex,
+                                                visibleOperationPolicyIndexes
+                                              )
+                                            }
+                                            onKeyboardMove={(direction) => {
+                                              const position =
+                                                visibleOperationPolicyIndexes.indexOf(
+                                                  g.policyIndex
+                                                );
+                                              const targetIndex =
+                                                visibleOperationPolicyIndexes[
+                                                  position + direction
+                                                ];
+                                              if (targetIndex !== undefined) {
+                                                handleReorderResourcePolicy(
+                                                  key,
+                                                  targetIndex,
+                                                  visibleOperationPolicyIndexes,
+                                                  g.policyIndex
+                                                );
+                                              }
+                                            }}
+                                            onClick={() =>
+                                              handleEditGuardrailPill(
+                                                g.policyIndex,
+                                                g.pathIndex,
+                                                {
+                                                  scope: 'resource',
+                                                  method,
+                                                  path: resource.path,
+                                                },
+                                                g.source
+                                              )
+                                            }
+                                            onRemove={
+                                              isReadOnlyProxy
+                                                ? undefined
+                                                : () =>
+                                                  handleRemoveAppliedGuardrail(
+                                                    g.policyIndex,
+                                                    g.pathIndex,
+                                                    g.source
+                                                  )
+                                            }
+                                          />
+                                        );
+                                      })
                                     ) : (
                                       <Typography
                                         variant="body2"

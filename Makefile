@@ -113,6 +113,7 @@ build-and-push-platform-api-multiarch: ## Build and push platform-api Docker ima
 	$(MAKE) -C platform-api build-and-push-multiarch VERSION=$(PLATFORM_API_VERSION)
 	@echo "Successfully built and pushed multi-arch platform-api"
 
+
 .PHONY: build-and-push-api-portal-multiarch
 build-and-push-api-portal-multiarch: ## Build and push API Portal Docker image for multiple architectures (amd64, arm64)
 	@echo "Building and pushing multi-arch API Portal ($(API_PORTAL_VERSION))..."

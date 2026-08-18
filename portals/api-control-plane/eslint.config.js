@@ -1,5 +1,6 @@
 import js from '@eslint/js';
 import globals from 'globals';
+import formatjs from 'eslint-plugin-formatjs';
 import reactHooks from 'eslint-plugin-react-hooks';
 import tseslint from 'typescript-eslint';
 
@@ -80,12 +81,41 @@ export default [
     },
   },
   {
-    // The legacy layer's modules import each other freely; that freedom ends at
-    // src/api/core and src/api/resources, which are governed below.
-    //
-    // `useMockApi`/`usePlatformApi` are plain boolean mode checks, not React
-    // hooks — they merely start with `use`, which rules-of-hooks would
-    // otherwise flag as an out-of-component hook call.
+
+    // i18n message hygiene: see src/i18n/README.md for the rules these enforce.
+    files: ['src/**/*.{ts,tsx}'],
+    plugins: { formatjs },
+    rules: {
+      // ICU and placeholder correctness.
+      'formatjs/no-invalid-icu': 'error',
+      'formatjs/enforce-placeholders': 'error',
+      'formatjs/no-missing-icu-plural-one-placeholders': 'error',
+      'formatjs/prefer-pound-in-plural': 'error',
+
+      // Extraction and translator safety.
+      'formatjs/enforce-default-message': ['error', 'literal'],
+      'formatjs/no-useless-message': 'error',
+      'formatjs/no-multiple-plurals': 'error',
+      'formatjs/no-offset': 'error',
+
+      // Temporary migration rule; promote to error when the sweep is complete.
+      'formatjs/no-literal-string-in-jsx': 'warn',
+    },
+  },
+  {
+    // Tests and fixtures intentionally use literals; message-shaped objects aren't catalog entries.
+    files: ['src/**/*.test.{ts,tsx}', 'src/test/**'],
+    rules: {
+      'formatjs/no-literal-string-in-jsx': 'off',
+      'no-restricted-syntax': 'off',
+    },
+  },
+  {
+    // The hook layer + DI provider legitimately import the client modules.
+    // `useMockApi`/`usePlatformApi` here are plain boolean mode-check
+    // functions, not React hooks — they're just named with a `use` prefix,
+    // which react-hooks/rules-of-hooks otherwise flags as an out-of-component
+    // hook call.
     files: ['src/api/**'],
     rules: {
       '@typescript-eslint/no-restricted-imports': 'off',

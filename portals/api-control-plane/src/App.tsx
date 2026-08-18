@@ -33,6 +33,7 @@ import {
   ExtensionsProvider,
   type ApiControlPlaneExtension,
 } from './extensions';
+import { I18nProvider } from './i18n';
 
 /**
  * Builds the app's QueryClient with the notification handler already attached,
@@ -66,28 +67,26 @@ export type AppProps = {
 
 export default function App({ extensions = [] }: AppProps) {
   return (
-    <OxygenUIThemeProvider theme={OxygenTheme}>
-      {/*
-        NotificationProvider sits above the query client so the client can be
-        constructed with a handler that reports mutation failures to the user.
-        It depends on nothing below it, so hoisting it is free.
-      */}
-      <NotificationProvider>
-        <AppQueryProvider>
-          <ApiClientProvider>
-            <ErrorBoundary>
-              <BrowserRouter basename={runtimeConfig.appBasePath || undefined}>
-                <AuthProvider>
-                  <ProductActivation />
-                  <ExtensionsProvider extensions={extensions}>
-                    <AppRoutes extensions={extensions} />
-                  </ExtensionsProvider>
-                </AuthProvider>
-              </BrowserRouter>
-            </ErrorBoundary>
-          </ApiClientProvider>
-        </AppQueryProvider>
-      </NotificationProvider>
-    </OxygenUIThemeProvider>
+
+    <I18nProvider>
+      <OxygenUIThemeProvider theme={OxygenTheme}>
+        <NotificationProvider>
+          <AppQueryProvider>
+            <ApiClientProvider>
+              <ErrorBoundary>
+                <BrowserRouter basename={runtimeConfig.appBasePath || undefined}>
+                  <AuthProvider>
+                    <ProductActivation />
+                    <ExtensionsProvider extensions={extensions}>
+                      <AppRoutes extensions={extensions} />
+                    </ExtensionsProvider>
+                  </AuthProvider>
+                </BrowserRouter>
+              </ErrorBoundary>
+            </ApiClientProvider>
+          </AppQueryProvider>
+        </NotificationProvider>
+      </OxygenUIThemeProvider>
+    </I18nProvider>
   );
 }

@@ -25,7 +25,8 @@ BUILD_DATE := $(shell date -u +"%Y-%m-%dT%H:%M:%SZ")
 
 # Docker image configuration
 DOCKER_REGISTRY ?= ghcr.io/wso2/api-platform
-IMAGE_NAME := $(DOCKER_REGISTRY)/platform-api
+IMAGE_SUFFIX ?= platform-api
+IMAGE_NAME := $(DOCKER_REGISTRY)/$(IMAGE_SUFFIX)
 PORT ?= 9243
 
 # Integration test configuration

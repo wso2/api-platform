@@ -60,6 +60,7 @@ import {
 import TemplateVersionDialog from './AddNewProvider/TemplateVersionDialog';
 import { getErrorMessage, getFieldErrors } from '../../../../utils/apiError';
 import { FormattedMessage } from 'react-intl';
+import { reorderItem } from '../../../../Components/GuardrailPill';
 
 const VERSION_PATTERN = /^v\d+\.\d+$/;
 
@@ -313,6 +314,14 @@ export default function ServiceProviderNew() {
         setGuardrailSettings({});
       }
       return next;
+    });
+  };
+
+  const handleReorderGuardrail = (sourceId: string, targetId: string) => {
+    setGuardrails((prev) => {
+      const sourceIndex = prev.findIndex((item) => item.id === sourceId);
+      const targetIndex = prev.findIndex((item) => item.id === targetId);
+      return reorderItem(prev, sourceIndex, targetIndex) ?? prev;
     });
   };
 
@@ -601,6 +610,7 @@ export default function ServiceProviderNew() {
               onSelectGuardrail={handleSelectGuardrail}
               onAddGuardrail={handleAddGuardrail}
               onRemoveGuardrail={handleRemoveGuardrail}
+              onReorderGuardrail={handleReorderGuardrail}
             />
           )}
         </Grid>
