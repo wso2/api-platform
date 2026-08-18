@@ -85,6 +85,9 @@ type httpSink struct {
 	queue chan []byte
 	// dropOldest selects the eviction policy when the queue is full.
 	dropOldest bool
+	// retryAbortDepth is the queue depth at which a retrying batch gives up so the
+	// sender can resume draining. See the note in deliver.
+	retryAbortDepth int
 
 	// done is closed by Close to stop the sender goroutine.
 	done chan struct{}
@@ -156,6 +159,10 @@ func newHTTPSink(cfg config.TrafficLogHTTPConfig) (*httpSink, error) {
 			config.TrafficLogQueueDropOldest),
 		done:    make(chan struct{}),
 		stopped: make(chan struct{}),
+		// Below this, retrying is free — nothing is being lost
+		// while we wait. At or above it, the queue is filling faster than we are
+		// draining and every further second of retry costs events.
+		retryAbortDepth: cfg.EffectiveRetryAbortDepth(),
 	}
 
 	// Publish the configured bound so an alert can express "the queue is 80%
@@ -315,6 +322,30 @@ func (s *httpSink) deliver(batch [][]byte) {
 	var nextDelay time.Duration
 	for attempt := 0; attempt <= s.cfg.MaxRetries; attempt++ {
 		if attempt > 0 {
+			// Head-of-line check, before committing to another wait.
+			//
+			// There is one sender goroutine, and deliver runs inside its select
+			// loop, so nothing drains the queue while a batch is retrying. With the
+			// defaults a batch against a receiver that accepts and never answers
+			// holds the sender for 43-47s (4 attempts x request_timeout plus
+			// jittered backoff), and up to ~130s if the receiver returns 429 with a
+			// large Retry-After. At even a modest event rate that is long enough to
+			// fill the whole queue, so retrying to save ~batch_max_events costs
+			// thousands of newer events to queue_full.
+			//
+			// Retrying is only worth it while nothing else is being lost. Once the
+			// queue is past the high-water mark, abandon this batch and get back to
+			// draining — one batch lost deliberately instead of an unbounded number
+			// lost as a side effect.
+			if depth := len(s.queue); depth >= s.retryAbortDepth {
+				mDropped(sinkNameHTTP, dropReasonBackpressure, len(batch))
+				s.throttle.logError("Abandoning traffic-log batch retries to resume draining; "+
+					"the receiver is accepting but too slow to keep up", sinkNameHTTP,
+					fmt.Errorf("%d event(s) dropped after %d attempt(s) with queue at %d/%d: %w",
+						len(batch), attempt, depth, s.cfg.QueueCapacity, lastErr))
+				return
+			}
+
 			delay := nextDelay
 			if delay <= 0 {
 				delay = s.backoff(attempt)

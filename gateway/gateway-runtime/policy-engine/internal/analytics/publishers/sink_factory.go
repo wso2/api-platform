@@ -45,6 +45,10 @@ const (
 	// dropReasonRotateFailed: the file sink could not rotate, so the line that
 	// triggered the rotation was not written.
 	dropReasonRotateFailed = "rotate_failed"
+	// dropReasonBackpressure: the HTTP sink abandoned a batch's remaining retries
+	// because the queue was filling behind it. Distinct from send_failed so an
+	// operator can tell "the receiver is slow" from "the receiver is broken".
+	dropReasonBackpressure = "backpressure"
 )
 
 // Codes recorded on policy_engine_traffic_log_write_errors_total for non-HTTP
@@ -135,7 +139,7 @@ var sinkFailureLabels = map[string]struct {
 		errCodes:    []string{errCodeWrite, errCodeRotate},
 	},
 	sinkNameHTTP: {
-		dropReasons: []string{dropReasonQueueFull, dropReasonSendFailed},
+		dropReasons: []string{dropReasonQueueFull, dropReasonSendFailed, dropReasonBackpressure},
 		// Only the transport code is pre-created. The HTTP sink also labels by
 		// response status, and those are unbounded — materializing every
 		// possible status would be worse than the gap it closes.

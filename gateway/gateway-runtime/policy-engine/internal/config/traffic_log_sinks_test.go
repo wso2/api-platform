@@ -374,3 +374,85 @@ func TestResolveTrafficLogFilePath_RejectsTraversal(t *testing.T) {
 		assert.True(t, filepath.IsAbs(got))
 	}
 }
+
+// TestEffectiveRetryAbortDepth covers the resolver the HTTP sink uses to decide
+// when a retrying batch gives up. The floor matters: a zero depth compares true
+// against an empty queue, which would abandon every retry immediately and
+// silently turn max_retries into 0.
+func TestEffectiveRetryAbortDepth(t *testing.T) {
+	for _, tc := range []struct {
+		name     string
+		capacity int
+		ratio    float64
+		want     int
+	}{
+		// 0 is honoured literally: depth 0, which every queue length satisfies,
+		// so retries are always abandoned. It is NOT remapped to the default.
+		{"explicit zero always abandons retries", 10000, 0, 0},
+		{"explicit half", 10000, 0.5, 5000},
+		{"lower ratio favours draining", 10000, 0.1, 1000},
+		{"ratio of 1 never aborts before the queue is full", 10000, 1, 10000},
+		// The floor applies only to a non-zero ratio, so rounding cannot silently
+		// turn a small ratio into "always abandon".
+		{"small ratio on a tiny queue floors at 1", 1, 0.1, 1},
+		{"scales with capacity", 500, 0.5, 250},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			cfg := TrafficLogHTTPConfig{QueueCapacity: tc.capacity, RetryAbortQueueRatio: tc.ratio}
+			assert.Equal(t, tc.want, cfg.EffectiveRetryAbortDepth())
+		})
+	}
+}
+
+func TestValidate_RetryAbortQueueRatioBounds(t *testing.T) {
+	base := func(tl *TrafficLoggingConfig) {
+		tl.Outputs = []string{TrafficLogSinkHTTP}
+		tl.HTTP = defaultTrafficLogHTTPConfig()
+		tl.HTTP.Endpoint = "https://collector.example.com/ingest"
+	}
+	for _, r := range []float64{0, 0.25, 1} {
+		cfg := trafficLogConfig(func(tl *TrafficLoggingConfig) { base(tl); tl.HTTP.RetryAbortQueueRatio = r })
+		assert.NoError(t, cfg.Validate(), "ratio %v is valid", r)
+	}
+	for _, r := range []float64{-0.1, 1.5} {
+		cfg := trafficLogConfig(func(tl *TrafficLoggingConfig) { base(tl); tl.HTTP.RetryAbortQueueRatio = r })
+		assert.Error(t, cfg.Validate(), "ratio %v must be rejected", r)
+	}
+}
+
+// TestTrafficLogRetryAbortRatio_AbsentIsNotZero pins the distinction the literal
+// semantics depend on: config.Load unmarshals over a pre-populated struct, so an
+// omitted key keeps the shipped 0.5 default while an explicit 0 overwrites it.
+// If these ever collapsed, "0 means 0" would silently disable retries for every
+// deployment that never set the key.
+func TestTrafficLogRetryAbortRatio_AbsentIsNotZero(t *testing.T) {
+	base := `
+[policy_engine]
+[policy_engine.config_mode]
+mode = "xds"
+[traffic_logging]
+enabled = true
+outputs = ["http"]
+[traffic_logging.http]
+endpoint = "https://collector.example.com/ingest"
+`
+	load := func(t *testing.T, extra string) *Config {
+		t.Helper()
+		p := filepath.Join(t.TempDir(), "c.toml")
+		require.NoError(t, os.WriteFile(p, []byte(base+extra), 0o600))
+		cfg, err := Load(p)
+		require.NoError(t, err)
+		return cfg
+	}
+
+	absent := load(t, "")
+	assert.Equal(t, DefaultTrafficLogRetryAbortQueueRatio, absent.TrafficLogging.HTTP.RetryAbortQueueRatio,
+		"an omitted key must keep the shipped default")
+	assert.Equal(t, 5000, absent.TrafficLogging.HTTP.EffectiveRetryAbortDepth())
+
+	zero := load(t, "retry_abort_queue_ratio = 0\n")
+	assert.Equal(t, 0.0, zero.TrafficLogging.HTTP.RetryAbortQueueRatio,
+		"an explicit 0 must be honoured, not remapped")
+	assert.Equal(t, 0, zero.TrafficLogging.HTTP.EffectiveRetryAbortDepth(),
+		"depth 0 means every retry is abandoned")
+}

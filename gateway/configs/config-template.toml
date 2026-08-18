@@ -531,6 +531,23 @@ exclude_fields = []
 # "file" sink — read only when outputs contains "file".
 # -----------------------------------------------------------------------------
 [traffic_logging.file]
+# SINGLE WRITER ONLY. This must be a per-pod volume (emptyDir, or a PVC bound to
+# exactly one replica). A shared RWX volume, hostPath, or NFS mount written by
+# more than one gateway pod is NOT supported and will silently lose records —
+# there is no error, the lines simply go missing:
+#
+#   * Rotation renames the live file to <path>.1. When one pod rotates, every
+#     other pod keeps writing to the descriptor it already holds, so their lines
+#     land in the backup — which the next rotation clobbers.
+#   * The size counter is per process, seeded at open and advanced by each write.
+#     With several writers each one undercounts the real file, so the ceiling
+#     triggers late or never and the file grows past max_size_mb.
+#   * On NFS an O_APPEND write is not atomic, so concurrent lines can interleave
+#     and corrupt each other.
+#
+# Scale-out is fine — give each replica its own volume and let the collector
+# (or the http sink) do the merging.
+#
 # Absolute path of the live log file; a relative path is rejected rather than
 # resolved against the working directory. The parent directory is created (0700)
 # and the file opened (0600) at startup, so a permissions problem surfaces at
@@ -591,6 +608,21 @@ request_timeout = "10s"
 # receiver rejected the batch's shape, and retrying would just amplify it.
 max_retries = 3
 retry_backoff = "1s"
+# Fraction of queue_capacity at which a retrying batch abandons its remaining
+# attempts and is counted as dropped_total{reason="backpressure"}. Below it,
+# retrying costs nothing; at or above it, every further second of retry is paid
+# for in newer events lost to queue_full.
+#
+# The value is used exactly as written — it is never remapped to a default:
+#   0     always abandon retries: one delivery attempt per batch, whatever the
+#         queue looks like (the same effect as max_retries = 0)
+#   0.1   abort once the queue is 10% full — favours draining over saving any
+#         individual batch
+#   0.5   the shipped default: retry freely while the queue is shallow, stop
+#         once it starts filling
+#   1     never abort early where a receiver that accepts but never answers holds 
+#         the sender for the full retry budget
+retry_abort_queue_ratio = 0.5
 
 # Authentication material sent with every batch. `type` selects the scheme and
 # each scheme's fields live in its own sub-table, the same shape [analytics] uses

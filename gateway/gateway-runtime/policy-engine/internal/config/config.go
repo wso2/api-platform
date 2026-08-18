@@ -279,6 +279,20 @@ type TrafficLogHTTPConfig struct {
 	// RetryBackoff is the base delay for exponential backoff. Jitter is applied
 	// per attempt so replicas retrying after a shared outage do not synchronize.
 	RetryBackoff time.Duration `koanf:"retry_backoff"`
+	// RetryAbortQueueRatio is the fraction of QueueCapacity at which a retrying
+	// batch abandons its remaining attempts so the single sender can resume
+	// draining.
+	//
+	// There is one sender and it retries synchronously, so nothing drains the
+	// queue while a batch waits. Retrying is free while the queue is shallow and
+	// expensive once it is filling, which is exactly what this ratio expresses.
+	//
+	// The value is used literally, never remapped: 0 means retries are always
+	// abandoned (one attempt per batch), and 1 means never abort early — the
+	// behaviour before this existed, where a hung receiver holds the sender for
+	// the whole retry budget. Omitting the key leaves the shipped 0.5 default,
+	// which is distinct from writing 0. See EffectiveRetryAbortDepth.
+	RetryAbortQueueRatio float64 `koanf:"retry_abort_queue_ratio"`
 
 	// Auth configures per-request authentication material.
 	Auth TrafficLogHTTPAuthConfig `koanf:"auth"`
@@ -733,8 +747,10 @@ func defaultTrafficLogHTTPConfig() TrafficLogHTTPConfig {
 		RequestTimeout: 10 * time.Second,
 		MaxRetries:     3,
 		RetryBackoff:   time.Second,
-		Auth:           TrafficLogHTTPAuthConfig{Type: TrafficLogAuthNone},
-		TLS:            TrafficLogHTTPTLSConfig{},
+		// Half: retry freely while the queue is shallow, stop once it is filling.
+		RetryAbortQueueRatio: DefaultTrafficLogRetryAbortQueueRatio,
+		Auth:                 TrafficLogHTTPAuthConfig{Type: TrafficLogAuthNone},
+		TLS:                  TrafficLogHTTPTLSConfig{},
 	}
 }
 
@@ -1244,6 +1260,36 @@ func NormalizeTrafficLogOutputs(outputs []string) ([]string, error) {
 	return normalized, nil
 }
 
+// EffectiveRetryAbortDepth returns the queue depth at or above which a retrying
+// batch gives up. The configured ratio is used literally — it is NOT remapped, so
+// what an operator writes is what runs:
+//
+//	0            depth 0, which every queue length satisfies: retries are always
+//	             abandoned, i.e. one delivery attempt per batch.
+//	0 < r <= 1   depth = queue_capacity * r.
+//
+// An omitted key keeps the shipped default (see defaultTrafficLogHTTPConfig),
+// because config.Load unmarshals over a pre-populated struct: absent leaves 0.5
+// in place, while an explicit 0 overwrites it. That is what makes "0 means 0"
+// safe here — the two cases are genuinely distinguishable.
+//
+// The floor applies only to a NON-zero ratio, where a depth of 0 could only come
+// from rounding a small ratio against a small queue and would silently mean
+// something the operator did not ask for.
+func (c TrafficLogHTTPConfig) EffectiveRetryAbortDepth() int {
+	depth := int(float64(c.QueueCapacity) * c.RetryAbortQueueRatio)
+	if depth < 1 && c.RetryAbortQueueRatio > 0 {
+		depth = 1
+	}
+	return depth
+}
+
+// DefaultTrafficLogRetryAbortQueueRatio is the fraction of the HTTP sink's queue
+// at which a retrying batch gives up. Half is a deliberate midpoint: high enough
+// that an ordinary blip still gets its full retry budget, low enough that a hung
+// receiver cannot consume the whole queue before the sender resumes draining.
+const DefaultTrafficLogRetryAbortQueueRatio = 0.5
+
 // DefaultTrafficLogShutdownTimeout bounds the flush of buffering traffic-log sinks
 // when traffic_logging.shutdown_timeout is unset or non-positive.
 const DefaultTrafficLogShutdownTimeout = 5 * time.Second
@@ -1426,6 +1472,11 @@ func validateTrafficLogHTTPConfig(cfg TrafficLogHTTPConfig) error {
 	}
 	if cfg.MaxRetries > 0 && cfg.RetryBackoff <= 0 {
 		return fmt.Errorf("retry_backoff must be positive when max_retries > 0, got %s", cfg.RetryBackoff)
+	}
+	if cfg.RetryAbortQueueRatio < 0 || cfg.RetryAbortQueueRatio > 1 {
+		return fmt.Errorf("retry_abort_queue_ratio must be between 0 and 1 "+
+			"(0 = always abandon retries, 1 = never abort early), got %v",
+			cfg.RetryAbortQueueRatio)
 	}
 
 	if err := validateTrafficLogHTTPAuth(cfg.Auth); err != nil {

@@ -36,6 +36,7 @@ import (
 	"path/filepath"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -102,7 +103,11 @@ func httpSinkCfg(endpoint string) config.TrafficLogHTTPConfig {
 		RequestTimeout:         2 * time.Second,
 		MaxRetries:             0,
 		RetryBackoff:           time.Millisecond,
-		Auth:                   config.TrafficLogHTTPAuthConfig{Type: config.TrafficLogAuthNone},
+		// Mirror the shipped default. A struct literal leaves this at Go's zero,
+		// which is honoured literally as "always abandon retries" — so without it
+		// every retry test would silently exercise a no-retry sink.
+		RetryAbortQueueRatio: config.DefaultTrafficLogRetryAbortQueueRatio,
+		Auth:                 config.TrafficLogHTTPAuthConfig{Type: config.TrafficLogAuthNone},
 	}
 	return cfg
 }
@@ -771,4 +776,53 @@ func TestParseRetryAfter_ClampsOverflow(t *testing.T) {
 		assert.LessOrEqual(t, got, retryAfterCap, "Retry-After %q must be capped", v)
 	}
 	assert.Equal(t, 5*time.Second, parseRetryAfter("5"), "an ordinary value is unchanged")
+}
+
+// TestHTTPSink_AbandonsRetriesUnderQueuePressure pins the head-of-line fix.
+//
+// deliver runs inside the single sender goroutine, so a batch retrying against a
+// receiver that accepts and never answers stops the queue draining for the whole
+// retry budget — 43-47s with the defaults, up to ~130s on a 429 with a large
+// Retry-After. At any real event rate that fills the queue, so retrying to save
+// one batch costs far more newer events to queue_full. Past the high-water mark
+// the batch must be abandoned so draining resumes.
+func TestHTTPSink_AbandonsRetriesUnderQueuePressure(t *testing.T) {
+	var attempts int64
+	block := make(chan struct{})
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		atomic.AddInt64(&attempts, 1)
+		<-block // accept, never answer
+	}))
+	t.Cleanup(func() { close(block); srv.Close() })
+
+	cfg := httpSinkCfg(srv.URL)
+	cfg.RequestTimeout = 150 * time.Millisecond
+	cfg.RetryBackoff = 10 * time.Millisecond
+	cfg.MaxRetries = 5
+	cfg.BatchMaxEvents = 2
+	cfg.FlushInterval = 10 * time.Millisecond
+	cfg.QueueCapacity = 20 // abort threshold is 10
+	s, err := newHTTPSink(cfg)
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = s.Close(context.Background()) })
+
+	before := gatherCounter(t, "policy_engine_traffic_log_dropped_total", "http")
+
+	// One batch to occupy the sender, then push enough to cross the threshold.
+	s.Write([]byte(`{"n":1}`))
+	s.Write([]byte(`{"n":2}`))
+	eventually(t, 2*time.Second, func() bool { return atomic.LoadInt64(&attempts) >= 1 })
+	for i := 0; i < 15; i++ {
+		s.Write([]byte(`{"n":9}`))
+	}
+
+	// The stuck batch must be abandoned rather than consuming all 5 retries.
+	eventually(t, 5*time.Second, func() bool {
+		return gatherCounter(t, "policy_engine_traffic_log_dropped_total", "http") > before
+	})
+	assert.Less(t, atomic.LoadInt64(&attempts), int64(6),
+		"retries must stop early under queue pressure, not run the full budget")
+
+	// And the queue must actually drain again rather than stay pinned.
+	eventually(t, 5*time.Second, func() bool { return len(s.queue) < cfg.QueueCapacity })
 }
