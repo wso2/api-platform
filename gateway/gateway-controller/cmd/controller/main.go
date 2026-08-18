@@ -389,7 +389,16 @@ func main() {
 	policyEngineConnected := make(chan struct{})
 
 	// Start xDS gRPC server with SDS support
-	xdsServer := xds.NewServer(snapshotManager, sdsSecretManager, cfg.Controller.Server.XDSPort, log, routerConnected)
+	var xdsServerOpts []xds.ServerOption
+	if cfg.Controller.Server.XDSTLS.Enabled {
+		xdsTLSConfig, err := config.BuildXDSServerTLSConfig(cfg.Controller.Server.XDSTLS)
+		if err != nil {
+			log.Error("invalid server.xds_tls config, refusing to start main xDS server in plaintext", slog.Any("error", err))
+			os.Exit(1)
+		}
+		xdsServerOpts = append(xdsServerOpts, xds.WithMTLS(xdsTLSConfig, cfg.Controller.Server.XDSTLS.AllowedClientIdentities))
+	}
+	xdsServer := xds.NewServer(snapshotManager, sdsSecretManager, cfg.Controller.Server.XDSPort, log, routerConnected, xdsServerOpts...)
 	go func() {
 		if err := xdsServer.Start(); err != nil {
 			log.Error("xDS server failed", slog.Any("error", err))
@@ -490,10 +499,12 @@ func main() {
 		policyxds.WithOnFirstConnect(policyEngineConnected),
 	}
 	if cfg.Controller.PolicyServer.TLS.Enabled {
-		serverOpts = append(serverOpts, policyxds.WithTLS(
-			cfg.Controller.PolicyServer.TLS.CertFile,
-			cfg.Controller.PolicyServer.TLS.KeyFile,
-		))
+		policyXDSTLSConfig, err := config.BuildXDSServerTLSConfig(cfg.Controller.PolicyServer.TLS)
+		if err != nil {
+			log.Error("invalid policy_server.tls config, refusing to start policy xDS server in plaintext", slog.Any("error", err))
+			os.Exit(1)
+		}
+		serverOpts = append(serverOpts, policyxds.WithMTLS(policyXDSTLSConfig, cfg.Controller.PolicyServer.TLS.AllowedClientIdentities))
 	}
 	policyXDSServer := policyxds.NewServer(policySnapshotManager, apiKeySnapshotManager, lazyResourceSnapshotManager, subscriptionSnapshotManager, nil, cfg.Controller.PolicyServer.Port, log, serverOpts...)
 	go func() {

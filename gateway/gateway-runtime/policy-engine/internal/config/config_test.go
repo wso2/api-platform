@@ -1198,8 +1198,60 @@ func TestValidate_XDSTLSConfig(t *testing.T) {
 				cfg.PolicyEngine.XDS.TLS.CertPath = "/path/to/cert"
 				cfg.PolicyEngine.XDS.TLS.KeyPath = "/path/to/key"
 				cfg.PolicyEngine.XDS.TLS.CAPath = "/path/to/ca"
+				cfg.PolicyEngine.XDS.TLS.EcdhCurves = "X25519,P-256"
 			},
 			expectErr: false,
+		},
+		{
+			name: "TLS enabled - PQC hybrid group opt-in",
+			setup: func(cfg *Config) {
+				cfg.PolicyEngine.ConfigMode.Mode = "xds"
+				cfg.PolicyEngine.XDS.ConnectTimeout = 10 * time.Second
+				cfg.PolicyEngine.XDS.RequestTimeout = 5 * time.Second
+				cfg.PolicyEngine.XDS.InitialReconnectDelay = 1 * time.Second
+				cfg.PolicyEngine.XDS.MaxReconnectDelay = 60 * time.Second
+				cfg.PolicyEngine.XDS.TLS.Enabled = true
+				cfg.PolicyEngine.XDS.TLS.CertPath = "/path/to/cert"
+				cfg.PolicyEngine.XDS.TLS.KeyPath = "/path/to/key"
+				cfg.PolicyEngine.XDS.TLS.CAPath = "/path/to/ca"
+				cfg.PolicyEngine.XDS.TLS.EcdhCurves = "X25519MLKEM768,X25519,P-256"
+			},
+			expectErr: false,
+		},
+		{
+			name: "TLS enabled - unsupported ecdh curve",
+			setup: func(cfg *Config) {
+				cfg.PolicyEngine.ConfigMode.Mode = "xds"
+				cfg.PolicyEngine.XDS.ConnectTimeout = 10 * time.Second
+				cfg.PolicyEngine.XDS.RequestTimeout = 5 * time.Second
+				cfg.PolicyEngine.XDS.InitialReconnectDelay = 1 * time.Second
+				cfg.PolicyEngine.XDS.MaxReconnectDelay = 60 * time.Second
+				cfg.PolicyEngine.XDS.TLS.Enabled = true
+				cfg.PolicyEngine.XDS.TLS.CertPath = "/path/to/cert"
+				cfg.PolicyEngine.XDS.TLS.KeyPath = "/path/to/key"
+				cfg.PolicyEngine.XDS.TLS.CAPath = "/path/to/ca"
+				cfg.PolicyEngine.XDS.TLS.EcdhCurves = "not-a-curve"
+			},
+			expectErr: true,
+			errMsg:    "xds.tls.ecdh_curves",
+		},
+		{
+			name: "TLS enabled - unsupported cipher suite",
+			setup: func(cfg *Config) {
+				cfg.PolicyEngine.ConfigMode.Mode = "xds"
+				cfg.PolicyEngine.XDS.ConnectTimeout = 10 * time.Second
+				cfg.PolicyEngine.XDS.RequestTimeout = 5 * time.Second
+				cfg.PolicyEngine.XDS.InitialReconnectDelay = 1 * time.Second
+				cfg.PolicyEngine.XDS.MaxReconnectDelay = 60 * time.Second
+				cfg.PolicyEngine.XDS.TLS.Enabled = true
+				cfg.PolicyEngine.XDS.TLS.CertPath = "/path/to/cert"
+				cfg.PolicyEngine.XDS.TLS.KeyPath = "/path/to/key"
+				cfg.PolicyEngine.XDS.TLS.CAPath = "/path/to/ca"
+				cfg.PolicyEngine.XDS.TLS.EcdhCurves = "X25519,P-256"
+				cfg.PolicyEngine.XDS.TLS.Ciphers = "TLS_RSA_WITH_RC4_128_SHA"
+			},
+			expectErr: true,
+			errMsg:    "xds.tls.ciphers",
 		},
 	}
 

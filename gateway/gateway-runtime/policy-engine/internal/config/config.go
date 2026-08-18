@@ -686,6 +686,25 @@ type XDSTLSConfig struct {
 
 	// CAPath is the path to the CA certificate for server verification
 	CAPath string `koanf:"ca_path"`
+
+	// Ciphers is a comma-separated list of Go crypto/tls cipher suite names
+	// (e.g. "TLS_ECDHE_ECDSA_WITH_AES_128_GCM_SHA256"), restricting which
+	// suites this client offers. Empty by default -- Go's own secure default
+	// set/order applies. Only affects TLS 1.2 and below; TLS 1.3 suite
+	// selection is not configurable in Go's crypto/tls. Parsed with the same
+	// ParseAdminCiphers helper the admin TLS listener uses (config.go),
+	// reused here rather than duplicated.
+	Ciphers string `koanf:"ciphers"`
+
+	// EcdhCurves is a comma-separated list of TLS 1.3 key-exchange groups
+	// this client offers, most preferred first (e.g. "X25519,P-256").
+	// Classical curves only by default. A hybrid post-quantum group
+	// ("X25519MLKEM768", FIPS 203 ML-KEM-768 + X25519) can be prepended once
+	// gateway-controller's policy_server.tls is confirmed to support it --
+	// this is Go's own crypto/tls (1.23+ implements X25519MLKEM768
+	// natively), so an unsupporting peer simply falls back to a later
+	// classical entry in this same list rather than failing the handshake.
+	EcdhCurves string `koanf:"ecdh_curves"`
 }
 
 // FileConfigConfig holds file-based configuration settings
@@ -950,7 +969,8 @@ func defaultConfig() *Config {
 				InitialReconnectDelay: 1 * time.Second,
 				MaxReconnectDelay:     60 * time.Second,
 				TLS: XDSTLSConfig{
-					Enabled: false,
+					Enabled:    false,
+					EcdhCurves: "X25519,P-256",
 				},
 			},
 			FileConfig: FileConfigConfig{
@@ -1282,6 +1302,12 @@ func (c *Config) validateXDSConfig() error {
 		}
 		if c.PolicyEngine.XDS.TLS.CAPath == "" {
 			return fmt.Errorf("xds.tls.ca_path is required when TLS is enabled")
+		}
+		if _, err := ParseAdminCiphers(c.PolicyEngine.XDS.TLS.Ciphers); err != nil {
+			return fmt.Errorf("xds.tls.ciphers: %w", err)
+		}
+		if _, err := ParseAdminEcdhCurves(c.PolicyEngine.XDS.TLS.EcdhCurves); err != nil {
+			return fmt.Errorf("xds.tls.ecdh_curves: %w", err)
 		}
 	}
 

@@ -43,6 +43,7 @@ import (
 	"github.com/stretchr/testify/require"
 	commonconstants "github.com/wso2/api-platform/common/constants"
 	api "github.com/wso2/api-platform/gateway/gateway-controller/pkg/api/management"
+	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/certstore"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/config"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/constants"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/models"
@@ -2339,14 +2340,35 @@ func TestNotEffectivelyMatchesPrefix(t *testing.T) {
 	}
 }
 
-func TestTranslator_CreateSDSCluster(t *testing.T) {
+// TestTranslator_CreateUpstreamTLSContext_SDSViaADS verifies that, when a
+// cert store is configured, the upstream validation context's SDS reference
+// rides the existing ADS stream (ConfigSource_Ads) rather than naming a
+// dedicated cluster. This means gateway-controller never needs to construct
+// a TLS transport socket pointing at cert/key/CA file paths that only exist
+// on gateway-runtime's filesystem -- that connection's TLS is entirely
+// gateway-runtime's own concern (its bootstrap xds_cluster).
+func TestTranslator_CreateUpstreamTLSContext_SDSViaADS(t *testing.T) {
 	logger := createTestLogger()
 	routerCfg := testRouterConfig()
+	routerCfg.Upstream.TLS.DisableSslVerification = false
 	cfg := testConfig()
 	translator := NewTranslator(logger, routerCfg, nil, cfg)
+	// Only t.certStore != nil matters for this code path -- construct one
+	// directly rather than routing through NewTranslator's CustomCertsPath
+	// init, which calls LoadCertificates against a real db.Storage.
+	translator.certStore = certstore.NewCertStore(logger, nil, "", "")
 
-	cluster := translator.createSDSCluster()
-	assert.NotNil(t, cluster)
+	tlsContext := translator.createUpstreamTLSContext(nil, "example.com")
+	require.NotNil(t, tlsContext)
+
+	combinedCtx := tlsContext.CommonTlsContext.GetCombinedValidationContext()
+	require.NotNil(t, combinedCtx)
+	sdsConfig := combinedCtx.GetValidationContextSdsSecretConfig().GetSdsConfig()
+	require.NotNil(t, sdsConfig)
+
+	ads := sdsConfig.GetAds()
+	assert.NotNil(t, ads, "SDS config should ride the ADS stream rather than naming a dedicated cluster")
+	assert.Nil(t, sdsConfig.GetApiConfigSource(), "SDS config should not name a dedicated grpc cluster")
 }
 
 func TestTranslator_CreateUpstreamTLSContext(t *testing.T) {

@@ -310,6 +310,12 @@ type ServerConfig struct {
 	// REST management API as the plaintext listener on APIPort. Off by
 	// default.
 	TLS ServerTLSConfig `koanf:"tls"`
+
+	// XDSTLS switches the main xDS gRPC server (serving Envoy, on XDSPort)
+	// from plaintext to mutual TLS. Unlike TLS above, this does not add a
+	// second listener -- XDSPort itself starts speaking mTLS. Off by
+	// default; see XDSServerTLSConfig for why xDS has no server-only mode.
+	XDSTLS XDSServerTLSConfig `koanf:"xds_tls"`
 }
 
 // ServerTLSConfig holds configuration for an additional TLS listener for the
@@ -402,15 +408,8 @@ type PprofConfig struct {
 
 // PolicyServerConfig holds policy xDS server-related configuration
 type PolicyServerConfig struct {
-	Port int             `koanf:"port"`
-	TLS  PolicyServerTLS `koanf:"tls"`
-}
-
-// PolicyServerTLS holds TLS configuration for the policy xDS server
-type PolicyServerTLS struct {
-	Enabled  bool   `koanf:"enabled"`
-	CertFile string `koanf:"cert_file"`
-	KeyFile  string `koanf:"key_file"`
+	Port int                `koanf:"port"`
+	TLS  XDSServerTLSConfig `koanf:"tls"`
 }
 
 // PoliciesConfig holds policy-related configuration
@@ -921,6 +920,16 @@ func defaultConfig() *Config {
 					Ciphers:                "",
 					EcdhCurves:             "X25519,P-256",
 				},
+				XDSTLS: XDSServerTLSConfig{
+					Enabled:                false,
+					CertFile:               "./xds-certs/server.crt",
+					KeyFile:                "./xds-certs/server.key",
+					ClientCAFile:           "./xds-certs/ca.crt",
+					MinimumProtocolVersion: "TLS1_2",
+					MaximumProtocolVersion: "TLS1_3",
+					Ciphers:                "",
+					EcdhCurves:             "X25519,P-256",
+				},
 			},
 			AdminServer: AdminServerConfig{
 				Enabled:    true,
@@ -937,10 +946,15 @@ func defaultConfig() *Config {
 			},
 			PolicyServer: PolicyServerConfig{
 				Port: 18001,
-				TLS: PolicyServerTLS{
-					Enabled:  false,
-					CertFile: "./certs/server.crt",
-					KeyFile:  "./certs/server.key",
+				TLS: XDSServerTLSConfig{
+					Enabled:                false,
+					CertFile:               "./xds-certs/server.crt",
+					KeyFile:                "./xds-certs/server.key",
+					ClientCAFile:           "./xds-certs/ca.crt",
+					MinimumProtocolVersion: "TLS1_2",
+					MaximumProtocolVersion: "TLS1_3",
+					Ciphers:                "",
+					EcdhCurves:             "X25519,P-256",
 				},
 			},
 			Policies: PoliciesConfig{
@@ -1472,6 +1486,16 @@ func (c *Config) Validate() error {
 		if _, err := ParseServerEcdhCurves(c.Controller.Server.TLS.EcdhCurves); err != nil {
 			return fmt.Errorf("server.tls.ecdh_curves: %w", err)
 		}
+	}
+
+	// Validate main xDS server mTLS config (serves Envoy on server.xds_port)
+	if err := ValidateXDSServerTLS("server.xds_tls", c.Controller.Server.XDSTLS); err != nil {
+		return err
+	}
+
+	// Validate policy xDS server mTLS config (serves the policy-engine on policy_server.port)
+	if err := ValidateXDSServerTLS("policy_server.tls", c.Controller.PolicyServer.TLS); err != nil {
+		return err
 	}
 
 	if c.Controller.AdminServer.Enabled {

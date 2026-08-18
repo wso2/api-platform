@@ -14,6 +14,27 @@ enabled = true
 [controller.server]
 gateway_id = '{{ env "APIP_GW_CONTROLLER_SERVER_GATEWAY_ID" "platform-gateway-id" }}'
 
+
+[controller.server.tls]
+enabled = true
+port = 9093
+cert_path = "./listener-certs/default-listener.crt"
+key_path = "./listener-certs/default-listener.key"
+minimum_protocol_version = "TLS1_3"
+maximum_protocol_version = "TLS1_3"
+ciphers = "TLS_ECDHE_ECDSA_WITH_AES_128_GCM_SHA256"
+# Comma-separated TLS 1.3 key-exchange groups, most preferred first.
+# Classical curves only by default. A hybrid post-quantum group (e.g.
+# "X25519MLKEM768", FIPS 203 ML-KEM-768 + X25519) can be prepended as an
+# explicit opt-in once the clients reaching this listener are confirmed to
+# support it. This listener is served by this process's own Go crypto/tls
+# (1.23+ implements X25519MLKEM768 natively), not pushed as xDS config to a
+# separate Envoy process, so enabling it here does not carry the "already-
+# running peer NACKs the update" risk documented on router.downstream_tls's
+# ecdh_curves below -- TLS 1.3 negotiation just falls back to a later
+# classical entry in this same list for a client that doesn't offer it.
+ecdh_curves = "X25519,P-256,X25519MLKEM768"
+
 [controller.storage]
 type = '{{ env "APIP_GW_CONTROLLER_STORAGE_TYPE" "sqlite" }}'
 

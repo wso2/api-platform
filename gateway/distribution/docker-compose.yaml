@@ -36,6 +36,7 @@ services:
       - ./configs/config.toml:/etc/gateway-controller/config.toml:ro
       - ./resources/certificates:/app/certificates
       - ./resources/listener-certs:/app/listener-certs:ro
+      - ./resources/xds-certs:/app/xds-certs:ro  # Read-only mTLS dev CA/server cert for the two xDS servers (server.xds_tls, policy_server.tls)
       - ./resources/aesgcm-keys/default-aesgcm256-v1.bin:/app/data/aesgcm-keys/default-aesgcm256-v1.bin:ro
     extra_hosts:
       - "host.docker.internal:host-gateway"
@@ -66,9 +67,43 @@ services:
       # Envoy admin is disabled by default in the image; enabled here for local
       # dev convenience since the port is already mapped to the host above.
       - ROUTER_ADMIN_ENABLED=true
+      # Mutual TLS for the Router's (Envoy's) connection to gateway-controller's
+      # main xDS server -- off by default (plaintext), matching
+      # controller.server.xds_tls.enabled=false in configs/config.toml.
+      - XDS_TLS_ENABLED=false
+      - XDS_CLIENT_CERT_PATH=/etc/xds-certs/envoy-client.crt
+      - XDS_CLIENT_KEY_PATH=/etc/xds-certs/envoy-client.key
+      - XDS_CLIENT_CA_PATH=/etc/xds-certs/ca.crt
+      # Classical curves only by default -- prepend "X25519MLKEM768" (FIPS 203
+      # ML-KEM-768 + X25519) once gateway-controller's server.xds_tls.ecdh_curves
+      # is updated to match, confirming the deployed Envoy/BoringSSL build
+      # supports the group.
+      - XDS_CLIENT_TLS_MIN_VERSION=TLS1_2
+      - XDS_CLIENT_TLS_MAX_VERSION=TLS1_3
+      - XDS_CLIENT_TLS_CIPHERS=
+      - XDS_CLIENT_TLS_ECDH_CURVES=X25519,P-256
+      # Mutual TLS for the Policy Engine's (a subprocess of this same
+      # container's entrypoint) connection to gateway-controller's policy
+      # xDS server -- matches controller.policy_server.tls.enabled in
+      # configs/config.toml. Read by that file's [policy_engine.xds.tls] via
+      # {{ env }} interpolation, not by docker-entrypoint.sh -- distinct
+      # POLICY_ENGINE_XDS_CLIENT_* names because this leg presents a
+      # different client identity than Envoy's XDS_CLIENT_* cert above.
+      # Left unset, this would inherit XDS_TLS_ENABLED (=false above) --
+      # explicit here because, unlike the other two compose files, this
+      # profile wants the two legs to diverge: Envoy plaintext, policy-engine
+      # mTLS (matching controller.policy_server.tls.enabled=true, which is
+      # unconditional in configs/config.toml regardless of profile).
+      - POLICY_ENGINE_XDS_TLS_ENABLED=true
+      - POLICY_ENGINE_XDS_CLIENT_CERT_PATH=/etc/policy-engine/xds-certs/policy-engine-client.crt
+      - POLICY_ENGINE_XDS_CLIENT_KEY_PATH=/etc/policy-engine/xds-certs/policy-engine-client.key
+      - POLICY_ENGINE_XDS_CLIENT_CA_PATH=/etc/policy-engine/xds-certs/ca.crt
+      - POLICY_ENGINE_XDS_CLIENT_TLS_ECDH_CURVES=X25519MLKEM768
     volumes:
       - ./configs/config.toml:/etc/policy-engine/config.toml:ro
       - ./configs/llm-pricing/model_prices.json:/etc/policy-engine/llm-pricing/model_prices.json:ro
+      - ./resources/xds-certs:/etc/xds-certs:ro  # Envoy's xDS mTLS client cert/key + CA (env vars above)
+      - ./resources/xds-certs:/etc/policy-engine/xds-certs:ro  # Policy-engine's xDS mTLS client cert/key + CA (POLICY_ENGINE_XDS_CLIENT_* env vars above)
     networks:
       - gateway-network
 

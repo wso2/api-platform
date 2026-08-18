@@ -810,6 +810,62 @@ func TestConfig_Validate_ServerTLS(t *testing.T) {
 	})
 }
 
+// TestConfig_Validate_XDSServerTLS verifies Config.Validate() routes
+// server.xds_tls and policy_server.tls through ValidateXDSServerTLS.
+func TestConfig_Validate_XDSServerTLS(t *testing.T) {
+	validXDSTLS := func() XDSServerTLSConfig {
+		return XDSServerTLSConfig{
+			Enabled:                 true,
+			CertFile:                "./xds-certs/server.crt",
+			KeyFile:                 "./xds-certs/server.key",
+			ClientCAFile:            "./xds-certs/ca.crt",
+			AllowedClientIdentities: []string{"spiffe://api-platform/gateway-runtime/envoy"},
+			MinimumProtocolVersion:  "TLS1_2",
+			MaximumProtocolVersion:  "TLS1_3",
+			EcdhCurves:              "X25519,P-256",
+		}
+	}
+
+	t.Run("valid server.xds_tls passes", func(t *testing.T) {
+		cfg := validConfig()
+		cfg.Controller.Server.XDSTLS = validXDSTLS()
+		assert.NoError(t, cfg.Validate())
+	})
+
+	t.Run("invalid server.xds_tls is rejected with a prefixed error", func(t *testing.T) {
+		cfg := validConfig()
+		tlsCfg := validXDSTLS()
+		tlsCfg.AllowedClientIdentities = nil
+		cfg.Controller.Server.XDSTLS = tlsCfg
+		err := cfg.Validate()
+		assert.Error(t, err)
+		assert.Contains(t, err.Error(), "server.xds_tls.allowed_client_identities")
+	})
+
+	t.Run("valid policy_server.tls passes", func(t *testing.T) {
+		cfg := validConfig()
+		tlsCfg := validXDSTLS()
+		tlsCfg.AllowedClientIdentities = []string{"spiffe://api-platform/gateway-runtime/policy-engine"}
+		cfg.Controller.PolicyServer.TLS = tlsCfg
+		assert.NoError(t, cfg.Validate())
+	})
+
+	t.Run("invalid policy_server.tls is rejected with a prefixed error", func(t *testing.T) {
+		cfg := validConfig()
+		tlsCfg := validXDSTLS()
+		tlsCfg.ClientCAFile = ""
+		cfg.Controller.PolicyServer.TLS = tlsCfg
+		err := cfg.Validate()
+		assert.Error(t, err)
+		assert.Contains(t, err.Error(), "policy_server.tls.client_ca_file")
+	})
+
+	t.Run("disabled by default -- no validation", func(t *testing.T) {
+		cfg := validConfig()
+		assert.NoError(t, cfg.Validate())
+	})
+}
+
 // TestParseServerEcdhCurves tests the ECDH curve preference parser used by
 // ServerTLSConfig.EcdhCurves.
 func TestParseServerEcdhCurves(t *testing.T) {
