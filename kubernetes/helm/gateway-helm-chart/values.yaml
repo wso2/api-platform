@@ -842,6 +842,15 @@ gateway:
 
     # Writable volume backing the traffic_logging "file" sink.
     #
+    # A shared RWX volume, hostPath, or NFS mount written by more
+    # than one gateway replica is not supported and will silently break traffic logging.
+    # When one pod rotates the file the others keep writing to the descriptor they
+    # already hold, so their lines land in the backup and are clobbered by the next
+    # rotation; each pod also tracks the file size in memory, so with several
+    # writers the ceiling triggers late or never. The default emptyDir below is
+    # per-pod and therefore correct. Scale out by giving each replica its own
+    # volume, not by sharing one.
+    #
     # An emptyDir lives outside the /var/log/pods glob node-level collectors
     # read, which is the point — bodies written here are invisible to both
     # `kubectl logs` and any DaemonSet shipping container logs onward.
