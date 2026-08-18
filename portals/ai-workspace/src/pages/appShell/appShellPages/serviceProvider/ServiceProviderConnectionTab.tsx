@@ -45,6 +45,13 @@ export default function ServiceProviderConnectionTab() {
     useLLMProvider();
   const { currentOrganization } = useAppShell();
   const initializedProviderIdRef = useRef<string | null>(null);
+  const appliedTemplateAuthHeaderRef = useRef<string | null>(null);
+  const lastProviderConnectionRef = useRef<{
+    id: string;
+    url: string;
+    authType: string;
+    authHeader: string;
+  } | null>(null);
   const [providerEndpoint, setProviderEndpoint] = useState('');
   const [authenticationType, setAuthenticationType] = useState('');
   const [authenticationHeader, setAuthenticationHeader] = useState('');
@@ -60,6 +67,8 @@ export default function ServiceProviderConnectionTab() {
   const effectiveAuthType = authenticationType || 'none';
   const isOtherAuthType = effectiveAuthType === 'other';
   const isNoCredentialsAuthType = effectiveAuthType === 'other' || effectiveAuthType === 'none';
+  const isAuthenticationHeaderInvalid =
+    !isNoCredentialsAuthType && authenticationHeader.trim().length === 0;
   const isProviderEndpointInvalid =
     providerEndpoint.trim().length > 0 && !isValidHttpUrl(providerEndpoint);
 
@@ -102,9 +111,33 @@ export default function ServiceProviderConnectionTab() {
 
   useEffect(() => {
     if (!provider) return;
-    setProviderEndpoint(provider.upstream?.main?.url || '');
-    setAuthenticationType(provider.upstream?.main?.auth?.type || 'none');
-    setAuthenticationHeader(provider.upstream?.main?.auth?.header || '');
+    const nextConnection = {
+      id: provider.id,
+      url: provider.upstream?.main?.url || '',
+      authType: provider.upstream?.main?.auth?.type || 'none',
+      authHeader: provider.upstream?.main?.auth?.header || '',
+    };
+    const previousConnection = lastProviderConnectionRef.current;
+
+    setProviderEndpoint((currentValue) =>
+      !previousConnection || previousConnection.id !== provider.id ||
+      currentValue === previousConnection.url
+        ? nextConnection.url
+        : currentValue
+    );
+    setAuthenticationType((currentValue) =>
+      !previousConnection || previousConnection.id !== provider.id ||
+      currentValue === previousConnection.authType
+        ? nextConnection.authType
+        : currentValue
+    );
+    setAuthenticationHeader((currentValue) =>
+      !previousConnection || previousConnection.id !== provider.id ||
+      currentValue === previousConnection.authHeader
+        ? nextConnection.authHeader
+        : currentValue
+    );
+    lastProviderConnectionRef.current = nextConnection;
 
     if (initializedProviderIdRef.current === provider.id) {
       return;
@@ -163,12 +196,24 @@ export default function ServiceProviderConnectionTab() {
     }
   };
 
-  const handleUpdateAuthentication = async (value = authenticationType) => {
+  const handleUpdateAuthentication = async (
+    value = authenticationType,
+    header = authenticationHeader
+  ) => {
     if (!provider || isLoading || error || isReadOnlyProvider) return;
     const nextType = value.trim();
-    if (!nextType || nextType === (provider.upstream?.main?.auth?.type || ''))
-      return;
     const isNoCredentials = nextType === 'other' || nextType === 'none';
+    const nextHeader = isNoCredentials ? '' : header.trim();
+    if (!isNoCredentials && !nextHeader && !isDraftMode) {
+      showSnackbar('Authentication Header is required.', 'error');
+      return;
+    }
+    if (
+      !nextType ||
+      (nextType === (provider.upstream?.main?.auth?.type || '') &&
+        nextHeader === (provider.upstream?.main?.auth?.header || ''))
+    )
+      return;
     try {
       const {
         status,
@@ -186,9 +231,7 @@ export default function ServiceProviderConnectionTab() {
             url: provider.upstream?.main?.url || '',
             auth: {
               type: nextType,
-              header: isNoCredentials
-                ? ''
-                : provider.upstream?.main?.auth?.header || '',
+              header: nextHeader,
               value: isNoCredentials
                 ? ''
                 : provider.upstream?.main?.auth?.value || '',
@@ -211,6 +254,10 @@ export default function ServiceProviderConnectionTab() {
   ) => {
     if (!provider || isLoading || error || isReadOnlyProvider) return;
     const nextHeader = value.trim();
+    if (!nextHeader && !isDraftMode) {
+      showSnackbar('Authentication Header is required.', 'error');
+      return;
+    }
     if (nextHeader === (provider.upstream?.main?.auth?.header || '')) return;
 
     try {
@@ -292,6 +339,36 @@ export default function ServiceProviderConnectionTab() {
     }
   };
 
+  useEffect(() => {
+    const templateAuthHeader = providerTemplate?.metadata?.auth?.header || '';
+    if (authenticationType !== 'api-key') {
+      appliedTemplateAuthHeaderRef.current = null;
+      return;
+    }
+
+    const templateHeaderKey = `${provider?.id || ''}:${providerTemplate?.id || ''}`;
+    if (
+      !templateAuthHeader ||
+      appliedTemplateAuthHeaderRef.current === templateHeaderKey
+    ) {
+      return;
+    }
+    appliedTemplateAuthHeaderRef.current = templateHeaderKey;
+
+    if (authenticationHeader) return;
+
+    setAuthenticationHeader(templateAuthHeader);
+    if (isDraftMode) {
+      void handleUpdateAuthentication('api-key', templateAuthHeader);
+    }
+  }, [
+    authenticationHeader,
+    authenticationType,
+    isDraftMode,
+    provider?.id,
+    providerTemplate,
+  ]);
+
   return (
     <>
       <Stack spacing={2} sx={{ maxWidth: { xs: '100%', md: 720 } }}>
@@ -330,13 +407,20 @@ export default function ServiceProviderConnectionTab() {
             disabled={isFormDisabled}
             onChange={(e) => {
               const nextValue = String(e.target.value);
+              const nextHeader =
+                nextValue === 'api-key'
+                  ? providerTemplate?.metadata?.auth?.header || ''
+                  : nextValue === 'other' || nextValue === 'none'
+                    ? ''
+                    : authenticationHeader;
+
               setAuthenticationType(nextValue);
+              setAuthenticationHeader(nextHeader);
               if (nextValue === 'other' || nextValue === 'none') {
-                setAuthenticationHeader('');
                 setCredentialValue('');
               }
               if (isDraftMode) {
-                void handleUpdateAuthentication(nextValue);
+                void handleUpdateAuthentication(nextValue, nextHeader);
               }
             }}
             onBlur={() => {
@@ -365,6 +449,13 @@ export default function ServiceProviderConnectionTab() {
                 size="small"
                 value={authenticationHeader}
                 disabled={isFormDisabled}
+                required
+                error={isAuthenticationHeaderInvalid}
+                helperText={
+                  isAuthenticationHeaderInvalid
+                    ? 'Authentication Header is required.'
+                    : undefined
+                }
                 onChange={(e) => {
                   const nextValue = e.target.value;
                   setAuthenticationHeader(nextValue);
