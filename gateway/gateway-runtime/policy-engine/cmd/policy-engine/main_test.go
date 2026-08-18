@@ -434,6 +434,7 @@ func captureStdout(t *testing.T, fn func()) string {
 
 	r, w, err := os.Pipe()
 	require.NoError(t, err)
+	defer r.Close()
 
 	orig := os.Stdout
 	os.Stdout = w
