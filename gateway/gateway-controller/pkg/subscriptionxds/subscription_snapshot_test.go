@@ -21,6 +21,7 @@ package subscriptionxds
 import (
 	"context"
 	"database/sql"
+	"encoding/json"
 	"errors"
 	"log/slog"
 	"testing"
@@ -28,6 +29,10 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/models"
+	policyenginev1 "github.com/wso2/api-platform/sdk/core/policyengine"
+	"google.golang.org/protobuf/proto"
+	"google.golang.org/protobuf/types/known/anypb"
+	"google.golang.org/protobuf/types/known/structpb"
 )
 
 // MockStorage implements the storage.Storage interface for testing.
@@ -533,6 +538,132 @@ func TestSnapshotManager_UpdateSnapshot(t *testing.T) {
 
 		err := sm.UpdateSnapshot(ctx)
 		assert.NoError(t, err)
+	})
+}
+
+// snapshotSubscriptions decodes the subscriptions currently published in the
+// manager's xDS cache, so tests can assert on what the policy engine actually
+// receives rather than only that UpdateSnapshot returned no error.
+func snapshotSubscriptions(t *testing.T, sm *SnapshotManager) []policyenginev1.SubscriptionData {
+	t.Helper()
+
+	resource, ok := sm.cache.GetResources()["subscription-state"]
+	require.True(t, ok, "subscription-state resource missing from cache")
+
+	anyMsg, ok := resource.(*anypb.Any)
+	require.True(t, ok, "cached resource is not an *anypb.Any")
+
+	// anypb.New stamped a struct payload before the TypeUrl was overwritten with
+	// the custom SubscriptionStateTypeURL, so unmarshal the struct directly.
+	st := &structpb.Struct{}
+	require.NoError(t, proto.Unmarshal(anyMsg.Value, st))
+
+	jsonBytes, err := st.MarshalJSON()
+	require.NoError(t, err)
+
+	var state policyenginev1.SubscriptionStateResource
+	require.NoError(t, json.Unmarshal(jsonBytes, &state))
+	return state.Subscriptions
+}
+
+// A bottom-up (DP->CP) synced API is stored on the gateway under its locally
+// generated UUID with the control-plane UUID recorded as cp_artifact_id, so
+// subscriptions broadcast by the control plane arrive keyed by the CP UUID.
+// They must still reach the policy engine, keyed by the local UUID that the
+// Envoy route metadata uses.
+func TestSnapshotManager_UpdateSnapshot_DPToCPSyncedAPI(t *testing.T) {
+	ctx := context.Background()
+
+	t.Run("accepts a subscription keyed by the control-plane UUID", func(t *testing.T) {
+		store := &MockStorage{
+			configs: []*models.StoredConfig{
+				{UUID: "gw-uuid-1", CPArtifactID: "cp-uuid-1", Kind: models.KindRestApi},
+			},
+			subscriptionPlans: []*models.SubscriptionPlan{},
+			subscriptions: []*models.Subscription{
+				{
+					ID:                    "sub-1",
+					APIID:                 "cp-uuid-1",
+					SubscriptionTokenHash: "token-hash-1",
+					Status:                models.SubscriptionStatusActive,
+				},
+			},
+		}
+		sm := NewSnapshotManager(store, nil)
+
+		require.NoError(t, sm.UpdateSnapshot(ctx))
+
+		subs := snapshotSubscriptions(t, sm)
+		require.Len(t, subs, 1)
+		// Emitted under the local UUID — the policy engine matches on that, not the CP one.
+		assert.Equal(t, "gw-uuid-1", subs[0].APIId)
+		assert.Equal(t, "token-hash-1", subs[0].SubscriptionToken)
+	})
+
+	t.Run("still accepts a subscription keyed by the local UUID", func(t *testing.T) {
+		store := &MockStorage{
+			configs: []*models.StoredConfig{
+				{UUID: "gw-uuid-1", CPArtifactID: "cp-uuid-1", Kind: models.KindRestApi},
+			},
+			subscriptionPlans: []*models.SubscriptionPlan{},
+			subscriptions: []*models.Subscription{
+				{
+					ID:                    "sub-1",
+					APIID:                 "gw-uuid-1",
+					SubscriptionTokenHash: "token-hash-1",
+					Status:                models.SubscriptionStatusActive,
+				},
+			},
+		}
+		sm := NewSnapshotManager(store, nil)
+
+		require.NoError(t, sm.UpdateSnapshot(ctx))
+
+		subs := snapshotSubscriptions(t, sm)
+		require.Len(t, subs, 1)
+		assert.Equal(t, "gw-uuid-1", subs[0].APIId)
+	})
+
+	t.Run("a CP UUID belonging to another API is still rejected", func(t *testing.T) {
+		store := &MockStorage{
+			configs: []*models.StoredConfig{
+				{UUID: "gw-uuid-1", CPArtifactID: "cp-uuid-1", Kind: models.KindRestApi},
+			},
+			subscriptionPlans: []*models.SubscriptionPlan{},
+			subscriptions: []*models.Subscription{
+				{
+					ID:                    "sub-1",
+					APIID:                 "cp-uuid-other",
+					SubscriptionTokenHash: "token-hash-1",
+					Status:                models.SubscriptionStatusActive,
+				},
+			},
+		}
+		sm := NewSnapshotManager(store, nil)
+
+		require.NoError(t, sm.UpdateSnapshot(ctx))
+		assert.Empty(t, snapshotSubscriptions(t, sm))
+	})
+
+	t.Run("a cp_artifact_id on a non-RestApi config is not accepted", func(t *testing.T) {
+		store := &MockStorage{
+			configs: []*models.StoredConfig{
+				{UUID: "gw-uuid-1", CPArtifactID: "cp-uuid-1", Kind: models.KindMcp},
+			},
+			subscriptionPlans: []*models.SubscriptionPlan{},
+			subscriptions: []*models.Subscription{
+				{
+					ID:                    "sub-1",
+					APIID:                 "cp-uuid-1",
+					SubscriptionTokenHash: "token-hash-1",
+					Status:                models.SubscriptionStatusActive,
+				},
+			},
+		}
+		sm := NewSnapshotManager(store, nil)
+
+		require.NoError(t, sm.UpdateSnapshot(ctx))
+		assert.Empty(t, snapshotSubscriptions(t, sm))
 	})
 }
 

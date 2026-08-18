@@ -112,18 +112,33 @@ func (sm *SnapshotManager) UpdateSnapshot(ctx context.Context) error {
 		subsByAPI[s.APIID] = append(subsByAPI[s.APIID], s)
 	}
 
-	// Build set of API IDs that exist in configs (RestApi kind only).
-	apiIDs := make(map[string]bool)
+	// Map every identifier a subscription may be keyed by to the local (gateway) API
+	// UUID, for RestApi configs only. A bottom-up (DP->CP) synced API keeps its
+	// locally generated UUID and records the control-plane UUID as cp_artifact_id
+	localAPIIDs := make(map[string]string)
 	for _, cfg := range configs {
-		if cfg != nil && cfg.Kind == "RestApi" {
-			apiIDs[cfg.UUID] = true
+		if cfg == nil || cfg.Kind != models.KindRestApi {
+			continue
+		}
+		localAPIIDs[cfg.UUID] = cfg.UUID
+	}
+	for _, cfg := range configs {
+		if cfg == nil || cfg.Kind != models.KindRestApi || cfg.CPArtifactID == "" {
+			continue
+		}
+		if _, taken := localAPIIDs[cfg.CPArtifactID]; !taken {
+			localAPIIDs[cfg.CPArtifactID] = cfg.UUID
 		}
 	}
 
 	// Assemble SubscriptionData only for APIs that exist in configs.
 	var subs []policyenginev1.SubscriptionData
 	for apiID, list := range subsByAPI {
-		if !apiIDs[apiID] {
+		localAPIID, known := localAPIIDs[apiID]
+		if !known {
+			sm.logger.Warn("Skipping subscriptions for an API with no matching RestApi config",
+				slog.String("api_id", apiID),
+				slog.Int("skipped_subscription_count", len(list)))
 			continue
 		}
 		for _, s := range list {
@@ -131,7 +146,7 @@ func (sm *SnapshotManager) UpdateSnapshot(ctx context.Context) error {
 				continue
 			}
 			entry := policyenginev1.SubscriptionData{
-				APIId:             s.APIID,
+				APIId:             localAPIID,
 				SubscriptionToken: s.SubscriptionTokenHash,
 				Status:            string(s.Status),
 			}

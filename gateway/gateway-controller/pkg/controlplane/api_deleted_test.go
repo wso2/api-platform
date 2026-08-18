@@ -1317,3 +1317,89 @@ func TestClient_handleSubscriptionCreatedEvent_PublishesReplicaSyncEvent(t *test
 		t.Errorf("expected correlation ID corr-sub-created, got %s", hub.publishedEvents[0].event.EventID)
 	}
 }
+
+// A bottom-up (DP->CP) synced API is addressed by the control plane using the
+// UUID the control plane minted, which differs from the gateway's local UUID.
+// The subscription must be stored under the local one, since that is what the
+// routes, the policy config, and the subscription xDS snapshot are keyed by.
+func TestClient_handleSubscriptionCreatedEvent_MapsControlPlaneAPIIDToLocal(t *testing.T) {
+	logger := slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelError}))
+	db := newMockStorageForDeletion()
+	db.configs["gw-uuid-1"] = &models.StoredConfig{
+		UUID:         "gw-uuid-1",
+		CPArtifactID: "cp-uuid-1",
+		Kind:         models.KindRestApi,
+	}
+	hub := &mockControlPlaneEventHub{}
+
+	client := &Client{
+		logger:    logger,
+		db:        db,
+		eventHub:  hub,
+		gatewayID: "test-gateway",
+	}
+
+	client.handleSubscriptionCreatedEvent(map[string]interface{}{
+		"type": "subscription.created",
+		"payload": map[string]interface{}{
+			"subscriptionId":    "sub-dpcp",
+			"apiId":             "cp-uuid-1",
+			"subscriptionToken": "token-dpcp",
+			"status":            "ACTIVE",
+			"applicationId":     "app-1",
+		},
+		"timestamp":     time.Now().Format(time.RFC3339),
+		"correlationId": "corr-sub-dpcp",
+	})
+
+	sub, err := db.GetSubscriptionByID("sub-dpcp", "")
+	if err != nil {
+		t.Fatalf("expected subscription to be stored, got %v", err)
+	}
+	if sub.APIID != "gw-uuid-1" {
+		t.Errorf("expected subscription stored under local api id gw-uuid-1, got %s", sub.APIID)
+	}
+}
+
+func TestClient_handleSubscriptionUpdatedEvent_MapsControlPlaneAPIIDToLocal(t *testing.T) {
+	logger := slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelError}))
+	db := newMockStorageForDeletion()
+	db.configs["gw-uuid-1"] = &models.StoredConfig{
+		UUID:         "gw-uuid-1",
+		CPArtifactID: "cp-uuid-1",
+		Kind:         models.KindRestApi,
+	}
+	db.subscriptions["sub-dpcp"] = &models.Subscription{
+		ID:     "sub-dpcp",
+		APIID:  "gw-uuid-1",
+		Status: models.SubscriptionStatusActive,
+	}
+	hub := &mockControlPlaneEventHub{}
+
+	client := &Client{
+		logger:    logger,
+		db:        db,
+		eventHub:  hub,
+		gatewayID: "test-gateway",
+	}
+
+	client.handleSubscriptionUpdatedEvent(map[string]interface{}{
+		"type": "subscription.updated",
+		"payload": map[string]interface{}{
+			"subscriptionId":    "sub-dpcp",
+			"apiId":             "cp-uuid-1",
+			"subscriptionToken": "token-dpcp",
+			"status":            "ACTIVE",
+		},
+		"timestamp":     time.Now().Format(time.RFC3339),
+		"correlationId": "corr-sub-dpcp-update",
+	})
+
+	sub, err := db.GetSubscriptionByID("sub-dpcp", "")
+	if err != nil {
+		t.Fatalf("expected subscription to be present, got %v", err)
+	}
+	if sub.APIID != "gw-uuid-1" {
+		t.Errorf("expected api id to stay the local gw-uuid-1, got %s", sub.APIID)
+	}
+}

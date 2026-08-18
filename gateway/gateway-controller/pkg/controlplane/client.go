@@ -958,11 +958,17 @@ func (c *Client) syncSubscriptionsForExistingAPIs(gatewayID string) {
 		}
 
 		apiID := cfg.UUID
+		// The control plane knows a bottom-up (DP->CP) synced API by the CP UUID
+		remoteAPIID := apiID
+		if cfg.CPArtifactID != "" {
+			remoteAPIID = cfg.CPArtifactID
+		}
 
-		subs, err := c.apiUtilsService.FetchSubscriptionsForAPI(apiID)
+		subs, err := c.apiUtilsService.FetchSubscriptionsForAPI(remoteAPIID)
 		if err != nil {
 			c.logger.Warn("Failed to bulk-sync subscriptions for API",
 				slog.String("api_id", apiID),
+				slog.String("cp_api_id", remoteAPIID),
 				slog.Any("error", err),
 			)
 			continue
@@ -3480,16 +3486,18 @@ func (c *Client) handleSubscriptionCreatedEvent(event map[string]interface{}) {
 			slog.Bool("hasToken", payload.SubscriptionToken != ""))
 		return
 	}
+	localAPIID := c.resolveLocalArtifactID(payload.APIID)
 	logger := baseLogger.With(
 		slog.String("correlation_id", createdEvent.CorrelationID),
 		slog.String("subscription_id", payload.SubscriptionID),
-		slog.String("api_id", payload.APIID),
+		slog.String("api_id", localAPIID),
+		slog.String("cp_api_id", payload.APIID),
 	)
 
 	status := models.SubscriptionStatus(payload.Status)
 	sub := &models.Subscription{
 		ID:                payload.SubscriptionID,
-		APIID:             payload.APIID,
+		APIID:             localAPIID,
 		SubscriptionToken: payload.SubscriptionToken,
 		Status:            status,
 		CreatedAt:         time.Now(),
@@ -3558,8 +3566,9 @@ func (c *Client) handleSubscriptionUpdatedEvent(event map[string]interface{}) {
 	}
 
 	// Copy all mutable fields from payload into existing before update.
+	// As in the created path, the control-plane UUID is mapped to the local one.
 	if payload.APIID != "" {
-		existing.APIID = payload.APIID
+		existing.APIID = c.resolveLocalArtifactID(payload.APIID)
 	}
 	if payload.ApplicationID != "" {
 		existing.ApplicationID = &payload.ApplicationID
