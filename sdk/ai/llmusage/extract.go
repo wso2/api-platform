@@ -135,11 +135,10 @@ func Accumulate(sc *policy.SharedContext, chunk *policy.StreamBody) []byte {
 		sc.Metadata[streamIndexKey] = chunk.Index
 	}
 
-	if chunk.EndOfStream {
-		delete(sc.Metadata, streamAccumKey)
-		delete(sc.Metadata, streamIndexKey)
-	}
-
+	// The buffer is deliberately kept after the final chunk. Every policy on the
+	// route is handed the same chunk in turn, so clearing it here would leave the
+	// next policy with only the last chunk. SharedContext is per request, so the
+	// buffer is released when the request ends.
 	return buffered
 }
 

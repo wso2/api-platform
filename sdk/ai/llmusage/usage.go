@@ -15,7 +15,7 @@
  *  specific language governing permissions and limitations
  *  under the License.
  */
- 
+
 package llmusage
 
 // Usage holds token counts normalized from a provider response, with the

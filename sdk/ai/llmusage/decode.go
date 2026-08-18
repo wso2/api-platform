@@ -15,7 +15,7 @@
  *  specific language governing permissions and limitations
  *  under the License.
  */
- 
+
 package llmusage
 
 import (
@@ -50,12 +50,37 @@ func isSSE(body []byte) bool {
 // mergeSSEEvents shallow-merges every JSON event in a stream, later events
 // winning. Empty strings never displace a value already seen, so a trailing
 // event with an empty model cannot erase a real one.
+//
+// An event may spread its payload over several data fields, which the stream
+// format joins with a newline and dispatches on a blank line.
 func mergeSSEEvents(body []byte) ([]byte, bool) {
 	merged := make(map[string]interface{})
 	found := false
 
+	var fields [][]byte
+	dispatch := func() {
+		for _, payload := range eventPayloads(fields) {
+			var event map[string]interface{}
+			if err := json.Unmarshal(payload, &event); err != nil {
+				continue
+			}
+			found = true
+			for key, value := range event {
+				if str, ok := value.(string); ok && str == "" {
+					continue
+				}
+				merged[key] = value
+			}
+		}
+		fields = nil
+	}
+
 	for _, line := range bytes.Split(body, []byte("\n")) {
 		line = bytes.TrimSpace(line)
+		if len(line) == 0 {
+			dispatch()
+			continue
+		}
 		if !bytes.HasPrefix(line, []byte("data:")) {
 			continue
 		}
@@ -63,19 +88,9 @@ func mergeSSEEvents(body []byte) ([]byte, bool) {
 		if len(payload) == 0 || bytes.Equal(payload, []byte("[DONE]")) {
 			continue
 		}
-
-		var event map[string]interface{}
-		if err := json.Unmarshal(payload, &event); err != nil {
-			continue
-		}
-		found = true
-		for key, value := range event {
-			if str, ok := value.(string); ok && str == "" {
-				continue
-			}
-			merged[key] = value
-		}
+		fields = append(fields, payload)
 	}
+	dispatch() // a stream may end without a trailing blank line
 
 	if !found {
 		return nil, false
@@ -85,6 +100,20 @@ func mergeSSEEvents(body []byte) ([]byte, bool) {
 		return nil, false
 	}
 	return out, true
+}
+
+// eventPayloads returns the documents to read out of one event's data fields:
+// the newline-joined form the stream format defines, or each field alone when
+// the joined form is not valid JSON. The fallback keeps streams working that
+// pack a complete object into every data field without a blank line between.
+func eventPayloads(fields [][]byte) [][]byte {
+	if len(fields) < 2 {
+		return fields
+	}
+	if joined := bytes.Join(fields, []byte("\n")); json.Valid(joined) {
+		return [][]byte{joined}
+	}
+	return fields
 }
 
 // extractUsage reads every field the template declares out of the response and
@@ -127,10 +156,11 @@ func resolveModel(body, requestBody []byte, fields map[string]fieldSpec, request
 	if name := readString(body, fields, "responseModel", requestPath); name != "" {
 		candidates = append(candidates, name)
 	}
-	if len(requestBody) > 0 {
-		if name := readString(requestBody, fields, "requestModel", requestPath); name != "" {
-			candidates = append(candidates, name)
-		}
+	// Read unconditionally: a requestModel declared as a path param resolves
+	// from the request path, with no body involved. A payload identifier just
+	// yields an empty value when there is no body.
+	if name := readString(requestBody, fields, "requestModel", requestPath); name != "" {
+		candidates = append(candidates, name)
 	}
 
 	if len(candidates) == 0 {

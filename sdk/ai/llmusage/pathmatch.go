@@ -15,7 +15,7 @@
  *  specific language governing permissions and limitations
  *  under the License.
  */
- 
+
 package llmusage
 
 import "strings"
@@ -32,6 +32,13 @@ func pathsMatch(requestPath, pattern string) bool {
 		return true
 	}
 	if strings.Contains(pattern, "*") {
+		// Only a single trailing wildcard is supported. An embedded one such as
+		// "/v1/*/usage" would otherwise reduce to the prefix "/v1/" and cover
+		// every route beneath it, applying this resource's field locations to
+		// requests it was never meant to describe.
+		if !strings.HasSuffix(pattern, "*") || strings.Count(pattern, "*") != 1 {
+			return false
+		}
 		prefix := pattern[:strings.LastIndex(pattern, "*")]
 		return strings.HasPrefix(requestPath, prefix)
 	}

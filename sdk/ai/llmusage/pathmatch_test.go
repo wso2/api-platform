@@ -15,7 +15,7 @@
  *  specific language governing permissions and limitations
  *  under the License.
  */
- 
+
 package llmusage
 
 import "testing"
@@ -67,5 +67,35 @@ func TestPreferMoreSpecificPath(t *testing.T) {
 					tt.candidate, tt.current, got, tt.want)
 			}
 		})
+	}
+}
+
+// Only a trailing wildcard is supported. An embedded one used to reduce to the
+// prefix before it, so "/v1/*/usage" covered every route under "/v1/" and this
+// resource's field locations were applied to unrelated requests.
+func TestPathsMatch_OnlyTrailingWildcardIsHonoured(t *testing.T) {
+	cases := []struct {
+		pattern, requestPath string
+		want                 bool
+		why                  string
+	}{
+		{"/v1/*/usage", "/v1/chat/completions", false, "embedded wildcard must not cover unrelated routes"},
+		{"/v1/*/usage", "/v1/embeddings", false, "embedded wildcard must not cover unrelated routes"},
+		{"/v1/*/usage", "/v1/foo/usage", false, "embedded wildcards are not supported at all"},
+		{"/v1/**", "/v1/anything", false, "repeated wildcards are rejected"},
+		{"/v1/*/*", "/v1/a/b", false, "repeated wildcards are rejected"},
+
+		// The supported forms keep working.
+		{"/v1/*", "/v1/chat/completions", true, "trailing wildcard covers the prefix"},
+		{"/*", "/anything", true, "catch-all"},
+		{"/responses", "/responses", true, "exact match, as the shipped templates use"},
+		{"/responses", "/responses/create", false, "exact pattern must not prefix-match"},
+	}
+
+	for _, c := range cases {
+		if got := pathsMatch(c.requestPath, c.pattern); got != c.want {
+			t.Errorf("pathsMatch(%q, %q) = %v, want %v — %s",
+				c.requestPath, c.pattern, got, c.want, c.why)
+		}
 	}
 }

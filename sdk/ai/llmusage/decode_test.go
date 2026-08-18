@@ -1,4 +1,3 @@
-
 /*
  *  Copyright (c) 2026, WSO2 LLC. (https://www.wso2.com).
  *
@@ -16,7 +15,7 @@
  *  specific language governing permissions and limitations
  *  under the License.
  */
- package llmusage
+package llmusage
 
 import "testing"
 
@@ -361,5 +360,84 @@ func TestExtractUsage_NoValueMapKeepsExistingBehaviour(t *testing.T) {
 	}
 	if usage.ServiceTier != "flex" {
 		t.Errorf("ServiceTier = %q, want flex", usage.ServiceTier)
+	}
+}
+
+func TestExtractUsage_SSEEventSplitAcrossDataFields(t *testing.T) {
+	// The stream format lets one event spread its payload over several data
+	// fields, joined by a newline. Read individually each fragment is invalid
+	// JSON, so the fields have to be joined before decoding.
+	body := []byte(`data: {"model":"gpt-4o-mini",
+data: "usage":{"prompt_tokens":50,
+data: "completion_tokens":10,"total_tokens":60}}
+
+data: [DONE]
+`)
+
+	got, err := extractUsage(openAITemplate(), body, nil, "/chat/completions")
+	if err != nil {
+		t.Fatalf("extractUsage returned error: %v", err)
+	}
+
+	if got.TotalInputTokens != 50 {
+		t.Errorf("TotalInputTokens = %d, want 50", got.TotalInputTokens)
+	}
+	if got.OutputTokens != 10 {
+		t.Errorf("OutputTokens = %d, want 10", got.OutputTokens)
+	}
+	if got.Model != "gpt-4o-mini" {
+		t.Errorf("Model = %q, want gpt-4o-mini", got.Model)
+	}
+}
+
+func TestExtractUsage_SSECompleteObjectPerDataFieldWithoutBlankLine(t *testing.T) {
+	// Joining these fields would produce two top-level objects, which is not
+	// valid JSON. Each field is a complete document on its own, so both must
+	// still be read rather than the event being discarded.
+	body := []byte(`data: {"model":"gpt-4o-mini"}
+data: {"usage":{"prompt_tokens":7,"completion_tokens":2,"total_tokens":9}}
+`)
+
+	got, err := extractUsage(openAITemplate(), body, nil, "/chat/completions")
+	if err != nil {
+		t.Fatalf("extractUsage returned error: %v", err)
+	}
+
+	if got.TotalInputTokens != 7 {
+		t.Errorf("TotalInputTokens = %d, want 7", got.TotalInputTokens)
+	}
+	if got.Model != "gpt-4o-mini" {
+		t.Errorf("Model = %q, want gpt-4o-mini", got.Model)
+	}
+}
+
+func TestResolveModel_PathParamRequestModelWithoutRequestBody(t *testing.T) {
+	// AWS Bedrock and Gemini declare requestModel as a path param, so it must
+	// resolve from the request path even when no request body is available.
+	// A response that carries no model of its own relies on this fallback.
+	template := map[string]interface{}{
+		"promptTokens": map[string]interface{}{
+			"location": "payload", "identifier": "$.usage.inputTokens",
+		},
+		"responseModel": map[string]interface{}{
+			"location": "payload", "identifier": "$.model",
+		},
+		"requestModel": map[string]interface{}{
+			"location": "pathParam", "identifier": `model/([A-Za-z0-9.:%-]+)/`,
+		},
+	}
+	body := []byte(`{"usage":{"inputTokens":10}}`) // no model in the response
+
+	got, err := extractUsage(template, body, nil, "/model/anthropic.claude-3-7-sonnet-20250219-v1:0/converse")
+	if err != nil {
+		t.Fatalf("extractUsage returned error: %v", err)
+	}
+
+	want := "anthropic.claude-3-7-sonnet-20250219-v1:0"
+	if got.Model != want {
+		t.Errorf("Model = %q, want it resolved from the request path (%q)", got.Model, want)
+	}
+	if len(got.ModelCandidates) != 1 || got.ModelCandidates[0] != want {
+		t.Errorf("ModelCandidates = %v, want [%s]", got.ModelCandidates, want)
 	}
 }
