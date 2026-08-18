@@ -386,12 +386,14 @@ export default function ServiceProviderNew() {
         },
       };
 
+      // Default the client-facing header to the same convention the fronted vendor itself uses.
       const security = {
         enabled: true,
         apiKey: {
           enabled: true,
-          key: 'X-API-Key',
+          key: formState.upstreamAuthHeader.trim() || 'X-API-Key',
           in: 'header' as const,
+          valuePrefix: formState.valuePrefix || '',
         },
       };
 

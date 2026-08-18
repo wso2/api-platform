@@ -40,12 +40,12 @@ spec:
         - path: /v1beta/models/{model}:generateContent
           methods: [POST]
           params:
-            key: X-API-Key
+            key: x-goog-api-key
             in: header
         - path: /v1beta/models/{model}:streamGenerateContent
           methods: [POST]
           params:
-            key: X-API-Key
+            key: x-goog-api-key
             in: header
   accessControl:
     mode: deny_all

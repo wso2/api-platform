@@ -45,22 +45,22 @@ spec:
         - path: /openai/deployments/{deployment}/chat/completions
           methods: [POST]
           params:
-            key: X-API-Key
+            key: api-key
             in: header
         - path: /openai/deployments/{deployment}/completions
           methods: [POST]
           params:
-            key: X-API-Key
+            key: api-key
             in: header
         - path: /openai/deployments/{deployment}/embeddings
           methods: [POST]
           params:
-            key: X-API-Key
+            key: api-key
             in: header
         - path: /openai/models
           methods: [GET]
           params:
-            key: X-API-Key
+            key: api-key
             in: header
   accessControl:
     mode: deny_all
