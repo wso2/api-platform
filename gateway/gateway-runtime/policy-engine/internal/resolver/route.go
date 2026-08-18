@@ -44,7 +44,7 @@ type ResolverRouteConfig struct {
 	// CanonicalChainKey is the effective direct chain key, meaningful only for a
 	// directly-resolved route. Ingest applies the older-controller fallback to RouteKey
 	// when the wire field is absent, so it is never empty and every consumer — a
-	// Prepare implementation and the binder's direct-target check — reads the same
+	// Prepare implementation and the binder's route-key check — reads the same
 	// value from one place.
 	//
 	// A protocol-resolved route carries no key on the wire: it derives one from
@@ -160,7 +160,7 @@ func PrepareRoute(reg ResolverRegistry, cfg ResolverRouteConfig) (*PreparedRoute
 		Resolver:     prepared,
 		Requirements: reqs,
 		// Captured once, from the already-resolved effective value, so the binder's
-		// direct-target check never re-derives the fallback.
+		// route-key check never re-derives the fallback.
 		DirectChainKey: cfg.CanonicalChainKey,
 		APIID:          cfg.APIID,
 		Vhost:          cfg.Vhost,
@@ -228,8 +228,8 @@ func (pr *PreparedRoute) IsStatic() bool {
 }
 
 // ValidateResolution checks a resolution's structure against this route: it names a key,
-// and that key passes the target's own rules. It touches no chain map, so it is safe to run
-// at ingest.
+// and that key passes the rules this route's own resolver implies. It touches no chain map,
+// so it is safe to run at ingest.
 func (pr *PreparedRoute) ValidateResolution(res Resolution) *ResolutionError {
 	if pr == nil {
 		return &ResolutionError{
@@ -243,7 +243,7 @@ func (pr *PreparedRoute) ValidateResolution(res Resolution) *ResolutionError {
 			Cause: errors.New("resolution named no chain key"),
 		}
 	}
-	if err := pr.validateResolvedKey(res.Target, res.ChainKey); err != nil {
+	if err := pr.validateResolvedKey(res.ChainKey); err != nil {
 		// FailureInternal renders generically, so the client learns nothing from a
 		// resolver's own bug. There is nothing to fall back to — one resolution names one
 		// key — so an invalid key fails the whole resolution.
@@ -268,7 +268,7 @@ func Bind[C any](pr *PreparedRoute, res Resolution, getChain func(string) *C) (B
 	if err := pr.ValidateResolution(res); err != nil {
 		return BoundResolution{}, nil, err
 	}
-	return selectChain(res, getChain)
+	return selectChain(pr, res, getChain)
 }
 
 // BindStatic looks up the chain for this route's static resolution, the one fixed at
@@ -285,15 +285,26 @@ func BindStatic[C any](pr *PreparedRoute, getChain func(string) *C) (BoundResolu
 			Cause: errors.New("route has no static resolution"),
 		}
 	}
-	return selectChain(*pr.StaticResolution, getChain)
+	return selectChain(pr, *pr.StaticResolution, getChain)
+}
+
+// isDirectlyResolved reports whether this route's chain comes from the route itself rather
+// than from a protocol resolver reading the request.
+//
+// It is answered from the normalised resolver name fixed at preparation, which is what
+// keeps a request-time result from choosing its own semantics: the same resolution binds,
+// validates and classifies the same way on every request to this route.
+func (pr *PreparedRoute) isDirectlyResolved() bool {
+	return pr.ResolverName == RouteKeyResolverName
 }
 
 // selectChain looks up the resolution's chain and builds the bound result, or classifies
-// why no chain was found.
-func selectChain[C any](res Resolution, getChain func(string) *C) (BoundResolution, *C, error) {
+// why no chain was found. A free function rather than a method because Go does not allow
+// methods to carry their own type parameter.
+func selectChain[C any](pr *PreparedRoute, res Resolution, getChain func(string) *C) (BoundResolution, *C, error) {
 	if getChain == nil {
-		// Without an accessor the chain would appear not to exist, which for an operation
-		// target would render as "unknown operation" — a client-facing answer to what is
+		// Without an accessor the chain would appear not to exist, which on a
+		// protocol-resolved route would report deployment skew — a misdiagnosis of what is
 		// really an engine wiring fault.
 		return BoundResolution{}, nil, &ResolutionError{
 			Kind:  FailureInternal,
@@ -304,49 +315,45 @@ func selectChain[C any](res Resolution, getChain func(string) *C) (BoundResoluti
 	if chain := getChain(res.ChainKey); chain != nil {
 		return BoundResolution{
 			ChainKey:  res.ChainKey,
-			Operation: operationFor(res.Target, res.ChainKey),
+			Operation: pr.operationFor(res.ChainKey),
 		}, chain, nil
 	}
 
-	// A direct route keeps the pre-resolution outcome: the kernel's own sterile 500 for a
-	// route with no chain.
-	if res.Target == TargetDirectRoute {
+	// A directly-resolved route keeps the pre-resolution outcome: the kernel's own sterile
+	// 500 for a route with no chain.
+	if pr.isDirectlyResolved() {
 		return BoundResolution{}, nil, ErrDirectRouteChainMissing
 	}
 
-	// A known protocol operation missing its generated chain is deployment or xDS skew;
-	// an unknown one is the client naming something that does not exist.
-	kind := FailureUnknownOperation
-	if res.KnownToProtocol {
-		kind = FailureChainMissing
-	}
-	return BoundResolution{}, nil, &ResolutionError{Kind: kind}
+	// Resolve returned a resolution at all, so the protocol resolver has already
+	// established that this is one of its operations — an unrecognised one comes back as
+	// FailureUnknownOperation from Resolve, never as a resolution to be second-guessed
+	// here. Its generated chain being absent is therefore deployment or xDS skew.
+	return BoundResolution{}, nil, &ResolutionError{Kind: FailureChainMissing}
 }
 
-// validateResolvedKey enforces the target boundary. A resolver composes its own key; this
-// is what stops a composition bug or a hostile identifier from reaching a chain that
-// belongs to a different route, API or vhost. Callers check for an empty key first.
-func (pr *PreparedRoute) validateResolvedKey(target TargetKind, key string) error {
-	switch target {
-	case TargetDirectRoute:
+// validateResolvedKey enforces the boundary the route's own resolver implies. A resolver
+// composes its own key; this is what stops a composition bug or a hostile identifier from
+// reaching a chain that belongs to a different route, API or vhost. Callers check for an
+// empty key first.
+func (pr *PreparedRoute) validateResolvedKey(key string) error {
+	if pr.isDirectlyResolved() {
 		// Compared against the value captured at preparation, never re-derived: one
 		// fallback site, so a second one cannot disagree with it.
 		if key != pr.DirectChainKey {
-			return errors.New("direct target must be the route's own chain key")
+			return errors.New("route-key resolver must return the route's own chain key")
 		}
 		return nil
-	case TargetOperation:
-		apiID, vhost, operation, ok := chainkey.Split(key)
-		if !ok || operation == "" {
-			return errors.New("operation target is not a well-formed composed key")
-		}
-		if apiID != pr.APIID || vhost != pr.Vhost {
-			return errors.New("operation target crosses an API or routing partition")
-		}
-		return nil
-	default:
-		return fmt.Errorf("unset resolution target (%s)", target)
 	}
+
+	apiID, vhost, operation, ok := chainkey.Split(key)
+	if !ok || operation == "" {
+		return errors.New("protocol resolver returned a malformed operation chain key")
+	}
+	if apiID != pr.APIID || vhost != pr.Vhost {
+		return errors.New("protocol resolver crossed an API or routing partition")
+	}
+	return nil
 }
 
 // operationFor reports the canonical operation the selected chain serves, read back out of
@@ -356,11 +363,11 @@ func (pr *PreparedRoute) validateResolvedKey(target TargetKind, key string) erro
 // fact: a resolver has no field with which to claim a different one, so telemetry cannot
 // name one operation while another operation's policies run.
 //
-// A direct route reports nothing. Its key is the route's own — not necessarily a composed
-// one at all — and the resolver identified no operation, so attributing one to it would
-// misreport who chose the chain.
-func operationFor(target TargetKind, key string) string {
-	if target != TargetOperation {
+// A directly-resolved route reports nothing. Its key is the route's own — not necessarily a
+// composed one at all — and no resolver identified an operation, so attributing one to it
+// would misreport who chose the chain.
+func (pr *PreparedRoute) operationFor(key string) string {
+	if pr.isDirectlyResolved() {
 		return ""
 	}
 	_, _, operation, _ := chainkey.Split(key) // validated before the lookup

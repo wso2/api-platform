@@ -62,7 +62,7 @@ func (*preparedRouteKey) Requirements() RequestRequirements {
 
 // StaticResolution is the whole of this resolver's work, done once at ingest.
 func (r *preparedRouteKey) StaticResolution() Resolution {
-	return Resolution{Target: TargetDirectRoute, ChainKey: r.key}
+	return Resolution{ChainKey: r.key}
 }
 
 // Resolve returns the same static resolution. Reached only by a caller that ignores

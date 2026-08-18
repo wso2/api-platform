@@ -34,9 +34,9 @@
 //
 // A prepared resolver composes its own chain key, with the shared helper
 // (common/chainkey) and the partition it captured at preparation. What stays central
-// is *validation*: this package checks that key against the route's own target and
-// partition before the chain is looked up, so a resolver cannot reach a chain belonging
-// to another API or vhost. The controller composes keys with the same helper when it
+// is *validation*: this package checks that key against the rules the route's own resolver
+// implies, and against the partition captured for it, before the chain is looked up — so a
+// resolver cannot reach a chain belonging to another route, API or vhost. The controller composes keys with the same helper when it
 // emits the chains, which is what makes two transports of one logical operation select
 // one chain without either being told about the other.
 //
@@ -210,56 +210,21 @@ type RequestView struct {
 	Body []byte
 }
 
-// TargetKind is what a resolution's keys name, which decides how they are validated
-// and how a missing chain is classified.
-type TargetKind uint8
-
-const (
-	// TargetInvalid is the zero value and is always rejected. A resolver that forgets
-	// to set a target fails closed rather than defaulting into either set of semantics.
-	TargetInvalid TargetKind = iota
-
-	// TargetDirectRoute means the key is the route's own chain key. A miss keeps the
-	// pre-resolution outcome for a route with no chain: the kernel's sterile 500, not a
-	// protocol-level error.
-	TargetDirectRoute
-
-	// TargetOperation means the key is composed from a canonical protocol operation. A
-	// miss is classified from KnownToProtocol: a deployment problem when the protocol
-	// says the operation exists, and an unknown operation when it does not.
-	TargetOperation
-)
-
-// String names the target for logs and error text.
-func (t TargetKind) String() string {
-	switch t {
-	case TargetDirectRoute:
-		return "direct-route"
-	case TargetOperation:
-		return "operation"
-	default:
-		return "invalid"
-	}
-}
-
 // Resolution is what a prepared resolver made of the request.
 type Resolution struct {
-	// Target is what ChainKey names. Required: an unset target is rejected.
-	Target TargetKind
-
 	// ChainKey is the one chain this request binds to. Exactly one chain runs per
 	// request, so the binder does no selecting — it validates this key and looks it up.
+	//
+	// How it is validated, and how a missing chain is classified, come from the route's
+	// already-prepared resolver rather than from anything in here: a request-time result
+	// cannot pick its own validation rule. Nor does it declare whether the operation is
+	// one the protocol defines — returning a resolution at all is that claim. A resolver
+	// that does not recognise the operation returns FailureUnknownOperation rather than a
+	// resolution the binder would have to second-guess.
 	//
 	// Empty means the resolver could not identify anything to bind to, which is
 	// rejected as FailureInvalidRequest.
 	ChainKey string
-
-	// KnownToProtocol reports that the operation is one the protocol itself defines.
-	// It decides how "no chain under this key" is classified: for a closed operation
-	// set (A2A's fixed operation enum) a missing chain means the deployment was built
-	// wrong, because the protocol says the operation exists; for an open one (MCP tool
-	// names) it means the client named something that does not exist.
-	KnownToProtocol bool
 }
 
 // BoundResolution is the outcome of binding a resolution to a chain that exists.

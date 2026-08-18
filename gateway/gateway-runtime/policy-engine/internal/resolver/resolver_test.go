@@ -153,7 +153,6 @@ func TestRouteKeyResolver_PreparesAStaticDirectResolution(t *testing.T) {
 	static, ok := prepared.(StaticPreparedResolver)
 	require.True(t, ok, "route-key must be static so the request path never calls Resolve")
 	res := static.StaticResolution()
-	assert.Equal(t, TargetDirectRoute, res.Target)
 	assert.Equal(t, "GET|/api/v1/users|example.com", res.ChainKey)
 }
 
@@ -381,17 +380,19 @@ func TestPrepareRoute_RejectsAStaticResolverThatNeedsTheRequest(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			// The key is a well-formed operation key for this route's own partition, so
+			// nothing but the requirements can be what fails — the assertion below cannot
+			// be satisfied by the key rule instead.
 			factory := &fakeResolver{name: "contradictory", prepare: func(ResolverRouteConfig) (PreparedResolver, error) {
 				return &fakeStatic{
 					fakePrepared: fakePrepared{reqs: tt.reqs},
-					static: Resolution{
-						Target: TargetDirectRoute, ChainKey: "POST|/rpc|h",
-					},
+					static:       Resolution{ChainKey: ChainKeyFor("api-1", "h", "OperationOne")},
 				}, nil
 			}}
 
 			_, err := PrepareRoute(registryWith(t, factory), ResolverRouteConfig{
 				ResolverName: "contradictory", RouteKey: "POST|/rpc|h", CanonicalChainKey: "POST|/rpc|h",
+				APIID: "api-1", Vhost: "h",
 			})
 			require.Error(t, err)
 			assert.Contains(t, err.Error(), "static resolution needs nothing from the request")
@@ -418,7 +419,7 @@ func TestPrepareRoute_RequirementsArePerRouteNotPerFactory(t *testing.T) {
 			return &fakePrepared{reqs: RequestRequirements{Body: BodyBuffered}}, nil
 		}
 		return &fakeStatic{
-			static: Resolution{Target: TargetOperation, ChainKey: ChainKeyFor("api-1", "h", "OperationOne")},
+			static: Resolution{ChainKey: ChainKeyFor("api-1", "h", "OperationOne")},
 		}, nil
 	}}
 	reg := registryWith(t, factory)
@@ -435,9 +436,13 @@ func TestPrepareRoute_RequirementsArePerRouteNotPerFactory(t *testing.T) {
 	assert.True(t, perOperation.IsStatic(), "and therefore never runs on the request path")
 }
 
-// ─── Bind: direct targets ────────────────────────────────────────────────────
+// ─── Bind: directly-resolved routes ──────────────────────────────────────────
+//
+// Which rule the binder applies is decided by the route's normalised resolver name, fixed
+// at preparation — not by anything the resolution carries. A request-time result cannot
+// pick its own validation rule, which is what these two sections exercise from either side.
 
-func TestBind_DirectTargetSelectsTheRoutesOwnChain(t *testing.T) {
+func TestBind_RouteKeySelectsTheRoutesOwnChain(t *testing.T) {
 	pr := prepareWith(t, DefaultRegistry(), ResolverRouteConfig{
 		RouteKey:          "GET|/pets|h",
 		CanonicalChainKey: "GET|/pets|h",
@@ -463,10 +468,7 @@ func TestBind_DirectTargetSelectsTheRoutesOwnChain(t *testing.T) {
 func TestBindStatic_DoesNoPerRequestValidation(t *testing.T) {
 	// A resolver whose static resolution names a chain outside its own route.
 	factory := &fakeResolver{name: "bad-static", prepare: func(ResolverRouteConfig) (PreparedResolver, error) {
-		return &fakeStatic{static: Resolution{
-			Target:   TargetDirectRoute,
-			ChainKey: "GET|/admin|h",
-		}}, nil
+		return &fakeStatic{static: Resolution{ChainKey: "GET|/admin|h"}}, nil
 	}}
 
 	_, err := PrepareRoute(registryWith(t, factory), ResolverRouteConfig{
@@ -476,7 +478,9 @@ func TestBindStatic_DoesNoPerRequestValidation(t *testing.T) {
 	})
 	require.Error(t, err, "an invalid static resolution must be caught at ingest, not per request")
 	assert.Contains(t, err.Error(), "invalid static resolution")
-	assert.Contains(t, err.Error(), "route's own chain key")
+	// Named resolver, so the protocol rule applies: the key must be a composed operation
+	// key, and a bare route key is not one.
+	assert.Contains(t, err.Error(), "malformed operation chain key")
 
 	// It must not be mistaken for an unknown resolver: the resolver was found and it is
 	// the resolution it produced that is wrong, which ingest reports and counts separately.
@@ -488,7 +492,7 @@ func TestBindStatic_DoesNoPerRequestValidation(t *testing.T) {
 
 // A direct route with no chain keeps the pre-resolution outcome: the kernel's own
 // sterile 500, not a resolution failure the client could read anything into.
-func TestBind_DirectTargetWithNoChainIsNotAResolutionFailure(t *testing.T) {
+func TestBind_RouteKeyWithNoChainIsNotAResolutionFailure(t *testing.T) {
 	pr := prepareWith(t, DefaultRegistry(), ResolverRouteConfig{
 		RouteKey:          "GET|/pets|h",
 		CanonicalChainKey: "GET|/pets|h",
@@ -502,29 +506,55 @@ func TestBind_DirectTargetWithNoChainIsNotAResolutionFailure(t *testing.T) {
 		"this is the existing no-chain path, not a classified resolution failure")
 }
 
-// A resolver claiming a direct target for anything other than this route's own key is
-// reaching for a chain it was not given.
-func TestBind_DirectTargetRejectsAnyOtherKey(t *testing.T) {
-	fake := &fakeResolver{name: "fake", resolution: Resolution{
-		Target:   TargetDirectRoute,
-		ChainKey: "GET|/admin|h",
-	}}
+// A resolver occupying the route-key name must return this route's own key and nothing
+// else. Registered under that name rather than using the real RouteKeyResolver, because the
+// real one cannot return a wrong key — the rule still has to be enforced against one that
+// could.
+func TestBind_RouteKeyRejectsAnyOtherKey(t *testing.T) {
+	fake := &fakeResolver{
+		name:       RouteKeyResolverName,
+		resolution: Resolution{ChainKey: "GET|/admin|h"},
+	}
 	pr := prepareWith(t, registryWith(t, fake), ResolverRouteConfig{
-		ResolverName:      "fake",
+		ResolverName:      RouteKeyResolverName,
 		RouteKey:          "GET|/pets|h",
 		CanonicalChainKey: "GET|/pets|h",
 	})
 
-	_, _, err := Bind(pr, fake.resolution, chainsPresent("GET|/admin|h").get)
+	// The other route's chain exists, so only validation can stop the binding.
+	_, chain, err := Bind(pr, fake.resolution, chainsPresent("GET|/admin|h").get)
 	var re *ResolutionError
 	require.True(t, errors.As(err, &re))
 	assert.Equal(t, FailureInternal, re.Kind)
 	assert.Contains(t, re.Cause.Error(), "route's own chain key")
+	assert.Nil(t, chain, "the other route's chain must not have been bound")
 }
 
-// ─── Bind: operation targets ─────────────────────────────────────────────────
+// ─── Bind: protocol-resolved routes ──────────────────────────────────────────
 
-func TestBind_OperationTarget(t *testing.T) {
+// The mirror of the rule above: a protocol resolver may not return a bare route key and so
+// slip into directly-resolved semantics for one request. Its key must be a composed
+// operation key.
+func TestBind_ProtocolResolverRejectsANonComposedKey(t *testing.T) {
+	fake := &fakeResolver{name: "fake", resolution: Resolution{ChainKey: "GET|/pets|h"}}
+	pr := prepareWith(t, registryWith(t, fake), ResolverRouteConfig{
+		ResolverName:      "fake",
+		RouteKey:          "GET|/pets|h",
+		CanonicalChainKey: "GET|/pets|h",
+		APIID:             "api-1",
+		Vhost:             "h",
+	})
+
+	// The route's own chain exists, so only validation can stop the binding.
+	_, chain, err := Bind(pr, fake.resolution, chainsPresent("GET|/pets|h").get)
+	var re *ResolutionError
+	require.True(t, errors.As(err, &re))
+	assert.Equal(t, FailureInternal, re.Kind)
+	assert.Contains(t, re.Cause.Error(), "malformed operation chain key")
+	assert.Nil(t, chain, "the route-level chain must not have been bound")
+}
+
+func TestBind_ProtocolResolvedRoute(t *testing.T) {
 	const (
 		apiID = "api-1"
 		vhost = "api.example.com"
@@ -532,11 +562,10 @@ func TestBind_OperationTarget(t *testing.T) {
 	key := func(operation string) string { return ChainKeyFor(apiID, vhost, operation) }
 
 	tests := []struct {
-		name            string
-		operation       string // the operation embedded in the key, and so the one reported
-		knownToProtocol bool
-		chains          []string
-		wantKind        FailureKind
+		name      string
+		operation string // the operation embedded in the key, and so the one reported
+		chains    []string
+		wantKind  FailureKind
 	}{
 		{
 			name:      "the named chain exists",
@@ -544,32 +573,30 @@ func TestBind_OperationTarget(t *testing.T) {
 			chains:    []string{key("OperationOne")},
 		},
 		{
-			// Open operation set: the client named a tool that does not exist, so this
-			// is a 404-shaped failure rather than a deployment error.
-			name:      "no chain, open operation set",
-			operation: "tools/call:unlisted",
-			chains:    []string{key("tools/call:add")},
-			wantKind:  FailureUnknownOperation,
+			// Resolve returned a resolution at all, so the resolver has already vouched
+			// for the operation. A missing chain is therefore always deployment or xDS
+			// skew — never "unknown operation", which would blame the caller for a
+			// server-side gap. An operation the resolver does not recognise never gets
+			// this far: Resolve returns FailureUnknownOperation itself.
+			name:      "no chain for a recognised operation is deployment skew",
+			operation: "OperationOne",
+			chains:    []string{key("GetTask")},
+			wantKind:  FailureChainMissing,
 		},
 		{
-			// Closed operation set: the protocol says this operation exists, so a
-			// missing chain means the controller built the deployment wrong. Rendering
-			// it as "unknown operation" would blame the client for a server bug.
-			name:            "no chain, closed operation set",
-			operation:       "OperationOne",
-			knownToProtocol: true,
-			chains:          []string{key("GetTask")},
-			wantKind:        FailureChainMissing,
+			// Same outcome for an identifier from an open space: the resolver having
+			// returned it is the claim that it is valid, so the binder does not
+			// re-adjudicate.
+			name:      "no chain for an open-space identifier is also skew",
+			operation: "tools/call:unlisted",
+			chains:    []string{key("tools/call:add")},
+			wantKind:  FailureChainMissing,
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			resolution := Resolution{
-				Target:          TargetOperation,
-				ChainKey:        key(tt.operation),
-				KnownToProtocol: tt.knownToProtocol,
-			}
+			resolution := Resolution{ChainKey: key(tt.operation)}
 			fake := &fakeResolver{name: "fake", resolution: resolution}
 			pr := prepareWith(t, registryWith(t, fake), ResolverRouteConfig{
 				ResolverName:      "fake",
@@ -612,7 +639,7 @@ func TestBind_ReportedOperationAlwaysNamesTheChainThatRan(t *testing.T) {
 
 	// A resolver that meant SendMessage but composed the GetTask key: the mistake is in
 	// the key, and the key is what runs, so that is what must be reported.
-	resolution := Resolution{Target: TargetOperation, ChainKey: getTask, KnownToProtocol: true}
+	resolution := Resolution{ChainKey: getTask}
 	fake := &fakeResolver{name: "fake", resolution: resolution}
 	pr := prepareWith(t, registryWith(t, fake), ResolverRouteConfig{
 		ResolverName: "fake", RouteKey: "POST|/rpc|" + vhost,
@@ -667,7 +694,7 @@ func TestBind_OperationTargetCannotCrossAPartition(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			resolution := Resolution{Target: TargetOperation, ChainKey: tt.key}
+			resolution := Resolution{ChainKey: tt.key}
 			fake := &fakeResolver{name: "fake", resolution: resolution}
 			pr := prepareWith(t, registryWith(t, fake), ResolverRouteConfig{
 				ResolverName: "fake", RouteKey: "POST|/rpc|" + vhost,
@@ -693,10 +720,7 @@ func TestBind_MalformedKeyBindsNothing(t *testing.T) {
 	)
 	// A chain that does exist, to prove the failure does not quietly land on it.
 	existing := ChainKeyFor(apiID, vhost, "tools/call")
-	resolution := Resolution{
-		Target:   TargetOperation,
-		ChainKey: "forged-not-a-composed-key",
-	}
+	resolution := Resolution{ChainKey: "forged-not-a-composed-key"}
 	fake := &fakeResolver{name: "fake", resolution: resolution}
 	pr := prepareWith(t, registryWith(t, fake), ResolverRouteConfig{
 		ResolverName: "fake", RouteKey: "POST|/rpc|" + vhost,
@@ -713,20 +737,44 @@ func TestBind_MalformedKeyBindsNothing(t *testing.T) {
 	assert.Empty(t, store.lookedUp, "validation fails before any chain is looked up")
 }
 
-// An unset target is rejected rather than defaulting into either set of semantics, so a
-// resolver that forgets to set one fails closed.
-func TestBind_UnsetTargetIsRejected(t *testing.T) {
-	resolution := Resolution{ChainKey: "GET|/pets|h"}
-	fake := &fakeResolver{name: "fake", resolution: resolution}
-	pr := prepareWith(t, registryWith(t, fake), ResolverRouteConfig{
-		ResolverName: "fake", RouteKey: "GET|/pets|h", CanonicalChainKey: "GET|/pets|h",
-	})
+// There is no target to leave unset any more: the rule comes from the route's resolver
+// name, which preparation normalises and fixes. What used to be "a resolver forgot to set a
+// target" is now structurally impossible, and the two rules it used to select between are
+// covered by TestBind_RouteKeyRejectsAnyOtherKey and
+// TestBind_ProtocolResolverRejectsANonComposedKey.
+func TestBind_ValidationRuleComesFromThePreparedResolver(t *testing.T) {
+	const key = "GET|/pets|h"
 
-	_, _, err := Bind(pr, resolution, chainsPresent("GET|/pets|h").get)
+	// One resolution value, two routes differing only by which resolver prepared them.
+	resolution := Resolution{ChainKey: key}
+
+	routeKeyRoute := prepareWith(t,
+		registryWith(t, &fakeResolver{name: RouteKeyResolverName, resolution: resolution}),
+		ResolverRouteConfig{
+			ResolverName: RouteKeyResolverName, RouteKey: key, CanonicalChainKey: key,
+			APIID: "api-1", Vhost: "h",
+		})
+	protocolRoute := prepareWith(t,
+		registryWith(t, &fakeResolver{name: "fake", resolution: resolution}),
+		ResolverRouteConfig{
+			ResolverName: "fake", RouteKey: key, CanonicalChainKey: key,
+			APIID: "api-1", Vhost: "h",
+		})
+
+	// Accepted on the route-key route: the key is that route's own.
+	bound, chain, err := Bind(routeKeyRoute, resolution, chainsPresent(key).get)
+	require.NoError(t, err)
+	require.NotNil(t, chain)
+	assert.Equal(t, key, bound.ChainKey)
+	assert.Empty(t, bound.Operation, "a directly-resolved route reports no operation")
+
+	// Refused on the protocol route: the same key is not a composed operation key. The
+	// resolution did not change — only the resolver that prepared the route did.
+	_, chain, err = Bind(protocolRoute, resolution, chainsPresent(key).get)
 	var re *ResolutionError
 	require.True(t, errors.As(err, &re))
 	assert.Equal(t, FailureInternal, re.Kind)
-	assert.Contains(t, re.Cause.Error(), "unset resolution target")
+	assert.Nil(t, chain)
 }
 
 func TestBind_RejectsAResolutionWithNoChainKey(t *testing.T) {
@@ -734,7 +782,7 @@ func TestBind_RejectsAResolutionWithNoChainKey(t *testing.T) {
 		RouteKey: "GET|/pets|h", CanonicalChainKey: "GET|/pets|h",
 	})
 
-	_, _, err := Bind(pr, Resolution{Target: TargetDirectRoute}, noChains)
+	_, _, err := Bind(pr, Resolution{}, noChains)
 	var re *ResolutionError
 	require.True(t, errors.As(err, &re))
 	assert.Equal(t, FailureInvalidRequest, re.Kind,
@@ -742,10 +790,10 @@ func TestBind_RejectsAResolutionWithNoChainKey(t *testing.T) {
 }
 
 // A nil chain accessor must fail closed rather than resolve or panic: without it the chain
-// would appear not to exist, which for an operation target would render as "unknown
-// operation" — a client-facing answer to an engine wiring fault.
+// would appear not to exist, which on a protocol-resolved route would be reported as
+// deployment skew — a misdiagnosis of what is really an engine wiring fault.
 func TestBind_NilChainAccessorFailsClosedAsInternal(t *testing.T) {
-	resolution := Resolution{Target: TargetOperation, ChainKey: ChainKeyFor("a", "v", "Op")}
+	resolution := Resolution{ChainKey: ChainKeyFor("a", "v", "Op")}
 	fake := &fakeResolver{name: "fake", resolution: resolution}
 	pr := prepareWith(t, registryWith(t, fake), ResolverRouteConfig{
 		ResolverName: "fake", RouteKey: "r", CanonicalChainKey: "r", APIID: "a", Vhost: "v",
@@ -759,7 +807,7 @@ func TestBind_NilChainAccessorFailsClosedAsInternal(t *testing.T) {
 
 func TestBind_NilPreparedRouteFailsClosed(t *testing.T) {
 	var pr *PreparedRoute
-	_, _, err := Bind(pr, Resolution{Target: TargetDirectRoute, ChainKey: "k"}, noChains)
+	_, _, err := Bind(pr, Resolution{ChainKey: "k"}, noChains)
 	var re *ResolutionError
 	require.True(t, errors.As(err, &re))
 	assert.Equal(t, FailureInternal, re.Kind)
@@ -781,7 +829,7 @@ func TestBind_RoutesForOneOperationConverge(t *testing.T) {
 
 	// Resolved from the request: many operations share this route.
 	perRequestResolution := Resolution{
-		Target: TargetOperation, ChainKey: composed, KnownToProtocol: true,
+		ChainKey: composed,
 	}
 	multiplexed := prepareWith(t,
 		registryWith(t, &fakeResolver{name: "fake-multiplexed", resolution: perRequestResolution}),
@@ -794,7 +842,7 @@ func TestBind_RoutesForOneOperationConverge(t *testing.T) {
 
 	// Fixed at ingest: this route serves one operation, named in its configuration.
 	staticResolution := Resolution{
-		Target: TargetOperation, ChainKey: composed, KnownToProtocol: true,
+		ChainKey: composed,
 	}
 	perOperation := prepareWith(t,
 		registryWith(t, &fakeResolver{name: "fake-per-operation", prepare: func(ResolverRouteConfig) (PreparedResolver, error) {
@@ -847,10 +895,4 @@ func TestRouteResolution_IsIdentity(t *testing.T) {
 	assert.True(t, (&RouteResolution{}).IsIdentity())
 	assert.True(t, (&RouteResolution{ResolverName: RouteKeyResolverName}).IsIdentity())
 	assert.False(t, (&RouteResolution{ResolverName: "fake-multiplexed"}).IsIdentity())
-}
-
-func TestTargetKind_String(t *testing.T) {
-	assert.Equal(t, "direct-route", TargetDirectRoute.String())
-	assert.Equal(t, "operation", TargetOperation.String())
-	assert.Equal(t, "invalid", TargetInvalid.String())
 }

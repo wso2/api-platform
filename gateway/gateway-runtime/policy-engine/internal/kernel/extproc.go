@@ -625,8 +625,8 @@ func (s *ExternalProcessorServer) initializeExecutionContext(
 
 // bindStaticRoute binds a route whose resolution was fully determined at ingest.
 //
-// The structural work — checking that a direct target names this route's own chain key, or
-// that an operation target belongs to this API and vhost — happened once, at preparation,
+// The structural work — checking that a route-key route named its own chain key, or that a
+// protocol resolver's key belongs to this API and vhost — happened once, at preparation,
 // and PrepareRoute refused the route if it failed. So a
 // statically-prepared resolver still cannot reach another route's chain, and the request
 // pays for none of that: one chain lookup and a struct copy, which is what the path cost

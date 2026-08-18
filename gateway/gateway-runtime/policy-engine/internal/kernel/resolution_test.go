@@ -74,11 +74,6 @@ type fakeOperationResolver struct {
 	apiID string
 	vhost string
 
-	// knownToProtocol mirrors a closed operation set (A2A's fixed enum), where a
-	// missing chain is a deployment error rather than the client naming something that
-	// does not exist. Left false, this fake behaves like an open set (MCP tool names).
-	knownToProtocol bool
-
 	seenBody   []byte
 	seenView   resolver.RequestView
 	identified int
@@ -103,9 +98,7 @@ func (f *fakeOperationResolver) Requirements() resolver.RequestRequirements { re
 // request.
 func (f *fakeOperationResolver) resolveOperation(operation string) resolver.Resolution {
 	return resolver.Resolution{
-		Target:          resolver.TargetOperation,
-		ChainKey:        resolver.ChainKeyFor(f.apiID, f.vhost, operation),
-		KnownToProtocol: f.knownToProtocol,
+		ChainKey: resolver.ChainKeyFor(f.apiID, f.vhost, operation),
 	}
 }
 
@@ -386,7 +379,7 @@ func (r *staticKeyResolver) Resolve(context.Context, resolver.RequestView) (reso
 }
 
 func (r *staticKeyResolver) StaticResolution() resolver.Resolution {
-	return resolver.Resolution{Target: resolver.TargetDirectRoute, ChainKey: r.key}
+	return resolver.Resolution{ChainKey: r.key}
 }
 
 // Invariant 5.1: an empty resolver_name and the explicit identity name behave the
@@ -473,7 +466,11 @@ func TestHeaderOnlyResolver_ResolvesAtHeaderPhase(t *testing.T) {
 	assert.Equal(t, "/rpc", r.seenView.Path)
 }
 
-func TestHeaderOnlyResolver_UnknownOperationDenies(t *testing.T) {
+// This fake composes a key for whatever the header says, so an operation it has no chain
+// for reads as deployment skew rather than an unknown operation — the resolver vouched for
+// it by returning a resolution. A resolver that wants to blame the caller must say so
+// itself; see TestUnknownOperation_IsClassifiedByTheResolverNotTheBinder.
+func TestHeaderOnlyResolver_MissingChainDenies(t *testing.T) {
 	r := &fakeOperationResolver{name: "hdr", reqs: resolver.RequestRequirements{Headers: true}, header: "x-op"}
 	f := newResolutionFixture(t, r)
 	f.route("POST|/rpc|example.com", resolver.RouteResolution{
@@ -487,7 +484,7 @@ func TestHeaderOnlyResolver_UnknownOperationDenies(t *testing.T) {
 
 	require.Equal(t, bindFailed, outcome)
 	require.NotNil(t, denial)
-	assert.Equal(t, resolver.FailureUnknownOperation, denial.failure.Kind)
+	assert.Equal(t, resolver.FailureChainMissing, denial.failure.Kind)
 	assert.Nil(t, execCtx, "a denied request must leave no execution context")
 }
 
@@ -529,14 +526,13 @@ func TestUnpreparedRoute_DeniesWithoutFallingBackToTheRouteKey(t *testing.T) {
 	assert.NotNil(t, routeLevel, "the route-level chain exists but must not have been selected")
 }
 
-// Resolution succeeded but the chain is absent — a configuration or xDS-skew
-// failure, not the protocol's "unknown operation".
+// Resolution succeeded but the chain is absent — a configuration or xDS-skew failure. The
+// resolver having returned a resolution at all is its claim that the operation is one of
+// its own, so the binder does not re-adjudicate that: a missing chain is always the
+// deployment's fault, never the caller's.
 func TestResolvedButMissingChain_IsAConfigurationFailure(t *testing.T) {
-	// A closed operation set: the protocol says SendMessage exists, so no chain for it
-	// means the controller built the deployment wrong.
 	r := &fakeOperationResolver{
 		name: "hdr", reqs: resolver.RequestRequirements{Headers: true}, header: "x-op",
-		knownToProtocol: true,
 	}
 	f := newResolutionFixture(t, r)
 	f.route("POST|/rpc|example.com", resolver.RouteResolution{
@@ -553,15 +549,19 @@ func TestResolvedButMissingChain_IsAConfigurationFailure(t *testing.T) {
 		"a missing chain is a deployment fault, distinct from the client naming something unknown")
 }
 
-// The other side of the same branch: an *open* operation set, where no chain for the
-// identified operation means the client named something that does not exist. This is the
-// distinction the controller-supplied operation map used to provide, now answered from
-// the protocol definition — and it decides whether the caller or the deployment is at
-// fault, so the two must not collapse into one failure kind.
-func TestResolvedButMissingChain_OpenOperationSetBlamesTheClient(t *testing.T) {
-	r := &fakeOperationResolver{name: "hdr", reqs: resolver.RequestRequirements{Headers: true}, header: "x-op"}
+// The other side of that: blaming the caller is the *resolver's* call, not the binder's.
+// A resolver that does not recognise an operation says so by returning
+// FailureUnknownOperation from Resolve, and the kernel carries that classification through
+// unchanged. The kind still exists and still reaches the metric and the span; only its
+// origin moved, from an inference the binder made to a statement the resolver makes.
+func TestUnknownOperation_IsClassifiedByTheResolverNotTheBinder(t *testing.T) {
+	r := &fakeOperationResolver{
+		name: "hdr", reqs: resolver.RequestRequirements{Headers: true}, header: "x-op",
+		forcedErr: &resolver.ResolutionError{Kind: resolver.FailureUnknownOperation},
+	}
 	f := newResolutionFixture(t, r)
 	f.route("POST|/rpc|example.com", resolver.RouteResolution{ResolverName: "hdr"})
+	// A chain the resolver could have reached, to show nothing was bound regardless.
 	f.operationChain("tools/call", &testutils.NoopPolicy{})
 
 	var execCtx *PolicyExecutionContext
@@ -572,7 +572,8 @@ func TestResolvedButMissingChain_OpenOperationSetBlamesTheClient(t *testing.T) {
 	require.Equal(t, bindFailed, outcome)
 	require.NotNil(t, denial)
 	assert.Equal(t, resolver.FailureUnknownOperation, denial.failure.Kind,
-		"the client named something that does not exist, distinct from a missing chain")
+		"the resolver's own classification must survive to the metric and the span")
+	assert.Nil(t, execCtx, "and nothing may be bound")
 }
 
 // ─── Deferred (body-phase) binding ───────────────────────────────────────────
@@ -702,7 +703,11 @@ func TestDeferredBinding_ResolutionFailureDenies(t *testing.T) {
 	}{
 		{"malformed payload", []byte(`not json`), typev3.StatusCode_BadRequest, resolver.FailureParse},
 		{"valid payload, invalid envelope", []byte(`{"jsonrpc":"2.0"}`), typev3.StatusCode_BadRequest, resolver.FailureInvalidRequest},
-		{"unknown operation", []byte(`{"method":"NoSuchOp"}`), typev3.StatusCode_NotFound, resolver.FailureUnknownOperation},
+		// This fake composes a key for whatever the body names, so an operation with no
+		// chain is deployment skew — a 500 — rather than a 404. A resolver that means "the
+		// caller named something that does not exist" returns FailureUnknownOperation
+		// itself, which is a resolver-side decision and covered separately.
+		{"resolved operation with no chain", []byte(`{"method":"NoSuchOp"}`), typev3.StatusCode_InternalServerError, resolver.FailureChainMissing},
 	}
 
 	for _, tt := range tests {
