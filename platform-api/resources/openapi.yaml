@@ -9448,10 +9448,8 @@ tags:
     description: API management operations
   - name: REST API Deployments
     description: API deployment artifact management and lifecycle operations
-  - name: API Portal
-    description: API portal publishing and unpublishing operations
   - name: API Portals
-    description: API Portal registration and management (CRUD on /api-portals)
+    description: API Portal registration and management
   - name: DevPortals
     description: DevPortal management operations
   - name: Gateways
