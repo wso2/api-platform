@@ -43,9 +43,9 @@ type McpHandler struct {
 	mcpDeploymentService *utils.MCPDeploymentService
 	llmDeploymentService *utils.LLMDeploymentService
 
-	kinds map[string]*kindOps // kind -&gt; service adapters; see mcp_kinds.go
+	kinds map[string]*kindOps
 
-	// resourceRoles is the management API's route-&gt;roles map, exactly as built
+	// resourceRoles is the management API's route -> roles map, exactly as built
 	// by generateAuthConfig in cmd/controller/main.go. MCP calls are authorized
 	// against it by relative key ("POST /llm-providers"), so the REST API and
 	// the MCP endpoint can never drift apart. See mcp_authz.go.
@@ -64,7 +64,7 @@ type McpHandler struct {
 	maxRequestBytes int64
 	logger          *slog.Logger
 
-	// pushArtifactUndeploy is the shared control-plane (DP-&gt;CP) push hook,
+	// pushArtifactUndeploy is the shared control-plane push hook,
 	// wired from APIServer so an artifact deleted through an MCP tool takes the
 	// same path as one deleted through the REST handlers. Nil when no control
 	// plane is configured (e.g. in unit tests).

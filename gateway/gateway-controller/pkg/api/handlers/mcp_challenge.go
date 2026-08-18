@@ -25,15 +25,15 @@ import (
 )
 
 // MCPChallengeMiddleware attaches the WWW-Authenticate challenge MCP clients
-// need in order to start, or restart, an OAuth flow.
+// need in order to start an OAuth flow.
 //
-// It takes two scope sets:
-//   - 401 uses initialScopes
-//   - 403 uses grantingScopes
-//
-// A 403 that already carries a challenge — the per-tool gate's, which names the
-// precise scope for that one call — is left untouched.
-func MCPChallengeMiddleware(resourceMetadataURL string, initialScopes, grantingScopes []string) func(http.Handler) http.Handler {
+// scopes is the endpoint's entry scope set — the operator-advertised
+// `scopes_supported` from the RFC 9728 metadata document. It is what a client
+// with no token (401), or a token holding nothing this endpoint recognises
+// (403), is told to go and obtain. It is deliberately NOT the union of every
+// scope any tool might need: a caller steps up from here, one operation at a
+// time, driven by the per-tool gate.
+func MCPChallengeMiddleware(resourceMetadataURL string, scopes []string) func(http.Handler) http.Handler {
 	build := func(errCode string, scopes []string) string {
 		var params []string
 		if errCode != "" {
@@ -55,8 +55,8 @@ func MCPChallengeMiddleware(resourceMetadataURL string, initialScopes, grantingS
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			next.ServeHTTP(&challengeWriter{
 				ResponseWriter: w,
-				unauthorized:   func() string { return build("", initialScopes) },
-				forbidden:      func() string { return build("insufficient_scope", grantingScopes) },
+				unauthorized:   func() string { return build("", scopes) },
+				forbidden:      func() string { return build("insufficient_scope", scopes) },
 			}, r)
 		})
 	}

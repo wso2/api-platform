@@ -570,7 +570,7 @@ func (h *McpHandler) llmProxyBody(log *slog.Logger, cfg *models.StoredConfig) (a
 	return buildResourceResponseFromStored(proxy, cfg), nil
 }
 
-// notifyUndeploy forwards a delete to the control plane (DP-&gt;CP) exactly as the
+// notifyUndeploy forwards a delete to the control plane exactly as the
 // REST handlers do, so an artifact removed through MCP is marked undeployed
 // upstream rather than left stale. No-op when no control plane is configured.
 func (h *McpHandler) notifyUndeploy(cfg *models.StoredConfig, log *slog.Logger) {
