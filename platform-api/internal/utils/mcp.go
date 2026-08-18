@@ -294,11 +294,16 @@ func initializeMCPServer(url string, headerName string, headerValue string) (str
 
 	// Check HTTP status code
 	if resp.StatusCode == http.StatusUnauthorized {
-		return "", nil, apperror.Unauthorized.New().
+		return "", nil, apperror.ValidationFailed.New("The MCP server requires authentication credentials or the provided credentials are invalid.").
 			WithLogMessage("MCP server returned 401 Unauthorized to the initialize request")
 	}
+	if resp.StatusCode == http.StatusForbidden {
+		return "", nil, apperror.ValidationFailed.New("Access to the MCP server was forbidden (403).").
+			WithLogMessage("MCP server returned 403 Forbidden to the initialize request")
+	}
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		return "", nil, fmt.Errorf("initialize request failed with status %d: %s", resp.StatusCode, string(body))
+		return "", nil, apperror.ValidationFailed.New(fmt.Sprintf("MCP server initialize request failed with status %d.", resp.StatusCode)).
+			WithLogMessage(fmt.Sprintf("initialize request failed with status %d", resp.StatusCode))
 	}
 
 	// Check if response is event stream and parse it
@@ -315,10 +320,10 @@ func initializeMCPServer(url string, headerName string, headerValue string) (str
 	if err := json.Unmarshal(body, &initResult); err != nil {
 		// Only ignore unmarshal error if this was a valid event stream (parsed above)
 		if !isEventStreamResp {
-			return "", nil, fmt.Errorf("failed to parse initialize response: %w, body: %s", err, string(body))
+			return "", nil, fmt.Errorf("failed to parse initialize response: %w", err)
 		}
 		// For event stream, if unmarshal fails after successful parsing, that's still an error
-		return "", nil, fmt.Errorf("failed to parse initialize response from event stream: %w, body: %s", err, string(body))
+		return "", nil, fmt.Errorf("failed to parse initialize response from event stream: %w", err)
 	}
 
 	if initResult.Error != nil {
@@ -374,7 +379,7 @@ func postJSONRPCWithSession(url string, req any, sessionID string, headerName st
 
 	// Check HTTP status code
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		return nil, fmt.Errorf("request failed with status %d: %s", resp.StatusCode, string(body))
+		return nil, fmt.Errorf("request failed with status %d", resp.StatusCode)
 	}
 
 	// Check if response is event stream
@@ -382,7 +387,7 @@ func postJSONRPCWithSession(url string, req any, sessionID string, headerName st
 		// Extract JSON data from event stream
 		data, err := parseEventStream(body)
 		if err != nil {
-			return nil, fmt.Errorf("failed to parse event stream: %w, body: %s", err, string(body))
+			return nil, fmt.Errorf("failed to parse event stream: %w", err)
 		}
 		return data, nil
 	}
