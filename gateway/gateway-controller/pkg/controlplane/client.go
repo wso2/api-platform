@@ -1061,6 +1061,8 @@ func (c *Client) syncAPIKeysForExistingArtifacts(gatewayID string) {
 		return
 	}
 	artifactUUIDsByKind := make(map[string][]string)
+	// The control plane reports each key against the artifact UUID. For a bottom-up synced artifact that is the cp_artifact_id
+	localArtifactIDs := make(map[string]string)
 	for _, cfg := range configs {
 		if cfg == nil {
 			continue
@@ -1070,6 +1072,19 @@ func (c *Client) syncAPIKeysForExistingArtifacts(gatewayID string) {
 			continue
 		}
 		artifactUUIDsByKind[cfg.Kind] = append(artifactUUIDsByKind[cfg.Kind], cfg.UUID)
+		localArtifactIDs[cfg.UUID] = cfg.UUID
+	}
+	for _, cfg := range configs {
+		if cfg == nil || cfg.CPArtifactID == "" {
+			continue
+		}
+		if _, taken := localArtifactIDs[cfg.CPArtifactID]; taken {
+			continue
+		}
+		if _, known := localArtifactIDs[cfg.UUID]; !known {
+			continue // kind not covered by API-key sync
+		}
+		localArtifactIDs[cfg.CPArtifactID] = cfg.UUID
 	}
 
 	for _, kind := range []string{models.KindRestApi, models.KindWebSubApi, models.KindWebBrokerApi, models.KindLlmProvider, models.KindLlmProxy} {
@@ -1115,6 +1130,17 @@ func (c *Client) syncAPIKeysForExistingArtifacts(gatewayID string) {
 			key := keys[i]
 			if key.UUID == "" {
 				continue
+			}
+
+			if local, mapped := localArtifactIDs[key.ArtifactUUID]; mapped && local != key.ArtifactUUID {
+				if err := c.db.RemoveAPIKeyAPIAndName(key.ArtifactUUID, key.Name); err != nil &&
+					!storage.IsNotFoundError(err) {
+					c.logger.Warn("Failed to remove API key mis-keyed by control-plane artifact UUID",
+						slog.String("key_uuid", key.UUID),
+						slog.String("cp_artifact_uuid", key.ArtifactUUID),
+						slog.Any("error", err))
+				}
+				key.ArtifactUUID = local
 			}
 
 			if err := c.db.UpsertAPIKey(&key); err != nil {
