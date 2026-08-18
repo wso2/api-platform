@@ -828,11 +828,14 @@ func defaultGRPCEventServerConfig() GRPCEventServerConfig {
 // container's shared stdout.
 const routerLogComponentTag = "[rtr] "
 
-// textAccessLogHasComponentTag reports whether a text access-log format carries
-// routerLogComponentTag. A deployer-supplied text_format replaces the default
-// outright, so the tag can go missing without anything else noticing.
-func textAccessLogHasComponentTag(textFormat string) bool {
-	return strings.Contains(textFormat, routerLogComponentTag)
+// textAccessLogStartsWithComponentTag reports whether a text access-log format
+// opens with routerLogComponentTag. A deployer-supplied text_format replaces the
+// default outright, so the tag can go missing without anything else noticing.
+//
+// The tag has to lead the line, not merely appear in it: attribution works by
+// anchoring on it at column 0, so a tag placed mid-format is present but useless.
+func textAccessLogStartsWithComponentTag(textFormat string) bool {
+	return strings.HasPrefix(textFormat, routerLogComponentTag)
 }
 
 func defaultConfig() *Config {
@@ -1342,8 +1345,8 @@ func (c *Config) Validate() error {
 			// Warn rather than fail: an operator may have dropped the tag on purpose,
 			// and refusing to start over a log-formatting choice would be worse than
 			// the ambiguity it causes.
-			if !textAccessLogHasComponentTag(c.Router.AccessLogs.TextFormat) {
-				slog.Warn("router.access_logs.text_format does not contain "+routerLogComponentTag+
+			if !textAccessLogStartsWithComponentTag(c.Router.AccessLogs.TextFormat) {
+				slog.Warn("router.access_logs.text_format does not start with "+routerLogComponentTag+
 					"; router access-log lines will not be attributable on the container's shared stdout")
 			}
 		}
