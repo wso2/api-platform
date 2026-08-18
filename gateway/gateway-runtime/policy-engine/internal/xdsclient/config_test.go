@@ -261,6 +261,7 @@ func TestValidate_TLSEnabledWithAllPaths(t *testing.T) {
 		TLSCertPath:           "/path/to/cert.pem",
 		TLSKeyPath:            "/path/to/key.pem",
 		TLSCAPath:             "/path/to/ca.pem",
+		TLSEcdhCurves:         "X25519,P-256",
 	}
 
 	err := config.Validate()
