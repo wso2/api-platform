@@ -20,6 +20,7 @@
 const crypto = require('crypto');
 const db = require('../db/driver');
 const { findOrCreateSafe } = require('./findOrCreateHelper');
+const { getPortalId } = require('../utils/orgContext');
 
 const TAGS_TABLE = 'tags';
 const API_TAGS_TABLE = 'api_tag_mappings';
@@ -43,13 +44,15 @@ const getOrCreateIds = async (orgId, tagNames, createdBy, t) => {
     for (const name of tagNames) {
         const trimmed = String(name).trim();
         if (!trimmed) continue;
+        const portalId = getPortalId();
         const tag = await findOrCreateSafe(
             TAGS_TABLE,
-            { name: trimmed, org_uuid: orgId },
+            { name: trimmed, org_uuid: orgId, portal_id: portalId },
             {
                 uuid: crypto.randomUUID(),
                 name: trimmed,
                 org_uuid: orgId,
+                portal_id: portalId,
                 created_by: createdBy,
                 updated_by: createdBy,
             },

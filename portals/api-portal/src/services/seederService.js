@@ -18,6 +18,7 @@
 'use strict';
 
 const orgDao = require('../dao/organizationDao');
+const orgPortalMappingDao = require('../dao/orgPortalMappingDao');
 const labelDao = require('../dao/labelDao');
 const viewDao = require('../dao/viewDao');
 const subscriptionPlanDao = require('../dao/subscriptionPlanDao');
@@ -144,6 +145,18 @@ async function seedDefaultOrg() {
                 operation: 'seedDefaultOrg',
             });
             throw createError;
+        }
+    }
+
+    try {
+        await orgPortalMappingDao.create(orgId, orgContext.getPortalId());
+    } catch (error) {
+        if (!db.isDuplicateKeyError(error)) {
+            logger.error('Failed to seed org-portal mapping', {
+                error: error.message,
+                operation: 'seedDefaultOrg',
+            });
+            return;
         }
     }
 

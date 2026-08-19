@@ -22,6 +22,7 @@ const db = require('../db/driver');
 const constants = require('../utils/constants');
 const logger = require('../config/logger');
 const { bufferToUtf8 } = require('../utils/cryptoUtil');
+const { getPortalId } = require('../utils/orgContext');
 
 const TABLE = 'api_workflows';
 
@@ -48,10 +49,10 @@ const create = async (orgId, viewId, apiWorkflowData, createdBy, t) => {
     try {
         await exec.execute(
             `INSERT INTO ${TABLE}
-                (uuid, org_uuid, view_uuid, display_name, handle, description, agent_prompt, status,
+                (uuid, org_uuid, portal_id, view_uuid, display_name, handle, description, agent_prompt, status,
                  agent_visibility, file_content, content_type, created_by, updated_by, created_at, updated_at)
-             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-            [uuid, orgId, viewId, apiWorkflowData.displayName, apiWorkflowData.handle, apiWorkflowData.description,
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+            [uuid, orgId, getPortalId(), viewId, apiWorkflowData.displayName, apiWorkflowData.handle, apiWorkflowData.description,
                 Buffer.from(apiWorkflowData.agentPrompt), status, agentVisibility, db.binaryParam(fileContent), contentType,
                 createdBy, createdBy, now, now]
         );
@@ -99,10 +100,10 @@ const update = async (orgId, viewId, apiWorkflowId, apiWorkflowData, updatedBy, 
         params.push(db.binaryParam(apiWorkflowData.apiWorkflowDefinition != null ? Buffer.from(apiWorkflowData.apiWorkflowDefinition) : null));
     }
     if (apiWorkflowData.contentType !== undefined) { setClauses.push('content_type = ?'); params.push(apiWorkflowData.contentType); }
-    params.push(apiWorkflowId, orgId, viewId);
+    params.push(apiWorkflowId, orgId, viewId, getPortalId());
 
     const { rowCount } = await exec.execute(
-        `UPDATE ${TABLE} SET ${setClauses.join(', ')} WHERE uuid = ? AND org_uuid = ? AND view_uuid = ?`,
+        `UPDATE ${TABLE} SET ${setClauses.join(', ')} WHERE uuid = ? AND org_uuid = ? AND view_uuid = ? AND portal_id = ?`,
         params
     );
     if (rowCount === 0) {
@@ -115,31 +116,31 @@ const update = async (orgId, viewId, apiWorkflowId, apiWorkflowData, updatedBy, 
 const deleteFlow = async (orgId, viewId, apiWorkflowId, t) => {
     const exec = t || db;
     const { rowCount } = await exec.execute(
-        `DELETE FROM ${TABLE} WHERE uuid = ? AND org_uuid = ? AND view_uuid = ?`,
-        [apiWorkflowId, orgId, viewId]
+        `DELETE FROM ${TABLE} WHERE uuid = ? AND org_uuid = ? AND view_uuid = ? AND portal_id = ?`,
+        [apiWorkflowId, orgId, viewId, getPortalId()]
     );
     return rowCount;
 };
 
 const getByHandle = async (orgId, viewId, handle) => {
     const row = await db.queryOne(
-        `SELECT * FROM ${TABLE} WHERE handle = ? AND org_uuid = ? AND view_uuid = ?`,
-        [handle, orgId, viewId]
+        `SELECT * FROM ${TABLE} WHERE handle = ? AND org_uuid = ? AND view_uuid = ? AND portal_id = ?`,
+        [handle, orgId, viewId, getPortalId()]
     );
     return mapRow(row);
 };
 
 const list = async (orgId, viewId) => {
     const rows = await db.query(
-        `SELECT * FROM ${TABLE} WHERE org_uuid = ? AND view_uuid = ? ORDER BY created_at DESC`,
-        [orgId, viewId]
+        `SELECT * FROM ${TABLE} WHERE org_uuid = ? AND view_uuid = ? AND portal_id = ? ORDER BY created_at DESC`,
+        [orgId, viewId, getPortalId()]
     );
     return rows.map(mapRow);
 };
 
 const listPublished = async (orgId, viewId, { agentVisibility } = {}) => {
-    const conditions = ['org_uuid = ?', 'view_uuid = ?', "status = 'PUBLISHED'"];
-    const params = [orgId, viewId];
+    const conditions = ['org_uuid = ?', 'view_uuid = ?', 'portal_id = ?', "status = 'PUBLISHED'"];
+    const params = [orgId, viewId, getPortalId()];
     if (agentVisibility) { conditions.push('agent_visibility = ?'); params.push(agentVisibility); }
     const rows = await db.query(
         `SELECT * FROM ${TABLE} WHERE ${conditions.join(' AND ')} ORDER BY created_at DESC`,
@@ -149,8 +150,8 @@ const listPublished = async (orgId, viewId, { agentVisibility } = {}) => {
 };
 
 const getPublishedByHandle = async (orgId, viewId, handle, { agentVisibility } = {}) => {
-    const conditions = ['handle = ?', 'org_uuid = ?', 'view_uuid = ?', "status = 'PUBLISHED'"];
-    const params = [handle, orgId, viewId];
+    const conditions = ['handle = ?', 'org_uuid = ?', 'view_uuid = ?', 'portal_id = ?', "status = 'PUBLISHED'"];
+    const params = [handle, orgId, viewId, getPortalId()];
     if (agentVisibility) { conditions.push('agent_visibility = ?'); params.push(agentVisibility); }
     const row = await db.queryOne(`SELECT * FROM ${TABLE} WHERE ${conditions.join(' AND ')}`, params);
     return mapRow(row);

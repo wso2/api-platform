@@ -23,6 +23,7 @@ const { parseJsonColumn } = require('../db/rows');
 const { createCryptoUtil, bufferToUtf8 } = require('../utils/cryptoUtil');
 const { config } = require('../config/configLoader');
 const { NotFoundError } = require('../utils/errors/customErrors');
+const { getPortalId } = require('../utils/orgContext');
 
 const TABLE = 'webhook_subscribers';
 
@@ -68,12 +69,13 @@ const create = async (orgId, subData, createdBy) => {
         updated_by: createdBy,
     };
 
+    const portalId = getPortalId();
     await db.execute(
         `INSERT INTO ${TABLE}
-            (uuid, org_uuid, handle, display_name, target_url, secret_enc, event_patterns, enabled, timeout_ms, created_by, updated_by)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+            (uuid, org_uuid, portal_id, handle, display_name, target_url, secret_enc, event_patterns, enabled, timeout_ms, created_by, updated_by)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         [
-            row.uuid, row.org_uuid, row.handle, row.display_name, row.target_url,
+            row.uuid, row.org_uuid, portalId, row.handle, row.display_name, row.target_url,
             db.binaryParam(row.secret_enc !== null ? Buffer.from(row.secret_enc, 'utf8') : null),
             JSON.stringify(row.event_patterns),
             row.enabled, row.timeout_ms, row.created_by, row.updated_by,
@@ -117,9 +119,10 @@ const update = async (orgId, subscriberHandle, subData, updatedBy) => {
         return value;
     });
 
+    const portalId = getPortalId();
     const { rowCount } = await db.execute(
-        `UPDATE ${TABLE} SET ${setClause} WHERE handle = ? AND org_uuid = ?`,
-        [...values, subscriberHandle, orgId]
+        `UPDATE ${TABLE} SET ${setClause} WHERE handle = ? AND org_uuid = ? AND portal_id = ?`,
+        [...values, subscriberHandle, orgId, portalId]
     );
     if (rowCount < 1) {
         throw new NotFoundError('Webhook subscriber not found');
@@ -128,8 +131,8 @@ const update = async (orgId, subscriberHandle, subData, updatedBy) => {
     // result is reliable across every dialect (including sqlite, which has no
     // portable equivalent wired up here).
     const updated = await db.queryOne(
-        `SELECT * FROM ${TABLE} WHERE handle = ? AND org_uuid = ?`,
-        [updatePayload.handle || subscriberHandle, orgId]
+        `SELECT * FROM ${TABLE} WHERE handle = ? AND org_uuid = ? AND portal_id = ?`,
+        [updatePayload.handle || subscriberHandle, orgId, portalId]
     );
     return [rowCount, [toSubscriber(updated)]];
 };
@@ -138,7 +141,7 @@ const update = async (orgId, subscriberHandle, subData, updatedBy) => {
  * List all webhook subscribers for an organization.
  */
 const list = async (orgId) => {
-    const rows = await db.query(`SELECT * FROM ${TABLE} WHERE org_uuid = ?`, [orgId]);
+    const rows = await db.query(`SELECT * FROM ${TABLE} WHERE org_uuid = ? AND portal_id = ?`, [orgId, getPortalId()]);
     return rows.map(toSubscriber);
 };
 
@@ -148,8 +151,8 @@ const list = async (orgId) => {
  */
 const matchSubscribers = async (orgId, eventType) => {
     const rows = await db.query(
-        `SELECT * FROM ${TABLE} WHERE org_uuid = ? AND enabled = 1`,
-        [orgId]
+        `SELECT * FROM ${TABLE} WHERE org_uuid = ? AND portal_id = ? AND enabled = 1`,
+        [orgId, getPortalId()]
     );
     return rows.map(toSubscriber).filter((sub) => {
         const patterns = sub.event_patterns;
@@ -171,8 +174,8 @@ const matchSubscribers = async (orgId, eventType) => {
  */
 const get = async (orgId, subscriberHandle) => {
     const sub = await db.queryOne(
-        `SELECT * FROM ${TABLE} WHERE handle = ? AND org_uuid = ?`,
-        [subscriberHandle, orgId]
+        `SELECT * FROM ${TABLE} WHERE handle = ? AND org_uuid = ? AND portal_id = ?`,
+        [subscriberHandle, orgId, getPortalId()]
     );
     if (!sub) {
         throw new NotFoundError('Webhook subscriber not found');
@@ -199,8 +202,8 @@ const getById = async (subscriberId) => {
  */
 const deleteSubscriber = async (orgId, subscriberHandle) => {
     const { rowCount } = await db.execute(
-        `DELETE FROM ${TABLE} WHERE handle = ? AND org_uuid = ?`,
-        [subscriberHandle, orgId]
+        `DELETE FROM ${TABLE} WHERE handle = ? AND org_uuid = ? AND portal_id = ?`,
+        [subscriberHandle, orgId, getPortalId()]
     );
     if (rowCount < 1) {
         throw new NotFoundError('Webhook subscriber not found');

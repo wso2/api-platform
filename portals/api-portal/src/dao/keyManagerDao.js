@@ -21,6 +21,7 @@ const crypto = require('crypto');
 const db = require('../db/driver');
 const { NotFoundError } = require('../utils/errors/customErrors');
 const logger = require('../config/logger');
+const { getPortalId } = require('../utils/orgContext');
 
 const TABLE = 'key_managers';
 
@@ -36,9 +37,9 @@ const create = async (orgId, kmData, createdBy) => {
 
     try {
         await db.execute(
-            `INSERT INTO ${TABLE} (uuid, org_uuid, handle, display_name, enabled, token_endpoint, created_by, created_at, updated_by, updated_at)
-             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-            [uuid, orgId, kmData.handle, kmData.displayName, enabled, kmData.tokenEndpoint, createdBy, now, createdBy, now]
+            `INSERT INTO ${TABLE} (uuid, org_uuid, portal_id, handle, display_name, enabled, token_endpoint, created_by, created_at, updated_by, updated_at)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+            [uuid, orgId, getPortalId(), kmData.handle, kmData.displayName, enabled, kmData.tokenEndpoint, createdBy, now, createdBy, now]
         );
     } catch (error) {
         // Let the raw driver error (pg 23505 / sqlite UNIQUE / mssql 2601-2627) propagate
@@ -102,7 +103,7 @@ const update = async (kmId, kmData, updatedBy) => {
  */
 const list = async (orgId) => {
     try {
-        return await db.query(`SELECT * FROM ${TABLE} WHERE org_uuid = ?`, [orgId]);
+        return await db.query(`SELECT * FROM ${TABLE} WHERE org_uuid = ? AND portal_id = ?`, [orgId, getPortalId()]);
     } catch (error) {
         logger.error('Error fetching key managers', { error });
         throw error;
@@ -114,7 +115,7 @@ const list = async (orgId) => {
  */
 const listEnabled = async (orgId) => {
     try {
-        return await db.query(`SELECT * FROM ${TABLE} WHERE org_uuid = ? AND enabled = ?`, [orgId, 1]);
+        return await db.query(`SELECT * FROM ${TABLE} WHERE org_uuid = ? AND portal_id = ? AND enabled = ?`, [orgId, getPortalId(), 1]);
     } catch (error) {
         logger.error('Error fetching enabled key managers', { error });
         throw error;
@@ -145,7 +146,7 @@ const get = async (kmId) => {
  */
 const getByHandle = async (orgId, handle) => {
     try {
-        const km = await db.queryOne(`SELECT * FROM ${TABLE} WHERE org_uuid = ? AND handle = ?`, [orgId, handle]);
+        const km = await db.queryOne(`SELECT * FROM ${TABLE} WHERE org_uuid = ? AND portal_id = ? AND handle = ?`, [orgId, getPortalId(), handle]);
         if (!km) {
             throw new NotFoundError('Key manager not found');
         }
@@ -163,7 +164,7 @@ const getByHandle = async (orgId, handle) => {
  * Resolve a key manager's handle to its internal uuid, or null if not found.
  */
 const getIdByHandle = async (orgId, handle) => {
-    const km = await db.queryOne(`SELECT uuid FROM ${TABLE} WHERE org_uuid = ? AND handle = ?`, [orgId, handle]);
+    const km = await db.queryOne(`SELECT uuid FROM ${TABLE} WHERE org_uuid = ? AND portal_id = ? AND handle = ?`, [orgId, getPortalId(), handle]);
     return km ? km.uuid : null;
 };
 

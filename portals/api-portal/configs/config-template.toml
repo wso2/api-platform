@@ -323,6 +323,7 @@ subscriber = "ap_subscriber"
 [api_portal.organization]
 handle = "default"                       # URL slug: /{handle}/views/{viewName}
 display_name = "Default"                 # Used only when first seeding the organization
+portal_id = "default_portal_id"          # Unique portal identifier within this org
 auto_create_subscription_plans = true    # Auto-create Bronze/Silver/Gold/Unlimited/AsyncUnlimited
 # default_name = "default"               # DEPRECATED alias for `handle` — rename it
 
