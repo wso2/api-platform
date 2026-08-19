@@ -31,7 +31,6 @@ import (
 	"net/http"
 	"strings"
 
-	"github.com/wso2/api-platform/platform-api/api"
 	"github.com/wso2/api-platform/platform-api/config"
 	"github.com/wso2/api-platform/platform-api/internal/apperror"
 	"github.com/wso2/api-platform/platform-api/internal/constants"
@@ -268,17 +267,6 @@ func (p *EventGatewayPlugin) CheckProjectDeletion(orgID, projectID string) error
 	if webbrokerCount > 0 {
 		return apperror.ValidationFailed.New("Project has associated WebBroker APIs")
 	}
-	return nil
-}
-
-// EnrichSubscription implements service.OrgSubscriptionEnricher.
-// It adds the WebSub API quota to the organization subscription response.
-func (p *EventGatewayPlugin) EnrichSubscription(orgID string, sub *api.OrganizationSubscription) error {
-	count, err := p.websubAPIRepo.Count(orgID)
-	if err != nil {
-		return err
-	}
-	sub.Quotas.WebsubApis = &api.OrganizationQuota{Used: count}
 	return nil
 }
 

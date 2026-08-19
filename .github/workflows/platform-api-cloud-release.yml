@@ -47,4 +47,4 @@ jobs:
           password: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Build and push multi arch Docker images
-        run: make build-and-push-platform-api-multiarch PLATFORM_API_VERSION="${{ steps.version.outputs.IMAGE_VERSION }}" IMAGE_SUFFIX="platform-api-cloud" DOCKER_REGISTRY="ghcr.io/${{ github.repository_owner }}/api-platform"
+        run: make cloud-build-and-push-platform-api-multiarch PLATFORM_API_VERSION="${{ steps.version.outputs.IMAGE_VERSION }}" DOCKER_REGISTRY="ghcr.io/${{ github.repository_owner }}/api-platform"
