@@ -34,13 +34,7 @@ import { useLLMProvider } from '../../../../contexts/llmProvider';
 import useAIWorkspaceSnackbar from '../../../../hooks/aiWorkspaceSnackbar';
 import { FormattedMessage } from 'react-intl';
 
-interface ServiceProviderSecurityTabProps {
-  onValidityChange?: (isValid: boolean) => void;
-}
-
-export default function ServiceProviderSecurityTab({
-  onValidityChange,
-}: ServiceProviderSecurityTabProps = {}) {
+export default function ServiceProviderSecurityTab() {
   const { provider, isLoading, error, updateProvider, isDraftMode } =
     useLLMProvider();
   const [authenticationType, setAuthenticationType] = useState('');
@@ -56,13 +50,6 @@ export default function ServiceProviderSecurityTab({
     authenticationType === 'apiKey' &&
     apiKeyEnabled &&
     keyValue.trim().length === 0;
-
-  useEffect(() => {
-    onValidityChange?.(!isKeyValueInvalid);
-    return () => {
-      onValidityChange?.(true);
-    };
-  }, [isKeyValueInvalid, onValidityChange]);
 
   useEffect(() => {
     if (!provider) return;
@@ -134,12 +121,6 @@ export default function ServiceProviderSecurityTab({
     const nextEnabled = event.target.checked;
     if (nextEnabled === apiKeyEnabled) return;
     setApiKeyEnabled(nextEnabled);
-    if (nextEnabled && keyValue.trim().length === 0) {
-      showSnackbar(
-        'Add an API key name before enabling API key authentication.',
-        'error'
-      );
-    }
     await updateSecurity(keyValue.trim(), keyIn, nextEnabled, valuePrefix.trim());
   };
 
@@ -243,7 +224,7 @@ export default function ServiceProviderSecurityTab({
                 error={isKeyValueInvalid}
                 helperText={
                   isKeyValueInvalid
-                    ? 'API key name is required'
+                    ? 'API Key is required'
                     : undefined
                 }
                 onChange={(event) => {

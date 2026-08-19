@@ -5554,7 +5554,6 @@ components:
         key:
           type: string
           description: Name of the header or query parameter to be used for the API key
-          minLength: 1
           example: "X-API-Key"
         valuePrefix:
           type: string
