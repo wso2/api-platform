@@ -17,7 +17,7 @@
  */
 
 import { runtimeConfig } from '../../config/runtime';
-import type { AuthUser } from '../../features/auth/authTypes';
+import type { AuthUser } from '../../contexts/auth/authTypes';
 import type { Organization } from '../../types/domain';
 import { toOrganization } from '../adapters';
 import { getJson } from '../client';

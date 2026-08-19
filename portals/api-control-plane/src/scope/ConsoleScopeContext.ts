@@ -18,7 +18,7 @@
 
 import { createContext, useContext } from 'react';
 
-import type { ApiCapabilities } from '../features/apis/apiCapabilities';
+import type { ApiCapabilities } from '../pages/appShell/appShellPages/apis/apiCapabilities';
 import type { Api, Organization, Project } from '../types/domain';
 
 export type ConsoleRouteParams = {

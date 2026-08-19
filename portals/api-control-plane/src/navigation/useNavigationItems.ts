@@ -30,14 +30,14 @@ import {
   type NavigationItem,
 } from './navigationTypes';
 
-const isLevelAvailable = (
-  definition: NavigationDefinition,
-  scope: ReturnType<typeof useConsoleScope>
-) => {
-  if (definition.level === 'organization') return scope.isOrganizationScope;
-  if (definition.level === 'project') return scope.isProjectScope;
-  return scope.isApiScope;
-};
+// const isLevelAvailable = (
+//   definition: NavigationDefinition,
+//   scope: ReturnType<typeof useConsoleScope>
+// ) => {
+//   if (definition.level === 'organization') return scope.isOrganizationScope;
+//   if (definition.level === 'project') return scope.isProjectScope;
+//   return scope.isApiScope;
+// };
 
 const isFeatureEnabled = (definition: NavigationDefinition) =>
   !definition.featureKey ||
@@ -95,12 +95,12 @@ export const useNavigationItems = (): NavigationItem[] => {
     const combinedRegistry = [...navigationRegistry, ...extensionDefinitions];
 
     return combinedRegistry
-      .filter((definition) => isLevelAvailable(definition, scope))
+      // .filter((definition) => isLevelAvailable(definition, scope))
       .filter(isFeatureEnabled)
       .filter((definition) => definition.isVisible?.(scope) ?? true)
       .map((definition) => {
         const to = definition.to(scope);
-        if (!to) return undefined;
+        // if (!to) return undefined;
         return {
           group: definition.group ?? NAVIGATION_GROUP_BY_LEVEL[definition.level],
           icon: definition.icon,

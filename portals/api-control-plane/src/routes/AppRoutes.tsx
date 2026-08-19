@@ -19,17 +19,17 @@
 import { lazy } from 'react';
 import { Route, Routes } from 'react-router-dom';
 
-import { AuthCallbackPage } from '../features/auth/AuthCallbackPage';
-import { LoginPage } from '../features/auth/LoginPage';
+import { AuthCallbackPage } from '../pages/auth/AuthCallbackPage';
+import { LoginPage } from '../pages/auth/LoginPage';
 import {
   NotFoundPage,
   OrganizationRedirectPage,
   ServerErrorPage,
   SessionExpiredPage,
   UnauthorizedPage,
-} from '../features/system/SystemPages';
+} from '../pages/appShell/appShellPages/system/SystemPages';
 import { ConsoleScopeProvider } from '../scope/ConsoleScopeProvider';
-import AppLayout from '../layouts/AppLayout';
+import AppLayout from '../pages/appShell/AppLayout';
 import {
   buildScopedExtensionPath,
   type ApiControlPlaneExtension,
@@ -40,66 +40,66 @@ import { routes } from './paths';
 // Code-split the authenticated feature pages so they are not pulled into the
 // initial (login) bundle.
 const OrganizationHomePage = lazy(() =>
-  import('../features/organizations/OrganizationHomePage').then((m) => ({
+  import('../pages/appShell/appShellPages/organizations/OrganizationHomePage').then((m) => ({
     default: m.OrganizationHomePage,
   }))
 );
 const ProjectListPage = lazy(() =>
-  import('../features/projects/ProjectListPage').then((m) => ({
+  import('../pages/appShell/appShellPages/projects/ProjectListPage').then((m) => ({
     default: m.ProjectListPage,
   }))
 );
 const GatewaysPage = lazy(() =>
-  import('../features/gateways/GatewaysPage').then((m) => ({
+  import('../pages/appShell/appShellPages/gateways/GatewaysPage').then((m) => ({
     default: m.GatewaysPage,
   }))
 );
 const GatewayCreatePage = lazy(() =>
-  import('../features/gateways/GatewayCreatePage').then((m) => ({
+  import('../pages/appShell/appShellPages/gateways/GatewayCreatePage').then((m) => ({
     default: m.GatewayCreatePage,
   }))
 );
 const GatewayDetailPage = lazy(() =>
-  import('../features/gateways/GatewayDetailPage').then((m) => ({
+  import('../pages/appShell/appShellPages/gateways/GatewayDetailPage').then((m) => ({
     default: m.GatewayDetailPage,
   }))
 );
 const ProjectHomePage = lazy(() =>
-  import('../features/projects/ProjectHomePage').then((m) => ({
+  import('../pages/appShell/appShellPages/projects/ProjectHomePage').then((m) => ({
     default: m.ProjectHomePage,
   }))
 );
 const ApiListPage = lazy(() =>
-  import('../features/apis/ApiListPage').then((m) => ({
+  import('../pages/appShell/appShellPages/apis/ApiListPage').then((m) => ({
     default: m.ApiListPage,
   }))
 );
 const ApiCreatePage = lazy(() =>
-  import('../features/apis/ApiCreatePage').then((m) => ({
+  import('../pages/appShell/appShellPages/apis/ApiCreatePage').then((m) => ({
     default: m.ApiCreatePage,
   }))
 );
 const ApiDetailPage = lazy(() =>
-  import('../features/apis/ApiDetailPage').then((m) => ({
+  import('../pages/appShell/appShellPages/apis/ApiDetailPage').then((m) => ({
     default: m.ApiDetailPage,
   }))
 );
 const DeployPage = lazy(() =>
-  import('../features/deploy/DeployPage').then((m) => ({ default: m.DeployPage }))
+  import('../pages/appShell/appShellPages/deploy/DeployPage').then((m) => ({ default: m.DeployPage }))
 );
 const TestPage = lazy(() =>
-  import('../features/test/TestPage').then((m) => ({ default: m.TestPage }))
+  import('../pages/appShell/appShellPages/test/TestPage').then((m) => ({ default: m.TestPage }))
 );
 const ManagePage = lazy(() =>
-  import('../features/manage/ManagePage').then((m) => ({ default: m.ManagePage }))
+  import('../pages/appShell/appShellPages/manage/ManagePage').then((m) => ({ default: m.ManagePage }))
 );
 const RuntimeLogsPage = lazy(() =>
-  import('../features/logs/RuntimeLogsPage').then((m) => ({
+  import('../pages/appShell/appShellPages/logs/RuntimeLogsPage').then((m) => ({
     default: m.RuntimeLogsPage,
   }))
 );
 const SettingsPage = lazy(() =>
-  import('../features/settings/SettingsPage').then((m) => ({
+  import('../pages/appShell/appShellPages/settings/SettingsPage').then((m) => ({
     default: m.SettingsPage,
   }))
 );

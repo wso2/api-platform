@@ -16,7 +16,7 @@
  * under the License.
  */
 
-import { getApiCapabilities } from '../features/apis/apiCapabilities';
+import { getApiCapabilities } from '../pages/appShell/appShellPages/apis/apiCapabilities';
 import { organizations, projects } from '../api/mocks/data';
 import type { ConsoleScope } from '../scope/ConsoleScopeProvider';
 

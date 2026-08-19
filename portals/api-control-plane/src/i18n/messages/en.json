@@ -1,1 +1,136 @@
-{}
+{
+  "aiWorkspace.pages.appShell.appShellPages.projects.ExploreMoreCard.explore.more": {
+    "defaultMessage": "Explore More"
+  },
+  "aiWorkspace.pages.appShell.appShellPages.proxies.LLMProxyOverview.context.label": {
+    "defaultMessage": "Context :"
+  },
+  "aiWorkspace.pages.appShell.appShellPages.proxies.LLMProxyOverview.last.updated": {
+    "defaultMessage": "Last updated :"
+  },
+  "organization.home.getStarted": {
+    "defaultMessage": "Get started",
+    "description": "Organization home page get started section title"
+  },
+  "project.card.actionsLabel": {
+    "defaultMessage": "Project actions",
+    "description": "Accessible label for the button opening the card overflow menu."
+  },
+  "project.card.apiCount": {
+    "defaultMessage": "{count, plural, one {# API} other {# APIs}}"
+  },
+  "project.card.apiCountLoading": {
+    "defaultMessage": "… APIs",
+    "description": "Placeholder shown while the API count is still loading."
+  },
+  "project.card.defaultBadge": {
+    "defaultMessage": "DEFAULT",
+    "description": "Badge marking the organization’s default project."
+  },
+  "project.card.delete": {
+    "defaultMessage": "Delete"
+  },
+  "project.card.deployedCount": {
+    "defaultMessage": "{count} deployed"
+  },
+  "project.card.deployedCountLoading": {
+    "defaultMessage": "… deployed",
+    "description": "Placeholder shown while the deployed count is still loading."
+  },
+  "project.card.fallbackDescription": {
+    "defaultMessage": "Project workspace",
+    "description": "Shown in place of a description when the project has none."
+  },
+  "project.card.neverUpdated": {
+    "defaultMessage": "Not updated yet"
+  },
+  "project.card.settingsLabel": {
+    "defaultMessage": "Project settings"
+  },
+  "project.card.updatedAt": {
+    "defaultMessage": "Updated {relative}",
+    "description": "Footer timestamp; {relative} is a phrase such as \"3 hours ago\"."
+  },
+  "project.list.count": {
+    "defaultMessage": "{count, plural, one {# project} other {# projects}}"
+  },
+  "project.list.createProjectButton": {
+    "defaultMessage": "Create Project"
+  },
+  "project.list.delete.confirmInputLabel": {
+    "defaultMessage": "Type \"{name}\" to confirm",
+    "description": "Label for the type-to-confirm field guarding an irreversible delete."
+  },
+  "project.list.delete.confirmLabel": {
+    "defaultMessage": "Delete"
+  },
+  "project.list.delete.failed": {
+    "defaultMessage": "Delete failed",
+    "description": "Fallback toast when the server gives no reason for a failure."
+  },
+  "project.list.delete.message": {
+    "defaultMessage": "This permanently deletes the project \"{name}\" and its configuration. A project that still has APIs cannot be deleted. This action is irreversible."
+  },
+  "project.list.delete.succeeded": {
+    "defaultMessage": "Deleted \"{name}\"."
+  },
+  "project.list.delete.title": {
+    "defaultMessage": "Delete project"
+  },
+  "project.list.empty.action": {
+    "defaultMessage": "Create project"
+  },
+  "project.list.empty.description": {
+    "defaultMessage": "Create a project to organize and manage your APIs."
+  },
+  "project.list.empty.title": {
+    "defaultMessage": "No projects found"
+  },
+  "project.list.error.message": {
+    "defaultMessage": "Unable to load projects. {reason}"
+  },
+  "project.list.loading": {
+    "defaultMessage": "Loading projects"
+  },
+  "project.list.noMatches.description": {
+    "defaultMessage": "Try a different project name or handle."
+  },
+  "project.list.noMatches.title": {
+    "defaultMessage": "No matching projects"
+  },
+  "project.list.rowsPerPage": {
+    "defaultMessage": "Projects per page"
+  },
+  "project.list.searchPlaceholder": {
+    "defaultMessage": "Search projects"
+  },
+  "project.list.sort.nameAscending": {
+    "defaultMessage": "Name (A–Z)",
+    "description": "Sort option: alphabetical by project name, ascending."
+  },
+  "project.list.sort.nameDescending": {
+    "defaultMessage": "Name (Z–A)",
+    "description": "Sort option: alphabetical by project name, descending."
+  },
+  "project.list.sort.newest": {
+    "defaultMessage": "Newest first",
+    "description": "Sort option: by creation date, most recent project first."
+  },
+  "project.list.sort.oldest": {
+    "defaultMessage": "Oldest first",
+    "description": "Sort option: by creation date, earliest project first."
+  },
+  "project.list.sortLabel": {
+    "defaultMessage": "Sort by",
+    "description": "Label for the control choosing the project list order."
+  },
+  "project.list.subHeader.default": {
+    "defaultMessage": "Select a project to manage APIs."
+  },
+  "project.list.subHeader.withOrganization": {
+    "defaultMessage": "Project workspaces in {organizationName}."
+  },
+  "project.list.title": {
+    "defaultMessage": "Projects"
+  }
+}

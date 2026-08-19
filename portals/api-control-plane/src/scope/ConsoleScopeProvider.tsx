@@ -26,8 +26,8 @@ import {
   useProjects,
 } from '../api/hooks/useMvpQueries';
 import { ApiScopeProvider } from '../api/core/ApiScopeProvider';
-import { useAuth } from '../features/auth/AuthProvider';
-import { getApiCapabilities } from '../features/apis/apiCapabilities';
+import { useAuth } from '../contexts/auth/AuthProvider';
+import { getApiCapabilities } from '../pages/appShell/appShellPages/apis/apiCapabilities';
 import {
   ConsoleScopeContext,
   type ConsoleRouteParams,

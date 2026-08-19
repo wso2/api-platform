@@ -19,7 +19,7 @@
 import { http, HttpResponse } from 'msw';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-import { CSRF_HEADER, CSRF_HEADER_VALUE } from '../../features/auth/authConstants';
+import { CSRF_HEADER, CSRF_HEADER_VALUE } from '../../contexts/auth/authConstants';
 import { server } from '../../test/server';
 
 const BASE = 'http://platform.test';
