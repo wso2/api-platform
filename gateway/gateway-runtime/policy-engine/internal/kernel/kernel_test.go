@@ -418,6 +418,31 @@ func TestConvertToStructValue_SimpleMap(t *testing.T) {
 	assert.Contains(t, structVal.Fields, "key")
 }
 
+// A nested map[string]interface{} must stay a Struct all the way down. When any
+// level is a type protobuf cannot take, convertToStructValue falls back to a JSON
+// string (see TestConvertToStructValue_ComplexMapStringSlice), and a consumer
+// asserting map[string]interface{} then drops the value with no error anywhere.
+func TestConvertToStructValue_NestedMap(t *testing.T) {
+	val, err := convertToStructValue(map[string]interface{}{
+		"tier":  "priority",
+		"cost":  0.009,
+		"inner": map[string]interface{}{"nestedCost": 0.0005},
+	})
+
+	require.NoError(t, err)
+	require.NotNil(t, val)
+	require.Empty(t, val.GetStringValue(), "value was stringified, a map consumer will drop it")
+
+	got, ok := val.AsInterface().(map[string]interface{})
+	require.True(t, ok, "AsInterface = %T, want map[string]interface{}", val.AsInterface())
+	assert.Equal(t, "priority", got["tier"])
+	assert.Equal(t, 0.009, got["cost"])
+
+	nested, ok := got["inner"].(map[string]interface{})
+	require.True(t, ok, "nesting lost: %#v", got)
+	assert.Equal(t, 0.0005, nested["nestedCost"])
+}
+
 func TestConvertToStructValue_ComplexMapStringSlice(t *testing.T) {
 	// map[string][]string is not directly supported by protobuf
 	// Should serialize to JSON string

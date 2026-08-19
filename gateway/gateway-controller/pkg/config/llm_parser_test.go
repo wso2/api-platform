@@ -1067,6 +1067,16 @@ spec:
   serviceTier:
     location: payload
     identifier: $.usage.service_tier
+    valueMap:
+      ON_DEMAND_PRIORITY: priority
+      ON_DEMAND_FLEX: flex
+  providerFields:
+    cacheDetails:
+      location: payload
+      identifier: $.usage.cacheDetails
+    cacheTokensDetails:
+      location: payload
+      identifier: $.usageMetadata.cacheTokensDetails
   resourceMappings:
     resources:
       - resource: /responses
@@ -1112,6 +1122,33 @@ spec:
 		if got.Identifier != want {
 			t.Errorf("identifier mismatch: got %q want %q", got.Identifier, want)
 		}
+	}
+
+	// valueMap and providerFields are map-typed, so a missing or mistagged field
+	// on the generated model drops them silently rather than failing the parse.
+	if spec.ServiceTier == nil || spec.ServiceTier.ValueMap == nil {
+		t.Fatal("serviceTier.valueMap was dropped by the typed model")
+	}
+	valueMap := *spec.ServiceTier.ValueMap
+	if got := valueMap["ON_DEMAND_PRIORITY"]; got != "priority" {
+		t.Errorf("ON_DEMAND_PRIORITY = %q, want priority", got)
+	}
+	if got := valueMap["ON_DEMAND_FLEX"]; got != "flex" {
+		t.Errorf("ON_DEMAND_FLEX = %q, want flex", got)
+	}
+
+	if spec.ProviderFields == nil {
+		t.Fatal("providerFields was dropped by the typed model")
+	}
+	providerFields := *spec.ProviderFields
+	if len(providerFields) != 2 {
+		t.Fatalf("got %d providerFields entries, want 2: %#v", len(providerFields), providerFields)
+	}
+	if got := providerFields["cacheDetails"]; got.Identifier != "$.usage.cacheDetails" {
+		t.Errorf("cacheDetails identifier = %q", got.Identifier)
+	}
+	if got := providerFields["cacheTokensDetails"]; string(got.Location) != "payload" {
+		t.Errorf("cacheTokensDetails location = %q", got.Location)
 	}
 
 	if spec.ResourceMappings == nil || spec.ResourceMappings.Resources == nil {
