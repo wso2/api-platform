@@ -222,7 +222,7 @@ func TestStartAccessLogServiceServer_TCP(t *testing.T) {
 	}
 
 	// Start the server
-	grpcServer := StartAccessLogServiceServer(cfg)
+	grpcServer, _ := StartAccessLogServiceServer(cfg)
 
 	require.NotNil(t, grpcServer)
 

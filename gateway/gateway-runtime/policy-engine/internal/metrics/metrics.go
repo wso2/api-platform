@@ -62,6 +62,13 @@ var (
 	StreamErrorsTotal        CounterVec
 	RouteLookupFailuresTotal Counter
 	PanicRecoveriesTotal     CounterVec
+
+	TrafficLogWrittenTotal        CounterVec
+	TrafficLogDroppedTotal        CounterVec
+	TrafficLogQueueDepth          GaugeVec
+	TrafficLogQueueCapacity       GaugeVec
+	TrafficLogFlushDurationSecond HistogramVec
+	TrafficLogWriteErrorsTotal    CounterVec
 )
 
 // initMetrics initializes all metric variables.
@@ -275,6 +282,71 @@ func initMetrics() {
 		},
 		[]string{"component"},
 	)
+
+	// Traffic-log sink metrics. The traffic log carries request/response bodies,
+	// so silent loss is both an observability gap and a compliance one (an event
+	// that never reached the log store cannot be audited). dropped_total is the
+	// series to alert on; the rest exist to diagnose it.
+	TrafficLogWrittenTotal = newCounterVec(
+		prometheus.CounterOpts{
+			Namespace: namespace,
+			Name:      "traffic_log_written_total",
+			Help:      "Total number of traffic-log lines successfully written, by sink",
+		},
+		[]string{"sink"},
+	)
+
+	TrafficLogDroppedTotal = newCounterVec(
+		prometheus.CounterOpts{
+			Namespace: namespace,
+			Name:      "traffic_log_dropped_total",
+			Help: "Total number of traffic-log lines dropped, by sink and reason " +
+				"(queue_full, send_failed, write_failed, rotate_failed)",
+		},
+		[]string{"sink", "reason"},
+	)
+
+	TrafficLogQueueDepth = newGaugeVec(
+		prometheus.GaugeOpts{
+			Namespace: namespace,
+			Name:      "traffic_log_queue_depth",
+			Help:      "Current number of traffic-log lines queued for delivery, by sink",
+		},
+		[]string{"sink"},
+	)
+
+	// Published so an alert can compare depth against capacity as a RATIO. A
+	// fixed depth threshold is meaningless on its own: 1000 is 10% of the
+	// default 10000 queue (fires far too early) and unreachable on a queue
+	// configured smaller than that (never fires at all).
+	TrafficLogQueueCapacity = newGaugeVec(
+		prometheus.GaugeOpts{
+			Namespace: namespace,
+			Name:      "traffic_log_queue_capacity",
+			Help:      "Configured capacity of the traffic-log delivery queue, by sink",
+		},
+		[]string{"sink"},
+	)
+
+	TrafficLogFlushDurationSecond = newHistogramVec(
+		prometheus.HistogramOpts{
+			Namespace: namespace,
+			Name:      "traffic_log_flush_duration_seconds",
+			Help:      "Duration of a traffic-log batch delivery attempt, by sink",
+			Buckets:   []float64{0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1.0, 2.5, 5.0, 10.0},
+		},
+		[]string{"sink"},
+	)
+
+	TrafficLogWriteErrorsTotal = newCounterVec(
+		prometheus.CounterOpts{
+			Namespace: namespace,
+			Name:      "traffic_log_write_errors_total",
+			Help: "Total number of traffic-log delivery errors, by sink and code " +
+				"(HTTP status, or a short error class for local sinks)",
+		},
+		[]string{"sink", "code"},
+	)
 }
 
 func registerCounterVec(v CounterVec) {
@@ -374,6 +446,13 @@ func initRegistry() {
 	registerCounterVec(StreamErrorsTotal)
 	registerCounter(RouteLookupFailuresTotal)
 	registerCounterVec(PanicRecoveriesTotal)
+
+	registerCounterVec(TrafficLogWrittenTotal)
+	registerCounterVec(TrafficLogDroppedTotal)
+	registerGaugeVec(TrafficLogQueueDepth)
+	registerGaugeVec(TrafficLogQueueCapacity)
+	registerHistogramVec(TrafficLogFlushDurationSecond)
+	registerCounterVec(TrafficLogWriteErrorsTotal)
 
 	Up.Set(1)
 }

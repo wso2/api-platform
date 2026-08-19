@@ -18,12 +18,12 @@
 package publishers
 
 import (
+	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log/slog"
-	"os"
 	"strings"
-	"sync"
 
 	"github.com/wso2/api-platform/gateway/gateway-runtime/policy-engine/internal/analytics/dto"
 	"github.com/wso2/api-platform/gateway/gateway-runtime/policy-engine/internal/config"
@@ -32,12 +32,13 @@ import (
 // maskedHeaderValue is the placeholder written in place of a masked header value.
 const maskedHeaderValue = "****"
 
-// Log is an analytics publisher that writes each enriched analytics event to
-// stdout as a single JSON line. It is intended for log-scraping pipelines
-// (Fluent Bit, Loki, ELK, etc.) and as a lightweight alternative to a SaaS
-// analytics backend. The event already carries the rich metadata, headers and
-// (when request_body/response_body are enabled) payloads attached by
-// the analytics engine, so this publisher only serializes it.
+// Log is an analytics publisher that writes each enriched analytics event as a
+// single JSON line to one or more sinks. It is intended for log-scraping pipelines
+// (Fluent Bit, Loki, ELK, etc.), for direct delivery to a log platform, and as a
+// lightweight alternative to a SaaS analytics backend. The event already carries
+// the rich metadata, headers and (when request_body/response_body are enabled)
+// payloads attached by the analytics engine, so this publisher only serializes it
+// and hands the bytes to each configured sink.
 type Log struct {
 	// maskedHeaders holds lower-cased header names whose values are redacted in
 	// the requestHeaders/responseHeaders properties before logging.
@@ -57,14 +58,21 @@ type Log struct {
 	// always returns a usable, possibly-empty evaluator whose resolve() returns
 	// nil when nothing is configured.
 	globalProperties *globalPropertyEvaluator
-	// mu serializes writes to stdout so concurrent ALS streams do not interleave.
-	mu sync.Mutex
-	// out is the destination writer; defaults to os.Stdout (overridable in tests).
-	out *os.File
+	// sinks are the destinations each serialized line is written to, built from
+	// traffic_logging.outputs. Each sink owns its own synchronization, so no lock
+	// is held here across the fan-out.
+	sinks []Sink
 }
 
-// NewLog creates a new stdout traffic-logging publisher.
-func NewLog(logCfg *config.TrafficLoggingConfig) *Log {
+// NewLog creates a new traffic-logging publisher and its configured sinks.
+//
+// It returns an error when a sink cannot be built. The caller must treat that as
+// fatal: continuing without the sink would leave traffic logging on stdout (or on
+// nothing at all), and the stdout path writes request and response bodies into the
+// container log, which is precisely what a file or http sink is configured to
+// avoid. config.Validate has already proven every configured sink is constructible,
+// so an error here means the environment changed during startup.
+func NewLog(logCfg *config.TrafficLoggingConfig) (*Log, error) {
 	if logCfg == nil {
 		logCfg = &config.TrafficLoggingConfig{}
 	}
@@ -77,13 +85,24 @@ func NewLog(logCfg *config.TrafficLoggingConfig) *Log {
 		}
 	}
 
-	return &Log{
+	l := &Log{
 		maskedHeaders:    masked,
 		maxPayloadSize:   logCfg.MaxPayloadSize,
 		globalDir:        buildGlobalDirective(*logCfg),
 		globalProperties: newGlobalPropertyEvaluator(logCfg.Properties, masked),
-		out:              os.Stdout,
 	}
+
+	// Only build sinks when traffic logging is on: Publish is a no-op otherwise,
+	// so opening a file or starting a sender goroutine would be pure waste — and
+	// would create the log file on disk for a feature nobody enabled.
+	if logCfg.Enabled {
+		sinks, err := newSinks(logCfg)
+		if err != nil {
+			return nil, err
+		}
+		l.sinks = sinks
+	}
+	return l, nil
 }
 
 // buildGlobalDirective converts the traffic-logging config into a
@@ -163,12 +182,27 @@ func (l *Log) Publish(event *dto.Event) {
 	l.write(data)
 }
 
+// write fans the serialized line out to every configured sink. Each sink handles
+// its own locking, buffering and failure accounting; a failure in one sink never
+// prevents the others from receiving the line, and never propagates to the caller.
 func (l *Log) write(data []byte) {
-	l.mu.Lock()
-	defer l.mu.Unlock()
-	if _, err := fmt.Fprintln(l.out, string(data)); err != nil {
-		slog.Error("Failed to write analytics event to stdout", "error", err)
+	for _, sink := range l.sinks {
+		sink.Write(data)
 	}
+}
+
+// Close shuts down every sink, flushing any that buffer. It satisfies Closer, so
+// Analytics.Close reaches it during graceful shutdown. Errors from individual sinks
+// are joined rather than short-circuited, so one stuck sink cannot prevent the
+// others from closing.
+func (l *Log) Close(ctx context.Context) error {
+	var errs []error
+	for _, sink := range l.sinks {
+		if err := sink.Close(ctx); err != nil {
+			errs = append(errs, fmt.Errorf("closing %s sink: %w", sink.Name(), err))
+		}
+	}
+	return errors.Join(errs...)
 }
 
 // parseHeadersFromString converts the JSON-encoded header value stored in
