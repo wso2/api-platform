@@ -19,8 +19,10 @@
 package kernel
 
 import (
+	"bytes"
 	"context"
 	"fmt"
+	"strings"
 	"testing"
 	"time"
 
@@ -804,6 +806,366 @@ func TestProcessResponseBody_DecompressesBrotli(t *testing.T) {
 	assert.Equal(t, originalJSON, capturedBody)
 }
 
+// =============================================================================
+// Unsupported / undecodable Content-Encoding — fail-closed behaviour
+// =============================================================================
+
+// newEncodingTestContext builds an execution context whose chain requires both
+// bodies, with a policy that records whether it ever ran.
+func newEncodingTestContext(t *testing.T, streaming bool) (*PolicyExecutionContext, *bool) {
+	t.Helper()
+
+	policyRan := new(bool)
+	bodyMode := policy.BodyModeBuffer
+	if streaming {
+		bodyMode = policy.BodyModeStream
+	}
+	mockPolicy := &testutils.ConfigurableMockPolicy{
+		MockMode: policy.ProcessingMode{
+			RequestBodyMode:  bodyMode,
+			ResponseBodyMode: bodyMode,
+		},
+		OnReqFn: func(_ *policy.RequestContext, _ map[string]interface{}) policy.RequestAction {
+			*policyRan = true
+			return policy.UpstreamRequestModifications{}
+		},
+		OnRespFn: func(_ *policy.ResponseContext, _ map[string]interface{}) policy.ResponseAction {
+			*policyRan = true
+			return policy.DownstreamResponseModifications{}
+		},
+	}
+
+	kernel := NewKernel()
+	server := NewExternalProcessorServer(kernel, newTestExecutor(), config.TracingConfig{}, "", testMaxDecompressedBytes, testMaxDecompressedBytes)
+	chain := &registry.PolicyChain{
+		RequiresRequestBody:       true,
+		RequiresResponseBody:      true,
+		SupportsRequestStreaming:  streaming,
+		SupportsResponseStreaming: streaming,
+		Policies:                  []policy.Policy{mockPolicy},
+		PolicySpecs:               []policy.PolicySpec{{Enabled: true}},
+	}
+	return newPolicyExecutionContext(server, "test-route", chain), policyRan
+}
+
+func postRequestHeaders(encoding string) *extprocv3.HttpHeaders {
+	headers := []*corev3.HeaderValue{
+		{Key: ":path", RawValue: []byte("/api/chat")},
+		{Key: ":method", RawValue: []byte("POST")},
+		{Key: "content-type", RawValue: []byte("application/json")},
+	}
+	if encoding != "" {
+		headers = append(headers, &corev3.HeaderValue{Key: "content-encoding", RawValue: []byte(encoding)})
+	}
+	return &extprocv3.HttpHeaders{Headers: &corev3.HeaderMap{Headers: headers}}
+}
+
+func okResponseHeaders(encoding string) *extprocv3.HttpHeaders {
+	headers := []*corev3.HeaderValue{
+		{Key: ":status", RawValue: []byte("200")},
+		{Key: "content-type", RawValue: []byte("application/json")},
+	}
+	if encoding != "" {
+		headers = append(headers, &corev3.HeaderValue{Key: "content-encoding", RawValue: []byte(encoding)})
+	}
+	return &extprocv3.HttpHeaders{Headers: &corev3.HeaderMap{Headers: headers}}
+}
+
+// An encoding the kernel cannot round-trip must be flagged on BOTH sides. The
+// request side is the one that matters most: the value is chosen by the caller,
+// so treating it as "no encoding" would let anyone disable every request-body
+// policy on the route by setting a header.
+func TestBuildContexts_FlagsUnsupportedEncoding(t *testing.T) {
+	for _, encoding := range []string{"compress", "snappy", "gzip, br"} {
+		t.Run(encoding, func(t *testing.T) {
+			execCtx, _ := newEncodingTestContext(t, false)
+
+			execCtx.buildRequestContexts(postRequestHeaders(encoding), RouteMetadata{})
+			execCtx.buildResponseContexts(okResponseHeaders(encoding))
+
+			assert.Empty(t, execCtx.requestContentEncoding)
+			assert.True(t, execCtx.requestEncodingUnsupported)
+			assert.Empty(t, execCtx.responseContentEncoding)
+			assert.True(t, execCtx.responseEncodingUnsupported)
+		})
+	}
+}
+
+// Content codings are case-insensitive tokens (RFC 9110 §8.4.1). Before this was
+// normalised on the request side, "GZIP" was stored verbatim, missed every
+// lowercase codec switch, and reached policies as raw compressed bytes.
+func TestBuildContexts_NormalizesEncodingCase(t *testing.T) {
+	for _, encoding := range []string{"GZIP", "Gzip", " gzip "} {
+		t.Run(encoding, func(t *testing.T) {
+			execCtx, _ := newEncodingTestContext(t, false)
+
+			execCtx.buildRequestContexts(postRequestHeaders(encoding), RouteMetadata{})
+			execCtx.buildResponseContexts(okResponseHeaders(encoding))
+
+			assert.Equal(t, "gzip", execCtx.requestContentEncoding)
+			assert.False(t, execCtx.requestEncodingUnsupported)
+			assert.Equal(t, "gzip", execCtx.responseContentEncoding)
+			assert.False(t, execCtx.responseEncodingUnsupported)
+		})
+	}
+}
+
+// identity/absent means the body is not encoded — no rejection, policies run.
+func TestBuildContexts_IdentityEncodingNotFlagged(t *testing.T) {
+	for _, encoding := range []string{"identity", ""} {
+		t.Run("encoding="+encoding, func(t *testing.T) {
+			execCtx, _ := newEncodingTestContext(t, false)
+
+			execCtx.buildRequestContexts(postRequestHeaders(encoding), RouteMetadata{})
+			execCtx.buildResponseContexts(okResponseHeaders(encoding))
+
+			assert.Empty(t, execCtx.requestContentEncoding)
+			assert.False(t, execCtx.requestEncodingUnsupported)
+			assert.Empty(t, execCtx.responseContentEncoding)
+			assert.False(t, execCtx.responseEncodingUnsupported)
+		})
+	}
+}
+
+// The bypass this guards against: an undecodable request body must be rejected
+// at the header phase — before any policy runs and before a byte reaches the
+// upstream — rather than forwarded with body policies silently skipped.
+func TestProcessRequestHeaders_UnsupportedEncodingRejected(t *testing.T) {
+	execCtx, policyRan := newEncodingTestContext(t, false)
+	execCtx.buildRequestContexts(postRequestHeaders("snappy"), RouteMetadata{})
+
+	resp, err := execCtx.processRequestHeaders(context.Background())
+	require.NoError(t, err)
+
+	immediate := resp.GetImmediateResponse()
+	require.NotNil(t, immediate, "an undecodable request must be rejected, not forwarded")
+	assert.Equal(t, typev3.StatusCode_UnsupportedMediaType, immediate.GetStatus().GetCode())
+	assert.False(t, *policyRan)
+	// The client learns nothing about the encoding or the policy chain.
+	assert.NotContains(t, string(immediate.GetBody()), "snappy")
+}
+
+// The upstream, not the client, chose this encoding — so it is a 502, and it is
+// caught at the response-header phase while a status can still be chosen.
+func TestProcessResponseHeaders_UnsupportedEncodingRejected(t *testing.T) {
+	execCtx, policyRan := newEncodingTestContext(t, false)
+	execCtx.buildRequestContexts(postRequestHeaders(""), RouteMetadata{})
+
+	resp, err := execCtx.processResponseHeaders(context.Background(), okResponseHeaders("zstd-unknown-variant"))
+	require.NoError(t, err)
+
+	immediate := resp.GetImmediateResponse()
+	require.NotNil(t, immediate, "an undecodable response must be rejected, not forwarded")
+	assert.Equal(t, typev3.StatusCode_BadGateway, immediate.GetStatus().GetCode())
+	assert.False(t, *policyRan)
+	assert.NotContains(t, string(immediate.GetBody()), "zstd-unknown-variant")
+}
+
+// With no body policy attached there is nothing to bypass, so an encoding the
+// kernel cannot read is none of its business and must pass through untouched.
+// Rejecting here would break routes that never inspect bodies at all.
+func TestProcessHeaders_UnsupportedEncodingAllowedWithoutBodyPolicies(t *testing.T) {
+	kernel := NewKernel()
+	server := NewExternalProcessorServer(kernel, newTestExecutor(), config.TracingConfig{}, "", testMaxDecompressedBytes, testMaxDecompressedBytes)
+	execCtx := newPolicyExecutionContext(server, "test-route", &registry.PolicyChain{})
+
+	execCtx.buildRequestContexts(postRequestHeaders("snappy"), RouteMetadata{})
+	reqResp, err := execCtx.processRequestHeaders(context.Background())
+	require.NoError(t, err)
+	assert.Nil(t, reqResp.GetImmediateResponse())
+
+	respResp, err := execCtx.processResponseHeaders(context.Background(), okResponseHeaders("snappy"))
+	require.NoError(t, err)
+	assert.Nil(t, respResp.GetImmediateResponse())
+}
+
+// The cheapest bypass of all: declare a supported encoding, send bytes that are
+// not in it. Policies would receive undecodable bytes, match nothing, and the
+// body would be forwarded anyway.
+func TestProcessRequestBody_UndecodableBodyRejected(t *testing.T) {
+	execCtx, policyRan := newEncodingTestContext(t, false)
+	execCtx.buildRequestContexts(postRequestHeaders("gzip"), RouteMetadata{})
+
+	resp, err := execCtx.processRequestBody(context.Background(), &extprocv3.HttpBody{
+		Body:        []byte(`{"prompt":"not actually gzipped"}`),
+		EndOfStream: true,
+	})
+	require.NoError(t, err)
+
+	immediate := resp.GetImmediateResponse()
+	require.NotNil(t, immediate, "a body that is not in its declared encoding must be rejected")
+	assert.Equal(t, typev3.StatusCode_BadRequest, immediate.GetStatus().GetCode())
+	assert.False(t, *policyRan)
+}
+
+func TestProcessResponseBody_UndecodableBodyRejected(t *testing.T) {
+	execCtx, policyRan := newEncodingTestContext(t, false)
+	execCtx.buildRequestContexts(postRequestHeaders(""), RouteMetadata{})
+	execCtx.buildResponseContexts(okResponseHeaders("br"))
+
+	// Brotli accepts many byte sequences, so use one that reliably fails.
+	resp, err := execCtx.processResponseBody(context.Background(), &extprocv3.HttpBody{
+		Body:        bytes.Repeat([]byte{0xff}, 64),
+		EndOfStream: true,
+	})
+	require.NoError(t, err)
+
+	immediate := resp.GetImmediateResponse()
+	require.NotNil(t, immediate, "a body that is not in its declared encoding must be rejected")
+	assert.Equal(t, typev3.StatusCode_BadGateway, immediate.GetStatus().GetCode())
+	assert.False(t, *policyRan)
+}
+
+// Every supported encoding must reach policies as plaintext on the buffered
+// request path — the whole point of supporting it rather than rejecting it.
+func TestProcessRequestBody_DecompressesEverySupportedEncoding(t *testing.T) {
+	plaintext := []byte(`{"prompt":"contact me at user@example.com"}`)
+
+	for _, encoding := range []string{"gzip", "br", "zstd", "deflate"} {
+		t.Run(encoding, func(t *testing.T) {
+			var capturedBody []byte
+			mockPolicy := &testutils.ConfigurableMockPolicy{
+				MockMode: policy.ProcessingMode{RequestBodyMode: policy.BodyModeBuffer},
+				OnReqFn: func(ctx *policy.RequestContext, _ map[string]interface{}) policy.RequestAction {
+					if ctx.Body != nil {
+						capturedBody = ctx.Body.Content
+					}
+					return policy.UpstreamRequestModifications{}
+				},
+			}
+
+			kernel := NewKernel()
+			server := NewExternalProcessorServer(kernel, newTestExecutor(), config.TracingConfig{}, "", testMaxDecompressedBytes, testMaxDecompressedBytes)
+			execCtx := newPolicyExecutionContext(server, "test-route", &registry.PolicyChain{
+				RequiresRequestBody: true,
+				Policies:            []policy.Policy{mockPolicy},
+				PolicySpecs:         []policy.PolicySpec{{Enabled: true}},
+			})
+			execCtx.buildRequestContexts(postRequestHeaders(encoding), RouteMetadata{})
+
+			compressed, err := recompressBody(plaintext, encoding)
+			require.NoError(t, err)
+
+			_, err = execCtx.processRequestBody(context.Background(), &extprocv3.HttpBody{
+				Body:        compressed,
+				EndOfStream: true,
+			})
+			require.NoError(t, err)
+			assert.Equal(t, plaintext, capturedBody)
+		})
+	}
+}
+
+// A "deflate" request carrying RAW deflate (no zlib wrapper) must be detected
+// and re-encoded in the same variant. Emitting the other form would hand the
+// upstream a body its decoder rejects.
+func TestProcessRequestBody_PreservesRawDeflateVariant(t *testing.T) {
+	plaintext := []byte(`{"prompt":"raw deflate body"}`)
+
+	kernel := NewKernel()
+	server := NewExternalProcessorServer(kernel, newTestExecutor(), config.TracingConfig{}, "", testMaxDecompressedBytes, testMaxDecompressedBytes)
+	execCtx := newPolicyExecutionContext(server, "test-route", &registry.PolicyChain{
+		RequiresRequestBody: true,
+		Policies: []policy.Policy{&testutils.ConfigurableMockPolicy{
+			MockMode: policy.ProcessingMode{RequestBodyMode: policy.BodyModeBuffer},
+			OnReqFn: func(_ *policy.RequestContext, _ map[string]interface{}) policy.RequestAction {
+				return policy.UpstreamRequestModifications{}
+			},
+		}},
+		PolicySpecs: []policy.PolicySpec{{Enabled: true}},
+	})
+	execCtx.buildRequestContexts(postRequestHeaders("deflate"), RouteMetadata{})
+
+	rawDeflate, err := recompressBody(plaintext, "deflate-raw")
+	require.NoError(t, err)
+
+	_, err = execCtx.processRequestBody(context.Background(), &extprocv3.HttpBody{
+		Body:        rawDeflate,
+		EndOfStream: true,
+	})
+	require.NoError(t, err)
+	assert.Equal(t, "deflate-raw", execCtx.requestContentEncoding,
+		"the arriving deflate variant must be pinned so the same one is emitted back")
+}
+
+// chunkRecordingRequestPolicy records every request chunk body policies are
+// handed, so a test can assert policies saw plaintext rather than compressed
+// bytes.
+type chunkRecordingRequestPolicy struct {
+	seen *strings.Builder
+}
+
+func (p *chunkRecordingRequestPolicy) Mode() policy.ProcessingMode {
+	return policy.ProcessingMode{RequestBodyMode: policy.BodyModeStream}
+}
+
+func (p *chunkRecordingRequestPolicy) OnRequestBody(_ context.Context, _ *policy.RequestContext, _ map[string]interface{}) policy.RequestAction {
+	return policy.UpstreamRequestModifications{}
+}
+
+func (p *chunkRecordingRequestPolicy) NeedsMoreRequestData(_ []byte) bool { return false }
+
+func (p *chunkRecordingRequestPolicy) OnRequestBodyChunk(_ context.Context, _ *policy.RequestStreamContext, chunk *policy.StreamBody, _ map[string]interface{}) policy.StreamingRequestAction {
+	p.seen.Write(chunk.Chunk)
+	return policy.ForwardRequestChunk{}
+}
+
+// End-to-end through the kernel's streaming REQUEST path: chunks arrive
+// compressed, policies must see plaintext, and what leaves for the upstream must
+// be ONE compressed stream that decodes to the full body. Before the fix the
+// request path re-compressed per chunk, so the upstream saw only chunk one.
+func TestProcessStreamingRequestBody_RoundTripsAsSingleStream(t *testing.T) {
+	chunks := []string{`{"prompt":"part one `, `and part two `, `and part three"}`}
+	var wantPlaintext strings.Builder
+	for _, c := range chunks {
+		wantPlaintext.WriteString(c)
+	}
+
+	for _, encoding := range []string{"gzip", "br", "zstd", "deflate"} {
+		t.Run(encoding, func(t *testing.T) {
+			var seenByPolicies strings.Builder
+			mockPolicy := &chunkRecordingRequestPolicy{seen: &seenByPolicies}
+
+			kernel := NewKernel()
+			server := NewExternalProcessorServer(kernel, newTestExecutor(), config.TracingConfig{}, "", testMaxDecompressedBytes, testMaxDecompressedBytes)
+			execCtx := newPolicyExecutionContext(server, "test-route", &registry.PolicyChain{
+				RequiresRequestBody:      true,
+				SupportsRequestStreaming: true,
+				Policies:                 []policy.Policy{mockPolicy},
+				PolicySpecs:              []policy.PolicySpec{{Enabled: true}},
+			})
+			execCtx.buildRequestContexts(postRequestHeaders(encoding), RouteMetadata{})
+			execCtx.isStreamingRequest = true
+
+			// Compress the body as one stream, then split it, mirroring how Envoy
+			// delivers an upstream-bound compressed body chunk by chunk.
+			whole, err := recompressBody([]byte(wantPlaintext.String()), encoding)
+			require.NoError(t, err)
+			split := len(whole) / 2
+
+			var wire bytes.Buffer
+			for i, in := range [][]byte{whole[:split], whole[split:]} {
+				endOfStream := i == 1
+				resp, err := execCtx.processRequestBody(context.Background(), &extprocv3.HttpBody{
+					Body:        in,
+					EndOfStream: endOfStream,
+				})
+				require.NoError(t, err)
+				wire.Write(resp.GetRequestBody().GetResponse().GetBodyMutation().GetStreamedResponse().GetBody())
+			}
+
+			assert.Equal(t, wantPlaintext.String(), seenByPolicies.String(),
+				"policies must observe plaintext, not compressed bytes")
+
+			// The decisive assertion: one stream, decodable in a single pass.
+			got, err := decompressBody(wire.Bytes(), execCtx.requestContentEncoding, 0)
+			require.NoError(t, err)
+			assert.Equal(t, wantPlaintext.String(), string(got),
+				"upstream-bound body must be ONE compressed stream covering every chunk")
+		})
+	}
+}
+
 func TestProcessStreamingResponseBody_DecompressionErrorFailsClosed(t *testing.T) {
 	const maxChunkBytes int64 = 64
 
@@ -1175,4 +1537,189 @@ func TestProcessStreamingRequestBody_MalformedEncodingFailsClosed(t *testing.T) 
 	require.Error(t, err)
 	assert.NotErrorIs(t, err, ErrDecompressedTooLarge)
 	assert.Nil(t, execCtx.requestStreamDecomp)
+}
+
+// getRequestHeaders builds GET request headers, optionally Content-Encoded, with
+// Envoy's headers-message EndOfStream flag under the test's control — the flag is
+// what tells the kernel whether a body follows.
+func getRequestHeaders(encoding string, endOfStream bool) *extprocv3.HttpHeaders {
+	headers := []*corev3.HeaderValue{
+		{Key: ":path", RawValue: []byte("/api/chat")},
+		{Key: ":method", RawValue: []byte("GET")},
+	}
+	if encoding != "" {
+		headers = append(headers, &corev3.HeaderValue{Key: "content-encoding", RawValue: []byte(encoding)})
+	}
+	return &extprocv3.HttpHeaders{
+		Headers:     &corev3.HeaderMap{Headers: headers},
+		EndOfStream: endOfStream,
+	}
+}
+
+// A GET may syntactically carry a body, and Envoy reports that as
+// EndOfStream=false on the headers message and then delivers a body phase.
+// Inferring "bodyless" from the method alone skipped the encoding guard, so raw
+// undecodable bytes reached body policies with no rejection anywhere.
+func TestProcessRequestHeaders_GetWithBodyRejectsUnsupportedEncoding(t *testing.T) {
+	execCtx, policyRan := newEncodingTestContext(t, false)
+	execCtx.buildRequestContexts(getRequestHeaders("snappy", false), RouteMetadata{})
+
+	assert.False(t, execCtx.requestHasNoBody(), "EndOfStream=false means a body follows, whatever the method says")
+
+	resp, err := execCtx.processRequestHeaders(context.Background())
+	require.NoError(t, err)
+
+	immediate := resp.GetImmediateResponse()
+	require.NotNil(t, immediate, "a GET carrying an undecodable body must be rejected like any other body")
+	assert.Equal(t, typev3.StatusCode_UnsupportedMediaType, immediate.GetStatus().GetCode())
+	assert.False(t, *policyRan)
+}
+
+// A bodyless GET (EndOfStream=true) has nothing to decode, so an encoding the
+// kernel cannot read is none of its business — body policies run inline with a
+// nil body instead of the request being rejected.
+func TestProcessRequestHeaders_BodylessGetPassesUnsupportedEncoding(t *testing.T) {
+	execCtx, _ := newEncodingTestContext(t, false)
+	execCtx.buildRequestContexts(getRequestHeaders("snappy", true), RouteMetadata{})
+
+	assert.True(t, execCtx.requestHasNoBody())
+
+	resp, err := execCtx.processRequestHeaders(context.Background())
+	require.NoError(t, err)
+	assert.Nil(t, resp.GetImmediateResponse())
+}
+
+// Defence in depth, mirroring the response side: if framing promised no body and
+// a body arrives anyway under an undecodable encoding, the body phase rejects it
+// rather than handing compressed bytes to policies as if they were plaintext.
+func TestProcessRequestBody_UnsupportedEncodingRejectedAtBodyPhase(t *testing.T) {
+	execCtx, policyRan := newEncodingTestContext(t, false)
+	execCtx.buildRequestContexts(getRequestHeaders("snappy", true), RouteMetadata{})
+
+	resp, err := execCtx.processRequestBody(context.Background(), &extprocv3.HttpBody{
+		Body:        []byte("opaque snappy bytes"),
+		EndOfStream: true,
+	})
+	require.NoError(t, err)
+
+	immediate := resp.GetImmediateResponse()
+	require.NotNil(t, immediate, "a body under an undecodable encoding must never reach policies")
+	assert.Equal(t, typev3.StatusCode_UnsupportedMediaType, immediate.GetStatus().GetCode())
+	assert.False(t, *policyRan)
+	assert.NotContains(t, string(immediate.GetBody()), "snappy")
+}
+
+// A header-only response (EndOfStream=true on the response headers) has no body
+// to decode, so an encoding the kernel cannot read must pass through — rejecting
+// it turned an empty 200 into a 502.
+func TestProcessResponseHeaders_HeaderOnlyResponsePassesUnsupportedEncoding(t *testing.T) {
+	execCtx, _ := newEncodingTestContext(t, false)
+	execCtx.buildRequestContexts(postRequestHeaders(""), RouteMetadata{})
+
+	headers := okResponseHeaders("snappy")
+	headers.EndOfStream = true
+
+	resp, err := execCtx.processResponseHeaders(context.Background(), headers)
+	require.NoError(t, err)
+
+	assert.True(t, execCtx.responseHasNoBody())
+	assert.Nil(t, resp.GetImmediateResponse(), "a bodyless response has nothing to decode and must not be failed")
+}
+
+// The first chunk of a stream may legally carry a single byte — one byte short of
+// the zlib header needed to tell the two "deflate" variants apart. Choosing the
+// decoder from it pinned a raw-deflate stream to the zlib decoder, which then
+// rejected the stream. The kernel must buffer until the variant is decidable.
+func TestProcessStreamingRequestBody_RawDeflateWithOneByteFirstChunk(t *testing.T) {
+	plaintext := `{"prompt":"raw deflate streamed one byte at a time"}`
+
+	var seenByPolicies strings.Builder
+	kernel := NewKernel()
+	server := NewExternalProcessorServer(kernel, newTestExecutor(), config.TracingConfig{}, "", testMaxDecompressedBytes, testMaxDecompressedBytes)
+	execCtx := newPolicyExecutionContext(server, "test-route", &registry.PolicyChain{
+		RequiresRequestBody:      true,
+		SupportsRequestStreaming: true,
+		Policies:                 []policy.Policy{&chunkRecordingRequestPolicy{seen: &seenByPolicies}},
+		PolicySpecs:              []policy.PolicySpec{{Enabled: true}},
+	})
+	execCtx.buildRequestContexts(postRequestHeaders("deflate"), RouteMetadata{})
+	execCtx.isStreamingRequest = true
+
+	rawDeflate, err := recompressBody([]byte(plaintext), encodingDeflateRaw)
+	require.NoError(t, err)
+
+	// First chunk is one byte: not enough evidence for the variant.
+	var wire bytes.Buffer
+	for i, in := range [][]byte{rawDeflate[:1], rawDeflate[1:]} {
+		resp, err := execCtx.processRequestBody(context.Background(), &extprocv3.HttpBody{
+			Body:        in,
+			EndOfStream: i == 1,
+		})
+		require.NoError(t, err, "chunk %d must not fail the stream", i)
+		wire.Write(resp.GetRequestBody().GetResponse().GetBodyMutation().GetStreamedResponse().GetBody())
+	}
+
+	assert.Equal(t, encodingDeflateRaw, execCtx.requestContentEncoding,
+		"the raw variant must be detected once enough bytes have arrived")
+	assert.Equal(t, plaintext, seenByPolicies.String(), "policies must observe the full plaintext")
+
+	got, err := decompressBody(wire.Bytes(), execCtx.requestContentEncoding, 0)
+	require.NoError(t, err)
+	assert.Equal(t, plaintext, string(got),
+		"the upstream-bound body must round-trip in the variant the client sent")
+}
+
+// A streaming body that declares a Content-Encoding but delivers zero bytes must
+// reach the decoder rather than skipping it: the streaming and buffered paths
+// must agree on whether such a body is valid for that codec (gzip/br/deflate
+// have a mandatory header and fail; zstd's decoder accepts an empty stream).
+// Skipping decoder construction entirely made streaming silently forward a body
+// under a Content-Encoding nothing had validated or read.
+func TestProcessStreamingBody_EmptyEncodedStreamMatchesBufferedVerdict(t *testing.T) {
+	for _, encoding := range []string{"gzip", "br", "zstd", "deflate"} {
+		t.Run(encoding, func(t *testing.T) {
+			// The buffered path is the reference verdict for this codec.
+			_, bufferedErr := decompressBody(nil, encoding, testMaxDecompressedBytes)
+
+			kernel := NewKernel()
+			server := NewExternalProcessorServer(kernel, newTestExecutor(), config.TracingConfig{}, "", testMaxDecompressedBytes, testMaxDecompressedBytes)
+			chain := &registry.PolicyChain{
+				RequiresRequestBody:       true,
+				RequiresResponseBody:      true,
+				SupportsRequestStreaming:  true,
+				SupportsResponseStreaming: true,
+				Policies:                  []policy.Policy{&testutils.NoopPolicy{}},
+				PolicySpecs:               []policy.PolicySpec{{Enabled: true}},
+			}
+
+			reqCtx := newPolicyExecutionContext(server, "test-route", chain)
+			reqCtx.buildRequestContexts(postRequestHeaders(encoding), RouteMetadata{})
+			reqCtx.isStreamingRequest = true
+			_, reqErr := reqCtx.processStreamingRequestBody(context.Background(), &extprocv3.HttpBody{
+				Body:        nil,
+				EndOfStream: true,
+			})
+
+			respCtx := newPolicyExecutionContext(server, "test-route", chain)
+			respCtx.buildRequestContexts(postRequestHeaders(""), RouteMetadata{})
+			respCtx.buildResponseContexts(okResponseHeaders(encoding))
+			respCtx.isStreamingResponse = true
+			_, respErr := respCtx.processStreamingResponseBody(context.Background(), &extprocv3.HttpBody{
+				Body:        nil,
+				EndOfStream: true,
+			})
+
+			if bufferedErr != nil {
+				require.Error(t, reqErr, "empty encoded request stream must fail as it does when buffered")
+				require.Error(t, respErr, "empty encoded response stream must fail as it does when buffered")
+				assert.Nil(t, reqCtx.requestStreamDecomp)
+				assert.Nil(t, respCtx.responseStreamDecomp)
+				return
+			}
+			require.NoError(t, reqErr)
+			require.NoError(t, respErr)
+			assert.NotNil(t, reqCtx.requestStreamDecomp, "the decoder must be built and consulted, not skipped")
+			assert.NotNil(t, respCtx.responseStreamDecomp)
+		})
+	}
 }
