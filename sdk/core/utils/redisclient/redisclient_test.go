@@ -372,11 +372,12 @@ func TestResolveOptionsFromConfig_RejectsWrongShapedValue(t *testing.T) {
 	}
 }
 
-// TestIntParam_RejectsInvalidFloat64 locks in that intParam validates a
-// float64 before converting it - NaN/Inf/fractional/out-of-range values must
-// error rather than silently truncating or converting a NaN/Inf into
-// undefined behavior.
-func TestIntParam_RejectsInvalidFloat64(t *testing.T) {
+// TestResolveOptionsFromConfig_RejectsInvalidFloat64Port locks in that a
+// float64 "port" (e.g. from a JSON-sourced config path, decoded as float64
+// rather than int) is validated before conversion -
+// NaN/Inf/fractional/out-of-range values must error rather than silently
+// truncating or converting a NaN/Inf into undefined behavior.
+func TestResolveOptionsFromConfig_RejectsInvalidFloat64Port(t *testing.T) {
 	cases := []struct {
 		name string
 		v    float64
@@ -390,21 +391,21 @@ func TestIntParam_RejectsInvalidFloat64(t *testing.T) {
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
-			_, err := intParam(map[string]interface{}{"port": c.v}, "port", 6379)
+			_, err := resolveOptionsFromConfig(map[string]interface{}{"redis": map[string]interface{}{"port": c.v}})
 			if err == nil {
-				t.Errorf("expected an error for float64 value %v, got nil", c.v)
+				t.Errorf("expected an error for float64 port %v, got nil", c.v)
 			}
 		})
 	}
 }
 
-func TestIntParam_AcceptsIntegralFloat64(t *testing.T) {
-	got, err := intParam(map[string]interface{}{"port": float64(6380)}, "port", 6379)
+func TestResolveOptionsFromConfig_AcceptsIntegralFloat64Port(t *testing.T) {
+	opts, err := resolveOptionsFromConfig(map[string]interface{}{"redis": map[string]interface{}{"port": float64(6380)}})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if got != 6380 {
-		t.Errorf("got %d, want 6380", got)
+	if want := "localhost:6380"; opts.Addr != want {
+		t.Errorf("got Addr %q, want %q", opts.Addr, want)
 	}
 }
 

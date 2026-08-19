@@ -4,6 +4,7 @@ go 1.26.2
 
 require (
 	github.com/alicebob/miniredis/v2 v2.38.0
+	github.com/go-viper/mapstructure/v2 v2.5.0
 	github.com/redis/go-redis/v9 v9.22.0
 )
 

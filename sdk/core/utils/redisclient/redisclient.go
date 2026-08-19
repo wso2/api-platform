@@ -32,11 +32,12 @@ import (
 	"fmt"
 	"math"
 	"net"
+	"reflect"
 	"strconv"
-	"strings"
 	"sync"
 	"time"
 
+	"github.com/go-viper/mapstructure/v2"
 	"github.com/redis/go-redis/v9"
 )
 
@@ -236,13 +237,34 @@ func pingClient(c *redis.Client, pingTimeout time.Duration) error {
 	return c.Ping(ctx).Err()
 }
 
+// redisSectionFields is the decode target for the "redis" table, pre-filled
+// with operator-facing defaults (host "localhost", port 6379, db 0, poolSize
+// 0 (go-redis default), connectionTimeout 5s, readTimeout/writeTimeout 3s)
+// before mapstructure.Decode overwrites only the keys actually present in
+// the config - the same weakly-typed decode (string durations, a numeric
+// string from a {{ env }} token, int/int64/float64 from a JSON-sourced
+// config path) every other config section in the repo goes through via
+// koanf/mapstructure; see gateway-runtime/policy-engine's
+// internal/config.Load. sdk/core otherwise has no koanf dependency, so this
+// package decodes the raw map directly with mapstructure rather than pulling
+// in koanf's file/merge machinery just for this one section.
+type redisSectionFields struct {
+	Host              string        `mapstructure:"host"`
+	Port              int           `mapstructure:"port"`
+	Username          string        `mapstructure:"username"`
+	Password          string        `mapstructure:"password"`
+	DB                int           `mapstructure:"db"`
+	PoolSize          int           `mapstructure:"pool_size"`
+	ConnectionTimeout time.Duration `mapstructure:"connection_timeout"`
+	ReadTimeout       time.Duration `mapstructure:"read_timeout"`
+	WriteTimeout      time.Duration `mapstructure:"write_timeout"`
+}
+
 // resolveOptionsFromConfig extracts *redis.Options from raw["redis"] - a
 // top-level section, sibling to "router"/"analytics"/etc in the gateway's
 // complete config tree, not nested under "policy_configurations" (this is
-// gateway-wide infrastructure, not a per-policy setting) - using the
-// operator-facing defaults (host "localhost", port 6379, db 0, poolSize 0
-// (go-redis default), connectionTimeout 5s, readTimeout/writeTimeout 3s).
-// Returns (nil, nil) - not an error - when raw has no "redis" key at all.
+// gateway-wide infrastructure, not a per-policy setting). Returns (nil, nil)
+// - not an error - when raw has no "redis" key at all.
 func resolveOptionsFromConfig(raw map[string]interface{}) (*redis.Options, error) {
 	section, ok := raw["redis"]
 	if !ok || section == nil {
@@ -253,124 +275,62 @@ func resolveOptionsFromConfig(raw map[string]interface{}) (*redis.Options, error
 		return nil, fmt.Errorf(`"redis" must be a table, got %T`, section)
 	}
 
-	connectionTimeout, err := durationParam(m, "connection_timeout", 5*time.Second)
-	if err != nil {
-		return nil, fmt.Errorf("connection_timeout: %w", err)
+	fields := redisSectionFields{
+		Host:              "localhost",
+		Port:              6379,
+		ConnectionTimeout: 5 * time.Second,
+		ReadTimeout:       3 * time.Second,
+		WriteTimeout:      3 * time.Second,
 	}
-	readTimeout, err := durationParam(m, "read_timeout", 3*time.Second)
+	decoder, err := mapstructure.NewDecoder(&mapstructure.DecoderConfig{
+		WeaklyTypedInput: true,
+		DecodeHook: mapstructure.ComposeDecodeHookFunc(
+			rejectNonIntegralFloatHookFunc,
+			mapstructure.StringToTimeDurationHookFunc(),
+		),
+		Result: &fields,
+	})
 	if err != nil {
-		return nil, fmt.Errorf("read_timeout: %w", err)
+		return nil, fmt.Errorf("building redis config decoder: %w", err)
 	}
-	writeTimeout, err := durationParam(m, "write_timeout", 3*time.Second)
-	if err != nil {
-		return nil, fmt.Errorf("write_timeout: %w", err)
-	}
-	port, err := intParam(m, "port", 6379)
-	if err != nil {
-		return nil, fmt.Errorf("port: %w", err)
-	}
-	db, err := intParam(m, "db", 0)
-	if err != nil {
-		return nil, fmt.Errorf("db: %w", err)
-	}
-	poolSize, err := intParam(m, "pool_size", 0)
-	if err != nil {
-		return nil, fmt.Errorf("pool_size: %w", err)
-	}
-
-	host, err := stringParam(m, "host", "localhost")
-	if err != nil {
-		return nil, fmt.Errorf("host: %w", err)
-	}
-	username, err := stringParam(m, "username", "")
-	if err != nil {
-		return nil, fmt.Errorf("username: %w", err)
-	}
-	password, err := stringParam(m, "password", "")
-	if err != nil {
-		return nil, fmt.Errorf("password: %w", err)
+	if err := decoder.Decode(m); err != nil {
+		return nil, err
 	}
 
 	return &redis.Options{
-		Addr:         net.JoinHostPort(host, strconv.Itoa(port)),
-		Username:     username,
-		Password:     password,
-		DB:           db,
-		DialTimeout:  connectionTimeout,
-		ReadTimeout:  readTimeout,
-		WriteTimeout: writeTimeout,
-		PoolSize:     poolSize,
+		Addr:         net.JoinHostPort(fields.Host, strconv.Itoa(fields.Port)),
+		Username:     fields.Username,
+		Password:     fields.Password,
+		DB:           fields.DB,
+		DialTimeout:  fields.ConnectionTimeout,
+		ReadTimeout:  fields.ReadTimeout,
+		WriteTimeout: fields.WriteTimeout,
+		PoolSize:     fields.PoolSize,
 	}, nil
 }
 
-// stringParam/intParam/durationParam read key from m, applying def when the
-// key is absent or nil. They error on a present-but-wrong-shaped value
-// rather than silently falling back to def - a typo'd config value should
-// surface at startup, not resolve to a default the operator never asked for.
-func stringParam(m map[string]interface{}, key, def string) (string, error) {
-	v, ok := m[key]
-	if !ok || v == nil {
-		return def, nil
+// rejectNonIntegralFloatHookFunc runs before mapstructure's own weakly-typed
+// float->int conversion (int64(dataVal.Float()), reached for e.g. a
+// JSON-sourced "port"/"db"/"pool_size" value decoded as float64) - that
+// conversion is undefined/lossy for NaN, +-Inf, a fractional value, or a
+// magnitude outside the int range, so reject those here instead of letting
+// them silently truncate into a bogus port/db/pool size.
+func rejectNonIntegralFloatHookFunc(_, to reflect.Kind, data interface{}) (interface{}, error) {
+	if to != reflect.Int {
+		return data, nil
 	}
-	s, ok := v.(string)
+	f, ok := data.(float64)
 	if !ok {
-		return "", fmt.Errorf("expected a string, got %T", v)
+		return data, nil
 	}
-	return s, nil
-}
-
-func intParam(m map[string]interface{}, key string, def int) (int, error) {
-	v, ok := m[key]
-	if !ok || v == nil {
-		return def, nil
+	if math.IsNaN(f) || math.IsInf(f, 0) {
+		return nil, fmt.Errorf("expected an integer, got %v", f)
 	}
-	switch n := v.(type) {
-	case int:
-		return n, nil
-	case int64:
-		return int(n), nil
-	case float64:
-		if math.IsNaN(n) || math.IsInf(n, 0) {
-			return 0, fmt.Errorf("expected an integer, got %v", n)
-		}
-		if n != math.Trunc(n) {
-			return 0, fmt.Errorf("expected an integer, got non-integer value %v", n)
-		}
-		if n < float64(math.MinInt) || n > float64(math.MaxInt) {
-			return 0, fmt.Errorf("value %v out of range for int", n)
-		}
-		return int(n), nil
-	case string:
-		// A TOML value written as {{ env "VAR" "default" }} must be a quoted
-		// string literal (TOML has no unquoted template syntax) - gateway-runtime's
-		// config interpolation resolves the token in place but never changes the
-		// field's type, so a numeric config value arrives here as a numeric
-		// string, not an int. Reject anything that isn't actually numeric.
-		parsed, err := strconv.Atoi(strings.TrimSpace(n))
-		if err != nil {
-			return 0, fmt.Errorf("expected an integer, got non-numeric string %q", n)
-		}
-		return parsed, nil
-	default:
-		return 0, fmt.Errorf("expected an integer, got %T", v)
+	if f != math.Trunc(f) {
+		return nil, fmt.Errorf("expected an integer, got non-integer value %v", f)
 	}
-}
-
-func durationParam(m map[string]interface{}, key string, def time.Duration) (time.Duration, error) {
-	v, ok := m[key]
-	if !ok || v == nil {
-		return def, nil
+	if f < float64(math.MinInt) || f > float64(math.MaxInt) {
+		return nil, fmt.Errorf("value %v out of range for int", f)
 	}
-	switch d := v.(type) {
-	case string:
-		parsed, err := time.ParseDuration(d)
-		if err != nil {
-			return 0, fmt.Errorf("invalid duration %q: %w", d, err)
-		}
-		return parsed, nil
-	case time.Duration:
-		return d, nil
-	default:
-		return 0, fmt.Errorf("expected a duration string, got %T", v)
-	}
+	return data, nil
 }
