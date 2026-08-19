@@ -43,28 +43,33 @@ spec:
         - path: /chat/completions
           methods: [POST]
           params:
-            key: X-API-Key
+            key: Authorization
             in: header
+            valuePrefix: "Bearer "
         - path: /completions
           methods: [POST]
           params:
-            key: X-API-Key
+            key: Authorization
             in: header
+            valuePrefix: "Bearer "
         - path: /embeddings
           methods: [POST]
           params:
-            key: X-API-Key
+            key: Authorization
             in: header
+            valuePrefix: "Bearer "
         - path: /models
           methods: [GET]
           params:
-            key: X-API-Key
+            key: Authorization
             in: header
+            valuePrefix: "Bearer "
         - path: /models/{modelId}
           methods: [GET]
           params:
-            key: X-API-Key
+            key: Authorization
             in: header
+            valuePrefix: "Bearer "
   accessControl:
     mode: deny_all
     exceptions:
