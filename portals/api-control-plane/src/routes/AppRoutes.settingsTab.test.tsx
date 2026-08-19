@@ -75,4 +75,32 @@ describe('AppRoutes settingsTab extensions', () => {
 
     expect(await screen.findByText('Mock Environments page')).toBeInTheDocument();
   });
+
+  it('does not register a conflicting descriptor whose slot and scope disagree', async () => {
+    // Type-valid but internally inconsistent: the slot says "project" while
+    // `scope` says "organization". Neither `useSettingsTabs` nor
+    // `settingsTabRoutesFor` may accept this — it must not render in EITHER
+    // settings page, rather than rendering in the wrong one with a mismatched
+    // Port (e.g. missing `projectHandle`).
+    const conflictingExtension: ApiControlPlaneExtension = {
+      ...mockExtension,
+      id: 'conflicting',
+      label: 'Conflicting',
+      slot: 'settings.project.tabs',
+      scope: 'organization',
+    };
+
+    renderWithProviders(
+      <ExtensionsProvider extensions={[conflictingExtension]}>
+        <AppRoutes extensions={[conflictingExtension]} />
+      </ExtensionsProvider>,
+      {
+        route: '/organizations/api-platform-demo/projects/retail-apis/settings',
+        authState: authStatePresets.authenticated(),
+      }
+    );
+
+    expect(await screen.findByText('General')).toBeInTheDocument();
+    expect(screen.queryByText('Conflicting')).not.toBeInTheDocument();
+  });
 });

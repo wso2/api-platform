@@ -140,10 +140,13 @@ export function AppRoutes({ extensions = [] }: AppRoutesProps) {
   // Extensions registered against a `settings.<scope>.tabs` slot render
   // nested under the matching (org- or project-level) Settings layout
   // instead of as a sibling top-level route — the path is relative to
-  // `/settings/`.
+  // `/settings/`. Also requires `ext.scope === scope`: a type-valid but
+  // inconsistent descriptor (slot says one scope, `scope` field says
+  // another) must not register a route here with the wrong scope's Port —
+  // see `useSettingsTabs`'s matching guard for the sub-nav tab list itself.
   const settingsTabRoutesFor = (scope: 'organization' | 'project') =>
     extensions
-      .filter((ext) => ext.slot === `settings.${scope}.tabs`)
+      .filter((ext) => ext.slot === `settings.${scope}.tabs` && ext.scope === scope)
       .map((extension) => (
         <Route
           key={extension.id}

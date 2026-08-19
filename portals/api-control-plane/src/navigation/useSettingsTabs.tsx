@@ -55,7 +55,14 @@ export const useSettingsTabs = (scope: NavigationLevel): SettingsTab[] => {
   const generalTabHidden = useIsHidden(`settings.${scope}.tabs.general`);
 
   const extensionTabs: SettingsTab[] = extensions
-    .filter((extension) => extension.slot === `settings.${scope}.tabs`)
+    // Require `scope` to agree with the slot name too — a type-valid but
+    // inconsistent descriptor (e.g. `slot: 'settings.organization.tabs'`
+    // with `scope: 'project'`) must not render here with the wrong scope's
+    // Port (see `AppRoutes.tsx`'s equivalent guard for its route).
+    .filter(
+      (extension) =>
+        extension.slot === `settings.${scope}.tabs` && extension.scope === scope
+    )
     .filter((extension) => extension.isVisible?.(consoleScope) ?? true)
     .map((extension) => ({
       id: extension.id,

@@ -60,38 +60,34 @@ export const useNavigationItems = (): NavigationItem[] => {
       .map((extension) => {
         const isDescendantRoute = extension.routePath.endsWith('/*');
         const routeSuffix = extension.routePath.replace(/\/\*$/, '');
-        const routeSegment = `/${routeSuffix}`;
+        // Computed once per render from the current scope (not a raw
+        // substring search) so `match` can't be fooled by an unrelated route
+        // that merely happens to contain this segment name elsewhere — e.g.
+        // a `settings/<name>` tab route shouldn't activate a sidebar
+        // extension whose own destination is `/<name>` at a different depth.
+        const { orgHandle, projectHandler, apiHandler } = scope.params;
+        const destination =
+          orgHandle &&
+          !(extension.scope === 'project' && !projectHandler) &&
+          !(extension.scope === 'api' && (!projectHandler || !apiHandler))
+            ? buildScopedExtensionPath(extension.scope, routeSuffix, {
+                apiHandler,
+                orgHandle,
+                projectHandler,
+              })
+            : undefined;
         return {
           icon: extension.icon,
           id: extension.id,
           isVisible: extension.isVisible,
           label: extension.label,
           level: extension.scope,
-          match: (pathname) => {
-            const index = pathname.indexOf(routeSegment);
-            if (index === -1) return false;
-            const charAfter = pathname[index + routeSegment.length];
-            // Match only a complete path segment: nothing after it, or (for
-            // a `/*` route) a further `/` continuing into a descendant path.
-            return charAfter === undefined || (isDescendantRoute && charAfter === '/');
-          },
+          match: (pathname) =>
+            destination !== undefined &&
+            (pathname === destination ||
+              (isDescendantRoute && pathname.startsWith(`${destination}/`))),
           order: extension.order,
-          to: (navScope) => {
-            const { orgHandle, projectHandler, apiHandler } = navScope.params;
-            if (!orgHandle) return undefined;
-            if (extension.scope === 'project' && !projectHandler) return undefined;
-            if (
-              extension.scope === 'api' &&
-              (!projectHandler || !apiHandler)
-            ) {
-              return undefined;
-            }
-            return buildScopedExtensionPath(extension.scope, routeSuffix, {
-              apiHandler,
-              orgHandle,
-              projectHandler,
-            });
-          },
+          to: () => destination,
         };
       });
     const combinedRegistry = [...navigationRegistry, ...extensionDefinitions];
