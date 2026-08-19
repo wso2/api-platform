@@ -39,7 +39,7 @@ spec:
     identifier: x-ratelimit-remaining-tokens
   requestModel:
     location: pathParam
-    identifier: (?<=models/)[a-zA-Z0-9.\-]+
+    identifier: models/([a-zA-Z0-9.\-]+)
   responseModel:
     location: payload
     identifier: $.modelVersion
