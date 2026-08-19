@@ -21,6 +21,7 @@ package main
 import (
 	"context"
 	"net/http"
+	"strings"
 	"testing"
 	"time"
 
@@ -757,6 +758,45 @@ func TestGenerateAuthConfig(t *testing.T) {
 		assert.Contains(t, authConfig.ResourceRoles[postRestAPIs], "developer")
 		// Legacy key carries the same role assignments.
 		assert.Equal(t, authConfig.ResourceRoles[postRestAPIs], authConfig.ResourceRoles["POST /rest-apis"])
+	})
+
+	t.Run("Every Agent management route has a role entry", func(t *testing.T) {
+		cfg := &config.Config{
+			Controller: config.Controller{
+				Auth: config.AuthConfig{
+					Basic: config.BasicAuth{Enabled: false},
+					IDP:   config.IDPConfig{Enabled: false},
+				},
+			},
+		}
+
+		authConfig := generateAuthConfig(cfg)
+
+		// This map is hand-maintained and has no compile-time link to the
+		// generated router: x-basicauth-roles in the OpenAPI spec is decorative
+		// and nothing consumes it. A missing entry denies by default, so the
+		// symptom is a 403 on a correctly-authenticated call, not a build error.
+		// The keys below are exactly the patterns RegisterHandlers registers.
+		agentRoutes := []string{
+			"POST /agents",
+			"GET /agents",
+			"GET /agents/{id}",
+			"PUT /agents/{id}",
+			"DELETE /agents/{id}",
+		}
+
+		for _, route := range agentRoutes {
+			prefixed := route[:strings.Index(route, " ")+1] + managementAPIBasePath + route[strings.Index(route, " ")+1:]
+
+			require.Contains(t, authConfig.ResourceRoles, prefixed, "no role entry for %q — the endpoint would 403 for every caller", prefixed)
+			assert.ElementsMatch(t, []string{"admin", "developer"}, authConfig.ResourceRoles[prefixed])
+
+			// The legacy unprefixed form is registered onto the same mux and
+			// must carry identical roles, or the two routes disagree on who may
+			// call them.
+			require.Contains(t, authConfig.ResourceRoles, route)
+			assert.Equal(t, authConfig.ResourceRoles[prefixed], authConfig.ResourceRoles[route])
+		}
 	})
 }
 

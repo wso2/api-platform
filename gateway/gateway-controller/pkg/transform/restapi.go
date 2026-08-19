@@ -156,7 +156,7 @@ func (t *RestAPITransformer) Transform(cfg *models.StoredConfig) (*models.Runtim
 
 	// Determine auto host rewrite for main upstream
 	mainAutoHostRewrite := true
-	if apiData.Upstream.Main.HostRewrite != nil && *apiData.Upstream.Main.HostRewrite == api.Manual {
+	if apiData.Upstream.Main.HostRewrite != nil && *apiData.Upstream.Main.HostRewrite == api.UpstreamHostRewriteManual {
 		mainAutoHostRewrite = false
 	}
 
@@ -300,7 +300,7 @@ func (t *RestAPITransformer) Transform(cfg *models.StoredConfig) (*models.Runtim
 		sbUpstreamInfo := sbUpstream.UpstreamInfo()
 
 		sbAutoHostRewrite := true
-		if apiData.Upstream.Sandbox.HostRewrite != nil && *apiData.Upstream.Sandbox.HostRewrite == api.Manual {
+		if apiData.Upstream.Sandbox.HostRewrite != nil && *apiData.Upstream.Sandbox.HostRewrite == api.UpstreamHostRewriteManual {
 			sbAutoHostRewrite = false
 		}
 
