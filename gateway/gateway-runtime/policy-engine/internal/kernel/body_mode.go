@@ -184,7 +184,24 @@ func determineResponseBodyMode(chain *registry.PolicyChain) BodyMode {
 	return BodyModeBuffered
 }
 
-// GetRequestBodyMode returns the body mode for request phase
+// GetRequestBodyMode and GetResponseBodyMode below are NOT the source of the
+// processing modes sent to Envoy.
+//
+// The ModeOverride on the wire is built entirely by
+// PolicyExecutionContext.getModeOverride in execution_context.go, which is the only
+// place that knows the per-request state the decision depends on: whether the client
+// actually sent a streaming body, whether the upstream response is streaming,
+// whether the response has a body at all, and — for a route whose chain is selected
+// at the request-body callback — whether a chain exists yet. These two functions see
+// only a chain looked up by key, so they cannot answer any of that.
+//
+// They are retained because they are a useful pure summary of a chain's declared
+// body requirements, and are exercised as such by body_mode_test.go. Do not "fix"
+// them to account for deferred/pending routes: nothing reads their result, so a
+// change here alters no behaviour. Change getModeOverride instead.
+
+// GetRequestBodyMode returns the body mode a chain's policies declare for the
+// request phase. Not the mode source — see the note above.
 func (k *Kernel) GetRequestBodyMode(routeKey string) BodyMode {
 	chain := k.GetPolicyChainForKey(routeKey)
 	if chain == nil {
@@ -193,7 +210,8 @@ func (k *Kernel) GetRequestBodyMode(routeKey string) BodyMode {
 	return determineRequestBodyMode(chain)
 }
 
-// GetResponseBodyMode returns the body mode for response phase
+// GetResponseBodyMode returns the body mode a chain's policies declare for the
+// response phase. Not the mode source — see the note above GetRequestBodyMode.
 func (k *Kernel) GetResponseBodyMode(routeKey string) BodyMode {
 	chain := k.GetPolicyChainForKey(routeKey)
 	if chain == nil {

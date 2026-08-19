@@ -45,6 +45,33 @@ const (
 	// from a Content-Encoded body — the whole body when buffered, each chunk when
 	// streaming. Applied when max_decompressed_bytes is unset for a direction.
 	DefaultMaxDecompressedBytes int64 = 10 * 1024 * 1024 // 10 MiB
+
+	// ExtProcMessageOverheadBytes is the headroom an ext_proc message needs above the
+	// body it carries: request/response headers, Envoy attributes, dynamic metadata and
+	// protobuf framing all travel in the same message. The gRPC message limits are
+	// validated against the body ceilings plus this, because a limit sized to the body
+	// alone fails mid-request with ResourceExhausted on any request whose headers are
+	// large — a failure that looks like a gateway fault rather than a misconfiguration.
+	ExtProcMessageOverheadBytes int64 = 1 * 1024 * 1024 // 1 MiB
+
+	// maxConfigurableDecompressedBytes is the largest body ceiling that can still have
+	// ExtProcMessageOverheadBytes added to it without overflowing int64. Validate rejects
+	// anything above it, which is what lets RequiredExtProcMessageBytes add without
+	// checking. Far beyond any real deployment — the point is that the arithmetic is
+	// total, not that the number is reachable.
+	maxConfigurableDecompressedBytes int64 = math.MaxInt64 - ExtProcMessageOverheadBytes
+
+	// DefaultMaxConcurrentStreams bounds in-flight ext_proc calls on the Envoy
+	// connection, one stream per request being processed. gRPC's own default is
+	// effectively unlimited, so an explicit value is what makes the stream budget a
+	// bounded resource rather than whatever the peer asks for.
+	//
+	// Deliberately generous. This is not a load-shedding control: Envoy does not
+	// degrade gracefully when it runs out of streams, it stalls, so a value below a
+	// pod's peak concurrent in-flight requests costs availability rather than
+	// protecting anything. Raise it if a single runtime instance legitimately carries
+	// more concurrency than this.
+	DefaultMaxConcurrentStreams uint32 = 10000
 )
 
 // defaultFileSourceAllowlist is the policy-engine's default set of directories that
@@ -463,6 +490,40 @@ type ServerConfig struct {
 
 	// ExtProcPort is the port for the ext_proc gRPC server (TCP mode only)
 	ExtProcPort int `koanf:"extproc_port"`
+
+	// MaxRecvMsgBytes and MaxSendMsgBytes bound one ext_proc message in each
+	// direction. Both must accommodate the larger of the two body decompression
+	// ceilings plus ExtProcMessageOverheadBytes, because both directions carry both
+	// kinds of body: the engine receives a request body and may return a mutated one,
+	// then receives a response body and may return a mutated one.
+	//
+	// They exist because gRPC's defaults are not this service's threat model — the
+	// receive default is 4 MiB regardless of how the body ceilings are configured, and
+	// the send default is unbounded.
+	MaxRecvMsgBytes int64 `koanf:"max_recv_msg_bytes"`
+	MaxSendMsgBytes int64 `koanf:"max_send_msg_bytes"`
+
+	// MaxConcurrentStreams bounds concurrent in-flight ext_proc calls. See
+	// DefaultMaxConcurrentStreams for why this is a generous bound rather than a
+	// load-shedding knob.
+	MaxConcurrentStreams uint32 `koanf:"max_concurrent_streams"`
+}
+
+// RequiredExtProcMessageBytes is the smallest message limit coherent with the
+// configured body ceilings. Both directions are sized off the larger ceiling, since
+// each carries request and response bodies alike.
+//
+// The addition cannot overflow: Validate rejects a ceiling above
+// maxConfigurableDecompressedBytes before reaching here. That ordering matters — an
+// overflowed sum would be *negative*, and a negative requirement compares below every
+// configured message limit, so the coherence checks that follow would pass an absurd
+// ceiling instead of refusing it.
+func (p PolicyEngine) RequiredExtProcMessageBytes() int64 {
+	ceiling := p.RequestBody.MaxDecompressedBytes
+	if p.ResponseBody.MaxDecompressedBytes > ceiling {
+		ceiling = p.ResponseBody.MaxDecompressedBytes
+	}
+	return ceiling + ExtProcMessageOverheadBytes
 }
 
 // PythonExecutorConfig holds configuration for the Python executor bridge.
@@ -786,6 +847,13 @@ func defaultConfig() *Config {
 			Server: ServerConfig{
 				Mode:        "",
 				ExtProcPort: 9001,
+				// MaxRecvMsgBytes and MaxSendMsgBytes are deliberately left zero: Validate
+				// derives them from the effective body ceilings, and a default here would
+				// pre-empt that derivation. Since Load starts from this config, a non-zero
+				// default is indistinguishable from an operator's explicit choice — so
+				// raising request_body.max_decompressed_bytes would fail startup demanding
+				// the message limits be restated, instead of following the ceiling up.
+				MaxConcurrentStreams: DefaultMaxConcurrentStreams,
 			},
 			Admin: AdminConfig{
 				Enabled:    true,
@@ -962,6 +1030,70 @@ func (c *Config) Validate() error {
 	}
 	if c.PolicyEngine.ResponseBody.MaxDecompressedBytes <= 0 {
 		return fmt.Errorf("policy_engine.response_body.max_decompressed_bytes must be positive, got %d", c.PolicyEngine.ResponseBody.MaxDecompressedBytes)
+	}
+
+	// Both ceilings feed RequiredExtProcMessageBytes, which adds
+	// ExtProcMessageOverheadBytes to the larger of them. Bounding them here, before that
+	// addition happens, is what keeps it total.
+	for name, v := range map[string]int64{
+		"request_body":  c.PolicyEngine.RequestBody.MaxDecompressedBytes,
+		"response_body": c.PolicyEngine.ResponseBody.MaxDecompressedBytes,
+	} {
+		if v > maxConfigurableDecompressedBytes {
+			return fmt.Errorf(
+				"policy_engine.%s.max_decompressed_bytes is %d, which exceeds the maximum %d — "+
+					"a larger ceiling cannot have the %d of ext_proc message overhead added to it "+
+					"without overflowing",
+				name, v, maxConfigurableDecompressedBytes, ExtProcMessageOverheadBytes)
+		}
+	}
+
+	// ext_proc gRPC message and stream limits.
+	//
+	// Unset means "derive from the body ceilings" rather than "reject", so a Config built
+	// in code (tests, embedders) stays usable and an operator who raises a body ceiling
+	// does not also have to restate the message limits. Load() starts from
+	// defaultConfig(), so a file-sourced config already carries values; this covers the
+	// rest. Same normalise-then-validate shape as the router's
+	// per_connection_buffer_limit_bytes.
+	required := c.PolicyEngine.RequiredExtProcMessageBytes()
+	if c.PolicyEngine.Server.MaxRecvMsgBytes == 0 {
+		c.PolicyEngine.Server.MaxRecvMsgBytes = required
+	}
+	if c.PolicyEngine.Server.MaxSendMsgBytes == 0 {
+		c.PolicyEngine.Server.MaxSendMsgBytes = required
+	}
+	if c.PolicyEngine.Server.MaxConcurrentStreams == 0 {
+		c.PolicyEngine.Server.MaxConcurrentStreams = DefaultMaxConcurrentStreams
+	}
+
+	// An *explicit* value below the ceiling is still refused: a message limit under the
+	// body a policy is allowed to buffer fails mid-request with ResourceExhausted, which
+	// surfaces as a gateway fault on live traffic instead of a startup error naming the
+	// two settings that disagree. Refusing to start is the cheaper failure.
+	if c.PolicyEngine.Server.MaxRecvMsgBytes < required {
+		return fmt.Errorf(
+			"policy_engine.server.max_recv_msg_bytes is %d, which is below the %d required by the configured "+
+				"body decompression ceilings plus %d of ext_proc message overhead",
+			c.PolicyEngine.Server.MaxRecvMsgBytes, required, ExtProcMessageOverheadBytes)
+	}
+	if c.PolicyEngine.Server.MaxSendMsgBytes < required {
+		return fmt.Errorf(
+			"policy_engine.server.max_send_msg_bytes is %d, which is below the %d required by the configured "+
+				"body decompression ceilings plus %d of ext_proc message overhead",
+			c.PolicyEngine.Server.MaxSendMsgBytes, required, ExtProcMessageOverheadBytes)
+	}
+	// grpc.MaxRecvMsgSize/MaxSendMsgSize take an int, so a value that does not survive
+	// the conversion would silently become a different limit than the one configured.
+	// int is 64-bit on every platform this ships on, making this unreachable there —
+	// which is the point of asserting it here rather than at the conversion.
+	for name, v := range map[string]int64{
+		"max_recv_msg_bytes": c.PolicyEngine.Server.MaxRecvMsgBytes,
+		"max_send_msg_bytes": c.PolicyEngine.Server.MaxSendMsgBytes,
+	} {
+		if int64(int(v)) != v {
+			return fmt.Errorf("policy_engine.server.%s is %d, which does not fit this platform's int", name, v)
+		}
 	}
 
 	// Validate config mode

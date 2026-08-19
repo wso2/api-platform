@@ -20,15 +20,114 @@ package kernel
 
 import (
 	"log/slog"
+	"strings"
 	"sync"
 
 	"github.com/wso2/api-platform/gateway/gateway-runtime/policy-engine/internal/registry"
+	"github.com/wso2/api-platform/gateway/gateway-runtime/policy-engine/internal/resolver"
 )
 
 // RouteConfig holds metadata and resolver info for a single route.
 // Metadata is pre-populated at deploy time; no request-time parsing needed.
 type RouteConfig struct {
 	Metadata RouteMetadata
+
+	// RouteResolution carries how this route's policy chain key is derived —
+	// RouteKey, CanonicalChainKey, ResolverName, ResolverConfig and the prepared
+	// resolver built from them at ingest. Embedded so the fields read directly off
+	// the route (rc.CanonicalChainKey, rc.Prepared) without copying the struct per
+	// request.
+	resolver.RouteResolution
+
+	// MaxRequestBodyBytes is the largest request body, in wire bytes before any
+	// decompression, that this route will accept for operation resolution. Zero means
+	// DefaultMaxResolverRequestBodyBytes applies.
+	//
+	// It is an *acceptance* ceiling, not a buffering one, and the distinction matters.
+	// A body-resolved route asks Envoy for BUFFERED mode, so by the time this is
+	// checked Envoy has already collected the whole body and shipped it here in one
+	// ext_proc message. What this bounds is therefore the work done *on* the body —
+	// decompression, resolver parsing, and the copies those make — plus it returns a
+	// clean 413 instead of letting an oversized body reach a resolver.
+	//
+	// What it does NOT bound is the memory an unauthenticated caller can make the
+	// gateway hold: that is Envoy's listener-wide
+	// router.http_listener.per_connection_buffer_limit_bytes (1 MiB by default) and the
+	// ext_proc gRPC server's receive limit, neither of which is per-route. Lowering
+	// this value does not lower that. Making it a real buffering bound needs either an
+	// Envoy-side per-route cap (the buffer filter's max_request_bytes, which returns 413
+	// before ext_proc collects the body) or streamed accumulation in the engine; neither
+	// is built.
+	MaxRequestBodyBytes int64
+}
+
+// PrepareRoute prepares rc's resolver from the fields that arrived over the wire, and
+// stores the result on rc.
+//
+// It is the one place a ResolverRouteConfig is built, so a Prepare implementation and
+// the binder's own validation always see the same values. Two of those values are
+// derived here rather than read from the wire:
+//
+//   - the effective chain key, applying the older-controller fallback to the route key
+//     exactly once — nothing downstream re-applies it, so nothing can disagree with it;
+//   - the HTTP method, read out of the Envoy route name (METHOD|fullPath|vhost), which
+//     is its only source: a route carries its path in metadata but not its method.
+//
+// An error means the route is unusable and its caller must drop it. Callers distinguish
+// an unknown resolver from a resolver's own failure via resolver.FailureUnknownResolver.
+func PrepareRoute(reg resolver.ResolverRegistry, routeKey string, rc *RouteConfig) error {
+	rc.RouteKey = routeKey
+	if rc.CanonicalChainKey == "" {
+		rc.CanonicalChainKey = routeKey
+	}
+
+	prepared, err := resolver.PrepareRoute(reg, resolver.ResolverRouteConfig{
+		RouteKey:          routeKey,
+		CanonicalChainKey: rc.CanonicalChainKey,
+		ResolverName:      rc.ResolverName,
+		APIID:             rc.Metadata.APIId,
+		Vhost:             rc.Metadata.Vhost,
+		APIContext:        rc.Metadata.Context,
+		// Normalised once, here, so no Prepare implementation can miss on case
+		// (GO-AUTH-006).
+		Method:         strings.ToUpper(methodFromRouteKey(routeKey)),
+		Path:           rc.Metadata.OperationPath,
+		ResolverConfig: rc.ResolverConfig,
+	})
+	if err != nil {
+		return err
+	}
+	rc.Prepared = prepared
+	return nil
+}
+
+// methodFromRouteKey reads the HTTP method out of an Envoy route name.
+//
+// A key with no separator yields no method rather than the whole key, so a
+// differently-shaped route name degrades to "unknown" instead of handing a resolver a
+// method that is really a path.
+func methodFromRouteKey(routeKey string) string {
+	method, _, found := strings.Cut(routeKey, "|")
+	if !found {
+		return ""
+	}
+	return method
+}
+
+// DefaultMaxResolverRequestBodyBytes is the acceptance ceiling applied to a
+// body-resolved route whose RouteConfig carries no explicit limit. Deliberately far
+// below Envoy's per-connection buffer limit: on these routes the body is resolved, and
+// therefore parsed, before any authentication policy has run.
+const DefaultMaxResolverRequestBodyBytes int64 = 64 * 1024
+
+// EffectiveMaxRequestBodyBytes returns the acceptance ceiling actually in force for this
+// route, resolving the default. Exported so the admin config dump can report the bound
+// that applies rather than the raw (possibly zero) configured value.
+func (rc *RouteConfig) EffectiveMaxRequestBodyBytes() int64 {
+	if rc == nil || rc.MaxRequestBodyBytes <= 0 {
+		return DefaultMaxResolverRequestBodyBytes
+	}
+	return rc.MaxRequestBodyBytes
 }
 
 // RouteMapping maps Envoy metadata keys to PolicyChains for route-specific processing

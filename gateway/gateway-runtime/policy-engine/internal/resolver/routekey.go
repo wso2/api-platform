@@ -18,20 +18,55 @@
 
 package resolver
 
-// RouteKeyResolver trivially returns the route key as the policy chain key.
-// Used by RestAPI, LLM Provider, and LLM Proxy kinds where each route has
-// exactly one policy chain, keyed by the same route name.
+import (
+	"context"
+	"errors"
+)
+
+// RouteKeyResolver is the identity resolver: the request carries no operation
+// identifier of its own, so the route's canonical chain key is the answer. Used by
+// RestApi, WebSubApi, Mcp-as-shipped-today, LlmProvider and LlmProxy, where each route
+// has exactly one policy chain.
+//
+// It is a real registry entry rather than a special case in the binding path, and it
+// still costs nothing per request: the resolution it prepares is entirely static, so
+// the kernel binds from the stored result without building a request view or calling
+// Resolve.
 type RouteKeyResolver struct{}
 
-func (r *RouteKeyResolver) Name() string { return "route-key" }
+// Name returns the wire value for identity resolution.
+func (*RouteKeyResolver) Name() string { return RouteKeyResolverName }
 
-func (r *RouteKeyResolver) Requirements() ResolverRequirements {
-	return ResolverRequirements{
-		BufferBody: false,
-		Headers:    false,
+// Prepare captures the route's effective chain key.
+//
+// It deliberately does not re-apply the fallback to RouteKey: ingest already resolved
+// the effective value, so an empty one here means the ingest layer is broken, not that
+// this route wants its route key. Applying it a second time would create a second
+// place for the two to disagree.
+func (*RouteKeyResolver) Prepare(cfg ResolverRouteConfig) (PreparedResolver, error) {
+	if cfg.CanonicalChainKey == "" {
+		return nil, errors.New("route-key resolver requires an effective chain key")
 	}
+	return &preparedRouteKey{key: cfg.CanonicalChainKey}, nil
 }
 
-func (r *RouteKeyResolver) Resolve(ctx ResolverContext) (string, error) {
-	return ctx.RouteKey, nil
+// preparedRouteKey is one identity route, holding only the key its requests bind to.
+type preparedRouteKey struct {
+	key string
+}
+
+// Requirements reports that nothing about the request is needed.
+func (*preparedRouteKey) Requirements() RequestRequirements {
+	return RequestRequirements{Body: BodyNotRequired}
+}
+
+// StaticResolution is the whole of this resolver's work, done once at ingest.
+func (r *preparedRouteKey) StaticResolution() Resolution {
+	return Resolution{ChainKey: r.key}
+}
+
+// Resolve returns the same static resolution. Reached only by a caller that ignores
+// StaticPreparedResolver; the kernel does not, so this never runs on the request path.
+func (r *preparedRouteKey) Resolve(context.Context, RequestView) (Resolution, error) {
+	return r.StaticResolution(), nil
 }
