@@ -12,9 +12,9 @@ import (
 // object — the shape the analytics pipeline asserts on.
 func TestAICostReachesAnalyticsDataAsNestedObject(t *testing.T) {
 	policyMetadata := map[string]any{
-		"x-llm-cost":                  0.01146,
-		"aitoken:modelid":             "gemini-3-flash-preview",
-		"aitoken:prompttokencount":    "10000",
+		"x-llm-cost":               0.01146,
+		"aitoken:modelid":          "gemini-3-flash-preview",
+		"aitoken:prompttokencount": "10000",
 		constants.AICostMetadataKey: map[string]interface{}{
 			"serviceTier":     "priority",
 			"promptTokenCost": 0.009,
