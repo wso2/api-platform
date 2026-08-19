@@ -386,14 +386,22 @@ export default function ServiceProviderNew() {
         },
       };
 
-      // Default the client-facing header to the same convention the fronted vendor itself uses.
+      // Match the client-facing header to the upstream vendor's own convention
+      // only when we're actually configuring upstream auth with it — otherwise
+      // there's no vendor convention to match, so keep the neutral default.
       const security = {
         enabled: true,
         apiKey: {
           enabled: true,
-          key: formState.upstreamAuthHeader.trim() || 'X-API-Key',
+          key:
+            !isNoCredentialsAuthType && hasCredential
+              ? formState.upstreamAuthHeader.trim() || 'X-API-Key'
+              : 'X-API-Key',
           in: 'header' as const,
-          valuePrefix: formState.valuePrefix || '',
+          valuePrefix:
+            !isNoCredentialsAuthType && hasCredential
+              ? formState.valuePrefix || ''
+              : '',
         },
       };
 
