@@ -1236,6 +1236,248 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
 
+  /agents:
+    post:
+      summary: Create a new Agent
+      description: Add a new A2A Agent to the Gateway.
+      operationId: createAgent
+      x-basicauth-roles: [admin, developer]
+      tags:
+        - Agent Management
+      requestBody:
+        required: true
+        content:
+          application/yaml:
+            schema:
+              $ref: "#/components/schemas/AgentConfigurationRequest"
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AgentConfigurationRequest"
+      responses:
+        "201":
+          description: Agent created successfully
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AgentConfiguration"
+        "400":
+          description: Invalid configuration (validation failed)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "409":
+          description: Conflict - Agent with same name and version already exists
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "500":
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+    get:
+      summary: List all Agents
+      description: List Agents registered in the Gateway, optionally filtered by name, version, context, or status.
+      operationId: listAgents
+      x-basicauth-roles: [admin, developer]
+      tags:
+        - Agent Management
+      parameters:
+        - name: displayName
+          in: query
+          required: false
+          description: Filter by agent display name
+          schema:
+            type: string
+          example: Weather Agent
+        - name: version
+          in: query
+          required: false
+          description: Filter by agent version
+          schema:
+            type: string
+          example: v1.0
+        - name: context
+          in: query
+          required: false
+          description: Filter by agent context/path
+          schema:
+            type: string
+          example: /weather
+        - name: status
+          in: query
+          required: false
+          description: Filter by deployment status
+          schema:
+            type: string
+            enum: [ deployed, undeployed ]
+          example: deployed
+      responses:
+        "200":
+          description: List of Agents
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: success
+                  count:
+                    type: integer
+                    example: 5
+                  agents:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/AgentConfiguration"
+        "500":
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /agents/{id}:
+    get:
+      summary: Get Agent by id
+      description: Get an Agent by its ID.
+      operationId: getAgentById
+      x-basicauth-roles: [admin, developer]
+      tags:
+        - Agent Management
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: |
+            Unique public identifier of the Agent.
+          schema:
+            type: string
+          example: weather-agent-v1.0
+      responses:
+        "200":
+          description: Agent details
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AgentConfiguration"
+            application/yaml:
+              schema:
+                $ref: "#/components/schemas/AgentConfiguration"
+        "404":
+          description: Agent not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "500":
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+    put:
+      summary: Update an existing Agent
+      description: Update an existing Agent in the Gateway.
+      operationId: updateAgent
+      x-basicauth-roles: [admin, developer]
+      tags:
+        - Agent Management
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: |
+            Unique public identifier of the Agent to update.
+          schema:
+            type: string
+          example: weather-agent-v1.0
+      requestBody:
+        required: true
+        content:
+          application/yaml:
+            schema:
+              $ref: "#/components/schemas/AgentConfigurationRequest"
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AgentConfigurationRequest"
+      responses:
+        "200":
+          description: Agent updated successfully
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AgentConfiguration"
+        "400":
+          description: Invalid configuration (validation failed)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Agent not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "500":
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+    delete:
+      summary: Delete an Agent
+      description: Delete an Agent from the Gateway.
+      operationId: deleteAgent
+      x-basicauth-roles: [admin, developer]
+      tags:
+        - Agent Management
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: |
+            Unique public identifier of the Agent to delete.
+          schema:
+            type: string
+          example: weather-agent-v1.0
+      responses:
+        "200":
+          description: Agent deleted successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: success
+                  message:
+                    type: string
+                    example: Agent deleted successfully
+                  id:
+                    type: string
+                    example: weather-agent-v1.0
+        "404":
+          description: Agent not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "500":
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
   /llm-provider-templates:
     post:
       summary: Create a new LLM provider template
@@ -3946,6 +4188,479 @@ components:
                 type: string
                 description: Optional human-readable title of the argument
     
+    # -----------------------
+    # Agent (A2A) schemas
+    # -----------------------
+    AgentConfigurationRequest:
+      type: object
+      required:
+        - apiVersion
+        - kind
+        - metadata
+        - spec
+      properties:
+        apiVersion:
+          type: string
+          description: Agent specification version
+          example: gateway.api-platform.wso2.com/v1
+          enum:
+            - gateway.api-platform.wso2.com/v1
+        kind:
+          type: string
+          description: Agent type
+          example: Agent
+          enum:
+            - Agent
+        metadata:
+          $ref: "#/components/schemas/Metadata"
+        spec:
+          $ref: "#/components/schemas/AgentConfigData"
+      example:
+        apiVersion: gateway.api-platform.wso2.com/v1
+        kind: Agent
+        metadata:
+          name: weather-agent-v1-0
+        spec:
+          displayName: Weather Agent
+          version: v1.0
+          context: /weather
+          vhost: agents.example.com
+          upstream:
+            url: https://weather.internal
+          resilience:
+            timeout: 30s
+            idleTimeout: 5m
+          a2a:
+            protocolVersion: "1.0"
+            operationConfigs:
+              transports:
+                - protocolBinding: JSONRPC
+                  pathPrefix: /rpc
+                - protocolBinding: HTTP+JSON
+                  pathPrefix: /rest
+              policies:
+                - name: jwt-auth
+                  version: v1
+                  params:
+                    issuer: https://idp.example.com
+                    requiredScopes:
+                      - a2a.invoke
+              operations:
+                - name: SendMessage
+                  policies:
+                    - name: advanced-ratelimit
+                      version: v1
+                      params:
+                        quotas:
+                          - name: send-message-limit
+                            limits:
+                              - limit: 100
+                                duration: 1m
+            agentCard:
+              public:
+                mode: managed
+                path: /.well-known/agent-card.json
+                policies:
+                  - name: cors
+                    version: v1
+                content:
+                  name: Weather Agent
+                  description: Provides weather information
+                  version: 1.0.0
+                  supportedInterfaces:
+                    - protocolBinding: JSONRPC
+                      protocolVersion: "1.0"
+                      url: https://agents.example.com/weather/rpc
+                    - protocolBinding: HTTP+JSON
+                      protocolVersion: "1.0"
+                      url: https://agents.example.com/weather/rest
+                  capabilities:
+                    streaming: true
+                  securitySchemes:
+                    gateway-jwt:
+                      openIdConnectSecurityScheme:
+                        openIdConnectUrl: https://idp.example.com/.well-known/openid-configuration
+                  securityRequirements:
+                    - schemes:
+                        gateway-jwt:
+                          list:
+                            - a2a.invoke
+                  defaultInputModes:
+                    - text/plain
+                  defaultOutputModes:
+                    - text/plain
+                  skills:
+                    - id: get_weather
+                      name: Get weather
+                      description: Gets weather information
+                      tags:
+                        - weather
+
+    AgentConfiguration:
+      allOf:
+        - $ref: '#/components/schemas/AgentConfigurationRequest'
+        - type: object
+          properties:
+            status:
+              readOnly: true
+              description: Server-managed lifecycle fields. Populated on responses.
+              allOf:
+                - $ref: '#/components/schemas/ResourceStatus'
+
+    AgentConfigData:
+      type: object
+      required:
+        - displayName
+        - version
+        - context
+        - upstream
+        - a2a
+      properties:
+        displayName:
+          type: string
+          description: Human-readable agent display name
+          minLength: 1
+          maxLength: 100
+          pattern: '^[a-zA-Z0-9\-_\. ]+$'
+          example: Weather Agent
+        version:
+          type: string
+          description: Agent version
+          pattern: '^v\d+\.\d+$'
+          example: v1.0
+        context:
+          type: string
+          description: Gateway context path for the agent (must start with /, no trailing slash)
+          pattern: '^\/([a-zA-Z0-9_\-\/]*[^\/])?$'
+          minLength: 1
+          maxLength: 200
+          example: /weather
+        vhost:
+          type: string
+          description: >
+            Virtual host name used for routing. Supports standard domain names,
+            subdomains, or wildcard domains. Must follow RFC-compliant hostname
+            rules. Wildcards are only allowed in the left-most label (e.g., *.example.com).
+          pattern: '^(\*\.|[a-zA-Z0-9](?:[a-zA-Z0-9\-]{0,61}[a-zA-Z0-9])?\.)+[a-zA-Z]{2,}$'
+          minLength: 1
+          maxLength: 253
+          example: "agents.example.com"
+        upstreamDefinitions:
+          type: array
+          description: List of reusable upstream definitions with optional timeout configurations. Referenced by upstream.ref.
+          items:
+            $ref: "#/components/schemas/UpstreamDefinition"
+        upstream:
+          description: >
+            The backend A2A agent url and auth configuration. The URL is the base the
+            gateway forwards A2A operation traffic to, and — in public passthrough card
+            mode — the origin of the standard /.well-known/agent-card.json document.
+          allOf:
+            - $ref: "#/components/schemas/Upstream"
+            - $ref: "#/components/schemas/UpstreamAuth"
+        deploymentState:
+          type: string
+          description: Desired deployment state - 'deployed' (default) or 'undeployed'. When set to 'undeployed', the Agent is removed from router traffic but configuration and policies are preserved for potential redeployment.
+          enum: [deployed, undeployed]
+          default: deployed
+          example: deployed
+        resilience:
+          $ref: '#/components/schemas/Resilience'
+          description: >
+            Agent-level backend/route timeout configuration. Applies to the
+            traffic-forwarding routes generated for this Agent. Because A2A streaming
+            operations are long-lived streams, the route timeout defaults to disabled
+            ("0s") for the JSON-RPC route and for streaming HTTP+JSON routes unless a
+            timeout is set here (unlike REST/LLM, which fall back to the gateway's global
+            route timeout); the idle timeout remains the liveness guard.
+        a2a:
+          $ref: "#/components/schemas/A2AConfig"
+
+    A2AConfig:
+      type: object
+      description: A2A-specific agent configuration.
+      required:
+        - protocolVersion
+        - operationConfigs
+        - agentCard
+      properties:
+        protocolVersion:
+          type: string
+          description: >
+            A2A protocol version exposed by the gateway. This selects the agent's
+            operation set and HTTP+JSON bindings, the Agent Card model its managed card
+            is validated against, and the field-presence rules used to sign that card —
+            an agent exposes exactly one version and the gateway performs no
+            protocol-version conversion. Managed Agent Card interfaces must advertise
+            this version; in passthrough mode the upstream is responsible for
+            advertising it.
+          enum:
+            - "1.0"
+          example: "1.0"
+        operationConfigs:
+          $ref: "#/components/schemas/A2AOperationConfigs"
+        agentCard:
+          $ref: "#/components/schemas/A2AAgentCard"
+
+    A2AOperationConfigs:
+      type: object
+      description: >
+        Transport exposure and common or operation-specific configuration for A2A
+        operations. These policies and transports do not apply to public Agent Card
+        serving.
+      required:
+        - transports
+      properties:
+        transports:
+          type: array
+          description: >
+            Ordered A2A protocol bindings and their gateway-facing path prefixes. This is
+            runtime routing configuration, not Agent Card transformation or transport
+            conversion.
+          minItems: 1
+          maxItems: 2
+          uniqueItems: true
+          items:
+            $ref: "#/components/schemas/A2ATransport"
+        policies:
+          type: array
+          description: >
+            Ordered policies applied to every A2A operation, before operation-level
+            policies. These policies do not apply to the public Agent Card discovery
+            route.
+          items:
+            $ref: "#/components/schemas/Policy"
+        operations:
+          type: array
+          description: >
+            Optional per-operation configuration keyed by canonical A2A operation name.
+            This array is not an allowlist: unlisted standard operations still receive
+            spec.a2a.operationConfigs.policies. Public Agent Card discovery is configured
+            separately.
+          uniqueItems: true
+          items:
+            $ref: "#/components/schemas/A2AOperationConfig"
+
+    A2ATransport:
+      type: object
+      description: >
+        One A2A protocol binding exposed by the gateway and the path prefix at which that
+        binding is served relative to spec.context.
+      required:
+        - protocolBinding
+      properties:
+        protocolBinding:
+          $ref: "#/components/schemas/A2AProtocolBinding"
+        pathPrefix:
+          type: string
+          description: >
+            Gateway-facing path prefix relative to spec.context. The root value / means
+            that no additional path segment is inserted. For JSONRPC, this is the endpoint
+            path; for HTTP+JSON, canonical operation paths are appended below it. This
+            field does not select or replace the generic upstream.
+          default: /
+          minLength: 1
+          maxLength: 200
+          pattern: '^/(?:[A-Za-z0-9._~!$&()*+,;=:@%-]+(?:/[A-Za-z0-9._~!$&()*+,;=:@%-]+)*)?$'
+          example: /rpc
+
+    A2AProtocolBinding:
+      type: string
+      description: A2A protocol binding exposed at a transport's path prefix.
+      enum:
+        - JSONRPC
+        - HTTP+JSON
+      example: JSONRPC
+
+    A2AOperationName:
+      type: string
+      description: >
+        Canonical A2A operation name. These names match the standard JSON-RPC and gRPC
+        method names, but identify the binding-independent A2A operation. The effective
+        set is closed and is the one defined by the agent's spec.a2a.protocolVersion;
+        the values below are A2A 1.0's eleven operations, that being the only protocol
+        version currently supported. A name outside the selected version's set is
+        rejected at deploy time.
+      enum:
+        - SendMessage
+        - SendStreamingMessage
+        - GetTask
+        - ListTasks
+        - CancelTask
+        - SubscribeToTask
+        - CreateTaskPushNotificationConfig
+        - GetTaskPushNotificationConfig
+        - ListTaskPushNotificationConfigs
+        - DeleteTaskPushNotificationConfig
+        - GetExtendedAgentCard
+      example: SendMessage
+
+    A2AOperationConfig:
+      type: object
+      description: >
+        Configuration for one standard A2A 1.0 operation, identified by its canonical
+        operation name. The gateway maps each exposed transport to this name before
+        choosing the policy chain.
+      required:
+        - name
+      properties:
+        name:
+          $ref: "#/components/schemas/A2AOperationName"
+        policies:
+          type: array
+          description: >
+            Ordered policies applied after spec.a2a.operationConfigs.policies when this
+            operation is selected.
+          items:
+            $ref: "#/components/schemas/Policy"
+        resilience:
+          $ref: "#/components/schemas/Resilience"
+
+    A2AAgentCard:
+      type: object
+      description: >
+        Public Agent Card configuration and optional protected Agent Card configuration
+        for the authenticated A2A GetExtendedAgentCard operation.
+      required:
+        - public
+      properties:
+        public:
+          $ref: "#/components/schemas/A2APublicAgentCard"
+        protected:
+          $ref: "#/components/schemas/A2AProtectedAgentCard"
+
+    A2APublicAgentCard:
+      type: object
+      description: >
+        Public Agent Card serving. `mode` selects whether the card is proxied unchanged
+        from the upstream (`passthrough`) or validated, stored, and served by the gateway
+        (`managed`). Mode-specific rules are enforced at deploy time, not by this schema:
+        `managed` requires `content`; `passthrough` accepts neither `content` nor
+        `signing`, because the gateway does not parse, transform, or sign a proxied card.
+      required:
+        - mode
+      properties:
+        mode:
+          type: string
+          description: How the public Agent Card is produced.
+          enum:
+            - managed
+            - passthrough
+          example: managed
+        path:
+          $ref: "#/components/schemas/A2AAgentCardPath"
+        policies:
+          type: array
+          description: Ordered policies applied only to public Agent Card serving.
+          items:
+            $ref: "#/components/schemas/Policy"
+        content:
+          $ref: "#/components/schemas/A2AAgentCardDocument"
+        signing:
+          $ref: "#/components/schemas/A2ACardSigning"
+
+    A2AProtectedAgentCard:
+      type: object
+      description: >
+        Planned authenticated extended Agent Card support. When present it is served
+        through the canonical GetExtendedAgentCard operation and uses the operation policy
+        chain, not public Agent Card policies. It has no custom path or local policies
+        because it is an A2A operation. Not implemented in this release: an explicitly
+        configured `protected` block is rejected at deploy time. GetExtendedAgentCard is
+        exposed and proxied to the upstream.
+      required:
+        - mode
+      properties:
+        mode:
+          type: string
+          description: How the protected Agent Card is produced.
+          enum:
+            - managed
+            - passthrough
+          example: passthrough
+        content:
+          $ref: "#/components/schemas/A2AAgentCardDocument"
+        signing:
+          $ref: "#/components/schemas/A2ACardSigning"
+
+    A2AAgentCardPath:
+      type: string
+      description: >
+        Exact gateway-facing Agent Card path relative to spec.context. When omitted, the
+        gateway uses /.well-known/agent-card.json. A custom path replaces that default
+        route rather than creating an additional alias. In passthrough mode this does not
+        change the upstream discovery path.
+      default: /.well-known/agent-card.json
+      minLength: 2
+      maxLength: 200
+      pattern: '^/[A-Za-z0-9._~!$&()*+,;=:@%-]+(?:/[A-Za-z0-9._~!$&()*+,;=:@%-]+)*$'
+      example: /.well-known/agent-card.json
+
+    A2AAgentCardDocument:
+      type: object
+      description: >
+        Complete A2A 1.0 Agent Card represented as a structured JSON object. JSON can be
+        embedded directly because JSON object syntax is valid YAML. The controller
+        additionally validates this object against the complete A2A Agent Card model for
+        spec.a2a.protocolVersion, taken from the vendored A2A protocol definition
+        (specification/a2a.proto). The document is stored and served as supplied — the
+        gateway never rewrites it — so extension fields are preserved.
+      additionalProperties: true
+      example:
+        name: Weather Agent
+        description: Provides weather information
+        version: 1.0.0
+        supportedInterfaces:
+          - protocolBinding: JSONRPC
+            protocolVersion: "1.0"
+            url: https://agents.example.com/weather/rpc
+        capabilities:
+          streaming: true
+        securitySchemes:
+          gateway-jwt:
+            openIdConnectSecurityScheme:
+              openIdConnectUrl: https://idp.example.com/.well-known/openid-configuration
+        securityRequirements:
+          - schemes:
+              gateway-jwt:
+                list:
+                  - a2a.invoke
+        defaultInputModes:
+          - text/plain
+        defaultOutputModes:
+          - text/plain
+        skills:
+          - id: get_weather
+            name: Get weather
+            description: Gets weather information
+            tags:
+              - weather
+
+    A2ACardSigning:
+      type: object
+      description: >
+        Optional signing configuration for a managed Agent Card. Passthrough cards cannot
+        configure gateway signing. The signing key is selected from gateway system
+        configuration at runtime. `algorithm` is required when `enabled` is true and
+        rejected otherwise; both rules are enforced at deploy time.
+      required:
+        - enabled
+      properties:
+        enabled:
+          type: boolean
+          description: Whether the gateway signs the managed card it serves.
+          default: false
+          example: false
+        algorithm:
+          type: string
+          description: JWS algorithm used to sign the published card.
+          enum:
+            - ES256
+            - ES384
+            - RS256
+            - PS256
+          example: ES256
+
     ErrorResponse:
       type: object
       required:
@@ -5275,6 +5990,8 @@ tags:
     description: CRUD operations for Rest APIs
   - name: MCP Proxy Management
     description: CRUD operations for MCPProxies
+  - name: Agent Management
+    description: CRUD operations for A2A Agents
   - name: Certificate Management
     description: Manage custom TLS certificates for HTTPS upstream verification
   - name: LLM Provider Template Management
