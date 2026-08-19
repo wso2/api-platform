@@ -123,10 +123,14 @@ func defaultConfig() *Server {
 				Port:    9080,
 			},
 			HTTPS: HTTPSListener{
-				Enabled:  true,
-				Port:     9243,
-				CertFile: "./data/certs/cert.pem",
-				KeyFile:  "./data/certs/key.pem",
+				Enabled:                true,
+				Port:                   9243,
+				CertFile:               "./data/certs/cert.pem",
+				KeyFile:                "./data/certs/key.pem",
+				MinimumProtocolVersion: "TLS1_2",
+				MaximumProtocolVersion: "TLS1_3",
+				Ciphers:                "",
+				EcdhCurves:             "X25519,P-256",
 			},
 			// Finite by default so a slow or idle peer cannot hold a connection open
 			// indefinitely. Write is the loosest of the four because some handlers

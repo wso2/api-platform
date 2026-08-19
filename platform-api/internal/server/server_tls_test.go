@@ -20,6 +20,7 @@ import (
 	"crypto/ecdsa"
 	"crypto/elliptic"
 	"crypto/rand"
+	"crypto/tls"
 	"crypto/x509"
 	"crypto/x509/pkix"
 	"encoding/pem"
@@ -66,16 +67,81 @@ func TestBuildTLSConfig_MountedCert_Loads(t *testing.T) {
 	writeTestCertPair(t, certDir)
 
 	tlsConfig, err := testServer().buildTLSConfig(config.HTTPSListener{
-		Enabled:  true,
-		Port:     9243,
-		CertFile: filepath.Join(certDir, "cert.pem"),
-		KeyFile:  filepath.Join(certDir, "key.pem"),
+		Enabled:                true,
+		Port:                   9243,
+		CertFile:               filepath.Join(certDir, "cert.pem"),
+		KeyFile:                filepath.Join(certDir, "key.pem"),
+		MinimumProtocolVersion: "TLS1_2",
+		MaximumProtocolVersion: "TLS1_3",
+		EcdhCurves:             "X25519,P-256",
 	})
 	if err != nil {
 		t.Fatalf("expected mounted certificates to load, got %v", err)
 	}
 	if tlsConfig == nil || len(tlsConfig.Certificates) != 1 {
 		t.Fatal("expected exactly one loaded certificate")
+	}
+	if tlsConfig.MinVersion != tls.VersionTLS12 || tlsConfig.MaxVersion != tls.VersionTLS13 {
+		t.Fatalf("expected TLS1_2-TLS1_3 bounds, got min=%x max=%x", tlsConfig.MinVersion, tlsConfig.MaxVersion)
+	}
+	wantCurves := []tls.CurveID{tls.X25519, tls.CurveP256}
+	if len(tlsConfig.CurvePreferences) != len(wantCurves) {
+		t.Fatalf("expected curve preferences %v, got %v", wantCurves, tlsConfig.CurvePreferences)
+	}
+	for i, c := range wantCurves {
+		if tlsConfig.CurvePreferences[i] != c {
+			t.Fatalf("expected curve preferences %v, got %v", wantCurves, tlsConfig.CurvePreferences)
+		}
+	}
+}
+
+// HTTPS listener with the hybrid post-quantum curve opted in: X25519MLKEM768
+// is accepted and placed first, with classical curves retained after it so a
+// peer that doesn't support the hybrid group still negotiates successfully.
+func TestBuildTLSConfig_PQCHybridCurveOptIn_Loads(t *testing.T) {
+	certDir := t.TempDir()
+	writeTestCertPair(t, certDir)
+
+	tlsConfig, err := testServer().buildTLSConfig(config.HTTPSListener{
+		Enabled:                true,
+		Port:                   9243,
+		CertFile:               filepath.Join(certDir, "cert.pem"),
+		KeyFile:                filepath.Join(certDir, "key.pem"),
+		MinimumProtocolVersion: "TLS1_2",
+		MaximumProtocolVersion: "TLS1_3",
+		EcdhCurves:             "X25519MLKEM768,X25519,P-256",
+	})
+	if err != nil {
+		t.Fatalf("expected PQC hybrid opt-in to build successfully, got %v", err)
+	}
+	wantCurves := []tls.CurveID{tls.X25519MLKEM768, tls.X25519, tls.CurveP256}
+	if len(tlsConfig.CurvePreferences) != len(wantCurves) {
+		t.Fatalf("expected curve preferences %v, got %v", wantCurves, tlsConfig.CurvePreferences)
+	}
+	for i, c := range wantCurves {
+		if tlsConfig.CurvePreferences[i] != c {
+			t.Fatalf("expected curve preferences %v, got %v", wantCurves, tlsConfig.CurvePreferences)
+		}
+	}
+}
+
+// HTTPS listener with an invalid ecdh_curves value: rejected rather than
+// silently falling back to Go's default curve list.
+func TestBuildTLSConfig_InvalidEcdhCurve_Errors(t *testing.T) {
+	certDir := t.TempDir()
+	writeTestCertPair(t, certDir)
+
+	_, err := testServer().buildTLSConfig(config.HTTPSListener{
+		Enabled:                true,
+		Port:                   9243,
+		CertFile:               filepath.Join(certDir, "cert.pem"),
+		KeyFile:                filepath.Join(certDir, "key.pem"),
+		MinimumProtocolVersion: "TLS1_2",
+		MaximumProtocolVersion: "TLS1_3",
+		EcdhCurves:             "not-a-curve",
+	})
+	if err == nil {
+		t.Fatal("expected an error for an unrecognized ecdh curve name")
 	}
 }
 
