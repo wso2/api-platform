@@ -942,6 +942,12 @@ func generateAuthConfig(config *config.Config) (commonmodels.AuthConfig, error) 
 		"PUT /mcp-proxies/{id}":    {"admin", "developer"},
 		"DELETE /mcp-proxies/{id}": {"admin", "developer"},
 
+		"POST /agents":        {"admin", "developer"},
+		"GET /agents":         {"admin", "developer"},
+		"GET /agents/{id}":    {"admin", "developer"},
+		"PUT /agents/{id}":    {"admin", "developer"},
+		"DELETE /agents/{id}": {"admin", "developer"},
+
 		"POST /llm-provider-templates":        {"admin"},
 		"GET /llm-provider-templates":         {"admin"},
 		"GET /llm-provider-templates/{id}":    {"admin"},

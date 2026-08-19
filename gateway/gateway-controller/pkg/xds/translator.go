@@ -1716,7 +1716,7 @@ func (t *Translator) createRoute(apiId, apiName, apiVersion, context, method, pa
 	}
 
 	// Set host rewrite based on configuration
-	if hostRewrite == nil || *hostRewrite != api.Manual {
+	if hostRewrite == nil || *hostRewrite != api.UpstreamHostRewriteManual {
 		routeAction.Route.HostRewriteSpecifier = &route.RouteAction_AutoHostRewrite{
 			AutoHostRewrite: &wrapperspb.BoolValue{
 				Value: true,
