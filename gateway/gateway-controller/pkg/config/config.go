@@ -822,6 +822,21 @@ func defaultGRPCEventServerConfig() GRPCEventServerConfig {
 	}
 }
 
+// routerLogComponentTag prefixes the router's text access-log lines so they stay
+// separable from the policy engine's and the Python executor's output on the
+// container's shared stdout.
+const routerLogComponentTag = "[rtr] "
+
+// textAccessLogStartsWithComponentTag reports whether a text access-log format
+// opens with routerLogComponentTag. A deployer-supplied text_format replaces the
+// default outright, so the tag can go missing without anything else noticing.
+//
+// The tag has to lead the line, not merely appear in it: attribution works by
+// anchoring on it at column 0, so a tag placed mid-format is present but useless.
+func textAccessLogStartsWithComponentTag(textFormat string) bool {
+	return strings.HasPrefix(textFormat, routerLogComponentTag)
+}
+
 // defaultConfig returns a Config struct with default configuration values
 func defaultConfig() *Config {
 	return &Config{
@@ -943,6 +958,9 @@ func defaultConfig() *Config {
 				Enabled: true,
 				Format:  "text",
 				JSONFields: map[string]string{
+					// Deployer-supplied json_fields merge into these defaults rather than
+					// replacing them, so "component" survives unless explicitly overridden.
+					"component":  "rtr",
 					"t":          "%START_TIME%",
 					"meth":       "%REQ(:METHOD)%",
 					"path":       "%REQ(X-ENVOY-ORIGINAL-PATH?:PATH)%",
@@ -967,7 +985,10 @@ func defaultConfig() *Config {
 					"reqDur":     "%REQUEST_DURATION%",
 					"respDur":    "%RESPONSE_DURATION%",
 				},
-				TextFormat: "[%START_TIME%] \"%REQ(:METHOD)% %REQ(X-ENVOY-ORIGINAL-PATH?:PATH)% %PROTOCOL%\" " +
+				// routerLogComponentTag identifies the router on the container's shared
+				// stdout; keep it when overriding. The JSON variant uses the "component"
+				// field instead.
+				TextFormat: routerLogComponentTag + "[%START_TIME%] \"%REQ(:METHOD)% %REQ(X-ENVOY-ORIGINAL-PATH?:PATH)% %PROTOCOL%\" " +
 					"%REQ(:PATH)% %UPSTREAM_PROTOCOL% %RESPONSE_CODE% %RESPONSE_FLAGS% %RESPONSE_CODE_DETAILS% " +
 					"%CONNECTION_TERMINATION_DETAILS% %BYTES_RECEIVED% %BYTES_SENT% %DURATION% " +
 					"%REQUEST_TX_DURATION% %RESPONSE_TX_DURATION% %REQUEST_DURATION% %RESPONSE_DURATION% " +
@@ -1320,6 +1341,13 @@ func (c *Config) Validate() error {
 		} else if c.Router.AccessLogs.Format == "text" {
 			if c.Router.AccessLogs.TextFormat == "" {
 				return fmt.Errorf("router.access_logs.text_format must be configured when format is 'text'")
+			}
+			// Warn rather than fail: an operator may have dropped the tag on purpose,
+			// and refusing to start over a log-formatting choice would be worse than
+			// the ambiguity it causes.
+			if !textAccessLogStartsWithComponentTag(c.Router.AccessLogs.TextFormat) {
+				slog.Warn("router.access_logs.text_format does not start with " + routerLogComponentTag +
+					"; router access-log lines will not be attributable on the container's shared stdout")
 			}
 		}
 	}

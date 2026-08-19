@@ -708,3 +708,15 @@ func TestLog_Publish_TopLevelFieldsPresent(t *testing.T) {
 	assert.Equal(t, "192.168.1.1", client["ip"])
 	assert.Equal(t, "test-agent", client["userAgent"])
 }
+
+func TestLog_Publish_CarriesComponentField(t *testing.T) {
+	l, read := newLogToFile(t, bothFlowsConfig())
+
+	l.Publish(createBaseEvent())
+
+	out := read()
+	assert.True(t, strings.HasPrefix(out, "{"), "traffic-log line must start with '{', got: %q", out)
+
+	decoded := decodeLine(t, out)
+	assert.Equal(t, "pol", decoded["component"])
+}
