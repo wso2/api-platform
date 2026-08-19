@@ -1354,8 +1354,12 @@ func (t *Translator) createListener(virtualHosts []*route.VirtualHost, isHTTPS b
 		PathWithEscapedSlashesAction: convertPathWithEscapedSlashesAction(t.routerConfig.HTTPListener.PathWithEscapedSlashesAction),
 	}
 
-	// Add access logs if enabled
-	if t.routerConfig.AccessLogs.Enabled {
+	// Add access logs if either consumer needs a sink: the operator-facing stdout
+	// log line (router.access_logs.enabled) or the gRPC ALS stream the collector
+	// depends on. The collector's sink must not be gated on the stdout toggle —
+	// ALS is the only data source for traffic logging and analytics, so gating it
+	// there silently disables both. See createAccessLogConfig.
+	if t.routerConfig.AccessLogs.Enabled || t.config.IsCollectorEnabled() {
 		accessLogs, err := t.createAccessLogConfig()
 		if err != nil {
 			return nil, nil, fmt.Errorf("failed to create access log config: %w", err)
@@ -2609,9 +2613,47 @@ func sanitizeUpstreamDefinitionName(name string) string {
 	return sanitized
 }
 
-// createAccessLogConfig creates access log configuration based on format (JSON or text) to stdout
+// createAccessLogConfig builds the router's access log sinks. Two independent
+// consumers can each require a sink, so this is called whenever *either* is
+// active (see the call site in createHTTPConnectionManager):
+//
+//   - router.access_logs.enabled — the operator-facing stdout log line
+//   - the collector (analytics / traffic logging) — the gRPC ALS stream, which is
+//     the only thing that feeds the policy-engine's analytics pipeline
+//
+// The two must stay decoupled: turning off the stdout log line is a log-formatting
+// choice and must not silently starve traffic logging and analytics of their only
+// data source.
 func (t *Translator) createAccessLogConfig() ([]*accesslog.AccessLog, error) {
 	var accessLogs []*accesslog.AccessLog
+
+	if t.routerConfig.AccessLogs.Enabled {
+		fileAccessLog, err := t.createFileAccessLog()
+		if err != nil {
+			return nil, err
+		}
+		accessLogs = append(accessLogs, fileAccessLog)
+	}
+
+	// If the collector is active, create the gRPC access log config and append to existing access logs.
+	// The failure is fatal rather than a warning: ALS is the collector's only data
+	// source, so continuing without it would push a listener that silently reports
+	// nothing to traffic logging and analytics while both are enabled in config.
+	if t.config.IsCollectorEnabled() {
+		t.logger.Info("Creating gRPC access log configuration")
+		grpcAccessLog, err := t.createGRPCAccessLog()
+		if err != nil {
+			return nil, fmt.Errorf("failed to create gRPC access log config: %w", err)
+		}
+		accessLogs = append(accessLogs, grpcAccessLog)
+	}
+
+	return accessLogs, nil
+}
+
+// createFileAccessLog creates the stdout access log sink based on the configured
+// format (JSON or text).
+func (t *Translator) createFileAccessLog() (*accesslog.AccessLog, error) {
 	var fileAccessLog *fileaccesslog.FileAccessLog
 
 	if t.routerConfig.AccessLogs.Format == "json" {
@@ -2666,27 +2708,12 @@ func (t *Translator) createAccessLogConfig() ([]*accesslog.AccessLog, error) {
 		return nil, fmt.Errorf("failed to marshal access log config: %w", err)
 	}
 
-	// Add file access log to slice
-	accessLogs = append(accessLogs, &accesslog.AccessLog{
+	return &accesslog.AccessLog{
 		Name: "envoy.access_loggers.file",
 		ConfigType: &accesslog.AccessLog_TypedConfig{
 			TypedConfig: fileAccessLogAny,
 		},
-	})
-
-	// If the collector is active, create the gRPC access log config and append to existing access logs
-	if t.config.IsCollectorEnabled() {
-		t.logger.Info("Creating gRPC access log configuration")
-		grpcAccessLog, err := t.createGRPCAccessLog()
-		if err != nil {
-			t.logger.Warn("Failed to create gRPC access log config, continuing without it",
-				slog.Any("error", err))
-		} else {
-			accessLogs = append(accessLogs, grpcAccessLog)
-		}
-	}
-
-	return accessLogs, nil
+	}, nil
 }
 
 // createGRPCAccessLog creates a gRPC access log configuration for the gateway controller
@@ -2721,11 +2748,32 @@ func (t *Translator) createGRPCAccessLog() (*accesslog.AccessLog, error) {
 
 	return &accesslog.AccessLog{
 		Name:   "envoy.access_loggers.http_grpc",
-		Filter: buildIgnorePathsAccessLogFilter(t.config.Collector.IgnorePathPrefixes),
+		Filter: buildAccessLogFilter(t.config.Collector.IgnorePathPrefixes),
 		ConfigType: &accesslog.AccessLog_TypedConfig{
 			TypedConfig: grpcAccessLogAny,
 		},
 	}, nil
+}
+
+func buildAccessLogFilter(prefixes []string) *accesslog.AccessLogFilter {
+	filters := []*accesslog.AccessLogFilter{buildReservedHealthPathAccessLogFilter()}
+	if userFilter := buildIgnorePathsAccessLogFilter(prefixes); userFilter != nil {
+		filters = append(filters, userFilter)
+	}
+	if len(filters) == 1 {
+		return filters[0]
+	}
+	return &accesslog.AccessLogFilter{
+		FilterSpecifier: &accesslog.AccessLogFilter_AndFilter{
+			AndFilter: &accesslog.AndFilter{Filters: filters},
+		},
+	}
+}
+
+const envoyPathPseudoHeader = ":path"
+
+func buildReservedHealthPathAccessLogFilter() *accesslog.AccessLogFilter {
+	return headerPrefixFilter(envoyPathPseudoHeader, constants.GatewayHealthPathPrefix, true)
 }
 
 // envoyOriginalPathHeader is the header Envoy's router sets to the pre-rewrite,
