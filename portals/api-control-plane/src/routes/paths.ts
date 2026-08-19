@@ -70,4 +70,12 @@ export const routes = {
     `/organizations/${orgHandle}/projects/${projectHandler}/observe/runtimelogs`,
   settings: (orgHandle = ':orgHandle', projectHandler = ':projectHandler') =>
     `/organizations/${orgHandle}/projects/${projectHandler}/settings`,
+  settingsTab: (
+    tab: string,
+    orgHandle = ':orgHandle',
+    projectHandler = ':projectHandler'
+  ) => `/organizations/${orgHandle}/projects/${projectHandler}/settings/${tab}`,
+  orgSettings: (orgHandle = ':orgHandle') => `/organizations/${orgHandle}/settings`,
+  orgSettingsTab: (tab: string, orgHandle = ':orgHandle') =>
+    `/organizations/${orgHandle}/settings/${tab}`,
 };

@@ -17,7 +17,7 @@
  */
 
 import { lazy } from 'react';
-import { Route, Routes } from 'react-router-dom';
+import { Navigate, Route, Routes } from 'react-router-dom';
 
 import { AuthCallbackPage } from '../features/auth/AuthCallbackPage';
 import { LoginPage } from '../features/auth/LoginPage';
@@ -34,8 +34,15 @@ import {
   buildScopedExtensionPath,
   type ApiControlPlaneExtension,
 } from '../extensions';
+import { usePort } from '../hostPort';
 import { ProtectedRoute } from './ProtectedRoute';
 import { routes } from './paths';
+
+/** Resolves the real `CloudHostPort` and hands it to the extension's `render`. */
+function ExtensionRoute({ extension }: { extension: ApiControlPlaneExtension }) {
+  const port = usePort();
+  return <>{extension.render(port)}</>;
+}
 
 // Code-split the authenticated feature pages so they are not pulled into the
 // initial (login) bundle.
@@ -98,9 +105,14 @@ const RuntimeLogsPage = lazy(() =>
     default: m.RuntimeLogsPage,
   }))
 );
-const SettingsPage = lazy(() =>
-  import('../features/settings/SettingsPage').then((m) => ({
-    default: m.SettingsPage,
+const SettingsLayout = lazy(() =>
+  import('../features/settings/SettingsLayout').then((m) => ({
+    default: m.SettingsLayout,
+  }))
+);
+const GeneralSettingsPage = lazy(() =>
+  import('../features/settings/GeneralSettingsPage').then((m) => ({
+    default: m.GeneralSettingsPage,
   }))
 );
 
@@ -109,17 +121,36 @@ export type AppRoutesProps = {
 };
 
 export function AppRoutes({ extensions = [] }: AppRoutesProps) {
-  const extensionRoutes = extensions.map((extension) => (
+  const topLevelExtensions = extensions.filter((ext) =>
+    ext.slot.startsWith('sidebar.')
+  );
+
+  const extensionRoutes = topLevelExtensions.map((extension) => (
     <Route
       key={extension.id}
-      path={buildScopedExtensionPath(extension.level, extension.routePath, {
+      path={buildScopedExtensionPath(extension.scope, extension.routePath, {
         apiHandler: ':apiHandler',
         orgHandle: ':orgHandle',
         projectHandler: ':projectHandler',
       })}
-      element={extension.element}
+      element={<ExtensionRoute extension={extension} />}
     />
   ));
+
+  // Extensions registered against a `settings.<scope>.tabs` slot render
+  // nested under the matching (org- or project-level) Settings layout
+  // instead of as a sibling top-level route — the path is relative to
+  // `/settings/`.
+  const settingsTabRoutesFor = (scope: 'organization' | 'project') =>
+    extensions
+      .filter((ext) => ext.slot === `settings.${scope}.tabs`)
+      .map((extension) => (
+        <Route
+          key={extension.id}
+          path={extension.routePath.replace(/^settings\//, '')}
+          element={<ExtensionRoute extension={extension} />}
+        />
+      ));
 
   return (
     <Routes>
@@ -140,6 +171,11 @@ export function AppRoutes({ extensions = [] }: AppRoutesProps) {
           <Route path="/" element={<OrganizationRedirectPage />} />
           <Route path={routes.organizations} element={<OrganizationRedirectPage />} />
           <Route path={routes.organizationHome()} element={<OrganizationHomePage />} />
+          <Route path={routes.orgSettings()} element={<SettingsLayout scope="organization" />}>
+            <Route index element={<Navigate to="general" replace />} />
+            <Route path="general" element={<GeneralSettingsPage />} />
+            {settingsTabRoutesFor('organization')}
+          </Route>
           <Route path={routes.projects()} element={<ProjectListPage />} />
           <Route path={routes.gateways()} element={<GatewaysPage />} />
           <Route path={routes.newGateway()} element={<GatewayCreatePage />} />
@@ -152,7 +188,11 @@ export function AppRoutes({ extensions = [] }: AppRoutesProps) {
           <Route path={routes.apiTest()} element={<TestPage />} />
           <Route path={routes.apiManage()} element={<ManagePage />} />
           <Route path={routes.runtimeLogs()} element={<RuntimeLogsPage />} />
-          <Route path={routes.settings()} element={<SettingsPage />} />
+          <Route path={routes.settings()} element={<SettingsLayout scope="project" />}>
+            <Route index element={<Navigate to="general" replace />} />
+            <Route path="general" element={<GeneralSettingsPage />} />
+            {settingsTabRoutesFor('project')}
+          </Route>
           {extensionRoutes}
           <Route path="*" element={<NotFoundPage />} />
         </Route>

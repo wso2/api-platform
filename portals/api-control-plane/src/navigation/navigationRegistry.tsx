@@ -61,6 +61,21 @@ export const navigationRegistry: NavigationDefinition[] = [
     match: (pathname) => /\/organizations\/[^/]+\/gateways(\/[^/]+)?$/.test(pathname),
   },
   {
+    id: 'org-settings',
+    label: 'Settings',
+    level: 'organization',
+    order: 40,
+    icon: <Settings />,
+    pinned: true,
+    // Only while not inside a project — the project-level `settings` entry
+    // takes over once a project is selected, so there's always exactly one
+    // "Settings" link pinned to the sidebar bottom, never two at once.
+    isVisible: (scope) => !scope.isProjectScope,
+    to: ({ params }) =>
+      params.orgHandle ? routes.orgSettings(params.orgHandle) : undefined,
+    match: (pathname) => /\/organizations\/[^/]+\/settings(\/[^/]+)?$/.test(pathname),
+  },
+  {
     id: 'project-home',
     label: 'Project Home',
     level: 'project',
@@ -104,11 +119,15 @@ export const navigationRegistry: NavigationDefinition[] = [
     level: 'project',
     order: 130,
     icon: <Settings />,
+    pinned: true,
     to: ({ params }) =>
       params.orgHandle && params.projectHandler
         ? routes.settings(params.orgHandle, params.projectHandler)
         : undefined,
-    match: (pathname) => /\/settings$/.test(pathname),
+    // Also active on a settings tab (e.g. /settings/general), but not deeper.
+    // The `/projects/[^/]+/` prefix is required so a project literally
+    // handled "settings" (e.g. `/projects/settings/home`) can't false-match.
+    match: (pathname) => /\/projects\/[^/]+\/settings(\/[^/]+)?$/.test(pathname),
   },
   {
     id: 'api-overview',

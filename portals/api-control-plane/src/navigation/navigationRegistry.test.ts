@@ -44,11 +44,27 @@ describe('navigation match predicates', () => {
     expect(match('/projects/orders/home')).toBe(false);
   });
 
-  it('anchors settings to the end of the path', () => {
+  it('stays active on a settings tab but not two levels deep', () => {
     const match = matcherFor('settings');
     expect(match(`${PROJECT}/settings`)).toBe(true);
-    expect(match(`${PROJECT}/settings/advanced`)).toBe(false);
+    expect(match(`${PROJECT}/settings/general`)).toBe(true);
+    expect(match(`${PROJECT}/settings/general/extra`)).toBe(false);
     expect(match(`${ORG}/projects/settings/home`)).toBe(false);
+  });
+
+  it('matches org-level settings without colliding with project settings', () => {
+    const match = matcherFor('org-settings');
+    expect(match(`${ORG}/settings`)).toBe(true);
+    expect(match(`${ORG}/settings/general`)).toBe(true);
+    // A project's own /settings must not also light up org-settings.
+    expect(match(`${PROJECT}/settings`)).toBe(false);
+  });
+
+  it('hides org-settings once a project is selected', () => {
+    const item = navigationRegistry.find((entry) => entry.id === 'org-settings');
+    if (!item?.isVisible) throw new Error('org-settings has no isVisible predicate');
+    expect(item.isVisible({ isProjectScope: false } as never)).toBe(true);
+    expect(item.isVisible({ isProjectScope: true } as never)).toBe(false);
   });
 
   it('matches runtime logs only at the runtimelogs path', () => {
