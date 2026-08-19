@@ -298,6 +298,27 @@ port      = 9243
 cert_file = "/app/data/certs/cert.pem"   # default: ./data/certs/cert.pem
 key_file  = "/app/data/certs/key.pem"    # default: ./data/certs/key.pem
 
+# minimum_protocol_version / maximum_protocol_version bound the negotiated TLS
+# version: one of "TLS1_0", "TLS1_1", "TLS1_2", "TLS1_3".
+minimum_protocol_version = "TLS1_2"
+maximum_protocol_version = "TLS1_3"
+
+# ciphers is a comma-separated list of Go crypto/tls cipher suite names
+# (e.g. "TLS_ECDHE_ECDSA_WITH_AES_128_GCM_SHA256") restricting which suites
+# this listener will negotiate. Empty means Go's own secure default set/order
+# applies. Only affects TLS 1.2 and below — TLS 1.3 suite selection is not
+# configurable in Go's crypto/tls.
+ciphers = ""
+
+# ecdh_curves is a comma-separated list of TLS 1.3 key-exchange groups, most
+# preferred first. Classical curves only by default. Prepend the hybrid
+# post-quantum group "X25519MLKEM768" (FIPS 203 ML-KEM-768 + X25519) as an
+# explicit opt-in once clients reaching this listener are confirmed to
+# support it, e.g. "X25519MLKEM768,X25519,P-256" — a client that doesn't
+# offer the hybrid group simply falls back to a later classical entry in this
+# same list, so enabling it never breaks a legacy peer.
+ecdh_curves = "X25519,P-256"
+
 # ---------------------------------------------------------------------------
 # Listener timeouts
 # ---------------------------------------------------------------------------

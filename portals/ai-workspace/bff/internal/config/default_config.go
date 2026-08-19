@@ -35,8 +35,12 @@ func defaultConfig() *Config {
 				Port:    9643,
 				// Convention matches the container's mount path. A certificate pair is
 				// required there whenever the listener terminates TLS.
-				CertFile: "/etc/ai-workspace/tls/cert.pem",
-				KeyFile:  "/etc/ai-workspace/tls/key.pem",
+				CertFile:               "/etc/ai-workspace/tls/cert.pem",
+				KeyFile:                "/etc/ai-workspace/tls/key.pem",
+				MinimumProtocolVersion: "TLS1_2",
+				MaximumProtocolVersion: "TLS1_3",
+				Ciphers:                "",
+				EcdhCurves:             "X25519,P-256",
 			},
 		},
 		Logging: LoggingConfig{

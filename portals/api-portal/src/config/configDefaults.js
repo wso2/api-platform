@@ -45,6 +45,27 @@ const DEFAULTS = {
             enabled: false,
             certFile: './resources/security/client-truststore.pem',
             keyFile: './resources/security/private-key.pem',
+            // Same field names/shape as platform-api's and ai-workspace's
+            // HTTPSListener (Go) for cross-component consistency, even though
+            // this listener is served by Node's own tls stack. minimumProtocolVersion
+            // / maximumProtocolVersion use the "TLS1_2".."TLS1_3" vocabulary; ciphers
+            // and ecdhCurves are comma-separated (converted to Node's colon-delimited
+            // `ciphers`/`ecdhCurve` options in tlsOptions.js) rather than Node-native
+            // colon-delimited strings directly in config.
+            minimumProtocolVersion: 'TLS1_2',
+            maximumProtocolVersion: 'TLS1_3',
+            // Empty means Node's own default cipher set/order applies. Only affects
+            // TLS 1.2 and below — TLS 1.3 suite selection is not configurable.
+            ciphers: '',
+            // Classical curves only by default. Prepend the hybrid post-quantum
+            // group "X25519MLKEM768" (FIPS 203 ML-KEM-768 + X25519, Node 22+/
+            // OpenSSL 3.2+) as an explicit opt-in once clients reaching this
+            // listener are confirmed to support it, e.g.
+            // "X25519MLKEM768,X25519,P-256" — a client that doesn't offer the
+            // hybrid group falls back to a later classical entry in this same
+            // list, so opting in never breaks a legacy peer. See
+            // js-post-quantum-cryptography.md.
+            ecdhCurves: 'X25519,P-256',
         },
     },
     logging: {
