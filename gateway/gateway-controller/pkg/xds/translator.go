@@ -747,6 +747,17 @@ func (t *Translator) TranslateConfigs(
 					routesList, clusterList, err = t.eventGatewayHooks.TranslateWebSubAPI(t, cfg, configs)
 				}
 			} else {
+				// No transformer produced routes for a non-WebSub kind. If the kind has
+				// no transformer registered at all, we silently fell back here — a nil or
+				// unwired transformer map returns ok=false at the check above, with no
+				// error. Surface it, because the resulting Envoy snapshot uses legacy
+				// cluster/route naming that the policy engine's transformer-path resources
+				// don't match. (A transformer that errored is already logged above.)
+				if _, ok := t.transformers[cfg.Kind]; !ok {
+					log.Warn("No transformer registered for API kind; using legacy translation path",
+						slog.String("kind", cfg.Kind),
+						slog.String("id", cfg.UUID))
+				}
 				routesList, clusterList, err = t.translateAPIConfig(cfg, configs)
 			}
 			if err != nil {
