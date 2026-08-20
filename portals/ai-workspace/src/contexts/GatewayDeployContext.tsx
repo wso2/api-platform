@@ -23,6 +23,11 @@ import {
 } from 'react';
 import { logger } from '../utils/logger';
 import { useAppShell } from './AppShellContext';
+import { useAppAuth } from './AppAuthContext';
+import {
+  DEPLOYMENT_SCOPES,
+  type DeployableResourceType,
+} from '../auth/permissions';
 import { getGateways } from '../apis/gatewayApis';
 import {
   getLLMProviderDeployments,
@@ -64,7 +69,7 @@ import {
 
 export type { HybridGateway, GatewayDeployment };
 
-type GatewayDeployResourceType = 'provider' | 'proxy' | 'mcp-server';
+type GatewayDeployResourceType = DeployableResourceType;
 
 const POLL_INTERVAL_MS = 2000;
 
@@ -173,11 +178,17 @@ interface GatewayDeployContextValue {
   isPollingGateway: (gatewayId: string) => boolean;
 
   /**
-   * When true, the artifact is read-only (e.g. gateway-originated): its deployment
-   * lifecycle is owned by the gateway. The deployments remain viewable, but deploy/
-   * redeploy/restore/undeploy actions are disabled.
+   * When true, the artifact's deployment lifecycle is not writable from here —
+   * either because the artifact is gateway-originated (owned by the gateway) or
+   * because the signed-in user lacks the deployment-create scope for this
+   * resource kind. The deployments remain viewable, but deploy/redeploy/restore/
+   * undeploy actions are disabled.
    */
   readOnly: boolean;
+  /** True when the user holds the deployment-create scope for this resource kind. */
+  canDeploy: boolean;
+  /** True when the user holds the deployment-read scope for this resource kind. */
+  canViewDeployments: boolean;
 }
 
 const GatewayDeployContext = createContext<GatewayDeployContextValue | null>(
@@ -187,7 +198,11 @@ const GatewayDeployContext = createContext<GatewayDeployContextValue | null>(
 interface GatewayDeployProviderProps {
   apiId: string;
   resourceType?: GatewayDeployResourceType;
-  /** Disable deploy/redeploy/restore/undeploy actions while keeping deployments visible. */
+  /**
+   * Disable deploy/redeploy/restore/undeploy actions while keeping deployments
+   * visible. The user's scopes are checked independently and can force this on
+   * even when the caller passes `false`.
+   */
   readOnly?: boolean;
   children: ReactNode;
 }
@@ -199,7 +214,15 @@ export function GatewayDeployProvider({
   children,
 }: GatewayDeployProviderProps) {
   const { currentOrganization } = useAppShell();
+  const { hasPermission } = useAppAuth();
   const organizationId = currentOrganization?.uuid ?? '';
+
+  // Permission is the floor, not an override: a caller passing readOnly={false}
+  // (or omitting it) still cannot get writable actions without the scope, so a
+  // viewer sees the same read-only deploy surface as a gateway-owned artifact.
+  const canViewDeployments = hasPermission(DEPLOYMENT_SCOPES[resourceType].read);
+  const canDeploy = hasPermission(DEPLOYMENT_SCOPES[resourceType].create);
+  const isReadOnly = readOnly || !canDeploy;
 
   const [gateways, setGateways] = useState<HybridGateway[]>([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -290,7 +313,10 @@ export function GatewayDeployProvider({
   );
 
   const fetchGateways = useCallback(async () => {
-    if (!organizationId) {
+    // A user without the deployment-read scope has no readable deploy surface,
+    // so don't issue the gateway/deployment reads at all — they would only 403.
+    if (!organizationId || !canViewDeployments) {
+      setGateways([]);
       setIsLoading(false);
       return;
     }
@@ -316,14 +342,14 @@ export function GatewayDeployProvider({
     } finally {
       setIsLoading(false);
     }
-  }, [organizationId]);
+  }, [organizationId, canViewDeployments]);
 
   useEffect(() => {
     fetchGateways();
   }, [fetchGateways]);
 
   const refetchDeployments = useCallback(async () => {
-    if (!apiId || !organizationId) {
+    if (!apiId || !organizationId || !canViewDeployments) {
       setDeployments(null);
       return;
     }
@@ -376,7 +402,7 @@ export function GatewayDeployProvider({
     } finally {
       setIsLoadingDeployments(false);
     }
-  }, [apiId, organizationId, resourceType, gateways]);
+  }, [apiId, organizationId, resourceType, gateways, canViewDeployments]);
 
   useEffect(() => {
     if (apiId) {
@@ -797,7 +823,9 @@ export function GatewayDeployProvider({
       deployingGatewayId,
       isDeployingToGateway,
       isPollingGateway,
-      readOnly,
+      readOnly: isReadOnly,
+      canDeploy,
+      canViewDeployments,
     }),
     [
       gateways,
@@ -815,7 +843,9 @@ export function GatewayDeployProvider({
       deployingGatewayId,
       isDeployingToGateway,
       isPollingGateway,
-      readOnly,
+      isReadOnly,
+      canDeploy,
+      canViewDeployments,
     ]
   );
 

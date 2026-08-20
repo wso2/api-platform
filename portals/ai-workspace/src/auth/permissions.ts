@@ -201,6 +201,30 @@ export const SCOPES = {
 } as const;
 
 /**
+ * Deployment scopes per deployable AI artifact kind, keyed by the same resource
+ * type `GatewayDeployProvider` takes. Shared by the deploy page/context and the
+ * "Deploy to Gateway" entry points on the overview pages, so one map decides
+ * both whether the deploy actions render and whether the button leading to them
+ * is reachable.
+ */
+export const DEPLOYMENT_SCOPES = {
+  provider: {
+    read: SCOPES.LLM_PROVIDER_DEPLOYMENT_READ,
+    create: SCOPES.LLM_PROVIDER_DEPLOYMENT_CREATE,
+  },
+  proxy: {
+    read: SCOPES.LLM_PROXY_DEPLOYMENT_READ,
+    create: SCOPES.LLM_PROXY_DEPLOYMENT_CREATE,
+  },
+  'mcp-server': {
+    read: SCOPES.MCP_PROXY_DEPLOYMENT_READ,
+    create: SCOPES.MCP_PROXY_DEPLOYMENT_CREATE,
+  },
+} as const;
+
+export type DeployableResourceType = keyof typeof DEPLOYMENT_SCOPES;
+
+/**
  * Scopes that must be held explicitly and are never derived from a broader
  * `:manage`. `ap:api_key:all:manage` is an ownership override (it widens which
  * users' keys are reachable, not which actions), so holding `ap:api_key:manage`

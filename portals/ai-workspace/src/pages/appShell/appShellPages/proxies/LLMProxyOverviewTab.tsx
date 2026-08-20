@@ -59,6 +59,8 @@ import {
   DisabledActionTooltip,
   GATEWAY_MANAGED_ARTIFACT_TOOLTIP,
 } from '../../../../utils/readOnlyArtifacts';
+import { useAppAuth } from '../../../../contexts/AppAuthContext';
+import { NO_PERMISSION_TOOLTIP, SCOPES } from '../../../../auth/permissions';
 import {
   formatPrefixedKey,
   resolveApiKeyAuthDisplay,
@@ -131,6 +133,12 @@ export default function LLMProxyOverviewTab() {
   // proxy — NOT part of the gateway runtime artifact. So key generation/deletion stays
   // available even for gateway-created (read-only) proxies.
   const isReadOnlyProxy = false;
+  const { hasPermission } = useAppAuth();
+  const canCreateProxyApiKey = hasPermission(SCOPES.LLM_PROXY_API_KEY_CREATE);
+  const canDeleteProxyApiKey = hasPermission(SCOPES.LLM_PROXY_API_KEY_DELETE);
+  const canViewProxyDeployments = hasPermission(
+    SCOPES.LLM_PROXY_DEPLOYMENT_READ
+  );
 
   const {
     headerName: apiKeyName,
@@ -224,7 +232,9 @@ export default function LLMProxyOverviewTab() {
     const organizationId = currentOrganization?.uuid;
     const proxyId = proxy?.id;
 
-    if (!organizationId || !proxyId) {
+    // Without the deployment-read scope there is nothing to show here, so skip
+    // the gateway/deployment reads rather than issuing calls that only 403.
+    if (!organizationId || !proxyId || !canViewProxyDeployments) {
       setGateways([]);
       setSelectedGatewayId('');
       setIsGatewaysLoading(false);
@@ -318,7 +328,7 @@ export default function LLMProxyOverviewTab() {
     return () => {
       isMounted = false;
     };
-  }, [currentOrganization?.uuid, proxy?.id]);
+  }, [currentOrganization?.uuid, proxy?.id, canViewProxyDeployments]);
 
   useEffect(() => {
     setLatestGeneratedKey(null);
@@ -686,12 +696,18 @@ export default function LLMProxyOverviewTab() {
                         </Typography>
                       </Box>
                       <DisabledActionTooltip
-                        disabled={isReadOnlyProxy}
-                        title={GATEWAY_MANAGED_ARTIFACT_TOOLTIP}
+                        disabled={isReadOnlyProxy || !canCreateProxyApiKey}
+                        title={
+                          isReadOnlyProxy
+                            ? GATEWAY_MANAGED_ARTIFACT_TOOLTIP
+                            : NO_PERMISSION_TOOLTIP
+                        }
                       >
                         <Tooltip
                           title={
-                            !isReadOnlyProxy && deployedGateways.length === 0
+                            !isReadOnlyProxy &&
+                            canCreateProxyApiKey &&
+                            deployedGateways.length === 0
                               ? 'No deployed gateways available. Deploy to a gateway first to generate an API key.'
                               : ''
                           }
@@ -703,7 +719,9 @@ export default function LLMProxyOverviewTab() {
                               size="medium"
                               onClick={handleOpenApiKeyModal}
                               disabled={
-                                isReadOnlyProxy || deployedGateways.length === 0
+                                isReadOnlyProxy ||
+                                !canCreateProxyApiKey ||
+                                deployedGateways.length === 0
                               }
                             >
                               Generate API Key
@@ -786,12 +804,18 @@ export default function LLMProxyOverviewTab() {
                                 </ListingTable.Cell>
                                 <ListingTable.Cell align="right">
                                   <DisabledActionTooltip
-                                    disabled={isReadOnlyProxy}
-                                    title={GATEWAY_MANAGED_ARTIFACT_TOOLTIP}
+                                    disabled={
+                                      isReadOnlyProxy || !canDeleteProxyApiKey
+                                    }
+                                    title={
+                                      isReadOnlyProxy
+                                        ? GATEWAY_MANAGED_ARTIFACT_TOOLTIP
+                                        : NO_PERMISSION_TOOLTIP
+                                    }
                                   >
                                     <Tooltip
                                       title={
-                                        isReadOnlyProxy
+                                        isReadOnlyProxy || !canDeleteProxyApiKey
                                           ? ''
                                           : key.id
                                             ? 'Delete API key'
@@ -809,6 +833,7 @@ export default function LLMProxyOverviewTab() {
                                           }
                                           disabled={
                                             isReadOnlyProxy ||
+                                            !canDeleteProxyApiKey ||
                                             !key.id ||
                                             isDeletingKey
                                           }
