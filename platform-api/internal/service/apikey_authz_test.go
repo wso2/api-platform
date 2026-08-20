@@ -17,7 +17,13 @@
 
 package service
 
-import "testing"
+import (
+	"testing"
+
+	"github.com/wso2/api-platform/platform-api/api"
+	"github.com/wso2/api-platform/platform-api/internal/model"
+	"github.com/wso2/api-platform/platform-api/internal/repository"
+)
 
 // TestCanManageAPIKey pins the ownership rule shared by every API key CRUD path:
 // the creator always passes, ap:api_key:all:manage (keyAdmin) passes for any key,
@@ -47,5 +53,37 @@ func TestCanManageAPIKey(t *testing.T) {
 					tc.createdBy, tc.caller, tc.keyAdmin, got, tc.want)
 			}
 		})
+	}
+}
+
+// noCollisionAPIKeyRepo reports no name collision, so resolveUniqueKeyName's retry
+// loop is never exercised — only the validation gate is under test.
+type noCollisionAPIKeyRepo struct {
+	repository.APIKeyRepository
+}
+
+func (noCollisionAPIKeyRepo) GetByArtifactAndName(string, string) (*model.APIKey, error) {
+	return nil, nil
+}
+
+// TestResolveUniqueKeyName_RejectsShortId pins issue #3163 for the REST API key path:
+// a caller-supplied id under 3 characters must be rejected, while falling back to
+// displayName-derived generation is unaffected.
+func TestResolveUniqueKeyName_RejectsShortId(t *testing.T) {
+	svc := &APIKeyService{apiKeyRepo: noCollisionAPIKeyRepo{}}
+
+	shortID := "ab"
+	_, err := svc.resolveUniqueKeyName("artifact-1", &api.CreateAPIKeyRequest{Id: &shortID}, "my-api")
+	if err == nil {
+		t.Fatal("resolveUniqueKeyName() = nil error, want rejection for a 2-char id")
+	}
+	assertBadRequest(t, err)
+
+	got, err := svc.resolveUniqueKeyName("artifact-1", &api.CreateAPIKeyRequest{DisplayName: "My Key"}, "my-api")
+	if err != nil {
+		t.Fatalf("resolveUniqueKeyName() = %v, want success", err)
+	}
+	if got != "my-key" {
+		t.Fatalf("resolveUniqueKeyName() = %q, want %q", got, "my-key")
 	}
 }

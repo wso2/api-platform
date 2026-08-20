@@ -61,6 +61,7 @@ import {
   DisabledActionTooltip,
   GATEWAY_MANAGED_ARTIFACT_TOOLTIP,
 } from '../../../../utils/readOnlyArtifacts';
+import { buildApiKeyResourceName, validateApiKeyName } from '../../../../utils/apiKeyName';
 
 type ServiceProviderDeploymentsCardProps = {
   isGatewaysLoading: boolean;
@@ -78,15 +79,6 @@ function formatDate(value?: string): string {
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return '-';
   return date.toLocaleDateString();
-}
-
-function buildApiKeyResourceName(displayName: string): string {
-  const normalizedDisplayName = displayName
-    .trim()
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, '-')
-    .replace(/^-+|-+$/g, '');
-  return normalizedDisplayName || 'api-key';
 }
 
 export default function ServiceProviderDeploymentsCard({
@@ -221,6 +213,11 @@ export default function ServiceProviderDeploymentsCard({
     }
 
     const keyName = buildApiKeyResourceName(trimmedDisplayName);
+    const nameError = validateApiKeyName(keyName);
+    if (nameError) {
+      setKeyError(nameError);
+      return;
+    }
 
     try {
       setGeneratingKey(true);
