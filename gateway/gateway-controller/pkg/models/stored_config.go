@@ -39,6 +39,7 @@ const (
 	KindLlmProxy            ArtifactKind = "LlmProxy"
 	KindLlmProvider         ArtifactKind = "LlmProvider"
 	KindLlmProviderTemplate ArtifactKind = "LlmProviderTemplate"
+	KindAgent               ArtifactKind = "Agent"
 )
 
 // DesiredState represents the intended deployment state of an API configuration.
@@ -105,6 +106,58 @@ type StoredConfig struct {
 	CPSyncStatus        CPSyncStatus `json:"cpSyncStatus,omitempty"` // pending, success, failed
 	CPSyncInfo          string       `json:"cpSyncInfo,omitempty"`   // failure detail when CPSyncStatus=failed
 	CPArtifactID        string       `json:"-"`                      // APIM/CP UUID for bottom-up synced artifacts; populated after successful sync
+
+	// Agent holds the persisted state that only an Agent artifact has. Nil for
+	// every other kind, and for an Agent that has none of it.
+	//
+	// Every field above applies to any artifact; this one does not, so it is
+	// kept behind a kind-scoped type rather than spreading Agent-shaped columns
+	// across the shared struct. A later Agent-only column extends AgentArtifact
+	// and leaves StoredConfig untouched.
+	Agent *AgentArtifact `json:"agent,omitempty"`
+}
+
+// AgentArtifact is the per-artifact state the gateway produces for an Agent,
+// as opposed to the Agent resource the user authored, which lives in
+// Configuration.
+//
+// It is persisted alongside the configuration in the same row and the same
+// transaction, so a signature can never be stored without the card bytes it was
+// computed over.
+type AgentArtifact struct {
+	// SignedPublicCard and SignedProtectedCard hold the signed Agent Card
+	// documents an Agent serves. Both are nil when the card is unsigned or
+	// proxied from the upstream.
+	//
+	// They are an output, not an input: the card in Configuration is what the
+	// user wrote, these are what the gateway signed at deploy time. They are
+	// persisted rather than recomputed because signing happens only on deploy —
+	// re-signing at startup would, for the randomized algorithms, change the
+	// served bytes and ETag with no user-visible cause.
+	//
+	// Nothing populates them yet; card signing writes SignedPublicCard, and
+	// SignedProtectedCard is reserved for extended-card support.
+	SignedPublicCard    *string `json:"signedPublicCard,omitempty"`
+	SignedProtectedCard *string `json:"signedProtectedCard,omitempty"`
+}
+
+// SignedPublicCard returns the signed public Agent Card, or nil when this
+// artifact is not an Agent or its card is unsigned. It saves every caller a
+// two-step nil check.
+func (c *StoredConfig) SignedPublicCard() *string {
+	if c.Agent == nil {
+		return nil
+	}
+	return c.Agent.SignedPublicCard
+}
+
+// SignedProtectedCard returns the signed protected Agent Card, or nil when this
+// artifact is not an Agent or has no protected card.
+func (c *StoredConfig) SignedProtectedCard() *string {
+	if c.Agent == nil {
+		return nil
+	}
+	return c.Agent.SignedProtectedCard
 }
 
 // GetCompositeKey returns the composite key "kind:displayName:version" for indexing
@@ -135,6 +188,8 @@ func apiVersionOf(cfg any) string {
 		return string(sc.ApiVersion)
 	case api.MCPProxyConfiguration:
 		return string(sc.ApiVersion)
+	case api.AgentConfiguration:
+		return string(sc.ApiVersion)
 	}
 	return ""
 }
@@ -159,6 +214,8 @@ func (c *StoredConfig) GetContext() (string, error) {
 			return strings.ReplaceAll(*sc.Spec.Context, "$version", c.Version), nil
 		}
 		return "", nil
+	case api.AgentConfiguration:
+		return strings.ReplaceAll(sc.Spec.Context, "$version", c.Version), nil
 	}
 	return "", fmt.Errorf("unsupported source configuration type: %T", c.SourceConfiguration)
 }
@@ -167,6 +224,11 @@ func (c *StoredConfig) GetPolicies() *[]api.Policy {
 	if sc, ok := c.Configuration.(api.RestAPI); ok {
 		return sc.Spec.Policies
 	}
+	// Agent is deliberately absent: an Agent has no single spec-level policy
+	// list. Its A2A operation chains and its Agent Card chain are built
+	// separately by the Agent transformer from spec.a2a.operationConfigs.policies
+	// and spec.a2a.agentCard.public.policies, so answering either one here would
+	// misreport the other.
 	// TODO: enable when policies are supported for WebSubHub
 	return nil
 }
@@ -175,6 +237,8 @@ func (c *StoredConfig) GetPolicies() *[]api.Policy {
 func (c *StoredConfig) GetMetadata() *api.Metadata {
 	switch cfg := c.Configuration.(type) {
 	case api.RestAPI:
+		return &cfg.Metadata
+	case api.AgentConfiguration:
 		return &cfg.Metadata
 	}
 	return nil
@@ -185,6 +249,8 @@ func (c *StoredConfig) GetLabels() *map[string]string {
 	switch cfg := c.Configuration.(type) {
 	case api.RestAPI:
 		return cfg.Metadata.Labels
+	case api.AgentConfiguration:
+		return cfg.Metadata.Labels
 	}
 	return nil
 }
@@ -193,6 +259,8 @@ func (c *StoredConfig) GetLabels() *map[string]string {
 func (c *StoredConfig) GetAnnotations() *map[string]string {
 	switch cfg := c.Configuration.(type) {
 	case api.RestAPI:
+		return cfg.Metadata.Annotations
+	case api.AgentConfiguration:
 		return cfg.Metadata.Annotations
 	}
 	return nil
