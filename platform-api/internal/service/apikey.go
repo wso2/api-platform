@@ -37,8 +37,8 @@ import (
 )
 
 const (
-	apiKeyNameMinLength     = 3
-	apiKeyNameMaxLength     = 63
+	apiKeyNameMinLength     = utils.HandleMinLength
+	apiKeyNameMaxLength     = utils.HandleMaxLength
 	hashingAlgorithmSHA256  = "sha256"
 	defaultHashingAlgorithm = hashingAlgorithmSHA256
 )
@@ -253,14 +253,13 @@ func randomHexString(n int) (string, error) {
 	return hex.EncodeToString(bytes)[:n], nil
 }
 
-// generateAPIKeyName derives a URL-safe, slug-style name from a display name using the
-// same algorithm as the gateway controller:
+// generateAPIKeyName derives a URL-safe, slug-style name from a display name:
 //   - Lowercase
 //   - Spaces and underscores → hyphens
 //   - Remove all non-[a-z0-9-] characters
 //   - Collapse consecutive hyphens
 //   - Trim leading/trailing hyphens
-//   - Enforce length [3, 63]; pad with random hex if too short
+//   - Enforce length [3, 40]; pad with random hex if too short
 func generateAPIKeyName(displayName string) (string, error) {
 	name := strings.ToLower(strings.TrimSpace(displayName))
 	name = strings.ReplaceAll(name, " ", "-")
@@ -290,8 +289,8 @@ func generateAPIKeyName(displayName string) (string, error) {
 }
 
 // resolveUniqueKeyName uses the caller-supplied name if present, otherwise derives one
-// from the display name (or the API handle as a fallback) using the same slug algorithm
-// as the gateway controller. Either way, it retries with a short random suffix on collision.
+// from the display name (or the API handle as a fallback). Either way, the resolved name
+// is validated and it retries with a short random suffix on collision.
 func (s *APIKeyService) resolveUniqueKeyName(artifactUUID string, req *api.CreateAPIKeyRequest, apiHandle string) (string, error) {
 	var baseName string
 	if req.Id != nil && strings.TrimSpace(*req.Id) != "" {
@@ -315,6 +314,10 @@ func (s *APIKeyService) resolveUniqueKeyName(artifactUUID string, req *api.Creat
 		if err != nil {
 			return "", fmt.Errorf("failed to generate API key name: %w", err)
 		}
+	}
+
+	if err := utils.ValidateHandle(baseName); err != nil {
+		return "", err
 	}
 
 	// Check for collision and retry with a short suffix (up to 5 attempts)

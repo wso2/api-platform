@@ -28,8 +28,8 @@ import (
 )
 
 const (
-	handleMinLength = 3
-	handleMaxLength = 40
+	HandleMinLength = 3
+	HandleMaxLength = 40
 	maxRetries      = 5
 	suffixLength    = 4
 )
@@ -74,13 +74,13 @@ func ValidateHandle(handle string) error {
 	if handle == "" {
 		return apperror.ValidationFailed.New("The id cannot be empty.")
 	}
-	if len(handle) < handleMinLength {
+	if len(handle) < HandleMinLength {
 		return apperror.ValidationFailed.New(
-			fmt.Sprintf("The id must be at least %d characters.", handleMinLength))
+			fmt.Sprintf("The id must be at least %d characters.", HandleMinLength))
 	}
-	if len(handle) > handleMaxLength {
+	if len(handle) > HandleMaxLength {
 		return apperror.ValidationFailed.New(
-			fmt.Sprintf("The id must be at most %d characters.", handleMaxLength))
+			fmt.Sprintf("The id must be at most %d characters.", HandleMaxLength))
 	}
 	if !validHandleRegex.MatchString(handle) {
 		return apperror.ValidationFailed.New("The id must be lowercase alphanumeric with hyphens only " +
@@ -125,7 +125,7 @@ func GenerateHandle(source string, existsCheck func(string) bool) (string, error
 		candidateHandle := handle
 
 		// Ensure we don't exceed max length when adding suffix
-		maxBaseLength := handleMaxLength - suffixLength - 1 // -1 for the hyphen
+		maxBaseLength := HandleMaxLength - suffixLength - 1 // -1 for the hyphen
 		if len(candidateHandle) > maxBaseLength {
 			candidateHandle = candidateHandle[:maxBaseLength]
 
@@ -163,14 +163,14 @@ func sanitizeToHandle(s string) string {
 	handle = strings.Trim(handle, "-")
 
 	// Enforce length limits
-	if len(handle) > handleMaxLength {
-		handle = handle[:handleMaxLength]
+	if len(handle) > HandleMaxLength {
+		handle = handle[:HandleMaxLength]
 		// Trim trailing hyphen if truncation created one
 		handle = strings.TrimRight(handle, "-")
 	}
 
 	// If handle is too short after sanitization, pad with random suffix
-	if len(handle) < handleMinLength {
+	if len(handle) < HandleMinLength {
 		if handle == "" {
 			handle = generateRandomSuffix() + generateRandomSuffix()
 		} else {

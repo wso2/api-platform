@@ -57,6 +57,7 @@ import type { Gateway } from '../../../../apis/gatewayTypes';
 import { PLATFORM_API_BASE_URL } from '../../../../paths';
 import { logger } from '../../../../utils/logger';
 import { getErrorMessage } from '../../../../utils/apiError';
+import { buildApiKeyResourceName, validateApiKeyName } from '../../../../utils/apiKeyName';
 import type {
   DeploymentResponse,
   Proxy,
@@ -114,15 +115,6 @@ function formatDate(value?: string): string {
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return '-';
   return date.toLocaleDateString();
-}
-
-function buildApiKeyResourceName(displayName: string): string {
-  const normalizedDisplayName = displayName
-    .trim()
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, '-')
-    .replace(/^-+|-+$/g, '');
-  return normalizedDisplayName || 'api-key';
 }
 
 type ServiceProviderOverviewTabProps = {
@@ -513,6 +505,12 @@ export default function ServiceProviderOverviewTab({
       setKeyError('Display name is required.');
       return;
     }
+    const keyName = buildApiKeyResourceName(trimmedDisplayName);
+    const nameError = validateApiKeyName(keyName);
+    if (nameError) {
+      setKeyError(nameError);
+      return;
+    }
 
     try {
       setGeneratingKey(true);
@@ -525,7 +523,7 @@ export default function ServiceProviderOverviewTab({
         provider.id,
         currentOrganization.uuid,
         {
-          id: buildApiKeyResourceName(trimmedDisplayName),
+          id: keyName,
           displayName: apiKeyDisplayName,
           expiresAt: expiresAt.toISOString(),
           issuer: 'api-platform-ai-workspace',

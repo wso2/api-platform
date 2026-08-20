@@ -63,6 +63,7 @@ import {
   formatPrefixedKey,
   resolveApiKeyAuthDisplay,
 } from '../../../../utils/apiKeyAuthDisplay';
+import { buildApiKeyResourceName, validateApiKeyName } from '../../../../utils/apiKeyName';
 
 type OpenApiSpec = Record<string, unknown>;
 
@@ -91,15 +92,6 @@ function formatDate(value?: string): string {
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return '-';
   return date.toLocaleDateString();
-}
-
-function buildApiKeyResourceName(displayName: string): string {
-  const normalizedDisplayName = displayName
-    .trim()
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, '-')
-    .replace(/^-+|-+$/g, '');
-  return normalizedDisplayName || 'api-key';
 }
 
 export default function LLMProxyOverviewTab() {
@@ -400,6 +392,12 @@ export default function LLMProxyOverviewTab() {
       setKeyError('Display name is required.');
       return;
     }
+    const keyName = buildApiKeyResourceName(trimmedDisplayName);
+    const nameError = validateApiKeyName(keyName);
+    if (nameError) {
+      setKeyError(nameError);
+      return;
+    }
 
     try {
       setGeneratingKey(true);
@@ -409,7 +407,7 @@ export default function LLMProxyOverviewTab() {
       expiresAt.setDate(expiresAt.getDate() + 90);
 
       const response = await createProxyAPIKey({
-        id: buildApiKeyResourceName(trimmedDisplayName),
+        id: keyName,
         displayName: apiKeyDisplayName,
         expiresAt: expiresAt.toISOString(),
         issuer: 'api-platform-ai-workspace',
