@@ -20,8 +20,10 @@ package config
 
 import (
 	"fmt"
+	"maps"
 	"net/url"
 	"regexp"
+	"slices"
 	"strings"
 	"unicode"
 
@@ -199,6 +201,23 @@ func (v *LLMValidator) validateTemplateSpec(spec *api.LLMProviderTemplateData) [
 
 	if spec.ServiceTier != nil {
 		errors = append(errors, v.validateExtractionIdentifier("spec.serviceTier", spec.ServiceTier)...)
+	}
+
+	if spec.ProviderFields != nil {
+		// Sorted so two identical requests report errors in the same order;
+		// Go randomises map iteration.
+		for _, name := range slices.Sorted(maps.Keys(*spec.ProviderFields)) {
+			if name == "" {
+				errors = append(errors, ValidationError{
+					Field:   "spec.providerFields",
+					Message: "providerFields key cannot be empty",
+				})
+				continue
+			}
+			field := (*spec.ProviderFields)[name]
+			errors = append(errors, v.validateExtractionIdentifier(
+				fmt.Sprintf("spec.providerFields.%s", name), &field)...)
+		}
 	}
 
 	errors = append(errors, v.validateCacheAccounting("spec.cacheAccounting", spec.CacheAccounting)...)

@@ -2186,3 +2186,134 @@ func TestValidateLLMProviderTemplate_ValueMap(t *testing.T) {
 		})
 	}
 }
+
+func TestValidateLLMProviderTemplate_ProviderFields(t *testing.T) {
+	emptyFallback := []string{""}
+	emptyValueMapKey := map[string]string{"": "priority"}
+
+	tests := []struct {
+		name           string
+		providerFields map[string]api.ExtractionIdentifier
+		expectedField  string
+	}{
+		{
+			name: "valid entry is accepted",
+			providerFields: map[string]api.ExtractionIdentifier{
+				"choices": {Location: api.Payload, Identifier: "$.choices"},
+			},
+		},
+		{
+			name: "unsupported location is rejected",
+			providerFields: map[string]api.ExtractionIdentifier{
+				"choices": {Location: "payloadx", Identifier: "$.choices"},
+			},
+			expectedField: "spec.providerFields.choices.location",
+		},
+		{
+			name: "missing identifier is rejected",
+			providerFields: map[string]api.ExtractionIdentifier{
+				"choices": {Location: api.Payload, Identifier: ""},
+			},
+			expectedField: "spec.providerFields.choices.identifier",
+		},
+		{
+			name: "empty fallback identifier is rejected",
+			providerFields: map[string]api.ExtractionIdentifier{
+				"choices": {
+					Location:            api.Payload,
+					Identifier:          "$.choices",
+					FallbackIdentifiers: &emptyFallback,
+				},
+			},
+			expectedField: "spec.providerFields.choices.fallbackIdentifiers[0]",
+		},
+		{
+			name: "empty valueMap key is rejected",
+			providerFields: map[string]api.ExtractionIdentifier{
+				"choices": {
+					Location:   api.Payload,
+					Identifier: "$.choices",
+					ValueMap:   &emptyValueMapKey,
+				},
+			},
+			expectedField: "spec.providerFields.choices.valueMap",
+		},
+		{
+			name: "empty map key is rejected",
+			providerFields: map[string]api.ExtractionIdentifier{
+				"": {Location: api.Payload, Identifier: "$.choices"},
+			},
+			expectedField: "spec.providerFields",
+		},
+	}
+
+	validator := NewLLMValidator()
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			providerFields := tt.providerFields
+			template := api.LLMProviderTemplate{
+				ApiVersion: "gateway.api-platform.wso2.com/v1",
+				Kind:       api.LLMProviderTemplateKindLlmProviderTemplate,
+				Metadata:   api.Metadata{Name: "openai"},
+				Spec: api.LLMProviderTemplateData{
+					DisplayName: "test",
+					PromptTokens: &api.ExtractionIdentifier{
+						Location:   api.Payload,
+						Identifier: "$.usage.prompt_tokens",
+					},
+					ProviderFields: &providerFields,
+				},
+			}
+
+			errors := validator.Validate(&template)
+
+			if tt.expectedField == "" {
+				assert.Empty(t, errors, "Should not have validation errors")
+				return
+			}
+
+			require.NotEmpty(t, errors, "Should have validation errors")
+			found := false
+			for _, err := range errors {
+				if err.Field == tt.expectedField {
+					found = true
+					break
+				}
+			}
+			assert.True(t, found, "Should report %q, got %v", tt.expectedField, errors)
+		})
+	}
+}
+
+// A providerFields entry must be reported under its own key, so an operator
+// with several entries can tell which one is wrong.
+func TestValidateLLMProviderTemplate_ProviderFieldsErrorsAreKeyed(t *testing.T) {
+	providerFields := map[string]api.ExtractionIdentifier{
+		"choices":           {Location: "bogus", Identifier: "$.choices"},
+		"searchContextSize": {Location: api.Payload, Identifier: ""},
+	}
+
+	template := api.LLMProviderTemplate{
+		ApiVersion: "gateway.api-platform.wso2.com/v1",
+		Kind:       api.LLMProviderTemplateKindLlmProviderTemplate,
+		Metadata:   api.Metadata{Name: "openai"},
+		Spec: api.LLMProviderTemplateData{
+			DisplayName:    "test",
+			ProviderFields: &providerFields,
+		},
+	}
+
+	fields := make([]string, 0, 2)
+	for _, err := range NewLLMValidator().Validate(&template) {
+		if strings.HasPrefix(err.Field, "spec.providerFields") {
+			fields = append(fields, err.Field)
+		}
+	}
+
+	// Sorted key order, so the list is identical on every run.
+	assert.Equal(t, []string{
+		"spec.providerFields.choices.location",
+		"spec.providerFields.searchContextSize.identifier",
+	}, fields)
+}
