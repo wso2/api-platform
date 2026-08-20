@@ -462,6 +462,20 @@ func TestResolveOptionsFromConfig_RejectsNegativeDBOrPoolSize(t *testing.T) {
 	}
 }
 
+// TestResolveOptionsFromConfig_RejectsBlankHost locks in that an empty or
+// whitespace-only host - which would otherwise silently produce a
+// "<port>"-only *redis.Options via net.JoinHostPort - errors instead.
+func TestResolveOptionsFromConfig_RejectsBlankHost(t *testing.T) {
+	for _, host := range []string{"", "   "} {
+		t.Run("", func(t *testing.T) {
+			_, err := resolveOptionsFromConfig(map[string]interface{}{"redis": map[string]interface{}{"host": host}})
+			if err == nil {
+				t.Errorf("expected an error for blank host %q", host)
+			}
+		})
+	}
+}
+
 // TestResolveOptionsFromConfig_RejectsSubMillisecondTimeout locks in that a
 // timeout below 1ms - including a negative value, which go-redis would
 // otherwise silently treat as "disable timeout enforcement entirely" - errors

@@ -287,6 +287,9 @@ const minRedisTimeout = time.Millisecond
 // validateRedisSectionFields rejects decoded values that would otherwise
 // silently produce an unsafe or unusable *redis.Options.
 func validateRedisSectionFields(f redisSectionFields) error {
+	if strings.TrimSpace(f.Host) == "" {
+		return fmt.Errorf("host must not be blank")
+	}
 	if f.Port < 1 || f.Port > 65535 {
 		return fmt.Errorf("port must be between 1 and 65535, got %d", f.Port)
 	}
