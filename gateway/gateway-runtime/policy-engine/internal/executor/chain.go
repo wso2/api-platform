@@ -796,7 +796,7 @@ func (c *ChainExecutor) ExecuteStreamingRequestPolicies(
 			currentChunk = &policy.StreamBody{
 				Chunk:       fwd.Body,
 				EndOfStream: currentChunk.EndOfStream,
-				Index: currentChunk.Index,
+				Index:       currentChunk.Index,
 			}
 		}
 

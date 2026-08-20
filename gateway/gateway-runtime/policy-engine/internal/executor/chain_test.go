@@ -977,7 +977,6 @@ func (p *transformingResponsePolicy) OnResponseBodyChunk(_ context.Context, _ *p
 	return policy.ForwardResponseChunk{Body: []byte("rewritten")}
 }
 
-
 type indexRecordingResponsePolicy struct {
 	seen []uint64
 }
