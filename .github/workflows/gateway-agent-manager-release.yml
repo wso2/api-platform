@@ -13,7 +13,7 @@ on:
         required: true
         type: string
       tag_name:
-        description: 'Git tag to create. Leave empty to use gateway/v<release_version>.'
+        description: 'Git tag to create, e.g. gateway/v1.2.1-rc. Leave empty to use gateway/v<release_version>.'
         required: false
         type: string
       next_dev_version:
@@ -27,7 +27,7 @@ on:
         type: boolean
 
 env:
-  DOCKER_REGISTRY: ghcr.io/wso2/api-platform
+  DOCKER_REGISTRY: ghcr.io/wso2
   RELEASE_BRANCH: gateway/1.2.0-agent-manager
 
 jobs:
@@ -71,6 +71,10 @@ jobs:
           TAG="$(echo "${TAG_NAME}" | tr -d '[:space:]')"
           if [ -z "${TAG}" ]; then
             TAG="gateway/v${VERSION}"
+          fi
+          if ! [[ "${TAG}" =~ ^[0-9A-Za-z._/+-]+$ ]]; then
+            echo "Error: tag_name contains unsupported characters" >&2
+            exit 1
           fi
           if git rev-parse -q --verify "refs/tags/${TAG}" >/dev/null; then
             echo "Error: tag ${TAG} already exists" >&2
