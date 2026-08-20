@@ -1,0 +1,50 @@
+name: Platform API Cloud Release
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  packages: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Compute image version
+        id: version
+        run: |
+          BRANCH="${GITHUB_REF_NAME//[^a-zA-Z0-9._-]/-}"
+          if [[ ! "$BRANCH" =~ ^[a-zA-Z0-9_] ]]; then BRANCH="_${BRANCH}"; fi
+          BRANCH="${BRANCH:0:87}"
+          COMMIT="${GITHUB_SHA}"
+          printf 'IMAGE_VERSION=%s-%s\n' "$BRANCH" "$COMMIT" >> "$GITHUB_OUTPUT"
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.26.2'
+          cache: false
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+        with:
+          driver: docker-container
+
+      - name: Run tests
+        run: make test-platform-api
+
+      - name: Login to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build and push multi arch Docker images
+        run: make cloud-build-and-push-platform-api-multiarch PLATFORM_API_VERSION="${{ steps.version.outputs.IMAGE_VERSION }}" DOCKER_REGISTRY="ghcr.io/${{ github.repository_owner }}/api-platform"
