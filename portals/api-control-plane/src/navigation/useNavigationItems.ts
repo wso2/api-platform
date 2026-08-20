@@ -51,47 +51,45 @@ export const useNavigationItems = (): NavigationItem[] => {
   return useMemo(() => {
     // Host-injected extensions are converted to the same NavigationDefinition
     // shape the built-in registry uses, so they run through one filter/sort
-    // pipeline instead of a parallel "Cloud category" implementation.
-    const extensionDefinitions: NavigationDefinition[] = extensions.map(
-      (extension) => {
+    // pipeline instead of a parallel "Cloud category" implementation. Only
+    // extensions registered against a `sidebar.*` slot get a top-level
+    // sidebar entry here — a `settings.*.tabs` extension instead renders
+    // inside the Settings page's own sub-nav (see `useSettingsTabs`).
+    const extensionDefinitions: NavigationDefinition[] = extensions
+      .filter((extension) => extension.slot.startsWith('sidebar.'))
+      .map((extension) => {
         const isDescendantRoute = extension.routePath.endsWith('/*');
         const routeSuffix = extension.routePath.replace(/\/\*$/, '');
-        const routeSegment = `/${routeSuffix}`;
+        // Computed once per render from the current scope (not a raw
+        // substring search) so `match` can't be fooled by an unrelated route
+        // that merely happens to contain this segment name elsewhere — e.g.
+        // a `settings/<name>` tab route shouldn't activate a sidebar
+        // extension whose own destination is `/<name>` at a different depth.
+        const { orgHandle, projectHandler, apiHandler } = scope.params;
+        const destination =
+          orgHandle &&
+          !(extension.scope === 'project' && !projectHandler) &&
+          !(extension.scope === 'api' && (!projectHandler || !apiHandler))
+            ? buildScopedExtensionPath(extension.scope, routeSuffix, {
+                apiHandler,
+                orgHandle,
+                projectHandler,
+              })
+            : undefined;
         return {
-          group: extension.group,
           icon: extension.icon,
           id: extension.id,
           isVisible: extension.isVisible,
           label: extension.label,
-          level: extension.level,
-          match: (pathname) => {
-            const index = pathname.indexOf(routeSegment);
-            if (index === -1) return false;
-            const charAfter = pathname[index + routeSegment.length];
-            // Match only a complete path segment: nothing after it, or (for
-            // a `/*` route) a further `/` continuing into a descendant path.
-            return charAfter === undefined || (isDescendantRoute && charAfter === '/');
-          },
+          level: extension.scope,
+          match: (pathname) =>
+            destination !== undefined &&
+            (pathname === destination ||
+              (isDescendantRoute && pathname.startsWith(`${destination}/`))),
           order: extension.order,
-          to: (navScope) => {
-            const { orgHandle, projectHandler, apiHandler } = navScope.params;
-            if (!orgHandle) return undefined;
-            if (extension.level === 'project' && !projectHandler) return undefined;
-            if (
-              extension.level === 'api' &&
-              (!projectHandler || !apiHandler)
-            ) {
-              return undefined;
-            }
-            return buildScopedExtensionPath(extension.level, routeSuffix, {
-              apiHandler,
-              orgHandle,
-              projectHandler,
-            });
-          },
+          to: () => destination,
         };
-      }
-    );
+      });
     const combinedRegistry = [...navigationRegistry, ...extensionDefinitions];
 
     return combinedRegistry
@@ -109,6 +107,7 @@ export const useNavigationItems = (): NavigationItem[] => {
             ? definition.match(location.pathname)
             : location.pathname === to,
           label: definition.label,
+          pinned: definition.pinned,
           to,
         };
       })
@@ -123,28 +122,40 @@ export const useNavigationItems = (): NavigationItem[] => {
   }, [location.pathname, scope, extensions]);
 };
 
+const groupByLabel = (items: NavigationItem[]): NavigationGroup[] => {
+  const groups: NavigationGroup[] = [];
+  const byLabel = new Map<string, NavigationGroup>();
+
+  for (const item of items) {
+    let group = byLabel.get(item.group);
+    if (!group) {
+      group = { label: item.group, items: [] };
+      byLabel.set(item.group, group);
+      groups.push(group);
+    }
+    group.items.push(item);
+  }
+
+  return groups;
+};
+
 /**
  * Same items as `useNavigationItems`, bucketed into ordered sidebar sections by
  * their `group`. Group order follows first appearance in the (order-sorted)
- * item list, so Organization → Project → Api falls out naturally.
+ * item list, so Organization → Project → Api falls out naturally. Excludes
+ * `pinned` items — those render separately, see `useSidebarFooterGroups`.
  */
 export const useNavigationGroups = (): NavigationGroup[] => {
   const items = useNavigationItems();
+  return useMemo(() => groupByLabel(items.filter((item) => !item.pinned)), [items]);
+};
 
-  return useMemo(() => {
-    const groups: NavigationGroup[] = [];
-    const byLabel = new Map<string, NavigationGroup>();
-
-    for (const item of items) {
-      let group = byLabel.get(item.group);
-      if (!group) {
-        group = { label: item.group, items: [] };
-        byLabel.set(item.group, group);
-        groups.push(group);
-      }
-      group.items.push(item);
-    }
-
-    return groups;
-  }, [items]);
+/**
+ * `pinned` items (e.g. Settings), grouped the same way as
+ * `useNavigationGroups` but meant for a sidebar's fixed bottom section
+ * (`Sidebar.Footer`) rather than the scrolling main nav.
+ */
+export const useSidebarFooterGroups = (): NavigationGroup[] => {
+  const items = useNavigationItems();
+  return useMemo(() => groupByLabel(items.filter((item) => item.pinned)), [items]);
 };

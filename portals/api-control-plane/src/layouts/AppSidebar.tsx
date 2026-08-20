@@ -19,12 +19,26 @@
 import { Sidebar, useAppShell } from '@wso2/oxygen-ui';
 import { Link } from 'react-router-dom';
 
-import { useNavigationGroups } from '../navigation/useNavigationItems';
+import {
+  useNavigationGroups,
+  useSidebarFooterGroups,
+} from '../navigation/useNavigationItems';
+import type { NavigationGroup } from '../navigation/navigationTypes';
+
+function renderItems(items: NavigationGroup['items']) {
+  return items.map((item) => (
+    <Sidebar.Item key={item.id} id={item.id} link={<Link to={item.to} />}>
+      <Sidebar.ItemIcon>{item.icon}</Sidebar.ItemIcon>
+      <Sidebar.ItemLabel>{item.label}</Sidebar.ItemLabel>
+    </Sidebar.Item>
+  ));
+}
 
 export function AppSidebar() {
   const groups = useNavigationGroups();
+  const footerGroups = useSidebarFooterGroups();
   const { state } = useAppShell();
-  const activeItem = groups
+  const activeItem = [...groups, ...footerGroups]
     .flatMap((group) => group.items)
     .find((item) => item.isActive)?.id;
 
@@ -34,19 +48,17 @@ export function AppSidebar() {
         {groups.map((group) => (
           <Sidebar.Category key={group.label}>
             <Sidebar.CategoryLabel>{group.label}</Sidebar.CategoryLabel>
-            {group.items.map((item) => (
-              <Sidebar.Item
-                key={item.id}
-                id={item.id}
-                link={<Link to={item.to} />}
-              >
-                <Sidebar.ItemIcon>{item.icon}</Sidebar.ItemIcon>
-                <Sidebar.ItemLabel>{item.label}</Sidebar.ItemLabel>
-              </Sidebar.Item>
-            ))}
+            {renderItems(group.items)}
           </Sidebar.Category>
         ))}
       </Sidebar.Nav>
+      {footerGroups.length > 0 && (
+        <Sidebar.Footer>
+          <Sidebar.Category>
+            {footerGroups.flatMap((group) => renderItems(group.items))}
+          </Sidebar.Category>
+        </Sidebar.Footer>
+      )}
     </Sidebar>
   );
 }
