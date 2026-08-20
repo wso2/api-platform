@@ -48,3 +48,15 @@ jobs:
 
       - name: Build and push multi arch Docker images
         run: make cloud-build-and-push-platform-api-multiarch PLATFORM_API_VERSION="${{ steps.version.outputs.IMAGE_VERSION }}" DOCKER_REGISTRY="ghcr.io/${{ github.repository_owner }}/api-platform"
+
+      - name: Published image summary
+        run: |
+          IMAGE="ghcr.io/${{ github.repository_owner }}/api-platform/platform-api-cloud:${{ steps.version.outputs.IMAGE_VERSION }}"
+          echo "Pushed image: ${IMAGE}"
+          {
+            echo "### Platform API cloud image published :rocket:"
+            echo ""
+            echo '```'
+            echo "${IMAGE}"
+            echo '```'
+          } >> "${GITHUB_STEP_SUMMARY}"
