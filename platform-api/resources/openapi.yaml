@@ -4455,6 +4455,175 @@ paths:
         '500':
           $ref: '#/components/responses/InternalServerError'
 
+  /api-portals:
+    post:
+      summary: Create an API Portal
+      description: |
+        Registers a new API Portal in the caller's organization. If a URL is
+        provided, the portal is registered against that existing endpoint; if
+        omitted, a new portal is provisioned and the URL is populated when the
+        instance becomes reachable. Organization ID is extracted from the JWT
+        token.
+      operationId: CreateApiPortal
+      security:
+        - OAuth2Security:
+            - ap:api_portal:create
+            - ap:api_portal:manage
+      tags:
+        - API Portals
+      requestBody:
+        description: API Portal registration details
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateApiPortalRequest'
+      responses:
+        '201':
+          description: API Portal created successfully
+          headers:
+            Location:
+              $ref: '#/components/headers/Location'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiPortalResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+    get:
+      summary: List API Portals
+      description: Lists API Portals in the org resolved from the JWT token.
+      operationId: ListApiPortals
+      security:
+        - OAuth2Security:
+            - ap:api_portal:read
+            - ap:api_portal:manage
+      tags:
+        - API Portals
+      parameters:
+        - $ref: '#/components/parameters/limit-Q'
+        - $ref: '#/components/parameters/offset-Q'
+        - $ref: '#/components/parameters/sortBy-Q'
+        - $ref: '#/components/parameters/sortOrder-Q'
+        - $ref: '#/components/parameters/query-Q'
+        - $ref: '#/components/parameters/apiPortalWorkflowStatus-Q'
+      responses:
+        '200':
+          description: API Portals retrieved successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiPortalListResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /api-portals/{apiPortalId}:
+    get:
+      summary: Get API Portal by ID
+      description: Reads a single API Portal by its handle. Access is validated against the org in the JWT token.
+      operationId: GetApiPortal
+      security:
+        - OAuth2Security:
+            - ap:api_portal:read
+            - ap:api_portal:manage
+      tags:
+        - API Portals
+      parameters:
+        - $ref: '#/components/parameters/apiPortalId'
+      responses:
+        '200':
+          description: API Portal retrieved successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiPortalResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+    put:
+      summary: Update API Portal
+      description: |
+        Updates mutable fields on an API Portal. The server ignores any immutable
+        field appearing in the body. Access is validated against the org in the JWT token.
+      operationId: UpdateApiPortal
+      security:
+        - OAuth2Security:
+            - ap:api_portal:update
+            - ap:api_portal:manage
+      tags:
+        - API Portals
+      parameters:
+        - $ref: '#/components/parameters/apiPortalId'
+      requestBody:
+        description: API Portal fields to update
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateApiPortalRequest'
+      responses:
+        '200':
+          description: API Portal updated successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiPortalResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+    delete:
+      summary: Delete API Portal
+      description: |
+        Deletes an API Portal. Any provisioned instance and associated identity-provider
+        credentials are cleaned up as part of deletion. Access is validated against the
+        org in the JWT token.
+      operationId: DeleteApiPortal
+      security:
+        - OAuth2Security:
+            - ap:api_portal:delete
+            - ap:api_portal:manage
+      tags:
+        - API Portals
+      parameters:
+        - $ref: '#/components/parameters/apiPortalId'
+      responses:
+        '204':
+          description: API Portal deleted successfully
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
   /me/api-keys:
     get:
       summary: List API keys for the current user, or for all users with `ap:api_key:all:manage`
@@ -4732,6 +4901,11 @@ components:
           scopes:
             ap:api_key:all:manage: Manage API keys created by any user in the organization
             ap:api_key:read: Read API keys owned by the current user
+            ap:api_portal:create: Create an API Portal
+            ap:api_portal:delete: Delete an API Portal
+            ap:api_portal:manage: Full access to API Portals
+            ap:api_portal:read: Read API Portals
+            ap:api_portal:update: Update an API Portal
             ap:application:api_key:create: Create an application API key
             ap:application:api_key:delete: Delete an application API key
             ap:application:api_key:manage: Full access to application API keys
@@ -8650,6 +8824,253 @@ components:
         pagination:
           $ref: '#/components/schemas/Pagination'
 
+    ApiPortalAuthConfig:
+      title: API Portal outbound authentication material
+      type: object
+      description: |
+        Platform-API's outbound authentication material for the portal admin
+        API. Shape depends on `authType`:
+          - `local`  → must be empty.
+          - `oauth2` → `stsTokenUrl`, `clientId`, `clientSecret` are all required.
+        `clientSecret` is write-only: accepted on create/update requests, persisted
+        encrypted at rest, and never returned on read.
+      additionalProperties: false
+      properties:
+        stsTokenUrl:
+          type: string
+          format: uri
+          description: Token endpoint of the STS Platform-API POSTs the client_credentials grant to.
+          example: "https://sts.example.com/oauth2/token"
+        clientId:
+          type: string
+          description: Registered client identifier in the STS.
+          example: "acme-portal-client"
+        clientSecret:
+          type: string
+          writeOnly: true
+          description: >-
+            Registered client secret. Accepted only in create/update requests;
+            never returned in responses. Persisted encrypted server-side.
+
+    ApiPortalMetadata:
+      title: API Portal metadata
+      type: object
+      description: >-
+        Free-form pass-through metadata for the portal pod (e.g. cloud-side OIDC
+        endpoints the portal uses for consumer login). Platform-API stores and
+        returns this as-is; it is not consumed by the outbound authentication
+        path.
+      additionalProperties: true
+
+    ApiPortalResponse:
+      title: API Portal detail
+      type: object
+      required:
+        - id
+        - name
+        - handle
+        - workflowStatus
+        - authType
+        - createdAt
+        - updatedAt
+      properties:
+        id:
+          type: string
+          description: Handle (URL-friendly slug) of the API Portal — primary identifier.
+          pattern: '^[a-z0-9-]+$'
+          minLength: 3
+          maxLength: 40
+          readOnly: true
+          example: "acme-portal"
+        name:
+          type: string
+          description: Display name.
+          minLength: 1
+          maxLength: 255
+          example: "Acme Developer Portal"
+        handle:
+          type: string
+          description: URL-friendly slug. Immutable after creation. Equal to `id`.
+          pattern: '^[a-z0-9-]+$'
+          minLength: 3
+          maxLength: 40
+          readOnly: true
+          example: "acme-portal"
+        description:
+          type: string
+          nullable: true
+          maxLength: 1023
+        url:
+          type: string
+          format: uri
+          nullable: true
+          description: >-
+            Public URL of the API Portal. May be null while the portal is being
+            provisioned; populated once the instance is reachable.
+          example: "https://acme-portal.example.com"
+        workflowStatus:
+          type: string
+          enum: [pending, active, failed]
+          description: >-
+            Lifecycle state. `pending` — portal is being provisioned or activated.
+            `active` — portal is reachable and functional. `failed` — provisioning
+            or a subsequent health check failed.
+          example: "active"
+        authType:
+          type: string
+          enum: [local, oauth2]
+          description: >-
+            Determines how Platform API authenticates to the portal's admin API
+            and selects the shape of the `config` object.
+          example: "oauth2"
+        authConfig:
+          $ref: '#/components/schemas/ApiPortalAuthConfig'
+        metadata:
+          $ref: '#/components/schemas/ApiPortalMetadata'
+        createdAt:
+          type: string
+          format: date-time
+          readOnly: true
+          example: "2026-08-13T10:30:00Z"
+        updatedAt:
+          type: string
+          format: date-time
+          readOnly: true
+          example: "2026-08-13T10:30:00Z"
+
+    ApiPortalListItem:
+      title: API Portal — list projection
+      description: Lightweight projection returned in collection responses (excludes the `config` blob).
+      type: object
+      required:
+        - id
+        - name
+        - handle
+        - workflowStatus
+        - authType
+        - createdAt
+      properties:
+        id:
+          type: string
+          pattern: '^[a-z0-9-]+$'
+          example: "acme-portal"
+        name:
+          type: string
+          example: "Acme Developer Portal"
+        handle:
+          type: string
+          pattern: '^[a-z0-9-]+$'
+          example: "acme-portal"
+        description:
+          type: string
+          nullable: true
+        url:
+          type: string
+          format: uri
+          nullable: true
+        workflowStatus:
+          type: string
+          enum: [pending, active, failed]
+        authType:
+          type: string
+          enum: [local, oauth2]
+        createdAt:
+          type: string
+          format: date-time
+
+    CreateApiPortalRequest:
+      title: Create API Portal request
+      type: object
+      required:
+        - name
+        - handle
+        - authType
+      properties:
+        name:
+          type: string
+          minLength: 1
+          maxLength: 255
+        handle:
+          type: string
+          pattern: '^[a-z0-9-]+$'
+          minLength: 3
+          maxLength: 40
+          description: URL-friendly slug. Must be unique within the org. Immutable after creation.
+        description:
+          type: string
+          nullable: true
+          maxLength: 1023
+        url:
+          type: string
+          format: uri
+          nullable: true
+          description: >-
+            Public URL of an existing API Portal to register. Omit to have a new
+            portal provisioned; the URL will be populated once the instance is
+            reachable.
+        authType:
+          type: string
+          enum: [local, oauth2]
+        workflowStatus:
+          type: string
+          enum: [pending, active]
+          description: >-
+            Optional. Defaults to `pending` when omitted. Setting `active`
+            requires a non-empty `url`; the request is rejected otherwise.
+            `failed` cannot be set on create — a portal is never created in a
+            failed state.
+        authConfig:
+          $ref: '#/components/schemas/ApiPortalAuthConfig'
+        metadata:
+          $ref: '#/components/schemas/ApiPortalMetadata'
+
+    UpdateApiPortalRequest:
+      title: Update API Portal request
+      description: All fields optional. Only mutable fields are accepted — see field permissions in the design doc.
+      type: object
+      properties:
+        name:
+          type: string
+          minLength: 1
+          maxLength: 255
+        description:
+          type: string
+          nullable: true
+          maxLength: 1023
+        url:
+          type: string
+          format: uri
+          nullable: true
+        workflowStatus:
+          type: string
+          enum: [pending, active, failed]
+        authType:
+          type: string
+          enum: [local, oauth2]
+        authConfig:
+          $ref: '#/components/schemas/ApiPortalAuthConfig'
+        metadata:
+          $ref: '#/components/schemas/ApiPortalMetadata'
+
+    ApiPortalListResponse:
+      title: API Portal list response
+      type: object
+      required:
+        - count
+        - list
+        - pagination
+      properties:
+        count:
+          type: integer
+          description: Number of items in the current response page.
+          example: 2
+        list:
+          type: array
+          items:
+            $ref: '#/components/schemas/ApiPortalListItem'
+        pagination:
+          $ref: '#/components/schemas/Pagination'
+
   responses:
     Unauthorized:
       description: Unauthorized. Authentication credentials are missing or invalid.
@@ -8991,6 +9412,29 @@ components:
         type: string
         example: payment
 
+    apiPortalId:
+      name: apiPortalId
+      in: path
+      required: true
+      description: |
+        **API Portal ID** consisting of the **handle** (unique slug identifier) of the API Portal.
+      schema:
+        type: string
+        pattern: '^[a-z0-9-]+$'
+        minLength: 3
+        maxLength: 40
+        example: "acme-portal"
+
+    apiPortalWorkflowStatus-Q:
+      name: workflowStatus
+      in: query
+      required: false
+      description: Filter API Portals by lifecycle state.
+      schema:
+        type: string
+        enum: [pending, active, failed]
+        example: "active"
+
 tags:
   - name: Health
     description: Health check endpoints
@@ -9004,10 +9448,8 @@ tags:
     description: API management operations
   - name: REST API Deployments
     description: API deployment artifact management and lifecycle operations
-  - name: API Portal
-    description: API portal publishing and unpublishing operations
-  - name: DevPortals
-    description: DevPortal management operations
+  - name: API Portals
+    description: API Portal registration and management
   - name: Gateways
     description: Gateway registration and management operations
   - name: Gateway Tokens

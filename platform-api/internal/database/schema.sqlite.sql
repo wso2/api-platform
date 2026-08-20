@@ -399,6 +399,26 @@ CREATE TABLE IF NOT EXISTS mcp_proxies (
     UNIQUE(organization_uuid, handle)
 );
 
+-- API Portals table (registration of an API Portal instance for an organization)
+CREATE TABLE IF NOT EXISTS api_portals (
+    uuid              VARCHAR(40)  PRIMARY KEY,
+    organization_uuid VARCHAR(40)  NOT NULL,
+    handle            VARCHAR(40)  NOT NULL,
+    display_name      VARCHAR(255) NOT NULL,
+    description       VARCHAR(1023),
+    url               VARCHAR(500),
+    workflow_status   VARCHAR(20)  NOT NULL DEFAULT 'pending',
+    auth_type          VARCHAR(20)  NOT NULL,
+    auth_configuration BLOB         NOT NULL,
+    metadata           BLOB         NOT NULL,
+    created_by         VARCHAR(200),
+    created_at         DATETIME     DEFAULT CURRENT_TIMESTAMP,
+    updated_by         VARCHAR(200),
+    updated_at         DATETIME     DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (organization_uuid) REFERENCES organizations(uuid) ON DELETE CASCADE,
+    UNIQUE (organization_uuid, handle)
+);
+
 -- API Keys table (stores API keys for artifacts with hashes as JSON string)
 CREATE TABLE IF NOT EXISTS api_keys (
     uuid VARCHAR(40) PRIMARY KEY,
@@ -472,6 +492,7 @@ CREATE INDEX IF NOT EXISTS idx_llm_proxies_provider_uuid ON llm_proxies(provider
 CREATE INDEX IF NOT EXISTS idx_llm_proxies_org ON llm_proxies(organization_uuid);
 CREATE INDEX IF NOT EXISTS idx_mcp_proxies_project ON mcp_proxies(project_uuid);
 CREATE INDEX IF NOT EXISTS idx_mcp_proxies_org ON mcp_proxies(organization_uuid);
+CREATE INDEX IF NOT EXISTS idx_api_portals_org ON api_portals(organization_uuid);
 CREATE INDEX IF NOT EXISTS idx_api_keys_artifact ON api_keys(artifact_uuid);
 CREATE INDEX IF NOT EXISTS idx_rest_apis_org ON rest_apis(organization_uuid);
 CREATE INDEX IF NOT EXISTS idx_applications_org ON applications(organization_uuid);

@@ -207,6 +207,67 @@ var ValidGatewayTokenStatuses = map[string]bool{
 	GatewayTokenStatusRevoked: true,
 }
 
+// API Portal workflow status constants
+const (
+	APIPortalWorkflowStatusPending = "pending"
+	APIPortalWorkflowStatusActive  = "active"
+	APIPortalWorkflowStatusFailed  = "failed"
+)
+
+// ValidAPIPortalWorkflowStatuses holds accepted values for api_portals.workflow_status
+var ValidAPIPortalWorkflowStatuses = map[string]bool{
+	APIPortalWorkflowStatusPending: true,
+	APIPortalWorkflowStatusActive:  true,
+	APIPortalWorkflowStatusFailed:  true,
+}
+
+// ValidAPIPortalCreateWorkflowStatuses holds accepted values for workflow_status
+// at Create time. `failed` is intentionally excluded — a portal is never
+// created in a failed state; that state is only reachable via a subsequent
+// update once provisioning or a health check reports failure.
+var ValidAPIPortalCreateWorkflowStatuses = map[string]bool{
+	APIPortalWorkflowStatusPending: true,
+	APIPortalWorkflowStatusActive:  true,
+}
+
+// API Portal authConfig field-name constants used by Create/Update validation
+// (required-field check) and by ClientCredentialsAuthProvider (payload build).
+const (
+	APIPortalAuthConfigKeySTSTokenURL  = "stsTokenUrl"
+	APIPortalAuthConfigKeyClientID     = "clientId"
+	APIPortalAuthConfigKeyClientSecret = "clientSecret"
+)
+
+// APIPortalOAuth2RequiredAuthConfigKeys are the keys the oauth2 flow must
+// supply in authConfig at Create time (or on Update when auth_type is being
+// changed to oauth2). Order is stable so validation error messages list
+// missing fields in a predictable sequence.
+var APIPortalOAuth2RequiredAuthConfigKeys = []string{
+	APIPortalAuthConfigKeySTSTokenURL,
+	APIPortalAuthConfigKeyClientID,
+	APIPortalAuthConfigKeyClientSecret,
+}
+
+// APIPortalAuthConfigSensitiveKeys lists the authConfig keys whose values are
+// treated as secrets: encrypted at rest via the platform vault and stripped
+// from any response. Independent of auth_type — the set is small and the
+// keys are the same shape across types.
+var APIPortalAuthConfigSensitiveKeys = []string{
+	APIPortalAuthConfigKeyClientSecret,
+}
+
+// API Portal auth type constants
+const (
+	APIPortalAuthTypeLocal  = "local"
+	APIPortalAuthTypeOAuth2 = "oauth2"
+)
+
+// ValidAPIPortalAuthTypes holds accepted values for api_portals.auth_type
+var ValidAPIPortalAuthTypes = map[string]bool{
+	APIPortalAuthTypeLocal:  true,
+	APIPortalAuthTypeOAuth2: true,
+}
+
 // ValidArtifactKinds holds accepted values for artifacts.type for the core (non-plugin)
 // artifact kinds. Plugin-owned kinds (e.g. WebSubApi, WebBrokerApi) are registered
 // into the ArtifactTableRegistry during plugin Init.
