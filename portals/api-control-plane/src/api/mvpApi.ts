@@ -44,6 +44,13 @@ export {
   getGateway,
   listGateways,
 } from './gateways/gatewayClient';
+export {
+  createApiPortal,
+  deleteApiPortal,
+  getApiPortal,
+  listApiPortals,
+  updateApiPortal,
+} from './apiportal/apiPortalClient';
 export { listEnvironments } from './environments/environmentClient';
 export {
   getOrganization,

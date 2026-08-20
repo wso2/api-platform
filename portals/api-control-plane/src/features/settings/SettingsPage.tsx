@@ -32,7 +32,7 @@ export function SettingsPage() {
         <CardContent>
           <Typography>
             Advanced organization admin settings, governance, marketplace, and
-            developer portal configuration are intentionally excluded from the
+            API Portal configuration are intentionally excluded from the
             MVP replacement app.
           </Typography>
         </CardContent>

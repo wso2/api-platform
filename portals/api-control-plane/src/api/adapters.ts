@@ -22,6 +22,9 @@ import type {
   ApiKind,
   ApiStatus,
   Deployment,
+  ApiPortal,
+  ApiPortalAuthType,
+  ApiPortalWorkflowStatus,
   Environment,
   Gateway,
   GatewayDeployment,
@@ -295,6 +298,51 @@ export const toGateway = (value: unknown): Gateway => {
     organizationId: asOptionalString(source.organizationId),
     createdAt: asOptionalString(source.createdAt),
     updatedAt: asOptionalString(source.updatedAt),
+  };
+};
+
+const API_PORTAL_AUTH_TYPES: ApiPortalAuthType[] = [
+  'local',
+  'idp_client_credentials',
+];
+
+const asApiPortalAuthType = (value: unknown): ApiPortalAuthType => {
+  const normalized = asString(value).toLowerCase();
+  return API_PORTAL_AUTH_TYPES.includes(normalized as ApiPortalAuthType)
+    ? (normalized as ApiPortalAuthType)
+    : API_PORTAL_AUTH_TYPES[0];
+};
+
+const API_PORTAL_WORKFLOW_STATUSES: ApiPortalWorkflowStatus[] = [
+  'pending',
+  'active',
+  'failed',
+];
+
+const asApiPortalWorkflowStatus = (value: unknown): ApiPortalWorkflowStatus => {
+  const normalized = asString(value).toLowerCase();
+  return API_PORTAL_WORKFLOW_STATUSES.includes(
+    normalized as ApiPortalWorkflowStatus
+  )
+    ? (normalized as ApiPortalWorkflowStatus)
+    : API_PORTAL_WORKFLOW_STATUSES[0];
+};
+
+export const toApiPortal = (value: unknown): ApiPortal => {
+  const source = asRecord(value);
+  const name = asString(source.name, 'unknown-api-portal');
+  return {
+    id: asString(source.id, name),
+    name,
+    handle: asString(source.handle, name),
+    description: asOptionalString(source.description),
+    url: asOptionalString(source.url),
+    workflowStatus: asApiPortalWorkflowStatus(source.workflowStatus),
+    authType: asApiPortalAuthType(source.authType),
+    createdAt: asOptionalString(source.createdAt),
+    stsTokenUrl: asOptionalString(source.stsTokenUrl),
+    clientId: asOptionalString(source.clientId),
+    organizationId: asOptionalString(source.organizationId),
   };
 };
 
