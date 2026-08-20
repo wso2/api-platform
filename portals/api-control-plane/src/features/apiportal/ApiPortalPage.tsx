@@ -251,6 +251,7 @@ function ApiPortalCard({
               </Typography>
               <Tooltip title={copied ? 'Copied' : 'Copy URL'}>
                 <IconButton
+                  aria-label="Copy URL"
                   onClick={copyUrl}
                   size="small"
                   sx={{ flex: 'none' }}

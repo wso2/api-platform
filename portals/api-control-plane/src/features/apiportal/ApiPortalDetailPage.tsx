@@ -74,7 +74,7 @@ function CopyableInline({ value }: { value: string }) {
         {value}
       </Typography>
       <Tooltip title={copied ? 'Copied' : 'Copy'}>
-        <IconButton onClick={copy} size="small">
+        <IconButton aria-label="Copy value" onClick={copy} size="small">
           {copied ? <Check size={14} /> : <Copy size={14} />}
         </IconButton>
       </Tooltip>

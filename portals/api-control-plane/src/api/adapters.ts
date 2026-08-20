@@ -340,7 +340,10 @@ const toApiPortalAuthConfig = (
 const toApiPortalMetadata = (
   value: unknown
 ): ApiPortalMetadata | undefined => {
-  if (!value || typeof value !== 'object') return undefined;
+  // Reject arrays explicitly — `typeof [] === 'object'` would otherwise
+  // let an array through, and its numeric keys / `length` would then be
+  // read as metadata properties by downstream consumers.
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return undefined;
   const source = value as ApiPortalMetadata;
   return Object.keys(source).length > 0 ? source : undefined;
 };

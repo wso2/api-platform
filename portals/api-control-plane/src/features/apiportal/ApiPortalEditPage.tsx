@@ -41,11 +41,18 @@ import { routes } from '../../routes/paths';
 import type {
   ApiPortal,
   ApiPortalAuthType,
+  ApiPortalWorkflowStatus,
   UpdateApiPortalInput,
 } from '../../types/domain';
 import { isValidUrl } from '../apis/develop/developEdit';
-import { AUTH_TYPE_OPTIONS } from './apiPortalDisplay';
+import { AUTH_TYPE_OPTIONS, STATUS_LABEL } from './apiPortalDisplay';
 import { IdpCredentialsFields } from './IdpCredentialsFields';
+
+const WORKFLOW_STATUS_OPTIONS: ApiPortalWorkflowStatus[] = [
+  'pending',
+  'active',
+  'failed',
+];
 
 export function ApiPortalEditPage() {
   const { orgHandle = '', apiPortalId = '' } = useParams();
@@ -57,6 +64,8 @@ export function ApiPortalEditPage() {
   const [name, setName] = useState('');
   const [description, setDescription] = useState('');
   const [url, setUrl] = useState('');
+  const [workflowStatus, setWorkflowStatus] =
+    useState<ApiPortalWorkflowStatus>('pending');
   const [authType, setAuthType] = useState<ApiPortalAuthType>('local');
   const [stsTokenUrl, setStsTokenUrl] = useState('');
   const [clientId, setClientId] = useState('');
@@ -72,6 +81,7 @@ export function ApiPortalEditPage() {
     setName(apiPortal.name);
     setDescription(apiPortal.description || '');
     setUrl(apiPortal.url || '');
+    setWorkflowStatus(apiPortal.workflowStatus);
     setAuthType(apiPortal.authType);
     // stsTokenUrl/clientId aren't secret and are returned by the backend, so
     // they seed from the record like any other field. clientSecret is the
@@ -116,6 +126,7 @@ export function ApiPortalEditPage() {
     (name !== apiPortal.name ||
       description !== (apiPortal.description || '') ||
       url !== (apiPortal.url || '') ||
+      workflowStatus !== apiPortal.workflowStatus ||
       authType !== apiPortal.authType ||
       stsTokenUrl !== (apiPortal.authConfig?.stsTokenUrl || '') ||
       clientId !== (apiPortal.authConfig?.clientId || '') ||
@@ -135,6 +146,7 @@ export function ApiPortalEditPage() {
       name: name.trim(),
       url: url.trim(),
       description: description || undefined,
+      workflowStatus,
     };
     const input: UpdateApiPortalInput = isOAuth2
       ? {
@@ -207,6 +219,25 @@ export function ApiPortalEditPage() {
                   placeholder="https://api-portal.example.com"
                   value={url}
                 />
+              </FormControl>
+
+              <FormControl fullWidth>
+                <FormLabel>Workflow status</FormLabel>
+                <Select
+                  onChange={(event) =>
+                    setWorkflowStatus(
+                      event.target.value as ApiPortalWorkflowStatus
+                    )
+                  }
+                  size="small"
+                  value={workflowStatus}
+                >
+                  {WORKFLOW_STATUS_OPTIONS.map((status) => (
+                    <MenuItem key={status} value={status}>
+                      {STATUS_LABEL[status]}
+                    </MenuItem>
+                  ))}
+                </Select>
               </FormControl>
 
               <FormControl fullWidth>

@@ -74,7 +74,10 @@ export const navigationRegistry: NavigationDefinition[] = [
     to: ({ params }) =>
       params.orgHandle ? routes.apiPortal(params.orgHandle) : undefined,
     match: (pathname) =>
-      /\/organizations\/[^/]+\/api-portal(\/[^/]+)?$/.test(pathname),
+      // Matches the list (…/api-portal), detail (…/api-portal/:id), and edit
+      // (…/api-portal/:id/edit) routes — the nav item stays active across all
+      // three so a user editing a portal still sees where they are in the tree.
+      /\/organizations\/[^/]+\/api-portal(\/.*)?$/.test(pathname),
   },
   {
     id: 'project-home',
