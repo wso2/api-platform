@@ -205,10 +205,6 @@ func (s *LLMProxyAPIKeyService) CreateLLMProxyAPIKey(
 	if req.Id != nil && *req.Id != "" {
 		name = *req.Id
 	} else {
-		if req.DisplayName == "" {
-			return nil, apperror.ValidationFailed.New("Either id or displayName is required.").
-				WithLogMessage(fmt.Sprintf("cannot generate API key name for proxy %s: both id and displayName are empty", proxyID))
-		}
 		name, err = utils.GenerateHandle(req.DisplayName, nil)
 		if err != nil {
 			s.slogger.Error("Failed to generate API key name", "proxyId", proxyID, "error", err)
