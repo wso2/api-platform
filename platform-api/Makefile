@@ -25,7 +25,14 @@ BUILD_DATE := $(shell date -u +"%Y-%m-%dT%H:%M:%SZ")
 
 # Docker image configuration
 DOCKER_REGISTRY ?= ghcr.io/wso2/api-platform
-IMAGE_NAME := $(DOCKER_REGISTRY)/platform-api
+IMAGE_SUFFIX ?= platform-api
+IMAGE_NAME := $(DOCKER_REGISTRY)/$(IMAGE_SUFFIX)
+# Cloud image is published under a distinct package (platform-api-cloud): the
+# release token has write access to that package, not to platform-api. On this
+# branch the cloud image is the SAME build as IMAGE_NAME (no event-gateway
+# plugin) — only the published name/tag differ.
+CLOUD_IMAGE_SUFFIX ?= platform-api-cloud
+CLOUD_IMAGE_NAME := $(DOCKER_REGISTRY)/$(CLOUD_IMAGE_SUFFIX)
 PORT ?= 9243
 
 # Cloud image tag: defaults to "<branch>-<commit>" computed IDENTICALLY to the
@@ -72,6 +79,7 @@ build: ## Build Docker image
 		.
 
 cloud-build: VERSION := $(CLOUD_IMAGE_TAG)
+cloud-build: IMAGE_NAME := $(CLOUD_IMAGE_NAME)
 cloud-build: build ## Build cloud Docker image tagged <branch>-<commit> (override with VERSION=x; no event-gateway plugin on this branch)
 
 generate: ## Generate API server code from OpenAPI spec
@@ -99,6 +107,7 @@ build-and-push-multiarch: ## Build and push multi-architecture Docker image (lin
 		.
 
 cloud-build-and-push-multiarch: VERSION := $(CLOUD_IMAGE_TAG)
+cloud-build-and-push-multiarch: IMAGE_NAME := $(CLOUD_IMAGE_NAME)
 cloud-build-and-push-multiarch: build-and-push-multiarch ## Build and push multi-arch cloud image tagged <branch>-<commit> (override with VERSION=x)
 
 # Version Management Targets
