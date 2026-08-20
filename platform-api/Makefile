@@ -28,7 +28,24 @@ DOCKER_REGISTRY ?= ghcr.io/wso2/api-platform
 IMAGE_NAME := $(DOCKER_REGISTRY)/platform-api
 PORT ?= 9243
 
-.PHONY: help build test push build-and-push-multiarch
+# Cloud image tag: defaults to "<branch>-<commit>" computed IDENTICALLY to the
+# platform-api-cloud-release workflow's IMAGE_VERSION step — sanitize the branch
+# ([^a-zA-Z0-9._-] -> '-'), prefix '_' if it doesn't start with [a-zA-Z0-9_],
+# cap the branch at 87 chars, then append the FULL commit SHA. An explicitly
+# supplied VERSION (CI passes PLATFORM_API_VERSION, or `make cloud-build VERSION=x`)
+# takes precedence.
+CLOUD_IMAGE_TAG := $(shell \
+	b=$$(git rev-parse --abbrev-ref HEAD 2>/dev/null || echo unknown); \
+	b=$$(printf '%s' "$$b" | sed -e 's/[^a-zA-Z0-9._-]/-/g' -e 's/^[^a-zA-Z0-9_]/_&/' | cut -c1-87); \
+	printf '%s-%s' "$$b" "$$(git rev-parse HEAD 2>/dev/null || echo unknown)")
+ifeq ($(origin VERSION),command line)
+CLOUD_IMAGE_TAG := $(VERSION)
+endif
+ifeq ($(origin VERSION),environment)
+CLOUD_IMAGE_TAG := $(VERSION)
+endif
+
+.PHONY: help build cloud-build test push build-and-push-multiarch cloud-build-and-push-multiarch
 
 help: ## Show this help message
 	@echo 'Platform API Build System (Version: $(VERSION))'
@@ -50,6 +67,9 @@ build: ## Build Docker image
 		-t $(IMAGE_NAME):latest \
 		--load \
 		.
+
+cloud-build: VERSION := $(CLOUD_IMAGE_TAG)
+cloud-build: build ## Build cloud Docker image tagged <branch>-<commit> (override with VERSION=x; no event-gateway plugin on this branch)
 
 generate: ## Generate API server code from OpenAPI spec
 	@echo "Adding bindings to OpenAPI spec..."
@@ -74,6 +94,9 @@ build-and-push-multiarch: ## Build and push multi-architecture Docker image (lin
 		-t $(IMAGE_NAME):$(VERSION) \
 		--push \
 		.
+
+cloud-build-and-push-multiarch: VERSION := $(CLOUD_IMAGE_TAG)
+cloud-build-and-push-multiarch: build-and-push-multiarch ## Build and push multi-arch cloud image tagged <branch>-<commit> (override with VERSION=x)
 
 # Version Management Targets
 version-set: ## Set platform-api version and update artifacts

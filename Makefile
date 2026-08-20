@@ -48,6 +48,7 @@ help: ## Show this help message
 	@echo '  make build-and-push-gateway-multiarch - Build and push all gateway images for multiple architectures'
 	@echo '  make build-and-push-event-gateway-multiarch - Build and push all event gateway images for multiple architectures'
 	@echo '  make build-and-push-platform-api-multiarch VERSION=X - Build and push platform-api images for multiple architectures'
+	@echo '  make cloud-build-and-push-platform-api-multiarch PLATFORM_API_VERSION=X - Build and push platform-api cloud image for multiple architectures'
 	@echo '  make build-and-push-devportal-multiarch - Build and push developer portal image for multiple architectures'
 	@echo '  make build-cli                        - Build CLI binaries for all platforms'
 	@echo '  make package-event-gateway            - Package event gateway as a self-contained zip'
@@ -106,6 +107,12 @@ build-and-push-platform-api-multiarch: ## Build and push platform-api Docker ima
 	@echo "Building and pushing multi-arch platform-api ($(PLATFORM_API_VERSION))..."
 	$(MAKE) -C platform-api build-and-push-multiarch VERSION=$(PLATFORM_API_VERSION)
 	@echo "Successfully built and pushed multi-arch platform-api"
+
+.PHONY: cloud-build-and-push-platform-api-multiarch
+cloud-build-and-push-platform-api-multiarch: ## Build and push multi-arch platform-api cloud image (no event-gateway plugin on this branch — same image as build-and-push-platform-api-multiarch)
+	@echo "Building and pushing multi-arch platform-api cloud image ($(PLATFORM_API_VERSION))..."
+	$(MAKE) -C platform-api cloud-build-and-push-multiarch VERSION=$(PLATFORM_API_VERSION)
+	@echo "Successfully built and pushed multi-arch platform-api cloud image"
 
 .PHONY: build-and-push-devportal-multiarch
 build-and-push-devportal-multiarch: ## Build and push developer portal Docker image for multiple architectures (amd64, arm64)
