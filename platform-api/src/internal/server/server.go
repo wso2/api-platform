@@ -328,8 +328,11 @@ func StartPlatformAPIServer(cfg *config.Server, slogger *slog.Logger) (*Server, 
 		gin.SetMode(gin.ReleaseMode)
 	}
 
-	// Setup router
-	router := gin.Default()
+	// Setup router. Use gin.New() with explicit middleware (instead of gin.Default())
+	// so the access log can include the request User-Agent.
+	router := gin.New()
+	router.Use(gin.LoggerWithFormatter(accessLogFormatter))
+	router.Use(gin.Recovery())
 
 	// Configure and apply CORS middleware first (before auth middleware)
 	corsConfig := cors.DefaultConfig()
@@ -443,6 +446,26 @@ func StartPlatformAPIServer(cfg *config.Server, slogger *slog.Logger) (*Server, 
 		eventHub:       eventHub,
 		logger:         slogger,
 	}, nil
+}
+
+// accessLogFormatter mirrors gin's default access-log format (without color)
+// and appends the request's User-Agent so the client is identified in the logs.
+func accessLogFormatter(param gin.LogFormatterParams) string {
+	latency := param.Latency
+	if latency > time.Minute {
+		latency = latency.Truncate(time.Second)
+	}
+
+	return fmt.Sprintf("[GIN] %v | %3d | %13v | %15s | %-7s %#v | %q\n%s",
+		param.TimeStamp.Format("2006/01/02 - 15:04:05"),
+		param.StatusCode,
+		latency,
+		param.ClientIP,
+		param.Method,
+		param.Path,
+		param.Request.UserAgent(),
+		param.ErrorMessage,
+	)
 }
 
 // demoMode reports whether APIP_DEMO_MODE is enabled.
