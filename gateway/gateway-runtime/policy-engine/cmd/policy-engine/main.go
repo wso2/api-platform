@@ -165,14 +165,7 @@ func main() {
 	}
 	slog.InfoContext(ctx, "Config set in registry for ${config} CEL resolution")
 
-	// Initialize the gateway-level shared Redis client (top-level "redis" config
-	// section - gateway infrastructure, not nested under policy_configurations,
-	// since it's not scoped to policies even though policy-engine is its current
-	// consumer). Must run before any policy chain is built (below) - a policy
-	// instance that calls redisclient.Shared()/Resolve() during construction
-	// assumes this has already run. A missing "redis" section is not an error
-	// here - it's only surfaced lazily, the first time some policy actually
-	// needs it.
+	// Initialize the gateway-level shared Redis client (top-level "redis" config section)
 	if err := redisclient.InitFromConfig(cfg.PolicyEngine.RawConfig); err != nil {
 		slog.ErrorContext(ctx, "Failed to initialize shared redis client", "error", err)
 		os.Exit(1)

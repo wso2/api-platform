@@ -36,12 +36,12 @@ func TestGetOrCreateClient_SharesClientForIdenticalConfig(t *testing.T) {
 	mr := miniredis.RunT(t)
 	opts := &redis.Options{Addr: mr.Addr(), DB: 0}
 
-	c1, created1, err1 := GetOrCreateRedisClient(opts, time.Second)
+	c1, created1, err1 := GetOrCreate(opts, time.Second)
 	if !created1 || err1 != nil {
 		t.Fatalf("first call: created=%v err=%v (want true,nil)", created1, err1)
 	}
 
-	c2, created2, err2 := GetOrCreateRedisClient(opts, time.Second)
+	c2, created2, err2 := GetOrCreate(opts, time.Second)
 	if created2 || err2 != nil {
 		t.Fatalf("second call: created=%v err=%v (want false,nil)", created2, err2)
 	}
@@ -53,8 +53,8 @@ func TestGetOrCreateClient_SharesClientForIdenticalConfig(t *testing.T) {
 func TestGetOrCreateClient_DistinctClientForDifferentConfig(t *testing.T) {
 	mr := miniredis.RunT(t)
 
-	c1, _, _ := GetOrCreateRedisClient(&redis.Options{Addr: mr.Addr(), DB: 0}, time.Second)
-	c2, _, _ := GetOrCreateRedisClient(&redis.Options{Addr: mr.Addr(), DB: 1}, time.Second)
+	c1, _, _ := GetOrCreate(&redis.Options{Addr: mr.Addr(), DB: 0}, time.Second)
+	c2, _, _ := GetOrCreate(&redis.Options{Addr: mr.Addr(), DB: 1}, time.Second)
 
 	if c1 == c2 {
 		t.Error("expected different DB selection to produce a distinct *redis.Client")
@@ -64,9 +64,9 @@ func TestGetOrCreateClient_DistinctClientForDifferentConfig(t *testing.T) {
 func TestGetOrCreateClient_DifferentPasswordProducesDistinctClient(t *testing.T) {
 	mr := miniredis.RunT(t)
 
-	c1, _, _ := GetOrCreateRedisClient(&redis.Options{Addr: mr.Addr(), Password: "one"}, time.Second)
-	c2, _, _ := GetOrCreateRedisClient(&redis.Options{Addr: mr.Addr(), Password: "two"}, time.Second)
-	c3, _, _ := GetOrCreateRedisClient(&redis.Options{Addr: mr.Addr()}, time.Second) // no password at all
+	c1, _, _ := GetOrCreate(&redis.Options{Addr: mr.Addr(), Password: "one"}, time.Second)
+	c2, _, _ := GetOrCreate(&redis.Options{Addr: mr.Addr(), Password: "two"}, time.Second)
+	c3, _, _ := GetOrCreate(&redis.Options{Addr: mr.Addr()}, time.Second) // no password at all
 
 	if c1 == c2 {
 		t.Error("expected different passwords to produce distinct clients")
@@ -82,8 +82,8 @@ func TestGetOrCreateClient_SharedAcrossSimulatedPolicies(t *testing.T) {
 
 	// Two distinct call sites with identical settings must share one
 	// client - the whole point of centralizing the registry.
-	fromPolicyA, _, _ := GetOrCreateRedisClient(opts(), time.Second)
-	fromPolicyB, _, _ := GetOrCreateRedisClient(opts(), time.Second)
+	fromPolicyA, _, _ := GetOrCreate(opts(), time.Second)
+	fromPolicyB, _, _ := GetOrCreate(opts(), time.Second)
 
 	if fromPolicyA != fromPolicyB {
 		t.Fatal("expected two distinct callers with identical config to share one client")
@@ -109,13 +109,13 @@ func TestGetOrCreateClient_ReuseSkipsPing(t *testing.T) {
 	addr := mr.Addr() // capture before mr.Close() below
 	opts := &redis.Options{Addr: addr, DB: 0}
 
-	c1, created1, err1 := GetOrCreateRedisClient(opts, time.Second)
+	c1, created1, err1 := GetOrCreate(opts, time.Second)
 	if !created1 || err1 != nil {
 		t.Fatalf("first call: created=%v err=%v (want true,nil)", created1, err1)
 	}
 
 	mr.Close()
-	c2, created2, err2 := GetOrCreateRedisClient(opts, time.Second)
+	c2, created2, err2 := GetOrCreate(opts, time.Second)
 	if created2 || err2 != nil || c2 != c1 {
 		t.Fatalf("reuse after Redis went down should skip the ping: created=%v err=%v same=%v", created2, err2, c2 == c1)
 	}
@@ -124,9 +124,9 @@ func TestGetOrCreateClient_ReuseSkipsPing(t *testing.T) {
 func TestGetOrCreateClient_DifferentProtocolProducesDistinctClient(t *testing.T) {
 	mr := miniredis.RunT(t)
 
-	c1, _, _ := GetOrCreateRedisClient(&redis.Options{Addr: mr.Addr(), Protocol: 2}, time.Second)
-	c2, _, _ := GetOrCreateRedisClient(&redis.Options{Addr: mr.Addr(), Protocol: 3}, time.Second)
-	c3, _, _ := GetOrCreateRedisClient(&redis.Options{Addr: mr.Addr(), Protocol: 2}, time.Second)
+	c1, _, _ := GetOrCreate(&redis.Options{Addr: mr.Addr(), Protocol: 2}, time.Second)
+	c2, _, _ := GetOrCreate(&redis.Options{Addr: mr.Addr(), Protocol: 3}, time.Second)
+	c3, _, _ := GetOrCreate(&redis.Options{Addr: mr.Addr(), Protocol: 2}, time.Second)
 
 	if c1 == c2 {
 		t.Error("expected different RESP protocol versions to produce distinct clients")
@@ -146,8 +146,8 @@ func TestGetOrCreateClient_TLSConfigBypassesRegistry(t *testing.T) {
 	optsA := &redis.Options{Addr: mr.Addr(), TLSConfig: &tls.Config{}} //nolint:gosec // test-only, no real handshake asserted
 	optsB := &redis.Options{Addr: mr.Addr(), TLSConfig: &tls.Config{}} //nolint:gosec
 
-	c1, created1, _ := GetOrCreateRedisClient(optsA, time.Second)
-	c2, created2, _ := GetOrCreateRedisClient(optsB, time.Second)
+	c1, created1, _ := GetOrCreate(optsA, time.Second)
+	c2, created2, _ := GetOrCreate(optsB, time.Second)
 
 	if !created1 || !created2 {
 		t.Fatalf("expected every TLSConfig-bearing call to report created=true (never reused), got %v and %v", created1, created2)
@@ -161,8 +161,8 @@ func TestGetOrCreateClient_CredentialsProviderBypassesRegistry(t *testing.T) {
 	mr := miniredis.RunT(t)
 	provider := func() (string, string) { return "", "" }
 
-	c1, created1, err1 := GetOrCreateRedisClient(&redis.Options{Addr: mr.Addr(), CredentialsProvider: provider}, time.Second)
-	c2, created2, err2 := GetOrCreateRedisClient(&redis.Options{Addr: mr.Addr(), CredentialsProvider: provider}, time.Second)
+	c1, created1, err1 := GetOrCreate(&redis.Options{Addr: mr.Addr(), CredentialsProvider: provider}, time.Second)
+	c2, created2, err2 := GetOrCreate(&redis.Options{Addr: mr.Addr(), CredentialsProvider: provider}, time.Second)
 
 	if !created1 || err1 != nil {
 		t.Fatalf("first call: created=%v err=%v (want true,nil)", created1, err1)
@@ -211,7 +211,7 @@ func TestGetOrCreateClient_DoesNotHoldLockDuringPing(t *testing.T) {
 		// ReadTimeout set explicitly - the dial succeeds, it's the
 		// read-for-a-reply that hangs, and go-redis's default (5s) would
 		// otherwise bound that wait regardless of pingTimeout.
-		_, _, _ = GetOrCreateRedisClient(&redis.Options{
+		_, _, _ = GetOrCreate(&redis.Options{
 			Addr:         ln.Addr().String(),
 			DB:           0,
 			ReadTimeout:  time.Second,
@@ -227,7 +227,7 @@ func TestGetOrCreateClient_DoesNotHoldLockDuringPing(t *testing.T) {
 
 	mr := miniredis.RunT(t)
 	fastStart := time.Now()
-	if _, _, err := GetOrCreateRedisClient(&redis.Options{Addr: mr.Addr(), DB: 1}, 500*time.Millisecond); err != nil {
+	if _, _, err := GetOrCreate(&redis.Options{Addr: mr.Addr(), DB: 1}, 500*time.Millisecond); err != nil {
 		t.Fatalf("unexpected error on the fast, unrelated key: %v", err)
 	}
 	if elapsed := time.Since(fastStart); elapsed > 300*time.Millisecond {
@@ -237,10 +237,8 @@ func TestGetOrCreateClient_DoesNotHoldLockDuringPing(t *testing.T) {
 	<-done // let the slow goroutine finish before the test exits
 }
 
-// resetSharedForTest clears the package-level shared client state before a
-// test runs (so InitFromConfig can be called again despite its once-only
-// guard) and restores whatever was there before once the test ends. White-box
-// access is fine here - this file is part of the package.
+// resetSharedForTest clears shared so InitFromConfig can run again despite
+// its once-only guard, restoring the prior state once the test ends.
 func resetSharedForTest(t *testing.T) {
 	t.Helper()
 	shared.mu.Lock()
@@ -261,10 +259,9 @@ func TestResolveOptionsFromConfig_NoRedisSectionReturnsNil(t *testing.T) {
 	}
 }
 
-// TestResolveOptionsFromConfig_IgnoresSiblingSections proves resolveOptionsFromConfig
-// looks at the top-level "redis" key only - other top-level sections (including
-// policy_configurations, which is a separate, policy-engine-internal namespace
-// this package deliberately does NOT nest under) have no bearing on it.
+// TestResolveOptionsFromConfig_IgnoresSiblingSections proves it looks at the
+// top-level "redis" key only - other sections, including policy_configurations,
+// have no bearing on it.
 func TestResolveOptionsFromConfig_IgnoresSiblingSections(t *testing.T) {
 	raw := map[string]interface{}{
 		"router":                map[string]interface{}{"gateway_host": "*"},
@@ -323,12 +320,9 @@ func TestResolveOptionsFromConfig_ParsesConfiguredValues(t *testing.T) {
 }
 
 // TestResolveOptionsFromConfig_ParsesNumericStringPort locks in the shape
-// gateway-runtime's own config interpolation actually produces: a TOML value
-// written as {{ env "VAR" "6379" }} must be a quoted string literal (TOML has
-// no unquoted template syntax), and interpolation resolves the token in place
-// without ever changing the field's type - so a "numeric" config.toml value
-// arrives here as a numeric string, not an int, even though int/int64/float64
-// are also accepted (e.g. from a JSON-sourced config path).
+// config interpolation actually produces: a TOML {{ env "VAR" "6379" }}
+// token resolves in place without changing the field's type, so a "numeric"
+// value arrives as a numeric string, not an int.
 func TestResolveOptionsFromConfig_ParsesNumericStringPort(t *testing.T) {
 	raw := map[string]interface{}{
 		"redis": map[string]interface{}{
@@ -373,10 +367,8 @@ func TestResolveOptionsFromConfig_RejectsWrongShapedValue(t *testing.T) {
 }
 
 // TestResolveOptionsFromConfig_RejectsInvalidFloat64Port locks in that a
-// float64 "port" (e.g. from a JSON-sourced config path, decoded as float64
-// rather than int) is validated before conversion -
-// NaN/Inf/fractional/out-of-range values must error rather than silently
-// truncating or converting a NaN/Inf into undefined behavior.
+// float64 "port" is validated before conversion - NaN/Inf/fractional/
+// out-of-range values must error, not silently truncate.
 func TestResolveOptionsFromConfig_RejectsInvalidFloat64Port(t *testing.T) {
 	cases := []struct {
 		name string
@@ -447,7 +439,7 @@ func TestSharedBeforeInitFromConfigErrors(t *testing.T) {
 }
 
 // TestSharedReturnsIdenticalPointer is the actual "single instance" contract:
-// not merely "these two configs happen to compare equal" (GetOrCreateRedisClient's
+// not merely "these two configs happen to compare equal" (GetOrCreate's
 // dedup guarantee) but "there is exactly one gateway-level client, full stop."
 func TestSharedReturnsIdenticalPointer(t *testing.T) {
 	resetSharedForTest(t)
@@ -503,7 +495,7 @@ func TestResolve_NonNilOptsBypassesShared(t *testing.T) {
 }
 
 // TestResolve_NonNilOptsStillDedupes proves Resolve's override branch keeps
-// GetOrCreateRedisClient's existing sharing behavior - two policies that both
+// GetOrCreate's existing sharing behavior - two policies that both
 // explicitly override to the same config still get one pool between them,
 // not one pool each.
 func TestResolve_NonNilOptsStillDedupes(t *testing.T) {
@@ -559,5 +551,95 @@ func TestHashPassword(t *testing.T) {
 	}
 	if hashRedisPassword("secret") == hashRedisPassword("different") {
 		t.Error("expected different passwords to hash differently")
+	}
+}
+
+func TestExtractOverrideFromParams_NoHostReturnsNil(t *testing.T) {
+	if got := ExtractOverrideFromParams(map[string]interface{}{}); got != nil {
+		t.Fatalf("got %+v, want nil when redis.host is absent", got)
+	}
+	if got := ExtractOverrideFromParams(map[string]interface{}{"redis": map[string]interface{}{"port": 6380}}); got != nil {
+		t.Fatalf("got %+v, want nil when redis.host is absent even with sibling redis.* fields set", got)
+	}
+}
+
+func TestExtractOverrideFromParams_NestedMapShape(t *testing.T) {
+	params := map[string]interface{}{
+		"redis": map[string]interface{}{
+			"host":              "redis.example.com",
+			"port":              6380,
+			"username":          "app",
+			"password":          "secret",
+			"db":                2,
+			"poolSize":          10,
+			"connectionTimeout": "10s",
+			"readTimeout":       "7s",
+			"writeTimeout":      "7s",
+		},
+	}
+	opts := ExtractOverrideFromParams(params)
+	if opts == nil {
+		t.Fatal("expected a non-nil override")
+	}
+	if opts.Addr != "redis.example.com:6380" || opts.Username != "app" || opts.Password != "secret" ||
+		opts.DB != 2 || opts.PoolSize != 10 || opts.DialTimeout != 10*time.Second ||
+		opts.ReadTimeout != 7*time.Second || opts.WriteTimeout != 7*time.Second {
+		t.Errorf("got %+v, did not match configured values", opts)
+	}
+}
+
+func TestExtractOverrideFromParams_FlattenedKeyShape(t *testing.T) {
+	params := map[string]interface{}{
+		"redis.host": "redis.example.com",
+		"redis.port": "6380",
+		"redis.db":   "2",
+	}
+	opts := ExtractOverrideFromParams(params)
+	if opts == nil {
+		t.Fatal("expected a non-nil override")
+	}
+	if opts.Addr != "redis.example.com:6380" || opts.DB != 2 {
+		t.Errorf("got %+v, want port 6380 and db 2 parsed from a flattened-key, numeric-string shape", opts)
+	}
+}
+
+func TestExtractOverrideFromParams_AppliesDefaults(t *testing.T) {
+	opts := ExtractOverrideFromParams(map[string]interface{}{"redis": map[string]interface{}{"host": "redis.example.com"}})
+	if opts == nil {
+		t.Fatal("expected a non-nil override")
+	}
+	if opts.Addr != "redis.example.com:6379" || opts.DB != 0 || opts.PoolSize != 0 ||
+		opts.DialTimeout != 5*time.Second || opts.ReadTimeout != 3*time.Second || opts.WriteTimeout != 3*time.Second {
+		t.Errorf("got %+v, want defaults applied for every field but host", opts)
+	}
+}
+
+func TestExtractOverrideFromParams_BracketsIPv6Host(t *testing.T) {
+	opts := ExtractOverrideFromParams(map[string]interface{}{"redis": map[string]interface{}{"host": "::1", "port": 6380}})
+	if opts == nil {
+		t.Fatal("expected a non-nil override")
+	}
+	if want := "[::1]:6380"; opts.Addr != want {
+		t.Errorf("got Addr %q, want %q", opts.Addr, want)
+	}
+}
+
+func TestExtractOverrideFromParams_UnparseableValueFallsBackToDefaultSilently(t *testing.T) {
+	params := map[string]interface{}{
+		"redis": map[string]interface{}{
+			"host":              "redis.example.com",
+			"port":              "not-a-number",
+			"connectionTimeout": "not-a-duration",
+		},
+	}
+	opts := ExtractOverrideFromParams(params)
+	if opts == nil {
+		t.Fatal("expected a non-nil override")
+	}
+	if opts.Addr != "redis.example.com:6379" {
+		t.Errorf("got Addr %q, want the default port 6379 silently applied for an unparseable port", opts.Addr)
+	}
+	if opts.DialTimeout != 5*time.Second {
+		t.Errorf("got DialTimeout %v, want the default 5s silently applied for an unparseable duration", opts.DialTimeout)
 	}
 }

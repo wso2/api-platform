@@ -16,13 +16,11 @@
  * under the License.
  */
 
-// Package redisclient shares one process-wide *redis.Client (one connection
-// pool) per distinct connection configuration, across every caller that
-// imports it - see GetOrCreateRedisClient. It also exposes a single
-// gateway-wide default client (Shared, backed by the operator's top-level
-// "redis" config section - gateway infrastructure, not something scoped to
-// policies) that a policy falls back to when it has no Redis config of its
-// own - see Resolve.
+// Package redisclient shares one process-wide *redis.Client per distinct
+// connection config across every caller - see GetOrCreate. It also exposes a
+// gateway-wide default client (Shared, backed by the top-level "redis"
+// config section) that a policy without its own Redis config falls back to
+// - see Resolve.
 package redisclient
 
 import (
@@ -34,6 +32,7 @@ import (
 	"net"
 	"reflect"
 	"strconv"
+	"strings"
 	"sync"
 	"time"
 
@@ -41,11 +40,9 @@ import (
 	"github.com/redis/go-redis/v9"
 )
 
-// redisConnKey identifies a distinct Redis connection configuration. Two policy
-// instances with identical connection settings share one *redis.Client (one pool).
-//
-// Excludes TLSConfig and any credentials-provider option - see
-// GetOrCreateRedisClient's bypass for those.
+// redisConnKey identifies a distinct Redis connection config; identical
+// settings share one *redis.Client. Excludes TLSConfig/credentials-provider
+// options - see GetOrCreate's bypass for those.
 type redisConnKey struct {
 	addr         string
 	username     string
@@ -58,9 +55,8 @@ type redisConnKey struct {
 	poolSize     int
 }
 
-// redisClients is the process-wide registry of shared Redis clients. Without it,
-// GetPolicy creates a new *redis.Client (a whole connection pool) per policy instance
-// and per config reload, leaking pools and exploding Redis connections at scale.
+// redisClients is the process-wide registry of shared Redis clients - without
+// it, every policy instance/reload would open its own connection pool.
 var redisClients = struct {
 	mu sync.Mutex
 	m  map[redisConnKey]*redis.Client
@@ -74,16 +70,16 @@ func hashRedisPassword(p string) string {
 	return hex.EncodeToString(sum[:])
 }
 
-// GetOrCreateRedisClient returns the process-wide shared client for these connection
-// settings, creating (and pinging once) it on first use. created reports whether this
-// call created the client; pingErr is non-nil only when created and the initial ping
-// failed. The client is registered and returned even on ping failure (go-redis
-// reconnects lazily). Clients are never closed — they live for the process lifetime.
-func GetOrCreateRedisClient(opts *redis.Options, pingTimeout time.Duration) (client *redis.Client, created bool, pingErr error) {
-	// TLSConfig and credentials-provider hooks can't be fingerprinted
-	// safely: a *tls.Config's pointer says nothing about its content, and
-	// Go func values aren't comparable at all. Bypass the registry rather
-	// than risk silently reusing a client built for a different config.
+// GetOrCreate returns the process-wide shared client for these connection
+// settings, creating (and pinging once) it on first use. created reports
+// whether this call created the client; pingErr is non-nil only then. The
+// client is registered even on ping failure (go-redis reconnects lazily) and
+// is never closed - it lives for the process lifetime.
+func GetOrCreate(opts *redis.Options, pingTimeout time.Duration) (client *redis.Client, created bool, pingErr error) {
+	// TLSConfig/credentials-provider can't be fingerprinted safely (a
+	// *tls.Config pointer says nothing about content; func values aren't
+	// comparable) - bypass the registry rather than risk reusing a client
+	// built for a different config.
 	if opts.TLSConfig != nil || opts.CredentialsProvider != nil || opts.CredentialsProviderContext != nil || opts.StreamingCredentialsProvider != nil {
 		return newAndPingClient(opts, pingTimeout)
 	}
@@ -100,12 +96,8 @@ func GetOrCreateRedisClient(opts *redis.Options, pingTimeout time.Duration) (cli
 		poolSize:     opts.PoolSize,
 	}
 
-	// Lock guards only the map lookup/insert, never the ping below - mu is
-	// process-wide, so holding it during a slow/down connection's ping
-	// would stall every other caller's get-or-create too. A concurrent
-	// caller for the same key may see the just-inserted client before this
-	// ping finishes - fine, since a reused client is already "assumed
-	// healthy" regardless of timing, never gated on this call's pingErr.
+	// Lock guards only the map lookup/insert, never the ping below - holding
+	// it during a slow ping would stall every other caller's get-or-create.
 	redisClients.mu.Lock()
 	if c, ok := redisClients.m[key]; ok {
 		redisClients.mu.Unlock()
@@ -119,49 +111,35 @@ func GetOrCreateRedisClient(opts *redis.Options, pingTimeout time.Duration) (cli
 	return c, true, pingErr
 }
 
-// pingTimeoutMargin is added on top of a client's own configured dial/read/
-// write timeouts to derive the one-time creation ping's timeout (see
-// pingTimeoutFor) - enough for the ping's own command round-trip on top of
-// whatever the connection attempt itself is allowed to take.
+// pingTimeoutMargin is added on top of a client's own dial/read/write
+// timeouts to derive the one-time creation ping's timeout - room for the
+// ping's own round-trip on top of the connection attempt itself.
 const pingTimeoutMargin = 2 * time.Second
 
-// pingTimeoutFor derives the creation-ping timeout from opts's own configured
-// timeouts, so the ping's context stays alive at least as long as the
-// connection attempt permitted by DialTimeout (plus the read/write round-trip
-// and a safety margin) - a fixed constant shorter than an operator's
-// configured DialTimeout would cut the ping's context before a legitimately
-// slow-but-successful connection attempt could complete.
+// pingTimeoutFor derives the creation-ping timeout from opts's own timeouts,
+// so a fixed constant can't cut the ping short before a legitimately slow
+// connection attempt completes.
 func pingTimeoutFor(opts *redis.Options) time.Duration {
 	return opts.DialTimeout + opts.ReadTimeout + opts.WriteTimeout + pingTimeoutMargin
 }
 
 // shared holds the process-wide gateway-level default client. inited
-// distinguishes "InitFromConfig ran and found no redis section" (client nil,
-// inited true - Shared reports a config-gap error) from "InitFromConfig was
-// never called at all" (a gateway-runtime wiring bug - Shared reports that
-// distinctly, since it means something programming-level is missing, not an
-// operator config gap).
+// distinguishes "InitFromConfig ran, no redis section" (client nil, inited
+// true) from "InitFromConfig never called" (a wiring bug) - Shared reports
+// each distinctly.
 var shared struct {
 	mu     sync.Mutex
 	client *redis.Client
 	inited bool
 }
 
-// InitFromConfig resolves the operator-level top-level "redis" section from
-// raw (e.g. cfg.PolicyEngine.RawConfig - raw's other top-level sections like
-// "analytics"/"router"/"policy_configurations" are ignored here) and creates
-// the process-wide shared client. This is gateway-wide infrastructure, not
-// something scoped to policies - deliberately NOT nested under
-// "policy_configurations" (that namespace is policy-engine's own ${config...}
-// CEL-resolution mechanism for per-policy system parameters; a shared
-// resource other gateway components could reach doesn't belong inside it).
-// Must be called exactly once, at gateway-runtime startup, before any policy
-// factory runs - see Shared and Resolve. A missing "redis" key is not an
-// error: most gateways may have zero Redis-consuming policies configured,
-// and that absence only matters lazily, the first time some policy actually
-// calls Shared. A connection/ping failure is likewise not fatal here - the
-// client is still created and stored (go-redis reconnects lazily), matching
-// GetOrCreateRedisClient's own create-time philosophy.
+// InitFromConfig resolves the top-level "redis" section from raw (e.g.
+// cfg.PolicyEngine.RawConfig) and creates the process-wide shared client -
+// gateway-wide infrastructure, deliberately not nested under
+// "policy_configurations" (policy-engine's per-policy ${config...} namespace).
+// Must be called exactly once, at startup, before any policy factory runs -
+// see Shared/Resolve. A missing "redis" key or a failed ping is not fatal
+// here; both only matter lazily, the first time a policy calls Shared.
 func InitFromConfig(raw map[string]interface{}) error {
 	shared.mu.Lock()
 	defer shared.mu.Unlock()
@@ -184,11 +162,9 @@ func InitFromConfig(raw map[string]interface{}) error {
 }
 
 // Shared returns the process-wide gateway-level default client, backed by
-// the top-level "redis" config section. It errors if InitFromConfig was
-// never called (a gateway-runtime wiring bug, not a normal runtime
-// condition) or if no "redis" section was configured at all - callers must
-// treat the latter as a real configuration gap rather than assuming a
-// shared Redis is always available.
+// the top-level "redis" config section. Errors if InitFromConfig was never
+// called, or if no "redis" section was configured - callers must treat the
+// latter as a real config gap, not assume a shared Redis always exists.
 func Shared() (*redis.Client, error) {
 	shared.mu.Lock()
 	defer shared.mu.Unlock()
@@ -202,24 +178,20 @@ func Shared() (*redis.Client, error) {
 }
 
 // Resolve returns the client a policy instance should use: opts's own
-// connection settings when the policy resolved one from its own config
-// section, otherwise the gateway-level Shared client.
-//
-// opts must be nil - never a zero-value *redis.Options - when the policy's
-// own section was absent. A struct pre-filled with the policy's schema
-// defaults would always look "configured," and this fallback would never
-// trigger; the presence check belongs to the caller's own config-extraction
-// code, on whichever field has no default (e.g. host).
+// settings if the policy configured its own connection, otherwise the
+// gateway-level Shared client. opts must be nil - never a schema-defaulted
+// zero-value *redis.Options - when the policy's own section was absent, or
+// this fallback never triggers; that presence check is the caller's own.
 func Resolve(opts *redis.Options, pingTimeout time.Duration) (*redis.Client, error) {
 	if opts == nil {
 		return Shared()
 	}
-	client, _, _ := GetOrCreateRedisClient(opts, pingTimeout)
+	client, _, _ := GetOrCreate(opts, pingTimeout)
 	return client, nil
 }
 
 // newAndPingClient creates a client and pings it once. created is always
-// true - only present so this matches GetOrCreateRedisClient's own return
+// true - only present so this matches GetOrCreate's own return
 // shape at its call sites.
 func newAndPingClient(opts *redis.Options, pingTimeout time.Duration) (client *redis.Client, created bool, pingErr error) {
 	c := redis.NewClient(opts)
@@ -227,10 +199,8 @@ func newAndPingClient(opts *redis.Options, pingTimeout time.Duration) (client *r
 }
 
 // pingClient pings an already-constructed client once, bounded by
-// pingTimeout. Split out from newAndPingClient because GetOrCreateRedisClient's
-// main path must insert the client into the registry BEFORE pinging (so a
-// concurrent caller for the same key sees it immediately), not create-then-ping
-// as one atomic step.
+// pingTimeout. Split out since GetOrCreate's main path must insert the
+// client into the registry BEFORE pinging, not create-then-ping atomically.
 func pingClient(c *redis.Client, pingTimeout time.Duration) error {
 	ctx, cancel := context.WithTimeout(context.Background(), pingTimeout)
 	defer cancel()
@@ -238,16 +208,10 @@ func pingClient(c *redis.Client, pingTimeout time.Duration) error {
 }
 
 // redisSectionFields is the decode target for the "redis" table, pre-filled
-// with operator-facing defaults (host "localhost", port 6379, db 0, poolSize
-// 0 (go-redis default), connectionTimeout 5s, readTimeout/writeTimeout 3s)
-// before mapstructure.Decode overwrites only the keys actually present in
-// the config - the same weakly-typed decode (string durations, a numeric
-// string from a {{ env }} token, int/int64/float64 from a JSON-sourced
-// config path) every other config section in the repo goes through via
-// koanf/mapstructure; see gateway-runtime/policy-engine's
-// internal/config.Load. sdk/core otherwise has no koanf dependency, so this
-// package decodes the raw map directly with mapstructure rather than pulling
-// in koanf's file/merge machinery just for this one section.
+// with defaults before mapstructure.Decode overwrites only the keys present
+// in the config - the same weakly-typed decode every other config section
+// goes through via koanf/mapstructure (see policy-engine's
+// internal/config.Load), just without pulling koanf itself into sdk/core.
 type redisSectionFields struct {
 	Host              string        `mapstructure:"host"`
 	Port              int           `mapstructure:"port"`
@@ -261,10 +225,9 @@ type redisSectionFields struct {
 }
 
 // resolveOptionsFromConfig extracts *redis.Options from raw["redis"] - a
-// top-level section, sibling to "router"/"analytics"/etc in the gateway's
-// complete config tree, not nested under "policy_configurations" (this is
+// top-level section, not nested under "policy_configurations" (this is
 // gateway-wide infrastructure, not a per-policy setting). Returns (nil, nil)
-// - not an error - when raw has no "redis" key at all.
+// when raw has no "redis" key at all.
 func resolveOptionsFromConfig(raw map[string]interface{}) (*redis.Options, error) {
 	section, ok := raw["redis"]
 	if !ok || section == nil {
@@ -310,11 +273,9 @@ func resolveOptionsFromConfig(raw map[string]interface{}) (*redis.Options, error
 }
 
 // rejectNonIntegralFloatHookFunc runs before mapstructure's own weakly-typed
-// float->int conversion (int64(dataVal.Float()), reached for e.g. a
-// JSON-sourced "port"/"db"/"pool_size" value decoded as float64) - that
-// conversion is undefined/lossy for NaN, +-Inf, a fractional value, or a
-// magnitude outside the int range, so reject those here instead of letting
-// them silently truncate into a bogus port/db/pool size.
+// float->int conversion, which is undefined/lossy for NaN, +-Inf, a
+// fractional value, or an out-of-range magnitude - reject those instead of
+// letting them silently truncate into a bogus port/db/pool size.
 func rejectNonIntegralFloatHookFunc(_, to reflect.Kind, data interface{}) (interface{}, error) {
 	if to != reflect.Int {
 		return data, nil
@@ -333,4 +294,89 @@ func rejectNonIntegralFloatHookFunc(_, to reflect.Kind, data interface{}) (inter
 		return nil, fmt.Errorf("value %v out of range for int", f)
 	}
 	return data, nil
+}
+
+// ExtractOverrideFromParams reads systemParameters.redis.* from a policy's
+// own params into a *redis.Options for that connection. Returns nil when
+// redis.host is absent - unlike other fields, host has no default, or the
+// gateway-wide fallback (Resolve/Shared) would never trigger. A malformed
+// field silently falls back to its default rather than erroring, unlike
+// resolveOptionsFromConfig's stricter decode of operator config. Dotted-key
+// lookups tolerate both a flattened key (params["redis.host"]) and a nested
+// map (params["redis"]["host"]).
+func ExtractOverrideFromParams(params map[string]interface{}) *redis.Options {
+	host := paramString(params, "redis.host", "")
+	if host == "" {
+		return nil
+	}
+	return &redis.Options{
+		Addr:         net.JoinHostPort(host, strconv.Itoa(paramInt(params, "redis.port", 6379))),
+		Username:     paramString(params, "redis.username", ""),
+		Password:     paramString(params, "redis.password", ""),
+		DB:           paramInt(params, "redis.db", 0),
+		DialTimeout:  paramDuration(params, "redis.connectionTimeout", 5*time.Second),
+		ReadTimeout:  paramDuration(params, "redis.readTimeout", 3*time.Second),
+		WriteTimeout: paramDuration(params, "redis.writeTimeout", 3*time.Second),
+		PoolSize:     paramInt(params, "redis.poolSize", 0),
+	}
+}
+
+// paramLookup resolves a dotted key ("redis.host") against params, tolerating
+// either a flattened key (params["redis.host"]) or nested maps
+// (params["redis"]["host"]).
+func paramLookup(params map[string]interface{}, dottedKey string) (interface{}, bool) {
+	if v, ok := params[dottedKey]; ok {
+		return v, true
+	}
+	var cur interface{} = params
+	for _, part := range strings.Split(dottedKey, ".") {
+		m, ok := cur.(map[string]interface{})
+		if !ok {
+			return nil, false
+		}
+		v, ok := m[part]
+		if !ok {
+			return nil, false
+		}
+		cur = v
+	}
+	return cur, true
+}
+
+func paramString(params map[string]interface{}, dottedKey, def string) string {
+	if v, ok := paramLookup(params, dottedKey); ok {
+		if s, ok := v.(string); ok && strings.TrimSpace(s) != "" {
+			return strings.TrimSpace(s)
+		}
+	}
+	return def
+}
+
+func paramInt(params map[string]interface{}, dottedKey string, def int) int {
+	if v, ok := paramLookup(params, dottedKey); ok {
+		switch n := v.(type) {
+		case int:
+			return n
+		case int64:
+			return int(n)
+		case float64:
+			return int(n)
+		case string:
+			if parsed, err := strconv.Atoi(strings.TrimSpace(n)); err == nil {
+				return parsed
+			}
+		}
+	}
+	return def
+}
+
+func paramDuration(params map[string]interface{}, dottedKey string, def time.Duration) time.Duration {
+	if v, ok := paramLookup(params, dottedKey); ok {
+		if s, ok := v.(string); ok {
+			if d, err := time.ParseDuration(strings.TrimSpace(s)); err == nil {
+				return d
+			}
+		}
+	}
+	return def
 }
