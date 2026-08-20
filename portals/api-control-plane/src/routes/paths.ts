@@ -34,6 +34,18 @@ export const routes = {
     `/organizations/${orgHandle}/gateways/new`,
   gateway: (orgHandle = ':orgHandle', gatewayId = ':gatewayId') =>
     `/organizations/${orgHandle}/gateways/${gatewayId}`,
+  apiPortal: (orgHandle = ':orgHandle') =>
+    `/organizations/${orgHandle}/api-portal`,
+  newApiPortal: (orgHandle = ':orgHandle') =>
+    `/organizations/${orgHandle}/api-portal/new`,
+  apiPortalDetail: (
+    orgHandle = ':orgHandle',
+    apiPortalId = ':apiPortalId'
+  ) => `/organizations/${orgHandle}/api-portal/${apiPortalId}`,
+  apiPortalEdit: (
+    orgHandle = ':orgHandle',
+    apiPortalId = ':apiPortalId'
+  ) => `/organizations/${orgHandle}/api-portal/${apiPortalId}/edit`,
   projectHome: (orgHandle = ':orgHandle', projectHandler = ':projectHandler') =>
     `/organizations/${orgHandle}/projects/${projectHandler}/home`,
   apis: (orgHandle = ':orgHandle', projectHandler = ':projectHandler') =>

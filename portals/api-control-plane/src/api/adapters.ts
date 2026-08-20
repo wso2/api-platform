@@ -22,6 +22,11 @@ import type {
   ApiKind,
   ApiStatus,
   Deployment,
+  ApiPortal,
+  ApiPortalAuthConfig,
+  ApiPortalAuthType,
+  ApiPortalMetadata,
+  ApiPortalWorkflowStatus,
   Environment,
   Gateway,
   GatewayDeployment,
@@ -295,6 +300,70 @@ export const toGateway = (value: unknown): Gateway => {
     organizationId: asOptionalString(source.organizationId),
     createdAt: asOptionalString(source.createdAt),
     updatedAt: asOptionalString(source.updatedAt),
+  };
+};
+
+const API_PORTAL_AUTH_TYPES: ApiPortalAuthType[] = ['local', 'oauth2'];
+
+const asApiPortalAuthType = (value: unknown): ApiPortalAuthType => {
+  const normalized = asString(value).toLowerCase();
+  return API_PORTAL_AUTH_TYPES.includes(normalized as ApiPortalAuthType)
+    ? (normalized as ApiPortalAuthType)
+    : API_PORTAL_AUTH_TYPES[0];
+};
+
+const API_PORTAL_WORKFLOW_STATUSES: ApiPortalWorkflowStatus[] = [
+  'pending',
+  'active',
+  'failed',
+];
+
+const asApiPortalWorkflowStatus = (value: unknown): ApiPortalWorkflowStatus => {
+  const normalized = asString(value).toLowerCase();
+  return API_PORTAL_WORKFLOW_STATUSES.includes(
+    normalized as ApiPortalWorkflowStatus
+  )
+    ? (normalized as ApiPortalWorkflowStatus)
+    : API_PORTAL_WORKFLOW_STATUSES[0];
+};
+
+const toApiPortalAuthConfig = (
+  value: unknown
+): ApiPortalAuthConfig | undefined => {
+  const source = asRecord(value);
+  const stsTokenUrl = asOptionalString(source.stsTokenUrl);
+  const clientId = asOptionalString(source.clientId);
+  if (!stsTokenUrl && !clientId) return undefined;
+  return { stsTokenUrl, clientId };
+};
+
+const toApiPortalMetadata = (
+  value: unknown
+): ApiPortalMetadata | undefined => {
+  // Reject arrays explicitly — `typeof [] === 'object'` would otherwise
+  // let an array through, and its numeric keys / `length` would then be
+  // read as metadata properties by downstream consumers.
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return undefined;
+  const source = value as ApiPortalMetadata;
+  return Object.keys(source).length > 0 ? source : undefined;
+};
+
+export const toApiPortal = (value: unknown): ApiPortal => {
+  const source = asRecord(value);
+  const name = asString(source.name, 'unknown-api-portal');
+  return {
+    id: asString(source.id, name),
+    name,
+    handle: asString(source.handle, name),
+    description: asOptionalString(source.description),
+    url: asOptionalString(source.url),
+    workflowStatus: asApiPortalWorkflowStatus(source.workflowStatus),
+    authType: asApiPortalAuthType(source.authType),
+    authConfig: toApiPortalAuthConfig(source.authConfig),
+    metadata: toApiPortalMetadata(source.metadata),
+    createdAt: asOptionalString(source.createdAt),
+    updatedAt: asOptionalString(source.updatedAt),
+    organizationId: asOptionalString(source.organizationId),
   };
 };
 

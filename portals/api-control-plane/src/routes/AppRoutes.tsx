@@ -28,6 +28,7 @@ import {
   SessionExpiredPage,
   UnauthorizedPage,
 } from '../features/system/SystemPages';
+import { useMockApi } from '../api/shared/apiClientUtils';
 import { ConsoleScopeProvider } from '../scope/ConsoleScopeProvider';
 import AppLayout from '../layouts/AppLayout';
 import {
@@ -62,6 +63,26 @@ const GatewayCreatePage = lazy(() =>
 const GatewayDetailPage = lazy(() =>
   import('../features/gateways/GatewayDetailPage').then((m) => ({
     default: m.GatewayDetailPage,
+  }))
+);
+const ApiPortalPage = lazy(() =>
+  import('../features/apiportal/ApiPortalPage').then((m) => ({
+    default: m.ApiPortalPage,
+  }))
+);
+const ApiPortalCreatePage = lazy(() =>
+  import('../features/apiportal/ApiPortalCreatePage').then((m) => ({
+    default: m.ApiPortalCreatePage,
+  }))
+);
+const ApiPortalDetailPage = lazy(() =>
+  import('../features/apiportal/ApiPortalDetailPage').then((m) => ({
+    default: m.ApiPortalDetailPage,
+  }))
+);
+const ApiPortalEditPage = lazy(() =>
+  import('../features/apiportal/ApiPortalEditPage').then((m) => ({
+    default: m.ApiPortalEditPage,
   }))
 );
 const ProjectHomePage = lazy(() =>
@@ -144,6 +165,23 @@ export function AppRoutes({ extensions = [] }: AppRoutesProps) {
           <Route path={routes.gateways()} element={<GatewaysPage />} />
           <Route path={routes.newGateway()} element={<GatewayCreatePage />} />
           <Route path={routes.gateway()} element={<GatewayDetailPage />} />
+          {useMockApi() && (
+            <>
+              <Route path={routes.apiPortal()} element={<ApiPortalPage />} />
+              <Route
+                path={routes.newApiPortal()}
+                element={<ApiPortalCreatePage />}
+              />
+              <Route
+                path={routes.apiPortalDetail()}
+                element={<ApiPortalDetailPage />}
+              />
+              <Route
+                path={routes.apiPortalEdit()}
+                element={<ApiPortalEditPage />}
+              />
+            </>
+          )}
           <Route path={routes.projectHome()} element={<ProjectHomePage />} />
           <Route path={routes.apis()} element={<ApiListPage />} />
           <Route path={routes.newApi()} element={<ApiCreatePage />} />

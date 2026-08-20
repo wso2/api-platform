@@ -128,7 +128,7 @@ describe('OverviewTab', () => {
     expect(screen.getByRole('button', { name: 'Deploy' })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Test' })).toBeInTheDocument();
     expect(
-      screen.getByRole('button', { name: 'Publish to Devportal' })
+      screen.getByRole('button', { name: 'Publish to API Portal' })
     ).toBeInTheDocument();
   });
 

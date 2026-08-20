@@ -20,6 +20,7 @@ import type {
   ApiProxy,
   Api,
   Deployment,
+  ApiPortal,
   Environment,
   Gateway,
   Organization,
@@ -124,6 +125,8 @@ export const gateways: Gateway[] = [
     updatedAt: '2026-06-12T08:00:00.000Z',
   },
 ];
+
+export const apiPortals: ApiPortal[] = [];
 
 export const apiProxies: ApiProxy[] = [
   {

@@ -25,11 +25,14 @@ import type {
   ApiDetail,
   CreateApiInput,
   CreateApiKeyInput,
+  CreateApiPortalInput,
   CreateGatewayInput,
   CreateProjectInput,
   DeployApiInput,
+  ApiPortal,
   GatewayDeployment,
   Project,
+  UpdateApiPortalInput,
 } from '../../types/domain';
 import { useApiClient } from '../ApiClientProvider';
 
@@ -58,6 +61,9 @@ export const queryKeys = {
   gateways: (orgHandle: string) => ['gateways', orgHandle] as const,
   gateway: (orgHandle: string, gatewayId: string) =>
     ['gateway', orgHandle, gatewayId] as const,
+  apiPortals: (orgHandle: string) => ['apiPortals', orgHandle] as const,
+  apiPortal: (orgHandle: string, apiPortalId: string) =>
+    ['apiPortal', orgHandle, apiPortalId] as const,
 };
 
 /**
@@ -529,6 +535,97 @@ export const useCreateGatewayToken = (
   const { orgHandle = '' } = useScopeArgs(orgHandleArg);
   return useMutation({
     mutationFn: () => client.createGatewayToken(orgHandle, gatewayId),
+  });
+};
+
+export const useApiPortals = (orgHandleArg?: string) => {
+  const client = useApiClient();
+  const { orgHandle } = useScopeArgs(orgHandleArg);
+  return useQuery({
+    queryKey: queryKeys.apiPortals(orgHandle || ''),
+    queryFn: () => {
+      if (!orgHandle) {
+        throw new Error('orgHandle is required to list API Portals');
+      }
+      return client.listApiPortals(orgHandle);
+    },
+    enabled: !!orgHandle,
+  });
+};
+
+export const useApiPortal = (orgHandleArg?: string, apiPortalId?: string) => {
+  const client = useApiClient();
+  const { orgHandle } = useScopeArgs(orgHandleArg);
+  return useQuery({
+    queryKey: queryKeys.apiPortal(orgHandle || '', apiPortalId || ''),
+    queryFn: () => {
+      if (!orgHandle) {
+        throw new Error('orgHandle is required to fetch an API Portal');
+      }
+      if (!apiPortalId) {
+        throw new Error('apiPortalId is required to fetch an API Portal');
+      }
+      return client.getApiPortal(orgHandle, apiPortalId);
+    },
+    enabled: !!orgHandle && !!apiPortalId,
+  });
+};
+
+export const useCreateApiPortal = (orgHandleArg?: string) => {
+  const client = useApiClient();
+  const queryClient = useQueryClient();
+  const { orgHandle = '' } = useScopeArgs(orgHandleArg);
+  return useMutation({
+    mutationFn: (input: CreateApiPortalInput) =>
+      client.createApiPortal(orgHandle, input),
+    onSuccess: () => {
+      queryClient.invalidateQueries({
+        queryKey: queryKeys.apiPortals(orgHandle),
+      });
+    },
+  });
+};
+
+export const useUpdateApiPortal = (
+  orgHandleArg?: string,
+  apiPortalId = ''
+) => {
+  const client = useApiClient();
+  const queryClient = useQueryClient();
+  const { orgHandle = '' } = useScopeArgs(orgHandleArg);
+  return useMutation({
+    mutationFn: (input: UpdateApiPortalInput) =>
+      client.updateApiPortal(orgHandle, apiPortalId, input),
+    onSuccess: (updated) => {
+      // Write the response into the cache synchronously so callers reading
+      // this query (e.g. a dirty-state check) see the saved values
+      // immediately, rather than waiting on the background refetch below.
+      queryClient.setQueryData(
+        queryKeys.apiPortal(orgHandle, updated.id),
+        updated
+      );
+      queryClient.invalidateQueries({
+        queryKey: queryKeys.apiPortal(orgHandle, updated.id),
+      });
+      queryClient.invalidateQueries({
+        queryKey: queryKeys.apiPortals(orgHandle),
+      });
+    },
+  });
+};
+
+export const useDeleteApiPortal = (orgHandleArg?: string) => {
+  const client = useApiClient();
+  const queryClient = useQueryClient();
+  const { orgHandle = '' } = useScopeArgs(orgHandleArg);
+  return useMutation({
+    mutationFn: (apiPortal: ApiPortal) =>
+      client.deleteApiPortal(orgHandle, apiPortal.id),
+    onSuccess: () => {
+      queryClient.invalidateQueries({
+        queryKey: queryKeys.apiPortals(orgHandle),
+      });
+    },
   });
 };
 

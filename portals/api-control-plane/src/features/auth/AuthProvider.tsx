@@ -18,6 +18,7 @@
 
 import { ReactNode, useCallback, useContext, useEffect, useMemo, useState } from 'react';
 
+import { useMockApi } from '../../api/shared/apiClientUtils';
 import { runtimeConfig } from '../../config/runtime';
 import { CSRF_HEADER, CSRF_HEADER_VALUE } from './authConstants';
 import { AuthStateContext } from './AuthStateContext';
@@ -28,6 +29,16 @@ const SESSION_URL = '/api/session';
 const LOGIN_URL = '/api/login';
 const LOGOUT_URL = '/api/logout';
 const OIDC_LOGIN_URL = '/api/auth/login';
+
+// Synthetic session used in mock-mode (VITE_USE_MOCK_API=true). The SPA never
+// contacts a real BFF in this mode, so the AuthProvider hydrates from this
+// object rather than /api/session. Local UI review only — real deployments
+// leave VITE_USE_MOCK_API unset.
+const MOCK_USER: AuthUser = {
+  name: 'Mock Admin',
+  email: 'admin@example.dev',
+  org: { id: 'org-1', name: 'API Platform Demo', handle: 'api-platform-demo' },
+};
 
 type SessionResponse = {
   authenticated: boolean;
@@ -66,6 +77,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [error, setError] = useState<string>();
 
   const hydrate = useCallback(async () => {
+    if (useMockApi()) {
+      setUser(MOCK_USER);
+      setStatus('authenticated');
+      return;
+    }
     try {
       const response = await fetch(SESSION_URL, { credentials: 'same-origin' });
       const body = (await response.json().catch(() => ({}))) as SessionResponse;
