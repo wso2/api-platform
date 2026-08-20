@@ -36,18 +36,18 @@ import (
 type contextKey string
 
 const (
-	keyUserID        contextKey = "user_id"
-	keyUsername      contextKey = "username"
-	keyEmail         contextKey = "email"
-	keyFirstName     contextKey = "first_name"
-	keyLastName      contextKey = "last_name"
-	keyOrganization  contextKey = "organization"
-	keyOrgName       contextKey = "org_name"
-	keyOrgHandle     contextKey = "org_handle"
-	keyScope         contextKey = "scope"
-	keyAudience      contextKey = "audience"
-	keyClaims        contextKey = "claims"
-	keyPlatformRoles contextKey = "platform_roles"
+	keyUserID       contextKey = "user_id"
+	keyUsername     contextKey = "username"
+	keyEmail        contextKey = "email"
+	keyFirstName    contextKey = "first_name"
+	keyLastName     contextKey = "last_name"
+	keyOrganization contextKey = "organization"
+	keyOrgName      contextKey = "org_name"
+	keyOrgHandle    contextKey = "org_handle"
+	keyScope        contextKey = "scope"
+	keyAudience     contextKey = "audience"
+	keyClaims       contextKey = "claims"
+	keyRoles        contextKey = "roles"
 )
 
 // CustomClaims represents the JWT claims structure used in local JWT (non-IDP) mode.
@@ -79,7 +79,7 @@ type AuthConfig struct {
 }
 
 // ClaimMappings holds the JWT claim names used to extract identity values,
-// shared by the local-JWT (external_token/file) and IDP auth paths.
+// shared by the local-JWT (internal_token/file) and IDP auth paths.
 type ClaimMappings struct {
 	OrganizationClaim string
 	OrgNameClaim      string
@@ -241,7 +241,7 @@ func validateLocalJWT(r *http.Request, tokenString string, config AuthConfig) (*
 	ctx = context.WithValue(ctx, keyScope, claimsObj.Scope)
 	ctx = context.WithValue(ctx, keyAudience, claimsObj.Audience)
 	ctx = context.WithValue(ctx, keyClaims, claimsObj)
-	ctx = context.WithValue(ctx, keyPlatformRoles, platformRoles)
+	ctx = context.WithValue(ctx, keyRoles, platformRoles)
 	return r.WithContext(ctx), nil
 }
 
@@ -316,7 +316,7 @@ func PlatformClaimsMiddleware(claimNames ClaimMappings) func(http.Handler) http.
 			ctx = context.WithValue(ctx, keyScope, scope)
 			ctx = context.WithValue(ctx, keyAudience, aud)
 			ctx = context.WithValue(ctx, keyClaims, claimsObj)
-			ctx = context.WithValue(ctx, keyPlatformRoles, platformRoles)
+			ctx = context.WithValue(ctx, keyRoles, platformRoles)
 
 			next.ServeHTTP(w, r.WithContext(ctx))
 		})
@@ -575,7 +575,7 @@ func GetClaimsFromRequest(r *http.Request) (*CustomClaims, bool) {
 
 // GetPlatformRolesFromRequest extracts platform roles from the request context.
 func GetPlatformRolesFromRequest(r *http.Request) ([]string, bool) {
-	roles, ok := r.Context().Value(keyPlatformRoles).([]string)
+	roles, ok := r.Context().Value(keyRoles).([]string)
 	return roles, ok
 }
 

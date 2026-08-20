@@ -1,0 +1,21 @@
+{{#pageHead}}
+  <link rel='stylesheet' href='{{basePath}}/technical-styles/application.css' />
+  <link rel="stylesheet" href="{{basePath}}/technical-styles/oauth2-key-generation.css" />
+  <link rel="stylesheet" href="{{basePath}}/technical-styles/api-keys-page.css" />
+{{/pageHead}}
+{{#pageScripts}}
+  <script src='{{basePath}}/technical-scripts/subscription.js' defer></script>
+  <script src="{{basePath}}/technical-scripts/oauth2-key-generation.js" defer></script>
+  <script src="{{basePath}}/technical-scripts/edit-application-form.js" defer></script>
+  <script src="{{basePath}}/technical-scripts/subscription-modal.js" defer></script>
+  <script src="{{basePath}}/technical-scripts/application-api-keys.js" defer></script>
+{{/pageScripts}}
+<div class="page-container">
+{{> overview }}
+{{> manage-keys }}
+{{> keys-token }}
+{{> keys-instructions }}
+{{> keys-generate-token-prompt }}
+{{> api-keys }}
+{{> alert }}
+</div>

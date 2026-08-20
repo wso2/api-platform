@@ -76,10 +76,10 @@ e2e-deps: ## Install Cypress dependencies for local E2E runs
 	npm install
 
 e2e-test: ## Run Cypress headlessly against a locally running docker compose stack
-	CYPRESS_BASE_URL=https://host.docker.internal:9643 docker run --rm --add-host=host.docker.internal:host-gateway -v "$$(pwd):/e2e" -w /e2e -e CYPRESS_BASE_URL cypress/included:13.17.0 cypress run --headless --browser electron --config-file cypress.config.js
+	CYPRESS_BASE_URL=https://host.docker.internal:9643/ai-workspace docker run --rm --add-host=host.docker.internal:host-gateway -v "$$(pwd):/e2e" -w /e2e -e CYPRESS_BASE_URL cypress/included:13.17.0 cypress run --headless --browser electron --config-file cypress.config.js
 
 e2e-open: ## Open Cypress UI against a locally running docker compose stack
-	CYPRESS_BASE_URL=https://localhost:9643 npx cypress open --e2e --config-file cypress.config.js
+	CYPRESS_BASE_URL=https://localhost:9643/ai-workspace npx cypress open --e2e --config-file cypress.config.js
 
 e2e-ci: ## Run AI Workspace E2E against a local quickstart stack
 	@set -euo pipefail; \
@@ -211,29 +211,29 @@ DIST_ZIP      := target/$(DIST_NAME).zip
 # tag "platform-api/v".
 PLATFORM_API_VERSION ?= $(shell v=$$(sed 's/-SNAPSHOT//' ../../platform-api/VERSION 2>/dev/null); echo "$${v:-0.0.0}")
 PLATFORM_API_TAG := platform-api/v$(PLATFORM_API_VERSION)
-# Version used to pin the optional developer-portal image (the profile-gated
+# Version used to pin the optional API Portal image (the profile-gated
 # service in docker-compose.yaml). Its config is not merged into the unified
 # config.toml — the profile is opt-in and self-served (see README) — so only the
 # image tag is pinned here for a reproducible release.
 #
-# Supplied explicitly when releasing (`make dist DEVPORTAL_VERSION=1.0.0`, driven
-# by the release workflow's developer_portal_version input) so the zip pins a
-# *released* developer-portal image rather than whatever the working tree happens
+# Supplied explicitly when releasing (`make dist API_PORTAL_VERSION=1.0.0`, driven
+# by the release workflow's api_portal_version input) so the zip pins a
+# *released* API Portal image rather than whatever the working tree happens
 # to carry. For local builds it falls back to the sibling VERSION file. There is
 # deliberately no hardcoded version fallback — `dist` fails below if this resolves
 # to empty, so a release can never silently ship a placeholder tag.
-DEVPORTAL_VERSION ?= $(shell sed 's/-SNAPSHOT//' ../developer-portal/VERSION 2>/dev/null | tr -d '[:space:]')
-DEVPORTAL_TAG     := developer-portal/v$(DEVPORTAL_VERSION)
+API_PORTAL_VERSION ?= $(shell sed 's/-SNAPSHOT//' ../api-portal/VERSION 2>/dev/null | tr -d '[:space:]')
+API_PORTAL_TAG     := api-portal/v$(API_PORTAL_VERSION)
 
 # As with PLATFORM_API_VERSION: an explicitly supplied version means "bundle that
-# release", so the [developer_portal] template appended to config-template.toml is
+# release", so the [api_portal] template appended to config-template.toml is
 # read from the tag rather than the working tree — otherwise the zip would document
 # settings from unreleased branch state against a released image.
-ifeq ($(origin DEVPORTAL_VERSION),command line)
-DEVPORTAL_FROM_TAG := true
+ifeq ($(origin API_PORTAL_VERSION),command line)
+API_PORTAL_FROM_TAG := true
 endif
-ifeq ($(origin DEVPORTAL_VERSION),environment)
-DEVPORTAL_FROM_TAG := true
+ifeq ($(origin API_PORTAL_VERSION),environment)
+API_PORTAL_FROM_TAG := true
 endif
 
 # When PLATFORM_API_VERSION is supplied explicitly (e.g. `make dist PLATFORM_API_VERSION=0.10.0`),
@@ -273,7 +273,7 @@ endef
 # Merge an AI Workspace config and a Platform API config into one unified
 # multi-component config file: $(call merge_config,<aiw-toml>,<cp-toml>,<out>).
 # The components share no top-level keys ([ai_workspace.*] vs [platform_api.*],
-# and [developer_portal.*] when append_section adds it below), so the merge is a
+# and [api_portal.*] when append_section adds it below), so the merge is a
 # banner-separated concatenation — each service reads only its own root table and
 # ignores the other sections and their tokens.
 define merge_config
@@ -315,13 +315,13 @@ endef
 
 .PHONY: dist clean-dist
 dist: clean-dist ## Build standalone AI Workspace + Platform API distribution zip
-	@if [ -z "$(strip $(DEVPORTAL_VERSION))" ]; then \
-		echo "Error: DEVPORTAL_VERSION is empty — the optional developer-portal image tag cannot be resolved." >&2; \
-		echo "Pass it explicitly (make dist DEVPORTAL_VERSION=1.0.0) or ensure ../developer-portal/VERSION exists." >&2; \
+	@if [ -z "$(strip $(API_PORTAL_VERSION))" ]; then \
+		echo "Error: API_PORTAL_VERSION is empty — the optional API Portal image tag cannot be resolved." >&2; \
+		echo "Pass it explicitly (make dist API_PORTAL_VERSION=1.0.0) or ensure ../api-portal/VERSION exists." >&2; \
 		exit 1; \
 	fi
 	@echo "Building distribution $(DIST_NAME)..."
-	@echo "  optional developer-portal image pinned to $(DOCKER_REGISTRY)/developer-portal:$(DEVPORTAL_VERSION)"
+	@echo "  optional API Portal image pinned to $(DOCKER_REGISTRY)/api-portal:$(API_PORTAL_VERSION)"
 	@mkdir -p $(DIST_DIR)/configs $(DIST_DIR)/scripts $(DIST_DIR)/resources/certificates $(DIST_DIR)/resources/platform-api/db-scripts
 # Stage platform-api configs + db-scripts (from tag or working tree) for the merge below.
 ifeq ($(PLATFORM_API_FROM_TAG),true)
@@ -341,13 +341,13 @@ ifeq ($(PLATFORM_API_FROM_TAG),true)
 		> $(DIST_DIR)/configs/.pa-config-template.toml
 	@git -C ../.. show "$(PLATFORM_API_TAG):platform-api/config/config.toml" \
 		> $(DIST_DIR)/configs/.pa-config.toml
-	@git -C ../.. show "$(PLATFORM_API_TAG):platform-api/resources/roles.yaml" \
-		> $(DIST_DIR)/resources/roles.yaml
+	@git -C ../.. show "$(PLATFORM_API_TAG):platform-api/resources/role-to-scope-mapping.yaml" \
+		> $(DIST_DIR)/resources/role-to-scope-mapping.yaml
 else
 	@cp ../../platform-api/internal/database/schema.*.sql $(DIST_DIR)/resources/platform-api/db-scripts/
 	@cp ../../platform-api/config/config-template.toml $(DIST_DIR)/configs/.pa-config-template.toml
 	@cp ../../platform-api/config/config.toml $(DIST_DIR)/configs/.pa-config.toml
-	@cp ../../platform-api/resources/roles.yaml $(DIST_DIR)/resources/roles.yaml
+	@cp ../../platform-api/resources/role-to-scope-mapping.yaml $(DIST_DIR)/resources/role-to-scope-mapping.yaml
 endif
 # Require a [platform_api] root table — pre-unified configs would merge into a broken file.
 	@if ! grep -q '^\[platform_api' $(DIST_DIR)/configs/.pa-config.toml; then \
@@ -358,13 +358,13 @@ endif
 # Merge ai-workspace + platform-api into one config.toml — each service reads only its own root table.
 	$(call merge_config,configs/config.toml,$(DIST_DIR)/configs/.pa-config.toml,$(DIST_DIR)/configs/config.toml)
 	$(call merge_config,configs/config-template.toml,$(DIST_DIR)/configs/.pa-config-template.toml,$(DIST_DIR)/configs/config-template.toml)
-# Developer Portal is opt-in: append its template to config-template.toml only, not the active config.
-ifeq ($(DEVPORTAL_FROM_TAG),true)
-	$(call stage_optional_template,$(DEVPORTAL_TAG),portals/developer-portal/configs/config-template.toml,../developer-portal/configs/config-template.toml,$(DIST_DIR)/configs/.dp-config-template.toml)
+# The API Portal is opt-in: append its template to config-template.toml only, not the active config.
+ifeq ($(API_PORTAL_FROM_TAG),true)
+	$(call stage_optional_template,$(API_PORTAL_TAG),portals/api-portal/configs/config-template.toml,../api-portal/configs/config-template.toml,$(DIST_DIR)/configs/.dp-config-template.toml)
 else
-	@cp ../developer-portal/configs/config-template.toml $(DIST_DIR)/configs/.dp-config-template.toml
+	@cp ../api-portal/configs/config-template.toml $(DIST_DIR)/configs/.dp-config-template.toml
 endif
-	$(call append_section,DEVELOPER PORTAL (optional),$(DIST_DIR)/configs/.dp-config-template.toml,$(DIST_DIR)/configs/config-template.toml)
+	$(call append_section,API PORTAL (optional),$(DIST_DIR)/configs/.dp-config-template.toml,$(DIST_DIR)/configs/config-template.toml)
 	@rm -f $(DIST_DIR)/configs/.pa-config.toml $(DIST_DIR)/configs/.pa-config-template.toml $(DIST_DIR)/configs/.dp-config-template.toml
 	@printf '%s\n' \
 		'# Generated secrets — never commit these.' \
@@ -394,13 +394,14 @@ endif
 	    $(DIST_DIR)/scripts/setup.ps1
 	@rm -f $(DIST_DIR)/scripts/setup.ps1.bak
 # Point the platform-api mount at the merged config so both containers share one file.
-	@sed 's#\.\./\.\./platform-api/config/config\.toml:#./configs/config.toml:#' \
+	@sed -e 's#\.\./\.\./platform-api/config/config\.toml:#./configs/config.toml:#' \
+	     -e 's#\.\./\.\./platform-api/resources/role-to-scope-mapping\.yaml:#./resources/role-to-scope-mapping.yaml:#' \
 		docker-compose.yaml > $(DIST_DIR)/docker-compose.yaml
 	@cp distribution/README.md $(DIST_DIR)/README.md
 	@sed -i.bak -E \
 	    -e 's|^([[:space:]]*image:[[:space:]]*.*/ai-workspace):[^[:space:]]*|\1:$(DIST_VERSION)|' \
 	    -e 's|^([[:space:]]*image:[[:space:]]*.*/platform-api):[^[:space:]]*|\1:$(PLATFORM_API_VERSION)|' \
-	    -e 's|^([[:space:]]*image:[[:space:]]*.*/developer-portal):[^[:space:]]*|\1:$(DEVPORTAL_VERSION)|' \
+	    -e 's|^([[:space:]]*image:[[:space:]]*.*/api-portal):[^[:space:]]*|\1:$(API_PORTAL_VERSION)|' \
 	    $(DIST_DIR)/docker-compose.yaml
 	@rm -f $(DIST_DIR)/docker-compose.yaml.bak
 	@cd target && zip -rq $(DIST_NAME).zip $(DIST_NAME)

@@ -47,11 +47,13 @@ import { Copy, Trash2 } from '@wso2/oxygen-ui-icons-react';
 import { FormattedMessage } from 'react-intl';
 import { createLLMProviderAPIKey } from '../../../../apis/llmProviderApis';
 import type { Gateway } from '../../../../apis/gatewayTypes';
-import { PLATFORM_API_BASE_URL } from '../../../../config.env';
+import { PLATFORM_API_BASE_URL } from '../../../../paths';
 import { useAppShell } from '../../../../contexts/AppShellContext';
 import { useGatewayDeploy } from '../../../../contexts/GatewayDeployContext';
 import { useLLMProvider } from '../../../../contexts/llmProvider';
 import useAIWorkspaceSnackbar from '../../../../hooks/aiWorkspaceSnackbar';
+import { useAppAuth } from '../../../../contexts/AppAuthContext';
+import { NO_PERMISSION_TOOLTIP, SCOPES } from '../../../../auth/permissions';
 import type { UserAPIKey } from '../../../../utils/types';
 import { logger } from '../../../../utils/logger';
 import { getErrorMessage } from '../../../../utils/apiError';
@@ -106,6 +108,13 @@ export default function ServiceProviderDeploymentsCard({
     deployments,
   } = useGatewayDeploy();
   const showSnackbar = useAIWorkspaceSnackbar();
+  const { hasPermission } = useAppAuth();
+  const canCreateProviderApiKey = hasPermission(
+    SCOPES.LLM_PROVIDER_API_KEY_CREATE
+  );
+  const canDeleteProviderApiKey = hasPermission(
+    SCOPES.LLM_PROVIDER_API_KEY_DELETE
+  );
 
   const fetchedApiKeysProviderIdRef = useRef<string | null>(null);
   const fetchingApiKeysProviderIdRef = useRef<string | null>(null);
@@ -464,12 +473,17 @@ export default function ServiceProviderDeploymentsCard({
                     />
                   </Typography>
                 </Box>
-                <DisabledActionTooltip disabled={false}>
+                <DisabledActionTooltip
+                  disabled={!canCreateProviderApiKey}
+                  title={NO_PERMISSION_TOOLTIP}
+                >
                   <Button
                     variant="contained"
                     size="medium"
                     onClick={handleOpenApiKeyModal}
-                    disabled={gateways.length === 0}
+                    disabled={
+                      gateways.length === 0 || !canCreateProviderApiKey
+                    }
                   >
                     Generate API Key
                   </Button>
@@ -550,7 +564,9 @@ export default function ServiceProviderDeploymentsCard({
                           <ListingTable.Cell align="right">
                             <Tooltip
                               title={
-                                key.id
+                                !canDeleteProviderApiKey
+                                  ? NO_PERMISSION_TOOLTIP
+                                  : key.id
                                   ? 'Delete API key'
                                   : 'Unable to delete key without an identifier'
                               }
@@ -564,7 +580,11 @@ export default function ServiceProviderDeploymentsCard({
                                       key.id?.trim() || null
                                     )
                                   }
-                                  disabled={!key.id || isDeletingKey}
+                                  disabled={
+                                    !key.id ||
+                                    isDeletingKey ||
+                                    !canDeleteProviderApiKey
+                                  }
                                 >
                                   <Trash2 size={16} />
                                 </IconButton>

@@ -16,6 +16,8 @@
  * under the License.
  */
 
+import { appPathPattern } from '../../support/appPath';
+
 describe('AI Workspace - OpenAI provider and proxy lifecycle', () => {
   const suffix = Date.now().toString().slice(-8);
   const orgHandle = Cypress.env('ORG_HANDLE');
@@ -156,7 +158,7 @@ describe('AI Workspace - OpenAI provider and proxy lifecycle', () => {
     });
     cy.location('pathname', { timeout: 30000 }).should(
       'match',
-      new RegExp(`^/organizations/${orgHandle}/service-provider/(?!new$)[^/]+$`)
+      appPathPattern(`/organizations/${orgHandle}/service-provider/(?!new$)[^/]+$`)
     );
     cy.contains(providerName, { timeout: 30000 }).should('be.visible');
 

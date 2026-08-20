@@ -44,11 +44,11 @@ type world struct {
 
 	// Developer-portal scenario state (see steps_devportal_test.go). In that flow
 	// subToken/apiKey above are the credentials issued by the portal.
-	dpApiID string // the API's handle inside the developer portal
+	dpApiID string // the API's handle inside the API Portal
 
 	// Developer-portal credential-lifecycle state (see steps_devportal_lifecycle_test.go).
-	dpSubID      string // the subscription id (UUID) in the developer portal
-	dpKeyHandle  string // the API key's handle (its `id`) in the developer portal
+	dpSubID      string // the subscription id (UUID) in the API Portal
+	dpKeyHandle  string // the API key's handle (its `id`) in the API Portal
 	prevSubToken string // a superseded subscription token, kept for negative checks
 	plan2ID      string // a second subscription plan handle (for the plan-change check)
 

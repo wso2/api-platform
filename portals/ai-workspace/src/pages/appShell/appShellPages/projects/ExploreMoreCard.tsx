@@ -42,11 +42,11 @@ export default function ExploreMoreCard() {
       links: [
         {
           label: 'AI Workspace Getting Started Guide',
-          href: 'https://wso2.com/bijira/docs/ai-workspace/getting-started/',
+          href: 'https://wso2.com/api-platform/docs/next/ai-workspace/getting-started/',
         },
         {
           label: 'Set Up and Configure an AI Gateway',
-          href: 'https://wso2.com/bijira/docs/ai-workspace/ai-gateways/setting-up/',
+          href: 'https://wso2.com/api-platform/docs/next/ai-workspace/ai-gateways/setting-up/',
         },
       ],
     },
@@ -58,15 +58,15 @@ export default function ExploreMoreCard() {
       links: [
         {
           label: 'LLM Providers Overview',
-          href: 'https://wso2.com/bijira/docs/ai-workspace/llm-providers/overview/',
+          href: 'https://wso2.com/api-platform/docs/next/ai-workspace/llm-providers/overview/',
         },
         {
           label: 'Configure a New LLM Provider',
-          href: 'https://wso2.com/bijira/docs/ai-workspace/llm-providers/configure-provider/',
+          href: 'https://wso2.com/api-platform/docs/next/ai-workspace/llm-providers/configure-provider/',
         },
         {
           label: 'Manage Existing LLM Providers',
-          href: 'https://wso2.com/bijira/docs/ai-workspace/llm-providers/manage-provider/',
+          href: 'https://wso2.com/api-platform/docs/next/ai-workspace/llm-providers/manage-provider/',
         },
       ],
     },
@@ -77,15 +77,15 @@ export default function ExploreMoreCard() {
       links: [
         {
           label: 'App LLM Proxies Overview',
-          href: 'https://wso2.com/bijira/docs/ai-workspace/llm-proxies/overview/',
+          href: 'https://wso2.com/api-platform/docs/next/ai-workspace/llm-proxies/overview/',
         },
         {
           label: 'Create a New App LLM Proxy',
-          href: 'https://wso2.com/api-platform/docs/ai-workspace/llm-proxies/configure-proxy/',
+          href: 'https://wso2.com/api-platform/docs/next/ai-workspace/llm-proxies/configure-proxy/',
         },
         {
           label: 'Manage Existing App LLM Proxies',
-          href: 'https://wso2.com/bijira/docs/ai-workspace/llm-proxies/manage-proxy/',
+          href: 'https://wso2.com/api-platform/docs/next/ai-workspace/llm-proxies/manage-proxy/',
         },
       ],
     },

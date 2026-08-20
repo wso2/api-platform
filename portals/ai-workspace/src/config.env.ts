@@ -28,6 +28,9 @@ declare global {
 }
 
 import { getEnvOrDefault } from './utils/getEnvOrDefault';
+// Path prefixes are fixed contracts with the BFF, not configuration — see ./paths.
+import { BASE_PATH } from './paths';
+
 
 /*
  * Single line environment variable definitions with defaults using getEnvOrDefault utility to improve readability and maintainability.
@@ -68,6 +71,7 @@ export const OIDC_CLIENT_ID  = getEnvOrDefault('APIP_AIW_OIDC_CLIENT_ID', '');
 export const OIDC_SCOPE = getEnvOrDefault(
   'APIP_AIW_AUTH_OIDC_SCOPE',
   'openid profile email offline_access' +
+  ' ap:api_key:read' +
   ' ap:organization:read ap:organization:manage' +
   ' ap:project:read ap:project:create ap:project:update ap:project:delete ap:project:manage' +
   ' ap:application:read ap:application:create ap:application:update ap:application:delete ap:application:manage' +
@@ -77,14 +81,6 @@ export const OIDC_SCOPE = getEnvOrDefault(
   ' ap:gateway:token:read ap:gateway:token:create ap:gateway:token:delete ap:gateway:token:manage' +
   ' ap:gateway_custom_policy:read ap:gateway_custom_policy:create ap:gateway_custom_policy:delete ap:gateway_custom_policy:manage' +
   ' ap:gateway:artifact:read ap:gateway:manifest:read' +
-  ' ap:rest_api:read ap:rest_api:create ap:rest_api:update ap:rest_api:delete ap:rest_api:manage' +
-  ' ap:rest_api:gateway:read ap:rest_api:gateway:create ap:rest_api:gateway:manage' +
-  ' ap:rest_api:deployment:read ap:rest_api:deployment:create ap:rest_api:deployment:delete ap:rest_api:deployment:manage ap:rest_api:deployment:undeploy ap:rest_api:deployment:restore' +
-  ' ap:rest_api:api_key:read ap:rest_api:api_key:create ap:rest_api:api_key:update ap:rest_api:api_key:delete ap:rest_api:api_key:manage' +
-  ' ap:rest_api:publication:read ap:rest_api:publication:create ap:rest_api:publication:delete' +
-  ' ap:devportal:read ap:devportal:create ap:devportal:update ap:devportal:delete ap:devportal:manage' +
-  ' ap:subscription:read ap:subscription:create ap:subscription:update ap:subscription:delete ap:subscription:manage' +
-  ' ap:subscription_plan:read ap:subscription_plan:create ap:subscription_plan:update ap:subscription_plan:delete ap:subscription_plan:manage' +
   ' ap:llm_template:read ap:llm_template:create ap:llm_template:update ap:llm_template:delete ap:llm_template:manage' +
   ' ap:llm_provider:read ap:llm_provider:create ap:llm_provider:update ap:llm_provider:delete ap:llm_provider:manage' +
   ' ap:llm_provider:api_key:read ap:llm_provider:api_key:create ap:llm_provider:api_key:delete ap:llm_provider:api_key:manage' +
@@ -94,14 +90,6 @@ export const OIDC_SCOPE = getEnvOrDefault(
   ' ap:llm_proxy:deployment:read ap:llm_proxy:deployment:create ap:llm_proxy:deployment:delete ap:llm_proxy:deployment:manage ap:llm_proxy:deployment:undeploy ap:llm_proxy:deployment:restore' +
   ' ap:mcp_proxy:read ap:mcp_proxy:create ap:mcp_proxy:update ap:mcp_proxy:delete ap:mcp_proxy:manage' +
   ' ap:mcp_proxy:deployment:read ap:mcp_proxy:deployment:create ap:mcp_proxy:deployment:delete ap:mcp_proxy:deployment:manage ap:mcp_proxy:deployment:undeploy ap:mcp_proxy:deployment:restore' +
-  ' ap:websub_api:read ap:websub_api:create ap:websub_api:update ap:websub_api:delete ap:websub_api:manage' +
-  ' ap:websub_api:api_key:read ap:websub_api:api_key:create ap:websub_api:api_key:delete ap:websub_api:api_key:manage ap:websub_api:api_key:update' +
-  ' ap:websub_api:deployment:read ap:websub_api:deployment:create ap:websub_api:deployment:delete ap:websub_api:deployment:manage ap:websub_api:deployment:undeploy ap:websub_api:deployment:restore' +
-  ' ap:websub_api:publication:read ap:websub_api:publication:create ap:websub_api:publication:delete' +
-  ' ap:webbroker_api:read ap:webbroker_api:create ap:webbroker_api:update ap:webbroker_api:delete ap:webbroker_api:manage' +
-  ' ap:webbroker_api:api_key:read ap:webbroker_api:api_key:create ap:webbroker_api:api_key:delete ap:webbroker_api:api_key:manage ap:webbroker_api:api_key:update' +
-  ' ap:webbroker_api:deployment:read ap:webbroker_api:deployment:create ap:webbroker_api:deployment:delete ap:webbroker_api:deployment:manage ap:webbroker_api:deployment:undeploy ap:webbroker_api:deployment:restore' +
-  ' ap:webbroker_api:publication:read ap:webbroker_api:publication:create ap:webbroker_api:publication:delete' +
   ' ap:secret:read ap:secret:create ap:secret:update ap:secret:delete ap:secret:manage'
 );
 
@@ -111,11 +99,11 @@ export const OIDC_SCOPE = getEnvOrDefault(
 // listener/domain it's actually being served from (unlike a static config value).
 export const OIDC_REDIRECT_URI = getEnvOrDefault(
   'APIP_AIW_OIDC_REDIRECT_URI',
-  `${window.location.origin}/signin`
+  `${window.location.origin}${BASE_PATH}/signin`
 );
 export const OIDC_POST_LOGOUT_REDIRECT_URI = getEnvOrDefault(
   'APIP_AIW_OIDC_POST_LOGOUT_REDIRECT_URI',
-  `${window.location.origin}/login`
+  `${window.location.origin}${BASE_PATH}/login`
 );
 
 // API Base URLs
@@ -146,13 +134,32 @@ export const MOESIF_APP_API_KEY = getEnvOrDefault(
 export interface GatewayVersionEntry {
   version: string;
   latestVersion?: string;
+  /**
+   * Version segment of the distribution zip name, when the published asset name
+   * differs from the release tag (e.g. tag `v1.2.0` shipping
+   * `wso2apip-ai-gateway-1.2.0-rc.zip`). Defaults to `latestVersion` without
+   * its leading `v`.
+   */
+  distVersion?: string;
+  /**
+   * Version segment of the directory the zip unpacks into, when it differs from
+   * the zip name itself (e.g. `wso2apip-ai-gateway-1.2.0-rc.zip` extracting to
+   * `wso2apip-ai-gateway-1.2.0/`). Defaults to `distVersion`.
+   */
+  distFolderVersion?: string;
   channel: 'STS' | 'LTS';
 }
 
 export const PLATFORM_GATEWAY_VERSIONS = getEnvOrDefault<GatewayVersionEntry[]>(
   'APIP_AIW_GATEWAY_PLATFORM_GATEWAY_VERSIONS',
   [
-    { version: '1.2', latestVersion: 'v1.2.0-beta', channel: 'STS' }
+    {
+      version: '1.2',
+      latestVersion: 'v1.2.0',
+      distVersion: '1.2.0',
+      distFolderVersion: '1.2.0',
+      channel: 'LTS',
+    }
   ]
 );
 
@@ -163,34 +170,15 @@ export const POLICY_HUB_WEB_URL = getEnvOrDefault(
   'https://wso2.com/api-platform/policy-hub/'
 );
 
-// Platform API base URL. Defaults to a relative path routed same-origin through the
-// BFF reverse proxy (/proxy/* → Platform API) so the browser only ever talks to
-// the app origin, never holds a token, and never sees the platform-api self-signed cert.
-// Overrides should normally point at another BFF proxy base. Pointing this at the
-// Platform API directly bypasses the BFF session: the browser holds no token in this
-// BFF-only auth flow, so a direct override also requires a separate authentication
-// path to attach credentials to those calls.
-export const PLATFORM_API_BASE_URL = getEnvOrDefault(
-  'APIP_AIW_PLATFORM_API_BASE_URL',
-  '/proxy/api/v0.9'
-);
-
-// Base URL for BFF composite endpoints. These are handled directly by the BFF
-// (not forwarded to the Platform API) and provide server-side compensation logic
-// for multi-step operations such as secret creation + resource creation.
-export const BFF_COMPOSITE_BASE_URL = '/api/bff';
 
 // Control-plane host shown in gateway setup instructions (host:port).
-// Distinct from PLATFORM_API_BASE_URL which may be a relative nginx proxy path.
+// Distinct from the BFF proxy base URLs in ./paths — this is a host:port an
+// externally deployed gateway dials, not a path this browser calls.
 export const CONTROLPLANE_HOST = getEnvOrDefault(
   'APIP_AIW_GATEWAY_CONTROLPLANE_HOST',
   'host.docker.internal:9243'
 );
 
-export const PORTAL_API_BASE_URL = getEnvOrDefault(
-  'APIP_AIW_PORTAL_API_BASE_URL',
-  '/proxy/api/portal/v0.9'
-);
 
 // CSRF header sent on all BFF requests. Cross-site attackers cannot set a custom
 // header (CORS is closed), so its presence proves the request is same-origin.

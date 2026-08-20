@@ -56,7 +56,7 @@ type APIKeyCreatedEvent struct {
 	// ExpiresAt is the optional expiration time in ISO 8601 format
 	ExpiresAt *string `json:"expiresAt,omitempty"`
 
-	// Issuer identifies the developer portal that provisioned this key; nil (omitted) if not provided
+	// Issuer identifies the API Portal that provisioned this key; nil (omitted) if not provided
 	Issuer *string `json:"issuer,omitempty"`
 
 	// CreatedAt is the timestamp when the key was created on the platform API (RFC3339)
@@ -97,7 +97,7 @@ type APIKeyUpdatedEvent struct {
 	// ExpiresAt is the optional new expiration time in ISO 8601 format
 	ExpiresAt *string `json:"expiresAt,omitempty"`
 
-	// Issuer identifies the developer portal that provisioned this key; nil (omitted) if not provided
+	// Issuer identifies the API Portal that provisioned this key; nil (omitted) if not provided
 	Issuer *string `json:"issuer,omitempty"`
 
 	// UpdatedAt is the timestamp when the key was last updated on the platform API (RFC3339)

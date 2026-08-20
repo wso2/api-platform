@@ -51,7 +51,7 @@ import {
   buildSecretPlaceholder,
   generateSecretHandle,
 } from '../../../../apis/secretApis';
-import { PLATFORM_API_BASE_URL } from '../../../../config.env';
+import { PLATFORM_API_BASE_URL } from '../../../../paths';
 import { useProxies } from '../../../../contexts/proxy';
 import {
   LLMProviderProvider,
@@ -70,6 +70,8 @@ import type { CreateProxyRequest, LLMProvider } from '../../../../utils/types';
 import { useAIWorkspaceSnackbar } from '../../../../hooks/aiWorkspaceSnackbar';
 import { logger } from '../../../../utils/logger';
 import { getErrorMessage, getFieldErrors } from '../../../../utils/apiError';
+import { useAppAuth } from '../../../../contexts/AppAuthContext';
+import { NO_PERMISSION_TOOLTIP, SCOPES } from '../../../../auth/permissions';
 
 type FormState = {
   name: string;
@@ -128,6 +130,15 @@ function LLMProxyNewContent({
   const navigate = useNavigate();
   const { createProxy } = useProxies();
   const showSnackbar = useAIWorkspaceSnackbar();
+  const { hasPermission } = useAppAuth();
+  const canCreateProxy = hasPermission(SCOPES.LLM_PROXY_CREATE);
+  // Generating a provider key is a distinct grant from creating a proxy: the
+  // API-key operations accept only ap:llm_provider:api_key:{create,manage}, so
+  // a user who may create proxies can still be unable to mint the key. They can
+  // always paste one into the manual field instead.
+  const canGenerateProviderApiKey = hasPermission(
+    SCOPES.LLM_PROVIDER_API_KEY_CREATE
+  );
   const { providersResponse, isLoading: isProvidersLoading } =
     useLLMProviders();
   const { provider: selectedProvider, isLoading: isSelectedProviderLoading } =
@@ -299,6 +310,31 @@ function LLMProxyNewContent({
   const isSelectedProviderApiKeyReady =
     !selectedProviderRequiresApiKey || isGeneratedKeyReady || isManualKeyReady;
 
+  const isCreateProxyDisabled =
+    !formState.name.trim() ||
+    !formState.providerId ||
+    !effectiveProject?.id ||
+    !providerDetail ||
+    !isSelectedProviderApiKeyReady ||
+    isCreating;
+
+  // The submit button used to disable itself with no explanation, which reads as
+  // a permission problem even when it is only a missing field. Name the actual
+  // blocker instead.
+  const createProxyBlockedReason = (() => {
+    if (!isCreateProxyDisabled || isCreating) return '';
+    if (!formState.name.trim()) return 'Enter a name for the proxy.';
+    if (!formState.providerId) return 'Select an LLM provider.';
+    if (!effectiveProject?.id) return 'Select a project.';
+    if (!providerDetail) return 'Loading the selected provider details.';
+    if (!isSelectedProviderApiKeyReady) {
+      return canGenerateProviderApiKey
+        ? 'This provider requires an API key. Generate one or enter it manually.'
+        : 'This provider requires an API key. Enter it manually, or ask your admin to generate one.';
+    }
+    return '';
+  })();
+
   useEffect(() => {
     setApiKeyError(null);
     setGeneratedKeyForDisplay(null);
@@ -353,9 +389,18 @@ function LLMProxyNewContent({
       // Encrypt the provider API key as a secret before storing it in the proxy
       // config — even though it is a platform-issued key, it is still a credential
       // that should not be persisted in plain text.
-      let providerAuthType = providerDetail?.upstream?.main?.auth?.type ?? '';
-      let providerAuthHeader = providerDetail?.upstream?.main?.auth?.header ?? '';
-      let providerAuthValue = providerDetail?.upstream?.main?.auth?.value ?? '';
+      // Type, header and value move as one unit: an absent/'none' type carries no
+      // credential, so the header and value are cleared with it rather than being
+      // inherited from the provider and contradicting the type.
+      const inheritedAuthType = providerDetail?.upstream?.main?.auth?.type || 'none';
+      const inheritsCredential = inheritedAuthType !== 'none';
+      let providerAuthType = inheritedAuthType;
+      let providerAuthHeader = inheritsCredential
+        ? (providerDetail?.upstream?.main?.auth?.header ?? '')
+        : '';
+      let providerAuthValue = inheritsCredential
+        ? (providerDetail?.upstream?.main?.auth?.value ?? '')
+        : '';
       if (selectedProviderRequiresApiKey) {
         const rawKey = manualApiKeyValue.trim() || selectedProviderApiKeyValue || '';
         const isAlreadyPlaceholder = rawKey.includes('{{ secret ');
@@ -543,6 +588,29 @@ function LLMProxyNewContent({
       document.body.removeChild(textarea);
     }
   };
+
+  if (!canCreateProxy) {
+    return (
+      <PageContent fullWidth>
+        <Stack spacing={1}>
+          <Typography variant="h6">
+            <FormattedMessage
+              id="aiWorkspace.pages.appShell.appShellPages.proxies.LLMProxyNew.creation.unavailable"
+              defaultMessage={'App LLM Proxy creation is unavailable.'}
+            />
+          </Typography>
+          <Typography variant="body2" color="text.secondary">
+            <FormattedMessage
+              id="aiWorkspace.pages.appShell.appShellPages.proxies.LLMProxyNew.creation.unavailable.description"
+              defaultMessage={
+                'You do not have permission to create App LLM Proxies. Please contact your admin.'
+              }
+            />
+          </Typography>
+        </Stack>
+      </PageContent>
+    );
+  }
 
   return (
     <PageContent fullWidth>
@@ -813,9 +881,11 @@ function LLMProxyNewContent({
                         </Box>
                         <Tooltip
                           title={
-                            isSelectedProviderLoading
-                              ? 'Loading selected provider details.'
-                              : ''
+                            !canGenerateProviderApiKey
+                              ? NO_PERMISSION_TOOLTIP
+                              : isSelectedProviderLoading
+                                ? 'Loading selected provider details.'
+                                : ''
                           }
                           placement="top"
                         >
@@ -824,7 +894,10 @@ function LLMProxyNewContent({
                               variant="contained"
                               size="medium"
                               onClick={handleOpenApiKeyModal}
-                              disabled={isSelectedProviderLoading}
+                              disabled={
+                                isSelectedProviderLoading ||
+                                !canGenerateProviderApiKey
+                              }
                             >
                               <FormattedMessage
                                 id="aiWorkspace.pages.appShell.appShellPages.proxies.LLMProxyNew.generate.api.key"
@@ -880,28 +953,25 @@ function LLMProxyNewContent({
               defaultMessage="Cancel"
             />
           </Button>
-          <Button
-            variant="contained"
-            onClick={handleCreate}
-            disabled={
-              !formState.name.trim() ||
-              !formState.providerId ||
-              !effectiveProject?.id ||
-              !providerDetail ||
-              !isSelectedProviderApiKeyReady ||
-              isCreating
-            }
-            data-cyid="create-proxy-button"
-          >
-            {isCreating ? (
-              <CircularProgress size={20} />
-            ) : (
-              <FormattedMessage
-                id="aiWorkspace.pages.appShell.appShellPages.proxies.LLMProxyNew.create.proxy"
-                defaultMessage="Create Proxy"
-              />
-            )}
-          </Button>
+          <Tooltip title={createProxyBlockedReason} placement="top">
+            <span>
+              <Button
+                variant="contained"
+                onClick={handleCreate}
+                disabled={isCreateProxyDisabled}
+                data-cyid="create-proxy-button"
+              >
+                {isCreating ? (
+                  <CircularProgress size={20} />
+                ) : (
+                  <FormattedMessage
+                    id="aiWorkspace.pages.appShell.appShellPages.proxies.LLMProxyNew.create.proxy"
+                    defaultMessage="Create Proxy"
+                  />
+                )}
+              </Button>
+            </span>
+          </Tooltip>
         </Box>
       </Box>
 

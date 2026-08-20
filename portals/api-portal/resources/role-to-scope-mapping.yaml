@@ -1,0 +1,146 @@
+# Role-to-scope mapping used by the API Portal (auth.authorization.role_to_scope_mapping).
+#
+# Each entry maps a role name to the dp:* scopes that role grants. It is read when
+# auth.authorization.mode = "role": the roles claim of an incoming token
+# (auth.claim_mappings.roles) is expanded through this file on every request, and the
+# resulting scopes are what the /api/v0.9 operations are authorized against.
+#
+# Why role mode exists: the portal's REST surface is guarded by fine-grained dp:*
+# scopes, but an external OIDC IDP has no reason to mint them — it emits the roles or
+# groups its own estate is organized around. Without this file the only way an
+# IDP-mode session could reach the REST API was to bypass the per-operation scope
+# check entirely. Here the IDP keeps emitting roles and the portal decides what each
+# role may do.
+#
+# When a token carries multiple roles the effective scopes are the union of all
+# matching entries; most-permissive wins, duplicates collapsed. A role not listed
+# here grants nothing — the failure mode is a denied request, never an unintended
+# grant.
+#
+# WHY TWO GRANTS
+#
+# This portal is the consumer-facing surface, and it recognises exactly two personas:
+# whoever administers it, and whoever consumes APIs through it — which is exactly what
+# its page-access gate has tiers for.
+#
+# Publisher/operator/viewer personas live on the platform side (gateways, projects,
+# deployments) and are defined in platform-api/resources/role-to-scope-mapping.yaml.
+# API publishing reaches this portal through the Platform API, the management portal
+# or the `ap` CLI rather than a human browsing here, so those roles deliberately have
+# no entry here: a role with dp:* scopes but no portal page tier would authenticate,
+# reach the REST API, and still not open a single portal page.
+#
+# Add a role of your own if you need a narrower grant — nothing here is special-cased
+# in code, and the startup validation below applies to whatever you add.
+#
+# NAMING AND YOUR IDP
+#
+# These names are prefixed dp_ because they grant dp: scopes and are read only by this
+# portal. Map your IDP's groups onto them via auth.claim_mappings.roles; supported
+# claim paths:
+#   Asgardeo            — roles: roles
+#   Keycloak            — roles: realm_access.roles  (or resource_access.<client>.roles)
+#   Microsoft Entra ID  — roles: roles
+#
+# The Platform API's own grant table names its roles ap_*, and those are the names it
+# mints into the tokens it issues. Because role mode is the default, this file aliases
+# the two that map cleanly (see the aliases at the bottom) so one set of IDP groups
+# drives both components and the shipped local-auth quickstart works unchanged.
+#
+# PAGE ACCESS IS SEPARATE
+#
+# This file governs the REST API only. Which role name grants each of the portal's two
+# page-access tiers is auth.authorization.portal_roles, whose shipped defaults are the
+# legacy IDP values ("admin", "Internal/subscriber") rather than the names below. To
+# drive pages from these same roles, set:
+#
+#   [api_portal.auth.authorization.portal_roles]
+#   admin      = "dp_admin"
+#   subscriber = "dp_subscriber"
+#
+# Scope convention:
+#   dp:<resource>:read     — read that resource
+#   dp:<resource>:manage   — every action on that resource (read operations accept
+#                            :manage as well as :read, so :manage need not be paired
+#                            with :read)
+#
+# Every dp:* scope below must be declared in docs/api-portal-openapi-spec-v0.9.yaml —
+# an unknown one fails startup rather than surfacing later as a role that
+# authenticates fine and is then denied every request. Scopes in another component's
+# namespace (ap:*, if you merge this with platform-api's table) are checked for
+# well-formedness only, since this portal mints no ap:* scope and enforces none.
+#
+# This file requires a server restart to take effect.
+
+roles:
+  # Portal administrator — runs the portal: its content and theme, the API and MCP
+  # server catalogue, views and labels, subscription plans, key managers, webhook
+  # subscribers, and every application/subscription in the organization.
+  - name: dp_admin
+    scopes: &admin_grant
+      - dp:organization:manage
+      - dp:organization_content:manage
+      - dp:api:manage
+      - dp:api_content:manage
+      - dp:mcp_server:manage
+      - dp:mcp_server_content:manage
+      - dp:api_workflow:manage
+      - dp:api_key:manage
+      - dp:mcp_server_key:manage
+      - dp:application:manage
+      - dp:application_key:manage
+      - dp:application_key:revoke
+      - dp:application_key_mapping:manage
+      - dp:subscription:manage
+      - dp:subscription_plan:manage
+      - dp:key_manager:manage
+      - dp:key_manager:read
+      - dp:view:manage
+      - dp:label:manage
+      - dp:webhook_subscriber:manage
+      - dp:event:read
+
+  # API consumer — owns their own applications, subscriptions and keys, and browses
+  # the catalogue. This is the persona the portal exists for.
+  - name: dp_subscriber
+    scopes: &subscriber_grant
+      - dp:application:manage
+      - dp:application_key:manage
+      - dp:application_key:revoke
+      - dp:application_key_mapping:manage
+      - dp:subscription:manage
+      - dp:api_key:manage
+      - dp:mcp_server_key:manage
+      - dp:api:read
+      - dp:api_content:read
+      - dp:mcp_server:read
+      - dp:mcp_server_content:read
+      - dp:api_workflow:read
+      - dp:subscription_plan:read
+      - dp:organization:read
+      - dp:organization_content:read
+      - dp:view:read
+      - dp:label:read
+
+  # --- Aliases for the role names other components mint -----------------------
+  #
+  # Role mode is the default, so the portal expands the roles claim of every token
+  # rather than reading its scope claim. The Platform API names its own roles ap_*
+  # and mints those names into the tokens it issues (auth.file.users[].roles — the
+  # shipped quickstart admin is ap_admin), so without these aliases a local-auth
+  # login would succeed and then be denied every REST request.
+  #
+  # They point at the same scope lists above via YAML anchors, so a grant is still
+  # defined exactly once.
+  #
+  # Only the two that map cleanly onto this portal's tiers are aliased.
+  # ap_operator, ap_publisher and ap_viewer are platform personas whose portal-side
+  # needs don't line up with either tier — aliasing ap_publisher to dp_admin would
+  # hand it organization settings, and ap_viewer would gain the ability to create
+  # applications. Give them an entry of their own if someone holding one needs
+  # portal access.
+  - name: ap_admin
+    scopes: *admin_grant
+
+  - name: ap_subscriber
+    scopes: *subscriber_grant

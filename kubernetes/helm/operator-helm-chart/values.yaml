@@ -70,7 +70,7 @@ gateway:
   controlPlaneHost: "http://platform-api:3001"
   helm:
     chartName: "oci://ghcr.io/wso2/api-platform/helm-charts/gateway"
-    chartVersion: "1.2.0-alpha"
+    chartVersion: "1.2.0-rc"
     valuesFilePath: "/config/gateway_values.yaml"
     # Allow insecure connections to OCI registries (skips TLS verification, still uses HTTPS)
     insecureRegistry: false
@@ -442,7 +442,7 @@ gateway:
       controller:
         image:
           repository: ghcr.io/wso2/api-platform/gateway-controller
-          tag: "1.2.0-beta"
+          tag: "1.2.0"
           pullPolicy: Always
         imagePullSecrets: []
         service:
@@ -586,7 +586,7 @@ gateway:
       gatewayRuntime:
         image:
           repository: ghcr.io/wso2/api-platform/gateway-runtime
-          tag: "1.2.0-beta"
+          tag: "1.2.0"
           pullPolicy: Always
         imagePullSecrets: []
         service:
@@ -620,20 +620,24 @@ gateway:
           podAnnotations: {}
           podLabels: {}
           priorityClassName: ""
-          # Probe tuning for Envoy bootstrap:
-          # - readiness checks Envoy /ready on admin port
-          # - liveness stays loose and uses policy-engine /health
-          # - startup probe absorbs xDS/CDS bootstrap delay before readiness/liveness gates
+          # Probes hit the router's own health routes on the main traffic listener;
+          # the gateway chart rewrites httpGet.port/scheme from gateway.config.router
+          # so they always follow the router's actual bind port.
+          # These MUST use the same handler type as gateway-helm-chart's defaults
           livenessProbe:
-            exec:
-              command: ["health-check.sh"]
+            httpGet:
+              path: /_gateway-health/healthy
+              port: https
+              scheme: HTTPS
             initialDelaySeconds: 30
             periodSeconds: 10
             timeoutSeconds: 5
             failureThreshold: 3
           readinessProbe:
-            exec:
-              command: ["health-check.sh"]
+            httpGet:
+              path: /_gateway-health/ready
+              port: https
+              scheme: HTTPS
             initialDelaySeconds: 10
             periodSeconds: 5
             timeoutSeconds: 3

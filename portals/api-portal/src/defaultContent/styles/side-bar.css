@@ -1,0 +1,415 @@
+* {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+}
+
+/* ── Sidebar shell ── */
+.sidebar.no-transition,
+.sidebar.no-transition * {
+    transition: none !important;
+}
+
+@media (min-width: 861px) {
+    html.sidebar-pinned .sidebar {
+        width: 15.5rem;
+    }
+
+    html.sidebar-pinned .nav-link,
+    html.sidebar-pinned .collapse-btn {
+        justify-content: flex-start;
+    }
+
+    html.sidebar-pinned .nav-text,
+    html.sidebar-pinned .collapse-text {
+        margin-left: 0.875rem;
+        opacity: 1;
+        visibility: visible;
+        width: auto;
+    }
+
+    html.sidebar-pinned .collapse-btn i {
+        transform: rotate(180deg);
+    }
+
+    html.sidebar-pinned .nav-link:not(.has-active-submenu) .sidebar-chevron {
+        opacity: 0;
+        visibility: hidden;
+        width: 0;
+        margin-left: 0;
+        overflow: hidden;
+    }
+}
+
+.sidebar {
+    flex: none;
+    display: flex;
+    flex-direction: column;
+    height: 100%;
+    padding: 1rem 0.75rem;
+    background: linear-gradient(180deg, var(--primary) 0%, var(--primary-dark) 100%);
+    width: 4.625rem;
+    transition: width 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+    box-shadow: 2px 0 8px rgba(0, 0, 0, 0.12);
+    overflow: hidden;
+    z-index: 10;
+}
+
+/* Hover-expand (not force-collapsed) */
+.sidebar:hover:not(.force-collapse) {
+    width: 15.5rem;
+}
+
+/* Prevent hover expansion after explicit collapse */
+.sidebar.force-collapse:hover {
+    width: 4.625rem;
+}
+
+/* Expanded via button */
+.sidebar.expanded {
+    width: 15.5rem;
+}
+
+/* ── Nav items list ── */
+.nav {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    gap: 0.25rem;
+    overflow: hidden;
+}
+
+.nav-link {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0;
+    padding: 0.8125rem 0.9375rem;
+    border-radius: 0.625rem;
+    text-decoration: none;
+    color: var(--on-dark);
+    cursor: pointer;
+    white-space: nowrap;
+    transition: background 0.15s, color 0.15s;
+    overflow: hidden;
+}
+
+/* Align left when expanded or hovered */
+.sidebar:hover:not(.force-collapse) .nav-link,
+.sidebar.expanded .nav-link {
+    justify-content: flex-start;
+}
+
+.nav-link:hover {
+    background: var(--on-dark-fill);
+    color: var(--white);
+}
+
+.nav-link.active {
+    background: color-mix(in srgb, var(--primary-light) 38%, transparent);
+    color: var(--white);
+}
+
+/* ── Icons ── */
+.sidebar-icon {
+    font-size: 1.125rem;
+    flex: none;
+    width: 1.125rem;
+    height: 1.125rem;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+/* ── Nav label text (hidden when collapsed) ── */
+.nav-text {
+    margin: 0;
+    white-space: nowrap;
+    opacity: 0;
+    visibility: hidden;
+    overflow: hidden;
+    width: 0;
+    font-size: 0.9375rem;
+    font-weight: 500;
+    line-height: 1;
+    color: inherit;
+    transition: opacity 0.2s ease, visibility 0.2s ease, margin 0.2s ease, width 0.2s ease;
+}
+
+.sidebar:hover:not(.force-collapse) .nav-text,
+.sidebar.expanded .nav-text {
+    margin-left: 0.875rem;
+    opacity: 1;
+    visibility: visible;
+    width: auto;
+}
+
+/* ── Submenu chevron ── */
+.sidebar-chevron {
+    font-size: 0.75rem;
+    margin-left: auto;
+    flex: none;
+    transition: transform 0.2s ease, opacity 0.2s ease;
+}
+
+/* Hide chevron when submenu is not accessible (href values not yet wired by JS) */
+.sidebar:hover:not(.force-collapse) .nav-link:not(.has-active-submenu) .sidebar-chevron,
+.sidebar.expanded .nav-link:not(.has-active-submenu) .sidebar-chevron {
+    opacity: 0;
+    visibility: hidden;
+    width: 0;
+    margin-left: 0;
+    overflow: hidden;
+}
+
+.nav-link.has-active-submenu .sidebar-chevron,
+#apis.has-active-submenu .sidebar-chevron,
+#mcps.has-active-submenu .sidebar-chevron {
+    transform: rotate(90deg);
+}
+
+/* ── Submenu group ── */
+.submenu {
+    display: none;
+    flex-direction: column;
+    gap: 0.125rem;
+    background: var(--overlay);
+    border-radius: 0 0 0.5rem 0.5rem;
+    padding: 0.25rem 0.5rem 0.5rem;
+    margin: -0.25rem 0 0 0;
+}
+
+.submenu.show {
+    display: flex;
+}
+
+/* Parent item when submenu is open */
+#apis.has-active-submenu,
+#mcps.has-active-submenu {
+    background: var(--overlay);
+    border-bottom-left-radius: 0;
+    border-bottom-right-radius: 0;
+}
+
+.submenu-link {
+    padding: 0.6875rem 0.9375rem;
+    border-radius: 0.5rem;
+    margin: 0;
+    color: var(--on-dark);
+}
+
+.submenu-link:hover {
+    background: var(--on-dark-fill);
+    color: var(--white);
+}
+
+.submenu-link.active {
+    background: color-mix(in srgb, var(--primary-light) 38%, transparent);
+    color: var(--white);
+    border-radius: 0.5rem;
+}
+
+.submenu-icon {
+    font-size: 1.125rem;
+    flex: none;
+    width: 1.125rem;
+    height: 1.125rem;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+/* Hide submenu when collapsed (allow hover to still show it via parent hover rule) */
+.sidebar:not(:hover).sidebar:not(.expanded) .submenu {
+    display: none !important;
+}
+
+/* ── Bottom: admin settings + divider + collapse btn ── */
+#admin-settings {
+    margin-top: 0.5rem;
+    flex: none;
+}
+
+.nav-section-divider {
+    height: 1px;
+    background: var(--on-dark-fill-border);
+    margin: 0.5rem 0.25rem;
+    flex: none;
+}
+
+.collapse-btn {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0;
+    padding: 0.75rem 0.9375rem;
+    border-radius: 0.625rem;
+    background: none;
+    border: none;
+    color: var(--on-dark);
+    cursor: pointer;
+    white-space: nowrap;
+    transition: background 0.15s, color 0.15s;
+    overflow: hidden;
+    flex: none;
+}
+
+.sidebar:hover:not(.force-collapse) .collapse-btn,
+.sidebar.expanded .collapse-btn {
+    justify-content: flex-start;
+}
+
+.collapse-btn:hover {
+    background: var(--on-dark-fill);
+    color: var(--white);
+}
+
+.collapse-btn i {
+    font-size: 1.125rem;
+    flex: none;
+    transition: transform 0.25s ease;
+    display: flex;
+    align-items: center;
+}
+
+/* Rotate collapse button icon when sidebar is expanded */
+.sidebar.expanded .collapse-btn i,
+.sidebar:hover:not(.force-collapse) .collapse-btn i {
+    transform: rotate(180deg);
+}
+
+.collapse-text {
+    margin: 0;
+    white-space: nowrap;
+    opacity: 0;
+    visibility: hidden;
+    overflow: hidden;
+    width: 0;
+    font-size: 0.875rem;
+    font-weight: 500;
+    line-height: 1;
+    color: inherit;
+    transition: opacity 0.2s ease, visibility 0.2s ease, margin 0.2s ease, width 0.2s ease;
+}
+
+.sidebar:hover:not(.force-collapse) .collapse-text,
+.sidebar.expanded .collapse-text {
+    margin-left: 0.875rem;
+    opacity: 1;
+    visibility: visible;
+    width: auto;
+}
+
+/* ── Hamburger + backdrop (desktop: both inert) ── */
+
+/* Lives in the header. Hidden above the breakpoint, where the sidebar is always
+   on screen and a toggle would be redundant. */
+.sidebar-toggle {
+    display: none;
+    align-items: center;
+    justify-content: center;
+    width: 2.5rem;
+    height: 2.5rem;
+    margin-right: 0.5rem;
+    padding: 0;
+    border: none;
+    border-radius: 0.5rem;
+    background: transparent;
+    color: var(--text-strong, #1b2028);
+    font-size: 1.5rem;
+    line-height: 1;
+    cursor: pointer;
+}
+
+.sidebar-backdrop {
+    display: none;
+}
+
+/* ── Responsive: the sidebar becomes an off-canvas drawer ── */
+
+/* This used to be `display: none`, which removed the portal's ONLY primary
+   navigation below 860px and offered nothing in its place — Home, APIs, MCP
+   Servers, API Workflows, Applications, Subscriptions, API Keys and Settings
+   were all unreachable on a phone. The rail now slides in over the content,
+   opened by the header's hamburger and dismissed by the backdrop, Escape, or
+   picking a destination. */
+@media (max-width: 860px) {
+    .sidebar-toggle { display: inline-flex; }
+
+    .sidebar {
+        position: fixed;
+        top: 0;
+        left: 0;
+        bottom: 0;
+        height: 100%;
+        transform: translateX(-100%);
+        transition: transform 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+        /* Above Bootstrap's .fixed-top navbar (1030) and the backdrop below. */
+        z-index: 1045;
+        overflow-y: auto;
+        box-shadow: 2px 0 16px rgba(0, 0, 0, 0.28);
+    }
+
+    .sidebar.mobile-open { transform: translateX(0); }
+
+    /* Touch has no hover, so width/label rules keyed on :hover or .expanded can
+       never fire here — the open drawer is always the labelled, full-width form.
+       max-width keeps it off the right edge on very narrow phones. */
+    .sidebar,
+    .sidebar:hover:not(.force-collapse),
+    .sidebar.force-collapse:hover,
+    .sidebar.expanded {
+        width: 16.5rem;
+        max-width: 84vw;
+    }
+
+    .sidebar .nav-link { justify-content: flex-start; }
+
+    .sidebar .nav-text,
+    .sidebar .collapse-text {
+        margin-left: 0.875rem;
+        opacity: 1;
+        visibility: visible;
+        width: auto;
+    }
+
+    /* Pinning a drawer open has no meaning — it is dismissed, not collapsed. */
+    .collapse-btn,
+    .nav-section-divider { display: none; }
+
+    .sidebar-backdrop {
+        display: block;
+        position: fixed;
+        inset: 0;
+        background: rgba(0, 0, 0, 0.45);
+        opacity: 0;
+        visibility: hidden;
+        transition: opacity 0.25s ease, visibility 0.25s ease;
+        z-index: 1040;
+    }
+
+    .sidebar-backdrop.visible {
+        opacity: 1;
+        visibility: visible;
+    }
+
+    /* Scroll lock. Applied to .main-container, not <body> — main.css already sets
+       .main-body { overflow: hidden } and this layout scrolls the container, so a
+       body-level lock reads as if it works while the content keeps scrolling behind
+       the open drawer.
+
+       It lives inside the media query on purpose: as an inline style it would
+       survive a resize past the breakpoint if the cleanup listener didn't run,
+       leaving the desktop page unscrollable with no drawer in sight. Scoped here it
+       lapses on its own above 860px, whatever events the browser does or doesn't
+       emit. */
+    body.drawer-open .main-container {
+        overflow: hidden;
+    }
+}
+
+/* Users who prefer reduced motion get the drawer without the slide. */
+@media (max-width: 860px) and (prefers-reduced-motion: reduce) {
+    .sidebar { transition: none; }
+    .sidebar-backdrop { transition: none; }
+}

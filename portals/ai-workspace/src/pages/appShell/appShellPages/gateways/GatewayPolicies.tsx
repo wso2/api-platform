@@ -20,10 +20,19 @@ import {
 } from "@wso2/oxygen-ui";
 import { useGatewayPolicies } from "../../../../contexts/GatewayPoliciesContext";
 import useAIWorkspaceSnackbar from "../../../../hooks/aiWorkspaceSnackbar";
+import { NO_PERMISSION_TOOLTIP } from "../../../../auth/permissions";
 
 export default function GatewayPolicies() {
-  const { policies, isLoading, error, refresh, syncPolicy, syncingPolicyKey } =
-    useGatewayPolicies();
+  const {
+    policies,
+    isLoading,
+    error,
+    refresh,
+    syncPolicy,
+    syncingPolicyKey,
+    canViewPolicies,
+    canSyncPolicies,
+  } = useGatewayPolicies();
   const showSnackbar = useAIWorkspaceSnackbar();
 
   const handleSync = async (policyName: string, version: string) => {
@@ -41,6 +50,17 @@ export default function GatewayPolicies() {
       showSnackbar(message, "error");
     }
   };
+
+  // The provider skips the fetch without the read scopes, so there is nothing to
+  // show here — say why rather than rendering an empty table.
+  if (!canViewPolicies) {
+    return (
+      <Alert severity="info">
+        You do not have permission to view gateway policies. Please contact your
+        admin.
+      </Alert>
+    );
+  }
 
   if (isLoading) {
     return (
@@ -149,12 +169,18 @@ export default function GatewayPolicies() {
                     variant="outlined"
                   />
                 ) : (
-                  <Tooltip title="Click to sync the policy">
+                  <Tooltip
+                    title={
+                      canSyncPolicies
+                        ? "Click to sync the policy"
+                        : NO_PERMISSION_TOOLTIP
+                    }
+                  >
                     <span>
                       <Button
                         size="small"
                         variant="contained"
-                        disabled={syncingPolicyKey !== null}
+                        disabled={syncingPolicyKey !== null || !canSyncPolicies}
                         onClick={() =>
                           void handleSync(policy.policyName, policy.version)
                         }

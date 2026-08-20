@@ -36,6 +36,9 @@ func sameSite(v string) http.SameSite {
 // setSessionCookie writes the session cookie carrying the JWT itself, bounded by
 // the supplied absolute expiry. The cookie stays HttpOnly so browser JS cannot
 // read it, but the proxy reads the JWT straight from it — no server-side lookup.
+//
+// Path is scoped to the app's base path so a host serving several portals under
+// different prefixes doesn't send this session to any of the others.
 func (s *Server) setSessionCookie(w http.ResponseWriter, jwt string, absExpiry time.Time) {
 	maxAge := 0
 	if !absExpiry.IsZero() {
@@ -46,7 +49,7 @@ func (s *Server) setSessionCookie(w http.ResponseWriter, jwt string, absExpiry t
 	http.SetCookie(w, &http.Cookie{
 		Name:     s.cfg.Cookie.Name,
 		Value:    jwt,
-		Path:     "/",
+		Path:     s.path("/"),
 		HttpOnly: true,
 		Secure:   s.cfg.Cookie.Secure,
 		SameSite: sameSite(s.cfg.Cookie.SameSite),
@@ -54,16 +57,33 @@ func (s *Server) setSessionCookie(w http.ResponseWriter, jwt string, absExpiry t
 	})
 }
 
+// legacyRootCookiePath is the origin-root Path the session cookie used before it moved
+// under the app's base path. clearSessionCookie must expire it too: a browser keys a
+// cookie by (name, domain, path), so an expiry written for one Path creates a separate
+// cookie rather than removing an existing one at another Path. Left behind, a
+// pre-upgrade cookie at "/" keeps matching every request below the root, so
+// /api/session goes on reporting the stale session as authenticated while every proxied
+// call 401s on its no-longer-verifiable token — a login loop no logout can break.
+const legacyRootCookiePath = "/"
+
+// clearSessionCookie expires the session cookie at every Path it may have been set on:
+// the current base-path-scoped one, plus the legacy origin-root Path.
 func (s *Server) clearSessionCookie(w http.ResponseWriter) {
-	http.SetCookie(w, &http.Cookie{
-		Name:     s.cfg.Cookie.Name,
-		Value:    "",
-		Path:     "/",
-		HttpOnly: true,
-		Secure:   s.cfg.Cookie.Secure,
-		SameSite: sameSite(s.cfg.Cookie.SameSite),
-		MaxAge:   -1,
-	})
+	paths := []string{s.path("/")}
+	if paths[0] != legacyRootCookiePath {
+		paths = append(paths, legacyRootCookiePath)
+	}
+	for _, path := range paths {
+		http.SetCookie(w, &http.Cookie{
+			Name:     s.cfg.Cookie.Name,
+			Value:    "",
+			Path:     path,
+			HttpOnly: true,
+			Secure:   s.cfg.Cookie.Secure,
+			SameSite: sameSite(s.cfg.Cookie.SameSite),
+			MaxAge:   -1,
+		})
+	}
 }
 
 // setTxCookie writes the short-lived OIDC login-transaction cookie.
@@ -71,7 +91,7 @@ func (s *Server) setTxCookie(w http.ResponseWriter, txID string) {
 	http.SetCookie(w, &http.Cookie{
 		Name:     txCookieName,
 		Value:    txID,
-		Path:     "/api/auth",
+		Path:     s.path("/api/auth"),
 		HttpOnly: true,
 		Secure:   s.cfg.Cookie.Secure,
 		SameSite: http.SameSiteLaxMode,
@@ -83,7 +103,7 @@ func (s *Server) clearTxCookie(w http.ResponseWriter) {
 	http.SetCookie(w, &http.Cookie{
 		Name:     txCookieName,
 		Value:    "",
-		Path:     "/api/auth",
+		Path:     s.path("/api/auth"),
 		HttpOnly: true,
 		Secure:   s.cfg.Cookie.Secure,
 		SameSite: http.SameSiteLaxMode,

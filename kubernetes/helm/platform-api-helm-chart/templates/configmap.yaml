@@ -65,7 +65,11 @@ data:
 
     [platform_api.auth]
     mode = {{ $auth.mode | quote }}
-    scope_validation = {{ $auth.scopeValidation }}
+
+    [platform_api.auth.authorization]
+    enabled = {{ $auth.authorization.enabled }}
+    mode = {{ $auth.authorization.mode | quote }}
+    role_to_scope_mapping = {{ $auth.authorization.roleToScopeMapping | quote }}
 
     [platform_api.auth.claim_mappings]
     organization = {{ $auth.claimMappings.organization | quote }}
@@ -90,8 +94,6 @@ data:
     jwks_url = {{ required "config.auth.idp.jwksUrl is required when auth.mode is \"idp\"" $auth.idp.jwksUrl | quote }}
     issuer = {{ toJson $auth.idp.issuer }}
     audience = {{ toJson $auth.idp.audience }}
-    validation_mode = {{ $auth.idp.validationMode | quote }}
-    role_mappings = {{ $auth.idp.roleMappings | quote }}
     {{- end }}
 
     {{- if eq $auth.mode "file" }}
@@ -109,7 +111,7 @@ data:
     # provisions a generated username and a bcrypt password hash.
     username = {{ `'{{ env "APIP_CP_ADMIN_USERNAME" }}'` }}
     password_hash = {{ `'{{ env "APIP_CP_ADMIN_PASSWORD_HASH" }}'` }}
-    scopes = {{ $auth.file.admin.scopes | quote }}
+    roles = {{ required "config.auth.file.admin.roles is required when auth.mode is \"file\"" $auth.file.admin.roles | toJson }}
     {{- end }}
 
     [platform_api.server.http]
@@ -144,7 +146,6 @@ data:
 
     [platform_api.deployments]
     max_per_api_gateway = {{ $cfg.deployments.maxPerApiGateway | int }}
-    transitional_status_enabled = {{ $cfg.deployments.transitionalStatusEnabled }}
     timeout_enabled = {{ $cfg.deployments.timeoutEnabled }}
     timeout_interval = {{ $cfg.deployments.timeoutInterval | int }}
     timeout_duration = {{ $cfg.deployments.timeoutDuration | int }}
@@ -166,4 +167,12 @@ data:
 
     {{ . | nindent 4 | trim }}
     {{- end }}
+  {{- with $auth.authorization.roles }}
+  # Role→scope mapping named by auth.authorization.role_to_scope_mapping. Mounted as a
+  # file rather than folded into the TOML above because the Platform API reads it
+  # separately and re-reads it only on restart.
+  role-to-scope-mapping.yaml: |
+    roles:
+      {{- toYaml . | nindent 6 }}
+  {{- end }}
 {{- end }}

@@ -137,7 +137,7 @@ For **get/list/delete**, copy `cli/src/cmd/gateway/restapi/get.go`, `list.go`, `
 
 ## 3. DevPortal family (`internal/devportal`)
 
-Consumes `portals/developer-portal/docs/devportal-openapi-spec-v1.yaml`. Targets a resolved devportal within a platform.
+Consumes `portals/api-portal/docs/devportal-openapi-spec-v1.yaml`. Targets a resolved devportal within a platform.
 
 **Key helpers**
 - `config.LoadConfig()` → `internaldevportal.ResolveDevPortal(cfg, name, platform)` → `(*config.DevPortal, resolvedPlatform, error)`.

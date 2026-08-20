@@ -40,6 +40,7 @@ import {
   Select,
   Stack,
   TextField,
+  Tooltip,
   Typography,
 } from '@wso2/oxygen-ui';
 import { Clock, Plus, Search, Trash2 } from '@wso2/oxygen-ui-icons-react';
@@ -59,6 +60,8 @@ import ErrorAlert from '../../../../Components/common/ErrorAlert';
 import useAIWorkspaceSnackbar from '../../../../hooks/aiWorkspaceSnackbar';
 import NoApplications from '../../../../assets/images/NoApplications.svg';
 import { getErrorCode } from '../../../../utils/apiError';
+import { useAppAuth } from '../../../../contexts/AppAuthContext';
+import { DISABLED_ACTION_SX, NO_PERMISSION_TOOLTIP, SCOPES } from '../../../../auth/permissions';
 
 function getInitials(name: string): string {
   const words = name.trim().split(/\s+/);
@@ -74,6 +77,7 @@ function truncateText(text: string, maxLength: number): string {
 
 export default function ApplicationsList() {
   const navigate = useNavigate();
+  const { hasPermission } = useAppAuth();
   const { projectSlug } = useParams<{ projectSlug: string }>();
   const {
     currentProject,
@@ -175,6 +179,12 @@ export default function ApplicationsList() {
         '/applications/create'
       )
     : buildOrgPath(currentOrganization, '/applications/create');
+
+  const canCreateApplication = hasPermission(SCOPES.APPLICATION_CREATE);
+  const canDeleteApplication = hasPermission(SCOPES.APPLICATION_DELETE);
+  const createApplicationTooltip = canCreateApplication
+    ? ''
+    : NO_PERMISSION_TOOLTIP;
 
   const renderOrgLevelContent = () => (
     <Grid size={{ xs: 12, sm: 12, md: 7 }}>
@@ -288,18 +298,23 @@ export default function ApplicationsList() {
         </PageTitle>
 
         {filteredApplications.length > 0 ? (
-          <Button
-            variant="contained"
-            component={RouterLink}
-            to={newApplicationPath}
-            startIcon={<Plus size={20} />}
-            sx={{ ml: 'auto', flexShrink: 0 }}
-          >
-            <FormattedMessage
-              id="aiWorkspace.pages.appShell.appShellPages.applications.ApplicationsList.add.new.application"
-              defaultMessage="Add New Application"
-            />
-          </Button>
+          <Tooltip title={createApplicationTooltip}>
+            <Box component="span" sx={{ ml: 'auto', flexShrink: 0 }}>
+              <Button
+                variant="contained"
+                component={RouterLink}
+                to={newApplicationPath}
+                startIcon={<Plus size={20} />}
+                disabled={!canCreateApplication}
+                sx={DISABLED_ACTION_SX}
+              >
+                <FormattedMessage
+                  id="aiWorkspace.pages.appShell.appShellPages.applications.ApplicationsList.add.new.application"
+                  defaultMessage="Add New Application"
+                />
+              </Button>
+            </Box>
+          </Tooltip>
         ) : null}
       </Box>
     </Grid>
@@ -358,17 +373,23 @@ export default function ApplicationsList() {
                     defaultMessage="Set up a GenAI application to securely consume AI services through your workspace."
                   />
                 </Typography>
-                <Button
-                  variant="contained"
-                  component={RouterLink}
-                  to={newApplicationPath}
-                  startIcon={<Plus size={20} />}
-                >
-                  <FormattedMessage
-                    id="aiWorkspace.pages.appShell.appShellPages.applications.ApplicationsList.create.application"
-                    defaultMessage="Create Application"
-                  />
-                </Button>
+                <Tooltip title={createApplicationTooltip}>
+                  <Box component="span">
+                    <Button
+                      variant="contained"
+                      component={RouterLink}
+                      to={newApplicationPath}
+                      startIcon={<Plus size={20} />}
+                      disabled={!canCreateApplication}
+                      sx={DISABLED_ACTION_SX}
+                    >
+                      <FormattedMessage
+                        id="aiWorkspace.pages.appShell.appShellPages.applications.ApplicationsList.create.application"
+                        defaultMessage="Create Application"
+                      />
+                    </Button>
+                  </Box>
+                </Tooltip>
               </Stack>
             </Box>
           </Grid>
@@ -444,17 +465,23 @@ export default function ApplicationsList() {
                         defaultMessage="Set up a GenAI application to securely consume AI services through your workspace."
                       />
                     </Typography>
-                    <Button
-                      variant="contained"
-                      component={RouterLink}
-                      to={newApplicationPath}
-                      startIcon={<Plus size={20} />}
-                    >
-                      <FormattedMessage
-                        id="aiWorkspace.pages.appShell.appShellPages.applications.ApplicationsList.create.application"
-                        defaultMessage="Create Application"
-                      />
-                    </Button>
+                    <Tooltip title={createApplicationTooltip}>
+                      <Box component="span">
+                        <Button
+                          variant="contained"
+                          component={RouterLink}
+                          to={newApplicationPath}
+                          startIcon={<Plus size={20} />}
+                          disabled={!canCreateApplication}
+                          sx={DISABLED_ACTION_SX}
+                        >
+                          <FormattedMessage
+                            id="aiWorkspace.pages.appShell.appShellPages.applications.ApplicationsList.create.application"
+                            defaultMessage="Create Application"
+                          />
+                        </Button>
+                      </Box>
+                    </Tooltip>
                   </Stack>
                 </Box>
               </Grid>
@@ -555,17 +582,26 @@ export default function ApplicationsList() {
                             </Typography>
                           </Stack>
 
-                          <IconButton
-                            size="small"
-                            color="error"
-                            onClick={(event) => {
-                              event.stopPropagation();
-                              setDeleteTarget(app);
-                            }}
-                            aria-label={`Delete ${app.displayName}`}
+                          <Tooltip
+                            title={
+                              canDeleteApplication ? '' : NO_PERMISSION_TOOLTIP
+                            }
                           >
-                            <Trash2 size={16} />
-                          </IconButton>
+                            <Box component="span">
+                              <IconButton
+                                size="small"
+                                color="error"
+                                disabled={!canDeleteApplication}
+                                onClick={(event) => {
+                                  event.stopPropagation();
+                                  setDeleteTarget(app);
+                                }}
+                                aria-label={`Delete ${app.displayName}`}
+                              >
+                                <Trash2 size={16} />
+                              </IconButton>
+                            </Box>
+                          </Tooltip>
                         </Box>
                       </Box>
                     </Card>

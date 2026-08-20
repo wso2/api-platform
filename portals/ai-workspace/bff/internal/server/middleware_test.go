@@ -62,16 +62,30 @@ func TestRequireCSRF(t *testing.T) {
 	}
 }
 
+// Return targets must stay inside the app's own prefix: the home fallback carries it,
+// and a target belonging to another app on the same host (or a lookalike prefix like
+// "/ai-workspace-admin") is not a local return target here.
 func TestSanitizeReturn(t *testing.T) {
+	s := &Server{cfg: &config.Config{}}
 	cases := map[string]string{
-		"/projects":        "/projects",
-		"":                 "/",
-		"//evil.com":       "/",
-		"https://evil.com": "/",
-		"/ok\r\ninjected":  "/okinjected",
+		"/ai-workspace/projects":     "/ai-workspace/projects",
+		"/ai-workspace":              "/ai-workspace",
+		"/ai-workspace/":             "/ai-workspace/",
+		"/ai-workspace/ok\r\ninject": "/ai-workspace/okinject",
+		"":                           "/ai-workspace/",
+		"/projects":                  "/ai-workspace/",
+		"/api-portal/apis":           "/ai-workspace/",
+		"/ai-workspace-admin/users":  "/ai-workspace/",
+		"//evil.com":                 "/ai-workspace/",
+		// Browsers normalize a backslash to a slash in a URL, so "/\\evil.com" would be
+		// read as protocol-relative and leave the origin. Confining the target to the
+		// app's own prefix rules that out structurally.
+		"/\\evil.com":      "/ai-workspace/",
+		"/\\/evil.com":     "/ai-workspace/",
+		"https://evil.com": "/ai-workspace/",
 	}
 	for in, want := range cases {
-		if got := sanitizeReturn(in); got != want {
+		if got := s.sanitizeReturn(in); got != want {
 			t.Errorf("sanitizeReturn(%q) = %q, want %q", in, got, want)
 		}
 	}

@@ -154,7 +154,7 @@ func (s *SubscriptionService) GetArtifactMetadataMap(uuids []string, orgUUID str
 // apiId is the artifact handle; kind selects the artifact table it is resolved against.
 // subscriberID identifies who the subscription is for (client-supplied, not a token
 // identity); subscriptionToken, when non-empty, is the token imported from the
-// Developer Portal (empty means generate one); actor is the authenticated caller's
+// API Portal (empty means generate one); actor is the authenticated caller's
 // internal UUID, used for created_by/updated_by/audit.
 func (s *SubscriptionService) CreateSubscription(apiId, kind, orgUUID string, subscriberID string, applicationId *string, subscriptionPlanId *string, subscriptionToken string, status string, actor string) (*model.Subscription, error) {
 	apiUUID, err := s.resolveArtifactUUIDByKind(apiId, kind, orgUUID)
@@ -182,7 +182,7 @@ func (s *SubscriptionService) CreateSubscription(apiId, kind, orgUUID string, su
 		return nil, apperror.SubscriptionExists.New()
 	}
 
-	// subscriptionPlanId carries the Developer Portal subscription plan handle. Resolve it to the
+	// subscriptionPlanId carries the API Portal subscription plan handle. Resolve it to the
 	// plan's UUID, which is what the subscriptions.subscription_plan_uuid foreign key references.
 	if subscriptionPlanId != nil && *subscriptionPlanId != "" {
 		plan, err := s.planRepo.GetByHandleAndOrg(*subscriptionPlanId, orgUUID)
@@ -198,7 +198,7 @@ func (s *SubscriptionService) CreateSubscription(apiId, kind, orgUUID string, su
 		subscriptionPlanId = &plan.UUID
 	}
 
-	// A non-empty subscriptionToken is the token imported from the Developer Portal (the
+	// A non-empty subscriptionToken is the token imported from the API Portal (the
 	// value shown to the user); the repository persists it as-is. When empty (interactive
 	// creation), the repository generates a fresh token.
 	sub := &model.Subscription{
@@ -393,7 +393,7 @@ func (s *SubscriptionService) ChangePlan(subscriptionId, orgUUID, subscriberID, 
 		return nil, apperror.SubscriptionForbidden.New()
 	}
 
-	// planHandle carries the Developer Portal subscription plan handle. Resolve it to the plan's
+	// planHandle carries the API Portal subscription plan handle. Resolve it to the plan's
 	// UUID, which is what the subscriptions.subscription_plan_uuid foreign key references.
 	planRecord, err := s.planRepo.GetByHandleAndOrg(planHandle, orgUUID)
 	if err != nil {
@@ -440,7 +440,7 @@ func (s *SubscriptionService) ChangePlan(subscriptionId, orgUUID, subscriberID, 
 	return sub, nil
 }
 
-// RegenerateToken rotates the subscription's token to the value provided by the Developer Portal
+// RegenerateToken rotates the subscription's token to the value provided by the API Portal
 // (delivered encrypted in the subscription.token_regenerated event). The old token is invalidated;
 // the new token is persisted (hashed + encrypted) and broadcast to the gateways where the API is
 // deployed. subscriberID must match the stored subscriber_id.

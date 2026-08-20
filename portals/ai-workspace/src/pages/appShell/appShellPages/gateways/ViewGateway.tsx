@@ -62,11 +62,8 @@ import HelmIcon from "../../../../assets/icons/helm.svg";
 import { useAppShell } from "../../../../contexts/AppShellContext";
 import { buildOrgPath } from "../../../../utils/projectRouting";
 import { useAIWorkspaceSnackbar } from "../../../../hooks/aiWorkspaceSnackbar";
-import {
-  PLATFORM_GATEWAY_VERSIONS,
-  PLATFORM_API_BASE_URL,
-  CONTROLPLANE_HOST,
-} from "../../../../config.env";
+import { PLATFORM_GATEWAY_VERSIONS, CONTROLPLANE_HOST } from "../../../../config.env";
+import { PLATFORM_API_BASE_URL } from "../../../../paths";
 import {
   getGateways,
   getGatewayById,
@@ -98,6 +95,12 @@ import type { ColorScheme } from "../../../../utils/colorScheme";
 import AIGatewayStepBanner from "../quickStart/AIGatewayStepBanner";
 import ErrorAlert from "../../../../Components/common/ErrorAlert";
 import { GatewayPoliciesProvider } from "../../../../contexts/GatewayPoliciesContext";
+import { useAppAuth } from "../../../../contexts/AppAuthContext";
+import {
+  DISABLED_ACTION_SX,
+  NO_PERMISSION_TOOLTIP,
+  SCOPES,
+} from "../../../../auth/permissions";
 import GatewayPolicies from "./GatewayPolicies";
 
 const resolveGatewayVersion = (gatewayVersion?: string): string => {
@@ -106,6 +109,26 @@ const resolveGatewayVersion = (gatewayVersion?: string): string => {
     : PLATFORM_GATEWAY_VERSIONS[0];
   if (!entry) return gatewayVersion ? `v${gatewayVersion}` : 'v1.0.0';
   return entry.latestVersion ?? `v${entry.version}`;
+};
+
+// Version segment of the distribution zip name. Falls back to the release tag
+// when the configured entry doesn't override it.
+const resolveGatewayDistVersion = (gatewayVersion?: string): string | undefined => {
+  const entry = gatewayVersion
+    ? PLATFORM_GATEWAY_VERSIONS.find((v) => v.version === gatewayVersion)
+    : PLATFORM_GATEWAY_VERSIONS[0];
+  return entry?.distVersion;
+};
+
+// Version segment of the directory the zip unpacks into. Falls back to the zip's
+// own version when the configured entry doesn't override it.
+const resolveGatewayDistFolderVersion = (
+  gatewayVersion?: string,
+): string | undefined => {
+  const entry = gatewayVersion
+    ? PLATFORM_GATEWAY_VERSIONS.find((v) => v.version === gatewayVersion)
+    : PLATFORM_GATEWAY_VERSIONS[0];
+  return entry?.distFolderVersion;
 };
 
 const getPlatformApiBaseUrl = (): string => {
@@ -211,6 +234,16 @@ export default function ViewGateway() {
   const { gatewayName } = useParams<{ gatewayName: string }>();
   const { currentOrganization } = useAppShell();
   const showSnackbar = useAIWorkspaceSnackbar();
+  const { hasPermission } = useAppAuth();
+  const canUpdateGateway = hasPermission(SCOPES.GATEWAY_UPDATE);
+  // Reconfigure runs three token operations in sequence — list the existing
+  // tokens, revoke each, then rotate. All three scopes are required, or the
+  // flow fails part-way through with some tokens already revoked. A caller with
+  // ap:gateway:token:manage (or ap:gateway:manage) satisfies all three.
+  const canRotateToken =
+    hasPermission(SCOPES.GATEWAY_TOKEN_READ) &&
+    hasPermission(SCOPES.GATEWAY_TOKEN_DELETE) &&
+    hasPermission(SCOPES.GATEWAY_TOKEN_CREATE);
 
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -247,8 +280,15 @@ export default function ViewGateway() {
   const gatewayVersionHelm = gatewayVersion.startsWith("v")
     ? gatewayVersion.slice(1)
     : gatewayVersion;
-  const gatewayZipName = `wso2apip-ai-gateway-${gatewayVersionHelm}`;
-  const gatewayFolderName = `wso2apip-ai-gateway-${gatewayVersionHelm}`;
+  // Zip name can carry a suffix the release tag doesn't (e.g. tag v1.2.0
+  // publishing wso2apip-ai-gateway-1.2.0-rc.zip), and the directory that zip
+  // unpacks into can in turn drop the suffix the zip name carries.
+  const gatewayDistVersion =
+    resolveGatewayDistVersion(gateway?.version) ?? gatewayVersionHelm;
+  const gatewayDistFolderVersion =
+    resolveGatewayDistFolderVersion(gateway?.version) ?? gatewayDistVersion;
+  const gatewayZipName = `wso2apip-ai-gateway-${gatewayDistVersion}`;
+  const gatewayFolderName = `wso2apip-ai-gateway-${gatewayDistFolderVersion}`;
   const gatewayIsV12OrAbove = isGatewayV12OrAbove(gatewayVersionHelm);
   const GatewaySetupSteps = gatewayIsV12OrAbove
     ? GatewaySetupStepsV1_2Plus
@@ -687,17 +727,25 @@ export default function ViewGateway() {
                   size="small"
                   color={gateway?.isActive ? "success" : "default"}
                 />
-                <Tooltip title="Edit Gateway">
-                  <IconButton
-                    component={RouterLink}
-                    to={buildOrgPath(
-                      currentOrganization,
-                      `/gateways/edit/${gatewayName}`,
-                    )}
-                    size="small"
-                  >
-                    <Edit size={16} />
-                  </IconButton>
+                <Tooltip
+                  title={
+                    canUpdateGateway ? "Edit Gateway" : NO_PERMISSION_TOOLTIP
+                  }
+                >
+                  <Box component="span">
+                    <IconButton
+                      component={RouterLink}
+                      to={buildOrgPath(
+                        currentOrganization,
+                        `/gateways/edit/${gatewayName}`,
+                      )}
+                      size="small"
+                      disabled={!canUpdateGateway}
+                      sx={DISABLED_ACTION_SX}
+                    >
+                      <Edit size={16} />
+                    </IconButton>
+                  </Box>
                 </Tooltip>
               </Stack>
               <Typography variant="body2" color="text.secondary">
@@ -1101,14 +1149,20 @@ export default function ViewGateway() {
                       updated Helm command, click Reconfigure. This will revoke
                       the previous token.
                     </Typography>
-                    <Button
-                      variant="outlined"
-                      color="primary"
-                      onClick={handleRegenerateToken}
-                      disabled={isRegeneratingToken}
+                    <Tooltip
+                      title={canRotateToken ? '' : NO_PERMISSION_TOOLTIP}
                     >
-                      Reconfigure
-                    </Button>
+                      <Box component="span">
+                        <Button
+                          variant="outlined"
+                          color="primary"
+                          onClick={handleRegenerateToken}
+                          disabled={isRegeneratingToken || !canRotateToken}
+                        >
+                          Reconfigure
+                        </Button>
+                      </Box>
+                    </Tooltip>
                   </>
                 )}
               </Box>

@@ -29,6 +29,7 @@ import (
 	"time"
 
 	"ai-workspace-bff/internal/config"
+	"ai-workspace-bff/internal/paths"
 	"ai-workspace-bff/internal/proxy"
 )
 
@@ -101,20 +102,20 @@ func buildTestServer(t *testing.T, platformURL, jwt string) (*Server, *httptest.
 	}
 
 	cfg := &config.Config{
-		ControlPlane: config.ControlPlaneConfig{URL: platformURL, ProxyPrefix: "/proxy"},
+		ControlPlane: config.ControlPlaneConfig{URL: platformURL},
 		Cookie:       config.CookieConfig{Name: "_ai_workspace_session"},
 	}
 
 	s := &Server{
 		cfg:          cfg,
-		proxy:        proxy.ReverseProxy(mustParseURL(platformURL), cfg.ControlPlane.ProxyPrefix, transport),
+		proxy:        proxy.ReverseProxy(mustParseURL(platformURL), paths.Proxy, transport),
 		refreshLocks: make(map[string]*refreshLock),
 	}
 
 	// Wrap the handler so we can inject the session cookie on every request.
 	bffSrv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		r.AddCookie(&http.Cookie{Name: cfg.Cookie.Name, Value: jwt})
-		s.handleCreateWithSecretCompensation(w, r, "/llm-providers", "/api/v0.9")
+		s.handleCreateWithSecretCompensation(w, r, "/llm-providers", paths.PlatformAPI)
 	}))
 	t.Cleanup(bffSrv.Close)
 
@@ -269,7 +270,7 @@ func TestHandleCreateWithSecretCompensation_NoSecretNoDelete(t *testing.T) {
 func TestHandleCreateWithSecretCompensation_Unauthenticated(t *testing.T) {
 	platform, _ := fakeControlPlane(t, nil)
 	cfg := &config.Config{
-		ControlPlane: config.ControlPlaneConfig{URL: platform.URL, ProxyPrefix: "/proxy"},
+		ControlPlane: config.ControlPlaneConfig{URL: platform.URL},
 		Cookie:       config.CookieConfig{Name: "_ai_workspace_session"},
 	}
 	transport, err := proxy.NewTransport(proxy.TLSClientOptions{SkipVerify: true})
@@ -278,14 +279,14 @@ func TestHandleCreateWithSecretCompensation_Unauthenticated(t *testing.T) {
 	}
 	s := &Server{
 		cfg:          cfg,
-		proxy:        proxy.ReverseProxy(mustParseURL(platform.URL), cfg.ControlPlane.ProxyPrefix, transport),
+		proxy:        proxy.ReverseProxy(mustParseURL(platform.URL), paths.Proxy, transport),
 		refreshLocks: make(map[string]*refreshLock),
 	}
 
 	w := httptest.NewRecorder()
-	r := httptest.NewRequest(http.MethodPost, "/api/bff/llm-providers", strings.NewReader(`{}`))
+	r := httptest.NewRequest(http.MethodPost, "/ai-workspace/api/llm-providers", strings.NewReader(`{}`))
 	// No cookie set → should get 401.
-	s.handleCreateWithSecretCompensation(w, r, "/llm-providers", "/api/v0.9")
+	s.handleCreateWithSecretCompensation(w, r, "/llm-providers", paths.PlatformAPI)
 
 	if w.Code != http.StatusUnauthorized {
 		t.Errorf("status = %d, want 401", w.Code)

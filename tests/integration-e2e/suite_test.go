@@ -47,13 +47,6 @@ const (
 	// run (postgres + two gateways + devportal, with controller restarts) tolerates
 	// slower Envoy config propagation under load on constrained hosts.
 	pollTimeout = 120 * time.Second
-
-	// Admin user injected via AUTH_FILE_BASED_USERS on the @devportal stack. It
-	// carries both the platform-api ap:* scopes and the dp:*_manage scopes the
-	// developer portal requires, so the same admin JWT authorizes both products.
-	// (A mounted config's users are ignored — the built-in default admin wins —
-	// but the AUTH_FILE_BASED_USERS env var does override it.)
-	fileBasedAdminUsers = `[{"username":"admin","password_hash":"$2y$10$U2yKMwGamGwDoMu0hRPT7u8nCuP8z/qxHFOKV6dhIxkJN9NJ0eVQ.","scopes":"ap:organization:manage ap:gateway:manage ap:gateway_custom_policy:manage ap:rest_api:manage ap:llm_provider:manage ap:llm_proxy:manage ap:mcp_proxy:manage ap:webbroker_api:manage ap:websub_api:manage ap:application:manage ap:subscription:manage ap:subscription_plan:manage ap:project:manage ap:llm_template:manage ap:devportal:manage ap:api_key:read ap:api_key:all:manage ap:secret:manage dp:org_manage dp:api_manage dp:sub_plan_manage dp:app_manage dp:subscription_manage dp:api_key_manage dp:webhook_subscriber_manage"}]`
 )
 
 // Host-side endpoints. Ports are overridable so the suite can run alongside
@@ -63,7 +56,7 @@ var (
 	platformAPI  = "https://localhost:" + envOr("PA_HOST_PORT", "9243")
 	ingressGw1   = "http://localhost:" + envOr("GW_HTTP_PORT", "18080")
 	ingressGw2   = "http://localhost:" + envOr("GW2_HTTP_PORT", "18081")
-	devportalAPI = "http://localhost:" + envOr("DP_HOST_PORT", "9543")
+	devportalAPI = "http://localhost:" + envOr("AP_HOST_PORT", "9543")
 	// gwMgmtAPI is the gateway-controller management REST API (port 9090 in the
 	// e2e compose, overridable via GW_MGMT_PORT). Used to verify that resources
 	// deployed via platform-api are visible on the data plane.
@@ -73,12 +66,17 @@ var (
 // REST API base paths, defined in one place so each product's API version/prefix can
 // be reconfigured centrally — and independently, since platform-api and the developer
 // portal version on separate release cadences and may diverge. Overridable via env
-// (PA_API_BASE / DP_API_BASE) so a version bump needs no code change. platformAPIBase
+// (PA_API_BASE / AP_API_BASE) so a version bump needs no code change. platformAPIBase
 // is prepended by the apiCall helper; devportalBase by dpDo — so their callers name
 // only the resource path (e.g. "/rest-apis").
+//
+// api-portal serves its whole surface — pages and REST API alike — under a hardcoded
+// /api-portal mount prefix (portals/api-portal/src/utils/constants.js ROUTE.BASE_PATH,
+// mirrored by servers[].url in its OpenAPI spec), so its base carries that prefix while
+// platform-api's does not.
 var (
 	platformAPIBase = envOr("PA_API_BASE", "/api/v0.9")
-	devportalBase   = envOr("DP_API_BASE", "/api/v0.9")
+	devportalBase   = envOr("AP_API_BASE", "/api-portal/api/v0.9")
 )
 
 // Additional platform-api path prefixes, distinct from the resource API version above
@@ -96,7 +94,7 @@ var suite struct {
 	db          string // postgres | sqlite | sqlserver
 	composeFile string
 	multi       bool // second gateway available (postgres stack only)
-	devportal   bool // developer portal + webhook wired (postgres stack only)
+	devportal   bool // API Portal + webhook wired (postgres stack only)
 	token       string
 	projectID   string
 	gw1ID       string
@@ -112,7 +110,7 @@ var httpClient = &http.Client{
 func TestFeatures(t *testing.T) {
 	tags := os.Getenv("E2E_TAGS")
 	if tags == "" && os.Getenv("E2E_DB") != "" && os.Getenv("E2E_DB") != "postgres" {
-		// The second gateway and the developer portal are only wired on the
+		// The second gateway and the API Portal are only wired on the
 		// postgres stack, so their scenarios are skipped elsewhere.
 		tags = "~@multigateway && ~@devportal"
 	}
@@ -155,7 +153,7 @@ func bringUpStack() error {
 	switch suite.db {
 	case "postgres":
 		// The postgres stack is the one wired with the second gateway and the
-		// developer portal (+ webhook), so @multigateway and @devportal run here.
+		// API Portal (+ webhook), so @multigateway and @devportal run here.
 		// The devportal service needs its own image, so only bring it up when the
 		// @devportal scenario is actually selected (a tag subset may exclude it).
 		suite.composeFile, suite.multi = "docker-compose.yaml", true
@@ -173,13 +171,6 @@ func bringUpStack() error {
 	// interpolates it into platform-api's environment (and refuses to start without it).
 	if err := prepareWebhookSecret(); err != nil {
 		return err
-	}
-
-	if suite.db == "postgres" {
-		// Give the admin JWT the dp:* scopes the developer portal enforces.
-		if err := os.Setenv("AUTH_FILE_BASED_USERS", fileBasedAdminUsers); err != nil {
-			return err
-		}
 	}
 
 	// Phase 1: control plane + backend.
@@ -216,7 +207,7 @@ func bringUpStack() error {
 		dataPlane = append(dataPlane, "gateway-controller-2", "gateway-runtime-2")
 	}
 	if suite.devportal {
-		dataPlane = append(dataPlane, "devportal")
+		dataPlane = append(dataPlane, "api-portal")
 	}
 
 	// Phase 2: data plane (+ devportal) with the minted tokens.
@@ -224,7 +215,7 @@ func bringUpStack() error {
 		return fmt.Errorf("start data plane: %w", err)
 	}
 
-	// Bootstrap the developer portal so it can fire webhooks that platform-api
+	// Bootstrap the API Portal so it can fire webhooks that platform-api
 	// accepts: link its org to the control-plane org handle and register the
 	// platform-api webhook subscriber.
 	if suite.devportal {
@@ -375,7 +366,7 @@ func devportalSelected() bool {
 	return strings.Contains(tags, "@devportal") && !strings.Contains(tags, "~@devportal")
 }
 
-// webhookSecret is the secret shared between the developer portal subscriber and
+// webhookSecret is the secret shared between the API Portal subscriber and
 // platform-api's APIP_CP_WEBHOOK_SECRET. It both signs deliveries (HMAC-SHA256) and
 // derives the AES key for the encrypted key/token fields, so the two sides holding
 // different values breaks signature verification and field decryption together.

@@ -18,7 +18,7 @@ The AI Workspace is a React/Vite SPA served by a **Go BFF (Backend-for-Frontend)
 ## Technology stack
 
 - **React** + **TypeScript** + **Vite**
-- **Go BFF** — serves the SPA, reverse-proxies `/proxy/*` to the Platform API (injecting the session bearer token), and handles login/logout/session + the OIDC code flow
+- **Go BFF** — serves the SPA, reverse-proxies `/proxy/*` to the Platform API (injecting the session bearer token), and handles login/logout/session + the OIDC code flow. Everything is served under the `/ai-workspace` path prefix (see [Base path](#base-path))
 - **Docker Compose** — orchestrates AI Workspace + Platform API
 
 ---
@@ -49,7 +49,7 @@ Runtime config is resolved by the BFF at startup:
    an unreadable/disallowed file, aborts startup instead of yielding an empty credential. A
    `{{ file }}` path must sit under `/etc/ai-workspace` or `/secrets/ai-workspace` (override with
    `APIP_CONFIG_FILE_SOURCE_ALLOWLIST`).
-3. The BFF then serves the browser-safe subset at `GET /runtime-config.js` (as
+3. The BFF then serves the browser-safe subset at `GET /ai-workspace/runtime-config.js` (as
    `window.__RUNTIME_CONFIG__`) so the SPA can read it without a rebuild. That subset is an
    explicit allowlist — server-side settings and the OIDC client credentials are never emitted.
 
@@ -86,6 +86,68 @@ All available options are documented in
 
 ---
 
+## Base path
+
+The whole app is served under the fixed URL path prefix **`/ai-workspace`**, so the UI lives at
+`https://localhost:9643/ai-workspace/`:
+
+| Path | Serves |
+|---|---|
+| `/ai-workspace/` | the SPA (and any client-side route below it) |
+| `/ai-workspace/assets/*` | hashed JS/CSS/image assets |
+| `/ai-workspace/runtime-config.js` | `window.__RUNTIME_CONFIG__` |
+| `/ai-workspace/api/*` | the BFF's own API — session/login/logout, plus the creates it orchestrates itself |
+| `/ai-workspace/proxy/*` | reverse proxy to the Platform API |
+| `/healthz` | health, **at the origin root** |
+| `/` | 302 redirect to `/ai-workspace/` (convenience only) |
+
+The prefix means one ingress rule can route a single path to this service with no rewriting, and an
+all-in-one deployment can put the AI Workspace, the API Portal and the Platform API behind one host
+and port without their routes colliding. A minimal ingress rule needs nothing more than:
+
+```yaml
+- path: /ai-workspace
+  pathType: Prefix
+  backend:
+    service:
+      name: ai-workspace
+      port: { number: 9643 }
+```
+
+`/healthz` stays at the origin root because container and Kubernetes probes dial the pod directly,
+bypassing the ingress that adds the prefix. It is also served under the prefix, so a probe routed
+through the ingress works too.
+
+The prefix is **not configurable** — it is a fixed contract between the BFF and the SPA it
+ships, like the CSRF header name. Each side declares it once, and the two must stay in lockstep:
+
+- `paths.Base` in `bff/internal/paths/paths.go` — where the server mounts its routes.
+- `BASE_PATH` in `src/paths.ts` — what the SPA composes URLs from, and what `vite.config.ts`
+  imports for Vite's `base` (the prefix baked into the bundle), so the bundle and the code
+  cannot disagree.
+
+It has to be baked in because `index.html` references its assets by absolute path: a bundle built
+for one prefix and served under another 404s on every asset. Making it a config key would only let
+a deployment break itself, so there is no `base_path` setting in `config.toml`.
+
+Every other path prefix is fixed for the same reason, and each side keeps its set in one file —
+`bff/internal/paths/paths.go` and `src/paths.ts` — mirroring the other name for name:
+
+| BFF | SPA | Value |
+|---|---|---|
+| `paths.Proxy` | (folded into the two below) | `/proxy` — the same-origin hop to the Platform API |
+| `paths.PlatformAPI` | `PLATFORM_API_BASE_URL` | `/api/v0.9` |
+| `paths.PortalAPI` | `PORTAL_API_BASE_URL` | `/api/portal/v0.9` |
+
+A different upstream prefix means a different Platform API version — a code change on both sides,
+not a config edit — so none of these are config keys or runtime-config values, and the SPA composes
+them from its own `BASE_PATH` rather than being told them at runtime.
+
+Router navigation doesn't need the prefix (`BrowserRouter` is mounted with `basename={BASE_PATH}`);
+absolute `fetch()` paths, `window.location` assignments and OIDC redirect URIs do.
+
+---
+
 ## Project layout
 
 ```
@@ -99,9 +161,10 @@ portals/ai-workspace/
 │   └── README.md                        # Production setup guide (Asgardeo)
 ├── bff/                                # Go BFF — serves SPA, proxy, auth
 │   ├── main.go
-│   └── internal/{config,session,auth,proxy,server,tlsutil}
+│   └── internal/{config,paths,session,auth,proxy,server,tlsutil}
 ├── src/
 │   ├── config.env.ts                    # Centralised env/runtime config reads
+│   ├── paths.ts                         # URL path prefixes (fixed, mirrors bff/internal/paths)
 │   ├── contexts/BFFAuthProvider.tsx     # Single auth provider (hydrates from /api/session)
 │   ├── App.tsx
 │   └── ...
@@ -124,14 +187,14 @@ cd portals/ai-workspace && make build
 # cd platform-api && make build --> Update docker-compose file in portals/ai-workspace folder, with the new build tag
 
 # Start the stack
-docker compose up -d
+docker compose up
 ```
 
 The stack exposes:
 
-| Service | Port | Protocol |
+| Service | URL | Protocol |
 |---|---|---|
-| AI Workspace (Go BFF) | `9643` | HTTPS |
+| AI Workspace (Go BFF) | `9643`, path `/ai-workspace` | HTTPS |
 | Platform API | `9243` | HTTPS |
 
 **Already have a platform-api running elsewhere** (another host, or a container you started
@@ -141,7 +204,7 @@ the external instance:
 
 ```bash
 export APIP_AIW_CONTROL_PLANE_URL=https://<external-platform-api-host>:9243
-docker compose up -d --no-deps ai-workspace
+docker compose up --no-deps ai-workspace
 ```
 
 Since `--no-deps` skips the `service_healthy` wait too, confirm the external platform-api is
@@ -176,10 +239,12 @@ This starts the Platform API using the local configuration file.
 Terminal 3:
 ```bash
 cd portals/ai-workspace
-make bff-run            # serves /api/* on https://localhost:8081, proxies to the Platform API
+make bff-run            # serves /ai-workspace/api/* on https://localhost:8081, proxies to the Platform API
 ```
-The Vite dev server proxies `/api` and `/runtime-config.js` to the BFF, so the browser
-talks only to the app origin (same topology as production). Set `CONTROL_PLANE_URL` if the
+The Vite dev server proxies `/ai-workspace/api`, `/ai-workspace/proxy` and
+`/ai-workspace/runtime-config.js` to the BFF, so the browser talks only to the app origin (same
+topology as production). It serves the app at `https://localhost:9643/ai-workspace/` — the same
+prefix as production, so no path differs between the two. Set `CONTROL_PLANE_URL` if the
 Platform API is not on `https://localhost:9243` — `make bff-run` forwards it to the BFF as
 `APIP_AIW_CONTROL_PLANE_URL`, the variable the `[ai_workspace.control_plane] url` token names, so the two
 names are the same setting.
@@ -222,7 +287,7 @@ For Asgardeo, on the application's **Protocol** tab:
 | Setting | Value |
 |---|---|
 | Allowed grant types | ☑ **Code** and ☑ **Refresh Token** |
-| Authorized redirect URL | `https://localhost:9643/api/auth/callback` |
+| Authorized redirect URL | `https://localhost:9643/ai-workspace/api/auth/callback` |
 | Client authentication | a confidential method (default `client_secret_basic` works; the BFF also sends the secret in the body) |
 | PKCE | enabled (the BFF always sends `S256`) |
 | Access Token Type | `JWT` |
@@ -235,7 +300,7 @@ token, and the user is logged out the moment the access token expires. If your I
 
 Copy the **Client ID** and **Client Secret** — you'll need both below.
 
-> The redirect URL is the **BFF callback** (`/api/auth/callback`), not the SPA `/signin`
+> The redirect URL is the **BFF callback** (`/ai-workspace/api/auth/callback`), not the SPA `/signin`
 > route. It is the same `https://localhost:9643` origin for both run modes below, because the
 > Vite dev server and the compose stack both serve the app on port `9643`.
 
@@ -275,8 +340,8 @@ mode = "oidc"
 [ai_workspace.auth.oidc]
 authority                = "https://idp.example.com/oauth2/token"   # Asgardeo: https://api.asgardeo.io/t/acme/oauth2/token
 client_id                = "<your-client-id>"
-redirect_url             = "https://localhost:9643/api/auth/callback"
-post_logout_redirect_url = "https://localhost:9643/login"
+redirect_url             = "https://localhost:9643/ai-workspace/api/auth/callback"
+post_logout_redirect_url = "https://localhost:9643/ai-workspace/login"
 
 # The secret's *value* stays out of the file — this token pulls it in from the
 # environment at startup. Without the key here, the variable is never read.
@@ -304,7 +369,7 @@ APIP_CP_AUTH_IDP_AUDIENCE=<your-client-id>   # optional; omit to skip the aud ch
 Then start the stack:
 
 ```bash
-docker compose up -d
+docker compose up
 ```
 
 In production, prefer mounting the secret as a file and referencing it with
@@ -359,8 +424,8 @@ export APIP_AIW_AUTH_MODE=oidc
 export APIP_AIW_AUTH_OIDC_AUTHORITY=https://api.asgardeo.io/t/<your-tenant>/oauth2/token
 export APIP_AIW_AUTH_OIDC_CLIENT_ID=<your-client-id>
 export APIP_AIW_AUTH_OIDC_CLIENT_SECRET=<your-client-secret>
-export APIP_AIW_AUTH_OIDC_REDIRECT_URL=https://localhost:9643/api/auth/callback
-export APIP_AIW_AUTH_OIDC_POST_LOGOUT_REDIRECT_URL=https://localhost:9643/login
+export APIP_AIW_AUTH_OIDC_REDIRECT_URL=https://localhost:9643/ai-workspace/api/auth/callback
+export APIP_AIW_AUTH_OIDC_POST_LOGOUT_REDIRECT_URL=https://localhost:9643/ai-workspace/login
 # Keep `offline_access` — without it the IDP issues no refresh token and the BFF cannot silently renew the session.
 export APIP_AIW_AUTH_OIDC_SCOPE="openid profile email offline_access ap:organization:manage ap:gateway:manage ap:rest_api:manage ..."
 make bff-run
@@ -368,13 +433,13 @@ make bff-run
 
 ### Verify and troubleshoot
 
-`GET /api/session` returning `200` after the Asgardeo redirect means login worked. Common
+`GET /ai-workspace/api/session` returning `200` after the Asgardeo redirect means login worked. Common
 failures, by symptom:
 
 | Symptom | Cause | Fix |
 |---|---|---|
 | `unauthorized_client` / *"not authorized to use the requested grant type"* | App registered as SPA, or Code/Refresh grant not enabled | Recreate as Standard-Based OIDC app; enable **Code** + **Refresh Token** (step 1) |
-| Platform API exits at startup with *`auth.mode must be "external_token", "file", or "idp"`* | `auth.mode` is unset or misspelled | Compose: set `APIP_CP_AUTH_MODE=idp` in `api-platform.env` (step 3, Option 1). Local: set `[auth] mode = "idp"` in `config.toml` (step 3, Option 2) |
+| Platform API exits at startup with *`auth.mode must be "internal_token", "file", or "idp"`* | `auth.mode` is unset or misspelled | Compose: set `APIP_CP_AUTH_MODE=idp` in `api-platform.env` (step 3, Option 1). Local: set `[platform_api.auth] mode = "idp"` in `config.toml` (step 3, Option 2) |
 | `502` + `dial tcp: lookup platform-api: no such host` | BFF run locally but `[ai_workspace.control_plane] url` points at the compose hostname | Set `APIP_AIW_CONTROL_PLANE_URL=https://localhost:9243` (step 3, Option 2) |
 | Proxied calls return `authentication_failed` | Platform API still on local JWT/file-based, validating the IDP token with the wrong validator | Switch it to the IDP — compose: set the `APIP_CP_AUTH_IDP_*` keys in `api-platform.env` (step 3, Option 1); local: enable `[auth.idp]` (step 3, Option 2) |
 | Proxied calls return `authentication_failed`, Platform API logs `token contains an invalid number of segments` | IDP is issuing **opaque** access tokens — the BFF forwards the access token and the Platform API can only validate a **JWT** via JWKS | Set **Access Token Type = JWT** on the app's Protocol tab (step 1) and re-login |
@@ -436,7 +501,7 @@ Use the following commands after the stack is up:
   ```bash
   npm run test:e2e
   ```
-- Interactive Cypress UI against `https://localhost:9643`:
+- Interactive Cypress UI against `https://localhost:9643/ai-workspace`:
   ```bash
   npm run test:e2e:open
   ```
@@ -445,7 +510,7 @@ Use the following commands after the stack is up:
   make e2e-open
   ```
 
-`npm run test:e2e` runs against `https://host.docker.internal:9643`, which maps back to your local quickstart stack from inside the Cypress container. The command adds an explicit `host-gateway` mapping so it also works on Linux Docker hosts. `npm run test:e2e:open` runs locally against `https://localhost:9643`.
+`npm run test:e2e` runs against `https://host.docker.internal:9643/ai-workspace`, which maps back to your local quickstart stack from inside the Cypress container. The command adds an explicit `host-gateway` mapping so it also works on Linux Docker hosts. `npm run test:e2e:open` runs locally against `https://localhost:9643/ai-workspace`. The base URL carries the `/ai-workspace` prefix, so specs use prefix-free relative paths.
 
 The tests default to `admin` / `admin`; pin the quickstart credentials to match
 (`ADMIN_USERNAME=admin ADMIN_PASSWORD=admin ../scripts/setup.sh --force`) or export
@@ -472,8 +537,8 @@ docker-compose mounts this directory read-only into both containers
 the BFF trusts for the upstream platform-api hop, referenced by `[ai_workspace.control_plane] ca_file` in
 `configs/config.toml`.
 
-Then restart the stack: `docker compose up -d --force-recreate` (a plain `docker
-compose up -d` won't recreate already-running containers, so they'd keep the
+Then restart the stack: `docker compose up --force-recreate` (a plain `docker
+compose up` won't recreate already-running containers, so they'd keep the
 old certificates loaded)
 
 ---

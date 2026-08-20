@@ -97,33 +97,33 @@ spec:
           env:
             # Config is delivered via the mounted config.toml (see configmap.yaml);
             # only secrets are injected here, resolved into that config by its
-            # {{ "{{ env \"APIP_DP_*\" }}" }} tokens.
-            - name: APIP_DP_SECURITY_ENCRYPTION_KEY
+            # {{ "{{ env \"APIP_AP_*\" }}" }} tokens.
+            - name: APIP_AP_SECURITY_ENCRYPTION_KEY
               valueFrom:
                 secretKeyRef:
                   name: {{ $secretName }}
                   key: {{ $secrets.keys.encryptionKey }}
-            - name: APIP_DP_SECURITY_SESSION_SECRET
+            - name: APIP_AP_SECURITY_SESSION_SECRET
               valueFrom:
                 secretKeyRef:
                   name: {{ $secretName }}
                   key: {{ $secrets.keys.sessionSecret }}
             {{- if eq $cfg.database.type "postgres" }}
-            - name: APIP_DP_DATABASE_PASSWORD
+            - name: APIP_AP_DATABASE_PASSWORD
               valueFrom:
                 secretKeyRef:
                   name: {{ $secretName }}
                   key: {{ $secrets.keys.databasePassword }}
             {{- end }}
             {{- if $secrets.hasServiceApiKeyValue }}
-            - name: APIP_DP_SECURITY_SERVICE_API_KEY_VALUE
+            - name: APIP_AP_SECURITY_SERVICE_API_KEY_VALUE
               valueFrom:
                 secretKeyRef:
                   name: {{ $secretName }}
                   key: {{ $secrets.keys.serviceApiKeyValue }}
             {{- end }}
             {{- if and (ne $auth.idp.clientId "") $secrets.hasIdpClientSecret }}
-            - name: APIP_DP_AUTH_IDP_CLIENT_SECRET
+            - name: APIP_AP_AUTH_IDP_CLIENT_SECRET
               valueFrom:
                 secretKeyRef:
                   name: {{ $secretName }}

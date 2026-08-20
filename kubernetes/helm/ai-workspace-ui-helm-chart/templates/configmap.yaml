@@ -43,8 +43,6 @@ data:
     url = {{ $controlPlaneUrl | quote }}
     tls_skip_verify = {{ $cfg.controlPlane.tlsSkipVerify | toString | quote }}
     ca_file = {{ $cfg.controlPlane.caFile | quote }}
-    proxy_prefix = {{ $cfg.controlPlane.proxyPrefix | quote }}
-    portal_base_path = {{ $cfg.controlPlane.portalBasePath | quote }}
 
     [ai_workspace.gateway]
     controlplane_host = {{ $cfg.gateway.controlplaneHost | quote }}

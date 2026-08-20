@@ -18,9 +18,14 @@
 package database
 
 import (
+	"io"
+	"log/slog"
 	"os"
+	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/wso2/api-platform/platform-api/config"
 )
 
 // TestSplitSQLStatements_SemicolonInLineComment ensures a semicolon inside a
@@ -68,6 +73,73 @@ INSERT INTO t (v) VALUES ('c');`
 	}
 	if !strings.Contains(stmts[0], "'a;b'") {
 		t.Fatalf("string-literal semicolon was split: %q", stmts[0])
+	}
+}
+
+// TestNewConnection_SQLiteForeignKeysSurviveConnectionRecycling verifies FK
+// enforcement survives connection recycling; SetMaxIdleConns(0) forces a
+// fresh connection to simulate a ConnMaxLifetime recycle deterministically.
+func TestNewConnection_SQLiteForeignKeysSurviveConnectionRecycling(t *testing.T) {
+	dir := t.TempDir()
+	slogger := slog.New(slog.NewTextHandler(io.Discard, nil))
+
+	db, err := NewConnection(&config.Database{
+		Driver:          DriverSQLite,
+		Path:            filepath.Join(dir, "test.db"),
+		MaxOpenConns:    1,
+		MaxIdleConns:    1,
+		ConnMaxLifetime: 300,
+	}, slogger)
+	if err != nil {
+		t.Fatalf("NewConnection() error = %v", err)
+	}
+	t.Cleanup(func() { db.Close() })
+
+	// Force every subsequent query onto a freshly-opened connection.
+	db.DB.SetMaxIdleConns(0)
+
+	var enabled int
+	if err := db.QueryRow("PRAGMA foreign_keys").Scan(&enabled); err != nil {
+		t.Fatalf("PRAGMA foreign_keys query: %v", err)
+	}
+	if enabled != 1 {
+		t.Fatalf("foreign_keys = %d on a freshly-opened connection, want 1", enabled)
+	}
+
+	schemaPath := filepath.Join("schema.sqlite.sql")
+	if err := db.InitSchema(schemaPath, slogger); err != nil {
+		t.Fatalf("InitSchema() error = %v", err)
+	}
+
+	const orgUUID, artifactUUID, policyUUID = "org-fk-recycle", "artifact-fk-recycle", "policy-fk-recycle"
+	if _, err := db.Exec(`INSERT INTO organizations (uuid, handle, display_name, region, idp_organization_ref_uuid, created_at, updated_at)
+		VALUES (?, ?, ?, ?, 'idp-ref', datetime('now'), datetime('now'))`, orgUUID, "fk-recycle-org", "FK Recycle Org", "default"); err != nil {
+		t.Fatalf("insert organization: %v", err)
+	}
+	if _, err := db.Exec(`INSERT INTO artifacts (uuid, type, organization_uuid) VALUES (?, ?, ?)`,
+		artifactUUID, "LlmProvider", orgUUID); err != nil {
+		t.Fatalf("insert artifact: %v", err)
+	}
+	if _, err := db.Exec(`INSERT INTO gateway_custom_policies (uuid, organization_uuid, name, version, policy_definition, created_at, updated_at)
+		VALUES (?, ?, ?, ?, ?, datetime('now'), datetime('now'))`,
+		policyUUID, orgUUID, "fk-recycle-policy", "v1.0.0", []byte("{}")); err != nil {
+		t.Fatalf("insert custom policy: %v", err)
+	}
+	if _, err := db.Exec(`INSERT INTO gateway_custom_policy_usages (policy_uuid, artifact_uuid) VALUES (?, ?)`,
+		policyUUID, artifactUUID); err != nil {
+		t.Fatalf("insert usage: %v", err)
+	}
+
+	if _, err := db.Exec(`DELETE FROM artifacts WHERE uuid = ?`, artifactUUID); err != nil {
+		t.Fatalf("delete artifact: %v", err)
+	}
+
+	var usageCount int
+	if err := db.QueryRow(`SELECT COUNT(*) FROM gateway_custom_policy_usages WHERE artifact_uuid = ?`, artifactUUID).Scan(&usageCount); err != nil {
+		t.Fatalf("count usages: %v", err)
+	}
+	if usageCount != 0 {
+		t.Fatalf("usage rows after artifact delete = %d, want 0 (ON DELETE CASCADE did not fire)", usageCount)
 	}
 }
 

@@ -5,6 +5,14 @@
 # for frontend). It is stateless (no database) and talks only to the Platform API.
 # Released on its own; used as an umbrella subchart or standalone.
 #
+# The app is served under the /ai-workspace path prefix (baked into the SPA bundle at
+# image build time, so it is not a chart value): the UI is at
+# https://<host>:<port>/ai-workspace/, its API hop at /ai-workspace/proxy/... . Route a
+# single `path: /ai-workspace, pathType: Prefix` ingress rule here — no rewriting — and
+# several portals can share one host without their routes colliding. The probes below
+# use /healthz, which the BFF serves at the origin root precisely so they work without
+# going through that ingress.
+#
 #   global.*   Cross-cutting settings. Under an umbrella these come from the
 #              umbrella; the block below is the STANDALONE default, overridden
 #              when nested.
@@ -84,10 +92,6 @@ config:
     # CA file to verify the Platform API's certificate instead of skipping
     # verification (mount it via deployment.extraVolumes/extraVolumeMounts).
     caFile: ""
-    # Browser-facing proxy prefix and the Platform API portal base path — the
-    # SPA never talks to the Platform API directly; the BFF proxies under these.
-    proxyPrefix: /proxy
-    portalBasePath: /api/portal/v0.9
 
   gateway:
     # Public host:port that DEPLOYED GATEWAYS dial to reach the Platform API.
@@ -120,6 +124,11 @@ config:
       roles: roles
     # OIDC settings — used only when mode=oidc. The client secret is NOT here;
     # it comes from the Secret (secrets.keys.oidcClientSecret).
+    # Both URLs must include the /ai-workspace prefix — that is where the BFF serves
+    # the callback route and the SPA's login page — and must match what is registered
+    # on the IDP application, e.g.
+    #   redirectUrl: https://<host>/ai-workspace/api/auth/callback
+    #   postLogoutRedirectUrl: https://<host>/ai-workspace/login
     oidc:
       authority: ""             # issuer / discovery base URL
       clientId: ""

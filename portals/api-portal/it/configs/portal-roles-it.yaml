@@ -1,0 +1,248 @@
+# --------------------------------------------------------------------
+# Copyright (c) 2026, WSO2 LLC. (https://www.wso2.com).
+#
+# WSO2 LLC. licenses this file to you under the Apache License,
+# Version 2.0 (the "License"); you may not use this file except
+# in compliance with the License.
+# You may obtain a copy of the License at
+#
+# http://www.apache.org/licenses/LICENSE-2.0
+# --------------------------------------------------------------------
+#
+# The PORTAL-side role-to-scope grant table for the IT fixture
+# (auth.authorization.role_to_scope_mapping). Read ONLY when the suite runs with
+# AUTH_MODE=role; in scope mode the portal reads the token's scope claim instead
+# and never consults this file.
+#
+# Two tables exist because the two components answer different questions:
+#
+#   roles-platform-api-it.yaml  — platform-api's. Expands each IT account's roles
+#                                 into the SCOPE CLAIM of the token it mints.
+#   this file                   — the portal's. In role mode the portal ignores
+#                                 that scope claim and expands the token's ROLES
+#                                 CLAIM through this file instead.
+#
+# The three real accounts are mirrored EXACTLY, so every spec in the suite holds
+# in both modes — that is what lets the whole suite run twice rather than needing
+# a mode-specific set of expectations. auth/grant-table-parity.spec.js fails if
+# the two files ever drift apart, so this is checked rather than hoped for.
+# Regenerate after changing platform-api's table; do not hand-edit these three.
+#
+# dp_narrow_it is the deliberate exception — see its comment below.
+#
+# Every dp:* scope must be declared in docs/api-portal-openapi-spec-v0.9.yaml; the
+# portal validates this file against the spec at startup and refuses to boot on an
+# unknown one, so a typo fails the fixture loudly.
+# --------------------------------------------------------------------
+
+roles:
+  # Mirror of dp_admin_it in roles-platform-api-it.yaml (84 scopes).
+  - name: dp_admin_it
+    scopes:
+      - dp:organization:read
+      - dp:organization:create
+      - dp:organization:update
+      - dp:organization:manage
+      - dp:organization:delete
+      - dp:organization_content:read
+      - dp:organization_content:manage
+      - dp:api:read
+      - dp:api:create
+      - dp:api:update
+      - dp:api:manage
+      - dp:api:delete
+      - dp:api_content:read
+      - dp:api_content:create
+      - dp:api_content:update
+      - dp:api_content:manage
+      - dp:api_content:delete
+      - dp:mcp_server:read
+      - dp:mcp_server:create
+      - dp:mcp_server:update
+      - dp:mcp_server:manage
+      - dp:mcp_server:delete
+      - dp:mcp_server_content:read
+      - dp:mcp_server_content:create
+      - dp:mcp_server_content:update
+      - dp:mcp_server_content:manage
+      - dp:mcp_server_content:delete
+      - dp:api_key:create
+      - dp:api_key:read
+      - dp:api_key:update
+      - dp:api_key:manage
+      - dp:api_key:revoke
+      - dp:mcp_server_key:create
+      - dp:mcp_server_key:read
+      - dp:mcp_server_key:update
+      - dp:mcp_server_key:manage
+      - dp:mcp_server_key:revoke
+      - dp:api_workflow:create
+      - dp:api_workflow:read
+      - dp:api_workflow:update
+      - dp:api_workflow:delete
+      - dp:api_workflow:manage
+      - dp:application:create
+      - dp:application:read
+      - dp:application:update
+      - dp:application:manage
+      - dp:application:delete
+      - dp:application_key:create
+      - dp:application_key:manage
+      - dp:application_key:revoke
+      - dp:application_key_mapping:read
+      - dp:application_key_mapping:create
+      - dp:application_key_mapping:manage
+      - dp:subscription:create
+      - dp:subscription:read
+      - dp:subscription:update
+      - dp:subscription:manage
+      - dp:subscription:delete
+      - dp:subscription_plan:create
+      - dp:subscription_plan:read
+      - dp:subscription_plan:update
+      - dp:subscription_plan:manage
+      - dp:subscription_plan:delete
+      - dp:key_manager:create
+      - dp:key_manager:read
+      - dp:key_manager:update
+      - dp:key_manager:manage
+      - dp:key_manager:delete
+      - dp:view:create
+      - dp:view:read
+      - dp:view:update
+      - dp:view:manage
+      - dp:view:delete
+      - dp:label:create
+      - dp:label:read
+      - dp:label:update
+      - dp:label:manage
+      - dp:label:delete
+      - dp:webhook_subscriber:create
+      - dp:webhook_subscriber:read
+      - dp:webhook_subscriber:update
+      - dp:webhook_subscriber:delete
+      - dp:webhook_subscriber:manage
+      - dp:event:read
+
+  # Mirror of dp_publisher_it in roles-platform-api-it.yaml (62 scopes).
+  - name: dp_publisher_it
+    scopes:
+      - dp:organization:read
+      - dp:api:read
+      - dp:api:create
+      - dp:api:update
+      - dp:api:manage
+      - dp:api:delete
+      - dp:api_content:read
+      - dp:api_content:create
+      - dp:api_content:update
+      - dp:api_content:manage
+      - dp:api_content:delete
+      - dp:mcp_server:read
+      - dp:mcp_server:create
+      - dp:mcp_server:update
+      - dp:mcp_server:manage
+      - dp:mcp_server:delete
+      - dp:mcp_server_content:read
+      - dp:mcp_server_content:create
+      - dp:mcp_server_content:update
+      - dp:mcp_server_content:manage
+      - dp:mcp_server_content:delete
+      - dp:api_key:create
+      - dp:api_key:read
+      - dp:api_key:update
+      - dp:api_key:manage
+      - dp:api_key:revoke
+      - dp:mcp_server_key:create
+      - dp:mcp_server_key:read
+      - dp:mcp_server_key:update
+      - dp:mcp_server_key:manage
+      - dp:mcp_server_key:revoke
+      - dp:api_workflow:create
+      - dp:api_workflow:read
+      - dp:api_workflow:update
+      - dp:api_workflow:delete
+      - dp:api_workflow:manage
+      - dp:subscription_plan:create
+      - dp:subscription_plan:read
+      - dp:subscription_plan:update
+      - dp:subscription_plan:manage
+      - dp:subscription_plan:delete
+      - dp:key_manager:create
+      - dp:key_manager:read
+      - dp:key_manager:update
+      - dp:key_manager:manage
+      - dp:key_manager:delete
+      - dp:view:create
+      - dp:view:read
+      - dp:view:update
+      - dp:view:manage
+      - dp:view:delete
+      - dp:label:create
+      - dp:label:read
+      - dp:label:update
+      - dp:label:manage
+      - dp:label:delete
+      - dp:webhook_subscriber:create
+      - dp:webhook_subscriber:read
+      - dp:webhook_subscriber:update
+      - dp:webhook_subscriber:delete
+      - dp:webhook_subscriber:manage
+      - dp:event:read
+
+  # Mirror of dp_developer_it in roles-platform-api-it.yaml (29 scopes).
+  - name: dp_developer_it
+    scopes:
+      - dp:organization:read
+      - dp:api:read
+      - dp:api_content:read
+      - dp:mcp_server:read
+      - dp:mcp_server_content:read
+      - dp:api_key:create
+      - dp:api_key:read
+      - dp:api_key:update
+      - dp:api_key:manage
+      - dp:api_key:revoke
+      - dp:application:create
+      - dp:application:read
+      - dp:application:update
+      - dp:application:manage
+      - dp:application:delete
+      - dp:application_key:create
+      - dp:application_key:manage
+      - dp:application_key:revoke
+      - dp:application_key_mapping:read
+      - dp:application_key_mapping:create
+      - dp:application_key_mapping:manage
+      - dp:subscription:create
+      - dp:subscription:read
+      - dp:subscription:update
+      - dp:subscription:manage
+      - dp:subscription:delete
+      - dp:subscription_plan:read
+      - dp:view:read
+      - dp:label:read
+
+  # The one role deliberately NOT mirrored, and the only reason this file can
+  # prove anything scope mode cannot.
+  #
+  # platform-api grants dp_narrow_it the full developer scope set, including
+  # dp:application:create — so its token's scope claim permits creating an
+  # application. Here it gets read-only. The same account therefore succeeds in
+  # scope mode and is refused in role mode, which is exactly the assertion pair in
+  # auth/authorization-mode.spec.js: proof that role mode IGNORES the scope claim
+  # rather than merging it, and that a caller cannot widen a role's grant by
+  # obtaining extra scopes from their issuer.
+  #
+  # No other spec uses this account, so the divergence costs the suite nothing.
+  - name: dp_narrow_it
+    scopes:
+      - dp:api:read
+      - dp:api_content:read
+      - dp:mcp_server:read
+      - dp:mcp_server_content:read
+      - dp:organization:read
+      - dp:organization_content:read
+      - dp:subscription_plan:read
+      - dp:view:read
+      - dp:label:read

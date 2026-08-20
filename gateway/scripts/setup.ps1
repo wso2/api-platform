@@ -285,6 +285,7 @@ function Get-BcryptHash([string]$password) {
 
 function New-ListenerCert {
     if (-not $Force -and (Test-Path -LiteralPath "$CertsDir/default-listener.crt") -and (Test-Path -LiteralPath "$CertsDir/default-listener.key")) {
+        Set-OwnerOnlyAcl "$CertsDir/default-listener.key"
         Write-Log "  - $CertsDir/default-listener.crt already exists - keeping it"
         return
     }
@@ -295,11 +296,15 @@ function New-ListenerCert {
             -subj "/O=WSO2 API Platform/CN=localhost" `
             -addext "subjectAltName=DNS:localhost,DNS:*.localhost,DNS:host.docker.internal,IP:127.0.0.1"
     } "openssl failed to generate the listener certificate" | Out-Null
+    # The private key gets the same protection New-EncryptionKey applies; the
+    # certificate beside it is public and keeps its inherited permissions.
+    Set-OwnerOnlyAcl "$CertsDir/default-listener.key"
     Write-Log "  - self-signed listener certificate generated at $CertsDir/default-listener.crt"
 }
 
 function New-EncryptionKey {
     if (-not $Force -and (Test-Path -LiteralPath $EncKeyFile)) {
+        Set-OwnerOnlyAcl $EncKeyFile
         Write-Log "  - $EncKeyFile already exists - keeping it"
         return
     }
@@ -546,7 +551,7 @@ $interactive = -not [Console]::IsInputRedirected
 
 $adminUsername = $env:ADMIN_USERNAME
 if ([string]::IsNullOrEmpty($adminUsername) -and $interactive) {
-    $adminUsername = Read-Host 'Admin username [admin]'
+    $adminUsername = Read-Host "Admin username [press Enter to use the default username 'admin']"
 }
 if ([string]::IsNullOrEmpty($adminUsername)) { $adminUsername = 'admin' }
 
@@ -590,11 +595,14 @@ Write-Log "  - $EnvFile written"
 Write-Host ''
 Write-Log 'Setup complete.'
 Write-Host ''
-Write-Host '  ------------------------------------------------------------------'
-Write-Host "   Gateway-controller admin login:  $adminUsername / $adminPassword"
-Write-Host '   This password will not be shown again - copy it now.'
-Write-Host "   (Only its bcrypt hash is stored, in $EnvFile)"
-Write-Host '  ------------------------------------------------------------------'
+Write-Host '  =================================================================='
+Write-Host '   ADMIN CREDENTIALS'
+Write-Host ''
+Write-Host "     Username:  $adminUsername"
+Write-Host "     Password:  $adminPassword"
+Write-Host ''
+Write-Host '   !!  THIS PASSWORD WILL NOT BE SHOWN AGAIN - COPY IT NOW  !!'
+Write-Host '  =================================================================='
 Write-Host ''
 Write-Host "  Compose project:  $ProjectName   (pinned in $DotEnvFile)"
 Write-Host ''

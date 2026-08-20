@@ -38,7 +38,7 @@ import { useAppAuth } from '../../../../contexts/AppAuthContext';
 import { SCOPES } from '../../../../auth/permissions';
 import { useAppShell } from '../../../../contexts/AppShellContext';
 import * as providerTemplateApis from '../../../../apis/providerTemplateApis';
-import { PLATFORM_API_BASE_URL } from '../../../../config.env';
+import { PLATFORM_API_BASE_URL } from '../../../../paths';
 import {
   buildOrgPath,
   buildProjectPath,
@@ -344,19 +344,36 @@ export default function ServiceProviderNew() {
       setFieldErrors({});
       const providerId = toProviderId(formState.name);
 
+      // The API key is optional. A credential-bearing auth type with no key
+      // entered stores nothing to inject, so record it as 'none'. Sending
+      // 'api-key' with an empty value creates a provider the gateway rejects
+      // at deployment time.
+      const hasCredential = Boolean(formState.upstreamAuthValue.trim());
+      const isNoCredentialsAuthType =
+        formState.upstreamAuthType === 'other' ||
+        formState.upstreamAuthType === 'none';
+      const auth =
+        isNoCredentialsAuthType || !hasCredential
+          ? {
+              type: isNoCredentialsAuthType
+                ? formState.upstreamAuthType
+                : 'none',
+              header: '',
+              value: '',
+            }
+          : {
+              type: formState.upstreamAuthType,
+              header: formState.upstreamAuthHeader,
+              value: formState.valuePrefix
+                ? `${formState.valuePrefix.trimEnd()} ${formState.upstreamAuthValue}`
+                : formState.upstreamAuthValue,
+            };
+
       const upstream = {
         main: {
           url: formState.upstreamUrl,
           ref: '',
-          auth: {
-            type: formState.upstreamAuthType,
-            header: formState.upstreamAuthHeader,
-
-            value:
-              formState.valuePrefix && formState.upstreamAuthValue.trim()
-                ? `${formState.valuePrefix.trimEnd()} ${formState.upstreamAuthValue}`
-                : formState.upstreamAuthValue,
-          },
+          auth,
         },
       };
 

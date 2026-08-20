@@ -21,7 +21,7 @@ token endpoint will reject the BFF's exchange).
 1. Create a **Standard-Based Application → OpenID Connect** (Traditional Web Application) named
    `AI Workspace` in the root organization.
 2. Add the authorized redirect URL — the **BFF callback**, not `/signin`:
-   `https://<your-domain>/api/auth/callback`
+   `https://<your-domain>/ai-workspace/api/auth/callback`
 3. In the **Protocol** tab:
    - **Allowed grant types**: Authorization Code + Refresh Token.
    - **PKCE**: enabled.
@@ -113,10 +113,11 @@ org_handle   = "org_handle"
 Optional overrides (defaults shown):
 
 ```toml
-[auth.idp]
-validation_mode = "scope"   # or "role" for role-based auth
+[platform_api.auth.authorization]
+enabled = true
+mode    = "scope"   # or "role" for role-based auth (then set role_to_scope_mapping)
 
-[auth.claim_mappings]
+[platform_api.auth.claim_mappings]
 user_id  = "sub"
 username = "username"
 email    = "email"
@@ -182,8 +183,8 @@ as a secret file (a Docker/Kubernetes secret) so the value never enters the envi
 ```toml
 [ai_workspace.auth.oidc]
 # BFF callback registered in the IDP (section 1.2) — NOT the SPA /signin route.
-redirect_url             = "https://<your-domain>/api/auth/callback"
-post_logout_redirect_url = "https://<your-domain>/login"
+redirect_url             = "https://<your-domain>/ai-workspace/api/auth/callback"
+post_logout_redirect_url = "https://<your-domain>/ai-workspace/login"
 
 # Preferred in production — a mounted secret file under an allowed directory.
 client_secret = '{{ file "/secrets/ai-workspace/oidc_client_secret" }}'
@@ -222,7 +223,7 @@ written as a plain literal, does nothing.
 
 The shipped `config.toml` already writes its keys this way, naming each variable by the same
 convention: the key's path under `[ai_workspace]` uppercased, dots as underscores, prefixed with
-**`APIP_AIW_`** (the Platform API uses `APIP_CP_`, the Developer Portal `APIP_DP_`). Every key's
+**`APIP_AIW_`** (the Platform API uses `APIP_CP_`, the API Portal `APIP_AP_`). Every key's
 exact token — and the default it falls back to when the variable is unset — is written inline in
 `configs/config-template.toml`; that file is the source of truth, so it is not restated here.
 

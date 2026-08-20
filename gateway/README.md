@@ -40,7 +40,13 @@ encryption key, and the gateway-controller admin credentials), then start the st
 
 ```bash
 ./scripts/setup.sh
-docker compose up -d
+docker compose up
+```
+
+`docker compose up` runs in the foreground — leave it running and check the stack from a second
+terminal:
+
+```bash
 curl http://localhost:9092/api/admin/v0.9/health
 ```
 
@@ -49,7 +55,7 @@ and either `htpasswd` or `docker`):
 
 ```powershell
 powershell -ExecutionPolicy Bypass -File .\scripts\setup.ps1
-docker compose up -d
+docker compose up
 ```
 
 The setup script prints the admin password **once** — copy it. The username defaults to `admin`; set

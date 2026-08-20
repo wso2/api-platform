@@ -60,14 +60,14 @@ type subscriptionService interface {
 	FindByArtifactKindAndSubscriber(orgUUID, apiHandle, kind, subscriberID string) (*model.Subscription, error)
 }
 
-// organizationResolver resolves the Developer Portal organization handle (delivered as org.ref_id)
+// organizationResolver resolves the API Portal organization handle (delivered as org.ref_id)
 // to the Platform API organization UUID that every downstream service and table is keyed by.
 type organizationResolver interface {
 	GetOrganizationByHandle(handle string) (*model.Organization, error)
 }
 
 // applicationService is the subset of *service.ApplicationService the receiver depends on to
-// reconcile Developer Portal application events. The webhook-specific create/reconcile logic (default
+// reconcile API Portal application events. The webhook-specific create/reconcile logic (default
 // project, "genai" type, DP-id-as-handle, single-app key mapping) lives in the service.
 type applicationService interface {
 	CreateApplicationFromWebhook(handle, name, description, appType, orgID string) (*api.Application, error)
@@ -173,7 +173,7 @@ func (r *Receiver) ReceiveEvent(w http.ResponseWriter, req *http.Request) error 
 	log := r.slogger.With("eventId", env.EventID, "eventType", env.EventType, "orgHandle", env.OrgID)
 
 	// 3. Resolve the organization handle (org.ref_id) to the Platform API organization UUID that all
-	//    downstream persistence is keyed by. The Developer Portal sends the handle; the services expect
+	//    downstream persistence is keyed by. The API Portal sends the handle; the services expect
 	//    the UUID. An unknown handle is a terminal 404 (not retryable) since the event references an
 	//    organization that does not exist in the control plane.
 	if err := r.resolveOrgUUID(env); err != nil {

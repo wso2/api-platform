@@ -36,6 +36,7 @@ import {
   Select,
   Stack,
   TextField,
+  Tooltip,
   Typography,
 } from '@wso2/oxygen-ui';
 import { ChevronDown, ChevronLeft } from '@wso2/oxygen-ui-icons-react';
@@ -43,8 +44,10 @@ import { FormattedMessage } from 'react-intl';
 import { useProviderTemplates } from '../../../../contexts/llmProvider/providerTemplate';
 import { useAppShell } from '../../../../contexts/AppShellContext';
 import useAIWorkspaceSnackbar from '../../../../hooks/aiWorkspaceSnackbar';
+import { useAppAuth } from '../../../../contexts/AppAuthContext';
+import { NO_PERMISSION_TOOLTIP, SCOPES } from '../../../../auth/permissions';
 import * as providerTemplateApis from '../../../../apis/providerTemplateApis';
-import { PLATFORM_API_BASE_URL } from '../../../../config.env';
+import { PLATFORM_API_BASE_URL } from '../../../../paths';
 import { buildOrgPath } from '../../../../utils/projectRouting';
 import type {
   ProviderTemplate,
@@ -119,6 +122,7 @@ function CreateProviderTemplateVersionForm({
   const { currentOrganization } = useAppShell();
   const { refreshTemplates } = useProviderTemplates();
   const showSnackbar = useAIWorkspaceSnackbar();
+  const { hasPermission } = useAppAuth();
 
   const overviewPath = `${buildOrgPath(
     currentOrganization,
@@ -223,7 +227,9 @@ function CreateProviderTemplateVersionForm({
   const specUrlEntered = openapiSpecUrl.trim().length > 0;
   const isSpecUrlValid = isValidHttpUrl(openapiSpecUrl);
   const isVersionValid = VERSION_PATTERN.test(version.trim());
+  const canCreateTemplateVersion = hasPermission(SCOPES.LLM_TEMPLATE_CREATE);
   const isFormValid =
+    canCreateTemplateVersion &&
     isDescriptionValid &&
     isEndpointValid &&
     isVersionValid &&
@@ -545,24 +551,30 @@ function CreateProviderTemplateVersionForm({
                 defaultMessage={'Cancel'}
               />
             </Button>
-            <Button
-              variant="contained"
-              type="submit"
-              disabled={isSubmitting || !isFormValid}
-              data-cyid="create-provider-template-version-submit"
+            <Tooltip
+              title={canCreateTemplateVersion ? '' : NO_PERMISSION_TOOLTIP}
             >
-              {isSubmitting ? (
-                <FormattedMessage
-                  id="aiWorkspace.pages.appShell.appShellPages.providerTemplate.CreateProviderTemplateVersion.creating"
-                  defaultMessage={'Creating...'}
-                />
-              ) : (
-                <FormattedMessage
-                  id="aiWorkspace.pages.appShell.appShellPages.providerTemplate.CreateProviderTemplateVersion.create"
-                  defaultMessage={'Create Version'}
-                />
-              )}
-            </Button>
+              <Box component="span">
+                <Button
+                  variant="contained"
+                  type="submit"
+                  disabled={isSubmitting || !isFormValid}
+                  data-cyid="create-provider-template-version-submit"
+                >
+                  {isSubmitting ? (
+                    <FormattedMessage
+                      id="aiWorkspace.pages.appShell.appShellPages.providerTemplate.CreateProviderTemplateVersion.creating"
+                      defaultMessage={'Creating...'}
+                    />
+                  ) : (
+                    <FormattedMessage
+                      id="aiWorkspace.pages.appShell.appShellPages.providerTemplate.CreateProviderTemplateVersion.create"
+                      defaultMessage={'Create Version'}
+                    />
+                  )}
+                </Button>
+              </Box>
+            </Tooltip>
           </Box>
         </Box>
       </Box>

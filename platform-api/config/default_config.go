@@ -43,8 +43,15 @@ func defaultConfig() *Server {
 		Auth: Auth{
 			// Default mode verifies locally-issued, asymmetrically-signed (RS256) JWTs;
 			// the quickstart config selects "file" to add username/password login on top.
-			Mode:            AuthModeExternalToken,
-			ScopeValidation: true,
+			Mode: AuthModeInternalToken,
+			Authorization: Authorization{
+				Enabled: true,
+				Mode:    AuthzModeScope,
+				// RoleToScopeMapping is left empty on purpose: the mapping file is
+				// operator-owned and mounted (the packs ship a sample), so a
+				// built-in path would make startup depend on a file the image
+				// does not carry. The shipped config.toml points at the mount.
+			},
 			// SkipPaths bypasses JWT/IDP auth middleware. Paths below the health/metrics
 			// probes are internal gateway routes authenticated via gateway token instead.
 			SkipPaths: []string{
@@ -69,9 +76,6 @@ func defaultConfig() *Server {
 				Issuer:   "platform-api",
 				TokenTTL: time.Hour,
 			},
-			IDP: IDP{
-				ValidationMode: "scope",
-			},
 			ClaimMappings: ClaimMappings{
 				Organization: "organization",
 				OrgName:      "org_name",
@@ -80,6 +84,11 @@ func defaultConfig() *Server {
 				Username:     "username",
 				Email:        "email",
 				Scope:        "scope",
+				// Default to the flat "roles" claim — what Asgardeo and Entra ID
+				// emit, and what the file-mode login endpoint signs — so switching
+				// auth.authorization.mode to "role" needs no extra claim wiring.
+				// Keycloak overrides it with "realm_access.roles".
+				Roles: "roles",
 			},
 			File: FileBased{
 				Organization: FileBasedOrg{
@@ -150,7 +159,7 @@ func defaultConfig() *Server {
 			Enabled:            false,
 			SignatureTolerance: 5 * time.Minute,
 			MaxBodySize:        1 << 20, // 1 MiB
-			SignatureHeader:    "X-Devportal-Signature",
+			SignatureHeader:    "X-Api-Portal-Signature",
 		},
 	}
 }

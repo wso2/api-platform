@@ -1,0 +1,151 @@
+/*
+ * Copyright (c) 2026, WSO2 LLC. (http://www.wso2.com) All Rights Reserved.
+ *
+ * WSO2 LLC. licenses this file to you under the Apache License,
+ * Version 2.0 (the "License"); you may not use this file except
+ * in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing,
+ * software distributed under the License is distributed on an
+ * "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+ * KIND, either express or implied. See the License for the
+ * specific language governing permissions and limitations
+ * under the License.
+ */
+ 
+
+(function () {
+  // Local fallback for the shared bindFormValidity (defined in alert.js, loaded first
+  // on the settings page): keeps save/delete working even if it were ever unavailable,
+  // only skipping the disable-until-valid behaviour instead of throwing at init.
+  var bindFormValidity = window.bindFormValidity || function () { return function () {}; };
+
+  var _cfg = document.getElementById('cfg-page-config') || { dataset: {} };
+  var ORG_ID = _cfg.dataset.orgId || '';
+  var editLabelName = null;
+  var labelHandleTouched = false;
+
+  function esc(s) { return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
+  function v(id) { var e=document.getElementById(id); return e?e.value.trim():''; }
+
+  /* ── open modal ── */
+  function openLabelModal(mode, data) {
+    editLabelName = mode === 'edit' ? data.id : null;
+    labelHandleTouched = false;
+    document.getElementById('cfg-label-modal-title').textContent = mode === 'edit' ? 'Edit label' : 'Add label';
+    document.getElementById('cfg-label-modal-save').textContent  = mode === 'edit' ? 'Save changes' : 'Add label';
+    document.getElementById('lbl-display').value = mode === 'edit' ? data.displayName : '';
+    document.getElementById('lbl-name').value    = mode === 'edit' ? data.id          : '';
+    /* The handle is the label's identity — every API and view mapping keys off
+       it, so it cannot change after creation. */
+    document.getElementById('lbl-name').readOnly = mode === 'edit';
+    syncLabelSave();
+    document.getElementById('cfg-label-modal').style.display = 'flex';
+    document.getElementById('lbl-display').focus();
+  }
+  function closeLabelModal() { document.getElementById('cfg-label-modal').style.display = 'none'; editLabelName = null; }
+
+  /* ── auto-slug name → handle (skips once the user edits Handle) ── */
+  document.getElementById('lbl-name').addEventListener('input', function() { labelHandleTouched = true; });
+  document.getElementById('lbl-display').addEventListener('input', function() {
+    if (editLabelName || labelHandleTouched) return;
+    document.getElementById('lbl-name').value = this.value.toLowerCase().trim().replace(/[^a-z0-9]+/g,'-').replace(/^-|-$/g,'');
+    syncLabelSave();
+  });
+
+  /* Disable save until Name and Handle are both filled. */
+  var syncLabelSave = bindFormValidity(document.getElementById('cfg-label-modal-save'), ['lbl-display', 'lbl-name'], function() {
+    return v('lbl-display') !== '' && v('lbl-name') !== '';
+  });
+
+  /* ── save label ── */
+  document.getElementById('cfg-label-modal-save').addEventListener('click', async function() {
+    var saveBtn     = this;
+    var displayName = v('lbl-display');
+    var name        = v('lbl-name');
+    if (!displayName || !name) { await showAlert('Name and handle are required.', 'error'); return; }
+
+    await withButtonBusy(saveBtn, editLabelName ? 'Saving…' : 'Adding…', async function() {
+      try {
+        var res;
+        if (editLabelName) {
+          /* Handle is immutable and the input is read-only while editing, so this
+             is always a display-name update. It used to fall back to DELETE + POST
+             when the handle differed — but deleting a label cascades through
+             api_label_mappings / view_label_mappings, so every API and view lost
+             the label and the recreated one came back with no members. */
+          res = await fetch(window.apiPortalApi.root('/labels/'+encodeURIComponent(editLabelName)), {
+            method: 'PUT',
+            headers: { 'Content-Type':'application/json', 'X-CSRF-Token': window.apiPortalApi.csrfToken() },
+            body: JSON.stringify({ id: editLabelName, displayName: displayName }),
+          });
+        } else {
+          res = await fetch(window.apiPortalApi.root('/labels'), {
+            method: 'POST',
+            headers: { 'Content-Type':'application/json', 'X-CSRF-Token': window.apiPortalApi.csrfToken() },
+            body: JSON.stringify({ id: name, displayName: displayName }),
+          });
+        }
+        if (res.ok) {
+          await showAlert(editLabelName ? 'Label updated.' : 'Label created.', 'success');
+          window.location.reload();
+        } else {
+          var err = await res.json().catch(function(){ return {}; });
+          await showAlert('Failed: '+(err.description||err.message||res.statusText), 'error');
+        }
+      } catch(e) { await showAlert('Error: '+e.message, 'error'); }
+    });
+  });
+
+  document.getElementById('cfg-label-modal-close').addEventListener('click', closeLabelModal);
+  document.getElementById('cfg-label-modal-cancel').addEventListener('click', closeLabelModal);
+  document.getElementById('cfg-label-modal').addEventListener('click', function(e){ if(e.target===this) closeLabelModal(); });
+
+  /* ── Add btn ── */
+  document.getElementById('cfg-add-label-btn').addEventListener('click', function() { openLabelModal('add'); });
+
+  /* ── Edit / Delete via event delegation ── */
+  var pendingDelName = null;
+  document.addEventListener('click', function(e) {
+    if (e.target.closest('.cfg-label-edit-btn')) {
+      var btn = e.target.closest('.cfg-label-edit-btn');
+      openLabelModal('edit', { id: btn.dataset.name, displayName: btn.dataset.display });
+      return;
+    }
+    if (e.target.closest('.cfg-label-delete-btn')) {
+      btn = e.target.closest('.cfg-label-delete-btn');
+      pendingDelName = btn.dataset.name;
+      document.getElementById('cfg-del-label-name-txt').textContent = btn.dataset.display || btn.dataset.name;
+      document.getElementById('cfg-delete-label-modal').style.display = 'flex';
+      return;
+    }
+  });
+
+  document.getElementById('cfg-del-label-cancel').addEventListener('click', function() {
+    document.getElementById('cfg-delete-label-modal').style.display = 'none';
+  });
+  document.getElementById('cfg-delete-label-modal').addEventListener('click', function(e){ if(e.target===this) this.style.display='none'; });
+  document.getElementById('cfg-del-label-confirm').addEventListener('click', function() {
+    if (!pendingDelName) return;
+    withButtonBusy(this, 'Deleting…', async function() {
+      try {
+        var res = await fetch(window.apiPortalApi.root('/labels/'+encodeURIComponent(pendingDelName)), {
+          method: 'DELETE',
+          headers: { 'X-CSRF-Token': window.apiPortalApi.csrfToken() },
+        });
+        if (res.ok || res.status===204) {
+          await showAlert('Label deleted.', 'success');
+          window.location.reload();
+          return;
+        }
+        var err = await res.json().catch(function(){ return {}; });
+        await showAlert('Delete failed: '+(err.description||err.message||res.statusText), 'error');
+      } catch(e) { await showAlert('Error: '+e.message, 'error'); }
+      document.getElementById('cfg-delete-label-modal').style.display = 'none';
+      pendingDelName = null;
+    });
+  });
+}());

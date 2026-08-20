@@ -29,6 +29,7 @@ import {
   ParticleBackground,
   Skeleton,
   Stack,
+  Tooltip,
   Typography,
 } from '@wso2/oxygen-ui';
 import { Clock, Layers, Plus } from '@wso2/oxygen-ui-icons-react';
@@ -37,6 +38,8 @@ import { useProxies } from '../../../../contexts/proxy';
 import { formatRelativeTime } from '../../../../contexts/ApplicationsContext';
 import NoProxies from '../../../../assets/images/NoProxies.svg';
 import ErrorAlert from '../../../../Components/common/ErrorAlert';
+import { useAppAuth } from '../../../../contexts/AppAuthContext';
+import { DISABLED_ACTION_SX, NO_PERMISSION_TOOLTIP, SCOPES } from '../../../../auth/permissions';
 
 function truncateWords(text: string, maxWords: number): string {
   const words = text.trim().split(/\s+/);
@@ -68,6 +71,8 @@ export default function LLMProxiesSummaryCardSection({
   onProxyClick,
 }: LLMProxiesSummaryCardSectionProps) {
   const { proxiesResponse, isLoading, error, refreshProxies } = useProxies();
+  const { hasPermission } = useAppAuth();
+  const canCreateProxy = hasPermission(SCOPES.LLM_PROXY_CREATE);
   const proxies = proxiesResponse.list;
 
   const proxyErrorStatusCode = getHttpStatusCode(error);
@@ -114,9 +119,19 @@ export default function LLMProxiesSummaryCardSection({
                 See more
               </Button>
             ) : (
-              <Button component={RouterLink} to={newProxyPath} size="small">
-                + Add New
-              </Button>
+              <Tooltip title={canCreateProxy ? '' : NO_PERMISSION_TOOLTIP}>
+                <Box component="span">
+                  <Button
+                    component={RouterLink}
+                    to={newProxyPath}
+                    size="small"
+                    disabled={!canCreateProxy}
+                    sx={DISABLED_ACTION_SX}
+                  >
+                    + Add New
+                  </Button>
+                </Box>
+              </Tooltip>
             )
           }
         />
@@ -204,17 +219,23 @@ export default function LLMProxiesSummaryCardSection({
                 }
               />
             </Typography>
-            <Button
-              variant="contained"
-              component={RouterLink}
-              to={newProxyPath}
-              startIcon={<Plus size={20} />}
-            >
-              <FormattedMessage
-                id="aiWorkspace.pages.appShell.appShellPages.overview.Overview.create.llm.proxy"
-                defaultMessage={'Create App LLM Proxy'}
-              />
-            </Button>
+            <Tooltip title={canCreateProxy ? '' : NO_PERMISSION_TOOLTIP}>
+              <Box component="span">
+                <Button
+                  variant="contained"
+                  component={RouterLink}
+                  to={newProxyPath}
+                  startIcon={<Plus size={20} />}
+                  disabled={!canCreateProxy}
+                  sx={DISABLED_ACTION_SX}
+                >
+                  <FormattedMessage
+                    id="aiWorkspace.pages.appShell.appShellPages.overview.Overview.create.llm.proxy"
+                    defaultMessage={'Create App LLM Proxy'}
+                  />
+                </Button>
+              </Box>
+            </Tooltip>
           </Stack>
         ) : (
           <Stack divider={<Divider />} spacing={1.5}>

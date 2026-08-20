@@ -36,31 +36,31 @@ COMPOSE_FILE="gateway/docker-compose.yaml"
 DIST_COMPOSE_FILE="gateway/distribution/docker-compose.yaml"
 IT_COMPOSE_FILE="gateway/it/docker-compose.test.yaml"
 EVENT_GATEWAY_COMPOSE_FILE="event-gateway/docker-compose.yaml"
-DEVPORTAL_COMPOSE_FILE="portals/developer-portal/docker-compose.yaml"
-DEVPORTAL_DIST_COMPOSE_FILE="portals/developer-portal/distribution/docker-compose.yaml"
+API_PORTAL_COMPOSE_FILE="portals/api-portal/docker-compose.yaml"
+API_PORTAL_DIST_COMPOSE_FILE="portals/api-portal/distribution/docker-compose.yaml"
 AI_WORKSPACE_COMPOSE_FILE="portals/ai-workspace/docker-compose.yaml"
 
-if [ ! -f "$COMPOSE_FILE" ] && [ "$COMPONENT" != "event-gateway" ] && [ "$COMPONENT" != "developer-portal" ] && [ "$COMPONENT" != "ai-workspace" ]; then
+if [ ! -f "$COMPOSE_FILE" ] && [ "$COMPONENT" != "event-gateway" ] && [ "$COMPONENT" != "api-portal" ] && [ "$COMPONENT" != "ai-workspace" ]; then
     echo "Warning: docker-compose.yaml not found at $COMPOSE_FILE"
     exit 0
 fi
 
-if [ "$COMPONENT" = "developer-portal" ]; then
-    # Update developer-portal image in main docker-compose.yml
-    if [ -f "$DEVPORTAL_COMPOSE_FILE" ]; then
+if [ "$COMPONENT" = "api-portal" ]; then
+    # Update API Portal image in main docker-compose.yml
+    if [ -f "$API_PORTAL_COMPOSE_FILE" ]; then
         sed -i.bak \
-            -e "s|image: .*/developer-portal:.*|image: ${DOCKER_REGISTRY}/developer-portal:$VERSION|" \
-            "$DEVPORTAL_COMPOSE_FILE"
-        rm -f "$DEVPORTAL_COMPOSE_FILE.bak"
-        echo "Updated $DEVPORTAL_COMPOSE_FILE with developer-portal version $VERSION"
+            -e "s|image: .*/api-portal:.*|image: ${DOCKER_REGISTRY}/api-portal:$VERSION|" \
+            "$API_PORTAL_COMPOSE_FILE"
+        rm -f "$API_PORTAL_COMPOSE_FILE.bak"
+        echo "Updated $API_PORTAL_COMPOSE_FILE with API Portal version $VERSION"
     fi
     # Mirror the same image-tag rewrite in the distribution compose template
-    if [ -f "$DEVPORTAL_DIST_COMPOSE_FILE" ]; then
+    if [ -f "$API_PORTAL_DIST_COMPOSE_FILE" ]; then
         sed -i.bak \
-            -e "s|image: .*/developer-portal:.*|image: ${DOCKER_REGISTRY}/developer-portal:$VERSION|" \
-            "$DEVPORTAL_DIST_COMPOSE_FILE"
-        rm -f "$DEVPORTAL_DIST_COMPOSE_FILE.bak"
-        echo "Updated $DEVPORTAL_DIST_COMPOSE_FILE with developer-portal version $VERSION"
+            -e "s|image: .*/api-portal:.*|image: ${DOCKER_REGISTRY}/api-portal:$VERSION|" \
+            "$API_PORTAL_DIST_COMPOSE_FILE"
+        rm -f "$API_PORTAL_DIST_COMPOSE_FILE.bak"
+        echo "Updated $API_PORTAL_DIST_COMPOSE_FILE with API Portal version $VERSION"
     fi
 elif [ "$COMPONENT" = "ai-workspace" ]; then
     # Update ai-workspace image in main docker-compose.yaml

@@ -106,13 +106,55 @@ config:
   # --- Authentication ---
   auth:
     # Exactly one mode:
-    #   external_token — verify externally-minted RS256 JWTs with the public key.
-    #   file           — external_token + local username/password login (issues
+    #   internal_token — verify RS256 JWTs minted by another trusted platform
+    #                    component, using the public key.
+    #   file           — internal_token + local username/password login (issues
     #                    RS256 tokens signed with the private key).
     #   idp            — validate tokens against an external IDP's JWKS.
     mode: file
-    # Enforce per-endpoint OAuth2 scopes on validated tokens.
-    scopeValidation: true
+    # --- Authorization --- applies in every auth mode above: an enterprise-IDP
+    # token carries the same roles claim whether it is verified against a JWKS
+    # endpoint or with a local public key.
+    authorization:
+      # Enforce per-endpoint OAuth2 scopes on validated tokens.
+      enabled: true
+      mode: scope                # scope | role
+      # Path to the role→scope mapping YAML. Required when mode=role, and in file
+      # mode (auth.file.admin.roles is a user's whole grant). The chart renders
+      # `roles` below into its config ConfigMap and mounts it here; point this
+      # elsewhere only if you supply your own file via extraVolumes/extraVolumeMounts.
+      roleToScopeMapping: /etc/platform-api/role-to-scope-mapping.yaml
+      # Roles the mapping file defines, each a name and the scopes it grants.
+      # Only ap_admin is shipped here — the file-mode admin below names it.
+      # platform-api/resources/role-to-scope-mapping.yaml is the full sample set (ap_admin,
+      # ap_operator, ap_publisher, ap_subscriber, ap_viewer); copy the entries you
+      # need from it. An ap: scope the Platform API's OpenAPI spec does not declare
+      # fails startup; dp: scopes (Developer Portal) are checked for shape only.
+      # A resource-level :manage already covers that resource's subresources
+      # (each subresource operation lists the parent :manage in its own accepted
+      # scopes), so ap:llm_provider:manage needs no separate
+      # ap:llm_provider:api_key:manage. Kept in sync with the ap_admin entry in
+      # platform-api/resources/role-to-scope-mapping.yaml.
+      roles:
+        - name: ap_admin
+          scopes:
+            - ap:organization:manage
+            - ap:project:manage
+            - ap:gateway:manage
+            - ap:gateway_custom_policy:manage
+            - ap:rest_api:manage
+            - ap:llm_provider:manage
+            - ap:llm_proxy:manage
+            - ap:llm_template:manage
+            - ap:mcp_proxy:manage
+            - ap:application:manage
+            - ap:subscription:manage
+            - ap:subscription_plan:manage
+            - ap:secret:manage
+            - ap:api_key:read
+            # Ownership override — every user's API keys, not just the caller's.
+            # Never implied by ap:api_key:read, so it is listed explicitly.
+            - ap:api_key:all:manage
     # Claim-name mappings shared by all modes.
     claimMappings:
       organization: organization
@@ -122,7 +164,9 @@ config:
       username: username
       email: email
       scope: scope
-      roles: ""                  # e.g. "realm_access.roles" (Keycloak)
+      # Claim carrying the user's roles — read in role authorization mode, and the
+      # claim the file-mode login endpoint signs auth.file.admin.roles into.
+      roles: roles               # Keycloak nests it: "realm_access.roles"
     # Local RS256 JWT keys. public_key_file verifies tokens (every mode);
     # private_key_file signs login tokens (file mode only). Both are mounted as
     # PEM files from the Secret (secrets.keys.jwtPublicKey / jwtPrivateKey).
@@ -145,9 +189,15 @@ config:
       # APIP_CP_ADMIN_PASSWORD_HASH (secrets.keys.adminUsername / adminPasswordHash),
       # which generate-secrets.sh provisions with a generated username and a bcrypt
       # hash. There is no admin/admin default: startup fails closed if unset. Only
-      # the granted scopes are configured here (add more users via configToml).
+      # the granted roles are configured here (add more users via configToml).
       admin:
-        scopes: "ap:organization:manage ap:gateway:manage ap:gateway_custom_policy:manage ap:rest_api:manage ap:llm_provider:manage ap:llm_proxy:manage ap:mcp_proxy:manage ap:application:manage ap:subscription:manage ap:subscription_plan:manage ap:project:manage ap:llm_template:manage ap:devportal:manage ap:api_key:read ap:api_key:all:manage ap:secret:manage"
+        # REQUIRED in file mode — one or more roles from the roleToScopeMapping
+        # file, expanded into the token's scopes at login (the union of what each
+        # grants), and this user's entire grant (there is no per-user scope list).
+        # Requires that file to be mounted and roleToScopeMapping above to point
+        # at it; a role absent from the file fails startup.
+        roles:
+          - ap_admin
     # idp mode — external OIDC provider (rendered only when mode=idp). jwksUrl is
     # required in that mode.
     idp:
@@ -155,8 +205,6 @@ config:
       jwksUrl: ""
       issuer: []                 # accepted token issuers
       audience: []               # accepted audiences; empty = don't check
-      validationMode: scope      # scope | role
-      roleMappings: ""           # path to a role→scope mapping YAML
 
   # --- Server listeners ---
   server:
@@ -197,7 +245,6 @@ config:
   # --- Deployments ---
   deployments:
     maxPerApiGateway: 20
-    transitionalStatusEnabled: false
     timeoutEnabled: true
     timeoutInterval: 20
     timeoutDuration: 60
@@ -217,7 +264,7 @@ config:
     # the secret set on the Developer Portal's webhook subscriber.
     signatureTolerance: 5m
     maxBodySize: 1048576
-    signatureHeader: X-Devportal-Signature
+    signatureHeader: X-Api-Portal-Signature
 
 # Escape hatch: raw TOML appended verbatim to the generated config file, for keys
 # not exposed as structured values above.

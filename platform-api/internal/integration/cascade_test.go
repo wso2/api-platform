@@ -36,6 +36,7 @@ type graph struct {
 	apiKey                     string
 	planLimit                  string
 	secretHandle               string
+	customPolicy               string
 }
 
 // seedOrgGraph inserts a representative object graph for one organization that
@@ -51,6 +52,7 @@ func seedOrgGraph(t *testing.T, it *itDB) graph {
 		apiKey:       id(),
 		planLimit:    id(),
 		secretHandle: id(),
+		customPolicy: id(),
 	}
 
 	it.exec(t, `INSERT INTO organizations (uuid, handle, display_name, region, idp_organization_ref_uuid) VALUES (?, ?, ?, ?, ?)`,
@@ -96,6 +98,12 @@ func seedOrgGraph(t *testing.T, it *itDB) graph {
 		g.apiKey, g.depArtifact, "key", "key", "ab12", []byte("{}"))
 	it.exec(t, `INSERT INTO application_api_key_mappings (application_uuid, api_key_id) VALUES (?, ?)`, g.app, g.apiKey)
 	it.exec(t, `INSERT INTO application_artifact_mappings (application_uuid, artifact_uuid) VALUES (?, ?)`, g.app, g.depArtifact)
+
+	// A gateway custom policy locked "in use" by the REST API artifact.
+	it.exec(t, `INSERT INTO gateway_custom_policies (uuid, organization_uuid, name, version, policy_definition) VALUES (?, ?, ?, ?, ?)`,
+		g.customPolicy, g.org, "policy-"+g.customPolicy[:8], "v1.0.0", []byte("{}"))
+	it.exec(t, `INSERT INTO gateway_custom_policy_usages (policy_uuid, artifact_uuid) VALUES (?, ?)`,
+		g.customPolicy, g.apiArtifact)
 	return g
 }
 
@@ -118,6 +126,26 @@ func TestCascade_DeleteRestAPIRemovesSubscriptions(t *testing.T) {
 
 	if got := it.count(t, "subscriptions", "uuid", g.sub); got != 0 {
 		t.Fatalf("[%s] subscription not cascade-deleted after REST API delete: %d remain", it.driver, got)
+	}
+}
+
+// TestCascade_DeleteArtifactRemovesCustomPolicyUsages verifies deleting an
+// artifact releases any gateway custom policy it locked "in use", across
+// every supported dialect.
+func TestCascade_DeleteArtifactRemovesCustomPolicyUsages(t *testing.T) {
+	it := openITDB(t)
+	defer it.db.Close()
+	g := seedOrgGraph(t, it)
+
+	if got := it.count(t, "gateway_custom_policy_usages", "policy_uuid", g.customPolicy); got != 1 {
+		t.Fatalf("precondition: want 1 policy usage, got %d", got)
+	}
+
+	it.exec(t, `DELETE FROM rest_apis WHERE uuid = ?`, g.apiArtifact)
+	it.exec(t, `DELETE FROM artifacts WHERE uuid = ?`, g.apiArtifact)
+
+	if got := it.count(t, "gateway_custom_policy_usages", "policy_uuid", g.customPolicy); got != 0 {
+		t.Fatalf("[%s] custom policy usage not cascade-deleted after artifact delete: %d remain", it.driver, got)
 	}
 }
 

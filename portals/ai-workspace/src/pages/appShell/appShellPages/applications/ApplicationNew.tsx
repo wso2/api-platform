@@ -29,8 +29,10 @@ import {
   PageTitle,
   Stack,
   TextField,
+  Typography,
 } from '@wso2/oxygen-ui';
 import { ChevronLeft } from '@wso2/oxygen-ui-icons-react';
+import { FormattedMessage } from 'react-intl';
 import { useApplications } from '../../../../contexts/ApplicationsContext';
 import { useAppShell } from '../../../../contexts/AppShellContext';
 import {
@@ -39,6 +41,8 @@ import {
 } from '../../../../utils/projectRouting';
 import useAIWorkspaceSnackbar from '../../../../hooks/aiWorkspaceSnackbar';
 import { getErrorMessage, getFieldErrors } from '../../../../utils/apiError';
+import { useAppAuth } from '../../../../contexts/AppAuthContext';
+import { SCOPES } from '../../../../auth/permissions';
 
 type FormState = {
   name: string;
@@ -75,6 +79,7 @@ export default function ApplicationNew() {
   const navigate = useNavigate();
   const { applications, createApplication } = useApplications();
   const { currentProject, currentOrganization } = useAppShell();
+  const { hasPermission } = useAppAuth();
   const showSnackbar = useAIWorkspaceSnackbar();
   const isProjectLevel = Boolean(currentProject?.id);
   const applicationsPath = isProjectLevel
@@ -148,6 +153,29 @@ export default function ApplicationNew() {
       setIsSubmitting(false);
     }
   };
+
+  if (!hasPermission(SCOPES.APPLICATION_CREATE)) {
+    return (
+      <PageContent fullWidth>
+        <Stack spacing={1}>
+          <Typography variant="h6">
+            <FormattedMessage
+              id="aiWorkspace.pages.appShell.appShellPages.applications.ApplicationNew.creation.unavailable"
+              defaultMessage={'GenAI Application creation is unavailable.'}
+            />
+          </Typography>
+          <Typography variant="body2" color="text.secondary">
+            <FormattedMessage
+              id="aiWorkspace.pages.appShell.appShellPages.applications.ApplicationNew.creation.unavailable.description"
+              defaultMessage={
+                'You do not have permission to create GenAI Applications. Please contact your admin.'
+              }
+            />
+          </Typography>
+        </Stack>
+      </PageContent>
+    );
+  }
 
   return (
     <PageContent fullWidth>

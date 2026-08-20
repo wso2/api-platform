@@ -1,0 +1,74 @@
+<!--
+ * Copyright (c) 2026, WSO2 LLC. (http://www.wso2.com) All Rights Reserved.
+ *
+ * API Workflow Detail Page
+ -->
+{{#pageHead}}
+    <link rel="stylesheet" href="{{basePath}}/technical-styles/agent-prompt.css">
+    <link rel="stylesheet" href="{{basePath}}/technical-styles/api-workflows.css">
+    {{#unless (eq flow.contentType "MD")}}
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@jentic/arazzo-ui@1.0.0-alpha.30/dist/arazzo-ui.css" integrity="sha256-WHPlCD3ecWnrluuPAx7VypEZtfvv4DrIMfdLYzLshsM=" crossorigin="anonymous">
+    <script src="https://cdn.jsdelivr.net/npm/@jentic/arazzo-ui@1.0.0-alpha.30/dist/arazzo-ui.js" integrity="sha256-OYzURPQLK+lup5rGo+IQmVbjWOjVgjURBWDDtMHIOaw=" crossorigin="anonymous"></script>
+    <script src="https://cdn.jsdelivr.net/npm/js-yaml@4.1.0/dist/js-yaml.min.js" integrity="sha256-Rdw90D3AegZwWiwpibjH9wkBPwS9U4bjJ51ORH8H69c=" crossorigin="anonymous"></script>
+    {{/unless}}
+    {{#if (eq flow.contentType "MD")}}
+    <script src="https://cdn.jsdelivr.net/npm/marked@13.0.3/marked.min.js" integrity="sha256-Wt6n2O5BpwD8zBS7nVAxBPBHDMF6hK0+Fn0/UlHq4No=" crossorigin="anonymous"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/dompurify/3.2.7/purify.min.js" integrity="sha512-78KH17QLT5e55GJqP76vutp1D2iAoy06WcYBXB6iBCsmO6wWzx0Qdg8EDpm8mKXv68BcvHOyeeP4wxAL0twJGQ==" crossorigin="anonymous"></script>
+    {{/if}}
+{{/pageHead}}
+
+<div data-flow-handle="{{flow.handle}}" data-flow-content-type="{{flow.contentType}}">
+    <div class="flow-detail-section">
+        {{!-- Breadcrumb --}}
+        <nav class="dp-breadcrumb flow-detail-breadcrumb">
+          <a class="dp-breadcrumb-item" href="{{baseUrl}}/api-workflows">API Workflows</a>
+          <i class="bi bi-chevron-right dp-breadcrumb-sep"></i>
+          <span class="dp-breadcrumb-current">{{flow.displayName}}</span>
+        </nav>
+
+        {{!-- Header --}}
+        <div class="flow-detail-header">
+            <div class="flow-detail-header-content">
+                <h1>{{flow.displayName}}</h1>
+                <p>{{flow.description}}</p>
+            </div>
+            <div class="flow-header-actions">
+                {{#if aiEnabled}}
+                {{#unless (eq flow.agentVisibility "HIDDEN")}}
+                <button class="common-btn-primary discover-ai-btn" id="openPromptBtn" data-bs-toggle="modal" data-bs-target="#agentPromptModal">
+                    <img src="{{basePath}}/images/ai-stars-icon.svg" width="16" height="16" aria-hidden="true" alt="" style="margin-right:6px;vertical-align:middle;">Try with AI
+                </button>
+                {{/unless}}
+                {{/if}}
+            </div>
+        </div>
+
+        {{!-- Content --}}
+        <div class="flow-detail-content">
+            {{#if (eq flow.contentType "MD")}}
+            {{!-- Markdown Preview --}}
+            <div class="af-md-detail-container" id="markdownViewer"></div>
+            {{else}}
+            {{!-- Arazzo UI Viewer --}}
+            <div class="arazzo-viewer-container">
+                <div id="arazzoViewer"></div>
+            </div>
+            {{/if}}
+        </div>
+    </div>
+
+    {{> alert}}
+
+    {{!-- ── AGENT PROMPT MODAL ── --}}
+    {{#if aiEnabled}}
+    {{#unless (eq flow.agentVisibility "HIDDEN")}}
+    {{> agent-prompt-modal}}
+    {{/unless}}
+    {{/if}}
+
+    {{!-- Hidden container for spec content --}}
+    <textarea id="specContent" style="display: none;">{{flow.content}}</textarea>
+</div>
+{{#pageScripts}}
+<script src='{{basePath}}/technical-scripts/api-workflow-detail.js' defer></script>
+{{/pageScripts}}

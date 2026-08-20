@@ -1,6 +1,6 @@
 # End-to-End CI/CD Workflow
 
-This guide explains the full lifecycle of an API project with the `ap` CLI. The same project files are used across gateway deployment, Developer Portal publishing, and AI Workspace publishing.
+This guide explains the full lifecycle of an API project with the `ap` CLI. The same project files are used across gateway deployment, API Portal publishing, and AI Workspace publishing.
 
 The common CI/CD model is:
 
@@ -17,7 +17,7 @@ A single API project is the source of truth for all destinations.
 
 | File                        | Purpose                                                                                                                                                               |
 | --------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `metadata.yaml`             | Defines artifact identity and display metadata. For Developer Portal, it also carries the gateway API reference. For AI Workspace, it can carry `associatedGateways`. |
+| `metadata.yaml`             | Defines artifact identity and display metadata. For API Portal, it also carries the gateway API reference. For AI Workspace, it can carry `associatedGateways`. |
 | `runtime.yaml`              | Defines the runtime behavior. The gateway deploys this file. AI Workspace also uses it when building LLM proxy, LLM provider, or MCP proxy payloads.                  |
 | `definition.yaml`           | Defines the API, LLM, or MCP definition that is used when building portal or AI Workspace artifacts.                                                                  |
 | `.api-platform/config.yaml` | Stores project-level CLI configuration, including generated artifact locations and selected project targets.                                                          |
@@ -25,7 +25,7 @@ A single API project is the source of truth for all destinations.
 Destination usage:
 
 - **Gateway** uses `runtime.yaml`.
-- **Developer Portal** uses `metadata.yaml` and `definition.yaml`, then packages the generated `./devportal` source.
+- **API Portal** uses `metadata.yaml` and `definition.yaml`, then packages the generated `./devportal` source.
 - **AI Workspace** uses `metadata.yaml`, `runtime.yaml`, and `definition.yaml`.
 
 ## Flow
@@ -38,7 +38,7 @@ flowchart LR
     C --> D["<b>3 · Deploy runtime</b><br/>ap gateway apply<br/>-f runtime.yaml"]
     D --> E{"Apply target?"}
 
-    subgraph DP["Developer Portal path"]
+    subgraph DP["API Portal path"]
         direction LR
         F["<b>4a · Generate source</b><br/>ap devportal gen"] --> G["<b>5a · Build package</b><br/>ap devportal build"] --> H["<b>6a · Apply</b><br/>ap devportal apply"]
     end
@@ -85,7 +85,7 @@ ap ai-workspace add \
 ap ai-workspace use -n <aiws>
 ```
 
-Commands resolve the active gateway, Developer Portal, or AI Workspace under the active platform unless `-n` and `--platform` are provided.
+Commands resolve the active gateway, API Portal, or AI Workspace under the active platform unless `-n` and `--platform` are provided.
 
 See the references for [Gateway](gateway/README.md), [DevPortal](devportal/README.md), and [AI Workspace](ai-workspace/README.md).
 
@@ -126,11 +126,11 @@ For a REST API gateway deployment:
 - Keep `metadata.yaml` aligned with the display name, version, and project metadata.
 - Keep `definition.yaml` aligned with the OpenAPI definition.
 
-For Developer Portal publishing:
+For API Portal publishing:
 
 - Use the gateway API ID from the gateway deployment as the portal reference.
 - Set `spec.referenceID` in `metadata.yaml` to that gateway API ID.
-- Generate the Developer Portal source with `ap devportal gen`.
+- Generate the API Portal source with `ap devportal gen`.
 - Edit `./devportal/devportal.yaml`, docs, and content before building.
 
 For AI Workspace publishing:
@@ -157,11 +157,11 @@ ap gateway rest-api get \
   --version <version>
 ```
 
-Use this API ID as `spec.referenceID` in `metadata.yaml` before applying the REST API to Developer Portal.
+Use this API ID as `spec.referenceID` in `metadata.yaml` before applying the REST API to API Portal.
 
-## 4a. Build and apply to Developer Portal
+## 4a. Build and apply to API Portal
 
-Developer Portal now follows the same build and apply model.
+API Portal now follows the same build and apply model.
 
 ```shell
 ap devportal gen
@@ -173,9 +173,9 @@ What each command does:
 
 | Command              | Purpose                                                                                                                      |
 | -------------------- | ---------------------------------------------------------------------------------------------------------------------------- |
-| `ap devportal gen`   | Generates the editable Developer Portal artifact source under `./devportal` and registers it in `.api-platform/config.yaml`. |
+| `ap devportal gen`   | Generates the editable API Portal artifact source under `./devportal` and registers it in `.api-platform/config.yaml`. |
 | `ap devportal build` | Packages the generated source into `build/devportal.zip`.                                                                    |
-| `ap devportal apply` | Applies the built package to Developer Portal (create or update).                                                            |
+| `ap devportal apply` | Applies the built package to API Portal (create or update).                                                            |
 
 The apply command creates or updates the artifact based on its identity.
 
@@ -221,7 +221,7 @@ Create and update use the same command:
 
 A pipeline should use the same flow a developer uses locally. The main difference is that the pipeline should receive target names, project IDs, organization IDs, and environment-specific values from pipeline variables.
 
-### REST API to gateway and Developer Portal
+### REST API to gateway and API Portal
 
 ```shell
 # Select target connections
@@ -234,7 +234,7 @@ ap gateway apply -f runtime.yaml
 # Ensure metadata.yaml has the gateway API ID as spec.referenceID
 # This can be committed per environment, templated, or updated during the pipeline.
 
-# Generate and build the Developer Portal artifact
+# Generate and build the API Portal artifact
 ap devportal gen
 ap devportal build
 

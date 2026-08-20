@@ -1,0 +1,359 @@
+/*
+ * Green Theme — sample layout showcasing developer-portal theming.
+ *
+ * How theming works: a view's layout is a copy of src/defaultContent, edited as
+ * needed and uploaded as the view's content. ANY file under src/defaultContent
+ * can be overridden by including your edited version here; files you don't
+ * include fall back to src/defaultContent automatically. So a theme is NOT just
+ * colours — layouts, partials, and pages are all themeable.
+ *
+ * This theme demonstrates that by overriding, alongside this stylesheet:
+ *   - layout/main.hbs                       (page <title> / shell)
+ *   - partials/header.hbs                   (text wordmark instead of the logo image)
+ *   - partials/footer.hbs                   (custom footer links/content)
+ *   - pages/home/partials/home.hbs          (custom hero copy)
+ *   - pages/apis/partials/api-listing.hbs   (how APIs are listed: hero + a
+ *                                            different card type & arrangement)
+ * Plus, at the end of this file, custom treatments for the API listing hero, the
+ * "cover" API card, and the API overview page. Everything else (other pages, the
+ * sidebar, the imported CSS below) is served from src/defaultContent unchanged.
+ *
+ * This stylesheet is a verbatim copy of src/defaultContent/styles/main.css with
+ * only the brand SEED variables in :root changed (teal + coral instead of the
+ * default navy + orange), plus a block at the end for the header wordmark and the
+ * listing / overview treatments. Every other colour — text ramp, borders,
+ * surfaces, gradients, the dark hero/sidebar — is DERIVED from those seeds via
+ * color-mix(), so it re-themes automatically. To make your own theme, copy this
+ * file and change the seeds under "SEEDS · brand".
+ *
+ * Use in design mode (config.toml):
+ *   [design_mode]
+ *   enabled = true
+ *   path_to_layout = "./samples/layouts/green-theme/"
+ *
+ * Deploy to a view: zip this directory and upload it via
+ * Admin Settings -> Views -> Upload View Content (or apply-theme).
+ */
+
+@import url("https://fonts.googleapis.com/css2?family=Montserrat:ital,wght@0,100..900;1,100..900&family=Quicksand:wght@300..700&display=swap");
+@import url("https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap");
+
+@import "components.css";
+@import "home.css";
+@import "footer.css";
+@import "header.css";
+@import "api-listing.css";
+@import "api-content.css";
+@import "api-landing.css";
+@import "doc.css";
+@import "side-bar.css";
+@import "api-workflows.css";
+@import "mcp-landing.css";
+
+:root {
+  /* ============================================================
+     THEME PALETTE
+     Edit the SEEDS to re-theme the whole portal. Everything under
+     DERIVED updates itself via color-mix().
+     ============================================================ */
+
+  /* ---- SEEDS · brand (these cascade everywhere) ----
+     Values taken verbatim from the original (pre-theme) palette so the same
+     hue can be reused directly across the portal rather than re-derived as a
+     slight variation. Only gradients and translucent overlays are derived. */
+  --primary:       #0f766e;   /* structure, links, focus, primary buttons — teal */
+  --primary-dark:  #134e4a;   /* primary hover / pressed / deep teal panels */
+  --primary-light: #2dd4bf;   /* lifted primary states, on-dark highlights  */
+  --accent:        #fb7185;   /* solid highlights, badges, env dots, borders — coral */
+  --accent-dark:   #e11d48;   /* accent shade */
+  --accent-light:  #fda4af;   /* accent tint */
+
+  /* ---- SEEDS · neutral foundation ---- */
+  --ink:     #0e2a2a;   /* darkest text / deep teal — generates the grey ramp */
+  --surface: #ffffff;   /* page background — the ramp mixes toward this */
+  --white:   #ffffff;   /* pure white — text / fills on colored or dark surfaces (kept distinct from --surface) */
+
+  /* ---- SEEDS · semantic (stay independent of the brand) ---- */
+  --success: #2e7d32;
+  --warning: #e39a00;
+  --danger:  #c62828;
+  --info:    #0277bd;
+
+  /* ---- DERIVED · text & neutrals (from --ink → --surface) ---- */
+  --text-strong:    var(--ink);
+  --text:           color-mix(in srgb, var(--ink) 80%, var(--surface));
+  --text-muted:     color-mix(in srgb, var(--ink) 52%, var(--surface));
+  --text-subtle:    color-mix(in srgb, var(--ink) 38%, var(--surface));
+  --border:         color-mix(in srgb, var(--ink) 12%, var(--surface));
+  --border-strong:  color-mix(in srgb, var(--ink) 22%, var(--surface));
+  --surface-sunken: color-mix(in srgb, var(--ink) 4%,  var(--surface));
+  --overlay:        color-mix(in srgb, var(--ink) 55%, transparent);
+  --ink-deep:       color-mix(in oklch, var(--primary) 55%, #000);
+
+  /* ---- DERIVED · primary family (dark & light are seeds above) ---- */
+  --primary-surface: color-mix(in srgb, var(--primary) 8%,  var(--surface));
+  --focus-ring:      color-mix(in srgb, var(--primary) 40%, transparent);
+
+  /* ---- DERIVED · accent family + CTA gradient ---- */
+  --accent-surface: color-mix(in srgb,  var(--accent) 12%, var(--surface));
+  --cta-gradient:   linear-gradient(135deg, var(--accent-dark) 0%, var(--accent-light) 100%);
+
+  /* ---- DERIVED · semantic surfaces (tinted badge / banner backgrounds) ---- */
+  --success-surface: color-mix(in srgb, var(--success) 12%, var(--surface));
+  --warning-surface: color-mix(in srgb, var(--warning) 14%, var(--surface));
+  --danger-surface:  color-mix(in srgb, var(--danger)  10%, var(--surface));
+  --info-surface:    color-mix(in srgb, var(--info)    12%, var(--surface));
+
+  /* ---- DERIVED · dark brand surface + content on it ----
+     Shared by every dark navy surface: the home hero, the sidebar, and the
+     sign-in / org-select shell. --surface-dark is the ground (from the brand
+     seeds); --on-dark* are the text / fills / pill that sit on top of it (white
+     at reducing opacity + a lightened --primary-light pill). Only gradients and
+     translucent overlays are derived — no separate seeds. */
+  --surface-dark:
+    radial-gradient(56.25rem 37.5rem at 12% 8%, color-mix(in srgb, var(--primary-light) 42%, transparent), transparent 60%),
+    radial-gradient(43.75rem 37.5rem at 95% 100%, color-mix(in srgb, var(--accent) 22%, transparent), transparent 55%),
+    linear-gradient(160deg,
+      var(--primary-dark) 0%,
+      color-mix(in srgb, var(--primary-dark) 72%, #000) 60%,
+      color-mix(in srgb, var(--primary-dark) 58%, #000) 100%);
+  --on-dark-pill:        color-mix(in oklch, var(--primary-light) 60%, var(--white));
+  --on-dark-pill-bg:     color-mix(in srgb,  var(--primary-light) 16%, transparent);
+  --on-dark-pill-border: color-mix(in srgb,  var(--primary-light) 34%, transparent);
+  --on-dark:        color-mix(in srgb, var(--white) 74%, transparent);
+  --on-dark-muted:  color-mix(in srgb, var(--white) 52%, transparent);
+  --on-dark-fill:        color-mix(in srgb, var(--white) 6%,  transparent);
+  --on-dark-fill-border: color-mix(in srgb, var(--white) 12%, transparent);
+
+  /* ---- Non-color tokens ---- */
+  --font-family-sans: Inter, "Montserrat", "Quicksand", "Noto Sans", "Poppins", system-ui, -apple-system, sans-serif;
+  --font-family-mono: "JetBrains Mono", "Fira Code", ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace;
+
+  --border-radius: 0.5rem;
+}
+
+html {
+  overflow: hidden;
+  height: 100%;
+}
+
+.main-body {
+  overflow: hidden;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  font-family: var(--font-family-sans);
+  background-color: var(--surface);
+}
+
+/* Row between fixed navbar and fixed footer */
+.layout-body {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: row;
+  margin-top: 3.5rem;
+  margin-bottom: 3rem;
+  overflow: hidden;
+}
+
+.main-container {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-width: 0;
+  overflow-y: auto;
+  font-weight: 500;
+  position: relative;
+}
+
+.content-area {
+  flex: 1;
+  min-width: 0;
+  width: 100%;
+  padding: 0 2rem 1rem 2rem;
+}
+
+.section {
+  margin: 3.5rem 1rem 0 0;
+}
+
+.common-header h2 {
+  font-size: 1.875rem;
+  margin-bottom: 3.5rem;
+  font-weight: 600;
+  color: var(--text);
+}
+
+.container-header {
+  display: block;
+  color: var(--primary);
+  font-size: 1.5rem;
+  font-weight: 600;
+}
+
+/* ── Green theme additions ─────────────────────────────────────────────
+   Everything above this line is the standard main.css (only the :root seeds
+   changed). The rules below are theme-specific overrides that go beyond the
+   palette: the header wordmark, and distinct treatments for the API listing
+   hero and the API overview page — showcasing that individual pages are
+   themeable, not just recoloured. */
+
+/* Text wordmark used in partials/header.hbs (in place of the logo image). */
+.brand-wordmark {
+  gap: 0.5rem;
+  text-decoration: none;
+}
+.brand-wordmark-icon {
+  font-size: 1.5rem;
+  color: var(--accent);
+}
+.brand-wordmark-text {
+  font-family: var(--font-family-sans);
+  font-size: 1.4rem;
+  font-weight: 700;
+  letter-spacing: 0.01em;
+  color: var(--primary);
+  background: var(--cta-gradient);
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+}
+
+/* API listing hero (pages/apis) — bolder deep-teal band with a coral accent
+   edge and light text, instead of the default subtle tint. */
+.apilist-hero-container {
+  background: var(--surface-dark);
+  border-left: 4px solid var(--accent);
+  box-shadow: 0 0.5rem 1.5rem color-mix(in srgb, var(--primary-dark) 30%, transparent);
+}
+.apilist-hero-title { color: var(--white); }
+.apilist-hero-description { color: var(--on-dark); }
+
+/* API overview page (pages/api-landing) — accent edge + a lifted card look so
+   the overview reads distinctly from the default subtle tint. */
+.aov-hero {
+  border-left: 4px solid var(--accent);
+  box-shadow: 0 0.375rem 1.25rem color-mix(in srgb, var(--primary) 14%, transparent);
+}
+/* Eyebrow label rendered above the API name (see api-detail-banner override). */
+.aov-eyebrow {
+  display: inline-block;
+  margin-bottom: 0.35rem;
+  font-size: 0.6875rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--accent-dark);
+}
+
+/* API cards (pages/apis grid) — a distinct "cover" card type: a coloured header
+   band carrying the type badge, an avatar overlapping the band, and a full-width
+   footer CTA. Uses its own .lgn-apicard* classes (set in the overridden
+   api-listing.hbs) so it doesn't inherit the default .api-card layout. */
+.lgn-apicard {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  border-radius: 1rem;
+  overflow: hidden;
+  background: var(--surface);
+  box-shadow: 0 1px 2px color-mix(in srgb, var(--ink) 8%, transparent),
+              0 0.5rem 1.5rem color-mix(in srgb, var(--ink) 7%, transparent);
+  transition: transform 0.18s ease, box-shadow 0.18s ease;
+}
+.lgn-apicard:hover {
+  transform: translateY(-0.25rem);
+  box-shadow: 0 0.875rem 2rem color-mix(in srgb, var(--primary) 20%, transparent);
+}
+.lgn-apicard--subscribed {
+  box-shadow: 0 0 0 1.5px var(--primary),
+              0 0.5rem 1.5rem color-mix(in srgb, var(--primary) 16%, transparent);
+}
+.lgn-apicard-click { display: flex; flex-direction: column; flex: 1; }
+
+.lgn-apicard-cover {
+  height: 3.5rem;
+  padding: 0 1.25rem;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  background: var(--surface-dark);
+}
+.lgn-apicard-sub {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  font-size: 0.6875rem;
+  font-weight: 600;
+  color: var(--white);
+}
+/* Pin the type chip to the top-right of the cover, with or without the sub flag. */
+.lgn-apicard-type { margin-left: auto; }
+
+.lgn-apicard-avatar {
+  width: 3.5rem;
+  height: 3.5rem;
+  margin: -1.75rem 0 0 1.25rem;   /* overlap the cover band */
+  border-radius: 0.9rem;
+  background: var(--cta-gradient);
+  color: var(--white);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 1.05rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  border: 0.1875rem solid var(--surface);
+  box-shadow: 0 0.25rem 0.75rem color-mix(in srgb, var(--accent) 32%, transparent);
+  position: relative;
+  z-index: 1;
+  overflow: hidden;
+}
+.lgn-apicard-avatar img { width: 100%; height: 100%; object-fit: cover; }
+
+.lgn-apicard-body {
+  padding: 0.75rem 1.25rem 1rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  flex: 1;
+}
+.lgn-apicard-name { margin: 0; font-size: 1.05rem; font-weight: 700; color: var(--text-strong); }
+.lgn-apicard-meta { display: flex; flex-wrap: wrap; align-items: center; gap: 0.4rem; }
+.lgn-apicard-version { font-size: 0.75rem; font-weight: 600; color: var(--text-muted); }
+.lgn-apicard-desc {
+  margin: 0;
+  font-size: 0.844rem;
+  line-height: 1.55;
+  color: var(--text-muted);
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+.lgn-apicard-tags { display: flex; flex-wrap: wrap; gap: 0.35rem; margin-top: auto; }
+
+.lgn-apicard-foot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0.75rem 1.25rem;
+  border-top: 1px solid var(--border);
+  background: var(--surface-sunken);
+}
+.lgn-apicard-plans { display: inline-flex; align-items: center; gap: 0.3rem; font-size: 0.75rem; color: var(--text-muted); }
+.lgn-apicard-cta {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  padding: 0.4rem 0.85rem;
+  border-radius: 0.5rem;
+  font-size: 0.8125rem;
+  font-weight: 600;
+  text-decoration: none;
+  color: var(--primary);
+}
+.lgn-apicard-cta--primary { background: var(--cta-gradient); color: var(--white); }
+.lgn-apicard-cta.is-disabled { opacity: 0.5; pointer-events: none; }

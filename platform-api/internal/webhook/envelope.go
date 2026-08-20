@@ -17,8 +17,8 @@
 
 // Package webhook implements the Platform API control-plane webhook receiver.
 //
-// It is the receiver-side counterpart to the Developer Portal producer described in
-// docs-local/devportal-webhook-integration.md. The Developer Portal commits a domain
+// It is the receiver-side counterpart to the API Portal producer described in
+// docs-local/devportal-webhook-integration.md. The API Portal commits a domain
 // change, writes it to a transactional outbox, and delivers signed webhooks (at-least-once)
 // to this endpoint. Platform API verifies the request, decrypts any sensitive fields,
 // reconciles its own state by reusing the existing API-key / subscription services, and
@@ -49,13 +49,13 @@ func (e *EncryptedKey) Empty() bool {
 }
 
 // orgRef identifies the organization an event targets. ref_id is the control-plane org
-// reference (the Platform API organization UUID); the Developer Portal falls back to its own
+// reference (the Platform API organization UUID); the API Portal falls back to its own
 // org UUID when the org has not been linked to the control plane.
 type orgRef struct {
 	RefID string `json:"ref_id"`
 }
 
-// Envelope is the common webhook event envelope. It mirrors the Developer Portal DP_EVENT
+// Envelope is the common webhook event envelope. It mirrors the API Portal DP_EVENT
 // outbox row. Data carries the event-type-specific payload and is decoded by each handler.
 type Envelope struct {
 	EventID    string `json:"event_id"`

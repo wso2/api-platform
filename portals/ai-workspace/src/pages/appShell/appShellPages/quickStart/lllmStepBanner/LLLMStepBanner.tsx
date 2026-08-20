@@ -41,7 +41,7 @@ import {
 import { useAppShell } from '../../../../../contexts/AppShellContext';
 import { useAIEntity } from '../../../../../contexts/AIEntitiesContext';
 import { useLLMProvider } from '../../../../../contexts/llmProvider';
-import { PLATFORM_API_BASE_URL } from '../../../../../config.env';
+import { PLATFORM_API_BASE_URL } from '../../../../../paths';
 import {
   COST_POLICY_NAME,
   autoAttachesCostPolicy,

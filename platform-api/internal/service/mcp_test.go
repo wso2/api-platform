@@ -162,11 +162,10 @@ func TestFetchServerInfoRefetchUsesStoredURLVerbatim(t *testing.T) {
 }
 
 // TestFetchServerInfoRejectsAmbiguousTargets asserts the request-shape rules enforced by
-// FetchServerInfo, matching the oneOf constraint on MCPServerInfoFetchRequest: exactly one
-// of url/proxyId selects the target, and auth may not accompany proxyId (where the stored
-// auth is authoritative) — no branch may silently ignore a supplied field.
+// FetchServerInfo: at least one of url/proxyId must select the target, and auth may not
+// accompany proxyId (where the stored auth is authoritative) — no branch may silently
+// ignore a supplied field.
 func TestFetchServerInfoRejectsAmbiguousTargets(t *testing.T) {
-	url := "https://mcp.example.com/mcp"
 	proxyID := "mcp-proxy-1"
 	header, value := "X-API-Key", "secret"
 
@@ -174,7 +173,6 @@ func TestFetchServerInfoRejectsAmbiguousTargets(t *testing.T) {
 		name string
 		req  *api.MCPServerInfoFetchRequest
 	}{
-		{"both url and proxyId", &api.MCPServerInfoFetchRequest{Url: &url, ProxyId: &proxyID}},
 		{"neither url nor proxyId", &api.MCPServerInfoFetchRequest{}},
 		{"auth supplied with proxyId", &api.MCPServerInfoFetchRequest{
 			ProxyId: &proxyID,
@@ -190,5 +188,66 @@ func TestFetchServerInfoRejectsAmbiguousTargets(t *testing.T) {
 			_, err := service.FetchServerInfo("org-1", tt.req)
 			assert.True(t, apperror.ValidationFailed.Is(err), "expected a validation failure, got: %v", err)
 		})
+	}
+}
+
+// TestFetchServerInfoSuppliedURLWithStoredCredential covers the url+proxyId shape, which
+// lets the UI validate an unsaved endpoint edit using the proxy's stored (write-only)
+// credential. The supplied URL must override the stored one verbatim — no path
+// manipulation, same as the proxyId-only flow — while the stored auth header still rides
+// along, since that is the whole point of referencing the proxy.
+func TestFetchServerInfoSuppliedURLWithStoredCredential(t *testing.T) {
+	var mu sync.Mutex
+	var paths []string
+	var authHeaders []string
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		mu.Lock()
+		paths = append(paths, r.URL.Path)
+		// Only the MCP calls themselves carry credentials; CheckURLReachability's
+		// preceding HEAD probe is a deliberately unauthenticated diagnostic.
+		if r.Method != http.MethodHead {
+			authHeaders = append(authHeaders, r.Header.Get("X-API-Key"))
+		}
+		mu.Unlock()
+		w.Header().Set("Content-Type", "application/json")
+		w.Header().Set("mcp-session-id", "test-session")
+		_, _ = w.Write([]byte(`{"jsonrpc":"2.0","id":1,"result":{"protocolVersion":"2025-06-18","serverInfo":{"name":"test","version":"1.0"}}}`))
+	}))
+	defer srv.Close()
+
+	proxy := &model.MCPProxy{
+		Handle: "mcp-proxy-1",
+		Configuration: model.MCPProxyConfiguration{
+			Upstream: model.UpstreamConfig{
+				Main: &model.UpstreamEndpoint{
+					URL: srv.URL + "/mcp",
+					// A literal (non-placeholder) stored value, so this exercises the
+					// request shape without needing the secret store.
+					Auth: &model.UpstreamAuth{Header: "X-API-Key", Value: "stored-secret"},
+				},
+			},
+		},
+	}
+	repo := &mockMCPProxyRepository{getByHandleResult: proxy}
+	service := NewMCPProxyService(repo, nil, nil, nil, nil, slog.Default(), &noopAuditRepo{}, &config.Server{}, newTestIdentityService())
+
+	proxyID := "mcp-proxy-1"
+	editedURL := srv.URL + "/api/v2/mcp" // an unsaved endpoint edit
+	_, err := service.FetchServerInfo("org-1", &api.MCPServerInfoFetchRequest{
+		ProxyId: &proxyID,
+		Url:     &editedURL,
+	})
+	require.NoError(t, err)
+
+	mu.Lock()
+	defer mu.Unlock()
+	require.NotEmpty(t, paths, "backend should have received at least one request")
+	for _, p := range paths {
+		assert.Equal(t, "/api/v2/mcp", p, "the supplied URL must override the stored one, verbatim")
+	}
+	require.NotEmpty(t, authHeaders, "backend should have received at least one MCP call")
+	for _, h := range authHeaders {
+		assert.Equal(t, "stored-secret", h, "the proxy's stored credential must still be sent")
 	}
 }
