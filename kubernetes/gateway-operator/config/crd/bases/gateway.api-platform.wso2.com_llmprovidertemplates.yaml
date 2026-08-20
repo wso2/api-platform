@@ -294,6 +294,46 @@ spec:
                 - identifier
                 - location
                 type: object
+              providerFields:
+                additionalProperties:
+                  description: |-
+                    ExtractionIdentifier locates a value within an HTTP request or response.
+                    Mirrors the gateway-controller management API ExtractionIdentifier model.
+                  properties:
+                    fallbackIdentifiers:
+                      description: |-
+                        FallbackIdentifiers are additional locations to try, in order, when the
+                        primary identifier yields no value.
+                      items:
+                        type: string
+                      type: array
+                    identifier:
+                      description: Identifier is a JSONPath expression or header name.
+                      type: string
+                    location:
+                      description: Location is where to look for the value.
+                      enum:
+                      - header
+                      - pathParam
+                      - payload
+                      - queryParam
+                      type: string
+                    valueMap:
+                      additionalProperties:
+                        type: string
+                      description: |-
+                        ValueMap translates values the provider reports into the vocabulary the
+                        gateway works in. A reported value that is not a key is used unchanged.
+                      type: object
+                  required:
+                  - identifier
+                  - location
+                  type: object
+                description: |-
+                  ProviderFields names locations a provider-specific calculator needs that
+                  the closed vocabulary above does not cover. Only the position is declared;
+                  the value found there is passed through unchanged.
+                type: object
               reasoningTokens:
                 description: |-
                   ExtractionIdentifier locates a value within an HTTP request or response.
@@ -1346,6 +1386,46 @@ spec:
                 required:
                 - identifier
                 - location
+                type: object
+              providerFields:
+                additionalProperties:
+                  description: |-
+                    ExtractionIdentifier locates a value within an HTTP request or response.
+                    Mirrors the gateway-controller management API ExtractionIdentifier model.
+                  properties:
+                    fallbackIdentifiers:
+                      description: |-
+                        FallbackIdentifiers are additional locations to try, in order, when the
+                        primary identifier yields no value.
+                      items:
+                        type: string
+                      type: array
+                    identifier:
+                      description: Identifier is a JSONPath expression or header name.
+                      type: string
+                    location:
+                      description: Location is where to look for the value.
+                      enum:
+                      - header
+                      - pathParam
+                      - payload
+                      - queryParam
+                      type: string
+                    valueMap:
+                      additionalProperties:
+                        type: string
+                      description: |-
+                        ValueMap translates values the provider reports into the vocabulary the
+                        gateway works in. A reported value that is not a key is used unchanged.
+                      type: object
+                  required:
+                  - identifier
+                  - location
+                  type: object
+                description: |-
+                  ProviderFields names locations a provider-specific calculator needs that
+                  the closed vocabulary above does not cover. Only the position is declared;
+                  the value found there is passed through unchanged.
                 type: object
               reasoningTokens:
                 description: |-

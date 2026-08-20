@@ -129,6 +129,12 @@ type LLMProviderTemplateData struct {
 	// +optional
 	ServiceTier *ExtractionIdentifier `json:"serviceTier,omitempty"`
 
+	// ProviderFields names locations a provider-specific calculator needs that
+	// the closed vocabulary above does not cover. Only the position is declared;
+	// the value found there is passed through unchanged.
+	// +optional
+	ProviderFields map[string]ExtractionIdentifier `json:"providerFields,omitempty"`
+
 	// CacheAccounting states whether the provider's cached token count is part
 	// of the input total or additional to it. Defaults to inclusive.
 	// +optional
