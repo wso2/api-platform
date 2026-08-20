@@ -1,5 +1,5 @@
 -- SQL Server Schema for Gateway-Controller API Configurations
--- Version: 4
+-- Version: 5
 --
 -- Portable counterpart of gateway-controller-db.postgres.sql. Type mapping:
 --   TEXT (keyed)      -> NVARCHAR(64)/NVARCHAR(255)  (NVARCHAR(MAX) cannot be indexed;
@@ -96,6 +96,23 @@ CREATE TABLE dbo.mcp_proxies (
     uuid NVARCHAR(64) NOT NULL,
     gateway_id NVARCHAR(64) NOT NULL,
     configuration NVARCHAR(MAX) NOT NULL,
+    PRIMARY KEY (gateway_id, uuid),
+    FOREIGN KEY(gateway_id, uuid) REFERENCES dbo.artifacts(gateway_id, uuid) ON DELETE CASCADE
+);
+
+-- A2A Agents table (added in schema version 5)
+IF OBJECT_ID(N'dbo.agents', N'U') IS NULL
+CREATE TABLE dbo.agents (
+    uuid NVARCHAR(64) NOT NULL,
+    gateway_id NVARCHAR(64) NOT NULL,
+    configuration NVARCHAR(MAX) NOT NULL,
+    -- Signed public Agent Card, produced by the controller at deploy time.
+    -- NULL when signing is disabled, or in passthrough mode. Persisted rather
+    -- than recomputed: signatures are produced only on deploy, never at startup.
+    signed_public_card NVARCHAR(MAX) NULL,
+    -- Reserved. Extended (protected) card support is a later release; nothing
+    -- writes this column yet.
+    signed_protected_card NVARCHAR(MAX) NULL,
     PRIMARY KEY (gateway_id, uuid),
     FOREIGN KEY(gateway_id, uuid) REFERENCES dbo.artifacts(gateway_id, uuid) ON DELETE CASCADE
 );
