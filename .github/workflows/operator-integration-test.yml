@@ -5,6 +5,7 @@ on:
   pull_request:
     branches:
       - main
+      - gateway/1.2.0-agent-manager
     paths:
       - 'gateway/**'
       - 'kubernetes/**'
