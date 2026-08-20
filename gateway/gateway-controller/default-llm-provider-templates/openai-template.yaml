@@ -81,3 +81,9 @@ spec:
         completionTokens:
           location: payload
           identifier: $.usage.output_tokens
+        cachedTokens:
+          location: payload
+          identifier: $.usage.input_tokens_details.cached_tokens
+        reasoningTokens:
+          location: payload
+          identifier: $.usage.output_tokens_details.reasoning_tokens
