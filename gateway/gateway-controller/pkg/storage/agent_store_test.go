@@ -303,8 +303,11 @@ func TestAgentSignedCardColumns(t *testing.T) {
 
 		got, err := storage.GetConfig(agent.UUID)
 		assert.NilError(t, err)
-		assert.Assert(t, got.SignedPublicCard == nil, "unsigned Agent came back with a signed card")
-		assert.Assert(t, got.SignedProtectedCard == nil)
+		assert.Assert(t, got.SignedPublicCard() == nil, "unsigned Agent came back with a signed card")
+		assert.Assert(t, got.SignedProtectedCard() == nil)
+		// A nil Agent must mean exactly one thing — no gateway-generated cards —
+		// so an empty struct is never allocated for a row with both columns NULL.
+		assert.Assert(t, got.Agent == nil, "an empty AgentArtifact was allocated for an unsigned Agent")
 	})
 
 	t.Run("round-trips through every read path", func(t *testing.T) {
@@ -314,13 +317,13 @@ func TestAgentSignedCardColumns(t *testing.T) {
 		const signed = `{"name":"Test Agent","signatures":[{"protected":"eyJhbGciOiJFUzI1NiJ9","signature":"c2ln"}]}`
 
 		agent := createTestAgentConfig()
-		agent.SignedPublicCard = strPtrAgent(signed)
+		agent.Agent = &models.AgentArtifact{SignedPublicCard: strPtrAgent(signed)}
 		assert.NilError(t, storage.SaveConfig(agent))
 
 		got, err := storage.GetConfig(agent.UUID)
 		assert.NilError(t, err)
-		assert.Assert(t, got.SignedPublicCard != nil, "signed card was not persisted")
-		assert.Equal(t, *got.SignedPublicCard, signed)
+		assert.Assert(t, got.SignedPublicCard() != nil, "signed card was not persisted")
+		assert.Equal(t, *got.SignedPublicCard(), signed)
 
 		// A restart reads through GetAllConfigs. Signatures are produced only on
 		// deploy, so if this path dropped them the gateway would come back up
@@ -328,15 +331,15 @@ func TestAgentSignedCardColumns(t *testing.T) {
 		configs, err := storage.GetAllConfigsByKind(models.KindAgent)
 		assert.NilError(t, err)
 		assert.Equal(t, len(configs), 1)
-		assert.Assert(t, configs[0].SignedPublicCard != nil, "signed card lost on the startup read path")
-		assert.Equal(t, *configs[0].SignedPublicCard, signed)
+		assert.Assert(t, configs[0].SignedPublicCard() != nil, "signed card lost on the startup read path")
+		assert.Equal(t, *configs[0].SignedPublicCard(), signed)
 
 		all, err := storage.GetAllConfigs()
 		assert.NilError(t, err)
 		for _, cfg := range all {
 			if cfg.UUID == agent.UUID {
-				assert.Assert(t, cfg.SignedPublicCard != nil, "signed card lost in the cross-kind union")
-				assert.Equal(t, *cfg.SignedPublicCard, signed)
+				assert.Assert(t, cfg.SignedPublicCard() != nil, "signed card lost in the cross-kind union")
+				assert.Equal(t, *cfg.SignedPublicCard(), signed)
 			}
 		}
 	})
@@ -346,19 +349,20 @@ func TestAgentSignedCardColumns(t *testing.T) {
 		defer storage.db.Close()
 
 		agent := createTestAgentConfig()
-		agent.SignedPublicCard = strPtrAgent(`{"stale":"signature"}`)
+		agent.Agent = &models.AgentArtifact{SignedPublicCard: strPtrAgent(`{"stale":"signature"}`)}
 		assert.NilError(t, storage.SaveConfig(agent))
 
 		// A signature is only valid for the exact card bytes it was computed
 		// over, so an update that changes the card without re-signing must drop
 		// the old signature rather than keep serving one that verifies against
 		// content nobody receives.
-		agent.SignedPublicCard = nil
+		agent.Agent = nil
 		assert.NilError(t, storage.UpdateConfig(agent))
 
 		got, err := storage.GetConfig(agent.UUID)
 		assert.NilError(t, err)
-		assert.Assert(t, got.SignedPublicCard == nil, "a stale signature survived an update that did not re-sign")
+		assert.Assert(t, got.SignedPublicCard() == nil, "a stale signature survived an update that did not re-sign")
+		assert.Assert(t, got.Agent == nil)
 	})
 }
 
@@ -388,7 +392,7 @@ func TestAgentUpsert(t *testing.T) {
 	agent.SourceConfiguration = updated
 	agent.DisplayName = "Upserted Agent"
 	agent.DeploymentID = "dep-2"
-	agent.SignedPublicCard = strPtrAgent(`{"signed":"card"}`)
+	agent.Agent = &models.AgentArtifact{SignedPublicCard: strPtrAgent(`{"signed":"card"}`)}
 
 	applied, err = storage.UpsertConfig(agent)
 	assert.NilError(t, err)
@@ -400,8 +404,8 @@ func TestAgentUpsert(t *testing.T) {
 	reread, ok := got.Configuration.(api.AgentConfiguration)
 	assert.Assert(t, ok)
 	assert.Equal(t, reread.Spec.DisplayName, "Upserted Agent")
-	assert.Assert(t, got.SignedPublicCard != nil, "upsert did not persist the signed card")
-	assert.Equal(t, *got.SignedPublicCard, `{"signed":"card"}`)
+	assert.Assert(t, got.SignedPublicCard() != nil, "upsert did not persist the signed card")
+	assert.Equal(t, *got.SignedPublicCard(), `{"signed":"card"}`)
 
 	var rows int
 	assert.NilError(t, storage.db.QueryRow("SELECT COUNT(*) FROM agents WHERE uuid = ?", agent.UUID).Scan(&rows))
@@ -423,14 +427,15 @@ func TestSignedCardColumnsAreAgentOnly(t *testing.T) {
 
 	byUUID, err := storage.GetConfig(restAPI.UUID)
 	assert.NilError(t, err)
-	assert.Assert(t, byUUID.SignedPublicCard == nil, "RestApi read back with a signed card")
-	assert.Assert(t, byUUID.SignedProtectedCard == nil)
+	assert.Assert(t, byUUID.SignedPublicCard() == nil, "RestApi read back with a signed card")
+	assert.Assert(t, byUUID.SignedProtectedCard() == nil)
+	assert.Assert(t, byUUID.Agent == nil, "a non-Agent artifact was given an AgentArtifact")
 	assert.Assert(t, byUUID.Configuration != nil, "RestApi lost its Configuration")
 
 	byKind, err := storage.GetAllConfigsByKind(models.KindRestApi)
 	assert.NilError(t, err)
 	assert.Equal(t, len(byKind), 1)
-	assert.Assert(t, byKind[0].SignedPublicCard == nil)
+	assert.Assert(t, byKind[0].SignedPublicCard() == nil)
 	assert.Assert(t, byKind[0].Configuration != nil)
 
 	// The cross-kind union projects NULL placeholders for non-Agent tables. If
@@ -441,8 +446,9 @@ func TestSignedCardColumnsAreAgentOnly(t *testing.T) {
 	for _, cfg := range all {
 		assert.Assert(t, cfg.Configuration != nil, "%s lost its Configuration in the union", cfg.Kind)
 		if cfg.Kind != models.KindAgent {
-			assert.Assert(t, cfg.SignedPublicCard == nil, "%s read back with a signed card", cfg.Kind)
-			assert.Assert(t, cfg.SignedProtectedCard == nil)
+			assert.Assert(t, cfg.SignedPublicCard() == nil, "%s read back with a signed card", cfg.Kind)
+			assert.Assert(t, cfg.SignedProtectedCard() == nil)
+			assert.Assert(t, cfg.Agent == nil, "%s was given an AgentArtifact", cfg.Kind)
 		}
 	}
 }
