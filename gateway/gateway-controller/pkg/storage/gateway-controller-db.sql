@@ -1,7 +1,7 @@
 -- SQLite Schema for Gateway-Controller API Configurations
--- Version: 4
+-- Version: 5
 
--- Base table for all artifact types (REST APIs, WebSub APIs, LLM Providers, LLM Proxies, MCP Proxies)
+-- Base table for all artifact types (REST APIs, WebSub APIs, LLM Providers, LLM Proxies, MCP Proxies, Agents)
 CREATE TABLE IF NOT EXISTS artifacts (
     uuid TEXT NOT NULL,
     gateway_id TEXT NOT NULL,
@@ -64,6 +64,27 @@ CREATE TABLE IF NOT EXISTS mcp_proxies (
     uuid TEXT NOT NULL,
     gateway_id TEXT NOT NULL,
     configuration TEXT NOT NULL,
+    PRIMARY KEY (gateway_id, uuid),
+    FOREIGN KEY(gateway_id, uuid) REFERENCES artifacts(gateway_id, uuid) ON DELETE CASCADE
+);
+
+-- A2A Agents table (added in schema version 5)
+CREATE TABLE IF NOT EXISTS agents (
+    uuid TEXT NOT NULL,
+    gateway_id TEXT NOT NULL,
+    configuration TEXT NOT NULL,
+    -- Signed public Agent Card, produced by the controller at deploy time.
+    -- NULL when signing is disabled, or in passthrough mode. Persisted rather
+    -- than recomputed: signatures are produced only on deploy, never at
+    -- startup. For ES256/ES384/PS256 (randomized) recomputing would also change
+    -- the served signature and ETag with no user-visible cause; RS256 is
+    -- deterministic, so that particular symptom would not appear, but the
+    -- no-startup-signing rule holds for every algorithm.
+    signed_public_card TEXT,
+    -- Reserved. Extended (protected) card support is a later release; nothing
+    -- writes this column yet. Present now because every DDL change costs a
+    -- schema-version bump and, for SQLite, a database recreation.
+    signed_protected_card TEXT,
     PRIMARY KEY (gateway_id, uuid),
     FOREIGN KEY(gateway_id, uuid) REFERENCES artifacts(gateway_id, uuid) ON DELETE CASCADE
 );
@@ -281,4 +302,4 @@ CREATE TABLE IF NOT EXISTS secrets (
 -- Note: webhook_secrets (per-API HMAC secrets for the websub-hmac-auth policy)
 -- is also owned by event-gateway/gateway-controller/pkg/dbschema — see note above.
 
-PRAGMA user_version = 4;
+PRAGMA user_version = 5;

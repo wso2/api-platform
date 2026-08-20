@@ -104,7 +104,10 @@ func TestSchemaInitialization(t *testing.T) {
 		var version int
 		err := rawDB.QueryRow("PRAGMA user_version").Scan(&version)
 		assert.NoError(t, err)
-		assert.Equal(t, 4, version, "Schema version should be 4")
+		// Must track storage.currentSchemaVersion (pkg/storage/sqlite.go), which
+		// is unexported and so cannot be referenced from this external test
+		// package. A bump has to update both.
+		assert.Equal(t, 5, version, "Schema version should be 5")
 	})
 
 	// Verify artifacts table exists
@@ -160,7 +163,7 @@ func TestSchemaInitialization(t *testing.T) {
 
 	// Verify per-resource-type tables exist
 	t.Run("ResourceTypeTablesExist", func(t *testing.T) {
-		tables := []string{"rest_apis", "llm_providers", "llm_proxies", "mcp_proxies"}
+		tables := []string{"rest_apis", "llm_providers", "llm_proxies", "mcp_proxies", "agents"}
 		for _, table := range tables {
 			var tableName string
 			err := rawDB.QueryRow("SELECT name FROM sqlite_master WHERE type='table' AND name=?", table).Scan(&tableName)
