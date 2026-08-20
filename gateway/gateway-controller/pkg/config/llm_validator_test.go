@@ -2121,3 +2121,68 @@ func TestValidateLLMProvider_UpstreamRef(t *testing.T) {
 		assert.Empty(t, errs)
 	})
 }
+
+// TestValidateLLMProviderTemplate_ValueMap covers the value-map translation
+// table. Keys name values the provider reports, so an empty key can never
+// match anything; an empty target is meaningful and states that the reported
+// value carries no distinct rates.
+func TestValidateLLMProviderTemplate_ValueMap(t *testing.T) {
+	tests := []struct {
+		name        string
+		valueMap    map[string]string
+		expectError bool
+	}{
+		{
+			name:        "empty key is rejected",
+			valueMap:    map[string]string{"": "priority"},
+			expectError: true,
+		},
+		{
+			name:        "empty target is accepted",
+			valueMap:    map[string]string{"scale": ""},
+			expectError: false,
+		},
+		{
+			name:        "populated map is accepted",
+			valueMap:    map[string]string{"ON_DEMAND_PRIORITY": "priority", "ON_DEMAND_FLEX": "flex"},
+			expectError: false,
+		},
+	}
+
+	validator := NewLLMValidator()
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			valueMap := tt.valueMap
+			template := api.LLMProviderTemplate{
+				ApiVersion: "gateway.api-platform.wso2.com/v1",
+				Kind:       api.LLMProviderTemplateKindLlmProviderTemplate,
+				Metadata:   api.Metadata{Name: "openai"},
+				Spec: api.LLMProviderTemplateData{
+					DisplayName: "test",
+					PromptTokens: &api.ExtractionIdentifier{
+						Location:   api.Payload,
+						Identifier: "$.usage.prompt_tokens",
+						ValueMap:   &valueMap,
+					},
+				},
+			}
+
+			errors := validator.Validate(&template)
+
+			if tt.expectError {
+				require.NotEmpty(t, errors, "Should have validation errors")
+				found := false
+				for _, err := range errors {
+					if strings.Contains(err.Field, "valueMap") {
+						found = true
+						break
+					}
+				}
+				assert.True(t, found, "Should find a valueMap error, got %v", errors)
+			} else {
+				assert.Empty(t, errors, "Should not have validation errors")
+			}
+		})
+	}
+}
