@@ -259,6 +259,9 @@ func resolveOptionsFromConfig(raw map[string]interface{}) (*redis.Options, error
 	if err := decoder.Decode(m); err != nil {
 		return nil, err
 	}
+	if err := validateRedisSectionFields(fields); err != nil {
+		return nil, err
+	}
 
 	return &redis.Options{
 		Addr:         net.JoinHostPort(fields.Host, strconv.Itoa(fields.Port)),
@@ -270,6 +273,39 @@ func resolveOptionsFromConfig(raw map[string]interface{}) (*redis.Options, error
 		WriteTimeout: fields.WriteTimeout,
 		PoolSize:     fields.PoolSize,
 	}, nil
+}
+
+// minRedisTimeout is the smallest connection/read/write timeout accepted.
+// go-redis treats a negative ReadTimeout/WriteTimeout (-1/-2) as "disable
+// timeout enforcement entirely" rather than an error, and time.Duration's
+// underlying kind is int64 (not caught by rejectNonIntegralFloatHookFunc's
+// int-only guard), so a bare numeric config value like connection_timeout = 5
+// would otherwise decode as 5 nanoseconds. Rejecting anything below 1ms
+// catches both cases with one check.
+const minRedisTimeout = time.Millisecond
+
+// validateRedisSectionFields rejects decoded values that would otherwise
+// silently produce an unsafe or unusable *redis.Options.
+func validateRedisSectionFields(f redisSectionFields) error {
+	if f.Port < 1 || f.Port > 65535 {
+		return fmt.Errorf("port must be between 1 and 65535, got %d", f.Port)
+	}
+	if f.DB < 0 {
+		return fmt.Errorf("db must not be negative, got %d", f.DB)
+	}
+	if f.PoolSize < 0 {
+		return fmt.Errorf("pool_size must not be negative, got %d", f.PoolSize)
+	}
+	if f.ConnectionTimeout < minRedisTimeout {
+		return fmt.Errorf("connection_timeout must be at least %s, got %s", minRedisTimeout, f.ConnectionTimeout)
+	}
+	if f.ReadTimeout < minRedisTimeout {
+		return fmt.Errorf("read_timeout must be at least %s, got %s", minRedisTimeout, f.ReadTimeout)
+	}
+	if f.WriteTimeout < minRedisTimeout {
+		return fmt.Errorf("write_timeout must be at least %s, got %s", minRedisTimeout, f.WriteTimeout)
+	}
+	return nil
 }
 
 // rejectNonIntegralFloatHookFunc runs before mapstructure's own weakly-typed
@@ -360,7 +396,10 @@ func paramInt(params map[string]interface{}, dottedKey string, def int) int {
 		case int64:
 			return int(n)
 		case float64:
-			return int(n)
+			if !math.IsNaN(n) && !math.IsInf(n, 0) && n == math.Trunc(n) &&
+				n >= float64(math.MinInt) && n <= float64(math.MaxInt) {
+				return int(n)
+			}
 		case string:
 			if parsed, err := strconv.Atoi(strings.TrimSpace(n)); err == nil {
 				return parsed

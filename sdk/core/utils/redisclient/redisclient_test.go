@@ -33,6 +33,7 @@ import (
 )
 
 func TestGetOrCreateClient_SharesClientForIdenticalConfig(t *testing.T) {
+	resetRegistryForTest(t)
 	mr := miniredis.RunT(t)
 	opts := &redis.Options{Addr: mr.Addr(), DB: 0}
 
@@ -51,6 +52,7 @@ func TestGetOrCreateClient_SharesClientForIdenticalConfig(t *testing.T) {
 }
 
 func TestGetOrCreateClient_DistinctClientForDifferentConfig(t *testing.T) {
+	resetRegistryForTest(t)
 	mr := miniredis.RunT(t)
 
 	c1, _, _ := GetOrCreate(&redis.Options{Addr: mr.Addr(), DB: 0}, time.Second)
@@ -62,6 +64,7 @@ func TestGetOrCreateClient_DistinctClientForDifferentConfig(t *testing.T) {
 }
 
 func TestGetOrCreateClient_DifferentPasswordProducesDistinctClient(t *testing.T) {
+	resetRegistryForTest(t)
 	mr := miniredis.RunT(t)
 
 	c1, _, _ := GetOrCreate(&redis.Options{Addr: mr.Addr(), Password: "one"}, time.Second)
@@ -77,6 +80,7 @@ func TestGetOrCreateClient_DifferentPasswordProducesDistinctClient(t *testing.T)
 }
 
 func TestGetOrCreateClient_SharedAcrossSimulatedPolicies(t *testing.T) {
+	resetRegistryForTest(t)
 	mr := miniredis.RunT(t)
 	opts := func() *redis.Options { return &redis.Options{Addr: mr.Addr(), DB: 0} }
 
@@ -105,6 +109,7 @@ func TestGetOrCreateClient_SharedAcrossSimulatedPolicies(t *testing.T) {
 // TestGetOrCreateClient_ReuseSkipsPing locks in that only creation pings -
 // a reused client is assumed healthy and must never be re-pinged.
 func TestGetOrCreateClient_ReuseSkipsPing(t *testing.T) {
+	resetRegistryForTest(t)
 	mr := miniredis.RunT(t)
 	addr := mr.Addr() // capture before mr.Close() below
 	opts := &redis.Options{Addr: addr, DB: 0}
@@ -122,6 +127,7 @@ func TestGetOrCreateClient_ReuseSkipsPing(t *testing.T) {
 }
 
 func TestGetOrCreateClient_DifferentProtocolProducesDistinctClient(t *testing.T) {
+	resetRegistryForTest(t)
 	mr := miniredis.RunT(t)
 
 	c1, _, _ := GetOrCreate(&redis.Options{Addr: mr.Addr(), Protocol: 2}, time.Second)
@@ -141,6 +147,7 @@ func TestGetOrCreateClient_DifferentProtocolProducesDistinctClient(t *testing.T)
 // options - neither it nor a credentials-provider func can be fingerprinted
 // safely, so sharing would risk a silent cross-config mixup.
 func TestGetOrCreateClient_TLSConfigBypassesRegistry(t *testing.T) {
+	resetRegistryForTest(t)
 	mr := miniredis.RunT(t)
 
 	optsA := &redis.Options{Addr: mr.Addr(), TLSConfig: &tls.Config{}} //nolint:gosec // test-only, no real handshake asserted
@@ -158,6 +165,7 @@ func TestGetOrCreateClient_TLSConfigBypassesRegistry(t *testing.T) {
 }
 
 func TestGetOrCreateClient_CredentialsProviderBypassesRegistry(t *testing.T) {
+	resetRegistryForTest(t)
 	mr := miniredis.RunT(t)
 	provider := func() (string, string) { return "", "" }
 
@@ -180,10 +188,12 @@ func TestGetOrCreateClient_CredentialsProviderBypassesRegistry(t *testing.T) {
 // holding it during a slow/unreachable Redis's ping would stall every other
 // caller too, even for an unrelated, healthy endpoint.
 func TestGetOrCreateClient_DoesNotHoldLockDuringPing(t *testing.T) {
+	resetRegistryForTest(t)
 	// Accepts but never responds, so Ping against it blocks until the
 	// deadline - a reliable window to prove a concurrent, unrelated key
 	// isn't blocked by it.
-	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	var lc net.ListenConfig
+	ln, err := lc.Listen(context.Background(), "tcp", "127.0.0.1:0")
 	if err != nil {
 		t.Fatalf("failed to start hanging listener: %v", err)
 	}
@@ -235,6 +245,24 @@ func TestGetOrCreateClient_DoesNotHoldLockDuringPing(t *testing.T) {
 	}
 
 	<-done // let the slow goroutine finish before the test exits
+}
+
+// resetRegistryForTest clears the process-wide redisClients registry so a
+// closed miniredis instance's address (freed and possibly reused by a later
+// miniredis.RunT in the same test binary) can never resolve to another
+// test's stale, already-pinged client - restoring the prior state once the
+// test ends.
+func resetRegistryForTest(t *testing.T) {
+	t.Helper()
+	redisClients.mu.Lock()
+	prev := redisClients.m
+	redisClients.m = make(map[redisConnKey]*redis.Client)
+	redisClients.mu.Unlock()
+	t.Cleanup(func() {
+		redisClients.mu.Lock()
+		redisClients.m = prev
+		redisClients.mu.Unlock()
+	})
 }
 
 // resetSharedForTest clears shared so InitFromConfig can run again despite
@@ -408,6 +436,59 @@ func TestResolveOptionsFromConfig_RejectsNonTableSection(t *testing.T) {
 	}
 }
 
+// TestResolveOptionsFromConfig_RejectsOutOfRangePort locks in that a port
+// outside 1-65535 - a plain literal int, never routed through
+// rejectNonIntegralFloatHookFunc since no type coercion is needed - errors
+// instead of silently producing an unusable *redis.Options.
+func TestResolveOptionsFromConfig_RejectsOutOfRangePort(t *testing.T) {
+	for _, port := range []int{0, -1, 65536} {
+		t.Run("", func(t *testing.T) {
+			_, err := resolveOptionsFromConfig(map[string]interface{}{"redis": map[string]interface{}{"host": "x", "port": port}})
+			if err == nil {
+				t.Errorf("expected an error for out-of-range port %d", port)
+			}
+		})
+	}
+}
+
+// TestResolveOptionsFromConfig_RejectsNegativeDBOrPoolSize locks in the same
+// gap as the port check above, for db/pool_size.
+func TestResolveOptionsFromConfig_RejectsNegativeDBOrPoolSize(t *testing.T) {
+	if _, err := resolveOptionsFromConfig(map[string]interface{}{"redis": map[string]interface{}{"host": "x", "db": -1}}); err == nil {
+		t.Error("expected an error for a negative db")
+	}
+	if _, err := resolveOptionsFromConfig(map[string]interface{}{"redis": map[string]interface{}{"host": "x", "pool_size": -1}}); err == nil {
+		t.Error("expected an error for a negative pool_size")
+	}
+}
+
+// TestResolveOptionsFromConfig_RejectsSubMillisecondTimeout locks in that a
+// timeout below 1ms - including a negative value, which go-redis would
+// otherwise silently treat as "disable timeout enforcement entirely" - errors
+// rather than producing an unsafe client. Also catches a bare numeric
+// duration value (e.g. connection_timeout = 5), which mapstructure decodes
+// as nanoseconds since time.Duration's underlying kind is int64, not caught
+// by rejectNonIntegralFloatHookFunc's int-only guard.
+func TestResolveOptionsFromConfig_RejectsSubMillisecondTimeout(t *testing.T) {
+	cases := []struct {
+		name string
+		key  string
+		val  interface{}
+	}{
+		{"negative connection_timeout", "connection_timeout", "-1s"},
+		{"negative read_timeout", "read_timeout", "-2s"},
+		{"bare numeric write_timeout decodes as nanoseconds", "write_timeout", 5},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			_, err := resolveOptionsFromConfig(map[string]interface{}{"redis": map[string]interface{}{"host": "x", c.key: c.val}})
+			if err == nil {
+				t.Errorf("expected an error for %s=%v", c.key, c.val)
+			}
+		})
+	}
+}
+
 func TestInitFromConfig_NoRedisSectionLeavesSharedUnconfigured(t *testing.T) {
 	resetSharedForTest(t)
 
@@ -481,6 +562,7 @@ func TestResolve_NilOptsFallsBackToShared(t *testing.T) {
 
 func TestResolve_NonNilOptsBypassesShared(t *testing.T) {
 	resetSharedForTest(t)
+	resetRegistryForTest(t)
 	sharedMR := miniredis.RunT(t)
 	SetSharedForTesting(t, redis.NewClient(&redis.Options{Addr: sharedMR.Addr()}))
 
@@ -500,6 +582,7 @@ func TestResolve_NonNilOptsBypassesShared(t *testing.T) {
 // not one pool each.
 func TestResolve_NonNilOptsStillDedupes(t *testing.T) {
 	resetSharedForTest(t)
+	resetRegistryForTest(t)
 	mr := miniredis.RunT(t)
 
 	c1, err1 := Resolve(&redis.Options{Addr: mr.Addr()}, time.Second)
@@ -641,5 +724,33 @@ func TestExtractOverrideFromParams_UnparseableValueFallsBackToDefaultSilently(t 
 	}
 	if opts.DialTimeout != 5*time.Second {
 		t.Errorf("got DialTimeout %v, want the default 5s silently applied for an unparseable duration", opts.DialTimeout)
+	}
+}
+
+// TestExtractOverrideFromParams_RejectsMalformedFloat64Port locks in that
+// paramInt validates a float64 before converting it - a NaN/Inf/fractional/
+// out-of-range port (e.g. from a JSON-sourced params map, decoded as
+// float64) falls back to the default rather than int(n)'s
+// implementation-defined result.
+func TestExtractOverrideFromParams_RejectsMalformedFloat64Port(t *testing.T) {
+	cases := []struct {
+		name string
+		port float64
+	}{
+		{"NaN", math.NaN()},
+		{"+Inf", math.Inf(1)},
+		{"-Inf", math.Inf(-1)},
+		{"fractional", 6380.5},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			opts := ExtractOverrideFromParams(map[string]interface{}{"redis": map[string]interface{}{"host": "x", "port": c.port}})
+			if opts == nil {
+				t.Fatal("expected a non-nil override")
+			}
+			if opts.Addr != "x:6379" {
+				t.Errorf("got Addr %q, want the default port 6379 silently applied for malformed float64 port %v", opts.Addr, c.port)
+			}
+		})
 	}
 }
