@@ -31,13 +31,16 @@ PORT ?= 9243
 # Cloud image tag: defaults to "<branch>-<commit>" computed IDENTICALLY to the
 # platform-api-cloud-release workflow's IMAGE_VERSION step — sanitize the branch
 # ([^a-zA-Z0-9._-] -> '-'), prefix '_' if it doesn't start with [a-zA-Z0-9_],
-# cap the branch at 87 chars, then append the FULL commit SHA. An explicitly
-# supplied VERSION (CI passes PLATFORM_API_VERSION, or `make cloud-build VERSION=x`)
-# takes precedence.
+# cap the branch at 87 chars, then append the FULL commit SHA. Prefer GitHub
+# Actions' GITHUB_REF_NAME/GITHUB_SHA when set (git rev-parse --abbrev-ref HEAD
+# returns "HEAD" after actions/checkout's detached checkout, which would yield a
+# "HEAD-<commit>" tag); fall back to git for local builds. An explicitly supplied
+# VERSION (CI passes PLATFORM_API_VERSION, or `make cloud-build VERSION=x`) takes
+# precedence over all of this.
 CLOUD_IMAGE_TAG := $(shell \
-	b=$$(git rev-parse --abbrev-ref HEAD 2>/dev/null || echo unknown); \
+	b="$${GITHUB_REF_NAME:-$$(git rev-parse --abbrev-ref HEAD 2>/dev/null || echo unknown)}"; \
 	b=$$(printf '%s' "$$b" | sed -e 's/[^a-zA-Z0-9._-]/-/g' -e 's/^[^a-zA-Z0-9_]/_&/' | cut -c1-87); \
-	printf '%s-%s' "$$b" "$$(git rev-parse HEAD 2>/dev/null || echo unknown)")
+	printf '%s-%s' "$$b" "$${GITHUB_SHA:-$$(git rev-parse HEAD 2>/dev/null || echo unknown)}")
 ifeq ($(origin VERSION),command line)
 CLOUD_IMAGE_TAG := $(VERSION)
 endif
