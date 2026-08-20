@@ -180,10 +180,13 @@ const update = async (orgId, planId, plan, updatedBy, t) => {
   setCols.push('updated_by = ?', 'updated_at = ?');
   params.push(updatedBy, updatedAt);
 
-  await exec.execute(
+  const { rowCount } = await exec.execute(
     `UPDATE ${SUBSCRIPTION_PLANS_TABLE} SET ${setCols.join(', ')} WHERE uuid = ? AND org_uuid = ? AND portal_id = ?`,
     [...params, planId, orgId, getPortalId()]
   );
+
+  // To avoid cross-portal data modification via replaceLimits
+  if (rowCount === 0) return null;
 
   if (Object.prototype.hasOwnProperty.call(plan, 'limits')) {
     await replaceLimits(planId, plan.limits || [], t);

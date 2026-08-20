@@ -276,9 +276,9 @@ const get = async (orgId, apiId, t) => {
  */
 const getByCondition = async ({ orgId, uuid, typeFilter } = {}, t, tags) => {
     const exec = t || db;
-    const conditions = [];
-    const params = [];
-    if (orgId !== undefined) { conditions.push('org_uuid = ?'); params.push(orgId); conditions.push('portal_id = ?'); params.push(getPortalId()); }
+    const conditions = ['portal_id = ?'];
+    const params = [getPortalId()];
+    if (orgId !== undefined) { conditions.push('org_uuid = ?'); params.push(orgId); }
     if (uuid !== undefined) { conditions.push('uuid = ?'); params.push(uuid); }
     if (typeFilter?.include) { conditions.push('type = ?'); params.push(typeFilter.include); }
     if (typeFilter?.exclude) { conditions.push('type != ?'); params.push(typeFilter.exclude); }

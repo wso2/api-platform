@@ -156,7 +156,7 @@ async function seedDefaultOrg() {
                 error: error.message,
                 operation: 'seedDefaultOrg',
             });
-            return;
+            throw error;
         }
     }
 

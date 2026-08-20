@@ -68,7 +68,7 @@ const create = async (orgId, kmData, createdBy) => {
 /**
  * Update an existing key manager.
  */
-const update = async (kmId, kmData, updatedBy) => {
+const update = async (orgId, kmId, kmData, updatedBy) => {
     const now = new Date();
     const setClauses = ['updated_by = ?', 'updated_at = ?'];
     const params = [updatedBy, now];
@@ -76,18 +76,21 @@ const update = async (kmId, kmData, updatedBy) => {
     if (kmData.displayName) { setClauses.push('display_name = ?'); params.push(kmData.displayName); }
     if (kmData.enabled !== undefined) { setClauses.push('enabled = ?'); params.push(kmData.enabled ? 1 : 0); }
     if (kmData.tokenEndpoint) { setClauses.push('token_endpoint = ?'); params.push(kmData.tokenEndpoint); }
-    params.push(kmId);
+    params.push(kmId, orgId, getPortalId());
 
     try {
         const { rowCount: updatedRowsCount } = await db.execute(
-            `UPDATE ${TABLE} SET ${setClauses.join(', ')} WHERE uuid = ?`,
+            `UPDATE ${TABLE} SET ${setClauses.join(', ')} WHERE uuid = ? AND org_uuid = ? AND portal_id = ?`,
             params
         );
         if (updatedRowsCount < 1) {
             throw new NotFoundError('Key manager not found');
         }
         // Re-fetch explicitly so the result is reliable across every dialect.
-        const updated = await db.queryOne(`SELECT * FROM ${TABLE} WHERE uuid = ?`, [kmId]);
+        const updated = await db.queryOne(
+            `SELECT * FROM ${TABLE} WHERE uuid = ? AND org_uuid = ? AND portal_id = ?`,
+            [kmId, orgId, getPortalId()]
+        );
         return [updatedRowsCount, [updated]];
     } catch (error) {
         if (error instanceof NotFoundError || db.isDuplicateKeyError(error)) {
@@ -123,11 +126,14 @@ const listEnabled = async (orgId) => {
 };
 
 /**
- * Get a single key manager by UUID.
+ * Get a single key manager by UUID, scoped to the caller's organization and portal.
  */
-const get = async (kmId) => {
+const get = async (orgId, kmId) => {
     try {
-        const km = await db.queryOne(`SELECT * FROM ${TABLE} WHERE uuid = ?`, [kmId]);
+        const km = await db.queryOne(
+            `SELECT * FROM ${TABLE} WHERE uuid = ? AND org_uuid = ? AND portal_id = ?`,
+            [kmId, orgId, getPortalId()]
+        );
         if (!km) {
             throw new NotFoundError('Key manager not found');
         }
@@ -169,11 +175,14 @@ const getIdByHandle = async (orgId, handle) => {
 };
 
 /**
- * Delete a key manager.
+ * Delete a key manager, scoped to the caller's organization and portal.
  */
-const deleteKm = async (kmId) => {
+const deleteKm = async (orgId, kmId) => {
     try {
-        const { rowCount: deleted } = await db.execute(`DELETE FROM ${TABLE} WHERE uuid = ?`, [kmId]);
+        const { rowCount: deleted } = await db.execute(
+            `DELETE FROM ${TABLE} WHERE uuid = ? AND org_uuid = ? AND portal_id = ?`,
+            [kmId, orgId, getPortalId()]
+        );
         if (deleted < 1) {
             throw new NotFoundError('Key manager not found');
         }
