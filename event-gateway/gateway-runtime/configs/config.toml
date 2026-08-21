@@ -59,6 +59,87 @@ subscriptions_topic_name = "__subscriptions"
 # config_file = ""
 # chains_file = ""
 
+# Shared HTTP client configuration for WebSub's outbound calls to subscriber-supplied
+# CallbackURLs: intent verification (subscribe/unsubscribe challenge — see
+# internal/connectors/receiver/websub/verification.go) and message delivery (see
+# .../delivery.go). Both clients share this same pooling/TLS/proxy/SSRF posture; each
+# keeps its own existing timeout (websub.verification_timeout_seconds above for
+# verification; a fixed 30s delivery timeout for delivery) which always overrides
+# http_client.timeouts.overall below for that client.
+#
+# SSRF guarding is ALWAYS enabled for both clients and is not configurable off: every
+# CallbackURL dialed here is tenant/subscriber-supplied, exactly the scenario
+# ssrf-prevention.md targets. netguard.PermitPrivateBlockMetadata() is applied
+# unconditionally in code (private/loopback backends stay reachable — in-cluster
+# subscribers are the common case — while link-local/metadata/unspecified/multicast
+# destinations are refused at dial time). Only the redirect/scheme knobs below
+# (http_client.ssrf) are configurable.
+
+[http_client.pooling]
+max_idle_conns = 100
+max_idle_conns_per_host = 10
+max_conns_per_host = 100
+idle_conn_timeout = "90s"
+keep_alive = "30s"
+disable_keep_alives = false
+# HTTP/2 is off by default: this client always sets a custom TLS config, which makes Go's
+# Transport conservatively disable HTTP/2 unless re-enabled here — only opt in after
+# considering the connection-coalescing caveat in httpclient.PoolingConfig.EnableHTTP2's doc.
+enable_http2 = false
+
+[http_client.timeouts]
+# Common default only: the Verifier and Deliverer each override this with their own
+# existing per-call-site timeout — see this section's header comment above.
+overall = "30s"
+dial = "10s"
+tls_handshake = "10s"
+response_header = "10s"
+expect_continue = "1s"
+# 0 = package default (10MiB); a negative value disables the response-size bound entirely.
+max_response_bytes = 0
+
+[http_client.tls]
+min_version = "TLS1_2"
+max_version = "TLS1_3"
+# Comma-separated TLS 1.3 key-exchange groups, most preferred first. Hybrid PQC group
+# listed first with classical fallbacks after — a peer that doesn't yet support
+# X25519MLKEM768 still succeeds via the later entries.
+curve_preferences = "X25519MLKEM768,X25519,P-256"
+# Comma-separated Go crypto/tls cipher suite names; only affects TLS 1.2 and below. Empty
+# uses Go's own default secure set.
+cipher_suites = ""
+# PEM CA bundle / mTLS client cert+key for the outbound call to the subscriber callback.
+# Empty uses the system root pool and no client certificate.
+root_ca_file = ""
+client_cert_file = ""
+client_key_file = ""
+
+[http_client.proxy]
+# "none" (default) | "environment" (HTTP_PROXY/HTTPS_PROXY/NO_PROXY) | "url"
+mode = "none"
+url = ""
+username = ""
+password = ""
+no_proxy = []
+# Required ("delegated" or "manual_connect") whenever mode != "none" — SSRF guarding is
+# always enabled for this client, see this section's header comment above.
+egress = ""
+
+[http_client.proxy.tls]
+# Configures a SEPARATE TLS handshake to an https:// proxy itself, decoupled from
+# http_client.tls above (which always governs the origin handshake).
+root_ca_file = ""
+client_cert_file = ""
+client_key_file = ""
+insecure_skip_verify = false
+
+[http_client.ssrf]
+# SSRF guarding itself is always enabled in code (not configurable off — see this
+# section's header comment above); only the redirect/scheme knobs are exposed here.
+# 0 uses netguard's own default (5 redirects); empty allowed_schemes defaults to {"https"}.
+max_redirects = 0
+allowed_schemes = []
+
 [logging]
 level = "info"
 format = "text"
