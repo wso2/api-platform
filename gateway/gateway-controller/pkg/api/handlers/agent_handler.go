@@ -248,9 +248,11 @@ func (h *AgentHandler) buildAgentResponse(log *slog.Logger, cfg *models.StoredCo
 	}
 
 	// Echo the resolved context so a `$version`-style placeholder is not
-	// reflected back verbatim, matching the other kinds' list/get bodies.
+	// reflected back verbatim, matching the other kinds' list/get bodies. An
+	// Agent may have no context at all, in which case there is nothing to
+	// resolve and the field stays absent rather than becoming an empty string.
 	if resolved, err := cfg.GetContext(); err == nil && resolved != "" {
-		agentConfig.Spec.Context = resolved
+		agentConfig.Spec.Context = &resolved
 	}
 
 	return buildResourceResponseFromStored(agentConfig, cfg), nil

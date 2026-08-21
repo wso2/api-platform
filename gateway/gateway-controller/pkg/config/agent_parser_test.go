@@ -141,7 +141,6 @@ spec:
         }
         signing:
           enabled: true
-          algorithm: ES256
 `
 
 // cardObject reads a nested object out of an Agent Card.
@@ -190,7 +189,8 @@ func TestParseAgent_WorkedExample_Envelope(t *testing.T) {
 
 	assert.Equal(t, "Weather Agent", cfg.Spec.DisplayName)
 	assert.Equal(t, "v1.0", cfg.Spec.Version)
-	assert.Equal(t, "/weather", cfg.Spec.Context)
+	require.NotNil(t, cfg.Spec.Context)
+	assert.Equal(t, "/weather", *cfg.Spec.Context)
 	require.NotNil(t, cfg.Spec.Vhost)
 	assert.Equal(t, "agents.example.com", *cfg.Spec.Vhost)
 
@@ -280,10 +280,10 @@ func TestParseAgent_WorkedExample_AgentCard(t *testing.T) {
 	require.Len(t, *pub.Policies, 1)
 	assert.Equal(t, "cors", (*pub.Policies)[0].Name)
 
+	// `enabled` is the whole signing contract an Agent author writes; the
+	// algorithm and kid come from administrator-owned gateway config.
 	require.NotNil(t, pub.Signing)
 	assert.True(t, pub.Signing.Enabled)
-	require.NotNil(t, pub.Signing.Algorithm)
-	assert.Equal(t, api.ES256, *pub.Signing.Algorithm)
 
 	require.NotNil(t, pub.Content)
 	content := map[string]interface{}(*pub.Content)

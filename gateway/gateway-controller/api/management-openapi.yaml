@@ -4312,7 +4312,6 @@ components:
       required:
         - displayName
         - version
-        - context
         - upstream
         - a2a
       properties:
@@ -4330,7 +4329,12 @@ components:
           example: v1.0
         context:
           type: string
-          description: Gateway context path for the agent (must start with /, no trailing slash)
+          description: >
+            Gateway context path for the agent (must start with /, no trailing slash).
+            Optional: when omitted the agent is served at the root of its virtual host,
+            which is where an A2A client probes for `/.well-known/agent-card.json` during
+            cold discovery. Every A2A route the gateway generates — the transport base
+            paths and the Agent Card path — is relative to this value.
           pattern: '^\/([a-zA-Z0-9_\-\/]*[^\/])?$'
           minLength: 1
           maxLength: 200
@@ -4640,26 +4644,24 @@ components:
       type: object
       description: >
         Optional signing configuration for a managed Agent Card. Passthrough cards cannot
-        configure gateway signing. The signing key is selected from gateway system
-        configuration at runtime. `algorithm` is required when `enabled` is true and
-        rejected otherwise; both rules are enforced at deploy time.
+        configure gateway signing. Agent authors only enable or disable signing: the active
+        key, its key identifier, and the JWS algorithm are selected from administrator-owned
+        gateway system configuration at signing time, so rotating the key — including to a
+        key using a different algorithm — requires no edit to any Agent. A card is re-signed
+        when its Agent is next deployed, not when the key rotates; until then it keeps
+        verifying against the retired key, which stays published while any stored card
+        references it.
       required:
         - enabled
+      additionalProperties: false
       properties:
         enabled:
           type: boolean
-          description: Whether the gateway signs the managed card it serves.
+          description: >
+            Whether the gateway signs the managed card it serves, using the active Agent Card
+            signing key configured by the gateway administrator.
           default: false
           example: false
-        algorithm:
-          type: string
-          description: JWS algorithm used to sign the published card.
-          enum:
-            - ES256
-            - ES384
-            - RS256
-            - PS256
-          example: ES256
 
     ErrorResponse:
       type: object

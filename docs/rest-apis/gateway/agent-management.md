@@ -540,7 +540,7 @@ Status Code **200**
 |»»» spec|[AgentConfigData](schemas.md#schemaagentconfigdata)|true|none|none|
 |»»»» displayName|string|true|none|Human-readable agent display name|
 |»»»» version|string|true|none|Agent version|
-|»»»» context|string|true|none|Gateway context path for the agent (must start with /, no trailing slash)|
+|»»»» context|string|false|none|Gateway context path for the agent (must start with /, no trailing slash). Optional: when omitted the agent is served at the root of its virtual host, which is where an A2A client probes for `/.well-known/agent-card.json` during cold discovery. Every A2A route the gateway generates — the transport base paths and the Agent Card path — is relative to this value.|
 |»»»» vhost|string|false|none|Virtual host name used for routing. Supports standard domain names, subdomains, or wildcard domains. Must follow RFC-compliant hostname rules. Wildcards are only allowed in the left-most label (e.g., *.example.com).|
 |»»»» upstreamDefinitions|[[UpstreamDefinition](schemas.md#schemaupstreamdefinition)]|false|none|List of reusable upstream definitions with optional timeout configurations. Referenced by upstream.ref.|
 |»»»»» name|string|true|none|Unique identifier for this upstream definition|
@@ -612,13 +612,12 @@ Status Code **200**
 |»»»»»»» path|[A2AAgentCardPath](schemas.md#schemaa2aagentcardpath)|false|none|Exact gateway-facing Agent Card path relative to spec.context. When omitted, the gateway uses /.well-known/agent-card.json. A custom path replaces that default route rather than creating an additional alias. In passthrough mode this does not change the upstream discovery path.|
 |»»»»»»» policies|[[Policy](schemas.md#schemapolicy)]|false|none|Ordered policies applied only to public Agent Card serving.|
 |»»»»»»» content|[A2AAgentCardDocument](schemas.md#schemaa2aagentcarddocument)|false|none|Complete A2A 1.0 Agent Card represented as a structured JSON object. JSON can be embedded directly because JSON object syntax is valid YAML. The controller additionally validates this object against the complete A2A Agent Card model for spec.a2a.protocolVersion, taken from the vendored A2A protocol definition (specification/a2a.proto). The document is stored and served as supplied — the gateway never rewrites it — so extension fields are preserved.|
-|»»»»»»» signing|[A2ACardSigning](schemas.md#schemaa2acardsigning)|false|none|Optional signing configuration for a managed Agent Card. Passthrough cards cannot configure gateway signing. The signing key is selected from gateway system configuration at runtime. `algorithm` is required when `enabled` is true and rejected otherwise; both rules are enforced at deploy time.|
-|»»»»»»»» enabled|boolean|true|none|Whether the gateway signs the managed card it serves.|
-|»»»»»»»» algorithm|string|false|none|JWS algorithm used to sign the published card.|
+|»»»»»»» signing|[A2ACardSigning](schemas.md#schemaa2acardsigning)|false|none|Optional signing configuration for a managed Agent Card. Passthrough cards cannot configure gateway signing. Agent authors only enable or disable signing: the active key, its key identifier, and the JWS algorithm are selected from administrator-owned gateway system configuration at signing time, so rotating the key — including to a key using a different algorithm — requires no edit to any Agent. A card is re-signed when its Agent is next deployed, not when the key rotates; until then it keeps verifying against the retired key, which stays published while any stored card references it.|
+|»»»»»»»» enabled|boolean|true|none|Whether the gateway signs the managed card it serves, using the active Agent Card signing key configured by the gateway administrator.|
 |»»»»»» protected|[A2AProtectedAgentCard](schemas.md#schemaa2aprotectedagentcard)|false|none|Planned authenticated extended Agent Card support. When present it is served through the canonical GetExtendedAgentCard operation and uses the operation policy chain, not public Agent Card policies. It has no custom path or local policies because it is an A2A operation. Not implemented in this release: an explicitly configured `protected` block is rejected at deploy time. GetExtendedAgentCard is exposed and proxied to the upstream.|
 |»»»»»»» mode|string|true|none|How the protected Agent Card is produced.|
 |»»»»»»» content|[A2AAgentCardDocument](schemas.md#schemaa2aagentcarddocument)|false|none|Complete A2A 1.0 Agent Card represented as a structured JSON object. JSON can be embedded directly because JSON object syntax is valid YAML. The controller additionally validates this object against the complete A2A Agent Card model for spec.a2a.protocolVersion, taken from the vendored A2A protocol definition (specification/a2a.proto). The document is stored and served as supplied — the gateway never rewrites it — so extension fields are preserved.|
-|»»»»»»» signing|[A2ACardSigning](schemas.md#schemaa2acardsigning)|false|none|Optional signing configuration for a managed Agent Card. Passthrough cards cannot configure gateway signing. The signing key is selected from gateway system configuration at runtime. `algorithm` is required when `enabled` is true and rejected otherwise; both rules are enforced at deploy time.|
+|»»»»»»» signing|[A2ACardSigning](schemas.md#schemaa2acardsigning)|false|none|Optional signing configuration for a managed Agent Card. Passthrough cards cannot configure gateway signing. Agent authors only enable or disable signing: the active key, its key identifier, and the JWS algorithm are selected from administrator-owned gateway system configuration at signing time, so rotating the key — including to a key using a different algorithm — requires no edit to any Agent. A card is re-signed when its Agent is next deployed, not when the key rotates; until then it keeps verifying against the retired key, which stays published while any stored card references it.|
 
 *and*
 
@@ -661,10 +660,6 @@ Status Code **200**
 |name|GetExtendedAgentCard|
 |mode|managed|
 |mode|passthrough|
-|algorithm|ES256|
-|algorithm|ES384|
-|algorithm|RS256|
-|algorithm|PS256|
 |mode|managed|
 |mode|passthrough|
 |state|deployed|
