@@ -71,7 +71,7 @@ jobs:
           # formatted as "sha1=<hex>".
           SIG="sha1=$(openssl dgst -sha1 -hmac "$AZURE_WEBHOOK_SECRET" payload.json | awk '{print $NF}')"
 
-          HTTP_CODE=$(curl -sS -o response.txt -w '%{http_code}' -X POST "$AZURE_WEBHOOK_URL" \
+          HTTP_CODE=$(curl -sS --connect-timeout 10 --max-time 60 -o response.txt -w '%{http_code}' -X POST "$AZURE_WEBHOOK_URL" \
             -H "Content-Type: application/json" \
             -H "X-Hub-Signature: $SIG" \
             --data-binary @payload.json)
