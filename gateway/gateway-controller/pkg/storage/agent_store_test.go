@@ -49,7 +49,7 @@ func createTestAgentConfig() *models.StoredConfig {
 		Spec: api.AgentConfigData{
 			DisplayName: fmt.Sprintf("Test Agent %d", agentCounter),
 			Version:     "v1.0",
-			Context:     fmt.Sprintf("/test-agent-%d", agentCounter),
+			Context:     strPtrAgent(fmt.Sprintf("/test-agent-%d", agentCounter)),
 			Upstream: api.AgentConfigData_Upstream{
 				Url: strPtrAgent("https://agent.internal"),
 			},
