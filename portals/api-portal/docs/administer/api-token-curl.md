@@ -1,11 +1,15 @@
 # Getting a Bearer Token via curl (IDP Mode)
 
-When the API Portal is configured with an external IDP (e.g. Asgardeo), REST API calls to `/api/v0.9/*` must include an `Authorization: Bearer <token>` header. This guide shows how to obtain that token from the terminal without a browser.
+When the API Portal is configured with an external IDP (e.g. Asgardeo), REST API calls to `/api-portal/api/v0.9/*` must include an `Authorization: Bearer <token>` header. This guide shows how to obtain that token from the terminal without a browser.
+
+> In **local auth mode** (`auth.mode = "local"`, the development default) there is no PKCE
+> flow: the token comes from the Platform API the portal is configured against, not from an
+> IDP. This guide applies to `auth.mode = "idp"` only.
 
 ## Prerequisites
 
-- IDP is configured (`idp.clientId` is set in `config.toml`)
-- The `dp:*` scopes are registered in the IDP and assigned to your user (see [asgardeo-setup.md](asgardeo-setup.md) sections 3–4)
+- IDP is configured (`auth.idp.client_id` is set in `config.toml` under `[api_portal.auth.idp]`)
+- Your user carries the privileges the operations need. In the default `auth.authorization.mode = "role"`, that means a role the portal's grant table names (`resources/role-to-scope-mapping.yaml`) — the IDP mints no `dp:*` scope and the token's `scope` claim is ignored. In `scope` mode it means the `dp:*` scopes themselves, registered in the IDP and assigned to your user (see [asgardeo-setup.md](asgardeo-setup.md) sections 3–4). See [Authorization](authentication.md#authorization).
 - You have the **client ID** and **client secret** from your IDP application
 - You know your org's identifier (the `ORGANIZATION_IDENTIFIER` value used to scope the Asgardeo login, e.g. `sub`)
 
@@ -64,7 +68,7 @@ AUTH_URL="https://api.asgardeo.io/t/${TENANT}/oauth2/authorize\
 ?response_type=code\
 &client_id=${CLIENT_ID}\
 &redirect_uri=http://localhost:${PORT}\
-&scope=openid%20profile%20email%20dp:api:manage%20dp:application:manage%20dp:organization:manage%20dp:subscription:manage\
+&scope=openid%20profile%20email\
 &code_challenge=${CODE_CHALLENGE}\
 &code_challenge_method=S256\
 &state=${STATE}\
@@ -73,6 +77,10 @@ AUTH_URL="https://api.asgardeo.io/t/${TENANT}/oauth2/authorize\
 echo "Open this URL in your browser:"
 echo "$AUTH_URL"
 ```
+
+In `scope` mode, append the `dp:*` scopes the calls need to `scope` above (URL-encoded, space-separated —
+e.g. `%20dp:api:manage%20dp:application:manage`). In the default `role` mode, leave them out: the portal
+derives them from the token's roles claim, and asking for them changes nothing.
 
 Open the URL in a browser, log in, and approve. The browser is redirected to `http://localhost:8080?code=...&state=...`. The `nc` process captures the raw HTTP request.
 
@@ -141,9 +149,9 @@ curl -sk -X POST "${BASE}/applications" \
 |---------|-------|-----|
 | `403 Missing organization claim in token` | Token has no org claim | Make sure you logged in with `org=<ORGANIZATION_IDENTIFIER>` in the auth URL |
 | `404 Organization not found` | Token's org claim doesn't match any known org | Verify the `ORGANIZATION_IDENTIFIER` matches an org's `idpRefId` |
-| `403 Forbidden` (scope error) | Token is missing required `dp:*` scopes | Complete [asgardeo-setup.md](asgardeo-setup.md) sections 3–4: register scopes and assign role to your user |
+| `403 Forbidden` (scope error) | The caller's effective scopes don't cover the operation | In `role` mode, check the user's roles claim names an entry in `resources/role-to-scope-mapping.yaml`; in `scope` mode, complete [asgardeo-setup.md](asgardeo-setup.md) sections 3–4: register scopes and assign the role to your user |
 | `401 Authentication required` | Token expired or invalid | Re-run steps 1–5 to get a fresh token |
-| Token has no `dp:*` scopes | Role not assigned to user in the sub-org | In Asgardeo console, go to the sub-org → Users → assign the `dp_admin` role |
+| Every operation is forbidden | No role granting anything is assigned | In Asgardeo console, go to the sub-org → Users → assign the `dp_admin` role |
 | `nc` gets no output | Redirect URI not registered in IDP | Add `http://localhost:8080` to authorized redirect URIs in the Asgardeo application |
 
 ---

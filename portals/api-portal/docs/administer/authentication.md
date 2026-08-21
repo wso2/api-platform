@@ -77,6 +77,22 @@ Requirements:
 
 This mode is intended for development and local testing only.
 
+### Getting a bearer token for the REST API
+
+The portal issues no token of its own. In local auth mode, get one from the same Platform API
+endpoint the login form posts to, and send it as `Authorization: Bearer <token>`:
+
+```bash
+TOKEN=$(curl -sk -X POST "https://localhost:9243/api/portal/v0.9/auth/login" \
+  -H 'Content-Type: application/x-www-form-urlencoded' \
+  -d 'username=admin' -d 'password=admin' | jq -r .token)
+
+curl -sk https://localhost:9543/api-portal/api/v0.9/apis -H "Authorization: Bearer $TOKEN"
+```
+
+In IDP mode the token comes from the identity provider instead — see
+[Getting a Bearer Token via curl](api-token-curl.md).
+
 ---
 
 ## Authorization
