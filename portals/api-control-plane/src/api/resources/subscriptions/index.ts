@@ -17,30 +17,30 @@
  */
 
 /**
- * Public surface of the projects resource module.
- * Import from `api/resources/projects` only; deeper imports skip scope binding and gating.
- * @see ./projects.hooks.ts for the hook contract.
+ * Public surface of the REST APIs resource module.
+ * Import from `api/resources/restApis` only; deeper imports skip scope binding and gating.
+ * @see ./restApis.hooks.ts for the hook contract.
  */
 
 // ─── Types ──────────────────────────────────────────────────────────────────
 
 export type {
-  CreateProjectBody,
-  ListProjectsQuery,
-  Project,
-  ProjectListResponse,
-  UpdateProjectBody,
-} from './projects.endpoints';
+  CreateSubscriptionBody,
+  ListSubscriptionsQuery,
+  SubscriberQuery,
+  Subscription,
+  SubscriptionListResponse,
+  UpdateSubscriptionBody,
+} from './subscriptions.endpoints';
 
-export type { ProjectListFilters } from './projects.hooks';
+export type { SubscriptionListFilters } from './subscriptions.hooks';
 
 // ─── Hooks ──────────────────────────────────────────────────────────────────
 
 export {
-  useCreateProject,
-  useDeleteProject,
-  useProject,
-  useProjectOptions,
-  useProjects,
-  useUpdateProject,
-} from './projects.hooks';
+  useCreateSubscription,
+  useDeleteSubscription,
+  useSubscription,
+  useSubscriptions,
+  useUpdateSubscription,
+} from './subscriptions.hooks';

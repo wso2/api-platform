@@ -17,30 +17,28 @@
  */
 
 /**
- * Public surface of the projects resource module.
- * Import from `api/resources/projects` only; deeper imports skip scope binding and gating.
- * @see ./projects.hooks.ts for the hook contract.
+ * Public surface of the gateway custom policies resource module.
+ * Import from `api/resources/gatewayCustomPolicies` only; deeper imports skip scope binding and gating.
+ * @see ./gatewayCustomPolicies.hooks.ts for the hook contract.
  */
 
 // ─── Types ──────────────────────────────────────────────────────────────────
 
 export type {
-  CreateProjectBody,
-  ListProjectsQuery,
-  Project,
-  ProjectListResponse,
-  UpdateProjectBody,
-} from './projects.endpoints';
+  CustomPolicy,
+  CustomPolicyListResponse,
+  ListCustomPoliciesQuery,
+  SyncCustomPolicyQuery,
+} from './gatewayCustomPolicies.endpoints';
 
-export type { ProjectListFilters } from './projects.hooks';
+export type { CustomPolicyListFilters } from './gatewayCustomPolicies.hooks';
 
 // ─── Hooks ──────────────────────────────────────────────────────────────────
 
 export {
-  useCreateProject,
-  useDeleteProject,
-  useProject,
-  useProjectOptions,
-  useProjects,
-  useUpdateProject,
-} from './projects.hooks';
+  useDeleteGatewayCustomPolicy,
+  useGatewayCustomPolicies,
+  useGatewayCustomPolicy,
+  useGatewayCustomPolicyOptions,
+  useSyncCustomPolicy,
+} from './gatewayCustomPolicies.hooks';

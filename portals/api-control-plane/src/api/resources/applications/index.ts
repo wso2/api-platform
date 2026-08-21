@@ -17,30 +17,45 @@
  */
 
 /**
- * Public surface of the projects resource module.
- * Import from `api/resources/projects` only; deeper imports skip scope binding and gating.
- * @see ./projects.hooks.ts for the hook contract.
+ * Public surface of the REST APIs resource module.
+ * Import from `api/resources/restApis` only; deeper imports skip scope binding and gating.
+ * @see ./restApis.hooks.ts for the hook contract.
  */
 
 // ─── Types ──────────────────────────────────────────────────────────────────
 
 export type {
-  CreateProjectBody,
-  ListProjectsQuery,
-  Project,
-  ProjectListResponse,
-  UpdateProjectBody,
-} from './projects.endpoints';
+  AddApplicationApiKeysBody,
+  AddApplicationAssociationsBody,
+  Application,
+  ApplicationAssociationListResponse,
+  ApplicationListResponse,
+  CreateApplicationBody,
+  ListApplicationApiKeysQuery,
+  ListApplicationAssociationsQuery,
+  ListApplicationsQuery,
+  ListAssociationApiKeysQuery,
+  MappedApiKeyListResponse,
+  RemoveApplicationApiKeyQuery,
+  UpdateApplicationBody,
+} from './applications.endpoints';
 
-export type { ProjectListFilters } from './projects.hooks';
+export type { ApplicationListFilters } from './applications.hooks';
 
 // ─── Hooks ──────────────────────────────────────────────────────────────────
 
 export {
-  useCreateProject,
-  useDeleteProject,
-  useProject,
-  useProjectOptions,
-  useProjects,
-  useUpdateProject,
-} from './projects.hooks';
+  useAddApplicationApiKeys,
+  useAddApplicationAssociations,
+  useApplication,
+  useApplicationApiKeys,
+  useApplicationAssociations,
+  useApplicationOptions,
+  useApplications,
+  useAssociationApiKeys,
+  useCreateApplication,
+  useDeleteApplication,
+  useRemoveApplicationApiKey,
+  useRemoveApplicationAssociation,
+  useUpdateApplication,
+} from './applications.hooks';

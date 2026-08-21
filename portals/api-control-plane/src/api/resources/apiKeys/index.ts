@@ -16,36 +16,31 @@
  * under the License.
  */
 
-import type {
-        ListMyApiKeysQuery,
-        CreateApiKeyBody,
-        UpdateApiKeyBody,
-        UserApiKeyListResponse,
-        CreateApiKeyResponse,
-        UpdateApiKeyResponse,
-        ApiKeyArtifactType
-} from './apiKeys.endpoints';
+/**
+ * Public surface of the API keys resource module.
+ * Import from `api/resources/apiKeys` only; deeper imports skip scope binding and gating.
+ * @see ./apiKeys.hooks.ts for the hook contract.
+ */
 
-import {
-    useMyApiKeys,
-    useCreateApiKey,
-    useUpdateApiKey,
-    useRevokeApiKey,
-} from './apiKeys.hooks';
+// ─── Types ──────────────────────────────────────────────────────────────────
 
 export type {
-    ListMyApiKeysQuery,
-    CreateApiKeyBody,
-    UpdateApiKeyBody,
-    UserApiKeyListResponse,
-    CreateApiKeyResponse,
-    UpdateApiKeyResponse,
-    ApiKeyArtifactType
-}
+  ApiKeyArtifactType,
+  CreateApiKeyBody,
+  CreateApiKeyResponse,
+  ListMyApiKeysQuery,
+  UpdateApiKeyBody,
+  UpdateApiKeyResponse,
+  UserApiKeyListResponse,
+} from './apiKeys.endpoints';
+
+export type { ApiKeyListFilters } from './apiKeys.hooks';
+
+// ─── Hooks ──────────────────────────────────────────────────────────────────
 
 export {
-    useMyApiKeys,
-    useCreateApiKey,
-    useUpdateApiKey,
-    useRevokeApiKey,
-}
+  useCreateApiKey,
+  useMyApiKeys,
+  useRevokeApiKey,
+  useUpdateApiKey,
+} from './apiKeys.hooks';

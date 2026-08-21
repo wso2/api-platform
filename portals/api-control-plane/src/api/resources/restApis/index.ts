@@ -16,41 +16,31 @@
  * under the License.
  */
 
-import type {
-    RestApi,
-    RestApiListResponse,
-    ListRestApisQuery,
-    CreateRestApiBody,
-    UpdateRestApiBody
-} from './restApis.endpoints';
+/**
+ * Public surface of the REST APIs resource module.
+ * Import from `api/resources/restApis` only; deeper imports skip scope binding and gating.
+ * @see ./restApis.hooks.ts for the hook contract.
+ */
 
-import type {
-    RestApiListFilters
-} from './restApis.hooks';
-
-import {
-    useRestApis,
-    useRestApi,
-    useCreateRestApi,
-    useUpdateRestApi,
-    useDeleteRestApi,
-    useRestApiOptions
-} from './restApis.hooks'
+// ─── Types ──────────────────────────────────────────────────────────────────
 
 export type {
-    RestApi,
-    RestApiListResponse,
-    ListRestApisQuery,
-    CreateRestApiBody,
-    UpdateRestApiBody,
-    RestApiListFilters
-}
-    
+  CreateRestApiBody,
+  ListRestApisQuery,
+  RestApi,
+  RestApiListResponse,
+  UpdateRestApiBody,
+} from './restApis.endpoints';
+
+export type { RestApiListFilters } from './restApis.hooks';
+
+// ─── Hooks ──────────────────────────────────────────────────────────────────
+
 export {
-    useRestApis,
-    useRestApi,
-    useCreateRestApi,
-    useUpdateRestApi,
-    useDeleteRestApi,
-    useRestApiOptions
-}
+  useCreateRestApi,
+  useDeleteRestApi,
+  useRestApi,
+  useRestApiOptions,
+  useRestApis,
+  useUpdateRestApi,
+} from './restApis.hooks';

@@ -16,30 +16,28 @@
  * under the License.
  */
 
-import type {
-    Organization,
-    OrganizationListResponse,
-    ListOrganizationsQuery,
-    RegisterOrganizationBody
-} from './organizations.endpoints';
+/**
+ * Public surface of the organizations resource module.
+ * Import from `api/resources/organizations` only; deeper imports skip scope binding and gating.
+ * @see ./organizations.hooks.ts for the hook contract.
+ */
 
-import {
-    useOrganizations,
-    useOrganization,
-    useRegisterOrganization,
-    useOrganizationOptions
-} from './organizations.hooks';
+// ─── Types ──────────────────────────────────────────────────────────────────
 
 export type {
-    Organization,
-    OrganizationListResponse,
-    ListOrganizationsQuery,
-    RegisterOrganizationBody
-};
+  ListOrganizationsQuery,
+  Organization,
+  OrganizationListResponse,
+  RegisterOrganizationBody,
+} from './organizations.endpoints';
+
+export type { OrganizationListFilters } from './organizations.hooks';
+
+// ─── Hooks ──────────────────────────────────────────────────────────────────
 
 export {
-    useOrganizations,
-    useOrganization,
-    useRegisterOrganization,
-    useOrganizationOptions
-};
+  useOrganization,
+  useOrganizationOptions,
+  useOrganizations,
+  useRegisterOrganization,
+} from './organizations.hooks';

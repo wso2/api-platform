@@ -17,30 +17,36 @@
  */
 
 /**
- * Public surface of the projects resource module.
- * Import from `api/resources/projects` only; deeper imports skip scope binding and gating.
- * @see ./projects.hooks.ts for the hook contract.
+ * Public surface of the secrets resource module.
+ * Import from `api/resources/secrets` only; deeper imports skip scope binding and gating.
+ * @see ./secrets.hooks.ts for the hook contract.
  */
 
 // ─── Types ──────────────────────────────────────────────────────────────────
 
 export type {
-  CreateProjectBody,
-  ListProjectsQuery,
-  Project,
-  ProjectListResponse,
-  UpdateProjectBody,
-} from './projects.endpoints';
+  CreateSecretBody,
+  ListSecretsQuery,
+  RotateSecretBody,
+  SecretListResponse,
+  SecretResponse,
+  SecretSummary,
+} from './secrets.endpoints';
 
-export type { ProjectListFilters } from './projects.hooks';
+export type { SecretListFilters } from './secrets.hooks';
 
 // ─── Hooks ──────────────────────────────────────────────────────────────────
 
 export {
-  useCreateProject,
-  useDeleteProject,
-  useProject,
-  useProjectOptions,
-  useProjects,
-  useUpdateProject,
-} from './projects.hooks';
+  useCreateSecret,
+  useDeleteSecret,
+  useRotateSecret,
+  useSecret,
+  useSecretOptions,
+  useSecrets,
+} from './secrets.hooks';
+
+// ─── Error predicates ───────────────────────────────────────────────────────
+
+/** Narrows a delete failure to "the secret is still referenced". */
+export { isSecretInUse } from './secrets.hooks';
