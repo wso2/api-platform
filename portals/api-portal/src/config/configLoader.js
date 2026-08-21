@@ -606,7 +606,7 @@ function resolvePortalIdConfig(cfg) {
         process.stderr.write(
             '[FATAL] organization.portal_id is not configured or resolves to an empty string. ' +
             'Set APIP_AP_ORGANIZATION_PORTAL_ID in your environment, or organization.portal_id ' +
-            "in configs/config.toml, e.g. portal_id = '{{ env \"APIP_AP_ORGANIZATION_PORTAL_ID\" \"default_portal_id\" }}'.\n"
+            "in configs/config.toml, e.g. portal_id = '{{ env \"APIP_AP_ORGANIZATION_PORTAL_ID\" \"default\" }}'.\n"
         );
         process.exit(1);
     }

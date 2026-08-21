@@ -192,7 +192,7 @@ function resetCache() {
  * The API portal identifier this instance is pinned to.
  *
  * config.organization.portalId is populated by the config.toml template:
- *   portal_id = '{{ env "APIP_AP_ORGANIZATION_PORTAL_ID" "default_portal_id" }}'
+ *   portal_id = '{{ env "APIP_AP_ORGANIZATION_PORTAL_ID" "default" }}'
  *
  * so env var resolution and the sentinel fallback are already handled before this
  * function runs — mirroring how getHandle() reads config.organization.handle without
@@ -207,7 +207,7 @@ function resetCache() {
 function getPortalId() {
     if (cachedPortalId) return cachedPortalId;
     const fromConfig = config.organization?.portalId;
-    cachedPortalId = (typeof fromConfig === 'string' && fromConfig.trim()) || 'default_portal_id';
+    cachedPortalId = (typeof fromConfig === 'string' && fromConfig.trim()) || 'default';
     return cachedPortalId;
 }
 

@@ -252,7 +252,7 @@ const DEFAULTS = {
         // Resolved by the config.toml template before reaching this default.
         // Set APIP_AP_ORGANIZATION_PORTAL_ID for cloud/K8s deployments, or override
         // organization.portal_id in a local config file for on-premise. When neither
-        // is set the template resolves to 'default_portal_id'.
+        // is set the template resolves to 'default'.
         portalId: '',
     },
     // Which artifact types this portal serves. An allowlist: a type not listed here

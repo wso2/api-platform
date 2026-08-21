@@ -49,7 +49,7 @@ CREATE INDEX IF NOT EXISTS idx_org_portal_mapping_portal_id ON org_portal_mappin
 CREATE TABLE IF NOT EXISTS views (
     uuid VARCHAR(40) PRIMARY KEY,
     org_uuid VARCHAR(40) NOT NULL,
-    portal_id VARCHAR(255) NOT NULL DEFAULT 'default_portal_id',
+    portal_id VARCHAR(255) NOT NULL DEFAULT 'default',
     handle VARCHAR(255) NOT NULL,
     display_name VARCHAR(255) NOT NULL,
     created_by VARCHAR(255) NOT NULL,
@@ -69,7 +69,7 @@ CREATE TABLE IF NOT EXISTS organization_assets (
     file_type VARCHAR(20) NOT NULL,
     file_path VARCHAR(255) NOT NULL,
     org_uuid VARCHAR(40) NOT NULL,
-    portal_id VARCHAR(255) NOT NULL DEFAULT 'default_portal_id',
+    portal_id VARCHAR(255) NOT NULL DEFAULT 'default',
     view_uuid VARCHAR(40) NOT NULL,
     created_by VARCHAR(255) NOT NULL,
     created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
@@ -88,7 +88,7 @@ CREATE INDEX IF NOT EXISTS idx_organization_asset_view_uuid ON organization_asse
 CREATE TABLE IF NOT EXISTS labels (
     uuid VARCHAR(40) PRIMARY KEY,
     org_uuid VARCHAR(40) NOT NULL,
-    portal_id VARCHAR(255) NOT NULL DEFAULT 'default_portal_id',
+    portal_id VARCHAR(255) NOT NULL DEFAULT 'default',
     handle VARCHAR(255) NOT NULL,
     display_name VARCHAR(255) NOT NULL,
     created_by VARCHAR(255) NOT NULL,
@@ -104,7 +104,7 @@ CREATE INDEX IF NOT EXISTS idx_label_org_uuid ON labels(org_uuid, portal_id);
 CREATE TABLE IF NOT EXISTS tags (
     uuid VARCHAR(40) PRIMARY KEY,
     org_uuid VARCHAR(40) NOT NULL,
-    portal_id VARCHAR(255) NOT NULL DEFAULT 'default_portal_id',
+    portal_id VARCHAR(255) NOT NULL DEFAULT 'default',
     name VARCHAR(255) NOT NULL,
     created_by VARCHAR(255) NOT NULL,
     created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
@@ -149,16 +149,16 @@ CREATE TABLE IF NOT EXISTS api_metadata (
     handle VARCHAR(255) NOT NULL,
     -- Nullable: SET NULL keeps the API record if its owning org reference is cleared.
     org_uuid VARCHAR(40),
-    portal_id VARCHAR(255) NOT NULL DEFAULT 'default_portal_id',
+    portal_id VARCHAR(255) NOT NULL DEFAULT 'default',
     created_by VARCHAR(255) NOT NULL,
     created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_by VARCHAR(255) NOT NULL,
     updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
     FOREIGN KEY (org_uuid) REFERENCES organizations(uuid) ON DELETE SET NULL
 );
-CREATE UNIQUE INDEX IF NOT EXISTS uq_api_metadata_name_version_org ON api_metadata(name, version, org_uuid, portal_id);
-CREATE UNIQUE INDEX IF NOT EXISTS uq_api_metadata_org_ref_id ON api_metadata(org_uuid, ref_id, portal_id);
-CREATE UNIQUE INDEX IF NOT EXISTS uq_api_metadata_handle_org ON api_metadata(handle, org_uuid, portal_id);
+CREATE UNIQUE INDEX IF NOT EXISTS uq_api_metadata_name_version_org ON api_metadata(name, version, org_uuid, portal_id) WHERE org_uuid IS NOT NULL;
+CREATE UNIQUE INDEX IF NOT EXISTS uq_api_metadata_org_ref_id ON api_metadata(org_uuid, ref_id, portal_id) WHERE org_uuid IS NOT NULL;
+CREATE UNIQUE INDEX IF NOT EXISTS uq_api_metadata_handle_org ON api_metadata(handle, org_uuid, portal_id) WHERE org_uuid IS NOT NULL;
 CREATE INDEX IF NOT EXISTS idx_api_metadata_status ON api_metadata(status);
 
 -- API Contents table (spec files, docs, icons, etc. attached to an API)
@@ -214,14 +214,14 @@ CREATE TABLE IF NOT EXISTS subscription_plans (
     ref_id VARCHAR(255),
     -- Nullable: SET NULL keeps the plan record if its owning org reference is cleared.
     org_uuid VARCHAR(40),
-    portal_id VARCHAR(255) NOT NULL DEFAULT 'default_portal_id',
+    portal_id VARCHAR(255) NOT NULL DEFAULT 'default',
     created_by VARCHAR(255) NOT NULL,
     created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_by VARCHAR(255) NOT NULL,
     updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
     FOREIGN KEY (org_uuid) REFERENCES organizations(uuid) ON DELETE SET NULL
 );
-CREATE UNIQUE INDEX IF NOT EXISTS uq_subscription_plan_org_handle ON subscription_plans(org_uuid, handle, portal_id) WHERE org_uuid IS NOT NULL;
+CREATE UNIQUE INDEX IF NOT EXISTS uq_subscription_plan_org_handle ON subscription_plans(org_uuid, handle, portal_id);
 
 -- Subscription Plan Limits table (throttling limits for a plan)
 CREATE TABLE IF NOT EXISTS subscription_plan_limits (
@@ -260,7 +260,7 @@ CREATE INDEX IF NOT EXISTS idx_api_subscription_plan_mappings_api_uuid ON api_su
 CREATE TABLE IF NOT EXISTS key_managers (
     uuid VARCHAR(40) PRIMARY KEY,
     org_uuid VARCHAR(40) NOT NULL,
-    portal_id VARCHAR(255) NOT NULL DEFAULT 'default_portal_id',
+    portal_id VARCHAR(255) NOT NULL DEFAULT 'default',
     handle VARCHAR(255) NOT NULL,
     display_name VARCHAR(255) NOT NULL,
     enabled SMALLINT NOT NULL DEFAULT 1,
@@ -277,7 +277,7 @@ CREATE UNIQUE INDEX IF NOT EXISTS uq_key_manager_org_handle ON key_managers(org_
 CREATE TABLE IF NOT EXISTS applications (
     uuid VARCHAR(40) PRIMARY KEY,
     org_uuid VARCHAR(40) NOT NULL,
-    portal_id VARCHAR(255) NOT NULL DEFAULT 'default_portal_id',
+    portal_id VARCHAR(255) NOT NULL DEFAULT 'default',
     created_by VARCHAR(255) NOT NULL,
     display_name VARCHAR(255) NOT NULL,
     handle VARCHAR(255) NOT NULL,
@@ -315,7 +315,7 @@ CREATE TABLE IF NOT EXISTS subscriptions (
     -- Nullable: SET NULL keeps the subscription record if its plan reference is cleared.
     plan_uuid VARCHAR(40),
     org_uuid VARCHAR(40) NOT NULL,
-    portal_id VARCHAR(255) NOT NULL DEFAULT 'default_portal_id',
+    portal_id VARCHAR(255) NOT NULL DEFAULT 'default',
     token VARCHAR(512),
     status VARCHAR(20) NOT NULL DEFAULT 'ACTIVE',
     created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
@@ -341,7 +341,7 @@ CREATE TABLE IF NOT EXISTS api_keys (
     -- Nullable: SET NULL keeps the key record if its originating subscription is removed.
     subscription_uuid VARCHAR(40),
     org_uuid VARCHAR(40) NOT NULL,
-    portal_id VARCHAR(255) NOT NULL DEFAULT 'default_portal_id',
+    portal_id VARCHAR(255) NOT NULL DEFAULT 'default',
     handle VARCHAR(128) NOT NULL,
     display_name VARCHAR(255) NOT NULL,
     status VARCHAR(20) NOT NULL DEFAULT 'ACTIVE',
@@ -382,7 +382,7 @@ CREATE INDEX IF NOT EXISTS idx_api_key_app_mappings_app_uuid ON api_key_app_mapp
 CREATE TABLE IF NOT EXISTS api_workflows (
     uuid VARCHAR(40) PRIMARY KEY,
     org_uuid VARCHAR(40) NOT NULL,
-    portal_id VARCHAR(255) NOT NULL DEFAULT 'default_portal_id',
+    portal_id VARCHAR(255) NOT NULL DEFAULT 'default',
     view_uuid VARCHAR(40) NOT NULL,
     display_name VARCHAR(255) NOT NULL,
     description VARCHAR(1023) NOT NULL,
@@ -411,7 +411,7 @@ CREATE TABLE IF NOT EXISTS audit (
     resource_uuid VARCHAR(40) NOT NULL,
     resource_type VARCHAR(50),
     org_uuid VARCHAR(40) NOT NULL,
-    portal_id VARCHAR(255) NOT NULL DEFAULT 'default_portal_id',
+    portal_id VARCHAR(255) NOT NULL DEFAULT 'default',
     performed_by VARCHAR(255),
     performed_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
     FOREIGN KEY (org_uuid) REFERENCES organizations(uuid) ON DELETE CASCADE
@@ -423,7 +423,7 @@ CREATE TABLE IF NOT EXISTS events (
     uuid VARCHAR(40) PRIMARY KEY,
     type VARCHAR(128) NOT NULL,
     org_uuid VARCHAR(40) NOT NULL,
-    portal_id VARCHAR(255) NOT NULL DEFAULT 'default_portal_id',
+    portal_id VARCHAR(255) NOT NULL DEFAULT 'default',
     aggregate_type VARCHAR(64) NOT NULL,
     aggregate_uuid VARCHAR(40) NOT NULL,
     payload JSONB NOT NULL DEFAULT '{}',
@@ -485,7 +485,7 @@ CREATE INDEX IF NOT EXISTS idx_user_organization_mappings_org_uuid ON user_organ
 CREATE TABLE IF NOT EXISTS webhook_subscribers (
     uuid VARCHAR(40) PRIMARY KEY,
     org_uuid VARCHAR(40) NOT NULL,
-    portal_id VARCHAR(255) NOT NULL DEFAULT 'default_portal_id',
+    portal_id VARCHAR(255) NOT NULL DEFAULT 'default',
     handle VARCHAR(255) NOT NULL,
     display_name VARCHAR(255) NOT NULL,
     target_url VARCHAR(1023) NOT NULL,

@@ -41,4 +41,4 @@ subscriber = "ap_subscriber"
 [api_portal.organization]
 handle       = '{{ env "APIP_AP_ORGANIZATION_HANDLE" "default" }}'
 display_name = '{{ env "APIP_AP_ORGANIZATION_DISPLAY_NAME" "Default" }}'
-portal_id    = '{{ env "APIP_AP_ORGANIZATION_PORTAL_ID" "default_portal_id" }}'
+portal_id    = '{{ env "APIP_AP_ORGANIZATION_PORTAL_ID" "default" }}'

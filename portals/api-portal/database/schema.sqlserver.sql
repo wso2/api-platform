@@ -54,7 +54,7 @@ IF OBJECT_ID(N'dbo.views', N'U') IS NULL
 CREATE TABLE dbo.views (
     uuid VARCHAR(40) PRIMARY KEY,
     org_uuid VARCHAR(40) NOT NULL,
-    portal_id VARCHAR(255) NOT NULL DEFAULT 'default_portal_id',
+    portal_id VARCHAR(255) NOT NULL DEFAULT 'default',
     handle VARCHAR(255) NOT NULL,
     display_name NVARCHAR(255) NOT NULL,
     created_by VARCHAR(255) NOT NULL,
@@ -77,7 +77,7 @@ CREATE TABLE dbo.organization_assets (
     file_type VARCHAR(20) NOT NULL,
     file_path VARCHAR(255) NOT NULL,
     org_uuid VARCHAR(40) NOT NULL,
-    portal_id VARCHAR(255) NOT NULL DEFAULT 'default_portal_id',
+    portal_id VARCHAR(255) NOT NULL DEFAULT 'default',
     view_uuid VARCHAR(40) NOT NULL,
     created_by VARCHAR(255) NOT NULL,
     created_at DATETIME2(7) DEFAULT SYSUTCDATETIME(),
@@ -99,7 +99,7 @@ IF OBJECT_ID(N'dbo.labels', N'U') IS NULL
 CREATE TABLE dbo.labels (
     uuid VARCHAR(40) PRIMARY KEY,
     org_uuid VARCHAR(40) NOT NULL,
-    portal_id VARCHAR(255) NOT NULL DEFAULT 'default_portal_id',
+    portal_id VARCHAR(255) NOT NULL DEFAULT 'default',
     handle VARCHAR(255) NOT NULL,
     display_name NVARCHAR(255) NOT NULL,
     created_by VARCHAR(255) NOT NULL,
@@ -118,7 +118,7 @@ IF OBJECT_ID(N'dbo.tags', N'U') IS NULL
 CREATE TABLE dbo.tags (
     uuid VARCHAR(40) PRIMARY KEY,
     org_uuid VARCHAR(40) NOT NULL,
-    portal_id VARCHAR(255) NOT NULL DEFAULT 'default_portal_id',
+    portal_id VARCHAR(255) NOT NULL DEFAULT 'default',
     name NVARCHAR(255) NOT NULL,
     created_by VARCHAR(255) NOT NULL,
     created_at DATETIME2(7) DEFAULT SYSUTCDATETIME(),
@@ -169,7 +169,7 @@ CREATE TABLE dbo.api_metadata (
     handle VARCHAR(255) NOT NULL,
     -- Nullable: SET NULL keeps the API record if its owning org reference is cleared.
     org_uuid VARCHAR(40),
-    portal_id VARCHAR(255) NOT NULL DEFAULT 'default_portal_id',
+    portal_id VARCHAR(255) NOT NULL DEFAULT 'default',
     created_by VARCHAR(255) NOT NULL,
     created_at DATETIME2(7) DEFAULT SYSUTCDATETIME(),
     updated_by VARCHAR(255) NOT NULL,
@@ -256,7 +256,7 @@ CREATE TABLE dbo.subscription_plans (
     ref_id VARCHAR(255),
     -- Nullable: SET NULL keeps the plan record if its owning org reference is cleared.
     org_uuid VARCHAR(40),
-    portal_id VARCHAR(255) NOT NULL DEFAULT 'default_portal_id',
+    portal_id VARCHAR(255) NOT NULL DEFAULT 'default',
     created_by VARCHAR(255) NOT NULL,
     created_at DATETIME2(7) DEFAULT SYSUTCDATETIME(),
     updated_by VARCHAR(255) NOT NULL,
@@ -309,7 +309,7 @@ IF OBJECT_ID(N'dbo.key_managers', N'U') IS NULL
 CREATE TABLE dbo.key_managers (
     uuid VARCHAR(40) PRIMARY KEY,
     org_uuid VARCHAR(40) NOT NULL,
-    portal_id VARCHAR(255) NOT NULL DEFAULT 'default_portal_id',
+    portal_id VARCHAR(255) NOT NULL DEFAULT 'default',
     handle VARCHAR(255) NOT NULL,
     display_name NVARCHAR(255) NOT NULL,
     enabled SMALLINT NOT NULL DEFAULT 1,
@@ -328,7 +328,7 @@ IF OBJECT_ID(N'dbo.applications', N'U') IS NULL
 CREATE TABLE dbo.applications (
     uuid VARCHAR(40) PRIMARY KEY,
     org_uuid VARCHAR(40) NOT NULL,
-    portal_id VARCHAR(255) NOT NULL DEFAULT 'default_portal_id',
+    portal_id VARCHAR(255) NOT NULL DEFAULT 'default',
     created_by VARCHAR(255) NOT NULL,
     display_name NVARCHAR(255) NOT NULL,
     handle VARCHAR(255) NOT NULL,
@@ -372,7 +372,7 @@ CREATE TABLE dbo.subscriptions (
     -- Nullable: SET NULL keeps the subscription record if its plan reference is cleared.
     plan_uuid VARCHAR(40),
     org_uuid VARCHAR(40) NOT NULL,
-    portal_id VARCHAR(255) NOT NULL DEFAULT 'default_portal_id',
+    portal_id VARCHAR(255) NOT NULL DEFAULT 'default',
     token VARCHAR(512),
     status VARCHAR(20) NOT NULL DEFAULT 'ACTIVE',
     created_at DATETIME2(7) DEFAULT SYSUTCDATETIME(),
@@ -412,7 +412,7 @@ CREATE TABLE dbo.api_keys (
     -- Nullable: SET NULL keeps the key record if its originating subscription is removed.
     subscription_uuid VARCHAR(40),
     org_uuid VARCHAR(40) NOT NULL,
-    portal_id VARCHAR(255) NOT NULL DEFAULT 'default_portal_id',
+    portal_id VARCHAR(255) NOT NULL DEFAULT 'default',
     handle VARCHAR(128) NOT NULL,
     display_name NVARCHAR(255) NOT NULL,
     status VARCHAR(20) NOT NULL DEFAULT 'ACTIVE',
@@ -464,7 +464,7 @@ IF OBJECT_ID(N'dbo.api_workflows', N'U') IS NULL
 CREATE TABLE dbo.api_workflows (
     uuid VARCHAR(40) PRIMARY KEY,
     org_uuid VARCHAR(40) NOT NULL,
-    portal_id VARCHAR(255) NOT NULL DEFAULT 'default_portal_id',
+    portal_id VARCHAR(255) NOT NULL DEFAULT 'default',
     view_uuid VARCHAR(40) NOT NULL,
     display_name NVARCHAR(255) NOT NULL,
     description NVARCHAR(1023) NOT NULL,
@@ -497,7 +497,7 @@ CREATE TABLE dbo.audit (
     resource_uuid VARCHAR(40) NOT NULL,
     resource_type VARCHAR(50),
     org_uuid VARCHAR(40) NOT NULL,
-    portal_id VARCHAR(255) NOT NULL DEFAULT 'default_portal_id',
+    portal_id VARCHAR(255) NOT NULL DEFAULT 'default',
     performed_by VARCHAR(255),
     performed_at DATETIME2(7) DEFAULT SYSUTCDATETIME(),
     FOREIGN KEY (org_uuid) REFERENCES organizations(uuid) ON DELETE CASCADE
@@ -511,7 +511,7 @@ CREATE TABLE dbo.events (
     uuid VARCHAR(40) PRIMARY KEY,
     type VARCHAR(128) NOT NULL,
     org_uuid VARCHAR(40) NOT NULL,
-    portal_id VARCHAR(255) NOT NULL DEFAULT 'default_portal_id',
+    portal_id VARCHAR(255) NOT NULL DEFAULT 'default',
     aggregate_type VARCHAR(64) NOT NULL,
     aggregate_uuid VARCHAR(40) NOT NULL,
     payload NVARCHAR(MAX) NOT NULL DEFAULT '{}',
@@ -584,7 +584,7 @@ IF OBJECT_ID(N'dbo.webhook_subscribers', N'U') IS NULL
 CREATE TABLE dbo.webhook_subscribers (
     uuid VARCHAR(40) PRIMARY KEY,
     org_uuid VARCHAR(40) NOT NULL,
-    portal_id VARCHAR(255) NOT NULL DEFAULT 'default_portal_id',
+    portal_id VARCHAR(255) NOT NULL DEFAULT 'default',
     handle VARCHAR(255) NOT NULL,
     display_name NVARCHAR(255) NOT NULL,
     target_url VARCHAR(1023) NOT NULL,

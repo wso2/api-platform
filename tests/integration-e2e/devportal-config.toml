@@ -42,7 +42,7 @@ password = '{{ env "APIP_AP_DATABASE_PASSWORD" "apip" }}'
 # login whose token names any other organization.
 handle       = '{{ env "APIP_AP_ORGANIZATION_HANDLE" "default" }}'
 display_name = '{{ env "APIP_AP_ORGANIZATION_DISPLAY_NAME" "Default" }}'
-portal_id    = '{{ env "APIP_AP_ORGANIZATION_PORTAL_ID" "default_portal_id" }}'
+portal_id    = '{{ env "APIP_AP_ORGANIZATION_PORTAL_ID" "default" }}'
 auto_create_subscription_plans = false
 
 [api_portal.auth]
