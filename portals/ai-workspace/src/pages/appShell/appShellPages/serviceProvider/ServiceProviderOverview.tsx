@@ -309,6 +309,13 @@ function ServiceProviderOverviewContent() {
   const [linkedProxyCount, setLinkedProxyCount] = useState<number | null>(null);
   const showSnackbar = useAIWorkspaceSnackbar();
   const hasUnsavedChanges = hasDraftChanges || isRateLimitingDirty;
+  const stagedAuthentication = (draftProvider ?? provider)?.upstream?.main?.auth;
+  const stagedAuthenticationType = stagedAuthentication?.type || 'none';
+  const isAuthenticationHeaderRequired =
+    stagedAuthenticationType !== 'none' && stagedAuthenticationType !== 'other';
+  const isAuthenticationHeaderInvalid =
+    isAuthenticationHeaderRequired &&
+    !(stagedAuthentication?.header || '').trim();
   const selectedGateway = useMemo(
     () => gateways.find((gateway) => gateway.id === selectedGatewayId) ?? null,
     [gateways, selectedGatewayId]
@@ -404,6 +411,10 @@ function ServiceProviderOverviewContent() {
 
   const handleSaveChanges = async () => {
     if (!provider || isSavingChanges) return;
+    if (isAuthenticationHeaderInvalid) {
+      showSnackbar('Authentication Header is required.', 'error');
+      return;
+    }
 
     let hasChangesToPersist = hasDraftChanges;
     if (isRateLimitingDirty) {
@@ -1769,7 +1780,11 @@ function ServiceProviderOverviewContent() {
                 </Button>
                 <Button
                   variant="contained"
-                  disabled={!hasUnsavedChanges || isSavingChanges}
+                  disabled={
+                    !hasUnsavedChanges ||
+                    isSavingChanges ||
+                    isAuthenticationHeaderInvalid
+                  }
                   onClick={() => void handleSaveChanges()}
                 >
                   Save
