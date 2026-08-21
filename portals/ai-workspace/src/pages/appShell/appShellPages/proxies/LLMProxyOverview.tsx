@@ -273,6 +273,15 @@ function ProxyOverviewContent() {
     }
   }, [proxy, hasUnsavedChanges]);
 
+  const stagedSecurity = proxy?.security;
+  const isApiKeyEffectivelyEnabled =
+    stagedSecurity?.apiKey?.enabled ?? stagedSecurity?.enabled ?? true;
+  const isSecurityConfigValid =
+    !isApiKeyEffectivelyEnabled ||
+    (Boolean(stagedSecurity?.apiKey?.key?.trim()) &&
+      (stagedSecurity?.apiKey?.in === 'header' ||
+        stagedSecurity?.apiKey?.in === 'query'));
+
   const handleCancelChanges = () => {
     if (!savedProxy) return;
     setLocalProxy(savedProxy);
@@ -635,7 +644,7 @@ function ProxyOverviewContent() {
                 <Button
                   variant="contained"
                   disabled={
-                    !hasUnsavedChanges || isSavingChanges || !canUpdateProxy
+                    !hasUnsavedChanges || isSavingChanges || !canUpdateProxy || !isSecurityConfigValid
                   }
                   onClick={() => void handleSaveChanges()}
                 >
