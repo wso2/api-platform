@@ -19,56 +19,375 @@
 package handlers
 
 import (
+	"encoding/json"
+	"errors"
+	"fmt"
+	"io"
+	"log/slog"
 	"net/http"
+	"time"
 
 	api "github.com/wso2/api-platform/gateway/gateway-controller/pkg/api/management"
+	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/api/middleware"
+	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/metrics"
+	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/models"
+	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/service/agent"
+	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/storage"
 	"github.com/wso2/go-httpkit/httputil"
 )
 
-// Agent (A2A) management endpoints.
-//
-// The kind, its management-API contract, and its persistence land before the
-// service layer that backs them, so every endpoint answers 501 until the agent
-// service is wired in. Answering 501 rather than omitting the routes keeps the
-// generated ServerInterface satisfied and keeps the endpoints inert: they are
-// still gated by the same role map as every other management route, so an
-// unauthorised caller gets 403 here exactly as it will once these are live.
+// metricsKindAgent is the kind label Agent operations report under.
+const metricsKindAgent = "agent"
 
-// writeAgentNotImplemented renders the single sterile response every Agent
-// endpoint returns until the agent service exists.
-func writeAgentNotImplemented(w http.ResponseWriter) {
-	httputil.WriteJSON(w, http.StatusNotImplemented, api.ErrorResponse{
-		Status:  "error",
-		Message: "Agent management is not available in this build",
-	})
+// AgentHandler handles HTTP requests for Agent (A2A) CRUD operations.
+type AgentHandler struct {
+	service *agent.AgentService
+	logger  *slog.Logger
+}
+
+// NewAgentHandler creates a new AgentHandler.
+func NewAgentHandler(service *agent.AgentService, logger *slog.Logger) *AgentHandler {
+	return &AgentHandler{
+		service: service,
+		logger:  logger,
+	}
 }
 
 // CreateAgent implements ServerInterface.CreateAgent
 // (POST /agents)
-func (s *APIServer) CreateAgent(w http.ResponseWriter, r *http.Request) {
-	writeAgentNotImplemented(w)
+func (h *AgentHandler) CreateAgent(w http.ResponseWriter, r *http.Request) {
+	startTime := time.Now()
+	operation := "create"
+
+	log := middleware.GetLogger(r, h.logger)
+
+	body, err := io.ReadAll(r.Body)
+	if err != nil {
+		log.Error("Failed to read request body", slog.Any("error", err))
+		metrics.APIOperationsTotal.WithLabelValues(operation, "error", metricsKindAgent).Inc()
+		metrics.ValidationErrorsTotal.WithLabelValues(operation, "read_body_failed").Inc()
+		httputil.WriteJSON(w, http.StatusBadRequest, api.ErrorResponse{
+			Status:  "error",
+			Message: "Failed to read request body",
+		})
+		return
+	}
+
+	result, err := h.service.Create(agent.CreateParams{
+		Body:          body,
+		ContentType:   r.Header.Get("Content-Type"),
+		CorrelationID: middleware.GetCorrelationID(r),
+		Origin:        models.OriginGatewayAPI,
+		Logger:        log,
+	})
+	if err != nil {
+		log.Error("Failed to deploy agent configuration", slog.Any("error", err))
+		metrics.APIOperationsTotal.WithLabelValues(operation, "error", metricsKindAgent).Inc()
+		h.mapWriteError(w, operation, "", err)
+		return
+	}
+
+	metrics.APIOperationsTotal.WithLabelValues(operation, "success", metricsKindAgent).Inc()
+	metrics.APIOperationDurationSeconds.WithLabelValues(operation, metricsKindAgent).Observe(time.Since(startTime).Seconds())
+	metrics.APIsTotal.WithLabelValues(metricsKindAgent, "active").Inc()
+
+	response, err := h.buildAgentResponse(log, result.StoredConfig)
+	if err != nil {
+		httputil.WriteJSON(w, http.StatusInternalServerError, api.ErrorResponse{
+			Status:  "error",
+			Message: "Failed to build agent response",
+		})
+		return
+	}
+
+	httputil.WriteJSON(w, http.StatusCreated, response)
 }
 
 // ListAgents implements ServerInterface.ListAgents
 // (GET /agents)
-func (s *APIServer) ListAgents(w http.ResponseWriter, r *http.Request, params api.ListAgentsParams) {
-	writeAgentNotImplemented(w)
+func (h *AgentHandler) ListAgents(w http.ResponseWriter, r *http.Request, params api.ListAgentsParams) {
+	log := middleware.GetLogger(r, h.logger)
+
+	result, err := h.service.List(params)
+	if err != nil {
+		httputil.WriteJSON(w, http.StatusInternalServerError, api.ErrorResponse{
+			Status:  "error",
+			Message: "Failed to retrieve agent configurations",
+		})
+		return
+	}
+
+	items := make([]any, 0, len(result.Items))
+	for _, cfg := range result.Items {
+		item, err := h.buildAgentResponse(log, cfg)
+		if err != nil {
+			httputil.WriteJSON(w, http.StatusInternalServerError, api.ErrorResponse{
+				Status:  "error",
+				Message: "Failed to build agent response",
+			})
+			return
+		}
+		items = append(items, item)
+	}
+
+	httputil.WriteJSON(w, http.StatusOK, map[string]any{
+		"status": "success",
+		"count":  len(items),
+		"agents": items,
+	})
 }
 
 // GetAgentById implements ServerInterface.GetAgentById
 // (GET /agents/{id})
-func (s *APIServer) GetAgentById(w http.ResponseWriter, r *http.Request, id string) {
-	writeAgentNotImplemented(w)
+func (h *AgentHandler) GetAgentById(w http.ResponseWriter, r *http.Request, id string) {
+	log := middleware.GetLogger(r, h.logger)
+
+	result, err := h.service.GetByHandle(id)
+	if err != nil {
+		h.mapReadError(w, log, id, err)
+		return
+	}
+
+	response, err := h.buildAgentResponse(log, result.Config)
+	if err != nil {
+		httputil.WriteJSON(w, http.StatusInternalServerError, api.ErrorResponse{
+			Status:  "error",
+			Message: "Failed to build agent response",
+		})
+		return
+	}
+
+	httputil.WriteJSON(w, http.StatusOK, response)
 }
 
 // UpdateAgent implements ServerInterface.UpdateAgent
 // (PUT /agents/{id})
-func (s *APIServer) UpdateAgent(w http.ResponseWriter, r *http.Request, id string) {
-	writeAgentNotImplemented(w)
+func (h *AgentHandler) UpdateAgent(w http.ResponseWriter, r *http.Request, id string) {
+	startTime := time.Now()
+	operation := "update"
+
+	log := middleware.GetLogger(r, h.logger)
+
+	body, err := io.ReadAll(r.Body)
+	if err != nil {
+		log.Error("Failed to read request body", slog.Any("error", err))
+		metrics.APIOperationsTotal.WithLabelValues(operation, "error", metricsKindAgent).Inc()
+		metrics.ValidationErrorsTotal.WithLabelValues(operation, "read_body_failed").Inc()
+		httputil.WriteJSON(w, http.StatusBadRequest, api.ErrorResponse{
+			Status:  "error",
+			Message: "Failed to read request body",
+		})
+		return
+	}
+
+	result, err := h.service.Update(agent.UpdateParams{
+		Handle:        id,
+		Body:          body,
+		ContentType:   r.Header.Get("Content-Type"),
+		CorrelationID: middleware.GetCorrelationID(r),
+		Logger:        log,
+	})
+	if err != nil {
+		log.Error("Failed to update agent configuration", slog.Any("error", err))
+		metrics.APIOperationsTotal.WithLabelValues(operation, "error", metricsKindAgent).Inc()
+		h.mapWriteError(w, operation, id, err)
+		return
+	}
+
+	metrics.APIOperationsTotal.WithLabelValues(operation, "success", metricsKindAgent).Inc()
+	metrics.APIOperationDurationSeconds.WithLabelValues(operation, metricsKindAgent).Observe(time.Since(startTime).Seconds())
+
+	response, err := h.buildAgentResponse(log, result.Config)
+	if err != nil {
+		httputil.WriteJSON(w, http.StatusInternalServerError, api.ErrorResponse{
+			Status:  "error",
+			Message: "Failed to build agent response",
+		})
+		return
+	}
+
+	httputil.WriteJSON(w, http.StatusOK, response)
 }
 
 // DeleteAgent implements ServerInterface.DeleteAgent
 // (DELETE /agents/{id})
-func (s *APIServer) DeleteAgent(w http.ResponseWriter, r *http.Request, id string) {
-	writeAgentNotImplemented(w)
+func (h *AgentHandler) DeleteAgent(w http.ResponseWriter, r *http.Request, id string) {
+	startTime := time.Now()
+	operation := "delete"
+
+	log := middleware.GetLogger(r, h.logger)
+
+	_, err := h.service.Delete(agent.DeleteParams{
+		Handle:        id,
+		CorrelationID: middleware.GetCorrelationID(r),
+		Logger:        log,
+	})
+	if err != nil {
+		metrics.APIOperationsTotal.WithLabelValues(operation, "error", metricsKindAgent).Inc()
+		h.mapReadError(w, log, id, err)
+		return
+	}
+
+	metrics.APIOperationsTotal.WithLabelValues(operation, "success", metricsKindAgent).Inc()
+	metrics.APIOperationDurationSeconds.WithLabelValues(operation, metricsKindAgent).Observe(time.Since(startTime).Seconds())
+	metrics.APIsTotal.WithLabelValues(metricsKindAgent, "active").Dec()
+
+	httputil.WriteJSON(w, http.StatusOK, map[string]any{
+		"status":  "success",
+		"message": "Agent deleted successfully",
+		"id":      id,
+	})
+}
+
+// buildAgentResponse renders one stored Agent as a management API response body,
+// with the upstream credential stripped.
+func (h *AgentHandler) buildAgentResponse(log *slog.Logger, cfg *models.StoredConfig) (any, error) {
+	agentConfig, err := rematerializeAgentConfig(log, cfg.UUID, cfg.DisplayName, cfg.SourceConfiguration)
+	if err != nil {
+		return nil, err
+	}
+
+	// Echo the resolved context so a `$version`-style placeholder is not
+	// reflected back verbatim, matching the other kinds' list/get bodies.
+	if resolved, err := cfg.GetContext(); err == nil && resolved != "" {
+		agentConfig.Spec.Context = resolved
+	}
+
+	return buildResourceResponseFromStored(agentConfig, cfg), nil
+}
+
+// mapWriteError maps service errors to HTTP responses for Create and Update.
+func (h *AgentHandler) mapWriteError(w http.ResponseWriter, operation, handle string, err error) {
+	if mapRenderError(w, operation, err) {
+		return
+	}
+
+	var parseErr *agent.ParseError
+	if errors.As(err, &parseErr) {
+		metrics.ValidationErrorsTotal.WithLabelValues(operation, "parse_failed").Inc()
+		httputil.WriteJSON(w, http.StatusBadRequest, api.ErrorResponse{
+			Status:  "error",
+			Message: fmt.Sprintf("Failed to parse configuration: %v", parseErr.Cause),
+		})
+		return
+	}
+
+	var kindErr *agent.KindMismatchError
+	if errors.As(err, &kindErr) {
+		metrics.ValidationErrorsTotal.WithLabelValues(operation, "kind_mismatch").Inc()
+		httputil.WriteJSON(w, http.StatusBadRequest, api.ErrorResponse{
+			Status:  "error",
+			Message: kindErr.Error(),
+		})
+		return
+	}
+
+	var handleErr *agent.HandleMismatchError
+	if errors.As(err, &handleErr) {
+		metrics.ValidationErrorsTotal.WithLabelValues(operation, "handle_mismatch").Inc()
+		httputil.WriteJSON(w, http.StatusBadRequest, api.ErrorResponse{
+			Status:  "error",
+			Message: handleErr.Error(),
+		})
+		return
+	}
+
+	var validationErr *agent.ValidationError
+	if errors.As(err, &validationErr) {
+		metrics.ValidationErrorsTotal.WithLabelValues(operation, "validation_failed").Add(float64(len(validationErr.Errors)))
+		apiErrors := make([]api.ValidationError, len(validationErr.Errors))
+		for i, e := range validationErr.Errors {
+			apiErrors[i] = api.ValidationError{
+				Field:   stringPtr(e.Field),
+				Message: stringPtr(e.Message),
+			}
+		}
+		httputil.WriteJSON(w, http.StatusBadRequest, api.ErrorResponse{
+			Status:  "error",
+			Message: "Configuration validation failed",
+			Errors:  &apiErrors,
+		})
+		return
+	}
+
+	if errors.Is(err, agent.ErrNotFound) {
+		httputil.WriteJSON(w, http.StatusNotFound, api.ErrorResponse{
+			Status:  "error",
+			Message: fmt.Sprintf("Agent with handle '%s' not found", handle),
+		})
+		return
+	}
+
+	if storage.IsConflictError(err) {
+		httputil.WriteJSON(w, http.StatusConflict, api.ErrorResponse{
+			Status:  "error",
+			Message: err.Error(),
+		})
+		return
+	}
+
+	if storage.IsDatabaseUnavailableError(err) {
+		httputil.WriteJSON(w, http.StatusServiceUnavailable, api.ErrorResponse{
+			Status:  "error",
+			Message: "Database storage not available",
+		})
+		return
+	}
+
+	httputil.WriteJSON(w, http.StatusInternalServerError, api.ErrorResponse{
+		Status:  "error",
+		Message: "Failed to persist agent configuration",
+	})
+}
+
+// mapReadError maps service errors to HTTP responses for Get and Delete.
+func (h *AgentHandler) mapReadError(w http.ResponseWriter, log *slog.Logger, handle string, err error) {
+	if storage.IsDatabaseUnavailableError(err) {
+		httputil.WriteJSON(w, http.StatusServiceUnavailable, api.ErrorResponse{
+			Status:  "error",
+			Message: "Database storage not available",
+		})
+		return
+	}
+
+	if errors.Is(err, agent.ErrNotFound) {
+		log.Warn("Agent configuration not found", slog.String("handle", handle))
+		httputil.WriteJSON(w, http.StatusNotFound, api.ErrorResponse{
+			Status:  "error",
+			Message: fmt.Sprintf("Agent with handle '%s' not found", handle),
+		})
+		return
+	}
+
+	httputil.WriteJSON(w, http.StatusInternalServerError, api.ErrorResponse{
+		Status:  "error",
+		Message: "Failed to retrieve agent configuration",
+	})
+}
+
+// rematerializeAgentConfig round-trips a stored Agent source configuration into
+// a response-bound copy and redacts the upstream credential from it.
+//
+// The round-trip is what makes the redaction safe: it produces a value distinct
+// from the StoredConfig's own SourceConfiguration, which each replica re-renders
+// on consumption and must therefore keep intact.
+func rematerializeAgentConfig(log *slog.Logger, id, displayName string, source any) (api.AgentConfiguration, error) {
+	j, err := json.Marshal(source)
+	if err != nil {
+		log.Error("Failed to marshal stored agent source configuration",
+			slog.String("id", id),
+			slog.String("displayName", displayName),
+			slog.Any("error", err))
+		return api.AgentConfiguration{}, fmt.Errorf("marshal agent config: %w", err)
+	}
+	var agentConfig api.AgentConfiguration
+	if err := json.Unmarshal(j, &agentConfig); err != nil {
+		log.Error("Failed to unmarshal stored agent configuration",
+			slog.String("id", id),
+			slog.String("displayName", displayName),
+			slog.Any("error", err))
+		return api.AgentConfiguration{}, fmt.Errorf("unmarshal agent config: %w", err)
+	}
+	redactAgentCredentials(&agentConfig)
+	return agentConfig, nil
 }
