@@ -17,13 +17,14 @@
 package proxy
 
 import (
-	"crypto/tls"
 	"crypto/x509"
 	"fmt"
-	"net"
 	"net/http"
 	"os"
-	"time"
+
+	"github.com/wso2/go-httpkit/httpclient"
+
+	"ai-workspace-bff/internal/config"
 )
 
 // TLSClientOptions configures how the upstream (Platform API) certificate is
@@ -38,36 +39,109 @@ type TLSClientOptions struct {
 }
 
 // NewTransport builds an *http.Transport for upstream calls with explicit
-// timeouts and connection pooling. TLS applies only when the upstream URL is
-// https:// — this transport is scheme-agnostic and does nothing for http://.
-func NewTransport(opts TLSClientOptions) (*http.Transport, error) {
-	tlsConf := &tls.Config{
-		MinVersion: tls.VersionTLS12,
-		// #nosec G402 — SkipVerify is an explicit, demo-gated escape hatch
-		// (validated in config); the secure default is false.
-		InsecureSkipVerify: opts.SkipVerify,
-	}
-	if !opts.SkipVerify && opts.CAFile != "" {
+// timeouts and connection pooling, via the shared httpkit/httpclient builder.
+// hc supplies every knob sourced from [ai_workspace.http_client] in config.toml
+// (see config.HTTPClientConfig's doc comment); opts supplies the upstream TLS
+// trust settings, sourced from [ai_workspace.control_plane] instead — kept as a
+// separate parameter because that trust decision already has its own existing
+// config keys (ControlPlaneConfig.CAFile/TLSSkipVerify) which must stay the
+// single source of truth, never duplicated onto HTTPClientConfig. TLS applies
+// only when the upstream URL is https:// — this transport is scheme-agnostic
+// and does nothing for http://.
+//
+// This transport only ever talks to the fixed, operator-configured Platform
+// API (cfg.ControlPlane.URL) — never a tenant/end-user-supplied destination —
+// so no SSRF guard (httpclient's Config.SSRF) is enabled here.
+func NewTransport(hc config.HTTPClientConfig, opts TLSClientOptions) (*http.Transport, error) {
+	cfg := httpclient.DefaultConfig()
+
+	cfg.Pooling.MaxIdleConns = hc.Pooling.MaxIdleConns
+	cfg.Pooling.MaxIdleConnsPerHost = hc.Pooling.MaxIdleConnsPerHost
+	cfg.Pooling.MaxConnsPerHost = hc.Pooling.MaxConnsPerHost
+	cfg.Pooling.IdleConnTimeout = hc.Pooling.IdleConnTimeout
+	cfg.Pooling.KeepAlive = hc.Pooling.KeepAlive
+	cfg.Pooling.DisableKeepAlives = hc.Pooling.DisableKeepAlives
+	cfg.Pooling.EnableHTTP2 = hc.Pooling.EnableHTTP2
+
+	cfg.Timeouts.Overall = hc.Timeouts.Overall
+	cfg.Timeouts.Dial = hc.Timeouts.Dial
+	cfg.Timeouts.TLSHandshake = hc.Timeouts.TLSHandshake
+	cfg.Timeouts.ResponseHeader = hc.Timeouts.ResponseHeader
+	cfg.Timeouts.ExpectContinue = hc.Timeouts.ExpectContinue
+	// The default (see config.defaultConfig) is -1: this transport backs a reverse
+	// proxy that streams SSE/long-running LLM output (see ReverseProxy's
+	// FlushInterval) to/from the BFF's own fixed, trusted backend — not an
+	// arbitrary or tenant-supplied target — so disabling httpclient's default
+	// 10MiB cap is the documented default for exactly this case. An operator can
+	// still opt into a cap via config; see the type-assertion note below.
+	cfg.Timeouts.MaxResponseBytes = hc.Timeouts.MaxResponseBytes
+
+	cfg.TLS.MinVersion = hc.TLS.MinVersion
+	cfg.TLS.MaxVersion = hc.TLS.MaxVersion
+	cfg.TLS.CipherSuites = hc.TLS.CipherSuites
+	cfg.TLS.CurvePreferences = hc.TLS.CurvePreferences
+
+	// #nosec G402 — SkipVerify is an explicit, demo-gated escape hatch
+	// (validated in config); the secure default is false.
+	cfg.TLS.InsecureSkipVerify = opts.SkipVerify
+	if opts.SkipVerify {
+		// Required by httpclient.New alongside InsecureSkipVerify=true: this
+		// toggle is already an explicit, operator-controlled config option
+		// (see TLSClientOptions.SkipVerify), so acknowledging it here
+		// preserves behavior without weakening httpclient's safety gate.
+		cfg.TLS.InsecureSkipVerifyAcknowledged = true
+	} else if opts.CAFile != "" {
+		// Built via caPool (system roots + this bundle appended) rather than
+		// cfg.TLS.RootCAFile, which would replace the trust store outright —
+		// this preserves the original "PEM bundle appended to the system
+		// roots" behavior documented on CAFile above.
 		pool, err := caPool(opts.CAFile)
 		if err != nil {
 			return nil, err
 		}
-		tlsConf.RootCAs = pool
+		cfg.TLS.RootCAs = pool
 	}
-	return &http.Transport{
-		Proxy: http.ProxyFromEnvironment,
-		DialContext: (&net.Dialer{
-			Timeout:   10 * time.Second,
-			KeepAlive: 30 * time.Second,
-		}).DialContext,
-		ForceAttemptHTTP2:     true,
-		MaxIdleConns:          100,
-		MaxIdleConnsPerHost:   20,
-		IdleConnTimeout:       90 * time.Second,
-		TLSHandshakeTimeout:   10 * time.Second,
-		ExpectContinueTimeout: 1 * time.Second,
-		TLSClientConfig:       tlsConf,
-	}, nil
+
+	switch hc.Proxy.Mode {
+	case "", "none":
+		// no proxy — cfg.Proxy stays at its zero value
+	case "environment":
+		cfg.Proxy.Mode = "environment"
+	case "url":
+		cfg.Proxy.Mode = "url"
+		cfg.Proxy.URL = hc.Proxy.URL
+		cfg.Proxy.Username = hc.Proxy.Username
+		cfg.Proxy.Password = hc.Proxy.Password
+		cfg.Proxy.NoProxy = hc.Proxy.NoProxy
+		if hc.Proxy.TLS != (config.HTTPClientProxyTLSConfig{}) {
+			cfg.Proxy.ProxyTLS = &httpclient.ProxyTLSConfig{
+				RootCAFile:                     hc.Proxy.TLS.RootCAFile,
+				ClientCertFile:                 hc.Proxy.TLS.ClientCertFile,
+				ClientKeyFile:                  hc.Proxy.TLS.ClientKeyFile,
+				InsecureSkipVerify:             hc.Proxy.TLS.InsecureSkipVerify,
+				InsecureSkipVerifyAcknowledged: hc.Proxy.TLS.InsecureSkipVerify,
+			}
+		}
+	default:
+		return nil, fmt.Errorf("ai_workspace.http_client.proxy.mode: unrecognized value %q (want \"none\", \"environment\", or \"url\")", hc.Proxy.Mode)
+	}
+
+	client, err := httpclient.New(cfg)
+	if err != nil {
+		return nil, err
+	}
+	// client.Transport is a concrete *http.Transport here as long as
+	// Timeouts.MaxResponseBytes stays negative (the shipped default) — this
+	// config never sets Proxy.Egress = ProxyEgressManualCONNECT, and a negative
+	// MaxResponseBytes means httpclient.New never wraps the transport in its own
+	// maxBytesRoundTripper. An operator who explicitly sets
+	// [ai_workspace.http_client.timeouts] max_response_bytes >= 0 gets a clear
+	// startup error below instead of a silently-wrong cap.
+	transport, ok := client.Transport.(*http.Transport)
+	if !ok {
+		return nil, fmt.Errorf("httpkit: unexpected transport type %T (set [ai_workspace.http_client.timeouts] max_response_bytes back to a negative value)", client.Transport)
+	}
+	return transport, nil
 }
 
 // caPool returns the system root pool with the PEM bundle at path appended, so

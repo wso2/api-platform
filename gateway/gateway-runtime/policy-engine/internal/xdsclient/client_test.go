@@ -356,7 +356,7 @@ func TestLoadTLSConfig_PQCHybridCurveOptIn(t *testing.T) {
 	config.TLSCAPath = caPath
 	config.TLSEcdhCurves = "X25519MLKEM768,X25519,P-256"
 
-	client, err := NewClient(config, k, reg)
+	client, err := NewClient(config, k, reg, resolver.DefaultRegistry())
 	require.NoError(t, err)
 
 	tlsConfig, err := client.loadTLSConfig()
@@ -390,7 +390,7 @@ func TestLoadTLSConfig_InvalidEcdhCurve(t *testing.T) {
 	config.TLSCAPath = caPath
 	config.TLSEcdhCurves = "not-a-curve"
 
-	client, err := NewClient(config, k, reg)
+	client, err := NewClient(config, k, reg, resolver.DefaultRegistry())
 	require.NoError(t, err)
 
 	tlsConfig, err := client.loadTLSConfig()

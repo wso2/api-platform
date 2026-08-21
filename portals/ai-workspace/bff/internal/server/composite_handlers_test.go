@@ -96,7 +96,14 @@ func TestExtractSecretHandle(t *testing.T) {
 func buildTestServer(t *testing.T, platformURL, jwt string) (*Server, *httptest.Server) {
 	t.Helper()
 
-	transport, err := proxy.NewTransport(proxy.TLSClientOptions{SkipVerify: true})
+	// MaxResponseBytes: -1 matches the shipped default (see config.defaultConfig) —
+	// a zero value here would make httpclient wrap the transport in its own
+	// maxBytesRoundTripper, which NewTransport's concrete *http.Transport
+	// type-assertion rejects.
+	transport, err := proxy.NewTransport(
+		config.HTTPClientConfig{Timeouts: config.HTTPClientTimeoutsConfig{MaxResponseBytes: -1}},
+		proxy.TLSClientOptions{SkipVerify: true},
+	)
 	if err != nil {
 		t.Fatalf("NewTransport: %v", err)
 	}
@@ -273,7 +280,14 @@ func TestHandleCreateWithSecretCompensation_Unauthenticated(t *testing.T) {
 		ControlPlane: config.ControlPlaneConfig{URL: platform.URL},
 		Cookie:       config.CookieConfig{Name: "_ai_workspace_session"},
 	}
-	transport, err := proxy.NewTransport(proxy.TLSClientOptions{SkipVerify: true})
+	// MaxResponseBytes: -1 matches the shipped default (see config.defaultConfig) —
+	// a zero value here would make httpclient wrap the transport in its own
+	// maxBytesRoundTripper, which NewTransport's concrete *http.Transport
+	// type-assertion rejects.
+	transport, err := proxy.NewTransport(
+		config.HTTPClientConfig{Timeouts: config.HTTPClientTimeoutsConfig{MaxResponseBytes: -1}},
+		proxy.TLSClientOptions{SkipVerify: true},
+	)
 	if err != nil {
 		t.Fatalf("NewTransport: %v", err)
 	}

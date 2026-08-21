@@ -67,7 +67,7 @@ func New(ctx context.Context, cfg *config.Config) (*Server, error) {
 		return nil, err
 	}
 
-	transport, err := proxy.NewTransport(proxy.TLSClientOptions{
+	transport, err := proxy.NewTransport(cfg.HTTPClient, proxy.TLSClientOptions{
 		CAFile:     cfg.ControlPlane.CAFile,
 		SkipVerify: cfg.ControlPlane.TLSSkipVerify,
 	})

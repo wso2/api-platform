@@ -47,6 +47,36 @@ func defaultConfig() *Config {
 			Level:  "info",
 			Format: "text",
 		},
+		// HTTPClient defaults reproduce exactly what proxy.NewTransport hardcoded
+		// before this became configurable, so an existing deployment that omits
+		// [ai_workspace.http_client] entirely sees zero behavior change. Everything
+		// else (Pooling.MaxIdleConns, Timeouts.Dial/TLSHandshake/ResponseHeader/
+		// ExpectContinue) already matches httpclient.DefaultConfig()'s own values, so
+		// only the previously-hardcoded overrides are set explicitly below.
+		HTTPClient: HTTPClientConfig{
+			Pooling: HTTPClientPoolingConfig{
+				MaxIdleConns:        100,
+				MaxIdleConnsPerHost: 20,
+				MaxConnsPerHost:     0,
+				IdleConnTimeout:     90 * time.Second,
+				KeepAlive:           30 * time.Second,
+				EnableHTTP2:         true,
+			},
+			Timeouts: HTTPClientTimeoutsConfig{
+				Overall:          30 * time.Second,
+				Dial:             10 * time.Second,
+				TLSHandshake:     10 * time.Second,
+				ResponseHeader:   10 * time.Second,
+				ExpectContinue:   1 * time.Second,
+				MaxResponseBytes: -1,
+			},
+			// TLS.MinVersion/MaxVersion/CipherSuites/CurvePreferences stay empty:
+			// Go's own crypto/tls default (TLS 1.2 floor, no configured ceiling)
+			// applies, matching today's behavior.
+			Proxy: HTTPClientProxyConfig{
+				Mode: "environment", // matches the previous hardcoded http.ProxyFromEnvironment
+			},
+		},
 		Session: SessionConfig{
 			Store:       "memory",
 			IdleTimeout: 30 * time.Minute,

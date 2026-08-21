@@ -53,6 +53,7 @@ type Config struct {
 	Server       ServerConfig       `koanf:"server"`
 	Logging      LoggingConfig      `koanf:"logging"`
 	ControlPlane ControlPlaneConfig `koanf:"control_plane"`
+	HTTPClient   HTTPClientConfig   `koanf:"http_client"`
 	Session      SessionConfig      `koanf:"session"`
 	Auth         AuthConfig         `koanf:"auth"`
 
