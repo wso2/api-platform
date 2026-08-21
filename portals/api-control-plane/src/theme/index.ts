@@ -19,6 +19,7 @@
 import { AppThemeProvider } from './AppThemeProvider';
 import {
   glassSurfaceSx,
+  hairline,
   interactiveCardSx,
   stickyBottomBarSx,
 } from './receipes';
@@ -26,6 +27,7 @@ import {
 export {
   AppThemeProvider,
   glassSurfaceSx,
+  hairline,
   interactiveCardSx,
   stickyBottomBarSx,
 };

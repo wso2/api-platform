@@ -52,12 +52,12 @@ export const handlers = [
   graphql.query('OxygenProjects', ({ variables }) => {
     const projectVariables = variables as ProjectVariables;
     const organization = organizations.find(
-      (item) => item.handle === projectVariables.orgHandle
+      (item) => item.id === projectVariables.orgHandle
     );
     return HttpResponse.json({
       data: {
         projects: projects.filter(
-          (project) => project.orgId === organization?.id
+          (project) => project.organizationId === organization?.id
         ),
       },
     });

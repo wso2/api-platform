@@ -18,8 +18,10 @@
 
 import { createContext, useContext } from 'react';
 
-import type { ApiCapabilities } from '../pages/appShell/appShellPages/apis/apiCapabilities';
-import type { Api, Organization, Project } from '../types/domain';
+import type { ApiCapabilities } from '../pages/appShell/appShellPages/apis/utils/apiCapabilities';
+import { RestApi } from '../api/resources/restApis';
+import { Organization } from '../api/resources/organizations';
+import { Project } from '../api/resources/projects';
 
 export type ConsoleRouteParams = {
   apiHandler?: string;
@@ -44,7 +46,7 @@ export type ActiveScope = {
 export type ConsoleScope = {
   activeScope: ActiveScope;
   capabilities: ApiCapabilities;
-  component?: Api;
+  component?: RestApi;
   isApiScope: boolean;
   isLoading: boolean;
   isOrganizationScope: boolean;

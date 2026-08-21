@@ -23,7 +23,7 @@ import { RefreshCw } from '@wso2/oxygen-ui-icons-react';
 import { useDeleteGatewayDeployment } from '../../../../api/hooks/useMvpQueries';
 import { useNotifications } from '../../../../components/Notifications';
 import type { Api, GatewayDeployment } from '../../../../types/domain';
-import { GatewayDeploymentRow } from './GatewayDeploymentRow';
+import { GatewayDeploymentRow } from './components/GatewayDeploymentRow';
 
 type GatewayDeploymentHistoryProps = {
   api: Api;

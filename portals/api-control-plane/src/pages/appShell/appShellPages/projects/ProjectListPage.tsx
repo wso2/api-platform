@@ -21,7 +21,6 @@ import {
   Button,
   InputAdornment,
   MenuItem,
-  PageContent,
   PageTitle,
   Stack,
   TablePagination,
@@ -298,13 +297,7 @@ export function ProjectListPage() {
   }
 
   return (
-    // A flex column at least as tall as the scroll area, so the results section
-    // below can claim the leftover height and hold the pagination bar down at the
-    // bottom edge instead of letting it ride up under a short grid.
-    <PageContent
-      fullWidth
-      sx={{ display: 'flex', flexDirection: 'column', minHeight: '100%' }}
-    >
+    <>
       <PageTitle>
         <PageTitle.Header>
           <FormattedMessage
@@ -313,12 +306,12 @@ export function ProjectListPage() {
             />
         </PageTitle.Header>
         <PageTitle.SubHeader>
-          {organization?.name
+          {organization?.displayName
             ? (
               <FormattedMessage
                 defaultMessage="Project workspaces in {organizationName}."
                 id="project.list.subHeader.withOrganization"
-                values={{ organizationName: organization.name }}
+                values={{ organizationName: organization.displayName }}
               />
             )
             : (
@@ -478,6 +471,6 @@ export function ProjectListPage() {
         open={toDelete !== null}
         title={intl.formatMessage(messages.deleteTitle)}
       />
-    </PageContent>
+    </>
   );
 }

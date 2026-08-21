@@ -46,7 +46,7 @@ import { runtimeConfig } from '../../../../config/runtime';
 import { routes } from '../../../../routes/paths';
 import type { Gateway } from '../../../../types/domain';
 import { relativeTime } from '../../../../utils/relativeTime';
-import { CopyableCommand } from './CopyableCommand';
+import { CopyableCommand } from './components/CopyableCommand';
 
 const TOKEN_PLACEHOLDER = '<your-gateway-token>';
 const ZIP = 'wso2apip-api-gateway';

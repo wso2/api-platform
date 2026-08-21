@@ -20,14 +20,28 @@ import {
   Card,
   CardContent,
   CodeBlock,
-  PageContent,
   PageTitle,
 } from '@wso2/oxygen-ui';
 
 import { useApiProxy, useApi } from '../../../../api/hooks/useMvpQueries';
 import { ErrorState, LoadingState } from '../../../../components/StateViews';
+import { routes } from '../../../../routes/paths';
+import { ScopeGate } from '../../../../scope/ScopeGate';
+import { FormattedMessage } from 'react-intl';
 
 export function TestPage() {
+  return (
+    <ScopeGate
+      prompt="The curl console runs against a single API."
+      requires="api"
+      to={routes.apiTestCurl}
+    >
+      <Test />
+    </ScopeGate>
+  );
+}
+
+function Test() {
   const apiQuery = useApi();
   const apiProxyQuery = useApiProxy(apiQuery.data?.id);
 
@@ -37,11 +51,20 @@ export function TestPage() {
   const context = apiProxyQuery.data?.context || `/${apiQuery.data.name}`;
 
   return (
-    <PageContent>
+    <>
       <PageTitle>
-        <PageTitle.Header>Test {apiQuery.data.displayName}</PageTitle.Header>
+        <PageTitle.Header>
+          <FormattedMessage
+            id="appShell.testPage.header"
+            defaultMessage="Test {apiName}"
+            values={{ apiName: apiQuery.data.displayName }}
+          /> 
+        </PageTitle.Header>
         <PageTitle.SubHeader>
-          cURL test console for HTTP/API proxies
+          <FormattedMessage
+            id="appShell.testPage.subHeader"
+            defaultMessage="Use the following curl command to test the API."
+          />
         </PageTitle.SubHeader>
       </PageTitle>
       <Card variant="outlined">
@@ -49,10 +72,10 @@ export function TestPage() {
           <CodeBlock
             language="bash"
             code={`curl -X GET "$API_BASE_URL${context}" \\
-  -H "Authorization: Bearer <token>"`}
+            -H "Authorization: Bearer <token>"`}
           />
         </CardContent>
       </Card>
-    </PageContent>
+    </>
   );
 }

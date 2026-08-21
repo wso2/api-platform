@@ -22,8 +22,8 @@ import { XCircle } from '@wso2/oxygen-ui-icons-react';
 import type {
   GatewayDeployment,
   GatewayDeploymentStatus,
-} from '../../../../types/domain';
-import { relativeTime } from '../../../../utils/relativeTime';
+} from '../../../../../types/domain';
+import { relativeTime } from '../../../../../utils/relativeTime';
 
 const STATUS_CHIP: Record<
   GatewayDeploymentStatus,

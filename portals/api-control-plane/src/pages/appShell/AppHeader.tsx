@@ -18,6 +18,7 @@
 
 import {
   Badge,
+  Box,
   ColorSchemeToggle,
   ComplexSelect,
   Header,
@@ -26,17 +27,32 @@ import {
   UserMenu,
   useAppShell,
 } from '@wso2/oxygen-ui';
-import { Bell, Boxes, Building2, LogOut, WSO2 } from '@wso2/oxygen-ui-icons-react';
+import { Bell, Boxes, Building, Layers, LogOut, WSO2, X } from '@wso2/oxygen-ui-icons-react';
 import { useNavigate } from 'react-router-dom';
 
+import { useRestApis } from '../../api/resources/restApis';
 import { useAuth } from '../../contexts/auth/AuthProvider';
 import { routes } from '../../routes/paths';
 import { useConsoleScope } from '../../scope/ConsoleScopeProvider';
+import { FormattedMessage, useIntl } from 'react-intl';
+import ProjectQuickSelector from './ProjectQuickSelector';
+import APIQuickSelector from './APIQuickSelector';
+import SearchableComplexSelect from '../../components/common/SearchableComplexSelect';
+
+// Switcher options can carry long display names/handles; bound the trigger width
+// and let the option text ellipsize instead of overflowing the header.
+const SWITCHER_SELECT_SX = { minWidth: 220, maxWidth: 260 };
+
+const TRUNCATED_OPTION_TEXT_SLOT_PROPS = {
+  primary: { noWrap: true },
+  secondary: { variant: 'caption' as const, noWrap: true },
+};
 
 export function AppHeader() {
   const navigate = useNavigate();
+  const intl = useIntl();
   const { actions } = useAppShell();
-  const { organization, organizations, params, project, projects } =
+  const { organization, organizations, params, project, projects, isLoading, projectsError } =
     useConsoleScope();
   const auth = useAuth();
 
@@ -53,16 +69,55 @@ export function AppHeader() {
     navigate(routes.projectHome(params.orgHandle, projectHandler));
   };
 
+  const changeApi = (apiHandler: string) => {
+    if (!params.orgHandle || !params.projectHandler || !apiHandler) return;
+    navigate(
+      routes.api(params.orgHandle, params.projectHandler, apiHandler)
+    );
+  }
+
+  const clearProjectSelection = () => {
+    if (!params.orgHandle) return;
+    navigate(routes.organizationHome(params.orgHandle));
+  };
+
+  const clearApiSelection = () => {
+    if (!params.orgHandle || !params.projectHandler) return;
+    navigate(routes.projectHome(params.orgHandle, params.projectHandler));
+  };
+
   // organizations may not be loaded yet on first paint; keep the current org
   // selectable so the switcher never renders an out-of-range value.
   const orgOptions: { handle: string; name: string }[] =
     organizations.length > 0
-      ? organizations
+      ? organizations.map((org) => ({ handle: org.id, name: org.displayName || org.id }))
       : params.orgHandle
-        ? [{ handle: params.orgHandle, name: organization?.name || params.orgHandle }]
+        ? [{ handle: params.orgHandle, name: organization?.displayName || params.orgHandle }]
         : [];
+
   const projectOptions: { handler: string; name: string }[] =
-    projects.length > 0 ? projects : project ? [project] : [];
+    projects.length > 0 
+      ? projects.map((project) => ({ handler: project.id, name: project.displayName || project.id })) 
+      : params.projectHandler && project ? [{ handler: params.projectHandler, name: project.displayName || params.projectHandler }] 
+        : [];
+
+  const apisQuery = useRestApis(
+    {},
+    { projectId: project?.id, orgId: organization?.id }
+  );
+  const apis = apisQuery.data?.list ?? [];
+  const apiOptions: { handler: string; name: string }[] =
+    (projects.length > 0 && project) ?
+    apis
+      .filter(
+        (
+          api
+        ): api is NonNullable<typeof api> & { id: string; displayName?: string } =>
+          typeof api?.id === 'string' && api.id.length > 0
+      )
+      .map((api) => ({ handler: api.id, name: api.displayName ?? api.id }))
+    : [];
+
 
   return (
     <Header>
@@ -71,55 +126,207 @@ export function AppHeader() {
         <Header.BrandLogo>
           <WSO2 style={{ height: 26, width: 26 }} />
         </Header.BrandLogo>
-        <Header.BrandTitle>API Platform</Header.BrandTitle>
+        <Header.BrandTitle>
+          <FormattedMessage
+            id="appShell.header.title"
+            defaultMessage="API Platform"
+          />
+        </Header.BrandTitle>
       </Header.Brand>
 
       {params.orgHandle && (
-        <Header.Switchers showDivider>
-          <ComplexSelect
-            aria-label="Organization"
-            label="Organization"
-            labelAnchor="inside"
-            size="small"
-            value={params.orgHandle}
-            onChange={(event) => changeOrganization(String(event.target.value))}
-            sx={{ minWidth: 220 }}
-          >
-            {orgOptions.map((item) => (
-              <ComplexSelect.MenuItem key={item.handle} value={item.handle}>
-                <ComplexSelect.MenuItem.Icon>
-                  <Building2 size={18} />
-                </ComplexSelect.MenuItem.Icon>
-                <ComplexSelect.MenuItem.Text
-                  primary={item.name}
-                  secondary={item.handle}
-                />
-              </ComplexSelect.MenuItem>
-            ))}
-          </ComplexSelect>
+        <Header.Switchers showDivider={false}>
+          <SearchableComplexSelect
+                aria-label={intl.formatMessage({ id: 'appShell.header.org.aria', defaultMessage: 'Organizations' })}
+                label={intl.formatMessage({ id: 'appShell.header.org.label', defaultMessage: 'Organizations' })}
+                value={params.orgHandle}
+                selectedOption={orgOptions.filter((item) => item.handle === params.orgHandle).map(item => ({
+                  id: item.handle,
+                  handler: item.handle,
+                  name: item.name,
+                }))[0] || undefined}
+                onChange={(id) => {
+                  changeOrganization(id);
+                }}
+                options={orgOptions.map((item) => ({
+                  id: item.handle,
+                  handler: item.handle,
+                  name: item.name,
+                }))}
+                renderOptionContent={(option) => (
+                  <>
+                    <ComplexSelect.MenuItem.Icon>
+                      <Building size={18} />
+                    </ComplexSelect.MenuItem.Icon>
+                    <ComplexSelect.MenuItem.Text
+                      primary={option.name}
+                      secondary={option.id}
+                      slotProps={TRUNCATED_OPTION_TEXT_SLOT_PROPS}
+                    />
+                  </>
+                )}
+                searchPlaceholder={intl.formatMessage({ id: 'appShell.header.org.placeholder', defaultMessage: 'Search organizations...' })}
+                emptyMessage={intl.formatMessage({ id: 'appShell.header.org.empty', defaultMessage: 'No organizations found' })}
+                noResultsMessage={intl.formatMessage({ id: 'appShell.header.org.noResults', defaultMessage: 'No matching organizations' })}
+                sx={SWITCHER_SELECT_SX}
+              />
 
           {params.projectHandler && (
-            <ComplexSelect
-              aria-label="Project"
-              label="Project"
-              labelAnchor="inside"
-              size="small"
-              value={params.projectHandler}
-              onChange={(event) => changeProject(String(event.target.value))}
-              sx={{ minWidth: 220 }}
-            >
-              {projectOptions.map((item) => (
-                <ComplexSelect.MenuItem key={item.handler} value={item.handler}>
-                  <ComplexSelect.MenuItem.Icon>
-                    <Boxes size={18} />
-                  </ComplexSelect.MenuItem.Icon>
-                  <ComplexSelect.MenuItem.Text
-                    primary={item.name}
-                    secondary={item.handler}
-                  />
-                </ComplexSelect.MenuItem>
-              ))}
-            </ComplexSelect>
+            <Box sx={{position: 'relative'}}>
+              <SearchableComplexSelect
+                aria-label={intl.formatMessage({ id: 'appShell.header.project.aria', defaultMessage: 'Projects' })}
+                label={intl.formatMessage({ id: 'appShell.header.project.label', defaultMessage: 'Projects' })}
+                value={params.projectHandler}
+                selectedOption={projectOptions.filter((item) => item.handler === params.projectHandler).map(item => ({
+                  id: item.handler,
+                  handler: item.handler,
+                  name: item.name,
+                }))[0] || undefined}
+                onChange={(id) => {
+                  changeProject(id);
+                }}
+                options={projectOptions.map((item) => ({
+                  id: item.handler,
+                  handler: item.handler,
+                  name: item.name,
+                }))}
+                renderOptionContent={(option) => (
+                  <>
+                    <ComplexSelect.MenuItem.Icon>
+                      <Layers size={18} />
+                    </ComplexSelect.MenuItem.Icon>
+                    <ComplexSelect.MenuItem.Text
+                      primary={option.name}
+                      secondary={option.id}
+                      slotProps={TRUNCATED_OPTION_TEXT_SLOT_PROPS}
+                    />
+                  </>
+                )}
+                searchPlaceholder={intl.formatMessage({ id: 'appShell.header.project.placeholder', defaultMessage: 'Search projects...' })}
+                emptyMessage={intl.formatMessage({ id: 'appShell.header.project.empty', defaultMessage: 'No projects found' })}
+                noResultsMessage={intl.formatMessage({ id: 'appShell.header.project.noResults', defaultMessage: 'No matching projects' })}
+                sx={SWITCHER_SELECT_SX}
+              />
+
+              <IconButton
+                size="small"
+                aria-label={intl.formatMessage({ id: 'appShell.header.project.goToOrganization', defaultMessage: 'Go to organization level' })}
+                onMouseDown={(event) => {
+                  event.preventDefault();
+                  event.stopPropagation();
+                }}
+                onClick={(event) => {
+                  event.preventDefault();
+                  event.stopPropagation();
+                  clearProjectSelection();
+                }}
+                sx={{
+                  position: "absolute",
+                  top: 6,
+                  right: 2,
+                  zIndex: 1,
+                  width: 20,
+                  height: 10,
+                }}
+              >
+                <X size={14} />
+              </IconButton>
+            </Box>
+          )}
+
+          {!params.projectHandler && (
+            <ProjectQuickSelector
+              disabled={!params.orgHandle}
+              isProjectsLoading={isLoading || projectsError !== undefined}
+              projectsError={projectsError}
+              projectOptions={projectOptions.map((item) => ({
+                id: item.handler,
+                handler: item.handler,
+                name: item.name,
+              }))}
+              onSelectProject={(projectHandler) => {
+                changeProject(projectHandler);
+              }}
+            />
+          )}
+
+          {params.apiHandler && (
+            <Box sx={{position: 'relative'}}>
+              <SearchableComplexSelect
+                aria-label={intl.formatMessage({ id: 'appShell.header.api.aria', defaultMessage: 'APIs' })}
+                label={intl.formatMessage({ id: 'appShell.header.api.label', defaultMessage: 'APIs' })}
+                value={params.apiHandler}
+                selectedOption={apiOptions.filter((item) => item.handler === params.apiHandler).map(item => ({
+                  id: item.handler,
+                  handler: item.handler,
+                  name: item.name,
+                }))[0] || undefined}
+                onChange={(id) => {
+                  changeApi(id);
+                }}
+                options={apiOptions.map((item) => ({
+                  id: item.handler,
+                  handler: item.handler,
+                  name: item.name,
+                }))}
+                renderOptionContent={(option) => (
+                  <>
+                    <ComplexSelect.MenuItem.Icon>
+                      <Boxes size={18} />
+                    </ComplexSelect.MenuItem.Icon>
+                    <ComplexSelect.MenuItem.Text
+                      primary={option.name}
+                      secondary={option.id}
+                      slotProps={TRUNCATED_OPTION_TEXT_SLOT_PROPS}
+                    />
+                  </>
+                )}
+                searchPlaceholder={intl.formatMessage({ id: 'appShell.header.api.placeholder', defaultMessage: 'Search APIs...' })}
+                emptyMessage={intl.formatMessage({ id: 'appShell.header.api.empty', defaultMessage: 'No APIs found' })}
+                noResultsMessage={intl.formatMessage({ id: 'appShell.header.api.noResults', defaultMessage: 'No matching APIs' })}
+                sx={SWITCHER_SELECT_SX}
+              />
+
+              <IconButton
+                size="small"
+                aria-label={intl.formatMessage({ id: 'appShell.header.api.goToApiLevel', defaultMessage: 'Go to API level' })}
+                onMouseDown={(event) => {
+                  event.preventDefault();
+                  event.stopPropagation();
+                }}
+                onClick={(event) => {
+                  event.preventDefault();
+                  event.stopPropagation();
+                  clearApiSelection();
+                }}
+                sx={{
+                  position: "absolute",
+                  top: 6,
+                  right: 2,
+                  zIndex: 1,
+                  width: 20,
+                  height: 10,
+                }}
+              >
+                <X size={14} />
+              </IconButton>
+            </Box>
+          )}
+
+          {!params.apiHandler && params.projectHandler && (
+            <APIQuickSelector
+              disabled={!params.projectHandler}
+              isApisLoading={apisQuery.isLoading}
+              apisError={apisQuery.error}
+              apiOptions={apiOptions.map((item) => ({
+                id: item.handler,
+                handler: item.handler,
+                name: item.name,
+              }))}
+              onSelectApi={(apiHandler) => {
+                changeApi(apiHandler);
+              }}
+            />
           )}
         </Header.Switchers>
       )}
@@ -128,9 +335,9 @@ export function AppHeader() {
 
       <Header.Actions>
         <ColorSchemeToggle />
-        <Tooltip title="Notifications">
+        <Tooltip title={intl.formatMessage({ id: 'appShell.header.notifications', defaultMessage: 'Notifications' })}>
           <IconButton
-            aria-label="Notifications"
+            aria-label={intl.formatMessage({ id: 'appShell.header.notifications', defaultMessage: 'Notifications' })}
             onClick={actions.toggleNotificationPanel}
             size="small"
           >

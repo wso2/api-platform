@@ -19,7 +19,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import {
   Box,
-  PageContent,
   PageTitle,
   TextField,
   Typography,
@@ -37,13 +36,27 @@ import {
   LoadingState,
 } from '../../../../components/StateViews';
 import { routes } from '../../../../routes/paths';
-import { GatewayDeployCard } from './GatewayDeployCard';
+import { ScopeGate } from '../../../../scope/ScopeGate';
+import { GatewayDeployCard } from './components/GatewayDeployCard';
+import { FormattedMessage } from 'react-intl';
 
 /**
  * The deploy path, ai-workspace style: one expandable card per gateway with
  * a one-click Deploy (auto-named), per-gateway status and history.
  */
 export function DeployPage() {
+  return (
+    <ScopeGate
+      prompt="Deployments are made for a single API."
+      requires="api"
+      to={routes.apiDeploy}
+    >
+      <Deploy />
+    </ScopeGate>
+  );
+}
+
+function Deploy() {
   const { orgHandle = '' } = useParams();
   const navigate = useNavigate();
   const apiQuery = useApi();
@@ -100,12 +113,20 @@ export function DeployPage() {
   };
 
   return (
-    <PageContent>
+    <>
       <PageTitle>
-        <PageTitle.Header>Deploy {api.displayName}</PageTitle.Header>
+        <PageTitle.Header>
+          <FormattedMessage
+            id="appShell.deployPage.header"
+            defaultMessage='Deploy {apiName}'
+            values={{ apiName: api.displayName }}
+          />
+        </PageTitle.Header>
         <PageTitle.SubHeader>
-          Deploy the current working copy to a gateway, and manage existing
-          deployments.
+          <FormattedMessage
+            id="appShell.deployPage.subHeader"
+            defaultMessage='Deploy the current working copy to a gateway, and manage existing deployments.'
+          />
         </PageTitle.SubHeader>
       </PageTitle>
 
@@ -131,7 +152,12 @@ export function DeployPage() {
           <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
             {filteredGateways.length === 0 ? (
               <Box sx={{ color: 'text.secondary', p: 6, textAlign: 'center' }}>
-                <Typography>No gateways match your search</Typography>
+                <Typography>
+                  <FormattedMessage
+                    id="appShell.deployPage.noGatewaysMatchSearch"
+                    defaultMessage="No gateways match your search"
+                  />
+                </Typography>
               </Box>
             ) : (
               filteredGateways.map((gateway) => (
@@ -152,6 +178,6 @@ export function DeployPage() {
           </Box>
         </>
       )}
-    </PageContent>
+    </>
   );
 }

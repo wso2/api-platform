@@ -30,10 +30,10 @@ import { PackageOpen, SquarePen } from '@wso2/oxygen-ui-icons-react';
 import {
   useRestoreGatewayDeployment,
   useUndeployGatewayDeployment,
-} from '../../../../api/hooks/useMvpQueries';
-import { useNotifications } from '../../../../components/Notifications';
-import type { Api, Gateway, GatewayDeployment } from '../../../../types/domain';
-import { relativeTime } from '../../../../utils/relativeTime';
+} from '../../../../../api/hooks/useMvpQueries';
+import { useNotifications } from '../../../../../components/Notifications';
+import type { Api, Gateway, GatewayDeployment } from '../../../../../types/domain';
+import { relativeTime } from '../../../../../utils/relativeTime';
 import { GatewayDeploymentSelector } from './GatewayDeploymentSelector';
 
 const STATUS_REASON_MESSAGES: Record<string, string> = {

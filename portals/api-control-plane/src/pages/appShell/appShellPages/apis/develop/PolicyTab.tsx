@@ -42,7 +42,7 @@ import type {
 } from '../../../../../types/domain';
 import { AttachedPolicyList } from './AttachedPolicyList';
 import { AvailablePoliciesPanel } from './AvailablePoliciesPanel';
-import { SaveBar } from './SaveBar';
+import { SaveBar } from './components/SaveBar';
 import { methodColor, reorderPolicies } from './developEdit';
 import {
   getDraggedPolicy,

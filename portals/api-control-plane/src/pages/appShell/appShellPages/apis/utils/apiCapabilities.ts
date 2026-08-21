@@ -16,7 +16,7 @@
  * under the License.
  */
 
-import type { Api } from '../../../../types/domain';
+import { RestApi } from '../../../../../api/resources/restApis';
 
 export type ApiTestMode = 'curl' | 'none';
 
@@ -31,7 +31,8 @@ export type ApiCapabilities = {
   testMode: ApiTestMode;
 };
 
-export const getApiCapabilities = (component?: Api): ApiCapabilities => {
+export const getApiCapabilities = (component?: RestApi
+): ApiCapabilities => {
   if (!component) {
     return {
       canBuild: false,
@@ -45,10 +46,20 @@ export const getApiCapabilities = (component?: Api): ApiCapabilities => {
     };
   }
 
-  const isApiProxy = component.kind === 'API_PROXY';
+  const isApiProxy = component.kind === 'RestApi';
   const isService = component.kind === 'SERVICE';
   const isWebApp = component.kind === 'WEB_APP';
-  const isHttpReachable = component.httpBased !== false;
+  // Normalised before comparing, never compared raw: the spec documents
+  // `transport` in lowercase (`["http", "https"]`) while these constants are
+  // upper, so a raw `includes('HTTP')` never matched real data — which silently
+  // made `canTest` false for every API and hid the whole Test menu from the
+  // sidebar. Server-supplied tokens get normalised at the boundary, the same way
+  // HTTP methods do elsewhere in this repo.
+  const transports = (component.transport ?? []).map((value) =>
+    value.toUpperCase()
+  );
+  const isHttpReachable =
+    transports.includes('HTTP') || transports.includes('HTTPS');
 
   return {
     canBuild: isService || isWebApp,

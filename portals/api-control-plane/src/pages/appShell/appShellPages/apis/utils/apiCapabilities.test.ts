@@ -18,18 +18,27 @@
 
 import { describe, expect, it } from 'vitest';
 
-import type { Api } from '../../../../types/domain';
 import { getApiCapabilities } from './apiCapabilities';
+import { RestApi } from '../../../../../api/resources/restApis';
 
-const baseApi: Api = {
+const baseApi: RestApi = {
   id: 'component-1',
   projectId: 'project-1',
-  name: 'orders-api',
   displayName: 'Orders API',
-  handler: 'orders-api',
-  kind: 'API_PROXY',
-  status: 'ACTIVE',
-  httpBased: true,
+  // The spec's own kind and transport casing — `RestApi`, lowercase transports.
+  // `API_PROXY` was the pre-migration domain name and matched nothing.
+  kind: 'RestApi',
+  transport: ['http', 'https'],
+  description: 'API proxy for the Orders service',
+  context: '/orders',
+  version: '1.0.0',
+  createdAt: '2023-01-01T00:00:00Z',
+  updatedAt: '2023-01-02T00:00:00Z',
+  upstream: {
+    main: {
+      url: 'https://api.example.com/orders',
+    }
+  },
 };
 
 describe('getApiCapabilities', () => {
@@ -39,6 +48,26 @@ describe('getApiCapabilities', () => {
     expect(capabilities.canDeploy).toBe(true);
     expect(capabilities.canTest).toBe(true);
     expect(capabilities.testMode).toBe('curl');
+  });
+
+  // The regression that hid the entire Test menu: `transport` arrives lowercase
+  // per the spec, and was being compared against upper-case constants, so
+  // `canTest` came back false for every API.
+  it.each([
+    ['lowercase, as the spec documents', ['http', 'https']],
+    ['upper-case', ['HTTP', 'HTTPS']],
+    ['mixed', ['Https']],
+  ])('treats %s transports as HTTP-reachable', (_name, transport) => {
+    expect(getApiCapabilities({ ...baseApi, transport }).canTest).toBe(true);
+  });
+
+  it('is not HTTP-reachable when no HTTP transport is offered', () => {
+    expect(getApiCapabilities({ ...baseApi, transport: ['ws'] }).canTest).toBe(
+      false
+    );
+    expect(getApiCapabilities({ ...baseApi, transport: [] }).testMode).toBe(
+      'none'
+    );
   });
 
   it('disables component scoped entries without component data', () => {

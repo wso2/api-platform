@@ -16,7 +16,7 @@
  * under the License.
  */
 
-import type { Gateway, GatewayDeployment } from '../../../../types/domain';
+import type { Gateway, GatewayDeployment } from '../../../../../types/domain';
 
 /** Newest-first by createdAt (platform stamps it on every deployment). */
 export const byNewestFirst = (a: GatewayDeployment, b: GatewayDeployment) => {

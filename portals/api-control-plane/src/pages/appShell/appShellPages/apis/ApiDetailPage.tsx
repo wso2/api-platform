@@ -17,7 +17,7 @@
  */
 
 import { useState } from 'react';
-import { Avatar, Box, Button, Card, Chip, PageContent, Stack, Tab, Tabs, Typography } from '@wso2/oxygen-ui';
+import { Avatar, Box, Button, Card, Chip, Stack, Tab, Tabs, Typography } from '@wso2/oxygen-ui';
 
 import { useApiDetail } from '../../../../api/hooks/useMvpQueries';
 import { ErrorState, LoadingState } from '../../../../components/StateViews';
@@ -27,6 +27,8 @@ import { RoutingTab } from './develop/RoutingTab';
 import { OverviewTab } from './overview/OverviewTab';
 import { FormattedMessage } from 'react-intl';
 
+// No `ScopeGate`: this page is the API tier of the sidebar's Overview item, which
+// degrades to a shallower tier rather than linking here without an API.
 export function ApiDetailPage() {
   const detailQuery = useApiDetail();
   const [tab, setTab] = useState(0);
@@ -55,7 +57,7 @@ export function ApiDetailPage() {
 };
 
   return (
-    <PageContent fullWidth>
+    <>
       <Stack spacing={3} sx={{ mb: 3 }}>
       
          {/* Header card with editable fields */}
@@ -207,6 +209,6 @@ export function ApiDetailPage() {
       {active === 'Policy' && <PolicyTab detail={detail} />}
       {active === 'Routing' && <RoutingTab detail={detail} />}
       {active === 'Documents' && <DocumentsTab />}
-    </PageContent>
+    </>
   );
 }

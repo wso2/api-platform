@@ -22,49 +22,33 @@ import type {
   Deployment,
   Environment,
   Gateway,
-  Organization,
-  Project,
 } from '../../types/domain';
+
+import type { Organization } from "../../api/resources/organizations";
+import type { Project } from "../../api/resources/projects";
 
 export const organizations: Organization[] = [
   {
     id: 'org-1',
-    uuid: '783c6c4d-8b9b-4190-b70a-e717ab1ee739',
-    name: 'API Platform Demo',
-    handle: 'api-platform-demo',
-    description: 'Demo organization for API Platform development',
-    status: 'ACTIVE',
+    displayName: 'API Platform Demo',
+    region: 'us-east-1',
   },
 ];
 
 export const projects: Project[] = [
   {
     id: 'project-1',
-    orgId: 'org-1',
-    name: 'Retail APIs',
-    handler: 'retail-apis',
+    organizationId: 'org-1',
+    displayName: 'Retail APIs',
     description: 'Core APIs for retail services',
-    region: 'us-east-1',
-    version: '1.0.0',
-    createdDate: '2026-05-20T08:00:00.000Z',
     updatedAt: '2026-06-01T08:00:00.000Z',
-    type: 'MULTI_REPO',
-    gitProvider: 'github',
-    repository: 'api-platform-demo/retail-apis',
   },
   {
     id: 'project-2',
-    orgId: 'org-1',
-    name: 'Internal Tools',
-    handler: 'internal-tools',
+    organizationId: 'org-1',
+    displayName : 'Internal Tools',
     description: 'Operations and internal integration services',
-    region: 'us-east-1',
-    version: '1.0.0',
-    createdDate: '2026-05-28T08:00:00.000Z',
     updatedAt: '2026-06-10T08:00:00.000Z',
-    type: 'MONO_REPO',
-    gitProvider: 'github',
-    repository: 'api-platform-demo/internal-tools',
   },
 ];
 

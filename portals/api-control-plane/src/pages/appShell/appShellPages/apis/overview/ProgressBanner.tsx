@@ -92,7 +92,7 @@ export function ProgressBanner({
       Icon: FlaskConical,
       complete: testComplete,
       onClick: () =>
-        navigate(routes.apiTest(orgHandle, projectHandler, apiHandler)),
+        navigate(routes.apiTestConsole(orgHandle, projectHandler, apiHandler)),
     },
     {
       key: 'publish',
@@ -100,7 +100,7 @@ export function ProgressBanner({
       Icon: Globe,
       complete: published,
       onClick: () =>
-        navigate(routes.apiManage(orgHandle, projectHandler, apiHandler)),
+        navigate(routes.apiManageLifecycle(orgHandle, projectHandler, apiHandler)),
     },
   ];
 

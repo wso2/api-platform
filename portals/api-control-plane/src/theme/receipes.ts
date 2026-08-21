@@ -41,39 +41,6 @@ import { alpha, type Theme } from '@wso2/oxygen-ui';
 export const hairline = (theme: Theme) =>
   `${theme.border.width} ${theme.border.style}`;
 
-/**
- * Square metadata chip used across the API and gateway card family. A function
- * of the theme so the border comes from `theme.border` rather than a literal —
- * compose it as `sx={(theme) => ({ ...chipSx(theme), ...overrides })}`.
- */
-export const chipSx = (theme: Theme) =>
-  ({
-    alignItems: 'center',
-    bgcolor: 'action.hover',
-    border: hairline(theme),
-    borderColor: 'divider',
-    borderRadius: 1,
-    color: 'text.secondary',
-    display: 'inline-flex',
-    fontSize: 12,
-    fontWeight: 500,
-    gap: 0.75,
-    px: 1.25,
-    py: 0.5,
-  }) as const;
-
-/**
- * The same chip tinted with the brand colour — the "kind" chip on API cards.
- * Pass straight through as `sx={tintedChipSx}`.
- */
-export const tintedChipSx = (theme: Theme) => ({
-  ...chipSx(theme),
-  bgcolor: alpha(theme.palette.primary.main, 0.14),
-  borderColor: alpha(theme.palette.primary.main, 0.3),
-  color: 'primary.main',
-  fontWeight: 600,
-});
-
 /** Blur radius behind a glass surface. One value, so every pane matches. */
 const GLASS_BLUR = '14px';
 

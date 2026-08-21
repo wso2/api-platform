@@ -19,20 +19,18 @@
 import { ReactNode, useEffect, useMemo, useRef, useState } from 'react';
 import { useLocation, useParams } from 'react-router-dom';
 
-import {
-  useApi,
-  useOrganizations,
-  useProject,
-  useProjects,
-} from '../api/hooks/useMvpQueries';
 import { ApiScopeProvider } from '../api/core/ApiScopeProvider';
 import { useAuth } from '../contexts/auth/AuthProvider';
-import { getApiCapabilities } from '../pages/appShell/appShellPages/apis/apiCapabilities';
+import { getApiCapabilities } from '../pages/appShell/appShellPages/apis/utils/apiCapabilities';
 import {
   ConsoleScopeContext,
   type ConsoleRouteParams,
   type ConsoleScope,
 } from './ConsoleScopeContext';
+import { getRouteParamsFromPathname } from './consoleRouteParams';
+import { useRestApi } from '../api/resources/restApis';
+import { useOrganizations } from '../api/resources/organizations';
+import { useProject, useProjects } from '../api/resources/projects';
 
 // Re-export so existing imports from this module keep working.
 export {
@@ -41,34 +39,6 @@ export {
   type ConsoleRouteParams,
   type ConsoleScope,
 } from './ConsoleScopeContext';
-
-const getRouteParamsFromPathname = (pathname: string): ConsoleRouteParams => {
-  const segments = pathname.split('/').filter(Boolean);
-  const organizationsIndex = segments.indexOf('organizations');
-  if (organizationsIndex < 0) return {};
-
-  const orgHandle = segments[organizationsIndex + 1];
-  const projectsIndex = segments.indexOf('projects');
-  const projectHandler =
-    projectsIndex >= 0 ? segments[projectsIndex + 1] : undefined;
-  const apisIndex = segments.indexOf('apis');
-  const apiHandler =
-    apisIndex >= 0 ? segments[apisIndex + 1] : undefined;
-  const environmentsIndex = segments.indexOf('environments');
-  const environmentId =
-    environmentsIndex >= 0 ? segments[environmentsIndex + 1] : undefined;
-  const deploymentsIndex = segments.indexOf('deployments');
-  const deploymentId =
-    deploymentsIndex >= 0 ? segments[deploymentsIndex + 1] : undefined;
-
-  return {
-    apiHandler,
-    deploymentId,
-    environmentId,
-    orgHandle,
-    projectHandler,
-  };
-};
 
 export function ConsoleScopeProvider({ children }: { children: ReactNode }) {
   const routeParams = useParams<ConsoleRouteParams>();
@@ -144,24 +114,22 @@ export function ConsoleScopeProvider({ children }: { children: ReactNode }) {
 
   const queryOrgHandle =
     tokenReadyOrgHandle === params.orgHandle ? params.orgHandle : undefined;
+
+  const apiQuery = useRestApi(params.apiHandler, {orgId: queryOrgHandle });
   const organizationsQuery = useOrganizations();
-  const projectsQuery = useProjects(queryOrgHandle);
-  const projectQuery = useProject(queryOrgHandle, params.projectHandler);
-  const apiQuery = useApi(
-    queryOrgHandle,
-    params.projectHandler,
-    params.apiHandler
-  );
+  const projectsQuery = useProjects({}, {orgId: queryOrgHandle });
+  const projectQuery = useProject(params.projectHandler, {orgId: queryOrgHandle });
 
   const organization = useMemo(
     () =>
-      organizationsQuery.data?.find((item) => item.handle === params.orgHandle),
-    [organizationsQuery.data, params.orgHandle]
+      organizationsQuery.data?.list?.find((item) => item.id === params.orgHandle),
+    [organizationsQuery.data?.list, params.orgHandle]
   );
 
   const project =
     projectQuery.data ||
-    projectsQuery.data?.find((item) => item.handler === params.projectHandler);
+    projectsQuery.data?.list?.find((item) => item.id === params.projectHandler);
+
   const component = apiQuery.data;
   const capabilities = useMemo(
     () => getApiCapabilities(component),
@@ -190,10 +158,10 @@ export function ConsoleScopeProvider({ children }: { children: ReactNode }) {
       isOrganizationScope: Boolean(params.orgHandle),
       isProjectScope: Boolean(params.projectHandler),
       organization,
-      organizations: organizationsQuery.data || [],
+      organizations: organizationsQuery.data?.list || [],
       params,
       project,
-      projects: projectsQuery.data || [],
+      projects: projectsQuery.data?.list || [],
       projectsError: orgTokenError || projectsQuery.error || undefined,
     }),
     [

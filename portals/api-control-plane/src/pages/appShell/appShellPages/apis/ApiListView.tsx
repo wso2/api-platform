@@ -26,26 +26,32 @@ import {
   ListItemText,
   Menu,
   MenuItem,
+  Tooltip,
   Typography,
 } from '@wso2/oxygen-ui';
 import { Clock, MoreVertical, Trash2 } from '@wso2/oxygen-ui-icons-react';
 
-import type { Api } from '../../types/domain';
-import { relativeTime } from '../../utils/relativeTime';
-import { COMPONENT_KIND_LABEL } from './apiDisplay';
-import { EnvStatusChips } from './EnvStatusChips';
-import { KindIconTile } from './KindIconTile';
-import { StatusPill } from './StatusPill';
+import type { RestApi } from '../../../../api/resources/restApis';
+import { relativeTime } from '../../../../utils/relativeTime';
+import { KindIconTile } from '../../../../components/cards/KindIconTile';
+import {
+  DeploymentStateLabel,
+  GatewayChips,
+  LifecycleChip,
+} from './components/RestApiChips';
+import { apiKindLabel, useApiDeploymentState } from './restApiDisplay';
 
 type ApiRowProps = {
-  component: Api;
-  onOpen: (component: Api) => void;
-  onDelete?: (component: Api) => void;
+  api: RestApi;
+  onOpen: (api: RestApi) => void;
+  onDelete?: (api: RestApi) => void;
 };
 
-function ApiRow({ component, onOpen, onDelete }: ApiRowProps) {
-  const updated = component.updatedAt || component.createdAt;
+function ApiRow({ api, onOpen, onDelete }: ApiRowProps) {
   const [menuAnchor, setMenuAnchor] = useState<HTMLElement | null>(null);
+  const { gatewayIds, state } = useApiDeploymentState(api.id);
+
+  const updated = api.updatedAt || api.createdAt;
 
   const closeMenu = (event?: React.MouseEvent) => {
     event?.stopPropagation();
@@ -54,10 +60,10 @@ function ApiRow({ component, onOpen, onDelete }: ApiRowProps) {
 
   return (
     <Box
-      onClick={() => onOpen(component)}
-      sx={{
+      onClick={() => onOpen(api)}
+      sx={(theme) => ({
         alignItems: 'center',
-        borderBottom: '1px solid',
+        borderBottom: `${theme.border.width} ${theme.border.style}`,
         borderColor: 'divider',
         cursor: 'pointer',
         display: 'flex',
@@ -67,12 +73,16 @@ function ApiRow({ component, onOpen, onDelete }: ApiRowProps) {
         transition: 'background-color 250ms',
         '&:hover': { bgcolor: 'action.hover' },
         '&:last-of-type': { borderBottom: 0 },
-      }}
+      })}
     >
-      <KindIconTile />
+      <Tooltip placement="left" title={apiKindLabel(api.kind)}>
+        <Box sx={{ display: 'inline-flex' }}>
+          <KindIconTile />
+        </Box>
+      </Tooltip>
       <Box sx={{ flex: 1, minWidth: 140 }}>
         <Typography noWrap sx={{ fontWeight: 500 }} variant="subtitle2">
-          {component.displayName}
+          {api.displayName}
         </Typography>
         <Typography
           color="text.secondary"
@@ -81,11 +91,11 @@ function ApiRow({ component, onOpen, onDelete }: ApiRowProps) {
           sx={{ fontFamily: 'monospace' }}
           variant="caption"
         >
-          {COMPONENT_KIND_LABEL[component.kind]}
-          {component.version ? ` · v${component.version}` : ''}
+          {api.context}
+          {api.version ? ` · v${api.version}` : ''}
         </Typography>
       </Box>
-      <StatusPill status={component.status} />
+      <LifecycleChip status={api.lifeCycleStatus} />
       <Box
         sx={{
           alignItems: 'center',
@@ -94,7 +104,8 @@ function ApiRow({ component, onOpen, onDelete }: ApiRowProps) {
           gap: 1,
         }}
       >
-        <EnvStatusChips componentId={component.id} />
+        <DeploymentStateLabel state={state} />
+        <GatewayChips gatewayIds={gatewayIds} />
       </Box>
       <Box
         sx={{
@@ -106,15 +117,15 @@ function ApiRow({ component, onOpen, onDelete }: ApiRowProps) {
           ml: 'auto',
         }}
       >
-        {component.owner && (
+        {api.createdBy && (
           <Box sx={{ alignItems: 'center', display: 'flex', gap: 1 }}>
             <Avatar
               sx={{ fontSize: 10, fontWeight: 600, height: 20, width: 20 }}
             >
-              {component.owner.charAt(0).toUpperCase()}
+              {api.createdBy.charAt(0).toUpperCase()}
             </Avatar>
             <Typography color="text.secondary" noWrap variant="caption">
-              {component.owner}
+              {api.createdBy}
             </Typography>
           </Box>
         )}
@@ -146,7 +157,7 @@ function ApiRow({ component, onOpen, onDelete }: ApiRowProps) {
             <MenuItem
               onClick={(event) => {
                 closeMenu(event);
-                onDelete(component);
+                onDelete(api);
               }}
               sx={{ color: 'error.main' }}
             >
@@ -163,23 +174,19 @@ function ApiRow({ component, onOpen, onDelete }: ApiRowProps) {
 }
 
 type ApiListViewProps = {
-  components: Api[];
-  onOpen: (component: Api) => void;
-  onDelete?: (component: Api) => void;
+  apis: RestApi[];
+  onOpen: (api: RestApi) => void;
+  onDelete?: (api: RestApi) => void;
 };
 
 /** Compact row layout for APIs — the list-view counterpart of ApiCardGrid. */
-export function ApiListView({
-  components,
-  onOpen,
-  onDelete,
-}: ApiListViewProps) {
+export function ApiListView({ apis, onOpen, onDelete }: ApiListViewProps) {
   return (
     <Card data-testid="api-list-view" variant="outlined">
-      {components.map((component) => (
+      {apis.map((api) => (
         <ApiRow
-          component={component}
-          key={component.id}
+          api={api}
+          key={api.id}
           onDelete={onDelete}
           onOpen={onOpen}
         />

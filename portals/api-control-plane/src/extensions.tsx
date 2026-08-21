@@ -18,6 +18,7 @@
 
 import { createContext, useContext, type ReactNode } from 'react';
 
+import { apiPath, projectPath, type ScopeHandle } from './routes/paths';
 import type { ConsoleScope } from './scope/ConsoleScopeProvider';
 import type { NavigationLevel } from './navigation/navigationTypes';
 
@@ -69,17 +70,58 @@ export function useExtensions(): readonly ApiControlPlaneExtension[] {
  * (organization/project/api), so both `AppRoutes` (route patterns, `orgHandle`
  * etc. as `:param` placeholders) and the nav pipeline (concrete scope values)
  * build the same URL shape from one place.
+ *
+ * A `null` project/API handle drops that scope's segments, exactly as it does
+ * for the built-in `routes.*` builders — see `ScopeHandle` in `routes/paths.ts`.
+ * That is what lets an extension page be reached from a shallower scope and
+ * render `ScopeGate` to ask for the rest.
  */
 export function buildScopedExtensionPath(
   level: NavigationLevel,
   routeSuffix: string,
-  params: { orgHandle: string; projectHandler?: string; apiHandler?: string }
+  params: {
+    orgHandle: string;
+    projectHandler?: ScopeHandle;
+    apiHandler?: ScopeHandle;
+  }
 ): string {
   if (level === 'organization') {
     return `/organizations/${params.orgHandle}/${routeSuffix}`;
   }
   if (level === 'project') {
-    return `/organizations/${params.orgHandle}/projects/${params.projectHandler}/${routeSuffix}`;
+    return projectPath(params.orgHandle, params.projectHandler ?? null, routeSuffix);
   }
-  return `/organizations/${params.orgHandle}/projects/${params.projectHandler}/apis/${params.apiHandler}/${routeSuffix}`;
+  return apiPath(
+    params.orgHandle,
+    params.projectHandler ?? null,
+    params.apiHandler ?? null,
+    routeSuffix
+  );
+}
+
+/**
+ * Every route pattern an extension page answers on: its fully-scoped path plus
+ * the scope-less aliases for whichever scopes its level requires. Mirrors
+ * `projectScopedPaths`/`apiScopedPaths` for the built-in pages.
+ */
+export function extensionScopedPaths(
+  level: NavigationLevel,
+  routeSuffix: string
+): string[] {
+  const build = (projectHandler: ScopeHandle, apiHandler: ScopeHandle) =>
+    buildScopedExtensionPath(level, routeSuffix, {
+      apiHandler,
+      orgHandle: ':orgHandle',
+      projectHandler,
+    });
+
+  if (level === 'organization') return [build(null, null)];
+  if (level === 'project') {
+    return [build(':projectHandler', null), build(null, null)];
+  }
+  return [
+    build(':projectHandler', ':apiHandler'),
+    build(':projectHandler', null),
+    build(null, null),
+  ];
 }

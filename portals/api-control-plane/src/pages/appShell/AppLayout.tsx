@@ -22,6 +22,8 @@ import {
   Box,
   Footer,
   NotificationPanel,
+  PageContent,
+  Stack,
 } from '@wso2/oxygen-ui';
 import type { BreadcrumbItem } from '@wso2/oxygen-ui';
 import { Bell } from '@wso2/oxygen-ui-icons-react';
@@ -35,6 +37,7 @@ import { useConsoleScope } from '../../scope/ConsoleScopeProvider';
 import { AppHeader } from './AppHeader';
 import { APP_FOOTER_ID } from './appLayoutConstants';
 import { AppSidebar } from './AppSidebar';
+import { FormattedMessage } from 'react-intl';
 
 export default function AppLayout() {
   const navigate = useNavigate();
@@ -44,14 +47,14 @@ export default function AppLayout() {
   if (params.orgHandle) {
     crumbs.push({
       key: 'org',
-      label: organization?.name || params.orgHandle,
+      label: organization?.displayName || params.orgHandle,
       onClick: () => navigate(routes.organizationHome(params.orgHandle!)),
     });
   }
   if (params.orgHandle && params.projectHandler) {
     crumbs.push({
       key: 'project',
-      label: project?.name || params.projectHandler,
+      label: project?.displayName || params.projectHandler,
       onClick: () =>
         navigate(routes.projectHome(params.orgHandle!, params.projectHandler!)),
     });
@@ -86,12 +89,17 @@ export default function AppLayout() {
       </AppShell.Sidebar>
 
       <AppShell.Main>
-        <Box sx={{ minWidth: 0, width: '100%' }}>
-          {breadcrumbItems.length > 1 && (
-            <AppBreadcrumbs items={breadcrumbItems} sx={{ mb: 2 }} />
-          )}
+        <Box sx={{ minWidth: 0, width: '100%', p: 1 }}>
+          
           <Suspense fallback={<LoadingState label="Loading" />}>
-            <Outlet />
+            <PageContent fullWidth>
+                <Stack spacing={1}>
+                    {breadcrumbItems.length > 1 && (
+                      <AppBreadcrumbs items={breadcrumbItems} />
+                    )}
+                  <Outlet />
+                </Stack>
+            </PageContent>
           </Suspense>
         </Box>
       </AppShell.Main>
@@ -106,10 +114,18 @@ export default function AppLayout() {
             </Footer.Copyright>
             <Footer.Version>{runtimeConfig.environmentName}</Footer.Version>
             <Footer.Link href={runtimeConfig.termsOfUseLink}>
-              Terms of Use
+              <FormattedMessage
+                id="appLayout.footer.termsOfUse"
+                defaultMessage="Terms of Use"
+                description="Footer link to the Terms of Use page"
+              />
             </Footer.Link>
             <Footer.Link href={runtimeConfig.privacyPolicyLink}>
-              Privacy Policy
+              <FormattedMessage
+                id="appLayout.footer.privacyPolicy"
+                defaultMessage="Privacy Policy"
+                description="Footer link to the Privacy Policy page"
+              />
             </Footer.Link>
           </Footer>
         </Box>
@@ -122,7 +138,11 @@ export default function AppLayout() {
               <Bell size={18} />
             </NotificationPanel.HeaderIcon>
             <NotificationPanel.HeaderTitle>
-              Notifications
+              <FormattedMessage
+                id="appLayout.notificationPanel.headerTitle"
+                defaultMessage="Notifications"
+                description="Header title for the notification panel"
+              />
             </NotificationPanel.HeaderTitle>
             <NotificationPanel.HeaderClose />
           </NotificationPanel.Header>

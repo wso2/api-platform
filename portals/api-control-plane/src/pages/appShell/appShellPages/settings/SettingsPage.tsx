@@ -16,17 +16,21 @@
  * under the License.
  */
 
-import { Card, CardContent, PageContent, PageTitle, Typography } from '@wso2/oxygen-ui';
+import { Card, CardContent, PageTitle, Typography } from '@wso2/oxygen-ui';
 import { useParams } from 'react-router-dom';
 
+
+// No `ScopeGate`: Settings is the one page with no scope requirement. The sidebar
+// links to the organization-level path, and a project card's gear deep-links the
+// same page for one project — so it renders at whatever scope it is reached in.
 export function SettingsPage() {
-  const { projectHandler } = useParams();
+  const { orgHandle, projectHandler } = useParams();
 
   return (
-    <PageContent>
+    <>
       <PageTitle>
         <PageTitle.Header>Settings</PageTitle.Header>
-        <PageTitle.SubHeader>Minimal settings overview for {projectHandler}.</PageTitle.SubHeader>
+        <PageTitle.SubHeader>Minimal settings overview for {projectHandler ?? orgHandle}.</PageTitle.SubHeader>
       </PageTitle>
       <Card variant="outlined">
         <CardContent>
@@ -37,6 +41,6 @@ export function SettingsPage() {
           </Typography>
         </CardContent>
       </Card>
-    </PageContent>
+    </>
   );
 }

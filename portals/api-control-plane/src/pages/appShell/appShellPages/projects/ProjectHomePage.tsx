@@ -22,7 +22,6 @@ import {
   CardContent,
   Chip,
   Grid,
-  PageContent,
   Stack,
   Typography,
 } from '@wso2/oxygen-ui';
@@ -41,7 +40,11 @@ import { ErrorState, LoadingState } from '../../../../components/StateViews';
 import { routes } from '../../../../routes/paths';
 import type { Api } from '../../../../types/domain';
 import { relativeTime } from '../../../../utils/relativeTime';
+import { FormattedMessage } from 'react-intl';
 
+// No `ScopeGate`: this page is the project tier of the sidebar's Overview item,
+// which degrades to the organization tier rather than linking here without a
+// project — so it is never reached out of scope.
 export function ProjectHomePage() {
   const { orgHandle = '', projectHandler = '' } = useParams();
   const navigate = useNavigate();
@@ -78,7 +81,7 @@ export function ProjectHomePage() {
   const project = projectQuery.data;
 
   return (
-    <PageContent fullWidth>
+    <>
       <Grid container spacing={3} sx={{ m: 0, width: '100%' }}>
         <Grid size={{ xs: 12 }}>
           <QuickStartBanner
@@ -116,7 +119,10 @@ export function ProjectHomePage() {
           <Card sx={{ width: '100%' }}>
             <CardContent>
               <Typography sx={{ fontWeight: 700 }} variant="h6">
-                Project details
+                <FormattedMessage
+                  id="appShell.projectHomePage.projectDetails"
+                  defaultMessage="Project details"
+                />
               </Typography>
               <Stack direction="row" sx={{ flexWrap: 'wrap', gap: 1, mt: 2 }}>
                 <Chip label={`@${project.handler}`} size="small" variant="outlined" />
@@ -147,7 +153,10 @@ export function ProjectHomePage() {
                 !project.repository &&
                 !project.createdDate && (
                   <Typography color="text.secondary" sx={{ mt: 1 }} variant="body2">
-                    No additional project metadata available.
+                    <FormattedMessage
+                      id="appShell.projectHomePage.noAdditionalMetadata"
+                      defaultMessage="No additional project metadata available."
+                    />
                   </Typography>
                 )}
               <Box sx={{ mt: 2 }}>
@@ -159,13 +168,17 @@ export function ProjectHomePage() {
                   sx={{ cursor: 'pointer', display: 'inline-block', fontWeight: 600 }}
                   variant="body2"
                 >
-                  View all APIs ({components.length})
+                  <FormattedMessage
+                    id="appShell.projectHomePage.viewAllAPIs"
+                    defaultMessage="View all APIs ({count})"
+                    values={{ count: components.length }}
+                  />
                 </Typography>
               </Box>
             </CardContent>
           </Card>
         </Grid>
       </Grid>
-    </PageContent>
+    </>
   );
 }

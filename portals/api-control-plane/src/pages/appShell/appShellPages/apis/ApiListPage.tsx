@@ -20,29 +20,24 @@ import { useMemo, useState } from 'react';
 import {
   Box,
   Button,
-  Chip,
   InputAdornment,
-  PageContent,
   PageTitle,
   Stack,
   TextField,
   ToggleButton,
   ToggleButtonGroup,
-  Typography,
 } from '@wso2/oxygen-ui';
-import {
-  Boxes,
-  LayoutGrid,
-  List,
-  Plus,
-  Search,
-} from '@wso2/oxygen-ui-icons-react';
+import { LayoutGrid, List, Plus, Search } from '@wso2/oxygen-ui-icons-react';
 import { useNavigate, useParams } from 'react-router-dom';
 
-import { useApis, useDeleteApi } from '../../../../api/hooks/useMvpQueries';
-import { ApiCardGrid } from '../../../../components/cards/ApiCardGrid';
-import { filterApis, groupApisByKind } from '../../../../components/cards/apiDisplay';
-import { ApiListView } from '../../../../components/cards/ApiListView';
+import {
+  useDeleteRestApi,
+  useRestApis,
+  type RestApi,
+} from '../../../../api/resources/restApis';
+import { ApiCardGrid } from './ApiCardGrid';
+import { ApiListView } from './ApiListView';
+import { filterRestApis } from './restApiDisplay';
 import { ConfirmDialog } from '../../../../components/ConfirmDialog';
 import { useNotifications } from '../../../../components/Notifications';
 import {
@@ -51,111 +46,97 @@ import {
   LoadingState,
 } from '../../../../components/StateViews';
 import { routes } from '../../../../routes/paths';
-import type { Api } from '../../../../types/domain';
+import { ScopeGate } from '../../../../scope/ScopeGate';
+import { FormattedMessage } from 'react-intl';
 
 type ViewMode = 'grid' | 'list';
 
-function ApiSection({
-  title,
-  icon,
-  components,
-  view,
-  onOpen,
-  onDelete,
-}: {
-  title: string;
-  icon: React.ReactNode;
-  components: Api[];
-  view: ViewMode;
-  onOpen: (component: Api) => void;
-  onDelete: (component: Api) => void;
-}) {
-  if (components.length === 0) return null;
+export function ApiListPage() {
+  // Gating the whole body, not just the JSX: out of project scope `useRestApis`
+  // stays disabled and `isPending` never clears, so the loading branch below
+  // would sit there forever instead of the scope prompt showing.
   return (
-    <Stack spacing={1.5}>
-      <Box sx={{ alignItems: 'center', display: 'flex', gap: 1 }}>
-        <Box sx={{ color: 'text.secondary', display: 'inline-flex' }}>
-          {icon}
-        </Box>
-        <Typography variant="h6">{title}</Typography>
-        <Chip label={components.length} size="small" />
-        <Box sx={{ bgcolor: 'divider', flex: 1, height: '1px', ml: 1 }} />
-      </Box>
-      {view === 'grid' ? (
-        <ApiCardGrid
-          components={components}
-          onDelete={onDelete}
-          onOpen={onOpen}
-        />
-      ) : (
-        <ApiListView
-          components={components}
-          onDelete={onDelete}
-          onOpen={onOpen}
-        />
-      )}
-    </Stack>
+    <ScopeGate
+      prompt="APIs are created and managed at the project level."
+      requires="project"
+      to={routes.apis}
+    >
+      <ApiList />
+    </ScopeGate>
   );
 }
 
-export function ApiListPage() {
+function ApiList() {
   const { orgHandle = '', projectHandler = '' } = useParams();
   const navigate = useNavigate();
-  const apisQuery = useApis();
-  const deleteApiMutation = useDeleteApi();
+  const apisQuery = useRestApis();
+  const deleteApiMutation = useDeleteRestApi();
   const { notify } = useNotifications();
   const [search, setSearch] = useState('');
   const [view, setView] = useState<ViewMode>('grid');
-  const [toDelete, setToDelete] = useState<Api | null>(null);
+  const [toDelete, setToDelete] = useState<RestApi | null>(null);
+
+  const apis = useMemo(() => apisQuery.data?.list ?? [], [apisQuery.data]);
+  const searched = useMemo(() => filterRestApis(apis, search), [apis, search]);
 
   const confirmDelete = () => {
-    if (!toDelete) return;
-    deleteApiMutation.mutate(toDelete, {
-      onSuccess: () => {
-        notify(`Deleted "${toDelete.displayName}".`, 'success');
-        setToDelete(null);
-      },
-      onError: (error) =>
-        notify(
-          error instanceof Error ? error.message : 'Delete failed',
-          'error'
-        ),
-    });
+    if (!toDelete?.id) return;
+    deleteApiMutation.mutate(
+      { restApiId: toDelete.id },
+      {
+        onSuccess: () => {
+          notify(`Deleted "${toDelete.displayName}".`, 'success');
+          setToDelete(null);
+        },
+        onError: (error) => notify(error.message || 'Delete failed', 'error'),
+      }
+    );
   };
 
-  const components = useMemo(() => apisQuery.data || [], [apisQuery.data]);
-  const searched = useMemo(
-    () => filterApis(components, search),
-    [components, search]
-  );
-  const groups = useMemo(() => groupApisByKind(searched), [searched]);
-  const matchCount = groups.apiProxies.length + groups.others.length;
-
-  const openApi = (component: Api) =>
-    navigate(routes.api(orgHandle, projectHandler, component.handler));
+  const openApi = (api: RestApi) =>
+    navigate(routes.api(orgHandle, projectHandler, api.id ?? ''));
   const createApi = () => navigate(routes.newApi(orgHandle, projectHandler));
 
-  if (apisQuery.isLoading) return <LoadingState label="Loading APIs" />;
+  // `isPending` rather than `isLoading`: the query stays disabled until the
+  // route's org/project resolve, and in that window `isLoading` is already
+  // false with no data — which would flash the "No APIs yet" empty state.
+  if (apisQuery.isPending) return <LoadingState label="Loading APIs" />;
   if (apisQuery.error) {
     return <ErrorState message="Unable to load APIs" />;
   }
 
   return (
-    <PageContent fullWidth>
+    <>
       <PageTitle>
-        <PageTitle.Header>APIs</PageTitle.Header>
-        <PageTitle.SubHeader>API proxies in this project.</PageTitle.SubHeader>
+        <PageTitle.Header>
+          <FormattedMessage
+            id="apiListPage.title"
+            defaultMessage="APIs"
+            description="Page title for the API list page"
+          />
+        </PageTitle.Header>
+        <PageTitle.SubHeader>
+          <FormattedMessage
+            id="apiListPage.subHeader"
+            defaultMessage="REST APIs in this project."
+            description="Sub header for the API list page"
+          />
+        </PageTitle.SubHeader>
         <PageTitle.Actions>
           <Button onClick={createApi} startIcon={<Plus />} variant="contained">
-            Create API
+            <FormattedMessage
+              id="apiListPage.createApiButton"
+              defaultMessage="Create API"
+              description="Button label for creating a new API"
+            />
           </Button>
         </PageTitle.Actions>
       </PageTitle>
 
-      {components.length === 0 ? (
+      {apis.length === 0 ? (
         <EmptyState
           actionLabel="Create API"
-          description="Create an API Proxy to get started."
+          description="Create a REST API to get started."
           onAction={createApi}
           title="No APIs yet"
         />
@@ -203,30 +184,23 @@ export function ApiListPage() {
             </ToggleButtonGroup>
           </Box>
 
-          {matchCount === 0 ? (
+          {searched.length === 0 ? (
             <EmptyState
               title="No matching APIs"
               description="Try a different API name or clear the filters."
             />
+          ) : view === 'grid' ? (
+            <ApiCardGrid
+              apis={searched}
+              onDelete={setToDelete}
+              onOpen={openApi}
+            />
           ) : (
-            <Stack spacing={4}>
-              <ApiSection
-                components={groups.apiProxies}
-                icon={<Boxes size={16} />}
-                onDelete={setToDelete}
-                onOpen={openApi}
-                title="API Proxies"
-                view={view}
-              />
-              <ApiSection
-                components={groups.others}
-                icon={<Boxes size={16} />}
-                onDelete={setToDelete}
-                onOpen={openApi}
-                title="Other APIs"
-                view={view}
-              />
-            </Stack>
+            <ApiListView
+              apis={searched}
+              onDelete={setToDelete}
+              onOpen={openApi}
+            />
           )}
         </Stack>
       )}
@@ -239,7 +213,7 @@ export function ApiListPage() {
         loading={deleteApiMutation.isPending}
         message={
           toDelete
-            ? `This permanently deletes the API proxy "${toDelete.displayName}" ` +
+            ? `This permanently deletes the API "${toDelete.displayName}" ` +
               'and all related details. This action is irreversible.'
             : ''
         }
@@ -248,6 +222,6 @@ export function ApiListPage() {
         open={toDelete !== null}
         title="Delete API"
       />
-    </PageContent>
+    </>
   );
 }

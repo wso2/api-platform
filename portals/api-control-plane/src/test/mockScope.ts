@@ -16,7 +16,7 @@
  * under the License.
  */
 
-import { getApiCapabilities } from '../pages/appShell/appShellPages/apis/apiCapabilities';
+import { getApiCapabilities } from '../pages/appShell/appShellPages/apis/utils/apiCapabilities';
 import { organizations, projects } from '../api/mocks/data';
 import type { ConsoleScope } from '../scope/ConsoleScopeProvider';
 
@@ -32,8 +32,8 @@ export function makeConsoleScope(
   const project = overrides.project ?? projects[0];
   const component = overrides.component;
   const params = {
-    orgHandle: organization?.handle,
-    projectHandler: project?.handler,
+    orgHandle: organization?.id,
+    projectHandler: project?.id,
     ...overrides.params,
   };
   return {
@@ -42,7 +42,7 @@ export function makeConsoleScope(
     activeScope: {
       orgHandle: params.orgHandle,
       projectHandler: params.projectHandler,
-      apiHandler: params.apiHandler ?? component?.handler,
+      apiHandler: params.apiHandler ?? component?.id,
     },
     capabilities: getApiCapabilities(component),
     component,

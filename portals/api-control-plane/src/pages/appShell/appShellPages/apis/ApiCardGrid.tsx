@@ -18,36 +18,34 @@
 
 import { Box } from '@wso2/oxygen-ui';
 
-import type { Api } from '../../types/domain';
-import { ApiCard } from './ApiCard';
+import type { RestApi } from '../../../../api/resources/restApis';
+import { ApiCard } from './components/ApiCard';
 
 type ApiCardGridProps = {
-  components: Api[];
-  onOpen: (component: Api) => void;
-  onDelete?: (component: Api) => void;
+  apis: RestApi[];
+  onOpen: (api: RestApi) => void;
+  onDelete?: (api: RestApi) => void;
 };
 
 /** Auto-fill card grid, same density as the gateways page. */
-export function ApiCardGrid({
-  components,
-  onOpen,
-  onDelete,
-}: ApiCardGridProps) {
+export function ApiCardGrid({ apis, onOpen, onDelete }: ApiCardGridProps) {
   return (
     <Box
       sx={{
         display: 'grid',
         gap: 2.5,
-        gridTemplateColumns: 'repeat(auto-fill, minmax(360px, 1fr))',
+        gridTemplateColumns: {
+          xs: '1fr',
+          sm: 'repeat(2, 1fr)',
+          md: 'repeat(3, 1fr)',
+          lg: 'repeat(4, 1fr)',
+        },
+        // Allow cards to shrink so long text does not widen the grid.
+        '& > *': { minWidth: 0 },
       }}
     >
-      {components.map((component) => (
-        <ApiCard
-          component={component}
-          key={component.id}
-          onDelete={onDelete}
-          onOpen={onOpen}
-        />
+      {apis.map((api) => (
+        <ApiCard api={api} key={api.id} onDelete={onDelete} onOpen={onOpen} />
       ))}
     </Box>
   );

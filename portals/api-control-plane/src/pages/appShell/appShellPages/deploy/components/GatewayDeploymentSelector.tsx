@@ -30,10 +30,10 @@ import {
 } from '@wso2/oxygen-ui';
 import { ChevronLeft } from '@wso2/oxygen-ui-icons-react';
 
-import { useRestoreGatewayDeployment } from '../../../../api/hooks/useMvpQueries';
-import { useNotifications } from '../../../../components/Notifications';
-import type { Api, GatewayDeployment } from '../../../../types/domain';
-import { relativeTime } from '../../../../utils/relativeTime';
+import { useRestoreGatewayDeployment } from '../../../../../api/hooks/useMvpQueries';
+import { useNotifications } from '../../../../../components/Notifications';
+import type { Api, GatewayDeployment } from '../../../../../types/domain';
+import { relativeTime } from '../../../../../utils/relativeTime';
 import { DeploymentStatusChip } from './GatewayDeploymentRow';
 
 type GatewayDeploymentSelectorProps = {

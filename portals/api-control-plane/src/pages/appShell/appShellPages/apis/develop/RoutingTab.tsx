@@ -66,7 +66,7 @@ import {
   updateOperation,
   withRoutingEdits,
 } from './developEdit';
-import { SaveBar } from './SaveBar';
+import { SaveBar } from './components/SaveBar';
 
 // --- canvas geometry (fixed coords → SVG links need no DOM measurement) ---
 const OP_X = 4;

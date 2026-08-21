@@ -294,7 +294,7 @@ export function ProjectCard({
             component={Link}
             onClick={stopCardClick}
             size="small"
-            to={routes.settings(orgHandle, project.id)}
+            to={routes.projectSettings(orgHandle, project.id)}
           >
             <Settings size={16} />
           </IconButton>

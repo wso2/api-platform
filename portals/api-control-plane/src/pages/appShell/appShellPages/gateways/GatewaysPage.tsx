@@ -23,7 +23,6 @@ import {
   Button,
   IconButton,
   InputAdornment,
-  PageContent,
   PageTitle,
   Stack,
   TextField,
@@ -56,6 +55,7 @@ import type { Gateway } from '../../../../types/domain';
 import { relativeTime } from '../../../../utils/relativeTime';
 import { groupGatewaysByEnvironment } from './gatewayEnvironments';
 import './gatewaysUi.css';
+import { FormattedMessage } from 'react-intl';
 
 const MODE_LABEL: Record<Gateway['mode'], string> = {
   'self-hosted': 'Self-hosted',
@@ -314,11 +314,19 @@ export function GatewaysPage() {
   const groups = groupGatewaysByEnvironment(filtered);
 
   return (
-    <PageContent fullWidth>
+    <>
       <PageTitle>
-        <PageTitle.Header>API Gateways</PageTitle.Header>
+        <PageTitle.Header>
+          <FormattedMessage
+            id="gateways.title"
+            defaultMessage="Gateways"
+          />
+        </PageTitle.Header>
         <PageTitle.SubHeader>
-          Provision and manage the gateways that expose your APIs.
+          <FormattedMessage
+            id="gateways.subtitle"
+            defaultMessage="Provision and manage self-hosted or WSO2-managed gateways to expose your APIs to clients."
+          />
         </PageTitle.SubHeader>
         <PageTitle.Actions>
           <Button
@@ -327,7 +335,10 @@ export function GatewaysPage() {
             sx={{ borderRadius: 5 }}
             variant="contained"
           >
-            Provision gateway
+            <FormattedMessage
+              id="gateways.provisionButton"
+              defaultMessage="Provision gateway"
+            />
           </Button>
         </PageTitle.Actions>
       </PageTitle>
@@ -406,9 +417,15 @@ export function GatewaysPage() {
               size="small"
               value={filter}
             >
-              <ToggleButton value="all">All</ToggleButton>
-              <ToggleButton value="managed">Managed</ToggleButton>
-              <ToggleButton value="self">Self-hosted</ToggleButton>
+              <ToggleButton value="all">
+                <FormattedMessage id="gateways.filter.all" defaultMessage="All" />
+              </ToggleButton>
+              <ToggleButton value="managed">
+                <FormattedMessage id="gateways.filter.managed" defaultMessage="Managed" />
+              </ToggleButton>
+              <ToggleButton value="self">
+                <FormattedMessage id="gateways.filter.self" defaultMessage="Self-hosted" />
+              </ToggleButton>
             </ToggleButtonGroup>
           </Stack>
 
@@ -470,6 +487,6 @@ export function GatewaysPage() {
           )}
         </Stack>
       )}
-    </PageContent>
+    </>
   );
 }

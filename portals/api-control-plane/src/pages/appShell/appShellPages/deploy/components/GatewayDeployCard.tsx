@@ -29,16 +29,16 @@ import {
 } from '@wso2/oxygen-ui';
 import { ChevronDown } from '@wso2/oxygen-ui-icons-react';
 
-import { useDeployApi } from '../../../../api/hooks/useMvpQueries';
-import { useNotifications } from '../../../../components/Notifications';
-import type { Api, Gateway, GatewayDeployment } from '../../../../types/domain';
+import { useDeployApi } from '../../../../../api/hooks/useMvpQueries';
+import { useNotifications } from '../../../../../components/Notifications';
+import type { Api, Gateway, GatewayDeployment } from '../../../../../types/domain';
 import { GatewayDeployEnvCard } from './GatewayDeployEnvCard';
-import { GatewayDeploymentHistory } from './GatewayDeploymentHistory';
+import { GatewayDeploymentHistory } from '../GatewayDeploymentHistory';
 import {
   currentDeploymentFor,
   deploymentsForGateway,
   nextDeploymentName,
-} from './gatewayDeployUtils';
+} from '../utils/gatewayDeployUtils';
 
 type GatewayDeployCardProps = {
   api: Api;
