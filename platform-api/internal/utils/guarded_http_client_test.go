@@ -18,64 +18,30 @@
 package utils
 
 import (
-	"net"
 	"net/http"
 	"net/http/httptest"
 	"testing"
 )
 
-// TestIsAllowedUpstreamIP pins the upstream address policy in both directions. An MCP
-// upstream is normally a service the operator deployed, so private/in-cluster/loopback
-// addresses MUST stay reachable — a regression to a public-only policy would break every
-// cluster-internal MCP proxy. The metadata endpoint must stay unreachable regardless.
-func TestIsAllowedUpstreamIP(t *testing.T) {
-	allowed := []string{
-		"10.4.2.9",        // k8s ClusterIP / RFC 1918
-		"172.16.0.5",      // RFC 1918
-		"192.168.1.20",    // RFC 1918
-		"100.64.0.1",      // RFC 6598 shared address space
-		"127.0.0.1",       // loopback — local development
-		"::1",             // IPv6 loopback
-		"fd00::1",         // IPv6 ULA — in-cluster
-		"93.184.216.34",   // public
-		"2606:2800:220::", // public IPv6
-	}
-	for _, s := range allowed {
-		if ip := net.ParseIP(s); !isAllowedUpstreamIP(ip) {
-			t.Errorf("expected %s to be an allowed upstream address", s)
-		}
-	}
-
-	denied := []string{
-		"169.254.169.254", // cloud instance metadata
-		"169.254.1.1",     // link-local
-		"fe80::1",         // IPv6 link-local
-		"0.0.0.0",         // unspecified
-		"::",              // IPv6 unspecified
-		"224.0.0.1",       // multicast
-		"255.255.255.255", // broadcast
-	}
-	for _, s := range denied {
-		if ip := net.ParseIP(s); isAllowedUpstreamIP(ip) {
-			t.Errorf("expected %s to be a denied upstream address", s)
-		}
-	}
-
-	if isAllowedUpstreamIP(nil) {
-		t.Error("expected a nil address to be denied")
-	}
-}
-
-// TestUpstreamFetchClientReachesLoopbackBackend is the end-to-end counterpart: the client
-// must actually connect to a private/loopback backend, not merely rate the address as
-// allowed. This is the regression guard for MCP proxies with in-cluster upstreams.
+// TestUpstreamFetchClientReachesLoopbackBackend is the end-to-end regression guard for MCP
+// proxies with in-cluster upstreams: the client must actually connect to a private/loopback
+// backend under netguard.PermitPrivateBlockMetadata(), not merely rate the address as
+// allowed. The address-policy predicate itself (RFC 1918/loopback permitted, link-local/
+// metadata/unspecified/multicast/broadcast denied) is covered by netguard's own test suite
+// (httpkit/netguard/netguard_test.go); this test only needs to confirm this package wires
+// that policy in correctly end to end.
 func TestUpstreamFetchClientReachesLoopbackBackend(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
 	}))
 	defer srv.Close()
 
-	resp, err := NewUpstreamFetchClient(0).Get(srv.URL)
+	client, err := NewUpstreamFetchClient(0)
+	if err != nil {
+		t.Fatalf("failed to build guarded upstream client: %v", err)
+	}
+
+	resp, err := client.Get(srv.URL)
 	if err != nil {
 		t.Fatalf("guarded upstream client failed to reach a loopback backend: %v", err)
 	}
@@ -85,18 +51,21 @@ func TestUpstreamFetchClientReachesLoopbackBackend(t *testing.T) {
 	}
 }
 
-// TestUpstreamFetchClientRefusesDeniedAddress confirms the dialer refuses a denied address
-// even though the policy is otherwise permissive.
+// TestUpstreamFetchClientRefusesDeniedAddress confirms the dialer refuses a link-local
+// address (the class that is never a legitimate upstream but is a standard SSRF target —
+// 169.254.169.254 is the cloud instance metadata endpoint) even though
+// netguard.PermitPrivateBlockMetadata() is otherwise permissive of private/loopback
+// addresses. The target is an IP literal, so this does not require real network access: the
+// guarded dialer's resolution step returns the literal itself without a DNS round trip, and
+// the policy check rejects it before any connection is attempted.
 func TestUpstreamFetchClientRefusesDeniedAddress(t *testing.T) {
-	restore := upstreamIPIsAllowed
-	upstreamIPIsAllowed = func(net.IP) bool { return false }
-	defer func() { upstreamIPIsAllowed = restore }()
+	client, err := NewUpstreamFetchClient(0)
+	if err != nil {
+		t.Fatalf("failed to build guarded upstream client: %v", err)
+	}
 
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {}))
-	defer srv.Close()
-
-	if _, err := NewUpstreamFetchClient(0).Get(srv.URL); err == nil {
-		t.Fatal("expected the guarded client to refuse a disallowed address")
+	if _, err := client.Get("http://169.254.169.254/latest/meta-data/"); err == nil {
+		t.Fatal("expected the guarded client to refuse a link-local/metadata address")
 	}
 }
 
@@ -115,7 +84,12 @@ func TestUpstreamFetchClientRefusesCrossHostRedirect(t *testing.T) {
 	}))
 	defer crossHost.Close()
 
-	if _, err := NewUpstreamFetchClient(0).Get(crossHost.URL); err == nil {
+	client, err := NewUpstreamFetchClient(0)
+	if err != nil {
+		t.Fatalf("failed to build guarded upstream client: %v", err)
+	}
+
+	if _, err := client.Get(crossHost.URL); err == nil {
 		t.Fatal("expected the guarded client to refuse a cross-host redirect")
 	}
 
@@ -128,7 +102,7 @@ func TestUpstreamFetchClientRefusesCrossHostRedirect(t *testing.T) {
 	}))
 	defer sameHost.Close()
 
-	resp, err := NewUpstreamFetchClient(0).Get(sameHost.URL + "/moved")
+	resp, err := client.Get(sameHost.URL + "/moved")
 	if err != nil {
 		t.Fatalf("expected a same-host redirect to be followed: %v", err)
 	}

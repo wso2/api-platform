@@ -165,5 +165,42 @@ func defaultConfig() *Server {
 			MaxBodySize:        1 << 20, // 1 MiB
 			SignatureHeader:    "X-Api-Portal-Signature",
 		},
+		HTTPClient: HTTPClientConfig{
+			Pooling: HTTPClientPoolingConfig{
+				MaxIdleConns:        100,
+				MaxIdleConnsPerHost: 10,
+				MaxConnsPerHost:     100,
+				IdleConnTimeout:     90 * time.Second,
+				KeepAlive:           30 * time.Second,
+				// A one-off outbound probe/call (MCP reachability, OpenAPI spec fetch) has
+				// nothing to gain from connection reuse — matches the two pre-existing
+				// per-call clients this consolidates, which both set this true.
+				DisableKeepAlives: true,
+			},
+			Timeouts: HTTPClientTimeoutsConfig{
+				Overall:        60 * time.Second, // safety-net only; see HTTPClientConfig's doc comment
+				Dial:           10 * time.Second,
+				TLSHandshake:   10 * time.Second,
+				ResponseHeader: 10 * time.Second,
+				ExpectContinue: 1 * time.Second,
+				// MUST stay negative — see HTTPClientConfig's doc comment on why a
+				// client-level cap here would silently shadow OpenAPISpecMaxFetchBytes.
+				MaxResponseBytes: -1,
+			},
+			TLS: HTTPClientTLSConfig{
+				MinVersion:       "TLS1_2",
+				MaxVersion:       "TLS1_3",
+				CurvePreferences: "",
+			},
+			Proxy: HTTPClientProxyConfig{
+				Mode: "none",
+			},
+			SSRF: HTTPClientSSRFConfig{
+				Enabled:        true,
+				Preset:         "permit_private_block_metadata",
+				MaxRedirects:   5,
+				AllowedSchemes: []string{"http", "https"},
+			},
+		},
 	}
 }

@@ -99,15 +99,140 @@ type Server struct {
 	OpenAPISpecPath            string `koanf:"openapi_spec_path"`
 	LLMTemplateDefinitionsPath string `koanf:"llm_template_definitions_path"`
 	OpenAPISpecMaxFetchBytes   int64  `koanf:"openapi_spec_max_fetch_bytes"`
+	// MCPResponseMaxBytes bounds the body read from an MCP backend's initialize/JSON-RPC
+	// responses (internal/utils/mcp.go). <= 0 falls back to the fetcher's built-in 10 MiB
+	// default — mirroring OpenAPISpecMaxFetchBytes's own zero-means-default convention.
+	MCPResponseMaxBytes int64 `koanf:"mcp_response_max_fetch_bytes"`
 
-	Database    Database        `koanf:"database"`
-	Auth        Auth            `koanf:"auth"`
-	Deployments Deployments     `koanf:"deployments"`
-	Listeners   ServerListeners `koanf:"server"`
-	Security    Security        `koanf:"security"`
-	Gateway     Gateway         `koanf:"gateway"`
-	EventHub    EventHub        `koanf:"event_hub"`
-	Webhook     Webhook         `koanf:"webhook"`
+	Database    Database         `koanf:"database"`
+	Auth        Auth             `koanf:"auth"`
+	Deployments Deployments      `koanf:"deployments"`
+	Listeners   ServerListeners  `koanf:"server"`
+	Security    Security         `koanf:"security"`
+	Gateway     Gateway          `koanf:"gateway"`
+	EventHub    EventHub         `koanf:"event_hub"`
+	Webhook     Webhook          `koanf:"webhook"`
+	HTTPClient  HTTPClientConfig `koanf:"http_client"`
+}
+
+// HTTPClientConfig configures the single shared outbound *http.Client used by every
+// SSRF-guarded call this process makes whose destination is not fully trusted (MCP
+// reachability probes / JSON-RPC calls in internal/utils/mcp.go and common.go, and OpenAPI
+// spec-by-URL fetches in internal/utils/openapi_spec_fetcher.go). It mirrors
+// github.com/wso2/go-httpkit/httpclient.Config field-for-field (see that package's own doc
+// comments for full semantics), the same shape gateway-controller's own HTTPClientConfig
+// uses (gateway/gateway-controller/pkg/config/config.go) — so every knob the library exposes
+// that has a natural TOML shape is operator-configurable here rather than hardcoded in
+// main.go. The few fields httpclient.Config exposes that CANNOT be expressed in TOML — Go
+// callback hooks (GetClientCertificate, VerifyPeerCertificate, VerifyConnection,
+// ConnectHeader) and a pre-built *x509.CertPool / []*net.IPNet — are not represented here.
+//
+// Timeouts.Overall is only a generous safety-net budget: real per-call budgets (10s for MCP
+// calls, 15s for OpenAPI spec fetch) are enforced via a context.WithTimeout deadline at each
+// call site, since http.Client.Do honors a request's context deadline independent of the
+// client-level Timeout.
+//
+// Timeouts.MaxResponseBytes MUST stay disabled (negative) in the shipped default: the OpenAPI
+// spec fetch path applies its own, potentially-larger operator-configured cap
+// (OpenAPISpecMaxFetchBytes) via io.LimitReader at the call site, and a smaller client-level
+// cap here would silently shadow it. MCP response reads are bounded separately, by
+// MCPResponseMaxBytes above, at their own call sites in internal/utils/mcp.go.
+//
+// Unlike gateway-controller (which sources TLS.InsecureSkipVerify from an existing
+// controlplane.insecure_skip_verify setting), platform-api has no equivalent existing trust
+// setting to reuse, so HTTPClientTLSConfig.InsecureSkipVerify is its own field here.
+type HTTPClientConfig struct {
+	Pooling  HTTPClientPoolingConfig  `koanf:"pooling"`
+	Timeouts HTTPClientTimeoutsConfig `koanf:"timeouts"`
+	TLS      HTTPClientTLSConfig      `koanf:"tls"`
+	Proxy    HTTPClientProxyConfig    `koanf:"proxy"`
+	SSRF     HTTPClientSSRFConfig     `koanf:"ssrf"`
+}
+
+// HTTPClientPoolingConfig mirrors httpclient.PoolingConfig.
+type HTTPClientPoolingConfig struct {
+	MaxIdleConns        int           `koanf:"max_idle_conns"`
+	MaxIdleConnsPerHost int           `koanf:"max_idle_conns_per_host"`
+	MaxConnsPerHost     int           `koanf:"max_conns_per_host"`
+	IdleConnTimeout     time.Duration `koanf:"idle_conn_timeout"`
+	KeepAlive           time.Duration `koanf:"keep_alive"`
+	DisableKeepAlives   bool          `koanf:"disable_keep_alives"`
+	// EnableHTTP2 opts into HTTP/2. See httpclient.PoolingConfig.EnableHTTP2's doc comment
+	// on the HTTP/2 connection-coalescing caveat before enabling.
+	EnableHTTP2 bool `koanf:"enable_http2"`
+}
+
+// HTTPClientTimeoutsConfig mirrors httpclient.TimeoutsConfig.
+type HTTPClientTimeoutsConfig struct {
+	Overall          time.Duration `koanf:"overall"` // safety-net only; see HTTPClientConfig's doc comment
+	Dial             time.Duration `koanf:"dial"`
+	TLSHandshake     time.Duration `koanf:"tls_handshake"`
+	ResponseHeader   time.Duration `koanf:"response_header"`
+	ExpectContinue   time.Duration `koanf:"expect_continue"`
+	MaxResponseBytes int64         `koanf:"max_response_bytes"` // 0 = package default (10MiB); negative disables the bound
+}
+
+// HTTPClientTLSConfig mirrors the TOML-expressible subset of httpclient.TLSConfig.
+type HTTPClientTLSConfig struct {
+	MinVersion       string `koanf:"min_version"`       // one of "TLS1_0".."TLS1_3"
+	MaxVersion       string `koanf:"max_version"`       // one of "TLS1_0".."TLS1_3"
+	CipherSuites     string `koanf:"cipher_suites"`     // comma-separated Go crypto/tls cipher suite names; TLS 1.2 and below only
+	CurvePreferences string `koanf:"curve_preferences"` // comma-separated, e.g. "X25519MLKEM768,X25519,P-256"
+	RootCAFile       string `koanf:"root_ca_file"`      // PEM CA bundle; empty uses the system root pool
+	ClientCertFile   string `koanf:"client_cert_file"`  // mTLS to the origin; both cert and key must be set together
+	ClientKeyFile    string `koanf:"client_key_file"`
+	// InsecureSkipVerify has no existing platform-api setting to source from (unlike
+	// gateway-controller's controller.controlplane.insecure_skip_verify), so it is its own
+	// field here. Defaults to false; enable only for local/dev environments.
+	InsecureSkipVerify bool `koanf:"insecure_skip_verify"`
+}
+
+// HTTPClientProxyConfig mirrors the TOML-expressible subset of httpclient.ProxyConfig.
+type HTTPClientProxyConfig struct {
+	// Mode selects how the proxy is determined: "none" (default), "environment"
+	// (HTTP_PROXY/HTTPS_PROXY/NO_PROXY), or "url" (URL/Username/Password/NoProxy below).
+	Mode     string   `koanf:"mode"`
+	URL      string   `koanf:"url"`
+	Username string   `koanf:"username"`
+	Password string   `koanf:"password"`
+	NoProxy  []string `koanf:"no_proxy"` // exact host, ".suffix", or CIDR entries; only used when mode == "url"
+
+	TLS HTTPClientProxyTLSConfig `koanf:"tls"`
+
+	// Egress states how origin-destination SSRF risk is handled when a forward proxy is
+	// also configured: "delegated" (trust the proxy's own egress controls) or
+	// "manual_connect" (validate the origin locally before ever issuing CONNECT). Must be
+	// set explicitly whenever Mode != "none" and SSRF.Enabled — httpclient.New fails
+	// closed at startup otherwise rather than silently choosing one.
+	Egress string `koanf:"egress"`
+}
+
+// HTTPClientProxyTLSConfig mirrors httpclient.ProxyTLSConfig (the proxy's own TLS
+// handshake, fully decoupled from the origin TLS handshake in HTTPClientTLSConfig).
+type HTTPClientProxyTLSConfig struct {
+	RootCAFile         string `koanf:"root_ca_file"`
+	ClientCertFile     string `koanf:"client_cert_file"`
+	ClientKeyFile      string `koanf:"client_key_file"`
+	InsecureSkipVerify bool   `koanf:"insecure_skip_verify"`
+}
+
+// HTTPClientSSRFConfig mirrors the TOML-expressible subset of httpclient.SSRFConfig.
+// Enabled by default: unlike gateway-controller's shared client (whose callers all target a
+// single fixed, operator-configured host), every current caller of this platform-api client
+// fetches a user/tenant-supplied URL (an MCP proxy's upstream, a template's OpenAPI spec
+// URL) — exactly the scenario ssrf-prevention.md targets — so the guard defaults on.
+type HTTPClientSSRFConfig struct {
+	Enabled bool `koanf:"enabled"`
+	// Preset selects a built-in netguard policy: "permit_private_block_metadata" (default —
+	// a backend that is normally private — a ClusterIP, a service-DNS name, localhost —
+	// stays reachable; only link-local/metadata/unspecified/multicast are refused) or
+	// "public_only" (stricter: every private/loopback/link-local/CGNAT address is refused,
+	// for a URL expected to point at the public internet). Required when Enabled is true.
+	// Custom CIDR allow/deny lists have no natural TOML shape and are not exposed here — use
+	// the httpclient/netguard packages directly in code for that.
+	Preset         string   `koanf:"preset"`
+	MaxRedirects   int      `koanf:"max_redirects"`
+	AllowedSchemes []string `koanf:"allowed_schemes"` // empty defaults to {"https"}
 }
 
 // Authentication modes selectable via auth.mode. Exactly one mode is active;
