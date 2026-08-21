@@ -674,12 +674,12 @@ func generateLLMProviderDeploymentYAML(provider *model.LLMProvider, templateHand
 		if security.APIKey != nil && isBoolTrue(security.APIKey.Enabled) {
 			key := strings.TrimSpace(security.APIKey.Key)
 			if key == "" {
-				return dto.LLMProviderDeploymentYAML{}, fmt.Errorf("invalid api key security configuration: key is required")
+				return dto.LLMProviderDeploymentYAML{}, apperror.LLMProviderDeploymentValidationFailed.New("invalid api key security configuration: key is required")
 			}
 
 			in := strings.ToLower(strings.TrimSpace(security.APIKey.In))
 			if in != "header" && in != "query" {
-				return dto.LLMProviderDeploymentYAML{}, fmt.Errorf("invalid api key security configuration: in must be 'header' or 'query', got %q", security.APIKey.In)
+				return dto.LLMProviderDeploymentYAML{}, apperror.LLMProviderDeploymentValidationFailed.New(fmt.Sprintf("invalid api key security configuration: in must be 'header' or 'query', got %q", security.APIKey.In))
 			}
 
 			params := map[string]interface{}{"key": key, "in": in}
@@ -1779,12 +1779,12 @@ func generateLLMProxyDeploymentYAML(proxy *model.LLMProxy) (dto.LLMProxyDeployme
 		if security.APIKey != nil && isBoolTrue(security.APIKey.Enabled) {
 			key := strings.TrimSpace(security.APIKey.Key)
 			if key == "" {
-				return dto.LLMProxyDeploymentYAML{}, fmt.Errorf("invalid api key security configuration: key is required")
+				return dto.LLMProxyDeploymentYAML{}, apperror.LLMProxyDeploymentValidationFailed.New("invalid api key security configuration: key is required")
 			}
 
 			in := strings.ToLower(strings.TrimSpace(security.APIKey.In))
 			if in != "header" && in != "query" {
-				return dto.LLMProxyDeploymentYAML{}, fmt.Errorf("invalid api key security configuration: in must be 'header' or 'query', got %q", security.APIKey.In)
+				return dto.LLMProxyDeploymentYAML{}, apperror.LLMProxyDeploymentValidationFailed.New(fmt.Sprintf("invalid api key security configuration: in must be 'header' or 'query', got %q", security.APIKey.In))
 			}
 
 			params := map[string]interface{}{"key": key, "in": in}

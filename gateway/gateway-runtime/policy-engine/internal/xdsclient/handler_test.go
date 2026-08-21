@@ -30,6 +30,7 @@ import (
 
 	"github.com/wso2/api-platform/gateway/gateway-runtime/policy-engine/internal/kernel"
 	"github.com/wso2/api-platform/gateway/gateway-runtime/policy-engine/internal/registry"
+	"github.com/wso2/api-platform/gateway/gateway-runtime/policy-engine/internal/resolver"
 	policyenginev1 "github.com/wso2/api-platform/sdk/core/policyengine"
 )
 
@@ -43,7 +44,7 @@ func TestNewResourceHandler(t *testing.T) {
 		Policies: make(map[string]*registry.PolicyEntry),
 	}
 
-	handler := NewResourceHandler(k, reg)
+	handler := NewResourceHandler(k, reg, resolver.DefaultRegistry())
 
 	require.NotNil(t, handler)
 	assert.NotNil(t, handler.kernel)
@@ -62,7 +63,7 @@ func TestConvertStoredConfigToPolicyChains_Empty(t *testing.T) {
 	reg := &registry.PolicyRegistry{
 		Policies: make(map[string]*registry.PolicyEntry),
 	}
-	handler := NewResourceHandler(k, reg)
+	handler := NewResourceHandler(k, reg, resolver.DefaultRegistry())
 
 	stored := &StoredPolicyConfig{
 		Configuration: policyenginev1.Configuration{
@@ -80,7 +81,7 @@ func TestConvertStoredConfigToPolicyChains_MultipleRoutes(t *testing.T) {
 	reg := &registry.PolicyRegistry{
 		Policies: make(map[string]*registry.PolicyEntry),
 	}
-	handler := NewResourceHandler(k, reg)
+	handler := NewResourceHandler(k, reg, resolver.DefaultRegistry())
 
 	stored := &StoredPolicyConfig{
 		ID: "test-api",
@@ -108,7 +109,7 @@ func TestValidatePolicyChainConfig_EmptyRouteKey(t *testing.T) {
 	reg := &registry.PolicyRegistry{
 		Policies: make(map[string]*registry.PolicyEntry),
 	}
-	handler := NewResourceHandler(k, reg)
+	handler := NewResourceHandler(k, reg, resolver.DefaultRegistry())
 
 	config := &policyenginev1.PolicyChain{
 		RouteKey: "",
@@ -125,7 +126,7 @@ func TestValidatePolicyChainConfig_PolicyMissingName(t *testing.T) {
 	reg := &registry.PolicyRegistry{
 		Policies: make(map[string]*registry.PolicyEntry),
 	}
-	handler := NewResourceHandler(k, reg)
+	handler := NewResourceHandler(k, reg, resolver.DefaultRegistry())
 
 	config := &policyenginev1.PolicyChain{
 		RouteKey: "test-route",
@@ -145,7 +146,7 @@ func TestValidatePolicyChainConfig_PolicyMissingVersion(t *testing.T) {
 	reg := &registry.PolicyRegistry{
 		Policies: make(map[string]*registry.PolicyEntry),
 	}
-	handler := NewResourceHandler(k, reg)
+	handler := NewResourceHandler(k, reg, resolver.DefaultRegistry())
 
 	config := &policyenginev1.PolicyChain{
 		RouteKey: "test-route",
@@ -165,7 +166,7 @@ func TestValidatePolicyChainConfig_PolicyNotInRegistry(t *testing.T) {
 	reg := &registry.PolicyRegistry{
 		Policies: make(map[string]*registry.PolicyEntry),
 	}
-	handler := NewResourceHandler(k, reg)
+	handler := NewResourceHandler(k, reg, resolver.DefaultRegistry())
 
 	config := &policyenginev1.PolicyChain{
 		RouteKey: "test-route",
@@ -185,7 +186,7 @@ func TestValidatePolicyChainConfig_NoPolicies(t *testing.T) {
 	reg := &registry.PolicyRegistry{
 		Policies: make(map[string]*registry.PolicyEntry),
 	}
-	handler := NewResourceHandler(k, reg)
+	handler := NewResourceHandler(k, reg, resolver.DefaultRegistry())
 
 	config := &policyenginev1.PolicyChain{
 		RouteKey: "test-route",
@@ -206,7 +207,7 @@ func TestGetAllRouteKeys(t *testing.T) {
 	reg := &registry.PolicyRegistry{
 		Policies: make(map[string]*registry.PolicyEntry),
 	}
-	handler := NewResourceHandler(k, reg)
+	handler := NewResourceHandler(k, reg, resolver.DefaultRegistry())
 
 	// Currently returns empty slice as xDS State of the World sends all routes
 	result := handler.getAllRouteKeys()
@@ -224,7 +225,7 @@ func TestHandlePolicyChainUpdate_EmptyResources(t *testing.T) {
 	reg := &registry.PolicyRegistry{
 		Policies: make(map[string]*registry.PolicyEntry),
 	}
-	handler := NewResourceHandler(k, reg)
+	handler := NewResourceHandler(k, reg, resolver.DefaultRegistry())
 
 	ctx := context.Background()
 	err := handler.HandlePolicyChainUpdate(ctx, []*anypb.Any{}, "v1")
@@ -237,7 +238,7 @@ func TestHandlePolicyChainUpdate_WrongTypeURL(t *testing.T) {
 	reg := &registry.PolicyRegistry{
 		Policies: make(map[string]*registry.PolicyEntry),
 	}
-	handler := NewResourceHandler(k, reg)
+	handler := NewResourceHandler(k, reg, resolver.DefaultRegistry())
 
 	ctx := context.Background()
 	resources := []*anypb.Any{
@@ -255,7 +256,7 @@ func TestHandlePolicyChainUpdate_InvalidInnerAny(t *testing.T) {
 	reg := &registry.PolicyRegistry{
 		Policies: make(map[string]*registry.PolicyEntry),
 	}
-	handler := NewResourceHandler(k, reg)
+	handler := NewResourceHandler(k, reg, resolver.DefaultRegistry())
 
 	ctx := context.Background()
 	resources := []*anypb.Any{
@@ -273,7 +274,7 @@ func TestHandlePolicyChainUpdate_InvalidStructInInnerAny(t *testing.T) {
 	reg := &registry.PolicyRegistry{
 		Policies: make(map[string]*registry.PolicyEntry),
 	}
-	handler := NewResourceHandler(k, reg)
+	handler := NewResourceHandler(k, reg, resolver.DefaultRegistry())
 
 	// Create an inner Any with invalid Struct data
 	innerAny := &anypb.Any{
@@ -298,7 +299,7 @@ func TestHandlePolicyChainUpdate_ValidEmptyConfig(t *testing.T) {
 	reg := &registry.PolicyRegistry{
 		Policies: make(map[string]*registry.PolicyEntry),
 	}
-	handler := NewResourceHandler(k, reg)
+	handler := NewResourceHandler(k, reg, resolver.DefaultRegistry())
 
 	// Create a valid empty stored config
 	storedConfig := map[string]interface{}{
@@ -342,7 +343,7 @@ func TestHandlePolicyChainUpdate_RouteWithInvalidPolicy(t *testing.T) {
 	reg := &registry.PolicyRegistry{
 		Policies: make(map[string]*registry.PolicyEntry),
 	}
-	handler := NewResourceHandler(k, reg)
+	handler := NewResourceHandler(k, reg, resolver.DefaultRegistry())
 
 	// Create config with a route that has a nonexistent policy
 	storedConfig := map[string]interface{}{
@@ -398,7 +399,7 @@ func TestHandlePolicyChainUpdate_RouteWithEmptyKey(t *testing.T) {
 	reg := &registry.PolicyRegistry{
 		Policies: make(map[string]*registry.PolicyEntry),
 	}
-	handler := NewResourceHandler(k, reg)
+	handler := NewResourceHandler(k, reg, resolver.DefaultRegistry())
 
 	// Create config with a route that has empty key
 	storedConfig := map[string]interface{}{
@@ -451,7 +452,7 @@ func TestBuildPolicyChain_EmptyConfig(t *testing.T) {
 	reg := &registry.PolicyRegistry{
 		Policies: make(map[string]*registry.PolicyEntry),
 	}
-	handler := NewResourceHandler(k, reg)
+	handler := NewResourceHandler(k, reg, resolver.DefaultRegistry())
 
 	config := &policyenginev1.PolicyChain{
 		RouteKey: "test-route",
@@ -480,7 +481,7 @@ func TestBuildPolicyChain_UnknownPolicy(t *testing.T) {
 	reg := &registry.PolicyRegistry{
 		Policies: make(map[string]*registry.PolicyEntry),
 	}
-	handler := NewResourceHandler(k, reg)
+	handler := NewResourceHandler(k, reg, resolver.DefaultRegistry())
 
 	config := &policyenginev1.PolicyChain{
 		RouteKey: "test-route",
@@ -511,7 +512,7 @@ func TestBuildPolicyChain_MetadataPropagation(t *testing.T) {
 	reg := &registry.PolicyRegistry{
 		Policies: make(map[string]*registry.PolicyEntry),
 	}
-	handler := NewResourceHandler(k, reg)
+	handler := NewResourceHandler(k, reg, resolver.DefaultRegistry())
 
 	config := &policyenginev1.PolicyChain{
 		RouteKey: "test-route",

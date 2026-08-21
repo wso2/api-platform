@@ -21,6 +21,7 @@ package xdsclient
 import (
 	"context"
 	"fmt"
+	"github.com/wso2/api-platform/gateway/gateway-runtime/policy-engine/internal/resolver"
 	"io"
 	"path/filepath"
 	"testing"
@@ -41,7 +42,7 @@ func TestClient_Dial_InsecureConnection(t *testing.T) {
 	config.ServerAddress = "invalid-server:99999"
 	config.ConnectTimeout = 100 * time.Millisecond
 
-	client, err := NewClient(config, k, reg)
+	client, err := NewClient(config, k, reg, resolver.DefaultRegistry())
 	require.NoError(t, err)
 
 	// Attempt to dial (will fail due to invalid server, but we test the path)
@@ -79,7 +80,7 @@ func TestClient_Dial_TLSConnectionWithValidCerts(t *testing.T) {
 	config.ServerAddress = "invalid-server:99999"
 	config.ConnectTimeout = 100 * time.Millisecond
 
-	client, err := NewClient(config, k, reg)
+	client, err := NewClient(config, k, reg, resolver.DefaultRegistry())
 	require.NoError(t, err)
 
 	// Attempt to dial (will fail due to invalid server, but TLS config should load)
@@ -101,7 +102,7 @@ func TestClient_Dial_TLSConnectionWithInvalidCerts(t *testing.T) {
 	config.ServerAddress = "invalid-server:99999"
 	config.ConnectTimeout = 100 * time.Millisecond
 
-	client, err := NewClient(config, k, reg)
+	client, err := NewClient(config, k, reg, resolver.DefaultRegistry())
 	require.NoError(t, err)
 
 	// Attempt to dial
@@ -120,7 +121,7 @@ func TestClient_Dial_TimeoutApplied(t *testing.T) {
 	config.ServerAddress = "192.0.2.1:99999" // Non-routable IP (TEST-NET-1)
 	config.ConnectTimeout = 200 * time.Millisecond
 
-	client, err := NewClient(config, k, reg)
+	client, err := NewClient(config, k, reg, resolver.DefaultRegistry())
 	require.NoError(t, err)
 
 	start := time.Now()
@@ -141,7 +142,7 @@ func TestClient_Dial_ContextCancellation(t *testing.T) {
 	config.ServerAddress = "192.0.2.1:99999" // Non-routable IP
 	config.ConnectTimeout = 10 * time.Second // Long timeout
 
-	client, err := NewClient(config, k, reg)
+	client, err := NewClient(config, k, reg, resolver.DefaultRegistry())
 	require.NoError(t, err)
 
 	// Cancel context before dial
@@ -159,7 +160,7 @@ func TestClient_SendDiscoveryRequest_AllTypes(t *testing.T) {
 	k, reg := createTestKernelAndRegistry(t)
 	config := createValidTestConfig()
 
-	client, err := NewClient(config, k, reg)
+	client, err := NewClient(config, k, reg, resolver.DefaultRegistry())
 	require.NoError(t, err)
 
 	// Create a mock stream
@@ -199,7 +200,7 @@ func TestClient_SendDiscoveryRequest_NoStream(t *testing.T) {
 	k, reg := createTestKernelAndRegistry(t)
 	config := createValidTestConfig()
 
-	client, err := NewClient(config, k, reg)
+	client, err := NewClient(config, k, reg, resolver.DefaultRegistry())
 	require.NoError(t, err)
 
 	// No stream set
@@ -213,7 +214,7 @@ func TestClient_SendDiscoveryRequestForType_PolicyChain(t *testing.T) {
 	k, reg := createTestKernelAndRegistry(t)
 	config := createValidTestConfig()
 
-	client, err := NewClient(config, k, reg)
+	client, err := NewClient(config, k, reg, resolver.DefaultRegistry())
 	require.NoError(t, err)
 
 	mockStream := &mockADSStream{
@@ -241,7 +242,7 @@ func TestClient_SendDiscoveryRequestForType_APIKey(t *testing.T) {
 	k, reg := createTestKernelAndRegistry(t)
 	config := createValidTestConfig()
 
-	client, err := NewClient(config, k, reg)
+	client, err := NewClient(config, k, reg, resolver.DefaultRegistry())
 	require.NoError(t, err)
 
 	mockStream := &mockADSStream{
@@ -267,7 +268,7 @@ func TestClient_SendDiscoveryRequestForType_LazyResource(t *testing.T) {
 	k, reg := createTestKernelAndRegistry(t)
 	config := createValidTestConfig()
 
-	client, err := NewClient(config, k, reg)
+	client, err := NewClient(config, k, reg, resolver.DefaultRegistry())
 	require.NoError(t, err)
 
 	mockStream := &mockADSStream{
@@ -293,7 +294,7 @@ func TestClient_SendDiscoveryRequestForType_NoStream(t *testing.T) {
 	k, reg := createTestKernelAndRegistry(t)
 	config := createValidTestConfig()
 
-	client, err := NewClient(config, k, reg)
+	client, err := NewClient(config, k, reg, resolver.DefaultRegistry())
 	require.NoError(t, err)
 
 	// No stream set
@@ -307,7 +308,7 @@ func TestClient_ProcessStream_ErrorHandling_Timeout(t *testing.T) {
 	k, reg := createTestKernelAndRegistry(t)
 	config := createValidTestConfig()
 
-	client, err := NewClient(config, k, reg)
+	client, err := NewClient(config, k, reg, resolver.DefaultRegistry())
 	require.NoError(t, err)
 
 	mockStream := &mockADSStream{
@@ -323,7 +324,7 @@ func TestClient_ProcessStream_ErrorHandling_EOF(t *testing.T) {
 	k, reg := createTestKernelAndRegistry(t)
 	config := createValidTestConfig()
 
-	client, err := NewClient(config, k, reg)
+	client, err := NewClient(config, k, reg, resolver.DefaultRegistry())
 	require.NoError(t, err)
 
 	mockStream := &mockADSStream{
@@ -339,7 +340,7 @@ func TestClient_ProcessStream_ErrorHandling_NetworkError(t *testing.T) {
 	k, reg := createTestKernelAndRegistry(t)
 	config := createValidTestConfig()
 
-	client, err := NewClient(config, k, reg)
+	client, err := NewClient(config, k, reg, resolver.DefaultRegistry())
 	require.NoError(t, err)
 
 	networkErr := fmt.Errorf("network connection lost")
@@ -357,7 +358,7 @@ func TestClient_SendDiscoveryRequest_VersionTracking(t *testing.T) {
 	k, reg := createTestKernelAndRegistry(t)
 	config := createValidTestConfig()
 
-	client, err := NewClient(config, k, reg)
+	client, err := NewClient(config, k, reg, resolver.DefaultRegistry())
 	require.NoError(t, err)
 
 	mockStream := &mockADSStream{
@@ -392,7 +393,7 @@ func TestClient_GetPolicyChainVersion(t *testing.T) {
 	k, reg := createTestKernelAndRegistry(t)
 	config := createValidTestConfig()
 
-	client, err := NewClient(config, k, reg)
+	client, err := NewClient(config, k, reg, resolver.DefaultRegistry())
 	require.NoError(t, err)
 
 	client.mu.Lock()
@@ -441,7 +442,7 @@ func TestClient_ProcessStream_SuccessfulResponse(t *testing.T) {
 	k, reg := createTestKernelAndRegistry(t)
 	config := createValidTestConfig()
 
-	client, err := NewClient(config, k, reg)
+	client, err := NewClient(config, k, reg, resolver.DefaultRegistry())
 	require.NoError(t, err)
 
 	// Create a valid but minimal response
@@ -492,7 +493,7 @@ func TestClient_ProcessStream_UnknownTypeURL(t *testing.T) {
 	k, reg := createTestKernelAndRegistry(t)
 	config := createValidTestConfig()
 
-	client, err := NewClient(config, k, reg)
+	client, err := NewClient(config, k, reg, resolver.DefaultRegistry())
 	require.NoError(t, err)
 
 	// Response with unknown type URL
@@ -540,7 +541,7 @@ func TestClient_SendDiscoveryRequest_SendError(t *testing.T) {
 	k, reg := createTestKernelAndRegistry(t)
 	config := createValidTestConfig()
 
-	client, err := NewClient(config, k, reg)
+	client, err := NewClient(config, k, reg, resolver.DefaultRegistry())
 	require.NoError(t, err)
 
 	mockStream := &mockADSStream{

@@ -65,6 +65,7 @@ fi
 
 API_PORTAL_URL="${API_PORTAL_URL:-https://localhost:9543}"
 PLATFORM_API_URL="${PLATFORM_API_URL:-https://localhost:9243}"
+API_PORTAL_API_BASE="/api-portal/api/v0.9"
 
 # Colors/symbols only when writing to an interactive terminal (respects the
 # NO_COLOR convention: https://no-color.org/) — a piped/CI log gets plain
@@ -187,7 +188,7 @@ seed_entry() {
     local definition
     definition=$(compgen -G "$sample_dir/definition.*" 2>/dev/null | head -1 || true)
 
-    local curl_args=(-sk -X POST "$API_PORTAL_URL/api/v0.9/$endpoint" \
+    local curl_args=(-sk -X POST "$API_PORTAL_URL$API_PORTAL_API_BASE/$endpoint" \
         -H "$AUTH_HEADER" \
         -F "metadata=@$api_yaml;type=application/yaml")
     if [ -n "$definition" ]; then
@@ -203,7 +204,7 @@ seed_entry() {
         id=$(echo "$body" | jq -r '.id // empty')
         DOCS_RESULT=""
         DOCS_FAILED=0
-        [ -n "$id" ] && seed_docs "$sample_dir" "/api/v0.9/$endpoint/$id"
+        [ -n "$id" ] && seed_docs "$sample_dir" "$API_PORTAL_API_BASE/$endpoint/$id"
         if [ "$DOCS_FAILED" -eq 1 ]; then
             # Entry itself was created, but its docs upload failed — surface this
             # as a failure (red symbol, FAILED tally) rather than a clean success,

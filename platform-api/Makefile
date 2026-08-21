@@ -34,6 +34,26 @@ CLOUD_IMAGE_SUFFIX ?= platform-api-cloud
 CLOUD_IMAGE_NAME := $(DOCKER_REGISTRY)/$(CLOUD_IMAGE_SUFFIX)
 PORT ?= 9243
 
+# Cloud image tag: defaults to "<branch>-<commit>" computed IDENTICALLY to the
+# platform-api-cloud-release workflow's IMAGE_VERSION step — sanitize the branch
+# ([^a-zA-Z0-9._-] -> '-'), prefix '_' if it doesn't start with [a-zA-Z0-9_],
+# cap the branch at 87 chars, then append the FULL commit SHA. Prefer GitHub
+# Actions' GITHUB_REF_NAME/GITHUB_SHA when set (git rev-parse --abbrev-ref HEAD
+# returns "HEAD" after actions/checkout's detached checkout, which would yield a
+# "HEAD-<commit>" tag); fall back to git for local builds. An explicitly supplied
+# VERSION (CI passes PLATFORM_API_VERSION, or `make cloud-build VERSION=x`) takes
+# precedence over all of this.
+CLOUD_IMAGE_TAG := $(shell \
+	b="$${GITHUB_REF_NAME:-$$(git rev-parse --abbrev-ref HEAD 2>/dev/null || echo unknown)}"; \
+	b=$$(printf '%s' "$$b" | sed -e 's/[^a-zA-Z0-9._-]/-/g' -e 's/^[^a-zA-Z0-9_]/_&/' | cut -c1-87); \
+	printf '%s-%s' "$$b" "$${GITHUB_SHA:-$$(git rev-parse HEAD 2>/dev/null || echo unknown)}")
+ifeq ($(origin VERSION),command line)
+CLOUD_IMAGE_TAG := $(VERSION)
+endif
+ifeq ($(origin VERSION),environment)
+CLOUD_IMAGE_TAG := $(VERSION)
+endif
+
 # Integration test configuration
 IT_PROJECT ?= platform-api-it
 MSSQL_PASSWORD ?= Strong!Passw0rd
@@ -117,7 +137,8 @@ build: ## Build Docker image
 		--load \
 		.
 
-cloud-build: ## Build cloud Docker image with the event-gateway plugin (EXPERIMENTAL=true)
+cloud-build: VERSION := $(CLOUD_IMAGE_TAG)
+cloud-build: ## Build cloud Docker image with the event-gateway plugin (EXPERIMENTAL=true), tagged <branch>-<commit> (override with VERSION=x)
 	@echo "Building cloud Docker image ($(CLOUD_IMAGE_NAME):$(VERSION)) with event-gateway plugin..."
 	docker buildx build -f Dockerfile \
 		--build-context common=../common \
@@ -168,7 +189,8 @@ build-and-push-multiarch: ## Build and push multi-architecture Docker image (lin
 		--push \
 		.
 
-cloud-build-and-push-multiarch: ## Build and push multi-arch cloud image with the event-gateway plugin (linux/amd64, linux/arm64)
+cloud-build-and-push-multiarch: VERSION := $(CLOUD_IMAGE_TAG)
+cloud-build-and-push-multiarch: ## Build and push multi-arch cloud image with the event-gateway plugin (linux/amd64, linux/arm64), tagged <branch>-<commit> (override with VERSION=x)
 	@echo "Building and pushing multi-arch cloud image: $(CLOUD_IMAGE_NAME):$(VERSION) with event-gateway plugin"
 	docker buildx build -f Dockerfile \
 		--platform linux/amd64,linux/arm64 \
