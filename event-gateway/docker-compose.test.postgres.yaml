@@ -80,6 +80,7 @@ services:
     volumes:
       - controller-data:/app/data
       - ../gateway/configs/config.toml:/etc/gateway-controller/config.toml:ro
+      - ../gateway/it/it-aesgcm-keys/default-aesgcm256-v1.bin:/app/data/aesgcm-keys/default-aesgcm256-v1.bin:ro
       - ../gateway/gateway-controller/certificates:/app/certificates
       - ../gateway/gateway-controller/listener-certs:/app/listener-certs:ro
     depends_on:
