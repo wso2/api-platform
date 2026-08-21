@@ -622,7 +622,12 @@ func main() {
 	// Start controller admin server for debug endpoints if enabled.
 	var controllerAdminServer *adminserver.Server
 	if cfg.Controller.AdminServer.Enabled {
-		controllerAdminServer = adminserver.NewServer(&cfg.Controller.AdminServer, apiServer, log)
+		adminAuthz := authenticators.AuthorizationMiddleware(
+			commonmodels.AuthConfig{ResourceRoles: adminResourceRoles()}, log)
+		adminProtect := func(next http.Handler) http.Handler {
+			return authMiddleWare(adminAuthz(next))
+		}
+		controllerAdminServer = adminserver.NewServer(&cfg.Controller.AdminServer, apiServer, adminProtect, log)
 		go func() {
 			if err := controllerAdminServer.Start(); err != nil {
 				log.Error("Controller admin server failed", slog.Any("error", err))
@@ -792,6 +797,46 @@ func generateAuthConfig(cfg *coreconfig.Config) commonmodels.AuthConfig {
 		JWTConfig:     &idpAuth,
 		ResourceRoles: DefaultResourceRoles,
 	}
+}
+
+func adminResourceRoles() map[string][]string {
+	const adminRole = "admin"
+
+	prefixed := func(methodAndPath string) string {
+		idx := strings.Index(methodAndPath, " ")
+		if idx < 0 {
+			return methodAndPath
+		}
+		return methodAndPath[:idx+1] + adminserver.AdminAPIBasePath + methodAndPath[idx+1:]
+	}
+
+	relativeRoles := map[string][]string{
+		"GET /config_dump":     {adminRole},
+		"GET /xds_sync_status": {adminRole},
+	}
+
+	// pprof endpoints are registered directly on the mux rather than under a
+	// BaseURL, so their pattern carries no method and no base-path prefix.
+	pprofRoles := map[string][]string{
+		"/debug/pprof/":        {adminRole},
+		"/debug/pprof/cmdline": {adminRole},
+		"/debug/pprof/profile": {adminRole},
+		"/debug/pprof/symbol":  {adminRole},
+		"/debug/pprof/trace":   {adminRole},
+	}
+
+	// The admin API is served on both the versioned and the legacy unprefixed
+	// paths, so both keys are needed for the authz middleware to match.
+	resourceRoles := make(map[string][]string, len(relativeRoles)*2+len(pprofRoles))
+	for methodAndPath, roles := range relativeRoles {
+		resourceRoles[prefixed(methodAndPath)] = roles
+		resourceRoles[methodAndPath] = roles
+	}
+	for pattern, roles := range pprofRoles {
+		resourceRoles[pattern] = roles
+	}
+
+	return resourceRoles
 }
 
 // deprecatedManagementPathMiddleware marks responses served on the legacy
