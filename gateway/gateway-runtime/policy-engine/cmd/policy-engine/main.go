@@ -49,6 +49,7 @@ import (
 	"github.com/wso2/api-platform/gateway/gateway-runtime/policy-engine/internal/tracing"
 	"github.com/wso2/api-platform/gateway/gateway-runtime/policy-engine/internal/utils"
 	"github.com/wso2/api-platform/gateway/gateway-runtime/policy-engine/internal/xdsclient"
+	"github.com/wso2/api-platform/sdk/core/utils/redisclient"
 )
 
 // Version information (set via ldflags during build)
@@ -173,6 +174,12 @@ func main() {
 		os.Exit(1)
 	}
 	slog.InfoContext(ctx, "Config set in registry for ${config} CEL resolution")
+
+	// Initialize the gateway-level shared Redis client (top-level "redis" config section)
+	if err := redisclient.InitFromConfig(cfg.PolicyEngine.RawConfig); err != nil {
+		slog.ErrorContext(ctx, "Failed to initialize shared redis client", "error", err)
+		os.Exit(1)
+	}
 
 	// Initialize CEL evaluator
 	celEvaluator, err := cel.NewCELEvaluator()
