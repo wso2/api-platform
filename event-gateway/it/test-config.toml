@@ -37,11 +37,10 @@ poll_interval = "200ms"
 enabled = true
 
 [[controller.auth.basic.users]]
-username = "admin"
-# bcrypt hash of "admin", which is what the suite authenticates with.
-password = "$2y$10$KZx7AodnpgOthAweR/k2P.xu4kLY7UiFY8Lt2D76mpzzEA6wv7qUO"
+username        = '{{ env "APIP_GW_CONTROLLER_AUTH_BASIC_ADMIN_USERNAME" "" }}'
+password        = '{{ env "APIP_GW_CONTROLLER_AUTH_BASIC_ADMIN_PASSWORD_HASH" "" }}'
 password_hashed = true
-roles = ["admin"]
+roles           = ["admin"]
 
 # =============================================================================
 # ROUTER CONFIGURATION
