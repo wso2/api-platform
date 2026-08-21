@@ -301,6 +301,38 @@ func TestInstallCoreRoutes_UnknownPatternAbortsStartup(t *testing.T) {
 	}
 }
 
+// One unmatched pattern per error would mean fixing a typo, restarting, and
+// finding the next one — so the error names every unmatched override at once,
+// each paired with the plugin that claimed it and ordered by pattern. The whole
+// message is compared: a claim listing the wrong plugin, or claims in map order,
+// is exactly what the operator reading it cannot afford.
+func TestInstallCoreRoutes_UnknownPatternErrorNamesEveryOverride(t *testing.T) {
+	cloud := &overridePlugin{
+		fakePlugin: &fakePlugin{name: "cloud", spec: specWithScopes},
+		overrides: []pdk.RouteOverride{
+			{Pattern: "GET /api/v1/gateways/{gatewayId}", Wrap: passthrough},
+			{Pattern: "GET /api/v0.9/gateways/{id}", Wrap: passthrough},
+		},
+	}
+	audit := &overridePlugin{
+		fakePlugin: &fakePlugin{name: "audit", spec: specWithScopes},
+		overrides:  []pdk.RouteOverride{{Pattern: "POST /api/v0.9/gateways", Wrap: passthrough}},
+	}
+
+	_, err := startup(t, coreRecorder(map[string]int{}), cloud, audit)
+	if err == nil {
+		t.Fatal("expected startup to abort, got nil error")
+	}
+
+	want := `3 route override(s) name a pattern that is not a core route: ` +
+		`plugin "cloud" -> "GET /api/v0.9/gateways/{id}"; ` +
+		`plugin "cloud" -> "GET /api/v1/gateways/{gatewayId}"; ` +
+		`plugin "audit" -> "POST /api/v0.9/gateways"`
+	if err.Error() != want {
+		t.Fatalf("error message mismatch\n got: %s\nwant: %s", err.Error(), want)
+	}
+}
+
 // Two decorators on one route would have to be ordered by something no plugin
 // author can see, so this is a startup error naming both claimants.
 func TestInitPlugins_TwoPluginsClaimingOnePatternAbortStartup(t *testing.T) {

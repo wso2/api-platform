@@ -22,6 +22,7 @@ import (
 	"log/slog"
 	"net/http"
 	"sort"
+	"strings"
 
 	"github.com/wso2/api-platform/platform-api/internal/router"
 )
@@ -56,10 +57,12 @@ func installCoreRoutes(
 	}
 	if len(unknown) > 0 {
 		sort.Strings(unknown)
-		p := unknown[0]
-		return fmt.Errorf("plugin %q declared a route override for %q, which is not a core route "+
-			"(patterns are matched exactly, including method and path; %d override(s) unmatched)",
-			overrides[p].plugin, p, len(unknown))
+		claims := make([]string, 0, len(unknown))
+		for _, pattern := range unknown {
+			claims = append(claims, fmt.Sprintf("plugin %q -> %q", overrides[pattern].plugin, pattern))
+		}
+		return fmt.Errorf("%d route override(s) name a pattern that is not a core route: %s",
+			len(unknown), strings.Join(claims, "; "))
 	}
 
 	// A duplicate pattern can now only come from a plugin route registered on
