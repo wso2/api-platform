@@ -751,7 +751,7 @@ func (c *Client) SyncArtifactsToOnPremAPIM(apimConfig *utils.APIMConfig) error {
 			}
 
 			for attempt := 1; attempt <= maxRetries; attempt++ {
-				lastErr = utils.UndeployRevisionFromAPIM(*apimConfig, apimAPIID, revisionID, c.logger)
+				lastErr = utils.UndeployRevisionFromAPIM(*apimConfig, c.httpClient, apimAPIID, revisionID, c.logger)
 				if lastErr == nil {
 					break
 				}
@@ -801,7 +801,7 @@ func (c *Client) SyncArtifactsToOnPremAPIM(apimConfig *utils.APIMConfig) error {
 		// CPSyncInfo contains {"id": "<apim-api-id>", "revision": "..."} from the last successful sync.
 		swaggerOverride := ""
 		if apimAPIID, _ := parseCPSyncInfo(api.CPSyncInfo); apimAPIID != "" {
-			swagger, err := utils.FetchSwaggerFromAPIM(*apimConfig, apimAPIID, c.logger)
+			swagger, err := utils.FetchSwaggerFromAPIM(*apimConfig, c.httpClient, apimAPIID, c.logger)
 			if err != nil {
 				c.logger.Warn("Bottom-up sync: failed to fetch swagger from APIM, falling back to local generation",
 					slog.String("uuid", api.UUID),
@@ -838,7 +838,7 @@ func (c *Client) SyncArtifactsToOnPremAPIM(apimConfig *utils.APIMConfig) error {
 			currentBuffer := bytes.NewBuffer(zipBytes)
 
 			importResp, lastErr = utils.ImportAPIToAPIMWithConfig(
-				*apimConfig, c.logger, api.UUID+".zip", currentBuffer,
+				*apimConfig, c.httpClient, c.logger, api.UUID+".zip", currentBuffer,
 			)
 			if lastErr == nil {
 				break

@@ -43,6 +43,7 @@ import (
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/utils"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/version"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/xds"
+	"github.com/wso2/go-httpkit/httpclient"
 	gohttpkit "github.com/wso2/go-httpkit/middleware"
 )
 
@@ -530,7 +531,23 @@ func main() {
 	policyValidator := config.NewPolicyValidator(policyDefinitions)
 	validator.SetPolicyValidator(policyValidator)
 
-	apiSvc := utils.NewAPIDeploymentService(configStore, db, snapshotManager, validator, &cfg.Router, eventHubInstance, gatewayID, secretsService)
+	// Build the single shared outbound *http.Client used by every control-plane /
+	// platform-API / on-prem-APIM call this process makes. Built once, here, and injected
+	// into every constructor below instead of each one building (or caching) its own —
+	// real per-operation timeout budgets are enforced via context.WithTimeout at each call
+	// site, not by this client's own Timeout, which is only a generous safety-net backstop.
+	sharedHTTPClientCfg, err := config.BuildHTTPClientConfig(cfg.Controller.HTTPClient, cfg.Controller.ControlPlane.InsecureSkipVerify)
+	if err != nil {
+		log.Error("Invalid controller.http_client configuration", slog.Any("error", err))
+		os.Exit(1)
+	}
+	sharedHTTPClient, err := httpclient.New(sharedHTTPClientCfg)
+	if err != nil {
+		log.Error("Failed to build shared outbound HTTP client", slog.Any("error", err))
+		os.Exit(1)
+	}
+
+	apiSvc := utils.NewAPIDeploymentService(configStore, db, snapshotManager, validator, &cfg.Router, eventHubInstance, gatewayID, secretsService, sharedHTTPClient)
 	mcpSvc := utils.NewMCPDeploymentService(configStore, db, snapshotManager, policyManager, policyValidator, eventHubInstance, gatewayID, secretsService)
 	llmSvc := utils.NewLLMDeploymentService(configStore, db, snapshotManager, lazyResourceXDSManager, templateDefinitions,
 		apiSvc, &cfg.Router, policyVersionResolver, policyValidator)
@@ -553,6 +570,7 @@ func main() {
 		secretsService,
 		webhooksecret.GetStoreInstance(),
 		nil,
+		sharedHTTPClient,
 	)
 	if err := cpClient.Start(); err != nil {
 		log.Error("Failed to start control plane client", slog.Any("error", err))
@@ -571,12 +589,12 @@ func main() {
 		configStore, db, snapshotManager, policyManager,
 		apiSvc, apiKeyXDSManager,
 		cpClient, &cfg.Router, cfg,
-		&http.Client{Timeout: 10 * time.Second}, config.NewParser(), validator, log,
+		sharedHTTPClient, config.NewParser(), validator, log,
 		eventHubInstance, secretsService,
 	)
 	igw := immutable.NewImmutableGW(cfg.ImmutableGateway, restAPIService, llmSvc, mcpSvc)
 
-	authConfig := generateAuthConfig(cfg)
+	authConfig := generateAuthConfig(cfg, sharedHTTPClient)
 	if cfg.Controller.Auth.IDP.Enabled && len(cfg.Controller.Auth.IDP.Audience) == 0 {
 		log.Warn("IDP auth is enabled but no auth.idp.audience is configured - token audience ('aud') will NOT be " +
 			"validated; set auth.idp.audience to the expected audience(s) to restrict this")
@@ -619,7 +637,7 @@ func main() {
 	log.Info("EventListener started for multi-replica sync")
 
 	// Initialize API server with the configured validator and API key manager
-	apiServer := handlers.NewAPIServer(
+	apiServer, err := handlers.NewAPIServer(
 		configStore,
 		db,
 		snapshotManager,
@@ -636,7 +654,12 @@ func main() {
 		subscriptionSnapshotManager,
 		secretsService,
 		restAPIService,
+		sharedHTTPClient,
 	)
+	if err != nil {
+		log.Error("Failed to create API server", slog.Any("error", err))
+		os.Exit(1)
+	}
 
 	// Load immutable gateway artifacts from the filesystem (no-op when immutable mode is disabled).
 	if err := igw.LoadArtifacts(log); err != nil {
@@ -872,7 +895,7 @@ func main() {
 	log.Info("Gateway-Controller stopped")
 }
 
-func generateAuthConfig(config *config.Config) commonmodels.AuthConfig {
+func generateAuthConfig(config *config.Config, httpClient *http.Client) commonmodels.AuthConfig {
 	// prefixed builds a resource key of the form "<METHOD> <managementAPIBasePath><path>"
 	// matching the actual routes registered via RegisterHandlersWithOptions(BaseURL=managementAPIBasePath).
 	prefixed := func(methodAndPath string) string {
@@ -995,6 +1018,11 @@ func generateAuthConfig(config *config.Config) commonmodels.AuthConfig {
 	authConfig := commonmodels.AuthConfig{BasicAuth: &basicAuth,
 		JWTConfig:     &idpAuth,
 		ResourceRoles: DefaultResourceRoles,
+		// JWKS fetching (auth.idp.jwks_url) is an outbound request to a tenant/operator
+		// -configured URL, so it must reuse the same SSRF-guarded shared client every
+		// other control-plane/platform-API call in this process uses, rather than
+		// falling back to net/http's unguarded default client.
+		HTTPClient: httpClient,
 	}
 	return authConfig
 }

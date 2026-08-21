@@ -17,7 +17,10 @@
  */
 package models
 
-import "time"
+import (
+	"net/http"
+	"time"
+)
 
 // AuthContext is a packed authentication/authorization context that can be attached
 // to a request context and passed downstream.
@@ -48,6 +51,8 @@ type AuthConfig struct {
 	// ResourceRoles holds the mapping of resource -> allowed local roles.
 	// Keys may be either "METHOD /path" (preferred) or just "/path".
 	ResourceRoles map[string][]string `json:"resource_roles"`
+	// HTTPClient is the HTTP client to use for JWKS fetching and other HTTP requests.
+	HTTPClient *http.Client
 }
 
 type BasicAuth struct {

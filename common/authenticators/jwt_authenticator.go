@@ -19,7 +19,6 @@ package authenticators
 
 import (
 	"context"
-	"crypto/tls"
 	"errors"
 	"fmt"
 	"log/slog"
@@ -73,13 +72,8 @@ func newJWTAuthenticatorWithJWKS(config *models.AuthConfig, logger *slog.Logger,
 		// Create JWKS storage with custom validation options to skip X5TS256 validation
 		// This is required for some OIDC providers like Asgardeo that may have X5TS256 mismatches
 		ctx := context.Background()
-		jwksHTTPClient := &http.Client{
-			Transport: &http.Transport{
-				TLSClientConfig: &tls.Config{InsecureSkipVerify: config.JWTConfig.InsecureSkipVerifyTLS}, //nolint:gosec
-			},
-		}
 		storageOptions := jwkset.HTTPClientStorageOptions{
-			Client:          jwksHTTPClient,
+			Client:          config.HTTPClient,
 			Ctx:             ctx,
 			RefreshInterval: 10 * time.Minute,
 			ValidateOptions: jwkset.JWKValidateOptions{

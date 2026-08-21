@@ -19,6 +19,7 @@
 package main
 
 import (
+	"net/http"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -564,7 +565,7 @@ func TestGenerateAuthConfig(t *testing.T) {
 			},
 		}
 
-		authConfig := generateAuthConfig(cfg)
+		authConfig := generateAuthConfig(cfg, http.DefaultClient)
 
 		assert.False(t, authConfig.BasicAuth.Enabled)
 		assert.False(t, authConfig.JWTConfig.Enabled)
@@ -599,7 +600,7 @@ func TestGenerateAuthConfig(t *testing.T) {
 			},
 		}
 
-		authConfig := generateAuthConfig(cfg)
+		authConfig := generateAuthConfig(cfg, http.DefaultClient)
 
 		assert.True(t, authConfig.BasicAuth.Enabled)
 		assert.Len(t, authConfig.BasicAuth.Users, 2)
@@ -634,7 +635,7 @@ func TestGenerateAuthConfig(t *testing.T) {
 			},
 		}
 
-		authConfig := generateAuthConfig(cfg)
+		authConfig := generateAuthConfig(cfg, http.DefaultClient)
 
 		assert.False(t, authConfig.BasicAuth.Enabled)
 		assert.True(t, authConfig.JWTConfig.Enabled)
@@ -662,7 +663,7 @@ func TestGenerateAuthConfig(t *testing.T) {
 			},
 		}
 
-		authConfig := generateAuthConfig(cfg)
+		authConfig := generateAuthConfig(cfg, http.DefaultClient)
 
 		assert.True(t, authConfig.JWTConfig.Enabled)
 		assert.Nil(t, authConfig.JWTConfig.Audience,
@@ -689,7 +690,7 @@ func TestGenerateAuthConfig(t *testing.T) {
 			},
 		}
 
-		authConfig := generateAuthConfig(cfg)
+		authConfig := generateAuthConfig(cfg, http.DefaultClient)
 
 		assert.True(t, authConfig.BasicAuth.Enabled)
 		assert.True(t, authConfig.JWTConfig.Enabled)
@@ -705,7 +706,7 @@ func TestGenerateAuthConfig(t *testing.T) {
 			},
 		}
 
-		authConfig := generateAuthConfig(cfg)
+		authConfig := generateAuthConfig(cfg, http.DefaultClient)
 
 		// Check some expected resource roles (keys are prefixed with managementAPIBasePath)
 		assert.Contains(t, authConfig.ResourceRoles, "POST "+managementAPIBasePath+"/rest-apis")
