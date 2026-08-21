@@ -19,7 +19,10 @@
 package main
 
 import (
+	"context"
+	"net/http"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -564,7 +567,8 @@ func TestGenerateAuthConfig(t *testing.T) {
 			},
 		}
 
-		authConfig := generateAuthConfig(cfg)
+		authConfig, err := generateAuthConfig(cfg)
+		require.NoError(t, err)
 
 		assert.False(t, authConfig.BasicAuth.Enabled)
 		assert.False(t, authConfig.JWTConfig.Enabled)
@@ -599,7 +603,8 @@ func TestGenerateAuthConfig(t *testing.T) {
 			},
 		}
 
-		authConfig := generateAuthConfig(cfg)
+		authConfig, err := generateAuthConfig(cfg)
+		require.NoError(t, err)
 
 		assert.True(t, authConfig.BasicAuth.Enabled)
 		assert.Len(t, authConfig.BasicAuth.Users, 2)
@@ -634,7 +639,8 @@ func TestGenerateAuthConfig(t *testing.T) {
 			},
 		}
 
-		authConfig := generateAuthConfig(cfg)
+		authConfig, err := generateAuthConfig(cfg)
+		require.NoError(t, err)
 
 		assert.False(t, authConfig.BasicAuth.Enabled)
 		assert.True(t, authConfig.JWTConfig.Enabled)
@@ -644,6 +650,23 @@ func TestGenerateAuthConfig(t *testing.T) {
 		assert.NotNil(t, authConfig.JWTConfig.PermissionMapping)
 		require.NotNil(t, authConfig.JWTConfig.Audience)
 		assert.Equal(t, []string{"gateway-controller"}, *authConfig.JWTConfig.Audience)
+		require.NotNil(t, authConfig.HTTPClient,
+			"JWKS fetching must use an SSRF-guarded client, never jwkset's unguarded default")
+		// The target is an IP literal, so this needs no real network access: the guarded
+		// dialer's resolution step returns the literal itself and the policy check rejects
+		// it before any connection is attempted (mirrors guarded_http_client_test.go's
+		// TestUpstreamFetchClientRefusesDeniedAddress in platform-api).
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		req, err := http.NewRequestWithContext(ctx, http.MethodGet, "http://169.254.169.254/latest/meta-data/", nil)
+		require.NoError(t, err)
+		resp, err := authConfig.HTTPClient.Do(req)
+		if resp != nil {
+			resp.Body.Close() //nolint:errcheck
+		}
+		if err == nil {
+			t.Fatal("expected the JWKS HTTP client to refuse a link-local/metadata address")
+		}
 	})
 
 	t.Run("IDP auth enabled without audience leaves audience unset", func(t *testing.T) {
@@ -662,7 +685,8 @@ func TestGenerateAuthConfig(t *testing.T) {
 			},
 		}
 
-		authConfig := generateAuthConfig(cfg)
+		authConfig, err := generateAuthConfig(cfg)
+		require.NoError(t, err)
 
 		assert.True(t, authConfig.JWTConfig.Enabled)
 		assert.Nil(t, authConfig.JWTConfig.Audience,
@@ -689,7 +713,8 @@ func TestGenerateAuthConfig(t *testing.T) {
 			},
 		}
 
-		authConfig := generateAuthConfig(cfg)
+		authConfig, err := generateAuthConfig(cfg)
+		require.NoError(t, err)
 
 		assert.True(t, authConfig.BasicAuth.Enabled)
 		assert.True(t, authConfig.JWTConfig.Enabled)
@@ -705,7 +730,8 @@ func TestGenerateAuthConfig(t *testing.T) {
 			},
 		}
 
-		authConfig := generateAuthConfig(cfg)
+		authConfig, err := generateAuthConfig(cfg)
+		require.NoError(t, err)
 
 		// Check some expected resource roles (keys are prefixed with managementAPIBasePath)
 		assert.Contains(t, authConfig.ResourceRoles, "POST "+managementAPIBasePath+"/rest-apis")

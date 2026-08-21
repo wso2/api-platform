@@ -711,9 +711,18 @@ func buildAuthenticator(cfg *config.Server, slogger *slog.Logger, roleScopeMap m
 	if len(cfg.Auth.IDP.Audience) > 0 {
 		idpCfg.Audience = &cfg.Auth.IDP.Audience
 	}
+	// JWKS fetching is an outbound request to a tenant-configured URL (auth.idp.jwks_url),
+	// so it must go through the same SSRF-guarded shared client as every other
+	// tenant/operator-configured upstream call this process makes, rather than falling
+	// back to net/http's unguarded default client.
+	sharedClient, err := utils.NewUpstreamFetchClient(0)
+	if err != nil {
+		return nil, fmt.Errorf("failed to obtain shared HTTP client for JWKS fetching: %w", err)
+	}
 	authCfg := commonmodels.AuthConfig{
-		JWTConfig: &idpCfg,
-		SkipPaths: cfg.Auth.SkipPaths,
+		JWTConfig:  &idpCfg,
+		SkipPaths:  cfg.Auth.SkipPaths,
+		HTTPClient: sharedClient,
 	}
 	authMiddleware, err := authenticators.AuthMiddleware(authCfg, slogger)
 	if err != nil {
