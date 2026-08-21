@@ -37,6 +37,7 @@ import (
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/metrics"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/models"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/policyxds"
+	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/service/agent"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/service/restapi"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/storage"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/transform"
@@ -595,7 +596,18 @@ func main() {
 		sharedHTTPClient, config.NewParser(), validator, log,
 		eventHubInstance, secretsService,
 	)
-	igw := immutable.NewImmutableGW(cfg.ImmutableGateway, restAPIService, llmSvc, mcpSvc)
+	agentSvc := agent.NewAgentService(
+		configStore, db, config.NewParser(),
+		config.NewAgentValidator().WithPolicyValidator(config.NewPolicyValidator(policyDefinitions)),
+		log, eventHubInstance, secretsService, cfg.Controller.Server.GatewayID,
+	)
+	// The DP->CP push is wired for Agents on the same terms as the LLM and MCP
+	// services above, and stays off until the control plane models the Agent kind
+	// — see agent.ControlPlanePushSupported.
+	agentSvc.SetControlPlanePusher(cpClient,
+		agent.ControlPlanePushSupported && cfg.Controller.ControlPlane.DeploymentSyncEnabled)
+
+	igw := immutable.NewImmutableGW(cfg.ImmutableGateway, restAPIService, llmSvc, mcpSvc, agentSvc)
 
 	authConfig, err := generateAuthConfig(cfg)
 	if err != nil {
@@ -663,6 +675,7 @@ func main() {
 		secretsService,
 		restAPIService,
 		sharedHTTPClient,
+		agentSvc,
 	)
 	if err != nil {
 		log.Error("Failed to create API server", slog.Any("error", err))
