@@ -565,7 +565,11 @@ func main() {
 	)
 	igw := immutable.NewImmutableGW(cfg.ImmutableGateway, restAPIService, llmSvc, mcpSvc)
 
-	authConfig := generateAuthConfig(cfg)
+	authConfig, err := generateAuthConfig(cfg)
+	if err != nil {
+		log.Error("Failed to generate auth config", slog.Any("error", err))
+		os.Exit(1)
+	}
 	if cfg.Controller.Auth.IDP.Enabled && len(cfg.Controller.Auth.IDP.Audience) == 0 {
 		log.Warn("IDP auth is enabled but no auth.idp.audience is configured - token audience ('aud') will NOT be " +
 			"validated; set auth.idp.audience to the expected audience(s) to restrict this")
@@ -830,7 +834,7 @@ func main() {
 	log.Info("Gateway-Controller stopped")
 }
 
-func generateAuthConfig(config *config.Config) commonmodels.AuthConfig {
+func generateAuthConfig(config *config.Config) (commonmodels.AuthConfig, error) {
 	// prefixed builds a resource key of the form "<METHOD> <managementAPIBasePath><path>"
 	// matching the actual routes registered via RegisterHandlersWithOptions(BaseURL=managementAPIBasePath).
 	prefixed := func(methodAndPath string) string {
@@ -928,6 +932,7 @@ func generateAuthConfig(config *config.Config) commonmodels.AuthConfig {
 	}
 	basicAuth := commonmodels.BasicAuth{Enabled: false}
 	idpAuth := commonmodels.IDPConfig{Enabled: false}
+	var httpClient *http.Client
 	if config.Controller.Auth.Basic.Enabled {
 		users := make([]commonmodels.User, len(config.Controller.Auth.Basic.Users))
 		for i, authUser := range config.Controller.Auth.Basic.Users {
@@ -949,12 +954,18 @@ func generateAuthConfig(config *config.Config) commonmodels.AuthConfig {
 		if len(config.Controller.Auth.IDP.Audience) > 0 {
 			idpAuth.Audience = &config.Controller.Auth.IDP.Audience
 		}
+		client, err := authenticators.NewDefaultJWKSHTTPClient()
+		if err != nil {
+			return commonmodels.AuthConfig{}, fmt.Errorf("failed to build JWKS HTTP client: %w", err)
+		}
+		httpClient = client
 	}
 	authConfig := commonmodels.AuthConfig{BasicAuth: &basicAuth,
 		JWTConfig:     &idpAuth,
 		ResourceRoles: DefaultResourceRoles,
+		HTTPClient:    httpClient,
 	}
-	return authConfig
+	return authConfig, nil
 }
 
 // adminResourceRoles maps every non-public admin-server route to the roles allowed

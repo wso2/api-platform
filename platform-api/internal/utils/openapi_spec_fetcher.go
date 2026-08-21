@@ -36,10 +36,6 @@ const (
 
 	// openAPISpecFetchTimeout bounds the whole fetch (DNS + connect + TLS + body read).
 	openAPISpecFetchTimeout = 15 * time.Second
-
-	// openAPISpecMaxRedirects caps redirect hops; every hop is still re-validated by the
-	// SSRF-guarded dialer, so this only bounds redirect loops.
-	openAPISpecMaxRedirects = 5
 )
 
 // FetchOpenAPISpecFromURL fetches an OpenAPI specification from an external URL and
@@ -48,9 +44,11 @@ const (
 //
 //   - Only http/https schemes are allowed; every other scheme is rejected.
 //   - The host is resolved and every candidate IP is checked at dial time (defeating
-//     DNS-rebinding) — loopback, private (RFC 1918 / ULA), link-local (incl. the cloud
-//     metadata endpoint 169.254.169.254), unspecified, multicast and broadcast addresses
-//     are refused.
+//     DNS-rebinding) against the shared client's configured SSRF policy — by default
+//     netguard.PermitPrivateBlockMetadata(), which permits private/loopback/in-cluster
+//     upstreams (a Kubernetes ClusterIP, a service-DNS name, localhost) and refuses only
+//     link-local/metadata/unspecified/multicast addresses. See InitSharedHTTPClient /
+//     Server.HTTPClient.SSRF for the operator-configurable policy.
 //   - Redirects are bounded, may not leave the original host, and each hop is dialed
 //     through the same guarded dialer.
 //   - The response body is read through an io.LimitReader capped at maxBytes.
@@ -77,18 +75,10 @@ func FetchOpenAPISpecFromURL(ctx context.Context, rawURL string, maxBytes int64)
 	ctx, cancel := context.WithTimeout(ctx, openAPISpecFetchTimeout)
 	defer cancel()
 
-	client := &http.Client{
-		Timeout: openAPISpecFetchTimeout,
-		Transport: &http.Transport{
-			DialContext:           ssrfSafeDialContext,
-			TLSHandshakeTimeout:   openAPISpecFetchTimeout,
-			ResponseHeaderTimeout: openAPISpecFetchTimeout,
-			DisableKeepAlives:     true,
-			// No proxy: dialing must go through the guarded dialer, not a forward proxy
-			// that could bypass the IP checks.
-			Proxy: nil,
-		},
-		CheckRedirect: checkRedirectPolicy(openAPISpecMaxRedirects),
+	client, err := NewUpstreamFetchClient(0)
+	if err != nil {
+		// Do not surface the underlying config error to the caller.
+		return "", err
 	}
 
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, parsed.String(), nil)
@@ -121,20 +111,6 @@ func FetchOpenAPISpecFromURL(ctx context.Context, rawURL string, maxBytes int64)
 	return string(data), nil
 }
 
-// ipIsAllowed is the address allow-check used by the dialer. It is a package variable
-// only so tests can exercise the fetch/size-limit paths against a loopback test server;
-// production code never reassigns it.
-var ipIsAllowed = isPublicIP
-
-// ssrfSafeDialContext resolves the target host and refuses to connect to any non-public
-// address — the right policy here because an OpenAPI spec URL points at a vendor endpoint
-// on the public internet. A backend the operator deployed is a different case and uses the
-// more permissive isAllowedUpstreamIP policy instead (see NewUpstreamFetchClient).
-func ssrfSafeDialContext(ctx context.Context, network, addr string) (net.Conn, error) {
-	dial := guardedDialContext(func(ip net.IP) bool { return ipIsAllowed(ip) }, openAPISpecFetchTimeout)
-	return dial(ctx, network, addr)
-}
-
 // cgnatRange is RFC 6598 shared address space (carrier-grade NAT): 100.64.0.0/10.
 // net.IP.IsPrivate does not cover it, yet it can route to internal infrastructure, so
 // it is refused explicitly.
@@ -147,6 +123,14 @@ var cgnatRange = func() *net.IPNet {
 // rejects loopback, private (RFC 1918 / IPv6 ULA), RFC 6598 shared address space
 // (100.64.0.0/10), link-local (which includes the 169.254.169.254 cloud metadata
 // endpoint), unspecified, multicast and broadcast ranges.
+//
+// This is the same policy netguard.PublicOnly() applies (stricter than the shared HTTP
+// client's default netguard.PermitPrivateBlockMetadata() policy used at dial time for
+// FetchOpenAPISpecFromURL); it is kept here as a standalone predicate because
+// ValidateExternalURL (common.go) needs a pure IP check — with no dial involved — for a
+// URL whose hostname is already an IP literal. ValidateExternalURL guards a different call
+// path (LLM provider endpoint URL validation in internal/service/llm.go) and intentionally
+// keeps the stricter public-only bar independent of this package's shared fetch client.
 func isPublicIP(ip net.IP) bool {
 	if ip == nil {
 		return false

@@ -511,7 +511,11 @@ func main() {
 
 	igw := immutable.NewImmutableGW(cfg.ImmutableGateway, restAPIService, llmSvc, mcpSvc)
 
-	authConfig := generateAuthConfig(cfg)
+	authConfig, err := generateAuthConfig(cfg)
+	if err != nil {
+		log.Error("Failed to generate auth config", slog.Any("error", err))
+		os.Exit(1)
+	}
 	authMiddleWare, err := authenticators.AuthMiddleware(authConfig, log)
 	if err != nil {
 		log.Error("Failed to create auth middleware", slog.Any("error", err))
@@ -725,7 +729,7 @@ func main() {
 	log.Info("Event-Gateway-Controller stopped")
 }
 
-func generateAuthConfig(cfg *coreconfig.Config) commonmodels.AuthConfig {
+func generateAuthConfig(cfg *coreconfig.Config) (commonmodels.AuthConfig, error) {
 	prefixed := func(methodAndPath string) string {
 		idx := strings.Index(methodAndPath, " ")
 		if idx < 0 {
@@ -771,6 +775,7 @@ func generateAuthConfig(cfg *coreconfig.Config) commonmodels.AuthConfig {
 	}
 	basicAuth := commonmodels.BasicAuth{Enabled: false}
 	idpAuth := commonmodels.IDPConfig{Enabled: false}
+	var jwksHTTPClient *http.Client
 	if cfg.Controller.Auth.Basic.Enabled {
 		users := make([]commonmodels.User, len(cfg.Controller.Auth.Basic.Users))
 		for i, authUser := range cfg.Controller.Auth.Basic.Users {
@@ -791,12 +796,18 @@ func generateAuthConfig(cfg *coreconfig.Config) commonmodels.AuthConfig {
 			ScopeClaim:        cfg.Controller.Auth.IDP.RolesClaim,
 			PermissionMapping: &cfg.Controller.Auth.IDP.RoleMapping,
 		}
+		client, err := authenticators.NewDefaultJWKSHTTPClient()
+		if err != nil {
+			return commonmodels.AuthConfig{}, fmt.Errorf("failed to build JWKS HTTP client: %w", err)
+		}
+		jwksHTTPClient = client
 	}
 	return commonmodels.AuthConfig{
 		BasicAuth:     &basicAuth,
 		JWTConfig:     &idpAuth,
 		ResourceRoles: DefaultResourceRoles,
-	}
+		HTTPClient:    jwksHTTPClient,
+	}, nil
 }
 
 func adminResourceRoles() map[string][]string {
