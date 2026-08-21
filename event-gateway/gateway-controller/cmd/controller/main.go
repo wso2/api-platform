@@ -63,6 +63,7 @@ import (
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/models"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/policyxds"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/secrets"
+	agentservice "github.com/wso2/api-platform/gateway/gateway-controller/pkg/service/agent"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/service/restapi"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/storage"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/subscriptionxds"
@@ -529,7 +530,18 @@ func main() {
 	// Deregister WebSub hub topics on delete.
 	restAPIService.SetWebSubTopicDeregistrar(hubtopic.New(apiSvc, httpClient, eventGatewayCfg).Deregister)
 
-	igw := immutable.NewImmutableGW(cfg.ImmutableGateway, restAPIService, llmSvc, mcpSvc)
+	// Agents are core-kind artifacts, so this binary serves them exactly as the
+	// gateway-controller does, including the DP->CP push wiring that stays off
+	// until the control plane models the Agent kind.
+	agentSvc := agentservice.NewAgentService(
+		configStore, db, coreconfig.NewParser(),
+		coreconfig.NewAgentValidator().WithPolicyValidator(coreconfig.NewPolicyValidator(policyDefinitions)),
+		log, eventHubInstance, secretsService, gatewayID,
+	)
+	agentSvc.SetControlPlanePusher(cpClient,
+		agentservice.ControlPlanePushSupported && cfg.Controller.ControlPlane.DeploymentSyncEnabled)
+
+	igw := immutable.NewImmutableGW(cfg.ImmutableGateway, restAPIService, llmSvc, mcpSvc, agentSvc)
 
 	authConfig, err := generateAuthConfig(cfg)
 	if err != nil {
@@ -567,7 +579,7 @@ func main() {
 	apiServer, err := handlers.NewAPIServer(
 		configStore, db, snapshotManager, policyManager, lazyResourceXDSManager, log, cpClient,
 		policyDefinitions, templateDefinitions, validator, apiKeyXDSManager, cfg, eventHubInstance,
-		subscriptionSnapshotManager, secretsService, restAPIService, httpClient,
+		subscriptionSnapshotManager, secretsService, restAPIService, httpClient, agentSvc,
 	)
 	if err != nil {
 		log.Error("Failed to create API server", slog.Any("error", err))
