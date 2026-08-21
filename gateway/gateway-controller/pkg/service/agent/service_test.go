@@ -337,7 +337,7 @@ func TestCreate_RejectsInvalidConfiguration(t *testing.T) {
 	}{
 		{
 			name:  "signing enabled is not supported yet",
-			opts:  agentYAMLOpts{signing: "        signing:\n          enabled: true\n          algorithm: ES256"},
+			opts:  agentYAMLOpts{signing: "        signing:\n          enabled: true"},
 			field: "spec.a2a.agentCard.public.signing.enabled",
 		},
 		{

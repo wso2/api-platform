@@ -2057,8 +2057,7 @@ and
           ]
         },
         "signing": {
-          "enabled": false,
-          "algorithm": "ES256"
+          "enabled": false
         }
       },
       "protected": {
@@ -2113,8 +2112,7 @@ and
           ]
         },
         "signing": {
-          "enabled": false,
-          "algorithm": "ES256"
+          "enabled": false
         }
       }
     }
@@ -2129,7 +2127,7 @@ and
 |---|---|---|---|---|
 |displayName|string|true|none|Human-readable agent display name|
 |version|string|true|none|Agent version|
-|context|string|true|none|Gateway context path for the agent (must start with /, no trailing slash)|
+|context|string|false|none|Gateway context path for the agent (must start with /, no trailing slash). Optional: when omitted the agent is served at the root of its virtual host, which is where an A2A client probes for `/.well-known/agent-card.json` during cold discovery. Every A2A route the gateway generates — the transport base paths and the Agent Card path — is relative to this value.|
 |vhost|string|false|none|Virtual host name used for routing. Supports standard domain names, subdomains, or wildcard domains. Must follow RFC-compliant hostname rules. Wildcards are only allowed in the left-most label (e.g., *.example.com).|
 |upstreamDefinitions|[[UpstreamDefinition](#schemaupstreamdefinition)]|false|none|List of reusable upstream definitions with optional timeout configurations. Referenced by upstream.ref.|
 |upstream|any|true|none|The backend A2A agent url and auth configuration. The URL is the base the gateway forwards A2A operation traffic to, and — in public passthrough card mode — the origin of the standard /.well-known/agent-card.json document.|
@@ -2266,8 +2264,7 @@ continued
         ]
       },
       "signing": {
-        "enabled": false,
-        "algorithm": "ES256"
+        "enabled": false
       }
     },
     "protected": {
@@ -2322,8 +2319,7 @@ continued
         ]
       },
       "signing": {
-        "enabled": false,
-        "algorithm": "ES256"
+        "enabled": false
       }
     }
   }
@@ -2594,8 +2590,7 @@ Configuration for one standard A2A 1.0 operation, identified by its canonical op
       ]
     },
     "signing": {
-      "enabled": false,
-      "algorithm": "ES256"
+      "enabled": false
     }
   },
   "protected": {
@@ -2650,8 +2645,7 @@ Configuration for one standard A2A 1.0 operation, identified by its canonical op
       ]
     },
     "signing": {
-      "enabled": false,
-      "algorithm": "ES256"
+      "enabled": false
     }
   }
 }
@@ -2736,8 +2730,7 @@ Public Agent Card configuration and optional protected Agent Card configuration 
     ]
   },
   "signing": {
-    "enabled": false,
-    "algorithm": "ES256"
+    "enabled": false
   }
 }
 
@@ -2753,7 +2746,7 @@ Public Agent Card serving. `mode` selects whether the card is proxied unchanged 
 |path|[A2AAgentCardPath](#schemaa2aagentcardpath)|false|none|Exact gateway-facing Agent Card path relative to spec.context. When omitted, the gateway uses /.well-known/agent-card.json. A custom path replaces that default route rather than creating an additional alias. In passthrough mode this does not change the upstream discovery path.|
 |policies|[[Policy](#schemapolicy)]|false|none|Ordered policies applied only to public Agent Card serving.|
 |content|[A2AAgentCardDocument](#schemaa2aagentcarddocument)|false|none|Complete A2A 1.0 Agent Card represented as a structured JSON object. JSON can be embedded directly because JSON object syntax is valid YAML. The controller additionally validates this object against the complete A2A Agent Card model for spec.a2a.protocolVersion, taken from the vendored A2A protocol definition (specification/a2a.proto). The document is stored and served as supplied — the gateway never rewrites it — so extension fields are preserved.|
-|signing|[A2ACardSigning](#schemaa2acardsigning)|false|none|Optional signing configuration for a managed Agent Card. Passthrough cards cannot configure gateway signing. The signing key is selected from gateway system configuration at runtime. `algorithm` is required when `enabled` is true and rejected otherwise; both rules are enforced at deploy time.|
+|signing|[A2ACardSigning](#schemaa2acardsigning)|false|none|Optional signing configuration for a managed Agent Card. Passthrough cards cannot configure gateway signing. Agent authors only enable or disable signing: the active key, its key identifier, and the JWS algorithm are selected from administrator-owned gateway system configuration at signing time, so rotating the key — including to a key using a different algorithm — requires no edit to any Agent. A card is re-signed when its Agent is next deployed, not when the key rotates; until then it keeps verifying against the retired key, which stays published while any stored card references it.|
 
 ##### Enumerated Values
 
@@ -2822,8 +2815,7 @@ Public Agent Card serving. `mode` selects whether the card is proxied unchanged 
     ]
   },
   "signing": {
-    "enabled": false,
-    "algorithm": "ES256"
+    "enabled": false
   }
 }
 
@@ -2837,7 +2829,7 @@ Planned authenticated extended Agent Card support. When present it is served thr
 |---|---|---|---|---|
 |mode|string|true|none|How the protected Agent Card is produced.|
 |content|[A2AAgentCardDocument](#schemaa2aagentcarddocument)|false|none|Complete A2A 1.0 Agent Card represented as a structured JSON object. JSON can be embedded directly because JSON object syntax is valid YAML. The controller additionally validates this object against the complete A2A Agent Card model for spec.a2a.protocolVersion, taken from the vendored A2A protocol definition (specification/a2a.proto). The document is stored and served as supplied — the gateway never rewrites it — so extension fields are preserved.|
-|signing|[A2ACardSigning](#schemaa2acardsigning)|false|none|Optional signing configuration for a managed Agent Card. Passthrough cards cannot configure gateway signing. The signing key is selected from gateway system configuration at runtime. `algorithm` is required when `enabled` is true and rejected otherwise; both rules are enforced at deploy time.|
+|signing|[A2ACardSigning](#schemaa2acardsigning)|false|none|Optional signing configuration for a managed Agent Card. Passthrough cards cannot configure gateway signing. Agent authors only enable or disable signing: the active key, its key identifier, and the JWS algorithm are selected from administrator-owned gateway system configuration at signing time, so rotating the key — including to a key using a different algorithm — requires no edit to any Agent. A card is re-signed when its Agent is next deployed, not when the key rotates; until then it keeps verifying against the retired key, which stays published while any stored card references it.|
 
 ##### Enumerated Values
 
@@ -2941,29 +2933,18 @@ Complete A2A 1.0 Agent Card represented as a structured JSON object. JSON can be
 
 ```json
 {
-  "enabled": false,
-  "algorithm": "ES256"
+  "enabled": false
 }
 
 ```
 
-Optional signing configuration for a managed Agent Card. Passthrough cards cannot configure gateway signing. The signing key is selected from gateway system configuration at runtime. `algorithm` is required when `enabled` is true and rejected otherwise; both rules are enforced at deploy time.
+Optional signing configuration for a managed Agent Card. Passthrough cards cannot configure gateway signing. Agent authors only enable or disable signing: the active key, its key identifier, and the JWS algorithm are selected from administrator-owned gateway system configuration at signing time, so rotating the key — including to a key using a different algorithm — requires no edit to any Agent. A card is re-signed when its Agent is next deployed, not when the key rotates; until then it keeps verifying against the retired key, which stays published while any stored card references it.
 
 #### Properties
 
 |Name|Type|Required|Restrictions|Description|
 |---|---|---|---|---|
-|enabled|boolean|true|none|Whether the gateway signs the managed card it serves.|
-|algorithm|string|false|none|JWS algorithm used to sign the published card.|
-
-##### Enumerated Values
-
-|Property|Value|
-|---|---|
-|algorithm|ES256|
-|algorithm|ES384|
-|algorithm|RS256|
-|algorithm|PS256|
+|enabled|boolean|true|none|Whether the gateway signs the managed card it serves, using the active Agent Card signing key configured by the gateway administrator.|
 
 ## ErrorResponse
 

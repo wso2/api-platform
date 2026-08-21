@@ -215,7 +215,10 @@ func (c *StoredConfig) GetContext() (string, error) {
 		}
 		return "", nil
 	case api.AgentConfiguration:
-		return strings.ReplaceAll(sc.Spec.Context, "$version", c.Version), nil
+		if sc.Spec.Context != nil {
+			return strings.ReplaceAll(*sc.Spec.Context, "$version", c.Version), nil
+		}
+		return "", nil
 	}
 	return "", fmt.Errorf("unsupported source configuration type: %T", c.SourceConfiguration)
 }

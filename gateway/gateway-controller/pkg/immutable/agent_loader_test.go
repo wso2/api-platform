@@ -185,7 +185,7 @@ func TestLoadArtifacts_MalformedAgentFailsStartup(t *testing.T) {
 	writeArtifact(t, dir, "signed-agent.yaml", replaceFirst(
 		replaceFirst(agentArtifact, "name: weather-agent-v1-0", "name: signed-agent-v1-0"),
 		"        content: {",
-		"        signing:\n          enabled: true\n          algorithm: ES256\n        content: {"))
+		"        signing:\n          enabled: true\n        content: {"))
 
 	gw, db := newAgentOnlyGW(t, dir)
 
