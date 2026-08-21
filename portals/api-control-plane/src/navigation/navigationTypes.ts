@@ -41,6 +41,12 @@ export type NavigationDefinition = {
   level?: NavigationLevel;
   match?: (pathname: string) => boolean;
   order: number;
+  /**
+   * Pins this item to the sidebar's fixed bottom section (`Sidebar.Footer`)
+   * instead of the scrolling main nav list. Used for Settings, which should
+   * stay visible at the bottom regardless of how long the nav list gets.
+   */
+  pinned?: boolean;
   to: (scope: ConsoleScope) => string | undefined;
   /**
    * Sub-items, offered only once `requires` is satisfied.
@@ -68,6 +74,7 @@ export type NavigationItem = {
    * Where the item leads. A parent rendering `children` keeps its first child's
    * target here but the sidebar does not link it — see `children` above.
    */
+  pinned?: boolean;
   to: string;
   children?: NavigationItem[];
 };

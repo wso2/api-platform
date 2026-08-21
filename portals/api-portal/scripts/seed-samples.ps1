@@ -71,6 +71,7 @@ if (Test-Path -LiteralPath (Join-Path $RootDir 'resources\samples')) {
 
 $ApiPortalUrl = if ($env:API_PORTAL_URL) { $env:API_PORTAL_URL } else { 'https://localhost:9543' }
 $PlatformApiUrl = if ($env:PLATFORM_API_URL) { $env:PLATFORM_API_URL } else { 'https://localhost:9243' }
+$ApiPortalApiBase = '/api-portal/api/v0.9'
 
 # Colors only when writing to an interactive terminal (respects the NO_COLOR
 # convention: https://no-color.org/) — a piped/CI log gets plain ASCII symbols
@@ -249,7 +250,7 @@ function Invoke-SeedEntry([string]$SampleDir, [string]$Endpoint) {
         $definition = Get-ChildItem -LiteralPath $SampleDir -Filter 'definition.*' -File -ErrorAction SilentlyContinue |
             Sort-Object Name | Select-Object -First 1
 
-        $curlArgs = @('-sk', '-X', 'POST', "$ApiPortalUrl/api/v0.9/$Endpoint",
+        $curlArgs = @('-sk', '-X', 'POST', "$ApiPortalUrl$ApiPortalApiBase/$Endpoint",
             '-H', $AuthHeader,
             '-F', "metadata=@$apiYaml;type=application/yaml")
         if ($definition) {
@@ -268,7 +269,7 @@ function Invoke-SeedEntry([string]$SampleDir, [string]$Endpoint) {
             $id = $null
             try { $id = ($body | ConvertFrom-Json).id } catch { $id = $null }
             $docs = @{ Result = ''; Failed = $false }
-            if ($id) { $docs = Invoke-SeedDocs $SampleDir "/api/v0.9/$Endpoint/$id" }
+            if ($id) { $docs = Invoke-SeedDocs $SampleDir "$ApiPortalApiBase/$Endpoint/$id" }
 
             if ($docs.Failed) {
                 # Entry itself was created, but its docs upload failed — surface

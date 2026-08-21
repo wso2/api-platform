@@ -34,6 +34,8 @@ import { LoadingState } from '../../components/StateViews';
 import { runtimeConfig } from '../../config/runtime';
 import { routes } from '../../routes/paths';
 import { useConsoleScope } from '../../scope/ConsoleScopeProvider';
+import { useNotifications } from '../../components/Notifications';
+import { PortProvider, type CloudHostPort } from '../../hostPort';
 import { AppHeader } from './AppHeader';
 import { APP_FOOTER_ID } from './appLayoutConstants';
 import { AppSidebar } from './AppSidebar';
@@ -42,6 +44,18 @@ import { FormattedMessage } from 'react-intl';
 export default function AppLayout() {
   const navigate = useNavigate();
   const { organization, project, component, params } = useConsoleScope();
+  const { notify } = useNotifications();
+
+  // Built once per render from this portal's own hooks, then handed down as
+  // a plain value to every extension's `render(port)` — see `hostPort.tsx`
+  // for why this crosses the api-platform/apim-saas seam as a value, not a
+  // shared context object.
+  const port: CloudHostPort = {
+    orgHandle: params.orgHandle ?? '',
+    projectHandle: params.projectHandler,
+    navigate,
+    notify,
+  };
 
   const crumbs: BreadcrumbItem[] = [];
   if (params.orgHandle) {
@@ -79,14 +93,15 @@ export default function AppLayout() {
   );
 
   return (
-    <AppShell initialCollapsed={false} collapseOnSelectOnMobile>
-      <AppShell.Navbar>
-        <AppHeader />
-      </AppShell.Navbar>
+    <PortProvider value={port}>
+      <AppShell initialCollapsed={false} collapseOnSelectOnMobile>
+        <AppShell.Navbar>
+          <AppHeader />
+        </AppShell.Navbar>
 
-      <AppShell.Sidebar>
-        <AppSidebar />
-      </AppShell.Sidebar>
+        <AppShell.Sidebar>
+          <AppSidebar />
+        </AppShell.Sidebar>
 
       <AppShell.Main>
         <Box sx={{ minWidth: 0, width: '100%', p: 1 }}>
@@ -150,5 +165,6 @@ export default function AppLayout() {
         </NotificationPanel>
       </AppShell.NotificationPanel>
     </AppShell>
+    </PortProvider>
   );
 }

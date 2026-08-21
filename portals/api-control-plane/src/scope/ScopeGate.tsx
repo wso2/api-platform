@@ -87,6 +87,14 @@ const DEFAULT_PROMPT: Record<RequiredScope, string> = {
   project: 'This page is available at the project level.',
 };
 
+/** Prevents long names from widening the option row; `minWidth: 0` enables ellipsis. */
+const OPTION_ROW_SX = { minWidth: 0, overflow: 'hidden' } as const;
+
+/** Same clipping for the value the closed Select renders. */
+const SELECT_VALUE_SX = {
+  '& .MuiSelect-select': { minWidth: 0, overflow: 'hidden' },
+} as const;
+
 function ScopeSelection({
   prompt,
   requires,
@@ -209,7 +217,8 @@ function ScopeSelection({
                         !organization ||
                         organizations.length === 0
                       }
-                      MenuProps={{ PaperProps: { sx: { maxHeight: 300 } } }}
+                      MenuProps={{ PaperProps: { sx: { maxHeight: 300, maxWidth: 300 } } }}
+                      sx={SELECT_VALUE_SX}
                     >
                       {isLoading ? (
                         <MenuItem value="__loading__" disabled>
@@ -229,14 +238,21 @@ function ScopeSelection({
                           <ComplexSelect.MenuItem
                             key={project.id}
                             value={project.id}
+                            sx={{ overflow: 'hidden' }}
                           >
-                            <Stack direction="row" alignItems="center" spacing={1}>
-                              <ComplexSelect.MenuItem.Icon>
+                            <Stack
+                              direction="row"
+                              alignItems="center"
+                              spacing={1}
+                              sx={OPTION_ROW_SX}
+                            >
+                              <ComplexSelect.MenuItem.Icon sx={{ flexShrink: 0 }}>
                                 <Layers size={18} />
                               </ComplexSelect.MenuItem.Icon>
                               <ComplexSelect.MenuItem.Text
                                 primary={project.displayName}
-                                secondary={project.id}
+                                sx={{ minWidth: 0, my: 0 }}
+                                slotProps={{ primary: { noWrap: true } }}
                               />
                             </Stack>
                           </ComplexSelect.MenuItem>
@@ -261,7 +277,8 @@ function ScopeSelection({
                       onChange={(event) => setChosenApi(String(event.target.value))}
                       displayEmpty
                       disabled={!chosenProject || apisQuery.isPending}
-                      MenuProps={{ PaperProps: { sx: { maxHeight: 300 } } }}
+                      MenuProps={{ PaperProps: { sx: { maxHeight: 300, maxWidth: 300 } } }}
+                      sx={SELECT_VALUE_SX}
                     >
                       {apisQuery.isPending ? (
                         <MenuItem value="__loading__" disabled>
@@ -279,14 +296,25 @@ function ScopeSelection({
                         </MenuItem>
                       ) : (
                         apis.map((api) => (
-                          <ComplexSelect.MenuItem key={api.id} value={api.id ?? ''}>
-                            <Stack direction="row" alignItems="center" spacing={1}>
-                              <ComplexSelect.MenuItem.Icon>
+                          <ComplexSelect.MenuItem
+                            key={api.id}
+                            value={api.id ?? ''}
+                            sx={{ overflow: 'hidden' }}
+                          >
+                            <Stack
+                              direction="row"
+                              alignItems="center"
+                              spacing={1}
+                              sx={OPTION_ROW_SX}
+                            >
+                              <ComplexSelect.MenuItem.Icon sx={{ flexShrink: 0 }}>
                                 <Boxes size={18} />
                               </ComplexSelect.MenuItem.Icon>
-                            <ComplexSelect.MenuItem.Text
-                              primary={api.displayName}
-                              secondary={api.version} /> 
+                              <ComplexSelect.MenuItem.Text
+                                primary={api.displayName}
+                                sx={{ minWidth: 0, my: 0 }}
+                                slotProps={{ primary: { noWrap: true } }}
+                              />
                             </Stack>
                           </ComplexSelect.MenuItem>
                         ))

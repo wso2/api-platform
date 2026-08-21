@@ -506,7 +506,7 @@ func TestBuildAnalyticsStruct_EmptyData(t *testing.T) {
 
 func TestBuildAnalyticsStruct_SimpleData(t *testing.T) {
 	data := map[string]any{
-		"requestId": "req-123",
+		"requestId":  "req-123",
 		"statusCode": 200,
 	}
 

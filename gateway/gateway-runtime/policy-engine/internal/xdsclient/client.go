@@ -36,11 +36,13 @@ import (
 	"google.golang.org/grpc/credentials/insecure"
 	"google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/types/known/anypb"
+	"google.golang.org/protobuf/types/known/structpb"
 
 	"github.com/wso2/api-platform/gateway/gateway-runtime/policy-engine/internal/constants"
 	"github.com/wso2/api-platform/gateway/gateway-runtime/policy-engine/internal/kernel"
 	"github.com/wso2/api-platform/gateway/gateway-runtime/policy-engine/internal/metrics"
 	"github.com/wso2/api-platform/gateway/gateway-runtime/policy-engine/internal/registry"
+	"github.com/wso2/api-platform/gateway/gateway-runtime/policy-engine/internal/resolver"
 )
 
 // Client is the xDS client that subscribes to policy chain configurations via ADS
@@ -62,6 +64,11 @@ type Client struct {
 	routeConfigVersion       string
 	currentNonce             string
 
+	// resolvers is the frozen operation-resolver registry this runtime supports.
+	// Advertised in Node.Metadata on every discovery request so the control plane
+	// can withhold routes whose resolver this binary does not have.
+	resolvers resolver.ResolverRegistry
+
 	// Lifecycle management
 	ctx         context.Context
 	cancel      context.CancelFunc
@@ -70,8 +77,10 @@ type Client struct {
 	reconnectCh chan struct{}
 }
 
-// NewClient creates a new xDS client
-func NewClient(config *Config, k *kernel.Kernel, reg *registry.PolicyRegistry) (*Client, error) {
+// NewClient creates a new xDS client. resolvers is the frozen operation-resolver
+// registry, used both to validate incoming route resolution config and to
+// advertise this runtime's capabilities to the control plane.
+func NewClient(config *Config, k *kernel.Kernel, reg *registry.PolicyRegistry, resolvers resolver.ResolverRegistry) (*Client, error) {
 	if err := config.Validate(); err != nil {
 		return nil, fmt.Errorf("invalid config: %w", err)
 	}
@@ -80,7 +89,8 @@ func NewClient(config *Config, k *kernel.Kernel, reg *registry.PolicyRegistry) (
 
 	return &Client{
 		config:           config,
-		handler:          NewResourceHandler(k, reg),
+		handler:          NewResourceHandler(k, reg, resolvers),
+		resolvers:        resolvers,
 		reconnectManager: NewReconnectManager(config),
 		state:            StateDisconnected,
 		ctx:              ctx,
@@ -333,6 +343,43 @@ func (c *Client) loadTLSConfig() (*tls.Config, error) {
 	}, nil
 }
 
+// discoveryNode builds the Node this runtime presents on every discovery request.
+//
+// Beyond identity it advertises what this binary can actually do with the
+// resources it is about to receive: the resolution protocol version it implements
+// and the sorted list of operation resolvers it has registered. The control plane
+// uses that to withhold a route whose resolver this runtime does not have, instead
+// of sending it and having every request to it fail to resolve.
+//
+// The metadata is rebuilt per request rather than cached: it is a handful of string
+// copies against a network round trip, and building it from the live registry means
+// it cannot go stale relative to what the binary actually serves.
+func (c *Client) discoveryNode() *corev3.Node {
+	node := &corev3.Node{
+		Id:      constants.XDSNodeID,
+		Cluster: constants.XDSCluster,
+	}
+
+	names := []string{}
+	if c.resolvers != nil {
+		names = c.resolvers.Names()
+	}
+	supported := make([]*structpb.Value, 0, len(names))
+	for _, name := range names {
+		supported = append(supported, structpb.NewStringValue(name))
+	}
+
+	node.Metadata = &structpb.Struct{
+		Fields: map[string]*structpb.Value{
+			constants.NodeMetaResolutionProtocolVersion: structpb.NewNumberValue(float64(resolver.ProtocolVersion)),
+			constants.NodeMetaSupportedResolvers: structpb.NewListValue(
+				&structpb.ListValue{Values: supported},
+			),
+		},
+	}
+	return node
+}
+
 // sendDiscoveryRequest sends a DiscoveryRequest to the xDS server
 func (c *Client) sendDiscoveryRequest(versionInfo, responseNonce string) error {
 	c.mu.RLock()
@@ -352,10 +399,7 @@ func (c *Client) sendDiscoveryRequest(versionInfo, responseNonce string) error {
 		TypeUrl:       PolicyChainTypeURL,
 		VersionInfo:   policyVersion,
 		ResponseNonce: responseNonce,
-		Node: &corev3.Node{
-			Id:      constants.XDSNodeID,
-			Cluster: constants.XDSCluster,
-		},
+		Node:          c.discoveryNode(),
 	}
 
 	slog.DebugContext(c.ctx, "Sending policy chain discovery request",
@@ -372,10 +416,7 @@ func (c *Client) sendDiscoveryRequest(versionInfo, responseNonce string) error {
 		TypeUrl:       APIKeyStateTypeURL,
 		VersionInfo:   apiKeyVersion,
 		ResponseNonce: responseNonce,
-		Node: &corev3.Node{
-			Id:      constants.XDSNodeID,
-			Cluster: constants.XDSCluster,
-		},
+		Node:          c.discoveryNode(),
 	}
 
 	slog.DebugContext(c.ctx, "Sending API key discovery request",
@@ -392,10 +433,7 @@ func (c *Client) sendDiscoveryRequest(versionInfo, responseNonce string) error {
 		TypeUrl:       LazyResourceTypeURL,
 		VersionInfo:   lazyResourceVersion,
 		ResponseNonce: responseNonce,
-		Node: &corev3.Node{
-			Id:      constants.XDSNodeID,
-			Cluster: constants.XDSCluster,
-		},
+		Node:          c.discoveryNode(),
 	}
 
 	slog.DebugContext(c.ctx, "Sending lazy resource discovery request",
@@ -412,10 +450,7 @@ func (c *Client) sendDiscoveryRequest(versionInfo, responseNonce string) error {
 		TypeUrl:       SubscriptionStateTypeURL,
 		VersionInfo:   subscriptionVersion,
 		ResponseNonce: responseNonce,
-		Node: &corev3.Node{
-			Id:      constants.XDSNodeID,
-			Cluster: constants.XDSCluster,
-		},
+		Node:          c.discoveryNode(),
 	}
 
 	slog.DebugContext(c.ctx, "Sending subscription state discovery request",
@@ -432,10 +467,7 @@ func (c *Client) sendDiscoveryRequest(versionInfo, responseNonce string) error {
 		TypeUrl:       RouteConfigTypeURL,
 		VersionInfo:   "", // Initial request
 		ResponseNonce: responseNonce,
-		Node: &corev3.Node{
-			Id:      constants.XDSNodeID,
-			Cluster: constants.XDSCluster,
-		},
+		Node:          c.discoveryNode(),
 	}
 
 	slog.DebugContext(c.ctx, "Sending route config discovery request",
@@ -565,10 +597,7 @@ func (c *Client) sendDiscoveryRequestForType(typeURL, versionInfo, responseNonce
 		TypeUrl:       typeURL,
 		VersionInfo:   versionInfo,
 		ResponseNonce: responseNonce,
-		Node: &corev3.Node{
-			Id:      constants.XDSNodeID,
-			Cluster: constants.XDSCluster,
-		},
+		Node:          c.discoveryNode(),
 	}
 
 	slog.DebugContext(c.ctx, "Sending discovery request for specific type",

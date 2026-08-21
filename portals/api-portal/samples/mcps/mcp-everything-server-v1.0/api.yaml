@@ -1,0 +1,37 @@
+apiVersion: api-portal.api-platform.wso2.com/v1
+kind: MCP
+
+metadata:
+  name: mcp-everything-server-v1.0
+
+spec:
+  type: MCP
+  displayName: Everything MCP Server
+  version: v1.0
+  description: A reference MCP server that exercises the whole protocol — tools, prompts, resources, and sampling. Built for developers testing an MCP client, with a pizza-ordering flow standing in for a real workload.
+  status: PUBLISHED
+
+  tags:
+    - mcp
+    - ai-agent
+    - reference
+    - testing
+
+  labels:
+    - default
+
+  subscriptionPlans:
+    - Silver
+    - Bronze
+
+  agentVisibility: VISIBLE
+
+  businessInformation:
+    businessOwner: API Team
+    businessOwnerEmail: api-team@example.com
+    technicalOwner: Platform Team
+    technicalOwnerEmail: platform-team@example.com
+
+  endpoints:
+    productionUrl: https://db720294-98fd-40f4-85a1-cc6a3b65bc9a-prod.e1-us-east-azure.choreoapis.dev/godzilla/mcp-everything-server/v1.0/mcp
+    sandboxUrl: https://db720294-98fd-40f4-85a1-cc6a3b65bc9a-prod.e1-us-east-azure.choreoapis.dev/godzilla/mcp-everything-server/v1.0/mcp
