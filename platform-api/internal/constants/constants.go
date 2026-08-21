@@ -24,6 +24,23 @@ import "regexp"
 // ref-extraction (repository) and ref-validation (service) always match the same set.
 var SecretPlaceholderRe = regexp.MustCompile(`\{\{\s*secret\s+\\?"([^"\\]+)\\?"\s*\}\}`)
 
+// SecretHandlePattern mirrors the AI Workspace UI's client-side slug pattern
+// (CreateSecret.tsx HANDLE_PATTERN) — lowercase letters, digits, and single
+// hyphens, no leading/trailing/doubled hyphens. Enforced server-side so a
+// non-UI caller (curl, future CLI) cannot create a handle that the UI would
+// never generate — in particular, one containing "/" would be permanently
+// unreachable via GET/PUT/DELETE /secrets/{secretId} (the router treats "/"
+// as a path-segment boundary), and one containing quotes or "{{"/"}}" could
+// interfere with SecretPlaceholderRe matching.
+var SecretHandlePattern = regexp.MustCompile(`^[a-z0-9]+(-[a-z0-9]+)*$`)
+
+// SecretHandleMaxLength matches the `handle VARCHAR(40)` column in the secrets
+// table. SQLite does not enforce
+// VARCHAR length limits, so this must be checked in application code — without
+// it, a handle exceeding this length is silently accepted on SQLite but would
+// raise a raw, unfriendly DB constraint error on PostgreSQL.
+const SecretHandleMaxLength = 40
+
 // ValidLifecycleStates Valid lifecycle states
 var ValidLifecycleStates = map[string]bool{
 	"STAGED":     true,

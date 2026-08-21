@@ -45,14 +45,6 @@
 // Shared helpers
 // ---------------------------------------------------------------------------
 
-function toSlug(value) {
-  return value
-    .toLowerCase()
-    .trim()
-    .replace(/[^a-z0-9]+/g, '-')
-    .replace(/^-+|-+$/g, '');
-}
-
 function loginAndFetchAuthContext(setAuthToken, setOrganizationId) {
   cy.login();
   cy.request({
@@ -128,6 +120,12 @@ describe('AI Workspace — LLM proxy secret management (create flow)', () => {
   const projectName = `E2E Proxy Secret Project ${suffix}`;
   const providerName = `E2E Proxy Secret Provider ${suffix}`;
   const proxyName = `E2E Proxy Secret Proxy ${suffix}`;
+  // Dedicated, compact base for pre-created placeholder secret handles — kept
+  // independent of proxyName's length so it always stays well within the
+  // platform-api's 40-character secret handle limit regardless of the display
+  // name above (a slug of proxyName alone can already exceed 40 chars once a
+  // suffix like "-provider-api-key" is appended).
+  const secretHandleBase = `e2e-${suffix}`;
 
   let authToken = '';
   let organizationId = '';
@@ -222,7 +220,7 @@ describe('AI Workspace — LLM proxy secret management (create flow)', () => {
   // TC-2: Re-save proxy already using a placeholder → POST /secrets NOT called
   // -------------------------------------------------------------------------
   it('TC-2: does not create a duplicate secret when the API key is already a placeholder', () => {
-    const existingHandle = `${toSlug(proxyName)}-provider-api-key`;
+    const existingHandle = `${secretHandleBase}-provider-api-key`;
     cy.request({
       method: 'POST',
       url: '/proxy/api/v0.9/secrets',
@@ -310,6 +308,8 @@ describe('AI Workspace — LLM proxy secret management (update flow)', () => {
   const projectName = `E2E Proxy Update Project ${suffix}`;
   const providerName = `E2E Proxy Update Provider ${suffix}`;
   const proxyName = `E2E Proxy Update Proxy ${suffix}`;
+  // See secretHandleBase in the create-flow describe block above — same reasoning.
+  const secretHandleBase = `e2e-${suffix}`;
   const INITIAL_KEY = `sk-proxy-update-initial-${suffix}`;
 
   let authToken = '';
@@ -424,9 +424,9 @@ describe('AI Workspace — LLM proxy secret management (update flow)', () => {
       expect(text, 'plaintext absent from page').not.to.include(UPDATED_KEY);
     });
 
-    // The old secret backing INITIAL_KEY must be soft-deleted server-side —
-    // GetByHandle doesn't filter by status, so it still 200s but flips to
-    // DEPRECATED. This closes the gap left untested on the LLM Provider side.
+    // The old secret backing INITIAL_KEY must be permanently deleted server-side
+    // once the update leaves it unreferenced — GetByHandle 404s on a hard-deleted
+    // row. This closes the gap left untested on the LLM Provider side.
     cy.wrap(null).then(() => {
       expect(initialSecretHandle, 'captured the initial secret handle in beforeEach').to.not.equal('');
       cy.request({
@@ -434,8 +434,7 @@ describe('AI Workspace — LLM proxy secret management (update flow)', () => {
         headers: { Authorization: `Bearer ${authToken}` },
         failOnStatusCode: false,
       }).then((r) => {
-        expect(r.status, 'old secret still resolvable').to.eq(200);
-        expect(r.body?.status, 'old secret marked deprecated after cleanup').to.eq('DEPRECATED');
+        expect(r.status, 'old secret permanently deleted after cleanup').to.eq(404);
       });
     });
   });
@@ -444,7 +443,7 @@ describe('AI Workspace — LLM proxy secret management (update flow)', () => {
   // TC-5: Edit API key by typing an explicit placeholder → POST /secrets NOT called
   // -------------------------------------------------------------------------
   it('TC-5: typing a placeholder value skips secret creation and sends the placeholder directly', () => {
-    const explicitHandle = `${toSlug(proxyName)}-provider-api-key`;
+    const explicitHandle = `${secretHandleBase}-provider-api-key`;
 
     cy.request({
       method: 'POST',

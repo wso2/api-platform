@@ -377,11 +377,14 @@ func (r *MCPProxyRepo) EnsureGatewayAssociation(proxyUUID, gatewayUUID, orgUUID,
 	return ensureArtifactGatewayAssociation(r.db, proxyUUID, gatewayUUID, orgUUID, createdBy, deployMetadata, metadataProvided)
 }
 
-// Delete deletes an MCP proxy by its handle and organization UUID
-func (r *MCPProxyRepo) Delete(handle, orgUUID string) error {
+// Delete deletes an MCP proxy by its handle and organization UUID, returning the
+// secret handles it referenced (current config and any deployed snapshots) so the
+// caller can check each for orphan cleanup now that this artifact no longer holds
+// a reference to them.
+func (r *MCPProxyRepo) Delete(handle, orgUUID string) ([]string, error) {
 	tx, err := r.db.Begin()
 	if err != nil {
-		return err
+		return nil, err
 	}
 	defer tx.Rollback()
 
@@ -393,25 +396,30 @@ func (r *MCPProxyRepo) Delete(handle, orgUUID string) error {
 	err = tx.QueryRow(r.db.Rebind(query), handle, orgUUID).Scan(&proxyUUID)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
-			return sql.ErrNoRows
+			return nil, sql.ErrNoRows
 		}
-		return err
+		return nil, err
+	}
+
+	secretHandles, err := secretHandlesForArtifact(tx, r.db, proxyUUID)
+	if err != nil {
+		return nil, err
 	}
 
 	// Delete from mcp_proxies first, then artifacts using artifactRepo
 	_, err = tx.Exec(r.db.Rebind(`DELETE FROM mcp_proxies WHERE uuid = ?`), proxyUUID)
 	if err != nil {
-		return err
+		return nil, err
 	}
 
 	if err := r.artifactRepo.Delete(tx, proxyUUID); err != nil {
-		return err
+		return nil, err
 	}
 
 	if err := tx.Commit(); err != nil {
-		return err
+		return nil, err
 	}
-	return nil
+	return secretHandles, nil
 }
 
 // Exists checks if an MCP proxy exists by its handle and organization UUID

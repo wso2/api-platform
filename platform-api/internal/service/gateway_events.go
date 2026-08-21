@@ -79,6 +79,15 @@ const (
 	EventTypeSubscriptionPlanCreated = "subscriptionPlan.created"
 	EventTypeSubscriptionPlanUpdated = "subscriptionPlan.updated"
 	EventTypeSubscriptionPlanDeleted = "subscriptionPlan.deleted"
+
+	// EventTypeSecretUpdated fires on rotation (PUT /secrets/:handle). There is no
+	// EventTypeSecretCreated: a freshly created secret is not yet referenced by any
+	// deployed artifact, so no connected gateway has anything to refresh — the first
+	// time a gateway needs it, the artifact-deploy path's syncSecretRefsFromYAML picks
+	// it up already. EventTypeSecretDeleted fires on delete, which permanently
+	// removes the secret once no artifact references the handle.
+	EventTypeSecretUpdated = "secret.updated"
+	EventTypeSecretDeleted = "secret.deleted"
 )
 
 // GatewayEventsService handles broadcasting events to connected gateways via EventHub.
@@ -254,6 +263,16 @@ func (s *GatewayEventsService) BroadcastSubscriptionPlanUpdatedEvent(gatewayID s
 // BroadcastSubscriptionPlanDeletedEvent sends a subscriptionPlan.deleted event to the target gateway.
 func (s *GatewayEventsService) BroadcastSubscriptionPlanDeletedEvent(gatewayID string, event *model.SubscriptionPlanDeletedEvent) error {
 	return s.broadcastEvent(gatewayID, EventTypeSubscriptionPlanDeleted, event)
+}
+
+// BroadcastSecretUpdatedEvent sends a secret.updated event to target gateway.
+func (s *GatewayEventsService) BroadcastSecretUpdatedEvent(gatewayID string, event *model.SecretUpdatedEvent) error {
+	return s.broadcastEvent(gatewayID, EventTypeSecretUpdated, event)
+}
+
+// BroadcastSecretDeletedEvent sends a secret.deleted event to target gateway.
+func (s *GatewayEventsService) BroadcastSecretDeletedEvent(gatewayID string, event *model.SecretDeletedEvent) error {
+	return s.broadcastEvent(gatewayID, EventTypeSecretDeleted, event)
 }
 
 // broadcastEvent is the generic helper for broadcasting gateway events without a userId.

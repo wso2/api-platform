@@ -130,6 +130,7 @@ func TestSecretsRoutesAreRegisteredOnTheBasePath(t *testing.T) {
 		{http.MethodGet, constants.APIBasePath + "/secrets"},
 		{http.MethodPost, constants.APIBasePath + "/secrets"},
 		{http.MethodGet, constants.APIBasePath + "/secrets/s-1"},
+		{http.MethodGet, constants.APIBasePath + "/secrets/s-1/usages"},
 		{http.MethodPut, constants.APIBasePath + "/secrets/s-1"},
 		{http.MethodDelete, constants.APIBasePath + "/secrets/s-1"},
 	} {

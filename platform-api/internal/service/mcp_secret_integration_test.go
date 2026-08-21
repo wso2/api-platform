@@ -32,6 +32,7 @@ import (
 
 	"github.com/wso2/api-platform/platform-api/api"
 	"github.com/wso2/api-platform/platform-api/config"
+	"github.com/wso2/api-platform/platform-api/internal/apperror"
 	"github.com/wso2/api-platform/platform-api/internal/database"
 	"github.com/wso2/api-platform/platform-api/internal/model"
 	"github.com/wso2/api-platform/platform-api/internal/repository"
@@ -123,12 +124,10 @@ func TestMCPProxyServiceUpdate_CleansUpRotatedSecret_Integration(t *testing.T) {
 		t.Fatalf("Update (rotate) failed: %v", err)
 	}
 
-	secretA, err := secretSvc.Get(mcpSecretITOrgUUID, "mcp-it-secret-a")
-	if err != nil {
-		t.Fatalf("failed to fetch secret A after rotation: %v", err)
-	}
-	if secretA.Status != string(model.SecretStatusDeprecated) {
-		t.Errorf("expected secret A to be deprecated after rotation, got status=%q", secretA.Status)
+	// Secret A is no longer referenced by anything after rotation, so rotation
+	// cleanup permanently deletes it rather than merely deprecating it.
+	if _, err := secretSvc.Get(mcpSecretITOrgUUID, "mcp-it-secret-a"); !apperror.SecretNotFound.Is(err) {
+		t.Errorf("expected secret A to be permanently deleted after rotation, got: %v", err)
 	}
 	secretB, err := secretSvc.Get(mcpSecretITOrgUUID, "mcp-it-secret-b")
 	if err != nil {
@@ -136,5 +135,79 @@ func TestMCPProxyServiceUpdate_CleansUpRotatedSecret_Integration(t *testing.T) {
 	}
 	if secretB.Status != string(model.SecretStatusActive) {
 		t.Errorf("expected secret B to remain active after rotation, got status=%q", secretB.Status)
+	}
+}
+
+// TestMCPProxyServiceDelete_CleansUpOrphanedSecret_Integration proves deleting
+// an MCP proxy permanently removes a secret it solely referenced, against a
+// real DB exercising the actual artifact_secret_refs tracking.
+func TestMCPProxyServiceDelete_CleansUpOrphanedSecret_Integration(t *testing.T) {
+	tmpDir := t.TempDir()
+	dbPath := filepath.Join(tmpDir, "mcp-secret-delete-it.db")
+	sqlDB, err := sql.Open("sqlite3", dbPath)
+	if err != nil {
+		t.Fatalf("open db: %v", err)
+	}
+	defer sqlDB.Close()
+	sqlDB.Exec("PRAGMA foreign_keys = ON")
+	db := &database.DB{DB: sqlDB}
+
+	schemaPath := filepath.Join("..", "database", "schema.sqlite.sql")
+	schema, err := os.ReadFile(schemaPath)
+	if err != nil {
+		t.Fatalf("read schema: %v", err)
+	}
+	if _, err = db.Exec(string(schema)); err != nil {
+		t.Fatalf("apply schema: %v", err)
+	}
+	const orgUUID = "org-mcp-secret-delete-it"
+	if _, err = db.Exec(`INSERT INTO organizations (uuid, handle, display_name, region, idp_organization_ref_uuid, created_at, updated_at)
+		VALUES (?, 'mcp-secret-delete-it-org', 'MCP Secret Delete IT Org', 'default', 'idp-ref', datetime('now'), datetime('now'))`, orgUUID); err != nil {
+		t.Fatalf("insert org: %v", err)
+	}
+
+	v, err := vault.NewInHouseVault([]byte("12345678901234567890123456789012"))
+	if err != nil {
+		t.Fatalf("create vault: %v", err)
+	}
+	identity := NewIdentityService(repository.NewUserIdentityMappingRepo(db))
+	secretRepo := repository.NewSecretRepo(db)
+	secretSvc := NewSecretService(secretRepo, v, identity)
+
+	createTestSecret(t, secretSvc, orgUUID, "mcp-del-solo-secret", "sk-mcp-solo-token")
+
+	mcpRepo := repository.NewMCPProxyRepo(db)
+	mcpSvc := NewMCPProxyService(mcpRepo, nil, nil, nil, nil, slog.Default(), repository.NewAuditRepo(db), &config.Server{}, identity)
+	mcpSvc.WithSecretService(secretSvc)
+
+	created, err := mcpSvc.Create(orgUUID, "alice", &api.MCPProxy{
+		DisplayName: "IT MCP Proxy To Delete",
+		Version:     "v1.0",
+		Upstream: api.Upstream{
+			Main: api.UpstreamDefinition{
+				Url: utils.StringPtrIfNotEmpty("https://mcp-backend.internal"),
+				Auth: &api.UpstreamAuth{
+					Type:   upstreamAuthTypePtr("bearer"),
+					Header: ptr("Authorization"),
+					Value:  ptr(`{{ secret "mcp-del-solo-secret" }}`),
+				},
+			},
+		},
+	})
+	if err != nil {
+		t.Fatalf("Create failed: %v", err)
+	}
+
+	// Sanity check: the secret is blocked from direct deletion while the proxy references it.
+	if err := secretSvc.Delete(orgUUID, "mcp-del-solo-secret", "alice"); err == nil {
+		t.Fatal("expected secret deletion to be blocked while the proxy references it")
+	}
+
+	if err := mcpSvc.Delete(orgUUID, *created.Id, "alice"); err != nil {
+		t.Fatalf("Delete failed: %v", err)
+	}
+
+	if _, err := secretSvc.Get(orgUUID, "mcp-del-solo-secret"); !apperror.SecretNotFound.Is(err) {
+		t.Errorf("expected orphaned secret to be permanently deleted after proxy deletion, got: %v", err)
 	}
 }

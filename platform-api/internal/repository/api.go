@@ -441,18 +441,25 @@ func (r *APIRepo) UpdateAPI(api *model.API) error {
 	return tx.Commit()
 }
 
-// DeleteAPI removes an API and all its configurations
-func (r *APIRepo) DeleteAPI(apiUUID, orgUUID string) error {
+// DeleteAPI removes an API and all its configurations, returning the secret handles
+// it referenced (current config and any deployed snapshots) so the caller can check
+// each for orphan cleanup now that this artifact no longer holds a reference to them.
+func (r *APIRepo) DeleteAPI(apiUUID, orgUUID string) ([]string, error) {
 	// Start transaction for atomicity
 	tx, err := r.db.Begin()
 	if err != nil {
-		return err
+		return nil, err
 	}
 	defer tx.Rollback()
 
+	secretHandles, err := secretHandlesForArtifact(tx, r.db, apiUUID)
+	if err != nil {
+		return nil, err
+	}
+
 	// Delete gateway associations
 	if _, err := tx.Exec(r.db.Rebind(`DELETE FROM artifact_gateway_mappings WHERE artifact_uuid = ? AND organization_uuid = ?`), apiUUID, orgUUID); err != nil {
-		return err
+		return nil, err
 	}
 
 	// Delete in order of dependencies (children first, parent last)
@@ -468,21 +475,24 @@ func (r *APIRepo) DeleteAPI(apiUUID, orgUUID string) error {
 		switch i {
 		case 0:
 			if _, err := tx.Exec(r.db.Rebind(query), apiUUID, orgUUID); err != nil {
-				return err
+				return nil, err
 			}
 		default:
 			if _, err := tx.Exec(r.db.Rebind(query), apiUUID); err != nil {
-				return err
+				return nil, err
 			}
 		}
 	}
 
 	// Delete from artifacts table using artifactRepo
 	if err := r.artifactRepo.Delete(tx, apiUUID); err != nil {
-		return err
+		return nil, err
 	}
 
-	return tx.Commit()
+	if err := tx.Commit(); err != nil {
+		return nil, err
+	}
+	return secretHandles, nil
 }
 
 // CheckAPIExistsByHandleInOrganization checks if an API with the given handle exists within a specific organization

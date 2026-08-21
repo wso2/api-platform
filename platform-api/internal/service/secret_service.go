@@ -44,13 +44,28 @@ func (e *SecretInUseError) Error() string {
 }
 
 type SecretService struct {
-	repo     repository.SecretRepository
-	vault    vault.SecretVault
-	identity *IdentityService
+	repo          repository.SecretRepository
+	vault         vault.SecretVault
+	identity      *IdentityService
+	gatewayRepo   repository.GatewayRepository
+	gatewayEvents *GatewayEventsService
+	slogger       *slog.Logger
 }
 
 func NewSecretService(repo repository.SecretRepository, v vault.SecretVault, identity *IdentityService) *SecretService {
-	return &SecretService{repo: repo, vault: v, identity: identity}
+	return &SecretService{repo: repo, vault: v, identity: identity, slogger: slog.Default()}
+}
+
+// WithGatewayBroadcast enables best-effort secret.updated/secret.deleted
+// notifications to every gateway in the organization on rotate/delete (see
+// broadcastSecretEvent). Optional: a SecretService built without this call simply
+// skips broadcasting — kept as a post-construction setter rather than a constructor
+// parameter so the many existing unit tests that build a bare SecretService don't
+// all need updating for a purely additive, best-effort side channel.
+func (s *SecretService) WithGatewayBroadcast(gatewayRepo repository.GatewayRepository, gatewayEvents *GatewayEventsService) *SecretService {
+	s.gatewayRepo = gatewayRepo
+	s.gatewayEvents = gatewayEvents
+	return s
 }
 
 // toSecretResponse converts secret via secretToResponse and resolves its
@@ -89,6 +104,10 @@ func (s *SecretService) toSecretSummary(secret *model.Secret) (*dto.SecretSummar
 }
 
 func (s *SecretService) Create(orgID, createdBy string, req *dto.CreateSecretRequest) (*dto.SecretResponse, error) {
+	if err := validateSecretHandle(req.Handle); err != nil {
+		return nil, err
+	}
+
 	secretType := req.Type
 	if secretType == "" {
 		secretType = model.SecretTypeGeneric
@@ -178,39 +197,144 @@ func (s *SecretService) Update(orgID, handle, updatedBy string, req *dto.UpdateS
 		return nil, err
 	}
 
-	ciphertext, err := s.vault.Encrypt(context.Background(), req.Value)
-	if err != nil {
-		return nil, fmt.Errorf("failed to encrypt secret: %w", err)
-	}
-
 	if req.DisplayName != "" {
 		existing.DisplayName = req.DisplayName
 	}
 	if req.Description != "" {
 		existing.Description = req.Description
 	}
-	existing.Ciphertext = ciphertext
-	existing.Hash = hashSecret(s.vault.HashKey(), req.Value)
+	// Value is optional: a metadata-only edit (no value) must not touch the
+	// ciphertext/hash or reactivate a deprecated secret — only an explicit
+	// rotation is an intent to put the secret back into service.
+	if req.Value != "" {
+		ciphertext, err := s.vault.Encrypt(context.Background(), req.Value)
+		if err != nil {
+			return nil, fmt.Errorf("failed to encrypt secret: %w", err)
+		}
+		existing.Ciphertext = ciphertext
+		existing.Hash = hashSecret(s.vault.HashKey(), req.Value)
+		existing.Status = model.SecretStatusActive
+	}
 	existing.UpdatedBy = updatedBy
-	// Rotation is an explicit intent to put the secret back into service.
-	existing.Status = model.SecretStatusActive
 
 	if err := s.repo.Update(existing); err != nil {
 		return nil, fmt.Errorf("failed to update secret: %w", err)
 	}
 
-	return s.toSecretResponse(existing)
+	// Build the response before broadcasting: toSecretResponse can still fail
+	// (identity-mapping lookups), and the caller must not be told the rotation
+	// failed after gateways have already been notified of it. If this errors,
+	// the DB commit above still stands — a retry will simply broadcast then.
+	resp, err := s.toSecretResponse(existing)
+	if err != nil {
+		return nil, err
+	}
+
+	s.broadcastSecretEvent(orgID, "updated", &model.SecretUpdatedEvent{
+		Handle:      existing.Handle,
+		DisplayName: existing.DisplayName,
+		Hash:        existing.Hash,
+		// existing.UpdatedAt was just set in-place by s.repo.Update above — see
+		// model.SecretUpdatedEvent.Revision for why UnixNano() is a safe ordering token.
+		Revision: existing.UpdatedAt.UnixNano(),
+	})
+
+	return resp, nil
+}
+
+// GetReferences returns the resources that currently reference handle, so a
+// caller can show why a secret is in use before attempting a delete. Existence
+// is checked first so an unknown handle reports SecretNotFound rather than an
+// empty usages list indistinguishable from "not referenced".
+func (s *SecretService) GetReferences(orgID, handle string) ([]dto.SecretReferenceDTO, error) {
+	if _, err := s.repo.GetByHandle(orgID, handle); err != nil {
+		return nil, err
+	}
+
+	refs, err := s.repo.FindRefs(orgID, handle)
+	if err != nil {
+		return nil, fmt.Errorf("failed to find secret references: %w", err)
+	}
+
+	result := make([]dto.SecretReferenceDTO, 0, len(refs))
+	for _, ref := range refs {
+		result = append(result, dto.SecretReferenceDTO{Type: ref.Type, Handle: ref.Handle, Name: ref.Name})
+	}
+	return result, nil
 }
 
 func (s *SecretService) Delete(orgID, handle, updatedBy string) error {
-	refs, err := s.repo.FindRefsAndSoftDelete(orgID, handle, updatedBy)
+	// Captured before the delete so the broadcast Revision reflects the same
+	// moment as the DB write.
+	deletedAt := time.Now().UTC()
+
+	refs, err := s.repo.FindRefsAndDelete(orgID, handle)
 	if err != nil {
 		return fmt.Errorf("failed to delete secret: %w", err)
 	}
 	if len(refs) > 0 {
 		return &SecretInUseError{References: refs}
 	}
+
+	s.broadcastSecretEvent(orgID, "deleted", &model.SecretDeletedEvent{
+		Handle:   handle,
+		Revision: deletedAt.UnixNano(),
+	})
+
 	return nil
+}
+
+// CleanupOrphanedSecrets permanently deletes any of the given handles that are no
+// longer referenced by anything, once the resource that used to hold one of these
+// references (an LLM provider/proxy or MCP proxy) has already been deleted. Best-effort:
+// a handle still referenced by some other resource, already gone, or any other error is
+// logged and skipped rather than failing the caller's delete — the resource is already
+// durably deleted by the time this runs.
+func (s *SecretService) CleanupOrphanedSecrets(orgID string, handles []string, deletedBy string) {
+	for _, handle := range handles {
+		if err := s.Delete(orgID, handle, deletedBy); err != nil {
+			var inUseErr *SecretInUseError
+			if errors.As(err, &inUseErr) || apperror.SecretNotFound.Is(err) {
+				continue // still referenced elsewhere, or already gone — expected, not a failure
+			}
+			s.slogger.Warn("failed to clean up orphaned secret after resource deletion",
+				"handle", handle, "orgId", orgID, "err", err)
+		}
+	}
+}
+
+// broadcastSecretEvent sends a secret.* event to every gateway in the organization.
+// Best-effort: a load or delivery failure is logged and swallowed rather than failing
+// the rotate/delete call — the change is already durably committed, and a gateway that
+// misses the push still catches up via its own poll-based incremental sync (see
+// docs/specs/secrets-management.md §6.5-6.7). Also a safe no-op when WithGatewayBroadcast
+// was never called (e.g. in unit tests).
+func (s *SecretService) broadcastSecretEvent(orgUUID, action string, payload interface{}) {
+	if s.gatewayEvents == nil || s.gatewayRepo == nil {
+		return
+	}
+	gateways, err := s.gatewayRepo.GetByOrganizationID(orgUUID)
+	if err != nil {
+		s.slogger.Warn("Failed to load gateways for secret broadcast",
+			"orgId", orgUUID, "action", action, "error", err)
+		return
+	}
+	for _, gw := range gateways {
+		if gw == nil || gw.ID == "" {
+			continue
+		}
+		var broadcastErr error
+		switch action {
+		case "updated":
+			broadcastErr = s.gatewayEvents.BroadcastSecretUpdatedEvent(gw.ID, payload.(*model.SecretUpdatedEvent))
+		case "deleted":
+			broadcastErr = s.gatewayEvents.BroadcastSecretDeletedEvent(gw.ID, payload.(*model.SecretDeletedEvent))
+		}
+		if broadcastErr != nil {
+			s.slogger.Warn("Failed to broadcast secret event",
+				"gatewayId", gw.ID, "action", action, "error", broadcastErr)
+		}
+	}
 }
 
 // extractSecretHandle returns the handle embedded in a {{ secret "handle" }}
@@ -269,7 +393,9 @@ func (s *SecretService) cleanupRotatedSecret(orgUUID, oldValue, newValue, update
 }
 
 // ValidateSecretRefs checks that every {{ secret "handle" }} placeholder in configText
-// resolves to an active org-scoped secret.
+// resolves to an active org-scoped secret. Missing and deprecated handles are reported
+// separately (§5.6: a deprecated secret exists but cannot be referenced by new/updated
+// resources) so the caller isn't told a real, existing-but-retired handle "does not exist".
 func (s *SecretService) ValidateSecretRefs(orgID, configText string) error {
 	matches := constants.SecretPlaceholderRe.FindAllStringSubmatch(configText, -1)
 	if len(matches) == 0 {
@@ -278,6 +404,7 @@ func (s *SecretService) ValidateSecretRefs(orgID, configText string) error {
 
 	seen := make(map[string]struct{})
 	var missing []string
+	var deprecated []string
 
 	for _, m := range matches {
 		handle := m[1]
@@ -286,18 +413,50 @@ func (s *SecretService) ValidateSecretRefs(orgID, configText string) error {
 		}
 		seen[handle] = struct{}{}
 
-		found, err := s.repo.Exists(orgID, handle)
+		secret, err := s.repo.GetByHandle(orgID, handle)
 		if err != nil {
+			if apperror.SecretNotFound.Is(err) {
+				missing = append(missing, handle)
+				continue
+			}
 			return fmt.Errorf("failed to check existence of secret %q: %w", handle, err)
 		}
-		if !found {
-			missing = append(missing, handle)
+		if secret.Status == model.SecretStatusDeprecated {
+			deprecated = append(deprecated, handle)
 		}
 	}
 
+	if len(missing) == 0 && len(deprecated) == 0 {
+		return nil
+	}
+
+	var parts []string
 	if len(missing) > 0 {
+		parts = append(parts, fmt.Sprintf("do not exist: %s", strings.Join(missing, ", ")))
+	}
+	if len(deprecated) > 0 {
+		parts = append(parts, fmt.Sprintf("are deprecated and cannot be referenced by new or updated resources: %s", strings.Join(deprecated, ", ")))
+	}
+	return apperror.ValidationFailed.New(fmt.Sprintf(
+		"The following referenced secrets %s.", strings.Join(parts, "; ")))
+}
+
+// validateSecretHandle enforces the same handle shape the AI Workspace UI generates
+// (constants.SecretHandlePattern) and the DB column's length limit
+// (constants.SecretHandleMaxLength), so a non-UI caller cannot create a secret the
+// UI itself could never produce — see constants.SecretHandlePattern's doc comment
+// for why this matters (unreachable-via-router handles, placeholder-regex interference).
+func validateSecretHandle(handle string) error {
+	if handle == "" {
+		return apperror.ValidationFailed.New("A secret handle is required.")
+	}
+	if len(handle) > constants.SecretHandleMaxLength {
 		return apperror.ValidationFailed.New(fmt.Sprintf(
-			"The following referenced secrets do not exist: %s.", strings.Join(missing, ", ")))
+			"Secret handle must not exceed %d characters.", constants.SecretHandleMaxLength))
+	}
+	if !constants.SecretHandlePattern.MatchString(handle) {
+		return apperror.ValidationFailed.New(
+			"Secret handle may only contain lowercase letters, numbers, and single hyphens (no leading, trailing, or doubled hyphens).")
 	}
 	return nil
 }

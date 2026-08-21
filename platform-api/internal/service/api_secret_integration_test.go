@@ -215,12 +215,10 @@ func TestAPIServiceSecretLifecycle_Integration(t *testing.T) {
 		t.Fatalf("UpdateAPI (rotate) failed: %v", err)
 	}
 
-	secretA, err := secretSvc.Get(apiSecretITOrgUUID, "it-secret-a")
-	if err != nil {
-		t.Fatalf("failed to fetch secret A after rotation: %v", err)
-	}
-	if secretA.Status != string(model.SecretStatusDeprecated) {
-		t.Errorf("expected secret A to be deprecated after rotation, got status=%q", secretA.Status)
+	// Secret A is no longer referenced by anything after rotation, so rotation
+	// cleanup permanently deletes it rather than merely deprecating it.
+	if _, err := secretSvc.Get(apiSecretITOrgUUID, "it-secret-a"); !apperror.SecretNotFound.Is(err) {
+		t.Errorf("expected secret A to be permanently deleted after rotation, got: %v", err)
 	}
 	secretB, err := secretSvc.Get(apiSecretITOrgUUID, "it-secret-b")
 	if err != nil {
@@ -228,10 +226,6 @@ func TestAPIServiceSecretLifecycle_Integration(t *testing.T) {
 	}
 	if secretB.Status != string(model.SecretStatusActive) {
 		t.Errorf("expected secret B to remain active after rotation, got status=%q", secretB.Status)
-	}
-	// Secret A is no longer referenced, so it can now be hard-deleted.
-	if err := secretSvc.Delete(apiSecretITOrgUUID, "it-secret-a", "alice"); err != nil {
-		t.Errorf("expected secret A to be deletable after rotation freed it, got: %v", err)
 	}
 
 	// --- Validation: a placeholder in upstream.auth that doesn't resolve is rejected ---
@@ -270,5 +264,53 @@ func TestAPIServiceSecretLifecycle_Integration(t *testing.T) {
 		t.Fatal("expected update with a nonexistent policy secret ref to be rejected, got nil error")
 	} else if !apperror.ValidationFailed.Is(err) {
 		t.Errorf("expected a validation error for missing secret ref, got: %v", err)
+	}
+}
+
+// TestAPIServiceDeleteAPI_CleansUpOrphanedSecret_Integration proves deleting a
+// REST API permanently removes a secret it solely referenced, against a real
+// DB exercising the actual artifact_secret_refs tracking.
+func TestAPIServiceDeleteAPI_CleansUpOrphanedSecret_Integration(t *testing.T) {
+	apiSvc, secretSvc, cleanup := setupAPISecretTestEnv(t)
+	defer cleanup()
+
+	createTestSecret(t, secretSvc, apiSecretITOrgUUID, "del-solo-secret", "sk-solo-token")
+
+	createReq := &api.CreateRESTAPIRequest{
+		DisplayName: "IT REST API To Delete",
+		Context:     "/it-rest-api-delete",
+		Version:     "v1",
+		ProjectId:   "api-secret-it-proj",
+		Upstream: api.Upstream{
+			Main: api.UpstreamDefinition{
+				Url: utils.StringPtrIfNotEmpty("https://backend.internal/api"),
+				Auth: &api.UpstreamAuth{
+					Type:   upstreamAuthTypePtr("bearer"),
+					Header: ptr("Authorization"),
+					Value:  ptr(`{{ secret "del-solo-secret" }}`),
+				},
+			},
+		},
+	}
+	created, err := apiSvc.CreateAPI(createReq, apiSecretITOrgUUID, "alice")
+	if err != nil {
+		t.Fatalf("CreateAPI failed: %v", err)
+	}
+	apiUUID := created.Id
+	if apiUUID == nil || *apiUUID == "" {
+		t.Fatal("expected CreateAPI to return an id")
+	}
+
+	// Sanity check: the secret is blocked from direct deletion while the API references it.
+	if err := secretSvc.Delete(apiSecretITOrgUUID, "del-solo-secret", "alice"); err == nil {
+		t.Fatal("expected secret deletion to be blocked while the API references it")
+	}
+
+	if err := apiSvc.DeleteAPIByHandle(*apiUUID, apiSecretITOrgUUID, "alice"); err != nil {
+		t.Fatalf("DeleteAPIByHandle failed: %v", err)
+	}
+
+	if _, err := secretSvc.Get(apiSecretITOrgUUID, "del-solo-secret"); !apperror.SecretNotFound.Is(err) {
+		t.Errorf("expected orphaned secret to be permanently deleted after API deletion, got: %v", err)
 	}
 }

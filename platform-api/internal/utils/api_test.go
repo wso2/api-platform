@@ -19,6 +19,7 @@ package utils
 
 import (
 	"reflect"
+	"strings"
 	"testing"
 
 	"gopkg.in/yaml.v3"
@@ -651,6 +652,81 @@ func TestBuildAPIDeploymentYAML(t *testing.T) {
 	}
 	if deploymentStruct.Spec.Upstream.Main.URL != "http://backend:8080" {
 		t.Errorf("Upstream URL = %q", deploymentStruct.Spec.Upstream.Main.URL)
+	}
+}
+
+// TestBuildAPIDeploymentYAML_IncludesUpstreamAuth guards against upstream.main/sandbox.auth
+// being silently dropped from the deployment YAML sent to the gateway-controller. A REST
+// API's auth (including a {{ secret "handle" }} placeholder) is stored and redacted/validated
+// correctly end-to-end, but until this test was added nothing verified it actually reached the
+// deployment YAML the gateway-controller resolves placeholders from and renders into Envoy
+// config — the field was simply missing from dto.UpstreamTarget.
+func TestBuildAPIDeploymentYAML_IncludesUpstreamAuth(t *testing.T) {
+	util := &APIUtil{}
+
+	ctx := "/test"
+	apiModel := &model.API{
+		Name:    "Test API",
+		Handle:  "test-api-handle",
+		Version: "v1.0",
+		Kind:    constants.RestApi,
+		Configuration: model.RestAPIConfig{
+			Context: &ctx,
+			Upstream: model.UpstreamConfig{
+				Main: &model.UpstreamEndpoint{
+					URL: "http://backend:8080",
+					Auth: &model.UpstreamAuth{
+						Type:   "api-key",
+						Header: "Authorization",
+						Value:  `{{ secret "main-handle" }}`,
+					},
+				},
+				Sandbox: &model.UpstreamEndpoint{
+					URL: "http://sandbox-backend:8080",
+					Auth: &model.UpstreamAuth{
+						Type:   "api-key",
+						Header: "Authorization",
+						Value:  `{{ secret "sandbox-handle" }}`,
+					},
+				},
+			},
+		},
+		ProjectID: "proj-123",
+	}
+
+	deploymentStruct, err := util.BuildAPIDeploymentYAML(apiModel)
+	if err != nil {
+		t.Fatalf("BuildAPIDeploymentYAML() error = %v", err)
+	}
+
+	main := deploymentStruct.Spec.Upstream.Main
+	if main == nil || main.Auth == nil {
+		t.Fatal("expected upstream.main.auth to be set")
+	}
+	if main.Auth.Type != "api-key" || main.Auth.Header != "Authorization" || main.Auth.Value != `{{ secret "main-handle" }}` {
+		t.Errorf("Main.Auth = %+v", main.Auth)
+	}
+
+	sandbox := deploymentStruct.Spec.Upstream.Sandbox
+	if sandbox == nil || sandbox.Auth == nil {
+		t.Fatal("expected upstream.sandbox.auth to be set")
+	}
+	if sandbox.Auth.Type != "api-key" || sandbox.Auth.Header != "Authorization" || sandbox.Auth.Value != `{{ secret "sandbox-handle" }}` {
+		t.Errorf("Sandbox.Auth = %+v", sandbox.Auth)
+	}
+
+	// The whole point: the raw secret placeholder must survive into the marshalled YAML
+	// text, since the gateway-controller's syncSecretRefsFromYAML finds it via a regex
+	// over this exact byte stream (see gateway-controller/pkg/constants.SecretPlaceholderRe).
+	yamlBytes, err := yaml.Marshal(deploymentStruct)
+	if err != nil {
+		t.Fatalf("failed to marshal struct: %v", err)
+	}
+	yamlText := string(yamlBytes)
+	for _, want := range []string{`{{ secret "main-handle" }}`, `{{ secret "sandbox-handle" }}`} {
+		if !strings.Contains(yamlText, want) {
+			t.Errorf("deployment YAML missing placeholder %q; got:\n%s", want, yamlText)
+		}
 	}
 }
 

@@ -66,6 +66,9 @@ func (r *ArtifactRepo) Delete(tx *sql.Tx, uuid string) error {
 	if err := deleteCustomPolicyUsagesTx(tx, r.db, uuid); err != nil {
 		return err
 	}
+	if err := deleteArtifactSecretRefs(tx, r.db, uuid); err != nil {
+		return err
+	}
 	query := `DELETE FROM artifacts WHERE uuid = ?`
 	result, err := tx.Exec(r.db.Rebind(query), uuid)
 	if err != nil {

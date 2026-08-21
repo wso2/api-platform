@@ -26,8 +26,6 @@ import {
   FormHelperText,
   FormLabel,
   Grid,
-  IconButton,
-  InputAdornment,
   MenuItem,
   Select,
   Stack,
@@ -36,16 +34,14 @@ import {
   Box,
   CircularProgress,
 } from '@wso2/oxygen-ui';
-import { Eye, EyeOff } from '@wso2/oxygen-ui-icons-react';
 import type { ProviderTemplate } from '../../../../../utils/types';
 import type { FormState } from './serviceProviderTypes';
 import { FormattedMessage } from 'react-intl';
+import SecretValueField from '../../../../../Components/common/SecretValueField';
 
 type ProviderTemplateFormFieldsProps = {
   formState: FormState;
   setFormState: React.Dispatch<React.SetStateAction<FormState>>;
-  showCredential: boolean;
-  setShowCredential: React.Dispatch<React.SetStateAction<boolean>>;
   template?: ProviderTemplate | null;
   isLoading: boolean;
   error: Error | null;
@@ -71,8 +67,6 @@ const buildAutoContext = (name: string): string => {
 export default function ProviderTemplateFormFields({
   formState,
   setFormState,
-  showCredential,
-  setShowCredential,
   template,
   isLoading,
   error,
@@ -349,44 +343,16 @@ export default function ProviderTemplateFormFields({
                 defaultMessage={'API Key'}
               />
             </FormLabel>
-            <TextField
-              fullWidth
+            <SecretValueField
               value={formState.upstreamAuthValue}
-              onChange={(e) =>
+              onChange={(nextValue) =>
                 setFormState((prev) => ({
                   ...prev,
-                  upstreamAuthValue: e.target.value,
+                  upstreamAuthValue: nextValue,
                 }))
               }
-              type={showCredential ? 'text' : 'password'}
               data-cyid="provider-api-key-input"
-              slotProps={{
-                input: {
-                  endAdornment: (
-                    <InputAdornment position="end">
-                      <IconButton
-                        size="small"
-                        onClick={() => setShowCredential((prev) => !prev)}
-                        aria-label={
-                          showCredential ? 'Hide credentials' : 'Show credentials'
-                        }
-                      >
-                        {showCredential ? (
-                          <EyeOff size={18} />
-                        ) : (
-                          <Eye size={18} />
-                        )}
-                      </IconButton>
-                    </InputAdornment>
-                  ),
-                },
-              }}
               placeholder="Enter your API key or token (optional)"
-              // helperText={
-              //   template?.metadata?.auth?.valuePrefix
-              //     ? `Will be prefixed with: ${template.metadata.auth.valuePrefix}`
-              //     : 'Your authentication credential for the upstream provider'
-              // }
             />
           </FormControl>
         </Grid>

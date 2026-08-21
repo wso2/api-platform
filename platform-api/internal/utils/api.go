@@ -498,6 +498,9 @@ func (u *APIUtil) BuildAPIDeploymentYAML(apiModel *model.API) (*dto.APIDeploymen
 			if apiModel.Configuration.Upstream.Main.Ref != "" {
 				upstreamYAML.Main.Ref = apiModel.Configuration.Upstream.Main.Ref
 			}
+			if apiModel.Configuration.Upstream.Main.Auth != nil {
+				upstreamYAML.Main.Auth = apiModel.Configuration.Upstream.Main.Auth
+			}
 		}
 		if apiModel.Configuration.Upstream.Sandbox != nil {
 			upstreamYAML.Sandbox = &dto.UpstreamTarget{}
@@ -506,6 +509,9 @@ func (u *APIUtil) BuildAPIDeploymentYAML(apiModel *model.API) (*dto.APIDeploymen
 			}
 			if apiModel.Configuration.Upstream.Sandbox.Ref != "" {
 				upstreamYAML.Sandbox.Ref = apiModel.Configuration.Upstream.Sandbox.Ref
+			}
+			if apiModel.Configuration.Upstream.Sandbox.Auth != nil {
+				upstreamYAML.Sandbox.Auth = apiModel.Configuration.Upstream.Sandbox.Auth
 			}
 		}
 	}
