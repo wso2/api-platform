@@ -38,11 +38,20 @@ import (
 type Deps struct {
 	Gateways Gateways
 	Projects Projects
+	RestAPIs RestAPIs
 	// add more capability groups as external plugins need them
 	// (APIs, Subscriptions, Applications, Organizations, LLM, MCP, …)
 
 	Config *config.Server
 	Logger *slog.Logger
+}
+
+// RestAPIs exposes the minimum read-only API capability external plugins need
+// to validate that a resource belongs to the authenticated organization. It
+// intentionally does not expose repositories or mutation methods.
+type RestAPIs interface {
+	// GetAPIByHandle returns an API only when handle belongs to orgID.
+	GetAPIByHandle(handle, orgID string) (*api.RESTAPI, error)
 }
 
 // Gateways exposes CRUD access to the platform's gateways, scoped by organization.

@@ -438,6 +438,7 @@ func StartPlatformAPIServer(cfg *config.Server, slogger *slog.Logger,
 	pdkDeps := &pdk.Deps{
 		Gateways: gatewayService,
 		Projects: projectService,
+		RestAPIs: apiService,
 		Config:   cfg,
 		Logger:   slogger,
 	}
