@@ -99,12 +99,13 @@ async function fetchPlatformOrganization(): Promise<Organization[]> {
     });
 
     if (!res.ok) {
-      handleUnauthorizedResponse(res);
       if (res.status === 404) {
         logger.warn('[ChoreoUserContext] No organization found — register one at /register-org');
         return [];
       }
       const body = await res.json().catch(() => ({}));
+      // Pass the code so only a genuine UNAUTHORIZED tears down the session.
+      handleUnauthorizedResponse(res, body?.code);
       throw new Error(body?.message ?? `GET /organizations failed: HTTP ${res.status}`);
     }
 
