@@ -437,6 +437,7 @@ func StartPlatformAPIServer(cfg *config.Server, slogger *slog.Logger,
 	// signature drifts from the pdk interface, this stops building.
 	pdkDeps := &pdk.Deps{
 		Gateways: gatewayService,
+		RestAPIs: apiService,
 		Config:   cfg,
 		Logger:   slogger,
 	}
