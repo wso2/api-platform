@@ -43,6 +43,7 @@ import (
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/utils"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/version"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/xds"
+	"github.com/wso2/go-httpkit/httpclient"
 	gohttpkit "github.com/wso2/go-httpkit/middleware"
 )
 
@@ -389,7 +390,16 @@ func main() {
 	policyEngineConnected := make(chan struct{})
 
 	// Start xDS gRPC server with SDS support
-	xdsServer := xds.NewServer(snapshotManager, sdsSecretManager, cfg.Controller.Server.XDSPort, log, routerConnected)
+	var xdsServerOpts []xds.ServerOption
+	if cfg.Controller.Server.XDSTLS.Enabled {
+		xdsTLSConfig, err := config.BuildXDSServerTLSConfig(cfg.Controller.Server.XDSTLS)
+		if err != nil {
+			log.Error("invalid server.xds_tls config, refusing to start main xDS server in plaintext", slog.Any("error", err))
+			os.Exit(1)
+		}
+		xdsServerOpts = append(xdsServerOpts, xds.WithMTLS(xdsTLSConfig, cfg.Controller.Server.XDSTLS.AllowedClientIdentities))
+	}
+	xdsServer := xds.NewServer(snapshotManager, sdsSecretManager, cfg.Controller.Server.XDSPort, log, routerConnected, xdsServerOpts...)
 	go func() {
 		if err := xdsServer.Start(); err != nil {
 			log.Error("xDS server failed", slog.Any("error", err))
@@ -490,10 +500,12 @@ func main() {
 		policyxds.WithOnFirstConnect(policyEngineConnected),
 	}
 	if cfg.Controller.PolicyServer.TLS.Enabled {
-		serverOpts = append(serverOpts, policyxds.WithTLS(
-			cfg.Controller.PolicyServer.TLS.CertFile,
-			cfg.Controller.PolicyServer.TLS.KeyFile,
-		))
+		policyXDSTLSConfig, err := config.BuildXDSServerTLSConfig(cfg.Controller.PolicyServer.TLS)
+		if err != nil {
+			log.Error("invalid policy_server.tls config, refusing to start policy xDS server in plaintext", slog.Any("error", err))
+			os.Exit(1)
+		}
+		serverOpts = append(serverOpts, policyxds.WithMTLS(policyXDSTLSConfig, cfg.Controller.PolicyServer.TLS.AllowedClientIdentities))
 	}
 	policyXDSServer := policyxds.NewServer(policySnapshotManager, apiKeySnapshotManager, lazyResourceSnapshotManager, subscriptionSnapshotManager, nil, cfg.Controller.PolicyServer.Port, log, serverOpts...)
 	go func() {
@@ -519,7 +531,23 @@ func main() {
 	policyValidator := config.NewPolicyValidator(policyDefinitions)
 	validator.SetPolicyValidator(policyValidator)
 
-	apiSvc := utils.NewAPIDeploymentService(configStore, db, snapshotManager, validator, &cfg.Router, eventHubInstance, gatewayID, secretsService)
+	// Build the single shared outbound *http.Client used by every control-plane /
+	// platform-API / on-prem-APIM call this process makes. Built once, here, and injected
+	// into every constructor below instead of each one building (or caching) its own —
+	// real per-operation timeout budgets are enforced via context.WithTimeout at each call
+	// site, not by this client's own Timeout, which is only a generous safety-net backstop.
+	sharedHTTPClientCfg, err := config.BuildHTTPClientConfig(cfg.Controller.HTTPClient, cfg.Controller.ControlPlane.InsecureSkipVerify)
+	if err != nil {
+		log.Error("Invalid controller.http_client configuration", slog.Any("error", err))
+		os.Exit(1)
+	}
+	sharedHTTPClient, err := httpclient.New(sharedHTTPClientCfg)
+	if err != nil {
+		log.Error("Failed to build shared outbound HTTP client", slog.Any("error", err))
+		os.Exit(1)
+	}
+
+	apiSvc := utils.NewAPIDeploymentService(configStore, db, snapshotManager, validator, &cfg.Router, eventHubInstance, gatewayID, secretsService, sharedHTTPClient)
 	mcpSvc := utils.NewMCPDeploymentService(configStore, db, snapshotManager, policyManager, policyValidator, eventHubInstance, gatewayID, secretsService)
 	llmSvc := utils.NewLLMDeploymentService(configStore, db, snapshotManager, lazyResourceXDSManager, templateDefinitions,
 		apiSvc, &cfg.Router, policyVersionResolver, policyValidator)
@@ -542,6 +570,7 @@ func main() {
 		secretsService,
 		webhooksecret.GetStoreInstance(),
 		nil,
+		sharedHTTPClient,
 	)
 	if err := cpClient.Start(); err != nil {
 		log.Error("Failed to start control plane client", slog.Any("error", err))
@@ -560,12 +589,12 @@ func main() {
 		configStore, db, snapshotManager, policyManager,
 		apiSvc, apiKeyXDSManager,
 		cpClient, &cfg.Router, cfg,
-		&http.Client{Timeout: 10 * time.Second}, config.NewParser(), validator, log,
+		sharedHTTPClient, config.NewParser(), validator, log,
 		eventHubInstance, secretsService,
 	)
 	igw := immutable.NewImmutableGW(cfg.ImmutableGateway, restAPIService, llmSvc, mcpSvc)
 
-	authConfig := generateAuthConfig(cfg)
+	authConfig := generateAuthConfig(cfg, sharedHTTPClient)
 	if cfg.Controller.Auth.IDP.Enabled && len(cfg.Controller.Auth.IDP.Audience) == 0 {
 		log.Warn("IDP auth is enabled but no auth.idp.audience is configured - token audience ('aud') will NOT be " +
 			"validated; set auth.idp.audience to the expected audience(s) to restrict this")
@@ -608,7 +637,7 @@ func main() {
 	log.Info("EventListener started for multi-replica sync")
 
 	// Initialize API server with the configured validator and API key manager
-	apiServer := handlers.NewAPIServer(
+	apiServer, err := handlers.NewAPIServer(
 		configStore,
 		db,
 		snapshotManager,
@@ -625,7 +654,12 @@ func main() {
 		subscriptionSnapshotManager,
 		secretsService,
 		restAPIService,
+		sharedHTTPClient,
 	)
+	if err != nil {
+		log.Error("Failed to create API server", slog.Any("error", err))
+		os.Exit(1)
+	}
 
 	// Load immutable gateway artifacts from the filesystem (no-op when immutable mode is disabled).
 	if err := igw.LoadArtifacts(log); err != nil {
@@ -752,6 +786,31 @@ func main() {
 		}
 	}()
 
+	// Optional TLS listener for the REST API, additive to the plaintext one
+	// above — never instead of it. A misconfigured/missing certificate here
+	// disables just this listener rather than exiting the process, since the
+	// plaintext listener remains the required one.
+	var tlsSrv *http.Server
+	if cfg.Controller.Server.TLS.Enabled {
+		tlsConfig, err := buildRESTAPITLSConfig(&cfg.Controller.Server.TLS)
+		if err != nil {
+			log.Error("invalid server.tls config, REST API TLS listener disabled", slog.Any("error", err))
+		} else {
+			tlsSrv = &http.Server{
+				Addr:              fmt.Sprintf(":%d", cfg.Controller.Server.TLS.Port),
+				Handler:           handler,
+				ReadHeaderTimeout: 30 * time.Second,
+				TLSConfig:         tlsConfig,
+			}
+			go func() {
+				log.Info("Starting REST API TLS server", slog.Int("port", cfg.Controller.Server.TLS.Port))
+				if err := tlsSrv.ListenAndServeTLS(cfg.Controller.Server.TLS.CertPath, cfg.Controller.Server.TLS.KeyPath); err != nil && err != http.ErrServerClosed {
+					log.Error("REST API TLS server error", slog.Any("error", err))
+				}
+			}()
+		}
+	}
+
 	log.Info("Gateway Controller started successfully")
 
 	// Print banner when both router and policy engine have sent their first ACK,
@@ -803,6 +862,12 @@ func main() {
 		log.Error("Server forced to shutdown", slog.Any("error", err))
 	}
 
+	if tlsSrv != nil {
+		if err := tlsSrv.Shutdown(ctx); err != nil {
+			log.Error("REST API TLS server forced to shutdown", slog.Any("error", err))
+		}
+	}
+
 	xdsServer.Stop()
 
 	// Stop policy xDS server if it was started
@@ -830,7 +895,7 @@ func main() {
 	log.Info("Gateway-Controller stopped")
 }
 
-func generateAuthConfig(config *config.Config) commonmodels.AuthConfig {
+func generateAuthConfig(config *config.Config, httpClient *http.Client) commonmodels.AuthConfig {
 	// prefixed builds a resource key of the form "<METHOD> <managementAPIBasePath><path>"
 	// matching the actual routes registered via RegisterHandlersWithOptions(BaseURL=managementAPIBasePath).
 	prefixed := func(methodAndPath string) string {
@@ -953,6 +1018,11 @@ func generateAuthConfig(config *config.Config) commonmodels.AuthConfig {
 	authConfig := commonmodels.AuthConfig{BasicAuth: &basicAuth,
 		JWTConfig:     &idpAuth,
 		ResourceRoles: DefaultResourceRoles,
+		// JWKS fetching (auth.idp.jwks_url) is an outbound request to a tenant/operator
+		// -configured URL, so it must reuse the same SSRF-guarded shared client every
+		// other control-plane/platform-API call in this process uses, rather than
+		// falling back to net/http's unguarded default client.
+		HTTPClient: httpClient,
 	}
 	return authConfig
 }

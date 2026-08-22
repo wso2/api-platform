@@ -232,7 +232,8 @@ AI_DIST_ZIP  := target/$(AI_DIST_NAME).zip
 dist: clean-dist ## Build standalone gateway distribution zip
 	@echo "Building distribution $(DIST_NAME)..."
 	@mkdir -p $(DIST_DIR)/configs $(DIST_DIR)/resources/certificates \
-	          $(DIST_DIR)/resources/listener-certs $(DIST_DIR)/resources/secure-backend \
+	          $(DIST_DIR)/resources/listener-certs $(DIST_DIR)/resources/xds-certs \
+	          $(DIST_DIR)/resources/secure-backend \
 	          $(DIST_DIR)/resources/gateway-controller/db-scripts
 	@cp build.yaml build-manifest.yaml $(DIST_DIR)/
 	@cp -R configs/. $(DIST_DIR)/configs/
@@ -240,6 +241,13 @@ dist: clean-dist ## Build standalone gateway distribution zip
 	@cp gateway-controller/certificates/default-listener.crt   $(DIST_DIR)/resources/certificates/
 	@cp gateway-controller/listener-certs/default-listener.crt $(DIST_DIR)/resources/listener-certs/
 	@cp gateway-controller/listener-certs/default-listener.key $(DIST_DIR)/resources/listener-certs/
+	@cp gateway-controller/xds-certs/ca.crt                    $(DIST_DIR)/resources/xds-certs/
+	@cp gateway-controller/xds-certs/server.crt                $(DIST_DIR)/resources/xds-certs/
+	@cp gateway-controller/xds-certs/server.key                $(DIST_DIR)/resources/xds-certs/
+	@cp gateway-controller/xds-certs/envoy-client.crt          $(DIST_DIR)/resources/xds-certs/
+	@cp gateway-controller/xds-certs/envoy-client.key          $(DIST_DIR)/resources/xds-certs/
+	@cp gateway-controller/xds-certs/policy-engine-client.crt  $(DIST_DIR)/resources/xds-certs/
+	@cp gateway-controller/xds-certs/policy-engine-client.key  $(DIST_DIR)/resources/xds-certs/
 	@cp -R resources/secure-backend/. $(DIST_DIR)/resources/secure-backend/
 	@cp gateway-controller/pkg/storage/gateway-controller-db.postgres.sql  $(DIST_DIR)/resources/gateway-controller/db-scripts/
 	@cp gateway-controller/pkg/storage/gateway-controller-db.sqlserver.sql $(DIST_DIR)/resources/gateway-controller/db-scripts/

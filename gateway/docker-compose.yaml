@@ -32,6 +32,7 @@ services:
       - "9090:9090"   # REST API
       - "9094:9092"   # Admin API
       - "9011:9091"   # Metrics
+      - "9093:9093"   # REST API TLS
     env_file:
       - path: api-platform.env
         required: true
@@ -62,6 +63,7 @@ services:
       # Policy Engine
       - "9002:9002"   # Admin API
       - "9003:9003"   # Metrics
+      - "9004:9004"   # Health
     env_file:
       - path: api-platform.env
         required: true
@@ -69,6 +71,7 @@ services:
     volumes:
       - ./configs/config.toml:/etc/policy-engine/config.toml:ro
       - ./configs/llm-pricing/model_prices.json:/etc/policy-engine/llm-pricing/model_prices.json:ro
+      - ./gateway-controller/listener-certs:/etc/policy-engine/listener-certs:ro
     networks:
       - gateway-network
 

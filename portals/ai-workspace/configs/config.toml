@@ -19,6 +19,24 @@ tls_skip_verify = '{{ env "APIP_AIW_CONTROL_PLANE_TLS_SKIP_VERIFY" "false" }}'
 ca_file = "/etc/ai-workspace/tls/cert.pem"
 
 
+# Outbound *http.Transport used for every call to the Platform API above. Every value
+# below reproduces the previously-hardcoded default exactly, so omitting this whole
+# table changes nothing — see configs/config-template.toml for the fully documented
+# reference (each key's meaning, and how to opt into a PQC-hybrid curve_preferences).
+[ai_workspace.http_client.pooling]
+max_idle_conns_per_host = 20
+max_conns_per_host      = 0
+enable_http2            = true
+
+[ai_workspace.http_client.timeouts]
+# Negative disables the response-size bound: this transport streams SSE / long-running
+# LLM output between the BFF and its own fixed, trusted Platform API.
+max_response_bytes = -1
+
+[ai_workspace.http_client.proxy]
+mode = "environment" # "none" | "environment" (HTTP_PROXY/HTTPS_PROXY/NO_PROXY) | "url"
+
+
 [ai_workspace.gateway]
 controlplane_host = '{{ env "APIP_AIW_GATEWAY_CONTROLPLANE_HOST" "host.docker.internal:9243" }}'
 platform_gateway_versions = "[{\"version\":\"1.2\",\"latestVersion\":\"v1.2.0\",\"channel\":\"LTS\"}]"

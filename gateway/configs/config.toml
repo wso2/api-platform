@@ -14,6 +14,27 @@ enabled = true
 [controller.server]
 gateway_id = '{{ env "APIP_GW_CONTROLLER_SERVER_GATEWAY_ID" "platform-gateway-id" }}'
 
+
+[controller.server.tls]
+enabled = true
+port = 9093
+cert_path = "./listener-certs/default-listener.crt"
+key_path = "./listener-certs/default-listener.key"
+minimum_protocol_version = "TLS1_3"
+maximum_protocol_version = "TLS1_3"
+ciphers = "TLS_ECDHE_ECDSA_WITH_AES_128_GCM_SHA256"
+# Comma-separated TLS 1.3 key-exchange groups, most preferred first.
+# Classical curves only by default. A hybrid post-quantum group (e.g.
+# "X25519MLKEM768", FIPS 203 ML-KEM-768 + X25519) can be prepended as an
+# explicit opt-in once the clients reaching this listener are confirmed to
+# support it. This listener is served by this process's own Go crypto/tls
+# (1.23+ implements X25519MLKEM768 natively), not pushed as xDS config to a
+# separate Envoy process, so enabling it here does not carry the "already-
+# running peer NACKs the update" risk documented on router.downstream_tls's
+# ecdh_curves below -- TLS 1.3 negotiation just falls back to a later
+# classical entry in this same list for a client that doesn't offer it.
+ecdh_curves = "X25519,P-256,X25519MLKEM768"
+
 [controller.storage]
 type = '{{ env "APIP_GW_CONTROLLER_STORAGE_TYPE" "sqlite" }}'
 
@@ -33,6 +54,84 @@ insecure_skip_verify = '{{ env "APIP_GW_CONTROLLER_CONTROLPLANE_INSECURE_SKIP_VE
 gateway_name = '{{ env "APIP_GW_CONTROLLER_CONTROLPLANE_GATEWAY_NAME" "default" }}'
 apim_oauth2_client_id = '{{ env "APIP_GW_CONTROLLER_CONTROLPLANE_APIM_OAUTH2_CLIENT_ID" "" }}'
 apim_oauth2_client_secret = '{{ env "APIP_GW_CONTROLLER_CONTROLPLANE_APIM_OAUTH2_CLIENT_SECRET" "" }}'
+
+# Configures the single shared outbound *http.Client used by every control-plane /
+# platform-API / on-prem-APIM call this process makes (see pkg/config.HTTPClientConfig,
+# which mirrors github.com/wso2/go-httpkit/httpclient.Config field-for-field). Every
+# subsection below is optional — anything omitted keeps its Go-level default.
+[controller.http_client.pooling]
+max_idle_conns = 100
+max_idle_conns_per_host = 10
+max_conns_per_host = 100
+idle_conn_timeout = "90s"
+keep_alive = "30s"
+disable_keep_alives = false
+# HTTP/2 is off by default: this client always sets a custom TLS config, which makes Go's
+# Transport conservatively disable HTTP/2 unless re-enabled here — only opt in after
+# considering the connection-coalescing caveat in httpclient.PoolingConfig.EnableHTTP2's doc.
+enable_http2 = false
+
+[controller.http_client.timeouts]
+# Safety-net overall budget for every outbound call this process makes. Real per-operation
+# budgets are enforced via a context.WithTimeout deadline at each call site (5s for
+# well-known discovery, 30s for manifest/platform-API/on-prem-APIM calls, etc.) — this is
+# only a generous backstop in case one of those deadlines is ever missing.
+overall = "60s"
+dial = "10s"
+tls_handshake = "10s"
+response_header = "10s"
+expect_continue = "1s"
+# 0 = package default (10MiB); a negative value disables the response-size bound entirely.
+max_response_bytes = 0
+
+[controller.http_client.tls]
+min_version = "TLS1_2"
+max_version = "TLS1_3"
+# Comma-separated TLS 1.3 key-exchange groups, most preferred first. Hybrid PQC group
+# listed first with classical fallbacks after, matching controller.server.tls.ecdh_curves —
+# a peer that doesn't yet support X25519MLKEM768 still succeeds via the later entries.
+curve_preferences = "X25519MLKEM768,X25519,P-256"
+# Comma-separated Go crypto/tls cipher suite names; only affects TLS 1.2 and below. Empty
+# uses Go's own default secure set.
+cipher_suites = ""
+# PEM CA bundle / mTLS client cert+key for the outbound call to the control plane. Empty
+# uses the system root pool and no client certificate.
+root_ca_file = ""
+client_cert_file = ""
+client_key_file = ""
+# insecure_skip_verify is intentionally NOT configured here — it is sourced from
+# controller.controlplane.insecure_skip_verify above, which already governs this same trust
+# decision for every one of this client's current callers.
+
+[controller.http_client.proxy]
+# "none" (default) | "environment" (HTTP_PROXY/HTTPS_PROXY/NO_PROXY) | "url"
+mode = "none"
+url = ""
+username = ""
+password = ""
+no_proxy = []
+# Required ("delegated" or "manual_connect") only when mode != "none" AND ssrf.enabled below
+# — see pkg/config.HTTPClientProxyConfig's doc comment.
+egress = ""
+
+[controller.http_client.proxy.tls]
+# Configures a SEPARATE TLS handshake to an https:// proxy itself, decoupled from
+# controller.http_client.tls above (which always governs the origin handshake).
+root_ca_file = ""
+client_cert_file = ""
+client_key_file = ""
+insecure_skip_verify = false
+
+[controller.http_client.ssrf]
+# Off by default: this shared client's current callers (control plane, platform API,
+# on-prem APIM) all target a single fixed, operator-configured host, not a user/tenant-
+# supplied URL — the scenario ssrf-prevention.md targets — so there is nothing to guard
+# against today. Exposed for completeness / any future caller that fetches a tenant-supplied
+# URL. When enabling, preset must be "permit_private_block_metadata" or "public_only".
+enabled = false
+preset = ""
+max_redirects = 0
+allowed_schemes = []
 
 [controller.policies]
 definitions_path = '{{ env "APIP_GW_CONTROLLER_POLICIES_DEFINITIONS_PATH" "./default-policies" }}'

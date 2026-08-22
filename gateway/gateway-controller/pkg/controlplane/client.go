@@ -123,37 +123,45 @@ type WebhookSecretSnapshotRefresher interface {
 
 // Client manages the WebSocket connection to the control plane
 type Client struct {
-	config                       config.ControlPlaneConfig
-	logger                       *slog.Logger
-	state                        *ConnectionState
-	ctx                          context.Context
-	cancel                       context.CancelFunc
-	stopChan                     chan struct{}
-	wg                           sync.WaitGroup
-	writeMu                      sync.Mutex // serializes writes to the WebSocket connection
-	store                        *storage.ConfigStore
-	db                           storage.Storage
-	snapshotManager              *xds.SnapshotManager
-	parser                       *config.Parser
-	validator                    config.Validator
-	deploymentService            *utils.APIDeploymentService
-	apiUtilsService              *utils.APIUtilsService
-	apiKeyService                *utils.APIKeyService
-	llmDeploymentService         *utils.LLMDeploymentService
-	mcpDeploymentService         *utils.MCPDeploymentService
-	apiKeyXDSManager             utils.XDSManager
-	apiKeyStore                  *storage.APIKeyStore
-	routerConfig                 *config.RouterConfig
-	policyManager                *policyxds.PolicyManager
-	systemConfig                 *config.Config
-	policyDefinitions            map[string]models.PolicyDefinition
-	subscriptionSnapshotUpdater  utils.SubscriptionSnapshotUpdater
-	subscriptionResourceService  *utils.SubscriptionResourceService
-	eventHub                     eventhub.EventHub
-	gatewayID                    string
-	gatewayPath                  string      // cached gateway path from well-known discovery
-	syncOnce                     sync.Once   // ensures deployment sync runs only on first connect
-	isFirstConnect               atomic.Bool // true on first connect, flipped to false after
+	config                      config.ControlPlaneConfig
+	logger                      *slog.Logger
+	state                       *ConnectionState
+	ctx                         context.Context
+	cancel                      context.CancelFunc
+	stopChan                    chan struct{}
+	wg                          sync.WaitGroup
+	writeMu                     sync.Mutex // serializes writes to the WebSocket connection
+	store                       *storage.ConfigStore
+	db                          storage.Storage
+	snapshotManager             *xds.SnapshotManager
+	parser                      *config.Parser
+	validator                   config.Validator
+	deploymentService           *utils.APIDeploymentService
+	apiUtilsService             *utils.APIUtilsService
+	apiKeyService               *utils.APIKeyService
+	llmDeploymentService        *utils.LLMDeploymentService
+	mcpDeploymentService        *utils.MCPDeploymentService
+	apiKeyXDSManager            utils.XDSManager
+	apiKeyStore                 *storage.APIKeyStore
+	routerConfig                *config.RouterConfig
+	policyManager               *policyxds.PolicyManager
+	systemConfig                *config.Config
+	policyDefinitions           map[string]models.PolicyDefinition
+	subscriptionSnapshotUpdater utils.SubscriptionSnapshotUpdater
+	subscriptionResourceService *utils.SubscriptionResourceService
+	eventHub                    eventhub.EventHub
+	gatewayID                   string
+	gatewayPath                 string      // cached gateway path from well-known discovery
+	syncOnce                    sync.Once   // ensures deployment sync runs only on first connect
+	isFirstConnect              atomic.Bool // true on first connect, flipped to false after
+
+	// httpClient is the single shared outbound *http.Client for this entire process (built
+	// once in cmd/controller/main.go and injected here), used for every plain (non-WebSocket)
+	// REST call this Client makes to the control plane host — well-known gateway-path
+	// discovery, gateway manifest push, platform-API calls (via apiUtilsService), and on-prem
+	// APIM calls. Per-operation timeout budgets (5s well-known, 30s manifest, etc.) are
+	// enforced via context.WithTimeout at each call site rather than a client-level Timeout.
+	httpClient                   *http.Client
 	webhookSecretStore           *webhooksecret.WebhookSecretStore
 	webhookSecretSnapshotManager WebhookSecretSnapshotRefresher
 	secretSyncer                 secretSyncer
@@ -192,6 +200,7 @@ func NewClient(
 	secretResolver funcs.SecretResolver,
 	webhookSecretStore *webhooksecret.WebhookSecretStore,
 	webhookSecretSnapshotManager WebhookSecretSnapshotRefresher,
+	httpClient *http.Client,
 ) *Client {
 	if db == nil {
 		panic("control plane client requires non-nil storage")
@@ -209,7 +218,7 @@ func NewClient(
 
 	ctx, cancel := context.WithCancel(context.Background())
 
-	deploymentService := utils.NewAPIDeploymentService(store, db, snapshotManager, validator, routerConfig, eventHubInstance, gatewayID, secretResolver)
+	deploymentService := utils.NewAPIDeploymentService(store, db, snapshotManager, validator, routerConfig, eventHubInstance, gatewayID, secretResolver, httpClient)
 	apiKeyService := utils.NewAPIKeyService(store, db, apiKeyXDSManager, apiKeyConfig, eventHubInstance, gatewayID)
 	subscriptionResourceService := utils.NewSubscriptionResourceService(db, subSnapshotManager, eventHubInstance, gatewayID)
 
@@ -235,6 +244,7 @@ func NewClient(
 		gatewayID:                    gatewayID,
 		webhookSecretStore:           webhookSecretStore,
 		webhookSecretSnapshotManager: webhookSecretSnapshotManager,
+		httpClient:                   httpClient,
 		state: &ConnectionState{
 			Current:        Disconnected,
 			Conn:           nil,
@@ -289,7 +299,7 @@ func NewClient(
 		Token:              cfg.Token,
 		InsecureSkipVerify: cfg.InsecureSkipVerify,
 		Timeout:            30 * time.Second,
-	}, logger)
+	}, httpClient, logger)
 
 	// Set OAuth2 credentials for on-prem APIM (for API import operations)
 	// Construct TokenURL from the controlplane host
@@ -679,21 +689,15 @@ func (c *Client) isOnPrem() bool {
 func (c *Client) discoverGatewayPath() (string, error) {
 	wellKnownURL := fmt.Sprintf("https://%s/internal/gateway/.well-known", c.config.Host)
 
-	httpClient := &http.Client{
-		Timeout: 5 * time.Second,
-		Transport: &http.Transport{
-			TLSClientConfig: &tls.Config{ // #nosec G402 -- Explicit operator-controlled opt-out for dev/test environments.
-				InsecureSkipVerify: c.config.InsecureSkipVerify,
-			},
-		},
-	}
+	ctx, cancel := context.WithTimeout(c.ctx, 5*time.Second)
+	defer cancel()
 
-	req, err := http.NewRequestWithContext(c.ctx, http.MethodGet, wellKnownURL, nil)
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, wellKnownURL, nil)
 	if err != nil {
 		return "", fmt.Errorf("failed to create well-known request: %w", err)
 	}
 
-	resp, err := httpClient.Do(req)
+	resp, err := c.httpClient.Do(req)
 	if err != nil {
 		return "", fmt.Errorf("failed to call well-known endpoint: %w", err)
 	}
@@ -4003,23 +4007,17 @@ func (c *Client) pushGatewayManifest(gatewayID string, policies []models.PolicyD
 		return fmt.Errorf("failed to marshal manifest payload: %w", err)
 	}
 
-	httpClient := &http.Client{
-		Timeout: 30 * time.Second,
-		Transport: &http.Transport{
-			TLSClientConfig: &tls.Config{ // #nosec G402 -- Explicit operator-controlled opt-out for dev/test environments.
-				InsecureSkipVerify: c.config.InsecureSkipVerify,
-			},
-		},
-	}
+	ctx, cancel := context.WithTimeout(c.ctx, 30*time.Second)
+	defer cancel()
 
-	req, err := http.NewRequest("POST", url, bytes.NewBuffer(jsonData))
+	req, err := http.NewRequestWithContext(ctx, "POST", url, bytes.NewBuffer(jsonData))
 	if err != nil {
 		return fmt.Errorf("failed to create manifest request: %w", err)
 	}
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("api-key", c.config.Token)
 
-	resp, err := httpClient.Do(req)
+	resp, err := c.httpClient.Do(req)
 	if err != nil {
 		return fmt.Errorf("failed to send gateway manifest: %w", err)
 	}

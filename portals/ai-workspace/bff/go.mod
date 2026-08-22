@@ -9,6 +9,7 @@ require (
 	github.com/knadh/koanf/providers/file v1.2.1
 	github.com/knadh/koanf/v2 v2.3.2
 	github.com/wso2/api-platform/common v0.0.0
+	github.com/wso2/go-httpkit v0.0.0
 	gopkg.in/yaml.v3 v3.0.1
 )
 

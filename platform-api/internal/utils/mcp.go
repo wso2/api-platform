@@ -21,6 +21,7 @@ package utils
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -267,7 +268,9 @@ func initializeMCPServer(url string, headerName string, headerValue string) (str
 	if err != nil {
 		return "", nil, err
 	}
-	httpReq, err := http.NewRequest("POST", url, bytes.NewBuffer(data))
+	ctx, cancel := context.WithTimeout(context.Background(), mcpRequestTimeout)
+	defer cancel()
+	httpReq, err := http.NewRequestWithContext(ctx, "POST", url, bytes.NewBuffer(data))
 	if err != nil {
 		return "", nil, fmt.Errorf("failed to create init request: %w", err)
 	}
@@ -281,15 +284,26 @@ func initializeMCPServer(url string, headerName string, headerValue string) (str
 	}
 	// The MCP endpoint URL is user/tenant-supplied — dial through the SSRF-guarded client
 	// so scheme, resolved-IP and redirect restrictions apply to this call too.
-	client := NewUpstreamFetchClient(mcpRequestTimeout)
+	client, err := NewUpstreamFetchClient(mcpRequestTimeout)
+	if err != nil {
+		return "", nil, fmt.Errorf("failed to create HTTP client: %w", err)
+	}
 	resp, err := client.Do(httpReq)
 	if err != nil {
 		return "", nil, fmt.Errorf("failed to reach MCP server for initialize: %w", err)
 	}
 	defer resp.Body.Close()
-	body, err := io.ReadAll(resp.Body)
+	// Bound the body: the shared client's own MaxResponseBytes is disabled (see
+	// InitSharedHTTPClient's doc comment), so this call site applies its own configured
+	// ceiling — read one extra byte so an over-limit response can be detected explicitly
+	// rather than silently truncated.
+	maxBytes := mcpResponseMaxBytes()
+	body, err := io.ReadAll(io.LimitReader(resp.Body, maxBytes+1))
 	if err != nil {
 		return "", nil, fmt.Errorf("failed to read response body: %w", err)
+	}
+	if int64(len(body)) > maxBytes {
+		return "", nil, fmt.Errorf("MCP server response exceeds the maximum allowed size")
 	}
 
 	// Check HTTP status code
@@ -344,7 +358,9 @@ func postJSONRPCWithSession(url string, req any, sessionID string, headerName st
 	if err != nil {
 		return nil, err
 	}
-	httpReq, err := http.NewRequest("POST", url, bytes.NewBuffer(data))
+	ctx, cancel := context.WithTimeout(context.Background(), mcpRequestTimeout)
+	defer cancel()
+	httpReq, err := http.NewRequestWithContext(ctx, "POST", url, bytes.NewBuffer(data))
 	if err != nil {
 		return nil, err
 	}
@@ -361,15 +377,23 @@ func postJSONRPCWithSession(url string, req any, sessionID string, headerName st
 	}
 	// Same SSRF-guarded client as the initialize call: the session/tools/prompts/resources
 	// requests target the same user-supplied URL and must be dialed under the same guard.
-	client := NewUpstreamFetchClient(mcpRequestTimeout)
+	client, err := NewUpstreamFetchClient(mcpRequestTimeout)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create HTTP client: %w", err)
+	}
 	resp, err := client.Do(httpReq)
 	if err != nil {
 		return nil, fmt.Errorf("failed to send request: %w", err)
 	}
 	defer resp.Body.Close()
-	body, err := io.ReadAll(resp.Body)
+	// Bound the body — see the matching comment in initializeMCPServer.
+	maxBytes := mcpResponseMaxBytes()
+	body, err := io.ReadAll(io.LimitReader(resp.Body, maxBytes+1))
 	if err != nil {
 		return nil, fmt.Errorf("failed to read response body: %w", err)
+	}
+	if int64(len(body)) > maxBytes {
+		return nil, fmt.Errorf("MCP server response exceeds the maximum allowed size")
 	}
 
 	// Check HTTP status code

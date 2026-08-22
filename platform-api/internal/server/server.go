@@ -711,9 +711,18 @@ func buildAuthenticator(cfg *config.Server, slogger *slog.Logger, roleScopeMap m
 	if len(cfg.Auth.IDP.Audience) > 0 {
 		idpCfg.Audience = &cfg.Auth.IDP.Audience
 	}
+	// JWKS fetching is an outbound request to a tenant-configured URL (auth.idp.jwks_url),
+	// so it must go through the same SSRF-guarded shared client as every other
+	// tenant/operator-configured upstream call this process makes, rather than falling
+	// back to net/http's unguarded default client.
+	sharedClient, err := utils.NewUpstreamFetchClient(0)
+	if err != nil {
+		return nil, fmt.Errorf("failed to obtain shared HTTP client for JWKS fetching: %w", err)
+	}
 	authCfg := commonmodels.AuthConfig{
-		JWTConfig: &idpCfg,
-		SkipPaths: cfg.Auth.SkipPaths,
+		JWTConfig:  &idpCfg,
+		SkipPaths:  cfg.Auth.SkipPaths,
+		HTTPClient: sharedClient,
 	}
 	authMiddleware, err := authenticators.AuthMiddleware(authCfg, slogger)
 	if err != nil {
@@ -807,9 +816,31 @@ func (s *Server) buildTLSConfig(httpsCfg config.HTTPSListener) (*tls.Config, err
 	}
 	s.logger.Info("Using mounted certificates", "certFile", certFile, "keyFile", keyFile)
 
+	// Config.Validate (validateListenersConfig) already rejects a bad
+	// version/cipher/curve value before this ever runs in production, so an
+	// error here can only come from a caller that bypassed validation.
+	if err := config.ValidateHTTPSTLSVersions(httpsCfg.MinimumProtocolVersion, httpsCfg.MaximumProtocolVersion); err != nil {
+		return nil, err
+	}
+	minVersion, _ := config.ParseHTTPSTLSVersion(httpsCfg.MinimumProtocolVersion)
+	maxVersion, _ := config.ParseHTTPSTLSVersion(httpsCfg.MaximumProtocolVersion)
+
+	cipherSuites, err := config.ParseHTTPSCiphers(httpsCfg.Ciphers)
+	if err != nil {
+		return nil, err
+	}
+
+	curves, err := config.ParseHTTPSEcdhCurves(httpsCfg.EcdhCurves)
+	if err != nil {
+		return nil, err
+	}
+
 	return &tls.Config{
-		Certificates: []tls.Certificate{cert},
-		MinVersion:   tls.VersionTLS12,
+		Certificates:     []tls.Certificate{cert},
+		MinVersion:       minVersion,
+		MaxVersion:       maxVersion,
+		CipherSuites:     cipherSuites, // nil == Go's own secure default set/order
+		CurvePreferences: curves,
 	}, nil
 }
 

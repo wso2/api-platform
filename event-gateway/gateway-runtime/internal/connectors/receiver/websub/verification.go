@@ -30,7 +30,9 @@ import (
 	"strconv"
 	"time"
 
+	"github.com/wso2/api-platform/event-gateway/gateway-runtime/internal/config"
 	"github.com/wso2/api-platform/event-gateway/gateway-runtime/internal/subscription"
+	"github.com/wso2/go-httpkit/httpclient"
 )
 
 // Verifier performs W3C WebSub §5.3 intent verification for subscribe/unsubscribe.
@@ -40,15 +42,32 @@ type Verifier struct {
 	client  *http.Client
 }
 
-// NewVerifier creates a new Verifier.
-func NewVerifier(store subscription.SubscriptionStore, timeout time.Duration) *Verifier {
+// NewVerifier creates a new Verifier. The verification HTTP client is built
+// with the shared httpkit SSRF dial-guard enabled (see ssrf-prevention.md):
+// the subscriber CallbackURL being verified is tenant-supplied, so
+// private/loopback backends must remain reachable (in-cluster subscribers
+// are the common case) while link-local/metadata/unspecified/multicast
+// destinations are refused at dial time. Pooling/TLS/proxy knobs come from
+// hc (config.toml's [http_client] section, shared with the Deliverer);
+// timeout is this call site's own existing parameter and always overrides
+// hc.Timeouts.Overall — see config.HTTPClientConfig's doc comment.
+func NewVerifier(store subscription.SubscriptionStore, timeout time.Duration, hc config.HTTPClientConfig) (*Verifier, error) {
+	cfg, err := config.BuildHTTPClientConfig(hc)
+	if err != nil {
+		return nil, fmt.Errorf("failed to build verification HTTP client config: %w", err)
+	}
+	cfg.Timeouts.Overall = timeout
+
+	client, err := httpclient.New(cfg)
+	if err != nil {
+		return nil, fmt.Errorf("failed to build verification HTTP client: %w", err)
+	}
+
 	return &Verifier{
 		store:   store,
 		timeout: timeout,
-		client: &http.Client{
-			Timeout: timeout,
-		},
-	}
+		client:  client,
+	}, nil
 }
 
 // VerifySubscribe performs intent verification for a subscribe request per W3C WebSub §5.3.

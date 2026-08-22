@@ -24,6 +24,7 @@ import (
 	"os"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/knadh/koanf/parsers/toml/v2"
 	"github.com/knadh/koanf/providers/env"
@@ -39,6 +40,7 @@ type Config struct {
 	PolicyEngine PolicyEngineConfig `koanf:"policy_engine"`
 	ControlPlane ControlPlaneConfig `koanf:"controlplane"`
 	Logging      LoggingConfig      `koanf:"logging"`
+	HTTPClient   HTTPClientConfig   `koanf:"http_client"`
 	RuntimeID    string             `koanf:"runtime_id"`
 }
 
@@ -103,6 +105,113 @@ type LoggingConfig struct {
 	Format string `koanf:"format"`
 }
 
+// HTTPClientConfig configures the shared outbound *http.Client used by WebSub's
+// subscribe/unsubscribe intent verification (Verifier, see
+// internal/connectors/receiver/websub/verification.go) and message delivery
+// (Deliverer, see .../delivery.go). Both call sites dial a tenant/subscriber-supplied
+// CallbackURL and share the identical pooling/TLS/proxy/SSRF posture, so a single
+// [http_client] TOML section configures both; each call site still keeps its own
+// existing timeout parameter/field (Verifier's `timeout` argument, sourced from
+// websub.verification_timeout_seconds; Deliverer's own delivery timeout), which always
+// overrides Timeouts.Overall below for that specific client — see BuildHTTPClientConfig.
+//
+// This mirrors the TOML-expressible subset of
+// github.com/wso2/go-httpkit/httpclient.Config (see gateway-controller's
+// pkg/config.HTTPClientConfig for the reference shape this intentionally mirrors
+// field-for-field, aside from SSRF below). Go-only callback hooks
+// (GetClientCertificate, VerifyPeerCertificate, VerifyConnection, ConnectHeader) and a
+// pre-built *x509.CertPool have no TOML shape and are not represented here.
+//
+// Unlike gateway-controller's HTTPClientConfig, SSRF protection is NOT configurable
+// off: every CallbackURL dialed by either client is tenant/subscriber-supplied —
+// exactly the scenario ssrf-prevention.md targets — so SSRF.Enabled=true and
+// netguard.PermitPrivateBlockMetadata() are hardcoded in BuildHTTPClientConfig rather
+// than sourced from this struct. Only the redirect/scheme knobs netguard exposes are
+// configurable, via HTTPClientSSRFConfig.
+type HTTPClientConfig struct {
+	Pooling  HTTPClientPoolingConfig  `koanf:"pooling"`
+	Timeouts HTTPClientTimeoutsConfig `koanf:"timeouts"`
+	TLS      HTTPClientTLSConfig      `koanf:"tls"`
+	Proxy    HTTPClientProxyConfig    `koanf:"proxy"`
+	SSRF     HTTPClientSSRFConfig     `koanf:"ssrf"`
+}
+
+// HTTPClientPoolingConfig mirrors httpclient.PoolingConfig.
+type HTTPClientPoolingConfig struct {
+	MaxIdleConns        int           `koanf:"max_idle_conns"`
+	MaxIdleConnsPerHost int           `koanf:"max_idle_conns_per_host"`
+	MaxConnsPerHost     int           `koanf:"max_conns_per_host"`
+	IdleConnTimeout     time.Duration `koanf:"idle_conn_timeout"`
+	KeepAlive           time.Duration `koanf:"keep_alive"`
+	DisableKeepAlives   bool          `koanf:"disable_keep_alives"`
+	// EnableHTTP2 opts into HTTP/2. See httpclient.PoolingConfig.EnableHTTP2's doc comment
+	// on the HTTP/2 connection-coalescing caveat before enabling.
+	EnableHTTP2 bool `koanf:"enable_http2"`
+}
+
+// HTTPClientTimeoutsConfig mirrors httpclient.TimeoutsConfig. Overall is only a common
+// default shared by both call sites — see HTTPClientConfig's doc comment for why each
+// call site's own existing timeout always takes precedence over it.
+type HTTPClientTimeoutsConfig struct {
+	Overall          time.Duration `koanf:"overall"`
+	Dial             time.Duration `koanf:"dial"`
+	TLSHandshake     time.Duration `koanf:"tls_handshake"`
+	ResponseHeader   time.Duration `koanf:"response_header"`
+	ExpectContinue   time.Duration `koanf:"expect_continue"`
+	MaxResponseBytes int64         `koanf:"max_response_bytes"` // 0 = package default (10MiB); negative disables the bound
+}
+
+// HTTPClientTLSConfig mirrors the TOML-expressible subset of httpclient.TLSConfig.
+type HTTPClientTLSConfig struct {
+	MinVersion       string `koanf:"min_version"`       // one of "TLS1_0".."TLS1_3"
+	MaxVersion       string `koanf:"max_version"`       // one of "TLS1_0".."TLS1_3"
+	CipherSuites     string `koanf:"cipher_suites"`     // comma-separated Go crypto/tls cipher suite names; TLS 1.2 and below only
+	CurvePreferences string `koanf:"curve_preferences"` // comma-separated, e.g. "X25519MLKEM768,X25519,P-256"
+	RootCAFile       string `koanf:"root_ca_file"`      // PEM CA bundle; empty uses the system root pool
+	ClientCertFile   string `koanf:"client_cert_file"`  // mTLS to the callback endpoint; both cert and key must be set together
+	ClientKeyFile    string `koanf:"client_key_file"`
+}
+
+// HTTPClientProxyConfig mirrors the TOML-expressible subset of httpclient.ProxyConfig.
+type HTTPClientProxyConfig struct {
+	// Mode selects how the proxy is determined: "none" (default), "environment"
+	// (HTTP_PROXY/HTTPS_PROXY/NO_PROXY), or "url" (URL/Username/Password/NoProxy below).
+	Mode     string   `koanf:"mode"`
+	URL      string   `koanf:"url"`
+	Username string   `koanf:"username"`
+	Password string   `koanf:"password"`
+	NoProxy  []string `koanf:"no_proxy"` // exact host, ".suffix", or CIDR entries; only used when mode == "url"
+
+	TLS HTTPClientProxyTLSConfig `koanf:"tls"`
+
+	// Egress states how origin-destination SSRF risk is handled when a forward proxy is
+	// also configured: "delegated" (trust the proxy's own egress controls) or
+	// "manual_connect" (validate the origin locally before ever issuing CONNECT). Must be
+	// set explicitly whenever Mode != "none" — SSRF guarding is always enabled for this
+	// client (see HTTPClientConfig's doc comment), unlike gateway-controller where this
+	// is only required when SSRF is ALSO enabled. BuildHTTPClientConfig fails closed at
+	// config-build time otherwise rather than silently choosing one.
+	Egress string `koanf:"egress"`
+}
+
+// HTTPClientProxyTLSConfig mirrors httpclient.ProxyTLSConfig (the proxy's own TLS
+// handshake, fully decoupled from the origin TLS handshake in HTTPClientTLSConfig).
+type HTTPClientProxyTLSConfig struct {
+	RootCAFile         string `koanf:"root_ca_file"`
+	ClientCertFile     string `koanf:"client_cert_file"`
+	ClientKeyFile      string `koanf:"client_key_file"`
+	InsecureSkipVerify bool   `koanf:"insecure_skip_verify"`
+}
+
+// HTTPClientSSRFConfig mirrors the TOML-expressible redirect/scheme knobs of
+// httpclient.SSRFConfig. It deliberately has NO Enabled/Preset field: SSRF guarding for
+// this client is always on with netguard.PermitPrivateBlockMetadata() (see
+// HTTPClientConfig's doc comment) — there is no supported way to disable it via config.
+type HTTPClientSSRFConfig struct {
+	MaxRedirects   int      `koanf:"max_redirects"`   // 0 uses netguard's own default (5)
+	AllowedSchemes []string `koanf:"allowed_schemes"` // empty defaults to {"https"}
+}
+
 // DefaultConfig returns configuration with sensible defaults.
 func DefaultConfig() *Config {
 	return &Config{
@@ -131,6 +240,30 @@ func DefaultConfig() *Config {
 		Logging: LoggingConfig{
 			Level:  "info",
 			Format: "text",
+		},
+		HTTPClient: HTTPClientConfig{
+			Pooling: HTTPClientPoolingConfig{
+				MaxIdleConns:        100,
+				MaxIdleConnsPerHost: 10,
+				MaxConnsPerHost:     100,
+				IdleConnTimeout:     90 * time.Second,
+				KeepAlive:           30 * time.Second,
+			},
+			Timeouts: HTTPClientTimeoutsConfig{
+				Overall:        30 * time.Second, // common default only; each call site's own timeout overrides this
+				Dial:           10 * time.Second,
+				TLSHandshake:   10 * time.Second,
+				ResponseHeader: 10 * time.Second,
+				ExpectContinue: 1 * time.Second,
+			},
+			TLS: HTTPClientTLSConfig{
+				MinVersion:       "TLS1_2",
+				MaxVersion:       "TLS1_3",
+				CurvePreferences: "X25519MLKEM768,X25519,P-256",
+			},
+			Proxy: HTTPClientProxyConfig{
+				Mode: "none",
+			},
 		},
 	}
 }

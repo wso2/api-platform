@@ -19,6 +19,7 @@
 package config
 
 import (
+	"crypto/tls"
 	"math"
 	"os"
 	"path/filepath"
@@ -537,6 +538,232 @@ func TestValidate_AdminConfig(t *testing.T) {
 			expectErr: true,
 			errMsg:    "admin.allowed_ips cannot be empty",
 		},
+		{
+			name: "admin TLS enabled - valid config",
+			setup: func(cfg *Config) {
+				cfg.PolicyEngine.Admin.Enabled = true
+				cfg.PolicyEngine.Admin.Port = 9002
+				cfg.PolicyEngine.Admin.AllowedIPs = []string{"127.0.0.1"}
+				cfg.PolicyEngine.Admin.TLS = AdminTLSConfig{
+					Enabled:                true,
+					Port:                   9004,
+					CertPath:               "./certs/admin.crt",
+					KeyPath:                "./certs/admin.key",
+					MinimumProtocolVersion: "TLS1_2",
+					MaximumProtocolVersion: "TLS1_3",
+					EcdhCurves:             "X25519,P-256",
+				}
+			},
+			expectErr: false,
+		},
+		{
+			name: "admin TLS enabled - PQC hybrid group opt-in",
+			setup: func(cfg *Config) {
+				cfg.PolicyEngine.Admin.Enabled = true
+				cfg.PolicyEngine.Admin.Port = 9002
+				cfg.PolicyEngine.Admin.AllowedIPs = []string{"127.0.0.1"}
+				cfg.PolicyEngine.Admin.TLS = AdminTLSConfig{
+					Enabled:                true,
+					Port:                   9004,
+					CertPath:               "./certs/admin.crt",
+					KeyPath:                "./certs/admin.key",
+					MinimumProtocolVersion: "TLS1_2",
+					MaximumProtocolVersion: "TLS1_3",
+					EcdhCurves:             "X25519MLKEM768,X25519,P-256",
+				}
+			},
+			expectErr: false,
+		},
+		{
+			name: "admin TLS enabled - restricted cipher suite list",
+			setup: func(cfg *Config) {
+				cfg.PolicyEngine.Admin.Enabled = true
+				cfg.PolicyEngine.Admin.Port = 9002
+				cfg.PolicyEngine.Admin.AllowedIPs = []string{"127.0.0.1"}
+				cfg.PolicyEngine.Admin.TLS = AdminTLSConfig{
+					Enabled:                true,
+					Port:                   9004,
+					CertPath:               "./certs/admin.crt",
+					KeyPath:                "./certs/admin.key",
+					MinimumProtocolVersion: "TLS1_2",
+					MaximumProtocolVersion: "TLS1_3",
+					Ciphers:                "TLS_ECDHE_ECDSA_WITH_AES_128_GCM_SHA256,TLS_ECDHE_RSA_WITH_AES_128_GCM_SHA256",
+					EcdhCurves:             "X25519,P-256",
+				}
+			},
+			expectErr: false,
+		},
+		{
+			name: "admin TLS enabled - invalid port zero",
+			setup: func(cfg *Config) {
+				cfg.PolicyEngine.Admin.Enabled = true
+				cfg.PolicyEngine.Admin.Port = 9002
+				cfg.PolicyEngine.Admin.AllowedIPs = []string{"127.0.0.1"}
+				cfg.PolicyEngine.Admin.TLS = AdminTLSConfig{
+					Enabled:                true,
+					Port:                   0,
+					CertPath:               "./certs/admin.crt",
+					KeyPath:                "./certs/admin.key",
+					MinimumProtocolVersion: "TLS1_2",
+					MaximumProtocolVersion: "TLS1_3",
+					EcdhCurves:             "X25519,P-256",
+				}
+			},
+			expectErr: true,
+			errMsg:    "invalid admin.tls.port",
+		},
+		{
+			name: "admin TLS enabled - port conflicts with admin.port",
+			setup: func(cfg *Config) {
+				cfg.PolicyEngine.Admin.Enabled = true
+				cfg.PolicyEngine.Admin.Port = 9002
+				cfg.PolicyEngine.Admin.AllowedIPs = []string{"127.0.0.1"}
+				cfg.PolicyEngine.Admin.TLS = AdminTLSConfig{
+					Enabled:                true,
+					Port:                   9002,
+					CertPath:               "./certs/admin.crt",
+					KeyPath:                "./certs/admin.key",
+					MinimumProtocolVersion: "TLS1_2",
+					MaximumProtocolVersion: "TLS1_3",
+					EcdhCurves:             "X25519,P-256",
+				}
+			},
+			expectErr: true,
+			errMsg:    "admin.tls.port cannot be same as admin.port",
+		},
+		{
+			name: "admin TLS enabled - port conflicts with extproc port (TCP mode)",
+			setup: func(cfg *Config) {
+				cfg.PolicyEngine.Server.Mode = "tcp"
+				cfg.PolicyEngine.Server.ExtProcPort = 9001
+				cfg.PolicyEngine.Admin.Enabled = true
+				cfg.PolicyEngine.Admin.Port = 9002
+				cfg.PolicyEngine.Admin.AllowedIPs = []string{"127.0.0.1"}
+				cfg.PolicyEngine.Admin.TLS = AdminTLSConfig{
+					Enabled:                true,
+					Port:                   9001,
+					CertPath:               "./certs/admin.crt",
+					KeyPath:                "./certs/admin.key",
+					MinimumProtocolVersion: "TLS1_2",
+					MaximumProtocolVersion: "TLS1_3",
+					EcdhCurves:             "X25519,P-256",
+				}
+			},
+			expectErr: true,
+			errMsg:    "admin.tls.port cannot be same as server.extproc_port",
+		},
+		{
+			name: "admin TLS enabled - missing cert path",
+			setup: func(cfg *Config) {
+				cfg.PolicyEngine.Admin.Enabled = true
+				cfg.PolicyEngine.Admin.Port = 9002
+				cfg.PolicyEngine.Admin.AllowedIPs = []string{"127.0.0.1"}
+				cfg.PolicyEngine.Admin.TLS = AdminTLSConfig{
+					Enabled:                true,
+					Port:                   9004,
+					KeyPath:                "./certs/admin.key",
+					MinimumProtocolVersion: "TLS1_2",
+					MaximumProtocolVersion: "TLS1_3",
+					EcdhCurves:             "X25519,P-256",
+				}
+			},
+			expectErr: true,
+			errMsg:    "admin.tls.cert_path is required",
+		},
+		{
+			name: "admin TLS enabled - missing key path",
+			setup: func(cfg *Config) {
+				cfg.PolicyEngine.Admin.Enabled = true
+				cfg.PolicyEngine.Admin.Port = 9002
+				cfg.PolicyEngine.Admin.AllowedIPs = []string{"127.0.0.1"}
+				cfg.PolicyEngine.Admin.TLS = AdminTLSConfig{
+					Enabled:                true,
+					Port:                   9004,
+					CertPath:               "./certs/admin.crt",
+					MinimumProtocolVersion: "TLS1_2",
+					MaximumProtocolVersion: "TLS1_3",
+					EcdhCurves:             "X25519,P-256",
+				}
+			},
+			expectErr: true,
+			errMsg:    "admin.tls.key_path is required",
+		},
+		{
+			name: "admin TLS enabled - missing minimum protocol version",
+			setup: func(cfg *Config) {
+				cfg.PolicyEngine.Admin.Enabled = true
+				cfg.PolicyEngine.Admin.Port = 9002
+				cfg.PolicyEngine.Admin.AllowedIPs = []string{"127.0.0.1"}
+				cfg.PolicyEngine.Admin.TLS = AdminTLSConfig{
+					Enabled:                true,
+					Port:                   9004,
+					CertPath:               "./certs/admin.crt",
+					KeyPath:                "./certs/admin.key",
+					MaximumProtocolVersion: "TLS1_3",
+					EcdhCurves:             "X25519,P-256",
+				}
+			},
+			expectErr: true,
+			errMsg:    "minimum_protocol_version",
+		},
+		{
+			name: "admin TLS enabled - minimum protocol version greater than maximum",
+			setup: func(cfg *Config) {
+				cfg.PolicyEngine.Admin.Enabled = true
+				cfg.PolicyEngine.Admin.Port = 9002
+				cfg.PolicyEngine.Admin.AllowedIPs = []string{"127.0.0.1"}
+				cfg.PolicyEngine.Admin.TLS = AdminTLSConfig{
+					Enabled:                true,
+					Port:                   9004,
+					CertPath:               "./certs/admin.crt",
+					KeyPath:                "./certs/admin.key",
+					MinimumProtocolVersion: "TLS1_3",
+					MaximumProtocolVersion: "TLS1_2",
+					EcdhCurves:             "X25519,P-256",
+				}
+			},
+			expectErr: true,
+			errMsg:    "cannot be greater than maximum_protocol_version",
+		},
+		{
+			name: "admin TLS enabled - unsupported cipher suite",
+			setup: func(cfg *Config) {
+				cfg.PolicyEngine.Admin.Enabled = true
+				cfg.PolicyEngine.Admin.Port = 9002
+				cfg.PolicyEngine.Admin.AllowedIPs = []string{"127.0.0.1"}
+				cfg.PolicyEngine.Admin.TLS = AdminTLSConfig{
+					Enabled:                true,
+					Port:                   9004,
+					CertPath:               "./certs/admin.crt",
+					KeyPath:                "./certs/admin.key",
+					MinimumProtocolVersion: "TLS1_2",
+					MaximumProtocolVersion: "TLS1_3",
+					Ciphers:                "TLS_RSA_WITH_RC4_128_SHA", // insecure, deliberately excluded
+					EcdhCurves:             "X25519,P-256",
+				}
+			},
+			expectErr: true,
+			errMsg:    "admin.tls.ciphers",
+		},
+		{
+			name: "admin TLS enabled - unsupported ecdh curve",
+			setup: func(cfg *Config) {
+				cfg.PolicyEngine.Admin.Enabled = true
+				cfg.PolicyEngine.Admin.Port = 9002
+				cfg.PolicyEngine.Admin.AllowedIPs = []string{"127.0.0.1"}
+				cfg.PolicyEngine.Admin.TLS = AdminTLSConfig{
+					Enabled:                true,
+					Port:                   9004,
+					CertPath:               "./certs/admin.crt",
+					KeyPath:                "./certs/admin.key",
+					MinimumProtocolVersion: "TLS1_2",
+					MaximumProtocolVersion: "TLS1_3",
+					EcdhCurves:             "not-a-curve",
+				}
+			},
+			expectErr: true,
+			errMsg:    "admin.tls.ecdh_curves",
+		},
 	}
 
 	for _, tt := range tests {
@@ -553,6 +780,129 @@ func TestValidate_AdminConfig(t *testing.T) {
 			}
 		})
 	}
+}
+
+// TestParseAdminEcdhCurves tests the ECDH curve preference parser used by
+// AdminTLSConfig.EcdhCurves.
+func TestParseAdminEcdhCurves(t *testing.T) {
+	t.Run("classical curves only", func(t *testing.T) {
+		curves, err := ParseAdminEcdhCurves("X25519,P-256")
+		require.NoError(t, err)
+		assert.Equal(t, []tls.CurveID{tls.X25519, tls.CurveP256}, curves)
+	})
+
+	t.Run("PQC hybrid group prepended", func(t *testing.T) {
+		curves, err := ParseAdminEcdhCurves("X25519MLKEM768,X25519,P-256")
+		require.NoError(t, err)
+		assert.Equal(t, []tls.CurveID{tls.X25519MLKEM768, tls.X25519, tls.CurveP256}, curves)
+	})
+
+	t.Run("whitespace tolerated", func(t *testing.T) {
+		curves, err := ParseAdminEcdhCurves(" X25519 , P-256 ")
+		require.NoError(t, err)
+		assert.Equal(t, []tls.CurveID{tls.X25519, tls.CurveP256}, curves)
+	})
+
+	t.Run("unsupported curve name rejected", func(t *testing.T) {
+		_, err := ParseAdminEcdhCurves("X25519,not-a-curve")
+		assert.Error(t, err)
+		assert.Contains(t, err.Error(), "unsupported ecdh curve")
+	})
+
+	t.Run("empty string rejected", func(t *testing.T) {
+		_, err := ParseAdminEcdhCurves("")
+		assert.Error(t, err)
+	})
+}
+
+// TestValidateAdminTLSVersions tests the min/max protocol version validation
+// used by AdminTLSConfig.
+func TestValidateAdminTLSVersions(t *testing.T) {
+	t.Run("valid TLS1_2 to TLS1_3 range", func(t *testing.T) {
+		assert.NoError(t, ValidateAdminTLSVersions("TLS1_2", "TLS1_3"))
+	})
+
+	t.Run("equal min and max", func(t *testing.T) {
+		assert.NoError(t, ValidateAdminTLSVersions("TLS1_2", "TLS1_2"))
+	})
+
+	t.Run("unrecognized minimum version", func(t *testing.T) {
+		err := ValidateAdminTLSVersions("bogus", "TLS1_3")
+		assert.Error(t, err)
+		assert.Contains(t, err.Error(), "minimum_protocol_version")
+	})
+
+	t.Run("unrecognized maximum version", func(t *testing.T) {
+		err := ValidateAdminTLSVersions("TLS1_2", "bogus")
+		assert.Error(t, err)
+		assert.Contains(t, err.Error(), "maximum_protocol_version")
+	})
+
+	t.Run("minimum greater than maximum", func(t *testing.T) {
+		err := ValidateAdminTLSVersions("TLS1_3", "TLS1_2")
+		assert.Error(t, err)
+		assert.Contains(t, err.Error(), "cannot be greater than maximum_protocol_version")
+	})
+}
+
+// TestParseAdminTLSVersion tests the version-name to crypto/tls-identifier
+// conversion used by AdminTLSConfig.
+func TestParseAdminTLSVersion(t *testing.T) {
+	tests := []struct {
+		name    string
+		version string
+		want    uint16
+	}{
+		{"TLS1_0", "TLS1_0", tls.VersionTLS10},
+		{"TLS1_1", "TLS1_1", tls.VersionTLS11},
+		{"TLS1_2", "TLS1_2", tls.VersionTLS12},
+		{"TLS1_3", "TLS1_3", tls.VersionTLS13},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, ok := ParseAdminTLSVersion(tt.version)
+			require.True(t, ok)
+			assert.Equal(t, tt.want, got)
+		})
+	}
+
+	t.Run("unrecognized version", func(t *testing.T) {
+		_, ok := ParseAdminTLSVersion("bogus")
+		assert.False(t, ok)
+	})
+}
+
+// TestParseAdminCiphers tests the cipher-suite-name parser used by
+// AdminTLSConfig.Ciphers.
+func TestParseAdminCiphers(t *testing.T) {
+	t.Run("empty string is valid and means Go's defaults", func(t *testing.T) {
+		suites, err := ParseAdminCiphers("")
+		require.NoError(t, err)
+		assert.Nil(t, suites)
+	})
+
+	t.Run("restricts to the named secure suites", func(t *testing.T) {
+		suites, err := ParseAdminCiphers("TLS_ECDHE_ECDSA_WITH_AES_128_GCM_SHA256,TLS_ECDHE_RSA_WITH_AES_128_GCM_SHA256")
+		require.NoError(t, err)
+		assert.Equal(t, []uint16{tls.TLS_ECDHE_ECDSA_WITH_AES_128_GCM_SHA256, tls.TLS_ECDHE_RSA_WITH_AES_128_GCM_SHA256}, suites)
+	})
+
+	t.Run("whitespace tolerated", func(t *testing.T) {
+		suites, err := ParseAdminCiphers(" TLS_ECDHE_ECDSA_WITH_AES_128_GCM_SHA256 ")
+		require.NoError(t, err)
+		assert.Equal(t, []uint16{tls.TLS_ECDHE_ECDSA_WITH_AES_128_GCM_SHA256}, suites)
+	})
+
+	t.Run("insecure cipher suite rejected", func(t *testing.T) {
+		_, err := ParseAdminCiphers("TLS_RSA_WITH_RC4_128_SHA")
+		assert.Error(t, err)
+		assert.Contains(t, err.Error(), "unsupported or insecure cipher suite")
+	})
+
+	t.Run("unrecognized cipher suite name rejected", func(t *testing.T) {
+		_, err := ParseAdminCiphers("NOT_A_REAL_SUITE")
+		assert.Error(t, err)
+	})
 }
 
 // TestValidate_MetricsConfig tests metrics configuration validation
@@ -848,8 +1198,60 @@ func TestValidate_XDSTLSConfig(t *testing.T) {
 				cfg.PolicyEngine.XDS.TLS.CertPath = "/path/to/cert"
 				cfg.PolicyEngine.XDS.TLS.KeyPath = "/path/to/key"
 				cfg.PolicyEngine.XDS.TLS.CAPath = "/path/to/ca"
+				cfg.PolicyEngine.XDS.TLS.EcdhCurves = "X25519,P-256"
 			},
 			expectErr: false,
+		},
+		{
+			name: "TLS enabled - PQC hybrid group opt-in",
+			setup: func(cfg *Config) {
+				cfg.PolicyEngine.ConfigMode.Mode = "xds"
+				cfg.PolicyEngine.XDS.ConnectTimeout = 10 * time.Second
+				cfg.PolicyEngine.XDS.RequestTimeout = 5 * time.Second
+				cfg.PolicyEngine.XDS.InitialReconnectDelay = 1 * time.Second
+				cfg.PolicyEngine.XDS.MaxReconnectDelay = 60 * time.Second
+				cfg.PolicyEngine.XDS.TLS.Enabled = true
+				cfg.PolicyEngine.XDS.TLS.CertPath = "/path/to/cert"
+				cfg.PolicyEngine.XDS.TLS.KeyPath = "/path/to/key"
+				cfg.PolicyEngine.XDS.TLS.CAPath = "/path/to/ca"
+				cfg.PolicyEngine.XDS.TLS.EcdhCurves = "X25519MLKEM768,X25519,P-256"
+			},
+			expectErr: false,
+		},
+		{
+			name: "TLS enabled - unsupported ecdh curve",
+			setup: func(cfg *Config) {
+				cfg.PolicyEngine.ConfigMode.Mode = "xds"
+				cfg.PolicyEngine.XDS.ConnectTimeout = 10 * time.Second
+				cfg.PolicyEngine.XDS.RequestTimeout = 5 * time.Second
+				cfg.PolicyEngine.XDS.InitialReconnectDelay = 1 * time.Second
+				cfg.PolicyEngine.XDS.MaxReconnectDelay = 60 * time.Second
+				cfg.PolicyEngine.XDS.TLS.Enabled = true
+				cfg.PolicyEngine.XDS.TLS.CertPath = "/path/to/cert"
+				cfg.PolicyEngine.XDS.TLS.KeyPath = "/path/to/key"
+				cfg.PolicyEngine.XDS.TLS.CAPath = "/path/to/ca"
+				cfg.PolicyEngine.XDS.TLS.EcdhCurves = "not-a-curve"
+			},
+			expectErr: true,
+			errMsg:    "xds.tls.ecdh_curves",
+		},
+		{
+			name: "TLS enabled - unsupported cipher suite",
+			setup: func(cfg *Config) {
+				cfg.PolicyEngine.ConfigMode.Mode = "xds"
+				cfg.PolicyEngine.XDS.ConnectTimeout = 10 * time.Second
+				cfg.PolicyEngine.XDS.RequestTimeout = 5 * time.Second
+				cfg.PolicyEngine.XDS.InitialReconnectDelay = 1 * time.Second
+				cfg.PolicyEngine.XDS.MaxReconnectDelay = 60 * time.Second
+				cfg.PolicyEngine.XDS.TLS.Enabled = true
+				cfg.PolicyEngine.XDS.TLS.CertPath = "/path/to/cert"
+				cfg.PolicyEngine.XDS.TLS.KeyPath = "/path/to/key"
+				cfg.PolicyEngine.XDS.TLS.CAPath = "/path/to/ca"
+				cfg.PolicyEngine.XDS.TLS.EcdhCurves = "X25519,P-256"
+				cfg.PolicyEngine.XDS.TLS.Ciphers = "TLS_RSA_WITH_RC4_128_SHA"
+			},
+			expectErr: true,
+			errMsg:    "xds.tls.ciphers",
 		},
 	}
 

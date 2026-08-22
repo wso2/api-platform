@@ -13,6 +13,66 @@ shutdown_timeout = "15s"
 # It is recommended to use a uuid_v7 for this to improve db efficiency.
 gateway_id = '{{ env "APIP_GW_CONTROLLER_SERVER_GATEWAY_ID" "platform-gateway-id" }}'
 
+[controller.server.tls]
+# Starts a second, TLS-only REST API listener on `port` below, serving the
+# same management API as the plaintext listener on server.api_port above.
+# Off by default: no certificate is provisioned by default, and the
+# plaintext listener keeps working either way.
+enabled = false
+port = 9093
+cert_path = ""
+key_path = ""
+# TLS version bounds, one of "TLS1_0", "TLS1_1", "TLS1_2", "TLS1_3". Same
+# vocabulary as router.downstream_tls/upstream_tls below for consistency
+# within this file, though enforced by a different TLS stack (Go's own
+# crypto/tls here, Envoy/BoringSSL there).
+minimum_protocol_version = "TLS1_2"
+maximum_protocol_version = "TLS1_3"
+# Comma-separated Go crypto/tls cipher suite names (e.g.
+# "TLS_ECDHE_ECDSA_WITH_AES_128_GCM_SHA256"), restricting which suites this
+# listener negotiates. Empty by default -- Go's own secure default set/order
+# applies. Only affects TLS 1.2 and below; TLS 1.3 suite selection is fixed
+# and not configurable in Go's crypto/tls. Note this is a different naming
+# scheme than router.downstream_tls's `ciphers` below (OpenSSL/BoringSSL
+# names like "ECDHE-ECDSA-AES128-GCM-SHA256") -- see crypto/tls.CipherSuites
+# for the names this listener accepts.
+ciphers = ""
+# Comma-separated TLS 1.3 key-exchange groups, most preferred first.
+# Classical curves only by default. A hybrid post-quantum group (e.g.
+# "X25519MLKEM768", FIPS 203 ML-KEM-768 + X25519) can be prepended as an
+# explicit opt-in once the clients reaching this listener are confirmed to
+# support it. This listener is served by this process's own Go crypto/tls
+# (1.23+ implements X25519MLKEM768 natively), not pushed as xDS config to a
+# separate Envoy process, so enabling it here does not carry the "already-
+# running peer NACKs the update" risk documented on router.downstream_tls's
+# ecdh_curves below -- TLS 1.3 negotiation just falls back to a later
+# classical entry in this same list for a client that doesn't offer it.
+ecdh_curves = "X25519,P-256"
+
+[controller.server.xds_tls]
+# Switches the main xDS gRPC server (serves Envoy on server.xds_port above)
+# from plaintext to mutual TLS -- there is no second listener the way
+# server.tls above adds one; server.xds_port itself starts speaking mTLS.
+# Off by default: Envoy's xds_cluster (router/config/config-override.yaml)
+# must be given a matching client cert/CA before this is turned on, or the
+# connection will fail closed.
+enabled = false
+cert_file = ""
+key_file = ""
+# PEM bundle of CA certificates trusted to sign Envoy's client certificate.
+# Required when enabled -- this server offers no server-only TLS mode,
+# since it distributes SDS secrets and full route/cluster config.
+client_ca_file = ""
+# Accepted peer certificate identities: a certificate's first SAN URI (e.g.
+# a SPIFFE ID) if present, otherwise its Subject CommonName. A client
+# certificate that chains to a trusted CA is not by itself authorization to
+# reach this snapshot -- at least one identity is required when enabled.
+allowed_client_identities = []
+minimum_protocol_version = "TLS1_2"
+maximum_protocol_version = "TLS1_3"
+ciphers = ""
+ecdh_curves = "X25519,P-256"
+
 [controller.admin_server]
 # Dedicated admin/debug HTTP server for config dump and xDS sync endpoints.
 # Kept enabled by default because it also serves /health, used by Kubernetes
@@ -43,12 +103,30 @@ mutex_profile_fraction = 0
 port = 18001
 
 [controller.policy_server.tls]
-# Enable or disable TLS
+# Switches the policy xDS gRPC server (serves the policy-engine on
+# policy_server.port above) from plaintext to mutual TLS, on that same
+# port. Off by default: policy_engine.xds.tls below must be given a
+# matching client cert/CA before this is turned on, or the connection will
+# fail closed.
 enabled = false
 # Path to TLS certificate file (required if TLS is enabled)
 cert_file = "./certs/server.crt"
 # Path to TLS private key file (required if TLS is enabled)
 key_file = "./certs/server.key"
+# PEM bundle of CA certificates trusted to sign the policy-engine's client
+# certificate. Required when enabled -- this server offers no server-only
+# TLS mode, since it distributes API-key hashes, subscription state, and
+# full policy chains for every tenant.
+client_ca_file = "./certs/xds-client-ca.crt"
+# Accepted peer certificate identities: a certificate's first SAN URI (e.g.
+# a SPIFFE ID) if present, otherwise its Subject CommonName. A client
+# certificate that chains to a trusted CA is not by itself authorization to
+# reach this snapshot -- at least one identity is required when enabled.
+allowed_client_identities = []
+minimum_protocol_version = "TLS1_2"
+maximum_protocol_version = "TLS1_3"
+ciphers = ""
+ecdh_curves = "X25519,P-256"
 
 [controller.controlplane]
 # Control plane websocket endpoint. Environment values reach these keys ONLY through the
@@ -252,11 +330,26 @@ key_path = "./listener-certs/default-listener.key"
 minimum_protocol_version = "TLS1_2"
 maximum_protocol_version = "TLS1_3"
 ciphers = "ECDHE-ECDSA-AES128-GCM-SHA256,ECDHE-RSA-AES128-GCM-SHA256,ECDHE-ECDSA-AES128-SHA,ECDHE-RSA-AES128-SHA,AES128-GCM-SHA256,AES128-SHA,ECDHE-ECDSA-AES256-GCM-SHA384,ECDHE-RSA-AES256-GCM-SHA384,ECDHE-ECDSA-AES256-SHA,ECDHE-RSA-AES256-SHA,AES256-GCM-SHA384,AES256-SHA"
+# Comma-separated ECDH curves for the TLS key exchange, most preferred first.
+# Defaults to the hybrid post-quantum group X25519MLKEM768 (FIPS 203 ML-KEM-768
+# + X25519) followed by classical curves X25519 and P-256, so key exchange
+# degrades gracefully to classical for peers that don't yet support the
+# hybrid group. An unsupported curve name is rejected by Envoy when it
+# applies the resulting config, not by this file.
+ecdh_curves = "X25519MLKEM768,X25519,P-256"
 
 [router.upstream.tls]
 minimum_protocol_version = "TLS1_2"
 maximum_protocol_version = "TLS1_3"
 ciphers = "ECDHE-ECDSA-AES128-GCM-SHA256,ECDHE-RSA-AES128-GCM-SHA256,ECDHE-ECDSA-AES128-SHA,ECDHE-RSA-AES128-SHA,AES128-GCM-SHA256,AES128-SHA,ECDHE-ECDSA-AES256-GCM-SHA384,ECDHE-RSA-AES256-GCM-SHA384,ECDHE-ECDSA-AES256-SHA,ECDHE-RSA-AES256-SHA,AES256-GCM-SHA384,AES256-SHA"
+# Comma-separated ECDH curves for the TLS key exchange, most preferred first.
+# Classical curves only by default. A hybrid post-quantum group (e.g.
+# "X25519MLKEM768", FIPS 203 ML-KEM-768 + X25519) can be prepended as an
+# explicit per-deployment opt-in once the deployed Envoy/BoringSSL build is
+# confirmed to support it -- an already-running Envoy that doesn't recognize
+# the curve name will NACK this config and keep serving its last-known-good
+# state instead of picking up any further changes.
+ecdh_curves = "X25519,P-256"
 trusted_cert_path = "/etc/ssl/certs/ca-certificates.crt"
 custom_certs_path = "./certificates"
 verify_host_name = true
@@ -336,6 +429,42 @@ allowed_ips = ["*", "127.0.0.1"]
 # Service port.
 enabled = false
 
+[policy_engine.admin.tls]
+# Starts a second, TLS-only admin listener on `port` below, serving the same
+# routes (/health, /xds_sync_status, /config_dump when enabled) as the
+# plaintext listener above. Off by default: no certificate is provisioned by
+# default, and the plaintext listener keeps working either way.
+enabled = false
+port = 9004
+cert_path = "./listener-certs/default-listener.crt"
+key_path = "./listener-certs/default-listener.key"
+# TLS version bounds, one of "TLS1_0", "TLS1_1", "TLS1_2", "TLS1_3". Same
+# vocabulary as router.downstream_tls/upstream_tls above for consistency
+# within this file, though enforced by a different TLS stack (Go's own
+# crypto/tls here, Envoy/BoringSSL there).
+minimum_protocol_version = "TLS1_2"
+maximum_protocol_version = "TLS1_3"
+# Comma-separated Go crypto/tls cipher suite names (e.g.
+# "TLS_ECDHE_ECDSA_WITH_AES_128_GCM_SHA256"), restricting which suites this
+# listener negotiates. Empty by default -- Go's own secure default set/order
+# applies. Only affects TLS 1.2 and below; TLS 1.3 suite selection is fixed
+# and not configurable in Go's crypto/tls. Note this is a different naming
+# scheme than router.downstream_tls's `ciphers` above (OpenSSL/BoringSSL
+# names like "ECDHE-ECDSA-AES128-GCM-SHA256") -- see crypto/tls.CipherSuites
+# for the names this listener accepts.
+ciphers = ""
+# Comma-separated TLS 1.3 key-exchange groups, most preferred first.
+# Classical curves only by default. A hybrid post-quantum group (e.g.
+# "X25519MLKEM768", FIPS 203 ML-KEM-768 + X25519) can be prepended as an
+# explicit opt-in once the clients reaching this listener are confirmed to
+# support it. This listener is served by this process's own Go crypto/tls
+# (1.23+ implements X25519MLKEM768 natively), not pushed as xDS config to a
+# separate Envoy process, so enabling it here does not carry the "already-
+# running peer NACKs the update" risk documented on router.downstream_tls's
+# ecdh_curves above -- TLS 1.3 negotiation just falls back to a later
+# classical entry in this same list for a client that doesn't offer it.
+ecdh_curves = "X25519,P-256"
+
 [policy_engine.admin.pprof]
 # Go runtime profiling (net/http/pprof) served on the admin server, off by default.
 # When profiling, also restrict admin.allowed_ips or reach it via port-forward.
@@ -355,10 +484,55 @@ initial_reconnect_delay = "1s"
 max_reconnect_delay = "60s"
 
 [policy_engine.xds.tls]
-enabled = false
-# cert_path = "/path/to/client-cert.pem"
-# key_path = "/path/to/client-key.pem"
-# ca_path = "/path/to/ca-cert.pem"
+# Mutual TLS for this policy-engine's connection to gateway-controller's
+# policy xDS server. Off by default; must be enabled together with
+# controller.policy_server.tls above (and this cert's identity added to
+# controller.policy_server.tls.allowed_client_identities) -- the server
+# offers no server-only TLS mode for xDS, so enabling only one side leaves
+# the connection unable to complete its handshake.
+#
+# The policy-engine binary is a subprocess of gateway-runtime's
+# docker-entrypoint.sh, forked into (and inheriting the environment of) the
+# same container as Envoy -- so, like Envoy's own XDS_CLIENT_* vars, this
+# cert/key/CA material is sourced from env vars local to that container
+# rather than hardcoded here. Distinct POLICY_ENGINE_XDS_CLIENT_* names (not
+# the plain XDS_CLIENT_* Envoy uses) because this leg presents a different
+# client identity (spiffe://.../policy-engine, not .../envoy) -- reusing
+# Envoy's cert here would fail controller.policy_server.tls's
+# allowed_client_identities check.
+#
+# Every setting below follows the same three-level precedence: its own
+# POLICY_ENGINE_XDS_CLIENT_* var (POLICY_ENGINE_XDS_TLS_ENABLED for the
+# enabled flag), if set, always wins; otherwise it inherits Envoy's
+# equivalent XDS_CLIENT_* var (the common case -- one container-wide
+# xDS-client TLS config, since both legs dial the same gateway-controller
+# host); if neither is set, it falls back to the literal default below. CA
+# fallback is always safe -- controller.server.xds_tls and
+# controller.policy_server.tls share the same server cert/CA by content,
+# just mounted at different container paths. cert_path/key_path fallback is
+# NOT automatically safe: inheriting Envoy's client cert means this leg
+# presents Envoy's identity rather than its own, which
+# controller.policy_server.tls's allowed_client_identities rejects unless it
+# explicitly allows both -- rely on this fallback only in a deployment that
+# deliberately shares one client identity across both legs; otherwise set
+# POLICY_ENGINE_XDS_CLIENT_* explicitly, as this repo's own docker-compose
+# files do.
+enabled = '{{ env "POLICY_ENGINE_XDS_TLS_ENABLED" (env "XDS_TLS_ENABLED" "false") }}'
+cert_path = '{{ env "POLICY_ENGINE_XDS_CLIENT_CERT_PATH" (env "XDS_CLIENT_CERT_PATH" "") }}'
+key_path = '{{ env "POLICY_ENGINE_XDS_CLIENT_KEY_PATH" (env "XDS_CLIENT_KEY_PATH" "") }}'
+ca_path = '{{ env "POLICY_ENGINE_XDS_CLIENT_CA_PATH" (env "XDS_CLIENT_CA_PATH" "") }}'
+# Comma-separated Go crypto/tls cipher suite names, restricting which
+# suites this client offers. Empty by default -- Go's own secure default
+# set/order applies. Only affects TLS 1.2 and below.
+ciphers = '{{ env "POLICY_ENGINE_XDS_CLIENT_TLS_CIPHERS" (env "XDS_CLIENT_TLS_CIPHERS" "") }}'
+# Comma-separated TLS 1.3 key-exchange groups, most preferred first.
+# Classical curves only by default. A hybrid post-quantum group (e.g.
+# "X25519MLKEM768", FIPS 203 ML-KEM-768 + X25519) can be prepended as an
+# explicit opt-in once controller.policy_server.tls above is confirmed to
+# support it -- this client is Go's own crypto/tls (1.23+ implements
+# X25519MLKEM768 natively), so a server that doesn't offer the hybrid group
+# simply falls back to a later classical entry in this same list.
+ecdh_curves = '{{ env "POLICY_ENGINE_XDS_CLIENT_TLS_ECDH_CURVES" (env "XDS_CLIENT_TLS_ECDH_CURVES" "X25519,P-256") }}'
 
 [policy_engine.file_config]
 path = ""

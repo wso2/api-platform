@@ -30,7 +30,9 @@ import (
 	"strings"
 	"time"
 
+	"github.com/wso2/api-platform/event-gateway/gateway-runtime/internal/config"
 	"github.com/wso2/api-platform/event-gateway/gateway-runtime/internal/connectors"
+	"github.com/wso2/go-httpkit/httpclient"
 )
 
 // DeliveryConfig holds configuration for the delivery engine.
@@ -39,6 +41,11 @@ type DeliveryConfig struct {
 	InitialDelayMs int
 	MaxDelayMs     int
 	Concurrency    int
+	// HTTPClient sources pooling/TLS/proxy/SSRF-redirect knobs from config.toml's
+	// [http_client] section (shared with the Verifier). The delivery timeout below
+	// remains this call site's own existing value and always overrides
+	// HTTPClient.Timeouts.Overall — see config.HTTPClientConfig's doc comment.
+	HTTPClient config.HTTPClientConfig
 }
 
 // Deliverer delivers events to a single subscriber callback URL.
@@ -47,12 +54,31 @@ type Deliverer struct {
 	client *http.Client
 }
 
-// NewDeliverer creates a new Deliverer.
-func NewDeliverer(config DeliveryConfig) *Deliverer {
-	return &Deliverer{
-		config: config,
-		client: &http.Client{Timeout: 30 * time.Second},
+// NewDeliverer creates a new Deliverer. The delivery HTTP client is built
+// with the shared httpkit SSRF dial-guard enabled (see ssrf-prevention.md):
+// the subscriber CallbackURL is tenant-supplied, so private/loopback
+// backends must remain reachable (in-cluster subscribers are the common
+// case) while link-local/metadata/unspecified/multicast destinations are
+// refused at dial time. Pooling/TLS/proxy knobs come from
+// deliveryConfig.HTTPClient (config.toml's [http_client] section, shared
+// with the Verifier); the 30s delivery timeout below is this call site's
+// own existing value and always overrides HTTPClient.Timeouts.Overall.
+func NewDeliverer(deliveryConfig DeliveryConfig) (*Deliverer, error) {
+	cfg, err := config.BuildHTTPClientConfig(deliveryConfig.HTTPClient)
+	if err != nil {
+		return nil, fmt.Errorf("failed to build delivery HTTP client config: %w", err)
 	}
+	cfg.Timeouts.Overall = 30 * time.Second
+
+	client, err := httpclient.New(cfg)
+	if err != nil {
+		return nil, fmt.Errorf("failed to build delivery HTTP client: %w", err)
+	}
+
+	return &Deliverer{
+		config: deliveryConfig,
+		client: client,
+	}, nil
 }
 
 // Deliver delivers a message to a single callback URL with retry and HMAC.
