@@ -13,7 +13,7 @@ policies:
       version: v0.10.0
       gomodule: github.com/wso2/gateway-controllers/policies/aws-authentication@v0
     - name: aws-bedrock-guardrail
-      version: v1.1.0
+      version: v1.2.0
       gomodule: github.com/wso2/gateway-controllers/policies/aws-bedrock-guardrail@v1
     - name: azure-content-safety-content-moderation
       version: v1.0.2
@@ -94,7 +94,7 @@ policies:
       version: v1.0.1
       gomodule: github.com/wso2/gateway-controllers/policies/opaque-token-auth@v1
     - name: openai-to-anthropic-transformer
-      version: v0.9.0
+      version: v0.9.1
       gomodule: github.com/wso2/gateway-controllers/policies/openai-to-anthropic-transformer@v0
     - name: openai-to-azure-openai-transformer
       version: v0.9.0
@@ -103,7 +103,7 @@ policies:
       version: v0.9.1
       gomodule: github.com/wso2/gateway-controllers/policies/openai-to-bedrock-transformer@v0
     - name: openai-to-gemini-transformer
-      version: v0.9.0
+      version: v0.9.1
       gomodule: github.com/wso2/gateway-controllers/policies/openai-to-gemini-transformer@v0
     - name: openai-to-mistral-transformer
       version: v0.9.0
