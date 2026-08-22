@@ -1,1 +1,380 @@
-{}
+{
+  "aiWorkspace.pages.appShell.APIQuickSelector.apis": {
+    "defaultMessage": "APIs"
+  },
+  "aiWorkspace.pages.appShell.APIQuickSelector.failed.to.load.apis": {
+    "defaultMessage": "Failed to load APIs"
+  },
+  "aiWorkspace.pages.appShell.APIQuickSelector.loading": {
+    "defaultMessage": "Loading..."
+  },
+  "aiWorkspace.pages.appShell.APIQuickSelector.no.apis.available": {
+    "defaultMessage": "No APIs available"
+  },
+  "aiWorkspace.pages.appShell.ProjectQuickSelector.failed.to.load.projects": {
+    "defaultMessage": "Failed to load projects"
+  },
+  "aiWorkspace.pages.appShell.ProjectQuickSelector.loading": {
+    "defaultMessage": "Loading..."
+  },
+  "aiWorkspace.pages.appShell.ProjectQuickSelector.no.projects.available": {
+    "defaultMessage": "No projects available"
+  },
+  "aiWorkspace.pages.appShell.ProjectQuickSelector.projects": {
+    "defaultMessage": "Projects"
+  },
+  "aiWorkspace.pages.appShell.appShellPages.projects.ExploreMoreCard.explore.more": {
+    "defaultMessage": "Explore More"
+  },
+  "aiWorkspace.pages.appShell.appShellPages.proxies.LLMProxyOverview.context.label": {
+    "defaultMessage": "Context :"
+  },
+  "aiWorkspace.pages.appShell.appShellPages.proxies.LLMProxyOverview.last.updated": {
+    "defaultMessage": "Last updated :"
+  },
+  "apiCard.delete": {
+    "defaultMessage": "Delete {apiName}",
+    "description": "Accessible label for deleting an API from API card"
+  },
+  "apiCard.updated": {
+    "defaultMessage": "Updated {relative}",
+    "description": "Card footer timestamp; {relative} is a phrase such as \"3 hours ago\"."
+  },
+  "apiListPage.createApiButton": {
+    "defaultMessage": "Create API",
+    "description": "Button label for creating a new API"
+  },
+  "apiListPage.subHeader": {
+    "defaultMessage": "REST APIs in this project.",
+    "description": "Sub header for the API list page"
+  },
+  "apiListPage.title": {
+    "defaultMessage": "APIs",
+    "description": "Page title for the API list page"
+  },
+  "appLayout.footer.privacyPolicy": {
+    "defaultMessage": "Privacy Policy",
+    "description": "Footer link to the Privacy Policy page"
+  },
+  "appLayout.footer.termsOfUse": {
+    "defaultMessage": "Terms of Use",
+    "description": "Footer link to the Terms of Use page"
+  },
+  "appLayout.notificationPanel.headerTitle": {
+    "defaultMessage": "Notifications",
+    "description": "Header title for the notification panel"
+  },
+  "appShell.adminPage.feature": {
+    "defaultMessage": "Administration for this API"
+  },
+  "appShell.alertsPage.feature": {
+    "defaultMessage": "Observability alerts for this API"
+  },
+  "appShell.apiChatPage.feature": {
+    "defaultMessage": "Testing this API through chat"
+  },
+  "appShell.apiConsolePage.feature": {
+    "defaultMessage": "An interactive API console"
+  },
+  "appShell.compliancePage.feature": {
+    "defaultMessage": "Compliance reporting for this API"
+  },
+  "appShell.deployPage.header": {
+    "defaultMessage": "Deploy {apiName}"
+  },
+  "appShell.deployPage.noGatewaysMatchSearch": {
+    "defaultMessage": "No gateways match your search"
+  },
+  "appShell.deployPage.subHeader": {
+    "defaultMessage": "Deploy the current working copy to a gateway, and manage existing deployments."
+  },
+  "appShell.header.api.aria": {
+    "defaultMessage": "APIs"
+  },
+  "appShell.header.api.empty": {
+    "defaultMessage": "No APIs found"
+  },
+  "appShell.header.api.goToApiLevel": {
+    "defaultMessage": "Go to API level"
+  },
+  "appShell.header.api.label": {
+    "defaultMessage": "APIs"
+  },
+  "appShell.header.api.noResults": {
+    "defaultMessage": "No matching APIs"
+  },
+  "appShell.header.api.placeholder": {
+    "defaultMessage": "Search APIs..."
+  },
+  "appShell.header.api.search": {
+    "defaultMessage": "Search"
+  },
+  "appShell.header.api.select": {
+    "defaultMessage": "Select API"
+  },
+  "appShell.header.notifications": {
+    "defaultMessage": "Notifications"
+  },
+  "appShell.header.org.aria": {
+    "defaultMessage": "Organizations"
+  },
+  "appShell.header.org.empty": {
+    "defaultMessage": "No organizations found"
+  },
+  "appShell.header.org.label": {
+    "defaultMessage": "Organizations"
+  },
+  "appShell.header.org.noResults": {
+    "defaultMessage": "No matching organizations"
+  },
+  "appShell.header.org.placeholder": {
+    "defaultMessage": "Search organizations..."
+  },
+  "appShell.header.project.aria": {
+    "defaultMessage": "Projects"
+  },
+  "appShell.header.project.empty": {
+    "defaultMessage": "No projects found"
+  },
+  "appShell.header.project.goToOrganization": {
+    "defaultMessage": "Go to organization level"
+  },
+  "appShell.header.project.label": {
+    "defaultMessage": "Projects"
+  },
+  "appShell.header.project.noResults": {
+    "defaultMessage": "No matching projects"
+  },
+  "appShell.header.project.placeholder": {
+    "defaultMessage": "Search projects..."
+  },
+  "appShell.header.project.select": {
+    "defaultMessage": "Select Project"
+  },
+  "appShell.header.title": {
+    "defaultMessage": "API Platform"
+  },
+  "appShell.insightsPage.feature": {
+    "defaultMessage": "API insights"
+  },
+  "appShell.lifeCyclePage.feature": {
+    "defaultMessage": "Lifecycle management for this API"
+  },
+  "appShell.metricsPage.feature": {
+    "defaultMessage": "Observability metrics for this API"
+  },
+  "appShell.monetizePage.feature": {
+    "defaultMessage": "Monetization for this API"
+  },
+  "appShell.projectHomePage.noAdditionalMetadata": {
+    "defaultMessage": "No additional project metadata available."
+  },
+  "appShell.projectHomePage.projectDetails": {
+    "defaultMessage": "Project details"
+  },
+  "appShell.projectHomePage.viewAllAPIs": {
+    "defaultMessage": "View all APIs ({count})"
+  },
+  "appShell.runtimeLogsPage.header": {
+    "defaultMessage": "Observability"
+  },
+  "appShell.runtimeLogsPage.subHeader": {
+    "defaultMessage": "Runtime logs for {apiHandler}."
+  },
+  "appShell.testPage.header": {
+    "defaultMessage": "Test {apiName}"
+  },
+  "appShell.testPage.subHeader": {
+    "defaultMessage": "Use the following curl command to test the API."
+  },
+  "components.comingSoon.body": {
+    "defaultMessage": "{feature} will be available soon."
+  },
+  "components.comingSoon.title": {
+    "defaultMessage": "Coming Soon"
+  },
+  "components.common.searchableComplexSelect.dropdownClickAriaLabel": {
+    "defaultMessage": "Open {label}"
+  },
+  "gateways.filter.all": {
+    "defaultMessage": "All"
+  },
+  "gateways.filter.managed": {
+    "defaultMessage": "Managed"
+  },
+  "gateways.filter.self": {
+    "defaultMessage": "Self-hosted"
+  },
+  "gateways.provisionButton": {
+    "defaultMessage": "Provision gateway"
+  },
+  "gateways.subtitle": {
+    "defaultMessage": "Provision and manage self-hosted or WSO2-managed gateways to expose your APIs to clients."
+  },
+  "gateways.title": {
+    "defaultMessage": "Gateways"
+  },
+  "project.card.actionsLabel": {
+    "defaultMessage": "Project actions",
+    "description": "Accessible label for the button opening the card overflow menu."
+  },
+  "project.card.apiCount": {
+    "defaultMessage": "{count, plural, one {# API} other {# APIs}}"
+  },
+  "project.card.apiCountLoading": {
+    "defaultMessage": "… APIs",
+    "description": "Placeholder shown while the API count is still loading."
+  },
+  "project.card.defaultBadge": {
+    "defaultMessage": "DEFAULT",
+    "description": "Badge marking the organization’s default project."
+  },
+  "project.card.delete": {
+    "defaultMessage": "Delete"
+  },
+  "project.card.deployedCount": {
+    "defaultMessage": "{count} deployed"
+  },
+  "project.card.deployedCountLoading": {
+    "defaultMessage": "… deployed",
+    "description": "Placeholder shown while the deployed count is still loading."
+  },
+  "project.card.fallbackDescription": {
+    "defaultMessage": "Project workspace",
+    "description": "Shown in place of a description when the project has none."
+  },
+  "project.card.neverUpdated": {
+    "defaultMessage": "Not updated yet"
+  },
+  "project.card.settingsLabel": {
+    "defaultMessage": "Project settings"
+  },
+  "project.card.updatedAt": {
+    "defaultMessage": "Updated {relative}",
+    "description": "Footer timestamp; {relative} is a phrase such as \"3 hours ago\"."
+  },
+  "project.list.count": {
+    "defaultMessage": "{count, plural, one {# project} other {# projects}}"
+  },
+  "project.list.createProjectButton": {
+    "defaultMessage": "Create Project"
+  },
+  "project.list.delete.confirmInputLabel": {
+    "defaultMessage": "Type \"{name}\" to confirm",
+    "description": "Label for the type-to-confirm field guarding an irreversible delete."
+  },
+  "project.list.delete.confirmLabel": {
+    "defaultMessage": "Delete"
+  },
+  "project.list.delete.failed": {
+    "defaultMessage": "Delete failed",
+    "description": "Fallback toast when the server gives no reason for a failure."
+  },
+  "project.list.delete.message": {
+    "defaultMessage": "This permanently deletes the project \"{name}\" and its configuration. A project that still has APIs cannot be deleted. This action is irreversible."
+  },
+  "project.list.delete.succeeded": {
+    "defaultMessage": "Deleted \"{name}\"."
+  },
+  "project.list.delete.title": {
+    "defaultMessage": "Delete project"
+  },
+  "project.list.empty.action": {
+    "defaultMessage": "Create project"
+  },
+  "project.list.empty.description": {
+    "defaultMessage": "Create a project to organize and manage your APIs."
+  },
+  "project.list.empty.title": {
+    "defaultMessage": "No projects found"
+  },
+  "project.list.error.message": {
+    "defaultMessage": "Unable to load projects. {reason}"
+  },
+  "project.list.loading": {
+    "defaultMessage": "Loading projects"
+  },
+  "project.list.noMatches.description": {
+    "defaultMessage": "Try a different project name or handle."
+  },
+  "project.list.noMatches.title": {
+    "defaultMessage": "No matching projects"
+  },
+  "project.list.rowsPerPage": {
+    "defaultMessage": "Projects per page"
+  },
+  "project.list.searchPlaceholder": {
+    "defaultMessage": "Search projects"
+  },
+  "project.list.sort.nameAscending": {
+    "defaultMessage": "Name (A–Z)",
+    "description": "Sort option: alphabetical by project name, ascending."
+  },
+  "project.list.sort.nameDescending": {
+    "defaultMessage": "Name (Z–A)",
+    "description": "Sort option: alphabetical by project name, descending."
+  },
+  "project.list.sort.newest": {
+    "defaultMessage": "Newest first",
+    "description": "Sort option: by creation date, most recent project first."
+  },
+  "project.list.sort.oldest": {
+    "defaultMessage": "Oldest first",
+    "description": "Sort option: by creation date, earliest project first."
+  },
+  "project.list.sortLabel": {
+    "defaultMessage": "Sort by",
+    "description": "Label for the control choosing the project list order."
+  },
+  "project.list.subHeader.default": {
+    "defaultMessage": "Select a project to manage APIs."
+  },
+  "project.list.subHeader.withOrganization": {
+    "defaultMessage": "Project workspaces in {organizationName}."
+  },
+  "project.list.title": {
+    "defaultMessage": "Projects"
+  },
+  "scopeGate.api": {
+    "defaultMessage": "API"
+  },
+  "scopeGate.goToApiLevel": {
+    "defaultMessage": "Go to API Level"
+  },
+  "scopeGate.goToProjectLevel": {
+    "defaultMessage": "Go to Project Level"
+  },
+  "scopeGate.goToProjects": {
+    "defaultMessage": "Go to Projects"
+  },
+  "scopeGate.loadingApis": {
+    "defaultMessage": "Loading APIs..."
+  },
+  "scopeGate.loadingProjects": {
+    "defaultMessage": "Loading projects..."
+  },
+  "scopeGate.noApis": {
+    "defaultMessage": "This project has no APIs yet. Create an API to continue."
+  },
+  "scopeGate.noProjects": {
+    "defaultMessage": "No projects available"
+  },
+  "scopeGate.project": {
+    "defaultMessage": "Project"
+  },
+  "scopeGate.selectProject": {
+    "defaultMessage": "Select a project to switch to project level and continue."
+  },
+  "scopeGate.selectProjectAndApi": {
+    "defaultMessage": "Select a project and an API to switch to API level and continue."
+  },
+  "summary.card.error": {
+    "defaultMessage": "Unable to load."
+  },
+  "summary.card.retry": {
+    "defaultMessage": "Retry"
+  },
+  "summary.card.see.more": {
+    "defaultMessage": "See more"
+  }
+}

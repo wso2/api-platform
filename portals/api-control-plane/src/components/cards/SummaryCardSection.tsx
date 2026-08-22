@@ -31,6 +31,7 @@ import {
   Typography,
 } from '@wso2/oxygen-ui';
 import { Plus } from '@wso2/oxygen-ui-icons-react';
+import { FormattedMessage } from 'react-intl';
 
 export type SummaryRow = {
   id: string;
@@ -103,7 +104,10 @@ export function SummaryCardSection({
               )}
               {onSeeMore && totalCount > visible.length && (
                 <Button onClick={onSeeMore} size="small">
-                  See more
+                  <FormattedMessage
+                    id="summary.card.see.more"
+                    defaultMessage="See more"
+                  />
                 </Button>
               )}
             </Stack>
@@ -142,13 +146,21 @@ export function SummaryCardSection({
             action={
               onRetry ? (
                 <Button color="inherit" onClick={onRetry} size="small">
-                  Retry
+                  <FormattedMessage
+                    id="summary.card.retry"
+                    defaultMessage="Retry"
+                  />
                 </Button>
               ) : undefined
             }
             severity="error"
           >
-            {error.message || 'Unable to load.'}
+            {error.message || 
+            <FormattedMessage
+              id="summary.card.error"
+              defaultMessage='Unable to load.'
+            />
+            }
           </Alert>
         ) : isEmpty ? (
           <Stack
@@ -216,7 +228,7 @@ export function SummaryCardSection({
                 >
                   {item.icon ||
                     item.avatarText ||
-                    item.title.charAt(0).toUpperCase()}
+                    item?.title.charAt(0).toUpperCase()}
                 </Avatar>
                 <Box sx={{ minWidth: 0 }}>
                   <Typography noWrap sx={{ fontWeight: 600 }} variant="body1">

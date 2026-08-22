@@ -18,7 +18,7 @@
 
 import { vi } from 'vitest';
 
-import type { AuthState, AuthStatus } from '../features/auth/authTypes';
+import type { AuthState, AuthStatus } from '../contexts/auth/authTypes';
 
 /**
  * Builds a complete `AuthState` for tests, with every callback as a `vi.fn()`

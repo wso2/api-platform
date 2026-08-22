@@ -48,9 +48,9 @@ const findOrganization = async (orgHandle: string) => {
 export async function listProjects(orgHandle: string): Promise<Project[]> {
   if (useMockApi()) {
     await delay();
-    const org = organizations.find((item) => item.handle === orgHandle);
+    const org = organizations.find((item) => item.id === orgHandle);
     return projects
-      .filter((project) => project.orgId === org?.id)
+      .filter((project) => project.organizationId === org?.id)
       .map(toProject);
   }
 
@@ -141,8 +141,8 @@ export async function createProject(
 
   if (useMockApi()) {
     await delay();
-    const org = organizations.find((item) => item.handle === orgHandle);
-    if (projects.some((p) => p.orgId === org?.id && p.name === name)) {
+    const org = organizations.find((item) => item.id === orgHandle);
+    if (projects.some((p) => p.organizationId === org?.id && p.displayName === name)) {
       throw new ApiError(
         'Project already exists in organization',
         'CONFLICT',
@@ -160,7 +160,11 @@ export async function createProject(
       createdDate: now,
       updatedAt: now,
     };
-    projects.push(project);
+    projects.push({
+      ...project,
+      organizationId: org?.id || '',
+      displayName: name,
+    });
     return toProject(project);
   }
 
@@ -194,8 +198,8 @@ export async function deleteProject(
 ): Promise<void> {
   if (useMockApi()) {
     await delay();
-    const org = organizations.find((item) => item.handle === orgHandle);
-    const orgProjects = projects.filter((p) => p.orgId === org?.id);
+    const org = organizations.find((item) => item.id === orgHandle);
+    const orgProjects = projects.filter((p) => p.organizationId === org?.id);
     // Mirror the platform-api delete guards (last project / has APIs) so the
     // mock surfaces the same blocking errors the real backend returns.
     if (orgProjects.length <= 1) {

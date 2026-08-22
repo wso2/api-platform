@@ -17,7 +17,7 @@
  */
 
 import { runtimeConfig } from '../../config/runtime';
-import { CSRF_HEADER, CSRF_HEADER_VALUE } from '../../features/auth/authConstants';
+import { CSRF_HEADER, CSRF_HEADER_VALUE } from '../../contexts/auth/authConstants';
 import { ApiError, type ApiErrorCode } from '../types/errors';
 
 /** True when read flows should go to platform-api REST (via BML). */

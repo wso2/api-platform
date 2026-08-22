@@ -28,7 +28,7 @@ import { runtimeConfig } from '../../config/runtime';
 import {
   CSRF_HEADER,
   CSRF_HEADER_VALUE,
-} from '../../features/auth/authConstants';
+} from '../../contexts/auth/authConstants';
 import { ApiErrorKind, platformErrorFromBody, platformErrorFromTransport } from './errors';
 import { notifySessionExpired } from './sessionEvents';
 

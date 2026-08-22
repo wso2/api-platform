@@ -19,7 +19,9 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { AppRoutes } from './routes/AppRoutes';
+import { aProject, collection } from './test/msw';
 import { authStatePresets } from './test/mockAuthState';
+import { server } from './test/server';
 import { renderWithProviders, screen } from './test/utils';
 
 // Smoke test: render the REAL route tree (ProtectedRoute → ConsoleScopeProvider
@@ -45,6 +47,15 @@ describe('App smoke (mock mode, authenticated)', () => {
   });
 
   it('navigates to the projects list and renders project cards', async () => {
+    // The project list reads through the resource hooks, which always go to the
+    // real transport — `VITE_USE_MOCK_API` only governs the legacy client, so
+    // these endpoints are stubbed at the network layer instead.
+    server.use(
+      collection('/projects', [
+        aProject({ id: 'retail', displayName: 'Retail APIs' }),
+      ]),
+      collection('/rest-apis', [])
+    );
     renderWithProviders(<AppRoutes />, {
       route: '/organizations/api-platform-demo/projects',
       authState: authStatePresets.authenticated(),
