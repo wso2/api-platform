@@ -10,4 +10,13 @@ export type { AIWorkspaceProps } from './AIWorkspace';
 export type { AIWorkspaceExtension } from './extensions';
 export { AI_WORKSPACE_SIDEBAR_SLOT } from './extensions';
 export type { AIWorkspaceHostPort, NotifySeverity } from './hostPort';
+export type { SlotEntry } from './slots';
+export {
+  SlotEntriesProvider,
+  useSlotEntries,
+  useSlot,
+  HiddenRegionsProvider,
+  useIsHidden,
+  Hideable,
+} from './slots';
 export { BASE_PATH } from './paths';
