@@ -1785,56 +1785,348 @@ and
   "version": "v1.0",
   "promptTokens": {
     "location": "payload",
-    "identifier": "$.usage.inputTokens"
+    "identifier": "$.usage.inputTokens",
+    "fallbackIdentifiers": [
+      "$.usage.input_tokens",
+      "$.usage.prompt_tokens"
+    ],
+    "valueMap": {
+      "ON_DEMAND_PRIORITY": "priority",
+      "ON_DEMAND_FLEX": "flex"
+    }
   },
   "completionTokens": {
     "location": "payload",
-    "identifier": "$.usage.inputTokens"
+    "identifier": "$.usage.inputTokens",
+    "fallbackIdentifiers": [
+      "$.usage.input_tokens",
+      "$.usage.prompt_tokens"
+    ],
+    "valueMap": {
+      "ON_DEMAND_PRIORITY": "priority",
+      "ON_DEMAND_FLEX": "flex"
+    }
   },
   "totalTokens": {
     "location": "payload",
-    "identifier": "$.usage.inputTokens"
+    "identifier": "$.usage.inputTokens",
+    "fallbackIdentifiers": [
+      "$.usage.input_tokens",
+      "$.usage.prompt_tokens"
+    ],
+    "valueMap": {
+      "ON_DEMAND_PRIORITY": "priority",
+      "ON_DEMAND_FLEX": "flex"
+    }
   },
   "remainingTokens": {
     "location": "payload",
-    "identifier": "$.usage.inputTokens"
+    "identifier": "$.usage.inputTokens",
+    "fallbackIdentifiers": [
+      "$.usage.input_tokens",
+      "$.usage.prompt_tokens"
+    ],
+    "valueMap": {
+      "ON_DEMAND_PRIORITY": "priority",
+      "ON_DEMAND_FLEX": "flex"
+    }
   },
   "requestModel": {
     "location": "payload",
-    "identifier": "$.usage.inputTokens"
+    "identifier": "$.usage.inputTokens",
+    "fallbackIdentifiers": [
+      "$.usage.input_tokens",
+      "$.usage.prompt_tokens"
+    ],
+    "valueMap": {
+      "ON_DEMAND_PRIORITY": "priority",
+      "ON_DEMAND_FLEX": "flex"
+    }
   },
   "responseModel": {
     "location": "payload",
-    "identifier": "$.usage.inputTokens"
+    "identifier": "$.usage.inputTokens",
+    "fallbackIdentifiers": [
+      "$.usage.input_tokens",
+      "$.usage.prompt_tokens"
+    ],
+    "valueMap": {
+      "ON_DEMAND_PRIORITY": "priority",
+      "ON_DEMAND_FLEX": "flex"
+    }
   },
+  "cachedTokens": {
+    "location": "payload",
+    "identifier": "$.usage.inputTokens",
+    "fallbackIdentifiers": [
+      "$.usage.input_tokens",
+      "$.usage.prompt_tokens"
+    ],
+    "valueMap": {
+      "ON_DEMAND_PRIORITY": "priority",
+      "ON_DEMAND_FLEX": "flex"
+    }
+  },
+  "cacheWriteTokens": {
+    "location": "payload",
+    "identifier": "$.usage.inputTokens",
+    "fallbackIdentifiers": [
+      "$.usage.input_tokens",
+      "$.usage.prompt_tokens"
+    ],
+    "valueMap": {
+      "ON_DEMAND_PRIORITY": "priority",
+      "ON_DEMAND_FLEX": "flex"
+    }
+  },
+  "cacheWrite1hTokens": {
+    "location": "payload",
+    "identifier": "$.usage.inputTokens",
+    "fallbackIdentifiers": [
+      "$.usage.input_tokens",
+      "$.usage.prompt_tokens"
+    ],
+    "valueMap": {
+      "ON_DEMAND_PRIORITY": "priority",
+      "ON_DEMAND_FLEX": "flex"
+    }
+  },
+  "reasoningTokens": {
+    "location": "payload",
+    "identifier": "$.usage.inputTokens",
+    "fallbackIdentifiers": [
+      "$.usage.input_tokens",
+      "$.usage.prompt_tokens"
+    ],
+    "valueMap": {
+      "ON_DEMAND_PRIORITY": "priority",
+      "ON_DEMAND_FLEX": "flex"
+    }
+  },
+  "audioInputTokens": {
+    "location": "payload",
+    "identifier": "$.usage.inputTokens",
+    "fallbackIdentifiers": [
+      "$.usage.input_tokens",
+      "$.usage.prompt_tokens"
+    ],
+    "valueMap": {
+      "ON_DEMAND_PRIORITY": "priority",
+      "ON_DEMAND_FLEX": "flex"
+    }
+  },
+  "audioOutputTokens": {
+    "location": "payload",
+    "identifier": "$.usage.inputTokens",
+    "fallbackIdentifiers": [
+      "$.usage.input_tokens",
+      "$.usage.prompt_tokens"
+    ],
+    "valueMap": {
+      "ON_DEMAND_PRIORITY": "priority",
+      "ON_DEMAND_FLEX": "flex"
+    }
+  },
+  "serviceTier": {
+    "location": "payload",
+    "identifier": "$.usage.inputTokens",
+    "fallbackIdentifiers": [
+      "$.usage.input_tokens",
+      "$.usage.prompt_tokens"
+    ],
+    "valueMap": {
+      "ON_DEMAND_PRIORITY": "priority",
+      "ON_DEMAND_FLEX": "flex"
+    }
+  },
+  "providerFields": {
+    "property1": {
+      "location": "payload",
+      "identifier": "$.usage.inputTokens",
+      "fallbackIdentifiers": [
+        "$.usage.input_tokens",
+        "$.usage.prompt_tokens"
+      ],
+      "valueMap": {
+        "ON_DEMAND_PRIORITY": "priority",
+        "ON_DEMAND_FLEX": "flex"
+      }
+    },
+    "property2": {
+      "location": "payload",
+      "identifier": "$.usage.inputTokens",
+      "fallbackIdentifiers": [
+        "$.usage.input_tokens",
+        "$.usage.prompt_tokens"
+      ],
+      "valueMap": {
+        "ON_DEMAND_PRIORITY": "priority",
+        "ON_DEMAND_FLEX": "flex"
+      }
+    }
+  },
+  "cacheAccounting": "inclusive",
   "resourceMappings": {
     "resources": [
       {
         "resource": "/responses",
         "promptTokens": {
           "location": "payload",
-          "identifier": "$.usage.inputTokens"
+          "identifier": "$.usage.inputTokens",
+          "fallbackIdentifiers": [
+            "$.usage.input_tokens",
+            "$.usage.prompt_tokens"
+          ],
+          "valueMap": {
+            "ON_DEMAND_PRIORITY": "priority",
+            "ON_DEMAND_FLEX": "flex"
+          }
         },
         "completionTokens": {
           "location": "payload",
-          "identifier": "$.usage.inputTokens"
+          "identifier": "$.usage.inputTokens",
+          "fallbackIdentifiers": [
+            "$.usage.input_tokens",
+            "$.usage.prompt_tokens"
+          ],
+          "valueMap": {
+            "ON_DEMAND_PRIORITY": "priority",
+            "ON_DEMAND_FLEX": "flex"
+          }
         },
         "totalTokens": {
           "location": "payload",
-          "identifier": "$.usage.inputTokens"
+          "identifier": "$.usage.inputTokens",
+          "fallbackIdentifiers": [
+            "$.usage.input_tokens",
+            "$.usage.prompt_tokens"
+          ],
+          "valueMap": {
+            "ON_DEMAND_PRIORITY": "priority",
+            "ON_DEMAND_FLEX": "flex"
+          }
         },
         "remainingTokens": {
           "location": "payload",
-          "identifier": "$.usage.inputTokens"
+          "identifier": "$.usage.inputTokens",
+          "fallbackIdentifiers": [
+            "$.usage.input_tokens",
+            "$.usage.prompt_tokens"
+          ],
+          "valueMap": {
+            "ON_DEMAND_PRIORITY": "priority",
+            "ON_DEMAND_FLEX": "flex"
+          }
         },
         "requestModel": {
           "location": "payload",
-          "identifier": "$.usage.inputTokens"
+          "identifier": "$.usage.inputTokens",
+          "fallbackIdentifiers": [
+            "$.usage.input_tokens",
+            "$.usage.prompt_tokens"
+          ],
+          "valueMap": {
+            "ON_DEMAND_PRIORITY": "priority",
+            "ON_DEMAND_FLEX": "flex"
+          }
         },
         "responseModel": {
           "location": "payload",
-          "identifier": "$.usage.inputTokens"
-        }
+          "identifier": "$.usage.inputTokens",
+          "fallbackIdentifiers": [
+            "$.usage.input_tokens",
+            "$.usage.prompt_tokens"
+          ],
+          "valueMap": {
+            "ON_DEMAND_PRIORITY": "priority",
+            "ON_DEMAND_FLEX": "flex"
+          }
+        },
+        "cachedTokens": {
+          "location": "payload",
+          "identifier": "$.usage.inputTokens",
+          "fallbackIdentifiers": [
+            "$.usage.input_tokens",
+            "$.usage.prompt_tokens"
+          ],
+          "valueMap": {
+            "ON_DEMAND_PRIORITY": "priority",
+            "ON_DEMAND_FLEX": "flex"
+          }
+        },
+        "cacheWriteTokens": {
+          "location": "payload",
+          "identifier": "$.usage.inputTokens",
+          "fallbackIdentifiers": [
+            "$.usage.input_tokens",
+            "$.usage.prompt_tokens"
+          ],
+          "valueMap": {
+            "ON_DEMAND_PRIORITY": "priority",
+            "ON_DEMAND_FLEX": "flex"
+          }
+        },
+        "cacheWrite1hTokens": {
+          "location": "payload",
+          "identifier": "$.usage.inputTokens",
+          "fallbackIdentifiers": [
+            "$.usage.input_tokens",
+            "$.usage.prompt_tokens"
+          ],
+          "valueMap": {
+            "ON_DEMAND_PRIORITY": "priority",
+            "ON_DEMAND_FLEX": "flex"
+          }
+        },
+        "reasoningTokens": {
+          "location": "payload",
+          "identifier": "$.usage.inputTokens",
+          "fallbackIdentifiers": [
+            "$.usage.input_tokens",
+            "$.usage.prompt_tokens"
+          ],
+          "valueMap": {
+            "ON_DEMAND_PRIORITY": "priority",
+            "ON_DEMAND_FLEX": "flex"
+          }
+        },
+        "audioInputTokens": {
+          "location": "payload",
+          "identifier": "$.usage.inputTokens",
+          "fallbackIdentifiers": [
+            "$.usage.input_tokens",
+            "$.usage.prompt_tokens"
+          ],
+          "valueMap": {
+            "ON_DEMAND_PRIORITY": "priority",
+            "ON_DEMAND_FLEX": "flex"
+          }
+        },
+        "audioOutputTokens": {
+          "location": "payload",
+          "identifier": "$.usage.inputTokens",
+          "fallbackIdentifiers": [
+            "$.usage.input_tokens",
+            "$.usage.prompt_tokens"
+          ],
+          "valueMap": {
+            "ON_DEMAND_PRIORITY": "priority",
+            "ON_DEMAND_FLEX": "flex"
+          }
+        },
+        "serviceTier": {
+          "location": "payload",
+          "identifier": "$.usage.inputTokens",
+          "fallbackIdentifiers": [
+            "$.usage.input_tokens",
+            "$.usage.prompt_tokens"
+          ],
+          "valueMap": {
+            "ON_DEMAND_PRIORITY": "priority",
+            "ON_DEMAND_FLEX": "flex"
+          }
+        },
+        "cacheAccounting": "inclusive"
       }
     ]
   }
@@ -1856,6 +2148,16 @@ and
 |remainingTokens|[ExtractionIdentifier](#schemaextractionidentifier)|false|none|none|
 |requestModel|[ExtractionIdentifier](#schemaextractionidentifier)|false|none|none|
 |responseModel|[ExtractionIdentifier](#schemaextractionidentifier)|false|none|none|
+|cachedTokens|[ExtractionIdentifier](#schemaextractionidentifier)|false|none|none|
+|cacheWriteTokens|[ExtractionIdentifier](#schemaextractionidentifier)|false|none|none|
+|cacheWrite1hTokens|[ExtractionIdentifier](#schemaextractionidentifier)|false|none|none|
+|reasoningTokens|[ExtractionIdentifier](#schemaextractionidentifier)|false|none|none|
+|audioInputTokens|[ExtractionIdentifier](#schemaextractionidentifier)|false|none|none|
+|audioOutputTokens|[ExtractionIdentifier](#schemaextractionidentifier)|false|none|none|
+|serviceTier|[ExtractionIdentifier](#schemaextractionidentifier)|false|none|none|
+|providerFields|object|false|none|Named locations a provider-specific calculator needs but the closed<br>vocabulary does not cover. The value at each location is handed to<br>the calculator as-is; only its position is declared here.|
+|» **additionalProperties**|[ExtractionIdentifier](#schemaextractionidentifier)|false|none|none|
+|cacheAccounting|string|false|none|Whether the cached token count reported by the provider is already<br>part of the input token total, or additional to it. One of<br>'inclusive' or 'additive'. Defaults to inclusive when omitted.|
 |resourceMappings|[LLMProviderTemplateResourceMappings](#schemallmprovidertemplateresourcemappings)|false|none|none|
 
 ## LLMProviderTemplateResourceMappings
@@ -1872,28 +2174,161 @@ and
       "resource": "/responses",
       "promptTokens": {
         "location": "payload",
-        "identifier": "$.usage.inputTokens"
+        "identifier": "$.usage.inputTokens",
+        "fallbackIdentifiers": [
+          "$.usage.input_tokens",
+          "$.usage.prompt_tokens"
+        ],
+        "valueMap": {
+          "ON_DEMAND_PRIORITY": "priority",
+          "ON_DEMAND_FLEX": "flex"
+        }
       },
       "completionTokens": {
         "location": "payload",
-        "identifier": "$.usage.inputTokens"
+        "identifier": "$.usage.inputTokens",
+        "fallbackIdentifiers": [
+          "$.usage.input_tokens",
+          "$.usage.prompt_tokens"
+        ],
+        "valueMap": {
+          "ON_DEMAND_PRIORITY": "priority",
+          "ON_DEMAND_FLEX": "flex"
+        }
       },
       "totalTokens": {
         "location": "payload",
-        "identifier": "$.usage.inputTokens"
+        "identifier": "$.usage.inputTokens",
+        "fallbackIdentifiers": [
+          "$.usage.input_tokens",
+          "$.usage.prompt_tokens"
+        ],
+        "valueMap": {
+          "ON_DEMAND_PRIORITY": "priority",
+          "ON_DEMAND_FLEX": "flex"
+        }
       },
       "remainingTokens": {
         "location": "payload",
-        "identifier": "$.usage.inputTokens"
+        "identifier": "$.usage.inputTokens",
+        "fallbackIdentifiers": [
+          "$.usage.input_tokens",
+          "$.usage.prompt_tokens"
+        ],
+        "valueMap": {
+          "ON_DEMAND_PRIORITY": "priority",
+          "ON_DEMAND_FLEX": "flex"
+        }
       },
       "requestModel": {
         "location": "payload",
-        "identifier": "$.usage.inputTokens"
+        "identifier": "$.usage.inputTokens",
+        "fallbackIdentifiers": [
+          "$.usage.input_tokens",
+          "$.usage.prompt_tokens"
+        ],
+        "valueMap": {
+          "ON_DEMAND_PRIORITY": "priority",
+          "ON_DEMAND_FLEX": "flex"
+        }
       },
       "responseModel": {
         "location": "payload",
-        "identifier": "$.usage.inputTokens"
-      }
+        "identifier": "$.usage.inputTokens",
+        "fallbackIdentifiers": [
+          "$.usage.input_tokens",
+          "$.usage.prompt_tokens"
+        ],
+        "valueMap": {
+          "ON_DEMAND_PRIORITY": "priority",
+          "ON_DEMAND_FLEX": "flex"
+        }
+      },
+      "cachedTokens": {
+        "location": "payload",
+        "identifier": "$.usage.inputTokens",
+        "fallbackIdentifiers": [
+          "$.usage.input_tokens",
+          "$.usage.prompt_tokens"
+        ],
+        "valueMap": {
+          "ON_DEMAND_PRIORITY": "priority",
+          "ON_DEMAND_FLEX": "flex"
+        }
+      },
+      "cacheWriteTokens": {
+        "location": "payload",
+        "identifier": "$.usage.inputTokens",
+        "fallbackIdentifiers": [
+          "$.usage.input_tokens",
+          "$.usage.prompt_tokens"
+        ],
+        "valueMap": {
+          "ON_DEMAND_PRIORITY": "priority",
+          "ON_DEMAND_FLEX": "flex"
+        }
+      },
+      "cacheWrite1hTokens": {
+        "location": "payload",
+        "identifier": "$.usage.inputTokens",
+        "fallbackIdentifiers": [
+          "$.usage.input_tokens",
+          "$.usage.prompt_tokens"
+        ],
+        "valueMap": {
+          "ON_DEMAND_PRIORITY": "priority",
+          "ON_DEMAND_FLEX": "flex"
+        }
+      },
+      "reasoningTokens": {
+        "location": "payload",
+        "identifier": "$.usage.inputTokens",
+        "fallbackIdentifiers": [
+          "$.usage.input_tokens",
+          "$.usage.prompt_tokens"
+        ],
+        "valueMap": {
+          "ON_DEMAND_PRIORITY": "priority",
+          "ON_DEMAND_FLEX": "flex"
+        }
+      },
+      "audioInputTokens": {
+        "location": "payload",
+        "identifier": "$.usage.inputTokens",
+        "fallbackIdentifiers": [
+          "$.usage.input_tokens",
+          "$.usage.prompt_tokens"
+        ],
+        "valueMap": {
+          "ON_DEMAND_PRIORITY": "priority",
+          "ON_DEMAND_FLEX": "flex"
+        }
+      },
+      "audioOutputTokens": {
+        "location": "payload",
+        "identifier": "$.usage.inputTokens",
+        "fallbackIdentifiers": [
+          "$.usage.input_tokens",
+          "$.usage.prompt_tokens"
+        ],
+        "valueMap": {
+          "ON_DEMAND_PRIORITY": "priority",
+          "ON_DEMAND_FLEX": "flex"
+        }
+      },
+      "serviceTier": {
+        "location": "payload",
+        "identifier": "$.usage.inputTokens",
+        "fallbackIdentifiers": [
+          "$.usage.input_tokens",
+          "$.usage.prompt_tokens"
+        ],
+        "valueMap": {
+          "ON_DEMAND_PRIORITY": "priority",
+          "ON_DEMAND_FLEX": "flex"
+        }
+      },
+      "cacheAccounting": "inclusive"
     }
   ]
 }
@@ -1918,28 +2353,161 @@ and
   "resource": "/responses",
   "promptTokens": {
     "location": "payload",
-    "identifier": "$.usage.inputTokens"
+    "identifier": "$.usage.inputTokens",
+    "fallbackIdentifiers": [
+      "$.usage.input_tokens",
+      "$.usage.prompt_tokens"
+    ],
+    "valueMap": {
+      "ON_DEMAND_PRIORITY": "priority",
+      "ON_DEMAND_FLEX": "flex"
+    }
   },
   "completionTokens": {
     "location": "payload",
-    "identifier": "$.usage.inputTokens"
+    "identifier": "$.usage.inputTokens",
+    "fallbackIdentifiers": [
+      "$.usage.input_tokens",
+      "$.usage.prompt_tokens"
+    ],
+    "valueMap": {
+      "ON_DEMAND_PRIORITY": "priority",
+      "ON_DEMAND_FLEX": "flex"
+    }
   },
   "totalTokens": {
     "location": "payload",
-    "identifier": "$.usage.inputTokens"
+    "identifier": "$.usage.inputTokens",
+    "fallbackIdentifiers": [
+      "$.usage.input_tokens",
+      "$.usage.prompt_tokens"
+    ],
+    "valueMap": {
+      "ON_DEMAND_PRIORITY": "priority",
+      "ON_DEMAND_FLEX": "flex"
+    }
   },
   "remainingTokens": {
     "location": "payload",
-    "identifier": "$.usage.inputTokens"
+    "identifier": "$.usage.inputTokens",
+    "fallbackIdentifiers": [
+      "$.usage.input_tokens",
+      "$.usage.prompt_tokens"
+    ],
+    "valueMap": {
+      "ON_DEMAND_PRIORITY": "priority",
+      "ON_DEMAND_FLEX": "flex"
+    }
   },
   "requestModel": {
     "location": "payload",
-    "identifier": "$.usage.inputTokens"
+    "identifier": "$.usage.inputTokens",
+    "fallbackIdentifiers": [
+      "$.usage.input_tokens",
+      "$.usage.prompt_tokens"
+    ],
+    "valueMap": {
+      "ON_DEMAND_PRIORITY": "priority",
+      "ON_DEMAND_FLEX": "flex"
+    }
   },
   "responseModel": {
     "location": "payload",
-    "identifier": "$.usage.inputTokens"
-  }
+    "identifier": "$.usage.inputTokens",
+    "fallbackIdentifiers": [
+      "$.usage.input_tokens",
+      "$.usage.prompt_tokens"
+    ],
+    "valueMap": {
+      "ON_DEMAND_PRIORITY": "priority",
+      "ON_DEMAND_FLEX": "flex"
+    }
+  },
+  "cachedTokens": {
+    "location": "payload",
+    "identifier": "$.usage.inputTokens",
+    "fallbackIdentifiers": [
+      "$.usage.input_tokens",
+      "$.usage.prompt_tokens"
+    ],
+    "valueMap": {
+      "ON_DEMAND_PRIORITY": "priority",
+      "ON_DEMAND_FLEX": "flex"
+    }
+  },
+  "cacheWriteTokens": {
+    "location": "payload",
+    "identifier": "$.usage.inputTokens",
+    "fallbackIdentifiers": [
+      "$.usage.input_tokens",
+      "$.usage.prompt_tokens"
+    ],
+    "valueMap": {
+      "ON_DEMAND_PRIORITY": "priority",
+      "ON_DEMAND_FLEX": "flex"
+    }
+  },
+  "cacheWrite1hTokens": {
+    "location": "payload",
+    "identifier": "$.usage.inputTokens",
+    "fallbackIdentifiers": [
+      "$.usage.input_tokens",
+      "$.usage.prompt_tokens"
+    ],
+    "valueMap": {
+      "ON_DEMAND_PRIORITY": "priority",
+      "ON_DEMAND_FLEX": "flex"
+    }
+  },
+  "reasoningTokens": {
+    "location": "payload",
+    "identifier": "$.usage.inputTokens",
+    "fallbackIdentifiers": [
+      "$.usage.input_tokens",
+      "$.usage.prompt_tokens"
+    ],
+    "valueMap": {
+      "ON_DEMAND_PRIORITY": "priority",
+      "ON_DEMAND_FLEX": "flex"
+    }
+  },
+  "audioInputTokens": {
+    "location": "payload",
+    "identifier": "$.usage.inputTokens",
+    "fallbackIdentifiers": [
+      "$.usage.input_tokens",
+      "$.usage.prompt_tokens"
+    ],
+    "valueMap": {
+      "ON_DEMAND_PRIORITY": "priority",
+      "ON_DEMAND_FLEX": "flex"
+    }
+  },
+  "audioOutputTokens": {
+    "location": "payload",
+    "identifier": "$.usage.inputTokens",
+    "fallbackIdentifiers": [
+      "$.usage.input_tokens",
+      "$.usage.prompt_tokens"
+    ],
+    "valueMap": {
+      "ON_DEMAND_PRIORITY": "priority",
+      "ON_DEMAND_FLEX": "flex"
+    }
+  },
+  "serviceTier": {
+    "location": "payload",
+    "identifier": "$.usage.inputTokens",
+    "fallbackIdentifiers": [
+      "$.usage.input_tokens",
+      "$.usage.prompt_tokens"
+    ],
+    "valueMap": {
+      "ON_DEMAND_PRIORITY": "priority",
+      "ON_DEMAND_FLEX": "flex"
+    }
+  },
+  "cacheAccounting": "inclusive"
 }
 
 ```
@@ -1955,6 +2523,14 @@ and
 |remainingTokens|[ExtractionIdentifier](#schemaextractionidentifier)|false|none|none|
 |requestModel|[ExtractionIdentifier](#schemaextractionidentifier)|false|none|none|
 |responseModel|[ExtractionIdentifier](#schemaextractionidentifier)|false|none|none|
+|cachedTokens|[ExtractionIdentifier](#schemaextractionidentifier)|false|none|none|
+|cacheWriteTokens|[ExtractionIdentifier](#schemaextractionidentifier)|false|none|none|
+|cacheWrite1hTokens|[ExtractionIdentifier](#schemaextractionidentifier)|false|none|none|
+|reasoningTokens|[ExtractionIdentifier](#schemaextractionidentifier)|false|none|none|
+|audioInputTokens|[ExtractionIdentifier](#schemaextractionidentifier)|false|none|none|
+|audioOutputTokens|[ExtractionIdentifier](#schemaextractionidentifier)|false|none|none|
+|serviceTier|[ExtractionIdentifier](#schemaextractionidentifier)|false|none|none|
+|cacheAccounting|string|false|none|Whether the cached token count reported by the provider is already<br>part of the input token total, or additional to it. One of<br>'inclusive' or 'additive'. Overrides the template-level setting for<br>this resource; when omitted, the template-level value is inherited.|
 
 ## ExtractionIdentifier
 
@@ -1966,7 +2542,15 @@ and
 ```json
 {
   "location": "payload",
-  "identifier": "$.usage.inputTokens"
+  "identifier": "$.usage.inputTokens",
+  "fallbackIdentifiers": [
+    "$.usage.input_tokens",
+    "$.usage.prompt_tokens"
+  ],
+  "valueMap": {
+    "ON_DEMAND_PRIORITY": "priority",
+    "ON_DEMAND_FLEX": "flex"
+  }
 }
 
 ```
@@ -1977,6 +2561,9 @@ and
 |---|---|---|---|---|
 |location|string|true|none|Where to find the token information|
 |identifier|string|true|none|JSONPath expression or header name to identify the token value|
+|fallbackIdentifiers|[string]|false|none|Additional locations to try when the primary identifier yields no<br>value, in order. Used where one provider returns several response<br>shapes on the same path.|
+|valueMap|object|false|none|Maps values this provider reports onto the vocabulary the gateway<br>bills on. A reported value that is not a key is used unchanged.<br>Used where providers name the same billing tier differently.|
+|» **additionalProperties**|string|false|none|none|
 
 ##### Enumerated Values
 

@@ -39,7 +39,47 @@ spec:
     identifier: x-ratelimit-remaining-tokens
   requestModel:
     location: pathParam
-    identifier: (?<=models/)[a-zA-Z0-9.\-]+
+    identifier: models/([a-zA-Z0-9.\-]+)
   responseModel:
     location: payload
     identifier: $.modelVersion
+  serviceTier:
+    location: payload
+    identifier: $.usageMetadata.serviceTier  # Developer API
+    fallbackIdentifiers:
+      - $.usageMetadata.trafficType # Vertex API
+    valueMap:
+      priority: priority
+      flex: flex
+      ON_DEMAND_PRIORITY: priority
+      ON_DEMAND_FLEX: flex
+  cachedTokens:
+    location: payload
+    identifier: $.usageMetadata.cachedContentTokenCount
+  reasoningTokens:
+    location: payload
+    identifier: $.usageMetadata.thoughtsTokenCount
+  providerFields:
+    # Per-modality token lists. Only their position is declared; the calculator
+    # picks the modality it needs out of the entries.
+    promptTokensDetails:
+      location: payload
+      identifier: $.usageMetadata.promptTokensDetails
+    cacheTokensDetails:
+      location: payload
+      identifier: $.usageMetadata.cacheTokensDetails
+    candidatesTokensDetails:
+      location: payload
+      identifier: $.usageMetadata.candidatesTokensDetails
+    responseTokensDetails:
+      location: payload
+      identifier: $.usageMetadata.responseTokensDetails
+    toolUsePromptTokenCount:
+      location: payload
+      identifier: $.usageMetadata.toolUsePromptTokenCount
+    # Grounding searches are billed per query and no field reports the number,
+    # so the calculator counts the entries.
+    candidates:
+      location: payload
+      identifier: $.candidates
+  cacheAccounting: inclusive
