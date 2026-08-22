@@ -106,3 +106,5 @@ resources/keys/
 
 # Test reports
 it/reports/*
+# jest-junit output from the REST API suite (it/rest-api/jest.config.js)
+it/rest-api/reports/
