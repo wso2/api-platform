@@ -48,7 +48,10 @@ import {
 import { logger } from '../../utils/logger';
 import { FormattedMessage } from 'react-intl';
 import OoopsImage from '../../assets/images/Ooops.svg';
-import { useAIWorkspaceExtensions } from '../../extensions';
+import { AI_WORKSPACE_SIDEBAR_SLOT, type AIWorkspaceExtension } from '../../extensions';
+import { useSlot } from '../../slots';
+import { PortProvider, type AIWorkspaceHostPort, type NotifySeverity } from '../../hostPort';
+import useAIWorkspaceSnackbar from '../../hooks/aiWorkspaceSnackbar';
 
 type SelectableOrg = {
   id: string;
@@ -65,7 +68,7 @@ type SelectableProject = {
 export default function AppLayout(): JSX.Element {
   const navigate = useNavigate();
   const location = useLocation();
-  const extensions = useAIWorkspaceExtensions();
+  const extensions = useSlot<AIWorkspaceExtension>(AI_WORKSPACE_SIDEBAR_SLOT);
   const { logout } = useAppAuth();
   // [standalone] const { signOut } = useAuthContext();
 
@@ -87,6 +90,26 @@ export default function AppLayout(): JSX.Element {
   } = useWorkspaceAppShell();
 
   const onLogout = useCallback(() => { void logout(); }, [logout]);
+
+  // Built once per render from real hooks, then handed down as a plain value
+  // via PortProvider — extension `render(port)` calls never import this
+  // portal's own hooks directly. See hostPort.tsx.
+  const showSnackbar = useAIWorkspaceSnackbar();
+  const notify = useCallback(
+    (message: string, severity?: NotifySeverity) => {
+      showSnackbar(message, severity ?? 'success');
+    },
+    [showSnackbar]
+  );
+  const port: AIWorkspaceHostPort = useMemo(
+    () => ({
+      orgHandle: getOrgSlug(currentOrganization),
+      projectHandle: currentProject ? getProjectSlug(currentProject) : undefined,
+      navigate,
+      notify,
+    }),
+    [currentOrganization, currentProject, navigate, notify]
+  );
 
   const { state: shellState, actions: shellActions } = useOxygenAppShell({
     initialCollapsed: false,
@@ -410,7 +433,9 @@ export default function AppLayout(): JSX.Element {
       </AppShell.Sidebar>
 
       <AppShell.Main>
-        <Outlet />
+        <PortProvider value={port}>
+          <Outlet />
+        </PortProvider>
       </AppShell.Main>
 
       <AppShell.Footer>
