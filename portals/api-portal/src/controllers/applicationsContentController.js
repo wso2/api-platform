@@ -77,7 +77,7 @@ const loadApplicationData = async (req, orgName, applicationHandle, viewName) =>
             for (const mapping of localMappings) {
                 if (mapping.as_client_id && mapping.km_uuid) {
                     try {
-                        const km = await kmDao.get(mapping.km_uuid);
+                        const km = await kmDao.get(orgId, mapping.km_uuid);
                         keyList.push({
                             keyManager: km.handle,
                             consumerKey: mapping.as_client_id,

@@ -105,6 +105,7 @@ const handleCallback = async (req, res, next) => {
                 }
                 returnTo = returnTo || `${constants.ROUTE.BASE_PATH}/${req.params.orgName}`;
                 delete req.session.returnTo;
+                req.session.portalId = orgContext.getPortalId();
                 logUserAction('USER_LOGIN', req, { orgName: req.params.orgName });
                 req.session.save((saveErr) => {
                     if (saveErr) {
@@ -380,6 +381,7 @@ const handleLocalLogin = async (req, res) => {
                 logger.error('Platform-auth login session error', { error: loginErr.message, stack: loginErr.stack });
                 return res.redirect(`${baseUrl}/login?error=Login+failed%2C+please+try+again`);
             }
+            req.session.portalId = orgContext.getPortalId();
             logUserAction('USER_LOGIN', req, { orgName, isLocalAuth: true });
             res.set('Cache-Control', 'no-store');
             const redirectTo = returnTo || baseUrl;

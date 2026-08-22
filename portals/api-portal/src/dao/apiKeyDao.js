@@ -21,6 +21,7 @@ const crypto = require('crypto');
 const db = require('../db/driver');
 const { indexBy } = require('../db/rows');
 const constants = require('../utils/constants');
+const { getPortalId } = require('../utils/orgContext');
 
 const API_KEYS_TABLE = 'api_keys';
 const APP_KEY_MAPPINGS_TABLE = 'api_key_app_mappings';
@@ -91,10 +92,10 @@ async function create({ apiId, subscriptionId, appId, orgId, handle, displayName
 
     await exec.execute(
         `INSERT INTO ${API_KEYS_TABLE}
-            (uuid, api_uuid, subscription_uuid, org_uuid, handle, display_name, status, expires_at,
+            (uuid, api_uuid, subscription_uuid, org_uuid, portal_id, handle, display_name, status, expires_at,
              created_by, updated_by, created_at, updated_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-        [uuid, apiId, subscriptionId || null, orgId, handle, displayName, constants.API_KEY_STATUS.ACTIVE,
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        [uuid, apiId, subscriptionId || null, orgId, getPortalId(), handle, displayName, constants.API_KEY_STATUS.ACTIVE,
             expiresAt || null, createdBy, createdBy, now, now]
     );
     if (appId) {
@@ -122,8 +123,8 @@ async function create({ apiId, subscriptionId, appId, orgId, handle, displayName
 async function get(orgId, keyId, transaction) {
     const exec = transaction || db;
     const key = await exec.queryOne(
-        `SELECT * FROM ${API_KEYS_TABLE} WHERE uuid = ? AND org_uuid = ?`,
-        [keyId, orgId]
+        `SELECT * FROM ${API_KEYS_TABLE} WHERE uuid = ? AND org_uuid = ? AND portal_id = ?`,
+        [keyId, orgId, getPortalId()]
     );
     if (!key) return null;
     await attachAssociations(exec, [key]);
@@ -133,16 +134,16 @@ async function get(orgId, keyId, transaction) {
 // Resolves a key's handle (scoped to the given API) to its uuid, or null if not found.
 async function getIdByHandle(orgId, apiId, handle) {
     const key = await db.queryOne(
-        `SELECT uuid FROM ${API_KEYS_TABLE} WHERE org_uuid = ? AND api_uuid = ? AND handle = ?`,
-        [orgId, apiId, handle]
+        `SELECT uuid FROM ${API_KEYS_TABLE} WHERE org_uuid = ? AND portal_id = ? AND api_uuid = ? AND handle = ?`,
+        [orgId, getPortalId(), apiId, handle]
     );
     return key ? key.uuid : null;
 }
 
 async function list(orgId, { apiId, subscriptionId, appId, status, createdBy, limit } = {}, transaction) {
     const exec = transaction || db;
-    const conditions = ['org_uuid = ?'];
-    const params = [orgId];
+    const conditions = ['org_uuid = ?', 'portal_id = ?'];
+    const params = [orgId, getPortalId()];
     if (apiId) { conditions.push('api_uuid = ?'); params.push(apiId); }
     if (subscriptionId) { conditions.push('subscription_uuid = ?'); params.push(subscriptionId); }
     if (status) { conditions.push('status = ?'); params.push(status); }
@@ -170,16 +171,16 @@ async function revoke(orgId, keyId, updatedBy, transaction) {
     const exec = transaction || db;
     const { rowCount } = await exec.execute(
         `UPDATE ${API_KEYS_TABLE} SET status = ?, revoked_at = ?, revoked_by = ?, updated_by = ?
-         WHERE uuid = ? AND org_uuid = ? AND status = ?`,
-        [constants.API_KEY_STATUS.REVOKED, new Date(), updatedBy, updatedBy, keyId, orgId, constants.API_KEY_STATUS.ACTIVE]
+         WHERE uuid = ? AND org_uuid = ? AND portal_id = ? AND status = ?`,
+        [constants.API_KEY_STATUS.REVOKED, new Date(), updatedBy, updatedBy, keyId, orgId, getPortalId(), constants.API_KEY_STATUS.ACTIVE]
     );
     return rowCount > 0;
 }
 
 async function setApplication(orgId, keyId, appId, updatedBy, transaction, { activeOnly = false } = {}) {
     const exec = transaction || db;
-    const conditions = ['uuid = ?', 'org_uuid = ?'];
-    const params = [keyId, orgId];
+    const conditions = ['uuid = ?', 'org_uuid = ?', 'portal_id = ?'];
+    const params = [keyId, orgId, getPortalId()];
     if (activeOnly) { conditions.push('status = ?'); params.push(constants.API_KEY_STATUS.ACTIVE); }
 
     const key = await exec.queryOne(`SELECT * FROM ${API_KEYS_TABLE} WHERE ${conditions.join(' AND ')}`, params);
@@ -197,8 +198,8 @@ async function updateExpiry(orgId, keyId, expiresAt, updatedBy, transaction) {
     const exec = transaction || db;
     const { rowCount } = await exec.execute(
         `UPDATE ${API_KEYS_TABLE} SET expires_at = ?, updated_by = ?, updated_at = ?
-         WHERE uuid = ? AND org_uuid = ? AND status = ?`,
-        [expiresAt, updatedBy, new Date(), keyId, orgId, constants.API_KEY_STATUS.ACTIVE]
+         WHERE uuid = ? AND org_uuid = ? AND portal_id = ? AND status = ?`,
+        [expiresAt, updatedBy, new Date(), keyId, orgId, getPortalId(), constants.API_KEY_STATUS.ACTIVE]
     );
     return rowCount > 0;
 }

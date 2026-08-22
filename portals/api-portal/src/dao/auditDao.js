@@ -19,10 +19,11 @@
 
 const crypto = require('crypto');
 const db = require('../db/driver');
+const { getPortalId } = require('../utils/orgContext');
 
 const INSERT_AUDIT_SQL = `
-    INSERT INTO audit (uuid, action, resource_uuid, resource_type, org_uuid, performed_by)
-    VALUES (?, ?, ?, ?, ?, ?)
+    INSERT INTO audit (uuid, action, resource_uuid, resource_type, org_uuid, portal_id, performed_by)
+    VALUES (?, ?, ?, ?, ?, ?, ?)
 `;
 
 /**
@@ -37,13 +38,15 @@ const INSERT_AUDIT_SQL = `
  */
 const record = async (action, resourceUuid, resourceType, orgUuid, performedBy) => {
     const uuid = crypto.randomUUID();
-    await db.execute(INSERT_AUDIT_SQL, [uuid, action, resourceUuid, resourceType, orgUuid, performedBy]);
+    const portalId = getPortalId();
+    await db.execute(INSERT_AUDIT_SQL, [uuid, action, resourceUuid, resourceType, orgUuid, portalId, performedBy]);
     return {
         uuid,
         action,
         resource_uuid: resourceUuid,
         resource_type: resourceType,
         org_uuid: orgUuid,
+        portal_id: portalId,
         performed_by: performedBy,
     };
 };

@@ -37,11 +37,24 @@ CREATE TABLE dbo.organizations (
     updated_at DATETIME2(7) DEFAULT SYSUTCDATETIME()
 );
 
--- Views table (organization-scoped grouping of APIs for gateway/portal visibility)
+-- Org-portal mapping (one org can be served by multiple portals)
+IF OBJECT_ID(N'dbo.org_portal_mapping', N'U') IS NULL
+CREATE TABLE dbo.org_portal_mapping (
+    uuid VARCHAR(40) NOT NULL PRIMARY KEY,
+    org_uuid VARCHAR(40) NOT NULL,
+    portal_id VARCHAR(255) NOT NULL,
+    UNIQUE (org_uuid, portal_id),
+    FOREIGN KEY (org_uuid) REFERENCES organizations(uuid) ON DELETE CASCADE
+);
+IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = N'idx_org_portal_mapping_portal_id' AND object_id = OBJECT_ID(N'dbo.org_portal_mapping'))
+CREATE INDEX idx_org_portal_mapping_portal_id ON dbo.org_portal_mapping(portal_id);
+
+-- Views table (portal-scoped grouping of APIs for gateway/portal visibility)
 IF OBJECT_ID(N'dbo.views', N'U') IS NULL
 CREATE TABLE dbo.views (
     uuid VARCHAR(40) PRIMARY KEY,
     org_uuid VARCHAR(40) NOT NULL,
+    portal_id VARCHAR(255) NOT NULL DEFAULT 'default',
     handle VARCHAR(255) NOT NULL,
     display_name NVARCHAR(255) NOT NULL,
     created_by VARCHAR(255) NOT NULL,
@@ -51,9 +64,9 @@ CREATE TABLE dbo.views (
     FOREIGN KEY (org_uuid) REFERENCES organizations(uuid) ON DELETE NO ACTION
 );
 IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = N'uq_view_handle_org_uuid' AND object_id = OBJECT_ID(N'dbo.views'))
-CREATE UNIQUE INDEX uq_view_handle_org_uuid ON dbo.views(handle, org_uuid);
+CREATE UNIQUE INDEX uq_view_handle_org_uuid ON dbo.views(handle, org_uuid, portal_id);
 IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = N'idx_view_org_uuid' AND object_id = OBJECT_ID(N'dbo.views'))
-CREATE INDEX idx_view_org_uuid ON dbo.views(org_uuid);
+CREATE INDEX idx_view_org_uuid ON dbo.views(org_uuid, portal_id);
 
 -- Organization Assets table (per-view branding/content assets, e.g. logos, docs)
 IF OBJECT_ID(N'dbo.organization_assets', N'U') IS NULL
@@ -64,6 +77,7 @@ CREATE TABLE dbo.organization_assets (
     file_type VARCHAR(20) NOT NULL,
     file_path VARCHAR(255) NOT NULL,
     org_uuid VARCHAR(40) NOT NULL,
+    portal_id VARCHAR(255) NOT NULL DEFAULT 'default',
     view_uuid VARCHAR(40) NOT NULL,
     created_by VARCHAR(255) NOT NULL,
     created_at DATETIME2(7) DEFAULT SYSUTCDATETIME(),
@@ -80,11 +94,12 @@ CREATE INDEX idx_organization_asset_org_uuid ON dbo.organization_assets(org_uuid
 IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = N'idx_organization_asset_view_uuid' AND object_id = OBJECT_ID(N'dbo.organization_assets'))
 CREATE INDEX idx_organization_asset_view_uuid ON dbo.organization_assets(view_uuid);
 
--- Labels table (organization-scoped labels used for gateway/view assignment)
+-- Labels table (portal-scoped labels used for gateway/view assignment)
 IF OBJECT_ID(N'dbo.labels', N'U') IS NULL
 CREATE TABLE dbo.labels (
     uuid VARCHAR(40) PRIMARY KEY,
     org_uuid VARCHAR(40) NOT NULL,
+    portal_id VARCHAR(255) NOT NULL DEFAULT 'default',
     handle VARCHAR(255) NOT NULL,
     display_name NVARCHAR(255) NOT NULL,
     created_by VARCHAR(255) NOT NULL,
@@ -94,15 +109,16 @@ CREATE TABLE dbo.labels (
     FOREIGN KEY (org_uuid) REFERENCES organizations(uuid) ON DELETE NO ACTION
 );
 IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = N'uq_label_handle_org_uuid' AND object_id = OBJECT_ID(N'dbo.labels'))
-CREATE UNIQUE INDEX uq_label_handle_org_uuid ON dbo.labels(handle, org_uuid);
+CREATE UNIQUE INDEX uq_label_handle_org_uuid ON dbo.labels(handle, org_uuid, portal_id);
 IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = N'idx_label_org_uuid' AND object_id = OBJECT_ID(N'dbo.labels'))
-CREATE INDEX idx_label_org_uuid ON dbo.labels(org_uuid);
+CREATE INDEX idx_label_org_uuid ON dbo.labels(org_uuid, portal_id);
 
--- Tags table (organization-scoped free-form API tags)
+-- Tags table (portal-scoped free-form API tags)
 IF OBJECT_ID(N'dbo.tags', N'U') IS NULL
 CREATE TABLE dbo.tags (
     uuid VARCHAR(40) PRIMARY KEY,
     org_uuid VARCHAR(40) NOT NULL,
+    portal_id VARCHAR(255) NOT NULL DEFAULT 'default',
     name NVARCHAR(255) NOT NULL,
     created_by VARCHAR(255) NOT NULL,
     created_at DATETIME2(7) DEFAULT SYSUTCDATETIME(),
@@ -111,9 +127,9 @@ CREATE TABLE dbo.tags (
     FOREIGN KEY (org_uuid) REFERENCES organizations(uuid) ON DELETE NO ACTION
 );
 IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = N'uq_tag_name_org_uuid' AND object_id = OBJECT_ID(N'dbo.tags'))
-CREATE UNIQUE INDEX uq_tag_name_org_uuid ON dbo.tags(name, org_uuid);
+CREATE UNIQUE INDEX uq_tag_name_org_uuid ON dbo.tags(name, org_uuid, portal_id);
 IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = N'idx_tag_org_uuid' AND object_id = OBJECT_ID(N'dbo.tags'))
-CREATE INDEX idx_tag_org_uuid ON dbo.tags(org_uuid);
+CREATE INDEX idx_tag_org_uuid ON dbo.tags(org_uuid, portal_id);
 
 -- View-Label mappings (many-to-many: which labels belong to a view)
 IF OBJECT_ID(N'dbo.view_label_mappings', N'U') IS NULL
@@ -132,6 +148,7 @@ IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = N'idx_view_label_mappings_
 CREATE INDEX idx_view_label_mappings_view_uuid ON dbo.view_label_mappings(view_uuid);
 
 -- API Metadata table (core record for REST APIs, MCP servers, AI agents, etc.)
+-- API is a portal-managed entity: portal_id identifies which portal owns it.
 IF OBJECT_ID(N'dbo.api_metadata', N'U') IS NULL
 CREATE TABLE dbo.api_metadata (
     uuid VARCHAR(40) PRIMARY KEY,
@@ -152,6 +169,7 @@ CREATE TABLE dbo.api_metadata (
     handle VARCHAR(255) NOT NULL,
     -- Nullable: SET NULL keeps the API record if its owning org reference is cleared.
     org_uuid VARCHAR(40),
+    portal_id VARCHAR(255) NOT NULL DEFAULT 'default',
     created_by VARCHAR(255) NOT NULL,
     created_at DATETIME2(7) DEFAULT SYSUTCDATETIME(),
     updated_by VARCHAR(255) NOT NULL,
@@ -164,15 +182,16 @@ CREATE TABLE dbo.api_metadata (
 -- existed. Filtering to org_uuid IS NOT NULL (and ref_id IS NOT NULL where relevant)
 -- reproduces the Postgres/SQLite "NULL never collides" semantics.
 IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = N'uq_api_metadata_name_version_org' AND object_id = OBJECT_ID(N'dbo.api_metadata'))
-CREATE UNIQUE INDEX uq_api_metadata_name_version_org ON dbo.api_metadata(name, version, org_uuid) WHERE org_uuid IS NOT NULL;
+CREATE UNIQUE INDEX uq_api_metadata_name_version_org ON dbo.api_metadata(name, version, org_uuid, portal_id) WHERE org_uuid IS NOT NULL;
 IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = N'uq_api_metadata_org_ref_id' AND object_id = OBJECT_ID(N'dbo.api_metadata'))
-CREATE UNIQUE INDEX uq_api_metadata_org_ref_id ON dbo.api_metadata(org_uuid, ref_id) WHERE org_uuid IS NOT NULL AND ref_id IS NOT NULL;
+CREATE UNIQUE INDEX uq_api_metadata_org_ref_id ON dbo.api_metadata(org_uuid, ref_id, portal_id) WHERE org_uuid IS NOT NULL AND ref_id IS NOT NULL;
 IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = N'uq_api_metadata_handle_org' AND object_id = OBJECT_ID(N'dbo.api_metadata'))
-CREATE UNIQUE INDEX uq_api_metadata_handle_org ON dbo.api_metadata(handle, org_uuid) WHERE org_uuid IS NOT NULL;
+CREATE UNIQUE INDEX uq_api_metadata_handle_org ON dbo.api_metadata(handle, org_uuid, portal_id) WHERE org_uuid IS NOT NULL;
 IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = N'idx_api_metadata_status' AND object_id = OBJECT_ID(N'dbo.api_metadata'))
 CREATE INDEX idx_api_metadata_status ON dbo.api_metadata(status);
 
 -- API Contents table (spec files, docs, icons, etc. attached to an API)
+-- Unmodified: portal membership is derived via api_metadata.portal_id.
 IF OBJECT_ID(N'dbo.api_contents', N'U') IS NULL
 CREATE TABLE dbo.api_contents (
     uuid VARCHAR(40) PRIMARY KEY,
@@ -226,7 +245,7 @@ CREATE UNIQUE INDEX uq_api_tag_mappings_tag_api ON dbo.api_tag_mappings(tag_uuid
 IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = N'idx_api_tag_mappings_api_uuid' AND object_id = OBJECT_ID(N'dbo.api_tag_mappings'))
 CREATE INDEX idx_api_tag_mappings_api_uuid ON dbo.api_tag_mappings(api_uuid);
 
--- Subscription Plans table (organization-scoped rate/billing plans)
+-- Subscription Plans table (portal-scoped rate/billing plans)
 -- Throttling limits live in subscription_plan_limits (one row per limit).
 IF OBJECT_ID(N'dbo.subscription_plans', N'U') IS NULL
 CREATE TABLE dbo.subscription_plans (
@@ -237,6 +256,7 @@ CREATE TABLE dbo.subscription_plans (
     ref_id VARCHAR(255),
     -- Nullable: SET NULL keeps the plan record if its owning org reference is cleared.
     org_uuid VARCHAR(40),
+    portal_id VARCHAR(255) NOT NULL DEFAULT 'default',
     created_by VARCHAR(255) NOT NULL,
     created_at DATETIME2(7) DEFAULT SYSUTCDATETIME(),
     updated_by VARCHAR(255) NOT NULL,
@@ -245,7 +265,7 @@ CREATE TABLE dbo.subscription_plans (
 );
 -- org_uuid is nullable -- filtered for the same NULL-handling reason as api_metadata above.
 IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = N'uq_subscription_plan_org_handle' AND object_id = OBJECT_ID(N'dbo.subscription_plans'))
-CREATE UNIQUE INDEX uq_subscription_plan_org_handle ON dbo.subscription_plans(org_uuid, handle) WHERE org_uuid IS NOT NULL;
+CREATE UNIQUE INDEX uq_subscription_plan_org_handle ON dbo.subscription_plans(org_uuid, handle, portal_id) WHERE org_uuid IS NOT NULL;
 
 -- Subscription Plan Limits table (throttling limits for a plan)
 IF OBJECT_ID(N'dbo.subscription_plan_limits', N'U') IS NULL
@@ -284,11 +304,12 @@ CREATE UNIQUE INDEX uq_api_subscription_plan_mappings_plan_api ON dbo.api_subscr
 IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = N'idx_api_subscription_plan_mappings_api_uuid' AND object_id = OBJECT_ID(N'dbo.api_subscription_plan_mappings'))
 CREATE INDEX idx_api_subscription_plan_mappings_api_uuid ON dbo.api_subscription_plan_mappings(api_uuid);
 
--- Key Managers table (organization-scoped identity providers used to validate app keys)
+-- Key Managers table (portal-scoped identity providers used to validate app keys)
 IF OBJECT_ID(N'dbo.key_managers', N'U') IS NULL
 CREATE TABLE dbo.key_managers (
     uuid VARCHAR(40) PRIMARY KEY,
     org_uuid VARCHAR(40) NOT NULL,
+    portal_id VARCHAR(255) NOT NULL DEFAULT 'default',
     handle VARCHAR(255) NOT NULL,
     display_name NVARCHAR(255) NOT NULL,
     enabled SMALLINT NOT NULL DEFAULT 1,
@@ -300,13 +321,14 @@ CREATE TABLE dbo.key_managers (
     FOREIGN KEY (org_uuid) REFERENCES organizations(uuid) ON DELETE NO ACTION
 );
 IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = N'uq_key_manager_org_handle' AND object_id = OBJECT_ID(N'dbo.key_managers'))
-CREATE UNIQUE INDEX uq_key_manager_org_handle ON dbo.key_managers(org_uuid, handle);
+CREATE UNIQUE INDEX uq_key_manager_org_handle ON dbo.key_managers(org_uuid, handle, portal_id);
 
--- Applications table (developer-created consumer apps that subscribe to APIs)
+-- Applications table (portal-scoped developer-created consumer apps)
 IF OBJECT_ID(N'dbo.applications', N'U') IS NULL
 CREATE TABLE dbo.applications (
     uuid VARCHAR(40) PRIMARY KEY,
     org_uuid VARCHAR(40) NOT NULL,
+    portal_id VARCHAR(255) NOT NULL DEFAULT 'default',
     created_by VARCHAR(255) NOT NULL,
     display_name NVARCHAR(255) NOT NULL,
     handle VARCHAR(255) NOT NULL,
@@ -317,9 +339,9 @@ CREATE TABLE dbo.applications (
     FOREIGN KEY (org_uuid) REFERENCES organizations(uuid) ON DELETE NO ACTION
 );
 IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = N'idx_application_org_created_by' AND object_id = OBJECT_ID(N'dbo.applications'))
-CREATE INDEX idx_application_org_created_by ON dbo.applications(org_uuid, created_by);
+CREATE INDEX idx_application_org_created_by ON dbo.applications(org_uuid, portal_id, created_by);
 IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = N'uq_application_org_handle' AND object_id = OBJECT_ID(N'dbo.applications'))
-CREATE UNIQUE INDEX uq_application_org_handle ON dbo.applications(org_uuid, handle);
+CREATE UNIQUE INDEX uq_application_org_handle ON dbo.applications(org_uuid, handle, portal_id);
 
 -- Application-KeyManager mappings (per-KM OAuth2 client registration for an application)
 IF OBJECT_ID(N'dbo.app_key_mappings', N'U') IS NULL
@@ -341,7 +363,7 @@ CREATE INDEX idx_app_key_mappings_app_uuid ON dbo.app_key_mappings(app_uuid);
 IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = N'idx_app_key_mappings_km_uuid' AND object_id = OBJECT_ID(N'dbo.app_key_mappings'))
 CREATE INDEX idx_app_key_mappings_km_uuid ON dbo.app_key_mappings(km_uuid);
 
--- Subscriptions table (application-level subscriptions to an API)
+-- Subscriptions table (portal-scoped application-level subscriptions to an API)
 IF OBJECT_ID(N'dbo.subscriptions', N'U') IS NULL
 CREATE TABLE dbo.subscriptions (
     uuid VARCHAR(40) PRIMARY KEY,
@@ -350,6 +372,7 @@ CREATE TABLE dbo.subscriptions (
     -- Nullable: SET NULL keeps the subscription record if its plan reference is cleared.
     plan_uuid VARCHAR(40),
     org_uuid VARCHAR(40) NOT NULL,
+    portal_id VARCHAR(255) NOT NULL DEFAULT 'default',
     token VARCHAR(512),
     status VARCHAR(20) NOT NULL DEFAULT 'ACTIVE',
     created_at DATETIME2(7) DEFAULT SYSUTCDATETIME(),
@@ -360,9 +383,9 @@ CREATE TABLE dbo.subscriptions (
     FOREIGN KEY (org_uuid) REFERENCES organizations(uuid) ON DELETE NO ACTION
 );
 IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = N'idx_subscription_org_created_by' AND object_id = OBJECT_ID(N'dbo.subscriptions'))
-CREATE INDEX idx_subscription_org_created_by ON dbo.subscriptions(org_uuid, created_by);
+CREATE INDEX idx_subscription_org_created_by ON dbo.subscriptions(org_uuid, portal_id, created_by);
 IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = N'idx_subscription_org_api_uuid' AND object_id = OBJECT_ID(N'dbo.subscriptions'))
-CREATE INDEX idx_subscription_org_api_uuid ON dbo.subscriptions(org_uuid, api_uuid);
+CREATE INDEX idx_subscription_org_api_uuid ON dbo.subscriptions(org_uuid, portal_id, api_uuid);
 IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = N'idx_subscription_plan_uuid' AND object_id = OBJECT_ID(N'dbo.subscriptions'))
 CREATE INDEX idx_subscription_plan_uuid ON dbo.subscriptions(plan_uuid);
 IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = N'idx_subscription_status' AND object_id = OBJECT_ID(N'dbo.subscriptions'))
@@ -378,7 +401,10 @@ CREATE INDEX idx_subscription_api_uuid ON dbo.subscriptions(api_uuid);
 IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = N'uq_subscription_token' AND object_id = OBJECT_ID(N'dbo.subscriptions'))
 CREATE UNIQUE INDEX uq_subscription_token ON dbo.subscriptions(token) WHERE token IS NOT NULL;
 
--- API Keys table (standalone, non-OAuth2 API key credentials for an API)
+-- API Keys table (portal-scoped standalone, non-OAuth2 API key credentials for an API)
+-- portal_id is stored here for durability: api_uuid → api_metadata.portal_id gives
+-- the portal transitively, but api_metadata.org_uuid is nullable (SET NULL on org delete).
+-- Keeping portal_id here ensures isolation on key-only lookups even after that cleanup.
 IF OBJECT_ID(N'dbo.api_keys', N'U') IS NULL
 CREATE TABLE dbo.api_keys (
     uuid VARCHAR(40) PRIMARY KEY,
@@ -386,6 +412,7 @@ CREATE TABLE dbo.api_keys (
     -- Nullable: SET NULL keeps the key record if its originating subscription is removed.
     subscription_uuid VARCHAR(40),
     org_uuid VARCHAR(40) NOT NULL,
+    portal_id VARCHAR(255) NOT NULL DEFAULT 'default',
     handle VARCHAR(128) NOT NULL,
     display_name NVARCHAR(255) NOT NULL,
     status VARCHAR(20) NOT NULL DEFAULT 'ACTIVE',
@@ -413,9 +440,9 @@ CREATE INDEX idx_api_key_status ON dbo.api_keys(status);
 IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = N'idx_api_key_api_uuid' AND object_id = OBJECT_ID(N'dbo.api_keys'))
 CREATE INDEX idx_api_key_api_uuid ON dbo.api_keys(api_uuid);
 -- Handle is the caller-facing id used to address a key within an API, so it must be
--- unique per (org, api). Enforced here for a race-free guarantee, not just in the service.
+-- unique per (org, portal, api). Enforced here for a race-free guarantee.
 IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = N'uq_api_key_org_api_handle' AND object_id = OBJECT_ID(N'dbo.api_keys'))
-CREATE UNIQUE INDEX uq_api_key_org_api_handle ON dbo.api_keys(org_uuid, api_uuid, handle);
+CREATE UNIQUE INDEX uq_api_key_org_api_handle ON dbo.api_keys(org_uuid, api_uuid, handle, portal_id);
 
 -- API Key-Application mappings (which application an API key was issued to)
 IF OBJECT_ID(N'dbo.api_key_app_mappings', N'U') IS NULL
@@ -430,11 +457,14 @@ CREATE TABLE dbo.api_key_app_mappings (
 IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = N'idx_api_key_app_mappings_app_uuid' AND object_id = OBJECT_ID(N'dbo.api_key_app_mappings'))
 CREATE INDEX idx_api_key_app_mappings_app_uuid ON dbo.api_key_app_mappings(app_uuid);
 
--- API Workflows table (agent/automation workflows published under a view)
+-- API Workflows table (portal-scoped agent/automation workflows published under a view)
+-- portal_id is not in the unique constraint: view_uuid already scopes transitively
+-- to the portal (views are portal-scoped), so (org_uuid, view_uuid, handle) is sufficient.
 IF OBJECT_ID(N'dbo.api_workflows', N'U') IS NULL
 CREATE TABLE dbo.api_workflows (
     uuid VARCHAR(40) PRIMARY KEY,
     org_uuid VARCHAR(40) NOT NULL,
+    portal_id VARCHAR(255) NOT NULL DEFAULT 'default',
     view_uuid VARCHAR(40) NOT NULL,
     display_name NVARCHAR(255) NOT NULL,
     description NVARCHAR(1023) NOT NULL,
@@ -467,12 +497,13 @@ CREATE TABLE dbo.audit (
     resource_uuid VARCHAR(40) NOT NULL,
     resource_type VARCHAR(50),
     org_uuid VARCHAR(40) NOT NULL,
+    portal_id VARCHAR(255) NOT NULL DEFAULT 'default',
     performed_by VARCHAR(255),
     performed_at DATETIME2(7) DEFAULT SYSUTCDATETIME(),
     FOREIGN KEY (org_uuid) REFERENCES organizations(uuid) ON DELETE CASCADE
 );
 IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = N'idx_audit_org_uuid' AND object_id = OBJECT_ID(N'dbo.audit'))
-CREATE INDEX idx_audit_org_uuid ON dbo.audit(org_uuid);
+CREATE INDEX idx_audit_org_uuid ON dbo.audit(org_uuid, portal_id);
 
 -- Events table (outbox: one row per domain event; payload never contains plaintext key secrets)
 IF OBJECT_ID(N'dbo.events', N'U') IS NULL
@@ -480,6 +511,7 @@ CREATE TABLE dbo.events (
     uuid VARCHAR(40) PRIMARY KEY,
     type VARCHAR(128) NOT NULL,
     org_uuid VARCHAR(40) NOT NULL,
+    portal_id VARCHAR(255) NOT NULL DEFAULT 'default',
     aggregate_type VARCHAR(64) NOT NULL,
     aggregate_uuid VARCHAR(40) NOT NULL,
     payload NVARCHAR(MAX) NOT NULL DEFAULT '{}',
@@ -490,7 +522,7 @@ CREATE TABLE dbo.events (
 IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = N'idx_event_status_occurred_at' AND object_id = OBJECT_ID(N'dbo.events'))
 CREATE INDEX idx_event_status_occurred_at ON dbo.events(status, occurred_at);
 IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = N'idx_event_org_uuid' AND object_id = OBJECT_ID(N'dbo.events'))
-CREATE INDEX idx_event_org_uuid ON dbo.events(org_uuid);
+CREATE INDEX idx_event_org_uuid ON dbo.events(org_uuid, portal_id);
 
 -- Event Deliveries table (one row per event x webhook subscriber; encrypted_fields
 -- holds per-subscriber ciphertext so plaintext never lives in events)
@@ -535,6 +567,7 @@ CREATE TABLE dbo.user_idp_references (
 
 -- User-Organization mappings (live membership record -- both sides cascade on delete,
 -- unlike the "hanging creator" created_by/updated_by pattern used elsewhere)
+-- IDP and org are 1:1, so a user belongs to the org regardless of which portal they access it through.
 IF OBJECT_ID(N'dbo.user_organization_mappings', N'U') IS NULL
 CREATE TABLE dbo.user_organization_mappings (
     user_uuid VARCHAR(40) NOT NULL,
@@ -546,11 +579,12 @@ CREATE TABLE dbo.user_organization_mappings (
 IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = N'idx_user_organization_mappings_org_uuid' AND object_id = OBJECT_ID(N'dbo.user_organization_mappings'))
 CREATE INDEX idx_user_organization_mappings_org_uuid ON dbo.user_organization_mappings(org_uuid);
 
--- Webhook Subscribers table (organization-scoped outbound event subscribers)
+-- Webhook Subscribers table (portal-scoped outbound event subscribers)
 IF OBJECT_ID(N'dbo.webhook_subscribers', N'U') IS NULL
 CREATE TABLE dbo.webhook_subscribers (
     uuid VARCHAR(40) PRIMARY KEY,
     org_uuid VARCHAR(40) NOT NULL,
+    portal_id VARCHAR(255) NOT NULL DEFAULT 'default',
     handle VARCHAR(255) NOT NULL,
     display_name NVARCHAR(255) NOT NULL,
     target_url VARCHAR(1023) NOT NULL,
@@ -565,4 +599,4 @@ CREATE TABLE dbo.webhook_subscribers (
     FOREIGN KEY (org_uuid) REFERENCES organizations(uuid) ON DELETE NO ACTION
 );
 IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = N'uq_webhook_subscriber_org_handle' AND object_id = OBJECT_ID(N'dbo.webhook_subscribers'))
-CREATE UNIQUE INDEX uq_webhook_subscriber_org_handle ON dbo.webhook_subscribers(org_uuid, handle);
+CREATE UNIQUE INDEX uq_webhook_subscriber_org_handle ON dbo.webhook_subscribers(org_uuid, handle, portal_id);
