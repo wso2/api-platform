@@ -15,10 +15,9 @@ Run the operator from your host (VS Code debugger) against a real cluster. All c
    kubectl config current-context && kubectl cluster-info
    ```
 
-2. **Install the Gateway API standard CRDs** (the operator watches `Gateway`, `GatewayClass`, `HTTPRoute`, `ReferenceGrant`). Skip if already present:
+2. **Install the Gateway API standard CRDs** (the operator watches `Gateway`, `GatewayClass`, `HTTPRoute`, `ReferenceGrant`). `kubectl apply` is idempotent, so run it unconditionally — this also fills in any missing CRD when only part of the set is already present:
    ```bash
-   kubectl get crd gateways.gateway.networking.k8s.io >/dev/null 2>&1 || \
-     kubectl apply -f ../helm/operator-helm-chart/files/gateway-api-standard/standard-crds.yaml
+   kubectl apply -f ../helm/operator-helm-chart/files/gateway-api-standard/standard-crds.yaml
    ```
    > Uses the in-repo bundle (v1.5.1) the operator compiles against.
 
@@ -43,10 +42,11 @@ Run the operator from your host (VS Code debugger) against a real cluster. All c
    ```bash
    NS=default   # the namespace your APIGateway deploys into
    kubectl create namespace "$NS" --dry-run=client -o yaml | kubectl apply -f -
-   openssl rand 32 > default-aesgcm256-v1.bin
-   kubectl create secret generic gateway-encryption-keys \
-     --from-file=default-aesgcm256-v1.bin=default-aesgcm256-v1.bin -n "$NS"
-   rm -f default-aesgcm256-v1.bin
+   ( umask 077   # keep the temp key file owner-only, regardless of your umask
+     openssl rand 32 > default-aesgcm256-v1.bin
+     kubectl create secret generic gateway-encryption-keys \
+       --from-file=default-aesgcm256-v1.bin=default-aesgcm256-v1.bin -n "$NS"
+     rm -f default-aesgcm256-v1.bin )
    ```
    Then **enable `encryptionKeys`** (disabled by default) so the chart renders — pick one:
    - **Globally** (recommended for debug — every gateway inherits it): edit the operator default `config/gateway_values.yaml` (the `GATEWAY_HELM_VALUES_FILE_PATH` base) under `gateway.controller`:
@@ -61,7 +61,7 @@ Run the operator from your host (VS Code debugger) against a real cluster. All c
 
 8. **Trigger a reconcile** (set breakpoints in `internal/controller/apigateway_controller.go` `Reconcile` first). Use the ready-made two-gateway example — it enables `encryptionKeys` and documents the per-namespace Secret in its header:
    ```bash
-   # create the encryption Secret in gw-120 and gw-121 first (see the file header), then:
+   # create the encryption Secret in gw-default and gw-121 first (see the file header), then:
    kubectl apply -f config/samples/api_v1_apigateway_multiversion.yaml
    ```
    > The shipped `config/samples/api_v1_apigateway.yaml` does **not** enable `encryptionKeys`, so it fails the at-rest-encryption check as-is — enable it (step 7) before applying, or use the multiversion sample above.
@@ -70,4 +70,5 @@ Run the operator from your host (VS Code debugger) against a real cluster. All c
 
 - **`encryptionKeys must be enabled`** in operator logs (`Max retries exceeded ... at-rest encryption is mandatory`) = the Secret is missing in the gateway's namespace, or the values don't set `encryptionKeys.enabled=true` + `secretName`. It's per-namespace, so each gateway needs its own Secret. (Host-run gateway debug uses a file instead — see `gateway/DEBUG_GUIDE.md`.)
 - After changing API types (`api/**`): run `make manifests` to regenerate `config/crd/bases/`, then re-apply via step 3.
-- Cleanup: `kubectl delete -f config/samples/api_v1_apigateway_multiversion.yaml`; remove CRDs with `kubectl delete -f config/crd/bases/`.
+- Cleanup: `kubectl delete -f config/samples/api_v1_apigateway_multiversion.yaml`.
+- ⚠️ `kubectl delete -f config/crd/bases/` deletes the **cluster-scoped CRDs**, which cascades to **every** custom resource of those kinds in **all** namespaces (not just the sample). Use it only on a disposable cluster — it causes data loss otherwise.

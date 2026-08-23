@@ -1,9 +1,10 @@
 # API Gateway version example — default-tracking vs pinned.
 #
 # Two API Gateways managed by ONE operator:
-#   - gw-default  -> no image tag pinned; tracks whatever version the operator
-#                    default (GATEWAY_HELM_VALUES_FILE_PATH) currently sets, so
-#                    it moves when that default changes.
+#   - gw-default  -> no image tag pinned; inherits the operator default version
+#                    (GATEWAY_HELM_VALUES_FILE_PATH) at (re)deploy time. An
+#                    EXISTING gateway does NOT auto-move when the default changes
+#                    — bump its APIGateway generation to pick up a new default.
 #   - gw-121      -> pins gateway-controller/gateway-runtime 1.2.1 via its own
 #                    configRef, independent of the operator default.
 #
@@ -39,11 +40,14 @@
 #   kubectl create namespace gw-121
 #
 #   # 2. Mandatory AES-256 encryption key Secret, one per namespace
+#   #    (umask 077 keeps the temp key file owner-only, regardless of your umask)
 #   for ns in gw-default gw-121; do
-#     openssl rand 32 > default-aesgcm256-v1.bin
-#     kubectl create secret generic gateway-encryption-keys \
-#       --from-file=default-aesgcm256-v1.bin=default-aesgcm256-v1.bin -n "$ns"
-#     rm -f default-aesgcm256-v1.bin
+#     ( umask 077
+#       openssl rand 32 > default-aesgcm256-v1.bin
+#       kubectl create secret generic gateway-encryption-keys \
+#         --from-file=default-aesgcm256-v1.bin=default-aesgcm256-v1.bin -n "$ns"
+#       rm -f default-aesgcm256-v1.bin
+#     )
 #   done
 #
 #   # 3. ConfigMaps + APIGateways (this file — namespaces already created in step 1)
