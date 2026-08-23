@@ -113,7 +113,7 @@ func syncCardInterfaces(cfg *api.AgentConfiguration) {
 		return
 	}
 
-	context := agentContextPath(cfg.Spec.Context)
+	context := AgentContextPath(cfg.Spec.Context)
 	interfaces := make([]interface{}, 0, len(cfg.Spec.A2a.OperationConfigs.Transports))
 	seen := make(map[api.A2AProtocolBinding]bool)
 	for _, transport := range cfg.Spec.A2a.OperationConfigs.Transports {
@@ -129,7 +129,7 @@ func syncCardInterfaces(cfg *api.AgentConfiguration) {
 		interfaces = append(interfaces, map[string]interface{}{
 			"protocolBinding": string(transport.ProtocolBinding),
 			"protocolVersion": string(cfg.Spec.A2a.ProtocolVersion),
-			"url":             cardHost + joinAgentPath(context, prefix),
+			"url":             cardHost + JoinAgentPath(context, prefix),
 		})
 	}
 
@@ -475,13 +475,13 @@ func TestAgentValidator_TransportsMaySharaABasePath(t *testing.T) {
 
 			require.Empty(t, validateAgent(&cfg))
 
-			base := joinAgentPath("/weather", prefix)
+			base := JoinAgentPath("/weather", prefix)
 			routes := buildAgentRoutes(agentproto.V1_0,
 				[]resolvedTransport{
 					{index: 0, binding: api.JSONRPC, basePath: base, usable: true},
 					{index: 1, binding: api.HTTPJSON, basePath: base, usable: true},
 				},
-				resolvedCard{path: joinAgentPath("/weather", DefaultAgentCardPath), usable: true})
+				resolvedCard{path: JoinAgentPath("/weather", DefaultAgentCardPath), usable: true})
 
 			keys := make(map[string]string, len(routes))
 			for _, route := range routes {
@@ -1125,7 +1125,7 @@ func TestJoinAgentPath(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.base+"+"+tt.segment, func(t *testing.T) {
-			assert.Equal(t, tt.want, joinAgentPath(tt.base, tt.segment))
+			assert.Equal(t, tt.want, JoinAgentPath(tt.base, tt.segment))
 		})
 	}
 }

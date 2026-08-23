@@ -26,22 +26,31 @@ import (
 
 // Registry dispatches StoredConfig → RuntimeDeployConfig by API kind.
 type Registry struct {
-	restT *RestAPITransformer
-	llmT  *LLMTransformer
+	restT  *RestAPITransformer
+	llmT   *LLMTransformer
+	agentT *AgentTransformer
 }
 
 // NewRegistry creates a new transformer Registry.
-func NewRegistry(restT *RestAPITransformer, llmT *LLMTransformer) *Registry {
-	return &Registry{restT: restT, llmT: llmT}
+func NewRegistry(restT *RestAPITransformer, llmT *LLMTransformer, agentT *AgentTransformer) *Registry {
+	return &Registry{restT: restT, llmT: llmT, agentT: agentT}
 }
 
 // Transform converts a StoredConfig to a RuntimeDeployConfig using the appropriate transformer.
+//
+// This switch has a twin in cmd/controller/main.go, which maps the same kinds
+// onto the Envoy xDS translator. A kind present in one and missing from the
+// other does not fail loudly: its policy chains and its Envoy routes are then
+// built by different code paths, which is how a route ends up named one thing
+// and its chain keyed another.
 func (r *Registry) Transform(cfg *models.StoredConfig) (*models.RuntimeDeployConfig, error) {
 	switch cfg.Kind {
-	case "RestApi", "WebSubApi", "Mcp":
+	case models.KindRestApi, models.KindWebSubApi, models.KindMcp:
 		return r.restT.Transform(cfg)
-	case "LlmProvider", "LlmProxy":
+	case models.KindLlmProvider, models.KindLlmProxy:
 		return r.llmT.Transform(cfg)
+	case models.KindAgent:
+		return r.agentT.Transform(cfg)
 	default:
 		return nil, fmt.Errorf("unsupported kind for runtime config: %s", cfg.Kind)
 	}

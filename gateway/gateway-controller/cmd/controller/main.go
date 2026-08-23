@@ -444,7 +444,8 @@ func main() {
 	// Build transformer registry for StoredConfig → RuntimeDeployConfig conversion
 	restTransformer := transform.NewRestAPITransformer(&cfg.Router, cfg, policyDefinitions)
 	llmTransformer := transform.NewLLMTransformer(configStore, db, &cfg.Router, cfg, policyDefinitions, policyVersionResolver)
-	transformerRegistry := transform.NewRegistry(restTransformer, llmTransformer)
+	agentTransformer := transform.NewAgentTransformer(&cfg.Router, cfg, policyDefinitions)
+	transformerRegistry := transform.NewRegistry(restTransformer, llmTransformer, agentTransformer)
 	policyManager.SetTransformers(transformerRegistry)
 
 	// Wire the same transformer into the Envoy xDS translator so Envoy routes are built from the
@@ -456,10 +457,11 @@ func main() {
 	// header-matched route fail with 500 ("policy chain not found"). WebSubApi is intentionally
 	// excluded so it keeps using the async-specific legacy translation path.
 	translator.SetTransformers(map[string]models.ConfigTransformer{
-		"RestApi":     transformerRegistry,
-		"Mcp":         transformerRegistry,
-		"LlmProvider": transformerRegistry,
-		"LlmProxy":    transformerRegistry,
+		models.KindRestApi:     transformerRegistry,
+		models.KindMcp:         transformerRegistry,
+		models.KindLlmProvider: transformerRegistry,
+		models.KindLlmProxy:    transformerRegistry,
+		models.KindAgent:       transformerRegistry,
 	})
 
 	// Load runtime configs from existing API configurations on startup.

@@ -207,7 +207,7 @@ func (v *AgentValidator) validateSpec(spec *api.AgentConfigData) []ValidationErr
 	// sound; reporting collisions derived from a malformed context would bury
 	// the one error worth fixing under a pile of consequences. An absent
 	// context is sound — it resolves to the virtual host root.
-	errors = append(errors, v.validateA2A(agentContextPath(spec.Context), len(contextErrors) == 0, &spec.A2a)...)
+	errors = append(errors, v.validateA2A(AgentContextPath(spec.Context), len(contextErrors) == 0, &spec.A2a)...)
 
 	return errors
 }
@@ -257,12 +257,12 @@ func (v *AgentValidator) validateContext(context *string) []ValidationError {
 	return errors
 }
 
-// agentContextPath is the base every A2A route hangs off: the configured
+// AgentContextPath is the base every A2A route hangs off: the configured
 // context, or "" for an Agent served at the root of its virtual host. The two
 // cases converge here so no downstream path arithmetic has to know which one it
-// is looking at — joinAgentPath("", "/rpc") is "/rpc", the same shape it
+// is looking at — JoinAgentPath("", "/rpc") is "/rpc", the same shape it
 // produces for any other base.
-func agentContextPath(context *string) string {
+func AgentContextPath(context *string) string {
 	if context == nil {
 		return ""
 	}
@@ -401,7 +401,7 @@ func (v *AgentValidator) validateTransports(context string, contextUsable bool, 
 			// HTTP+JSON at "/" is the idiomatic A2A layout, not a conflict.
 			// Anything that genuinely does overlap is caught downstream on the
 			// generated routes, which is where an overlap actually exists.
-			basePath = joinAgentPath(context, prefix)
+			basePath = JoinAgentPath(context, prefix)
 			if contextUsable {
 				errors = append(errors, validateNotReservedHealthPath(prefixField, basePath)...)
 			}
@@ -532,7 +532,7 @@ func (v *AgentValidator) validateAgentCard(context string, contextUsable bool, c
 
 	resolved := resolvedCard{usable: modeOK && pathOK && contextUsable}
 	if pathOK {
-		resolved.path = joinAgentPath(context, cardPath)
+		resolved.path = JoinAgentPath(context, cardPath)
 		if contextUsable {
 			errors = append(errors, validateNotReservedHealthPath("spec.a2a.agentCard.public.path", resolved.path)...)
 		}
@@ -1132,7 +1132,7 @@ func buildAgentRoutes(version agentproto.ProtocolVersion, transports []resolvedT
 				for _, binding := range bindings {
 					routes = append(routes, agentRoute{
 						method: binding.Method,
-						path:   joinAgentPath(transport.basePath, binding.PathTemplate),
+						path:   JoinAgentPath(transport.basePath, binding.PathTemplate),
 						field:  field,
 						source: fmt.Sprintf("the %s route for %s", api.HTTPJSON, operation),
 					})
@@ -1153,10 +1153,15 @@ func buildAgentRoutes(version agentproto.ProtocolVersion, transports []resolvedT
 	return routes
 }
 
-// joinAgentPath joins a base path and a relative segment with exactly one
+// JoinAgentPath joins a base path and a relative segment with exactly one
 // separator. A segment of "" or "/" contributes no extra path segment, which is
 // what a transport pathPrefix of "/" means: serve at the context itself.
-func joinAgentPath(base, segment string) string {
+//
+// Exported because the Agent transformer composes the very same paths when it
+// generates routes. The collision check above is only meaningful if the routes
+// it reasons about are byte-identical to the ones that ship, so both sides do
+// the arithmetic with this one function rather than each spelling it out.
+func JoinAgentPath(base, segment string) string {
 	trimmedBase := strings.TrimSuffix(base, "/")
 	trimmedSegment := strings.Trim(segment, "/")
 	if trimmedSegment == "" {
