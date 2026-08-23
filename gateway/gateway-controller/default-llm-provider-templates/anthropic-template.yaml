@@ -61,6 +61,11 @@ spec:
     identifier: $.usage.cache_creation.ephemeral_1h_input_tokens
     fallbackIdentifiers:
       - $.message.usage.cache_creation.ephemeral_1h_input_tokens
+  reasoningTokens:
+    location: payload
+    identifier: $.usage.output_tokens_details.thinking_tokens
+    fallbackIdentifiers:
+      - $.message.usage.output_tokens_details.thinking_tokens
   serviceTier:
     location: payload
     identifier: $.usage.service_tier
