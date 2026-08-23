@@ -143,26 +143,23 @@ spec:
           enabled: true
 `
 
-// cardObject reads a nested object out of an Agent Card.
+// requireCardObject reads a nested object out of an Agent Card, failing the
+// test if the value is not one.
 //
-// The Agent Card document is a free-form map, and its nested mappings come back
-// typed by whichever decoder produced them: yaml.v3 reuses the enclosing named
-// map type (api.A2AAgentCardDocument) for nested mappings, while encoding/json
-// produces a plain map[string]interface{}. Both have the same underlying type,
-// so anything walking a card has to accept either — asserting on only one shape
-// would pass for the ingress path the test happens to use and fail for the
-// other.
-func cardObject(t *testing.T, value interface{}) map[string]interface{} {
+// It delegates to the validator's own cardObject so these assertions walk the
+// card exactly the way validation does. That matters because a card's nested
+// mappings come back typed by whichever decoder produced them — yaml.v3 reuses
+// the enclosing named map type (api.A2AAgentCardDocument), encoding/json
+// produces a plain map[string]interface{} — and a walker that handled only one
+// shape would work on the ingress path a test happens to use and silently do
+// nothing on the other.
+func requireCardObject(t *testing.T, value interface{}) map[string]interface{} {
 	t.Helper()
-	switch v := value.(type) {
-	case api.A2AAgentCardDocument:
-		return v
-	case map[string]interface{}:
-		return v
-	default:
+	object, ok := cardObject(value)
+	if !ok {
 		t.Fatalf("expected a card object, got %T", value)
-		return nil
 	}
+	return object
 }
 
 // parseAgentWorkedExample parses the worked example, failing the test on error.
@@ -297,37 +294,37 @@ func TestParseAgent_WorkedExample_AgentCard(t *testing.T) {
 	interfaces, ok := content["supportedInterfaces"].([]interface{})
 	require.True(t, ok, "supportedInterfaces should be a list, got %T", content["supportedInterfaces"])
 	require.Len(t, interfaces, 2)
-	rpcIface := cardObject(t, interfaces[0])
+	rpcIface := requireCardObject(t, interfaces[0])
 	assert.Equal(t, "JSONRPC", rpcIface["protocolBinding"])
 	assert.Equal(t, "1.0", rpcIface["protocolVersion"])
 	assert.Equal(t, "https://agents.example.com/weather/rpc", rpcIface["url"])
-	restIface := cardObject(t, interfaces[1])
+	restIface := requireCardObject(t, interfaces[1])
 	assert.Equal(t, "HTTP+JSON", restIface["protocolBinding"])
 	assert.Equal(t, "https://agents.example.com/weather/rest", restIface["url"])
 
-	capabilities := cardObject(t, content["capabilities"])
+	capabilities := requireCardObject(t, content["capabilities"])
 	assert.Equal(t, true, capabilities["streaming"])
 
 	// The full securitySchemes nesting matters: the scheme type is the inner
 	// key, and card-to-policy consistency checks read it from there.
-	schemes := cardObject(t, content["securitySchemes"])
-	jwtScheme := cardObject(t, schemes["gateway-jwt"])
-	oidc := cardObject(t, jwtScheme["openIdConnectSecurityScheme"])
+	schemes := requireCardObject(t, content["securitySchemes"])
+	jwtScheme := requireCardObject(t, schemes["gateway-jwt"])
+	oidc := requireCardObject(t, jwtScheme["openIdConnectSecurityScheme"])
 	assert.Equal(t, "https://idp.example.com/.well-known/openid-configuration", oidc["openIdConnectUrl"])
 
 	requirements, ok := content["securityRequirements"].([]interface{})
 	require.True(t, ok)
 	require.Len(t, requirements, 1)
-	requirement := cardObject(t, requirements[0])
-	reqSchemes := cardObject(t, requirement["schemes"])
+	requirement := requireCardObject(t, requirements[0])
+	reqSchemes := requireCardObject(t, requirement["schemes"])
 	require.NotNil(t, reqSchemes, "securityRequirements[0].schemes must survive parsing — scope checks read scopes from here")
-	entry := cardObject(t, reqSchemes["gateway-jwt"])
+	entry := requireCardObject(t, reqSchemes["gateway-jwt"])
 	assert.Equal(t, []interface{}{"a2a.invoke"}, entry["list"])
 
 	skills, ok := content["skills"].([]interface{})
 	require.True(t, ok)
 	require.Len(t, skills, 1)
-	skill := cardObject(t, skills[0])
+	skill := requireCardObject(t, skills[0])
 	assert.Equal(t, "get_weather", skill["id"])
 	assert.Equal(t, []interface{}{"weather"}, skill["tags"])
 }
@@ -359,7 +356,7 @@ func TestParseAgent_CardDocumentSurvivesDirectYAMLParsing(t *testing.T) {
 	// number.
 	assert.IsType(t, "", card["name"])
 	assert.IsType(t, "", card["version"])
-	capabilities := cardObject(t, card["capabilities"])
+	capabilities := requireCardObject(t, card["capabilities"])
 	assert.IsType(t, true, capabilities["streaming"])
 }
 
@@ -408,14 +405,14 @@ spec:
 	content := map[string]interface{}(*cfg.Spec.A2a.AgentCard.Public.Content)
 
 	require.Contains(t, content, "x-vendor-extension", "unknown top-level card field was dropped")
-	extension := cardObject(t, content["x-vendor-extension"])
+	extension := requireCardObject(t, content["x-vendor-extension"])
 	assert.EqualValues(t, 42, extension["answer"])
 	assert.Equal(t, "héllo ✅", extension["unicode"])
 
-	capabilities := cardObject(t, content["capabilities"])
+	capabilities := requireCardObject(t, content["capabilities"])
 	assert.Equal(t, false, capabilities["streaming"], "a field at its default value must survive, not be pruned")
 	require.Contains(t, capabilities, "x-vendor-capability", "unknown nested card field was dropped")
-	nestedExt := cardObject(t, capabilities["x-vendor-capability"])
+	nestedExt := requireCardObject(t, capabilities["x-vendor-capability"])
 	assert.Equal(t, []interface{}{"value"}, nestedExt["nested"])
 
 	assert.Equal(t, []interface{}{}, content["skills"], "an empty required list must survive as empty, not become nil")
