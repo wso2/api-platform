@@ -124,7 +124,7 @@ func (t *RestAPITransformer) Transform(cfg *models.StoredConfig) (*models.Runtim
 	}
 
 	// Build main upstream cluster
-	mainUpstream, err := t.addUpstreamCluster(rdc, "main", &apiData.Upstream.Main, apiData.UpstreamDefinitions)
+	mainUpstream, err := addUpstreamCluster(rdc, "main", &apiData.Upstream.Main, apiData.UpstreamDefinitions)
 	if err != nil {
 		return nil, fmt.Errorf("failed to resolve main upstream: %w", err)
 	}
@@ -293,7 +293,7 @@ func (t *RestAPITransformer) Transform(cfg *models.StoredConfig) (*models.Runtim
 
 	// Add sandbox upstream and update sandbox routes if present
 	if hasSandbox {
-		sbUpstream, err := t.addUpstreamCluster(rdc, "sandbox", apiData.Upstream.Sandbox, apiData.UpstreamDefinitions)
+		sbUpstream, err := addUpstreamCluster(rdc, "sandbox", apiData.Upstream.Sandbox, apiData.UpstreamDefinitions)
 		if err != nil {
 			return nil, fmt.Errorf("failed to resolve sandbox upstream: %w", err)
 		}
@@ -403,17 +403,33 @@ func buildRouteTimeout(opTimeout, apiTimeout, opIdle, apiIdle *time.Duration) *m
 // appear more than once at the API level (e.g. an LLM provider attaching two set-headers
 // guardrails), and each occurrence must be preserved rather than collapsed to the last one.
 func (t *RestAPITransformer) collectAPIPolicies(policies *[]api.Policy) []policyenginev1.PolicyInstance {
+	return resolvePolicyInstances(t.policyDefinitions, t.latestVersions, policies, policyv1alpha.LevelAPI)
+}
+
+// resolvePolicyInstances resolves one attachment scope's policies to SDK instances,
+// preserving spec order and dropping (with a log line) any whose version cannot be
+// resolved. It is a free function rather than a method because every kind's
+// transformer does exactly this over its own scopes — an Agent has three of them
+// (operation-common, per-operation, public Agent Card) and no api.RestAPI to hang
+// them off — and a second copy of the resolve-or-drop rule is how the two drift.
+func resolvePolicyInstances(
+	definitions map[string]models.PolicyDefinition,
+	latestVersions map[string]string,
+	policies *[]api.Policy,
+	level policyv1alpha.Level,
+) []policyenginev1.PolicyInstance {
 	var result []policyenginev1.PolicyInstance
 	if policies == nil {
 		return result
 	}
 	for _, p := range *policies {
-		resolved, err := config.ResolvePolicyVersion(t.policyDefinitions, t.latestVersions, p.Name, p.Version)
+		resolved, err := config.ResolvePolicyVersion(definitions, latestVersions, p.Name, p.Version)
 		if err != nil {
-			slog.Error("Failed to resolve policy version for API-level policy", "policy_name", p.Name, "error", err)
+			slog.Error("Failed to resolve policy version",
+				"policy_name", p.Name, "attached_to", string(level), "error", err)
 			continue
 		}
-		result = append(result, convertAPIPolicyToSDK(p, policyv1alpha.LevelAPI, versionutil.MajorVersion(resolved)))
+		result = append(result, convertAPIPolicyToSDK(p, level, versionutil.MajorVersion(resolved)))
 	}
 	return result
 }
@@ -429,16 +445,8 @@ func (t *RestAPITransformer) buildPolicyChain(
 	result = append(result, apiPolicies...)
 
 	// Operation-level policies
-	if opPolicies != nil {
-		for _, opPol := range *opPolicies {
-			resolved, err := config.ResolvePolicyVersion(t.policyDefinitions, t.latestVersions, opPol.Name, opPol.Version)
-			if err != nil {
-				slog.Error("Failed to resolve operation-level policy version", "policy_name", opPol.Name, "error", err)
-				continue
-			}
-			result = append(result, convertAPIPolicyToSDK(opPol, policyv1alpha.LevelRoute, versionutil.MajorVersion(resolved)))
-		}
-	}
+	result = append(result,
+		resolvePolicyInstances(t.policyDefinitions, t.latestVersions, opPolicies, policyv1alpha.LevelRoute)...)
 
 	return result
 }
@@ -468,7 +476,14 @@ func (r *upstreamClusterResult) UpstreamInfo() policyenginev1.UpstreamInfo {
 }
 
 // addUpstreamCluster resolves an upstream and adds it to the RuntimeDeployConfig.
-func (t *RestAPITransformer) addUpstreamCluster(
+//
+// A free function rather than a transformer method: it reads nothing from the
+// transformer, and every kind resolves its upstream the same way. The Agent
+// transformer calls it directly so that an Agent's cluster key, base path, Envoy
+// cluster name and TLS flag are derived by the identical code path as a REST API's
+// — those four values are what the route rewrite and the policy engine's
+// default-upstream both key off.
+func addUpstreamCluster(
 	rdc *models.RuntimeDeployConfig,
 	upstreamName string,
 	up *api.Upstream,
