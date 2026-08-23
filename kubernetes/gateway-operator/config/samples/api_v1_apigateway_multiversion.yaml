@@ -39,16 +39,16 @@
 #   kubectl create namespace gw-default
 #   kubectl create namespace gw-121
 #
-#   # 2. Mandatory AES-256 encryption key Secret, one per namespace
-#   #    (umask 077 keeps the temp key file owner-only, regardless of your umask)
+#   # 2. Mandatory AES-256 encryption key Secret, one per namespace.
+#   #    mktemp gives a unique owner-only (mode 600) file; the secret's data key
+#   #    stays default-aesgcm256-v1.bin (the filename the chart mounts).
+#   keyfile="$(mktemp)"; trap 'rm -f "$keyfile"' EXIT
 #   for ns in gw-default gw-121; do
-#     ( umask 077
-#       openssl rand 32 > default-aesgcm256-v1.bin
-#       kubectl create secret generic gateway-encryption-keys \
-#         --from-file=default-aesgcm256-v1.bin=default-aesgcm256-v1.bin -n "$ns"
-#       rm -f default-aesgcm256-v1.bin
-#     )
+#     openssl rand 32 > "$keyfile"
+#     kubectl create secret generic gateway-encryption-keys \
+#       --from-file=default-aesgcm256-v1.bin="$keyfile" -n "$ns"
 #   done
+#   rm -f "$keyfile"; trap - EXIT
 #
 #   # 3. ConfigMaps + APIGateways (this file — namespaces already created in step 1)
 #   kubectl apply -f api_v1_apigateway_multiversion.yaml

@@ -42,11 +42,13 @@ Run the operator from your host (VS Code debugger) against a real cluster. All c
    ```bash
    NS=default   # the namespace your APIGateway deploys into
    kubectl create namespace "$NS" --dry-run=client -o yaml | kubectl apply -f -
-   ( umask 077   # keep the temp key file owner-only, regardless of your umask
-     openssl rand 32 > default-aesgcm256-v1.bin
-     kubectl create secret generic gateway-encryption-keys \
-       --from-file=default-aesgcm256-v1.bin=default-aesgcm256-v1.bin -n "$NS"
-     rm -f default-aesgcm256-v1.bin )
+   # mktemp gives a unique owner-only (mode 600) key file; the secret's data
+   # key stays default-aesgcm256-v1.bin (the filename the chart mounts).
+   keyfile="$(mktemp)"; trap 'rm -f "$keyfile"' EXIT
+   openssl rand 32 > "$keyfile"
+   kubectl create secret generic gateway-encryption-keys \
+     --from-file=default-aesgcm256-v1.bin="$keyfile" -n "$NS"
+   rm -f "$keyfile"; trap - EXIT
    ```
    Then **enable `encryptionKeys`** (disabled by default) so the chart renders — pick one:
    - **Globally** (recommended for debug — every gateway inherits it): edit the operator default `config/gateway_values.yaml` (the `GATEWAY_HELM_VALUES_FILE_PATH` base) under `gateway.controller`:
