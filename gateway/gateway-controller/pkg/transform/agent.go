@@ -70,12 +70,6 @@ const corsPolicyName = "cors"
 // and buffer nothing for resolution.
 const maxAgentJSONRPCRequestBodyBytes = 1024 * 1024
 
-// disabledRouteTimeout is the resilience value that switches the Envoy route
-// timeout off, as opposed to leaving it unset (which selects the gateway
-// default). Spelled as the string the resilience block takes so it goes through
-// the same parser as a user-supplied value.
-const disabledRouteTimeout = "0s"
-
 // AgentTransformer turns a stored Agent (A2A) artifact into a RuntimeDeployConfig.
 //
 // It builds the RDC directly rather than desugaring an Agent into a synthetic
@@ -228,14 +222,21 @@ func (t *AgentTransformer) Transform(cfg *models.StoredConfig) (*models.RuntimeD
 	commonOperationPolicies := resolvePolicyInstances(
 		t.policyDefinitions, t.latestVersions, withPolicy(a2a.OperationConfigs.Policies, upstreamAuth), policyv1alpha.LevelAPI)
 	perOperationPolicies := make(map[agentproto.Operation][]policyenginev1.PolicyInstance)
+	perOperationCORS := make(map[agentproto.Operation][]policyenginev1.PolicyInstance)
 	perOperationResilience := make(map[agentproto.Operation]*api.Resilience)
 	if a2a.OperationConfigs.Operations != nil {
 		for i := range *a2a.OperationConfigs.Operations {
 			opCfg := (*a2a.OperationConfigs.Operations)[i]
 			operation := agentproto.Operation(opCfg.Name)
-			perOperationPolicies[operation] = resolvePolicyInstances(
+			resolved := resolvePolicyInstances(
 				t.policyDefinitions, t.latestVersions, opCfg.Policies, policyv1alpha.LevelRoute)
+			perOperationPolicies[operation] = resolved
 			perOperationResilience[operation] = opCfg.Resilience
+			// A preflight borrows an operation's cors policy and nothing else of
+			// its chain. The rest — authentication above all — must not run
+			// against a preflight, which carries no credentials and would be
+			// rejected.
+			perOperationCORS[operation] = corsInstances(resolved)
 		}
 	}
 
@@ -245,16 +246,6 @@ func (t *AgentTransformer) Transform(cfg *models.StoredConfig) (*models.RuntimeD
 	}
 	cardPolicies := resolvePolicyInstances(
 		t.policyDefinitions, t.latestVersions, cardPolicySource, policyv1alpha.LevelAPI)
-
-	// A preflight is a property of a path, not of an operation: the browser
-	// sends OPTIONS before it knows which operation the real request will
-	// resolve to, and on the JSON-RPC endpoint every operation shares one path.
-	// So the trigger is "cors is attached anywhere in this scope", and the
-	// preflight chain carries the scope's common policies only — running a
-	// single operation's authentication against a preflight would reject it.
-	operationCORS := hasCORSPolicy(a2a.OperationConfigs.Policies) ||
-		hasPerOperationCORSPolicy(a2a.OperationConfigs.Operations)
-	cardCORS := hasCORSPolicy(a2a.AgentCard.Public.Policies)
 
 	vhosts := agentVhosts(spec.Vhost, t.routerConfig.VHosts.Main.Default)
 
@@ -307,18 +298,52 @@ func (t *AgentTransformer) Transform(cfg *models.StoredConfig) (*models.RuntimeD
 			return routeKey, nil
 		}
 
-		// preflightPaths collects the paths that need an OPTIONS route, in
-		// generation order, deduplicated: two operations may share a path (POST
-		// and GET on pushNotificationConfigs), and one preflight route answers
-		// for both.
-		var preflightPaths []string
-		seenPreflight := make(map[string]struct{})
-		addPreflight := func(path string) {
-			if _, seen := seenPreflight[path]; seen {
+		// preflights collects the routes that need an OPTIONS sibling, in
+		// generation order, merged by path: two operations may share one (POST
+		// and GET on pushNotificationConfigs, and every operation on the
+		// JSON-RPC endpoint), and a single preflight answers for all of them.
+		//
+		// A preflight is generated **only if its own chain contains a cors
+		// policy**. That is the whole rule, and it is what keeps the trigger and
+		// the answer from disagreeing: a route that matches an OPTIONS request
+		// but whose chain cannot respond to it is worse than no route at all —
+		// Envoy stops 404ing the preflight and starts proxying it upstream
+		// instead, so the browser's failure now depends on what the backend does
+		// with an OPTIONS it never expected.
+		//
+		// The operation path is carried from the route that asked for the
+		// preflight rather than re-derived from the path, so the preflight
+		// strips exactly what its sibling strips.
+		type preflightRoute struct {
+			path, operationPath string
+			// policies is the chain, before system policies are prepended: the
+			// scope's own policies, then the cors instances contributed by each
+			// operation reachable at this path.
+			policies []policyenginev1.PolicyInstance
+		}
+		var preflights []preflightRoute
+		preflightByPath := make(map[string]int)
+
+		// addPreflight registers, or extends, the preflight for one path. base is
+		// the governing scope's policies and is contributed once; operationCORS is
+		// appended per contributing operation.
+		addPreflight := func(path, operationPath string, base, operationCORS []policyenginev1.PolicyInstance) {
+			if index, exists := preflightByPath[path]; exists {
+				preflights[index].policies = append(preflights[index].policies, operationCORS...)
 				return
 			}
-			seenPreflight[path] = struct{}{}
-			preflightPaths = append(preflightPaths, path)
+			policies := make([]policyenginev1.PolicyInstance, 0, len(base)+len(operationCORS))
+			policies = append(policies, base...)
+			policies = append(policies, operationCORS...)
+			if !containsCORS(policies) {
+				return
+			}
+			preflightByPath[path] = len(preflights)
+			preflights = append(preflights, preflightRoute{
+				path:          path,
+				operationPath: operationPath,
+				policies:      policies,
+			})
 		}
 
 		for _, transport := range transports {
@@ -345,16 +370,24 @@ func (t *AgentTransformer) Transform(cfg *models.StoredConfig) (*models.RuntimeD
 					// ones, so a finite route timeout would sever a healthy
 					// stream. Disabled unless the Agent asks for one; idleTimeout
 					// stays the liveness guard.
-					Timeout:             agentRouteTimeout(disabledTimeoutResilience(spec.Resilience), agentTimeout, agentIdleTimeout),
+					// Every operation shares this route, streaming ones included,
+					// so the route timeout defaults to disabled.
+					Timeout:             agentRouteTimeout(nil, agentTimeout, agentIdleTimeout, true),
 					ResolverName:        agentproto.ResolverName,
 					ResolverConfig:      resolverConfig,
 					MaxRequestBodyBytes: maxAgentJSONRPCRequestBodyBytes,
 				}); err != nil {
 					return nil, err
 				}
-				if operationCORS {
-					addPreflight(transport.basePath)
+				// Every operation is reachable at this one endpoint, so each
+				// contributes its cors policy to the single preflight that
+				// covers them all.
+				jsonrpcCORS := make([]policyenginev1.PolicyInstance, 0, len(operations))
+				for _, operation := range operations {
+					jsonrpcCORS = append(jsonrpcCORS, perOperationCORS[operation]...)
 				}
+				addPreflight(transport.basePath, transport.relativePath,
+					commonOperationPolicies, jsonrpcCORS)
 
 			case api.HTTPJSON:
 				for _, operation := range operations {
@@ -370,16 +403,17 @@ func (t *AgentTransformer) Transform(cfg *models.StoredConfig) (*models.RuntimeD
 					if err != nil {
 						return nil, err
 					}
-					timeout := t.httpJSONRouteTimeout(
-						operation, perOperationResilience[operation], spec.Resilience, agentTimeout, agentIdleTimeout)
+					timeout := agentRouteTimeout(
+						perOperationResilience[operation], agentTimeout, agentIdleTimeout, isStreamingOperation(operation))
 					for _, binding := range bindings {
 						path := config.JoinAgentPath(transport.basePath, binding.PathTemplate)
+						// The transport prefix plus the protocol's own path.
+						// Both reach the upstream; only spec.context does not.
+						operationPath := config.JoinAgentPath(transport.relativePath, binding.PathTemplate)
 						if _, err := addRoute(&models.Route{
-							Method: binding.Method,
-							Path:   path,
-							// The transport prefix plus the protocol's own path.
-							// Both reach the upstream; only spec.context does not.
-							OperationPath:  config.JoinAgentPath(transport.relativePath, binding.PathTemplate),
+							Method:         binding.Method,
+							Path:           path,
+							OperationPath:  operationPath,
 							PathMatchType:  "Exact",
 							Timeout:        timeout,
 							ResolverName:   agentproto.ResolverName,
@@ -387,9 +421,8 @@ func (t *AgentTransformer) Transform(cfg *models.StoredConfig) (*models.RuntimeD
 						}); err != nil {
 							return nil, err
 						}
-						if operationCORS {
-							addPreflight(path)
-						}
+						addPreflight(path, operationPath,
+							commonOperationPolicies, perOperationCORS[operation])
 					}
 				}
 			}
@@ -406,33 +439,29 @@ func (t *AgentTransformer) Transform(cfg *models.StoredConfig) (*models.RuntimeD
 			Path:          cardPath,
 			OperationPath: cardRelativePath,
 			PathMatchType: "Exact",
-			Timeout:       agentRouteTimeout(spec.Resilience, agentTimeout, agentIdleTimeout),
+			Timeout:       agentRouteTimeout(nil, agentTimeout, agentIdleTimeout, false),
 		})
 		if err != nil {
 			return nil, err
 		}
 		rdc.PolicyChains[cardRouteKey] = sdkChainToModel(
 			utils.InjectSystemPolicies(cardPolicies, t.systemConfig, nil))
-		if cardCORS {
-			addPreflight(cardPath)
-		}
+		// The card is not an operation, so only its own scope can answer its
+		// preflight.
+		addPreflight(cardPath, cardRelativePath, cardPolicies, nil)
 
-		for _, path := range preflightPaths {
+		for _, preflight := range preflights {
 			preflightKey, err := addRoute(&models.Route{
 				Method:        agentPreflightMethod,
-				Path:          path,
-				OperationPath: strings.TrimPrefix(path, agentContext),
+				Path:          preflight.path,
+				OperationPath: preflight.operationPath,
 				PathMatchType: "Exact",
 			})
 			if err != nil {
 				return nil, err
 			}
-			scopePolicies := commonOperationPolicies
-			if path == cardPath {
-				scopePolicies = cardPolicies
-			}
 			rdc.PolicyChains[preflightKey] = sdkChainToModel(
-				utils.InjectSystemPolicies(scopePolicies, t.systemConfig, nil))
+				utils.InjectSystemPolicies(preflight.policies, t.systemConfig, nil))
 		}
 	}
 
@@ -563,59 +592,47 @@ func agentResolverConfig(
 	return encoded, nil
 }
 
-// httpJSONRouteTimeout resolves one HTTP+JSON route's timeouts.
+// agentRouteTimeout resolves one route's timeouts.
 //
-// A streaming operation gets the same treatment as the JSON-RPC endpoint: the
-// route timeout defaults to disabled, because a finite one would cut a healthy
-// stream at an arbitrary point. Everything else falls back to the gateway's
-// global default like any other route.
-func (t *AgentTransformer) httpJSONRouteTimeout(
-	operation agentproto.Operation,
-	operationResilience, agentResilience *api.Resilience,
+// Precedence is resolved **per field** — operation over agent, timeout and idle
+// timeout independently — before the streaming default is considered. Choosing
+// one resilience block wholesale instead would let an operation that sets only
+// idleTimeout discard the Agent's explicit timeout, and on a streaming route it
+// would then be replaced by the disabled default: the Agent asks for 45s, the
+// operation says nothing about timeouts, and the route ends up with none.
+//
+// streaming makes the *default* a disabled route timeout, because a finite one
+// would cut a healthy stream at an arbitrary point. It is only a default: an
+// explicit timeout at either level still wins, and the idle timeout is left
+// alone, since that is the liveness guard a disabled route timeout relies on.
+//
+// operationResilience is nil for the routes that are not one operation — the
+// JSON-RPC endpoint, which serves all of them, and the public Agent Card.
+func agentRouteTimeout(
+	operationResilience *api.Resilience,
 	agentTimeout, agentIdleTimeout *time.Duration,
+	streaming bool,
 ) *models.RouteTimeout {
-	effective := operationResilience
-	if effective == nil {
-		effective = agentResilience
-	}
-	if isStreamingOperation(operation) {
-		effective = disabledTimeoutResilience(effective)
-	}
-	opTimeout, opIdleTimeout, err := xds.ResolveResilience(effective)
+	opTimeout, opIdleTimeout, err := xds.ResolveResilience(operationResilience)
 	if err != nil {
 		// Unreachable in practice: validation rejects a malformed duration
-		// before an Agent is stored. Falling back to the agent-level values
-		// keeps a transform that somehow got here from producing a route with
-		// no timeout policy at all.
-		return buildRouteTimeout(nil, agentTimeout, nil, agentIdleTimeout)
+		// before an Agent is stored. Dropping to the agent-level values keeps a
+		// transform that somehow got here from silently widening the route.
+		opTimeout, opIdleTimeout = nil, nil
 	}
-	return buildRouteTimeout(opTimeout, agentTimeout, opIdleTimeout, agentIdleTimeout)
-}
 
-// agentRouteTimeout resolves a non-operation route's timeouts from the
-// agent-level resilience block alone.
-func agentRouteTimeout(resilience *api.Resilience, agentTimeout, agentIdleTimeout *time.Duration) *models.RouteTimeout {
-	timeout, idleTimeout, err := xds.ResolveResilience(resilience)
-	if err != nil {
-		return buildRouteTimeout(nil, agentTimeout, nil, agentIdleTimeout)
+	timeout := buildRouteTimeout(opTimeout, agentTimeout, opIdleTimeout, agentIdleTimeout)
+	if !streaming {
+		return timeout
 	}
-	return buildRouteTimeout(timeout, agentTimeout, idleTimeout, agentIdleTimeout)
-}
-
-// disabledTimeoutResilience returns base with the route timeout defaulted to
-// disabled. An explicitly configured timeout always wins; the idle timeout is
-// carried through untouched, since that is the liveness guard a disabled route
-// timeout leaves in place.
-func disabledTimeoutResilience(base *api.Resilience) *api.Resilience {
-	disabled := disabledRouteTimeout
-	resilience := &api.Resilience{Timeout: &disabled}
-	if base != nil {
-		if base.Timeout != nil {
-			resilience.Timeout = base.Timeout
-		}
-		resilience.IdleTimeout = base.IdleTimeout
+	if timeout == nil {
+		timeout = &models.RouteTimeout{}
 	}
-	return resilience
+	if timeout.Timeout == nil {
+		disabled := time.Duration(0)
+		timeout.Timeout = &disabled
+	}
+	return timeout
 }
 
 // isStreamingOperation reports whether an operation's response is a long-lived
@@ -666,28 +683,24 @@ func lenPolicies(policies *[]api.Policy) int {
 	return len(*policies)
 }
 
-// hasCORSPolicy reports whether a scope attaches the cors policy, which is what
-// makes that scope's paths need a preflight route.
-func hasCORSPolicy(policies *[]api.Policy) bool {
-	if policies == nil {
-		return false
-	}
-	for _, policy := range *policies {
-		if strings.EqualFold(policy.Name, corsPolicyName) {
-			return true
+// corsInstances returns the cors policies of a resolved chain.
+//
+// It filters *resolved* instances rather than the configured api.Policy list on
+// purpose: a policy whose version cannot be resolved is dropped from the chain
+// (with a log line), and a preflight must be judged on the chain that will
+// actually run, not on what was asked for. A cors attachment naming an unknown
+// policy therefore produces no preflight route, rather than one nothing answers.
+func corsInstances(chain []policyenginev1.PolicyInstance) []policyenginev1.PolicyInstance {
+	var cors []policyenginev1.PolicyInstance
+	for _, instance := range chain {
+		if strings.EqualFold(instance.Name, corsPolicyName) {
+			cors = append(cors, instance)
 		}
 	}
-	return false
+	return cors
 }
 
-func hasPerOperationCORSPolicy(operations *[]api.A2AOperationConfig) bool {
-	if operations == nil {
-		return false
-	}
-	for i := range *operations {
-		if hasCORSPolicy((*operations)[i].Policies) {
-			return true
-		}
-	}
-	return false
+// containsCORS reports whether a chain can answer a CORS preflight.
+func containsCORS(chain []policyenginev1.PolicyInstance) bool {
+	return len(corsInstances(chain)) > 0
 }

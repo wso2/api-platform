@@ -20,6 +20,7 @@ package transform
 
 import (
 	"encoding/json"
+	"slices"
 	"sort"
 	"strings"
 	"testing"
@@ -620,6 +621,151 @@ func TestAgentPreflightRoutesOnlyWithCORS(t *testing.T) {
 		"the card scope attached no cors policy")
 }
 
+// The invariant that makes preflight generation meaningful: a preflight route
+// exists only where its own chain can answer it.
+//
+// Route existence alone proves nothing. A route that matches OPTIONS but whose
+// chain has no cors policy is worse than no route: Envoy stops 404ing the
+// preflight and proxies it to the upstream instead, so the browser's failure
+// becomes whatever the backend does with an OPTIONS it never expected.
+func TestAgentEveryPreflightChainCanAnswerIt(t *testing.T) {
+	transformer := agentTransformerWithPolicies("cors", "auth")
+
+	for _, tc := range []struct {
+		name    string
+		options []agentOption
+	}{
+		{"no cors anywhere", nil},
+		{"cors on the common scope", []agentOption{withOperationPolicies(api.Policy{Name: "cors"})}},
+		{"cors on one operation", []agentOption{withOperationConfig(agentproto.GetTask, api.Policy{Name: "cors"})}},
+		{"cors on the card only", []agentOption{withCardPolicies(api.Policy{Name: "cors"})}},
+		{
+			name: "cors on an operation, another policy on the common scope",
+			options: []agentOption{
+				withOperationPolicies(api.Policy{Name: "auth"}),
+				withOperationConfig(agentproto.SendMessage, api.Policy{Name: "cors"}),
+			},
+		},
+		{
+			// A cors attachment naming a policy the gateway does not have is
+			// dropped from the chain, so it must not conjure a preflight either.
+			name:    "cors attached but not a loaded policy",
+			options: []agentOption{withOperationPolicies(api.Policy{Name: "cors", Version: "v9"})},
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			rdc, err := transformer.Transform(testAgent(tc.options...))
+			require.NoError(t, err)
+
+			for key, route := range rdc.Routes {
+				if route.Method != "OPTIONS" {
+					continue
+				}
+				chain := rdc.PolicyChains[key]
+				require.NotNil(t, chain, "preflight %q has no chain", key)
+				assert.Contains(t, policyNames(chain), "cors",
+					"preflight %q cannot answer the request it matches", key)
+			}
+		})
+	}
+}
+
+// A cors policy attached to a single operation must produce a preflight for the
+// paths that operation is reachable at — and only those. Attaching it to one
+// operation previously enabled a preflight on every path while contributing its
+// policy to none of them.
+func TestAgentOperationScopedCORSPreflights(t *testing.T) {
+	transformer := agentTransformerWithPolicies("cors", "auth")
+	rdc, err := transformer.Transform(testAgent(
+		withOperationPolicies(api.Policy{Name: "auth"}),
+		withOperationConfig(agentproto.GetTask, api.Policy{Name: "cors"}),
+	))
+	require.NoError(t, err)
+
+	preflights := map[string][]string{}
+	for key, route := range rdc.Routes {
+		if route.Method == "OPTIONS" {
+			preflights[key] = policyNames(rdc.PolicyChains[key])
+		}
+	}
+
+	// GetTask's own path, plus the JSON-RPC endpoint — every operation is
+	// reachable there, so an operation-level cors covers it too.
+	assert.Equal(t, map[string][]string{
+		"OPTIONS|/weather/tasks/{id}|main.local": {"auth", "cors"},
+		"OPTIONS|/weather/rpc|main.local":        {"auth", "cors"},
+	}, preflights)
+
+	// The operation's other policies stay out: a preflight carries no
+	// credentials, so running the operation's authentication against it would
+	// reject the very request the cors policy is there to answer. Only cors is
+	// borrowed — auth here comes from the common scope, which every preflight
+	// gets.
+	getTaskChain := rdc.PolicyChains[chainkey.For(testAgentUUID, "main.local", string(agentproto.GetTask))]
+	assert.Equal(t, []string{"auth", "cors"}, policyNames(getTaskChain),
+		"the operation's real chain is unaffected")
+}
+
+// Two operations sharing one path each contribute their cors policy to the
+// single preflight that covers both, in operation order — the same plain
+// concatenation the operation chains use, with no dedup and no override.
+func TestAgentSharedPathPreflightMergesContributingOperations(t *testing.T) {
+	transformer := agentTransformerWithPolicies("cors")
+	rdc, err := transformer.Transform(testAgent(
+		withTransports(api.A2ATransport{ProtocolBinding: api.HTTPJSON, PathPrefix: ptrStr("/")}),
+		withOperationConfig(agentproto.CreateTaskPushNotificationConfig, api.Policy{Name: "cors"}),
+		withOperationConfig(agentproto.ListTaskPushNotificationConfigs, api.Policy{Name: "cors"}),
+	))
+	require.NoError(t, err)
+
+	key := "OPTIONS|/weather/tasks/{id}/pushNotificationConfigs|main.local"
+	require.Contains(t, rdc.Routes, key, "have %v", routeKeysOf(rdc))
+	assert.Equal(t, []string{"cors", "cors"}, policyNames(rdc.PolicyChains[key]),
+		"POST and GET on this path both attached cors; both instances run")
+}
+
+// A preflight must strip exactly what the route it guards strips. Re-deriving
+// its operation path from the gateway path instead of carrying it from that
+// route gets it wrong at both ends of the range: a context of "/" leaves a
+// relative "rpc", and a transport mounted at the context itself leaves "".
+// Either one rewrites the upstream path differently from the real route.
+func TestAgentPreflightSharesItsRouteOperationPath(t *testing.T) {
+	transformer := agentTransformerWithPolicies("cors")
+
+	tests := []struct {
+		name     string
+		context  *string
+		prefix   string
+		routeKey string
+	}{
+		{"root context", ptrStr("/"), "/rpc", "/rpc"},
+		{"no context", nil, "/rpc", "/rpc"},
+		{"nested context", ptrStr("/weather"), "/rpc", "/weather/rpc"},
+		{"transport at the context itself", ptrStr("/weather"), "/", "/weather"},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			rdc, err := transformer.Transform(testAgent(
+				withContext(tc.context),
+				withTransports(api.A2ATransport{ProtocolBinding: api.JSONRPC, PathPrefix: ptrStr(tc.prefix)}),
+				withOperationPolicies(api.Policy{Name: "cors"}),
+			))
+			require.NoError(t, err)
+
+			endpoint := rdc.Routes["POST|"+tc.routeKey+"|main.local"]
+			require.NotNil(t, endpoint, "have %v", routeKeysOf(rdc))
+			preflight := rdc.Routes["OPTIONS|"+tc.routeKey+"|main.local"]
+			require.NotNil(t, preflight, "have %v", routeKeysOf(rdc))
+
+			assert.Equal(t, endpoint.OperationPath, preflight.OperationPath,
+				"the preflight must rewrite the upstream path exactly as its route does")
+			assert.True(t, strings.HasPrefix(preflight.OperationPath, "/"),
+				"an operation path is absolute; got %q", preflight.OperationPath)
+		})
+	}
+}
+
 // The card's cors policy is attached in its own scope, so it produces its own
 // preflight and takes its own chain.
 func TestAgentCardPreflightUsesTheCardScope(t *testing.T) {
@@ -676,6 +822,81 @@ func TestAgentExplicitTimeoutOverridesTheStreamingDefault(t *testing.T) {
 		assert.Equal(t, "45s", route.Timeout.Timeout.String(), "route %q", key)
 		assert.Equal(t, "1m30s", route.Timeout.IdleTimeout.String(), "route %q", key)
 	}
+}
+
+// Timeout and idleTimeout resolve independently. An operation that configures
+// only one of them must not discard the Agent's setting for the other — and on a
+// streaming route, where an unset route timeout defaults to disabled, that
+// discarded value would be replaced by "no timeout at all" rather than merely
+// falling back.
+func TestAgentTimeoutPrecedenceIsPerField(t *testing.T) {
+	tests := []struct {
+		name      string
+		operation agentproto.Operation
+		routeKey  string
+		wantRoute string
+		wantIdle  string
+	}{
+		{
+			name:      "streaming operation setting only idleTimeout keeps the agent timeout",
+			operation: agentproto.SendStreamingMessage,
+			routeKey:  "POST|/weather/message:stream|main.local",
+			wantRoute: "45s",
+			wantIdle:  "1m30s",
+		},
+		{
+			name:      "unary operation setting only idleTimeout keeps the agent timeout",
+			operation: agentproto.GetTask,
+			routeKey:  "GET|/weather/tasks/{id}|main.local",
+			wantRoute: "45s",
+			wantIdle:  "1m30s",
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			rdc, err := agentTransformer().Transform(testAgent(
+				func(cfg *api.AgentConfiguration) {
+					cfg.Spec.Resilience = &api.Resilience{Timeout: ptrStr("45s")}
+					operations := []api.A2AOperationConfig{{
+						Name:       api.A2AOperationName(tc.operation),
+						Resilience: &api.Resilience{IdleTimeout: ptrStr("90s")},
+					}}
+					cfg.Spec.A2a.OperationConfigs.Operations = &operations
+				},
+			))
+			require.NoError(t, err)
+
+			route := rdc.Routes[tc.routeKey]
+			require.NotNil(t, route)
+			require.NotNil(t, route.Timeout)
+			require.NotNil(t, route.Timeout.Timeout)
+			assert.Equal(t, tc.wantRoute, route.Timeout.Timeout.String())
+			require.NotNil(t, route.Timeout.IdleTimeout)
+			assert.Equal(t, tc.wantIdle, route.Timeout.IdleTimeout.String())
+		})
+	}
+}
+
+// The streaming default applies only when no timeout is configured at either
+// level — it is a default, not an override.
+func TestAgentStreamingDefaultAppliesOnlyWhenNoTimeoutIsConfigured(t *testing.T) {
+	rdc, err := agentTransformer().Transform(testAgent(func(cfg *api.AgentConfiguration) {
+		operations := []api.A2AOperationConfig{{
+			Name:       api.A2AOperationName(agentproto.SendStreamingMessage),
+			Resilience: &api.Resilience{IdleTimeout: ptrStr("90s")},
+		}}
+		cfg.Spec.A2a.OperationConfigs.Operations = &operations
+	}))
+	require.NoError(t, err)
+
+	route := rdc.Routes["POST|/weather/message:stream|main.local"]
+	require.NotNil(t, route.Timeout)
+	require.NotNil(t, route.Timeout.Timeout)
+	assert.Zero(t, *route.Timeout.Timeout,
+		"nothing set a route timeout, so a streaming route disables it")
+	assert.Equal(t, "1m30s", route.Timeout.IdleTimeout.String(),
+		"the idle timeout is the liveness guard a disabled route timeout relies on")
 }
 
 func TestAgentOperationResilienceOverridesAgentLevel(t *testing.T) {
@@ -764,9 +985,61 @@ func TestAgentResolutionValidationRejectsAMissingOperationChain(t *testing.T) {
 
 // ─── Kind dispatch ──────────────────────────────────────────────────────────
 
-// The two hand-maintained kind switches must agree. If the registry knows Agent
-// but main.go's translator map does not, policy chains and Envoy routes are built
-// by different code paths and the route names stop matching the chain keys.
+// R3: the registry's dispatch and the Envoy translator's kind map must agree.
+//
+// main.go no longer hand-writes that map — it ranges over EnvoyTranslatorKinds()
+// — so this asserts the derivation is right rather than that someone remembered
+// to update a literal. A test that built its own map (as the routing tests must,
+// to construct a translator) would keep passing if production dropped Agent, so
+// it cannot stand in for this one.
+func TestEnvoyTranslatorKindsCoverAgent(t *testing.T) {
+	kinds := EnvoyTranslatorKinds()
+
+	assert.Contains(t, kinds, models.KindAgent,
+		"Agent must reach the Envoy translator through the RDC path, or its routes are named "+
+			"by the legacy path while its policy chains are keyed from the RDC")
+
+	// Every kind wired into the translator must be one the registry can actually
+	// transform, or the translator falls back to the legacy path at runtime with
+	// only a log line.
+	for _, kind := range kinds {
+		assert.Contains(t, Kinds(), kind, "kind %q is wired into the translator but the registry cannot transform it", kind)
+	}
+
+	// And the only kind held back is the one held back on purpose. This is what
+	// makes a newly added kind fail here instead of being quietly omitted.
+	var excluded []string
+	for _, kind := range Kinds() {
+		if !slices.Contains(kinds, kind) {
+			excluded = append(excluded, kind)
+		}
+	}
+	assert.Equal(t, []string{models.KindWebSubApi}, excluded,
+		"WebSubApi keeps the legacy async translation path; nothing else may be excluded silently")
+}
+
+// registryKinds is a list beside a switch, so it can drift from the switch it
+// describes. Every kind it names must dispatch, and a kind it does not name must
+// not — otherwise EnvoyTranslatorKinds() above is derived from a fiction.
+func TestRegistryKindsMatchDispatch(t *testing.T) {
+	registry := NewRegistry(
+		NewRestAPITransformer(testRouterCfg(), &config.Config{}, map[string]models.PolicyDefinition{}),
+		nil,
+		agentTransformer(),
+	)
+
+	for _, kind := range Kinds() {
+		// An empty Configuration fails the transformer's own type assertion, which
+		// is a different error from "no transformer for this kind" — that
+		// distinction is exactly what is being checked.
+		_, err := registry.Transform(&models.StoredConfig{UUID: "u", Kind: kind})
+		assert.NotErrorIs(t, err, ErrUnsupportedKind, "Kinds() names %q but Transform does not dispatch it", kind)
+	}
+
+	_, err := registry.Transform(&models.StoredConfig{UUID: "u", Kind: "NotAKind"})
+	assert.ErrorIs(t, err, ErrUnsupportedKind)
+}
+
 func TestAgentRegistryDispatch(t *testing.T) {
 	registry := NewRegistry(
 		NewRestAPITransformer(testRouterCfg(), &config.Config{}, map[string]models.PolicyDefinition{}),
