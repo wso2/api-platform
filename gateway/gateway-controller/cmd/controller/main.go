@@ -391,7 +391,8 @@ func main() {
 	// and every API returns 503 cluster_not_found until it is redeployed
 	restTransformer := transform.NewRestAPITransformer(&cfg.Router, cfg, policyDefinitions)
 	llmTransformer := transform.NewLLMTransformer(configStore, db, &cfg.Router, cfg, policyDefinitions, policyVersionResolver)
-	transformerRegistry := transform.NewRegistry(restTransformer, llmTransformer)
+	agentTransformer := transform.NewAgentTransformer(&cfg.Router, cfg, policyDefinitions)
+	transformerRegistry := transform.NewRegistry(restTransformer, llmTransformer, agentTransformer)
 
 	// Wire the transformer into the Envoy xDS translator so Envoy routes are built from the
 	// RuntimeDeployConfig (RDC) path — identical to how the policy engine's RouteConfig/PolicyChain
@@ -402,10 +403,11 @@ func main() {
 	// header-matched route fail with 500 ("policy chain not found"). WebSubApi is intentionally
 	// excluded so it keeps using the async-specific legacy translation path.
 	translator.SetTransformers(map[string]models.ConfigTransformer{
-		"RestApi":     transformerRegistry,
-		"Mcp":         transformerRegistry,
-		"LlmProvider": transformerRegistry,
-		"LlmProxy":    transformerRegistry,
+		models.KindRestApi:     transformerRegistry,
+		models.KindMcp:         transformerRegistry,
+		models.KindLlmProvider: transformerRegistry,
+		models.KindLlmProxy:    transformerRegistry,
+		models.KindAgent:       transformerRegistry,
 	})
 
 	// Generate initial xDS snapshot
