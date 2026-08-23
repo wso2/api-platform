@@ -63,12 +63,85 @@ func validAgent() api.AgentConfiguration {
 	}
 }
 
-// cardContent is a minimal managed-card document. Section 4 only checks that
-// content is present, so its fields are placeholders rather than a modelled
-// Agent Card.
+// cardContent is a minimal managed-card document carrying the interfaces
+// validAgent's own transports resolve to.
+//
+// Only the fields validation reads are modelled; the rest of the Agent Card is
+// not checked here, so filling it in would be noise. The card *is* checked for
+// agreement with the configured transports, which is why the interface list
+// cannot be a placeholder — see syncCardInterfaces for tests that move the
+// transports out from under it.
 func cardContent() *api.A2AAgentCardDocument {
-	doc := api.A2AAgentCardDocument{"name": "Weather Agent", "version": "1.0.0"}
+	doc := api.A2AAgentCardDocument{
+		"name":    "Weather Agent",
+		"version": "1.0.0",
+		"supportedInterfaces": []interface{}{
+			map[string]interface{}{
+				"protocolBinding": string(api.JSONRPC),
+				"protocolVersion": "1.0",
+				"url":             "https://agents.example.com/weather/rpc",
+			},
+		},
+	}
 	return &doc
+}
+
+// cardHost is the host every fixture card advertises. Its value is arbitrary:
+// the gateway has no configured public base URL to compare a card's host
+// against, so host agreement is not checked. Only the path is.
+const cardHost = "https://agents.example.com"
+
+// syncCardInterfaces rewrites the managed card's supportedInterfaces to match
+// whatever transports cfg now declares.
+//
+// Most of this file's tests change transports, contexts, and card paths to
+// exercise route arithmetic, and none of them are about the card. Without this
+// every one of them would additionally have to restate the card, and the
+// resulting failure would be the card-consistency error rather than the routing
+// error the test is actually about. Tests that *are* about the card build their
+// interfaces explicitly instead — see agent_card_validator_test.go.
+//
+// Bindings are deduplicated so a deliberately duplicated transport does not
+// also produce a duplicate-interface error, which is a different rejection with
+// its own test.
+func syncCardInterfaces(cfg *api.AgentConfiguration) {
+	public := &cfg.Spec.A2a.AgentCard.Public
+	// An absent or deliberately emptied card is left alone: those are the
+	// mode-rule cases, and filling one in here would repair the very thing the
+	// test set out to break.
+	if public.Mode != api.A2APublicAgentCardModeManaged || public.Content == nil || len(*public.Content) == 0 {
+		return
+	}
+
+	context := agentContextPath(cfg.Spec.Context)
+	interfaces := make([]interface{}, 0, len(cfg.Spec.A2a.OperationConfigs.Transports))
+	seen := make(map[api.A2AProtocolBinding]bool)
+	for _, transport := range cfg.Spec.A2a.OperationConfigs.Transports {
+		if seen[transport.ProtocolBinding] {
+			continue
+		}
+		seen[transport.ProtocolBinding] = true
+
+		prefix := "/"
+		if transport.PathPrefix != nil {
+			prefix = *transport.PathPrefix
+		}
+		interfaces = append(interfaces, map[string]interface{}{
+			"protocolBinding": string(transport.ProtocolBinding),
+			"protocolVersion": string(cfg.Spec.A2a.ProtocolVersion),
+			"url":             cardHost + joinAgentPath(context, prefix),
+		})
+	}
+
+	(*public.Content)["supportedInterfaces"] = interfaces
+}
+
+// validateAgent validates cfg with the card's interfaces first re-derived from
+// its transports, so a test that is not about the card does not have to keep
+// one in step. See syncCardInterfaces.
+func validateAgent(cfg *api.AgentConfiguration) []ValidationError {
+	syncCardInterfaces(cfg)
+	return NewAgentValidator().Validate(cfg)
 }
 
 // transports builds a transports list from binding/prefix pairs. A nil prefix
@@ -100,7 +173,7 @@ func fieldsOf(errs []ValidationError) []string {
 func TestAgentValidator_AcceptsValidConfiguration(t *testing.T) {
 	cfg := validAgent()
 
-	assert.Empty(t, NewAgentValidator().Validate(&cfg))
+	assert.Empty(t, validateAgent(&cfg))
 	// Value and pointer forms must agree; handlers and services pass both.
 	assert.Empty(t, NewAgentValidator().Validate(cfg))
 }
@@ -214,7 +287,7 @@ func TestAgentValidator_FieldErrors(t *testing.T) {
 			cfg := validAgent()
 			tt.spoil(&cfg)
 
-			errs := NewAgentValidator().Validate(&cfg)
+			errs := validateAgent(&cfg)
 			require.NotEmpty(t, errs, "expected a validation error for %s", tt.field)
 			assert.Contains(t, fieldsOf(errs), tt.field)
 		})
@@ -232,7 +305,7 @@ func TestAgentValidator_OptionalContext(t *testing.T) {
 		cfg := validAgent()
 		cfg.Spec.Context = nil
 
-		assert.Empty(t, NewAgentValidator().Validate(&cfg))
+		assert.Empty(t, validateAgent(&cfg))
 	})
 
 	t.Run("omitted with a vhost", func(t *testing.T) {
@@ -240,7 +313,7 @@ func TestAgentValidator_OptionalContext(t *testing.T) {
 		cfg.Spec.Context = nil
 		cfg.Spec.Vhost = stringPtr("weather.example.com")
 
-		assert.Empty(t, NewAgentValidator().Validate(&cfg))
+		assert.Empty(t, validateAgent(&cfg))
 	})
 
 	t.Run("route arithmetic still applies at the root", func(t *testing.T) {
@@ -251,7 +324,7 @@ func TestAgentValidator_OptionalContext(t *testing.T) {
 		cfg.Spec.A2a.OperationConfigs.Transports = transports(api.HTTPJSON, "/")
 		cfg.Spec.A2a.AgentCard.Public.Path = stringPtr("/tasks")
 
-		errs := NewAgentValidator().Validate(&cfg)
+		errs := validateAgent(&cfg)
 		require.NotEmpty(t, errs)
 		assert.Contains(t, fieldsOf(errs), "spec.a2a.agentCard.public.path")
 		assert.Contains(t, errs[0].Message, "/tasks")
@@ -262,7 +335,7 @@ func TestAgentValidator_OptionalContext(t *testing.T) {
 		cfg.Spec.Context = nil
 		cfg.Spec.A2a.OperationConfigs.Transports = transports(api.JSONRPC, "/_gateway-health")
 
-		errs := NewAgentValidator().Validate(&cfg)
+		errs := validateAgent(&cfg)
 		require.NotEmpty(t, errs)
 		assert.Contains(t, fieldsOf(errs), "spec.a2a.operationConfigs.transports[0].pathPrefix")
 	})
@@ -289,7 +362,7 @@ func TestAgentValidator_ProtocolVersion(t *testing.T) {
 			cfg := validAgent()
 			cfg.Spec.A2a.ProtocolVersion = tt.version
 
-			errs := NewAgentValidator().Validate(&cfg)
+			errs := validateAgent(&cfg)
 			if tt.accepted {
 				assert.Empty(t, errs)
 				return
@@ -307,7 +380,7 @@ func TestAgentValidator_ProtocolVersionErrorNamesTheRegistry(t *testing.T) {
 	cfg := validAgent()
 	cfg.Spec.A2a.ProtocolVersion = "9.9"
 
-	errs := NewAgentValidator().Validate(&cfg)
+	errs := validateAgent(&cfg)
 	require.Len(t, errs, 1)
 	for _, version := range agentproto.Versions() {
 		assert.Contains(t, errs[0].Message, string(version))
@@ -378,7 +451,7 @@ func TestAgentValidator_Transports(t *testing.T) {
 			cfg := validAgent()
 			cfg.Spec.A2a.OperationConfigs.Transports = tt.transports
 
-			errs := NewAgentValidator().Validate(&cfg)
+			errs := validateAgent(&cfg)
 			if tt.field == "" {
 				assert.Empty(t, errs)
 				return
@@ -400,7 +473,7 @@ func TestAgentValidator_TransportsMaySharaABasePath(t *testing.T) {
 			cfg := validAgent()
 			cfg.Spec.A2a.OperationConfigs.Transports = transports(api.JSONRPC, prefix, api.HTTPJSON, prefix)
 
-			require.Empty(t, NewAgentValidator().Validate(&cfg))
+			require.Empty(t, validateAgent(&cfg))
 
 			base := joinAgentPath("/weather", prefix)
 			routes := buildAgentRoutes(agentproto.V1_0,
@@ -435,7 +508,7 @@ func TestAgentValidator_TransportPrefixReachingTheReservedNamespace(t *testing.T
 		cfg.Spec.Context = stringPtr("/")
 		cfg.Spec.A2a.OperationConfigs.Transports = transports(api.JSONRPC, "/_gateway-health")
 
-		errs := NewAgentValidator().Validate(&cfg)
+		errs := validateAgent(&cfg)
 		require.NotEmpty(t, errs)
 		assert.Contains(t, fieldsOf(errs), "spec.a2a.operationConfigs.transports[0].pathPrefix")
 	})
@@ -444,7 +517,7 @@ func TestAgentValidator_TransportPrefixReachingTheReservedNamespace(t *testing.T
 		cfg := validAgent()
 		cfg.Spec.A2a.OperationConfigs.Transports = transports(api.JSONRPC, "/_gateway-health")
 
-		assert.Empty(t, NewAgentValidator().Validate(&cfg))
+		assert.Empty(t, validateAgent(&cfg))
 	})
 
 	t.Run("card path at the root context", func(t *testing.T) {
@@ -452,7 +525,7 @@ func TestAgentValidator_TransportPrefixReachingTheReservedNamespace(t *testing.T
 		cfg.Spec.Context = stringPtr("/")
 		cfg.Spec.A2a.AgentCard.Public.Path = stringPtr("/_gateway-health/ready")
 
-		errs := NewAgentValidator().Validate(&cfg)
+		errs := validateAgent(&cfg)
 		require.NotEmpty(t, errs)
 		assert.Contains(t, fieldsOf(errs), "spec.a2a.agentCard.public.path")
 	})
@@ -497,7 +570,7 @@ func TestAgentValidator_PathValues(t *testing.T) {
 				cfg := validAgent()
 				apply(&cfg, tc.value)
 
-				errs := NewAgentValidator().Validate(&cfg)
+				errs := validateAgent(&cfg)
 				if tc.accepted {
 					assert.Empty(t, errs)
 					return
@@ -586,7 +659,7 @@ func TestAgentValidator_RouteCollisions(t *testing.T) {
 			cfg.Spec.A2a.OperationConfigs.Transports = tt.transports
 			cfg.Spec.A2a.AgentCard.Public.Path = tt.cardPath
 
-			errs := NewAgentValidator().Validate(&cfg)
+			errs := validateAgent(&cfg)
 			if tt.field == "" {
 				assert.Empty(t, errs)
 				return
@@ -611,7 +684,7 @@ func TestAgentValidator_CardPathMatchingATemplateOfAnotherMethodIsRejected(t *te
 	cfg.Spec.A2a.OperationConfigs.Transports = transports(api.HTTPJSON, "/")
 	cfg.Spec.A2a.AgentCard.Public.Path = stringPtr("/tasks/card.json:cancel")
 
-	errs := NewAgentValidator().Validate(&cfg)
+	errs := validateAgent(&cfg)
 	require.Len(t, errs, 1)
 	assert.Contains(t, errs[0].Message, "GetTask")
 }
@@ -627,7 +700,7 @@ func TestAgentValidator_NoCollisionsWithinTheProtocolBindings(t *testing.T) {
 			cfg.Spec.A2a.ProtocolVersion = api.A2AConfigProtocolVersion(version)
 			cfg.Spec.A2a.OperationConfigs.Transports = transports(api.JSONRPC, "/rpc", api.HTTPJSON, "/")
 
-			assert.Empty(t, NewAgentValidator().Validate(&cfg))
+			assert.Empty(t, validateAgent(&cfg))
 		})
 	}
 }
@@ -715,7 +788,7 @@ func TestAgentValidator_CardModes(t *testing.T) {
 			cfg := validAgent()
 			tt.spoil(&cfg.Spec.A2a.AgentCard.Public)
 
-			errs := NewAgentValidator().Validate(&cfg)
+			errs := validateAgent(&cfg)
 			if tt.field == "" {
 				assert.Empty(t, errs)
 				return
@@ -735,7 +808,7 @@ func TestAgentValidator_RejectsUnsupportedCardFeatures(t *testing.T) {
 		cfg := validAgent()
 		cfg.Spec.A2a.AgentCard.Public.Signing = &api.A2ACardSigning{Enabled: true}
 
-		errs := NewAgentValidator().Validate(&cfg)
+		errs := validateAgent(&cfg)
 		require.NotEmpty(t, errs)
 		assert.Contains(t, fieldsOf(errs), "spec.a2a.agentCard.public.signing.enabled")
 	})
@@ -744,7 +817,7 @@ func TestAgentValidator_RejectsUnsupportedCardFeatures(t *testing.T) {
 		cfg := validAgent()
 		cfg.Spec.A2a.AgentCard.Public.Signing = &api.A2ACardSigning{Enabled: false}
 
-		assert.Empty(t, NewAgentValidator().Validate(&cfg))
+		assert.Empty(t, validateAgent(&cfg))
 	})
 
 	t.Run("protected card block", func(t *testing.T) {
@@ -753,7 +826,7 @@ func TestAgentValidator_RejectsUnsupportedCardFeatures(t *testing.T) {
 			Mode: api.A2AProtectedAgentCardModePassthrough,
 		}
 
-		errs := NewAgentValidator().Validate(&cfg)
+		errs := validateAgent(&cfg)
 		require.NotEmpty(t, errs)
 		assert.Contains(t, fieldsOf(errs), "spec.a2a.agentCard.protected")
 	})
@@ -797,7 +870,7 @@ func TestAgentValidator_SigningIsEnabledOnly(t *testing.T) {
 			cfg := validAgent()
 			cfg.Spec.A2a.AgentCard.Public.Signing = tt.signing
 
-			errs := NewAgentValidator().Validate(&cfg)
+			errs := validateAgent(&cfg)
 			if tt.field == "" {
 				assert.Empty(t, errs)
 				return
@@ -870,7 +943,7 @@ func TestAgentValidator_OperationConfigs(t *testing.T) {
 			cfg := validAgent()
 			cfg.Spec.A2a.OperationConfigs.Operations = tt.operations
 
-			errs := NewAgentValidator().Validate(&cfg)
+			errs := validateAgent(&cfg)
 			if tt.field == "" {
 				assert.Empty(t, errs)
 				return
@@ -890,7 +963,7 @@ func TestAgentValidator_OperationNamesAreNotCheckedAgainstAnUnknownVersion(t *te
 	cfg.Spec.A2a.ProtocolVersion = "9.9"
 	cfg.Spec.A2a.OperationConfigs.Operations = &[]api.A2AOperationConfig{{Name: api.SendMessage}}
 
-	errs := NewAgentValidator().Validate(&cfg)
+	errs := validateAgent(&cfg)
 	require.Len(t, errs, 1)
 	assert.Equal(t, "spec.a2a.protocolVersion", errs[0].Field)
 }
@@ -989,7 +1062,7 @@ func TestAgentValidator_WithoutAPolicyValidatorSkipsPolicyChecks(t *testing.T) {
 	cfg := validAgent()
 	cfg.Spec.A2a.OperationConfigs.Policies = &[]api.Policy{{Name: "NoSuchPolicy", Version: "v1"}}
 
-	assert.Empty(t, NewAgentValidator().Validate(&cfg))
+	assert.Empty(t, validateAgent(&cfg))
 }
 
 func agentPolicyDefinitions() map[string]models.PolicyDefinition {
@@ -1022,7 +1095,7 @@ func TestAgentValidator_ReportsEveryProblemAtOnce(t *testing.T) {
 	cfg.Spec.Version = "bad"
 	cfg.Spec.Upstream.Url = nil
 
-	errs := NewAgentValidator().Validate(&cfg)
+	errs := validateAgent(&cfg)
 	fields := fieldsOf(errs)
 
 	// One request, one round of feedback: a validator that stopped at the first

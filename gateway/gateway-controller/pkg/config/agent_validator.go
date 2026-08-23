@@ -19,7 +19,9 @@
 package config
 
 import (
+	"encoding/json"
 	"fmt"
+	"net/url"
 	"path"
 	"regexp"
 	"strings"
@@ -65,9 +67,16 @@ var pathParamPattern = regexp.MustCompile(`\{[^{}/]*\}`)
 // served card differs from what was asked for is a mismatch only a client
 // reading the card would ever notice.
 //
-// Card *content* is not inspected here beyond presence. Validating the card
-// document against the A2A model for its protocol version, and checking it
-// against the policies protecting it, is separate work.
+// For a managed card it additionally enforces the part of the card↔gateway
+// contract that concerns routing: the interfaces the card advertises must be
+// exactly the transports the gateway exposes, at exactly the paths it serves
+// them on. Nothing here rewrites the card — a disagreement is a deployment
+// error, because the alternative is a gateway that publishes a discovery
+// document pointing somewhere it does not route.
+//
+// Card *content* is otherwise not inspected. Validating the card document
+// against the A2A model for its protocol version, and checking its declared
+// security against the policies enforcing it, is separate work.
 //
 // Validate mutates its argument when a policy validator is attached: policy
 // params that arrived as rendered template strings are coerced to their
@@ -314,6 +323,11 @@ func (v *AgentValidator) validateA2A(context string, contextUsable bool, a2a *ap
 		errors = append(errors, validateAgentRouteCollisions(version, transports, card)...)
 	}
 
+	errors = append(errors, v.validateManagedCardConsistency(
+		a2a.ProtocolVersion, versionUsable,
+		transports, len(transportErrors) == 0,
+		&a2a.AgentCard.Public)...)
+
 	return errors
 }
 
@@ -549,6 +563,461 @@ func validateCardSigning(signing *api.A2ACardSigning) []ValidationError {
 		Field:   "spec.a2a.agentCard.public.signing.enabled",
 		Message: "Agent Card signing is not supported yet; set enabled: false or omit the signing block",
 	}}
+}
+
+// Agent Card field names. The card is carried as a free-form document rather
+// than a typed struct, so every field this validator reads is named here once
+// instead of being spelled as a literal at each use. They are the protobuf JSON
+// names from the vendored A2A definition (message AgentCard / AgentInterface),
+// which is what an A2A client reads and therefore what an author copies.
+const (
+	cardFieldSupportedInterfaces = "supportedInterfaces"
+	cardFieldSignatures          = "signatures"
+	cardInterfaceFieldURL        = "url"
+	cardInterfaceFieldBinding    = "protocolBinding"
+	cardInterfaceFieldVersion    = "protocolVersion"
+	cardInterfaceFieldTenant     = "tenant"
+)
+
+// cardContentField is the configuration path of the managed card document, the
+// prefix every card-content error is reported under.
+const cardContentField = "spec.a2a.agentCard.public.content"
+
+// maxAgentCardBytes is the ceiling on a managed Agent Card's JSON encoding.
+//
+// 1 MiB is the largest single object Kubernetes stores by default — the
+// documented ConfigMap/Secret data limit, which falls out of etcd's default
+// 1.5 MiB max request size. An Agent carrying a bigger card than this could not
+// be applied as a custom resource in the first place, so capping here puts the
+// gateway's rejection at the same boundary the platform already enforces
+// instead of inventing a tighter one of its own. It is not a tuning knob: an
+// operator lowering it would only move the failure earlier, and raising it
+// would let through an artifact the cluster cannot hold.
+//
+// This bounds one card. It does not bound a node's policy-xDS snapshot, which
+// is state-of-the-world — one message carries every policy chain for the node —
+// and which neither pkg/policyxds/server.go nor the engine's xDS client
+// currently limits explicitly, so the gRPC-Go default of 4 MiB on the receiving
+// side applies. Four maximal cards would exceed it. Setting
+// MaxRecvMsgSize/MaxSendMsgSize on both sides is the fix for that, and it is a
+// separate, pre-existing gap; a per-card cap cannot substitute for it.
+const maxAgentCardBytes = 1024 * 1024
+
+// validateManagedCardConsistency checks a managed Agent Card against the
+// gateway configuration that will serve it.
+//
+// Only the parts of the card the gateway can contradict are checked here: the
+// interfaces it advertises, whose bindings and URLs must be the ones the
+// gateway actually routes, and the two fields the gateway itself owns — the
+// signature block and the document's size on the wire. Everything else in the
+// card is the author's to write.
+//
+// A passthrough card is opaque to the gateway — it is fetched from the upstream
+// and proxied unparsed — so none of this can be checked for one. That gap is
+// real and has to stay visible in deployment status rather than being papered
+// over here.
+func (v *AgentValidator) validateManagedCardConsistency(
+	protocolVersion api.A2AConfigProtocolVersion, versionUsable bool,
+	transports []resolvedTransport, transportsUsable bool,
+	public *api.A2APublicAgentCard,
+) []ValidationError {
+	if public.Mode != api.A2APublicAgentCardModeManaged || public.Content == nil {
+		return nil
+	}
+	content := map[string]interface{}(*public.Content)
+	if len(content) == 0 {
+		// The empty-content rejection belongs to the mode check, which has
+		// already reported it.
+		return nil
+	}
+
+	var errors []ValidationError
+	errors = append(errors, validateCardSize(content)...)
+	errors = append(errors, validateCardNotPreSigned(content)...)
+	errors = append(errors, validateCardInterfaces(protocolVersion, versionUsable, transports, transportsUsable, content)...)
+	return errors
+}
+
+// validateCardSize caps the serialized card at maxAgentCardBytes.
+//
+// A card past the ceiling is rejected at deploy time so the failure names the
+// artifact that caused it. Everything downstream of here — the stored row, the
+// custom resource, the policy-xDS snapshot the card rides in — fails on size in
+// a way that reports the container rather than the content, and in the
+// snapshot's case takes every other artifact on the node with it.
+//
+// Size is measured over the JSON encoding because that is the form that travels;
+// the document is still stored and served exactly as supplied.
+func validateCardSize(content map[string]interface{}) []ValidationError {
+	encoded, err := json.Marshal(content)
+	if err != nil {
+		return []ValidationError{{
+			Field:   cardContentField,
+			Message: "Agent Card content cannot be encoded as JSON",
+		}}
+	}
+	if len(encoded) > maxAgentCardBytes {
+		return []ValidationError{{
+			Field: cardContentField,
+			Message: fmt.Sprintf("Agent Card content is %d bytes, which exceeds the maximum of %d bytes",
+				len(encoded), maxAgentCardBytes),
+		}}
+	}
+	return nil
+}
+
+// validateCardNotPreSigned rejects a card that arrives carrying a signatures
+// field.
+//
+// The field is the gateway's to write: it signs the card it serves, over the
+// content the author supplied. A signature already in the document was computed
+// by someone else over a different document — at best it is stale the moment
+// the gateway stores it, and a client that verifies it would reject the card.
+// Rejecting the field's presence, rather than only a non-empty value, keeps the
+// contract in one direction: the author writes card content, the gateway writes
+// signatures.
+func validateCardNotPreSigned(content map[string]interface{}) []ValidationError {
+	if _, present := content[cardFieldSignatures]; !present {
+		return nil
+	}
+	return []ValidationError{{
+		Field: cardContentField + "." + cardFieldSignatures,
+		Message: "Agent Card content must not carry signatures; the gateway computes them for the card it serves. " +
+			"Remove the field",
+	}}
+}
+
+// validateCardInterfaces checks the card's advertised interfaces against the
+// transports the gateway exposes.
+//
+// The card is what a client reads to decide where to send an A2A request, and
+// the gateway routes what its transports say — so a disagreement between the
+// two is not a cosmetic inconsistency, it is a client sending requests to a path
+// that 404s, or using a binding nothing is listening for. The gateway will not
+// rewrite the card to agree with itself: silently correcting an author's
+// discovery document would hide the mistake and, once signing lands, change the
+// bytes under the signature.
+func validateCardInterfaces(
+	protocolVersion api.A2AConfigProtocolVersion, versionUsable bool,
+	transports []resolvedTransport, transportsUsable bool,
+	content map[string]interface{},
+) []ValidationError {
+	interfacesField := cardContentField + "." + cardFieldSupportedInterfaces
+
+	raw, present := content[cardFieldSupportedInterfaces]
+	if !present {
+		return []ValidationError{{
+			Field:   interfacesField,
+			Message: "A managed Agent Card must advertise supportedInterfaces for the configured transports",
+		}}
+	}
+	entries, ok := cardArray(raw)
+	if !ok {
+		return []ValidationError{{
+			Field:   interfacesField,
+			Message: "Agent Card supportedInterfaces must be a list of interfaces",
+		}}
+	}
+	if len(entries) == 0 {
+		return []ValidationError{{
+			Field:   interfacesField,
+			Message: "Agent Card supportedInterfaces must not be empty",
+		}}
+	}
+
+	// The transports are what every per-interface check compares against, so
+	// nothing below can run against a transport list that did not resolve —
+	// the errors would describe consequences of an error already reported.
+	usableTransports := transportsUsable
+	for _, transport := range transports {
+		if !transport.usable {
+			usableTransports = false
+		}
+	}
+
+	var errors []ValidationError
+	// Keyed by binding, which is unique across a transport list that resolved —
+	// a duplicated binding makes its transport unusable, and usableTransports is
+	// then false, so nothing reads this map.
+	basePaths := make(map[api.A2AProtocolBinding]string, len(transports))
+	for _, transport := range transports {
+		basePaths[transport.binding] = transport.basePath
+	}
+
+	advertised := make(map[api.A2AProtocolBinding]int, len(entries))
+	for i, entry := range entries {
+		field := fmt.Sprintf("%s[%d]", interfacesField, i)
+
+		iface, ok := cardObject(entry)
+		if !ok {
+			errors = append(errors, ValidationError{
+				Field:   field,
+				Message: "Agent Card supportedInterfaces entry must be an object",
+			})
+			continue
+		}
+
+		errors = append(errors, validateCardInterfaceVersion(field, protocolVersion, versionUsable, iface)...)
+		errors = append(errors, validateCardInterfaceTenant(field, iface)...)
+
+		binding, bindingOK, bindingErrors := validateCardInterfaceBinding(field, usableTransports, basePaths, iface)
+		errors = append(errors, bindingErrors...)
+		if bindingOK {
+			if first, dup := advertised[binding]; dup {
+				errors = append(errors, ValidationError{
+					Field: field + "." + cardInterfaceFieldBinding,
+					Message: fmt.Sprintf("Duplicate protocolBinding '%s' (already advertised by supportedInterfaces[%d]); "+
+						"the gateway serves one path per binding", binding, first),
+				})
+			} else {
+				advertised[binding] = i
+			}
+		}
+
+		expectedPath, pathKnown := "", false
+		if bindingOK && usableTransports {
+			expectedPath, pathKnown = basePaths[binding]
+		}
+		errors = append(errors, validateCardInterfaceURL(field, expectedPath, pathKnown, iface)...)
+	}
+
+	// The match has to hold in both directions. An unadvertised transport is
+	// the quieter half: the route exists and works, but no client discovers it,
+	// so the transport looks broken rather than undeclared.
+	if usableTransports {
+		for _, transport := range transports {
+			if _, ok := advertised[transport.binding]; ok {
+				continue
+			}
+			errors = append(errors, ValidationError{
+				Field: interfacesField,
+				Message: fmt.Sprintf("No Agent Card interface advertises protocolBinding '%s', which is exposed by "+
+					"spec.a2a.operationConfigs.transports[%d]", transport.binding, transport.index),
+			})
+		}
+	}
+
+	return errors
+}
+
+// validateCardInterfaceBinding resolves one interface's protocolBinding.
+//
+// It returns the binding alongside whether it names a configured transport, so
+// the caller can go on to the duplicate and path checks that only make sense
+// once the interface is known to correspond to something the gateway serves.
+func validateCardInterfaceBinding(
+	field string, usableTransports bool,
+	basePaths map[api.A2AProtocolBinding]string,
+	iface map[string]interface{},
+) (api.A2AProtocolBinding, bool, []ValidationError) {
+	bindingField := field + "." + cardInterfaceFieldBinding
+
+	raw, present := iface[cardInterfaceFieldBinding]
+	if !present {
+		return "", false, []ValidationError{{
+			Field:   bindingField,
+			Message: "Agent Card interface must declare protocolBinding",
+		}}
+	}
+	value, ok := raw.(string)
+	if !ok || value == "" {
+		return "", false, []ValidationError{{
+			Field:   bindingField,
+			Message: "Agent Card interface protocolBinding must be a non-empty string",
+		}}
+	}
+
+	binding := api.A2AProtocolBinding(value)
+	if usableTransports {
+		if _, configured := basePaths[binding]; !configured {
+			return binding, false, []ValidationError{{
+				Field: bindingField,
+				Message: fmt.Sprintf("Agent Card advertises protocolBinding '%s', which is not exposed by "+
+					"spec.a2a.operationConfigs.transports", binding),
+			}}
+		}
+	}
+	return binding, true, nil
+}
+
+// validateCardInterfaceVersion requires each interface to advertise the Agent's
+// own protocol version. An Agent exposes exactly one version and converts
+// nothing, so an interface claiming another one tells clients to speak a
+// protocol the gateway will route but the operation set does not define.
+func validateCardInterfaceVersion(
+	field string, protocolVersion api.A2AConfigProtocolVersion, versionUsable bool,
+	iface map[string]interface{},
+) []ValidationError {
+	versionField := field + "." + cardInterfaceFieldVersion
+
+	raw, present := iface[cardInterfaceFieldVersion]
+	if !present {
+		return []ValidationError{{
+			Field:   versionField,
+			Message: "Agent Card interface must declare protocolVersion",
+		}}
+	}
+	value, ok := raw.(string)
+	if !ok {
+		return []ValidationError{{
+			Field:   versionField,
+			Message: "Agent Card interface protocolVersion must be a string",
+		}}
+	}
+	if !versionUsable {
+		// spec.a2a.protocolVersion is missing or unsupported and has been
+		// reported as such; comparing against it would add an error whose fix
+		// is to correct the card, when the card may well be the correct half.
+		return nil
+	}
+	if value != string(protocolVersion) {
+		return []ValidationError{{
+			Field: versionField,
+			Message: fmt.Sprintf("Agent Card interface advertises A2A protocol version '%s' but the agent exposes '%s'",
+				value, protocolVersion),
+		}}
+	}
+	return nil
+}
+
+// validateCardInterfaceTenant rejects the tenant routing hint.
+//
+// A tenant tells clients to include an opaque routing identifier so a server
+// can demultiplex several agents behind one endpoint. The gateway routes an
+// Agent by its own context and transport paths and never reads that field, so
+// advertising one would have clients decorating every request with a value
+// nothing acts on — and, where an upstream does act on it, would hand routing
+// authority to a document the gateway publishes but does not enforce.
+//
+// An explicitly empty tenant is accepted: it is the protobuf default and means
+// the same thing as omitting the field.
+func validateCardInterfaceTenant(field string, iface map[string]interface{}) []ValidationError {
+	raw, present := iface[cardInterfaceFieldTenant]
+	if !present {
+		return nil
+	}
+	if value, ok := raw.(string); ok && value == "" {
+		return nil
+	}
+	return []ValidationError{{
+		Field: field + "." + cardInterfaceFieldTenant,
+		Message: "Agent Card interface must not declare tenant; the gateway does not serve tenant-scoped A2A routes, " +
+			"so clients would send the value to an endpoint that ignores it",
+	}}
+}
+
+// validateCardInterfaceURL checks the URL clients will actually dial.
+//
+// The path is compared against the transport's effective gateway base path,
+// which is the whole point of the check: a card advertising the wrong path
+// sends every client to a route that does not exist, and no request ever
+// reaches the gateway to fail in a way anyone can see.
+//
+// The host is deliberately *not* compared. There is nothing to compare it
+// against yet — the gateway has no configured public base URL — so a card
+// naming the wrong host passes here. That is a known gap, closed when that
+// configuration exists; it is not a silent acceptance of an arbitrary host, it
+// is a check that cannot be written yet.
+func validateCardInterfaceURL(field, expectedPath string, pathKnown bool, iface map[string]interface{}) []ValidationError {
+	urlField := field + "." + cardInterfaceFieldURL
+
+	raw, present := iface[cardInterfaceFieldURL]
+	if !present {
+		return []ValidationError{{
+			Field:   urlField,
+			Message: "Agent Card interface must declare url",
+		}}
+	}
+	value, ok := raw.(string)
+	if !ok || value == "" {
+		return []ValidationError{{
+			Field:   urlField,
+			Message: "Agent Card interface url must be a non-empty string",
+		}}
+	}
+
+	parsed, err := url.Parse(value)
+	if err != nil || parsed.Opaque != "" || parsed.Scheme == "" || parsed.Host == "" {
+		return []ValidationError{{
+			Field:   urlField,
+			Message: "Agent Card interface url must be an absolute URL with a scheme and host",
+		}}
+	}
+
+	var errors []ValidationError
+	if parsed.Scheme != "https" {
+		errors = append(errors, ValidationError{
+			Field:   urlField,
+			Message: fmt.Sprintf("Agent Card interface url must use https, got '%s'", parsed.Scheme),
+		})
+	}
+	if parsed.User != nil {
+		// Userinfo in a published discovery document is a credential clients
+		// would copy into every request; it is also the classic way to make a
+		// URL read as one host while resolving to another.
+		errors = append(errors, ValidationError{
+			Field:   urlField,
+			Message: "Agent Card interface url must not contain userinfo",
+		})
+	}
+	if parsed.RawQuery != "" || parsed.ForceQuery {
+		errors = append(errors, ValidationError{
+			Field:   urlField,
+			Message: "Agent Card interface url must not contain a query string",
+		})
+	}
+	if parsed.Fragment != "" {
+		errors = append(errors, ValidationError{
+			Field:   urlField,
+			Message: "Agent Card interface url must not contain a fragment",
+		})
+	}
+
+	if pathKnown {
+		// An empty path and "/" are the same origin-root location; the route
+		// arithmetic produces the latter, so a card written the former way is
+		// advertising the right place.
+		actualPath := parsed.Path
+		if actualPath == "" {
+			actualPath = "/"
+		}
+		if actualPath != expectedPath {
+			errors = append(errors, ValidationError{
+				Field: urlField,
+				Message: fmt.Sprintf("Agent Card interface url path is '%s' but the gateway serves this transport at '%s'",
+					actualPath, expectedPath),
+			})
+		}
+	}
+
+	return errors
+}
+
+// cardObject reads a nested object out of an Agent Card.
+//
+// A card is a free-form document, and its nested mappings come back typed by
+// whichever decoder produced them: yaml.v3 reuses the enclosing named map type
+// for nested mappings, while encoding/json produces a plain map. The two ingress
+// paths are both real — YAML from the management API, JSON from storage — so a
+// walker that accepted only one shape would validate on one path and skip the
+// checks entirely on the other.
+func cardObject(value interface{}) (map[string]interface{}, bool) {
+	switch typed := value.(type) {
+	case api.A2AAgentCardDocument:
+		return typed, true
+	case map[string]interface{}:
+		return typed, true
+	default:
+		return nil, false
+	}
+}
+
+// cardArray reads a nested list out of an Agent Card. Both decoders produce
+// []interface{} for a sequence, but this exists alongside cardObject so the two
+// reads look the same at the call site.
+func cardArray(value interface{}) ([]interface{}, bool) {
+	typed, ok := value.([]interface{})
+	return typed, ok
 }
 
 // agentRoute is one gateway-facing route an Agent generates.

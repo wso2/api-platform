@@ -116,6 +116,10 @@ func agentYAML(o agentYAMLOpts) []byte {
 		o.context = "/weather"
 	}
 
+	// The card's advertised interface URL is built from the same context as the
+	// routes. Validation rejects a managed card whose interface path is not its
+	// transport's effective base path, so a fixture that pinned one context into
+	// the card would fail every test that varies the context.
 	return []byte(fmt.Sprintf(`
 apiVersion: gateway.api-platform.wso2.com/v1
 kind: Agent
@@ -143,7 +147,7 @@ spec:
           "description": "Provides weather information",
           "version": "1.0.0",
           "supportedInterfaces": [
-            {"protocolBinding": "JSONRPC", "protocolVersion": "1.0", "url": "https://agents.example.com/weather/rpc"}
+            {"protocolBinding": "JSONRPC", "protocolVersion": "1.0", "url": "https://agents.example.com%s/rpc"}
           ],
           "capabilities": {"streaming": true},
           "defaultInputModes": ["text/plain"],
@@ -151,7 +155,8 @@ spec:
           "skills": []
         }
 %s
-`, o.handle, o.annotations, o.displayName, o.version, o.context, upstreamBlock(o.upstreamAuth), o.deployState, o.signing, o.protected))
+`, o.handle, o.annotations, o.displayName, o.version, o.context, upstreamBlock(o.upstreamAuth), o.deployState,
+		o.signing, o.context, o.protected))
 }
 
 func upstreamBlock(auth string) string {
