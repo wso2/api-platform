@@ -454,15 +454,17 @@ func main() {
 	// path, which (a) does not render header matchers and (b) names routes "method|path|vhost"
 	// (3 segments), while the policy resources are keyed "method|path|vhost|<header-hash>". The
 	// policy engine resolves the chain by the Envoy route name, so the mismatch makes every
-	// header-matched route fail with 500 ("policy chain not found"). WebSubApi is intentionally
-	// excluded so it keeps using the async-specific legacy translation path.
-	translator.SetTransformers(map[string]models.ConfigTransformer{
-		models.KindRestApi:     transformerRegistry,
-		models.KindMcp:         transformerRegistry,
-		models.KindLlmProvider: transformerRegistry,
-		models.KindLlmProxy:    transformerRegistry,
-		models.KindAgent:       transformerRegistry,
-	})
+	// header-matched route fail with 500 ("policy chain not found").
+	//
+	// The kind list is derived from the registry rather than written out here, so a kind the
+	// registry learns to transform cannot be silently left off this map — WebSubApi's exclusion
+	// (it keeps the async-specific legacy translation path) is declared alongside the registry's
+	// own kind list instead.
+	envoyTransformers := make(map[string]models.ConfigTransformer)
+	for _, kind := range transform.EnvoyTranslatorKinds() {
+		envoyTransformers[kind] = transformerRegistry
+	}
+	translator.SetTransformers(envoyTransformers)
 
 	// Load runtime configs from existing API configurations on startup.
 	// We write directly to runtimeStore to avoid triggering N separate snapshot updates;
