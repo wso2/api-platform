@@ -251,6 +251,12 @@ func TestCreate_PersistsAndAnnounces(t *testing.T) {
 
 	assert.Equal(t, []string{"CREATE"}, h.eventHub.actions(),
 		"every replica converges through the event, so the create has to announce itself")
+
+	// The listener dispatches on the event type, so an Agent announced under any
+	// other type is converged by a processor that does not know the kind.
+	require.Len(t, h.eventHub.events, 1)
+	assert.Equal(t, eventhub.EventTypeAgent, h.eventHub.events[0].EventType)
+	assert.Equal(t, stored.UUID, h.eventHub.events[0].EntityID)
 }
 
 func TestCreate_RendersSecretBeforeValidating(t *testing.T) {
