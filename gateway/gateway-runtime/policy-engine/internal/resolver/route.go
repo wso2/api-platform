@@ -249,6 +249,39 @@ func (pr *PreparedRoute) ValidateResolution(res Resolution) *ResolutionError {
 		// key — so an invalid key fails the whole resolution.
 		return &ResolutionError{Kind: FailureInternal, Cause: err}
 	}
+	if err := validateResolutionAttributes(res.Attributes); err != nil {
+		return &ResolutionError{Kind: FailureInternal, Cause: err}
+	}
+	return nil
+}
+
+// validateResolutionAttributes bounds what a resolver may carry alongside the key.
+//
+// This is a backstop against a resolver bug, not a request-validation step: a resolver
+// reading attacker-controlled values is expected to cap and drop them itself, so
+// tripping this means the resolver did not. It fails the whole resolution rather than
+// silently trimming, because a resolution carrying more than it should is not one whose
+// remaining contents can be trusted — and quietly dropping the excess would hide the bug
+// exactly where it matters, on the unauthenticated path.
+func validateResolutionAttributes(attrs map[string]string) error {
+	if len(attrs) == 0 {
+		return nil
+	}
+	if len(attrs) > MaxResolutionAttributes {
+		return fmt.Errorf("resolution carries %d attributes, more than the %d permitted",
+			len(attrs), MaxResolutionAttributes)
+	}
+	for name, value := range attrs {
+		if name == "" {
+			return errors.New("resolution carries an unnamed attribute")
+		}
+		if len(value) > MaxResolutionAttributeValueBytes {
+			// The value itself is never quoted: it is caller-controlled, and this
+			// error reaches the internal log.
+			return fmt.Errorf("resolution attribute %q is %d bytes, over the %d-byte limit",
+				name, len(value), MaxResolutionAttributeValueBytes)
+		}
+	}
 	return nil
 }
 
@@ -316,6 +349,9 @@ func selectChain[C any](pr *PreparedRoute, res Resolution, getChain func(string)
 		return BoundResolution{
 			ChainKey:  res.ChainKey,
 			Operation: pr.operationFor(res.ChainKey),
+			// Carried through as produced. A direct route inspected no request, so a
+			// route-key resolver contributes nothing here.
+			Attributes: res.Attributes,
 		}, chain, nil
 	}
 
