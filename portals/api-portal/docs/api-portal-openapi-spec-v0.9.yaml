@@ -24,11 +24,14 @@ info:
     Fine-grained API Portal REST API for managing organizations,
     API metadata and content, applications, subscriptions, application appKeyMappings, and API flows.
 
-    All resources, including organization lifecycle endpoints
-    (`/api-portal/api/v0.9/organizations`, `/api-portal/api/v0.9/organizations/{orgId}`), are
-    served under `/api-portal/api/v0.9` — the portal mounts its whole surface, pages and REST
-    API alike, beneath the `/api-portal` prefix.
-    Operations declare the least-privilege OAuth2 scopes required for each resource action.
+    All resources are served under `/api-portal/api/v0.9` — the portal mounts its whole surface,
+    pages and REST API alike, beneath the `/api-portal` prefix.
+
+
+    Every operation other than the few marked public takes a Bearer JWT access token in the
+    `Authorization` header and declares the least-privilege `dp:*` scopes that authorize it.
+    Where that token comes from, and how a caller comes to hold those scopes, is described
+    under Authentication.
 servers:
   - url: https://localhost:9543/api-portal/api/v0.9
     description: Local HTTPS server
@@ -2425,13 +2428,49 @@ components:
   securitySchemes:
     OAuth2Security:
       type: oauth2
-      description: >-
-        OAuth2/OIDC access token with fine-grained API Portal scopes. Each operation declares the exact
-        resource/action scope it requires.
+      description: |
+        Bearer JWT access token, sent as `Authorization: Bearer <token>`. The API Portal issues no
+        token of its own — where you obtain one depends on `auth.mode`.
+
+        **Local auth mode** (`auth.mode = "local"`, the development default). The token comes from
+        the Platform API the portal is configured against (`auth.local.platform_api_url`), whose
+        login endpoint validates a file-configured username and password and returns a signed JWT:
+
+        ```bash
+        TOKEN=$(curl -sk -X POST https://localhost:9243/api/portal/v0.9/auth/login \
+          -H 'Content-Type: application/x-www-form-urlencoded' \
+          -d 'username=admin' -d 'password=admin' | jq -r .token)
+
+        curl -sk https://localhost:9543/api-portal/api/v0.9/apis \
+          -H "Authorization: Bearer $TOKEN"
+        ```
+
+        The portal verifies that token against the Platform API's public key
+        (`auth.local.public_key_path`), so both components must be pointed at the same key pair,
+        and the portal's `organization.handle` must match the organization in the Platform API's
+        file-auth configuration.
+
+        **IDP mode** (`auth.mode = "idp"`). The token comes from the OIDC identity provider
+        configured under `[api_portal.auth.idp]` — obtained through that provider's own
+        authorization code flow, not from the portal. Its authorization and token endpoints are
+        the ones in your provider's `.well-known/openid-configuration` document — configure them
+        as `auth.idp.authorization_url` and `auth.idp.token_url`.
+
+        **Which scopes a caller holds** depends on `auth.authorization.mode`. In the default
+        `role` mode the token's own `scope` claim is ignored: its roles claim (named by
+        `auth.claim_mappings.roles`) is expanded through the portal's role-to-scope grant table
+        (`auth.authorization.role_to_scope_mapping`), so an identity provider that knows nothing
+        about `dp:*` scopes can still authorize every operation. In `scope` mode the token must
+        itself carry the scope — register the scopes below with your identity provider and
+        request them at login.
+      # The real endpoints belong to whichever identity provider an operator configures, so
+      # these two are placeholders that OpenAPI requires but that would mislead if published:
+      # x-hide-flow-details keeps them out of the generated REST API reference.
+      x-hide-flow-details: true
       flows:
         authorizationCode:
-          authorizationUrl: https://localhost:9443/oauth2/authorize
-          tokenUrl: https://localhost:9443/oauth2/token
+          authorizationUrl: https://idp.example.com/oauth2/authorize
+          tokenUrl: https://idp.example.com/oauth2/token
           scopes:
             dp:organization:read: Read organizations.
             dp:organization:create: Create organizations.
@@ -2518,13 +2557,6 @@ components:
             dp:webhook_subscriber:update: Update webhook subscriber configurations.
             dp:webhook_subscriber:delete: Delete webhook subscriber configurations.
             dp:webhook_subscriber:manage: Manage webhook subscriber configurations (including creating, updating, and deleting).
-    apiKeyAuth:
-      type: apiKey
-      in: header
-      name: x-api-key
-      description: >-
-        API key authentication. Server-side authorization should bind each key to the same fine-grained permissions used
-        by OAuth2 scopes.
   parameters:
     orgId:
       name: orgId

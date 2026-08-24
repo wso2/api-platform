@@ -1,0 +1,92 @@
+- type: TOOL
+  name: echo
+  description: Echoes back the input.
+  inputSchema:
+    type: object
+    properties:
+      message:
+        type: string
+        description: Message to echo
+    required:
+      - message
+
+- type: TOOL
+  name: add
+  description: Adds two numbers.
+  inputSchema:
+    type: object
+    properties:
+      a:
+        type: number
+        description: First number
+      b:
+        type: number
+        description: Second number
+    required:
+      - a
+      - b
+
+- type: TOOL
+  name: viewPizzaMenu
+  description: View the pizza menu. This tool provides a list of available pizzas.
+  inputSchema:
+    type: object
+    properties: {}
+
+- type: TOOL
+  name: orderPizza
+  description: Order a pizza from the menu. This tool allows you to place an order for a pizza.
+  inputSchema:
+    type: object
+    properties:
+      pizzaType:
+        type: string
+        description: Type of pizza to order
+      quantity:
+        type: integer
+        minimum: 1
+        description: Number of pizzas to order
+      customerName:
+        type: string
+        description: Name of the customer
+      deliveryAddress:
+        type: string
+        description: Delivery address for the order
+      creditCardNumber:
+        type: string
+        description: Credit card number for payment
+    required:
+      - pizzaType
+      - quantity
+      - customerName
+      - deliveryAddress
+      - creditCardNumber
+
+- type: RESOURCE
+  name: test-resource
+  description: One of 100 numbered test resources. Even-numbered ones return plain text, odd-numbered ones return base64-encoded binary. Supports subscriptions, and subscribed resources auto-update every 5 seconds.
+  uri: test://static/resource/1
+  mimeType: text/plain
+
+- type: PROMPT
+  name: simple_prompt
+  description: A basic prompt that takes no arguments and returns a single message exchange.
+
+- type: PROMPT
+  name: complex_prompt
+  description: Demonstrates argument handling — returns a multi-turn conversation that includes images.
+  arguments:
+    - name: temperature
+      description: Temperature setting
+      required: true
+    - name: style
+      description: Output style preference (e.g. casual, formal, technical, friendly)
+      required: false
+
+- type: PROMPT
+  name: resource_prompt
+  description: Demonstrates embedding a resource reference directly in prompt messages.
+  arguments:
+    - name: resourceId
+      description: ID of the resource to embed, from 1 to 100
+      required: true

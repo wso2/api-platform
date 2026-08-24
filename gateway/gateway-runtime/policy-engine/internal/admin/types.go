@@ -119,6 +119,39 @@ type RouteMetadataEntry struct {
 	// DefaultUpstream is this route's own compiled-in upstream (whichever slot it
 	// belongs to).
 	DefaultUpstream *policyenginev1.UpstreamInfo `json:"default_upstream,omitempty"`
+
+	// ─── Policy chain resolution ─────────────────────────────────────────────
+	//
+	// Which chain a request on this route actually gets. On an identity route
+	// CanonicalChainKey equals RouteKey and the rest is empty, so the dump for every
+	// kind shipping today is unchanged apart from that one echoed value.
+	//
+	// On a multiplexed route these are the only way to answer "why did this request
+	// get that chain?" from outside the process: the resolver names what reads the
+	// operation out of the request, and ChainKeyPrefix is what the engine joins that
+	// operation onto.
+	CanonicalChainKey string `json:"canonical_chain_key"`
+	// ResolverName is empty for an identity route.
+	ResolverName string `json:"resolver_name,omitempty"`
+	// ChainKeyPrefix is the composed-key prefix for this route: the apiID and vhost
+	// the engine will join a resolved operation onto. Absent on identity routes, which
+	// have no operation to compose. It replaces the old operation_map dump — under
+	// composed keys there is no per-route mapping to show, so what an operator needs
+	// instead is the prefix to match a dumped chain key against.
+	ChainKeyPrefix string `json:"chain_key_prefix,omitempty"`
+	// MaxRequestBodyBytes is the effective acceptance ceiling on a body-resolved route,
+	// reported even when it came from the default so an operator can see the bound that
+	// is actually in force rather than having to infer it. It caps unauthenticated
+	// decompression and parsing work, not how much Envoy buffers.
+	MaxRequestBodyBytes int64 `json:"max_request_body_bytes,omitempty"`
+	// ResolverStatic reports that this route's resolution was fully determined at
+	// ingest, so no resolver runs per request. True for every route of every kind
+	// shipping today; false means the route inspects each request to pick its chain.
+	ResolverStatic bool `json:"resolver_static,omitempty"`
+	// ResolverBuffersBody reports that this route's resolver reads the request body,
+	// which defers chain selection — and therefore every policy, including
+	// authentication — to the request-body callback.
+	ResolverBuffersBody bool `json:"resolver_buffers_body,omitempty"`
 }
 
 // PolicySpec contains specification for a policy instance

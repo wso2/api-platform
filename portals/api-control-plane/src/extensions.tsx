@@ -16,35 +16,42 @@
  * under the License.
  */
 
-import { createContext, useContext, type ReactNode } from 'react';
+import type { ReactNode } from 'react';
 
 import type { ConsoleScope } from './scope/ConsoleScopeProvider';
 import type { NavigationLevel } from './navigation/navigationTypes';
+import type { CloudHostPort } from './hostPort';
+import {
+  SlotEntriesProvider,
+  useSlotEntries,
+  type SlotEntry,
+} from './slots';
 
 /**
- * A host-injected feature: a route plus its sidebar entry. `routePath` is
- * relative to the same route group the built-in nav items live in (e.g.
- * `"billing"`, not `"/organizations/:orgHandle/billing"`), and `level`
- * decides which sidebar section it's grouped under — mirrors
- * `NavigationDefinition` so it can be merged straight into the existing
- * nav pipeline in `navigation/useNavigationItems.ts`.
+ * A host-injected feature. `routePath` is relative to the same route group
+ * the built-in pages live in (e.g. `"billing"` or `"settings/environments"`,
+ * never an absolute `/organizations/...` path), and `scope` decides the URL
+ * shape (organization/project/api) the same way the built-in pages' own
+ * `level` does.
+ *
+ * `slot` is the named extension point this entry attaches to (see
+ * `slots/index.tsx`) — e.g. `"sidebar.project"` for a top-level project nav
+ * item, or `"settings.project.tabs"` to appear as a Settings sub-nav tab.
+ * New slot names can be introduced by core without changing this type.
+ *
+ * `render` receives the small, portable `CloudHostPort` (org/project handle,
+ * navigate, notify) instead of a pre-built element, so the same feature
+ * component can be reused by another host app without depending on this
+ * portal's own hooks — see `hostPort.tsx`.
  */
-export type ApiControlPlaneExtension = {
-  id: string;
+export type ApiControlPlaneExtension = SlotEntry & {
   routePath: string;
-  element: ReactNode;
+  render: (port: CloudHostPort) => ReactNode;
   label: string;
   icon?: ReactNode;
-  level: NavigationLevel;
-  /** Sidebar section heading. Defaults to the level's own section (e.g. "Organization"). */
-  group?: string;
-  order: number;
+  scope: NavigationLevel;
   isVisible?: (scope: ConsoleScope) => boolean;
 };
-
-const ExtensionsContext = createContext<readonly ApiControlPlaneExtension[]>(
-  []
-);
 
 export function ExtensionsProvider({
   extensions,
@@ -54,31 +61,29 @@ export function ExtensionsProvider({
   children: ReactNode;
 }) {
   return (
-    <ExtensionsContext.Provider value={extensions}>
-      {children}
-    </ExtensionsContext.Provider>
+    <SlotEntriesProvider entries={extensions}>{children}</SlotEntriesProvider>
   );
 }
 
 export function useExtensions(): readonly ApiControlPlaneExtension[] {
-  return useContext(ExtensionsContext);
+  return useSlotEntries<ApiControlPlaneExtension>();
 }
 
 /**
- * Prefixes an extension's `routePath` with the URL shape for its `level`
+ * Prefixes an extension's `routePath` with the URL shape for its `scope`
  * (organization/project/api), so both `AppRoutes` (route patterns, `orgHandle`
  * etc. as `:param` placeholders) and the nav pipeline (concrete scope values)
  * build the same URL shape from one place.
  */
 export function buildScopedExtensionPath(
-  level: NavigationLevel,
+  scope: NavigationLevel,
   routeSuffix: string,
   params: { orgHandle: string; projectHandler?: string; apiHandler?: string }
 ): string {
-  if (level === 'organization') {
+  if (scope === 'organization') {
     return `/organizations/${params.orgHandle}/${routeSuffix}`;
   }
-  if (level === 'project') {
+  if (scope === 'project') {
     return `/organizations/${params.orgHandle}/projects/${params.projectHandler}/${routeSuffix}`;
   }
   return `/organizations/${params.orgHandle}/projects/${params.projectHandler}/apis/${params.apiHandler}/${routeSuffix}`;

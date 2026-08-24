@@ -29,9 +29,11 @@ import { Suspense } from 'react';
 import { Outlet, useNavigate } from 'react-router-dom';
 
 import { LoadingState } from '../components/StateViews';
+import { useNotifications } from '../components/Notifications';
 import { runtimeConfig } from '../config/runtime';
 import { routes } from '../routes/paths';
 import { useConsoleScope } from '../scope/ConsoleScopeProvider';
+import { PortProvider, type CloudHostPort } from '../hostPort';
 import { AppHeader } from './AppHeader';
 import { APP_FOOTER_ID } from './appLayoutConstants';
 import { AppSidebar } from './AppSidebar';
@@ -39,6 +41,18 @@ import { AppSidebar } from './AppSidebar';
 export default function AppLayout() {
   const navigate = useNavigate();
   const { organization, project, component, params } = useConsoleScope();
+  const { notify } = useNotifications();
+
+  // Built once per render from this portal's own hooks, then handed down as
+  // a plain value to every extension's `render(port)` — see `hostPort.tsx`
+  // for why this crosses the api-platform/apim-saas seam as a value, not a
+  // shared context object.
+  const port: CloudHostPort = {
+    orgHandle: params.orgHandle ?? '',
+    projectHandle: params.projectHandler,
+    navigate,
+    notify,
+  };
 
   const crumbs: BreadcrumbItem[] = [];
   if (params.orgHandle) {
@@ -76,59 +90,61 @@ export default function AppLayout() {
   );
 
   return (
-    <AppShell initialCollapsed={false} collapseOnSelectOnMobile>
-      <AppShell.Navbar>
-        <AppHeader />
-      </AppShell.Navbar>
+    <PortProvider value={port}>
+      <AppShell initialCollapsed={false} collapseOnSelectOnMobile>
+        <AppShell.Navbar>
+          <AppHeader />
+        </AppShell.Navbar>
 
-      <AppShell.Sidebar>
-        <AppSidebar />
-      </AppShell.Sidebar>
+        <AppShell.Sidebar>
+          <AppSidebar />
+        </AppShell.Sidebar>
 
-      <AppShell.Main>
-        <Box sx={{ minWidth: 0, width: '100%' }}>
-          {breadcrumbItems.length > 1 && (
-            <AppBreadcrumbs items={breadcrumbItems} sx={{ mb: 2 }} />
-          )}
-          <Suspense fallback={<LoadingState label="Loading" />}>
-            <Outlet />
-          </Suspense>
-        </Box>
-      </AppShell.Main>
+        <AppShell.Main>
+          <Box sx={{ minWidth: 0, width: '100%' }}>
+            {breadcrumbItems.length > 1 && (
+              <AppBreadcrumbs items={breadcrumbItems} sx={{ mb: 2 }} />
+            )}
+            <Suspense fallback={<LoadingState label="Loading" />}>
+              <Outlet />
+            </Suspense>
+          </Box>
+        </AppShell.Main>
 
-      <AppShell.Footer>
-        {/* id is an anchor for measuring the footer height so sticky action
-            bars (develop tabs' SaveBar) can offset above it — see SaveBar. */}
-        <Box id={APP_FOOTER_ID}>
-          <Footer>
-            <Footer.Copyright>
-              © {new Date().getFullYear()} WSO2 LLC.
-            </Footer.Copyright>
-            <Footer.Version>{runtimeConfig.environmentName}</Footer.Version>
-            <Footer.Link href={runtimeConfig.termsOfUseLink}>
-              Terms of Use
-            </Footer.Link>
-            <Footer.Link href={runtimeConfig.privacyPolicyLink}>
-              Privacy Policy
-            </Footer.Link>
-          </Footer>
-        </Box>
-      </AppShell.Footer>
+        <AppShell.Footer>
+          {/* id is an anchor for measuring the footer height so sticky action
+              bars (develop tabs' SaveBar) can offset above it — see SaveBar. */}
+          <Box id={APP_FOOTER_ID}>
+            <Footer>
+              <Footer.Copyright>
+                © {new Date().getFullYear()} WSO2 LLC.
+              </Footer.Copyright>
+              <Footer.Version>{runtimeConfig.environmentName}</Footer.Version>
+              <Footer.Link href={runtimeConfig.termsOfUseLink}>
+                Terms of Use
+              </Footer.Link>
+              <Footer.Link href={runtimeConfig.privacyPolicyLink}>
+                Privacy Policy
+              </Footer.Link>
+            </Footer>
+          </Box>
+        </AppShell.Footer>
 
-      <AppShell.NotificationPanel>
-        <NotificationPanel>
-          <NotificationPanel.Header>
-            <NotificationPanel.HeaderIcon>
-              <Bell size={18} />
-            </NotificationPanel.HeaderIcon>
-            <NotificationPanel.HeaderTitle>
-              Notifications
-            </NotificationPanel.HeaderTitle>
-            <NotificationPanel.HeaderClose />
-          </NotificationPanel.Header>
-          <NotificationPanel.EmptyState message="You're all caught up." />
-        </NotificationPanel>
-      </AppShell.NotificationPanel>
-    </AppShell>
+        <AppShell.NotificationPanel>
+          <NotificationPanel>
+            <NotificationPanel.Header>
+              <NotificationPanel.HeaderIcon>
+                <Bell size={18} />
+              </NotificationPanel.HeaderIcon>
+              <NotificationPanel.HeaderTitle>
+                Notifications
+              </NotificationPanel.HeaderTitle>
+              <NotificationPanel.HeaderClose />
+            </NotificationPanel.Header>
+            <NotificationPanel.EmptyState message="You're all caught up." />
+          </NotificationPanel>
+        </AppShell.NotificationPanel>
+      </AppShell>
+    </PortProvider>
   );
 }

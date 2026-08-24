@@ -32,10 +32,12 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"google.golang.org/grpc"
 
 	"github.com/wso2/api-platform/gateway/gateway-runtime/policy-engine/internal/config"
 	"github.com/wso2/api-platform/gateway/gateway-runtime/policy-engine/internal/kernel"
 	"github.com/wso2/api-platform/gateway/gateway-runtime/policy-engine/internal/registry"
+	"github.com/wso2/api-platform/gateway/gateway-runtime/policy-engine/internal/resolver"
 )
 
 // =============================================================================
@@ -300,7 +302,7 @@ func TestInitializeXDSClient_InvalidConfig(t *testing.T) {
 		},
 	}
 
-	_, err := initializeXDSClient(context.Background(), cfg, "", k, reg)
+	_, err := initializeXDSClient(context.Background(), cfg, "", k, reg, resolver.DefaultRegistry())
 
 	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "failed to create xDS client")
@@ -326,7 +328,7 @@ func TestInitializeXDSClient_ValidConfig(t *testing.T) {
 
 	// Note: This will fail to actually connect since there's no server,
 	// but the client creation and start attempt should work
-	client, err := initializeXDSClient(context.Background(), cfg, "localhost:18000", k, reg)
+	client, err := initializeXDSClient(context.Background(), cfg, "localhost:18000", k, reg, resolver.DefaultRegistry())
 
 	// Client should be created successfully even if it can't connect
 	require.NoError(t, err)
@@ -447,4 +449,24 @@ func captureStdout(t *testing.T, fn func()) string {
 	_, err = buf.ReadFrom(r)
 	require.NoError(t, err)
 	return buf.String()
+}
+
+// The ext_proc server must be constructed with all three bounds set. The values
+// themselves are validated in internal/config; what this pins is that none of the three
+// options is dropped from the construction, which is how this server silently ran on
+// gRPC's defaults — a 4 MiB receive cap and unbounded streams — before.
+func TestExtProcServerOptions(t *testing.T) {
+	cfg := &config.Config{}
+	cfg.PolicyEngine.Server.MaxRecvMsgBytes = 11 << 20
+	cfg.PolicyEngine.Server.MaxSendMsgBytes = 11 << 20
+	cfg.PolicyEngine.Server.MaxConcurrentStreams = 4096
+
+	opts := extProcServerOptions(cfg)
+	assert.Len(t, opts, 3, "MaxRecvMsgSize, MaxSendMsgSize and MaxConcurrentStreams")
+
+	// And the real constructor accepts them, rather than this merely being a slice of
+	// the right length.
+	srv := grpc.NewServer(opts...)
+	require.NotNil(t, srv)
+	srv.Stop()
 }

@@ -46,6 +46,10 @@ export default function ServiceProviderSecurityTab() {
   const isReadOnlyProvider = Boolean(provider?.readOnly);
   const isSecurityFormDisabled =
     !apiKeyEnabled || isLoading || Boolean(error) || isReadOnlyProvider;
+  const isKeyValueInvalid =
+    authenticationType === 'apiKey' &&
+    apiKeyEnabled &&
+    keyValue.trim().length === 0;
 
   useEffect(() => {
     if (!provider) return;
@@ -107,6 +111,7 @@ export default function ServiceProviderSecurityTab() {
     const nextType = String(event.target.value || '').trim();
     if (!nextType || nextType === authenticationType) return;
     setAuthenticationType(nextType);
+    if (keyValue.trim().length === 0) return;
     await updateSecurity(keyValue.trim(), keyIn, apiKeyEnabled, valuePrefix.trim());
   };
 
@@ -129,7 +134,7 @@ export default function ServiceProviderSecurityTab() {
   };
 
   const handleValuePrefixBlur = async () => {
-    if (!provider || isLoading || error) return;
+    if (!provider || isLoading || error || isKeyValueInvalid) return;
     const nextValuePrefix = valuePrefix.trim();
     if (nextValuePrefix === (provider.security?.apiKey?.valuePrefix || '')) {
       return;
@@ -141,6 +146,7 @@ export default function ServiceProviderSecurityTab() {
     const nextIn = event.target.value as 'header' | 'query';
     if (nextIn === keyIn) return;
     setKeyIn(nextIn);
+    if (isKeyValueInvalid) return;
     await updateSecurity(keyValue.trim(), nextIn, apiKeyEnabled, valuePrefix.trim());
   };
 
@@ -214,6 +220,13 @@ export default function ServiceProviderSecurityTab() {
                 size="small"
                 value={keyValue}
                 disabled={isSecurityFormDisabled}
+                required={apiKeyEnabled}
+                error={isKeyValueInvalid}
+                helperText={
+                  isKeyValueInvalid
+                    ? 'API Key is required'
+                    : undefined
+                }
                 onChange={(event) => {
                   const nextKey = event.target.value;
                   setKeyValue(nextKey);
@@ -243,7 +256,7 @@ export default function ServiceProviderSecurityTab() {
                 onChange={(event) => {
                   const nextValuePrefix = event.target.value;
                   setValuePrefix(nextValuePrefix);
-                  if (isDraftMode) {
+                  if (isDraftMode && !isKeyValueInvalid) {
                     void updateSecurity(
                       keyValue.trim(),
                       keyIn,

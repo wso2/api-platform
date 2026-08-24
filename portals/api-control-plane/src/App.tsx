@@ -16,13 +16,15 @@
  * under the License.
  */
 
-import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { OxygenUIThemeProvider, WSO2Theme } from '@wso2/oxygen-ui';
+import { type ReactNode, useState } from 'react';
+import { QueryClientProvider } from '@tanstack/react-query';
+import { OxygenUIThemeProvider, OxygenTheme } from '@wso2/oxygen-ui';
 import { BrowserRouter } from 'react-router-dom';
 
 import { ApiClientProvider } from './api/ApiClientProvider';
+import { createQueryClient } from './api/core/queryClient';
 import { ErrorBoundary } from './components/ErrorBoundary';
-import { NotificationProvider } from './components/Notifications';
+import { NotificationProvider, useNotifications } from './components/Notifications';
 import { runtimeConfig } from './config/runtime';
 import { AuthProvider } from './features/auth/AuthProvider';
 import { ProductActivation } from './features/billing/ProductActivation';
@@ -31,17 +33,33 @@ import {
   ExtensionsProvider,
   type ApiControlPlaneExtension,
 } from './extensions';
+import { I18nProvider } from './i18n';
 
-const isProduction = import.meta.env.PROD;
+/**
+ * Builds the app's QueryClient with the notification handler already attached,
+ * which is why it lives below `NotificationProvider` rather than at module
+ * scope.
+ *
+ * The handler is what stops a failed mutation from failing silently: it fires
+ * for every mutation error, including ones whose own `onError` performs an
+ * optimistic rollback, so a component that forgets to surface an error still
+ * cannot swallow it.
+ *
+ * `useState` with an initializer creates the client exactly once per mount —
+ * building it inline on every render would discard the whole cache each time.
+ */
+function AppQueryProvider({ children }: { children: ReactNode }) {
+  const { notify } = useNotifications();
+  const [queryClient] = useState(() =>
+    createQueryClient({
+      onMutationError: (error) => notify(error.message, 'error'),
+    })
+  );
 
-const queryClient = new QueryClient({
-  defaultOptions: {
-    queries: {
-      retry: isProduction ? 2 : false,
-      refetchOnWindowFocus: isProduction,
-    },
-  },
-});
+  return (
+    <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>
+  );
+}
 
 export type AppProps = {
   extensions?: readonly ApiControlPlaneExtension[];
@@ -49,23 +67,26 @@ export type AppProps = {
 
 export default function App({ extensions = [] }: AppProps) {
   return (
-    <OxygenUIThemeProvider theme={WSO2Theme}>
-      <ApiClientProvider>
-        <QueryClientProvider client={queryClient}>
-          <ErrorBoundary>
-            <BrowserRouter basename={runtimeConfig.appBasePath || undefined}>
-              <AuthProvider>
-                <ProductActivation />
-                <NotificationProvider>
-                  <ExtensionsProvider extensions={extensions}>
-                    <AppRoutes extensions={extensions} />
-                  </ExtensionsProvider>
-                </NotificationProvider>
-              </AuthProvider>
-            </BrowserRouter>
-          </ErrorBoundary>
-        </QueryClientProvider>
-      </ApiClientProvider>
-    </OxygenUIThemeProvider>
+
+    <I18nProvider>
+      <OxygenUIThemeProvider theme={OxygenTheme}>
+        <NotificationProvider>
+          <AppQueryProvider>
+            <ApiClientProvider>
+              <ErrorBoundary>
+                <BrowserRouter basename={runtimeConfig.appBasePath || undefined}>
+                  <AuthProvider>
+                    <ProductActivation />
+                    <ExtensionsProvider extensions={extensions}>
+                      <AppRoutes extensions={extensions} />
+                    </ExtensionsProvider>
+                  </AuthProvider>
+                </BrowserRouter>
+              </ErrorBoundary>
+            </ApiClientProvider>
+          </AppQueryProvider>
+        </NotificationProvider>
+      </OxygenUIThemeProvider>
+    </I18nProvider>
   );
 }

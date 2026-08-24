@@ -84,9 +84,22 @@ func (pm *PolicyManager) DeleteAPIConfig(kind, handle string) error {
 }
 
 // AddRuntimeConfig adds or updates a RuntimeDeployConfig and triggers snapshot update.
+//
+// Resolution references are validated *before* the RDC is stored, so a construction
+// error cannot reach either xDS stream. The two streams are independent: a route
+// pointing at a chain key that was never built would otherwise produce a deployment
+// that looks accepted and then fails — or silently applies no policy — on every
+// request to that operation.
 func (pm *PolicyManager) AddRuntimeConfig(key string, rdc *models.RuntimeDeployConfig) error {
 	if pm.runtimeStore == nil {
 		return fmt.Errorf("runtime config store not configured")
+	}
+
+	if err := rdc.ValidateResolution(); err != nil {
+		pm.logger.Error("Rejecting runtime deploy config with unresolvable policy chain references",
+			slog.String("key", key),
+			slog.Any("error", err))
+		return fmt.Errorf("invalid policy chain resolution for %s: %w", key, err)
 	}
 
 	pm.runtimeStore.Set(key, rdc)

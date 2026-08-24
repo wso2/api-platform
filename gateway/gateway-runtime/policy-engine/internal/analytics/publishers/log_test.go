@@ -20,6 +20,7 @@ package publishers
 import (
 	"encoding/json"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"strings"
@@ -30,7 +31,27 @@ import (
 	"github.com/stretchr/testify/require"
 	"github.com/wso2/api-platform/gateway/gateway-runtime/policy-engine/internal/analytics/dto"
 	"github.com/wso2/api-platform/gateway/gateway-runtime/policy-engine/internal/config"
+	"github.com/wso2/api-platform/gateway/gateway-runtime/policy-engine/internal/metrics"
 )
+
+// TestMain initializes the metrics registry before any test runs. The sinks record
+// counters on every write, and the metric variables are nil until Init() is called,
+// so without this the first Write would panic on a nil interface.
+func TestMain(m *testing.M) {
+	// Enabled must be set BEFORE Init: Init is a sync.Once, and with Enabled
+	// false it builds an empty registry and registers nothing, so any test that
+	// inspects a metric would silently see no series at all.
+	metrics.Enabled = true
+	metrics.Init()
+	os.Exit(m.Run())
+}
+
+// useWriterSink redirects a Log publisher's output to w, replacing whatever sinks
+// its config produced. Tests use this to capture the emitted bytes instead of
+// writing to the process's real stdout.
+func useWriterSink(l *Log, w io.Writer) {
+	l.sinks = []Sink{newWriterSink(w, "test", nil)}
+}
 
 // newLogToFile builds a Log publisher that writes to a temp file, returning the
 // publisher and a function that reads back what was written.
@@ -41,8 +62,9 @@ func newLogToFile(t *testing.T, cfg *config.TrafficLoggingConfig) (*Log, func() 
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = f.Close() })
 
-	l := NewLog(cfg)
-	l.out = f
+	l, err := NewLog(cfg)
+	require.NoError(t, err)
+	useWriterSink(l, f)
 	return l, func() string {
 		require.NoError(t, f.Sync())
 		data, err := os.ReadFile(path)
@@ -83,7 +105,8 @@ func headerMap(t *testing.T, v interface{}) map[string]interface{} {
 }
 
 func TestNewLog_NilConfig(t *testing.T) {
-	l := NewLog(nil)
+	l, err := NewLog(nil)
+	require.NoError(t, err)
 	require.NotNil(t, l)
 	assert.Empty(t, l.maskedHeaders)
 }
@@ -628,18 +651,23 @@ func TestLog_Publish_GlobalFallback_NoPropertiesConfiguredOmitsKey(t *testing.T)
 // Each Publish call is directed to its own temp file so the two lines can be
 // decoded independently.
 func TestLog_Publish_GlobalFallback_PropertiesDoNotLeakAcrossRequests(t *testing.T) {
-	l := NewLog(&config.TrafficLoggingConfig{
+	l, err := NewLog(&config.TrafficLoggingConfig{
 		Enabled:    true,
+		Outputs:    []string{config.TrafficLogSinkStdout},
 		Properties: map[string]string{"apiName": "$ctx:api.name"},
 	})
+	require.NoError(t, err)
 	require.Nil(t, l.globalDir.Properties, "globalDir must never carry baked-in properties")
 
 	readOnce := func(event *dto.Event) map[string]interface{} {
 		path := filepath.Join(t.TempDir(), "out.log")
 		f, err := os.Create(path)
 		require.NoError(t, err)
-		defer f.Close()
-		l.out = f
+		// Assert on Close: an error here would mean a write never reached the
+		// file, which would otherwise surface as a confusing decode failure
+		// rather than as the write problem it actually is.
+		defer func() { require.NoError(t, f.Close()) }()
+		useWriterSink(l, f)
 
 		l.Publish(event)
 
@@ -667,15 +695,17 @@ func TestLog_Publish_GlobalFallback_PropertiesDoNotLeakAcrossRequests(t *testing
 // once, each with a different API name, must never race on the shared
 // l.globalDir. Run with -race to make this meaningful.
 func TestLog_Publish_GlobalFallback_ConcurrentPropertiesNoRace(t *testing.T) {
-	l := NewLog(&config.TrafficLoggingConfig{
+	l, err := NewLog(&config.TrafficLoggingConfig{
 		Enabled:    true,
+		Outputs:    []string{config.TrafficLogSinkStdout},
 		Properties: map[string]string{"apiName": "$ctx:api.name"},
 	})
+	require.NoError(t, err)
 	path := filepath.Join(t.TempDir(), "out.log")
 	f, err := os.Create(path)
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = f.Close() })
-	l.out = f
+	useWriterSink(l, f)
 
 	const n = 50
 	var wg sync.WaitGroup

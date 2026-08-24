@@ -309,6 +309,14 @@ function ServiceProviderOverviewContent() {
   const [linkedProxyCount, setLinkedProxyCount] = useState<number | null>(null);
   const showSnackbar = useAIWorkspaceSnackbar();
   const hasUnsavedChanges = hasDraftChanges || isRateLimitingDirty;
+  const stagedSecurity = (draftProvider ?? provider)?.security;
+  const isApiKeyEffectivelyEnabled =
+    stagedSecurity?.apiKey?.enabled ?? stagedSecurity?.enabled ?? true;
+  const isSecurityConfigValid =
+    !isApiKeyEffectivelyEnabled ||
+    (Boolean(stagedSecurity?.apiKey?.key?.trim()) &&
+      (stagedSecurity?.apiKey?.in === 'header' ||
+        stagedSecurity?.apiKey?.in === 'query'));
   const selectedGateway = useMemo(
     () => gateways.find((gateway) => gateway.id === selectedGatewayId) ?? null,
     [gateways, selectedGatewayId]
@@ -1769,7 +1777,7 @@ function ServiceProviderOverviewContent() {
                 </Button>
                 <Button
                   variant="contained"
-                  disabled={!hasUnsavedChanges || isSavingChanges}
+                  disabled={!hasUnsavedChanges || isSavingChanges || !isSecurityConfigValid}
                   onClick={() => void handleSaveChanges()}
                 >
                   Save

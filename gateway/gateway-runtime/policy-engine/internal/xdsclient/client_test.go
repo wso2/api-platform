@@ -35,6 +35,7 @@ import (
 	"github.com/wso2/api-platform/gateway/gateway-runtime/policy-engine/internal/kernel"
 	"github.com/wso2/api-platform/gateway/gateway-runtime/policy-engine/internal/metrics"
 	"github.com/wso2/api-platform/gateway/gateway-runtime/policy-engine/internal/registry"
+	"github.com/wso2/api-platform/gateway/gateway-runtime/policy-engine/internal/resolver"
 )
 
 // Helper to create a minimal valid config for testing
@@ -100,7 +101,7 @@ func TestNewClient_InvalidConfig(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			client, err := NewClient(tt.config, k, reg)
+			client, err := NewClient(tt.config, k, reg, resolver.DefaultRegistry())
 			assert.Error(t, err)
 			assert.Nil(t, client)
 			assert.Contains(t, err.Error(), "invalid config")
@@ -113,7 +114,7 @@ func TestNewClient_ValidConfig(t *testing.T) {
 	k, reg := createTestKernelAndRegistry(t)
 	config := createValidTestConfig()
 
-	client, err := NewClient(config, k, reg)
+	client, err := NewClient(config, k, reg, resolver.DefaultRegistry())
 	require.NoError(t, err)
 	require.NotNil(t, client)
 
@@ -129,7 +130,7 @@ func TestIsHealthy_BeforeFirstConfig(t *testing.T) {
 	k, reg := createTestKernelAndRegistry(t)
 	config := createValidTestConfig()
 
-	client, err := NewClient(config, k, reg)
+	client, err := NewClient(config, k, reg, resolver.DefaultRegistry())
 	require.NoError(t, err)
 
 	// Before any config is received, policyChainVersion is empty
@@ -141,7 +142,7 @@ func TestIsHealthy_AfterFirstConfig(t *testing.T) {
 	k, reg := createTestKernelAndRegistry(t)
 	config := createValidTestConfig()
 
-	client, err := NewClient(config, k, reg)
+	client, err := NewClient(config, k, reg, resolver.DefaultRegistry())
 	require.NoError(t, err)
 
 	// Simulate receiving a config by setting the version
@@ -157,7 +158,7 @@ func TestGetState(t *testing.T) {
 	k, reg := createTestKernelAndRegistry(t)
 	config := createValidTestConfig()
 
-	client, err := NewClient(config, k, reg)
+	client, err := NewClient(config, k, reg, resolver.DefaultRegistry())
 	require.NoError(t, err)
 
 	// Initial state should be Disconnected
@@ -170,7 +171,7 @@ func TestSetState(t *testing.T) {
 	k, reg := createTestKernelAndRegistry(t)
 	config := createValidTestConfig()
 
-	client, err := NewClient(config, k, reg)
+	client, err := NewClient(config, k, reg, resolver.DefaultRegistry())
 	require.NoError(t, err)
 
 	// Test state transitions
@@ -316,7 +317,7 @@ func TestLoadTLSConfig_ValidCerts(t *testing.T) {
 	config.TLSKeyPath = keyPath
 	config.TLSCAPath = caPath
 
-	client, err := NewClient(config, k, reg)
+	client, err := NewClient(config, k, reg, resolver.DefaultRegistry())
 	require.NoError(t, err)
 
 	// Test loadTLSConfig
@@ -350,7 +351,7 @@ func TestLoadTLSConfig_InvalidCertPath(t *testing.T) {
 	config.TLSKeyPath = keyPath
 	config.TLSCAPath = caPath
 
-	client, err := NewClient(config, k, reg)
+	client, err := NewClient(config, k, reg, resolver.DefaultRegistry())
 	require.NoError(t, err)
 
 	tlsConfig, err := client.loadTLSConfig()
@@ -380,7 +381,7 @@ func TestLoadTLSConfig_InvalidKeyPath(t *testing.T) {
 	config.TLSKeyPath = "/nonexistent/key.pem"
 	config.TLSCAPath = caPath
 
-	client, err := NewClient(config, k, reg)
+	client, err := NewClient(config, k, reg, resolver.DefaultRegistry())
 	require.NoError(t, err)
 
 	tlsConfig, err := client.loadTLSConfig()
@@ -410,7 +411,7 @@ func TestLoadTLSConfig_InvalidCAPath(t *testing.T) {
 	config.TLSKeyPath = keyPath
 	config.TLSCAPath = "/nonexistent/ca.pem"
 
-	client, err := NewClient(config, k, reg)
+	client, err := NewClient(config, k, reg, resolver.DefaultRegistry())
 	require.NoError(t, err)
 
 	tlsConfig, err := client.loadTLSConfig()
@@ -445,7 +446,7 @@ func TestLoadTLSConfig_InvalidCAFormat(t *testing.T) {
 	config.TLSKeyPath = keyPath
 	config.TLSCAPath = caPath
 
-	client, err := NewClient(config, k, reg)
+	client, err := NewClient(config, k, reg, resolver.DefaultRegistry())
 	require.NoError(t, err)
 
 	tlsConfig, err := client.loadTLSConfig()

@@ -18,6 +18,7 @@
 package publishers
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"log/slog"
@@ -45,6 +46,10 @@ type Moesif struct {
 	mu        sync.Mutex
 	done      chan struct{}
 	closeOnce sync.Once
+	// closeErr is the result of the one-and-only shutdown flush, so every caller
+	// of Close sees the same outcome rather than the second one getting a
+	// misleading nil.
+	closeErr error
 }
 
 // MoesifConfig holds the configs specific for the Moesif publisher.
@@ -113,15 +118,68 @@ func NewMoesif(moesifCfg *config.MoesifPublisherConfig) *Moesif {
 	return moesif
 }
 
-// Close stops the background publishing goroutine.
-// It should be called when the Moesif publisher is no longer needed.
-// Safe to call multiple times.
-func (m *Moesif) Close() {
+// Close stops the background publishing goroutine and flushes whatever it had
+// not yet published, satisfying Closer so Analytics.Close reaches it during
+// graceful shutdown. Safe to call multiple times.
+//
+// Stopping the ticker alone is not enough: events accumulate in m.events between
+// ticks, so a shutdown landing mid-interval would abandon up to one full
+// interval's worth. They are handed to the client and then flushed, because
+// QueueEvents only moves them into the client's own queue — which has its own
+// timer and would otherwise be discarded when the process exits.
+//
+// The flush is bounded by ctx. moesifapi-go v1.1.5 exposes no context or
+// configurable timeout on QueueEvents/Flush — Flush is synchronous and subject
+// only to the SDK's own HTTP defaults — so it is run on its own goroutine and
+// abandoned if ctx expires first. That goroutine may briefly outlive Close; the
+// process is exiting, and the alternative is letting an unreachable Moesif
+// endpoint hold shutdown open past the operator's budget until the kubelet
+// SIGKILLs the pod, which would lose the traffic-log sinks' flush too.
+func (m *Moesif) Close(ctx context.Context) error {
 	m.closeOnce.Do(func() {
 		if m.done != nil {
 			close(m.done)
 		}
+
+		// Serialised with the ticker's publish path by the same mutex, so a tick
+		// already in flight completes first and this then finds the buffer empty
+		// — each event is queued exactly once.
+		m.mu.Lock()
+		pending := m.events
+		m.events = nil
+		m.mu.Unlock()
+
+		if m.api == nil {
+			return
+		}
+
+		// Buffered so the goroutine can always finish and exit even after ctx
+		// expired and nobody is left reading.
+		flushed := make(chan error, 1)
+		go func() {
+			var err error
+			if len(pending) > 0 {
+				slog.Info("Flushing buffered Moesif events on shutdown", "count", len(pending))
+				if qErr := m.api.QueueEvents(pending); qErr != nil {
+					err = fmt.Errorf("queueing %d buffered event(s) on shutdown: %w", len(pending), qErr)
+				}
+			}
+			m.api.Flush()
+			flushed <- err
+		}()
+
+		select {
+		case err := <-flushed:
+			m.closeErr = err
+		case <-ctx.Done():
+			m.closeErr = fmt.Errorf("moesif shutdown flush did not complete within the "+
+				"shutdown budget; %d buffered event(s) may be lost: %w", len(pending), ctx.Err())
+		}
+		if m.closeErr != nil {
+			slog.Error("Moesif shutdown flush did not complete cleanly", "error", m.closeErr)
+		}
 	})
+	return m.closeErr
 }
 
 // Publish publishes an event to Moesif.

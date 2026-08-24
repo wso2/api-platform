@@ -62,6 +62,15 @@ const (
 	// Cluster identifies the cluster this policy engine belongs to
 	XDSCluster = "policy-engine-cluster"
 
+	// NodeMetaResolutionProtocolVersion is the Node.Metadata key carrying the
+	// operation-resolution protocol version this runtime implements. The control
+	// plane reads it to decide whether this runtime can be sent routes that need
+	// request-time operation resolution.
+	NodeMetaResolutionProtocolVersion = "resolution_protocol_version"
+	// NodeMetaSupportedResolvers is the Node.Metadata key carrying the sorted list
+	// of operation resolvers registered in this runtime.
+	NodeMetaSupportedResolvers = "supported_resolvers"
+
 	// Tracing Span Names
 	SpanExternalProcessingProcess = "external_processing.process"
 	SpanProcessRequestHeaders     = "external_processing.process_request_headers"
@@ -88,6 +97,9 @@ const (
 	AttrSkipReasonConditionNotMet = "condition_not_met"
 	AttrPolicyExecutionTimeNS     = "policy.execution_time_ns"
 	AttrPolicyShortCircuit        = "policy.short_circuit"
+	AttrResolverName              = "resolver.name"
+	AttrPolicyChainKey            = "policy_chain_key"
+	AttrResolvedOperation         = "resolver.operation"
 
 	// Terminal-outcome attributes. The status code itself is recorded under the
 	// OTel semantic-convention key http.response.status_code by
@@ -105,6 +117,11 @@ const (
 	TerminalReasonNoPolicyChain        = "no_policy_chain"        // route resolved but no chain registered
 	TerminalReasonUnknownMessageType   = "unknown_message_type"   // unrecognised ext_proc message
 	TerminalReasonProcessingFailed     = "processing_failed"      // a phase returned a fatal (stream-ending) error with no ImmediateResponse to classify
+
+	// TerminalReasonResolutionFailed marks a request whose logical operation could not
+	// be resolved to a policy chain. It exists because the status alone cannot identify
+	// one — an unknown-operation failure is an HTTP 404 just like an Envoy route miss.
+	TerminalReasonResolutionFailed = "resolution_failed"
 
 	// Analytics metadata and property keys shared across packages.
 	GuardrailHitMetadataKey  = "isGuardrailHit"

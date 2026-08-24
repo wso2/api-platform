@@ -36,6 +36,7 @@ import (
 	"github.com/wso2/api-platform/gateway/gateway-runtime/policy-engine/internal/kernel"
 	"github.com/wso2/api-platform/gateway/gateway-runtime/policy-engine/internal/metrics"
 	"github.com/wso2/api-platform/gateway/gateway-runtime/policy-engine/internal/registry"
+	"github.com/wso2/api-platform/gateway/gateway-runtime/policy-engine/internal/resolver"
 	policy "github.com/wso2/api-platform/sdk/core/policy/v1alpha2"
 	policyenginev1 "github.com/wso2/api-platform/sdk/core/policyengine"
 )
@@ -141,7 +142,7 @@ func TestHandlePolicyChainUpdate_ReusesUnchangedRoutesOnUnrelatedRedeploy(t *tes
 	metrics.Init()
 	reg, counts := regWithCounters(t, "polA:v1", "polB:v1")
 	k := kernel.NewKernel()
-	h := NewResourceHandler(k, reg)
+	h := NewResourceHandler(k, reg, resolver.DefaultRegistry())
 	ctx := context.Background()
 
 	rA := route("rA", pol("polA", "v1", map[string]interface{}{"x": "1"}))
@@ -174,7 +175,7 @@ func TestHandlePolicyChainUpdate_ReuseAcrossVolatileMetadataBump(t *testing.T) {
 	metrics.Init()
 	reg, counts := regWithCounters(t, "polA:v1")
 	k := kernel.NewKernel()
-	h := NewResourceHandler(k, reg)
+	h := NewResourceHandler(k, reg, resolver.DefaultRegistry())
 	ctx := context.Background()
 
 	rA := route("rA", pol("polA", "v1", map[string]interface{}{"x": "1"}))
@@ -193,7 +194,7 @@ func TestHandlePolicyChainUpdate_ReorderRebuilds(t *testing.T) {
 	metrics.Init()
 	reg, counts := regWithCounters(t, "polA:v1", "polB:v1")
 	k := kernel.NewKernel()
-	h := NewResourceHandler(k, reg)
+	h := NewResourceHandler(k, reg, resolver.DefaultRegistry())
 	ctx := context.Background()
 
 	pA := pol("polA", "v1", map[string]interface{}{"x": "1"})
@@ -216,7 +217,7 @@ func TestHandlePolicyChainUpdate_RemovesAbsentRoutes(t *testing.T) {
 	metrics.Init()
 	reg, _ := regWithCounters(t, "polA:v1")
 	k := kernel.NewKernel()
-	h := NewResourceHandler(k, reg)
+	h := NewResourceHandler(k, reg, resolver.DefaultRegistry())
 	ctx := context.Background()
 
 	rA := route("rA", pol("polA", "v1", nil))
@@ -396,7 +397,7 @@ func TestHandlePolicyChainUpdate_FailedRebuildNotReportedRemoved(t *testing.T) {
 	}
 
 	k := kernel.NewKernel()
-	h := NewResourceHandler(k, reg)
+	h := NewResourceHandler(k, reg, resolver.DefaultRegistry())
 	ctx := context.Background()
 
 	// Snapshot 1: rB applied successfully.

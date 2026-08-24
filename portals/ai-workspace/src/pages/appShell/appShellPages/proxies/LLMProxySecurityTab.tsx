@@ -55,6 +55,10 @@ export default function LLMProxySecurityTab() {
 
   const isFormDisabled =
     !apiKeyEnabled || isLoading || Boolean(error) || isReadOnlyProxy;
+  const isKeyValueInvalid =
+    authenticationType === 'apiKey' &&
+    apiKeyEnabled &&
+    keyName.trim().length === 0;
 
   useEffect(() => {
     if (!proxy) return;
@@ -191,6 +195,11 @@ export default function LLMProxySecurityTab() {
                   placeholder="X-API-Key"
                   value={keyName}
                   disabled={isFormDisabled}
+                  required={apiKeyEnabled}
+                  error={isKeyValueInvalid}
+                  helperText={
+                    isKeyValueInvalid ? 'API Key is required' : undefined
+                  }
                   onChange={handleKeyNameChange}
                 />
               </FormControl>

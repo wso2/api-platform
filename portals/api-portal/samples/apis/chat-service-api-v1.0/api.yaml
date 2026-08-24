@@ -1,0 +1,37 @@
+apiVersion: api-portal.api-platform.wso2.com/v1
+kind: WS
+
+metadata:
+  name: chat-service-api-v1.0
+
+spec:
+  type: WS
+  displayName: Chat Service API
+  version: v1.0
+  description: Real-time chat between multiple users over a WebSocket connection. Open a socket, send a message frame, and every other connected client receives it.
+  status: PUBLISHED
+
+  tags:
+    - websocket
+    - chat
+    - real-time
+    - async
+
+  labels:
+    - default
+
+  subscriptionPlans:
+    - Gold
+    - Silver
+
+  agentVisibility: VISIBLE
+
+  businessInformation:
+    businessOwner: API Team
+    businessOwnerEmail: api-team@example.com
+    technicalOwner: Platform Team
+    technicalOwnerEmail: platform-team@example.com
+
+  endpoints:
+    productionUrl: wss://db720294-98fd-40f4-85a1-cc6a3b65bc9a-prod.e1-us-east-azure.choreoapis.dev/godzilla/chat-service-api/v1.0
+    sandboxUrl: wss://db720294-98fd-40f4-85a1-cc6a3b65bc9a-prod.e1-us-east-azure.choreoapis.dev/godzilla/chat-service-api/v1.0
