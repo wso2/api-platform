@@ -26,7 +26,11 @@ const subDao = require('../dao/subscriptionDao');
 const logger = require('../config/logger');
 const constants = require('../utils/constants');
 
-const KEY_HANDLE_PATTERN = /^[a-z0-9][a-z0-9_-]{0,127}$/;
+const KEY_HANDLE_PATTERN = /^[a-z0-9]+(-[a-z0-9]+)*$/;
+const KEY_HANDLE_MIN_LENGTH = 3;
+const KEY_HANDLE_MAX_LENGTH = 40;
+const DISPLAY_NAME_MAX_LENGTH = 128;
+const HANDLE_COLLISION_MAX_RETRIES = 5;
 const EXPIRES_AT_HAS_TZ = /(?:Z|[+-]\d{2}:\d{2})$/;
 const MIN_EXPIRY_MS = Date.UTC(1970, 0, 1);
 const MAX_EXPIRY_MS = Date.UTC(2100, 11, 31, 23, 59, 59, 999);
@@ -35,10 +39,51 @@ function generateSecret() {
     return crypto.randomBytes(32).toString('base64url');
 }
 
-function parseAndValidateHandle(raw) {
-    if (typeof raw !== 'string') return null;
-    const n = raw.trim();
-    return KEY_HANDLE_PATTERN.test(n) ? n : null;
+function generateRandomSuffix() {
+    return crypto.randomBytes(2).toString('hex');
+}
+
+function sanitizeToHandle(s) {
+    let handle = s.toLowerCase().trim().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '');
+    if (handle.length > KEY_HANDLE_MAX_LENGTH) {
+        handle = handle.slice(0, KEY_HANDLE_MAX_LENGTH).replace(/-+$/, '');
+    }
+    if (handle.length < KEY_HANDLE_MIN_LENGTH) {
+        const suffix = generateRandomSuffix().slice(0, KEY_HANDLE_MIN_LENGTH - handle.length);
+        handle = handle ? `${handle}-${suffix}` : suffix;
+    }
+    return handle;
+}
+
+function validateHandle(handle) {
+    if (!handle || handle.length < KEY_HANDLE_MIN_LENGTH || handle.length > KEY_HANDLE_MAX_LENGTH) return false;
+    return KEY_HANDLE_PATTERN.test(handle);
+}
+
+async function resolveUniqueKeyName(orgId, apiUuid, handle, displayName) {
+    let baseName;
+    if (typeof handle === 'string' && handle.trim()) {
+        baseName = handle.trim();
+        if (!validateHandle(baseName)) {
+            throw Object.assign(new Error(
+                `id must be ${KEY_HANDLE_MIN_LENGTH}-${KEY_HANDLE_MAX_LENGTH} characters matching ^[a-z0-9]+(-[a-z0-9]+)*$`
+            ), { status: 400 });
+        }
+    } else if (typeof displayName === 'string' && displayName.trim()) {
+        baseName = sanitizeToHandle(displayName.trim());
+    } else {
+        baseName = crypto.randomUUID();
+    }
+
+    let name = baseName;
+    for (let i = 0; i < HANDLE_COLLISION_MAX_RETRIES; i++) {
+        if (!(await apiKeyDao.getIdByHandle(orgId, apiUuid, name))) return name;
+        const suffix = generateRandomSuffix();
+        name = baseName.length + 1 + suffix.length > KEY_HANDLE_MAX_LENGTH
+            ? `${baseName.slice(0, KEY_HANDLE_MAX_LENGTH - 1 - suffix.length).replace(/-+$/, '')}-${suffix}`
+            : `${baseName}-${suffix}`;
+    }
+    throw Object.assign(new Error(`An API key with id "${baseName}" already exists for this API.`), { status: 409 });
 }
 
 function parseExpiresAt(raw) {
@@ -138,16 +183,14 @@ async function publishKeyApplicationUpdated(orgId, keyId, handle, displayName, a
  */
 async function generate({ orgId, apiId, subscriptionId, appId, handle, displayName, expiresAt, actor }) {
 
-    // Handle rule: use the caller-supplied `id` when present (validated); otherwise a
-    // UUID. A UUID satisfies KEY_HANDLE_PATTERN, so it needs no extra validation.
-    let normalizedHandle;
-    if (typeof handle === 'string' && handle.trim()) {
-        normalizedHandle = parseAndValidateHandle(handle);
-        if (!normalizedHandle) throw Object.assign(new Error('id must match ^[a-z0-9][a-z0-9_-]{0,127}$'), { status: 400 });
-    } else {
-        normalizedHandle = crypto.randomUUID();
+    let normalizedDisplayName = null;
+    if (typeof displayName === 'string' && displayName.trim()) {
+        const trimmed = displayName.trim();
+        if (trimmed.length > DISPLAY_NAME_MAX_LENGTH) {
+            throw Object.assign(new Error(`displayName must be at most ${DISPLAY_NAME_MAX_LENGTH} characters`), { status: 400 });
+        }
+        normalizedDisplayName = trimmed;
     }
-    const normalizedDisplayName = typeof displayName === 'string' && displayName.trim() ? displayName.trim() : normalizedHandle;
 
     const expiry = parseExpiresAt(expiresAt);
     if (!expiry.ok) throw Object.assign(new Error(expiry.description), { status: 400 });
@@ -155,13 +198,8 @@ async function generate({ orgId, apiId, subscriptionId, appId, handle, displayNa
     const api = await resolveApi(orgId, apiId);
     if (api.error) throw Object.assign(new Error(api.error.message), { status: api.error.status });
 
-    // The handle is the caller-facing id used to resolve a key within an API, so reject
-    // a duplicate. This is a friendly pre-check; the (org_uuid, api_uuid, handle) unique
-    // index is the authoritative guard, enforced atomically by the duplicate-key catch
-    // around apiKeyDao.create below (which also covers a create that races past this).
-    if (await apiKeyDao.getIdByHandle(orgId, api.id, normalizedHandle)) {
-        throw Object.assign(new Error(`An API key with id "${normalizedHandle}" already exists for this API.`), { status: 409 });
-    }
+    const normalizedHandle = await resolveUniqueKeyName(orgId, api.id, handle, normalizedDisplayName);
+    if (!normalizedDisplayName) normalizedDisplayName = normalizedHandle;
 
     const application = await resolveApp(orgId, appId, actor);
 
