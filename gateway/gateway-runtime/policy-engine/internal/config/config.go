@@ -416,6 +416,11 @@ type PolicyEngine struct {
 	FileConfig     FileConfigConfig     `koanf:"file_config"`
 	Logging        LoggingConfig        `koanf:"logging"`
 	PythonExecutor PythonExecutorConfig `koanf:"python_executor"`
+	// HTTPClient configures the single shared outbound *http.Client built once at
+	// startup (see cmd/policy-engine/main.go) and injected into every policy
+	// instance via PolicyMetadata.SharedHTTPClient — see HTTPClientConfig's doc
+	// comment for the full rationale.
+	HTTPClient HTTPClientConfig `koanf:"http_client"`
 	// Tracing holds OpenTelemetry exporter configuration
 	TracingServiceName string `koanf:"tracing_service_name"`
 
@@ -437,6 +442,115 @@ type BodyConfig struct {
 	// or per chunk (streaming) — not cumulative, so long-lived streams such as SSE
 	// are unaffected. Defaults to DefaultMaxDecompressedBytes when unset.
 	MaxDecompressedBytes int64 `koanf:"max_decompressed_bytes"`
+}
+
+// HTTPClientConfig configures the single shared outbound *http.Client that the
+// policy-engine builds once at startup and injects into every policy instance
+// via PolicyMetadata.SharedHTTPClient (see internal/registry.PolicyRegistry).
+// It mirrors github.com/wso2/api-platform/httpkit/httpclient.Config field-for-field (see
+// that package's own doc comments for full semantics) so every knob the
+// library exposes that has a natural TOML shape is operator-configurable here
+// under [policy_engine.http_client], rather than left for each policy to
+// reinvent. The few fields httpclient.Config exposes that CANNOT be expressed
+// in TOML — Go callback hooks (GetClientCertificate, VerifyPeerCertificate,
+// VerifyConnection, ConnectHeader) and a pre-built *x509.CertPool — are not
+// represented here.
+//
+// Timeouts.Overall is only a generous safety-net budget: a policy issuing a
+// call with its own tighter per-operation deadline should use
+// context.WithTimeout, since http.Client.Do honors a request's context
+// deadline independent of the client-level Timeout.
+//
+// SSRF guarding is off by default (see HTTPClientSSRFConfig) since not every
+// policy dials a tenant/user-supplied URL. A policy whose outbound target
+// comes from request-derived or tenant-configured data — as opposed to a
+// fixed, operator-configured backend — should have its operator enable SSRF
+// guarding here; see ssrf-prevention.md.
+type HTTPClientConfig struct {
+	Pooling  HTTPClientPoolingConfig  `koanf:"pooling"`
+	Timeouts HTTPClientTimeoutsConfig `koanf:"timeouts"`
+	TLS      HTTPClientTLSConfig      `koanf:"tls"`
+	Proxy    HTTPClientProxyConfig    `koanf:"proxy"`
+	SSRF     HTTPClientSSRFConfig     `koanf:"ssrf"`
+}
+
+// HTTPClientPoolingConfig mirrors httpclient.PoolingConfig.
+type HTTPClientPoolingConfig struct {
+	MaxIdleConns        int           `koanf:"max_idle_conns"`
+	MaxIdleConnsPerHost int           `koanf:"max_idle_conns_per_host"`
+	MaxConnsPerHost     int           `koanf:"max_conns_per_host"`
+	IdleConnTimeout     time.Duration `koanf:"idle_conn_timeout"`
+	KeepAlive           time.Duration `koanf:"keep_alive"`
+	DisableKeepAlives   bool          `koanf:"disable_keep_alives"`
+	// EnableHTTP2 opts into HTTP/2. See httpclient.PoolingConfig.EnableHTTP2's doc comment
+	// on the HTTP/2 connection-coalescing caveat before enabling.
+	EnableHTTP2 bool `koanf:"enable_http2"`
+}
+
+// HTTPClientTimeoutsConfig mirrors httpclient.TimeoutsConfig.
+type HTTPClientTimeoutsConfig struct {
+	Overall          time.Duration `koanf:"overall"` // safety-net only; see HTTPClientConfig's doc comment
+	Dial             time.Duration `koanf:"dial"`
+	TLSHandshake     time.Duration `koanf:"tls_handshake"`
+	ResponseHeader   time.Duration `koanf:"response_header"`
+	ExpectContinue   time.Duration `koanf:"expect_continue"`
+	MaxResponseBytes int64         `koanf:"max_response_bytes"` // 0 = package default (10MiB); negative disables the bound
+}
+
+// HTTPClientTLSConfig mirrors the TOML-expressible subset of httpclient.TLSConfig.
+type HTTPClientTLSConfig struct {
+	MinVersion       string `koanf:"min_version"`       // one of "TLS1_0".."TLS1_3"
+	MaxVersion       string `koanf:"max_version"`       // one of "TLS1_0".."TLS1_3"
+	CipherSuites     string `koanf:"cipher_suites"`     // comma-separated Go crypto/tls cipher suite names; TLS 1.2 and below only
+	CurvePreferences string `koanf:"curve_preferences"` // comma-separated, e.g. "X25519MLKEM768,X25519,P-256"
+	RootCAFile       string `koanf:"root_ca_file"`      // PEM CA bundle; empty uses the system root pool
+	ClientCertFile   string `koanf:"client_cert_file"`  // mTLS to the origin; both cert and key must be set together
+	ClientKeyFile    string `koanf:"client_key_file"`
+}
+
+// HTTPClientProxyConfig mirrors the TOML-expressible subset of httpclient.ProxyConfig.
+type HTTPClientProxyConfig struct {
+	// Mode selects how the proxy is determined: "none" (default), "environment"
+	// (HTTP_PROXY/HTTPS_PROXY/NO_PROXY), or "url" (URL/Username/Password/NoProxy below).
+	Mode     string   `koanf:"mode"`
+	URL      string   `koanf:"url"`
+	Username string   `koanf:"username"`
+	Password string   `koanf:"password"`
+	NoProxy  []string `koanf:"no_proxy"` // exact host, ".suffix", or CIDR entries; only used when mode == "url"
+
+	TLS HTTPClientProxyTLSConfig `koanf:"tls"`
+
+	// Egress states how origin-destination SSRF risk is handled when a forward proxy is
+	// also configured: "delegated" (trust the proxy's own egress controls) or
+	// "manual_connect" (validate the origin locally before ever issuing CONNECT). Must be
+	// set explicitly whenever Mode != "none" and SSRF.Enabled — httpclient.New fails
+	// closed at startup otherwise rather than silently choosing one.
+	Egress string `koanf:"egress"`
+}
+
+// HTTPClientProxyTLSConfig mirrors httpclient.ProxyTLSConfig (the proxy's own TLS
+// handshake, fully decoupled from the origin TLS handshake in HTTPClientTLSConfig).
+type HTTPClientProxyTLSConfig struct {
+	RootCAFile         string `koanf:"root_ca_file"`
+	ClientCertFile     string `koanf:"client_cert_file"`
+	ClientKeyFile      string `koanf:"client_key_file"`
+	InsecureSkipVerify bool   `koanf:"insecure_skip_verify"`
+}
+
+// HTTPClientSSRFConfig mirrors the TOML-expressible subset of httpclient.SSRFConfig. Off by
+// default — see HTTPClientConfig's doc comment on when a policy's operator should enable it.
+type HTTPClientSSRFConfig struct {
+	Enabled bool `koanf:"enabled"`
+	// Preset selects a built-in netguard policy: "permit_private_block_metadata" (a
+	// backend that is normally private — a ClusterIP, a service-DNS name, localhost —
+	// stays reachable; only link-local/metadata/unspecified/multicast are refused) or
+	// "public_only" (stricter: every private/loopback/link-local/CGNAT address is
+	// refused, for a URL expected to point at the public internet). Required when Enabled
+	// is true. Custom CIDR allow/deny lists have no natural TOML shape and are not
+	// exposed here — use the httpclient/netguard packages directly in code for that.
+	Preset         string   `koanf:"preset"`
+	MaxRedirects   int      `koanf:"max_redirects"`
+	AllowedSchemes []string `koanf:"allowed_schemes"` // empty defaults to {"https"}
 }
 
 // MetricsConfig holds Prometheus metrics server configuration
@@ -898,6 +1012,33 @@ func defaultConfig() *Config {
 					Host: "localhost",
 				},
 				Timeout: 30 * time.Second,
+			},
+			HTTPClient: HTTPClientConfig{
+				Pooling: HTTPClientPoolingConfig{
+					MaxIdleConns:        100,
+					MaxIdleConnsPerHost: 10,
+					MaxConnsPerHost:     100,
+					IdleConnTimeout:     90 * time.Second,
+					KeepAlive:           30 * time.Second,
+				},
+				Timeouts: HTTPClientTimeoutsConfig{
+					Overall:        30 * time.Second, // safety-net only; see HTTPClientConfig's doc comment
+					Dial:           10 * time.Second,
+					TLSHandshake:   10 * time.Second,
+					ResponseHeader: 10 * time.Second,
+					ExpectContinue: 1 * time.Second,
+				},
+				TLS: HTTPClientTLSConfig{
+					MinVersion:       "TLS1_2",
+					MaxVersion:       "TLS1_3",
+					CurvePreferences: "",
+				},
+				Proxy: HTTPClientProxyConfig{
+					Mode: "none",
+				},
+				SSRF: HTTPClientSSRFConfig{
+					Enabled: false,
+				},
 			},
 			TracingServiceName: "policy-engine",
 			RequestBody: BodyConfig{
