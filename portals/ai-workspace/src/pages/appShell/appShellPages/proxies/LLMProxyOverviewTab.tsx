@@ -438,15 +438,19 @@ export default function LLMProxyOverviewTab() {
       setGeneratedKey(response.apiKey);
       setLatestGeneratedKey(response.apiKey);
       setIsApiKeyModalOpen(true);
-      try {
-        const refreshedApiKeys = await getProxyAPIKeys();
-        setApiKeys(refreshedApiKeys.list || []);
-      } catch (fetchError) {
-        logger.error(
-          `Failed to refresh API keys for proxy ${proxy.id}:`,
-          fetchError
-        );
-        showSnackbar('Failed to refresh API keys.', 'error');
+      // A create-only user has no readable key list — skip the refresh instead
+      // of issuing a request that can only 403 and surface a false failure.
+      if (canReadProxyApiKey) {
+        try {
+          const refreshedApiKeys = await getProxyAPIKeys();
+          setApiKeys(refreshedApiKeys.list || []);
+        } catch (fetchError) {
+          logger.error(
+            `Failed to refresh API keys for proxy ${proxy.id}:`,
+            fetchError
+          );
+          showSnackbar('Failed to refresh API keys.', 'error');
+        }
       }
     } catch (apiKeyError) {
       logger.error('Failed to generate API key:', apiKeyError);

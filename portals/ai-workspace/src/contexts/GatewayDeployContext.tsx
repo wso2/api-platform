@@ -250,6 +250,15 @@ export function GatewayDeployProvider({
   pollingDeploymentsRef.current = pollingDeployments;
 
   /**
+   * Monotonic request tokens for the two loads. Every fetch captures the token it
+   * started with and discards its own result if the token has since moved on, so a
+   * response that lands after access was lost (or after a newer load started)
+   * cannot repopulate gateways/deployments behind an access message.
+   */
+  const gatewaysRequestRef = useRef(0);
+  const deploymentsRequestRef = useRef(0);
+
+  /**
    * Deployments whose poll window expired while still transitional — the gateway's
    * acknowledgement never arrived, so they are surfaced as FAILED. The override only
    * applies while platform-api still reports a transitional status, so a late
@@ -324,14 +333,21 @@ export function GatewayDeployProvider({
     // A user without the deployment-read scope has no readable deploy surface,
     // so don't issue the gateway/deployment reads at all — they would only 403.
     if (!organizationId || !canViewDeployments) {
+      // Bumping the token strands any in-flight load: its result is discarded
+      // instead of repopulating the list behind the access message. The error is
+      // cleared too, so consumers show "no access" rather than a stale failure.
+      gatewaysRequestRef.current += 1;
       setGateways([]);
+      setError(null);
       setIsLoading(false);
       return;
     }
+    const requestId = (gatewaysRequestRef.current += 1);
     setIsLoading(true);
     setError(null);
     try {
       const response = await getGateways(organizationId);
+      if (gatewaysRequestRef.current !== requestId) return;
       const fetchedGateways: HybridGateway[] = (response.list || []).map(
         (gateway) => ({
           ...gateway,
@@ -342,13 +358,16 @@ export function GatewayDeployProvider({
       );
       setGateways(fetchedGateways);
     } catch (err) {
+      if (gatewaysRequestRef.current !== requestId) return;
       logger.error('Failed to fetch hybrid gateways:', err);
       setError(
         err instanceof Error ? err : new Error('Failed to fetch gateways')
       );
       setGateways([]);
     } finally {
-      setIsLoading(false);
+      if (gatewaysRequestRef.current === requestId) {
+        setIsLoading(false);
+      }
     }
   }, [organizationId, canViewDeployments]);
 
@@ -358,13 +377,19 @@ export function GatewayDeployProvider({
 
   const refetchDeployments = useCallback(async () => {
     if (!apiId || !organizationId || !canViewDeployments) {
+      // Strand any in-flight load so its continuation can't repopulate the list
+      // or restart polling from stale transitional statuses.
+      deploymentsRequestRef.current += 1;
       setDeployments(null);
+      setDeploymentsError(null);
+      setIsLoadingDeployments(false);
       // Drop any in-flight status watches: without the read scope every poll
       // would only 403, so stop them instead of retrying until they expire.
       setPollingDeployments((prev) => (prev.size === 0 ? prev : new Map()));
       setTimedOutDeployments((prev) => (prev.size === 0 ? prev : new Set()));
       return;
     }
+    const requestId = (deploymentsRequestRef.current += 1);
     setIsLoadingDeployments(true);
     setDeploymentsError(null);
     try {
@@ -393,6 +418,7 @@ export function GatewayDeployProvider({
         );
 
         const deploymentResponses = await Promise.all(deploymentPromises);
+        if (deploymentsRequestRef.current !== requestId) return;
         const allDeployments = deploymentResponses.flatMap(
           (response) => response.list
         );
@@ -404,15 +430,19 @@ export function GatewayDeployProvider({
           organizationId,
           PLATFORM_API_BASE_URL
         );
+        if (deploymentsRequestRef.current !== requestId) return;
         setDeployments(result);
       }
     } catch (err) {
+      if (deploymentsRequestRef.current !== requestId) return;
       logger.error(`Failed to fetch LLM ${resourceType} deployments:`, err);
       setDeploymentsError(
         err instanceof Error ? err : new Error('Failed to fetch deployments')
       );
     } finally {
-      setIsLoadingDeployments(false);
+      if (deploymentsRequestRef.current === requestId) {
+        setIsLoadingDeployments(false);
+      }
     }
   }, [apiId, organizationId, resourceType, gateways, canViewDeployments]);
 
@@ -544,6 +574,10 @@ export function GatewayDeployProvider({
   const deployToGateway = useCallback(
     async (gatewayId: string, host: string): Promise<boolean> => {
       if (!apiId || !organizationId) return false;
+      if (isReadOnly) {
+        logger.warn('Deploy blocked: deployment lifecycle is read-only here.');
+        return false;
+      }
 
       setDeployingGatewayId(gatewayId);
       try {
@@ -631,12 +665,17 @@ export function GatewayDeployProvider({
       refetchDeployments,
       startPolling,
       resourceType,
+      isReadOnly,
     ]
   );
 
   const undeployDeployment = useCallback(
     async (deploymentId: string, gatewayId: string): Promise<boolean> => {
       if (!apiId || !organizationId || !deploymentId) return false;
+      if (isReadOnly) {
+        logger.warn('Undeploy blocked: deployment lifecycle is read-only here.');
+        return false;
+      }
 
       setDeployingGatewayId(gatewayId);
       try {
@@ -700,12 +739,17 @@ export function GatewayDeployProvider({
       fetchSingleDeploymentStatus,
       startPolling,
       resourceType,
+      isReadOnly,
     ]
   );
 
   const redeployDeployment = useCallback(
     async (deploymentId: string, gatewayId: string): Promise<boolean> => {
       if (!apiId || !organizationId || !deploymentId) return false;
+      if (isReadOnly) {
+        logger.warn('Redeploy blocked: deployment lifecycle is read-only here.');
+        return false;
+      }
 
       setDeployingGatewayId(gatewayId);
       try {
@@ -765,6 +809,7 @@ export function GatewayDeployProvider({
       refetchDeployments,
       startPolling,
       resourceType,
+      isReadOnly,
     ]
   );
 

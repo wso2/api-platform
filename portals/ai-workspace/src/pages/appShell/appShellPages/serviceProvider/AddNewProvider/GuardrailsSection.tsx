@@ -543,6 +543,11 @@ export default function GuardrailsSection({
                         <PartialLoadWarning
                           message="Policy Hub policies could not be loaded. Only custom policies are listed."
                           onRetry={() => {
+                            // Retry reloads the first page, so the pagination
+                            // cursor has to go back with it — otherwise the next
+                            // "load more" resumes from the pre-failure offset and
+                            // skips a page of guardrails.
+                            setGuardrailsOffset(0);
                             void fetchDrawerGuardrails(selectedCategories, 0, false);
                           }}
                         />

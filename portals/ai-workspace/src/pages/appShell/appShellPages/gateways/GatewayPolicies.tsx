@@ -33,6 +33,7 @@ export default function GatewayPolicies() {
     syncPolicy,
     syncingPolicyKey,
     canViewPolicies,
+    canViewManifest,
     canSyncPolicies,
   } = useGatewayPolicies();
   const showSnackbar = useAIWorkspaceSnackbar();
@@ -53,8 +54,9 @@ export default function GatewayPolicies() {
     }
   };
 
-  // The provider skips the fetch without the read scopes, so there is nothing to
-  // show here — say why rather than rendering an empty table.
+  // The provider skips both fetches only when neither source is readable, so
+  // there is genuinely nothing to show — say why rather than rendering an empty
+  // table. Holding one of the two scopes lands in the partial view below instead.
   if (!canViewPolicies) {
     return (
       <Alert severity="info">
@@ -126,7 +128,11 @@ export default function GatewayPolicies() {
             onRetry={() => void refresh()}
           />
         ))}
-        <Alert severity="info">No gateway manifest received yet.</Alert>
+        <Alert severity="info">
+          {canViewManifest
+            ? "No gateway manifest received yet."
+            : "No custom policies have been synced to this organization yet."}
+        </Alert>
       </>
     );
 
@@ -182,6 +188,12 @@ export default function GatewayPolicies() {
                   <Typography variant="body2" color="text.secondary">
                     N/A
                   </Typography>
+                ) : policy.syncStatus === "Unknown" ? (
+                  <Tooltip title="Sync status is unavailable because the organization's custom policies could not be read.">
+                    <Typography variant="body2" color="text.secondary">
+                      Unknown
+                    </Typography>
+                  </Tooltip>
                 ) : policy.syncStatus === "Synced" ? (
                   <Chip
                     label="Latest Version Available"
