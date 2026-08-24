@@ -32,9 +32,12 @@
  *
  * A call site that needs its own `rejectUnauthorized` value (authController's
  * auth.local.tlsSkipVerify, tryoutProxyService's tryout.tlsSkipVerify) builds
- * its own `https.Agent` by spreading `tlsOptions` from this module's return
- * value alongside that value, rather than reusing `httpsAgent` outright,
- * since an Agent's TLS options are fixed at construction time.
+ * its own `https.Agent` by spreading `tlsOptions`/`pooling` from this module's
+ * return value alongside that value, rather than reusing `httpsAgent` outright,
+ * since an Agent's TLS options are fixed at construction time — but memoizes
+ * that agent itself (see authController's getLocalLoginHttpsAgent and
+ * tryoutProxyService's cachedClient), so pooling/keep-alive still applies
+ * instead of a fresh handshake per call.
  */
 
 const http = require('http');
