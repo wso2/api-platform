@@ -198,6 +198,34 @@ const (
 	ANALYTICS_SYSTEM_POLICY_NAME    = "wso2_apip_sys_analytics"
 	ANALYTICS_SYSTEM_POLICY_VERSION = "v1"
 
+	// A2A_SYSTEM_POLICY_NAME is the in-repo policy that answers the A2A requests
+	// the gateway serves itself rather than proxying to the agent behind it
+	// (gateway/system-policies/a2a). Serving a managed public Agent Card is its
+	// only job today; it is named for the protocol so a second such concern joins
+	// it instead of becoming another policy, another module, and another
+	// build-lock line.
+	//
+	// Unlike the analytics policy it is not a defaultSystemPolicies entry: those
+	// inject into every chain and have no route predicate, whereas this is
+	// attached per route by the Agent transformer. The shared "wso2_apip_sys_"
+	// prefix is what keeps it out of the control-plane gateway manifest
+	// (pkg/controlplane/client.go), which is the only enforcement point for
+	// "internal, not user-attachable" — a name without it would be published to
+	// the control plane as an author-attachable policy.
+	A2A_SYSTEM_POLICY_NAME = "wso2_apip_sys_a2a"
+
+	// A2A_POLICY_PARAM_* are the parameter names the policy above reads. Agent
+	// Card serving takes a nested block of its own rather than top-level fields,
+	// so a second gateway-answered A2A concern gets a sibling block instead of
+	// competing for a top-level name.
+	//
+	// The policy's module cannot import this one, so the names are spelled once
+	// on each side (a2a.ParamAgentCard / ParamContent / ParamETag) and a test on
+	// each side asserts the literal.
+	A2A_POLICY_PARAM_AGENT_CARD = "agentCard"
+	A2A_POLICY_PARAM_CONTENT    = "content"
+	A2A_POLICY_PARAM_ETAG       = "etag"
+
 	// ResilienceDurationPattern is the single source of truth for the format of resilience
 	// timeout strings.
 	//   - accepted:  "30s", "500ms", "1m", "2h", "1.5s", and "0s" (zero disables the timeout)

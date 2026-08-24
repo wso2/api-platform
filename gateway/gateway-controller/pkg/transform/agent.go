@@ -19,12 +19,16 @@
 package transform
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"log/slog"
 	"strings"
 	"time"
 
 	"github.com/wso2/api-platform/common/agentproto"
+	versionutil "github.com/wso2/api-platform/common/version"
 	api "github.com/wso2/api-platform/gateway/gateway-controller/pkg/api/management"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/config"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/constants"
@@ -38,6 +42,16 @@ import (
 // agentCardRouteMethod is the HTTP method the public Agent Card is served under.
 // Card discovery is a plain read.
 const agentCardRouteMethod = "GET"
+
+// agentCardUpstreamPath is where a passthrough card is fetched from, relative to
+// the Agent's upstream base path.
+//
+// It is fixed by the protocol, not by configuration. agentCard.public.path
+// chooses where the *gateway* serves the card and says nothing about the
+// upstream: an Agent serving its card at /card still has it proxied from the
+// upstream's standard well-known location. A custom or legacy upstream card path
+// is not supported.
+const agentCardUpstreamPath = config.DefaultAgentCardPath
 
 // agentPreflightMethod is the method of the CORS preflight routes generated
 // beside the real ones. Envoy needs a route to match the preflight against
@@ -267,6 +281,32 @@ func (t *AgentTransformer) Transform(cfg *models.StoredConfig) (*models.RuntimeD
 	cardPolicies := resolvePolicyInstances(
 		t.policyDefinitions, t.latestVersions, cardPolicySource, policyv1alpha.LevelAPI)
 
+	// The policy that answers a managed card, appended after the author's own
+	// card policies so anything they attached — a rate limit, an IP filter —
+	// runs before the request is answered. It short-circuits the chain, so a
+	// policy placed after it would never run at all.
+	//
+	// It is deliberately kept out of cardPolicies: the CORS preflight for this
+	// same path is built from those, and a preflight that answered with the card
+	// body would be worse than no preflight.
+	cardChain := cardPolicies
+	if passthroughCard {
+		// L4: the gateway proxies the upstream's card unparsed, so none of the
+		// card/policy consistency checks a managed card gets can run against it.
+		// There is no deployment-status surface on the management API to carry
+		// this yet, so it is recorded here, where it names the artifact.
+		slog.Warn("agent card consistency cannot be verified in passthrough mode; "+
+			"the upstream is responsible for advertising interfaces and security "+
+			"requirements consistent with gateway enforcement",
+			"agent_id", cfg.UUID, "handle", cfg.Handle)
+	} else {
+		cardPolicy, err := t.agentCardPolicyInstance(a2a.AgentCard.Public.Content)
+		if err != nil {
+			return nil, err
+		}
+		cardChain = append(append([]policyenginev1.PolicyInstance{}, cardPolicies...), cardPolicy)
+	}
+
 	vhosts := agentVhosts(spec.Vhost, t.routerConfig.VHosts.Main.Default)
 
 	routeOrder := 0
@@ -469,12 +509,18 @@ func (t *AgentTransformer) Transform(cfg *models.StoredConfig) (*models.RuntimeD
 			OperationPath: cardRelativePath,
 			PathMatchType: "Exact",
 			Timeout:       agentRouteTimeout(nil, agentTimeout, agentIdleTimeout, false),
+			// Where the card lives upstream is fixed by the protocol, so the
+			// route says so regardless of mode; a managed card is answered by
+			// its chain and never gets as far as using it. Without this a
+			// custom gateway-facing path would be forwarded verbatim to an
+			// upstream that only serves the well-known one.
+			UpstreamPathOverride: agentCardUpstreamPath,
 		})
 		if err != nil {
 			return nil, err
 		}
 		rdc.PolicyChains[cardRouteKey] = sdkChainToModel(
-			utils.InjectSystemPolicies(cardPolicies, t.systemConfig, nil))
+			utils.InjectSystemPolicies(cardChain, t.systemConfig, nil))
 		// The card is not an operation, so only its own scope can answer its
 		// preflight.
 		addPreflight(cardPath, cardRelativePath, cardPolicies, nil)
@@ -599,6 +645,82 @@ func agentCardPath(configured *string) string {
 		return config.DefaultAgentCardPath
 	}
 	return *configured
+}
+
+// agentCardPolicyInstance builds the policy that serves a managed card.
+//
+// The policy is attached by name, so its version is resolved from the loaded
+// definitions the same way an author-attached policy's is. Unlike an
+// author-attached policy, an unresolvable one is a hard failure rather than a
+// dropped chain entry: the chain is what makes a managed card a managed card.
+// Dropping it would leave a route that proxies the card request to the upstream,
+// and the gateway would then serve the upstream's own unvalidated, unsigned card
+// under a configuration that says the gateway owns it — a silent substitution
+// with no error anywhere.
+func (t *AgentTransformer) agentCardPolicyInstance(
+	content *api.A2AAgentCardDocument,
+) (policyenginev1.PolicyInstance, error) {
+	if content == nil || len(*content) == 0 {
+		// Validation rejects a managed card with no content, so this is a
+		// defensive check on a path that should be unreachable.
+		return policyenginev1.PolicyInstance{},
+			fmt.Errorf("managed agent card has no content to serve")
+	}
+
+	body, etag, err := agentCardBody(*content)
+	if err != nil {
+		return policyenginev1.PolicyInstance{}, err
+	}
+
+	resolved, err := config.ResolvePolicyVersion(
+		t.policyDefinitions, t.latestVersions, constants.A2A_SYSTEM_POLICY_NAME, "")
+	if err != nil {
+		return policyenginev1.PolicyInstance{}, fmt.Errorf(
+			"cannot serve a managed agent card: %w", err)
+	}
+
+	// No attachedTo parameter, matching how the injected system policies are
+	// built: the attachment level is a hint for author-attached policies about
+	// which scope configured them, and this one was configured by no scope.
+	//
+	// The card configuration is a nested block because the policy is the A2A
+	// system policy, not the Agent Card policy: whatever it answers next brings
+	// its own block alongside this one.
+	return policyenginev1.PolicyInstance{
+		Name:    constants.A2A_SYSTEM_POLICY_NAME,
+		Version: versionutil.MajorVersion(resolved),
+		Enabled: true,
+		Parameters: map[string]any{
+			constants.A2A_POLICY_PARAM_AGENT_CARD: map[string]any{
+				constants.A2A_POLICY_PARAM_CONTENT: string(body),
+				constants.A2A_POLICY_PARAM_ETAG:    etag,
+			},
+		},
+	}, nil
+}
+
+// agentCardBody serializes a managed Agent Card and derives its entity tag.
+//
+// This is the one place the served bytes are produced. Card signing (a later
+// section) signs the bytes this returns, and the runtime serves them verbatim,
+// so a second encoding of the same document anywhere would be a signature that
+// does not verify against the card a client received. The document itself is
+// never rewritten — extension fields and unknown members survive, because it is
+// carried as a free-form map rather than a typed struct.
+//
+// The tag is a strong ETag: a hash over exactly those bytes, so two cards
+// compare equal if and only if their served representations are byte-identical.
+// A deploy that does not change the card therefore does not invalidate a
+// client's cached copy.
+func agentCardBody(content api.A2AAgentCardDocument) ([]byte, string, error) {
+	body, err := json.Marshal(content)
+	if err != nil {
+		// Unreachable for a document that arrived as JSON or YAML, and already
+		// rejected by validation's own size check, which encodes it too.
+		return nil, "", fmt.Errorf("failed to encode agent card content: %w", err)
+	}
+	digest := sha256.Sum256(body)
+	return body, `"` + hex.EncodeToString(digest[:]) + `"`, nil
 }
 
 // agentResolverConfig encodes one route's resolver configuration. Every

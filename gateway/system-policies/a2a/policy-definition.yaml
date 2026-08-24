@@ -1,0 +1,49 @@
+name: wso2_apip_sys_a2a
+version: v1.0.0
+description: |
+  The gateway's internal A2A system policy: the parts of the A2A protocol the
+  gateway answers itself rather than proxying to the agent behind it. Attached by
+  the gateway controller to the routes that need it, never by an Agent author.
+
+  Each gateway-answered concern gets its own parameter block, so a policy chain
+  carries one instance of this policy rather than one per concern.
+
+  agentCard — serves an Agent's managed public Agent Card. Attached to the single
+  public Agent Card route of an Agent whose card mode is `managed`. The policy
+  answers at the request-header phase and the request never reaches the upstream
+  agent. It honours If-None-Match, replying 304 with no body when the client
+  already holds the card identified by `etag`. Both values are written by the
+  controller from the Agent's validated `spec.a2a.agentCard.public.content`.
+
+parameters:
+  type: object
+  additionalProperties: false
+  properties:
+    agentCard:
+      type: object
+      additionalProperties: false
+      required: ["content", "etag"]
+      description: >
+        Managed public Agent Card serving. Present on the card route of a managed
+        Agent and on no other route.
+      properties:
+        content:
+          type: string
+          description: >
+            The exact Agent Card bytes to serve, as a JSON string. Carried as
+            serialized bytes rather than as a structured object because the bytes
+            are what the controller validated, and what card signing will sign —
+            a re-serialization in the runtime would change them.
+          minLength: 1
+        etag:
+          type: string
+          description: >
+            Strong entity tag for `content`, already quoted, used verbatim in the
+            ETag response header and compared against If-None-Match. Derived by
+            the controller from the same bytes, so a card and its tag cannot
+            disagree.
+          minLength: 1
+
+systemParameters:
+  type: object
+  properties: {}

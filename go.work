@@ -14,6 +14,7 @@ use (
 	./gateway/gateway-runtime/policy-engine
 	./gateway/it
 	./gateway/sample-policies/transform-payload-case
+	./gateway/system-policies/a2a
 	./gateway/system-policies/analytics
 	./httpkit
 	./kubernetes/conformance/runner
