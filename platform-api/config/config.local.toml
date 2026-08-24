@@ -1,0 +1,62 @@
+# Local (non-Docker) dev config: identical to config.toml except the file
+# paths below point at the secrets scripts/setup-local-dev.sh generates
+# under this repo's own resources/ dir, instead of /etc/platform-api/... —
+# no docker-compose, and no dependency on any other portal's quickstart.
+# Run once first:
+#   ./scripts/setup-local-dev.sh
+#
+# encryption_key is sourced via {{ env }}, not {{ file }}: configinterpolate's
+# {{ file }} allowlist is two fixed absolute directories (/etc/platform-api,
+# /secrets/platform-api — see config/config.go's defaultFileSourceAllowlist),
+# so a relative path under this checkout is rejected there regardless of the
+# value. public_key_file/private_key_file/cert_file/key_file below aren't run
+# through that interpolation at all — the app os.ReadFile's those literal
+# paths directly — so relative paths are fine for them. Export the
+# setup-local-dev.sh-generated values before `go run`:
+#   export $(grep -v '^#' local-dev.env | xargs)
+#   export APIP_CP_ENCRYPTION_KEY=$(cat resources/keys/encryption.key)
+# (Do not `source local-dev.env` — its bcrypt hash contains literal
+# "$2y$12$...", which bash reinterprets as positional-parameter expansion and
+# corrupts it.)
+#
+# Not used by any docker-compose quickstart; those keep using config.toml as-is.
+
+[platform_api]
+
+[platform_api.logging]
+level = '{{ env "APIP_CP_LOGGING_LEVEL" "info" }}'
+
+[platform_api.security]
+encryption_key = '{{ env "APIP_CP_ENCRYPTION_KEY" }}'
+
+[platform_api.database]
+driver = "sqlite3"
+path   = "./data/api_platform.db"
+
+[platform_api.auth]
+mode = "file"
+
+[platform_api.auth.authorization]
+enabled = true
+mode    = "scope"
+role_to_scope_mapping = "./resources/role-to-scope-mapping.yaml"
+
+[platform_api.auth.jwt]
+issuer            = "platform-api"
+public_key_file   = "./resources/keys/jwt_public.pem"
+private_key_file  = "./resources/keys/jwt_private.pem"
+
+[platform_api.auth.file.organization]
+id           = "default"
+display_name = "Default"
+region       = "us"
+
+[[platform_api.auth.file.users]]
+username      = '{{ env "APIP_CP_ADMIN_USERNAME" }}'
+password_hash = '{{ env "APIP_CP_ADMIN_PASSWORD_HASH" }}'
+roles         = ["ap_admin"]
+
+[platform_api.server.https]
+enabled   = true
+cert_file = "./resources/certificates/cert.pem"
+key_file  = "./resources/certificates/key.pem"

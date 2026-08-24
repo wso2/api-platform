@@ -17,9 +17,26 @@
 
 package publishers
 
-import "github.com/wso2/api-platform/gateway/gateway-runtime/policy-engine/internal/analytics/dto"
+import (
+	"context"
+
+	"github.com/wso2/api-platform/gateway/gateway-runtime/policy-engine/internal/analytics/dto"
+)
 
 // Publisher represents an analytics publisher.
 type Publisher interface {
 	Publish(event *dto.Event)
+}
+
+// Closer is implemented by publishers that hold resources or buffer events and
+// therefore need to be shut down cleanly. It is kept separate from Publisher so a
+// publisher with nothing to release does not have to carry a no-op Close.
+//
+// Analytics.Close type-asserts each publisher against this interface during
+// graceful shutdown. Without it, a buffering publisher loses its in-flight batch on
+// every pod restart, rolling update and scale-down.
+type Closer interface {
+	// Close flushes any buffered events and releases resources. It must be
+	// idempotent and must respect ctx's deadline.
+	Close(ctx context.Context) error
 }

@@ -1,115 +1,40 @@
-import {
-  copyFileSync,
-  existsSync,
-  mkdirSync,
-  readFileSync,
-} from 'node:fs';
-import { resolve } from 'node:path';
+/*
+ * Copyright (c) 2026, WSO2 LLC. (https://www.wso2.com).
+ *
+ * WSO2 LLC. licenses this file to you under the Apache License,
+ * Version 2.0 (the "License"); you may not use this file except
+ * in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing,
+ * software distributed under the License is distributed on an
+ * "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+ * KIND, either express or implied.  See the License for the
+ * specific language governing permissions and limitations
+ * under the License.
+ */
+
 import basicSsl from '@vitejs/plugin-basic-ssl';
 import react from '@vitejs/plugin-react';
-import { defineConfig, loadEnv, type Plugin, type ProxyOptions } from 'vite';
+import { defineConfig, loadEnv, type ProxyOptions } from 'vite';
 
-const legacyConfigFiles = [
-  'api-platform.env.config.js',
-  'api-platform.common.config.js',
-];
-const getLegacyConfigFile = (fileName: string) => {
-  // When pointing at a local wso2cloud cluster, use the local override in
-  // configs/development/. There is no other source for these files in dev —
-  // production instead renders them at container startup (see
-  // configs/production/40-config-setup.sh).
-  if (process.env.VITE_LOCAL_WSO2CLOUD === 'true') {
-    const localFile = resolve(__dirname, 'configs/development', fileName);
-    if (existsSync(localFile)) return localFile;
-  }
-  return undefined;
+// In dev, run the BFF locally (default http://localhost:8082, `make bff-run`)
+// and route all same-origin BFF traffic to it, mirroring the production
+// topology where the BFF itself serves the SPA. The BFF serves the runtime
+// config scripts too (in both dev and prod now — there is no separate
+// dev-only source for them anymore), so those two paths are proxied as well.
+const bffProxy = (): Record<string, ProxyOptions> => {
+  const target = process.env.BFF_DEV_TARGET || 'http://localhost:8082';
+  const options: ProxyOptions = { target, changeOrigin: true };
+  return {
+    '/api': options,
+    '/proxy': options,
+    '/api-platform.env.config.js': options,
+    '/api-platform.common.config.js': options,
+  };
 };
-
-// Dev proxy that forwards same-origin cluster paths to the k3d gateway
-// (127.0.0.1:19080), rewriting the Host header so the gateway's HTTPRoutes
-// match. Keeps the browser same-origin -> no CORS, no https->http mixed content.
-const K3D_GATEWAY = 'http://127.0.0.1:19080';
-const CLUSTER_HOSTS = {
-  platformApi: 'development-wso2cloud.openchoreoapis.localhost',
-  idp: 'platform-idp-development.openchoreoapis.localhost',
-};
-const proxyWithHost = (host: string): ProxyOptions => ({
-  target: K3D_GATEWAY,
-  changeOrigin: false,
-  secure: false,
-  configure: (proxy) => {
-    proxy.on('proxyReq', (proxyReq) => proxyReq.setHeader('host', host));
-  },
-});
-const localClusterProxy = () =>
-  process.env.VITE_LOCAL_WSO2CLOUD === 'true'
-    ? {
-        '/oauth2': proxyWithHost(CLUSTER_HOSTS.idp),
-        '/.well-known': proxyWithHost(CLUSTER_HOSTS.idp),
-        '/platform-api-service-platform-api-endpoint': proxyWithHost(
-          CLUSTER_HOSTS.platformApi
-        ),
-      }
-    : undefined;
-
-const normalizeBasePath = (basePath: string) =>
-  `/${basePath.replace(/^\/|\/$/g, '')}`;
-
-const getConfigRequestPaths = (basePath: string) => {
-  const normalizedBasePath = normalizeBasePath(basePath);
-  return new Map(
-    legacyConfigFiles.flatMap((fileName) => [
-      [`/${fileName}`, fileName],
-      [`${normalizedBasePath}/${fileName}`, fileName],
-    ])
-  );
-};
-
-const legacyRuntimeConfigPlugin = (basePath: string): Plugin => ({
-  name: 'oxygen-legacy-runtime-config',
-  configureServer(server) {
-    const configRequestPaths = getConfigRequestPaths(basePath);
-
-    server.middlewares.use((request, response, next) => {
-      const requestPath = request.url?.split('?')[0];
-      const fileName = requestPath ? configRequestPaths.get(requestPath) : '';
-      if (!fileName) {
-        next();
-        return;
-      }
-
-      const legacyConfigFile = getLegacyConfigFile(fileName);
-
-      if (!legacyConfigFile || !existsSync(legacyConfigFile)) {
-        next();
-        return;
-      }
-
-      response.setHeader('Content-Type', 'application/javascript');
-      response.end(readFileSync(legacyConfigFile, 'utf8'));
-    });
-  },
-  closeBundle() {
-    const normalizedBasePath = normalizeBasePath(basePath);
-    for (const fileName of legacyConfigFiles) {
-      const source = getLegacyConfigFile(fileName);
-      if (!source || !existsSync(source)) continue;
-
-      const rootTarget = resolve(__dirname, 'build', fileName);
-      const baseTarget = resolve(
-        __dirname,
-        'build',
-        normalizedBasePath.slice(1),
-        fileName
-      );
-
-      mkdirSync(resolve(rootTarget, '..'), { recursive: true });
-      mkdirSync(resolve(baseTarget, '..'), { recursive: true });
-      copyFileSync(source, rootTarget);
-      copyFileSync(source, baseTarget);
-    }
-  },
-});
 
 export default ({ mode }: { mode: string }) => {
   process.env = { ...process.env, ...loadEnv(mode, process.cwd()) };
@@ -117,7 +42,14 @@ export default ({ mode }: { mode: string }) => {
 
   return defineConfig({
     base: basePath,
-    plugins: [legacyRuntimeConfigPlugin(basePath), react(), basicSsl()],
+    plugins: [
+      react({
+        babel: {
+          plugins: [["formatjs", { ast: true }]],
+        },
+      }),
+      basicSsl(),
+    ],
     build: {
       outDir: 'build',
       sourcemap: false,
@@ -125,7 +57,7 @@ export default ({ mode }: { mode: string }) => {
     server: {
       host: 'localhost',
       hmr: mode === 'test' ? false : undefined,
-      proxy: localClusterProxy(),
+      proxy: bffProxy(),
       port: 3000,
     },
     test: {
@@ -165,16 +97,19 @@ export default ({ mode }: { mode: string }) => {
         ],
         // Floor set just below the current baseline so the build fails on
         // regression but not on today's coverage. Ratchet these up as page
-        // tests land (target: lines/statements → 40+ once Tier 3 is complete).
-        // Floors sit just below the worst observed run. v8 coverage attribution
-        // varies run-to-run because the client-mode tests use vi.resetModules(),
-        // so the measured % swings ~42-44 (lines) / ~62-64 (functions) for the
-        // same tests; keep a margin so CI doesn't flake.
+        // tests land. Re-baselined after the BFF auth migration deleted
+        // ~700 lines of (tested) Asgardeo/Thunder/local-file adapter code —
+        // AuthProvider.tsx itself is now at ~92%/100% (statements/functions);
+        // the drop is LoginPage.tsx and ProductActivation.tsx, both untested
+        // before this migration too (no regression, just a smaller
+        // denominator). Floors sit a few points below the observed run — v8
+        // coverage attribution varies run-to-run because the client-mode
+        // tests use vi.resetModules(), so keep a margin so CI doesn't flake.
         thresholds: {
-          statements: 41,
-          branches: 77,
-          functions: 61,
-          lines: 41,
+          statements: 56,
+          branches: 73,
+          functions: 57,
+          lines: 56,
         },
       },
     },

@@ -16,13 +16,14 @@
  */
 
 // Package platform is the public runtime façade a wrapper module imports to build
-// and run the platform-api server. It is the only package needed to start things;
-// pdk is the package a wrapper builds its plugins against. The split is clean —
-// platform runs the server, pdk says what a plugin is and what it can reach.
+// and run the platform-api server. The split is clean — platform runs the server,
+// pdk says what a plugin is and what it can reach.
 //
-// The façade works entirely in terms of the external surface (pdk) and never
-// exposes internal/plugin. It aliases the two contract types so a wrapper can call
-// them either platform.Plugin / platform.Deps or pdk.Plugin / pdk.Deps.
+// This package deliberately re-exports nothing from pdk. A wrapper's main imports
+// platform to construct and run the App; the packages that implement plugins
+// import pdk directly, so every contract type has exactly one name and pdk's own
+// documentation is what a plugin author reads. The façade works entirely in terms
+// of that external surface and never exposes internal/plugin.
 package platform
 
 import (
@@ -33,14 +34,6 @@ import (
 	"github.com/wso2/api-platform/platform-api/internal/server"
 	"github.com/wso2/api-platform/platform-api/pdk"
 )
-
-// Plugin is what a wrapper implements — it receives pdk.Deps (capabilities), not
-// raw repositories. Alias of pdk.Plugin.
-type Plugin = pdk.Plugin
-
-// Deps is the set of platform capabilities passed to a plugin's Init.
-// Alias of pdk.Deps.
-type Deps = pdk.Deps
 
 // App is a configured, ready-to-run platform-api server.
 type App struct {

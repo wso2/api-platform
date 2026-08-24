@@ -1,0 +1,33 @@
+# Local development values for the api-portal umbrella chart.
+# Usage:
+#   helm install api-portal ./api-portal-helm-chart -f values-secrets.yaml -f values-local.yaml
+#
+# Overrides the defaults for local development, per component:
+# - locally-built images (latest tag, IfNotPresent pull policy)
+# - debug logging
+# - the portal skips TLS verification to the Platform API and relaxes role checks
+#
+# NOTE: the components have no self-signed TLS fallback. For a local install,
+# provide a TLS Secret (tls.certificateProvider=secret) or install cert-manager.
+platform-api:
+  image:
+    tag: "latest"
+    pullPolicy: IfNotPresent
+  config:
+    logging:
+      level: debug
+
+api-portal-ui:
+  image:
+    tag: "latest"
+    pullPolicy: IfNotPresent
+  config:
+    logging:
+      level: debug
+    platformApi:
+      insecure: true
+    auth:
+      authorization:
+        # Relax page role-tier gating for local dev. REST scope enforcement
+        # (authorization.enabled) stays on — it is a separate switch.
+        pageRoleValidation: false

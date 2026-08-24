@@ -1,8 +1,27 @@
-import { ReactElement, ReactNode } from 'react';
+/*
+ * Copyright (c) 2026, WSO2 LLC. (https://www.wso2.com).
+ *
+ * WSO2 LLC. licenses this file to you under the Apache License,
+ * Version 2.0 (the "License"); you may not use this file except
+ * in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing,
+ * software distributed under the License is distributed on an
+ * "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+ * KIND, either express or implied.  See the License for the
+ * specific language governing permissions and limitations
+ * under the License.
+ */
+
+import { ReactElement, ReactNode, type ComponentProps } from 'react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { OxygenUIThemeProvider, WSO2Theme } from '@wso2/oxygen-ui';
 import { render, type RenderOptions } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
+import { IntlProvider, ReactIntlErrorCode } from 'react-intl';
 import { MemoryRouter } from 'react-router-dom';
 
 import {
@@ -17,7 +36,22 @@ import {
   ConsoleScopeContext,
   type ConsoleScope,
 } from '../scope/ConsoleScopeProvider';
+import { DISPLAY_TIME_ZONE, INTL_FORMATS } from '../i18n/formats';
 import { makeAuthState } from './mockAuthState';
+
+/*
+ * Test-only Intl context: uses a bare `IntlProvider` with `messages={}` so
+ * tests render `defaultMessage` directly without async catalog loading.
+ */
+const TEST_LOCALE = 'en';
+
+const handleTestIntlError: NonNullable<
+  ComponentProps<typeof IntlProvider>['onError']
+> = (err) => {
+  // Lookups intentionally miss; only invalid placeholders/config should fail.
+  if (err.code === ReactIntlErrorCode.MISSING_TRANSLATION) return;
+  console.error(err);
+};
 
 /** Test QueryClient: no retries/refetch so failures surface immediately. */
 export function makeTestQueryClient(): QueryClient {
@@ -48,10 +82,8 @@ export type RenderWithProvidersOptions = Omit<RenderOptions, 'wrapper'> & {
 };
 
 /**
- * Renders `ui` inside the app's provider stack (theme → query → router → auth
- * → scope → notifications), mirroring `App.tsx` but with the real Asgardeo SDK
- * and BrowserRouter replaced by injected context + MemoryRouter. Returns the
- * RTL result plus the `queryClient` and a ready `userEvent` instance.
+ * Renders `ui` with the app's provider stack, using injected auth/route context
+ * and synchronous i18n. Returns the RTL result, `queryClient`, and `userEvent`.
  */
 export function renderWithProviders(
   ui: ReactElement,
@@ -69,19 +101,28 @@ export function renderWithProviders(
     ? { ...realApiClient, ...apiClient }
     : realApiClient;
   const Wrapper = ({ children }: { children: ReactNode }) => (
-    <OxygenUIThemeProvider theme={WSO2Theme}>
-      <ApiClientProvider value={mergedApiClient}>
-        <QueryClientProvider client={queryClient}>
-          <MemoryRouter initialEntries={routerEntries ?? [route]}>
-            <AuthStateContext.Provider value={authState}>
-              <ScopeWrapper scope={scope}>
-                <NotificationProvider>{children}</NotificationProvider>
-              </ScopeWrapper>
-            </AuthStateContext.Provider>
-          </MemoryRouter>
-        </QueryClientProvider>
-      </ApiClientProvider>
-    </OxygenUIThemeProvider>
+    <IntlProvider
+      locale={TEST_LOCALE}
+      defaultLocale={TEST_LOCALE}
+      messages={{}}
+      formats={INTL_FORMATS}
+      timeZone={DISPLAY_TIME_ZONE}
+      onError={handleTestIntlError}
+    >
+      <OxygenUIThemeProvider theme={WSO2Theme}>
+        <ApiClientProvider value={mergedApiClient}>
+          <QueryClientProvider client={queryClient}>
+            <MemoryRouter initialEntries={routerEntries ?? [route]}>
+              <AuthStateContext.Provider value={authState}>
+                <ScopeWrapper scope={scope}>
+                  <NotificationProvider>{children}</NotificationProvider>
+                </ScopeWrapper>
+              </AuthStateContext.Provider>
+            </MemoryRouter>
+          </QueryClientProvider>
+        </ApiClientProvider>
+      </OxygenUIThemeProvider>
+    </IntlProvider>
   );
 
   return {

@@ -1,52 +1,71 @@
 # Data access (`src/api`)
 
-All backend access flows through **TanStack Query hooks**, which resolve the
-transport from a **React context** (DI) and default their scope from the active
-console scope. Components never call API clients directly.
+Every backend call is typed from `platform-api/resources/openapi.yaml`. Components import **hooks** and nothing else; ESLint enforces it.
+
+>**A legacy layer still exists** (`client.ts`, `mvpApi.ts`, `useMvpQueries.ts`,
+> `*/*Client.ts`) and still serves most pages. Don't add to it, port the page instead.
 
 ## Layers
 
 ```
-component → hook (src/api/hooks/useMvpQueries.ts, policyHub/usePolicyHub.ts)
-              ├─ resolves client fns via useApiClient()   (ApiClientProvider)
-              └─ resolves org/project via ConsoleScopeContext.activeScope
-                    → client fn (apis/apiClient.ts, gateways/gatewayClient.ts, …)
-                        → platformClient (REST/BML) | postGraphql (legacy) | mock
+component  →  hooks       resources/<name>/<name>.hooks.ts
+                          scope binding, enabled gating, invalidation, optimistic updates
+              queries     <name>.queries.ts
+                          queryOptions: key + fetcher + staleTime, as plain values
+              endpoints   <name>.endpoints.ts
+                          one thin fn per spec operation, typed by operationId
+              core/http   one axios instance — CSRF, X-Org-Id, timeouts, cancellation
+                          ↓ BFF same-origin proxy → platform-api
 ```
 
-- **`ApiClientProvider`** (`src/api/ApiClientProvider.tsx`) — the DI seam. Exposes
-  the client function surface (`ApiClient`) via context; `useApiClient()` returns
-  it. Defaults to `realApiClient`; tests inject stubs (see below).
-- **Hooks** (`useMvpQueries.ts`, `usePolicyHub.ts`) — the only thing components
-  import. They own query keys, `enabled` gating, and cache invalidation.
-- **Clients** (`*/​*Client.ts`, `mvpApi.ts`) — transport. Imported only by the
-  provider/hooks, never by UI.
+A layer may only import from the one below it. Endpoints know nothing about the cache; queries know nothing about React; hooks know nothing about axios.
+
+## Adding a resource
+
+Copy `resources/restApis/`: three files, ~150 lines total.
+
+```ts
+// 1. endpoints — types come from the operationId, never hand-written
+export type Thing = Schema<'Thing'>;
+export const listThings = async (options?: RequestOptions) =>
+  http.get<ResponseOf<'ListThings'>>('/things', { ...options, operationName: 'ListThings' });
+
+// 2. queries — plain values, so loaders and prefetch can use them too
+export const thingKeys = createResourceKeys('things');
+export const thingQueries = {
+  list: (org: OrgScope, query = {}) => queryOptions({
+    queryKey: thingKeys.list(org, query),
+    queryFn: ({ signal }) => listThings({ orgId: org, signal, query }),
+    staleTime: staleTimes.standard,
+  }),
+};
+
+// 3. hooks — the only thing components import
+export const useThings = (filters = {}, overrides = {}) => {
+  const { org } = useApiScope(overrides);
+  return useQuery({ ...thingQueries.list(org!, filters), enabled: Boolean(org) });
+};
+```
+
+Adding a spec operation? Run `npm run codegen` first. It regenerates `generated/platform.d.ts`, and CI fails if the committed output is stale.
 
 ## Rules
 
-- **Use a hook.** Add a query/mutation hook for new resources; don't fetch in
-  components. `import { ... } from '@api/...Client'` outside `src/api/**` is
-  blocked by ESLint (`no-restricted-imports`; type-only imports are allowed).
-- **Context-aware scope.** Call hooks with no args — `useApis()`,
-  `useApiDetail()`, `useCreateApi()` — and they read the **token-ready**
-  `activeScope` (org/project/api) from `ConsoleScopeContext`. Pass explicit args
-  only when you intentionally diverge from the active route (the
-  `ConsoleScopeProvider` does this while building the scope). `orgHandle` in
-  `activeScope` is only set after the org-token exchange, so context-aware
-  queries never fire before their bearer token is ready.
-- **No hidden request state.** Org/project reach the GraphQL/axios transport as
-  explicit per-call args (`postGraphql(query, vars, { orgHandle, projectHandler })`),
-  not a localStorage/interceptor side-channel. The REST/platform path sends
-  `X-Org-Id` explicitly via `platformClient`.
+- **Derive types from `operationId`** — `ResponseOf` / `BodyOf` / `QueryOf` / `PathOf` from `core/spec`. If you're handwriting a request or response type, something is wrong.
+- **Every scoped key is built from an `OrgScope`.** No `|| ''` fallbacks — that's how one tenant's cache ends up serving another.
+- **Every `queryFn` forwards `signal`**, and every scoped query has an `enabled` gate. No throwing guards inside `queryFn`.
+- **Branch on `ApiError.code`, not HTTP status.** Every failure is an `ApiError` with `code`, `fieldErrors`, `details` and `trackingId`.
+- **Pick a `staleTime` tier deliberately** — `realtime` / `standard` / `stable` / `static`.
+- **Mutations invalidate the resource root** and seed detail from their response,  *except* one-shot secrets (API keys, gateway tokens, secrets), which never enter the cache.
+- **Lists read `pagination.total`**, never `list.length`.
 
 ## Testing
 
-`renderWithProviders(ui, { scope, apiClient })` (`src/test/utils.tsx`):
+MSW at the network boundary — never stub a client or a hook. Toolkit in `src/test/msw` (`collection`, `resource`, `accepts`, `noContent`, `failure`, `recorder`, spec-typed fixtures); conventions in [`src/test/README.md`](../test/README.md).
 
-- `scope` — inject a `ConsoleScope` (use `makeConsoleScope()`); context-aware
-  hooks read its `activeScope`.
-- `apiClient` — a `Partial<ApiClient>` merged over the real client, so a test can
-  stub specific calls **without `vi.mock`**. Example:
-  `renderWithProviders(<Page/>, { scope, apiClient: { listApis: vi.fn()... } })`.
+```ts
+server.use(collection('/things', [aThing()], { record: requests }));
+```
 
-See `src/api/hooks/useContextAwareHooks.test.tsx` for a worked example.
+- **Endpoint tests: one per resource** — URLs and params genuinely differ.
+- **Hook tests: one per _shape_, not per resource**, the hooks are one template applied twelve times. Four files cover all of them; a new resource following an existing shape needs none.

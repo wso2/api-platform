@@ -30,8 +30,6 @@ IMAGE_NAME := $(DOCKER_REGISTRY)/ai-workspace
 # BFF (Backend-for-Frontend) — Go server that serves the SPA, proxies all
 # browser→backend traffic, and owns authentication.
 BFF_DIR        := bff
-BFF_DEV_PORT   ?= 8081
-CONTROL_PLANE_URL ?= https://localhost:9243
 
 help: ## Show this help message
 	@echo 'AI Workspace Build System (Version: $(VERSION))'
@@ -49,22 +47,16 @@ run: ## Start AI Workspace dev server locally (installs deps if needed)
 bff-build: ## Build the BFF binary
 	cd $(BFF_DIR) && GOWORK=off CGO_ENABLED=0 go build -o ../target/ai-workspace-bff .
 
-# Runs the deployed config — configs/config.toml, the same file the container mounts —
-# with the container-shaped defaults pointed at this machine. Each variable below is
-# read by that key's '{{ env "APIP_AIW_..." }}' token in the file; the token is the only
-# thing that lets an environment variable reach a key, so a key absent from the file
-# cannot be set here. To test against an IDP, add APIP_AIW_AUTH_MODE=oidc and the
-# APIP_AIW_OIDC_* variables the [oidc] tokens name — see README.md.
-bff-run: ## Run the BFF locally (proxies to CONTROL_PLANE_URL; pair with `make run`)
+# Runs the shipped configs/config.toml (the file the container mounts) layered with
+# configs/config-debug.toml — a local-debug overlay that points the container-shaped
+# defaults (listener :8081 + host cert/key, control-plane URL, debug logging) at this
+# machine. -config is repeatable and merged last-wins, so config.toml stays untouched.
+# This is the same overlay the VS Code "AI Workspace BFF" launch config uses. To test
+# against an IDP, add the [ai_workspace.auth] / [oidc] keys to the overlay — see README.md.
+bff-run: ## Run the BFF locally against the local Platform API (pair with `make run`)
 	../scripts/setup.sh --certs-only
 	cd $(BFF_DIR) && \
-		APIP_AIW_CONTROL_PLANE_URL=$(CONTROL_PLANE_URL) \
-		APIP_AIW_CONTROL_PLANE_TLS_SKIP_VERIFY=true \
-		APIP_AIW_SERVER_HTTPS_CERT_FILE=../resources/certificates/cert.pem \
-		APIP_AIW_SERVER_HTTPS_KEY_FILE=../resources/certificates/key.pem \
-		APIP_AIW_SERVER_HTTPS_PORT=$(BFF_DEV_PORT) \
-		APIP_AIW_LOGGING_LEVEL=debug \
-		go run . -config ../configs/config.toml -static-dir ../dist
+		go run . -config ../configs/config.toml -config ../configs/config-debug.toml -static-dir ../dist
 
 bff-test: ## Run BFF unit tests
 	cd $(BFF_DIR) && GOWORK=off go test ./...

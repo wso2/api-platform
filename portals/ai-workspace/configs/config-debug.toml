@@ -1,0 +1,31 @@
+# ── Local host-process debug overlay (AI Workspace BFF) ───────────────────────
+# Layered ON TOP of configs/config.toml via a second `-config` flag in
+# .vscode/launch.json. `-config` is repeatable and the loader merges files in order
+# with last-wins precedence per key, so these values override the shipped defaults
+# while leaving every other key untouched.
+#
+# Purpose: keep debug-only values OUT of config.toml, which ships in the distribution
+# and is mounted into the container as-is. This file is loaded ONLY by the host-run
+# BFF while debugging — it is never mounted into the container.
+
+[ai_workspace]
+
+[ai_workspace.logging]
+level = "debug"
+
+# The BFF's own HTTPS listener. In dev the Vite server (:9643) proxies /api, /proxy,
+# etc. to https://localhost:8081 (see vite.config.ts BFF_DEV_TARGET), so the BFF must
+# listen on 8081 — the shipped config.toml defaults to 9643, which would collide with
+# Vite. cert_file/key_file are relative to this config's cwd (portals/ai-workspace/bff),
+# i.e. portals/ai-workspace/resources/certificates — generate them once with
+# `./setup.sh --certs-only` (gitignored; not committed).
+[ai_workspace.server.https]
+port      = 8081
+cert_file = "../resources/certificates/cert.pem"
+key_file  = "../resources/certificates/key.pem"
+
+# Talk to the locally-run Platform API over its self-signed dev cert. tls_skip_verify
+# short-circuits ca_file loading (proxy/transport.go), so no CA path is needed on the host.
+[ai_workspace.control_plane]
+url             = "https://localhost:9243"
+tls_skip_verify = true

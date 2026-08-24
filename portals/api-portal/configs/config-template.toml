@@ -378,6 +378,19 @@ batch_size = 50
 signature_tolerance_sec = 300
 
 # =============================================================================
+# UPLOAD LIMITS
+# =============================================================================
+# Bounds on user-supplied uploads and archive extraction (icons, spec bundles).
+# See guidelines/file-access.md — these exist to stop resource-exhaustion via an
+# oversized upload or a zip bomb.
+
+[api_portal.uploads]
+max_bytes = 10485760        # 10 MiB — single upload / single archive entry
+max_total_bytes = 52428800  # 50 MiB — total extracted per archive
+max_zip_entries = 500
+max_depth = 10
+
+# =============================================================================
 # API TRY-IT PROXY
 # =============================================================================
 # The "Try It" panel on an API's specification page runs in the browser and

@@ -39,6 +39,7 @@ import (
 	"github.com/wso2/api-platform/gateway/gateway-runtime/policy-engine/internal/constants"
 	"github.com/wso2/api-platform/gateway/gateway-runtime/policy-engine/internal/executor"
 	"github.com/wso2/api-platform/gateway/gateway-runtime/policy-engine/internal/registry"
+	"github.com/wso2/api-platform/gateway/gateway-runtime/policy-engine/internal/resolver"
 	policy "github.com/wso2/api-platform/sdk/core/policy/v1alpha2"
 )
 
@@ -123,9 +124,13 @@ func newSpanStatusServerWithCEL(t *testing.T, cel executor.CELEvaluator) (*Exter
 // RouteConfig lookup that initializeExecutionContext needs.
 func registerTestRoute(k *Kernel, routeName string, chain *registry.PolicyChain) {
 	k.RegisterRoute(routeName, chain)
-	k.ApplyWholeRouteConfigs(map[string]*RouteConfig{
-		routeName: {Metadata: RouteMetadata{RouteName: routeName}},
-	})
+	rc := &RouteConfig{Metadata: RouteMetadata{RouteName: routeName}}
+	// Prepared the same way ingest prepares it: an unprepared route is one the kernel
+	// refuses to serve.
+	if err := PrepareRoute(resolver.DefaultRegistry(), routeName, rc); err != nil {
+		panic(err)
+	}
+	k.ApplyWholeRouteConfigs(map[string]*RouteConfig{routeName: rc})
 }
 
 // buildChainWithPolicy constructs a single-policy chain via the real

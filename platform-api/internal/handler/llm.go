@@ -30,6 +30,7 @@ import (
 	"github.com/wso2/api-platform/platform-api/internal/apperror"
 	"github.com/wso2/api-platform/platform-api/internal/constants"
 	"github.com/wso2/api-platform/platform-api/internal/middleware"
+	"github.com/wso2/api-platform/platform-api/internal/router"
 	"github.com/wso2/api-platform/platform-api/internal/service"
 	"github.com/wso2/api-platform/platform-api/internal/utils"
 
@@ -54,7 +55,7 @@ func NewLLMHandler(
 	return &LLMHandler{templateService: templateService, providerService: providerService, proxyService: proxyService, identity: identity, slogger: slogger}
 }
 
-func (h *LLMHandler) RegisterRoutes(mux *http.ServeMux) {
+func (h *LLMHandler) RegisterRoutes(mux router.Router) {
 	// LLM Provider Templates
 	mux.HandleFunc("POST "+constants.APIBasePath+"/llm-provider-templates", middleware.MapErrors(h.slogger, h.CreateLLMProviderTemplate))
 	mux.HandleFunc("POST "+constants.APIBasePath+"/llm-provider-templates/copy", middleware.MapErrors(h.slogger, h.CopyLLMProviderTemplateVersion))

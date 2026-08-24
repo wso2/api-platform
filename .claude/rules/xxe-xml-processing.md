@@ -10,6 +10,7 @@ Apply whenever writing, refactoring, or reviewing Go (`.go`) code that parses XM
 2. **Bound parser resource consumption.** `encoding/xml.Decoder` has no built-in ceiling on size or nesting depth — wrap the input in `io.LimitReader` (config-sourced byte ceiling, per `file-access.md`) and track element depth manually via the streaming `Token()` API. A crafted document can also cause pathological parse time without any entity expansion, so wrap the read+parse in a `context.Context` deadline tighter than the overall request timeout, so a slow parse fails fast instead of holding a worker.
 3. **Validate structure against a server-bundled schema only.** When accepting WSDL/XSD/SOAP, validate against the server's own embedded copy of the schema — never a schema URL or `xsi:schemaLocation` read out of the untrusted document itself, which reintroduces the fetch-driven SSRF problem `ssrf-prevention.md` covers. If a location hint is present in the document, ignore or strip it; the server picks the schema, never the document.
 4. **Treat every XML input source, and every caller, the same.** A WSDL "import by URL" feature carries fetch-time SSRF risk in addition to parse-time XXE risk in what comes back — harden both. Apply parser hardening uniformly regardless of whether the caller is unauthenticated or an authenticated admin/publisher; authorization controls who can reach a feature, not whether that feature's input handling is safe.
+5. **No deferring a violation behind a code comment.** Never resolve a missing size ceiling, DOCTYPE check, or schema-location validation by adding a `// TODO`/`FIXME`-style comment and shipping the parser anyway — a comment does not bound a parse or block a schema fetch. Fix it before merging, or raise the gap explicitly for an approved exception rather than leaving it annotated in the source.
 
 ## Example
 
@@ -54,3 +55,4 @@ Schema validation must resolve against a closed, `go:embed`-loaded map (`bundled
 > * Is any non-`encoding/xml` library's entity resolution/network access explicitly disabled and asserted in a test?
 > * Does schema validation ever resolve `xsi:schemaLocation` or an in-document URI instead of a bundled schema?
 > * Is there a nesting-depth ceiling and a parse-specific deadline separate from the HTTP request timeout?
+> * Is a gap in this rule "resolved" by a `// TODO`/`FIXME`-style comment instead of an actual fix or an explicitly raised, approved exception?

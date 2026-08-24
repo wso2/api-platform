@@ -37,6 +37,7 @@ import (
 	"github.com/wso2/api-platform/gateway/gateway-runtime/policy-engine/internal/constants"
 	"github.com/wso2/api-platform/gateway/gateway-runtime/policy-engine/internal/executor"
 	"github.com/wso2/api-platform/gateway/gateway-runtime/policy-engine/internal/registry"
+	"github.com/wso2/api-platform/gateway/gateway-runtime/policy-engine/internal/resolver"
 	policy "github.com/wso2/api-platform/sdk/core/policy/v1alpha2"
 )
 
@@ -441,9 +442,11 @@ func TestInitializeExecutionContext_NoPolicyChain(t *testing.T) {
 
 	var execCtx *PolicyExecutionContext
 
-	routeMeta := server.initializeExecutionContext(context.Background(), req, &execCtx)
+	routeMeta, outcome, denial := server.initializeExecutionContext(context.Background(), req, &execCtx)
 
 	assert.Nil(t, execCtx)
+	assert.Equal(t, bindNoChain, outcome)
+	assert.Nil(t, denial)
 	assert.Equal(t, "nonexistent-route", routeMeta.RouteName)
 }
 
@@ -455,9 +458,9 @@ func TestInitializeExecutionContext_WithPolicyChain(t *testing.T) {
 		PolicySpecs: []policy.PolicySpec{},
 	}
 	kernel.RegisterRoute("test-route", chain)
-	kernel.ApplyWholeRouteConfigs(map[string]*RouteConfig{
-		"test-route": {Metadata: RouteMetadata{RouteName: "test-route"}},
-	})
+	rc := &RouteConfig{Metadata: RouteMetadata{RouteName: "test-route"}}
+	require.NoError(t, PrepareRoute(resolver.DefaultRegistry(), "test-route", rc))
+	kernel.ApplyWholeRouteConfigs(map[string]*RouteConfig{"test-route": rc})
 
 	chainExecutor := executor.NewChainExecutor(nil, nil, nil)
 	server := NewExternalProcessorServer(kernel, chainExecutor, config.TracingConfig{}, "", testMaxDecompressedBytes, testMaxDecompressedBytes)
@@ -487,9 +490,11 @@ func TestInitializeExecutionContext_WithPolicyChain(t *testing.T) {
 
 	var execCtx *PolicyExecutionContext
 
-	routeMeta := server.initializeExecutionContext(context.Background(), req, &execCtx)
+	routeMeta, outcome, denial := server.initializeExecutionContext(context.Background(), req, &execCtx)
 
 	require.NotNil(t, execCtx)
+	assert.Equal(t, bindReady, outcome)
+	assert.Nil(t, denial)
 	assert.Equal(t, "test-route", routeMeta.RouteName)
 	assert.Equal(t, "test-route", execCtx.routeKey)
 	assert.Equal(t, "req-123", execCtx.requestID)

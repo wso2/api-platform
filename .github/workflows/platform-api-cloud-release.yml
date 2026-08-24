@@ -1,0 +1,86 @@
+name: Platform API Cloud Release
+
+# The cloud image is built and pushed to ACR by an Azure DevOps pipeline. This
+# workflow no longer builds anything: on a merge into a release branch (main or
+# platform-api/v0.10.x) it just calls the Azure pipeline's incoming webhook,
+# passing the repo + branch to build. The payload is authenticated with an
+# HMAC-SHA1 signature.
+#
+# NOTE: pull_request runs the workflow from the PR's base branch, so this file
+# must be kept identical on every branch listed under `branches:` below.
+#
+# Required GitHub secrets:
+#   AZURE_WEBHOOK_URL    - https://dev.azure.com/<org>/_apis/public/distributedtask/webhooks/platform-api-cloud-release?api-version=6.0-preview
+#   AZURE_WEBHOOK_SECRET - the shared secret configured on the Incoming WebHook service connection
+
+on:
+  # Fire when a PR is merged into a release branch...
+  pull_request:
+    types: [closed]
+    branches:
+      - main
+      - platform-api/v0.10.x
+    paths:
+      - 'platform-api/**'
+      - 'common/**'
+      - 'httpkit/**'
+      - '.github/workflows/platform-api-cloud-release.yml'
+  # ...and allow manual triggering against the current branch.
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: platform-api-cloud-release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  trigger-azure-build:
+    runs-on: ubuntu-latest
+    # On pull_request only run for actual merges (not closed-without-merge).
+    if: github.event_name == 'workflow_dispatch' || github.event.pull_request.merged == true
+    steps:
+      - name: Trigger Azure DevOps pipeline webhook
+        env:
+          AZURE_WEBHOOK_URL: ${{ secrets.AZURE_WEBHOOK_URL }}
+          AZURE_WEBHOOK_SECRET: ${{ secrets.AZURE_WEBHOOK_SECRET }}
+          REPO_URL: ${{ github.server_url }}/${{ github.repository }}
+          # base.ref/merge_commit_sha for merges; ref_name/sha for manual runs.
+          BRANCH: ${{ github.event_name == 'pull_request' && github.event.pull_request.base.ref || github.ref_name }}
+          COMMIT: ${{ github.event_name == 'pull_request' && github.event.pull_request.merge_commit_sha || github.sha }}
+        run: |
+          set -euo pipefail
+          if [ -z "${AZURE_WEBHOOK_URL:-}" ] || [ -z "${AZURE_WEBHOOK_SECRET:-}" ]; then
+            echo "::error::AZURE_WEBHOOK_URL and AZURE_WEBHOOK_SECRET secrets must be set."
+            exit 1
+          fi
+
+          # Build the payload as a file so the signed bytes are exactly what we send.
+          # Azure builds the branch HEAD; commit is included only for traceability.
+          jq -n \
+            --arg repositoryUrl "$REPO_URL" \
+            --arg branch "$BRANCH" \
+            --arg commit "$COMMIT" \
+            '{repositoryUrl: $repositoryUrl, branch: $branch, triggeredByCommit: $commit}' \
+            > payload.json
+
+          echo "Payload:"; cat payload.json
+
+          # Azure verifies HMAC-SHA1(secret, body) against the X-Hub-Signature header,
+          # formatted as "sha1=<hex>".
+          SIG="sha1=$(openssl dgst -sha1 -hmac "$AZURE_WEBHOOK_SECRET" payload.json | awk '{print $NF}')"
+
+          HTTP_CODE=$(curl -sS --connect-timeout 10 --max-time 60 -o response.txt -w '%{http_code}' -X POST "$AZURE_WEBHOOK_URL" \
+            -H "Content-Type: application/json" \
+            -H "X-Hub-Signature: $SIG" \
+            --data-binary @payload.json)
+
+          echo "Azure webhook responded with HTTP ${HTTP_CODE}"
+          cat response.txt || true
+          echo
+          if [ "$HTTP_CODE" -lt 200 ] || [ "$HTTP_CODE" -ge 300 ]; then
+            echo "::error::Failed to trigger Azure pipeline (HTTP ${HTTP_CODE})."
+            exit 1
+          fi
+          echo "Triggered Azure build for ${BRANCH}@${COMMIT}"

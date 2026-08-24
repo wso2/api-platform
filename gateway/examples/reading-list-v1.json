@@ -10,7 +10,7 @@
     "context": "/reading-list",
     "upstream": {
       "main": {
-        "url": "https://httpbin.org/anything/my-books"
+        "url": "https://apis.bijira.dev/samples/reading-list-api-service/v1.0"
       }
     },
     "policies": [
@@ -22,6 +22,14 @@
             "headers": [
               {
                 "name": "X-Forwarded-By",
+                "value": "wso2 api platform gateway"
+              }
+            ]
+          },
+          "response": {
+            "headers": [
+              {
+                "name": "X-Served-By",
                 "value": "wso2 api platform gateway"
               }
             ]

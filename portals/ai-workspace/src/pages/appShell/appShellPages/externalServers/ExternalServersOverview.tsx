@@ -31,6 +31,11 @@ import {
   Card,
   Chip,
   CircularProgress,
+  Dialog,
+  DialogActions,
+  DialogContent,
+  DialogContentText,
+  DialogTitle,
   Divider,
   FormControl,
   FormLabel,
@@ -55,6 +60,7 @@ import {
   Edit,
   Eye,
   EyeOff,
+  Trash2,
 } from '@wso2/oxygen-ui-icons-react';
 import { FormattedMessage } from 'react-intl';
 import { useAppShell } from '../../../../contexts/AppShellContext';
@@ -94,8 +100,16 @@ import type { EndpointValidationResponse } from './externalServersValidationType
 import ExternalServerStepBanner from '../quickStart/ExternalServerStepBanner';
 import type { ExternalServerStepBannerStepId } from '../quickStart/ExternalServerStepBanner';
 import {
+  DisabledActionTooltip,
+  GatewayArtifactDeleteWarning,
   GatewayArtifactReadOnlyBanner,
 } from '../../../../utils/readOnlyArtifacts';
+import {
+  activeDeploymentDeleteBlockedReason,
+  countActiveDeployments,
+} from '../../../../utils/artifactDeletion';
+import { useAppAuth } from '../../../../contexts/AppAuthContext';
+import { NO_PERMISSION_TOOLTIP, SCOPES } from '../../../../auth/permissions';
 
 function getInitials(name: string): string {
   const words = name.trim().split(/\s+/);
@@ -226,6 +240,8 @@ export default function ExternalServersOverview(): JSX.Element {
 
   const navigate = useNavigate();
   const showSnackbar = useAIWorkspaceSnackbar();
+  const { hasPermission } = useAppAuth();
+  const canDeleteMcpProxy = hasPermission(SCOPES.MCP_PROXY_DELETE);
   const [server, setServer] = useState<MCPServer | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [isSavingChanges, setIsSavingChanges] = useState(false);
@@ -236,6 +252,9 @@ export default function ExternalServersOverview(): JSX.Element {
   const [selectedPolicies, setSelectedPolicies] = useState<SelectedPolicy[]>(
     []
   );
+  const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
+  const [isDeleting, setIsDeleting] = useState(false);
+  const [activeDeploymentCount, setActiveDeploymentCount] = useState<number | null>(null);
   const isReadOnlyServer = Boolean(server?.readOnly);
 
   // Backend Connection tab
@@ -395,6 +414,61 @@ export default function ExternalServersOverview(): JSX.Element {
       isMounted = false;
     };
   }, [organizationId, serverId, apimBaseUrl]);
+
+  useEffect(() => {
+    if (!organizationId || !serverId || !isReadOnlyServer || !canDeleteMcpProxy) {
+      setActiveDeploymentCount(null);
+      return;
+    }
+
+    let isCancelled = false;
+
+    const resolveActiveDeployments = async () => {
+      const deployments = await getMCPServerDeployments(serverId, apimBaseUrl);
+
+      if (isCancelled) return;
+
+      setActiveDeploymentCount(countActiveDeployments(deployments.list));
+    };
+
+    resolveActiveDeployments().catch((err) => {
+      logger.error(
+        'Failed to resolve MCP Proxy deployments for delete guard:',
+        err
+      );
+      if (isCancelled) return;
+      setActiveDeploymentCount(null);
+    });
+
+    return () => {
+      isCancelled = true;
+    };
+  }, [organizationId, serverId, isReadOnlyServer, canDeleteMcpProxy, apimBaseUrl]);
+
+  const deleteBlockedReason = useMemo(() => {
+    if (!isReadOnlyServer || activeDeploymentCount === null || activeDeploymentCount === 0) {
+      return null;
+    }
+    return activeDeploymentDeleteBlockedReason(
+      'MCP Proxy',
+      activeDeploymentCount
+    );
+  }, [isReadOnlyServer, activeDeploymentCount]);
+
+  const handleDeleteConfirm = async () => {
+    if (!server || !serverId || isDeleting) return;
+    try {
+      setIsDeleting(true);
+      await mcpProxiesApis.deleteMCPServer(serverId, apimBaseUrl);
+      showSnackbar('MCP Proxy deleted successfully.', 'success');
+      setIsDeleteDialogOpen(false);
+      navigate(listPath, { replace: true });
+    } catch (err) {
+      showSnackbar(getErrorMessage(err, 'Failed to delete MCP Proxy.'), 'error');
+    } finally {
+      setIsDeleting(false);
+    }
+  };
 
   const selectedGateway = useMemo(
     () =>
@@ -919,7 +993,7 @@ export default function ExternalServersOverview(): JSX.Element {
           <Box
             sx={{
               display: 'flex',
-              alignItems: 'center',
+              alignItems: 'stretch',
               justifyContent: 'space-between',
               flexWrap: 'wrap',
               gap: 2,
@@ -1006,8 +1080,10 @@ export default function ExternalServersOverview(): JSX.Element {
               </Stack>
             </Box>
             <Stack
-              spacing={1}
-              sx={{ alignSelf: 'flex-start', ml: 'auto', gap: 1 }}
+              direction="column"
+              justifyContent="space-between"
+              alignItems="flex-end"
+              sx={{ alignSelf: 'stretch' }}
             >
               {/* For gateway-created (read-only) proxies the deployments remain viewable
                   (deploy/redeploy/restore/undeploy are disabled on the page itself), so
@@ -1030,6 +1106,24 @@ export default function ExternalServersOverview(): JSX.Element {
                   />
                 )}
               </Button>
+              <DisabledActionTooltip
+                disabled={!canDeleteMcpProxy || Boolean(deleteBlockedReason)}
+                title={
+                  !canDeleteMcpProxy
+                    ? NO_PERMISSION_TOOLTIP
+                    : deleteBlockedReason
+                }
+              >
+                <IconButton
+                  color="error"
+                  disabled={!canDeleteMcpProxy || Boolean(deleteBlockedReason)}
+                  onClick={() => setIsDeleteDialogOpen(true)}
+                  aria-label={`Delete ${server.displayName}`}
+                  data-cyid="delete-mcp-proxy-button"
+                >
+                  <Trash2 size={16} />
+                </IconButton>
+              </DisabledActionTooltip>
             </Stack>
           </Box>
         </Card>
@@ -1321,6 +1415,46 @@ export default function ExternalServersOverview(): JSX.Element {
           </Stack>
         </Card>
       </Box>
+
+      <Dialog
+        open={isDeleteDialogOpen}
+        onClose={() => {
+          if (isDeleting) return;
+          setIsDeleteDialogOpen(false);
+        }}
+      >
+        <DialogTitle>Delete MCP Proxy</DialogTitle>
+        <DialogContent>
+          {isReadOnlyServer ? (
+            <GatewayArtifactDeleteWarning
+              artifactType="MCP Proxy"
+              artifactName={server.displayName}
+            />
+          ) : null}
+          <DialogContentText>
+            Are you sure you want to delete{' '}
+            <strong>{server.displayName}</strong>? This action cannot be undone.
+          </DialogContentText>
+        </DialogContent>
+        <DialogActions>
+          <Button
+            variant="outlined"
+            color="secondary"
+            disabled={isDeleting}
+            onClick={() => setIsDeleteDialogOpen(false)}
+          >
+            Cancel
+          </Button>
+          <Button
+            color="error"
+            disabled={isDeleting}
+            onClick={() => void handleDeleteConfirm()}
+            data-cyid="delete-mcp-proxy-confirm-button"
+          >
+            {isDeleting ? <CircularProgress size={20} /> : 'Delete'}
+          </Button>
+        </DialogActions>
+      </Dialog>
     </PageContent>
   );
 }

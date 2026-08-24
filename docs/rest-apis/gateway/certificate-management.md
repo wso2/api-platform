@@ -31,7 +31,7 @@ Required roles: `admin`, `developer`
 </aside>
 
 > Example responses
-
+>
 > 200 Response
 
 ```json
@@ -106,7 +106,7 @@ Required roles: `admin`
 |body|body|[CertificateUploadRequest](schemas.md#schemacertificateuploadrequest)|true|none|
 
 > Example responses
-
+>
 > 201 Response
 
 ```json
@@ -164,7 +164,7 @@ Required roles: `admin`
 |id|path|string|true|ID of the certificate to delete|
 
 > Example responses
-
+>
 > 200 Response
 
 ```json
@@ -221,7 +221,7 @@ Required roles: `admin`
 </aside>
 
 > Example responses
-
+>
 > 200 Response
 
 ```json

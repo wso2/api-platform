@@ -65,6 +65,8 @@ import { useProviderTemplates } from '../../../../contexts/llmProvider/providerT
 import useAIWorkspaceSnackbar from '../../../../hooks/aiWorkspaceSnackbar';
 import * as llmProviderApis from '../../../../apis/llmProviderApis';
 import { PLATFORM_API_BASE_URL } from '../../../../paths';
+import { getErrorMessage } from '../../../../utils/apiError';
+import { GatewayArtifactDeleteWarning } from '../../../../utils/readOnlyArtifacts';
 
 import AnthropicLogo from '../../../../assets/brands/Anthropic.jpg';
 import AWSBedrockLogo from '../../../../assets/brands/AWSBedrock.webp';
@@ -136,6 +138,7 @@ export default function ServiceProviders() {
   const [deleteTarget, setDeleteTarget] = useState<{
     id: string;
     name: string;
+    readOnly: boolean;
   } | null>(null);
   const [deleteConfirmationInput, setDeleteConfirmationInput] = useState('');
   const [assignTarget, setAssignTarget] = useState<{
@@ -182,14 +185,18 @@ export default function ServiceProviders() {
       showSnackbar('Provider deleted successfully.', 'success');
       setDeleteTarget(null);
       setDeleteConfirmationInput('');
-    } catch {
-      showSnackbar('Failed to delete provider. Please try again.', 'error');
+    } catch (error) {
+      showSnackbar(
+        getErrorMessage(error, 'Failed to delete provider. Please try again.'),
+        'error'
+      );
     }
   };
 
   const checkProviderUsageAndConfirmDelete = async (
     providerId: string,
-    providerName: string
+    providerName: string,
+    isReadOnlyProvider: boolean
   ) => {
     if (!currentOrganization?.uuid) {
       showSnackbar(
@@ -217,7 +224,11 @@ export default function ServiceProviders() {
         return;
       }
 
-      setDeleteTarget({ id: providerId, name: providerName });
+      setDeleteTarget({
+        id: providerId,
+        name: providerName,
+        readOnly: isReadOnlyProvider,
+      });
       setDeleteConfirmationInput('');
     } catch {
       showSnackbar(
@@ -779,7 +790,8 @@ export default function ServiceProviders() {
                                 event.stopPropagation();
                                 void checkProviderUsageAndConfirmDelete(
                                   providerId,
-                                  provider.displayName
+                                  provider.displayName,
+                                  Boolean(provider.readOnly)
                                 );
                               }}
                               aria-label={`Delete ${providerDisplayName}`}
@@ -811,6 +823,12 @@ export default function ServiceProviders() {
           <strong>'{deleteTarget?.name ?? ''}'</strong>?
         </DialogTitle>
         <DialogContent>
+          {deleteTarget?.readOnly ? (
+            <GatewayArtifactDeleteWarning
+              artifactType="LLM Provider"
+              artifactName={deleteTarget.name}
+            />
+          ) : null}
           <Typography sx={{ mt: 1 }} variant="body2" color="text.secondary">
             This action will be irreversible and all related details will be
             lost. Please type in the component name below to confirm.

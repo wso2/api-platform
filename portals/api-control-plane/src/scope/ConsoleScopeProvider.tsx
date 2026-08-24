@@ -1,3 +1,21 @@
+/*
+ * Copyright (c) 2026, WSO2 LLC. (https://www.wso2.com).
+ *
+ * WSO2 LLC. licenses this file to you under the Apache License,
+ * Version 2.0 (the "License"); you may not use this file except
+ * in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing,
+ * software distributed under the License is distributed on an
+ * "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+ * KIND, either express or implied.  See the License for the
+ * specific language governing permissions and limitations
+ * under the License.
+ */
+
 import { ReactNode, useEffect, useMemo, useRef, useState } from 'react';
 import { useLocation, useParams } from 'react-router-dom';
 
@@ -7,6 +25,7 @@ import {
   useProject,
   useProjects,
 } from '../api/hooks/useMvpQueries';
+import { ApiScopeProvider } from '../api/core/ApiScopeProvider';
 import { useAuth } from '../features/auth/AuthProvider';
 import { getApiCapabilities } from '../features/apis/apiCapabilities';
 import {
@@ -198,7 +217,26 @@ export function ConsoleScopeProvider({ children }: { children: ReactNode }) {
 
   return (
     <ConsoleScopeContext.Provider value={value}>
-      {children}
+      {/*
+        Bridges route scope into the new API layer, whose hooks read
+        `ApiScopeContext` and stay gated until an organization is known.
+
+        Mounted here, inside this provider, because this component already owns
+        the (currently two-source) route-param derivation. That is transitional:
+        once the contexts are split properly, `ApiScopeProvider` moves above
+        this one and takes its ids straight from the router, and this nesting
+        goes away.
+
+        Note the ids differ from the ones above deliberately — the API layer
+        wants the raw route params, not the token-gated `queryOrgHandle` the old
+        hooks need, because it has no token exchange to wait on.
+      */}
+      <ApiScopeProvider
+        orgId={params.orgHandle}
+        projectId={params.projectHandler}
+      >
+        {children}
+      </ApiScopeProvider>
     </ConsoleScopeContext.Provider>
   );
 }

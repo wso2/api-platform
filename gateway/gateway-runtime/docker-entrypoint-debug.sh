@@ -94,12 +94,19 @@ export ROUTER_CONCURRENCY="${ROUTER_CONCURRENCY:-0}"
 export APIP_GW_POLICY_ENGINE_METRICS_ENABLED="${APIP_GW_POLICY_ENGINE_METRICS_ENABLED:-true}"
 export APIP_GW_ROUTER_RE2_MAX_PROGRAM_SIZE="${APIP_GW_ROUTER_RE2_MAX_PROGRAM_SIZE:-400}"
 
+# Router (Envoy) admin interface configuration (see docker-entrypoint.sh for details).
+# Disabled by default — not defined in the static envoy-bootstrap.yaml at all. Set
+# ROUTER_ADMIN_ENABLED=true to inject it at startup, bound to ROUTER_ADMIN_HOST (loopback
+# by default).
+export ROUTER_ADMIN_ENABLED="${ROUTER_ADMIN_ENABLED:-false}"
+export ROUTER_ADMIN_HOST="${ROUTER_ADMIN_HOST:-127.0.0.1}"
+export ROUTER_ADMIN_PORT="${ROUTER_ADMIN_PORT:-9901}"
+
 # Graceful shutdown configuration (see docker-entrypoint.sh for details).
 # On SIGTERM the Router (Envoy) is drained before processes are terminated so in-flight
 # requests finish and keep-alive connections close cleanly instead of being reset.
+# Requires ROUTER_ADMIN_ENABLED=true — skipped otherwise.
 # Keep ROUTER_DRAIN_TIME_SECONDS < the pod terminationGracePeriodSeconds; 0 disables it.
-export ROUTER_ADMIN_HOST="${ROUTER_ADMIN_HOST:-127.0.0.1}"
-export ROUTER_ADMIN_PORT="${ROUTER_ADMIN_PORT:-9901}"
 export ROUTER_DRAIN_TIME_SECONDS="${ROUTER_DRAIN_TIME_SECONDS:-15}"
 
 # Derive Router (Envoy) xDS config — used by envsubst on config-override.yaml
@@ -121,6 +128,11 @@ log "  GOMAXPROCS: ${GOMAXPROCS}"
 log "  Router Concurrency: ${ROUTER_CONCURRENCY}"
 log "  Router RE2 Max Program Size: ${APIP_GW_ROUTER_RE2_MAX_PROGRAM_SIZE}"
 log "  Policy Engine Metrics: ${APIP_GW_POLICY_ENGINE_METRICS_ENABLED}"
+if [ "${ROUTER_ADMIN_ENABLED}" = "true" ]; then
+    log "  Router Admin: enabled on ${ROUTER_ADMIN_HOST}:${ROUTER_ADMIN_PORT}"
+else
+    log "  Router Admin: disabled (set ROUTER_ADMIN_ENABLED=true to enable)"
+fi
 [[ ${#ROUTER_ARGS[@]} -gt 0 ]] && log "  Router extra args: ${ROUTER_ARGS[*]}"
 [[ ${#PE_ARGS[@]} -gt 0 ]] && log "  Policy Engine extra args: ${PE_ARGS[*]}"
 
@@ -129,6 +141,18 @@ rm -f "${POLICY_ENGINE_SOCKET}"
 
 # Generate Envoy config override by substituting environment variables
 CONFIG_OVERRIDE=$(envsubst < /etc/envoy/config-override.yaml)
+
+# The admin interface has no entry in the static bootstrap at all, so it only exists when
+# explicitly opted into here — bound to ROUTER_ADMIN_HOST (loopback by default), never 0.0.0.0.
+if [ "${ROUTER_ADMIN_ENABLED}" = "true" ]; then
+    CONFIG_OVERRIDE="${CONFIG_OVERRIDE}
+admin:
+  address:
+    socket_address:
+      address: ${ROUTER_ADMIN_HOST}
+      port_value: ${ROUTER_ADMIN_PORT}
+"
+fi
 
 # Track child PIDs
 PE_PID=""
@@ -167,7 +191,10 @@ shutdown() {
 
     # Drain the Router first so in-flight requests finish and keep-alive connections are
     # closed cleanly — prevents client-visible connection resets during rolling restarts.
-    if [ -n "$ENVOY_PID" ] && kill -0 "$ENVOY_PID" 2>/dev/null \
+    # Requires ROUTER_ADMIN_ENABLED=true; skipped otherwise since draining needs an admin call.
+    if [ "${ROUTER_ADMIN_ENABLED}" != "true" ]; then
+        log "Router admin disabled (ROUTER_ADMIN_ENABLED=false); skipping graceful drain"
+    elif [ -n "$ENVOY_PID" ] && kill -0 "$ENVOY_PID" 2>/dev/null \
        && [ "${ROUTER_DRAIN_TIME_SECONDS}" -gt 0 ] 2>/dev/null; then
         log "Draining Router (Envoy); waiting up to ${ROUTER_DRAIN_TIME_SECONDS}s for in-flight requests..."
         if drain_router; then

@@ -1,17 +1,39 @@
+/*
+ * Copyright (c) 2026, WSO2 LLC. (https://www.wso2.com).
+ *
+ * WSO2 LLC. licenses this file to you under the Apache License,
+ * Version 2.0 (the "License"); you may not use this file except
+ * in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing,
+ * software distributed under the License is distributed on an
+ * "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+ * KIND, either express or implied.  See the License for the
+ * specific language governing permissions and limitations
+ * under the License.
+ */
+
 const CONFIG_SCRIPT_NAMES = [
   'api-platform.env.config.js',
   'api-platform.common.config.js',
 ];
 
-const hasAsgardeoRuntimeConfig = () =>
-  Boolean(window.__RUNTIME_CONFIG__?.ASGARDEO_SDK_CONFIG);
+// authMode is always emitted by the BFF's runtime config — its presence
+// means the synchronous inline <script> tags in index.html already ran
+// (they execute during HTML parsing, before this deferred module), so there
+// is nothing left to fetch.
+const hasRuntimeConfigLoaded = () =>
+  Boolean(window.__RUNTIME_CONFIG__?.authMode);
 
 const normalizeBasePath = (basePath: string) =>
   basePath === '/' ? '' : `/${basePath.replace(/^\/|\/$/g, '')}`;
 
 const getScriptCandidates = (scriptName: string) => {
   const basePath = normalizeBasePath(
-    import.meta.env.VITE_APP_BASE_PATH || import.meta.env.BASE_URL || '/oxygen-console'
+    import.meta.env.VITE_APP_BASE_PATH || import.meta.env.BASE_URL || '/'
   );
 
   return Array.from(
@@ -71,7 +93,7 @@ const loadFirstAvailableScript = async (scriptName: string) => {
 };
 
 export const loadRuntimeConfigScripts = async () => {
-  if (hasAsgardeoRuntimeConfig()) return;
+  if (hasRuntimeConfigLoaded()) return;
 
   for (const scriptName of CONFIG_SCRIPT_NAMES) {
     await loadFirstAvailableScript(scriptName);

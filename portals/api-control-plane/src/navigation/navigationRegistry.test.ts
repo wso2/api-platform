@@ -1,3 +1,21 @@
+/*
+ * Copyright (c) 2026, WSO2 LLC. (https://www.wso2.com).
+ *
+ * WSO2 LLC. licenses this file to you under the Apache License,
+ * Version 2.0 (the "License"); you may not use this file except
+ * in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing,
+ * software distributed under the License is distributed on an
+ * "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+ * KIND, either express or implied.  See the License for the
+ * specific language governing permissions and limitations
+ * under the License.
+ */
+
 import { describe, expect, it } from 'vitest';
 
 import { navigationRegistry } from './navigationRegistry';
@@ -26,11 +44,27 @@ describe('navigation match predicates', () => {
     expect(match('/projects/orders/home')).toBe(false);
   });
 
-  it('anchors settings to the end of the path', () => {
+  it('stays active on a settings tab but not two levels deep', () => {
     const match = matcherFor('settings');
     expect(match(`${PROJECT}/settings`)).toBe(true);
-    expect(match(`${PROJECT}/settings/advanced`)).toBe(false);
+    expect(match(`${PROJECT}/settings/general`)).toBe(true);
+    expect(match(`${PROJECT}/settings/general/extra`)).toBe(false);
     expect(match(`${ORG}/projects/settings/home`)).toBe(false);
+  });
+
+  it('matches org-level settings without colliding with project settings', () => {
+    const match = matcherFor('org-settings');
+    expect(match(`${ORG}/settings`)).toBe(true);
+    expect(match(`${ORG}/settings/general`)).toBe(true);
+    // A project's own /settings must not also light up org-settings.
+    expect(match(`${PROJECT}/settings`)).toBe(false);
+  });
+
+  it('hides org-settings once a project is selected', () => {
+    const item = navigationRegistry.find((entry) => entry.id === 'org-settings');
+    if (!item?.isVisible) throw new Error('org-settings has no isVisible predicate');
+    expect(item.isVisible({ isProjectScope: false } as never)).toBe(true);
+    expect(item.isVisible({ isProjectScope: true } as never)).toBe(false);
   });
 
   it('matches runtime logs only at the runtimelogs path', () => {

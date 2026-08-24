@@ -21,6 +21,7 @@ package kernel
 import (
 	"fmt"
 	"log/slog"
+	"maps"
 	"strings"
 
 	"github.com/wso2/api-platform/gateway/gateway-runtime/policy-engine/internal/utils"
@@ -245,13 +246,7 @@ func translateRequestActionsCore(result *executor.RequestExecutionResult, execCt
 
 			response := &extprocv3.ProcessingResponse{
 				Response: &extprocv3.ProcessingResponse_ImmediateResponse{
-					ImmediateResponse: &extprocv3.ImmediateResponse{
-						Status: &typev3.HttpStatus{
-							Code: typev3.StatusCode(immResp.StatusCode),
-						},
-						Headers: buildHeaderValueOptions(immResp.Headers),
-						Body:    immResp.Body,
-					},
+					ImmediateResponse: buildImmediateResponse(immResp),
 				},
 			}
 
@@ -419,20 +414,7 @@ func translateRequestActionsCore(result *executor.RequestExecutionResult, execCt
 	// Re-compress request body if a policy modified it, to preserve the original Content-Encoding.
 	// If no policy modified the body, the original compressed bytes are forwarded unchanged.
 	if bodyModified && execCtx.requestContentEncoding != "" {
-		originalBody := out.BodyMutation.Mutation.(*extprocv3.BodyMutation_Body).Body
-		recompressed, err := recompressBody(originalBody, execCtx.requestContentEncoding)
-		if err != nil {
-			slog.Warn("Failed to re-compress request body, sending uncompressed",
-				"encoding", execCtx.requestContentEncoding,
-				"error", err,
-			)
-			// Remove Content-Encoding so the upstream does not try to decompress an uncompressed body.
-			headerOps["content-encoding"] = append(headerOps["content-encoding"], &headerOp{opType: "remove", value: ""})
-			finalBodyLength = len(originalBody)
-		} else {
-			out.BodyMutation.Mutation.(*extprocv3.BodyMutation_Body).Body = recompressed
-			finalBodyLength = len(recompressed)
-		}
+		finalBodyLength = recompressModifiedRequestBody(execCtx, out.BodyMutation, headerOps)
 	}
 
 	// Remove any content-length headers from policy operations if we're managing it ourselves
@@ -451,66 +433,158 @@ func translateRequestActionsCore(result *executor.RequestExecutionResult, execCt
 	return out, nil
 }
 
+// recompressModifiedRequestBody re-compresses a policy-modified request body so the
+// bytes forwarded upstream still match the Content-Encoding the client sent, and
+// returns the length to advertise as Content-Length.
+//
+// It is shared by every path that can emit a modified request body — the header-phase
+// translation and the header+body merge used by the inline no-body and deferred
+// (body-phase-bound) paths — because the failure mode is silent: plaintext bytes still
+// labelled `content-encoding: gzip` reach the upstream, which then fails to inflate
+// them. Only re-encoding can fix that; on failure the header is dropped instead, so
+// the upstream at least sees an honest description of what it received.
+func recompressModifiedRequestBody(
+	execCtx *PolicyExecutionContext,
+	bodyMutation *extprocv3.BodyMutation,
+	headerOps map[string][]*headerOp,
+) int {
+	mutated, ok := bodyMutation.GetMutation().(*extprocv3.BodyMutation_Body)
+	if !ok {
+		// A streamed mutation is recompressed per chunk on its own path.
+		return 0
+	}
+
+	recompressed, err := recompressBody(mutated.Body, execCtx.requestContentEncoding)
+	if err != nil {
+		slog.Warn("Failed to re-compress request body, sending uncompressed",
+			"encoding", execCtx.requestContentEncoding,
+			"error", err,
+		)
+		// Remove Content-Encoding so the upstream does not try to decompress an uncompressed body.
+		headerOps["content-encoding"] = append(headerOps["content-encoding"], &headerOp{opType: "remove", value: ""})
+		return len(mutated.Body)
+	}
+	mutated.Body = recompressed
+	return len(recompressed)
+}
+
+// buildImmediateResponse is the single construction site for an ext_proc
+// ImmediateResponse produced by a policy short-circuit — an auth denial, a rate
+// limit, a guardrail rejection. Every phase routes through it so a new
+// short-circuit path cannot be added that builds one a different way.
+//
+// Engine-generated faults (handlePolicyError, handlePayloadTooLarge) deliberately
+// do NOT come through here: an internal failure stays a sterile generic response
+// built from nothing but its own error kind (error-handling.md).
+func buildImmediateResponse(immResp policy.ImmediateResponse) *extprocv3.ImmediateResponse {
+	return &extprocv3.ImmediateResponse{
+		Status:  &typev3.HttpStatus{Code: typev3.StatusCode(immResp.StatusCode)},
+		Headers: buildHeaderValueOptions(immResp.Headers),
+		Body:    immResp.Body,
+	}
+}
+
+// collectShortCircuitAnalytics builds the analytics payload for a rejection raised
+// part-way through a chain: everything the policies that already ran contributed, then
+// the rejecting policy's own metadata on top.
+//
+// Dropping the earlier contributions would make a denied request lose fields in — or
+// vanish from — traffic logging, because an ImmediateResponse is the only ext_proc
+// response that request will produce. That is worst on the deferred (body-phase-bound)
+// path: its request-headers response carries no policy metadata at all, so there is no
+// earlier response for the ALS line to have picked anything up from.
+//
+// headerResults and bodyResults may each be nil, for a caller where that phase has not
+// run.
+func collectShortCircuitAnalytics(
+	execCtx *PolicyExecutionContext,
+	headerResults []executor.RequestHeaderPolicyResult,
+	bodyResults []executor.RequestPolicyResult,
+	immResp policy.ImmediateResponse,
+) map[string]any {
+	out := make(map[string]any, len(execCtx.analyticsMetadata)+len(immResp.AnalyticsMetadata))
+	maps.Copy(out, execCtx.analyticsMetadata)
+
+	for _, pr := range headerResults {
+		if pr.Skipped || pr.Action == nil {
+			continue
+		}
+		if mods, ok := pr.Action.(policy.UpstreamRequestHeaderModifications); ok {
+			mergePolicyAnalytics(execCtx, out, mods.AnalyticsMetadata, mods.AnalyticsHeaderFilter)
+		}
+	}
+	for _, pr := range bodyResults {
+		if pr.Skipped || pr.Action == nil {
+			continue
+		}
+		if mods, ok := pr.Action.(policy.UpstreamRequestModifications); ok {
+			mergePolicyAnalytics(execCtx, out, mods.AnalyticsMetadata, mods.AnalyticsHeaderFilter)
+		}
+	}
+
+	// The rejecting policy wins on any key it also sets.
+	maps.Copy(out, immResp.AnalyticsMetadata)
+	return out
+}
+
+// mergePolicyAnalytics folds one policy result's analytics contribution into dest,
+// resolving its header filter against the request headers as they stand.
+func mergePolicyAnalytics(
+	execCtx *PolicyExecutionContext,
+	dest map[string]any,
+	metadata map[string]any,
+	dropAction policy.DropHeaderAction,
+) {
+	maps.Copy(dest, metadata)
+	if dropAction.Action != "" || len(dropAction.Headers) > 0 {
+		dest["request_headers"] = finalizeAnalyticsHeaders(dropAction, execCtx.requestBodyCtx.Headers.GetAll())
+	}
+}
+
+// requestHeaderShortCircuitResponse builds the ImmediateResponse for a
+// request-header policy that short-circuited, or reports handled=false when the
+// chain did not short-circuit with one. Shared by the header-phase translator and
+// the deferred (body-phase) binding path, where header policies run late and can
+// short-circuit there instead.
+func requestHeaderShortCircuitResponse(
+	result *executor.RequestHeaderExecutionResult,
+	execCtx *PolicyExecutionContext,
+) (*extprocv3.ProcessingResponse, bool, error) {
+	if !result.ShortCircuited || result.FinalAction == nil {
+		return nil, false, nil
+	}
+	immResp, ok := result.FinalAction.(policy.ImmediateResponse)
+	if !ok {
+		return nil, false, nil
+	}
+
+	response := &extprocv3.ProcessingResponse{
+		Response: &extprocv3.ProcessingResponse_ImmediateResponse{
+			ImmediateResponse: buildImmediateResponse(immResp),
+		},
+	}
+
+	// Preserve request-header-phase analytics metadata from policies that executed
+	// before the short-circuit (e.g. request headers captured by the collector system
+	// policy) so an immediate response like a 401 still carries it to the ALS access
+	// log. Without this, a short-circuiting policy (auth) drops the metadata of any
+	// earlier policy and the global traffic-logging publisher's line for that denied
+	// request would be missing it.
+	shortCircuitAnalyticsData := collectShortCircuitAnalytics(execCtx, result.Results, nil, immResp)
+
+	analyticsStruct, err := buildAnalyticsStruct(shortCircuitAnalyticsData, execCtx)
+	if err != nil {
+		return nil, true, fmt.Errorf("failed to build analytics metadata for immediate response: %w", err)
+	}
+	response.DynamicMetadata = buildDynamicMetadata(analyticsStruct, nil, immResp.DynamicMetadata)
+	return response, true, nil
+}
+
 // TranslateRequestHeaderActions converts a RequestHeaderExecutionResult (from ExecuteRequestHeaderPolicies)
 // to an ext_proc response. The ModeOverride instructs Envoy on how to deliver the remaining phases.
 func TranslateRequestHeaderActions(result *executor.RequestHeaderExecutionResult, chain *registry.PolicyChain, execCtx *PolicyExecutionContext) (*extprocv3.ProcessingResponse, error) {
-	// Check for short-circuit with immediate response
-	if result.ShortCircuited && result.FinalAction != nil {
-		if immResp, ok := result.FinalAction.(policy.ImmediateResponse); ok {
-			response := &extprocv3.ProcessingResponse{
-				Response: &extprocv3.ProcessingResponse_ImmediateResponse{
-					ImmediateResponse: &extprocv3.ImmediateResponse{
-						Status: &typev3.HttpStatus{
-							Code: typev3.StatusCode(immResp.StatusCode),
-						},
-						Headers: buildHeaderValueOptions(immResp.Headers),
-						Body:    immResp.Body,
-					},
-				},
-			}
-			// Preserve request-header-phase analytics metadata from policies that
-			// executed before the short-circuit (e.g. request headers captured by
-			// the collector system policy) so an immediate response like a 401
-			// still carries it to the ALS access log. Without this, a
-			// short-circuiting policy (auth) drops the metadata of any earlier
-			// policy and the global traffic-logging publisher's line for that
-			// denied request would be missing it. Mirrors translateRequestActionsCore's
-			// short-circuit path.
-			shortCircuitAnalyticsData := make(map[string]any)
-			for key, value := range execCtx.analyticsMetadata {
-				shortCircuitAnalyticsData[key] = value
-			}
-			for _, policyResult := range result.Results {
-				if policyResult.Skipped || policyResult.Action == nil {
-					continue
-				}
-				mods, ok := policyResult.Action.(policy.UpstreamRequestHeaderModifications)
-				if !ok {
-					continue
-				}
-				if mods.AnalyticsMetadata != nil {
-					for key, value := range mods.AnalyticsMetadata {
-						shortCircuitAnalyticsData[key] = value
-					}
-				}
-				dropAction := mods.AnalyticsHeaderFilter
-				if dropAction.Action != "" || len(dropAction.Headers) > 0 {
-					originalHeaders := execCtx.requestBodyCtx.Headers.GetAll()
-					shortCircuitAnalyticsData["request_headers"] = finalizeAnalyticsHeaders(dropAction, originalHeaders)
-				}
-			}
-			if immResp.AnalyticsMetadata != nil {
-				for key, value := range immResp.AnalyticsMetadata {
-					shortCircuitAnalyticsData[key] = value
-				}
-			}
-			analyticsStruct, err := buildAnalyticsStruct(shortCircuitAnalyticsData, execCtx)
-			if err != nil {
-				return nil, fmt.Errorf("failed to build analytics metadata for immediate response: %w", err)
-			}
-			response.DynamicMetadata = buildDynamicMetadata(analyticsStruct, nil, immResp.DynamicMetadata)
-			return response, nil
-		}
+	if response, handled, err := requestHeaderShortCircuitResponse(result, execCtx); handled {
+		return response, err
 	}
 
 	// Collect header ops, path/method mutations, and analytics from all results
@@ -610,37 +684,136 @@ func TranslateRequestHeaderActions(result *executor.RequestHeaderExecutionResult
 	return response, nil
 }
 
+// mergedRequestResult holds the combined output of a request-header pass and a
+// request-body pass over the same chain, ready to be wrapped in whichever ext_proc
+// phase response the caller owes Envoy.
+type mergedRequestResult struct {
+	HeaderMutation  *extprocv3.HeaderMutation
+	BodyMutation    *extprocv3.BodyMutation
+	AnalyticsData   map[string]any
+	DynamicMetadata map[string]map[string]interface{}
+	Mutations       RequestMutations
+	ImmediateResp   *extprocv3.ProcessingResponse
+}
+
 // TranslateRequestHeaderActionsWithBodyMerge merges results from both the request-headers
 // phase and the request-body phase into a single RequestHeaders ext_proc response.
 // This is used when a request carries no body (GET, Content-Length: 0, EndOfStream in headers)
 // so body policies are executed inline during the headers phase.
-//
-// The caller must set execCtx.requestBodyProcessedInline = true before calling this function
-// so that getModeOverride() instructs Envoy to skip the RequestBody phase (mode = NONE).
 func TranslateRequestHeaderActionsWithBodyMerge(
 	headerResult *executor.RequestHeaderExecutionResult,
 	bodyResult *executor.RequestExecutionResult,
 	execCtx *PolicyExecutionContext,
 ) (*extprocv3.ProcessingResponse, error) {
-	// Only body policies can short-circuit here: this function is called exclusively
-	// when header policies did NOT short-circuit (see processRequestBodyForEmptyRequest).
+	merged, err := mergeRequestHeaderAndBodyResults(headerResult, bodyResult, execCtx)
+	if err != nil {
+		return nil, err
+	}
+	if merged.ImmediateResp != nil {
+		return merged.ImmediateResp, nil
+	}
+
+	response := &extprocv3.ProcessingResponse{
+		Response: &extprocv3.ProcessingResponse_RequestHeaders{
+			RequestHeaders: &extprocv3.HeadersResponse{
+				Response: &extprocv3.CommonResponse{
+					HeaderMutation:  merged.HeaderMutation,
+					BodyMutation:    merged.BodyMutation,
+					ClearRouteCache: true,
+				},
+			},
+		},
+		ModeOverride: execCtx.getModeOverride(),
+	}
+
+	analyticsStruct, err := buildAnalyticsStruct(merged.AnalyticsData, execCtx)
+	if err != nil {
+		return nil, fmt.Errorf("failed to build analytics metadata: %w", err)
+	}
+	response.DynamicMetadata = buildDynamicMetadata(analyticsStruct, &merged.Mutations, merged.DynamicMetadata)
+	return response, nil
+}
+
+// TranslateRequestBodyActionsWithHeaderMerge is the mirror image of
+// TranslateRequestHeaderActionsWithBodyMerge, for a route whose policy chain is
+// only selected at the request-body callback: both the header-phase and body-phase
+// policies run there, so both sets of mutations must be emitted on the *body*
+// response. This is the one place where a header mutation is not carried by the
+// header-phase response — see the deferred-binding path in execution_context.go.
+func TranslateRequestBodyActionsWithHeaderMerge(
+	headerResult *executor.RequestHeaderExecutionResult,
+	bodyResult *executor.RequestExecutionResult,
+	execCtx *PolicyExecutionContext,
+) (*extprocv3.ProcessingResponse, error) {
+	merged, err := mergeRequestHeaderAndBodyResults(headerResult, bodyResult, execCtx)
+	if err != nil {
+		return nil, err
+	}
+	if merged.ImmediateResp != nil {
+		return merged.ImmediateResp, nil
+	}
+
+	response := &extprocv3.ProcessingResponse{
+		Response: &extprocv3.ProcessingResponse_RequestBody{
+			RequestBody: &extprocv3.BodyResponse{
+				Response: &extprocv3.CommonResponse{
+					HeaderMutation:  merged.HeaderMutation,
+					BodyMutation:    merged.BodyMutation,
+					ClearRouteCache: true,
+				},
+			},
+		},
+		// getModeOverride returns nil for a body-phase-bound route: Envoy applies a
+		// ModeOverride only on responses to header callbacks and ignores it on body
+		// callbacks, so the resolved chain's response-body mode is returned later,
+		// from the response-header callback.
+		ModeOverride: execCtx.getModeOverride(),
+	}
+
+	analyticsStruct, err := buildAnalyticsStruct(merged.AnalyticsData, execCtx)
+	if err != nil {
+		return nil, fmt.Errorf("failed to build analytics metadata: %w", err)
+	}
+	response.DynamicMetadata = buildDynamicMetadata(analyticsStruct, &merged.Mutations, merged.DynamicMetadata)
+	return response, nil
+}
+
+// mergeRequestHeaderAndBodyResults collects the mutations, analytics and dynamic
+// metadata of a header pass and a body pass over one chain into a single result.
+// Either pass may short-circuit; the first that does produces the ImmediateResp.
+func mergeRequestHeaderAndBodyResults(
+	headerResult *executor.RequestHeaderExecutionResult,
+	bodyResult *executor.RequestExecutionResult,
+	execCtx *PolicyExecutionContext,
+) (*mergedRequestResult, error) {
+	// A header-phase short-circuit is only reachable on the deferred-binding path,
+	// where header policies run at the body callback. The inline no-body path calls
+	// this only after header policies have already been found not to short-circuit,
+	// so the check is inert there.
+	if response, handled, err := requestHeaderShortCircuitResponse(headerResult, execCtx); handled {
+		if err != nil {
+			return nil, err
+		}
+		return &mergedRequestResult{ImmediateResp: response}, nil
+	}
+
 	if bodyResult.ShortCircuited && bodyResult.FinalAction != nil {
 		if immResp, ok := bodyResult.FinalAction.(policy.ImmediateResponse); ok {
 			response := &extprocv3.ProcessingResponse{
 				Response: &extprocv3.ProcessingResponse_ImmediateResponse{
-					ImmediateResponse: &extprocv3.ImmediateResponse{
-						Status:  &typev3.HttpStatus{Code: typev3.StatusCode(immResp.StatusCode)},
-						Headers: buildHeaderValueOptions(immResp.Headers),
-						Body:    immResp.Body,
-					},
+					ImmediateResponse: buildImmediateResponse(immResp),
 				},
 			}
-			analyticsStruct, err := buildAnalyticsStruct(immResp.AnalyticsMetadata, execCtx)
+			// Both phases' earlier results count here: on the deferred path the
+			// header policies ran in this same callback, so their analytics have
+			// never been emitted on any previous response.
+			analyticsStruct, err := buildAnalyticsStruct(
+				collectShortCircuitAnalytics(execCtx, headerResult.Results, bodyResult.Results, immResp), execCtx)
 			if err != nil {
 				return nil, fmt.Errorf("failed to build analytics metadata for immediate response: %w", err)
 			}
 			response.DynamicMetadata = buildDynamicMetadata(analyticsStruct, nil, immResp.DynamicMetadata)
-			return response, nil
+			return &mergedRequestResult{ImmediateResp: response}, nil
 		}
 	}
 
@@ -781,6 +954,14 @@ func TranslateRequestHeaderActionsWithBodyMerge(
 		applyDefaultUpstream(execCtx, headerOps, dynamicMetadata)
 	}
 
+	// A body-phase policy that rewrote the body must not leave plaintext behind a
+	// Content-Encoding header. This path carries a real compressed body whenever the
+	// chain was selected at the request-body callback, so the omission is not
+	// theoretical here.
+	if bodyModified && bodyMutation != nil && execCtx.requestContentEncoding != "" {
+		finalBodyLength = recompressModifiedRequestBody(execCtx, bodyMutation, headerOps)
+	}
+
 	if bodyModified {
 		delete(headerOps, "content-length")
 	}
@@ -789,26 +970,13 @@ func TranslateRequestHeaderActionsWithBodyMerge(
 		setContentLengthHeader(headerMutation, finalBodyLength)
 	}
 
-	response := &extprocv3.ProcessingResponse{
-		Response: &extprocv3.ProcessingResponse_RequestHeaders{
-			RequestHeaders: &extprocv3.HeadersResponse{
-				Response: &extprocv3.CommonResponse{
-					HeaderMutation:  headerMutation,
-					BodyMutation:    bodyMutation,
-					ClearRouteCache: true,
-				},
-			},
-		},
-		ModeOverride: execCtx.getModeOverride(),
-	}
-
-	analyticsStruct, err := buildAnalyticsStruct(analyticsData, execCtx)
-	if err != nil {
-		return nil, fmt.Errorf("failed to build analytics metadata: %w", err)
-	}
-	response.DynamicMetadata = buildDynamicMetadata(analyticsStruct, &mutations, dynamicMetadata)
-
-	return response, nil
+	return &mergedRequestResult{
+		HeaderMutation:  headerMutation,
+		BodyMutation:    bodyMutation,
+		AnalyticsData:   analyticsData,
+		DynamicMetadata: dynamicMetadata,
+		Mutations:       mutations,
+	}, nil
 }
 
 // TranslateResponseHeaderActions converts a ResponseHeaderExecutionResult (from ExecuteResponseHeaderPolicies)
@@ -820,13 +988,7 @@ func TranslateResponseHeaderActions(result *executor.ResponseHeaderExecutionResu
 		if immResp, ok := result.FinalAction.(policy.ImmediateResponse); ok {
 			response := &extprocv3.ProcessingResponse{
 				Response: &extprocv3.ProcessingResponse_ImmediateResponse{
-					ImmediateResponse: &extprocv3.ImmediateResponse{
-						Status: &typev3.HttpStatus{
-							Code: typev3.StatusCode(immResp.StatusCode),
-						},
-						Headers: buildHeaderValueOptions(immResp.Headers),
-						Body:    immResp.Body,
-					},
+					ImmediateResponse: buildImmediateResponse(immResp),
 				},
 			}
 			analyticsStruct, err := buildAnalyticsStruct(immResp.AnalyticsMetadata, execCtx)
@@ -922,11 +1084,7 @@ func TranslateResponseHeaderActionsWithBodyMerge(
 		if immResp, ok := bodyResult.FinalAction.(policy.ImmediateResponse); ok {
 			response := &extprocv3.ProcessingResponse{
 				Response: &extprocv3.ProcessingResponse_ImmediateResponse{
-					ImmediateResponse: &extprocv3.ImmediateResponse{
-						Status:  &typev3.HttpStatus{Code: typev3.StatusCode(immResp.StatusCode)},
-						Headers: buildHeaderValueOptions(immResp.Headers),
-						Body:    immResp.Body,
-					},
+					ImmediateResponse: buildImmediateResponse(immResp),
 				},
 			}
 			analyticsStruct, err := buildAnalyticsStruct(immResp.AnalyticsMetadata, execCtx)
@@ -1162,13 +1320,7 @@ func translateResponseActionsCore(result *executor.ResponseExecutionResult, exec
 		if immResp, ok := result.FinalAction.(policy.ImmediateResponse); ok {
 			response := &extprocv3.ProcessingResponse{
 				Response: &extprocv3.ProcessingResponse_ImmediateResponse{
-					ImmediateResponse: &extprocv3.ImmediateResponse{
-						Status: &typev3.HttpStatus{
-							Code: typev3.StatusCode(immResp.StatusCode),
-						},
-						Headers: buildHeaderValueOptions(immResp.Headers),
-						Body:    immResp.Body,
-					},
+					ImmediateResponse: buildImmediateResponse(immResp),
 				},
 			}
 

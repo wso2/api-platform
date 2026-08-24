@@ -20,6 +20,7 @@ use (
 	./kubernetes/gateway-operator
 	./platform-api
 	./portals/ai-workspace/bff
+	./portals/api-control-plane/bff
 	./samples/sample-service
 	./sdk/ai
 	./sdk/core

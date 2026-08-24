@@ -201,6 +201,7 @@ jobs:
         id: create-pr
         uses: peter-evans/create-pull-request@v6
         with:
+          token: ${{ secrets.API_PLATFORM_BOT_TOKEN }}
           commit-message: "Bump CLI to next dev version"
           title: "chore: Bump CLI to next dev version"
           body: |

@@ -77,7 +77,7 @@ Required roles: `admin`
 |body|body|[LLMProviderTemplateRequest](schemas.md#schemallmprovidertemplaterequest)|true|none|
 
 > Example responses
-
+>
 > 201 Response
 
 ```json
@@ -165,7 +165,7 @@ Required roles: `admin`
 |displayName|query|string|false|Filter by template display name|
 
 > Example responses
-
+>
 > 200 Response
 
 ```json
@@ -328,7 +328,7 @@ Required roles: `admin`
 |id|path|string|true|Unique public identifier for the LLM provider template|
 
 > Example responses
-
+>
 > 200 Response
 
 ```json
@@ -457,7 +457,7 @@ Required roles: `admin`
 |body|body|[LLMProviderTemplateRequest](schemas.md#schemallmprovidertemplaterequest)|true|none|
 
 > Example responses
-
+>
 > 200 Response
 
 ```json
@@ -545,7 +545,7 @@ Required roles: `admin`
 |id|path|string|true|Unique public identifier of the template to delete|
 
 > Example responses
-
+>
 > 200 Response
 
 ```json

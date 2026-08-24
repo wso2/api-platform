@@ -1,8 +1,27 @@
+/*
+ * Copyright (c) 2026, WSO2 LLC. (https://www.wso2.com).
+ *
+ * WSO2 LLC. licenses this file to you under the Apache License,
+ * Version 2.0 (the "License"); you may not use this file except
+ * in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing,
+ * software distributed under the License is distributed on an
+ * "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+ * KIND, either express or implied.  See the License for the
+ * specific language governing permissions and limitations
+ * under the License.
+ */
+
 import { useMemo } from 'react';
 import { useLocation } from 'react-router-dom';
 
 import { runtimeConfig } from '../config/runtime';
 import { useConsoleScope } from '../scope/ConsoleScopeProvider';
+import { buildScopedExtensionPath, useExtensions } from '../extensions';
 import { navigationRegistry } from './navigationRegistry';
 import {
   NAVIGATION_GROUP_BY_LEVEL,
@@ -27,61 +46,116 @@ const isFeatureEnabled = (definition: NavigationDefinition) =>
 export const useNavigationItems = (): NavigationItem[] => {
   const scope = useConsoleScope();
   const location = useLocation();
+  const extensions = useExtensions();
 
-  return useMemo(
-    () =>
-      navigationRegistry
-        .filter((definition) => isLevelAvailable(definition, scope))
-        .filter(isFeatureEnabled)
-        .filter((definition) => definition.isVisible?.(scope) ?? true)
-        .map((definition) => {
-          const to = definition.to(scope);
-          if (!to) return undefined;
-          return {
-            group: definition.group ?? NAVIGATION_GROUP_BY_LEVEL[definition.level],
-            icon: definition.icon,
-            id: definition.id,
-            isActive: definition.match
-              ? definition.match(location.pathname)
-              : location.pathname === to,
-            label: definition.label,
-            to,
-          };
-        })
-        .filter(Boolean)
-        .sort((left, right) => {
-          const leftOrder =
-            navigationRegistry.find((item) => item.id === left?.id)?.order ?? 0;
-          const rightOrder =
-            navigationRegistry.find((item) => item.id === right?.id)?.order ?? 0;
-          return leftOrder - rightOrder;
-        }) as NavigationItem[],
-    [location.pathname, scope]
-  );
+  return useMemo(() => {
+    // Host-injected extensions are converted to the same NavigationDefinition
+    // shape the built-in registry uses, so they run through one filter/sort
+    // pipeline instead of a parallel "Cloud category" implementation. Only
+    // extensions registered against a `sidebar.*` slot get a top-level
+    // sidebar entry here — a `settings.*.tabs` extension instead renders
+    // inside the Settings page's own sub-nav (see `useSettingsTabs`).
+    const extensionDefinitions: NavigationDefinition[] = extensions
+      .filter((extension) => extension.slot.startsWith('sidebar.'))
+      .map((extension) => {
+        const isDescendantRoute = extension.routePath.endsWith('/*');
+        const routeSuffix = extension.routePath.replace(/\/\*$/, '');
+        // Computed once per render from the current scope (not a raw
+        // substring search) so `match` can't be fooled by an unrelated route
+        // that merely happens to contain this segment name elsewhere — e.g.
+        // a `settings/<name>` tab route shouldn't activate a sidebar
+        // extension whose own destination is `/<name>` at a different depth.
+        const { orgHandle, projectHandler, apiHandler } = scope.params;
+        const destination =
+          orgHandle &&
+          !(extension.scope === 'project' && !projectHandler) &&
+          !(extension.scope === 'api' && (!projectHandler || !apiHandler))
+            ? buildScopedExtensionPath(extension.scope, routeSuffix, {
+                apiHandler,
+                orgHandle,
+                projectHandler,
+              })
+            : undefined;
+        return {
+          icon: extension.icon,
+          id: extension.id,
+          isVisible: extension.isVisible,
+          label: extension.label,
+          level: extension.scope,
+          match: (pathname) =>
+            destination !== undefined &&
+            (pathname === destination ||
+              (isDescendantRoute && pathname.startsWith(`${destination}/`))),
+          order: extension.order,
+          to: () => destination,
+        };
+      });
+    const combinedRegistry = [...navigationRegistry, ...extensionDefinitions];
+
+    return combinedRegistry
+      .filter((definition) => isLevelAvailable(definition, scope))
+      .filter(isFeatureEnabled)
+      .filter((definition) => definition.isVisible?.(scope) ?? true)
+      .map((definition) => {
+        const to = definition.to(scope);
+        if (!to) return undefined;
+        return {
+          group: definition.group ?? NAVIGATION_GROUP_BY_LEVEL[definition.level],
+          icon: definition.icon,
+          id: definition.id,
+          isActive: definition.match
+            ? definition.match(location.pathname)
+            : location.pathname === to,
+          label: definition.label,
+          pinned: definition.pinned,
+          to,
+        };
+      })
+      .filter(Boolean)
+      .sort((left, right) => {
+        const leftOrder =
+          combinedRegistry.find((item) => item.id === left?.id)?.order ?? 0;
+        const rightOrder =
+          combinedRegistry.find((item) => item.id === right?.id)?.order ?? 0;
+        return leftOrder - rightOrder;
+      }) as NavigationItem[];
+  }, [location.pathname, scope, extensions]);
+};
+
+const groupByLabel = (items: NavigationItem[]): NavigationGroup[] => {
+  const groups: NavigationGroup[] = [];
+  const byLabel = new Map<string, NavigationGroup>();
+
+  for (const item of items) {
+    let group = byLabel.get(item.group);
+    if (!group) {
+      group = { label: item.group, items: [] };
+      byLabel.set(item.group, group);
+      groups.push(group);
+    }
+    group.items.push(item);
+  }
+
+  return groups;
 };
 
 /**
  * Same items as `useNavigationItems`, bucketed into ordered sidebar sections by
  * their `group`. Group order follows first appearance in the (order-sorted)
- * item list, so Organization → Project → Api falls out naturally.
+ * item list, so Organization → Project → Api falls out naturally. Excludes
+ * `pinned` items — those render separately, see `useSidebarFooterGroups`.
  */
 export const useNavigationGroups = (): NavigationGroup[] => {
   const items = useNavigationItems();
+  return useMemo(() => groupByLabel(items.filter((item) => !item.pinned)), [items]);
+};
 
-  return useMemo(() => {
-    const groups: NavigationGroup[] = [];
-    const byLabel = new Map<string, NavigationGroup>();
-
-    for (const item of items) {
-      let group = byLabel.get(item.group);
-      if (!group) {
-        group = { label: item.group, items: [] };
-        byLabel.set(item.group, group);
-        groups.push(group);
-      }
-      group.items.push(item);
-    }
-
-    return groups;
-  }, [items]);
+/**
+ * `pinned` items (e.g. Settings), grouped the same way as
+ * `useNavigationGroups` but meant for a sidebar's fixed bottom section
+ * (`Sidebar.Footer`) rather than the scrolling main nav.
+ */
+export const useSidebarFooterGroups = (): NavigationGroup[] => {
+  const items = useNavigationItems();
+  return useMemo(() => groupByLabel(items.filter((item) => item.pinned)), [items]);
 };

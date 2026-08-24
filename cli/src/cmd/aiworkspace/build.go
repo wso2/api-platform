@@ -990,12 +990,13 @@ func buildLLMProxyPayload(proxyName string, metadata aiWorkspaceMetadata, runtim
 		AssociatedGateways: normalizeAssociatedGateways(metadata.Spec.AssociatedGateways),
 	}
 
-	// The proxy references its provider by id; the provider owns the credential
-	// value, so only the auth type/header are carried here (never the secret).
+	// The proxy->provider loopback hop re-enters the provider's api-key-auth, so
+	// the credential is required here. Use an ENV_CLI_* or {{ secret }} reference.
 	if auth := runtime.Spec.Provider.Auth; auth != nil {
 		payload.Provider.Auth = &llmUpstreamAuth{
 			Type:   auth.Type,
 			Header: auth.Header,
+			Value:  auth.Value,
 		}
 	}
 

@@ -165,6 +165,7 @@ All configurable values are documented in `values.yaml`. Component blocks are fu
 - `gateway.<component>.deployment.*` – pod-level knobs (replicas, probes incl. optional `startupProbe`, scheduling via `nodeSelector`/`tolerations`/`affinity`/`topologySpreadConstraints`, update `strategy`, `terminationGracePeriodSeconds`, `hostAliases`, `dnsPolicy`/`dnsConfig`, `automountServiceAccountToken`, env overrides, extra volumes) and enable/disable switches.
 - `gateway.<component>.service.*` – service type/ports plus optional annotations and labels, and network tuning (`clusterIP`, `externalTrafficPolicy`, `loadBalancerClass`, `loadBalancerSourceRanges`, `ipFamilyPolicy`/`ipFamilies`, static `nodePorts.*`).
 - `gateway.<component>.service.expose.*` – per-port toggles for publishing admin/debug ports on the Service. **All default to `false`** so admin surfaces stay pod-internal (reach them with `kubectl port-forward`). Available toggles: `controller.service.expose.admin` (controller admin, 9092), `gatewayRuntime.service.expose.routerAdmin` (Router/Envoy admin, 9901 — includes mutating endpoints, leave off unless trusted), `gatewayRuntime.service.expose.policyEngineAdmin` (policy-engine admin, 9002). Probes are unaffected; they target container ports directly. Note: the controller admin port is no longer exposed by default — set `expose.admin=true` to restore prior behavior. The runtime port key was renamed `envoyAdmin` → `routerAdmin`.
+- The sensitive `/config_dump` route on the controller and policy-engine admin servers is **off by default** (returns 404), independent of the `expose.*` Service toggles above — set `gateway.config.controller.admin_server.config_dump.enabled=true` / `gateway.config.policy_engine.admin.config_dump.enabled=true` to turn it on. `/health` and other admin routes are unaffected, so liveness/readiness probes keep working either way. Envoy's admin interface (port 9901) is likewise off by default at the process level — nothing is even listening on it unless `gateway.gatewayRuntime.deployment.env.routerAdminEnabled=true`, and even then it binds loopback-only inside the pod. Enabling it also restores the graceful-drain-on-SIGTERM behavior; `gateway-runtime`'s health probe falls back to a plain TCP check on the HTTP listener when it's off.
 - `gateway.controller.persistence` / `gateway.configMap` – PVC sizing/claims (plus PVC `labels`/`annotations`, e.g. `helm.sh/resource-policy: keep`) and component configuration payloads.
 - `commonLabels` / `commonAnnotations` – applied to every resource the chart renders; per-resource labels/annotations win on key conflicts.
 - `gateway.controller.controlPlane` – control-plane connectivity. The host is non-secret and rendered directly into `config.toml`; the token is injected from a Secret. The controller log level is `gateway.config.controller.logging.level`.
@@ -199,6 +200,33 @@ ConfigMap:
   `config.toml`.
 
 A plain `APIP_GW_*` env var with no matching token in `config.toml` is ignored.
+
+### Storage backends and scaling
+
+`gateway.config.controller.storage.type` selects the controller's database:
+
+| Type | Config block | Replicas |
+| --- | --- | --- |
+| `sqlite` (default) | `storage.sqlite` | Single replica only — the DB is a file on a PersistentVolume |
+| `postgres` | `storage.postgres` | Multi-replica |
+| `sqlserver` | `storage.database` | Multi-replica |
+
+Notes:
+
+- `gateway.controller.hpa.enabled=true` requires `postgres` or `sqlserver`; the chart fails to
+  render with `sqlite`, which cannot serve multiple replicas.
+- The PersistentVolumeClaim backs the SQLite file only. With `postgres`/`sqlserver` no claim is
+  created or mounted regardless of `gateway.controller.persistence.enabled`, so replicas are not
+  pinned to a single node by a `ReadWriteOnce` volume. If you are switching an existing release
+  from `sqlite` to an external database and want to retain the old claim, annotate it with
+  `helm.sh/resource-policy: keep` before upgrading.
+- SQL Server connection encryption is on by default
+  (`storage.database.options.encrypt="true"`, `trust_server_certificate="false"`), matching the
+  gateway-controller binary. Relax these only for a local/dev SQL Server without a trusted
+  certificate.
+- Prefer the individual `host`/`port`/`database`/`user` fields over `dsn`: a DSN is rendered
+  verbatim into the ConfigMap, so an embedded password would be stored in plaintext instead of
+  being injected from the Secret above.
 
 ## At-rest Encryption (Required)
 

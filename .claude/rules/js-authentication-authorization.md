@@ -230,6 +230,22 @@ res.redirect(safeRedirectTarget(req.query.returnTo));
 
 ---
 
+## JS-AUTH-011: No Deferring a Rule Violation Behind a Code Comment — Critical (counterpart: GO-AUTH-019)
+
+Resolving a finding from JS-AUTH-001 through JS-AUTH-010 by adding a `// TODO`/`FIXME`-style comment next to the non-compliant code, and shipping it anyway, is not compliance — a comment does not change what the code does at runtime. Treat an inline deferral comment as equivalent to leaving the violation undocumented and unfixed. An existing violation that genuinely can't be fixed immediately must be filed as a tracked issue (owner + deadline), and the vulnerable route must default deny/fail-closed in the meantime — never ship it open behind a comment "for now."
+
+```js
+// BAD: acknowledges the missing scope check but ships the route reachable anyway
+// TODO: add requireScope check before merging
+adminRouter.post('/tenants/:id/suspend', suspendHandler);
+
+// GOOD: fix it now — or, if truly blocked, deny by default and track the fix externally,
+// never leave the gap open behind a comment.
+adminRouter.post('/tenants/:id/suspend', requireScope('admin:tenant:suspend'), suspendHandler);
+```
+
+---
+
 > **Verification Checklist before outputting code:**
 > * JS-AUTH-001: Does every auth failure branch have a `return` before/with `next()`/`res.status()`?
 > * JS-AUTH-002: Does JWT verification pass an explicit asymmetric-only `algorithms` array?
@@ -241,3 +257,4 @@ res.redirect(safeRedirectTarget(req.query.returnTo));
 > * JS-AUTH-008: Does every `sequelize.query()` use bound `replacements` (or the query builder) rather than string interpolation, with identifiers resolved via an allowlist?
 > * JS-AUTH-009: Does a lock/role-change/deletion handler revoke sessions and bump `tokenVersion` in the same transaction?
 > * JS-AUTH-010: Is every `res.redirect()` target validated via parsed-URL host allowlist rather than a substring check?
+> * JS-AUTH-011: Is a finding from any of the above "resolved" by a `// TODO`/`FIXME`-style comment instead of an actual fix, deny-by-default fallback, or a tracked issue?

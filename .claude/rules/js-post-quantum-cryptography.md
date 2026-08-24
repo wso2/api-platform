@@ -6,7 +6,7 @@ Apply this rule whenever writing, refactoring, or reviewing JavaScript (`.js`) c
 
 ## Directives
 
-1. **Prohibited quantum-vulnerable algorithms.** Never use RSA, ECDH, ECDSA, Ed25519/Ed448, X25519, or classic Diffie-Hellman in new key-exchange or signing paths — this includes `crypto.createECDH(...)`, `crypto.generateKeyPair('rsa', ...)`, and `crypto.sign` with `'RSA-SHA256'`. Existing uses must carry a `// TODO(pqc): migrate` comment plus a tracking issue — never leave them undocumented. AES-256-GCM, ChaCha20-Poly1305, and SHA-3/BLAKE3 remain quantum-safe exceptions at 256-bit sizes; avoid AES-128/SHA-256 for new long-lived keys.
+1. **Prohibited quantum-vulnerable algorithms.** Never use RSA, ECDH (any curve other than the X25519 leg below), ECDSA, Ed25519/Ed448, X448, or classic Diffie-Hellman in new key-exchange or signing paths — this includes `crypto.createECDH(...)`, `crypto.generateKeyPair('rsa', ...)`, and `crypto.sign` with `'RSA-SHA256'` — and never introduce or extend such use with a `// TODO(pqc): migrate`-style comment as cover; a code comment is not a remediation plan. The one narrow exception: X25519 may be used solely as the classical leg of the mandated X25519 + ML-KEM-768 hybrid construction in directive 3 — never standalone, never paired with any KEM other than ML-KEM-768/1024, and never as a substitute for it elsewhere. Existing uses (including standalone X25519) must be filed as a tracked issue (not merely noted inline) with an owner and a migration deadline, and must be migrated the next time that code is touched rather than re-committed as-is. AES-256-GCM, ChaCha20-Poly1305, and SHA-3/BLAKE3 remain quantum-safe exceptions at 256-bit sizes; avoid AES-128/SHA-256 for new long-lived keys.
 2. **Approved algorithm selection:**
 
    | Purpose | NIST Standard | Algorithm | npm Package |
@@ -29,7 +29,7 @@ Apply this rule whenever writing, refactoring, or reviewing JavaScript (`.js`) c
 // BAD: classical-only key exchange, no PQC migration path, and a standalone
 // PQC KEM with no hybrid classical leg.
 const ecdh = crypto.createECDH('prime256v1');
-const sharedSecret = ecdh.computeSecret(peerPublicKey); // quantum-vulnerable, no TODO(pqc)
+const sharedSecret = ecdh.computeSecret(peerPublicKey); // quantum-vulnerable — a TODO(pqc) comment would not excuse this
 const { sharedSecret: pqcOnly } = ml_kem768.encapsulate(recipientPub); // no X25519 hybrid leg
 
 // GOOD: hybrid X25519 + ML-KEM-768 (FIPS 203) — security holds if either leg
@@ -53,7 +53,7 @@ function encapsulate(recipientClassicalPub, recipientPqcPub) {
 ```
 
 > **Verification Checklist before outputting code:**
-> * Any new RSA/ECDH/ECDSA/X25519 use without a `// TODO(pqc): migrate` + tracking issue?
+> * Any new RSA/ECDH/ECDSA/Ed25519/Ed448/X448/classic-DH use at all, or X25519 used outside its role as the classical leg of the mandated X25519+ML-KEM-768 hybrid (directive 3) — e.g. standalone, or paired with a non-ML-KEM KEM — or any of this "justified" by an inline `// TODO(pqc)`-style comment instead of a tracked issue and actual migration?
 > * Is a PQC KEM used standalone instead of hybrid X25519+ML-KEM-768?
 > * Are ML-KEM/ML-DSA key/ciphertext/signature sizes accounted for in Sequelize columns (`BLOB`, never `STRING(512)`) and payload budgets?
 > * Any nonce/key generation using `Math.random()`/`Date.now()` instead of `crypto.randomBytes`, or a reused GCM nonce?

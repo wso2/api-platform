@@ -1,0 +1,94 @@
+[api_control_plane]
+
+domain = '{{ env "APIP_ACP_DOMAIN" "localhost:8082" }}'
+
+[api_control_plane.server.http]
+
+enabled = '{{ env "APIP_ACP_SERVER_HTTP_ENABLED" "true" }}'
+port    = '{{ env "APIP_ACP_SERVER_HTTP_PORT" "8082" }}'
+
+[api_control_plane.server.https]
+
+enabled = '{{ env "APIP_ACP_SERVER_HTTPS_ENABLED" "false" }}'
+
+
+[api_control_plane.logging]
+
+level = '{{ env "APIP_ACP_LOGGING_LEVEL" "info" }}'   # debug | info | warn | error
+
+
+[api_control_plane.control_plane]
+
+url             = '{{ env "APIP_ACP_CONTROL_PLANE_URL" "https://localhost:9243" }}'
+# Secure by default: a deployment that sets a real control-plane URL keeps
+# certificate verification unless it explicitly opts out. `make bff-run`
+# overrides this to true for its own local-dev default (a self-signed cert),
+# not this file — see the Makefile.
+tls_skip_verify = '{{ env "APIP_ACP_CONTROL_PLANE_TLS_SKIP_VERIFY" "false" }}'
+
+
+[api_control_plane.session]
+
+# Local dev runs the BFF over plain HTTP (no cert generation set up for this
+# portal yet) — a Secure cookie would never be sent back by the browser.
+# Never set this to false for a deployment reachable over a real network.
+[api_control_plane.session.cookie]
+secure = '{{ env "APIP_ACP_SESSION_COOKIE_SECURE" "false" }}'
+
+
+[api_control_plane.auth]
+
+mode = '{{ env "APIP_ACP_AUTH_MODE" "basic" }}'
+
+# Every field below exists so the BFF stays IdP-agnostic: a standards-conformant
+# IdP (Asgardeo, Keycloak) only needs enabled/authority/client_id/client_secret/
+# redirect_url/scope; a non-conformant IdP (WSO2 Thunder: bare-name issuer, no
+# discovery document) additionally uses the discovery/endpoint-override/
+# client_auth_method knobs. See bff/internal/config/config.go's OIDCConfig.
+[api_control_plane.auth.oidc]
+
+enabled                  = '{{ env "APIP_ACP_AUTH_OIDC_ENABLED" "false" }}'
+# Discovery base URL: {authority}/.well-known/openid-configuration.
+authority                = '{{ env "APIP_ACP_AUTH_OIDC_AUTHORITY" "" }}'
+# Expected `iss` claim. Defaults to authority when empty; deliberately never
+# required to be a URL — some IdPs (Thunder) issue a bare name.
+issuer                   = '{{ env "APIP_ACP_AUTH_OIDC_ISSUER" "" }}'
+discovery                = '{{ env "APIP_ACP_AUTH_OIDC_DISCOVERY" "true" }}'
+# Only consulted when discovery is false — every one must be set explicitly then.
+authorization_endpoint   = '{{ env "APIP_ACP_AUTH_OIDC_AUTHORIZATION_ENDPOINT" "" }}'
+token_endpoint           = '{{ env "APIP_ACP_AUTH_OIDC_TOKEN_ENDPOINT" "" }}'
+end_session_endpoint     = '{{ env "APIP_ACP_AUTH_OIDC_END_SESSION_ENDPOINT" "" }}'
+userinfo_endpoint        = '{{ env "APIP_ACP_AUTH_OIDC_USERINFO_ENDPOINT" "" }}'
+jwks_uri                 = '{{ env "APIP_ACP_AUTH_OIDC_JWKS_URI" "" }}'
+client_id                = '{{ env "APIP_ACP_AUTH_OIDC_CLIENT_ID" "" }}'
+client_secret            = '{{ env "APIP_ACP_AUTH_OIDC_CLIENT_SECRET" "" }}'
+# "client_secret_post" (default) | "client_secret_basic" | "none" for a public
+# client driven server-side by this BFF (PKCE still protects the flow).
+client_auth_method       = '{{ env "APIP_ACP_AUTH_OIDC_CLIENT_AUTH_METHOD" "client_secret_post" }}'
+# Must equal the IdP-registered redirect URI, pointing at /api/auth/callback.
+redirect_url             = '{{ env "APIP_ACP_AUTH_OIDC_REDIRECT_URL" "" }}'
+post_logout_redirect_url = '{{ env "APIP_ACP_AUTH_OIDC_POST_LOGOUT_REDIRECT_URL" "" }}'
+# No `scope` key here on purpose: Load overlays this file's parsed keys onto
+# defaultConfig() unconditionally (mapstructure decode, not an omitempty-aware
+# merge), so a present-but-empty key would silently blank out the built-in
+# default (every ap:* scope Platform API authorizes against — see
+# defaultOIDCScopes in bff/internal/config/config.go) for every deployment that
+# doesn't set APIP_ACP_AUTH_OIDC_SCOPE. An IdP that genuinely needs a narrower
+# set (and can't grant the full ap:* list) should add this key in its own
+# mounted config.toml overlay, keeping offline_access in the override.
+
+# Which claim names carry each user/org field — for BOTH auth modes (OIDC tokens
+# from the configured IdP, and the JWTs Platform API's file-based login signs).
+# Values may be dotted paths (e.g. "realm_access.roles") to reach a nested claim.
+# Must agree with Platform API's own [auth.claim_mappings] key for key. Defaults
+# below match Platform API's file-based JWT; override the ones an external IdP
+# names differently (e.g. WSO2 Thunder emits ouId/ouName/ouHandle for org).
+[api_control_plane.auth.claim_mappings]
+
+username   = '{{ env "APIP_ACP_AUTH_CLAIM_MAPPINGS_USERNAME" "username" }}'
+email      = '{{ env "APIP_ACP_AUTH_CLAIM_MAPPINGS_EMAIL" "email" }}'
+roles      = '{{ env "APIP_ACP_AUTH_CLAIM_MAPPINGS_ROLES" "roles" }}'
+scope      = '{{ env "APIP_ACP_AUTH_CLAIM_MAPPINGS_SCOPE" "scope" }}'
+organization = '{{ env "APIP_ACP_AUTH_CLAIM_MAPPINGS_ORGANIZATION" "organization" }}'
+org_name   = '{{ env "APIP_ACP_AUTH_CLAIM_MAPPINGS_ORG_NAME" "org_name" }}'
+org_handle = '{{ env "APIP_ACP_AUTH_CLAIM_MAPPINGS_ORG_HANDLE" "org_handle" }}'

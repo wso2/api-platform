@@ -1,3 +1,21 @@
+/*
+ * Copyright (c) 2026, WSO2 LLC. (https://www.wso2.com).
+ *
+ * WSO2 LLC. licenses this file to you under the Apache License,
+ * Version 2.0 (the "License"); you may not use this file except
+ * in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing,
+ * software distributed under the License is distributed on an
+ * "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+ * KIND, either express or implied.  See the License for the
+ * specific language governing permissions and limitations
+ * under the License.
+ */
+
 import {
   Boxes,
   ClipboardList,
@@ -43,6 +61,21 @@ export const navigationRegistry: NavigationDefinition[] = [
     match: (pathname) => /\/organizations\/[^/]+\/gateways(\/[^/]+)?$/.test(pathname),
   },
   {
+    id: 'org-settings',
+    label: 'Settings',
+    level: 'organization',
+    order: 40,
+    icon: <Settings />,
+    pinned: true,
+    // Only while not inside a project — the project-level `settings` entry
+    // takes over once a project is selected, so there's always exactly one
+    // "Settings" link pinned to the sidebar bottom, never two at once.
+    isVisible: (scope) => !scope.isProjectScope,
+    to: ({ params }) =>
+      params.orgHandle ? routes.orgSettings(params.orgHandle) : undefined,
+    match: (pathname) => /\/organizations\/[^/]+\/settings(\/[^/]+)?$/.test(pathname),
+  },
+  {
     id: 'project-home',
     label: 'Project Home',
     level: 'project',
@@ -86,11 +119,15 @@ export const navigationRegistry: NavigationDefinition[] = [
     level: 'project',
     order: 130,
     icon: <Settings />,
+    pinned: true,
     to: ({ params }) =>
       params.orgHandle && params.projectHandler
         ? routes.settings(params.orgHandle, params.projectHandler)
         : undefined,
-    match: (pathname) => /\/settings$/.test(pathname),
+    // Also active on a settings tab (e.g. /settings/general), but not deeper.
+    // The `/projects/[^/]+/` prefix is required so a project literally
+    // handled "settings" (e.g. `/projects/settings/home`) can't false-match.
+    match: (pathname) => /\/projects\/[^/]+\/settings(\/[^/]+)?$/.test(pathname),
   },
   {
     id: 'api-overview',

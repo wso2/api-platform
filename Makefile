@@ -25,6 +25,7 @@ EVENT_GATEWAY_VERSION := $(shell cat event-gateway/VERSION)
 PLATFORM_API_VERSION := $(shell cat platform-api/VERSION)
 CLI_VERSION := $(shell cat cli/VERSION)
 API_PORTAL_VERSION := $(shell cat portals/api-portal/VERSION)
+API_CONTROL_PLANE_VERSION := $(shell cat portals/api-control-plane/VERSION)
 
 # Docker registry configuration
 DOCKER_REGISTRY ?= ghcr.io/wso2/api-platform
@@ -47,7 +48,8 @@ help: ## Show this help message
 	@echo '  make build-event-gateway              - Build all event gateway Docker images'
 	@echo '  make build-and-push-gateway-multiarch - Build and push all gateway images for multiple architectures'
 	@echo '  make build-and-push-event-gateway-multiarch - Build and push all event gateway images for multiple architectures'
-	@echo '  make build-and-push-platform-api-multiarch VERSION=X - Build and push platform-api images for multiple architectures'
+	@echo '  make build-and-push-platform-api-multiarch PLATFORM_API_VERSION=X - Build and push platform-api images for multiple architectures'
+	@echo '  make cloud-build-and-push-platform-api-multiarch PLATFORM_API_VERSION=X - Build and push platform-api cloud image (event-gateway plugin) for multiple architectures'
 	@echo '  make build-and-push-api-portal-multiarch - Build and push API Portal image for multiple architectures'
 	@echo '  make build-cli                        - Build CLI binaries for all platforms'
 	@echo '  make package-event-gateway            - Package event gateway as a self-contained zip'
@@ -57,6 +59,8 @@ help: ## Show this help message
 	@echo '  make test-cli                         - Run CLI tests'
 	@echo '  make test-api-portal                  - Run API Portal integration tests'
 	@echo '  make test-ai-workspace                - Run AI Workspace E2E tests'
+	@echo '  make build-and-push-api-control-plane-multiarch - Build and push API Control Plane image for multiple architectures'
+	@echo '  make test-api-control-plane            - Run API Control Plane tests'
 	@echo ''
 	@echo 'Push Targets:'
 	@echo '  make push-gateway                     - Push gateway images to registry'
@@ -64,6 +68,7 @@ help: ## Show this help message
 	@echo 'Utility Targets:'
 	@echo '  make update-images COMPONENT=X VERSION=Y - Update docker-compose and Helm images'
 	@echo '  make validate-versions                - Validate version consistency'
+	@echo '  make go-license-report                - Generate third-party Go license report'
 	@echo '  make clean-gateway                    - Clean gateway build artifacts'
 
 # Version Management Targets
@@ -75,6 +80,7 @@ version: ## Display current versions
 	@echo "Platform API Version:  $(PLATFORM_API_VERSION)"
 	@echo "CLI Version:           $(CLI_VERSION)"
 	@echo "API Portal Version: $(API_PORTAL_VERSION)"
+	@echo "API Control Plane Version: $(API_CONTROL_PLANE_VERSION)"
 
 
 # Build Targets
@@ -108,11 +114,24 @@ build-and-push-platform-api-multiarch: ## Build and push platform-api Docker ima
 	$(MAKE) -C platform-api build-and-push-multiarch VERSION=$(PLATFORM_API_VERSION)
 	@echo "Successfully built and pushed multi-arch platform-api"
 
+.PHONY: cloud-build-and-push-platform-api-multiarch
+cloud-build-and-push-platform-api-multiarch: ## Build and push multi-arch platform-api cloud image (event-gateway plugin, amd64, arm64)
+	@echo "Building and pushing multi-arch platform-api cloud image ($(PLATFORM_API_VERSION))..."
+	$(MAKE) -C platform-api cloud-build-and-push-multiarch VERSION=$(PLATFORM_API_VERSION)
+	@echo "Successfully built and pushed multi-arch platform-api cloud image"
+
+
 .PHONY: build-and-push-api-portal-multiarch
 build-and-push-api-portal-multiarch: ## Build and push API Portal Docker image for multiple architectures (amd64, arm64)
 	@echo "Building and pushing multi-arch API Portal ($(API_PORTAL_VERSION))..."
 	$(MAKE) -C portals/api-portal build-and-push-multiarch
 	@echo "Successfully built and pushed multi-arch API Portal"
+
+.PHONY: build-and-push-api-control-plane-multiarch
+build-and-push-api-control-plane-multiarch: ## Build and push API Control Plane Docker image for multiple architectures (amd64, arm64)
+	@echo "Building and pushing multi-arch API Control Plane ($(API_CONTROL_PLANE_VERSION))..."
+	$(MAKE) -C portals/api-control-plane build-and-push-multiarch VERSION=$(API_CONTROL_PLANE_VERSION)
+	@echo "Successfully built and pushed multi-arch API Control Plane"
 
 # Package Targets
 .PHONY: package-event-gateway
@@ -162,6 +181,11 @@ test-ai-workspace: ## Run AI Workspace E2E tests
 	@echo "Running AI Workspace E2E tests..."
 	$(MAKE) -C portals/ai-workspace e2e-ci
 
+.PHONY: test-api-control-plane
+test-api-control-plane: ## Run API Control Plane tests
+	@echo "Running API Control Plane tests..."
+	$(MAKE) -C portals/api-control-plane test
+
 .PHONY: build-cli
 build-cli: ## Build CLI binaries for all platforms
 	@echo "Building CLI ($(CLI_VERSION))..."
@@ -200,6 +224,10 @@ update-versions: ## Update docker-compose and Helm charts (alias for update-imag
 .PHONY: validate-versions
 validate-versions: ## Validate version consistency
 	@bash scripts/validate-versions.sh
+
+.PHONY: go-license-report
+go-license-report: ## Generate third-party Go license report
+	@bash scripts/generate-go-license-report.sh
 
 # Clean Targets
 .PHONY: clean-gateway

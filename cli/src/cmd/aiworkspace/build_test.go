@@ -91,9 +91,9 @@ func TestBuildLLMProxyPayload_MapsGlobalAndOperationPolicies(t *testing.T) {
 		t.Fatalf("operation policy path/params not preserved: %+v", op.Paths)
 	}
 
-	// The provider auth carries type/header but never the secret value.
-	if payload.Provider.Auth == nil || payload.Provider.Auth.Value != "" {
-		t.Fatalf("expected provider auth without secret value, got %+v", payload.Provider.Auth)
+	// The provider auth carries the loopback credential through to the payload.
+	if payload.Provider.Auth == nil || payload.Provider.Auth.Value != `{{ secret "abc" }}` {
+		t.Fatalf("expected provider auth value to be forwarded, got %+v", payload.Provider.Auth)
 	}
 }
 

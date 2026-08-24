@@ -64,6 +64,7 @@ import NoProxies from '../../../../assets/images/NoProxies.svg';
 import ErrorAlert from '../../../../Components/common/ErrorAlert';
 import { useAIWorkspaceSnackbar } from '../../../../hooks/aiWorkspaceSnackbar';
 import { getErrorMessage } from '../../../../utils/apiError';
+import { GatewayArtifactDeleteWarning } from '../../../../utils/readOnlyArtifacts';
 import { useAppAuth } from '../../../../contexts/AppAuthContext';
 import { NO_PERMISSION_TOOLTIP, SCOPES } from '../../../../auth/permissions';
 
@@ -118,6 +119,7 @@ export default function LLMProxiesList() {
   const [deleteTarget, setDeleteTarget] = useState<{
     id: string;
     name: string;
+    readOnly: boolean;
   } | null>(null);
 
   useEffect(() => {
@@ -542,6 +544,7 @@ export default function LLMProxiesList() {
                                       setDeleteTarget({
                                         id: proxy.id,
                                         name: proxy.displayName,
+                                        readOnly: Boolean(proxy.readOnly),
                                       });
                                     }}
                                     aria-label={`Delete ${proxy.displayName}`}
@@ -569,6 +572,12 @@ export default function LLMProxiesList() {
       >
         <DialogTitle>Delete App LLM Proxy</DialogTitle>
         <DialogContent>
+          {deleteTarget?.readOnly ? (
+            <GatewayArtifactDeleteWarning
+              artifactType="App LLM Proxy"
+              artifactName={deleteTarget.name}
+            />
+          ) : null}
           <DialogContentText>
             Are you sure you want to delete {deleteTarget?.name}?
           </DialogContentText>

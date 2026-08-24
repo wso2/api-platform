@@ -6,7 +6,7 @@ Apply this rule whenever writing, refactoring, or reviewing Go (`.go`) code that
 
 ## Directives
 
-1. **Prohibited quantum-vulnerable algorithms.** Never use RSA (any size), ECDH, ECDSA, Ed25519/Ed448, X25519/X448, or classic Diffie-Hellman for key establishment or signatures in new code. Mark any remaining use in existing code with `// TODO(pqc): migrate` plus a tracking issue — never leave it undocumented. Symmetric primitives are the exception: AES-256, ChaCha20-Poly1305, and SHA-3/BLAKE3 stay quantum-safe at current sizes (Grover halves effective strength); prefer 256-bit over AES-128/SHA-256 for new code.
+1. **Prohibited quantum-vulnerable algorithms.** Never use RSA (any size), ECDH (any curve other than the X25519 leg below), ECDSA, Ed25519/Ed448, X448, or classic Diffie-Hellman for key establishment or signatures in new code — no exceptions, and never introduce or extend such use with a `// TODO(pqc): migrate`-style comment as cover. A code comment is not a remediation plan and must never be treated as satisfying this directive. The one narrow exception: X25519 may be used solely as the classical leg of the mandated X25519 + ML-KEM-768 hybrid construction in directive 3 — never standalone, never paired with any KEM other than ML-KEM-768/1024, and never as a substitute for it elsewhere. Any remaining use in existing code (including standalone X25519) must be filed as a tracked issue in the team's issue tracker (not merely noted inline) with an owner and a migration deadline, and existing non-compliant code must be migrated the next time it is touched rather than re-committed as-is. Symmetric primitives are the exception: AES-256, ChaCha20-Poly1305, and SHA-3/BLAKE3 stay quantum-safe at current sizes (Grover halves effective strength); prefer 256-bit over AES-128/SHA-256 for new code.
 2. **Approved algorithm selection:**
 
    | Purpose | Standard | Algorithm | Go Package |
@@ -26,7 +26,8 @@ Apply this rule whenever writing, refactoring, or reviewing Go (`.go`) code that
 ## Example
 
 ```go
-// BAD: PQC used standalone (no classical hybrid leg), or plain ECDH with no TODO(pqc).
+// BAD: PQC used standalone (no classical hybrid leg), or plain ECDH in new code —
+// a "// TODO(pqc): migrate" comment does not excuse either of these.
 pub, _, _ := mlkem768.GenerateKeyPair(rand.Reader)
 ct, ss := make([]byte, mlkem768.CiphertextSize), make([]byte, mlkem768.SharedKeySize)
 pub.EncapsulateTo(ct, ss, nil) // no X25519 hybrid leg
@@ -61,7 +62,7 @@ func Encapsulate(recipientClassical *ecdh.PublicKey, recipientPQC *mlkem768.Publ
 ```
 
 > **Verification Checklist before outputting code:**
-> * Does any new key exchange use RSA/ECDH/X25519/ECDSA without a `// TODO(pqc): migrate` comment?
+> * Does any new key exchange use RSA/ECDH/ECDSA/Ed25519/Ed448/X448/classic-DH at all, or use X25519 outside its role as the classical leg of the mandated X25519+ML-KEM-768 hybrid (directive 3) — e.g. standalone, or paired with a non-ML-KEM KEM — or try to justify any of this with an inline `// TODO(pqc)`-style comment instead of a tracked issue and actual migration?
 > * Is the chosen algorithm/package/security-level drawn from the approved table (directive 2)?
 > * Is the PQC KEM used standalone rather than hybrid X25519+ML-KEM-768?
 > * Are key/ciphertext/signature byte sizes accounted for in DB column types and payload budgets (never `VARCHAR`)?

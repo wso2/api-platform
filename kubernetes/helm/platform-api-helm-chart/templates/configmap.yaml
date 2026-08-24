@@ -1,6 +1,7 @@
 {{- $pa := .Values -}}
 {{- $cfg := $pa.config -}}
 {{- $db := $cfg.database -}}
+{{- $dbDriver := include "apip.platformApi.dbDriver" $db.driver -}}
 {{- $auth := $cfg.auth -}}
 {{- $srv := $cfg.server -}}
 {{- $https := $srv.https -}}
@@ -39,18 +40,25 @@ data:
     hashing_algorithms = {{ $cfg.security.apiKey.hashingAlgorithms | quote }}
 
     [platform_api.database]
-    driver = {{ $db.driver | quote }}
-    {{- if eq $db.driver "sqlite3" }}
+    # Rendered as the canonical driver rather than the raw values.yaml spelling,
+    # so an alias resolves to the one name this component's config validator
+    # expects regardless of which spelling the shared values file used.
+    driver = {{ $dbDriver | quote }}
+    {{- if eq $dbDriver "sqlite3" }}
     path = {{ $db.path | quote }}
     {{- else }}
     host = {{ required "config.database.postgres.host is required when database.driver is not sqlite3" $db.postgres.host | quote }}
     port = {{ $db.postgres.port | int }}
-    name = {{ $db.postgres.name | quote }}
-    user = {{ $db.postgres.user | quote }}
+    name = {{ required "config.database.postgres.name is required when database.driver is not sqlite3" $db.postgres.name | quote }}
+    user = {{ required "config.database.postgres.user is required when database.driver is not sqlite3" $db.postgres.user | quote }}
     password = {{ `'{{ env "APIP_CP_DATABASE_PASSWORD" }}'` }}
     ssl_mode = {{ $db.postgres.sslMode | quote }}
+    {{- if or (eq $db.postgres.sslMode "verify-ca") (eq $db.postgres.sslMode "verify-full") }}
+    ssl_root_cert = {{ required "config.database.postgres.sslRootCert is required when database.postgres.sslMode is \"verify-ca\" or \"verify-full\"" $db.postgres.sslRootCert | quote }}
+    {{- else }}
     {{- with $db.postgres.sslRootCert }}
     ssl_root_cert = {{ . | quote }}
+    {{- end }}
     {{- end }}
     {{- with $db.postgres.sslCert }}
     ssl_cert = {{ . | quote }}
@@ -66,10 +74,17 @@ data:
     [platform_api.auth]
     mode = {{ $auth.mode | quote }}
 
+    {{- if and (ne $auth.authorization.mode "scope") (ne $auth.authorization.mode "role") }}
+    {{- fail (printf "config.auth.authorization.mode must be \"scope\" or \"role\", got %q" $auth.authorization.mode) }}
+    {{- end }}
     [platform_api.auth.authorization]
     enabled = {{ $auth.authorization.enabled }}
     mode = {{ $auth.authorization.mode | quote }}
+    {{- if eq $auth.authorization.mode "role" }}
+    role_to_scope_mapping = {{ required "config.auth.authorization.roleToScopeMapping is required when auth.authorization.mode is \"role\"" $auth.authorization.roleToScopeMapping | quote }}
+    {{- else }}
     role_to_scope_mapping = {{ $auth.authorization.roleToScopeMapping | quote }}
+    {{- end }}
 
     [platform_api.auth.claim_mappings]
     organization = {{ $auth.claimMappings.organization | quote }}
@@ -79,19 +94,30 @@ data:
     username = {{ $auth.claimMappings.username | quote }}
     email = {{ $auth.claimMappings.email | quote }}
     scope = {{ $auth.claimMappings.scope | quote }}
+    {{- if eq $auth.authorization.mode "role" }}
+    roles = {{ required "config.auth.claimMappings.roles is required when auth.authorization.mode is \"role\"" $auth.claimMappings.roles | quote }}
+    {{- else }}
     roles = {{ $auth.claimMappings.roles | quote }}
+    {{- end }}
 
+    {{- if ne $auth.mode "idp" }}
     [platform_api.auth.jwt]
     issuer = {{ $auth.jwt.issuer | quote }}
-    public_key_file = {{ $auth.jwt.publicKeyFile | quote }}
-    private_key_file = {{ $auth.jwt.privateKeyFile | quote }}
+    public_key_file = {{ required "config.auth.jwt.publicKeyFile is required when auth.mode is \"internal_token\" or \"file\"" $auth.jwt.publicKeyFile | quote }}
+    {{- if eq $auth.mode "file" }}
+    private_key_file = {{ required "config.auth.jwt.privateKeyFile is required when auth.mode is \"file\"" $auth.jwt.privateKeyFile | quote }}
+    {{- end }}
     token_ttl = {{ $auth.jwt.tokenTtl | quote }}
+    {{- end }}
 
     {{- if eq $auth.mode "idp" }}
 
     [platform_api.auth.idp]
     name = {{ $auth.idp.name | quote }}
     jwks_url = {{ required "config.auth.idp.jwksUrl is required when auth.mode is \"idp\"" $auth.idp.jwksUrl | quote }}
+    {{- if eq (len $auth.idp.issuer) 0 }}
+    {{- fail "config.auth.idp.issuer is required when auth.mode is \"idp\"" }}
+    {{- end }}
     issuer = {{ toJson $auth.idp.issuer }}
     audience = {{ toJson $auth.idp.audience }}
     {{- end }}
@@ -99,8 +125,8 @@ data:
     {{- if eq $auth.mode "file" }}
 
     [platform_api.auth.file.organization]
-    id = {{ $auth.file.organization.id | quote }}
-    display_name = {{ $auth.file.organization.displayName | quote }}
+    id = {{ required "config.auth.file.organization.id is required when auth.mode is \"file\"" $auth.file.organization.id | quote }}
+    display_name = {{ required "config.auth.file.organization.displayName is required when auth.mode is \"file\"" $auth.file.organization.displayName | quote }}
     region = {{ $auth.file.organization.region | quote }}
     uuid = {{ $auth.file.organization.uuid | quote }}
 

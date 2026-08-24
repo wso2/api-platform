@@ -106,7 +106,7 @@ Required roles: `admin`, `developer`
 |body|body|[RestAPIRequest](schemas.md#schemarestapirequest)|true|none|
 
 > Example responses
-
+>
 > 201 Response
 
 ```json
@@ -235,7 +235,7 @@ Required roles: `admin`, `developer`
 |status|undeployed|
 
 > Example responses
-
+>
 > 200 Response
 
 ```json
@@ -491,7 +491,7 @@ Required roles: `admin`, `developer`
 **id**: Unique public identifier for the API.
 
 > Example responses
-
+>
 > 200 Response
 
 ```json
@@ -684,7 +684,7 @@ Required roles: `admin`, `developer`
 **id**: Unique public identifier of the API to update.
 
 > Example responses
-
+>
 > 200 Response
 
 ```json
@@ -807,7 +807,7 @@ Required roles: `admin`, `developer`
 **id**: Unique public identifier of the API to delete.
 
 > Example responses
-
+>
 > 200 Response
 
 ```json
@@ -885,7 +885,7 @@ Required roles: `admin`, `consumer`
 **id**: Unique public identifier of the API to generate the key for
 
 > Example responses
-
+>
 > 201 Response
 
 ```json
@@ -954,7 +954,7 @@ Required roles: `admin`, `consumer`
 **id**: Unique public identifier of the API to retrieve the keys for
 
 > Example responses
-
+>
 > 200 Response
 
 ```json
@@ -1035,7 +1035,7 @@ Required roles: `admin`, `consumer`
 **apiKeyName**: Name of the API key to regenerate
 
 > Example responses
-
+>
 > 200 Response
 
 ```json
@@ -1118,7 +1118,7 @@ Required roles: `admin`, `consumer`
 **apiKeyName**: Name of the API key to update
 
 > Example responses
-
+>
 > 200 Response
 
 ```json
@@ -1190,7 +1190,7 @@ Required roles: `admin`, `consumer`
 **apiKeyName**: Name of the API key to revoke
 
 > Example responses
-
+>
 > 200 Response
 
 ```json
@@ -1248,7 +1248,7 @@ Create a subscription plan that defines rate limits and access tiers for API sub
 <aside class="warning">
 This operation requires <strong>Basic Auth</strong> authentication.
 
-Required roles: `admin`, `developer`
+Required roles: `admin`
 
 </aside>
 
@@ -1259,7 +1259,7 @@ Required roles: `admin`, `developer`
 |body|body|[SubscriptionPlanCreateRequest](schemas.md#schemasubscriptionplancreaterequest)|true|none|
 
 > Example responses
-
+>
 > 201 Response
 
 ```json
@@ -1310,12 +1310,12 @@ List all subscription plans available in the Gateway.
 <aside class="warning">
 This operation requires <strong>Basic Auth</strong> authentication.
 
-Required roles: `admin`, `developer`
+Required roles: `admin`
 
 </aside>
 
 > Example responses
-
+>
 > 200 Response
 
 ```json
@@ -1369,7 +1369,7 @@ Get the details of a subscription plan by its ID.
 <aside class="warning">
 This operation requires <strong>Basic Auth</strong> authentication.
 
-Required roles: `admin`, `developer`
+Required roles: `admin`
 
 </aside>
 
@@ -1380,7 +1380,7 @@ Required roles: `admin`, `developer`
 |planId|path|string|true|none|
 
 > Example responses
-
+>
 > 200 Response
 
 ```json
@@ -1446,7 +1446,7 @@ Update an existing subscription plan in the Gateway.
 <aside class="warning">
 This operation requires <strong>Basic Auth</strong> authentication.
 
-Required roles: `admin`, `developer`
+Required roles: `admin`
 
 </aside>
 
@@ -1458,7 +1458,7 @@ Required roles: `admin`, `developer`
 |body|body|[SubscriptionPlanUpdateRequest](schemas.md#schemasubscriptionplanupdaterequest)|false|none|
 
 > Example responses
-
+>
 > 200 Response
 
 ```json
@@ -1508,7 +1508,7 @@ Delete a subscription plan from the Gateway.
 <aside class="warning">
 This operation requires <strong>Basic Auth</strong> authentication.
 
-Required roles: `admin`, `developer`
+Required roles: `admin`
 
 </aside>
 
@@ -1519,7 +1519,7 @@ Required roles: `admin`, `developer`
 |planId|path|string|true|none|
 
 > Example responses
-
+>
 > 404 Response
 
 ```json
@@ -1582,7 +1582,7 @@ Subscribe an application to a RestAPI in the Gateway.
 <aside class="warning">
 This operation requires <strong>Basic Auth</strong> authentication.
 
-Required roles: `admin`, `developer`
+Required roles: `admin`
 
 </aside>
 
@@ -1593,7 +1593,7 @@ Required roles: `admin`, `developer`
 |body|body|[SubscriptionCreateRequest](schemas.md#schemasubscriptioncreaterequest)|true|none|
 
 > Example responses
-
+>
 > 201 Response
 
 ```json
@@ -1644,7 +1644,7 @@ List subscriptions in the Gateway, optionally filtered by API, application, or s
 <aside class="warning">
 This operation requires <strong>Basic Auth</strong> authentication.
 
-Required roles: `admin`, `developer`
+Required roles: `admin`
 
 </aside>
 
@@ -1665,7 +1665,7 @@ Required roles: `admin`, `developer`
 |status|REVOKED|
 
 > Example responses
-
+>
 > 200 Response
 
 ```json
@@ -1719,7 +1719,7 @@ Get the details of a subscription by its ID.
 <aside class="warning">
 This operation requires <strong>Basic Auth</strong> authentication.
 
-Required roles: `admin`, `developer`
+Required roles: `admin`
 
 </aside>
 
@@ -1730,7 +1730,7 @@ Required roles: `admin`, `developer`
 |subscriptionId|path|string|true|none|
 
 > Example responses
-
+>
 > 200 Response
 
 ```json
@@ -1790,7 +1790,7 @@ Update an existing subscription in the Gateway.
 <aside class="warning">
 This operation requires <strong>Basic Auth</strong> authentication.
 
-Required roles: `admin`, `developer`
+Required roles: `admin`
 
 </aside>
 
@@ -1802,7 +1802,7 @@ Required roles: `admin`, `developer`
 |body|body|[SubscriptionUpdateRequest](schemas.md#schemasubscriptionupdaterequest)|false|none|
 
 > Example responses
-
+>
 > 200 Response
 
 ```json
@@ -1852,7 +1852,7 @@ Delete a subscription from the Gateway.
 <aside class="warning">
 This operation requires <strong>Basic Auth</strong> authentication.
 
-Required roles: `admin`, `developer`
+Required roles: `admin`
 
 </aside>
 
@@ -1863,7 +1863,7 @@ Required roles: `admin`, `developer`
 |subscriptionId|path|string|true|none|
 
 > Example responses
-
+>
 > 404 Response
 
 ```json

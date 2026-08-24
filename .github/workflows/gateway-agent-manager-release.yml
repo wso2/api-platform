@@ -1,4 +1,4 @@
-name: Gateway Agent Manager Release
+name: Release Gateway for Agent Manager
 
 # Dedicated release pipeline for the gateway/1.2.0-agent-manager branch.
 # Unlike the main Gateway Release workflow, the version is supplied as an input
@@ -9,11 +9,11 @@ on:
   workflow_dispatch:
     inputs:
       release_version:
-        description: 'Version to release, without a leading v (e.g. 1.2.0-agent-manager-1). Used for the Docker image tags and the git tag.'
+        description: 'Version to release, without a leading v (e.g. 1.2.1). This is the Docker image tag, and the default basis for the git tag.'
         required: true
         type: string
       tag_name:
-        description: 'Git tag to create, e.g. gateway/v1.2.1-rc. Leave empty to use gateway/v<release_version>.'
+        description: 'Git tag to create, e.g. gateway/v1.2.1-rc (a value with no "/" is prefixed with gateway/v). Leave empty to use gateway/v<release_version>.'
         required: false
         type: string
       next_dev_version:
@@ -27,8 +27,18 @@ on:
         type: boolean
 
 env:
-  DOCKER_REGISTRY: ghcr.io/wso2
+  DOCKER_REGISTRY: ghcr.io/wso2/api-platform
   RELEASE_BRANCH: gateway/1.2.0-agent-manager
+
+# Two dispatches racing would both push to the release branch and fight over
+# the version files, so serialize them.
+concurrency:
+  group: gateway-agent-manager-release
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+  packages: write
 
 jobs:
   release:
@@ -71,6 +81,9 @@ jobs:
           TAG="$(echo "${TAG_NAME}" | tr -d '[:space:]')"
           if [ -z "${TAG}" ]; then
             TAG="gateway/v${VERSION}"
+          elif [[ "${TAG}" != */* ]]; then
+            # Bare value such as 1.2.1-rc — apply the repo's gateway tag convention.
+            TAG="gateway/v${TAG#v}"
           fi
           if ! [[ "${TAG}" =~ ^[0-9A-Za-z._/+-]+$ ]]; then
             echo "Error: tag_name contains unsupported characters" >&2
@@ -116,6 +129,10 @@ jobs:
           password: ${{ secrets.API_PLATFORM_BOT_TOKEN }}
 
       - name: Build and push multi arch Docker images
+        env:
+          # This branch is a side stream off main, so its images must never
+          # become the :latest that mainline consumers pull.
+          PUSH_LATEST: 'false'
         run: make build-and-push-gateway-multiarch
 
       - name: Create and push tag

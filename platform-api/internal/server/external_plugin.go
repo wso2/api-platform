@@ -61,3 +61,15 @@ func (e *externalPlugin) Middleware() []pdk.PositionedMiddleware {
 	}
 	return nil
 }
+
+// RouteOverrides forwards the optional pdk.RouteOverrideProvider so external
+// plugins decorate core routes through the same server hook as internal ones. It
+// returns nil when the wrapped plugin does not implement the interface, making
+// the server's plugin.RouteOverrideProvider assertion a harmless no-op in that
+// case.
+func (e *externalPlugin) RouteOverrides() []pdk.RouteOverride {
+	if op, ok := e.p.(pdk.RouteOverrideProvider); ok {
+		return op.RouteOverrides()
+	}
+	return nil
+}

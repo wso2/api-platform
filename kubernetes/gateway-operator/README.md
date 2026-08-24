@@ -35,7 +35,7 @@ helm upgrade --install \
 ## 2. Install Gateway Operator
 
 ```sh
-helm install my-gateway-operator oci://ghcr.io/wso2/api-platform/helm-charts/gateway-operator --version 0.10.1
+helm install my-gateway-operator oci://ghcr.io/wso2/api-platform/helm-charts/gateway-operator --version 0.11.0
 ```
 
 ---
@@ -137,5 +137,48 @@ curl -X POST http://localhost:9090/api/management/v0.9/certificates \
 ```sh
 curl https://localhost:8444/ssa/info -vk
 ```
+
+---
+
+## Per-gateway gateway version (image tag)
+
+One operator can run multiple API Gateways, each on a **different gateway version**. The version is not a typed CR field — set it via the gateway's own `spec.configRef` ConfigMap, which the operator deep-merges as the highest-priority overlay on top of its default gateway values:
+
+```
+configRef ConfigMap  >  spec.infrastructure labels/annotations  >  operator default (/config/gateway_values.yaml)  >  chart built-in values
+```
+
+A configRef ConfigMap that contains only the image blocks overrides just the version and inherits everything else:
+
+```yaml
+# values.yaml key inside the configRef ConfigMap
+gateway:
+  controller:
+    image: { repository: ghcr.io/wso2/api-platform/gateway-controller, tag: "1.2.0", pullPolicy: IfNotPresent }
+  gatewayRuntime:
+    image: { repository: ghcr.io/wso2/api-platform/gateway-runtime,   tag: "1.2.0", pullPolicy: IfNotPresent }
+```
+
+A full example — one gateway (`gw-default`) that tracks the operator default version and one (`gw-121`) pinned to 1.2.1, each with its own configRef ConfigMap — is in [`config/samples/api_v1_apigateway_multiversion.yaml`](config/samples/api_v1_apigateway_multiversion.yaml):
+
+```sh
+kubectl apply -f config/samples/api_v1_apigateway_multiversion.yaml
+
+# confirm the versions running
+kubectl get pods -n gw-default -o jsonpath='{range .items[*]}{.metadata.name}{"\t"}{.spec.containers[*].image}{"\n"}{end}'
+kubectl get pods -n gw-121     -o jsonpath='{range .items[*]}{.metadata.name}{"\t"}{.spec.containers[*].image}{"\n"}{end}'
+```
+
+**Notes:**
+
+- **Create the ConfigMap before the APIGateway.** The operator ignores ConfigMap *create* events, so an APIGateway created before its configRef ConfigMap won't be re-triggered by the later ConfigMap creation. (The sample orders Namespaces + ConfigMaps ahead of the APIGateways.)
+- **`spec.infrastructure.image` / `routerImage` are not wired** — use the configRef `gateway.controller.image.*` / `gateway.gatewayRuntime.image.*` keys instead.
+- **Updating an existing gateway:** edit its configRef ConfigMap. If the rollout doesn't trigger, restart the operator or bump the CR generation — the annotation must go under **`spec.infrastructure.annotations`** (a `.spec` change bumps `metadata.generation`); a `metadata.annotations` change does **not** bump generation and won't force a redeploy:
+  ```sh
+  kubectl patch apigateway gw-default -n gw-default --type merge \
+    -p '{"spec":{"infrastructure":{"annotations":{"redeploy":"'"$(date +%s)"'"}}}}'
+  ```
+- **Changing the operator default (`GATEWAY_HELM_VALUES_FILE_PATH`) only auto-applies to *new* gateways.** It isn't watched or hashed, so restarting the operator won't roll it onto existing gateways — bump each existing CR's generation (above) to pick up a default change.
+- Keep `gateway-controller` and `gateway-runtime` on the **same** version — they share the xDS/policy-definition contract.
 
 

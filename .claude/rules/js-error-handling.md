@@ -10,6 +10,7 @@ Apply this rule whenever writing, refactoring, or reviewing JavaScript (`.js`) c
 2. **Vendor Header Abstraction.** Never forward or set headers that disclose infrastructure details (`X-Amz-*`, `X-Powered-By`, `Server`, `X-Vercel-*`, `Cf-Ray`). Call `app.disable('x-powered-by')` in bootstrap. Respond only with standard HTTP headers or the platform's `X-Request-ID` correlation header.
 3. **Dynamic Value Generation & Source Obfuscation.** Generate tracking IDs, correlation tokens, and error tokens with `crypto.randomUUID()` (or the `uuid` package) — never concatenate file names, line numbers, function names, or environment labels into them. A raw `Date.now()` is not a tracking ID (guessable, time-leaking); combine with a UUID or use a UUID alone.
 4. **Unified Authentication Failures.** Every authentication failure — wrong password, expired/missing/revoked token, invalid signature — must return the identical `HTTP 401` status and payload (`{"error": "unauthorized", "message": "Invalid or expired credentials."}`); never branch the response on failure type. Log the specific reason (`token expired`, `user not found`) internally via Winston only, never in the body.
+5. **No deferring a violation behind a code comment.** Never resolve a finding from this rule (a leaked ORM error, a vendor header, a source-tagged ID, a branching auth response) by adding a `// TODO`/`FIXME`-style comment and shipping the non-compliant code anyway — a comment does not change what the code does. If it can't be fixed immediately, raise it explicitly for a decision rather than leaving it silently annotated in the source.
 
 ## Example
 
@@ -50,3 +51,4 @@ app.post('/login', async (req, res, next) => {
 > * Is `err.message`, `err.stack`, or an ORM error object present in any `res.json()` call? (Remove; route through `errorHandler`.)
 > * Is `app.disable('x-powered-by')` set, and are `X-Amz-*`/`X-Vercel-*`/`Cf-Ray`-style headers absent? (Add/strip as needed.)
 > * Does any generated ID embed file names, line numbers, or a bare timestamp? (Replace with `crypto.randomUUID()`.)
+> * Is a finding from this rule "resolved" by a `// TODO`/`FIXME`-style comment instead of an actual fix or an explicitly raised tradeoff?

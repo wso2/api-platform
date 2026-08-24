@@ -82,7 +82,12 @@ func (s *AccessLogServiceServer) StreamAccessLogs(stream v3.AccessLogService_Str
 }
 
 // StartAccessLogServiceServer starts the Access Log Service Server.
-func StartAccessLogServiceServer(cfg *config.Config) *grpc.Server {
+//
+// It returns the gRPC server and the Analytics instance behind it. The caller owns
+// shutdown ordering: stop the gRPC server first so no new events arrive, then call
+// Analytics.Close to flush publishers that buffer (the traffic-log HTTP sink,
+// Moesif). Without that flush, an in-flight batch is lost on every pod restart.
+func StartAccessLogServiceServer(cfg *config.Config) (*grpc.Server, *analytics.Analytics) {
 	// Create a new instance of the Access Log Service Server
 	accessLogServiceServer := newAccessLogServiceServer(cfg)
 
@@ -160,5 +165,5 @@ func StartAccessLogServiceServer(cfg *config.Config) *grpc.Server {
 		}()
 	}
 
-	return server
+	return server, accessLogServiceServer.analytics
 }

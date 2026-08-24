@@ -1,0 +1,171 @@
+{{- $ap := .Values -}}
+{{- $cfg := $ap.config -}}
+{{- $db := $cfg.database -}}
+{{- $dbDriver := include "apip.apiPortal.dbDriver" $db.driver -}}
+{{- $auth := $cfg.auth -}}
+{{- $tls := $ap.tls -}}
+{{- $certDir := $tls.mountPath -}}
+{{- $baseUrl := default (printf "https://localhost:%d" (int $ap.containerPort)) $cfg.server.baseUrl -}}
+{{- $platformApiUrl := default (include "apip.platformApi.internalURL" .) $cfg.platformApi.baseUrl -}}
+{{- $tlsEnabled := ne $tls.certificateProvider "none" -}}
+{{- if $ap.deployment.enabled }}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "apip.apiPortal.fullname" . }}-config
+  labels:
+    {{- include "apip.componentLabels" (list . "api-portal" $ap.configMap.labels) | nindent 4 }}
+  {{- with (include "apip.annotations" (list . $ap.configMap.annotations)) }}
+  annotations:
+    {{- . | nindent 4 }}
+  {{- end }}
+data:
+  # Full [api_portal.*] config, mounted at /app/configs/config.toml to
+  # replace the image's shipped config. configLoader.js unwraps [api_portal]
+  # and ignores anything outside it. Non-secret values are literals from
+  # values.yaml; secrets are the portal's own {{ "{{ env \"APIP_AP_*\" }}" }} tokens,
+  # supplied as env vars from the referenced Secret (Secret -> env -> config).
+  config.toml: |
+    [api_portal.server]
+    port = {{ $ap.containerPort | int }}
+    base_url = {{ $baseUrl | quote }}
+
+    [api_portal.server.https]
+    enabled = {{ $tlsEnabled }}
+    {{- if $tlsEnabled }}
+    cert_file = {{ printf "%s/server.crt" $certDir | quote }}
+    key_file = {{ printf "%s/server.key" $certDir | quote }}
+    {{- end }}
+
+    [api_portal.logging]
+    level = {{ $cfg.logging.level | quote }}
+    format = {{ $cfg.logging.format | quote }}
+    console_only = {{ $cfg.logging.consoleOnly }}
+
+    [api_portal.database]
+    # Rendered as the canonical dialect rather than the raw values.yaml spelling,
+    # so an alias (sqlserver, postgresql, pgx, sqlite3) also works against a
+    # portal image predating the config-loader's own alias normalization.
+    driver = {{ $dbDriver | quote }}
+    {{- if eq $dbDriver "sqlite" }}
+    path = {{ $db.file | quote }}
+    {{- else }}
+    {{- if and (ne $db.sslmode "disable") (ne $db.sslmode "verify-full") }}
+    {{- fail (printf "config.database.sslmode must be \"disable\" or \"verify-full\" (got %q). The portal supports no partial TLS mode: on postgres an unrecognised value aborts startup, and on mssql it silently connects unencrypted with certificate verification off." $db.sslmode) }}
+    {{- end }}
+    host = {{ required (printf "config.database.host is required when database.driver is %q" $db.driver) $db.host | quote }}
+    port = {{ $db.port | int }}
+    name = {{ $db.database | quote }}
+    user = {{ $db.user | quote }}
+    password = {{ `'{{ env "APIP_AP_DATABASE_PASSWORD" }}'` }}
+    ssl_mode = {{ $db.sslmode | quote }}
+    {{- with $db.sslRootCert }}
+    ssl_root_cert = {{ . | quote }}
+    {{- end }}
+    max_open_conns = {{ $db.maxOpenConns | int }}
+    min_open_conns = {{ $db.minOpenConns | int }}
+    pool_idle_timeout_ms = {{ $db.poolIdleTimeoutMs | int }}
+    pool_connection_timeout_ms = {{ $db.poolConnectionTimeoutMs | int }}
+    pool_request_timeout_ms = {{ $db.poolRequestTimeoutMs | int }}
+    {{- end }}
+
+    [api_portal.security]
+    encryption_key = {{ `'{{ env "APIP_AP_SECURITY_ENCRYPTION_KEY" }}'` }}
+    session_secret = {{ `'{{ env "APIP_AP_SECURITY_SESSION_SECRET" }}'` }}
+
+    [api_portal.auth]
+    mode = {{ ternary "idp" "local" (ne $auth.idp.clientId "") | quote }}
+    {{- with $auth.idpOrgId }}
+    idp_org_id = {{ . | quote }}
+    {{- end }}
+
+    [api_portal.auth.claim_mappings]
+    organization = {{ $auth.claimMappings.organization | quote }}
+    roles = {{ $auth.claimMappings.roles | quote }}
+    groups = {{ $auth.claimMappings.groups | quote }}
+
+    {{- $authz := $auth.authorization }}
+    {{- if and (ne $authz.mode "scope") (ne $authz.mode "role") }}
+    {{- fail (printf "config.auth.authorization.mode must be \"scope\" or \"role\", got %q" $authz.mode) }}
+    {{- end }}
+    {{- if and (eq $authz.mode "role") (not $authz.roleToScopeMapping) }}
+    {{- fail "config.auth.authorization.mode is \"role\" but config.auth.authorization.roleToScopeMapping is empty — the portal would refuse to start" }}
+    {{- end }}
+    # Authorization — what a verified token may do. Rendered outside the idp block
+    # below because it applies in every auth mode: a token carries the same roles
+    # claim whether the portal verified it against a JWKS endpoint or against the
+    # Platform API's public key.
+    [api_portal.auth.authorization]
+    enabled = {{ $authz.enabled }}
+    mode = {{ $authz.mode | quote }}
+    role_to_scope_mapping = {{ $authz.roleToScopeMapping | quote }}
+    page_role_validation = {{ $authz.pageRoleValidation }}
+
+    [api_portal.auth.authorization.portal_roles]
+    admin = {{ $authz.portalRoles.admin | quote }}
+    subscriber = {{ $authz.portalRoles.subscriber | quote }}
+
+    [api_portal.auth.local]
+    platform_api_url = {{ $platformApiUrl | quote }}
+    public_key_path = {{ $auth.publicKeyPath | quote }}
+    tls_skip_verify = {{ $cfg.platformApi.insecure }}
+
+    {{- if ne $auth.idp.clientId "" }}
+
+    [api_portal.auth.idp]
+    issuer = {{ $auth.idp.issuer | quote }}
+    authorization_url = {{ $auth.idp.authorizationUrl | quote }}
+    token_url = {{ $auth.idp.tokenUrl | quote }}
+    user_info_url = {{ $auth.idp.userInfoUrl | quote }}
+    jwks_url = {{ $auth.idp.jwksUrl | quote }}
+    client_id = {{ $auth.idp.clientId | quote }}
+    client_secret = {{ `'{{ env "APIP_AP_AUTH_IDP_CLIENT_SECRET" }}'` }}
+    callback_url = {{ $auth.idp.callbackUrl | quote }}
+    logout_url = {{ $auth.idp.logoutUrl | quote }}
+    scope = {{ $auth.idp.scope | quote }}
+    audience = {{ $auth.idp.audience | quote }}
+    certificate = {{ $auth.idp.certificate | quote }}
+    sign_up_url = {{ $auth.idp.signUpUrl | quote }}
+    logout_redirect_uri = {{ $auth.idp.logoutRedirectUri | quote }}
+    org_callback = {{ $auth.idp.orgCallback }}
+    silent_sso = {{ $auth.idp.silentSso }}
+    token_refresh_timeout_ms = {{ $auth.idp.tokenRefreshTimeoutMs | int }}
+    {{- end }}
+
+    {{- $org := $cfg.organization }}
+    {{- $orgHandle := $org.handle | default $org.defaultName }}
+    {{- if not $orgHandle }}
+      {{- fail "config.organization.handle is required" }}
+    {{- end }}
+    [api_portal.organization]
+    handle = {{ $orgHandle | quote }}
+    display_name = {{ $org.displayName | default "" | quote }}
+    auto_create_subscription_plans = {{ $org.autoCreateSubscriptionPlans }}
+
+    [api_portal.artifacts]
+    enabled_types = {{ toJson $cfg.artifacts.enabledTypes }}
+
+    [api_portal.webhooks.delivery]
+    poll_interval_ms = {{ $cfg.webhooksDelivery.pollIntervalMs | int }}
+    batch_size = {{ $cfg.webhooksDelivery.batchSize | int }}
+    signature_tolerance_sec = {{ $cfg.webhooksDelivery.signatureToleranceSec | int }}
+
+    [api_portal.uploads]
+    max_bytes = {{ $cfg.uploads.maxBytes | int }}
+    max_total_bytes = {{ $cfg.uploads.maxTotalBytes | int }}
+    max_zip_entries = {{ $cfg.uploads.maxZipEntries | int }}
+    max_depth = {{ $cfg.uploads.maxDepth | int }}
+
+    [api_portal.tryout]
+    enabled = {{ $cfg.tryout.enabled }}
+    allow_http_endpoints = {{ $cfg.tryout.allowHttpEndpoints }}
+    allow_private_endpoints = {{ $cfg.tryout.allowPrivateEndpoints }}
+    tls_skip_verify = {{ $cfg.tryout.tlsSkipVerify }}
+    timeout_ms = {{ $cfg.tryout.timeoutMs | int }}
+    max_request_bytes = {{ $cfg.tryout.maxRequestBytes | int }}
+    max_response_bytes = {{ $cfg.tryout.maxResponseBytes | int }}
+    {{- with $ap.configToml }}
+
+    {{ . | nindent 4 | trim }}
+    {{- end }}
+{{- end }}

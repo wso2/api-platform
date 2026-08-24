@@ -1,0 +1,493 @@
+# API Platform DB Schema Rules (R0–R10)
+
+Reference for the `designing-db-schemas` skill. These are the WSO2 API Platform conventions for relational database schemas. Step A2 and Step B2 of the skill read this file and evaluate each rule against the schema.
+
+**Scope:** applies to every SQL schema file in the repository — discovered with the glob in R0-SCOPE, not `schema*.sql`, which misses 9 of the 19 files. For `gateway/gateway-controller/` and `event-gateway/gateway-controller/` schemas, **skip R3** (type rules) — those teams own their type choices. All other rules (R0–R2, R4–R10) apply to every schema file.
+
+> **Recording blanket-missing findings.** When a rule is violated uniformly across many tables (e.g. a convention that no tables follow), record **one representative finding** that names the pattern and gives a couple of examples, rather than one finding per table.
+
+---
+
+## R0 · Change Admissibility
+
+**These are GA products with no migration framework.** The following ship to customers, and their tables are already in customer databases:
+
+| GA product | Schema ownership |
+|---|---|
+| **Gateway Controller** (`gateway/gateway-controller`) | own schemas |
+| **Event Gateway Controller** (`event-gateway/gateway-controller`) | own schemas |
+| **Platform API** (`platform-api`) | own schemas, plus the `eventgateway` plugin schemas |
+| **API Portal** (`portals/api-portal`) | own schemas |
+| **AI Workspace** (`portals/ai-workspace`) | no schema of its own — **packages Platform API's** at `resources/platform-api/db-scripts/`, so a Platform API schema change ships to AI Workspace customers too |
+
+Each bootstraps from hand-maintained per-dialect files of `CREATE TABLE IF NOT EXISTS`, selected by driver name at `platform-api/internal/database/connection.go:192`. R1–R10 describe how to build a **new** table or column correctly. They are not a licence to rewrite a shipped one.
+
+**R0-FROZEN** — On a table that has shipped, the only permitted changes are additive and backward-compatible: a new nullable-or-defaulted column, a new index, a new table. Never, on a shipped table: change a column's type or width, rename a column or table, add or drop a primary key, change a foreign key's target or `ON DELETE` action, add `NOT NULL` to an existing nullable column, or add a `UNIQUE` constraint. Each rewrites or revalidates customer data on upgrade.
+
+**R0-LEGACY-ACCEPTED** — A shipped table that violates R1–R10 is **accepted legacy, not a finding to fix**. Report it at severity `LEGACY-ACCEPTED` and record it in the deviations table of `.claude/rules/db-schema-changes.md`; do not propose remediation DDL. Bringing it into conformance needs a versioned migration plan approved outside this skill — never a drive-by schema edit. Column removal is a two-release sequence under the same approval: stop reading the column and ship, drop it later.
+
+Before applying the freeze, confirm the table has actually shipped — one added earlier in the same unreleased branch is still malleable:
+
+```bash
+git log --oneline -1 -S"CREATE TABLE IF NOT EXISTS <table>" -- '*.sql'
+```
+
+**R0-SCOPE** — Discover schema files with:
+
+```bash
+find . -name "*.sql" -not -path "*/node_modules/*" -not -path "*/target/*" | sort
+```
+
+| Component | Files | Rules |
+|---|---|---|
+| Platform API | `platform-api/internal/database/schema{,.postgres,.sqlite,.sqlserver}.sql` | R0–R10 |
+| Event-gateway plugin | `platform-api/plugins/eventgateway/schema/schema.{postgres,sqlite,sqlserver}.sql` | R0–R10 |
+| API Portal | `portals/api-portal/database/schema.{postgres,sqlite,sqlserver}.sql` | R0–R10 |
+| Gateway Controller | `gateway/gateway-controller/pkg/storage/gateway-controller-db{,.postgres,.sqlserver}.sql` **and** `gateway/gateway-controller/resources/gateway-controller-db.sql` | R0–R2, R4–R10 (**R3 exempt**) |
+| Event Gateway Controller | `event-gateway/gateway-controller/pkg/dbschema/eventgateway-db{,.postgres,.sqlserver}.sql` | R0–R2, R4–R10 (**R3 exempt**) |
+| Fixtures | `platform-api/internal/database/init-platform-api-db.sql`, `tests/integration-e2e/init-db.sql` | keep in sync |
+
+`gateway/gateway-controller` keeps **two copies** of the same schema. Grep repo-wide before editing so no copy is missed:
+
+```bash
+grep -rln "<table_name>" --include="*.sql" .
+```
+
+**R0-UPGRADE-PATH** — `CREATE TABLE IF NOT EXISTS` is a no-op against a database that already exists, so a column added to a `CREATE TABLE` body reaches fresh installs only. A **column added to an existing table** therefore ships a matching per-dialect `ALTER TABLE`, nullable or defaulted so it applies while the previous release is still running. A **new table** or a **new index** needs no `ALTER` — its guarded `CREATE ... IF NOT EXISTS` (R9) already runs against both fresh and existing databases:
+
+```sql
+ALTER TABLE <t> ADD COLUMN <col> <type> NULL;   -- postgres / sqlite
+ALTER TABLE <t> ADD <col> <type> NULL;          -- sqlserver
+```
+
+If a component has no upgrade-script location, create one beside its schema files and say so in the PR description. Never skip it.
+
+---
+
+## R1 · Primary Key & Identity
+
+Every **entity** table must have a single UUID primary key and, where it is a named resource, the standard identity triple. Pure junction/mapping tables are excluded — they carry a composite PK instead (R1-COMPOSITE-PK).
+
+**R1-UUID** — Primary key must be `uuid VARCHAR(40) PRIMARY KEY`. Do not use `SERIAL`, `BIGINT`, or `INTEGER` as a primary key for domain entities. Junction/mapping tables must use a composite PK (see R1-COMPOSITE-PK).
+
+**R1-COMPOSITE-PK** — Pure junction/mapping tables (those whose only purpose is to link two or more entities) must use a composite `PRIMARY KEY` over their FK columns — not a surrogate UUID, and not a bare `UNIQUE` constraint.
+
+Use a composite PK when **all** of the following are true:
+- Every query hits the table via the composite key (no query looks up a row by a single generated ID)
+- No other table holds a FK reference to a row in this table by a surrogate ID
+- The table has no independent lifecycle (rows are inserted or deleted, never updated in place by identity)
+
+Do **not** use a composite PK (use a UUID PK instead) when:
+- Another table references individual rows by ID (e.g. an audit log or event stream that stores a FK to this table's row)
+- The table is exposed as a standalone resource in an API with its own URL (e.g. `/associations/{id}`)
+
+**Why composite PK over UNIQUE-only** — A bare `UNIQUE` constraint without a `PRIMARY KEY` breaks Postgres logical replication for `UPDATE` and `DELETE` operations. Postgres `REPLICA IDENTITY DEFAULT` uses the PK to identify rows in the WAL stream; without a PK it falls back to `REPLICA IDENTITY FULL` (logs the entire old row on every write — high WAL volume) or replication fails entirely. CDC tools (Debezium, AWS DMS) have the same requirement. Distributed SQL engines (CockroachDB, YugabyteDB) silently add a hidden PK if you omit one, with unpredictable sharding consequences.
+
+**Column order** — Put the most common filter/scope column first (typically `organization_uuid`), then the remaining FKs. The leading column is covered by the PK index; add separate indexes only for the non-leading FK columns.
+
+```sql
+-- Correct composite PK pattern
+CREATE TABLE IF NOT EXISTS <junction_table> (
+    organization_uuid  VARCHAR(40) NOT NULL,
+    entity_a_uuid      VARCHAR(40) NOT NULL,
+    entity_b_uuid      VARCHAR(40) NOT NULL,
+    created_at         TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
+    PRIMARY KEY (organization_uuid, entity_a_uuid, entity_b_uuid),
+    FOREIGN KEY (organization_uuid) REFERENCES organizations(uuid) ON DELETE CASCADE,
+    FOREIGN KEY (entity_a_uuid)     REFERENCES entity_a(uuid)      ON DELETE CASCADE,
+    FOREIGN KEY (entity_b_uuid)     REFERENCES entity_b(uuid)      ON DELETE CASCADE
+);
+
+-- Indexes for non-leading FK columns only (leading column covered by PK)
+CREATE INDEX IF NOT EXISTS idx_<junction_table>_entity_a_uuid ON <junction_table>(entity_a_uuid);
+CREATE INDEX IF NOT EXISTS idx_<junction_table>_entity_b_uuid ON <junction_table>(entity_b_uuid);
+```
+
+**R1-IDENTITY** — Tables representing named resources (APIs, gateways, providers, applications, subscriptions, or any domain entity with a stable slug and a display name) must carry the full identity triple directly:
+
+```sql
+handle  VARCHAR(40)  NOT NULL,                 -- url-safe slug, immutable once set
+name    VARCHAR(255) NOT NULL,                 -- human-readable display name
+version VARCHAR(30)  NOT NULL DEFAULT 'v1.0',  -- semver or opaque version string
+
+-- handle is unique per organisation, never globally: the same handle may
+-- exist in different organisations. Enforce org-scoped, not UNIQUE(handle).
+UNIQUE(organization_uuid, handle),
+```
+
+Identity must be denormalised onto the table itself so queries against a single table are self-contained. Do not rely on a parent record for identity fields.
+
+**R1-HANDLE-NAME** — `handle` and `name` are distinct:
+- `handle` is the URL-safe slug used in API paths (e.g. `/resources/{handle}`). It must be unique within its scope (always org-scoped) and treated as immutable after creation.
+- `name` is the human-readable display string. It may change and **is not required to be unique** — not even within a project.
+
+Conflating them (using `name` as the slug, or allowing `handle` to contain spaces) is a finding. Adding a `UNIQUE` constraint on `name` (alone or combined with `project_uuid`) for API-type entities is also a finding — enforce only `UNIQUE(organization_uuid, handle)`.
+
+---
+
+## R2 · Organisation Scoping
+
+**R2-ORG-FK** — Every domain table that belongs to an organisation must carry `organization_uuid VARCHAR(40) NOT NULL` with:
+
+```sql
+FOREIGN KEY (organization_uuid) REFERENCES organizations(uuid) ON DELETE CASCADE
+```
+
+This is not decoration: `GO-AUTH-005` requires every tenant-scoped query to filter on it using a value taken from verified JWT claims, never from request input. A table without the column makes that impossible to enforce.
+
+**R2-ORG-UNIQUE** — The `handle` of a named resource must be unique within the organisation:
+
+```sql
+UNIQUE(organization_uuid, handle)   -- not UNIQUE(handle) alone
+```
+
+A `UNIQUE(handle)` without the org scope is a critical data-isolation bug. `name` does **not** need a uniqueness constraint — two resources may share a display name within the same org or project.
+
+---
+
+## R3 · Column Types
+
+**R3-NO-TEXT** — This rule is **engine-scoped to PostgreSQL**. In a Postgres schema, do not use the bare `TEXT` type for any column — use a bounded `VARCHAR(N)`, a binary type (`BYTEA`), or `JSONB` when content is queried. A bare `TEXT` column in a Postgres schema is a finding at MEDIUM severity.
+
+Do **not** raise R3-NO-TEXT against SQLite or SQL Server schema files: per R8, `TEXT` is the intended type in SQLite (for JSON, large text, and opaque payloads) and `NVARCHAR(MAX)` / `TEXT` is the intended type in SQL Server. These are intentional type-level divergences, not findings.
+
+**R3-LARGE-PAYLOAD** — Any payload that can grow large or is variable-length must use the engine-appropriate large type, never a wide VARCHAR. Apply: binary payloads → `BYTEA` (Postgres) / `BLOB` (SQLite) / `VARBINARY(MAX)` (SQL Server); large text payloads → `BYTEA` (Postgres) / `TEXT` (SQLite) / `NVARCHAR(MAX)` (SQL Server), per the R8 divergence table. Columns that always need this: `openapi_spec`, `model_list`, `content`, `configuration`, `properties`, `manifest`, `policy_definition`, `metadata`, `api_key_hashes`, or any future column whose value can exceed a few hundred bytes. (The SQLite/SQL Server forms above are the intended divergences — do not flag them as R3-NO-TEXT.)
+
+**R3-JSONB** — In PostgreSQL, use `JSONB` only when the application demonstrably queries inside the JSON using Postgres JSON operators. The evidence must be a concrete query in the repository layer using `->`, `->>`, `#>`, `#>>`, `@>`, `?`, `jsonb_path_*`, or an equivalent JSONB operator/function against that column. A JSON-literal `DEFAULT`, a structured-sounding column name, or a sibling table already using `JSONB` are **not** evidence — they are how columns end up `JSONB` without anything ever querying inside them. Absent such a query, store the payload per R3-LARGE-PAYLOAD instead. Once direct query evidence exists, R3-JSONB-SCAN-COMPAT still applies to the scan target.
+
+SQLite and SQL Server equivalents (`TEXT` / `NVARCHAR(MAX)`) are intentional type-level divergences — not findings.
+
+**R3-JSONB-SCAN-COMPAT** — **PostgreSQL only** (`JSONB` does not exist in SQLite or SQL Server, so this rule never applies to those files). Whether a `JSONB` column can be scanned into a given Go type is **driver-specific**; check the driver before raising a finding.
+
+- **`github.com/jackc/pgx/v5` (v5.9.2, the driver `platform-api` uses).** `JSONBCodec` scans into `*string` and `*[]byte`, into any `sql.Scanner` implementation, and — as a fallback — into any other pointer target by `json.Unmarshal`. So `var s string` plus a manual `json.Unmarshal(s)` is supported here, as is `*json.RawMessage` (which is a `[]byte` alias, not an `sql.Scanner` implementation). Do not flag either as a scan-compatibility violation under pgx v5.
+- **Other PostgreSQL drivers** (e.g. `lib/pq`, or pgx used through `database/sql` with a different codec registration) do not all convert JSONB to text for a `*string` target. When a schema targets one of those, restrict the scan target to `[]byte` or a type that implements `database/sql.Scanner` (a custom struct with a `Scan(src any) error` method, or `pgtype.JSON`/`pgtype.JSONB`-style wrapper types provided by that driver).
+
+The rule that survives across drivers: pick the scan target deliberately and confirm it against the driver in use — never assume a `string` target works, and never assume it fails.
+
+**R3-BOOLEAN-AS-INT** — Do not use the `BOOLEAN` type. Represent boolean flags as `0`/`1` in:
+- `SMALLINT` — PostgreSQL and SQL Server
+- `INTEGER` — SQLite
+
+e.g. `is_default SMALLINT NOT NULL DEFAULT 0` (Postgres/SQL Server), `is_default INTEGER NOT NULL DEFAULT 0` (SQLite). This matches the R8 divergence table exactly.
+
+**R3-TIMESTAMPTZ** — Use `TIMESTAMPTZ` for **all** timestamp columns in PostgreSQL. `TIMESTAMP` (without timezone) is a bare clock reading with no timezone attached — a finding at MEDIUM. Use `DATETIME` in SQLite and `DATETIME2(7) DEFAULT SYSUTCDATETIME()` in SQL Server. Timestamps are always written as UTC.
+
+**R3-VARCHAR-SIZES** — Standard widths. These are authoritative; they match the shipped schemas and the quick-reference cheat sheet at the end of this file.
+
+| Purpose | Width |
+|---|---|
+| UUID / foreign key to a UUID | `VARCHAR(40)` |
+| `handle` (url-safe slug) | `VARCHAR(40)` |
+| `name` / display string | `VARCHAR(255)` |
+| User identity (email / sub) — `created_by`, `updated_by`, `revoked_by` | `VARCHAR(200)` |
+| `version` (resource version) | `VARCHAR(30)`, default `'v1.0'` |
+| `data_version` (audit) | `VARCHAR(20)`, default `'1.0'` |
+| Lifecycle / status enum | `VARCHAR(20)` |
+| Hash (SHA-256 hex) | `VARCHAR(255)` |
+| Token (encrypted value) | `VARCHAR(512)` |
+| Description / reason | `VARCHAR(1023)` |
+
+`handle` is **`VARCHAR(40)`**, not 255 — it is a slug, not a display string, and every shipped `handle` column is 40. `version` and `data_version` are different columns with different widths and defaults; do not conflate them. Any width above `VARCHAR(1023)` is a strong signal the column should be `BYTEA`/`BLOB` instead.
+
+**R3-VARCHAR-ENGINE-LIMITS** — Key engine limits for indexed/unique columns:
+
+| Usage | Safe max width |
+|---|---|
+| Plain storage, no index | `VARCHAR(1023)` |
+| Appears in a UNIQUE constraint or any index | `VARCHAR(255)` (safe across all engines with utf8mb4) |
+| Oracle target (any index or non-extended) | `VARCHAR(255)` |
+| MySQL target (utf8mb4, default prefix limit) | `VARCHAR(191)` |
+
+When a column must be unique but its value can be large, store the value in `BYTEA`/`BLOB` and put a SHA-256 hash in a separate `VARCHAR(255)` column — index and unique-constrain the hash, not the value. `VARCHAR(255)` keeps the hash inside the index-safe ceiling above.
+
+---
+
+## R4 · Constraints
+
+**R4-NO-ENUM-CHECK** — **Do NOT add `CHECK (col IN (...))` constraints for enum or status columns.** Enum validation belongs in application code (Go constants in `internal/constants`, service-layer validation). DB-layer enum checks require a DDL migration just to add a new valid value.
+
+The consequence is that the database will **not** reject a bad enum value, so the application layer must actually pick up the burden: values written to an enum/status column come from a Go constant set and are validated in the service layer before the write. Never let a handler pass a free-form string through to an `INSERT`.
+
+The only `CHECK` constraints that belong in the schema are structural/cross-column invariants:
+```sql
+-- Cross-column consistency: both NULL or both non-NULL
+CONSTRAINT chk_throttle_pair CHECK (
+  (throttle_limit_count IS NULL AND throttle_limit_unit IS NULL) OR
+  (throttle_limit_count IS NOT NULL AND throttle_limit_unit IS NOT NULL)
+)
+-- Temporal consistency
+CHECK (revoked_at IS NULL OR status = 'revoked')
+```
+
+**R4-NOT-NULL** — Columns that are always required must be `NOT NULL`, paired with a `DEFAULT` where a sensible one exists. Common offenders: `organization_uuid`, `name`, `handle`, `version`, `status`. A nullable column with no default asserts that absence of a value is meaningful — make that assertion deliberately.
+
+**R4-NO-PLAINTEXT-SECRET** — Never store a credential, API key, or token as its raw value. Store a hash, or a reference to the vault under `internal/vault`, and name the column for what it holds (`token_hash`, not `token`). Never truncate a value to fit a column — if a value can exceed the column, the column is wrong.
+
+**R4-FK-BEHAVIOR** — Every foreign key must declare an explicit `ON DELETE` action:
+
+| Relationship | Rule |
+|---|---|
+| Child owned by parent (cascade delete is safe) | `ON DELETE CASCADE` |
+| Reference that must not dangle but parent cannot be deleted | `ON DELETE RESTRICT` |
+| Optional reference — row survives if target is deleted | `ON DELETE SET NULL` |
+
+Omitting `ON DELETE` means the DB default (`RESTRICT` in most engines) applies silently — flag it.
+
+**SQL Server cascade-path caveat** — SQL Server rejects multiple cascade paths converging on the same parent table. Where Postgres takes `ON DELETE CASCADE` on two FKs that both reach `organizations`, the SQL Server file must use `ON DELETE NO ACTION` on the secondary path and handle that cleanup in application code. Comment it inline as an intentional divergence; it is not an R8 finding.
+
+---
+
+## R5 · Audit Columns
+
+**R5-AUDIT-SET** — Only tables written as a **direct consequence of a user-initiated action** (e.g. a REST API call) carry `created_by` / `updated_by`. Tables written by background sync, callbacks, or internal system processes must **not** include these columns.
+
+Rule of thumb: ask "does a human-initiated request cause this row to be inserted or updated?" If yes → include the full audit set. If no → omit `created_by` and `updated_by`.
+
+```sql
+data_version VARCHAR(20)  NOT NULL DEFAULT '1.0',
+created_by   VARCHAR(200),
+created_at   TIMESTAMPTZ  DEFAULT CURRENT_TIMESTAMP,  -- DATETIME on SQLite / DATETIME2(7) on SQL Server
+updated_by   VARCHAR(200),
+updated_at   TIMESTAMPTZ  DEFAULT CURRENT_TIMESTAMP,
+```
+
+Where present, `created_by`/`updated_by` must actually be populated from verified JWT claims, never from request input (`GO-AUTH-005`).
+
+**R5-IMMUTABLE-CREATED** — `created_by` and `created_at` must never be updated after insert.
+
+**R5-REVOKE-PATTERN** — Tables with soft-revocation add:
+
+```sql
+revoked_by VARCHAR(200),
+revoked_at TIMESTAMPTZ,
+CHECK (revoked_at IS NULL OR status = 'revoked')
+```
+
+This `CHECK` is a permitted temporal invariant under R4-NO-ENUM-CHECK — it constrains the relationship between two columns, not the set of valid `status` values.
+
+**R5-DATA-VERSION** — Every domain entity table must include `data_version VARCHAR(20) NOT NULL DEFAULT '1.0'`. Place it immediately before `created_by`. Excluded tables: junction/mapping tables and pure system/event tables (e.g. `events`, `gateway_states`, `audit`, `deployment_status`, `gateway_custom_policy_usages`, `application_api_keys`, `application_artifacts`, `gateway_association_mappings`).
+
+---
+
+## R6 · Indexing
+
+Index every column (or compound) that appears in a `WHERE`, `JOIN`, or `ORDER BY` clause at production query volume.
+
+**R6-FK-INDEX** — Every foreign key column must have an index unless it is already the leftmost column of the PK or a covering UNIQUE constraint.
+
+```sql
+CREATE INDEX IF NOT EXISTS idx_<table>_<fk_col> ON <table>(<fk_col>);
+```
+
+**R6-ORG-INDEX** — Every org-scoped table must have an index on `organization_uuid`, unless it is already the leftmost column of the PK or of a covering UNIQUE constraint — in which case that index already serves `organization_uuid` lookups and a separate one is redundant (R6-NO-REDUNDANT-INDEX). This is the normal case for junction tables built per R1-COMPOSITE-PK, which put `organization_uuid` first.
+
+```sql
+CREATE INDEX IF NOT EXISTS idx_<table>_org ON <table>(organization_uuid);
+```
+
+**R6-STATUS-INDEX** — Tables with a `status` column that is filtered in list queries need a status index:
+
+```sql
+CREATE INDEX IF NOT EXISTS idx_<table>_status ON <table>(status);
+```
+
+**R6-COMPOUND-INDEX** — When the common query is `WHERE a = ? AND b = ?`, a single compound index `(a, b)` outperforms two single-column indexes. Most-selective filter first.
+
+**R6-PARTIAL-INDEX** — Use a partial index when the filter discards most rows:
+
+```sql
+CREATE INDEX IF NOT EXISTS idx_<table>_expires_at
+  ON <table>(expires_at) WHERE expires_at IS NOT NULL;
+```
+
+**R6-UNIQUE-PARTIAL** — For "at most one default per org" patterns:
+
+```sql
+CREATE UNIQUE INDEX IF NOT EXISTS idx_<table>_default_per_org
+  ON <table>(organization_uuid) WHERE is_default = 1;
+```
+
+SQL Server spells a partial index `WHERE ...` as a filtered index with the same syntax; SQLite supports partial indexes from 3.8.0. Where an engine cannot express it, enforce the invariant in application code and comment the divergence.
+
+**R6-NO-REDUNDANT-INDEX** — Do not create an index that is a prefix of an existing UNIQUE constraint or PK.
+
+**R6-GIN-JSONB** — Add a GIN index only when the application concretely queries inside a JSONB column with JSONB operators — do not pre-emptively GIN-index every JSONB column.
+
+---
+
+## R7 · Application Logic Safety
+
+**R7-NO-SELECT-STAR** — Schema changes break `SELECT *` callers. All queries must select named columns.
+
+**R7-PARAMETERIZED** — Every query built from request input uses `?`/named placeholders, never `fmt.Sprintf` of a value; dynamic identifiers (sort columns, table names) resolve through an explicit allowlist (`GO-AUTH-008`).
+
+**R7-JSONB-SCAN** — A `JSONB` column's scan target must be one the configured driver actually supports; see R3-JSONB-SCAN-COMPAT for the pgx-v5 vs other-driver split before raising a finding.
+
+**R7-HANDLE-IMMUTABLE** — `handle` must be set on INSERT and never appear in `UPDATE` statements.
+
+**R7-CREATED-IMMUTABLE** — `created_at` and `created_by` must not appear in `UPDATE` statements.
+
+**R7-LAYER-SYNC** — A schema change must land in `internal/model` (struct + `db:` tags), `internal/repository` (every `SELECT`/`INSERT` column list), the DTO/mapping layer, and fixtures **in the same commit**. A column added to the schema alone is either silently ignored or a scan-time failure.
+
+**R7-SOFT-DELETE** — Prefer status transitions to terminal states (`REVOKED`, `ARCHIVED`, `RETIRED`) over soft-delete (`deleted_at`) columns. Only add `deleted_at` when the design explicitly requires row-level tombstones.
+
+**R7-OPTIMISTIC-LOCK** — For resources that are concurrently edited, compare `updated_at` before issuing an UPDATE:
+
+```sql
+UPDATE <table>
+SET ..., updated_at = CURRENT_TIMESTAMP, updated_by = $n
+WHERE uuid = $1 AND updated_at = $expected_updated_at
+```
+
+If 0 rows are affected, the caller lost the race and must retry.
+
+---
+
+## R8 · Multi-Engine Schema Alignment
+
+The project maintains schema files for multiple database engines (Postgres + SQLite + SQL Server). Every change lands in **all** of a component's dialect files in the same commit — a change to one alone is a broken deployment on the others, and nothing cross-checks them. The files must remain structurally in sync except for the intentional type-level divergences below.
+
+**Intentional divergences — not findings:**
+
+| Feature | SQLite | PostgreSQL | SQL Server |
+|---|---|---|---|
+| JSON-valued columns (queried with JSON operators) | `TEXT` | `JSONB` | `NVARCHAR(MAX)` |
+| JSON-valued columns (opaque storage only) | `TEXT` | `VARCHAR(N)` or `BYTEA` | `VARCHAR(N)` or `NVARCHAR(MAX)` |
+| Binary columns | `BLOB` | `BYTEA` | `VARBINARY(MAX)` |
+| Large text payloads | `TEXT` | `BYTEA` | `NVARCHAR(MAX)` |
+| All timestamps | `DATETIME` | `TIMESTAMPTZ` | `DATETIME2(7) DEFAULT SYSUTCDATETIME()` |
+| Boolean flags (0/1) | `INTEGER` | `SMALLINT` | `SMALLINT` |
+| JSON literal defaults | `'{}'` | `'{}'::jsonb` | `'{}'` |
+| Converging cascade paths | `ON DELETE CASCADE` | `ON DELETE CASCADE` | `ON DELETE NO ACTION` + app-side cleanup (R4) |
+
+**R8-SYNC-STRUCTURE** — Table definitions (columns, order, constraints, CHECK values, FK targets) not in the intentional-divergence list must be identical across all schema files. Verify:
+- Same columns, same order
+- Same `NOT NULL` / nullable on each column
+- Same `DEFAULT` values (modulo type syntax)
+- Same `CHECK` constraint values
+- Same index definitions
+
+**R8-SQLITE-NO-JSONB** — SQLite does not support `JSONB`. Any `JSONB` in a SQLite schema file is a bug — all JSON columns must be `TEXT`.
+
+---
+
+## R9 · Idempotent DDL
+
+Every `CREATE TABLE` and `CREATE INDEX` statement must be safe to re-run without errors.
+
+**R9-TABLE** — Use the engine-specific existence guard. `CREATE TABLE IF NOT EXISTS` is **not valid T-SQL**:
+
+```sql
+-- PostgreSQL / SQLite
+CREATE TABLE IF NOT EXISTS <table> (...);
+
+-- SQL Server
+IF OBJECT_ID(N'dbo.<table>', N'U') IS NULL
+CREATE TABLE dbo.<table> (...);
+```
+
+**R9-INDEX** — Use `IF NOT EXISTS` (Postgres/SQLite) or a `sys.indexes` check (SQL Server):
+
+```sql
+-- PostgreSQL / SQLite
+CREATE INDEX IF NOT EXISTS idx_... ON <table>(...);
+
+-- SQL Server
+IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = N'idx_...' AND object_id = OBJECT_ID(N'dbo.<table>'))
+CREATE INDEX idx_... ON dbo.<table>(...);
+```
+
+Keep `CREATE INDEX` statements in a dedicated block after all `CREATE TABLE` statements. A `CREATE TABLE` or `CREATE INDEX` without an existence guard is always a finding at MEDIUM severity.
+
+---
+
+## R10 · Naming Conventions
+
+**R10-LOWERCASE** — Every SQL identifier — table names, column names, index names, and constraint names — must be lowercase `snake_case`. PostgreSQL folds unquoted identifiers to lowercase, so a mixed-case identifier only resolves if **every** reference quotes it (`"MyTable"`), which is brittle and breaks silently across engines and ORMs. Use `organization_uuid`, not `organizationUuid` or `OrganizationUUID`; `idx_apis_org`, not `idx_APIs_Org`. An upper-case or camelCase identifier is a finding at MEDIUM severity.
+
+**R10-MAPPING-SUFFIX** — Pure junction/mapping tables (those defined under R1-COMPOSITE-PK) must be named with a `_mappings` suffix, e.g. `application_api_mappings`, `gateway_association_mappings`. The suffix distinguishes link tables from entity tables at a glance and keeps the schema self-documenting. A pure mapping table named without the `_mappings` suffix is a finding at LOW severity. (Tables that link two entities but also carry their own identity/lifecycle are entity tables, not mapping tables — they keep a UUID PK and an entity-style name.)
+
+---
+
+## Quick-Reference Templates
+
+Copy-paste starting points for new DDL. The junction/mapping table template is shown above under **R1-COMPOSITE-PK**.
+
+### New entity table (Postgres)
+
+```sql
+CREATE TABLE IF NOT EXISTS <table> (
+    uuid                VARCHAR(40)  PRIMARY KEY,
+    organization_uuid   VARCHAR(40)  NOT NULL,
+    handle              VARCHAR(40)  NOT NULL,
+    name                VARCHAR(255) NOT NULL,
+    version             VARCHAR(30)  NOT NULL DEFAULT 'v1.0',
+    status              VARCHAR(20)  NOT NULL DEFAULT 'CREATED',
+    description         VARCHAR(1023),
+    data_version        VARCHAR(20)  NOT NULL DEFAULT '1.0',
+    created_by          VARCHAR(200),
+    created_at          TIMESTAMPTZ  DEFAULT CURRENT_TIMESTAMP,
+    updated_by          VARCHAR(200),
+    updated_at          TIMESTAMPTZ  DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE(organization_uuid, handle),
+    FOREIGN KEY (organization_uuid) REFERENCES organizations(uuid) ON DELETE CASCADE
+);
+
+CREATE INDEX IF NOT EXISTS idx_<table>_org        ON <table>(organization_uuid);
+CREATE INDEX IF NOT EXISTS idx_<table>_status     ON <table>(status);
+```
+
+### Same table, SQL Server counterpart
+
+```sql
+IF OBJECT_ID(N'dbo.<table>', N'U') IS NULL
+CREATE TABLE dbo.<table> (
+    uuid                VARCHAR(40)  PRIMARY KEY,
+    organization_uuid   VARCHAR(40)  NOT NULL,
+    handle              VARCHAR(40)  NOT NULL,
+    name                VARCHAR(255) NOT NULL,
+    version             VARCHAR(30)  NOT NULL DEFAULT 'v1.0',
+    status              VARCHAR(20)  NOT NULL DEFAULT 'CREATED',
+    description         VARCHAR(1023),
+    data_version        VARCHAR(20)  NOT NULL DEFAULT '1.0',
+    created_by          VARCHAR(200),
+    created_at          DATETIME2(7) DEFAULT SYSUTCDATETIME(),
+    updated_by          VARCHAR(200),
+    updated_at          DATETIME2(7) DEFAULT SYSUTCDATETIME(),
+    UNIQUE(organization_uuid, handle),
+    FOREIGN KEY (organization_uuid) REFERENCES organizations(uuid) ON DELETE CASCADE
+);
+```
+
+### Standard column types & widths
+
+```text
+VARCHAR(20)   — status, lifecycle_status, kind, short enums
+              — data_version (audit column, DEFAULT '1.0')
+VARCHAR(30)   — version (resource version, DEFAULT 'v1.0')
+VARCHAR(40)   — uuid, all FK columns referencing UUIDs
+              — handle (url-safe slug, NOT NULL; unique via UNIQUE(organization_uuid, handle))
+VARCHAR(200)  — created_by, updated_by, revoked_by (user email/subject)
+VARCHAR(255)  — name, display strings
+              — hashes (SHA-256 hex)
+              — SAFE upper bound for indexed/unique columns across all engines
+VARCHAR(512)  — tokens (encrypted values)
+VARCHAR(1023) — description, reason
+              — UPPER BOUND for plain-storage VARCHAR (above this → BYTEA/BLOB)
+
+BYTEA (Postgres) / BLOB (SQLite) / VARBINARY(MAX) (SQL Server)
+              — openapi_spec, model_list, content, configuration, properties,
+                manifest, policy_definition, metadata, api_key_hashes,
+                and any payload that can exceed a few hundred bytes
+
+JSONB         — Postgres only; only when queried with JSON operators
+              — SQLite equivalent: TEXT (intentional, not a finding)
+              — SQL Server equivalent: NVARCHAR(MAX) (intentional, not a finding)
+
+TIMESTAMPTZ   — all timestamps in Postgres (created_at, updated_at, expires_at, …)
+DATETIME      — all timestamps in SQLite
+DATETIME2(7) DEFAULT SYSUTCDATETIME() — all timestamps in SQL Server
+
+SMALLINT      — boolean flags in Postgres and SQL Server (is_active, is_default …) — use 0/1
+INTEGER       — boolean flags in SQLite — use 0/1
+```

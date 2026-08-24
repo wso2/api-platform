@@ -3,7 +3,7 @@
 # ============================================================================
 # The shared Platform API control plane (Go backend). This chart is released on
 # its own and is used two ways:
-#   • as a subchart of a product umbrella (ai-workspace / developer-portal)
+#   • as a subchart of a product umbrella (ai-workspace / api-portal)
 #   • standalone (helm install this chart directly)
 #
 # Two kinds of settings live here:
@@ -46,7 +46,7 @@ global:
 enabled: true
 image:
   repository: ghcr.io/wso2/api-platform/platform-api
-  tag: 0.13.0
+  tag: 0.16.0
   pullPolicy: IfNotPresent
 # Pull secrets for THIS component only (merged with global.imagePullSecrets).
 imagePullSecrets: []
@@ -81,15 +81,22 @@ config:
 
   # --- Database ---
   database:
-    # sqlite3  — no external DB; the file lives on the PVC (see persistence).
-    #            Single replica only → the HPA cannot be used.
-    # postgres — external PostgreSQL (configured below); enables multi-replica + HPA.
+    # sqlite3   — no external DB; the file lives on the PVC (see persistence).
+    #             Single replica only → the HPA cannot be used.
+    # postgres  — external PostgreSQL (configured below); enables multi-replica + HPA.
+    # sqlserver — external SQL Server (configured below); enables multi-replica + HPA.
+    #
+    # Aliases are accepted and normalized by the chart, so the same spelling works
+    # here and in the api-portal values block:
+    #   sqlite → sqlite3,  postgresql/pgx → postgres,  mssql → sqlserver
     driver: sqlite3
     # SQLite database file (driver=sqlite3 only). Must sit under the mounted data
     # volume (deployment.volumeMountPath), so it persists on the PVC.
     path: /app/data/api_platform.db
-    # PostgreSQL connection (driver=postgres only). The password is NOT set here —
-    # it comes from the Secret key secrets.keys.databasePassword.
+    # Server connection — used by BOTH postgres and sqlserver (the block keeps its
+    # `postgres` name for values compatibility; renaming it would break existing
+    # overrides). Set port: 1433 for SQL Server. The password is NOT set here — it
+    # comes from the Secret key secrets.keys.databasePassword.
     postgres:
       host: ""                   # in-cluster Service or external endpoint
       port: 5432
@@ -110,7 +117,9 @@ config:
     #                    component, using the public key.
     #   file           — internal_token + local username/password login (issues
     #                    RS256 tokens signed with the private key).
-    #   idp            — validate tokens against an external IDP's JWKS.
+    #   idp            — validate tokens against an external IDP's JWKS. No local
+    #                    RS256 keys are read or mounted in this mode, so the
+    #                    Secret needn't carry jwt_public.pem / jwt_private.pem.
     mode: file
     # --- Authorization --- applies in every auth mode above: an enterprise-IDP
     # token carries the same roles claim whether it is verified against a JWKS
@@ -129,7 +138,7 @@ config:
       # platform-api/resources/role-to-scope-mapping.yaml is the full sample set (ap_admin,
       # ap_operator, ap_publisher, ap_subscriber, ap_viewer); copy the entries you
       # need from it. An ap: scope the Platform API's OpenAPI spec does not declare
-      # fails startup; dp: scopes (Developer Portal) are checked for shape only.
+      # fails startup; dp: scopes (API Portal) are checked for shape only.
       # A resource-level :manage already covers that resource's subresources
       # (each subresource operation lists the parent :manage in its own accepted
       # scopes), so ap:llm_provider:manage needs no separate
@@ -167,9 +176,14 @@ config:
       # Claim carrying the user's roles — read in role authorization mode, and the
       # claim the file-mode login endpoint signs auth.file.admin.roles into.
       roles: roles               # Keycloak nests it: "realm_access.roles"
-    # Local RS256 JWT keys. public_key_file verifies tokens (every mode);
-    # private_key_file signs login tokens (file mode only). Both are mounted as
-    # PEM files from the Secret (secrets.keys.jwtPublicKey / jwtPrivateKey).
+    # Local RS256 JWT keys, mounted as PEM files from the Secret
+    # (secrets.keys.jwtPublicKey / jwtPrivateKey). Which of them the chart mounts
+    # follows the mode, because only the mode's own code path opens them:
+    #   internal_token — public_key_file only (verifies tokens minted elsewhere)
+    #   file           — both (also signs its login tokens)
+    #   idp            — neither; validation goes to the IDP's JWKS instead, so
+    #                    these paths are not rendered into config either
+    # The paths below are container mount points, not host paths.
     jwt:
       issuer: platform-api
       publicKeyFile: /etc/platform-api/keys/jwt_public.pem
@@ -255,13 +269,13 @@ config:
     cleanupInterval: 10m
     retentionPeriod: 1h
 
-  # --- Webhook receiver (signed events from the Developer Portal) ---
+  # --- Webhook receiver (signed events from the API Portal) ---
   webhook:
     enabled: false
     # Shared secret (required when enabled) comes from the Secret via
     # APIP_CP_WEBHOOK_SECRET (secrets.keys.webhookSecret). It both verifies
     # request signatures and decrypts encrypted payload fields, so it must match
-    # the secret set on the Developer Portal's webhook subscriber.
+    # the secret set on the API Portal's webhook subscriber.
     signatureTolerance: 5m
     maxBodySize: 1048576
     signatureHeader: X-Api-Portal-Signature
@@ -275,20 +289,31 @@ configToml: ""
 # ----------------------------------------------------------------------------
 # The chart never creates or embeds secret values. Point existingSecret at a
 # Secret made by ./generate-secrets.sh. Render FAILS if it's unset. The Secret
-# must hold ENCRYPTION_KEY and the RS256 JWT key files jwt_public.pem /
-# jwt_private.pem (mounted into config.auth.jwt.*File), plus DATABASE_PASSWORD
-# when driver=postgres and WEBHOOK_SECRET when config.webhook.enabled. `keys`
-# maps each logical name to the key inside that Secret.
+# must always hold APIP_CP_ENCRYPTION_KEY; the rest are conditional, and a key
+# the chart doesn't reference for your settings can simply be absent:
+#   APIP_CP_DATABASE_PASSWORD  — every non-sqlite3 driver (postgres/sqlserver)
+#   APIP_CP_WEBHOOK_SECRET     — config.webhook.enabled only
+#   jwt_public.pem             — auth.mode internal_token or file only
+#   jwt_private.pem            — auth.mode file only
+# The PEMs are mounted as files into config.auth.jwt.*File. In auth.mode=idp
+# neither is mounted or referenced, so an idp-mode Secret needs no PEMs at all.
+# `keys` maps each logical name to the key inside that Secret.
 secrets:
   existingSecret: ""
+  # Each key inside the Secret is named EXACTLY like the env var the container
+  # receives and the {{ env "..." }} token in config.toml that reads it — one name
+  # for the whole chain (Secret key = env var = config token = generate-secrets.sh
+  # input), so there is nothing to map in your head. The two PEM entries are the
+  # exception: they mount as FILES, so they keep filenames — the config references
+  # their path, not an env var.
   keys:
-    encryptionKey: ENCRYPTION_KEY          # → APIP_CP_ENCRYPTION_KEY
-    databasePassword: DATABASE_PASSWORD    # → APIP_CP_DATABASE_PASSWORD (postgres)
-    webhookSecret: WEBHOOK_SECRET          # → APIP_CP_WEBHOOK_SECRET (webhook.enabled)
-    jwtPublicKey: jwt_public.pem           # mounted file → config.auth.jwt.publicKeyFile
-    jwtPrivateKey: jwt_private.pem         # mounted file → config.auth.jwt.privateKeyFile (file mode)
-    adminUsername: ADMIN_USERNAME          # → APIP_CP_ADMIN_USERNAME (auth.mode=file)
-    adminPasswordHash: ADMIN_PASSWORD_HASH # → APIP_CP_ADMIN_PASSWORD_HASH (auth.mode=file)
+    encryptionKey: APIP_CP_ENCRYPTION_KEY
+    databasePassword: APIP_CP_DATABASE_PASSWORD      # any non-sqlite3 driver (postgres/sqlserver)
+    webhookSecret: APIP_CP_WEBHOOK_SECRET            # config.webhook.enabled only
+    jwtPublicKey: jwt_public.pem                     # mounted file → config.auth.jwt.publicKeyFile (internal_token/file modes)
+    jwtPrivateKey: jwt_private.pem                   # mounted file → config.auth.jwt.privateKeyFile (file mode)
+    adminUsername: APIP_CP_ADMIN_USERNAME            # auth.mode=file only
+    adminPasswordHash: APIP_CP_ADMIN_PASSWORD_HASH   # auth.mode=file only
 
 # ----------------------------------------------------------------------------
 # service — how the API is exposed inside the cluster
@@ -367,7 +392,7 @@ persistence:
 # ----------------------------------------------------------------------------
 deployment:
   enabled: true
-  replicaCount: 1                # >1 requires driver=postgres
+  replicaCount: 1                # >1 requires an external DB (postgres/sqlserver)
   # Where the data volume mounts. Must contain config.database.path and
   # config.tls.certDir.
   volumeMountPath: /app/data
@@ -431,10 +456,11 @@ deployment:
 # ----------------------------------------------------------------------------
 # Autoscaling & disruption budget
 # ----------------------------------------------------------------------------
-# HorizontalPodAutoscaler. REQUIRES config.database.driver=postgres — on sqlite3
-# the chart refuses to render it (SQLite is single-replica). Enable only after
-# switching to postgres, and set deployment.resources.requests.cpu so the HPA has
-# a baseline to measure against.
+# HorizontalPodAutoscaler. REQUIRES an external database — config.database.driver
+# of postgres or sqlserver. On sqlite3 the chart refuses to render it (SQLite is a
+# per-pod file, so it is single-replica). Enable only after switching to an
+# external database, and set deployment.resources.requests.cpu so the HPA has a
+# baseline to measure against.
 hpa:
   enabled: false
   minReplicas: 2

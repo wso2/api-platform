@@ -30,6 +30,7 @@ import (
 	"github.com/wso2/api-platform/platform-api/internal/constants"
 	"github.com/wso2/api-platform/platform-api/internal/middleware"
 	"github.com/wso2/api-platform/platform-api/internal/model"
+	"github.com/wso2/api-platform/platform-api/internal/router"
 	"github.com/wso2/api-platform/platform-api/internal/service"
 	"github.com/wso2/api-platform/platform-api/internal/utils"
 
@@ -415,7 +416,7 @@ func (h *SubscriptionPlanHandler) DeleteSubscriptionPlan(w http.ResponseWriter, 
 }
 
 // RegisterRoutes registers subscription plan routes
-func (h *SubscriptionPlanHandler) RegisterRoutes(mux *http.ServeMux) {
+func (h *SubscriptionPlanHandler) RegisterRoutes(mux router.Router) {
 	mux.HandleFunc("POST "+constants.APIBasePath+"/subscription-plans", middleware.MapErrors(h.slogger, h.CreateSubscriptionPlan))
 	mux.HandleFunc("GET "+constants.APIBasePath+"/subscription-plans", middleware.MapErrors(h.slogger, h.ListSubscriptionPlans))
 	mux.HandleFunc("GET "+constants.APIBasePath+"/subscription-plans/{subscriptionPlanId}", middleware.MapErrors(h.slogger, h.GetSubscriptionPlan))

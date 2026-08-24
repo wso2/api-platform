@@ -38,6 +38,11 @@ import { buildOrgPath, buildProjectPath } from '../../utils/projectRouting';
 import QuickStartIntroPopup, {
   QS_INTRO_STORAGE_KEY,
 } from './QuickStartIntroPopup';
+import {
+  AI_WORKSPACE_SIDEBAR_SLOT,
+  type AIWorkspaceExtension,
+} from '../../extensions';
+import { useSlot } from '../../slots';
 
 const navLinkStyle: React.CSSProperties = {
   textDecoration: 'none',
@@ -64,6 +69,7 @@ export default function AppSidebar({
   const [showIntro, setShowIntro] = useState(
     () => !localStorage.getItem(QS_INTRO_STORAGE_KEY)
   );
+  const extensions = useSlot<AIWorkspaceExtension>(AI_WORKSPACE_SIDEBAR_SLOT);
 
   const handleDismissIntro = () => {
     localStorage.setItem(QS_INTRO_STORAGE_KEY, '1');
@@ -127,6 +133,9 @@ export default function AppSidebar({
   const settingsPath = currentProject
     ? buildProjectPath(currentOrganization, currentProject, '/settings')
     : orgSettingsPath;
+  const extensionPath = (path: string) => currentProject
+    ? buildProjectPath(currentOrganization, currentProject, `/${path}`)
+    : buildOrgPath(currentOrganization, `/${path}`);
   return (
     <Sidebar
       collapsed={shellState.sidebarCollapsed}
@@ -300,6 +309,27 @@ export default function AppSidebar({
               </NavLink>
             )}
           </Sidebar.Category>
+          {extensions.length > 0 && (
+            <Sidebar.Category>
+              <Sidebar.CategoryLabel>
+                <span style={{ fontSize: '0.8rem' }}>Cloud</span>
+              </Sidebar.CategoryLabel>
+              {extensions.map((extension) => (
+                <NavLink
+                  key={extension.id}
+                  to={extensionPath(extension.path)}
+                  style={navLinkStyle}
+                >
+                  <Sidebar.Item id={extension.id}>
+                    <Sidebar.ItemIcon>
+                      {extension.icon ?? <Settings size={20} />}
+                    </Sidebar.ItemIcon>
+                    <Sidebar.ItemLabel>{extension.label}</Sidebar.ItemLabel>
+                  </Sidebar.Item>
+                </NavLink>
+              ))}
+            </Sidebar.Category>
+          )}
         </Box>
       </Sidebar.Nav>
 

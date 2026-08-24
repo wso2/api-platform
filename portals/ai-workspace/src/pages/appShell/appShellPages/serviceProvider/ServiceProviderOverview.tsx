@@ -103,8 +103,15 @@ import {
 } from '../../../../contexts/AIEntitiesContext';
 import {
   DisabledActionTooltip,
+  GatewayArtifactDeleteWarning,
   GatewayArtifactReadOnlyBanner,
 } from '../../../../utils/readOnlyArtifacts';
+import { getErrorMessage } from '../../../../utils/apiError';
+import {
+  activeDeploymentDeleteBlockedReason,
+  countActiveDeployments,
+  linkedProxiesDeleteBlockedReason,
+} from '../../../../utils/artifactDeletion';
 
 import AnthropicLogo from '../../../../assets/brands/Anthropic.jpg';
 import AWSBedrockLogo from '../../../../assets/brands/AWSBedrock.webp';
@@ -298,8 +305,18 @@ function ServiceProviderOverviewContent() {
   const [checkingProviderId, setCheckingProviderId] = useState<string | null>(
     null
   );
+  const [activeDeploymentCount, setActiveDeploymentCount] = useState<number | null>(null);
+  const [linkedProxyCount, setLinkedProxyCount] = useState<number | null>(null);
   const showSnackbar = useAIWorkspaceSnackbar();
   const hasUnsavedChanges = hasDraftChanges || isRateLimitingDirty;
+  const stagedSecurity = (draftProvider ?? provider)?.security;
+  const isApiKeyEffectivelyEnabled =
+    stagedSecurity?.apiKey?.enabled ?? stagedSecurity?.enabled ?? true;
+  const isSecurityConfigValid =
+    !isApiKeyEffectivelyEnabled ||
+    (Boolean(stagedSecurity?.apiKey?.key?.trim()) &&
+      (stagedSecurity?.apiKey?.in === 'header' ||
+        stagedSecurity?.apiKey?.in === 'query'));
   const selectedGateway = useMemo(
     () => gateways.find((gateway) => gateway.id === selectedGatewayId) ?? null,
     [gateways, selectedGatewayId]
@@ -490,6 +507,74 @@ function ServiceProviderOverviewContent() {
   const proxyQuotaTooltip =
     'You cannot create more App LLM Proxies because your organization has reached the maximum limit of 5 proxies.';
   const isReadOnlyProvider = Boolean(provider?.readOnly);
+
+  useEffect(() => {
+    const organizationId = currentOrganization?.uuid;
+    const providerId = provider?.id;
+    if (!organizationId || !providerId || !canDelete) {
+      setActiveDeploymentCount(null);
+      setLinkedProxyCount(null);
+      return;
+    }
+
+    let isCancelled = false;
+
+    const resolveDeletePreconditions = async () => {
+      const [deploymentsResult, linkedProxiesResult] = await Promise.allSettled([
+        isReadOnlyProvider
+          ? getLLMProviderDeployments(providerId, organizationId, apimBaseUrl)
+          : Promise.resolve({ list: [], count: 0 }),
+        getLLMProviderProxies(providerId, organizationId, apimBaseUrl),
+      ]);
+
+      if (isCancelled) return;
+
+      setActiveDeploymentCount(
+        deploymentsResult.status === 'fulfilled'
+          ? countActiveDeployments(deploymentsResult.value.list)
+          : null
+      );
+      setLinkedProxyCount(
+        linkedProxiesResult.status === 'fulfilled'
+          ? (linkedProxiesResult.value.count ?? 0)
+          : null
+      );
+    };
+
+    resolveDeletePreconditions().catch((err) => {
+      logger.error(
+        'Failed to resolve LLM Provider delete pre-conditions:',
+        err
+      );
+      if (isCancelled) return;
+      setActiveDeploymentCount(null);
+      setLinkedProxyCount(null);
+    });
+
+    return () => {
+      isCancelled = true;
+    };
+  }, [
+    currentOrganization?.uuid,
+    provider?.id,
+    canDelete,
+    isReadOnlyProvider,
+    apimBaseUrl,
+  ]);
+
+  const deleteBlockedReason = useMemo(() => {
+    if (isReadOnlyProvider && activeDeploymentCount !== null && activeDeploymentCount > 0) {
+      return activeDeploymentDeleteBlockedReason(
+        'LLM Provider',
+        activeDeploymentCount
+      );
+    }
+    if (linkedProxyCount !== null && linkedProxyCount > 0) {
+      return linkedProxiesDeleteBlockedReason(linkedProxyCount);
+    }
+    return null;
+  }, [isReadOnlyProvider, activeDeploymentCount, linkedProxyCount]);
+
   const canCreateProxy = hasPermission(SCOPES.LLM_PROXY_CREATE);
   const isCreateProxyDisabled =
     !provider?.id || isProxyQuotaReached || !canCreateProxy;
@@ -559,8 +644,11 @@ function ServiceProviderOverviewContent() {
       setDeleteTarget(null);
       setDeleteConfirmationInput('');
       navigate(providersPath, { replace: true });
-    } catch {
-      showSnackbar('Failed to delete provider. Please try again.', 'error');
+    } catch (error) {
+      showSnackbar(
+        getErrorMessage(error, 'Failed to delete provider. Please try again.'),
+        'error'
+      );
     } finally {
       setIsDeletingProvider(false);
     }
@@ -895,21 +983,28 @@ function ServiceProviderOverviewContent() {
   );
   const providerDeleteAction = isAdminOrgLevel && canDelete ? (
     <Box sx={{ display: 'flex', justifyContent: 'flex-end', width: '100%' }}>
-      <IconButton
-        size="small"
-        color="error"
-        disabled={checkingProviderId === providerKey}
-        onClick={() => {
-          void checkProviderUsageAndConfirmDelete(
-            providerKey,
-            provider.displayName
-          );
-        }}
-        aria-label={`Delete ${providerDisplayName}`}
-        data-cyid="delete-provider-button"
+      <DisabledActionTooltip
+        disabled={Boolean(deleteBlockedReason)}
+        title={deleteBlockedReason}
       >
-        <Trash2 size={16} />
-      </IconButton>
+        <IconButton
+          size="small"
+          color="error"
+          disabled={
+            checkingProviderId === providerKey || Boolean(deleteBlockedReason)
+          }
+          onClick={() => {
+            void checkProviderUsageAndConfirmDelete(
+              providerKey,
+              provider.displayName
+            );
+          }}
+          aria-label={`Delete ${providerDisplayName}`}
+          data-cyid="delete-provider-button"
+        >
+          <Trash2 size={16} />
+        </IconButton>
+      </DisabledActionTooltip>
     </Box>
   ) : null;
   const renderResourcesSpecViewer = () => {
@@ -1048,6 +1143,12 @@ function ServiceProviderOverviewContent() {
         <strong>'{deleteTarget?.name ?? ''}'</strong>?
       </DialogTitle>
       <DialogContent>
+        {isReadOnlyProvider ? (
+          <GatewayArtifactDeleteWarning
+            artifactType="LLM Provider"
+            artifactName={deleteTarget?.name}
+          />
+        ) : null}
         <Typography sx={{ mt: 1 }} variant="body2" color="text.secondary">
           This action will be irreversible and all related details will be
           lost. Please type in the component name below to confirm.
@@ -1676,7 +1777,7 @@ function ServiceProviderOverviewContent() {
                 </Button>
                 <Button
                   variant="contained"
-                  disabled={!hasUnsavedChanges || isSavingChanges}
+                  disabled={!hasUnsavedChanges || isSavingChanges || !isSecurityConfigValid}
                   onClick={() => void handleSaveChanges()}
                 >
                   Save
