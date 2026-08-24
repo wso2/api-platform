@@ -34,6 +34,13 @@ type GatewayPoliciesContextValue = {
   policies: GatewayPolicyRow[];
   isLoading: boolean;
   error: Error | null;
+  /**
+   * Non-fatal load failures: the manifest arrived but a supplementary source
+   * (the org's custom policies, or the Policy Hub catalogue) did not. The rows
+   * are still usable, so these are shown as warnings instead of replacing the
+   * table with an error.
+   */
+  warnings: string[];
   refresh: () => Promise<void>;
   syncPolicy: (policyName: string, version: string) => Promise<GatewayCustomPolicy>;
   syncingPolicyKey: string | null;
@@ -93,6 +100,7 @@ export function GatewayPoliciesProvider({ gatewayId, children }: { gatewayId: st
   const [policies, setPolicies] = useState<GatewayPolicyRow[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<Error | null>(null);
+  const [warnings, setWarnings] = useState<string[]>([]);
   const [syncingPolicyKey, setSyncingPolicyKey] = useState<string | null>(null);
 
   // This view reads the gateway manifest and the org's custom policies. Without
@@ -108,22 +116,42 @@ export function GatewayPoliciesProvider({ gatewayId, children }: { gatewayId: st
     if (!gatewayId) return;
     if (!canViewPolicies) {
       setPolicies([]);
+      setWarnings([]);
       setIsLoading(false);
       return;
     }
     setIsLoading(true);
     setError(null);
+    setWarnings([]);
     try {
-      const [manifest, customResponse, hubResponse] = await Promise.all([
+      // Only the manifest is essential — custom policies and the Policy Hub
+      // catalogue enrich the rows, so one of them failing degrades the view
+      // with a warning rather than blocking the whole table.
+      const [manifestResult, customResult, hubResult] = await Promise.allSettled([
         getGatewayPolicyManifest(gatewayId),
         getGatewayCustomPolicies(),
         getPolicies(),
       ]);
+      if (manifestResult.status === "rejected") throw manifestResult.reason;
+      const manifest = manifestResult.value;
+
+      const nextWarnings: string[] = [];
+      if (customResult.status === "rejected") {
+        nextWarnings.push(
+          "Custom policies could not be loaded, so sync status may be incomplete.",
+        );
+      }
+      if (hubResult.status === "rejected") {
+        nextWarnings.push(
+          "Policy Hub details could not be loaded, so some names and descriptions may be missing.",
+        );
+      }
+      setWarnings(nextWarnings);
       setPolicies(
         mergePolicies(
           manifest.policies || [],
-          customResponse.list || [],
-          hubResponse.data || [],
+          customResult.status === "fulfilled" ? customResult.value.list || [] : [],
+          hubResult.status === "fulfilled" ? hubResult.value.data || [] : [],
         ),
       );
     } catch (cause) {
@@ -160,6 +188,7 @@ export function GatewayPoliciesProvider({ gatewayId, children }: { gatewayId: st
       policies,
       isLoading,
       error,
+      warnings,
       refresh,
       syncPolicy,
       syncingPolicyKey,
@@ -170,6 +199,7 @@ export function GatewayPoliciesProvider({ gatewayId, children }: { gatewayId: st
       policies,
       isLoading,
       error,
+      warnings,
       refresh,
       syncPolicy,
       syncingPolicyKey,

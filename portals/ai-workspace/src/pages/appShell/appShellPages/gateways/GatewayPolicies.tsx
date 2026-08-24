@@ -18,6 +18,7 @@ import {
   Tooltip,
   Typography,
 } from "@wso2/oxygen-ui";
+import PartialLoadWarning from "../../../../Components/common/PartialLoadWarning";
 import { useGatewayPolicies } from "../../../../contexts/GatewayPoliciesContext";
 import useAIWorkspaceSnackbar from "../../../../hooks/aiWorkspaceSnackbar";
 import { NO_PERMISSION_TOOLTIP } from "../../../../auth/permissions";
@@ -27,6 +28,7 @@ export default function GatewayPolicies() {
     policies,
     isLoading,
     error,
+    warnings,
     refresh,
     syncPolicy,
     syncingPolicyKey,
@@ -115,9 +117,28 @@ export default function GatewayPolicies() {
     );
   }
   if (!policies.length)
-    return <Alert severity="info">No gateway manifest received yet.</Alert>;
+    return (
+      <>
+        {warnings.map((warning) => (
+          <PartialLoadWarning
+            key={warning}
+            message={warning}
+            onRetry={() => void refresh()}
+          />
+        ))}
+        <Alert severity="info">No gateway manifest received yet.</Alert>
+      </>
+    );
 
   return (
+    <>
+      {warnings.map((warning) => (
+        <PartialLoadWarning
+          key={warning}
+          message={warning}
+          onRetry={() => void refresh()}
+        />
+      ))}
     <TableContainer sx={{ border: 1, borderColor: "divider", px: 3, py: 2 }}>
       <Table>
         <TableHead>
@@ -201,5 +222,6 @@ export default function GatewayPolicies() {
         </TableBody>
       </Table>
     </TableContainer>
+    </>
   );
 }

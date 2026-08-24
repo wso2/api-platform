@@ -55,6 +55,7 @@ import { parsePolicyYaml } from '../../../PolicyParameterEditor/yamlParser';
 import type { GuardrailSelection } from './serviceProviderTypes';
 import { FormattedMessage } from 'react-intl';
 import ErrorAlert from '../../../../../Components/common/ErrorAlert';
+import PartialLoadWarning from '../../../../../Components/common/PartialLoadWarning';
 import { autoAttachesCostPolicy } from '../../../../../utils/providerTemplateDisplay';
 import type { PolicyHubPolicy } from '../../../../../utils/types';
 import { logger } from '../../../../../utils/logger';
@@ -167,6 +168,7 @@ export default function GuardrailsSection({
   const [isLoadingMoreGuardrails, setIsLoadingMoreGuardrails] = useState(false);
   const [customPolicies, setCustomPolicies] = useState<GatewayCustomPolicy[]>([]);
   const [customPoliciesLoading, setCustomPoliciesLoading] = useState(false);
+  const [customPoliciesError, setCustomPoliciesError] = useState<Error | null>(null);
   const [draggedGuardrailId, setDraggedGuardrailId] = useState<string | null>(
     null
   );
@@ -236,12 +238,16 @@ export default function GuardrailsSection({
 
   const fetchCustomPolicies = useCallback(async () => {
     setCustomPoliciesLoading(true);
+    setCustomPoliciesError(null);
     try {
       const response = await getGatewayCustomPolicies();
       setCustomPolicies(response.list || []);
     } catch (e) {
       logger.error('Failed to load custom policies:', e);
       setCustomPolicies([]);
+      setCustomPoliciesError(
+        e instanceof Error ? e : new Error('Failed to load custom policies')
+      );
     } finally {
       setCustomPoliciesLoading(false);
     }
@@ -521,15 +527,6 @@ export default function GuardrailsSection({
                         />
                       </Typography>
                     </Box>
-                  ) : drawerGuardrailsError ? (
-                    <Box sx={{ mt: 1 }}>
-                      <ErrorAlert
-                        error={drawerGuardrailsError}
-                        onRetry={() => {
-                          void fetchDrawerGuardrails(selectedCategories, 0, false);
-                        }}
-                      />
-                    </Box>
                   ) : (
                     <Box
                       onScroll={handleGuardrailListScroll}
@@ -539,6 +536,25 @@ export default function GuardrailsSection({
                         pr: 0.5,
                       }}
                     >
+                      {/* One source failing leaves the other's policies
+                          selectable — warn and offer a retry instead of
+                          replacing the whole list with an error. */}
+                      {drawerGuardrailsError && (
+                        <PartialLoadWarning
+                          message="Policy Hub policies could not be loaded. Only custom policies are listed."
+                          onRetry={() => {
+                            void fetchDrawerGuardrails(selectedCategories, 0, false);
+                          }}
+                        />
+                      )}
+                      {customPoliciesError && (
+                        <PartialLoadWarning
+                          message="Custom policies could not be loaded. Only Policy Hub policies are listed."
+                          onRetry={() => {
+                            void fetchCustomPolicies();
+                          }}
+                        />
+                      )}
                       <Stack spacing={1.25}>
                         {drawerItems
                           .filter((g) => {
