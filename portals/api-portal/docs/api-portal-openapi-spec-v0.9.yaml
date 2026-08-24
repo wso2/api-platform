@@ -2899,10 +2899,10 @@ components:
     ApiKeyBody:
       required: true
       description: >-
-        API key payload. `id` must be lowercase and may contain numbers, underscores, and hyphens. `displayName` is
-        an optional human-readable label that defaults to `id` when omitted. `expiresAt` can be an ISO-8601 datetime
-        with timezone, epoch seconds, or epoch milliseconds. The parent resource (API or MCP server, depending on the
-        path) is identified by the corresponding path parameter.
+        API key payload. `id` must be 3-40 lowercase alphanumeric characters, hyphen-separated. `displayName` is
+        an optional human-readable label (1-128 characters, any characters allowed) that defaults to `id` when
+        omitted. `expiresAt` can be an ISO-8601 datetime with timezone, epoch seconds, or epoch milliseconds. The
+        parent resource (API or MCP server, depending on the path) is identified by the corresponding path parameter.
       content:
         application/json:
           schema:
@@ -2911,12 +2911,12 @@ components:
             expiringKey:
               summary: Generate an expiring key
               value:
-                id: weather_prod_key
+                id: weather-prod-key
                 expiresAt: "2026-12-31T23:59:59Z"
             nonExpiringKey:
               summary: Generate a key without expiry
               value:
-                id: weather_sandbox_key
+                id: weather-sandbox-key
     ApiKeyRegenerateBody:
       required: true
       description: >-
@@ -4989,13 +4989,18 @@ components:
       properties:
         id:
           type: string
-          pattern: ^[a-z0-9][a-z0-9_-]{0,127}$
+          minLength: 3
+          maxLength: 40
+          pattern: ^[a-z0-9]+(-[a-z0-9]+)*$
           description: >-
-            Optional handle for the key. When provided it must match the pattern and be unique
-            for this API; when omitted, the server generates a UUID handle.
-          example: weather_prod_key
+            Optional handle for the key. When provided it must be 3-40 characters matching the
+            pattern and be unique for this API; when omitted, derived from displayName (or a
+            random handle if displayName is also omitted).
+          example: weather-prod-key
         displayName:
           type: string
+          minLength: 1
+          maxLength: 128
           description: Optional human-readable name for the key. Defaults to `id` when omitted.
           example: Weather Prod Key
         subscriptionId:
