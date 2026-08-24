@@ -777,19 +777,27 @@ func TestGenerateAuthConfig(t *testing.T) {
 		// and nothing consumes it. A missing entry denies by default, so the
 		// symptom is a 403 on a correctly-authenticated call, not a build error.
 		// The keys below are exactly the patterns RegisterHandlers registers.
-		agentRoutes := []string{
-			"POST /agents",
-			"GET /agents",
-			"GET /agents/{id}",
-			"PUT /agents/{id}",
-			"DELETE /agents/{id}",
+		agentRoutes := map[string][]string{
+			"POST /agents":        {"admin", "developer"},
+			"GET /agents":         {"admin", "developer"},
+			"GET /agents/{id}":    {"admin", "developer"},
+			"PUT /agents/{id}":    {"admin", "developer"},
+			"DELETE /agents/{id}": {"admin", "developer"},
+
+			// Agent API keys are consumer-facing, matching every other kind's
+			// key endpoints rather than the developer-facing Agent CRUD above.
+			"POST /agents/{id}/api-keys":                         {"admin", "consumer"},
+			"GET /agents/{id}/api-keys":                          {"admin", "consumer"},
+			"PUT /agents/{id}/api-keys/{apiKeyName}":             {"admin", "consumer"},
+			"POST /agents/{id}/api-keys/{apiKeyName}/regenerate": {"admin", "consumer"},
+			"DELETE /agents/{id}/api-keys/{apiKeyName}":          {"admin", "consumer"},
 		}
 
-		for _, route := range agentRoutes {
+		for route, wantRoles := range agentRoutes {
 			prefixed := route[:strings.Index(route, " ")+1] + managementAPIBasePath + route[strings.Index(route, " ")+1:]
 
 			require.Contains(t, authConfig.ResourceRoles, prefixed, "no role entry for %q — the endpoint would 403 for every caller", prefixed)
-			assert.ElementsMatch(t, []string{"admin", "developer"}, authConfig.ResourceRoles[prefixed])
+			assert.ElementsMatch(t, wantRoles, authConfig.ResourceRoles[prefixed], "unexpected roles for %q", prefixed)
 
 			// The legacy unprefixed form is registered onto the same mux and
 			// must carry identical roles, or the two routes disagree on who may
