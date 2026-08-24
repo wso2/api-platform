@@ -394,7 +394,23 @@ func (t *Translator) createRouteFromRDC(routeKey string, rdcRoute *models.Route,
 	contextWithVersion := strings.TrimSuffix(fullPath, operationPath)
 
 	escapedContext := regexp.QuoteMeta(contextWithVersion)
-	if isMCPResourceRoute {
+	if rdcRoute.UpstreamPathOverride != "" {
+		// The route's whole gateway-facing path maps to one fixed upstream path,
+		// under the upstream's base path. The gateway-facing path is the operator's
+		// to choose; the upstream one is fixed by the protocol the route serves (a
+		// proxied Agent Card's /.well-known/agent-card.json), so nothing of the
+		// matched path survives into the substitution.
+		//
+		// The optional trailing slash mirrors the branches below: whatever the path
+		// matcher accepted the rewrite must also match, or Envoy forwards the
+		// request unrewritten.
+		r.GetRoute().RegexRewrite = &matcher.RegexMatchAndSubstitute{
+			Pattern: &matcher.RegexMatcher{
+				Regex: "^" + regexp.QuoteMeta(fullPath) + "/?$",
+			},
+			Substitution: upstreamPath + rdcRoute.UpstreamPathOverride,
+		}
+	} else if isMCPResourceRoute {
 		// MCP "/mcp" resource: the whole gateway-facing path ("<context>/mcp") maps to
 		// exactly the configured upstream URL path. We deliberately do NOT append "/mcp"
 		// to the backend, because some MCP backends serve at a different path (or root)

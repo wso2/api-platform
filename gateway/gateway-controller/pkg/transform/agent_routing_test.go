@@ -73,12 +73,25 @@ func routingTestRouterConfig() *config.RouterConfig {
 	}
 }
 
+// routingTestPolicyDefinitions is the catalogue these tests translate against:
+// the A2A system policy and nothing else. A managed card cannot be served
+// without it, and every fixture here starts with one.
+func routingTestPolicyDefinitions() map[string]models.PolicyDefinition {
+	return map[string]models.PolicyDefinition{
+		constants.A2A_SYSTEM_POLICY_NAME + "_v1.0.0": {
+			Name:    constants.A2A_SYSTEM_POLICY_NAME,
+			Version: "v1.0.0",
+		},
+	}
+}
+
 // routingTestAgent is an Agent exposing HTTP+JSON at the context root, which is
 // the layout where the 1.0 binding table's overlapping paths all appear at once.
-func routingTestAgent() *models.StoredConfig {
+func routingTestAgent(options ...func(*api.AgentConfiguration)) *models.StoredConfig {
 	upstreamURL := "https://weather.internal"
 	context := "/weather"
-	return &models.StoredConfig{
+	cardContent := api.A2AAgentCardDocument{"name": "Weather Agent", "protocolVersion": "1.0"}
+	stored := &models.StoredConfig{
 		UUID:   "agent-routing-1",
 		Kind:   models.KindAgent,
 		Handle: "weather-agent",
@@ -99,12 +112,21 @@ func routingTestAgent() *models.StoredConfig {
 						},
 					},
 					AgentCard: api.A2AAgentCard{
-						Public: api.A2APublicAgentCard{Mode: api.A2APublicAgentCardModeManaged},
+						Public: api.A2APublicAgentCard{
+							Mode:    api.A2APublicAgentCardModeManaged,
+							Content: &cardContent,
+						},
 					},
 				},
 			},
 		},
 	}
+	cfg := stored.Configuration.(api.AgentConfiguration)
+	for _, option := range options {
+		option(&cfg)
+	}
+	stored.Configuration = cfg
+	return stored
 }
 
 // agentEnvoyRoutes translates the Agent through the real xDS path and returns
@@ -118,7 +140,7 @@ func agentEnvoyRoutes(t *testing.T, stored *models.StoredConfig) []*route.Route 
 	registry := transform.NewRegistry(
 		transform.NewRestAPITransformer(routerCfg, systemCfg, map[string]models.PolicyDefinition{}),
 		nil,
-		transform.NewAgentTransformer(routerCfg, systemCfg, map[string]models.PolicyDefinition{}),
+		transform.NewAgentTransformer(routerCfg, systemCfg, routingTestPolicyDefinitions()),
 	)
 	translator.SetTransformers(map[string]models.ConfigTransformer{models.KindAgent: registry})
 
@@ -313,6 +335,109 @@ func TestAgentForwardsTheTransportPrefixButNotTheContext(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			r := routes[indexOfRoute(t, routes, tc.route)]
 			assert.Equal(t, tc.want, rewrittenUpstreamPath(t, r, tc.request))
+		})
+	}
+}
+
+// agentCard.public.path chooses where the *gateway* serves the card. It says
+// nothing about the upstream, which serves its card at the standard well-known
+// location whatever the gateway calls it — so a proxied card request is rewritten
+// onto that location rather than forwarded verbatim.
+//
+// Forwarding the gateway-facing path instead is silent in the ordinary case,
+// where the two happen to be the same string, and a 404 from the agent the moment
+// an operator configures a custom path.
+func TestAgentPassthroughCardIsFetchedFromTheWellKnownUpstreamPath(t *testing.T) {
+	tests := []struct {
+		name     string
+		upstream string
+		cardPath string
+		route    string
+		request  string
+		want     string
+	}{
+		{
+			name:     "the default path at a root upstream",
+			upstream: "https://weather.internal",
+			route:    "GET|/weather/.well-known/agent-card.json|agents.example.com",
+			request:  "/weather/.well-known/agent-card.json",
+			want:     "/.well-known/agent-card.json",
+		},
+		{
+			name:     "a custom gateway path still fetches the well-known one",
+			upstream: "https://weather.internal",
+			cardPath: "/card",
+			route:    "GET|/weather/card|agents.example.com",
+			request:  "/weather/card",
+			want:     "/.well-known/agent-card.json",
+		},
+		{
+			name:     "the upstream base path is preserved beneath it",
+			upstream: "https://weather.internal/a2a/v1",
+			cardPath: "/card",
+			route:    "GET|/weather/card|agents.example.com",
+			request:  "/weather/card",
+			want:     "/a2a/v1/.well-known/agent-card.json",
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			routes := agentEnvoyRoutes(t, routingTestAgent(func(cfg *api.AgentConfiguration) {
+				cfg.Spec.Upstream.Url = &tc.upstream
+				cfg.Spec.A2a.AgentCard.Public.Mode = api.A2APublicAgentCardModePassthrough
+				cfg.Spec.A2a.AgentCard.Public.Content = nil
+				if tc.cardPath != "" {
+					cfg.Spec.A2a.AgentCard.Public.Path = &tc.cardPath
+				}
+			}))
+
+			r := routes[indexOfRoute(t, routes, tc.route)]
+			assert.Equal(t, tc.want, rewrittenUpstreamPath(t, r, tc.request))
+		})
+	}
+}
+
+// A custom card path replaces the default route rather than adding an alias: an
+// Agent that also answered the well-known path would be advertising one location
+// while remaining discoverable at another, and only one of them can be the
+// signed card's own URL.
+func TestAgentCustomCardPathReplacesTheDefaultRoute(t *testing.T) {
+	cardPath := "/card"
+	routes := agentEnvoyRoutes(t, routingTestAgent(func(cfg *api.AgentConfiguration) {
+		cfg.Spec.A2a.AgentCard.Public.Path = &cardPath
+	}))
+
+	indexOfRoute(t, routes, "GET|/weather/card|agents.example.com")
+	for _, r := range routes {
+		assert.NotEqual(t, "GET|/weather/.well-known/agent-card.json|agents.example.com", r.GetName(),
+			"the default card path is still served alongside the custom one")
+	}
+}
+
+// The card route must remain an ordinary proxying route with a real policy chain.
+// Rendering it as a DirectResponse would answer without ext_proc, which would
+// take the CORS preflight and the system observability policies down with it —
+// and, in passthrough mode, would answer from the gateway a card the gateway is
+// not supposed to hold.
+func TestAgentCardRouteIsAProxyingRoute(t *testing.T) {
+	for _, mode := range []api.A2APublicAgentCardMode{
+		api.A2APublicAgentCardModeManaged,
+		api.A2APublicAgentCardModePassthrough,
+	} {
+		t.Run(string(mode), func(t *testing.T) {
+			routes := agentEnvoyRoutes(t, routingTestAgent(func(cfg *api.AgentConfiguration) {
+				cfg.Spec.A2a.AgentCard.Public.Mode = mode
+				if mode == api.A2APublicAgentCardModePassthrough {
+					cfg.Spec.A2a.AgentCard.Public.Content = nil
+				}
+			}))
+
+			r := routes[indexOfRoute(t, routes, "GET|/weather/.well-known/agent-card.json|agents.example.com")]
+			assert.Nil(t, r.GetDirectResponse(), "the card route must not be a direct response")
+			require.NotNil(t, r.GetRoute(), "the card route must have a route action")
+			assert.NotEmpty(t, r.GetRoute().GetCluster()+r.GetRoute().GetClusterHeader(),
+				"the card route must resolve to an upstream cluster")
 		})
 	}
 }

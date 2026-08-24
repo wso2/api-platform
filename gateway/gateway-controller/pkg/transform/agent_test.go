@@ -19,6 +19,8 @@
 package transform
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"slices"
 	"sort"
@@ -32,6 +34,7 @@ import (
 	"github.com/wso2/api-platform/common/chainkey"
 	api "github.com/wso2/api-platform/gateway/gateway-controller/pkg/api/management"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/config"
+	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/constants"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/models"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/xds"
 )
@@ -44,10 +47,21 @@ const testAgentUUID = "agent-uuid-1"
 // restating a whole Agent, so what a test is about is the only thing it says.
 type agentOption func(*api.AgentConfiguration)
 
+// testCardContent is the managed card every fixture serves. It is only as
+// complete as these tests need — the card model itself is the validator's
+// business, not the transformer's.
+func testCardContent() api.A2AAgentCardDocument {
+	return api.A2AAgentCardDocument{
+		"name":            "Weather Agent",
+		"protocolVersion": "1.0",
+	}
+}
+
 // testAgent returns a deployable Agent: context /weather, both transports, a
 // managed public card at the default path, no policies.
 func testAgent(options ...agentOption) *models.StoredConfig {
 	upstreamURL := "https://weather.internal/a2a"
+	cardContent := testCardContent()
 	cfg := api.AgentConfiguration{
 		ApiVersion: api.AgentConfigurationApiVersionGatewayApiPlatformWso2Comv1,
 		Kind:       api.AgentConfigurationKindAgent,
@@ -66,7 +80,10 @@ func testAgent(options ...agentOption) *models.StoredConfig {
 					},
 				},
 				AgentCard: api.A2AAgentCard{
-					Public: api.A2APublicAgentCard{Mode: api.A2APublicAgentCardModeManaged},
+					Public: api.A2APublicAgentCard{
+						Mode:    api.A2APublicAgentCardModeManaged,
+						Content: &cardContent,
+					},
 				},
 			},
 		},
@@ -123,22 +140,61 @@ func withCardPolicies(policies ...api.Policy) agentOption {
 	}
 }
 
-// agentTransformer builds a transformer with no policy definitions loaded, which
-// is what most of these tests want: route topology, chain keys and timeouts are
-// independent of which policies exist, and an empty catalogue keeps chains empty
-// so an assertion on chain contents reads as exactly what was attached.
+// withPassthroughCard switches the card to passthrough mode and drops the
+// content, which is the shape validation accepts: the gateway does not hold a
+// proxied card, so carrying content alongside the mode is rejected.
+func withPassthroughCard() agentOption {
+	return func(cfg *api.AgentConfiguration) {
+		cfg.Spec.A2a.AgentCard.Public.Mode = api.A2APublicAgentCardModePassthrough
+		cfg.Spec.A2a.AgentCard.Public.Content = nil
+	}
+}
+
+func withCardPath(path string) agentOption {
+	return func(cfg *api.AgentConfiguration) {
+		cfg.Spec.A2a.AgentCard.Public.Path = &path
+	}
+}
+
+func withCardContent(content api.A2AAgentCardDocument) agentOption {
+	return func(cfg *api.AgentConfiguration) {
+		cfg.Spec.A2a.AgentCard.Public.Content = &content
+	}
+}
+
+// agentTransformer builds a transformer whose catalogue holds only the A2A
+// system policy, which is what most of these tests want: route topology, chain
+// keys and timeouts are independent of which policies exist, and an otherwise
+// empty catalogue keeps chains down to what was attached.
+//
+// That one has to be there because a managed card cannot be served without it —
+// every fixture has a managed card, so a transformer that could not resolve it
+// would fail every transform rather than test anything.
 func agentTransformer() *AgentTransformer {
-	return NewAgentTransformer(testRouterCfg(), &config.Config{}, map[string]models.PolicyDefinition{})
+	return agentTransformerWithPolicies()
 }
 
 // agentTransformerWithPolicies builds a transformer whose catalogue knows the
-// named policies at v1.0.0, so attaching them survives version resolution.
+// named policies at v1.0.0, so attaching them survives version resolution, plus
+// the A2A system policy.
 func agentTransformerWithPolicies(names ...string) *AgentTransformer {
-	definitions := make(map[string]models.PolicyDefinition, len(names))
+	definitions := map[string]models.PolicyDefinition{
+		constants.A2A_SYSTEM_POLICY_NAME + "_v1.0.0": {
+			Name:    constants.A2A_SYSTEM_POLICY_NAME,
+			Version: "v1.0.0",
+		},
+	}
 	for _, name := range names {
 		definitions[name+"_v1.0.0"] = models.PolicyDefinition{Name: name, Version: "v1.0.0"}
 	}
 	return NewAgentTransformer(testRouterCfg(), &config.Config{}, definitions)
+}
+
+// agentTransformerWithoutCardPolicy builds a transformer whose catalogue is
+// missing the A2A system policy — the deployment shape where the gateway
+// was built without the in-repo policy that serves a managed card.
+func agentTransformerWithoutCardPolicy() *AgentTransformer {
+	return NewAgentTransformer(testRouterCfg(), &config.Config{}, map[string]models.PolicyDefinition{})
 }
 
 // routeKeysOf returns the RDC's route keys, sorted, for readable diffs.
@@ -587,7 +643,9 @@ func TestAgentCardChainUsesOnlyCardPolicies(t *testing.T) {
 
 	cardChain := rdc.PolicyChains["GET|/weather/.well-known/agent-card.json|main.local"]
 	require.NotNil(t, cardChain)
-	assert.Equal(t, []string{"card-policy"}, policyNames(cardChain))
+	assert.Equal(t,
+		[]string{"card-policy", constants.A2A_SYSTEM_POLICY_NAME},
+		policyNames(cardChain))
 }
 
 // The upstream credential travels in the chains whose requests reach the
@@ -611,17 +669,232 @@ func TestAgentUpstreamAuthReachesOperationChainsOnly(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, []string{"set-headers"},
 		policyNames(managed.PolicyChains[chainkey.For(testAgentUUID, "main.local", string(agentproto.GetTask))]))
-	assert.Empty(t,
+	assert.Equal(t,
+		[]string{constants.A2A_SYSTEM_POLICY_NAME},
 		policyNames(managed.PolicyChains["GET|/weather/.well-known/agent-card.json|main.local"]),
 		"a managed card is served by the gateway and never reaches the upstream")
 
-	passthrough, err := transformer.Transform(testAgent(withAuth, func(cfg *api.AgentConfiguration) {
-		cfg.Spec.A2a.AgentCard.Public.Mode = api.A2APublicAgentCardModePassthrough
-	}))
+	passthrough, err := transformer.Transform(testAgent(withAuth, withPassthroughCard()))
 	require.NoError(t, err)
 	assert.Equal(t, []string{"set-headers"},
 		policyNames(passthrough.PolicyChains["GET|/weather/.well-known/agent-card.json|main.local"]),
 		"a proxied card is fetched from the upstream, which may require the credential")
+}
+
+// ─── Agent Card serving ─────────────────────────────────────────────────────
+
+const testCardRouteKey = "GET|/weather/.well-known/agent-card.json|main.local"
+
+// cardPolicy returns the A2A system policy instance from a chain, failing the
+// test if it is absent — every assertion below is about what it carries, and an
+// absent policy would make them vacuous.
+func cardPolicy(t *testing.T, chain *models.PolicyChain) models.Policy {
+	t.Helper()
+	require.NotNil(t, chain)
+	for _, policy := range chain.Policies {
+		if policy.Name == constants.A2A_SYSTEM_POLICY_NAME {
+			return policy
+		}
+	}
+	t.Fatalf("chain does not carry %s; has %v",
+		constants.A2A_SYSTEM_POLICY_NAME, policyNames(chain))
+	return models.Policy{}
+}
+
+// cardParam reads one field of the policy's agentCard parameter block. The block
+// is nested because the policy is the A2A system policy rather than the Agent
+// Card policy — a second gateway-answered concern gets a sibling block.
+func cardParam(t *testing.T, policy models.Policy, name string) string {
+	t.Helper()
+	block, ok := policy.Params[constants.A2A_POLICY_PARAM_AGENT_CARD].(map[string]interface{})
+	require.True(t, ok, "parameter block %q is missing or not an object: %#v",
+		constants.A2A_POLICY_PARAM_AGENT_CARD, policy.Params[constants.A2A_POLICY_PARAM_AGENT_CARD])
+	value, ok := block[name].(string)
+	require.True(t, ok, "parameter %q is missing or not a string: %#v", name, block[name])
+	return value
+}
+
+// The served bytes are the supplied document, and only the supplied document.
+// Card signing will sign exactly these bytes, so a rewrite here — a normalized
+// field, a dropped extension — is a signature that does not verify against the
+// card a client received.
+func TestAgentManagedCardIsServedAsSupplied(t *testing.T) {
+	content := api.A2AAgentCardDocument{
+		"name":              "Weather Agent",
+		"protocolVersion":   "1.0",
+		"x-vendor-metadata": map[string]interface{}{"team": "weather"},
+	}
+	rdc, err := agentTransformer().Transform(testAgent(withCardContent(content)))
+	require.NoError(t, err)
+
+	body := cardParam(t, cardPolicy(t, rdc.PolicyChains[testCardRouteKey]),
+		constants.A2A_POLICY_PARAM_CONTENT)
+
+	var served map[string]interface{}
+	require.NoError(t, json.Unmarshal([]byte(body), &served))
+	assert.Equal(t, map[string]interface{}(content), served,
+		"the served card is not the supplied document")
+}
+
+// The entity tag identifies the bytes, so it changes when and only when they do:
+// a tag that survived a card edit would let clients keep serving a stale card
+// from cache, and one that changed on an unrelated redeploy would throw away
+// every client's cached copy for nothing.
+func TestAgentManagedCardETagTracksTheServedBytes(t *testing.T) {
+	transformer := agentTransformer()
+
+	first, err := transformer.Transform(testAgent())
+	require.NoError(t, err)
+	again, err := transformer.Transform(testAgent())
+	require.NoError(t, err)
+	edited, err := transformer.Transform(testAgent(withCardContent(api.A2AAgentCardDocument{
+		"name":            "Weather Agent",
+		"protocolVersion": "1.0",
+		"description":     "now with descriptions",
+	})))
+	require.NoError(t, err)
+
+	etagOf := func(rdc *models.RuntimeDeployConfig) string {
+		return cardParam(t, cardPolicy(t, rdc.PolicyChains[testCardRouteKey]),
+			constants.A2A_POLICY_PARAM_ETAG)
+	}
+
+	assert.Equal(t, etagOf(first), etagOf(again),
+		"an unchanged card produced a different entity tag")
+	assert.NotEqual(t, etagOf(first), etagOf(edited),
+		"an edited card kept its entity tag")
+
+	// A strong tag: quoted, and derived from nothing but the bytes.
+	etag := etagOf(first)
+	body := cardParam(t, cardPolicy(t, first.PolicyChains[testCardRouteKey]),
+		constants.A2A_POLICY_PARAM_CONTENT)
+	digest := sha256.Sum256([]byte(body))
+	assert.Equal(t, `"`+hex.EncodeToString(digest[:])+`"`, etag)
+}
+
+// The card policy answers from the request-header phase and stops the chain, so
+// everything else must sit before it. Placed the other way round, a rate limit or
+// an IP filter on the card scope would never run — and, more quietly, neither
+// would the analytics collector, so card traffic would be missing from analytics
+// entirely while every other route reported normally.
+//
+// The collector is turned on here rather than left at the default precisely
+// because that is the ordering this is about: it is the one policy in the chain
+// this transformer does not place itself.
+func TestAgentCardPolicyRunsLastInItsChain(t *testing.T) {
+	systemCfg := &config.Config{}
+	systemCfg.Analytics.Enabled = true
+	require.True(t, systemCfg.IsCollectorEnabled(),
+		"the analytics system policy is only injected when the collector is on")
+
+	transformer := NewAgentTransformer(testRouterCfg(), systemCfg, map[string]models.PolicyDefinition{
+		constants.A2A_SYSTEM_POLICY_NAME + "_v1.0.0": {
+			Name: constants.A2A_SYSTEM_POLICY_NAME, Version: "v1.0.0",
+		},
+		"card-policy_v1.0.0": {Name: "card-policy", Version: "v1.0.0"},
+	})
+	rdc, err := transformer.Transform(testAgent(withCardPolicies(api.Policy{Name: "card-policy"})))
+	require.NoError(t, err)
+
+	assert.Equal(t,
+		[]string{
+			constants.ANALYTICS_SYSTEM_POLICY_NAME,
+			"card-policy",
+			constants.A2A_SYSTEM_POLICY_NAME,
+		},
+		policyNames(rdc.PolicyChains[testCardRouteKey]),
+		"the card policy short-circuits the chain, so it must run last of all")
+}
+
+// The card policy belongs to the card route and nothing else. On a preflight it
+// would answer an OPTIONS with the card body, which is worse than not having a
+// preflight at all; on an operation chain it would replace the operation.
+func TestAgentCardPolicyIsAttachedToTheCardRouteOnly(t *testing.T) {
+	transformer := agentTransformerWithPolicies("cors")
+	rdc, err := transformer.Transform(testAgent(
+		withOperationPolicies(api.Policy{Name: "cors"}),
+		withCardPolicies(api.Policy{Name: "cors"}),
+	))
+	require.NoError(t, err)
+
+	// The preflight this is really about must exist, or the assertion is vacuous.
+	require.Contains(t, rdc.Routes, "OPTIONS|/weather/.well-known/agent-card.json|main.local")
+
+	for key, chain := range rdc.PolicyChains {
+		carries := slices.Contains(policyNames(chain), constants.A2A_SYSTEM_POLICY_NAME)
+		assert.Equal(t, key == testCardRouteKey, carries,
+			"chain %q carries the card policy: %v", key, carries)
+	}
+}
+
+// A proxied card is the upstream's document. Serving a gateway-held one instead
+// would answer with a card the gateway does not have.
+func TestAgentPassthroughCardHasNoCardPolicy(t *testing.T) {
+	rdc, err := agentTransformer().Transform(testAgent(withPassthroughCard()))
+	require.NoError(t, err)
+
+	for key, chain := range rdc.PolicyChains {
+		assert.NotContains(t, policyNames(chain), constants.A2A_SYSTEM_POLICY_NAME,
+			"chain %q carries the card policy in passthrough mode", key)
+	}
+}
+
+// A gateway built without the in-repo card policy cannot serve a managed card.
+// The transform must fail rather than emit a route whose chain cannot answer:
+// that route proxies the card request, and the gateway would then serve the
+// upstream's own unvalidated card under a configuration that says otherwise.
+func TestAgentManagedCardRequiresTheCardPolicy(t *testing.T) {
+	_, err := agentTransformerWithoutCardPolicy().Transform(testAgent())
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), constants.A2A_SYSTEM_POLICY_NAME)
+
+	// A passthrough card needs nothing from the catalogue.
+	_, err = agentTransformerWithoutCardPolicy().Transform(testAgent(withPassthroughCard()))
+	assert.NoError(t, err)
+}
+
+// A custom card path replaces the default route rather than adding an alias.
+func TestAgentCustomCardPathReplacesTheDefaultPath(t *testing.T) {
+	rdc, err := agentTransformer().Transform(testAgent(withCardPath("/card")))
+	require.NoError(t, err)
+
+	assert.Contains(t, rdc.Routes, "GET|/weather/card|main.local")
+	assert.NotContains(t, rdc.Routes, testCardRouteKey)
+
+	custom := rdc.Routes["GET|/weather/card|main.local"]
+	assert.Equal(t, "/card", custom.OperationPath)
+	assert.NotNil(t, rdc.PolicyChains["GET|/weather/card|main.local"])
+}
+
+// Where the card lives upstream is fixed by the protocol, not by
+// agentCard.public.path, so the route records it in both modes. Only the card
+// route does: an operation route forwards its own path, and overriding one would
+// send every request for it to the same place.
+func TestAgentOnlyTheCardRouteOverridesItsUpstreamPath(t *testing.T) {
+	for _, testCase := range []struct {
+		name    string
+		options []agentOption
+	}{
+		{"managed", nil},
+		{"passthrough", []agentOption{withPassthroughCard()}},
+		{"custom path", []agentOption{withCardPath("/card")}},
+	} {
+		t.Run(testCase.name, func(t *testing.T) {
+			rdc, err := agentTransformer().Transform(testAgent(testCase.options...))
+			require.NoError(t, err)
+
+			overridden := make([]string, 0, 1)
+			for key, route := range rdc.Routes {
+				if route.UpstreamPathOverride != "" {
+					assert.Equal(t, config.DefaultAgentCardPath, route.UpstreamPathOverride)
+					overridden = append(overridden, key)
+				}
+			}
+			require.Len(t, overridden, 1)
+			assert.Equal(t, agentCardRouteMethod+"|", overridden[0][:len(agentCardRouteMethod)+1],
+				"the overridden route is not the card route: %q", overridden[0])
+		})
+	}
 }
 
 // ─── CORS preflight ─────────────────────────────────────────────────────────
