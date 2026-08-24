@@ -27,13 +27,14 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"github.com/wso2/api-platform/common/agentproto"
 )
 
 // ─── Fake resolvers ──────────────────────────────────────────────────────────
 //
-// These exist so the resolution seam is fully testable before any real
-// multiplexed kind ships: the production binary registers only "route-key", so
-// nothing below is reachable in production.
+// These exercise the resolution seam itself — preparation, key validation,
+// binding — independently of any real protocol. They are registered only into
+// test-local registries, so nothing below is reachable in production.
 
 // fakeResolver is a factory whose prepared resolvers report whatever the test
 // configured, per route. prepare is optional; without it the factory prepares a
@@ -226,15 +227,19 @@ func TestRegistry_NamesAreSorted(t *testing.T) {
 	assert.Equal(t, []string{"alpha", "mid", "zeta"}, reg.Names())
 }
 
-// The production registry ships identity-only, so nothing a resolver could read out
-// of a request is reachable in the shipped binary yet.
-func TestDefaultRegistry_IsIdentityOnlyAndFrozen(t *testing.T) {
+// The production registry's contents are the capability list the control plane
+// withholds resolver-bearing routes against, so what is in it is a wire fact, not an
+// implementation detail: asserting the exact set is what makes adding or renaming a
+// resolver a deliberate change rather than a silent one.
+func TestDefaultRegistry_HoldsTheShippedResolversAndIsFrozen(t *testing.T) {
 	def := DefaultRegistry()
-	assert.Equal(t, []string{RouteKeyResolverName}, def.Names())
+	assert.Equal(t, []string{agentproto.ResolverName, RouteKeyResolverName}, def.Names())
 
-	r, ok := def.Get(RouteKeyResolverName)
-	require.True(t, ok)
-	assert.Equal(t, RouteKeyResolverName, r.Name())
+	for _, name := range def.Names() {
+		r, ok := def.Get(name)
+		require.True(t, ok)
+		assert.Equal(t, name, r.Name())
+	}
 
 	assert.True(t, defaultRegistry.Frozen(), "DefaultRegistry must freeze the production registry")
 }
@@ -245,7 +250,7 @@ func TestIndependentRegistryDoesNotAffectDefault(t *testing.T) {
 
 	_, ok := DefaultRegistry().Get("test-only")
 	assert.False(t, ok, "a resolver registered in a test registry must not appear in the production registry")
-	assert.Equal(t, []string{RouteKeyResolverName}, DefaultRegistry().Names())
+	assert.NotContains(t, DefaultRegistry().Names(), "test-only")
 }
 
 // ─── PrepareRoute ────────────────────────────────────────────────────────────
