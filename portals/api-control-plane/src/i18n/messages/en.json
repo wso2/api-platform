@@ -1881,11 +1881,77 @@
   "appShell.monetizePage.feature": {
     "defaultMessage": "Monetization for this API"
   },
+  "appShell.projectHomePage.noAdditionalMetadata": {
+    "defaultMessage": "No additional project metadata available."
+  },
+  "appShell.projectHomePage.projectDetails": {
+    "defaultMessage": "Project details"
+  },
+  "appShell.projectHomePage.viewAllAPIs": {
+    "defaultMessage": "View all APIs ({count})"
+  },
+  "appShell.runtimeLogsPage.allLevels": {
+    "defaultMessage": "All levels"
+  },
+  "appShell.runtimeLogsPage.correlation": {
+    "defaultMessage": "Correlation: {id}"
+  },
+  "appShell.runtimeLogsPage.emptyDescription": {
+    "defaultMessage": "Try a wider time range or remove a filter."
+  },
+  "appShell.runtimeLogsPage.emptyTitle": {
+    "defaultMessage": "No gateway logs found"
+  },
+  "appShell.runtimeLogsPage.gatewayTrafficEvent": {
+    "defaultMessage": "Gateway traffic event"
+  },
   "appShell.runtimeLogsPage.header": {
-    "defaultMessage": "Observability"
+    "defaultMessage": "Gateway logs"
+  },
+  "appShell.runtimeLogsPage.last15Minutes": {
+    "defaultMessage": "Last 15 minutes"
+  },
+  "appShell.runtimeLogsPage.last24Hours": {
+    "defaultMessage": "Last 24 hours"
+  },
+  "appShell.runtimeLogsPage.last6Hours": {
+    "defaultMessage": "Last 6 hours"
+  },
+  "appShell.runtimeLogsPage.lastHour": {
+    "defaultMessage": "Last hour"
+  },
+  "appShell.runtimeLogsPage.level": {
+    "defaultMessage": "Level"
+  },
+  "appShell.runtimeLogsPage.loadError": {
+    "defaultMessage": "Could not load gateway logs. {message}"
+  },
+  "appShell.runtimeLogsPage.loading": {
+    "defaultMessage": "Loading gateway logs…"
+  },
+  "appShell.runtimeLogsPage.notConfigured": {
+    "defaultMessage": "Gateway log retrieval is not configured for this deployment."
+  },
+  "appShell.runtimeLogsPage.queryLogs": {
+    "defaultMessage": "Query logs"
+  },
+  "appShell.runtimeLogsPage.querying": {
+    "defaultMessage": "Querying…"
+  },
+  "appShell.runtimeLogsPage.search": {
+    "defaultMessage": "Search"
+  },
+  "appShell.runtimeLogsPage.searchPlaceholder": {
+    "defaultMessage": "Method, path, status, or correlation ID"
   },
   "appShell.runtimeLogsPage.subHeader": {
-    "defaultMessage": "Runtime logs for {apiHandler}."
+    "defaultMessage": "Tenant-scoped traffic logs for {apiHandler}. Request and response headers and bodies are not collected."
+  },
+  "appShell.runtimeLogsPage.timeRange": {
+    "defaultMessage": "Time range"
+  },
+  "appShell.runtimeLogsPage.unknownTime": {
+    "defaultMessage": "Unknown time"
   },
   "components.comingSoon.body": {
     "defaultMessage": "{feature} will be available soon."

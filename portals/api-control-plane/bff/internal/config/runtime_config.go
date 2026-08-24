@@ -33,6 +33,9 @@ func buildRuntimeConfig(cfg *Config) map[string]string {
 		"authMode":           cfg.Auth.Mode,
 		"platformApiBaseUrl": cfg.ControlPlane.ProxyPrefix,
 	}
+	if cfg.Features.ObservabilityLogs {
+		out["observabilityLogsEnabled"] = "true"
+	}
 
 	// billingProxyEnabled tells the SPA a "billing" named upstream exists, so
 	// ProductActivation can call it (same-origin, via /proxy/billing/...)

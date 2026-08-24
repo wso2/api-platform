@@ -94,4 +94,14 @@ describe('runtimeConfig', () => {
 
     expect(runtimeConfig.billingProxyEnabled).toBe(false);
   });
+
+  it('keeps API observability disabled unless the runtime flag is true', async () => {
+    expect((await loadRuntimeConfig()).observabilityLogsEnabled).toBe(false);
+
+    window.__RUNTIME_CONFIG__ = {
+      observabilityLogsEnabled: 'true',
+    };
+
+    expect((await loadRuntimeConfig()).observabilityLogsEnabled).toBe(true);
+  });
 });

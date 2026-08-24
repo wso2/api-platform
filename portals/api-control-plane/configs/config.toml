@@ -17,6 +17,14 @@ enabled = '{{ env "APIP_ACP_SERVER_HTTPS_ENABLED" "false" }}'
 level = '{{ env "APIP_ACP_LOGGING_LEVEL" "info" }}'   # debug | info | warn | error
 
 
+[api_control_plane.features]
+
+# Cloud deployments can expose tenant-scoped gateway logs through their
+# Platform API wrapper. Standalone deployments leave this disabled because the
+# base Platform API does not provide the extension endpoint.
+observability_logs = '{{ env "APIP_OBSERVABILITY_LOGS_ENABLED" "false" }}'
+
+
 [api_control_plane.control_plane]
 
 url             = '{{ env "APIP_ACP_CONTROL_PLANE_URL" "https://localhost:9243" }}'

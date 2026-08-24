@@ -51,8 +51,15 @@ type Config struct {
 	ControlPlane ControlPlaneConfig `koanf:"control_plane"`
 	Session      SessionConfig      `koanf:"session"`
 	Auth         AuthConfig         `koanf:"auth"`
+	Features     FeatureConfig      `koanf:"features"`
 
 	RuntimeConfig map[string]string `koanf:"-"`
+}
+
+// FeatureConfig is [api_control_plane.features]. Feature switches are emitted
+// to the SPA runtime config but remain server-owned deployment settings.
+type FeatureConfig struct {
+	ObservabilityLogs bool `koanf:"observability_logs"`
 }
 
 // ServerConfig is [api_control_plane.server]: two independent listeners,
