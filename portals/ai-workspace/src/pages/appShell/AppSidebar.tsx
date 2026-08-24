@@ -38,7 +38,11 @@ import { buildOrgPath, buildProjectPath } from '../../utils/projectRouting';
 import QuickStartIntroPopup, {
   QS_INTRO_STORAGE_KEY,
 } from './QuickStartIntroPopup';
-import { useAIWorkspaceExtensions } from '../../extensions';
+import {
+  AI_WORKSPACE_SIDEBAR_SLOT,
+  type AIWorkspaceExtension,
+} from '../../extensions';
+import { useSlot } from '../../slots';
 
 const navLinkStyle: React.CSSProperties = {
   textDecoration: 'none',
@@ -65,7 +69,7 @@ export default function AppSidebar({
   const [showIntro, setShowIntro] = useState(
     () => !localStorage.getItem(QS_INTRO_STORAGE_KEY)
   );
-  const extensions = useAIWorkspaceExtensions();
+  const extensions = useSlot<AIWorkspaceExtension>(AI_WORKSPACE_SIDEBAR_SLOT);
 
   const handleDismissIntro = () => {
     localStorage.setItem(QS_INTRO_STORAGE_KEY, '1');
