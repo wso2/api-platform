@@ -1478,6 +1478,267 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
 
+  /agents/{id}/api-keys:
+    post:
+      summary: Create a new API key for an Agent
+      description: Generate a new API key for an Agent in the Gateway. The key is a 32-byte random value encoded in hexadecimal, prefixed with `apip_`. Use the API Key policy on the Agent to validate incoming requests with this key.
+      operationId: createAgentAPIKey
+      x-basicauth-roles: [admin, consumer]
+      tags:
+        - Agent Management
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: Unique public identifier of the Agent to generate the key for
+          schema:
+            type: string
+          example: weather-agent-v1.0
+      requestBody:
+        required: true
+        content:
+          application/yaml:
+            schema:
+              $ref: "#/components/schemas/APIKeyCreationRequest"
+          application/json:
+            schema:
+              $ref: "#/components/schemas/APIKeyCreationRequest"
+      responses:
+        "201":
+          description: API key created successfully
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/APIKeyCreationResponse"
+        "400":
+          description: Invalid configuration (validation failed)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "409":
+          description: Conflict (duplicate key or conflicting update)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Agent not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "500":
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+    get:
+      summary: Get the list of API keys for an Agent
+      description: List all API keys for an Agent in the Gateway.
+      operationId: listAgentAPIKeys
+      x-basicauth-roles: [admin, consumer]
+      tags:
+        - Agent Management
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: Unique public identifier of the Agent to retrieve the keys for
+          schema:
+            type: string
+          example: weather-agent-v1.0
+      responses:
+        "200":
+          description: List of API keys
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/APIKeyListResponse"
+        "404":
+          description: Agent not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "500":
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /agents/{id}/api-keys/{apiKeyName}/regenerate:
+    post:
+      summary: Regenerate API key for an Agent
+      description: Regenerate an existing API key for an Agent in the Gateway. The previous key is revoked and replaced with a new 32-byte random value encoded in hexadecimal, prefixed with `apip_`.
+      operationId: regenerateAgentAPIKey
+      x-basicauth-roles: [admin, consumer]
+      tags:
+        - Agent Management
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: Unique public identifier of the Agent
+          schema:
+            type: string
+          example: weather-agent-v1.0
+        - name: apiKeyName
+          in: path
+          required: true
+          description: Name of the API key to regenerate
+          schema:
+            type: string
+          example: weather-agent-key
+      requestBody:
+        required: true
+        content:
+          application/yaml:
+            schema:
+              $ref: "#/components/schemas/APIKeyRegenerationRequest"
+          application/json:
+            schema:
+              $ref: "#/components/schemas/APIKeyRegenerationRequest"
+      responses:
+        "200":
+          description: API key rotated successfully
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/APIKeyCreationResponse"
+        "400":
+          description: Invalid configuration (validation failed)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Agent or API key not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "500":
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /agents/{id}/api-keys/{apiKeyName}:
+    put:
+      summary: Update an API key for an Agent
+      description: Update an API key with a custom value instead of auto-generating one.
+      operationId: updateAgentAPIKey
+      x-basicauth-roles: [admin, consumer]
+      tags:
+        - Agent Management
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: Unique public identifier of the Agent
+          schema:
+            type: string
+          example: weather-agent-v1.0
+        - name: apiKeyName
+          in: path
+          required: true
+          description: Name of the API key to update
+          schema:
+            type: string
+          example: weather-agent-key
+      requestBody:
+        required: true
+        content:
+          application/yaml:
+            schema:
+              $ref: "#/components/schemas/APIKeyUpdateRequest"
+          application/json:
+            schema:
+              $ref: "#/components/schemas/APIKeyUpdateRequest"
+      responses:
+        "200":
+          description: API key updated successfully
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/APIKeyCreationResponse"
+        "400":
+          description: Invalid request (validation failed)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "409":
+          description: Conflict (duplicate key or conflicting update)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Agent or API key not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "500":
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+    delete:
+      summary: Revoke an API key for an Agent
+      description: Revoke an API key. Once revoked, it can no longer be used to authenticate requests.
+      operationId: revokeAgentAPIKey
+      x-basicauth-roles: [admin, consumer]
+      tags:
+        - Agent Management
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: Unique public identifier of the Agent to revoke the key for
+          schema:
+            type: string
+          example: weather-agent-v1.0
+        - name: apiKeyName
+          in: path
+          required: true
+          description: Name of the API key to revoke
+          schema:
+            type: string
+          example: weather-agent-key
+      responses:
+        "200":
+          description: API key revoked successfully
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/APIKeyRevocationResponse"
+        "400":
+          description: Invalid configuration (validation failed)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Agent or API key not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "500":
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
   /llm-provider-templates:
     post:
       summary: Create a new LLM provider template
