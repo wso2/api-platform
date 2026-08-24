@@ -177,6 +177,7 @@ function PolicyInUseDialog({
 
   const [policy, setPolicy] = useState<GatewayCustomPolicy | null>(null);
   const [usedByProviders, setUsedByProviders] = useState<LLMProvider[]>([]);
+  const [totalProviderCount, setTotalProviderCount] = useState(0);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -188,19 +189,23 @@ function PolicyInUseDialog({
     setError(null);
     setPolicy(null);
     setUsedByProviders([]);
+    setTotalProviderCount(0);
 
-    Promise.all([
+    Promise.allSettled([
       getGatewayCustomPolicy(gatewayCustomPolicyId, version),
       getLLMProviders(organizationId, PLATFORM_API_BASE_URL, gatewayCustomPolicyId),
     ])
-      .then(([policyDetails, providersResponse]) => {
+      .then(([policyResult, providersResult]) => {
         if (!isMounted) return;
-        setPolicy(policyDetails);
-        setUsedByProviders(providersResponse.list ?? []);
-      })
-      .catch((cause: unknown) => {
-        if (isMounted) {
-          setError(getErrorMessage(cause, 'Failed to load policy usage.'));
+        if (policyResult.status === 'fulfilled') {
+          setPolicy(policyResult.value);
+        }
+        if (providersResult.status === 'fulfilled') {
+          const list = providersResult.value.list ?? [];
+          setUsedByProviders(list);
+          setTotalProviderCount(providersResult.value.pagination?.total ?? list.length);
+        } else {
+          setError(getErrorMessage(providersResult.reason, 'Failed to load policy usage.'));
         }
       })
       .finally(() => {
@@ -267,9 +272,18 @@ function PolicyInUseDialog({
               <FormattedMessage
                 id="aiWorkspace.pages.appShell.appShellPages.gateways.CustomPoliciesList.usageDialog.usage.description"
                 defaultMessage="{count, plural, one {# LLM Provider is} other {# LLM Providers are}} using this policy. Remove it from the provider(s) below before deleting it."
-                values={{ count: usedByProviders.length }}
+                values={{ count: totalProviderCount }}
               />
             </Typography>
+            {totalProviderCount > usedByProviders.length ? (
+              <Typography variant="body2" color="text.secondary" sx={{ mb: 1.5 }}>
+                <FormattedMessage
+                  id="aiWorkspace.pages.appShell.appShellPages.gateways.CustomPoliciesList.usageDialog.usage.partial"
+                  defaultMessage="Showing {shown} of {total}. There may be more providers blocking this deletion than listed here."
+                  values={{ shown: usedByProviders.length, total: totalProviderCount }}
+                />
+              </Typography>
+            ) : null}
             <List disablePadding>
               {usedByProviders.map((provider) => {
                 const providerId = provider.id ?? provider.displayName;
@@ -753,13 +767,15 @@ export default function CustomPoliciesList({
         </DialogActions>
       </Dialog>
 
-      <PolicyInUseDialog
-        open={Boolean(usageDialogTarget)}
-        gatewayCustomPolicyId={usageDialogTarget?.uuid ?? ''}
-        version={usageDialogTarget?.version ?? ''}
-        fallbackName={usageDialogTarget?.name}
-        onClose={() => setUsageDialogTarget(null)}
-      />
+      {usageDialogTarget && (
+        <PolicyInUseDialog
+          open
+          gatewayCustomPolicyId={usageDialogTarget.uuid}
+          version={usageDialogTarget.version}
+          fallbackName={usageDialogTarget.name}
+          onClose={() => setUsageDialogTarget(null)}
+        />
+      )}
     </Wrapper>
   );
 }
