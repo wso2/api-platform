@@ -22,6 +22,7 @@ const https = require('https');
 const logger = require('../config/logger');
 const { logUserAction } = require('../middlewares/auditLogger');
 const { config } = require('../config/configLoader');
+const { buildOutboundAgents } = require('../config/httpClientOptions');
 const constants = require('../utils/constants');
 const util = require('../utils/util');
 const orgDao = require('../dao/organizationDao');
@@ -267,7 +268,13 @@ const handleLocalLogin = async (req, res) => {
             new URLSearchParams({ username, password }).toString(),
             {
                 headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-                httpsAgent: new https.Agent({ rejectUnauthorized: !config.auth.local?.tlsSkipVerify }),
+                // rejectUnauthorized varies per-config (auth.local.tlsSkipVerify), so this
+                // agent is built fresh here rather than reusing the shared httpsAgent —
+                // but still carries the same cipher/curve/version tuning via tlsOptions.
+                httpsAgent: new https.Agent({
+                    ...buildOutboundAgents(config).tlsOptions,
+                    rejectUnauthorized: !config.auth.local?.tlsSkipVerify,
+                }),
                 timeout: 10000,
             }
         );

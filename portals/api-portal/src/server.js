@@ -21,6 +21,7 @@ const fs = require('fs');
 const path = require('path');
 const logger = require('./config/logger');
 const { config } = require('./config/configLoader');
+const { buildTLSOptions } = require('./config/tlsOptions');
 const webhookDispatcher = require('./services/webhooks/dispatcher');
 const webhookDeliveryWorker = require('./services/webhooks/deliveryWorker');
 const db = require('./db/driver');
@@ -150,9 +151,15 @@ async function startServer() {
         const serverCert = fs.readFileSync(certPath);
         const serverKey = fs.readFileSync(keyPath);
 
+        // TLS version bounds + ECDH/group preference list, config-gated — see
+        // js-post-quantum-cryptography.md. Throws (caught below) on an invalid
+        // value, so a bad config fails startup rather than silently degrading.
+        const tlsOptions = buildTLSOptions(config.server.https);
+
         server = https.createServer({
             key: serverKey,
             cert: serverCert,
+            ...tlsOptions,
         }, app).listen(PORT, onListening);
 
     } catch (err) {
