@@ -49,16 +49,19 @@ const agentPreflightMethod = "OPTIONS"
 // transformer does.
 const corsPolicyName = "cors"
 
-// maxAgentJSONRPCRequestBodyBytes bounds the JSON-RPC request body the policy
-// engine will accept when resolving which A2A operation a request is for.
+// maxAgentResolvedRequestBodyBytes bounds the request body the policy engine
+// will accept on an Agent route that is resolved from its body.
 //
-// The single JSON-RPC endpoint carries its operation in the body, so that body
-// is buffered and parsed before any policy in the chain — authentication
-// included — has run. This ceiling is what bounds the unauthenticated parsing
-// work an anonymous caller can ask for on that one route. It is an acceptance
-// ceiling rather than a buffering one: Envoy has already buffered the body by
-// the time the engine checks it, and the memory a caller can make the gateway
-// hold is bounded listener-wide by per_connection_buffer_limit_bytes.
+// Two kinds of route are: the single JSON-RPC endpoint, which carries its
+// operation in the body, and the two HTTP+JSON message-sending routes, whose
+// operation is fixed by the route but whose message identifiers exist nowhere
+// else. On both, the body is buffered and parsed before any policy in the
+// chain — authentication included — has run, so this ceiling is what bounds the
+// unauthenticated parsing work an anonymous caller can ask for. It is an
+// acceptance ceiling rather than a buffering one: Envoy has already buffered
+// the body by the time the engine checks it, and the memory a caller can make
+// the gateway hold is bounded listener-wide by
+// per_connection_buffer_limit_bytes.
 //
 // The value is the same boundary the managed Agent Card is capped at — 1 MiB,
 // the largest single object Kubernetes stores by default. It is deliberately
@@ -66,9 +69,26 @@ const corsPolicyName = "cors"
 // the gateway cannot carry anyway, and lowering it would only move a rejection
 // earlier without changing what an attacker can attempt.
 //
-// HTTP+JSON routes are unaffected. They identify their operation from the path
-// and buffer nothing for resolution.
-const maxAgentJSONRPCRequestBodyBytes = 1024 * 1024
+// Setting it explicitly on every body-resolved route is required, not
+// decorative: a route that resolves from its body and carries no limit falls
+// back to the engine's DefaultMaxResolverRequestBodyBytes, which is 64 KiB —
+// small enough to reject a legitimate A2A message carrying a file part.
+//
+// The other nine HTTP+JSON routes are unaffected. They identify their operation
+// and their task from the path, and buffer nothing for resolution.
+const maxAgentResolvedRequestBodyBytes = 1024 * 1024
+
+// operationResolvesFromRequestBody reports whether an HTTP+JSON route for this
+// operation is resolved from its body, and therefore needs the ceiling above.
+//
+// It mirrors carriesMessageInBody in the policy engine's a2a resolver: the
+// engine decides which routes buffer, and this decides which routes get a
+// bound, so the two must name the same operations. They cannot share a
+// constant — separate modules, and the engine's copy is internal/ — so the
+// coupling is asserted by a test instead.
+func operationResolvesFromRequestBody(operation agentproto.Operation) bool {
+	return operation == agentproto.SendMessage || operation == agentproto.SendStreamingMessage
+}
 
 // AgentTransformer turns a stored Agent (A2A) artifact into a RuntimeDeployConfig.
 //
@@ -375,7 +395,7 @@ func (t *AgentTransformer) Transform(cfg *models.StoredConfig) (*models.RuntimeD
 					Timeout:             agentRouteTimeout(nil, agentTimeout, agentIdleTimeout, true),
 					ResolverName:        agentproto.ResolverName,
 					ResolverConfig:      resolverConfig,
-					MaxRequestBodyBytes: maxAgentJSONRPCRequestBodyBytes,
+					MaxRequestBodyBytes: maxAgentResolvedRequestBodyBytes,
 				}); err != nil {
 					return nil, err
 				}
@@ -396,28 +416,37 @@ func (t *AgentTransformer) Transform(cfg *models.StoredConfig) (*models.RuntimeD
 						return nil, fmt.Errorf("A2A %s defines no HTTP+JSON binding for operation %q",
 							protocolVersion, operation)
 					}
-					// The operation is known from the route, so the resolver
-					// answers statically and this route also carries no
-					// canonical chain key.
+					// The operation is known from the route, so this route
+					// carries no canonical chain key. Most such routes resolve
+					// statically; the two message-sending ones read the body for
+					// the message identifiers it alone carries.
 					resolverConfig, err := agentResolverConfig(protocolVersion, agentproto.TransportHTTPJSON, operation)
 					if err != nil {
 						return nil, err
 					}
 					timeout := agentRouteTimeout(
 						perOperationResilience[operation], agentTimeout, agentIdleTimeout, isStreamingOperation(operation))
+					// A body-resolved route with no explicit ceiling inherits the
+					// engine's 64 KiB default, which would reject a legitimate
+					// message carrying a file part.
+					var maxRequestBodyBytes int64
+					if operationResolvesFromRequestBody(operation) {
+						maxRequestBodyBytes = maxAgentResolvedRequestBodyBytes
+					}
 					for _, binding := range bindings {
 						path := config.JoinAgentPath(transport.basePath, binding.PathTemplate)
 						// The transport prefix plus the protocol's own path.
 						// Both reach the upstream; only spec.context does not.
 						operationPath := config.JoinAgentPath(transport.relativePath, binding.PathTemplate)
 						if _, err := addRoute(&models.Route{
-							Method:         binding.Method,
-							Path:           path,
-							OperationPath:  operationPath,
-							PathMatchType:  "Exact",
-							Timeout:        timeout,
-							ResolverName:   agentproto.ResolverName,
-							ResolverConfig: resolverConfig,
+							Method:              binding.Method,
+							Path:                path,
+							OperationPath:       operationPath,
+							PathMatchType:       "Exact",
+							Timeout:             timeout,
+							ResolverName:        agentproto.ResolverName,
+							ResolverConfig:      resolverConfig,
+							MaxRequestBodyBytes: maxRequestBodyBytes,
 						}); err != nil {
 							return nil, err
 						}
