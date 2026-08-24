@@ -68,6 +68,8 @@ client_auth_method       = '{{ env "APIP_ACP_AUTH_OIDC_CLIENT_AUTH_METHOD" "clie
 # Must equal the IdP-registered redirect URI, pointing at /api/auth/callback.
 redirect_url             = '{{ env "APIP_ACP_AUTH_OIDC_REDIRECT_URL" "" }}'
 post_logout_redirect_url = '{{ env "APIP_ACP_AUTH_OIDC_POST_LOGOUT_REDIRECT_URL" "" }}'
+# Optional RFC 8707 resource indicator for the upstream API audience.
+resource                 = '{{ env "APIP_ACP_AUTH_OIDC_RESOURCE" "" }}'
 # No `scope` key here on purpose: Load overlays this file's parsed keys onto
 # defaultConfig() unconditionally (mapstructure decode, not an omitempty-aware
 # merge), so a present-but-empty key would silently blank out the built-in

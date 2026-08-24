@@ -137,8 +137,8 @@ type UpstreamConfig struct {
 // the cookie attributes the browser receives it under.
 type SessionConfig struct {
 	Store       string        `koanf:"store"`        // "memory" (default) | "redis" (future)
-	IdleTimeout time.Duration `koanf:"idle_timeout"`  // sliding idle window
-	AbsoluteTTL time.Duration `koanf:"absolute_ttl"`  // hard cap regardless of activity / token exp
+	IdleTimeout time.Duration `koanf:"idle_timeout"` // sliding idle window
+	AbsoluteTTL time.Duration `koanf:"absolute_ttl"` // hard cap regardless of activity / token exp
 	Cookie      CookieConfig  `koanf:"cookie"`
 }
 
@@ -205,6 +205,10 @@ type OIDCConfig struct {
 	RedirectURL           string `koanf:"redirect_url"` // must equal the IDP-registered redirect, points at /api/auth/callback
 	PostLogoutRedirectURL string `koanf:"post_logout_redirect_url"`
 	Scopes                string `koanf:"scope"` // space-separated
+	// Resource is an optional RFC 8707 resource indicator. When set, it is sent
+	// during authorization, code exchange, and refresh so the IdP issues an
+	// access token for the intended upstream API.
+	Resource string `koanf:"resource"`
 }
 
 // ClaimMappingConfig is [api_control_plane.auth.claim_mappings]: which claim

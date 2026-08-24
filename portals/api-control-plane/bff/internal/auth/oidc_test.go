@@ -58,6 +58,7 @@ func baseOpts(srv *httptest.Server) OIDCOptions {
 		ClientAuthMethod: "client_secret_post",
 		RedirectURL:      "https://console.example.com/api/auth/callback",
 		Scopes:           "openid profile email",
+		Resource:         "https://api.example.com",
 	}
 }
 
@@ -87,6 +88,9 @@ func TestOIDC_AuthCodeURL_ContainsRequiredParams(t *testing.T) {
 		if q.Get(key) == "" {
 			t.Errorf("authorize URL missing %q", key)
 		}
+	}
+	if got := q.Get("resource"); got != "https://api.example.com" {
+		t.Errorf("authorize URL resource = %q, want https://api.example.com", got)
 	}
 	if q.Get("code_challenge_method") != "S256" {
 		t.Errorf("code_challenge_method = %q, want S256", q.Get("code_challenge_method"))
@@ -154,11 +158,13 @@ func TestOIDC_Callback_NonceMismatch(t *testing.T) {
 
 func TestOIDC_Callback_Success(t *testing.T) {
 	var gotVerifier string
+	var gotResource string
 	srv := idpServer(t, func(w http.ResponseWriter, r *http.Request) {
 		if err := r.ParseForm(); err != nil {
 			t.Fatalf("parse form: %v", err)
 		}
 		gotVerifier = r.PostForm.Get("code_verifier")
+		gotResource = r.PostForm.Get("resource")
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(map[string]any{
 			"access_token":  makeJWT(map[string]any{"sub": "u1", "username": "alice"}),
@@ -196,6 +202,9 @@ func TestOIDC_Callback_Success(t *testing.T) {
 	}
 	if gotVerifier == "" {
 		t.Error("expected a non-empty PKCE code_verifier sent to the token endpoint")
+	}
+	if gotResource != "https://api.example.com" {
+		t.Errorf("token endpoint resource = %q, want https://api.example.com", gotResource)
 	}
 
 	// A replayed txID must fail — transactions are single-use.
