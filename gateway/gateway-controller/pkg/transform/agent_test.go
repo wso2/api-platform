@@ -471,16 +471,51 @@ func TestAgentTransportsShareOneOperationChain(t *testing.T) {
 		chainkey.For(testAgentUUID, "main.local", string(agentproto.SendMessage)))
 }
 
-// The JSON-RPC route buffers its body before any policy runs, so it is the one
-// route with an explicit acceptance ceiling on it.
-func TestAgentJSONRPCRouteBoundsTheRequestBody(t *testing.T) {
+// Every route that is resolved from its body buffers before any policy runs, so
+// every one of them carries an explicit acceptance ceiling — and the routes that
+// resolve from the path carry none, because they buffer nothing.
+//
+// The ceiling is not optional on a body-resolved route: without it the engine
+// applies its 64 KiB default, which would reject a legitimate message carrying a
+// file part.
+func TestAgentBodyResolvedRoutesBoundTheRequestBody(t *testing.T) {
 	rdc, err := agentTransformer().Transform(testAgent())
 	require.NoError(t, err)
 
-	assert.Equal(t, int64(maxAgentJSONRPCRequestBodyBytes),
-		rdc.Routes["POST|/weather/rpc|main.local"].MaxRequestBodyBytes)
-	assert.Zero(t, rdc.Routes["POST|/weather/message:send|main.local"].MaxRequestBodyBytes,
-		"an HTTP+JSON route buffers nothing for resolution")
+	bounded := []string{
+		// The operation itself is in the body.
+		"POST|/weather/rpc|main.local",
+		// The operation is in the route, but the message identifiers are not.
+		"POST|/weather/message:send|main.local",
+		"POST|/weather/message:stream|main.local",
+	}
+	for _, routeKey := range bounded {
+		route, ok := rdc.Routes[routeKey]
+		require.True(t, ok, "expected route %s", routeKey)
+		assert.Equal(t, int64(maxAgentResolvedRequestBodyBytes), route.MaxRequestBodyBytes, routeKey)
+	}
+
+	assert.Zero(t, rdc.Routes["GET|/weather/tasks/{id}|main.local"].MaxRequestBodyBytes,
+		"an operation addressed through the path buffers nothing for resolution")
+}
+
+// The controller decides which routes get a ceiling; the engine decides which
+// routes buffer. They are separate modules and cannot share a constant, so the
+// set must be asserted from the protocol table rather than assumed to match.
+func TestAgentBodyResolvedOperationsAreExactlyTheMessageSendingOnes(t *testing.T) {
+	operations, ok := agentproto.Operations(agentproto.V1_0)
+	require.True(t, ok)
+
+	var bodyResolved []agentproto.Operation
+	for _, operation := range operations {
+		if operationResolvesFromRequestBody(operation) {
+			bodyResolved = append(bodyResolved, operation)
+		}
+	}
+	assert.Equal(t, []agentproto.Operation{
+		agentproto.SendMessage,
+		agentproto.SendStreamingMessage,
+	}, bodyResolved, "must match carriesMessageInBody in the policy engine's a2a resolver")
 }
 
 func TestAgentRejectsUnsupportedProtocolVersion(t *testing.T) {
