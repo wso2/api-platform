@@ -56,6 +56,11 @@ Base URLs:
 - [Get Agent by id](agent-management.md#get-agent-by-id)
 - [Update an existing Agent](agent-management.md#update-an-existing-agent)
 - [Delete an Agent](agent-management.md#delete-an-agent)
+- [Create a new API key for an Agent](agent-management.md#create-a-new-api-key-for-an-agent)
+- [Get the list of API keys for an Agent](agent-management.md#get-the-list-of-api-keys-for-an-agent)
+- [Regenerate API key for an Agent](agent-management.md#regenerate-api-key-for-an-agent)
+- [Update an API key for an Agent](agent-management.md#update-an-api-key-for-an-agent)
+- [Revoke an API key for an Agent](agent-management.md#revoke-an-api-key-for-an-agent)
 
 ### [Certificate Management](certificate-management.md)
 

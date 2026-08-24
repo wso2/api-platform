@@ -25,6 +25,7 @@ import (
 	"io"
 	"log/slog"
 	"net/http"
+	"strings"
 	"time"
 
 	api "github.com/wso2/api-platform/gateway/gateway-controller/pkg/api/management"
@@ -33,6 +34,7 @@ import (
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/models"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/service/agent"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/storage"
+	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/utils"
 	"github.com/wso2/go-httpkit/httputil"
 )
 
@@ -237,6 +239,218 @@ func (h *AgentHandler) DeleteAgent(w http.ResponseWriter, r *http.Request, id st
 		"message": "Agent deleted successfully",
 		"id":      id,
 	})
+}
+
+// The five API key handlers below hang off APIServer rather than AgentHandler:
+// the shared APIKeyService lives there, and every other kind's key handlers are
+// APIServer methods too. Agent keys reuse the existing key schemas, storage,
+// xDS and `api-key-auth` enforcement unchanged — the only Agent-specific part
+// is `Kind: models.KindAgent`, which selects the artifact the handle resolves
+// against. Omitting it is not an error: the service defaults an empty Kind to
+// KindRestApi and would silently operate on a RestAPI with the same handle.
+
+// CreateAgentAPIKey implements ServerInterface.CreateAgentAPIKey
+// (POST /agents/{id}/api-keys)
+func (s *APIServer) CreateAgentAPIKey(w http.ResponseWriter, r *http.Request, id string) {
+	log := middleware.GetLogger(r, s.logger)
+	handle := id
+	correlationID := middleware.GetCorrelationID(r)
+
+	user, ok := s.extractAuthenticatedUser(w, r, "CreateAgentAPIKey", correlationID)
+	if !ok {
+		return
+	}
+
+	var request api.APIKeyCreationRequest
+	if err := s.bindRequestBody(r, &request); err != nil {
+		log.Error("Failed to parse request body for Agent API key creation",
+			slog.Any("error", err),
+			slog.String("handle", handle),
+			slog.String("correlation_id", correlationID))
+		httputil.WriteJSON(w, http.StatusBadRequest, api.ErrorResponse{Status: "error", Message: fmt.Sprintf("Invalid request body: %v", err)})
+		return
+	}
+
+	params := utils.APIKeyCreationParams{
+		Kind:          models.KindAgent,
+		Handle:        handle,
+		Request:       request,
+		User:          user,
+		CorrelationID: correlationID,
+		Logger:        log,
+	}
+
+	result, err := s.apiKeyService.CreateAPIKey(params)
+	if err != nil {
+		if strings.Contains(err.Error(), "not found") {
+			httputil.WriteJSON(w, http.StatusNotFound, api.ErrorResponse{Status: "error", Message: err.Error()})
+		} else if storage.IsConflictError(err) || strings.Contains(err.Error(), "already exists") {
+			httputil.WriteJSON(w, http.StatusConflict, api.ErrorResponse{Status: "error", Message: err.Error()})
+		} else {
+			httputil.WriteJSON(w, http.StatusInternalServerError, api.ErrorResponse{Status: "error", Message: err.Error()})
+		}
+		return
+	}
+
+	httputil.WriteJSON(w, http.StatusCreated, result.Response)
+}
+
+// ListAgentAPIKeys implements ServerInterface.ListAgentAPIKeys
+// (GET /agents/{id}/api-keys)
+func (s *APIServer) ListAgentAPIKeys(w http.ResponseWriter, r *http.Request, id string) {
+	log := middleware.GetLogger(r, s.logger)
+	handle := id
+	correlationID := middleware.GetCorrelationID(r)
+
+	user, ok := s.extractAuthenticatedUser(w, r, "ListAgentAPIKeys", correlationID)
+	if !ok {
+		return
+	}
+
+	params := utils.ListAPIKeyParams{
+		Kind:          models.KindAgent,
+		Handle:        handle,
+		User:          user,
+		CorrelationID: correlationID,
+		Logger:        log,
+	}
+
+	result, err := s.apiKeyService.ListAPIKeys(params)
+	if err != nil {
+		if strings.Contains(err.Error(), "not found") {
+			httputil.WriteJSON(w, http.StatusNotFound, api.ErrorResponse{Status: "error", Message: err.Error()})
+		} else {
+			httputil.WriteJSON(w, http.StatusInternalServerError, api.ErrorResponse{Status: "error", Message: err.Error()})
+		}
+		return
+	}
+
+	httputil.WriteJSON(w, http.StatusOK, result.Response)
+}
+
+// RegenerateAgentAPIKey implements ServerInterface.RegenerateAgentAPIKey
+// (POST /agents/{id}/api-keys/{apiKeyName}/regenerate)
+func (s *APIServer) RegenerateAgentAPIKey(w http.ResponseWriter, r *http.Request, id string, apiKeyName string) {
+	log := middleware.GetLogger(r, s.logger)
+	handle := id
+	correlationID := middleware.GetCorrelationID(r)
+
+	user, ok := s.extractAuthenticatedUser(w, r, "RegenerateAgentAPIKey", correlationID)
+	if !ok {
+		return
+	}
+
+	var request api.APIKeyRegenerationRequest
+	if err := s.bindRequestBody(r, &request); err != nil {
+		httputil.WriteJSON(w, http.StatusBadRequest, api.ErrorResponse{Status: "error", Message: fmt.Sprintf("Invalid request body: %v", err)})
+		return
+	}
+
+	params := utils.APIKeyRegenerationParams{
+		Kind:          models.KindAgent,
+		Handle:        handle,
+		APIKeyName:    apiKeyName,
+		Request:       request,
+		User:          user,
+		CorrelationID: correlationID,
+		Logger:        log,
+	}
+
+	result, err := s.apiKeyService.RegenerateAPIKey(params)
+	if err != nil {
+		if strings.Contains(err.Error(), "not found") {
+			httputil.WriteJSON(w, http.StatusNotFound, api.ErrorResponse{Status: "error", Message: err.Error()})
+		} else {
+			httputil.WriteJSON(w, http.StatusInternalServerError, api.ErrorResponse{Status: "error", Message: err.Error()})
+		}
+		return
+	}
+
+	httputil.WriteJSON(w, http.StatusOK, result.Response)
+}
+
+// UpdateAgentAPIKey implements ServerInterface.UpdateAgentAPIKey
+// (PUT /agents/{id}/api-keys/{apiKeyName})
+func (s *APIServer) UpdateAgentAPIKey(w http.ResponseWriter, r *http.Request, id string, apiKeyName string) {
+	log := middleware.GetLogger(r, s.logger)
+	handle := id
+	correlationID := middleware.GetCorrelationID(r)
+
+	user, ok := s.extractAuthenticatedUser(w, r, "UpdateAgentAPIKey", correlationID)
+	if !ok {
+		return
+	}
+
+	var request api.APIKeyCreationRequest
+	if err := s.bindRequestBody(r, &request); err != nil {
+		httputil.WriteJSON(w, http.StatusBadRequest, api.ErrorResponse{Status: "error", Message: fmt.Sprintf("Invalid request body: %v", err)})
+		return
+	}
+
+	if request.ApiKey == nil || strings.TrimSpace(*request.ApiKey) == "" {
+		httputil.WriteJSON(w, http.StatusBadRequest, api.ErrorResponse{Status: "error", Message: "apiKey is required"})
+		return
+	}
+
+	params := utils.APIKeyUpdateParams{
+		Kind:          models.KindAgent,
+		Handle:        handle,
+		APIKeyName:    apiKeyName,
+		Request:       request,
+		User:          user,
+		CorrelationID: correlationID,
+		Logger:        log,
+	}
+
+	result, err := s.apiKeyService.UpdateAPIKey(params)
+	if err != nil {
+		if storage.IsOperationNotAllowedError(err) {
+			httputil.WriteJSON(w, http.StatusBadRequest, api.ErrorResponse{Status: "error", Message: err.Error()})
+		} else if strings.Contains(err.Error(), "not found") {
+			httputil.WriteJSON(w, http.StatusNotFound, api.ErrorResponse{Status: "error", Message: err.Error()})
+		} else if storage.IsConflictError(err) || strings.Contains(err.Error(), "already exists") {
+			httputil.WriteJSON(w, http.StatusConflict, api.ErrorResponse{Status: "error", Message: err.Error()})
+		} else {
+			httputil.WriteJSON(w, http.StatusInternalServerError, api.ErrorResponse{Status: "error", Message: err.Error()})
+		}
+		return
+	}
+
+	httputil.WriteJSON(w, http.StatusOK, result.Response)
+}
+
+// RevokeAgentAPIKey implements ServerInterface.RevokeAgentAPIKey
+// (DELETE /agents/{id}/api-keys/{apiKeyName})
+func (s *APIServer) RevokeAgentAPIKey(w http.ResponseWriter, r *http.Request, id string, apiKeyName string) {
+	log := middleware.GetLogger(r, s.logger)
+	handle := id
+	correlationID := middleware.GetCorrelationID(r)
+
+	user, ok := s.extractAuthenticatedUser(w, r, "RevokeAgentAPIKey", correlationID)
+	if !ok {
+		return
+	}
+
+	params := utils.APIKeyRevocationParams{
+		Kind:          models.KindAgent,
+		Handle:        handle,
+		APIKeyName:    apiKeyName,
+		User:          user,
+		CorrelationID: correlationID,
+		Logger:        log,
+	}
+
+	result, err := s.apiKeyService.RevokeAPIKey(params)
+	if err != nil {
+		if strings.Contains(err.Error(), "not found") {
+			httputil.WriteJSON(w, http.StatusNotFound, api.ErrorResponse{Status: "error", Message: err.Error()})
+		} else {
+			httputil.WriteJSON(w, http.StatusInternalServerError, api.ErrorResponse{Status: "error", Message: err.Error()})
+		}
+		return
+	}
+
+	httputil.WriteJSON(w, http.StatusOK, result.Response)
 }
 
 // buildAgentResponse renders one stored Agent as a management API response body,
