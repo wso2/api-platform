@@ -225,7 +225,50 @@ type Resolution struct {
 	// Empty means the resolver could not identify anything to bind to, which is
 	// rejected as FailureInvalidRequest.
 	ChainKey string
+
+	// Attributes are protocol-derived facts about this request — an A2A message's
+	// contextId, an MCP tool's arguments digest — carried forward for telemetry and
+	// as policy input.
+	//
+	// They exist so the request payload is parsed once. A resolver on a multiplexed
+	// transport has already decoded the body to find the operation; without somewhere
+	// to put what else it saw, every later consumer re-parses the same bytes (the
+	// analytics policy alone unmarshals an MCP request body twice today). They are
+	// also the only way a value from the body can reach a *header-phase* policy:
+	// RequestHeaderContext carries no body, so anything a header-phase policy needs
+	// must have been extracted before the chain ran.
+	//
+	// They select nothing. Bind never reads them, they take no part in key
+	// validation, and BoundResolution.Operation stays derived from ChainKey — so
+	// nothing in here can influence which chain executes, and a resolver cannot use
+	// them to claim one operation while another's policies run.
+	//
+	// Values are attacker-controlled in the general case: they come out of a request
+	// body. ValidateResolution enforces MaxResolutionAttributes and
+	// MaxResolutionAttributeValueBytes as a backstop, but a resolver is expected to
+	// cap and drop its own values rather than rely on that — tripping the backstop is
+	// a resolver bug, not a request outcome.
+	//
+	// Read-only for consumers. A StaticPreparedResolver builds its resolution once at
+	// ingest, so its map is shared by every request on that route; mutating what
+	// arrives here would leak one request's data into the next.
+	Attributes map[string]string
 }
+
+// Limits on Resolution.Attributes.
+//
+// A resolver runs before authentication on a body-resolved route, so anything it
+// retains is retained on behalf of an unauthenticated caller. These are deliberately
+// small: the field is for a handful of identifiers, not for slicing up the payload.
+const (
+	// MaxResolutionAttributes bounds how many attributes one resolution may carry.
+	MaxResolutionAttributes = 8
+
+	// MaxResolutionAttributeValueBytes bounds a single attribute value. Identifiers
+	// in the protocols this serves are UUID-shaped; anything far larger is a caller
+	// stuffing the field rather than naming something.
+	MaxResolutionAttributeValueBytes = 256
+)
 
 // BoundResolution is the outcome of binding a resolution to a chain that exists.
 type BoundResolution struct {
@@ -241,6 +284,13 @@ type BoundResolution struct {
 	// Empty for a direct route: there the route determined the chain, so the resolver
 	// identified no operation, and the chain key is already on the span.
 	Operation string
+
+	// Attributes are the resolution's protocol-derived request facts, carried through
+	// unchanged. Unlike Operation they are not derived from anything — there is
+	// nothing to derive them from — so they are passed on exactly as the resolver
+	// produced them, after ValidateResolution has bounded them. Nil for a direct
+	// route, which inspected no request.
+	Attributes map[string]string
 }
 
 // FailureKind classifies why resolution failed, so the kernel can pick a status and
