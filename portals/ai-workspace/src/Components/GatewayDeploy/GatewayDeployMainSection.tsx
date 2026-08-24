@@ -45,7 +45,8 @@ interface GatewayDeployMainSectionProps {
 export default function GatewayDeployMainSection({
   showConfigureOption = true,
 }: GatewayDeployMainSectionProps = {}) {
-  const { gateways, isLoading, error, canDeploy } = useGatewayDeploy();
+  const { gateways, isLoading, error, canDeploy, canViewDeployments } =
+    useGatewayDeploy();
   const { currentOrganization } = useAppShell();
   const [searchQuery, setSearchQuery] = useState('');
   const [configDrawerOpen, setConfigDrawerOpen] = useState(false);
@@ -80,6 +81,22 @@ export default function GatewayDeployMainSection({
     return (
       <Box sx={{ p: 3 }}>
         <Typography color="error">Failed to load gateways.</Typography>
+      </Box>
+    );
+  }
+
+  // Without the deployment-read scope the gateway list is empty by design, not
+  // because the organization has no gateways — say so instead of inviting the
+  // user to create one they wouldn't be able to deploy to or even see.
+  if (!canViewDeployments) {
+    return (
+      <Box sx={{ mt: 2 }}>
+        <Alert severity="info">
+          <FormattedMessage
+            id="aiWorkspace.components.GatewayDeploy.GatewayDeployMainSection.no.deployment.read.access"
+            defaultMessage="You do not have access to view deployments for this artifact. Please contact your admin."
+          />
+        </Alert>
       </Box>
     );
   }

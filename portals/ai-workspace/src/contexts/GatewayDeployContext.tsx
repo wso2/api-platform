@@ -189,6 +189,8 @@ interface GatewayDeployContextValue {
   canDeploy: boolean;
   /** True when the user holds the deployment-read scope for this resource kind. */
   canViewDeployments: boolean;
+  /** True when the user holds the deployment-delete scope for this resource kind. */
+  canDelete: boolean;
 }
 
 const GatewayDeployContext = createContext<GatewayDeployContextValue | null>(
@@ -222,6 +224,7 @@ export function GatewayDeployProvider({
   // viewer sees the same read-only deploy surface as a gateway-owned artifact.
   const canViewDeployments = hasPermission(DEPLOYMENT_SCOPES[resourceType].read);
   const canDeploy = hasPermission(DEPLOYMENT_SCOPES[resourceType].create);
+  const canDelete = hasPermission(DEPLOYMENT_SCOPES[resourceType].delete);
   const isReadOnly = readOnly || !canDeploy;
 
   const [gateways, setGateways] = useState<HybridGateway[]>([]);
@@ -258,6 +261,11 @@ export function GatewayDeployProvider({
 
   const fetchSingleDeploymentStatus = useCallback(
     async (deploymentId: string): Promise<DeploymentResponse> => {
+      // No deployment-read scope means no readable status; fail the read here
+      // rather than issuing a call that can only 403.
+      if (!canViewDeployments) {
+        throw new Error('Not permitted to read deployment status');
+      }
       if (resourceType === 'proxy') {
         return getLLMProxyDeployment(apiId, deploymentId, organizationId, PLATFORM_API_BASE_URL);
       } else if (resourceType === 'mcp-server') {
@@ -265,7 +273,7 @@ export function GatewayDeployProvider({
       }
       return getLLMProviderDeployment(apiId, deploymentId, organizationId, PLATFORM_API_BASE_URL);
     },
-    [apiId, organizationId, resourceType]
+    [apiId, organizationId, resourceType, canViewDeployments]
   );
 
   /**
@@ -351,6 +359,10 @@ export function GatewayDeployProvider({
   const refetchDeployments = useCallback(async () => {
     if (!apiId || !organizationId || !canViewDeployments) {
       setDeployments(null);
+      // Drop any in-flight status watches: without the read scope every poll
+      // would only 403, so stop them instead of retrying until they expire.
+      setPollingDeployments((prev) => (prev.size === 0 ? prev : new Map()));
+      setTimedOutDeployments((prev) => (prev.size === 0 ? prev : new Set()));
       return;
     }
     setIsLoadingDeployments(true);
@@ -449,7 +461,7 @@ export function GatewayDeployProvider({
    * poll window expires.
    */
   useEffect(() => {
-    if (pollingDeployments.size === 0) return;
+    if (pollingDeployments.size === 0 || !canViewDeployments) return;
 
     let cancelled = false;
 
@@ -522,7 +534,12 @@ export function GatewayDeployProvider({
       cancelled = true;
       clearInterval(intervalId);
     };
-  }, [pollingDeployments, fetchSingleDeploymentStatus, refetchDeployments]);
+  }, [
+    pollingDeployments,
+    fetchSingleDeploymentStatus,
+    refetchDeployments,
+    canViewDeployments,
+  ]);
 
   const deployToGateway = useCallback(
     async (gatewayId: string, host: string): Promise<boolean> => {
@@ -754,6 +771,12 @@ export function GatewayDeployProvider({
   const deleteDeployment = useCallback(
     async (deploymentId: string): Promise<boolean> => {
       if (!apiId || !organizationId || !deploymentId) return false;
+      if (!canDelete) {
+        logger.warn(
+          'Deployment delete blocked: missing deployment-delete scope.'
+        );
+        return false;
+      }
 
       // Block deletion when deployment is DEPLOYED
       const deployment = deployments?.list.find(
@@ -803,7 +826,14 @@ export function GatewayDeployProvider({
         return false;
       }
     },
-    [apiId, organizationId, deployments, refetchDeployments, resourceType]
+    [
+      apiId,
+      organizationId,
+      deployments,
+      refetchDeployments,
+      resourceType,
+      canDelete,
+    ]
   );
 
   const value = useMemo<GatewayDeployContextValue>(
@@ -826,6 +856,7 @@ export function GatewayDeployProvider({
       readOnly: isReadOnly,
       canDeploy,
       canViewDeployments,
+      canDelete,
     }),
     [
       gateways,
@@ -846,6 +877,7 @@ export function GatewayDeployProvider({
       isReadOnly,
       canDeploy,
       canViewDeployments,
+      canDelete,
     ]
   );
 

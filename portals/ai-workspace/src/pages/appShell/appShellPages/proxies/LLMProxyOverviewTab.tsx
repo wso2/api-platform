@@ -134,6 +134,7 @@ export default function LLMProxyOverviewTab() {
   // available even for gateway-created (read-only) proxies.
   const isReadOnlyProxy = false;
   const { hasPermission } = useAppAuth();
+  const canReadProxyApiKey = hasPermission(SCOPES.LLM_PROXY_API_KEY_READ);
   const canCreateProxyApiKey = hasPermission(SCOPES.LLM_PROXY_API_KEY_CREATE);
   const canDeleteProxyApiKey = hasPermission(SCOPES.LLM_PROXY_API_KEY_DELETE);
   const canViewProxyDeployments = hasPermission(
@@ -337,7 +338,9 @@ export default function LLMProxyOverviewTab() {
   useEffect(() => {
     const organizationId = currentOrganization?.uuid;
     const proxyId = proxy?.id;
-    if (!organizationId || !proxyId) {
+    // Without the api-key read scope the list request can only 403, which would
+    // surface as a failure snackbar rather than as a permission boundary.
+    if (!organizationId || !proxyId || !canReadProxyApiKey) {
       fetchedApiKeysProxyIdRef.current = null;
       fetchingApiKeysProxyIdRef.current = null;
       setApiKeys([]);
@@ -387,7 +390,13 @@ export default function LLMProxyOverviewTab() {
         setKeysLoading(false);
       }
     };
-  }, [currentOrganization?.uuid, getProxyAPIKeys, proxy?.id, showSnackbar]);
+  }, [
+    currentOrganization?.uuid,
+    getProxyAPIKeys,
+    proxy?.id,
+    showSnackbar,
+    canReadProxyApiKey,
+  ]);
 
   const handleCopyGatewayUrl = async () => {
     if (!generatedGatewayUrl) return;
@@ -401,7 +410,8 @@ export default function LLMProxyOverviewTab() {
   };
 
   const handleGenerateAPIKey = async () => {
-    if (isReadOnlyProxy) return;
+    // Re-checked at submit time: the dialog can be open across a permission change.
+    if (isReadOnlyProxy || !canCreateProxyApiKey) return;
     if (!currentOrganization?.uuid || !proxy?.id) {
       return;
     }
@@ -491,7 +501,8 @@ export default function LLMProxyOverviewTab() {
   };
 
   const handleDeleteApiKey = async () => {
-    if (isReadOnlyProxy || !deleteTargetKeyName || !proxy?.id) {
+    // Re-checked at submit time: the dialog can be open across a permission change.
+    if (isReadOnlyProxy || !canDeleteProxyApiKey || !deleteTargetKeyName || !proxy?.id) {
       return;
     }
 
@@ -1006,6 +1017,7 @@ export default function LLMProxyOverviewTab() {
                 }}
                 disabled={
                   isReadOnlyProxy ||
+                  !canCreateProxyApiKey ||
                   generatingKey ||
                   !apiKeyDisplayName.trim()
                 }
@@ -1056,7 +1068,7 @@ export default function LLMProxyOverviewTab() {
             onClick={() => {
               void handleDeleteApiKey();
             }}
-            disabled={isDeletingKey}
+            disabled={isDeletingKey || !canDeleteProxyApiKey}
           >
             {isDeletingKey ? (
               <>
