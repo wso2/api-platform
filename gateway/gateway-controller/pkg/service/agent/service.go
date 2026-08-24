@@ -553,11 +553,16 @@ func (s *AgentService) validateArtifactConflicts(currentID, displayName, version
 
 // publishEvent announces the change so every replica converges through the
 // event listener, including the one that made it.
+//
+// The event type is EventTypeAgent, not EventTypeAPI: the Agent lane needs its
+// own coercion step and has no API-key or subscription handling, so sharing the
+// API dispatch would mean the shared processor either grew Agent branches or
+// silently skipped them.
 func (s *AgentService) publishEvent(action, entityID, correlationID string, logger *slog.Logger) {
 	event := eventhub.Event{
 		GatewayID:           s.gatewayID,
 		OriginatedTimestamp: time.Now(),
-		EventType:           eventhub.EventTypeAPI,
+		EventType:           eventhub.EventTypeAgent,
 		Action:              action,
 		EntityID:            entityID,
 		EventID:             correlationID,
