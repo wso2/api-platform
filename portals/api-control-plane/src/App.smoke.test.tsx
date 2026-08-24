@@ -19,7 +19,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { AppRoutes } from './routes/AppRoutes';
-import { aProject, collection } from './test/msw';
+import { anOrganization, aProject, collection, resource } from './test/msw';
 import { authStatePresets } from './test/mockAuthState';
 import { server } from './test/server';
 import { renderWithProviders, screen } from './test/utils';
@@ -29,10 +29,26 @@ import { renderWithProviders, screen } from './test/utils';
 // mode so the scope queries resolve from fixtures with no network. This is a
 // thin guardrail that catches provider-wiring regressions, not deep assertions.
 describe('App smoke (mock mode, authenticated)', () => {
-  beforeEach(() => vi.stubEnv('VITE_USE_MOCK_API', 'true'));
+  // The scope and page hooks always go to the real transport —
+  // `VITE_USE_MOCK_API` only governs the legacy client — so the organization
+  // endpoints the shell resolves its scope from are stubbed at the network
+  // layer for every test here.
+  const org = anOrganization({
+    id: 'api-platform-demo',
+    displayName: 'API Platform Demo',
+  });
+
+  beforeEach(() => {
+    vi.stubEnv('VITE_USE_MOCK_API', 'true');
+    server.use(
+      collection('/organizations', [org]),
+      resource('/organizations/:organizationId', org)
+    );
+  });
   afterEach(() => vi.unstubAllEnvs());
 
   it('renders the org home through the full app shell', async () => {
+    server.use(collection('/projects', []));
     renderWithProviders(<AppRoutes />, {
       route: '/organizations/api-platform-demo/home',
       authState: authStatePresets.authenticated(),
@@ -47,9 +63,6 @@ describe('App smoke (mock mode, authenticated)', () => {
   });
 
   it('navigates to the projects list and renders project cards', async () => {
-    // The project list reads through the resource hooks, which always go to the
-    // real transport — `VITE_USE_MOCK_API` only governs the legacy client, so
-    // these endpoints are stubbed at the network layer instead.
     server.use(
       collection('/projects', [
         aProject({ id: 'retail', displayName: 'Retail APIs' }),

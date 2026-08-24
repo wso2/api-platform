@@ -19,7 +19,9 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { AppRoutes } from './AppRoutes';
+import { anOrganization, aProject, collection, resource } from '../test/msw';
 import { authStatePresets } from '../test/mockAuthState';
+import { server } from '../test/server';
 import { renderWithProviders, screen } from '../test/utils';
 
 // Covers the org-level Settings page (mirrors ai-workspace, which mounts the
@@ -28,10 +30,28 @@ import { renderWithProviders, screen } from '../test/utils';
 // time — organization-level while browsing the org, project-level once a
 // project is selected — never both at once.
 describe('Org-level Settings', () => {
-  beforeEach(() => vi.stubEnv('VITE_USE_MOCK_API', 'true'));
+  // The scope hooks always go to the real transport — `VITE_USE_MOCK_API` only
+  // governs the legacy client — so the endpoints `ConsoleScopeProvider` resolves
+  // the org and project from are stubbed at the network layer.
+  const org = anOrganization({
+    id: 'api-platform-demo',
+    displayName: 'API Platform Demo',
+  });
+  const project = aProject({ id: 'retail-apis', displayName: 'Retail APIs' });
+
+  beforeEach(() => {
+    vi.stubEnv('VITE_USE_MOCK_API', 'true');
+    server.use(
+      collection('/organizations', [org]),
+      resource('/organizations/:organizationId', org),
+      collection('/projects', [project]),
+      resource('/projects/:projectId', project),
+      collection('/rest-apis', [])
+    );
+  });
   afterEach(() => vi.unstubAllEnvs());
 
-  it('redirects /settings to /settings/general at the org level', async () => {
+  it('names the organization on the org-level Settings page', async () => {
     renderWithProviders(<AppRoutes />, {
       route: '/organizations/api-platform-demo/settings',
       authState: authStatePresets.authenticated(),
