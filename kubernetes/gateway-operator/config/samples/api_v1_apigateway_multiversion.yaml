@@ -1,0 +1,130 @@
+# API Gateway version example — default-tracking vs pinned.
+#
+# Two API Gateways managed by ONE operator:
+#   - gw-default  -> no image tag pinned; inherits the operator default version
+#                    (GATEWAY_HELM_VALUES_FILE_PATH) at (re)deploy time. An
+#                    EXISTING gateway does NOT auto-move when the default changes
+#                    — bump its APIGateway generation to pick up a new default.
+#   - gw-121      -> pins gateway-controller/gateway-runtime 1.2.1 via its own
+#                    configRef, independent of the operator default.
+#
+# How it works: the operator deep-merges each gateway's configRef ConfigMap
+# (`values.yaml`) as the HIGHEST-priority overlay on top of its default
+# gateway values, so a ConfigMap containing only a few keys overrides just
+# those and inherits everything else. Value precedence (highest wins):
+#   configRef ConfigMap  >  spec.infrastructure labels/annotations  >
+#   operator default (/config/gateway_values.yaml)  >  chart built-in values
+# gw-default omits image.repository/tag -> inherits the default version;
+# gw-121 sets them -> stays on 1.2.1 regardless of the default.
+#
+# NOTE: The typed spec.infrastructure.image / routerImage fields are NOT wired
+#       into the deployment yet (tracked in wso2/api-platform#3287) — set the
+#       version via the configRef ConfigMap keys below
+#       (gateway.controller.image.* / gateway.gatewayRuntime.image.*).
+#
+# MANDATORY at-rest encryption: the gateway-controller requires an AES-256 key
+# and the chart REFUSES TO RENDER without it (there is no dev bypass). This
+# sample sets encryptionKeys.enabled=true per gateway; the SECRET NAME is
+# inherited from the operator default (GATEWAY_HELM_VALUES_FILE_PATH), which
+# must set gateway.controller.encryptionKeys.secretName — enable it globally
+# per the operator DEBUG_GUIDE. Each gateway still needs that Secret IN ITS
+# OWN NAMESPACE (see APPLY step 2 below; the Secret name must match the global
+# secretName, gateway-encryption-keys here).
+#
+# ---------------------------------------------------------------------------
+# APPLY (order matters — create namespaces + Secrets BEFORE the APIGateways;
+# the operator ignores ConfigMap/Secret *create* events):
+#
+#   # 1. Namespaces
+#   kubectl create namespace gw-default
+#   kubectl create namespace gw-121
+#
+#   # 2. Mandatory AES-256 encryption key Secret, one per namespace.
+#   #    mktemp gives a unique owner-only (mode 600) file; the secret's data key
+#   #    stays default-aesgcm256-v1.bin (the filename the chart mounts).
+#   keyfile="$(mktemp)"; trap 'rm -f "$keyfile"' EXIT
+#   for ns in gw-default gw-121; do
+#     openssl rand 32 > "$keyfile"
+#     kubectl create secret generic gateway-encryption-keys \
+#       --from-file=default-aesgcm256-v1.bin="$keyfile" -n "$ns"
+#   done
+#   rm -f "$keyfile"; trap - EXIT
+#
+#   # 3. ConfigMaps + APIGateways (this file — namespaces already created in step 1)
+#   kubectl apply -f api_v1_apigateway_multiversion.yaml
+#
+# Verify the versions running:
+#   kubectl get pods -n gw-default -o jsonpath='{range .items[*]}{.metadata.name}{"\t"}{.spec.containers[*].image}{"\n"}{end}'
+#   kubectl get pods -n gw-121     -o jsonpath='{range .items[*]}{.metadata.name}{"\t"}{.spec.containers[*].image}{"\n"}{end}'
+#
+# Replace 1.2.1 with a tag actually published to ghcr.io/wso2/api-platform/*.
+# ---------------------------------------------------------------------------
+---
+# gw-default: no version pinned -> tracks the operator default gateway version.
+# Only cross-cutting overrides are set (pullPolicy, encryption); the image
+# repository/tag are intentionally omitted so this gateway follows the default.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: gw-default-values
+  namespace: gw-default        # MUST be the same namespace as its APIGateway
+data:
+  values.yaml: |               # the key MUST be "values.yaml"
+    gateway:
+      controller:
+        image:
+          # no repository/tag -> inherits the operator default version
+          pullPolicy: IfNotPresent
+        encryptionKeys:                       # secretName inherited from the operator default (see header)
+          enabled: true
+      gatewayRuntime:
+        image:
+          pullPolicy: IfNotPresent
+---
+# gw-121: pins 1.2.1 regardless of the operator default.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: gw-121-values
+  namespace: gw-121
+data:
+  values.yaml: |
+    gateway:
+      controller:
+        image:
+          repository: ghcr.io/wso2/api-platform/gateway-controller
+          tag: "1.2.1"
+          pullPolicy: IfNotPresent
+        encryptionKeys:
+          enabled: true
+      gatewayRuntime:
+        image:
+          repository: ghcr.io/wso2/api-platform/gateway-runtime
+          tag: "1.2.1"
+          pullPolicy: IfNotPresent
+---
+apiVersion: gateway.api-platform.wso2.com/v1
+kind: APIGateway
+metadata:
+  name: gw-default
+  namespace: gw-default
+spec:
+  apiSelector:
+    scope: Namespaced          # serves RestApis in its own namespace (isolates the gateways)
+  storage:
+    type: sqlite
+  configRef:
+    name: gw-default-values    # -> tracks the operator default version
+---
+apiVersion: gateway.api-platform.wso2.com/v1
+kind: APIGateway
+metadata:
+  name: gw-121
+  namespace: gw-121
+spec:
+  apiSelector:
+    scope: Namespaced
+  storage:
+    type: sqlite
+  configRef:
+    name: gw-121-values        # -> pinned to 1.2.1

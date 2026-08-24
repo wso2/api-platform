@@ -2,8 +2,18 @@
 # since it depends on service name and namespace that are out of this kustomize package.
 # It should be run by config/default
 resources:
-- bases/gateway.api-platform.wso2.com_gateways.yaml
+- bases/gateway.api-platform.wso2.com_apigateways.yaml
+- bases/gateway.api-platform.wso2.com_apikeys.yaml
+- bases/gateway.api-platform.wso2.com_apipolicies.yaml
+- bases/gateway.api-platform.wso2.com_certificates.yaml
+- bases/gateway.api-platform.wso2.com_llmproviders.yaml
+- bases/gateway.api-platform.wso2.com_llmprovidertemplates.yaml
+- bases/gateway.api-platform.wso2.com_llmproxies.yaml
+- bases/gateway.api-platform.wso2.com_managedsecrets.yaml
+- bases/gateway.api-platform.wso2.com_mcps.yaml
 - bases/gateway.api-platform.wso2.com_restapis.yaml
+- bases/gateway.api-platform.wso2.com_subscriptionplans.yaml
+- bases/gateway.api-platform.wso2.com_subscriptions.yaml
 #+kubebuilder:scaffold:crdkustomizeresource
 
 patches:
