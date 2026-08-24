@@ -1009,12 +1009,15 @@ func findOperationPath(policy *api.OperationPolicy, path string) *api.OperationP
 
 type mockLLMProviderRepo struct {
 	repository.LLMProviderRepository
-	existsResult bool
-	countResult  int
-	getByIDFunc  func(providerID, orgUUID string) (*model.LLMProvider, error)
-	createCalled bool
-	created      *model.LLMProvider
-	updated      *model.LLMProvider
+	existsResult             bool
+	countResult              int
+	getByIDFunc              func(providerID, orgUUID string) (*model.LLMProvider, error)
+	createCalled             bool
+	created                  *model.LLMProvider
+	updated                  *model.LLMProvider
+	listByCustomPolicyItems  []*model.LLMProvider
+	countByCustomPolicyValue int
+	lastListCustomPolicyUUID string
 }
 
 func (m *mockLLMProviderRepo) Exists(providerID, orgUUID string) (bool, error) {
@@ -1049,6 +1052,15 @@ func (m *mockLLMProviderRepo) Update(p *model.LLMProvider) error {
 
 func (m *mockLLMProviderRepo) UpdateWithCustomPolicyUsages(p *model.LLMProvider, _ []string) error {
 	return m.Update(p)
+}
+
+func (m *mockLLMProviderRepo) ListByCustomPolicy(orgUUID, policyUUID string, limit, offset int) ([]*model.LLMProvider, error) {
+	m.lastListCustomPolicyUUID = policyUUID
+	return m.listByCustomPolicyItems, nil
+}
+
+func (m *mockLLMProviderRepo) CountByCustomPolicy(orgUUID, policyUUID string) (int, error) {
+	return m.countByCustomPolicyValue, nil
 }
 
 type mockLLMTemplateRepo struct {
@@ -1523,6 +1535,42 @@ func TestLLMProxyServiceListByProviderUsesProviderUUID(t *testing.T) {
 	// on handles and cannot resolve a project UUID back to one.
 	if resp.List[0].ProjectId == nil || *resp.List[0].ProjectId != "test-project" {
 		t.Fatalf("expected projectId to be the project handle, got: %v", resp.List[0].ProjectId)
+	}
+}
+
+func TestLLMProviderServiceListByCustomPolicyUsesPolicyUUID(t *testing.T) {
+	now := time.Now()
+	providerRepo := &mockLLMProviderRepo{
+		listByCustomPolicyItems: []*model.LLMProvider{{
+			UUID:      "provider-uuid",
+			ID:        "provider-1",
+			Name:      "Provider One",
+			Version:   "v1.0",
+			CreatedAt: now,
+			UpdatedAt: now,
+		}},
+		countByCustomPolicyValue: 1,
+	}
+	customPolicyRepo := &llmCustomPolicyRepo{
+		policyByID: map[string]*model.CustomPolicy{
+			"policy-uuid": {UUID: "policy-uuid", Name: "rate-limit", Version: "v1.0.0"},
+		},
+	}
+	service := NewLLMProviderService(providerRepo, nil, nil, nil, nil, nil, nil, slog.Default(), &noopAuditRepo{}, &config.Server{}, newTestIdentityService())
+	service.SetCustomPolicyRepository(customPolicyRepo)
+
+	resp, err := service.ListByCustomPolicy("org-1", "policy-uuid", 10, 0)
+	if err != nil {
+		t.Fatalf("expected no error, got: %v", err)
+	}
+	if providerRepo.lastListCustomPolicyUUID != "policy-uuid" {
+		t.Fatalf("expected list by custom policy to use policy UUID, got: %q", providerRepo.lastListCustomPolicyUUID)
+	}
+	if resp == nil || resp.Count != 1 || len(resp.List) != 1 {
+		t.Fatalf("expected one provider in response, got: %#v", resp)
+	}
+	if resp.List[0].DisplayName != "Provider One" {
+		t.Fatalf("expected provider display name to round-trip, got: %q", resp.List[0].DisplayName)
 	}
 }
 
