@@ -23,15 +23,14 @@ import (
 	"strings"
 
 	"github.com/wso2/api-platform/platform-api/internal/apperror"
+	"github.com/wso2/api-platform/platform-api/internal/constants"
 
 	"github.com/google/uuid"
 )
 
 const (
-	HandleMinLength = 3
-	HandleMaxLength = 40
-	maxRetries      = 5
-	suffixLength    = 4
+	maxRetries   = 5
+	suffixLength = 4
 )
 
 var (
@@ -74,13 +73,13 @@ func ValidateHandle(handle string) error {
 	if handle == "" {
 		return apperror.ValidationFailed.New("The id cannot be empty.")
 	}
-	if len(handle) < HandleMinLength {
+	if len(handle) < constants.HandleMinLength {
 		return apperror.ValidationFailed.New(
-			fmt.Sprintf("The id must be at least %d characters.", HandleMinLength))
+			fmt.Sprintf("The id must be at least %d characters.", constants.HandleMinLength))
 	}
-	if len(handle) > HandleMaxLength {
+	if len(handle) > constants.HandleMaxLength {
 		return apperror.ValidationFailed.New(
-			fmt.Sprintf("The id must be at most %d characters.", HandleMaxLength))
+			fmt.Sprintf("The id must be at most %d characters.", constants.HandleMaxLength))
 	}
 	if !validHandleRegex.MatchString(handle) {
 		return apperror.ValidationFailed.New("The id must be lowercase alphanumeric with hyphens only " +
@@ -125,7 +124,7 @@ func GenerateHandle(source string, existsCheck func(string) bool) (string, error
 		candidateHandle := handle
 
 		// Ensure we don't exceed max length when adding suffix
-		maxBaseLength := HandleMaxLength - suffixLength - 1 // -1 for the hyphen
+		maxBaseLength := constants.HandleMaxLength - suffixLength - 1 // -1 for the hyphen
 		if len(candidateHandle) > maxBaseLength {
 			candidateHandle = candidateHandle[:maxBaseLength]
 
@@ -163,14 +162,14 @@ func sanitizeToHandle(s string) string {
 	handle = strings.Trim(handle, "-")
 
 	// Enforce length limits
-	if len(handle) > HandleMaxLength {
-		handle = handle[:HandleMaxLength]
+	if len(handle) > constants.HandleMaxLength {
+		handle = handle[:constants.HandleMaxLength]
 		// Trim trailing hyphen if truncation created one
 		handle = strings.TrimRight(handle, "-")
 	}
 
 	// If handle is too short after sanitization, pad with random suffix
-	if len(handle) < HandleMinLength {
+	if len(handle) < constants.HandleMinLength {
 		if handle == "" {
 			handle = generateRandomSuffix() + generateRandomSuffix()
 		} else {
