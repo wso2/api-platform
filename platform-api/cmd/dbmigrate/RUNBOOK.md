@@ -7,7 +7,7 @@ database (core + EventGateway plugin). Build and run from the pinned v2 revision
 ## 0. Build
 
 ```sh
-cd /Users/renuka/git/api-platform-migration/platform-api
+cd <path-to>/platform-api        # the v2 repo root
 go build -o dbmigrate ./cmd/dbmigrate/
 ```
 
@@ -53,7 +53,7 @@ If v1 ran on the ephemeral fallback, those tokens are unrecoverable and must be 
 ```sh
 V1="postgres://postgres:admin@localhost:5432/dbv1?sslmode=disable"
 V2="postgres://postgres:admin@localhost:5433/dbv2?sslmode=disable"
-OUT=/Users/renuka/google-workspace/platform-api-migration/db-migration/migration-out
+OUT=./migration-out             # any writable dir for run artifacts (report/quarantine/flags)
 
 ./dbmigrate migrate -v1-dsn "$V1" -v2-dsn "$V2" -out-dir "$OUT" -run-id prod -dry-run
 ```

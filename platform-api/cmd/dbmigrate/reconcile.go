@@ -31,6 +31,7 @@ package main
 
 import (
 	"bufio"
+	"encoding/json"
 	"fmt"
 	"os"
 	"strings"
@@ -47,10 +48,11 @@ type keyFilter struct {
 
 type deleteKey struct{ table, key string }
 
-// loadKeyFilter parses a -only-keys file. Each non-blank, non-comment ('#') line is
-// "<op> <table> <key>" where op is "upsert" or "delete". key is the row's natural key;
-// composite keys are "|"-joined in the DeleteX argument order (documented per table in
-// dispatchDelete) — e.g. deployment_status = "<org>|<artifact>|<gateway>".
+// loadKeyFilter parses a -only-keys file. Each non-blank, non-comment ('#') line is EITHER
+// "<op> <table> <key>" OR a JSON object with op/table/key fields — so the live path's JSONL
+// failure log (dual_write.failure_log) can be fed in verbatim. op is "upsert" or "delete";
+// key is the row's natural key; composite keys are "|"-joined in the DeleteX argument order
+// (documented per table in dispatchDelete) — e.g. deployment_status = "<org>|<artifact>|<gateway>".
 func loadKeyFilter(path string) (*keyFilter, error) {
 	f, err := os.Open(path)
 	if err != nil {
@@ -60,6 +62,7 @@ func loadKeyFilter(path string) (*keyFilter, error) {
 
 	kf := &keyFilter{upserts: map[string]map[string]bool{}}
 	sc := bufio.NewScanner(f)
+	sc.Buffer(make([]byte, 0, 64*1024), 1024*1024) // JSONL failure lines can be long (error text)
 	lineNo := 0
 	for sc.Scan() {
 		lineNo++
@@ -67,11 +70,27 @@ func loadKeyFilter(path string) (*keyFilter, error) {
 		if text == "" || strings.HasPrefix(text, "#") {
 			continue
 		}
-		fields := strings.Fields(text)
-		if len(fields) != 3 {
-			return nil, fmt.Errorf("-only-keys line %d: want '<op> <table> <key>', got %q", lineNo, text)
+		var op, table, key string
+		if strings.HasPrefix(text, "{") {
+			var rec struct {
+				Op    string `json:"op"`
+				Table string `json:"table"`
+				Key   string `json:"key"`
+			}
+			if err := json.Unmarshal([]byte(text), &rec); err != nil {
+				return nil, fmt.Errorf("-only-keys line %d: invalid JSON: %w", lineNo, err)
+			}
+			op, table, key = rec.Op, rec.Table, rec.Key
+			if op == "" || table == "" || key == "" {
+				return nil, fmt.Errorf("-only-keys line %d: JSON must have non-empty op/table/key", lineNo)
+			}
+		} else {
+			fields := strings.Fields(text)
+			if len(fields) != 3 {
+				return nil, fmt.Errorf("-only-keys line %d: want '<op> <table> <key>' or a JSON object, got %q", lineNo, text)
+			}
+			op, table, key = fields[0], fields[1], fields[2]
 		}
-		op, table, key := fields[0], fields[1], fields[2]
 		switch op {
 		case "upsert":
 			if kf.upserts[table] == nil {
@@ -108,7 +127,7 @@ func (mc *migCtx) reconcileDeletes() error {
 	}
 	n := 0
 	for _, d := range mc.only.deletes {
-		if err := dispatchDelete(mc.v2, d.table, d.key); err != nil {
+		if err := dispatchDelete(mc.v2, mc.coreOpts(), d.table, d.key); err != nil {
 			return fmt.Errorf("reconcile delete %s %q: %w", d.table, d.key, err)
 		}
 		n++
@@ -123,58 +142,70 @@ func (mc *migCtx) reconcileDeletes() error {
 // artifact type tables (rest_apis/llm_*/mcp_proxies/websub_apis/webbroker_apis) delete
 // via DeleteArtifact so the v2 FK cascade removes the type row + children, mirroring the
 // live path. Composite keys are "|"-joined in DeleteX argument order.
-func dispatchDelete(v2 *database.DB, table, key string) error {
+func dispatchDelete(v2 *database.DB, opts migrationcore.Options, table, key string) error {
 	p := strings.Split(key, "|")
+	// Single-uuid tables must carry exactly one key component — reject a stray
+	// composite key rather than silently deleting on p[0].
+	singleKey := map[string]bool{
+		"artifacts": true, "rest_apis": true, "llm_providers": true, "llm_proxies": true,
+		"mcp_proxies": true, "websub_apis": true, "webbroker_apis": true, "organizations": true,
+		"projects": true, "applications": true, "subscription_plans": true, "subscriptions": true,
+		"gateways": true, "gateway_tokens": true, "gateway_custom_policies": true, "api_keys": true,
+		"deployments": true, "llm_provider_templates": true,
+	}
+	if singleKey[table] && (len(p) != 1 || p[0] == "") {
+		return fmt.Errorf("%s delete key %q: want a single uuid, got %d component(s)", table, key, len(p))
+	}
 	switch table {
 	case "artifacts", "rest_apis", "llm_providers", "llm_proxies", "mcp_proxies", "websub_apis", "webbroker_apis":
-		return migrationcore.DeleteArtifact(v2, p[0])
+		return migrationcore.DeleteArtifact(v2, opts, p[0])
 	case "organizations":
-		return migrationcore.DeleteOrganization(v2, p[0])
+		return migrationcore.DeleteOrganization(v2, opts, p[0])
 	case "projects":
-		return migrationcore.DeleteProject(v2, p[0])
+		return migrationcore.DeleteProject(v2, opts, p[0])
 	case "applications":
-		return migrationcore.DeleteApplication(v2, p[0])
+		return migrationcore.DeleteApplication(v2, opts, p[0])
 	case "subscription_plans":
-		return migrationcore.DeleteSubscriptionPlan(v2, p[0])
+		return migrationcore.DeleteSubscriptionPlan(v2, opts, p[0])
 	case "subscriptions":
-		return migrationcore.DeleteSubscription(v2, p[0])
+		return migrationcore.DeleteSubscription(v2, opts, p[0])
 	case "gateways":
-		return migrationcore.DeleteGateway(v2, p[0])
+		return migrationcore.DeleteGateway(v2, opts, p[0])
 	case "gateway_tokens":
-		return migrationcore.DeleteGatewayToken(v2, p[0])
+		return migrationcore.DeleteGatewayToken(v2, opts, p[0])
 	case "gateway_custom_policies":
-		return migrationcore.DeleteGatewayCustomPolicy(v2, p[0])
+		return migrationcore.DeleteGatewayCustomPolicy(v2, opts, p[0])
 	case "api_keys":
-		return migrationcore.DeleteAPIKey(v2, p[0])
+		return migrationcore.DeleteAPIKey(v2, opts, p[0])
 	case "deployments":
-		return migrationcore.DeleteDeployment(v2, p[0])
+		return migrationcore.DeleteDeployment(v2, opts, p[0])
 	case "llm_provider_templates":
-		return migrationcore.DeleteLLMProviderTemplate(v2, p[0])
+		return migrationcore.DeleteLLMProviderTemplate(v2, opts, p[0])
 	case "artifact_gateway_mappings": // <org>|<artifact>|<gateway>
 		if len(p) != 3 {
 			return fmt.Errorf("artifact_gateway_mappings key %q: want <org>|<artifact>|<gateway>", key)
 		}
-		return migrationcore.DeleteArtifactGatewayMapping(v2, p[0], p[1], p[2])
+		return migrationcore.DeleteArtifactGatewayMapping(v2, opts, p[0], p[1], p[2])
 	case "application_api_key_mappings": // <application>|<apiKey>
 		if len(p) != 2 {
 			return fmt.Errorf("application_api_key_mappings key %q: want <application>|<apiKey>", key)
 		}
-		return migrationcore.DeleteApplicationAPIKeyMapping(v2, p[0], p[1])
+		return migrationcore.DeleteApplicationAPIKeyMapping(v2, opts, p[0], p[1])
 	case "application_artifact_mappings": // <application>|<artifact>
 		if len(p) != 2 {
 			return fmt.Errorf("application_artifact_mappings key %q: want <application>|<artifact>", key)
 		}
-		return migrationcore.DeleteApplicationArtifactMapping(v2, p[0], p[1])
+		return migrationcore.DeleteApplicationArtifactMapping(v2, opts, p[0], p[1])
 	case "gateway_custom_policy_usages": // <policy>|<artifact>
 		if len(p) != 2 {
 			return fmt.Errorf("gateway_custom_policy_usages key %q: want <policy>|<artifact>", key)
 		}
-		return migrationcore.DeletePolicyUsage(v2, p[0], p[1])
+		return migrationcore.DeletePolicyUsage(v2, opts, p[0], p[1])
 	case "deployment_status": // <org>|<artifact>|<gateway>
 		if len(p) != 3 {
 			return fmt.Errorf("deployment_status key %q: want <org>|<artifact>|<gateway>", key)
 		}
-		return migrationcore.DeleteDeploymentStatus(v2, p[0], p[1], p[2])
+		return migrationcore.DeleteDeploymentStatus(v2, opts, p[0], p[1], p[2])
 	default:
 		return fmt.Errorf("unknown delete table %q", table)
 	}

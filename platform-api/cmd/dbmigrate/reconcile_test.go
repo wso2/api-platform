@@ -70,6 +70,28 @@ func TestLoadKeyFilter(t *testing.T) {
 	}
 }
 
+// TestLoadKeyFilterAcceptsJSONL proves the live path's JSONL failure log can be fed to
+// -only-keys verbatim (each line is a JSON object with op/table/key).
+func TestLoadKeyFilterAcceptsJSONL(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "failures.jsonl")
+	content := `{"code":"V2_DUAL_WRITE_FAILURE","entity":"rest_api","op":"upsert","table":"rest_apis","key":"uuid-1","occurred_at":"2026-01-01T00:00:00Z"}
+{"code":"V2_DUAL_WRITE_FAILURE","entity":"gateway","op":"delete","table":"gateways","key":"gw-1"}
+`
+	if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	kf, err := loadKeyFilter(path)
+	if err != nil {
+		t.Fatalf("loadKeyFilter: %v", err)
+	}
+	if !kf.upserts["rest_apis"]["uuid-1"] {
+		t.Error("JSONL upsert line not parsed")
+	}
+	if len(kf.deletes) != 1 || kf.deletes[0].table != "gateways" || kf.deletes[0].key != "gw-1" {
+		t.Errorf("JSONL delete line not parsed: %v", kf.deletes)
+	}
+}
+
 func TestLoadKeyFilterRejectsBadLines(t *testing.T) {
 	write := func(content string) string {
 		p := filepath.Join(t.TempDir(), "k.txt")

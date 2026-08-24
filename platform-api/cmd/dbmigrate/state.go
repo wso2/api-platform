@@ -114,7 +114,7 @@ func newRun(opts *Options, logger *slog.Logger) (*Run, error) {
 	dir := opts.OutDir
 	open := func(base string) (*os.File, error) {
 		p := filepath.Join(dir, suffixed(base, opts.RunID, opts.DryRun, "jsonl"))
-		return os.OpenFile(p, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0o644)
+		return os.OpenFile(p, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0o600)
 	}
 	qf, err := open("quarantine")
 	if err != nil {
@@ -318,7 +318,7 @@ func (r *Run) saveCheckpoint() error {
 		return err
 	}
 	tmp := r.ckptPath + ".tmp"
-	if err := os.WriteFile(tmp, b, 0o644); err != nil {
+	if err := os.WriteFile(tmp, b, 0o600); err != nil {
 		return err
 	}
 	return os.Rename(tmp, r.ckptPath)
@@ -340,7 +340,7 @@ func (r *Run) writeReport() error {
 		return err
 	}
 	p := filepath.Join(r.opts.OutDir, suffixed("migration-report", r.opts.RunID, r.opts.DryRun, "json"))
-	return os.WriteFile(p, b, 0o644)
+	return os.WriteFile(p, b, 0o600)
 }
 
 func (r *Run) close() {

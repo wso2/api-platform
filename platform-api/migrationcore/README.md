@@ -5,7 +5,7 @@ v2 write, shared by two callers:
 
 - **Batch backfill** — `cmd/dbmigrate` (the one-time migrator).
 - **Live dual-write intermediate** — the v1 build that mirrors each v1 mutation into
-  the v2 DB after the v1 repo write (spec: `../../smooth-migration'/agent-prompt.md`).
+  the v2 DB after the v1 repo write (a separate design; its spec lives outside this repo).
 
 Both call the SAME `UpsertX`/`DeleteX`/`ResolveIdentity` so config-blob reshapes,
 type conversions, handle/identity rules and the v2 column layout can never drift
@@ -38,7 +38,7 @@ between the backfill and the live path.
 
 Caller wiring:
 
-```
+```text
 batch (cmd/dbmigrate):  Options{InsertOnly:true, SkipIdentityUpsert:true, DryRun:cfg.DryRun}
                         Reporter = the JSONL Run
 live (v1 dual-write):   Options{InsertOnly:false, SkipIdentityUpsert:false}

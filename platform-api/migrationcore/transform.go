@@ -249,16 +249,18 @@ func PreprocessWebSubRaw(raw []byte) ([]byte, []string, error) {
 			b, _ := json.Marshal(map[string]json.RawMessage{"policies": policyArray})
 			return b
 		}
+		folded := false
 		switch jsonKind(pol) {
 		case '{': // object-form: {event: [policy...]}
 			var byEvent map[string]json.RawMessage
-			if json.Unmarshal(pol, &byEvent) == nil {
+			if json.Unmarshal(pol, &byEvent) == nil && len(byEvent) > 0 {
 				for event, arr := range byEvent {
 					if _, exists := allch[event]; !exists {
 						allch[event] = wrap(arr)
 					}
 				}
 				notes = append(notes, "policies{event:[...]} -> allChannels")
+				folded = true
 			}
 		case '[': // flat array of whole-API policies (auth) → on_subscription
 			var arr []json.RawMessage
@@ -267,12 +269,20 @@ func PreprocessWebSubRaw(raw []byte) ([]byte, []string, error) {
 					allch["on_subscription"] = wrap(pol)
 				}
 				notes = append(notes, "policies[] (whole-API) -> allChannels.on_subscription")
+				folded = true
 			}
 		}
-		delete(top, "policies")
-		if len(allch) > 0 {
-			b, _ := json.Marshal(allch)
-			top["allChannels"] = b
+		if folded {
+			delete(top, "policies")
+			if len(allch) > 0 {
+				b, _ := json.Marshal(allch)
+				top["allChannels"] = b
+			}
+		} else {
+			// Unrecognized shape (not object/array, or empty): do NOT silently drop
+			// it — leave it in place so the DisallowUnknownFields pass surfaces it for
+			// human review rather than losing it.
+			notes = append(notes, "policies present but in an unhandled shape; left for unknown-field discovery")
 		}
 	}
 

@@ -100,6 +100,9 @@ func (vr *verifier) loadV1Artifacts() map[string]v1Art {
 		}
 		m[uuid] = a
 	}
+	if err := rows.Err(); err != nil {
+		vr.fail("B", "iterate v1 artifacts", err.Error())
+	}
 	return m
 }
 
@@ -140,10 +143,16 @@ func (vr *verifier) layerB_scalars() {
 	if err == nil {
 		for rows.Next() {
 			var uuid, typ string
-			_ = rows.Scan(&uuid, &typ)
+			if err := rows.Scan(&uuid, &typ); err != nil {
+				vr.fail("B", "scan artifacts", err.Error())
+				break
+			}
 			if a, ok := arts[uuid]; ok && a.kind != typ {
 				typeMismatch++
 			}
+		}
+		if err := rows.Err(); err != nil {
+			vr.fail("B", "iterate artifacts", err.Error())
 		}
 		rows.Close()
 	}
@@ -159,10 +168,16 @@ func (vr *verifier) layerB_scalars() {
 	if err == nil {
 		for rs.Next() {
 			var uuid, art string
-			_ = rs.Scan(&uuid, &art)
+			if err := rs.Scan(&uuid, &art); err != nil {
+				vr.fail("B", "scan subscriptions", err.Error())
+				break
+			}
 			if v, ok := v1sub[uuid]; ok && v != art {
 				subMismatch++
 			}
+		}
+		if err := rs.Err(); err != nil {
+			vr.fail("B", "iterate subscriptions", err.Error())
 		}
 		rs.Close()
 	}
@@ -175,10 +190,16 @@ func (vr *verifier) layerB_scalars() {
 	if err == nil {
 		for rp.Next() {
 			var uuid, dn string
-			_ = rp.Scan(&uuid, &dn)
+			if err := rp.Scan(&uuid, &dn); err != nil {
+				vr.fail("B", "scan subscription_plans", err.Error())
+				break
+			}
 			if v, ok := v1plan[uuid]; ok && v != dn {
 				planMismatch++
 			}
+		}
+		if err := rp.Err(); err != nil {
+			vr.fail("B", "iterate subscription_plans", err.Error())
 		}
 		rp.Close()
 	}
@@ -650,23 +671,23 @@ func (vr *verifier) layerF_dropReconcile() {
 			Detail: fmt.Sprintf("v2(%d)+quarantine(%d)==v1(%d)", v2c, quar, v1c)})
 	}
 
-	// Quarantine sign-off gate: every quarantined key resolved in v2 or signed off.
+	// Quarantine sign-off gate: every quarantined key must be signed off
+	// (quarantine-signoff.jsonl). "Resolved by a re-run" is handled implicitly — a
+	// key fixed at source no longer appears in the latest run's quarantine file, so
+	// it never reaches this gate; what remains here must be explicitly accepted as loss.
 	unresolved := 0
 	var sample []string
 	for key := range vr.quarKeys {
 		if vr.signoff[key] {
 			continue
 		}
-		// "resolved in v2" = the key's uuid is now present. Best-effort: the key's
-		// first path component is the source table; we cannot cheaply re-check every
-		// composite key, so a signed-off OR present-in-v2 decision is required.
 		unresolved++
 		if len(sample) < 20 {
 			sample = append(sample, key)
 		}
 	}
 	st := statusPass
-	detail := fmt.Sprintf("all %d quarantined key(s) signed off or resolved", len(vr.quarKeys))
+	detail := fmt.Sprintf("all %d quarantined key(s) signed off", len(vr.quarKeys))
 	if unresolved > 0 {
 		st = statusFail
 		detail = fmt.Sprintf("%d quarantined key(s) NOT signed off (e.g. %v)", unresolved, sample)

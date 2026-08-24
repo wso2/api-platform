@@ -34,7 +34,8 @@ import (
 func dsnToConfig(dsn string) (*config.Database, error) {
 	u, err := url.Parse(dsn)
 	if err != nil {
-		return nil, fmt.Errorf("parse DSN: %w", err)
+		// Do NOT wrap err — url.Parse echoes the raw input, which includes the password.
+		return nil, fmt.Errorf("could not parse DSN (expected postgres://user:pass@host:port/db?sslmode=...)")
 	}
 	if u.Scheme != "postgres" && u.Scheme != "postgresql" {
 		return nil, fmt.Errorf("unsupported DSN scheme %q (only postgres:// is supported)", u.Scheme)
@@ -80,6 +81,10 @@ func openDB(dsn string, logger *slog.Logger) (*database.DB, error) {
 	cfg, err := dsnToConfig(dsn)
 	if err != nil {
 		return nil, err
+	}
+	if cfg.SSLMode == "" || cfg.SSLMode == "disable" {
+		logger.Warn("database TLS is disabled (sslmode=disable) — credentials and data traverse the network in plaintext; use sslmode=require or verify-full for a remote database",
+			"host", cfg.Host)
 	}
 	db, err := database.NewConnection(cfg, logger)
 	if err != nil {

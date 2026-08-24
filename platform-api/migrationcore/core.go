@@ -148,13 +148,16 @@ func upsert(ex Execer, opts Options, table string, cols []string, args []any, co
 }
 
 // deleteWhere executes DELETE FROM table WHERE <col=$n AND …>. Used only by the
-// live path's DeleteX (batch never deletes).
-func deleteWhere(ex Execer, table string, whereCols []string, whereArgs []any) error {
+// live path's DeleteX (batch never deletes). Honors opts.DryRun (no write).
+func deleteWhere(ex Execer, opts Options, table string, whereCols []string, whereArgs []any) error {
 	conds := make([]string, len(whereCols))
 	for i, c := range whereCols {
 		conds[i] = fmt.Sprintf("%s = $%d", c, i+1)
 	}
 	q := fmt.Sprintf("DELETE FROM %s WHERE %s", table, strings.Join(conds, " AND "))
+	if opts.DryRun {
+		return nil
+	}
 	if _, err := ex.Exec(q, whereArgs...); err != nil {
 		return fmt.Errorf("delete %s: %w", table, err)
 	}

@@ -18,6 +18,8 @@
 package migrationcore
 
 import (
+	"database/sql"
+	"errors"
 	"fmt"
 	"strings"
 	"time"
@@ -542,7 +544,7 @@ func UpsertGatewayEndpoint(ex Execer, gatewayUUID, url string, opts Options) err
 	if err == nil {
 		return nil // already present
 	}
-	if err.Error() != "sql: no rows in result set" {
+	if !errors.Is(err, sql.ErrNoRows) {
 		return err
 	}
 	return upsert(ex, opts, "gateway_endpoints", []string{"gateway_uuid", "url"}, []any{gatewayUUID, url}, nil)

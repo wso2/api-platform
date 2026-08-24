@@ -100,7 +100,7 @@ func TestUpsertUpdateVsInsertOnly(t *testing.T) {
 	}
 
 	// (4) delete.
-	if err := DeleteOrganization(db, uuid); err != nil {
+	if err := DeleteOrganization(db, baseOpts(), uuid); err != nil {
 		t.Fatalf("delete: %v", err)
 	}
 	var cnt int

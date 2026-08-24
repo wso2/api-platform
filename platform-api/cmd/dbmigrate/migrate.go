@@ -151,6 +151,11 @@ func runMigrate(argv []string) error {
 	if err != nil {
 		return fmt.Errorf("invalid -source-tz %q: %w", o.SourceTZ, err)
 	}
+	// The subscription-token decrypt guard is mandatory for a live run; only a
+	// --dry-run may skip it (it validates tokens against the real key before writes).
+	if o.SkipDecryptCheck && !o.DryRun {
+		return fmt.Errorf("-skip-decrypt-check is only allowed with -dry-run; a live run must validate subscription tokens against the real key")
+	}
 	if err := loadEncryptionKey(o); err != nil {
 		return err
 	}

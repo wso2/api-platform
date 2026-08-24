@@ -279,6 +279,9 @@ func migrateLLMProviderTemplates(mc *migCtx) error {
 		if err := rows.Scan(&uuid, &org, &handle, &name, &description, &createdByRaw, &config, &createdAt, &updatedAt); err != nil {
 			return err
 		}
+		// Record v1 presence so a quarantined template cascades (not fail-fast) for
+		// providers that reference it via template_uuid.
+		mc.sets.templates.seenV1(uuid)
 		full := map[string]any{"uuid": uuid, "handle": handle, "name": name, "organization_uuid": org}
 		if ok, err := mc.parentOK(mc.sets.orgs, org, "llm_provider_templates", uuid, "organization_uuid", true, full); err != nil {
 			return err
@@ -328,6 +331,9 @@ func migrateLLMProviders(mc *migCtx) error {
 			return err
 		}
 		mc.sets.artifacts.seenV1(uuid)
+		// Record v1 presence so a quarantined provider cascades (not fail-fast) for
+		// proxies that reference it via provider_uuid.
+		mc.sets.providers.seenV1(uuid)
 		full := map[string]any{"uuid": uuid, "handle": handle, "organization_uuid": org, "template_uuid": templateUUID}
 		if ok, err := mc.parentOK(mc.sets.orgs, org, "llm_providers", uuid, "organization_uuid", true, full); err != nil {
 			return err
@@ -722,6 +728,12 @@ func migrateSubscriptions(mc *migCtx) error {
 				continue
 			}
 		}
+		// Apply the reconcile filter BEFORE claiming dedup keys, so a row skipped by
+		// -only-keys never quarantines a wanted row that shares its key. In batch mode
+		// want() is always true, so ordering is a no-op and output stays identical.
+		if !mc.want("subscriptions", uuid) {
+			continue
+		}
 		hkey := apiUUID + "|" + hash
 		if mc.subHashSeen[hkey] {
 			mc.run.quarantine("subscriptions", uuid, ReasonDupKey, "duplicate (artifact_uuid, subscription_token_hash)", full)
@@ -737,9 +749,6 @@ func migrateSubscriptions(mc *migCtx) error {
 			mc.subAppSeen[akey] = true
 		}
 		mc.subHashSeen[hkey] = true
-		if !mc.want("subscriptions", uuid) {
-			continue
-		}
 		if err := migrationcore.UpsertSubscription(mc.v2, migrationcore.SubscriptionRow{
 			UUID: uuid, ArtifactUUID: apiUUID, SubscriberID: subscriberID, Token: token, Hash: hash, Org: org, Status: status,
 			ApplicationID: nsp(applicationID), PlanUUID: nsp(planUUID), CreatedAt: ntp(createdAt), UpdatedAt: ntp(updatedAt),
@@ -1012,9 +1021,16 @@ func migrateDeployments(mc *migCtx) error {
 			continue
 		}
 		var base *string
-		if baseDeployment.Valid && baseDeployment.String != "" && mc.sets.deployments.status(baseDeployment.String) == ParentOK {
-			s := baseDeployment.String
-			base = &s
+		if baseDeployment.Valid && baseDeployment.String != "" {
+			if mc.sets.deployments.status(baseDeployment.String) == ParentOK {
+				s := baseDeployment.String
+				base = &s
+			} else {
+				// Predecessor not migrated → drop the (nullable) base link, but record it.
+				mc.run.flag("deployments", uuid, FlagDefaultedNull,
+					map[string]any{"base_deployment_uuid": baseDeployment.String},
+					map[string]any{"base_deployment_uuid": nil, "note": "base deployment not migrated; link dropped"})
+			}
 		}
 		if !mc.want("deployments", uuid) {
 			continue

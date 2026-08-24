@@ -92,9 +92,12 @@ func runVerify(argv []string) error {
 	if err != nil {
 		return fmt.Errorf("invalid -migration-epoch: %w", err)
 	}
-	_ = loadEncryptionKey(o) // optional for verify
-
 	logger := newLogger(o)
+	// The key is optional for verify (it only enables the token decrypt round-trip);
+	// report a load failure rather than silently swallowing it.
+	if err := loadEncryptionKey(o); err != nil {
+		logger.Warn("could not load subscription-token key; the decrypt round-trip check will be skipped", "error", err)
+	}
 	v1, err := openDB(o.V1DSN, logger)
 	if err != nil {
 		return fmt.Errorf("open v1: %w", err)
@@ -212,7 +215,7 @@ func writeVerifyReport(o *Options, r *VerifyReport) error {
 		return err
 	}
 	p := filepath.Join(o.OutDir, suffixed("verify-report", o.RunID, false, "json"))
-	return os.WriteFile(p, b, 0o644)
+	return os.WriteFile(p, b, 0o600)
 }
 
 func printVerify(r *VerifyReport) {

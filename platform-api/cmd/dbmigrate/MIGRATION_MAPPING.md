@@ -20,8 +20,9 @@
 ## Deliverable 0 — mechanical DDL completeness gate → **PASS**
 
 Parsed v1 (27 tables), v2 core (32), v2 plugin (3 → 35 v2 total). Every v2 table+column is
-either **MAPPED** from v1 or explicitly **EMPTY/OPTIONAL**. Reproduce with
-`scratchpad/ddl_gate.py`. Classification:
+either **MAPPED** from v1 or explicitly **EMPTY/OPTIONAL**. Reproduce by extracting the
+`CREATE TABLE` table+column sets from the three schema files and diffing them against the
+classification below (any v2 object not listed is a blocker). Classification:
 
 - **MAPPED (26):** organizations, projects, applications, artifacts, rest_apis,
   subscription_plans, subscription_plan_limits, subscriptions, gateways, gateway_endpoints,
