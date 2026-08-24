@@ -149,6 +149,23 @@ export const routes = {
     projectHandler = ':projectHandler',
     apiHandler = ':apiHandler'
   ) => apiPath(orgHandle, projectHandler, apiHandler),
+  // Develop's own submenu: the three panels that used to be tabs on the API
+  // overview page.
+  apiDevelopPolicies: (
+    orgHandle = ':orgHandle',
+    projectHandler: ScopeHandle = ':projectHandler',
+    apiHandler: ScopeHandle = ':apiHandler'
+  ) => apiPath(orgHandle, projectHandler, apiHandler, 'develop/policies'),
+  apiDevelopRouting: (
+    orgHandle = ':orgHandle',
+    projectHandler: ScopeHandle = ':projectHandler',
+    apiHandler: ScopeHandle = ':apiHandler'
+  ) => apiPath(orgHandle, projectHandler, apiHandler, 'develop/routing'),
+  apiDevelopDocuments: (
+    orgHandle = ':orgHandle',
+    projectHandler: ScopeHandle = ':projectHandler',
+    apiHandler: ScopeHandle = ':apiHandler'
+  ) => apiPath(orgHandle, projectHandler, apiHandler, 'develop/documents'),
   apiDeploy: (
     orgHandle = ':orgHandle',
     projectHandler: ScopeHandle = ':projectHandler',

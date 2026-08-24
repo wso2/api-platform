@@ -117,7 +117,7 @@ describe('scope visibility', () => {
   // Capability gating applies only once an API is loaded: with none, every
   // capability reads false, which would hide these items in exactly the state
   // where they are the way in.
-  it.each(['test', 'deploy', 'manage'])(
+  it.each(['develop', 'test', 'deploy', 'manage'])(
     'keeps %s visible out of API scope and lets the capability decide within it',
     (id) => {
       const { isVisible } = definitionFor(id);
@@ -179,6 +179,15 @@ describe('API-level items', () => {
  */
 describe('submenu parents', () => {
   const SUBMENUS: [string, string, [string, string][]][] = [
+    [
+      'develop',
+      'develop',
+      [
+        ['develop-policies', 'policies'],
+        ['develop-routing', 'routing'],
+        ['develop-documents', 'documents'],
+      ],
+    ],
     [
       'test',
       'test',
@@ -304,15 +313,26 @@ describe('organization-level items', () => {
     expect(match(`${ORG}/gateways/gw-1/extra`)).toBe(false);
   });
 
-  // Settings is the one page with no scope requirement: the sidebar links to the
-  // org-level path, and a project card's gear deep-links the same page.
-  it('lights Settings up at either of its entry points, whatever the scope', () => {
-    const { match, to } = definitionFor('settings');
+  /*
+   * Settings needs no scope of its own, so it never gates — but it does follow you
+   * down one level: the organization's settings while browsing the org, that
+   * project's once you are inside one. One pinned link at a time, never both,
+   * which is what `AppRoutes.orgSettings.test.tsx` exercises end to end.
+   */
+  it('follows the scope down to the project, and no further', () => {
+    const { to } = definitionFor('settings');
     expect(to(atOrg())).toBe(`${ORG}/settings`);
-    expect(to(atApi())).toBe(`${ORG}/settings`);
-    expect(match?.(`${ORG}/settings`)).toBe(true);
-    expect(match?.(`${PROJECT}/settings`)).toBe(true);
-    expect(match?.(`${API}/settings`)).toBe(false);
+    expect(to(atProject())).toBe(`${PROJECT}/settings`);
+    // No API tier: an API has no settings page of its own, so inside one the item
+    // stays on the project's.
+    expect(to(atApi())).toBe(`${PROJECT}/settings`);
+  });
+
+  it('lights Settings up at either of its entry points', () => {
+    const match = matcherFor('settings');
+    expect(match(`${ORG}/settings`)).toBe(true);
+    expect(match(`${PROJECT}/settings`)).toBe(true);
+    expect(match(`${API}/settings`)).toBe(false);
   });
 });
 

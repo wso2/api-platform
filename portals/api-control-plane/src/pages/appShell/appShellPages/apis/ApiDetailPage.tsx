@@ -16,14 +16,10 @@
  * under the License.
  */
 
-import { useState } from 'react';
-import { Avatar, Box, Button, Card, Chip, Stack, Tab, Tabs, Typography } from '@wso2/oxygen-ui';
+import { Avatar, Box, Button, Card, Chip, Stack, Typography } from '@wso2/oxygen-ui';
 
 import { useApiDetail } from '../../../../api/hooks/useMvpQueries';
 import { ErrorState, LoadingState } from '../../../../components/StateViews';
-import { DocumentsTab } from './develop/DocumentsTab';
-import { PolicyTab } from './develop/PolicyTab';
-import { RoutingTab } from './develop/RoutingTab';
 import { OverviewTab } from './overview/OverviewTab';
 import { FormattedMessage } from 'react-intl';
 
@@ -31,7 +27,6 @@ import { FormattedMessage } from 'react-intl';
 // degrades to a shallower tier rather than linking here without an API.
 export function ApiDetailPage() {
   const detailQuery = useApiDetail();
-  const [tab, setTab] = useState(0);
 
   if (detailQuery.isLoading) return <LoadingState label="Loading API" />;
   if (detailQuery.error || !detailQuery.data) {
@@ -39,10 +34,6 @@ export function ApiDetailPage() {
   }
 
   const detail = detailQuery.data;
-
-  // Develop tab set mirrors the product: Overview, then Policy/Routing/Documents.
-  const tabs = ['Overview', 'Policy', 'Routing', 'Documents'] as const;
-  const active = tabs[tab] ?? 'Overview';
 
   const truncateProviderDisplayName = (
   name?: string | null,
@@ -195,20 +186,10 @@ export function ApiDetailPage() {
       
       </Stack>
 
-      <Tabs
-        onChange={(_event, value) => setTab(value)}
-        sx={{ mb: 3 }}
-        value={tab}
-      >
-        {tabs.map((label) => (
-          <Tab key={label} label={label} />
-        ))}
-      </Tabs>
-
-      {active === 'Overview' && <OverviewTab detail={detail} />}
-      {active === 'Policy' && <PolicyTab detail={detail} />}
-      {active === 'Routing' && <RoutingTab detail={detail} />}
-      {active === 'Documents' && <DocumentsTab />}
+      {/* Policy, Routing and Documents used to be tabs here; each is now its own
+          page under the sidebar's Develop menu, leaving Overview as the whole of
+          this page — so no tab bar. */}
+      <OverviewTab detail={detail} />
     </>
   );
 }

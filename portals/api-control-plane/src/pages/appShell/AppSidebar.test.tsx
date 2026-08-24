@@ -97,6 +97,16 @@ describe('AppSidebar submenus', () => {
     expect(screen.queryByText('API Console')).not.toBeInTheDocument();
   });
 
+  it('opens Develop onto the three panels lifted off the overview page', async () => {
+    const { user } = renderSidebar(routes.api(ORG, PROJECT, API), true);
+
+    await user.click(screen.getByRole('button', { name: /^Develop$/ }));
+
+    for (const label of ['Policies', 'Routing', 'Documents']) {
+      expect(screen.getByText(label)).toBeInTheDocument();
+    }
+  });
+
   it('auto-opens the submenu holding the active page', () => {
     renderSidebar(routes.apiObservabilityLogs(ORG, PROJECT, API), true);
 

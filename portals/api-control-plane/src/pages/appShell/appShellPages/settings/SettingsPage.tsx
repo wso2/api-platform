@@ -17,20 +17,30 @@
  */
 
 import { Card, CardContent, PageTitle, Typography } from '@wso2/oxygen-ui';
-import { useParams } from 'react-router-dom';
 
+import { useConsoleScope } from '../../../../scope/ConsoleScopeProvider';
 
 // No `ScopeGate`: Settings is the one page with no scope requirement. The sidebar
-// links to the organization-level path, and a project card's gear deep-links the
-// same page for one project — so it renders at whatever scope it is reached in.
+// links to the organization-level path while browsing the org and to the project's
+// once one is selected, and a project card's gear deep-links the same page — so it
+// renders at whatever scope it is reached in.
 export function SettingsPage() {
-  const { orgHandle, projectHandler } = useParams();
+  const { organization, params, project } = useConsoleScope();
+  // Whichever scope the page was reached in, named rather than handled: the
+  // heading reads "…for Retail APIs", not "…for retail-apis". Falls back to the
+  // handle, which the route always carries, so the heading still says what it is
+  // about while the display name is still loading.
+  const subject =
+    project?.displayName ??
+    organization?.displayName ??
+    params.projectHandler ??
+    params.orgHandle;
 
   return (
     <>
       <PageTitle>
         <PageTitle.Header>Settings</PageTitle.Header>
-        <PageTitle.SubHeader>Minimal settings overview for {projectHandler ?? orgHandle}.</PageTitle.SubHeader>
+        <PageTitle.SubHeader>Minimal settings overview for {subject}.</PageTitle.SubHeader>
       </PageTitle>
       <Card variant="outlined">
         <CardContent>

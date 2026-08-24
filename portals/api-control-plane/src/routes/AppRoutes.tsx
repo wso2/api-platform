@@ -90,6 +90,21 @@ const DeployPage = lazy(() =>
 const TestPage = lazy(() =>
   import('../pages/appShell/appShellPages/test/TestPage').then((m) => ({ default: m.TestPage }))
 );
+const PoliciesPage = lazy(() =>
+  import('../pages/appShell/appShellPages/apis/develop/PoliciesPage').then((m) => ({
+    default: m.PoliciesPage,
+  }))
+);
+const RoutingPage = lazy(() =>
+  import('../pages/appShell/appShellPages/apis/develop/RoutingPage').then((m) => ({
+    default: m.RoutingPage,
+  }))
+);
+const DocumentsPage = lazy(() =>
+  import('../pages/appShell/appShellPages/apis/develop/DocumentsPage').then((m) => ({
+    default: m.DocumentsPage,
+  }))
+);
 const ApiConsolePage = lazy(() =>
   import('../pages/appShell/appShellPages/test/ApiConsolePage').then((m) => ({
     default: m.ApiConsolePage,
@@ -205,6 +220,18 @@ export function AppRoutes({ extensions = [] }: AppRoutesProps) {
             links to its first child's alias, so `.../test` and friends are never
             produced and are not registered.
           */}
+          {scopedRoutes(
+            apiScopedPaths(routes.apiDevelopPolicies),
+            <PoliciesPage />
+          )}
+          {scopedRoutes(
+            apiScopedPaths(routes.apiDevelopRouting),
+            <RoutingPage />
+          )}
+          {scopedRoutes(
+            apiScopedPaths(routes.apiDevelopDocuments),
+            <DocumentsPage />
+          )}
           {scopedRoutes(apiScopedPaths(routes.apiTestConsole), <ApiConsolePage />)}
           {scopedRoutes(apiScopedPaths(routes.apiTestCurl), <TestPage />)}
           {scopedRoutes(apiScopedPaths(routes.apiTestChat), <ApiChatPage />)}

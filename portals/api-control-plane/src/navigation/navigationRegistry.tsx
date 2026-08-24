@@ -23,8 +23,10 @@ import {
   ChartColumn,
   ChartLine,
   CircleDollarSign,
+  Code,
   ClipboardList,
   FileCheck,
+  FileText,
   Gauge,
   GitBranch,
   Home,
@@ -32,6 +34,7 @@ import {
   MessagesSquare,
   Network,
   Rocket,
+  Route,
   ScrollText,
   Settings,
   ShieldCheck,
@@ -292,6 +295,34 @@ export const navigationRegistry: NavigationDefinition[] = [
     match: matchRoutes(routes.gateways(), routes.newGateway(), routes.gateway()),
   },
   {
+    id: 'develop',
+    label: 'Develop',
+    group: CLUSTER.api,
+    order: 35,
+    icon: <Code />,
+    isVisible: apiCapability(({ canDevelop }) => canDevelop),
+    ...submenu([
+      {
+        icon: <ShieldCheck />,
+        id: 'develop-policies',
+        label: 'Policies',
+        to: routes.apiDevelopPolicies,
+      },
+      {
+        icon: <Route />,
+        id: 'develop-routing',
+        label: 'Routing',
+        to: routes.apiDevelopRouting,
+      },
+      {
+        icon: <FileText />,
+        id: 'develop-documents',
+        label: 'Documents',
+        to: routes.apiDevelopDocuments,
+      },
+    ]),
+  },
+  {
     id: 'test',
     label: 'Test',
     group: CLUSTER.api,
@@ -418,9 +449,12 @@ export const navigationRegistry: NavigationDefinition[] = [
     group: CLUSTER.global,
     order: 100,
     icon: <Settings />,
-    to: orgLevelTo(routes.settings),
-    // Both entry points light this item up: the sidebar's own org-level path and
-    // the per-project deep link from a project card.
-    match: matchRoutes(routes.settings(), routes.projectSettings()),
+    // Follows you down one level: the organization's settings while browsing the
+    // org, that project's settings once you are inside one — one pinned link at a
+    // time, never both. Same page either way; only the scope it reads differs.
+    ...adaptive([
+      { level: 'project', to: routes.projectSettings },
+      { level: 'organization', to: routes.settings },
+    ]),
   },
 ];
