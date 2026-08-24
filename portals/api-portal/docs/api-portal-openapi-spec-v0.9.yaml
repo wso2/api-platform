@@ -2899,10 +2899,13 @@ components:
     ApiKeyBody:
       required: true
       description: >-
-        API key payload. `id` must be 3-40 lowercase alphanumeric characters, hyphen-separated. `displayName` is
-        an optional human-readable label (1-128 characters, any characters allowed) that defaults to `id` when
-        omitted. `expiresAt` can be an ISO-8601 datetime with timezone, epoch seconds, or epoch milliseconds. The
-        parent resource (API or MCP server, depending on the path) is identified by the corresponding path parameter.
+        API key payload. `id` is optional; when provided it must be 3-40 lowercase alphanumeric
+        characters, hyphen-separated, and unique within the parent API or MCP server. When omitted,
+        it's derived from `displayName` (or randomly generated if `displayName` is also omitted).
+        `displayName` is an optional human-readable label (1-128 characters, any characters
+        allowed) that defaults to `id` when omitted. `expiresAt` can be an ISO-8601 datetime with
+        timezone, epoch seconds, or epoch milliseconds. The parent resource (API or MCP server,
+        depending on the path) is identified by the corresponding path parameter.
       content:
         application/json:
           schema:
@@ -2917,6 +2920,10 @@ components:
               summary: Generate a key without expiry
               value:
                 id: weather-sandbox-key
+            derivedFromDisplayName:
+              summary: Generate a key without specifying an id
+              value:
+                displayName: Weather Prod Key
     ApiKeyRegenerateBody:
       required: true
       description: >-
