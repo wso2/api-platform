@@ -470,7 +470,8 @@ Most bugs surface in logs or config dumps without needing to step through code.
 > Why the `grep`: the `gateway-runtime` container stamps every human-readable log
 > line with one of these prefixes — `[rtr]` (Envoy router), `[pol]` (in-container PE,
 > still receives xDS pushes even in debug mode), `[pye]` (Python executor, started
-> only when compiled Python policies are present), unprefixed (the entrypoint).
+> only when compiled Python policies are present), and `[ent]` (the entrypoint's
+> own startup and shutdown messages).
 > When debugging traffic you only want `[rtr]` — Envoy's access log is where
 > each request's status, upstream, and policy verdict actually surface.
 > `--no-log-prefix` drops Docker's `gateway-runtime-1  |` per-line prefix so
