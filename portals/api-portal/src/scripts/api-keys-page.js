@@ -197,7 +197,7 @@
 
     /* ── API requests ─────────────────────────────────────────── */
 
-    const namePattern = /^[a-z0-9][a-z0-9_-]{0,127}$/;
+    const DISPLAY_NAME_MAX_LENGTH = 128;
 
     async function postGenerate(body) {
         const response = await fetch(apiPortalApi.root('/apis/' + encodeURIComponent(apiId) + '/api-keys/generate'), {
@@ -289,11 +289,11 @@
             const nameInput = document.getElementById('api-key-name');
             const expInput = document.getElementById('api-key-expires');
             const name = (nameInput && nameInput.value) ? nameInput.value.trim() : '';
-            if (!namePattern.test(name)) {
-                if (typeof showAlert === 'function') await showAlert('Enter a valid name: start with a letter or number, then up to 128 URL-safe characters.', 'error');
+            if (!name || name.length > DISPLAY_NAME_MAX_LENGTH) {
+                if (typeof showAlert === 'function') await showAlert(`Enter a name, up to ${DISPLAY_NAME_MAX_LENGTH} characters.`, 'error');
                 return;
             }
-            const body = { id: name };
+            const body = { displayName: name };
             const iso = expInput ? expiresToIso(expInput.value) : null;
             if (iso) body.expiresAt = iso;
             submitGenBtn.dataset.loading = 'true';
@@ -311,7 +311,7 @@
                 delete submitGenBtn.dataset.loading;
             }
             if (data && data.key) {
-                showSecretModal(data.key, true, name);
+                showSecretModal(data.key, true, data.displayName || data.id || name);
             } else if (data) {
                 window.location.reload();
             }
