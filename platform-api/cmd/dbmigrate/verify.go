@@ -96,7 +96,9 @@ func runVerify(argv []string) error {
 	// The key is optional for verify (it only enables the token decrypt round-trip);
 	// report a load failure rather than silently swallowing it.
 	if err := loadEncryptionKey(o); err != nil {
-		logger.Warn("could not load subscription-token key; the decrypt round-trip check will be skipped", "error", err)
+		// Do not log err verbatim — it may echo key material or the DSN. A generic
+		// warning is enough; the token round-trip check simply won't run.
+		logger.Warn("could not load the subscription-token key; the decrypt round-trip check will be skipped")
 	}
 	v1, err := openDB(o.V1DSN, logger)
 	if err != nil {
@@ -215,7 +217,10 @@ func writeVerifyReport(o *Options, r *VerifyReport) error {
 		return err
 	}
 	p := filepath.Join(o.OutDir, suffixed("verify-report", o.RunID, false, "json"))
-	return os.WriteFile(p, b, 0o600)
+	if err := os.WriteFile(p, b, 0o600); err != nil {
+		return err
+	}
+	return os.Chmod(p, 0o600) // enforce 0600 on a pre-existing report file
 }
 
 func printVerify(r *VerifyReport) {

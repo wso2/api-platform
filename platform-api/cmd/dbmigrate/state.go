@@ -114,7 +114,17 @@ func newRun(opts *Options, logger *slog.Logger) (*Run, error) {
 	dir := opts.OutDir
 	open := func(base string) (*os.File, error) {
 		p := filepath.Join(dir, suffixed(base, opts.RunID, opts.DryRun, "jsonl"))
-		return os.OpenFile(p, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0o600)
+		f, err := os.OpenFile(p, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0o600)
+		if err != nil {
+			return nil, err
+		}
+		// O_CREATE sets the mode only on creation; enforce 0600 on a pre-existing
+		// (possibly world-readable) file too — these artifacts hold full v1 rows.
+		if err := f.Chmod(0o600); err != nil {
+			_ = f.Close()
+			return nil, err
+		}
+		return f, nil
 	}
 	qf, err := open("quarantine")
 	if err != nil {
@@ -321,6 +331,9 @@ func (r *Run) saveCheckpoint() error {
 	if err := os.WriteFile(tmp, b, 0o600); err != nil {
 		return err
 	}
+	if err := os.Chmod(tmp, 0o600); err != nil { // enforce on a pre-existing stale tmp
+		return err
+	}
 	return os.Rename(tmp, r.ckptPath)
 }
 
@@ -340,7 +353,10 @@ func (r *Run) writeReport() error {
 		return err
 	}
 	p := filepath.Join(r.opts.OutDir, suffixed("migration-report", r.opts.RunID, r.opts.DryRun, "json"))
-	return os.WriteFile(p, b, 0o600)
+	if err := os.WriteFile(p, b, 0o600); err != nil {
+		return err
+	}
+	return os.Chmod(p, 0o600) // enforce 0600 on a pre-existing report file
 }
 
 func (r *Run) close() {

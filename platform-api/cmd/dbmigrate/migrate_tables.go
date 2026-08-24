@@ -1022,11 +1022,15 @@ func migrateDeployments(mc *migCtx) error {
 		}
 		var base *string
 		if baseDeployment.Valid && baseDeployment.String != "" {
-			if mc.sets.deployments.status(baseDeployment.String) == ParentOK {
+			// In a targeted reconcile the in-memory deployment set holds only the
+			// filtered rows, so the predecessor is (correctly) absent — but it exists
+			// in v2 from the backfill. Keep the link and let v2's FK arbitrate.
+			if mc.reconcile || mc.sets.deployments.status(baseDeployment.String) == ParentOK {
 				s := baseDeployment.String
 				base = &s
 			} else {
-				// Predecessor not migrated → drop the (nullable) base link, but record it.
+				// Full backfill and the predecessor was not migrated → drop the
+				// (nullable) base link, but record it.
 				mc.run.flag("deployments", uuid, FlagDefaultedNull,
 					map[string]any{"base_deployment_uuid": baseDeployment.String},
 					map[string]any{"base_deployment_uuid": nil, "note": "base deployment not migrated; link dropped"})

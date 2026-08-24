@@ -48,6 +48,10 @@ type keyFilter struct {
 
 type deleteKey struct{ table, key string }
 
+// maxOnlyKeysEntries bounds a -only-keys file so a malformed or unbounded input
+// cannot exhaust memory building the in-memory work list.
+const maxOnlyKeysEntries = 5_000_000
+
 // loadKeyFilter parses a -only-keys file. Each non-blank, non-comment ('#') line is EITHER
 // "<op> <table> <key>" OR a JSON object with op/table/key fields — so the live path's JSONL
 // failure log (dual_write.failure_log) can be fed in verbatim. op is "upsert" or "delete";
@@ -63,12 +67,15 @@ func loadKeyFilter(path string) (*keyFilter, error) {
 	kf := &keyFilter{upserts: map[string]map[string]bool{}}
 	sc := bufio.NewScanner(f)
 	sc.Buffer(make([]byte, 0, 64*1024), 1024*1024) // JSONL failure lines can be long (error text)
-	lineNo := 0
+	lineNo, entries := 0, 0
 	for sc.Scan() {
 		lineNo++
 		text := strings.TrimSpace(sc.Text())
 		if text == "" || strings.HasPrefix(text, "#") {
 			continue
+		}
+		if entries++; entries > maxOnlyKeysEntries {
+			return nil, fmt.Errorf("-only-keys file has more than %d entries; split it into batches", maxOnlyKeysEntries)
 		}
 		var op, table, key string
 		if strings.HasPrefix(text, "{") {
