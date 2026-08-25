@@ -724,7 +724,7 @@ func (t *Translator) TranslateConfigs(
 			// Transformers should be registered for every non-WebSub kind before the
 			// first snapshot is generated. Falling back here means Envoy cluster/route
 			// names will not match the policy engine's resources (503 cluster_not_found /
-			// 500 policy chain not found) — see issue #3197.
+			// 500 policy chain not found)
 			log.Warn("No transformer registered for config kind, using legacy translation path",
 				slog.String("id", cfg.UUID),
 				slog.String("kind", cfg.Kind))

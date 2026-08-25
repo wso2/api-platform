@@ -393,13 +393,10 @@ func main() {
 		}
 	}
 
-	// Build the transformer registry and wire it into the Envoy translator BEFORE
+	// Build the transformer registry and wire it into the Envoy translator before
 	// the initial xDS snapshot below, so the first snapshot already uses the
 	// transformer-path cluster/route names ("upstream_<name>_<host>_<port>") that the
-	// policy engine's resources reference. Wiring it later would leave the startup
-	// snapshot on the legacy naming path ("cluster_<scheme>_<host>"), breaking every
-	// previously deployed non-WebSub API with 503 cluster_not_found after a controller
-	// restart (issue #3197). WebSubApi is intentionally excluded so it keeps using the
+	// policy engine's resources reference. WebSubApi is intentionally excluded so it keeps using the
 	// async-specific legacy translation path.
 	restTransformer := transform.NewRestAPITransformer(&cfg.Router, cfg, policyDefinitions)
 	llmTransformer := transform.NewLLMTransformer(configStore, db, &cfg.Router, cfg, policyDefinitions, policyVersionResolver)

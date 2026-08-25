@@ -387,7 +387,7 @@ func main() {
 	// from the transformer path). With no transformers wired the translator silently
 	// falls back to the legacy path, which names clusters "cluster_<scheme>_<host>" —
 	// the policy engine then routes to upstream_* clusters that don't exist in Envoy,
-	// and every API returns 503 cluster_not_found until it is redeployed (issue #3197).
+	// and every API returns 503 cluster_not_found until it is redeployed
 	restTransformer := transform.NewRestAPITransformer(&cfg.Router, cfg, policyDefinitions)
 	llmTransformer := transform.NewLLMTransformer(configStore, db, &cfg.Router, cfg, policyDefinitions, policyVersionResolver)
 	transformerRegistry := transform.NewRegistry(restTransformer, llmTransformer)
