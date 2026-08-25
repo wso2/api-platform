@@ -91,6 +91,18 @@ CREATE TABLE IF NOT EXISTS agents (
     FOREIGN KEY(gateway_id, uuid) REFERENCES artifacts(gateway_id, uuid) ON DELETE CASCADE
 );
 
+-- GraphQL is not a separate product the way event-gateway is (see the websub_apis/
+-- webbroker_apis note above), so graphql_apis is defined directly here as a
+-- one-column-identical clone of rest_apis, instead of being owned by a separate
+-- supplemental-DDL module.
+CREATE TABLE IF NOT EXISTS graphql_apis (
+    uuid TEXT NOT NULL,
+    gateway_id TEXT NOT NULL,
+    configuration TEXT NOT NULL,
+    PRIMARY KEY (gateway_id, uuid),
+    FOREIGN KEY(gateway_id, uuid) REFERENCES artifacts(gateway_id, uuid) ON DELETE CASCADE
+);
+
 -- Note: Policy definitions are no longer stored in the database.
 -- They are loaded from files at controller startup (see policies/ directory).
 -- The policy_definitions table has been removed as of schema version 3.
