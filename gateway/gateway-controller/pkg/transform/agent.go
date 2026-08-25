@@ -795,10 +795,18 @@ func isStreamingOperation(operation agentproto.Operation) bool {
 // agentUpstreamAuthPolicy builds the policy that injects the Agent's upstream
 // credential, or nil when the Agent configures none. It mirrors what the MCP
 // transformer does with the identically shaped block.
+// The struct shape below must stay identical (field names, types, tags and
+// order) to AgentConfigData_Upstream.Auth in the generated management models:
+// it is an inline anonymous struct there, so Go type identity is the only thing
+// that links them. It widened when the shared UpstreamAuth schema component
+// gained the policyName/policyParams/policyVersion fields.
 func agentUpstreamAuthPolicy(auth *struct {
-	Header *string                             `json:"header,omitempty" yaml:"header,omitempty"`
-	Type   api.AgentConfigDataUpstreamAuthType `json:"type" yaml:"type"`
-	Value  *string                             `json:"value,omitempty" yaml:"value,omitempty"`
+	Header        *string                             `json:"header,omitempty" yaml:"header,omitempty"`
+	PolicyName    *string                             `json:"policyName,omitempty" yaml:"policyName,omitempty"`
+	PolicyParams  *map[string]interface{}             `json:"policyParams,omitempty" yaml:"policyParams,omitempty"`
+	PolicyVersion *string                             `json:"policyVersion,omitempty" yaml:"policyVersion,omitempty"`
+	Type          api.AgentConfigDataUpstreamAuthType `json:"type" yaml:"type"`
+	Value         *string                             `json:"value,omitempty" yaml:"value,omitempty"`
 }) (*api.Policy, error) {
 	if auth == nil || auth.Type == api.AgentConfigDataUpstreamAuthTypeNone {
 		return nil, nil
