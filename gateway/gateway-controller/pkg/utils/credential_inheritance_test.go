@@ -41,10 +41,30 @@ func storedProvider() api.LLMProviderConfiguration {
 	var cfg api.LLMProviderConfiguration
 	cfg.Spec.Upstream.Url = sp("https://api.openai.com/v1")
 	cfg.Spec.Upstream.Auth = &struct {
-		Header *string                                   `json:"header,omitempty" yaml:"header,omitempty"`
-		Type   api.LLMProviderConfigDataUpstreamAuthType `json:"type" yaml:"type"`
-		Value  *string                                   `json:"value,omitempty" yaml:"value,omitempty"`
+		Header        *string                                   `json:"header,omitempty" yaml:"header,omitempty"`
+		PolicyName    *string                                   `json:"policyName,omitempty" yaml:"policyName,omitempty"`
+		PolicyParams  *map[string]interface{}                   `json:"policyParams,omitempty" yaml:"policyParams,omitempty"`
+		PolicyVersion *string                                   `json:"policyVersion,omitempty" yaml:"policyVersion,omitempty"`
+		Type          api.LLMProviderConfigDataUpstreamAuthType `json:"type" yaml:"type"`
+		Value         *string                                   `json:"value,omitempty" yaml:"value,omitempty"`
 	}{Header: sp("Authorization"), Type: "api-key", Value: sp(storedCred)}
+	return cfg
+}
+
+// storedOAuth2Provider builds a persisted provider whose credential lives in
+// PolicyParams (oauth2/other auth), not Value.
+func storedOAuth2Provider() api.LLMProviderConfiguration {
+	var cfg api.LLMProviderConfiguration
+	cfg.Spec.Upstream.Url = sp("https://api.openai.com/v1")
+	params := map[string]interface{}{"tokenEndpoint": "https://idp.example.com/token", "clientSecret": storedCred}
+	cfg.Spec.Upstream.Auth = &struct {
+		Header        *string                                   `json:"header,omitempty" yaml:"header,omitempty"`
+		PolicyName    *string                                   `json:"policyName,omitempty" yaml:"policyName,omitempty"`
+		PolicyParams  *map[string]interface{}                   `json:"policyParams,omitempty" yaml:"policyParams,omitempty"`
+		PolicyVersion *string                                   `json:"policyVersion,omitempty" yaml:"policyVersion,omitempty"`
+		Type          api.LLMProviderConfigDataUpstreamAuthType `json:"type" yaml:"type"`
+		Value         *string                                   `json:"value,omitempty" yaml:"value,omitempty"`
+	}{Type: "oauth2", PolicyParams: &params}
 	return cfg
 }
 
@@ -167,6 +187,52 @@ func TestInheritLLMProviderCredential(t *testing.T) {
 	t.Run("nil incoming does not panic", func(t *testing.T) {
 		assert.NotPanics(t, func() { inheritLLMProviderCredential(nil, storedProvider()) })
 	})
+
+	// Regression: oauth2/other stores its credential in PolicyParams, not Value.
+	t.Run("oauth2 auth omitted entirely inherits the stored policyParams", func(t *testing.T) {
+		var incoming api.LLMProviderConfiguration
+		incoming.Spec.Upstream.Url = sp("https://api.openai.com/v1")
+
+		inheritLLMProviderCredential(&incoming, storedOAuth2Provider())
+
+		require.NotNil(t, incoming.Spec.Upstream.Auth, "stored oauth2 auth block should be inherited")
+		require.NotNil(t, incoming.Spec.Upstream.Auth.PolicyParams)
+		assert.Equal(t, storedCred, (*incoming.Spec.Upstream.Auth.PolicyParams)["clientSecret"])
+	})
+
+	t.Run("oauth2 auth present with no policyParams inherits the stored policyParams", func(t *testing.T) {
+		incoming := storedOAuth2Provider()
+		incoming.Spec.Upstream.Auth.PolicyParams = nil // what a redacted GET would return
+
+		inheritLLMProviderCredential(&incoming, storedOAuth2Provider())
+
+		require.NotNil(t, incoming.Spec.Upstream.Auth.PolicyParams)
+		assert.Equal(t, storedCred, (*incoming.Spec.Upstream.Auth.PolicyParams)["clientSecret"])
+	})
+
+	t.Run("supplied policyParams wins so rotation still works", func(t *testing.T) {
+		incoming := storedOAuth2Provider()
+		rotated := map[string]interface{}{"clientSecret": newCred}
+		incoming.Spec.Upstream.Auth.PolicyParams = &rotated
+
+		inheritLLMProviderCredential(&incoming, storedOAuth2Provider())
+
+		assert.Equal(t, newCred, (*incoming.Spec.Upstream.Auth.PolicyParams)["clientSecret"],
+			"must not clobber rotated policyParams")
+	})
+
+	// Regression: a client that always serializes policyParams as `{}` must still inherit.
+	t.Run("empty-but-present policyParams inherits the stored policyParams", func(t *testing.T) {
+		incoming := storedOAuth2Provider()
+		empty := map[string]interface{}{}
+		incoming.Spec.Upstream.Auth.PolicyParams = &empty
+
+		inheritLLMProviderCredential(&incoming, storedOAuth2Provider())
+
+		require.NotNil(t, incoming.Spec.Upstream.Auth.PolicyParams)
+		assert.Equal(t, storedCred, (*incoming.Spec.Upstream.Auth.PolicyParams)["clientSecret"],
+			"an empty policyParams map must not be treated as a supplied credential")
+	})
 }
 
 func TestInheritLLMProxyCredentials(t *testing.T) {
@@ -272,15 +338,40 @@ func TestInheritLLMProxyCredentials(t *testing.T) {
 
 		assert.Nil(t, incoming.Spec.Provider.Auth.Value)
 	})
+
+	// Regression: see the equivalent oauth2 case in TestInheritLLMProviderCredential.
+	t.Run("oauth2 primary provider auth omitted entirely inherits the stored policyParams", func(t *testing.T) {
+		params := map[string]interface{}{"tokenEndpoint": "https://idp.example.com/token", "clientSecret": storedCred}
+		storedOAuth2 := func() api.LLMProxyConfiguration {
+			var cfg api.LLMProxyConfiguration
+			cfg.Spec.Provider = api.LLMProxyProvider{
+				Id:   "openai-provider",
+				Auth: &api.LLMUpstreamAuth{Type: "oauth2", PolicyParams: &params},
+			}
+			return cfg
+		}
+
+		var incoming api.LLMProxyConfiguration
+		incoming.Spec.Provider = api.LLMProxyProvider{Id: "openai-provider"}
+
+		inheritLLMProxyCredentials(&incoming, storedOAuth2())
+
+		require.NotNil(t, incoming.Spec.Provider.Auth)
+		require.NotNil(t, incoming.Spec.Provider.Auth.PolicyParams)
+		assert.Equal(t, storedCred, (*incoming.Spec.Provider.Auth.PolicyParams)["clientSecret"])
+	})
 }
 
 func TestInheritMCPProxyCredential(t *testing.T) {
 	stored := func() api.MCPProxyConfiguration {
 		var cfg api.MCPProxyConfiguration
 		cfg.Spec.Upstream.Auth = &struct {
-			Header *string                                `json:"header,omitempty" yaml:"header,omitempty"`
-			Type   api.MCPProxyConfigDataUpstreamAuthType `json:"type" yaml:"type"`
-			Value  *string                                `json:"value,omitempty" yaml:"value,omitempty"`
+			Header        *string                                `json:"header,omitempty" yaml:"header,omitempty"`
+			PolicyName    *string                                `json:"policyName,omitempty" yaml:"policyName,omitempty"`
+			PolicyParams  *map[string]interface{}                `json:"policyParams,omitempty" yaml:"policyParams,omitempty"`
+			PolicyVersion *string                                `json:"policyVersion,omitempty" yaml:"policyVersion,omitempty"`
+			Type          api.MCPProxyConfigDataUpstreamAuthType `json:"type" yaml:"type"`
+			Value         *string                                `json:"value,omitempty" yaml:"value,omitempty"`
 		}{Header: sp("Authorization"), Type: "api-key", Value: sp(storedCred)}
 		return cfg
 	}
@@ -313,6 +404,30 @@ func TestInheritMCPProxyCredential(t *testing.T) {
 		incoming.Spec.Upstream.Auth.Value = nil
 		inheritMCPProxyCredential(&incoming, stored())
 		assert.Nil(t, incoming.Spec.Upstream.Auth.Value)
+	})
+
+	// Regression: see the equivalent oauth2 case in TestInheritLLMProviderCredential.
+	t.Run("oauth2 auth omitted entirely inherits the stored policyParams", func(t *testing.T) {
+		storedOAuth2 := func() api.MCPProxyConfiguration {
+			var cfg api.MCPProxyConfiguration
+			params := map[string]interface{}{"tokenEndpoint": "https://idp.example.com/token", "clientSecret": storedCred}
+			cfg.Spec.Upstream.Auth = &struct {
+				Header        *string                                `json:"header,omitempty" yaml:"header,omitempty"`
+				PolicyName    *string                                `json:"policyName,omitempty" yaml:"policyName,omitempty"`
+				PolicyParams  *map[string]interface{}                `json:"policyParams,omitempty" yaml:"policyParams,omitempty"`
+				PolicyVersion *string                                `json:"policyVersion,omitempty" yaml:"policyVersion,omitempty"`
+				Type          api.MCPProxyConfigDataUpstreamAuthType `json:"type" yaml:"type"`
+				Value         *string                                `json:"value,omitempty" yaml:"value,omitempty"`
+			}{Type: "oauth2", PolicyParams: &params}
+			return cfg
+		}
+
+		var incoming api.MCPProxyConfiguration
+		inheritMCPProxyCredential(&incoming, storedOAuth2())
+
+		require.NotNil(t, incoming.Spec.Upstream.Auth)
+		require.NotNil(t, incoming.Spec.Upstream.Auth.PolicyParams)
+		assert.Equal(t, storedCred, (*incoming.Spec.Upstream.Auth.PolicyParams)["clientSecret"])
 	})
 }
 

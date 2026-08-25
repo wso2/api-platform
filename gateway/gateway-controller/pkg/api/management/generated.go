@@ -107,6 +107,7 @@ const (
 const (
 	LLMProviderConfigDataUpstreamAuthTypeApiKey LLMProviderConfigDataUpstreamAuthType = "api-key"
 	LLMProviderConfigDataUpstreamAuthTypeNone   LLMProviderConfigDataUpstreamAuthType = "none"
+	LLMProviderConfigDataUpstreamAuthTypeOauth2 LLMProviderConfigDataUpstreamAuthType = "oauth2"
 	LLMProviderConfigDataUpstreamAuthTypeOther  LLMProviderConfigDataUpstreamAuthType = "other"
 )
 
@@ -186,6 +187,7 @@ const (
 const (
 	LLMUpstreamAuthTypeApiKey LLMUpstreamAuthType = "api-key"
 	LLMUpstreamAuthTypeNone   LLMUpstreamAuthType = "none"
+	LLMUpstreamAuthTypeOauth2 LLMUpstreamAuthType = "oauth2"
 	LLMUpstreamAuthTypeOther  LLMUpstreamAuthType = "other"
 )
 
@@ -199,6 +201,7 @@ const (
 const (
 	MCPProxyConfigDataUpstreamAuthTypeApiKey MCPProxyConfigDataUpstreamAuthType = "api-key"
 	MCPProxyConfigDataUpstreamAuthTypeNone   MCPProxyConfigDataUpstreamAuthType = "none"
+	MCPProxyConfigDataUpstreamAuthTypeOauth2 MCPProxyConfigDataUpstreamAuthType = "oauth2"
 	MCPProxyConfigDataUpstreamAuthTypeOther  MCPProxyConfigDataUpstreamAuthType = "other"
 )
 
@@ -403,6 +406,7 @@ const (
 const (
 	UpstreamAuthAuthTypeApiKey UpstreamAuthAuthType = "api-key"
 	UpstreamAuthAuthTypeNone   UpstreamAuthAuthType = "none"
+	UpstreamAuthAuthTypeOauth2 UpstreamAuthAuthType = "oauth2"
 	UpstreamAuthAuthTypeOther  UpstreamAuthAuthType = "other"
 )
 
@@ -773,7 +777,7 @@ type LLMProviderConfigData struct {
 // LLMProviderConfigDataDeploymentState Desired deployment state - 'deployed' (default) or 'undeployed'. When set to 'undeployed', the LLM Provider is removed from router traffic but configuration and policies are preserved for potential redeployment.
 type LLMProviderConfigDataDeploymentState string
 
-// LLMProviderConfigDataUpstreamAuthType defines model for LLMProviderConfigData.Upstream.Auth.Type.
+// LLMProviderConfigDataUpstreamAuthType "api-key" attaches the built-in set-headers policy by default (overridable via policyName) and accepts either the generic policyParams bucket or its own deprecated header/value fields below. "oauth2" attaches the built-in oauth2-generator policy by default (overridable via policyName) and always requires policyParams - there is no typed-field fallback for it. "other" attaches any policy by name - policyName and policyParams are both required in that case, since there is no built-in default or typed-field fallback for a non-built-in auth scheme. "none": no upstream authentication - the gateway attaches no auth policy of its own; auth (if any) is handled entirely by user-attached policies elsewhere.
 type LLMProviderConfigDataUpstreamAuthType string
 
 // LLMProviderConfigDataUpstreamHostRewrite Controls how the Host header is handled when routing to the upstream. `auto` delegates host rewriting to Envoy, which rewrites the Host header using the upstream cluster host. `manual` disables automatic rewriting and expects explicit configuration.
@@ -788,10 +792,24 @@ type LLMProviderConfigDataUpstream1 = interface{}
 // LLMProviderConfigData_Upstream defines model for LLMProviderConfigData.Upstream.
 type LLMProviderConfigData_Upstream struct {
 	Auth *struct {
-		Header *string                               `json:"header,omitempty" yaml:"header,omitempty"`
-		Type   LLMProviderConfigDataUpstreamAuthType `json:"type" yaml:"type"`
+		// Header Deprecated: use policyParams (e.g. {request: {headers: [{name: ..., value: ...}]}} - the set-headers policy's own param shape) instead. HTTP header to set on outbound requests. Applies when type is api-key. Still honored when policyParams is omitted, for backward compatibility.
+		// Deprecated: this property has been marked as deprecated upstream, but no `x-deprecated-reason` was set
+		Header *string `json:"header,omitempty" yaml:"header,omitempty"`
 
-		// Value Upstream credential. Write-only: accepted on create/update and never returned by the management API on a read, for any role. Supply either a literal value or a secret reference (e.g. a `secret` template expression); either way the field is omitted from management API response bodies. An update that omits it inherits the stored value; set `type: none` to remove auth.
+		// PolicyName Name of the policy that implements this upstream auth. Optional for "api-key"/"oauth2" (defaults to the built-in policy for that type - api-key -> set-headers, oauth2 -> oauth2-generator); set it to point at your own fork or a newer major version's replacement instead. Required when type is "other".
+		PolicyName *string `json:"policyName,omitempty" yaml:"policyName,omitempty"`
+
+		// PolicyParams Parameters passed verbatim to policyName (or the built-in default for type). Required when type is "oauth2" or "other" - oauth2 has no typed fields at all, only this bucket (e.g. {tokenEndpoint: ..., clientId: ..., clientSecret: ...} for the token-endpoint path, or {bearerToken: ...} for a directly-supplied credential). For "api-key", optional: replaces the deprecated header/value fields below when set; do not set both at once.
+		PolicyParams *map[string]interface{} `json:"policyParams,omitempty" yaml:"policyParams,omitempty"`
+
+		// PolicyVersion Major version of policyName to attach (e.g. "v1"), same format and resolution rules as Policy.version. Optional - defaults to the highest version available in the gateway image when omitted. If set, it must match a version actually loaded in this gateway build, or config validation fails.
+		PolicyVersion *string `json:"policyVersion,omitempty" yaml:"policyVersion,omitempty"`
+
+		// Type "api-key" attaches the built-in set-headers policy by default (overridable via policyName) and accepts either the generic policyParams bucket or its own deprecated header/value fields below. "oauth2" attaches the built-in oauth2-generator policy by default (overridable via policyName) and always requires policyParams - there is no typed-field fallback for it. "other" attaches any policy by name - policyName and policyParams are both required in that case, since there is no built-in default or typed-field fallback for a non-built-in auth scheme. "none": no upstream authentication - the gateway attaches no auth policy of its own; auth (if any) is handled entirely by user-attached policies elsewhere.
+		Type LLMProviderConfigDataUpstreamAuthType `json:"type" yaml:"type"`
+
+		// Value Deprecated: use policyParams instead. Upstream credential. Applies when type is api-key. Still honored when policyParams is omitted, for backward compatibility. Write-only: accepted on create/update and never returned by the management API on a read, for any role. Supply either a literal value or a secret reference (e.g. a `secret` template expression); either way the field is omitted from management API response bodies. An update that omits it inherits the stored value; set `type: none` to remove auth.
+		// Deprecated: this property has been marked as deprecated upstream, but no `x-deprecated-reason` was set
 		Value *string `json:"value,omitempty" yaml:"value,omitempty"`
 	} `json:"auth,omitempty" yaml:"auth,omitempty"`
 
@@ -1066,14 +1084,28 @@ type LLMProxyTransformer struct {
 
 // LLMUpstreamAuth defines model for LLMUpstreamAuth.
 type LLMUpstreamAuth struct {
-	Header *string             `json:"header,omitempty" yaml:"header,omitempty"`
-	Type   LLMUpstreamAuthType `json:"type" yaml:"type"`
+	// Header Deprecated: use policyParams (e.g. {request: {headers: [{name: ..., value: ...}]}} - the set-headers policy's own param shape) instead. HTTP header to set on outbound requests. Applies when type is api-key. Still honored when policyParams is omitted, for backward compatibility.
+	// Deprecated: this property has been marked as deprecated upstream, but no `x-deprecated-reason` was set
+	Header *string `json:"header,omitempty" yaml:"header,omitempty"`
 
-	// Value Upstream credential. Write-only: accepted on create/update and never returned by the management API on a read, for any role. An update that omits it inherits the stored value; set `type: none` to remove auth.
+	// PolicyName Name of the policy that implements this upstream auth. Optional for "api-key"/"oauth2" (defaults to the built-in policy for that type - api-key -> set-headers, oauth2 -> oauth2-generator); set it to point at your own fork or a newer major version's replacement instead. Required when type is "other".
+	PolicyName *string `json:"policyName,omitempty" yaml:"policyName,omitempty"`
+
+	// PolicyParams Parameters passed verbatim to policyName (or the built-in default for type). Required when type is "oauth2" or "other" - oauth2 has no typed fields at all, only this bucket (e.g. {tokenEndpoint: ..., clientId: ..., clientSecret: ...} for the token-endpoint path, or {bearerToken: ...} for a directly-supplied credential). For "api-key", optional: replaces the deprecated header/value fields below when set; do not set both at once.
+	PolicyParams *map[string]interface{} `json:"policyParams,omitempty" yaml:"policyParams,omitempty"`
+
+	// PolicyVersion Major version of policyName to attach (e.g. "v1"), same format and resolution rules as Policy.version. Optional - defaults to the highest version available in the gateway image when omitted. If set, it must match a version actually loaded in this gateway build, or config validation fails.
+	PolicyVersion *string `json:"policyVersion,omitempty" yaml:"policyVersion,omitempty"`
+
+	// Type "api-key" attaches the built-in set-headers policy by default (overridable via policyName) and accepts either the generic policyParams bucket or its own deprecated header/value fields below. "oauth2" attaches the built-in oauth2-generator policy by default (overridable via policyName) and always requires policyParams - there is no typed-field fallback for it. "other" attaches any policy by name - policyName and policyParams are both required in that case, since there is no built-in default or typed-field fallback for a non-built-in auth scheme. "none": no upstream authentication - the gateway attaches no auth policy of its own; auth (if any) is handled entirely by user-attached policies elsewhere.
+	Type LLMUpstreamAuthType `json:"type" yaml:"type"`
+
+	// Value Deprecated: use policyParams instead. Upstream credential. Applies when type is api-key. Still honored when policyParams is omitted, for backward compatibility. Write-only: accepted on create/update and never returned by the management API on a read, for any role. An update that omits it inherits the stored value; set `type: none` to remove auth.
+	// Deprecated: this property has been marked as deprecated upstream, but no `x-deprecated-reason` was set
 	Value *string `json:"value,omitempty" yaml:"value,omitempty"`
 }
 
-// LLMUpstreamAuthType defines model for LLMUpstreamAuth.Type.
+// LLMUpstreamAuthType "api-key" attaches the built-in set-headers policy by default (overridable via policyName) and accepts either the generic policyParams bucket or its own deprecated header/value fields below. "oauth2" attaches the built-in oauth2-generator policy by default (overridable via policyName) and always requires policyParams - there is no typed-field fallback for it. "other" attaches any policy by name - policyName and policyParams are both required in that case, since there is no built-in default or typed-field fallback for a non-built-in auth scheme. "none": no upstream authentication - the gateway attaches no auth policy of its own; auth (if any) is handled entirely by user-attached policies elsewhere.
 type LLMUpstreamAuthType string
 
 // MCPPrompt defines model for MCPPrompt.
@@ -1142,7 +1174,7 @@ type MCPProxyConfigData struct {
 // MCPProxyConfigDataDeploymentState Desired deployment state - 'deployed' (default) or 'undeployed'. When set to 'undeployed', the MCP Proxy is removed from router traffic but configuration and policies are preserved for potential redeployment.
 type MCPProxyConfigDataDeploymentState string
 
-// MCPProxyConfigDataUpstreamAuthType defines model for MCPProxyConfigData.Upstream.Auth.Type.
+// MCPProxyConfigDataUpstreamAuthType "api-key" attaches the built-in set-headers policy by default (overridable via policyName) and accepts either the generic policyParams bucket or its own deprecated header/value fields below. "oauth2" attaches the built-in oauth2-generator policy by default (overridable via policyName) and always requires policyParams - there is no typed-field fallback for it. "other" attaches any policy by name - policyName and policyParams are both required in that case, since there is no built-in default or typed-field fallback for a non-built-in auth scheme. "none": no upstream authentication - the gateway attaches no auth policy of its own; auth (if any) is handled entirely by user-attached policies elsewhere.
 type MCPProxyConfigDataUpstreamAuthType string
 
 // MCPProxyConfigDataUpstreamHostRewrite Controls how the Host header is handled when routing to the upstream. `auto` delegates host rewriting to Envoy, which rewrites the Host header using the upstream cluster host. `manual` disables automatic rewriting and expects explicit configuration.
@@ -1157,10 +1189,24 @@ type MCPProxyConfigDataUpstream1 = interface{}
 // MCPProxyConfigData_Upstream defines model for MCPProxyConfigData.Upstream.
 type MCPProxyConfigData_Upstream struct {
 	Auth *struct {
-		Header *string                            `json:"header,omitempty" yaml:"header,omitempty"`
-		Type   MCPProxyConfigDataUpstreamAuthType `json:"type" yaml:"type"`
+		// Header Deprecated: use policyParams (e.g. {request: {headers: [{name: ..., value: ...}]}} - the set-headers policy's own param shape) instead. HTTP header to set on outbound requests. Applies when type is api-key. Still honored when policyParams is omitted, for backward compatibility.
+		// Deprecated: this property has been marked as deprecated upstream, but no `x-deprecated-reason` was set
+		Header *string `json:"header,omitempty" yaml:"header,omitempty"`
 
-		// Value Upstream credential. Write-only: accepted on create/update and never returned by the management API on a read, for any role. Supply either a literal value or a secret reference (e.g. a `secret` template expression); either way the field is omitted from management API response bodies. An update that omits it inherits the stored value; set `type: none` to remove auth.
+		// PolicyName Name of the policy that implements this upstream auth. Optional for "api-key"/"oauth2" (defaults to the built-in policy for that type - api-key -> set-headers, oauth2 -> oauth2-generator); set it to point at your own fork or a newer major version's replacement instead. Required when type is "other".
+		PolicyName *string `json:"policyName,omitempty" yaml:"policyName,omitempty"`
+
+		// PolicyParams Parameters passed verbatim to policyName (or the built-in default for type). Required when type is "oauth2" or "other" - oauth2 has no typed fields at all, only this bucket (e.g. {tokenEndpoint: ..., clientId: ..., clientSecret: ...} for the token-endpoint path, or {bearerToken: ...} for a directly-supplied credential). For "api-key", optional: replaces the deprecated header/value fields below when set; do not set both at once.
+		PolicyParams *map[string]interface{} `json:"policyParams,omitempty" yaml:"policyParams,omitempty"`
+
+		// PolicyVersion Major version of policyName to attach (e.g. "v1"), same format and resolution rules as Policy.version. Optional - defaults to the highest version available in the gateway image when omitted. If set, it must match a version actually loaded in this gateway build, or config validation fails.
+		PolicyVersion *string `json:"policyVersion,omitempty" yaml:"policyVersion,omitempty"`
+
+		// Type "api-key" attaches the built-in set-headers policy by default (overridable via policyName) and accepts either the generic policyParams bucket or its own deprecated header/value fields below. "oauth2" attaches the built-in oauth2-generator policy by default (overridable via policyName) and always requires policyParams - there is no typed-field fallback for it. "other" attaches any policy by name - policyName and policyParams are both required in that case, since there is no built-in default or typed-field fallback for a non-built-in auth scheme. "none": no upstream authentication - the gateway attaches no auth policy of its own; auth (if any) is handled entirely by user-attached policies elsewhere.
+		Type MCPProxyConfigDataUpstreamAuthType `json:"type" yaml:"type"`
+
+		// Value Deprecated: use policyParams instead. Upstream credential. Applies when type is api-key. Still honored when policyParams is omitted, for backward compatibility. Write-only: accepted on create/update and never returned by the management API on a read, for any role. Supply either a literal value or a secret reference (e.g. a `secret` template expression); either way the field is omitted from management API response bodies. An update that omits it inherits the stored value; set `type: none` to remove auth.
+		// Deprecated: this property has been marked as deprecated upstream, but no `x-deprecated-reason` was set
 		Value *string `json:"value,omitempty" yaml:"value,omitempty"`
 	} `json:"auth,omitempty" yaml:"auth,omitempty"`
 
@@ -1698,15 +1744,29 @@ type Upstream1 = interface{}
 // UpstreamAuth defines model for UpstreamAuth.
 type UpstreamAuth struct {
 	Auth *struct {
-		Header *string              `json:"header,omitempty" yaml:"header,omitempty"`
-		Type   UpstreamAuthAuthType `json:"type" yaml:"type"`
+		// Header Deprecated: use policyParams (e.g. {request: {headers: [{name: ..., value: ...}]}} - the set-headers policy's own param shape) instead. HTTP header to set on outbound requests. Applies when type is api-key. Still honored when policyParams is omitted, for backward compatibility.
+		// Deprecated: this property has been marked as deprecated upstream, but no `x-deprecated-reason` was set
+		Header *string `json:"header,omitempty" yaml:"header,omitempty"`
 
-		// Value Upstream credential. Write-only: accepted on create/update and never returned by the management API on a read, for any role. Supply either a literal value or a secret reference (e.g. a `secret` template expression); either way the field is omitted from management API response bodies. An update that omits it inherits the stored value; set `type: none` to remove auth.
+		// PolicyName Name of the policy that implements this upstream auth. Optional for "api-key"/"oauth2" (defaults to the built-in policy for that type - api-key -> set-headers, oauth2 -> oauth2-generator); set it to point at your own fork or a newer major version's replacement instead. Required when type is "other".
+		PolicyName *string `json:"policyName,omitempty" yaml:"policyName,omitempty"`
+
+		// PolicyParams Parameters passed verbatim to policyName (or the built-in default for type). Required when type is "oauth2" or "other" - oauth2 has no typed fields at all, only this bucket (e.g. {tokenEndpoint: ..., clientId: ..., clientSecret: ...} for the token-endpoint path, or {bearerToken: ...} for a directly-supplied credential). For "api-key", optional: replaces the deprecated header/value fields below when set; do not set both at once.
+		PolicyParams *map[string]interface{} `json:"policyParams,omitempty" yaml:"policyParams,omitempty"`
+
+		// PolicyVersion Major version of policyName to attach (e.g. "v1"), same format and resolution rules as Policy.version. Optional - defaults to the highest version available in the gateway image when omitted. If set, it must match a version actually loaded in this gateway build, or config validation fails.
+		PolicyVersion *string `json:"policyVersion,omitempty" yaml:"policyVersion,omitempty"`
+
+		// Type "api-key" attaches the built-in set-headers policy by default (overridable via policyName) and accepts either the generic policyParams bucket or its own deprecated header/value fields below. "oauth2" attaches the built-in oauth2-generator policy by default (overridable via policyName) and always requires policyParams - there is no typed-field fallback for it. "other" attaches any policy by name - policyName and policyParams are both required in that case, since there is no built-in default or typed-field fallback for a non-built-in auth scheme. "none": no upstream authentication - the gateway attaches no auth policy of its own; auth (if any) is handled entirely by user-attached policies elsewhere.
+		Type UpstreamAuthAuthType `json:"type" yaml:"type"`
+
+		// Value Deprecated: use policyParams instead. Upstream credential. Applies when type is api-key. Still honored when policyParams is omitted, for backward compatibility. Write-only: accepted on create/update and never returned by the management API on a read, for any role. Supply either a literal value or a secret reference (e.g. a `secret` template expression); either way the field is omitted from management API response bodies. An update that omits it inherits the stored value; set `type: none` to remove auth.
+		// Deprecated: this property has been marked as deprecated upstream, but no `x-deprecated-reason` was set
 		Value *string `json:"value,omitempty" yaml:"value,omitempty"`
 	} `json:"auth,omitempty" yaml:"auth,omitempty"`
 }
 
-// UpstreamAuthAuthType defines model for UpstreamAuth.Auth.Type.
+// UpstreamAuthAuthType "api-key" attaches the built-in set-headers policy by default (overridable via policyName) and accepts either the generic policyParams bucket or its own deprecated header/value fields below. "oauth2" attaches the built-in oauth2-generator policy by default (overridable via policyName) and always requires policyParams - there is no typed-field fallback for it. "other" attaches any policy by name - policyName and policyParams are both required in that case, since there is no built-in default or typed-field fallback for a non-built-in auth scheme. "none": no upstream authentication - the gateway attaches no auth policy of its own; auth (if any) is handled entirely by user-attached policies elsewhere.
 type UpstreamAuthAuthType string
 
 // UpstreamDefinition Reusable upstream configuration with optional timeout and load balancing settings

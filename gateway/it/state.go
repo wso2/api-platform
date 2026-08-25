@@ -48,6 +48,7 @@ type Config struct {
 	SampleBackendURL                 string
 	EchoBackendURL                   string
 	MockJWKSURL                      string
+	MockOAuth2IdPURL                 string
 	MockAzureContentSafetyURL        string
 	MockAWSBedrockGuardrailURL       string
 	MockEmbeddingProviderURL         string
@@ -62,6 +63,9 @@ const MockPlatformAPIPort = "9244"
 
 // MockJWKSPort is the port for mock-jwks service
 const MockJWKSPort = "8082"
+
+// MockOAuth2IdPPort is the port for mock-oauth2-idp service
+const MockOAuth2IdPPort = "8088"
 
 // MockAzureContentSafetyPort is the port for mock-azure-content-safety service
 const MockAzureContentSafetyPort = "8084"
@@ -95,6 +99,7 @@ func DefaultConfig() *Config {
 		SampleBackendURL:           "http://localhost:9080",
 		EchoBackendURL:             "http://localhost:9081",
 		MockJWKSURL:                fmt.Sprintf("http://localhost:%s", MockJWKSPort),
+		MockOAuth2IdPURL:           fmt.Sprintf("http://localhost:%s", MockOAuth2IdPPort),
 		MockAzureContentSafetyURL:  fmt.Sprintf("http://localhost:%s", MockAzureContentSafetyPort),
 		MockAWSBedrockGuardrailURL: fmt.Sprintf("http://localhost:%s", MockAWSBedrockGuardrailPort),
 		MockEmbeddingProviderURL:   fmt.Sprintf("http://localhost:%s", MockEmbeddingProviderPort),

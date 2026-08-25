@@ -27,6 +27,8 @@ import (
 
 	"github.com/google/uuid"
 	"gopkg.in/yaml.v3"
+
+	api "github.com/wso2/api-platform/gateway/gateway-controller/pkg/api/management"
 )
 
 // escapeParam escapes special characters in a parameter value to prevent
@@ -51,6 +53,67 @@ func GetParamsOfPolicy(policyDef string, params ...string) (map[string]any, erro
 		return map[string]any{}, err
 	}
 	return m, nil
+}
+
+// resolveUpstreamAuthPolicyName returns policyName if non-empty, otherwise defaultName.
+func resolveUpstreamAuthPolicyName(policyName *string, defaultName string) string {
+	if policyName != nil && strings.TrimSpace(*policyName) != "" {
+		return strings.TrimSpace(*policyName)
+	}
+	return defaultName
+}
+
+// resolveUpstreamAuthPolicyParams returns policyParams verbatim if supplied,
+// otherwise falls back to buildLegacyParams (the deprecated header/value path).
+func resolveUpstreamAuthPolicyParams(policyParams *map[string]interface{}, buildLegacyParams func() (map[string]interface{}, error)) (map[string]interface{}, error) {
+	if policyParams != nil {
+		return *policyParams, nil
+	}
+	return buildLegacyParams()
+}
+
+// buildUpstreamAuthPolicy builds the api.Policy for a policy-name-and-params-based upstream
+// auth type (api-key/oauth2/other), shared by every transformer and auth type. Pass
+// defaultPolicyName "" for a type with no built-in default (policyName required instead),
+// and buildLegacyParams nil for a type with no header/value fallback (policyParams required
+// instead) - the two are independent. fieldPrefix is the error-message field path;
+// resolveVersion validates a caller-overridden policy version.
+func buildUpstreamAuthPolicy(
+	authType, fieldPrefix string,
+	policyName, policyVersion *string,
+	policyParams *map[string]interface{},
+	defaultPolicyName string,
+	buildLegacyParams func() (map[string]interface{}, error),
+	resolveVersion func(name string, override *string) (string, error),
+) (*api.Policy, error) {
+	var name string
+	if defaultPolicyName == "" {
+		if policyName == nil || strings.TrimSpace(*policyName) == "" {
+			return nil, fmt.Errorf("%s.policyName is required when type is '%s'", fieldPrefix, authType)
+		}
+		name = strings.TrimSpace(*policyName)
+	} else {
+		name = resolveUpstreamAuthPolicyName(policyName, defaultPolicyName)
+	}
+
+	var params map[string]interface{}
+	if buildLegacyParams == nil {
+		if policyParams == nil {
+			return nil, fmt.Errorf("%s.policyParams is required when type is '%s'", fieldPrefix, authType)
+		}
+		params = *policyParams
+	} else {
+		var err error
+		if params, err = resolveUpstreamAuthPolicyParams(policyParams, buildLegacyParams); err != nil {
+			return nil, err
+		}
+	}
+
+	version, err := resolveVersion(name, policyVersion)
+	if err != nil {
+		return nil, err
+	}
+	return &api.Policy{Name: name, Version: version, Params: &params}, nil
 }
 
 // APIKeyETag produces a deterministic UUID v7-formatted ETag from the unique

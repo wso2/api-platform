@@ -84,6 +84,7 @@ func NewMCPDeploymentService(
 	eventHub eventhub.EventHub,
 	gatewayID string,
 	secretResolver funcs.SecretResolver,
+	policyVersionResolver PolicyVersionResolver,
 ) *MCPDeploymentService {
 	if db == nil {
 		panic("MCPDeploymentService requires non-nil storage")
@@ -96,7 +97,7 @@ func NewMCPDeploymentService(
 		snapshotManager: snapshotManager,
 		parser:          config.NewParser(),
 		validator:       config.NewMCPValidator().WithPolicyValidator(policyValidator),
-		transformer:     NewMCPTransformer(),
+		transformer:     NewMCPTransformer(policyVersionResolver),
 		policyManager:   policyManager,
 		eventHub:        eventHub,
 		gatewayID:       trimmedGatewayID,
@@ -122,7 +123,9 @@ func HydrateStoredMCPConfig(cfg *models.StoredConfig) error {
 
 	if source, ok := cfg.SourceConfiguration.(api.MCPProxyConfiguration); ok {
 		var restAPI api.RestAPI
-		if _, err := NewMCPTransformer().Transform(&source, &restAPI); err != nil {
+		// nil resolver: rehydrating an already-validated stored config, not
+		// re-validating a caller-supplied policyVersion override.
+		if _, err := NewMCPTransformer(nil).Transform(&source, &restAPI); err != nil {
 			return fmt.Errorf("failed to transform stored MCP proxy %s: %w", cfg.UUID, err)
 		}
 		cfg.Configuration = restAPI
