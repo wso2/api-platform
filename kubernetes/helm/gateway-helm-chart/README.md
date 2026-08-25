@@ -218,11 +218,17 @@ Do **not** redefine a table the chart already emits (`[controller.server]`, `[ro
 TOML rejects a duplicate table.
 
 `config.toml` is rendered into a **ConfigMap, not a Secret**, so it must not hold plaintext
-secrets. For any secret value, supply an `{{ env "NAME" }}` / `{{ file "/path" }}` interpolation
+secrets. For any secret value, supply a `{{ env "NAME" }}` or `{{ file "/path" }}` interpolation
 token (resolved by the gateway at startup, same mechanism as the control-plane token and DB
-password above) instead of a literal, and inject the backing env var via
-`gateway.gatewayRuntime.deployment.extraEnv`. Allowed `{{ file }}` source dirs:
-`/etc/gateway-runtime`, `/secrets/gateway-runtime`.
+password above) instead of a literal — each token reads from a different source, so back it with
+the matching mechanism:
+
+- `{{ env "NAME" }}` reads an environment variable — inject it via
+  `gateway.gatewayRuntime.deployment.extraEnv`.
+- `{{ file "/path" }}` reads a mounted file — mount the Secret via
+  `gateway.gatewayRuntime.deployment.extraVolumes` / `extraVolumeMounts` under one of the allowed
+  source dirs (`/etc/gateway-runtime`, `/secrets/gateway-runtime`) and point the token at that
+  mount path.
 
 Example — the Azure Content Safety content-moderation policy (endpoint is non-secret, the
 subscription key is a secret):
