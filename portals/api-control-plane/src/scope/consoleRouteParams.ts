@@ -16,7 +16,36 @@
  * under the License.
  */
 
+import { SELECT_SCOPE_SEGMENT } from '../routes/paths';
 import type { ConsoleRouteParams } from './ConsoleScopeContext';
+
+/**
+ * Segments that sit where a handle would but name a page, not a resource.
+ *
+ * `routes.newApi` is `.../apis/new`, so without this the create page reads back
+ * as an API whose handle is the literal `new` — which would put a bogus entry in
+ * the header's API switcher and the breadcrumb trail, flip `isApiScope` on while
+ * the API does not exist yet, and fire a detail request for it. `select-scope` is
+ * reserved for the same reason (`SELECT_SCOPE_SEGMENT`), though the builders
+ * already keep it out of a handle position by construction.
+ */
+const RESERVED_HANDLE_SEGMENTS = new Set<string>([SELECT_SCOPE_SEGMENT, 'new']);
+
+/**
+ * The handle one segment past `marker`, or `undefined` when that slot is absent
+ * or holds a reserved segment rather than a real handle.
+ */
+const handleAfter = (
+  segments: string[],
+  marker: string
+): string | undefined => {
+  const markerIndex = segments.indexOf(marker);
+  if (markerIndex < 0) return undefined;
+
+  const candidate = segments[markerIndex + 1];
+  if (!candidate || RESERVED_HANDLE_SEGMENTS.has(candidate)) return undefined;
+  return candidate;
+};
 
 /**
  * Reads scope handles out of a pathname positionally: the segment after
@@ -32,32 +61,21 @@ import type { ConsoleRouteParams } from './ConsoleScopeContext';
  * suffix behind it, or that suffix is read back as a handle. This is exactly why
  * those aliases carry `SELECT_SCOPE_SEGMENT` instead of dropping segments — see
  * `projectPath` in `routes/paths.ts`, and the round-trip test beside it.
+ *
+ * A page whose suffix genuinely does sit in a handle slot — `routes.newApi`, at
+ * `.../apis/new` — is excluded by `RESERVED_HANDLE_SEGMENTS` instead.
  */
 export const getRouteParamsFromPathname = (
   pathname: string
 ): ConsoleRouteParams => {
   const segments = pathname.split('/').filter(Boolean);
-  const organizationsIndex = segments.indexOf('organizations');
-  if (organizationsIndex < 0) return {};
-
-  const orgHandle = segments[organizationsIndex + 1];
-  const projectsIndex = segments.indexOf('projects');
-  const projectHandler =
-    projectsIndex >= 0 ? segments[projectsIndex + 1] : undefined;
-  const apisIndex = segments.indexOf('apis');
-  const apiHandler = apisIndex >= 0 ? segments[apisIndex + 1] : undefined;
-  const environmentsIndex = segments.indexOf('environments');
-  const environmentId =
-    environmentsIndex >= 0 ? segments[environmentsIndex + 1] : undefined;
-  const deploymentsIndex = segments.indexOf('deployments');
-  const deploymentId =
-    deploymentsIndex >= 0 ? segments[deploymentsIndex + 1] : undefined;
+  if (segments.indexOf('organizations') < 0) return {};
 
   return {
-    apiHandler,
-    deploymentId,
-    environmentId,
-    orgHandle,
-    projectHandler,
+    apiHandler: handleAfter(segments, 'apis'),
+    deploymentId: handleAfter(segments, 'deployments'),
+    environmentId: handleAfter(segments, 'environments'),
+    orgHandle: handleAfter(segments, 'organizations'),
+    projectHandler: handleAfter(segments, 'projects'),
   };
 };

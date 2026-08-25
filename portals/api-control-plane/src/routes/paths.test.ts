@@ -94,6 +94,29 @@ describe('scope-less aliases round-trip through the scope parser', () => {
       getRouteParamsFromPathname(build(ORG, PROJECT, API))
     ).toMatchObject({ apiHandler: API, orgHandle: ORG, projectHandler: PROJECT });
   });
+
+  /*
+   * `newApi` is the one page whose suffix sits in a handle slot (`.../apis/new`),
+   * so the alias convention above cannot protect it — the parser's reserved-segment
+   * list does. Read back as a handle, `new` would name a phantom API in the header
+   * switcher and breadcrumbs, turn `isApiScope` on before the API exists, and fire
+   * a detail request for it.
+   */
+  it('newApi: the create page is not an API called "new"', () => {
+    const params = getRouteParamsFromPathname(routes.newApi(ORG, PROJECT));
+
+    expect(params.orgHandle).toBe(ORG);
+    expect(params.projectHandler).toBe(PROJECT);
+    expect(params.apiHandler).toBeUndefined();
+  });
+
+  it('an API legitimately handled "new" is unreachable, by design', () => {
+    // Documents the trade-off rather than asserting a wish: the reserved segment
+    // wins, so the backend must never mint `new` as an API handle.
+    expect(
+      getRouteParamsFromPathname(routes.api(ORG, PROJECT, 'new')).apiHandler
+    ).toBeUndefined();
+  });
 });
 
 describe('path builders', () => {

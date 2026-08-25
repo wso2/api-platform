@@ -230,7 +230,7 @@ function ScopeSelection({
                       ) : projects.length === 0 ? (
                         <MenuItem value="" disabled>
                           <FormattedMessage
-                            id="scopeGate.noProjects"
+                            id="scopeGate.projectSelect.empty"
                             defaultMessage="No projects available"
                           />
                         </MenuItem>
@@ -273,7 +273,7 @@ function ScopeSelection({
                     </FormLabel>
                     <Select
                       labelId="scope-gate-api-label"
-                      value={chosenApi || '__loading__'}
+                      value={apisQuery.isPending ? '__loading__' : chosenApi}
                       onChange={(event) => setChosenApi(String(event.target.value))}
                       displayEmpty
                       disabled={!chosenProject || apisQuery.isPending}
@@ -290,7 +290,7 @@ function ScopeSelection({
                       ) : apis.length === 0 ? (
                         <MenuItem value="" disabled>
                           <FormattedMessage
-                            id="scopeGate.noApis"
+                            id="scopeGate.apiSelect.empty"
                             defaultMessage="No APIs available"
                           />
                         </MenuItem>

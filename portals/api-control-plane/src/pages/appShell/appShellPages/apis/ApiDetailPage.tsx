@@ -22,11 +22,15 @@ import { useApiDetail } from '../../../../api/hooks/useMvpQueries';
 import { ErrorState, LoadingState } from '../../../../components/StateViews';
 import { OverviewTab } from './overview/OverviewTab';
 import { FormattedMessage } from 'react-intl';
+import { Link as RouterLink } from 'react-router-dom';
+import { routes } from '../../../../routes/paths';
+import { useConsoleScope } from '../../../../scope/ConsoleScopeProvider';
 
 // No `ScopeGate`: this page is the API tier of the sidebar's Overview item, which
 // degrades to a shallower tier rather than linking here without an API.
 export function ApiDetailPage() {
   const detailQuery = useApiDetail();
+  const { params } = useConsoleScope();
 
   if (detailQuery.isLoading) return <LoadingState label="Loading API" />;
   if (detailQuery.error || !detailQuery.data) {
@@ -34,6 +38,15 @@ export function ApiDetailPage() {
   }
 
   const detail = detailQuery.data;
+
+  // The page is the API tier of the sidebar's Overview item, so it only ever
+  // mounts with all three handles in the URL; `apiPath` degrades to the
+  // scope-less alias for anything still missing.
+  const deployPath = routes.apiDeploy(
+    params.orgHandle ?? '',
+    params.projectHandler ?? null,
+    params.apiHandler ?? null
+  );
 
   const truncateProviderDisplayName = (
   name?: string | null,
@@ -99,32 +112,12 @@ export function ApiDetailPage() {
                       variant="outlined"
                       color="primary"
                     />
-                    {/* Edit page (name/version/context/description). Enabled even
-                        for gateway-created proxies — the page keeps the runtime
-                        fields read-only and allows only the description. */}
-                      {/* <Tooltip
-                        title={
-                          canUpdateProxy ? 'Edit Proxy' : NO_PERMISSION_TOOLTIP
-                        }
-                      >
-                        <Box component="span">
-                          <IconButton
-                            component={RouterLink}
-                            to={`${proxiesPath}/${detail.id}/edit`}
-                            size="small"
-                            disabled={!canUpdateProxy}
-                            sx={DISABLED_ACTION_SX}
-                          >
-                            <Edit size={16} />
-                          </IconButton>
-                        </Box>
-                      </Tooltip> */}
                   </Stack>
                   <Stack spacing={0.1} sx={{ mt: 1 }}>
                     <Stack direction="row" alignItems="center" gap={2}>
                       <Typography variant="caption" color="text.secondary">
                         <FormattedMessage
-                          id="aiWorkspace.pages.appShell.appShellPages.proxies.LLMProxyOverview.context.label"
+                          id="apiControlPlane.pages.appShell.appShellPages.apis.ApiDetailPage.context.label"
                           defaultMessage="Context :"
                         />
                       </Typography>
@@ -135,8 +128,8 @@ export function ApiDetailPage() {
                     <Stack direction="row" alignItems="center" gap={2}>
                       <Typography variant="caption" color="text.secondary">
                         <FormattedMessage
-                          id="aiWorkspace.pages.appShell.appShellPages.proxies.LLMProxyOverview.last.updated"
-                          defaultMessage={'Last updated :'}
+                          id="apiControlPlane.pages.appShell.appShellPages.apis.ApiDetailPage.lastUpdated.label"
+                          defaultMessage="Last updated :"
                         />
                       </Typography>
                       <Typography variant="body2">
@@ -153,32 +146,13 @@ export function ApiDetailPage() {
                 alignItems="flex-end"
                 sx={{ alignSelf: 'stretch' }}
               >
-                {/* Deployments remain viewable for gateway-created proxies (deploy/
-                    redeploy/restore/undeploy are disabled on the page itself), so the
-                    button navigates but is relabelled "View Deployments". */}
-                <Button
-                  variant="contained"
-                  // component={RouterLink}
-                  // to={`${proxiesPath}/${detail.id}/deploy`}
-                >
-                  {/* {isReadOnlyProxy ? 'View Deployments' : 'Deploy to Gateway'} */}
-                  Deploy to Gateway
+                <Button component={RouterLink} to={deployPath} variant="contained">
+                  <FormattedMessage
+                    id="apiControlPlane.pages.appShell.appShellPages.apis.ApiDetailPage.deployToGateway"
+                    defaultMessage="Deploy to Gateway"
+                    description="Button on the API overview header that opens the API's deployment page."
+                  />
                 </Button>
-                {/* <DisabledActionTooltip
-                  disabled={!canDeleteProxy || Boolean(deleteBlockedReason)}
-                  title={
-                    !canDeleteProxy ? NO_PERMISSION_TOOLTIP : deleteBlockedReason
-                  }
-                >
-                  <IconButton
-                    color="error"
-                    disabled={!canDeleteProxy || Boolean(deleteBlockedReason)}
-                    onClick={() => setDeleteDialogOpen(true)}
-                    aria-label="Delete proxy"
-                  >
-                    <Trash2 size={16} />
-                  </IconButton>
-                </DisabledActionTooltip> */}
               </Stack>
             </Box>
           </Box>

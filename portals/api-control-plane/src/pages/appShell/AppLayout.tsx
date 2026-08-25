@@ -28,7 +28,7 @@ import {
 import type { BreadcrumbItem } from '@wso2/oxygen-ui';
 import { Bell } from '@wso2/oxygen-ui-icons-react';
 import { Suspense } from 'react';
-import { Outlet, useNavigate } from 'react-router-dom';
+import { matchPath, Outlet, useLocation, useNavigate } from 'react-router-dom';
 
 import { LoadingState } from '../../components/StateViews';
 import { runtimeConfig } from '../../config/runtime';
@@ -41,10 +41,25 @@ import { APP_FOOTER_ID } from './appLayoutConstants';
 import { AppSidebar } from './AppSidebar';
 import { FormattedMessage } from 'react-intl';
 
+/**
+ * Full-page creation flows, which the shell renders without a breadcrumb trail.
+ *
+ * A wizard is creating the very scope a trail would describe, so the crumbs can
+ * only point at where the user came from — noise beside a form that owns the
+ * whole page. Built from the route builders rather than written out, so a path
+ * change cannot silently stop matching (`routes.*` is the single source).
+ */
+const BREADCRUMB_FREE_ROUTES = [routes.newApi(), routes.newGateway()];
+
 export default function AppLayout() {
   const navigate = useNavigate();
+  const location = useLocation();
   const { organization, project, component, params } = useConsoleScope();
   const { notify } = useNotifications();
+
+  const hidesBreadcrumbs = BREADCRUMB_FREE_ROUTES.some(
+    (path) => matchPath(path, location.pathname) !== null
+  );
 
   // Built once per render from this portal's own hooks, then handed down as
   // a plain value to every extension's `render(port)` — see `hostPort.tsx`
@@ -109,7 +124,7 @@ export default function AppLayout() {
           <Suspense fallback={<LoadingState label="Loading" />}>
             <PageContent fullWidth>
                 <Stack spacing={1}>
-                    {breadcrumbItems.length > 1 && (
+                    {!hidesBreadcrumbs && breadcrumbItems.length > 1 && (
                       <AppBreadcrumbs items={breadcrumbItems} />
                     )}
                   <Outlet />

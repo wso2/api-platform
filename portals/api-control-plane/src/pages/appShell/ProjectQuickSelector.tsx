@@ -87,7 +87,7 @@ export default function ProjectQuickSelector({
           <IconButton
             size="small"
             aria-label={intl.formatMessage({ id: 'appShell.header.project.select', defaultMessage: 'Select Project' })}
-            // disabled={disabled}
+            disabled={disabled}
             onClick={(event) => setAnchorEl(event.currentTarget)}
             sx={{
               width: 32,
@@ -123,7 +123,7 @@ export default function ProjectQuickSelector({
             sx={{ color: 'primary.main', display: 'block', mb: 1 }}
           >
             <FormattedMessage
-              id="aiWorkspace.pages.appShell.ProjectQuickSelector.projects"
+              id="apiControlPlane.pages.appShell.ProjectQuickSelector.projects"
               defaultMessage="Projects"
             />
           </Typography>
@@ -150,14 +150,14 @@ export default function ProjectQuickSelector({
           {isProjectsLoading ? (
             <MenuItem disabled>
               <FormattedMessage
-                id="aiWorkspace.pages.appShell.ProjectQuickSelector.loading"
+                id="apiControlPlane.pages.appShell.ProjectQuickSelector.loading"
                 defaultMessage='Loading...'
               />
             </MenuItem>
           ) : projectsError ? (
             <MenuItem disabled>
               <FormattedMessage
-                id="aiWorkspace.pages.appShell.ProjectQuickSelector.failed.to.load.projects"
+                id="apiControlPlane.pages.appShell.ProjectQuickSelector.failed.to.load.projects"
                 defaultMessage='Failed to load projects'
               />
             </MenuItem>
@@ -165,7 +165,7 @@ export default function ProjectQuickSelector({
           (filteredProjects.length === 0 ? (
             <MenuItem disabled>
               <FormattedMessage
-                id="aiWorkspace.pages.appShell.ProjectQuickSelector.no.projects.available"
+                id="apiControlPlane.pages.appShell.ProjectQuickSelector.no.projects.available"
                 defaultMessage='No projects available'
               />
             </MenuItem>
@@ -188,4 +188,3 @@ export default function ProjectQuickSelector({
     </>
   );
 }
-

@@ -52,7 +52,7 @@ export function AppHeader() {
   const navigate = useNavigate();
   const intl = useIntl();
   const { actions } = useAppShell();
-  const { organization, organizations, params, project, projects, isLoading, projectsError } =
+  const { component, organization, organizations, params, project, projects, isLoading, projectsError } =
     useConsoleScope();
   const auth = useAuth();
 
@@ -106,7 +106,7 @@ export function AppHeader() {
     { projectId: project?.id, orgId: organization?.id }
   );
   const apis = apisQuery.data?.list ?? [];
-  const apiOptions: { handler: string; name: string }[] =
+  const loadedApiOptions: { handler: string; name: string }[] =
     (projects.length > 0 && project) ?
     apis
       .filter(
@@ -117,6 +117,15 @@ export function AppHeader() {
       )
       .map((api) => ({ handler: api.id, name: api.displayName ?? api.id }))
     : [];
+
+  // apis may not be loaded yet on first paint; keep the current API selectable
+  // so the switcher never renders an out-of-range value.
+  const apiOptions: { handler: string; name: string }[] =
+    loadedApiOptions.length > 0
+      ? loadedApiOptions
+      : params.apiHandler
+        ? [{ handler: params.apiHandler, name: component?.displayName || params.apiHandler }]
+        : [];
 
 
   return (
@@ -237,7 +246,7 @@ export function AppHeader() {
           {!params.projectHandler && (
             <ProjectQuickSelector
               disabled={!params.orgHandle}
-              isProjectsLoading={isLoading || projectsError !== undefined}
+              isProjectsLoading={isLoading && projectsError === undefined}
               projectsError={projectsError}
               projectOptions={projectOptions.map((item) => ({
                 id: item.handler,
@@ -289,7 +298,7 @@ export function AppHeader() {
 
               <IconButton
                 size="small"
-                aria-label={intl.formatMessage({ id: 'appShell.header.api.goToApiLevel', defaultMessage: 'Go to API level' })}
+                aria-label={intl.formatMessage({ id: 'appShell.header.api.goToProjectLevel', defaultMessage: 'Go to project level' })}
                 onMouseDown={(event) => {
                   event.preventDefault();
                   event.stopPropagation();

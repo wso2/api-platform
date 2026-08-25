@@ -1,36 +1,433 @@
 {
-  "aiWorkspace.pages.appShell.APIQuickSelector.apis": {
-    "defaultMessage": "APIs"
+  "api.create.ApiCreationSteps.step.apiType": {
+    "defaultMessage": "API type",
+    "description": "Progress step where the user picks REST, GraphQL and so on. Noun, not a command."
   },
-  "aiWorkspace.pages.appShell.APIQuickSelector.failed.to.load.apis": {
-    "defaultMessage": "Failed to load APIs"
+  "api.create.ApiCreationSteps.step.configure": {
+    "defaultMessage": "Configure",
+    "description": "Progress step where the user fills in the API name, version and context."
   },
-  "aiWorkspace.pages.appShell.APIQuickSelector.loading": {
-    "defaultMessage": "Loading..."
+  "api.create.ApiCreationSteps.step.source": {
+    "defaultMessage": "Source",
+    "description": "Progress step where the user supplies a contract or a backend endpoint."
   },
-  "aiWorkspace.pages.appShell.APIQuickSelector.no.apis.available": {
-    "defaultMessage": "No APIs available"
+  "api.create.ApiTypeSelector.badge.comingSoon": {
+    "defaultMessage": "Coming soon",
+    "description": "Badge on an API type that is planned but not released yet."
   },
-  "aiWorkspace.pages.appShell.ProjectQuickSelector.failed.to.load.projects": {
-    "defaultMessage": "Failed to load projects"
+  "api.create.ApiTypeSelector.badge.selected": {
+    "defaultMessage": "Selected",
+    "description": "Accessible label for the check mark on the chosen card."
   },
-  "aiWorkspace.pages.appShell.ProjectQuickSelector.loading": {
-    "defaultMessage": "Loading..."
+  "api.create.ApiTypeSelector.groupLabel": {
+    "defaultMessage": "API type",
+    "description": "Accessible name for the group of API type cards. Noun, not a command."
   },
-  "aiWorkspace.pages.appShell.ProjectQuickSelector.no.projects.available": {
-    "defaultMessage": "No projects available"
+  "api.create.ApiTypeSelector.subtitle": {
+    "defaultMessage": "This decides how the gateway exposes your backend. Only REST is available today.",
+    "description": "Supporting line under the API type selector heading."
   },
-  "aiWorkspace.pages.appShell.ProjectQuickSelector.projects": {
-    "defaultMessage": "Projects"
+  "api.create.ApiTypeSelector.title": {
+    "defaultMessage": "What kind of API are you exposing?",
+    "description": "Heading above the grid of API type cards."
   },
-  "aiWorkspace.pages.appShell.appShellPages.projects.ExploreMoreCard.explore.more": {
-    "defaultMessage": "Explore More"
+  "api.create.ApiTypeSelector.tooltip.comingSoon": {
+    "defaultMessage": "Not available yet.",
+    "description": "Tooltip explaining why an unreleased API type card cannot be clicked."
   },
-  "aiWorkspace.pages.appShell.appShellPages.proxies.LLMProxyOverview.context.label": {
-    "defaultMessage": "Context :"
+  "api.create.apiResourcesPreview.empty.body": {
+    "defaultMessage": "Fetch the contract and the resources it defines are listed here for review."
   },
-  "aiWorkspace.pages.appShell.appShellPages.proxies.LLMProxyOverview.last.updated": {
-    "defaultMessage": "Last updated :"
+  "api.create.apiResourcesPreview.empty.title": {
+    "defaultMessage": "Nothing fetched yet"
+  },
+  "api.create.apiResourcesPreview.source": {
+    "defaultMessage": "Source",
+    "description": "Toggle that swaps the rendered resources for the definition’s own text."
+  },
+  "api.create.apiResourcesPreview.title": {
+    "defaultMessage": "API resources"
+  },
+  "api.create.apiType.graphQl.description": {
+    "defaultMessage": "Serve a GraphQL schema through the gateway."
+  },
+  "api.create.apiType.graphQl.title": {
+    "defaultMessage": "GraphQL API"
+  },
+  "api.create.apiType.grpc.description": {
+    "defaultMessage": "Expose high-performance gRPC services."
+  },
+  "api.create.apiType.grpc.title": {
+    "defaultMessage": "gRPC API"
+  },
+  "api.create.apiType.rest.description": {
+    "defaultMessage": "Expose REST and other HTTP backends."
+  },
+  "api.create.apiType.rest.title": {
+    "defaultMessage": "REST API"
+  },
+  "api.create.apiType.webSocket.description": {
+    "defaultMessage": "Stream data over long-lived WebSocket connections."
+  },
+  "api.create.apiType.webSocket.title": {
+    "defaultMessage": "WebSocket API"
+  },
+  "api.create.apiType.webSub.description": {
+    "defaultMessage": "Deliver events to subscribers over WebSub."
+  },
+  "api.create.apiType.webSub.title": {
+    "defaultMessage": "WebSub API"
+  },
+  "api.create.approach.contract.description": {
+    "defaultMessage": "Upload or link an OpenAPI, GraphQL or gRPC definition."
+  },
+  "api.create.approach.contract.title": {
+    "defaultMessage": "Import API Contract"
+  },
+  "api.create.approach.endpoint.description": {
+    "defaultMessage": "Point the gateway at a backend URL and refine later."
+  },
+  "api.create.approach.endpoint.title": {
+    "defaultMessage": "Start with Endpoint"
+  },
+  "api.create.approach.genAi.description": {
+    "defaultMessage": "Describe the API in plain language and let AI draft it."
+  },
+  "api.create.approach.genAi.title": {
+    "defaultMessage": "Generate with AI"
+  },
+  "api.create.approach.scratch.description": {
+    "defaultMessage": "Create an empty API and add resources by hand."
+  },
+  "api.create.approach.scratch.title": {
+    "defaultMessage": "Start from Scratch"
+  },
+  "api.create.approachSelector.apiTypeSection.description": {
+    "defaultMessage": "Types that {proxyType} does not carry stay listed, greyed out.",
+    "description": "Explains why unavailable API types are still visible on the cards below."
+  },
+  "api.create.approachSelector.apiTypeSection.title": {
+    "defaultMessage": "Pick an API type"
+  },
+  "api.create.approachSelector.approach.continue": {
+    "defaultMessage": "Continue"
+  },
+  "api.create.approachSelector.approachSection.description": {
+    "defaultMessage": "Choosing one of these opens the next step."
+  },
+  "api.create.approachSelector.approachSection.title": {
+    "defaultMessage": "How do you want to start?"
+  },
+  "api.create.approachSelector.badge.comingSoon": {
+    "defaultMessage": "Coming soon",
+    "description": "Badge on an option that is planned but not released yet."
+  },
+  "api.create.approachSelector.badge.selected": {
+    "defaultMessage": "Selected",
+    "description": "Accessible label for the check mark on the chosen card."
+  },
+  "api.create.approachSelector.badge.unavailable": {
+    "defaultMessage": "Unavailable",
+    "description": "Badge on an option the currently selected proxy type does not offer."
+  },
+  "api.create.approachSelector.proxyTypeSection.description": {
+    "defaultMessage": "This decides which API types and starting points are available below."
+  },
+  "api.create.approachSelector.proxyTypeSection.title": {
+    "defaultMessage": "Pick a proxy type"
+  },
+  "api.create.approachSelector.subtitle": {
+    "defaultMessage": "Choose what you are exposing and how you want to start. Everything here can be changed after the API is created."
+  },
+  "api.create.approachSelector.title": {
+    "defaultMessage": "Create New"
+  },
+  "api.create.approachSelector.tooltip.comingSoon": {
+    "defaultMessage": "Not available yet."
+  },
+  "api.create.approachSelector.tooltip.unsupportedForProxyType": {
+    "defaultMessage": "Not available for {proxyType}."
+  },
+  "api.create.fromContract.action.back": {
+    "defaultMessage": "Back",
+    "description": "Returns to the previous step of the API creation wizard."
+  },
+  "api.create.fromContract.action.fetch": {
+    "defaultMessage": "Fetch Contract",
+    "description": "Reads the contract from the chosen source and previews its resources, without leaving the step."
+  },
+  "api.create.fromContract.action.next": {
+    "defaultMessage": "Next"
+  },
+  "api.create.fromContract.action.sampleUrl": {
+    "defaultMessage": "Try with Sample URL",
+    "description": "Fills the field with a ready-made example to try the import with."
+  },
+  "api.create.fromContract.gitHub.authorize": {
+    "defaultMessage": "Authorize With GitHub"
+  },
+  "api.create.fromContract.gitHub.connectTitle": {
+    "defaultMessage": "Connect Your Repository"
+  },
+  "api.create.fromContract.gitHub.invalid": {
+    "defaultMessage": "Enter a valid GitHub repository URL."
+  },
+  "api.create.fromContract.gitHub.label": {
+    "defaultMessage": "Public Repository URL"
+  },
+  "api.create.fromContract.gitHub.or": {
+    "defaultMessage": "OR",
+    "description": "Separates the two ways of reaching a repository: a public URL, or authorizing with GitHub."
+  },
+  "api.create.fromContract.gitHub.placeholder": {
+    "defaultMessage": "https://github.com/org/repo"
+  },
+  "api.create.fromContract.gitHub.required": {
+    "defaultMessage": "The repository URL cannot be empty"
+  },
+  "api.create.fromContract.source.file": {
+    "defaultMessage": "Upload"
+  },
+  "api.create.fromContract.source.gitHub": {
+    "defaultMessage": "GitHub"
+  },
+  "api.create.fromContract.source.label": {
+    "defaultMessage": "Import the contract from",
+    "description": "Label over the picker that chooses where the API contract is read from."
+  },
+  "api.create.fromContract.source.swaggerHub": {
+    "defaultMessage": "SwaggerHub"
+  },
+  "api.create.fromContract.source.url": {
+    "defaultMessage": "URL"
+  },
+  "api.create.fromContract.spec.oversized": {
+    "defaultMessage": "That file is too large to validate in the browser."
+  },
+  "api.create.fromContract.spec.unreachable": {
+    "defaultMessage": "That contract could not be downloaded. Check the URL, and that the host allows cross-origin requests."
+  },
+  "api.create.fromContract.spec.unreadable": {
+    "defaultMessage": "That contract could not be read as YAML or JSON."
+  },
+  "api.create.fromContract.spec.unsupportedSource": {
+    "defaultMessage": "Importing from this source is not available yet."
+  },
+  "api.create.fromContract.swaggerHub.authorized": {
+    "defaultMessage": "Authorized",
+    "description": "SwaggerHub access mode that reads private definitions. Not released yet."
+  },
+  "api.create.fromContract.swaggerHub.authorizedHint": {
+    "defaultMessage": "Not available yet."
+  },
+  "api.create.fromContract.swaggerHub.organizationLabel": {
+    "defaultMessage": "SwaggerHub Organization"
+  },
+  "api.create.fromContract.swaggerHub.organizationPlaceholder": {
+    "defaultMessage": "Enter SwaggerHub Organization here"
+  },
+  "api.create.fromContract.swaggerHub.organizationRequired": {
+    "defaultMessage": "The SwaggerHub organization cannot be empty"
+  },
+  "api.create.fromContract.swaggerHub.public": {
+    "defaultMessage": "Public",
+    "description": "SwaggerHub access mode that reads publicly listed definitions."
+  },
+  "api.create.fromContract.swaggerHub.refresh": {
+    "defaultMessage": "Refresh SwaggerHub organizations",
+    "description": "Accessible name for the reload button on the organization field."
+  },
+  "api.create.fromContract.title": {
+    "defaultMessage": "Create API Proxy from Contract"
+  },
+  "api.create.fromContract.upload.accepted": {
+    "defaultMessage": "Accepted file types: {extensions}"
+  },
+  "api.create.fromContract.upload.action": {
+    "defaultMessage": "Upload"
+  },
+  "api.create.fromContract.upload.hint": {
+    "defaultMessage": "Drag & Drop your files or click to select files"
+  },
+  "api.create.fromContract.upload.remove": {
+    "defaultMessage": "Remove {fileName}",
+    "description": "Accessible name for the button that discards the chosen file."
+  },
+  "api.create.fromContract.upload.required": {
+    "defaultMessage": "Select an API contract file to continue"
+  },
+  "api.create.fromContract.upload.title": {
+    "defaultMessage": "Upload API Contract"
+  },
+  "api.create.fromContract.upload.unsupported": {
+    "defaultMessage": "That file type is not supported. Accepted types: {extensions}"
+  },
+  "api.create.fromContract.url.invalid": {
+    "defaultMessage": "Enter a valid HTTP or HTTPS URL."
+  },
+  "api.create.fromContract.url.label": {
+    "defaultMessage": "URL for API Contract"
+  },
+  "api.create.fromContract.url.placeholder": {
+    "defaultMessage": "Enter URL for API Contract here"
+  },
+  "api.create.fromContract.url.required": {
+    "defaultMessage": "The URL for the API contract cannot be empty"
+  },
+  "api.create.fromEndpoint.action.back": {
+    "defaultMessage": "Back",
+    "description": "Returns to the previous step of the API creation wizard."
+  },
+  "api.create.fromEndpoint.action.clear": {
+    "defaultMessage": "Clear {label}",
+    "description": "Accessible name for the button that empties a URL field. {label} is that field’s own label."
+  },
+  "api.create.fromEndpoint.action.next": {
+    "defaultMessage": "Next"
+  },
+  "api.create.fromEndpoint.apiType.label": {
+    "defaultMessage": "Select API Type"
+  },
+  "api.create.fromEndpoint.error.invalidUrl": {
+    "defaultMessage": "Enter a valid HTTP or HTTPS URL."
+  },
+  "api.create.fromEndpoint.error.productionEmpty": {
+    "defaultMessage": "The Production Backend URL cannot be empty"
+  },
+  "api.create.fromEndpoint.production.helper": {
+    "defaultMessage": "The backend the gateway routes production traffic to."
+  },
+  "api.create.fromEndpoint.production.label": {
+    "defaultMessage": "Production Backend URL"
+  },
+  "api.create.fromEndpoint.production.placeholder": {
+    "defaultMessage": "Enter the production backend URL"
+  },
+  "api.create.fromEndpoint.sandbox.helper": {
+    "defaultMessage": "A non-production backend used for testing this API."
+  },
+  "api.create.fromEndpoint.sandbox.label": {
+    "defaultMessage": "Sandbox Backend URL (optional)"
+  },
+  "api.create.fromEndpoint.sandbox.placeholder": {
+    "defaultMessage": "Enter the sandbox backend URL"
+  },
+  "api.create.fromEndpoint.status.validMark": {
+    "defaultMessage": "Valid URL",
+    "description": "Accessible label for the check mark shown inside a URL field that passed validation."
+  },
+  "api.create.fromEndpoint.subtitle": {
+    "defaultMessage": "Point the gateway at your backend. Everything else is filled in on the next step."
+  },
+  "api.create.fromEndpoint.title": {
+    "defaultMessage": "Create API Proxy from Endpoint"
+  },
+  "api.create.generalForm.action.back": {
+    "defaultMessage": "Back"
+  },
+  "api.create.generalForm.action.create": {
+    "defaultMessage": "Create"
+  },
+  "api.create.generalForm.advanced": {
+    "defaultMessage": "Advanced",
+    "description": "Label on the disclosure holding the optional settings."
+  },
+  "api.create.generalForm.backendAuth.description": {
+    "defaultMessage": "Credentials the gateway uses to call the backend."
+  },
+  "api.create.generalForm.backendAuth.label": {
+    "defaultMessage": "Backend authentication"
+  },
+  "api.create.generalForm.backendAuth.option.apiKey": {
+    "defaultMessage": "API key"
+  },
+  "api.create.generalForm.backendAuth.option.basic": {
+    "defaultMessage": "Basic authentication"
+  },
+  "api.create.generalForm.backendAuth.option.none": {
+    "defaultMessage": "None",
+    "description": "Backend authentication option meaning no credentials are sent."
+  },
+  "api.create.generalForm.backendAuth.option.oauth2": {
+    "defaultMessage": "OAuth 2.0"
+  },
+  "api.create.generalForm.basePath.helper": {
+    "defaultMessage": "Routing base path for this API. Defaults from the identifier and version."
+  },
+  "api.create.generalForm.basePath.label": {
+    "defaultMessage": "Base Path"
+  },
+  "api.create.generalForm.description.label": {
+    "defaultMessage": "Description"
+  },
+  "api.create.generalForm.displayName.label": {
+    "defaultMessage": "Display name"
+  },
+  "api.create.generalForm.identifier.helper": {
+    "defaultMessage": "URL-friendly. Auto-generated from the display name."
+  },
+  "api.create.generalForm.identifier.label": {
+    "defaultMessage": "Identifier"
+  },
+  "api.create.generalForm.proxyType.description": {
+    "defaultMessage": "Expose your service as an HTTP API proxy."
+  },
+  "api.create.generalForm.proxyType.title": {
+    "defaultMessage": "HTTP"
+  },
+  "api.create.generalForm.sandboxUrl.label": {
+    "defaultMessage": "Sandbox URL (optional)"
+  },
+  "api.create.generalForm.section.backendEndpoint": {
+    "defaultMessage": "Backend endpoint"
+  },
+  "api.create.generalForm.section.basicInformation": {
+    "defaultMessage": "Basic information"
+  },
+  "api.create.generalForm.subtitle": {
+    "defaultMessage": "Provide the details to configure and expose your API proxy."
+  },
+  "api.create.generalForm.targetUrl.helper": {
+    "defaultMessage": "The backend the gateway routes to."
+  },
+  "api.create.generalForm.targetUrl.label": {
+    "defaultMessage": "Target URL"
+  },
+  "api.create.generalForm.title": {
+    "defaultMessage": "Create an API Proxy"
+  },
+  "api.create.generalForm.transport.http": {
+    "defaultMessage": "HTTP"
+  },
+  "api.create.generalForm.transport.https": {
+    "defaultMessage": "HTTPS"
+  },
+  "api.create.generalForm.transport.label": {
+    "defaultMessage": "Transport"
+  },
+  "api.create.generalForm.version.helper": {
+    "defaultMessage": "e.g. 1.0.0"
+  },
+  "api.create.generalForm.version.label": {
+    "defaultMessage": "Version"
+  },
+  "api.create.proxyType.apiProxy.description": {
+    "defaultMessage": "Expose an existing HTTP backend through the gateway."
+  },
+  "api.create.proxyType.apiProxy.title": {
+    "defaultMessage": "API Proxy"
+  },
+  "api.create.proxyType.eventProxy.description": {
+    "defaultMessage": "Publish and subscribe to event streams over WebSub."
+  },
+  "api.create.proxyType.eventProxy.title": {
+    "defaultMessage": "Event Proxy"
+  },
+  "api.create.proxyType.mcpProxy.description": {
+    "defaultMessage": "Proxy an existing MCP server, or generate one from an API."
+  },
+  "api.create.proxyType.mcpProxy.title": {
+    "defaultMessage": "MCP Proxy"
   },
   "apiCard.delete": {
     "defaultMessage": "Delete {apiName}",
@@ -39,6 +436,64 @@
   "apiCard.updated": {
     "defaultMessage": "Updated {relative}",
     "description": "Card footer timestamp; {relative} is a phrase such as \"3 hours ago\"."
+  },
+  "apiControlPlane.pages.appShell.APIQuickSelector.apis": {
+    "defaultMessage": "APIs"
+  },
+  "apiControlPlane.pages.appShell.APIQuickSelector.failed.to.load.apis": {
+    "defaultMessage": "Failed to load APIs"
+  },
+  "apiControlPlane.pages.appShell.APIQuickSelector.loading": {
+    "defaultMessage": "Loading..."
+  },
+  "apiControlPlane.pages.appShell.APIQuickSelector.no.apis.available": {
+    "defaultMessage": "No APIs available"
+  },
+  "apiControlPlane.pages.appShell.ProjectQuickSelector.failed.to.load.projects": {
+    "defaultMessage": "Failed to load projects"
+  },
+  "apiControlPlane.pages.appShell.ProjectQuickSelector.loading": {
+    "defaultMessage": "Loading..."
+  },
+  "apiControlPlane.pages.appShell.ProjectQuickSelector.no.projects.available": {
+    "defaultMessage": "No projects available"
+  },
+  "apiControlPlane.pages.appShell.ProjectQuickSelector.projects": {
+    "defaultMessage": "Projects"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.apis.ApiDetailPage.context.label": {
+    "defaultMessage": "Context :"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.apis.ApiDetailPage.deployToGateway": {
+    "defaultMessage": "Deploy to Gateway",
+    "description": "Button on the API overview header that opens the API's deployment page."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.apis.ApiDetailPage.lastUpdated.label": {
+    "defaultMessage": "Last updated :"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.apis.develop.DocumentsPage.subtitle": {
+    "defaultMessage": "Documentation for {apiName}",
+    "description": "Sub-header under the section name; {apiName} is the API display name."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.apis.develop.DocumentsPage.title": {
+    "defaultMessage": "Documents"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.apis.develop.PoliciesPage.subtitle": {
+    "defaultMessage": "Policies attached to {apiName}",
+    "description": "Sub-header under the section name; {apiName} is the API display name."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.apis.develop.PoliciesPage.title": {
+    "defaultMessage": "Policies"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.apis.develop.RoutingPage.subtitle": {
+    "defaultMessage": "Routing for {apiName}",
+    "description": "Sub-header under the section name; {apiName} is the API display name."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.apis.develop.RoutingPage.title": {
+    "defaultMessage": "Routing"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.projects.ExploreMoreCard.explore.more": {
+    "defaultMessage": "Explore More"
   },
   "apiListPage.createApiButton": {
     "defaultMessage": "Create API",
@@ -94,8 +549,8 @@
   "appShell.header.api.empty": {
     "defaultMessage": "No APIs found"
   },
-  "appShell.header.api.goToApiLevel": {
-    "defaultMessage": "Go to API level"
+  "appShell.header.api.goToProjectLevel": {
+    "defaultMessage": "Go to project level"
   },
   "appShell.header.api.label": {
     "defaultMessage": "APIs"
@@ -338,6 +793,9 @@
   "scopeGate.api": {
     "defaultMessage": "API"
   },
+  "scopeGate.apiSelect.empty": {
+    "defaultMessage": "No APIs available"
+  },
   "scopeGate.goToApiLevel": {
     "defaultMessage": "Go to API Level"
   },
@@ -357,10 +815,13 @@
     "defaultMessage": "This project has no APIs yet. Create an API to continue."
   },
   "scopeGate.noProjects": {
-    "defaultMessage": "No projects available"
+    "defaultMessage": "You have no projects yet. Create a project to continue."
   },
   "scopeGate.project": {
     "defaultMessage": "Project"
+  },
+  "scopeGate.projectSelect.empty": {
+    "defaultMessage": "No projects available"
   },
   "scopeGate.selectProject": {
     "defaultMessage": "Select a project to switch to project level and continue."

@@ -49,7 +49,6 @@ import { useNotifications } from '../../../../components/Notifications';
 import { EmptyState, ErrorState, LoadingState } from '../../../../components/StateViews';
 import { routes } from '../../../../routes/paths';
 import { useConsoleScope } from '../../../../scope/ConsoleScopeProvider';
-import { useFooterHeight } from '../../useFooterHeight';
 import { NewProjectDialog } from './NewProjectDialog';
 
 const PAGE_SIZE_OPTIONS = [12, 24, 48];
@@ -220,8 +219,6 @@ export function ProjectListPage() {
   const intl = useIntl();
   const { organization } = useConsoleScope();
   const { notify } = useNotifications();
-  // The app footer shares this scroll area, so the sticky bar sits above it.
-  const footerHeight = useFooterHeight();
 
   const [search, setSearch] = useState('');
   const [page, setPage] = useState(0);
@@ -420,11 +417,7 @@ export function ProjectListPage() {
                 />
               </Box>
               {total > PAGE_SIZE_OPTIONS[0] && (
-                <Box
-                  sx={[
-                    { bottom: `${footerHeight}px`, mx: -8, px: 8 },
-                  ]}
-                >
+                <Box>
                   <TablePagination
                     component="div"
                     count={total}

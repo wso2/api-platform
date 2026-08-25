@@ -95,8 +95,8 @@ export default function ExploreMoreCard() {
     <Box>
       <Typography variant="h6" sx={{ mb: 1.5 }}>
         <FormattedMessage
-          id="aiWorkspace.pages.appShell.appShellPages.projects.ExploreMoreCard.explore.more"
-          defaultMessage={'Explore More'}
+          id="apiControlPlane.pages.appShell.appShellPages.projects.ExploreMoreCard.explore.more"
+          defaultMessage="Explore More"
         />
       </Typography>
       <Card sx={{ width: '100%' }}>

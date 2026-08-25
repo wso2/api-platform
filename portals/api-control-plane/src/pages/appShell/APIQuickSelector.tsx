@@ -124,7 +124,7 @@ export default function APIQuickSelector({
             sx={{ color: 'primary.main', display: 'block', mb: 1 }}
           >
             <FormattedMessage
-              id="aiWorkspace.pages.appShell.APIQuickSelector.apis"
+              id="apiControlPlane.pages.appShell.APIQuickSelector.apis"
               defaultMessage="APIs"
             />
           </Typography>
@@ -151,14 +151,14 @@ export default function APIQuickSelector({
           {isApisLoading ? (
             <MenuItem disabled>
               <FormattedMessage
-                id="aiWorkspace.pages.appShell.APIQuickSelector.loading"
+                id="apiControlPlane.pages.appShell.APIQuickSelector.loading"
                 defaultMessage='Loading...'
               />
             </MenuItem>
           ) : apisError ? (
             <MenuItem disabled>
               <FormattedMessage
-                id="aiWorkspace.pages.appShell.APIQuickSelector.failed.to.load.apis"
+                id="apiControlPlane.pages.appShell.APIQuickSelector.failed.to.load.apis"
                 defaultMessage='Failed to load APIs'
               />
             </MenuItem>
@@ -166,7 +166,7 @@ export default function APIQuickSelector({
           (filteredApis.length === 0 ? (
             <MenuItem disabled>
               <FormattedMessage
-                id="aiWorkspace.pages.appShell.APIQuickSelector.no.apis.available"
+                id="apiControlPlane.pages.appShell.APIQuickSelector.no.apis.available"
                 defaultMessage='No APIs available'
               />
             </MenuItem>
@@ -188,4 +188,3 @@ export default function APIQuickSelector({
     </>
   );
 }
-
