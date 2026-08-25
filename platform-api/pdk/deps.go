@@ -37,8 +37,9 @@ import (
 // signature drifts, the server stops building.
 type Deps struct {
 	Gateways Gateways
+	Projects Projects
 	// add more capability groups as external plugins need them
-	// (APIs, Subscriptions, Applications, Projects, Organizations, LLM, MCP, …)
+	// (APIs, Subscriptions, Applications, Organizations, LLM, MCP, …)
 
 	Config *config.Server
 	Logger *slog.Logger
@@ -61,4 +62,20 @@ type Gateways interface {
 
 	// DeleteGateway removes a gateway within an organization (Delete).
 	DeleteGateway(gatewayID, orgID, deletedBy string) error
+}
+
+// Projects exposes create/read/delete access to the platform's projects, scoped
+// by organization. Every method mirrors an existing ProjectService method verbatim
+// and takes the organization id explicitly — handlers MUST pass the org resolved
+// from the request context, never one from request input (GO-AUTH-005).
+type Projects interface {
+	// CreateProject creates a project in an organization (Create).
+	CreateProject(req *api.CreateProjectRequest, organizationID, actor string) (*api.Project, error)
+
+	// GetProjectByHandle returns a single project by its handle within an
+	// organization (Read).
+	GetProjectByHandle(handle, orgID string) (*api.Project, error)
+
+	// DeleteProject removes a project within an organization (Delete).
+	DeleteProject(handle, orgID, actor string) error
 }
