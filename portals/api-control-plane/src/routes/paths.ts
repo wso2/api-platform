@@ -221,8 +221,8 @@ export const routes = {
     projectHandler: ScopeHandle = ':projectHandler',
     apiHandler: ScopeHandle = ':apiHandler'
   ) => apiPath(orgHandle, projectHandler, apiHandler, 'observability/metrics'),
-  // Runtime logs, scoped to one API. Was project-wide (`observe/runtimelogs`)
-  // when the sidebar had a project section; it now sits under Observability.
+  // Runtime logs adapt to organization, project, or API scope. The same route
+  // builder supplies the shallower aliases registered by apiScopedPaths.
   apiObservabilityLogs: (
     orgHandle = ':orgHandle',
     projectHandler: ScopeHandle = ':projectHandler',

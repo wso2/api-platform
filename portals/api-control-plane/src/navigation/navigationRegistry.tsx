@@ -392,6 +392,12 @@ export const navigationRegistry: NavigationDefinition[] = [
     icon: <Activity />,
     ...submenu([
       {
+        icon: <ScrollText />,
+        id: 'observability-logs',
+        label: 'Logs',
+        to: routes.apiObservabilityLogs,
+      },
+      {
         icon: <BellRing />,
         id: 'observability-alerts',
         label: 'Alert',
@@ -402,12 +408,6 @@ export const navigationRegistry: NavigationDefinition[] = [
         id: 'observability-metrics',
         label: 'Metrics',
         to: routes.apiObservabilityMetrics,
-      },
-      {
-        icon: <ScrollText />,
-        id: 'observability-logs',
-        label: 'Logs',
-        to: routes.apiObservabilityLogs,
       },
     ]),
   },

@@ -35,6 +35,14 @@ export type RestApiObservabilityLogsQuery = {
   limit?: number;
   query?: string;
   logLevels?: ObservabilityLogLevel[];
+  component?: string;
+  environment?: string;
+  project?: string;
+};
+
+export type ObservabilityLogsScope = {
+  projectId?: string;
+  restApiId?: string;
 };
 
 export type RestApiObservabilityLogsPage = {
@@ -48,6 +56,14 @@ export type RestApiObservabilityLogsPage = {
 const logsPath = (restApiId: string): string =>
   `/rest-apis/${encodeURIComponent(restApiId)}/observability/logs`;
 
+const scopedLogsPath = (scope: ObservabilityLogsScope): string => {
+  if (scope.restApiId) return logsPath(scope.restApiId);
+  if (scope.projectId) {
+    return `/projects/${encodeURIComponent(scope.projectId)}/observability/logs`;
+  }
+  return '/observability/logs';
+};
+
 /**
  * Queries the cloud-only observability extension for one REST API. This
  * endpoint is intentionally hand-typed: it is supplied by the cloud wrapper
@@ -58,9 +74,18 @@ export const listRestApiObservabilityLogs = async (
   query: RestApiObservabilityLogsQuery,
   options?: RequestOptions
 ): Promise<RestApiObservabilityLogsPage> => {
+  return listObservabilityLogs({ restApiId }, query, options);
+};
+
+/** Queries gateway logs at organization, project, or API scope. */
+export const listObservabilityLogs = async (
+  scope: ObservabilityLogsScope,
+  query: RestApiObservabilityLogsQuery,
+  options?: RequestOptions
+): Promise<RestApiObservabilityLogsPage> => {
   const search = query.query?.trim();
 
-  return http.get<RestApiObservabilityLogsPage>(logsPath(restApiId), {
+  return http.get<RestApiObservabilityLogsPage>(scopedLogsPath(scope), {
     ...options,
     operationName: 'QueryRESTAPIObservabilityLogs',
     query: {
@@ -69,6 +94,9 @@ export const listRestApiObservabilityLogs = async (
       limit: query.limit ?? 100,
       query: search || undefined,
       logLevel: query.logLevels,
+      component: query.component,
+      environment: query.environment,
+      project: query.project,
     },
   });
 };

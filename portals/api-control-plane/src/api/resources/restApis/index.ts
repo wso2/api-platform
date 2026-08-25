@@ -40,6 +40,7 @@ export type { RestApiListFilters } from './restApis.hooks';
 
 export type {
   ObservabilityLogLevel,
+  ObservabilityLogsScope,
   RestApiObservabilityLog,
   RestApiObservabilityLogsPage,
   RestApiObservabilityLogsQuery,
@@ -57,4 +58,7 @@ export {
   useUpdateRestApi,
 } from './restApis.hooks';
 
-export { useRestApiObservabilityLogs } from './observability/observability.hooks';
+export {
+  useObservabilityLogs,
+  useRestApiObservabilityLogs,
+} from './observability/observability.hooks';

@@ -19,13 +19,72 @@ import { beforeEach, describe, expect, it } from 'vitest';
 import { resetHttpClient } from '../../../core/http';
 import { recorder, resource, type Recorder } from '../../../../test/msw';
 import { server } from '../../../../test/server';
-import { listRestApiObservabilityLogs } from './observability.endpoints';
+import {
+  listObservabilityLogs,
+  listRestApiObservabilityLogs,
+} from './observability.endpoints';
 
 let requests: Recorder;
 
 beforeEach(() => {
   requests = recorder();
   resetHttpClient();
+});
+
+describe('listObservabilityLogs', () => {
+  it('queries project logs with component and environment filters', async () => {
+    server.use(
+      resource(
+        '/projects/:projectId/observability/logs',
+        { items: [], pagination: { limit: 100, nextCursor: null } },
+        { record: requests }
+      )
+    );
+
+    await listObservabilityLogs(
+      { projectId: 'retail/eu' },
+      {
+        startTime: '2026-08-22T09:00:00Z',
+        endTime: '2026-08-22T10:00:00Z',
+        component: 'orders',
+        environment: 'stage',
+        project: 'retail/eu',
+      },
+      { orgId: 'acme' }
+    );
+
+    const request = requests.last();
+    expect(request?.url.pathname).toBe(
+      '/api/v0.9/projects/retail%2Feu/observability/logs'
+    );
+    expect(request?.params.get('component')).toBe('orders');
+    expect(request?.params.get('environment')).toBe('stage');
+    expect(request?.params.get('project')).toBe('retail/eu');
+  });
+
+  it('uses the organization endpoint when no deeper scope is selected', async () => {
+    server.use(
+      resource(
+        '/observability/logs',
+        { items: [], pagination: { limit: 100, nextCursor: null } },
+        { record: requests }
+      )
+    );
+
+    await listObservabilityLogs(
+      {},
+      {
+        startTime: '2026-08-22T09:00:00Z',
+        endTime: '2026-08-22T10:00:00Z',
+        environment: 'development',
+      },
+      { orgId: 'acme' }
+    );
+
+    expect(requests.last()?.url.pathname).toBe(
+      '/api/v0.9/observability/logs'
+    );
+  });
 });
 
 describe('listRestApiObservabilityLogs', () => {

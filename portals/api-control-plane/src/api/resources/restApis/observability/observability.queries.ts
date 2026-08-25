@@ -17,14 +17,27 @@
 import { queryOptions } from '@tanstack/react-query';
 
 import { staleTimes } from '../../../core/queryClient';
-import type { OrgScope } from '../../../core/queryKeys';
+import { scopeKey, type OrgScope } from '../../../core/queryKeys';
 import { restApiKeys } from '../restApis.queries';
 import {
+  listObservabilityLogs,
   listRestApiObservabilityLogs,
+  type ObservabilityLogsScope,
   type RestApiObservabilityLogsQuery,
 } from './observability.endpoints';
 
 export const restApiObservabilityQueries = {
+  scopedLogs: (
+    org: OrgScope,
+    scope: ObservabilityLogsScope,
+    query: RestApiObservabilityLogsQuery
+  ) =>
+    queryOptions({
+      queryKey: [...scopeKey(org), 'observabilityLogs', scope, query],
+      queryFn: ({ signal }) =>
+        listObservabilityLogs(scope, query, { orgId: org, signal }),
+      staleTime: staleTimes.realtime,
+    }),
   logs: (
     org: OrgScope,
     restApiId: string,

@@ -36,4 +36,12 @@ describe('parseGatewayTrafficLog', () => {
   it('returns undefined for an unstructured log line', () => {
     expect(parseGatewayTrafficLog({ log: 'plain text' })).toBeUndefined();
   });
+
+  it('parses a policy-engine-prefixed gateway traffic event', () => {
+    expect(
+      parseGatewayTrafficLog({
+        log: '[pol] {"status":201,"operation":{"method":"POST"}}',
+      })
+    ).toMatchObject({ status: 201, operation: { method: 'POST' } });
+  });
 });

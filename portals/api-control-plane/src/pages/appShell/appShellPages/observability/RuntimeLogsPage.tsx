@@ -14,7 +14,7 @@
  * under the License.
  */
 
-import { type FormEvent, useState } from 'react';
+import { type FormEvent, useMemo, useState } from 'react';
 import { FormattedMessage, useIntl } from 'react-intl';
 import { useParams } from 'react-router-dom';
 import {
@@ -35,15 +35,16 @@ import {
 } from '@wso2/oxygen-ui';
 
 import {
-  useRestApiObservabilityLogs,
+  useObservabilityLogs,
   type ObservabilityLogLevel,
+  type ObservabilityLogsScope,
   type RestApiObservabilityLog,
   type RestApiObservabilityLogsQuery,
+  useRestApis,
 } from '../../../../api/resources/restApis';
+import { useProjects } from '../../../../api/resources/projects';
 import { EmptyState } from '../../../../components/StateViews';
 import { runtimeConfig } from '../../../../config/runtime';
-import { routes } from '../../../../routes/paths';
-import { ScopeGate } from '../../../../scope/ScopeGate';
 
 type TrafficLog = {
   timestamp?: string;
@@ -56,7 +57,11 @@ type TrafficLog = {
 const buildQuery = (
   durationMinutes: number,
   search: string,
-  level: ObservabilityLogLevel | ''
+  level: ObservabilityLogLevel | '',
+  filters: Pick<
+    RestApiObservabilityLogsQuery,
+    'component' | 'environment' | 'project'
+  > = {}
 ): RestApiObservabilityLogsQuery => {
   const end = new Date();
   return {
@@ -67,6 +72,7 @@ const buildQuery = (
     limit: 100,
     query: search.trim() || undefined,
     logLevels: level ? [level] : undefined,
+    ...filters,
   };
 };
 
@@ -75,7 +81,8 @@ export const parseGatewayTrafficLog = (
 ): TrafficLog | undefined => {
   if (typeof entry.log !== 'string') return undefined;
   try {
-    const parsed = JSON.parse(entry.log) as unknown;
+    const structuredLog = entry.log.trim().replace(/^\[pol\]\s*/, '');
+    const parsed = JSON.parse(structuredLog) as unknown;
     return parsed && typeof parsed === 'object'
       ? (parsed as TrafficLog)
       : undefined;
@@ -155,26 +162,41 @@ function LogRecord({ entry }: { entry: RestApiObservabilityLog }) {
 }
 
 export function RuntimeLogsPage() {
-  return (
-    <ScopeGate
-      prompt="Runtime logs are scoped to one API."
-      requires="api"
-      to={routes.apiObservabilityLogs}
-    >
-      <RuntimeLogs />
-    </ScopeGate>
-  );
+  return <RuntimeLogs />;
 }
 
 function RuntimeLogs() {
   const intl = useIntl();
-  const { apiHandler } = useParams();
+  const { apiHandler, projectHandler } = useParams();
+  const aggregateScope = !apiHandler;
+  const projectScope = Boolean(projectHandler && !apiHandler);
   const [durationMinutes, setDurationMinutes] = useState(60);
   const [search, setSearch] = useState('');
   const [level, setLevel] = useState<ObservabilityLogLevel | ''>('');
-  const [request, setRequest] = useState(() => buildQuery(60, '', ''));
-  const logsQuery = useRestApiObservabilityLogs(
-    apiHandler,
+  const [project, setProject] = useState(projectHandler || '');
+  const [component, setComponent] = useState('');
+  const [environment, setEnvironment] = useState('development');
+  const [request, setRequest] = useState(() =>
+    buildQuery(60, '', '', {
+      environment: aggregateScope ? 'development' : undefined,
+      project: aggregateScope ? projectHandler : undefined,
+    })
+  );
+  const scope = useMemo<ObservabilityLogsScope>(
+    () =>
+      apiHandler
+        ? { restApiId: apiHandler }
+        : projectHandler
+          ? { projectId: projectHandler }
+          : {},
+    [apiHandler, projectHandler]
+  );
+  const projectsQuery = useProjects({ limit: 100 });
+  const apisQuery = useRestApis({}, { projectId: project || undefined });
+  const projects = projectsQuery.data?.list ?? [];
+  const components = apisQuery.data?.list ?? [];
+  const logsQuery = useObservabilityLogs(
+    scope,
     request,
     {},
     runtimeConfig.observabilityLogsEnabled
@@ -182,8 +204,16 @@ function RuntimeLogs() {
 
   const queryLogs = (event?: FormEvent) => {
     event?.preventDefault();
-    setRequest(buildQuery(durationMinutes, search, level));
+    setRequest(
+      buildQuery(durationMinutes, search, level, {
+        component: aggregateScope ? component || undefined : undefined,
+        environment: aggregateScope ? environment : undefined,
+        project: aggregateScope ? project || undefined : undefined,
+      })
+    );
   };
+
+  const scopeLabel = apiHandler || projectHandler || 'this organization';
 
   return (
     <Stack spacing={2.5}>
@@ -197,8 +227,8 @@ function RuntimeLogs() {
         <PageTitle.SubHeader>
           <FormattedMessage
             id="appShell.runtimeLogsPage.subHeader"
-            defaultMessage="Tenant-scoped traffic logs for {apiHandler}. Request and response headers and bodies are not collected."
-            values={{ apiHandler }}
+            defaultMessage="Tenant-scoped traffic logs for {scopeLabel}. Request and response headers and bodies are not collected."
+            values={{ scopeLabel }}
           />
         </PageTitle.SubHeader>
       </PageTitle>
@@ -218,6 +248,7 @@ function RuntimeLogs() {
             direction={{ md: 'row', xs: 'column' }}
             onSubmit={queryLogs}
             spacing={1.5}
+            sx={{ flexWrap: { md: 'wrap' } }}
           >
             <FormControl sx={{ minWidth: 150 }}>
               <FormLabel>
@@ -259,6 +290,107 @@ function RuntimeLogs() {
                 </MenuItem>
               </Select>
             </FormControl>
+            {aggregateScope && (
+              <>
+                <FormControl sx={{ minWidth: 180 }}>
+                  <FormLabel>
+                    <FormattedMessage
+                      id="appShell.runtimeLogsPage.project"
+                      defaultMessage="Project"
+                    />
+                  </FormLabel>
+                  <Select
+                    disabled={projectScope || projectsQuery.isLoading}
+                    onChange={(event) => {
+                      setProject(String(event.target.value));
+                      setComponent('');
+                    }}
+                    size="small"
+                    value={project}
+                  >
+                    {!projectScope && (
+                      <MenuItem value="">
+                        <FormattedMessage
+                          id="appShell.runtimeLogsPage.allProjects"
+                          defaultMessage="All projects"
+                        />
+                      </MenuItem>
+                    )}
+                    {projectScope &&
+                      !projects.some((item) => item.id === project) && (
+                        <MenuItem value={project}>{project}</MenuItem>
+                      )}
+                    {projects.map((item) => (
+                      <MenuItem key={item.id} value={item.id}>
+                        {item.displayName}
+                      </MenuItem>
+                    ))}
+                  </Select>
+                </FormControl>
+                <FormControl sx={{ minWidth: 190 }}>
+                  <FormLabel>
+                    <FormattedMessage
+                      id="appShell.runtimeLogsPage.component"
+                      defaultMessage="Component"
+                    />
+                  </FormLabel>
+                  <Select
+                    disabled={!project || apisQuery.isLoading}
+                    onChange={(event) =>
+                      setComponent(String(event.target.value))
+                    }
+                    size="small"
+                    value={component}
+                  >
+                    <MenuItem value="">
+                      <FormattedMessage
+                        id="appShell.runtimeLogsPage.allComponents"
+                        defaultMessage="All components"
+                      />
+                    </MenuItem>
+                    {components.map((item) => (
+                      <MenuItem key={item.id} value={item.id || ''}>
+                        {item.displayName}
+                      </MenuItem>
+                    ))}
+                  </Select>
+                </FormControl>
+                <FormControl sx={{ minWidth: 160 }}>
+                  <FormLabel>
+                    <FormattedMessage
+                      id="appShell.runtimeLogsPage.environment"
+                      defaultMessage="Environment"
+                    />
+                  </FormLabel>
+                  <Select
+                    onChange={(event) =>
+                      setEnvironment(String(event.target.value))
+                    }
+                    size="small"
+                    value={environment}
+                  >
+                    <MenuItem value="development">
+                      <FormattedMessage
+                        id="appShell.runtimeLogsPage.environmentDevelopment"
+                        defaultMessage="Development"
+                      />
+                    </MenuItem>
+                    <MenuItem value="stage">
+                      <FormattedMessage
+                        id="appShell.runtimeLogsPage.environmentStage"
+                        defaultMessage="Stage"
+                      />
+                    </MenuItem>
+                    <MenuItem value="production">
+                      <FormattedMessage
+                        id="appShell.runtimeLogsPage.environmentProduction"
+                        defaultMessage="Production"
+                      />
+                    </MenuItem>
+                  </Select>
+                </FormControl>
+              </>
+            )}
             <FormControl sx={{ minWidth: 130 }}>
               <FormLabel>
                 <FormattedMessage

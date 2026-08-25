@@ -17,7 +17,10 @@
 import { useQuery } from '@tanstack/react-query';
 
 import { useApiScope } from '../../../core/scope';
-import type { RestApiObservabilityLogsQuery } from './observability.endpoints';
+import type {
+  ObservabilityLogsScope,
+  RestApiObservabilityLogsQuery,
+} from './observability.endpoints';
 import { restApiObservabilityQueries } from './observability.queries';
 
 export const useRestApiObservabilityLogs = (
@@ -26,10 +29,19 @@ export const useRestApiObservabilityLogs = (
   overrides: { orgId?: string } = {},
   enabled = true
 ) => {
+  return useObservabilityLogs({ restApiId }, query, overrides, enabled);
+};
+
+export const useObservabilityLogs = (
+  scope: ObservabilityLogsScope,
+  query: RestApiObservabilityLogsQuery,
+  overrides: { orgId?: string } = {},
+  enabled = true
+) => {
   const { org } = useApiScope(overrides);
 
   return useQuery({
-    ...restApiObservabilityQueries.logs(org!, restApiId!, query),
-    enabled: Boolean(enabled && org && restApiId),
+    ...restApiObservabilityQueries.scopedLogs(org!, scope, query),
+    enabled: Boolean(enabled && org),
   });
 };
