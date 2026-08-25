@@ -289,6 +289,8 @@ func kindToResourceTable(kind string) (string, error) {
 		return "mcp_proxies", nil
 	case "Agent":
 		return agentsResourceTable, nil
+	case "GraphQLApi":
+		return "graphql_apis", nil
 	default:
 		if table, ok := extraResourceTables[kind]; ok {
 			return table, nil
@@ -308,7 +310,7 @@ var extraResourceTables = map[string]string{}
 // builtinResourceTables lists the per-kind tables core defines natively.
 // GetAllConfigs unions these with every table in extraResourceTables so
 // cross-kind listing also covers kinds registered by an external module.
-var builtinResourceTables = []string{"rest_apis", "llm_providers", "llm_proxies", "mcp_proxies", agentsResourceTable}
+var builtinResourceTables = []string{"rest_apis", "llm_providers", "llm_proxies", "mcp_proxies", agentsResourceTable, "graphql_apis"}
 
 // agentsResourceTable holds Agent artifacts. Like llm_proxies, it carries
 // columns beyond (uuid, gateway_id, configuration) — here the signed Agent Card
@@ -388,6 +390,16 @@ func unmarshalSourceConfig(cfg *models.StoredConfig, jsonData string) error {
 		var config api.AgentConfiguration
 		if err := json.Unmarshal([]byte(jsonData), &config); err != nil {
 			return fmt.Errorf("failed to unmarshal source configuration: %w", err)
+		}
+		cfg.SourceConfiguration = config
+		cfg.Configuration = config
+	case "GraphQLApi":
+		// GraphQLApi rows can populate Configuration directly, same as RestApi: the
+		// stored payload is already the deployable shape (see graphql.go's Transform,
+		// which type-asserts cfg.Configuration.(api.GraphQLAPI) directly).
+		var config api.GraphQLAPI
+		if err := json.Unmarshal([]byte(jsonData), &config); err != nil {
+			return fmt.Errorf("failed to unmarshal configuration: %w", err)
 		}
 		cfg.SourceConfiguration = config
 		cfg.Configuration = config
