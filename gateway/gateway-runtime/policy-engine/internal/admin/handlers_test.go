@@ -112,7 +112,7 @@ func TestConfigDumpResponse_JSONSerialization(t *testing.T) {
 			TotalPolicyChains: 1,
 			PolicyChains: []PolicyChainEntry{
 				{
-					RouteKey:             "api-1|/users|GET",
+					ChainKey:             "api-1|/users|GET",
 					RequiresRequestBody:  false,
 					RequiresResponseBody: false,
 					TotalPolicies:        1,
@@ -170,7 +170,7 @@ func TestPolicyInfo_JSONSerialization(t *testing.T) {
 func TestPolicyChainEntry_JSONSerialization(t *testing.T) {
 	condition := "request.headers['x-test'] == 'true'"
 	config := PolicyChainEntry{
-		RouteKey:             "api-1|/users|POST",
+		ChainKey:             "api-1|/users|POST",
 		RequiresRequestBody:  true,
 		RequiresResponseBody: false,
 		TotalPolicies:        2,
@@ -199,7 +199,7 @@ func TestPolicyChainEntry_JSONSerialization(t *testing.T) {
 	err = json.Unmarshal(data, &decoded)
 	require.NoError(t, err)
 
-	assert.Equal(t, config.RouteKey, decoded.RouteKey)
+	assert.Equal(t, config.ChainKey, decoded.ChainKey)
 	assert.Equal(t, config.RequiresRequestBody, decoded.RequiresRequestBody)
 	assert.Equal(t, config.RequiresResponseBody, decoded.RequiresResponseBody)
 	assert.Equal(t, config.TotalPolicies, decoded.TotalPolicies)

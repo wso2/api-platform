@@ -382,7 +382,8 @@ func main() {
 		}
 	}
 
-	// Build transformer registry for StoredConfig → RuntimeDeployConfig conversion.
+	// Build transformer registry for StoredConfig → RuntimeDeployConfig conversion
+	// (policyVersionResolver is hoisted above for the startup rehydration path).
 	// This MUST happen before the initial xDS snapshot below: the Envoy translator
 	// and the policy engine must agree on cluster names ("upstream_<name>_<host>_<port>"
 	// from the transformer path). With no transformers wired the translator silently
@@ -401,6 +402,13 @@ func main() {
 	// (3 segments), while the policy resources are keyed "method|path|vhost|<header-hash>". The
 	// policy engine resolves the chain by the Envoy route name, so the mismatch makes every
 	// header-matched route fail with 500 ("policy chain not found").
+	//
+	// This has to happen before the initial snapshot below, not merely somewhere during startup.
+	// The snapshot is generated exactly once here, so a translator without its transformers at
+	// this point serves a legacy-path snapshot for the whole life of the process: RestApi/Mcp
+	// routes come back under the wrong names, and a kind the legacy path cannot translate at all
+	// — Agent, whose Configuration is not an api.RestAPI — contributes no routes whatsoever and
+	// 404s until something else triggers a snapshot update.
 	//
 	// The kind list is derived from the registry rather than written out here, so a kind the
 	// registry learns to transform cannot be silently left off this map — WebSubApi's exclusion
@@ -471,8 +479,9 @@ func main() {
 	policyManager := policyxds.NewPolicyManager(policySnapshotManager, log)
 	policyManager.SetRuntimeStore(runtimeStore)
 
-	// Share the transformer registry (built before the initial xDS snapshot above)
-	// with the policy manager so both snapshot paths key resources identically.
+	// Share the transformer registry (built earlier, before the initial xDS snapshot — see the
+	// comment there for why that ordering is load-bearing rather than incidental) with the
+	// policy manager so both snapshot paths key resources identically.
 	policyManager.SetTransformers(transformerRegistry)
 
 	// Load runtime configs from existing API configurations on startup.
