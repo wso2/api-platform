@@ -64,12 +64,12 @@ src/
   routes/         paths.ts (route builders), AppRoutes.tsx, ProtectedRoute
   scope/          ConsoleScopeProvider/Context, ScopeGate, consoleRouteParams
   slots/          Slot + Hideable extension primitives
-  theme/          AppThemeProvider, themes.ts, receipes.ts, emotionCache
+  theme/          receipes.ts (shared style recipes)
   test/           renderWithProviders, MSW server + toolkit, mock scope/auth
   extensions.tsx  extension registration; hostPort.tsx  the value handed to extensions
 ```
 
-Provider order (`App.tsx`, outermost first): `I18nProvider` → `AppThemeProvider` →
+Provider order (`App.tsx`, outermost first): `I18nProvider` → `OxygenUIThemeProvider` →
 `NotificationProvider` → `AppQueryProvider` → `ApiClientProvider` → `ErrorBoundary` →
 `BrowserRouter` → `AuthProvider` → `ExtensionsProvider` → `AppRoutes`. Inside a protected route:
 `ConsoleScopeProvider` → `AppLayout`. Don't add a provider without a reason that names its position.
@@ -117,9 +117,15 @@ Utils: `formatRelativeTime`, `pxToRem`, `alpha`.
 
 ### Theming
 
-`AppThemeProvider` (`src/theme/`) wraps `OxygenUIThemeProvider` with a one-entry registry —
-`AcrylicOrangeTheme` — plus the app's emotion cache and `<CssBaseline />`. Don't add a second theme
-or call `OxygenUIThemeProvider` anywhere else.
+`OxygenUIThemeProvider` is mounted once, directly in `App.tsx`, with a one-entry registry
+(`AcrylicOrangeTheme`) declared at module scope in that same file — module scope because the
+provider keys a theme-resolving effect on the array's identity. Don't call the provider anywhere
+else, and don't wrap it in an app-level provider of your own.
+
+It needs nothing else from us: it already renders `<CssBaseline enableColorScheme />` internally,
+and with no `emotionCache`/`nonce` prop it falls back to `<StyledEngineProvider injectFirst>` — so
+app styles override Oxygen styles without a hand-rolled Emotion cache. Under a CSP, pass the
+provider's own `nonce` prop rather than building a cache.
 
 Three tiers, in order of preference:
 
@@ -365,7 +371,7 @@ Full conventions in `src/test/README.md`.
 | `@mui/material`, `@mui/material/styles` (`styled`, `alpha`, `useTheme`) | `@wso2/oxygen-ui` |
 | `@mui/icons-material`, `lucide-react` | `@wso2/oxygen-ui-icons-react` (bare lucide names, explicit `size`) |
 | `@mui/x-data-grid` / `x-date-pickers` / `x-tree-view` | `DataGrid.*` / `DatePickers.*` / `TreeView.*` from `@wso2/oxygen-ui` |
-| `ThemeProvider` + `createTheme` | nothing — `AppThemeProvider` already owns this |
+| `ThemeProvider` + `createTheme`, `CssBaseline`, a custom Emotion cache | nothing — `OxygenUIThemeProvider` in `App.tsx` already owns all three |
 | `AppBar`/`Toolbar`/`Drawer` layout | `AppShell` + `Header` + `Sidebar` (already in `AppLayout`) |
 | `Table`/`TableHead`/`TableRow`/`TableCell` | `ListingTable.*` |
 | `<Grid item xs={12} md={4}>` | `<Grid size={{ xs: 12, md: 4 }}>` |

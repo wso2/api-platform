@@ -34,7 +34,9 @@
     "i18n:pseudo": "formatjs compile --ast --pseudo-locale en-XA src/i18n/messages/en.json --out-file src/i18n/compiled/en-XA.json",
     "i18n:build": "npm run i18n:compile && npm run i18n:pseudo",
     "i18n": "npm run i18n:extract && npm run i18n:build",
-    "i18n:check": "npm run i18n && git diff --exit-code src/i18n/messages"
+    "i18n:check": "npm run i18n && git diff --exit-code src/i18n/messages",
+    "format": "prettier --write \"src/**/*.{ts,tsx,js,jsx,json,css,md}\"",
+    "format:check": "prettier --check \"src/**/*.{ts,tsx,js,jsx,json,css,md}\""
   },
   "dependencies": {
     "@babel/runtime-corejs3": "7.29.7",
@@ -70,12 +72,14 @@
     "@vitest/coverage-v8": "2.1.8",
     "babel-plugin-formatjs": "11.3.16",
     "eslint": "9.26.0",
+    "eslint-config-prettier": "10.1.8",
     "eslint-plugin-formatjs": "6.4.0",
     "eslint-plugin-react-hooks": "5.2.0",
     "globals": "15.15.0",
     "jsdom": "25.0.1",
     "msw": "2.6.8",
     "openapi-typescript": "7.13.0",
+    "prettier": "3.9.6",
     "typescript": "5.8.3",
     "typescript-eslint": "8.32.1",
     "vite": "5.0.11",

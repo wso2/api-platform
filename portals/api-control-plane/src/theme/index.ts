@@ -16,7 +16,6 @@
  * under the License.
  */
 
-import { AppThemeProvider } from './AppThemeProvider';
 import {
   glassSurfaceSx,
   hairline,
@@ -24,10 +23,4 @@ import {
   stickyBottomBarSx,
 } from './receipes';
 
-export {
-  AppThemeProvider,
-  glassSurfaceSx,
-  hairline,
-  interactiveCardSx,
-  stickyBottomBarSx,
-};
+export { glassSurfaceSx, hairline, interactiveCardSx, stickyBottomBarSx };
