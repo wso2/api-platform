@@ -62,6 +62,9 @@ func registerAllRoutes(mux *http.ServeMux) {
 	handler.NewAgentProxyHandler(nil, nil, logger).RegisterRoutes(mux)
 	handler.NewAgentProxyDeploymentHandler(nil, nil, logger).RegisterRoutes(mux)
 	handler.NewAgentProxyAPIKeyHandler(nil, nil, nil, "scope", logger).RegisterRoutes(mux)
+	handler.NewGraphQLAPIHandler(nil, nil, logger).RegisterRoutes(mux)
+	handler.NewGraphQLAPIDeploymentHandler(nil, nil, logger).RegisterRoutes(mux)
+	handler.NewGraphQLAPIKeyHandler(nil, nil, "scope", logger).RegisterRoutes(mux)
 	handler.NewSecretHandler(nil, nil, logger).RegisterRoutes(mux)
 
 	// Plugin routes are registered on the same mux and their specs merged into
