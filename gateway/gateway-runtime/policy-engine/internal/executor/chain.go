@@ -796,6 +796,7 @@ func (c *ChainExecutor) ExecuteStreamingRequestPolicies(
 			currentChunk = &policy.StreamBody{
 				Chunk:       fwd.Body,
 				EndOfStream: currentChunk.EndOfStream,
+				Index:       currentChunk.Index,
 			}
 		}
 
@@ -939,11 +940,11 @@ func (c *ChainExecutor) ExecuteStreamingResponsePolicies(
 		switch a := action.(type) {
 		case policy.ForwardResponseChunk:
 			if a.Body != nil {
-				currentChunk = &policy.StreamBody{Chunk: a.Body, EndOfStream: currentChunk.EndOfStream}
+				currentChunk = &policy.StreamBody{Chunk: a.Body, EndOfStream: currentChunk.EndOfStream, Index: currentChunk.Index}
 			}
 		case policy.TerminateResponseChunk:
 			if a.Body != nil {
-				currentChunk = &policy.StreamBody{Chunk: a.Body, EndOfStream: true}
+				currentChunk = &policy.StreamBody{Chunk: a.Body, EndOfStream: true, Index: currentChunk.Index}
 			}
 		}
 

@@ -43,3 +43,9 @@ spec:
   responseModel:
     location: payload
     identifier: $.model
+  providerFields:
+    # Voxtral bills audio input by duration; prompt_tokens covers only text.
+    promptAudioSeconds:
+      location: payload
+      identifier: $.usage.prompt_audio_seconds
+  cacheAccounting: inclusive

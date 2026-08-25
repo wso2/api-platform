@@ -31,6 +31,16 @@ type ExtractionIdentifier struct {
 	// +kubebuilder:validation:Required
 	// +kubebuilder:validation:Enum=header;pathParam;payload;queryParam
 	Location string `json:"location"`
+
+	// FallbackIdentifiers are additional locations to try, in order, when the
+	// primary identifier yields no value.
+	// +optional
+	FallbackIdentifiers []string `json:"fallbackIdentifiers,omitempty"`
+
+	// ValueMap translates values the provider reports into the vocabulary the
+	// gateway works in. A reported value that is not a key is used unchanged.
+	// +optional
+	ValueMap map[string]string `json:"valueMap,omitempty"`
 }
 
 // LLMProviderTemplateResourceMapping maps a resource path pattern to per-field
@@ -52,6 +62,27 @@ type LLMProviderTemplateResourceMapping struct {
 	ResponseModel *ExtractionIdentifier `json:"responseModel,omitempty"`
 	// +optional
 	TotalTokens *ExtractionIdentifier `json:"totalTokens,omitempty"`
+
+	// +optional
+	AudioInputTokens *ExtractionIdentifier `json:"audioInputTokens,omitempty"`
+	// +optional
+	AudioOutputTokens *ExtractionIdentifier `json:"audioOutputTokens,omitempty"`
+	// +optional
+	CachedTokens *ExtractionIdentifier `json:"cachedTokens,omitempty"`
+	// +optional
+	CacheWrite1hTokens *ExtractionIdentifier `json:"cacheWrite1hTokens,omitempty"`
+	// +optional
+	CacheWriteTokens *ExtractionIdentifier `json:"cacheWriteTokens,omitempty"`
+	// +optional
+	ReasoningTokens *ExtractionIdentifier `json:"reasoningTokens,omitempty"`
+	// +optional
+	ServiceTier *ExtractionIdentifier `json:"serviceTier,omitempty"`
+
+	// CacheAccounting overrides the template-level cache accounting mode for
+	// this resource. When omitted, the template-level value is inherited.
+	// +optional
+	// +kubebuilder:validation:Enum=inclusive;additive
+	CacheAccounting string `json:"cacheAccounting,omitempty"`
 }
 
 // LLMProviderTemplateResourceMappings lists per-resource extraction mappings.
@@ -82,6 +113,33 @@ type LLMProviderTemplateData struct {
 	ResponseModel *ExtractionIdentifier `json:"responseModel,omitempty"`
 	// +optional
 	TotalTokens *ExtractionIdentifier `json:"totalTokens,omitempty"`
+
+	// +optional
+	AudioInputTokens *ExtractionIdentifier `json:"audioInputTokens,omitempty"`
+	// +optional
+	AudioOutputTokens *ExtractionIdentifier `json:"audioOutputTokens,omitempty"`
+	// +optional
+	CachedTokens *ExtractionIdentifier `json:"cachedTokens,omitempty"`
+	// +optional
+	CacheWrite1hTokens *ExtractionIdentifier `json:"cacheWrite1hTokens,omitempty"`
+	// +optional
+	CacheWriteTokens *ExtractionIdentifier `json:"cacheWriteTokens,omitempty"`
+	// +optional
+	ReasoningTokens *ExtractionIdentifier `json:"reasoningTokens,omitempty"`
+	// +optional
+	ServiceTier *ExtractionIdentifier `json:"serviceTier,omitempty"`
+
+	// ProviderFields names locations a provider-specific calculator needs that
+	// the closed vocabulary above does not cover. Only the position is declared;
+	// the value found there is passed through unchanged.
+	// +optional
+	ProviderFields map[string]ExtractionIdentifier `json:"providerFields,omitempty"`
+
+	// CacheAccounting states whether the provider's cached token count is part
+	// of the input total or additional to it. Defaults to inclusive.
+	// +optional
+	// +kubebuilder:validation:Enum=inclusive;additive
+	CacheAccounting string `json:"cacheAccounting,omitempty"`
 }
 
 //+kubebuilder:object:root=true

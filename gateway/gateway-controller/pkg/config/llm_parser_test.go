@@ -1031,3 +1031,138 @@ spec:
 	assert.NotNil(t, template.Spec.PromptTokens)
 	assert.NotNil(t, template.Spec.CompletionTokens)
 }
+
+// A template carrying the usage detail fields must survive YAML parsing with
+// every field intact, including inside a resource mapping.
+func TestParseLLMProviderTemplate_UsageDetailFieldsSurviveYAML(t *testing.T) {
+	yamlSpec := []byte(`
+apiVersion: gateway.api-platform.wso2.com/v1
+kind: LlmProviderTemplate
+metadata:
+  name: roundtrip-check
+spec:
+  displayName: Roundtrip Check
+  cacheAccounting: additive
+  promptTokens:
+    location: payload
+    identifier: $.usage.input_tokens
+  cachedTokens:
+    location: payload
+    identifier: $.usage.cache_read_input_tokens
+  cacheWriteTokens:
+    location: payload
+    identifier: $.usage.cache_creation.ephemeral_5m_input_tokens
+  cacheWrite1hTokens:
+    location: payload
+    identifier: $.usage.cache_creation.ephemeral_1h_input_tokens
+  reasoningTokens:
+    location: payload
+    identifier: $.usage.completion_tokens_details.reasoning_tokens
+  audioInputTokens:
+    location: payload
+    identifier: $.usage.prompt_tokens_details.audio_tokens
+  audioOutputTokens:
+    location: payload
+    identifier: $.usage.completion_tokens_details.audio_tokens
+  serviceTier:
+    location: payload
+    identifier: $.usage.service_tier
+    valueMap:
+      ON_DEMAND_PRIORITY: priority
+      ON_DEMAND_FLEX: flex
+  providerFields:
+    cacheDetails:
+      location: payload
+      identifier: $.usage.cacheDetails
+    cacheTokensDetails:
+      location: payload
+      identifier: $.usageMetadata.cacheTokensDetails
+  resourceMappings:
+    resources:
+      - resource: /responses
+        cacheAccounting: inclusive
+        cachedTokens:
+          location: payload
+          identifier: $.usage.input_tokens_details.cached_tokens
+`)
+
+	parser := NewParser()
+
+	var tmpl api.LLMProviderTemplate
+	if err := parser.Parse(yamlSpec, "application/yaml", &tmpl); err != nil {
+		t.Fatalf("parse failed: %v", err)
+	}
+
+	spec := tmpl.Spec
+
+	// The parsed template must also pass validation, so a field that parses but
+	// fails deploy-time checks is caught here too.
+	if errs := NewLLMValidator().validateTemplateSpec(&spec); len(errs) != 0 {
+		t.Fatalf("expected valid template, got %v", errs)
+	}
+
+	if spec.CacheAccounting == nil || *spec.CacheAccounting != "additive" {
+		t.Errorf("cacheAccounting not preserved: %v", spec.CacheAccounting)
+	}
+
+	checks := map[string]*api.ExtractionIdentifier{
+		"$.usage.cache_read_input_tokens":                    spec.CachedTokens,
+		"$.usage.cache_creation.ephemeral_5m_input_tokens":   spec.CacheWriteTokens,
+		"$.usage.cache_creation.ephemeral_1h_input_tokens":   spec.CacheWrite1hTokens,
+		"$.usage.completion_tokens_details.reasoning_tokens": spec.ReasoningTokens,
+		"$.usage.prompt_tokens_details.audio_tokens":         spec.AudioInputTokens,
+		"$.usage.completion_tokens_details.audio_tokens":     spec.AudioOutputTokens,
+		"$.usage.service_tier":                               spec.ServiceTier,
+	}
+	for want, got := range checks {
+		if got == nil {
+			t.Errorf("field for %q was dropped", want)
+			continue
+		}
+		if got.Identifier != want {
+			t.Errorf("identifier mismatch: got %q want %q", got.Identifier, want)
+		}
+	}
+
+	// valueMap and providerFields are map-typed, so a missing or mistagged field
+	// on the generated model drops them silently rather than failing the parse.
+	if spec.ServiceTier == nil || spec.ServiceTier.ValueMap == nil {
+		t.Fatal("serviceTier.valueMap was dropped by the typed model")
+	}
+	valueMap := *spec.ServiceTier.ValueMap
+	if got := valueMap["ON_DEMAND_PRIORITY"]; got != "priority" {
+		t.Errorf("ON_DEMAND_PRIORITY = %q, want priority", got)
+	}
+	if got := valueMap["ON_DEMAND_FLEX"]; got != "flex" {
+		t.Errorf("ON_DEMAND_FLEX = %q, want flex", got)
+	}
+
+	if spec.ProviderFields == nil {
+		t.Fatal("providerFields was dropped by the typed model")
+	}
+	providerFields := *spec.ProviderFields
+	if len(providerFields) != 2 {
+		t.Fatalf("got %d providerFields entries, want 2: %#v", len(providerFields), providerFields)
+	}
+	if got := providerFields["cacheDetails"]; got.Identifier != "$.usage.cacheDetails" {
+		t.Errorf("cacheDetails identifier = %q", got.Identifier)
+	}
+	if got := providerFields["cacheTokensDetails"]; string(got.Location) != "payload" {
+		t.Errorf("cacheTokensDetails location = %q", got.Location)
+	}
+
+	if spec.ResourceMappings == nil || spec.ResourceMappings.Resources == nil {
+		t.Fatal("resourceMappings was dropped")
+	}
+	resources := *spec.ResourceMappings.Resources
+	if len(resources) != 1 {
+		t.Fatalf("expected 1 resource mapping, got %d", len(resources))
+	}
+	m := resources[0]
+	if m.CachedTokens == nil || m.CachedTokens.Identifier != "$.usage.input_tokens_details.cached_tokens" {
+		t.Errorf("mapping cachedTokens not preserved: %v", m.CachedTokens)
+	}
+	if m.CacheAccounting == nil || *m.CacheAccounting != "inclusive" {
+		t.Errorf("mapping cacheAccounting not preserved: %v", m.CacheAccounting)
+	}
+}
