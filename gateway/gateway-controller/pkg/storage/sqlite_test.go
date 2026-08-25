@@ -78,7 +78,7 @@ func TestSQLiteStorage_SchemaInitialization(t *testing.T) {
 	var version int
 	err = storage.db.QueryRow("PRAGMA user_version").Scan(&version)
 	assert.NilError(t, err)
-	assert.Equal(t, version, 4) // Current schema version
+	assert.Equal(t, version, 5) // Current schema version
 
 	// Verify tables exist
 	tables := []string{
@@ -87,6 +87,7 @@ func TestSQLiteStorage_SchemaInitialization(t *testing.T) {
 		"llm_providers",
 		"llm_proxies",
 		"mcp_proxies",
+		"graphql_apis",
 		"certificates",
 		"llm_provider_templates",
 		"api_keys",
@@ -120,14 +121,14 @@ func TestSQLiteStorage_RejectsUnsupportedSchemaVersion(t *testing.T) {
 	storage := store.(*sqlStore)
 
 	// Set schema version to an unsupported value
-	_, err = storage.db.Exec("PRAGMA user_version = 5")
+	_, err = storage.db.Exec("PRAGMA user_version = 6")
 	assert.NilError(t, err)
 	storage.db.Close()
 
 	// Reopen — should fail with unsupported version error
 	_, err = NewStorage(BackendConfig{Type: "sqlite", SQLitePath: dbPath}, logger)
 	assert.Assert(t, err != nil)
-	assert.ErrorContains(t, err, "failed to initialize schema: unsupported schema version 5, expected 4; delete the database to recreate")
+	assert.ErrorContains(t, err, "failed to initialize schema: unsupported schema version 6, expected 5; delete the database to recreate")
 }
 
 func TestSQLiteStorage_DeleteConfig_NotFound(t *testing.T) {

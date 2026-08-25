@@ -26,13 +26,14 @@ import (
 
 // Registry dispatches StoredConfig → RuntimeDeployConfig by API kind.
 type Registry struct {
-	restT *RestAPITransformer
-	llmT  *LLMTransformer
+	restT    *RestAPITransformer
+	llmT     *LLMTransformer
+	graphqlT *GraphQLAPITransformer
 }
 
 // NewRegistry creates a new transformer Registry.
-func NewRegistry(restT *RestAPITransformer, llmT *LLMTransformer) *Registry {
-	return &Registry{restT: restT, llmT: llmT}
+func NewRegistry(restT *RestAPITransformer, llmT *LLMTransformer, graphqlT *GraphQLAPITransformer) *Registry {
+	return &Registry{restT: restT, llmT: llmT, graphqlT: graphqlT}
 }
 
 // Transform converts a StoredConfig to a RuntimeDeployConfig using the appropriate transformer.
@@ -42,6 +43,8 @@ func (r *Registry) Transform(cfg *models.StoredConfig) (*models.RuntimeDeployCon
 		return r.restT.Transform(cfg)
 	case "LlmProvider", "LlmProxy":
 		return r.llmT.Transform(cfg)
+	case "GraphQLApi":
+		return r.graphqlT.Transform(cfg)
 	default:
 		return nil, fmt.Errorf("unsupported kind for runtime config: %s", cfg.Kind)
 	}

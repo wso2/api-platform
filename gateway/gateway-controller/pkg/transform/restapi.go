@@ -124,7 +124,7 @@ func (t *RestAPITransformer) Transform(cfg *models.StoredConfig) (*models.Runtim
 	}
 
 	// Build main upstream cluster
-	mainUpstream, err := t.addUpstreamCluster(rdc, "main", &apiData.Upstream.Main, apiData.UpstreamDefinitions)
+	mainUpstream, err := resolveUpstreamCluster(rdc, "main", &apiData.Upstream.Main, apiData.UpstreamDefinitions)
 	if err != nil {
 		return nil, fmt.Errorf("failed to resolve main upstream: %w", err)
 	}
@@ -293,7 +293,7 @@ func (t *RestAPITransformer) Transform(cfg *models.StoredConfig) (*models.Runtim
 
 	// Add sandbox upstream and update sandbox routes if present
 	if hasSandbox {
-		sbUpstream, err := t.addUpstreamCluster(rdc, "sandbox", apiData.Upstream.Sandbox, apiData.UpstreamDefinitions)
+		sbUpstream, err := resolveUpstreamCluster(rdc, "sandbox", apiData.Upstream.Sandbox, apiData.UpstreamDefinitions)
 		if err != nil {
 			return nil, fmt.Errorf("failed to resolve sandbox upstream: %w", err)
 		}
@@ -467,8 +467,13 @@ func (r *upstreamClusterResult) UpstreamInfo() policyenginev1.UpstreamInfo {
 	}
 }
 
-// addUpstreamCluster resolves an upstream and adds it to the RuntimeDeployConfig.
-func (t *RestAPITransformer) addUpstreamCluster(
+// resolveUpstreamCluster resolves an upstream and adds it to the RuntimeDeployConfig.
+// It is a package-level function (not a method) because it does not depend on any
+// RestAPITransformer state — this lets GraphQLAPITransformer call it directly to
+// resolve its own main/sandbox upstream clusters, sharing the exact same resolution
+// logic (URL/ref lookup, port defaulting, TLS detection, connect-timeout resolution)
+// instead of duplicating it.
+func resolveUpstreamCluster(
 	rdc *models.RuntimeDeployConfig,
 	upstreamName string,
 	up *api.Upstream,

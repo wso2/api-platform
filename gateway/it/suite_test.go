@@ -351,6 +351,7 @@ func InitializeScenario(ctx *godog.ScenarioContext) {
 		RegisterAPISteps(ctx, testState, httpSteps)
 		RegisterTimeoutSteps(ctx, testState)
 		RegisterMCPSteps(ctx, testState, httpSteps, jwtSteps)
+		RegisterGraphQLSteps(ctx, testState, httpSteps, jwtSteps)
 		RegisterLLMSteps(ctx, testState, httpSteps)
 		RegisterJWTSteps(ctx, testState, httpSteps, jwtSteps)
 		RegisterPolicyEngineSteps(ctx, testState, httpSteps)
