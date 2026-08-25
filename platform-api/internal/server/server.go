@@ -154,6 +154,7 @@ func StartPlatformAPIServer(cfg *config.Server, slogger *slog.Logger,
 	llmProxyRepo := repository.NewLLMProxyRepo(db)
 	mcpProxyRepo := repository.NewMCPProxyRepo(db)
 	agentProxyRepo := repository.NewAgentProxyRepo(db)
+	graphqlAPIRepo := repository.NewGraphQLAPIRepo(db, artifactTableRegistry)
 	apiKeyRepo := repository.NewAPIKeyRepo(db, artifactTableRegistry)
 	auditRepo := repository.NewAuditRepo(db)
 	secretRepo := repository.NewSecretRepo(db, artifactTableRegistry)
@@ -296,6 +297,7 @@ func StartPlatformAPIServer(cfg *config.Server, slogger *slog.Logger,
 	llmProxyService := service.NewLLMProxyService(llmProxyRepo, llmProviderRepo, projectRepo, deploymentRepo, gatewayRepo, gatewayEventsService, slogger, auditRepo, cfg, identityService)
 	mcpProxyService := service.NewMCPProxyService(mcpProxyRepo, projectRepo, deploymentRepo, gatewayRepo, gatewayEventsService, slogger, auditRepo, cfg, identityService)
 	agentProxyService := service.NewAgentProxyService(agentProxyRepo, projectRepo, deploymentRepo, gatewayRepo, gatewayEventsService, slogger, auditRepo, cfg, identityService)
+	graphqlAPIService := service.NewGraphQLAPIService(graphqlAPIRepo, projectRepo, auditRepo, deploymentRepo, gatewayRepo, orgRepo, gatewayEventsService, identityService, slogger)
 
 	// The single configured encryption key (APIP_CP_ENCRYPTION_KEY) is used for all encrypted DB
 	// columns (secrets, subscription tokens, WebSub HMAC secrets)
@@ -349,6 +351,16 @@ func StartPlatformAPIServer(cfg *config.Server, slogger *slog.Logger,
 		apiKeyRepo,
 		gatewayEventsService,
 		artifactDefinitions,
+		cfg,
+		slogger,
+	)
+	graphqlAPIDeploymentService := service.NewGraphQLAPIDeploymentService(
+		graphqlAPIRepo,
+		deploymentRepo,
+		gatewayRepo,
+		orgRepo,
+		apiKeyRepo,
+		gatewayEventsService,
 		cfg,
 		slogger,
 	)
@@ -423,6 +435,9 @@ func StartPlatformAPIServer(cfg *config.Server, slogger *slog.Logger,
 	mcpProxyDeploymentHandler := handler.NewMCPProxyDeploymentHandler(mcpDeploymentService, identityService, slogger)
 	agentProxyDeploymentHandler := handler.NewAgentProxyDeploymentHandler(agentDeploymentService, identityService, slogger)
 	agentProxyAPIKeyHandler := handler.NewAgentProxyAPIKeyHandler(apiKeyService, agentProxyAPIKeyService, identityService, cfg.Auth.Authorization.Mode, slogger)
+	graphqlAPIHandler := handler.NewGraphQLAPIHandler(graphqlAPIService, identityService, slogger)
+	graphqlAPIKeyHandler := handler.NewGraphQLAPIKeyHandler(apiKeyService, identityService, cfg.Auth.Authorization.Mode, slogger)
+	graphqlAPIDeploymentHandler := handler.NewGraphQLAPIDeploymentHandler(graphqlAPIDeploymentService, identityService, slogger)
 	// Wire secret placeholder validation into dependent services
 	llmProviderService.SetSecretService(secretService)
 	llmProviderDeploymentService.SetSecretService(secretService)
@@ -433,6 +448,8 @@ func StartPlatformAPIServer(cfg *config.Server, slogger *slog.Logger,
 	// Gateways older than the secret-sync release receive artifacts with the
 	// placeholders already resolved; the internal fetch path needs the store for that.
 	internalGatewayService.SetSecretService(secretService)
+	graphqlAPIService.SetSecretService(secretService)
+	graphqlAPIService.SetMaxSDLFetchBytes(cfg.OpenAPISpecMaxFetchBytes)
 	secretHandler := handler.NewSecretHandler(secretService, identityService, slogger)
 	// Start deployment timeout background job
 	timeoutConfig := service.DeploymentTimeoutConfig{
@@ -503,6 +520,9 @@ func StartPlatformAPIServer(cfg *config.Server, slogger *slog.Logger,
 	agentProxyHandler.RegisterRoutes(core)
 	agentProxyDeploymentHandler.RegisterRoutes(core)
 	agentProxyAPIKeyHandler.RegisterRoutes(core)
+	graphqlAPIHandler.RegisterRoutes(core)
+	graphqlAPIKeyHandler.RegisterRoutes(core)
+	graphqlAPIDeploymentHandler.RegisterRoutes(core)
 	secretHandler.RegisterRoutes(core)
 
 	// Initialize plugins and register their routes.
