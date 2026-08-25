@@ -36,14 +36,23 @@ import (
 // adapter code. The assignment itself is the compile-time contract check: if a
 // signature drifts, the server stops building.
 type Deps struct {
-	Gateways Gateways
-	Projects Projects
-	RestAPIs RestAPIs
+	Gateways      Gateways
+	Projects      Projects
+	RestAPIs      RestAPIs
+	Organizations Organizations
 	// add more capability groups as external plugins need them
 	// (APIs, Subscriptions, Applications, Organizations, LLM, MCP, …)
 
 	Config *config.Server
 	Logger *slog.Logger
+}
+
+// Organizations exposes the minimum read-only organization identity capability
+// needed by external plugins. The returned external ID is the identity-provider
+// organization reference stored when the platform organization is registered;
+// callers must continue to use the internal orgID for platform authorization.
+type Organizations interface {
+	GetOrganizationExternalID(orgID string) (string, error)
 }
 
 // RestAPIs exposes the minimum read-only API capability external plugins need
