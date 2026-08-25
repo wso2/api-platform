@@ -2293,6 +2293,7 @@ func (t *Translator) createUpstreamTLSContext(certificate []byte, address string
 					t.routerConfig.Upstream.TLS.MaximumProtocolVersion,
 				),
 				CipherSuites: t.parseCipherSuites(t.routerConfig.Upstream.TLS.Ciphers),
+				EcdhCurves:   t.parseCipherSuites(t.routerConfig.Upstream.TLS.EcdhCurves),
 			},
 		},
 	}
@@ -2438,6 +2439,12 @@ func (t *Translator) createDownstreamTLSContext() (*tlsv3.DownstreamTlsContext, 
 		cipherSuites = t.parseCipherSuites(t.routerConfig.DownstreamTLS.Ciphers)
 	}
 
+	// Parse ECDH curves
+	var ecdhCurves []string
+	if t.routerConfig.DownstreamTLS.EcdhCurves != "" {
+		ecdhCurves = t.parseCipherSuites(t.routerConfig.DownstreamTLS.EcdhCurves)
+	}
+
 	// Create downstream TLS context
 	downstreamTLSContext := &tlsv3.DownstreamTlsContext{
 		CommonTlsContext: &tlsv3.CommonTlsContext{
@@ -2450,6 +2457,7 @@ func (t *Translator) createDownstreamTLSContext() (*tlsv3.DownstreamTlsContext, 
 					t.routerConfig.DownstreamTLS.MaximumProtocolVersion,
 				),
 				CipherSuites: cipherSuites,
+				EcdhCurves:   ecdhCurves,
 			},
 			AlpnProtocols: []string{constants.ALPNProtocolHTTP2, constants.ALPNProtocolHTTP11},
 		},
@@ -2474,7 +2482,8 @@ func (t *Translator) createTLSProtocolVersion(version string) tlsv3.TlsParameter
 	}
 }
 
-// parseCipherSuites splits and trims cipher suite string into array
+// parseCipherSuites splits and trims a comma-separated string into an array.
+// Used for both cipher suite lists and ECDH curve lists.
 func (t *Translator) parseCipherSuites(ciphers string) []string {
 	if ciphers == "" {
 		return nil

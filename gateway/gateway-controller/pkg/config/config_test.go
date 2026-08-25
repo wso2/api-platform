@@ -944,6 +944,37 @@ func TestConfig_ValidateTLSCiphers(t *testing.T) {
 	}
 }
 
+func TestConfig_ValidateUpstreamTLSEcdhCurves(t *testing.T) {
+	tests := []struct {
+		name        string
+		curves      string
+		wantErr     bool
+		errContains string
+	}{
+		{name: "Valid single curve", curves: "X25519", wantErr: false},
+		{name: "Valid multiple curves", curves: "X25519,P-256", wantErr: false},
+		{name: "Empty curves", curves: "", wantErr: false},
+		{name: "Curves with spaces", curves: "X25519, P-256", wantErr: false},
+		{name: "Hybrid post-quantum curve", curves: "X25519MLKEM768,SecP256r1MLKEM768,X25519,P-256", wantErr: false},
+		{name: "Empty entry", curves: "X25519,,P-256", wantErr: true, errContains: "empty curve name"},
+		{name: "Invalid separator character", curves: "X25519;P-256", wantErr: true, errContains: "invalid characters"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			cfg := validConfig()
+			cfg.Router.Upstream.TLS.EcdhCurves = tt.curves
+			err := cfg.Validate()
+			if tt.wantErr {
+				assert.Error(t, err)
+				assert.Contains(t, err.Error(), tt.errContains)
+			} else {
+				assert.NoError(t, err)
+			}
+		})
+	}
+}
+
 func TestConfig_ValidateTLSTrustedCertPath(t *testing.T) {
 	cfg := validConfig()
 	cfg.Router.Upstream.TLS.DisableSslVerification = false
@@ -1724,6 +1755,42 @@ func TestConfig_ValidateDownstreamTLSConfig(t *testing.T) {
 	}
 }
 
+func TestConfig_ValidateDownstreamTLSEcdhCurves(t *testing.T) {
+	tests := []struct {
+		name        string
+		curves      string
+		wantErr     bool
+		errContains string
+	}{
+		{name: "Valid single curve", curves: "P-256", wantErr: false},
+		{name: "Valid multiple curves", curves: "X25519,P-256,P-384,P-521", wantErr: false},
+		{name: "Empty curves", curves: "", wantErr: false},
+		{name: "Hybrid post-quantum curve", curves: "X25519MLKEM768,X25519,P-256", wantErr: false},
+		{name: "Empty entry", curves: ",X25519", wantErr: true, errContains: "empty curve name"},
+		{name: "Invalid separator character", curves: "X25519|P-256", wantErr: true, errContains: "invalid characters"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			cfg := validConfig()
+			cfg.Router.HTTPSEnabled = true
+			cfg.Router.HTTPSPort = 8443
+			cfg.Router.DownstreamTLS.CertPath = "/path/to/cert.pem"
+			cfg.Router.DownstreamTLS.KeyPath = "/path/to/key.pem"
+			cfg.Router.DownstreamTLS.MinimumProtocolVersion = constants.TLSVersion12
+			cfg.Router.DownstreamTLS.MaximumProtocolVersion = constants.TLSVersion13
+			cfg.Router.DownstreamTLS.EcdhCurves = tt.curves
+			err := cfg.Validate()
+			if tt.wantErr {
+				assert.Error(t, err)
+				assert.Contains(t, err.Error(), tt.errContains)
+			} else {
+				assert.NoError(t, err)
+			}
+		})
+	}
+}
+
 func TestConfig_Validate_CompleteValidConfig(t *testing.T) {
 	cfg := validConfig()
 	err := cfg.Validate()
@@ -1744,6 +1811,15 @@ func TestDefaultConfig(t *testing.T) {
 	assert.Equal(t, time.Duration(0), hcm.RequestHeadersTimeout, "default request_headers_timeout should be 0s (disabled)")
 	assert.Equal(t, 5*time.Minute, hcm.StreamIdleTimeout, "default stream_idle_timeout should be 5m")
 	assert.Equal(t, time.Hour, hcm.IdleTimeout, "default idle_timeout should be 1h")
+
+	// TLS 1.2-1.3 with a hybrid post-quantum + classical ECDH curve preference
+	// list must be available by default on both upstream and downstream.
+	assert.Equal(t, "TLS1_2", cfg.Router.DownstreamTLS.MinimumProtocolVersion)
+	assert.Equal(t, "TLS1_3", cfg.Router.DownstreamTLS.MaximumProtocolVersion)
+	assert.Equal(t, "X25519MLKEM768,X25519,P-256", cfg.Router.DownstreamTLS.EcdhCurves)
+	assert.Equal(t, "TLS1_2", cfg.Router.Upstream.TLS.MinimumProtocolVersion)
+	assert.Equal(t, "TLS1_3", cfg.Router.Upstream.TLS.MaximumProtocolVersion)
+	assert.Equal(t, "X25519MLKEM768,X25519,P-256", cfg.Router.Upstream.TLS.EcdhCurves)
 }
 
 func TestLoadConfig_HCMTimeouts(t *testing.T) {

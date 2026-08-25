@@ -16,32 +16,49 @@
  * under the License.
  */
 
-import React, { createContext, useContext } from 'react';
+import type { ReactNode } from 'react';
 
-export type AIWorkspaceExtension = {
-  id: string;
+import type { AIWorkspaceHostPort } from './hostPort';
+import { SlotEntriesProvider, useSlotEntries, type SlotEntry } from './slots';
+
+/**
+ * The only slot this host currently exposes: a top-level sidebar item (plus
+ * a matching route mounted at both the org- and project-scoped URL, mirroring
+ * wherever the sidebar link currently points). New slot names — e.g. a
+ * Settings sub-nav tab — can be introduced later without changing this type.
+ */
+export const AI_WORKSPACE_SIDEBAR_SLOT = 'sidebar.main';
+
+/**
+ * A host-injected feature: a sidebar item plus its route. `path` is relative
+ * to the same route group the built-in pages live in (e.g. `"billing"`, not
+ * `/organizations/:orgSlug/billing`) — resolved against the org or project
+ * currently in view, the same way the built-in sidebar links are.
+ *
+ * `render` receives the small, portable `AIWorkspaceHostPort` (org/project
+ * handle, navigate, notify) instead of a pre-built element, so the same
+ * feature component can be reused by another host app without depending on
+ * this portal's own hooks — see `hostPort.tsx`.
+ */
+export type AIWorkspaceExtension = SlotEntry & {
   path: string;
   label: string;
-  icon?: React.ReactNode;
-  element: React.ReactNode;
+  icon?: ReactNode;
+  render: (port: AIWorkspaceHostPort) => ReactNode;
 };
-
-const ExtensionsContext = createContext<readonly AIWorkspaceExtension[]>([]);
 
 export function ExtensionsProvider({
   extensions,
   children,
 }: {
   extensions: readonly AIWorkspaceExtension[];
-  children: React.ReactNode;
+  children: ReactNode;
 }) {
   return (
-    <ExtensionsContext.Provider value={extensions}>
-      {children}
-    </ExtensionsContext.Provider>
+    <SlotEntriesProvider entries={extensions}>{children}</SlotEntriesProvider>
   );
 }
 
 export function useAIWorkspaceExtensions(): readonly AIWorkspaceExtension[] {
-  return useContext(ExtensionsContext);
+  return useSlotEntries<AIWorkspaceExtension>();
 }
