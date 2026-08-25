@@ -24,6 +24,7 @@ import (
 	"io"
 	"log/slog"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/wso2/api-platform/common/eventhub"
@@ -325,6 +326,210 @@ func (s *APIServer) publishGraphQLAPIEvent(action, entityID, correlationID strin
 			slog.String("entity_id", entityID),
 			slog.Any("error", err))
 	}
+}
+
+// CreateGraphQLAPIKey implements ServerInterface.CreateGraphQLAPIKey
+// (POST /graphql-apis/{id}/api-keys)
+func (s *APIServer) CreateGraphQLAPIKey(w http.ResponseWriter, r *http.Request, id string) {
+	log := middleware.GetLogger(r, s.logger)
+	handle := id
+	correlationID := middleware.GetCorrelationID(r)
+
+	user, ok := s.extractAuthenticatedUser(w, r, "CreateGraphQLAPIKey", correlationID)
+	if !ok {
+		return
+	}
+
+	var request api.APIKeyCreationRequest
+	if err := s.bindRequestBody(r, &request); err != nil {
+		log.Error("Failed to parse request body for GraphQL API key creation",
+			slog.Any("error", err),
+			slog.String("handle", handle),
+			slog.String("correlation_id", correlationID))
+		httputil.WriteJSON(w, http.StatusBadRequest, api.ErrorResponse{Status: "error", Message: fmt.Sprintf("Invalid request body: %v", err)})
+		return
+	}
+
+	params := utils.APIKeyCreationParams{
+		Kind:          models.KindGraphQLApi,
+		Handle:        handle,
+		Request:       request,
+		User:          user,
+		CorrelationID: correlationID,
+		Logger:        log,
+	}
+
+	result, err := s.apiKeyService.CreateAPIKey(params)
+	if err != nil {
+		if strings.Contains(err.Error(), "not found") {
+			httputil.WriteJSON(w, http.StatusNotFound, api.ErrorResponse{Status: "error", Message: err.Error()})
+		} else if storage.IsConflictError(err) || strings.Contains(err.Error(), "already exists") {
+			httputil.WriteJSON(w, http.StatusConflict, api.ErrorResponse{Status: "error", Message: err.Error()})
+		} else {
+			httputil.WriteJSON(w, http.StatusInternalServerError, api.ErrorResponse{Status: "error", Message: err.Error()})
+		}
+		return
+	}
+
+	httputil.WriteJSON(w, http.StatusCreated, result.Response)
+}
+
+// RevokeGraphQLAPIKey implements ServerInterface.RevokeGraphQLAPIKey
+// (DELETE /graphql-apis/{id}/api-keys/{apiKeyName})
+func (s *APIServer) RevokeGraphQLAPIKey(w http.ResponseWriter, r *http.Request, id string, apiKeyName string) {
+	log := middleware.GetLogger(r, s.logger)
+	handle := id
+	correlationID := middleware.GetCorrelationID(r)
+
+	user, ok := s.extractAuthenticatedUser(w, r, "RevokeGraphQLAPIKey", correlationID)
+	if !ok {
+		return
+	}
+
+	params := utils.APIKeyRevocationParams{
+		Kind:          models.KindGraphQLApi,
+		Handle:        handle,
+		APIKeyName:    apiKeyName,
+		User:          user,
+		CorrelationID: correlationID,
+		Logger:        log,
+	}
+
+	result, err := s.apiKeyService.RevokeAPIKey(params)
+	if err != nil {
+		if strings.Contains(err.Error(), "not found") {
+			httputil.WriteJSON(w, http.StatusNotFound, api.ErrorResponse{Status: "error", Message: err.Error()})
+		} else {
+			httputil.WriteJSON(w, http.StatusInternalServerError, api.ErrorResponse{Status: "error", Message: err.Error()})
+		}
+		return
+	}
+
+	httputil.WriteJSON(w, http.StatusOK, result.Response)
+}
+
+// UpdateGraphQLAPIKey implements ServerInterface.UpdateGraphQLAPIKey
+// (PUT /graphql-apis/{id}/api-keys/{apiKeyName})
+func (s *APIServer) UpdateGraphQLAPIKey(w http.ResponseWriter, r *http.Request, id string, apiKeyName string) {
+	log := middleware.GetLogger(r, s.logger)
+	handle := id
+	correlationID := middleware.GetCorrelationID(r)
+
+	user, ok := s.extractAuthenticatedUser(w, r, "UpdateGraphQLAPIKey", correlationID)
+	if !ok {
+		return
+	}
+
+	var request api.APIKeyCreationRequest
+	if err := s.bindRequestBody(r, &request); err != nil {
+		httputil.WriteJSON(w, http.StatusBadRequest, api.ErrorResponse{Status: "error", Message: fmt.Sprintf("Invalid request body: %v", err)})
+		return
+	}
+
+	if request.ApiKey == nil || strings.TrimSpace(*request.ApiKey) == "" {
+		httputil.WriteJSON(w, http.StatusBadRequest, api.ErrorResponse{Status: "error", Message: "apiKey is required"})
+		return
+	}
+
+	params := utils.APIKeyUpdateParams{
+		Kind:          models.KindGraphQLApi,
+		Handle:        handle,
+		APIKeyName:    apiKeyName,
+		Request:       request,
+		User:          user,
+		CorrelationID: correlationID,
+		Logger:        log,
+	}
+
+	result, err := s.apiKeyService.UpdateAPIKey(params)
+	if err != nil {
+		if storage.IsOperationNotAllowedError(err) {
+			httputil.WriteJSON(w, http.StatusBadRequest, api.ErrorResponse{Status: "error", Message: err.Error()})
+		} else if strings.Contains(err.Error(), "not found") {
+			httputil.WriteJSON(w, http.StatusNotFound, api.ErrorResponse{Status: "error", Message: err.Error()})
+		} else if storage.IsConflictError(err) || strings.Contains(err.Error(), "already exists") {
+			httputil.WriteJSON(w, http.StatusConflict, api.ErrorResponse{Status: "error", Message: err.Error()})
+		} else {
+			httputil.WriteJSON(w, http.StatusInternalServerError, api.ErrorResponse{Status: "error", Message: err.Error()})
+		}
+		return
+	}
+
+	httputil.WriteJSON(w, http.StatusOK, result.Response)
+}
+
+// RegenerateGraphQLAPIKey implements ServerInterface.RegenerateGraphQLAPIKey
+// (POST /graphql-apis/{id}/api-keys/{apiKeyName}/regenerate)
+func (s *APIServer) RegenerateGraphQLAPIKey(w http.ResponseWriter, r *http.Request, id string, apiKeyName string) {
+	log := middleware.GetLogger(r, s.logger)
+	handle := id
+	correlationID := middleware.GetCorrelationID(r)
+
+	user, ok := s.extractAuthenticatedUser(w, r, "RegenerateGraphQLAPIKey", correlationID)
+	if !ok {
+		return
+	}
+
+	var request api.APIKeyRegenerationRequest
+	if err := s.bindRequestBody(r, &request); err != nil {
+		httputil.WriteJSON(w, http.StatusBadRequest, api.ErrorResponse{Status: "error", Message: fmt.Sprintf("Invalid request body: %v", err)})
+		return
+	}
+
+	params := utils.APIKeyRegenerationParams{
+		Kind:          models.KindGraphQLApi,
+		Handle:        handle,
+		APIKeyName:    apiKeyName,
+		Request:       request,
+		User:          user,
+		CorrelationID: correlationID,
+		Logger:        log,
+	}
+
+	result, err := s.apiKeyService.RegenerateAPIKey(params)
+	if err != nil {
+		if strings.Contains(err.Error(), "not found") {
+			httputil.WriteJSON(w, http.StatusNotFound, api.ErrorResponse{Status: "error", Message: err.Error()})
+		} else {
+			httputil.WriteJSON(w, http.StatusInternalServerError, api.ErrorResponse{Status: "error", Message: err.Error()})
+		}
+		return
+	}
+
+	httputil.WriteJSON(w, http.StatusOK, result.Response)
+}
+
+// ListGraphQLAPIKeys implements ServerInterface.ListGraphQLAPIKeys
+// (GET /graphql-apis/{id}/api-keys)
+func (s *APIServer) ListGraphQLAPIKeys(w http.ResponseWriter, r *http.Request, id string) {
+	log := middleware.GetLogger(r, s.logger)
+	handle := id
+	correlationID := middleware.GetCorrelationID(r)
+
+	user, ok := s.extractAuthenticatedUser(w, r, "ListGraphQLAPIKeys", correlationID)
+	if !ok {
+		return
+	}
+
+	params := utils.ListAPIKeyParams{
+		Kind:          models.KindGraphQLApi,
+		Handle:        handle,
+		User:          user,
+		CorrelationID: correlationID,
+		Logger:        log,
+	}
+
+	result, err := s.apiKeyService.ListAPIKeys(params)
+	if err != nil {
+		if strings.Contains(err.Error(), "not found") {
+			httputil.WriteJSON(w, http.StatusNotFound, api.ErrorResponse{Status: "error", Message: err.Error()})
+		} else {
+			httputil.WriteJSON(w, http.StatusInternalServerError, api.ErrorResponse{Status: "error", Message: err.Error()})
+		}
+		return
+	}
+
+	httputil.WriteJSON(w, http.StatusOK, result.Response)
 }
 
 // mapValidationError maps a *utils.ValidationErrorListError to a 400 response with

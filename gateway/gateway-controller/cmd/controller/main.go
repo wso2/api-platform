@@ -974,6 +974,12 @@ func generateAuthConfig(config *config.Config) (commonmodels.AuthConfig, error) 
 		"POST /rest-apis/{id}/api-keys/{apiKeyName}/regenerate": {"admin", "consumer"},
 		"DELETE /rest-apis/{id}/api-keys/{apiKeyName}":          {"admin", "consumer"},
 
+		"POST /graphql-apis/{id}/api-keys":                         {"admin", "consumer"},
+		"GET /graphql-apis/{id}/api-keys":                          {"admin", "consumer"},
+		"PUT /graphql-apis/{id}/api-keys/{apiKeyName}":             {"admin", "consumer"},
+		"POST /graphql-apis/{id}/api-keys/{apiKeyName}/regenerate": {"admin", "consumer"},
+		"DELETE /graphql-apis/{id}/api-keys/{apiKeyName}":          {"admin", "consumer"},
+
 		"POST /llm-providers/{id}/api-keys":                         {"admin", "consumer"},
 		"GET /llm-providers/{id}/api-keys":                          {"admin", "consumer"},
 		"PUT /llm-providers/{id}/api-keys/{apiKeyName}":             {"admin", "consumer"},
