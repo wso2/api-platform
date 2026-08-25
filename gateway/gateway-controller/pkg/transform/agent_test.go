@@ -655,9 +655,12 @@ func TestAgentUpstreamAuthReachesOperationChainsOnly(t *testing.T) {
 	transformer := agentTransformerWithPolicies("set-headers")
 	withAuth := func(cfg *api.AgentConfiguration) {
 		cfg.Spec.Upstream.Auth = &struct {
-			Header *string                             `json:"header,omitempty" yaml:"header,omitempty"`
-			Type   api.AgentConfigDataUpstreamAuthType `json:"type" yaml:"type"`
-			Value  *string                             `json:"value,omitempty" yaml:"value,omitempty"`
+			Header        *string                             `json:"header,omitempty" yaml:"header,omitempty"`
+			PolicyName    *string                             `json:"policyName,omitempty" yaml:"policyName,omitempty"`
+			PolicyParams  *map[string]interface{}             `json:"policyParams,omitempty" yaml:"policyParams,omitempty"`
+			PolicyVersion *string                             `json:"policyVersion,omitempty" yaml:"policyVersion,omitempty"`
+			Type          api.AgentConfigDataUpstreamAuthType `json:"type" yaml:"type"`
+			Value         *string                             `json:"value,omitempty" yaml:"value,omitempty"`
 		}{
 			Header: ptrStr("Authorization"),
 			Type:   api.AgentConfigDataUpstreamAuthTypeApiKey,

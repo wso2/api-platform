@@ -382,6 +382,38 @@ func main() {
 		}
 	}
 
+	// Build transformer registry for StoredConfig → RuntimeDeployConfig conversion
+	// (policyVersionResolver is hoisted above for the startup rehydration path).
+	restTransformer := transform.NewRestAPITransformer(&cfg.Router, cfg, policyDefinitions)
+	llmTransformer := transform.NewLLMTransformer(configStore, db, &cfg.Router, cfg, policyDefinitions, policyVersionResolver)
+	agentTransformer := transform.NewAgentTransformer(&cfg.Router, cfg, policyDefinitions)
+	transformerRegistry := transform.NewRegistry(restTransformer, llmTransformer, agentTransformer)
+
+	// Wire the same transformer into the Envoy xDS translator so Envoy routes are built from the
+	// RuntimeDeployConfig (RDC) path — identical to how the policy engine's RouteConfig/PolicyChain
+	// resources are keyed. Without this the Envoy translator falls back to the legacy per-operation
+	// path, which (a) does not render header matchers and (b) names routes "method|path|vhost"
+	// (3 segments), while the policy resources are keyed "method|path|vhost|<header-hash>". The
+	// policy engine resolves the chain by the Envoy route name, so the mismatch makes every
+	// header-matched route fail with 500 ("policy chain not found").
+	//
+	// This has to happen before the initial snapshot below, not merely somewhere during startup.
+	// The snapshot is generated exactly once here, so a translator without its transformers at
+	// this point serves a legacy-path snapshot for the whole life of the process: RestApi/Mcp
+	// routes come back under the wrong names, and a kind the legacy path cannot translate at all
+	// — Agent, whose Configuration is not an api.RestAPI — contributes no routes whatsoever and
+	// 404s until something else triggers a snapshot update.
+	//
+	// The kind list is derived from the registry rather than written out here, so a kind the
+	// registry learns to transform cannot be silently left off this map — WebSubApi's exclusion
+	// (it keeps the async-specific legacy translation path) is declared alongside the registry's
+	// own kind list instead.
+	envoyTransformers := make(map[string]models.ConfigTransformer)
+	for _, kind := range transform.EnvoyTranslatorKinds() {
+		envoyTransformers[kind] = transformerRegistry
+	}
+	translator.SetTransformers(envoyTransformers)
+
 	// Generate initial xDS snapshot
 	log.Info("Generating initial xDS snapshot")
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
@@ -441,30 +473,9 @@ func main() {
 	policyManager := policyxds.NewPolicyManager(policySnapshotManager, log)
 	policyManager.SetRuntimeStore(runtimeStore)
 
-	// Build transformer registry for StoredConfig → RuntimeDeployConfig conversion
-	restTransformer := transform.NewRestAPITransformer(&cfg.Router, cfg, policyDefinitions)
-	llmTransformer := transform.NewLLMTransformer(configStore, db, &cfg.Router, cfg, policyDefinitions, policyVersionResolver)
-	agentTransformer := transform.NewAgentTransformer(&cfg.Router, cfg, policyDefinitions)
-	transformerRegistry := transform.NewRegistry(restTransformer, llmTransformer, agentTransformer)
+	// The registry itself is built earlier, before the initial xDS snapshot — see the comment
+	// there for why that ordering is load-bearing rather than incidental.
 	policyManager.SetTransformers(transformerRegistry)
-
-	// Wire the same transformer into the Envoy xDS translator so Envoy routes are built from the
-	// RuntimeDeployConfig (RDC) path — identical to how the policy engine's RouteConfig/PolicyChain
-	// resources are keyed. Without this the Envoy translator falls back to the legacy per-operation
-	// path, which (a) does not render header matchers and (b) names routes "method|path|vhost"
-	// (3 segments), while the policy resources are keyed "method|path|vhost|<header-hash>". The
-	// policy engine resolves the chain by the Envoy route name, so the mismatch makes every
-	// header-matched route fail with 500 ("policy chain not found").
-	//
-	// The kind list is derived from the registry rather than written out here, so a kind the
-	// registry learns to transform cannot be silently left off this map — WebSubApi's exclusion
-	// (it keeps the async-specific legacy translation path) is declared alongside the registry's
-	// own kind list instead.
-	envoyTransformers := make(map[string]models.ConfigTransformer)
-	for _, kind := range transform.EnvoyTranslatorKinds() {
-		envoyTransformers[kind] = transformerRegistry
-	}
-	translator.SetTransformers(envoyTransformers)
 
 	// Load runtime configs from existing API configurations on startup.
 	// We write directly to runtimeStore to avoid triggering N separate snapshot updates;

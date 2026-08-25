@@ -107,7 +107,7 @@ func TestDumpConfig_WithRoutes(t *testing.T) {
 	require.Len(t, result.PolicyChains.PolicyChains, 1)
 
 	routeConfig := result.PolicyChains.PolicyChains[0]
-	assert.Equal(t, "test-route", routeConfig.RouteKey)
+	assert.Equal(t, "test-route", routeConfig.ChainKey)
 	assert.True(t, routeConfig.RequiresRequestBody)
 	assert.False(t, routeConfig.RequiresResponseBody)
 	assert.Equal(t, 1, routeConfig.TotalPolicies)
@@ -201,7 +201,7 @@ func TestDumpPolicyChains_SingleRoute(t *testing.T) {
 	require.Len(t, result.PolicyChains, 1)
 
 	entry := result.PolicyChains[0]
-	assert.Equal(t, "api-route-1", entry.RouteKey)
+	assert.Equal(t, "api-route-1", entry.ChainKey)
 	assert.True(t, entry.RequiresRequestBody)
 	assert.True(t, entry.RequiresResponseBody)
 	assert.Equal(t, 1, entry.TotalPolicies)
@@ -455,4 +455,128 @@ func TestDumpRouteMetadata_ExplicitBufferLimitIsReported(t *testing.T) {
 	})
 
 	assert.Equal(t, int64(4096), dumpRouteMetadata(k).Routes[0].MaxRequestBodyBytes)
+}
+
+// =============================================================================
+// Chain keys in the dump
+// =============================================================================
+
+// staticOperationResolver is a stand-in for a real per-operation binding — an A2A
+// HTTP+JSON route, whose operation is fixed by the path at deploy time. Its prepared
+// resolver answers statically with a composed key, which is the case that makes
+// chain_key on a route worth reporting at all: the value is neither the route key nor
+// derivable from it.
+type staticOperationResolver struct {
+	name      string
+	operation string
+}
+
+func (r *staticOperationResolver) Name() string { return r.name }
+
+func (r *staticOperationResolver) Prepare(cfg resolver.ResolverRouteConfig) (resolver.PreparedResolver, error) {
+	return &preparedStaticOperation{
+		key: chainkey.For(cfg.APIID, cfg.Vhost, r.operation),
+	}, nil
+}
+
+type preparedStaticOperation struct{ key string }
+
+func (*preparedStaticOperation) Requirements() resolver.RequestRequirements {
+	return resolver.RequestRequirements{Body: resolver.BodyNotRequired}
+}
+
+func (p *preparedStaticOperation) StaticResolution() resolver.Resolution {
+	return resolver.Resolution{ChainKey: p.key}
+}
+
+func (p *preparedStaticOperation) Resolve(context.Context, resolver.RequestView) (resolver.Resolution, error) {
+	return p.StaticResolution(), nil
+}
+
+// A composed chain key is reported under its own name and split into the components it
+// was built from. Without the split, matching a chain to an API or an operation means
+// decoding a key joined by an unprintable separator.
+func TestDumpPolicyChains_ComposedKeyIsReportedAndDecomposed(t *testing.T) {
+	k := kernel.NewKernel()
+	key := chainkey.For("agent-1", "localhost", "SendMessage")
+	k.RegisterRoute(key, &registry.PolicyChain{})
+
+	chains, _ := k.DumpRoutesAndSensitiveValues()
+	entry := dumpPolicyChains(chains).PolicyChains[0]
+
+	assert.Equal(t, key, entry.ChainKey)
+	assert.Equal(t, "agent-1", entry.APIID)
+	assert.Equal(t, "localhost", entry.Vhost)
+	assert.Equal(t, "SendMessage", entry.Operation)
+}
+
+// A route-key chain has no components, so the decomposed fields stay absent rather than
+// carrying a guess at how the key might split.
+func TestDumpPolicyChains_RouteKeyChainHasNoComponents(t *testing.T) {
+	k := kernel.NewKernel()
+	k.RegisterRoute("GET|/pets|localhost", &registry.PolicyChain{})
+
+	chains, _ := k.DumpRoutesAndSensitiveValues()
+	entry := dumpPolicyChains(chains).PolicyChains[0]
+
+	assert.Equal(t, "GET|/pets|localhost", entry.ChainKey)
+	assert.Empty(t, entry.APIID)
+	assert.Empty(t, entry.Vhost)
+	assert.Empty(t, entry.Operation)
+}
+
+// An identity route reports the chain it binds too, which restates its own key. That is
+// the point: the equality is shown rather than assumed by whoever reads the dump.
+func TestDumpRouteMetadata_IdentityRouteReportsItsOwnChainKey(t *testing.T) {
+	k := kernel.NewKernel()
+	k.ApplyWholeRouteConfigs(map[string]*kernel.RouteConfig{
+		"GET|/pets|localhost": prepareRoute(t, "GET|/pets|localhost", &kernel.RouteConfig{
+			RouteResolution: resolver.RouteResolution{
+				CanonicalChainKey: "GET|/pets|localhost",
+				ResolverName:      resolver.RouteKeyResolverName,
+			},
+		}),
+	})
+
+	entry := dumpRouteMetadata(k).Routes[0]
+	assert.Equal(t, "GET|/pets|localhost", entry.ChainKey)
+	assert.Equal(t, entry.RouteKey, entry.ChainKey)
+}
+
+// A statically-resolved operation route reports the composed chain key it binds, which
+// is what joins a route entry to a policy_chains entry: neither the route key nor the
+// prefix alone identifies the chain that runs.
+func TestDumpRouteMetadata_StaticOperationRouteReportsComposedChainKey(t *testing.T) {
+	k := kernel.NewKernel()
+	k.ApplyWholeRouteConfigs(map[string]*kernel.RouteConfig{
+		"POST|/hello/tasks/{id}:subscribe|*": prepareRoute(t, "POST|/hello/tasks/{id}:subscribe|*", &kernel.RouteConfig{
+			Metadata: kernel.RouteMetadata{APIId: "agent-1", Vhost: "*"},
+			RouteResolution: resolver.RouteResolution{
+				ResolverName: "fake-static-operation",
+			},
+		}, &staticOperationResolver{name: "fake-static-operation", operation: "SubscribeToTask"}),
+	})
+
+	entry := dumpRouteMetadata(k).Routes[0]
+	assert.Equal(t, chainkey.For("agent-1", "*", "SubscribeToTask"), entry.ChainKey)
+	assert.NotEqual(t, entry.RouteKey, entry.ChainKey)
+	assert.True(t, strings.HasPrefix(entry.ChainKey, entry.ChainKeyPrefix),
+		"the reported key must be one the reported prefix composes")
+	assert.True(t, entry.ResolverStatic)
+}
+
+// A body-resolved route binds one of its protocol's operation chains per request, so it
+// reports no chain key at all rather than naming one it cannot honour.
+func TestDumpRouteMetadata_BodyResolvedRouteReportsNoChainKey(t *testing.T) {
+	k := kernel.NewKernel()
+	k.ApplyWholeRouteConfigs(map[string]*kernel.RouteConfig{
+		"POST|/rpc|localhost": prepareRoute(t, "POST|/rpc|localhost", &kernel.RouteConfig{
+			Metadata:        kernel.RouteMetadata{APIId: "agent-1", Vhost: "localhost"},
+			RouteResolution: resolver.RouteResolution{ResolverName: "fake-multiplexed"},
+		}, &bodyResolver{name: "fake-multiplexed"}),
+	})
+
+	entry := dumpRouteMetadata(k).Routes[0]
+	assert.Empty(t, entry.ChainKey, "a per-request chain cannot be named at dump time")
+	assert.NotEmpty(t, entry.ChainKeyPrefix, "the prefix is what an operator matches against instead")
 }

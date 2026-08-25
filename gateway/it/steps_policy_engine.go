@@ -163,9 +163,10 @@ func (p *PolicyEngineSteps) theConfigDumpShouldContainRouteWithBasePath(basePath
 		if !ok {
 			continue
 		}
-		routeKey, _ := routeConfig["route_key"].(string)
-		// RouteKey format is typically "method_basepath_path" or similar
-		if strings.Contains(routeKey, basePath) {
+		// A chain is keyed by chain key, which is the route key for every kind whose
+		// routes have one chain each, and apiID/vhost/operation for a multiplexed one.
+		chainKey, _ := routeConfig["chain_key"].(string)
+		if strings.Contains(chainKey, basePath) {
 			return nil
 		}
 	}
@@ -191,9 +192,9 @@ func (p *PolicyEngineSteps) theConfigDumpShouldNotContainRouteWithBasePath(baseP
 				if !ok {
 					continue
 				}
-				routeKey, _ := entry["route_key"].(string)
-				if strings.Contains(routeKey, basePath) {
-					return fmt.Errorf("route with basePath '%s' still exists in policy_chains (route_key: %s)", basePath, routeKey)
+				chainKey, _ := entry["chain_key"].(string)
+				if strings.Contains(chainKey, basePath) {
+					return fmt.Errorf("route with basePath '%s' still exists in policy_chains (chain_key: %s)", basePath, chainKey)
 				}
 			}
 		}
@@ -242,15 +243,15 @@ func (p *PolicyEngineSteps) theConfigDumpShouldContainPolicyForRoute(policyName,
 		if !ok {
 			continue
 		}
-		routeKey, _ := routeConfig["route_key"].(string)
-		if !strings.Contains(routeKey, routeBasePath) {
+		chainKey, _ := routeConfig["chain_key"].(string)
+		if !strings.Contains(chainKey, routeBasePath) {
 			continue
 		}
 
 		// Found the route, now check for the policy
 		policies, ok := routeConfig["policies"].([]interface{})
 		if !ok {
-			return fmt.Errorf("policies not found for route '%s'", routeKey)
+			return fmt.Errorf("policies not found for route '%s'", chainKey)
 		}
 
 		for _, pol := range policies {
@@ -264,7 +265,7 @@ func (p *PolicyEngineSteps) theConfigDumpShouldContainPolicyForRoute(policyName,
 			}
 		}
 
-		return fmt.Errorf("policy '%s' not found for route '%s'. Available policies: %v", policyName, routeKey, policies)
+		return fmt.Errorf("policy '%s' not found for route '%s'. Available policies: %v", policyName, chainKey, policies)
 	}
 
 	return fmt.Errorf("no route found with basePath '%s' in config dump", routeBasePath)
