@@ -154,7 +154,10 @@ gateway:
       enabled: false
       artifacts_dir: "/etc/api-platform-gateway/immutable_gateway/artifacts"
 
-  # Raw TOML appended to generated config.toml (see gateway chart values.yaml)
+  # Raw TOML injected at the TOP of the generated config.toml, above every [table]
+  # section — so it can carry bare root keys in addition to whole [table] sections.
+  # Do not redefine a table the chart already emits. See gateway chart values.yaml
+  # for the full contract (root keys, duplicate-table restriction, secret tokens).
   config_toml: ""
 
   # metadata for the generated shared ConfigMap (annotations / labels)

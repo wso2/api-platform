@@ -585,9 +585,14 @@ gateway:
   # redefine a table the chart already emits (that's a TOML duplicate-table error).
   #
   # config.toml renders into a ConfigMap, not a Secret. For any secret value, supply
-  # an `{{ env "VAR" }}` / `{{ file "/path" }}` interpolation token (the policy
-  # engine resolves it at load time) instead of a literal, and inject the backing
-  # env var via gateway.gatewayRuntime.deployment.extraEnv.
+  # a `{{ env "VAR" }}` or `{{ file "/path" }}` interpolation token (the policy
+  # engine resolves it at load time) instead of a literal — the two tokens read
+  # from different sources, so back each with the matching mechanism:
+  #   - `{{ env "VAR" }}` reads an environment variable — inject it via
+  #     gateway.gatewayRuntime.deployment.extraEnv.
+  #   - `{{ file "/path" }}` reads a mounted file — mount the Secret via
+  #     gateway.gatewayRuntime.deployment.extraVolumes / extraVolumeMounts and
+  #     point the token at that mount path.
   #
   # Example — a [custom_section] table:
   #   config_toml: |
