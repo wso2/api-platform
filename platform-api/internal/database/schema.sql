@@ -391,6 +391,29 @@ CREATE TABLE IF NOT EXISTS mcp_proxies (
     UNIQUE(organization_uuid, handle)
 );
 
+-- GraphQL APIs table (core kind, same shape as rest_apis minus operations/channels)
+CREATE TABLE IF NOT EXISTS graphql_apis (
+    uuid VARCHAR(40) PRIMARY KEY,
+    organization_uuid VARCHAR(40) NOT NULL,
+    handle VARCHAR(40) NOT NULL,
+    display_name VARCHAR(255) NOT NULL,
+    version VARCHAR(30) NOT NULL DEFAULT 'v1.0',
+    project_uuid VARCHAR(40) NOT NULL,
+    description VARCHAR(1023),
+    lifecycle_status VARCHAR(20) NOT NULL DEFAULT 'CREATED',
+    configuration BLOB NOT NULL,       -- JSON: SDL + upstream + policies
+    data_version VARCHAR(20) NOT NULL DEFAULT '1.0',
+    origin VARCHAR(20) NOT NULL DEFAULT 'control_plane',
+    created_by VARCHAR(200),
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    updated_by VARCHAR(200),
+    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (uuid) REFERENCES artifacts(uuid) ON DELETE CASCADE,
+    FOREIGN KEY (organization_uuid) REFERENCES organizations(uuid) ON DELETE CASCADE,
+    FOREIGN KEY (project_uuid) REFERENCES projects(uuid) ON DELETE CASCADE,
+    UNIQUE(organization_uuid, handle)
+);
+
 
 CREATE TABLE IF NOT EXISTS api_keys (
     uuid VARCHAR(40) PRIMARY KEY,
@@ -467,6 +490,9 @@ CREATE INDEX IF NOT EXISTS idx_llm_proxies_provider_uuid ON llm_proxies(provider
 CREATE INDEX IF NOT EXISTS idx_llm_proxies_org ON llm_proxies(organization_uuid);
 CREATE INDEX IF NOT EXISTS idx_mcp_proxies_project ON mcp_proxies(project_uuid);
 CREATE INDEX IF NOT EXISTS idx_mcp_proxies_org ON mcp_proxies(organization_uuid);
+CREATE INDEX IF NOT EXISTS idx_graphql_apis_project ON graphql_apis(project_uuid);
+CREATE INDEX IF NOT EXISTS idx_graphql_apis_org ON graphql_apis(organization_uuid);
+CREATE INDEX IF NOT EXISTS idx_graphql_apis_lifecycle_status ON graphql_apis(lifecycle_status);
 CREATE INDEX IF NOT EXISTS idx_api_keys_artifact ON api_keys(artifact_uuid);
 CREATE INDEX IF NOT EXISTS idx_rest_apis_org ON rest_apis(organization_uuid);
 CREATE INDEX IF NOT EXISTS idx_applications_org ON applications(organization_uuid);

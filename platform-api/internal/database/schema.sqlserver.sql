@@ -450,6 +450,31 @@ CREATE TABLE dbo.mcp_proxies (
     UNIQUE(organization_uuid, handle)
 );
 
+-- GraphQL APIs table (core kind, same shape as rest_apis minus operations/channels)
+IF OBJECT_ID(N'dbo.graphql_apis', N'U') IS NULL
+CREATE TABLE dbo.graphql_apis (
+    uuid VARCHAR(40) PRIMARY KEY,
+    organization_uuid VARCHAR(40) NOT NULL,
+    handle VARCHAR(40) NOT NULL,
+    display_name VARCHAR(255) NOT NULL,
+    version VARCHAR(30) NOT NULL DEFAULT 'v1.0',
+    project_uuid VARCHAR(40) NOT NULL,
+    description VARCHAR(1023),
+    lifecycle_status VARCHAR(20) NOT NULL DEFAULT 'CREATED',
+    configuration VARBINARY(MAX) NOT NULL,
+    data_version VARCHAR(20) NOT NULL DEFAULT '1.0',
+    origin VARCHAR(20) NOT NULL DEFAULT 'control_plane',
+    created_by VARCHAR(200),
+    created_at DATETIME2(7) DEFAULT SYSUTCDATETIME(),
+    updated_by VARCHAR(200),
+    updated_at DATETIME2(7) DEFAULT SYSUTCDATETIME(),
+    FOREIGN KEY (uuid) REFERENCES artifacts(uuid) ON DELETE CASCADE,
+    -- NO ACTION to avoid SQL Server multiple-cascade-paths restriction (error 1785).
+    FOREIGN KEY (organization_uuid) REFERENCES organizations(uuid) ON DELETE NO ACTION,
+    FOREIGN KEY (project_uuid) REFERENCES projects(uuid) ON DELETE CASCADE,
+    UNIQUE(organization_uuid, handle)
+);
+
 IF OBJECT_ID(N'dbo.api_keys', N'U') IS NULL
 CREATE TABLE dbo.api_keys (
     uuid VARCHAR(40) PRIMARY KEY,
@@ -554,6 +579,12 @@ IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = N'idx_mcp_proxies_project'
 CREATE INDEX idx_mcp_proxies_project ON dbo.mcp_proxies(project_uuid);
 IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = N'idx_mcp_proxies_org' AND object_id = OBJECT_ID(N'dbo.mcp_proxies'))
 CREATE INDEX idx_mcp_proxies_org ON dbo.mcp_proxies(organization_uuid);
+IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = N'idx_graphql_apis_project' AND object_id = OBJECT_ID(N'dbo.graphql_apis'))
+CREATE INDEX idx_graphql_apis_project ON dbo.graphql_apis(project_uuid);
+IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = N'idx_graphql_apis_org' AND object_id = OBJECT_ID(N'dbo.graphql_apis'))
+CREATE INDEX idx_graphql_apis_org ON dbo.graphql_apis(organization_uuid);
+IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = N'idx_graphql_apis_lifecycle_status' AND object_id = OBJECT_ID(N'dbo.graphql_apis'))
+CREATE INDEX idx_graphql_apis_lifecycle_status ON dbo.graphql_apis(lifecycle_status);
 IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = N'idx_api_keys_artifact' AND object_id = OBJECT_ID(N'dbo.api_keys'))
 CREATE INDEX idx_api_keys_artifact ON dbo.api_keys(artifact_uuid);
 IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = N'idx_api_keys_status' AND object_id = OBJECT_ID(N'dbo.api_keys'))
