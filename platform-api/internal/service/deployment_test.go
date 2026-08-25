@@ -280,6 +280,7 @@ type mockDeploymentRepo struct {
 	setCurrentStatus      model.DeploymentStatus
 	setCurrentPerformedAt *time.Time
 	deleteCalled          bool
+	createdDeployment     *model.Deployment
 }
 
 func (m *mockDeploymentRepo) GetWithContent(deploymentID, artifactUUID, orgUUID string) (*model.Deployment, error) {
@@ -344,6 +345,7 @@ func (m *mockDeploymentRepo) CreateFromBuildWithLimitEnforcement(deployment *mod
 }
 
 func (m *mockDeploymentRepo) CreateWithLimitEnforcement(deployment *model.Deployment, hardLimit int) error {
+	m.createdDeployment = deployment
 	return m.createWithLimitError
 }
 
