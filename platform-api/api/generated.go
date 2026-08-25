@@ -119,6 +119,12 @@ const (
 	GatewayResponseFunctionalityTypeRegular GatewayResponseFunctionalityType = "regular"
 )
 
+// Defines values for GraphQLIntrospectionMode.
+const (
+	ENDPOINT GraphQLIntrospectionMode = "ENDPOINT"
+	SDL      GraphQLIntrospectionMode = "SDL"
+)
+
 // Defines values for LLMAccessControlMode.
 const (
 	AllowAll LLMAccessControlMode = "allow_all"
@@ -382,6 +388,28 @@ const (
 	ListGatewaysParamsSortOrderDesc ListGatewaysParamsSortOrder = "desc"
 )
 
+// Defines values for ListGraphQLAPIsParamsSortBy.
+const (
+	ListGraphQLAPIsParamsSortByCreatedAt ListGraphQLAPIsParamsSortBy = "createdAt"
+	ListGraphQLAPIsParamsSortByName      ListGraphQLAPIsParamsSortBy = "name"
+)
+
+// Defines values for ListGraphQLAPIsParamsSortOrder.
+const (
+	ListGraphQLAPIsParamsSortOrderAsc  ListGraphQLAPIsParamsSortOrder = "asc"
+	ListGraphQLAPIsParamsSortOrderDesc ListGraphQLAPIsParamsSortOrder = "desc"
+)
+
+// Defines values for GetGraphQLAPIDeploymentsParamsStatus.
+const (
+	GetGraphQLAPIDeploymentsParamsStatusARCHIVED    GetGraphQLAPIDeploymentsParamsStatus = "ARCHIVED"
+	GetGraphQLAPIDeploymentsParamsStatusDEPLOYED    GetGraphQLAPIDeploymentsParamsStatus = "DEPLOYED"
+	GetGraphQLAPIDeploymentsParamsStatusDEPLOYING   GetGraphQLAPIDeploymentsParamsStatus = "DEPLOYING"
+	GetGraphQLAPIDeploymentsParamsStatusFAILED      GetGraphQLAPIDeploymentsParamsStatus = "FAILED"
+	GetGraphQLAPIDeploymentsParamsStatusUNDEPLOYED  GetGraphQLAPIDeploymentsParamsStatus = "UNDEPLOYED"
+	GetGraphQLAPIDeploymentsParamsStatusUNDEPLOYING GetGraphQLAPIDeploymentsParamsStatus = "UNDEPLOYING"
+)
+
 // Defines values for GetLLMProviderDeploymentsParamsStatus.
 const (
 	GetLLMProviderDeploymentsParamsStatusARCHIVED    GetLLMProviderDeploymentsParamsStatus = "ARCHIVED"
@@ -433,24 +461,24 @@ const (
 
 // Defines values for ListRESTAPIsParamsSortBy.
 const (
-	CreatedAt ListRESTAPIsParamsSortBy = "createdAt"
-	Name      ListRESTAPIsParamsSortBy = "name"
+	ListRESTAPIsParamsSortByCreatedAt ListRESTAPIsParamsSortBy = "createdAt"
+	ListRESTAPIsParamsSortByName      ListRESTAPIsParamsSortBy = "name"
 )
 
 // Defines values for ListRESTAPIsParamsSortOrder.
 const (
-	Asc  ListRESTAPIsParamsSortOrder = "asc"
-	Desc ListRESTAPIsParamsSortOrder = "desc"
+	ListRESTAPIsParamsSortOrderAsc  ListRESTAPIsParamsSortOrder = "asc"
+	ListRESTAPIsParamsSortOrderDesc ListRESTAPIsParamsSortOrder = "desc"
 )
 
 // Defines values for GetDeploymentsParamsStatus.
 const (
-	GetDeploymentsParamsStatusARCHIVED    GetDeploymentsParamsStatus = "ARCHIVED"
-	GetDeploymentsParamsStatusDEPLOYED    GetDeploymentsParamsStatus = "DEPLOYED"
-	GetDeploymentsParamsStatusDEPLOYING   GetDeploymentsParamsStatus = "DEPLOYING"
-	GetDeploymentsParamsStatusFAILED      GetDeploymentsParamsStatus = "FAILED"
-	GetDeploymentsParamsStatusUNDEPLOYED  GetDeploymentsParamsStatus = "UNDEPLOYED"
-	GetDeploymentsParamsStatusUNDEPLOYING GetDeploymentsParamsStatus = "UNDEPLOYING"
+	ARCHIVED    GetDeploymentsParamsStatus = "ARCHIVED"
+	DEPLOYED    GetDeploymentsParamsStatus = "DEPLOYED"
+	DEPLOYING   GetDeploymentsParamsStatus = "DEPLOYING"
+	FAILED      GetDeploymentsParamsStatus = "FAILED"
+	UNDEPLOYED  GetDeploymentsParamsStatus = "UNDEPLOYED"
+	UNDEPLOYING GetDeploymentsParamsStatus = "UNDEPLOYING"
 )
 
 // Defines values for ListSubscriptionsParamsStatus.
@@ -766,6 +794,76 @@ type CreateGatewayRequest struct {
 
 // CreateGatewayRequestFunctionalityType Type of gateway functionality
 type CreateGatewayRequestFunctionalityType string
+
+// CreateGraphQLAPIRequest defines model for CreateGraphQLAPIRequest.
+type CreateGraphQLAPIRequest struct {
+	Context     string     `binding:"required" json:"context" yaml:"context"`
+	CreatedAt   *time.Time `json:"createdAt,omitempty" yaml:"createdAt,omitempty"`
+	CreatedBy   *string    `json:"createdBy,omitempty" yaml:"createdBy,omitempty"`
+	Description *string    `json:"description,omitempty" yaml:"description,omitempty"`
+
+	// DisplayName Human-readable name for the API
+	DisplayName string `binding:"required" json:"displayName" yaml:"displayName"`
+
+	// Id Unique handle/identifier for the API. Can be provided during creation or auto-generated. On update (PUT), if provided must match the path parameter — returns 400 if they differ.
+	Id *string `json:"id,omitempty" yaml:"id,omitempty"`
+
+	// IntrospectionMode How `sdl` was obtained. SDL = supplied directly in the create/update
+	// request. ENDPOINT = derived by introspecting `upstream.main.url` at
+	// creation time. Informational only — storage and downstream behavior are
+	// identical either way.
+	IntrospectionMode *GraphQLIntrospectionMode `json:"introspectionMode,omitempty" yaml:"introspectionMode,omitempty"`
+
+	// Kind Kind of the API based on its communication protocol or architectural style
+	Kind *string `json:"kind,omitempty" yaml:"kind,omitempty"`
+
+	// LifeCycleStatus Current lifecycle status of the API. Reuses REST APIs' lifecycle enum
+	// unmodified (STAGED, CREATED, PUBLISHED, DEPRECATED, RETIRED, BLOCKED) —
+	// declaring a second identically-valued enum schema here would collide
+	// with it at Go-constant generation time.
+	LifeCycleStatus *RESTAPILifeCycleStatus `json:"lifeCycleStatus,omitempty" yaml:"lifeCycleStatus,omitempty"`
+
+	// Policies List of policies to be applied on the API. Reused unmodified from REST APIs.
+	Policies  *[]Policy `json:"policies,omitempty" yaml:"policies,omitempty"`
+	ProjectId string    `binding:"required" json:"projectId" yaml:"projectId"`
+
+	// ReadOnly True if the artifact originated from a data-plane gateway (origin gateway_api) and is read-only in the control plane.
+	ReadOnly *bool `json:"readOnly,omitempty" yaml:"readOnly,omitempty"`
+
+	// Sdl The GraphQL schema in SDL form, supplied directly (pasted/uploaded) or
+	// resolved from `sdlUrl`. Optional on create — if all of `sdl`, `sdlUrl`,
+	// and a reachable `upstream.main.url` are omitted, creation fails; if only
+	// `upstream.main.url` is given, it must expose standard GraphQL
+	// introspection and the schema is derived server-side. Always
+	// the *resolved* schema, never a document-supplied schema-location
+	// reference. `sdl` and `sdlUrl` are mutually exclusive on a request; this
+	// field always holds the resolved text on every read regardless of which
+	// input path produced it.
+	Sdl *string `json:"sdl,omitempty" yaml:"sdl,omitempty"`
+
+	// SdlUrl A URL to a raw SDL document to fetch and use as `sdl` — the write-side
+	// counterpart to how an OpenAPI document can be supplied by reference for
+	// other artifact kinds (see LlmProviderTemplate's `metadata.openapiSpecUrl`).
+	// Distinct from `upstream.main.url`: this is a plain HTTP(S) GET of a static
+	// schema file, not a live introspection query against a GraphQL server, and
+	// is fetched with the same public-internet-only SSRF hardening as an
+	// OpenAPI-spec-by-URL fetch (loopback/private/link-local/metadata addresses
+	// refused) — it is not meant for a tenant's own in-cluster backend. Mutually
+	// exclusive with `sdl`. Never stored or echoed back; only the fetched `sdl`
+	// text is persisted and returned.
+	SdlUrl *string `json:"sdlUrl,omitempty" yaml:"sdlUrl,omitempty"`
+
+	// SubscriptionPlans List of subscription plan names enabled for this API.
+	SubscriptionPlans *[]string  `json:"subscriptionPlans,omitempty" yaml:"subscriptionPlans,omitempty"`
+	UpdatedAt         *time.Time `json:"updatedAt,omitempty" yaml:"updatedAt,omitempty"`
+
+	// UpdatedBy Only present in the detail response (GET /graphql-apis/{graphqlApiId}), omitted from list responses.
+	UpdatedBy *string `json:"updatedBy,omitempty" yaml:"updatedBy,omitempty"`
+
+	// Upstream Upstream backend configuration with main and sandbox endpoints
+	Upstream Upstream `json:"upstream" yaml:"upstream"`
+	Version  string   `binding:"required" json:"version" yaml:"version"`
+}
 
 // CreateLLMProviderAPIKeyRequest defines model for CreateLLMProviderAPIKeyRequest.
 type CreateLLMProviderAPIKeyRequest struct {
@@ -1248,6 +1346,122 @@ type GatewayTokenListResponse struct {
 	Pagination Pagination          `json:"pagination" yaml:"pagination"`
 }
 
+// GraphQLAPI defines model for GraphQLAPI.
+type GraphQLAPI struct {
+	Context     string     `binding:"required" json:"context" yaml:"context"`
+	CreatedAt   *time.Time `json:"createdAt,omitempty" yaml:"createdAt,omitempty"`
+	CreatedBy   *string    `json:"createdBy,omitempty" yaml:"createdBy,omitempty"`
+	Description *string    `json:"description,omitempty" yaml:"description,omitempty"`
+
+	// DisplayName Human-readable name for the API
+	DisplayName string `binding:"required" json:"displayName" yaml:"displayName"`
+
+	// Id Unique handle/identifier for the API. Can be provided during creation or auto-generated. On update (PUT), if provided must match the path parameter — returns 400 if they differ.
+	Id *string `json:"id,omitempty" yaml:"id,omitempty"`
+
+	// IntrospectionMode How `sdl` was obtained. SDL = supplied directly in the create/update
+	// request. ENDPOINT = derived by introspecting `upstream.main.url` at
+	// creation time. Informational only — storage and downstream behavior are
+	// identical either way.
+	IntrospectionMode *GraphQLIntrospectionMode `json:"introspectionMode,omitempty" yaml:"introspectionMode,omitempty"`
+
+	// Kind Kind of the API based on its communication protocol or architectural style
+	Kind *string `json:"kind,omitempty" yaml:"kind,omitempty"`
+
+	// LifeCycleStatus Current lifecycle status of the API. Reuses REST APIs' lifecycle enum
+	// unmodified (STAGED, CREATED, PUBLISHED, DEPRECATED, RETIRED, BLOCKED) —
+	// declaring a second identically-valued enum schema here would collide
+	// with it at Go-constant generation time.
+	LifeCycleStatus *RESTAPILifeCycleStatus `json:"lifeCycleStatus,omitempty" yaml:"lifeCycleStatus,omitempty"`
+
+	// Policies List of policies to be applied on the API. Reused unmodified from REST APIs.
+	Policies  *[]Policy `json:"policies,omitempty" yaml:"policies,omitempty"`
+	ProjectId string    `binding:"required" json:"projectId" yaml:"projectId"`
+
+	// ReadOnly True if the artifact originated from a data-plane gateway (origin gateway_api) and is read-only in the control plane.
+	ReadOnly *bool `json:"readOnly,omitempty" yaml:"readOnly,omitempty"`
+
+	// Sdl The GraphQL schema in SDL form, supplied directly (pasted/uploaded) or
+	// resolved from `sdlUrl`. Optional on create — if all of `sdl`, `sdlUrl`,
+	// and a reachable `upstream.main.url` are omitted, creation fails; if only
+	// `upstream.main.url` is given, it must expose standard GraphQL
+	// introspection and the schema is derived server-side. Always
+	// the *resolved* schema, never a document-supplied schema-location
+	// reference. `sdl` and `sdlUrl` are mutually exclusive on a request; this
+	// field always holds the resolved text on every read regardless of which
+	// input path produced it.
+	Sdl *string `json:"sdl,omitempty" yaml:"sdl,omitempty"`
+
+	// SdlUrl A URL to a raw SDL document to fetch and use as `sdl` — the write-side
+	// counterpart to how an OpenAPI document can be supplied by reference for
+	// other artifact kinds (see LlmProviderTemplate's `metadata.openapiSpecUrl`).
+	// Distinct from `upstream.main.url`: this is a plain HTTP(S) GET of a static
+	// schema file, not a live introspection query against a GraphQL server, and
+	// is fetched with the same public-internet-only SSRF hardening as an
+	// OpenAPI-spec-by-URL fetch (loopback/private/link-local/metadata addresses
+	// refused) — it is not meant for a tenant's own in-cluster backend. Mutually
+	// exclusive with `sdl`. Never stored or echoed back; only the fetched `sdl`
+	// text is persisted and returned.
+	SdlUrl *string `json:"sdlUrl,omitempty" yaml:"sdlUrl,omitempty"`
+
+	// SubscriptionPlans List of subscription plan names enabled for this API.
+	SubscriptionPlans *[]string  `json:"subscriptionPlans,omitempty" yaml:"subscriptionPlans,omitempty"`
+	UpdatedAt         *time.Time `json:"updatedAt,omitempty" yaml:"updatedAt,omitempty"`
+
+	// UpdatedBy Only present in the detail response (GET /graphql-apis/{graphqlApiId}), omitted from list responses.
+	UpdatedBy *string `json:"updatedBy,omitempty" yaml:"updatedBy,omitempty"`
+
+	// Upstream Upstream backend configuration with main and sandbox endpoints
+	Upstream Upstream `json:"upstream" yaml:"upstream"`
+	Version  string   `binding:"required" json:"version" yaml:"version"`
+}
+
+// GraphQLAPIListItem defines model for GraphQLAPIListItem.
+type GraphQLAPIListItem struct {
+	Context           string                    `binding:"required" json:"context" yaml:"context"`
+	CreatedAt         *time.Time                `json:"createdAt,omitempty" yaml:"createdAt,omitempty"`
+	CreatedBy         *string                   `json:"createdBy,omitempty" yaml:"createdBy,omitempty"`
+	Description       *string                   `json:"description,omitempty" yaml:"description,omitempty"`
+	DisplayName       string                    `binding:"required" json:"displayName" yaml:"displayName"`
+	Id                *string                   `json:"id,omitempty" yaml:"id,omitempty"`
+	IntrospectionMode *GraphQLIntrospectionMode `json:"introspectionMode,omitempty" yaml:"introspectionMode,omitempty"`
+	Kind              *string                   `json:"kind,omitempty" yaml:"kind,omitempty"`
+
+	// LifeCycleStatus Current lifecycle status of the API. Reuses REST APIs' lifecycle enum
+	// unmodified (STAGED, CREATED, PUBLISHED, DEPRECATED, RETIRED, BLOCKED) —
+	// declaring a second identically-valued enum schema here would collide
+	// with it at Go-constant generation time.
+	LifeCycleStatus *RESTAPILifeCycleStatus `json:"lifeCycleStatus,omitempty" yaml:"lifeCycleStatus,omitempty"`
+	ProjectId       string                  `binding:"required" json:"projectId" yaml:"projectId"`
+	ReadOnly        *bool                   `json:"readOnly,omitempty" yaml:"readOnly,omitempty"`
+	UpdatedAt       *time.Time              `json:"updatedAt,omitempty" yaml:"updatedAt,omitempty"`
+
+	// Upstream Upstream backend configuration with main and sandbox endpoints
+	Upstream *Upstream `json:"upstream,omitempty" yaml:"upstream,omitempty"`
+	Version  string    `binding:"required" json:"version" yaml:"version"`
+}
+
+// GraphQLAPIListResponse defines model for GraphQLAPIListResponse.
+type GraphQLAPIListResponse struct {
+	Count      int                  `binding:"required" json:"count" yaml:"count"`
+	List       []GraphQLAPIListItem `binding:"required" json:"list" yaml:"list"`
+	Pagination Pagination           `json:"pagination" yaml:"pagination"`
+}
+
+// GraphQLAPIMultipartRequest defines model for GraphQLAPIMultipartRequest.
+type GraphQLAPIMultipartRequest struct {
+	// Metadata JSON-encoded request body — CreateGraphQLAPIRequest fields for create,
+	// GraphQLAPI fields for update. Any `sdl`/`sdlUrl` included here is
+	// ignored; the uploaded `sdlFile` part is always the source of `sdl`.
+	Metadata string `binding:"required" json:"metadata" yaml:"metadata"`
+
+	// SdlFile The GraphQL SDL document as a file upload (e.g. schema.graphql).
+	SdlFile *openapi_types.File `json:"sdlFile,omitempty" yaml:"sdlFile,omitempty"`
+}
+
+// GraphQLIntrospectionMode defines model for GraphQLIntrospectionMode.
+type GraphQLIntrospectionMode string
+
 // LLMAccessControl defines model for LLMAccessControl.
 type LLMAccessControl struct {
 	// Exceptions Path exceptions to the access control mode
@@ -1312,7 +1526,7 @@ type LLMProvider struct {
 	// AssociatedGateways Optional list of gateways this LLM provider can be deployed to, along with per-gateway configuration overrides. This field is optional; omitting it does not change existing behaviour.
 	AssociatedGateways *[]AssociatedGateway `json:"associatedGateways,omitempty" yaml:"associatedGateways,omitempty"`
 
-	// Context Base path for all routes exposed by this proxy. Must start with / and carry no trailing slash; the single exception is the root path "/", which is the default.
+	// Context Base path for all routes exposed by this provider. Must start with / and carry no trailing slash; the single exception is the root path "/", which is the default.
 	Context *string `json:"context,omitempty" yaml:"context,omitempty"`
 
 	// CreatedAt Timestamp when the resource was created
@@ -1818,21 +2032,30 @@ type MCPProxyListResponse struct {
 	Pagination Pagination         `json:"pagination" yaml:"pagination"`
 }
 
-// MCPServerInfoFetchRequest defines model for MCPServerInfoFetchRequest.
+// MCPServerInfoFetchRequest Target MCP server to introspect, and the credentials to introspect it with. At least
+// one of `url`/`proxyId` must be provided
 type MCPServerInfoFetchRequest struct {
 	// Auth Authentication configuration for upstream endpoints
 	Auth *UpstreamAuth `json:"auth,omitempty" yaml:"auth,omitempty"`
 
-	// ProxyId MCP proxy handle (identifier) for refresh operations. When provided,
-	// the server fetches URL and auth from the stored proxy configuration.
-	// Auth override is not allowed in refetch mode.
+	// ProxyId MCP proxy handle (identifier) for refresh operations. The stored credentials of
+	// this proxy are used for the fetch, and its stored upstream URL too unless `url`
+	// overrides it. Required unless `url` is given.
 	ProxyId *string `json:"proxyId,omitempty" yaml:"proxyId,omitempty"`
 
-	// Url Endpoint URL of the MCP server to fetch information from.
-	// Required when proxyId is not provided. When proxyId is provided,
-	// the URL from the stored proxy configuration is used.
-	Url *string `json:"url,omitempty" yaml:"url,omitempty"`
+	// Url Endpoint URL of the MCP server to fetch information from. Required unless
+	// `proxyId` is given. When sent together with `proxyId` it overrides that proxy's
+	// stored upstream URL, while the proxy's stored credentials are still used — this
+	// validates an unsaved endpoint edit without re-sending a write-only secret.
+	Url   *string `json:"url,omitempty" yaml:"url,omitempty"`
+	union json.RawMessage
 }
+
+// MCPServerInfoFetchRequest0 defines model for .
+type MCPServerInfoFetchRequest0 = interface{}
+
+// MCPServerInfoFetchRequest1 defines model for .
+type MCPServerInfoFetchRequest1 = interface{}
 
 // MCPServerInfoFetchResponse defines model for MCPServerInfoFetchResponse.
 type MCPServerInfoFetchResponse struct {
@@ -2256,7 +2479,7 @@ type SecretCreateRequest struct {
 	Type *SecretCreateRequestType `json:"type,omitempty" yaml:"type,omitempty"`
 
 	// Value Plaintext secret value — encrypted at rest, never returned in any response
-	Value string `binding:"required" json:"value" yaml:"value"`
+	Value *string `binding:"required" json:"value,omitempty" yaml:"value,omitempty"`
 }
 
 // SecretCreateRequestType defines model for SecretCreateRequest.Type.
@@ -2324,7 +2547,7 @@ type SecretUpdateRequest struct {
 	Id *string `json:"id,omitempty" yaml:"id,omitempty"`
 
 	// Value New plaintext secret value — re-encrypted at rest
-	Value string `binding:"required" json:"value" yaml:"value"`
+	Value *string `binding:"required" json:"value,omitempty" yaml:"value,omitempty"`
 }
 
 // SecurityConfig Defines security mechanisms (API key, OAuth2) applicable to the API
@@ -2833,6 +3056,75 @@ type ListGatewayTokensParams struct {
 	Offset *OffsetQ `form:"offset,omitempty" json:"offset,omitempty" yaml:"offset,omitempty"`
 }
 
+// ListGraphQLAPIsParams defines parameters for ListGraphQLAPIs.
+type ListGraphQLAPIsParams struct {
+	// ProjectId **Project ID** consisting of the **handle** (unique slug identifier) of the Project whose resources should be returned.
+	ProjectId ProjectIdQ `form:"projectId" json:"projectId" yaml:"projectId"`
+
+	// Limit Maximum number of items to return per page.
+	Limit *LimitQ `form:"limit,omitempty" json:"limit,omitempty" yaml:"limit,omitempty"`
+
+	// Offset Zero-based index of the first item to return.
+	Offset *OffsetQ `form:"offset,omitempty" json:"offset,omitempty" yaml:"offset,omitempty"`
+
+	// SortBy Field to sort the collection by. An unrecognized value falls back to the default sort (createdAt).
+	SortBy *ListGraphQLAPIsParamsSortBy `form:"sortBy,omitempty" json:"sortBy,omitempty" yaml:"sortBy,omitempty"`
+
+	// SortOrder Sort direction applied to `sortBy`.
+	SortOrder *ListGraphQLAPIsParamsSortOrder `form:"sortOrder,omitempty" json:"sortOrder,omitempty" yaml:"sortOrder,omitempty"`
+
+	// Query Case-insensitive substring filter matched against the resource id (handle).
+	Query *QueryQ `form:"query,omitempty" json:"query,omitempty" yaml:"query,omitempty"`
+}
+
+// ListGraphQLAPIsParamsSortBy defines parameters for ListGraphQLAPIs.
+type ListGraphQLAPIsParamsSortBy string
+
+// ListGraphQLAPIsParamsSortOrder defines parameters for ListGraphQLAPIs.
+type ListGraphQLAPIsParamsSortOrder string
+
+// GetGraphQLAPIDeploymentsParams defines parameters for GetGraphQLAPIDeployments.
+type GetGraphQLAPIDeploymentsParams struct {
+	// GatewayId **Gateway ID** consisting of the **handle** (unique slug identifier) of the Gateway to filter status by.
+	GatewayId *GatewayIdQ `form:"gatewayId,omitempty" json:"gatewayId,omitempty" yaml:"gatewayId,omitempty"`
+
+	// Status Filter deployments by status (DEPLOYED, UNDEPLOYED, DEPLOYING, UNDEPLOYING, FAILED, or ARCHIVED)
+	Status *GetGraphQLAPIDeploymentsParamsStatus `form:"status,omitempty" json:"status,omitempty" yaml:"status,omitempty"`
+
+	// Limit Maximum number of items to return per page.
+	Limit *LimitQ `form:"limit,omitempty" json:"limit,omitempty" yaml:"limit,omitempty"`
+
+	// Offset Zero-based index of the first item to return.
+	Offset *OffsetQ `form:"offset,omitempty" json:"offset,omitempty" yaml:"offset,omitempty"`
+}
+
+// GetGraphQLAPIDeploymentsParamsStatus defines parameters for GetGraphQLAPIDeployments.
+type GetGraphQLAPIDeploymentsParamsStatus string
+
+// RestoreGraphQLAPIDeploymentParams defines parameters for RestoreGraphQLAPIDeployment.
+type RestoreGraphQLAPIDeploymentParams struct {
+	// GatewayId Handle (URL-friendly slug) of the gateway (validated against deployment's bound gateway)
+	GatewayId string `form:"gatewayId" json:"gatewayId" yaml:"gatewayId"`
+}
+
+// UndeployGraphQLAPIDeploymentParams defines parameters for UndeployGraphQLAPIDeployment.
+type UndeployGraphQLAPIDeploymentParams struct {
+	// GatewayId Handle (URL-friendly slug) of the gateway (validated against deployment's bound gateway)
+	GatewayId string `form:"gatewayId" json:"gatewayId" yaml:"gatewayId"`
+}
+
+// GetGraphQLAPIGatewaysParams defines parameters for GetGraphQLAPIGateways.
+type GetGraphQLAPIGatewaysParams struct {
+	// Limit Maximum number of items to return per page.
+	Limit *LimitQ `form:"limit,omitempty" json:"limit,omitempty" yaml:"limit,omitempty"`
+
+	// Offset Zero-based index of the first item to return.
+	Offset *OffsetQ `form:"offset,omitempty" json:"offset,omitempty" yaml:"offset,omitempty"`
+}
+
+// AddGatewaysToGraphQLAPIJSONBody defines parameters for AddGatewaysToGraphQLAPI.
+type AddGatewaysToGraphQLAPIJSONBody = []AddGatewayToRESTAPIRequest
+
 // ListLLMProviderTemplatesParams defines parameters for ListLLMProviderTemplates.
 type ListLLMProviderTemplatesParams struct {
 	// Query URL-encoded search DSL. `query=latest:true` lists only the latest version of each family; `query=groupId:<id>` lists that family's versions; adding `&version:<ver>` returns the single full template for that version. Terms are `&`-separated `key:value` pairs and the whole value is percent-encoded (e.g. groupId%3Awso2-openai%26version%3Av2.0).
@@ -2883,7 +3175,7 @@ type ListLLMProviderAPIKeysParams struct {
 
 // GetLLMProviderDeploymentsParams defines parameters for GetLLMProviderDeployments.
 type GetLLMProviderDeploymentsParams struct {
-	// GatewayId **Gateway ID** (handle — unique slug identifier) of the Gateway to filter deployments by.
+	// GatewayId **Gateway ID** consisting of the **handle** (unique slug identifier) of the Gateway to filter status by.
 	GatewayId *GatewayIdQ `form:"gatewayId,omitempty" json:"gatewayId,omitempty" yaml:"gatewayId,omitempty"`
 
 	// Status Filter deployments by status (DEPLOYED, UNDEPLOYED, DEPLOYING, UNDEPLOYING, FAILED, or ARCHIVED)
@@ -2943,7 +3235,7 @@ type ListLLMProxyAPIKeysParams struct {
 
 // GetLLMProxyDeploymentsParams defines parameters for GetLLMProxyDeployments.
 type GetLLMProxyDeploymentsParams struct {
-	// GatewayId **Gateway ID** (handle — unique slug identifier) of the Gateway to filter deployments by.
+	// GatewayId **Gateway ID** consisting of the **handle** (unique slug identifier) of the Gateway to filter status by.
 	GatewayId *GatewayIdQ `form:"gatewayId,omitempty" json:"gatewayId,omitempty" yaml:"gatewayId,omitempty"`
 
 	// Status Filter deployments by status (DEPLOYED, UNDEPLOYED, DEPLOYING, UNDEPLOYING, FAILED, or ARCHIVED)
@@ -2985,7 +3277,7 @@ type ListMCPProxiesParams struct {
 
 // GetMCPProxyDeploymentsParams defines parameters for GetMCPProxyDeployments.
 type GetMCPProxyDeploymentsParams struct {
-	// GatewayId **Gateway ID** (handle — unique slug identifier) of the Gateway to filter deployments by.
+	// GatewayId **Gateway ID** consisting of the **handle** (unique slug identifier) of the Gateway to filter status by.
 	GatewayId *GatewayIdQ `form:"gatewayId,omitempty" json:"gatewayId,omitempty" yaml:"gatewayId,omitempty"`
 
 	// Status Filter deployments by status (DEPLOYED, UNDEPLOYED, DEPLOYING, UNDEPLOYING, FAILED, or ARCHIVED)
@@ -3091,7 +3383,7 @@ type ListRESTAPIsParamsSortOrder string
 
 // GetDeploymentsParams defines parameters for GetDeployments.
 type GetDeploymentsParams struct {
-	// GatewayId **Gateway ID** (handle — unique slug identifier) of the Gateway to filter deployments by.
+	// GatewayId **Gateway ID** consisting of the **handle** (unique slug identifier) of the Gateway to filter status by.
 	GatewayId *GatewayIdQ `form:"gatewayId,omitempty" json:"gatewayId,omitempty" yaml:"gatewayId,omitempty"`
 
 	// Status Filter deployments by status (DEPLOYED, UNDEPLOYED, DEPLOYING, UNDEPLOYING, FAILED, or ARCHIVED)
@@ -3206,6 +3498,30 @@ type CreateGatewayJSONRequestBody = CreateGatewayRequest
 // UpdateGatewayJSONRequestBody defines body for UpdateGateway for application/json ContentType.
 type UpdateGatewayJSONRequestBody = GatewayResponse
 
+// CreateGraphQLAPIJSONRequestBody defines body for CreateGraphQLAPI for application/json ContentType.
+type CreateGraphQLAPIJSONRequestBody = CreateGraphQLAPIRequest
+
+// CreateGraphQLAPIMultipartRequestBody defines body for CreateGraphQLAPI for multipart/form-data ContentType.
+type CreateGraphQLAPIMultipartRequestBody = GraphQLAPIMultipartRequest
+
+// UpdateGraphQLAPIJSONRequestBody defines body for UpdateGraphQLAPI for application/json ContentType.
+type UpdateGraphQLAPIJSONRequestBody = GraphQLAPI
+
+// UpdateGraphQLAPIMultipartRequestBody defines body for UpdateGraphQLAPI for multipart/form-data ContentType.
+type UpdateGraphQLAPIMultipartRequestBody = GraphQLAPIMultipartRequest
+
+// CreateGraphQLAPIKeyJSONRequestBody defines body for CreateGraphQLAPIKey for application/json ContentType.
+type CreateGraphQLAPIKeyJSONRequestBody = CreateAPIKeyRequest
+
+// UpdateGraphQLAPIKeyJSONRequestBody defines body for UpdateGraphQLAPIKey for application/json ContentType.
+type UpdateGraphQLAPIKeyJSONRequestBody = UpdateAPIKeyRequest
+
+// DeployGraphQLAPIJSONRequestBody defines body for DeployGraphQLAPI for application/json ContentType.
+type DeployGraphQLAPIJSONRequestBody = DeployRequest
+
+// AddGatewaysToGraphQLAPIJSONRequestBody defines body for AddGatewaysToGraphQLAPI for application/json ContentType.
+type AddGatewaysToGraphQLAPIJSONRequestBody = AddGatewaysToGraphQLAPIJSONBody
+
 // CreateLLMProviderTemplateJSONRequestBody defines body for CreateLLMProviderTemplate for application/json ContentType.
 type CreateLLMProviderTemplateJSONRequestBody = LLMProviderTemplate
 
@@ -3298,6 +3614,130 @@ type CreateSubscriptionJSONRequestBody = CreateSubscriptionRequest
 
 // UpdateSubscriptionJSONRequestBody defines body for UpdateSubscription for application/json ContentType.
 type UpdateSubscriptionJSONRequestBody = Subscription
+
+// AsMCPServerInfoFetchRequest0 returns the union data inside the MCPServerInfoFetchRequest as a MCPServerInfoFetchRequest0
+func (t MCPServerInfoFetchRequest) AsMCPServerInfoFetchRequest0() (MCPServerInfoFetchRequest0, error) {
+	var body MCPServerInfoFetchRequest0
+	err := json.Unmarshal(t.union, &body)
+	return body, err
+}
+
+// FromMCPServerInfoFetchRequest0 overwrites any union data inside the MCPServerInfoFetchRequest as the provided MCPServerInfoFetchRequest0
+func (t *MCPServerInfoFetchRequest) FromMCPServerInfoFetchRequest0(v MCPServerInfoFetchRequest0) error {
+	b, err := json.Marshal(v)
+	t.union = b
+	return err
+}
+
+// MergeMCPServerInfoFetchRequest0 performs a merge with any union data inside the MCPServerInfoFetchRequest, using the provided MCPServerInfoFetchRequest0
+func (t *MCPServerInfoFetchRequest) MergeMCPServerInfoFetchRequest0(v MCPServerInfoFetchRequest0) error {
+	b, err := json.Marshal(v)
+	if err != nil {
+		return err
+	}
+
+	merged, err := runtime.JSONMerge(t.union, b)
+	t.union = merged
+	return err
+}
+
+// AsMCPServerInfoFetchRequest1 returns the union data inside the MCPServerInfoFetchRequest as a MCPServerInfoFetchRequest1
+func (t MCPServerInfoFetchRequest) AsMCPServerInfoFetchRequest1() (MCPServerInfoFetchRequest1, error) {
+	var body MCPServerInfoFetchRequest1
+	err := json.Unmarshal(t.union, &body)
+	return body, err
+}
+
+// FromMCPServerInfoFetchRequest1 overwrites any union data inside the MCPServerInfoFetchRequest as the provided MCPServerInfoFetchRequest1
+func (t *MCPServerInfoFetchRequest) FromMCPServerInfoFetchRequest1(v MCPServerInfoFetchRequest1) error {
+	b, err := json.Marshal(v)
+	t.union = b
+	return err
+}
+
+// MergeMCPServerInfoFetchRequest1 performs a merge with any union data inside the MCPServerInfoFetchRequest, using the provided MCPServerInfoFetchRequest1
+func (t *MCPServerInfoFetchRequest) MergeMCPServerInfoFetchRequest1(v MCPServerInfoFetchRequest1) error {
+	b, err := json.Marshal(v)
+	if err != nil {
+		return err
+	}
+
+	merged, err := runtime.JSONMerge(t.union, b)
+	t.union = merged
+	return err
+}
+
+func (t MCPServerInfoFetchRequest) MarshalJSON() ([]byte, error) {
+	b, err := t.union.MarshalJSON()
+	if err != nil {
+		return nil, err
+	}
+	object := make(map[string]json.RawMessage)
+	if t.union != nil {
+		err = json.Unmarshal(b, &object)
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	if t.Auth != nil {
+		object["auth"], err = json.Marshal(t.Auth)
+		if err != nil {
+			return nil, fmt.Errorf("error marshaling 'auth': %w", err)
+		}
+	}
+
+	if t.ProxyId != nil {
+		object["proxyId"], err = json.Marshal(t.ProxyId)
+		if err != nil {
+			return nil, fmt.Errorf("error marshaling 'proxyId': %w", err)
+		}
+	}
+
+	if t.Url != nil {
+		object["url"], err = json.Marshal(t.Url)
+		if err != nil {
+			return nil, fmt.Errorf("error marshaling 'url': %w", err)
+		}
+	}
+	b, err = json.Marshal(object)
+	return b, err
+}
+
+func (t *MCPServerInfoFetchRequest) UnmarshalJSON(b []byte) error {
+	err := t.union.UnmarshalJSON(b)
+	if err != nil {
+		return err
+	}
+	object := make(map[string]json.RawMessage)
+	err = json.Unmarshal(b, &object)
+	if err != nil {
+		return err
+	}
+
+	if raw, found := object["auth"]; found {
+		err = json.Unmarshal(raw, &t.Auth)
+		if err != nil {
+			return fmt.Errorf("error reading 'auth': %w", err)
+		}
+	}
+
+	if raw, found := object["proxyId"]; found {
+		err = json.Unmarshal(raw, &t.ProxyId)
+		if err != nil {
+			return fmt.Errorf("error reading 'proxyId': %w", err)
+		}
+	}
+
+	if raw, found := object["url"]; found {
+		err = json.Unmarshal(raw, &t.Url)
+		if err != nil {
+			return fmt.Errorf("error reading 'url': %w", err)
+		}
+	}
+
+	return err
+}
 
 // AsRateLimitingScopeConfig0 returns the union data inside the RateLimitingScopeConfig as a RateLimitingScopeConfig0
 func (t RateLimitingScopeConfig) AsRateLimitingScopeConfig0() (RateLimitingScopeConfig0, error) {

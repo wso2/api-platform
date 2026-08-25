@@ -1013,6 +1013,794 @@ paths:
         '500':
           $ref: '#/components/responses/InternalServerError'
 
+  /graphql-apis:
+    get:
+      summary: Get all GraphQL APIs for an organization
+      description: |
+        Retrieves all GraphQL APIs belonging to an organization. Requires the
+        projectId query parameter to filter APIs by project. Access is validated
+        against the organization in the JWT token.
+      operationId: ListGraphQLAPIs
+      security:
+        - OAuth2Security:
+            - ap:graphql_api:read
+            - ap:graphql_api:manage
+      tags:
+        - GraphQL APIs
+      parameters:
+        - $ref: '#/components/parameters/projectId-Q'
+        - $ref: '#/components/parameters/limit-Q'
+        - $ref: '#/components/parameters/offset-Q'
+        - $ref: '#/components/parameters/sortBy-Q'
+        - $ref: '#/components/parameters/sortOrder-Q'
+        - $ref: '#/components/parameters/query-Q'
+      responses:
+        '200':
+          description: GraphQL APIs retrieved successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GraphQLAPIListResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+    post:
+      summary: Create a new GraphQL API
+      description: |
+        Creates a new GraphQL API in the platform. The schema can be supplied in one
+        of three ways: `sdl` (pasted inline), `sdlUrl` (fetched from a raw SDL
+        document URL), or a `multipart/form-data` file upload (`sdlFile`) — exactly
+        one of these, or none at all, in which case `upstream.main.url` must expose
+        standard GraphQL introspection and the schema is derived server-side. The
+        API is associated with a project, which must belong to the organization
+        specified in the JWT token.
+      operationId: CreateGraphQLAPI
+      security:
+        - OAuth2Security:
+            - ap:graphql_api:create
+            - ap:graphql_api:manage
+      tags:
+        - GraphQL APIs
+      requestBody:
+        description: |
+          GraphQL API object that needs to be added. Use `application/json` for
+          inline `sdl`/`sdlUrl`/introspection-only requests. Use
+          `multipart/form-data` to upload the SDL as a file instead — see
+          GraphQLAPIMultipartRequest.
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateGraphQLAPIRequest'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/GraphQLAPIMultipartRequest'
+        required: true
+      responses:
+        '201':
+          description: GraphQL API created successfully
+          headers:
+            Location:
+              $ref: '#/components/headers/Location'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GraphQLAPI'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '422':
+          description: The provided endpoint could not be used to derive a GraphQL schema (introspection failed or was rejected), or the supplied SDL failed to parse.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /graphql-apis/{graphqlApiId}:
+    get:
+      summary: Get GraphQL API by ID
+      operationId: GetGraphQLAPI
+      security:
+        - OAuth2Security:
+            - ap:graphql_api:read
+            - ap:graphql_api:manage
+      tags:
+        - GraphQL APIs
+      parameters:
+        - name: graphqlApiId
+          in: path
+          required: true
+          description: |
+            **GraphQL API ID** consisting of the **handle** (unique identifier) of the API.
+          schema:
+            type: string
+            example: countries-graphql-api
+      responses:
+        '200':
+          description: GraphQL API retrieved successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GraphQLAPI'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+    put:
+      summary: Update GraphQL API
+      description: |
+        Updates an existing GraphQL API's details, including re-supplying `sdl` or
+        re-introspecting `upstream.main.url` to pick up a changed backend schema.
+      operationId: UpdateGraphQLAPI
+      security:
+        - OAuth2Security:
+            - ap:graphql_api:update
+            - ap:graphql_api:manage
+      tags:
+        - GraphQL APIs
+      parameters:
+        - name: graphqlApiId
+          in: path
+          required: true
+          description: |
+            **GraphQL API ID** consisting of the **handle** (unique identifier) of the API.
+          schema:
+            type: string
+            example: countries-graphql-api
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/GraphQLAPI'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/GraphQLAPIMultipartRequest'
+      responses:
+        '200':
+          description: GraphQL API updated successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GraphQLAPI'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '422':
+          description: Re-introspection or re-parsing of the updated schema failed.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+    delete:
+      summary: Delete GraphQL API
+      operationId: DeleteGraphQLAPI
+      security:
+        - OAuth2Security:
+            - ap:graphql_api:delete
+            - ap:graphql_api:manage
+      tags:
+        - GraphQL APIs
+      parameters:
+        - name: graphqlApiId
+          in: path
+          required: true
+          description: |
+            **GraphQL API ID** consisting of the **handle** (unique identifier) of the API.
+          schema:
+            type: string
+            example: countries-graphql-api
+      responses:
+        '204':
+          description: GraphQL API deleted successfully
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /graphql-apis/{graphqlApiId}/gateways:
+    get:
+      summary: Get gateways for GraphQL API
+      description: |
+        Retrieves all gateways associated with the specified API, including deployment details.
+        Returns gateway information along with association timestamps and deployment status.
+        Access is validated against the organization in the JWT token.
+      operationId: GetGraphQLAPIGateways
+      security:
+        - OAuth2Security:
+            - ap:graphql_api:gateway:read
+            - ap:graphql_api:gateway:manage
+            - ap:graphql_api:manage
+            - ap:gateway:read
+            - ap:gateway:manage
+      tags:
+        - GraphQL APIs
+        - Gateways
+      parameters:
+        - name: graphqlApiId
+          in: path
+          required: true
+          description: |
+            **GraphQL API ID** consisting of the **handle** (unique identifier) of the API.
+          schema:
+            type: string
+            example: countries-graphql-api
+        - $ref: '#/components/parameters/limit-Q'
+        - $ref: '#/components/parameters/offset-Q'
+      responses:
+        '200':
+          description: List of gateways associated with the API, including deployment details
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RESTAPIGatewayListResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+    post:
+      summary: Add gateways for GraphQL API
+      description: |
+        Associates gateways to the specified API. If gateways are already associated,
+        updates the association timestamp. Returns all gateways associated with the API
+        including deployment details. Access is validated against the organization
+        in the JWT token.
+      operationId: AddGatewaysToGraphQLAPI
+      security:
+        - OAuth2Security:
+            - ap:graphql_api:gateway:create
+            - ap:graphql_api:gateway:manage
+            - ap:graphql_api:manage
+      tags:
+        - GraphQL APIs
+        - Gateways
+      parameters:
+        - name: graphqlApiId
+          in: path
+          required: true
+          description: |
+            **GraphQL API ID** consisting of the **handle** (unique identifier) of the API.
+          schema:
+            type: string
+            example: countries-graphql-api
+      requestBody:
+        description: List of gateways to associate with the API
+        content:
+          application/json:
+            schema:
+              type: array
+              items:
+                $ref: '#/components/schemas/AddGatewayToRESTAPIRequest'
+      responses:
+        '200':
+          description: List of all gateways associated with the API, including deployment details
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RESTAPIGatewayListResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /graphql-apis/{graphqlApiId}/api-keys:
+    post:
+      summary: Create API key
+      description: |
+        Creates a new API key for the specified GraphQL API. The API key will be hashed before
+        storage and broadcasted to all gateways where the API is deployed. This endpoint
+        allows external platforms to inject API keys to hybrid gateways.
+      operationId: CreateGraphQLAPIKey
+      security:
+        - OAuth2Security:
+            - ap:graphql_api:api_key:create
+            - ap:graphql_api:api_key:manage
+            - ap:graphql_api:manage
+            - ap:api_key:all:manage
+      tags:
+        - GraphQL APIs
+        - API Keys
+      parameters:
+        - name: graphqlApiId
+          in: path
+          required: true
+          description: |
+            **GraphQL API ID** consisting of the **handle** (unique identifier) of the API.
+          schema:
+            type: string
+            example: countries-graphql-api
+      requestBody:
+        description: API key creation request
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateAPIKeyRequest'
+      responses:
+        '201':
+          description: API key created successfully
+          headers:
+            Location:
+              $ref: '#/components/headers/Location'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CreateAPIKeyResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '503':
+          $ref: '#/components/responses/GatewayConnectionUnavailable'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /graphql-apis/{graphqlApiId}/api-keys/{apiKeyId}:
+    put:
+      summary: Update API key
+      description: |
+        Updates an existing API key for the specified GraphQL API. The new API key value will
+        be hashed before storage and broadcasted to all gateways where the API is deployed.
+        This endpoint allows external platforms to rotate API keys on hybrid gateways.
+      operationId: UpdateGraphQLAPIKey
+      security:
+        - OAuth2Security:
+            - ap:graphql_api:api_key:update
+            - ap:graphql_api:api_key:manage
+            - ap:graphql_api:manage
+            - ap:api_key:all:manage
+      tags:
+        - GraphQL APIs
+        - API Keys
+      parameters:
+        - name: graphqlApiId
+          in: path
+          required: true
+          description: |
+            **GraphQL API ID** consisting of the **handle** (unique identifier) of the API.
+          schema:
+            type: string
+            example: countries-graphql-api
+        - name: apiKeyId
+          in: path
+          required: true
+          description: The unique name/identifier of the API key
+          schema:
+            type: string
+          example: "my-api-key"
+      requestBody:
+        description: API key update request
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateAPIKeyRequest'
+      responses:
+        '200':
+          description: API key updated successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UpdateAPIKeyResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '503':
+          $ref: '#/components/responses/GatewayConnectionUnavailable'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+    delete:
+      summary: Revoke API key
+      description: |
+        Revokes an API key for the specified GraphQL API. The revocation will be broadcasted
+        to all gateways where the API is deployed. This endpoint allows external platforms
+        to revoke API keys on hybrid gateways.
+      operationId: RevokeGraphQLAPIKey
+      security:
+        - OAuth2Security:
+            - ap:graphql_api:api_key:delete
+            - ap:graphql_api:api_key:manage
+            - ap:graphql_api:manage
+            - ap:api_key:all:manage
+      tags:
+        - GraphQL APIs
+        - API Keys
+      parameters:
+        - name: graphqlApiId
+          in: path
+          required: true
+          description: |
+            **GraphQL API ID** consisting of the **handle** (unique identifier) of the API.
+          schema:
+            type: string
+            example: countries-graphql-api
+        - name: apiKeyId
+          in: path
+          required: true
+          description: The unique name/identifier of the API key to revoke
+          schema:
+            type: string
+          example: "my-api-key"
+      responses:
+        '204':
+          description: API key revoked successfully (no content)
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '503':
+          $ref: '#/components/responses/GatewayConnectionUnavailable'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /graphql-apis/{graphqlApiId}/deployments:
+    post:
+      summary: Create and deploy a new deployment
+      description: |
+        Creates an immutable deployment artifact for a GraphQL API and deploys it to a specified gateway.
+        Each deployment targets a single gateway. The graphqlApiId parameter is the API handle (identifier),
+        not the UUID. The operation returns a transitional DEPLOYING status. Final success or failure will be reported asynchronously via the deployment's status and statusReason once the gateway acknowledges.
+        Access is validated against the organization in the JWT token.
+      operationId: DeployGraphQLAPI
+      security:
+        - OAuth2Security:
+            - ap:graphql_api:deployment:create
+            - ap:graphql_api:deployment:manage
+            - ap:graphql_api:manage
+      tags:
+        - GraphQL API Deployments
+        - Deployments
+      parameters:
+        - name: graphqlApiId
+          in: path
+          required: true
+          description: |
+            **GraphQL API ID** consisting of the **handle** (unique identifier) of the API.
+          schema:
+            type: string
+            example: countries-graphql-api
+      requestBody:
+        description: Deployment request with gateway ID, base reference, and metadata
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/DeployRequest'
+      responses:
+        '201':
+          description: GraphQL API deployed successfully
+          headers:
+            Location:
+              $ref: '#/components/headers/Location'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DeploymentResponse'
+              examples:
+                default:
+                  $ref: '#/components/examples/DeploymentDeploying'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+    get:
+      summary: Get deployments for a GraphQL API
+      description: |
+        Retrieves all deployment artifacts for a specific API. The graphqlApiId parameter is the API handle (identifier),
+        not the UUID. Supports filtering by gateway handle and deployment status.
+        Access is validated against the organization in the JWT token.
+      operationId: GetGraphQLAPIDeployments
+      security:
+        - OAuth2Security:
+            - ap:graphql_api:deployment:read
+            - ap:graphql_api:deployment:manage
+            - ap:graphql_api:manage
+      tags:
+        - GraphQL API Deployments
+        - Deployments
+      parameters:
+        - name: graphqlApiId
+          in: path
+          required: true
+          description: |
+            **GraphQL API ID** consisting of the **handle** (unique identifier) of the API.
+          schema:
+            type: string
+            example: countries-graphql-api
+        - $ref: '#/components/parameters/gatewayId-Q'
+        - $ref: '#/components/parameters/deploymentStatus-Q'
+        - $ref: '#/components/parameters/limit-Q'
+        - $ref: '#/components/parameters/offset-Q'
+      responses:
+        '200':
+          description: Deployments retrieved successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DeploymentListResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /graphql-apis/{graphqlApiId}/deployments/{deploymentId}:
+    get:
+      summary: Get deployment by ID
+      description: |
+        Retrieves metadata for a specific deployment artifact including status, gateway association,
+        and timestamps. Access is validated against the organization in the JWT token.
+      operationId: GetGraphQLAPIDeployment
+      security:
+        - OAuth2Security:
+            - ap:graphql_api:deployment:read
+            - ap:graphql_api:deployment:manage
+            - ap:graphql_api:manage
+      tags:
+        - GraphQL API Deployments
+        - Deployments
+      parameters:
+        - name: graphqlApiId
+          in: path
+          required: true
+          description: |
+            **GraphQL API ID** consisting of the **handle** (unique identifier) of the API.
+          schema:
+            type: string
+            example: countries-graphql-api
+        - $ref: '#/components/parameters/deploymentId'
+      responses:
+        '200':
+          description: Deployment metadata retrieved successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DeploymentResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+    delete:
+      summary: Delete deployment
+      description: |
+        Deletes a deployment artifact. Deletion is only allowed when the deployment is in UNDEPLOYED status.
+        Access is validated against the organization in the JWT token.
+      operationId: DeleteGraphQLAPIDeployment
+      security:
+        - OAuth2Security:
+            - ap:graphql_api:deployment:delete
+            - ap:graphql_api:deployment:manage
+            - ap:graphql_api:manage
+      tags:
+        - GraphQL API Deployments
+        - Deployments
+      parameters:
+        - name: graphqlApiId
+          in: path
+          required: true
+          description: |
+            **GraphQL API ID** consisting of the **handle** (unique identifier) of the API.
+          schema:
+            type: string
+            example: countries-graphql-api
+        - $ref: '#/components/parameters/deploymentId'
+      responses:
+        '204':
+          description: Deployment deleted successfully
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/DeploymentActiveConflict'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /graphql-apis/{graphqlApiId}/deployments/{deploymentId}/undeploy:
+    post:
+      summary: Undeploy deployment from gateway
+      description: |
+        Undeploys an active deployment, stopping the API from being served on the specified gateway.
+        The deployment artifact remains in the system and can be restored later.
+        Returns the updated deployment object with initial status UNDEPLOYING. Final status (UNDEPLOYED or FAILED) will be reported asynchronously via the deployment's status and statusReason once the gateway acknowledges.
+
+        The gatewayId query parameter is validated against deployment's bound gateway to prevent unintended operations.
+        Access is validated against the organization in the JWT token.
+      operationId: UndeployGraphQLAPIDeployment
+      security:
+        - OAuth2Security:
+            - ap:graphql_api:deployment:undeploy
+            - ap:graphql_api:deployment:manage
+            - ap:graphql_api:manage
+      tags:
+        - GraphQL API Deployments
+        - Deployments
+      parameters:
+        - name: graphqlApiId
+          in: path
+          required: true
+          description: |
+            **GraphQL API ID** consisting of the **handle** (unique identifier) of the API.
+          schema:
+            type: string
+            example: countries-graphql-api
+        - name: deploymentId
+          in: path
+          required: true
+          schema:
+            type: string
+          description: UUID of the deployment to undeploy
+        - name: gatewayId
+          in: query
+          required: true
+          schema:
+            type: string
+            pattern: '^[a-z0-9-]+$'
+            minLength: 3
+            maxLength: 63
+          description: Handle (URL-friendly slug) of the gateway (validated against deployment's bound gateway)
+      responses:
+        '200':
+          description: Undeploy initiated successfully. Returns the deployment with initial status UNDEPLOYING. Poll status for final result.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DeploymentResponse'
+              examples:
+                default:
+                  $ref: '#/components/examples/DeploymentUndeploying'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /graphql-apis/{graphqlApiId}/deployments/{deploymentId}/restore:
+    post:
+      summary: Restore a previous deployment
+      description: |
+        Initiates restoring a previous deployment (ARCHIVED or UNDEPLOYED) on the specified gateway.
+        Returns the deployment with initial status DEPLOYING. Final success or failure will be reported asynchronously via the deployment's status and statusReason once the gateway acknowledges.
+        The target deployment must not already be in DEPLOYED status.
+
+        The gatewayId query parameter is validated against the deployment's bound gateway to prevent unintended operations.
+        Access is validated against the organization in the JWT token.
+      operationId: RestoreGraphQLAPIDeployment
+      security:
+        - OAuth2Security:
+            - ap:graphql_api:deployment:restore
+            - ap:graphql_api:deployment:manage
+            - ap:graphql_api:manage
+      tags:
+        - GraphQL API Deployments
+        - Deployments
+      parameters:
+        - name: graphqlApiId
+          in: path
+          required: true
+          description: |
+            **GraphQL API ID** consisting of the **handle** (unique identifier) of the API.
+          schema:
+            type: string
+            example: countries-graphql-api
+        - name: deploymentId
+          in: path
+          required: true
+          schema:
+            type: string
+          description: UUID of the deployment to restore (must be ARCHIVED or UNDEPLOYED)
+        - name: gatewayId
+          in: query
+          required: true
+          schema:
+            type: string
+            pattern: '^[a-z0-9-]+$'
+            minLength: 3
+            maxLength: 63
+          description: Handle (URL-friendly slug) of the gateway (validated against deployment's bound gateway)
+      responses:
+        '200':
+          description: Restore initiated successfully. Returns the deployment with initial status DEPLOYING. Poll status for final result.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DeploymentResponse'
+              examples:
+                default:
+                  $ref: '#/components/examples/DeploymentDeploying'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
   /llm-provider-templates:
     post:
       summary: Create a new LLM provider template family
@@ -4760,6 +5548,24 @@ components:
             ap:gateway:token:manage: Full access to gateway tokens
             ap:gateway:token:read: Read gateway tokens
             ap:gateway:update: Update a gateway
+            ap:graphql_api:api_key:create: Create an API key for a GraphQL API
+            ap:graphql_api:api_key:delete: Delete an API key of a GraphQL API
+            ap:graphql_api:api_key:manage: Full access to a GraphQL API's API keys
+            ap:graphql_api:api_key:update: Update an API key of a GraphQL API
+            ap:graphql_api:create: Create a GraphQL API
+            ap:graphql_api:delete: Delete a GraphQL API
+            ap:graphql_api:deployment:create: Deploy a GraphQL API
+            ap:graphql_api:deployment:delete: Delete a GraphQL API deployment
+            ap:graphql_api:deployment:manage: Full access to GraphQL API deployments
+            ap:graphql_api:deployment:read: Read GraphQL API deployments
+            ap:graphql_api:deployment:restore: Restore a GraphQL API deployment
+            ap:graphql_api:deployment:undeploy: Undeploy a GraphQL API deployment
+            ap:graphql_api:gateway:create: Add gateways to a GraphQL API
+            ap:graphql_api:gateway:manage: Full access to a GraphQL API's gateways
+            ap:graphql_api:gateway:read: Read a GraphQL API's gateways
+            ap:graphql_api:manage: Full access to GraphQL APIs
+            ap:graphql_api:read: Read GraphQL APIs
+            ap:graphql_api:update: Update a GraphQL API
             ap:llm_provider:api_key:create: Create an LLM provider API key
             ap:llm_provider:api_key:delete: Delete an LLM provider API key
             ap:llm_provider:api_key:manage: Full access to LLM provider API keys
@@ -6181,6 +6987,278 @@ components:
             - context
             - version
             - projectId
+
+    GraphQLIntrospectionMode:
+      type: string
+      enum: [SDL, ENDPOINT]
+      example: ENDPOINT
+
+    GraphQLAPI:
+      title: GraphQL API object
+      required:
+        - displayName
+        - context
+        - version
+        - projectId
+        - upstream
+      type: object
+      properties:
+        id:
+          type: string
+          description: Unique handle/identifier for the API. Can be provided during creation or auto-generated. On update (PUT), if provided must match the path parameter — returns 400 if they differ.
+          minLength: 3
+          maxLength: 40
+          example: countries-graphql-api
+        displayName:
+          description: Human-readable name for the API
+          pattern: '(^[^~!@#;:%^*()+={}|\\<>"'',&$\[\]\/]*$)'
+          type: string
+          minLength: 1
+          maxLength: 128
+          example: Countries GraphQL API
+        description:
+          maxLength: 32766
+          type: string
+          example: Public GraphQL API for querying country/region reference data
+        context:
+          maxLength: 232
+          minLength: 1
+          type: string
+          example: /countries
+        version:
+          maxLength: 30
+          minLength: 1
+          type: string
+          pattern: '^[^~!@#;:%^*()+={}|\\<>"'',&/$\[\]\s+\/]+$'
+          example: v1.0
+        createdBy:
+          maxLength: 200
+          type: string
+          readOnly: true
+          example: "john.doe"
+        updatedBy:
+          maxLength: 200
+          type: string
+          readOnly: true
+          description: Only present in the detail response (GET /graphql-apis/{graphqlApiId}), omitted from list responses.
+          example: "john.doe"
+        projectId:
+          type: string
+          pattern: '^[a-z0-9-]+$'
+          minLength: 3
+          maxLength: 63
+          example: default-project
+        createdAt:
+          type: string
+          format: date-time
+          readOnly: true
+          example: "2026-08-11T10:00:00Z"
+        updatedAt:
+          type: string
+          format: date-time
+          readOnly: true
+          example: "2026-08-11T10:00:00Z"
+        readOnly:
+          type: boolean
+          readOnly: true
+          description: True if the artifact originated from a data-plane gateway (origin gateway_api) and is read-only in the control plane.
+          example: false
+        upstream:
+          $ref: "#/components/schemas/Upstream"
+          description: |
+            Reused unmodified from REST APIs. A GraphQL API has exactly one logical
+            endpoint (no per-operation paths), so `upstream.main.url` is the single
+            GraphQL endpoint — either the backend to proxy to (SDL-supplied case) or
+            the endpoint introspected at creation time (see `sdl`/`introspectionMode` below).
+        lifeCycleStatus:
+          type: string
+          x-go-type: RESTAPILifeCycleStatus
+          description: |
+            Current lifecycle status of the API. Reuses REST APIs' lifecycle enum
+            unmodified (STAGED, CREATED, PUBLISHED, DEPRECATED, RETIRED, BLOCKED) —
+            declaring a second identically-valued enum schema here would collide
+            with it at Go-constant generation time.
+          example: "CREATED"
+        kind:
+          type: string
+          description: Kind of the API based on its communication protocol or architectural style
+          example: GraphQLApi
+          default: GraphQLApi
+        sdl:
+          type: string
+          description: |
+            The GraphQL schema in SDL form, supplied directly (pasted/uploaded) or
+            resolved from `sdlUrl`. Optional on create — if all of `sdl`, `sdlUrl`,
+            and a reachable `upstream.main.url` are omitted, creation fails; if only
+            `upstream.main.url` is given, it must expose standard GraphQL
+            introspection and the schema is derived server-side. Always
+            the *resolved* schema, never a document-supplied schema-location
+            reference. `sdl` and `sdlUrl` are mutually exclusive on a request; this
+            field always holds the resolved text on every read regardless of which
+            input path produced it.
+          example: |
+            type Query {
+              countries: [Country]
+              country(code: ID!): Country
+            }
+            type Country {
+              code: String
+              name: String
+              capital: String
+            }
+        sdlUrl:
+          type: string
+          format: uri
+          writeOnly: true
+          description: |
+            A URL to a raw SDL document to fetch and use as `sdl` — the write-side
+            counterpart to how an OpenAPI document can be supplied by reference for
+            other artifact kinds (see LlmProviderTemplate's `metadata.openapiSpecUrl`).
+            Distinct from `upstream.main.url`: this is a plain HTTP(S) GET of a static
+            schema file, not a live introspection query against a GraphQL server, and
+            is fetched with the same public-internet-only SSRF hardening as an
+            OpenAPI-spec-by-URL fetch (loopback/private/link-local/metadata addresses
+            refused) — it is not meant for a tenant's own in-cluster backend. Mutually
+            exclusive with `sdl`. Never stored or echoed back; only the fetched `sdl`
+            text is persisted and returned.
+          example: https://raw.githubusercontent.com/example/countries-api/main/schema.graphql
+        introspectionMode:
+          allOf:
+            - $ref: '#/components/schemas/GraphQLIntrospectionMode'
+          readOnly: true
+          description: |
+            How `sdl` was obtained. SDL = supplied directly in the create/update
+            request. ENDPOINT = derived by introspecting `upstream.main.url` at
+            creation time. Informational only — storage and downstream behavior are
+            identical either way.
+          example: ENDPOINT
+        policies:
+          type: array
+          description: List of policies to be applied on the API. Reused unmodified from REST APIs.
+          items:
+            $ref: '#/components/schemas/Policy'
+        subscriptionPlans:
+          type: array
+          description: List of subscription plan names enabled for this API.
+          items:
+            type: string
+          example: [Gold, Silver]
+
+    CreateGraphQLAPIRequest:
+      allOf:
+        - $ref: '#/components/schemas/GraphQLAPI'
+        - type: object
+          required:
+            - displayName
+            - context
+            - version
+            - projectId
+            - upstream
+
+    GraphQLAPIMultipartRequest:
+      title: GraphQL API object with SDL file upload
+      type: object
+      required:
+        - metadata
+      properties:
+        metadata:
+          type: string
+          description: |
+            JSON-encoded request body — CreateGraphQLAPIRequest fields for create,
+            GraphQLAPI fields for update. Any `sdl`/`sdlUrl` included here is
+            ignored; the uploaded `sdlFile` part is always the source of `sdl`.
+          example: |
+            {"displayName":"Countries GraphQL API","context":"/countries","version":"v1.0","projectId":"default-project","upstream":{"main":{"url":"https://countries.trevorblades.com/graphql"}}}
+        sdlFile:
+          type: string
+          format: binary
+          description: The GraphQL SDL document as a file upload (e.g. schema.graphql).
+
+    GraphQLAPIListItem:
+      title: GraphQL API list item
+      type: object
+      required:
+        - displayName
+        - context
+        - version
+        - projectId
+      properties:
+        id:
+          type: string
+          minLength: 3
+          maxLength: 40
+          example: countries-graphql-api
+        displayName:
+          type: string
+          minLength: 1
+          maxLength: 128
+          example: Countries GraphQL API
+        description:
+          maxLength: 32766
+          type: string
+        context:
+          type: string
+          example: /countries
+        version:
+          type: string
+          example: v1.0
+        projectId:
+          type: string
+          example: default-project
+        upstream:
+          $ref: "#/components/schemas/Upstream"
+        introspectionMode:
+          $ref: '#/components/schemas/GraphQLIntrospectionMode'
+        lifeCycleStatus:
+          type: string
+          x-go-type: RESTAPILifeCycleStatus
+          description: |
+            Current lifecycle status of the API. Reuses REST APIs' lifecycle enum
+            unmodified (STAGED, CREATED, PUBLISHED, DEPRECATED, RETIRED, BLOCKED) —
+            declaring a second identically-valued enum schema here would collide
+            with it at Go-constant generation time.
+          example: "CREATED"
+        kind:
+          type: string
+          example: GraphQLApi
+          default: GraphQLApi
+        readOnly:
+          type: boolean
+          example: false
+        createdBy:
+          type: string
+          readOnly: true
+          example: "john.doe"
+        createdAt:
+          type: string
+          format: date-time
+          readOnly: true
+        updatedAt:
+          type: string
+          format: date-time
+          readOnly: true
+        # sdl is deliberately omitted from list responses — unlike a REST API's
+        # operations[] (a handful of entries), a GraphQL schema's SDL can run to
+        # many KB; embedding it in every list-page row would bloat GET
+        # /graphql-apis for no listing-view benefit. Fetch GET
+        # /graphql-apis/{graphqlApiId} for the full schema.
+
+    GraphQLAPIListResponse:
+      type: object
+      required:
+        - count
+        - list
+        - pagination
+      properties:
+        count:
+          type: integer
+          example: 1
+        list:
+          type: array
+          items:
+            $ref: '#/components/schemas/GraphQLAPIListItem'
+        pagination:
+          $ref: '#/components/schemas/Pagination'
 
     TimeUnit:
       type: string
@@ -9004,6 +10082,10 @@ tags:
     description: API management operations
   - name: REST API Deployments
     description: API deployment artifact management and lifecycle operations
+  - name: GraphQL APIs
+    description: GraphQL API management operations
+  - name: GraphQL API Deployments
+    description: GraphQL API deployment artifact management and lifecycle operations
   - name: API Portal
     description: API portal publishing and unpublishing operations
   - name: DevPortals
@@ -9025,7 +10107,7 @@ tags:
   - name: LLM Proxy Deployments
     description: LLM proxy deployment operations
   - name: API Keys
-    description: API key management operations for REST APIs and LLM Providers
+    description: API key management operations for REST APIs, LLM Providers, and GraphQL APIs
   - name: MCP Proxies
     description: MCP proxy management operations
   - name: MCP Proxy Deployments
