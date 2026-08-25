@@ -1,22 +1,22 @@
 name: Platform API Cloud Release
 
 # The cloud image is built and pushed to ACR by an Azure DevOps pipeline. This
-# workflow no longer builds anything: on a merge into a release branch (main or
-# platform-api/v0.10.x) it just calls the Azure pipeline's incoming webhook,
-# passing the repo + branch to build. The payload is authenticated with an
-# HMAC-SHA1 signature.
+# workflow no longer builds anything: on a push to a release branch (main or
+# platform-api/v0.10.x) — which a merge produces — it just calls the Azure
+# pipeline's incoming webhook, passing the repo + branch to build. The payload
+# is authenticated with an HMAC-SHA1 signature.
 #
-# NOTE: pull_request runs the workflow from the PR's base branch, so this file
-# must be kept identical on every branch listed under `branches:` below.
+# Using `push` (not `pull_request: closed`) means the run has access to secrets
+# even when merging a PR opened from a fork, and the workflow that runs is the
+# version on the pushed branch.
 #
 # Required GitHub secrets:
-#   AZURE_WEBHOOK_URL    - https://dev.azure.com/<org>/_apis/public/distributedtask/webhooks/platform-api-cloud-release?api-version=6.0-preview
+#   AZURE_WEBHOOK_URL    - https://dev.azure.com/<org>/_apis/public/distributedtask/webhooks/PlatformApiCloudReleaseWebhook?api-version=6.0-preview
 #   AZURE_WEBHOOK_SECRET - the shared secret configured on the Incoming WebHook service connection
 
 on:
-  # Fire when a PR is merged into a release branch...
-  pull_request:
-    types: [closed]
+  # Fire on a push to a release branch (merging a PR produces such a push)...
+  push:
     branches:
       - main
       - platform-api/v0.10.x
@@ -38,17 +38,16 @@ concurrency:
 jobs:
   trigger-azure-build:
     runs-on: ubuntu-latest
-    # On pull_request only run for actual merges (not closed-without-merge).
-    if: github.event_name == 'workflow_dispatch' || github.event.pull_request.merged == true
     steps:
       - name: Trigger Azure DevOps pipeline webhook
         env:
           AZURE_WEBHOOK_URL: ${{ secrets.AZURE_WEBHOOK_URL }}
           AZURE_WEBHOOK_SECRET: ${{ secrets.AZURE_WEBHOOK_SECRET }}
           REPO_URL: ${{ github.server_url }}/${{ github.repository }}
-          # base.ref/merge_commit_sha for merges; ref_name/sha for manual runs.
-          BRANCH: ${{ github.event_name == 'pull_request' && github.event.pull_request.base.ref || github.ref_name }}
-          COMMIT: ${{ github.event_name == 'pull_request' && github.event.pull_request.merge_commit_sha || github.sha }}
+          # push and workflow_dispatch both expose the branch as ref_name and
+          # its HEAD (the merge commit, for a PR merge) as sha.
+          BRANCH: ${{ github.ref_name }}
+          COMMIT: ${{ github.sha }}
         run: |
           set -euo pipefail
           if [ -z "${AZURE_WEBHOOK_URL:-}" ] || [ -z "${AZURE_WEBHOOK_SECRET:-}" ]; then
