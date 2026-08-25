@@ -174,6 +174,39 @@ type MCPProxyDeletionEvent struct {
 	ProxyId string `json:"proxyId"`
 }
 
+// GraphQLAPIDeploymentEvent contains payload data for "graphqlapi.deployed" event
+// type. This event is sent when a GraphQL API is successfully deployed to a gateway.
+type GraphQLAPIDeploymentEvent struct {
+	// ApiId identifies the deployed GraphQL API (handle)
+	ApiId string `json:"apiId"`
+
+	// DeploymentID identifies the specific deployment artifact
+	DeploymentID string `json:"deploymentId"`
+
+	// PerformedAt is the timestamp when the deployment was initiated (concurrency token)
+	PerformedAt time.Time `json:"performedAt"`
+}
+
+// GraphQLAPIUndeploymentEvent contains payload data for "graphqlapi.undeployed" event
+// type. This event is sent when a GraphQL API is undeployed from a gateway.
+type GraphQLAPIUndeploymentEvent struct {
+	// ApiId identifies the undeployed GraphQL API (handle)
+	ApiId string `json:"apiId"`
+
+	// DeploymentID identifies the specific deployment being undeployed
+	DeploymentID string `json:"deploymentId"`
+
+	// PerformedAt is the timestamp when the undeployment was initiated (concurrency token)
+	PerformedAt time.Time `json:"performedAt"`
+}
+
+// GraphQLAPIDeletionEvent contains payload data for "graphqlapi.deleted" event
+// type. This event is sent when a GraphQL API is permanently deleted from the platform.
+type GraphQLAPIDeletionEvent struct {
+	// ApiId identifies the deleted GraphQL API (handle)
+	ApiId string `json:"apiId"`
+}
+
 // WebSubAPIDeploymentEvent contains payload data for "websub.deployed" event type.
 // This event is sent when a WebSub API is successfully deployed to a gateway.
 type WebSubAPIDeploymentEvent struct {

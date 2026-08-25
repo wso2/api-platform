@@ -87,6 +87,7 @@ var platformDataMinorVersions = map[string]int{
 	constants.WebSubApi:    0,
 	constants.WebBrokerApi: 0,
 	constants.MCPProxy:     0,
+	constants.GraphQLApi:   0,
 	constants.LLMProxy:     1,
 	constants.LLMProvider:  1,
 }
