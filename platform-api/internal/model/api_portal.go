@@ -40,7 +40,7 @@ type APIPortal struct {
 	Name           string                 `json:"name" db:"display_name"`
 	Description    string                 `json:"description,omitempty" db:"description"`
 	URL            string                 `json:"url,omitempty" db:"url"`
-	WorkflowStatus string                 `json:"workflowStatus" db:"workflow_status"`
+	Status         string                 `json:"status" db:"status"`
 	AuthType       string                 `json:"authType" db:"auth_type"`
 	AuthConfig     map[string]interface{} `json:"authConfig,omitempty" db:"auth_configuration"`
 	Metadata       map[string]interface{} `json:"metadata,omitempty" db:"metadata"`
@@ -57,15 +57,15 @@ func (APIPortal) TableName() string {
 
 // IsPending returns true if the portal is still being provisioned or activated.
 func (p *APIPortal) IsPending() bool {
-	return p.WorkflowStatus == constants.APIPortalWorkflowStatusPending
+	return p.Status == constants.APIPortalStatusPending
 }
 
 // IsActive returns true if the portal is reachable and functional.
 func (p *APIPortal) IsActive() bool {
-	return p.WorkflowStatus == constants.APIPortalWorkflowStatusActive
+	return p.Status == constants.APIPortalStatusActive
 }
 
 // IsFailed returns true if provisioning or a subsequent health check has failed.
 func (p *APIPortal) IsFailed() bool {
-	return p.WorkflowStatus == constants.APIPortalWorkflowStatusFailed
+	return p.Status == constants.APIPortalStatusFailed
 }

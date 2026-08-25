@@ -172,10 +172,10 @@ func TestAPIPortalService_CreateAPIPortal_HappyPath(t *testing.T) {
 	if got == nil || got.Handle != "acme" || got.Name != "Acme Portal" {
 		t.Errorf("returned portal wrong shape: %+v", got)
 	}
-	// OSS registers a portal that's already running; workflowStatus is always
+	// OSS registers a portal that's already running; status is always
 	// active from create, and is not exposed on the wire.
-	if got.WorkflowStatus != constants.APIPortalWorkflowStatusActive {
-		t.Errorf("default workflowStatus: want active, got %q", got.WorkflowStatus)
+	if got.Status != constants.APIPortalStatusActive {
+		t.Errorf("default status: want active, got %q", got.Status)
 	}
 	if got.ID == "" {
 		t.Error("expected generated UUID, got empty")
@@ -352,8 +352,8 @@ func TestAPIPortalService_UpdateAPIPortal_SwitchOAuth2ToLocal(t *testing.T) {
 	existing := &model.APIPortal{
 		ID: "p1", Handle: "acme", OrganizationID: "org-1",
 		Name: "Acme", URL: "https://acme.example.com",
-		WorkflowStatus: constants.APIPortalWorkflowStatusActive,
-		AuthType:       constants.APIPortalAuthTypeOAuth2,
+		Status:     constants.APIPortalStatusActive,
+		AuthType:   constants.APIPortalAuthTypeOAuth2,
 		AuthConfig: map[string]interface{}{
 			"stsTokenUrl":  "https://sts.example.com/token",
 			"clientId":     "abc",
@@ -382,7 +382,7 @@ func TestAPIPortalService_UpdateAPIPortal_SwitchOAuth2ToLocal(t *testing.T) {
 func TestAPIPortalService_UpdateAPIPortal_InvalidURLRejected(t *testing.T) {
 	existing := &model.APIPortal{
 		ID: "p1", Handle: "acme", OrganizationID: "org-1",
-		Name: "Acme", WorkflowStatus: constants.APIPortalWorkflowStatusActive,
+		Name: "Acme", Status: constants.APIPortalStatusActive,
 		AuthType: constants.APIPortalAuthTypeLocal,
 	}
 	svc := newTestAPIPortalService(t, 
@@ -477,8 +477,8 @@ func TestAPIPortalService_UpdateAPIPortal_HappyPath(t *testing.T) {
 	existing := &model.APIPortal{
 		ID: "p1", Handle: "acme", OrganizationID: "org-1",
 		Name: "old", URL: "https://acme.example.com",
-		WorkflowStatus: constants.APIPortalWorkflowStatusPending,
-		AuthType:       constants.APIPortalAuthTypeLocal,
+		Status:   constants.APIPortalStatusPending,
+		AuthType: constants.APIPortalAuthTypeLocal,
 	}
 	portalRepo := &mockAPIPortalRepository{getResult: existing}
 	auditRepo := &mockAPIPortalAuditRepository{}
@@ -518,8 +518,8 @@ func TestAPIPortalService_UpdateAPIPortal_PartialUpdate(t *testing.T) {
 	existing := &model.APIPortal{
 		ID: "p1", Handle: "acme", OrganizationID: "org-1",
 		Name: "keep", URL: "https://keep.example.com",
-		WorkflowStatus: constants.APIPortalWorkflowStatusActive,
-		AuthType:       constants.APIPortalAuthTypeLocal,
+		Status:   constants.APIPortalStatusActive,
+		AuthType: constants.APIPortalAuthTypeLocal,
 	}
 	svc := newTestAPIPortalService(t, &mockAPIPortalRepository{getResult: existing}, &mockAPIPortalOrgRepository{}, &mockAPIPortalAuditRepository{})
 	// Only Description supplied; everything else must remain unchanged.

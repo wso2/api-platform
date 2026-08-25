@@ -330,7 +330,7 @@ func (s *APIPortalService) CreateAPIPortal(req *CreateAPIPortalRequest, orgID, c
 		Name:           name,
 		Description:    strings.TrimSpace(req.Description),
 		URL:            portalURL,
-		WorkflowStatus: constants.APIPortalWorkflowStatusActive,
+		Status:         constants.APIPortalStatusActive,
 		AuthType:       authType,
 		AuthConfig:     authConfig,
 		Metadata:       req.Metadata,

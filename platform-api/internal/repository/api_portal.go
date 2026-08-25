@@ -42,7 +42,7 @@ func NewAPIPortalRepo(db *database.DB) APIPortalRepository {
 // apiPortalSelectColumns are the api_portals columns selected in every query, in scan order.
 const apiPortalSelectColumns = `
 	uuid, organization_uuid, handle, display_name, description, url,
-	workflow_status, auth_type, auth_configuration, metadata,
+	status, auth_type, auth_configuration, metadata,
 	created_by, updated_by, created_at, updated_at
 `
 
@@ -55,7 +55,7 @@ func scanAPIPortalRow(scanner interface {
 	var authConfigBytes, metadataBytes []byte
 	if err := scanner.Scan(
 		&portal.ID, &portal.OrganizationID, &portal.Handle, &portal.Name, &description, &url,
-		&portal.WorkflowStatus, &portal.AuthType, &authConfigBytes, &metadataBytes,
+		&portal.Status, &portal.AuthType, &authConfigBytes, &metadataBytes,
 		&createdBy, &updatedBy, &portal.CreatedAt, &portal.UpdatedAt,
 	); err != nil {
 		return nil, err
@@ -122,13 +122,13 @@ func (r *APIPortalRepo) Create(portal *model.APIPortal) error {
 	}
 	query := `
 		INSERT INTO api_portals (uuid, organization_uuid, handle, display_name, description, url,
-		                          workflow_status, auth_type, auth_configuration, metadata,
+		                          status, auth_type, auth_configuration, metadata,
 		                          created_by, updated_by, created_at, updated_at)
 		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 	`
 	_, err = r.db.Exec(r.db.Rebind(query),
 		portal.ID, portal.OrganizationID, portal.Handle, portal.Name, portal.Description, portal.URL,
-		portal.WorkflowStatus, portal.AuthType, authConfigBytes, metadataBytes,
+		portal.Status, portal.AuthType, authConfigBytes, metadataBytes,
 		portal.CreatedBy, portal.UpdatedBy, portal.CreatedAt, portal.UpdatedAt,
 	)
 	return err
@@ -237,13 +237,13 @@ func (r *APIPortalRepo) Update(portal *model.APIPortal) error {
 	}
 	query := `
 		UPDATE api_portals
-		SET display_name = ?, description = ?, url = ?, workflow_status = ?,
+		SET display_name = ?, description = ?, url = ?, status = ?,
 		    auth_type = ?, auth_configuration = ?, metadata = ?,
 		    updated_by = ?, updated_at = ?
 		WHERE uuid = ? AND organization_uuid = ?
 	`
 	result, err := r.db.Exec(r.db.Rebind(query),
-		portal.Name, portal.Description, portal.URL, portal.WorkflowStatus,
+		portal.Name, portal.Description, portal.URL, portal.Status,
 		portal.AuthType, authConfigBytes, metadataBytes,
 		portal.UpdatedBy, portal.UpdatedAt,
 		portal.ID, portal.OrganizationID,

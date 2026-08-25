@@ -407,7 +407,7 @@ CREATE TABLE IF NOT EXISTS api_portals (
     display_name      VARCHAR(255) NOT NULL,
     description       VARCHAR(1023),
     url               VARCHAR(500),
-    workflow_status   VARCHAR(20)  NOT NULL DEFAULT 'pending',
+    status            VARCHAR(20)  NOT NULL DEFAULT 'pending',
     auth_type          VARCHAR(20)  NOT NULL,
     auth_configuration BLOB         NOT NULL,
     metadata           BLOB         NOT NULL,

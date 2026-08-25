@@ -50,7 +50,7 @@ func newTestAPIPortal(uuid, orgUUID, handle string) *model.APIPortal {
 		Name:           "Portal " + handle,
 		Description:    "test portal",
 		URL:            "https://" + handle + ".example.com",
-		WorkflowStatus: constants.APIPortalWorkflowStatusPending,
+		Status:         constants.APIPortalStatusPending,
 		AuthType:       constants.APIPortalAuthTypeLocal,
 		AuthConfig:     map[string]interface{}{"foo": "bar"},
 		CreatedBy:      "tester",
@@ -348,7 +348,7 @@ func TestAPIPortalRepo_Update(t *testing.T) {
 	portal.Name = "Renamed"
 	portal.Description = "new description"
 	portal.URL = "https://renamed.example.com"
-	portal.WorkflowStatus = constants.APIPortalWorkflowStatusActive
+	portal.Status = constants.APIPortalStatusActive
 	portal.AuthType = constants.APIPortalAuthTypeOAuth2
 	portal.AuthConfig = map[string]interface{}{"stsTokenUrl": "https://sts/x"}
 	portal.UpdatedBy = "editor"
@@ -367,7 +367,7 @@ func TestAPIPortalRepo_Update(t *testing.T) {
 	}
 	if got.Name != "Renamed" || got.Description != "new description" ||
 		got.URL != "https://renamed.example.com" ||
-		got.WorkflowStatus != constants.APIPortalWorkflowStatusActive ||
+		got.Status != constants.APIPortalStatusActive ||
 		got.AuthType != constants.APIPortalAuthTypeOAuth2 ||
 		got.UpdatedBy != "editor" {
 		t.Errorf("mutable fields not persisted; got %+v", got)

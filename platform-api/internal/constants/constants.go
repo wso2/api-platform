@@ -207,14 +207,14 @@ var ValidGatewayTokenStatuses = map[string]bool{
 	GatewayTokenStatusRevoked: true,
 }
 
-// API Portal workflow status constants. The column exists on api_portals for
+// API Portal status constants. The column exists on api_portals for
 // future extensibility but is not surfaced on the wire in the OSS offering:
 // OSS registers a portal that's already running, so every OSS row is created
-// as APIPortalWorkflowStatusActive and never mutated by clients.
+// as APIPortalStatusActive and never mutated by clients.
 const (
-	APIPortalWorkflowStatusPending = "pending"
-	APIPortalWorkflowStatusActive  = "active"
-	APIPortalWorkflowStatusFailed  = "failed"
+	APIPortalStatusPending = "pending"
+	APIPortalStatusActive  = "active"
+	APIPortalStatusFailed  = "failed"
 )
 
 // API Portal authConfig field-name constants used by Create/Update validation
