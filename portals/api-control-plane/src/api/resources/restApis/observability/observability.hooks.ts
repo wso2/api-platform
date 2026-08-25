@@ -21,7 +21,13 @@ import type {
   ObservabilityLogsScope,
   RestApiObservabilityLogsQuery,
 } from './observability.endpoints';
-import { restApiObservabilityQueries } from './observability.queries';
+import {
+  restApiObservabilityQueries,
+  type ObservabilityLogTailFilters,
+} from './observability.queries';
+
+/** Default live-tail poll cadence. */
+export const LOG_TAIL_POLL_MS = 5000;
 
 export const useRestApiObservabilityLogs = (
   restApiId: string | undefined,
@@ -43,5 +49,32 @@ export const useObservabilityLogs = (
   return useQuery({
     ...restApiObservabilityQueries.scopedLogs(org!, scope, query),
     enabled: Boolean(enabled && org),
+  });
+};
+
+/**
+ * Rolling tail of gateway logs, optionally polling for new records.
+ *
+ * `refetchIntervalInBackground` is left at its default of false, so a console
+ * left open on a hidden tab stops polling until the tab is looked at again.
+ */
+export const useObservabilityLogTail = (
+  scope: ObservabilityLogsScope,
+  filters: ObservabilityLogTailFilters,
+  options: {
+    live?: boolean;
+    enabled?: boolean;
+    intervalMs?: number;
+    orgId?: string;
+  } = {}
+) => {
+  const { live = false, enabled = true, intervalMs = LOG_TAIL_POLL_MS } =
+    options;
+  const { org } = useApiScope({ orgId: options.orgId });
+
+  return useQuery({
+    ...restApiObservabilityQueries.tail(org!, scope, filters),
+    enabled: Boolean(enabled && org),
+    refetchInterval: live ? intervalMs : false,
   });
 };

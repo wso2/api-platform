@@ -14,152 +14,62 @@
  * under the License.
  */
 
-import { type FormEvent, useMemo, useState } from 'react';
+import { type FormEvent, useEffect, useMemo, useState } from 'react';
 import { FormattedMessage, useIntl } from 'react-intl';
 import { useParams } from 'react-router-dom';
 import {
   Alert,
   Button,
-  Card,
-  CardContent,
-  Chip,
   CircularProgress,
   FormControl,
+  FormControlLabel,
   FormLabel,
   MenuItem,
   PageTitle,
   Select,
   Stack,
+  Switch,
   TextField,
   Typography,
 } from '@wso2/oxygen-ui';
 
 import {
-  useObservabilityLogs,
+  useObservabilityLogTail,
   type ObservabilityLogLevel,
   type ObservabilityLogsScope,
-  type RestApiObservabilityLog,
-  type RestApiObservabilityLogsQuery,
+  type ObservabilityLogTailFilters,
   useRestApis,
 } from '../../../../api/resources/restApis';
 import { useProjects } from '../../../../api/resources/projects';
-import { EmptyState } from '../../../../components/StateViews';
+import { LogConsole, type ConsoleLine } from '../../../../components/LogConsole';
 import { runtimeConfig } from '../../../../config/runtime';
+import { mergeLogLines } from './logLines';
 
-type TrafficLog = {
-  timestamp?: string;
-  correlationId?: string;
-  status?: number;
-  operation?: { method?: string; path?: string };
-  target?: { statusCode?: number };
-};
+/**
+ * Rows the console keeps. Selection and copy work on real DOM nodes rather than
+ * a virtualised window, so the buffer is capped to keep the page responsive
+ * during a long tail; the oldest rows fall off first.
+ */
+const MAX_CONSOLE_LINES = 2000;
 
-const buildQuery = (
+/** Records requested per poll. */
+const PAGE_LIMIT = 100;
+
+const buildFilters = (
   durationMinutes: number,
   search: string,
   level: ObservabilityLogLevel | '',
-  filters: Pick<
-    RestApiObservabilityLogsQuery,
+  scopeFilters: Pick<
+    ObservabilityLogTailFilters,
     'component' | 'environment' | 'project'
   > = {}
-): RestApiObservabilityLogsQuery => {
-  const end = new Date();
-  return {
-    startTime: new Date(
-      end.getTime() - durationMinutes * 60 * 1000
-    ).toISOString(),
-    endTime: end.toISOString(),
-    limit: 100,
-    query: search.trim() || undefined,
-    logLevels: level ? [level] : undefined,
-    ...filters,
-  };
-};
-
-export const parseGatewayTrafficLog = (
-  entry: RestApiObservabilityLog
-): TrafficLog | undefined => {
-  if (typeof entry.log !== 'string') return undefined;
-  try {
-    const structuredLog = entry.log.trim().replace(/^\[pol\]\s*/, '');
-    const parsed = JSON.parse(structuredLog) as unknown;
-    return parsed && typeof parsed === 'object'
-      ? (parsed as TrafficLog)
-      : undefined;
-  } catch {
-    return undefined;
-  }
-};
-
-const levelColor = (level: string) => {
-  if (level === 'ERROR') return 'error' as const;
-  if (level === 'WARN') return 'warning' as const;
-  if (level === 'INFO') return 'info' as const;
-  return 'default' as const;
-};
-
-function LogRecord({ entry }: { entry: RestApiObservabilityLog }) {
-  const intl = useIntl();
-  const traffic = parseGatewayTrafficLog(entry);
-  const level = String(entry.level || entry.logLevel || 'INFO').toUpperCase();
-  const timestamp = traffic?.timestamp || entry.timestamp;
-  const status = traffic?.status ?? traffic?.target?.statusCode;
-  const request = [traffic?.operation?.method, traffic?.operation?.path]
-    .filter(Boolean)
-    .join(' ');
-  const summary = request
-    ? `${request}${status !== undefined ? ` → ${status}` : ''}`
-    : entry.log ||
-      intl.formatMessage({
-        id: 'appShell.runtimeLogsPage.gatewayTrafficEvent',
-        defaultMessage: 'Gateway traffic event',
-      });
-
-  return (
-    <Card variant="outlined">
-      <CardContent>
-        <Stack alignItems="center" direction="row" spacing={1}>
-          <Chip color={levelColor(level)} label={level} size="small" />
-          <Typography
-            component="time"
-            color="text.secondary"
-            dateTime={timestamp}
-            variant="body2"
-          >
-            {timestamp
-              ? new Date(timestamp).toLocaleString()
-              : intl.formatMessage({
-                  id: 'appShell.runtimeLogsPage.unknownTime',
-                  defaultMessage: 'Unknown time',
-                })}
-          </Typography>
-          {traffic?.correlationId && (
-            <Typography color="text.secondary" variant="caption">
-              <FormattedMessage
-                id="appShell.runtimeLogsPage.correlation"
-                defaultMessage="Correlation: {id}"
-                values={{ id: traffic.correlationId }}
-              />
-            </Typography>
-          )}
-        </Stack>
-        <Typography
-          component="pre"
-          sx={{
-            fontFamily: 'monospace',
-            fontSize: 13,
-            mb: 0,
-            mt: 1.5,
-            overflowWrap: 'anywhere',
-            whiteSpace: 'pre-wrap',
-          }}
-        >
-          {summary}
-        </Typography>
-      </CardContent>
-    </Card>
-  );
-}
+): ObservabilityLogTailFilters => ({
+  durationMinutes,
+  limit: PAGE_LIMIT,
+  query: search.trim() || undefined,
+  logLevels: level ? [level] : undefined,
+  ...scopeFilters,
+});
 
 export function RuntimeLogsPage() {
   return <RuntimeLogs />;
@@ -176,8 +86,12 @@ function RuntimeLogs() {
   const [project, setProject] = useState(projectHandler || '');
   const [component, setComponent] = useState('');
   const [environment, setEnvironment] = useState('development');
-  const [request, setRequest] = useState(() =>
-    buildQuery(60, '', '', {
+  const [live, setLive] = useState(true);
+  const [lines, setLines] = useState<ConsoleLine[]>([]);
+  /** Watermark set by Clear, so the next poll cannot refill the wiped window. */
+  const [clearedAt, setClearedAt] = useState(0);
+  const [filters, setFilters] = useState(() =>
+    buildFilters(60, '', '', {
       environment: aggregateScope ? 'development' : undefined,
       project: aggregateScope ? projectHandler : undefined,
     })
@@ -195,17 +109,35 @@ function RuntimeLogs() {
   const apisQuery = useRestApis({}, { projectId: project || undefined });
   const projects = projectsQuery.data?.list ?? [];
   const components = apisQuery.data?.list ?? [];
-  const logsQuery = useObservabilityLogs(
-    scope,
-    request,
-    {},
-    runtimeConfig.observabilityLogsEnabled
-  );
+  const logsQuery = useObservabilityLogTail(scope, filters, {
+    enabled: runtimeConfig.observabilityLogsEnabled,
+    live,
+  });
 
-  const queryLogs = (event?: FormEvent) => {
+  /*
+   * Each poll returns the whole rolling window, so records already on screen are
+   * dropped and only new ones are appended — the console grows instead of being
+   * rebuilt, which is what keeps an in-progress selection intact.
+   */
+  const page = logsQuery.data;
+  useEffect(() => {
+    if (!page) return;
+    setLines((previous) =>
+      mergeLogLines(previous, page.items, MAX_CONSOLE_LINES, clearedAt)
+    );
+  }, [clearedAt, page]);
+
+  const clearConsole = () => {
+    setLines([]);
+    setClearedAt(Date.now());
+  };
+
+  const applyFilters = (event?: FormEvent) => {
     event?.preventDefault();
-    setRequest(
-      buildQuery(durationMinutes, search, level, {
+    setLines([]);
+    setClearedAt(0);
+    setFilters(
+      buildFilters(durationMinutes, search, level, {
         component: aggregateScope ? component || undefined : undefined,
         environment: aggregateScope ? environment : undefined,
         project: aggregateScope ? project || undefined : undefined,
@@ -225,11 +157,19 @@ function RuntimeLogs() {
           />
         </PageTitle.Header>
         <PageTitle.SubHeader>
-          <FormattedMessage
-            id="appShell.runtimeLogsPage.subHeader"
-            defaultMessage="Tenant-scoped traffic logs for {scopeLabel}. Request and response headers and bodies are not collected."
-            values={{ scopeLabel }}
-          />
+          {apiHandler ? (
+            <FormattedMessage
+              id="appShell.runtimeLogsPage.apiSubHeader"
+              defaultMessage="API traffic logs for {scopeLabel}. Request and response headers and bodies are not collected."
+              values={{ scopeLabel }}
+            />
+          ) : (
+            <FormattedMessage
+              id="appShell.runtimeLogsPage.aggregateSubHeader"
+              defaultMessage="Gateway runtime logs for {scopeLabel}, including operational and traffic records."
+              values={{ scopeLabel }}
+            />
+          )}
         </PageTitle.SubHeader>
       </PageTitle>
 
@@ -246,7 +186,7 @@ function RuntimeLogs() {
             alignItems={{ md: 'flex-end', xs: 'stretch' }}
             component="form"
             direction={{ md: 'row', xs: 'column' }}
-            onSubmit={queryLogs}
+            onSubmit={applyFilters}
             spacing={1.5}
             sx={{ flexWrap: { md: 'wrap' } }}
           >
@@ -428,44 +368,33 @@ function RuntimeLogs() {
               <TextField
                 inputProps={{ maxLength: 256 }}
                 onChange={(event) => setSearch(event.target.value)}
-                placeholder={intl.formatMessage({
-                  id: 'appShell.runtimeLogsPage.searchPlaceholder',
-                  defaultMessage: 'Method, path, status, or correlation ID',
-                })}
+                placeholder={
+                  apiHandler
+                    ? intl.formatMessage({
+                        id: 'appShell.runtimeLogsPage.apiSearchPlaceholder',
+                        defaultMessage:
+                          'Method, path, status, or correlation ID',
+                      })
+                    : intl.formatMessage({
+                        id: 'appShell.runtimeLogsPage.aggregateSearchPlaceholder',
+                        defaultMessage:
+                          'Message, route, project, or correlation ID',
+                      })
+                }
                 size="small"
                 value={search}
               />
             </FormControl>
-            <Button
-              disabled={logsQuery.isFetching}
-              type="submit"
-              variant="contained"
-            >
-              {logsQuery.isFetching ? (
-                <FormattedMessage
-                  id="appShell.runtimeLogsPage.querying"
-                  defaultMessage="Querying…"
-                />
-              ) : (
-                <FormattedMessage
-                  id="appShell.runtimeLogsPage.queryLogs"
-                  defaultMessage="Query logs"
-                />
-              )}
+            {/* Never disabled on fetch: a live tail is almost always fetching,
+                and the console toolbar already shows that progress. */}
+            <Button type="submit" variant="contained">
+              <FormattedMessage
+                id="appShell.runtimeLogsPage.applyFilters"
+                defaultMessage="Apply filters"
+              />
             </Button>
           </Stack>
 
-          {logsQuery.isLoading && (
-            <Stack alignItems="center" direction="row" spacing={1}>
-              <CircularProgress size={18} />
-              <Typography>
-                <FormattedMessage
-                  id="appShell.runtimeLogsPage.loading"
-                  defaultMessage="Loading gateway logs…"
-                />
-              </Typography>
-            </Stack>
-          )}
           {logsQuery.error && (
             <Alert severity="error">
               <FormattedMessage
@@ -475,26 +404,65 @@ function RuntimeLogs() {
               />
             </Alert>
           )}
-          {!logsQuery.isLoading &&
-            !logsQuery.error &&
-            logsQuery.data?.items.length === 0 && (
-              <EmptyState
-                description={intl.formatMessage({
-                  id: 'appShell.runtimeLogsPage.emptyDescription',
-                  defaultMessage: 'Try a wider time range or remove a filter.',
-                })}
-                title={intl.formatMessage({
-                  id: 'appShell.runtimeLogsPage.emptyTitle',
-                  defaultMessage: 'No gateway logs found',
-                })}
-              />
-            )}
-          {logsQuery.data?.items.map((entry, index) => (
-            <LogRecord
-              entry={entry}
-              key={`${entry.timestamp || 'log'}-${index}`}
-            />
-          ))}
+
+          <LogConsole
+            actions={
+              <Stack alignItems="center" direction="row" spacing={1}>
+                {logsQuery.isFetching && <CircularProgress size={14} />}
+                {!live && (
+                  <Button
+                    disabled={logsQuery.isFetching}
+                    onClick={() => logsQuery.refetch()}
+                    size="small"
+                    sx={{ color: 'inherit' }}
+                  >
+                    <FormattedMessage
+                      id="appShell.runtimeLogsPage.refresh"
+                      defaultMessage="Refresh"
+                    />
+                  </Button>
+                )}
+                <FormControlLabel
+                  control={
+                    <Switch
+                      checked={live}
+                      color="success"
+                      onChange={(event) => setLive(event.target.checked)}
+                      size="small"
+                    />
+                  }
+                  label={
+                    <Typography variant="caption">
+                      <FormattedMessage
+                        id="appShell.runtimeLogsPage.liveTail"
+                        defaultMessage="Live tail"
+                      />
+                    </Typography>
+                  }
+                  sx={{ mr: 0 }}
+                />
+              </Stack>
+            }
+            emptyMessage={
+              logsQuery.isLoading
+                ? intl.formatMessage({
+                    id: 'appShell.runtimeLogsPage.loading',
+                    defaultMessage: 'Loading gateway logs…',
+                  })
+                : intl.formatMessage({
+                    id: 'appShell.runtimeLogsPage.emptyConsole',
+                    defaultMessage:
+                      'No gateway logs in this window. Try a wider time range or remove a filter.',
+                  })
+            }
+            label={intl.formatMessage({
+              id: 'appShell.runtimeLogsPage.consoleLabel',
+              defaultMessage: 'Gateway log output',
+            })}
+            lines={lines}
+            live={live}
+            onClear={clearConsole}
+          />
         </>
       )}
     </Stack>

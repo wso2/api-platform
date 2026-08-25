@@ -22,11 +22,62 @@ import { restApiKeys } from '../restApis.queries';
 import {
   listObservabilityLogs,
   listRestApiObservabilityLogs,
+  type ObservabilityLogLevel,
   type ObservabilityLogsScope,
   type RestApiObservabilityLogsQuery,
 } from './observability.endpoints';
 
+/**
+ * Filters for a rolling log tail. Carries a window *length* instead of absolute
+ * bounds so the query key stays stable while the window slides.
+ */
+export type ObservabilityLogTailFilters = {
+  durationMinutes: number;
+  limit?: number;
+  query?: string;
+  logLevels?: ObservabilityLogLevel[];
+  component?: string;
+  environment?: string;
+  project?: string;
+};
+
 export const restApiObservabilityQueries = {
+  /**
+   * Rolling tail of gateway logs at organization, project, or API scope.
+   *
+   * The time window is resolved inside `queryFn` rather than baked into the key:
+   * a key carrying absolute bounds would allocate a fresh cache entry on every
+   * poll, so a live tail would leak entries and never reuse its own data. With
+   * the window derived per fetch, one key refetches against an advancing `now`.
+   */
+  tail: (
+    org: OrgScope,
+    scope: ObservabilityLogsScope,
+    filters: ObservabilityLogTailFilters
+  ) =>
+    queryOptions({
+      queryKey: [...scopeKey(org), 'observabilityLogTail', scope, filters],
+      queryFn: ({ signal }) => {
+        const end = new Date();
+        return listObservabilityLogs(
+          scope,
+          {
+            startTime: new Date(
+              end.getTime() - filters.durationMinutes * 60 * 1000
+            ).toISOString(),
+            endTime: end.toISOString(),
+            limit: filters.limit,
+            query: filters.query,
+            logLevels: filters.logLevels,
+            component: filters.component,
+            environment: filters.environment,
+            project: filters.project,
+          },
+          { orgId: org, signal }
+        );
+      },
+      staleTime: staleTimes.realtime,
+    }),
   scopedLogs: (
     org: OrgScope,
     scope: ObservabilityLogsScope,

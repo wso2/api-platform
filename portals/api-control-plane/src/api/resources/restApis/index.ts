@@ -46,6 +46,8 @@ export type {
   RestApiObservabilityLogsQuery,
 } from './observability/observability.endpoints';
 
+export type { ObservabilityLogTailFilters } from './observability/observability.queries';
+
 // ─── Hooks ──────────────────────────────────────────────────────────────────
 
 export {
@@ -59,6 +61,8 @@ export {
 } from './restApis.hooks';
 
 export {
+  LOG_TAIL_POLL_MS,
   useObservabilityLogs,
+  useObservabilityLogTail,
   useRestApiObservabilityLogs,
 } from './observability/observability.hooks';
