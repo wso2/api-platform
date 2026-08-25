@@ -1,0 +1,44 @@
+# --------------------------------------------------------------------
+# Copyright (c) 2026, WSO2 LLC. (https://www.wso2.com).
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+# http://www.apache.org/licenses/LICENSE-2.0
+# --------------------------------------------------------------------
+
+# Mutation-bearing GraphQL example — debug aid.
+#
+# There is no separate "mutation support" in the GraphQLApi artifact, and the
+# artifact carries no schema field at all: a mutation is just another POST
+# body sent to the same single route a query uses — the transformer builds
+# exactly one `POST <context>` route regardless of what the caller sends.
+# This example exists to make that explicit: it's identical in shape to
+# countries-graphql-api.yaml, but the traffic sent against it (see
+# gateway/it/features/graphql_deploy.feature) is a mutation payload rather
+# than a query, proving the gateway treats them exactly alike.
+#
+# Targets `sample-backend` from gateway/docker-compose.yaml, the same
+# generic echo upstream sample-echo-api.yaml uses — it echoes back whatever
+# body it receives, which is exactly what's needed to prove a mutation
+# payload is proxied through unmodified.
+
+apiVersion: gateway.api-platform.wso2.com/v1
+kind: GraphQLApi
+metadata:
+  name: blog-graphql-v1
+spec:
+  displayName: Blog
+  version: v1
+  context: /blog
+  upstream:
+    main:
+      url: http://sample-backend:9080/graphql
+  policies:
+    - name: jwt-auth
+      version: v1
+      params:
+        issuers: [PrimaryIdp]
+        scopes:
+          anyOf: ["graphql:read", "graphql:write"]
