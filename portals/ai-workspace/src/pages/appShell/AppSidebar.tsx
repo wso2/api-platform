@@ -310,25 +310,25 @@ export default function AppSidebar({
             )}
           </Sidebar.Category>
           {extensions.length > 0 && (
-            <Sidebar.Category>
-              <Sidebar.CategoryLabel>
-                <span style={{ fontSize: '0.8rem' }}>Cloud</span>
-              </Sidebar.CategoryLabel>
-              {extensions.map((extension) => (
-                <NavLink
-                  key={extension.id}
-                  to={extensionPath(extension.path)}
-                  style={navLinkStyle}
-                >
-                  <Sidebar.Item id={extension.id}>
-                    <Sidebar.ItemIcon>
-                      {extension.icon ?? <Settings size={20} />}
-                    </Sidebar.ItemIcon>
-                    <Sidebar.ItemLabel>{extension.label}</Sidebar.ItemLabel>
-                  </Sidebar.Item>
-                </NavLink>
-              ))}
-            </Sidebar.Category>
+            <>
+              <Box sx={{ borderTop: '1px solid', borderColor: 'divider', mx: 1.5, my: 0.5 }} />
+              <Sidebar.Category>
+                {extensions.map((extension) => (
+                  <NavLink
+                    key={extension.id}
+                    to={extensionPath(extension.path)}
+                    style={navLinkStyle}
+                  >
+                    <Sidebar.Item id={extension.id}>
+                      <Sidebar.ItemIcon>
+                        {extension.icon ?? <Settings size={20} />}
+                      </Sidebar.ItemIcon>
+                      <Sidebar.ItemLabel>{extension.label}</Sidebar.ItemLabel>
+                    </Sidebar.Item>
+                  </NavLink>
+                ))}
+              </Sidebar.Category>
+            </>
           )}
         </Box>
       </Sidebar.Nav>
