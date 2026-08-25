@@ -393,7 +393,8 @@ func main() {
 	restTransformer := transform.NewRestAPITransformer(&cfg.Router, cfg, policyDefinitions)
 	llmTransformer := transform.NewLLMTransformer(configStore, db, &cfg.Router, cfg, policyDefinitions, policyVersionResolver)
 	agentTransformer := transform.NewAgentTransformer(&cfg.Router, cfg, policyDefinitions)
-	transformerRegistry := transform.NewRegistry(restTransformer, llmTransformer, agentTransformer)
+	graphqlTransformer := transform.NewGraphQLAPITransformer(&cfg.Router, cfg, policyDefinitions)
+	transformerRegistry := transform.NewRegistry(restTransformer, llmTransformer, agentTransformer, graphqlTransformer)
 
 	// Wire the transformer into the Envoy xDS translator so Envoy routes are built from the
 	// RuntimeDeployConfig (RDC) path — identical to how the policy engine's RouteConfig/PolicyChain
@@ -483,6 +484,7 @@ func main() {
 	// comment there for why that ordering is load-bearing rather than incidental) with the
 	// policy manager so both snapshot paths key resources identically.
 	policyManager.SetTransformers(transformerRegistry)
+
 
 	// Load runtime configs from existing API configurations on startup.
 	// We write directly to runtimeStore to avoid triggering N separate snapshot updates;
@@ -982,6 +984,12 @@ func generateAuthConfig(config *config.Config) (commonmodels.AuthConfig, error) 
 		"GET /agents/{id}":    {"admin", "developer"},
 		"PUT /agents/{id}":    {"admin", "developer"},
 		"DELETE /agents/{id}": {"admin", "developer"},
+
+		"POST /graphql-apis":        {"admin", "developer"},
+		"GET /graphql-apis":         {"admin", "developer"},
+		"GET /graphql-apis/{id}":    {"admin", "developer"},
+		"PUT /graphql-apis/{id}":    {"admin", "developer"},
+		"DELETE /graphql-apis/{id}": {"admin", "developer"},
 
 		"POST /llm-provider-templates":        {"admin"},
 		"GET /llm-provider-templates":         {"admin"},
