@@ -20,6 +20,24 @@ metadata:
   {{- end }}
 data:
   config.toml: |
+    {{- /*
+      config_toml is the raw TOML passthrough for configuration the chart doesn't
+      model as structured values. It leads the file (above [controller.server]) so
+      it can carry BARE ROOT keys — e.g. policy "system parameters" that policies
+      read as ${config.<key>} — which TOML requires to precede every [table]
+      section. Whole [table] sections work here too (tables are order-independent).
+      Do not redefine a table the chart already emits below (TOML duplicate-table
+      error).
+
+      config.toml renders into a ConfigMap, not a Secret. For any secret value,
+      supply an {{ env "VAR" }} / {{ file "/path" }} interpolation token (resolved
+      by the policy engine at load time via common/configinterpolate) instead of a
+      literal, and inject the backing env var via
+      gateway.gatewayRuntime.deployment.extraEnv.
+    */ -}}
+    {{- if .Values.gateway.config_toml }}
+{{ .Values.gateway.config_toml | indent 4 }}
+    {{- end }}
     [controller.server]
     api_port = {{ $gc.server.api_port }}
     xds_port = {{ $gc.server.xds_port }}
@@ -654,8 +672,4 @@ data:
     {{- if .Values.gateway.config.mcp }}
     [mcp]
     append_resource_path_to_backend = {{ .Values.gateway.config.mcp.append_resource_path_to_backend }}
-    {{- end }}
-
-    {{- if .Values.gateway.config_toml }}
-{{ .Values.gateway.config_toml | indent 4 }}
     {{- end }}
