@@ -577,12 +577,27 @@ gateway:
       # Default (false) forwards to exactly the configured upstream path.
       append_resource_path_to_backend: false
 
-  # Raw TOML string to append to the generated config.toml
-  # Use this for additional configuration not covered by the structured values above
-  # Example:
+  # Raw TOML injected at the TOP of the generated config.toml, above every [table]
+  # section. Use it for configuration the chart doesn't model as structured values.
+  # Because it leads the file, it can carry BARE ROOT keys — e.g. policy "system
+  # parameters" that policies read as ${config.<key>} — which TOML requires to
+  # appear before any [table] header. Whole [table] sections work here too. Do NOT
+  # redefine a table the chart already emits (that's a TOML duplicate-table error).
+  #
+  # config.toml renders into a ConfigMap, not a Secret. For any secret value, supply
+  # an `{{ env "VAR" }}` / `{{ file "/path" }}` interpolation token (the policy
+  # engine resolves it at load time) instead of a literal, and inject the backing
+  # env var via gateway.gatewayRuntime.deployment.extraEnv.
+  #
+  # Example — a [custom_section] table:
   #   config_toml: |
   #     [custom_section]
   #     key = "value"
+  #
+  # Example — bare root keys (Azure Content Safety policy; endpoint literal, key a token):
+  #   config_toml: |
+  #     azurecontentsafety_endpoint = "https://your-resource.cognitiveservices.azure.com"
+  #     azurecontentsafety_key = '{{ env "APIP_GW_AZURE_CONTENT_SAFETY_KEY" }}'
   config_toml: ""
 
   # metadata for the generated shared ConfigMap (annotations / labels)
