@@ -156,7 +156,18 @@ type clientCredentialsAuthProvider struct {
 
 func newClientCredentialsAuthProvider(tokenURL, clientID, clientSecret string, hc *http.Client) *clientCredentialsAuthProvider {
 	if hc == nil {
-		hc = &http.Client{Timeout: 15 * time.Second}
+		// Default client: 15s timeout, and REJECT redirects. A 3xx from the
+		// STS on the token endpoint isn't a legitimate part of the client-
+		// credentials flow — following it would re-send the client_id +
+		// client_secret to a redirect target chosen by whatever answered
+		// the token endpoint. Return the 3xx response as-is so
+		// AuthorizationHeader sees it as a non-2xx and errors out.
+		hc = &http.Client{
+			Timeout: 15 * time.Second,
+			CheckRedirect: func(*http.Request, []*http.Request) error {
+				return http.ErrUseLastResponse
+			},
+		}
 	}
 	return &clientCredentialsAuthProvider{
 		tokenURL:     tokenURL,

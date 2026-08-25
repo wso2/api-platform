@@ -345,6 +345,73 @@ func TestAPIPortalService_CreateAPIPortal_EmptyURLRejected(t *testing.T) {
 	}
 }
 
+func TestAPIPortalService_CreateAPIPortal_STSTokenURL_Rejected(t *testing.T) {
+	// stsTokenUrl is the outbound target of a client_credentials request
+	// carrying clientSecret; input-time checks enforce the same shape rules
+	// as the portal URL (absolute, host, https, non-empty). Host-based
+	// egress controls (loopback / private / metadata literal blocks,
+	// DNS-based resolve-and-recheck) belong in an operator-aware shared
+	// outbound HTTP client; local / on-prem deployments legitimately need
+	// https://localhost or private-range addresses here.
+	cases := []struct {
+		name string
+		url  string
+	}{
+		{"empty", ""},
+		{"http_scheme", "http://sts.example.com/oauth2/token"},
+		{"missing_scheme", "sts.example.com/oauth2/token"},
+		{"file_scheme", "file:///etc/passwd"},
+		{"javascript_scheme", "javascript:alert(1)"},
+		{"scheme_only", "https://"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			svc := newTestAPIPortalService(t,
+				&mockAPIPortalRepository{},
+				&mockAPIPortalOrgRepository{result: &model.Organization{}},
+				&mockAPIPortalAuditRepository{},
+			)
+			_, err := svc.CreateAPIPortal(&CreateAPIPortalRequest{
+				Handle:   "acme",
+				Name:     "Acme",
+				URL:      "https://acme.example.com",
+				AuthType: constants.APIPortalAuthTypeOAuth2,
+				AuthConfig: map[string]interface{}{
+					"stsTokenUrl":  tc.url,
+					"clientId":     "abc",
+					"clientSecret": "s3cr3t",
+				},
+			}, "org-1", "user-1")
+			if err == nil || !apperror.ValidationFailed.Is(err) {
+				t.Errorf("want ValidationFailed for stsTokenUrl=%q, got %v", tc.url, err)
+			}
+		})
+	}
+}
+
+func TestAPIPortalService_CreateAPIPortal_STSTokenURL_Accepted(t *testing.T) {
+	// Positive control: a reachable-shaped https URL is accepted.
+	svc := newTestAPIPortalService(t,
+		&mockAPIPortalRepository{},
+		&mockAPIPortalOrgRepository{result: &model.Organization{}},
+		&mockAPIPortalAuditRepository{},
+	)
+	_, err := svc.CreateAPIPortal(&CreateAPIPortalRequest{
+		Handle:   "acme",
+		Name:     "Acme",
+		URL:      "https://acme.example.com",
+		AuthType: constants.APIPortalAuthTypeOAuth2,
+		AuthConfig: map[string]interface{}{
+			"stsTokenUrl":  "https://sts.example.com/oauth2/token",
+			"clientId":     "abc",
+			"clientSecret": "s3cr3t",
+		},
+	}, "org-1", "user-1")
+	if err != nil {
+		t.Fatalf("valid stsTokenUrl rejected: %v", err)
+	}
+}
+
 func TestAPIPortalService_UpdateAPIPortal_SwitchOAuth2ToLocal(t *testing.T) {
 	// Regression: switching authType from oauth2 to local must clear the stored
 	// oauth2 authConfig — otherwise the post-mutation validator rejects the

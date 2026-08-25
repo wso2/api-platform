@@ -250,6 +250,28 @@ func TestClientCredentialsAuthProvider_NonSuccessStatusReturnsError(t *testing.T
 	}
 }
 
+func TestClientCredentialsAuthProvider_DefaultClientRefusesRedirects(t *testing.T) {
+	// The default *http.Client the provider builds when caller passes hc=nil
+	// must NOT follow redirects. A 3xx returned by the STS on the token
+	// endpoint isn't a legitimate part of the client-credentials flow;
+	// following it would re-send client_id + client_secret to whatever host
+	// the redirect names. We treat the 3xx as a non-2xx and surface an
+	// error.
+	redirecting := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		http.Redirect(w, r, "https://elsewhere.example.com/oauth2/token", http.StatusFound)
+	}))
+	t.Cleanup(redirecting.Close)
+
+	p := newClientCredentialsAuthProvider(redirecting.URL, "id", "secret", nil)
+	_, err := p.AuthorizationHeader(context.Background())
+	if err == nil {
+		t.Fatal("expected error when STS returns a redirect; got nil (client followed the redirect)")
+	}
+	if !strings.Contains(err.Error(), "302") {
+		t.Errorf("error should surface the 3xx status code; got %v", err)
+	}
+}
+
 func TestClientCredentialsAuthProvider_ConcurrentCallsIssueSingleFetch(t *testing.T) {
 	sts := newSTSStub()
 	t.Cleanup(sts.Close)

@@ -66,6 +66,36 @@ func validateAPIPortalURL(raw string) (string, error) {
 	return u.String(), nil
 }
 
+// validateAPIPortalSTSTokenURL runs the same base checks as validateAPIPortalURL
+// on `authConfig.stsTokenUrl` — the target of the outbound `client_credentials`
+// token request that carries clientSecret. Empty is rejected because the
+// oauth2 grant needs an endpoint; a required-field check upstream also
+// enforces this, but keeping it here means callers see a clear message.
+//
+// Host-based restrictions (loopback / private / link-local / metadata
+// literals, DNS-based resolve-and-recheck) are intentionally NOT enforced
+// here — a legitimate local / on-prem deployment can have its STS at
+// https://localhost:9443 or a private-range address. Operator-aware egress
+// controls are planned as a shared outbound HTTP client feature; the same
+// deferral applies to `validateAPIPortalURL`.
+func validateAPIPortalSTSTokenURL(raw string) error {
+	trimmed := strings.TrimSpace(raw)
+	if trimmed == "" {
+		return apperror.ValidationFailed.New("The stsTokenUrl field is required.")
+	}
+	u, err := url.Parse(trimmed)
+	if err != nil {
+		return apperror.ValidationFailed.New("The stsTokenUrl field is not a valid URL.")
+	}
+	if !u.IsAbs() || u.Host == "" {
+		return apperror.ValidationFailed.New("The stsTokenUrl field must be an absolute URL with a host.")
+	}
+	if u.Scheme != "https" {
+		return apperror.ValidationFailed.New("The stsTokenUrl field must use the https scheme.")
+	}
+	return nil
+}
+
 // APIPortalService encapsulates business logic for the /api-portals resource.
 // The handler layer translates OpenAPI-generated request/response DTOs into
 // the service's own request structs so the service stays independent of the
@@ -144,6 +174,17 @@ func validateAPIPortalAuthConfig(authType string, cfg map[string]interface{}) er
 			if !allowed[k] {
 				return apperror.ValidationFailed.New(
 					fmt.Sprintf("authConfig field %q is not supported for authType %q.", k, authType))
+			}
+		}
+		// stsTokenUrl is the target of the outbound client_credentials
+		// request that carries clientSecret, so it gets a stricter shape
+		// check than a generic string. Ciphertext (already-encrypted, from
+		// a merge path) has never occupied this key — clientSecret is the
+		// only encrypted field — so the value here is a plaintext URL and
+		// the parse-and-check is safe. See validateAPIPortalSTSTokenURL.
+		if raw, ok := cfg[constants.APIPortalAuthConfigKeySTSTokenURL].(string); ok {
+			if err := validateAPIPortalSTSTokenURL(raw); err != nil {
+				return err
 			}
 		}
 		return nil
