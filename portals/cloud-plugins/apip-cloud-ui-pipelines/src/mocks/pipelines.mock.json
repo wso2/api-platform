@@ -1,0 +1,44 @@
+{
+  "environments": [
+    {
+      "id": "env-development",
+      "name": "Development",
+      "gateways": [{ "id": "gw-us-dataplane", "name": "Choreo Cloud US Dataplane" }]
+    },
+    {
+      "id": "env-production",
+      "name": "Production",
+      "critical": true,
+      "gateways": [{ "id": "gw-us-dataplane", "name": "Choreo Cloud US Dataplane" }]
+    },
+    {
+      "id": "env-foo",
+      "name": "foo",
+      "gateways": [{ "id": "gw-foo-primary", "name": "Foo Gateway" }]
+    },
+    {
+      "id": "env-foo2",
+      "name": "foo2",
+      "gateways": [
+        { "id": "gw-foo2-a", "name": "Foo2 Gateway A" },
+        { "id": "gw-foo2-b", "name": "Foo2 Gateway B" }
+      ]
+    },
+    {
+      "id": "env-foo3",
+      "name": "foo3",
+      "gateways": [{ "id": "gw-foo3-primary", "name": "Foo3 Gateway" }]
+    }
+  ],
+  "pipelines": [
+    {
+      "id": "pipeline-default-us-cdp-2",
+      "name": "Default US-CDP-2 Deployment Pipeline",
+      "isDefault": true,
+      "stages": [
+        { "environmentId": "env-development", "defaultGatewayId": "gw-us-dataplane" },
+        { "environmentId": "env-production", "defaultGatewayId": "gw-us-dataplane" }
+      ]
+    }
+  ]
+}
