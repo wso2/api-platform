@@ -220,14 +220,13 @@ func copyStringMap(m map[string]interface{}) map[string]interface{} {
 // Fields mirror the OpenAPI CreateApiPortalRequest but stay independent of the
 // generated types.
 type CreateAPIPortalRequest struct {
-	Handle         string
-	Name           string
-	Description    string
-	URL            string
-	WorkflowStatus string // optional; defaults to "pending"
-	AuthType       string
-	AuthConfig     map[string]interface{}
-	Metadata       map[string]interface{}
+	Handle      string
+	Name        string
+	Description string
+	URL         string
+	AuthType    string
+	AuthConfig  map[string]interface{}
+	Metadata    map[string]interface{}
 }
 
 // UpdateAPIPortalRequest carries mutable fields for a partial update. Pointer
@@ -244,19 +243,17 @@ type CreateAPIPortalRequest struct {
 // replaces the stored metadata. Callers that want a partial-update on metadata
 // should GET, modify, PUT the whole thing.
 type UpdateAPIPortalRequest struct {
-	Name           *string
-	Description    *string
-	URL            *string
-	WorkflowStatus *string
-	AuthType       *string
-	AuthConfig     map[string]interface{} // when nil, existing preserved; when non-nil, merged in
-	Metadata       map[string]interface{} // when nil, existing preserved; when non-nil, replaces
+	Name        *string
+	Description *string
+	URL         *string
+	AuthType    *string
+	AuthConfig  map[string]interface{} // when nil, existing preserved; when non-nil, merged in
+	Metadata    map[string]interface{} // when nil, existing preserved; when non-nil, replaces
 }
 
-// APIPortalListOptions bundles the pagination + filter inputs for List.
+// APIPortalListOptions bundles the pagination inputs for List.
 type APIPortalListOptions struct {
 	repository.ListOptions
-	WorkflowStatus *string
 }
 
 // APIPortalListResponse is the service-layer list result. The handler wraps
@@ -292,20 +289,12 @@ func (s *APIPortalService) CreateAPIPortal(req *CreateAPIPortalRequest, orgID, c
 		return nil, apperror.ValidationFailed.New(
 			fmt.Sprintf("The authType %q is not supported.", authType))
 	}
-	workflowStatus := strings.TrimSpace(req.WorkflowStatus)
-	if workflowStatus == "" {
-		workflowStatus = constants.APIPortalWorkflowStatusPending
-	} else if !constants.ValidAPIPortalCreateWorkflowStatuses[workflowStatus] {
-		return nil, apperror.ValidationFailed.New(
-			fmt.Sprintf("The workflowStatus %q is not supported on create.", workflowStatus))
-	}
 	portalURL, err := validateAPIPortalURL(req.URL)
 	if err != nil {
 		return nil, err
 	}
-	if workflowStatus == constants.APIPortalWorkflowStatusActive && portalURL == "" {
-		return nil, apperror.ValidationFailed.New(
-			"The workflowStatus cannot be active when url is empty.")
+	if portalURL == "" {
+		return nil, apperror.ValidationFailed.New("The url field is required.")
 	}
 	// Copy the incoming authConfig so we don't mutate the caller's map when we
 	// encrypt secret fields in place.
@@ -341,7 +330,7 @@ func (s *APIPortalService) CreateAPIPortal(req *CreateAPIPortalRequest, orgID, c
 		Name:           name,
 		Description:    strings.TrimSpace(req.Description),
 		URL:            portalURL,
-		WorkflowStatus: workflowStatus,
+		WorkflowStatus: constants.APIPortalWorkflowStatusActive,
 		AuthType:       authType,
 		AuthConfig:     authConfig,
 		Metadata:       req.Metadata,
@@ -391,23 +380,11 @@ func (s *APIPortalService) ListAPIPortals(orgID string, opts APIPortalListOption
 	if opts.Offset < 0 {
 		opts.Offset = 0
 	}
-	if opts.WorkflowStatus != nil {
-		trimmed := strings.TrimSpace(*opts.WorkflowStatus)
-		if trimmed == "" {
-			opts.WorkflowStatus = nil
-		} else if !constants.ValidAPIPortalWorkflowStatuses[trimmed] {
-			return nil, apperror.ValidationFailed.New(
-				fmt.Sprintf("The workflowStatus %q is not supported.", trimmed))
-		} else {
-			opts.WorkflowStatus = &trimmed
-		}
-	}
-
-	total, err := s.portalRepo.Count(orgID, opts.WorkflowStatus, opts.Search)
+	total, err := s.portalRepo.Count(orgID, opts.Search)
 	if err != nil {
 		return nil, err
 	}
-	page, err := s.portalRepo.ListPaginated(orgID, opts.WorkflowStatus, opts.ListOptions)
+	page, err := s.portalRepo.ListPaginated(orgID, opts.ListOptions)
 	if err != nil {
 		return nil, err
 	}
@@ -447,15 +424,10 @@ func (s *APIPortalService) UpdateAPIPortal(handle string, req *UpdateAPIPortalRe
 		if err != nil {
 			return nil, err
 		}
-		portal.URL = portalURL
-	}
-	if req.WorkflowStatus != nil {
-		ws := strings.TrimSpace(*req.WorkflowStatus)
-		if !constants.ValidAPIPortalWorkflowStatuses[ws] {
-			return nil, apperror.ValidationFailed.New(
-				fmt.Sprintf("The workflowStatus %q is not supported.", ws))
+		if portalURL == "" {
+			return nil, apperror.ValidationFailed.New("The url field cannot be empty.")
 		}
-		portal.WorkflowStatus = ws
+		portal.URL = portalURL
 	}
 	if req.AuthType != nil {
 		at := strings.TrimSpace(*req.AuthType)
@@ -491,14 +463,6 @@ func (s *APIPortalService) UpdateAPIPortal(handle string, req *UpdateAPIPortalRe
 	// Re-validate authConfig against the effective authType after all mutations.
 	if err := validateAPIPortalAuthConfig(portal.AuthType, portal.AuthConfig); err != nil {
 		return nil, err
-	}
-	// After applying all whitelisted mutations, enforce the cross-field rule:
-	// a portal cannot be in the active state without a URL. This catches both
-	// "set workflowStatus=active while url is empty" and "clear url while
-	// status is currently active".
-	if portal.WorkflowStatus == constants.APIPortalWorkflowStatusActive && portal.URL == "" {
-		return nil, apperror.ValidationFailed.New(
-			"The workflowStatus cannot be active when url is empty.")
 	}
 	portal.UpdatedBy = strings.TrimSpace(updatedBy)
 

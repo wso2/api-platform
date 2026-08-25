@@ -168,16 +168,11 @@ func (r *APIPortalRepo) GetByHandleAndOrgID(handle, orgUUID string) (*model.APIP
 	return portal, nil
 }
 
-// ListPaginated returns a page of API Portals scoped to the organization,
-// optionally filtered by workflow_status.
-func (r *APIPortalRepo) ListPaginated(orgUUID string, workflowStatus *string, opts ListOptions) ([]*model.APIPortal, error) {
+// ListPaginated returns a page of API Portals scoped to the organization.
+func (r *APIPortalRepo) ListPaginated(orgUUID string, opts ListOptions) ([]*model.APIPortal, error) {
 	var args []interface{}
 	conditions := []string{`organization_uuid = ?`}
 	args = append(args, orgUUID)
-	if workflowStatus != nil {
-		conditions = append(conditions, `workflow_status = ?`)
-		args = append(args, *workflowStatus)
-	}
 	if searchClause, searchArgs := handleSearchClause(opts.Search); searchClause != "" {
 		conditions = append(conditions, strings.TrimPrefix(searchClause, " AND "))
 		args = append(args, searchArgs...)
@@ -210,15 +205,11 @@ func (r *APIPortalRepo) ListPaginated(orgUUID string, workflowStatus *string, op
 	return portals, rows.Err()
 }
 
-// Count returns the total number of API Portals matching the filter, independent of pagination.
-func (r *APIPortalRepo) Count(orgUUID string, workflowStatus *string, search string) (int, error) {
+// Count returns the total number of API Portals matching the org (+ optional search), independent of pagination.
+func (r *APIPortalRepo) Count(orgUUID string, search string) (int, error) {
 	var args []interface{}
 	conditions := []string{`organization_uuid = ?`}
 	args = append(args, orgUUID)
-	if workflowStatus != nil {
-		conditions = append(conditions, `workflow_status = ?`)
-		args = append(args, *workflowStatus)
-	}
 	if searchClause, searchArgs := handleSearchClause(search); searchClause != "" {
 		conditions = append(conditions, strings.TrimPrefix(searchClause, " AND "))
 		args = append(args, searchArgs...)

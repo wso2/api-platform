@@ -120,15 +120,14 @@ func mustJSON(t *testing.T, v any) []byte {
 // Minimal response shapes for decoding — mirror the fields the handler emits.
 // Using a dedicated local shape avoids the pointer maze of api.ApiPortalResponse.
 type apiPortalResp struct {
-	Id             string                 `json:"id"`
-	Handle         string                 `json:"handle"`
-	Name           string                 `json:"name"`
-	Description    *string                `json:"description,omitempty"`
-	Url            *string                `json:"url,omitempty"`
-	WorkflowStatus string                 `json:"workflowStatus"`
-	AuthType       string                 `json:"authType"`
-	AuthConfig     map[string]interface{} `json:"authConfig,omitempty"`
-	Metadata       map[string]interface{} `json:"metadata,omitempty"`
+	Id          string                 `json:"id"`
+	Handle      string                 `json:"handle"`
+	Name        string                 `json:"name"`
+	Description *string                `json:"description,omitempty"`
+	Url         string                 `json:"url"`
+	AuthType    string                 `json:"authType"`
+	AuthConfig  map[string]interface{} `json:"authConfig,omitempty"`
+	Metadata    map[string]interface{} `json:"metadata,omitempty"`
 }
 
 type apiPortalListResp struct {
@@ -156,6 +155,7 @@ func TestAPIPortalHandler_Create_HappyPath(t *testing.T) {
 	body := mustJSON(t, map[string]any{
 		"name":     "Acme Portal",
 		"handle":   "acme",
+		"url":      "https://acme.example.com",
 		"authType": "local",
 		"metadata": map[string]any{"stsIssuer": "https://sts.example.com"},
 	})
@@ -175,7 +175,7 @@ func TestAPIPortalHandler_Create_HappyPath(t *testing.T) {
 		t.Fatalf("decode: %v", err)
 	}
 	if got.Id != "acme" || got.Handle != "acme" || got.Name != "Acme Portal" ||
-		got.AuthType != "local" || got.WorkflowStatus != "pending" {
+		got.AuthType != "local" || got.Url != "https://acme.example.com" {
 		t.Errorf("response fields wrong: %+v", got)
 	}
 	if got.Metadata["stsIssuer"] != "https://sts.example.com" {
@@ -234,6 +234,7 @@ func TestAPIPortalHandler_Create_MissingName(t *testing.T) {
 
 	body := mustJSON(t, map[string]any{
 		"handle":   "acme",
+		"url":      "https://acme.example.com",
 		"authType": "local",
 	})
 	req := apiPortalTestRequest(t, http.MethodPost, apiPortalTestBase, body)
@@ -245,47 +246,20 @@ func TestAPIPortalHandler_Create_MissingName(t *testing.T) {
 	}
 }
 
-func TestAPIPortalHandler_Create_WithActiveStatus(t *testing.T) {
+func TestAPIPortalHandler_Create_MissingURL(t *testing.T) {
 	r, _, cleanup := setupAPIPortalHandlerEnv(t)
 	t.Cleanup(cleanup)
 
 	body := mustJSON(t, map[string]any{
-		"name":           "Acme Portal",
-		"handle":         "acme-active",
-		"authType":       "local",
-		"url":            "https://acme.example.com",
-		"workflowStatus": "active",
-	})
-	req := apiPortalTestRequest(t, http.MethodPost, apiPortalTestBase, body)
-	rec := httptest.NewRecorder()
-	r.ServeHTTP(rec, req)
-	if rec.Code != http.StatusCreated {
-		t.Fatalf("Create: want 201, got %d: %s", rec.Code, rec.Body.String())
-	}
-	var got apiPortalResp
-	if err := json.Unmarshal(rec.Body.Bytes(), &got); err != nil {
-		t.Fatalf("decode: %v", err)
-	}
-	if got.WorkflowStatus != "active" {
-		t.Errorf("want active, got %q", got.WorkflowStatus)
-	}
-}
-
-func TestAPIPortalHandler_Create_ActiveWithoutURL(t *testing.T) {
-	r, _, cleanup := setupAPIPortalHandlerEnv(t)
-	t.Cleanup(cleanup)
-
-	body := mustJSON(t, map[string]any{
-		"name":           "Acme Portal",
-		"handle":         "acme-bad",
-		"authType":       "local",
-		"workflowStatus": "active",
+		"name":     "Acme Portal",
+		"handle":   "acme-nourl",
+		"authType": "local",
 	})
 	req := apiPortalTestRequest(t, http.MethodPost, apiPortalTestBase, body)
 	rec := httptest.NewRecorder()
 	r.ServeHTTP(rec, req)
 	if rec.Code != http.StatusBadRequest {
-		t.Fatalf("Create: want 400 for active without url, got %d: %s", rec.Code, rec.Body.String())
+		t.Fatalf("Create: want 400 for missing url, got %d: %s", rec.Code, rec.Body.String())
 	}
 }
 
@@ -293,7 +267,12 @@ func TestAPIPortalHandler_Create_HandleConflict(t *testing.T) {
 	r, _, cleanup := setupAPIPortalHandlerEnv(t)
 	t.Cleanup(cleanup)
 
-	body := mustJSON(t, map[string]any{"name": "a", "handle": "dup", "authType": "local"})
+	body := mustJSON(t, map[string]any{
+		"name":     "a",
+		"handle":   "dup",
+		"url":      "https://a.example.com",
+		"authType": "local",
+	})
 	req := apiPortalTestRequest(t, http.MethodPost, apiPortalTestBase, body)
 	rec := httptest.NewRecorder()
 	r.ServeHTTP(rec, req)
@@ -321,7 +300,12 @@ func TestAPIPortalHandler_Create_MissingOrg(t *testing.T) {
 	r, _, cleanup := setupAPIPortalHandlerEnv(t)
 	t.Cleanup(cleanup)
 
-	body := mustJSON(t, map[string]any{"name": "a", "handle": "acme", "authType": "local"})
+	body := mustJSON(t, map[string]any{
+		"name":     "a",
+		"handle":   "acme",
+		"url":      "https://acme.example.com",
+		"authType": "local",
+	})
 	// Deliberately DO NOT set X-Test-Org; expect 401 from the handler's org guard.
 	req := httptest.NewRequest(http.MethodPost, apiPortalTestBase, bytes.NewReader(body))
 	req.Header.Set("Content-Type", "application/json")
@@ -340,7 +324,12 @@ func TestAPIPortalHandler_Get_HappyPath(t *testing.T) {
 	t.Cleanup(cleanup)
 
 	// Seed via POST.
-	body := mustJSON(t, map[string]any{"name": "Acme", "handle": "acme", "authType": "local"})
+	body := mustJSON(t, map[string]any{
+		"name":     "Acme",
+		"handle":   "acme",
+		"url":      "https://acme.example.com",
+		"authType": "local",
+	})
 	rec := httptest.NewRecorder()
 	r.ServeHTTP(rec, apiPortalTestRequest(t, http.MethodPost, apiPortalTestBase, body))
 	if rec.Code != http.StatusCreated {
@@ -387,7 +376,12 @@ func TestAPIPortalHandler_List_HappyPath(t *testing.T) {
 
 	// Seed 3 portals.
 	for _, h := range []string{"one", "two", "three"} {
-		body := mustJSON(t, map[string]any{"name": "P " + h, "handle": h, "authType": "local"})
+		body := mustJSON(t, map[string]any{
+			"name":     "P " + h,
+			"handle":   h,
+			"url":      "https://" + h + ".example.com",
+			"authType": "local",
+		})
 		rec := httptest.NewRecorder()
 		r.ServeHTTP(rec, apiPortalTestRequest(t, http.MethodPost, apiPortalTestBase, body))
 		if rec.Code != http.StatusCreated {
@@ -412,39 +406,6 @@ func TestAPIPortalHandler_List_HappyPath(t *testing.T) {
 	}
 }
 
-func TestAPIPortalHandler_List_WorkflowStatusFilter(t *testing.T) {
-	r, db, cleanup := setupAPIPortalHandlerEnv(t)
-	t.Cleanup(cleanup)
-
-	// Seed 3 portals (handle min length is 3). WorkflowStatus can't be set on
-	// Create body (it defaults to "pending" server-side), so bump one row via
-	// SQL directly to exercise the status filter.
-	for _, h := range []string{"aaa", "bbb", "ccc"} {
-		body := mustJSON(t, map[string]any{"name": "P " + h, "handle": h, "authType": "local"})
-		rec := httptest.NewRecorder()
-		r.ServeHTTP(rec, apiPortalTestRequest(t, http.MethodPost, apiPortalTestBase, body))
-		if rec.Code != http.StatusCreated {
-			t.Fatalf("seed %s: %d %s", h, rec.Code, rec.Body.String())
-		}
-	}
-	if _, err := db.Exec(`UPDATE api_portals SET workflow_status = 'active' WHERE handle = 'ccc'`); err != nil {
-		t.Fatalf("bump status: %v", err)
-	}
-
-	rec := httptest.NewRecorder()
-	r.ServeHTTP(rec, apiPortalTestRequest(t, http.MethodGet, apiPortalTestBase+"?workflowStatus=active", nil))
-	if rec.Code != http.StatusOK {
-		t.Fatalf("List: want 200, got %d: %s", rec.Code, rec.Body.String())
-	}
-	var got apiPortalListResp
-	if err := json.Unmarshal(rec.Body.Bytes(), &got); err != nil {
-		t.Fatalf("decode: %v", err)
-	}
-	if got.Count != 1 || got.List[0].Handle != "ccc" {
-		t.Errorf("filter miss: %+v", got)
-	}
-}
-
 // --- UPDATE ---
 
 func TestAPIPortalHandler_Update_HappyPath(t *testing.T) {
@@ -452,7 +413,12 @@ func TestAPIPortalHandler_Update_HappyPath(t *testing.T) {
 	t.Cleanup(cleanup)
 
 	// Seed.
-	body := mustJSON(t, map[string]any{"name": "old", "handle": "acme", "authType": "local"})
+	body := mustJSON(t, map[string]any{
+		"name":     "old",
+		"handle":   "acme",
+		"url":      "https://acme.example.com",
+		"authType": "local",
+	})
 	rec := httptest.NewRecorder()
 	r.ServeHTTP(rec, apiPortalTestRequest(t, http.MethodPost, apiPortalTestBase, body))
 	if rec.Code != http.StatusCreated {
@@ -504,7 +470,12 @@ func TestAPIPortalHandler_Delete_HappyPath(t *testing.T) {
 	r, _, cleanup := setupAPIPortalHandlerEnv(t)
 	t.Cleanup(cleanup)
 
-	body := mustJSON(t, map[string]any{"name": "x", "handle": "gone", "authType": "local"})
+	body := mustJSON(t, map[string]any{
+		"name":     "x",
+		"handle":   "gone",
+		"url":      "https://gone.example.com",
+		"authType": "local",
+	})
 	rec := httptest.NewRecorder()
 	r.ServeHTTP(rec, apiPortalTestRequest(t, http.MethodPost, apiPortalTestBase, body))
 	if rec.Code != http.StatusCreated {

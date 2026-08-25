@@ -207,28 +207,15 @@ var ValidGatewayTokenStatuses = map[string]bool{
 	GatewayTokenStatusRevoked: true,
 }
 
-// API Portal workflow status constants
+// API Portal workflow status constants. The column exists on api_portals for
+// future extensibility but is not surfaced on the wire in the OSS offering:
+// OSS registers a portal that's already running, so every OSS row is created
+// as APIPortalWorkflowStatusActive and never mutated by clients.
 const (
 	APIPortalWorkflowStatusPending = "pending"
 	APIPortalWorkflowStatusActive  = "active"
 	APIPortalWorkflowStatusFailed  = "failed"
 )
-
-// ValidAPIPortalWorkflowStatuses holds accepted values for api_portals.workflow_status
-var ValidAPIPortalWorkflowStatuses = map[string]bool{
-	APIPortalWorkflowStatusPending: true,
-	APIPortalWorkflowStatusActive:  true,
-	APIPortalWorkflowStatusFailed:  true,
-}
-
-// ValidAPIPortalCreateWorkflowStatuses holds accepted values for workflow_status
-// at Create time. `failed` is intentionally excluded — a portal is never
-// created in a failed state; that state is only reachable via a subsequent
-// update once provisioning or a health check reports failure.
-var ValidAPIPortalCreateWorkflowStatuses = map[string]bool{
-	APIPortalWorkflowStatusPending: true,
-	APIPortalWorkflowStatusActive:  true,
-}
 
 // API Portal authConfig field-name constants used by Create/Update validation
 // (required-field check) and by ClientCredentialsAuthProvider (payload build).

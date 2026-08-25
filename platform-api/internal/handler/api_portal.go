@@ -70,13 +70,10 @@ func (h *APIPortalHandler) CreateAPIPortal(w http.ResponseWriter, r *http.Reques
 		Handle:      strings.TrimSpace(req.Handle),
 		Name:        strings.TrimSpace(req.Name),
 		Description: deref(req.Description),
-		URL:         deref(req.Url),
+		URL:         req.Url,
 		AuthType:    string(req.AuthType),
 		AuthConfig:  authConfigStructToMap(req.AuthConfig),
 		Metadata:    derefMetadata(req.Metadata),
-	}
-	if req.WorkflowStatus != nil {
-		svcReq.WorkflowStatus = string(*req.WorkflowStatus)
 	}
 	portal, err := h.svc.CreateAPIPortal(svcReq, orgID, createdBy)
 	if err != nil {
@@ -116,9 +113,6 @@ func (h *APIPortalHandler) ListAPIPortals(w http.ResponseWriter, r *http.Request
 	}
 
 	opts := service.APIPortalListOptions{ListOptions: parseListOptions(r)}
-	if ws := strings.TrimSpace(r.URL.Query().Get("workflowStatus")); ws != "" {
-		opts.WorkflowStatus = &ws
-	}
 
 	resp, err := h.svc.ListAPIPortals(orgID, opts)
 	if err != nil {
@@ -156,10 +150,6 @@ func (h *APIPortalHandler) UpdateAPIPortal(w http.ResponseWriter, r *http.Reques
 		URL:         req.Url,
 		AuthConfig:  authConfigStructToMap(req.AuthConfig),
 		Metadata:    derefMetadata(req.Metadata),
-	}
-	if req.WorkflowStatus != nil {
-		v := string(*req.WorkflowStatus)
-		svcReq.WorkflowStatus = &v
 	}
 	if req.AuthType != nil {
 		v := string(*req.AuthType)
@@ -298,21 +288,17 @@ func modelToAPIPortalResponse(p *model.APIPortal) *api.ApiPortalResponse {
 	updatedAt := p.UpdatedAt
 
 	resp := &api.ApiPortalResponse{
-		Id:             &id,
-		Handle:         &handle,
-		Name:           p.Name,
-		AuthType:       api.ApiPortalResponseAuthType(p.AuthType),
-		WorkflowStatus: api.ApiPortalResponseWorkflowStatus(p.WorkflowStatus),
-		CreatedAt:      &createdAt,
-		UpdatedAt:      &updatedAt,
+		Id:        &id,
+		Handle:    &handle,
+		Name:      p.Name,
+		Url:       p.URL,
+		AuthType:  api.ApiPortalResponseAuthType(p.AuthType),
+		CreatedAt: &createdAt,
+		UpdatedAt: &updatedAt,
 	}
 	if p.Description != "" {
 		desc := p.Description
 		resp.Description = &desc
-	}
-	if p.URL != "" {
-		url := p.URL
-		resp.Url = &url
 	}
 	if p.AuthConfig != nil {
 		resp.AuthConfig = mapToAuthConfigStruct(p.AuthConfig)
@@ -326,20 +312,16 @@ func modelToAPIPortalResponse(p *model.APIPortal) *api.ApiPortalResponse {
 
 func modelToAPIPortalListItem(p *model.APIPortal) api.ApiPortalListItem {
 	item := api.ApiPortalListItem{
-		Id:             p.Handle,
-		Handle:         p.Handle,
-		Name:           p.Name,
-		AuthType:       api.ApiPortalListItemAuthType(p.AuthType),
-		WorkflowStatus: api.ApiPortalListItemWorkflowStatus(p.WorkflowStatus),
-		CreatedAt:      p.CreatedAt,
+		Id:        p.Handle,
+		Handle:    p.Handle,
+		Name:      p.Name,
+		Url:       p.URL,
+		AuthType:  api.ApiPortalListItemAuthType(p.AuthType),
+		CreatedAt: p.CreatedAt,
 	}
 	if p.Description != "" {
 		desc := p.Description
 		item.Description = &desc
-	}
-	if p.URL != "" {
-		url := p.URL
-		item.Url = &url
 	}
 	return item
 }

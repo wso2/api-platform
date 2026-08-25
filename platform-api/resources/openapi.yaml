@@ -4514,7 +4514,6 @@ paths:
         - $ref: '#/components/parameters/sortBy-Q'
         - $ref: '#/components/parameters/sortOrder-Q'
         - $ref: '#/components/parameters/query-Q'
-        - $ref: '#/components/parameters/apiPortalWorkflowStatus-Q'
       responses:
         '200':
           description: API Portals retrieved successfully
@@ -8869,7 +8868,7 @@ components:
         - id
         - name
         - handle
-        - workflowStatus
+        - url
         - authType
         - createdAt
         - updatedAt
@@ -8903,19 +8902,8 @@ components:
         url:
           type: string
           format: uri
-          nullable: true
-          description: >-
-            Public URL of the API Portal. May be null while the portal is being
-            provisioned; populated once the instance is reachable.
+          description: Public URL of the API Portal. Operator-supplied.
           example: "https://acme-portal.example.com"
-        workflowStatus:
-          type: string
-          enum: [pending, active, failed]
-          description: >-
-            Lifecycle state. `pending` — portal is being provisioned or activated.
-            `active` — portal is reachable and functional. `failed` — provisioning
-            or a subsequent health check failed.
-          example: "active"
         authType:
           type: string
           enum: [local, oauth2]
@@ -8946,7 +8934,7 @@ components:
         - id
         - name
         - handle
-        - workflowStatus
+        - url
         - authType
         - createdAt
       properties:
@@ -8967,10 +8955,6 @@ components:
         url:
           type: string
           format: uri
-          nullable: true
-        workflowStatus:
-          type: string
-          enum: [pending, active, failed]
         authType:
           type: string
           enum: [local, oauth2]
@@ -8984,6 +8968,7 @@ components:
       required:
         - name
         - handle
+        - url
         - authType
       properties:
         name:
@@ -9003,22 +8988,10 @@ components:
         url:
           type: string
           format: uri
-          nullable: true
-          description: >-
-            Public URL of an existing API Portal to register. Omit to have a new
-            portal provisioned; the URL will be populated once the instance is
-            reachable.
+          description: Public URL of the API Portal to register. Operator-supplied.
         authType:
           type: string
           enum: [local, oauth2]
-        workflowStatus:
-          type: string
-          enum: [pending, active]
-          description: >-
-            Optional. Defaults to `pending` when omitted. Setting `active`
-            requires a non-empty `url`; the request is rejected otherwise.
-            `failed` cannot be set on create — a portal is never created in a
-            failed state.
         authConfig:
           $ref: '#/components/schemas/ApiPortalAuthConfig'
         metadata:
@@ -9040,10 +9013,6 @@ components:
         url:
           type: string
           format: uri
-          nullable: true
-        workflowStatus:
-          type: string
-          enum: [pending, active, failed]
         authType:
           type: string
           enum: [local, oauth2]
@@ -9424,16 +9393,6 @@ components:
         minLength: 3
         maxLength: 40
         example: "acme-portal"
-
-    apiPortalWorkflowStatus-Q:
-      name: workflowStatus
-      in: query
-      required: false
-      description: Filter API Portals by lifecycle state.
-      schema:
-        type: string
-        enum: [pending, active, failed]
-        example: "active"
 
 tags:
   - name: Health

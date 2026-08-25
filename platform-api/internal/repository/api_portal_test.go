@@ -275,7 +275,7 @@ func TestAPIPortalRepo_ListPaginated(t *testing.T) {
 	}
 
 	// Page 1: limit 2 → newest first ("ee", "dd").
-	page1, err := repo.ListPaginated(orgUUID, nil, ListOptions{Limit: 2, Offset: 0})
+	page1, err := repo.ListPaginated(orgUUID, ListOptions{Limit: 2, Offset: 0})
 	if err != nil {
 		t.Fatalf("ListPaginated page 1: %v", err)
 	}
@@ -287,7 +287,7 @@ func TestAPIPortalRepo_ListPaginated(t *testing.T) {
 	}
 
 	// Page 2: offset 2, limit 2 → "cc", "bb".
-	page2, err := repo.ListPaginated(orgUUID, nil, ListOptions{Limit: 2, Offset: 2})
+	page2, err := repo.ListPaginated(orgUUID, ListOptions{Limit: 2, Offset: 2})
 	if err != nil {
 		t.Fatalf("ListPaginated page 2: %v", err)
 	}
@@ -296,56 +296,12 @@ func TestAPIPortalRepo_ListPaginated(t *testing.T) {
 	}
 
 	// Count without filter.
-	total, err := repo.Count(orgUUID, nil, "")
+	total, err := repo.Count(orgUUID, "")
 	if err != nil {
 		t.Fatalf("Count: %v", err)
 	}
 	if total != 5 {
 		t.Errorf("Count: want 5, got %d", total)
-	}
-}
-
-func TestAPIPortalRepo_ListPaginated_WorkflowStatusFilter(t *testing.T) {
-	db, cleanup := setupTestDB(t)
-	defer cleanup()
-
-	const orgUUID = "org-portal-status"
-	createTestAPIPortalOrg(t, db, orgUUID)
-
-	repo := NewAPIPortalRepo(db)
-	// 2 pending, 1 active.
-	p1 := newTestAPIPortal("p1", orgUUID, "p1")
-	p1.WorkflowStatus = constants.APIPortalWorkflowStatusPending
-	if err := repo.Create(p1); err != nil {
-		t.Fatalf("Create p1: %v", err)
-	}
-	p2 := newTestAPIPortal("p2", orgUUID, "p2")
-	p2.WorkflowStatus = constants.APIPortalWorkflowStatusPending
-	if err := repo.Create(p2); err != nil {
-		t.Fatalf("Create p2: %v", err)
-	}
-	p3 := newTestAPIPortal("p3", orgUUID, "p3")
-	p3.WorkflowStatus = constants.APIPortalWorkflowStatusActive
-	if err := repo.Create(p3); err != nil {
-		t.Fatalf("Create p3: %v", err)
-	}
-
-	active := constants.APIPortalWorkflowStatusActive
-	got, err := repo.ListPaginated(orgUUID, &active, ListOptions{Limit: 10, Offset: 0})
-	if err != nil {
-		t.Fatalf("ListPaginated: %v", err)
-	}
-	if len(got) != 1 || got[0].Handle != "p3" {
-		t.Errorf("want 1 active portal (p3); got %+v", got)
-	}
-
-	// Count with same filter must also reflect it (pagination-total consistency).
-	total, err := repo.Count(orgUUID, &active, "")
-	if err != nil {
-		t.Fatalf("Count: %v", err)
-	}
-	if total != 1 {
-		t.Errorf("filtered count: want 1, got %d", total)
 	}
 }
 
@@ -362,7 +318,7 @@ func TestAPIPortalRepo_ListPaginated_Search(t *testing.T) {
 			t.Fatalf("Create %s: %v", h, err)
 		}
 	}
-	got, err := repo.ListPaginated(orgUUID, nil, ListOptions{Limit: 10, Offset: 0, Search: "acme"})
+	got, err := repo.ListPaginated(orgUUID, ListOptions{Limit: 10, Offset: 0, Search: "acme"})
 	if err != nil {
 		t.Fatalf("ListPaginated: %v", err)
 	}

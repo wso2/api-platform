@@ -301,13 +301,10 @@ type APIPortalRepository interface {
 	Create(portal *model.APIPortal) error
 	GetByUUID(portalID, orgUUID string) (*model.APIPortal, error)
 	GetByHandleAndOrgID(handle, orgUUID string) (*model.APIPortal, error)
-	// ListPaginated returns a page of API Portals scoped to the organization,
-	// optionally filtered by workflow_status. When workflowStatus is nil, all
-	// statuses are included.
-	ListPaginated(orgUUID string, workflowStatus *string, opts ListOptions) ([]*model.APIPortal, error)
-	// Count returns the total number of matching API Portals independent of
-	// pagination. workflowStatus follows the same rules as ListPaginated.
-	Count(orgUUID string, workflowStatus *string, search string) (int, error)
+	// ListPaginated returns a page of API Portals scoped to the organization.
+	ListPaginated(orgUUID string, opts ListOptions) ([]*model.APIPortal, error)
+	// Count returns the total number of matching API Portals independent of pagination.
+	Count(orgUUID string, search string) (int, error)
 	Update(portal *model.APIPortal) error
 	Delete(portalID, orgUUID string) error
 	Exists(handle, orgUUID string) (bool, error)

@@ -35,24 +35,10 @@ const (
 	ApiPortalListItemAuthTypeOauth2 ApiPortalListItemAuthType = "oauth2"
 )
 
-// Defines values for ApiPortalListItemWorkflowStatus.
-const (
-	ApiPortalListItemWorkflowStatusActive  ApiPortalListItemWorkflowStatus = "active"
-	ApiPortalListItemWorkflowStatusFailed  ApiPortalListItemWorkflowStatus = "failed"
-	ApiPortalListItemWorkflowStatusPending ApiPortalListItemWorkflowStatus = "pending"
-)
-
 // Defines values for ApiPortalResponseAuthType.
 const (
 	ApiPortalResponseAuthTypeLocal  ApiPortalResponseAuthType = "local"
 	ApiPortalResponseAuthTypeOauth2 ApiPortalResponseAuthType = "oauth2"
-)
-
-// Defines values for ApiPortalResponseWorkflowStatus.
-const (
-	ApiPortalResponseWorkflowStatusActive  ApiPortalResponseWorkflowStatus = "active"
-	ApiPortalResponseWorkflowStatusFailed  ApiPortalResponseWorkflowStatus = "failed"
-	ApiPortalResponseWorkflowStatusPending ApiPortalResponseWorkflowStatus = "pending"
 )
 
 // Defines values for ApplicationAssociationSelectorKind.
@@ -81,12 +67,6 @@ const (
 const (
 	CreateApiPortalRequestAuthTypeLocal  CreateApiPortalRequestAuthType = "local"
 	CreateApiPortalRequestAuthTypeOauth2 CreateApiPortalRequestAuthType = "oauth2"
-)
-
-// Defines values for CreateApiPortalRequestWorkflowStatus.
-const (
-	CreateApiPortalRequestWorkflowStatusActive  CreateApiPortalRequestWorkflowStatus = "active"
-	CreateApiPortalRequestWorkflowStatusPending CreateApiPortalRequestWorkflowStatus = "pending"
 )
 
 // Defines values for CreateGatewayRequestFunctionalityType.
@@ -197,9 +177,9 @@ const (
 
 // Defines values for MCPProxyListItemStatus.
 const (
-	MCPProxyListItemStatusDeployed MCPProxyListItemStatus = "deployed"
-	MCPProxyListItemStatusFailed   MCPProxyListItemStatus = "failed"
-	MCPProxyListItemStatusPending  MCPProxyListItemStatus = "pending"
+	Deployed MCPProxyListItemStatus = "deployed"
+	Failed   MCPProxyListItemStatus = "failed"
+	Pending  MCPProxyListItemStatus = "pending"
 )
 
 // Defines values for OperationPolicyPathMethods.
@@ -357,13 +337,6 @@ const (
 	UpdateApiPortalRequestAuthTypeOauth2 UpdateApiPortalRequestAuthType = "oauth2"
 )
 
-// Defines values for UpdateApiPortalRequestWorkflowStatus.
-const (
-	UpdateApiPortalRequestWorkflowStatusActive  UpdateApiPortalRequestWorkflowStatus = "active"
-	UpdateApiPortalRequestWorkflowStatusFailed  UpdateApiPortalRequestWorkflowStatus = "failed"
-	UpdateApiPortalRequestWorkflowStatusPending UpdateApiPortalRequestWorkflowStatus = "pending"
-)
-
 // Defines values for UpstreamAuthType.
 const (
 	ApiKey UpstreamAuthType = "api-key"
@@ -382,16 +355,9 @@ const (
 
 // Defines values for UserAPIKeyItemStatus.
 const (
-	UserAPIKeyItemStatusActive  UserAPIKeyItemStatus = "active"
-	UserAPIKeyItemStatusExpired UserAPIKeyItemStatus = "expired"
-	UserAPIKeyItemStatusRevoked UserAPIKeyItemStatus = "revoked"
-)
-
-// Defines values for ApiPortalWorkflowStatusQ.
-const (
-	ApiPortalWorkflowStatusQActive  ApiPortalWorkflowStatusQ = "active"
-	ApiPortalWorkflowStatusQFailed  ApiPortalWorkflowStatusQ = "failed"
-	ApiPortalWorkflowStatusQPending ApiPortalWorkflowStatusQ = "pending"
+	Active  UserAPIKeyItemStatus = "active"
+	Expired UserAPIKeyItemStatus = "expired"
+	Revoked UserAPIKeyItemStatus = "revoked"
 )
 
 // Defines values for DeploymentStatusQ.
@@ -426,13 +392,6 @@ const (
 const (
 	ListApiPortalsParamsSortOrderAsc  ListApiPortalsParamsSortOrder = "asc"
 	ListApiPortalsParamsSortOrderDesc ListApiPortalsParamsSortOrder = "desc"
-)
-
-// Defines values for ListApiPortalsParamsWorkflowStatus.
-const (
-	ListApiPortalsParamsWorkflowStatusActive  ListApiPortalsParamsWorkflowStatus = "active"
-	ListApiPortalsParamsWorkflowStatusFailed  ListApiPortalsParamsWorkflowStatus = "failed"
-	ListApiPortalsParamsWorkflowStatusPending ListApiPortalsParamsWorkflowStatus = "pending"
 )
 
 // Defines values for ListApplicationsParamsSortBy.
@@ -643,21 +602,17 @@ type ApiPortalAuthConfig struct {
 
 // ApiPortalListItem Lightweight projection returned in collection responses (excludes the `config` blob).
 type ApiPortalListItem struct {
-	AuthType       ApiPortalListItemAuthType       `binding:"required" json:"authType" yaml:"authType"`
-	CreatedAt      time.Time                       `binding:"required" json:"createdAt" yaml:"createdAt"`
-	Description    *string                         `json:"description" yaml:"description"`
-	Handle         string                          `binding:"required" json:"handle" yaml:"handle"`
-	Id             string                          `binding:"required" json:"id" yaml:"id"`
-	Name           string                          `binding:"required" json:"name" yaml:"name"`
-	Url            *string                         `json:"url" yaml:"url"`
-	WorkflowStatus ApiPortalListItemWorkflowStatus `binding:"required" json:"workflowStatus" yaml:"workflowStatus"`
+	AuthType    ApiPortalListItemAuthType `binding:"required" json:"authType" yaml:"authType"`
+	CreatedAt   time.Time                 `binding:"required" json:"createdAt" yaml:"createdAt"`
+	Description *string                   `json:"description" yaml:"description"`
+	Handle      string                    `binding:"required" json:"handle" yaml:"handle"`
+	Id          string                    `binding:"required" json:"id" yaml:"id"`
+	Name        string                    `binding:"required" json:"name" yaml:"name"`
+	Url         string                    `binding:"required" json:"url" yaml:"url"`
 }
 
 // ApiPortalListItemAuthType defines model for ApiPortalListItem.AuthType.
 type ApiPortalListItemAuthType string
-
-// ApiPortalListItemWorkflowStatus defines model for ApiPortalListItem.WorkflowStatus.
-type ApiPortalListItemWorkflowStatus string
 
 // ApiPortalListResponse defines model for ApiPortalListResponse.
 type ApiPortalListResponse struct {
@@ -698,18 +653,12 @@ type ApiPortalResponse struct {
 	Name      string     `binding:"required" json:"name" yaml:"name"`
 	UpdatedAt *time.Time `binding:"required" json:"updatedAt,omitempty" yaml:"updatedAt,omitempty"`
 
-	// Url Public URL of the API Portal. May be null while the portal is being provisioned; populated once the instance is reachable.
-	Url *string `json:"url" yaml:"url"`
-
-	// WorkflowStatus Lifecycle state. `pending` — portal is being provisioned or activated. `active` — portal is reachable and functional. `failed` — provisioning or a subsequent health check failed.
-	WorkflowStatus ApiPortalResponseWorkflowStatus `binding:"required" json:"workflowStatus" yaml:"workflowStatus"`
+	// Url Public URL of the API Portal. Operator-supplied.
+	Url string `binding:"required" json:"url" yaml:"url"`
 }
 
 // ApiPortalResponseAuthType Determines how Platform API authenticates to the portal's admin API and selects the shape of the `config` object.
 type ApiPortalResponseAuthType string
-
-// ApiPortalResponseWorkflowStatus Lifecycle state. `pending` — portal is being provisioned or activated. `active` — portal is reachable and functional. `failed` — provisioning or a subsequent health check failed.
-type ApiPortalResponseWorkflowStatus string
 
 // Application defines model for Application.
 type Application struct {
@@ -902,18 +851,12 @@ type CreateApiPortalRequest struct {
 	Metadata *ApiPortalMetadata `json:"metadata,omitempty" yaml:"metadata,omitempty"`
 	Name     string             `binding:"required" json:"name" yaml:"name"`
 
-	// Url Public URL of an existing API Portal to register. Omit to have a new portal provisioned; the URL will be populated once the instance is reachable.
-	Url *string `json:"url" yaml:"url"`
-
-	// WorkflowStatus Optional. Defaults to `pending` when omitted. Setting `active` requires a non-empty `url`; the request is rejected otherwise. `failed` cannot be set on create — a portal is never created in a failed state.
-	WorkflowStatus *CreateApiPortalRequestWorkflowStatus `json:"workflowStatus,omitempty" yaml:"workflowStatus,omitempty"`
+	// Url Public URL of the API Portal to register. Operator-supplied.
+	Url string `binding:"required" json:"url" yaml:"url"`
 }
 
 // CreateApiPortalRequestAuthType defines model for CreateApiPortalRequest.AuthType.
 type CreateApiPortalRequestAuthType string
-
-// CreateApiPortalRequestWorkflowStatus Optional. Defaults to `pending` when omitted. Setting `active` requires a non-empty `url`; the request is rejected otherwise. `failed` cannot be set on create — a portal is never created in a failed state.
-type CreateApiPortalRequestWorkflowStatus string
 
 // CreateApplicationRequest Request body for creating an application.
 type CreateApplicationRequest struct {
@@ -2759,17 +2702,13 @@ type UpdateApiPortalRequest struct {
 	Description *string                         `json:"description" yaml:"description"`
 
 	// Metadata Free-form pass-through metadata for the portal pod (e.g. cloud-side OIDC endpoints the portal uses for consumer login). Platform-API stores and returns this as-is; it is not consumed by the outbound authentication path.
-	Metadata       *ApiPortalMetadata                    `json:"metadata,omitempty" yaml:"metadata,omitempty"`
-	Name           *string                               `json:"name,omitempty" yaml:"name,omitempty"`
-	Url            *string                               `json:"url" yaml:"url"`
-	WorkflowStatus *UpdateApiPortalRequestWorkflowStatus `json:"workflowStatus,omitempty" yaml:"workflowStatus,omitempty"`
+	Metadata *ApiPortalMetadata `json:"metadata,omitempty" yaml:"metadata,omitempty"`
+	Name     *string            `json:"name,omitempty" yaml:"name,omitempty"`
+	Url      *string            `json:"url,omitempty" yaml:"url,omitempty"`
 }
 
 // UpdateApiPortalRequestAuthType defines model for UpdateApiPortalRequest.AuthType.
 type UpdateApiPortalRequestAuthType string
-
-// UpdateApiPortalRequestWorkflowStatus defines model for UpdateApiPortalRequest.WorkflowStatus.
-type UpdateApiPortalRequestWorkflowStatus string
 
 // Upstream Upstream backend configuration with main and sandbox endpoints
 type Upstream struct {
@@ -2878,9 +2817,6 @@ type ApiId = string
 // ApiPortalId defines model for apiPortalId.
 type ApiPortalId = string
 
-// ApiPortalWorkflowStatusQ defines model for apiPortalWorkflowStatus-Q.
-type ApiPortalWorkflowStatusQ string
-
 // AppId defines model for appId.
 type AppId = string
 
@@ -2972,9 +2908,6 @@ type ListApiPortalsParams struct {
 
 	// Query Case-insensitive substring filter matched against the resource id (handle).
 	Query *QueryQ `form:"query,omitempty" json:"query,omitempty" yaml:"query,omitempty"`
-
-	// WorkflowStatus Filter API Portals by lifecycle state.
-	WorkflowStatus *ListApiPortalsParamsWorkflowStatus `form:"workflowStatus,omitempty" json:"workflowStatus,omitempty" yaml:"workflowStatus,omitempty"`
 }
 
 // ListApiPortalsParamsSortBy defines parameters for ListApiPortals.
@@ -2982,9 +2915,6 @@ type ListApiPortalsParamsSortBy string
 
 // ListApiPortalsParamsSortOrder defines parameters for ListApiPortals.
 type ListApiPortalsParamsSortOrder string
-
-// ListApiPortalsParamsWorkflowStatus defines parameters for ListApiPortals.
-type ListApiPortalsParamsWorkflowStatus string
 
 // ListApplicationsParams defines parameters for ListApplications.
 type ListApplicationsParams struct {
