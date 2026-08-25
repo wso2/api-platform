@@ -244,6 +244,17 @@ export const routes = {
     orgHandle = ':orgHandle',
     projectHandler = ':projectHandler'
   ) => projectPath(orgHandle, projectHandler, 'settings'),
+  // One Settings sub-nav tab, org- and project-scoped. `tab` is the segment
+  // below `/settings/` ("general", or an extension's own `routePath` with the
+  // `settings/` prefix stripped) — the sub-nav and the routes are built from
+  // these two, so a tab can never link somewhere no route answers.
+  settingsTab: (tab: string, orgHandle = ':orgHandle') =>
+    `/organizations/${orgHandle}/settings/${tab}`,
+  projectSettingsTab: (
+    tab: string,
+    orgHandle = ':orgHandle',
+    projectHandler = ':projectHandler'
+  ) => projectPath(orgHandle, projectHandler, `settings/${tab}`),
 };
 
 export type ProjectPathBuilder = (

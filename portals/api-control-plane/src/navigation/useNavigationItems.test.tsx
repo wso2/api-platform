@@ -21,6 +21,10 @@ import { MemoryRouter } from 'react-router-dom';
 import { describe, expect, it } from 'vitest';
 
 import type { RestApi } from '../api/resources/restApis';
+import {
+  ExtensionsProvider,
+  type ApiControlPlaneExtension,
+} from '../extensions';
 import { organizations, projects } from '../api/mocks/data';
 import { routes } from '../routes/paths';
 import {
@@ -135,5 +139,93 @@ describe('submenu children follow API scope', () => {
     for (const id of leaves) {
       expect(items.find((item) => item.id === id)?.children).toBeUndefined();
     }
+  });
+});
+
+/*
+ * Host-injected extensions run through this same pipeline, so the two things
+ * that can only go wrong here are covered: which entries reach the sidebar at
+ * all, and when one counts as active.
+ */
+const itemsWithExtensions = (
+  scope: ConsoleScope,
+  route: string,
+  extensions: ApiControlPlaneExtension[]
+) => {
+  const wrapper = ({ children }: { children: ReactNode }) => (
+    <MemoryRouter initialEntries={[route]}>
+      <ConsoleScopeContext.Provider value={scope}>
+        <ExtensionsProvider extensions={extensions}>
+          {children}
+        </ExtensionsProvider>
+      </ConsoleScopeContext.Provider>
+    </MemoryRouter>
+  );
+  const { result } = renderHook(() => useNavigationItems(), { wrapper });
+  return result.current;
+};
+
+const atProject = () =>
+  makeConsoleScope({
+    component: undefined,
+    isApiScope: false,
+    isProjectScope: true,
+    params: { orgHandle: ORG, projectHandler: PROJECT },
+  });
+
+// `routePath: 'environments'` is also the tail segment of an unrelated
+// settings-tab route: the collision a substring matcher cannot tell apart,
+// since `.../settings/environments` contains `/environments` too even though
+// that route belongs to a different feature.
+const sidebarExtension: ApiControlPlaneExtension = {
+  id: 'environments-sidebar',
+  label: 'Environments',
+  level: 'project',
+  order: 50,
+  render: () => <div>Sidebar Environments</div>,
+  routePath: 'environments',
+  slot: 'sidebar.project',
+};
+
+const PROJECT_BASE = `/organizations/${ORG}/projects/${PROJECT}`;
+
+describe('host-injected sidebar extensions', () => {
+  it('is active at its own destination', () => {
+    const [item] = itemsWithExtensions(
+      atProject(),
+      `${PROJECT_BASE}/environments`,
+      [sidebarExtension]
+    ).filter((entry) => entry.id === sidebarExtension.id);
+
+    expect(item?.isActive).toBe(true);
+  });
+
+  it('is not active on an unrelated route ending with the same segment', () => {
+    const [item] = itemsWithExtensions(
+      atProject(),
+      `${PROJECT_BASE}/settings/environments`,
+      [sidebarExtension]
+    ).filter((entry) => entry.id === sidebarExtension.id);
+
+    expect(item?.isActive).toBe(false);
+  });
+
+  it('keeps a nested-slot extension out of the sidebar entirely', () => {
+    // A `settings.*` entry is rendered by the Settings sub-nav; surfacing it
+    // here too would show the same feature in two places.
+    const settingsTab: ApiControlPlaneExtension = {
+      ...sidebarExtension,
+      id: 'environments-settings-tab',
+      routePath: 'settings/environments',
+      slot: 'settings.project.tabs',
+    };
+
+    const items = itemsWithExtensions(
+      atProject(),
+      `${PROJECT_BASE}/settings/environments`,
+      [settingsTab]
+    );
+
+    expect(items.find((entry) => entry.id === settingsTab.id)).toBeUndefined();
   });
 });

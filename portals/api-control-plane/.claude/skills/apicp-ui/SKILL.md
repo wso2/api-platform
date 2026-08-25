@@ -343,6 +343,14 @@ region for built-in UI; extensions receive a plain `CloudHostPort` value (`src/h
 shared context. Keep `src/slots/index.tsx` free of portal-specific types; it is copied verbatim into
 other hosts.
 
+Two slot families exist today, both declared in `src/extensions.tsx`: `sidebar.<level>` for a
+top-level nav item (routed by `AppRoutes`, merged into the sidebar by `useNavigationItems`) and
+`settings.<level>.tabs` for a Settings sub-nav tab (listed by `useSettingsTabs`, routed nested under
+`SettingsLayout`). An entry's `slot` and `level` must agree — a descriptor claiming
+`settings.project.tabs` with `level: 'organization'` is dropped by both, rather than rendered
+against the wrong scope's Port. Filter with `isSidebarExtension`/`settingsTabExtensions`; never
+re-spell a slot name as a literal at the use site.
+
 ---
 
 ## Tests

@@ -24,7 +24,11 @@ import {
   useConsoleScope,
   type ConsoleScope,
 } from '../scope/ConsoleScopeProvider';
-import { buildScopedExtensionPath, useExtensions } from '../extensions';
+import {
+  buildScopedExtensionPath,
+  isSidebarExtension,
+  useExtensions,
+} from '../extensions';
 import { navigationRegistry } from './navigationRegistry';
 import {
   type NavigationDefinition,
@@ -59,11 +63,28 @@ export const useNavigationItems = (): NavigationItem[] => {
     // Host-injected extensions are converted to the same NavigationDefinition
     // shape the built-in registry uses, so they run through one filter/sort
     // pipeline instead of a parallel "Cloud category" implementation.
-    const extensionDefinitions: NavigationDefinition[] = extensions.map(
-      (extension) => {
+    //
+    // Only `sidebar.*` entries belong here: an extension registered against a
+    // nested slot (e.g. `settings.project.tabs`) renders inside that slot's own
+    // host and must not also appear as a top-level sidebar item.
+    const extensionDefinitions: NavigationDefinition[] = extensions
+      .filter(isSidebarExtension)
+      .map((extension) => {
         const isDescendantRoute = extension.routePath.endsWith('/*');
         const routeSuffix = extension.routePath.replace(/\/\*$/, '');
-        const routeSegment = `/${routeSuffix}`;
+        // The one destination this item points at in the current scope,
+        // computed once and used for both `to` and `match`. A raw substring
+        // search over the pathname would also fire on an unrelated route that
+        // merely ends with the same segment name — a `settings/<name>` tab
+        // route would light up a sidebar extension whose own destination is
+        // `/<name>` at a different depth.
+        const destination = scope.params.orgHandle
+          ? buildScopedExtensionPath(extension.level, routeSuffix, {
+              apiHandler: scope.params.apiHandler ?? null,
+              orgHandle: scope.params.orgHandle,
+              projectHandler: scope.params.projectHandler ?? null,
+            })
+          : undefined;
         return {
           group: extension.group,
           icon: extension.icon,
@@ -71,30 +92,20 @@ export const useNavigationItems = (): NavigationItem[] => {
           isVisible: extension.isVisible,
           label: extension.label,
           level: extension.level,
-          match: (pathname) => {
-            const index = pathname.indexOf(routeSegment);
-            if (index === -1) return false;
-            const charAfter = pathname[index + routeSegment.length];
-            // Match only a complete path segment: nothing after it, or (for
-            // a `/*` route) a further `/` continuing into a descendant path.
-            return charAfter === undefined || (isDescendantRoute && charAfter === '/');
-          },
+          match: (pathname) =>
+            destination !== undefined &&
+            // Exactly this destination, or (for a `/*` route) a path
+            // continuing below it — never a partial segment match.
+            (pathname === destination ||
+              (isDescendantRoute && pathname.startsWith(`${destination}/`))),
           order: extension.order,
           // A missing project/API no longer makes the item unlinkable: the path
           // degrades to the extension page's scope-less alias, where its own
           // `ScopeGate` collects what's missing. Only a route with no
           // organization has nothing to link to.
-          to: ({ params }) =>
-            params.orgHandle
-              ? buildScopedExtensionPath(extension.level, routeSuffix, {
-                  apiHandler: params.apiHandler ?? null,
-                  orgHandle: params.orgHandle,
-                  projectHandler: params.projectHandler ?? null,
-                })
-              : undefined,
+          to: () => destination,
         };
-      }
-    );
+      });
     const combinedRegistry = [...navigationRegistry, ...extensionDefinitions];
 
     // A definition becomes an item unless it has no target at all. Children go

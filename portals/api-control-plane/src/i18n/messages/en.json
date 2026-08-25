@@ -36,10 +36,10 @@
     "description": "Tooltip explaining why an unreleased API type card cannot be clicked."
   },
   "api.create.apiResourcesPreview.empty.body": {
-    "defaultMessage": "Fetch the contract and the resources it defines are listed here for review."
+    "defaultMessage": "Import a contract to explore its endpoints"
   },
   "api.create.apiResourcesPreview.empty.title": {
-    "defaultMessage": "Nothing fetched yet"
+    "defaultMessage": "Resources will show here"
   },
   "api.create.apiResourcesPreview.source": {
     "defaultMessage": "Source",
@@ -148,16 +148,37 @@
   "api.create.approachSelector.tooltip.unsupportedForProxyType": {
     "defaultMessage": "Not available for {proxyType}."
   },
-  "api.create.fromContract.action.back": {
+  "api.create.defineApi.action.back": {
     "defaultMessage": "Back",
     "description": "Returns to the previous step of the API creation wizard."
+  },
+  "api.create.defineApi.action.next": {
+    "defaultMessage": "Next"
+  },
+  "api.create.defineApi.contract.description": {
+    "defaultMessage": "Import from a URL, file, or SwaggerHub."
+  },
+  "api.create.defineApi.contract.title": {
+    "defaultMessage": "Start with a contract"
+  },
+  "api.create.defineApi.scratch.description": {
+    "defaultMessage": "Start blank and chat with AI to build it."
+  },
+  "api.create.defineApi.scratch.title": {
+    "defaultMessage": "Design from scratch"
+  },
+  "api.create.designWithAi.detail": {
+    "defaultMessage": "The skeleton on the right is a starting point — carry on and edit its operations by hand."
+  },
+  "api.create.designWithAi.feature": {
+    "defaultMessage": "Designing an API by chatting with AI"
+  },
+  "api.create.designWithAi.title": {
+    "defaultMessage": "Design with AI"
   },
   "api.create.fromContract.action.fetch": {
     "defaultMessage": "Fetch Contract",
     "description": "Reads the contract from the chosen source and previews its resources, without leaving the step."
-  },
-  "api.create.fromContract.action.next": {
-    "defaultMessage": "Next"
   },
   "api.create.fromContract.action.sampleUrl": {
     "defaultMessage": "Try with Sample URL",
@@ -213,12 +234,24 @@
   "api.create.fromContract.spec.unsupportedSource": {
     "defaultMessage": "Importing from this source is not available yet."
   },
+  "api.create.fromContract.swaggerHub.apiLabel": {
+    "defaultMessage": "API"
+  },
+  "api.create.fromContract.swaggerHub.apiPlaceholder": {
+    "defaultMessage": "Select an API"
+  },
   "api.create.fromContract.swaggerHub.authorized": {
     "defaultMessage": "Authorized",
     "description": "SwaggerHub access mode that reads private definitions. Not released yet."
   },
   "api.create.fromContract.swaggerHub.authorizedHint": {
     "defaultMessage": "Not available yet."
+  },
+  "api.create.fromContract.swaggerHub.lookupFailed": {
+    "defaultMessage": "SwaggerHub could not be reached. Try again."
+  },
+  "api.create.fromContract.swaggerHub.notFound": {
+    "defaultMessage": "No SwaggerHub organization with public APIs under that name."
   },
   "api.create.fromContract.swaggerHub.organizationLabel": {
     "defaultMessage": "SwaggerHub Organization"
@@ -229,6 +262,10 @@
   "api.create.fromContract.swaggerHub.organizationRequired": {
     "defaultMessage": "The SwaggerHub organization cannot be empty"
   },
+  "api.create.fromContract.swaggerHub.partialListing": {
+    "defaultMessage": "Showing {shown} of {total} APIs in this organization.",
+    "description": "The registry pages long listings; only the first page is offered."
+  },
   "api.create.fromContract.swaggerHub.public": {
     "defaultMessage": "Public",
     "description": "SwaggerHub access mode that reads publicly listed definitions."
@@ -236,6 +273,15 @@
   "api.create.fromContract.swaggerHub.refresh": {
     "defaultMessage": "Refresh SwaggerHub organizations",
     "description": "Accessible name for the reload button on the organization field."
+  },
+  "api.create.fromContract.swaggerHub.searching": {
+    "defaultMessage": "Looking up organization…"
+  },
+  "api.create.fromContract.swaggerHub.versionLabel": {
+    "defaultMessage": "Version"
+  },
+  "api.create.fromContract.swaggerHub.versionPlaceholder": {
+    "defaultMessage": "Select a version"
   },
   "api.create.fromContract.title": {
     "defaultMessage": "Create API Proxy from Contract"
@@ -344,12 +390,12 @@
   "api.create.generalForm.backendAuth.option.basic": {
     "defaultMessage": "Basic authentication"
   },
+  "api.create.generalForm.backendAuth.option.bearer": {
+    "defaultMessage": "Bearer token"
+  },
   "api.create.generalForm.backendAuth.option.none": {
     "defaultMessage": "None",
     "description": "Backend authentication option meaning no credentials are sent."
-  },
-  "api.create.generalForm.backendAuth.option.oauth2": {
-    "defaultMessage": "OAuth 2.0"
   },
   "api.create.generalForm.basePath.helper": {
     "defaultMessage": "Routing base path for this API. Defaults from the identifier and version."
@@ -437,6 +483,10 @@
     "defaultMessage": "Updated {relative}",
     "description": "Card footer timestamp; {relative} is a phrase such as \"3 hours ago\"."
   },
+  "apiControlPlane.navigation.useSettingsTabs.generalTab": {
+    "defaultMessage": "General",
+    "description": "Label for the built-in first tab of the Settings page. A noun naming the section, not a command."
+  },
   "apiControlPlane.pages.appShell.APIQuickSelector.apis": {
     "defaultMessage": "APIs"
   },
@@ -462,14 +512,28 @@
     "defaultMessage": "Projects"
   },
   "apiControlPlane.pages.appShell.appShellPages.apis.ApiDetailPage.context.label": {
-    "defaultMessage": "Context :"
+    "defaultMessage": "Context",
+    "description": "Label for the API base path shown in the API detail header, e.g. \"/orders\"."
   },
   "apiControlPlane.pages.appShell.appShellPages.apis.ApiDetailPage.deployToGateway": {
     "defaultMessage": "Deploy to Gateway",
     "description": "Button on the API overview header that opens the API's deployment page."
   },
+  "apiControlPlane.pages.appShell.appShellPages.apis.ApiDetailPage.gatewayManaged": {
+    "defaultMessage": "Gateway-managed",
+    "description": "Chip marking an API that was discovered from a gateway and cannot be edited here."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.apis.ApiDetailPage.gatewayManagedHint": {
+    "defaultMessage": "Discovered from a data-plane gateway, so it is read-only in this console.",
+    "description": "Tooltip explaining the gateway-managed chip."
+  },
   "apiControlPlane.pages.appShell.appShellPages.apis.ApiDetailPage.lastUpdated.label": {
-    "defaultMessage": "Last updated :"
+    "defaultMessage": "Last updated",
+    "description": "Label for when the API definition last changed, shown in the API detail header."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.apis.ApiDetailPage.transports.label": {
+    "defaultMessage": "Transports",
+    "description": "Label for the protocols an API is exposed over (HTTP, HTTPS)."
   },
   "apiControlPlane.pages.appShell.appShellPages.apis.develop.DocumentsPage.subtitle": {
     "defaultMessage": "Documentation for {apiName}",
@@ -494,6 +558,18 @@
   },
   "apiControlPlane.pages.appShell.appShellPages.projects.ExploreMoreCard.explore.more": {
     "defaultMessage": "Explore More"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.settings.GeneralSettingsPage.mvpScope": {
+    "defaultMessage": "Advanced organization admin settings, governance, marketplace, and developer portal configuration are intentionally excluded from the MVP replacement app.",
+    "description": "Body copy explaining which settings areas the MVP deliberately leaves out."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.settings.SettingsLayout.subtitle": {
+    "defaultMessage": "Minimal settings overview for {subject}.",
+    "description": "Sub-heading of the Settings page. {subject} is the display name of the organization or project being configured — never translated."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.settings.SettingsLayout.title": {
+    "defaultMessage": "Settings",
+    "description": "Heading of the Settings page."
   },
   "apiListPage.createApiButton": {
     "defaultMessage": "Create API",

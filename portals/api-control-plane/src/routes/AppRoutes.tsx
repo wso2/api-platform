@@ -32,8 +32,12 @@ import { ConsoleScopeProvider } from '../scope/ConsoleScopeProvider';
 import AppLayout from '../pages/appShell/AppLayout';
 import {
   extensionScopedPaths,
+  isSidebarExtension,
+  settingsTabExtensions,
   type ApiControlPlaneExtension,
 } from '../extensions';
+import type { NavigationLevel } from '../navigation/navigationTypes';
+import { usePort } from '../hostPort';
 import { ProtectedRoute } from './ProtectedRoute';
 import { apiScopedPaths, projectScopedPaths, routes } from './paths';
 
@@ -75,8 +79,8 @@ const ApiListPage = lazy(() =>
   }))
 );
 const ApiCreatePage = lazy(() =>
-  import('../pages/appShell/appShellPages/apis/ApiCreatePage').then((m) => ({
-    default: m.ApiCreatePage,
+  import('../pages/appShell/appShellPages/apis/create/ApiCreationWizard').then((m) => ({
+    default: m.ApiCreationWizard,
   }))
 );
 const ApiDetailPage = lazy(() =>
@@ -155,10 +159,15 @@ const RuntimeLogsPage = lazy(() =>
     default: m.RuntimeLogsPage,
   }))
 );
-const SettingsPage = lazy(() =>
-  import('../pages/appShell/appShellPages/settings/SettingsPage').then((m) => ({
-    default: m.SettingsPage,
+const SettingsLayout = lazy(() =>
+  import('../pages/appShell/appShellPages/settings/SettingsLayout').then((m) => ({
+    default: m.SettingsLayout,
   }))
+);
+const GeneralSettingsPage = lazy(() =>
+  import('../pages/appShell/appShellPages/settings/GeneralSettingsPage').then(
+    (m) => ({ default: m.GeneralSettingsPage })
+  )
 );
 
 export type AppRoutesProps = {
@@ -174,12 +183,44 @@ export type AppRoutesProps = {
 const scopedRoutes = (paths: string[], element: ReactNode) =>
   paths.map((path) => <Route key={path} path={path} element={element} />);
 
+/**
+ * Resolves the real `CloudHostPort` and hands it to the extension's `render`.
+ *
+ * The port is read from context here, inside the router, rather than passed in
+ * from the registration site — an extension only ever receives it as a plain
+ * value, so it never imports this portal's hooks itself (see `hostPort.tsx`).
+ */
+function ExtensionRoute({ extension }: { extension: ApiControlPlaneExtension }) {
+  const port = usePort();
+  return <>{extension.render(port)}</>;
+}
+
 export function AppRoutes({ extensions = [] }: AppRoutesProps) {
-  const extensionRoutes = extensions.flatMap((extension) =>
-    extensionScopedPaths(extension.level, extension.routePath).map((path) => (
-      <Route key={path} path={path} element={extension.element} />
-    ))
-  );
+  // Extensions registered against a `settings.<level>.tabs` slot render nested
+  // under the matching Settings layout, at a path relative to it — so the tab's
+  // own route and the sub-nav entry `useSettingsTabs` builds stay in step.
+  const settingsTabRoutes = (level: NavigationLevel) =>
+    settingsTabExtensions(extensions, level).map((extension) => (
+      <Route
+        key={extension.id}
+        path={extension.routePath.replace(/^settings\//, '')}
+        element={<ExtensionRoute extension={extension} />}
+      />
+    ));
+
+  // Only `sidebar.*` entries become top-level routes; a Settings tab extension
+  // is routed by `settingsTabRoutes` above, nested under the Settings layout.
+  const extensionRoutes = extensions
+    .filter(isSidebarExtension)
+    .flatMap((extension) =>
+      extensionScopedPaths(extension.level, extension.routePath).map((path) => (
+        <Route
+          key={`${extension.id}:${path}`}
+          path={path}
+          element={<ExtensionRoute extension={extension} />}
+        />
+      ))
+    );
 
   return (
     <Routes>
@@ -262,9 +303,25 @@ export function AppRoutes({ extensions = [] }: AppRoutesProps) {
             <LifeCyclePage />
           )}
           {scopedRoutes(apiScopedPaths(routes.apiAdmin), <AdminPage />)}
-          {/* Two entry points, one page, no scope requirement either way. */}
-          <Route path={routes.settings()} element={<SettingsPage />} />
-          <Route path={routes.projectSettings()} element={<SettingsPage />} />
+          {/* Two entry points, one page, no scope requirement either way. The
+              index route renders the same content as `general`, so `/settings`
+              is never a blank pane. */}
+          <Route
+            path={routes.settings()}
+            element={<SettingsLayout level="organization" />}
+          >
+            <Route index element={<GeneralSettingsPage />} />
+            <Route path="general" element={<GeneralSettingsPage />} />
+            {settingsTabRoutes('organization')}
+          </Route>
+          <Route
+            path={routes.projectSettings()}
+            element={<SettingsLayout level="project" />}
+          >
+            <Route index element={<GeneralSettingsPage />} />
+            <Route path="general" element={<GeneralSettingsPage />} />
+            {settingsTabRoutes('project')}
+          </Route>
           {extensionRoutes}
           <Route path="*" element={<NotFoundPage />} />
         </Route>
