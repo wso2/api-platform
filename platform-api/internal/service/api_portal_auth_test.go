@@ -250,25 +250,37 @@ func TestClientCredentialsAuthProvider_NonSuccessStatusReturnsError(t *testing.T
 	}
 }
 
-func TestClientCredentialsAuthProvider_DefaultClientRefusesRedirects(t *testing.T) {
-	// The default *http.Client the provider builds when caller passes hc=nil
-	// must NOT follow redirects. A 3xx returned by the STS on the token
-	// endpoint isn't a legitimate part of the client-credentials flow;
-	// following it would re-send client_id + client_secret to whatever host
-	// the redirect names. We treat the 3xx as a non-2xx and surface an
-	// error.
+func TestClientCredentialsAuthProvider_RefusesRedirects(t *testing.T) {
+	// A 3xx returned by the STS on the token endpoint isn't a legitimate
+	// part of the client-credentials flow; following it would re-send
+	// client_id + client_secret to whatever host the redirect names. We
+	// treat the 3xx as a non-2xx and surface an error. Enforced on the
+	// default *http.Client the provider builds, AND on a client the caller
+	// supplies — so a test / callsite that hands in its own client can't
+	// accidentally opt out.
 	redirecting := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		http.Redirect(w, r, "https://elsewhere.example.com/oauth2/token", http.StatusFound)
 	}))
 	t.Cleanup(redirecting.Close)
 
-	p := newClientCredentialsAuthProvider(redirecting.URL, "id", "secret", nil)
-	_, err := p.AuthorizationHeader(context.Background())
-	if err == nil {
-		t.Fatal("expected error when STS returns a redirect; got nil (client followed the redirect)")
+	// Nil hc → provider builds its own default. Should refuse.
+	pDefault := newClientCredentialsAuthProvider(redirecting.URL, "id", "secret", nil)
+	if _, err := pDefault.AuthorizationHeader(context.Background()); err == nil ||
+		!strings.Contains(err.Error(), "302") {
+		t.Fatalf("default client should refuse redirect; got err=%v", err)
 	}
-	if !strings.Contains(err.Error(), "302") {
-		t.Errorf("error should surface the 3xx status code; got %v", err)
+
+	// Caller-supplied hc that WOULD follow redirects by default. Provider
+	// must still refuse — meaning its own copy has CheckRedirect wired,
+	// and the caller's original client remains untouched.
+	callerClient := &http.Client{Timeout: 5 * time.Second}
+	pCaller := newClientCredentialsAuthProvider(redirecting.URL, "id", "secret", callerClient)
+	if _, err := pCaller.AuthorizationHeader(context.Background()); err == nil ||
+		!strings.Contains(err.Error(), "302") {
+		t.Errorf("caller-supplied client should also refuse redirect; got err=%v", err)
+	}
+	if callerClient.CheckRedirect != nil {
+		t.Error("caller's original *http.Client was mutated; expected the provider to copy it")
 	}
 }
 

@@ -155,25 +155,28 @@ type clientCredentialsAuthProvider struct {
 }
 
 func newClientCredentialsAuthProvider(tokenURL, clientID, clientSecret string, hc *http.Client) *clientCredentialsAuthProvider {
+	// Always REJECT redirects on the token-endpoint call. A 3xx from the STS
+	// on this endpoint isn't a legitimate part of the client-credentials
+	// flow — following it would re-send the client_id + client_secret to a
+	// redirect target chosen by whatever answered. This is enforced
+	// regardless of what a caller-supplied client had configured; we copy
+	// the caller's *http.Client so their instance keeps its own policy for
+	// any other use.
+	var client *http.Client
 	if hc == nil {
-		// Default client: 15s timeout, and REJECT redirects. A 3xx from the
-		// STS on the token endpoint isn't a legitimate part of the client-
-		// credentials flow — following it would re-send the client_id +
-		// client_secret to a redirect target chosen by whatever answered
-		// the token endpoint. Return the 3xx response as-is so
-		// AuthorizationHeader sees it as a non-2xx and errors out.
-		hc = &http.Client{
-			Timeout: 15 * time.Second,
-			CheckRedirect: func(*http.Request, []*http.Request) error {
-				return http.ErrUseLastResponse
-			},
-		}
+		client = &http.Client{Timeout: 15 * time.Second}
+	} else {
+		copied := *hc
+		client = &copied
+	}
+	client.CheckRedirect = func(*http.Request, []*http.Request) error {
+		return http.ErrUseLastResponse
 	}
 	return &clientCredentialsAuthProvider{
 		tokenURL:     tokenURL,
 		clientID:     clientID,
 		clientSecret: clientSecret,
-		httpClient:   hc,
+		httpClient:   client,
 	}
 }
 
