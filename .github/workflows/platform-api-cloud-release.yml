@@ -18,7 +18,7 @@ on:
   # Fire on a push to a release branch (merging a PR produces such a push)...
   push:
     branches:
-      - main
+      # main is temporarily disabled while Platform API v1 is in progress.
       - platform-api/v0.10.x
     paths:
       - 'platform-api/**'
