@@ -20,10 +20,12 @@ import { useParams } from 'react-router-dom';
 import {
   Alert,
   Button,
+  Checkbox,
   CircularProgress,
   FormControl,
   FormControlLabel,
   FormLabel,
+  ListItemText,
   MenuItem,
   PageTitle,
   Select,
@@ -55,10 +57,18 @@ const MAX_CONSOLE_LINES = 2000;
 /** Records requested per poll. */
 const PAGE_LIMIT = 100;
 
+/** Levels offered by the filter, in severity order. */
+const LOG_LEVELS: readonly ObservabilityLogLevel[] = [
+  'ERROR',
+  'WARN',
+  'INFO',
+  'DEBUG',
+];
+
 const buildFilters = (
   durationMinutes: number,
   search: string,
-  level: ObservabilityLogLevel | '',
+  levels: ObservabilityLogLevel[],
   scopeFilters: Pick<
     ObservabilityLogTailFilters,
     'component' | 'environment' | 'project'
@@ -67,7 +77,8 @@ const buildFilters = (
   durationMinutes,
   limit: PAGE_LIMIT,
   query: search.trim() || undefined,
-  logLevels: level ? [level] : undefined,
+  // An empty selection means "no level filter", not "no levels".
+  logLevels: levels.length > 0 ? levels : undefined,
   ...scopeFilters,
 });
 
@@ -82,7 +93,7 @@ function RuntimeLogs() {
   const projectScope = Boolean(projectHandler && !apiHandler);
   const [durationMinutes, setDurationMinutes] = useState(60);
   const [search, setSearch] = useState('');
-  const [level, setLevel] = useState<ObservabilityLogLevel | ''>('');
+  const [levels, setLevels] = useState<ObservabilityLogLevel[]>([]);
   const [project, setProject] = useState(projectHandler || '');
   const [component, setComponent] = useState('');
   const [environment, setEnvironment] = useState('development');
@@ -91,7 +102,7 @@ function RuntimeLogs() {
   /** Watermark set by Clear, so the next poll cannot refill the wiped window. */
   const [clearedAt, setClearedAt] = useState(0);
   const [filters, setFilters] = useState(() =>
-    buildFilters(60, '', '', {
+    buildFilters(60, '', [], {
       environment: aggregateScope ? 'development' : undefined,
       project: aggregateScope ? projectHandler : undefined,
     })
@@ -137,7 +148,7 @@ function RuntimeLogs() {
     setLines([]);
     setClearedAt(0);
     setFilters(
-      buildFilters(durationMinutes, search, level, {
+      buildFilters(durationMinutes, search, levels, {
         component: aggregateScope ? component || undefined : undefined,
         environment: aggregateScope ? environment : undefined,
         project: aggregateScope ? project || undefined : undefined,
@@ -145,6 +156,10 @@ function RuntimeLogs() {
     );
   };
 
+  const allLevelsLabel = intl.formatMessage({
+    id: 'appShell.runtimeLogsPage.allLevels',
+    defaultMessage: 'All levels',
+  });
   const scopeLabel = apiHandler || projectHandler || 'this organization';
 
   return (
@@ -241,6 +256,7 @@ function RuntimeLogs() {
                   </FormLabel>
                   <Select
                     disabled={projectScope || projectsQuery.isLoading}
+                    displayEmpty
                     onChange={(event) => {
                       setProject(String(event.target.value));
                       setComponent('');
@@ -274,8 +290,13 @@ function RuntimeLogs() {
                       defaultMessage="Component"
                     />
                   </FormLabel>
+                  {/* Gated on Project because the REST API list endpoint is
+                      project-scoped (`useRestApis` stays disabled without a
+                      project), so there is nothing to offer until one is
+                      picked — not because the log query needs a project. */}
                   <Select
                     disabled={!project || apisQuery.isLoading}
+                    displayEmpty
                     onChange={(event) =>
                       setComponent(String(event.target.value))
                     }
@@ -331,29 +352,36 @@ function RuntimeLogs() {
                 </FormControl>
               </>
             )}
-            <FormControl sx={{ minWidth: 130 }}>
+            <FormControl sx={{ minWidth: 190 }}>
               <FormLabel>
                 <FormattedMessage
                   id="appShell.runtimeLogsPage.level"
                   defaultMessage="Level"
                 />
               </FormLabel>
+              {/* `renderValue` owns the closed-state text for a multi-select,
+                  so it also supplies the "everything" label for an empty
+                  selection — `displayEmpty` alone would render a blank box. */}
               <Select
+                displayEmpty
+                multiple
                 onChange={(event) =>
-                  setLevel(event.target.value as ObservabilityLogLevel | '')
+                  setLevels(
+                    (typeof event.target.value === 'string'
+                      ? [event.target.value]
+                      : event.target.value) as ObservabilityLogLevel[]
+                  )
+                }
+                renderValue={(selected) =>
+                  selected.length === 0 ? allLevelsLabel : selected.join(', ')
                 }
                 size="small"
-                value={level}
+                value={levels}
               >
-                <MenuItem value="">
-                  <FormattedMessage
-                    id="appShell.runtimeLogsPage.allLevels"
-                    defaultMessage="All levels"
-                  />
-                </MenuItem>
-                {(['ERROR', 'WARN', 'INFO', 'DEBUG'] as const).map((value) => (
+                {LOG_LEVELS.map((value) => (
                   <MenuItem key={value} value={value}>
-                    {value}
+                    <Checkbox checked={levels.includes(value)} size="small" />
+                    <ListItemText primary={value} />
                   </MenuItem>
                 ))}
               </Select>
