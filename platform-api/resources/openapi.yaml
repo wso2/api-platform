@@ -6674,6 +6674,10 @@ components:
           type: object
           additionalProperties: true
           description: Optional metadata for the deployment. Supported keys include `endpointUrl`, `vhostMain`, and `vhostSandbox`.
+        overrides:
+          type: object
+          additionalProperties: true
+          description: Optional structured override document deep-merged onto the deployment definition before it is sent to the gateway, letting a caller customize any field of the API config for this deployment. The applied overrides are persisted with the deployment.
 
     DeploymentResponse:
       type: object
