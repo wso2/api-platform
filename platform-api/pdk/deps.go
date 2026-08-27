@@ -36,8 +36,9 @@ import (
 // adapter code. The assignment itself is the compile-time contract check: if a
 // signature drifts, the server stops building.
 type Deps struct {
-	Gateways Gateways
-	Projects Projects
+	Gateways    Gateways
+	Projects    Projects
+	Deployments Deployments
 	// add more capability groups as external plugins need them
 	// (APIs, Subscriptions, Applications, Organizations, LLM, MCP, …)
 
@@ -78,4 +79,29 @@ type Projects interface {
 
 	// DeleteProject removes a project within an organization (Delete).
 	DeleteProject(handle, orgID, actor string) error
+}
+
+// Deployments exposes deploy/read/undeploy access to an API's gateway
+// deployments, scoped by organization and addressed by handle. Every method
+// mirrors an existing DeploymentService method verbatim and takes the
+// organization id explicitly — handlers MUST pass the org resolved from the
+// request context, never one from request input (GO-AUTH-005). A deployment is
+// built from a base ("current" or a prior deploymentId) and an optional generic
+// override document, letting a caller promote an existing deployment forward and
+// customize any field of the API config for the target gateway.
+type Deployments interface {
+	// DeployAPIByHandle creates a new immutable deployment of an API onto one
+	// gateway (Create/Promote).
+	DeployAPIByHandle(apiHandle string, req *api.DeployRequest, orgID, actor string) (*api.DeploymentResponse, error)
+
+	// GetDeploymentsByHandle lists an API's deployments, optionally filtered by
+	// gateway handle and status (Read).
+	GetDeploymentsByHandle(apiHandle, gatewayID, status, orgID string) (*api.DeploymentListResponse, error)
+
+	// GetDeploymentByHandle returns a single deployment of an API, including its
+	// persisted metadata/overrides (Read).
+	GetDeploymentByHandle(apiHandle, deploymentID, orgID string) (*api.DeploymentResponse, error)
+
+	// UndeployDeploymentByHandle undeploys a deployment from its gateway (Delete).
+	UndeployDeploymentByHandle(apiHandle, deploymentID, gatewayHandle, orgID, actor string) (*api.DeploymentResponse, error)
 }

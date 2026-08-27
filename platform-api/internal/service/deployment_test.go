@@ -1930,6 +1930,20 @@ func TestApplyStructOverrides(t *testing.T) {
 	})
 }
 
+// applyBaseOverridesYAML round-trips deployment YAML bytes through the base-flow
+// override applier (unmarshal -> applyBaseStructOverrides -> marshal), the same way
+// the promote path does. It lets the table below assert override behaviour on YAML.
+func applyBaseOverridesYAML(content []byte, endpointURL, vhostMain, vhostSandbox *string, vhostMainOverridden, vhostSandboxOverridden bool) ([]byte, error) {
+	var d dto.APIDeploymentYAML
+	if err := yaml.Unmarshal(content, &d); err != nil {
+		return nil, err
+	}
+	applyBaseStructOverrides(&d, endpointURL, vhostMain, vhostSandbox, vhostMainOverridden, vhostSandboxOverridden)
+	return yaml.Marshal(&d)
+}
+
+// TestApplyDeploymentOverrides covers the base-flow override applier: endpoint and
+// selective vhost overrides, preserving the fields that were not overridden.
 func TestApplyDeploymentOverrides(t *testing.T) {
 	baseYAML := `apiVersion: gateway.api-platform.wso2.com/v1
 kind: RestApi
@@ -1949,7 +1963,7 @@ spec:
 
 	t.Run("endpoint only preserves vhosts", func(t *testing.T) {
 		eu := "https://new.example.com/api"
-		result, err := applyDeploymentOverrides([]byte(baseYAML), &eu, nil, nil, false, false)
+		result, err := applyBaseOverridesYAML([]byte(baseYAML), &eu, nil, nil, false, false)
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
@@ -1973,7 +1987,7 @@ spec:
 
 	t.Run("vhost main only preserves sandbox", func(t *testing.T) {
 		main := "api.example.com"
-		result, err := applyDeploymentOverrides([]byte(baseYAML), nil, &main, nil, true, false)
+		result, err := applyBaseOverridesYAML([]byte(baseYAML), nil, &main, nil, true, false)
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
@@ -1994,7 +2008,7 @@ spec:
 
 	t.Run("vhost sandbox only preserves main", func(t *testing.T) {
 		sandbox := "sandbox.example.com"
-		result, err := applyDeploymentOverrides([]byte(baseYAML), nil, nil, &sandbox, false, true)
+		result, err := applyBaseOverridesYAML([]byte(baseYAML), nil, nil, &sandbox, false, true)
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
@@ -2017,7 +2031,7 @@ spec:
 		eu := "https://new.example.com/api"
 		main := "api.example.com"
 		sandbox := "sandbox.example.com"
-		result, err := applyDeploymentOverrides([]byte(baseYAML), &eu, &main, &sandbox, true, true)
+		result, err := applyBaseOverridesYAML([]byte(baseYAML), &eu, &main, &sandbox, true, true)
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
@@ -2037,7 +2051,7 @@ spec:
 	})
 
 	t.Run("neither override is no-op", func(t *testing.T) {
-		result, err := applyDeploymentOverrides([]byte(baseYAML), nil, nil, nil, false, false)
+		result, err := applyBaseOverridesYAML([]byte(baseYAML), nil, nil, nil, false, false)
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
@@ -2058,9 +2072,153 @@ spec:
 
 	t.Run("invalid YAML returns error", func(t *testing.T) {
 		eu := "https://new.example.com/api"
-		_, err := applyDeploymentOverrides([]byte("not: valid: yaml: :::"), &eu, nil, nil, false, false)
+		_, err := applyBaseOverridesYAML([]byte("not: valid: yaml: :::"), &eu, nil, nil, false, false)
 		if err == nil {
 			t.Fatal("expected error for invalid YAML")
 		}
 	})
+}
+
+// TestMergeGenericOverrides verifies the generic override deep-merge: nested maps
+// merge key-by-key, scalars replace, new keys are added, and untouched siblings
+// are preserved. This is the "customize any field" primitive.
+func TestMergeGenericOverrides(t *testing.T) {
+	base := []byte(`
+apiVersion: gateway.api-platform.wso2.com/v1
+kind: RestApi
+spec:
+  displayName: Orders
+  context: /orders
+  upstream:
+    main:
+      url: https://dev-backend.example.com
+    sandbox:
+      url: https://dev-sandbox.example.com
+  operations:
+    - method: GET
+      path: /items
+`)
+	overrides := map[string]interface{}{
+		"spec": map[string]interface{}{
+			"upstream": map[string]interface{}{
+				"main": map[string]interface{}{
+					"url": "https://prod-backend.example.com",
+				},
+			},
+			"displayName": "Orders Prod",
+		},
+	}
+
+	out, err := mergeGenericOverrides(base, overrides)
+	if err != nil {
+		t.Fatalf("mergeGenericOverrides: %v", err)
+	}
+	var got map[string]interface{}
+	if err := yaml.Unmarshal(out, &got); err != nil {
+		t.Fatalf("unmarshal result: %v", err)
+	}
+	spec, _ := asStringKeyedMap(got["spec"])
+	up, _ := asStringKeyedMap(spec["upstream"])
+	main, _ := asStringKeyedMap(up["main"])
+	sandbox, _ := asStringKeyedMap(up["sandbox"])
+
+	if main["url"] != "https://prod-backend.example.com" {
+		t.Errorf("main url = %v, want the overridden prod url", main["url"])
+	}
+	if sandbox["url"] != "https://dev-sandbox.example.com" {
+		t.Errorf("sandbox url = %v, want the untouched dev url (sibling preserved)", sandbox["url"])
+	}
+	if spec["displayName"] != "Orders Prod" {
+		t.Errorf("displayName = %v, want the overridden value", spec["displayName"])
+	}
+	if spec["context"] != "/orders" {
+		t.Errorf("context = %v, want preserved (untouched sibling)", spec["context"])
+	}
+	if _, ok := spec["operations"]; !ok {
+		t.Errorf("operations dropped; keys absent from the override must be preserved")
+	}
+}
+
+// TestDeepMergeMap covers scalar replace, nested merge, new-key add, and that a
+// map value replaces a non-map base value.
+func TestDeepMergeMap(t *testing.T) {
+	dst := map[string]interface{}{
+		"keep":   "me",
+		"scalar": 1,
+		"nested": map[string]interface{}{"a": 1, "b": 2},
+		"leaf":   "string",
+	}
+	src := map[string]interface{}{
+		"scalar": 2,
+		"nested": map[string]interface{}{"b": 3, "c": 4},
+		"leaf":   map[string]interface{}{"now": "map"},
+		"added":  "new",
+	}
+	got := deepMergeMap(dst, src)
+
+	if got["keep"] != "me" {
+		t.Errorf("untouched key lost: %v", got["keep"])
+	}
+	if got["scalar"] != 2 {
+		t.Errorf("scalar not replaced: %v", got["scalar"])
+	}
+	nested, _ := asStringKeyedMap(got["nested"])
+	if nested["a"] != 1 || nested["b"] != 3 || nested["c"] != 4 {
+		t.Errorf("nested merge wrong: %v", nested)
+	}
+	if _, ok := asStringKeyedMap(got["leaf"]); !ok {
+		t.Errorf("map value should replace a scalar base value")
+	}
+	if got["added"] != "new" {
+		t.Errorf("new key not added: %v", got["added"])
+	}
+}
+
+// TestMergeGenericOverrides_ProtectsImmutableFields verifies the override guard:
+// a safe field is applied, but an override targeting an immutable identity field
+// (directly or nested) is rejected.
+func TestMergeGenericOverrides_ProtectsImmutableFields(t *testing.T) {
+	base := []byte(`
+apiVersion: gateway.api-platform.wso2.com/v1
+kind: RestApi
+metadata:
+  name: orders
+spec:
+  context: /orders
+  version: v1.0.0
+  upstream:
+    main:
+      url: https://dev.example.com
+`)
+
+	// Safe: overriding a non-identity field succeeds.
+	if _, err := mergeGenericOverrides(base, map[string]interface{}{
+		"spec": map[string]interface{}{"upstream": map[string]interface{}{"sandbox": map[string]interface{}{"url": "https://sbx.example.com"}}},
+	}); err != nil {
+		t.Fatalf("safe override should succeed: %v", err)
+	}
+
+	protected := []struct {
+		name     string
+		override map[string]interface{}
+	}{
+		{"kind", map[string]interface{}{"kind": "LLMProvider"}},
+		{"apiVersion", map[string]interface{}{"apiVersion": "v2"}},
+		{"metadata.name", map[string]interface{}{"metadata": map[string]interface{}{"name": "hijacked"}}},
+		{"spec.context", map[string]interface{}{"spec": map[string]interface{}{"context": "/other"}}},
+		{"spec.version", map[string]interface{}{"spec": map[string]interface{}{"version": "v9"}}},
+		{"spec.operations", map[string]interface{}{"spec": map[string]interface{}{"operations": []interface{}{}}}},
+	}
+	for _, tc := range protected {
+		if _, err := mergeGenericOverrides(base, tc.override); err == nil {
+			t.Errorf("override of immutable %q should be rejected", tc.name)
+		}
+	}
+
+	// A metadata override that leaves name alone (labels only) is allowed.
+	if _, err := mergeGenericOverrides(base, map[string]interface{}{
+		"metadata": map[string]interface{}{"labels": map[string]interface{}{"tier": "gold"}},
+	}); err != nil {
+		t.Fatalf("metadata.labels override should be allowed: %v", err)
+	}
 }

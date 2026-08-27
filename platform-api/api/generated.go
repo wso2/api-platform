@@ -1031,6 +1031,9 @@ type DeployRequest struct {
 
 	// Name Name/label for this deployment (e.g., "v1.0-prod", "hotfix-2024-01-15")
 	Name string `binding:"required" json:"name" yaml:"name"`
+
+	// Overrides Optional structured override document deep-merged onto the deployment definition before it is sent to the gateway, letting a caller customize any field of the API config for this deployment. The applied overrides are persisted with the deployment.
+	Overrides *map[string]interface{} `json:"overrides,omitempty" yaml:"overrides,omitempty"`
 }
 
 // DeploymentListResponse defines model for DeploymentListResponse.

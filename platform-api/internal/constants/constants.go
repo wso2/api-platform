@@ -251,6 +251,10 @@ const (
 	MetadataKeyVhostMain = "vhostMain"
 	// MetadataKeyVhostSandbox is the metadata key for the per-deployment sandbox vhost value.
 	MetadataKeyVhostSandbox = "vhostSandbox"
+	// MetadataKeyOverrides is the metadata key under which the applied generic
+	// override document is persisted, so it can be read back (e.g. to prefill a
+	// re-deployment from the same environment).
+	MetadataKeyOverrides = "overrides"
 	// VhostGatewayDefault is the sentinel value that instructs the gateway-controller to resolve
 	// and persist the current gateway default vhosts, ensuring deployments are immune to future
 	// gateway config changes.

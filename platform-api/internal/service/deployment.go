@@ -268,14 +268,24 @@ func (s *DeploymentService) DeployAPI(apiUUID string, req *api.DeployRequest, or
 			s.slogger.Debug("Vhost sandbox overridden", "vhostSandbox", *vhostSandbox, "deploymentID", deploymentID)
 		}
 	} else {
-		// Start from base deployment bytes
-		contentBytes = baseDeployment.Content
+		// Promote from an existing deployment: start from that deployment's already
+		// rendered artifact and NEVER re-read the base API definition. Re-translate it
+		// to the target gateway's data version so promoting across gateways on
+		// different versions still yields a valid artifact — the source data version
+		// is computed from the base artifact's own apiVersion, and only the artifact
+		// Kind (an immutable classifier, unchanged by any edit to the API) is read from
+		// the API record, never its definition.
+		var apiDeployment dto.APIDeploymentYAML
+		if err := yaml.Unmarshal(baseDeployment.Content, &apiDeployment); err != nil {
+			return nil, fmt.Errorf("failed to parse base deployment YAML: %w", err)
+		}
+		sourceDataVersion := gatewaytranslator.ComputeDataVersion(apiModel.Kind, apiDeployment.ApiVersion)
+		targetDataVersion := gatewaytranslator.GatewayDataVersionForGateway(gateway.Version)
+		if err := gatewaytranslator.Translate(apiModel.Kind, sourceDataVersion, targetDataVersion, &apiDeployment); err != nil {
+			return nil, fmt.Errorf("failed to transform base deployment for gateway %s: %w", gateway.Version, err)
+		}
 		if needsOverride {
-			// Single unmarshal -> apply overrides -> single marshal
-			contentBytes, err = applyDeploymentOverrides(contentBytes, endpointURL, vhostMain, vhostSandbox, vhostMainOverridden, vhostSandboxOverridden)
-			if err != nil {
-				return nil, fmt.Errorf("failed to apply deployment overrides: %w", err)
-			}
+			applyBaseStructOverrides(&apiDeployment, endpointURL, vhostMain, vhostSandbox, vhostMainOverridden, vhostSandboxOverridden)
 			if endpointURL != nil {
 				s.slogger.Debug("Endpoint URL overridden", "endpointURL", *endpointURL, "deploymentID", deploymentID)
 			}
@@ -286,8 +296,23 @@ func (s *DeploymentService) DeployAPI(apiUUID string, req *api.DeployRequest, or
 				s.slogger.Debug("Vhost sandbox overridden", "vhostSandbox", *vhostSandbox, "deploymentID", deploymentID)
 			}
 		}
+		contentBytes, err = yaml.Marshal(&apiDeployment)
+		if err != nil {
+			return nil, fmt.Errorf("failed to marshal promoted deployment YAML: %w", err)
+		}
 	}
-	// If base: <deploymentId> and no overrides, contentBytes passes through unchanged.
+
+	// Apply the generic override document (customize any field of the config for
+	// this deployment) onto the resolved definition, and persist it so it can be
+	// read back and carried forward when this deployment is later used as a base.
+	if req.Overrides != nil && len(*req.Overrides) > 0 {
+		contentBytes, err = mergeGenericOverrides(contentBytes, *req.Overrides)
+		if err != nil {
+			return nil, fmt.Errorf("failed to apply deployment overrides: %w", err)
+		}
+		metadata[constants.MetadataKeyOverrides] = *req.Overrides
+		s.slogger.Debug("Generic overrides applied", "deploymentID", deploymentID)
+	}
 
 	// Store vhost in metadata so it is returned in the deployment response.
 	if vhostMain != nil {
@@ -733,19 +758,106 @@ func applyBaseStructOverrides(d *dto.APIDeploymentYAML, endpointURL *string, vho
 	}
 }
 
-// applyDeploymentOverrides unmarshals deployment YAML bytes, applies endpoint URL and/or vhost
-// overrides, and marshals back. Used for the base-deployment path when overrides are needed.
-func applyDeploymentOverrides(contentBytes []byte, endpointURL *string, vhostMain *string, vhostSandbox *string, vhostMainOverridden bool, vhostSandboxOverridden bool) ([]byte, error) {
-	var apiDeployment dto.APIDeploymentYAML
-	if err := yaml.Unmarshal(contentBytes, &apiDeployment); err != nil {
-		return nil, fmt.Errorf("failed to parse deployment YAML: %w", err)
+// protectedOverridePaths are the artifact's immutable identity fields, which an
+// override must never change — doing so would repoint or redefine the API rather
+// than customize a deployment of it. A customization that targets any of these is
+// rejected.
+var protectedOverridePaths = [][]string{
+	{"apiVersion"},
+	{"kind"},
+	{"metadata", "name"},
+	{"spec", "context"},
+	{"spec", "version"},
+	{"spec", "operations"},
+	{"spec", "channels"},
+}
+
+// overrideProtectedPath reports the first protected identity path an override
+// document sets (present at or below that path), if any.
+func overrideProtectedPath(overrides map[string]interface{}) (string, bool) {
+	for _, path := range protectedOverridePaths {
+		cur := overrides
+		reached := true
+		for i, seg := range path {
+			v, exists := cur[seg]
+			if !exists {
+				reached = false
+				break
+			}
+			if i == len(path)-1 {
+				break
+			}
+			m, isMap := asStringKeyedMap(v)
+			if !isMap {
+				reached = false
+				break
+			}
+			cur = m
+		}
+		if reached {
+			return strings.Join(path, "."), true
+		}
 	}
-	applyBaseStructOverrides(&apiDeployment, endpointURL, vhostMain, vhostSandbox, vhostMainOverridden, vhostSandboxOverridden)
-	modifiedBytes, err := yaml.Marshal(&apiDeployment)
+	return "", false
+}
+
+// mergeGenericOverrides deep-merges a structured override document onto the
+// deployment definition YAML, letting a caller customize any field of the API
+// config for this deployment without the service needing to know the field. An
+// override that targets an immutable identity field is rejected.
+func mergeGenericOverrides(contentBytes []byte, overrides map[string]interface{}) ([]byte, error) {
+	if path, bad := overrideProtectedPath(overrides); bad {
+		return nil, apperror.RESTAPIDeploymentValidationFailed.New(
+			fmt.Sprintf("Override targets the immutable field %q, which cannot be customized for a deployment.", path))
+	}
+	var base map[string]interface{}
+	if err := yaml.Unmarshal(contentBytes, &base); err != nil {
+		return nil, fmt.Errorf("failed to parse deployment YAML for override: %w", err)
+	}
+	if base == nil {
+		base = map[string]interface{}{}
+	}
+	out, err := yaml.Marshal(deepMergeMap(base, overrides))
 	if err != nil {
-		return nil, fmt.Errorf("failed to marshal modified deployment YAML: %w", err)
+		return nil, fmt.Errorf("failed to marshal overridden deployment YAML: %w", err)
 	}
-	return modifiedBytes, nil
+	return out, nil
+}
+
+// deepMergeMap recursively merges src into dst and returns dst. Nested maps are
+// merged key-by-key; every other value in src replaces the value in dst. Keys
+// absent from src are left untouched.
+func deepMergeMap(dst, src map[string]interface{}) map[string]interface{} {
+	for k, sv := range src {
+		if svMap, ok := asStringKeyedMap(sv); ok {
+			if dvMap, ok := asStringKeyedMap(dst[k]); ok {
+				dst[k] = deepMergeMap(dvMap, svMap)
+				continue
+			}
+			dst[k] = svMap
+			continue
+		}
+		dst[k] = sv
+	}
+	return dst
+}
+
+// asStringKeyedMap normalizes the two map shapes YAML/JSON decoding can produce
+// (map[string]interface{} and map[interface{}]interface{}) into a string-keyed
+// map, reporting whether the value was a map at all.
+func asStringKeyedMap(v interface{}) (map[string]interface{}, bool) {
+	switch m := v.(type) {
+	case map[string]interface{}:
+		return m, true
+	case map[interface{}]interface{}:
+		out := make(map[string]interface{}, len(m))
+		for k, val := range m {
+			out[fmt.Sprintf("%v", k)] = val
+		}
+		return out, true
+	default:
+		return nil, false
+	}
 }
 
 // GetDeployments retrieves all deployments for an API with optional filters
