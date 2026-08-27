@@ -16,6 +16,7 @@ if str(SRC) not in sys.path:
 import apip_sdk_core
 from apip_sdk_core import Headers
 from apip_sdk_core.policy import v1alpha2
+from apip_sdk_core.policy.v1alpha2 import SharedContext
 
 
 class PublicAPITests(unittest.TestCase):
@@ -37,3 +38,36 @@ class PublicAPITests(unittest.TestCase):
 
         self.assertEqual(headers.get("X-Test"), ["one", "two"])
         self.assertEqual(headers.get_all(), {"x-test": ["one", "two"]})
+
+    def test_shared_context_resolution_defaults_are_not_applicable(self) -> None:
+        """Every API kind released before Agent resolves its chain from the route,
+        so a policy has to be able to read the defaults as "not applicable" rather
+        than testing for None first."""
+        shared = SharedContext()
+
+        self.assertEqual(shared.resolved_operation, "")
+        self.assertEqual(shared.resolution_attributes, {})
+        self.assertEqual(shared.resolution_attributes.get("a2a.context.id", ""), "")
+
+    def test_shared_context_carries_the_resolved_operation_and_attributes(self) -> None:
+        shared = SharedContext(
+            api_kind="Agent",
+            resolved_operation="SendMessage",
+            resolution_attributes={
+                "a2a.transport": "JSONRPC",
+                "a2a.context.id": "ctx-1",
+            },
+        )
+
+        self.assertEqual(shared.resolved_operation, "SendMessage")
+        self.assertEqual(shared.resolution_attributes["a2a.context.id"], "ctx-1")
+
+    def test_shared_context_instances_do_not_share_a_default_attribute_dict(self) -> None:
+        """A mutable default would make one request's attributes visible on the
+        next — the hazard the Go SDK's read-only wrapper exists to prevent, which
+        here is handled by field(default_factory=dict)."""
+        first, second = SharedContext(), SharedContext()
+
+        first.resolution_attributes["a2a.context.id"] = "ctx-1"
+
+        self.assertEqual(second.resolution_attributes, {})

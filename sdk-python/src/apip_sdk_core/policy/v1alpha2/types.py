@@ -105,6 +105,45 @@ class AuthContext:
 
 @dataclass(slots=True)
 class SharedContext:
+    """Data shared across a request's phases.
+
+    ``resolved_operation`` is the canonical protocol operation this request
+    resolved to, on an API kind whose operation cannot be read off the route.
+    ``operation_path`` is not a substitute: a multiplexed transport puts every
+    operation on one path — an A2A JSON-RPC endpoint serves all eleven
+    operations at the same URL — so ``operation_path`` is identical for all of
+    them, and the operation is only knowable after the request has been
+    inspected.
+
+    ``resolution_attributes`` are the protocol-derived facts the route's
+    resolver captured in the same pass that identified that operation — an A2A
+    message's ``contextId`` and ``taskId``, for instance. They exist so the
+    request payload is parsed once, and they are the only way a body-sourced
+    value can reach a *request-header-phase* policy, which is handed no body of
+    its own. Names are namespaced by the producing protocol
+    (``"a2a.context.id"``); the set is small and closed per protocol, and is not
+    a projection of the payload.
+
+    Values in ``resolution_attributes`` are attacker-controlled in the general
+    case — they come out of a request body — and the gateway bounds them in
+    count and length before sending them. Bounded protocol facts and unbounded
+    caller-supplied identifiers sit side by side, so a policy using one as a
+    metric label or a cache key has to know which it has.
+
+    Unlike the Go SDK, which wraps these in a read-only ``ResolutionAttributes``
+    type, this is a plain ``dict``. That wrapper exists because in Go a route
+    resolved at deploy time shares one live map with every request on it, so a
+    policy writing to it would leak one request's data into the next. The
+    condition does not exist here: the context arrives over the executor's gRPC
+    stream, so deserialization already hands every request its own dict, and
+    nothing a policy does to it travels back — the gateway reads actions from a
+    policy, never a mutated context.
+
+    Both are empty for a route whose chain is fixed by the route itself, which
+    is every API kind that shipped before Agent — so a policy reads the empty
+    value as "not applicable", never as a failure to resolve.
+    """
+
     project_id: str = ""
     request_id: str = ""
     metadata: dict[str, Any] = field(default_factory=dict)
@@ -114,6 +153,8 @@ class SharedContext:
     api_kind: str = ""
     api_context: str = ""
     operation_path: str = ""
+    resolved_operation: str = ""
+    resolution_attributes: dict[str, str] = field(default_factory=dict)
     auth_context: AuthContext | None = None
 
 
