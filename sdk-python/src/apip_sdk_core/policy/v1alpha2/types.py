@@ -142,6 +142,15 @@ class SharedContext:
     Both are empty for a route whose chain is fixed by the route itself, which
     is every API kind that shipped before Agent — so a policy reads the empty
     value as "not applicable", never as a failure to resolve.
+
+    The two are appended after ``auth_context`` rather than placed beside
+    ``operation_path`` where they belong by meaning. This is a published
+    dataclass with no ``kw_only``, so its field order *is* its positional
+    constructor: inserting ahead of ``auth_context`` would silently bind an
+    existing caller's tenth positional argument to ``resolved_operation`` and
+    leave ``auth_context`` as ``None``. Reading order is not worth a silent
+    miswiring in code we cannot see. Field order is not what makes this a mirror
+    of the Go package — the field set and their semantics are.
     """
 
     project_id: str = ""
@@ -153,9 +162,9 @@ class SharedContext:
     api_kind: str = ""
     api_context: str = ""
     operation_path: str = ""
+    auth_context: AuthContext | None = None
     resolved_operation: str = ""
     resolution_attributes: dict[str, str] = field(default_factory=dict)
-    auth_context: AuthContext | None = None
 
 
 @dataclass(slots=True)

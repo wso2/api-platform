@@ -428,10 +428,10 @@ class SharedContext:
     api_kind: str
     api_context: str
     operation_path: str
-    resolved_operation: str            # canonical operation; "" unless the kind resolves one
-    resolution_attributes: dict[str, str]  # protocol facts from the request; per-request copy
     auth_context: AuthContext | None
     metadata: dict[str, Any]  # cross-policy mutable bag
+    resolved_operation: str                # canonical operation; "" unless the kind resolves one
+    resolution_attributes: dict[str, str]  # protocol facts from the request; per-request copy
 ```
 
 `resolved_operation` names the operation whose policy chain is running, for an API
