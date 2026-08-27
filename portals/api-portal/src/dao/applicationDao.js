@@ -21,6 +21,7 @@ const crypto = require('crypto');
 const db = require('../db/driver');
 const { NotFoundError } = require('../utils/errors/customErrors');
 const logger = require('../config/logger');
+const { getPortalId } = require('../utils/orgContext');
 
 const APPLICATION_TABLE = 'applications';
 const KEY_MAPPING_TABLE = 'app_key_mappings';
@@ -43,16 +44,18 @@ const create = async (orgId, userId, appData) => {
     // fall back to the uuid when the display name slugifies to nothing.
     const suppliedHandle = appData.handle != null ? String(appData.handle).trim() : '';
     const handle = suppliedHandle || slugify(appData.displayName) || uuid;
+    const portalId = getPortalId();
     await db.execute(
-        `INSERT INTO ${APPLICATION_TABLE} (uuid, display_name, handle, org_uuid, description, created_by, updated_by)
-         VALUES (?, ?, ?, ?, ?, ?, ?)`,
-        [uuid, appData.displayName, handle, orgId, appData.description, userId, userId]
+        `INSERT INTO ${APPLICATION_TABLE} (uuid, display_name, handle, org_uuid, portal_id, description, created_by, updated_by)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+        [uuid, appData.displayName, handle, orgId, portalId, appData.description, userId, userId]
     );
     return {
         uuid,
         display_name: appData.displayName,
         handle,
         org_uuid: orgId,
+        portal_id: portalId,
         description: appData.description,
         created_by: userId,
         updated_by: userId,
@@ -63,15 +66,15 @@ const update = async (orgId, appId, userId, appData) => {
     const updatedAt = new Date();
     const { rowCount } = await db.execute(
         `UPDATE ${APPLICATION_TABLE} SET display_name = ?, description = ?, updated_by = ?, updated_at = ?
-         WHERE org_uuid = ? AND uuid = ? AND created_by = ?`,
-        [appData.displayName, appData.description, userId, updatedAt, orgId, appId, userId]
+         WHERE org_uuid = ? AND portal_id = ? AND uuid = ? AND created_by = ?`,
+        [appData.displayName, appData.description, userId, updatedAt, orgId, getPortalId(), appId, userId]
     );
     if (!rowCount) {
         return [rowCount, null];
     }
     const updatedApp = await db.queryOne(
-        `SELECT * FROM ${APPLICATION_TABLE} WHERE org_uuid = ? AND uuid = ?`,
-        [orgId, appId]
+        `SELECT * FROM ${APPLICATION_TABLE} WHERE org_uuid = ? AND portal_id = ? AND uuid = ?`,
+        [orgId, getPortalId(), appId]
     );
     return [rowCount, [updatedApp]];
 };
@@ -79,30 +82,30 @@ const update = async (orgId, appId, userId, appData) => {
 const get = async (orgId, appId, userId, t) => {
     const exec = t || db;
     return exec.queryOne(
-        `SELECT * FROM ${APPLICATION_TABLE} WHERE org_uuid = ? AND uuid = ? AND created_by = ?`,
-        [orgId, appId, userId]
+        `SELECT * FROM ${APPLICATION_TABLE} WHERE org_uuid = ? AND portal_id = ? AND uuid = ? AND created_by = ?`,
+        [orgId, getPortalId(), appId, userId]
     );
 };
 
 const getId = async (orgId, userId, handle) => {
     return db.queryOne(
-        `SELECT uuid FROM ${APPLICATION_TABLE} WHERE org_uuid = ? AND created_by = ? AND handle = ?`,
-        [orgId, userId, handle]
+        `SELECT uuid FROM ${APPLICATION_TABLE} WHERE org_uuid = ? AND portal_id = ? AND created_by = ? AND handle = ?`,
+        [orgId, getPortalId(), userId, handle]
     );
 };
 
 const list = async (orgId, userId) => {
     return db.query(
-        `SELECT * FROM ${APPLICATION_TABLE} WHERE org_uuid = ? AND created_by = ?`,
-        [orgId, userId]
+        `SELECT * FROM ${APPLICATION_TABLE} WHERE org_uuid = ? AND portal_id = ? AND created_by = ?`,
+        [orgId, getPortalId(), userId]
     );
 };
 
 const deleteApp = async (orgId, appId, userId, t) => {
     const exec = t || db;
     const { rowCount } = await exec.execute(
-        `DELETE FROM ${APPLICATION_TABLE} WHERE org_uuid = ? AND uuid = ? AND created_by = ?`,
-        [orgId, appId, userId]
+        `DELETE FROM ${APPLICATION_TABLE} WHERE org_uuid = ? AND portal_id = ? AND uuid = ? AND created_by = ?`,
+        [orgId, getPortalId(), appId, userId]
     );
     if (rowCount < 1) {
         throw new NotFoundError('Application not found');
@@ -120,8 +123,8 @@ const deleteApp = async (orgId, appId, userId, t) => {
 const getKeyMapping = async (orgId, appId, t) => {
     const exec = t || db;
     const application = await exec.queryOne(
-        `SELECT * FROM ${APPLICATION_TABLE} WHERE org_uuid = ? AND uuid = ?`,
-        [orgId, appId]
+        `SELECT * FROM ${APPLICATION_TABLE} WHERE org_uuid = ? AND portal_id = ? AND uuid = ?`,
+        [orgId, getPortalId(), appId]
     );
     if (!application) return null;
 
@@ -157,13 +160,15 @@ const upsertKeyMapping = async (mappingData, t) => {
     }
 
     const uuid = crypto.randomUUID();
+    const portalId = getPortalId();
     await exec.execute(
-        `INSERT INTO ${KEY_MAPPING_TABLE} (uuid, app_uuid, km_uuid, as_client_id, type, created_by, updated_by)
-         VALUES (?, ?, ?, ?, ?, ?, ?)`,
-        [uuid, mappingData.appId, mappingData.kmId || null, mappingData.asClientId, mappingData.type, mappingData.createdBy, mappingData.createdBy]
+        `INSERT INTO ${KEY_MAPPING_TABLE} (uuid, portal_id, app_uuid, km_uuid, as_client_id, type, created_by, updated_by)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+        [uuid, portalId, mappingData.appId, mappingData.kmId || null, mappingData.asClientId, mappingData.type, mappingData.createdBy, mappingData.createdBy]
     );
     return {
         uuid,
+        portal_id: portalId,
         app_uuid: mappingData.appId,
         km_uuid: mappingData.kmId || null,
         as_client_id: mappingData.asClientId,
@@ -199,9 +204,9 @@ const deleteMappingsByIds = async (orgId, mappingIds, t) => {
     const idPlaceholders = mappingIds.map(() => '?').join(', ');
     const ownedMappings = await exec.query(
         `SELECT m.uuid FROM ${KEY_MAPPING_TABLE} m
-         JOIN ${APPLICATION_TABLE} a ON m.app_uuid = a.uuid
-         WHERE m.uuid IN (${idPlaceholders}) AND a.org_uuid = ?`,
-        [...mappingIds, orgId]
+         JOIN ${APPLICATION_TABLE} a ON m.app_uuid = a.uuid AND m.portal_id = a.portal_id
+         WHERE m.uuid IN (${idPlaceholders}) AND a.org_uuid = ? AND a.portal_id = ?`,
+        [...mappingIds, orgId, getPortalId()]
     );
     const ownedIds = ownedMappings.map((m) => m.uuid);
     if (ownedIds.length === 0) return 0;
@@ -236,16 +241,18 @@ const deleteKeyMappingById = async (appId, mappingId, t) => {
 const createKeyMapping = async (mappingData, t) => {
     const exec = t || db;
     const uuid = crypto.randomUUID();
+    const portalId = getPortalId();
     await exec.execute(
-        `INSERT INTO ${KEY_MAPPING_TABLE} (uuid, app_uuid, km_uuid, as_client_id, type, created_by, updated_by)
-         VALUES (?, ?, ?, ?, ?, ?, ?)`,
+        `INSERT INTO ${KEY_MAPPING_TABLE} (uuid, portal_id, app_uuid, km_uuid, as_client_id, type, created_by, updated_by)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
         [
-            uuid, mappingData.appId, mappingData.kmId || null, mappingData.asClientId || null,
+            uuid, portalId, mappingData.appId, mappingData.kmId || null, mappingData.asClientId || null,
             mappingData.type || 'PRODUCTION', mappingData.createdBy, mappingData.createdBy,
         ]
     );
     return {
         uuid,
+        portal_id: portalId,
         app_uuid: mappingData.appId,
         km_uuid: mappingData.kmId || null,
         as_client_id: mappingData.asClientId || null,

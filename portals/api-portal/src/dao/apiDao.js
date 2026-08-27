@@ -22,6 +22,7 @@ const db = require('../db/driver');
 const { groupBy } = require('../db/rows');
 const constants = require('../utils/constants');
 const logger = require('../config/logger');
+const { getPortalId } = require('../utils/orgContext');
 
 const API_METADATA_TABLE = 'api_metadata';
 const CONTENT_TABLE = 'api_contents';
@@ -80,6 +81,7 @@ const SEARCH_APIS_POSTGRES_SQL = `
     LEFT JOIN
         api_contents content
         ON metadata.uuid = content.api_uuid
+        AND content.portal_id = metadata.portal_id
         AND (
             content.file_name LIKE '%.hbs'
             OR content.file_name LIKE '%.md%'
@@ -96,6 +98,7 @@ const SEARCH_APIS_POSTGRES_SQL = `
             )
         )
         AND metadata.org_uuid = :orgId
+        AND metadata.portal_id = :portalId
         AND (:includeType::text IS NULL OR metadata.type = :includeType)
         AND (:excludeType::text IS NULL OR metadata.type != :excludeType)
         AND (
@@ -103,8 +106,9 @@ const SEARCH_APIS_POSTGRES_SQL = `
             OR EXISTS (
                 SELECT 1
                 FROM api_label_mappings alm
-                JOIN view_label_mappings vlm ON alm.label_uuid = vlm.label_uuid
+                JOIN view_label_mappings vlm ON alm.label_uuid = vlm.label_uuid AND alm.portal_id = vlm.portal_id
                 WHERE alm.api_uuid = metadata.uuid AND vlm.view_uuid = :viewId
+                AND alm.portal_id = metadata.portal_id
             )
         )
     GROUP BY
@@ -136,25 +140,25 @@ async function attachAssociations(apiRows, t) {
 
     const labelRows = await exec.query(
         `SELECT alm.api_uuid AS api_uuid, l.handle AS handle
-         FROM ${API_LABEL_MAPPINGS_TABLE} alm JOIN ${LABELS_TABLE} l ON alm.label_uuid = l.uuid
-         WHERE alm.api_uuid IN (${placeholders})`,
-        apiIds
+         FROM ${API_LABEL_MAPPINGS_TABLE} alm JOIN ${LABELS_TABLE} l ON alm.label_uuid = l.uuid AND alm.portal_id = l.portal_id
+         WHERE alm.api_uuid IN (${placeholders}) AND alm.portal_id = ?`,
+        [...apiIds, getPortalId()]
     );
     const labelsByApi = groupBy(labelRows, 'api_uuid');
 
     const tagRows = await exec.query(
         `SELECT atm.api_uuid AS api_uuid, tg.name AS name
-         FROM ${API_TAG_MAPPINGS_TABLE} atm JOIN ${TAGS_TABLE} tg ON atm.tag_uuid = tg.uuid
-         WHERE atm.api_uuid IN (${placeholders})`,
-        apiIds
+         FROM ${API_TAG_MAPPINGS_TABLE} atm JOIN ${TAGS_TABLE} tg ON atm.tag_uuid = tg.uuid AND atm.portal_id = tg.portal_id
+         WHERE atm.api_uuid IN (${placeholders}) AND atm.portal_id = ?`,
+        [...apiIds, getPortalId()]
     );
     const tagsByApi = groupBy(tagRows, 'api_uuid');
 
     const planMappingRows = await exec.query(
         `SELECT m.api_uuid AS mapping_api_uuid, sp.*
-         FROM ${API_SUBSCRIPTION_PLAN_MAPPINGS_TABLE} m JOIN ${SUBSCRIPTION_PLANS_TABLE} sp ON m.plan_uuid = sp.uuid
-         WHERE m.api_uuid IN (${placeholders})`,
-        apiIds
+         FROM ${API_SUBSCRIPTION_PLAN_MAPPINGS_TABLE} m JOIN ${SUBSCRIPTION_PLANS_TABLE} sp ON m.plan_uuid = sp.uuid AND m.portal_id = sp.portal_id
+         WHERE m.api_uuid IN (${placeholders}) AND m.portal_id = ?`,
+        [...apiIds, getPortalId()]
     );
     const planIds = [...new Set(planMappingRows.map((p) => p.uuid))];
     let limitsByPlan = new Map();
@@ -188,17 +192,18 @@ const create = async (orgId, apiMetadata, createdBy, t) => {
     const handle = apiMetadata.handle || `${apiMetadata.name.toLowerCase().replace(/\s+/g, '')}-v${apiMetadata.version}`;
     const agentVisibility = (apiMetadata.agentVisibility || constants.AGENT_VISIBILITY.VISIBLE).toUpperCase();
 
+    const portalId = getPortalId();
     await exec.execute(
         `INSERT INTO ${API_METADATA_TABLE}
             (uuid, ref_id, status, name, handle, description, version, type, agent_visibility,
              technical_owner, technical_owner_email, business_owner_email, business_owner,
-             sandbox_url, production_url, metadata_search, org_uuid, created_by, updated_by, created_at, updated_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+             sandbox_url, production_url, metadata_search, org_uuid, portal_id, created_by, updated_by, created_at, updated_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         [
             uuid, apiMetadata.referenceId, apiMetadata.status, apiMetadata.name, handle, apiMetadata.description,
             apiMetadata.version, apiMetadata.type, agentVisibility, owners.technicalOwner, owners.technicalOwnerEmail,
             owners.businessOwnerEmail, owners.businessOwner, apiMetadata.endPoints.sandboxURL,
-            apiMetadata.endPoints.productionURL, apiMetadata, orgId, createdBy, createdBy, now, now,
+            apiMetadata.endPoints.productionURL, apiMetadata, orgId, portalId, createdBy, createdBy, now, now,
         ]
     );
     return {
@@ -208,7 +213,7 @@ const create = async (orgId, apiMetadata, createdBy, t) => {
         technical_owner_email: owners.technicalOwnerEmail, business_owner_email: owners.businessOwnerEmail,
         business_owner: owners.businessOwner, sandbox_url: apiMetadata.endPoints.sandboxURL,
         production_url: apiMetadata.endPoints.productionURL, metadata_search: apiMetadata, org_uuid: orgId,
-        created_by: createdBy, updated_by: createdBy, created_at: now, updated_at: now,
+        portal_id: portalId, created_by: createdBy, updated_by: createdBy, created_at: now, updated_at: now,
     };
 };
 
@@ -218,26 +223,27 @@ const update = async (orgId, apiId, apiMetadata, updatedBy, t) => {
     const agentVisibility = (apiMetadata.agentVisibility || constants.AGENT_VISIBILITY.VISIBLE).toUpperCase();
     const updatedAt = new Date();
 
+    const portalId = getPortalId();
     const { rowCount } = await exec.execute(
         `UPDATE ${API_METADATA_TABLE}
          SET ref_id = ?, status = ?, name = ?, description = ?, version = ?, type = ?, agent_visibility = ?,
              technical_owner = ?, technical_owner_email = ?, business_owner_email = ?, business_owner = ?,
              sandbox_url = ?, production_url = ?, metadata_search = ?, updated_by = ?, updated_at = ?
-         WHERE uuid = ? AND org_uuid = ?`,
+         WHERE uuid = ? AND org_uuid = ? AND portal_id = ?`,
         [
             apiMetadata.referenceId, apiMetadata.status, apiMetadata.name, apiMetadata.description,
             apiMetadata.version, apiMetadata.type, agentVisibility, owners.technicalOwner,
             owners.technicalOwnerEmail, owners.businessOwnerEmail, owners.businessOwner,
             apiMetadata.endPoints.sandboxURL, apiMetadata.endPoints.productionURL, apiMetadata,
-            updatedBy, updatedAt, apiId, orgId,
+            updatedBy, updatedAt, apiId, orgId, portalId,
         ]
     );
     if (!rowCount) {
         return [0, null];
     }
     const updatedInstance = await exec.queryOne(
-        `SELECT * FROM ${API_METADATA_TABLE} WHERE uuid = ? AND org_uuid = ?`,
-        [apiId, orgId]
+        `SELECT * FROM ${API_METADATA_TABLE} WHERE uuid = ? AND org_uuid = ? AND portal_id = ?`,
+        [apiId, orgId, portalId]
     );
     return [rowCount, [updatedInstance]];
 };
@@ -245,8 +251,8 @@ const update = async (orgId, apiId, apiMetadata, updatedBy, t) => {
 const deleteApi = async (orgId, apiId, t) => {
     const exec = t || db;
     const { rowCount } = await exec.execute(
-        `DELETE FROM ${API_METADATA_TABLE} WHERE uuid = ? AND org_uuid = ?`,
-        [apiId, orgId]
+        `DELETE FROM ${API_METADATA_TABLE} WHERE uuid = ? AND org_uuid = ? AND portal_id = ?`,
+        [apiId, orgId, getPortalId()]
     );
     return rowCount;
 };
@@ -254,8 +260,8 @@ const deleteApi = async (orgId, apiId, t) => {
 const get = async (orgId, apiId, t) => {
     const exec = t || db;
     const rows = await exec.query(
-        `SELECT * FROM ${API_METADATA_TABLE} WHERE org_uuid = ? AND uuid = ? AND status IN (${STATUS_PLACEHOLDERS})`,
-        [orgId, apiId, ...PUBLISHED_STATUSES]
+        `SELECT * FROM ${API_METADATA_TABLE} WHERE org_uuid = ? AND portal_id = ? AND uuid = ? AND status IN (${STATUS_PLACEHOLDERS})`,
+        [orgId, getPortalId(), apiId, ...PUBLISHED_STATUSES]
     );
     await attachAssociations(rows, t);
     return rows;
@@ -272,8 +278,8 @@ const get = async (orgId, apiId, t) => {
  */
 const getByCondition = async ({ orgId, uuid, typeFilter } = {}, t, tags) => {
     const exec = t || db;
-    const conditions = [];
-    const params = [];
+    const conditions = ['portal_id = ?'];
+    const params = [getPortalId()];
     if (orgId !== undefined) { conditions.push('org_uuid = ?'); params.push(orgId); }
     if (uuid !== undefined) { conditions.push('uuid = ?'); params.push(uuid); }
     if (typeFilter?.include) { conditions.push('type = ?'); params.push(typeFilter.include); }
@@ -283,8 +289,9 @@ const getByCondition = async ({ orgId, uuid, typeFilter } = {}, t, tags) => {
     if (tagsArray.length > 0) {
         const tagPlaceholders = tagsArray.map(() => '?').join(', ');
         conditions.push(
-            `EXISTS (SELECT 1 FROM ${API_TAG_MAPPINGS_TABLE} atm JOIN ${TAGS_TABLE} tg ON atm.tag_uuid = tg.uuid
-                     WHERE atm.api_uuid = ${API_METADATA_TABLE}.uuid AND tg.name IN (${tagPlaceholders}))`
+            `EXISTS (SELECT 1 FROM ${API_TAG_MAPPINGS_TABLE} atm JOIN ${TAGS_TABLE} tg ON atm.tag_uuid = tg.uuid AND atm.portal_id = tg.portal_id
+                     WHERE atm.api_uuid = ${API_METADATA_TABLE}.uuid AND tg.name IN (${tagPlaceholders})
+                     AND atm.portal_id = ${API_METADATA_TABLE}.portal_id)`
         );
         params.push(...tagsArray);
     }
@@ -300,8 +307,8 @@ const list = async (orgId, viewName, t, typeFilter) => {
     const viewDao = require('./viewDao');
     const viewId = await viewDao.getId(orgId, viewName, t);
 
-    const conditions = ['org_uuid = ?', `status IN (${STATUS_PLACEHOLDERS})`];
-    const params = [orgId, ...PUBLISHED_STATUSES];
+    const conditions = ['org_uuid = ?', 'portal_id = ?', `status IN (${STATUS_PLACEHOLDERS})`];
+    const params = [orgId, getPortalId(), ...PUBLISHED_STATUSES];
     if (typeFilter?.include) { conditions.push('type = ?'); params.push(typeFilter.include); }
     if (typeFilter?.exclude) { conditions.push('type != ?'); params.push(typeFilter.exclude); }
     // Required label-in-view filter — mirrors the previous `required: true` Labels include
@@ -320,8 +327,8 @@ const list = async (orgId, viewName, t, typeFilter) => {
 
 const listFromAllViews = async (orgId, t, typeFilter) => {
     const exec = t || db;
-    const conditions = ['org_uuid = ?', `status IN (${STATUS_PLACEHOLDERS})`];
-    const params = [orgId, ...PUBLISHED_STATUSES];
+    const conditions = ['org_uuid = ?', 'portal_id = ?', `status IN (${STATUS_PLACEHOLDERS})`];
+    const params = [orgId, getPortalId(), ...PUBLISHED_STATUSES];
     if (typeFilter?.include) { conditions.push('type = ?'); params.push(typeFilter.include); }
     if (typeFilter?.exclude) { conditions.push('type != ?'); params.push(typeFilter.exclude); }
     // Required label filter — mirrors the previous `required: true` Labels include with no
@@ -343,8 +350,8 @@ const searchFallback = async (orgId, searchTerm, viewName, t, typeFilter) => {
     const viewId = await viewDao.getId(orgId, viewName, t);
 
     const matchingTags = await exec.query(
-        `SELECT uuid FROM ${TAGS_TABLE} WHERE org_uuid = ? AND name LIKE ?`,
-        [orgId, pattern]
+        `SELECT uuid FROM ${TAGS_TABLE} WHERE org_uuid = ? AND portal_id = ? AND name LIKE ?`,
+        [orgId, getPortalId(), pattern]
     );
     const matchingTagIds = matchingTags.map((tag) => tag.uuid);
     let taggedApiIds = [];
@@ -357,8 +364,8 @@ const searchFallback = async (orgId, searchTerm, viewName, t, typeFilter) => {
         taggedApiIds = [...new Set(matchingTagApis.map((row) => row.api_uuid))];
     }
 
-    const conditions = ['org_uuid = ?', `status IN (${STATUS_PLACEHOLDERS})`];
-    const params = [orgId, ...PUBLISHED_STATUSES];
+    const conditions = ['org_uuid = ?', 'portal_id = ?', `status IN (${STATUS_PLACEHOLDERS})`];
+    const params = [orgId, getPortalId(), ...PUBLISHED_STATUSES];
     if (typeFilter?.include) { conditions.push('type = ?'); params.push(typeFilter.include); }
     if (typeFilter?.exclude) { conditions.push('type != ?'); params.push(typeFilter.exclude); }
 
@@ -398,6 +405,7 @@ const search = async (orgId, searchTerm, viewName, t, typeFilter) => {
     const { sql, params } = db.bindNamedParams(SEARCH_APIS_POSTGRES_SQL, {
         searchTerm,
         orgId,
+        portalId: getPortalId(),
         viewId: viewId || null,
         includeType: typeFilter?.include || null,
         excludeType: typeFilter?.exclude || null,
@@ -409,8 +417,8 @@ const search = async (orgId, searchTerm, viewName, t, typeFilter) => {
 
 const getId = async (orgId, apiHandle) => {
     const api = await db.queryOne(
-        `SELECT uuid FROM ${API_METADATA_TABLE} WHERE handle = ? AND org_uuid = ?`,
-        [apiHandle, orgId]
+        `SELECT uuid FROM ${API_METADATA_TABLE} WHERE handle = ? AND org_uuid = ? AND portal_id = ?`,
+        [apiHandle, orgId, getPortalId()]
     );
     return api?.uuid;
 };
@@ -435,8 +443,8 @@ const getIdInView = async (orgId, apiHandle, viewName, { type, excludeType } = {
     const viewDao = require('./viewDao');
     const viewId = await viewDao.getId(orgId, viewName, t);
 
-    const conditions = ['handle = ?', 'org_uuid = ?', `status IN (${STATUS_PLACEHOLDERS})`];
-    const params = [apiHandle, orgId, ...PUBLISHED_STATUSES];
+    const conditions = ['handle = ?', 'org_uuid = ?', 'portal_id = ?', `status IN (${STATUS_PLACEHOLDERS})`];
+    const params = [apiHandle, orgId, getPortalId(), ...PUBLISHED_STATUSES];
     if (type) { conditions.push('type = ?'); params.push(type); }
     if (excludeType) { conditions.push('type != ?'); params.push(excludeType); }
     conditions.push(
@@ -457,8 +465,8 @@ const getIdInView = async (orgId, apiHandle, viewName, { type, excludeType } = {
 // single query — used by resource families that only manage one API type.
 const getIdByType = async (orgId, apiHandle, type) => {
     const api = await db.queryOne(
-        `SELECT uuid FROM ${API_METADATA_TABLE} WHERE handle = ? AND org_uuid = ? AND type = ?`,
-        [apiHandle, orgId, type]
+        `SELECT uuid FROM ${API_METADATA_TABLE} WHERE handle = ? AND org_uuid = ? AND portal_id = ? AND type = ?`,
+        [apiHandle, orgId, getPortalId(), type]
     );
     return api?.uuid;
 };
@@ -468,16 +476,16 @@ const getIdByType = async (orgId, apiHandle, type) => {
 // /apis/* stops resolving handles that belong to that dedicated family.
 const getIdExcludingType = async (orgId, apiHandle, excludedType) => {
     const api = await db.queryOne(
-        `SELECT uuid FROM ${API_METADATA_TABLE} WHERE handle = ? AND org_uuid = ? AND type != ?`,
-        [apiHandle, orgId, excludedType]
+        `SELECT uuid FROM ${API_METADATA_TABLE} WHERE handle = ? AND org_uuid = ? AND portal_id = ? AND type != ?`,
+        [apiHandle, orgId, getPortalId(), excludedType]
     );
     return api?.uuid;
 };
 
 const getHandle = async (orgId, apiRefId) => {
     const api = await db.queryOne(
-        `SELECT handle FROM ${API_METADATA_TABLE} WHERE ref_id = ? AND org_uuid = ?`,
-        [apiRefId, orgId]
+        `SELECT handle FROM ${API_METADATA_TABLE} WHERE ref_id = ? AND org_uuid = ? AND portal_id = ?`,
+        [apiRefId, orgId, getPortalId()]
     );
     return api?.handle ?? null;
 };
@@ -485,8 +493,8 @@ const getHandle = async (orgId, apiRefId) => {
 const getIdByRef = async (orgId, referenceId, t) => {
     const exec = t || db;
     const api = await exec.queryOne(
-        `SELECT uuid FROM ${API_METADATA_TABLE} WHERE ref_id = ? AND org_uuid = ?`,
-        [referenceId, orgId]
+        `SELECT uuid FROM ${API_METADATA_TABLE} WHERE ref_id = ? AND org_uuid = ? AND portal_id = ?`,
+        [referenceId, orgId, getPortalId()]
     );
     return api?.uuid;
 };
@@ -497,9 +505,9 @@ const getSpecs = async (orgId, apiIds) => {
         const placeholders = apiIds.map(() => '?').join(', ');
         const rows = await db.query(
             `SELECT c.api_uuid AS api_uuid, c.file_name AS file_name, c.file_content AS file_content
-             FROM ${CONTENT_TABLE} c JOIN ${API_METADATA_TABLE} m ON c.api_uuid = m.uuid
-             WHERE c.api_uuid IN (${placeholders}) AND c.type = ? AND m.org_uuid = ?`,
-            [...apiIds, constants.DOC_TYPES.API_DEFINITION, orgId]
+             FROM ${CONTENT_TABLE} c JOIN ${API_METADATA_TABLE} m ON c.api_uuid = m.uuid AND c.portal_id = m.portal_id
+             WHERE c.api_uuid IN (${placeholders}) AND c.type = ? AND m.org_uuid = ? AND m.portal_id = ?`,
+            [...apiIds, constants.DOC_TYPES.API_DEFINITION, orgId, getPortalId()]
         );
         return rows.map((spec) => ({
             apiId: spec.api_uuid,
@@ -518,8 +526,8 @@ const getSpecs = async (orgId, apiIds) => {
 
 const existsByNameVersion = async (orgId, apiName, apiVersion) => {
     const row = await db.queryOne(
-        `SELECT uuid FROM ${API_METADATA_TABLE} WHERE org_uuid = ? AND name = ? AND version = ?`,
-        [orgId, apiName, apiVersion]
+        `SELECT uuid FROM ${API_METADATA_TABLE} WHERE org_uuid = ? AND portal_id = ? AND name = ? AND version = ?`,
+        [orgId, getPortalId(), apiName, apiVersion]
     );
     return !!row;
 };

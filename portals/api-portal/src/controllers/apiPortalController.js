@@ -328,7 +328,7 @@ const generateOAuthKeys = async (req, res) => {
         if (!keyMapping || !keyMapping.km_uuid) {
             throw new CustomError(404, 'Key mapping not found or missing key manager reference');
         }
-        const kmRecord = await kmDao.get(keyMapping.km_uuid);
+        const kmRecord = await kmDao.get(orgId, keyMapping.km_uuid);
         if (!kmRecord) {
             throw new CustomError(404, 'Key manager not found');
         }

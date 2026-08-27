@@ -20,6 +20,7 @@
 const crypto = require('crypto');
 const db = require('../db/driver');
 const { findOrCreateSafe } = require('./findOrCreateHelper');
+const { getPortalId } = require('../utils/orgContext');
 
 const TAGS_TABLE = 'tags';
 const API_TAGS_TABLE = 'api_tag_mappings';
@@ -28,8 +29,8 @@ const API_TAGS_TABLE = 'api_tag_mappings';
 // and column list, not on any per-call data.
 const UPSERT_API_TAG_SQL = db.buildUpsert(
     API_TAGS_TABLE,
-    ['uuid', 'tag_uuid', 'api_uuid', 'created_by'],
-    ['tag_uuid', 'api_uuid'],
+    ['uuid', 'portal_id', 'tag_uuid', 'api_uuid', 'created_by'],
+    ['portal_id', 'tag_uuid', 'api_uuid'],
     [] // ignoreDuplicates semantics — leave the existing mapping row untouched on conflict
 );
 
@@ -43,13 +44,15 @@ const getOrCreateIds = async (orgId, tagNames, createdBy, t) => {
     for (const name of tagNames) {
         const trimmed = String(name).trim();
         if (!trimmed) continue;
+        const portalId = getPortalId();
         const tag = await findOrCreateSafe(
             TAGS_TABLE,
-            { name: trimmed, org_uuid: orgId },
+            { name: trimmed, org_uuid: orgId, portal_id: portalId },
             {
                 uuid: crypto.randomUUID(),
                 name: trimmed,
                 org_uuid: orgId,
+                portal_id: portalId,
                 created_by: createdBy,
                 updated_by: createdBy,
             },
@@ -64,7 +67,7 @@ const createApiMapping = async (orgId, apiId, tagNames, createdBy, t) => {
     const exec = t || db;
     const idList = await getOrCreateIds(orgId, tagNames || [], createdBy, t);
     for (const tagId of idList) {
-        await exec.execute(UPSERT_API_TAG_SQL, [crypto.randomUUID(), tagId, apiId, createdBy]);
+        await exec.execute(UPSERT_API_TAG_SQL, [crypto.randomUUID(), getPortalId(), tagId, apiId, createdBy]);
     }
     return idList;
 };

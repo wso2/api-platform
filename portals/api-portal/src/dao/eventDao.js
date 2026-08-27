@@ -20,6 +20,7 @@
 const crypto = require('crypto');
 const db = require('../db/driver');
 const { groupBy, parseJsonColumn } = require('../db/rows');
+const { getPortalId } = require('../utils/orgContext');
 
 const EVENTS_TABLE = 'events';
 const DELIVERIES_TABLE = 'event_deliveries';
@@ -47,6 +48,7 @@ async function create({ eventType, orgId, aggregateType, aggregateId, payload },
         uuid,
         type: eventType,
         org_uuid: orgId,
+        portal_id: getPortalId(),
         aggregate_type: aggregateType,
         aggregate_uuid: aggregateId,
         payload: payload || {},
@@ -55,9 +57,9 @@ async function create({ eventType, orgId, aggregateType, aggregateId, payload },
     };
 
     await exec.execute(
-        `INSERT INTO ${EVENTS_TABLE} (uuid, type, org_uuid, aggregate_type, aggregate_uuid, payload, occurred_at, status)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
-        [row.uuid, row.type, row.org_uuid, row.aggregate_type, row.aggregate_uuid,
+        `INSERT INTO ${EVENTS_TABLE} (uuid, type, org_uuid, portal_id, aggregate_type, aggregate_uuid, payload, occurred_at, status)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        [row.uuid, row.type, row.org_uuid, row.portal_id, row.aggregate_type, row.aggregate_uuid,
             JSON.stringify(row.payload), row.occurred_at, row.status]
     );
 
@@ -84,8 +86,10 @@ async function create({ eventType, orgId, aggregateType, aggregateId, payload },
  */
 async function createDeliveries(eventId, subscribers, perSubscriberEncrypted, transaction) {
     const exec = transaction || db;
+    const portalId = getPortalId();
     const rows = subscribers.map((sub) => ({
         uuid: crypto.randomUUID(),
+        portal_id: portalId,
         event_uuid: eventId,
         subscriber_id: sub.id,
         target_url: sub.url,
@@ -95,10 +99,10 @@ async function createDeliveries(eventId, subscribers, perSubscriberEncrypted, tr
 
     for (const row of rows) {
         await exec.execute(
-            `INSERT INTO ${DELIVERIES_TABLE} (uuid, event_uuid, subscriber_id, target_url, encrypted_fields, status)
-             VALUES (?, ?, ?, ?, ?, ?)`,
+            `INSERT INTO ${DELIVERIES_TABLE} (uuid, portal_id, event_uuid, subscriber_id, target_url, encrypted_fields, status)
+             VALUES (?, ?, ?, ?, ?, ?, ?)`,
             [
-                row.uuid, row.event_uuid, row.subscriber_id, row.target_url,
+                row.uuid, row.portal_id, row.event_uuid, row.subscriber_id, row.target_url,
                 row.encrypted_fields !== null ? JSON.stringify(row.encrypted_fields) : null,
                 row.status,
             ]
@@ -124,8 +128,8 @@ async function claimPending(batchSize, orgUuid) {
         const lockClause = isPostgres ? ' FOR UPDATE SKIP LOCKED' : '';
         const { clause, params: pageParams } = db.paginationClause(batchSize, 0);
         const events = await tx.query(
-            `SELECT * FROM ${EVENTS_TABLE} WHERE status = ? AND org_uuid = ? ORDER BY occurred_at ASC ${clause}${lockClause}`,
-            ['PENDING', orgUuid, ...pageParams]
+            `SELECT * FROM ${EVENTS_TABLE} WHERE status = ? AND org_uuid = ? AND portal_id = ? ORDER BY occurred_at ASC ${clause}${lockClause}`,
+            ['PENDING', orgUuid, getPortalId(), ...pageParams]
         );
         if (events.length === 0) return [];
 
@@ -162,17 +166,17 @@ async function claimDueDeliveries(batchSize, orgUuid) {
         await tx.execute(
             `UPDATE ${DELIVERIES_TABLE} SET status = ?, last_error = ?
              WHERE status = ? AND last_attempt_at < ?
-               AND event_uuid IN (SELECT uuid FROM ${EVENTS_TABLE} WHERE org_uuid = ?)`,
-            ['FAILED', 'Delivery abandoned: worker stopped mid-flight', 'IN_FLIGHT', staleThreshold, orgUuid]
+               AND event_uuid IN (SELECT uuid FROM ${EVENTS_TABLE} WHERE org_uuid = ? AND portal_id = ?)`,
+            ['FAILED', 'Delivery abandoned: worker stopped mid-flight', 'IN_FLIGHT', staleThreshold, orgUuid, getPortalId()]
         );
 
         const lockClause = isPostgres ? ' FOR UPDATE OF d SKIP LOCKED' : '';
         const { clause, params: pageParams } = db.paginationClause(batchSize, 0);
         const rows = await tx.query(
             `SELECT d.* FROM ${DELIVERIES_TABLE} d
-             JOIN ${EVENTS_TABLE} e ON e.uuid = d.event_uuid
-             WHERE d.status = ? AND e.org_uuid = ? ORDER BY e.occurred_at ASC ${clause}${lockClause}`,
-            ['PENDING', orgUuid, ...pageParams]
+             JOIN ${EVENTS_TABLE} e ON e.uuid = d.event_uuid AND d.portal_id = e.portal_id
+             WHERE d.status = ? AND e.org_uuid = ? AND e.portal_id = ? ORDER BY e.occurred_at ASC ${clause}${lockClause}`,
+            ['PENDING', orgUuid, getPortalId(), ...pageParams]
         );
         if (rows.length === 0) return [];
 
@@ -231,8 +235,8 @@ async function reconcile(delivery) {
  * Admin: list recent events with delivery counts.
  */
 async function list({ orgId, status, limit = 50, offset = 0 }) {
-    const conditions = [];
-    const params = [];
+    const conditions = ['portal_id = ?'];
+    const params = [getPortalId()];
     if (orgId) {
         conditions.push('org_uuid = ?');
         params.push(orgId);
@@ -289,11 +293,11 @@ async function listDeliveriesForSubscriber(orgId, subscriberId, limit = 20) {
     const rows = await db.query(
         `SELECT d.*, e.type AS event_type, e.occurred_at AS event_occurred_at
          FROM ${DELIVERIES_TABLE} d
-         INNER JOIN ${EVENTS_TABLE} e ON e.uuid = d.event_uuid
-         WHERE d.subscriber_id = ? AND e.org_uuid = ?
+         INNER JOIN ${EVENTS_TABLE} e ON e.uuid = d.event_uuid AND d.portal_id = e.portal_id
+         WHERE d.subscriber_id = ? AND e.org_uuid = ? AND e.portal_id = ?
          ORDER BY e.occurred_at DESC
          ${clause}`,
-        [subscriberId, orgId, ...pageParams]
+        [subscriberId, orgId, getPortalId(), ...pageParams]
     );
     return rows.map(({ event_type, event_occurred_at, ...delivery }) => parseDeliveryRow({
         ...delivery,

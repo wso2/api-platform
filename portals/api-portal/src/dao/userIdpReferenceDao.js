@@ -20,20 +20,23 @@
 const crypto = require('crypto');
 const db = require('../db/driver');
 const { findOrCreateSafe } = require('./findOrCreateHelper');
+const { getPortalId } = require('../utils/orgContext');
 
 const TABLE = 'user_idp_references';
 const DELETED_USER = 'deleted_user';
 
 /**
- * Find-or-create the idp reference row for this idp id, returning its uuid.
- * Falls back to a plain lookup on a unique-constraint race between concurrent
- * requests for the same idp id.
+ * Find-or-create the idp reference row for this (idp_id, portal_id) pair,
+ * returning its uuid. portal_id is resolved internally — never accepted from
+ * request input (IDOR prevention). Falls back to a plain lookup on a
+ * unique-constraint race between concurrent requests for the same pair.
  */
 const resolveUuid = async (idpId) => {
+    const portalId = getPortalId();
     const reference = await findOrCreateSafe(
         TABLE,
-        { idp_id: idpId },
-        { uuid: crypto.randomUUID(), idp_id: idpId }
+        { idp_id: idpId, portal_id: portalId },
+        { uuid: crypto.randomUUID(), idp_id: idpId, portal_id: portalId }
     );
     return reference.uuid;
 };

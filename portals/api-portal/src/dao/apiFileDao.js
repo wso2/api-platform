@@ -21,6 +21,7 @@ const crypto = require('crypto');
 const db = require('../db/driver');
 const { groupBy, toBlobBuffer } = require('../db/rows');
 const constants = require('../utils/constants');
+const { getPortalId } = require('../utils/orgContext');
 
 const CONTENT_TABLE = 'api_contents';
 const API_METADATA_TABLE = 'api_metadata';
@@ -30,19 +31,20 @@ const API_METADATA_TABLE = 'api_metadata';
 // doesn't support portably) is appended to UPDATE/DELETE statements that need
 // to verify org ownership. Requires org_uuid as the LAST bind param.
 const TENANT_SCOPE_EXISTS =
-    `EXISTS (SELECT 1 FROM ${API_METADATA_TABLE} m WHERE m.uuid = ${CONTENT_TABLE}.api_uuid AND m.org_uuid = ?)`;
+    `EXISTS (SELECT 1 FROM ${API_METADATA_TABLE} m WHERE m.uuid = ${CONTENT_TABLE}.api_uuid AND m.org_uuid = ? AND m.portal_id = ${CONTENT_TABLE}.portal_id)`;
 
 const store = async (apiFile, fileName, apiId, type, createdBy, t, key) => {
     const exec = t || db;
     const uuid = crypto.randomUUID();
     const content = toBlobBuffer(apiFile);
+    const portalId = getPortalId();
     await exec.execute(
-        `INSERT INTO ${CONTENT_TABLE} (uuid, file_content, file_name, api_uuid, type, lookup_key, created_by, updated_by)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
-        [uuid, content, fileName, apiId, type, key ?? null, createdBy, createdBy]
+        `INSERT INTO ${CONTENT_TABLE} (uuid, portal_id, file_content, file_name, api_uuid, type, lookup_key, created_by, updated_by)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        [uuid, portalId, content, fileName, apiId, type, key ?? null, createdBy, createdBy]
     );
     return {
-        uuid, file_content: content, file_name: fileName, api_uuid: apiId, type,
+        uuid, portal_id: portalId, file_content: content, file_name: fileName, api_uuid: apiId, type,
         lookup_key: key ?? null, created_by: createdBy, updated_by: createdBy,
     };
 };
@@ -50,16 +52,17 @@ const store = async (apiFile, fileName, apiId, type, createdBy, t, key) => {
 const storeMany = async (files, apiId, createdBy, t) => {
     const exec = t || db;
     const created = [];
+    const portalId = getPortalId();
     for (const file of files) {
         const uuid = crypto.randomUUID();
         const content = toBlobBuffer(file.content);
         await exec.execute(
-            `INSERT INTO ${CONTENT_TABLE} (uuid, file_content, file_name, type, api_uuid, lookup_key, created_by, updated_by)
-             VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
-            [uuid, content, file.fileName, file.type, apiId, file.key ?? null, createdBy, createdBy]
+            `INSERT INTO ${CONTENT_TABLE} (uuid, portal_id, file_content, file_name, type, api_uuid, lookup_key, created_by, updated_by)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+            [uuid, portalId, content, file.fileName, file.type, apiId, file.key ?? null, createdBy, createdBy]
         );
         created.push({
-            uuid, file_content: content, file_name: file.fileName, type: file.type,
+            uuid, portal_id: portalId, file_content: content, file_name: file.fileName, type: file.type,
             api_uuid: apiId, lookup_key: file.key ?? null, created_by: createdBy, updated_by: createdBy,
         });
     }
@@ -69,18 +72,18 @@ const storeMany = async (files, apiId, createdBy, t) => {
 const get = async (fileName, type, orgId, apiId, t) => {
     const exec = t || db;
     return exec.queryOne(
-        `SELECT c.* FROM ${CONTENT_TABLE} c JOIN ${API_METADATA_TABLE} m ON c.api_uuid = m.uuid
-         WHERE c.file_name = ? AND c.api_uuid = ? AND c.type = ? AND m.org_uuid = ?`,
-        [fileName, apiId, type, orgId]
+        `SELECT c.* FROM ${CONTENT_TABLE} c JOIN ${API_METADATA_TABLE} m ON c.api_uuid = m.uuid AND c.portal_id = m.portal_id
+         WHERE c.file_name = ? AND c.api_uuid = ? AND c.type = ? AND m.org_uuid = ? AND m.portal_id = ?`,
+        [fileName, apiId, type, orgId, getPortalId()]
     );
 };
 
 const getByType = async (type, orgId, apiId, t) => {
     const exec = t || db;
     return exec.queryOne(
-        `SELECT c.* FROM ${CONTENT_TABLE} c JOIN ${API_METADATA_TABLE} m ON c.api_uuid = m.uuid
-         WHERE c.api_uuid = ? AND c.type = ? AND m.org_uuid = ?`,
-        [apiId, type, orgId]
+        `SELECT c.* FROM ${CONTENT_TABLE} c JOIN ${API_METADATA_TABLE} m ON c.api_uuid = m.uuid AND c.portal_id = m.portal_id
+         WHERE c.api_uuid = ? AND c.type = ? AND m.org_uuid = ? AND m.portal_id = ?`,
+        [apiId, type, orgId, getPortalId()]
     );
 };
 
@@ -141,12 +144,13 @@ const upsertMany = async (files, apiId, orgId, updatedBy, t) => {
         }
     }
 
+    const portalId = getPortalId();
     for (const file of filesToCreate) {
         const uuid = crypto.randomUUID();
         await exec.execute(
-            `INSERT INTO ${CONTENT_TABLE} (uuid, file_content, file_name, api_uuid, type, lookup_key, created_by, updated_by)
-             VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
-            [uuid, file.file_content, file.file_name, file.api_uuid, file.type, file.lookup_key, file.created_by, file.updated_by]
+            `INSERT INTO ${CONTENT_TABLE} (uuid, portal_id, file_content, file_name, api_uuid, type, lookup_key, created_by, updated_by)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+            [uuid, portalId, file.file_content, file.file_name, file.api_uuid, file.type, file.lookup_key, file.created_by, file.updated_by]
         );
     }
 };
@@ -158,13 +162,14 @@ const upsert = async (apiFile, fileName, apiId, orgId, type, updatedBy, t, key) 
 
     if (existing == null) {
         const uuid = crypto.randomUUID();
+        const portalId = getPortalId();
         await exec.execute(
-            `INSERT INTO ${CONTENT_TABLE} (uuid, file_content, file_name, api_uuid, type, lookup_key, created_by, updated_by)
-             VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
-            [uuid, content, fileName, apiId, type, key ?? null, updatedBy, updatedBy]
+            `INSERT INTO ${CONTENT_TABLE} (uuid, portal_id, file_content, file_name, api_uuid, type, lookup_key, created_by, updated_by)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+            [uuid, portalId, content, fileName, apiId, type, key ?? null, updatedBy, updatedBy]
         );
         return {
-            uuid, file_content: content, file_name: fileName, api_uuid: apiId, type,
+            uuid, portal_id: portalId, file_content: content, file_name: fileName, api_uuid: apiId, type,
             lookup_key: key ?? null, created_by: updatedBy, updated_by: updatedBy,
         };
     }
@@ -186,13 +191,14 @@ const update = async (apiFile, fileName, apiId, orgId, type, updatedBy, t, key) 
 
     if (existing == null) {
         const uuid = crypto.randomUUID();
+        const portalId = getPortalId();
         await exec.execute(
-            `INSERT INTO ${CONTENT_TABLE} (uuid, file_content, file_name, api_uuid, type, lookup_key, created_by, updated_by)
-             VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
-            [uuid, content, fileName, apiId, type, key ?? null, updatedBy, updatedBy]
+            `INSERT INTO ${CONTENT_TABLE} (uuid, portal_id, file_content, file_name, api_uuid, type, lookup_key, created_by, updated_by)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+            [uuid, portalId, content, fileName, apiId, type, key ?? null, updatedBy, updatedBy]
         );
         return {
-            uuid, file_content: content, file_name: fileName, api_uuid: apiId, type,
+            uuid, portal_id: portalId, file_content: content, file_name: fileName, api_uuid: apiId, type,
             lookup_key: key ?? null, created_by: updatedBy, updated_by: updatedBy,
         };
     }
@@ -210,15 +216,15 @@ const update = async (apiFile, fileName, apiId, orgId, type, updatedBy, t, key) 
 const deleteFile = async (fileName, type, orgId, apiId, t) => {
     const exec = t || db;
     const contentsToDelete = await exec.query(
-        `SELECT c.* FROM ${CONTENT_TABLE} c JOIN ${API_METADATA_TABLE} m ON c.api_uuid = m.uuid
-         WHERE c.file_name = ? AND c.api_uuid = ? AND c.type LIKE ? AND m.org_uuid = ?`,
-        [fileName, apiId, `%${type}%`, orgId]
+        `SELECT c.* FROM ${CONTENT_TABLE} c JOIN ${API_METADATA_TABLE} m ON c.api_uuid = m.uuid AND c.portal_id = m.portal_id
+         WHERE c.file_name = ? AND c.api_uuid = ? AND c.type LIKE ? AND m.org_uuid = ? AND m.portal_id = ?`,
+        [fileName, apiId, `%${type}%`, orgId, getPortalId()]
     );
     let rowCount = 0;
     for (const content of contentsToDelete) {
         ({ rowCount } = await exec.execute(
-            `DELETE FROM ${CONTENT_TABLE} WHERE api_uuid = ? AND file_name = ? AND type = ?`,
-            [content.api_uuid, content.file_name, content.type]
+            `DELETE FROM ${CONTENT_TABLE} WHERE api_uuid = ? AND file_name = ? AND type = ? AND portal_id = ?`,
+            [content.api_uuid, content.file_name, content.type, content.portal_id]
         ));
     }
     return rowCount;
@@ -227,15 +233,15 @@ const deleteFile = async (fileName, type, orgId, apiId, t) => {
 const deleteAll = async (type, orgId, apiId, t) => {
     const exec = t || db;
     const contentsToDelete = await exec.query(
-        `SELECT c.* FROM ${CONTENT_TABLE} c JOIN ${API_METADATA_TABLE} m ON c.api_uuid = m.uuid
-         WHERE c.api_uuid = ? AND c.type LIKE ? AND m.org_uuid = ?`,
-        [apiId, `%${type}%`, orgId]
+        `SELECT c.* FROM ${CONTENT_TABLE} c JOIN ${API_METADATA_TABLE} m ON c.api_uuid = m.uuid AND c.portal_id = m.portal_id
+         WHERE c.api_uuid = ? AND c.type LIKE ? AND m.org_uuid = ? AND m.portal_id = ?`,
+        [apiId, `%${type}%`, orgId, getPortalId()]
     );
     let rowCount = 0;
     for (const content of contentsToDelete) {
         ({ rowCount } = await exec.execute(
-            `DELETE FROM ${CONTENT_TABLE} WHERE api_uuid = ? AND file_name = ? AND type = ?`,
-            [content.api_uuid, content.file_name, content.type]
+            `DELETE FROM ${CONTENT_TABLE} WHERE api_uuid = ? AND file_name = ? AND type = ? AND portal_id = ?`,
+            [content.api_uuid, content.file_name, content.type, content.portal_id]
         ));
     }
     return rowCount;
@@ -258,18 +264,18 @@ const deleteAllByType = async (type, apiId, t) => {
 const getDoc = async (type, orgId, apiId, t) => {
     const exec = t || db;
     return exec.queryOne(
-        `SELECT c.* FROM ${CONTENT_TABLE} c JOIN ${API_METADATA_TABLE} m ON c.api_uuid = m.uuid
-         WHERE c.api_uuid = ? AND c.type = ? AND m.org_uuid = ?`,
-        [apiId, type, orgId]
+        `SELECT c.* FROM ${CONTENT_TABLE} c JOIN ${API_METADATA_TABLE} m ON c.api_uuid = m.uuid AND c.portal_id = m.portal_id
+         WHERE c.api_uuid = ? AND c.type = ? AND m.org_uuid = ? AND m.portal_id = ?`,
+        [apiId, type, orgId, getPortalId()]
     );
 };
 
 const getDocByName = async (type, name, orgId, apiId, t) => {
     const exec = t || db;
     return exec.queryOne(
-        `SELECT c.* FROM ${CONTENT_TABLE} c JOIN ${API_METADATA_TABLE} m ON c.api_uuid = m.uuid
-         WHERE c.api_uuid = ? AND c.type = ? AND c.file_name = ? AND m.org_uuid = ?`,
-        [apiId, type, name, orgId]
+        `SELECT c.* FROM ${CONTENT_TABLE} c JOIN ${API_METADATA_TABLE} m ON c.api_uuid = m.uuid AND c.portal_id = m.portal_id
+         WHERE c.api_uuid = ? AND c.type = ? AND c.file_name = ? AND m.org_uuid = ? AND m.portal_id = ?`,
+        [apiId, type, name, orgId, getPortalId()]
     );
 };
 
@@ -281,13 +287,13 @@ const getDocByName = async (type, name, orgId, apiId, t) => {
  */
 const getDocTypes = async (orgId, apiId) => {
     const dialect = db.getDialect();
-    const whereSql = 'c.api_uuid = ? AND (c.type LIKE ? OR c.type LIKE ?) AND m.org_uuid = ?';
-    const params = [apiId, 'DOC_%', constants.DOC_TYPES.API_DEFINITION, orgId];
+    const whereSql = 'c.api_uuid = ? AND (c.type LIKE ? OR c.type LIKE ?) AND m.org_uuid = ? AND m.portal_id = ?';
+    const params = [apiId, 'DOC_%', constants.DOC_TYPES.API_DEFINITION, orgId, getPortalId()];
 
     if (dialect === 'postgres') {
         return db.query(
             `SELECT c.type AS type, ARRAY_AGG(c.file_name) AS file_names
-             FROM ${CONTENT_TABLE} c JOIN ${API_METADATA_TABLE} m ON c.api_uuid = m.uuid
+             FROM ${CONTENT_TABLE} c JOIN ${API_METADATA_TABLE} m ON c.api_uuid = m.uuid AND c.portal_id = m.portal_id
              WHERE ${whereSql} GROUP BY c.type`,
             params
         );
@@ -296,7 +302,7 @@ const getDocTypes = async (orgId, apiId) => {
     const aggFn = dialect === 'mssql' ? 'STRING_AGG' : 'GROUP_CONCAT';
     const rows = await db.query(
         `SELECT c.type AS type, ${aggFn}(c.file_name, '|||') AS file_names
-         FROM ${CONTENT_TABLE} c JOIN ${API_METADATA_TABLE} m ON c.api_uuid = m.uuid
+         FROM ${CONTENT_TABLE} c JOIN ${API_METADATA_TABLE} m ON c.api_uuid = m.uuid AND c.portal_id = m.portal_id
          WHERE ${whereSql} GROUP BY c.type`,
         params
     );
@@ -315,15 +321,15 @@ const getDocTypes = async (orgId, apiId) => {
  */
 const getDocs = async (orgId, apiId) => {
     const dialect = db.getDialect();
-    const whereSql = 'c.api_uuid = ? AND (c.type LIKE ? OR c.file_name LIKE ?) AND m.org_uuid = ?';
-    const params = [apiId, 'DOC_%', 'LINK_%', orgId];
+    const whereSql = 'c.api_uuid = ? AND (c.type LIKE ? OR c.file_name LIKE ?) AND m.org_uuid = ? AND m.portal_id = ?';
+    const params = [apiId, 'DOC_%', 'LINK_%', orgId, getPortalId()];
 
     if (dialect === 'postgres') {
         return db.query(
             `SELECT c.type AS type,
                     ARRAY_AGG(c.file_name) AS file_names,
                     ARRAY_AGG(c.file_content) AS api_files
-             FROM ${CONTENT_TABLE} c JOIN ${API_METADATA_TABLE} m ON c.api_uuid = m.uuid
+             FROM ${CONTENT_TABLE} c JOIN ${API_METADATA_TABLE} m ON c.api_uuid = m.uuid AND c.portal_id = m.portal_id
              WHERE ${whereSql} GROUP BY c.type`,
             params
         );
@@ -331,7 +337,7 @@ const getDocs = async (orgId, apiId) => {
 
     const rows = await db.query(
         `SELECT c.type AS type, c.file_name AS file_name, c.file_content AS file_content
-         FROM ${CONTENT_TABLE} c JOIN ${API_METADATA_TABLE} m ON c.api_uuid = m.uuid
+         FROM ${CONTENT_TABLE} c JOIN ${API_METADATA_TABLE} m ON c.api_uuid = m.uuid AND c.portal_id = m.portal_id
          WHERE ${whereSql}`,
         params
     );
@@ -346,15 +352,15 @@ const getDocs = async (orgId, apiId) => {
 /** Same shape as getDocs, scoped to file_name LIKE 'LINK_%' only. */
 const getDocLinks = async (orgId, apiId) => {
     const dialect = db.getDialect();
-    const whereSql = "c.api_uuid = ? AND c.file_name LIKE ? AND m.org_uuid = ?";
-    const params = [apiId, 'LINK_%', orgId];
+    const whereSql = "c.api_uuid = ? AND c.file_name LIKE ? AND m.org_uuid = ? AND m.portal_id = ?";
+    const params = [apiId, 'LINK_%', orgId, getPortalId()];
 
     if (dialect === 'postgres') {
         return db.query(
             `SELECT c.type AS type,
                     ARRAY_AGG(c.file_name) AS file_names,
                     ARRAY_AGG(c.file_content) AS api_files
-             FROM ${CONTENT_TABLE} c JOIN ${API_METADATA_TABLE} m ON c.api_uuid = m.uuid
+             FROM ${CONTENT_TABLE} c JOIN ${API_METADATA_TABLE} m ON c.api_uuid = m.uuid AND c.portal_id = m.portal_id
              WHERE ${whereSql} GROUP BY c.type`,
             params
         );
@@ -362,7 +368,7 @@ const getDocLinks = async (orgId, apiId) => {
 
     const rows = await db.query(
         `SELECT c.type AS type, c.file_name AS file_name, c.file_content AS file_content
-         FROM ${CONTENT_TABLE} c JOIN ${API_METADATA_TABLE} m ON c.api_uuid = m.uuid
+         FROM ${CONTENT_TABLE} c JOIN ${API_METADATA_TABLE} m ON c.api_uuid = m.uuid AND c.portal_id = m.portal_id
          WHERE ${whereSql}`,
         params
     );
@@ -377,9 +383,9 @@ const getDocLinks = async (orgId, apiId) => {
 const listDocNames = async (orgId, apiId) => {
     const rows = await db.query(
         `SELECT c.file_name AS file_name
-         FROM ${CONTENT_TABLE} c JOIN ${API_METADATA_TABLE} m ON c.api_uuid = m.uuid
-         WHERE c.api_uuid = ? AND c.type LIKE ? AND m.org_uuid = ?`,
-        [apiId, `${constants.DOC_TYPES.DOC_ID}%`, orgId]
+         FROM ${CONTENT_TABLE} c JOIN ${API_METADATA_TABLE} m ON c.api_uuid = m.uuid AND c.portal_id = m.portal_id
+         WHERE c.api_uuid = ? AND c.type LIKE ? AND m.org_uuid = ? AND m.portal_id = ?`,
+        [apiId, `${constants.DOC_TYPES.DOC_ID}%`, orgId, getPortalId()]
     );
     return rows.map((r) => r.file_name);
 };
@@ -392,9 +398,9 @@ const listDocNamesForApis = async (orgId, apiIds) => {
     const placeholders = apiIds.map(() => '?').join(', ');
     const rows = await db.query(
         `SELECT c.file_name AS file_name, c.api_uuid AS api_uuid
-         FROM ${CONTENT_TABLE} c JOIN ${API_METADATA_TABLE} m ON c.api_uuid = m.uuid
-         WHERE c.api_uuid IN (${placeholders}) AND c.type LIKE ? AND m.org_uuid = ?`,
-        [...apiIds, `${constants.DOC_TYPES.DOC_ID}%`, orgId]
+         FROM ${CONTENT_TABLE} c JOIN ${API_METADATA_TABLE} m ON c.api_uuid = m.uuid AND c.portal_id = m.portal_id
+         WHERE c.api_uuid IN (${placeholders}) AND c.type LIKE ? AND m.org_uuid = ? AND m.portal_id = ?`,
+        [...apiIds, `${constants.DOC_TYPES.DOC_ID}%`, orgId, getPortalId()]
     );
     for (const row of rows) {
         docNamesByApiId[row.api_uuid].push(row.file_name);
@@ -407,14 +413,14 @@ const deleteByFileName = async (fileName, orgId, apiId, t) => {
     // Scope to document rows only (type LIKE 'DOC_%'), matching listDocNames. Without this,
     // a non-doc row (image, spec) that happens to share the file_name would also be deleted.
     const contentsToDelete = await exec.query(
-        `SELECT c.* FROM ${CONTENT_TABLE} c JOIN ${API_METADATA_TABLE} m ON c.api_uuid = m.uuid
-         WHERE c.file_name = ? AND c.api_uuid = ? AND c.type LIKE ? AND m.org_uuid = ?`,
-        [fileName, apiId, `${constants.DOC_TYPES.DOC_ID}%`, orgId]
+        `SELECT c.* FROM ${CONTENT_TABLE} c JOIN ${API_METADATA_TABLE} m ON c.api_uuid = m.uuid AND c.portal_id = m.portal_id
+         WHERE c.file_name = ? AND c.api_uuid = ? AND c.type LIKE ? AND m.org_uuid = ? AND m.portal_id = ?`,
+        [fileName, apiId, `${constants.DOC_TYPES.DOC_ID}%`, orgId, getPortalId()]
     );
     for (const content of contentsToDelete) {
         await exec.execute(
-            `DELETE FROM ${CONTENT_TABLE} WHERE api_uuid = ? AND file_name = ? AND type = ?`,
-            [apiId, content.file_name, content.type]
+            `DELETE FROM ${CONTENT_TABLE} WHERE api_uuid = ? AND file_name = ? AND type = ? AND portal_id = ?`,
+            [apiId, content.file_name, content.type, content.portal_id]
         );
     }
 };

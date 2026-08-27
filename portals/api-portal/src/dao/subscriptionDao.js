@@ -24,6 +24,7 @@ const { NotFoundError } = require('../utils/errors/customErrors');
 const { createCryptoUtil } = require('../utils/cryptoUtil');
 const { config } = require('../config/configLoader');
 const logger = require('../config/logger');
+const { getPortalId } = require('../utils/orgContext');
 
 const subCrypto = createCryptoUtil(config.security.encryptionKey);
 
@@ -111,9 +112,9 @@ async function create(orgId, apiId, planId, createdBy, transaction, opts = {}) {
         const uuid = crypto.randomUUID();
         await exec.execute(
             `INSERT INTO ${SUBSCRIPTIONS_TABLE}
-                (uuid, created_by, updated_by, org_uuid, api_uuid, plan_uuid, token, status, created_at, updated_at)
-             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-            [uuid, createdBy, createdBy, orgId, apiId, planId || null, encryptToken(opts.subToken), 'ACTIVE', now, now]
+                (uuid, created_by, updated_by, org_uuid, portal_id, api_uuid, plan_uuid, token, status, created_at, updated_at)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+            [uuid, createdBy, createdBy, orgId, getPortalId(), apiId, planId || null, encryptToken(opts.subToken), 'ACTIVE', now, now]
         );
         return {
             uuid,
@@ -136,9 +137,9 @@ async function create(orgId, apiId, planId, createdBy, transaction, opts = {}) {
         try {
             await exec.execute(
                 `INSERT INTO ${SUBSCRIPTIONS_TABLE}
-                    (uuid, created_by, updated_by, org_uuid, api_uuid, plan_uuid, token, status, created_at, updated_at)
-                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-                [uuid, createdBy, createdBy, orgId, apiId, planId || null, encryptToken(subToken), 'ACTIVE', now, now]
+                    (uuid, created_by, updated_by, org_uuid, portal_id, api_uuid, plan_uuid, token, status, created_at, updated_at)
+                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+                [uuid, createdBy, createdBy, orgId, getPortalId(), apiId, planId || null, encryptToken(subToken), 'ACTIVE', now, now]
             );
             // Expose the plaintext token to callers (never the encrypted form).
             return {
@@ -162,8 +163,8 @@ async function create(orgId, apiId, planId, createdBy, transaction, opts = {}) {
 }
 
 async function list(orgId, { apiId, createdBy } = {}) {
-    const where = ['org_uuid = ?'];
-    const params = [orgId];
+    const where = ['org_uuid = ?', 'portal_id = ?'];
+    const params = [orgId, getPortalId()];
     if (apiId) {
         where.push('api_uuid = ?');
         params.push(apiId);
@@ -181,8 +182,8 @@ async function list(orgId, { apiId, createdBy } = {}) {
 }
 
 async function get(orgId, subId, createdBy) {
-    const where = ['uuid = ?', 'org_uuid = ?'];
-    const params = [subId, orgId];
+    const where = ['uuid = ?', 'org_uuid = ?', 'portal_id = ?'];
+    const params = [subId, orgId, getPortalId()];
     if (createdBy) {
         where.push('created_by = ?');
         params.push(createdBy);
@@ -195,8 +196,8 @@ async function get(orgId, subId, createdBy) {
 
 async function updateStatus(orgId, subId, status, createdBy, transaction) {
     const exec = transaction || db;
-    const where = ['uuid = ?', 'org_uuid = ?'];
-    const params = [subId, orgId];
+    const where = ['uuid = ?', 'org_uuid = ?', 'portal_id = ?'];
+    const params = [subId, orgId, getPortalId()];
     if (createdBy) {
         where.push('created_by = ?');
         params.push(createdBy);
@@ -212,8 +213,8 @@ async function updatePlan(orgId, subId, planId, updatedBy, transaction) {
     const exec = transaction || db;
     const { rowCount } = await exec.execute(
         `UPDATE ${SUBSCRIPTIONS_TABLE} SET plan_uuid = ?, updated_by = ?, updated_at = ?
-         WHERE uuid = ? AND org_uuid = ? AND created_by = ?`,
-        [planId, updatedBy, new Date(), subId, orgId, updatedBy]
+         WHERE uuid = ? AND org_uuid = ? AND portal_id = ? AND created_by = ?`,
+        [planId, updatedBy, new Date(), subId, orgId, getPortalId(), updatedBy]
     );
     return rowCount > 0;
 }
@@ -225,8 +226,8 @@ async function regenerateToken(orgId, subId, updatedBy, transaction) {
         try {
             const { rowCount } = await exec.execute(
                 `UPDATE ${SUBSCRIPTIONS_TABLE} SET token = ?, updated_by = ?, updated_at = ?
-                 WHERE uuid = ? AND org_uuid = ? AND created_by = ?`,
-                [encryptToken(newToken), updatedBy, new Date(), subId, orgId, updatedBy]
+                 WHERE uuid = ? AND org_uuid = ? AND portal_id = ? AND created_by = ?`,
+                [encryptToken(newToken), updatedBy, new Date(), subId, orgId, getPortalId(), updatedBy]
             );
             if (rowCount === 0) return null;
             return newToken;
@@ -240,8 +241,12 @@ async function regenerateToken(orgId, subId, updatedBy, transaction) {
 
 async function deleteSubscription(orgId, subId, createdBy, transaction) {
     const exec = transaction || db;
-    const where = ['uuid = ?', 'org_uuid = ?'];
-    const params = [subId, orgId];
+    await exec.execute(
+        'UPDATE api_keys SET subscription_uuid = NULL WHERE subscription_uuid = ?',
+        [subId]
+    );
+    const where = ['uuid = ?', 'org_uuid = ?', 'portal_id = ?'];
+    const params = [subId, orgId, getPortalId()];
     if (createdBy) {
         where.push('created_by = ?');
         params.push(createdBy);
@@ -255,8 +260,8 @@ async function deleteSubscription(orgId, subId, createdBy, transaction) {
 
 async function getById(orgId, subId) {
     const sub = await db.queryOne(
-        `SELECT * FROM ${SUBSCRIPTIONS_TABLE} WHERE uuid = ? AND org_uuid = ?`,
-        [subId, orgId]
+        `SELECT * FROM ${SUBSCRIPTIONS_TABLE} WHERE uuid = ? AND org_uuid = ? AND portal_id = ?`,
+        [subId, orgId, getPortalId()]
     );
     if (!sub) return null;
     await attachApiAndPlan([sub]);
@@ -265,20 +270,23 @@ async function getById(orgId, subId) {
 
 const listByApi = async (orgId, apiId) => {
     return db.query(
-        `SELECT * FROM ${SUBSCRIPTIONS_TABLE} WHERE org_uuid = ? AND api_uuid = ?`,
-        [orgId, apiId]
+        `SELECT * FROM ${SUBSCRIPTIONS_TABLE} WHERE org_uuid = ? AND portal_id = ? AND api_uuid = ?`,
+        [orgId, getPortalId(), apiId]
     );
 };
 
 const listByOrg = async (orgId) => {
-    return db.query(`SELECT * FROM ${SUBSCRIPTIONS_TABLE} WHERE org_uuid = ?`, [orgId]);
+    return db.query(
+        `SELECT * FROM ${SUBSCRIPTIONS_TABLE} WHERE org_uuid = ? AND portal_id = ?`,
+        [orgId, getPortalId()]
+    );
 };
 
 const listByUser = async (orgId, userId) => {
     try {
         return await db.query(
-            `SELECT * FROM ${SUBSCRIPTIONS_TABLE} WHERE org_uuid = ? AND created_by = ?`,
-            [orgId, userId]
+            `SELECT * FROM ${SUBSCRIPTIONS_TABLE} WHERE org_uuid = ? AND portal_id = ? AND created_by = ?`,
+            [orgId, getPortalId(), userId]
         );
     } catch (error) {
         logger.error('listByUser failed', { error, orgId, userId });
@@ -290,8 +298,8 @@ const findByKey = async (orgId, apiId, planId, t) => {
     const exec = t || db;
     try {
         return await exec.queryOne(
-            `SELECT * FROM ${SUBSCRIPTIONS_TABLE} WHERE org_uuid = ? AND api_uuid = ? AND plan_uuid = ?`,
-            [orgId, apiId, planId]
+            `SELECT * FROM ${SUBSCRIPTIONS_TABLE} WHERE org_uuid = ? AND portal_id = ? AND api_uuid = ? AND plan_uuid = ?`,
+            [orgId, getPortalId(), apiId, planId]
         );
     } catch (error) {
         if (error instanceof NotFoundError) return null;
