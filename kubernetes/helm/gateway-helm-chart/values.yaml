@@ -133,11 +133,19 @@ gateway:
         sqlite:
           path: ./data/gateway.db
 
-        # PostgreSQL configuration (used when type=postgres)
-        # Password is injected separately via gateway.controller.postgres.passwordSecretRef
+        # PostgreSQL configuration (used when type=postgres). Configure EITHER the
+        # individual fields (host/port/database/user) with the password injected from a
+        # Secret via gateway.controller.postgres.passwordSecretRef, OR a full dsn below —
+        # the two are mutually exclusive, not complementary.
         postgres:
-          # Full DSN takes precedence over individual fields when set.
-          # Example: "postgres://user:password@host:5432/dbname?sslmode=require"
+          # Full DSN. When set, the individual fields below are ignored and the DSN is
+          # used VERBATIM — the passwordSecretRef password is NOT merged in, so the DSN
+          # must carry its own credentials. A literal password here is written into the
+          # ConfigMap in plaintext; to keep it in a Secret while using a DSN, reference
+          # the injected token in the DSN and keep passwordSecretRef set, e.g.:
+          #   dsn: 'postgres://user:{{ env "APIP_GW_CONTROLLER_STORAGE_POSTGRES_PASSWORD" }}@host:5432/dbname?sslmode=require'
+          # (The chart fails to render if a DSN is set alongside passwordSecretRef but
+          # does not reference the token.)
           dsn: ""
 
           host: ""
@@ -156,13 +164,21 @@ gateway:
           conn_max_idle_time: 5m
           application_name: gateway-controller
 
-        # Global database configuration (used for type=sqlserver).
-        # Password is injected separately via gateway.controller.sqlserver.passwordSecretRef.
-        # This shape maps to [controller.storage.database] in config.toml.
+        # Global database configuration (used for type=sqlserver). Configure EITHER the
+        # individual fields (host/port/database/user) with the password injected from a
+        # Secret via gateway.controller.sqlserver.passwordSecretRef, OR a full dsn below —
+        # the two are mutually exclusive. This shape maps to [controller.storage.database]
+        # in config.toml.
         database:
           driver: sqlserver
-          # Full DSN takes precedence over individual fields when set.
-          # Example: "sqlserver://gateway@host:1433?database=gateway"
+          # Full DSN. When set, the individual fields below are ignored and the DSN is
+          # used VERBATIM — the passwordSecretRef password is NOT merged in, so the DSN
+          # must carry its own credentials. A literal password here is written into the
+          # ConfigMap in plaintext; to keep it in a Secret while using a DSN, reference
+          # the injected token in the DSN and keep passwordSecretRef set, e.g.:
+          #   dsn: 'sqlserver://user:{{ env "APIP_GW_CONTROLLER_STORAGE_DATABASE_PASSWORD" }}@host:1433?database=gateway'
+          # (The chart fails to render if a DSN is set alongside passwordSecretRef but
+          # does not reference the token.)
           dsn: ""
 
           host: ""
@@ -726,14 +742,20 @@ gateway:
       secretName: ""
       # Mount path inside the container — must match controller.encryption.providers[].keys[].file paths
       mountPath: /app/data/aesgcm-keys
-    # PostgreSQL password secret reference (used when gateway.config.controller.storage.type=postgres).
-    # The password is injected from this Secret rather than stored in the ConfigMap (see README).
+    # PostgreSQL password secret reference (used when gateway.config.controller.storage.type=postgres
+    # and gateway.config.controller.storage.postgres.dsn is NOT set). The password is injected from
+    # this Secret rather than stored in the ConfigMap (see README). It has NO effect when a dsn is set
+    # unless the dsn references the injected token {{ env "APIP_GW_CONTROLLER_STORAGE_POSTGRES_PASSWORD" }};
+    # the chart fails to render if a dsn is set alongside this without referencing the token.
     postgres:
       passwordSecretRef:
         name: ""
         key: password
-    # SQL Server password secret reference (used when gateway.config.controller.storage.type=sqlserver).
-    # The password is injected from this Secret rather than stored in the ConfigMap (see README).
+    # SQL Server password secret reference (used when gateway.config.controller.storage.type=sqlserver
+    # and gateway.config.controller.storage.database.dsn is NOT set). The password is injected from
+    # this Secret rather than stored in the ConfigMap (see README). It has NO effect when a dsn is set
+    # unless the dsn references the injected token {{ env "APIP_GW_CONTROLLER_STORAGE_DATABASE_PASSWORD" }};
+    # the chart fails to render if a dsn is set alongside this without referencing the token.
     sqlserver:
       passwordSecretRef:
         name: ""
