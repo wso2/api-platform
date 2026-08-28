@@ -21,7 +21,7 @@ package utils
 import (
 	"archive/zip"
 	"bytes"
-	"crypto/tls"
+	"context"
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
@@ -40,14 +40,29 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
+// defaultAPIMTimeout is the fallback per-call context budget used for on-prem APIM
+// requests (token generation, import, undeploy, swagger fetch) when APIMConfig.Timeout is
+// unset. Requests used to rely on a per-call client-level Timeout defaulting to this same
+// value; now that a single shared *http.Client is reused, the budget is enforced via a
+// context.WithTimeout deadline at each call site instead.
+const defaultAPIMTimeout = 30 * time.Second
+
+// effectiveAPIMTimeout returns timeout if positive, otherwise defaultAPIMTimeout.
+func effectiveAPIMTimeout(timeout time.Duration) time.Duration {
+	if timeout <= 0 {
+		return defaultAPIMTimeout
+	}
+	return timeout
+}
+
 // APIM publisher API path constants
 const (
-	apimScheme             = "https://"
-	apimPublisherBasePath  = "/api/am/publisher/v4"
-	apimImportQueryParams  = "?preserveProvider=false&overwrite=true&dryRun=false&rotateRevision=true"
-	apimImportPath         = apimPublisherBasePath + "/apis/import" + apimImportQueryParams
-	apimUndeployPath       = apimPublisherBasePath + "/apis/%s/undeploy-revision?revisionId=%s"
-	apimSwaggerPath        = apimPublisherBasePath + "/apis/%s/swagger"
+	apimScheme            = "https://"
+	apimPublisherBasePath = "/api/am/publisher/v4"
+	apimImportQueryParams = "?preserveProvider=false&overwrite=true&dryRun=false&rotateRevision=true"
+	apimImportPath        = apimPublisherBasePath + "/apis/import" + apimImportQueryParams
+	apimUndeployPath      = apimPublisherBasePath + "/apis/%s/undeploy-revision?revisionId=%s"
+	apimSwaggerPath       = apimPublisherBasePath + "/apis/%s/swagger"
 )
 
 // APIM zip entry path constants
@@ -90,17 +105,17 @@ type APIMHubPolicy struct {
 
 // APIMOperation represents an operation in APIM format
 type APIMOperation struct {
-	Id                        string                 `json:"id" yaml:"id"`
-	Target                    string                 `json:"target" yaml:"target"`
-	Verb                      string                 `json:"verb" yaml:"verb"`
-	AuthType                  string                 `json:"authType" yaml:"authType"`
-	ThrottlingPolicy          string                 `json:"throttlingPolicy" yaml:"throttlingPolicy"`
-	Scopes                    []interface{}          `json:"scopes" yaml:"scopes"`
-	UsedProductIds            []interface{}          `json:"usedProductIds" yaml:"usedProductIds"`
-	PayloadSchema             interface{}            `json:"payloadSchema" yaml:"payloadSchema"`
-	UriMapping                interface{}            `json:"uriMapping" yaml:"uriMapping"`
-	OperationPolicies         map[string]interface{} `json:"operationPolicies" yaml:"operationPolicies"`
-	OperationHubPolicies      []APIMHubPolicy        `json:"operationHubPolicies" yaml:"operationHubPolicies"`
+	Id                   string                 `json:"id" yaml:"id"`
+	Target               string                 `json:"target" yaml:"target"`
+	Verb                 string                 `json:"verb" yaml:"verb"`
+	AuthType             string                 `json:"authType" yaml:"authType"`
+	ThrottlingPolicy     string                 `json:"throttlingPolicy" yaml:"throttlingPolicy"`
+	Scopes               []interface{}          `json:"scopes" yaml:"scopes"`
+	UsedProductIds       []interface{}          `json:"usedProductIds" yaml:"usedProductIds"`
+	PayloadSchema        interface{}            `json:"payloadSchema" yaml:"payloadSchema"`
+	UriMapping           interface{}            `json:"uriMapping" yaml:"uriMapping"`
+	OperationPolicies    map[string]interface{} `json:"operationPolicies" yaml:"operationPolicies"`
+	OperationHubPolicies []APIMHubPolicy        `json:"operationHubPolicies" yaml:"operationHubPolicies"`
 }
 
 // APIMCompleteStructure represents the complete APIM API structure for import
@@ -128,32 +143,18 @@ type APIMConfig struct {
 // APIMTokenService manages authentication for on-prem APIM operations
 type APIMTokenService struct {
 	config      *APIMConfig
+	httpClient  *http.Client
 	cachedToken string
 	tokenExpiry time.Time
 	mu          sync.Mutex
 }
 
-// newAPIMPublisherHTTPClient creates an HTTP client with the given timeout and TLS settings.
-// Defaults to 30 seconds if timeout is zero.
-func newAPIMPublisherHTTPClient(timeout time.Duration, insecureSkipVerify bool) *http.Client {
-	if timeout == 0 {
-		timeout = 30 * time.Second
-	}
-	return &http.Client{
-		Timeout: timeout,
-		Transport: &http.Transport{
-			TLSClientConfig: &tls.Config{ // #nosec G402 -- Explicit operator-controlled opt-out for dev/test environments.
-				InsecureSkipVerify: insecureSkipVerify,
-				MinVersion:         tls.VersionTLS12,
-			},
-		},
-	}
-}
-
-// NewAPIMTokenService creates a new APIM token service
-func NewAPIMTokenService(config APIMConfig) APIMTokenService {
+// NewAPIMTokenService creates a new APIM token service. httpClient is the single shared
+// outbound *http.Client for this process, injected by the caller rather than built here.
+func NewAPIMTokenService(config APIMConfig, httpClient *http.Client) APIMTokenService {
 	return APIMTokenService{
-		config: &config,
+		config:     &config,
+		httpClient: httpClient,
 	}
 }
 
@@ -233,7 +234,9 @@ func (s *APIMTokenService) generateOAuth2Token() (string, int, error) {
 	}
 
 	// Create request
-	req, err := http.NewRequest("POST", s.config.TokenURL, strings.NewReader(body))
+	ctx, cancel := context.WithTimeout(context.Background(), effectiveAPIMTimeout(s.config.Timeout))
+	defer cancel()
+	req, err := http.NewRequestWithContext(ctx, "POST", s.config.TokenURL, strings.NewReader(body))
 	if err != nil {
 		return "", 0, fmt.Errorf("failed to create token request: %w", err)
 	}
@@ -244,10 +247,8 @@ func (s *APIMTokenService) generateOAuth2Token() (string, int, error) {
 		req.Header.Set("Authorization", authHeader)
 	}
 
-	client := newAPIMPublisherHTTPClient(s.config.Timeout, s.config.InsecureSkipVerify)
-
 	// Make request
-	resp, err := client.Do(req)
+	resp, err := s.httpClient.Do(req)
 	if err != nil {
 		return "", 0, fmt.Errorf("failed to send token request: %w", err)
 	}
@@ -293,8 +294,8 @@ func (s *APIMTokenService) generateOAuth2Token() (string, int, error) {
 // The zipFileBytes should contain the exported API definition as a zip file.
 // cpHost is the control plane host (e.g., "localhost:9443")
 // Returns ImportResponse with id and revision on success, error on failure (503 or other status codes).
-func ImportAPIToAPIMWithConfig(apimConfig APIMConfig, logger *slog.Logger, apiZipName string, zipFileBytes *bytes.Buffer) (*OnPremAPIMImportResponse, error) {
-	tokenService := NewAPIMTokenService(apimConfig)
+func ImportAPIToAPIMWithConfig(apimConfig APIMConfig, httpClient *http.Client, logger *slog.Logger, apiZipName string, zipFileBytes *bytes.Buffer) (*OnPremAPIMImportResponse, error) {
+	tokenService := NewAPIMTokenService(apimConfig, httpClient)
 
 	// Construct the import URL with standard query parameters
 	importURL := apimScheme + apimConfig.Host + apimImportPath
@@ -323,16 +324,20 @@ func ImportAPIToAPIMWithConfig(apimConfig APIMConfig, logger *slog.Logger, apiZi
 		return nil, fmt.Errorf("failed to close multipart writer: %w", err)
 	}
 
-	// Create POST request
-	req, err := http.NewRequest("POST", importURL, body)
-	if err != nil {
-		return nil, fmt.Errorf("failed to create import request: %w", err)
-	}
-
-	// Get access token for authentication
+	// Get access token for authentication BEFORE starting the import request's
+	// timeout: on a cache miss this performs its own separate OAuth request,
+	// which must not consume the import deadline below.
 	accessToken, err := tokenService.getAccessToken()
 	if err != nil {
 		return nil, fmt.Errorf("failed to get access token: %w", err)
+	}
+
+	// Create POST request
+	ctx, cancel := context.WithTimeout(context.Background(), effectiveAPIMTimeout(apimConfig.Timeout))
+	defer cancel()
+	req, err := http.NewRequestWithContext(ctx, "POST", importURL, body)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create import request: %w", err)
 	}
 
 	// Add headers
@@ -341,7 +346,7 @@ func ImportAPIToAPIMWithConfig(apimConfig APIMConfig, logger *slog.Logger, apiZi
 	req.Header.Set("Accept", "application/json")
 
 	// Make the request
-	resp, err := newAPIMPublisherHTTPClient(apimConfig.Timeout, apimConfig.InsecureSkipVerify).Do(req)
+	resp, err := httpClient.Do(req)
 	if err != nil {
 		return nil, fmt.Errorf("failed to send import request: %w", err)
 	}
@@ -450,7 +455,9 @@ func (s *APIUtilsService) generateOAuth2Token() (string, int, error) {
 	}
 
 	// Create request
-	req, err := http.NewRequest("POST", s.TokenURL, strings.NewReader(body))
+	ctx, cancel := context.WithTimeout(context.Background(), effectiveAPIMTimeout(s.config.Timeout))
+	defer cancel()
+	req, err := http.NewRequestWithContext(ctx, "POST", s.TokenURL, strings.NewReader(body))
 	if err != nil {
 		return "", 0, fmt.Errorf("failed to create token request: %w", err)
 	}
@@ -541,16 +548,20 @@ func (s *APIUtilsService) ImportAPIToAPIM(apiZipName string, zipFileBytes *bytes
 		return nil, fmt.Errorf("failed to close multipart writer: %w", err)
 	}
 
-	// Create POST request
-	req, err := http.NewRequest("POST", importURL, body)
-	if err != nil {
-		return nil, fmt.Errorf("failed to create import request: %w", err)
-	}
-
-	// Get access token for authentication
+	// Get access token for authentication BEFORE starting the import request's
+	// timeout: on a cache miss this performs its own separate OAuth request,
+	// which must not consume the import deadline below.
 	accessToken, err := s.getAccessToken()
 	if err != nil {
 		return nil, fmt.Errorf("failed to get access token: %w", err)
+	}
+
+	// Create POST request
+	ctx, cancel := context.WithTimeout(context.Background(), s.config.Timeout)
+	defer cancel()
+	req, err := http.NewRequestWithContext(ctx, "POST", importURL, body)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create import request: %w", err)
 	}
 
 	// Add headers
@@ -618,8 +629,8 @@ type ZipFile struct {
 // UndeployRevisionFromAPIM undeploys a specific API revision from a gateway in on-prem APIM.
 // Calls POST /api/am/publisher/v4/apis/{apiId}/undeploy-revision?revisionId={revisionId}
 // with the gateway name as the deployment environment.
-func UndeployRevisionFromAPIM(apimConfig APIMConfig, apiID string, revisionID string, logger *slog.Logger) error {
-	tokenService := NewAPIMTokenService(apimConfig)
+func UndeployRevisionFromAPIM(apimConfig APIMConfig, httpClient *http.Client, apiID string, revisionID string, logger *slog.Logger) error {
+	tokenService := NewAPIMTokenService(apimConfig, httpClient)
 
 	token, err := tokenService.getAccessToken()
 	if err != nil {
@@ -640,14 +651,16 @@ func UndeployRevisionFromAPIM(apimConfig APIMConfig, apiID string, revisionID st
 		return fmt.Errorf("failed to marshal undeploy payload: %w", err)
 	}
 
-	req, err := http.NewRequest("POST", undeployURL, bytes.NewReader(bodyBytes))
+	ctx, cancel := context.WithTimeout(context.Background(), effectiveAPIMTimeout(apimConfig.Timeout))
+	defer cancel()
+	req, err := http.NewRequestWithContext(ctx, "POST", undeployURL, bytes.NewReader(bodyBytes))
 	if err != nil {
 		return fmt.Errorf("failed to create undeploy request: %w", err)
 	}
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Authorization", "Bearer "+token)
 
-	resp, err := newAPIMPublisherHTTPClient(apimConfig.Timeout, apimConfig.InsecureSkipVerify).Do(req)
+	resp, err := httpClient.Do(req)
 	if err != nil {
 		return fmt.Errorf("failed to send undeploy request: %w", err)
 	}
@@ -663,8 +676,8 @@ func UndeployRevisionFromAPIM(apimConfig APIMConfig, apiID string, revisionID st
 
 // FetchSwaggerFromAPIM fetches the OpenAPI/Swagger definition of an existing API from APIM.
 // Used during bottom-up sync updates to retrieve the current swagger instead of generating it locally.
-func FetchSwaggerFromAPIM(apimConfig APIMConfig, apiID string, logger *slog.Logger) (string, error) {
-	tokenService := NewAPIMTokenService(apimConfig)
+func FetchSwaggerFromAPIM(apimConfig APIMConfig, httpClient *http.Client, apiID string, logger *slog.Logger) (string, error) {
+	tokenService := NewAPIMTokenService(apimConfig, httpClient)
 
 	token, err := tokenService.getAccessToken()
 	if err != nil {
@@ -674,13 +687,15 @@ func FetchSwaggerFromAPIM(apimConfig APIMConfig, apiID string, logger *slog.Logg
 	swaggerURL := fmt.Sprintf(apimScheme+"%s"+apimSwaggerPath, apimConfig.Host, apiID)
 	logger.Info("Fetching swagger from APIM", slog.String("url", swaggerURL))
 
-	req, err := http.NewRequest("GET", swaggerURL, nil)
+	ctx, cancel := context.WithTimeout(context.Background(), effectiveAPIMTimeout(apimConfig.Timeout))
+	defer cancel()
+	req, err := http.NewRequestWithContext(ctx, "GET", swaggerURL, nil)
 	if err != nil {
 		return "", fmt.Errorf("failed to create swagger request: %w", err)
 	}
 	req.Header.Set("Authorization", "Bearer "+token)
 
-	resp, err := newAPIMPublisherHTTPClient(apimConfig.Timeout, apimConfig.InsecureSkipVerify).Do(req)
+	resp, err := httpClient.Do(req)
 	if err != nil {
 		return "", fmt.Errorf("failed to send swagger request: %w", err)
 	}
@@ -1026,15 +1041,15 @@ func buildAPIMOperation(op management.Operation) map[string]interface{} {
 	operationHubPolicies := convertOperationPolicies(op.Policies)
 
 	return map[string]interface{}{
-		"id":                        "",
-		"target":                    op.EffectivePath(),
-		"verb":                      strings.ToUpper(op.EffectiveMethod()),
-		"authType":                  "Application & Application User",
-		"throttlingPolicy":          "Unlimited",
-		"scopes":                    []interface{}{},
-		"usedProductIds":            []interface{}{},
-		"payloadSchema":             nil,
-		"uriMapping":                nil,
+		"id":               "",
+		"target":           op.EffectivePath(),
+		"verb":             strings.ToUpper(op.EffectiveMethod()),
+		"authType":         "Application & Application User",
+		"throttlingPolicy": "Unlimited",
+		"scopes":           []interface{}{},
+		"usedProductIds":   []interface{}{},
+		"payloadSchema":    nil,
+		"uriMapping":       nil,
 		"operationPolicies": map[string]interface{}{
 			"request":  []interface{}{},
 			"response": []interface{}{},
