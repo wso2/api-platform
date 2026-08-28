@@ -57,16 +57,17 @@ type MCPDeploymentParams struct {
 
 // MCPDeploymentService provides utilities for MCP proxy configuration deployment
 type MCPDeploymentService struct {
-	store           *storage.ConfigStore
-	db              storage.Storage
-	snapshotManager *xds.SnapshotManager
-	parser          *config.Parser
-	validator       *config.MCPValidator
-	transformer     Transformer
-	policyManager   *policyxds.PolicyManager
-	eventHub        eventhub.EventHub
-	gatewayID       string
-	secretResolver  funcs.SecretResolver
+	store                 *storage.ConfigStore
+	db                    storage.Storage
+	snapshotManager       *xds.SnapshotManager
+	parser                *config.Parser
+	validator             *config.MCPValidator
+	transformer           Transformer
+	policyVersionResolver PolicyVersionResolver
+	policyManager         *policyxds.PolicyManager
+	eventHub              eventhub.EventHub
+	gatewayID             string
+	secretResolver        funcs.SecretResolver
 
 	// controlPlaneClient and deploymentPushEnabled drive the DP->CP push performed when a
 	// gateway-originated MCP proxy is created here including via the immutable-gateway loader.
@@ -92,16 +93,17 @@ func NewMCPDeploymentService(
 	trimmedGatewayID := requireReplicaSyncWiring("MCPDeploymentService", eventHub, gatewayID)
 
 	return &MCPDeploymentService{
-		store:           store,
-		db:              db,
-		snapshotManager: snapshotManager,
-		parser:          config.NewParser(),
-		validator:       config.NewMCPValidator().WithPolicyValidator(policyValidator),
-		transformer:     NewMCPTransformer(policyVersionResolver),
-		policyManager:   policyManager,
-		eventHub:        eventHub,
-		gatewayID:       trimmedGatewayID,
-		secretResolver:  secretResolver,
+		store:                 store,
+		db:                    db,
+		snapshotManager:       snapshotManager,
+		parser:                config.NewParser(),
+		validator:             config.NewMCPValidator().WithPolicyValidator(policyValidator),
+		transformer:           NewMCPTransformer(policyVersionResolver),
+		policyVersionResolver: policyVersionResolver,
+		policyManager:         policyManager,
+		eventHub:              eventHub,
+		gatewayID:             trimmedGatewayID,
+		secretResolver:        secretResolver,
 	}
 }
 
@@ -115,17 +117,17 @@ func (s *MCPDeploymentService) SetControlPlanePusher(pusher ArtifactPusher, push
 }
 
 // HydrateStoredMCPConfig rebuilds the derived RestAPI form for a stored MCP
-// configuration from its canonical source document.
-func HydrateStoredMCPConfig(cfg *models.StoredConfig) error {
+// configuration from its canonical source document. Pass the gateway's real
+// PolicyVersionResolver so an unpinned policyVersion resolves to this
+// image's actually-loaded version instead of "".
+func HydrateStoredMCPConfig(cfg *models.StoredConfig, resolver PolicyVersionResolver) error {
 	if cfg == nil {
 		return nil
 	}
 
 	if source, ok := cfg.SourceConfiguration.(api.MCPProxyConfiguration); ok {
 		var restAPI api.RestAPI
-		// nil resolver: rehydrating an already-validated stored config, not
-		// re-validating a caller-supplied policyVersion override.
-		if _, err := NewMCPTransformer(nil).Transform(&source, &restAPI); err != nil {
+		if _, err := NewMCPTransformer(resolver).Transform(&source, &restAPI); err != nil {
 			return fmt.Errorf("failed to transform stored MCP proxy %s: %w", cfg.UUID, err)
 		}
 		cfg.Configuration = restAPI
@@ -169,7 +171,7 @@ func isMCPNotFoundError(err error) bool {
 }
 
 func (s *MCPDeploymentService) hydrateStoredMCPConfig(cfg *models.StoredConfig) {
-	if err := HydrateStoredMCPConfig(cfg); err != nil {
+	if err := HydrateStoredMCPConfig(cfg, s.policyVersionResolver); err != nil {
 		configID := ""
 		if cfg != nil {
 			configID = cfg.UUID

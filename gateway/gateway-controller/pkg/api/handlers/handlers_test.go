@@ -1367,7 +1367,7 @@ func createTestMCPStoredConfig(t *testing.T, id, handle, displayName, version, c
 		UpdatedAt:    time.Now(),
 	}
 
-	require.NoError(t, utils.HydrateStoredMCPConfig(cfg))
+	require.NoError(t, utils.HydrateStoredMCPConfig(cfg, nil))
 	return cfg
 }
 
