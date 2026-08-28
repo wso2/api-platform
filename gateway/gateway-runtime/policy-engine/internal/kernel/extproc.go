@@ -309,7 +309,7 @@ func (s *ExternalProcessorServer) handleProcessingPhase(ctx context.Context, req
 		// to the route-level chain — that would silently apply the wrong policies.
 		if outcome == bindFailed {
 			resp, failureOutcome := renderResolutionFailure(ctx, denial.resolverName, rm.RouteName, "",
-				denial.failure)
+				denial.failure, resolutionFailureAnalytics(extractMetadataFromRouteMetadata(*rm), nil))
 			tracing.RecordHTTPOutcome(span, failureOutcome)
 			tracing.RecordHTTPOutcome(parentSpan, failureOutcome)
 			metrics.RequestDurationSeconds.WithLabelValues("request_headers", rm.RouteName).Observe(time.Since(startTime).Seconds())
@@ -706,7 +706,7 @@ func (s *ExternalProcessorServer) initializeExecutionContext(
 	}
 
 	ec := s.newBoundExecutionContext(routeKey, rc, bound.ChainKey, chain, req, routeMetadata)
-	ec.operation = bound.Operation
+	ec.applyBoundResolution(bound)
 	*execCtx = ec
 	return &routeMetadata, bindReady, nil
 }
@@ -743,7 +743,7 @@ func (s *ExternalProcessorServer) bindStaticRoute(
 	}
 
 	ec := s.newBoundExecutionContext(routeKey, rc, bound.ChainKey, chain, req, routeMetadata)
-	ec.operation = bound.Operation
+	ec.applyBoundResolution(bound)
 	*execCtx = ec
 	return &routeMetadata, bindReady, nil
 }
