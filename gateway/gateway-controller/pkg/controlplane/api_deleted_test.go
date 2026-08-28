@@ -19,9 +19,12 @@
 package controlplane
 
 import (
+	"context"
 	"database/sql"
 	"errors"
 	"log/slog"
+	"net/http"
+	"net/http/httptest"
 	"os"
 	"testing"
 	"time"
@@ -30,6 +33,7 @@ import (
 	api "github.com/wso2/api-platform/gateway/gateway-controller/pkg/api/management"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/models"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/storage"
+	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/utils"
 )
 
 // mockStorageForDeletion implements storage.Storage interface for deletion testing
@@ -39,6 +43,8 @@ type mockStorageForDeletion struct {
 	webhookSecrets               map[string]*models.WebhookSecret
 	subscriptions                map[string]*models.Subscription
 	apiKeysByUUID                map[string]*models.APIKey
+	upsertedAPIKeys              []models.APIKey
+	removedAPIKeysByArtifactName [][2]string
 	replacedMappings             []*models.ApplicationAPIKeyMapping
 	replacedAppID                string
 	replacedAppUUID              string
@@ -198,6 +204,7 @@ func (m *mockStorageForDeletion) SaveAPIKey(key *models.APIKey) error {
 }
 
 func (m *mockStorageForDeletion) UpsertAPIKey(key *models.APIKey) error {
+	m.upsertedAPIKeys = append(m.upsertedAPIKeys, *key)
 	return nil
 }
 
@@ -387,6 +394,7 @@ func (m *mockStorageForDeletion) GetAPIKeysByAPIAndName(apiID, name string) (*mo
 }
 
 func (m *mockStorageForDeletion) RemoveAPIKeyAPIAndName(apiID, name string) error {
+	m.removedAPIKeysByArtifactName = append(m.removedAPIKeysByArtifactName, [2]string{apiID, name})
 	return nil
 }
 
@@ -1315,5 +1323,213 @@ func TestClient_handleSubscriptionCreatedEvent_PublishesReplicaSyncEvent(t *test
 	}
 	if hub.publishedEvents[0].event.EventID != "corr-sub-created" {
 		t.Errorf("expected correlation ID corr-sub-created, got %s", hub.publishedEvents[0].event.EventID)
+	}
+}
+
+// A bottom-up (DP->CP) synced API is addressed by the control plane using the
+// UUID the control plane minted, which differs from the gateway's local UUID.
+// The subscription must be stored under the local one, since that is what the
+// routes, the policy config, and the subscription xDS snapshot are keyed by.
+func TestClient_handleSubscriptionCreatedEvent_MapsControlPlaneAPIIDToLocal(t *testing.T) {
+	logger := slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelError}))
+	db := newMockStorageForDeletion()
+	db.configs["gw-uuid-1"] = &models.StoredConfig{
+		UUID:         "gw-uuid-1",
+		CPArtifactID: "cp-uuid-1",
+		Kind:         models.KindRestApi,
+	}
+	hub := &mockControlPlaneEventHub{}
+
+	client := &Client{
+		logger:    logger,
+		db:        db,
+		eventHub:  hub,
+		gatewayID: "test-gateway",
+	}
+
+	client.handleSubscriptionCreatedEvent(map[string]interface{}{
+		"type": "subscription.created",
+		"payload": map[string]interface{}{
+			"subscriptionId":    "sub-dpcp",
+			"apiId":             "cp-uuid-1",
+			"subscriptionToken": "token-dpcp",
+			"status":            "ACTIVE",
+			"applicationId":     "app-1",
+		},
+		"timestamp":     time.Now().Format(time.RFC3339),
+		"correlationId": "corr-sub-dpcp",
+	})
+
+	sub, err := db.GetSubscriptionByID("sub-dpcp", "")
+	if err != nil {
+		t.Fatalf("expected subscription to be stored, got %v", err)
+	}
+	if sub.APIID != "gw-uuid-1" {
+		t.Errorf("expected subscription stored under local api id gw-uuid-1, got %s", sub.APIID)
+	}
+}
+
+// The control plane reports API keys against the artifact UUID it minted. For a
+// bottom-up (DP->CP) synced artifact that is the cp_artifact_id, not the local
+// UUID the routes and the API-key xDS snapshot are keyed by, so startup backfill
+// must map it back before persisting — otherwise the key never authenticates.
+func TestClient_syncAPIKeysForExistingArtifacts_MapsControlPlaneArtifactIDToLocal(t *testing.T) {
+	logger := slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelError}))
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/apis/api-keys" {
+			// Only RestApi keys are exercised here; every other kind returns none.
+			w.Header().Set("Content-Type", "application/json")
+			_, _ = w.Write([]byte(`[]`))
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`[{
+			"etag": "etag-1",
+			"uuid": "key-uuid-1",
+			"name": "prod-key",
+			"maskedApiKey": "abc***",
+			"apiKeyHashes": {"sha256": "hash-1"},
+			"artifactUuid": "cp-uuid-1",
+			"status": "active",
+			"source": "local"
+		}]`))
+	}))
+	defer srv.Close()
+
+	db := newMockStorageForDeletion()
+	db.configs["gw-uuid-1"] = &models.StoredConfig{
+		UUID:         "gw-uuid-1",
+		CPArtifactID: "cp-uuid-1",
+		Kind:         models.KindRestApi,
+	}
+	hub := &mockControlPlaneEventHub{}
+	configStore := storage.NewConfigStore()
+
+	client := &Client{
+		logger:          logger,
+		db:              db,
+		eventHub:        hub,
+		gatewayID:       "test-gateway",
+		ctx:             context.Background(),
+		state:           &ConnectionState{},
+		store:           configStore,
+		apiKeyStore:     storage.NewAPIKeyStore(logger),
+		apiKeyService:   utils.NewAPIKeyService(configStore, db, nil, nil, hub, "test-gateway"),
+		apiUtilsService: utils.NewAPIUtilsService(utils.PlatformAPIConfig{BaseURL: srv.URL, Token: "t"}, logger),
+	}
+
+	client.syncAPIKeysForExistingArtifacts("test-gateway")
+
+	if len(db.upsertedAPIKeys) != 1 {
+		t.Fatalf("expected exactly one API key upsert, got %d", len(db.upsertedAPIKeys))
+	}
+	if got := db.upsertedAPIKeys[0].ArtifactUUID; got != "gw-uuid-1" {
+		t.Errorf("expected key stored under local artifact uuid gw-uuid-1, got %s", got)
+	}
+	// A row filed under the CP UUID by an earlier version would collide with the
+	// correctly-keyed insert on UNIQUE (gateway_id, uuid), so it is dropped first.
+	if len(db.removedAPIKeysByArtifactName) != 1 ||
+		db.removedAPIKeysByArtifactName[0] != [2]string{"cp-uuid-1", "prod-key"} {
+		t.Errorf("expected the mis-keyed cp-uuid-1/prod-key row to be removed, got %v",
+			db.removedAPIKeysByArtifactName)
+	}
+}
+
+// A control-plane-originated API has no cp_artifact_id, so nothing is remapped
+// and no repair delete is issued.
+func TestClient_syncAPIKeysForExistingArtifacts_LeavesControlPlaneOriginatedKeysAlone(t *testing.T) {
+	logger := slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelError}))
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		if r.URL.Path != "/apis/api-keys" {
+			_, _ = w.Write([]byte(`[]`))
+			return
+		}
+		_, _ = w.Write([]byte(`[{
+			"etag": "etag-1",
+			"uuid": "key-uuid-1",
+			"name": "prod-key",
+			"maskedApiKey": "abc***",
+			"apiKeyHashes": {"sha256": "hash-1"},
+			"artifactUuid": "gw-uuid-1",
+			"status": "active",
+			"source": "local"
+		}]`))
+	}))
+	defer srv.Close()
+
+	db := newMockStorageForDeletion()
+	db.configs["gw-uuid-1"] = &models.StoredConfig{UUID: "gw-uuid-1", Kind: models.KindRestApi}
+	hub := &mockControlPlaneEventHub{}
+	configStore := storage.NewConfigStore()
+
+	client := &Client{
+		logger:          logger,
+		db:              db,
+		eventHub:        hub,
+		gatewayID:       "test-gateway",
+		ctx:             context.Background(),
+		state:           &ConnectionState{},
+		store:           configStore,
+		apiKeyStore:     storage.NewAPIKeyStore(logger),
+		apiKeyService:   utils.NewAPIKeyService(configStore, db, nil, nil, hub, "test-gateway"),
+		apiUtilsService: utils.NewAPIUtilsService(utils.PlatformAPIConfig{BaseURL: srv.URL, Token: "t"}, logger),
+	}
+
+	client.syncAPIKeysForExistingArtifacts("test-gateway")
+
+	if len(db.upsertedAPIKeys) != 1 {
+		t.Fatalf("expected exactly one API key upsert, got %d", len(db.upsertedAPIKeys))
+	}
+	if got := db.upsertedAPIKeys[0].ArtifactUUID; got != "gw-uuid-1" {
+		t.Errorf("expected artifact uuid gw-uuid-1, got %s", got)
+	}
+	if len(db.removedAPIKeysByArtifactName) != 0 {
+		t.Errorf("expected no repair deletes, got %v", db.removedAPIKeysByArtifactName)
+	}
+}
+
+func TestClient_handleSubscriptionUpdatedEvent_MapsControlPlaneAPIIDToLocal(t *testing.T) {
+	logger := slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelError}))
+	db := newMockStorageForDeletion()
+	db.configs["gw-uuid-1"] = &models.StoredConfig{
+		UUID:         "gw-uuid-1",
+		CPArtifactID: "cp-uuid-1",
+		Kind:         models.KindRestApi,
+	}
+	db.subscriptions["sub-dpcp"] = &models.Subscription{
+		ID:     "sub-dpcp",
+		APIID:  "gw-uuid-1",
+		Status: models.SubscriptionStatusActive,
+	}
+	hub := &mockControlPlaneEventHub{}
+
+	client := &Client{
+		logger:    logger,
+		db:        db,
+		eventHub:  hub,
+		gatewayID: "test-gateway",
+	}
+
+	client.handleSubscriptionUpdatedEvent(map[string]interface{}{
+		"type": "subscription.updated",
+		"payload": map[string]interface{}{
+			"subscriptionId":    "sub-dpcp",
+			"apiId":             "cp-uuid-1",
+			"subscriptionToken": "token-dpcp",
+			"status":            "ACTIVE",
+		},
+		"timestamp":     time.Now().Format(time.RFC3339),
+		"correlationId": "corr-sub-dpcp-update",
+	})
+
+	sub, err := db.GetSubscriptionByID("sub-dpcp", "")
+	if err != nil {
+		t.Fatalf("expected subscription to be present, got %v", err)
+	}
+	if sub.APIID != "gw-uuid-1" {
+		t.Errorf("expected api id to stay the local gw-uuid-1, got %s", sub.APIID)
 	}
 }
