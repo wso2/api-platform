@@ -44,6 +44,9 @@ func (r *Registry) Transform(cfg *models.StoredConfig) (*models.RuntimeDeployCon
 	case "LlmProvider", "LlmProxy":
 		return r.llmT.Transform(cfg)
 	case "GraphQLApi":
+		if r.graphqlT == nil {
+			return nil, fmt.Errorf("unsupported kind for runtime config: %s", cfg.Kind)
+		}
 		return r.graphqlT.Transform(cfg)
 	default:
 		return nil, fmt.Errorf("unsupported kind for runtime config: %s", cfg.Kind)
