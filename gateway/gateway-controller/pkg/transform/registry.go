@@ -95,6 +95,9 @@ func (r *Registry) Transform(cfg *models.StoredConfig) (*models.RuntimeDeployCon
 		}
 		return r.agentT.Transform(cfg)
 	case models.KindGraphQLApi:
+		if r.graphqlT == nil {
+			return nil, fmt.Errorf("%w: %s", ErrUnsupportedKind, cfg.Kind)
+		}
 		return r.graphqlT.Transform(cfg)
 	default:
 		return nil, fmt.Errorf("%w: %s", ErrUnsupportedKind, cfg.Kind)
