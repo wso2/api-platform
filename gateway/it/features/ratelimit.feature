@@ -757,6 +757,61 @@ Feature: Rate Limiting
     When I send a GET request to "http://localhost:8080/ratelimit-peruser/v1.0/user" with header "X-User-ID" value "user-B"
     Then the response status code should be 429
 
+  Scenario: Match condition restricts a quota to requests with a matching key value
+    Given I authenticate using basic auth as "admin"
+    When I deploy this API configuration:
+      """
+      apiVersion: gateway.api-platform.wso2.com/v1
+      kind: RestApi
+      metadata:
+        name: ratelimit-match-api
+      spec:
+        displayName: RateLimit Match API
+        version: v1.0
+        context: /ratelimit-match/$version
+        upstream:
+          main:
+            url: http://sample-backend:9080/api/v1
+        operations:
+          - method: GET
+            path: /checkout
+            policies:
+              - name: advanced-ratelimit
+                version: v1
+                params:
+                  quotas:
+                    - name: guest-and-partner-checkout
+                      limits:
+                        - limit: 3
+                          duration: "1h"
+                      keyExtraction:
+                        - type: header
+                          key: X-App-ID
+                          match:
+                            type: regex
+                            value: "^(guest-.*|channel-partner)$"
+      """
+    Then the response should be successful
+    And I wait for the endpoint "http://localhost:8080/ratelimit-match/v1.0/checkout" to be ready
+
+    # A matching client ID (guest-*) is counted and enforced
+    When I send 3 GET requests to "http://localhost:8080/ratelimit-match/v1.0/checkout" with header "X-App-ID" value "guest-42"
+    Then the response status code should be 200
+
+    When I send a GET request to "http://localhost:8080/ratelimit-match/v1.0/checkout" with header "X-App-ID" value "guest-42"
+    Then the response status code should be 429
+
+    # A different matching client ID (exact match) gets its own separate bucket
+    When I send 3 GET requests to "http://localhost:8080/ratelimit-match/v1.0/checkout" with header "X-App-ID" value "channel-partner"
+    Then the response status code should be 200
+
+    When I send a GET request to "http://localhost:8080/ratelimit-match/v1.0/checkout" with header "X-App-ID" value "channel-partner"
+    Then the response status code should be 429
+
+    # A non-matching client ID bypasses the quota entirely - never throttled, no matter how many requests
+    When I send 6 GET requests to "http://localhost:8080/ratelimit-match/v1.0/checkout" with header "X-App-ID" value "internal-app-1"
+    Then the response status code should be 200
+
   Scenario: Multiple limits per quota - enforces most restrictive limit
     Given I authenticate using basic auth as "admin"
     When I deploy this API configuration:
