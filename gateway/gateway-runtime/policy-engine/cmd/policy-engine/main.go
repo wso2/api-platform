@@ -32,7 +32,7 @@ import (
 	"time"
 
 	extprocv3 "github.com/envoyproxy/go-control-plane/envoy/service/ext_proc/v3"
-	"github.com/wso2/go-httpkit/httpclient"
+	"github.com/wso2/api-platform/httpkit/httpclient"
 	"go.opentelemetry.io/otel"
 	"google.golang.org/grpc"
 

@@ -26,7 +26,7 @@ import (
 	"github.com/wso2/api-platform/platform-api/internal/apperror"
 	"github.com/wso2/api-platform/platform-api/internal/service"
 
-	"github.com/wso2/go-httpkit/httputil"
+	"github.com/wso2/api-platform/httpkit/httputil"
 )
 
 // resolveActor resolves the internal platform UUID for the actor behind r via

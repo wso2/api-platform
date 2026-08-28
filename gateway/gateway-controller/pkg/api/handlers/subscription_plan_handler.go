@@ -25,7 +25,7 @@ import (
 	"strings"
 
 	"github.com/google/uuid"
-	"github.com/wso2/go-httpkit/httputil"
+	"github.com/wso2/api-platform/httpkit/httputil"
 	api "github.com/wso2/api-platform/gateway/gateway-controller/pkg/api/management"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/api/middleware"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/models"

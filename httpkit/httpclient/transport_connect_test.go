@@ -9,7 +9,7 @@ import (
 	"net/http/httptest"
 	"testing"
 
-	"github.com/wso2/go-httpkit/tlsconfig"
+	"github.com/wso2/api-platform/httpkit/tlsconfig"
 )
 
 // startConnectProxy starts a minimal CONNECT-speaking forward proxy: it

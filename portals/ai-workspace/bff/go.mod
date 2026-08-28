@@ -23,4 +23,4 @@ require (
 
 replace github.com/wso2/api-platform/common => ../../../common
 
-replace github.com/wso2/go-httpkit => ../../../httpkit
+replace github.com/wso2/api-platform/httpkit => ../../../httpkit

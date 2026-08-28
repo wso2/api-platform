@@ -23,7 +23,7 @@ import (
 
 	commonerrors "github.com/wso2/api-platform/common/errors"
 	"github.com/wso2/api-platform/common/models"
-	"github.com/wso2/go-httpkit/httputil"
+	"github.com/wso2/api-platform/httpkit/httputil"
 )
 
 // AuthorizationMiddleware enforces resource->roles mapping stored in config.ResourceRoles.

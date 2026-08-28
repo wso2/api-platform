@@ -29,7 +29,7 @@ import (
 	"github.com/wso2/api-platform/platform-api/internal/middleware"
 	"github.com/wso2/api-platform/platform-api/internal/plugin"
 	"github.com/wso2/api-platform/platform-api/pdk"
-	gohttpkit "github.com/wso2/go-httpkit/middleware"
+	gohttpkit "github.com/wso2/api-platform/httpkit/middleware"
 )
 
 // specWithScopes is a minimal OpenAPI document declaring one scoped operation.

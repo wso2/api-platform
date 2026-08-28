@@ -7,7 +7,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/wso2/go-httpkit/httputil"
+	"github.com/wso2/api-platform/httpkit/httputil"
 )
 
 // ---- WriteJSON ----

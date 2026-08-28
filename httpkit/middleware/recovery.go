@@ -5,7 +5,7 @@ import (
 	"net/http"
 	"runtime/debug"
 
-	"github.com/wso2/go-httpkit/httputil"
+	"github.com/wso2/api-platform/httpkit/httputil"
 )
 
 // RecoveryMiddleware catches panics from downstream handlers, logs the stack

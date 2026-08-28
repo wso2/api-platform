@@ -14,7 +14,7 @@ require (
 	github.com/wso2/api-platform/common v0.0.0
 	github.com/wso2/api-platform/gateway/gateway-controller v0.0.0
 	github.com/wso2/api-platform/sdk/core v0.2.18
-	github.com/wso2/go-httpkit v0.0.0-local
+	github.com/wso2/api-platform/httpkit v0.0.0-local
 	google.golang.org/protobuf v1.36.11
 )
 
@@ -84,6 +84,6 @@ require (
 
 replace github.com/wso2/api-platform/common => ../../common
 
-replace github.com/wso2/go-httpkit => ../../httpkit
+replace github.com/wso2/api-platform/httpkit => ../../httpkit
 
 replace github.com/wso2/api-platform/gateway/gateway-controller => ../../gateway/gateway-controller

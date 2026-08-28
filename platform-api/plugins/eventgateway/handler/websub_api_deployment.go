@@ -32,7 +32,7 @@ import (
 	"github.com/wso2/api-platform/platform-api/internal/service"
 	egservice "github.com/wso2/api-platform/platform-api/plugins/eventgateway/service"
 
-	"github.com/wso2/go-httpkit/httputil"
+	"github.com/wso2/api-platform/httpkit/httputil"
 )
 
 // WebSubAPIDeploymentHandler handles deployment routes for WebSub APIs

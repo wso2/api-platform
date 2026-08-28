@@ -447,7 +447,7 @@ type BodyConfig struct {
 // HTTPClientConfig configures the single shared outbound *http.Client that the
 // policy-engine builds once at startup and injects into every policy instance
 // via PolicyMetadata.SharedHTTPClient (see internal/registry.PolicyRegistry).
-// It mirrors github.com/wso2/go-httpkit/httpclient.Config field-for-field (see
+// It mirrors github.com/wso2/api-platform/httpkit/httpclient.Config field-for-field (see
 // that package's own doc comments for full semantics) so every knob the
 // library exposes that has a natural TOML shape is operator-configurable here
 // under [policy_engine.http_client], rather than left for each policy to

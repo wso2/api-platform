@@ -4,7 +4,7 @@ import (
 	"crypto/tls"
 	"testing"
 
-	"github.com/wso2/go-httpkit/netguard"
+	"github.com/wso2/api-platform/httpkit/netguard"
 )
 
 func TestDefaultConfig_NeverUnboundedPoolingOrTimeouts(t *testing.T) {

@@ -21,8 +21,8 @@ package config
 import (
 	"fmt"
 
-	"github.com/wso2/go-httpkit/httpclient"
-	"github.com/wso2/go-httpkit/netguard"
+	"github.com/wso2/api-platform/httpkit/httpclient"
+	"github.com/wso2/api-platform/httpkit/netguard"
 )
 
 // BuildHTTPClientConfig translates an HTTPClientConfig (sourced from the

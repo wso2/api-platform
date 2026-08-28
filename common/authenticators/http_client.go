@@ -21,8 +21,8 @@ import (
 	"fmt"
 	"net/http"
 
-	"github.com/wso2/go-httpkit/httpclient"
-	"github.com/wso2/go-httpkit/netguard"
+	"github.com/wso2/api-platform/httpkit/httpclient"
+	"github.com/wso2/api-platform/httpkit/netguard"
 )
 
 // NewDefaultJWKSHTTPClient returns an SSRF-guarded outbound *http.Client suitable for

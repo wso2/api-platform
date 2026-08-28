@@ -69,7 +69,7 @@ import (
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/utils"
 	coreversion "github.com/wso2/api-platform/gateway/gateway-controller/pkg/version"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/xds"
-	gohttpkit "github.com/wso2/go-httpkit/middleware"
+	gohttpkit "github.com/wso2/api-platform/httpkit/middleware"
 
 	eventgateway "github.com/wso2/api-platform/event-gateway/gateway-controller/pkg/api/eventgateway"
 	eventgatewayconfig "github.com/wso2/api-platform/event-gateway/gateway-controller/pkg/config"

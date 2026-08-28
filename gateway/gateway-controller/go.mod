@@ -23,7 +23,7 @@ require (
 	github.com/stretchr/testify v1.11.1
 	github.com/wso2/api-platform/common v0.0.0
 	github.com/wso2/api-platform/sdk/core v0.2.18
-	github.com/wso2/go-httpkit v0.0.0-local
+	github.com/wso2/api-platform/httpkit v0.0.0-local
 	github.com/xeipuuv/gojsonschema v1.2.0
 	google.golang.org/grpc v1.82.1
 	google.golang.org/protobuf v1.36.11
@@ -90,4 +90,4 @@ require (
 
 replace github.com/wso2/api-platform/common => ../../common
 
-replace github.com/wso2/go-httpkit => ../../httpkit
+replace github.com/wso2/api-platform/httpkit => ../../httpkit

@@ -10,7 +10,7 @@ import (
 	"net/url"
 	"time"
 
-	"github.com/wso2/go-httpkit/netguard"
+	"github.com/wso2/api-platform/httpkit/netguard"
 )
 
 // Config describes how to build an outbound *http.Client. Use DefaultConfig

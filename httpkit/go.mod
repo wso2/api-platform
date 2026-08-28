@@ -1,4 +1,4 @@
-module github.com/wso2/go-httpkit
+module github.com/wso2/api-platform/httpkit
 
 go 1.26.5
 
