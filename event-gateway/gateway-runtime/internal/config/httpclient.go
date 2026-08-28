@@ -32,11 +32,18 @@ import (
 // own existing per-call-site timeout (Verifier's `timeout` argument / Deliverer's own
 // delivery timeout) — this function only fills in the common default.
 //
-// SSRF guarding is unconditionally enabled here with netguard.PublicOnly() — every
-// caller of this shared config dials a tenant/subscriber-supplied CallbackURL, which
-// must never be usable to reach an operator's own private/loopback network, so unlike
-// gateway-controller's analogous translation there is no Enabled/Preset switch to
+// SSRF guarding is unconditionally enabled here with netguard.PermitPrivateBlockMetadata()
+// — every caller of this shared config dials a tenant/subscriber-supplied CallbackURL, so
+// unlike gateway-controller's analogous translation there is no Enabled/Preset switch to
 // interpret; only the redirect/scheme knobs in HTTPClientSSRFConfig are read from config.
+// PermitPrivateBlockMetadata (not PublicOnly) is deliberate here, not an oversight: WebSub
+// subscribers routinely live on private networks by design (a Kubernetes ClusterIP, a
+// service-DNS name resolving into RFC 1918 space, a docker-compose service, a localhost
+// port during development — see the preset's own doc comment) — blocking RFC 1918/loopback
+// would break that core, intended deployment shape. What must still be refused is a
+// destination that is never a legitimate subscriber upstream: link-local (which is where
+// the cloud metadata endpoint 169.254.169.254 lives), the unspecified address, and
+// multicast/broadcast — exactly what this preset blocks.
 func BuildHTTPClientConfig(hc HTTPClientConfig) (httpclient.Config, error) {
 	cfg := httpclient.DefaultConfig()
 
@@ -99,13 +106,10 @@ func BuildHTTPClientConfig(hc HTTPClientConfig) (httpclient.Config, error) {
 		return httpclient.Config{}, fmt.Errorf("http_client.proxy.mode: unrecognized value %q (want \"none\", \"environment\", or \"url\")", hc.Proxy.Mode)
 	}
 
-	// Always on — see this function's doc comment and HTTPClientConfig's doc comment.
-	// PublicOnly (not PermitPrivateBlockMetadata) is deliberate: PermitPrivateBlockMetadata
-	// permits private/loopback/CGNAT addresses, which is appropriate for an
-	// operator-configured backend but not for a tenant/subscriber-supplied CallbackURL,
-	// which must never be usable to reach a private network service.
+	// Always on — see this function's doc comment and HTTPClientConfig's doc comment for
+	// why PermitPrivateBlockMetadata (not PublicOnly) is the deliberate choice here.
 	cfg.SSRF.Enabled = true
-	cfg.SSRF.Policy = netguard.PublicOnly()
+	cfg.SSRF.Policy = netguard.PermitPrivateBlockMetadata()
 	cfg.SSRF.Policy.AllowedSchemes = hc.SSRF.AllowedSchemes
 	cfg.SSRF.MaxRedirects = hc.SSRF.MaxRedirects
 

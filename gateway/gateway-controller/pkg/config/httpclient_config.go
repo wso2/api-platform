@@ -50,6 +50,14 @@ func BuildHTTPClientConfig(hc HTTPClientConfig, insecureSkipVerify bool) (httpcl
 	cfg.Timeouts.TLSHandshake = hc.Timeouts.TLSHandshake
 	cfg.Timeouts.ResponseHeader = hc.Timeouts.ResponseHeader
 	cfg.Timeouts.ExpectContinue = hc.Timeouts.ExpectContinue
+	// A negative value would disable httpkit's response-size bound entirely (see
+	// httpclient.TimeoutsConfig.MaxResponseBytes) -- reject it rather than forwarding it,
+	// so a stray/typo'd negative config value can't silently turn into an unbounded read.
+	// 0 still selects httpkit's own finite default (10MiB); a caller that genuinely needs
+	// a larger bound can set an explicit large positive value instead of disabling it.
+	if hc.Timeouts.MaxResponseBytes < 0 {
+		return httpclient.Config{}, fmt.Errorf("controller.http_client.timeouts.max_response_bytes must not be negative")
+	}
 	cfg.Timeouts.MaxResponseBytes = hc.Timeouts.MaxResponseBytes
 
 	cfg.TLS.MinVersion = hc.TLS.MinVersion
@@ -79,7 +87,7 @@ func BuildHTTPClientConfig(hc HTTPClientConfig, insecureSkipVerify bool) (httpcl
 				ClientCertFile:                 hc.Proxy.TLS.ClientCertFile,
 				ClientKeyFile:                  hc.Proxy.TLS.ClientKeyFile,
 				InsecureSkipVerify:             hc.Proxy.TLS.InsecureSkipVerify,
-				InsecureSkipVerifyAcknowledged: hc.Proxy.TLS.InsecureSkipVerify,
+				InsecureSkipVerifyAcknowledged: hc.Proxy.TLS.InsecureSkipVerifyAcknowledged,
 			}
 		}
 	default:

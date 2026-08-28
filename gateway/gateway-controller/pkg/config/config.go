@@ -819,12 +819,14 @@ type HTTPClientPoolingConfig struct {
 
 // HTTPClientTimeoutsConfig mirrors httpclient.TimeoutsConfig.
 type HTTPClientTimeoutsConfig struct {
-	Overall          time.Duration `koanf:"overall"` // safety-net only; see HTTPClientConfig's doc comment
-	Dial             time.Duration `koanf:"dial"`
-	TLSHandshake     time.Duration `koanf:"tls_handshake"`
-	ResponseHeader   time.Duration `koanf:"response_header"`
-	ExpectContinue   time.Duration `koanf:"expect_continue"`
-	MaxResponseBytes int64         `koanf:"max_response_bytes"` // 0 = package default (10MiB); negative disables the bound
+	Overall        time.Duration `koanf:"overall"` // safety-net only; see HTTPClientConfig's doc comment
+	Dial           time.Duration `koanf:"dial"`
+	TLSHandshake   time.Duration `koanf:"tls_handshake"`
+	ResponseHeader time.Duration `koanf:"response_header"`
+	ExpectContinue time.Duration `koanf:"expect_continue"`
+	// MaxResponseBytes bounds a response body. 0 = package default (10MiB). A negative
+	// value is rejected by BuildHTTPClientConfig rather than disabling the bound.
+	MaxResponseBytes int64 `koanf:"max_response_bytes"`
 }
 
 // HTTPClientTLSConfig mirrors the TOML-expressible subset of httpclient.TLSConfig.
@@ -861,10 +863,16 @@ type HTTPClientProxyConfig struct {
 // HTTPClientProxyTLSConfig mirrors httpclient.ProxyTLSConfig (the proxy's own TLS
 // handshake, fully decoupled from the origin TLS handshake in HTTPClientTLSConfig).
 type HTTPClientProxyTLSConfig struct {
-	RootCAFile         string `koanf:"root_ca_file"`
-	ClientCertFile     string `koanf:"client_cert_file"`
-	ClientKeyFile      string `koanf:"client_key_file"`
-	InsecureSkipVerify bool   `koanf:"insecure_skip_verify"`
+	RootCAFile     string `koanf:"root_ca_file"`
+	ClientCertFile string `koanf:"client_cert_file"`
+	ClientKeyFile  string `koanf:"client_key_file"`
+	// InsecureSkipVerify and InsecureSkipVerifyAcknowledged are deliberately separate
+	// fields: httpkit's own acknowledgement gate (httpclient.ProxyTLSConfig) requires an
+	// operator to opt into disabling verification twice, once per field, so a single
+	// "insecure_skip_verify = true" in TOML can't silently satisfy its own gate. Both must
+	// be explicitly set to true for InsecureSkipVerify to take effect.
+	InsecureSkipVerify             bool `koanf:"insecure_skip_verify"`
+	InsecureSkipVerifyAcknowledged bool `koanf:"insecure_skip_verify_acknowledged"`
 }
 
 // HTTPClientSSRFConfig mirrors the TOML-expressible subset of httpclient.SSRFConfig. Off by

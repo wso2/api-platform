@@ -557,7 +557,7 @@ func (s *APIUtilsService) ImportAPIToAPIM(apiZipName string, zipFileBytes *bytes
 	}
 
 	// Create POST request
-	ctx, cancel := context.WithTimeout(context.Background(), s.config.Timeout)
+	ctx, cancel := context.WithTimeout(context.Background(), effectiveAPIMTimeout(s.config.Timeout))
 	defer cancel()
 	req, err := http.NewRequestWithContext(ctx, "POST", importURL, body)
 	if err != nil {
