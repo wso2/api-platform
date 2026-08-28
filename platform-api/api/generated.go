@@ -2635,12 +2635,6 @@ type CreateGraphQLAPIRequest struct {
 	// Kind Kind of the API based on its communication protocol or architectural style
 	Kind *string `json:"kind,omitempty" yaml:"kind,omitempty"`
 
-	// LifeCycleStatus Current lifecycle status of the API. Reuses REST APIs' lifecycle enum
-	// unmodified (STAGED, CREATED, PUBLISHED, DEPRECATED, RETIRED, BLOCKED) —
-	// declaring a second identically-valued enum schema here would collide
-	// with it at Go-constant generation time.
-	LifeCycleStatus *RESTAPILifeCycleStatus `json:"lifeCycleStatus,omitempty" yaml:"lifeCycleStatus,omitempty"`
-
 	// Policies List of policies to be applied on the API. Reused unmodified from REST APIs.
 	Policies  *[]Policy `json:"policies,omitempty" yaml:"policies,omitempty"`
 	ProjectId string    `json:"projectId" yaml:"projectId"`
@@ -3255,12 +3249,6 @@ type GraphQLAPI struct {
 	// Kind Kind of the API based on its communication protocol or architectural style
 	Kind *string `json:"kind,omitempty" yaml:"kind,omitempty"`
 
-	// LifeCycleStatus Current lifecycle status of the API. Reuses REST APIs' lifecycle enum
-	// unmodified (STAGED, CREATED, PUBLISHED, DEPRECATED, RETIRED, BLOCKED) —
-	// declaring a second identically-valued enum schema here would collide
-	// with it at Go-constant generation time.
-	LifeCycleStatus *RESTAPILifeCycleStatus `json:"lifeCycleStatus,omitempty" yaml:"lifeCycleStatus,omitempty"`
-
 	// Policies List of policies to be applied on the API. Reused unmodified from REST APIs.
 	Policies  *[]Policy `json:"policies,omitempty" yaml:"policies,omitempty"`
 	ProjectId string    `json:"projectId" yaml:"projectId"`
@@ -3316,15 +3304,9 @@ type GraphQLAPIListItem struct {
 	Id                *string                   `json:"id,omitempty" yaml:"id,omitempty"`
 	IntrospectionMode *GraphQLIntrospectionMode `json:"introspectionMode,omitempty" yaml:"introspectionMode,omitempty"`
 	Kind              *string                   `json:"kind,omitempty" yaml:"kind,omitempty"`
-
-	// LifeCycleStatus Current lifecycle status of the API. Reuses REST APIs' lifecycle enum
-	// unmodified (STAGED, CREATED, PUBLISHED, DEPRECATED, RETIRED, BLOCKED) —
-	// declaring a second identically-valued enum schema here would collide
-	// with it at Go-constant generation time.
-	LifeCycleStatus *RESTAPILifeCycleStatus `json:"lifeCycleStatus,omitempty" yaml:"lifeCycleStatus,omitempty"`
-	ProjectId       string                  `json:"projectId" yaml:"projectId"`
-	ReadOnly        *bool                   `json:"readOnly,omitempty" yaml:"readOnly,omitempty"`
-	UpdatedAt       *time.Time              `json:"updatedAt,omitempty" yaml:"updatedAt,omitempty"`
+	ProjectId         string                    `json:"projectId" yaml:"projectId"`
+	ReadOnly          *bool                     `json:"readOnly,omitempty" yaml:"readOnly,omitempty"`
+	UpdatedAt         *time.Time                `json:"updatedAt,omitempty" yaml:"updatedAt,omitempty"`
 
 	// Upstream Upstream backend configuration with main and sandbox endpoints
 	Upstream *Upstream `json:"upstream,omitempty" yaml:"upstream,omitempty"`
@@ -3341,8 +3323,10 @@ type GraphQLAPIListResponse struct {
 // GraphQLAPIMultipartRequest defines model for GraphQLAPIMultipartRequest.
 type GraphQLAPIMultipartRequest struct {
 	// Metadata JSON-encoded request body — CreateGraphQLAPIRequest fields for create,
-	// GraphQLAPI fields for update. Any `sdl`/`sdlUrl` included here is
-	// ignored; the uploaded `sdlFile` part is always the source of `sdl`.
+	// GraphQLAPI fields for update. When a non-empty `sdlFile` part is
+	// uploaded, it overrides any `sdl`/`sdlUrl` included here. When no
+	// `sdlFile` part is uploaded, this metadata's own `sdl`/`sdlUrl` (or
+	// upstream introspection) is used unchanged.
 	Metadata string `json:"metadata" yaml:"metadata"`
 
 	// SdlFile The GraphQL SDL document as a file upload (e.g. schema.graphql).

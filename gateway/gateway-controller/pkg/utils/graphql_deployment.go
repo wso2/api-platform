@@ -40,7 +40,7 @@ func init() {
 	RegisterKindConfigValidator(graphQLApiKind, validateGraphQLAPIConfig)
 }
 
-const graphQLApiKind = "GraphQLApi"
+const graphQLApiKind = string(api.GraphQLAPIKindGraphQLApi)
 
 // parseGraphQLAPIDeployment is the KindDeployParser for GraphQLApi. It mirrors the
 // "RestApi" case in DeployAPIConfiguration's own switch: the whole request body is
@@ -95,6 +95,8 @@ func validateGraphQLAPIConfig(cfg any) (apiName, apiVersion string, validationEr
 		errors = append(errors, config.ValidationError{Field: "spec.context", Message: "context is required"})
 	} else if !strings.HasPrefix(spec.Context, "/") {
 		errors = append(errors, config.ValidationError{Field: "spec.context", Message: "context must start with '/'"})
+	} else if strings.HasSuffix(spec.Context, "/") && spec.Context != "/" {
+		errors = append(errors, config.ValidationError{Field: "spec.context", Message: "Context cannot end with / (except for root context)"})
 	}
 
 	errors = append(errors, validateGraphQLUpstream("main", &spec.Upstream.Main)...)
