@@ -18,22 +18,37 @@
 
 import { type ReactNode, useState } from 'react';
 import { QueryClientProvider } from '@tanstack/react-query';
-import { OxygenUIThemeProvider, OxygenTheme } from '@wso2/oxygen-ui';
+import { AcrylicOrangeTheme, OxygenUIThemeProvider } from '@wso2/oxygen-ui';
 import { BrowserRouter } from 'react-router-dom';
 
 import { ApiClientProvider } from './api/ApiClientProvider';
 import { createQueryClient } from './api/core/queryClient';
-import { ErrorBoundary } from './components/ErrorBoundary';
+import { ErrorBoundary } from './components/errors/ErrorBoundary';
 import { NotificationProvider, useNotifications } from './components/Notifications';
 import { runtimeConfig } from './config/runtime';
-import { AuthProvider } from './features/auth/AuthProvider';
-import { ProductActivation } from './features/billing/ProductActivation';
+import { AuthProvider } from './contexts/auth/AuthProvider';
+import { ProductActivation } from './hooks/ProductActivation';
 import { AppRoutes } from './routes/AppRoutes';
 import {
   ExtensionsProvider,
   type ApiControlPlaneExtension,
 } from './extensions';
 import { I18nProvider } from './i18n';
+
+/**
+ * The themes `OxygenUIThemeProvider` can switch between — currently the one
+ * library-defined `AcrylicOrangeTheme`.
+ *
+ * Module scope, not an inline `themes={[...]}` literal on the provider below:
+ * the provider keys a theme-resolving effect on this array's identity, so a
+ * fresh literal each render would re-resolve the registry every time.
+ */
+const themeRegistry = [
+  { key: 'acrylicOrange', label: 'Acrylic Orange', theme: AcrylicOrangeTheme },
+];
+
+/** Selected on first load, before any stored preference takes over. */
+const INITIAL_THEME = themeRegistry[0].key;
 
 /**
  * Builds the app's QueryClient with the notification handler already attached,
@@ -69,7 +84,7 @@ export default function App({ extensions = [] }: AppProps) {
   return (
 
     <I18nProvider>
-      <OxygenUIThemeProvider theme={OxygenTheme}>
+      <OxygenUIThemeProvider initialTheme={INITIAL_THEME} themes={themeRegistry}>
         <NotificationProvider>
           <AppQueryProvider>
             <ApiClientProvider>

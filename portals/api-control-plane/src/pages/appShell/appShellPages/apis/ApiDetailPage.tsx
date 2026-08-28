@@ -1,0 +1,169 @@
+/*
+ * Copyright (c) 2026, WSO2 LLC. (https://www.wso2.com).
+ *
+ * WSO2 LLC. licenses this file to you under the Apache License,
+ * Version 2.0 (the "License"); you may not use this file except
+ * in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing,
+ * software distributed under the License is distributed on an
+ * "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+ * KIND, either express or implied.  See the License for the
+ * specific language governing permissions and limitations
+ * under the License.
+ */
+
+import { Avatar, Box, Button, Card, Chip, Stack, Typography } from '@wso2/oxygen-ui';
+
+import { useApiDetail } from '../../../../api/hooks/useMvpQueries';
+import { ErrorState, LoadingState } from '../../../../components/StateViews';
+import { OverviewTab } from './overview/OverviewTab';
+import { FormattedMessage } from 'react-intl';
+import { Link as RouterLink } from 'react-router-dom';
+import { routes } from '../../../../routes/paths';
+import { useConsoleScope } from '../../../../scope/ConsoleScopeProvider';
+
+// No `ScopeGate`: this page is the API tier of the sidebar's Overview item, which
+// degrades to a shallower tier rather than linking here without an API.
+export function ApiDetailPage() {
+  const detailQuery = useApiDetail();
+  const { params } = useConsoleScope();
+
+  if (detailQuery.isLoading) return <LoadingState label="Loading API" />;
+  if (detailQuery.error || !detailQuery.data) {
+    return <ErrorState title="API not found" />;
+  }
+
+  const detail = detailQuery.data;
+
+  // The page is the API tier of the sidebar's Overview item, so it only ever
+  // mounts with all three handles in the URL; `apiPath` degrades to the
+  // scope-less alias for anything still missing.
+  const deployPath = routes.apiDeploy(
+    params.orgHandle ?? '',
+    params.projectHandler ?? null,
+    params.apiHandler ?? null
+  );
+
+  const truncateProviderDisplayName = (
+  name?: string | null,
+  maxLength = 30
+): string => {
+  const normalizedName = name?.trim() ?? '';
+  if (normalizedName.length <= maxLength) {
+    return normalizedName;
+  }
+
+  return `${normalizedName.slice(0, maxLength).trim()}…`;
+};
+
+  return (
+    <>
+      <Stack spacing={3} sx={{ mb: 3 }}>
+      
+         {/* Header card with editable fields */}
+        <Card>
+          <Box sx={{ p: 2 }}>
+            <Box
+              sx={{
+                display: 'flex',
+                alignItems: 'stretch',
+                justifyContent: 'space-between',
+                gap: 2,
+              }}
+            >
+              <Box
+                sx={{
+                  display: 'flex',
+                  alignItems: 'flex-start',
+                  gap: 2,
+                  minWidth: 0,
+                }}
+              >
+                <Avatar
+                  color="secondary"
+                  sx={{
+                    width: 70,
+                    height: 70,
+                    backgroundColor: 'primary.light',
+                    color: 'primary.contrastText',
+                    fontSize: 32,
+                  }}
+                >
+                  {(detail.displayName || '\u2014').trim().slice(0, 2).toUpperCase()}
+                </Avatar>
+
+                <Box sx={{ minWidth: 0 }}>
+                  <Stack
+                    direction="row"
+                    spacing={1}
+                    alignItems="center"
+                    flexWrap="wrap"
+                  >
+                    <Typography variant="h3">
+                      {truncateProviderDisplayName(detail.displayName || '\u2014')}
+                    </Typography>
+                    <Chip
+                      label={`${detail.version || '1.0'}`}
+                      size="small"
+                      variant="outlined"
+                      color="primary"
+                    />
+                  </Stack>
+                  <Stack spacing={0.1} sx={{ mt: 1 }}>
+                    <Stack direction="row" alignItems="center" gap={2}>
+                      <Typography variant="caption" color="text.secondary">
+                        <FormattedMessage
+                          id="apiControlPlane.pages.appShell.appShellPages.apis.ApiDetailPage.context.label"
+                          defaultMessage="Context :"
+                        />
+                      </Typography>
+                      <Typography variant="body2">
+                        {detail.context || '/'}
+                      </Typography>
+                    </Stack>
+                    <Stack direction="row" alignItems="center" gap={2}>
+                      <Typography variant="caption" color="text.secondary">
+                        <FormattedMessage
+                          id="apiControlPlane.pages.appShell.appShellPages.apis.ApiDetailPage.lastUpdated.label"
+                          defaultMessage="Last updated :"
+                        />
+                      </Typography>
+                      <Typography variant="body2">
+                        {detail.updatedAt}
+                      </Typography>
+                    </Stack>
+                  </Stack>
+                </Box>
+              </Box>
+
+              <Stack
+                direction="column"
+                justifyContent="space-between"
+                alignItems="flex-end"
+                sx={{ alignSelf: 'stretch' }}
+              >
+                <Button component={RouterLink} to={deployPath} variant="contained">
+                  <FormattedMessage
+                    id="apiControlPlane.pages.appShell.appShellPages.apis.ApiDetailPage.deployToGateway"
+                    defaultMessage="Deploy to Gateway"
+                    description="Button on the API overview header that opens the API's deployment page."
+                  />
+                </Button>
+              </Stack>
+            </Box>
+          </Box>
+        </Card>
+      
+      </Stack>
+
+      {/* Policy, Routing and Documents used to be tabs here; each is now its own
+          page under the sidebar's Develop menu, leaving Overview as the whole of
+          this page — so no tab bar. */}
+      <OverviewTab detail={detail} />
+    </>
+  );
+}

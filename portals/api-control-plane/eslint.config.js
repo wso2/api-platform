@@ -3,6 +3,7 @@ import globals from 'globals';
 import formatjs from 'eslint-plugin-formatjs';
 import reactHooks from 'eslint-plugin-react-hooks';
 import tseslint from 'typescript-eslint';
+import eslintConfigPrettier from "eslint-config-prettier";
 
 export default [
   js.configs.recommended,
@@ -242,4 +243,5 @@ export default [
       'src/api/generated/**',
     ],
   },
+  eslintConfigPrettier,
 ];

@@ -16,15 +16,17 @@
  * under the License.
  */
 
-import { useEffect, useState } from 'react';
+import { useEffect, useId, useState, type FormEvent } from 'react';
 import {
+  Box,
   Button,
   Dialog,
   DialogActions,
   DialogContent,
   DialogContentText,
   DialogTitle,
-  TextField,
+  Form,
+  OutlinedInput,
 } from '@wso2/oxygen-ui';
 
 export type ConfirmDialogProps = {
@@ -62,6 +64,10 @@ export function ConfirmDialog({
   onCancel,
 }: ConfirmDialogProps) {
   const [typed, setTyped] = useState('');
+  // Generated rather than a constant: this dialog is rendered by several pages,
+  // and two mounted at once would otherwise share one id, pointing both labels
+  // at whichever input the DOM saw first.
+  const fieldId = useId();
 
   // Reset the typed phrase whenever the dialog opens/closes.
   useEffect(() => {
@@ -71,40 +77,56 @@ export function ConfirmDialog({
   const matched = !confirmPhrase || typed === confirmPhrase;
   const canConfirm = matched && !loading;
 
+  // A real `form` element, so Enter in the phrase field confirms the way a form
+  // is expected to — no key handler duplicating the browser's own behaviour.
+  const handleSubmit = (event: FormEvent) => {
+    event.preventDefault();
+    if (canConfirm) onConfirm();
+  };
+
   return (
     <Dialog fullWidth maxWidth="xs" onClose={onCancel} open={open}>
       <DialogTitle>{title}</DialogTitle>
-      <DialogContent>
-        <DialogContentText>{message}</DialogContentText>
-        {confirmPhrase && (
-          <TextField
-            autoFocus
-            fullWidth
-            label={confirmInputLabel ?? `Type "${confirmPhrase}" to confirm`}
-            onChange={(event) => setTyped(event.target.value)}
-            onKeyDown={(event) => {
-              if (event.key === 'Enter' && canConfirm) onConfirm();
-            }}
-            placeholder={confirmPhrase}
-            size="small"
-            sx={{ mt: 2 }}
-            value={typed}
-          />
-        )}
-      </DialogContent>
-      <DialogActions>
-        <Button color="inherit" disabled={loading} onClick={onCancel}>
-          {cancelLabel}
-        </Button>
-        <Button
-          color={destructive ? 'error' : 'primary'}
-          disabled={!canConfirm}
-          onClick={onConfirm}
-          variant="contained"
-        >
-          {confirmLabel}
-        </Button>
-      </DialogActions>
+      <Box component="form" noValidate onSubmit={handleSubmit}>
+        <DialogContent>
+          <Form.Stack spacing={2}>
+            <DialogContentText>{message}</DialogContentText>
+            {confirmPhrase && (
+              // `ElementWrapper` is the Oxygen form primitive for exactly this:
+              // a full-width `FormControl` with its `FormLabel` bound to the
+              // control by id. It carries no `required`/`error` of its own, which
+              // is why it suits this field — the phrase is validated by matching,
+              // not by field state, so there is nothing to propagate.
+              <Form.ElementWrapper
+                label={confirmInputLabel ?? `Type "${confirmPhrase}" to confirm`}
+                name={fieldId}
+              >
+                <OutlinedInput
+                  autoFocus
+                  id={fieldId}
+                  onChange={(event) => setTyped(event.target.value)}
+                  placeholder={confirmPhrase}
+                  size="small"
+                  value={typed}
+                />
+              </Form.ElementWrapper>
+            )}
+          </Form.Stack>
+        </DialogContent>
+        <DialogActions>
+          <Button color="inherit" disabled={loading} onClick={onCancel}>
+            {cancelLabel}
+          </Button>
+          <Button
+            color={destructive ? 'error' : 'primary'}
+            disabled={!canConfirm}
+            type="submit"
+            variant="contained"
+          >
+            {confirmLabel}
+          </Button>
+        </DialogActions>
+      </Box>
     </Dialog>
   );
 }

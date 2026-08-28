@@ -20,28 +20,39 @@ import { useMemo } from 'react';
 import { useLocation } from 'react-router-dom';
 
 import { runtimeConfig } from '../config/runtime';
-import { useConsoleScope } from '../scope/ConsoleScopeProvider';
-import { buildScopedExtensionPath, useExtensions } from '../extensions';
+import {
+  useConsoleScope,
+  type ConsoleScope,
+} from '../scope/ConsoleScopeProvider';
+import {
+  buildScopedExtensionPath,
+  isSidebarExtension,
+  useExtensions,
+} from '../extensions';
 import { navigationRegistry } from './navigationRegistry';
 import {
-  NAVIGATION_GROUP_BY_LEVEL,
   type NavigationDefinition,
-  type NavigationGroup,
   type NavigationItem,
 } from './navigationTypes';
-
-const isLevelAvailable = (
-  definition: NavigationDefinition,
-  scope: ReturnType<typeof useConsoleScope>
-) => {
-  if (definition.level === 'organization') return scope.isOrganizationScope;
-  if (definition.level === 'project') return scope.isProjectScope;
-  return scope.isApiScope;
-};
 
 const isFeatureEnabled = (definition: NavigationDefinition) =>
   !definition.featureKey ||
   runtimeConfig.featureFlags.includes(definition.featureKey);
+
+/**
+ * Whether an item's `requires` scope holds — the gate on offering its children.
+ *
+ * An item with no `requires` has no scope condition and is treated as satisfied,
+ * so only submenu parents ever consult this.
+ */
+const isScopeSatisfied = (
+  definition: NavigationDefinition,
+  scope: ConsoleScope
+) => {
+  if (definition.requires === 'api') return scope.isApiScope;
+  if (definition.requires === 'project') return scope.isProjectScope;
+  return true;
+};
 
 export const useNavigationItems = (): NavigationItem[] => {
   const scope = useConsoleScope();
@@ -51,66 +62,99 @@ export const useNavigationItems = (): NavigationItem[] => {
   return useMemo(() => {
     // Host-injected extensions are converted to the same NavigationDefinition
     // shape the built-in registry uses, so they run through one filter/sort
-    // pipeline instead of a parallel "Cloud category" implementation. Only
-    // extensions registered against a `sidebar.*` slot get a top-level
-    // sidebar entry here — a `settings.*.tabs` extension instead renders
-    // inside the Settings page's own sub-nav (see `useSettingsTabs`).
+    // pipeline instead of a parallel "Cloud category" implementation.
+    //
+    // Only `sidebar.*` entries belong here: an extension registered against a
+    // nested slot (e.g. `settings.project.tabs`) renders inside that slot's own
+    // host and must not also appear as a top-level sidebar item.
     const extensionDefinitions: NavigationDefinition[] = extensions
-      .filter((extension) => extension.slot.startsWith('sidebar.'))
+      .filter(isSidebarExtension)
       .map((extension) => {
         const isDescendantRoute = extension.routePath.endsWith('/*');
         const routeSuffix = extension.routePath.replace(/\/\*$/, '');
-        // Computed once per render from the current scope (not a raw
-        // substring search) so `match` can't be fooled by an unrelated route
-        // that merely happens to contain this segment name elsewhere — e.g.
-        // a `settings/<name>` tab route shouldn't activate a sidebar
-        // extension whose own destination is `/<name>` at a different depth.
-        const { orgHandle, projectHandler, apiHandler } = scope.params;
-        const destination =
-          orgHandle &&
-          !(extension.scope === 'project' && !projectHandler) &&
-          !(extension.scope === 'api' && (!projectHandler || !apiHandler))
-            ? buildScopedExtensionPath(extension.scope, routeSuffix, {
-                apiHandler,
-                orgHandle,
-                projectHandler,
-              })
-            : undefined;
+        // The one destination this item points at in the current scope,
+        // computed once and used for both `to` and `match`. A raw substring
+        // search over the pathname would also fire on an unrelated route that
+        // merely ends with the same segment name — a `settings/<name>` tab
+        // route would light up a sidebar extension whose own destination is
+        // `/<name>` at a different depth.
+        const destination = scope.params.orgHandle
+          ? buildScopedExtensionPath(extension.level, routeSuffix, {
+              apiHandler: scope.params.apiHandler ?? null,
+              orgHandle: scope.params.orgHandle,
+              projectHandler: scope.params.projectHandler ?? null,
+            })
+          : undefined;
         return {
+          group: extension.group,
           icon: extension.icon,
           id: extension.id,
           isVisible: extension.isVisible,
           label: extension.label,
-          level: extension.scope,
+          level: extension.level,
           match: (pathname) =>
             destination !== undefined &&
+            // Exactly this destination, or (for a `/*` route) a path
+            // continuing below it — never a partial segment match.
             (pathname === destination ||
               (isDescendantRoute && pathname.startsWith(`${destination}/`))),
           order: extension.order,
+          // A missing project/API no longer makes the item unlinkable: the path
+          // degrades to the extension page's scope-less alias, where its own
+          // `ScopeGate` collects what's missing. Only a route with no
+          // organization has nothing to link to.
           to: () => destination,
         };
       });
     const combinedRegistry = [...navigationRegistry, ...extensionDefinitions];
 
+    // A definition becomes an item unless it has no target at all. Children go
+    // through the very same resolution — feature flag, visibility, `to`,
+    // `isActive` — one level down, so a submenu entry can be flagged off or
+    // capability-hidden exactly like a top-level one.
+    const resolve = (
+      definition: NavigationDefinition
+    ): NavigationItem | undefined => {
+      if (!isFeatureEnabled(definition)) return undefined;
+      if (!(definition.isVisible?.(scope) ?? true)) return undefined;
+
+      const to = definition.to(scope);
+      if (!to) return undefined;
+
+      // Children are withheld until their scope holds. That is what makes a
+      // parent behave as two different things: a disclosure in scope (the
+      // sidebar drops its link once children are present) and an ordinary link
+      // to its first child's `ScopeGate` outside it.
+      const children =
+        definition.children && isScopeSatisfied(definition, scope)
+          ? definition.children.reduce<NavigationItem[]>((kept, child) => {
+              const item = resolve(child);
+              if (item) kept.push(item);
+              return kept;
+            }, [])
+          : undefined;
+
+      return {
+        group: definition.group,
+        icon: definition.icon,
+        id: definition.id,
+        isActive: definition.match
+          ? definition.match(location.pathname)
+          : location.pathname === to,
+        label: definition.label,
+        to,
+        ...(children?.length ? { children } : {}),
+      };
+    };
+
+    // Items are not filtered by level. An API-level item stays in the sidebar at
+    // every scope, linking to its page's scope-less alias so the page's
+    // `ScopeGate` can prompt for the missing project/API; a scope-adaptive item
+    // links to the deepest tier the route satisfies. The only remaining reason
+    // `to` comes back undefined is a route with no organization at all (`/`,
+    // `/organizations`), which has nothing to link to yet.
     return combinedRegistry
-      .filter((definition) => isLevelAvailable(definition, scope))
-      .filter(isFeatureEnabled)
-      .filter((definition) => definition.isVisible?.(scope) ?? true)
-      .map((definition) => {
-        const to = definition.to(scope);
-        if (!to) return undefined;
-        return {
-          group: definition.group ?? NAVIGATION_GROUP_BY_LEVEL[definition.level],
-          icon: definition.icon,
-          id: definition.id,
-          isActive: definition.match
-            ? definition.match(location.pathname)
-            : location.pathname === to,
-          label: definition.label,
-          pinned: definition.pinned,
-          to,
-        };
-      })
+      .map(resolve)
       .filter(Boolean)
       .sort((left, right) => {
         const leftOrder =
@@ -122,40 +166,35 @@ export const useNavigationItems = (): NavigationItem[] => {
   }, [location.pathname, scope, extensions]);
 };
 
-const groupByLabel = (items: NavigationItem[]): NavigationGroup[] => {
-  const groups: NavigationGroup[] = [];
-  const byLabel = new Map<string, NavigationGroup>();
+/**
+ * The same items, bucketed into the divider-separated clusters the sidebar
+ * renders. Cluster order follows first appearance in the (order-sorted) item
+ * list, so the registry's `order` alone decides both item and cluster order.
+ *
+ * No labels: the clusters exist to separate, not to title. See
+ * `NavigationDefinition.group` for why an item can no longer carry a scope
+ * heading.
+ */
+export const useNavigationClusters = (): NavigationItem[][] => {
+  const items = useNavigationItems();
 
-  for (const item of items) {
-    let group = byLabel.get(item.group);
-    if (!group) {
-      group = { label: item.group, items: [] };
-      byLabel.set(item.group, group);
-      groups.push(group);
+  return useMemo(() => {
+    const clusters: NavigationItem[][] = [];
+    const byKey = new Map<string, NavigationItem[]>();
+
+    for (const item of items) {
+      // Items with no cluster of their own share one, rather than each becoming
+      // a divider of its own.
+      const key = item.group ?? '';
+      let cluster = byKey.get(key);
+      if (!cluster) {
+        cluster = [];
+        byKey.set(key, cluster);
+        clusters.push(cluster);
+      }
+      cluster.push(item);
     }
-    group.items.push(item);
-  }
 
-  return groups;
-};
-
-/**
- * Same items as `useNavigationItems`, bucketed into ordered sidebar sections by
- * their `group`. Group order follows first appearance in the (order-sorted)
- * item list, so Organization → Project → Api falls out naturally. Excludes
- * `pinned` items — those render separately, see `useSidebarFooterGroups`.
- */
-export const useNavigationGroups = (): NavigationGroup[] => {
-  const items = useNavigationItems();
-  return useMemo(() => groupByLabel(items.filter((item) => !item.pinned)), [items]);
-};
-
-/**
- * `pinned` items (e.g. Settings), grouped the same way as
- * `useNavigationGroups` but meant for a sidebar's fixed bottom section
- * (`Sidebar.Footer`) rather than the scrolling main nav.
- */
-export const useSidebarFooterGroups = (): NavigationGroup[] => {
-  const items = useNavigationItems();
-  return useMemo(() => groupByLabel(items.filter((item) => item.pinned)), [items]);
+    return clusters;
+  }, [items]);
 };

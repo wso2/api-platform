@@ -16,7 +16,12 @@
  * under the License.
  */
 
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import {
+  keepPreviousData,
+  useMutation,
+  useQuery,
+  useQueryClient,
+} from '@tanstack/react-query';
 
 import type { ApiError } from '../../core/errors';
 import { requireOrgScope, useApiScope } from '../../core/scope';
@@ -54,6 +59,12 @@ export type ProjectListFilters = ListProjectsQuery;
  * The query does not run until the organization is known, so this never fires a
  * request the server would reject — and, critically, never writes into a cache
  * entry keyed by an empty scope.
+ *
+ * `keepPreviousData` is the one pagination-specific exception the query client
+ * deliberately leaves to individual list queries: paging or searching changes
+ * the key, and without it the grid would unmount into a loading state on every
+ * page change. The previous page stays on screen (flagged by
+ * `isPlaceholderData`) until the next one arrives.
  */
 export const useProjects = (
   filters: ProjectListFilters = {},
@@ -64,6 +75,7 @@ export const useProjects = (
   return useQuery({
     ...projectQueries.list(org!, filters),
     enabled: Boolean(org),
+    placeholderData: keepPreviousData,
   });
 };
 

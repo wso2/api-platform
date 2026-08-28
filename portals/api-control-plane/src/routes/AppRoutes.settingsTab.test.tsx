@@ -18,87 +18,108 @@
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-import { ExtensionsProvider, type ApiControlPlaneExtension } from '../extensions';
+import {
+  ExtensionsProvider,
+  type ApiControlPlaneExtension,
+} from '../extensions';
 import { AppRoutes } from './AppRoutes';
+import { anOrganization, aProject, collection, resource } from '../test/msw';
 import { authStatePresets } from '../test/mockAuthState';
+import { server } from '../test/server';
 import { renderWithProviders, screen } from '../test/utils';
 
-// Covers the `settings.<scope>.tabs` slot: a host-injected extension
-// registered against that slot should render inside the Settings page's own
-// sub-nav (nested under /settings) rather than as a top-level sidebar/route
-// entry.
+// Covers the `settings.<level>.tabs` slot: a host-injected extension
+// registered against that slot renders inside the Settings page's own sub-nav
+// (nested under /settings), never as a top-level sidebar/route entry.
 describe('AppRoutes settingsTab extensions', () => {
-  beforeEach(() => vi.stubEnv('VITE_USE_MOCK_API', 'true'));
+  const org = anOrganization({
+    id: 'api-platform-demo',
+    displayName: 'API Platform Demo',
+  });
+  const project = aProject({ id: 'retail-apis', displayName: 'Retail APIs' });
+
+  beforeEach(() => {
+    vi.stubEnv('VITE_USE_MOCK_API', 'true');
+    server.use(
+      collection('/organizations', [org]),
+      resource('/organizations/:organizationId', org),
+      collection('/projects', [project]),
+      resource('/projects/:projectId', project),
+      collection('/rest-apis', [])
+    );
+  });
   afterEach(() => vi.unstubAllEnvs());
+
+  const projectSettingsRoute =
+    '/organizations/api-platform-demo/projects/retail-apis/settings';
 
   const mockExtension: ApiControlPlaneExtension = {
     id: 'environments',
-    routePath: 'settings/environments',
-    render: () => <div>Mock Environments page</div>,
     label: 'Environments',
-    scope: 'project',
-    slot: 'settings.project.tabs',
+    level: 'project',
     order: 10,
+    render: () => <div>Mock Environments page</div>,
+    routePath: 'settings/environments',
+    slot: 'settings.project.tabs',
   };
 
-  it('lists the extension as a Settings sub-nav tab and does not add a top-level sidebar entry', async () => {
+  const renderWithExtension = (
+    extension: ApiControlPlaneExtension,
+    route: string
+  ) =>
     renderWithProviders(
-      <ExtensionsProvider extensions={[mockExtension]}>
-        <AppRoutes extensions={[mockExtension]} />
+      <ExtensionsProvider extensions={[extension]}>
+        <AppRoutes extensions={[extension]} />
       </ExtensionsProvider>,
-      {
-        route: '/organizations/api-platform-demo/projects/retail-apis/settings',
-        authState: authStatePresets.authenticated(),
-      }
+      { authState: authStatePresets.authenticated(), route }
     );
 
-    // Settings sub-nav shows both the built-in "General" tab and the
-    // extension-contributed "Environments" tab.
+  it('lists the extension as a Settings sub-nav tab and adds no top-level sidebar entry', async () => {
+    renderWithExtension(mockExtension, projectSettingsRoute);
+
     expect(await screen.findByText('General')).toBeInTheDocument();
     expect(await screen.findByText('Environments')).toBeInTheDocument();
 
-    // It must not also appear as its own top-level sidebar entry (there is
-    // only ever one "Environments" text node on the page: the settings tab).
+    // One text node only — the settings tab. A second would mean it also
+    // registered itself as a top-level sidebar item.
     expect(screen.getAllByText('Environments')).toHaveLength(1);
   });
 
-  it('renders the extension element when its settings tab route is visited', async () => {
-    renderWithProviders(
-      <ExtensionsProvider extensions={[mockExtension]}>
-        <AppRoutes extensions={[mockExtension]} />
-      </ExtensionsProvider>,
-      {
-        route: '/organizations/api-platform-demo/projects/retail-apis/settings/environments',
-        authState: authStatePresets.authenticated(),
-      }
-    );
+  it('renders what the extension returns when its settings tab route is visited', async () => {
+    renderWithExtension(mockExtension, `${projectSettingsRoute}/environments`);
 
-    expect(await screen.findByText('Mock Environments page')).toBeInTheDocument();
+    expect(
+      await screen.findByText('Mock Environments page')
+    ).toBeInTheDocument();
   });
 
-  it('does not register a conflicting descriptor whose slot and scope disagree', async () => {
+  it('hands the extension a Port carrying the scope it was rendered in', async () => {
+    const portAware: ApiControlPlaneExtension = {
+      ...mockExtension,
+      render: (port) => <div>Port project: {port.projectHandle}</div>,
+    };
+
+    renderWithExtension(portAware, `${projectSettingsRoute}/environments`);
+
+    expect(
+      await screen.findByText('Port project: retail-apis')
+    ).toBeInTheDocument();
+  });
+
+  it('drops a descriptor whose slot and level disagree', async () => {
     // Type-valid but internally inconsistent: the slot says "project" while
-    // `scope` says "organization". Neither `useSettingsTabs` nor
-    // `settingsTabRoutesFor` may accept this — it must not render in EITHER
-    // settings page, rather than rendering in the wrong one with a mismatched
-    // Port (e.g. missing `projectHandle`).
-    const conflictingExtension: ApiControlPlaneExtension = {
+    // `level` says "organization". Neither `useSettingsTabs` nor the route pass
+    // may accept it — it must render in NEITHER settings page rather than in
+    // the wrong one, against a Port missing the scope it expects.
+    const conflicting: ApiControlPlaneExtension = {
       ...mockExtension,
       id: 'conflicting',
       label: 'Conflicting',
+      level: 'organization',
       slot: 'settings.project.tabs',
-      scope: 'organization',
     };
 
-    renderWithProviders(
-      <ExtensionsProvider extensions={[conflictingExtension]}>
-        <AppRoutes extensions={[conflictingExtension]} />
-      </ExtensionsProvider>,
-      {
-        route: '/organizations/api-platform-demo/projects/retail-apis/settings',
-        authState: authStatePresets.authenticated(),
-      }
-    );
+    renderWithExtension(conflicting, projectSettingsRoute);
 
     expect(await screen.findByText('General')).toBeInTheDocument();
     expect(screen.queryByText('Conflicting')).not.toBeInTheDocument();

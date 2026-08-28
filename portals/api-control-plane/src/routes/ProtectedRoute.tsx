@@ -19,7 +19,7 @@
 import { Navigate, Outlet, useLocation } from 'react-router-dom';
 
 import { LoadingState } from '../components/StateViews';
-import { useAuth } from '../features/auth/AuthProvider';
+import { useAuth } from '../contexts/auth/AuthProvider';
 import { routes } from './paths';
 
 export function ProtectedRoute() {
