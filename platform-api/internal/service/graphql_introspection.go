@@ -229,9 +229,17 @@ func fetchAndConvertGraphQLSchema(upstreamURL string) (string, error) {
 	}
 	defer resp.Body.Close()
 
-	respBody, err := io.ReadAll(io.LimitReader(resp.Body, 5<<20)) // 5 MiB ceiling on the introspection response
+	const maxIntrospectionResponseBytes = 5 << 20 // 5 MiB ceiling on the introspection response
+	respBody, err := io.ReadAll(io.LimitReader(resp.Body, maxIntrospectionResponseBytes+1))
 	if err != nil {
 		return "", fmt.Errorf("failed to read introspection response: %w", err)
+	}
+	if len(respBody) > maxIntrospectionResponseBytes {
+		// Reject outright rather than silently parsing a truncated body — a cut
+		// that happens to land on a JSON boundary could otherwise produce a
+		// subtly incomplete (but parseable) derived schema (file-access.md
+		// directive 5).
+		return "", fmt.Errorf("introspection response exceeds the maximum allowed size of %d bytes", maxIntrospectionResponseBytes)
 	}
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
 		return "", fmt.Errorf("introspection request failed with status %d", resp.StatusCode)
