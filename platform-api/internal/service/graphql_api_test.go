@@ -594,6 +594,97 @@ func TestGraphQLGetSDL_NotFound(t *testing.T) {
 	}
 }
 
+// TestGraphQLUpstreamAuth_RedactedAcrossAllResponseShapes guards Get,
+// GetDetail, and List (the three response shapes that carry upstream auth —
+// GraphQLAPIListItem's Upstream field, GraphQLAPIDetail, and GraphQLAPI
+// itself) against ever echoing back a raw upstream credential. All three
+// previously ran through the non-redacting mapUpstreamModelToAPI, which
+// leaked main/sandbox upstream.*.auth.value verbatim; they must instead use
+// mapUpstreamConfigToDTO, the same redacting mapper LLM/MCP's own upstream
+// responses use — Type/Header survive, Value never does.
+func TestGraphQLUpstreamAuth_RedactedAcrossAllResponseShapes(t *testing.T) {
+	stored := &model.GraphQLAPI{
+		ID:             "some-uuid",
+		Handle:         "countries-graphql-api",
+		Name:           "Countries GraphQL API",
+		OrganizationID: "org-1",
+		Configuration: model.GraphQLAPIConfig{
+			SDL: validCountriesGraphQLSDL,
+			Upstream: model.UpstreamConfig{
+				Main: &model.UpstreamEndpoint{
+					URL: "https://countries.example.com/graphql",
+					Auth: &model.UpstreamAuth{
+						Type:   "apiKey",
+						Header: "X-Api-Key",
+						Value:  "super-secret-main-credential",
+					},
+				},
+				Sandbox: &model.UpstreamEndpoint{
+					URL: "https://sandbox.countries.example.com/graphql",
+					Auth: &model.UpstreamAuth{
+						Type:   "bearer",
+						Header: "Authorization",
+						Value:  "super-secret-sandbox-credential",
+					},
+				},
+			},
+		},
+	}
+	repo := &mockGraphQLAPIRepo{
+		getByHandleFunc: func(handle, orgUUID string) (*model.GraphQLAPI, error) {
+			return stored, nil
+		},
+		listResult: []*model.GraphQLAPI{stored},
+	}
+	svc := newGraphQLTestService(repo, nil)
+
+	assertRedacted := func(t *testing.T, label string, up *api.Upstream) {
+		t.Helper()
+		if up == nil {
+			t.Fatalf("%s: expected an upstream, got nil", label)
+		}
+		if up.Main.Auth == nil {
+			t.Fatalf("%s: expected main auth to survive redaction (type/header), got nil", label)
+		}
+		if up.Main.Auth.Value != nil {
+			t.Errorf("%s: expected main auth value to be redacted, got %q", label, *up.Main.Auth.Value)
+		}
+		if up.Main.Auth.Header == nil || *up.Main.Auth.Header != "X-Api-Key" {
+			t.Errorf("%s: expected main auth header to survive redaction, got %v", label, up.Main.Auth.Header)
+		}
+		if up.Sandbox == nil || up.Sandbox.Auth == nil {
+			t.Fatalf("%s: expected sandbox auth to survive redaction (type/header), got nil", label)
+		}
+		if up.Sandbox.Auth.Value != nil {
+			t.Errorf("%s: expected sandbox auth value to be redacted, got %q", label, *up.Sandbox.Auth.Value)
+		}
+		if up.Sandbox.Auth.Header == nil || *up.Sandbox.Auth.Header != "Authorization" {
+			t.Errorf("%s: expected sandbox auth header to survive redaction, got %v", label, up.Sandbox.Auth.Header)
+		}
+	}
+
+	full, err := svc.Get("org-1", "countries-graphql-api")
+	if err != nil {
+		t.Fatalf("Get: unexpected error: %v", err)
+	}
+	assertRedacted(t, "Get", &full.Upstream)
+
+	detail, err := svc.GetDetail("org-1", "countries-graphql-api")
+	if err != nil {
+		t.Fatalf("GetDetail: unexpected error: %v", err)
+	}
+	assertRedacted(t, "GetDetail", &detail.Upstream)
+
+	list, err := svc.List("org-1", "", 25, 0)
+	if err != nil {
+		t.Fatalf("List: unexpected error: %v", err)
+	}
+	if len(list.List) != 1 {
+		t.Fatalf("expected 1 list item, got %d", len(list.List))
+	}
+	assertRedacted(t, "List", list.List[0].Upstream)
+}
+
 // TestGraphQLList_NoProjectFilter_ReturnsAllAndResolvesHandles guards the
 // no-project-filter path (Count, not CountByProject) and the per-item
 // project-UUID -> handle resolution (mirrors REST's modelToRESTAPIUnresolved,
