@@ -401,7 +401,11 @@ func main() {
 	// async-specific legacy translation path.
 	restTransformer := transform.NewRestAPITransformer(&cfg.Router, cfg, policyDefinitions)
 	llmTransformer := transform.NewLLMTransformer(configStore, db, &cfg.Router, cfg, policyDefinitions, policyVersionResolver)
-	transformerRegistry := transform.NewRegistry(restTransformer, llmTransformer)
+	// No Agent transformer: the event gateway serves the async kinds and never
+	// registers Agent with the xDS translator below, so nothing can reach that
+	// dispatch arm. A nil transformer resolves to ErrUnsupportedKind if anything
+	// ever does.
+	transformerRegistry := transform.NewRegistry(restTransformer, llmTransformer, nil)
 
 	xdsTranslator.SetTransformers(map[string]models.ConfigTransformer{
 		"RestApi":     transformerRegistry,
