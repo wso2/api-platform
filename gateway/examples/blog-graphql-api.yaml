@@ -39,7 +39,7 @@ metadata:
 spec:
   displayName: Blog
   version: v1
-  context: /blog
+  context: /blog/graphql
   upstream:
     main:
       url: http://sample-backend:9080/graphql
