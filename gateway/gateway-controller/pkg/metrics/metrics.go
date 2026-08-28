@@ -83,6 +83,7 @@ var (
 	LLMProvidersTotal         GaugeVec
 	LLMProviderTemplatesTotal Gauge
 	MCPProxiesTotal           GaugeVec
+	AgentsTotal               GaugeVec
 	LLMOperationsTotal        CounterVec
 
 	Up                     Gauge
@@ -465,6 +466,20 @@ func initMetrics() {
 		[]string{"type", "status"},
 	)
 
+	// A resource count, not an invocation count: it says how many Agents this
+	// controller has deployed, and never moves when one of them is called. Agent
+	// invocation volume is a business metric computed downstream from analytics
+	// events, where it can be broken down by canonical operation and consumer —
+	// dimensions that have no place on a gauge.
+	AgentsTotal = newGaugeVec(
+		prometheus.GaugeOpts{
+			Namespace: namespace,
+			Name:      "agents_total",
+			Help:      "Total number of deployed Agents",
+		},
+		[]string{"status"},
+	)
+
 	LLMOperationsTotal = newCounterVec(
 		prometheus.CounterOpts{
 			Namespace: namespace,
@@ -731,6 +746,7 @@ func initRegistry() {
 	registerGaugeVec(LLMProvidersTotal)
 	registerGauge(LLMProviderTemplatesTotal)
 	registerGaugeVec(MCPProxiesTotal)
+	registerGaugeVec(AgentsTotal)
 	registerCounterVec(LLMOperationsTotal)
 
 	registerGauge(Up)

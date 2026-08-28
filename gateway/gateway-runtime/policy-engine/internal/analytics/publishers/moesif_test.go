@@ -360,6 +360,69 @@ func TestPublish_McpAPIType(t *testing.T) {
 	assert.Equal(t, "search", mcpAnalytics["toolName"])
 }
 
+// Total latency has to reach the publisher, not just the event: the other four
+// latencies are all partial spans, so a percentile computed from them measures a phase
+// rather than what the caller waited.
+func TestPublish_ForwardsTotalDuration(t *testing.T) {
+	moesif := createTestMoesifWithoutAPI()
+
+	event := createBaseEvent()
+	event.Latencies = &dto.Latencies{
+		Duration:                 250,
+		BackendLatency:           100,
+		ResponseLatency:          100,
+		RequestMediationLatency:  50,
+		ResponseMediationLatency: 50,
+	}
+
+	moesif.Publish(event)
+
+	assert.Len(t, moesif.events, 1)
+	metadata := getMetadata(moesif.events[0])
+	assert.Equal(t, int64(250), metadata["duration"],
+		"total request duration must be forwarded, not only its component spans")
+	assert.Equal(t, int64(100), metadata["backendLatency"])
+}
+
+func TestPublish_AgentAPIType(t *testing.T) {
+	moesif := createTestMoesifWithoutAPI()
+
+	event := createBaseEvent()
+	event.API.APIType = "Agent"
+	event.Properties["a2aAnalytics"] = map[string]interface{}{
+		"requestType": "operation",
+		"operation":   "SendMessage",
+		"transport":   "JSONRPC",
+		"outcome":     "FAILURE",
+	}
+
+	moesif.Publish(event)
+
+	assert.Len(t, moesif.events, 1)
+	metadata := getMetadata(moesif.events[0])
+	require.NotNil(t, metadata["a2aAnalytics"])
+	a2aAnalytics := metadata["a2aAnalytics"].(map[string]interface{})
+	assert.Equal(t, "SendMessage", a2aAnalytics["operation"])
+	assert.Equal(t, "JSONRPC", a2aAnalytics["transport"])
+	assert.Equal(t, "FAILURE", a2aAnalytics["outcome"])
+}
+
+// The block is gated on the API kind, the way the MCP block is: an Agent's dimensions
+// are meaningless on any other kind, and forwarding the key unconditionally would put
+// an empty object on every event the gateway publishes.
+func TestPublish_A2AAnalyticsNotForwardedForOtherKinds(t *testing.T) {
+	moesif := createTestMoesifWithoutAPI()
+
+	event := createBaseEvent()
+	event.API.APIType = "RestApi"
+	event.Properties["a2aAnalytics"] = map[string]interface{}{"operation": "SendMessage"}
+
+	moesif.Publish(event)
+
+	assert.Len(t, moesif.events, 1)
+	assert.Nil(t, getMetadata(moesif.events[0])["a2aAnalytics"])
+}
+
 func TestPublish_WithPayloads(t *testing.T) {
 	moesif := createTestMoesifWithoutAPI()
 

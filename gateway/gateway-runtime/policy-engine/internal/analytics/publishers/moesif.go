@@ -293,6 +293,15 @@ func (m *Moesif) Publish(event *dto.Event) {
 		}
 	}
 
+	// A2A Analytics. Gated on the API kind for the same reason the MCP block above
+	// is: an Agent's dimensions are meaningless on any other kind, and forwarding
+	// the key unconditionally would put an empty object on every event.
+	if event.API.APIType == "Agent" {
+		if a2aAnalytics, ok := event.Properties["a2aAnalytics"]; ok && a2aAnalytics != nil {
+			metadataMap["a2aAnalytics"] = a2aAnalytics
+		}
+	}
+
 	// Attach request/response payloads to metadata when present in event properties.
 	if requestPayload, ok := event.Properties["request_payload"]; ok && requestPayload != nil {
 		metadataMap["request_payload"] = requestPayload
@@ -322,6 +331,10 @@ func (m *Moesif) Publish(event *dto.Event) {
 		metadataMap["requestMediationLatency"] = event.Latencies.RequestMediationLatency
 		metadataMap["responseLatency"] = event.Latencies.ResponseLatency
 		metadataMap["responseMediationLatency"] = event.Latencies.ResponseMediationLatency
+		// Total request duration. The other four are all partial spans, so a
+		// latency-distribution percentile computed from them measures a phase rather
+		// than what the caller waited.
+		metadataMap["duration"] = event.Latencies.Duration
 	}
 
 	// commonName

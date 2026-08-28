@@ -23,6 +23,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"maps"
 	"net/http"
 	"sort"
 	"strings"
@@ -33,6 +34,7 @@ import (
 	"github.com/google/uuid"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
+	"google.golang.org/protobuf/types/known/structpb"
 
 	"github.com/wso2/api-platform/gateway/gateway-runtime/policy-engine/internal/constants"
 	"github.com/wso2/api-platform/gateway/gateway-runtime/policy-engine/internal/executor"
@@ -226,10 +228,12 @@ func (ec *PolicyExecutionContext) bindPendingChainAndProcess(
 		return ec.denyResolution(ctx, resolver.NormalizeResolutionError(err)), nil
 	}
 
-	// Bind.
+	// Bind. The resolution is applied to the shared context before the chain's own
+	// policies run below, so a policy on a body-resolved route sees the operation it
+	// is running for rather than the empty value the header callback left behind.
 	ec.policyChain = chain
 	ec.chainKey = bound.ChainKey
-	ec.operation = bound.Operation
+	ec.applyBoundResolution(bound)
 	ec.pending = nil
 	ec.boundAtBodyPhase = true
 
@@ -298,7 +302,8 @@ func (ec *PolicyExecutionContext) denyResolution(
 	ctx context.Context,
 	failure *resolver.ResolutionError,
 ) *extprocv3.ProcessingResponse {
-	resp, outcome := renderResolutionFailure(ctx, ec.resolverName, ec.routeKey, ec.requestID, failure)
+	resp, outcome := renderResolutionFailure(ctx, ec.resolverName, ec.routeKey, ec.requestID, failure,
+		resolutionFailureAnalytics(nil, ec))
 
 	// The chain is never bound for this request. Later phases check this so a
 	// response callback that arrives anyway cannot dereference a nil chain.
@@ -323,6 +328,7 @@ func renderResolutionFailure(
 	routeKey string,
 	requestID string,
 	failure *resolver.ResolutionError,
+	analytics *structpb.Struct,
 ) (*extprocv3.ProcessingResponse, tracing.HTTPOutcome) {
 	errorID := uuid.New().String()
 
@@ -346,11 +352,49 @@ func renderResolutionFailure(
 	resp := &extprocv3.ProcessingResponse{
 		Response: &extprocv3.ProcessingResponse_ImmediateResponse{ImmediateResponse: imm},
 	}
+	if analytics != nil {
+		resp.DynamicMetadata = buildDynamicMetadata(analytics, nil, nil)
+	}
 	return resp, tracing.HTTPOutcome{
 		StatusCode: rendered.StatusCode,
 		Reason:     constants.TerminalReasonResolutionFailed,
 		ErrorID:    errorID,
 	}
+}
+
+// resolutionFailureAnalytics builds the analytics payload for a request rejected before
+// any policy chain was bound.
+//
+// Without it such a request produces no analytics event at all: the rejection is the
+// only ext_proc response it ever generates, and it used to carry no dynamic metadata,
+// so the access-log entry had nothing identifying the API it was aimed at. The failure
+// was visible only in resolution_failures_total. For a protocol whose operation lives
+// in the request payload that is the one failure mode most likely to be the caller's
+// own — a malformed envelope, an operation the protocol version does not define — and
+// it is exactly what a success-rate breakdown needs in order to attribute a failure to
+// the client rather than to the agent.
+//
+// Exactly one of routeFields and execCtx carries the API identity, depending on which
+// phase rejected: the request-headers callback has route metadata and no execution
+// context, and the request-body callback has the context (whose shared context
+// buildAnalyticsStruct reads) and does not re-derive the metadata.
+//
+// The failure *kind* is deliberately not included. It reaches the log, the metric and
+// the span, and putting it on an event that leaves the process would publish which
+// specific malformation a caller achieved.
+func resolutionFailureAnalytics(routeFields map[string]any, execCtx *PolicyExecutionContext) *structpb.Struct {
+	fields := make(map[string]any, len(routeFields)+1)
+	maps.Copy(fields, routeFields)
+	fields[TerminalReasonKey] = constants.TerminalReasonResolutionFailed
+
+	built, err := buildAnalyticsStruct(fields, execCtx)
+	if err != nil {
+		// Never fail the rejection over its own telemetry: the sterile response still
+		// has to go out.
+		slog.Warn("Failed to build analytics metadata for a resolution failure", "error", err)
+		return nil
+	}
+	return built
 }
 
 // sterileFailure is the kernel's own generic error response. It is deliberately not part
@@ -424,28 +468,38 @@ func (ec *PolicyExecutionContext) noChainPassThroughResponseBody() *extprocv3.Pr
 	}
 }
 
-// recordResolutionAttributes stamps the resolver name, the selected chain key and the
-// resolved operation on a span, skipping whichever is not known yet.
+// recordResolutionAttributes stamps the resolver name, the selected chain key, the
+// resolved operation and the resolver's protocol-derived request facts on a span,
+// skipping whichever is not known yet.
 //
 // It is called twice for a body-resolved route — once at the request-headers callback,
 // where only the resolver is known, and again at the request-body callback once the
 // chain has actually been selected. Skipping an empty attribute rather than recording
 // one keeps them meaningful: an operator filtering on the chain key sees only spans
 // where a chain was really chosen, instead of every deferred request carrying "".
+//
+// The request facts are recorded under the names their producing protocol gave them
+// (already namespaced — "a2a.context.id"), so a trace can be searched by the
+// conversation or task a request belonged to. A span is the right home for a
+// caller-supplied identifier: it is per-request storage, unlike a metric label, whose
+// cardinality it would multiply. Count and length are already bounded by
+// ValidateResolution.
 func (ec *PolicyExecutionContext) recordResolutionAttributes(span trace.Span) {
 	if span == nil || !span.IsRecording() || ec.resolverName == "" {
 		// An identity route has no resolver, and its chain key equals the route name
 		// that is already on the span.
 		return
 	}
-	attrs := []attribute.KeyValue{
-		attribute.String(constants.AttrResolverName, ec.resolverName),
-	}
+	attrs := make([]attribute.KeyValue, 0, 3+len(ec.resolutionAttributes))
+	attrs = append(attrs, attribute.String(constants.AttrResolverName, ec.resolverName))
 	if ec.chainKey != "" {
 		attrs = append(attrs, attribute.String(constants.AttrPolicyChainKey, ec.chainKey))
 	}
 	if ec.operation != "" {
 		attrs = append(attrs, attribute.String(constants.AttrResolvedOperation, ec.operation))
+	}
+	for name, value := range ec.resolutionAttributes {
+		attrs = append(attrs, attribute.String(name, value))
 	}
 	span.SetAttributes(attrs...)
 }

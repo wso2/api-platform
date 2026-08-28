@@ -34,6 +34,7 @@ import (
 	analytics_publisher "github.com/wso2/api-platform/gateway/gateway-runtime/policy-engine/internal/analytics/publishers"
 	"github.com/wso2/api-platform/gateway/gateway-runtime/policy-engine/internal/config"
 	"github.com/wso2/api-platform/gateway/gateway-runtime/policy-engine/internal/constants"
+	policy "github.com/wso2/api-platform/sdk/core/policy/v1alpha2"
 )
 
 const lazyResourceTypeLLMProviderTemplate = "LlmProviderTemplate"
@@ -383,6 +384,14 @@ func (c *Analytics) prepareAnalyticEvent(logEntry *v3.HTTPAccessLogEntry) *dto.E
 			RequestMediationLatency:  firstUpTx - lastRx,
 			ResponseLatency:          lastDownTx - firstUpRx,
 			ResponseMediationLatency: lastDownTx - lastUpRx,
+			// Total request duration: downstream request received → downstream
+			// response sent (DS_RX_BEG → DS_TX_END). None of the other four is a
+			// substitute — ResponseLatency starts at the first upstream response byte,
+			// so it omits everything the request spent getting there, and
+			// BackendLatency covers only the upstream leg. This is the same span the
+			// traffic-log path already computes as DurationUs, in milliseconds to match
+			// its siblings here.
+			Duration: lastDownTx,
 		}
 
 		// Traffic-log latencies (microseconds), derived from the same timepoints
@@ -666,7 +675,202 @@ func (c *Analytics) prepareAnalyticEvent(logEntry *v3.HTTPAccessLogEntry) *dto.E
 		event.Properties["mcpAnalytics"] = mcpAnalytics
 	}
 
+	if keyValuePairsFromMetadata[APITypeKey] == string(policy.APIKindAgent) {
+		event.Properties[A2AAnalyticsProperty] = buildA2AAnalytics(
+			keyValuePairsFromMetadata, logEntry, operation.APIMethod, event.ProxyResponseCode)
+	}
+
 	return event
+}
+
+// A2AAnalyticsProperty is the event property the A2A dimensions are assembled under,
+// mirroring mcpAnalytics.
+const A2AAnalyticsProperty = "a2aAnalytics"
+
+// buildA2AAnalytics assembles the A2A dimension block for one Agent event.
+//
+// Every dimension a downstream A2A dashboard needs that is not already a first-class
+// field on the event lives here. Latency stays on event.Latencies, which the ALS
+// timepoints already give for every kind; consumer identity stays on the auth-context
+// properties, which are populated generically for any authenticated request. Only the
+// facts specific to A2A — which operation, over which transport, and whether the agent
+// actually succeeded — are assembled here.
+//
+// Nothing in here is aggregated. Counts, distinct-consumer rollups and success rates
+// are computed downstream; this function's whole contract is that the dimensions each
+// of those needs are present, bounded where they must be, and derived correctly.
+func buildA2AAnalytics(
+	metadata map[string]string,
+	logEntry *v3.HTTPAccessLogEntry,
+	requestMethod string,
+	statusCode int,
+) map[string]interface{} {
+	a2a := make(map[string]interface{}, 12)
+
+	// The canonical operation, stamped by the kernel from the bound chain key rather
+	// than reported by anything that parsed the request — so it names the operation
+	// whose policies actually ran.
+	operation := metadata[ResolvedOperationKey]
+	terminalReason := metadata[TerminalReasonKey]
+
+	requestType := a2aRequestType(operation, terminalReason, requestMethod)
+	a2a["requestType"] = requestType
+
+	if requestType != A2ARequestTypeOperation {
+		// A card fetch or a preflight. It gets no operation, no outcome and no
+		// transport: it is reported so the traffic is visible, and deliberately not
+		// shaped like an invocation so nothing downstream can roll it in with one.
+		return a2a
+	}
+
+	if operation == "" {
+		// An invocation whose operation could not be determined — the request named an
+		// operation this protocol version does not define, or was not a well-formed
+		// envelope. It is grouped rather than dropped: these are failures a success
+		// rate has to count, and grouping keeps the operation dimension bounded when
+		// the value that failed to resolve was caller-supplied.
+		operation = A2AOperationUnknown
+	}
+	a2a["operation"] = operation
+
+	// Transport, protocol version and the request identifiers, extracted once by the
+	// a2a resolver and passed through the analytics system policy. Transport is a
+	// separate dimension from operation on purpose: the two A2A bindings of one
+	// operation resolve to the same chain and must aggregate to the same operation,
+	// while still being distinguishable.
+	mergeJSONProperties(a2a, metadata[A2ARequestPropertiesKey], A2ARequestPropertiesKey)
+	mergeJSONProperties(a2a, metadata[A2AResponsePropertiesKey], A2AResponsePropertiesKey)
+
+	outcome, origin := a2aOutcome(a2a, terminalReason, statusCode,
+		logEntry.GetCommonProperties().GetUpstreamRemoteAddress() != nil)
+	a2a["outcome"] = outcome
+	if origin != "" {
+		a2a["failureOrigin"] = origin
+	}
+	return a2a
+}
+
+// a2aRequestType classifies a request on an Agent's routes.
+//
+// An Agent serves three shapes of traffic on one context: its A2A operations, its
+// public Agent Card, and the CORS preflights for both. Only the first is an
+// invocation. A resolved operation is the discriminator rather than a path match,
+// because the card's gateway-facing path is author-configurable while the a2a resolver
+// is attached to operation routes and nothing else.
+//
+// A request the resolver rejected has no operation either, and it must not be
+// misfiled: it was aimed at an operation route and is an attempted invocation that
+// failed, not a card fetch. That is what the terminal reason distinguishes.
+func a2aRequestType(operation, terminalReason, requestMethod string) string {
+	switch {
+	case operation != "" || terminalReason == constants.TerminalReasonResolutionFailed:
+		return A2ARequestTypeOperation
+	case requestMethod == "OPTIONS":
+		return A2ARequestTypePreflight
+	default:
+		return A2ARequestTypeAgentCard
+	}
+}
+
+// a2aOutcome derives whether an Agent invocation succeeded and, if it did not, which
+// component is answerable for that.
+//
+// The HTTP status is not the answer on its own. A JSON-RPC error rides a 200, so a
+// status-only reading reports a failed invocation as a success; and a policy denial
+// and an agent's own rejection can arrive as the same status, so a status-only reading
+// blames the agent for the gateway's refusals. The rules are ordered from the most
+// specific fact available to the least:
+//
+//  1. The engine said what ended the request — a policy short-circuit, or a payload it
+//     could not resolve to an operation. Authoritative: the engine is the only
+//     component that knows, and it knows for certain.
+//  2. A 5xx: the agent's if the request reached it, otherwise the gateway's.
+//  3. A 4xx: the agent's if the request reached it; otherwise the gateway refused it
+//     for something the caller controls, which is a client fault.
+//  4. A success status whose body was read: the A2A result decides. An error object
+//     inside a 200 is the agent's failure — the case the whole function exists for.
+//  5. A success status whose body was *not* read: undetermined, unless the transport
+//     itself makes the status authoritative. See a2aSuccessStatusOutcome.
+//
+// Known gap: a response-phase policy denial is not covered by rule 1 — only
+// request-phase short-circuits stamp the terminal reason — so it lands in rule 2 or 3
+// and is attributed to the upstream the request did reach.
+func a2aOutcome(a2a map[string]interface{}, terminalReason string, statusCode int, upstreamContacted bool) (string, string) {
+	switch terminalReason {
+	case constants.TerminalReasonPolicyDenied:
+		return A2AOutcomeFailure, A2AFailureOriginPolicy
+	case constants.TerminalReasonResolutionFailed:
+		// The payload named no operation this protocol version defines, or was not a
+		// well-formed envelope at all. The caller's, not the agent's — the agent never
+		// saw it.
+		return A2AOutcomeFailure, A2AFailureOriginClient
+	}
+	if statusCode >= 500 {
+		if upstreamContacted {
+			return A2AOutcomeFailure, A2AFailureOriginUpstream
+		}
+		return A2AOutcomeFailure, A2AFailureOriginGateway
+	}
+	if statusCode >= 400 {
+		if upstreamContacted {
+			return A2AOutcomeFailure, A2AFailureOriginUpstream
+		}
+		return A2AOutcomeFailure, A2AFailureOriginClient
+	}
+	isError, determined := a2a["isError"].(bool)
+	switch {
+	case determined && isError:
+		return A2AOutcomeFailure, A2AFailureOriginUpstream
+	case determined:
+		return A2AOutcomeSuccess, ""
+	default:
+		return a2aSuccessStatusOutcome(a2a), ""
+	}
+}
+
+// a2aSuccessStatusOutcome decides what a 2xx means when the response body yielded no
+// A2A result — it was empty, unreadable, or the response policy never saw it.
+//
+// The answer depends on the transport, because the two A2A bindings put the outcome in
+// different places:
+//
+//   - JSON-RPC multiplexes everything onto one endpoint and answers 200 whether the
+//     call succeeded or failed. The status carries no outcome information whatsoever,
+//     so with no readable body there is nothing to conclude. Calling it a success would
+//     manufacture the exact false-success this derivation exists to prevent.
+//   - HTTP+JSON is REST-shaped: an error is a real error status, not a 200. A 2xx is
+//     therefore itself the agent's statement of success, and a bodiless one (a 204 from
+//     DeleteTaskPushNotificationConfig, say) is a determined success rather than a
+//     missing observation.
+//
+// An unrecognised or absent transport is treated as undetermined rather than assumed
+// REST-shaped: this is the fail-honest direction, and it is not reachable in practice —
+// every operation route's resolver stamps the transport at ingest.
+func a2aSuccessStatusOutcome(a2a map[string]interface{}) string {
+	if transport, ok := a2a["transport"].(string); ok && transport == a2aTransportHTTPJSON {
+		return A2AOutcomeSuccess
+	}
+	return A2AOutcomeUnknown
+}
+
+// mergeJSONProperties folds a JSON-encoded property block emitted by the analytics
+// system policy into dest.
+//
+// A block that will not parse is kept under its own key as a raw string rather than
+// dropped, matching how the MCP block already handles the same case: the event stays
+// diagnosable, and a downstream consumer reading a named dimension sees it as absent
+// rather than as a wrong value.
+func mergeJSONProperties(dest map[string]interface{}, encoded, rawKey string) {
+	if encoded == "" {
+		return
+	}
+	var props map[string]interface{}
+	if err := json.Unmarshal([]byte(encoded), &props); err != nil {
+		slog.Debug("Failed to unmarshal A2A analytics properties", "key", rawKey, "error", err)
+		dest[rawKey] = encoded
+		return
+	}
+	maps.Copy(dest, props)
 }
 
 func (c *Analytics) getAnonymousApp() *dto.Application {
