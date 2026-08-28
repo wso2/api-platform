@@ -37,7 +37,7 @@ import (
 
 	"github.com/wso2/api-platform/platform-api/internal/service"
 
-	"github.com/wso2/go-httpkit/httputil"
+	"github.com/wso2/api-platform/httpkit/httputil"
 )
 
 // hmacSecretDecrypter is the minimal surface needed from a WebSub HMAC secret

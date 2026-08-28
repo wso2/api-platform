@@ -52,8 +52,8 @@ import (
 	"github.com/wso2/api-platform/common/authenticators"
 	"github.com/wso2/api-platform/common/eventhub"
 	commonmodels "github.com/wso2/api-platform/common/models"
-	"github.com/wso2/go-httpkit/httputil"
-	gohttpkit "github.com/wso2/go-httpkit/middleware"
+	"github.com/wso2/api-platform/httpkit/httputil"
+	gohttpkit "github.com/wso2/api-platform/httpkit/middleware"
 )
 
 type Server struct {

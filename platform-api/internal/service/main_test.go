@@ -23,8 +23,8 @@ import (
 	"testing"
 
 	"github.com/wso2/api-platform/platform-api/internal/utils"
-	"github.com/wso2/go-httpkit/httpclient"
-	"github.com/wso2/go-httpkit/netguard"
+	"github.com/wso2/api-platform/httpkit/httpclient"
+	"github.com/wso2/api-platform/httpkit/netguard"
 )
 
 // TestMain initializes the package-level shared outbound *http.Client (see

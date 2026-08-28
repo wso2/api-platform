@@ -7,7 +7,7 @@ import (
 	"net/http/httptest"
 	"testing"
 
-	"github.com/wso2/go-httpkit/netguard"
+	"github.com/wso2/api-platform/httpkit/netguard"
 )
 
 // TestNew_ManualCONNECT_Succeeds proves the ProxyEgressManualCONNECT path

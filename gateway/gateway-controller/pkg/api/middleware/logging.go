@@ -22,7 +22,7 @@ import (
 	"log/slog"
 	"net/http"
 
-	gohttpkit "github.com/wso2/go-httpkit/middleware"
+	gohttpkit "github.com/wso2/api-platform/httpkit/middleware"
 )
 
 // LoggingMiddleware logs each request (method, path, status, latency) after

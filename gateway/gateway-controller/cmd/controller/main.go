@@ -43,7 +43,7 @@ import (
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/utils"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/version"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/xds"
-	gohttpkit "github.com/wso2/go-httpkit/middleware"
+	gohttpkit "github.com/wso2/api-platform/httpkit/middleware"
 )
 
 // API base paths for the gateway-controller HTTP surfaces.

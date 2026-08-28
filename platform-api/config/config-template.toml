@@ -365,7 +365,7 @@ timeout_duration = 60   # seconds before a stuck deployment is timed out
 # SSRF-guarded call this process makes whose destination is not fully trusted:
 # MCP reachability probes / JSON-RPC calls (an MCP proxy's own upstream URL),
 # and OpenAPI spec-by-URL fetches (an LLM provider template's spec URL). Built
-# once at startup; every field mirrors github.com/wso2/go-httpkit/httpclient.Config.
+# once at startup; every field mirrors github.com/wso2/api-platform/httpkit/httpclient.Config.
 # ---------------------------------------------------------------------------
 [platform_api.http_client.pooling]
 max_idle_conns        = 100

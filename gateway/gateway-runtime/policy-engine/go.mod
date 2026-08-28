@@ -17,7 +17,7 @@ require (
 	github.com/stretchr/testify v1.11.1
 	github.com/wso2/api-platform/common v0.0.0-20260326194347-3d85c50eae71
 	github.com/wso2/api-platform/sdk/core v0.4.0
-	github.com/wso2/go-httpkit v0.0.0-local
+	github.com/wso2/api-platform/httpkit v0.0.0-local
 	go.opentelemetry.io/otel v1.44.0
 	go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracegrpc v1.44.0
 	go.opentelemetry.io/otel/sdk v1.44.0
@@ -67,4 +67,4 @@ require (
 
 replace github.com/wso2/api-platform/common => ../../../common
 
-replace github.com/wso2/go-httpkit => ../../../httpkit
+replace github.com/wso2/api-platform/httpkit => ../../../httpkit

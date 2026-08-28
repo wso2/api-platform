@@ -28,8 +28,8 @@ import (
 	"github.com/wso2/api-platform/platform-api/internal/logger"
 	"github.com/wso2/api-platform/platform-api/internal/server"
 	"github.com/wso2/api-platform/platform-api/internal/utils"
-	"github.com/wso2/go-httpkit/httpclient"
-	"github.com/wso2/go-httpkit/netguard"
+	"github.com/wso2/api-platform/httpkit/httpclient"
+	"github.com/wso2/api-platform/httpkit/netguard"
 )
 
 // stringSliceFlag collects a repeatable string flag into a slice, preserving the

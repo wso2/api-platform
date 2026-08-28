@@ -119,7 +119,7 @@ type Server struct {
 // SSRF-guarded call this process makes whose destination is not fully trusted (MCP
 // reachability probes / JSON-RPC calls in internal/utils/mcp.go and common.go, and OpenAPI
 // spec-by-URL fetches in internal/utils/openapi_spec_fetcher.go). It mirrors
-// github.com/wso2/go-httpkit/httpclient.Config field-for-field (see that package's own doc
+// github.com/wso2/api-platform/httpkit/httpclient.Config field-for-field (see that package's own doc
 // comments for full semantics), the same shape gateway-controller's own HTTPClientConfig
 // uses (gateway/gateway-controller/pkg/config/config.go) — so every knob the library exposes
 // that has a natural TOML shape is operator-configurable here rather than hardcoded in

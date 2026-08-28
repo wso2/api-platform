@@ -22,8 +22,8 @@ import (
 	"os"
 	"testing"
 
-	"github.com/wso2/go-httpkit/httpclient"
-	"github.com/wso2/go-httpkit/netguard"
+	"github.com/wso2/api-platform/httpkit/httpclient"
+	"github.com/wso2/api-platform/httpkit/netguard"
 )
 
 // TestMain builds this package's test double for the single shared outbound *http.Client

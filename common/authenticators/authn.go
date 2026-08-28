@@ -28,7 +28,7 @@ import (
 
 	"github.com/wso2/api-platform/common/constants"
 	"github.com/wso2/api-platform/common/models"
-	"github.com/wso2/go-httpkit/httputil"
+	"github.com/wso2/api-platform/httpkit/httputil"
 )
 
 var (

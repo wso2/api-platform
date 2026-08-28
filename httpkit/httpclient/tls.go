@@ -6,7 +6,7 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/wso2/go-httpkit/tlsconfig"
+	"github.com/wso2/api-platform/httpkit/tlsconfig"
 )
 
 // buildTLSConfig builds the *tls.Config used for the ORIGIN handshake
