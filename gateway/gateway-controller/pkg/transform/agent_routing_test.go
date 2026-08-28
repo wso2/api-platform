@@ -141,6 +141,7 @@ func agentEnvoyRoutes(t *testing.T, stored *models.StoredConfig) []*route.Route 
 		transform.NewRestAPITransformer(routerCfg, systemCfg, map[string]models.PolicyDefinition{}),
 		nil,
 		transform.NewAgentTransformer(routerCfg, systemCfg, routingTestPolicyDefinitions()),
+		nil,
 	)
 	translator.SetTransformers(map[string]models.ConfigTransformer{models.KindAgent: registry})
 
