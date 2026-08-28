@@ -120,6 +120,32 @@ func (s *GraphQLAPIService) toGraphQLAPI(m *model.GraphQLAPI) (*api.GraphQLAPI, 
 	return resp, nil
 }
 
+// toGraphQLAPIDetail is toGraphQLAPI's counterpart for the sdl-less detail
+// response (GET /graphql-apis/{graphqlApiId}) — same project-handle and
+// identity resolution, built from mapGraphQLAPIModelToDetail instead.
+func (s *GraphQLAPIService) toGraphQLAPIDetail(m *model.GraphQLAPI) (*api.GraphQLAPIDetail, error) {
+	resp := mapGraphQLAPIModelToDetail(m)
+	if resp == nil {
+		return nil, nil
+	}
+	if s.projectRepo != nil {
+		project, err := s.projectRepo.GetProjectByUUID(resp.ProjectId)
+		if err != nil {
+			return nil, err
+		}
+		if project != nil {
+			resp.ProjectId = project.Handle
+		}
+	}
+	if err := s.identity.ResolveIdentityField(&resp.CreatedBy); err != nil {
+		return nil, err
+	}
+	if err := s.identity.ResolveIdentityField(&resp.UpdatedBy); err != nil {
+		return nil, err
+	}
+	return resp, nil
+}
+
 // Create creates a new GraphQL API. Supply either req.Sdl directly or
 // req.Upstream.Main.Url — exactly one schema-resolution path runs.
 func (s *GraphQLAPIService) Create(orgUUID, createdBy string, req *api.CreateGraphQLAPIRequest) (*api.GraphQLAPI, error) {
@@ -308,6 +334,44 @@ func (s *GraphQLAPIService) Get(orgUUID, handle string) (*api.GraphQLAPI, error)
 	}
 
 	return s.toGraphQLAPI(m)
+}
+
+// GetDetail is Get's counterpart for GET /graphql-apis/{graphqlApiId}, which
+// deliberately omits sdl from its response — see GetSDL to fetch it
+// separately.
+func (s *GraphQLAPIService) GetDetail(orgUUID, handle string) (*api.GraphQLAPIDetail, error) {
+	if handle == "" {
+		return nil, apperror.ValidationFailed.New("The GraphQL API id is required.")
+	}
+
+	m, err := s.repo.GetByHandle(handle, orgUUID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get GraphQL API: %w", err)
+	}
+	if m == nil {
+		return nil, apperror.GraphQLAPINotFound.New()
+	}
+
+	return s.toGraphQLAPIDetail(m)
+}
+
+// GetSDL retrieves a GraphQL API's resolved SDL text for
+// GET /graphql-apis/{graphqlApiId}/sdl — the counterpart to GetDetail
+// omitting it.
+func (s *GraphQLAPIService) GetSDL(orgUUID, handle string) (string, error) {
+	if handle == "" {
+		return "", apperror.ValidationFailed.New("The GraphQL API id is required.")
+	}
+
+	m, err := s.repo.GetByHandle(handle, orgUUID)
+	if err != nil {
+		return "", fmt.Errorf("failed to get GraphQL API: %w", err)
+	}
+	if m == nil {
+		return "", apperror.GraphQLAPINotFound.New()
+	}
+
+	return m.Configuration.SDL, nil
 }
 
 // List retrieves GraphQL APIs for an organization, filtered by project.
