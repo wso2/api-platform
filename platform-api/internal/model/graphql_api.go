@@ -37,7 +37,6 @@ type GraphQLAPI struct {
 	OrganizationID  string           `json:"organizationId" db:"organization_uuid"`
 	CreatedAt       time.Time        `json:"createdAt,omitempty" db:"created_at"`
 	UpdatedAt       time.Time        `json:"updatedAt,omitempty" db:"updated_at"`
-	LifeCycleStatus string           `json:"lifeCycleStatus,omitempty" db:"lifecycle_status"`
 	Configuration   GraphQLAPIConfig `json:"configuration" db:"-"`
 	Origin          string           `json:"origin,omitempty" db:"origin"`
 	DataVersion     string           `json:"dataVersion,omitempty" db:"data_version"`

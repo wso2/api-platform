@@ -60,10 +60,9 @@ func init() {
 	gateway.AddSelectionFlags(updateCmd)
 	utils.AddStringFlag(updateCmd, utils.FlagID, &updateAPIID, "", "GraphQL API ID (required)")
 	utils.AddStringFlag(updateCmd, utils.FlagKeyName, &updateKeyName, "", "Name of the API key to update (required)")
-	utils.AddStringFlag(updateCmd, utils.FlagAPIKey, &updateNewAPIKey, "", "New plain-text API key value, minimum 36 characters (required)")
+	utils.AddStringFlag(updateCmd, utils.FlagAPIKey, &updateNewAPIKey, "", "New plain-text API key value, minimum 36 characters. Deprecated: leave unset to be prompted securely instead of passing the key on the command line.")
 	updateCmd.MarkFlagRequired(utils.FlagID)
 	updateCmd.MarkFlagRequired(utils.FlagKeyName)
-	updateCmd.MarkFlagRequired(utils.FlagAPIKey)
 }
 
 func runUpdateCommand(cmd *cobra.Command) error {
@@ -72,6 +71,16 @@ func runUpdateCommand(cmd *cobra.Command) error {
 	}
 	if strings.TrimSpace(updateKeyName) == "" {
 		return fmt.Errorf("--%s is required", utils.FlagKeyName)
+	}
+	if strings.TrimSpace(updateNewAPIKey) == "" {
+		// Avoid accepting the plaintext key as a CLI argument (visible in shell
+		// history/process listings) when the operator didn't explicitly opt
+		// into the deprecated --api-key flag.
+		prompted, err := utils.PromptPassword("New API key value (min 36 characters): ")
+		if err != nil {
+			return fmt.Errorf("failed to read API key: %w", err)
+		}
+		updateNewAPIKey = prompted
 	}
 	if strings.TrimSpace(updateNewAPIKey) == "" {
 		return fmt.Errorf("--%s is required", utils.FlagAPIKey)

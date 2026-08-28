@@ -20,6 +20,7 @@ package it
 
 import (
 	"fmt"
+	"net/url"
 	"time"
 
 	"github.com/cucumber/godog"
@@ -43,7 +44,7 @@ func RegisterGraphQLSteps(ctx *godog.ScenarioContext, state *TestState, httpStep
 	}
 
 	deleteGraphQLAPI := func(name string) error {
-		err := httpSteps.SendDELETEToService("gateway-controller", "/graphql-apis/"+name)
+		err := httpSteps.SendDELETEToService("gateway-controller", "/graphql-apis/"+url.PathEscape(name))
 		if err != nil {
 			return err
 		}
@@ -58,12 +59,12 @@ func RegisterGraphQLSteps(ctx *godog.ScenarioContext, state *TestState, httpStep
 	})
 
 	ctx.Step(`^I get the GraphQL API "([^"]*)"$`, func(name string) error {
-		return httpSteps.SendGETToService("gateway-controller", "/graphql-apis/"+name)
+		return httpSteps.SendGETToService("gateway-controller", "/graphql-apis/"+url.PathEscape(name))
 	})
 
 	ctx.Step(`^I update the GraphQL API "([^"]*)" with:$`, func(name string, body *godog.DocString) error {
 		httpSteps.SetHeader("Content-Type", "application/yaml")
-		err := httpSteps.SendPUTToService("gateway-controller", "/graphql-apis/"+name, body)
+		err := httpSteps.SendPUTToService("gateway-controller", "/graphql-apis/"+url.PathEscape(name), body)
 		if err != nil {
 			return err
 		}

@@ -845,12 +845,11 @@ func TestGraphQLCreate_ProjectRefNotFound_CrossOrgProject(t *testing.T) {
 // reflects the new values.
 func TestGraphQLUpdate_Success(t *testing.T) {
 	stored := &model.GraphQLAPI{
-		ID:              "some-uuid",
-		Handle:          "countries-graphql-api",
-		OrganizationID:  "org-1",
-		ProjectID:       "project-uuid",
-		Origin:          "control_plane",
-		LifeCycleStatus: "CREATED",
+		ID:             "some-uuid",
+		Handle:         "countries-graphql-api",
+		OrganizationID: "org-1",
+		ProjectID:      "project-uuid",
+		Origin:         "control_plane",
 		// Started life via introspection — Update below supplies sdl directly,
 		// which must flip introspectionMode back to SDL.
 		Configuration: model.GraphQLAPIConfig{SDL: validCountriesGraphQLSDL, IntrospectionMode: "ENDPOINT"},

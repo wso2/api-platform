@@ -39,7 +39,6 @@ func mapGraphQLAPIModelToAPI(m *model.GraphQLAPI) *api.GraphQLAPI {
 	desc := m.Description
 	createdBy := m.CreatedBy
 	kind := constants.GraphQLApi
-	lifeCycleStatus := api.RESTAPILifeCycleStatus(m.LifeCycleStatus)
 	sdl := m.Configuration.SDL
 
 	var introspectionMode *api.GraphQLIntrospectionMode
@@ -64,7 +63,6 @@ func mapGraphQLAPIModelToAPI(m *model.GraphQLAPI) *api.GraphQLAPI {
 		Description:       &desc,
 		CreatedBy:         &createdBy,
 		Kind:              &kind,
-		LifeCycleStatus:   &lifeCycleStatus,
 		Sdl:               &sdl,
 		IntrospectionMode: introspectionMode,
 		Upstream:          upstream,
@@ -85,8 +83,6 @@ func mapGraphQLAPIModelToListItem(m *model.GraphQLAPI) *api.GraphQLAPIListItem {
 		return nil
 	}
 
-	lifeCycleStatus := api.RESTAPILifeCycleStatus(m.LifeCycleStatus)
-
 	var introspectionMode *api.GraphQLIntrospectionMode
 	if m.Configuration.IntrospectionMode != "" {
 		im := api.GraphQLIntrospectionMode(m.Configuration.IntrospectionMode)
@@ -104,7 +100,6 @@ func mapGraphQLAPIModelToListItem(m *model.GraphQLAPI) *api.GraphQLAPIListItem {
 		Description:       utils.StringPtrIfNotEmpty(m.Description),
 		IntrospectionMode: introspectionMode,
 		Upstream:          &upstream,
-		LifeCycleStatus:   &lifeCycleStatus,
 		ReadOnly:          utils.BoolPtr(m.Origin == constants.OriginDP),
 		CreatedBy:         utils.StringPtrIfNotEmpty(m.CreatedBy),
 		CreatedAt:         utils.TimePtr(m.CreatedAt),

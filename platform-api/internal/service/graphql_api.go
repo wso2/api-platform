@@ -192,11 +192,6 @@ func (s *GraphQLAPIService) Create(orgUUID, createdBy string, req *api.CreateGra
 		return nil, err
 	}
 
-	lifeCycleStatus := "CREATED"
-	if req.LifeCycleStatus != nil && *req.LifeCycleStatus != "" {
-		lifeCycleStatus = string(*req.LifeCycleStatus)
-	}
-
 	var subscriptionPlans []string
 	if req.SubscriptionPlans != nil {
 		subscriptionPlans = *req.SubscriptionPlans
@@ -212,7 +207,6 @@ func (s *GraphQLAPIService) Create(orgUUID, createdBy string, req *api.CreateGra
 		CreatedBy:       createdBy,
 		UpdatedBy:       createdBy,
 		Version:         req.Version,
-		LifeCycleStatus: lifeCycleStatus,
 		Configuration: model.GraphQLAPIConfig{
 			Name:              req.DisplayName,
 			Version:           req.Version,
@@ -450,11 +444,6 @@ func (s *GraphQLAPIService) Update(orgUUID, handle, updatedBy string, req *api.G
 		return nil, err
 	}
 
-	lifeCycleStatus := existing.LifeCycleStatus
-	if req.LifeCycleStatus != nil && *req.LifeCycleStatus != "" {
-		lifeCycleStatus = string(*req.LifeCycleStatus)
-	}
-
 	var subscriptionPlans []string
 	if req.SubscriptionPlans != nil {
 		subscriptionPlans = *req.SubscriptionPlans
@@ -465,7 +454,6 @@ func (s *GraphQLAPIService) Update(orgUUID, handle, updatedBy string, req *api.G
 	existing.Version = req.Version
 	existing.Description = utils.ValueOrEmpty(req.Description)
 	existing.UpdatedBy = updatedBy
-	existing.LifeCycleStatus = lifeCycleStatus
 	existing.Configuration = model.GraphQLAPIConfig{
 		Name:              req.DisplayName,
 		Version:           req.Version,
