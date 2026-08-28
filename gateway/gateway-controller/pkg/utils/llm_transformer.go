@@ -842,6 +842,56 @@ func GetUpstreamAuthApikeyPolicyParams(header, value string) (map[string]interfa
 	}, nil
 }
 
+// applyValuePrefixToSetHeadersParams returns a copy of set-headers policy params
+// (the shape GetUpstreamAuthApikeyPolicyParams produces) with prefix prepended
+// to any header value that doesn't already carry it. Unrecognized shapes are
+// left untouched.
+func applyValuePrefixToSetHeadersParams(params map[string]interface{}, prefix string) map[string]interface{} {
+	result := make(map[string]interface{}, len(params))
+	for k, v := range params {
+		result[k] = v
+	}
+	request, ok := result["request"].(map[string]interface{})
+	if !ok {
+		return result
+	}
+	headers, ok := request["headers"].([]interface{})
+	if !ok {
+		return result
+	}
+
+	newHeaders := make([]interface{}, len(headers))
+	for i, h := range headers {
+		headerMap, ok := h.(map[string]interface{})
+		if !ok {
+			newHeaders[i] = h
+			continue
+		}
+		value, ok := headerMap["value"].(string)
+		// Include the separator so a raw value that merely starts with the
+		// prefix text isn't mistaken for already-prefixed.
+		prefixWithSeparator := prefix + " "
+		if !ok || strings.HasPrefix(value, prefixWithSeparator) {
+			newHeaders[i] = h
+			continue
+		}
+		newHeaderMap := make(map[string]interface{}, len(headerMap))
+		for k, v := range headerMap {
+			newHeaderMap[k] = v
+		}
+		newHeaderMap["value"] = prefixWithSeparator + value
+		newHeaders[i] = newHeaderMap
+	}
+
+	newRequest := make(map[string]interface{}, len(request))
+	for k, v := range request {
+		newRequest[k] = v
+	}
+	newRequest["headers"] = newHeaders
+	result["request"] = newRequest
+	return result
+}
+
 // apiKeyAuthValuePrefix returns the valuePrefix configured on a provider's downstream
 // api-key-auth global policy (empty when absent). A proxy loops back into the provider's
 // own context, so the credential it injects on that hop must carry the same prefix the
@@ -870,8 +920,16 @@ func (t *LLMProviderTransformer) proxyUpstreamAuthPolicy(auth *api.LLMUpstreamAu
 	}
 	switch auth.Type {
 	case api.LLMUpstreamAuthTypeApiKey:
+		// Direct policyParams bypasses the header/value builder below, so
+		// apply valuePrefix here too - both paths must match the provider's
+		// api-key-auth stripping.
+		policyParams := auth.PolicyParams
+		if policyParams != nil && valuePrefix != "" {
+			prefixed := applyValuePrefixToSetHeadersParams(*policyParams, valuePrefix)
+			policyParams = &prefixed
+		}
 		return buildUpstreamAuthPolicy(string(auth.Type), field,
-			auth.PolicyName, auth.PolicyVersion, auth.PolicyParams,
+			auth.PolicyName, auth.PolicyVersion, policyParams,
 			constants.UPSTREAM_AUTH_APIKEY_POLICY_NAME,
 			func() (map[string]interface{}, error) {
 				if auth.Header == nil || *auth.Header == "" {

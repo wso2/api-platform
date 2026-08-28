@@ -63,10 +63,12 @@ func resolveUpstreamAuthPolicyName(policyName *string, defaultName string) strin
 	return defaultName
 }
 
-// resolveUpstreamAuthPolicyParams returns policyParams verbatim if supplied,
-// otherwise falls back to buildLegacyParams (the deprecated header/value path).
+// resolveUpstreamAuthPolicyParams returns policyParams verbatim if supplied and
+// non-empty, otherwise falls back to buildLegacyParams (the deprecated
+// header/value path). An explicitly empty policyParams ({}) counts as omitted,
+// matching validateUpstreamAuthFields's hasPolicyParams check.
 func resolveUpstreamAuthPolicyParams(policyParams *map[string]interface{}, buildLegacyParams func() (map[string]interface{}, error)) (map[string]interface{}, error) {
-	if policyParams != nil {
+	if policyParams != nil && len(*policyParams) > 0 {
 		return *policyParams, nil
 	}
 	return buildLegacyParams()
@@ -98,7 +100,7 @@ func buildUpstreamAuthPolicy(
 
 	var params map[string]interface{}
 	if buildLegacyParams == nil {
-		if policyParams == nil {
+		if policyParams == nil || len(*policyParams) == 0 {
 			return nil, fmt.Errorf("%s.policyParams is required when type is '%s'", fieldPrefix, authType)
 		}
 		params = *policyParams

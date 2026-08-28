@@ -203,7 +203,7 @@ func TestMCPTransformer_Transform_WithPoliciesAndUpstreamAuth(t *testing.T) {
 	}
 
 	var out api.RestAPI
-	tr := &MCPTransformer{}
+	tr := NewMCPTransformer(newTestPolicyVersionResolver())
 	res, err := tr.Transform(in, &out)
 	if err != nil {
 		t.Fatalf("Transform returned an error: %v", err)
@@ -270,7 +270,7 @@ func TestMCPTransformer_Transform_WithBearerUpstreamAuth_BackwardCompat(t *testi
 	}
 
 	var out api.RestAPI
-	tr := &MCPTransformer{}
+	tr := NewMCPTransformer(newTestPolicyVersionResolver())
 	res, err := tr.Transform(in, &out)
 	if err != nil {
 		t.Fatalf("Transform returned an error: %v", err)
@@ -331,7 +331,7 @@ func TestMCPTransformer_Transform_WithOAuth2UpstreamAuth(t *testing.T) {
 	}
 
 	var out api.RestAPI
-	tr := &MCPTransformer{}
+	tr := NewMCPTransformer(newTestPolicyVersionResolver())
 	res, err := tr.Transform(in, &out)
 	require.NoError(t, err)
 

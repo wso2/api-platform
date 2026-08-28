@@ -233,6 +233,21 @@ func TestInheritLLMProviderCredential(t *testing.T) {
 		assert.Equal(t, storedCred, (*incoming.Spec.Upstream.Auth.PolicyParams)["clientSecret"],
 			"an empty policyParams map must not be treated as a supplied credential")
 	})
+
+	// Rotating one policyParams key must not drop others untouched.
+	t.Run("partial policyParams preserves an omitted stored key", func(t *testing.T) {
+		incoming := storedOAuth2Provider()
+		partial := map[string]interface{}{"tokenEndpoint": "https://idp.example.com/token-v2"}
+		incoming.Spec.Upstream.Auth.PolicyParams = &partial
+
+		inheritLLMProviderCredential(&incoming, storedOAuth2Provider())
+
+		require.NotNil(t, incoming.Spec.Upstream.Auth.PolicyParams)
+		assert.Equal(t, "https://idp.example.com/token-v2", (*incoming.Spec.Upstream.Auth.PolicyParams)["tokenEndpoint"],
+			"the explicitly-supplied key must win")
+		assert.Equal(t, storedCred, (*incoming.Spec.Upstream.Auth.PolicyParams)["clientSecret"],
+			"an untouched stored key must be preserved, not dropped")
+	})
 }
 
 func TestInheritLLMProxyCredentials(t *testing.T) {
@@ -490,4 +505,38 @@ func TestStoredSourceForUpdate(t *testing.T) {
 		assert.Nil(t, source)
 		assert.Contains(t, err.Error(), "credential inheritance")
 	})
+}
+
+// Rotating an api-key provider from policyParams to the legacy Value field
+// must not resurrect the stale stored policyParams alongside it.
+func TestInheritLLMProviderCredential_SwitchingMechanismDoesNotResurrectTheOther(t *testing.T) {
+	storedViaPolicyParams := func() api.LLMProviderConfiguration {
+		var cfg api.LLMProviderConfiguration
+		cfg.Spec.Upstream.Url = sp("https://api.openai.com/v1")
+		params := map[string]interface{}{
+			"request": map[string]interface{}{
+				"headers": []interface{}{map[string]interface{}{"name": "Authorization", "value": "Bearer stored-via-params"}},
+			},
+		}
+		cfg.Spec.Upstream.Auth = &struct {
+			Header        *string                                   `json:"header,omitempty" yaml:"header,omitempty"`
+			PolicyName    *string                                   `json:"policyName,omitempty" yaml:"policyName,omitempty"`
+			PolicyParams  *map[string]interface{}                   `json:"policyParams,omitempty" yaml:"policyParams,omitempty"`
+			PolicyVersion *string                                   `json:"policyVersion,omitempty" yaml:"policyVersion,omitempty"`
+			Type          api.LLMProviderConfigDataUpstreamAuthType `json:"type" yaml:"type"`
+			Value         *string                                   `json:"value,omitempty" yaml:"value,omitempty"`
+		}{Type: "api-key", PolicyParams: &params}
+		return cfg
+	}
+
+	incoming := storedViaPolicyParams()
+	incoming.Spec.Upstream.Auth.PolicyParams = nil
+	incoming.Spec.Upstream.Auth.Header = sp("Authorization")
+	incoming.Spec.Upstream.Auth.Value = sp("rotated-via-value")
+
+	inheritLLMProviderCredential(&incoming, storedViaPolicyParams())
+
+	assert.Equal(t, "rotated-via-value", *incoming.Spec.Upstream.Auth.Value)
+	assert.Nil(t, incoming.Spec.Upstream.Auth.PolicyParams,
+		"switching to Value must not resurrect the stored policyParams from the old mechanism")
 }

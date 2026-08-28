@@ -140,6 +140,45 @@ func hasAnyCredential(value *string, policyParams *map[string]interface{}) bool 
 	return hasCredential(value) || (policyParams != nil && len(*policyParams) > 0)
 }
 
+// mergePolicyParams merges stored policyParams under incoming ones: every key
+// present in incoming wins, and any key omitted from incoming but present in
+// stored is carried forward - so rotating just tokenEndpoint doesn't drop a
+// stored clientSecret it never touched.
+func mergePolicyParams(incoming, stored *map[string]interface{}) *map[string]interface{} {
+	if stored == nil || len(*stored) == 0 {
+		return incoming
+	}
+	if incoming == nil || len(*incoming) == 0 {
+		return stored
+	}
+	merged := make(map[string]interface{}, len(*stored)+len(*incoming))
+	for k, v := range *stored {
+		merged[k] = v
+	}
+	for k, v := range *incoming {
+		merged[k] = v
+	}
+	return &merged
+}
+
+// inheritSameTypeCredential applies same-type inheritance to a Value/
+// PolicyParams pair, in place. Whichever mechanism incoming actually uses
+// wins outright (Value present -> policyParams left alone, don't resurrect a
+// stored one from a different mechanism and trip the validator's mutual-
+// exclusivity check; policyParams present, even empty -> merge in omitted
+// stored keys, don't touch Value). Neither supplied -> inherit both wholesale.
+func inheritSameTypeCredential(incomingValue **string, incomingPolicyParams **map[string]interface{}, storedValue *string, storedPolicyParams *map[string]interface{}) {
+	switch {
+	case hasCredential(*incomingValue):
+		return
+	case *incomingPolicyParams != nil:
+		*incomingPolicyParams = mergePolicyParams(*incomingPolicyParams, storedPolicyParams)
+	default:
+		*incomingValue = storedValue
+		*incomingPolicyParams = storedPolicyParams
+	}
+}
+
 // inheritLLMProviderCredential carries a persisted upstream credential forward
 // when an LLM provider update omits it.
 func inheritLLMProviderCredential(incoming *api.LLMProviderConfiguration, storedSource any) {
@@ -166,11 +205,10 @@ func inheritLLMProviderCredential(incoming *api.LLMProviderConfiguration, stored
 	if incoming.Spec.Upstream.Auth.Type != stored.Spec.Upstream.Auth.Type {
 		return
 	}
-	// Same type, credential omitted on the incoming side: inherit it.
-	if !hasAnyCredential(incoming.Spec.Upstream.Auth.Value, incoming.Spec.Upstream.Auth.PolicyParams) {
-		incoming.Spec.Upstream.Auth.Value = stored.Spec.Upstream.Auth.Value
-		incoming.Spec.Upstream.Auth.PolicyParams = stored.Spec.Upstream.Auth.PolicyParams
-	}
+	inheritSameTypeCredential(
+		&incoming.Spec.Upstream.Auth.Value, &incoming.Spec.Upstream.Auth.PolicyParams,
+		stored.Spec.Upstream.Auth.Value, stored.Spec.Upstream.Auth.PolicyParams,
+	)
 }
 
 // inheritLLMProxyCredentials carries persisted upstream credentials forward when
@@ -226,11 +264,7 @@ func inheritLLMUpstreamAuth(incoming **api.LLMUpstreamAuth, stored *api.LLMUpstr
 	if (*incoming).Type != stored.Type {
 		return
 	}
-	// Same type, credential omitted on the incoming side — see inheritLLMProviderCredential.
-	if !hasAnyCredential((*incoming).Value, (*incoming).PolicyParams) {
-		(*incoming).Value = stored.Value
-		(*incoming).PolicyParams = stored.PolicyParams
-	}
+	inheritSameTypeCredential(&(*incoming).Value, &(*incoming).PolicyParams, stored.Value, stored.PolicyParams)
 }
 
 // inheritMCPProxyCredential carries a persisted upstream credential forward when
@@ -256,9 +290,8 @@ func inheritMCPProxyCredential(incoming *api.MCPProxyConfiguration, storedSource
 	if incoming.Spec.Upstream.Auth.Type != stored.Spec.Upstream.Auth.Type {
 		return
 	}
-	// Same type, credential omitted on the incoming side — see inheritLLMProviderCredential.
-	if !hasAnyCredential(incoming.Spec.Upstream.Auth.Value, incoming.Spec.Upstream.Auth.PolicyParams) {
-		incoming.Spec.Upstream.Auth.Value = stored.Spec.Upstream.Auth.Value
-		incoming.Spec.Upstream.Auth.PolicyParams = stored.Spec.Upstream.Auth.PolicyParams
-	}
+	inheritSameTypeCredential(
+		&incoming.Spec.Upstream.Auth.Value, &incoming.Spec.Upstream.Auth.PolicyParams,
+		stored.Spec.Upstream.Auth.Value, stored.Spec.Upstream.Auth.PolicyParams,
+	)
 }

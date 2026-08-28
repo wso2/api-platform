@@ -62,6 +62,10 @@ import (
 // the moment this value gets close to (or below) 30s.
 const defaultTTLSeconds = 300
 
+// maxTokenRequestBytes bounds handleToken's form body - a slow-loris-style
+// oversized request must not be able to tie up this mock's single process.
+const maxTokenRequestBytes = 1 << 20 // 1 MiB
+
 var (
 	validClientID     = envOr("CLIENT_ID", "test-client")
 	validClientSecret = envOr("CLIENT_SECRET", "test-secret")
@@ -164,7 +168,16 @@ func main() {
 		_, _ = w.Write([]byte("ok"))
 	})
 
-	log.Printf("mock-oauth2-idp listening on %s (valid client: %s / %s)", addr, validClientID, validClientSecret)
+	log.Printf("mock-oauth2-idp listening on %s (valid client: %s)", addr, validClientID)
+
+	srv := &http.Server{
+		Addr:           addr,
+		Handler:        loggingMiddleware(mux),
+		ReadTimeout:    10 * time.Second,
+		WriteTimeout:   10 * time.Second,
+		IdleTimeout:    60 * time.Second,
+		MaxHeaderBytes: 1 << 20,
+	}
 
 	// TLS_CERT_FILE/TLS_KEY_FILE (both required together) switch this mock
 	// to HTTPS - used to test the policy's tlsCaCert (trust a private
@@ -173,13 +186,14 @@ func main() {
 	// generate a self-signed cert for this.
 	if tlsCertFile != "" && tlsKeyFile != "" {
 		log.Print("TLS enabled - token endpoint: https://<this-host>/oauth2/token")
-		log.Fatal(http.ListenAndServeTLS(addr, tlsCertFile, tlsKeyFile, loggingMiddleware(mux)))
+		log.Fatal(srv.ListenAndServeTLS(tlsCertFile, tlsKeyFile))
 	}
 	log.Print("token endpoint: http://<this-host>/oauth2/token")
-	log.Fatal(http.ListenAndServe(addr, loggingMiddleware(mux)))
+	log.Fatal(srv.ListenAndServe())
 }
 
 func handleToken(w http.ResponseWriter, r *http.Request) {
+	r.Body = http.MaxBytesReader(w, r.Body, maxTokenRequestBytes)
 	if err := r.ParseForm(); err != nil {
 		writeJSONError(w, http.StatusBadRequest, "invalid_request", "failed to parse form body")
 		return

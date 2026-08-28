@@ -695,3 +695,4 @@ func TestMCPDeploymentService_UndeployMCPProxy_WithDBAndEventHubPublishesUpdate(
 	assert.Equal(t, cfg.UUID, mockHub.publishedEvents[0].event.EntityID)
 	assert.Equal(t, "corr-mcp-undeploy", mockHub.publishedEvents[0].event.EventID)
 }
+

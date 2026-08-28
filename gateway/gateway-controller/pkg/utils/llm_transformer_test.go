@@ -3008,3 +3008,58 @@ func TestTransformProvider_UnsupportedMode(t *testing.T) {
 	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "unsupported access control mode")
 }
+
+// A proxy's api-key loopback credential set via policyParams (not
+// header/value) must still get valuePrefix applied.
+func TestApplyValuePrefixToSetHeadersParams(t *testing.T) {
+	t.Run("prepends prefix to header value", func(t *testing.T) {
+		params, err := GetUpstreamAuthApikeyPolicyParams("Authorization", "raw-token")
+		require.NoError(t, err)
+
+		result := applyValuePrefixToSetHeadersParams(params, "Bearer")
+
+		headers := result["request"].(map[string]interface{})["headers"].([]interface{})
+		require.Len(t, headers, 1)
+		assert.Equal(t, "Bearer raw-token", headers[0].(map[string]interface{})["value"])
+		// name is preserved
+		assert.Equal(t, "Authorization", headers[0].(map[string]interface{})["name"])
+	})
+
+	t.Run("does not double-prefix an already-prefixed value", func(t *testing.T) {
+		params, err := GetUpstreamAuthApikeyPolicyParams("Authorization", "Bearer already-prefixed")
+		require.NoError(t, err)
+
+		result := applyValuePrefixToSetHeadersParams(params, "Bearer")
+
+		headers := result["request"].(map[string]interface{})["headers"].([]interface{})
+		assert.Equal(t, "Bearer already-prefixed", headers[0].(map[string]interface{})["value"])
+	})
+
+	t.Run("prefixes a raw value that merely starts with the prefix text but no separator", func(t *testing.T) {
+		// "Bearerxyz" must not be mistaken for an already-prefixed
+		// "Bearer xyz" - only a match including the separator counts.
+		params, err := GetUpstreamAuthApikeyPolicyParams("Authorization", "Bearerxyz-raw-token")
+		require.NoError(t, err)
+
+		result := applyValuePrefixToSetHeadersParams(params, "Bearer")
+
+		headers := result["request"].(map[string]interface{})["headers"].([]interface{})
+		assert.Equal(t, "Bearer Bearerxyz-raw-token", headers[0].(map[string]interface{})["value"])
+	})
+
+	t.Run("leaves an unrecognized shape untouched", func(t *testing.T) {
+		params := map[string]interface{}{"unexpected": "shape"}
+		result := applyValuePrefixToSetHeadersParams(params, "Bearer")
+		assert.Equal(t, params, result)
+	})
+
+	t.Run("does not mutate the input map", func(t *testing.T) {
+		params, err := GetUpstreamAuthApikeyPolicyParams("Authorization", "raw-token")
+		require.NoError(t, err)
+
+		_ = applyValuePrefixToSetHeadersParams(params, "Bearer")
+
+		headers := params["request"].(map[string]interface{})["headers"].([]interface{})
+		assert.Equal(t, "raw-token", headers[0].(map[string]interface{})["value"])
+	})
+}
