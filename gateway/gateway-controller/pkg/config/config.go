@@ -305,6 +305,11 @@ type ServerConfig struct {
 	ShutdownTimeout                 time.Duration `koanf:"shutdown_timeout"`
 	GatewayID                       string        `koanf:"gateway_id"`
 	SkipInvalidDeploymentsOnStartup bool          `koanf:"skip_invalid_deployments_on_startup"`
+
+	// XDSTLS switches the main xDS gRPC server (serving Envoy, on XDSPort)
+	// from plaintext to mutual TLS. Off by default; see XDSServerTLSConfig
+	// for why xDS has no server-only mode.
+	XDSTLS XDSServerTLSConfig `koanf:"xds_tls"`
 }
 
 // AdminServerConfig holds controller admin HTTP server configuration.
@@ -337,15 +342,8 @@ type PprofConfig struct {
 
 // PolicyServerConfig holds policy xDS server-related configuration
 type PolicyServerConfig struct {
-	Port int             `koanf:"port"`
-	TLS  PolicyServerTLS `koanf:"tls"`
-}
-
-// PolicyServerTLS holds TLS configuration for the policy xDS server
-type PolicyServerTLS struct {
-	Enabled  bool   `koanf:"enabled"`
-	CertFile string `koanf:"cert_file"`
-	KeyFile  string `koanf:"key_file"`
+	Port int                `koanf:"port"`
+	TLS  XDSServerTLSConfig `koanf:"tls"`
 }
 
 // PoliciesConfig holds policy-related configuration
@@ -568,8 +566,8 @@ type UpstreamTLS struct {
 	// hybrid post-quantum group ("X25519MLKEM768", FIPS 203 ML-KEM-768 + X25519) followed by
 	// classical curves, so key exchange degrades gracefully to classical for peers that don't yet
 	// support the hybrid group.
-	EcdhCurves      string `koanf:"ecdh_curves"`
-	TrustedCertPath string `koanf:"trusted_cert_path"`
+	EcdhCurves             string `koanf:"ecdh_curves"`
+	TrustedCertPath        string `koanf:"trusted_cert_path"`
 	CustomCertsPath        string `koanf:"custom_certs_path"` // Directory containing custom trusted certificates
 	VerifyHostName         bool   `koanf:"verify_host_name"`
 	DisableSslVerification bool   `koanf:"disable_ssl_verification"`
@@ -842,6 +840,16 @@ func defaultConfig() *Config {
 				ShutdownTimeout:                 15 * time.Second,
 				GatewayID:                       constants.PlatformGatewayId,
 				SkipInvalidDeploymentsOnStartup: false,
+				XDSTLS: XDSServerTLSConfig{
+					Enabled:                false,
+					CertFile:               "./xds-certs/server.crt",
+					KeyFile:                "./xds-certs/server.key",
+					ClientCAFile:           "./xds-certs/ca.crt",
+					MinimumProtocolVersion: "TLS1_2",
+					MaximumProtocolVersion: "TLS1_3",
+					Ciphers:                "",
+					EcdhCurves:             "X25519,P-256",
+				},
 			},
 			AdminServer: AdminServerConfig{
 				Enabled:    true,
@@ -858,10 +866,15 @@ func defaultConfig() *Config {
 			},
 			PolicyServer: PolicyServerConfig{
 				Port: 18001,
-				TLS: PolicyServerTLS{
-					Enabled:  false,
-					CertFile: "./certs/server.crt",
-					KeyFile:  "./certs/server.key",
+				TLS: XDSServerTLSConfig{
+					Enabled:                false,
+					CertFile:               "./xds-certs/server.crt",
+					KeyFile:                "./xds-certs/server.key",
+					ClientCAFile:           "./xds-certs/ca.crt",
+					MinimumProtocolVersion: "TLS1_2",
+					MaximumProtocolVersion: "TLS1_3",
+					Ciphers:                "",
+					EcdhCurves:             "X25519,P-256",
 				},
 			},
 			Policies: PoliciesConfig{
@@ -1365,6 +1378,16 @@ func (c *Config) Validate() error {
 
 	if strings.TrimSpace(c.Controller.Server.GatewayID) == "" {
 		return fmt.Errorf("server.gateway_id is required and cannot be empty")
+	}
+
+	// Validate main xDS server mTLS config (serves Envoy on server.xds_port)
+	if err := ValidateXDSServerTLS("server.xds_tls", c.Controller.Server.XDSTLS); err != nil {
+		return err
+	}
+
+	// Validate policy xDS server mTLS config (serves the policy-engine on policy_server.port)
+	if err := ValidateXDSServerTLS("policy_server.tls", c.Controller.PolicyServer.TLS); err != nil {
+		return err
 	}
 
 	if c.Controller.AdminServer.Enabled {
