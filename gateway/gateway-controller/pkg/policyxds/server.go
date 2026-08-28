@@ -20,6 +20,7 @@ package policyxds
 
 import (
 	"context"
+	"crypto/tls"
 	"fmt"
 	"log/slog"
 	"net"
@@ -30,6 +31,7 @@ import (
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/apikeyxds"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/lazyresourcexds"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/subscriptionxds"
+	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/tlsauth"
 
 	core "github.com/envoyproxy/go-control-plane/envoy/config/core/v3"
 	discoverygrpc "github.com/envoyproxy/go-control-plane/envoy/service/discovery/v3"
@@ -37,6 +39,15 @@ import (
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials"
 	"google.golang.org/grpc/keepalive"
+)
+
+// Bounds on the policy xDS gRPC server (go-network-service-hardening.md
+// directive 2 / go-control-plane-xds-security.md directive 5) -- unbounded
+// defaults let one client (a misbehaving/compromised policy-engine) exhaust
+// memory or the stream-slot budget every other connection depends on.
+const (
+	policyXDSMaxMessageSize       = 16 * 1024 * 1024
+	policyXDSMaxConcurrentStreams = 1000
 )
 
 // WebhookSecretCacheProvider is the extension point through which an external
@@ -58,28 +69,34 @@ type Server struct {
 	subscriptionSnapshotMgr  *subscriptionxds.SnapshotManager
 	webhookSecretSnapshotMgr WebhookSecretCacheProvider
 	port                     int
-	tlsConfig                *TLSConfig
+	mtls                     *serverMTLS
 	onFirstConnect           chan struct{}
 	logger                   *slog.Logger
 }
 
-// TLSConfig holds TLS configuration for the server
-type TLSConfig struct {
-	Enabled  bool
-	CertFile string
-	KeyFile  string
+// serverMTLS holds the resolved mutual-TLS state for the policy xDS server.
+type serverMTLS struct {
+	tlsConfig         *tls.Config
+	allowedIdentities map[string]bool
 }
 
 // ServerOption is a functional option for configuring the Server
 type ServerOption func(*Server)
 
-// WithTLS enables TLS with the provided certificate and key files
-func WithTLS(certFile, keyFile string) ServerOption {
+// WithMTLS enables mutual TLS on the policy xDS gRPC server (serving the
+// policy-engine). tlsConfig must come from config.BuildXDSServerTLSConfig,
+// which already sets ClientAuth: tls.RequireAndVerifyClientCert --
+// server-only TLS is not offered here because this channel carries
+// per-tenant API-key hashes, subscription state, and full policy chains,
+// so authenticating only the server side is not enough
+// (go-control-plane-xds-security.md directive 2). allowedIdentities
+// restricts accepted streams to peers whose certificate identity
+// (tlsauth.PeerIdentity) is in the list.
+func WithMTLS(tlsConfig *tls.Config, allowedIdentities []string) ServerOption {
 	return func(s *Server) {
-		s.tlsConfig = &TLSConfig{
-			Enabled:  true,
-			CertFile: certFile,
-			KeyFile:  keyFile,
+		s.mtls = &serverMTLS{
+			tlsConfig:         tlsConfig,
+			allowedIdentities: tlsauth.AllowedSet(allowedIdentities),
 		}
 	}
 }
@@ -101,7 +118,6 @@ func NewServer(snapshotManager *SnapshotManager, apiKeySnapshotMgr *apikeyxds.AP
 		webhookSecretSnapshotMgr: webhookSecretSnapshotMgr,
 		port:                     port,
 		logger:                   logger,
-		tlsConfig:                &TLSConfig{Enabled: false},
 	}
 
 	// Apply options
@@ -119,19 +135,17 @@ func NewServer(snapshotManager *SnapshotManager, apiKeySnapshotMgr *apikeyxds.AP
 			MinTime:             5 * time.Second,
 			PermitWithoutStream: true,
 		}),
+		grpc.MaxRecvMsgSize(policyXDSMaxMessageSize),
+		grpc.MaxSendMsgSize(policyXDSMaxMessageSize),
+		grpc.MaxConcurrentStreams(policyXDSMaxConcurrentStreams),
 	}
 
-	// Add TLS credentials if enabled
-	if s.tlsConfig.Enabled {
-		creds, err := credentials.NewServerTLSFromFile(s.tlsConfig.CertFile, s.tlsConfig.KeyFile)
-		if err != nil {
-			logger.Error("Failed to load TLS credentials", slog.Any("error", err))
-			panic(err)
-		}
-		grpcOpts = append(grpcOpts, grpc.Creds(creds))
-		logger.Info("TLS enabled for Policy xDS server",
-			slog.String("cert_file", s.tlsConfig.CertFile),
-			slog.String("key_file", s.tlsConfig.KeyFile))
+	// Add mTLS credentials if enabled
+	var allowedIdentities map[string]bool
+	if s.mtls != nil {
+		grpcOpts = append(grpcOpts, grpc.Creds(credentials.NewTLS(s.mtls.tlsConfig)))
+		allowedIdentities = s.mtls.allowedIdentities
+		logger.Info("mTLS enabled for Policy xDS server")
 	}
 
 	grpcServer := grpc.NewServer(grpcOpts...)
@@ -150,10 +164,11 @@ func NewServer(snapshotManager *SnapshotManager, apiKeySnapshotMgr *apikeyxds.AP
 	combinedCache := NewCombinedCache(policyCache, apiKeyCache, lazyResourceCache, subscriptionCache, routeConfigCache, eventChannelCache, webhookSecretCache, logger)
 
 	callbacks := &serverCallbacks{
-		logger:         logger,
-		activeStreams:  make(map[int64]bool),
-		onFirstConnect: s.onFirstConnect,
-		pendingNonces:  make(map[int64]string),
+		logger:            logger,
+		activeStreams:     make(map[int64]bool),
+		onFirstConnect:    s.onFirstConnect,
+		pendingNonces:     make(map[int64]string),
+		allowedIdentities: allowedIdentities,
 	}
 	xdsServer := server.NewServer(context.Background(), combinedCache, callbacks)
 
@@ -174,8 +189,8 @@ func (s *Server) Start() error {
 	}
 
 	protocol := "insecure"
-	if s.tlsConfig.Enabled {
-		protocol = "TLS"
+	if s.mtls != nil {
+		protocol = "mTLS"
 	}
 	s.logger.Info("Starting Policy xDS server",
 		slog.Int("port", s.port),
@@ -196,16 +211,24 @@ func (s *Server) Stop() {
 
 // serverCallbacks implements xDS server callbacks for logging and debugging
 type serverCallbacks struct {
-	logger           *slog.Logger
-	activeStreams    map[int64]bool
-	activeStreamsMu  sync.Mutex
-	onFirstConnect   chan struct{}
-	firstConnectOnce sync.Once
-	pendingNonces    map[int64]string // stream_id -> last sent nonce
+	logger            *slog.Logger
+	activeStreams     map[int64]bool
+	activeStreamsMu   sync.Mutex
+	onFirstConnect    chan struct{}
+	firstConnectOnce  sync.Once
+	pendingNonces     map[int64]string // stream_id -> last sent nonce
+	allowedIdentities map[string]bool  // nil when mTLS is not configured -- no identity check performed
 }
 
 // OnStreamOpen is called when a new stream is opened
 func (cb *serverCallbacks) OnStreamOpen(ctx context.Context, streamID int64, typeURL string) error {
+	if cb.allowedIdentities != nil {
+		if err := tlsauth.VerifyStreamPeer(ctx, cb.allowedIdentities); err != nil {
+			cb.logger.Warn("Policy xDS stream rejected: peer identity not authorized",
+				slog.Int64("stream_id", streamID), slog.Any("error", err))
+			return err
+		}
+	}
 	cb.logger.Info("Policy xDS stream opened",
 		slog.Int64("stream_id", streamID),
 		slog.String("type_url", typeURL))

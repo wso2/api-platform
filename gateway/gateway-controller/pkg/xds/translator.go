@@ -930,13 +930,6 @@ func (t *Translator) TranslateConfigs(
 		}
 	}
 
-	// Add SDS cluster if cert store is enabled
-	// This cluster allows Envoy to fetch certificates from the SDS service
-	if t.certStore != nil {
-		sdsCluster := t.createSDSCluster()
-		clusters = append(clusters, sdsCluster)
-	}
-
 	// Add OTEL collector cluster if tracing is enabled
 	// This cluster allows Envoy to send traces to OpenTelemetry collector
 	if t.config.TracingConfig.Enabled {
@@ -2227,63 +2220,6 @@ func (t *Translator) createOTELCollectorCluster() *cluster.Cluster {
 	return c
 }
 
-// createSDSCluster creates an Envoy cluster for the SDS (Secret Discovery Service)
-// This cluster allows Envoy to fetch TLS certificates dynamically via xDS
-func (t *Translator) createSDSCluster() *cluster.Cluster {
-	// SDS uses the same xDS server
-	// In containerized environments, Envoy connects to the gateway-controller container
-	// Use the same host/port configuration as the main xDS connection
-	xdsHost := "gateway-controller" // Default for Docker Compose
-	if envHost := os.Getenv("GATEWAY_CONTROLLER_HOST"); envHost != "" {
-		xdsHost = envHost
-	}
-
-	xdsPort := t.config.Controller.Server.XDSPort
-	if xdsPort == 0 {
-		xdsPort = 18000 // Default xDS port
-	}
-
-	address := &core.Address{
-		Address: &core.Address_SocketAddress{
-			SocketAddress: &core.SocketAddress{
-				Protocol: core.SocketAddress_TCP,
-				Address:  xdsHost,
-				PortSpecifier: &core.SocketAddress_PortValue{
-					PortValue: uint32(xdsPort),
-				},
-			},
-		},
-	}
-
-	lbEndpoint := &endpoint.LbEndpoint{
-		HostIdentifier: &endpoint.LbEndpoint_Endpoint{
-			Endpoint: &endpoint.Endpoint{
-				Address: address,
-			},
-		},
-	}
-
-	localityLbEndpoints := &endpoint.LocalityLbEndpoints{
-		LbEndpoints: []*endpoint.LbEndpoint{lbEndpoint},
-	}
-
-	// Create the SDS cluster
-	// Note: SDS must use HTTP/2 for gRPC communication
-	return &cluster.Cluster{
-		Name:                 "sds_cluster",
-		ConnectTimeout:       durationpb.New(5 * time.Second),
-		ClusterDiscoveryType: &cluster.Cluster_Type{Type: cluster.Cluster_STRICT_DNS},
-		DnsLookupFamily:      cluster.Cluster_V4_PREFERRED,
-		LbPolicy:             cluster.Cluster_ROUND_ROBIN,
-		LoadAssignment: &endpoint.ClusterLoadAssignment{
-			ClusterName: "sds_cluster",
-			Endpoints:   []*endpoint.LocalityLbEndpoints{localityLbEndpoints},
-		},
-		// Enable HTTP/2 for gRPC
-		Http2ProtocolOptions: &core.Http2ProtocolOptions{},
-	}
-}
-
 // createUpstreamTLSContext creates an upstream TLS context for secure connections
 func (t *Translator) createUpstreamTLSContext(certificate []byte, address string) *tlsv3.UpstreamTlsContext {
 	// Create TLS context with base configuration
@@ -2317,24 +2253,25 @@ func (t *Translator) createUpstreamTLSContext(certificate []byte, address string
 		// 4. If none provided, Envoy falls back to system default trust store
 
 		if t.certStore != nil {
-			// Use SDS to dynamically fetch certificates
-			// This is more efficient than inlining certificates in every cluster config
+			// Use SDS to dynamically fetch certificates, riding the same ADS
+			// stream Envoy already has open for LDS/CDS/RDS (bootstrap
+			// xds_cluster, see envoy-bootstrap.yaml's dynamic_resources).
+			// The SDS service is registered on the same gRPC server/cache as
+			// the main xDS server (see xds/server.go), so no dedicated
+			// cluster or connection is needed -- this also means
+			// gateway-controller never needs to know any TLS client cert/key
+			// paths that live on gateway-runtime's filesystem: the ADS
+			// connection's own TLS is entirely gateway-runtime's concern,
+			// configured in its own bootstrap (docker-entrypoint.sh +
+			// config-override.yaml's xds_cluster), independent of this
+			// process. A prior version of this pushed a second CDS cluster
+			// ("sds_cluster") that duplicated xds_cluster's host:port and
+			// required this process to embed gateway-runtime-local file
+			// paths -- removed in favor of this ADS-based reference.
 			sdsConfig := &core.ConfigSource{
 				ResourceApiVersion: core.ApiVersion_V3,
-				ConfigSourceSpecifier: &core.ConfigSource_ApiConfigSource{
-					ApiConfigSource: &core.ApiConfigSource{
-						ApiType:             core.ApiConfigSource_GRPC,
-						TransportApiVersion: core.ApiVersion_V3,
-						GrpcServices: []*core.GrpcService{
-							{
-								TargetSpecifier: &core.GrpcService_EnvoyGrpc_{
-									EnvoyGrpc: &core.GrpcService_EnvoyGrpc{
-										ClusterName: "sds_cluster",
-									},
-								},
-							},
-						},
-					},
+				ConfigSourceSpecifier: &core.ConfigSource_Ads{
+					Ads: &core.AggregatedConfigSource{},
 				},
 			}
 
@@ -2408,6 +2345,41 @@ func (t *Translator) createUpstreamTLSContext(certificate []byte, address string
 	}
 
 	return upstreamTLSContext
+}
+
+// ClusterResourcesReferenceUpstreamCASecret reports whether any cluster in
+// clusters attaches the upstream CA bundle via SDS (ValidationContextSdsSecretConfig
+// named SecretNameUpstreamCA). Envoy only issues a watch for the Secret type URL
+// once a Cluster it has actually accepted references that secret name, so the
+// snapshot manager uses this to decide whether including the Secret resource in
+// a given snapshot version is warranted, rather than pushing it unconditionally
+// and having Envoy log "Ignoring unwatched type URL ... Secret" when no
+// HTTPS-scheme upstream is configured.
+func ClusterResourcesReferenceUpstreamCASecret(clusters []types.Resource) bool {
+	for _, res := range clusters {
+		c, ok := res.(*cluster.Cluster)
+		if !ok {
+			continue
+		}
+		for _, tsm := range c.GetTransportSocketMatches() {
+			typedConfig := tsm.GetTransportSocket().GetTypedConfig()
+			if typedConfig == nil {
+				continue
+			}
+			var tlsCtx tlsv3.UpstreamTlsContext
+			if err := typedConfig.UnmarshalTo(&tlsCtx); err != nil {
+				continue
+			}
+			combined, ok := tlsCtx.GetCommonTlsContext().GetValidationContextType().(*tlsv3.CommonTlsContext_CombinedValidationContext)
+			if !ok {
+				continue
+			}
+			if combined.CombinedValidationContext.GetValidationContextSdsSecretConfig().GetName() == SecretNameUpstreamCA {
+				return true
+			}
+		}
+	}
+	return false
 }
 
 // createDownstreamTLSContext creates a downstream TLS context for HTTPS listeners

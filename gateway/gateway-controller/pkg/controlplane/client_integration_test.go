@@ -20,6 +20,7 @@ package controlplane
 
 import (
 	"encoding/json"
+	"fmt"
 	"log/slog"
 	"net"
 	"net/http"
@@ -33,10 +34,29 @@ import (
 	"github.com/wso2/api-platform/common/eventhub"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/config"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/storage"
+	"github.com/wso2/api-platform/httpkit/httpclient"
 )
 
 var upgrader = websocket.Upgrader{
 	CheckOrigin: func(r *http.Request) bool { return true },
+}
+
+// testHTTPClient builds a plain outbound *http.Client for tests via httpkit's
+// secure-by-default builder. Production code injects one single shared client built in
+// cmd/controller/main.go, with TLS.InsecureSkipVerify mirroring
+// Controller.ControlPlane.InsecureSkipVerify (see main.go's sharedHTTPClientCfg wiring);
+// tests here build their own throwaway instance the same way, since several tests point
+// the Client under test at an httptest.NewTLSServer with a self-signed certificate and
+// need insecureSkipVerify=true to avoid failing certificate verification.
+func testHTTPClient(insecureSkipVerify bool) *http.Client {
+	cfg := httpclient.DefaultConfig()
+	cfg.TLS.InsecureSkipVerify = insecureSkipVerify             // #nosec G402 -- test-only, mirrors the config under test.
+	cfg.TLS.InsecureSkipVerifyAcknowledged = insecureSkipVerify // required double-gate; mirrors InsecureSkipVerify.
+	client, err := httpclient.New(cfg)
+	if err != nil {
+		panic(fmt.Sprintf("test HTTP client: unreachable construction error for a fixed default config: %v", err))
+	}
+	return client
 }
 
 type integrationTestEventHub struct{}
@@ -144,7 +164,7 @@ func createIntegrationTestClientWithConfig(t *testing.T, cfg config.ControlPlane
 		APIKey: *apiKeyConfig,
 	}
 
-	client := NewClient(cfg, logger, store, db, nil, nil, routerConfig, nil, nil, apiKeyConfig, nil, systemConfig, nil, nil, nil, nil, mockHub, nil, nil, nil)
+	client := NewClient(cfg, logger, store, db, nil, nil, routerConfig, nil, nil, apiKeyConfig, nil, systemConfig, nil, nil, nil, nil, mockHub, nil, nil, nil, testHTTPClient(cfg.InsecureSkipVerify))
 	require.NotNil(t, client.eventHub)
 	require.Equal(t, "test-gateway", client.gatewayID)
 	return client

@@ -20,10 +20,12 @@ package runtime
 
 import (
 	"context"
+	"crypto/tls"
 	"errors"
 	"net/http"
 	"os"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"sync"
 	"testing"
@@ -224,7 +226,7 @@ func TestNewManagedServerRejectsMissingTLSFiles(t *testing.T) {
 		},
 	}
 
-	_, err := rt.newManagedServer("WebSub-HTTPS", 8443, http.NewServeMux(), rt.cfg.Server.WebSubTLSCertFile, rt.cfg.Server.WebSubTLSKeyFile)
+	_, err := rt.newManagedServer("WebSub-HTTPS", 8443, http.NewServeMux(), rt.cfg.Server.WebSubTLSCertFile, rt.cfg.Server.WebSubTLSKeyFile, serverTLSOptions{})
 	if err == nil {
 		t.Fatal("expected newManagedServer to fail when TLS files are missing")
 	}
@@ -247,14 +249,17 @@ func TestNewManagedServerAcceptsReadableTLSFiles(t *testing.T) {
 	rt := &Runtime{
 		cfg: &config.Config{
 			Server: config.ServerConfig{
-				WebSubTLSEnabled:  true,
-				WebSubTLSCertFile: certPath,
-				WebSubTLSKeyFile:  keyPath,
+				WebSubTLSEnabled:          true,
+				WebSubTLSCertFile:         certPath,
+				WebSubTLSKeyFile:          keyPath,
+				WebSubTLSMinVersion:       "TLS1_2",
+				WebSubTLSMaxVersion:       "TLS1_3",
+				WebSubTLSCurvePreferences: "X25519MLKEM768,X25519,P-256",
 			},
 		},
 	}
 
-	server, err := rt.newManagedServer("WebSub-HTTPS", 8443, http.NewServeMux(), certPath, keyPath)
+	server, err := rt.newManagedServer("WebSub-HTTPS", 8443, http.NewServeMux(), certPath, keyPath, webSubServerTLSOptions(rt.cfg.Server))
 	if err != nil {
 		t.Fatalf("expected newManagedServer to succeed, got %v", err)
 	}
@@ -266,6 +271,94 @@ func TestNewManagedServerAcceptsReadableTLSFiles(t *testing.T) {
 	}
 	if server.keyFile != keyPath {
 		t.Fatalf("expected key path %q, got %q", keyPath, server.keyFile)
+	}
+	if server.server.TLSConfig == nil {
+		t.Fatal("expected TLSConfig to be set on the managed server")
+	}
+	if server.server.TLSConfig.MinVersion != tls.VersionTLS12 {
+		t.Fatalf("expected MinVersion TLS1.2, got %x", server.server.TLSConfig.MinVersion)
+	}
+	if server.server.TLSConfig.MaxVersion != tls.VersionTLS13 {
+		t.Fatalf("expected MaxVersion TLS1.3, got %x", server.server.TLSConfig.MaxVersion)
+	}
+	wantCurves := []tls.CurveID{tls.X25519MLKEM768, tls.X25519, tls.CurveP256}
+	if !reflect.DeepEqual(server.server.TLSConfig.CurvePreferences, wantCurves) {
+		t.Fatalf("expected curve preferences %v, got %v", wantCurves, server.server.TLSConfig.CurvePreferences)
+	}
+}
+
+func TestNewManagedServerRejectsInvalidTLSTuning(t *testing.T) {
+	tempDir := t.TempDir()
+	certPath := filepath.Join(tempDir, "tls.crt")
+	keyPath := filepath.Join(tempDir, "tls.key")
+	if err := os.WriteFile(certPath, []byte("cert"), 0o644); err != nil {
+		t.Fatalf("write cert: %v", err)
+	}
+	if err := os.WriteFile(keyPath, []byte("key"), 0o600); err != nil {
+		t.Fatalf("write key: %v", err)
+	}
+
+	rt := &Runtime{cfg: &config.Config{}}
+
+	_, err := rt.newManagedServer("WebSub-HTTPS", 8443, http.NewServeMux(), certPath, keyPath, serverTLSOptions{CurvePreferences: "not-a-curve"})
+	if err == nil {
+		t.Fatal("expected newManagedServer to fail on an invalid curve name")
+	}
+	if !strings.Contains(err.Error(), "invalid TLS configuration for WebSub-HTTPS server") {
+		t.Fatalf("expected wrapped TLS configuration error, got %q", err.Error())
+	}
+}
+
+func TestNewManagedServerDefaultsToHybridPQCCurvesWhenUnset(t *testing.T) {
+	tempDir := t.TempDir()
+	certPath := filepath.Join(tempDir, "tls.crt")
+	keyPath := filepath.Join(tempDir, "tls.key")
+	if err := os.WriteFile(certPath, []byte("cert"), 0o644); err != nil {
+		t.Fatalf("write cert: %v", err)
+	}
+	if err := os.WriteFile(keyPath, []byte("key"), 0o600); err != nil {
+		t.Fatalf("write key: %v", err)
+	}
+
+	rt := &Runtime{cfg: &config.Config{}}
+
+	server, err := rt.newManagedServer("WebSub-HTTPS", 8443, http.NewServeMux(), certPath, keyPath, serverTLSOptions{})
+	if err != nil {
+		t.Fatalf("expected newManagedServer to succeed, got %v", err)
+	}
+	wantCurves := []tls.CurveID{tls.X25519MLKEM768, tls.X25519, tls.CurveP256, tls.CurveP384}
+	if !reflect.DeepEqual(server.server.TLSConfig.CurvePreferences, wantCurves) {
+		t.Fatalf("expected default hybrid PQC curve preferences %v, got %v", wantCurves, server.server.TLSConfig.CurvePreferences)
+	}
+}
+
+func TestNewManagedServerAppliesConfiguredTimeouts(t *testing.T) {
+	rt := &Runtime{
+		cfg: &config.Config{
+			Server: config.ServerConfig{
+				ReadTimeout:    11 * time.Second,
+				WriteTimeout:   22 * time.Second,
+				IdleTimeout:    33 * time.Second,
+				MaxHeaderBytes: 4096,
+			},
+		},
+	}
+
+	server, err := rt.newManagedServer("WebSub-HTTP", 8080, http.NewServeMux(), "", "", serverTLSOptions{})
+	if err != nil {
+		t.Fatalf("expected newManagedServer to succeed, got %v", err)
+	}
+	if server.server.ReadTimeout != 11*time.Second {
+		t.Errorf("expected ReadTimeout=11s, got %v", server.server.ReadTimeout)
+	}
+	if server.server.WriteTimeout != 22*time.Second {
+		t.Errorf("expected WriteTimeout=22s, got %v", server.server.WriteTimeout)
+	}
+	if server.server.IdleTimeout != 33*time.Second {
+		t.Errorf("expected IdleTimeout=33s, got %v", server.server.IdleTimeout)
+	}
+	if server.server.MaxHeaderBytes != 4096 {
+		t.Errorf("expected MaxHeaderBytes=4096, got %d", server.server.MaxHeaderBytes)
 	}
 }
 
@@ -280,7 +373,7 @@ func TestNewManagedServerWebSocketRejectsMissingTLSFiles(t *testing.T) {
 		},
 	}
 
-	_, err := rt.newManagedServer("WebSocket-HTTPS", 8444, http.NewServeMux(), rt.cfg.Server.WebSocketTLSCertFile, rt.cfg.Server.WebSocketTLSKeyFile)
+	_, err := rt.newManagedServer("WebSocket-HTTPS", 8444, http.NewServeMux(), rt.cfg.Server.WebSocketTLSCertFile, rt.cfg.Server.WebSocketTLSKeyFile, serverTLSOptions{})
 	if err == nil {
 		t.Fatal("expected newManagedServer to fail when TLS files are missing")
 	}
@@ -303,14 +396,15 @@ func TestNewManagedServerWebSocketAcceptsReadableTLSFiles(t *testing.T) {
 	rt := &Runtime{
 		cfg: &config.Config{
 			Server: config.ServerConfig{
-				WebSocketTLSEnabled:  true,
-				WebSocketTLSCertFile: certPath,
-				WebSocketTLSKeyFile:  keyPath,
+				WebSocketTLSEnabled:      true,
+				WebSocketTLSCertFile:     certPath,
+				WebSocketTLSKeyFile:      keyPath,
+				WebSocketTLSCipherSuites: "TLS_ECDHE_ECDSA_WITH_AES_128_GCM_SHA256",
 			},
 		},
 	}
 
-	server, err := rt.newManagedServer("WebSocket-HTTPS", 8444, http.NewServeMux(), certPath, keyPath)
+	server, err := rt.newManagedServer("WebSocket-HTTPS", 8444, http.NewServeMux(), certPath, keyPath, webSocketServerTLSOptions(rt.cfg.Server))
 	if err != nil {
 		t.Fatalf("expected newManagedServer to succeed, got %v", err)
 	}
@@ -322,6 +416,13 @@ func TestNewManagedServerWebSocketAcceptsReadableTLSFiles(t *testing.T) {
 	}
 	if server.keyFile != keyPath {
 		t.Fatalf("expected key path %q, got %q", keyPath, server.keyFile)
+	}
+	if server.server.TLSConfig == nil {
+		t.Fatal("expected TLSConfig to be set on the managed server")
+	}
+	wantCiphers := []uint16{tls.TLS_ECDHE_ECDSA_WITH_AES_128_GCM_SHA256}
+	if !reflect.DeepEqual(server.server.TLSConfig.CipherSuites, wantCiphers) {
+		t.Fatalf("expected cipher suites %v, got %v", wantCiphers, server.server.TLSConfig.CipherSuites)
 	}
 }
 
@@ -435,8 +536,8 @@ func (testBrokerDriver) EnsureTopics(_ context.Context, _ []string, _ map[string
 	return nil
 }
 func (testBrokerDriver) EnsureCompactedTopic(_ context.Context, _ string) error { return nil }
-func (testBrokerDriver) DeleteTopics(_ context.Context, _ []string) error        { return nil }
-func (testBrokerDriver) Close() error                                             { return nil }
+func (testBrokerDriver) DeleteTopics(_ context.Context, _ []string) error       { return nil }
+func (testBrokerDriver) Close() error                                           { return nil }
 
 func newTestNoopPolicy(policy.PolicyMetadata, map[string]interface{}) (policy.Policy, error) {
 	return testNoopPolicy{}, nil
