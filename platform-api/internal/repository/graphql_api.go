@@ -86,11 +86,11 @@ func (r *GraphQLAPIRepo) Create(a *model.GraphQLAPI) error {
 
 	query := `
 		INSERT INTO graphql_apis (
-			uuid, organization_uuid, handle, display_name, version, project_uuid, description, created_by, updated_by, lifecycle_status, configuration, origin, data_version, created_at, updated_at
+			uuid, organization_uuid, handle, display_name, version, project_uuid, description, created_by, updated_by, configuration, origin, data_version, created_at, updated_at
 		)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
 	_, err = tx.Exec(r.db.Rebind(query),
-		a.ID, a.OrganizationID, a.Handle, a.Name, a.Version, a.ProjectID, a.Description, a.CreatedBy, a.UpdatedBy, a.LifeCycleStatus,
+		a.ID, a.OrganizationID, a.Handle, a.Name, a.Version, a.ProjectID, a.Description, a.CreatedBy, a.UpdatedBy,
 		configurationJSON, origin, a.DataVersion, a.CreatedAt, a.UpdatedAt,
 	)
 	if err != nil {
@@ -109,7 +109,7 @@ func (r *GraphQLAPIRepo) GetByHandle(handle, orgUUID string) (*model.GraphQLAPI,
 	query := `
 		SELECT
 			uuid, handle, display_name, version, organization_uuid, origin, created_at, updated_at,
-			project_uuid, description, created_by, updated_by, lifecycle_status, configuration, data_version
+			project_uuid, description, created_by, updated_by, configuration, data_version
 		FROM graphql_apis
 		WHERE handle = ? AND organization_uuid = ?`
 	row := r.db.QueryRow(r.db.Rebind(query), handle, orgUUID)
@@ -121,7 +121,7 @@ func (r *GraphQLAPIRepo) GetByUUID(uuid, orgUUID string) (*model.GraphQLAPI, err
 	query := `
 		SELECT
 			uuid, handle, display_name, version, organization_uuid, origin, created_at, updated_at,
-			project_uuid, description, created_by, updated_by, lifecycle_status, configuration, data_version
+			project_uuid, description, created_by, updated_by, configuration, data_version
 		FROM graphql_apis
 		WHERE uuid = ? AND organization_uuid = ?`
 	row := r.db.QueryRow(r.db.Rebind(query), uuid, orgUUID)
@@ -138,7 +138,7 @@ func (r *GraphQLAPIRepo) List(orgUUID, projectUUID string, limit, offset int) ([
 		query = `
 			SELECT
 				uuid, handle, display_name, version, organization_uuid, origin, created_at, updated_at,
-				project_uuid, description, created_by, updated_by, lifecycle_status, configuration, data_version
+				project_uuid, description, created_by, updated_by, configuration, data_version
 			FROM graphql_apis
 			WHERE organization_uuid = ? AND project_uuid = ?
 			ORDER BY created_at DESC
@@ -148,7 +148,7 @@ func (r *GraphQLAPIRepo) List(orgUUID, projectUUID string, limit, offset int) ([
 		query = `
 			SELECT
 				uuid, handle, display_name, version, organization_uuid, origin, created_at, updated_at,
-				project_uuid, description, created_by, updated_by, lifecycle_status, configuration, data_version
+				project_uuid, description, created_by, updated_by, configuration, data_version
 			FROM graphql_apis
 			WHERE organization_uuid = ?
 			ORDER BY created_at DESC
@@ -224,10 +224,10 @@ func (r *GraphQLAPIRepo) Update(a *model.GraphQLAPI) error {
 
 	query = `
 		UPDATE graphql_apis
-		SET display_name = ?, version = ?, description = ?, lifecycle_status = ?, configuration = ?, updated_by = ?, data_version = ?, updated_at = ?
+		SET display_name = ?, version = ?, description = ?, configuration = ?, updated_by = ?, data_version = ?, updated_at = ?
 		WHERE uuid = ?`
 	result, err := tx.Exec(r.db.Rebind(query),
-		a.Name, a.Version, a.Description, a.LifeCycleStatus, configurationJSON, a.UpdatedBy, a.DataVersion, now,
+		a.Name, a.Version, a.Description, configurationJSON, a.UpdatedBy, a.DataVersion, now,
 		apiUUID,
 	)
 	if err != nil {
@@ -292,7 +292,7 @@ func (r *GraphQLAPIRepo) scanGraphQLAPI(row *sql.Row) (*model.GraphQLAPI, error)
 	var configurationJSON []byte
 	if err := row.Scan(
 		&a.ID, &a.Handle, &a.Name, &a.Version, &a.OrganizationID, &a.Origin, &a.CreatedAt, &a.UpdatedAt,
-		&a.ProjectID, &a.Description, &createdBy, &updatedBy, &a.LifeCycleStatus, &configurationJSON, &a.DataVersion,
+		&a.ProjectID, &a.Description, &createdBy, &updatedBy, &configurationJSON, &a.DataVersion,
 	); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return nil, nil
@@ -319,7 +319,7 @@ func (r *GraphQLAPIRepo) scanGraphQLAPIFromRows(rows *sql.Rows) (*model.GraphQLA
 	var configurationJSON []byte
 	if err := rows.Scan(
 		&a.ID, &a.Handle, &a.Name, &a.Version, &a.OrganizationID, &a.Origin, &a.CreatedAt, &a.UpdatedAt,
-		&a.ProjectID, &a.Description, &createdBy, &updatedBy, &a.LifeCycleStatus, &configurationJSON, &a.DataVersion,
+		&a.ProjectID, &a.Description, &createdBy, &updatedBy, &configurationJSON, &a.DataVersion,
 	); err != nil {
 		return nil, err
 	}

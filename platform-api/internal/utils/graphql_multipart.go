@@ -18,6 +18,7 @@
 package utils
 
 import (
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -30,6 +31,13 @@ const (
 	// (cli/src/cmd/gateway/apply.go's maxGraphQLSDLFileBytes), so the limit is
 	// consistent regardless of which onboarding surface supplied the file.
 	maxGraphQLSDLUploadBytes = 5 << 20
+
+	// maxGraphQLMultipartRequestBytes bounds the whole multipart request body
+	// (sdlFile part plus the metadata JSON field plus multipart
+	// boundary/header framing) — maxGraphQLSDLUploadBytes alone is only the
+	// in-memory threshold ParseMultipartForm uses before spilling file parts
+	// to a temp file, not a ceiling on the request body itself.
+	maxGraphQLMultipartRequestBytes = maxGraphQLSDLUploadBytes + (1 << 20) // +1 MiB overhead
 
 	// graphQLSDLFileFormField and graphQLMetadataFormField are the
 	// multipart/form-data field names documented on GraphQLAPIMultipartRequest
@@ -44,13 +52,21 @@ const (
 // success; sdl is empty when no file part was submitted (the caller falls
 // back to metadata's own sdl/sdlUrl/introspection path in that case).
 //
-// The file part is read entirely in memory through a size-limited reader —
-// never written to a temp file — and bounded independently of the reported
-// Content-Length, per file-access.md directives 3/5.
+// The whole request body is bounded via http.MaxBytesReader independently of
+// the reported Content-Length (file-access.md directive 5). A part smaller
+// than maxGraphQLSDLUploadBytes is read into memory; ParseMultipartForm may
+// still spill a larger part to a temp file (bounded by the same ceiling) —
+// MultipartForm.RemoveAll cleans that up once parsing completes.
 func ParseGraphQLAPIMultipartRequest(r *http.Request) (metadataJSON []byte, sdl string, err error) {
+	r.Body = http.MaxBytesReader(nil, r.Body, maxGraphQLMultipartRequestBytes)
 	if err := r.ParseMultipartForm(maxGraphQLSDLUploadBytes); err != nil {
 		return nil, "", fmt.Errorf("failed to parse multipart form: %w", err)
 	}
+	defer func() {
+		if r.MultipartForm != nil {
+			_ = r.MultipartForm.RemoveAll()
+		}
+	}()
 
 	metadata := r.FormValue(graphQLMetadataFormField)
 	if strings.TrimSpace(metadata) == "" {
@@ -59,6 +75,9 @@ func ParseGraphQLAPIMultipartRequest(r *http.Request) (metadataJSON []byte, sdl 
 
 	f, fileHeader, ferr := r.FormFile(graphQLSDLFileFormField)
 	if ferr != nil {
+		if !errors.Is(ferr, http.ErrMissingFile) {
+			return nil, "", fmt.Errorf("failed to read '%s' part: %w", graphQLSDLFileFormField, ferr)
+		}
 		// sdlFile is optional — a caller may submit metadata-only over
 		// multipart (e.g. for a client that always uses one content type),
 		// relying on metadata's own sdlUrl or upstream introspection.
