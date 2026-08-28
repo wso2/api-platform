@@ -7067,7 +7067,11 @@ components:
           maxLength: 232
           minLength: 1
           type: string
-          example: /countries
+          description: |
+            Base path for the single GraphQL endpoint. Suggested (not enforced)
+            convention: end the path with `/graphql`, matching how most standalone
+            GraphQL servers name their single endpoint — this is not validated.
+          example: /countries/graphql
         version:
           maxLength: 30
           minLength: 1
@@ -7213,7 +7217,11 @@ components:
           maxLength: 232
           minLength: 1
           type: string
-          example: /countries
+          description: |
+            Base path for the single GraphQL endpoint. Suggested (not enforced)
+            convention: end the path with `/graphql`, matching how most standalone
+            GraphQL servers name their single endpoint — this is not validated.
+          example: /countries/graphql
         version:
           maxLength: 30
           minLength: 1
@@ -7364,7 +7372,7 @@ components:
           type: string
         context:
           type: string
-          example: /countries
+          example: /countries/graphql
         version:
           type: string
           example: v1.0

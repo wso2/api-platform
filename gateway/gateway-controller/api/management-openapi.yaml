@@ -329,7 +329,7 @@ paths:
           description: Filter by API context/path
           schema:
             type: string
-          example: /countries
+          example: /countries/graphql
         - name: status
           in: query
           required: false
@@ -3544,11 +3544,14 @@ components:
             Base path for the single GraphQL endpoint (must start with /, no trailing
             slash). Use $version to embed the version in the path (e.g., /countries/$version
             resolves to /countries/v1.0). A GraphQLApi always exposes exactly one POST
-            route at this path — there is no per-operation path list.
+            route at this path — there is no per-operation path list. Suggested (not
+            enforced) convention: end the path with /graphql, matching how most
+            standalone GraphQL servers name their single endpoint (e.g.
+            /countries/$version/graphql) — this is not validated or required.
           pattern: '^\/([a-zA-Z0-9_\-\/]*[^\/])?$'
           minLength: 1
           maxLength: 200
-          example: /countries/$version
+          example: /countries/$version/graphql
         upstream:
           type: object
           required:
@@ -3616,7 +3619,7 @@ components:
         spec:
           displayName: Countries-GraphQL-API
           version: v1.0
-          context: /countries/$version
+          context: /countries/$version/graphql
           upstream:
             main:
               url: https://countries.trevorblades.com/graphql
@@ -3643,7 +3646,7 @@ components:
         spec:
           displayName: Countries-GraphQL-API
           version: v1.0
-          context: /countries/$version
+          context: /countries/$version/graphql
           upstream:
             main:
               url: https://countries.trevorblades.com/graphql

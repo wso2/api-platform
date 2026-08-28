@@ -797,6 +797,9 @@ type CreateGatewayRequestFunctionalityType string
 
 // CreateGraphQLAPIRequest defines model for CreateGraphQLAPIRequest.
 type CreateGraphQLAPIRequest struct {
+	// Context Base path for the single GraphQL endpoint. Suggested (not enforced)
+	// convention: end the path with `/graphql`, matching how most standalone
+	// GraphQL servers name their single endpoint — this is not validated.
 	Context     string     `binding:"required" json:"context" yaml:"context"`
 	CreatedAt   *time.Time `json:"createdAt,omitempty" yaml:"createdAt,omitempty"`
 	CreatedBy   *string    `json:"createdBy,omitempty" yaml:"createdBy,omitempty"`
@@ -1342,6 +1345,9 @@ type GatewayTokenListResponse struct {
 
 // GraphQLAPI defines model for GraphQLAPI.
 type GraphQLAPI struct {
+	// Context Base path for the single GraphQL endpoint. Suggested (not enforced)
+	// convention: end the path with `/graphql`, matching how most standalone
+	// GraphQL servers name their single endpoint — this is not validated.
 	Context     string     `binding:"required" json:"context" yaml:"context"`
 	CreatedAt   *time.Time `json:"createdAt,omitempty" yaml:"createdAt,omitempty"`
 	CreatedBy   *string    `json:"createdBy,omitempty" yaml:"createdBy,omitempty"`
@@ -1406,6 +1412,9 @@ type GraphQLAPI struct {
 
 // GraphQLAPIDetail defines model for GraphQLAPIDetail.
 type GraphQLAPIDetail struct {
+	// Context Base path for the single GraphQL endpoint. Suggested (not enforced)
+	// convention: end the path with `/graphql`, matching how most standalone
+	// GraphQL servers name their single endpoint — this is not validated.
 	Context     string     `binding:"required" json:"context" yaml:"context"`
 	CreatedAt   *time.Time `json:"createdAt,omitempty" yaml:"createdAt,omitempty"`
 	CreatedBy   *string    `json:"createdBy,omitempty" yaml:"createdBy,omitempty"`
