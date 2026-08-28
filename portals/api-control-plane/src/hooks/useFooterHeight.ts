@@ -18,7 +18,7 @@
 
 import { useEffect, useState } from 'react';
 
-import { APP_FOOTER_ID } from './appLayoutConstants';
+import { APP_FOOTER_ID } from '../pages/appShell/appLayoutConstants';
 
 /**
  * Measures the app footer's height.

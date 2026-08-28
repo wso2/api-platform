@@ -18,7 +18,7 @@
 
 import { Box, Button } from '@wso2/oxygen-ui';
 
-import { useFooterHeight } from '../../../../useFooterHeight';
+import { useFooterHeight } from '../../../../../../hooks/useFooterHeight';
 import { stickyBottomBarSx } from '../../../../../../theme';
 
 /** Layout for the save bar's own content; the sticky treatment is shared. */

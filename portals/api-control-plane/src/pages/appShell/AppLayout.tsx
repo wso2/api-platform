@@ -30,6 +30,11 @@ import { Bell } from '@wso2/oxygen-ui-icons-react';
 import { Suspense } from 'react';
 import { matchPath, Outlet, useLocation, useNavigate } from 'react-router-dom';
 
+import { ErrorBoundary } from '../../components/errors/ErrorBoundary';
+import {
+  PageErrorFallback,
+  SidebarErrorFallback,
+} from '../../components/errors/ErrorFallback';
 import { LoadingState } from '../../components/StateViews';
 import { runtimeConfig } from '../../config/runtime';
 import { routes } from '../../routes/paths';
@@ -115,22 +120,35 @@ export default function AppLayout() {
         </AppShell.Navbar>
 
         <AppShell.Sidebar>
-          <AppSidebar />
+          {/* Keep this outside <Sidebar> so Sidebar.Category can inspect children */}
+          <ErrorBoundary
+            fallback={() => <SidebarErrorFallback />}
+            resetKeys={[location.pathname]}
+          >
+            <AppSidebar />
+          </ErrorBoundary>
         </AppShell.Sidebar>
 
       <AppShell.Main>
         <Box sx={{ minWidth: 0, width: '100%', p: 1 }}>
-          
-          <Suspense fallback={<LoadingState label="Loading" />}>
-            <PageContent fullWidth>
-                <Stack spacing={1}>
-                    {!hidesBreadcrumbs && breadcrumbItems.length > 1 && (
-                      <AppBreadcrumbs items={breadcrumbItems} />
-                    )}
+          <PageContent fullWidth>
+            <Stack spacing={1}>
+              {!hidesBreadcrumbs && breadcrumbItems.length > 1 && (
+                <AppBreadcrumbs items={breadcrumbItems} />
+              )}
+              {/* Error boundary scoped to routed page only; resets on pathname change */}
+              <ErrorBoundary
+                fallback={(error, reset) => (
+                  <PageErrorFallback error={error} reset={reset} />
+                )}
+                resetKeys={[location.pathname]}
+              >
+                <Suspense fallback={<LoadingState label="Loading" />}>
                   <Outlet />
-                </Stack>
-            </PageContent>
-          </Suspense>
+                </Suspense>
+              </ErrorBoundary>
+            </Stack>
+          </PageContent>
         </Box>
       </AppShell.Main>
 

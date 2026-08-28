@@ -23,7 +23,7 @@ import { BrowserRouter } from 'react-router-dom';
 
 import { ApiClientProvider } from './api/ApiClientProvider';
 import { createQueryClient } from './api/core/queryClient';
-import { ErrorBoundary } from './components/ErrorBoundary';
+import { ErrorBoundary } from './components/errors/ErrorBoundary';
 import { NotificationProvider, useNotifications } from './components/Notifications';
 import { runtimeConfig } from './config/runtime';
 import { AuthProvider } from './contexts/auth/AuthProvider';
