@@ -366,8 +366,11 @@ func main() {
 		policyDefinitions[key] = def
 	}
 
+	// Built early so the startup rehydration below can use it too.
+	policyVersionResolver := utils.NewLoadedPolicyVersionResolver(policyDefinitions)
+
 	if err := hydrateStoredConfigsFromDatabaseOnStartup(
-		configStore, db, &cfg.Router, policyDefinitions, log,
+		configStore, db, &cfg.Router, policyDefinitions, policyVersionResolver, log,
 		cfg.Controller.Server.SkipInvalidDeploymentsOnStartup,
 	); err != nil {
 		log.Error("Failed to hydrate stored configurations required for startup", slog.Any("error", err))
@@ -428,7 +431,6 @@ func main() {
 	policyManager := policyxds.NewPolicyManager(policySnapshotManager, log)
 	policyManager.SetRuntimeStore(runtimeStore)
 
-	policyVersionResolver := utils.NewLoadedPolicyVersionResolver(policyDefinitions)
 	restTransformer := transform.NewRestAPITransformer(&cfg.Router, cfg, policyDefinitions)
 	llmTransformer := transform.NewLLMTransformer(configStore, db, &cfg.Router, cfg, policyDefinitions, policyVersionResolver)
 	transformerRegistry := transform.NewRegistry(restTransformer, llmTransformer)
@@ -552,7 +554,7 @@ func main() {
 	evtListener := coreeventlistener.NewEventListener(
 		eventHubInstance, configStore, db, snapshotManager, subscriptionSnapshotManager,
 		apiKeyXDSManager, lazyResourceXDSManager, policyManager, &cfg.Router, log, cfg,
-		policyDefinitions, secretsService,
+		policyDefinitions, secretsService, policyVersionResolver,
 	)
 	if webhookSecretService != nil {
 		evtListener.SetWebhookSecretHandler(eventlistener.NewWebhookSecretHandler(db, encryptionProviderManager, webhookSecretStore, webhookSecretSnapshotManager, log))
