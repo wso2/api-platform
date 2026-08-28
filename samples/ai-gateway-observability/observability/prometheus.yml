@@ -1,0 +1,31 @@
+# Replaces the distribution's observability/prometheus/prometheus.yml.
+#
+# The stock file scrapes hosts named `policy-engine` and `router`, but the
+# compose file defines neither: the policy engine and the Envoy router both run
+# inside the `gateway-runtime` service, and Docker resolves container names by
+# service name. Left as shipped, two of the three scrape targets never come up.
+#
+# Worth fixing in the distribution itself — see the sample's README.
+
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+
+scrape_configs:
+  # Gateway controller — the control plane you register proxies with.
+  - job_name: 'gateway-controller'
+    static_configs:
+      - targets: ['gateway-controller:9091']
+    metrics_path: /metrics
+
+  # Policy engine — where auth, rate limiting and the other policies run.
+  - job_name: 'policy-engine'
+    static_configs:
+      - targets: ['gateway-runtime:9003']
+    metrics_path: /metrics
+
+  # Envoy router — the data plane traffic actually flows through.
+  - job_name: 'router'
+    static_configs:
+      - targets: ['gateway-runtime:9901']
+    metrics_path: /stats/prometheus

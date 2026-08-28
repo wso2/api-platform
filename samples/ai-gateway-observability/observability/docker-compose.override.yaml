@@ -1,0 +1,11 @@
+# Copied into the extracted distribution by setup.sh. Docker Compose picks up a file
+# named docker-compose.override.yaml automatically and merges it over the main
+# docker-compose.yaml, so the distribution's own file is never edited.
+#
+# It changes exactly one thing: which dashboard Grafana opens on load. The
+# distribution points that at a path under provisioning/, where no dashboard
+# actually lives, so without this the reader lands on an empty page.
+services:
+  grafana:
+    environment:
+      GF_DASHBOARDS_DEFAULT_HOME_DASHBOARD_PATH: /etc/grafana/dashboards/ai-gateway-overview.json
