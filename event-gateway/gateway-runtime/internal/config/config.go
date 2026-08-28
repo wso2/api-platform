@@ -145,11 +145,14 @@ type LoggingConfig struct {
 // Unlike gateway-controller's HTTPClientConfig, SSRF protection is NOT configurable
 // off: every CallbackURL dialed by either client is tenant/subscriber-supplied —
 // exactly the scenario ssrf-prevention.md targets — so SSRF.Enabled=true and
-// netguard.PublicOnly() are hardcoded in BuildHTTPClientConfig rather than sourced
-// from this struct. PublicOnly (not PermitPrivateBlockMetadata) is deliberate: a
-// tenant-supplied CallbackURL must never be usable to reach an operator's own
-// private/loopback network, only the public internet. Only the redirect/scheme
-// knobs netguard exposes are configurable, via HTTPClientSSRFConfig.
+// netguard.PermitPrivateBlockMetadata() are hardcoded in BuildHTTPClientConfig rather
+// than sourced from this struct. PermitPrivateBlockMetadata (not the stricter PublicOnly)
+// is deliberate: WebSub subscribers routinely live on private networks by design (a
+// Kubernetes ClusterIP, a docker-compose service, a localhost port during development —
+// see the preset's own doc comment), so blocking RFC 1918/loopback would break that core,
+// intended deployment shape. Link-local (where the cloud metadata endpoint lives),
+// unspecified, and multicast/broadcast addresses stay refused regardless. Only the
+// redirect/scheme knobs netguard exposes are configurable, via HTTPClientSSRFConfig.
 type HTTPClientConfig struct {
 	Pooling  HTTPClientPoolingConfig  `koanf:"pooling"`
 	Timeouts HTTPClientTimeoutsConfig `koanf:"timeouts"`
@@ -241,9 +244,8 @@ type HTTPClientProxyTLSConfig struct {
 
 // HTTPClientSSRFConfig mirrors the TOML-expressible redirect/scheme knobs of
 // httpclient.SSRFConfig. It deliberately has NO Enabled/Preset field: SSRF guarding for
-// this client is always on with netguard.PublicOnly() (see HTTPClientConfig's doc
-// comment) — there is no supported way to disable it, or to permit private/loopback
-// destinations, via config.
+// this client is always on with netguard.PermitPrivateBlockMetadata() (see
+// HTTPClientConfig's doc comment) — there is no supported way to disable it via config.
 type HTTPClientSSRFConfig struct {
 	MaxRedirects   int      `koanf:"max_redirects"`   // 0 uses netguard's own default (5)
 	AllowedSchemes []string `koanf:"allowed_schemes"` // empty defaults to {"https"}

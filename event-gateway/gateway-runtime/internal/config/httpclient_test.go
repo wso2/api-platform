@@ -39,9 +39,9 @@ func TestBuildHTTPClientConfigDefaultsAlwaysEnableSSRFGuard(t *testing.T) {
 	if !cfg.SSRF.Enabled {
 		t.Fatal("expected SSRF.Enabled to always be true, got false")
 	}
-	wantPolicy := netguard.PublicOnly()
+	wantPolicy := netguard.PermitPrivateBlockMetadata()
 	if !reflect.DeepEqual(cfg.SSRF.Policy, wantPolicy) {
-		t.Fatalf("expected SSRF.Policy to be PublicOnly, got %+v", cfg.SSRF.Policy)
+		t.Fatalf("expected SSRF.Policy to be PermitPrivateBlockMetadata, got %+v", cfg.SSRF.Policy)
 	}
 	if cfg.Proxy.Mode != "" {
 		t.Fatalf("expected no proxy mode by default, got %q", cfg.Proxy.Mode)
