@@ -75,6 +75,53 @@ func mapGraphQLAPIModelToAPI(m *model.GraphQLAPI) *api.GraphQLAPI {
 	}
 }
 
+// mapGraphQLAPIModelToDetail converts a model.GraphQLAPI to
+// api.GraphQLAPIDetail — the shape returned by GET
+// /graphql-apis/{graphqlApiId}, identical to mapGraphQLAPIModelToAPI's output
+// except sdl is omitted (fetch it via GET /graphql-apis/{graphqlApiId}/sdl
+// instead).
+func mapGraphQLAPIModelToDetail(m *model.GraphQLAPI) *api.GraphQLAPIDetail {
+	if m == nil {
+		return nil
+	}
+
+	desc := m.Description
+	createdBy := m.CreatedBy
+	kind := constants.GraphQLApi
+
+	var introspectionMode *api.GraphQLIntrospectionMode
+	if m.Configuration.IntrospectionMode != "" {
+		im := api.GraphQLIntrospectionMode(m.Configuration.IntrospectionMode)
+		introspectionMode = &im
+	}
+
+	var subscriptionPlans *[]string
+	if len(m.Configuration.SubscriptionPlans) > 0 {
+		subscriptionPlans = &m.Configuration.SubscriptionPlans
+	}
+
+	upstream := mapUpstreamModelToAPI(&m.Configuration.Upstream)
+
+	return &api.GraphQLAPIDetail{
+		Id:                utils.StringPtrIfNotEmpty(m.Handle),
+		DisplayName:       m.Name,
+		Version:           m.Version,
+		Context:           utils.ValueOrEmpty(m.Configuration.Context),
+		ProjectId:         m.ProjectID,
+		Description:       &desc,
+		CreatedBy:         &createdBy,
+		Kind:              &kind,
+		IntrospectionMode: introspectionMode,
+		Upstream:          upstream,
+		Policies:          mapMCPPoliciesModelToAPI(m.Configuration.Policies),
+		SubscriptionPlans: subscriptionPlans,
+		ReadOnly:          utils.BoolPtr(m.Origin == constants.OriginDP),
+		CreatedAt:         utils.TimePtr(m.CreatedAt),
+		UpdatedAt:         utils.TimePtr(m.UpdatedAt),
+		UpdatedBy:         utils.StringPtrIfNotEmpty(m.UpdatedBy),
+	}
+}
+
 // mapGraphQLAPIModelToListItem converts a model.GraphQLAPI to
 // api.GraphQLAPIListItem. sdl is deliberately omitted (see
 // GraphQLAPIListResponse's schema description in resources/openapi.yaml).

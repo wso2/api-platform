@@ -107,12 +107,37 @@ func (h *GraphQLAPIHandler) GetGraphQLAPI(w http.ResponseWriter, r *http.Request
 		return apperror.ValidationFailed.New("API ID is required")
 	}
 
-	apiResponse, err := h.graphqlAPIService.Get(orgId, apiId)
+	apiResponse, err := h.graphqlAPIService.GetDetail(orgId, apiId)
 	if err != nil {
 		return serviceError(err, fmt.Sprintf("failed to get GraphQL API %s in org %s", apiId, orgId))
 	}
 
 	httputil.WriteJSON(w, http.StatusOK, apiResponse)
+	return nil
+}
+
+// GetGraphQLAPISDL handles GET /api/v0.9/graphql-apis/:graphqlApiId/sdl and
+// retrieves a GraphQL API's resolved SDL text — split out from
+// GetGraphQLAPI's response since sdl can be large and most callers only need
+// the metadata.
+func (h *GraphQLAPIHandler) GetGraphQLAPISDL(w http.ResponseWriter, r *http.Request) error {
+	orgId, exists := middleware.GetOrganizationFromRequest(r)
+	if !exists {
+		return apperror.Unauthorized.New().
+			WithLogMessage("organization claim not found in token")
+	}
+
+	apiId := r.PathValue("graphqlApiId")
+	if apiId == "" {
+		return apperror.ValidationFailed.New("API ID is required")
+	}
+
+	sdl, err := h.graphqlAPIService.GetSDL(orgId, apiId)
+	if err != nil {
+		return serviceError(err, fmt.Sprintf("failed to get GraphQL API %s SDL in org %s", apiId, orgId))
+	}
+
+	httputil.WriteJSON(w, http.StatusOK, api.GraphQLAPISDLResponse{Sdl: sdl})
 	return nil
 }
 
@@ -316,6 +341,7 @@ func (h *GraphQLAPIHandler) RegisterRoutes(mux router.Router) {
 	mux.HandleFunc("POST "+base, middleware.MapErrors(h.slogger, h.CreateGraphQLAPI))
 	mux.HandleFunc("GET "+base, middleware.MapErrors(h.slogger, h.ListGraphQLAPIs))
 	mux.HandleFunc("GET "+base+"/{graphqlApiId}", middleware.MapErrors(h.slogger, h.GetGraphQLAPI))
+	mux.HandleFunc("GET "+base+"/{graphqlApiId}/sdl", middleware.MapErrors(h.slogger, h.GetGraphQLAPISDL))
 	mux.HandleFunc("PUT "+base+"/{graphqlApiId}", middleware.MapErrors(h.slogger, h.UpdateGraphQLAPI))
 	mux.HandleFunc("DELETE "+base+"/{graphqlApiId}", middleware.MapErrors(h.slogger, h.DeleteGraphQLAPI))
 	mux.HandleFunc("GET "+base+"/{graphqlApiId}/gateways", middleware.MapErrors(h.slogger, h.GetAPIGateways))
