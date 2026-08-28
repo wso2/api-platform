@@ -7070,15 +7070,6 @@ components:
             endpoint (no per-operation paths), so `upstream.main.url` is the single
             GraphQL endpoint — either the backend to proxy to (SDL-supplied case) or
             the endpoint introspected at creation time (see `sdl`/`introspectionMode` below).
-        lifeCycleStatus:
-          type: string
-          x-go-type: RESTAPILifeCycleStatus
-          description: |
-            Current lifecycle status of the API. Reuses REST APIs' lifecycle enum
-            unmodified (STAGED, CREATED, PUBLISHED, DEPRECATED, RETIRED, BLOCKED) —
-            declaring a second identically-valued enum schema here would collide
-            with it at Go-constant generation time.
-          example: "CREATED"
         kind:
           type: string
           description: Kind of the API based on its communication protocol or architectural style
@@ -7165,8 +7156,10 @@ components:
           type: string
           description: |
             JSON-encoded request body — CreateGraphQLAPIRequest fields for create,
-            GraphQLAPI fields for update. Any `sdl`/`sdlUrl` included here is
-            ignored; the uploaded `sdlFile` part is always the source of `sdl`.
+            GraphQLAPI fields for update. When a non-empty `sdlFile` part is
+            uploaded, it overrides any `sdl`/`sdlUrl` included here. When no
+            `sdlFile` part is uploaded, this metadata's own `sdl`/`sdlUrl` (or
+            upstream introspection) is used unchanged.
           example: |
             {"displayName":"Countries GraphQL API","context":"/countries","version":"v1.0","projectId":"default-project","upstream":{"main":{"url":"https://countries.trevorblades.com/graphql"}}}
         sdlFile:
@@ -7209,15 +7202,6 @@ components:
           $ref: "#/components/schemas/Upstream"
         introspectionMode:
           $ref: '#/components/schemas/GraphQLIntrospectionMode'
-        lifeCycleStatus:
-          type: string
-          x-go-type: RESTAPILifeCycleStatus
-          description: |
-            Current lifecycle status of the API. Reuses REST APIs' lifecycle enum
-            unmodified (STAGED, CREATED, PUBLISHED, DEPRECATED, RETIRED, BLOCKED) —
-            declaring a second identically-valued enum schema here would collide
-            with it at Go-constant generation time.
-          example: "CREATED"
         kind:
           type: string
           example: GraphQLApi
@@ -7237,12 +7221,6 @@ components:
           type: string
           format: date-time
           readOnly: true
-        # sdl is deliberately omitted from list responses — unlike a REST API's
-        # operations[] (a handful of entries), a GraphQL schema's SDL can run to
-        # many KB; embedding it in every list-page row would bloat GET
-        # /graphql-apis for no listing-view benefit. Fetch GET
-        # /graphql-apis/{graphqlApiId} for the full schema.
-
     GraphQLAPIListResponse:
       type: object
       required:

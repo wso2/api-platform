@@ -215,7 +215,7 @@ Feature: Test GraphQL API CRUD and connectivity (gateway-only path)
 
     Scenario: List GraphQL APIs when none exist
         Given I authenticate using basic auth as "admin"
-        When I list all GraphQL APIs
+        When I send a GET request to the "gateway-controller" service at "/graphql-apis?displayName=NoSuchGraphQLAPIDisplayName"
         Then the response should be successful
         And the response should be valid JSON
         And the JSON response field "status" should be "success"

@@ -147,6 +147,10 @@ func runListCommand(cmd *cobra.Command) error {
 		return nil
 	}
 
+	if resp.StatusCode != http.StatusOK {
+		return fmt.Errorf("failed to list GraphQL APIs (status %d): %s", resp.StatusCode, string(body))
+	}
+
 	// Parse the response
 	var listResp APIListResponse
 	if err := json.Unmarshal(body, &listResp); err != nil {

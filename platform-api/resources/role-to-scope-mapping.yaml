@@ -213,6 +213,7 @@ roles:
       - ap:mcp_proxy:read
       - ap:llm_proxy:read
       - ap:llm_provider:read
+      - ap:graphql_api:read
       - ap:api_key:read
       # API Portal & MCP Hub
       - dp:application:manage

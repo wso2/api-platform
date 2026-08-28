@@ -128,6 +128,8 @@ func getFeaturePaths() []string {
 		"features/api-management.feature",
 		"features/api-error-responses.feature",
 		"features/api-keys.feature",
+		"features/graphql_deploy.feature",
+		"features/graphql-api-keys.feature",
 		"features/api-with-policies.feature",
 		"features/interceptor-service.feature",
 		"features/llm-proxies.feature",

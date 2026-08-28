@@ -408,7 +408,6 @@ CREATE TABLE IF NOT EXISTS graphql_apis (
     version VARCHAR(30) NOT NULL DEFAULT 'v1.0',
     project_uuid VARCHAR(40) NOT NULL,
     description VARCHAR(1023),
-    lifecycle_status VARCHAR(20) NOT NULL DEFAULT 'CREATED',
     configuration BYTEA NOT NULL,
     data_version VARCHAR(20) NOT NULL DEFAULT '1.0',
     origin VARCHAR(20) NOT NULL DEFAULT 'control_plane',
@@ -498,7 +497,6 @@ CREATE INDEX IF NOT EXISTS idx_mcp_proxies_project ON mcp_proxies(project_uuid);
 CREATE INDEX IF NOT EXISTS idx_mcp_proxies_org ON mcp_proxies(organization_uuid);
 CREATE INDEX IF NOT EXISTS idx_graphql_apis_project ON graphql_apis(project_uuid);
 CREATE INDEX IF NOT EXISTS idx_graphql_apis_org ON graphql_apis(organization_uuid);
-CREATE INDEX IF NOT EXISTS idx_graphql_apis_lifecycle_status ON graphql_apis(lifecycle_status);
 CREATE INDEX IF NOT EXISTS idx_api_keys_artifact ON api_keys(artifact_uuid);
 CREATE INDEX IF NOT EXISTS idx_applications_org ON applications(organization_uuid);
 CREATE INDEX IF NOT EXISTS idx_applications_project_id ON applications(organization_uuid, project_uuid);

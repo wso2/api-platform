@@ -817,12 +817,6 @@ type CreateGraphQLAPIRequest struct {
 	// Kind Kind of the API based on its communication protocol or architectural style
 	Kind *string `json:"kind,omitempty" yaml:"kind,omitempty"`
 
-	// LifeCycleStatus Current lifecycle status of the API. Reuses REST APIs' lifecycle enum
-	// unmodified (STAGED, CREATED, PUBLISHED, DEPRECATED, RETIRED, BLOCKED) —
-	// declaring a second identically-valued enum schema here would collide
-	// with it at Go-constant generation time.
-	LifeCycleStatus *RESTAPILifeCycleStatus `json:"lifeCycleStatus,omitempty" yaml:"lifeCycleStatus,omitempty"`
-
 	// Policies List of policies to be applied on the API. Reused unmodified from REST APIs.
 	Policies  *[]Policy `json:"policies,omitempty" yaml:"policies,omitempty"`
 	ProjectId string    `binding:"required" json:"projectId" yaml:"projectId"`
@@ -1368,12 +1362,6 @@ type GraphQLAPI struct {
 	// Kind Kind of the API based on its communication protocol or architectural style
 	Kind *string `json:"kind,omitempty" yaml:"kind,omitempty"`
 
-	// LifeCycleStatus Current lifecycle status of the API. Reuses REST APIs' lifecycle enum
-	// unmodified (STAGED, CREATED, PUBLISHED, DEPRECATED, RETIRED, BLOCKED) —
-	// declaring a second identically-valued enum schema here would collide
-	// with it at Go-constant generation time.
-	LifeCycleStatus *RESTAPILifeCycleStatus `json:"lifeCycleStatus,omitempty" yaml:"lifeCycleStatus,omitempty"`
-
 	// Policies List of policies to be applied on the API. Reused unmodified from REST APIs.
 	Policies  *[]Policy `json:"policies,omitempty" yaml:"policies,omitempty"`
 	ProjectId string    `binding:"required" json:"projectId" yaml:"projectId"`
@@ -1426,15 +1414,9 @@ type GraphQLAPIListItem struct {
 	Id                *string                   `json:"id,omitempty" yaml:"id,omitempty"`
 	IntrospectionMode *GraphQLIntrospectionMode `json:"introspectionMode,omitempty" yaml:"introspectionMode,omitempty"`
 	Kind              *string                   `json:"kind,omitempty" yaml:"kind,omitempty"`
-
-	// LifeCycleStatus Current lifecycle status of the API. Reuses REST APIs' lifecycle enum
-	// unmodified (STAGED, CREATED, PUBLISHED, DEPRECATED, RETIRED, BLOCKED) —
-	// declaring a second identically-valued enum schema here would collide
-	// with it at Go-constant generation time.
-	LifeCycleStatus *RESTAPILifeCycleStatus `json:"lifeCycleStatus,omitempty" yaml:"lifeCycleStatus,omitempty"`
-	ProjectId       string                  `binding:"required" json:"projectId" yaml:"projectId"`
-	ReadOnly        *bool                   `json:"readOnly,omitempty" yaml:"readOnly,omitempty"`
-	UpdatedAt       *time.Time              `json:"updatedAt,omitempty" yaml:"updatedAt,omitempty"`
+	ProjectId         string                    `binding:"required" json:"projectId" yaml:"projectId"`
+	ReadOnly          *bool                     `json:"readOnly,omitempty" yaml:"readOnly,omitempty"`
+	UpdatedAt         *time.Time                `json:"updatedAt,omitempty" yaml:"updatedAt,omitempty"`
 
 	// Upstream Upstream backend configuration with main and sandbox endpoints
 	Upstream *Upstream `json:"upstream,omitempty" yaml:"upstream,omitempty"`

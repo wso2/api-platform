@@ -39,15 +39,14 @@ import (
 
 func newTestGraphQLAPI(handle, orgUUID, projectUUID string) *model.GraphQLAPI {
 	return &model.GraphQLAPI{
-		Handle:          handle,
-		Name:            "Countries GraphQL API",
-		Version:         "v1.0",
-		Description:     "Test GraphQL API",
-		CreatedBy:       "test-user",
-		UpdatedBy:       "test-user",
-		ProjectID:       projectUUID,
-		OrganizationID:  orgUUID,
-		LifeCycleStatus: "CREATED",
+		Handle:         handle,
+		Name:           "Countries GraphQL API",
+		Version:        "v1.0",
+		Description:    "Test GraphQL API",
+		CreatedBy:      "test-user",
+		UpdatedBy:      "test-user",
+		ProjectID:      projectUUID,
+		OrganizationID: orgUUID,
 		Configuration: model.GraphQLAPIConfig{
 			Name:              "Countries GraphQL API",
 			Version:           "v1.0",
@@ -100,8 +99,8 @@ func TestGraphQLAPIRepo_CreateAndRead(t *testing.T) {
 	if created.Description != api.Description || created.CreatedBy != api.CreatedBy || created.ProjectID != api.ProjectID {
 		t.Fatalf("GetByUUID returned unexpected details: %+v", created)
 	}
-	if created.OrganizationID != api.OrganizationID || created.LifeCycleStatus != api.LifeCycleStatus {
-		t.Fatalf("GetByUUID returned unexpected lifecycle details: %+v", created)
+	if created.OrganizationID != api.OrganizationID {
+		t.Fatalf("GetByUUID returned unexpected organization: %+v", created)
 	}
 	if created.UpdatedBy == "" {
 		t.Fatal("expected updated_by to be set on creation, got empty string")
@@ -384,7 +383,6 @@ func TestGraphQLAPIRepo_Update(t *testing.T) {
 
 	api.Name = "Updated Countries API"
 	api.Description = "Updated description"
-	api.LifeCycleStatus = "PUBLISHED"
 	api.Configuration.SDL = "type Query { countries: [Country] country(code: ID!): Country }\ntype Country { code: String }"
 	api.Configuration.IntrospectionMode = "ENDPOINT"
 
@@ -399,7 +397,7 @@ func TestGraphQLAPIRepo_Update(t *testing.T) {
 	if updated == nil {
 		t.Fatal("GetByUUID returned nil")
 	}
-	if updated.Name != api.Name || updated.Description != api.Description || updated.LifeCycleStatus != api.LifeCycleStatus {
+	if updated.Name != api.Name || updated.Description != api.Description {
 		t.Fatalf("Update changes not persisted: %+v", updated)
 	}
 	if updated.Configuration.SDL != api.Configuration.SDL || updated.Configuration.IntrospectionMode != api.Configuration.IntrospectionMode {

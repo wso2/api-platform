@@ -85,9 +85,9 @@ func (s *APIServer) CreateGraphQLAPI(w http.ResponseWriter, r *http.Request) {
 			})
 			return
 		}
-		httputil.WriteJSON(w, http.StatusBadRequest, api.ErrorResponse{
+		httputil.WriteJSON(w, http.StatusInternalServerError, api.ErrorResponse{
 			Status:  "error",
-			Message: err.Error(),
+			Message: "Failed to create configuration",
 		})
 		return
 	}
@@ -148,10 +148,18 @@ func (s *APIServer) GetGraphQLAPIById(w http.ResponseWriter, r *http.Request, id
 
 	cfg, err := s.db.GetConfigByKindAndHandle(string(api.GraphQLAPIKindGraphQLApi), id)
 	if err != nil {
-		log.Warn("GraphQL API configuration not found", slog.String("handle", id))
-		httputil.WriteJSON(w, http.StatusNotFound, api.ErrorResponse{
+		if storage.IsNotFoundError(err) {
+			log.Warn("GraphQL API configuration not found", slog.String("handle", id))
+			httputil.WriteJSON(w, http.StatusNotFound, api.ErrorResponse{
+				Status:  "error",
+				Message: fmt.Sprintf("GraphQLApi with handle '%s' not found", id),
+			})
+			return
+		}
+		log.Error("Failed to get GraphQL API configuration", slog.Any("error", err), slog.String("handle", id))
+		httputil.WriteJSON(w, http.StatusInternalServerError, api.ErrorResponse{
 			Status:  "error",
-			Message: fmt.Sprintf("GraphQLApi with handle '%s' not found", id),
+			Message: "Failed to retrieve configuration",
 		})
 		return
 	}
@@ -176,10 +184,18 @@ func (s *APIServer) UpdateGraphQLAPI(w http.ResponseWriter, r *http.Request, id 
 
 	existing, err := s.db.GetConfigByKindAndHandle(string(api.GraphQLAPIKindGraphQLApi), id)
 	if err != nil {
-		log.Warn("GraphQL API configuration not found", slog.String("handle", id))
-		httputil.WriteJSON(w, http.StatusNotFound, api.ErrorResponse{
+		if storage.IsNotFoundError(err) {
+			log.Warn("GraphQL API configuration not found", slog.String("handle", id))
+			httputil.WriteJSON(w, http.StatusNotFound, api.ErrorResponse{
+				Status:  "error",
+				Message: fmt.Sprintf("GraphQLApi with handle '%s' not found", id),
+			})
+			return
+		}
+		log.Error("Failed to get GraphQL API configuration", slog.Any("error", err), slog.String("handle", id))
+		httputil.WriteJSON(w, http.StatusInternalServerError, api.ErrorResponse{
 			Status:  "error",
-			Message: fmt.Sprintf("GraphQLApi with handle '%s' not found", id),
+			Message: "Failed to retrieve configuration",
 		})
 		return
 	}
@@ -236,9 +252,9 @@ func (s *APIServer) UpdateGraphQLAPI(w http.ResponseWriter, r *http.Request, id 
 			})
 			return
 		}
-		httputil.WriteJSON(w, http.StatusBadRequest, api.ErrorResponse{
+		httputil.WriteJSON(w, http.StatusInternalServerError, api.ErrorResponse{
 			Status:  "error",
-			Message: err.Error(),
+			Message: "Failed to update configuration",
 		})
 		return
 	}
@@ -255,10 +271,18 @@ func (s *APIServer) DeleteGraphQLAPI(w http.ResponseWriter, r *http.Request, id 
 
 	cfg, err := s.db.GetConfigByKindAndHandle(string(api.GraphQLAPIKindGraphQLApi), id)
 	if err != nil {
-		log.Warn("GraphQL API configuration not found", slog.String("handle", id))
-		httputil.WriteJSON(w, http.StatusNotFound, api.ErrorResponse{
+		if storage.IsNotFoundError(err) {
+			log.Warn("GraphQL API configuration not found", slog.String("handle", id))
+			httputil.WriteJSON(w, http.StatusNotFound, api.ErrorResponse{
+				Status:  "error",
+				Message: fmt.Sprintf("GraphQLApi with handle '%s' not found", id),
+			})
+			return
+		}
+		log.Error("Failed to get GraphQL API configuration", slog.Any("error", err), slog.String("handle", id))
+		httputil.WriteJSON(w, http.StatusInternalServerError, api.ErrorResponse{
 			Status:  "error",
-			Message: fmt.Sprintf("GraphQLApi with handle '%s' not found", id),
+			Message: "Failed to retrieve configuration",
 		})
 		return
 	}
@@ -366,7 +390,8 @@ func (s *APIServer) CreateGraphQLAPIKey(w http.ResponseWriter, r *http.Request, 
 		} else if storage.IsConflictError(err) || strings.Contains(err.Error(), "already exists") {
 			httputil.WriteJSON(w, http.StatusConflict, api.ErrorResponse{Status: "error", Message: err.Error()})
 		} else {
-			httputil.WriteJSON(w, http.StatusInternalServerError, api.ErrorResponse{Status: "error", Message: err.Error()})
+			log.Error("Failed to create GraphQL API key", slog.String("handle", handle), slog.Any("error", err))
+			httputil.WriteJSON(w, http.StatusInternalServerError, api.ErrorResponse{Status: "error", Message: "Failed to create API key"})
 		}
 		return
 	}
@@ -400,7 +425,8 @@ func (s *APIServer) RevokeGraphQLAPIKey(w http.ResponseWriter, r *http.Request, 
 		if strings.Contains(err.Error(), "not found") {
 			httputil.WriteJSON(w, http.StatusNotFound, api.ErrorResponse{Status: "error", Message: err.Error()})
 		} else {
-			httputil.WriteJSON(w, http.StatusInternalServerError, api.ErrorResponse{Status: "error", Message: err.Error()})
+			log.Error("Failed to revoke GraphQL API key", slog.String("handle", handle), slog.String("key", apiKeyName), slog.Any("error", err))
+			httputil.WriteJSON(w, http.StatusInternalServerError, api.ErrorResponse{Status: "error", Message: "Failed to revoke API key"})
 		}
 		return
 	}
@@ -450,7 +476,8 @@ func (s *APIServer) UpdateGraphQLAPIKey(w http.ResponseWriter, r *http.Request, 
 		} else if storage.IsConflictError(err) || strings.Contains(err.Error(), "already exists") {
 			httputil.WriteJSON(w, http.StatusConflict, api.ErrorResponse{Status: "error", Message: err.Error()})
 		} else {
-			httputil.WriteJSON(w, http.StatusInternalServerError, api.ErrorResponse{Status: "error", Message: err.Error()})
+			log.Error("Failed to update GraphQL API key", slog.String("handle", handle), slog.String("key", apiKeyName), slog.Any("error", err))
+			httputil.WriteJSON(w, http.StatusInternalServerError, api.ErrorResponse{Status: "error", Message: "Failed to update API key"})
 		}
 		return
 	}
@@ -491,7 +518,8 @@ func (s *APIServer) RegenerateGraphQLAPIKey(w http.ResponseWriter, r *http.Reque
 		if strings.Contains(err.Error(), "not found") {
 			httputil.WriteJSON(w, http.StatusNotFound, api.ErrorResponse{Status: "error", Message: err.Error()})
 		} else {
-			httputil.WriteJSON(w, http.StatusInternalServerError, api.ErrorResponse{Status: "error", Message: err.Error()})
+			log.Error("Failed to regenerate GraphQL API key", slog.String("handle", handle), slog.String("key", apiKeyName), slog.Any("error", err))
+			httputil.WriteJSON(w, http.StatusInternalServerError, api.ErrorResponse{Status: "error", Message: "Failed to regenerate API key"})
 		}
 		return
 	}
@@ -524,7 +552,8 @@ func (s *APIServer) ListGraphQLAPIKeys(w http.ResponseWriter, r *http.Request, i
 		if strings.Contains(err.Error(), "not found") {
 			httputil.WriteJSON(w, http.StatusNotFound, api.ErrorResponse{Status: "error", Message: err.Error()})
 		} else {
-			httputil.WriteJSON(w, http.StatusInternalServerError, api.ErrorResponse{Status: "error", Message: err.Error()})
+			log.Error("Failed to list GraphQL API keys", slog.String("handle", handle), slog.Any("error", err))
+			httputil.WriteJSON(w, http.StatusInternalServerError, api.ErrorResponse{Status: "error", Message: "Failed to list API keys"})
 		}
 		return
 	}

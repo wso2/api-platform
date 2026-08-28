@@ -3535,8 +3535,8 @@ components:
           example: Countries GraphQL API
         version:
           type: string
-          description: Semantic version of the API
-          pattern: '^v\d+\.\d+$'
+          description: Semantic version of the API. Both major-only (v1) and major.minor (v1.0) forms are accepted.
+          pattern: '^v\d+(\.\d+)?$'
           example: v1.0
         context:
           type: string
@@ -3556,7 +3556,10 @@ components:
           description: >
             API-level upstream configuration. A GraphQLApi has exactly one logical
             endpoint (no per-operation paths), so upstream.main.url is the single
-            GraphQL endpoint to proxy to.
+            GraphQL endpoint to proxy to. Only a direct inline url is supported —
+            GraphQLAPIConfigData has no upstreamDefinitions list, so upstream.ref
+            (used by RestApi to reference a predefined upstreamDefinition) cannot
+            be resolved and is rejected.
           properties:
             main:
               $ref: "#/components/schemas/Upstream"

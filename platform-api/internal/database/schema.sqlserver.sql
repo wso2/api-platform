@@ -460,7 +460,6 @@ CREATE TABLE dbo.graphql_apis (
     version VARCHAR(30) NOT NULL DEFAULT 'v1.0',
     project_uuid VARCHAR(40) NOT NULL,
     description VARCHAR(1023),
-    lifecycle_status VARCHAR(20) NOT NULL DEFAULT 'CREATED',
     configuration VARBINARY(MAX) NOT NULL,
     data_version VARCHAR(20) NOT NULL DEFAULT '1.0',
     origin VARCHAR(20) NOT NULL DEFAULT 'control_plane',
@@ -583,8 +582,6 @@ IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = N'idx_graphql_apis_project
 CREATE INDEX idx_graphql_apis_project ON dbo.graphql_apis(project_uuid);
 IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = N'idx_graphql_apis_org' AND object_id = OBJECT_ID(N'dbo.graphql_apis'))
 CREATE INDEX idx_graphql_apis_org ON dbo.graphql_apis(organization_uuid);
-IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = N'idx_graphql_apis_lifecycle_status' AND object_id = OBJECT_ID(N'dbo.graphql_apis'))
-CREATE INDEX idx_graphql_apis_lifecycle_status ON dbo.graphql_apis(lifecycle_status);
 IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = N'idx_api_keys_artifact' AND object_id = OBJECT_ID(N'dbo.api_keys'))
 CREATE INDEX idx_api_keys_artifact ON dbo.api_keys(artifact_uuid);
 IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = N'idx_api_keys_status' AND object_id = OBJECT_ID(N'dbo.api_keys'))
