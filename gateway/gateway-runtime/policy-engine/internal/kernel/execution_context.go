@@ -204,6 +204,15 @@ type PolicyExecutionContext struct {
 	// operation is the canonical protocol operation the caller invoked. Empty for a
 	// directly-resolved route, whose chain key is already the route name on the span.
 	operation string
+
+	// resolutionAttributes are the protocol-derived request facts the route's
+	// resolver captured while identifying the operation, already bounded in count
+	// and value length by ValidateResolution. Nil for a directly-resolved route.
+	//
+	// Held read-only: a route whose resolution is fixed at ingest shares one map
+	// across every request on it, so writing here would leak one request's facts
+	// into the next.
+	resolutionAttributes map[string]string
 }
 
 // generatedResponse ties a policy-engine-generated ImmediateResponse to the span
@@ -1282,6 +1291,44 @@ func (ec *PolicyExecutionContext) processStreamingResponseBody(
 }
 
 // ─── Context builders ────────────────────────────────────────────────────────
+
+// applyBoundResolution records the outcome of binding a chain: on the execution
+// context for logs, metrics and spans, and on the shared policy context so the
+// chain's own policies can see which operation they are running for.
+//
+// Every binding path funnels through here — the header-phase static and
+// body-reading paths in extproc.go and the deferred path in resolution.go — rather
+// than each assigning the fields it happens to know about. That is what keeps the
+// three in step: a policy reading SharedContext.ResolvedOperation and an operator
+// reading resolver.operation off a span are looking at the same value, whichever
+// phase bound the chain.
+//
+// It is deliberately a no-op for the API kinds that shipped before Agent: their
+// routes are directly resolved, so BoundResolution.Operation is empty and its
+// Attributes nil, and both fields stay at their zero values rather than being
+// filled with something derived from the route (which OperationPath already
+// carries).
+//
+// The shared context exists by the time this runs on every path: the static and
+// body-reading paths call it immediately after newBoundExecutionContext, which
+// builds the contexts, and the deferred path binds at the request-body callback,
+// long after the header callback built them. A nil check keeps a future caller
+// that reorders that from panicking rather than from being silently wrong.
+func (ec *PolicyExecutionContext) applyBoundResolution(bound resolver.BoundResolution) {
+	ec.operation = bound.Operation
+	ec.resolutionAttributes = bound.Attributes
+
+	if ec.sharedCtx == nil {
+		return
+	}
+	ec.sharedCtx.ResolvedOperation = bound.Operation
+	// Handed over by reference, not copied. Wrapping is what puts the map out of a
+	// policy's reach — policy.ResolutionAttributes exposes no mutation path — so
+	// there is nothing left for a per-request copy to defend against, and the
+	// request path pays no allocation for the guarantee. It matters because a route
+	// resolved at ingest shares one map across every request on it.
+	ec.sharedCtx.ResolutionAttributes = policy.NewResolutionAttributes(bound.Attributes)
+}
 
 // buildRequestContexts converts Envoy request headers into per-phase context objects.
 // Both requestHeaderCtx and requestBodyCtx are initialized here; requestBodyCtx.Body

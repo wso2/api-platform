@@ -69,6 +69,10 @@ type fakeOperationResolver struct {
 	header    string // when set, the operation is read from this header
 	forcedErr *resolver.ResolutionError
 
+	// attributes, when set, are returned as the resolution's protocol-derived request
+	// facts, the way the a2a resolver returns the ones it read out of the body.
+	attributes map[string]string
+
 	// apiID and vhost are captured at Prepare, exactly as a real resolver captures the
 	// partition it composes keys from.
 	apiID string
@@ -98,7 +102,8 @@ func (f *fakeOperationResolver) Requirements() resolver.RequestRequirements { re
 // request.
 func (f *fakeOperationResolver) resolveOperation(operation string) resolver.Resolution {
 	return resolver.Resolution{
-		ChainKey: resolver.ChainKeyFor(f.apiID, f.vhost, operation),
+		ChainKey:   resolver.ChainKeyFor(f.apiID, f.vhost, operation),
+		Attributes: f.attributes,
 	}
 }
 

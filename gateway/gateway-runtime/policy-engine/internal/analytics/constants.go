@@ -182,4 +182,93 @@ const (
 	SubscriptionStatusKey = Wso2MetadataPrefix + "subscription-status"
 	// SubscriptionPlanNameKey is the key for the subscription plan name.
 	SubscriptionPlanNameKey = Wso2MetadataPrefix + "subscription-plan-name"
+
+	// ResolvedOperationKey is the canonical protocol operation the request resolved
+	// to. Stamped by the kernel from SharedContext.ResolvedOperation, so it is
+	// present whether or not the analytics system policy is in the chain. Mirrors
+	// kernel.ResolvedOperationKey; the two are separate constants because the
+	// packages must not import each other.
+	ResolvedOperationKey = Wso2MetadataPrefix + "resolved-operation"
+
+	// TerminalReasonKey names why the engine ended the request, when it — rather
+	// than the upstream — decided the outcome. Mirrors kernel.TerminalReasonKey,
+	// and its values are the constants.TerminalReason* set. Absent on a
+	// pass-through.
+	TerminalReasonKey = Wso2MetadataPrefix + "terminal-reason"
+
+	// A2ARequestPropertiesKey and A2AResponsePropertiesKey carry the JSON-encoded
+	// A2A analytics properties the analytics system policy assembles for an Agent
+	// request. Key names are mirrored as string literals in that policy's own Go
+	// module (gateway/system-policies/analytics), which cannot share a constant
+	// with this one; each side has a test asserting the spelling.
+	A2ARequestPropertiesKey  = "a2a_request_properties"
+	A2AResponsePropertiesKey = "a2a_response_properties"
+)
+
+// A2A outcome vocabulary. Bounded on purpose: these are the values a downstream
+// success-rate or volume dashboard groups by, so every one of them has to be a
+// member of a closed set rather than anything derived from a request.
+const (
+	// A2AOutcomeSuccess and A2AOutcomeFailure are the outcomes of an Agent invocation.
+	// Derived from the A2A result rather than from the HTTP status: a JSON-RPC error
+	// rides a 200, so status alone reports a failed invocation as a success.
+	A2AOutcomeSuccess = "SUCCESS"
+	A2AOutcomeFailure = "FAILURE"
+
+	// A2AOutcomeUnknown is a third outcome, not an absent one: the request completed
+	// with a success status but nothing that could say whether the *invocation*
+	// succeeded was readable.
+	//
+	// It exists because the alternative is worse in both directions. Reporting SUCCESS
+	// would state as fact something nobody determined — on the JSON-RPC transport,
+	// where the status carries no outcome information at all, that is precisely the
+	// false-success this whole derivation exists to prevent. Reporting FAILURE would
+	// invent one. A downstream success rate should exclude these from both numerator
+	// and denominator and surface the count: a rising UNKNOWN share means the gateway
+	// is losing visibility, which is itself the signal.
+	A2AOutcomeUnknown = "UNKNOWN"
+
+	// Failure origins — which component is answerable for a failed invocation.
+	// Without this a dashboard cannot tell an agent that is erroring from a
+	// gateway that is rejecting, and both look like the agent's fault.
+	//
+	// A2AFailureOriginClient covers a request the gateway refused before it
+	// reached the agent for a reason the caller controls (unparseable envelope,
+	// unknown operation, oversized body).
+	A2AFailureOriginClient = "client"
+	// A2AFailureOriginPolicy is a policy short-circuit: authentication,
+	// authorization, rate limiting, a guardrail.
+	A2AFailureOriginPolicy = "policy"
+	// A2AFailureOriginGateway is a fault inside the gateway itself, with no
+	// upstream involved.
+	A2AFailureOriginGateway = "gateway"
+	// A2AFailureOriginUpstream is the agent's own failure — a transport error it
+	// returned, or a JSON-RPC error object in an otherwise successful response.
+	A2AFailureOriginUpstream = "upstream"
+
+	// a2aTransportHTTPJSON is the REST-shaped A2A binding, as common/agentproto spells
+	// it into a route's resolver config and the resolver carries it forward. Compared
+	// here only to decide whether a 2xx is itself an outcome (see
+	// a2aSuccessStatusOutcome); this package reports the value through, it does not
+	// interpret it otherwise. A literal rather than an import because the value
+	// arrives as an opaque string out of Envoy dynamic metadata; a test pins it.
+	a2aTransportHTTPJSON = "HTTP+JSON"
+
+	// A2AOperationUnknown groups invocations whose operation could not be determined
+	// — the request named one this protocol version does not define, or its envelope
+	// did not parse. Grouped rather than reported verbatim: the value that failed to
+	// resolve is caller-supplied, so echoing it into the operation dimension would
+	// make that dimension unbounded.
+	A2AOperationUnknown = "unknown"
+
+	// Request types. Only A2ARequestTypeOperation counts as an Agent invocation;
+	// the other two share the Agent's routes but are not calls to the agent, and
+	// aggregating them together would inflate the invocation volume of every
+	// deployed Agent by however often its clients fetch its card.
+	A2ARequestTypeOperation = "operation"
+	// A2ARequestTypeAgentCard is a fetch of the public Agent Card, which is a
+	// discovery document served at a known path and not an A2A operation.
+	A2ARequestTypeAgentCard = "agentCard"
+	// A2ARequestTypePreflight is a CORS preflight, answered by the gateway.
+	A2ARequestTypePreflight = "preflight"
 )
