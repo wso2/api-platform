@@ -430,8 +430,6 @@ func (t *AgentTransformer) Transform(cfg *models.StoredConfig) (*models.RuntimeD
 					// ones, so a finite route timeout would sever a healthy
 					// stream. Disabled unless the Agent asks for one; idleTimeout
 					// stays the liveness guard.
-					// Every operation shares this route, streaming ones included,
-					// so the route timeout defaults to disabled.
 					Timeout:             agentRouteTimeout(nil, agentTimeout, agentIdleTimeout, true),
 					ResolverName:        agentproto.ResolverName,
 					ResolverConfig:      resolverConfig,

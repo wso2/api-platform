@@ -231,3 +231,31 @@ func TestFirstSSEDataEventEnd(t *testing.T) {
 		})
 	}
 }
+
+// The processing mode this policy declares is what decides whether an Agent's SSE
+// response streams at all.
+//
+// The kernel builds a chain's SupportsResponseStreaming from its policies: any
+// response-body policy declaring Buffer turns streaming off for the whole chain, and a
+// policy declaring Stream without implementing StreamingResponsePolicy does the same.
+// This policy is injected into every chain whenever a collector is enabled, and for an
+// Agent with no user policies attached it is the *only* response-body policy — so it
+// alone determines whether the chain can stream. Flipping it to Buffer would silently
+// buffer every A2A stream: each event would be withheld until the task finished, with
+// no error anywhere, just a client that waits.
+func TestAnalyticsPolicyStreamsResponseBodies(t *testing.T) {
+	p := &AnalyticsPolicy{}
+
+	if got := p.Mode().ResponseBodyMode; got != policy.BodyModeStream {
+		t.Errorf("ResponseBodyMode = %v, want %v — Agent SSE responses would be buffered",
+			got, policy.BodyModeStream)
+	}
+
+	// Declaring Stream is not enough on its own: the kernel checks for the interface
+	// too, and a chain whose policy declares Stream without implementing it is treated
+	// as non-streaming.
+	if _, ok := interface{}(p).(policy.StreamingResponsePolicy); !ok {
+		t.Error("AnalyticsPolicy must implement policy.StreamingResponsePolicy, " +
+			"or the kernel treats its declared Stream mode as non-streaming")
+	}
+}

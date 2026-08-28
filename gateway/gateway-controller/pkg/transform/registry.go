@@ -86,6 +86,12 @@ func (r *Registry) Transform(cfg *models.StoredConfig) (*models.RuntimeDeployCon
 	case models.KindLlmProvider, models.KindLlmProxy:
 		return r.llmT.Transform(cfg)
 	case models.KindAgent:
+		if r.agentT == nil {
+			// A deployment that does not serve Agents (the event gateway) constructs
+			// the Registry without one. Report it the way any unrouted kind is
+			// reported rather than dereferencing nil.
+			return nil, fmt.Errorf("%w: %s", ErrUnsupportedKind, cfg.Kind)
+		}
 		return r.agentT.Transform(cfg)
 	default:
 		return nil, fmt.Errorf("%w: %s", ErrUnsupportedKind, cfg.Kind)
