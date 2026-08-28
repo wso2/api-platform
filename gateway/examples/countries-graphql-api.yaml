@@ -23,7 +23,7 @@ metadata:
 spec:
   displayName: Countries
   version: v1
-  context: /countries/$version
+  context: /countries/$version/graphql
   upstream:
     main:
       url: https://countries.trevorblades.com/graphql
