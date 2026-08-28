@@ -1404,6 +1404,45 @@ type GraphQLAPI struct {
 	Version  string   `binding:"required" json:"version" yaml:"version"`
 }
 
+// GraphQLAPIDetail defines model for GraphQLAPIDetail.
+type GraphQLAPIDetail struct {
+	Context     string     `binding:"required" json:"context" yaml:"context"`
+	CreatedAt   *time.Time `json:"createdAt,omitempty" yaml:"createdAt,omitempty"`
+	CreatedBy   *string    `json:"createdBy,omitempty" yaml:"createdBy,omitempty"`
+	Description *string    `json:"description,omitempty" yaml:"description,omitempty"`
+
+	// DisplayName Human-readable name for the API
+	DisplayName string `binding:"required" json:"displayName" yaml:"displayName"`
+
+	// Id Unique handle/identifier for the API.
+	Id *string `json:"id,omitempty" yaml:"id,omitempty"`
+
+	// IntrospectionMode How the schema was obtained. SDL = supplied directly in the create/update
+	// request. ENDPOINT = derived by introspecting `upstream.main.url` at
+	// creation time. Informational only — storage and downstream behavior are
+	// identical either way.
+	IntrospectionMode *GraphQLIntrospectionMode `json:"introspectionMode,omitempty" yaml:"introspectionMode,omitempty"`
+
+	// Kind Kind of the API based on its communication protocol or architectural style
+	Kind *string `json:"kind,omitempty" yaml:"kind,omitempty"`
+
+	// Policies List of policies to be applied on the API. Reused unmodified from REST APIs.
+	Policies  *[]Policy `json:"policies,omitempty" yaml:"policies,omitempty"`
+	ProjectId string    `binding:"required" json:"projectId" yaml:"projectId"`
+
+	// ReadOnly True if the artifact originated from a data-plane gateway (origin gateway_api) and is read-only in the control plane.
+	ReadOnly *bool `json:"readOnly,omitempty" yaml:"readOnly,omitempty"`
+
+	// SubscriptionPlans List of subscription plan names enabled for this API.
+	SubscriptionPlans *[]string  `json:"subscriptionPlans,omitempty" yaml:"subscriptionPlans,omitempty"`
+	UpdatedAt         *time.Time `json:"updatedAt,omitempty" yaml:"updatedAt,omitempty"`
+	UpdatedBy         *string    `json:"updatedBy,omitempty" yaml:"updatedBy,omitempty"`
+
+	// Upstream Upstream backend configuration with main and sandbox endpoints
+	Upstream Upstream `json:"upstream" yaml:"upstream"`
+	Version  string   `binding:"required" json:"version" yaml:"version"`
+}
+
 // GraphQLAPIListItem defines model for GraphQLAPIListItem.
 type GraphQLAPIListItem struct {
 	Context           string                    `binding:"required" json:"context" yaml:"context"`
@@ -1433,12 +1472,22 @@ type GraphQLAPIListResponse struct {
 // GraphQLAPIMultipartRequest defines model for GraphQLAPIMultipartRequest.
 type GraphQLAPIMultipartRequest struct {
 	// Metadata JSON-encoded request body — CreateGraphQLAPIRequest fields for create,
-	// GraphQLAPI fields for update. Any `sdl`/`sdlUrl` included here is
-	// ignored; the uploaded `sdlFile` part is always the source of `sdl`.
+	// GraphQLAPI fields for update. When a non-empty `sdlFile` part is
+	// uploaded, it overrides any `sdl`/`sdlUrl` included here. When no
+	// `sdlFile` part is uploaded, this metadata's own `sdl`/`sdlUrl` (or
+	// upstream introspection) is used unchanged.
 	Metadata string `binding:"required" json:"metadata" yaml:"metadata"`
 
 	// SdlFile The GraphQL SDL document as a file upload (e.g. schema.graphql).
 	SdlFile *openapi_types.File `json:"sdlFile,omitempty" yaml:"sdlFile,omitempty"`
+}
+
+// GraphQLAPISDLResponse defines model for GraphQLAPISDLResponse.
+type GraphQLAPISDLResponse struct {
+	// Sdl The GraphQL schema in SDL form, resolved at create/update time (either
+	// supplied directly or derived via upstream introspection) — see
+	// `GET /graphql-apis/{graphqlApiId}` for the rest of the API's metadata.
+	Sdl string `binding:"required" json:"sdl" yaml:"sdl"`
 }
 
 // GraphQLIntrospectionMode defines model for GraphQLIntrospectionMode.

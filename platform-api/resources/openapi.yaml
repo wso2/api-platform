@@ -1112,6 +1112,11 @@ paths:
   /graphql-apis/{graphqlApiId}:
     get:
       summary: Get GraphQL API by ID
+      description: |
+        Retrieves the GraphQL API's metadata and configuration. The `sdl` field
+        is deliberately omitted from this response — it can be large, and most
+        callers only need the metadata — fetch it separately via
+        `GET /graphql-apis/{graphqlApiId}/sdl`.
       operationId: GetGraphQLAPI
       security:
         - OAuth2Security:
@@ -1134,7 +1139,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/GraphQLAPI'
+                $ref: '#/components/schemas/GraphQLAPIDetail'
         '400':
           $ref: '#/components/responses/BadRequest'
         '401':
@@ -1225,6 +1230,44 @@ paths:
           $ref: '#/components/responses/Unauthorized'
         '403':
           $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /graphql-apis/{graphqlApiId}/sdl:
+    get:
+      summary: Get the SDL for a GraphQL API
+      description: |
+        Retrieves the GraphQL API's resolved schema in SDL form — the same text
+        `GET /graphql-apis/{graphqlApiId}` would have returned in its `sdl` field
+        before that field was split out into this dedicated endpoint (large, and
+        rarely needed alongside the rest of the metadata).
+      operationId: GetGraphQLAPISDL
+      security:
+        - OAuth2Security:
+            - ap:graphql_api:read
+            - ap:graphql_api:manage
+      tags:
+        - GraphQL APIs
+      parameters:
+        - name: graphqlApiId
+          in: path
+          required: true
+          description: |
+            **GraphQL API ID** consisting of the **handle** (unique identifier) of the API.
+          schema:
+            type: string
+            example: countries-graphql-api
+      responses:
+        '200':
+          description: SDL retrieved successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GraphQLAPISDLResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
         '404':
           $ref: '#/components/responses/NotFound'
         '500':
@@ -7134,6 +7177,136 @@ components:
           items:
             type: string
           example: [Gold, Silver]
+
+    # GraphQLAPI minus sdl/sdlUrl — the shape returned by GET
+    # /graphql-apis/{graphqlApiId}. Duplicated rather than composed via allOf
+    # (OpenAPI has no "subtract a property" mechanism) so GraphQLAPI itself stays
+    # unchanged for Create/Update, which still echo the resolved sdl back.
+    GraphQLAPIDetail:
+      title: GraphQL API detail (without sdl)
+      required:
+        - displayName
+        - context
+        - version
+        - projectId
+        - upstream
+      type: object
+      properties:
+        id:
+          type: string
+          description: Unique handle/identifier for the API.
+          minLength: 3
+          maxLength: 40
+          example: countries-graphql-api
+        displayName:
+          description: Human-readable name for the API
+          pattern: '(^[^~!@#;:%^*()+={}|\\<>"'',&$\[\]\/]*$)'
+          type: string
+          minLength: 1
+          maxLength: 128
+          example: Countries GraphQL API
+        description:
+          maxLength: 32766
+          type: string
+          example: Public GraphQL API for querying country/region reference data
+        context:
+          maxLength: 232
+          minLength: 1
+          type: string
+          example: /countries
+        version:
+          maxLength: 30
+          minLength: 1
+          type: string
+          pattern: '^[^~!@#;:%^*()+={}|\\<>"'',&/$\[\]\s+\/]+$'
+          example: v1.0
+        createdBy:
+          maxLength: 200
+          type: string
+          readOnly: true
+          example: "john.doe"
+        updatedBy:
+          maxLength: 200
+          type: string
+          readOnly: true
+          example: "john.doe"
+        projectId:
+          type: string
+          pattern: '^[a-z0-9-]+$'
+          minLength: 3
+          maxLength: 63
+          example: default-project
+        createdAt:
+          type: string
+          format: date-time
+          readOnly: true
+          example: "2026-08-11T10:00:00Z"
+        updatedAt:
+          type: string
+          format: date-time
+          readOnly: true
+          example: "2026-08-11T10:00:00Z"
+        readOnly:
+          type: boolean
+          readOnly: true
+          description: True if the artifact originated from a data-plane gateway (origin gateway_api) and is read-only in the control plane.
+          example: false
+        upstream:
+          $ref: "#/components/schemas/Upstream"
+          description: |
+            Reused unmodified from REST APIs. A GraphQL API has exactly one logical
+            endpoint (no per-operation paths), so `upstream.main.url` is the single
+            GraphQL endpoint — either the backend to proxy to (SDL-supplied case) or
+            the endpoint introspected at creation time (see `introspectionMode` below).
+        kind:
+          type: string
+          description: Kind of the API based on its communication protocol or architectural style
+          example: GraphQLApi
+          default: GraphQLApi
+        introspectionMode:
+          allOf:
+            - $ref: '#/components/schemas/GraphQLIntrospectionMode'
+          readOnly: true
+          description: |
+            How the schema was obtained. SDL = supplied directly in the create/update
+            request. ENDPOINT = derived by introspecting `upstream.main.url` at
+            creation time. Informational only — storage and downstream behavior are
+            identical either way.
+          example: ENDPOINT
+        policies:
+          type: array
+          description: List of policies to be applied on the API. Reused unmodified from REST APIs.
+          items:
+            $ref: '#/components/schemas/Policy'
+        subscriptionPlans:
+          type: array
+          description: List of subscription plan names enabled for this API.
+          items:
+            type: string
+          example: [Gold, Silver]
+
+    GraphQLAPISDLResponse:
+      title: GraphQL API SDL
+      type: object
+      required:
+        - sdl
+      properties:
+        sdl:
+          type: string
+          description: |
+            The GraphQL schema in SDL form, resolved at create/update time (either
+            supplied directly or derived via upstream introspection) — see
+            `GET /graphql-apis/{graphqlApiId}` for the rest of the API's metadata.
+          example: |
+            type Query {
+              countries: [Country]
+              country(code: ID!): Country
+            }
+            type Country {
+              code: String
+              name: String
+              capital: String
+            }
 
     CreateGraphQLAPIRequest:
       allOf:

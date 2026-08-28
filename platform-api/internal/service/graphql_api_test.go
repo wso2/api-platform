@@ -492,6 +492,108 @@ func TestGraphQLGet_NotFound(t *testing.T) {
 	}
 }
 
+// TestGraphQLGetDetail_OmitsSDL guards GetDetail's whole reason for existing:
+// GET /graphql-apis/{graphqlApiId} must return everything Get does except
+// sdl, which moved to GetSDL/GET .../sdl.
+func TestGraphQLGetDetail_OmitsSDL(t *testing.T) {
+	stored := &model.GraphQLAPI{
+		ID:             "some-uuid",
+		Handle:         "countries-graphql-api",
+		Name:           "Countries GraphQL API",
+		OrganizationID: "org-1",
+		Configuration:  model.GraphQLAPIConfig{SDL: validCountriesGraphQLSDL},
+	}
+	repo := &mockGraphQLAPIRepo{
+		getByHandleFunc: func(handle, orgUUID string) (*model.GraphQLAPI, error) {
+			return stored, nil
+		},
+	}
+	svc := newGraphQLTestService(repo, nil)
+
+	resp, err := svc.GetDetail("org-1", "countries-graphql-api")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if resp == nil {
+		t.Fatal("expected a response, got nil")
+	}
+	if resp.DisplayName != stored.Name {
+		t.Errorf("expected displayName %q, got %q", stored.Name, resp.DisplayName)
+	}
+	// GraphQLAPIDetail has no Sdl field at all — the compiler enforces the
+	// omission; this test guards that GetDetail otherwise returns the same
+	// metadata Get does.
+}
+
+func TestGraphQLGetDetail_NotFound(t *testing.T) {
+	repo := &mockGraphQLAPIRepo{
+		getByHandleFunc: func(handle, orgUUID string) (*model.GraphQLAPI, error) {
+			return nil, nil
+		},
+	}
+	svc := newGraphQLTestService(repo, nil)
+
+	_, err := svc.GetDetail("org-1", "does-not-exist")
+	if err == nil {
+		t.Fatal("expected an error for a nonexistent handle")
+	}
+	if code := graphQLCatalogCode(t, err); code != apperror.CodeGraphQLAPINotFound {
+		t.Errorf("expected %s, got %s", apperror.CodeGraphQLAPINotFound, code)
+	}
+}
+
+// TestGraphQLGetSDL_ReturnsSDL guards GetSDL — the counterpart endpoint that
+// now serves what GetDetail omits.
+func TestGraphQLGetSDL_ReturnsSDL(t *testing.T) {
+	stored := &model.GraphQLAPI{
+		ID:             "some-uuid",
+		Handle:         "countries-graphql-api",
+		OrganizationID: "org-1",
+		Configuration:  model.GraphQLAPIConfig{SDL: validCountriesGraphQLSDL},
+	}
+	repo := &mockGraphQLAPIRepo{
+		getByHandleFunc: func(handle, orgUUID string) (*model.GraphQLAPI, error) {
+			if orgUUID != stored.OrganizationID {
+				return nil, nil
+			}
+			return stored, nil
+		},
+	}
+	svc := newGraphQLTestService(repo, nil)
+
+	sdl, err := svc.GetSDL("org-1", "countries-graphql-api")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if sdl != validCountriesGraphQLSDL {
+		t.Errorf("expected the stored SDL, got %q", sdl)
+	}
+
+	// Cross-org lookup must 404 exactly like Get/GetDetail.
+	if _, err := svc.GetSDL("org-2", "countries-graphql-api"); err == nil {
+		t.Fatal("expected an error for a cross-org lookup")
+	} else if code := graphQLCatalogCode(t, err); code != apperror.CodeGraphQLAPINotFound {
+		t.Errorf("expected %s, got %s", apperror.CodeGraphQLAPINotFound, code)
+	}
+}
+
+func TestGraphQLGetSDL_NotFound(t *testing.T) {
+	repo := &mockGraphQLAPIRepo{
+		getByHandleFunc: func(handle, orgUUID string) (*model.GraphQLAPI, error) {
+			return nil, nil
+		},
+	}
+	svc := newGraphQLTestService(repo, nil)
+
+	_, err := svc.GetSDL("org-1", "does-not-exist")
+	if err == nil {
+		t.Fatal("expected an error for a nonexistent handle")
+	}
+	if code := graphQLCatalogCode(t, err); code != apperror.CodeGraphQLAPINotFound {
+		t.Errorf("expected %s, got %s", apperror.CodeGraphQLAPINotFound, code)
+	}
+}
+
 // TestGraphQLList_NoProjectFilter_ReturnsAllAndResolvesHandles guards the
 // no-project-filter path (Count, not CountByProject) and the per-item
 // project-UUID -> handle resolution (mirrors REST's modelToRESTAPIUnresolved,
