@@ -52,7 +52,7 @@ func mapGraphQLAPIModelToAPI(m *model.GraphQLAPI) *api.GraphQLAPI {
 		subscriptionPlans = &m.Configuration.SubscriptionPlans
 	}
 
-	upstream := mapUpstreamModelToAPI(&m.Configuration.Upstream)
+	upstream := mapUpstreamConfigToDTO(&m.Configuration.Upstream)
 
 	return &api.GraphQLAPI{
 		Id:                utils.StringPtrIfNotEmpty(m.Handle),
@@ -100,7 +100,7 @@ func mapGraphQLAPIModelToDetail(m *model.GraphQLAPI) *api.GraphQLAPIDetail {
 		subscriptionPlans = &m.Configuration.SubscriptionPlans
 	}
 
-	upstream := mapUpstreamModelToAPI(&m.Configuration.Upstream)
+	upstream := mapUpstreamConfigToDTO(&m.Configuration.Upstream)
 
 	return &api.GraphQLAPIDetail{
 		Id:                utils.StringPtrIfNotEmpty(m.Handle),
@@ -136,7 +136,7 @@ func mapGraphQLAPIModelToListItem(m *model.GraphQLAPI) *api.GraphQLAPIListItem {
 		introspectionMode = &im
 	}
 
-	upstream := mapUpstreamModelToAPI(&m.Configuration.Upstream)
+	upstream := mapUpstreamConfigToDTO(&m.Configuration.Upstream)
 
 	return &api.GraphQLAPIListItem{
 		Id:                utils.StringPtrIfNotEmpty(m.Handle),
