@@ -166,11 +166,6 @@ func (t *LLMProviderTransformer) transformProxy(proxy *api.LLMProxyConfiguration
 		Url: &upstream,
 	}
 
-	// valuePrefix of each additional provider's downstream api-key-auth, keyed by
-	// provider id, captured while resolving them below and reused when attaching the
-	// per-provider loopback upstream auth (Step 3.5).
-	additionalValuePrefixByID := map[string]string{}
-
 	// Step 3.1: Resolve additional providers (multi-provider proxies). Each is
 	// exposed as a named UpstreamDefinition so policies can route to it via
 	// the loopback context. The primary provider above remains the default.
@@ -201,11 +196,9 @@ func (t *LLMProviderTransformer) transformProxy(proxy *api.LLMProxyConfiguration
 			if err != nil {
 				return nil, fmt.Errorf("failed to get context for additional provider '%s': %w", ap.Id, err)
 			}
-			addProviderConfig, ok := addCfg.SourceConfiguration.(api.LLMProviderConfiguration)
-			if !ok {
+			if _, ok := addCfg.SourceConfiguration.(api.LLMProviderConfiguration); !ok {
 				return nil, fmt.Errorf("additional provider '%s' source configuration is not LLMProviderConfiguration", ap.Id)
 			}
-			additionalValuePrefixByID[ap.Id] = apiKeyAuthValuePrefix(addProviderConfig.Spec.GlobalPolicies)
 			// UpstreamDefinition URLs are host[:port] only. Keep the provider's
 			// loopback context in BasePath so the router rewrites requests to the
 			// additional provider route instead of dropping the context.
@@ -269,7 +262,7 @@ func (t *LLMProviderTransformer) transformProxy(proxy *api.LLMProxyConfiguration
 	var upstreamAuthPolicies []api.Policy
 	var transformerPolicies []api.Policy
 	if proxy.Spec.Provider.Auth != nil {
-		pol, err := t.proxyUpstreamAuthPolicy(proxy.Spec.Provider.Auth, apiKeyAuthValuePrefix(providerConfig.Spec.GlobalPolicies), "provider.auth")
+		pol, err := t.proxyUpstreamAuthPolicy(proxy.Spec.Provider.Auth, "provider.auth")
 		if err != nil {
 			return nil, err
 		}
@@ -288,7 +281,7 @@ func (t *LLMProviderTransformer) transformProxy(proxy *api.LLMProxyConfiguration
 			}
 
 			if ap.Auth != nil {
-				pol, err := t.proxyUpstreamAuthPolicy(ap.Auth, additionalValuePrefixByID[ap.Id], fmt.Sprintf("additionalProviders[%s].auth", name))
+				pol, err := t.proxyUpstreamAuthPolicy(ap.Auth, fmt.Sprintf("additionalProviders[%s].auth", name))
 				if err != nil {
 					return nil, err
 				}
@@ -842,94 +835,16 @@ func GetUpstreamAuthApikeyPolicyParams(header, value string) (map[string]interfa
 	}, nil
 }
 
-// applyValuePrefixToSetHeadersParams returns a copy of set-headers policy params
-// (the shape GetUpstreamAuthApikeyPolicyParams produces) with prefix prepended
-// to any header value that doesn't already carry it. Unrecognized shapes are
-// left untouched.
-func applyValuePrefixToSetHeadersParams(params map[string]interface{}, prefix string) map[string]interface{} {
-	result := make(map[string]interface{}, len(params))
-	for k, v := range params {
-		result[k] = v
-	}
-	request, ok := result["request"].(map[string]interface{})
-	if !ok {
-		return result
-	}
-	headers, ok := request["headers"].([]interface{})
-	if !ok {
-		return result
-	}
-
-	newHeaders := make([]interface{}, len(headers))
-	for i, h := range headers {
-		headerMap, ok := h.(map[string]interface{})
-		if !ok {
-			newHeaders[i] = h
-			continue
-		}
-		value, ok := headerMap["value"].(string)
-		// Include the separator so a raw value that merely starts with the
-		// prefix text isn't mistaken for already-prefixed.
-		prefixWithSeparator := prefix + " "
-		if !ok || strings.HasPrefix(value, prefixWithSeparator) {
-			newHeaders[i] = h
-			continue
-		}
-		newHeaderMap := make(map[string]interface{}, len(headerMap))
-		for k, v := range headerMap {
-			newHeaderMap[k] = v
-		}
-		newHeaderMap["value"] = prefixWithSeparator + value
-		newHeaders[i] = newHeaderMap
-	}
-
-	newRequest := make(map[string]interface{}, len(request))
-	for k, v := range request {
-		newRequest[k] = v
-	}
-	newRequest["headers"] = newHeaders
-	result["request"] = newRequest
-	return result
-}
-
-// apiKeyAuthValuePrefix returns the valuePrefix configured on a provider's downstream
-// api-key-auth global policy (empty when absent). A proxy loops back into the provider's
-// own context, so the credential it injects on that hop must carry the same prefix the
-// provider's api-key-auth expects, otherwise the loopback request is rejected with 401.
-func apiKeyAuthValuePrefix(globalPolicies *[]api.Policy) string {
-	if globalPolicies == nil {
-		return ""
-	}
-	for _, p := range *globalPolicies {
-		if p.Name != constants.API_KEY_AUTH_POLICY_NAME || p.Params == nil {
-			continue
-		}
-		if v, ok := (*p.Params)["valuePrefix"].(string); ok {
-			return strings.TrimSpace(v)
-		}
-	}
-	return ""
-}
-
 // proxyUpstreamAuthPolicy builds the api.Policy for an LlmProxy
-// provider/additionalProviders auth config. valuePrefix is the provider's own
-// api-key-auth value prefix, applied the same way to the loopback credential.
-func (t *LLMProviderTransformer) proxyUpstreamAuthPolicy(auth *api.LLMUpstreamAuth, valuePrefix, field string) (*api.Policy, error) {
+// provider/additionalProviders auth config.
+func (t *LLMProviderTransformer) proxyUpstreamAuthPolicy(auth *api.LLMUpstreamAuth, field string) (*api.Policy, error) {
 	if auth == nil {
 		return nil, nil
 	}
 	switch auth.Type {
 	case api.LLMUpstreamAuthTypeApiKey:
-		// Direct policyParams bypasses the header/value builder below, so
-		// apply valuePrefix here too - both paths must match the provider's
-		// api-key-auth stripping.
-		policyParams := auth.PolicyParams
-		if policyParams != nil && valuePrefix != "" {
-			prefixed := applyValuePrefixToSetHeadersParams(*policyParams, valuePrefix)
-			policyParams = &prefixed
-		}
 		return buildUpstreamAuthPolicy(string(auth.Type), field,
-			auth.PolicyName, auth.PolicyVersion, policyParams,
+			auth.PolicyName, auth.PolicyVersion, auth.PolicyParams,
 			constants.UPSTREAM_AUTH_APIKEY_POLICY_NAME,
 			func() (map[string]interface{}, error) {
 				if auth.Header == nil || *auth.Header == "" {
@@ -938,13 +853,7 @@ func (t *LLMProviderTransformer) proxyUpstreamAuthPolicy(auth *api.LLMUpstreamAu
 				if auth.Value == nil || *auth.Value == "" {
 					return nil, fmt.Errorf("%s.value is required", field)
 				}
-				// Loopback re-enters the provider's own api-key-auth, so match
-				// its valuePrefix stripping.
-				value := *auth.Value
-				if valuePrefix != "" {
-					value = valuePrefix + " " + value
-				}
-				return GetUpstreamAuthApikeyPolicyParams(*auth.Header, value)
+				return GetUpstreamAuthApikeyPolicyParams(*auth.Header, *auth.Value)
 			},
 			t.resolvePolicyVersionOverride,
 		)

@@ -131,6 +131,20 @@ func envOr(key, fallback string) string {
 	return fallback
 }
 
+// envOrDuration parses a positive duration from key, falling back to
+// fallback if unset, empty, unparseable, or non-positive.
+func envOrDuration(key string, fallback time.Duration) time.Duration {
+	v := os.Getenv(key)
+	if v == "" {
+		return fallback
+	}
+	d, err := time.ParseDuration(v)
+	if err != nil || d <= 0 {
+		return fallback
+	}
+	return d
+}
+
 // maskSecret keeps only enough of a credential/header to correlate log lines
 // without leaking the value itself (see GO-AUTH-003).
 func maskSecret(s string) string {
@@ -173,9 +187,9 @@ func main() {
 	srv := &http.Server{
 		Addr:           addr,
 		Handler:        loggingMiddleware(mux),
-		ReadTimeout:    10 * time.Second,
-		WriteTimeout:   10 * time.Second,
-		IdleTimeout:    60 * time.Second,
+		ReadTimeout:    envOrDuration("READ_TIMEOUT", 10*time.Second),
+		WriteTimeout:   envOrDuration("WRITE_TIMEOUT", 10*time.Second),
+		IdleTimeout:    envOrDuration("IDLE_TIMEOUT", 60*time.Second),
 		MaxHeaderBytes: 1 << 20,
 	}
 
