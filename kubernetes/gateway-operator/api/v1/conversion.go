@@ -23,9 +23,10 @@ package v1
 // conversion webhook.
 
 func (*RestApi) Hub()             {}
+func (*Agent) Hub()               {}
 func (*APIGateway) Hub()          {}
-func (*ApiKey) Hub()             {}
-func (*APIPolicy) Hub()          {}
+func (*ApiKey) Hub()              {}
+func (*APIPolicy) Hub()           {}
 func (*Certificate) Hub()         {}
 func (*LlmProvider) Hub()         {}
 func (*LlmProviderTemplate) Hub() {}
