@@ -129,6 +129,11 @@ func (s *Server) Stop(ctx context.Context) error {
 
 // GetConfigDump implements adminapi.ServerInterface.
 func (s *Server) GetConfigDump(w http.ResponseWriter, r *http.Request) {
+	if !s.cfg.ConfigDump.Enabled {
+		http.NotFound(w, r)
+		return
+	}
+
 	resp, err := s.apiServer.BuildConfigDumpResponse(s.logger)
 	if err != nil {
 		http.Error(w, "Failed to retrieve configuration dump", http.StatusInternalServerError)

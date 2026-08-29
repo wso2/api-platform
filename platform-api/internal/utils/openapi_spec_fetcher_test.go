@@ -80,25 +80,43 @@ func TestFetchOpenAPISpecFromURL_RejectsBadURLs(t *testing.T) {
 	}
 }
 
-func TestFetchOpenAPISpecFromURL_BlocksInternalAddress(t *testing.T) {
-	// The SSRF guard is active (ipIsAllowed not overridden), so a loopback URL must be
-	// refused before any connection is made.
+// TestFetchOpenAPISpecFromURL_ReachesPrivateAddress asserts the CURRENT, intended behavior:
+// the shared HTTP client's default SSRF policy is netguard.PermitPrivateBlockMetadata(), not
+// the stricter netguard.PublicOnly() this fetch used before the shared-client consolidation
+// (see the platform-api HTTP client consolidation task). A private/loopback backend — an
+// httptest server counts as one — must now be REACHABLE, matching how an operator-configured
+// LLM provider template's OpenAPI spec URL can legitimately point at an in-cluster service.
+// Link-local/metadata addresses are still refused; see TestFetchOpenAPISpecFromURL_BlocksLinkLocalAddress.
+func TestFetchOpenAPISpecFromURL_ReachesPrivateAddress(t *testing.T) {
+	const body = "openapi: 3.0.0"
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		_, _ = w.Write([]byte("openapi: 3.0.0"))
+		_, _ = w.Write([]byte(body))
 	}))
 	defer srv.Close()
 
-	if _, err := FetchOpenAPISpecFromURL(context.Background(), srv.URL, 0); err == nil {
-		t.Fatal("expected loopback address to be blocked, got nil error")
+	got, err := FetchOpenAPISpecFromURL(context.Background(), srv.URL, 0)
+	if err != nil {
+		t.Fatalf("expected a private/loopback address to be reachable, got error: %v", err)
+	}
+	if got != body {
+		t.Fatalf("body mismatch:\n got: %q\nwant: %q", got, body)
+	}
+}
+
+// TestFetchOpenAPISpecFromURL_BlocksLinkLocalAddress confirms link-local/metadata addresses
+// (169.254.169.254, the cloud instance metadata endpoint) stay refused even though
+// netguard.PermitPrivateBlockMetadata() otherwise permits private/loopback addresses. The
+// target is an IP literal, so no real network access is required for this to fail closed.
+func TestFetchOpenAPISpecFromURL_BlocksLinkLocalAddress(t *testing.T) {
+	if _, err := FetchOpenAPISpecFromURL(context.Background(), "http://169.254.169.254/latest/meta-data/", 0); err == nil {
+		t.Fatal("expected a link-local/metadata address to be blocked, got nil error")
 	}
 }
 
 func TestFetchOpenAPISpecFromURL_FetchAndSizeLimit(t *testing.T) {
-	// Relax the address check so the loopback test server is reachable, then restore it.
-	orig := ipIsAllowed
-	ipIsAllowed = func(net.IP) bool { return true }
-	defer func() { ipIsAllowed = orig }()
-
+	// No policy override needed: the shared test client (see TestMain) already permits
+	// loopback/private addresses under netguard.PermitPrivateBlockMetadata(), exactly what's
+	// needed to exercise the fetch/size-limit logic against an httptest server.
 	const body = "openapi: 3.0.3\ninfo:\n  title: Test\n  version: v1.0\npaths: {}\n"
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		_, _ = w.Write([]byte(body))

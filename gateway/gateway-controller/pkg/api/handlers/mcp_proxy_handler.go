@@ -33,7 +33,7 @@ import (
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/utils"
 	policy "github.com/wso2/api-platform/sdk/core/policy/v1alpha2"
 	policyenginev1 "github.com/wso2/api-platform/sdk/core/policyengine"
-	"github.com/wso2/go-httpkit/httputil"
+	"github.com/wso2/api-platform/httpkit/httputil"
 )
 
 // convertAPIPolicy converts generated api.Policy to policyenginev1.PolicyInstance.

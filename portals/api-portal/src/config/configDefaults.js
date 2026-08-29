@@ -45,12 +45,55 @@ const DEFAULTS = {
             enabled: false,
             certFile: './resources/security/client-truststore.pem',
             keyFile: './resources/security/private-key.pem',
+            // Same field names/shape as platform-api's and ai-workspace's
+            // HTTPSListener (Go) for cross-component consistency, even though
+            // this listener is served by Node's own tls stack. minimumProtocolVersion
+            // / maximumProtocolVersion use the "TLS1_2".."TLS1_3" vocabulary; ciphers
+            // and ecdhCurves are comma-separated (converted to Node's colon-delimited
+            // `ciphers`/`ecdhCurve` options in tlsOptions.js) rather than Node-native
+            // colon-delimited strings directly in config.
+            minimumProtocolVersion: 'TLS1_2',
+            maximumProtocolVersion: 'TLS1_3',
+            // Empty means Node's own default cipher set/order applies. Only affects
+            // TLS 1.2 and below — TLS 1.3 suite selection is not configurable.
+            ciphers: '',
+            // Classical curves only by default. Prepend the hybrid post-quantum
+            // group "X25519MLKEM768" (FIPS 203 ML-KEM-768 + X25519, Node 22+/
+            // OpenSSL 3.2+) as an explicit opt-in once clients reaching this
+            // listener are confirmed to support it, e.g.
+            // "X25519MLKEM768,X25519,P-256" — a client that doesn't offer the
+            // hybrid group falls back to a later classical entry in this same
+            // list, so opting in never breaks a legacy peer. See
+            // js-post-quantum-cryptography.md.
+            ecdhCurves: 'X25519,P-256',
         },
     },
     logging: {
         level: 'info',   // debug | info | warn | error
         format: 'text',  // text | json
         consoleOnly: true,
+    },
+    // Outbound HTTP(S) client settings for this portal's own server-side calls to
+    // other services: Platform API login, IDP/key-manager token endpoints, and
+    // webhook delivery. See src/config/httpClientOptions.js. The "Try It" proxy
+    // (tryout.* above/below) keeps its own SSRF-guarded client but layers this
+    // same tls block on top — see tryoutProxyService.js.
+    httpClient: {
+        // Reuse TCP+TLS handshakes across requests to the same host instead of
+        // paying a fresh one per call.
+        keepAlive: true,
+        maxSockets: 50,
+        maxFreeSockets: 10,
+        timeoutMs: 10000,
+        tls: {
+            // Same field names/shape/vocabulary as server.https above — see that
+            // block's comments. Enforced by Node's tls stack on the OUTBOUND side
+            // here rather than the inbound listener.
+            minimumProtocolVersion: 'TLS1_2',
+            maximumProtocolVersion: 'TLS1_3',
+            ciphers: '',
+            ecdhCurves: 'X25519,P-256',
+        },
     },
     // driver selects the dialect adapter in db/driver.js. Aliases are accepted
     // and normalized at startup (see db/rebind.js DRIVER_ALIASES), so any spelling

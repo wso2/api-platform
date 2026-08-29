@@ -19,9 +19,9 @@ package authenticators
 
 import (
 	"context"
-	"crypto/tls"
 	"errors"
 	"fmt"
+	"io"
 	"log/slog"
 	"net/http"
 	"slices"
@@ -40,6 +40,58 @@ var (
 	ErrExpiredToken     = errors.New("token has expired")
 	ErrInvalidSignature = errors.New("invalid token signature")
 )
+
+const (
+	// jwksHTTPTimeout bounds a single JWKS document fetch (connect + TLS + response).
+	// Set explicitly rather than left at jwkset's own implicit 1-minute default, so the
+	// deadline is visible here rather than relying on a library default.
+	jwksHTTPTimeout = 15 * time.Second
+
+	// jwksMaxResponseBytes bounds a JWKS document fetch. jwkset decodes the response body
+	// directly (json.NewDecoder) with no size limit of its own, and the caller-supplied
+	// HTTPClient's own body cap may be disabled (some callers deliberately turn it off so
+	// per-call-site limits apply instead — see platform-api's NewUpstreamFetchClient) — so
+	// this package enforces its own bound regardless of what the caller's client does.
+	// JWKS documents are small (a handful of KB per key), so this is generous headroom.
+	jwksMaxResponseBytes int64 = 1 << 20 // 1 MiB
+)
+
+// maxBytesRoundTripper wraps an http.RoundTripper so the response body a caller reads is
+// capped at maxBytes, regardless of the underlying client's own configuration. Used to bound
+// the JWKS fetch performed internally by jwkset.NewStorageFromHTTP, which has no size-limit
+// option of its own.
+type maxBytesRoundTripper struct {
+	base     http.RoundTripper
+	maxBytes int64
+}
+
+func (t *maxBytesRoundTripper) RoundTrip(req *http.Request) (*http.Response, error) {
+	base := t.base
+	if base == nil {
+		base = http.DefaultTransport
+	}
+	resp, err := base.RoundTrip(req)
+	if err != nil || resp == nil {
+		return resp, err
+	}
+	resp.Body = struct {
+		io.Reader
+		io.Closer
+	}{io.LimitReader(resp.Body, t.maxBytes), resp.Body}
+	return resp, nil
+}
+
+// newBoundedJWKSHTTPClient returns a shallow copy of client with its response body capped at
+// jwksMaxResponseBytes and an explicit per-request timeout, reusing the original client's
+// Transport (and therefore its SSRF dial-time guard and redirect re-validation) unchanged.
+func newBoundedJWKSHTTPClient(client *http.Client) *http.Client {
+	return &http.Client{
+		Transport:     &maxBytesRoundTripper{base: client.Transport, maxBytes: jwksMaxResponseBytes},
+		CheckRedirect: client.CheckRedirect,
+		Jar:           client.Jar,
+		Timeout:       jwksHTTPTimeout,
+	}
+}
 
 // JWTAuthenticator implements JWT authentication
 type JWTAuthenticator struct {
@@ -69,18 +121,21 @@ func newJWTAuthenticatorWithJWKS(config *models.AuthConfig, logger *slog.Logger,
 		if config.JWTConfig.JWKSUrl == "" {
 			return nil, errors.New("JWKS endpoint not configured")
 		}
+		// config.HTTPClient must be the caller's SSRF-guarded shared client (see
+		// ssrf-prevention.md) — jwkset.NewStorageFromHTTP falls back to
+		// http.DefaultClient when Client is nil, which would silently fetch the
+		// JWKS endpoint with no SSRF protection.
+		if config.HTTPClient == nil {
+			return nil, errors.New("HTTP client not configured for JWKS fetching")
+		}
 
 		// Create JWKS storage with custom validation options to skip X5TS256 validation
 		// This is required for some OIDC providers like Asgardeo that may have X5TS256 mismatches
 		ctx := context.Background()
-		jwksHTTPClient := &http.Client{
-			Transport: &http.Transport{
-				TLSClientConfig: &tls.Config{InsecureSkipVerify: config.JWTConfig.InsecureSkipVerifyTLS}, //nolint:gosec
-			},
-		}
 		storageOptions := jwkset.HTTPClientStorageOptions{
-			Client:          jwksHTTPClient,
+			Client:          newBoundedJWKSHTTPClient(config.HTTPClient),
 			Ctx:             ctx,
+			HTTPTimeout:     jwksHTTPTimeout, // explicit, not jwkset's implicit 1-minute default
 			RefreshInterval: 10 * time.Minute,
 			ValidateOptions: jwkset.JWKValidateOptions{
 				SkipAll: true, // Skip JWK metadata validation to handle provider inconsistencies (JWT signature validation still occurs)

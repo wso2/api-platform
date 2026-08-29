@@ -2,7 +2,7 @@
 
 ## Context & Scope
 
-Apply whenever writing, refactoring, or reviewing Go (`.go`) code that parses XML from a user- or tenant-supplied source — a WSDL/SOAP API import, an XML spec upload, a payload-transformation/schema-validation step in the gateway/policy-engine, or any `encoding/xml`/third-party `Decoder`/`Unmarshal` call fed by request bodies, uploaded files, or fetched URLs. There is no XML parsing in this codebase today, but WSDL/SOAP import is a standard feature for an API management product, so this rule is written proactively — the same way `post-quantum-cryptography.md` gets ahead of a primitive before it's used — to get the pattern right from the first line of XML-handling code. XXE is one of the most frequently recurring vulnerability classes in API management products, and can chain into SSRF when a document-supplied schema location is fetched over the network.
+Apply whenever writing, refactoring, or reviewing Go (`.go`) code that parses XML from a user-supplied source — a WSDL/SOAP API import, an XML spec upload, a payload-transformation/schema-validation step in the gateway/policy-engine, or any `encoding/xml`/third-party `Decoder`/`Unmarshal` call fed by request bodies, uploaded files, or fetched URLs. There is no XML parsing in this codebase today, but WSDL/SOAP import is a standard feature for an API management product, so this rule is written proactively — the same way `post-quantum-cryptography.md` gets ahead of a primitive before it's used — to get the pattern right from the first line of XML-handling code. XXE is one of the most frequently recurring vulnerability classes in API management products, and can chain into SSRF when a document-supplied schema location is fetched over the network.
 
 ## Directives
 

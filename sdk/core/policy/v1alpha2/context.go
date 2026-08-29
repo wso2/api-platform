@@ -113,6 +113,40 @@ type SharedContext struct {
 	// with resolved parameters (e.g., "/petstore/v1.0.0/pets/123")
 	OperationPath string
 
+	// ResolvedOperation is the canonical protocol operation this request resolved
+	// to, on an API kind whose operation cannot be read off the route.
+	//
+	// OperationPath is not a substitute. A multiplexed transport puts every
+	// operation on one path — an A2A JSON-RPC endpoint serves all eleven
+	// operations at the same URL — so OperationPath is identical for all of them
+	// and the operation is only knowable after the request has been inspected.
+	//
+	// Written by the policy engine once the request's policy chain has been
+	// bound, before any policy in that chain runs, and derived from the same
+	// chain key that selected the chain. It therefore cannot name one operation
+	// while another operation's policies (its authentication, its rate limits)
+	// actually ran.
+	//
+	// Empty for a route whose chain is fixed by the route itself, which is every
+	// API kind that shipped before Agent — so a policy must treat "" as "not
+	// applicable", never as a failure.
+	ResolvedOperation string
+
+	// ResolutionAttributes are the protocol-derived facts about this request that
+	// the route's resolver captured in the same pass that identified the
+	// operation — an A2A message's contextId and taskId, for instance.
+	//
+	// They exist so the request payload is parsed once, and they are the only way
+	// a body-sourced value can reach a *request-header-phase* policy, since
+	// RequestHeaderContext carries no body of its own. Read via Get, Lookup, Len
+	// and Iterate; see ResolutionAttributes for what may be in here, how far it
+	// can be trusted, and why it is not a plain map.
+	//
+	// The zero value is the empty set, which is what a route resolved by the route
+	// itself carries — so, as with ResolvedOperation above, a policy reads "no
+	// attributes" as "not applicable" rather than as a failure to resolve.
+	ResolutionAttributes ResolutionAttributes
+
 	// AuthContext stores structured authentication information populated by auth policies.
 	// Nil until an auth policy runs. Use Previous for multi-layer auth chains.
 	AuthContext *AuthContext

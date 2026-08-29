@@ -25,8 +25,34 @@ BUILD_DATE := $(shell date -u +"%Y-%m-%dT%H:%M:%SZ")
 
 # Docker image configuration
 DOCKER_REGISTRY ?= ghcr.io/wso2/api-platform
-IMAGE_NAME := $(DOCKER_REGISTRY)/platform-api
+IMAGE_SUFFIX ?= platform-api
+IMAGE_NAME := $(DOCKER_REGISTRY)/$(IMAGE_SUFFIX)
+# Cloud image — built with EXPERIMENTAL=true so the event-gateway plugin
+# (WebSub/WebBroker API management) is compiled in. Published under a distinct
+# image name so it never collides with the OSS platform-api image.
+CLOUD_IMAGE_SUFFIX ?= platform-api-cloud
+CLOUD_IMAGE_NAME := $(DOCKER_REGISTRY)/$(CLOUD_IMAGE_SUFFIX)
 PORT ?= 9243
+
+# Cloud image tag: defaults to "<branch>-<commit>" computed IDENTICALLY to the
+# platform-api-cloud-release workflow's IMAGE_VERSION step — sanitize the branch
+# ([^a-zA-Z0-9._-] -> '-'), prefix '_' if it doesn't start with [a-zA-Z0-9_],
+# cap the branch at 87 chars, then append the FULL commit SHA. Prefer GitHub
+# Actions' GITHUB_REF_NAME/GITHUB_SHA when set (git rev-parse --abbrev-ref HEAD
+# returns "HEAD" after actions/checkout's detached checkout, which would yield a
+# "HEAD-<commit>" tag); fall back to git for local builds. An explicitly supplied
+# VERSION (CI passes PLATFORM_API_VERSION, or `make cloud-build VERSION=x`) takes
+# precedence over all of this.
+CLOUD_IMAGE_TAG := $(shell \
+	b="$${GITHUB_REF_NAME:-$$(git rev-parse --abbrev-ref HEAD 2>/dev/null || echo unknown)}"; \
+	b=$$(printf '%s' "$$b" | sed -e 's/[^a-zA-Z0-9._-]/-/g' -e 's/^[^a-zA-Z0-9_]/_&/' | cut -c1-87); \
+	printf '%s-%s' "$$b" "$${GITHUB_SHA:-$$(git rev-parse HEAD 2>/dev/null || echo unknown)}")
+ifeq ($(origin VERSION),command line)
+CLOUD_IMAGE_TAG := $(VERSION)
+endif
+ifeq ($(origin VERSION),environment)
+CLOUD_IMAGE_TAG := $(VERSION)
+endif
 
 # Integration test configuration
 IT_PROJECT ?= platform-api-it
@@ -39,7 +65,7 @@ REPO_ROOT := $(shell git rev-parse --show-toplevel)
 APIDOCS_TOOLS_DIR := $(REPO_ROOT)/tools/apidocs
 DOCS_OUT_DIR := $(REPO_ROOT)/docs/rest-apis/platform-api
 
-.PHONY: help build test push build-and-push-multiarch it it-sqlite it-postgres it-sqlserver it-all-dbs generate generate-apidocs setup-local-dev run-local
+.PHONY: help build cloud-build test push build-and-push-multiarch cloud-build-and-push-multiarch it it-sqlite it-postgres it-sqlserver it-all-dbs generate generate-apidocs setup-local-dev run-local
 
 help: ## Show this help message
 	@echo 'Platform API Build System (Version: $(VERSION))'
@@ -111,6 +137,20 @@ build: ## Build Docker image
 		--load \
 		.
 
+cloud-build: VERSION := $(CLOUD_IMAGE_TAG)
+cloud-build: ## Build cloud Docker image with the event-gateway plugin (EXPERIMENTAL=true), tagged <branch>-<commit> (override with VERSION=x)
+	@echo "Building cloud Docker image ($(CLOUD_IMAGE_NAME):$(VERSION)) with event-gateway plugin..."
+	docker buildx build -f Dockerfile \
+		--build-context common=../common \
+		--build-context httpkit=../httpkit \
+		--build-arg VERSION=$(VERSION) \
+		--build-arg PORT=$(PORT) \
+		--build-arg EXPERIMENTAL=true \
+		-t $(CLOUD_IMAGE_NAME):$(VERSION) \
+		-t $(CLOUD_IMAGE_NAME):latest \
+		--load \
+		.
+
 generate: ## Generate API server code from OpenAPI spec
 	@echo "Adding bindings to OpenAPI spec..."
 	@command -v yq >/dev/null 2>&1 || { echo "Error: yq is not installed. Install it via 'brew install yq' or 'go install github.com/mikefarah/yq/v4@latest'"; exit 1; }
@@ -146,6 +186,21 @@ build-and-push-multiarch: ## Build and push multi-architecture Docker image (lin
 		--build-arg GIT_COMMIT=$(GIT_COMMIT) \
 		--build-arg PORT=$(PORT) \
 		-t $(IMAGE_NAME):$(VERSION) \
+		--push \
+		.
+
+cloud-build-and-push-multiarch: VERSION := $(CLOUD_IMAGE_TAG)
+cloud-build-and-push-multiarch: ## Build and push multi-arch cloud image with the event-gateway plugin (linux/amd64, linux/arm64), tagged <branch>-<commit> (override with VERSION=x)
+	@echo "Building and pushing multi-arch cloud image: $(CLOUD_IMAGE_NAME):$(VERSION) with event-gateway plugin"
+	docker buildx build -f Dockerfile \
+		--platform linux/amd64,linux/arm64 \
+		--build-context common=../common \
+		--build-context httpkit=../httpkit \
+		--build-arg VERSION=$(VERSION) \
+		--build-arg GIT_COMMIT=$(GIT_COMMIT) \
+		--build-arg PORT=$(PORT) \
+		--build-arg EXPERIMENTAL=true \
+		-t $(CLOUD_IMAGE_NAME):$(VERSION) \
 		--push \
 		.
 

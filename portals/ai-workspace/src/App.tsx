@@ -85,6 +85,12 @@ import { ChoreoUserProvider } from './contexts/ChoreoUserContext';
 import { useAppAuth } from './contexts/AppAuthContext';
 import { Box, Button, Stack, Typography } from '@wso2/oxygen-ui';
 import OoopsImage from './assets/images/Ooops.svg';
+import {
+  AI_WORKSPACE_SIDEBAR_SLOT,
+  ExtensionsProvider,
+  type AIWorkspaceExtension,
+} from './extensions';
+import { usePort } from './hostPort';
 
 /**
  * Only allow same-origin relative paths as return URLs to prevent open redirects.
@@ -275,7 +281,28 @@ function WithPageBoundary({ children }: { children: React.ReactNode }) {
   return <RoutePageBoundary>{children}</RoutePageBoundary>;
 }
 
-export default function App() {
+// Resolves the real Port (built once in AppLayout from live hooks — see
+// appShellMain.tsx) and calls the extension's render(port), so the route
+// element itself never has to know where the Port comes from.
+function ExtensionRoute({ extension }: { extension: AIWorkspaceExtension }) {
+  const port = usePort();
+  return <>{extension.render(port)}</>;
+}
+
+export type AppProps = {
+  extensions?: readonly AIWorkspaceExtension[];
+};
+
+function WorkspaceRoutes({ extensions = [] }: AppProps) {
+  const sidebarExtensions = extensions.filter(
+    (extension) => extension.slot === AI_WORKSPACE_SIDEBAR_SLOT
+  );
+  const extensionRoutes = sidebarExtensions.map((extension) => (
+    <Route key={extension.id} path={extension.path} element={
+      <WithPageBoundary><ExtensionRoute extension={extension} /></WithPageBoundary>
+    } />
+  ));
+
   return (
     <ChoreoUserProvider>
       <Routes>
@@ -592,6 +619,7 @@ export default function App() {
                 />
               </Route>
             </Route>
+            {extensionRoutes}
             <Route path="projects/:projectSlug" element={<ProjectShell />}>
               <Route index element={<Navigate to="home" replace />} />
               <Route
@@ -803,6 +831,7 @@ export default function App() {
                   />
                 </Route>
               </Route>
+              {extensionRoutes}
             </Route>
           </Route>
         </Route>
@@ -810,5 +839,13 @@ export default function App() {
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
     </ChoreoUserProvider>
+  );
+}
+
+export default function App({ extensions = [] }: AppProps) {
+  return (
+    <ExtensionsProvider extensions={extensions}>
+      <WorkspaceRoutes extensions={extensions} />
+    </ExtensionsProvider>
   );
 }

@@ -6,7 +6,7 @@ import (
 	"net/http/httptest"
 	"testing"
 
-	"github.com/wso2/go-httpkit/middleware"
+	"github.com/wso2/api-platform/httpkit/middleware"
 )
 
 func okHandler(w http.ResponseWriter, _ *http.Request) { w.WriteHeader(http.StatusOK) }

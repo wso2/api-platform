@@ -19,6 +19,7 @@ package server
 
 import (
 	"context"
+	"crypto/rsa"
 	"crypto/tls"
 	"errors"
 	"fmt"
@@ -51,8 +52,8 @@ import (
 	"github.com/wso2/api-platform/common/authenticators"
 	"github.com/wso2/api-platform/common/eventhub"
 	commonmodels "github.com/wso2/api-platform/common/models"
-	"github.com/wso2/go-httpkit/httputil"
-	gohttpkit "github.com/wso2/go-httpkit/middleware"
+	"github.com/wso2/api-platform/httpkit/httputil"
+	gohttpkit "github.com/wso2/api-platform/httpkit/middleware"
 )
 
 type Server struct {
@@ -441,6 +442,7 @@ func StartPlatformAPIServer(cfg *config.Server, slogger *slog.Logger,
 	// signature drifts from the pdk interface, this stops building.
 	pdkDeps := &pdk.Deps{
 		Gateways: gatewayService,
+		Projects: projectService,
 		Config:   cfg,
 		Logger:   slogger,
 	}
@@ -678,17 +680,23 @@ func buildClaimMappings(cm config.ClaimMappings, roleScopeMap map[string][]strin
 // its own local-JWT middleware).
 func buildAuthenticator(cfg *config.Server, slogger *slog.Logger, roleScopeMap map[string][]string) (middleware.Authenticator, error) {
 	if cfg.Auth.Mode != config.AuthModeIDP {
-		slogger.Info("Auth mode: jwt (asymmetric RS256 signature validation enabled)")
-		publicKey, err := cfg.Auth.JWT.LoadPublicKey()
-		if err != nil {
-			return nil, fmt.Errorf("failed to load auth.jwt.public_key_file: %w", err)
+		var publicKey *rsa.PublicKey
+		if cfg.Auth.InternalToken.SkipValidation {
+			slogger.Warn("Auth mode: internal_token (JWT validation DISABLED — not suitable for production)")
+		} else {
+			slogger.Info("Auth mode: internal_token (asymmetric RS256 signature validation enabled)")
+			var err error
+			publicKey, err = cfg.Auth.JWT.LoadPublicKey()
+			if err != nil {
+				return nil, fmt.Errorf("failed to load auth.jwt.public_key_file: %w", err)
+			}
 		}
 		return middleware.NewJWTAuthenticator(
 			middleware.LocalJWTAuthMiddleware(middleware.AuthConfig{
 				PublicKey:      publicKey,
 				TokenIssuer:    cfg.Auth.JWT.Issuer,
 				SkipPaths:      cfg.Auth.SkipPaths,
-				SkipValidation: false,
+				SkipValidation: cfg.Auth.InternalToken.SkipValidation,
 				ClaimMappings:  buildClaimMappings(cfg.Auth.ClaimMappings, roleScopeMap),
 			}),
 		), nil
@@ -709,9 +717,18 @@ func buildAuthenticator(cfg *config.Server, slogger *slog.Logger, roleScopeMap m
 	if len(cfg.Auth.IDP.Audience) > 0 {
 		idpCfg.Audience = &cfg.Auth.IDP.Audience
 	}
+	// JWKS fetching is an outbound request to a tenant-configured URL (auth.idp.jwks_url),
+	// so it must go through the same SSRF-guarded shared client as every other
+	// tenant/operator-configured upstream call this process makes, rather than falling
+	// back to net/http's unguarded default client.
+	sharedClient, err := utils.NewUpstreamFetchClient(0)
+	if err != nil {
+		return nil, fmt.Errorf("failed to obtain shared HTTP client for JWKS fetching: %w", err)
+	}
 	authCfg := commonmodels.AuthConfig{
-		JWTConfig: &idpCfg,
-		SkipPaths: cfg.Auth.SkipPaths,
+		JWTConfig:  &idpCfg,
+		SkipPaths:  cfg.Auth.SkipPaths,
+		HTTPClient: sharedClient,
 	}
 	authMiddleware, err := authenticators.AuthMiddleware(authCfg, slogger)
 	if err != nil {

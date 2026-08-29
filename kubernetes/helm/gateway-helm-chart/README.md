@@ -165,6 +165,7 @@ All configurable values are documented in `values.yaml`. Component blocks are fu
 - `gateway.<component>.deployment.*` – pod-level knobs (replicas, probes incl. optional `startupProbe`, scheduling via `nodeSelector`/`tolerations`/`affinity`/`topologySpreadConstraints`, update `strategy`, `terminationGracePeriodSeconds`, `hostAliases`, `dnsPolicy`/`dnsConfig`, `automountServiceAccountToken`, env overrides, extra volumes) and enable/disable switches.
 - `gateway.<component>.service.*` – service type/ports plus optional annotations and labels, and network tuning (`clusterIP`, `externalTrafficPolicy`, `loadBalancerClass`, `loadBalancerSourceRanges`, `ipFamilyPolicy`/`ipFamilies`, static `nodePorts.*`).
 - `gateway.<component>.service.expose.*` – per-port toggles for publishing admin/debug ports on the Service. **All default to `false`** so admin surfaces stay pod-internal (reach them with `kubectl port-forward`). Available toggles: `controller.service.expose.admin` (controller admin, 9092), `gatewayRuntime.service.expose.routerAdmin` (Router/Envoy admin, 9901 — includes mutating endpoints, leave off unless trusted), `gatewayRuntime.service.expose.policyEngineAdmin` (policy-engine admin, 9002). Probes are unaffected; they target container ports directly. Note: the controller admin port is no longer exposed by default — set `expose.admin=true` to restore prior behavior. The runtime port key was renamed `envoyAdmin` → `routerAdmin`.
+- The sensitive `/config_dump` route on the controller and policy-engine admin servers is **off by default** (returns 404), independent of the `expose.*` Service toggles above — set `gateway.config.controller.admin_server.config_dump.enabled=true` / `gateway.config.policy_engine.admin.config_dump.enabled=true` to turn it on. `/health` and other admin routes are unaffected, so liveness/readiness probes keep working either way. Envoy's admin interface (port 9901) is likewise off by default at the process level — nothing is even listening on it unless `gateway.gatewayRuntime.deployment.env.routerAdminEnabled=true`, and even then it binds loopback-only inside the pod. Enabling it also restores the graceful-drain-on-SIGTERM behavior; `gateway-runtime`'s health probe falls back to a plain TCP check on the HTTP listener when it's off.
 - `gateway.controller.persistence` / `gateway.configMap` – PVC sizing/claims (plus PVC `labels`/`annotations`, e.g. `helm.sh/resource-policy: keep`) and component configuration payloads.
 - `commonLabels` / `commonAnnotations` – applied to every resource the chart renders; per-resource labels/annotations win on key conflicts.
 - `gateway.controller.controlPlane` – control-plane connectivity. The host is non-secret and rendered directly into `config.toml`; the token is injected from a Secret. The controller log level is `gateway.config.controller.logging.level`.
@@ -199,6 +200,53 @@ ConfigMap:
   `config.toml`.
 
 A plain `APIP_GW_*` env var with no matching token in `config.toml` is ignored.
+
+### Raw config passthrough (`gateway.config_toml`)
+
+For configuration the chart doesn't model as structured `gateway.config.*` values, use
+`gateway.config_toml` — a raw TOML string rendered into the generated `config.toml`. It is
+injected at the **top of the file, above every `[table]` section**, so it can carry two shapes:
+
+- **Bare root keys** — e.g. policy "system parameters" that policies read as `${config.<key>}`
+  (the Azure Content Safety, AWS Bedrock Guardrail, embedding-provider, Redis, and similar
+  policies). TOML requires bare keys to precede all `[table]` headers, which is why the block
+  leads the file.
+- **Whole `[table]` sections** — a custom section the chart doesn't render. Tables are
+  order-independent, so these work from the top too.
+
+Do **not** redefine a table the chart already emits (`[controller.server]`, `[router]`, etc.) —
+TOML rejects a duplicate table.
+
+`config.toml` is rendered into a **ConfigMap, not a Secret**, so it must not hold plaintext
+secrets. For any secret value, supply a `{{ env "NAME" }}` or `{{ file "/path" }}` interpolation
+token (resolved by the gateway at startup, same mechanism as the control-plane token and DB
+password above) instead of a literal — each token reads from a different source, so back it with
+the matching mechanism:
+
+- `{{ env "NAME" }}` reads an environment variable — inject it via
+  `gateway.gatewayRuntime.deployment.extraEnv`.
+- `{{ file "/path" }}` reads a mounted file — mount the Secret via
+  `gateway.gatewayRuntime.deployment.extraVolumes` / `extraVolumeMounts` under one of the allowed
+  source dirs (`/etc/gateway-runtime`, `/secrets/gateway-runtime`) and point the token at that
+  mount path.
+
+Example — the Azure Content Safety content-moderation policy (endpoint is non-secret, the
+subscription key is a secret):
+
+```yaml
+gateway:
+  config_toml: |
+    azurecontentsafety_endpoint = "https://your-resource.cognitiveservices.azure.com"
+    azurecontentsafety_key = '{{ env "APIP_GW_AZURE_CONTENT_SAFETY_KEY" }}'
+  gatewayRuntime:
+    deployment:
+      extraEnv:
+        - name: APIP_GW_AZURE_CONTENT_SAFETY_KEY
+          valueFrom:
+            secretKeyRef:
+              name: azure-content-safety   # kubectl create secret generic azure-content-safety --from-literal=subscription-key='<key>'
+              key: subscription-key
+```
 
 ### Storage backends and scaling
 

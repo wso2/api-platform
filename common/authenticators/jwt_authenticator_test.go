@@ -22,6 +22,7 @@ import (
 	"io"
 	"log/slog"
 	"net/http"
+	"net/http/httptest"
 	"testing"
 	"time"
 
@@ -329,4 +330,51 @@ func TestJWTAuthenticator_Authenticate_DisableAuthorization_SkipsAuthz(t *testin
 	assert.True(t, result.Success)
 	assert.True(t, result.SkipAuthorization,
 		"disable_authorization=true must skip authorization (explicit auth-only mode)")
+}
+
+// TestNewJWTAuthenticator_RejectsNilHTTPClient verifies that JWKS initialization fails
+// closed when no HTTP client is configured, rather than silently falling back to
+// jwkset's unguarded http.DefaultClient (see ssrf-prevention.md).
+func TestNewJWTAuthenticator_RejectsNilHTTPClient(t *testing.T) {
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
+
+	config := &models.AuthConfig{
+		JWTConfig: &models.IDPConfig{
+			IssuerURL: "https://issuer.example.com",
+			JWKSUrl:   "https://issuer.example.com/.well-known/jwks.json",
+		},
+		HTTPClient: nil,
+	}
+
+	_, err := newJWTAuthenticatorWithJWKS(config, logger, true)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "HTTP client not configured")
+}
+
+// TestNewBoundedJWKSHTTPClient_CapsResponseSize verifies the JWKS fetch client caps the
+// response body regardless of the underlying client's own configuration — jwkset decodes
+// the body directly with no size limit of its own.
+func TestNewBoundedJWKSHTTPClient_CapsResponseSize(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_, _ = w.Write(make([]byte, jwksMaxResponseBytes+1024))
+	}))
+	defer srv.Close()
+
+	client := newBoundedJWKSHTTPClient(&http.Client{})
+	resp, err := client.Get(srv.URL)
+	require.NoError(t, err)
+	defer resp.Body.Close()
+
+	body, err := io.ReadAll(resp.Body)
+	require.NoError(t, err)
+	assert.LessOrEqual(t, int64(len(body)), jwksMaxResponseBytes,
+		"response body must be capped at jwksMaxResponseBytes even though the oversized server sent more")
+}
+
+// TestNewBoundedJWKSHTTPClient_AppliesTimeout verifies the JWKS fetch client enforces an
+// explicit deadline rather than hanging indefinitely on a slow/unresponsive endpoint.
+func TestNewBoundedJWKSHTTPClient_AppliesTimeout(t *testing.T) {
+	client := newBoundedJWKSHTTPClient(&http.Client{})
+	assert.Equal(t, jwksHTTPTimeout, client.Timeout,
+		"the bounded JWKS client must set an explicit per-request timeout")
 }

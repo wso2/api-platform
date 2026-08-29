@@ -19,6 +19,7 @@
 package xdsclient
 
 import (
+	"github.com/wso2/api-platform/gateway/gateway-runtime/policy-engine/internal/resolver"
 	"sync"
 	"testing"
 	"time"
@@ -32,7 +33,7 @@ func TestClient_Stop_GracefulShutdown(t *testing.T) {
 	k, reg := createTestKernelAndRegistry(t)
 	config := createValidTestConfig()
 
-	client, err := NewClient(config, k, reg)
+	client, err := NewClient(config, k, reg, resolver.DefaultRegistry())
 	require.NoError(t, err)
 
 	// Verify initial state
@@ -70,7 +71,7 @@ func TestClient_Wait_BlocksUntilStopped(t *testing.T) {
 	k, reg := createTestKernelAndRegistry(t)
 	config := createValidTestConfig()
 
-	client, err := NewClient(config, k, reg)
+	client, err := NewClient(config, k, reg, resolver.DefaultRegistry())
 	require.NoError(t, err)
 
 	waitCompleted := make(chan struct{})
@@ -106,7 +107,7 @@ func TestClient_Wait_MultipleGoroutines(t *testing.T) {
 	k, reg := createTestKernelAndRegistry(t)
 	config := createValidTestConfig()
 
-	client, err := NewClient(config, k, reg)
+	client, err := NewClient(config, k, reg, resolver.DefaultRegistry())
 	require.NoError(t, err)
 
 	const numWaiters = 5
@@ -149,7 +150,7 @@ func TestClient_Run_ContextCancellation(t *testing.T) {
 	// Set very short timeout to avoid actual connection attempts
 	config.ConnectTimeout = 1 * time.Millisecond
 
-	client, err := NewClient(config, k, reg)
+	client, err := NewClient(config, k, reg, resolver.DefaultRegistry())
 	require.NoError(t, err)
 
 	runCompleted := make(chan struct{})
@@ -184,7 +185,7 @@ func TestClient_Run_ReconnectLoop(t *testing.T) {
 	config.ConnectTimeout = 100 * time.Millisecond
 	config.InitialReconnectDelay = 50 * time.Millisecond
 
-	client, err := NewClient(config, k, reg)
+	client, err := NewClient(config, k, reg, resolver.DefaultRegistry())
 	require.NoError(t, err)
 
 	runCompleted := make(chan struct{})
@@ -261,7 +262,7 @@ func TestClient_ConnectAndRun_ConnectionFailure(t *testing.T) {
 	config.ServerAddress = "invalid-server:99999"
 	config.ConnectTimeout = 100 * time.Millisecond
 
-	client, err := NewClient(config, k, reg)
+	client, err := NewClient(config, k, reg, resolver.DefaultRegistry())
 	require.NoError(t, err)
 
 	// connectAndRun should return an error
@@ -278,7 +279,7 @@ func TestClient_Start_StartsBackgroundLoop(t *testing.T) {
 	config.ServerAddress = "invalid-server:99999"
 	config.ConnectTimeout = 50 * time.Millisecond
 
-	client, err := NewClient(config, k, reg)
+	client, err := NewClient(config, k, reg, resolver.DefaultRegistry())
 	require.NoError(t, err)
 
 	// Start should not block
@@ -307,7 +308,7 @@ func TestClient_Stop_WithActiveConnection(t *testing.T) {
 	k, reg := createTestKernelAndRegistry(t)
 	config := createValidTestConfig()
 
-	client, err := NewClient(config, k, reg)
+	client, err := NewClient(config, k, reg, resolver.DefaultRegistry())
 	require.NoError(t, err)
 
 	// Simulate having a connection (Note: we're not actually connecting to avoid test infrastructure)
@@ -330,7 +331,7 @@ func TestClient_Run_ImmediateStop(t *testing.T) {
 	config.ServerAddress = "invalid-server:99999"
 	config.ConnectTimeout = 50 * time.Millisecond
 
-	client, err := NewClient(config, k, reg)
+	client, err := NewClient(config, k, reg, resolver.DefaultRegistry())
 	require.NoError(t, err)
 
 	runCompleted := make(chan struct{})
@@ -361,7 +362,7 @@ func TestClient_Lifecycle_CompleteFlow(t *testing.T) {
 	config.ConnectTimeout = 50 * time.Millisecond
 
 	// 1. Create client
-	client, err := NewClient(config, k, reg)
+	client, err := NewClient(config, k, reg, resolver.DefaultRegistry())
 	require.NoError(t, err)
 	assert.Equal(t, StateDisconnected, client.GetState())
 
@@ -400,7 +401,7 @@ func TestClient_SetState_ThreadSafety(t *testing.T) {
 	k, reg := createTestKernelAndRegistry(t)
 	config := createValidTestConfig()
 
-	client, err := NewClient(config, k, reg)
+	client, err := NewClient(config, k, reg, resolver.DefaultRegistry())
 	require.NoError(t, err)
 
 	const numGoroutines = 10
@@ -457,7 +458,7 @@ func TestClient_ConnectAndRun_ContextCancelledDuringDial(t *testing.T) {
 	config.ServerAddress = "invalid-server:99999"
 	config.ConnectTimeout = 5 * time.Second // Long timeout
 
-	client, err := NewClient(config, k, reg)
+	client, err := NewClient(config, k, reg, resolver.DefaultRegistry())
 	require.NoError(t, err)
 
 	// Cancel context before calling connectAndRun
@@ -477,7 +478,7 @@ func TestClient_Run_ReconnectManager_BackoffBehavior(t *testing.T) {
 	config.InitialReconnectDelay = 20 * time.Millisecond
 	config.MaxReconnectDelay = 100 * time.Millisecond
 
-	client, err := NewClient(config, k, reg)
+	client, err := NewClient(config, k, reg, resolver.DefaultRegistry())
 	require.NoError(t, err)
 
 	// Verify ReconnectManager is initialized

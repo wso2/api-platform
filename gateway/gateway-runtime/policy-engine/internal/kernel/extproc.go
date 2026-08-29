@@ -44,6 +44,8 @@ import (
 	"github.com/wso2/api-platform/gateway/gateway-runtime/policy-engine/internal/constants"
 	"github.com/wso2/api-platform/gateway/gateway-runtime/policy-engine/internal/executor"
 	"github.com/wso2/api-platform/gateway/gateway-runtime/policy-engine/internal/metrics"
+	"github.com/wso2/api-platform/gateway/gateway-runtime/policy-engine/internal/registry"
+	"github.com/wso2/api-platform/gateway/gateway-runtime/policy-engine/internal/resolver"
 	"github.com/wso2/api-platform/gateway/gateway-runtime/policy-engine/internal/tracing"
 	policyenginev1 "github.com/wso2/api-platform/sdk/core/policyengine"
 )
@@ -66,7 +68,11 @@ type ExternalProcessorServer struct {
 	maxResponseDecompressedBytes int64
 }
 
-// NewExternalProcessorServer creates a new ExternalProcessorServer
+// NewExternalProcessorServer creates a new ExternalProcessorServer.
+//
+// It takes no resolver registry: resolvers are prepared per route at xDS ingest, so
+// nothing on the request path looks one up by name. A route that could not be prepared
+// never reaches the kernel.
 func NewExternalProcessorServer(kernel *Kernel, chainExecutor *executor.ChainExecutor, tracingConfig config.TracingConfig, tracingServiceName string, maxRequestDecompressedBytes int64, maxResponseDecompressedBytes int64) *ExternalProcessorServer {
 	// Initialize tracer once - will be NoOp if tracing is disabled
 	serviceName := tracingServiceName
@@ -190,7 +196,7 @@ func (s *ExternalProcessorServer) handleProcessingPhase(ctx context.Context, req
 		defer span.End()
 
 		// Initialize execution context for this request
-		rm := s.initializeExecutionContext(ctx, req, execCtx)
+		rm, outcome, denial := s.initializeExecutionContext(ctx, req, execCtx)
 		if parentSpan.IsRecording() {
 			parentSpan.SetAttributes(
 				attribute.String(constants.AttrRouteName, rm.RouteName),
@@ -199,10 +205,42 @@ func (s *ExternalProcessorServer) handleProcessingPhase(ctx context.Context, req
 				attribute.String(constants.AttrAPIContext, rm.Context),
 				attribute.String(constants.AttrOperationPath, rm.OperationPath),
 			)
+			// A deferred route has no chain yet, so only the resolver is known here;
+			// the chain key is stamped from the request-body branch once binding
+			// actually happens (recordResolutionAttributes).
+			if *execCtx != nil {
+				(*execCtx).recordResolutionAttributes(parentSpan)
+			}
 		}
 
 		// Track request metrics
 		metrics.RequestsTotal.WithLabelValues("request_headers", rm.RouteName, rm.APIName, rm.APIVersion).Inc()
+
+		// Resolution ran and failed: answered with the sterile generic response, the
+		// failure kind reaching only the log, the metric and the span. Never a fallback
+		// to the route-level chain — that would silently apply the wrong policies.
+		if outcome == bindFailed {
+			resp, failureOutcome := renderResolutionFailure(ctx, denial.resolverName, rm.RouteName, "",
+				denial.failure)
+			tracing.RecordHTTPOutcome(span, failureOutcome)
+			tracing.RecordHTTPOutcome(parentSpan, failureOutcome)
+			metrics.RequestDurationSeconds.WithLabelValues("request_headers", rm.RouteName).Observe(time.Since(startTime).Seconds())
+			if slog.Default().Enabled(ctx, slog.LevelDebug) {
+				slog.DebugContext(ctx, "ext_proc response", "phase", "request_headers", "resp", prototext.Format(resp))
+			}
+			return resp, nil
+		}
+
+		// The route's resolver needs the request body: retain the request, tell Envoy
+		// to buffer, and run nothing until the body arrives.
+		if outcome == bindPending {
+			resp := pendingResolutionResponse((*execCtx).pending.prepared.Requirements)
+			metrics.RequestDurationSeconds.WithLabelValues("request_headers", rm.RouteName).Observe(time.Since(startTime).Seconds())
+			if slog.Default().Enabled(ctx, slog.LevelDebug) {
+				slog.DebugContext(ctx, "ext_proc response", "phase", "request_headers", "resp", prototext.Format(resp))
+			}
+			return resp, nil
+		}
 
 		// If no execution context (no policy chain found), return 500
 		if *execCtx == nil {
@@ -299,6 +337,16 @@ func (s *ExternalProcessorServer) handleProcessingPhase(ctx context.Context, req
 		}
 
 		resp, err := (*execCtx).processRequestBody(ctx, req.GetRequestBody())
+
+		// A route whose chain is selected at this callback only learns its chain key
+		// here, and it is the attribute that answers "which chain did this operation
+		// get?" — the whole point of the resolver observability. Stamped on both the
+		// phase span and the request's root span, since the header phase could not.
+		if (*execCtx).boundAtBodyPhase {
+			(*execCtx).recordResolutionAttributes(span)
+			(*execCtx).recordResolutionAttributes(parentSpan)
+		}
+
 		metrics.RequestDurationSeconds.WithLabelValues("request_body", routeName).Observe(time.Since(startTime).Seconds())
 		if span.IsRecording() {
 			if err != nil {
@@ -471,49 +519,168 @@ func (s *ExternalProcessorServer) handleProcessingPhase(ctx context.Context, req
 	}
 }
 
-// initializeExecutionContext sets up the execution context for a request by retrieving the policy chain.
-// Route metadata is pre-loaded via xDS RouteConfigs — no request-time parsing needed.
-func (s *ExternalProcessorServer) initializeExecutionContext(ctx context.Context, req *extprocv3.ProcessingRequest, execCtx **PolicyExecutionContext) *RouteMetadata {
+// initializeExecutionContext sets up the execution context for a request by
+// selecting its policy chain. Route metadata is pre-loaded via xDS RouteConfigs —
+// no request-time parsing needed.
+//
+// The returned outcome tells the caller which of four things happened; see
+// routeBindOutcome. The failure value is non-nil only for bindFailed.
+func (s *ExternalProcessorServer) initializeExecutionContext(
+	ctx context.Context,
+	req *extprocv3.ProcessingRequest,
+	execCtx **PolicyExecutionContext,
+) (*RouteMetadata, routeBindOutcome, *resolutionDenial) {
 	// Extract route key from Envoy attributes (just xds.route_name, lightweight)
 	routeKey := s.extractRouteKey(req)
 
 	slog.DebugContext(ctx, "initializeExecutionContext: looking up route",
 		"route_key", routeKey)
 
-	// Try new path: RouteConfigs + PolicyChains
-	if rc := s.kernel.GetRouteConfig(routeKey); rc != nil {
-		// Metadata is pre-populated from xDS — no request-time parsing needed
-		routeMetadata := rc.Metadata
-		routeMetadata.RouteName = routeKey
-
-		// Resolve policy chain key (route-key resolver: policyChainKey = routeKey)
-		policyChainKey := routeKey // For route-key resolver, this is always the same
-
-		chain := s.kernel.GetPolicyChain(policyChainKey)
-		if chain == nil {
-			slog.DebugContext(ctx, "No policy chain found for route (new path)",
-				"route", routeKey,
-				"api_name", routeMetadata.APIName)
-			*execCtx = nil
-			return &routeMetadata
-		}
-
-		*execCtx = newPolicyExecutionContext(s, routeKey, chain)
-		(*execCtx).defaultUpstreamCluster = routeMetadata.DefaultUpstreamCluster
-		(*execCtx).upstreamBasePath = routeMetadata.UpstreamBasePath
-		(*execCtx).apiContext = routeMetadata.Context
-		(*execCtx).upstreamDefinitionPaths = routeMetadata.UpstreamDefinitionPaths
-		(*execCtx).defaultUpstream = routeMetadata.DefaultUpstream
-		(*execCtx).buildRequestContexts(req.GetRequestHeaders(), routeMetadata)
-		return &routeMetadata
+	rc := s.kernel.GetRouteConfig(routeKey)
+	if rc == nil {
+		// No RouteConfig found for this route key — empty metadata, nil exec context
+		slog.DebugContext(ctx, "initializeExecutionContext: RouteConfig not found",
+			"route_key", routeKey)
+		*execCtx = nil
+		return &RouteMetadata{RouteName: routeKey}, bindNoChain, nil
 	}
 
-	// No RouteConfig found for this route key — return empty metadata with nil exec context
-	slog.DebugContext(ctx, "initializeExecutionContext: RouteConfig not found",
-		"route_key", routeKey)
-	routeMetadata := RouteMetadata{RouteName: routeKey}
-	*execCtx = nil
-	return &routeMetadata
+	// Metadata is pre-populated from xDS — no request-time parsing needed
+	routeMetadata := rc.Metadata
+	routeMetadata.RouteName = routeKey
+
+	prepared := rc.Prepared
+	if prepared == nil {
+		// Ingest drops a route it could not prepare, so a RouteConfig without a prepared
+		// resolver reached the kernel by some other path. Deny rather than guessing at a
+		// chain: falling back to the route key would select a route-level chain for every
+		// logical operation a multiplexed route carries.
+		slog.ErrorContext(ctx, "Route has no prepared resolver",
+			"route", routeKey, "resolver", rc.ResolverName)
+		*execCtx = nil
+		return &routeMetadata, bindFailed, &resolutionDenial{
+			resolverName: rc.ResolverName,
+			failure:      &resolver.ResolutionError{Kind: resolver.FailureUnknownResolver},
+		}
+	}
+
+	// A resolution known at ingest — every API kind shipping today, via route-key —
+	// binds from the stored result. No request view is built and Resolve is never
+	// called; the cost is the same field read and string comparison as before
+	// per-route resolvers existed.
+	//
+	// This precedes the body-requirement check below, which is only safe because
+	// PrepareRoute refuses a static resolver that declares it needs anything from the
+	// request: there is no combination where taking this branch skips a requirement the
+	// resolver stated. Do not reorder these two without moving that rule.
+	if prepared.IsStatic() {
+		return s.bindStaticRoute(ctx, routeKey, rc, prepared, req, routeMetadata, execCtx)
+	}
+
+	view := buildRequestView(routeKey, req.GetRequestHeaders())
+
+	// A body-reading resolver normally defers to the request-body callback. It must
+	// not defer when the request headers are end-of-stream: Envoy sends no
+	// request-body callback for a bodyless request, so a pending request would wait
+	// for a callback that cannot occur. Resolve (or deny) here instead — for a
+	// JSON-RPC route an empty body is an invalid request anyway.
+	//
+	// So a BodyBuffered resolver can be called with RequestView.Body nil, which is why
+	// resolver.PreparedResolver.Resolve requires every resolver to tolerate that.
+	if prepared.Requirements.BuffersBody() && !req.GetRequestHeaders().GetEndOfStream() {
+		ec := s.newBoundExecutionContext(routeKey, rc, "", nil, req, routeMetadata)
+		ec.pending = &pendingResolution{route: rc, prepared: prepared, view: view}
+		*execCtx = ec
+		slog.DebugContext(ctx, "[resolution] deferring chain selection to the request-body phase",
+			"route", routeKey, "resolver", prepared.ResolverName)
+		return &routeMetadata, bindPending, nil
+	}
+
+	resolution, err := prepared.Resolver.Resolve(ctx, view)
+	if err != nil {
+		*execCtx = nil
+		return &routeMetadata, bindFailed, newResolutionDenial(prepared,
+			resolver.NormalizeResolutionError(err))
+	}
+
+	bound, chain, err := resolver.Bind(prepared, resolution, s.kernel.GetPolicyChain)
+	if err != nil {
+		*execCtx = nil
+		if errors.Is(err, resolver.ErrDirectRouteChainMissing) {
+			// The route resolves directly and has no chain: the pre-resolution outcome,
+			// whose sterile 500 must stay byte-identical.
+			slog.DebugContext(ctx, "No policy chain found for route",
+				"route", routeKey, "api_name", routeMetadata.APIName)
+			return &routeMetadata, bindNoChain, nil
+		}
+		return &routeMetadata, bindFailed, newResolutionDenial(prepared,
+			resolver.NormalizeResolutionError(err))
+	}
+
+	ec := s.newBoundExecutionContext(routeKey, rc, bound.ChainKey, chain, req, routeMetadata)
+	ec.operation = bound.Operation
+	*execCtx = ec
+	return &routeMetadata, bindReady, nil
+}
+
+// bindStaticRoute binds a route whose resolution was fully determined at ingest.
+//
+// The structural work — checking that a route-key route named its own chain key, or that a
+// protocol resolver's key belongs to this API and vhost — happened once, at preparation,
+// and PrepareRoute refused the route if it failed. So a
+// statically-prepared resolver still cannot reach another route's chain, and the request
+// pays for none of that: one chain lookup and a struct copy, which is what the path cost
+// before per-route resolvers existed.
+func (s *ExternalProcessorServer) bindStaticRoute(
+	ctx context.Context,
+	routeKey string,
+	rc *RouteConfig,
+	prepared *resolver.PreparedRoute,
+	req *extprocv3.ProcessingRequest,
+	routeMetadata RouteMetadata,
+	execCtx **PolicyExecutionContext,
+) (*RouteMetadata, routeBindOutcome, *resolutionDenial) {
+	bound, chain, err := resolver.BindStatic(prepared, s.kernel.GetPolicyChain)
+	if err != nil {
+		*execCtx = nil
+		if errors.Is(err, resolver.ErrDirectRouteChainMissing) {
+			// The route has no policy chain. This is the pre-existing sterile 500 path
+			// and its response must stay byte-identical.
+			slog.DebugContext(ctx, "No policy chain found for route",
+				"route", routeKey, "api_name", routeMetadata.APIName)
+			return &routeMetadata, bindNoChain, nil
+		}
+		return &routeMetadata, bindFailed, newResolutionDenial(prepared,
+			resolver.NormalizeResolutionError(err))
+	}
+
+	ec := s.newBoundExecutionContext(routeKey, rc, bound.ChainKey, chain, req, routeMetadata)
+	ec.operation = bound.Operation
+	*execCtx = ec
+	return &routeMetadata, bindReady, nil
+}
+
+// newBoundExecutionContext allocates the execution context for a request and copies
+// the route's pre-resolved metadata into it. chain may be nil for a route whose
+// chain is selected later, at the request-body callback.
+func (s *ExternalProcessorServer) newBoundExecutionContext(
+	routeKey string,
+	rc *RouteConfig,
+	chainKey string,
+	chain *registry.PolicyChain,
+	req *extprocv3.ProcessingRequest,
+	routeMetadata RouteMetadata,
+) *PolicyExecutionContext {
+	ec := newPolicyExecutionContext(s, routeKey, chain)
+	ec.chainKey = chainKey
+	ec.resolverName = rc.ResolverName
+	ec.defaultUpstreamCluster = routeMetadata.DefaultUpstreamCluster
+	ec.upstreamBasePath = routeMetadata.UpstreamBasePath
+	ec.apiContext = routeMetadata.Context
+	ec.upstreamDefinitionPaths = routeMetadata.UpstreamDefinitionPaths
+	ec.defaultUpstream = routeMetadata.DefaultUpstream
+	ec.buildRequestContexts(req.GetRequestHeaders(), routeMetadata)
+	return ec
 }
 
 // extractRouteKey extracts just the route key (xds.route_name) from the request attributes.

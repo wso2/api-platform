@@ -26,6 +26,7 @@ const { getSubscriber } = require('./subscriberRegistry');
 const { sign } = require('./signer');
 const logger = require('../../config/logger');
 const orgContext = require('../../utils/orgContext');
+const { buildOutboundAgents } = require('../../config/httpClientOptions');
 
 let running = false;
 let intervalHandle = null;
@@ -83,14 +84,20 @@ async function post(delivery, event) {
 
     return new Promise((resolve) => {
         const parsedUrl = new URL(delivery.target_url);
-        const transport = parsedUrl.protocol === 'https:' ? https : http;
+        const isHttps = parsedUrl.protocol === 'https:';
+        const transport = isHttps ? https : http;
+        const agents = buildOutboundAgents(config);
         const options = {
             hostname: parsedUrl.hostname,
-            port: parsedUrl.port || (parsedUrl.protocol === 'https:' ? 443 : 80),
+            port: parsedUrl.port || (isHttps ? 443 : 80),
             path: parsedUrl.pathname + parsedUrl.search,
             method: 'POST',
             headers,
-            timeout: timeoutMs
+            timeout: timeoutMs,
+            // Shared, pooled agent: reuses TCP+TLS handshakes across deliveries to the
+            // same subscriber instead of paying a fresh one per delivery, and carries
+            // the configured cipher/curve/version tuning on the HTTPS side.
+            agent: isHttps ? agents.httpsAgent : agents.httpAgent,
         };
 
         const req = transport.request(options, (res) => {

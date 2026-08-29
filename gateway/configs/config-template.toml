@@ -14,10 +14,20 @@ shutdown_timeout = "15s"
 gateway_id = '{{ env "APIP_GW_CONTROLLER_SERVER_GATEWAY_ID" "platform-gateway-id" }}'
 
 [controller.admin_server]
-# Dedicated admin/debug HTTP server for config dump and xDS sync endpoints
+# Dedicated admin/debug HTTP server for config dump and xDS sync endpoints.
+# Kept enabled by default because it also serves /health, used by Kubernetes
+# liveness/readiness probes; see admin_server.config_dump below to gate the
+# sensitive /config_dump route specifically.
 enabled = true
 port = 9092
 allowed_ips = ["*"]
+
+[controller.admin_server.config_dump]
+# The /config_dump route returns a full snapshot of deployed APIs, policies,
+# and resolved configuration. Off by default — enable only when needed for
+# debugging, and prefer reaching it via `kubectl port-forward` over exposing
+# the admin Service port.
+enabled = false
 
 [controller.admin_server.pprof]
 # Go runtime profiling (net/http/pprof) served on the admin server, off by default.
@@ -242,11 +252,25 @@ key_path = "./listener-certs/default-listener.key"
 minimum_protocol_version = "TLS1_2"
 maximum_protocol_version = "TLS1_3"
 ciphers = "ECDHE-ECDSA-AES128-GCM-SHA256,ECDHE-RSA-AES128-GCM-SHA256,ECDHE-ECDSA-AES128-SHA,ECDHE-RSA-AES128-SHA,AES128-GCM-SHA256,AES128-SHA,ECDHE-ECDSA-AES256-GCM-SHA384,ECDHE-RSA-AES256-GCM-SHA384,ECDHE-ECDSA-AES256-SHA,ECDHE-RSA-AES256-SHA,AES256-GCM-SHA384,AES256-SHA"
+# Comma-separated ECDH curves for the TLS key exchange, most preferred first.
+# Defaults to the hybrid post-quantum group X25519MLKEM768 (FIPS 203 ML-KEM-768
+# + X25519) followed by classical curves X25519 and P-256, so key exchange
+# degrades gracefully to classical for peers that don't yet support the
+# hybrid group. An unsupported curve name is rejected by Envoy when it
+# applies the resulting config, not by this file.
+ecdh_curves = "X25519MLKEM768,X25519,P-256"
 
 [router.upstream.tls]
 minimum_protocol_version = "TLS1_2"
 maximum_protocol_version = "TLS1_3"
 ciphers = "ECDHE-ECDSA-AES128-GCM-SHA256,ECDHE-RSA-AES128-GCM-SHA256,ECDHE-ECDSA-AES128-SHA,ECDHE-RSA-AES128-SHA,AES128-GCM-SHA256,AES128-SHA,ECDHE-ECDSA-AES256-GCM-SHA384,ECDHE-RSA-AES256-GCM-SHA384,ECDHE-ECDSA-AES256-SHA,ECDHE-RSA-AES256-SHA,AES256-GCM-SHA384,AES256-SHA"
+# Comma-separated ECDH curves for the TLS key exchange, most preferred first.
+# Defaults to the hybrid post-quantum group X25519MLKEM768 (FIPS 203 ML-KEM-768
+# + X25519) followed by classical curves X25519 and P-256, so key exchange
+# degrades gracefully to classical for peers that don't yet support the
+# hybrid group. An unsupported curve name is rejected by Envoy when it
+# applies the resulting config, not by this file.
+ecdh_curves = "X25519MLKEM768,X25519,P-256"
 trusted_cert_path = "/etc/ssl/certs/ca-certificates.crt"
 custom_certs_path = "./certificates"
 verify_host_name = true
@@ -312,9 +336,19 @@ max_decompressed_bytes = 10485760
 extproc_port = 9001
 
 [policy_engine.admin]
+# Kept enabled by default because it also serves /health, used by Kubernetes
+# liveness/readiness probes; see admin.config_dump below to gate the
+# sensitive /config_dump route specifically.
 enabled = true
 port = 9002
 allowed_ips = ["*", "127.0.0.1"]
+
+[policy_engine.admin.config_dump]
+# The /config_dump route returns the resolved policy chain and route
+# configuration. Off by default — enable only when needed for debugging, and
+# prefer reaching it via `kubectl port-forward` over exposing the admin
+# Service port.
+enabled = false
 
 [policy_engine.admin.pprof]
 # Go runtime profiling (net/http/pprof) served on the admin server, off by default.
@@ -455,15 +489,46 @@ timer_wakeup_seconds = 3
 # =============================================================================
 # Writes collected events (rich API/application/AI/latency metadata, plus
 # request/response headers and — when the collector's request_body/response_body
-# is enabled — payloads) to stdout as a JSON line. Useful for log-scraping pipelines such as
-# Fluent Bit/Loki/ELK; no external SaaS needed.
+# is enabled — payloads) as one JSON line per request, to the sinks named in
+# `outputs`.
 #
-# No policy required: enabling this section emits one stdout line for every
-# request to every API — including requests an auth policy denied
-# (short-circuited), which is otherwise invisible to any logging done from
-# inside the policy chain. Honors the shared collector.ignore_path_prefixes.
+# No policy required: enabling this section emits one line for every request to
+# every API — including requests an auth policy denied (short-circuited), which
+# is otherwise invisible to any logging done from inside the policy chain.
+# Honors the shared collector.ignore_path_prefixes.
 [traffic_logging]
 enabled = false
+
+# Sinks each line is written to. Any combination of "stdout", "file" and "http";
+# order is irrelevant and duplicates are rejected. An unknown name is a startup
+# error, not a silent no-op. Sinks are additive — ["file", "http"] writes both.
+#
+#   stdout  the historical default, and still the default. Lines go to the
+#           container log, and therefore to the node's /var/log/pods files: any
+#           node-level collector already on the host picks them up with no
+#           further configuration, and anyone with `kubectl logs` can read them.
+#   file    appends to a rotating file (see [traffic_logging.file]). Keeps
+#           payloads out of the container log and out of every node-level
+#           collector, at the cost of a writable volume.
+#   http    batches lines and POSTs them to an endpoint you name (see
+#           [traffic_logging.http]). Nothing is written to disk and no
+#           co-located collector — sidecar or DaemonSet — is required.
+#
+# This choice matters most when the collector's body capture is on: the traffic
+# log is the one output that deliberately carries request/response payloads, so
+# `outputs` decides where that PII comes to rest.
+#
+# Sink construction fails closed. A file that cannot be opened or an endpoint
+# that cannot be built fails startup — no sink silently degrades to stdout,
+# because that would put payloads back in the container log the operator
+# selected `file`/`http` to keep them out of. At runtime a delivery failure
+# drops the line and counts it (policy_engine_traffic_log_dropped_total); it
+# never blocks request processing and never falls back to another sink.
+outputs = ["stdout"]
+
+# Bounds the flush of buffering sinks on SIGTERM. Only the "http" sink buffers;
+# "stdout" and "file" write straight to their fd and have nothing to flush.
+shutdown_timeout = "5s"
 # Header names (case-insensitive) whose values are redacted as "****" in the
 # logged requestHeaders/responseHeaders.
 masked_headers = ["authorization", "x-api-key", "x-jwt-assertion"]
@@ -495,6 +560,187 @@ exclude_fields = []
 # map wholesale (e.g. `claims = "$ctx:auth.property"`, whose keys vary per token)
 # instead of one flattened property per claim — reach into it to drop just one:
 # exclude_fields = ["properties.claims.internal_debug"]
+
+# -----------------------------------------------------------------------------
+# "file" sink — read only when outputs contains "file".
+# -----------------------------------------------------------------------------
+[traffic_logging.file]
+# SINGLE WRITER ONLY. This must be a per-pod volume (emptyDir, or a PVC bound to
+# exactly one replica). A shared RWX volume, hostPath, or NFS mount written by
+# more than one gateway pod is NOT supported and will silently lose records —
+# there is no error, the lines simply go missing:
+#
+#   * Rotation renames the live file to <path>.1. When one pod rotates, every
+#     other pod keeps writing to the descriptor it already holds, so their lines
+#     land in the backup — which the next rotation clobbers.
+#   * The size counter is per process, seeded at open and advanced by each write.
+#     With several writers each one undercounts the real file, so the ceiling
+#     triggers late or never and the file grows past max_size_mb.
+#   * On NFS an O_APPEND write is not atomic, so concurrent lines can interleave
+#     and corrupt each other.
+#
+# Scale-out is fine — give each replica its own volume and let the collector
+# (or the http sink) do the merging.
+#
+# Absolute path of the live log file; a relative path is rejected rather than
+# resolved against the working directory. The parent directory is created (0700)
+# and the file opened (0600) at startup, so a permissions problem surfaces at
+# boot rather than at the first request once payloads are already flowing. Under
+# Kubernetes this must sit on a writable volume — the Helm chart provisions and
+# mounts one automatically when this sink is selected.
+path = ""
+# path = "/var/log/wso2/traffic/traffic.log"
+# Size at which the live file is rotated: it is renamed to <path>.1 (clobbering
+# any previous backup) and reopened, so the worst case on disk is 2 x this value.
+# The size counter is seeded from the existing file at open, so the ceiling still
+# binds after a restart that appends.
+#
+# 0 disables rotation and logs a warning. That is permitted for a dedicated,
+# sized volume where the volume itself is the bound — but note stdout is bounded
+# by the kubelet today, and an unrotated file is bounded by nothing.
+max_size_mb = 100
+
+# -----------------------------------------------------------------------------
+# "http" sink — read only when outputs contains "http".
+#
+# Sends newline-delimited JSON, which Splunk HEC's /raw endpoint, Elasticsearch
+# and OpenSearch _bulk, Loki, Fluent Bit's http input and the OpenTelemetry
+# Collector all accept directly.
+# -----------------------------------------------------------------------------
+[traffic_logging.http]
+# Absolute URL each batch is POSTed to. Required when this sink is selected.
+# Redirects are never followed.
+endpoint = ""
+# endpoint = "https://splunk.example.com:8088/services/collector/raw?sourcetype=wso2:gateway:traffic"
+content_type = "application/x-ndjson"
+# Permits a plaintext http:// endpoint. Off by default and intended only for a
+# collector on the pod network: these lines carry request/response bodies, so
+# plaintext is a real disclosure, not just a hygiene warning.
+allow_insecure_transport = false
+
+# A batch is closed by whichever bound is reached first.
+batch_max_events = 100
+batch_max_bytes = 1048576
+flush_interval = "5s"
+
+# Bounded queue between the ingest path and the sending goroutine. It has to be
+# bounded — an unbounded queue in front of a bounded sender is just deferred
+# unbounded memory growth, and these events carry bodies, so it grows fast.
+# 10000 lines is roughly 100 MiB at a 10 KiB/line worst case: enough to ride out
+# a short receiver blip, not enough for a long outage to exhaust the heap.
+queue_capacity = 10000
+# What to drop once the queue is full: "drop_new" keeps the older window (suits
+# audit), "drop_oldest" keeps recency (suits dashboards). Either way the line is
+# counted by policy_engine_traffic_log_dropped_total{reason="queue_full"}.
+on_queue_full = "drop_new"
+
+# Bounds a single POST attempt.
+request_timeout = "10s"
+# Retry attempts after the initial one, with exponential backoff from
+# retry_backoff plus jitter, so replicas recovering from a shared outage do not
+# synchronize. Only transport errors, 5xx and 429 are retried — a 4xx means the
+# receiver rejected the batch's shape, and retrying would just amplify it.
+max_retries = 3
+retry_backoff = "1s"
+# Fraction of queue_capacity at which a retrying batch abandons its remaining
+# attempts and is counted as dropped_total{reason="backpressure"}. Below it,
+# retrying costs nothing; at or above it, every further second of retry is paid
+# for in newer events lost to queue_full.
+#
+# The value is used exactly as written — it is never remapped to a default:
+#   0     always abandon retries: one delivery attempt per batch, whatever the
+#         queue looks like (the same effect as max_retries = 0)
+#   0.1   abort once the queue is 10% full — favours draining over saving any
+#         individual batch
+#   0.5   the shipped default: retry freely while the queue is shallow, stop
+#         once it starts filling
+#   1     never abort early where a receiver that accepts but never answers holds 
+#         the sender for the full retry budget
+retry_abort_queue_ratio = 0.5
+
+# Authentication material sent with every batch. `type` selects the scheme and
+# each scheme's fields live in its own sub-table, the same shape [analytics] uses
+# for enabled_publishers / [analytics.publishers.<name>]. Only the sub-table
+# matching `type` is read; the others are ignored entirely, so leaving a
+# populated [.basic] behind while switching to bearer cannot send the wrong
+# credential.
+#
+#   type       sub-table                        required        header sent
+#   ---------- -------------------------------- --------------- -----------------------------------------
+#   "none"     —                                —               (none — the default, and what an
+#                                                                omitted type resolves to)
+#   "bearer"   [traffic_logging.http.auth.bearer] token          Authorization: Bearer <token>
+#   "basic"    [traffic_logging.http.auth.basic]  username,      Authorization: Basic <base64(user:pass)>
+#                                                 password
+#   "header"   [traffic_logging.http.auth.header] name, value    <name>: <value>
+#
+# Exactly one header is added to the POST — there is no way to combine two
+# schemes. A receiver needing more than one header should sit behind a collector
+# that adds the rest.
+#
+# A missing required field for the selected type is a startup error, not a
+# silently unauthenticated POST carrying request bodies. The type itself is
+# matched case-insensitively and trimmed.
+#
+# "header" exists for receivers whose scheme is not Bearer: Splunk HEC expects
+# "Authorization: Splunk <token>", which "bearer" cannot express. It also covers
+# receivers authenticating on a non-Authorization header entirely.
+[traffic_logging.http.auth]
+type = "none"
+
+# Never inline a credential in the sub-tables below. {{ env "VAR" }} and
+# {{ file "/path" }} resolve at load time and are never logged; {{ file }} reads
+# are restricted to /etc/gateway-runtime and /secrets/gateway-runtime by default.
+
+# Bearer — e.g. Grafana Loki, Datadog, a generic OTLP/HTTP collector.
+[traffic_logging.http.auth.bearer]
+token = ""
+# token = '{{ env "APIP_GW_TRAFFIC_LOG_HTTP_TOKEN" }}'
+
+# Basic — e.g. Elasticsearch/OpenSearch _bulk with a native user.
+[traffic_logging.http.auth.basic]
+username = ""
+password = ""
+# username = "gateway"
+# password = '{{ file "/secrets/gateway-runtime/traffic-log-password" }}'
+
+# Header — one literal header, sent verbatim. Two common shapes:
+#   Splunk HEC, which rejects "Bearer" and requires its own scheme:
+#     name  = "Authorization"
+#     value = 'Splunk {{ file "/secrets/gateway-runtime/hec-token" }}'
+#   a vendor endpoint authenticating on an API-key header:
+#     name  = "X-API-Key"
+#     value = '{{ file "/secrets/gateway-runtime/traffic-log-api-key" }}'
+[traffic_logging.http.auth.header]
+name = ""
+value = ""
+
+# TLS trust and client-certificate material. This is the transport layer and is
+# independent of [traffic_logging.http.auth] above: the client certificate proves
+# who is connecting, the auth block proves who is making the request. Use either
+# alone, or both together — mTLS does not suppress the auth header, and
+# type = "none" with a client certificate is a perfectly normal mTLS-only setup.
+#
+# Ignored entirely when the endpoint is plaintext http:// (see
+# allow_insecure_transport), since there is no handshake to configure.
+[traffic_logging.http.tls]
+# PEM bundle used to verify the receiver's certificate. Empty means the system
+# trust store — correct for a public SaaS receiver, usually wrong for an internal
+# collector fronted by a private CA.
+ca_file = ""
+# Client certificate and key for mTLS, in PEM form. Both or neither: setting one
+# without the other is a startup error rather than a silently unauthenticated
+# connection. Both files are read and parsed at startup, so a wrong path or a
+# mismatched pair fails immediately instead of at the first delivery.
+#
+# cert_file = "/secrets/gateway-runtime/traffic-log-client.crt"
+# key_file  = "/secrets/gateway-runtime/traffic-log-client.key"
+cert_file = ""
+key_file = ""
+# Disables verification of the receiver's certificate. Off by default; when on,
+# startup logs a warning naming the endpoint, because it exposes every logged
+# request/response body to anyone able to intercept the connection.
+insecure_skip_verify = false
 
 # Optional extra key->value pairs added under a top-level "properties" object.
 # A value prefixed "$ctx:" is evaluated as a CEL expression against context

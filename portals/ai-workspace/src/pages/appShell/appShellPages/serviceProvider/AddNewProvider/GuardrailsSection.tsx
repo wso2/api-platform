@@ -40,6 +40,7 @@ import { getGuardrails, getPolicies } from '../../../../../apis/policyHubApis';
 import { getGatewayCustomPolicies } from '../../../../../apis/gatewayPolicyApis';
 import type { GatewayCustomPolicy } from '../../../../../apis/gatewayPolicyApis';
 import {
+  DraggableGuardrailPill,
   GuardrailPill,
   POLICY_CATEGORIES,
   PolicyCategorySelector,
@@ -124,6 +125,7 @@ type GuardrailsSectionProps = {
     values: ParameterValues
   ) => void;
   onRemoveGuardrail: (guardrailId: string) => void;
+  onReorderGuardrail: (sourceId: string, targetId: string) => void;
 };
 
 export default function GuardrailsSection({
@@ -137,6 +139,7 @@ export default function GuardrailsSection({
   onSelectGuardrail,
   onAddGuardrail,
   onRemoveGuardrail,
+  onReorderGuardrail,
 }: GuardrailsSectionProps) {
   const showCostPolicy = autoAttachesCostPolicy(selectedTemplateId);
   const {
@@ -164,6 +167,12 @@ export default function GuardrailsSection({
   const [isLoadingMoreGuardrails, setIsLoadingMoreGuardrails] = useState(false);
   const [customPolicies, setCustomPolicies] = useState<GatewayCustomPolicy[]>([]);
   const [customPoliciesLoading, setCustomPoliciesLoading] = useState(false);
+  const [draggedGuardrailId, setDraggedGuardrailId] = useState<string | null>(
+    null
+  );
+  const [dragOverGuardrailId, setDragOverGuardrailId] = useState<string | null>(
+    null
+  );
 
   // Drawer list = Policy Hub guardrails for the selected categories, plus all
   // synced gateway custom policies (always shown, independent of category
@@ -362,7 +371,7 @@ export default function GuardrailsSection({
                     <FormattedMessage
                       id="aiWorkspace.pages.appShell.appShellPages.serviceProvider.AddNewProvider.GuardrailsSection.add.safety.policies.to.enforce.consistent.protections"
                       defaultMessage={
-                        'Add safety policies to enforce consistent protections.'
+                        'Add guardrails and policies, then drag them to set their execution order.'
                       }
                     />
                   </Typography>
@@ -377,28 +386,55 @@ export default function GuardrailsSection({
               </Box>
 
               {(showCostPolicy || guardrails.length > 0) ? (
-                <Stack direction="row" spacing={1} flexWrap="wrap">
+                <Stack
+                  direction="row"
+                  useFlexGap
+                  sx={{ flexWrap: 'wrap', columnGap: 1, rowGap: 1.25 }}
+                >
                   {showCostPolicy && (
-                    <Box sx={{ mr: 1.5, mb: 1.5 }}>
+                    <Box>
                       <GuardrailPill label="llm-cost (v1)" />
                     </Box>
                   )}
-                  {guardrails.map((guardrail) => (
-                    <Box key={guardrail.id} sx={{ mr: 1.5, mb: 1.5 }}>
-                      <GuardrailPill
-                        label={`${guardrail.name} (${guardrail.version})`}
-                        onRemove={() => onRemoveGuardrail(guardrail.id)}
-                      />
-                      {/* {guardrail.configuration ? (
-                        <Typography
-                          variant="caption"
-                          color="text.secondary"
-                          sx={{ display: 'block', mt: 0.5 }}
-                        >
-                          {guardrail.configuration}
-                        </Typography>
-                      ) : null} */}
-                    </Box>
+                  {guardrails.map((guardrail, index) => (
+                    <DraggableGuardrailPill
+                      key={guardrail.id}
+                      id={guardrail.id}
+                      label={`${guardrail.name} (${guardrail.version})`}
+                      reorderable
+                      isDragging={draggedGuardrailId === guardrail.id}
+                      isDragOver={
+                        dragOverGuardrailId === guardrail.id &&
+                        draggedGuardrailId !== guardrail.id
+                      }
+                      onDragStart={() =>
+                        setDraggedGuardrailId(guardrail.id)
+                      }
+                      onDragEnd={() => {
+                        setDraggedGuardrailId(null);
+                        setDragOverGuardrailId(null);
+                      }}
+                      onDragOver={() =>
+                        setDragOverGuardrailId(guardrail.id)
+                      }
+                      onDrop={() => {
+                        if (draggedGuardrailId) {
+                          onReorderGuardrail(
+                            draggedGuardrailId,
+                            guardrail.id
+                          );
+                        }
+                        setDraggedGuardrailId(null);
+                        setDragOverGuardrailId(null);
+                      }}
+                      onKeyboardMove={(direction) => {
+                        const target = guardrails[index + direction];
+                        if (target) {
+                          onReorderGuardrail(guardrail.id, target.id);
+                        }
+                      }}
+                      onRemove={() => onRemoveGuardrail(guardrail.id)}
+                    />
                   ))}
                 </Stack>
               ) : null}

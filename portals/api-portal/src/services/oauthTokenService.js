@@ -18,6 +18,8 @@
 const axios = require('axios');
 const logger = require('../config/logger');
 const { CustomError } = require('../utils/errors/customErrors');
+const { config } = require('../config/configLoader');
+const { buildOutboundAgents } = require('../config/httpClientOptions');
 
 /**
  * Proxy a client_credentials token request to a key manager's token endpoint.
@@ -43,6 +45,7 @@ async function generateToken(tokenEndpoint, clientId, clientSecret, scopes, vali
     }
 
     try {
+        const agents = buildOutboundAgents(config);
         const response = await axios.post(tokenEndpoint, params, {
             auth: {
                 username: clientId,
@@ -50,6 +53,8 @@ async function generateToken(tokenEndpoint, clientId, clientSecret, scopes, vali
             },
             headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
             timeout: 5000,
+            httpAgent: agents.httpAgent,
+            httpsAgent: agents.httpsAgent,
         });
         return {
             accessToken: response.data.access_token,

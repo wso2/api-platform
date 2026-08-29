@@ -18,154 +18,100 @@
 package utils
 
 import (
-	"context"
-	"fmt"
-	"net"
+	"errors"
 	"net/http"
-	"strings"
+	"sync"
 	"time"
 )
 
-// maxOutboundRedirects caps redirect hops on guarded clients. Every hop is still dialed
-// through the guarded dialer, so this only bounds redirect loops.
-const maxOutboundRedirects = 5
+// defaultMCPResponseMaxBytes bounds an MCP initialize/JSON-RPC response body when the
+// configured limit (Server.MCPResponseMaxBytes) is absent or non-positive. Matches the
+// implicit 10 MiB cap httpclient.DefaultConfig() applied before the shared-client
+// consolidation, so behavior is unchanged for an operator who doesn't set the new key.
+const defaultMCPResponseMaxBytes int64 = 10 << 20 // 10 MiB
 
-// checkRedirectPolicy builds the CheckRedirect callback shared by every guarded client. It
-// bounds redirect loops, keeps the scheme within http/https, and refuses any hop that leaves
-// the host of the original request.
-//
-// The host check is what stops a credential leak: callers pass their own headers on these
-// requests (an MCP endpoint's auth header, for instance), and net/http only strips
-// Authorization/Cookie-style headers across hosts — a custom header name is forwarded
-// verbatim. A malicious or compromised upstream could otherwise answer with a redirect to a
-// host it controls and be handed the caller's credential. Same-host redirects are still
-// dialed through the guarded dialer, so the address policy continues to apply per hop.
-func checkRedirectPolicy(maxRedirects int) func(*http.Request, []*http.Request) error {
-	return func(req *http.Request, via []*http.Request) error {
-		if len(via) >= maxRedirects {
-			return fmt.Errorf("too many redirects")
-		}
-		if req.URL.Scheme != "http" && req.URL.Scheme != "https" {
-			return fmt.Errorf("redirect to a disallowed scheme")
-		}
-		// via[0] is the original request; Host carries the port, so a port change counts
-		// as a different host too.
-		if len(via) > 0 && !strings.EqualFold(req.URL.Host, via[0].URL.Host) {
-			return fmt.Errorf("redirect to a different host")
-		}
-		return nil
-	}
-}
-
-// guardedDialContext builds a DialContext that resolves the target host itself, refuses to
-// connect when any resolved address fails the supplied policy, and then dials the exact IP
-// it just approved. Doing the resolution and the connection in one step is what closes the
-// DNS-rebinding window: a name that answers with an allowed address during a pre-check
-// cannot answer with a different one at connect time.
-//
-// The address policy is a parameter because different call sites have genuinely different
-// threat models — see isPublicIP (fetching from the public internet) versus
-// isAllowedUpstreamIP (reaching a backend the operator deployed).
-func guardedDialContext(allow func(net.IP) bool, timeout time.Duration) func(context.Context, string, string) (net.Conn, error) {
-	return func(ctx context.Context, network, addr string) (net.Conn, error) {
-		host, port, err := net.SplitHostPort(addr)
-		if err != nil {
-			return nil, fmt.Errorf("invalid address")
-		}
-
-		ips, err := net.DefaultResolver.LookupIPAddr(ctx, host)
-		if err != nil {
-			return nil, fmt.Errorf("failed to resolve host")
-		}
-		if len(ips) == 0 {
-			return nil, fmt.Errorf("host has no addresses")
-		}
-		for _, ip := range ips {
-			if !allow(ip.IP) {
-				return nil, fmt.Errorf("host resolves to a disallowed address")
-			}
-		}
-
-		dialer := &net.Dialer{Timeout: timeout}
-		var lastErr error
-		for _, ip := range ips {
-			conn, dialErr := dialer.DialContext(ctx, network, net.JoinHostPort(ip.IP.String(), port))
-			if dialErr == nil {
-				return conn, nil
-			}
-			lastErr = dialErr
-		}
-		if lastErr != nil {
-			return nil, fmt.Errorf("failed to connect to host")
-		}
-		return nil, fmt.Errorf("failed to connect to host")
-	}
-}
-
-// isAllowedUpstreamIP is the address policy for calls to a backend the operator configured
-// — an MCP proxy upstream, for instance. Such a backend is normally *meant* to be private:
-// a Kubernetes ClusterIP, a service-DNS name resolving into RFC 1918 space, or a localhost
-// port during development. Refusing those would break the ordinary deployment shape, so
-// private, ULA, shared-address-space and loopback addresses are all permitted.
-//
-// What stays refused is the set of addresses that is never a legitimate upstream but is a
-// standard SSRF target or a hazard:
-//
-//   - link-local unicast — 169.254.0.0/16 and fe80::/10, which is where the cloud instance
-//     metadata endpoint (169.254.169.254) lives
-//   - the unspecified address (0.0.0.0, ::), which the OS reinterprets as "local host"
-//   - multicast and the IPv4 broadcast address, which are not meaningful HTTP peers
-func isAllowedUpstreamIP(ip net.IP) bool {
-	if ip == nil {
-		return false
-	}
-	if ip.IsLinkLocalUnicast() ||
-		ip.IsLinkLocalMulticast() ||
-		ip.IsMulticast() ||
-		ip.IsUnspecified() ||
-		ip.Equal(net.IPv4bcast) {
-		return false
-	}
-	return true
-}
-
-// upstreamIPIsAllowed is the address check used by NewUpstreamFetchClient. It is a package
-// variable only so tests can vary the policy; production code never reassigns it.
-var upstreamIPIsAllowed = isAllowedUpstreamIP
-
-// NewUpstreamFetchClient returns an http.Client for calls to an operator- or
-// tenant-configured backend whose URL is not fully trusted (MCP reachability probes, MCP
-// JSON-RPC calls). Every connection — including each redirect hop — is dialed through the
-// guarded dialer under isAllowedUpstreamIP, so private and in-cluster upstreams work
-// normally while link-local/metadata addresses stay unreachable.
-//
-// For fetching from the public internet, use the stricter isPublicIP-based path in
-// FetchOpenAPISpecFromURL instead.
-//
-// A non-positive timeout falls back to defaultUpstreamFetchTimeout.
-func NewUpstreamFetchClient(timeout time.Duration) *http.Client {
-	if timeout <= 0 {
-		timeout = defaultUpstreamFetchTimeout
-	}
-	return &http.Client{
-		Timeout: timeout,
-		Transport: &http.Transport{
-			DialContext: guardedDialContext(func(ip net.IP) bool {
-				return upstreamIPIsAllowed(ip)
-			}, timeout),
-			TLSHandshakeTimeout:   timeout,
-			ResponseHeaderTimeout: timeout,
-			// A one-off outbound probe/call has nothing to gain from connection reuse, and
-			// pooling a connection whose response was malformed can corrupt a later request.
-			DisableKeepAlives: true,
-			// No proxy: dialing must go through the guarded dialer, not a forward proxy
-			// that could bypass the address checks.
-			Proxy: nil,
-		},
-		CheckRedirect: checkRedirectPolicy(maxOutboundRedirects),
-	}
-}
-
-// defaultUpstreamFetchTimeout bounds a guarded upstream call end to end when the caller
-// does not supply its own timeout.
+// defaultUpstreamFetchTimeout is the per-call budget fallback used when a caller of one of
+// this package's guarded helpers (e.g. CheckURLReachability) supplies a non-positive
+// timeout. Before the shared-client consolidation this fallback lived inside
+// NewUpstreamFetchClient itself (it varied client construction); now that the client is
+// built once at startup, the per-call budget is enforced by the caller via
+// context.WithTimeout, so the fallback moves to the call site instead.
 const defaultUpstreamFetchTimeout = 10 * time.Second
+
+var (
+	// sharedHTTPClient is the single outbound *http.Client built once at process startup
+	// (see cmd/main.go) and used by every SSRF-guarded call this package makes. It is built
+	// from platform_api.http_client in config.toml under netguard.PermitPrivateBlockMetadata()
+	// by default, so private and in-cluster upstreams work normally (a Kubernetes ClusterIP,
+	// a service-DNS name resolving into RFC 1918 space, a localhost port during development)
+	// while link-local/metadata addresses stay unreachable — see InitSharedHTTPClient.
+	sharedHTTPClientMu sync.RWMutex
+	sharedHTTPClient   *http.Client
+
+	// sharedMCPResponseMaxBytes is the configured byte ceiling for MCP initialize/JSON-RPC
+	// response bodies, set alongside sharedHTTPClient by InitSharedHTTPClient.
+	sharedMCPResponseMaxBytes int64
+)
+
+// InitSharedHTTPClient sets the single shared outbound *http.Client used by every
+// SSRF-guarded call this package makes (MCP reachability/JSON-RPC calls, OpenAPI spec
+// fetch), plus the byte ceiling applied to MCP response bodies. Must be called exactly once,
+// at process startup (cmd/main.go, right after config is loaded), before any server/handler
+// wiring that could reach NewUpstreamFetchClient, FetchOpenAPISpecFromURL, or the MCP
+// utilities in this package.
+func InitSharedHTTPClient(client *http.Client, mcpResponseMaxBytes int64) {
+	sharedHTTPClientMu.Lock()
+	defer sharedHTTPClientMu.Unlock()
+	sharedHTTPClient = client
+	if mcpResponseMaxBytes <= 0 {
+		mcpResponseMaxBytes = defaultMCPResponseMaxBytes
+	}
+	sharedMCPResponseMaxBytes = mcpResponseMaxBytes
+}
+
+// errSharedHTTPClientNotInitialized is returned instead of panicking on a nil client when a
+// caller reaches these guarded helpers before InitSharedHTTPClient has run (e.g. a test that
+// forgot its setup) — a clear error is safer than a nil-pointer panic on client.Do.
+var errSharedHTTPClientNotInitialized = errors.New("shared outbound HTTP client not initialized: InitSharedHTTPClient must be called at startup before this code path is reached")
+
+// NewUpstreamFetchClient returns the shared http.Client used for calls to an operator- or
+// tenant-configured backend whose URL is not fully trusted (MCP reachability probes, MCP
+// JSON-RPC calls). It is built once at startup (see InitSharedHTTPClient) on httpkit's
+// shared, secure-by-default outbound client: every connection — including each redirect hop
+// — is dialed through netguard's SSRF guard, so private and in-cluster upstreams work
+// normally (a Kubernetes ClusterIP, a service-DNS name resolving into RFC 1918 space, a
+// localhost port during development) while link-local/metadata addresses stay unreachable
+// under the default netguard.PermitPrivateBlockMetadata() policy. The guard resolves the
+// host and dials the exact resolved IP in one step, which is what closes the
+// DNS-rebinding window, and every redirect hop is re-validated the same way and bounded to
+// the original host — callers pass their own auth headers on these requests, and net/http
+// forwards a custom header name verbatim across a cross-host redirect, so a
+// malicious/compromised upstream must not be able to redirect its way into a credential
+// leak.
+//
+// timeout is accepted for call-site compatibility but no longer varies client construction
+// — the shared client's own Timeouts.Overall config field is a safety net only, and callers
+// enforce their real per-call budget via context.WithTimeout instead (see mcp.go and
+// common.go). A non-positive timeout is treated the same way: it has no effect on the
+// returned client.
+func NewUpstreamFetchClient(timeout time.Duration) (*http.Client, error) {
+	_ = timeout // retained for call-site compatibility; see doc comment above
+	sharedHTTPClientMu.RLock()
+	defer sharedHTTPClientMu.RUnlock()
+	if sharedHTTPClient == nil {
+		return nil, errSharedHTTPClientNotInitialized
+	}
+	return sharedHTTPClient, nil
+}
+
+// mcpResponseMaxBytes returns the configured byte ceiling for MCP response bodies, falling
+// back to defaultMCPResponseMaxBytes if InitSharedHTTPClient has not run (should not happen
+// outside of a misconfigured test).
+func mcpResponseMaxBytes() int64 {
+	sharedHTTPClientMu.RLock()
+	defer sharedHTTPClientMu.RUnlock()
+	if sharedMCPResponseMaxBytes <= 0 {
+		return defaultMCPResponseMaxBytes
+	}
+	return sharedMCPResponseMaxBytes
+}

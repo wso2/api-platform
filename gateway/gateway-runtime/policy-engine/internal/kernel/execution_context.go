@@ -34,6 +34,7 @@ import (
 	"github.com/wso2/api-platform/gateway/gateway-runtime/policy-engine/internal/constants"
 	"github.com/wso2/api-platform/gateway/gateway-runtime/policy-engine/internal/executor"
 	"github.com/wso2/api-platform/gateway/gateway-runtime/policy-engine/internal/registry"
+	"github.com/wso2/api-platform/gateway/gateway-runtime/policy-engine/internal/resolver"
 	"github.com/wso2/api-platform/gateway/gateway-runtime/policy-engine/internal/tracing"
 	policy "github.com/wso2/api-platform/sdk/core/policy/v1alpha2"
 	policyenginev1 "github.com/wso2/api-platform/sdk/core/policyengine"
@@ -125,6 +126,10 @@ type PolicyExecutionContext struct {
 	isStreamingRequest       bool
 	requestStreamAccumulator []byte
 	requestStreamContext     *policy.RequestStreamContext
+	// requestChunkIndex numbers the chunks handed to the policy chain. Policies
+	// that stitch chunks together use it to tell a new chunk from a redelivery,
+	// so it must advance on every delivery.
+	requestChunkIndex uint64
 	// requestStreamDecomp performs per-chunk decompression for compressed streaming
 	// request bodies. Nil when the request is not Content-Encoded.
 	requestStreamDecomp *streamDecompressor
@@ -134,6 +139,9 @@ type PolicyExecutionContext struct {
 	isStreamingResponse   bool
 	streamAccumulator     []byte
 	responseStreamContext *policy.ResponseStreamContext
+	// responseChunkIndex numbers the chunks handed to the policy chain. See
+	// requestChunkIndex.
+	responseChunkIndex uint64
 	// responseStreamDecomp performs per-chunk decompression for compressed streaming
 	// response bodies. Nil when the response is not Content-Encoded.
 	responseStreamDecomp *streamDecompressor
@@ -165,6 +173,37 @@ type PolicyExecutionContext struct {
 	// distinguish a policy-chosen status from a genuine upstream pass-through
 	// (constants.TerminalReasonPolicyStatusOverride vs TerminalReasonUpstream).
 	responseStatusOverridden bool
+
+	// ─── Operation resolution ────────────────────────────────────────────────
+	// All of the following are zero for every route that resolves its chain by
+	// identity, which is every API kind shipping today.
+
+	// pending is non-nil between the request-headers and request-body callbacks of
+	// a route whose resolver must read the body. While it is set, policyChain is
+	// nil and no policy has run.
+	pending *pendingResolution
+
+	// resolutionDenied records that this request's operation never resolved to a
+	// chain, so the response phases must not try to execute one.
+	resolutionDenied bool
+
+	// boundAtBodyPhase records that the chain was selected during the request-body
+	// callback. Two consequences: header mutations are emitted on the body-phase
+	// response, and no ModeOverride is returned from it (Envoy applies one only on
+	// responses to header callbacks).
+	boundAtBodyPhase bool
+
+	// resolverName is the effective resolver for this route, for logs, metrics and
+	// spans. Empty means identity.
+	resolverName string
+
+	// chainKey is the policy chain key actually selected. Equals routeKey on an
+	// identity route.
+	chainKey string
+
+	// operation is the canonical protocol operation the caller invoked. Empty for a
+	// directly-resolved route, whose chain key is already the route name on the span.
+	operation string
 }
 
 // generatedResponse ties a policy-engine-generated ImmediateResponse to the span
@@ -440,6 +479,27 @@ func (ec *PolicyExecutionContext) requestPayloadTooLargeError(
 // ModeOverride sent to Envoy could disagree with which body-phase handler actually runs
 // (see processResponseBody), which Envoy rejects as a content-length/body mismatch.
 func (ec *PolicyExecutionContext) getModeOverride() *extprocconfigv3.ProcessingMode {
+	// No chain yet: the mode comes from the prepared resolver's requirements instead,
+	// since there is nothing else to derive it from.
+	if ec.pending != nil {
+		return pendingModeOverride(ec.pending.prepared.Requirements)
+	}
+
+	// A chain bound at the request-body callback must not return a ModeOverride from
+	// that response: Envoy applies one only on responses to header callbacks and
+	// ignores it on body and trailer callbacks. Returning nil here (rather than a
+	// mode Envoy will discard) keeps the wire honest about where the response modes
+	// are actually decided — the response-header callback below.
+	if ec.boundAtBodyPhase && ec.phase == phaseRequestBody {
+		return nil
+	}
+
+	if ec.policyChain == nil {
+		// Resolution denied, or a callback arrived for a request that never bound a
+		// chain. Ask Envoy for nothing further rather than dereferencing nil.
+		return pendingModeOverride(resolver.RequestRequirements{})
+	}
+
 	mode := &extprocconfigv3.ProcessingMode{
 		ResponseHeaderMode: extprocconfigv3.ProcessingMode_SEND,
 	}
@@ -651,6 +711,16 @@ func (ec *PolicyExecutionContext) processRequestBody(
 	body *extprocv3.HttpBody,
 ) (*extprocv3.ProcessingResponse, error) {
 	ec.phase = phaseRequestBody
+
+	// A route whose resolver reads the body selects its chain here, then runs that
+	// chain's request-header policies followed by its request-body policies.
+	if ec.pending != nil {
+		return ec.bindPendingChainAndProcess(ctx, body)
+	}
+	if ec.policyChain == nil {
+		return ec.noChainPassThroughRequestBody(), nil
+	}
+
 	if ec.isStreamingRequest {
 		return ec.processStreamingRequestBody(ctx, body)
 	}
@@ -712,9 +782,11 @@ func (ec *PolicyExecutionContext) processStreamingRequestBody(
 	ctx context.Context,
 	body *extprocv3.HttpBody,
 ) (*extprocv3.ProcessingResponse, error) {
+	ec.requestChunkIndex++
 	chunk := &policy.StreamBody{
 		Chunk:       body.Body,
 		EndOfStream: body.EndOfStream,
+		Index:       ec.requestChunkIndex,
 	}
 
 	// Compressed request: decompress this chunk, pass directly to policies,
@@ -832,9 +904,11 @@ func (ec *PolicyExecutionContext) processStreamingRequestBody(
 		}, nil
 	}
 
+	ec.requestChunkIndex++
 	flushChunk := &policy.StreamBody{
 		Chunk:       ec.requestStreamAccumulator,
 		EndOfStream: chunk.EndOfStream,
+		Index:       ec.requestChunkIndex,
 	}
 	slog.Debug("[streaming] flushing accumulated request data to policies",
 		"route", ec.routeKey,
@@ -882,6 +956,13 @@ func (ec *PolicyExecutionContext) processResponseHeaders(
 	headers *extprocv3.HttpHeaders,
 ) (*extprocv3.ProcessingResponse, error) {
 	ec.phase = phaseResponseHeaders
+	if ec.policyChain == nil {
+		// Either resolution was denied (in which case Envoy already received an
+		// ImmediateResponse and should not be sending us response phases at all), or
+		// a body callback that would have bound the chain never arrived. Pass the
+		// response through untouched rather than dereferencing a nil chain.
+		return ec.noChainPassThroughResponseHeaders(), nil
+	}
 	ec.buildResponseContexts(headers)
 
 	// Detect streaming response: upgrade when chain supports streaming AND
@@ -937,6 +1018,9 @@ func (ec *PolicyExecutionContext) processResponseBody(
 	body *extprocv3.HttpBody,
 ) (*extprocv3.ProcessingResponse, error) {
 	ec.phase = phaseResponseBody
+	if ec.policyChain == nil {
+		return ec.noChainPassThroughResponseBody(), nil
+	}
 	if ec.isStreamingResponse {
 		slog.Debug("[body] routing to streaming response body handler",
 			"route", ec.routeKey,
@@ -1037,9 +1121,11 @@ func (ec *PolicyExecutionContext) processStreamingResponseBody(
 		}, nil
 	}
 
+	ec.responseChunkIndex++
 	chunk := &policy.StreamBody{
 		Chunk:       body.Body,
 		EndOfStream: body.EndOfStream,
+		Index:       ec.responseChunkIndex,
 	}
 
 	// Compressed response: decompress this chunk, pass directly to policies,
@@ -1155,9 +1241,11 @@ func (ec *PolicyExecutionContext) processStreamingResponseBody(
 		}, nil
 	}
 
+	ec.responseChunkIndex++
 	flushChunk := &policy.StreamBody{
 		Chunk:       ec.streamAccumulator,
 		EndOfStream: chunk.EndOfStream,
+		Index:       ec.responseChunkIndex,
 	}
 	slog.Debug("[streaming] flushing accumulated response data to policies",
 		"route", ec.routeKey,
@@ -1317,7 +1405,12 @@ func (ec *PolicyExecutionContext) buildRequestContexts(headers *extprocv3.HttpHe
 	// Compressed requests are allowed into the streaming path — the body is
 	// decompressed before policies run and recompressed before forwarding to
 	// the upstream, preserving the original Content-Encoding header.
-	if ec.policyChain.SupportsRequestStreaming && isStreamingClientRequest(wrappedHeaders) {
+	//
+	// A route whose chain is selected at the body phase never streams the request:
+	// the resolver needs the whole body buffered before the chain even exists, so
+	// there is no chain to ask about streaming support and the mode is fixed to
+	// BUFFERED.
+	if ec.policyChain != nil && ec.policyChain.SupportsRequestStreaming && isStreamingClientRequest(wrappedHeaders) {
 		ec.isStreamingRequest = true
 	}
 }
@@ -1436,6 +1529,18 @@ func isStreamingUpstreamResponse(headers *policy.Headers) bool {
 			return true
 		}
 	}
+	return isServerSentEventResponse(headers)
+}
+
+// isServerSentEventResponse reports whether the upstream response is an SSE stream.
+//
+// This is the *positive* streaming signal, as distinct from the chunked heuristic above:
+// chunked is a transfer framing that an ordinary unary response can perfectly well use —
+// a JSON error body is often chunked — whereas text/event-stream says the response is a
+// stream of events and nothing else. An operation that declares itself streaming is held
+// to this signal, so a chunked JSON error on such an operation is treated as the unary
+// response it is.
+func isServerSentEventResponse(headers *policy.Headers) bool {
 	if ctValues := headers.Get("content-type"); len(ctValues) > 0 {
 		if strings.HasPrefix(strings.ToLower(ctValues[0]), "text/event-stream") {
 			return true

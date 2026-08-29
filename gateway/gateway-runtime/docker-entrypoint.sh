@@ -120,17 +120,26 @@ export PYTHON_POLICY_WORKERS="${PYTHON_POLICY_WORKERS:-4}"
 export PYTHON_POLICY_MAX_CONCURRENT="${PYTHON_POLICY_MAX_CONCURRENT:-100}"
 export PYTHON_POLICY_TIMEOUT="${PYTHON_POLICY_TIMEOUT:-30}"
 
+# Router (Envoy) admin interface configuration
+# The admin interface (config_dump, stats, /runtime_modify, etc.) is disabled by default —
+# it is not defined in the static envoy-bootstrap.yaml at all. Set ROUTER_ADMIN_ENABLED=true
+# to have it injected at startup via `envoy --config-yaml`, bound to ROUTER_ADMIN_HOST (loopback
+# by default) so it is never reachable outside the pod's network namespace regardless of this
+# flag. Enabling it also restores the graceful-drain-on-SIGTERM behavior below, since draining
+# is triggered via an admin API call.
+export ROUTER_ADMIN_ENABLED="${ROUTER_ADMIN_ENABLED:-false}"
+export ROUTER_ADMIN_HOST="${ROUTER_ADMIN_HOST:-127.0.0.1}"
+export ROUTER_ADMIN_PORT="${ROUTER_ADMIN_PORT:-9901}"
+
 # Graceful shutdown configuration
 # On SIGTERM the Router (Envoy) is drained before any process is terminated, so in-flight
 # requests complete and keep-alive connections are closed cleanly (Connection: close)
 # instead of being reset. This avoids connection-reset errors for clients during rolling
-# restarts / pod evictions.
-#   ROUTER_ADMIN_HOST/PORT    : Router (Envoy) admin endpoint used to trigger the drain
+# restarts / pod evictions. Requires ROUTER_ADMIN_ENABLED=true — draining is skipped
+# (with a clear log message, not a stalled attempt) when the admin interface is disabled.
 #   ROUTER_DRAIN_TIME_SECONDS : how long to wait for in-flight requests to finish before
 #       terminating. Keep this LESS than the pod's terminationGracePeriodSeconds (k8s
 #       default 30s) or the container is SIGKILLed mid-drain. Set to 0 to disable draining.
-export ROUTER_ADMIN_HOST="${ROUTER_ADMIN_HOST:-127.0.0.1}"
-export ROUTER_ADMIN_PORT="${ROUTER_ADMIN_PORT:-9901}"
 export ROUTER_DRAIN_TIME_SECONDS="${ROUTER_DRAIN_TIME_SECONDS:-15}"
 
 # Derive Router (Envoy) xDS config — used by envsubst on config-override.yaml
@@ -152,6 +161,11 @@ log "  Policy Engine Socket: ${POLICY_ENGINE_SOCKET}"
 log "  GOMAXPROCS: ${GOMAXPROCS}"
 log "  Router Concurrency: ${ROUTER_CONCURRENCY}"
 log "  Router RE2 Max Program Size: ${APIP_GW_ROUTER_RE2_MAX_PROGRAM_SIZE}"
+if [ "${ROUTER_ADMIN_ENABLED}" = "true" ]; then
+    log "  Router Admin: enabled on ${ROUTER_ADMIN_HOST}:${ROUTER_ADMIN_PORT}"
+else
+    log "  Router Admin: disabled (set ROUTER_ADMIN_ENABLED=true to enable)"
+fi
 log "  Policy Engine Metrics: ${APIP_GW_POLICY_ENGINE_METRICS_ENABLED}"
 log "  Python Workers: ${PYTHON_POLICY_WORKERS}"
 log "  Python Max Concurrent: ${PYTHON_POLICY_MAX_CONCURRENT}"
@@ -166,6 +180,19 @@ rm -f "${PYTHON_EXECUTOR_SOCKET}"
 
 # Generate Envoy config override by substituting environment variables
 CONFIG_OVERRIDE=$(envsubst < /etc/envoy/config-override.yaml)
+
+# The admin interface has no entry in the static bootstrap (envoy-bootstrap.yaml) at all, so
+# it only exists when explicitly opted into here — bound to ROUTER_ADMIN_HOST (loopback by
+# default), never 0.0.0.0, so it is unreachable outside the pod's network namespace regardless.
+if [ "${ROUTER_ADMIN_ENABLED}" = "true" ]; then
+    CONFIG_OVERRIDE="${CONFIG_OVERRIDE}
+admin:
+  address:
+    socket_address:
+      address: ${ROUTER_ADMIN_HOST}
+      port_value: ${ROUTER_ADMIN_PORT}
+"
+fi
 
 # Track child PIDs
 PY_PID=""
@@ -207,7 +234,12 @@ shutdown() {
 
     # Drain the Router first so in-flight requests finish and keep-alive connections are
     # closed cleanly — prevents client-visible connection resets during rolling restarts.
-    if [ -n "$ENVOY_PID" ] && kill -0 "$ENVOY_PID" 2>/dev/null \
+    # Requires the admin interface (ROUTER_ADMIN_ENABLED=true); draining is unavailable
+    # without it, so skip straight to termination rather than attempting an admin call
+    # that can never succeed.
+    if [ "${ROUTER_ADMIN_ENABLED}" != "true" ]; then
+        log "Router admin disabled (ROUTER_ADMIN_ENABLED=false); skipping graceful drain"
+    elif [ -n "$ENVOY_PID" ] && kill -0 "$ENVOY_PID" 2>/dev/null \
        && [ "${ROUTER_DRAIN_TIME_SECONDS}" -gt 0 ] 2>/dev/null; then
         log "Draining Router (Envoy); waiting up to ${ROUTER_DRAIN_TIME_SECONDS}s for in-flight requests..."
         if drain_router; then

@@ -2,7 +2,7 @@
 
 ## Context & Scope
 
-Apply whenever writing, refactoring, or reviewing JavaScript (`.js`) code in `portals/developer-portal` that parses XML from a user- or tenant-supplied source — a WSDL/SOAP spec upload or import-by-URL feature, an XML API document preview, or any use of `xml2js`, `fast-xml-parser`, `libxmljs2`, or `DOMParser`/`xmldom` fed by `req.file.buffer`, a request body, or a fetched URL. JS counterpart to `xxe-xml-processing.md` (Go). Written proactively — there's no XML parsing in the portal today, but WSDL/SOAP import is a standard feature category, and the parser config must be correct before that code ships, not after.
+Apply whenever writing, refactoring, or reviewing JavaScript (`.js`) code in `portals/developer-portal` that parses XML from a user-supplied source — a WSDL/SOAP spec upload or import-by-URL feature, an XML API document preview, or any use of `xml2js`, `fast-xml-parser`, `libxmljs2`, or `DOMParser`/`xmldom` fed by `req.file.buffer`, a request body, or a fetched URL. JS counterpart to `xxe-xml-processing.md` (Go). Written proactively — there's no XML parsing in the portal today, but WSDL/SOAP import is a standard feature category, and the parser config must be correct before that code ships, not after.
 
 ## Directives
 

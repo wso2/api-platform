@@ -69,7 +69,7 @@ import (
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/utils"
 	coreversion "github.com/wso2/api-platform/gateway/gateway-controller/pkg/version"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/xds"
-	gohttpkit "github.com/wso2/go-httpkit/middleware"
+	gohttpkit "github.com/wso2/api-platform/httpkit/middleware"
 
 	eventgateway "github.com/wso2/api-platform/event-gateway/gateway-controller/pkg/api/eventgateway"
 	eventgatewayconfig "github.com/wso2/api-platform/event-gateway/gateway-controller/pkg/config"
@@ -511,7 +511,11 @@ func main() {
 
 	igw := immutable.NewImmutableGW(cfg.ImmutableGateway, restAPIService, llmSvc, mcpSvc)
 
-	authConfig := generateAuthConfig(cfg)
+	authConfig, err := generateAuthConfig(cfg)
+	if err != nil {
+		log.Error("Failed to generate auth config", slog.Any("error", err))
+		os.Exit(1)
+	}
 	authMiddleWare, err := authenticators.AuthMiddleware(authConfig, log)
 	if err != nil {
 		log.Error("Failed to create auth middleware", slog.Any("error", err))
@@ -622,7 +626,12 @@ func main() {
 	// Start controller admin server for debug endpoints if enabled.
 	var controllerAdminServer *adminserver.Server
 	if cfg.Controller.AdminServer.Enabled {
-		controllerAdminServer = adminserver.NewServer(&cfg.Controller.AdminServer, apiServer, log)
+		adminAuthz := authenticators.AuthorizationMiddleware(
+			commonmodels.AuthConfig{ResourceRoles: adminResourceRoles()}, log)
+		adminProtect := func(next http.Handler) http.Handler {
+			return authMiddleWare(adminAuthz(next))
+		}
+		controllerAdminServer = adminserver.NewServer(&cfg.Controller.AdminServer, apiServer, adminProtect, log)
 		go func() {
 			if err := controllerAdminServer.Start(); err != nil {
 				log.Error("Controller admin server failed", slog.Any("error", err))
@@ -720,7 +729,7 @@ func main() {
 	log.Info("Event-Gateway-Controller stopped")
 }
 
-func generateAuthConfig(cfg *coreconfig.Config) commonmodels.AuthConfig {
+func generateAuthConfig(cfg *coreconfig.Config) (commonmodels.AuthConfig, error) {
 	prefixed := func(methodAndPath string) string {
 		idx := strings.Index(methodAndPath, " ")
 		if idx < 0 {
@@ -766,6 +775,7 @@ func generateAuthConfig(cfg *coreconfig.Config) commonmodels.AuthConfig {
 	}
 	basicAuth := commonmodels.BasicAuth{Enabled: false}
 	idpAuth := commonmodels.IDPConfig{Enabled: false}
+	var jwksHTTPClient *http.Client
 	if cfg.Controller.Auth.Basic.Enabled {
 		users := make([]commonmodels.User, len(cfg.Controller.Auth.Basic.Users))
 		for i, authUser := range cfg.Controller.Auth.Basic.Users {
@@ -786,12 +796,58 @@ func generateAuthConfig(cfg *coreconfig.Config) commonmodels.AuthConfig {
 			ScopeClaim:        cfg.Controller.Auth.IDP.RolesClaim,
 			PermissionMapping: &cfg.Controller.Auth.IDP.RoleMapping,
 		}
+		client, err := authenticators.NewDefaultJWKSHTTPClient()
+		if err != nil {
+			return commonmodels.AuthConfig{}, fmt.Errorf("failed to build JWKS HTTP client: %w", err)
+		}
+		jwksHTTPClient = client
 	}
 	return commonmodels.AuthConfig{
 		BasicAuth:     &basicAuth,
 		JWTConfig:     &idpAuth,
 		ResourceRoles: DefaultResourceRoles,
+		HTTPClient:    jwksHTTPClient,
+	}, nil
+}
+
+func adminResourceRoles() map[string][]string {
+	const adminRole = "admin"
+
+	prefixed := func(methodAndPath string) string {
+		idx := strings.Index(methodAndPath, " ")
+		if idx < 0 {
+			return methodAndPath
+		}
+		return methodAndPath[:idx+1] + adminserver.AdminAPIBasePath + methodAndPath[idx+1:]
 	}
+
+	relativeRoles := map[string][]string{
+		"GET /config_dump":     {adminRole},
+		"GET /xds_sync_status": {adminRole},
+	}
+
+	// pprof endpoints are registered directly on the mux rather than under a
+	// BaseURL, so their pattern carries no method and no base-path prefix.
+	pprofRoles := map[string][]string{
+		"/debug/pprof/":        {adminRole},
+		"/debug/pprof/cmdline": {adminRole},
+		"/debug/pprof/profile": {adminRole},
+		"/debug/pprof/symbol":  {adminRole},
+		"/debug/pprof/trace":   {adminRole},
+	}
+
+	// The admin API is served on both the versioned and the legacy unprefixed
+	// paths, so both keys are needed for the authz middleware to match.
+	resourceRoles := make(map[string][]string, len(relativeRoles)*2+len(pprofRoles))
+	for methodAndPath, roles := range relativeRoles {
+		resourceRoles[prefixed(methodAndPath)] = roles
+		resourceRoles[methodAndPath] = roles
+	}
+	for pattern, roles := range pprofRoles {
+		resourceRoles[pattern] = roles
+	}
+
+	return resourceRoles
 }
 
 // deprecatedManagementPathMiddleware marks responses served on the legacy

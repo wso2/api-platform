@@ -1,4 +1,6 @@
 /build/
 /coverage/
 /node_modules/
+/target/
 .env*.local
+/src/i18n/compiled/

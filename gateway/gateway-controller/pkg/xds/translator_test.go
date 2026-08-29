@@ -1436,21 +1436,127 @@ func TestTranslator_CreateListener_PathWithEscapedSlashesAction(t *testing.T) {
 }
 
 func TestTranslator_CreateAccessLogConfig_Disabled(t *testing.T) {
-	// Note: createAccessLogConfig should only be called when access logs are enabled.
-	// The check for enabled is done at the caller level. When called directly with disabled
-	// access logs (format defaults to empty, which falls through to text format check),
-	// it should return an error about missing text_format.
+	// Both consumers off: no stdout sink, and no ALS sink either. The stdout
+	// format fields are left unset on purpose — with access logs disabled they
+	// are never read, so an empty format must not surface as an error.
 	logger := createTestLogger()
 	routerCfg := testRouterConfig()
 	routerCfg.AccessLogs.Enabled = false
-	// When format is empty, it falls through to text format check
 	cfg := testConfig()
+	cfg.Router = *routerCfg
 	translator := NewTranslator(logger, routerCfg, nil, cfg)
 
 	logs, err := translator.createAccessLogConfig()
-	// Without format configured, it returns error (this is expected behavior)
-	assert.Error(t, err)
-	assert.Nil(t, logs)
+	assert.NoError(t, err)
+	assert.Empty(t, logs)
+}
+
+// TestTranslator_AccessLogSinks_DecoupledFromStdoutToggle pins the invariant that
+// router.access_logs.enabled governs only the operator-facing stdout log line,
+// never the gRPC ALS sink. ALS is the sole data source for traffic logging and
+// analytics (the policy-engine publishes exclusively on receipt of an ALS entry),
+// so gating it on the stdout toggle silently disables both with no error anywhere.
+func TestTranslator_AccessLogSinks_DecoupledFromStdoutToggle(t *testing.T) {
+	const (
+		fileSink = "envoy.access_loggers.file"
+		grpcSink = "envoy.access_loggers.http_grpc"
+	)
+
+	tests := []struct {
+		name             string
+		stdoutEnabled    bool
+		trafficLogging   bool
+		analytics        bool
+		wantSinkNames    []string
+		wantManagerSinks bool
+	}{
+		{
+			name:             "stdout off, traffic logging on -> ALS sink only",
+			stdoutEnabled:    false,
+			trafficLogging:   true,
+			wantSinkNames:    []string{grpcSink},
+			wantManagerSinks: true,
+		},
+		{
+			name:             "stdout off, analytics on -> ALS sink only",
+			stdoutEnabled:    false,
+			analytics:        true,
+			wantSinkNames:    []string{grpcSink},
+			wantManagerSinks: true,
+		},
+		{
+			name:             "stdout on, traffic logging on -> both sinks",
+			stdoutEnabled:    true,
+			trafficLogging:   true,
+			wantSinkNames:    []string{fileSink, grpcSink},
+			wantManagerSinks: true,
+		},
+		{
+			name:             "stdout on, collector off -> stdout sink only",
+			stdoutEnabled:    true,
+			wantSinkNames:    []string{fileSink},
+			wantManagerSinks: true,
+		},
+		{
+			name:             "both off -> no sinks at all",
+			stdoutEnabled:    false,
+			wantSinkNames:    nil,
+			wantManagerSinks: false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			logger := createTestLogger()
+			routerCfg := testRouterConfig()
+			routerCfg.AccessLogs = config.AccessLogsConfig{
+				Enabled:    tt.stdoutEnabled,
+				Format:     "text",
+				TextFormat: "[%START_TIME%] %RESPONSE_CODE%",
+			}
+			cfg := testConfig()
+			cfg.Router = *routerCfg
+			cfg.TrafficLogging.Enabled = tt.trafficLogging
+			cfg.Analytics.Enabled = tt.analytics
+			cfg.Collector.Server = config.GRPCEventServerConfig{
+				Mode:                "tcp",
+				BufferFlushInterval: 1000,
+				BufferSizeBytes:     16384,
+				GRPCRequestTimeout:  5000,
+			}
+			translator := NewTranslator(logger, routerCfg, nil, cfg)
+
+			logs, err := translator.createAccessLogConfig()
+			require.NoError(t, err)
+
+			gotNames := make([]string, 0, len(logs))
+			for _, l := range logs {
+				gotNames = append(gotNames, l.Name)
+			}
+			assert.Equal(t, tt.wantSinkNames, nilIfEmpty(gotNames), "access log sinks")
+
+			// The sinks must actually reach the HCM — the caller's gate is half the fix.
+			lis, _, err := translator.createListener(nil, false)
+			require.NoError(t, err)
+			manager := extractHCM(t, lis)
+			if !tt.wantManagerSinks {
+				assert.Empty(t, manager.GetAccessLog(), "no sink should be attached to the HCM")
+				return
+			}
+			managerNames := make([]string, 0, len(manager.GetAccessLog()))
+			for _, l := range manager.GetAccessLog() {
+				managerNames = append(managerNames, l.Name)
+			}
+			assert.Equal(t, tt.wantSinkNames, managerNames, "access log sinks attached to the HCM")
+		})
+	}
+}
+
+func nilIfEmpty(s []string) []string {
+	if len(s) == 0 {
+		return nil
+	}
+	return s
 }
 
 func TestTranslator_CreateAccessLogConfig_JSON(t *testing.T) {
@@ -2163,7 +2269,13 @@ func TestTranslator_CreateGRPCAccessLog(t *testing.T) {
 	accessLog, err := translator.createGRPCAccessLog()
 	assert.NoError(t, err)
 	assert.NotNil(t, accessLog)
-	assert.Nil(t, accessLog.Filter, "no ignore_path_prefixes configured -> no filter")
+	require.NotNil(t, accessLog.Filter, "reserved health-path suppression filter is always attached")
+	assert.False(t, evalAccessLogFilter(t, accessLog.Filter, map[string]string{
+		":path": constants.GatewayHealthyPath,
+	}), "gateway health-check path is suppressed even with no ignore_path_prefixes configured")
+	assert.True(t, evalAccessLogFilter(t, accessLog.Filter, map[string]string{
+		":path": "/orders",
+	}), "non-health path is still logged")
 }
 
 func TestTranslator_CreateGRPCAccessLog_WithIgnorePathPrefixes(t *testing.T) {
@@ -2298,6 +2410,52 @@ func TestBuildIgnorePathsAccessLogFilter(t *testing.T) {
 	})
 }
 
+func TestBuildReservedHealthPathAccessLogFilter(t *testing.T) {
+	filter := buildReservedHealthPathAccessLogFilter()
+	require.NotNil(t, filter)
+
+	assert.False(t, evalAccessLogFilter(t, filter, map[string]string{
+		":path": constants.GatewayHealthyPath,
+	}), "healthy probe path is suppressed")
+	assert.False(t, evalAccessLogFilter(t, filter, map[string]string{
+		":path": constants.GatewayReadyPath,
+	}), "ready probe path is suppressed")
+	assert.True(t, evalAccessLogFilter(t, filter, map[string]string{
+		":path": "/orders",
+	}), "unrelated path is logged")
+	assert.True(t, evalAccessLogFilter(t, filter, map[string]string{}),
+		"no :path header at all is logged (fails open, never suppresses by default)")
+}
+
+func TestBuildAccessLogFilter(t *testing.T) {
+	t.Run("no ignore prefixes -> health-only suppression", func(t *testing.T) {
+		filter := buildAccessLogFilter(nil)
+		require.NotNil(t, filter, "reserved health-path filter is always attached")
+		assert.False(t, evalAccessLogFilter(t, filter, map[string]string{
+			":path": constants.GatewayHealthyPath,
+		}))
+		assert.True(t, evalAccessLogFilter(t, filter, map[string]string{
+			":path": "/orders",
+		}))
+	})
+
+	t.Run("with ignore prefixes -> both health path and configured prefix suppressed", func(t *testing.T) {
+		filter := buildAccessLogFilter([]string{"/metrics"})
+		require.NotNil(t, filter)
+		assert.False(t, evalAccessLogFilter(t, filter, map[string]string{
+			":path": constants.GatewayHealthyPath,
+		}), "reserved health path still suppressed alongside a configured prefix")
+		assert.False(t, evalAccessLogFilter(t, filter, map[string]string{
+			"x-envoy-original-path": "/metrics/scrape",
+			":path":                 "/orders",
+		}), "configured ignore prefix still suppressed")
+		assert.True(t, evalAccessLogFilter(t, filter, map[string]string{
+			"x-envoy-original-path": "/orders",
+			":path":                 "/orders",
+		}), "unrelated path with neither match is logged")
+	})
+}
+
 func TestNotEffectivelyMatchesPrefix(t *testing.T) {
 	tests := []struct {
 		name    string
@@ -2352,6 +2510,7 @@ func TestTranslator_CreateSDSCluster(t *testing.T) {
 func TestTranslator_CreateUpstreamTLSContext(t *testing.T) {
 	logger := createTestLogger()
 	routerCfg := testRouterConfig()
+	routerCfg.Upstream.TLS.EcdhCurves = "X25519,P-256"
 	cfg := testConfig()
 	translator := NewTranslator(logger, routerCfg, nil, cfg)
 
@@ -2359,6 +2518,7 @@ func TestTranslator_CreateUpstreamTLSContext(t *testing.T) {
 	tlsContext := translator.createUpstreamTLSContext(nil, "example.com")
 	assert.NotNil(t, tlsContext)
 	assert.Equal(t, "example.com", tlsContext.Sni)
+	assert.Equal(t, []string{"X25519", "P-256"}, tlsContext.CommonTlsContext.TlsParams.EcdhCurves)
 
 	// Test with certificate
 	certPem := []byte("-----BEGIN CERTIFICATE-----\ntest\n-----END CERTIFICATE-----")

@@ -18,8 +18,9 @@
 
 import { useState, type MouseEvent } from 'react';
 import {
+  alpha,
   Box,
-  Button,
+  Card,
   Chip,
   IconButton,
   ListItemIcon,
@@ -31,21 +32,22 @@ import {
   Typography,
 } from '@wso2/oxygen-ui';
 import {
-  ArrowRight,
   Boxes,
   Clock,
-  GitBranch,
+  Layers,
   MoreVertical,
   Rocket,
   Settings,
   Trash2,
 } from '@wso2/oxygen-ui-icons-react';
+import { defineMessages, FormattedMessage, useIntl } from 'react-intl';
 import { Link } from 'react-router-dom';
 
-import { useApis } from '../../api/hooks/useMvpQueries';
+import { useRestApis } from '../../api/resources/restApis/restApis.hooks';
+import type { Project } from '../../api/resources/projects';
 import { routes } from '../../routes/paths';
-import type { Project } from '../../types/domain';
 import { relativeTime } from '../../utils/relativeTime';
+import {interactiveCardSx } from '../../theme';
 
 type ProjectCardProps = {
   project: Project;
@@ -54,17 +56,70 @@ type ProjectCardProps = {
   onDelete?: (project: Project) => void;
 };
 
-// Decorative brand accents (read on both light and dark surfaces): WSO2 orange
-// for regular projects, a cyan tone for the default project.
-const ORANGE_ACCENT = 'linear-gradient(90deg, #F47B20, #EF4223)';
-const CYAN_ACCENT = 'linear-gradient(90deg, #3AA0D6, #5CD1FF)';
+/**
+ * Tint strength of the metadata strip, per color scheme.
+ *
+ * Two factors rather than one because the strip is tinted with opposite ink in
+ * each scheme — black over a light card, white over a dark one — and the two
+ * need different strengths to read as the same depth of recess. They are applied
+ * to `common.black`/`common.white`, which are identical in both schemes, so the
+ * value is never taken from the wrong scheme's palette.
+ */
+const METADATA_TINT = { dark: 0.08, light: 0.06 } as const;
 
-const repoTypeLabel = (type: Project['type']) =>
-  type === 'MONO_REPO'
-    ? 'Mono repo'
-    : type === 'MULTI_REPO'
-      ? 'Multi repo'
-      : undefined;
+const messages = defineMessages({
+  actionsLabel: {
+    id: 'project.card.actionsLabel',
+    defaultMessage: 'Project actions',
+    description: 'Accessible label for the button opening the card overflow menu.',
+  },
+  apiCount: {
+    id: 'project.card.apiCount',
+    defaultMessage: '{count, plural, one {# API} other {# APIs}}',
+  },
+  apiCountLoading: {
+    id: 'project.card.apiCountLoading',
+    defaultMessage: '… APIs',
+    description: 'Placeholder shown while the API count is still loading.',
+  },
+  defaultBadge: {
+    id: 'project.card.defaultBadge',
+    defaultMessage: 'DEFAULT',
+    description: 'Badge marking the organization’s default project.',
+  },
+  delete: {
+    id: 'project.card.delete',
+    defaultMessage: 'Delete',
+  },
+  deployedCount: {
+    id: 'project.card.deployedCount',
+    defaultMessage: '{count} deployed',
+  },
+  deployedCountLoading: {
+    id: 'project.card.deployedCountLoading',
+    defaultMessage: '… deployed',
+    description: 'Placeholder shown while the deployed count is still loading.',
+  },
+  fallbackDescription: {
+    id: 'project.card.fallbackDescription',
+    defaultMessage: 'Project workspace',
+    description: 'Shown in place of a description when the project has none.',
+  },
+  neverUpdated: {
+    id: 'project.card.neverUpdated',
+    defaultMessage: 'Not updated yet',
+  },
+  settingsLabel: {
+    id: 'project.card.settingsLabel',
+    defaultMessage: 'Project settings',
+  },
+  updatedAt: {
+    id: 'project.card.updatedAt',
+    defaultMessage: 'Updated {relative}',
+    description:
+      'Footer timestamp; {relative} is a phrase such as "3 hours ago".',
+  },
+});
 
 export function ProjectCard({
   project,
@@ -72,6 +127,7 @@ export function ProjectCard({
   onOpen,
   onDelete,
 }: ProjectCardProps) {
+  const intl = useIntl();
   const stopCardClick = (event: MouseEvent) => event.stopPropagation();
   const [menuAnchor, setMenuAnchor] = useState<HTMLElement | null>(null);
 
@@ -80,71 +136,55 @@ export function ProjectCard({
     setMenuAnchor(null);
   };
   const isDefault =
-    project.handler === 'default' || project.name.toLowerCase() === 'default';
-  const accent = isDefault ? CYAN_ACCENT : ORANGE_ACCENT;
-  const iconTint = isDefault ? 'rgba(92,209,255,0.14)' : 'rgba(255,115,0,0.14)';
-  const iconColor = isDefault ? '#3AA0D6' : '#FF7300';
-  const repoLabel = repoTypeLabel(project.type);
+    project.id === 'default' || project.displayName.toLowerCase() === 'default';
 
-  const apisQuery = useApis(orgHandle, project.handler);
-  const apiCount = apisQuery.data?.length;
-  const deployedCount = apisQuery.data?.filter(
-    (api) => api.status === 'ACTIVE'
+  // Scoped to this card's project rather than the route's, so the counts belong
+  // to the card the user is looking at and not the project they are currently in.
+  const apisQuery = useRestApis({}, { projectId: project.id });
+  const apiCount = apisQuery.data?.pagination?.total ?? apisQuery.data?.count;
+  const deployedCount = apisQuery.data?.list?.filter(
+    (api) => api.lifeCycleStatus === 'PUBLISHED'
   ).length;
 
   return (
-    <Box
+    <Card
+      // elevation={0}
       onClick={() => onOpen(project)}
-      sx={{
-        bgcolor: 'background.paper',
-        border: '1px solid',
-        borderColor: 'divider',
-        borderRadius: 1,
-        cursor: 'pointer',
+      sx={() => ({
+        ...interactiveCardSx,
         display: 'flex',
         flexDirection: 'column',
         height: '100%',
         overflow: 'hidden',
-        transition:
-          'transform .18s ease, border-color .18s ease, box-shadow .18s ease',
-        '&:hover': {
-          borderColor: 'primary.main',
-          boxShadow: 4,
-          transform: 'translateY(-3px)',
-        },
-      }}
+      })}
     >
-      {/* accent strip */}
-      <Box sx={{ background: accent, height: 4 }} />
 
       <Box sx={{ flexGrow: 1, p: 2.5 }}>
-        <Stack alignItems="flex-start" direction="row" spacing={1.75}>
+        <Stack alignItems="center" direction="row" spacing={1.75}>
           <Box
-            sx={{
+            sx={() => ({
               alignItems: 'center',
-              bgcolor: iconTint,
-              border: '1px solid',
-              borderColor: 'divider',
-              borderRadius: 1,
-              color: iconColor,
+              bgcolor: `primary.light`,
+              color: `primary.contrastText`,
+              borderRadius: 2,
               display: 'flex',
               flex: 'none',
               height: 46,
               justifyContent: 'center',
               width: 46,
-            }}
+            })}
           >
-            <Boxes size={22} />
+            <Layers size={22} />
           </Box>
           <Box sx={{ minWidth: 0 }}>
             <Stack alignItems="center" direction="row" spacing={1}>
               <Typography noWrap sx={{ fontWeight: 600 }} variant="subtitle1">
-                {project.name}
+                {project.displayName}
               </Typography>
               {isDefault && (
                 <Chip
                   color="info"
-                  label="DEFAULT"
+                  label={intl.formatMessage(messages.defaultBadge)}
                   size="small"
                   sx={{ fontSize: 10, fontWeight: 600, height: 20 }}
                   variant="outlined"
@@ -154,10 +194,12 @@ export function ProjectCard({
             <Typography
               color="text.secondary"
               noWrap
-              sx={{ mt: 0.25 }}
+              sx={{ mt: 0.25, fontSize: '0.7rem' }}
               variant="body2"
             >
-              {project.description || 'Project workspace'}
+              {project.description || (
+                <FormattedMessage {...messages.fallbackDescription} />
+              )}
             </Typography>
           </Box>
         </Stack>
@@ -166,17 +208,24 @@ export function ProjectCard({
         <Stack
           direction="row"
           spacing={2}
-          sx={{
-            alignItems: 'center',
-            bgcolor: 'action.hover',
-            border: '1px solid',
-            borderColor: 'divider',
-            borderRadius: 1,
-            color: 'text.secondary',
-            mt: 2.25,
-            px: 1.75,
-            py: 1.25,
-          }}
+          sx={[
+            (theme) => ({
+              alignItems: 'center',
+              bgcolor: alpha(theme.palette.common.black, METADATA_TINT.light),
+              borderRadius: 1,
+              color: 'text.secondary',
+              mt: 2.25,
+              px: 1.75,
+              py: 1.25,
+            }),
+            // Emitted under the dark color-scheme selector, so it follows the
+            // theme the user is actually on. Must come last in the array —
+            // `applyStyles` returns a nested selector, not a flat value.
+            (theme) =>
+              theme.applyStyles('dark', {
+                bgcolor: alpha(theme.palette.common.white, METADATA_TINT.dark),
+              }),
+          ]}
         >
           <Stack
             alignItems="center"
@@ -186,9 +235,14 @@ export function ProjectCard({
           >
             <Boxes size={16} />
             <Typography noWrap variant="body2">
-              {apisQuery.isLoading
-                ? '… APIs'
-                : `${apiCount ?? 0} ${apiCount === 1 ? 'API' : 'APIs'}`}
+              {apisQuery.isLoading ? (
+                <FormattedMessage {...messages.apiCountLoading} />
+              ) : (
+                <FormattedMessage
+                  {...messages.apiCount}
+                  values={{ count: apiCount ?? 0 }}
+                />
+              )}
             </Typography>
           </Stack>
           <Stack
@@ -199,19 +253,16 @@ export function ProjectCard({
           >
             <Rocket size={16} />
             <Typography noWrap variant="body2">
-              {apisQuery.isLoading
-                ? '… deployed'
-                : `${deployedCount ?? 0} deployed`}
+              {apisQuery.isLoading ? (
+                <FormattedMessage {...messages.deployedCountLoading} />
+              ) : (
+                <FormattedMessage
+                  {...messages.deployedCount}
+                  values={{ count: deployedCount ?? 0 }}
+                />
+              )}
             </Typography>
           </Stack>
-          {repoLabel && (
-            <Stack alignItems="center" direction="row" spacing={0.75}>
-              <GitBranch size={16} />
-              <Typography noWrap variant="body2">
-                {repoLabel}
-              </Typography>
-            </Stack>
-          )}
         </Stack>
       </Box>
 
@@ -219,9 +270,6 @@ export function ProjectCard({
       <Box
         sx={{
           alignItems: 'center',
-          bgcolor: 'action.hover',
-          borderColor: 'divider',
-          borderTop: '1px solid',
           display: 'flex',
           gap: 1,
           px: 2,
@@ -230,27 +278,32 @@ export function ProjectCard({
       >
         <Clock size={14} />
         <Typography color="text.secondary" variant="caption">
-          {project.updatedAt
-            ? `Updated ${relativeTime(project.updatedAt)}`
-            : 'Not updated yet'}
+          {project.updatedAt ? (
+            <FormattedMessage
+              {...messages.updatedAt}
+              values={{ relative: relativeTime(project.updatedAt) }}
+            />
+          ) : (
+            <FormattedMessage {...messages.neverUpdated} />
+          )}
         </Typography>
         <Box sx={{ flex: 1 }} />
-        <Tooltip title="Project settings">
+        <Tooltip title={intl.formatMessage(messages.settingsLabel)}>
           <IconButton
-            aria-label="Project settings"
+            aria-label={intl.formatMessage(messages.settingsLabel)}
             component={Link}
             onClick={stopCardClick}
             size="small"
-            to={routes.settings(orgHandle, project.handler)}
+            to={routes.projectSettings(orgHandle, project.id)}
           >
             <Settings size={16} />
           </IconButton>
         </Tooltip>
         {onDelete && (
           <>
-            <Tooltip title="Project actions">
+            <Tooltip title={intl.formatMessage(messages.actionsLabel)}>
               <IconButton
-                aria-label="Project actions"
+                aria-label={intl.formatMessage(messages.actionsLabel)}
                 onClick={(event) => {
                   event.stopPropagation();
                   setMenuAnchor(event.currentTarget);
@@ -276,24 +329,14 @@ export function ProjectCard({
                 <ListItemIcon sx={{ color: 'inherit' }}>
                   <Trash2 size={16} />
                 </ListItemIcon>
-                <ListItemText>Delete</ListItemText>
+                <ListItemText>
+                  <FormattedMessage {...messages.delete} />
+                </ListItemText>
               </MenuItem>
             </Menu>
           </>
         )}
-        <Button
-          endIcon={<ArrowRight size={14} />}
-          onClick={(event) => {
-            stopCardClick(event);
-            onOpen(project);
-          }}
-          size="small"
-          sx={{ borderRadius: 5 }}
-          variant="outlined"
-        >
-          Open
-        </Button>
       </Box>
-    </Box>
+    </Card>
   );
 }

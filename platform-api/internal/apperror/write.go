@@ -20,7 +20,7 @@ package apperror
 import (
 	"net/http"
 
-	"github.com/wso2/go-httpkit/httputil"
+	"github.com/wso2/api-platform/httpkit/httputil"
 )
 
 // WriteHTTP is the one place in the codebase that serializes an *Error onto
