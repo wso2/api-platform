@@ -27,6 +27,7 @@ import (
 
 	"github.com/google/uuid"
 
+	"github.com/wso2/api-platform/platform-api/api"
 	"github.com/wso2/api-platform/platform-api/internal/apperror"
 	"github.com/wso2/api-platform/platform-api/internal/constants"
 	"github.com/wso2/api-platform/platform-api/internal/model"
@@ -257,64 +258,26 @@ func copyStringMap(m map[string]interface{}) map[string]interface{} {
 	return out
 }
 
-// CreateAPIPortalRequest is the service-layer input for creating an API Portal.
-// Fields mirror the OpenAPI CreateApiPortalRequest but stay independent of the
-// generated types.
-type CreateAPIPortalRequest struct {
-	Handle      string
-	Name        string
-	Description string
-	URL         string
-	AuthType    string
-	AuthConfig  map[string]interface{}
-	Metadata    map[string]interface{}
-}
-
-// UpdateAPIPortalRequest carries mutable fields for a partial update. Pointer
-// fields distinguish "not sent" (nil) from "sent as empty" (non-nil, empty).
-// Only whitelisted fields are respected here; Handle, ID, OrganizationID,
-// CreatedAt, CreatedBy are ignored per the design's immutability rules.
-//
-// AuthConfig on update uses merge semantics: supplied keys overwrite existing
-// keys, missing keys retain their stored values. This lets a caller rotate a
-// single field without re-supplying clientSecret (which they can't fetch back
-// after it's been stored encrypted).
-//
-// Metadata on update uses replace semantics: if supplied (non-nil), it fully
-// replaces the stored metadata. Callers that want a partial-update on metadata
-// should GET, modify, PUT the whole thing.
-type UpdateAPIPortalRequest struct {
-	Name        *string
-	Description *string
-	URL         *string
-	AuthType    *string
-	AuthConfig  map[string]interface{} // when nil, existing preserved; when non-nil, merged in
-	Metadata    map[string]interface{} // when nil, existing preserved; when non-nil, replaces
-}
-
-// APIPortalListOptions bundles the pagination inputs for List.
-type APIPortalListOptions struct {
-	repository.ListOptions
-}
-
-// APIPortalListResponse is the service-layer list result. The handler wraps
-// this in the OpenAPI-generated envelope.
-type APIPortalListResponse struct {
-	Count      int
-	List       []*model.APIPortal
-	Pagination PaginationInfo
-}
-
-// PaginationInfo is the {total, offset, limit} triplet returned in list responses.
+// PaginationInfo is the {total, offset, limit} triplet used to build the
+// list-response envelope in api_portal_translate.go.
 type PaginationInfo struct {
 	Total  int
 	Offset int
 	Limit  int
 }
 
+// deref helpers used by the api-DTO-facing service methods.
+func derefStr(p *string) string {
+	if p == nil {
+		return ""
+	}
+	return *p
+}
+
 // CreateAPIPortal validates the request, enforces uniqueness of the handle,
-// and inserts a new row scoped to orgID.
-func (s *APIPortalService) CreateAPIPortal(req *CreateAPIPortalRequest, orgID, createdBy string) (*model.APIPortal, error) {
+// and inserts a new row scoped to orgID. Speaks in api-generated types
+// directly so it satisfies the pdk.APIPortals contract by shape.
+func (s *APIPortalService) CreateAPIPortal(req *api.CreateApiPortalRequest, orgID, createdBy string) (*api.ApiPortalResponse, error) {
 	if req == nil {
 		return nil, apperror.ValidationFailed.New("The request body is required.")
 	}
@@ -325,12 +288,12 @@ func (s *APIPortalService) CreateAPIPortal(req *CreateAPIPortalRequest, orgID, c
 	if err := utils.ValidateHandle(strings.TrimSpace(req.Handle)); err != nil {
 		return nil, err
 	}
-	authType := strings.TrimSpace(req.AuthType)
+	authType := strings.TrimSpace(string(req.AuthType))
 	if !constants.ValidAPIPortalAuthTypes[authType] {
 		return nil, apperror.ValidationFailed.New(
 			fmt.Sprintf("The authType %q is not supported.", authType))
 	}
-	portalURL, err := validateAPIPortalURL(req.URL)
+	portalURL, err := validateAPIPortalURL(req.Url)
 	if err != nil {
 		return nil, err
 	}
@@ -339,7 +302,7 @@ func (s *APIPortalService) CreateAPIPortal(req *CreateAPIPortalRequest, orgID, c
 	}
 	// Copy the incoming authConfig so we don't mutate the caller's map when we
 	// encrypt secret fields in place.
-	authConfig := copyStringMap(req.AuthConfig)
+	authConfig := copyStringMap(authConfigStructToMap(req.AuthConfig))
 	if err := validateAPIPortalAuthConfig(authType, authConfig); err != nil {
 		return nil, err
 	}
@@ -369,12 +332,12 @@ func (s *APIPortalService) CreateAPIPortal(req *CreateAPIPortalRequest, orgID, c
 		OrganizationID: orgID,
 		Handle:         strings.TrimSpace(req.Handle),
 		Name:           name,
-		Description:    strings.TrimSpace(req.Description),
+		Description:    strings.TrimSpace(derefStr(req.Description)),
 		URL:            portalURL,
 		Status:         constants.APIPortalStatusActive,
 		AuthType:       authType,
 		AuthConfig:     authConfig,
-		Metadata:       req.Metadata,
+		Metadata:       derefAPIPortalMetadata(req.Metadata),
 		CreatedBy:      actor,
 		UpdatedBy:      actor,
 	}
@@ -387,11 +350,11 @@ func (s *APIPortalService) CreateAPIPortal(req *CreateAPIPortalRequest, orgID, c
 		return nil, err
 	}
 	_ = s.auditRepo.Record("CREATE", portal.ID, "api_portal", orgID, actor)
-	return portal, nil
+	return ModelToAPIPortalResponse(portal), nil
 }
 
 // GetAPIPortal returns a single API Portal identified by its handle (wire ID) within orgID.
-func (s *APIPortalService) GetAPIPortal(handle, orgID string) (*model.APIPortal, error) {
+func (s *APIPortalService) GetAPIPortal(handle, orgID string) (*api.ApiPortalResponse, error) {
 	portal, err := s.portalRepo.GetByHandleAndOrgID(strings.TrimSpace(handle), orgID)
 	if err != nil {
 		return nil, err
@@ -399,12 +362,14 @@ func (s *APIPortalService) GetAPIPortal(handle, orgID string) (*model.APIPortal,
 	if portal == nil {
 		return nil, apperror.APIPortalNotFound.New()
 	}
-	return portal, nil
+	return ModelToAPIPortalResponse(portal), nil
 }
 
 // ListAPIPortals returns a page of API Portals in the organization, honoring
-// the requested pagination + filter options. Limit/Offset are normalized here.
-func (s *APIPortalService) ListAPIPortals(orgID string, opts APIPortalListOptions) (*APIPortalListResponse, error) {
+// the requested pagination + filter args. Limit/Offset are normalized here.
+// Flat args (rather than an options struct) so the method satisfies the
+// pdk.APIPortals contract by shape — matches the Gateways pattern.
+func (s *APIPortalService) ListAPIPortals(orgID string, limit, offset int, sortBy, sortOrder, search string) (*api.ApiPortalListResponse, error) {
 	org, err := s.orgRepo.GetOrganizationByUUID(orgID)
 	if err != nil {
 		return nil, err
@@ -412,33 +377,37 @@ func (s *APIPortalService) ListAPIPortals(orgID string, opts APIPortalListOption
 	if org == nil {
 		return nil, apperror.OrganizationNotFound.New()
 	}
-	if opts.Limit <= 0 {
-		opts.Limit = 20
+	if limit <= 0 {
+		limit = 20
 	}
-	if opts.Limit > 100 {
-		opts.Limit = 100
+	if limit > 100 {
+		limit = 100
 	}
-	if opts.Offset < 0 {
-		opts.Offset = 0
+	if offset < 0 {
+		offset = 0
 	}
-	total, err := s.portalRepo.Count(orgID, opts.Search)
+	total, err := s.portalRepo.Count(orgID, search)
 	if err != nil {
 		return nil, err
 	}
-	page, err := s.portalRepo.ListPaginated(orgID, opts.ListOptions)
+	opts := repository.ListOptions{
+		Limit:     limit,
+		Offset:    offset,
+		SortBy:    sortBy,
+		SortOrder: sortOrder,
+		Search:    search,
+	}
+	page, err := s.portalRepo.ListPaginated(orgID, opts)
 	if err != nil {
 		return nil, err
 	}
-	return &APIPortalListResponse{
-		Count:      len(page),
-		List:       page,
-		Pagination: PaginationInfo{Total: total, Offset: opts.Offset, Limit: opts.Limit},
-	}, nil
+	return buildAPIPortalListResponse(page, PaginationInfo{Total: total, Offset: offset, Limit: limit}), nil
 }
 
-// UpdateAPIPortal loads the row, applies only the whitelisted mutations from req,
-// persists the change, and returns the updated row.
-func (s *APIPortalService) UpdateAPIPortal(handle string, req *UpdateAPIPortalRequest, orgID, updatedBy string) (*model.APIPortal, error) {
+// UpdateAPIPortal loads the row, applies only the whitelisted mutations from
+// req, persists the change, and returns the updated row. Nil pointer fields
+// on the request mean "not sent" and are passed through unchanged.
+func (s *APIPortalService) UpdateAPIPortal(handle string, req *api.UpdateApiPortalRequest, orgID, updatedBy string) (*api.ApiPortalResponse, error) {
 	if req == nil {
 		return nil, apperror.ValidationFailed.New("The request body is required.")
 	}
@@ -460,8 +429,8 @@ func (s *APIPortalService) UpdateAPIPortal(handle string, req *UpdateAPIPortalRe
 	if req.Description != nil {
 		portal.Description = strings.TrimSpace(*req.Description)
 	}
-	if req.URL != nil {
-		portalURL, err := validateAPIPortalURL(*req.URL)
+	if req.Url != nil {
+		portalURL, err := validateAPIPortalURL(*req.Url)
 		if err != nil {
 			return nil, err
 		}
@@ -471,7 +440,7 @@ func (s *APIPortalService) UpdateAPIPortal(handle string, req *UpdateAPIPortalRe
 		portal.URL = portalURL
 	}
 	if req.AuthType != nil {
-		at := strings.TrimSpace(*req.AuthType)
+		at := strings.TrimSpace(string(*req.AuthType))
 		if !constants.ValidAPIPortalAuthTypes[at] {
 			return nil, apperror.ValidationFailed.New(
 				fmt.Sprintf("The authType %q is not supported.", at))
@@ -483,7 +452,7 @@ func (s *APIPortalService) UpdateAPIPortal(handle string, req *UpdateAPIPortalRe
 		// missing keys are retained. Encrypt any newly supplied sensitive
 		// fields before persistence; existing encrypted values pass through
 		// untouched because their key isn't in the incoming map.
-		incoming := copyStringMap(req.AuthConfig)
+		incoming := copyStringMap(authConfigStructToMap(req.AuthConfig))
 		if err := encryptAPIPortalAuthConfigSecrets(s.vault, incoming); err != nil {
 			return nil, err
 		}
@@ -491,7 +460,7 @@ func (s *APIPortalService) UpdateAPIPortal(handle string, req *UpdateAPIPortalRe
 	}
 	if req.Metadata != nil {
 		// Metadata is opaque pass-through; supplied map fully replaces stored.
-		portal.Metadata = copyStringMap(req.Metadata)
+		portal.Metadata = copyStringMap(derefAPIPortalMetadata(req.Metadata))
 	}
 	// authType owns the shape of authConfig. When the effective type is `local`,
 	// authConfig keys carried over from a previous `oauth2` configuration are
@@ -514,7 +483,7 @@ func (s *APIPortalService) UpdateAPIPortal(handle string, req *UpdateAPIPortalRe
 	// Config may have changed; drop any cached AuthProvider so the next
 	// outbound call rebuilds from the new stored values.
 	s.invalidateCachedAuthProvider(portal.Handle)
-	return portal, nil
+	return ModelToAPIPortalResponse(portal), nil
 }
 
 // DeleteAPIPortal removes the API Portal identified by its handle, org-scoped.
