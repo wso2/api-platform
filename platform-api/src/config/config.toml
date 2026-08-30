@@ -23,6 +23,16 @@
 log_level = "INFO"   # DEBUG | INFO | WARN | ERROR
 port      = "9243"
 
+# Access logging
+[logging]
+# access_log_format is the template for each access-log line. Named %token%
+# placeholders are substituted per request, so you control which fields are
+# logged and in what layout. Any request error is appended after the line.
+# Supported tokens: %time% %status% %latency% %clientip% %method% %path%
+#   %proto% %useragent% %bodysize% %org% %orgname% %orghandle% %user%
+#   %username% %email%
+# access_log_format = '[GIN] %time% | %status% | %latency% | %clientip% | %method% "%path%" | org="%org%" | "%useragent%"'
+
 # ---------------------------------------------------------------------------
 # Database
 # ---------------------------------------------------------------------------
