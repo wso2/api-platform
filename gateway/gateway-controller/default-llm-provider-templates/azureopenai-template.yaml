@@ -94,9 +94,3 @@ spec:
           identifier: $.usage.output_tokens_details.reasoning_tokens
           fallbackIdentifiers:
             - $.response.usage.output_tokens_details.reasoning_tokens
-        audioInputTokens:
-          location: payload
-          identifier: $.usage.input_tokens_details.audio_tokens
-        audioOutputTokens:
-          location: payload
-          identifier: $.usage.output_tokens_details.audio_tokens
