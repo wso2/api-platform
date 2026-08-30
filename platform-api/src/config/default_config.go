@@ -131,5 +131,8 @@ func defaultConfig() *Server {
 			CleanupInterval: 10 * time.Minute,
 			RetentionPeriod: 1 * time.Hour,
 		},
+		Logging: Logging{
+			AccessLogFormat: DefaultAccessLogFormat,
+		},
 	}
 }

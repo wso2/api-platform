@@ -34,6 +34,7 @@ import (
 	"os/signal"
 	"path/filepath"
 	"platform-api/src/internal/middleware"
+	"strconv"
 	"strings"
 	"syscall"
 	"time"
@@ -331,7 +332,7 @@ func StartPlatformAPIServer(cfg *config.Server, slogger *slog.Logger) (*Server, 
 	// Setup router. Use gin.New() with explicit middleware (instead of gin.Default())
 	// so the access log can include the request User-Agent.
 	router := gin.New()
-	router.Use(gin.LoggerWithFormatter(accessLogFormatter))
+	router.Use(gin.LoggerWithFormatter(accessLogFormatter(cfg.Logging.AccessLogFormat)))
 	router.Use(gin.Recovery())
 
 	// Configure and apply CORS middleware first (before auth middleware)
@@ -448,24 +449,66 @@ func StartPlatformAPIServer(cfg *config.Server, slogger *slog.Logger) (*Server, 
 	}, nil
 }
 
-// accessLogFormatter mirrors gin's default access-log format (without color)
-// and appends the request's User-Agent so the client is identified in the logs.
-func accessLogFormatter(param gin.LogFormatterParams) string {
-	latency := param.Latency
-	if latency > time.Minute {
-		latency = latency.Truncate(time.Second)
+// accessLogFormatter returns a Gin log formatter that renders each access-log
+// line from the given template. Named %token% placeholders are substituted per
+// request, so operators can choose which fields to log (and in what layout) via
+// config. Any request error is appended after the rendered line, mirroring Gin's
+// default behaviour. An empty format falls back to config.DefaultAccessLogFormat.
+//
+// Supported tokens:
+//
+//	%time%       request timestamp (2006/01/02 - 15:04:05)
+//	%status%     HTTP status code
+//	%latency%    request latency
+//	%clientip%   client IP
+//	%method%     HTTP method
+//	%path%       request path
+//	%proto%      request protocol (e.g. HTTP/1.1)
+//	%useragent%  request User-Agent
+//	%bodysize%   response body size in bytes
+//	%org%        authenticated organization ID   (from the request context)
+//	%orgname%    authenticated organization name (from the request context)
+//	%orghandle%  authenticated organization handle (from the request context)
+//	%user%       authenticated user ID           (from the request context)
+//	%username%   authenticated username          (from the request context)
+//	%email%      authenticated user email        (from the request context)
+func accessLogFormatter(format string) gin.LogFormatter {
+	if strings.TrimSpace(format) == "" {
+		format = config.DefaultAccessLogFormat
 	}
+	return func(param gin.LogFormatterParams) string {
+		latency := param.Latency
+		if latency > time.Minute {
+			latency = latency.Truncate(time.Second)
+		}
+		key := func(k string) string {
+			if v, ok := param.Keys[k].(string); ok {
+				return v
+			}
+			return ""
+		}
+		line := strings.NewReplacer(
+			"%time%", param.TimeStamp.Format("2006/01/02 - 15:04:05"),
+			"%status%", strconv.Itoa(param.StatusCode),
+			"%latency%", latency.String(),
+			"%clientip%", param.ClientIP,
+			"%method%", param.Method,
+			"%path%", param.Path,
+			"%proto%", param.Request.Proto,
+			"%useragent%", param.Request.UserAgent(),
+			"%bodysize%", strconv.Itoa(param.BodySize),
+			"%org%", key("organization"),
+			"%orgname%", key("org_name"),
+			"%orghandle%", key("org_handle"),
+			"%user%", key("user_id"),
+			"%username%", key("username"),
+			"%email%", key("email"),
+		).Replace(format)
 
-	return fmt.Sprintf("[GIN] %v | %3d | %13v | %15s | %-7s %#v | %q\n%s",
-		param.TimeStamp.Format("2006/01/02 - 15:04:05"),
-		param.StatusCode,
-		latency,
-		param.ClientIP,
-		param.Method,
-		param.Path,
-		param.Request.UserAgent(),
-		param.ErrorMessage,
-	)
+		// Emit exactly one trailing newline, then surface any request error
+		// after it (Gin's ErrorMessage is already newline-terminated).
+		return strings.TrimRight(line, "\n") + "\n" + param.ErrorMessage
+	}
 }
 
 // demoMode reports whether APIP_DEMO_MODE is enabled.

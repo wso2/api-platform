@@ -86,6 +86,7 @@ type Server struct {
 	APIKey           APIKey           `koanf:"api_key"`
 	Gateway          Gateway          `koanf:"gateway"`
 	EventHub         EventHub         `koanf:"event_hub"`
+	Logging          Logging          `koanf:"logging"`
 
 	EnableScopeValidation      bool `koanf:"enable_scope_validation"`
 	OrgCreationRequiresAuth    bool `koanf:"org_creation_requires_auth"`
@@ -129,6 +130,22 @@ type EventHub struct {
 	CleanupInterval time.Duration `koanf:"cleanup_interval"`
 	RetentionPeriod time.Duration `koanf:"retention_period"`
 }
+
+// Logging holds access-log configuration.
+type Logging struct {
+	// AccessLogFormat is the template used for each Gin access-log line.
+	// Named tokens are substituted per request; see DefaultAccessLogFormat and
+	// the accessLogFormatter in internal/server for the supported tokens
+	// (e.g. %time%, %status%, %latency%, %clientip%, %method%, %path%,
+	// %useragent%, %org%, %username%). Any request error is appended after
+	// the rendered line, mirroring Gin's default behaviour.
+	AccessLogFormat string `koanf:"access_log_format"`
+}
+
+// DefaultAccessLogFormat is the access-log template used when none is configured.
+// It mirrors Gin's default line (without color) and includes the authenticated
+// organization ID and the request User-Agent.
+const DefaultAccessLogFormat = `[GIN] %time% | %status% | %latency% | %clientip% | %method% "%path%" | org="%org%" | "%useragent%"`
 
 // Gateway holds gateway-related configuration.
 type Gateway struct {
@@ -430,6 +447,9 @@ func envToKoanfKey(s string) string {
 	case "event_hub_poll_interval":    return "event_hub.poll_interval"
 	case "event_hub_cleanup_interval": return "event_hub.cleanup_interval"
 	case "event_hub_retention_period": return "event_hub.retention_period"
+
+	// Logging
+	case "logging_access_log_format": return "logging.access_log_format"
 
 	default:
 		return ""
