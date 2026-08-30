@@ -16,7 +16,7 @@
  * under the License.
  */
 
-import type { Gateway } from '../../../../types/domain';
+import type { Gateway } from '@/api/resources/gateways';
 
 /**
  * Client-side mock environments. Until the dedicated environment service exists,
@@ -34,11 +34,27 @@ export const MOCK_ENVIRONMENTS: GatewayEnvironment[] = [
 ];
 
 /**
- * Deterministically buckets a gateway into a mock environment by a stable hash
- * of its id (demo placeholder — no backend environment data yet).
+ * The environment a gateway belongs to.
+ *
+ * Until the environment service exists, the create form records the user's
+ * choice in the gateway's free-form `properties` bag, so that is read first —
+ * a gateway provisioned into Production has to appear under Production rather
+ * than wherever a hash puts it. Anything created before that field existed
+ * (or carrying an environment this build doesn't know) still has to land
+ * somewhere, and falls back to the stable hash of its id.
  */
 export const environmentForGateway = (gateway: Gateway): GatewayEnvironment => {
-  const hash = [...gateway.id].reduce((sum, ch) => sum + ch.charCodeAt(0), 0);
+  const recorded = MOCK_ENVIRONMENTS.find(
+    (environment) => environment.id === gateway.properties?.environment
+  );
+  if (recorded) return recorded;
+
+  // `id` is optional in the spec, so an unsaved/partial gateway still has to
+  // land somewhere rather than throwing.
+  const hash = [...(gateway.id ?? '')].reduce(
+    (sum, ch) => sum + ch.charCodeAt(0),
+    0
+  );
   return MOCK_ENVIRONMENTS[hash % MOCK_ENVIRONMENTS.length];
 };
 

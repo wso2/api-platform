@@ -36,7 +36,7 @@ import { defineMessages, FormattedMessage, useIntl } from 'react-intl';
 
 import type { Gateway } from '@/api/resources/gateways';
 import { useNotifications } from '@/components/Notifications';
-import { gatewayEndpoint } from '../../gateways/gatewayDisplay';
+import { gatewayEndpoint } from '../../gateways/utils/gatewayDisplay';
 
 const messages = defineMessages({
   copy: {

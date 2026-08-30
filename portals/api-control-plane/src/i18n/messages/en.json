@@ -143,52 +143,6 @@
   "api.create.approach.scratch.title": {
     "defaultMessage": "Start from Scratch"
   },
-  "api.create.approachSelector.apiTypeSection.description": {
-    "defaultMessage": "Types that {proxyType} does not carry stay listed, greyed out.",
-    "description": "Explains why unavailable API types are still visible on the cards below."
-  },
-  "api.create.approachSelector.apiTypeSection.title": {
-    "defaultMessage": "Pick an API type"
-  },
-  "api.create.approachSelector.approach.continue": {
-    "defaultMessage": "Continue"
-  },
-  "api.create.approachSelector.approachSection.description": {
-    "defaultMessage": "Choosing one of these opens the next step."
-  },
-  "api.create.approachSelector.approachSection.title": {
-    "defaultMessage": "How do you want to start?"
-  },
-  "api.create.approachSelector.badge.comingSoon": {
-    "defaultMessage": "Coming soon",
-    "description": "Badge on an option that is planned but not released yet."
-  },
-  "api.create.approachSelector.badge.selected": {
-    "defaultMessage": "Selected",
-    "description": "Accessible label for the check mark on the chosen card."
-  },
-  "api.create.approachSelector.badge.unavailable": {
-    "defaultMessage": "Unavailable",
-    "description": "Badge on an option the currently selected proxy type does not offer."
-  },
-  "api.create.approachSelector.proxyTypeSection.description": {
-    "defaultMessage": "This decides which API types and starting points are available below."
-  },
-  "api.create.approachSelector.proxyTypeSection.title": {
-    "defaultMessage": "Pick a proxy type"
-  },
-  "api.create.approachSelector.subtitle": {
-    "defaultMessage": "Choose what you are exposing and how you want to start. Everything here can be changed after the API is created."
-  },
-  "api.create.approachSelector.title": {
-    "defaultMessage": "Create New"
-  },
-  "api.create.approachSelector.tooltip.comingSoon": {
-    "defaultMessage": "Not available yet."
-  },
-  "api.create.approachSelector.tooltip.unsupportedForProxyType": {
-    "defaultMessage": "Not available for {proxyType}."
-  },
   "api.create.defineApi.action.back": {
     "defaultMessage": "Back",
     "description": "Returns to the previous step of the API creation wizard."
@@ -392,54 +346,6 @@
   },
   "api.create.fromContract.url.required": {
     "defaultMessage": "The URL for the API contract cannot be empty"
-  },
-  "api.create.fromEndpoint.action.back": {
-    "defaultMessage": "Back",
-    "description": "Returns to the previous step of the API creation wizard."
-  },
-  "api.create.fromEndpoint.action.clear": {
-    "defaultMessage": "Clear {label}",
-    "description": "Accessible name for the button that empties a URL field. {label} is that field’s own label."
-  },
-  "api.create.fromEndpoint.action.next": {
-    "defaultMessage": "Next"
-  },
-  "api.create.fromEndpoint.apiType.label": {
-    "defaultMessage": "Select API Type"
-  },
-  "api.create.fromEndpoint.error.invalidUrl": {
-    "defaultMessage": "Enter a valid HTTP or HTTPS URL."
-  },
-  "api.create.fromEndpoint.error.productionEmpty": {
-    "defaultMessage": "The Production Backend URL cannot be empty"
-  },
-  "api.create.fromEndpoint.production.helper": {
-    "defaultMessage": "The backend the gateway routes production traffic to."
-  },
-  "api.create.fromEndpoint.production.label": {
-    "defaultMessage": "Production Backend URL"
-  },
-  "api.create.fromEndpoint.production.placeholder": {
-    "defaultMessage": "Enter the production backend URL"
-  },
-  "api.create.fromEndpoint.sandbox.helper": {
-    "defaultMessage": "A non-production backend used for testing this API."
-  },
-  "api.create.fromEndpoint.sandbox.label": {
-    "defaultMessage": "Sandbox Backend URL (optional)"
-  },
-  "api.create.fromEndpoint.sandbox.placeholder": {
-    "defaultMessage": "Enter the sandbox backend URL"
-  },
-  "api.create.fromEndpoint.status.validMark": {
-    "defaultMessage": "Valid URL",
-    "description": "Accessible label for the check mark shown inside a URL field that passed validation."
-  },
-  "api.create.fromEndpoint.subtitle": {
-    "defaultMessage": "Point the gateway at your backend. Everything else is filled in on the next step."
-  },
-  "api.create.fromEndpoint.title": {
-    "defaultMessage": "Create API Proxy from Endpoint"
   },
   "api.create.generalForm.action.back": {
     "defaultMessage": "Back"
@@ -1285,14 +1191,6 @@
     "defaultMessage": "Connected",
     "description": "Status shown when the gateway is talking to the platform."
   },
-  "gatewayCard.copied": {
-    "defaultMessage": "Copied",
-    "description": "Tooltip confirming the gateway endpoint is on the clipboard."
-  },
-  "gatewayCard.copyEndpoint": {
-    "defaultMessage": "Copy endpoint",
-    "description": "Tooltip and accessible label for the copy-endpoint button."
-  },
   "gatewayCard.disconnected": {
     "defaultMessage": "Not connected",
     "description": "Status shown when the gateway is not reachable."
@@ -1317,17 +1215,356 @@
     "defaultMessage": "Self-hosted",
     "description": "Chip for a gateway the customer runs on their own infra."
   },
-  "gatewayCard.noEndpoint": {
-    "defaultMessage": "No endpoint yet",
-    "description": "Shown in place of the address when the gateway has not reported one."
-  },
   "gatewayCard.updated": {
     "defaultMessage": "Updated {relative}",
     "description": "Card footer timestamp; {relative} is a phrase such as \"3 hours ago\"."
   },
+  "gateways.CopyableCommand.copied": {
+    "defaultMessage": "Copied",
+    "description": "Tooltip confirming the command was copied to the clipboard."
+  },
+  "gateways.CopyableCommand.copy": {
+    "defaultMessage": "Copy command",
+    "description": "Accessible label and tooltip for the button that copies a terminal command."
+  },
   "gateways.count": {
     "defaultMessage": "{count, plural, one {# gateway} other {# gateways}}",
     "description": "Heading above the listing, counting every match."
+  },
+  "gateways.create.action.back": {
+    "defaultMessage": "Back to gateways"
+  },
+  "gateways.create.action.cancel": {
+    "defaultMessage": "Cancel"
+  },
+  "gateways.create.action.submit": {
+    "defaultMessage": "Provision gateway"
+  },
+  "gateways.create.action.submitting": {
+    "defaultMessage": "Provisioning…"
+  },
+  "gateways.create.description.label": {
+    "defaultMessage": "Description (Optional)"
+  },
+  "gateways.create.endpoint.error.invalid": {
+    "defaultMessage": "Enter a full URL, for example https://localhost:8443."
+  },
+  "gateways.create.endpoint.error.required": {
+    "defaultMessage": "Enter a URL."
+  },
+  "gateways.create.endpoint.label": {
+    "defaultMessage": "URL"
+  },
+  "gateways.create.endpoint.placeholder": {
+    "defaultMessage": "https://localhost:8443",
+    "description": "Example gateway address shown in the empty URL field."
+  },
+  "gateways.create.environment.label": {
+    "defaultMessage": "Associated Environment"
+  },
+  "gateways.create.name.error.required": {
+    "defaultMessage": "Enter a gateway name."
+  },
+  "gateways.create.name.label": {
+    "defaultMessage": "Name"
+  },
+  "gateways.create.notification.created": {
+    "defaultMessage": "Gateway “{name}” provisioned.",
+    "description": "{name} is the gateway display name the user just entered."
+  },
+  "gateways.create.section.configurations": {
+    "defaultMessage": "Configurations"
+  },
+  "gateways.create.section.general": {
+    "defaultMessage": "General Details"
+  },
+  "gateways.create.subtitle": {
+    "defaultMessage": "Register a self-hosted gateway, then connect it to the platform."
+  },
+  "gateways.create.title": {
+    "defaultMessage": "Provision a gateway"
+  },
+  "gateways.create.type.ai.title": {
+    "defaultMessage": "AI Gateway"
+  },
+  "gateways.create.type.badge.beta": {
+    "defaultMessage": "Beta",
+    "description": "Badge on a gateway type that is released but not yet generally available."
+  },
+  "gateways.create.type.event.title": {
+    "defaultMessage": "Event Gateway"
+  },
+  "gateways.create.type.groupLabel": {
+    "defaultMessage": "Gateway type",
+    "description": "Accessible name for the row of gateway type cards. Noun, not a command."
+  },
+  "gateways.create.type.label": {
+    "defaultMessage": "Type"
+  },
+  "gateways.create.type.regular.title": {
+    "defaultMessage": "API Gateway"
+  },
+  "gateways.create.version.badge.lts": {
+    "defaultMessage": "LTS",
+    "description": "Badge marking a long-term-support gateway build."
+  },
+  "gateways.create.version.error.required": {
+    "defaultMessage": "Choose a gateway version."
+  },
+  "gateways.create.version.label": {
+    "defaultMessage": "Gateway Version"
+  },
+  "gateways.create.version.option": {
+    "defaultMessage": "api-gateway v{version}",
+    "description": "One entry in the gateway version list; {version} is a number such as 1.0."
+  },
+  "gateways.detail.GetStarted.download.intro": {
+    "defaultMessage": "Run this command in your terminal to download the gateway:"
+  },
+  "gateways.detail.GetStarted.environment.label": {
+    "defaultMessage": "Associated Environment"
+  },
+  "gateways.detail.GetStarted.k8s.chartHeading": {
+    "defaultMessage": "Installing the Chart",
+    "description": "Heading above the Helm command that installs the gateway into a cluster."
+  },
+  "gateways.detail.GetStarted.k8s.chartIntro": {
+    "defaultMessage": "Run this command to install the gateway chart with control plane configurations:"
+  },
+  "gateways.detail.GetStarted.prerequisite.curl": {
+    "defaultMessage": "cURL installed"
+  },
+  "gateways.detail.GetStarted.prerequisite.docker": {
+    "defaultMessage": "Docker installed and running"
+  },
+  "gateways.detail.GetStarted.prerequisite.helm": {
+    "defaultMessage": "Helm 3.18+"
+  },
+  "gateways.detail.GetStarted.prerequisite.kubernetes": {
+    "defaultMessage": "Kubernetes 1.32+"
+  },
+  "gateways.detail.GetStarted.prerequisite.unzip": {
+    "defaultMessage": "unzip installed"
+  },
+  "gateways.detail.GetStarted.prerequisites": {
+    "defaultMessage": "Prerequisites"
+  },
+  "gateways.detail.GetStarted.reconfigure": {
+    "defaultMessage": "Reconfigure",
+    "description": "Generates a fresh registration token, revoking the gateway’s previous one."
+  },
+  "gateways.detail.GetStarted.reconfigure.confirm.body": {
+    "defaultMessage": "This revokes the current registration token and disconnects any gateway still using it. You will need to apply the new token to bring it back online."
+  },
+  "gateways.detail.GetStarted.reconfigure.confirm.button": {
+    "defaultMessage": "Generate new token"
+  },
+  "gateways.detail.GetStarted.reconfigure.confirm.cancel": {
+    "defaultMessage": "Cancel"
+  },
+  "gateways.detail.GetStarted.reconfigure.confirm.title": {
+    "defaultMessage": "Generate a new registration token?"
+  },
+  "gateways.detail.GetStarted.reconfiguring": {
+    "defaultMessage": "Generating…"
+  },
+  "gateways.detail.GetStarted.start.enter": {
+    "defaultMessage": "1. Navigate to the gateway folder."
+  },
+  "gateways.detail.GetStarted.start.run": {
+    "defaultMessage": "2. Run this command to start the gateway using the configs/keys.env file created in Step 2:",
+    "description": "configs/keys.env is a file path — keep it exactly as written."
+  },
+  "gateways.detail.GetStarted.step.configure": {
+    "defaultMessage": "Step 2: Configure the Gateway"
+  },
+  "gateways.detail.GetStarted.step.download": {
+    "defaultMessage": "Step 1: Download the Gateway"
+  },
+  "gateways.detail.GetStarted.step.start": {
+    "defaultMessage": "Step 3: Start the Gateway"
+  },
+  "gateways.detail.GetStarted.tab.docker": {
+    "defaultMessage": "Docker",
+    "description": "Product name — do not translate."
+  },
+  "gateways.detail.GetStarted.tab.kubernetes": {
+    "defaultMessage": "Kubernetes",
+    "description": "Product name — do not translate."
+  },
+  "gateways.detail.GetStarted.tab.quickStart": {
+    "defaultMessage": "Quick Start"
+  },
+  "gateways.detail.GetStarted.tab.virtualMachine": {
+    "defaultMessage": "Virtual Machine"
+  },
+  "gateways.detail.GetStarted.title": {
+    "defaultMessage": "Get Started"
+  },
+  "gateways.detail.GetStarted.token.notice.compose": {
+    "defaultMessage": "The registration token is single-use. If you need to reconfigure the gateway, generate a new token — this will revoke the old token and disconnect the gateway from the control plane."
+  },
+  "gateways.detail.GetStarted.token.notice.helm": {
+    "defaultMessage": "The registration token is a one-time generated token for this gateway. If you need to install or update the gateway chart again, first reconfigure this gateway to generate a new registration token. Reconfiguring will revoke the previous token."
+  },
+  "gateways.detail.GetStarted.token.once": {
+    "defaultMessage": "Copy this now. The token is shown only once and cannot be retrieved again."
+  },
+  "gateways.detail.GetStarted.url.label": {
+    "defaultMessage": "URL"
+  },
+  "gateways.detail.GetStarted.vm.runtime.colima": {
+    "defaultMessage": "Colima (macOS)",
+    "description": "A container runtime option. Product name — do not translate “Colima”."
+  },
+  "gateways.detail.GetStarted.vm.runtime.dockerDesktop": {
+    "defaultMessage": "Docker Desktop (Windows / macOS)",
+    "description": "A container runtime option. Product name — do not translate “Docker Desktop”."
+  },
+  "gateways.detail.GetStarted.vm.runtime.dockerEngine": {
+    "defaultMessage": "Docker Engine + Compose plugin (Linux)",
+    "description": "A container runtime option. Product names — do not translate."
+  },
+  "gateways.detail.GetStarted.vm.runtime.rancher": {
+    "defaultMessage": "Rancher Desktop (Windows / macOS)",
+    "description": "A container runtime option. Product name — do not translate “Rancher Desktop”."
+  },
+  "gateways.detail.GetStarted.vm.runtimeIntro": {
+    "defaultMessage": "Ensure docker and docker compose commands are available."
+  },
+  "gateways.detail.GetStarted.vm.runtimesIntro": {
+    "defaultMessage": "A Docker-compatible container runtime such as:"
+  },
+  "gateways.detail.Header.created": {
+    "defaultMessage": "Created",
+    "description": "Label before the relative time a gateway was registered, e.g. \"Created 1 month ago\"."
+  },
+  "gateways.detail.Header.description.label": {
+    "defaultMessage": "Description",
+    "description": "Label of the box used to edit the gateway description."
+  },
+  "gateways.detail.Header.description.placeholder": {
+    "defaultMessage": "No description",
+    "description": "Stands in for the gateway description when it has none. Rendered in italics as an absence, not a value."
+  },
+  "gateways.detail.Header.edit": {
+    "defaultMessage": "Edit name and description",
+    "description": "Accessible label and tooltip for the pencil that opens the gateway name and description for editing."
+  },
+  "gateways.detail.Header.edit.cancel": {
+    "defaultMessage": "Cancel",
+    "description": "Discards unsaved edits to the gateway name and description."
+  },
+  "gateways.detail.Header.edit.save": {
+    "defaultMessage": "Save",
+    "description": "Commits edits to the gateway name and description."
+  },
+  "gateways.detail.Header.edit.saved": {
+    "defaultMessage": "Gateway details updated.",
+    "description": "Confirmation shown after the gateway name or description is saved."
+  },
+  "gateways.detail.Header.name.label": {
+    "defaultMessage": "Name",
+    "description": "Label of the box used to edit the gateway name."
+  },
+  "gateways.detail.Header.name.required": {
+    "defaultMessage": "Enter a gateway name."
+  },
+  "gateways.detail.Policies.column.description": {
+    "defaultMessage": "Description"
+  },
+  "gateways.detail.Policies.column.name": {
+    "defaultMessage": "Name"
+  },
+  "gateways.detail.Policies.column.type": {
+    "defaultMessage": "Policy Type",
+    "description": "Column stating where a policy came from — the Policy Hub, or a custom upload."
+  },
+  "gateways.detail.Policies.column.version": {
+    "defaultMessage": "Version"
+  },
+  "gateways.detail.Policies.empty.description": {
+    "defaultMessage": "This gateway has not reported a manifest yet. Once it connects and syncs, the policies it is running appear here."
+  },
+  "gateways.detail.Policies.empty.title": {
+    "defaultMessage": "No gateway manifest found"
+  },
+  "gateways.detail.Policies.error": {
+    "defaultMessage": "Unable to load the policies on this gateway."
+  },
+  "gateways.detail.Policies.loading": {
+    "defaultMessage": "Loading policies"
+  },
+  "gateways.detail.Policies.noDescription": {
+    "defaultMessage": "No description",
+    "description": "Stands in for a policy description when the manifest carries none. Rendered as an absence, not a value."
+  },
+  "gateways.detail.Policies.subtitle": {
+    "defaultMessage": "Mediation policies installed on this gateway, as reported by its last manifest sync."
+  },
+  "gateways.detail.Policies.title": {
+    "defaultMessage": "Policies"
+  },
+  "gateways.detail.Policies.type.custom": {
+    "defaultMessage": "Custom",
+    "description": "Policy Type value for a policy the organization installed itself."
+  },
+  "gateways.detail.Policies.type.policyHub": {
+    "defaultMessage": "Policy Hub",
+    "description": "Policy Type value for a policy shipped by the platform’s own catalog. Product name — do not translate “Policy Hub”."
+  },
+  "gateways.detail.SetupBanner.connected.next": {
+    "defaultMessage": "Every setup step is complete.",
+    "description": "Sub-line of the setup banner once the gateway agent has connected."
+  },
+  "gateways.detail.SetupBanner.connected.title": {
+    "defaultMessage": "Your {name} gateway is connected",
+    "description": "Setup banner headline once the gateway is online. {name} is the gateway name the user chose — never translated."
+  },
+  "gateways.detail.SetupBanner.created.next": {
+    "defaultMessage": "Next: Configure your {name} gateway",
+    "description": "Sub-line of the setup banner telling the user which step follows. {name} is the gateway name — never translated."
+  },
+  "gateways.detail.SetupBanner.created.title": {
+    "defaultMessage": "You successfully created your {name} gateway",
+    "description": "Setup banner headline after a gateway is registered. {name} is the gateway name — never translated."
+  },
+  "gateways.detail.SetupBanner.dismiss": {
+    "defaultMessage": "Dismiss setup progress",
+    "description": "Accessible label for the button that closes the setup progress banner."
+  },
+  "gateways.detail.SetupBanner.progress.label": {
+    "defaultMessage": "Gateway setup progress",
+    "description": "Accessible name for the ring showing how many setup steps are done."
+  },
+  "gateways.detail.SetupBanner.progress.ratio": {
+    "defaultMessage": "{done}/{total}",
+    "description": "Completed setup steps out of the total, e.g. \"1/2\"."
+  },
+  "gateways.detail.SetupBanner.progress.steps": {
+    "defaultMessage": "Steps",
+    "description": "Word under the \"1/2\" count inside the setup progress ring. Plural noun, kept very short."
+  },
+  "gateways.detail.action.back": {
+    "defaultMessage": "Back to list",
+    "description": "Returns to the gateway listing from a gateway’s own page."
+  },
+  "gateways.detail.error.message": {
+    "defaultMessage": "Unable to load this gateway."
+  },
+  "gateways.detail.loading": {
+    "defaultMessage": "Loading gateway"
+  },
+  "gateways.detail.notFound": {
+    "defaultMessage": "Gateway not found"
+  },
+  "gateways.detail.tab.configurations": {
+    "defaultMessage": "Configurations",
+    "description": "Tab holding the setup walkthrough that brings a gateway online."
+  },
+  "gateways.detail.tab.policies": {
+    "defaultMessage": "Policies",
+    "description": "Tab listing the mediation policies installed on a gateway."
   },
   "gateways.empty.action": {
     "defaultMessage": "Provision gateway"
@@ -1336,7 +1573,8 @@
     "defaultMessage": "Provision a self-hosted gateway to start exposing APIs to clients."
   },
   "gateways.empty.title": {
-    "defaultMessage": "No gateways yet"
+    "defaultMessage": "Provision your first gateway",
+    "description": "First-run prompt shown to an organization with no gateways."
   },
   "gateways.error.message": {
     "defaultMessage": "Unable to load gateways"
@@ -1382,6 +1620,14 @@
   },
   "gateways.title": {
     "defaultMessage": "Gateways"
+  },
+  "gateways.view.grid": {
+    "defaultMessage": "Grid view",
+    "description": "Accessible label for the button switching to the card grid."
+  },
+  "gateways.view.list": {
+    "defaultMessage": "List view",
+    "description": "Accessible label for the button switching to compact rows."
   },
   "project.card.actionsLabel": {
     "defaultMessage": "Project actions",

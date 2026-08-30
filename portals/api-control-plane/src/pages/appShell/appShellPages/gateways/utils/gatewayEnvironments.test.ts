@@ -18,7 +18,7 @@
 
 import { describe, expect, it } from 'vitest';
 
-import type { Gateway } from '../../../../types/domain';
+import type { Gateway } from '@/api/resources/gateways';
 import {
   environmentForGateway,
   groupGatewaysByEnvironment,
@@ -27,11 +27,9 @@ import {
 
 const gw = (id: string): Gateway => ({
   id,
-  name: id,
   displayName: id,
-  vhost: `${id}.example.com`,
+  endpoints: [`https://${id}.example.com`],
   functionalityType: 'regular',
-  mode: 'self-hosted',
 });
 
 describe('gateway environments', () => {
@@ -40,6 +38,25 @@ describe('gateway environments', () => {
     const env2 = environmentForGateway(gw('alpha'));
     expect(env1).toEqual(env2);
     expect(MOCK_ENVIRONMENTS).toContainEqual(env1);
+  });
+
+  it('honours the environment recorded on the gateway over the id hash', () => {
+    const production = MOCK_ENVIRONMENTS.find((env) => env.id === 'production')!;
+    const recorded: Gateway = {
+      ...gw('alpha'),
+      properties: { environment: 'production' },
+    };
+
+    expect(environmentForGateway(recorded)).toEqual(production);
+  });
+
+  it('falls back to the hash when the recorded environment is unknown', () => {
+    const unknown: Gateway = {
+      ...gw('alpha'),
+      properties: { environment: 'staging' },
+    };
+
+    expect(environmentForGateway(unknown)).toEqual(environmentForGateway(gw('alpha')));
   });
 
   it('groups gateways under their environment, omitting empty environments', () => {

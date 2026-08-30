@@ -18,471 +18,332 @@
 
 import { useMemo, useState } from 'react';
 import {
-  alpha,
   Box,
   Button,
-  IconButton,
-  InputAdornment,
+  Chip,
+  Grid,
   PageTitle,
+  SearchBar,
   Stack,
-  TextField,
+  StatCard,
   ToggleButton,
   ToggleButtonGroup,
-  Tooltip,
   Typography,
 } from '@wso2/oxygen-ui';
 import {
-  Check,
-  Clock,
-  Cloud,
-  Copy,
   Layers,
+  LayoutGrid,
+  List,
   Network,
   Plus,
-  Search,
-  Server,
+  Shrub,
+  Wifi,
+  WifiOff,
 } from '@wso2/oxygen-ui-icons-react';
+import { defineMessages, FormattedMessage, useIntl } from 'react-intl';
 import { useNavigate, useParams } from 'react-router-dom';
 
-import { useGateways } from '../../../../api/hooks/useMvpQueries';
-import {
-  EmptyState,
-  ErrorState,
-  LoadingState,
-} from '../../../../components/StateViews';
-import { routes } from '../../../../routes/paths';
-import type { Gateway } from '../../../../types/domain';
-import { relativeTime } from '../../../../utils/relativeTime';
-import { groupGatewaysByEnvironment } from './gatewayEnvironments';
-import './gatewaysUi.css';
-import { FormattedMessage } from 'react-intl';
+import { useGateways, type Gateway } from '@/api/resources/gateways';
+import { GatewayIllustration } from '@/components/illustrations/GatewayIllustration';
+import { EmptyState, ErrorState, LoadingState } from '@/components/StateViews';
+import { routes } from '@/routes/paths';
+import { GatewayGridView } from './components/GatewayGridView';
+import { GatewayListView } from './components/GatewayListView';
+import { gatewayMode, gatewaySearchFields } from './utils/gatewayDisplay';
+import { groupGatewaysByEnvironment } from './utils/gatewayEnvironments';
 
-const MODE_LABEL: Record<Gateway['mode'], string> = {
-  'self-hosted': 'Self-hosted',
-  managed: 'WSO2-managed',
-};
-
+/** Which hosting modes the listing is currently showing. */
 type GatewayFilter = 'all' | 'managed' | 'self';
 
-/** A small KPI summary tile. */
-function StatCard({
-  label,
-  value,
-  dotColor,
-}: {
-  label: string;
-  value: number;
-  dotColor: string;
-}) {
-  return (
-    <Box
-      sx={{
-        bgcolor: 'background.paper',
-        border: '1px solid',
-        borderColor: 'divider',
-        borderRadius: 1.5,
-        px: 2.5,
-        py: 2,
-      }}
-    >
-      <Stack alignItems="center" direction="row" spacing={1.25}>
-        <Box
-          sx={{ bgcolor: dotColor, borderRadius: '50%', height: 8, width: 8 }}
-        />
-        <Typography
-          color="text.secondary"
-          sx={{ fontWeight: 500 }}
-          variant="body2"
-        >
-          {label}
-        </Typography>
-      </Stack>
-      <Typography
-        sx={{ fontWeight: 300, letterSpacing: '-.5px', mt: 1 }}
-        variant="h4"
-      >
-        {value}
-      </Typography>
-    </Box>
-  );
-}
+/** How each environment group renders its gateways. */
+type ViewMode = 'grid' | 'list';
 
-function GatewayCard({
-  gateway,
-  onOpen,
-}: {
-  gateway: Gateway;
-  onOpen: (gateway: Gateway) => void;
-}) {
-  const [copied, setCopied] = useState(false);
-  const isSelfHosted = gateway.mode === 'self-hosted';
-  const kindColor = isSelfHosted ? 'primary.main' : 'info.main';
+const messages = defineMessages({
+  emptyAction: {
+    id: 'gateways.empty.action',
+    defaultMessage: 'Provision gateway',
+  },
+  emptyDescription: {
+    id: 'gateways.empty.description',
+    defaultMessage: 'Provision a self-hosted gateway to start exposing APIs to clients.',
+  },
+  emptyTitle: {
+    id: 'gateways.empty.title',
+    defaultMessage: 'Provision your first gateway',
+    description: 'First-run prompt shown to an organization with no gateways.',
+  },
+  errorMessage: {
+    id: 'gateways.error.message',
+    defaultMessage: 'Unable to load gateways',
+  },
+  filterAll: {
+    id: 'gateways.filter.all',
+    defaultMessage: 'All',
+  },
+  filterManaged: {
+    id: 'gateways.filter.managed',
+    defaultMessage: 'Managed',
+  },
+  filterSelfHosted: {
+    id: 'gateways.filter.self',
+    defaultMessage: 'Self-hosted',
+  },
+  gatewayCount: {
+    id: 'gateways.count',
+    defaultMessage: '{count, plural, one {# gateway} other {# gateways}}',
+    description: 'Heading above the listing, counting every match.',
+  },
+  gridView: {
+    id: 'gateways.view.grid',
+    defaultMessage: 'Grid view',
+    description: 'Accessible label for the button switching to the card grid.',
+  },
+  listView: {
+    id: 'gateways.view.list',
+    defaultMessage: 'List view',
+    description: 'Accessible label for the button switching to compact rows.',
+  },
+  loading: {
+    id: 'gateways.loading',
+    defaultMessage: 'Loading gateways',
+  },
+  noMatchesDescription: {
+    id: 'gateways.noMatches.description',
+    defaultMessage: 'Try a different search term or filter.',
+  },
+  noMatchesTitle: {
+    id: 'gateways.noMatches.title',
+    defaultMessage: 'No matching gateways',
+  },
+  provisionButton: {
+    id: 'gateways.provisionButton',
+    defaultMessage: 'Provision gateway',
+  },
+  searchPlaceholder: {
+    id: 'gateways.searchPlaceholder',
+    defaultMessage: 'Search gateways',
+  },
+  statConnected: {
+    id: 'gateways.stat.connected',
+    defaultMessage: 'Connected',
+  },
+  statDisconnected: {
+    id: 'gateways.stat.disconnected',
+    defaultMessage: 'Not connected',
+  },
+  statEnvironments: {
+    id: 'gateways.stat.environments',
+    defaultMessage: 'Environments',
+  },
+  statTotal: {
+    id: 'gateways.stat.total',
+    defaultMessage: 'Total gateways',
+  },
+  subtitle: {
+    id: 'gateways.subtitle',
+    defaultMessage:
+      'Provision and manage self-hosted or WSO2-managed gateways to expose your APIs to clients.',
+  },
+  title: {
+    id: 'gateways.title',
+    defaultMessage: 'Gateways',
+  },
+});
 
-  const copyEndpoint = (event: React.MouseEvent) => {
-    event.stopPropagation();
-    navigator.clipboard?.writeText(gateway.vhost).catch(() => undefined);
-    setCopied(true);
-    setTimeout(() => setCopied(false), 1400);
-  };
+/** Keep the fleet summary and environment groups accurate by fetching all gateways. */
+const GATEWAY_PAGE_LIMIT = 100;
 
-  const chipSx = {
-    alignItems: 'center',
-    bgcolor: 'action.hover',
-    border: '1px solid',
-    borderColor: 'divider',
-    borderRadius: 1,
-    color: 'text.secondary',
-    display: 'inline-flex',
-    fontSize: 12,
-    fontWeight: 500,
-    gap: 0.75,
-    px: 1.25,
-    py: 0.5,
-  };
-
-  return (
-    <Box
-      onClick={() => onOpen(gateway)}
-      sx={{
-        bgcolor: 'background.paper',
-        border: '1px solid',
-        borderColor: 'divider',
-        borderRadius: 2,
-        cursor: 'pointer',
-        p: 2.5,
-        transition: 'border-color .2s, box-shadow .2s, transform .2s',
-        '&:hover': {
-          borderColor: 'primary.main',
-          boxShadow: 3,
-          transform: 'translateY(-2px)',
-        },
-      }}
-    >
-      <Stack direction="row" spacing={1.75}>
-        <Box
-          sx={{
-            alignItems: 'center',
-            bgcolor: 'action.hover',
-            border: '1px solid',
-            borderColor: 'divider',
-            borderRadius: 1.5,
-            color: 'text.secondary',
-            display: 'flex',
-            flex: 'none',
-            height: 46,
-            justifyContent: 'center',
-            width: 46,
-          }}
-        >
-          <Network size={22} />
-        </Box>
-        <Box sx={{ minWidth: 0 }}>
-          <Typography noWrap sx={{ fontWeight: 600 }} variant="subtitle1">
-            {gateway.displayName}
-          </Typography>
-          <Stack
-            alignItems="center"
-            direction="row"
-            spacing={0.5}
-            sx={{ mt: 0.25 }}
-          >
-            <Typography
-              noWrap
-              sx={{
-                color: 'text.secondary',
-                fontFamily: 'monospace',
-                fontSize: 12.5,
-              }}
-            >
-              {gateway.vhost}
-            </Typography>
-            <Tooltip title={copied ? 'Copied' : 'Copy endpoint'}>
-              <IconButton
-                onClick={copyEndpoint}
-                size="small"
-                sx={{ flex: 'none' }}
-              >
-                {copied ? <Check size={14} /> : <Copy size={14} />}
-              </IconButton>
-            </Tooltip>
-          </Stack>
-        </Box>
-      </Stack>
-
-      <Stack direction="row" sx={{ flexWrap: 'wrap', gap: 1, mt: 2 }}>
-        <Box
-          sx={{
-            ...chipSx,
-            bgcolor: (t) =>
-              alpha(
-                isSelfHosted ? t.palette.primary.main : t.palette.info.main,
-                0.14
-              ),
-            borderColor: (t) =>
-              alpha(
-                isSelfHosted ? t.palette.primary.main : t.palette.info.main,
-                0.3
-              ),
-            color: kindColor,
-            fontWeight: 600,
-          }}
-        >
-          {isSelfHosted ? <Server size={13} /> : <Cloud size={13} />}
-          {MODE_LABEL[gateway.mode]}
-        </Box>
-        <Box sx={chipSx}>{gateway.functionalityType}</Box>
-        {gateway.version && <Box sx={chipSx}>v{gateway.version}</Box>}
-      </Stack>
-
-      <Stack
-        alignItems="center"
-        direction="row"
-        justifyContent="space-between"
-        sx={{ borderColor: 'divider', borderTop: '1px solid', mt: 2, pt: 1.75 }}
-      >
-        <Stack
-          alignItems="center"
-          direction="row"
-          spacing={0.875}
-          sx={{ color: gateway.isActive ? 'success.main' : 'text.disabled' }}
-        >
-          <Box
-            className={gateway.isActive ? 'gw-conn-dot-live' : undefined}
-            sx={{
-              bgcolor: gateway.isActive ? 'success.main' : 'text.disabled',
-              borderRadius: '50%',
-              height: 8,
-              width: 8,
-            }}
-          />
-          <Typography sx={{ fontSize: 12.5, fontWeight: 500 }}>
-            {gateway.isActive ? 'Connected' : 'Not connected'}
-          </Typography>
-        </Stack>
-        {gateway.updatedAt && (
-          <Stack
-            alignItems="center"
-            direction="row"
-            spacing={0.625}
-            sx={{ color: 'text.disabled' }}
-          >
-            <Clock size={13} />
-            <Typography sx={{ fontSize: 12 }}>
-              {relativeTime(gateway.updatedAt)}
-            </Typography>
-          </Stack>
-        )}
-      </Stack>
-    </Box>
-  );
-}
+/** The mode each filter admits; `all` is handled before the lookup. */
+const FILTER_MODE = {
+  managed: 'managed',
+  self: 'self-hosted',
+} as const;
 
 export function GatewaysPage() {
   const { orgHandle = '' } = useParams();
   const navigate = useNavigate();
-  const gatewaysQuery = useGateways();
+  const intl = useIntl();
+  const gatewaysQuery = useGateways({ limit: GATEWAY_PAGE_LIMIT });
+
   const [search, setSearch] = useState('');
   const [filter, setFilter] = useState<GatewayFilter>('all');
+  const [view, setView] = useState<ViewMode>('grid');
 
-  const openGateway = (gateway: Gateway) =>
-    navigate(routes.gateway(orgHandle, gateway.id));
+  const openGateway = (gateway: Gateway) => navigate(routes.gateway(orgHandle, gateway.id ?? ''));
   const provision = () => navigate(routes.newGateway(orgHandle));
 
-  const gateways = useMemo(
-    () => gatewaysQuery.data || [],
-    [gatewaysQuery.data]
-  );
+  const gateways = useMemo(() => gatewaysQuery.data?.list ?? [], [gatewaysQuery.data]);
 
+  // Client-side filtering: environment groups and summary tiles are computed
+  // over the whole collection, not a filtered subset.
   const filtered = useMemo(() => {
     const term = search.trim().toLowerCase();
     return gateways.filter((gateway) => {
       const matchesTerm =
-        !term ||
-        [gateway.displayName, gateway.name, gateway.vhost]
-          .filter(Boolean)
-          .some((field) => field.toLowerCase().includes(term));
-      const matchesFilter =
-        filter === 'all' ||
-        (filter === 'managed' && gateway.mode === 'managed') ||
-        (filter === 'self' && gateway.mode === 'self-hosted');
+        !term || gatewaySearchFields(gateway).some((field) => field.toLowerCase().includes(term));
+      const matchesFilter = filter === 'all' || gatewayMode(gateway) === FILTER_MODE[filter];
       return matchesTerm && matchesFilter;
     });
   }, [gateways, search, filter]);
+
+  // Search and mode filtering are client-side, so an empty collection means
+  // the org has no gateways.
+  const isFirstRun = gateways.length === 0;
 
   const connectedCount = gateways.filter((gateway) => gateway.isActive).length;
   const environmentCount = groupGatewaysByEnvironment(gateways).length;
   const groups = groupGatewaysByEnvironment(filtered);
 
+  // Use `isPending` to avoid flashing empty state during org resolution.
+  if (gatewaysQuery.isPending) {
+    return <LoadingState label={intl.formatMessage(messages.loading)} />;
+  }
+  if (gatewaysQuery.error) {
+    return <ErrorState message={intl.formatMessage(messages.errorMessage)} />;
+  }
+
   return (
     <>
       <PageTitle>
         <PageTitle.Header>
-          <FormattedMessage
-            id="gateways.title"
-            defaultMessage="Gateways"
-          />
+          <FormattedMessage {...messages.title} />
         </PageTitle.Header>
         <PageTitle.SubHeader>
-          <FormattedMessage
-            id="gateways.subtitle"
-            defaultMessage="Provision and manage self-hosted or WSO2-managed gateways to expose your APIs to clients."
-          />
+          <FormattedMessage {...messages.subtitle} />
         </PageTitle.SubHeader>
-        <PageTitle.Actions>
-          <Button
-            onClick={provision}
-            startIcon={<Plus />}
-            sx={{ borderRadius: 5 }}
-            variant="contained"
-          >
-            <FormattedMessage
-              id="gateways.provisionButton"
-              defaultMessage="Provision gateway"
-            />
-          </Button>
-        </PageTitle.Actions>
+        {/* Hidden on first run to avoid duplicate provision actions. */}
+        {!isFirstRun && (
+          <PageTitle.Actions>
+            <Button onClick={provision} startIcon={<Plus />} variant="contained">
+              <FormattedMessage {...messages.provisionButton} />
+            </Button>
+          </PageTitle.Actions>
+        )}
       </PageTitle>
 
-      {gatewaysQuery.isLoading ? (
-        <LoadingState label="Loading gateways" />
-      ) : gatewaysQuery.error ? (
-        <ErrorState message="Unable to load gateways" />
-      ) : gateways.length === 0 ? (
+      {isFirstRun ? (
         <EmptyState
-          actionLabel="Provision gateway"
-          description="Provision a self-hosted gateway to start exposing APIs to clients."
+          actionIcon={<Plus />}
+          actionLabel={intl.formatMessage(messages.emptyAction)}
+          description={intl.formatMessage(messages.emptyDescription)}
+          illustration={<GatewayIllustration />}
           onAction={provision}
-          title="No gateways yet"
+          title={intl.formatMessage(messages.emptyTitle)}
         />
       ) : (
-        <Stack spacing={4}>
-          {/* KPI summary */}
+        <Stack spacing={3}>
+          {/* Summary tiles: the fleet at a glance, before any filtering. */}
+          <Grid container spacing={2}>
+            <Grid size={{ md: 3, xs: 6 }}>
+              <StatCard
+                icon={<Network size={24} />}
+                label={intl.formatMessage(messages.statTotal)}
+                value={gateways.length}
+              />
+            </Grid>
+            <Grid size={{ md: 3, xs: 6 }}>
+              <StatCard
+                icon={<Wifi size={24} />}
+                iconColor="success"
+                label={intl.formatMessage(messages.statConnected)}
+                value={connectedCount}
+              />
+            </Grid>
+            <Grid size={{ md: 3, xs: 6 }}>
+              <StatCard
+                icon={<WifiOff size={24} />}
+                iconColor="warning"
+                label={intl.formatMessage(messages.statDisconnected)}
+                value={gateways.length - connectedCount}
+              />
+            </Grid>
+            <Grid size={{ md: 3, xs: 6 }}>
+              <StatCard
+                icon={<Layers size={24} />}
+                iconColor="info"
+                label={intl.formatMessage(messages.statEnvironments)}
+                value={environmentCount}
+              />
+            </Grid>
+          </Grid>
+
+          {/* Full-bleed search: the field owns its own row across the page. */}
+          <SearchBar
+            fullWidth
+            onChange={(event) => setSearch(event.target.value)}
+            placeholder={intl.formatMessage(messages.searchPlaceholder)}
+            value={search}
+          />
+
           <Box
             sx={{
-              display: 'grid',
+              alignItems: 'center',
+              display: 'flex',
+              flexWrap: 'wrap',
               gap: 2,
-              gridTemplateColumns: { xs: '1fr 1fr', md: 'repeat(4, 1fr)' },
+              justifyContent: 'space-between',
             }}
           >
-            <StatCard
-              dotColor="primary.main"
-              label="Total gateways"
-              value={gateways.length}
-            />
-            <StatCard
-              dotColor="success.main"
-              label="Connected"
-              value={connectedCount}
-            />
-            <StatCard
-              dotColor="text.disabled"
-              label="Not connected"
-              value={gateways.length - connectedCount}
-            />
-            <StatCard
-              dotColor="info.main"
-              label="Environments"
-              value={environmentCount}
-            />
+            <Typography variant="h6">
+              <FormattedMessage {...messages.gatewayCount} values={{ count: filtered.length }} />
+            </Typography>
+            <Stack alignItems="center" direction="row" spacing={1.5}>
+              <ToggleButtonGroup
+                exclusive
+                onChange={(_event, next: GatewayFilter | null) => {
+                  if (next) setFilter(next);
+                }}
+                size="small"
+                value={filter}
+              >
+                <ToggleButton value="all">
+                  <FormattedMessage {...messages.filterAll} />
+                </ToggleButton>
+                <ToggleButton value="managed">
+                  <FormattedMessage {...messages.filterManaged} />
+                </ToggleButton>
+                <ToggleButton value="self">
+                  <FormattedMessage {...messages.filterSelfHosted} />
+                </ToggleButton>
+              </ToggleButtonGroup>
+              <ToggleButtonGroup
+                exclusive
+                onChange={(_event, next: ViewMode | null) => {
+                  if (next) setView(next);
+                }}
+                size="small"
+                value={view}
+              >
+                <ToggleButton aria-label={intl.formatMessage(messages.gridView)} value="grid">
+                  <LayoutGrid size={16} />
+                </ToggleButton>
+                <ToggleButton aria-label={intl.formatMessage(messages.listView)} value="list">
+                  <List size={16} />
+                </ToggleButton>
+              </ToggleButtonGroup>
+            </Stack>
           </Box>
 
-          {/* Toolbar */}
-          <Stack
-            alignItems="center"
-            direction="row"
-            spacing={2}
-            sx={{ flexWrap: 'wrap' }}
-          >
-            <TextField
-              onChange={(event) => setSearch(event.target.value)}
-              placeholder="Search gateways"
-              size="small"
-              slotProps={{
-                input: {
-                  startAdornment: (
-                    <InputAdornment position="start">
-                      <Search size={18} />
-                    </InputAdornment>
-                  ),
-                },
-              }}
-              sx={{ flex: 1, maxWidth: 420, minWidth: 240 }}
-              value={search}
-            />
-            <ToggleButtonGroup
-              exclusive
-              onChange={(_event, next: GatewayFilter | null) =>
-                next && setFilter(next)
-              }
-              size="small"
-              value={filter}
-            >
-              <ToggleButton value="all">
-                <FormattedMessage id="gateways.filter.all" defaultMessage="All" />
-              </ToggleButton>
-              <ToggleButton value="managed">
-                <FormattedMessage id="gateways.filter.managed" defaultMessage="Managed" />
-              </ToggleButton>
-              <ToggleButton value="self">
-                <FormattedMessage id="gateways.filter.self" defaultMessage="Self-hosted" />
-              </ToggleButton>
-            </ToggleButtonGroup>
-          </Stack>
-
-          {/* Groups */}
           {groups.length === 0 ? (
             <EmptyState
-              description="Try a different search term or filter."
-              title="No matching gateways"
+              description={intl.formatMessage(messages.noMatchesDescription)}
+              title={intl.formatMessage(messages.noMatchesTitle)}
             />
           ) : (
             groups.map((group) => (
-              <Box key={group.environment.id}>
-                <Stack
-                  alignItems="center"
-                  direction="row"
-                  spacing={1.25}
-                  sx={{ mb: 2 }}
-                >
-                  <Layers size={20} />
-                  <Typography sx={{ fontWeight: 600 }} variant="h6">
-                    {group.environment.name}
-                  </Typography>
-                  <Box
-                    sx={{
-                      alignItems: 'center',
-                      bgcolor: 'action.hover',
-                      borderRadius: 3,
-                      color: 'text.secondary',
-                      display: 'inline-flex',
-                      fontSize: 12.5,
-                      fontWeight: 600,
-                      height: 24,
-                      justifyContent: 'center',
-                      minWidth: 24,
-                      px: 1,
-                    }}
-                  >
-                    {group.gateways.length}
-                  </Box>
+              <Stack key={group.environment.id} spacing={2}>
+                <Stack alignItems="center" direction="row" spacing={1.5}>
+                  <Shrub size={20} />
+                  <Typography variant="h6">{group.environment.name}</Typography>
+                  <Chip label={group.gateways.length} size="small" variant="outlined" />
                 </Stack>
-                <Box
-                  sx={{
-                    display: 'grid',
-                    gap: 2.5,
-                    gridTemplateColumns:
-                      'repeat(auto-fill, minmax(360px, 1fr))',
-                  }}
-                >
-                  {group.gateways.map((gateway) => (
-                    <GatewayCard
-                      gateway={gateway}
-                      key={gateway.id}
-                      onOpen={openGateway}
-                    />
-                  ))}
-                </Box>
-              </Box>
+                {/* The toggle changes only how a group renders its gateways */}
+                {view === 'grid' ? (
+                  <GatewayGridView gateways={group.gateways} onOpen={openGateway} />
+                ) : (
+                  <GatewayListView gateways={group.gateways} onOpen={openGateway} />
+                )}
+              </Stack>
             ))
           )}
         </Stack>
