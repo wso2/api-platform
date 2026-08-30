@@ -19,12 +19,15 @@
 package eventlistener
 
 import (
+	"encoding/json"
+	"sort"
 	"testing"
 	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/wso2/api-platform/common/agentproto"
 	"github.com/wso2/api-platform/common/chainkey"
 	commonconstants "github.com/wso2/api-platform/common/constants"
 	"github.com/wso2/api-platform/common/eventhub"
@@ -117,6 +120,23 @@ func withAgentOperationPolicy(policy api.Policy) agentStoredConfigOption {
 	return func(cfg *api.AgentConfiguration) {
 		policies := []api.Policy{policy}
 		cfg.Spec.A2a.OperationConfigs.Policies = &policies
+	}
+}
+
+// withManagedProtectedCard attaches a managed protected Agent Card carrying a
+// skill the public card does not, so the two documents are separable in an
+// assertion.
+func withManagedProtectedCard() agentStoredConfigOption {
+	return func(cfg *api.AgentConfiguration) {
+		content := api.A2AAgentCardDocument{
+			"name":            cfg.Spec.DisplayName,
+			"protocolVersion": "1.0",
+			"skills":          []interface{}{map[string]interface{}{"id": "forecast_history"}},
+		}
+		cfg.Spec.A2a.AgentCard.Protected = &api.A2AProtectedAgentCard{
+			Mode:    api.A2AProtectedAgentCardModeManaged,
+			Content: &content,
+		}
 	}
 }
 
@@ -292,6 +312,85 @@ func TestHandleEvent_AgentCreate_ConvergesSecondReplica(t *testing.T) {
 		"the Envoy snapshot version should increment")
 	assert.Greater(t, replica.runtimeStore.GetResourceVersion(), policyVersionBefore,
 		"the policy xDS resource version should increment")
+}
+
+// A managed protected Agent Card survives the event path. It is carried inside a
+// canonical operation chain rather than on a route of its own, so a replica that
+// rebuilt every route and every route-keyed chain would still be missing it —
+// and the failure is silent: the operation comes back proxying to the agent,
+// serving the upstream's own extended card unguarded in place of the gateway's.
+func TestHandleEvent_AgentCreate_ConvergesManagedProtectedCard(t *testing.T) {
+	db := setupSQLiteDBForEventListenerTests(t)
+	cfg := testAgentStoredConfig("agent-protected-id", "protected-agent", "Protected Agent", "v1.0",
+		models.StateDeployed, withManagedProtectedCard())
+	require.NoError(t, db.SaveConfig(cfg))
+
+	replica := newAgentReplica(t, db)
+	replica.listener.handleEvent(agentEvent("CREATE", cfg.UUID, "corr-agent-protected"))
+
+	rdc, exists := replica.runtimeStore.Get(storage.Key(models.KindAgent, cfg.Handle))
+	require.True(t, exists)
+	assert.Equal(t, 11, operationChainCount(rdc),
+		"a protected card adds policies to an existing chain, never a chain of its own")
+
+	chain, ok := rdc.PolicyChains[rdc.ChainKeyFor(agentTestVHost, string(agentproto.GetExtendedAgentCard))]
+	require.True(t, ok, "the extended-card chain should exist; have %v", chainKeysOf(rdc))
+
+	block := protectedCardBlockOf(t, chain)
+	content, ok := block[constants.A2A_POLICY_PARAM_CONTENT].(string)
+	require.True(t, ok, "the protected card content should reach the replica as serialized bytes")
+	assert.Contains(t, content, "forecast_history")
+
+	// The bytes are the supplied document, unchanged by the round trip through
+	// storage and the event path. Card signing will sign exactly these, so a
+	// re-serialization anywhere between here and the runtime is a signature that
+	// does not verify.
+	expected, err := json.Marshal(map[string]interface{}(
+		*cfg.Configuration.(api.AgentConfiguration).Spec.A2a.AgentCard.Protected.Content))
+	require.NoError(t, err)
+	assert.Equal(t, string(expected), content)
+
+	// Only that one chain. An instance anywhere else would guard, or leak, an
+	// operation the author did not configure.
+	for key, other := range rdc.PolicyChains {
+		if key == rdc.ChainKeyFor(agentTestVHost, string(agentproto.GetExtendedAgentCard)) {
+			continue
+		}
+		for _, policy := range other.Policies {
+			if policy.Name != constants.A2A_SYSTEM_POLICY_NAME {
+				continue
+			}
+			assert.NotContains(t, policy.Params, constants.A2A_POLICY_PARAM_PROTECTED_AGENT_CARD,
+				"chain %q carries a protected-card instance", key)
+		}
+	}
+}
+
+// chainKeysOf renders a config's chain keys for a failure message.
+func chainKeysOf(rdc *models.RuntimeDeployConfig) []string {
+	keys := make([]string, 0, len(rdc.PolicyChains))
+	for key := range rdc.PolicyChains {
+		keys = append(keys, key)
+	}
+	sort.Strings(keys)
+	return keys
+}
+
+// protectedCardBlockOf returns the protectedAgentCard parameter block of the A2A
+// system policy instance in a chain, failing the test if there is none.
+func protectedCardBlockOf(t *testing.T, chain *models.PolicyChain) map[string]interface{} {
+	t.Helper()
+	require.NotNil(t, chain)
+	for _, policy := range chain.Policies {
+		if policy.Name != constants.A2A_SYSTEM_POLICY_NAME {
+			continue
+		}
+		if block, ok := policy.Params[constants.A2A_POLICY_PARAM_PROTECTED_AGENT_CARD].(map[string]interface{}); ok {
+			return block
+		}
+	}
+	t.Fatalf("the chain carries no protected-card instance")
+	return nil
 }
 
 // An update is read back from the database rather than taken from the event, so

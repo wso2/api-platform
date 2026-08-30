@@ -782,8 +782,10 @@ func a2aRequestType(operation, terminalReason, requestMethod string) string {
 // specific fact available to the least:
 //
 //  1. The engine said what ended the request — a policy short-circuit, or a payload it
-//     could not resolve to an operation. Authoritative: the engine is the only
-//     component that knows, and it knows for certain.
+//     could not resolve to an operation. Authoritative about *who produced the
+//     response*: the engine is the only component that knows, and it knows for certain.
+//     Whether that response is a failure is a separate question, and for a
+//     short-circuit the status answers it — a policy can answer as well as refuse.
 //  2. A 5xx: the agent's if the request reached it, otherwise the gateway's.
 //  3. A 4xx: the agent's if the request reached it; otherwise the gateway refused it
 //     for something the caller controls, which is a client fault.
@@ -798,7 +800,22 @@ func a2aRequestType(operation, terminalReason, requestMethod string) string {
 func a2aOutcome(a2a map[string]interface{}, terminalReason string, statusCode int, upstreamContacted bool) (string, string) {
 	switch terminalReason {
 	case constants.TerminalReasonPolicyDenied:
-		return A2AOutcomeFailure, A2AFailureOriginPolicy
+		// A policy produced the response instead of the agent. Refusing is the
+		// common case and the one this attribution exists for: an auth denial and
+		// an upstream's own 401 are otherwise indistinguishable, and a success-rate
+		// dashboard that cannot separate them blames the agent for the gateway's
+		// rejections.
+		//
+		// But a policy can also *answer*. A managed protected Agent Card is served
+		// by the gateway's own A2A policy with a 200, and the request stopping at
+		// the gateway is the feature rather than a fault. Treating every
+		// short-circuit as a failure would move every locally served card into the
+		// failure bucket and make the Agent look broken in proportion to how often
+		// its card is fetched. So the status decides, and a successful one falls
+		// through to the ordinary derivation below.
+		if statusCode >= 400 {
+			return A2AOutcomeFailure, A2AFailureOriginPolicy
+		}
 	case constants.TerminalReasonResolutionFailed:
 		// The payload named no operation this protocol version defines, or was not a
 		// well-formed envelope at all. The caller's, not the agent's — the agent never
