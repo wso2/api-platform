@@ -130,11 +130,17 @@ var (
 	DeploymentInvalidStatus   = def(CodeDeploymentInvalidStatus, http.StatusBadRequest, "The specified deployment status filter is invalid.")
 )
 
-// MCP proxy entries.
+// MCP proxy entries. MCPProxyUpstreamUnauthorized covers an upstream MCP
+// server rejecting the credentials we introspect it with. It must NOT reuse
+// Unauthorized: that entry means "the caller's own credentials are invalid",
+// and clients act on it by tearing down their session — which an upstream's
+// 401 must never trigger. A remote peer's status is data, not our status.
 var (
 	MCPProxyNotFound                   = def(CodeMCPProxyNotFound, http.StatusNotFound, "The specified MCP proxy could not be found.")
 	MCPProxyExists                     = def(CodeMCPProxyExists, http.StatusConflict, "An MCP proxy with this ID already exists.")
 	MCPProxyDeploymentValidationFailed = def(CodeMCPProxyDeploymentValidationFailed, http.StatusBadRequest, "%s")
+	MCPProxyUpstreamUnauthorized       = def(CodeMCPProxyUpstreamUnauthorized, http.StatusBadRequest,
+		"The MCP server rejected the supplied credentials.")
 )
 
 // Organization / project / application entries.

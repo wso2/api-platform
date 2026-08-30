@@ -102,12 +102,13 @@ export const request = async <T>(config: ApiRequestConfig): Promise<T> => {
   });
 
   if (!res.ok) {
-    handleUnauthorizedResponse(res);
     let data: unknown;
     try {
       data = await res.json();
     } catch { /* body not JSON */ }
     const err = buildApiError(res.status, data, `HTTP ${res.status}`);
+    // Pass the code so only a genuine UNAUTHORIZED tears down the session.
+    handleUnauthorizedResponse(res, err.code);
     logger.error(
       `[platformApiClient] ${method} ${url} → ${res.status} [${err.code ?? 'UNKNOWN'}]: ${err.message}`
       + (err.trackingId ? ` (trackingId: ${err.trackingId})` : ''),
@@ -152,12 +153,13 @@ const sendForm = async <T>(
   const res = await fetch(url, { method, credentials: 'include', headers, body: form });
 
   if (!res.ok) {
-    handleUnauthorizedResponse(res);
     let data: unknown;
     try {
       data = await res.json();
     } catch { /* body not JSON */ }
     const err = buildApiError(res.status, data, `HTTP ${res.status}`);
+    // Pass the code so only a genuine UNAUTHORIZED tears down the session.
+    handleUnauthorizedResponse(res, err.code);
     logger.error(
       `[platformApiClient] ${method} ${url} → ${res.status} [${err.code ?? 'UNKNOWN'}]: ${err.message}`
       + (err.trackingId ? ` (trackingId: ${err.trackingId})` : ''),
