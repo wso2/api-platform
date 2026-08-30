@@ -78,6 +78,20 @@ build: ## Build API Portal Docker image
 		--load \
 		.
 
+# Local dev registry knobs — mirror the Dakshina pattern used across
+# apim-saas/services/apip-* (services/apip-platform-api/Makefile).
+LOCAL_REGISTRY ?= localhost:10082
+LOCAL_TAG      ?= dev
+
+.PHONY: build-local
+build-local: ## Build and push to the local k3d registry as :dev (for wso2cloud local dev)
+	@echo "Building API Portal Docker image for local k3d ($(LOCAL_REGISTRY)/api-portal:$(LOCAL_TAG))..."
+	docker buildx build \
+		--tag $(LOCAL_REGISTRY)/api-portal:$(LOCAL_TAG) \
+		--load \
+		.
+	docker push $(LOCAL_REGISTRY)/api-portal:$(LOCAL_TAG)
+
 .PHONY: build-and-push-multiarch
 build-and-push-multiarch: ## Build and push multi-arch API Portal image to GHCR
 	@echo "Building and pushing multi-arch API Portal Docker image ($(VERSION))..."
