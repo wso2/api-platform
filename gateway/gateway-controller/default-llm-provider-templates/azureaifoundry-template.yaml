@@ -34,6 +34,8 @@ spec:
   totalTokens:
     location: payload
     identifier: $.usage.total_tokens
+    fallbackIdentifiers:
+      - $.response.usage.total_tokens
   remainingTokens:
     location: header
     identifier: x-ratelimit-remaining-tokens
@@ -43,12 +45,58 @@ spec:
   responseModel:
     location: payload
     identifier: $.model
+    fallbackIdentifiers:
+      - $.response.model
+  cachedTokens:
+    location: payload
+    identifier: $.usage.prompt_tokens_details.cached_tokens
+    fallbackIdentifiers:
+      # Assistants thread runs spell it singular.
+      - $.usage.prompt_token_details.cached_tokens
+  reasoningTokens:
+    location: payload
+    identifier: $.usage.completion_tokens_details.reasoning_tokens
+  audioInputTokens:
+    location: payload
+    identifier: $.usage.prompt_tokens_details.audio_tokens
+  audioOutputTokens:
+    location: payload
+    identifier: $.usage.completion_tokens_details.audio_tokens
+  serviceTier:
+    location: payload
+    identifier: $.service_tier
+    fallbackIdentifiers:
+      - $.response.service_tier
+    valueMap:
+      priority: priority
+  cacheAccounting: inclusive
   resourceMappings:
     resources:
+      # A streamed response nests the whole document under "response".
       - resource: /responses
         promptTokens:
           location: payload
           identifier: $.usage.input_tokens
+          fallbackIdentifiers:
+            - $.response.usage.input_tokens
         completionTokens:
           location: payload
           identifier: $.usage.output_tokens
+          fallbackIdentifiers:
+            - $.response.usage.output_tokens
+        cachedTokens:
+          location: payload
+          identifier: $.usage.input_tokens_details.cached_tokens
+          fallbackIdentifiers:
+            - $.response.usage.input_tokens_details.cached_tokens
+        reasoningTokens:
+          location: payload
+          identifier: $.usage.output_tokens_details.reasoning_tokens
+          fallbackIdentifiers:
+            - $.response.usage.output_tokens_details.reasoning_tokens
+        audioInputTokens:
+          location: payload
+          identifier: $.usage.input_tokens_details.audio_tokens
+        audioOutputTokens:
+          location: payload
+          identifier: $.usage.output_tokens_details.audio_tokens
