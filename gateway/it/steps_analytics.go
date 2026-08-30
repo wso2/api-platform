@@ -23,6 +23,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"sort"
 	"strings"
 	"time"
 
@@ -67,6 +68,8 @@ func RegisterAnalyticsSteps(ctx *godog.ScenarioContext, state *TestState, httpSt
 	ctx.Step(`^the latest analytics event should have request method "([^"]*)"$`, a.theLatestAnalyticsEventShouldHaveRequestMethod)
 	ctx.Step(`^the latest analytics event should have response status (\d+)$`, a.theLatestAnalyticsEventShouldHaveResponseStatus)
 	ctx.Step(`^the latest analytics event should have metadata field "([^"]*)" with value "([^"]*)"$`, a.theLatestAnalyticsEventShouldHaveMetadataField)
+	ctx.Step(`^the latest analytics event should have A2A field "([^"]*)" with value "([^"]*)"$`, a.theLatestAnalyticsEventShouldHaveA2AField)
+	ctx.Step(`^the latest analytics event should not have A2A field "([^"]*)"$`, a.theLatestAnalyticsEventShouldNotHaveA2AField)
 	ctx.Step(`^I send a GET request to the analytics collector events endpoint$`, a.iSendGETRequestToAnalyticsCollectorEvents)
 }
 
@@ -298,6 +301,92 @@ func (a *AnalyticsSteps) theLatestAnalyticsEventShouldHaveMetadataField(fieldNam
 	}
 
 	return nil
+}
+
+// theLatestAnalyticsEventShouldHaveA2AField verifies a field inside the A2A
+// dimension block of the latest (or last matched) event.
+//
+// It lives here rather than in steps_a2a.go so it shares lastMatchedEvent with
+// the URI-filtering step above: an A2A scenario invokes one operation over two
+// transports, so "the latest event" is ambiguous unless the scenario first
+// selects one by URI, and a separately-held event would silently assert against
+// the wrong one.
+//
+// The A2A block is nested — metadata.a2aAnalytics.<field> — unlike the flat
+// metadata keys theLatestAnalyticsEventShouldHaveMetadataField reads, which is
+// why that step cannot be reused.
+func (a *AnalyticsSteps) theLatestAnalyticsEventShouldHaveA2AField(fieldName, expectedValue string) error {
+	block, err := a.a2aAnalyticsBlock()
+	if err != nil {
+		return err
+	}
+
+	actualValue, ok := block[fieldName]
+	if !ok {
+		return fmt.Errorf("A2A analytics field '%s' not found (present: %s)", fieldName, sortedKeys(block))
+	}
+
+	actualValueStr := fmt.Sprintf("%v", actualValue)
+	if actualValueStr != expectedValue {
+		return fmt.Errorf("expected A2A analytics field '%s' to be '%s', but got '%s'", fieldName, expectedValue, actualValueStr)
+	}
+	return nil
+}
+
+// theLatestAnalyticsEventShouldNotHaveA2AField asserts a dimension is absent.
+//
+// A card fetch and a preflight are reported so the traffic is visible, but must
+// not be shaped like an invocation — an operation or outcome on one lets a
+// downstream rollup count card polling as agent traffic. Absence is the
+// assertion, so it needs its own step.
+func (a *AnalyticsSteps) theLatestAnalyticsEventShouldNotHaveA2AField(fieldName string) error {
+	block, err := a.a2aAnalyticsBlock()
+	if err != nil {
+		return err
+	}
+	if value, ok := block[fieldName]; ok {
+		return fmt.Errorf("expected no A2A analytics field '%s', but it is present with value '%v'", fieldName, value)
+	}
+	return nil
+}
+
+// a2aAnalyticsBlock returns the a2aAnalytics object from the selected event.
+func (a *AnalyticsSteps) a2aAnalyticsBlock() (map[string]interface{}, error) {
+	event := a.lastMatchedEvent
+	if event == nil {
+		var err error
+		event, err = a.getLatestAnalyticsEvent("")
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	if event.Metadata == nil {
+		return nil, fmt.Errorf("event has no metadata")
+	}
+	raw, ok := event.Metadata["a2aAnalytics"]
+	if !ok {
+		return nil, fmt.Errorf("event carries no a2aAnalytics block (metadata keys: %s)", sortedKeys(event.Metadata))
+	}
+	block, ok := raw.(map[string]interface{})
+	if !ok {
+		return nil, fmt.Errorf("a2aAnalytics is %T, expected an object", raw)
+	}
+	return block, nil
+}
+
+// sortedKeys renders a map's keys for an error message, ordered so a failure is
+// reproducible rather than reshuffled on every run.
+func sortedKeys(m map[string]interface{}) string {
+	keys := make([]string, 0, len(m))
+	for key := range m {
+		keys = append(keys, key)
+	}
+	sort.Strings(keys)
+	if len(keys) == 0 {
+		return "none"
+	}
+	return strings.Join(keys, ", ")
 }
 
 // iSendGETRequestToAnalyticsCollectorEvents sends a GET request to the analytics collector events endpoint
