@@ -32,9 +32,53 @@ import {
   Typography,
 } from '@wso2/oxygen-ui';
 import { Copy } from '@wso2/oxygen-ui-icons-react';
+import { defineMessages, FormattedMessage, useIntl } from 'react-intl';
 
-import { useNotifications } from '../../../../../components/Notifications';
-import type { Gateway } from '../../../../../types/domain';
+import type { Gateway } from '@/api/resources/gateways';
+import { useNotifications } from '@/components/Notifications';
+import { gatewayEndpoint } from '../../gateways/gatewayDisplay';
+
+const messages = defineMessages({
+  copy: {
+    id: 'apiControlPlane.pages.appShell.appShellPages.apis.overview.InvokeUrlPanel.copy',
+    defaultMessage: 'Copy URL',
+    description:
+      'Tooltip and accessible label of the button that copies the invoke URL to the clipboard.',
+  },
+  copyFailed: {
+    id: 'apiControlPlane.pages.appShell.appShellPages.apis.overview.InvokeUrlPanel.copyFailed',
+    defaultMessage: 'Failed to copy URL.',
+    description: 'Toast shown when the browser refuses the clipboard write.',
+  },
+  copySucceeded: {
+    id: 'apiControlPlane.pages.appShell.appShellPages.apis.overview.InvokeUrlPanel.copySucceeded',
+    defaultMessage: 'URL copied to clipboard.',
+    description: 'Toast confirming the invoke URL was copied.',
+  },
+  description: {
+    id: 'apiControlPlane.pages.appShell.appShellPages.apis.overview.InvokeUrlPanel.description',
+    defaultMessage: 'Change the gateway to generate the gateway specific invoke URL.',
+    description:
+      'Explains that the URL below is per-gateway, so picking another gateway rewrites it.',
+  },
+  gatewaysLabel: {
+    id: 'apiControlPlane.pages.appShell.appShellPages.apis.overview.InvokeUrlPanel.gatewaysLabel',
+    defaultMessage: 'Gateways',
+    description:
+      'Label of the picker choosing which deployed gateway the invoke URL is built for.',
+  },
+  title: {
+    id: 'apiControlPlane.pages.appShell.appShellPages.apis.overview.InvokeUrlPanel.title',
+    defaultMessage: 'Invoke URL',
+    description:
+      'Heading of the section giving the address clients call to reach this API. A noun, not a command.',
+  },
+  urlLabel: {
+    id: 'apiControlPlane.pages.appShell.appShellPages.apis.overview.InvokeUrlPanel.urlLabel',
+    defaultMessage: 'URL',
+    description: 'Label of the read-only field holding the generated invoke URL.',
+  },
+});
 
 /** `{endpoint}{context}` with a scheme ensured and slashes normalised. */
 export const buildInvokeUrl = (endpoint: string, context?: string): string => {
@@ -44,9 +88,7 @@ export const buildInvokeUrl = (endpoint: string, context?: string): string => {
     ? trimmedEndpoint.replace(/\/+$/, '')
     : `https://${trimmedEndpoint.replace(/\/+$/, '')}`;
   const trimmedContext = (context || '/').trim();
-  const path = trimmedContext.startsWith('/')
-    ? trimmedContext
-    : `/${trimmedContext}`;
+  const path = trimmedContext.startsWith('/') ? trimmedContext : `/${trimmedContext}`;
   return `${base}${path}`;
 };
 
@@ -61,50 +103,51 @@ type InvokeUrlPanelProps = {
  * gateway, get the gateway-specific invoke URL with a copy affordance.
  */
 export function InvokeUrlPanel({ gateways, context }: InvokeUrlPanelProps) {
+  const intl = useIntl();
   const { notify } = useNotifications();
-  const [selectedGatewayId, setSelectedGatewayId] = useState(
-    gateways[0]?.id || ''
-  );
+  const [selectedGatewayId, setSelectedGatewayId] = useState(gateways[0]?.id || '');
 
   const selectedGateway =
     gateways.find((gateway) => gateway.id === selectedGatewayId) ?? gateways[0];
+  // The spec models the address as an `endpoints` list; `gatewayEndpoint` picks
+  // the one the console builds URLs from, as the whole gateway UI does.
   const invokeUrl = selectedGateway
-    ? buildInvokeUrl(selectedGateway.vhost, context)
+    ? buildInvokeUrl(gatewayEndpoint(selectedGateway), context)
     : '';
 
   const copyUrl = () => {
     if (!invokeUrl) return;
     navigator.clipboard
       ?.writeText(invokeUrl)
-      .then(() => notify('URL copied to clipboard.', 'success'))
-      .catch(() => notify('Failed to copy URL.', 'error'));
+      .then(() => notify(intl.formatMessage(messages.copySucceeded), 'success'))
+      .catch(() => notify(intl.formatMessage(messages.copyFailed), 'error'));
   };
 
   return (
     <Stack spacing={1.5}>
       <Box>
         <Typography sx={{ fontWeight: 600, mb: 0.5 }} variant="h6">
-          Invoke URL
+          <FormattedMessage {...messages.title} />
         </Typography>
         <Typography color="text.secondary" variant="body2">
-          Change the gateway to generate the gateway specific invoke URL.
+          <FormattedMessage {...messages.description} />
         </Typography>
       </Box>
       <Grid alignItems="flex-end" container spacing={1}>
         <Grid size={{ md: 4, xs: 12 }}>
           <FormControl fullWidth>
-            <FormLabel>Gateways</FormLabel>
+            <FormLabel>
+              <FormattedMessage {...messages.gatewaysLabel} />
+            </FormLabel>
             <Select
               disabled={gateways.length === 0}
-              onChange={(event) =>
-                setSelectedGatewayId(String(event.target.value))
-              }
+              onChange={(event) => setSelectedGatewayId(String(event.target.value))}
               size="small"
               value={selectedGateway?.id || ''}
             >
               {gateways.map((gateway) => (
-                <MenuItem key={gateway.id} value={gateway.id}>
-                  {gateway.displayName || gateway.name}
+                <MenuItem key={gateway.id} value={gateway.id ?? ''}>
+                  {gateway.displayName || gateway.id}
                 </MenuItem>
               ))}
             </Select>
@@ -112,7 +155,9 @@ export function InvokeUrlPanel({ gateways, context }: InvokeUrlPanelProps) {
         </Grid>
         <Grid size={{ md: 8, xs: 12 }}>
           <FormControl fullWidth>
-            <FormLabel>URL</FormLabel>
+            <FormLabel>
+              <FormattedMessage {...messages.urlLabel} />
+            </FormLabel>
             <TextField
               fullWidth
               size="small"
@@ -121,10 +166,10 @@ export function InvokeUrlPanel({ gateways, context }: InvokeUrlPanelProps) {
                   readOnly: true,
                   endAdornment: (
                     <InputAdornment position="end">
-                      <Tooltip arrow title="Copy URL">
+                      <Tooltip arrow title={intl.formatMessage(messages.copy)}>
                         <span>
                           <IconButton
-                            aria-label="Copy URL"
+                            aria-label={intl.formatMessage(messages.copy)}
                             disabled={!invokeUrl}
                             onClick={copyUrl}
                             size="small"

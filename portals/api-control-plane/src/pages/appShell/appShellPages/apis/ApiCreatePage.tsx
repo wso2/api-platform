@@ -68,7 +68,7 @@ import type {
   HttpMethod,
   UpstreamAuth,
 } from '../../../../types/domain';
-import { isValidUrl, methodColor } from './develop/developEdit';
+import { isValidUrl, methodColor } from './utils/developEdit';
 
 const OAS_METHODS = [
   'get',

@@ -18,9 +18,24 @@
 
 import { Box, Chip, Stack, Typography } from '@wso2/oxygen-ui';
 import { PackageSearch } from '@wso2/oxygen-ui-icons-react';
+import { defineMessages, FormattedMessage, useIntl } from 'react-intl';
 
-import type { ApiDetail } from '../../../../../types/domain';
-import { methodColor } from '../develop/developEdit';
+import type { RestApi } from '@/api/resources/restApis';
+import { methodColor } from '../utils/developEdit';
+
+const messages = defineMessages({
+  empty: {
+    id: 'apiControlPlane.pages.appShell.appShellPages.apis.overview.ResourcesPanel.empty',
+    defaultMessage: 'No available resources.',
+    description: 'Shown in place of the operation list when the API definition exposes none.',
+  },
+  title: {
+    id: 'apiControlPlane.pages.appShell.appShellPages.apis.overview.ResourcesPanel.title',
+    defaultMessage: 'Resources',
+    description:
+      "Heading of the panel listing the API's operations (its OpenAPI paths). A noun, not a command.",
+  },
+});
 
 function EmptyResources({ label }: { label: string }) {
   return (
@@ -42,11 +57,15 @@ function EmptyResources({ label }: { label: string }) {
  * Left panel of the Overview tab (ai-workspace "OpenAPI Resources"): the
  * API's operations in a scrollable bordered box.
  */
-export function ResourcesPanel({ detail }: { detail: ApiDetail }) {
+export function ResourcesPanel({ api }: { api: RestApi }) {
+  const intl = useIntl();
+  // `operations` is optional on the spec's `RESTAPI`.
+  const operations = api.operations ?? [];
+
   return (
     <Box sx={{ flex: 1, minWidth: 0 }}>
       <Typography sx={{ fontWeight: 600, mb: 0.5 }} variant="h6">
-        Resources
+        <FormattedMessage {...messages.title} />
       </Typography>
       <Box
         sx={{
@@ -60,14 +79,14 @@ export function ResourcesPanel({ detail }: { detail: ApiDetail }) {
           py: 1,
         }}
       >
-        {detail.operations.length === 0 ? (
-          <EmptyResources label="No available resources." />
+        {operations.length === 0 ? (
+          <EmptyResources label={intl.formatMessage(messages.empty)} />
         ) : (
-          detail.operations.map((operation) => (
+          operations.map((operation) => (
             <Stack
               alignItems="center"
               direction="row"
-              key={`${operation.method}-${operation.path}`}
+              key={`${operation.request.method}-${operation.request.path}`}
               spacing={1.5}
               sx={{
                 borderBottom: '1px solid',
@@ -77,17 +96,14 @@ export function ResourcesPanel({ detail }: { detail: ApiDetail }) {
               }}
             >
               <Chip
-                color={methodColor(operation.method)}
-                label={operation.method}
+                color={methodColor(operation.request.method)}
+                label={operation.request.method}
                 size="small"
                 sx={{ fontWeight: 600, minWidth: 68 }}
               />
               <Box sx={{ minWidth: 0 }}>
-                <Typography
-                  noWrap
-                  sx={{ fontFamily: 'monospace', fontSize: 13.5 }}
-                >
-                  {operation.path}
+                <Typography noWrap sx={{ fontFamily: 'monospace', fontSize: 13.5 }}>
+                  {operation.request.path}
                 </Typography>
                 {(operation.description || operation.name) && (
                   <Typography color="text.secondary" noWrap variant="caption">

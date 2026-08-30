@@ -50,6 +50,11 @@ export default ({ mode }: { mode: string }) => {
       }),
       basicSsl(),
     ],
+    resolve: {
+    alias: {
+      '@': '/src', 
+    },
+  },
     build: {
       outDir: 'build',
       sourcemap: false,

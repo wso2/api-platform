@@ -19,29 +19,34 @@
 import { useMemo } from 'react';
 import { Box, Divider, Stack } from '@wso2/oxygen-ui';
 
-import {
-  useGatewayDeployments,
-  useGateways,
-} from '../../../../../api/hooks/useMvpQueries';
-import type { ApiDetail, Gateway } from '../../../../../types/domain';
+import { useGateways, type Gateway } from '@/api/resources/gateways';
+import type { RestApi } from '@/api/resources/restApis';
+import { useDeployments } from '@/api/resources/restApis/deployments';
 import { ApiKeysPanel } from './ApiKeysPanel';
 import { InvokeUrlPanel } from './InvokeUrlPanel';
 import { ProgressBanner } from './ProgressBanner';
 import { ResourcesPanel } from './ResourcesPanel';
 
 /**
- * Overview tab, ai-workspace layout: resources on the left; invoke URL and
- * API keys on the right — the right column only appears once the API is
+ * The whole fleet in one request: the deployed set is filtered out of it, so a
+ * default 20-item page could hide the very gateway this API runs on. 100 is the
+ * spec's ceiling on `limit`.
+ */
+const GATEWAY_PAGE_LIMIT = 100;
+
+/**
+ * Overview tab: resources on the left; invoke URL and
+ * API keys on the right; the right column only appears once the API is
  * deployed on at least one gateway.
  */
-export function OverviewTab({ detail }: { detail: ApiDetail }) {
-  const gatewaysQuery = useGateways();
-  const deploymentsQuery = useGatewayDeployments(detail);
+export function OverviewTab({ api }: { api: RestApi }) {
+  const gatewaysQuery = useGateways({ limit: GATEWAY_PAGE_LIMIT });
+  const deploymentsQuery = useDeployments(api.id);
 
   // Gateways with an active deployment of this API, most recent first.
   const deployedGateways = useMemo((): Gateway[] => {
-    const gateways = gatewaysQuery.data || [];
-    const deployments = deploymentsQuery.data || [];
+    const gateways = gatewaysQuery.data?.list ?? [];
+    const deployments = deploymentsQuery.data?.list ?? [];
     const latestByGateway = new Map<string, number>();
     deployments
       .filter((deployment) => deployment.status === 'DEPLOYED')
@@ -53,18 +58,19 @@ export function OverviewTab({ detail }: { detail: ApiDetail }) {
         }
       });
     return gateways
-      .filter((gateway) => latestByGateway.has(gateway.id))
+      .filter((gateway) => latestByGateway.has(gateway.id ?? ''))
       .sort(
         (a, b) =>
-          (latestByGateway.get(b.id) || 0) - (latestByGateway.get(a.id) || 0)
+          (latestByGateway.get(b.id ?? '') || 0) -
+          (latestByGateway.get(a.id ?? '') || 0)
       );
   }, [gatewaysQuery.data, deploymentsQuery.data]);
 
   return (
     <>
-      <ProgressBanner deployed={deployedGateways.length > 0} detail={detail} />
+      <ProgressBanner api={api} deployed={deployedGateways.length > 0} />
       <Stack direction={{ md: 'row', xs: 'column' }} spacing={2}>
-        <ResourcesPanel detail={detail} />
+        <ResourcesPanel api={api} />
         {deployedGateways.length > 0 && (
           <>
             <Divider
@@ -74,14 +80,13 @@ export function OverviewTab({ detail }: { detail: ApiDetail }) {
             />
             <Box sx={{ flex: 1, minWidth: 0 }}>
               <Stack spacing={2}>
-                <InvokeUrlPanel
-                  context={detail.context}
-                  gateways={deployedGateways}
-                />
-                {detail.kind === 'API_PROXY' && (
+                <InvokeUrlPanel context={api.context} gateways={deployedGateways} />
+                {/* Keys are an API-proxy affordance; `getApiCapabilities` draws
+                    the same line off `kind`. */}
+                {api.kind === 'RestApi' && (
                   <>
                     <Divider />
-                    <ApiKeysPanel api={detail} />
+                    <ApiKeysPanel restApiId={api.id ?? ''} />
                   </>
                 )}
               </Stack>

@@ -16,12 +16,12 @@
     "isolatedModules": true,
     "noEmit": true,
     "jsx": "react-jsx",
-    "baseUrl": "./src",
     "paths": {
       "react": ["../node_modules/@types/react"],
       "react/jsx-runtime": ["../node_modules/@types/react/jsx-runtime"],
       "react-dom": ["../node_modules/@types/react-dom"],
-      "react-dom/client": ["../node_modules/@types/react-dom/client"]
+      "react-dom/client": ["../node_modules/@types/react-dom/client"],
+      "@/*": ["./src/*"]
     },
     "types": ["vite/client", "vitest/globals", "@testing-library/jest-dom"]
   },
