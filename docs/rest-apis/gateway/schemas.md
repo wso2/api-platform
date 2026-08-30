@@ -1998,18 +1998,8 @@ and
     "agentCard": {
       "public": {
         "mode": "managed",
-        "path": "/.well-known/agent-card.json",
-        "policies": [
-          {
-            "name": "cors",
-            "version": "v1",
-            "executionCondition": "request.metadata[authenticated] != true",
-            "params": {}
-          }
-        ],
         "content": {
           "name": "Weather Agent",
-          "description": "Provides weather information",
           "version": "1.0.0",
           "supportedInterfaces": [
             {
@@ -2019,52 +2009,15 @@ and
             }
           ],
           "capabilities": {
-            "streaming": true
-          },
-          "securitySchemes": {
-            "gateway-jwt": {
-              "openIdConnectSecurityScheme": {
-                "openIdConnectUrl": "https://idp.example.com/.well-known/openid-configuration"
-              }
-            }
-          },
-          "securityRequirements": [
-            {
-              "schemes": {
-                "gateway-jwt": {
-                  "list": [
-                    "a2a.invoke"
-                  ]
-                }
-              }
-            }
-          ],
-          "defaultInputModes": [
-            "text/plain"
-          ],
-          "defaultOutputModes": [
-            "text/plain"
-          ],
-          "skills": [
-            {
-              "id": "get_weather",
-              "name": "Get weather",
-              "description": "Gets weather information",
-              "tags": [
-                "weather"
-              ]
-            }
-          ]
-        },
-        "signing": {
-          "enabled": false
+            "streaming": true,
+            "extendedAgentCard": true
+          }
         }
       },
       "protected": {
-        "mode": "passthrough",
+        "mode": "managed",
         "content": {
           "name": "Weather Agent",
-          "description": "Provides weather information",
           "version": "1.0.0",
           "supportedInterfaces": [
             {
@@ -2074,45 +2027,15 @@ and
             }
           ],
           "capabilities": {
-            "streaming": true
+            "streaming": true,
+            "extendedAgentCard": true
           },
-          "securitySchemes": {
-            "gateway-jwt": {
-              "openIdConnectSecurityScheme": {
-                "openIdConnectUrl": "https://idp.example.com/.well-known/openid-configuration"
-              }
-            }
-          },
-          "securityRequirements": [
-            {
-              "schemes": {
-                "gateway-jwt": {
-                  "list": [
-                    "a2a.invoke"
-                  ]
-                }
-              }
-            }
-          ],
-          "defaultInputModes": [
-            "text/plain"
-          ],
-          "defaultOutputModes": [
-            "text/plain"
-          ],
           "skills": [
             {
-              "id": "get_weather",
-              "name": "Get weather",
-              "description": "Gets weather information",
-              "tags": [
-                "weather"
-              ]
+              "id": "get_forecast_history",
+              "name": "Get forecast history"
             }
           ]
-        },
-        "signing": {
-          "enabled": false
         }
       }
     }
@@ -2205,18 +2128,8 @@ continued
   "agentCard": {
     "public": {
       "mode": "managed",
-      "path": "/.well-known/agent-card.json",
-      "policies": [
-        {
-          "name": "cors",
-          "version": "v1",
-          "executionCondition": "request.metadata[authenticated] != true",
-          "params": {}
-        }
-      ],
       "content": {
         "name": "Weather Agent",
-        "description": "Provides weather information",
         "version": "1.0.0",
         "supportedInterfaces": [
           {
@@ -2226,52 +2139,15 @@ continued
           }
         ],
         "capabilities": {
-          "streaming": true
-        },
-        "securitySchemes": {
-          "gateway-jwt": {
-            "openIdConnectSecurityScheme": {
-              "openIdConnectUrl": "https://idp.example.com/.well-known/openid-configuration"
-            }
-          }
-        },
-        "securityRequirements": [
-          {
-            "schemes": {
-              "gateway-jwt": {
-                "list": [
-                  "a2a.invoke"
-                ]
-              }
-            }
-          }
-        ],
-        "defaultInputModes": [
-          "text/plain"
-        ],
-        "defaultOutputModes": [
-          "text/plain"
-        ],
-        "skills": [
-          {
-            "id": "get_weather",
-            "name": "Get weather",
-            "description": "Gets weather information",
-            "tags": [
-              "weather"
-            ]
-          }
-        ]
-      },
-      "signing": {
-        "enabled": false
+          "streaming": true,
+          "extendedAgentCard": true
+        }
       }
     },
     "protected": {
-      "mode": "passthrough",
+      "mode": "managed",
       "content": {
         "name": "Weather Agent",
-        "description": "Provides weather information",
         "version": "1.0.0",
         "supportedInterfaces": [
           {
@@ -2281,45 +2157,15 @@ continued
           }
         ],
         "capabilities": {
-          "streaming": true
+          "streaming": true,
+          "extendedAgentCard": true
         },
-        "securitySchemes": {
-          "gateway-jwt": {
-            "openIdConnectSecurityScheme": {
-              "openIdConnectUrl": "https://idp.example.com/.well-known/openid-configuration"
-            }
-          }
-        },
-        "securityRequirements": [
-          {
-            "schemes": {
-              "gateway-jwt": {
-                "list": [
-                  "a2a.invoke"
-                ]
-              }
-            }
-          }
-        ],
-        "defaultInputModes": [
-          "text/plain"
-        ],
-        "defaultOutputModes": [
-          "text/plain"
-        ],
         "skills": [
           {
-            "id": "get_weather",
-            "name": "Get weather",
-            "description": "Gets weather information",
-            "tags": [
-              "weather"
-            ]
+            "id": "get_forecast_history",
+            "name": "Get forecast history"
           }
         ]
-      },
-      "signing": {
-        "enabled": false
       }
     }
   }
@@ -2531,18 +2377,8 @@ Configuration for one standard A2A 1.0 operation, identified by its canonical op
 {
   "public": {
     "mode": "managed",
-    "path": "/.well-known/agent-card.json",
-    "policies": [
-      {
-        "name": "cors",
-        "version": "v1",
-        "executionCondition": "request.metadata[authenticated] != true",
-        "params": {}
-      }
-    ],
     "content": {
       "name": "Weather Agent",
-      "description": "Provides weather information",
       "version": "1.0.0",
       "supportedInterfaces": [
         {
@@ -2552,52 +2388,15 @@ Configuration for one standard A2A 1.0 operation, identified by its canonical op
         }
       ],
       "capabilities": {
-        "streaming": true
-      },
-      "securitySchemes": {
-        "gateway-jwt": {
-          "openIdConnectSecurityScheme": {
-            "openIdConnectUrl": "https://idp.example.com/.well-known/openid-configuration"
-          }
-        }
-      },
-      "securityRequirements": [
-        {
-          "schemes": {
-            "gateway-jwt": {
-              "list": [
-                "a2a.invoke"
-              ]
-            }
-          }
-        }
-      ],
-      "defaultInputModes": [
-        "text/plain"
-      ],
-      "defaultOutputModes": [
-        "text/plain"
-      ],
-      "skills": [
-        {
-          "id": "get_weather",
-          "name": "Get weather",
-          "description": "Gets weather information",
-          "tags": [
-            "weather"
-          ]
-        }
-      ]
-    },
-    "signing": {
-      "enabled": false
+        "streaming": true,
+        "extendedAgentCard": true
+      }
     }
   },
   "protected": {
-    "mode": "passthrough",
+    "mode": "managed",
     "content": {
       "name": "Weather Agent",
-      "description": "Provides weather information",
       "version": "1.0.0",
       "supportedInterfaces": [
         {
@@ -2607,45 +2406,15 @@ Configuration for one standard A2A 1.0 operation, identified by its canonical op
         }
       ],
       "capabilities": {
-        "streaming": true
+        "streaming": true,
+        "extendedAgentCard": true
       },
-      "securitySchemes": {
-        "gateway-jwt": {
-          "openIdConnectSecurityScheme": {
-            "openIdConnectUrl": "https://idp.example.com/.well-known/openid-configuration"
-          }
-        }
-      },
-      "securityRequirements": [
-        {
-          "schemes": {
-            "gateway-jwt": {
-              "list": [
-                "a2a.invoke"
-              ]
-            }
-          }
-        }
-      ],
-      "defaultInputModes": [
-        "text/plain"
-      ],
-      "defaultOutputModes": [
-        "text/plain"
-      ],
       "skills": [
         {
-          "id": "get_weather",
-          "name": "Get weather",
-          "description": "Gets weather information",
-          "tags": [
-            "weather"
-          ]
+          "id": "get_forecast_history",
+          "name": "Get forecast history"
         }
       ]
-    },
-    "signing": {
-      "enabled": false
     }
   }
 }
@@ -2659,7 +2428,7 @@ Public Agent Card configuration and optional protected Agent Card configuration 
 |Name|Type|Required|Restrictions|Description|
 |---|---|---|---|---|
 |public|[A2APublicAgentCard](#schemaa2apublicagentcard)|true|none|Public Agent Card serving. `mode` selects whether the card is proxied unchanged from the upstream (`passthrough`) or validated, stored, and served by the gateway (`managed`). Mode-specific rules are enforced at deploy time, not by this schema: `managed` requires `content`; `passthrough` accepts neither `content` nor `signing`, because the gateway does not parse, transform, or sign a proxied card.|
-|protected|[A2AProtectedAgentCard](#schemaa2aprotectedagentcard)|false|none|Planned authenticated extended Agent Card support. When present it is served through the canonical GetExtendedAgentCard operation and uses the operation policy chain, not public Agent Card policies. It has no custom path or local policies because it is an A2A operation. Not implemented in this release: an explicitly configured `protected` block is rejected at deploy time. GetExtendedAgentCard is exposed and proxied to the upstream.|
+|protected|[A2AProtectedAgentCard](#schemaa2aprotectedagentcard)|false|none|Authenticated extended Agent Card. It is served through the canonical GetExtendedAgentCard operation and uses that operation's policy chain — the policies in spec.a2a.operationConfigs, then any matching entry in spec.a2a.operationConfigs.operations. Public Agent Card policies never run for it, and it has no custom path or local policy list, because it is an A2A operation rather than a document at a location.<br>This block is optional, and omitting it is not the same as configuring `passthrough`. When it is absent, GetExtendedAgentCard is exposed and proxied to the upstream with no gateway-added authentication guard, which is the behaviour Agents written before protected Agent Cards shipped already have.<br>When it is present, the gateway requires the request to have been authenticated by a policy in the Agent's own chain before the card is returned or proxied, and answers 401 otherwise. That applies in both modes and is not configurable: an Agent that declares a protected card but attaches no authentication policy therefore fails closed instead of publishing its extended card. Where authentication sits among the configured policies is the Agent author's choice.<br>Mode-specific rules are enforced at deploy time, not by this schema: `managed` requires `content`; `passthrough` accepts neither `content` nor `signing`, because the gateway does not parse, transform, or sign a proxied card. When the public Agent Card is `managed`, it must additionally declare `capabilities.extendedAgentCard: true`, since that is what tells a client the operation exists at all.|
 
 ## A2APublicAgentCard
 
@@ -2821,13 +2590,16 @@ Public Agent Card serving. `mode` selects whether the card is proxied unchanged 
 
 ```
 
-Planned authenticated extended Agent Card support. When present it is served through the canonical GetExtendedAgentCard operation and uses the operation policy chain, not public Agent Card policies. It has no custom path or local policies because it is an A2A operation. Not implemented in this release: an explicitly configured `protected` block is rejected at deploy time. GetExtendedAgentCard is exposed and proxied to the upstream.
+Authenticated extended Agent Card. It is served through the canonical GetExtendedAgentCard operation and uses that operation's policy chain — the policies in spec.a2a.operationConfigs, then any matching entry in spec.a2a.operationConfigs.operations. Public Agent Card policies never run for it, and it has no custom path or local policy list, because it is an A2A operation rather than a document at a location.
+This block is optional, and omitting it is not the same as configuring `passthrough`. When it is absent, GetExtendedAgentCard is exposed and proxied to the upstream with no gateway-added authentication guard, which is the behaviour Agents written before protected Agent Cards shipped already have.
+When it is present, the gateway requires the request to have been authenticated by a policy in the Agent's own chain before the card is returned or proxied, and answers 401 otherwise. That applies in both modes and is not configurable: an Agent that declares a protected card but attaches no authentication policy therefore fails closed instead of publishing its extended card. Where authentication sits among the configured policies is the Agent author's choice.
+Mode-specific rules are enforced at deploy time, not by this schema: `managed` requires `content`; `passthrough` accepts neither `content` nor `signing`, because the gateway does not parse, transform, or sign a proxied card. When the public Agent Card is `managed`, it must additionally declare `capabilities.extendedAgentCard: true`, since that is what tells a client the operation exists at all.
 
 #### Properties
 
 |Name|Type|Required|Restrictions|Description|
 |---|---|---|---|---|
-|mode|string|true|none|How the protected Agent Card is produced.|
+|mode|string|true|none|How the protected Agent Card is produced. `managed` serves the supplied `content` from the gateway, and the request never reaches the upstream. `passthrough` forwards the authenticated request and proxies the upstream's own response unchanged.|
 |content|[A2AAgentCardDocument](#schemaa2aagentcarddocument)|false|none|Complete A2A 1.0 Agent Card represented as a structured JSON object. JSON can be embedded directly because JSON object syntax is valid YAML. The controller additionally validates this object against the complete A2A Agent Card model for spec.a2a.protocolVersion, taken from the vendored A2A protocol definition (specification/a2a.proto). The document is stored and served as supplied — the gateway never rewrites it — so extension fields are preserved.|
 |signing|[A2ACardSigning](#schemaa2acardsigning)|false|none|Optional signing configuration for a managed Agent Card. Passthrough cards cannot configure gateway signing. Agent authors only enable or disable signing: the active key, its key identifier, and the JWS algorithm are selected from administrator-owned gateway system configuration at signing time, so rotating the key — including to a key using a different algorithm — requires no edit to any Agent. A card is re-signed when its Agent is next deployed, not when the key rotates; until then it keeps verifying against the retired key, which stays published while any stored card references it.|
 

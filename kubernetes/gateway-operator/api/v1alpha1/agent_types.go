@@ -215,23 +215,40 @@ type A2APublicAgentCard struct {
 	Signing *A2ACardSigning `json:"signing,omitempty"`
 }
 
-// A2AProtectedAgentCard is planned authenticated extended Agent Card support.
-// It is not implemented in this release: an explicitly configured protected
-// block is rejected by the gateway-controller at deploy time.
-// GetExtendedAgentCard is exposed and proxied to the upstream.
+// A2AProtectedAgentCard configures the authenticated extended Agent Card. It is
+// served through the canonical GetExtendedAgentCard operation and uses that
+// operation's policy chain, not public Agent Card policies, so it has no custom
+// path and no local policy list: it is an A2A operation rather than a document
+// at a location.
+//
+// When this block is present the gateway requires the request to have been
+// authenticated by a policy in the Agent's own chain before the card is returned
+// or proxied, in either mode. Leaving it out is not the same as configuring
+// passthrough — an Agent without it keeps the behaviour it shipped with, where
+// GetExtendedAgentCard is proxied to the upstream with no gateway-added guard.
+//
+// Mode-specific rules are enforced by the gateway-controller at deploy time, not
+// by this schema: managed requires content; passthrough accepts neither content
+// nor signing. A managed public card must also declare
+// capabilities.extendedAgentCard: true.
 type A2AProtectedAgentCard struct {
-	// Mode selects how the protected Agent Card is produced.
+	// Mode selects how the protected Agent Card is produced. managed serves the
+	// supplied content from the gateway and never reaches the upstream;
+	// passthrough forwards the authenticated request and proxies the upstream's
+	// own response unchanged.
 	// +kubebuilder:validation:Required
 	// +kubebuilder:validation:Enum=managed;passthrough
 	Mode string `json:"mode"`
 
-	// Content is the complete Agent Card as a structured object.
+	// Content is the complete Agent Card as a structured object, preserved as
+	// supplied. Required in managed mode and rejected in passthrough mode.
 	// +optional
 	// +kubebuilder:validation:Type=object
 	// +kubebuilder:pruning:PreserveUnknownFields
 	Content *runtime.RawExtension `json:"content,omitempty"`
 
-	// Signing configures gateway signing of a managed card.
+	// Signing configures gateway signing of a managed card. The two card
+	// representations are signed independently.
 	// +optional
 	Signing *A2ACardSigning `json:"signing,omitempty"`
 }
@@ -244,8 +261,9 @@ type A2AAgentCard struct {
 	// +kubebuilder:validation:Required
 	Public A2APublicAgentCard `json:"public"`
 
-	// Protected configures the authenticated extended Agent Card. Not
-	// implemented in this release.
+	// Protected configures the authenticated extended Agent Card. Omitting it
+	// leaves GetExtendedAgentCard proxied to the upstream unguarded, which is not
+	// the same as configuring passthrough.
 	// +optional
 	Protected *A2AProtectedAgentCard `json:"protected,omitempty"`
 }

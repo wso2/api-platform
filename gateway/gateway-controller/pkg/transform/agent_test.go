@@ -1376,3 +1376,289 @@ func TestAgentTransformerRejectsForeignConfiguration(t *testing.T) {
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "not an Agent")
 }
+
+// ─── Protected (extended) Agent Card ─────────────────────────────────────────
+
+// extendedCardChainKey is the one chain a protected card changes. Every
+// assertion below either reads it or checks that some other chain was left
+// alone.
+var extendedCardChainKey = chainkey.For(testAgentUUID, "main.local", string(agentproto.GetExtendedAgentCard))
+
+func withProtectedCard(mode api.A2AProtectedAgentCardMode, content *api.A2AAgentCardDocument) agentOption {
+	return func(cfg *api.AgentConfiguration) {
+		cfg.Spec.A2a.AgentCard.Protected = &api.A2AProtectedAgentCard{Mode: mode, Content: content}
+	}
+}
+
+func protectedCardDocument() api.A2AAgentCardDocument {
+	return api.A2AAgentCardDocument{
+		"name":            "Weather Agent",
+		"protocolVersion": "1.0",
+		"skills":          []interface{}{map[string]interface{}{"id": "forecast_history"}},
+	}
+}
+
+// protectedCardParams returns the protectedAgentCard block of the A2A instance
+// in a chain, or reports that the chain carries no such instance. Both answers
+// are load-bearing: most chains must not carry one.
+func protectedCardParams(chain *models.PolicyChain) (map[string]interface{}, bool) {
+	if chain == nil {
+		return nil, false
+	}
+	for _, policy := range chain.Policies {
+		if policy.Name != constants.A2A_SYSTEM_POLICY_NAME {
+			continue
+		}
+		if block, ok := policy.Params[constants.A2A_POLICY_PARAM_PROTECTED_AGENT_CARD].(map[string]interface{}); ok {
+			return block, true
+		}
+	}
+	return nil, false
+}
+
+// An Agent that does not configure a protected card must be transformed exactly
+// as before. This is the compatibility promise: upgrading the controller cannot
+// change what an already-deployed Agent does, and GetExtendedAgentCard stays an
+// ordinary proxied operation with no gateway-added guard.
+func TestAgentWithoutProtectedCardIsUnchanged(t *testing.T) {
+	rdc, err := agentTransformer().Transform(testAgent())
+	require.NoError(t, err)
+
+	chain := rdc.PolicyChains[extendedCardChainKey]
+	require.NotNil(t, chain)
+	assert.Empty(t, policyNames(chain),
+		"GetExtendedAgentCard must carry nothing the other operations do not")
+
+	if _, present := protectedCardParams(chain); present {
+		t.Error("an Agent with no protected block was given a protected-card instance")
+	}
+}
+
+// Both explicit modes attach the instance, because both are gated: the check it
+// makes is the whole of the protection, and passthrough needs it just as much as
+// managed — more so, since there the upstream would otherwise publish the card.
+func TestAgentProtectedCardAttachesToTheExtendedCardChainInBothModes(t *testing.T) {
+	content := protectedCardDocument()
+	cases := map[string]struct {
+		option    agentOption
+		wantsCard bool
+	}{
+		"passthrough": {option: withProtectedCard(api.A2AProtectedAgentCardModePassthrough, nil)},
+		"managed": {
+			option:    withProtectedCard(api.A2AProtectedAgentCardModeManaged, &content),
+			wantsCard: true,
+		},
+	}
+
+	for name, testCase := range cases {
+		t.Run(name, func(t *testing.T) {
+			rdc, err := agentTransformer().Transform(testAgent(testCase.option))
+			require.NoError(t, err)
+
+			block, present := protectedCardParams(rdc.PolicyChains[extendedCardChainKey])
+			require.True(t, present, "the protected-card instance is missing from the chain")
+
+			serialized, hasContent := block[constants.A2A_POLICY_PARAM_CONTENT]
+			assert.Equal(t, testCase.wantsCard, hasContent,
+				"content is what tells managed from passthrough")
+			if testCase.wantsCard {
+				assert.JSONEq(t, `{"name":"Weather Agent","protocolVersion":"1.0",`+
+					`"skills":[{"id":"forecast_history"}]}`, serialized.(string))
+			}
+
+			// No validator: the response is authenticated and uncacheable, and
+			// the JSON-RPC binding is a POST that cannot answer a conditional GET.
+			assert.NotContains(t, block, constants.A2A_POLICY_PARAM_ETAG)
+		})
+	}
+}
+
+// A protected card changes one chain. The other ten operations, the public card
+// route, and every preflight must be untouched — an instance that leaked into
+// any of them would either guard an operation the author did not protect or,
+// worse, put protected card bytes somewhere unauthenticated.
+func TestAgentProtectedCardTouchesOnlyTheExtendedCardChain(t *testing.T) {
+	content := protectedCardDocument()
+	rdc, err := agentTransformerWithPolicies("cors").Transform(testAgent(
+		withProtectedCard(api.A2AProtectedAgentCardModeManaged, &content),
+		withOperationPolicies(api.Policy{Name: "cors"}),
+	))
+	require.NoError(t, err)
+
+	for key, chain := range rdc.PolicyChains {
+		if key == extendedCardChainKey {
+			continue
+		}
+		if _, present := protectedCardParams(chain); present {
+			t.Errorf("chain %q carries a protected-card instance", key)
+		}
+	}
+
+	// Specifically the two that would be worst: the public card route, which is
+	// unauthenticated by design, and the preflight for the extended-card path,
+	// which a browser sends without credentials.
+	if _, present := protectedCardParams(rdc.PolicyChains[testCardRouteKey]); present {
+		t.Error("the public card route carries a protected-card instance")
+	}
+	preflight := rdc.PolicyChains["OPTIONS|/weather/extendedAgentCard|main.local"]
+	require.NotNil(t, preflight, "this fixture is meant to generate a preflight for the extended-card path")
+	if _, present := protectedCardParams(preflight); present {
+		t.Error("a CORS preflight carries a protected-card instance")
+	}
+}
+
+// Route and chain counts are invariant. A protected card adds policies to an
+// existing chain; it is not a new operation, a new route, or a new path.
+func TestAgentProtectedCardAddsNoRoutesOrChains(t *testing.T) {
+	content := protectedCardDocument()
+
+	before, err := agentTransformer().Transform(testAgent())
+	require.NoError(t, err)
+	after, err := agentTransformer().Transform(testAgent(
+		withProtectedCard(api.A2AProtectedAgentCardModeManaged, &content)))
+	require.NoError(t, err)
+
+	assert.Equal(t, routeKeysOf(before), routeKeysOf(after))
+	assert.Equal(t, operationChainKeys(before), operationChainKeys(after))
+	assert.Len(t, after.PolicyChains, len(before.PolicyChains))
+}
+
+// The instance goes last, after everything the author attached at either scope.
+// Where authentication sits among their policies is their decision; what this
+// pins is that the gateway adds itself at the end of their order rather than in
+// the middle of it — and that in managed mode nothing they wrote is stranded
+// behind a short-circuit.
+func TestAgentProtectedCardRunsLastInItsChain(t *testing.T) {
+	content := protectedCardDocument()
+	rdc, err := agentTransformerWithPolicies("jwt-auth", "mcp-authz").Transform(testAgent(
+		withProtectedCard(api.A2AProtectedAgentCardModeManaged, &content),
+		withOperationPolicies(api.Policy{Name: "jwt-auth"}),
+		withOperationConfig(agentproto.GetExtendedAgentCard, api.Policy{Name: "mcp-authz"}),
+	))
+	require.NoError(t, err)
+
+	assert.Equal(t,
+		[]string{"jwt-auth", "mcp-authz", constants.A2A_SYSTEM_POLICY_NAME},
+		policyNames(rdc.PolicyChains[extendedCardChainKey]))
+}
+
+// A managed protected card is answered by the gateway, so no request reaches the
+// backend and the Agent's upstream credential has no business travelling in that
+// chain. Passthrough forwards, so it keeps the credential — and so does every
+// other operation, including on an Agent whose protected card is managed.
+func TestAgentProtectedCardOmitsUpstreamAuthOnlyWhenManaged(t *testing.T) {
+	transformer := agentTransformerWithPolicies("set-headers")
+	withAuth := func(cfg *api.AgentConfiguration) {
+		cfg.Spec.Upstream.Auth = &struct {
+			Header        *string                             `json:"header,omitempty" yaml:"header,omitempty"`
+			PolicyName    *string                             `json:"policyName,omitempty" yaml:"policyName,omitempty"`
+			PolicyParams  *map[string]interface{}             `json:"policyParams,omitempty" yaml:"policyParams,omitempty"`
+			PolicyVersion *string                             `json:"policyVersion,omitempty" yaml:"policyVersion,omitempty"`
+			Type          api.AgentConfigDataUpstreamAuthType `json:"type" yaml:"type"`
+			Value         *string                             `json:"value,omitempty" yaml:"value,omitempty"`
+		}{
+			Header: ptrStr("Authorization"),
+			Type:   api.AgentConfigDataUpstreamAuthTypeApiKey,
+			Value:  ptrStr("Bearer secret-token"),
+		}
+	}
+	getTaskChainKey := chainkey.For(testAgentUUID, "main.local", string(agentproto.GetTask))
+
+	content := protectedCardDocument()
+	managed, err := transformer.Transform(testAgent(withAuth,
+		withProtectedCard(api.A2AProtectedAgentCardModeManaged, &content)))
+	require.NoError(t, err)
+	assert.Equal(t, []string{constants.A2A_SYSTEM_POLICY_NAME},
+		policyNames(managed.PolicyChains[extendedCardChainKey]),
+		"a locally answered operation must not inject the upstream credential")
+	assert.Equal(t, []string{"set-headers"}, policyNames(managed.PolicyChains[getTaskChainKey]),
+		"every other operation still reaches the upstream")
+
+	passthrough, err := transformer.Transform(testAgent(withAuth,
+		withProtectedCard(api.A2AProtectedAgentCardModePassthrough, nil)))
+	require.NoError(t, err)
+	assert.Equal(t, []string{"set-headers", constants.A2A_SYSTEM_POLICY_NAME},
+		policyNames(passthrough.PolicyChains[extendedCardChainKey]),
+		"a proxied protected card is fetched from the upstream, which may require the credential")
+
+	// An Agent with no protected block keeps the credential too: omitting the
+	// block is the already-shipped proxying behaviour, not a mode.
+	compatible, err := transformer.Transform(testAgent(withAuth))
+	require.NoError(t, err)
+	assert.Equal(t, []string{"set-headers"}, policyNames(compatible.PolicyChains[extendedCardChainKey]))
+}
+
+// Only the transformer's own upstream credential is dropped from a managed
+// protected chain. A set-headers instance the author attached is theirs and
+// stays, even though the request is answered locally — the transformer is not in
+// the business of deciding which of their policies are pointless.
+func TestAgentProtectedCardKeepsAuthorAttachedPolicies(t *testing.T) {
+	content := protectedCardDocument()
+	rdc, err := agentTransformerWithPolicies("set-headers").Transform(testAgent(
+		withProtectedCard(api.A2AProtectedAgentCardModeManaged, &content),
+		withOperationPolicies(api.Policy{Name: "set-headers"}),
+	))
+	require.NoError(t, err)
+
+	assert.Equal(t, []string{"set-headers", constants.A2A_SYSTEM_POLICY_NAME},
+		policyNames(rdc.PolicyChains[extendedCardChainKey]))
+}
+
+// The two representations are serialized by one encoder, so the bytes a client
+// receives are the bytes the controller validated — and, once signing lands, the
+// bytes it signed. A second encoding of the same document anywhere would be a
+// signature that does not verify.
+func TestAgentProtectedCardIsServedAsSupplied(t *testing.T) {
+	content := api.A2AAgentCardDocument{
+		"name":              "Weather Agent",
+		"protocolVersion":   "1.0",
+		"x-vendor-metadata": map[string]interface{}{"team": "weather"},
+	}
+	rdc, err := agentTransformer().Transform(testAgent(
+		withProtectedCard(api.A2AProtectedAgentCardModeManaged, &content)))
+	require.NoError(t, err)
+
+	block, present := protectedCardParams(rdc.PolicyChains[extendedCardChainKey])
+	require.True(t, present)
+
+	expected, err := json.Marshal(map[string]interface{}(content))
+	require.NoError(t, err)
+	assert.Equal(t, string(expected), block[constants.A2A_POLICY_PARAM_CONTENT],
+		"the protected card must be the supplied document byte for byte")
+}
+
+// Without the in-repo A2A policy there is nothing to answer a managed protected
+// card, and dropping the instance would leave a chain that proxies the operation
+// upstream — serving the upstream's own unvalidated extended card under a
+// configuration that says the gateway owns it. That substitution is silent, so
+// the transform fails instead.
+func TestAgentProtectedCardRequiresTheSystemPolicy(t *testing.T) {
+	content := protectedCardDocument()
+	for name, option := range map[string]agentOption{
+		"managed":     withProtectedCard(api.A2AProtectedAgentCardModeManaged, &content),
+		"passthrough": withProtectedCard(api.A2AProtectedAgentCardModePassthrough, nil),
+	} {
+		t.Run(name, func(t *testing.T) {
+			_, err := agentTransformerWithoutCardPolicy().Transform(testAgent(option, withPassthroughCard()))
+			require.Error(t, err)
+			assert.Contains(t, err.Error(), "protected agent card")
+		})
+	}
+}
+
+// Validation rejects a managed protected card with no content, so this is the
+// defensive path. It must fail rather than silently degrade to passthrough.
+func TestAgentManagedProtectedCardWithoutContentFails(t *testing.T) {
+	empty := api.A2AAgentCardDocument{}
+	for name, content := range map[string]*api.A2AAgentCardDocument{
+		"nil content":   nil,
+		"empty content": &empty,
+	} {
+		t.Run(name, func(t *testing.T) {
+			_, err := agentTransformer().Transform(testAgent(
+				withProtectedCard(api.A2AProtectedAgentCardModeManaged, content)))
+			require.Error(t, err)
+			assert.Contains(t, err.Error(), "no content to serve")
+		})
+	}
+}

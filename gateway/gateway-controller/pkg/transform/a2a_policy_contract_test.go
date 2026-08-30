@@ -67,14 +67,15 @@ func TestA2APolicyDefinitionMatchesTheTransformerContract(t *testing.T) {
 	// policy unresolvable and every managed card undeployable.
 	assert.Regexp(t, `^v\d+\.\d+\.\d+$`, definition.Version)
 
-	// Agent Card serving is one nested block, not top-level fields, so a second
-	// gateway-answered A2A concern can be added beside it. The block itself is
-	// optional for that reason; its two fields are not.
+	// Each gateway-answered concern is one nested block, not top-level fields, so
+	// another can be added beside them. Every block is optional for that reason;
+	// what a present block requires is not.
+	assert.Empty(t, definition.Parameters.Required,
+		"no parameter block may be required at the top level; each job brings its own")
+
 	agentCard, present := definition.Parameters.Properties[constants.A2A_POLICY_PARAM_AGENT_CARD]
 	require.True(t, present, "the %q parameter block is missing from the policy definition",
 		constants.A2A_POLICY_PARAM_AGENT_CARD)
-	assert.Empty(t, definition.Parameters.Required,
-		"no parameter block may be required at the top level; each job brings its own")
 
 	// Exactly the two fields the transformer writes, both required: a field the
 	// transformer does not write would arrive absent, and one it writes that the
@@ -85,6 +86,23 @@ func TestA2APolicyDefinitionMatchesTheTransformerContract(t *testing.T) {
 	assert.ElementsMatch(t,
 		[]string{constants.A2A_POLICY_PARAM_CONTENT, constants.A2A_POLICY_PARAM_ETAG},
 		agentCard.Required)
+
+	protectedCard, present := definition.Parameters.Properties[constants.A2A_POLICY_PARAM_PROTECTED_AGENT_CARD]
+	require.True(t, present, "the %q parameter block is missing from the policy definition",
+		constants.A2A_POLICY_PARAM_PROTECTED_AGENT_CARD)
+
+	// Content only, and optional. Its presence is what tells managed from
+	// passthrough, so a definition that required it would make a passthrough
+	// protected card — which has no content by definition — undeployable.
+	require.Len(t, protectedCard.Properties, 1)
+	assert.Contains(t, protectedCard.Properties, constants.A2A_POLICY_PARAM_CONTENT)
+	assert.Empty(t, protectedCard.Required,
+		"content must stay optional: an empty block is how passthrough is expressed")
+
+	// No etag beside it. The response is authenticated and uncacheable, and the
+	// JSON-RPC binding is a POST — there is no conditional GET for a validator to
+	// take part in, and shipping one would invite a cached protected card.
+	assert.NotContains(t, protectedCard.Properties, constants.A2A_POLICY_PARAM_ETAG)
 }
 
 // The policy must be registered in the system build lock, or the gateway is

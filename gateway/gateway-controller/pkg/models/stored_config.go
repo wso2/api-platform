@@ -135,8 +135,12 @@ type AgentArtifact struct {
 	// re-signing at startup would, for the randomized algorithms, change the
 	// served bytes and ETag with no user-visible cause.
 	//
-	// Nothing populates them yet; card signing writes SignedPublicCard, and
-	// SignedProtectedCard is reserved for extended-card support.
+	// The two card representations are validated, stored, and signed
+	// independently, so an Agent may have either, both, or neither.
+	//
+	// Nothing populates them yet: card signing is unimplemented and rejected at
+	// deploy time, so a managed protected card ships unsigned in Configuration
+	// like the public one does.
 	SignedPublicCard    *string `json:"signedPublicCard,omitempty"`
 	SignedProtectedCard *string `json:"signedProtectedCard,omitempty"`
 }

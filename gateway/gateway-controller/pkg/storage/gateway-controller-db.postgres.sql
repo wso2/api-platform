@@ -77,8 +77,11 @@ CREATE TABLE IF NOT EXISTS agents (
     -- NULL when signing is disabled, or in passthrough mode. Persisted rather
     -- than recomputed: signatures are produced only on deploy, never at startup.
     signed_public_card TEXT,
-    -- Reserved. Extended (protected) card support is a later release; nothing
-    -- writes this column yet.
+    -- Signed protected (extended) Agent Card, on the same terms as the public
+    -- one above. The two representations are validated, stored, and signed
+    -- independently, so an Agent may have either, both, or neither. Nothing
+    -- writes this column until card signing lands; the protected card itself
+    -- ships unsigned in its managed representation's configuration.
     signed_protected_card TEXT,
     PRIMARY KEY (gateway_id, uuid),
     FOREIGN KEY(gateway_id, uuid) REFERENCES artifacts(gateway_id, uuid) ON DELETE CASCADE

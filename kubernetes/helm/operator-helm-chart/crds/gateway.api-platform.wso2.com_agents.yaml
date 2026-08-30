@@ -47,24 +47,30 @@ spec:
                     properties:
                       protected:
                         description: |-
-                          Protected configures the authenticated extended Agent Card. Not
-                          implemented in this release.
+                          Protected configures the authenticated extended Agent Card. Omitting it
+                          leaves GetExtendedAgentCard proxied to the upstream unguarded, which is not
+                          the same as configuring passthrough.
                         properties:
                           content:
-                            description: Content is the complete Agent Card as a structured
-                              object.
+                            description: |-
+                              Content is the complete Agent Card as a structured object, preserved as
+                              supplied. Required in managed mode and rejected in passthrough mode.
                             type: object
                             x-kubernetes-preserve-unknown-fields: true
                           mode:
-                            description: Mode selects how the protected Agent Card
-                              is produced.
+                            description: |-
+                              Mode selects how the protected Agent Card is produced. managed serves the
+                              supplied content from the gateway and never reaches the upstream;
+                              passthrough forwards the authenticated request and proxies the upstream's
+                              own response unchanged.
                             enum:
                             - managed
                             - passthrough
                             type: string
                           signing:
-                            description: Signing configures gateway signing of a managed
-                              card.
+                            description: |-
+                              Signing configures gateway signing of a managed card. The two card
+                              representations are signed independently.
                             properties:
                               enabled:
                                 description: |-
@@ -640,24 +646,30 @@ spec:
                     properties:
                       protected:
                         description: |-
-                          Protected configures the authenticated extended Agent Card. Not
-                          implemented in this release.
+                          Protected configures the authenticated extended Agent Card. Omitting it
+                          leaves GetExtendedAgentCard proxied to the upstream unguarded, which is not
+                          the same as configuring passthrough.
                         properties:
                           content:
-                            description: Content is the complete Agent Card as a structured
-                              object.
+                            description: |-
+                              Content is the complete Agent Card as a structured object, preserved as
+                              supplied. Required in managed mode and rejected in passthrough mode.
                             type: object
                             x-kubernetes-preserve-unknown-fields: true
                           mode:
-                            description: Mode selects how the protected Agent Card
-                              is produced.
+                            description: |-
+                              Mode selects how the protected Agent Card is produced. managed serves the
+                              supplied content from the gateway and never reaches the upstream;
+                              passthrough forwards the authenticated request and proxies the upstream's
+                              own response unchanged.
                             enum:
                             - managed
                             - passthrough
                             type: string
                           signing:
-                            description: Signing configures gateway signing of a managed
-                              card.
+                            description: |-
+                              Signing configures gateway signing of a managed card. The two card
+                              representations are signed independently.
                             properties:
                               enabled:
                                 description: |-

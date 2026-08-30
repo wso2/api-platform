@@ -123,6 +123,13 @@ Feature: Startup DB Bootstrap
     # route is not the same as restoring what hangs off it: a route that comes
     # back with an empty policy chain still answers, having silently dropped
     # authentication and the locally-served card.
+    #
+    # A managed *protected* card is attached for the same reason, one layer in:
+    # it lives inside a canonical operation chain rather than on a route of its
+    # own, so a restore that rebuilt every route and every route-keyed chain
+    # would still lose it. Losing it is not a 404 either — the operation would
+    # come back proxying to the agent, serving the upstream's own extended card
+    # unguarded in place of the gateway's.
     When I deploy this Agent configuration:
       """
       apiVersion: gateway.api-platform.wso2.com/v1
@@ -166,6 +173,7 @@ Feature: Startup DB Bootstrap
                     url: https://agents.example.com/startup-db-agent/v1
                 capabilities:
                   streaming: true
+                  extendedAgentCard: true
                 defaultInputModes:
                   - text/plain
                 defaultOutputModes:
@@ -176,6 +184,32 @@ Feature: Startup DB Bootstrap
                     description: Plans a trip itinerary
                     tags:
                       - travel
+            protected:
+              mode: managed
+              content:
+                name: Startup DB Agent
+                description: Persisted protected Agent Card restored on restart
+                version: 1.0.0
+                protocolVersion: "1.0"
+                supportedInterfaces:
+                  - protocolBinding: JSONRPC
+                    protocolVersion: "1.0"
+                    url: https://agents.example.com/startup-db-agent
+                  - protocolBinding: HTTP+JSON
+                    protocolVersion: "1.0"
+                    url: https://agents.example.com/startup-db-agent/v1
+                capabilities:
+                  streaming: true
+                  extendedAgentCard: true
+                defaultInputModes:
+                  - text/plain
+                defaultOutputModes:
+                  - text/plain
+                skills:
+                  - id: plan_trip
+                    name: Plan a trip
+                  - id: startup_db_protected_skill
+                    name: Only on the persisted protected card
       """
     # Agent create answers 201 with the k8s-style resource envelope, whose
     # `status` is an object — not the {"status": "success"} wrapper the older
@@ -257,6 +291,22 @@ Feature: Startup DB Bootstrap
     And I save the Agent Card at "http://localhost:8080/startup-db-agent/.well-known/agent-card.json"
     Then the response status code should be 200
     And the response body should contain "Startup DB Agent"
+    And the response body should not contain "startup_db_protected_skill"
+
+    # The protected card, before the restart: served locally to an authenticated
+    # caller, withheld from an anonymous one. "startup_db_protected_skill" is on
+    # this document alone, so it separates "the gateway answered" from "the agent
+    # did".
+    When I clear all headers
+    And I set header "API-Key" to "startup-db-agent-secret"
+    And I send an A2A "GET" request to "http://localhost:8080/startup-db-agent/v1/extendedAgentCard"
+    Then the response status code should be 200
+    And the response body should contain "startup_db_protected_skill"
+    And the response body should not contain "book_trip"
+
+    When I clear all headers
+    And I send an A2A "GET" request to "http://localhost:8080/startup-db-agent/v1/extendedAgentCard"
+    Then the response status code should be 401
 
     When I restart the "gateway-controller" service
     And I wait for the endpoint "http://localhost:8080/startup-db-llm/chat/completions" to be ready with method "POST" and body '{"model":"gpt-4","messages":[{"role":"user","content":"after restart warmup"}]}'
@@ -343,6 +393,31 @@ Feature: Startup DB Bootstrap
     When I clear all headers
     And I send an A2A "GET" request to "http://localhost:8080/startup-db-agent/v1/tasks"
     Then the response status code should be 401
+
+    # The protected card came back inside its operation chain — still served
+    # locally, still guarded, and still the gateway's document rather than the
+    # agent's.
+    When I clear all headers
+    And I set header "API-Key" to "startup-db-agent-secret"
+    And I send an A2A "GET" request to "http://localhost:8080/startup-db-agent/v1/extendedAgentCard"
+    Then the response status code should be 200
+    And the response body should contain "startup_db_protected_skill"
+    And the response body should not contain "book_trip"
+
+    When I clear all headers
+    And I set header "API-Key" to "startup-db-agent-secret"
+    And I send an A2A JSON-RPC request to "http://localhost:8080/startup-db-agent":
+      """
+      {"jsonrpc": "2.0", "id": 1, "method": "GetExtendedAgentCard", "params": {}}
+      """
+    Then the response status code should be 200
+    And the JSON response field "result.name" should be "Startup DB Agent"
+    And the response body should contain "startup_db_protected_skill"
+
+    When I clear all headers
+    And I send an A2A "GET" request to "http://localhost:8080/startup-db-agent/v1/extendedAgentCard"
+    Then the response status code should be 401
+    And the response body should not contain "startup_db_protected_skill"
 
     # The managed card is still served locally, byte-for-byte as stored, under
     # the same tag. A changed tag on unchanged bytes would tell every client

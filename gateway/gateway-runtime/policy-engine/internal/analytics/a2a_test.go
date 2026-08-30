@@ -276,6 +276,68 @@ func TestA2AAnalytics_PolicyDenialOutranksTheResponseBody(t *testing.T) {
 	assert.Equal(t, A2AFailureOriginPolicy, block["failureOrigin"])
 }
 
+// A policy that *answers* is not a policy that refused.
+//
+// A managed protected Agent Card is served by the gateway's own A2A policy with a
+// 200, which stamps the same policy-short-circuit terminal reason as an auth
+// denial does. Reading that reason alone would report every locally served card
+// as a policy failure — and the more often a card is fetched, the more broken the
+// Agent would look.
+//
+// It is still an operation event: GetExtendedAgentCard ran, its policies ran, and
+// a client received a result. Only the outcome derivation changes.
+func TestA2AAnalytics_APolicyThatAnswersSuccessfullyIsNotAFailure(t *testing.T) {
+	t.Run("HTTP+JSON, where a 2xx is the agent's statement of success", func(t *testing.T) {
+		block := a2aBlock(t, a2aLogEntry(a2aEntryOptions{
+			operation: "GetExtendedAgentCard", transport: "HTTP+JSON", protocolVersion: "1.0",
+			statusCode: 200, terminalReason: constants.TerminalReasonPolicyDenied,
+			upstreamContacted: false,
+			omitResponseProps: true,
+		}))
+
+		assert.Equal(t, A2ARequestTypeOperation, block["requestType"],
+			"an extended-card request is the operation, never discovery")
+		assert.Equal(t, "GetExtendedAgentCard", block["operation"])
+		assert.Equal(t, A2AOutcomeSuccess, block["outcome"])
+		assert.NotContains(t, block, "failureOrigin")
+	})
+
+	// JSON-RPC answers 200 whether the call succeeded or failed, and an
+	// ImmediateResponse from the request phase is never seen by a response-body
+	// policy — so there is no readable result. Undetermined is the honest answer
+	// and the pre-existing rule for that case; what matters here is that it is not
+	// reported as a *failure*.
+	t.Run("JSON-RPC, where a 2xx carries no outcome information", func(t *testing.T) {
+		block := a2aBlock(t, a2aLogEntry(a2aEntryOptions{
+			operation: "GetExtendedAgentCard", transport: "JSONRPC", protocolVersion: "1.0",
+			statusCode: 200, terminalReason: constants.TerminalReasonPolicyDenied,
+			upstreamContacted: false,
+			// An ImmediateResponse from the request phase never reaches a
+			// response-body policy, so no A2A result was observed at all.
+			omitResponseProps: true,
+		}))
+
+		assert.Equal(t, A2ARequestTypeOperation, block["requestType"])
+		assert.Equal(t, A2AOutcomeUnknown, block["outcome"])
+		assert.NotContains(t, block, "failureOrigin")
+	})
+
+	// And the refusal is unchanged: a 401 from the same policy on the same
+	// operation is still attributed to the policy layer, which is the distinction
+	// the terminal reason exists to make.
+	t.Run("the same policy refusing is still a policy failure", func(t *testing.T) {
+		block := a2aBlock(t, a2aLogEntry(a2aEntryOptions{
+			operation: "GetExtendedAgentCard", transport: "HTTP+JSON", protocolVersion: "1.0",
+			statusCode: 401, terminalReason: constants.TerminalReasonPolicyDenied,
+			upstreamContacted: false,
+		}))
+
+		assert.Equal(t, A2ARequestTypeOperation, block["requestType"])
+		assert.Equal(t, A2AOutcomeFailure, block["outcome"])
+		assert.Equal(t, A2AFailureOriginPolicy, block["failureOrigin"])
+	})
+}
+
 // ─── Card and preflight traffic is not an invocation ────────────────────────
 
 func TestA2AAnalytics_CardAndPreflightAreReportedSeparately(t *testing.T) {

@@ -255,6 +255,31 @@ func (t *AgentTransformer) Transform(cfg *models.StoredConfig) (*models.RuntimeD
 	// so a policy attached at both levels runs twice as two instances.
 	commonOperationPolicies := resolvePolicyInstances(
 		t.policyDefinitions, t.latestVersions, withPolicy(a2a.OperationConfigs.Policies, upstreamAuth), policyv1alpha.LevelAPI)
+
+	// The same operation-common policies without the gateway's own upstream
+	// credential. Used by the one chain that answers locally and never forwards:
+	// a managed protected Agent Card. Injecting a credential into a request that
+	// stops at the gateway would put the Agent's upstream secret into a header
+	// mutation nothing consumes. The author's own policies are untouched — only
+	// the instance the transformer synthesised is left out.
+	//
+	// Resolved unconditionally rather than behind the mode check because
+	// resolvePolicyInstances logs what it drops, and having that log depend on the
+	// card mode would make an unrelated policy problem appear and disappear with
+	// it. It is a slice of already-resolved instances; building it costs nothing.
+	commonPoliciesWithoutUpstreamAuth := commonOperationPolicies
+	if upstreamAuth != nil {
+		commonPoliciesWithoutUpstreamAuth = resolvePolicyInstances(
+			t.policyDefinitions, t.latestVersions, a2a.OperationConfigs.Policies, policyv1alpha.LevelAPI)
+	}
+
+	// The internal instance an explicitly configured protected Agent Card adds to
+	// the canonical GetExtendedAgentCard chain, and to nothing else.
+	protectedCard, protectedCardManaged, err := t.protectedCardPolicyInstance(a2a.AgentCard.Protected)
+	if err != nil {
+		return nil, err
+	}
+
 	perOperationPolicies := make(map[agentproto.Operation][]policyenginev1.PolicyInstance)
 	perOperationCORS := make(map[agentproto.Operation][]policyenginev1.PolicyInstance)
 	perOperationResilience := make(map[agentproto.Operation]*api.Resilience)
@@ -328,10 +353,30 @@ func (t *AgentTransformer) Transform(cfg *models.StoredConfig) (*models.RuntimeD
 			if _, exists := rdc.PolicyChains[chainKey]; exists {
 				return nil, fmt.Errorf("policy chain %q for operation %q would be built twice", chainKey, operation)
 			}
+
+			// Exactly one operation's chain differs, and only when the Agent
+			// explicitly configures a protected card. Everything else — including
+			// GetExtendedAgentCard on an Agent that omits the block — is the plain
+			// concatenation above.
+			protectedChain := protectedCard != nil && operation == agentproto.GetExtendedAgentCard
+
+			common := commonOperationPolicies
+			if protectedChain && protectedCardManaged {
+				common = commonPoliciesWithoutUpstreamAuth
+			}
+
 			chain := make([]policyenginev1.PolicyInstance, 0,
-				len(commonOperationPolicies)+len(perOperationPolicies[operation]))
-			chain = append(chain, commonOperationPolicies...)
+				len(common)+len(perOperationPolicies[operation])+1)
+			chain = append(chain, common...)
 			chain = append(chain, perOperationPolicies[operation]...)
+			if protectedChain {
+				// At the tail, after everything the author attached at either
+				// scope. Which of their policies authenticates, and in which
+				// scope, is theirs to decide — this only asks whether one of them
+				// did. In managed mode it also short-circuits the chain, so
+				// anything placed after it would never run.
+				chain = append(chain, *protectedCard)
+			}
 			rdc.PolicyChains[chainKey] = sdkChainToModel(utils.InjectSystemPolicies(chain, t.systemConfig, nil))
 		}
 
@@ -670,30 +715,112 @@ func (t *AgentTransformer) agentCardPolicyInstance(
 		return policyenginev1.PolicyInstance{}, err
 	}
 
-	resolved, err := config.ResolvePolicyVersion(
-		t.policyDefinitions, t.latestVersions, constants.A2A_SYSTEM_POLICY_NAME, "")
+	// The card configuration is a nested block because the policy is the A2A
+	// system policy, not the Agent Card policy: every other thing it answers
+	// brings its own block alongside this one.
+	instance, err := t.a2aSystemPolicyInstance(map[string]any{
+		constants.A2A_POLICY_PARAM_AGENT_CARD: map[string]any{
+			constants.A2A_POLICY_PARAM_CONTENT: string(body),
+			constants.A2A_POLICY_PARAM_ETAG:    etag,
+		},
+	})
 	if err != nil {
 		return policyenginev1.PolicyInstance{}, fmt.Errorf(
 			"cannot serve a managed agent card: %w", err)
 	}
+	return instance, nil
+}
 
+// protectedCardPolicyInstance builds the internal instance an explicitly
+// configured protected Agent Card adds to the canonical GetExtendedAgentCard
+// chain, and reports whether that card is managed.
+//
+// It goes at the tail of the chain, after every policy the author attached at
+// either scope. Where authentication sits among those is the author's decision;
+// this instance only asks whether the request that reached it was authenticated
+// by something. That question is answered from SharedContext.AuthContext, which
+// every supported auth policy populates identically, so a custom authentication
+// policy protects this surface exactly as well as a built-in one — and no
+// deployment-time allowlist of policy names is needed, which could not have
+// proved that a policy bearing an approved name authenticated *this* request
+// anyway.
+//
+// The instance is returned for both modes and its check is unconditional. An
+// Agent that opts into a protected card gets a card that is protected; whether
+// the author also remembered to attach an authentication policy is not a
+// question the answer may depend on, because "no auth policy" would otherwise
+// mean "public extended card" — the exact failure the feature exists to prevent.
+//
+// A nil instance means the Agent has no explicit protected block at all. That is
+// deliberately not the same as passthrough: it is the behaviour that already
+// shipped, where GetExtendedAgentCard is an ordinary proxied operation with no
+// gateway-added guard.
+func (t *AgentTransformer) protectedCardPolicyInstance(
+	protected *api.A2AProtectedAgentCard,
+) (*policyenginev1.PolicyInstance, bool, error) {
+	if protected == nil {
+		return nil, false, nil
+	}
+
+	// Passthrough carries no content: require an authenticated request, then
+	// forward the operation and let the upstream answer it.
+	parameters := map[string]any{}
+	managed := protected.Mode == api.A2AProtectedAgentCardModeManaged
+
+	if managed {
+		if protected.Content == nil || len(*protected.Content) == 0 {
+			// Validation rejects a managed card with no content, so this is a
+			// defensive check on a path that should be unreachable. Failing here
+			// rather than degrading to passthrough matters: degrading would proxy
+			// the upstream's own unvalidated extended card under a configuration
+			// that says the gateway owns it.
+			return nil, false, fmt.Errorf("managed protected agent card has no content to serve")
+		}
+		// The same encoder the public card uses. A second one would produce
+		// different bytes for the same document, and the bytes are what card
+		// signing will sign. The ETag is deliberately discarded: this response is
+		// authenticated and carries Cache-Control: no-store, and the JSON-RPC
+		// binding is a POST that cannot take part in the conditional-GET contract
+		// the public route has.
+		body, _, err := agentCardBody(*protected.Content)
+		if err != nil {
+			return nil, false, err
+		}
+		parameters[constants.A2A_POLICY_PARAM_CONTENT] = string(body)
+	}
+
+	instance, err := t.a2aSystemPolicyInstance(map[string]any{
+		constants.A2A_POLICY_PARAM_PROTECTED_AGENT_CARD: parameters,
+	})
+	if err != nil {
+		return nil, false, fmt.Errorf("cannot serve the protected agent card: %w", err)
+	}
+	return &instance, managed, nil
+}
+
+// a2aSystemPolicyInstance builds one instance of the in-repo A2A system policy
+// carrying the given parameter block.
+//
+// The policy is attached by name, so its version is resolved from the loaded
+// definitions the same way an author-attached policy's is — and, as there, an
+// unresolvable one is a hard failure rather than a dropped chain entry, because
+// every job this policy does is one the chain cannot be correct without.
+func (t *AgentTransformer) a2aSystemPolicyInstance(
+	parameters map[string]any,
+) (policyenginev1.PolicyInstance, error) {
+	resolved, err := config.ResolvePolicyVersion(
+		t.policyDefinitions, t.latestVersions, constants.A2A_SYSTEM_POLICY_NAME, "")
+	if err != nil {
+		return policyenginev1.PolicyInstance{}, err
+	}
 	// No attachedTo parameter, matching how the injected system policies are
 	// built: the attachment level is a hint for author-attached policies about
 	// which scope configured them, and this one was configured by no scope.
-	//
-	// The card configuration is a nested block because the policy is the A2A
-	// system policy, not the Agent Card policy: whatever it answers next brings
-	// its own block alongside this one.
 	return policyenginev1.PolicyInstance{
-		Name:    constants.A2A_SYSTEM_POLICY_NAME,
-		Version: versionutil.MajorVersion(resolved),
-		Enabled: true,
-		Parameters: map[string]any{
-			constants.A2A_POLICY_PARAM_AGENT_CARD: map[string]any{
-				constants.A2A_POLICY_PARAM_CONTENT: string(body),
-				constants.A2A_POLICY_PARAM_ETAG:    etag,
-			},
-		},
+		Name:       constants.A2A_SYSTEM_POLICY_NAME,
+		Version:    versionutil.MajorVersion(resolved),
+		Enabled:    true,
+		Parameters: parameters,
 	}, nil
 }
 
