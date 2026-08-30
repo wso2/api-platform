@@ -370,11 +370,15 @@ Feature: Agent deployment and A2A routing
     Then the response should be a client error
     And the response body should contain "Agent Card signing is not supported yet"
 
-  # D6: the protected (extended) card is not implemented. GetExtendedAgentCard is
-  # proxied to the upstream instead, so a configured protected block is rejected
-  # rather than ignored — accepting it would store an Agent whose served card does
-  # not match what the author asked for.
-  Scenario: A protected Agent Card block is rejected
+  # A protected (extended) Agent Card is deployable, and adds no routes and no
+  # chains of its own. It is the same GetExtendedAgentCard operation the Agent
+  # already exposed, so the route topology must be identical to an Agent without
+  # the block — the difference is entirely inside one chain.
+  #
+  # What the block *does* at runtime — the authentication guard, local serving, and
+  # every rejection its own rules make — lives in agent_card.feature beside the
+  # public card's.
+  Scenario: A protected Agent Card block deploys without adding routes
     When I deploy this Agent configuration:
       """
       apiVersion: gateway.api-platform.wso2.com/v1
@@ -393,11 +397,37 @@ Feature: Agent deployment and A2A routing
             transports:
               - protocolBinding: HTTP+JSON
                 pathPrefix: /v1
+            policies:
+              - name: jwt-auth
+                version: v1
+                params:
+                  issuers:
+                    - mock-jwks
           agentCard:
             public:
               mode: passthrough
             protected:
-              mode: managed
+              mode: passthrough
       """
-    Then the response should be a client error
-    And the response body should contain "protected (extended) Agent Card is not supported yet"
+    Then the response should be successful
+    And I wait for policy snapshot sync
+
+    # The extended-card operation is reachable on exactly the path its binding
+    # table defines, and no new one appeared beside it.
+    When I clear all headers
+    And I get a JWT token from the mock JWKS server with issuer "http://mock-jwks:8080/token"
+    And I set the Authorization header to the JWT token
+    And I send an A2A "GET" request to "http://localhost:8080/agent-protected-card/v1/extendedAgentCard"
+    Then the response status code should be 200
+
+    # The protected card has no path of its own — it is an operation, not a
+    # document at a location — so nothing is served beside the public card route.
+    When I clear all headers
+    And I get a JWT token from the mock JWKS server with issuer "http://mock-jwks:8080/token"
+    And I set the Authorization header to the JWT token
+    And I send an A2A "GET" request to "http://localhost:8080/agent-protected-card/.well-known/extended-agent-card.json"
+    Then the response status code should be 404
+
+    Given I authenticate using basic auth as "admin"
+    When I delete the Agent "agent-protected-card"
+    Then the response should be successful

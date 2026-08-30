@@ -307,6 +307,82 @@ func TestAgentDeploy_PreservesAgentCardContent(t *testing.T) {
 	require.Equal(t, []interface{}{"a", float64(1)}, nested["deep"])
 }
 
+// TestAgentDeploy_PreservesProtectedAgentCard asserts the second card
+// representation survives the same round trip.
+//
+// It is a separate RawExtension in a separate block, so nothing about the public
+// card's preservation implies it: a flattening bug that reached only the
+// protected subtree would produce an Agent whose extended card is silently
+// different from the one applied — and the gateway serves those bytes to
+// authenticated callers and, once signing lands, signs them.
+//
+// The mode travels beside the content, because the two are read together: a
+// managed card whose mode was lost would be validated as passthrough and its
+// content rejected.
+func TestAgentDeploy_PreservesProtectedAgentCard(t *testing.T) {
+	k8sClient := fake.NewClientBuilder().WithScheme(agentTestScheme(t)).Build()
+
+	cr := agentWithPolicyScopes(t)
+	cr.Spec.A2A.OperationConfigs.Policies = nil
+	cr.Spec.A2A.OperationConfigs.Operations = nil
+	cr.Spec.A2A.AgentCard.Public.Policies = nil
+	cr.Spec.A2A.AgentCard.Public.Content = &runtime.RawExtension{Raw: []byte(
+		`{"name":"Weather Agent","capabilities":{"streaming":true,"extendedAgentCard":true}}`)}
+	cr.Spec.A2A.AgentCard.Protected = &apiv1.A2AProtectedAgentCard{
+		Mode: "managed",
+		Content: &runtime.RawExtension{Raw: []byte(
+			`{"name":"Weather Agent","capabilities":{"streaming":true,"extendedAgentCard":true},` +
+				`"x-vendor":{"nested":{"deep":["a",1]}},"extensions":[],` +
+				`"skills":[{"id":"get_weather"},{"id":"get_forecast_history"}]}`)},
+	}
+
+	endpoint, seen := fakeManagementAPI(t, false)
+	_, err := (&agentAdapter{}).Deploy(context.Background(), k8sClient, endpoint, cr, nil)
+	require.NoError(t, err)
+
+	card := deploySpec(t, seen())["a2a"].(map[string]interface{})["agentCard"].(map[string]interface{})
+	protected := card["protected"].(map[string]interface{})
+	require.Equal(t, "managed", protected["mode"])
+
+	content := protected["content"].(map[string]interface{})
+	require.Equal(t, "Weather Agent", content["name"])
+	require.Equal(t, true, content["capabilities"].(map[string]interface{})["extendedAgentCard"])
+	require.Equal(t, []interface{}{}, content["extensions"])
+	nested := content["x-vendor"].(map[string]interface{})["nested"].(map[string]interface{})
+	require.Equal(t, []interface{}{"a", float64(1)}, nested["deep"])
+
+	skills := content["skills"].([]interface{})
+	require.Len(t, skills, 2)
+	require.Equal(t, "get_forecast_history", skills[1].(map[string]interface{})["id"])
+
+	// The two representations are independent documents. The protected one
+	// carrying the extra skill and the public one not is the whole point.
+	publicContent := card["public"].(map[string]interface{})["content"].(map[string]interface{})
+	require.NotContains(t, publicContent, "skills")
+}
+
+// An omitted protected block must stay omitted on the wire. The management API
+// distinguishes absent from passthrough — absent keeps the already-shipped
+// proxying behaviour, passthrough adds the authentication guard — so an
+// operator that materialised an empty block would change what an Agent does
+// merely by being reconciled.
+func TestAgentDeploy_OmitsAnAbsentProtectedAgentCard(t *testing.T) {
+	k8sClient := fake.NewClientBuilder().WithScheme(agentTestScheme(t)).Build()
+
+	cr := agentWithPolicyScopes(t)
+	cr.Spec.A2A.OperationConfigs.Policies = nil
+	cr.Spec.A2A.OperationConfigs.Operations = nil
+	cr.Spec.A2A.AgentCard.Public.Policies = nil
+	require.Nil(t, cr.Spec.A2A.AgentCard.Protected)
+
+	endpoint, seen := fakeManagementAPI(t, false)
+	_, err := (&agentAdapter{}).Deploy(context.Background(), k8sClient, endpoint, cr, nil)
+	require.NoError(t, err)
+
+	card := deploySpec(t, seen())["a2a"].(map[string]interface{})["agentCard"].(map[string]interface{})
+	require.NotContains(t, card, "protected")
+}
+
 // TestAgentDeploy_TargetsTheAgentsPath asserts the adapter addresses /agents,
 // POSTs when the artifact is absent, PUTs when it is present, and stamps the
 // envelope kind the management API dispatches on.

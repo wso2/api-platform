@@ -71,6 +71,39 @@ func messagesOf(errs []ValidationError) string {
 	return strings.Join(out, "\n")
 }
 
+// protectedCardContent is a managed protected card that agrees with validAgent's
+// single JSONRPC transport, so a test about one protected-card rule is not also
+// exercising the interface-consistency rules that have their own tests.
+//
+// It carries a skill the public fixture does not, because that is what a
+// protected card is for: the same agent, described more fully to an
+// authenticated caller.
+func protectedCardContent() *api.A2AAgentCardDocument {
+	doc := api.A2AAgentCardDocument{
+		"name":    "Weather Agent",
+		"version": "1.0.0",
+		"supportedInterfaces": []interface{}{
+			agentInterface(api.JSONRPC, cardHost+"/weather/rpc"),
+		},
+		"skills": []interface{}{
+			map[string]interface{}{"id": "forecast_history"},
+		},
+	}
+	return &doc
+}
+
+// declareExtendedCardCapability adds the public card's promise that the agent
+// serves an extended card at all. Configuring a protected card without it is its
+// own rejection, with its own test, so every other protected-card test declares
+// it and stays about the rule it is testing.
+func declareExtendedCardCapability(cfg *api.AgentConfiguration) {
+	public := cfg.Spec.A2a.AgentCard.Public
+	if public.Content == nil {
+		return
+	}
+	(*public.Content)["capabilities"] = map[string]interface{}{"extendedAgentCard": true}
+}
+
 // TestAgentCard_InterfacesMatchingTheTransportsAreAccepted covers the shapes an
 // author will actually write, including the two the path arithmetic collapses:
 // a transport at the context root, and an Agent with no context at all.
@@ -605,4 +638,307 @@ func TestAgentCard_ContentIsNeverRewritten(t *testing.T) {
 	after, err := json.Marshal(map[string]interface{}(*cfg.Spec.A2a.AgentCard.Public.Content))
 	require.NoError(t, err)
 	assert.JSONEq(t, string(before), string(after))
+}
+
+// ─── Protected (extended) Agent Card ─────────────────────────────────────────
+//
+// The protected representation runs the same content checks as the public one,
+// against the same transports, so those rules are not re-tested here in full —
+// what is tested is that they run at all, and that they report the protected
+// field rather than the public one. The rules that exist only for this
+// representation are the mode contract and the public card's capability promise.
+
+// An omitted protected block is not a protected card configured as passthrough:
+// it is the behaviour that shipped before protected cards existed, where
+// GetExtendedAgentCard is proxied upstream with no gateway-added guard. An Agent
+// written against that must keep working across a controller upgrade, so the
+// absence has to stay meaningful rather than being normalized into a mode.
+func TestProtectedCard_OmittedBlockIsAccepted(t *testing.T) {
+	cfg := validAgent()
+	require.Nil(t, cfg.Spec.A2a.AgentCard.Protected)
+
+	assert.Empty(t, NewAgentValidator().Validate(&cfg))
+}
+
+func TestProtectedCard_ExplicitModesAreAccepted(t *testing.T) {
+	t.Run("passthrough", func(t *testing.T) {
+		cfg := validAgent()
+		declareExtendedCardCapability(&cfg)
+		cfg.Spec.A2a.AgentCard.Protected = &api.A2AProtectedAgentCard{
+			Mode: api.A2AProtectedAgentCardModePassthrough,
+		}
+
+		assert.Empty(t, NewAgentValidator().Validate(&cfg))
+	})
+
+	t.Run("managed", func(t *testing.T) {
+		cfg := validAgent()
+		declareExtendedCardCapability(&cfg)
+		cfg.Spec.A2a.AgentCard.Protected = &api.A2AProtectedAgentCard{
+			Mode:    api.A2AProtectedAgentCardModeManaged,
+			Content: protectedCardContent(),
+		}
+
+		assert.Empty(t, NewAgentValidator().Validate(&cfg))
+	})
+
+	// A passthrough public card is proxied unparsed, so there is no capability
+	// promise for the gateway to check against — but the protected card is still
+	// configurable, and the authentication it requires is still enforced at
+	// runtime.
+	t.Run("managed protected beside a passthrough public card", func(t *testing.T) {
+		cfg := validAgent()
+		cfg.Spec.A2a.AgentCard.Public.Mode = api.A2APublicAgentCardModePassthrough
+		cfg.Spec.A2a.AgentCard.Public.Content = nil
+		cfg.Spec.A2a.AgentCard.Protected = &api.A2AProtectedAgentCard{
+			Mode:    api.A2AProtectedAgentCardModeManaged,
+			Content: protectedCardContent(),
+		}
+
+		assert.Empty(t, NewAgentValidator().Validate(&cfg))
+	})
+}
+
+// The mode contract, which mirrors the public card's: managed owns a document,
+// passthrough proxies one and can neither supply nor sign it.
+func TestProtectedCard_ModeRules(t *testing.T) {
+	tests := map[string]struct {
+		protected *api.A2AProtectedAgentCard
+		field     string
+	}{
+		"managed with no content": {
+			protected: &api.A2AProtectedAgentCard{Mode: api.A2AProtectedAgentCardModeManaged},
+			field:     "spec.a2a.agentCard.protected.content",
+		},
+		"managed with empty content": {
+			protected: &api.A2AProtectedAgentCard{
+				Mode:    api.A2AProtectedAgentCardModeManaged,
+				Content: &api.A2AAgentCardDocument{},
+			},
+			field: "spec.a2a.agentCard.protected.content",
+		},
+		"passthrough with content": {
+			protected: &api.A2AProtectedAgentCard{
+				Mode:    api.A2AProtectedAgentCardModePassthrough,
+				Content: protectedCardContent(),
+			},
+			field: "spec.a2a.agentCard.protected.content",
+		},
+		"passthrough with signing": {
+			protected: &api.A2AProtectedAgentCard{
+				Mode:    api.A2AProtectedAgentCardModePassthrough,
+				Signing: &api.A2ACardSigning{Enabled: false},
+			},
+			field: "spec.a2a.agentCard.protected.signing",
+		},
+		"unknown mode": {
+			protected: &api.A2AProtectedAgentCard{Mode: "served"},
+			field:     "spec.a2a.agentCard.protected.mode",
+		},
+	}
+
+	for name, tt := range tests {
+		t.Run(name, func(t *testing.T) {
+			cfg := validAgent()
+			declareExtendedCardCapability(&cfg)
+			cfg.Spec.A2a.AgentCard.Protected = tt.protected
+
+			errs := NewAgentValidator().Validate(&cfg)
+			require.NotEmpty(t, errs)
+			assert.Contains(t, fieldsOf(errs), tt.field, messagesOf(errs))
+		})
+	}
+}
+
+// The managed-card checks run over the protected document too, and report it.
+// Reported against the public content field they would send an author to edit a
+// document that is correct, and leave the one that is wrong in place.
+func TestProtectedCard_ManagedChecksRunAndNameTheProtectedField(t *testing.T) {
+	tests := map[string]struct {
+		mutate func(doc api.A2AAgentCardDocument)
+		field  string
+	}{
+		"pre-signed": {
+			mutate: func(doc api.A2AAgentCardDocument) {
+				doc["signatures"] = []interface{}{map[string]interface{}{"signature": "abc"}}
+			},
+			field: "spec.a2a.agentCard.protected.content.signatures",
+		},
+		"advertises an unconfigured binding": {
+			mutate: func(doc api.A2AAgentCardDocument) {
+				doc["supportedInterfaces"] = []interface{}{
+					agentInterface(api.HTTPJSON, cardHost+"/weather/rest"),
+				}
+			},
+			field: "spec.a2a.agentCard.protected.content.supportedInterfaces[0].protocolBinding",
+		},
+		"interface url path disagrees with the gateway": {
+			mutate: func(doc api.A2AAgentCardDocument) {
+				doc["supportedInterfaces"] = []interface{}{
+					agentInterface(api.JSONRPC, cardHost+"/weather/elsewhere"),
+				}
+			},
+			field: "spec.a2a.agentCard.protected.content.supportedInterfaces[0].url",
+		},
+		"declares a tenant": {
+			mutate: func(doc api.A2AAgentCardDocument) {
+				iface := agentInterface(api.JSONRPC, cardHost+"/weather/rpc")
+				iface["tenant"] = "acme"
+				doc["supportedInterfaces"] = []interface{}{iface}
+			},
+			field: "spec.a2a.agentCard.protected.content.supportedInterfaces[0].tenant",
+		},
+		"over the size ceiling": {
+			mutate: func(doc api.A2AAgentCardDocument) {
+				doc["description"] = strings.Repeat("a", maxAgentCardBytes+1)
+			},
+			field: "spec.a2a.agentCard.protected.content",
+		},
+	}
+
+	for name, tt := range tests {
+		t.Run(name, func(t *testing.T) {
+			cfg := validAgent()
+			declareExtendedCardCapability(&cfg)
+			content := protectedCardContent()
+			tt.mutate(*content)
+			cfg.Spec.A2a.AgentCard.Protected = &api.A2AProtectedAgentCard{
+				Mode:    api.A2AProtectedAgentCardModeManaged,
+				Content: content,
+			}
+
+			errs := NewAgentValidator().Validate(&cfg)
+			require.NotEmpty(t, errs)
+			assert.Contains(t, fieldsOf(errs), tt.field, messagesOf(errs))
+			for _, field := range fieldsOf(errs) {
+				assert.NotContains(t, field, "agentCard.public.content.supportedInterfaces",
+					"a protected-card fault was reported against the public card")
+			}
+		})
+	}
+}
+
+// The two representations have independent size budgets, because each is stored
+// and served separately. A pair that is individually within the ceiling is
+// accepted; what that pair contributes to a policy-xDS snapshot is a recorded
+// risk about the snapshot's own missing bounds, not something a lower combined
+// cap here would honestly describe.
+func TestProtectedCard_SizeBudgetsAreIndependent(t *testing.T) {
+	// Comfortably under the per-card ceiling each, and comfortably over it
+	// together.
+	filler := strings.Repeat("a", (maxAgentCardBytes/2)+1024)
+
+	cfg := validAgent()
+	declareExtendedCardCapability(&cfg)
+	(*cfg.Spec.A2a.AgentCard.Public.Content)["description"] = filler
+
+	content := protectedCardContent()
+	(*content)["description"] = filler
+	cfg.Spec.A2a.AgentCard.Protected = &api.A2AProtectedAgentCard{
+		Mode:    api.A2AProtectedAgentCardModeManaged,
+		Content: content,
+	}
+
+	combined, err := json.Marshal([]interface{}{
+		map[string]interface{}(*cfg.Spec.A2a.AgentCard.Public.Content),
+		map[string]interface{}(*content),
+	})
+	require.NoError(t, err)
+	require.Greater(t, len(combined), maxAgentCardBytes,
+		"this fixture is meant to exceed the ceiling only in combination")
+
+	assert.Empty(t, NewAgentValidator().Validate(&cfg))
+}
+
+// Configuring a protected card is a promise that the extended-card operation
+// exists. A client reads capabilities.extendedAgentCard off the public card and
+// only then calls GetExtendedAgentCard, so a card that does not declare it
+// produces an operation the gateway serves and no conformant client ever asks
+// for.
+func TestProtectedCard_ManagedPublicCardMustDeclareTheCapability(t *testing.T) {
+	const field = "spec.a2a.agentCard.public.content.capabilities.extendedAgentCard"
+
+	tests := map[string]struct {
+		capabilities interface{}
+		present      bool
+		field        string
+	}{
+		"capabilities absent": {present: false, field: field},
+		"capabilities is not an object": {
+			capabilities: "streaming",
+			present:      true,
+			field:        "spec.a2a.agentCard.public.content.capabilities",
+		},
+		"flag absent": {
+			capabilities: map[string]interface{}{"streaming": true},
+			present:      true,
+			field:        field,
+		},
+		"flag is false": {
+			capabilities: map[string]interface{}{"extendedAgentCard": false},
+			present:      true,
+			field:        field,
+		},
+		// A quoted "true" is a different JSON value, and it is the card's own
+		// bytes that reach clients: one deserializing the card against the A2A
+		// model reads a type error, not a capability.
+		"flag is the string true": {
+			capabilities: map[string]interface{}{"extendedAgentCard": "true"},
+			present:      true,
+			field:        field,
+		},
+	}
+
+	for name, tt := range tests {
+		t.Run(name, func(t *testing.T) {
+			cfg := validAgent()
+			if tt.present {
+				(*cfg.Spec.A2a.AgentCard.Public.Content)["capabilities"] = tt.capabilities
+			}
+			cfg.Spec.A2a.AgentCard.Protected = &api.A2AProtectedAgentCard{
+				Mode: api.A2AProtectedAgentCardModePassthrough,
+			}
+
+			errs := NewAgentValidator().Validate(&cfg)
+			require.NotEmpty(t, errs)
+			assert.Contains(t, fieldsOf(errs), tt.field, messagesOf(errs))
+		})
+	}
+
+	// The promise is only checked when there is a protected card to promise. An
+	// Agent with no protected block is free to leave the capability out — and a
+	// public card that declares it without a protected block is the author's own
+	// business, since the operation is proxied upstream and the upstream may well
+	// serve one.
+	t.Run("not required without a protected block", func(t *testing.T) {
+		cfg := validAgent()
+		assert.Empty(t, NewAgentValidator().Validate(&cfg))
+	})
+}
+
+// The card document is carried as a free-form map whose nested mappings come
+// back typed by whichever decoder produced them — yaml.v3 reuses the enclosing
+// named type, encoding/json produces a plain map. Both ingress paths are real
+// (YAML from the management API, JSON from storage), so a walker that handled
+// only one shape would validate the protected card on one path and skip it
+// entirely on the other.
+func TestProtectedCard_BothDecoderShapesAreWalked(t *testing.T) {
+	capabilities := map[string]interface{}{"extendedAgentCard": true}
+
+	shapes := map[string]interface{}{
+		"plain map":          capabilities,
+		"named card-doc map": api.A2AAgentCardDocument(capabilities),
+	}
+
+	for name, shape := range shapes {
+		t.Run(name, func(t *testing.T) {
+			cfg := validAgent()
+			(*cfg.Spec.A2a.AgentCard.Public.Content)["capabilities"] = shape
+			cfg.Spec.A2a.AgentCard.Protected = &api.A2AProtectedAgentCard{
+				Mode: api.A2AProtectedAgentCardModePassthrough,
+			}
+
+			assert.Empty(t, NewAgentValidator().Validate(&cfg))
+		})
+	}
 }

@@ -799,10 +799,14 @@ func TestAgentValidator_CardModes(t *testing.T) {
 	}
 }
 
-// TestAgentValidator_RejectsUnsupportedCardFeatures pins the two fail-closed
-// rejections. Both features are described by the management API schema, so
-// without these an Agent could be accepted with a card the gateway will not
-// serve as asked — a mismatch only visible to a client reading the card.
+// TestAgentValidator_RejectsUnsupportedCardFeatures pins the one remaining
+// fail-closed rejection. Signing is described by the management API schema, so
+// without this an Agent could be accepted with a card the gateway will not serve
+// as asked — a mismatch only visible to a client reading the card.
+//
+// It is now the only such rejection: the protected card block was the other one
+// and is implemented, so its rules live in agent_card_validator_test.go with the
+// rest of the card validation.
 func TestAgentValidator_RejectsUnsupportedCardFeatures(t *testing.T) {
 	t.Run("signing enabled", func(t *testing.T) {
 		cfg := validAgent()
@@ -820,15 +824,23 @@ func TestAgentValidator_RejectsUnsupportedCardFeatures(t *testing.T) {
 		assert.Empty(t, validateAgent(&cfg))
 	})
 
-	t.Run("protected card block", func(t *testing.T) {
+	// The protected representation is signed independently of the public one, so
+	// its rejection must name its own field. Reported against
+	// public.signing.enabled it would send the author to edit a block they may
+	// not have written at all.
+	t.Run("protected signing enabled names the protected field", func(t *testing.T) {
 		cfg := validAgent()
+		declareExtendedCardCapability(&cfg)
 		cfg.Spec.A2a.AgentCard.Protected = &api.A2AProtectedAgentCard{
-			Mode: api.A2AProtectedAgentCardModePassthrough,
+			Mode:    api.A2AProtectedAgentCardModeManaged,
+			Content: protectedCardContent(),
+			Signing: &api.A2ACardSigning{Enabled: true},
 		}
 
 		errs := validateAgent(&cfg)
 		require.NotEmpty(t, errs)
-		assert.Contains(t, fieldsOf(errs), "spec.a2a.agentCard.protected")
+		assert.Contains(t, fieldsOf(errs), "spec.a2a.agentCard.protected.signing.enabled")
+		assert.NotContains(t, fieldsOf(errs), "spec.a2a.agentCard.public.signing.enabled")
 	})
 }
 

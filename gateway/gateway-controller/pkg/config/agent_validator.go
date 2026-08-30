@@ -62,10 +62,9 @@ var pathParamPattern = regexp.MustCompile(`\{[^{}/]*\}`)
 // produces a route that never matches, or one that quietly shadows another, so
 // the only chance to catch it is here.
 //
-// It also fails closed on two card features the gateway cannot honour yet
-// (signing, and the protected/extended card), because storing an Agent whose
-// served card differs from what was asked for is a mismatch only a client
-// reading the card would ever notice.
+// It also fails closed on the one card feature the gateway cannot honour yet —
+// signing — because storing an Agent whose served card differs from what was
+// asked for is a mismatch only a client reading the card would ever notice.
 //
 // For a managed card it additionally enforces the part of the card↔gateway
 // contract that concerns routing: the interfaces the card advertises must be
@@ -323,12 +322,37 @@ func (v *AgentValidator) validateA2A(context string, contextUsable bool, a2a *ap
 		errors = append(errors, validateAgentRouteCollisions(version, transports, card)...)
 	}
 
-	errors = append(errors, v.validateManagedCardConsistency(
-		a2a.ProtocolVersion, versionUsable,
-		transports, len(transportErrors) == 0,
-		&a2a.AgentCard.Public)...)
+	transportsUsable := len(transportErrors) == 0
+	errors = append(errors, validateManagedCardConsistency(
+		publicCardField, a2a.ProtocolVersion, versionUsable,
+		transports, transportsUsable,
+		managedCardContent(a2a.AgentCard.Public.Mode == api.A2APublicAgentCardModeManaged, a2a.AgentCard.Public.Content))...)
+
+	if protected := a2a.AgentCard.Protected; protected != nil {
+		errors = append(errors, validateManagedCardConsistency(
+			protectedCardField, a2a.ProtocolVersion, versionUsable,
+			transports, transportsUsable,
+			managedCardContent(protected.Mode == api.A2AProtectedAgentCardModeManaged, protected.Content))...)
+		errors = append(errors, validateExtendedCardCapability(&a2a.AgentCard)...)
+	}
 
 	return errors
+}
+
+// managedCardContent is the card document to run the managed-card checks over:
+// the supplied content when the representation is managed and carries one, and
+// nil otherwise.
+//
+// The empty and passthrough cases return nil rather than an empty map because
+// their own errors have already been reported by the mode check — a passthrough
+// card that supplies content is told to remove it, and a managed one that
+// supplies none is told to add it. Running the consistency checks as well would
+// bury that under a list of consequences.
+func managedCardContent(managed bool, content *api.A2AAgentCardDocument) map[string]interface{} {
+	if !managed || content == nil || len(*content) == 0 {
+		return nil
+	}
+	return map[string]interface{}(*content)
 }
 
 // validateTransports checks the declared protocol bindings and resolves each
@@ -476,12 +500,7 @@ func (v *AgentValidator) validateOperationConfigs(version agentproto.ProtocolVer
 func (v *AgentValidator) validateAgentCard(context string, contextUsable bool, card *api.A2AAgentCard) (resolvedCard, []ValidationError) {
 	var errors []ValidationError
 
-	if card.Protected != nil {
-		errors = append(errors, ValidationError{
-			Field:   "spec.a2a.agentCard.protected",
-			Message: "The protected (extended) Agent Card is not supported yet; remove the protected block. GetExtendedAgentCard is proxied to the upstream",
-		})
-	}
+	errors = append(errors, validateProtectedAgentCard(card.Protected)...)
 
 	public := &card.Public
 	modeOK := true
@@ -489,7 +508,7 @@ func (v *AgentValidator) validateAgentCard(context string, contextUsable bool, c
 	case api.A2APublicAgentCardModeManaged:
 		if public.Content == nil || len(*public.Content) == 0 {
 			errors = append(errors, ValidationError{
-				Field:   "spec.a2a.agentCard.public.content",
+				Field:   publicCardField + ".content",
 				Message: "A managed public Agent Card requires content",
 			})
 		}
@@ -499,32 +518,32 @@ func (v *AgentValidator) validateAgentCard(context string, contextUsable bool, c
 		// harmless extra.
 		if public.Content != nil {
 			errors = append(errors, ValidationError{
-				Field:   "spec.a2a.agentCard.public.content",
+				Field:   publicCardField + ".content",
 				Message: "A passthrough public Agent Card is served from the upstream; remove content or set mode: managed",
 			})
 		}
 		if public.Signing != nil {
 			errors = append(errors, ValidationError{
-				Field:   "spec.a2a.agentCard.public.signing",
+				Field:   publicCardField + ".signing",
 				Message: "A passthrough public Agent Card cannot be signed by the gateway; remove signing or set mode: managed",
 			})
 		}
 	default:
 		modeOK = false
 		errors = append(errors, ValidationError{
-			Field: "spec.a2a.agentCard.public.mode",
+			Field: publicCardField + ".mode",
 			Message: fmt.Sprintf("Unsupported Agent Card mode '%s' (expected '%s' or '%s')",
 				public.Mode, api.A2APublicAgentCardModeManaged, api.A2APublicAgentCardModePassthrough),
 		})
 	}
 
-	errors = append(errors, validateCardSigning(public.Signing)...)
+	errors = append(errors, validateCardSigning(publicCardField, public.Signing)...)
 
 	cardPath := DefaultAgentCardPath
 	pathOK := true
 	if public.Path != nil {
 		cardPath = *public.Path
-		if pathErrors := validateAgentPathValue("spec.a2a.agentCard.public.path", "Agent Card path", cardPath); len(pathErrors) > 0 {
+		if pathErrors := validateAgentPathValue(publicCardField+".path", "Agent Card path", cardPath); len(pathErrors) > 0 {
 			errors = append(errors, pathErrors...)
 			pathOK = false
 		}
@@ -534,15 +553,150 @@ func (v *AgentValidator) validateAgentCard(context string, contextUsable bool, c
 	if pathOK {
 		resolved.path = JoinAgentPath(context, cardPath)
 		if contextUsable {
-			errors = append(errors, validateNotReservedHealthPath("spec.a2a.agentCard.public.path", resolved.path)...)
+			errors = append(errors, validateNotReservedHealthPath(publicCardField+".path", resolved.path)...)
 		}
 	}
 
 	return resolved, errors
 }
 
+// validateProtectedAgentCard enforces the mode-specific rules of the
+// authenticated extended Agent Card.
+//
+// The block is optional, and omitting it is *not* the same as configuring
+// passthrough. An Agent written before protected cards existed keeps the
+// behaviour it shipped with: GetExtendedAgentCard is exposed and proxied to the
+// upstream with the ordinary operation chain, and the gateway adds no
+// card-specific guard of its own. Normalising an absent block into an explicit
+// mode would change what an already-deployed Agent does merely because the
+// controller was upgraded — an unauthenticated caller that used to reach the
+// upstream would start receiving 401s, or vice versa.
+//
+// An explicit block is the opposite: it opts into protected-card semantics, and
+// both modes then require an authenticated request at runtime. That requirement
+// is not configured here, and is not configurable at all — it holds for any
+// explicit block, because a protected card whose protection depended on the
+// author remembering to attach an auth policy would be public by omission.
+// Which of the author's policies authenticates, and where in the chain it sits,
+// is theirs to decide; the runtime only asks whether one of them did.
+//
+// There is deliberately no path and no policies field. The protected card is an
+// A2A operation, not a document at a location: it is reachable only on the
+// transports the Agent configures, and it is governed by the operation policy
+// chain rather than by the public card's own policies.
+func validateProtectedAgentCard(protected *api.A2AProtectedAgentCard) []ValidationError {
+	if protected == nil {
+		return nil
+	}
+
+	var errors []ValidationError
+	switch protected.Mode {
+	case api.A2AProtectedAgentCardModeManaged:
+		if protected.Content == nil || len(*protected.Content) == 0 {
+			errors = append(errors, ValidationError{
+				Field:   protectedCardField + ".content",
+				Message: "A managed protected Agent Card requires content",
+			})
+		}
+	case api.A2AProtectedAgentCardModePassthrough:
+		// Same contradiction as the public card's: the gateway forwards the
+		// operation to the upstream and never produces a document of its own, so
+		// content and signing have nothing to act on.
+		if protected.Content != nil {
+			errors = append(errors, ValidationError{
+				Field: protectedCardField + ".content",
+				Message: "A passthrough protected Agent Card is served from the upstream; " +
+					"remove content or set mode: managed",
+			})
+		}
+		if protected.Signing != nil {
+			errors = append(errors, ValidationError{
+				Field: protectedCardField + ".signing",
+				Message: "A passthrough protected Agent Card cannot be signed by the gateway; " +
+					"remove signing or set mode: managed",
+			})
+		}
+	default:
+		errors = append(errors, ValidationError{
+			Field: protectedCardField + ".mode",
+			Message: fmt.Sprintf("Unsupported Agent Card mode '%s' (expected '%s' or '%s')",
+				protected.Mode, api.A2AProtectedAgentCardModeManaged, api.A2AProtectedAgentCardModePassthrough),
+		})
+	}
+
+	errors = append(errors, validateCardSigning(protectedCardField, protected.Signing)...)
+	return errors
+}
+
+// validateExtendedCardCapability checks that a managed public card admits the
+// extended card the Agent configures.
+//
+// `capabilities.extendedAgentCard` is the client-facing switch: an A2A client
+// reads the public card, sees the flag, and only then calls
+// GetExtendedAgentCard. Configuring a protected card while the public card says
+// the agent has none produces an operation nothing discovers — the gateway
+// serves it, and no conformant client ever asks.
+//
+// It is checked only when the gateway can see the public document. A passthrough
+// public card is fetched from the upstream and proxied unparsed, so the promise
+// may or may not be in it and there is nothing here to compare against. That is
+// the same blind spot passthrough has for every other card check, not a gap
+// specific to this one.
+//
+// The value must be the boolean true. The string "true" is rejected rather than
+// coerced: it is a different JSON value, and it is the card's own bytes that get
+// published to clients — a client deserializing the card against the A2A model
+// reads a type error, not a capability.
+func validateExtendedCardCapability(card *api.A2AAgentCard) []ValidationError {
+	content := managedCardContent(
+		card.Public.Mode == api.A2APublicAgentCardModeManaged, card.Public.Content)
+	if content == nil {
+		return nil
+	}
+
+	field := publicCardField + ".content." + cardFieldCapabilities + "." + cardCapabilityExtendedAgentCard
+	missing := []ValidationError{{
+		Field: field,
+		Message: "The agent configures a protected (extended) Agent Card, so its public Agent Card must " +
+			"declare capabilities.extendedAgentCard: true",
+	}}
+
+	rawCapabilities, present := content[cardFieldCapabilities]
+	if !present {
+		return missing
+	}
+	capabilities, ok := cardObject(rawCapabilities)
+	if !ok {
+		return []ValidationError{{
+			Field:   publicCardField + ".content." + cardFieldCapabilities,
+			Message: "Agent Card capabilities must be an object",
+		}}
+	}
+	raw, present := capabilities[cardCapabilityExtendedAgentCard]
+	if !present {
+		return missing
+	}
+	declared, ok := raw.(bool)
+	if !ok {
+		return []ValidationError{{
+			Field: field,
+			Message: "Agent Card capabilities.extendedAgentCard must be a boolean; " +
+				"a client reads this document against the A2A model, where a quoted 'true' is a type error",
+		}}
+	}
+	if !declared {
+		return missing
+	}
+	return nil
+}
+
 // validateCardSigning fails closed on signing, which no release has implemented
 // yet.
+//
+// fieldPrefix names the representation being validated, because the two are
+// signed independently and a rejection must point at the block the author wrote:
+// a protected card's signing failure reported against public.signing.enabled
+// sends them to edit a field that may not even be set.
 //
 // `enabled` is the whole of the Agent-facing contract. There is deliberately no
 // algorithm, `kid`, or profile selector here: those are administrator-owned and
@@ -554,13 +708,13 @@ func (v *AgentValidator) validateAgentCard(context string, contextUsable bool, c
 // retired key, which stays published in the JWKS while any stored card
 // references it. A per-Agent algorithm could only ever have restated the
 // operator's choice or contradicted it.
-func validateCardSigning(signing *api.A2ACardSigning) []ValidationError {
+func validateCardSigning(fieldPrefix string, signing *api.A2ACardSigning) []ValidationError {
 	if signing == nil || !signing.Enabled {
 		return nil
 	}
 
 	return []ValidationError{{
-		Field:   "spec.a2a.agentCard.public.signing.enabled",
+		Field:   fieldPrefix + ".signing.enabled",
 		Message: "Agent Card signing is not supported yet; set enabled: false or omit the signing block",
 	}}
 }
@@ -573,15 +727,29 @@ func validateCardSigning(signing *api.A2ACardSigning) []ValidationError {
 const (
 	cardFieldSupportedInterfaces = "supportedInterfaces"
 	cardFieldSignatures          = "signatures"
+	cardFieldCapabilities        = "capabilities"
 	cardInterfaceFieldURL        = "url"
 	cardInterfaceFieldBinding    = "protocolBinding"
 	cardInterfaceFieldVersion    = "protocolVersion"
 	cardInterfaceFieldTenant     = "tenant"
+
+	// cardCapabilityExtendedAgentCard is the public card's declaration that the
+	// agent serves an authenticated extended card at all.
+	cardCapabilityExtendedAgentCard = "extendedAgentCard"
 )
 
-// cardContentField is the configuration path of the managed card document, the
-// prefix every card-content error is reported under.
-const cardContentField = "spec.a2a.agentCard.public.content"
+// publicCardField and protectedCardField are the configuration paths of the two
+// Agent Card representations.
+//
+// Every card error is reported under one of them. They are separate constants
+// rather than one prefix with a suffix appended at the call site because the
+// whole point of the parameterisation below is that a rejection names the
+// representation the author actually wrote — the two are validated by the same
+// code and are otherwise indistinguishable in a message.
+const (
+	publicCardField    = "spec.a2a.agentCard.public"
+	protectedCardField = "spec.a2a.agentCard.protected"
+)
 
 // maxAgentCardBytes is the ceiling on a managed Agent Card's JSON encoding.
 //
@@ -616,25 +784,33 @@ const maxAgentCardBytes = 1024 * 1024
 // and proxied unparsed — so none of this can be checked for one. That gap is
 // real and has to stay visible in deployment status rather than being papered
 // over here.
-func (v *AgentValidator) validateManagedCardConsistency(
+//
+// The public and protected representations run the identical checks, keyed by
+// fieldPrefix. They are two documents, not one document served two ways: each is
+// validated on its own and each carries its own independent size budget, because
+// each is stored and served separately. That the pair can therefore contribute
+// roughly twice the per-card ceiling to a policy-xDS snapshot is a real,
+// recorded risk about the snapshot's own missing bounds (see maxAgentCardBytes),
+// not a reason to invent a lower combined cap here that no single artifact would
+// explain.
+func validateManagedCardConsistency(
+	fieldPrefix string,
 	protocolVersion api.A2AConfigProtocolVersion, versionUsable bool,
 	transports []resolvedTransport, transportsUsable bool,
-	public *api.A2APublicAgentCard,
+	content map[string]interface{},
 ) []ValidationError {
-	if public.Mode != api.A2APublicAgentCardModeManaged || public.Content == nil {
-		return nil
-	}
-	content := map[string]interface{}(*public.Content)
 	if len(content) == 0 {
-		// The empty-content rejection belongs to the mode check, which has
-		// already reported it.
+		// Nothing to check: the representation is passthrough, or it is managed
+		// and empty, which its own mode check has already reported.
 		return nil
 	}
 
+	contentField := fieldPrefix + ".content"
 	var errors []ValidationError
-	errors = append(errors, validateCardSize(content)...)
-	errors = append(errors, validateCardNotPreSigned(content)...)
-	errors = append(errors, validateCardInterfaces(protocolVersion, versionUsable, transports, transportsUsable, content)...)
+	errors = append(errors, validateCardSize(contentField, content)...)
+	errors = append(errors, validateCardNotPreSigned(contentField, content)...)
+	errors = append(errors, validateCardInterfaces(
+		contentField, protocolVersion, versionUsable, transports, transportsUsable, content)...)
 	return errors
 }
 
@@ -648,17 +824,17 @@ func (v *AgentValidator) validateManagedCardConsistency(
 //
 // Size is measured over the JSON encoding because that is the form that travels;
 // the document is still stored and served exactly as supplied.
-func validateCardSize(content map[string]interface{}) []ValidationError {
+func validateCardSize(contentField string, content map[string]interface{}) []ValidationError {
 	encoded, err := json.Marshal(content)
 	if err != nil {
 		return []ValidationError{{
-			Field:   cardContentField,
+			Field:   contentField,
 			Message: "Agent Card content cannot be encoded as JSON",
 		}}
 	}
 	if len(encoded) > maxAgentCardBytes {
 		return []ValidationError{{
-			Field: cardContentField,
+			Field: contentField,
 			Message: fmt.Sprintf("Agent Card content is %d bytes, which exceeds the maximum of %d bytes",
 				len(encoded), maxAgentCardBytes),
 		}}
@@ -676,12 +852,12 @@ func validateCardSize(content map[string]interface{}) []ValidationError {
 // Rejecting the field's presence, rather than only a non-empty value, keeps the
 // contract in one direction: the author writes card content, the gateway writes
 // signatures.
-func validateCardNotPreSigned(content map[string]interface{}) []ValidationError {
+func validateCardNotPreSigned(contentField string, content map[string]interface{}) []ValidationError {
 	if _, present := content[cardFieldSignatures]; !present {
 		return nil
 	}
 	return []ValidationError{{
-		Field: cardContentField + "." + cardFieldSignatures,
+		Field: contentField + "." + cardFieldSignatures,
 		Message: "Agent Card content must not carry signatures; the gateway computes them for the card it serves. " +
 			"Remove the field",
 	}}
@@ -698,11 +874,12 @@ func validateCardNotPreSigned(content map[string]interface{}) []ValidationError 
 // discovery document would hide the mistake and, once signing lands, change the
 // bytes under the signature.
 func validateCardInterfaces(
+	contentField string,
 	protocolVersion api.A2AConfigProtocolVersion, versionUsable bool,
 	transports []resolvedTransport, transportsUsable bool,
 	content map[string]interface{},
 ) []ValidationError {
-	interfacesField := cardContentField + "." + cardFieldSupportedInterfaces
+	interfacesField := contentField + "." + cardFieldSupportedInterfaces
 
 	raw, present := content[cardFieldSupportedInterfaces]
 	if !present {

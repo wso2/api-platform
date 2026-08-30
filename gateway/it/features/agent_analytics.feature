@@ -398,3 +398,112 @@ Feature: Agent analytics event dimensions
     Given I authenticate using basic auth as "admin"
     When I delete the Agent "agent-analytics-denial"
     Then the response should be successful
+
+  # A managed protected Agent Card is answered by the gateway, exactly as a
+  # managed public card is — but it must NOT be reported the same way. The public
+  # card is discovery: `requestType: agentCard`, no operation. The protected card
+  # is the GetExtendedAgentCard *operation*, reached over a transport, by an
+  # authenticated consumer. Reporting it as `agentCard` would move authenticated
+  # invocations into the discovery bucket and lose the consumer dimension with
+  # them.
+  #
+  # That the gateway rather than the agent produced the response is not something
+  # the event should reflect: the operation ran, its policies ran, and a client
+  # received a result.
+  Scenario: A locally served protected Agent Card is reported as an operation, not as discovery
+    Given I reset the analytics collector
+    When I deploy this Agent configuration:
+      """
+      apiVersion: gateway.api-platform.wso2.com/v1
+      kind: Agent
+      metadata:
+        name: agent-analytics-protected
+      spec:
+        displayName: Agent Analytics Protected
+        version: v1.0
+        context: /agent-analytics-protected
+        upstream:
+          url: http://a2a-trip-planner:9099
+        a2a:
+          protocolVersion: "1.0"
+          operationConfigs:
+            transports:
+              - protocolBinding: JSONRPC
+                pathPrefix: /
+              - protocolBinding: HTTP+JSON
+                pathPrefix: /v1
+            policies:
+              - name: jwt-auth
+                version: v1
+                params:
+                  issuers:
+                    - mock-jwks
+          agentCard:
+            public:
+              mode: passthrough
+            protected:
+              mode: managed
+              content: {
+                "name": "Trip Planner",
+                "description": "Plans trips. Gateway-managed extended card.",
+                "version": "1.0.0",
+                "protocolVersion": "1.0",
+                "supportedInterfaces": [
+                  {"protocolBinding": "JSONRPC", "protocolVersion": "1.0",
+                   "url": "https://localhost:8080/agent-analytics-protected"},
+                  {"protocolBinding": "HTTP+JSON", "protocolVersion": "1.0",
+                   "url": "https://localhost:8080/agent-analytics-protected/v1"}
+                ],
+                "capabilities": {"streaming": true, "extendedAgentCard": true},
+                "defaultInputModes": ["text/plain"],
+                "defaultOutputModes": ["text/plain"],
+                "skills": [{"id": "gateway_managed_skill", "name": "Only on the managed protected card"}]
+              }
+      """
+    Then the response should be successful
+    And I wait for policy snapshot sync
+
+    When I clear all headers
+    And I get a JWT token from the mock JWKS server with issuer "http://mock-jwks:8080/token"
+    And I set the Authorization header to the JWT token
+    And I send an A2A "GET" request to "http://localhost:8080/agent-analytics-protected/v1/extendedAgentCard"
+    Then the response status code should be 200
+    And the response body should contain "gateway_managed_skill"
+
+    When I wait 5 seconds for analytics to be published
+    Then the latest analytics event should have A2A field "requestType" with value "operation"
+    And the latest analytics event should have A2A field "operation" with value "GetExtendedAgentCard"
+    And the latest analytics event should have A2A field "transport" with value "HTTP+JSON"
+    And the latest analytics event should have A2A field "outcome" with value "SUCCESS"
+
+    # The same operation over the other binding: same operation dimension, and
+    # still not discovery.
+    When I clear all headers
+    And I get a JWT token from the mock JWKS server with issuer "http://mock-jwks:8080/token"
+    And I set the Authorization header to the JWT token
+    And I send an A2A JSON-RPC request to "http://localhost:8080/agent-analytics-protected":
+      """
+      {"jsonrpc": "2.0", "id": 1, "method": "GetExtendedAgentCard", "params": {}}
+      """
+    Then the response status code should be 200
+
+    When I wait 5 seconds for analytics to be published
+    Then the latest analytics event should have A2A field "requestType" with value "operation"
+    And the latest analytics event should have A2A field "operation" with value "GetExtendedAgentCard"
+    And the latest analytics event should have A2A field "transport" with value "JSONRPC"
+
+    # A refusal at the guard is still the operation, and still attributed to the
+    # gateway rather than to the agent — the request never reached it.
+    When I clear all headers
+    And I send an A2A "GET" request to "http://localhost:8080/agent-analytics-protected/v1/extendedAgentCard"
+    Then the response status code should be 401
+
+    When I wait 5 seconds for analytics to be published
+    Then the latest analytics event should have A2A field "requestType" with value "operation"
+    And the latest analytics event should have A2A field "operation" with value "GetExtendedAgentCard"
+    And the latest analytics event should have A2A field "outcome" with value "FAILURE"
+    And the latest analytics event should have A2A field "failureOrigin" with value "policy"
+
+    Given I authenticate using basic auth as "admin"
+    When I delete the Agent "agent-analytics-protected"
+    Then the response should be successful

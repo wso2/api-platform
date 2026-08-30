@@ -100,6 +100,9 @@ type agentYAMLOpts struct {
 	protected    string
 	deployState  string
 	annotations  string
+	// extendedCard adds capabilities.extendedAgentCard: true to the managed
+	// public card, which configuring a protected card requires.
+	extendedCard bool
 }
 
 func agentYAML(o agentYAMLOpts) []byte {
@@ -149,14 +152,24 @@ spec:
           "supportedInterfaces": [
             {"protocolBinding": "JSONRPC", "protocolVersion": "1.0", "url": "https://agents.example.com%s/rpc"}
           ],
-          "capabilities": {"streaming": true},
+          "capabilities": {"streaming": true%s},
           "defaultInputModes": ["text/plain"],
           "defaultOutputModes": ["text/plain"],
           "skills": []
         }
 %s
 `, o.handle, o.annotations, o.displayName, o.version, o.context, upstreamBlock(o.upstreamAuth), o.deployState,
-		o.signing, o.context, o.protected))
+		o.signing, o.context, extendedCardCapability(o.extendedCard), o.protected))
+}
+
+// extendedCardCapability is the public card's declaration that the agent serves
+// an authenticated extended card. Configuring a protected card without it is its
+// own rejection, with its own case above.
+func extendedCardCapability(declared bool) string {
+	if !declared {
+		return ""
+	}
+	return `, "extendedAgentCard": true`
 }
 
 func upstreamBlock(auth string) string {
@@ -352,9 +365,27 @@ func TestCreate_RejectsInvalidConfiguration(t *testing.T) {
 			field: "spec.a2a.agentCard.public.signing.enabled",
 		},
 		{
-			name:  "protected card is not supported yet",
+			// A protected card is a promise that the extended-card operation
+			// exists; a managed public card that does not declare the capability
+			// contradicts it, and the contradiction has to be caught here rather
+			// than becoming an operation no conformant client ever calls.
+			name:  "protected card without the public capability declaration",
 			opts:  agentYAMLOpts{protected: "      protected:\n        mode: passthrough"},
-			field: "spec.a2a.agentCard.protected",
+			field: "spec.a2a.agentCard.public.content.capabilities.extendedAgentCard",
+		},
+		{
+			name: "protected card signing is not supported yet",
+			opts: agentYAMLOpts{
+				extendedCard: true,
+				protected: "      protected:\n        mode: managed\n" +
+					"        content:\n          name: Weather Agent\n" +
+					"          supportedInterfaces:\n" +
+					"            - protocolBinding: JSONRPC\n" +
+					"              protocolVersion: \"1.0\"\n" +
+					"              url: https://agents.example.com/weather/rpc\n" +
+					"        signing:\n          enabled: true",
+			},
+			field: "spec.a2a.agentCard.protected.signing.enabled",
 		},
 		{
 			name:  "display name is required",

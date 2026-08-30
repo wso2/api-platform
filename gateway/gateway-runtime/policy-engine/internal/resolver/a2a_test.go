@@ -481,6 +481,34 @@ func TestA2AResolve_CarriesTheFullAttributeSet(t *testing.T) {
 	})
 }
 
+// Two system policies read these attributes out of SharedContext from their own
+// Go modules, which cannot import this internal package and so mirror the
+// literals instead: the analytics policy reports them as event dimensions, and
+// the A2A policy decides from a2a.transport which binding a protected Agent Card
+// request arrived on. A rename here alone is silent on both sides — a dimension
+// simply stops appearing, and a managed protected card starts answering 500 —
+// so the spelling is pinned here as well as there.
+//
+// The matching assertions are TestA2AKeySpellingsMatchThePolicyEngine in
+// system-policies/analytics and TestResolutionAttributeSpellingsMatchThePolicyEngine
+// in system-policies/a2a.
+func TestA2AAttributeSpellingsArePinned(t *testing.T) {
+	for _, testCase := range []struct{ got, want string }{
+		{AttrA2AMessageID, "a2a.message.id"},
+		{AttrA2AContextID, "a2a.context.id"},
+		{AttrA2ATaskID, "a2a.task.id"},
+		{AttrA2AOperation, "a2a.operation"},
+		{AttrA2ATransport, "a2a.transport"},
+		{AttrA2AProtocolVersion, "a2a.protocol.version"},
+		// The values of a2a.transport, which the A2A system policy compares
+		// against by literal for the same module-boundary reason.
+		{string(agentproto.TransportJSONRPC), "JSONRPC"},
+		{string(agentproto.TransportHTTPJSON), "HTTP+JSON"},
+	} {
+		assert.Equal(t, testCase.want, testCase.got)
+	}
+}
+
 // The attribute set is closed: exactly these six names and nothing else, so a
 // consumer can rely on it and no unbounded value can appear by accident.
 func TestA2AResolve_AttributeSetIsClosed(t *testing.T) {

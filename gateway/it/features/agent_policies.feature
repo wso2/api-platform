@@ -548,3 +548,213 @@ Feature: Agent policy attachment and enforcement
     Given I authenticate using basic auth as "admin"
     When I delete the Agent "agent-cors"
     Then the response should be successful
+
+  # The protected (extended) Agent Card is an operation like any other, so the
+  # policies attached to it run before it is answered — including in managed mode,
+  # where the gateway holds the card and could otherwise be tempted to answer
+  # first. The card instance sits at the tail of the chain for exactly this
+  # reason: authentication establishes who the caller is, the operation's own
+  # policy decides whether they may have this document, and only then are card
+  # bytes produced.
+  #
+  # "gateway_managed_skill" is on the managed protected card and nowhere else, so
+  # its absence from a denial is proof no bytes escaped.
+  Scenario: Operation-specific authorization runs before a managed protected card is served
+    When I deploy this Agent configuration:
+      """
+      apiVersion: gateway.api-platform.wso2.com/v1
+      kind: Agent
+      metadata:
+        name: agent-protected-scope
+      spec:
+        displayName: Agent Protected Scope
+        version: v1.0
+        context: /agent-protected-scope
+        upstream:
+          url: http://a2a-trip-planner:9099
+        a2a:
+          protocolVersion: "1.0"
+          operationConfigs:
+            transports:
+              - protocolBinding: JSONRPC
+                pathPrefix: /
+              - protocolBinding: HTTP+JSON
+                pathPrefix: /v1
+            policies:
+              - name: jwt-auth
+                version: v1
+                params:
+                  issuers:
+                    - mock-jwks
+            operations:
+              - name: GetExtendedAgentCard
+                policies:
+                  - name: jwt-auth
+                    version: v1
+                    params:
+                      issuers:
+                        - mock-jwks
+                      scopes:
+                        allOf:
+                          - "trip:extended"
+          agentCard:
+            public:
+              mode: passthrough
+            protected:
+              mode: managed
+              content: {
+                "name": "Trip Planner",
+                "description": "Plans trips. Gateway-managed extended card.",
+                "version": "1.0.0",
+                "protocolVersion": "1.0",
+                "supportedInterfaces": [
+                  {"protocolBinding": "JSONRPC", "protocolVersion": "1.0",
+                   "url": "https://localhost:8080/agent-protected-scope"},
+                  {"protocolBinding": "HTTP+JSON", "protocolVersion": "1.0",
+                   "url": "https://localhost:8080/agent-protected-scope/v1"}
+                ],
+                "capabilities": {"streaming": true, "extendedAgentCard": true},
+                "defaultInputModes": ["text/plain"],
+                "defaultOutputModes": ["text/plain"],
+                "skills": [{"id": "gateway_managed_skill", "name": "Only on the managed protected card"}]
+              }
+      """
+    Then the response should be successful
+    And I wait for policy snapshot sync
+
+    # Authenticated, but without the scope the operation requires. Both bindings.
+    When I clear all headers
+    And I get a JWT token from the mock JWKS server with issuer "http://mock-jwks:8080/token" and scope "trip:read"
+    And I set the Authorization header to the JWT token
+    And I send an A2A "GET" request to "http://localhost:8080/agent-protected-scope/v1/extendedAgentCard"
+    Then the response should be a client error
+    And the response body should not contain "gateway_managed_skill"
+
+    When I clear all headers
+    And I get a JWT token from the mock JWKS server with issuer "http://mock-jwks:8080/token" and scope "trip:read"
+    And I set the Authorization header to the JWT token
+    And I send an A2A JSON-RPC request to "http://localhost:8080/agent-protected-scope":
+      """
+      {"jsonrpc": "2.0", "id": 1, "method": "GetExtendedAgentCard", "params": {}}
+      """
+    Then the response should be a client error
+    And the response body should not contain "gateway_managed_skill"
+
+    # With the scope, the same caller gets the card on both bindings.
+    When I clear all headers
+    And I get a JWT token from the mock JWKS server with issuer "http://mock-jwks:8080/token" and scope "trip:read trip:extended"
+    And I set the Authorization header to the JWT token
+    And I send an A2A "GET" request to "http://localhost:8080/agent-protected-scope/v1/extendedAgentCard"
+    Then the response status code should be 200
+    And the response body should contain "gateway_managed_skill"
+
+    When I clear all headers
+    And I get a JWT token from the mock JWKS server with issuer "http://mock-jwks:8080/token" and scope "trip:read trip:extended"
+    And I set the Authorization header to the JWT token
+    And I send an A2A JSON-RPC request to "http://localhost:8080/agent-protected-scope":
+      """
+      {"jsonrpc": "2.0", "id": 9, "method": "GetExtendedAgentCard", "params": {}}
+      """
+    Then the response status code should be 200
+    And the JSON response field "result.name" should be "Trip Planner"
+    And the response body should contain "gateway_managed_skill"
+
+    # Another operation is unaffected by the extended card's scope requirement.
+    When I clear all headers
+    And I get a JWT token from the mock JWKS server with issuer "http://mock-jwks:8080/token" and scope "trip:read"
+    And I set the Authorization header to the JWT token
+    And I send an A2A "GET" request to "http://localhost:8080/agent-protected-scope/v1/tasks"
+    Then the response status code should be 200
+
+    Given I authenticate using basic auth as "admin"
+    When I delete the Agent "agent-protected-scope"
+    Then the response should be successful
+
+  # A browser sends a preflight with no credentials, by specification. The
+  # extended-card path must therefore answer one — otherwise no browser client can
+  # reach the operation at all — while the preflight itself carries no card
+  # content and grants nothing: the GET that follows still meets the guard.
+  #
+  # This works because the preflight builder borrows only the resolved `cors`
+  # instances from a chain, never the protected-card instance.
+  Scenario: A CORS preflight on the extended-card path succeeds without granting the card
+    When I deploy this Agent configuration:
+      """
+      apiVersion: gateway.api-platform.wso2.com/v1
+      kind: Agent
+      metadata:
+        name: agent-protected-cors
+      spec:
+        displayName: Agent Protected CORS
+        version: v1.0
+        context: /agent-protected-cors
+        upstream:
+          url: http://a2a-trip-planner:9099
+        a2a:
+          protocolVersion: "1.0"
+          operationConfigs:
+            transports:
+              - protocolBinding: HTTP+JSON
+                pathPrefix: /v1
+            policies:
+              - name: cors
+                version: v1
+                params:
+                  allowedOrigins:
+                    - "https://client.example.com"
+                  allowedMethods:
+                    - GET
+                    - POST
+                    - OPTIONS
+                  allowedHeaders:
+                    - Content-Type
+                    - Authorization
+                    - A2A-Version
+              - name: jwt-auth
+                version: v1
+                params:
+                  issuers:
+                    - mock-jwks
+          agentCard:
+            public:
+              mode: passthrough
+            protected:
+              mode: managed
+              content: {
+                "name": "Trip Planner",
+                "description": "Plans trips. Gateway-managed extended card.",
+                "version": "1.0.0",
+                "protocolVersion": "1.0",
+                "supportedInterfaces": [
+                  {"protocolBinding": "HTTP+JSON", "protocolVersion": "1.0",
+                   "url": "https://localhost:8080/agent-protected-cors/v1"}
+                ],
+                "capabilities": {"streaming": true, "extendedAgentCard": true},
+                "defaultInputModes": ["text/plain"],
+                "defaultOutputModes": ["text/plain"],
+                "skills": [{"id": "gateway_managed_skill", "name": "Only on the managed protected card"}]
+              }
+      """
+    Then the response should be successful
+    And I wait for policy snapshot sync
+
+    # The preflight is answered, carries no credentials, and returns no card.
+    When I clear all headers
+    And I set header "Origin" to "https://client.example.com"
+    And I set header "Access-Control-Request-Method" to "GET"
+    And I set header "Access-Control-Request-Headers" to "Authorization"
+    And I send an OPTIONS request to "http://localhost:8080/agent-protected-cors/v1/extendedAgentCard"
+    Then the response status code should be 204
+    And the response header "Access-Control-Allow-Origin" should be "https://client.example.com"
+    And the response body should not contain "gateway_managed_skill"
+
+    # The preflight granted nothing: the real request still meets the guard.
+    When I clear all headers
+    And I set header "Origin" to "https://client.example.com"
+    And I send an A2A "GET" request to "http://localhost:8080/agent-protected-cors/v1/extendedAgentCard"
+    Then the response status code should be 401
+    And the response body should not contain "gateway_managed_skill"
+
+    Given I authenticate using basic auth as "admin"
+    When I delete the Agent "agent-protected-cors"
+    Then the response should be successful

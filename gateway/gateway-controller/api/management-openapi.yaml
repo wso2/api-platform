@@ -4793,6 +4793,34 @@ components:
           $ref: "#/components/schemas/A2APublicAgentCard"
         protected:
           $ref: "#/components/schemas/A2AProtectedAgentCard"
+      example:
+        public:
+          mode: managed
+          content:
+            name: Weather Agent
+            version: 1.0.0
+            supportedInterfaces:
+              - protocolBinding: JSONRPC
+                protocolVersion: "1.0"
+                url: https://agents.example.com/weather/rpc
+            capabilities:
+              streaming: true
+              extendedAgentCard: true
+        protected:
+          mode: managed
+          content:
+            name: Weather Agent
+            version: 1.0.0
+            supportedInterfaces:
+              - protocolBinding: JSONRPC
+                protocolVersion: "1.0"
+                url: https://agents.example.com/weather/rpc
+            capabilities:
+              streaming: true
+              extendedAgentCard: true
+            skills:
+              - id: get_forecast_history
+                name: Get forecast history
 
     A2APublicAgentCard:
       type: object
@@ -4827,18 +4855,41 @@ components:
     A2AProtectedAgentCard:
       type: object
       description: >
-        Planned authenticated extended Agent Card support. When present it is served
-        through the canonical GetExtendedAgentCard operation and uses the operation policy
-        chain, not public Agent Card policies. It has no custom path or local policies
-        because it is an A2A operation. Not implemented in this release: an explicitly
-        configured `protected` block is rejected at deploy time. GetExtendedAgentCard is
-        exposed and proxied to the upstream.
+        Authenticated extended Agent Card. It is served through the canonical
+        GetExtendedAgentCard operation and uses that operation's policy chain — the
+        policies in spec.a2a.operationConfigs, then any matching entry in
+        spec.a2a.operationConfigs.operations. Public Agent Card policies never run for it,
+        and it has no custom path or local policy list, because it is an A2A operation
+        rather than a document at a location.
+
+        This block is optional, and omitting it is not the same as configuring
+        `passthrough`. When it is absent, GetExtendedAgentCard is exposed and proxied to
+        the upstream with no gateway-added authentication guard, which is the behaviour
+        Agents written before protected Agent Cards shipped already have.
+
+        When it is present, the gateway requires the request to have been authenticated by
+        a policy in the Agent's own chain before the card is returned or proxied, and
+        answers 401 otherwise. That applies in both modes and is not configurable: an
+        Agent that declares a protected card but attaches no authentication policy
+        therefore fails closed instead of publishing its extended card. Where
+        authentication sits among the configured policies is the Agent author's choice.
+
+        Mode-specific rules are enforced at deploy time, not by this schema: `managed`
+        requires `content`; `passthrough` accepts neither `content` nor `signing`, because
+        the gateway does not parse, transform, or sign a proxied card. When the public
+        Agent Card is `managed`, it must additionally declare
+        `capabilities.extendedAgentCard: true`, since that is what tells a client the
+        operation exists at all.
       required:
         - mode
       properties:
         mode:
           type: string
-          description: How the protected Agent Card is produced.
+          description: >
+            How the protected Agent Card is produced. `managed` serves the supplied
+            `content` from the gateway, and the request never reaches the upstream.
+            `passthrough` forwards the authenticated request and proxies the upstream's own
+            response unchanged.
           enum:
             - managed
             - passthrough
