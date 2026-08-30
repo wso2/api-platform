@@ -55,7 +55,6 @@ const create = async (orgId, userId, appData) => {
         display_name: appData.displayName,
         handle,
         org_uuid: orgId,
-        portal_id: portalId,
         description: appData.description,
         created_by: userId,
         updated_by: userId,
@@ -153,8 +152,8 @@ const upsertKeyMapping = async (mappingData, t) => {
     if (existing) {
         const updatedAt = new Date();
         await exec.execute(
-            `UPDATE ${KEY_MAPPING_TABLE} SET as_client_id = ?, updated_by = ?, updated_at = ? WHERE uuid = ?`,
-            [mappingData.asClientId, mappingData.createdBy, updatedAt, existing.uuid]
+            `UPDATE ${KEY_MAPPING_TABLE} SET as_client_id = ?, updated_by = ?, updated_at = ? WHERE uuid = ? AND portal_id = ?`,
+            [mappingData.asClientId, mappingData.createdBy, updatedAt, existing.uuid, getPortalId()]
         );
         return { ...existing, as_client_id: mappingData.asClientId, updated_by: mappingData.createdBy, updated_at: updatedAt };
     }
@@ -168,7 +167,6 @@ const upsertKeyMapping = async (mappingData, t) => {
     );
     return {
         uuid,
-        portal_id: portalId,
         app_uuid: mappingData.appId,
         km_uuid: mappingData.kmId || null,
         as_client_id: mappingData.asClientId,
@@ -180,7 +178,7 @@ const upsertKeyMapping = async (mappingData, t) => {
 
 const deleteMappings = async (orgId, appId, t) => {
     const exec = t || db;
-    const { rowCount } = await exec.execute(`DELETE FROM ${KEY_MAPPING_TABLE} WHERE app_uuid = ?`, [appId]);
+    const { rowCount } = await exec.execute(`DELETE FROM ${KEY_MAPPING_TABLE} WHERE app_uuid = ? AND portal_id = ?`, [appId, getPortalId()]);
     if (rowCount < 1) {
         logger.debug('No Application Key Mapping found', {
             orgId,
@@ -232,8 +230,8 @@ const getKeyMappingById = async (appId, mappingId, t) => {
 const deleteKeyMappingById = async (appId, mappingId, t) => {
     const exec = t || db;
     const { rowCount } = await exec.execute(
-        `DELETE FROM ${KEY_MAPPING_TABLE} WHERE uuid = ? AND app_uuid = ?`,
-        [mappingId, appId]
+        `DELETE FROM ${KEY_MAPPING_TABLE} WHERE uuid = ? AND app_uuid = ? AND portal_id = ?`,
+        [mappingId, appId, getPortalId()]
     );
     return rowCount;
 };
@@ -252,7 +250,6 @@ const createKeyMapping = async (mappingData, t) => {
     );
     return {
         uuid,
-        portal_id: portalId,
         app_uuid: mappingData.appId,
         km_uuid: mappingData.kmId || null,
         as_client_id: mappingData.asClientId || null,

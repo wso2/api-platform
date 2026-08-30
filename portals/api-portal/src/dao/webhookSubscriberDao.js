@@ -184,8 +184,8 @@ const get = async (orgId, subscriberHandle) => {
 };
 
 /**
- * Get a single webhook subscriber by UUID only, without scoping to an org.
- * UUID is a globally unique UUID primary key, so this is safe.
+ * Get a single webhook subscriber by UUID only, without scoping to an org or a portal.
+ * UUID is a globally unique UUID, so this is safe.
  * Used by the delivery worker, which only has the subscriber UUID (from the
  * delivery row) and not the org UUID in scope.
  */

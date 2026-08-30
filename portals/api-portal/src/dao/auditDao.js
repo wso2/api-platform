@@ -46,7 +46,6 @@ const record = async (action, resourceUuid, resourceType, orgUuid, performedBy) 
         resource_uuid: resourceUuid,
         resource_type: resourceType,
         org_uuid: orgUuid,
-        portal_id: portalId,
         performed_by: performedBy,
     };
 };

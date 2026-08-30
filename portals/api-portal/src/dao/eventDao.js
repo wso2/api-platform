@@ -44,11 +44,11 @@ function parseDeliveryRow(row) {
 async function create({ eventType, orgId, aggregateType, aggregateId, payload }, transaction) {
     const exec = transaction || db;
     const uuid = crypto.randomUUID();
+    const portalId = getPortalId();
     const row = {
         uuid,
         type: eventType,
         org_uuid: orgId,
-        portal_id: getPortalId(),
         aggregate_type: aggregateType,
         aggregate_uuid: aggregateId,
         payload: payload || {},
@@ -59,7 +59,7 @@ async function create({ eventType, orgId, aggregateType, aggregateId, payload },
     await exec.execute(
         `INSERT INTO ${EVENTS_TABLE} (uuid, type, org_uuid, portal_id, aggregate_type, aggregate_uuid, payload, occurred_at, status)
          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-        [row.uuid, row.type, row.org_uuid, row.portal_id, row.aggregate_type, row.aggregate_uuid,
+        [row.uuid, row.type, row.org_uuid, portalId, row.aggregate_type, row.aggregate_uuid,
             JSON.stringify(row.payload), row.occurred_at, row.status]
     );
 
@@ -89,7 +89,6 @@ async function createDeliveries(eventId, subscribers, perSubscriberEncrypted, tr
     const portalId = getPortalId();
     const rows = subscribers.map((sub) => ({
         uuid: crypto.randomUUID(),
-        portal_id: portalId,
         event_uuid: eventId,
         subscriber_id: sub.id,
         target_url: sub.url,
@@ -102,7 +101,7 @@ async function createDeliveries(eventId, subscribers, perSubscriberEncrypted, tr
             `INSERT INTO ${DELIVERIES_TABLE} (uuid, portal_id, event_uuid, subscriber_id, target_url, encrypted_fields, status)
              VALUES (?, ?, ?, ?, ?, ?, ?)`,
             [
-                row.uuid, row.portal_id, row.event_uuid, row.subscriber_id, row.target_url,
+                row.uuid, portalId, row.event_uuid, row.subscriber_id, row.target_url,
                 row.encrypted_fields !== null ? JSON.stringify(row.encrypted_fields) : null,
                 row.status,
             ]

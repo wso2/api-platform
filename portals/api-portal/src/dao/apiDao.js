@@ -112,7 +112,7 @@ const SEARCH_APIS_POSTGRES_SQL = `
             )
         )
     GROUP BY
-        metadata.uuid
+        metadata.portal_id, metadata.uuid
     ORDER BY
         rank_metadata DESC;
 `;
@@ -213,7 +213,7 @@ const create = async (orgId, apiMetadata, createdBy, t) => {
         technical_owner_email: owners.technicalOwnerEmail, business_owner_email: owners.businessOwnerEmail,
         business_owner: owners.businessOwner, sandbox_url: apiMetadata.endPoints.sandboxURL,
         production_url: apiMetadata.endPoints.productionURL, metadata_search: apiMetadata, org_uuid: orgId,
-        portal_id: portalId, created_by: createdBy, updated_by: createdBy, created_at: now, updated_at: now,
+        created_by: createdBy, updated_by: createdBy, created_at: now, updated_at: now,
     };
 };
 

@@ -31,7 +31,7 @@ const APPLICATIONS_TABLE = 'applications';
 // Built once at module load — buildUpsert only depends on the (fixed) dialect
 // and column list, not on any per-call data. Used both by create() (first-time
 // association, never conflicts) and setApplication() (re-association, may
-// conflict on the key_uuid primary key).
+// conflict on the composite (portal_id, key_uuid) primary key).
 const UPSERT_KEY_APP_MAPPING_SQL = db.buildUpsert(
     APP_KEY_MAPPINGS_TABLE,
     ['portal_id', 'key_uuid', 'app_uuid', 'created_by', 'created_at'],
@@ -189,7 +189,7 @@ async function setApplication(orgId, keyId, appId, updatedBy, transaction, { act
     if (appId) {
         await exec.execute(UPSERT_KEY_APP_MAPPING_SQL, [getPortalId(), keyId, appId, updatedBy, new Date()]);
     } else {
-        await exec.execute(`DELETE FROM ${APP_KEY_MAPPINGS_TABLE} WHERE key_uuid = ?`, [keyId]);
+        await exec.execute(`DELETE FROM ${APP_KEY_MAPPINGS_TABLE} WHERE key_uuid = ? AND portal_id = ?`, [keyId, getPortalId()]);
     }
     return true;
 }

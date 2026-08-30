@@ -51,7 +51,6 @@ const create = async (orgId, label, createdBy, t) => {
         handle: label.handle,
         display_name: label.displayName,
         org_uuid: orgId,
-        portal_id: portalId,
         created_by: createdBy,
         updated_by: createdBy,
     };
@@ -115,7 +114,6 @@ const createMany = async (orgId, labels, createdBy, t) => {
             handle: label.handle,
             display_name: label.displayName,
             org_uuid: orgId,
-            portal_id: portalId,
             created_by: createdBy,
             updated_by: createdBy,
         });
@@ -160,7 +158,6 @@ const update = async (orgId, label, updatedBy, t) => {
                 handle: label.handle,
                 display_name: label.displayName,
                 org_uuid: orgId,
-                portal_id: portalId,
                 created_by: updatedBy,
                 updated_by: updatedBy,
             };
@@ -176,8 +173,8 @@ const update = async (orgId, label, updatedBy, t) => {
 
     const updatedAt = new Date();
     await exec.execute(
-        `UPDATE ${LABELS_TABLE} SET display_name = ?, updated_by = ?, updated_at = ? WHERE uuid = ?`,
-        [label.displayName, updatedBy, updatedAt, row.uuid]
+        `UPDATE ${LABELS_TABLE} SET display_name = ?, updated_by = ?, updated_at = ? WHERE uuid = ? AND portal_id = ?`,
+        [label.displayName, updatedBy, updatedAt, row.uuid, getPortalId()]
     );
     return { ...row, display_name: label.displayName, updated_by: updatedBy, updated_at: updatedAt };
 };
@@ -212,8 +209,8 @@ const deleteApiMapping = async (orgId, apiId, labels, t) => {
     if (idList.length === 0) return 0;
     const placeholders = idList.map(() => '?').join(', ');
     const { rowCount } = await exec.execute(
-        `DELETE FROM ${API_LABELS_TABLE} WHERE label_uuid IN (${placeholders}) AND api_uuid = ?`,
-        [...idList, apiId]
+        `DELETE FROM ${API_LABELS_TABLE} WHERE label_uuid IN (${placeholders}) AND api_uuid = ? AND portal_id = ?`,
+        [...idList, apiId, getPortalId()]
     );
     return rowCount;
 };
@@ -221,12 +218,14 @@ const deleteApiMapping = async (orgId, apiId, labels, t) => {
 const addToView = async (orgId, labelId, viewId, createdBy, t) => {
     const exec = t || db;
     const portalId = getPortalId();
-    return findOrCreateSafe(
+    const result = await findOrCreateSafe(
         VIEW_LABELS_TABLE,
         { label_uuid: labelId, view_uuid: viewId, portal_id: portalId },
         { uuid: crypto.randomUUID(), portal_id: portalId, label_uuid: labelId, view_uuid: viewId, created_by: createdBy },
         exec
     );
+    const { portal_id: _portalId, ...rest } = result;
+    return rest;
 };
 
 module.exports = {

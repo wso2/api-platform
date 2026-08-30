@@ -241,9 +241,11 @@ async function regenerateToken(orgId, subId, updatedBy, transaction) {
 
 async function deleteSubscription(orgId, subId, createdBy, transaction) {
     const exec = transaction || db;
+    // Nullify nullable subscription_uuid references before deleting the subscription row.
+    // The DB constraint is ON DELETE NO ACTION; application code owns the nullification.
     await exec.execute(
-        'UPDATE api_keys SET subscription_uuid = NULL WHERE subscription_uuid = ?',
-        [subId]
+        'UPDATE api_keys SET subscription_uuid = NULL WHERE subscription_uuid = ? AND portal_id = ? AND org_uuid = ?',
+        [subId, getPortalId(), orgId]
     );
     const where = ['uuid = ?', 'org_uuid = ?', 'portal_id = ?'];
     const params = [subId, orgId, getPortalId()];

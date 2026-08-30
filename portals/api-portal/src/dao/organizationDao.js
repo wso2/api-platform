@@ -48,7 +48,6 @@ const create = async (orgData, t) => {
     );
     return {
         uuid,
-        portal_id: portalId,
         display_name: orgData.displayName,
         business_owner: orgData.businessOwner,
         business_owner_contact: orgData.businessOwnerContact,
@@ -260,6 +259,8 @@ const deleteOrgDependents = async (orgUuid, t) => {
     await exec.execute('DELETE FROM key_managers WHERE org_uuid = ?', [orgUuid]);
 
     await exec.execute('DELETE FROM api_workflows WHERE org_uuid = ?', [orgUuid]);
+    // This method is not scoped by portal_id: this is an org-level deletion that
+    // removes all assets belonging to the org across every portal.
     await exec.execute(`DELETE FROM ${ORG_CONTENT_TABLE} WHERE org_uuid = ?`, [orgUuid]);
     // view_label_mappings/api_label_mappings cascade automatically from
     // views/labels ON DELETE CASCADE.
@@ -273,7 +274,9 @@ const deleteOrg = async (orgId, t) => {
     const exec = t || db;
     const existing = await get(orgId, t);
     await deleteOrgDependents(existing.uuid, t);
-    const { rowCount } = await exec.execute(`DELETE FROM ${ORG_TABLE} WHERE uuid = ? AND portal_id = ?`, [existing.uuid, getPortalId()]);
+    // Since this is org deletion without any consideration of its portals
+    // portal_id is not included in the WHERE clause
+    const { rowCount } = await exec.execute(`DELETE FROM ${ORG_TABLE} WHERE uuid = ?`, [existing.uuid]);
     if (rowCount < 1) {
         throw new NotFoundError('Organization not found');
     }
@@ -302,7 +305,6 @@ const createContent = async (orgData, t) => {
         file_path: orgData.filePath,
         org_uuid: orgData.orgId,
         view_uuid: viewId,
-        portal_id: getPortalId(),
         created_by: orgData.createdBy,
         updated_by: orgData.createdBy,
     };

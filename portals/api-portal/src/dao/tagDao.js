@@ -78,7 +78,7 @@ const createApiMapping = async (orgId, apiId, tagNames, createdBy, t) => {
  */
 const replaceApiMapping = async (orgId, apiId, tagNames, createdBy, t) => {
     const exec = t || db;
-    await exec.execute(`DELETE FROM ${API_TAGS_TABLE} WHERE api_uuid = ?`, [apiId]);
+    await exec.execute(`DELETE FROM ${API_TAGS_TABLE} WHERE api_uuid = ? AND portal_id = ?`, [apiId, getPortalId()]);
     return createApiMapping(orgId, apiId, tagNames || [], createdBy, t);
 };
 

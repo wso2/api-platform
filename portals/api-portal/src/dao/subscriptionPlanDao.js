@@ -197,6 +197,8 @@ const update = async (orgId, planId, plan, updatedBy, t) => {
 
 const deletePlan = async (orgId, planName, t) => {
   const exec = t || db;
+  // Nullify nullable plan_uuid references before deleting the subscription_plan row.
+  // The DB constraint is ON DELETE NO ACTION; application code owns the nullification.
   await exec.execute(
     `UPDATE subscriptions SET plan_uuid = NULL WHERE plan_uuid IN (
        SELECT uuid FROM ${SUBSCRIPTION_PLANS_TABLE} WHERE handle = ? AND org_uuid = ? AND portal_id = ?
@@ -261,7 +263,7 @@ const createApiMapping = async (apiSubscriptionPlans, apiId, createdBy, t) => {
        VALUES (?, ?, ?, ?, ?, ?)`,
       [uuid, portalId, plan.planId, apiId, createdBy, now]
     );
-    created.push({ uuid, portal_id: portalId, plan_uuid: plan.planId, api_uuid: apiId, created_by: createdBy, created_at: now });
+    created.push({ uuid, plan_uuid: plan.planId, api_uuid: apiId, created_by: createdBy, created_at: now });
   }
   return created;
 };

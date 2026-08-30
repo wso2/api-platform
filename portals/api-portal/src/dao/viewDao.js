@@ -49,7 +49,6 @@ const create = async (orgId, payload, createdBy, t) => {
         handle: payload.handle,
         display_name: displayName,
         org_uuid: orgId,
-        portal_id: portalId,
         created_by: createdBy,
         updated_by: createdBy,
     };
@@ -86,7 +85,6 @@ const update = async (orgId, handle, displayName, updatedBy, t) => {
                 handle,
                 display_name: initialDisplayName,
                 org_uuid: orgId,
-                portal_id: portalId,
                 created_by: updatedBy,
                 updated_by: updatedBy,
             };
@@ -288,7 +286,7 @@ const addLabels = async (orgId, viewId, labels, createdBy, t) => {
             `INSERT INTO ${VIEW_LABELS_TABLE} (uuid, portal_id, label_uuid, view_uuid, created_by) VALUES (?, ?, ?, ?, ?)`,
             [uuid, portalId, labelId, viewId, createdBy]
         );
-        created.push({ uuid, portal_id: portalId, label_uuid: labelId, view_uuid: viewId, created_by: createdBy });
+        created.push({ uuid, label_uuid: labelId, view_uuid: viewId, created_by: createdBy });
     }
     return created;
 };

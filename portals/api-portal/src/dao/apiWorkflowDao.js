@@ -109,7 +109,7 @@ const update = async (orgId, viewId, apiWorkflowId, apiWorkflowData, updatedBy, 
     if (rowCount === 0) {
         return [0, []];
     }
-    const updated = await exec.queryOne(`SELECT * FROM ${TABLE} WHERE uuid = ?`, [apiWorkflowId]);
+    const updated = await exec.queryOne(`SELECT * FROM ${TABLE} WHERE uuid = ? AND portal_id = ?`, [apiWorkflowId, getPortalId()]);
     return [rowCount, [mapRow(updated)]];
 };
 

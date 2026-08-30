@@ -44,7 +44,7 @@ const store = async (apiFile, fileName, apiId, type, createdBy, t, key) => {
         [uuid, portalId, content, fileName, apiId, type, key ?? null, createdBy, createdBy]
     );
     return {
-        uuid, portal_id: portalId, file_content: content, file_name: fileName, api_uuid: apiId, type,
+        uuid, file_content: content, file_name: fileName, api_uuid: apiId, type,
         lookup_key: key ?? null, created_by: createdBy, updated_by: createdBy,
     };
 };
@@ -62,7 +62,7 @@ const storeMany = async (files, apiId, createdBy, t) => {
             [uuid, portalId, content, file.fileName, file.type, apiId, file.key ?? null, createdBy, createdBy]
         );
         created.push({
-            uuid, portal_id: portalId, file_content: content, file_name: file.fileName, type: file.type,
+            uuid, file_content: content, file_name: file.fileName, type: file.type,
             api_uuid: apiId, lookup_key: file.key ?? null, created_by: createdBy, updated_by: createdBy,
         });
     }
@@ -104,8 +104,8 @@ const getByKey = async (key, apiId, t) => {
 const deleteByKey = async (key, apiId, t) => {
     const exec = t || db;
     const { rowCount } = await exec.execute(
-        `DELETE FROM ${CONTENT_TABLE} WHERE api_uuid = ? AND type = ? AND lookup_key = ?`,
-        [apiId, constants.DOC_TYPES.IMAGES, key]
+        `DELETE FROM ${CONTENT_TABLE} WHERE api_uuid = ? AND type = ? AND lookup_key = ? AND portal_id = ?`,
+        [apiId, constants.DOC_TYPES.IMAGES, key, getPortalId()]
     );
     return rowCount;
 };
@@ -169,7 +169,7 @@ const upsert = async (apiFile, fileName, apiId, orgId, type, updatedBy, t, key) 
             [uuid, portalId, content, fileName, apiId, type, key ?? null, updatedBy, updatedBy]
         );
         return {
-            uuid, portal_id: portalId, file_content: content, file_name: fileName, api_uuid: apiId, type,
+            uuid, file_content: content, file_name: fileName, api_uuid: apiId, type,
             lookup_key: key ?? null, created_by: updatedBy, updated_by: updatedBy,
         };
     }
@@ -198,7 +198,7 @@ const update = async (apiFile, fileName, apiId, orgId, type, updatedBy, t, key) 
             [uuid, portalId, content, fileName, apiId, type, key ?? null, updatedBy, updatedBy]
         );
         return {
-            uuid, portal_id: portalId, file_content: content, file_name: fileName, api_uuid: apiId, type,
+            uuid, file_content: content, file_name: fileName, api_uuid: apiId, type,
             lookup_key: key ?? null, created_by: updatedBy, updated_by: updatedBy,
         };
     }
@@ -255,8 +255,8 @@ const deleteAll = async (type, orgId, apiId, t) => {
 const deleteAllByType = async (type, apiId, t) => {
     const exec = t || db;
     const { rowCount } = await exec.execute(
-        `DELETE FROM ${CONTENT_TABLE} WHERE api_uuid = ? AND type = ?`,
-        [apiId, type]
+        `DELETE FROM ${CONTENT_TABLE} WHERE api_uuid = ? AND type = ? AND portal_id = ?`,
+        [apiId, type, getPortalId()]
     );
     return rowCount;
 };
