@@ -131,6 +131,16 @@ func RegisterA2ASteps(ctx *godog.ScenarioContext, state *TestState, httpSteps *s
 	ctx.Step(`^I send an A2A "([A-Z]+)" request to "([^"]*)"$`, a.sendHTTPJSON)
 	ctx.Step(`^I send an A2A "([A-Z]+)" request to "([^"]*)" with:$`, a.sendHTTPJSONWithBody)
 
+	// Protocol-version variants. "no version" omits the header, which the
+	// specification reads as 0.3 — see a2aVersionHeader.
+	ctx.Step(`^I send an A2A JSON-RPC request with no version to "([^"]*)":$`,
+		func(url string, body *godog.DocString) error { return a.sendJSONRPCWithVersion("", url, body) })
+	ctx.Step(`^I send an A2A JSON-RPC request with version "([^"]*)" to "([^"]*)":$`, a.sendJSONRPCWithVersion)
+	ctx.Step(`^I send an A2A "([A-Z]+)" request with no version to "([^"]*)"$`,
+		func(method, url string) error { return a.sendHTTPJSONWithVersion("", method, url) })
+	ctx.Step(`^I send an A2A "([A-Z]+)" request with version "([^"]*)" to "([^"]*)"$`,
+		func(method, version, url string) error { return a.sendHTTPJSONWithVersion(version, method, url) })
+
 	// ---- Streaming ----
 
 	ctx.Step(`^I open an A2A stream with a JSON-RPC request to "([^"]*)":$`, a.openJSONRPCStream)
@@ -259,19 +269,38 @@ func a2aKnownNames(vars map[string]string) string {
 // agent then rejects. So it is a client obligation, and these steps carry it on
 // every operation request the way any conformant A2A client would.
 //
-// The gateway neither injects nor validates it today — Section 8A, the
-// pre-resolution guard that would have, is not implemented. That is why this
-// lives in the step rather than being asserted: there is no gateway behaviour
-// here to test yet. When 8A lands it gets its own scenarios, including the
-// absent-header case this deliberately does not exercise.
+// The gateway enforces it before it resolves anything (Section 8A), so an
+// operation request that omits it is refused by the gateway rather than by the
+// agent behind it. That is why every operation step below sends it and why the
+// scenarios that leave it out, send a wrong one, or contradict themselves assert
+// a rejection: sending it is no longer only good manners.
 //
 // Not sent on Agent Card fetches. Card discovery is a plain GET of a static
-// document, not an operation in either binding, and sending a version header on
-// it would misrepresent what a client does.
+// document, not an operation in either binding — the gateway leaves that route
+// unversioned deliberately, since a client commonly fetches the card in order to
+// learn which versions the Agent speaks.
 const a2aVersionHeader = "A2A-Version"
 
 // a2aProtocolVersion is the version every Agent in the suite exposes.
 const a2aProtocolVersion = "1.0"
+
+// sendJSONRPCWithVersion and its siblings send an operation request stating a
+// specific protocol version, or none at all.
+//
+// They exist for the Section 8A scenarios and nothing else: the ordinary steps
+// always send the correct version, because an A2A client that does not is
+// non-conformant and a scenario written that way would be asserting the
+// rejection path by accident. A version of "" omits the header entirely, which is
+// the case the specification reads as 0.3.
+func (a *A2ASteps) sendJSONRPCWithVersion(version, url string, body *godog.DocString) error {
+	a.httpSteps.SetHeader("Content-Type", "application/json")
+	a.httpSteps.SetHeader("Accept", "application/json, text/event-stream")
+	return a.sendOperationWithVersion(version, http.MethodPost, url, body)
+}
+
+func (a *A2ASteps) sendHTTPJSONWithVersion(version, method, url string) error {
+	return a.sendOperationWithVersion(version, method, url, nil)
+}
 
 func (a *A2ASteps) sendJSONRPC(url string, body *godog.DocString) error {
 	// Accept both media types because one JSON-RPC endpoint serves both: the
@@ -294,8 +323,18 @@ func (a *A2ASteps) sendHTTPJSONWithBody(method, url string, body *godog.DocStrin
 // sendOperation is send with the protocol-version header an A2A client owes the
 // agent, scoped to this one request so it cannot leak onto an unrelated one.
 func (a *A2ASteps) sendOperation(method, url string, body *godog.DocString) error {
+	return a.sendOperationWithVersion(a2aProtocolVersion, method, url, body)
+}
+
+// sendOperationWithVersion is sendOperation with the stated version chosen by the
+// caller. An empty version sends no header at all.
+func (a *A2ASteps) sendOperationWithVersion(version, method, url string, body *godog.DocString) error {
 	previous := a.httpSteps.Header(a2aVersionHeader)
-	a.httpSteps.SetHeader(a2aVersionHeader, a2aProtocolVersion)
+	if version == "" {
+		a.httpSteps.ClearHeader(a2aVersionHeader)
+	} else {
+		a.httpSteps.SetHeader(a2aVersionHeader, version)
+	}
 	defer func() {
 		if previous == "" {
 			// Cleared, not set to "": an empty A2A-Version means 0.3, so

@@ -23,6 +23,8 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"net/url"
+	"regexp"
 	"strings"
 
 	"github.com/wso2/api-platform/common/agentproto"
@@ -128,17 +130,20 @@ func (*A2AResolver) Prepare(cfg ResolverRouteConfig) (PreparedResolver, error) {
 		// stay on the static fast path. See carriesMessageInBody.
 		if carriesMessageInBody(routeCfg.Operation) {
 			return &preparedA2AHTTPJSONBody{
-				chainKey:  key,
-				operation: operation,
-				facts:     facts,
+				a2aVersionGuard: a2aVersionGuard{facts: facts},
+				chainKey:        key,
+				operation:       operation,
 			}, nil
 		}
 		// Nothing about this route varies per request, so its whole resolution —
 		// protocol facts included — is built once, here.
-		return &preparedA2AStatic{resolution: Resolution{
-			ChainKey:   key,
-			Attributes: facts.attributes(operation, a2aMessage{}),
-		}}, nil
+		return &preparedA2AStatic{
+			a2aVersionGuard: a2aVersionGuard{facts: facts},
+			resolution: Resolution{
+				ChainKey:   key,
+				Attributes: facts.attributes(operation, a2aMessage{}),
+			},
+		}, nil
 
 	default:
 		return nil, fmt.Errorf("a2a resolver: route %q names unsupported transport %q",
@@ -189,12 +194,305 @@ func composeA2AChainKey(cfg ResolverRouteConfig, operation string) (string, erro
 	return ChainKeyFor(cfg.APIID, cfg.Vhost, operation), nil
 }
 
+// ─── Request protocol version: the header-validation phase ───────────────────
+
+// A2AVersionHeader is the header a client states its A2A protocol version in.
+//
+// Spelled lowercase because that is how header lookup is done — HTTP field names
+// are case-insensitive and Envoy delivers them folded — while the query-parameter
+// alternative below keeps the specification's exact casing, which is not.
+const A2AVersionHeader = "a2a-version"
+
+// A2AVersionQueryParam is the query-parameter alternative to the header.
+//
+// A2A 1.0 §3.6.1 lets a client that cannot set headers — a browser following a
+// link, an SSE consumer — put the same value here instead. Query-parameter names
+// are case-sensitive, so this is compared as spelled: "a2a-version=1.0" in a query
+// string is a different parameter that this does not read, and a request carrying
+// only that is treated as having stated no version at all.
+const A2AVersionQueryParam = "A2A-Version"
+
+// a2aImplicitVersion is what an absent or empty statement means.
+//
+// A2A 1.0 §3.6.2 fixes this: a client that says nothing is a 0.3 client, because
+// 0.3 predates the requirement to say anything. It is emphatically *not* a default
+// of "whatever this route serves" — reading it that way would let every
+// non-conformant client through and make the requirement decorative.
+const a2aImplicitVersion = "0.3"
+
+// maxA2AVersionValueBytes bounds a stated version before it is matched or logged.
+//
+// The value is caller-controlled and reaches an internal debug log, so it is length-
+// checked before the regular expression runs rather than after: a megabyte of digits
+// should cost a comparison, not a match and a log line.
+const maxA2AVersionValueBytes = 16
+
+// a2aVersionPattern is the canonical Major.Minor form.
+//
+// Anchored, and deliberately narrow: no patch component, no sign, no leading-zero
+// alias, no surrounding whitespace beyond the optional whitespace the header
+// grammar itself allows. "1.0.0" and "01.0" are rejected rather than folded onto
+// "1.0", because a client that sends either is not sending what the specification
+// defines and the gateway is not the place to guess which version it meant.
+var a2aVersionPattern = regexp.MustCompile(`^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$`)
+
+// a2aVersionGuard enforces the request's stated protocol version against the one
+// this route exposes.
+//
+// It runs before the route's chain is bound, before its body is requested and before
+// anything reaches the agent, because the configured version *selects the operation
+// table* the resolver is allowed to read the request against. A request stating 0.3
+// and naming the 0.3 method "message/send" would otherwise be resolved against the
+// 1.0 table, fail as an unknown 1.0 operation, and be reported as a client asking
+// for something that does not exist — when what actually happened is a client
+// speaking a protocol version this Agent does not expose.
+//
+// It performs no negotiation. D19 stands: one Agent exposes exactly one protocol
+// version, so there is no range to match, no newest to fall back to and nothing to
+// downgrade to. Success changes nothing about the request — the agent receives the
+// header and query string byte-for-byte as sent, and may enforce the same rule
+// itself.
+type a2aVersionGuard struct {
+	// facts are this route's configured transport and protocol version. The version
+	// is the value a request must state; both travel with a rejection so telemetry
+	// can say which binding of which version refused it.
+	facts a2aRouteFacts
+}
+
+// ValidateHeaders applies A2A 1.0 §3.6 to one request.
+//
+// The order is: gather each representation, reject ambiguity, resolve the effective
+// value, check its form, then check it against this route. Ambiguity is rejected
+// before form, and form before support, so a caller sending two conflicting
+// well-formed values is told it was ambiguous rather than that one of them was
+// unsupported.
+func (g a2aVersionGuard) ValidateHeaders(_ context.Context, view HeaderRequestView) error {
+	stated, err := a2aStatedVersion(view)
+	if err != nil {
+		// The ambiguity checks are about the request alone and know nothing about
+		// this route, so the route facts are attached on the way out — in one place,
+		// so a reason added later cannot forget them.
+		return g.withRouteFacts(err)
+	}
+
+	// Absent or empty means 0.3 (§3.6.2), never this route's version. On a 1.0 route
+	// that is a mismatch like any other — which is the whole point: it is what makes
+	// stating the version actually mandatory.
+	if stated == "" {
+		stated = a2aImplicitVersion
+	}
+
+	if len(stated) > maxA2AVersionValueBytes || !a2aVersionPattern.MatchString(stated) {
+		return &ResolutionError{
+			Kind: FailureInvalidParameter,
+			// The value is the caller's own and is never echoed back; this cause
+			// reaches the internal log only, already length-bounded above.
+			Cause:      fmt.Errorf("A2A protocol version %q is not canonical Major.Minor", a2aBoundedValue(stated)),
+			Attributes: g.failureAttributes(),
+		}
+	}
+
+	if stated != g.facts.version {
+		return &ResolutionError{
+			Kind: FailureVersionNotSupported,
+			Cause: fmt.Errorf("request states A2A protocol version %q; this route exposes %q",
+				a2aBoundedValue(stated), g.facts.version),
+			Attributes: g.failureAttributes(),
+		}
+	}
+	return nil
+}
+
+// a2aStatedVersion reduces the two representations to the one value the client
+// stated, or reports that it stated more than one.
+//
+// Both representations may be used together — the specification does not forbid it,
+// and a client retrying through an intermediary that strips one is a real reason to
+// send both — but then they have to agree exactly. Anything repeated is refused even
+// when the repeats are equal: proxies and frameworks collapse duplicates
+// differently (first wins, last wins, comma-joined), so accepting them would make
+// the effective version depend on the route a request happened to take.
+func a2aStatedVersion(view HeaderRequestView) (string, error) {
+	header, headerPresent, err := a2aHeaderVersion(view.Headers)
+	if err != nil {
+		return "", err
+	}
+	query, queryPresent, err := a2aQueryVersion(view.Path)
+	if err != nil {
+		return "", err
+	}
+
+	switch {
+	case headerPresent && queryPresent:
+		if header != query {
+			return "", &ResolutionError{
+				Kind: FailureConflictingParameter,
+				// Neither value is quoted: both are caller-supplied, and the fact
+				// that they disagree is the whole diagnosis.
+				Cause: errors.New("the A2A-Version header and query parameter state different protocol versions"),
+			}
+		}
+		return header, nil
+	case headerPresent:
+		return header, nil
+	case queryPresent:
+		return query, nil
+	default:
+		return "", nil
+	}
+}
+
+// a2aHeaderVersion returns the single value stated in the header, and whether the
+// field was present at all.
+//
+// Optional whitespace is trimmed per the HTTP field grammar. A field carrying a
+// comma is treated as list-valued and rejected: A2A-Version is a single-value field,
+// so "1.0,1.0" is two statements that some intermediary combined, not one value that
+// happens to contain a comma.
+func a2aHeaderVersion(headers HeaderMap) (string, bool, error) {
+	values := headers.Values(A2AVersionHeader)
+	if len(values) == 0 {
+		return "", false, nil
+	}
+	if len(values) > 1 {
+		return "", false, &ResolutionError{
+			Kind:  FailureConflictingParameter,
+			Cause: fmt.Errorf("the A2A-Version header was sent %d times", len(values)),
+		}
+	}
+	value := strings.TrimSpace(values[0])
+	if strings.Contains(value, ",") {
+		return "", false, &ResolutionError{
+			Kind:  FailureConflictingParameter,
+			Cause: errors.New("the A2A-Version header carries a comma-combined list of values"),
+		}
+	}
+	return value, true, nil
+}
+
+// a2aQueryVersion returns the single value stated in the query string, and whether
+// the parameter was present at all.
+//
+// It scans for this one parameter rather than calling url.ParseQuery, because
+// ParseQuery's error semantics are wrong for a security check. It returns the pairs
+// it *could* decode alongside an error describing the ones it could not, so a caller
+// that discards the map on error discards good data: a request sending
+// "?A2A-Version=0.3&bad=%zz" with a header of "1.0" would have had its conflicting
+// query value silently dropped and been accepted. Trusting the map on error is no
+// better — ParseQuery also drops a pair it rejected for its separator, so a repeat
+// can vanish and leave what looks like a single unambiguous value.
+//
+// Scanning keeps the two concerns apart, which is the behaviour that was intended
+// all along: a pair that is not this parameter is never decoded and never
+// interpreted, so a malformed unrelated parameter stays the agent's to reject; a
+// malformed *version* parameter is this function's business and is refused as the
+// invalid parameter it is, rather than read as an absent one.
+//
+// Values are percent-decoded exactly as the standard parser would ("+" included) and
+// otherwise not normalised.
+func a2aQueryVersion(path string) (string, bool, error) {
+	_, query, hasQuery := strings.Cut(path, "?")
+	if !hasQuery {
+		return "", false, nil
+	}
+
+	// Raw, still-encoded values, gathered before any of them is decoded: whether the
+	// parameter was repeated has to be answered even when one of the repeats is the
+	// unusable one.
+	var stated []string
+	for rest := query; rest != ""; {
+		var pair string
+		pair, rest, _ = strings.Cut(rest, "&")
+		if pair == "" {
+			continue
+		}
+		name, value, _ := strings.Cut(pair, "=")
+		// The name is decoded too, so an encoded spelling of it ("A2A%2DVersion")
+		// cannot smuggle a second statement past the repeat check below. A name that
+		// will not decode cannot be this parameter, so it is skipped rather than
+		// refused — it belongs to whatever the agent makes of it.
+		decodedName, err := url.QueryUnescape(name)
+		if err != nil || decodedName != A2AVersionQueryParam {
+			continue
+		}
+		stated = append(stated, value)
+	}
+
+	switch len(stated) {
+	case 0:
+		return "", false, nil
+	case 1:
+		decoded, err := url.QueryUnescape(stated[0])
+		if err != nil {
+			return "", false, &ResolutionError{
+				// Not "absent": the client did state a version, in a form nothing can
+				// read. Reading it as absent would apply the implicit 0.3 and report
+				// an unsupported version, which names the wrong fault.
+				Kind:  FailureInvalidParameter,
+				Cause: errors.New("the A2A-Version query parameter is not decodable"),
+			}
+		}
+		return decoded, true, nil
+	default:
+		return "", false, &ResolutionError{
+			Kind:  FailureConflictingParameter,
+			Cause: fmt.Errorf("the A2A-Version query parameter was sent %d times", len(stated)),
+		}
+	}
+}
+
+// failureAttributes are the route facts a rejection carries into telemetry.
+//
+// A fresh map per rejection rather than one built at Prepare and shared: these
+// travel out of the resolver into a span and an analytics event, and a shared map
+// would be one mutation away from a rejection reporting another route's binding.
+// Rejections are rare, so the allocation is not on any hot path.
+//
+// The stated version is deliberately absent. It is caller-controlled and unbounded,
+// so it belongs in the internal log — where the causes above put it — and nowhere
+// that becomes a metric label or an exported event dimension.
+func (g a2aVersionGuard) failureAttributes() map[string]string {
+	return map[string]string{
+		AttrA2ATransport:       g.facts.transport,
+		AttrA2AProtocolVersion: g.facts.version,
+	}
+}
+
+// withRouteFacts stamps this route's facts onto a classified failure raised by the
+// request-shape checks, which have no route to name on their own.
+func (g a2aVersionGuard) withRouteFacts(err error) error {
+	failure, ok := errors.AsType[*ResolutionError](err)
+	if !ok {
+		return err
+	}
+	out := *failure
+	out.Attributes = g.failureAttributes()
+	return &out
+}
+
+// a2aBoundedValue caps a caller-supplied value before it reaches an internal log, so
+// a hostile client cannot write an arbitrarily long line into it. Truncation is safe
+// here in a way it is not for the identifiers in addIdentifiers: this value is only
+// ever read by a human diagnosing a rejection, never correlated on.
+func a2aBoundedValue(value string) string {
+	if len(value) <= maxA2AVersionValueBytes {
+		return value
+	}
+	return value[:maxA2AVersionValueBytes] + "…"
+}
+
 // ─── JSON-RPC: one route, every operation ────────────────────────────────────
 
 // preparedA2AJSONRPC is one JSON-RPC endpoint. It holds the finished chain key for
 // every operation its protocol version defines, so resolution is a lookup rather
 // than a parse-and-build.
 type preparedA2AJSONRPC struct {
+	// a2aVersionGuard validates the request's stated protocol version before this
+	// route's body is ever asked for. Embedded, so ValidateHeaders is promoted and
+	// every prepared A2A form carries it by construction rather than by remembering
+	// to implement it.
+	a2aVersionGuard
+
 	// chainKeys maps a JSON-RPC method name to the chain key it binds to.
 	//
 	// In A2A the JSON-RPC method name of an operation is its canonical operation
@@ -204,10 +502,6 @@ type preparedA2AJSONRPC struct {
 	// is what lets a *missing chain* for a method that is present be reported as
 	// deployment skew rather than blamed on the caller.
 	chainKeys map[string]string
-
-	// facts are this route's transport and protocol version, stamped onto every
-	// resolution alongside the operation the request named.
-	facts a2aRouteFacts
 }
 
 // newPreparedA2AJSONRPC composes the chain key for every operation of version.
@@ -232,7 +526,10 @@ func newPreparedA2AJSONRPC(
 		}
 		chainKeys[string(operation)] = key
 	}
-	return &preparedA2AJSONRPC{chainKeys: chainKeys, facts: facts}, nil
+	return &preparedA2AJSONRPC{
+		a2aVersionGuard: a2aVersionGuard{facts: facts},
+		chainKeys:       chainKeys,
+	}, nil
 }
 
 // Requirements asks for the buffered request body: the method is in it, and there
@@ -440,6 +737,12 @@ func carriesMessageInBody(operation agentproto.Operation) bool {
 // controller generated the route, so the whole of its work was done at ingest and
 // the request path never builds a view or calls Resolve.
 type preparedA2AStatic struct {
+	// Even here — where nothing about resolution varies per request — the stated
+	// protocol version does, so this route validates headers like every other A2A
+	// operation route. Header validation is not resolution: it adds no requirement
+	// on the request body and does not stop this route being static.
+	a2aVersionGuard
+
 	resolution Resolution
 }
 
@@ -464,9 +767,10 @@ func (r *preparedA2AStatic) Resolve(context.Context, RequestView) (Resolution, e
 // zero-value requirements, and this one needs the body. The chain it selects is
 // nonetheless the same on every request, which drives the failure policy below.
 type preparedA2AHTTPJSONBody struct {
+	a2aVersionGuard
+
 	chainKey  string
 	operation string
-	facts     a2aRouteFacts
 }
 
 // Requirements asks for the buffered body. Note what this costs: the body is buffered

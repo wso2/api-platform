@@ -509,6 +509,60 @@ func TestAgentResolverWiring(t *testing.T) {
 	}
 }
 
+// The same wiring, on an Agent whose configuration adds every non-operation route
+// shape at once — a custom-path public card, an operation preflight and a card
+// preflight — and asserted as the partition it is: an operation route always names
+// the a2a resolver and its protocol version, everything else is always direct.
+//
+// This is what makes the engine's request protocol-version validation
+// non-optional. That validation is attached to the a2a resolver rather than
+// configured, so "does this route validate the version" is exactly "does this
+// route name a2a" — and no authored configuration may move a route across that
+// line. A card served under an author's own path is still discovery and stays
+// unversioned; a preflight is answered by the gateway and never reaches an agent;
+// every one of the eleven operations is versioned in both bindings.
+func TestAgentResolverWiringPartitionsOperationsFromEverythingElse(t *testing.T) {
+	transformer := agentTransformerWithPolicies("cors")
+	rdc, err := transformer.Transform(testAgent(
+		withCardPath("/card.json"),
+		withCardPolicies(api.Policy{Name: "cors"}),
+		withOperationPolicies(api.Policy{Name: "cors"}),
+	))
+	require.NoError(t, err)
+
+	operations := 0
+	for key, route := range rdc.Routes {
+		isCard := strings.Contains(key, "/card.json")
+		isPreflight := strings.HasPrefix(key, "OPTIONS|")
+
+		if isCard || isPreflight {
+			assert.Empty(t, route.ResolverName,
+				"route %q is discovery or a preflight, not an A2A operation", key)
+			assert.Empty(t, route.ResolverConfig, "route %q", key)
+			assert.True(t, models.IsDirectlyResolved(rdc.EffectiveResolverName(route)),
+				"route %q must resolve by route identity", key)
+			continue
+		}
+
+		operations++
+		require.Equal(t, agentproto.ResolverName, route.ResolverName,
+			"route %q is an operation route and must be version-validated by the a2a resolver", key)
+
+		var resolverConfig agentproto.ResolverConfig
+		require.NoError(t, json.Unmarshal(route.ResolverConfig, &resolverConfig), "route %q", key)
+		assert.Equal(t, agentproto.V1_0, resolverConfig.ProtocolVersion,
+			"route %q: the configured version is what a request's stated version is checked against", key)
+		assert.NotEmpty(t, resolverConfig.Transport, "route %q", key)
+	}
+
+	// A count, not just a per-route check: a transformer that stopped emitting
+	// operation routes altogether would satisfy every assertion in the loop.
+	assert.NotZero(t, operations, "the Agent must have generated operation routes at all")
+
+	// And the invariant the RDC itself enforces before anything is published.
+	require.NoError(t, rdc.ValidateResolution())
+}
+
 // Both transports of one operation must carry the same operation identity, since
 // that identity is what composes the chain key. Asserted on the one operation
 // whose two transports are most obviously different requests.

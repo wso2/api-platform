@@ -221,7 +221,13 @@ func (s *ExternalProcessorServer) handleProcessingPhase(ctx context.Context, req
 		// to the route-level chain — that would silently apply the wrong policies.
 		if outcome == bindFailed {
 			resp, failureOutcome := renderResolutionFailure(ctx, denial.resolverName, rm.RouteName, "",
-				denial.failure, resolutionFailureAnalytics(extractMetadataFromRouteMetadata(*rm), nil))
+				denial.failure,
+				resolutionFailureAnalytics(extractMetadataFromRouteMetadata(*rm), nil, denial.failure))
+			// Which resolver refused, in which of its phases, and why — bounded
+			// values only. Stamped on both spans because no later phase runs to do
+			// it: this response is the request's whole life.
+			recordResolutionDenial(span, denial)
+			recordResolutionDenial(parentSpan, denial)
 			tracing.RecordHTTPOutcome(span, failureOutcome)
 			tracing.RecordHTTPOutcome(parentSpan, failureOutcome)
 			metrics.RequestDurationSeconds.WithLabelValues("request_headers", rm.RouteName).Observe(time.Since(startTime).Seconds())
@@ -564,6 +570,28 @@ func (s *ExternalProcessorServer) initializeExecutionContext(
 		}
 	}
 
+	// One header capture, shared by the two consumers below. Built lazily, so a
+	// route that needs neither — every kind shipping today, via route-key — keeps
+	// the allocation profile it had before per-route resolvers existed.
+	var headers *requestHeaderSnapshot
+
+	// The prepared resolver's header-validation phase, if it declared one.
+	//
+	// Its position here is load-bearing, and both directions of moving it are wrong.
+	// After the static branch it would skip every route whose operation is known
+	// from the route itself — nine of the eleven A2A HTTP+JSON bindings. After the
+	// body-requirement branch it would buffer a JSON-RPC or message-sending request
+	// body, unauthenticated, before rejecting headers already known to be invalid.
+	// So it runs first, for every prepared route alike, and a refusal binds no
+	// chain, requests no body, runs no policy and reaches no upstream.
+	if prepared.ValidatesHeaders() {
+		headers = snapshotRequestHeaders(req.GetRequestHeaders())
+		if failure := prepared.ValidateRequestHeaders(ctx, headers.headerRequestView()); failure != nil {
+			*execCtx = nil
+			return &routeMetadata, bindFailed, newHeaderResolutionDenial(prepared, failure)
+		}
+	}
+
 	// A resolution known at ingest — every API kind shipping today, via route-key —
 	// binds from the stored result. No request view is built and Resolve is never
 	// called; the cost is the same field read and string comparison as before
@@ -577,7 +605,13 @@ func (s *ExternalProcessorServer) initializeExecutionContext(
 		return s.bindStaticRoute(ctx, routeKey, rc, prepared, req, routeMetadata, execCtx)
 	}
 
-	view := buildRequestView(routeKey, req.GetRequestHeaders())
+	// Reuses the capture the header phase took, when there was one: on an A2A
+	// JSON-RPC or message-sending route both consumers run, and the headers are one
+	// immutable fact that should be read out of the request once.
+	if headers == nil {
+		headers = snapshotRequestHeaders(req.GetRequestHeaders())
+	}
+	view := headers.requestView(routeKey)
 
 	// A body-reading resolver normally defers to the request-body callback. It must
 	// not defer when the request headers are end-of-stream: Envoy sends no

@@ -50,6 +50,7 @@ import (
 	"errors"
 	"fmt"
 	"sort"
+	"strings"
 	"sync"
 
 	"github.com/wso2/api-platform/common/chainkey"
@@ -120,6 +121,93 @@ type StaticPreparedResolver interface {
 
 	// StaticResolution returns the resolution every request on this route produces.
 	StaticResolution() Resolution
+}
+
+// HeaderValidatingPreparedResolver is an optional phase a prepared resolver may add
+// ahead of resolution: a check against the request headers alone, run before the
+// route's chain is bound, before its body is requested, and before anything is
+// forwarded upstream.
+//
+// It exists for a protocol whose *service parameters* — the facts a client must
+// state about how it is speaking, not about what it is asking for — travel in the
+// headers and decide whether the request can be interpreted at all. A2A's mandatory
+// request protocol version is the case: the route's configured version selects the
+// operation table the resolver may use, so a request naming a different version
+// cannot be resolved against that table in the first place.
+//
+// Neither of the two existing places could hold this check.
+//
+//   - Resolve is too late or never called. A body-resolved route does not reach it
+//     until Envoy has buffered the whole body, and a StaticPreparedResolver is bound
+//     without calling it at all.
+//   - A policy is too late by construction: the kernel must select a chain before it
+//     can run anything in that chain, and on a multiplexed route selecting the chain
+//     is the very step this guards.
+//
+// It is deliberately narrow. The view carries no body and cannot ask for one; the
+// method returns only an error, so it selects no operation, composes no chain key,
+// negotiates nothing and rewrites nothing. A resolver that does not implement it
+// keeps its existing lifecycle untouched — PrepareRoute checks for the interface
+// once, at ingest, so the request path costs nothing on a route without one.
+type HeaderValidatingPreparedResolver interface {
+	// ValidateHeaders reports whether this request may proceed to resolution.
+	//
+	// Return nil to continue, or a *ResolutionError classifying the refusal. Any
+	// other error is normalised to FailureInternal, which renders the same sterile
+	// response as every other resolution failure.
+	//
+	// Implementations must be safe for concurrent use and must not mutate the view.
+	ValidateHeaders(context.Context, HeaderRequestView) error
+}
+
+// HeaderRequestView is the read-only view of a request handed to ValidateHeaders.
+//
+// It is the header-phase subset of RequestView: no body field exists, so a header
+// validator cannot come to depend on one and quietly turn a static route into a
+// buffered one. Path carries the request target as sent, query string included,
+// because a service parameter may legitimately be spelled either way.
+type HeaderRequestView struct {
+	Method  string // upper-cased at extraction (GO-AUTH-006)
+	Path    string
+	Headers HeaderMap
+}
+
+// HeaderMap is an immutable, case-insensitive, multi-value view over one request's
+// headers.
+//
+// It wraps the snapshot the kernel already built rather than copying it: Envoy
+// delivers header names already lowercased, so the direct lookup below is the path
+// every real request takes and the fold-comparing fallback exists for a caller that
+// built the map by hand (a test, or a future non-Envoy front end). Nothing here
+// mutates the underlying map, and nothing may: the same snapshot is handed to
+// Resolve afterwards.
+type HeaderMap struct {
+	raw map[string][]string
+}
+
+// NewHeaderMap wraps a header snapshot. The caller must not mutate raw afterwards.
+func NewHeaderMap(raw map[string][]string) HeaderMap { return HeaderMap{raw: raw} }
+
+// Values returns every value sent under name, in the order they arrived. name must
+// be given in lowercase.
+//
+// Every value is returned, never just the first: whether a field was repeated is
+// itself a fact a validator may need to reject on, and collapsing repeats here would
+// hide it. When the map was not normalised, matches under several spellings are
+// concatenated — order between spellings is unspecified, which is sound because the
+// only thing a caller can conclude from more than one value is that the field was
+// repeated.
+func (h HeaderMap) Values(name string) []string {
+	if values, ok := h.raw[name]; ok {
+		return values
+	}
+	var out []string
+	for key, values := range h.raw {
+		if strings.EqualFold(key, name) {
+			out = append(out, values...)
+		}
+	}
+	return out
 }
 
 // BodyRequirement is whether a prepared resolver needs the request body.
@@ -335,6 +423,27 @@ const (
 	// FailureInternal is every unclassified resolver error, and every key a resolver
 	// returned that this package refused to accept.
 	FailureInternal FailureKind = "internal"
+
+	// The three header-validation failures. They are produced only by
+	// ValidateHeaders — ordinary operation resolution keeps the classifications
+	// above — and they describe a *service parameter*, the fact a client states
+	// about how it is speaking, rather than the operation it asked for. All three
+	// are the caller's, and all three answer 400: the request never became one this
+	// route could interpret, so there is no operation to call unknown and no payload
+	// to call unparseable.
+
+	// FailureInvalidParameter means a service parameter was present but not in the
+	// form the protocol defines.
+	FailureInvalidParameter FailureKind = "invalid-parameter"
+	// FailureConflictingParameter means one service parameter was supplied more than
+	// once, or in two representations that disagree. Rejected even when the repeated
+	// values are equal: different intermediaries collapse duplicates differently, so
+	// accepting them would let the effective value depend on the path a request took.
+	FailureConflictingParameter FailureKind = "conflicting-parameter"
+	// FailureVersionNotSupported means the client stated a protocol version this
+	// route does not expose. Distinct from the two above because the value was
+	// well-formed and unambiguous — there is simply nothing here that speaks it.
+	FailureVersionNotSupported FailureKind = "version-not-supported"
 )
 
 // ResolutionError carries the classified reason a resolution failed. Unclassified
@@ -342,6 +451,21 @@ const (
 type ResolutionError struct {
 	Kind  FailureKind
 	Cause error
+
+	// Attributes are bounded facts about *the route* the failure happened on —
+	// never anything the caller supplied.
+	//
+	// A failure that happens before a chain is bound produces no resolution, so the
+	// route facts a successful request carries on Resolution.Attributes have nowhere
+	// else to travel; without them the rejection reaches telemetry naming an API and
+	// nothing about which protocol binding or version it was aimed at. The
+	// distinction from Resolution.Attributes is what makes that safe: those come out
+	// of a request body and are unbounded, these are fixed at Prepare and drawn from
+	// closed sets, which is why these may become span attributes and metric-adjacent
+	// event dimensions and those may not.
+	//
+	// Read-only for consumers, like Resolution.Attributes. Nil is the normal case.
+	Attributes map[string]string
 }
 
 func (e *ResolutionError) Error() string {

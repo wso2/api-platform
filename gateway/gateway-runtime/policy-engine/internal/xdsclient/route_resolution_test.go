@@ -21,6 +21,7 @@ package xdsclient
 import (
 	"context"
 	"errors"
+	"sort"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -29,6 +30,7 @@ import (
 	"google.golang.org/protobuf/types/known/anypb"
 	"google.golang.org/protobuf/types/known/structpb"
 
+	"github.com/wso2/api-platform/gateway/gateway-runtime/policy-engine/internal/constants"
 	"github.com/wso2/api-platform/gateway/gateway-runtime/policy-engine/internal/kernel"
 	"github.com/wso2/api-platform/gateway/gateway-runtime/policy-engine/internal/registry"
 	"github.com/wso2/api-platform/gateway/gateway-runtime/policy-engine/internal/resolver"
@@ -409,6 +411,39 @@ func TestDiscoveryNode_AdvertisesResolverCapabilities(t *testing.T) {
 	}
 	assert.Equal(t, []string{"alpha", resolver.RouteKeyResolverName, "zeta"}, names,
 		"the advertised list is sorted so the control plane can compare it cheaply")
+}
+
+// The resolver's header-validation phase (Section 8A) is part of the *version 1*
+// resolution contract, not a capability of its own.
+//
+// It can be, because no Agent resolver-bearing route has ever shipped without it:
+// there is no released version-1 runtime whose "a2a" means the older lifecycle, so
+// the existing handshake already gates the only routes that use it. Advertising a
+// second capability family would mean two things to keep in step for no additional
+// safety — and bumping the version would withhold every Agent route from a runtime
+// that can in fact serve them.
+//
+// So this pins the negative: version 1, exactly two capability keys, nothing about
+// guards.
+func TestDiscoveryNode_HeaderValidationAddsNoCapabilityKey(t *testing.T) {
+	c := &Client{resolvers: registryWithResolvers(t, &stubResolver{name: "a2a"})}
+
+	node := c.discoveryNode()
+	require.NotNil(t, node.Metadata)
+
+	assert.Equal(t, float64(1),
+		node.Metadata.Fields[constants.NodeMetaResolutionProtocolVersion].GetNumberValue(),
+		"header validation ships inside version 1; bumping it would withhold every Agent route")
+
+	keys := make([]string, 0, len(node.Metadata.Fields))
+	for key := range node.Metadata.Fields {
+		keys = append(keys, key)
+	}
+	sort.Strings(keys)
+	assert.Equal(t, []string{
+		constants.NodeMetaResolutionProtocolVersion,
+		constants.NodeMetaSupportedResolvers,
+	}, keys, "no request-guard capability key or supported-guard list may appear here")
 }
 
 // A client with no registry must still advertise, with an empty list — the control

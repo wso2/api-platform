@@ -203,6 +203,23 @@ const (
 	// with this one; each side has a test asserting the spelling.
 	A2ARequestPropertiesKey  = "a2a_request_properties"
 	A2AResponsePropertiesKey = "a2a_response_properties"
+
+	// A2ATransportAttributeKey and A2AProtocolVersionAttributeKey are the resolver's
+	// own attribute names, as the kernel stamps them onto a request it refused
+	// before any chain was bound.
+	//
+	// They are read only as a fallback: on a request that resolved, the analytics
+	// system policy assembles the same two facts into A2ARequestPropertiesKey, and
+	// that block wins. A refused request never reaches that policy — it lives in the
+	// chain the request failed to bind — so without these a version rejection would
+	// reach a dashboard identifying the Agent but not which binding or protocol
+	// version it was aimed at, which is exactly what an operator needs to see when
+	// a fleet of clients is on the wrong version.
+	//
+	// Mirrored string literals for the module-boundary reason above; a test pins
+	// them against the resolver's constants.
+	A2ATransportAttributeKey       = "a2a.transport"
+	A2AProtocolVersionAttributeKey = "a2a.protocol.version"
 )
 
 // A2A outcome vocabulary. Bounded on purpose: these are the values a downstream

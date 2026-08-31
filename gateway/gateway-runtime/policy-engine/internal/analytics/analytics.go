@@ -740,6 +740,7 @@ func buildA2AAnalytics(
 	// while still being distinguishable.
 	mergeJSONProperties(a2a, metadata[A2ARequestPropertiesKey], A2ARequestPropertiesKey)
 	mergeJSONProperties(a2a, metadata[A2AResponsePropertiesKey], A2AResponsePropertiesKey)
+	applyA2AResolverAttributes(a2a, metadata)
 
 	outcome, origin := a2aOutcome(a2a, terminalReason, statusCode,
 		logEntry.GetCommonProperties().GetUpstreamRemoteAddress() != nil)
@@ -748,6 +749,32 @@ func buildA2AAnalytics(
 		a2a["failureOrigin"] = origin
 	}
 	return a2a
+}
+
+// applyA2AResolverAttributes fills in the two bounded protocol facts from the
+// resolver's own attributes, for a request the engine refused before any policy ran.
+//
+// Fallback only, and never an override: on a request that resolved, the analytics
+// system policy already put both into the request-properties block, and that block
+// is the authority. This adds them for a rejection, where that policy never ran —
+// so a version-refused event still says which binding and which configured version
+// it was aimed at, instead of only which API.
+//
+// Both values are fixed at route ingest and drawn from closed sets (a two-valued
+// transport enum, a registered protocol version), which is what makes them safe to
+// put on an event a dashboard groups by. The version the *caller* stated is not here
+// and must not be: it is unbounded and attacker-chosen.
+func applyA2AResolverAttributes(a2a map[string]interface{}, metadata map[string]string) {
+	fill := func(dimension, metadataKey string) {
+		if _, present := a2a[dimension]; present {
+			return
+		}
+		if value := metadata[metadataKey]; value != "" {
+			a2a[dimension] = value
+		}
+	}
+	fill("transport", A2ATransportAttributeKey)
+	fill("protocolVersion", A2AProtocolVersionAttributeKey)
 }
 
 // a2aRequestType classifies a request on an Agent's routes.
@@ -760,16 +787,28 @@ func buildA2AAnalytics(
 //
 // A request the resolver rejected has no operation either, and it must not be
 // misfiled: it was aimed at an operation route and is an attempted invocation that
-// failed, not a card fetch. That is what the terminal reason distinguishes.
+// failed, not a card fetch. That is what the terminal reason distinguishes — either
+// of the two pre-chain reasons, since a request refused for the protocol version it
+// stated was every bit as much an attempted invocation as one whose payload named no
+// known operation.
 func a2aRequestType(operation, terminalReason, requestMethod string) string {
 	switch {
-	case operation != "" || terminalReason == constants.TerminalReasonResolutionFailed:
+	case operation != "" || isA2APreChainRefusal(terminalReason):
 		return A2ARequestTypeOperation
 	case requestMethod == "OPTIONS":
 		return A2ARequestTypePreflight
 	default:
 		return A2ARequestTypeAgentCard
 	}
+}
+
+// isA2APreChainRefusal reports whether the engine refused this request before any
+// policy chain was bound. Both reasons mean the same thing for classification — an
+// attempted invocation that never reached the agent — and they are kept apart only
+// so a consumer can tell a protocol-version problem from a payload one.
+func isA2APreChainRefusal(terminalReason string) bool {
+	return terminalReason == constants.TerminalReasonResolutionFailed ||
+		terminalReason == constants.TerminalReasonA2AVersionRejected
 }
 
 // a2aOutcome derives whether an Agent invocation succeeded and, if it did not, which
@@ -816,10 +855,10 @@ func a2aOutcome(a2a map[string]interface{}, terminalReason string, statusCode in
 		if statusCode >= 400 {
 			return A2AOutcomeFailure, A2AFailureOriginPolicy
 		}
-	case constants.TerminalReasonResolutionFailed:
-		// The payload named no operation this protocol version defines, or was not a
-		// well-formed envelope at all. The caller's, not the agent's — the agent never
-		// saw it.
+	case constants.TerminalReasonResolutionFailed, constants.TerminalReasonA2AVersionRejected:
+		// The payload named no operation this protocol version defines, was not a
+		// well-formed envelope at all, or stated a protocol version this Agent does
+		// not expose. The caller's, not the agent's — the agent never saw it.
 		return A2AOutcomeFailure, A2AFailureOriginClient
 	}
 	if statusCode >= 500 {
