@@ -243,4 +243,3 @@ func resourceExists(client *gateway.Client, handler gateway.ResourceHandler, han
 	// Any other status code is an error — delegate to centralized formatter
 	return false, utils.FormatHTTPError("query", resp, "Gateway Controller")
 }
-
