@@ -770,7 +770,8 @@ func TestGenerateAuthConfig(t *testing.T) {
 			},
 		}
 
-		authConfig := generateAuthConfig(cfg)
+		authConfig, err := generateAuthConfig(cfg)
+		require.NoError(t, err)
 
 		// This map is hand-maintained and has no compile-time link to the
 		// generated router: x-basicauth-roles in the OpenAPI spec is decorative
