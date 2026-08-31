@@ -94,7 +94,6 @@ func (t *GraphQLAPITransformer) Transform(cfg *models.StoredConfig) (*models.Run
 	apiPolicies := t.collectAPIPolicies(apiData.Policies)
 	chain := t.buildPolicyChain(apiPolicies)
 	injected := utils.InjectSystemPolicies(chain, t.systemConfig, nil)
-	policyChain := sdkChainToModel(injected)
 
 	// fullPath has no operation-path suffix: a GraphQLApi's whole route match is the
 	// resolved context (ConstructFullPath(context, version, "") == context+version,
@@ -130,7 +129,7 @@ func (t *GraphQLAPITransformer) Transform(cfg *models.StoredConfig) (*models.Run
 			Default:    &mainUpstreamInfo,
 		},
 	}
-	rdc.PolicyChains[mainRouteKey] = policyChain
+	rdc.PolicyChains[mainRouteKey] = sdkChainToModel(injected)
 
 	// Sandbox is active when a sandbox upstream is configured (GraphQLApi only
 	// supports a direct url — see validateGraphQLUpstream — never a ref).
@@ -166,7 +165,7 @@ func (t *GraphQLAPITransformer) Transform(cfg *models.StoredConfig) (*models.Run
 				Default:    &sbUpstreamInfo,
 			},
 		}
-		rdc.PolicyChains[sandboxRouteKey] = policyChain
+		rdc.PolicyChains[sandboxRouteKey] = sdkChainToModel(injected)
 	}
 
 	return rdc, nil
