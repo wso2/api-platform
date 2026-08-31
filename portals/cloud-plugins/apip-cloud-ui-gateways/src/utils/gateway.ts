@@ -14,15 +14,10 @@
  * KIND, either express or implied.  See the License for the
  * specific language governing permissions and limitations
  * under the License.
- *
- * Injection seam for cloud-only extensions. `main.tsx` imports
- * `cloudExtensions` from here unconditionally, so this file must always
- * exist and export a valid (possibly empty) array — this is what lets a
- * downstream build overlay just this one file/directory with real cloud
- * features, without ever touching App.tsx/main.tsx/extensions.tsx. Mirrors
- * `portals/api-control-plane/src/cloud/index.ts`.
  */
 
-import type { AIWorkspaceCloudEntry } from '../extensions';
+import type { GatewayType } from '../types';
 
-export const cloudExtensions: AIWorkspaceCloudEntry[] = [];
+export function gatewayTypeLabel(type: GatewayType): string {
+  return type === 'ai' ? 'AI Gateway' : 'Event Gateway';
+}

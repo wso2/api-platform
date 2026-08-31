@@ -47,11 +47,34 @@ export type AIWorkspaceExtension = SlotEntry & {
   render: (port: AIWorkspaceHostPort) => ReactNode;
 };
 
+/**
+ * Slot for overriding the built-in AI Gateways page (list + create/edit)
+ * without changing anything under `pages/appShell/appShellPages/gateways`.
+ * Pairs with the `Hideable name={AI_WORKSPACE_GATEWAYS_SLOT}` wrapping that
+ * page's built-in element in `App.tsx` — Slot supplies the replacement,
+ * Hideable suppresses the built-in, same two-primitive split the header
+ * comment in `slots/index.tsx` describes.
+ */
+export const AI_WORKSPACE_GATEWAYS_SLOT = 'page.gateways';
+
+/**
+ * A host-injected replacement for a specific built-in page. Unlike
+ * `AIWorkspaceExtension`, this isn't a new sidebar item — the built-in
+ * page's own route and sidebar entry stay in place; only what renders at
+ * that route changes.
+ */
+export type AIWorkspacePageOverride = SlotEntry & {
+  render: (port: AIWorkspaceHostPort) => ReactNode;
+};
+
+/** Every registered cloud entry — sidebar items and page overrides share one slot registry (see `slots/index.tsx`), filtered by `slot` at each consumption site. */
+export type AIWorkspaceCloudEntry = AIWorkspaceExtension | AIWorkspacePageOverride;
+
 export function ExtensionsProvider({
   extensions,
   children,
 }: {
-  extensions: readonly AIWorkspaceExtension[];
+  extensions: readonly AIWorkspaceCloudEntry[];
   children: ReactNode;
 }) {
   return (
