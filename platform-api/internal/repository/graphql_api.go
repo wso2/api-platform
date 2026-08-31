@@ -129,32 +129,29 @@ func (r *GraphQLAPIRepo) GetByUUID(uuid, orgUUID string) (*model.GraphQLAPI, err
 }
 
 // List retrieves all GraphQL APIs for an organization, optionally filtered by project.
-func (r *GraphQLAPIRepo) List(orgUUID, projectUUID string, limit, offset int) ([]*model.GraphQLAPI, error) {
-	var query string
-	var args []interface{}
-	pageClause, pageArgs := r.db.PaginationClause(limit, offset)
+func (r *GraphQLAPIRepo) List(orgUUID, projectUUID string, opts ListOptions) ([]*model.GraphQLAPI, error) {
+	query := `
+		SELECT
+			uuid, handle, display_name, version, organization_uuid, origin, created_at, updated_at,
+			project_uuid, description, created_by, updated_by, configuration, data_version
+		FROM graphql_apis
+		WHERE organization_uuid = ?`
+	args := []interface{}{orgUUID}
 
 	if projectUUID != "" {
-		query = `
-			SELECT
-				uuid, handle, display_name, version, organization_uuid, origin, created_at, updated_at,
-				project_uuid, description, created_by, updated_by, configuration, data_version
-			FROM graphql_apis
-			WHERE organization_uuid = ? AND project_uuid = ?
-			ORDER BY created_at DESC
-			` + pageClause
-		args = append([]interface{}{orgUUID, projectUUID}, pageArgs...)
-	} else {
-		query = `
-			SELECT
-				uuid, handle, display_name, version, organization_uuid, origin, created_at, updated_at,
-				project_uuid, description, created_by, updated_by, configuration, data_version
-			FROM graphql_apis
-			WHERE organization_uuid = ?
-			ORDER BY created_at DESC
-			` + pageClause
-		args = append([]interface{}{orgUUID}, pageArgs...)
+		query += " AND project_uuid = ?"
+		args = append(args, projectUUID)
 	}
+	if searchClause, searchArgs := handleSearchClause(opts.Search); searchClause != "" {
+		query += searchClause
+		args = append(args, searchArgs...)
+	}
+	col, dir := opts.resolveSort(listSortColumns, "created_at")
+	query += " ORDER BY " + col + " " + dir + ", handle ASC"
+
+	pageClause, pageArgs := r.db.PaginationClause(opts.Limit, opts.Offset)
+	query += " " + pageClause
+	args = append(args, pageArgs...)
 
 	rows, err := r.db.Query(r.db.Rebind(query), args...)
 	if err != nil {
@@ -178,13 +175,19 @@ func (r *GraphQLAPIRepo) Count(orgUUID string) (int, error) {
 	return r.artifactRepo.CountByKindAndOrg(constants.GraphQLApi, orgUUID)
 }
 
-// CountByProject returns the total number of GraphQL APIs for a specific project.
-func (r *GraphQLAPIRepo) CountByProject(orgUUID, projectUUID string) (int, error) {
+// CountByProject returns the total number of GraphQL APIs for a specific
+// project, optionally narrowed by the same case-insensitive handle search
+// List applies.
+func (r *GraphQLAPIRepo) CountByProject(orgUUID, projectUUID, search string) (int, error) {
+	query := `SELECT COUNT(*) FROM graphql_apis WHERE organization_uuid = ? AND project_uuid = ?`
+	args := []interface{}{orgUUID, projectUUID}
+	if searchClause, searchArgs := handleSearchClause(search); searchClause != "" {
+		query += searchClause
+		args = append(args, searchArgs...)
+	}
+
 	var count int
-	query := `
-		SELECT COUNT(*) FROM graphql_apis
-		WHERE organization_uuid = ? AND project_uuid = ?`
-	if err := r.db.QueryRow(r.db.Rebind(query), orgUUID, projectUUID).Scan(&count); err != nil {
+	if err := r.db.QueryRow(r.db.Rebind(query), args...).Scan(&count); err != nil {
 		return 0, err
 	}
 	return count, nil
