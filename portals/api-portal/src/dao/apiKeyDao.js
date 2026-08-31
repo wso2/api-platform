@@ -204,4 +204,13 @@ async function updateExpiry(orgId, keyId, expiresAt, updatedBy, transaction) {
     return rowCount > 0;
 }
 
-module.exports = { create, get, getIdByHandle, list, revoke, setApplication, updateExpiry };
+async function deleteByApi(orgId, apiId, t) {
+    const exec = t || db;
+    const { rowCount } = await exec.execute(
+        `DELETE FROM ${API_KEYS_TABLE} WHERE api_uuid = ? AND org_uuid = ? AND portal_id = ?`,
+        [apiId, orgId, getPortalId()]
+    );
+    return rowCount;
+}
+
+module.exports = { create, get, getIdByHandle, list, revoke, setApplication, updateExpiry, deleteByApi };
