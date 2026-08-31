@@ -820,7 +820,13 @@ type CreateGraphQLAPIRequest struct {
 	// Kind Kind of the API based on its communication protocol or architectural style
 	Kind *string `json:"kind,omitempty" yaml:"kind,omitempty"`
 
-	// Policies List of policies to be applied on the API. Reused unmodified from REST APIs.
+	// Policies List of policies to be applied on the API. Reused unmodified from
+	// REST APIs. A `cors` policy applies only to the API's single `POST`
+	// route — a GraphQL API has no per-operation list to add an
+	// `OPTIONS` entry to, so a browser preflight request is not routed
+	// at all and a `cors` policy will not run for it; cross-origin
+	// browser clients that trigger a preflight are not currently
+	// supported.
 	Policies  *[]Policy `json:"policies,omitempty" yaml:"policies,omitempty"`
 	ProjectId string    `binding:"required" json:"projectId" yaml:"projectId"`
 
@@ -843,9 +849,13 @@ type CreateGraphQLAPIRequest struct {
 	// other artifact kinds (see LlmProviderTemplate's `metadata.openapiSpecUrl`).
 	// Distinct from `upstream.main.url`: this is a plain HTTP(S) GET of a static
 	// schema file, not a live introspection query against a GraphQL server, and
-	// is fetched with the same public-internet-only SSRF hardening as an
-	// OpenAPI-spec-by-URL fetch (loopback/private/link-local/metadata addresses
-	// refused) — it is not meant for a tenant's own in-cluster backend. Mutually
+	// is fetched through the same shared SSRF-guarded HTTP client every other
+	// operator/tenant-supplied fetch in this API uses, under the operator-
+	// configured policy (default `netguard.PermitPrivateBlockMetadata()`): the
+	// host is resolved and every candidate IP — including each redirect hop —
+	// is checked at dial time, refusing link-local/metadata/unspecified/
+	// multicast addresses while private and in-cluster addresses (a Kubernetes
+	// ClusterIP, a service-DNS name, localhost) remain reachable. Mutually
 	// exclusive with `sdl`. Never stored or echoed back; only the fetched `sdl`
 	// text is persisted and returned.
 	SdlUrl *string `json:"sdlUrl,omitempty" yaml:"sdlUrl,omitempty"`
@@ -1368,7 +1378,13 @@ type GraphQLAPI struct {
 	// Kind Kind of the API based on its communication protocol or architectural style
 	Kind *string `json:"kind,omitempty" yaml:"kind,omitempty"`
 
-	// Policies List of policies to be applied on the API. Reused unmodified from REST APIs.
+	// Policies List of policies to be applied on the API. Reused unmodified from
+	// REST APIs. A `cors` policy applies only to the API's single `POST`
+	// route — a GraphQL API has no per-operation list to add an
+	// `OPTIONS` entry to, so a browser preflight request is not routed
+	// at all and a `cors` policy will not run for it; cross-origin
+	// browser clients that trigger a preflight are not currently
+	// supported.
 	Policies  *[]Policy `json:"policies,omitempty" yaml:"policies,omitempty"`
 	ProjectId string    `binding:"required" json:"projectId" yaml:"projectId"`
 
@@ -1391,9 +1407,13 @@ type GraphQLAPI struct {
 	// other artifact kinds (see LlmProviderTemplate's `metadata.openapiSpecUrl`).
 	// Distinct from `upstream.main.url`: this is a plain HTTP(S) GET of a static
 	// schema file, not a live introspection query against a GraphQL server, and
-	// is fetched with the same public-internet-only SSRF hardening as an
-	// OpenAPI-spec-by-URL fetch (loopback/private/link-local/metadata addresses
-	// refused) — it is not meant for a tenant's own in-cluster backend. Mutually
+	// is fetched through the same shared SSRF-guarded HTTP client every other
+	// operator/tenant-supplied fetch in this API uses, under the operator-
+	// configured policy (default `netguard.PermitPrivateBlockMetadata()`): the
+	// host is resolved and every candidate IP — including each redirect hop —
+	// is checked at dial time, refusing link-local/metadata/unspecified/
+	// multicast addresses while private and in-cluster addresses (a Kubernetes
+	// ClusterIP, a service-DNS name, localhost) remain reachable. Mutually
 	// exclusive with `sdl`. Never stored or echoed back; only the fetched `sdl`
 	// text is persisted and returned.
 	SdlUrl *string `json:"sdlUrl,omitempty" yaml:"sdlUrl,omitempty"`
@@ -1435,7 +1455,13 @@ type GraphQLAPIDetail struct {
 	// Kind Kind of the API based on its communication protocol or architectural style
 	Kind *string `json:"kind,omitempty" yaml:"kind,omitempty"`
 
-	// Policies List of policies to be applied on the API. Reused unmodified from REST APIs.
+	// Policies List of policies to be applied on the API. Reused unmodified from
+	// REST APIs. A `cors` policy applies only to the API's single `POST`
+	// route — a GraphQL API has no per-operation list to add an
+	// `OPTIONS` entry to, so a browser preflight request is not routed
+	// at all and a `cors` policy will not run for it; cross-origin
+	// browser clients that trigger a preflight are not currently
+	// supported.
 	Policies  *[]Policy `json:"policies,omitempty" yaml:"policies,omitempty"`
 	ProjectId string    `binding:"required" json:"projectId" yaml:"projectId"`
 

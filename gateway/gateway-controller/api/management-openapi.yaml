@@ -3576,7 +3576,13 @@ components:
           example: ["Gold", "Silver"]
         policies:
           type: array
-          description: List of policies applied to the single GraphQL route
+          description: |
+            List of policies applied to the single GraphQL route. A `cors`
+            policy applies only to that route's `POST` method — a GraphQLApi
+            has no operations[] list to add an `OPTIONS` entry to, so a
+            browser preflight request is not routed at all and a `cors`
+            policy will not run for it; cross-origin browser clients that
+            trigger a preflight are not currently supported.
           items:
             $ref: "#/components/schemas/Policy"
         deploymentState:

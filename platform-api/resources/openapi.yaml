@@ -7176,7 +7176,14 @@ components:
           example: ENDPOINT
         policies:
           type: array
-          description: List of policies to be applied on the API. Reused unmodified from REST APIs.
+          description: |
+            List of policies to be applied on the API. Reused unmodified from
+            REST APIs. A `cors` policy applies only to the API's single `POST`
+            route — a GraphQL API has no per-operation list to add an
+            `OPTIONS` entry to, so a browser preflight request is not routed
+            at all and a `cors` policy will not run for it; cross-origin
+            browser clients that trigger a preflight are not currently
+            supported.
           items:
             $ref: '#/components/schemas/Policy'
         subscriptionPlans:
@@ -7287,7 +7294,14 @@ components:
           example: ENDPOINT
         policies:
           type: array
-          description: List of policies to be applied on the API. Reused unmodified from REST APIs.
+          description: |
+            List of policies to be applied on the API. Reused unmodified from
+            REST APIs. A `cors` policy applies only to the API's single `POST`
+            route — a GraphQL API has no per-operation list to add an
+            `OPTIONS` entry to, so a browser preflight request is not routed
+            at all and a `cors` policy will not run for it; cross-origin
+            browser clients that trigger a preflight are not currently
+            supported.
           items:
             $ref: '#/components/schemas/Policy'
         subscriptionPlans:
