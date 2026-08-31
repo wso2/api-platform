@@ -119,6 +119,7 @@ func NewArtifactImportService(
 	proxyRepo repository.LLMProxyRepository,
 	mcpProxyRepo repository.MCPProxyRepository,
 	agentProxyRepo repository.AgentProxyRepository,
+	graphqlAPIRepo repository.GraphQLAPIRepository,
 	artifactRepo repository.ArtifactRepository,
 	deploymentRepo repository.DeploymentRepository,
 	gatewayRepo repository.GatewayRepository,
@@ -147,6 +148,7 @@ func NewArtifactImportService(
 		// the control-plane kind AgentProxy. AgentProxy itself is deliberately not
 		// a key: it is never a gateway artifact kind.
 		constants.GatewayKindAgent: newAgentProxyImporter(agentProxyRepo, agentCardCache, slogger),
+		constants.GraphQLApi:       newGraphQLAPIImporter(graphqlAPIRepo, artifactRepo),
 	}
 	return s
 }
