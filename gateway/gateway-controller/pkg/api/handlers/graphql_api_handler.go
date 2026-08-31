@@ -85,6 +85,13 @@ func (s *APIServer) CreateGraphQLAPI(w http.ResponseWriter, r *http.Request) {
 			})
 			return
 		}
+		if isGraphQLAPICreateBadRequest(err) {
+			httputil.WriteJSON(w, http.StatusBadRequest, api.ErrorResponse{
+				Status:  "error",
+				Message: err.Error(),
+			})
+			return
+		}
 		httputil.WriteJSON(w, http.StatusInternalServerError, api.ErrorResponse{
 			Status:  "error",
 			Message: "Failed to create configuration",
@@ -564,6 +571,32 @@ func (s *APIServer) ListGraphQLAPIKeys(w http.ResponseWriter, r *http.Request, i
 // mapValidationError maps a *utils.ValidationErrorListError to a 400 response with
 // structured field errors, mirroring RestAPIHandler.mapCreateError's handling of the
 // same error type.
+// isGraphQLAPICreateBadRequest reports whether err is a client-input failure from
+// the shared DeployAPIConfiguration path (config-parse failure, kind mismatch, or
+// missing origin) that CreateGraphQLAPI's other error mappers (mapRenderError,
+// mapValidationError, storage.IsConflictError) don't recognize — without this,
+// these fell through to a generic 500 instead of the 400 the caller actually made.
+// Mirrors isRestAPICreateBadRequest (rest_api_handler.go); DeployAPIConfiguration
+// is the same shared function for every kind, so most error message classes are
+// identical. One is GraphQL-specific: this endpoint hardcodes params.Kind =
+// "GraphQLApi" so the body is always parsed as a GraphQLAPI regardless of what its
+// own kind field says, but DeployAPIConfiguration's validator lookup keys off that
+// parsed kind field, not the resolved one — a body with a wrong kind value parses
+// fine, then fails validator lookup with "unexpected configuration type" instead
+// of a recognized validation error.
+func isGraphQLAPICreateBadRequest(err error) bool {
+	if err == nil {
+		return false
+	}
+
+	message := strings.ToLower(err.Error())
+	return strings.Contains(message, "failed to parse configuration") ||
+		strings.Contains(message, "resource kind is required") ||
+		strings.Contains(message, "unsupported resource kind") ||
+		strings.Contains(message, "invalid or missing origin") ||
+		strings.Contains(message, "unexpected configuration type")
+}
+
 func mapValidationError(w http.ResponseWriter, err error) bool {
 	var validationErr *utils.ValidationErrorListError
 	if !errors.As(err, &validationErr) {
