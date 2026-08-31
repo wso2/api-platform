@@ -19,6 +19,7 @@
 package resolver
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -115,6 +116,17 @@ type PreparedRoute struct {
 	// a RequestView and calling Resolve at all.
 	StaticResolution *Resolution
 
+	// HeaderValidator is non-nil when the prepared resolver implements
+	// HeaderValidatingPreparedResolver.
+	//
+	// Held as the typed value rather than re-asserted per request, so the interface
+	// check is paid once at ingest, and a route without one costs a nil comparison.
+	// A static route may carry one: header validation is not resolution, so needing
+	// it does not contradict knowing the resolution already (see validateRequirements,
+	// which governs the request data Resolve needs and deliberately does not govern
+	// this).
+	HeaderValidator HeaderValidatingPreparedResolver
+
 	// DirectChainKey is the effective CanonicalChainKey for this route, and
 	// APIID/Vhost are its partition. Held here so key validation compares against
 	// captured values rather than re-deriving anything on the request path.
@@ -155,10 +167,17 @@ func PrepareRoute(reg ResolverRegistry, cfg ResolverRouteConfig) (*PreparedRoute
 			cfg.ResolverName, cfg.RouteKey, err)
 	}
 
+	// Checked once, here, so the request path never type-asserts. A resolver either
+	// validates headers for every request on this route or for none of them: making
+	// it a property of the prepared route is what keeps it from being something a
+	// request could influence.
+	validator, _ := prepared.(HeaderValidatingPreparedResolver)
+
 	pr := &PreparedRoute{
-		ResolverName: cfg.ResolverName,
-		Resolver:     prepared,
-		Requirements: reqs,
+		ResolverName:    cfg.ResolverName,
+		Resolver:        prepared,
+		Requirements:    reqs,
+		HeaderValidator: validator,
 		// Captured once, from the already-resolved effective value, so the binder's
 		// route-key check never re-derives the fallback.
 		DirectChainKey: cfg.CanonicalChainKey,
@@ -225,6 +244,29 @@ func lookupFactory(reg ResolverRegistry, name string) (Resolver, bool) {
 // request path binds from the stored result without building a RequestView.
 func (pr *PreparedRoute) IsStatic() bool {
 	return pr != nil && pr.StaticResolution != nil
+}
+
+// ValidatesHeaders reports whether this route's resolver added a header-validation
+// phase, so the kernel can skip building a header view for the routes that did not.
+func (pr *PreparedRoute) ValidatesHeaders() bool {
+	return pr != nil && pr.HeaderValidator != nil
+}
+
+// ValidateRequestHeaders runs the route's header-validation phase, if it has one, and
+// returns the classified refusal or nil.
+//
+// It normalises whatever the resolver returned, exactly as the operation-resolution
+// path does: a resolver that returns a bare error still produces a sterile response
+// rather than an unclassified one the kernel would have to guess a status for.
+//
+// A route with no validator returns nil without calling anything, so this is safe to
+// call unconditionally — though the kernel checks ValidatesHeaders first, to avoid
+// building the view at all.
+func (pr *PreparedRoute) ValidateRequestHeaders(ctx context.Context, view HeaderRequestView) *ResolutionError {
+	if pr == nil || pr.HeaderValidator == nil {
+		return nil
+	}
+	return NormalizeResolutionError(pr.HeaderValidator.ValidateHeaders(ctx, view))
 }
 
 // ValidateResolution checks a resolution's structure against this route: it names a key,

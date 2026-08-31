@@ -1137,14 +1137,14 @@ func TestGenericResolutionFailure_StatusPerKind(t *testing.T) {
 // ─── Request view construction ───────────────────────────────────────────────
 
 func TestBuildRequestView(t *testing.T) {
-	view := buildRequestView("POST|/rpc|example.com", &extprocv3.HttpHeaders{
+	view := snapshotRequestHeaders(&extprocv3.HttpHeaders{
 		Headers: &corev3.HeaderMap{Headers: []*corev3.HeaderValue{
 			{Key: ":method", RawValue: []byte("post")},
 			{Key: ":path", RawValue: []byte("/rpc?x=1")},
 			{Key: "accept", RawValue: []byte("application/json")},
 			{Key: "accept", RawValue: []byte("text/plain")},
 		}},
-	})
+	}).requestView("POST|/rpc|example.com")
 
 	assert.Equal(t, "POST|/rpc|example.com", view.RouteKey)
 	assert.Equal(t, "POST", view.Method, "the method must be upper-cased at extraction (GO-AUTH-006)")
@@ -1154,9 +1154,40 @@ func TestBuildRequestView(t *testing.T) {
 }
 
 func TestBuildRequestView_NilHeaders(t *testing.T) {
-	view := buildRequestView("r", nil)
+	view := snapshotRequestHeaders(nil).requestView("r")
 	assert.Equal(t, "r", view.RouteKey)
 	assert.Nil(t, view.Headers)
+}
+
+// The two views a prepared resolver can be handed are derived from one capture, not
+// built separately from the same Envoy message.
+//
+// A route that uses both — an A2A JSON-RPC or message-sending route, where header
+// validation runs and then the body resolver runs — would otherwise allocate two
+// copies of one immutable fact on the hottest A2A paths. Asserted by identity
+// because that is the property: not "the two maps are equal" but "there is one map".
+func TestRequestHeaderSnapshot_IsSharedByBothViews(t *testing.T) {
+	snapshot := snapshotRequestHeaders(&extprocv3.HttpHeaders{
+		Headers: &corev3.HeaderMap{Headers: []*corev3.HeaderValue{
+			{Key: ":method", RawValue: []byte("post")},
+			{Key: ":path", RawValue: []byte("/rpc?A2A-Version=1.0")},
+			{Key: "a2a-version", RawValue: []byte("1.0")},
+		}},
+	})
+
+	view := snapshot.requestView("POST|/rpc|example.com")
+	headerView := snapshot.headerRequestView()
+
+	// The header view reads through to the same map the resolver will see.
+	require.Len(t, view.Headers["a2a-version"], 1)
+	view.Headers["a2a-version"] = append(view.Headers["a2a-version"], "0.3")
+	assert.Len(t, headerView.Headers.Values("a2a-version"), 2,
+		"both views must read one map, not two copies of it")
+
+	// And the derived scalars agree, so a validator and a resolver cannot disagree
+	// about the method or the target they were looking at.
+	assert.Equal(t, view.Method, headerView.Method)
+	assert.Equal(t, view.Path, headerView.Path)
 }
 
 // The resolver must observe the retained header-phase view at the body callback, not

@@ -183,6 +183,165 @@ Feature: Agent deployment and A2A routing
     When I delete the Agent "agent-unknown-method"
     Then the response should be successful
 
+  # ==================== REQUEST PROTOCOL VERSION ====================
+
+  # A2A 1.0 section 3.6.1 makes stating the protocol version a client obligation
+  # on every operation request; 3.6.2 fixes what silence means — 0.3, not
+  # "whatever the server serves". The gateway enforces that before it resolves an
+  # operation, binds a chain, buffers a body or calls the agent, because the
+  # Agent's configured version is what selects the operation table a request is
+  # interpreted against.
+  #
+  # Asserted through the gateway rather than through the agent behind it. The
+  # reference SDK also rejects a wrong version, so a scenario that only checked
+  # "the request failed" would pass with the guard removed entirely. The sterile
+  # 400 is the gateway's own answer and the agent's is not — its JSON-RPC binding
+  # answers HTTP 200 with a JSON-RPC error object, and its HTTP+JSON binding
+  # answers 400 with a FAILED_PRECONDITION body — so the shape is what tells them
+  # apart.
+  Scenario: An operation request is rejected unless it states the Agent's protocol version
+    When I deploy this Agent configuration:
+      """
+      apiVersion: gateway.api-platform.wso2.com/v1
+      kind: Agent
+      metadata:
+        name: agent-version-guard
+      spec:
+        displayName: Agent Version Guard
+        version: v1.0
+        context: /agent-version-guard
+        upstream:
+          url: http://a2a-trip-planner:9099
+        a2a:
+          protocolVersion: "1.0"
+          operationConfigs:
+            transports:
+              - protocolBinding: JSONRPC
+                pathPrefix: /
+              - protocolBinding: HTTP+JSON
+                pathPrefix: /v1
+          agentCard:
+            public:
+              mode: passthrough
+      """
+    Then the response should be successful
+    And I wait for policy snapshot sync
+
+    # The correct version, both bindings: unchanged behaviour, and the request
+    # reaches the agent.
+    When I clear all headers
+    And I send an A2A JSON-RPC request to "http://localhost:8080/agent-version-guard":
+      """
+      {"jsonrpc": "2.0", "id": 1, "method": "ListTasks", "params": {}}
+      """
+    Then the response status code should be 200
+    And the JSON response should have field "result"
+
+    When I clear all headers
+    And I send an A2A "GET" request to "http://localhost:8080/agent-version-guard/v1/tasks"
+    Then the response status code should be 200
+
+    # No version at all means 0.3, which this Agent does not expose. The sterile
+    # 400 says the gateway refused it — the agent would have answered 200 with a
+    # JSON-RPC error on this binding.
+    When I clear all headers
+    And I send an A2A JSON-RPC request with no version to "http://localhost:8080/agent-version-guard":
+      """
+      {"jsonrpc": "2.0", "id": 1, "method": "ListTasks", "params": {}}
+      """
+    Then the response status code should be 400
+    And the response should be valid JSON
+    And the JSON response field "error" should be "Bad Request"
+    And the JSON response should have field "error_id"
+    And the response header "x-error-id" should exist
+
+    # An empty value is the same case as an absent one.
+    When I clear all headers
+    And I send an A2A JSON-RPC request with version " " to "http://localhost:8080/agent-version-guard":
+      """
+      {"jsonrpc": "2.0", "id": 1, "method": "ListTasks", "params": {}}
+      """
+    Then the response status code should be 400
+
+    # A version the Agent does not expose. There is no range match and no
+    # newest-version fallback: one Agent exposes exactly one version.
+    When I clear all headers
+    And I send an A2A JSON-RPC request with version "0.3" to "http://localhost:8080/agent-version-guard":
+      """
+      {"jsonrpc": "2.0", "id": 1, "method": "ListTasks", "params": {}}
+      """
+    Then the response status code should be 400
+
+    # Not canonical Major.Minor. Refused rather than folded onto "1.0".
+    When I clear all headers
+    And I send an A2A JSON-RPC request with version "1.0.0" to "http://localhost:8080/agent-version-guard":
+      """
+      {"jsonrpc": "2.0", "id": 1, "method": "ListTasks", "params": {}}
+      """
+    Then the response status code should be 400
+
+    # The nine path-known HTTP+JSON operations resolve statically, so they are the
+    # ones a misplaced guard would skip while every JSON-RPC assertion above still
+    # passed.
+    When I clear all headers
+    And I send an A2A "GET" request with no version to "http://localhost:8080/agent-version-guard/v1/tasks"
+    Then the response status code should be 400
+
+    When I clear all headers
+    And I send an A2A "GET" request with version "99.0" to "http://localhost:8080/agent-version-guard/v1/tasks"
+    Then the response status code should be 400
+
+    # The version may travel in the query instead, for a client that cannot set
+    # headers. Same rules, same answers.
+    When I clear all headers
+    And I send an A2A "GET" request with no version to "http://localhost:8080/agent-version-guard/v1/tasks?A2A-Version=1.0"
+    Then the response status code should be 200
+
+    When I clear all headers
+    And I send an A2A "GET" request with no version to "http://localhost:8080/agent-version-guard/v1/tasks?A2A-Version=0.3"
+    Then the response status code should be 400
+
+    # Both representations at once must agree. Contradicting themselves is
+    # refused even though one of the two values is correct, because which one an
+    # intermediary would have kept is not something a client gets to leave open.
+    When I clear all headers
+    And I send an A2A "GET" request with version "1.0" to "http://localhost:8080/agent-version-guard/v1/tasks?A2A-Version=0.3"
+    Then the response status code should be 400
+
+    When I clear all headers
+    And I send an A2A "GET" request with version "1.0" to "http://localhost:8080/agent-version-guard/v1/tasks?A2A-Version=1.0"
+    Then the response status code should be 200
+
+    # The version is checked before the operation is, so a request that is wrong
+    # about both is reported as the version problem: the gateway never reads the
+    # body, and a 404 here would mean the guard ran too late.
+    When I clear all headers
+    And I send an A2A JSON-RPC request with no version to "http://localhost:8080/agent-version-guard":
+      """
+      {"jsonrpc": "2.0", "id": 1, "method": "message/send", "params": {}}
+      """
+    Then the response status code should be 400
+
+    # And once the version is right, the body's own failure is reported as
+    # itself: an unknown 1.0 operation is still a 404.
+    When I clear all headers
+    And I send an A2A JSON-RPC request to "http://localhost:8080/agent-version-guard":
+      """
+      {"jsonrpc": "2.0", "id": 1, "method": "message/send", "params": {}}
+      """
+    Then the response status code should be 404
+
+    # Discovery is deliberately unversioned: a client commonly fetches the card
+    # in order to learn which versions the Agent speaks, so requiring the answer
+    # in the question would make the card unreachable to a new client.
+    When I clear all headers
+    And I send a GET request to "http://localhost:8080/agent-version-guard/.well-known/agent-card.json"
+    Then the response status code should be 200
+
+    Given I authenticate using basic auth as "admin"
+    When I delete the Agent "agent-version-guard"
+    Then the response should be successful
+
   # ==================== DEPLOY-TIME REJECTIONS ====================
 
   # Two route collisions are possible and they are caught by different code, so
