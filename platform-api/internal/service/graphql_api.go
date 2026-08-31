@@ -375,7 +375,7 @@ func (s *GraphQLAPIService) GetSDL(orgUUID, handle string) (string, error) {
 }
 
 // List retrieves GraphQL APIs for an organization, filtered by project.
-func (s *GraphQLAPIService) List(orgUUID, projectHandle string, limit, offset int) (*api.GraphQLAPIListResponse, error) {
+func (s *GraphQLAPIService) List(orgUUID, projectHandle string, opts repository.ListOptions) (*api.GraphQLAPIListResponse, error) {
 	projectUUID := ""
 	// If a project handle is provided, resolve it and validate that it belongs
 	// to the organization (mirrors internal/service/api.go's
@@ -392,14 +392,14 @@ func (s *GraphQLAPIService) List(orgUUID, projectHandle string, limit, offset in
 		projectUUID = project.ID
 	}
 
-	apis, err := s.repo.List(orgUUID, projectUUID, limit, offset)
+	apis, err := s.repo.List(orgUUID, projectUUID, opts)
 	if err != nil {
 		return nil, fmt.Errorf("failed to list GraphQL APIs: %w", err)
 	}
 
 	var totalCount int
 	if projectUUID != "" {
-		totalCount, err = s.repo.CountByProject(orgUUID, projectUUID)
+		totalCount, err = s.repo.CountByProject(orgUUID, projectUUID, opts.Search)
 	} else {
 		totalCount, err = s.repo.Count(orgUUID)
 	}
@@ -410,8 +410,8 @@ func (s *GraphQLAPIService) List(orgUUID, projectHandle string, limit, offset in
 	resp := &api.GraphQLAPIListResponse{
 		Count: len(apis),
 		Pagination: api.Pagination{
-			Limit:  limit,
-			Offset: offset,
+			Limit:  opts.Limit,
+			Offset: opts.Offset,
 			Total:  totalCount,
 		},
 	}
