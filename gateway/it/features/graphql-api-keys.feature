@@ -17,9 +17,9 @@
 # --------------------------------------------------------------------
 
 # Mirrors features/api-keys.feature (RestApi) scenario-for-scenario against the
-# /graphql-apis/{id}/api-keys endpoints added to close the gap identified in
-# docs/specs/graphql-api-support.md - the API key CRUD logic itself is shared,
-# kind-agnostic service code (utils.APIKeyService), so this exists primarily to
+# /graphql-apis/{id}/api-keys endpoints. The API key CRUD logic itself is
+# shared, kind-agnostic service code (utils.APIKeyService), so this exists
+# primarily to
 # guard the gateway-controller wiring specific to the GraphQL path: the OpenAPI
 # spec paths, the ServerInterface methods, and the relativeRoles auth-route map
 # entries in cmd/controller/main.go (a route missing from that map is denied as
