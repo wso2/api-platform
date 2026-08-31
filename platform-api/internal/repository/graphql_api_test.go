@@ -291,7 +291,7 @@ func TestGraphQLAPIRepo_List(t *testing.T) {
 		t.Fatalf("Create failed: %v", err)
 	}
 
-	all, err := repo.List(orgUUID, "", 100, 0)
+	all, err := repo.List(orgUUID, "", ListOptions{Limit: 100, Offset: 0})
 	if err != nil {
 		t.Fatalf("List (no project filter) failed: %v", err)
 	}
@@ -299,7 +299,7 @@ func TestGraphQLAPIRepo_List(t *testing.T) {
 		t.Fatalf("expected 2 GraphQL APIs for org, got %d", len(all))
 	}
 
-	filtered, err := repo.List(orgUUID, projectUUID, 100, 0)
+	filtered, err := repo.List(orgUUID, projectUUID, ListOptions{Limit: 100, Offset: 0})
 	if err != nil {
 		t.Fatalf("List (project filter) failed: %v", err)
 	}
@@ -309,7 +309,7 @@ func TestGraphQLAPIRepo_List(t *testing.T) {
 
 	otherOrg := "org-graphql-list-002"
 	createTestOrganizationAndProject(t, db, otherOrg, "project-graphql-list-other-org")
-	emptyList, err := repo.List(otherOrg, "", 100, 0)
+	emptyList, err := repo.List(otherOrg, "", ListOptions{Limit: 100, Offset: 0})
 	if err != nil {
 		t.Fatalf("List for a different org failed: %v", err)
 	}
@@ -341,7 +341,7 @@ func TestGraphQLAPIRepo_List_PaginationBoundaries(t *testing.T) {
 		}
 	}
 
-	page1, err := repo.List(orgUUID, "", 1, 0)
+	page1, err := repo.List(orgUUID, "", ListOptions{Limit: 1, Offset: 0})
 	if err != nil {
 		t.Fatalf("List (limit=1, offset=0) failed: %v", err)
 	}
@@ -349,7 +349,7 @@ func TestGraphQLAPIRepo_List_PaginationBoundaries(t *testing.T) {
 		t.Fatalf("expected page 1 = [page-graphql-c], got %+v", page1)
 	}
 
-	page2, err := repo.List(orgUUID, "", 1, 1)
+	page2, err := repo.List(orgUUID, "", ListOptions{Limit: 1, Offset: 1})
 	if err != nil {
 		t.Fatalf("List (limit=1, offset=1) failed: %v", err)
 	}
@@ -357,12 +357,111 @@ func TestGraphQLAPIRepo_List_PaginationBoundaries(t *testing.T) {
 		t.Fatalf("expected page 2 = [page-graphql-b], got %+v", page2)
 	}
 
-	pastEnd, err := repo.List(orgUUID, "", 10, 3)
+	pastEnd, err := repo.List(orgUUID, "", ListOptions{Limit: 10, Offset: 3})
 	if err != nil {
 		t.Fatalf("List (offset past the end) failed: %v", err)
 	}
 	if len(pastEnd) != 0 {
 		t.Fatalf("expected an empty page once offset exceeds the row count, got %+v", pastEnd)
+	}
+}
+
+// TestGraphQLAPIRepo_List_Search pins the fix for the gap where List/
+// CountByProject silently ignored the spec's documented query parameter: a
+// search with no matching handle must return an empty result and a total of
+// 0, not the whole unfiltered collection.
+func TestGraphQLAPIRepo_List_Search(t *testing.T) {
+	db, cleanup := setupTestDB(t)
+	t.Cleanup(cleanup)
+
+	repo := NewGraphQLAPIRepo(db, NewArtifactTableRegistry())
+
+	orgUUID := "org-graphql-search-001"
+	projectUUID := "project-graphql-search-001"
+	createTestOrganizationAndProject(t, db, orgUUID, projectUUID)
+
+	if err := repo.Create(newTestGraphQLAPI("countries-graphql-api", orgUUID, projectUUID)); err != nil {
+		t.Fatalf("Create failed: %v", err)
+	}
+
+	matched, err := repo.List(orgUUID, projectUUID, ListOptions{Limit: 100, Search: "countries"})
+	if err != nil {
+		t.Fatalf("List (matching search) failed: %v", err)
+	}
+	if len(matched) != 1 {
+		t.Fatalf("expected 1 match for a search matching the handle, got %d", len(matched))
+	}
+
+	noMatch, err := repo.List(orgUUID, projectUUID, ListOptions{Limit: 100, Search: "zzz-no-match"})
+	if err != nil {
+		t.Fatalf("List (non-matching search) failed: %v", err)
+	}
+	if len(noMatch) != 0 {
+		t.Fatalf("expected an empty result for a non-matching search, got %+v", noMatch)
+	}
+
+	total, err := repo.CountByProject(orgUUID, projectUUID, "zzz-no-match")
+	if err != nil {
+		t.Fatalf("CountByProject (non-matching search) failed: %v", err)
+	}
+	if total != 0 {
+		t.Fatalf("expected total 0 for a non-matching search, got %d", total)
+	}
+}
+
+// TestGraphQLAPIRepo_List_SortBy pins sortBy=name changing the ordering
+// (previously always ORDER BY created_at DESC regardless of the request),
+// and that an unrecognized sortBy token falls back to the default order
+// (matching the shared allowlist's documented fallback behavior) rather than
+// erroring.
+func TestGraphQLAPIRepo_List_SortBy(t *testing.T) {
+	db, cleanup := setupTestDB(t)
+	t.Cleanup(cleanup)
+
+	repo := NewGraphQLAPIRepo(db, NewArtifactTableRegistry())
+
+	orgUUID := "org-graphql-sort-001"
+	projectUUID := "project-graphql-sort-001"
+	createTestOrganizationAndProject(t, db, orgUUID, projectUUID)
+
+	fixtures := []struct{ handle, name string }{
+		{"sort-graphql-a", "Charlie API"},
+		{"sort-graphql-b", "Alpha API"},
+		{"sort-graphql-c", "Bravo API"},
+	}
+	for _, f := range fixtures {
+		a := newTestGraphQLAPI(f.handle, orgUUID, projectUUID)
+		a.Name = f.name
+		if err := repo.Create(a); err != nil {
+			t.Fatalf("Create %s failed: %v", f.handle, err)
+		}
+	}
+
+	byNameAsc, err := repo.List(orgUUID, projectUUID, ListOptions{Limit: 100, SortBy: "name", SortOrder: "asc"})
+	if err != nil {
+		t.Fatalf("List (sortBy=name, asc) failed: %v", err)
+	}
+	if len(byNameAsc) != 3 || byNameAsc[0].Name != "Alpha API" || byNameAsc[1].Name != "Bravo API" || byNameAsc[2].Name != "Charlie API" {
+		names := make([]string, len(byNameAsc))
+		for i, a := range byNameAsc {
+			names[i] = a.Name
+		}
+		t.Fatalf("expected [Alpha API, Bravo API, Charlie API], got %v", names)
+	}
+
+	// An unrecognized sortBy token must fall back to the default order
+	// (created_at) rather than erroring or being interpolated into SQL —
+	// creation order here is a, b, c, so default DESC order is c, b, a.
+	fallback, err := repo.List(orgUUID, projectUUID, ListOptions{Limit: 100, SortBy: "not-a-real-column"})
+	if err != nil {
+		t.Fatalf("List (unrecognized sortBy) failed: %v", err)
+	}
+	if len(fallback) != 3 || fallback[0].Handle != "sort-graphql-c" || fallback[1].Handle != "sort-graphql-b" || fallback[2].Handle != "sort-graphql-a" {
+		handles := make([]string, len(fallback))
+		for i, a := range fallback {
+			handles[i] = a.Handle
+		}
+		t.Fatalf("expected fallback to default created_at DESC order [c, b, a], got %v", handles)
 	}
 }
 

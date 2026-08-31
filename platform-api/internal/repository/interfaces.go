@@ -320,9 +320,9 @@ type GraphQLAPIRepository interface {
 	Create(a *model.GraphQLAPI) error
 	GetByHandle(handle, orgUUID string) (*model.GraphQLAPI, error)
 	GetByUUID(uuid, orgUUID string) (*model.GraphQLAPI, error)
-	List(orgUUID, projectUUID string, limit, offset int) ([]*model.GraphQLAPI, error)
+	List(orgUUID, projectUUID string, opts ListOptions) ([]*model.GraphQLAPI, error)
 	Count(orgUUID string) (int, error)
-	CountByProject(orgUUID, projectUUID string) (int, error)
+	CountByProject(orgUUID, projectUUID, search string) (int, error)
 	Update(a *model.GraphQLAPI) error
 	Delete(handle, orgUUID string) error
 	Exists(handle, orgUUID string) (bool, error)

@@ -154,9 +154,9 @@ func (h *GraphQLAPIHandler) ListGraphQLAPIs(w http.ResponseWriter, r *http.Reque
 		return apperror.ValidationFailed.New("projectId query parameter is required")
 	}
 
-	limit, offset := parsePagination(r)
+	opts := parseListOptions(r)
 
-	resp, err := h.graphqlAPIService.List(orgId, projectId, limit, offset)
+	resp, err := h.graphqlAPIService.List(orgId, projectId, opts)
 	if err != nil {
 		return serviceError(err, fmt.Sprintf("failed to get GraphQL APIs for project %s in org %s", projectId, orgId))
 	}
