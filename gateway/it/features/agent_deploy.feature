@@ -25,6 +25,18 @@
 # Persistence across a controller restart is NOT covered here. Nothing in this
 # file restarts anything, so an Agent that is stored but never restored would
 # pass every scenario below. That property lives in startup-db-bootstrap.feature.
+#
+# The conformant calls below are made with the official Go A2A SDK, against an
+# agent built on the official Python SDK: two independent implementations of the
+# protocol with the gateway between them, rather than two halves of one test
+# agreeing with each other. Requests that are deliberately NOT conformant — a
+# missing or wrong protocol version, an unknown JSON-RPC method — stay on the raw
+# HTTP steps, because a conformant client cannot produce them.
+#
+# Every SDK client is built from an explicit gateway endpoint. Resolving a
+# passthrough card and following the URL inside it would reach the agent
+# directly: that card advertises the upstream's own address, so such a test would
+# pass having exercised no gateway route at all.
 
 Feature: Agent deployment and A2A routing
   As an API developer
@@ -34,6 +46,307 @@ Feature: Agent deployment and A2A routing
   Background:
     Given the gateway services are running
     And I authenticate using basic auth as "admin"
+
+  # ==================== CROSS-TRANSPORT INVOCATION ====================
+
+  # One canonical operation, two bindings, one agent behind them. Each binding is
+  # driven by its own SDK client so neither can borrow the other's transport, and
+  # the two results are compared: reaching the agent over both is not the claim —
+  # producing the same protocol result is.
+  Scenario: One canonical operation is invoked over both bindings with the official A2A SDK
+    When I deploy this Agent configuration:
+      """
+      apiVersion: gateway.api-platform.wso2.com/v1
+      kind: Agent
+      metadata:
+        name: agent-sdk-both
+      spec:
+        displayName: Agent SDK Both Bindings
+        version: v1.0
+        context: /agent-sdk-both
+        upstream:
+          url: http://a2a-trip-planner:9099
+        a2a:
+          protocolVersion: "1.0"
+          operationConfigs:
+            transports:
+              - protocolBinding: JSONRPC
+                pathPrefix: /
+              - protocolBinding: HTTP+JSON
+                pathPrefix: /v1
+          agentCard:
+            public:
+              mode: passthrough
+      """
+    Then the response should be successful
+    And I wait for policy snapshot sync
+
+    When I clear all headers
+    And I create an A2A client "rpc" for the "JSONRPC" binding at "http://localhost:8080/agent-sdk-both"
+    And I create an A2A client "rest" for the "HTTP+JSON" binding at "http://localhost:8080/agent-sdk-both/v1"
+
+    When the A2A client "rpc" sends the message "Plan a 3-day trip to Kandy"
+    Then the A2A client "rpc" should have received a task in state "TASK_STATE_COMPLETED"
+    And the A2A client "rpc" should have received an artifact containing "Trip plan for Kandy: 3 days"
+
+    When the A2A client "rest" sends the message "Plan a 3-day trip to Kandy"
+    Then the A2A client "rest" should have received a task in state "TASK_STATE_COMPLETED"
+    And the A2A client "rest" should have received an artifact containing "Trip plan for Kandy: 3 days"
+
+    # The itineraries are fully determined by the request, so equal artifacts mean
+    # both bindings carried the same request to the same agent and brought back
+    # the same answer.
+    Then the A2A clients "rpc" and "rest" should have received the same artifact
+
+    Given I authenticate using basic auth as "admin"
+    When I delete the Agent "agent-sdk-both"
+    Then the response should be successful
+
+  # ==================== MANAGEMENT LIFECYCLE ====================
+
+  # The management half of an Agent's life, with a conformant invocation in the
+  # middle so "the resource exists" and "the resource is reachable" are both
+  # asserted. The 404s at the end are what say a delete removed the routes rather
+  # than only the record.
+  Scenario: An Agent can be created, listed, fetched, updated, invoked and deleted
+    When I deploy this Agent configuration:
+      """
+      apiVersion: gateway.api-platform.wso2.com/v1
+      kind: Agent
+      metadata:
+        name: agent-lifecycle
+      spec:
+        displayName: Agent Lifecycle
+        version: v1.0
+        context: /agent-lifecycle
+        upstream:
+          url: http://a2a-trip-planner:9099
+        a2a:
+          protocolVersion: "1.0"
+          operationConfigs:
+            transports:
+              - protocolBinding: JSONRPC
+                pathPrefix: /
+              - protocolBinding: HTTP+JSON
+                pathPrefix: /v1
+          agentCard:
+            public:
+              mode: passthrough
+      """
+    Then the response should be successful
+    And I wait for policy snapshot sync
+
+    When I list all Agents
+    Then the response should be successful
+    And the response should be valid JSON
+    And the JSON response field "count" should be 1
+
+    When I get the Agent "agent-lifecycle"
+    Then the response should be successful
+    And the JSON response field "spec.displayName" should be "Agent Lifecycle"
+
+    Given I authenticate using basic auth as "admin"
+    When I update the Agent "agent-lifecycle" with:
+      """
+      apiVersion: gateway.api-platform.wso2.com/v1
+      kind: Agent
+      metadata:
+        name: agent-lifecycle
+      spec:
+        displayName: Agent Lifecycle Updated
+        version: v1.0
+        context: /agent-lifecycle
+        upstream:
+          url: http://a2a-trip-planner:9099
+        a2a:
+          protocolVersion: "1.0"
+          operationConfigs:
+            transports:
+              - protocolBinding: JSONRPC
+                pathPrefix: /
+              - protocolBinding: HTTP+JSON
+                pathPrefix: /v1
+          agentCard:
+            public:
+              mode: passthrough
+      """
+    Then the response should be successful
+    And I wait for policy snapshot sync
+
+    When I clear all headers
+    And I create an A2A client "rest" for the "HTTP+JSON" binding at "http://localhost:8080/agent-lifecycle/v1"
+    And the A2A client "rest" sends the message "Plan a 2-day trip to Ella"
+    Then the A2A client "rest" should have received a task in state "TASK_STATE_COMPLETED"
+    And the A2A client "rest" should have received an artifact containing "Trip plan for Ella: 2 days"
+
+    Given I authenticate using basic auth as "admin"
+    When I delete the Agent "agent-lifecycle"
+    Then the response should be successful
+
+    When I list all Agents
+    Then the response should be successful
+    And the JSON response field "count" should be 0
+
+    # Both bindings, because a delete that removed one route set and left the
+    # other would otherwise pass.
+    When I clear all headers
+    And I send an A2A "GET" request to "http://localhost:8080/agent-lifecycle/v1/tasks"
+    Then the response status code should be 404
+
+    When I clear all headers
+    And I send an A2A JSON-RPC request to "http://localhost:8080/agent-lifecycle":
+      """
+      {"jsonrpc": "2.0", "id": 1, "method": "ListTasks", "params": {}}
+      """
+    Then the response status code should be 404
+
+  # ==================== ALL ELEVEN OPERATIONS, BOTH BINDINGS ====================
+
+  # Enumerated rather than described as "the lifecycle", which reads as nine and
+  # silently drops the two that do not fit a task's arc — SendStreamingMessage and
+  # GetExtendedAgentCard. Both are here for reachability on both bindings only;
+  # their semantics belong to agent_streaming.feature and agent_card.feature.
+  #
+  # The order is dictated by what each operation needs to act on: a completed task
+  # for the first group, then a deliberately long-running one, because GetTask,
+  # SubscribeToTask and CancelTask against an already-finished task exercise none
+  # of the states they exist for.
+  Scenario: All eleven A2A 1.0 operations are reachable over both bindings through the official SDK
+    When I deploy this Agent configuration:
+      """
+      apiVersion: gateway.api-platform.wso2.com/v1
+      kind: Agent
+      metadata:
+        name: agent-sdk-operations
+      spec:
+        displayName: Agent SDK Operations
+        version: v1.0
+        context: /agent-sdk-operations
+        upstream:
+          url: http://a2a-trip-planner:9099
+        a2a:
+          protocolVersion: "1.0"
+          operationConfigs:
+            transports:
+              - protocolBinding: JSONRPC
+                pathPrefix: /
+              - protocolBinding: HTTP+JSON
+                pathPrefix: /v1
+          agentCard:
+            public:
+              mode: passthrough
+      """
+    Then the response should be successful
+    And I wait for policy snapshot sync
+
+    # ---- HTTP+JSON ----
+    When I clear all headers
+    And I create an A2A client "rest" for the "HTTP+JSON" binding at "http://localhost:8080/agent-sdk-operations/v1"
+
+    # 1. SendMessage
+    When the A2A client "rest" sends the message "Plan a 3-day trip to Kandy"
+    Then the A2A client "rest" should have received a task in state "TASK_STATE_COMPLETED"
+    And the A2A client "rest" should have received an artifact containing "Trip plan for Kandy: 3 days"
+
+    # 2. SendStreamingMessage — drained for reachability; event semantics live in
+    #    agent_streaming.feature.
+    When the A2A client "rest" streams the message "Plan a 2-day trip to Ella"
+    Then the A2A client "rest" should have received at least 2 stream events
+    And the A2A client "rest" stream should end in state "TASK_STATE_COMPLETED"
+
+    # A task that is genuinely still running, for the six operations below.
+    When the A2A client "rest" sends the message "Plan a trip to Galle slowly" and returns immediately
+    Then the A2A client "rest" should have received a task that is still running
+
+    # 3. GetTask
+    When the A2A client "rest" gets the task
+    Then the A2A client "rest" should have received a task that is still running
+
+    # 4. ListTasks
+    When the A2A client "rest" lists tasks
+    Then the A2A client "rest" should have received a task list containing the task
+
+    # 5-8. The four push-notification-config operations.
+    When the A2A client "rest" creates a push notification config "rest-push-1" for the task
+    Then the A2A client "rest" should have received a push config "rest-push-1"
+    When the A2A client "rest" gets the push notification config "rest-push-1" for the task
+    Then the A2A client "rest" should have received a push config "rest-push-1"
+    When the A2A client "rest" lists push notification configs for the task
+    Then the A2A client "rest" should have received 1 push config
+    When the A2A client "rest" deletes the push notification config "rest-push-1" for the task
+    Then the A2A client "rest" call should have succeeded
+    When the A2A client "rest" lists push notification configs for the task
+    Then the A2A client "rest" should have received 0 push configs
+
+    # 9. SubscribeToTask — re-attaches to the running task and reads a live event.
+    #    Over HTTP+JSON this is a POST, per the binding table's resolution of the
+    #    upstream verb disagreement.
+    When the A2A client "rest" subscribes to the task and reads 1 event
+    Then the A2A client "rest" should have received at least 1 stream event
+
+    # 10. CancelTask — real, because the task is still running.
+    When the A2A client "rest" cancels the task
+    Then the A2A client "rest" should have received a task in state "TASK_STATE_CANCELED"
+
+    # 11. GetExtendedAgentCard — 200 and a card; which card, and under what
+    #     conditions, is agent_card.feature's business.
+    When the A2A client "rest" gets the extended Agent Card
+    Then the A2A client "rest" call should have succeeded
+    And the A2A client "rest" should have received an Agent Card named "Trip Planner"
+
+    # ---- JSON-RPC: the same eleven ----
+    When I clear all headers
+    And I create an A2A client "rpc" for the "JSONRPC" binding at "http://localhost:8080/agent-sdk-operations"
+
+    # 1. SendMessage
+    When the A2A client "rpc" sends the message "Plan a 3-day trip to Kandy"
+    Then the A2A client "rpc" should have received a task in state "TASK_STATE_COMPLETED"
+    And the A2A client "rpc" should have received an artifact containing "Trip plan for Kandy: 3 days"
+
+    # 2. SendStreamingMessage
+    When the A2A client "rpc" streams the message "Plan a 2-day trip to Ella"
+    Then the A2A client "rpc" should have received at least 2 stream events
+    And the A2A client "rpc" stream should end in state "TASK_STATE_COMPLETED"
+
+    When the A2A client "rpc" sends the message "Plan a trip to Galle slowly" and returns immediately
+    Then the A2A client "rpc" should have received a task that is still running
+
+    # 3. GetTask
+    When the A2A client "rpc" gets the task
+    Then the A2A client "rpc" should have received a task that is still running
+
+    # 4. ListTasks
+    When the A2A client "rpc" lists tasks
+    Then the A2A client "rpc" should have received a task list containing the task
+
+    # 5-8. Push notification configs.
+    When the A2A client "rpc" creates a push notification config "rpc-push-1" for the task
+    Then the A2A client "rpc" should have received a push config "rpc-push-1"
+    When the A2A client "rpc" gets the push notification config "rpc-push-1" for the task
+    Then the A2A client "rpc" should have received a push config "rpc-push-1"
+    When the A2A client "rpc" lists push notification configs for the task
+    Then the A2A client "rpc" should have received 1 push config
+    When the A2A client "rpc" deletes the push notification config "rpc-push-1" for the task
+    Then the A2A client "rpc" call should have succeeded
+    When the A2A client "rpc" lists push notification configs for the task
+    Then the A2A client "rpc" should have received 0 push configs
+
+    # 9. SubscribeToTask
+    When the A2A client "rpc" subscribes to the task and reads 1 event
+    Then the A2A client "rpc" should have received at least 1 stream event
+
+    # 10. CancelTask
+    When the A2A client "rpc" cancels the task
+    Then the A2A client "rpc" should have received a task in state "TASK_STATE_CANCELED"
+
+    # 11. GetExtendedAgentCard
+    When the A2A client "rpc" gets the extended Agent Card
+    Then the A2A client "rpc" call should have succeeded
+    And the A2A client "rpc" should have received an Agent Card named "Trip Planner"
+
+    Given I authenticate using basic auth as "admin"
+    When I delete the Agent "agent-sdk-operations"
+    Then the response should be successful
 
   # ==================== ROUTES FOLLOW CONFIGURED TRANSPORTS ====================
 

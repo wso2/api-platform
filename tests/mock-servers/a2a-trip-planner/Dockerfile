@@ -11,7 +11,7 @@ WORKDIR /app
 COPY requirements.txt ./
 RUN pip install --no-cache-dir -r requirements.txt
 
-COPY config.py agent.py main.py ./
+COPY config.py agent.py version_query.py main.py ./
 
 EXPOSE 9099
 

@@ -55,6 +55,13 @@ import (
 //
 // The third is byte-identity: comparing the card the gateway serves against the
 // card the agent serves, which needs both bodies held at once.
+//
+// Everything here is a raw wire probe, and that is the division of labour with
+// steps_a2a_client.go: the conformant path is driven by the official Go A2A SDK
+// there, while these steps keep what a conformant client cannot produce or
+// expose — a missing or contradictory protocol version, an unknown JSON-RPC
+// method, a numeric request id that must come back numeric, exact status codes
+// and framing, and the Agent Card's byte and cache semantics.
 
 // a2aStreamEvent is one SSE data payload and when it arrived, measured from the
 // moment the response headers came back rather than from when the request was
