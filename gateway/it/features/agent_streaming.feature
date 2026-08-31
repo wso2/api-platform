@@ -313,3 +313,73 @@ Feature: Agent streaming operations
     Given I authenticate using basic auth as "admin"
     When I delete the Agent "agent-stream-analytics"
     Then the response should be successful
+
+  # The raw scenarios above assert the wire: SSE framing, chunked transfer, no
+  # content-length, and the bytes of each event as it arrives. Those are written
+  # per binding, because the two frame their payloads differently.
+  #
+  # This one asserts what a real client sees: decoded events, in order, with a
+  # terminal state and an artifact — through the official Go SDK, which does the
+  # per-binding decoding itself. A gateway that mangled the JSON-RPC envelope or
+  # dropped the StreamResponse wrapper would still emit plausible-looking bytes
+  # and still pass every raw assertion; the SDK would fail to decode them.
+  #
+  # The arrival-time assertion is repeated here rather than left to the raw
+  # scenarios, because the timestamps taken here are the ones a client actually
+  # experiences: recorded as each event is yielded by the SDK's iterator, after
+  # its own decoding, not as bytes land on the socket.
+  Scenario: A conformant SDK client observes decoded events incrementally on both bindings
+    When I deploy this Agent configuration:
+      """
+      apiVersion: gateway.api-platform.wso2.com/v1
+      kind: Agent
+      metadata:
+        name: agent-stream-sdk
+      spec:
+        displayName: Agent Stream SDK
+        version: v1.0
+        context: /agent-stream-sdk
+        upstream:
+          url: http://a2a-trip-planner:9099
+        resilience:
+          idleTimeout: 30s
+        a2a:
+          protocolVersion: "1.0"
+          operationConfigs:
+            transports:
+              - protocolBinding: JSONRPC
+                pathPrefix: /
+              - protocolBinding: HTTP+JSON
+                pathPrefix: /v1
+          agentCard:
+            public:
+              mode: passthrough
+      """
+    Then the response should be successful
+    And I wait for policy snapshot sync
+
+    When I clear all headers
+    And I create an A2A client "rpc" for the "JSONRPC" binding at "http://localhost:8080/agent-stream-sdk"
+    And I create an A2A client "rest" for the "HTTP+JSON" binding at "http://localhost:8080/agent-stream-sdk/v1"
+
+    When the A2A client "rpc" streams the message "Plan a 3-day trip to Kandy"
+    Then the A2A client "rpc" should have received at least 3 stream events
+    And the A2A client "rpc" stream's first event should arrive before its last event
+    And the A2A client "rpc" should have received a stream event containing "TASK_STATE_WORKING"
+    And the A2A client "rpc" should have received a stream event containing "Trip plan for Kandy: 3 days"
+    And the A2A client "rpc" stream should end in state "TASK_STATE_COMPLETED"
+
+    When the A2A client "rest" streams the message "Plan a 3-day trip to Kandy"
+    Then the A2A client "rest" should have received at least 3 stream events
+    And the A2A client "rest" stream's first event should arrive before its last event
+    And the A2A client "rest" should have received a stream event containing "TASK_STATE_WORKING"
+    And the A2A client "rest" should have received a stream event containing "Trip plan for Kandy: 3 days"
+    And the A2A client "rest" stream should end in state "TASK_STATE_COMPLETED"
+
+    # The two bindings decoded to the same artifact, which is the streamed half of
+    # the cross-transport claim: one operation, one chain, two framings.
+    Then the A2A clients "rpc" and "rest" should have received the same artifact
+
+    Given I authenticate using basic auth as "admin"
+    When I delete the Agent "agent-stream-sdk"
+    Then the response should be successful

@@ -6,6 +6,10 @@ Route layout, which the gateway's Agent resource mirrors:
     /v1/...                    HTTP+JSON binding (one route per operation)
     /.well-known/agent-card.json   public Agent Card
 
+Every route is wrapped in A2AVersionQueryMiddleware, which accepts the protocol
+version stated as a query parameter as well as as a header (A2A 1.0 §3.6.1).
+The reference SDK reads the header only; see version_query.py.
+
 The two binding prefixes are the agent's own layout, not the gateway's. An
 Agent resource declares them as `pathPrefix` values and they travel upstream
 with the request, so these paths and those prefixes have to agree.
@@ -29,6 +33,7 @@ from starlette.applications import Starlette
 
 import config
 from agent import TripPlannerExecutor, extended_card, public_card
+from version_query import A2AVersionQueryMiddleware
 
 
 def build_app() -> Starlette:
@@ -58,7 +63,11 @@ def build_app() -> Starlette:
 
 
 def main() -> None:
-    app = build_app()
+    # The version shim wraps the whole app rather than one binding: §3.6.1's
+    # query alternative is a property of the protocol, not of a transport, and
+    # an agent that honoured it on only one of its two bindings would be a
+    # worse fixture than one that honoured it on neither.
+    app = A2AVersionQueryMiddleware(build_app())
     print(
         f'Trip Planner listening on http://{config.BIND_HOST}:{config.PORT} '
         f'(JSON-RPC {config.RPC_PATH}, HTTP+JSON {config.REST_PATH})',
