@@ -26,10 +26,9 @@ import (
 )
 
 const (
-	// maxGraphQLSDLUploadBytes bounds an uploaded SDL file — mirrors the 5 MiB
-	// ceiling the CLI's standalone-gateway sdlFile path already uses
-	// (cli/src/cmd/gateway/apply.go's maxGraphQLSDLFileBytes), so the limit is
-	// consistent regardless of which onboarding surface supplied the file.
+	// maxGraphQLSDLUploadBytes bounds an uploaded SDL file at 5 MiB, matching
+	// defaultOpenAPISpecMaxFetchBytes (openapi_spec_fetcher.go) so the ceiling
+	// is the same whether the schema arrives as a file upload or via sdlUrl.
 	maxGraphQLSDLUploadBytes = 5 << 20
 
 	// maxGraphQLMultipartRequestBytes bounds the whole multipart request body
