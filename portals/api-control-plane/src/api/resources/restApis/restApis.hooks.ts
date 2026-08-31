@@ -16,7 +16,12 @@
  * under the License.
  */
 
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import {
+  keepPreviousData,
+  useMutation,
+  useQuery,
+  useQueryClient,
+} from '@tanstack/react-query';
 
 import type { ApiError } from '../../core/errors';
 import { useApiScope } from '../../core/scope';
@@ -61,6 +66,12 @@ export type RestApiListFilters = Omit<ListRestApisQuery, 'projectId'>;
  * The query does not run until both org and project are known, so this never
  * fires a request that the server would reject — and, critically, never writes
  * into a cache entry keyed by an empty scope.
+ *
+ * `keepPreviousData` is the one pagination-specific exception the query client
+ * deliberately leaves to individual list queries: paging, sorting or searching
+ * changes the key, and without it the grid would unmount into a loading state
+ * on every page change. The previous page stays on screen (flagged by
+ * `isPlaceholderData`) until the next one arrives.
  */
 export const useRestApis = (
   filters: RestApiListFilters = {},
@@ -71,6 +82,7 @@ export const useRestApis = (
   return useQuery({
     ...restApiQueries.list(org!, { projectId: projectId!, ...filters }),
     enabled: Boolean(org && projectId),
+    placeholderData: keepPreviousData,
   });
 };
 
@@ -183,6 +195,45 @@ export const useDeleteRestApi = (overrides: { orgId?: string } = {}) => {
       }
       invalidate();
     },
+  });
+};
+
+/**
+ * How many ids are inspected before deciding a handle is free. The filter below
+ * is a *substring* match, so this bounds the superstring case ("orders-api"
+ * also matching "orders-api-v2"), not the number of APIs in the project.
+ */
+const AVAILABILITY_PROBE_LIMIT = 100;
+
+/**
+ * Whether `candidateId` is still free as a REST API handle in the active
+ * project: `data === true` means free, `false` means taken, `undefined` means
+ * not answered yet (no scope, blank candidate, still loading, or failed).
+ *
+ * Built on the list query rather than a detail probe, so a free handle is a
+ * plain 200 rather than a deliberate 404 sitting in the detail cache. The
+ * spec's `query` filter matches a *substring* of the handle, so the exact
+ * comparison happens here: `orders` is free even when `orders-v2` exists.
+ *
+ * Debounce the candidate at the call site (`useDebouncedValue`): this hook
+ * issues a request for every distinct value it is handed.
+ */
+export const useRestApiIdAvailability = (
+  candidateId: string | undefined,
+  overrides: { orgId?: string; projectId?: string } = {}
+) => {
+  const { org, projectId } = useApiScope(overrides);
+  const candidate = candidateId?.trim().toLowerCase() ?? '';
+
+  return useQuery({
+    ...restApiQueries.list(org!, {
+      projectId: projectId!,
+      query: candidate,
+      limit: AVAILABILITY_PROBE_LIMIT,
+    }),
+    enabled: Boolean(org && projectId && candidate),
+    select: (data: RestApiListResponse) =>
+      !(data.list ?? []).some((api) => api.id?.toLowerCase() === candidate),
   });
 };
 

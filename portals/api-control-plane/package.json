@@ -53,7 +53,8 @@
     "react": "19.2.3",
     "react-dom": "19.2.3",
     "react-intl": "10.1.20",
-    "react-router-dom": "7.9.4"
+    "react-router-dom": "7.9.4",
+    "swagger-ui-react": "5.32.14"
   },
   "devDependencies": {
     "@eslint/js": "9.26.0",
@@ -67,6 +68,7 @@
     "@types/node": "20.11.24",
     "@types/react": "19.2.2",
     "@types/react-dom": "19.2.2",
+    "@types/swagger-ui-react": "5.18.0",
     "@vitejs/plugin-basic-ssl": "1.1.0",
     "@vitejs/plugin-react": "4.2.1",
     "@vitest/coverage-v8": "2.1.8",

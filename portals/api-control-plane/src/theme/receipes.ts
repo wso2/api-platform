@@ -68,6 +68,28 @@ export const glassSurfaceSx = (theme: Theme) =>
   }) as const;
 
 /**
+ * Blur radius of a decorative colour wash. One value so every glow in a panel
+ * reads as the same light source rather than three unrelated smudges.
+ */
+const AMBIENT_GLOW_BLUR = '34px';
+
+/**
+ * A soft, blurred colour wash behind a decorative panel; the empty-state
+ * preview pane's ambient lighting.
+ *
+ * Only the parts that never vary live here: the blur, the circular shape, and
+ * taking the element out of both flow and hit-testing. Each call site supplies
+ * its own position, size and `bgcolor` (an `alpha()` of a palette token), since
+ * those are what place one glow versus another.
+ */
+export const ambientGlowSx = {
+  borderRadius: '50%',
+  filter: `blur(${AMBIENT_GLOW_BLUR})`,
+  pointerEvents: 'none',
+  position: 'absolute',
+} as const;
+
+/**
  * Hover treatment for a card that behaves as a button (the whole surface
  * navigates). Deliberately NOT a global `MuiCard` override: non-interactive
  * cards — the tab shell, the save bar, the Explore More panel — must not lift
@@ -83,6 +105,34 @@ export const interactiveCardSx = {
     transform: 'translateY(-3px)',
   },
 } as const;
+
+/**
+ * State layer for a card the user picks from a set of options: the API
+ * creation wizard's API-type and Gateway Creation's Gateway-type Card.
+ *
+ * `Form.CardButton` already owns the hover treatment; this adds the part that
+ * depends on *state*: a primary-tinted ring on the current choice, and a flat,
+ * dimmed surface for an option that is visible but cannot be picked (not yet
+ * released, or not offered by the selected proxy type). Disabling the click is
+ * the `disabled` prop's job, this only makes the state legible.
+ */
+export const selectableCardSx = (
+  theme: Theme,
+  state: { disabled?: boolean; selected?: boolean }
+) =>
+  ({
+    borderColor: state.selected ? 'primary.main' : 'divider',
+    ...(state.selected && {
+      backgroundColor: alpha(theme.palette.primary.main, 0.06),
+      boxShadow: theme.shadows[1],
+    }),
+    ...(state.disabled && {
+      backgroundColor: 'transparent',
+      borderColor: 'divider',
+      boxShadow: 'none',
+      opacity: 0.55,
+    }),
+  }) as const;
 
 /**
  * Upward elevation for a bar that floats over scrolling content (the develop

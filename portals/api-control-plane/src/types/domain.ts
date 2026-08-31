@@ -16,6 +16,8 @@
  * under the License.
  */
 
+import type { RestApi } from '@/api/resources/restApis';
+
 export type Organization = {
   id: string;
   numericId?: number;
@@ -57,6 +59,18 @@ export type ApiKind = 'API_PROXY' | 'SERVICE' | 'WEB_APP';
 
 export type ApiStatus = 'ACTIVE' | 'PENDING' | 'FAILED' | 'DRAFT';
 
+/**
+ * Lifecycle state of the API definition, as platform-api reports it
+ * (`RESTAPI.lifeCycleStatus`).
+ *
+ * Derived from the spec rather than restated, so a new state added upstream
+ * surfaces here as a typecheck failure instead of a silently unhandled chip.
+ * Distinct from `ApiStatus`, which is the console's coarser rollup — six
+ * lifecycle states collapse into four, so the rollup cannot be reversed and the
+ * original value has to travel alongside it.
+ */
+export type ApiLifeCycleStatus = NonNullable<RestApi['lifeCycleStatus']>;
+
 export type Api = {
   id: string;
   projectId: string;
@@ -76,14 +90,7 @@ export type Api = {
 
 // --- Develop section (API detail) ---
 
-export type HttpMethod =
-  | 'GET'
-  | 'POST'
-  | 'PUT'
-  | 'DELETE'
-  | 'PATCH'
-  | 'HEAD'
-  | 'OPTIONS';
+export type HttpMethod = 'GET' | 'POST' | 'PUT' | 'DELETE' | 'PATCH' | 'HEAD' | 'OPTIONS';
 
 /** A policy applied at the API or operation level (platform `Policy`). */
 export type ApiPolicy = {
@@ -116,6 +123,10 @@ export type ApiEndpoints = {
 export type ApiDetail = Api & {
   context?: string;
   transport?: string[];
+  /** Full lifecycle state, kept beside the lossy `status` rollup on `Api`. */
+  lifeCycleStatus?: ApiLifeCycleStatus;
+  /** True when the API was discovered from a data-plane gateway (read-only here). */
+  readOnly?: boolean;
   operations: ApiOperation[];
   policies: ApiPolicy[];
   endpoints: ApiEndpoints;
@@ -168,12 +179,7 @@ export type CreateApiKeyInput = {
  * platform-api waits for the gateway's acknowledgement.
  */
 export type GatewayDeploymentStatus =
-  | 'DEPLOYED'
-  | 'UNDEPLOYED'
-  | 'DEPLOYING'
-  | 'UNDEPLOYING'
-  | 'FAILED'
-  | 'ARCHIVED';
+  'DEPLOYED' | 'UNDEPLOYED' | 'DEPLOYING' | 'UNDEPLOYING' | 'FAILED' | 'ARCHIVED';
 
 /**
  * An immutable deployment artifact of an API on a gateway (platform-api
@@ -251,9 +257,7 @@ export type GatewayToken = {
  * the import variants create from an OpenAPI definition (URL or uploaded file).
  */
 export type CreateApiSource =
-  | { mode: 'scratch' }
-  | { mode: 'import-url'; url: string }
-  | { mode: 'import-file'; file: File };
+  { mode: 'scratch' } | { mode: 'import-url'; url: string } | { mode: 'import-file'; file: File };
 
 /** Backend (upstream) auth — maps to platform-api UpstreamDefinition.auth. */
 export type UpstreamAuth = {

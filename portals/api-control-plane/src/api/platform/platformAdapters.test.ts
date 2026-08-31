@@ -37,7 +37,7 @@ describe('createRestApiBody', () => {
   it('maps the required fields with id=handle and displayName=display', () => {
     const body = createRestApiBody(
       { ...base, apiContext: 'pizza', prodUrl: 'https://backend:5000' },
-      'proj-1'
+      'proj-1',
     );
     expect(body).toMatchObject({
       id: 'pizza-shack',
@@ -59,7 +59,7 @@ describe('createRestApiBody', () => {
   it('includes the sandbox upstream only when provided', () => {
     const body = createRestApiBody(
       { ...base, prodUrl: 'https://p', sandboxUrl: 'https://s' },
-      'proj-1'
+      'proj-1',
     );
     expect(body.upstream).toEqual({
       main: { url: 'https://p' },
@@ -80,7 +80,7 @@ describe('createRestApiBody', () => {
         sandboxUrl: 'https://s',
         upstreamAuth: { type: 'api-key', header: 'X-API-Key', value: 'secret' },
       },
-      'proj-1'
+      'proj-1',
     );
     const auth = { type: 'api-key', header: 'X-API-Key', value: 'secret' };
     expect(body.upstream).toEqual({
@@ -92,7 +92,7 @@ describe('createRestApiBody', () => {
   it('omits auth when no backend URL is set', () => {
     const body = createRestApiBody(
       { ...base, upstreamAuth: { type: 'bearer', value: 't' } },
-      'proj-1'
+      'proj-1',
     );
     expect(body.upstream).toBeUndefined();
   });
@@ -111,7 +111,7 @@ describe('createRestApiBody', () => {
           },
         ],
       },
-      'proj-1'
+      'proj-1',
     );
     expect(body.operations).toEqual([
       {
@@ -144,8 +144,7 @@ describe('restApiToApi', () => {
   });
 
   it('maps lifeCycleStatus to ApiStatus', () => {
-    const status = (s: string) =>
-      restApiToApi({ id: 'x', lifeCycleStatus: s }).status;
+    const status = (s: string) => restApiToApi({ id: 'x', lifeCycleStatus: s }).status;
     expect(status('PUBLISHED')).toBe('ACTIVE');
     expect(status('STAGED')).toBe('PENDING');
     expect(status('CREATED')).toBe('DRAFT');
@@ -215,14 +214,10 @@ describe('detailToRestApiBody round-trip', () => {
           name: 'list',
           method: 'GET',
           path: '/items',
-          policies: [
-            { name: 'rewrite', version: '2.0.0', params: { New_Path: '/v2' } },
-          ],
+          policies: [{ name: 'rewrite', version: '2.0.0', params: { New_Path: '/v2' } }],
         },
       ],
-      policies: [
-        { name: 'cors', version: '1.0.0', executionCondition: 'always' },
-      ],
+      policies: [{ name: 'cors', version: '1.0.0', executionCondition: 'always' }],
       endpoints: { prodUrl: 'https://p', sandboxUrl: 'https://s' },
       raw,
     };
@@ -235,9 +230,7 @@ describe('detailToRestApiBody round-trip', () => {
         request: {
           method: 'GET',
           path: '/items',
-          policies: [
-            { name: 'rewrite', version: '2.0.0', params: { New_Path: '/v2' } },
-          ],
+          policies: [{ name: 'rewrite', version: '2.0.0', params: { New_Path: '/v2' } }],
         },
       },
     ]);
@@ -250,6 +243,39 @@ describe('detailToRestApiBody round-trip', () => {
     });
   });
 
+  it('writes the edited description over the one raw still carries', () => {
+    const raw = { id: 'orders-api', description: 'the old one' };
+    const detail: ApiDetail = {
+      ...restApiToApi(raw),
+      description: 'the edited one',
+      context: '/orders',
+      transport: [],
+      operations: [],
+      policies: [],
+      endpoints: {},
+      raw,
+    };
+    expect(detailToRestApiBody(detail).description).toBe('the edited one');
+  });
+
+  it('clears the description with an empty string rather than dropping the key', () => {
+    const raw = { id: 'orders-api', description: 'the old one' };
+    const detail: ApiDetail = {
+      ...restApiToApi(raw),
+      description: undefined,
+      context: '/orders',
+      transport: [],
+      operations: [],
+      policies: [],
+      endpoints: {},
+      raw,
+    };
+    const body = detailToRestApiBody(detail);
+    // Omitting the key would leave the server's old value in place, so a
+    // cleared description has to be sent explicitly.
+    expect(body).toHaveProperty('description', '');
+  });
+
   it('omits the per-operation policies key when there are none', () => {
     const detail: ApiDetail = {
       ...restApiToApi({ id: 'x' }),
@@ -260,9 +286,7 @@ describe('detailToRestApiBody round-trip', () => {
       endpoints: { prodUrl: 'https://p' },
       raw: { id: 'x' },
     };
-    const op = (
-      detailToRestApiBody(detail).operations as Array<{ request: object }>
-    )[0];
+    const op = (detailToRestApiBody(detail).operations as Array<{ request: object }>)[0];
     expect(op.request).not.toHaveProperty('policies');
   });
 });

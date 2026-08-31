@@ -21,6 +21,7 @@ import type {
   ApiPolicy,
   Api,
   ApiDetail,
+  ApiLifeCycleStatus,
   ApiStatus,
   CreateApiInput,
   HttpMethod,
@@ -38,15 +39,29 @@ const str = (value: unknown): string =>
 
 const optStr = (value: unknown): string | undefined => str(value) || undefined;
 
-const HTTP_METHODS: HttpMethod[] = [
-  'GET',
-  'POST',
-  'PUT',
-  'DELETE',
-  'PATCH',
-  'HEAD',
-  'OPTIONS',
+const optBool = (value: unknown): boolean | undefined =>
+  typeof value === 'boolean' ? value : undefined;
+
+const LIFE_CYCLE_STATUSES: ApiLifeCycleStatus[] = [
+  'STAGED',
+  'CREATED',
+  'PUBLISHED',
+  'DEPRECATED',
+  'RETIRED',
+  'BLOCKED',
 ];
+
+/**
+ * Narrows `lifeCycleStatus` to the spec's enum, dropping anything unrecognised.
+ * An unknown state renders as "Unknown" rather than as a raw server string in a
+ * chip, and the `undefined` case is the same one a pre-lifecycle payload hits.
+ */
+const asLifeCycleStatus = (value: unknown): ApiLifeCycleStatus | undefined => {
+  const candidate = str(value).toUpperCase() as ApiLifeCycleStatus;
+  return LIFE_CYCLE_STATUSES.includes(candidate) ? candidate : undefined;
+};
+
+const HTTP_METHODS: HttpMethod[] = ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'HEAD', 'OPTIONS'];
 
 const asMethod = (value: unknown): HttpMethod => {
   const m = str(value).toUpperCase() as HttpMethod;
@@ -130,6 +145,10 @@ export const restApiToDetail = (value: unknown): ApiDetail => {
     ...restApiToApi(value),
     context: optStr(source.context),
     transport: arr(source.transport).map(str),
+    // `status` on the base Api is the lossy rollup; the header chip needs the
+    // real state, so both travel.
+    lifeCycleStatus: asLifeCycleStatus(source.lifeCycleStatus),
+    readOnly: optBool(source.readOnly),
     operations: arr(source.operations).map(toOperation),
     policies: arr(source.policies).map(toPolicy),
     endpoints: {
@@ -145,10 +164,13 @@ export const restApiToDetail = (value: unknown): ApiDetail => {
  * (preserving server-managed fields). `operations`/`policies`/`upstream` are
  * replaced from the edited detail.
  */
-export const detailToRestApiBody = (
-  detail: ApiDetail
-): Record<string, unknown> => {
+export const detailToRestApiBody = (detail: ApiDetail): Record<string, unknown> => {
   const base = { ...(detail.raw || {}) };
+  // `raw` still carries the description the GET returned, so an edited one has
+  // to be written over it — otherwise the PUT silently reverts the change.
+  // Empty string, not `undefined`: clearing a description is a real edit, and
+  // dropping the key would leave the old value in place.
+  base.description = detail.description ?? '';
   base.operations = detail.operations.map((op) => ({
     name: op.name,
     description: op.description,
@@ -160,9 +182,7 @@ export const detailToRestApiBody = (
             policies: op.policies.map((p) => ({
               name: p.name,
               version: p.version,
-              ...(p.executionCondition
-                ? { executionCondition: p.executionCondition }
-                : {}),
+              ...(p.executionCondition ? { executionCondition: p.executionCondition } : {}),
               ...(p.params ? { params: p.params } : {}),
             })),
           }
@@ -172,9 +192,7 @@ export const detailToRestApiBody = (
   base.policies = detail.policies.map((p) => ({
     name: p.name,
     version: p.version,
-    ...(p.executionCondition
-      ? { executionCondition: p.executionCondition }
-      : {}),
+    ...(p.executionCondition ? { executionCondition: p.executionCondition } : {}),
     ...(p.params ? { params: p.params } : {}),
   }));
   const main: Record<string, unknown> = { url: detail.endpoints.prodUrl };
@@ -189,7 +207,7 @@ export const detailToRestApiBody = (
 // --- create-body builders (console CreateApiInput → platform-api) ---
 
 const buildUpstreamAuth = (
-  auth: CreateApiInput['upstreamAuth']
+  auth: CreateApiInput['upstreamAuth'],
 ): Record<string, unknown> | undefined => {
   if (!auth || !auth.type) return undefined;
   const out: Record<string, unknown> = { type: auth.type };
@@ -198,9 +216,7 @@ const buildUpstreamAuth = (
   return out;
 };
 
-const buildUpstream = (
-  input: CreateApiInput
-): Record<string, unknown> | undefined => {
+const buildUpstream = (input: CreateApiInput): Record<string, unknown> | undefined => {
   const prod = (input.prodUrl || '').trim();
   if (!prod) return undefined;
   const auth = buildUpstreamAuth(input.upstreamAuth);
@@ -229,12 +245,10 @@ const restContext = (input: CreateApiInput): string =>
  */
 export const createRestApiBody = (
   input: CreateApiInput,
-  projectId: string
+  projectId: string,
 ): Record<string, unknown> => {
   const transport =
-    input.transport && input.transport.length > 0
-      ? input.transport
-      : ['http', 'https'];
+    input.transport && input.transport.length > 0 ? input.transport : ['http', 'https'];
   const body: Record<string, unknown> = {
     id: input.name,
     displayName: input.displayName || input.name,
@@ -253,9 +267,7 @@ export const createRestApiBody = (
       request: {
         method: op.method,
         path: op.path,
-        ...(op.policies && op.policies.length > 0
-          ? { policies: op.policies }
-          : {}),
+        ...(op.policies && op.policies.length > 0 ? { policies: op.policies } : {}),
       },
     }));
   }

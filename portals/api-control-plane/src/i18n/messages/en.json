@@ -119,30 +119,6 @@
   "api.create.apiType.webSub.title": {
     "defaultMessage": "WebSub API"
   },
-  "api.create.approach.contract.description": {
-    "defaultMessage": "Upload or link an OpenAPI, GraphQL or gRPC definition."
-  },
-  "api.create.approach.contract.title": {
-    "defaultMessage": "Import API Contract"
-  },
-  "api.create.approach.endpoint.description": {
-    "defaultMessage": "Point the gateway at a backend URL and refine later."
-  },
-  "api.create.approach.endpoint.title": {
-    "defaultMessage": "Start with Endpoint"
-  },
-  "api.create.approach.genAi.description": {
-    "defaultMessage": "Describe the API in plain language and let AI draft it."
-  },
-  "api.create.approach.genAi.title": {
-    "defaultMessage": "Generate with AI"
-  },
-  "api.create.approach.scratch.description": {
-    "defaultMessage": "Create an empty API and add resources by hand."
-  },
-  "api.create.approach.scratch.title": {
-    "defaultMessage": "Start from Scratch"
-  },
   "api.create.defineApi.action.back": {
     "defaultMessage": "Back",
     "description": "Returns to the previous step of the API creation wizard."
@@ -475,24 +451,6 @@
   },
   "api.create.gitHubDirectory.truncated": {
     "defaultMessage": "This repository is too large to list in full, so some directories are missing."
-  },
-  "api.create.proxyType.apiProxy.description": {
-    "defaultMessage": "Expose an existing HTTP backend through the gateway."
-  },
-  "api.create.proxyType.apiProxy.title": {
-    "defaultMessage": "API Proxy"
-  },
-  "api.create.proxyType.eventProxy.description": {
-    "defaultMessage": "Publish and subscribe to event streams over WebSub."
-  },
-  "api.create.proxyType.eventProxy.title": {
-    "defaultMessage": "Event Proxy"
-  },
-  "api.create.proxyType.mcpProxy.description": {
-    "defaultMessage": "Proxy an existing MCP server, or generate one from an API."
-  },
-  "api.create.proxyType.mcpProxy.title": {
-    "defaultMessage": "MCP Proxy"
   },
   "api.create.specIssue.badPathKeys": {
     "defaultMessage": "Some entries under paths are not paths and were skipped: {detail}"
@@ -828,6 +786,10 @@
   "apiControlPlane.pages.appShell.appShellPages.apis.overview.ResourcesPanel.empty": {
     "defaultMessage": "No available resources.",
     "description": "Shown in place of the operation list when the API definition exposes none."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.apis.overview.ResourcesPanel.emptyDescription": {
+    "defaultMessage": "This API’s definition does not expose any operations yet.",
+    "description": "Sits under “No available resources.” and explains why the list is empty — the definition itself has no operations, as opposed to anything having failed."
   },
   "apiControlPlane.pages.appShell.appShellPages.apis.overview.ResourcesPanel.title": {
     "defaultMessage": "Resources",

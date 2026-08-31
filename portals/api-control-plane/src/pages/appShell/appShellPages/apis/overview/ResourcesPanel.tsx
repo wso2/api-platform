@@ -17,10 +17,10 @@
  */
 
 import { Box, Chip, Stack, Typography } from '@wso2/oxygen-ui';
-import { PackageSearch } from '@wso2/oxygen-ui-icons-react';
 import { defineMessages, FormattedMessage, useIntl } from 'react-intl';
 
 import type { RestApi } from '@/api/resources/restApis';
+import { ResourcePreviewPlaceholder } from '../components/ResourcePreviewPlaceholder';
 import { methodColor } from '../utils/developEdit';
 
 const messages = defineMessages({
@@ -28,6 +28,12 @@ const messages = defineMessages({
     id: 'apiControlPlane.pages.appShell.appShellPages.apis.overview.ResourcesPanel.empty',
     defaultMessage: 'No available resources.',
     description: 'Shown in place of the operation list when the API definition exposes none.',
+  },
+  emptyDescription: {
+    id: 'apiControlPlane.pages.appShell.appShellPages.apis.overview.ResourcesPanel.emptyDescription',
+    defaultMessage: 'This API’s definition does not expose any operations yet.',
+    description:
+      'Sits under “No available resources.” and explains why the list is empty — the definition itself has no operations, as opposed to anything having failed.',
   },
   title: {
     id: 'apiControlPlane.pages.appShell.appShellPages.apis.overview.ResourcesPanel.title',
@@ -37,25 +43,10 @@ const messages = defineMessages({
   },
 });
 
-function EmptyResources({ label }: { label: string }) {
-  return (
-    <Stack
-      alignItems="center"
-      justifyContent="center"
-      spacing={1}
-      sx={{ color: 'text.secondary', py: 4, textAlign: 'center' }}
-    >
-      <PackageSearch size={40} strokeWidth={1.25} />
-      <Typography color="text.secondary" variant="body2">
-        {label}
-      </Typography>
-    </Stack>
-  );
-}
-
 /**
  * Left panel of the Overview tab (ai-workspace "OpenAPI Resources"): the
- * API's operations in a scrollable bordered box.
+ * API's operations in a scrollable bordered box, or — when the definition
+ * exposes none — a placeholder showing the shape the list would take.
  */
 export function ResourcesPanel({ api }: { api: RestApi }) {
   const intl = useIntl();
@@ -67,22 +58,29 @@ export function ResourcesPanel({ api }: { api: RestApi }) {
       <Typography sx={{ fontWeight: 600, mb: 0.5 }} variant="h6">
         <FormattedMessage {...messages.title} />
       </Typography>
-      <Box
-        sx={{
-          bgcolor: 'background.paper',
-          border: '1px solid',
-          borderColor: 'divider',
-          borderRadius: 1,
-          maxHeight: { md: 520, xs: 320 },
-          overflowY: 'auto',
-          px: 2,
-          py: 1,
-        }}
-      >
-        {operations.length === 0 ? (
-          <EmptyResources label={intl.formatMessage(messages.empty)} />
-        ) : (
-          operations.map((operation) => (
+      {operations.length === 0 ? (
+        // The placeholder brings its own bordered surface, so it stands in for
+        // the scroll box rather than sitting inside it — a hairline drawn
+        // inside a hairline reads as a mistake rather than a frame.
+        <ResourcePreviewPlaceholder
+          description={intl.formatMessage(messages.emptyDescription)}
+          testId="resources-panel-empty"
+          title={intl.formatMessage(messages.empty)}
+        />
+      ) : (
+        <Box
+          sx={{
+            bgcolor: 'background.paper',
+            border: '1px solid',
+            borderColor: 'divider',
+            borderRadius: 1,
+            maxHeight: { md: 520, xs: 320 },
+            overflowY: 'auto',
+            px: 2,
+            py: 1,
+          }}
+        >
+          {operations.map((operation) => (
             <Stack
               alignItems="center"
               direction="row"
@@ -112,9 +110,9 @@ export function ResourcesPanel({ api }: { api: RestApi }) {
                 )}
               </Box>
             </Stack>
-          ))
-        )}
-      </Box>
+          ))}
+        </Box>
+      )}
     </Box>
   );
 }
