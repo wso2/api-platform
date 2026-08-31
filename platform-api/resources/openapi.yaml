@@ -7154,9 +7154,13 @@ components:
             other artifact kinds (see LlmProviderTemplate's `metadata.openapiSpecUrl`).
             Distinct from `upstream.main.url`: this is a plain HTTP(S) GET of a static
             schema file, not a live introspection query against a GraphQL server, and
-            is fetched with the same public-internet-only SSRF hardening as an
-            OpenAPI-spec-by-URL fetch (loopback/private/link-local/metadata addresses
-            refused) — it is not meant for a tenant's own in-cluster backend. Mutually
+            is fetched through the same shared SSRF-guarded HTTP client every other
+            operator/tenant-supplied fetch in this API uses, under the operator-
+            configured policy (default `netguard.PermitPrivateBlockMetadata()`): the
+            host is resolved and every candidate IP — including each redirect hop —
+            is checked at dial time, refusing link-local/metadata/unspecified/
+            multicast addresses while private and in-cluster addresses (a Kubernetes
+            ClusterIP, a service-DNS name, localhost) remain reachable. Mutually
             exclusive with `sdl`. Never stored or echoed back; only the fetched `sdl`
             text is persisted and returned.
           example: https://raw.githubusercontent.com/example/countries-api/main/schema.graphql

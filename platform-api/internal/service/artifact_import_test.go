@@ -69,12 +69,13 @@ func withDeployedAt(req dto.ImportGatewayArtifactRequest, t time.Time) dto.Impor
 
 // importTestDeps bundles the import service with the repos and db needed for assertions.
 type importTestDeps struct {
-	svc          *ArtifactImportService
-	db           *database.DB
-	artifactRepo repository.ArtifactRepository
-	apiRepo      repository.APIRepository
-	templateRepo repository.LLMProviderTemplateRepository
-	deployment   repository.DeploymentRepository
+	svc            *ArtifactImportService
+	db             *database.DB
+	artifactRepo   repository.ArtifactRepository
+	apiRepo        repository.APIRepository
+	templateRepo   repository.LLMProviderTemplateRepository
+	deployment     repository.DeploymentRepository
+	graphqlAPIRepo repository.GraphQLAPIRepository
 }
 
 func setupImportTest(t *testing.T) *importTestDeps {
@@ -126,21 +127,23 @@ func setupImportTest(t *testing.T) *importTestDeps {
 	deploymentRepo := repository.NewDeploymentRepo(db, reg)
 	gatewayRepo := repository.NewGatewayRepo(db)
 	projectRepo := repository.NewProjectRepo(db)
+	graphqlAPIRepo := repository.NewGraphQLAPIRepo(db, reg)
 
 	cfg := &config.Server{}
 	cfg.Deployments.MaxPerAPIGateway = 10
 
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
-	svc := NewArtifactImportService(apiRepo, providerRepo, templateRepo, proxyRepo, mcpProxyRepo,
+	svc := NewArtifactImportService(apiRepo, providerRepo, templateRepo, proxyRepo, mcpProxyRepo, graphqlAPIRepo,
 		artifactRepo, deploymentRepo, gatewayRepo, projectRepo, cfg, logger, fakeMCPServerInfoFetcher{})
 
 	return &importTestDeps{
-		svc:          svc,
-		db:           db,
-		artifactRepo: artifactRepo,
-		apiRepo:      apiRepo,
-		templateRepo: templateRepo,
-		deployment:   deploymentRepo,
+		svc:            svc,
+		db:             db,
+		artifactRepo:   artifactRepo,
+		apiRepo:        apiRepo,
+		templateRepo:   templateRepo,
+		deployment:     deploymentRepo,
+		graphqlAPIRepo: graphqlAPIRepo,
 	}
 }
 
@@ -194,6 +197,77 @@ func TestArtifactImport_CreateRestAPI(t *testing.T) {
 	}
 	if art.Type != constants.RestApi {
 		t.Errorf("artifact kind = %q, want RestApi", art.Type)
+	}
+
+	// Deployment status should be DEPLOYED on the gateway.
+	depID, status, _, err := d.deployment.GetStatus(cpID, importTestOrgID, importTestGatewayID)
+	if err != nil {
+		t.Fatalf("GetStatus error = %v", err)
+	}
+	if depID == "" || status != model.DeploymentStatusDeployed {
+		t.Errorf("deployment status = (%q,%q), want non-empty DEPLOYED", depID, status)
+	}
+}
+
+func graphqlImportRequest(id, name, displayName string) dto.ImportGatewayArtifactRequest {
+	return dto.ImportGatewayArtifactRequest{
+		DPID:   id,
+		Status: "deployed",
+		Configuration: dto.ArtifactImportConfig{
+			APIVersion: "gateway.api-platform.wso2.com/v1",
+			Kind:       constants.GraphQLApi,
+			Metadata:   dto.ArtifactImportMetadata{Name: name, Annotations: projectAnnotations("default")},
+			Spec: map[string]interface{}{
+				"displayName": displayName,
+				"version":     "v1.0",
+				"context":     "/countries",
+				// upstream is deliberately omitted so resolveSchema's introspection
+				// fetch short-circuits without a real network call — this test only
+				// asserts the artifact lands, not schema resolution.
+			},
+		},
+		CreatedAt: time.Now(),
+		UpdatedAt: time.Now(),
+	}
+}
+
+func TestArtifactImport_CreateGraphQLAPI(t *testing.T) {
+	d := setupImportTest(t)
+
+	const id = "55555555-5555-5555-5555-555555555555"
+	resp, err := d.svc.Import(importTestOrgID, importTestGatewayID, graphqlImportRequest(id, "countries-graphql", "Countries GraphQL API"))
+	if err != nil {
+		t.Fatalf("Import() error = %v", err)
+	}
+
+	// The control plane mints its own UUID; it must NOT reuse the data-plane UUID.
+	if resp.ID == "" || resp.ID == id {
+		t.Errorf("response ID = %q, want a freshly generated CP UUID (not the DP UUID %q)", resp.ID, id)
+	}
+	cpID := resp.ID
+	if resp.Origin != constants.OriginDP {
+		t.Errorf("response Origin = %q, want DP", resp.Origin)
+	}
+
+	// Artifact row should exist with origin DP and kind GraphQLApi under the
+	// CP-generated UUID.
+	art, err := d.artifactRepo.GetByUUID(cpID, importTestOrgID)
+	if err != nil || art == nil {
+		t.Fatalf("GetByUUID returned (%v, %v)", art, err)
+	}
+	if art.Origin != constants.OriginDP {
+		t.Errorf("artifact origin = %q, want DP", art.Origin)
+	}
+	if art.Type != constants.GraphQLApi {
+		t.Errorf("artifact kind = %q, want GraphQLApi", art.Type)
+	}
+
+	graphqlAPI, err := d.graphqlAPIRepo.GetByUUID(cpID, importTestOrgID)
+	if err != nil || graphqlAPI == nil {
+		t.Fatalf("GetByUUID returned (%v, %v)", graphqlAPI, err)
+	}
+	if graphqlAPI.Kind != constants.GraphQLApi {
+		t.Errorf("GraphQLAPI.Kind = %q, want GraphQLApi", graphqlAPI.Kind)
 	}
 
 	// Deployment status should be DEPLOYED on the gateway.
@@ -726,6 +800,7 @@ func TestArtifactImport_AllSupportedKindsRegistered(t *testing.T) {
 		constants.LLMProviderTemplate,
 		constants.LLMProxy,
 		constants.MCPProxy,
+		constants.GraphQLApi,
 	} {
 		importer, ok := d.svc.importers[kind]
 		if !ok {
