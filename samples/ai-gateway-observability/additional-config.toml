@@ -1,19 +1,8 @@
 # Merged into the distribution's configs/config.toml by setup.sh.
 #
-# Three settings the distribution leaves off, all needed before there is anything
-# to observe:
-#
-#   [controller.metrics] and [policy_engine.metrics] — the two Prometheus endpoints
-#   the gateway can expose. Both default to disabled in code, and the shipped
-#   config.toml enables neither, so ports 9091 (published as 9011) and 9003 stay
-#   closed and two of Prometheus's three scrape targets never come up. Note that
-#   configs/config-template.toml shows policy_engine.metrics as `enabled = true`;
-#   that is the template's illustrative value, not the compiled default — trust the
-#   code. Envoy needs no help: its /stats/prometheus is always on.
-#
-#   [tracing] — makes the router and the policy engine export OpenTelemetry spans
-#   to the otel-collector container, which forwards them to Jaeger. The collector
-#   and Jaeger are already defined in the distribution behind the `tracing` profile.
+# [controller.metrics] and [policy_engine.metrics] expose the Prometheus endpoints the
+# Grafana panels are built from. [tracing] exports OpenTelemetry spans to the
+# otel-collector container, which forwards them to Jaeger.
 
 [controller.metrics]
 enabled = true

@@ -8,7 +8,7 @@
 set -uo pipefail
 
 DURATION="${1:-${LOAD_DURATION:-60}}"
-# One key per proxy — the gateway requires key values to be unique gateway-wide.
+# One key per proxy.
 ASSISTANT_API_KEY="${ASSISTANT_API_KEY:-demo-assistant-key}"
 SUPPORT_API_KEY="${SUPPORT_API_KEY:-demo-support-key}"
 GATEWAY_HOST="${GATEWAY_HOST:-http://localhost:8080}"
@@ -27,8 +27,6 @@ if ! curl -sf "${HEALTH_URL}" >/dev/null 2>&1; then
   exit 1
 fi
 
-# Plain counters rather than an associative array: macOS still ships bash 3.2,
-# where `declare -A` does not exist.
 TOTAL=0
 COUNT_2XX=0
 COUNT_401=0
@@ -68,8 +66,8 @@ i=0
 while [[ $(date +%s) -lt ${END} ]]; do
   i=$(( i + 1 ))
 
-  # The mix: mostly ordinary traffic, with a slow reply, an upstream failure and
-  # a rejected key sprinkled in so every panel on the dashboard has a line.
+  # Mostly ordinary traffic, with a slow reply, an upstream failure and a rejected
+  # key mixed in so every panel on the dashboard has a line.
   case $(( i % 10 )) in
     3) send "${ASSISTANT_URL}" "${ASSISTANT_API_KEY}" "SLOW — summarise the quarterly report" ;;
     6) send "${ASSISTANT_URL}" "${ASSISTANT_API_KEY}" "FAIL — this one breaks upstream" ;;

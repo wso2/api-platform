@@ -1,11 +1,7 @@
 # Replaces the distribution's observability/prometheus/prometheus.yml.
 #
-# The stock file scrapes hosts named `policy-engine` and `router`, but the
-# compose file defines neither: the policy engine and the Envoy router both run
-# inside the `gateway-runtime` service, and Docker resolves container names by
-# service name. Left as shipped, two of the three scrape targets never come up.
-#
-# Worth fixing in the distribution itself — see the sample's README.
+# The policy engine and the Envoy router both run inside the `gateway-runtime`
+# container, so that is the hostname Prometheus scrapes them at.
 
 global:
   scrape_interval: 15s

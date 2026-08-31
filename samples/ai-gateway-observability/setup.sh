@@ -13,9 +13,7 @@ GATEWAY_MGMT_URL="http://localhost:9090/api/management/v1"
 GATEWAY_HEALTH_URL="http://localhost:9094/health"
 AUTH_HEADER="Authorization: Basic $(printf %s "${ADMIN_USERNAME:-admin}:${ADMIN_PASSWORD:-admin}" | base64 | tr -d '\r\n')"   # default admin/admin; override with ADMIN_USERNAME/ADMIN_PASSWORD
 
-# Inbound API keys callers send in the `api_key` header — one per proxy.
-# The gateway enforces a global unique constraint on the key value, so two proxies
-# cannot share one key: the second registration comes back 409.
+# Inbound API keys callers send in the `api_key` header, one per proxy.
 ASSISTANT_API_KEY="${ASSISTANT_API_KEY:-demo-assistant-key}"
 SUPPORT_API_KEY="${SUPPORT_API_KEY:-demo-support-key}"
 
@@ -35,9 +33,7 @@ PROMETHEUS_YML="${SCRIPT_DIR}/observability/prometheus.yml"
 COMPOSE_OVERRIDE="${SCRIPT_DIR}/observability/docker-compose.override.yaml"
 ADDITIONAL_CONFIG="${SCRIPT_DIR}/additional-config.toml"
 
-# The observability containers (Prometheus, Grafana, Jaeger, OTel collector) ship
-# with the distribution but sit behind Compose profiles, so they only start when
-# these profiles are requested.
+# Prometheus, Grafana, Jaeger and the OTel collector sit behind these Compose profiles.
 COMPOSE_PROFILES=(--profile metrics --profile tracing)
 
 # ---------------------------------------------------------------------------
@@ -75,8 +71,6 @@ deploy_resource() {
     -H "Content-Type: application/yaml" \
     -H "${AUTH_HEADER}" \
     --data-binary "@${file}")
-  # Keep the response body: on a failure the gateway's own message names the cause,
-  # and a bare status code sends you hunting for it.
   local detail
   detail=$(cat "${body}"); rm -f "${body}"
   if [[ "${status}" =~ ^2 ]]; then
@@ -92,9 +86,7 @@ deploy_resource() {
   fi
 }
 
-# metadata.name out of one of the sample's own resource files. Deliberately not
-# python+PyYAML: PyYAML is not part of a stock macOS python3, and these files are
-# small and fixed in shape.
+# Reads metadata.name out of one of the sample's resource files.
 yaml_name() {
   awk '/^metadata:/ { in_meta = 1; next }
        in_meta && /^[[:space:]]+name:/ {
@@ -104,16 +96,13 @@ yaml_name() {
 }
 
 # ---------------------------------------------------------------------------
-# Step 1 — Download distribution
+# Step 1 - Download distribution
 # ---------------------------------------------------------------------------
 cd "${SCRIPT_DIR}"
 info "Downloading ${DIST_ZIP} ..."
 if [[ -f "${DIST_ZIP}" ]]; then
   info "Archive already exists, skipping download."
 else
-  # curl first: it ships with macOS and with most Linux distributions, whereas wget
-  # is not installed on macOS at all by default. wget's --show-progress is a GNU
-  # extension, so it is not used in the fallback either.
   if command -v curl >/dev/null 2>&1; then
     curl -fSL "${DIST_URL}" -o "${DIST_ZIP}"
   elif command -v wget >/dev/null 2>&1; then
@@ -125,7 +114,7 @@ else
 fi
 
 # ---------------------------------------------------------------------------
-# Step 2 — Unzip
+# Step 2 - Unzip
 # ---------------------------------------------------------------------------
 if [[ -d "${DIST_NAME}" ]]; then
   info "Distribution directory '${DIST_NAME}' already exists, skipping unzip."
@@ -136,14 +125,10 @@ else
 fi
 
 # ---------------------------------------------------------------------------
-# Step 3 — Switch on the controller's metrics endpoint and tracing
+# Step 3 - Enable the metrics endpoints and tracing
 #
-# additional-config.toml holds two sections the distribution leaves off:
-# [controller.metrics] (its endpoint defaults to disabled, so Prometheus's
-# gateway-controller job would never come up) and [tracing] (which points the
-# gateway at the OTel collector). The block is prepended rather than appended so
-# its keys stay bound to their own sections instead of being swallowed by
-# whichever section happens to end config.toml.
+# additional-config.toml is prepended to the gateway's config.toml so each setting
+# stays under its own section header.
 # ---------------------------------------------------------------------------
 GATEWAY_CONFIG="${DIST_NAME}/configs/config.toml"
 [[ -f "${ADDITIONAL_CONFIG}" ]] || error "additional-config.toml not found at ${ADDITIONAL_CONFIG}"
@@ -160,20 +145,18 @@ else
 fi
 
 # ---------------------------------------------------------------------------
-# Step 4 — Provision the Grafana dashboard and fix the scrape targets
+# Step 4 - Provision the Grafana dashboard and the scrape targets
 #
-# The distribution already mounts observability/grafana/dashboards into Grafana
-# and provisions everything it finds there, so dropping the file in is enough.
-# The compose patch below only decides which dashboard Grafana opens on load.
+# Grafana provisions whatever it finds in its dashboards folder, so copying the
+# file in is enough.
 # ---------------------------------------------------------------------------
 [[ -f "${DASHBOARD_JSON}" ]] || error "Dashboard not found at ${DASHBOARD_JSON}"
 info "Copying dashboard into ${DIST_NAME}/observability/grafana/dashboards/ ..."
 cp "${DASHBOARD_JSON}" "${DIST_NAME}/observability/grafana/dashboards/"
 success "Dashboard provisioned."
 
-# The distribution's prometheus.yml scrapes hosts named `policy-engine` and
-# `router`, which the compose file never defines — both run inside the
-# `gateway-runtime` service. Replace it so all three targets actually come up.
+# The policy engine and the Envoy router both run inside `gateway-runtime`, which is
+# the hostname this prometheus.yml scrapes them at.
 [[ -f "${PROMETHEUS_YML}" ]] || error "prometheus.yml not found at ${PROMETHEUS_YML}"
 info "Replacing the distribution's prometheus.yml with corrected scrape targets ..."
 cp "${PROMETHEUS_YML}" "${DIST_NAME}/observability/prometheus/prometheus.yml"
@@ -183,20 +166,18 @@ COMPOSE_FILE="${DIST_NAME}/docker-compose.yaml"
 [[ -f "${COMPOSE_FILE}" ]] || COMPOSE_FILE="${DIST_NAME}/docker-compose.yml"
 [[ -f "${COMPOSE_FILE}" ]] || error "docker-compose file not found in ${DIST_NAME}/"
 
-# Which dashboard Grafana opens on load. Shipped as a compose override file rather
-# than an edit to the distribution's own compose file — docker compose merges it
-# automatically, and nothing of theirs gets rewritten.
+# Sets which dashboard Grafana opens on load. Compose merges override files
+# automatically, so the distribution's own compose file is left untouched.
 [[ -f "${COMPOSE_OVERRIDE}" ]] || error "docker-compose.override.yaml not found at ${COMPOSE_OVERRIDE}"
 info "Pointing Grafana's home dashboard at the AI Gateway overview ..."
 cp "${COMPOSE_OVERRIDE}" "${DIST_NAME}/docker-compose.override.yaml"
 success "Grafana home dashboard set."
 
 # ---------------------------------------------------------------------------
-# Step 5 — Start the mock LLM backend
+# Step 5 - Start the mock LLM backend
 #
-# WireMock stands in for the OpenAI API so the sample needs no API key and no
-# network egress. Its mappings return a normal reply, a deliberately slow reply,
-# and a 500 — the three shapes load.sh needs to make the dashboard interesting.
+# WireMock stands in for the OpenAI API, so no API key or network access is needed.
+# Its mappings return a normal reply, a slow reply and a 500.
 # ---------------------------------------------------------------------------
 info "Starting mock LLM backend (WireMock) ..."
 docker rm -f "${MOCK_CONTAINER}" >/dev/null 2>&1 || true
@@ -207,32 +188,26 @@ docker run -d --name "${MOCK_CONTAINER}" \
 success "Mock LLM backend started on host port ${MOCK_PORT}."
 
 # ---------------------------------------------------------------------------
-# Step 6 — Start the stack (gateway + observability)
+# Step 6 - Start the stack (gateway + observability)
 # ---------------------------------------------------------------------------
 info "Starting Docker Compose stack in ${DIST_NAME}/ ..."
-# Provision the gateway's listener cert, encryption key, api-platform.env, and admin
-# credentials. The gateway ships no default admin user and fails closed without one,
-# and compose requires api-platform.env to exist, so this step is not optional.
-# Passing the credentials in keeps it non-interactive; it needs openssl, plus either
-# htpasswd or docker to bcrypt the password.
+# The distribution's own setup script provisions its listener cert, encryption key,
+# api-platform.env and admin credentials. Credentials are passed in to keep it
+# non-interactive.
 [[ -x "${DIST_NAME}/scripts/setup.sh" ]] || error "${DIST_NAME}/scripts/setup.sh is missing — is this the ${DIST_VERSION} distribution?"
 (cd "${DIST_NAME}" && ADMIN_USERNAME="${ADMIN_USERNAME:-admin}" ADMIN_PASSWORD="${ADMIN_PASSWORD:-admin}" ./scripts/setup.sh)
 (cd "${DIST_NAME}" && docker compose "${COMPOSE_PROFILES[@]}" up -d)
 success "Gateway, Prometheus, Grafana, Jaeger and the OTel collector are starting."
 
 # ---------------------------------------------------------------------------
-# Step 7 — Health check
+# Step 7 - Health check
 # ---------------------------------------------------------------------------
 wait_for_health "${GATEWAY_HEALTH_URL}"
 
 # ---------------------------------------------------------------------------
-# Step 8 — Put the mock backend on the gateway's network
+# Step 8 - Put the mock backend on the gateway's network
 # ---------------------------------------------------------------------------
-# Ask the running controller which network it is on, rather than matching on name.
-# The distribution pins a per-copy COMPOSE_PROJECT_NAME, so the network is named
-# <project>_gateway-network — and a leftover stack from an earlier run has a network
-# whose name matches just as well. Connecting the mock to the wrong one leaves the
-# proxies unable to reach their backend, with everything else looking fine.
+# Resolve the network from the running controller rather than guessing its name.
 CONTROLLER_CID=$(cd "${DIST_NAME}" && docker compose "${COMPOSE_PROFILES[@]}" ps -q gateway-controller 2>/dev/null | head -1)
 [[ -n "${CONTROLLER_CID}" ]] || error "Could not find the running gateway-controller container."
 GATEWAY_NETWORK=$(docker inspect -f '{{range $k, $v := .NetworkSettings.Networks}}{{println $k}}{{end}}' "${CONTROLLER_CID}" \
@@ -242,11 +217,10 @@ docker network connect "${GATEWAY_NETWORK}" "${MOCK_CONTAINER}" 2>/dev/null || t
 success "Connected ${MOCK_CONTAINER} to network ${GATEWAY_NETWORK}."
 
 # ---------------------------------------------------------------------------
-# Step 9 — Deploy providers and proxies
+# Step 9 - Deploy providers and proxies
 #
-# Two providers share the same mock upstream: one plain, one with a token budget.
-# That gives the dashboard two proxies whose behaviour differs under load —
-# /support starts returning 429 once its budget is spent, /assistant keeps serving.
+# Two providers share the mock upstream: one plain, one with a token budget. Under
+# load /support starts returning 429 while /assistant keeps serving.
 # ---------------------------------------------------------------------------
 for PROVIDER_YAML in "${PROVIDER_YAMLS[@]}"; do
   deploy_resource "llm-providers" "${PROVIDER_YAML}"
@@ -257,7 +231,7 @@ for PROXY_YAML in "${PROXY_YAMLS[@]}"; do
 done
 
 # ---------------------------------------------------------------------------
-# Step 10 — Register the inbound API key on each proxy
+# Step 10 - Register the inbound API key on each proxy
 # ---------------------------------------------------------------------------
 register_api_key() {
   local proxy_yaml="$1" api_key="$2"

@@ -2,7 +2,7 @@
 set -euo pipefail
 
 # ---------------------------------------------------------------------------
-# Configuration — must match setup.sh
+# Configuration - must match setup.sh
 # ---------------------------------------------------------------------------
 DIST_VERSION="1.2.0"
 DIST_NAME="wso2apip-ai-gateway-${DIST_VERSION}"
@@ -33,9 +33,7 @@ success() { echo "[OK]    $*"; }
 warn()    { echo "[WARN]  $*"; }
 error()   { echo "[ERROR] $*" >&2; exit 1; }
 
-# metadata.name out of one of the sample's own resource files. Deliberately not
-# python+PyYAML: PyYAML is not part of a stock macOS python3, and these files are
-# small and fixed in shape.
+# Reads metadata.name out of one of the sample's resource files.
 yaml_name() {
   awk '/^metadata:/ { in_meta = 1; next }
        in_meta && /^[[:space:]]+name:/ {
@@ -63,7 +61,7 @@ delete_resource() {
 cd "${SCRIPT_DIR}"
 
 # ---------------------------------------------------------------------------
-# Step 1 — Delete LLM proxies
+# Step 1 - Delete LLM proxies
 # ---------------------------------------------------------------------------
 for PROXY_YAML in "${PROXY_YAMLS[@]}"; do
   [[ -f "${PROXY_YAML}" ]] || error "Proxy file not found at ${PROXY_YAML}"
@@ -71,7 +69,7 @@ for PROXY_YAML in "${PROXY_YAMLS[@]}"; do
 done
 
 # ---------------------------------------------------------------------------
-# Step 2 — Delete LLM providers
+# Step 2 - Delete LLM providers
 # ---------------------------------------------------------------------------
 for PROVIDER_YAML in "${PROVIDER_YAMLS[@]}"; do
   [[ -f "${PROVIDER_YAML}" ]] || error "Provider file not found at ${PROVIDER_YAML}"
@@ -79,17 +77,16 @@ for PROVIDER_YAML in "${PROVIDER_YAMLS[@]}"; do
 done
 
 # ---------------------------------------------------------------------------
-# Step 3 — Stop the mock LLM backend
+# Step 3 - Stop the mock LLM backend
 # ---------------------------------------------------------------------------
 info "Removing ${MOCK_CONTAINER} ..."
 docker rm -f "${MOCK_CONTAINER}" >/dev/null 2>&1 || true
 success "${MOCK_CONTAINER} removed."
 
 # ---------------------------------------------------------------------------
-# Step 4 — Stop the stack
+# Step 4 - Stop the stack
 #
-# --volumes matters here: Prometheus and Grafana keep their data in volumes, and
-# metrics left over from a previous run make the next dashboard confusing.
+# --volumes drops the Prometheus and Grafana data, so the next run starts clean.
 # ---------------------------------------------------------------------------
 COMPOSE_FILE="${DIST_NAME}/docker-compose.yaml"
 [[ -f "${COMPOSE_FILE}" ]] || COMPOSE_FILE="${DIST_NAME}/docker-compose.yml"
@@ -103,7 +100,7 @@ else
 fi
 
 # ---------------------------------------------------------------------------
-# Step 5 — Optional cleanup of distribution files
+# Step 5 - Optional cleanup of distribution files
 # ---------------------------------------------------------------------------
 if [[ "${CLEAN}" == true ]]; then
   if [[ -d "${DIST_NAME}" ]]; then
