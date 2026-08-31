@@ -156,14 +156,14 @@ type graphQLIntrospectionTypeRef struct {
 }
 
 type graphQLIntrospectionType struct {
-	Kind          string                            `json:"kind"`
-	Name          string                            `json:"name"`
-	Description   string                            `json:"description"`
-	Fields        []graphQLIntrospectionField       `json:"fields"`
-	InputFields   []graphQLIntrospectionInputValue  `json:"inputFields"`
-	Interfaces    []graphQLIntrospectionTypeRef     `json:"interfaces"`
-	EnumValues    []graphQLIntrospectionEnumValue   `json:"enumValues"`
-	PossibleTypes []graphQLIntrospectionTypeRef     `json:"possibleTypes"`
+	Kind          string                           `json:"kind"`
+	Name          string                           `json:"name"`
+	Description   string                           `json:"description"`
+	Fields        []graphQLIntrospectionField      `json:"fields"`
+	InputFields   []graphQLIntrospectionInputValue `json:"inputFields"`
+	Interfaces    []graphQLIntrospectionTypeRef    `json:"interfaces"`
+	EnumValues    []graphQLIntrospectionEnumValue  `json:"enumValues"`
+	PossibleTypes []graphQLIntrospectionTypeRef    `json:"possibleTypes"`
 }
 
 type graphQLIntrospectionField struct {
