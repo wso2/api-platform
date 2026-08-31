@@ -629,6 +629,16 @@ func (s *APIUtilsService) FetchMCPProxyDefinition(proxyID string) ([]byte, error
 	return bodyBytes, nil
 }
 
+// FetchGraphQLAPIDefinition downloads the GraphQL API definition as a zip file
+// from the control plane. GraphQLApi is compiled directly into this binary
+// (not a separate module), so unlike WebSub/WebBroker it doesn't need
+// FetchResourceZip's cross-module reuse — the wrapper is kept anyway to avoid
+// duplicating the HTTP/auth/size-limit boilerplate FetchMCPProxyDefinition
+// above still carries inline.
+func (s *APIUtilsService) FetchGraphQLAPIDefinition(apiID string) ([]byte, error) {
+	return s.FetchResourceZip("/graphql-apis/"+apiID, "GraphQL API definition")
+}
+
 // FetchResourceZip performs a generic authenticated GET against
 // {baseURL}{resourcePath}, expecting a zip response, and returns the raw
 // bytes. resourceLabel is used only for log/error messages (e.g. "WebSub API
