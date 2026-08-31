@@ -217,6 +217,108 @@ func TestGenerateGraphQLAPIDeploymentYAML_CarriesUpstreamAuth(t *testing.T) {
 	}
 }
 
+// TestGenerateGraphQLAPIDeploymentYAML_CarriesSandboxAuth is the sandbox
+// counterpart to TestGenerateGraphQLAPIDeploymentYAML_CarriesUpstreamAuth,
+// asserting the generator itself (not just the full deploy flow) populates
+// spec.upstream.sandbox from apiModel.Configuration.Upstream.Sandbox.
+func TestGenerateGraphQLAPIDeploymentYAML_CarriesSandboxAuth(t *testing.T) {
+	ctx := "/countries"
+	apiModel := &model.GraphQLAPI{
+		ID:      "gql-uuid-1",
+		Handle:  "countries-graphql-api",
+		Name:    "Countries GraphQL API",
+		Version: "v1.0",
+		Configuration: model.GraphQLAPIConfig{
+			Context: &ctx,
+			Upstream: model.UpstreamConfig{
+				Main: &model.UpstreamEndpoint{URL: "https://countries.example.com/graphql"},
+				Sandbox: &model.UpstreamEndpoint{
+					URL: "https://sandbox.countries.example.com/graphql",
+					Auth: &model.UpstreamAuth{
+						Type:   "bearer",
+						Header: "Authorization",
+						Value:  "sandbox-secret-value",
+					},
+				},
+			},
+		},
+	}
+
+	yamlData, err := generateGraphQLAPIDeploymentYAML(apiModel)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if yamlData.Spec.Upstream == nil || yamlData.Spec.Upstream.Sandbox == nil {
+		t.Fatal("expected spec.upstream.sandbox to be populated")
+	}
+	sandbox := yamlData.Spec.Upstream.Sandbox
+	if sandbox.URL != "https://sandbox.countries.example.com/graphql" {
+		t.Errorf("sandbox.url = %q, want the configured sandbox URL", sandbox.URL)
+	}
+	if sandbox.Auth == nil {
+		t.Fatal("expected upstream.sandbox.auth to be carried through into the deployment YAML, got nil")
+	}
+	if sandbox.Auth.Type != "bearer" || sandbox.Auth.Header != "Authorization" || sandbox.Auth.Value != "sandbox-secret-value" {
+		t.Errorf("upstream.sandbox.auth was not carried through unmodified: %+v", sandbox.Auth)
+	}
+}
+
+// TestGenerateGraphQLAPIDeploymentYAML_CarriesSandboxUpstream pins the fix for
+// the gap where GraphQLUpstream had only a Main field: upstream.sandbox is a
+// genuinely supported concept everywhere else (the gateway OpenAPI spec's
+// GraphQLAPIConfigData.Upstream.Sandbox, GraphQLAPITransformer's sandbox
+// route, and the CP's own read-response round-trip in
+// TestGraphQLUpstreamAuth_RedactedAcrossAllResponseShapes), but the
+// deployment YAML generator silently dropped it before it ever reached the
+// gateway. This exercises the full DeployGraphQLAPI path (not just the
+// generator) so it also proves gatewaytranslator.Translate still succeeds
+// with a sandbox upstream present.
+func TestGenerateGraphQLAPIDeploymentYAML_CarriesSandboxUpstream(t *testing.T) {
+	ctx := "/countries"
+	stored := &model.GraphQLAPI{
+		ID:             "gql-uuid-1",
+		Handle:         "countries-graphql-api",
+		OrganizationID: "org-1",
+		Name:           "Countries GraphQL API",
+		Version:        "v1.0",
+		Configuration: model.GraphQLAPIConfig{
+			SDL:     validCountriesGraphQLSDL,
+			Context: &ctx,
+			Upstream: model.UpstreamConfig{
+				Main: &model.UpstreamEndpoint{URL: "https://countries.example.com/graphql"},
+				Sandbox: &model.UpstreamEndpoint{
+					URL: "https://sandbox.countries.example.com/graphql",
+					Auth: &model.UpstreamAuth{
+						Type:   "bearer",
+						Header: "Authorization",
+						Value:  "sandbox-secret",
+					},
+				},
+			},
+		},
+	}
+	repo := &mockGraphQLAPIRepo{
+		getByHandleFunc: func(handle, orgUUID string) (*model.GraphQLAPI, error) { return stored, nil },
+	}
+	gateway := graphQLDeploymentTestGateway()
+	gatewayRepo := &mockGatewayRepository{getByNameResult: gateway, getByUUIDResult: gateway}
+	deploymentRepo := &mockDeploymentRepo{setCurrentUpdatedAt: time.Now()}
+
+	svc := newGraphQLDeploymentTestService(repo, deploymentRepo, gatewayRepo)
+
+	req := &api.DeployRequest{Name: "prod-deployment", Base: "current", GatewayId: "prod-gateway"}
+	if _, err := svc.DeployGraphQLAPI("countries-graphql-api", req, "org-1", "creator-uuid"); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if deploymentRepo.createdDeployment == nil {
+		t.Fatal("expected a deployment to be created")
+	}
+	content := string(deploymentRepo.createdDeployment.Content)
+	if !strings.Contains(content, "sandbox.countries.example.com") {
+		t.Errorf("expected deployment content to contain spec.upstream.sandbox.url, got:\n%s", content)
+	}
+}
+
 // TestGraphQLUndeployDeployment_Success verifies an active deployment
 // transitions to UNDEPLOYING when the bound gateway matches the request.
 func TestGraphQLUndeployDeployment_Success(t *testing.T) {

@@ -19,6 +19,7 @@ package service
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -205,7 +206,15 @@ func fetchAndConvertGraphQLSchema(upstreamURL string) (string, error) {
 		return "", fmt.Errorf("failed to build introspection request: %w", err)
 	}
 
-	httpReq, err := http.NewRequest(http.MethodPost, upstreamURL, bytes.NewReader(body))
+	// The shared client's own Timeouts.Overall is a safety net only (see
+	// NewUpstreamFetchClient's doc comment) — this call's real budget is enforced
+	// via the request context here, the same self-contained
+	// context.WithTimeout(context.Background(), ...) pattern CheckURLReachability
+	// uses for its own one-shot outbound probe (common.go).
+	ctx, cancel := context.WithTimeout(context.Background(), graphQLIntrospectionTimeout)
+	defer cancel()
+
+	httpReq, err := http.NewRequestWithContext(ctx, http.MethodPost, upstreamURL, bytes.NewReader(body))
 	if err != nil {
 		return "", fmt.Errorf("failed to build introspection request: %w", err)
 	}
@@ -217,8 +226,10 @@ func fetchAndConvertGraphQLSchema(upstreamURL string) (string, error) {
 	// upstream-fetch helper rather than a one-off client). upstream.main.url
 	// is the tenant's own configured backend (analogous to REST/MCP's
 	// upstream), so NewUpstreamFetchClient's private/in-cluster-permitting
-	// policy is the correct one here — not the stricter public-only policy
-	// FetchOpenAPISpecFromURL uses for fetching a public vendor's OpenAPI doc.
+	// policy is the correct one here. FetchOpenAPISpecFromURL (used to
+	// resolve sdlUrl) goes through this same shared client and policy — it
+	// is not a stricter public-only fetch; only isPublicIP/ValidateExternalURL
+	// (used for LLM provider endpoint validation) enforce that bar.
 	client, err := utils.NewUpstreamFetchClient(graphQLIntrospectionTimeout)
 	if err != nil {
 		return "", fmt.Errorf("failed to create HTTP client: %w", err)
