@@ -144,3 +144,24 @@ roles:
 
   - name: ap_subscriber
     scopes: *subscriber_grant
+
+  # --- Service identity for outbound Platform API publish calls --------------
+  #
+  # Platform API uses OAuth2 client_credentials (or a self-minted JWT in local
+  # auth mode) to publish APIs, MCP servers, their content, and subscription
+  # plans to this portal's admin REST. The outbound token carries
+  # roles=["platform-api-system"] — either from the STS-side role assigned to
+  # the DCR app (cloud), or minted directly by Platform API in local mode.
+  #
+  # This is a service identity, not a human persona. Its grant is narrower
+  # than dp_admin's: it can publish and manage the artifacts Platform API
+  # produces, but has no access to organization settings, applications,
+  # subscriptions, webhooks, or key managers. Not aliased — the scope set is
+  # a strict subset of dp_admin's and doesn't map to either page-access tier.
+  - name: platform-api-system
+    scopes:
+      - dp:api:manage
+      - dp:api_content:manage
+      - dp:mcp_server:manage
+      - dp:mcp_server_content:manage
+      - dp:subscription_plan:manage

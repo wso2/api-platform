@@ -181,9 +181,30 @@ test('the shipped role-to-scope-mapping.yaml validates against the shipped OpenA
     const map = roleScopeMap.loadRoleScopeMap(SHIPPED_MAPPING_PATH, SPEC_PATH);
     // Two grants by design — the portal recognises an administrator and a consumer,
     // which is exactly what its page gate has tiers for — plus aliases for the role
-    // names other components mint. The publisher/operator/viewer personas belong to
+    // names other components mint, and a service identity used by Platform API for
+    // outbound publish calls. The publisher/operator/viewer personas belong to
     // platform-api's own grant table.
-    assert.deepEqual([...map.keys()], ['dp_admin', 'dp_subscriber', 'ap_admin', 'ap_subscriber']);
+    assert.deepEqual(
+        [...map.keys()],
+        ['dp_admin', 'dp_subscriber', 'ap_admin', 'ap_subscriber', 'platform-api-system'],
+    );
+});
+
+test('the shipped platform-api-system role grants exactly the five publishing scopes', () => {
+    // Pinned scope list, not just presence: this role is granted to Platform API's
+    // outbound publish caller, so silently widening it (accidentally adding
+    // application/subscription scopes, say) would hand a service identity powers
+    // meant for a human admin. Silently narrowing it would leave publishing
+    // broken for whichever resource lost its scope, which the role-name-only
+    // assertion above would miss.
+    const map = roleScopeMap.loadRoleScopeMap(SHIPPED_MAPPING_PATH, SPEC_PATH);
+    assert.deepEqual(map.get('platform-api-system'), [
+        'dp:api:manage',
+        'dp:api_content:manage',
+        'dp:mcp_server:manage',
+        'dp:mcp_server_content:manage',
+        'dp:subscription_plan:manage',
+    ]);
 });
 
 test('the shipped admin role covers every resource the shipped subscriber role touches', () => {
