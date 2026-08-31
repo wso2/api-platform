@@ -73,12 +73,81 @@ const (
 // look the resolver up a second time (and cannot look up a different one).
 type resolutionDenial struct {
 	resolverName string
-	failure      *resolver.ResolutionError
+
+	// phase is which of a prepared resolver's two checks refused the request — see
+	// constants.ResolutionPhase*. Recorded because the two fail at different points
+	// in the request's life and an operator diagnosing one needs to know which:
+	// a headers refusal happened before any body was requested or any chain bound,
+	// an operation refusal after the request was read.
+	phase string
+
+	failure *resolver.ResolutionError
 }
 
-// newResolutionDenial records a failure against the route that produced it.
+// newResolutionDenial records an operation-resolution failure against the route that
+// produced it.
 func newResolutionDenial(pr *resolver.PreparedRoute, failure *resolver.ResolutionError) *resolutionDenial {
-	return &resolutionDenial{resolverName: pr.ResolverName, failure: failure}
+	return &resolutionDenial{
+		resolverName: pr.ResolverName,
+		phase:        constants.ResolutionPhaseOperation,
+		failure:      failure,
+	}
+}
+
+// newHeaderResolutionDenial records a refusal from the prepared resolver's
+// header-validation phase — before a chain was bound, a body requested, a policy run
+// or anything sent upstream.
+func newHeaderResolutionDenial(pr *resolver.PreparedRoute, failure *resolver.ResolutionError) *resolutionDenial {
+	return &resolutionDenial{
+		resolverName: pr.ResolverName,
+		phase:        constants.ResolutionPhaseHeaders,
+		failure:      failure,
+	}
+}
+
+// terminalReasonForFailure maps a classified resolution failure to the closed
+// terminal reason an analytics consumer groups by.
+//
+// Every failure is still a resolution failure — nothing bound a chain — so the
+// default is the reason that has always covered them. The header-validation kinds
+// get their own because they describe the caller's protocol version rather than its
+// payload, and a success-rate breakdown that cannot separate "clients on the wrong
+// version" from "clients sending bad requests" reports a protocol migration as a
+// quality problem.
+func terminalReasonForFailure(kind resolver.FailureKind) string {
+	switch kind {
+	case resolver.FailureInvalidParameter, resolver.FailureConflictingParameter,
+		resolver.FailureVersionNotSupported:
+		return constants.TerminalReasonA2AVersionRejected
+	default:
+		return constants.TerminalReasonResolutionFailed
+	}
+}
+
+// recordResolutionDenial stamps the bounded facts about a pre-chain refusal on a
+// span: which resolver refused, which of its phases, its classification, and
+// whichever route facts the resolver attached.
+//
+// Nothing caller-supplied is recorded. The classification is a closed set and the
+// attributes are fixed at ingest, so this cannot be used to write attacker-chosen
+// strings into a trace backend; the value that provoked the refusal reaches the
+// internal warning log and stops there.
+func recordResolutionDenial(span trace.Span, denial *resolutionDenial) {
+	if span == nil || !span.IsRecording() || denial == nil || denial.failure == nil {
+		return
+	}
+	attrs := make([]attribute.KeyValue, 0, 3+len(denial.failure.Attributes))
+	if denial.resolverName != "" {
+		attrs = append(attrs, attribute.String(constants.AttrResolverName, denial.resolverName))
+	}
+	if denial.phase != "" {
+		attrs = append(attrs, attribute.String(constants.AttrResolutionPhase, denial.phase))
+	}
+	attrs = append(attrs, attribute.String(constants.AttrResolutionFailureReason, string(denial.failure.Kind)))
+	for name, value := range denial.failure.Attributes {
+		attrs = append(attrs, attribute.String(name, value))
+	}
+	span.SetAttributes(attrs...)
 }
 
 // pendingResolution is the retained state of a request whose policy chain cannot be
@@ -98,20 +167,38 @@ type pendingResolution struct {
 	view resolver.RequestView
 }
 
-// buildRequestView snapshots what a resolver is allowed to see about a request.
+// requestHeaderSnapshot is the one capture of a request's headers a prepared
+// resolver may see, built at most once per request.
 //
-// Only called for a route whose resolution is not already known: a statically-resolved
-// route (every kind shipping today, via route-key) binds from the result captured at
-// ingest and must not pay for this allocation.
+// It exists because two consumers need the same bytes: the header-validation phase,
+// which runs before anything is bound or buffered, and operation resolution, which
+// runs afterwards on a route whose chain is not already known. An A2A JSON-RPC or
+// message-sending route uses both, so building a map per consumer would allocate two
+// copies of one immutable fact on the hottest A2A paths.
 //
-// The route's partition — API ID, vhost, API context — is deliberately absent: the
-// prepared resolver captured it at ingest, so a resolver cannot be handed a partition
-// that differs from the one its keys are validated against.
-func buildRequestView(routeKey string, headers *extprocv3.HttpHeaders) resolver.RequestView {
-	view := resolver.RequestView{RouteKey: routeKey}
+// The route's partition — API ID, vhost, API context — is deliberately absent from
+// everything derived here: the prepared resolver captured it at ingest, so a resolver
+// cannot be handed a partition that differs from the one its keys are validated
+// against.
+//
+// Nothing may mutate Headers after this returns. Both views below share the map, and
+// the RequestView is retained across the request-body callback (see
+// pendingResolution.view), so a mutation would change what a resolver already read.
+type requestHeaderSnapshot struct {
+	Method  string // upper-cased at extraction (GO-AUTH-006)
+	Path    string // as sent, query string included
+	Headers map[string][]string
+}
 
+// snapshotRequestHeaders captures the headers Envoy delivered.
+//
+// Built lazily by the caller: a statically-resolved route with no header-validation
+// phase — every kind shipping today, via route-key — never reaches either consumer
+// and must not pay for this allocation.
+func snapshotRequestHeaders(headers *extprocv3.HttpHeaders) *requestHeaderSnapshot {
+	snapshot := &requestHeaderSnapshot{}
 	if headers == nil || headers.Headers == nil {
-		return view
+		return snapshot
 	}
 
 	hdrs := make(map[string][]string, len(headers.Headers.GetHeaders()))
@@ -122,13 +209,38 @@ func buildRequestView(routeKey string, headers *extprocv3.HttpHeaders) resolver.
 		case ":method":
 			// Normalized once, here, so no downstream comparison or map lookup can
 			// miss on case (GO-AUTH-006).
-			view.Method = strings.ToUpper(value)
+			snapshot.Method = strings.ToUpper(value)
 		case ":path":
-			view.Path = value
+			// The query string is kept: a service parameter may legitimately be
+			// spelled there rather than in a header (see the A2A version guard).
+			snapshot.Path = value
 		}
 	}
-	view.Headers = hdrs
-	return view
+	snapshot.Headers = hdrs
+	return snapshot
+}
+
+// headerRequestView is what the header-validation phase is allowed to see.
+//
+// It carries no body field at all — not an empty one — so a header validator cannot
+// come to depend on a body and quietly turn a static route into a buffered one.
+func (s *requestHeaderSnapshot) headerRequestView() resolver.HeaderRequestView {
+	return resolver.HeaderRequestView{
+		Method:  s.Method,
+		Path:    s.Path,
+		Headers: resolver.NewHeaderMap(s.Headers),
+	}
+}
+
+// requestView is what a resolver reading the request is allowed to see. Body is
+// attached later, once it has been decoded.
+func (s *requestHeaderSnapshot) requestView(routeKey string) resolver.RequestView {
+	return resolver.RequestView{
+		RouteKey: routeKey,
+		Method:   s.Method,
+		Path:     s.Path,
+		Headers:  s.Headers,
+	}
 }
 
 // pendingModeOverride is the ProcessingMode returned from the request-headers
@@ -303,7 +415,7 @@ func (ec *PolicyExecutionContext) denyResolution(
 	failure *resolver.ResolutionError,
 ) *extprocv3.ProcessingResponse {
 	resp, outcome := renderResolutionFailure(ctx, ec.resolverName, ec.routeKey, ec.requestID, failure,
-		resolutionFailureAnalytics(nil, ec))
+		resolutionFailureAnalytics(nil, ec, failure))
 
 	// The chain is never bound for this request. Later phases check this so a
 	// response callback that arrives anyway cannot dereference a nil chain.
@@ -357,7 +469,7 @@ func renderResolutionFailure(
 	}
 	return resp, tracing.HTTPOutcome{
 		StatusCode: rendered.StatusCode,
-		Reason:     constants.TerminalReasonResolutionFailed,
+		Reason:     terminalReasonForFailure(failure.Kind),
 		ErrorID:    errorID,
 	}
 }
@@ -381,11 +493,28 @@ func renderResolutionFailure(
 //
 // The failure *kind* is deliberately not included. It reaches the log, the metric and
 // the span, and putting it on an event that leaves the process would publish which
-// specific malformation a caller achieved.
-func resolutionFailureAnalytics(routeFields map[string]any, execCtx *PolicyExecutionContext) *structpb.Struct {
-	fields := make(map[string]any, len(routeFields)+1)
+// specific malformation a caller achieved. The terminal reason is included, because
+// it is drawn from a closed set and says only which *class* of pre-chain refusal
+// happened — a protocol-version one or a payload one — which is what a success-rate
+// breakdown needs in order to attribute the failure at all.
+//
+// The failure's route attributes are copied in under the names the resolver gave
+// them. They are the only way a pre-chain rejection carries its protocol facts —
+// which binding, which configured version — because the analytics system policy that
+// normally emits them never ran: it lives in the chain this request failed to bind.
+// Bounded by construction (see ResolutionError.Attributes), unlike anything read out
+// of the request.
+func resolutionFailureAnalytics(
+	routeFields map[string]any,
+	execCtx *PolicyExecutionContext,
+	failure *resolver.ResolutionError,
+) *structpb.Struct {
+	fields := make(map[string]any, len(routeFields)+1+len(failure.Attributes))
 	maps.Copy(fields, routeFields)
-	fields[TerminalReasonKey] = constants.TerminalReasonResolutionFailed
+	fields[TerminalReasonKey] = terminalReasonForFailure(failure.Kind)
+	for name, value := range failure.Attributes {
+		fields[name] = value
+	}
 
 	built, err := buildAnalyticsStruct(fields, execCtx)
 	if err != nil {
@@ -414,7 +543,13 @@ func genericResolutionFailure(kind resolver.FailureKind, errorID string) sterile
 
 	switch kind {
 	case resolver.FailureParse, resolver.FailureInvalidRequest, resolver.FailureMultiOperation,
-		resolver.FailureUndecodableBody:
+		resolver.FailureUndecodableBody,
+		// A refused service parameter is a bad request, not a missing resource: the
+		// route exists and the operation may well exist on it — the client stated
+		// something about how it is speaking that this route cannot honour. A 404
+		// would send the caller looking for a path problem it does not have.
+		resolver.FailureInvalidParameter, resolver.FailureConflictingParameter,
+		resolver.FailureVersionNotSupported:
 		status, message = http.StatusBadRequest, "Bad Request"
 	case resolver.FailureUnknownOperation:
 		status, message = http.StatusNotFound, "Not Found"

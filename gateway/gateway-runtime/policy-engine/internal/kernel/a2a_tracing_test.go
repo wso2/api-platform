@@ -23,6 +23,7 @@ import (
 	"encoding/json"
 	"testing"
 
+	corev3 "github.com/envoyproxy/go-control-plane/envoy/config/core/v3"
 	extprocv3 "github.com/envoyproxy/go-control-plane/envoy/service/ext_proc/v3"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -212,9 +213,29 @@ func registerA2AJSONRPCRoute(t *testing.T, k *Kernel, routeKey, operation string
 // requestHeadersWithBodyToFollow is requestHeadersReq with EndOfStream cleared: a
 // JSON-RPC route defers resolution to the request-body callback only when a body is
 // actually coming, since Envoy sends no body callback for a bodyless request.
+//
+// It also carries the A2A protocol version, the way a conformant A2A client does. An
+// operation route validates that before it will resolve anything at all (Section
+// 8A), so a fixture that omitted it would be testing the rejection path rather than
+// the one it means to.
 func requestHeadersWithBodyToFollow(routeName, method, path string) *extprocv3.ProcessingRequest {
 	req := requestHeadersReq(routeName, method, path)
 	req.GetRequestHeaders().EndOfStream = false
+	withA2AVersion(req, a2aTestProtocolVersion)
+	return req
+}
+
+// a2aTestProtocolVersion is the version every A2A route in these tests exposes.
+const a2aTestProtocolVersion = "1.0"
+
+// withA2AVersion appends the A2A-Version request header, in the lowercase form Envoy
+// delivers header names in.
+func withA2AVersion(req *extprocv3.ProcessingRequest, version string) *extprocv3.ProcessingRequest {
+	headers := req.GetRequestHeaders().GetHeaders()
+	headers.Headers = append(headers.Headers, &corev3.HeaderValue{
+		Key:      resolver.A2AVersionHeader,
+		RawValue: []byte(version),
+	})
 	return req
 }
 

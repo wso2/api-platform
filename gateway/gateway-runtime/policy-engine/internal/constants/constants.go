@@ -101,6 +101,27 @@ const (
 	AttrPolicyChainKey            = "policy_chain_key"
 	AttrResolvedOperation         = "resolver.operation"
 
+	// Attributes describing a request the engine refused before binding a chain.
+	//
+	// AttrResolutionPhase names *what was being checked* rather than which ext_proc
+	// callback it happened on: a body-resolved route runs operation resolution at
+	// the request-body callback and a bodyless one runs it at the header callback,
+	// and both are the same check with the same meaning.
+	AttrResolutionPhase = "resolution.phase"
+	// AttrResolutionFailureReason is the resolver's own bounded classification. It
+	// is safe on a span and as a metric label; the caller-supplied value that
+	// provoked it is not, and never appears on either.
+	AttrResolutionFailureReason = "resolution.failure_reason"
+
+	// Values for AttrResolutionPhase.
+	//
+	// ResolutionPhaseHeaders is the header-only validation a prepared resolver may
+	// run before anything is bound or buffered — the A2A request protocol version is
+	// the one that exists today. ResolutionPhaseOperation is the selection of the
+	// logical operation, and therefore of the chain.
+	ResolutionPhaseHeaders   = "headers"
+	ResolutionPhaseOperation = "operation"
+
 	// Terminal-outcome attributes. The status code itself is recorded under the
 	// OTel semantic-convention key http.response.status_code by
 	// tracing.RecordHTTPOutcome; these two are policy-engine specific.
@@ -122,6 +143,23 @@ const (
 	// be resolved to a policy chain. It exists because the status alone cannot identify
 	// one — an unknown-operation failure is an HTTP 404 just like an Envoy route miss.
 	TerminalReasonResolutionFailed = "resolution_failed"
+
+	// TerminalReasonA2AVersionRejected marks a request refused because of the A2A
+	// protocol version it stated — absent, malformed, contradictory, or a version
+	// this Agent does not expose.
+	//
+	// Separated from TerminalReasonResolutionFailed because the two say different
+	// things about the caller and want different answers. A resolution failure means
+	// the client asked for an operation that does not exist or sent a payload that
+	// did not parse; this means the client is speaking a different protocol version,
+	// and the fix is a header, not a payload. Keeping them apart is what lets an
+	// operator see a fleet of clients that never adopted the version requirement as
+	// its own signal rather than as a rise in malformed requests.
+	//
+	// The resolver's bounded failure kind (invalid-parameter,
+	// conflicting-parameter, version-not-supported) is retained alongside it on the
+	// span and the metric, so the reason stays closed while the detail survives.
+	TerminalReasonA2AVersionRejected = "a2a-version-rejected"
 
 	// Analytics metadata and property keys shared across packages.
 	GuardrailHitMetadataKey  = "isGuardrailHit"
