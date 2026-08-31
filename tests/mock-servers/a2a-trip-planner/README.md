@@ -146,12 +146,27 @@ $ curl -s -o /dev/null -w '%{http_code}\n' http://localhost:9099/v1/tasks
 400
 ```
 
-Note the JSON-RPC failure rides an **HTTP 200**. The gateway does not inject or
-validate this header — Section 8A of the implementation plan, the pre-resolution
-guard that would have, is not implemented — so a client talking through the
-gateway must send it too.
+Note the JSON-RPC failure rides an **HTTP 200**.
+
+The gateway validates this version before it resolves an operation, and does not
+rewrite the request, so a client talking through the gateway must send it too.
 
 The Agent Card is exempt: it is a static discovery document, not an operation.
+
+**The version may also travel as a query parameter**, which §3.6.1 allows for a
+client that cannot set headers. The SDK does not implement that half — its
+`validate_version` reads the header only — so this fixture adds an ASGI shim
+(`version_query.py`) that copies an `A2A-Version` query parameter onto the header
+before routing, leaving the SDK to perform the actual check. The header wins when
+both are present, and a repeated parameter with differing values injects nothing
+so the request is refused rather than guessed at.
+
+```console
+$ curl -s -o /dev/null -w '%{http_code}\n' 'http://localhost:9099/v1/tasks?A2A-Version=1.0'
+200
+$ curl -s -o /dev/null -w '%{http_code}\n' 'http://localhost:9099/v1/tasks?A2A-Version=0.3'
+400
+```
 
 ### 2. Task identifiers are a flat `id`, never `name: "tasks/<id>"`
 
@@ -304,6 +319,7 @@ error cannot be mistaken for a stream.
 | `main.py` | Route assembly and uvicorn startup |
 | `agent.py` | Cards, message parsing, itinerary rendering, the `AgentExecutor` |
 | `config.py` | Environment-sourced configuration |
+| `version_query.py` | ASGI shim accepting the §3.6.1 `A2A-Version` query parameter, which the SDK reads only as a header |
 | `requirements.txt` | Pinned exactly — a floating SDK version would let an upstream change silently alter what the gateway is tested against |
 
 ## Capability flags

@@ -484,6 +484,25 @@ Feature: Agent Card serving
     Then the response status code should be 200
     And the response body should not contain "book_trip"
 
+    # Client-visible interoperability: the assertions above are about bytes, and a
+    # proxied response can be byte-perfect and still unusable if the gateway
+    # answered on a binding the client did not ask for or wrapped it wrongly. The
+    # official SDK decodes what came back into a typed AgentCard on both bindings,
+    # and is refused outright without credentials.
+    When I clear all headers
+    And I create an A2A client "rpc" for the "JSONRPC" binding at "http://localhost:8080/agent-protected-passthrough"
+    And I create an A2A client "rest" for the "HTTP+JSON" binding at "http://localhost:8080/agent-protected-passthrough/v1"
+    And the A2A client "rest" gets the extended Agent Card
+    Then the A2A client "rest" call should have failed
+
+    When I get a JWT token from the mock JWKS server with issuer "http://mock-jwks:8080/token"
+    And I set the Authorization header to the JWT token
+    And the A2A client "rest" gets the extended Agent Card
+    Then the A2A client "rest" should have received an Agent Card with the skill "book_trip"
+
+    When the A2A client "rpc" gets the extended Agent Card
+    Then the A2A client "rpc" should have received an Agent Card with the skill "book_trip"
+
     Given I authenticate using basic auth as "admin"
     When I delete the Agent "agent-protected-passthrough"
     Then the response should be successful
@@ -629,6 +648,30 @@ Feature: Agent Card serving
     Then the response status code should be 200
     And the response body should not contain "gateway_managed_skill"
     And the response body should contain "extendedAgentCard"
+
+    # Client-visible interoperability: a locally served card has to satisfy the
+    # same client the proxied one does. The gateway builds this response itself —
+    # the bare document on HTTP+JSON, the JSON-RPC envelope on the other binding —
+    # so it is the response most likely to be shaped subtly wrong, and the official
+    # SDK decoding it into a typed AgentCard on both bindings is what says it is
+    # not. Refused without credentials, exactly as the raw probes above found.
+    When I clear all headers
+    And I create an A2A client "rpc" for the "JSONRPC" binding at "http://localhost:8080/agent-protected-managed"
+    And I create an A2A client "rest" for the "HTTP+JSON" binding at "http://localhost:8080/agent-protected-managed/v1"
+    And the A2A client "rest" gets the extended Agent Card
+    Then the A2A client "rest" call should have failed
+
+    When I get a JWT token from the mock JWKS server with issuer "http://mock-jwks:8080/token"
+    And I set the Authorization header to the JWT token
+    And the A2A client "rest" gets the extended Agent Card
+    Then the A2A client "rest" should have received an Agent Card named "Trip Planner"
+    And the A2A client "rest" should have received an Agent Card with the skill "gateway_managed_skill"
+    And the A2A client "rest" should have received an Agent Card without the skill "book_trip"
+
+    When the A2A client "rpc" gets the extended Agent Card
+    Then the A2A client "rpc" should have received an Agent Card named "Trip Planner"
+    And the A2A client "rpc" should have received an Agent Card with the skill "gateway_managed_skill"
+    And the A2A client "rpc" should have received an Agent Card without the skill "book_trip"
 
     Given I authenticate using basic auth as "admin"
     When I delete the Agent "agent-protected-managed"
