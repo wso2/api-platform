@@ -38,6 +38,7 @@ import (
 	"google.golang.org/protobuf/types/known/anypb"
 	"google.golang.org/protobuf/types/known/structpb"
 
+	"github.com/wso2/api-platform/gateway/gateway-runtime/policy-engine/internal/config"
 	"github.com/wso2/api-platform/gateway/gateway-runtime/policy-engine/internal/constants"
 	"github.com/wso2/api-platform/gateway/gateway-runtime/policy-engine/internal/kernel"
 	"github.com/wso2/api-platform/gateway/gateway-runtime/policy-engine/internal/metrics"
@@ -336,10 +337,28 @@ func (c *Client) loadTLSConfig() (*tls.Config, error) {
 		return nil, fmt.Errorf("failed to parse CA certificate")
 	}
 
+	// CipherSuites/CurvePreferences reuse the admin TLS listener's own
+	// parsers (policy-engine/internal/config) rather than duplicating the
+	// curve-name-to-tls.CurveID map here. CurvePreferences is what lets this
+	// client offer the FIPS 203 X25519MLKEM768 hybrid group ahead of
+	// classical curves when the operator opts in via xds.tls.ecdh_curves;
+	// gateway-controller's policy xDS server falls back to a later classical
+	// entry if it doesn't support the hybrid group.
+	cipherSuites, err := config.ParseAdminCiphers(c.config.TLSCiphers)
+	if err != nil {
+		return nil, fmt.Errorf("invalid xds.tls.ciphers: %w", err)
+	}
+	curves, err := config.ParseAdminEcdhCurves(c.config.TLSEcdhCurves)
+	if err != nil {
+		return nil, fmt.Errorf("invalid xds.tls.ecdh_curves: %w", err)
+	}
+
 	return &tls.Config{
-		Certificates: []tls.Certificate{cert},
-		RootCAs:      caCertPool,
-		MinVersion:   tls.VersionTLS12,
+		Certificates:     []tls.Certificate{cert},
+		RootCAs:          caCertPool,
+		MinVersion:       tls.VersionTLS12,
+		CipherSuites:     cipherSuites,
+		CurvePreferences: curves,
 	}, nil
 }
 
