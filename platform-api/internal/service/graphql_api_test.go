@@ -61,7 +61,11 @@ type mockGraphQLAPIRepo struct {
 	countErr              error
 	countByProjectResult  int
 	countByProjectErr     error
-	countByProjectCapture struct{ orgUUID, projectUUID string }
+	countByProjectCapture struct{ orgUUID, projectUUID, search string }
+	listCapture           struct {
+		orgUUID, projectUUID string
+		opts                 repository.ListOptions
+	}
 
 	gatewayDetails       []*model.APIGatewayWithDetails
 	getGatewaysFunc      func(apiUUID, orgUUID string) ([]*model.APIGatewayWithDetails, error)
@@ -93,15 +97,19 @@ func (m *mockGraphQLAPIRepo) GetByUUID(uuid, orgUUID string) (*model.GraphQLAPI,
 	return nil, nil
 }
 
-func (m *mockGraphQLAPIRepo) List(orgUUID, projectUUID string, limit, offset int) ([]*model.GraphQLAPI, error) {
+func (m *mockGraphQLAPIRepo) List(orgUUID, projectUUID string, opts repository.ListOptions) ([]*model.GraphQLAPI, error) {
+	m.listCapture.orgUUID = orgUUID
+	m.listCapture.projectUUID = projectUUID
+	m.listCapture.opts = opts
 	return m.listResult, m.listErr
 }
 
 func (m *mockGraphQLAPIRepo) Count(orgUUID string) (int, error) { return m.countResult, m.countErr }
 
-func (m *mockGraphQLAPIRepo) CountByProject(orgUUID, projectUUID string) (int, error) {
+func (m *mockGraphQLAPIRepo) CountByProject(orgUUID, projectUUID, search string) (int, error) {
 	m.countByProjectCapture.orgUUID = orgUUID
 	m.countByProjectCapture.projectUUID = projectUUID
+	m.countByProjectCapture.search = search
 	return m.countByProjectResult, m.countByProjectErr
 }
 
@@ -675,7 +683,7 @@ func TestGraphQLUpstreamAuth_RedactedAcrossAllResponseShapes(t *testing.T) {
 	}
 	assertRedacted(t, "GetDetail", &detail.Upstream)
 
-	list, err := svc.List("org-1", "", 25, 0)
+	list, err := svc.List("org-1", "", repository.ListOptions{Limit: 25, Offset: 0})
 	if err != nil {
 		t.Fatalf("List: unexpected error: %v", err)
 	}
@@ -706,7 +714,7 @@ func TestGraphQLList_NoProjectFilter_ReturnsAllAndResolvesHandles(t *testing.T) 
 	project := &model.Project{ID: "project-uuid", Handle: "default-project", OrganizationID: "org-1"}
 	svc := newGraphQLTestService(repo, project)
 
-	resp, err := svc.List("org-1", "", 100, 0)
+	resp, err := svc.List("org-1", "", repository.ListOptions{Limit: 100, Offset: 0})
 	if err != nil {
 		t.Fatalf("List failed: %v", err)
 	}
@@ -732,7 +740,7 @@ func TestGraphQLList_ProjectFilter_ResolvesHandleToUUIDBeforeFiltering(t *testin
 	project := &model.Project{ID: "project-uuid", Handle: "default-project", OrganizationID: "org-1"}
 	svc := newGraphQLTestService(repo, project)
 
-	if _, err := svc.List("org-1", "default-project", 100, 0); err != nil {
+	if _, err := svc.List("org-1", "default-project", repository.ListOptions{Limit: 100, Offset: 0}); err != nil {
 		t.Fatalf("List failed: %v", err)
 	}
 
@@ -748,7 +756,7 @@ func TestGraphQLList_UnknownProjectHandle_NotFound(t *testing.T) {
 	repo := &mockGraphQLAPIRepo{}
 	svc := newGraphQLTestService(repo, nil) // mockGraphQLProjectRepo.project == nil => "not found"
 
-	_, err := svc.List("org-1", "does-not-exist", 100, 0)
+	_, err := svc.List("org-1", "does-not-exist", repository.ListOptions{Limit: 100, Offset: 0})
 	if err == nil {
 		t.Fatal("expected an error for an unknown project handle")
 	}
