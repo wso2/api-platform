@@ -114,9 +114,10 @@ Feature: Test GraphQL API CRUD and connectivity (gateway-only path)
 
     # ==================== MUTATIONS ====================
     # There is no separate "mutation support" at the gateway-controller/Envoy
-    # layer, and the artifact carries no schema field at all (docs/specs/
-    # graphql-api-support.md §6.1/§6.2): a mutation is just another POST body
-    # sent to the same single route a query uses. This scenario proves that
+    # layer, and the artifact carries no schema field at all: a mutation is
+    # just another POST body sent to the same single route a query uses,
+    # since GraphQL always resolves to exactly one route, never a
+    # per-operation list like REST's. This scenario proves that
     # pass-through directly by sending a mutation-shaped body against an
     # artifact that is byte-for-byte identical in shape to every query-only
     # artifact in this file.
@@ -733,14 +734,13 @@ Feature: Test GraphQL API CRUD and connectivity (gateway-only path)
         And I wait for the endpoint "http://localhost:8080/cors-graphql" to be ready with method "POST" and body '{"query":"{ ping }"}'
 
         # CONFIRMED via this test (not assumed): a GraphQL API resolves to
-        # exactly one POST route (docs/specs/graphql-api-support.md §6.1) with
-        # an Exact path/method match, so an OPTIONS preflight never matches
-        # that route at all — Envoy 404s before the cors policy, or any
-        # policy, ever runs. REST's cors preflight support (which relies on
-        # an explicit `- method: OPTIONS` entry in operations[]) does NOT
-        # carry over to GraphQL; there is no operations[] to add one to.
-        # This is a genuine, current limitation — not yet supported — tracked
-        # in docs/specs/graphql-api-support.md §7's QoS table.
+        # exactly one POST route with an Exact path/method match, so an
+        # OPTIONS preflight never matches that route at all — Envoy 404s
+        # before the cors policy, or any policy, ever runs. REST's cors
+        # preflight support (which relies on an explicit `- method: OPTIONS`
+        # entry in operations[]) does NOT carry over to GraphQL; there is no
+        # operations[] to add one to. This is a genuine, current limitation —
+        # not yet supported.
         Given I clear all headers
         When I set header "Origin" to "http://example.com"
         And I set header "Access-Control-Request-Method" to "POST"
