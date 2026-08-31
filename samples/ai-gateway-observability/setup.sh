@@ -43,13 +43,14 @@ info()    { echo "[INFO]  $*"; }
 success() { echo "[OK]    $*"; }
 error()   { echo "[ERROR] $*" >&2; exit 1; }
 
+# Polls a health endpoint until it answers, giving up after a fixed number of tries.
 wait_for_health() {
   local url="$1"
   local max_attempts=30
   local interval=5
   info "Waiting for gateway to be healthy at ${url} ..."
   for i in $(seq 1 "${max_attempts}"); do
-    if curl -sf "${url}" > /dev/null 2>&1; then
+    if curl -sf --connect-timeout 5 --max-time 10 "${url}" > /dev/null 2>&1; then
       success "Gateway is healthy."
       return 0
     fi
@@ -59,6 +60,7 @@ wait_for_health() {
   error "Gateway did not become healthy after $((max_attempts * interval))s."
 }
 
+# POSTs a resource YAML to the management API and reports the outcome by HTTP status.
 deploy_resource() {
   local kind="$1"   # llm-providers or llm-proxies
   local file="$2"
@@ -67,6 +69,7 @@ deploy_resource() {
   local status body
   body=$(mktemp)
   status=$(curl -s -o "${body}" -w "%{http_code}" \
+    --connect-timeout 5 --max-time 30 \
     -X POST "${GATEWAY_MGMT_URL}/${kind}" \
     -H "Content-Type: application/yaml" \
     -H "${AUTH_HEADER}" \
@@ -104,7 +107,7 @@ if [[ -f "${DIST_ZIP}" ]]; then
   info "Archive already exists, skipping download."
 else
   if command -v curl >/dev/null 2>&1; then
-    curl -fSL "${DIST_URL}" -o "${DIST_ZIP}"
+    curl -fSL --connect-timeout 10 --max-time 300 "${DIST_URL}" -o "${DIST_ZIP}"
   elif command -v wget >/dev/null 2>&1; then
     wget -q "${DIST_URL}" -O "${DIST_ZIP}"
   else
@@ -233,6 +236,7 @@ done
 # ---------------------------------------------------------------------------
 # Step 10 - Register the inbound API key on each proxy
 # ---------------------------------------------------------------------------
+# Registers an inbound API key on a proxy, naming the cause when the gateway rejects it.
 register_api_key() {
   local proxy_yaml="$1" api_key="$2"
   local proxy_name status body detail
@@ -240,6 +244,7 @@ register_api_key() {
   info "Registering inbound API key for ${proxy_name} ..."
   body=$(mktemp)
   status=$(curl -s -o "${body}" -w "%{http_code}" \
+    --connect-timeout 5 --max-time 30 \
     -X POST "${GATEWAY_MGMT_URL}/llm-proxies/${proxy_name}/api-keys" \
     -H "Content-Type: application/json" \
     -H "${AUTH_HEADER}" \

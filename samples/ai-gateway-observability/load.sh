@@ -22,7 +22,7 @@ info() { printf '%b[INFO]%b %s\n' "${BLUE}" "${NC}" "$*"; }
 ok()   { printf '%b[OK]%b   %s\n' "${GREEN}" "${NC}" "$*"; }
 fail() { printf '%b[ERROR]%b %s\n' "${RED}" "${NC}" "$*" >&2; }
 
-if ! curl -sf "${HEALTH_URL}" >/dev/null 2>&1; then
+if ! curl -sf --connect-timeout 5 --max-time 10 "${HEALTH_URL}" >/dev/null 2>&1; then
   fail "Gateway is not running. Run ./setup.sh first."
   exit 1
 fi
@@ -34,11 +34,12 @@ COUNT_429=0
 COUNT_5XX=0
 COUNT_OTHER=0
 
+# Sends one chat completion request and tallies the response by status class.
 send() {
   local url="$1" key="$2" prompt="$3"
   local body status
   body=$(printf '{"model":"gpt-4o-mini","messages":[{"role":"user","content":"%s"}]}' "${prompt}")
-  status=$(curl -s -o /dev/null -w "%{http_code}" -X POST "${url}" \
+  status=$(curl -s -o /dev/null -w "%{http_code}" --connect-timeout 5 --max-time 30 -X POST "${url}" \
     -H "Content-Type: application/json" \
     -H "api_key: ${key}" \
     -d "${body}" 2>/dev/null)

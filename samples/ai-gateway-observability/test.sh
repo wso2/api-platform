@@ -15,6 +15,9 @@ JAEGER_URL="${JAEGER_URL:-http://localhost:16686}"
 GRAFANA_URL="${GRAFANA_URL:-http://localhost:3000}"
 GRAFANA_AUTH="${GRAFANA_AUTH:-admin:admin}"
 
+# Proxy names from llm-proxy-assistant.yaml and llm-proxy-support.yaml.
+EXPECTED_PROXIES=("assistant-proxy" "support-proxy")
+
 GREEN="\033[0;32m"; RED="\033[0;31m"; BLUE="\033[0;34m"; NC="\033[0m"
 pass() { printf '%b[PASS]%b %s\n' "${GREEN}" "${NC}" "$*"; }
 fail() { printf '%b[FAIL]%b %s\n' "${RED}" "${NC}" "$*"; FAILURES=$(( FAILURES + 1 )); }
@@ -32,7 +35,7 @@ if ! command -v jq >/dev/null 2>&1; then
 fi
 
 info "Checking gateway health at ${HEALTH_URL} ..."
-if ! curl -sf "${HEALTH_URL}" >/dev/null 2>&1; then
+if ! curl -sf --connect-timeout 5 --max-time 10 "${HEALTH_URL}" >/dev/null 2>&1; then
   printf '%b[ERROR]%b Gateway is not running. Run ./setup.sh first.\n' "${RED}" "${NC}" >&2; exit 1
 fi
 pass "Gateway is healthy."
@@ -45,10 +48,11 @@ echo "════════════════════════�
 echo " Test 1: Metrics endpoints respond"
 echo "══════════════════════════════════════════════════"
 
+# Asserts an endpoint answers HTTP 200, recording a pass or a failure.
 check_endpoint() {
   local label="$1" url="$2"
   local status
-  status=$(curl -s -o /dev/null -w "%{http_code}" "${url}")
+  status=$(curl -s -o /dev/null -w "%{http_code}" --connect-timeout 5 --max-time 15 "${url}")
   if [[ "${status}" == "200" ]]; then
     pass "${label}: HTTP 200 (${url})"
   else
@@ -68,7 +72,7 @@ echo "════════════════════════�
 echo " Test 2: Prometheus scrape targets are up"
 echo "══════════════════════════════════════════════════"
 
-TARGETS=$(curl -s "${PROMETHEUS_URL}/api/v1/targets" 2>/dev/null)
+TARGETS=$(curl -s --connect-timeout 5 --max-time 15 "${PROMETHEUS_URL}/api/v1/targets" 2>/dev/null)
 if [[ -z "${TARGETS}" ]] || ! jq -e '.data.activeTargets' >/dev/null 2>&1 <<< "${TARGETS}"; then
   fail "Could not read scrape targets from ${PROMETHEUS_URL}/api/v1/targets"
 else
@@ -94,17 +98,27 @@ echo " Test 3: Per-proxy request metrics exist"
 echo "══════════════════════════════════════════════════"
 
 QUERY='sum by (api_name) (policy_engine_requests_total{phase="request_headers"})'
-RESULT=$(curl -s --get "${PROMETHEUS_URL}/api/v1/query" --data-urlencode "query=${QUERY}" 2>/dev/null)
+RESULT=$(curl -s --connect-timeout 5 --max-time 15 --get "${PROMETHEUS_URL}/api/v1/query" --data-urlencode "query=${QUERY}" 2>/dev/null)
 
 if ! jq -e '.status == "success"' >/dev/null 2>&1 <<< "${RESULT}"; then
   fail "Prometheus query failed. Is Prometheus running on ${PROMETHEUS_URL}?"
 else
   PROXIES=$(jq -r '.data.result[] | select(.metric.api_name != "" and .metric.api_name != null) | "\(.metric.api_name)=\(.value[1])"' <<< "${RESULT}")
-  if [[ -n "${PROXIES}" ]]; then
-    pass "Per-proxy request counts found:"
+  # Both proxies must report. The dashboard's per-proxy panels are the point of the
+  # sample, so one proxy answering while the other is silent is a failure, not a pass.
+  MISSING=""
+  for proxy in "${EXPECTED_PROXIES[@]}"; do
+    grep -q "^${proxy}=" <<< "${PROXIES}" || MISSING="${MISSING} ${proxy}"
+  done
+  if [[ -z "${PROXIES}" ]]; then
+    fail "No per-proxy request counts yet. Run ./load.sh to generate traffic."
+  elif [[ -n "${MISSING}" ]]; then
+    fail "Missing request counts for:${MISSING}"
+    echo "        Found instead:"
     while IFS= read -r line; do printf '        %s\n' "${line}"; done <<< "${PROXIES}"
   else
-    fail "No per-proxy request counts yet. Run ./load.sh to generate traffic."
+    pass "Per-proxy request counts found for both proxies:"
+    while IFS= read -r line; do printf '        %s\n' "${line}"; done <<< "${PROXIES}"
   fi
 fi
 
@@ -116,7 +130,7 @@ echo "════════════════════════�
 echo " Test 4: Grafana dashboard is provisioned"
 echo "══════════════════════════════════════════════════"
 
-SEARCH=$(curl -s -u "${GRAFANA_AUTH}" "${GRAFANA_URL}/api/search?query=AI%20Gateway" 2>/dev/null)
+SEARCH=$(curl -s --connect-timeout 5 --max-time 15 -u "${GRAFANA_AUTH}" "${GRAFANA_URL}/api/search?query=AI%20Gateway" 2>/dev/null)
 if jq -e 'type == "array" and length > 0' >/dev/null 2>&1 <<< "${SEARCH}"; then
   TITLE=$(jq -r '.[0].title' <<< "${SEARCH}")
   URI=$(jq -r '.[0].url' <<< "${SEARCH}")
@@ -133,7 +147,7 @@ echo "════════════════════════�
 echo " Test 5: Traces are visible in Jaeger"
 echo "══════════════════════════════════════════════════"
 
-SERVICES=$(curl -s "${JAEGER_URL}/api/services" 2>/dev/null)
+SERVICES=$(curl -s --connect-timeout 5 --max-time 15 "${JAEGER_URL}/api/services" 2>/dev/null)
 SERVICE_LIST=$(jq -r '.data[]? // empty' <<< "${SERVICES}" 2>/dev/null | grep -v '^jaeger' || true)
 
 if [[ -z "${SERVICE_LIST}" ]]; then
@@ -142,7 +156,7 @@ else
   info "Services reporting traces: $(echo "${SERVICE_LIST}" | tr '\n' ' ')"
   TRACED=0
   for service in ${SERVICE_LIST}; do
-    COUNT=$(curl -s --get "${JAEGER_URL}/api/traces" \
+    COUNT=$(curl -s --connect-timeout 5 --max-time 15 --get "${JAEGER_URL}/api/traces" \
       --data-urlencode "service=${service}" \
       --data-urlencode "limit=1" 2>/dev/null | jq -r '.data | length' 2>/dev/null)
     if [[ "${COUNT:-0}" -gt 0 ]]; then
