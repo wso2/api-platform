@@ -118,6 +118,13 @@ func validateGraphQLUpstream(label string, up *api.Upstream) []config.Validation
 		return errors
 	}
 
+	if up.Ref != nil && strings.TrimSpace(*up.Ref) != "" {
+		errors = append(errors, config.ValidationError{
+			Field:   "spec.upstream." + label + ".ref",
+			Message: "Upstream ref is not supported for GraphQLApi (no upstreamDefinitions list); use a direct url",
+		})
+	}
+
 	if up.Url == nil || strings.TrimSpace(*up.Url) == "" {
 		errors = append(errors, config.ValidationError{
 			Field:   "spec.upstream." + label + ".url",
