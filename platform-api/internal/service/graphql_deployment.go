@@ -105,6 +105,13 @@ func generateGraphQLAPIDeploymentYAML(apiModel *model.GraphQLAPI) (dto.GraphQLAP
 				Auth: main.Auth, // raw model.UpstreamAuth — the gateway needs the real credential, unlike API read responses
 			},
 		}
+		if sandbox := apiModel.Configuration.Upstream.Sandbox; sandbox != nil {
+			upstream.Sandbox = &dto.GraphQLUpstreamTarget{
+				URL:  sandbox.URL,
+				Ref:  sandbox.Ref,
+				Auth: sandbox.Auth,
+			}
+		}
 	}
 
 	contextValue := ""
