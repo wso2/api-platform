@@ -225,14 +225,14 @@ func (s *GraphQLAPIService) Create(orgUUID, createdBy string, req *api.CreateGra
 
 	context := req.Context
 	m := &model.GraphQLAPI{
-		Handle:          handle,
-		OrganizationID:  orgUUID,
-		ProjectID:       projectUUID,
-		Name:            req.DisplayName,
-		Description:     utils.ValueOrEmpty(req.Description),
-		CreatedBy:       createdBy,
-		UpdatedBy:       createdBy,
-		Version:         req.Version,
+		Handle:         handle,
+		OrganizationID: orgUUID,
+		ProjectID:      projectUUID,
+		Name:           req.DisplayName,
+		Description:    utils.ValueOrEmpty(req.Description),
+		CreatedBy:      createdBy,
+		UpdatedBy:      createdBy,
+		Version:        req.Version,
 		Configuration: model.GraphQLAPIConfig{
 			Name:              req.DisplayName,
 			Version:           req.Version,
