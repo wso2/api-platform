@@ -719,7 +719,17 @@ func (t *Translator) TranslateConfigs(
 		var err error
 
 		// Try RuntimeDeployConfig transformer path first (produces minimal metadata routes)
-		if transformer, ok := t.transformers[cfg.Kind]; ok {
+		transformer, ok := t.transformers[cfg.Kind]
+		if !ok && cfg.Kind != "WebSubApi" {
+			// Transformers should be registered for every non-WebSub kind before the
+			// first snapshot is generated. Falling back here means Envoy cluster/route
+			// names will not match the policy engine's resources (503 cluster_not_found /
+			// 500 policy chain not found) — see issue #3197.
+			log.Warn("No transformer registered for config kind, using legacy translation path",
+				slog.String("id", cfg.UUID),
+				slog.String("kind", cfg.Kind))
+		}
+		if ok {
 			rdc, transformErr := transformer.Transform(cfg)
 			if transformErr != nil {
 				log.Error("Failed to transform config via RuntimeDeployConfig, falling back to legacy path",
