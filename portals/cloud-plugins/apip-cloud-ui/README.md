@@ -7,10 +7,11 @@ native extension contract.
 
 ## Layout
 
-- `src/hosts/ai-workspace.tsx` registers the Pipelines feature for AI Workspace.
+- `src/hosts/ai-workspace.tsx` registers the Pipelines and Deploy features for AI Workspace.
 - `src/hosts/api-control-plane.tsx` is the API Control Plane registry; it is empty
   until a control-plane cloud feature is added.
 - `../apip-cloud-ui-pipelines` contains the reusable Pipelines UI.
+- `../apip-cloud-ui-deploy` contains the reusable Deploy UI.
 
 AI Workspace consumes this package through a local file dependency and re-exports
 its registry from `portals/ai-workspace/src/cloud/index.ts`. Both the web app and

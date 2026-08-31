@@ -5,8 +5,6 @@
     "moduleResolution": "Bundler",
     "baseUrl": ".",
     "paths": {
-      "@wso2-enterprise/apip-cloud-ui-deploy": ["../apip-cloud-ui-deploy/src/index.ts"],
-      "@wso2-enterprise/apip-cloud-ui-pipelines": ["../apip-cloud-ui-pipelines/src/index.ts"],
       "@wso2/oxygen-ui": ["../../ai-workspace/node_modules/@wso2/oxygen-ui"],
       "@wso2/oxygen-ui-icons-react": ["../../ai-workspace/node_modules/@wso2/oxygen-ui-icons-react"],
       "react": ["../../ai-workspace/node_modules/@types/react/index.d.ts"],
@@ -15,7 +13,8 @@
     "jsx": "react-jsx",
     "strict": true,
     "noEmit": true,
-    "skipLibCheck": true
+    "skipLibCheck": true,
+    "resolveJsonModule": true
   },
   "include": ["src"]
 }

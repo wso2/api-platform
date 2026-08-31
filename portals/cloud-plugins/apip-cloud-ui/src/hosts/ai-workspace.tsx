@@ -7,8 +7,9 @@
  * You may not alter or remove any copyright or other notice from copies of this content.
  */
 
-import { Workflow } from '@wso2/oxygen-ui-icons-react';
+import { Rocket, Workflow } from '@wso2/oxygen-ui-icons-react';
 
+import { DeployFeature } from '@wso2-enterprise/apip-cloud-ui-deploy';
 import { PipelinesFeature } from '@wso2-enterprise/apip-cloud-ui-pipelines';
 import type { AIWorkspaceExtension } from '../../../../ai-workspace/src/extensions';
 import { defineCloudPlugin, getCloudExtensions, type CloudPluginFeature } from '../plugin';
@@ -31,6 +32,21 @@ export const cloudPluginFeatures: CloudPluginFeature<AIWorkspaceExtension>[] = [
         label: 'Pipelines',
         icon: <Workflow size={20} />,
         render: (port) => <PipelinesFeature port={port} />,
+      },
+    ],
+  }),
+  defineCloudPlugin({
+    id: 'deploy',
+    version: '0.1.0',
+    extensions: [
+      {
+        id: 'deploy',
+        slot: 'sidebar.main',
+        order: 70,
+        path: 'deploy',
+        label: 'Deploy',
+        icon: <Rocket size={20} />,
+        render: (port) => <DeployFeature port={port} />,
       },
     ],
   }),
