@@ -38,7 +38,7 @@ type TLSClientOptions struct {
 	SkipVerify bool
 }
 
-// NewTransport builds an *http.Transport for upstream calls with explicit
+// NewTransport builds an http.RoundTripper for upstream calls with explicit
 // timeouts and connection pooling, via the shared httpkit/httpclient builder.
 // hc supplies every knob sourced from [ai_workspace.http_client] in config.toml
 // (see config.HTTPClientConfig's doc comment); opts supplies the upstream TLS
@@ -52,7 +52,13 @@ type TLSClientOptions struct {
 // This transport only ever talks to the fixed, operator-configured Platform
 // API (cfg.ControlPlane.URL) — never a tenant/end-user-supplied destination —
 // so no SSRF guard (httpclient's Config.SSRF) is enabled here.
-func NewTransport(hc config.HTTPClientConfig, opts TLSClientOptions) (*http.Transport, error) {
+//
+// The return type is the interface, not the concrete *http.Transport:
+// hc.Timeouts.MaxResponseBytes >= 0 (see HTTPClientTimeoutsConfig's doc
+// comment) makes httpclient.New wrap the transport in its own
+// maxBytesRoundTripper, which every caller here (http.Client.Transport,
+// proxy.ReverseProxy) already accepts as an http.RoundTripper.
+func NewTransport(hc config.HTTPClientConfig, opts TLSClientOptions) (http.RoundTripper, error) {
 	cfg := httpclient.DefaultConfig()
 
 	cfg.Pooling.MaxIdleConns = hc.Pooling.MaxIdleConns
@@ -130,18 +136,7 @@ func NewTransport(hc config.HTTPClientConfig, opts TLSClientOptions) (*http.Tran
 	if err != nil {
 		return nil, err
 	}
-	// client.Transport is a concrete *http.Transport here as long as
-	// Timeouts.MaxResponseBytes stays negative (the shipped default) — this
-	// config never sets Proxy.Egress = ProxyEgressManualCONNECT, and a negative
-	// MaxResponseBytes means httpclient.New never wraps the transport in its own
-	// maxBytesRoundTripper. An operator who explicitly sets
-	// [ai_workspace.http_client.timeouts] max_response_bytes >= 0 gets a clear
-	// startup error below instead of a silently-wrong cap.
-	transport, ok := client.Transport.(*http.Transport)
-	if !ok {
-		return nil, fmt.Errorf("httpkit: unexpected transport type %T (set [ai_workspace.http_client.timeouts] max_response_bytes back to a negative value)", client.Transport)
-	}
-	return transport, nil
+	return client.Transport, nil
 }
 
 // caPool returns the system root pool with the PEM bundle at path appended, so

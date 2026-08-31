@@ -40,7 +40,7 @@ func defaultConfig() *Config {
 				MinimumProtocolVersion: "TLS1_2",
 				MaximumProtocolVersion: "TLS1_3",
 				Ciphers:                "",
-				EcdhCurves:             "X25519,P-256",
+				EcdhCurves:             "X25519MLKEM768,X25519,P-256,P-384",
 			},
 		},
 		Logging: LoggingConfig{

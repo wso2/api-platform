@@ -97,9 +97,8 @@ func buildTestServer(t *testing.T, platformURL, jwt string) (*Server, *httptest.
 	t.Helper()
 
 	// MaxResponseBytes: -1 matches the shipped default (see config.defaultConfig) —
-	// a zero value here would make httpclient wrap the transport in its own
-	// maxBytesRoundTripper, which NewTransport's concrete *http.Transport
-	// type-assertion rejects.
+	// the zero value would instead apply httpclient's own 10MiB cap, which these
+	// tests don't need.
 	transport, err := proxy.NewTransport(
 		config.HTTPClientConfig{Timeouts: config.HTTPClientTimeoutsConfig{MaxResponseBytes: -1}},
 		proxy.TLSClientOptions{SkipVerify: true},
@@ -281,9 +280,8 @@ func TestHandleCreateWithSecretCompensation_Unauthenticated(t *testing.T) {
 		Cookie:       config.CookieConfig{Name: "_ai_workspace_session"},
 	}
 	// MaxResponseBytes: -1 matches the shipped default (see config.defaultConfig) —
-	// a zero value here would make httpclient wrap the transport in its own
-	// maxBytesRoundTripper, which NewTransport's concrete *http.Transport
-	// type-assertion rejects.
+	// the zero value would instead apply httpclient's own 10MiB cap, which these
+	// tests don't need.
 	transport, err := proxy.NewTransport(
 		config.HTTPClientConfig{Timeouts: config.HTTPClientTimeoutsConfig{MaxResponseBytes: -1}},
 		proxy.TLSClientOptions{SkipVerify: true},
