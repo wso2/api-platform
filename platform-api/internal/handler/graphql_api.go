@@ -217,7 +217,7 @@ func (h *GraphQLAPIHandler) DeleteGraphQLAPI(w http.ResponseWriter, r *http.Requ
 		return serviceError(err, fmt.Sprintf("failed to delete GraphQL API %s in org %s", apiId, orgId))
 	}
 
-	httputil.WriteJSON(w, http.StatusNoContent, nil)
+	w.WriteHeader(http.StatusNoContent)
 	return nil
 }
 

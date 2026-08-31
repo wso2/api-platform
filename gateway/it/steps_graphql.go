@@ -31,7 +31,8 @@ import (
 // Mirrors RegisterAPISteps (RestApi) / RegisterMCPSteps (Mcp) — GraphQLApi is a
 // core kind on the gateway-controller with the same generic
 // create/list/get/update/delete surface at /graphql-apis, just with no
-// per-operation routes (docs/specs/graphql-api-support.md §6.1).
+// per-operation routes: a GraphQL API always resolves to exactly one POST
+// route, unlike REST's operations[] list.
 func RegisterGraphQLSteps(ctx *godog.ScenarioContext, state *TestState, httpSteps *steps.HTTPSteps, jwtSteps *JWTSteps) {
 	deployGraphQLAPI := func(body *godog.DocString) error {
 		httpSteps.SetHeader("Content-Type", "application/yaml")
