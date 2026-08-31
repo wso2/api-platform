@@ -323,7 +323,7 @@ func TestGraphQLCreate_WithIntrospection_Success(t *testing.T) {
 // TestGraphQLCreate_MalformedSDL_UnprocessableEntity's "SDL fails to parse."
 // fetchAndConvertGraphQLSchema's upstream client intentionally allows
 // private/in-cluster addresses (it's the tenant's own configured backend,
-// same policy as MCP) — unlike sdlUrl's public-only fetcher, so a local
+// same shared-client policy as MCP and as sdlUrl's own fetcher), so a local
 // httptest.Server genuinely exercises this path rather than tripping an SSRF
 // block first.
 func TestGraphQLCreate_IntrospectionFailure_UnprocessableEntity(t *testing.T) {

@@ -117,6 +117,7 @@ func NewArtifactImportService(
 	templateRepo repository.LLMProviderTemplateRepository,
 	proxyRepo repository.LLMProxyRepository,
 	mcpProxyRepo repository.MCPProxyRepository,
+	graphqlAPIRepo repository.GraphQLAPIRepository,
 	artifactRepo repository.ArtifactRepository,
 	deploymentRepo repository.DeploymentRepository,
 	gatewayRepo repository.GatewayRepository,
@@ -140,6 +141,7 @@ func NewArtifactImportService(
 		constants.LLMProviderTemplate: newLLMProviderTemplateImporter(templateRepo),
 		constants.LLMProxy:            newLLMProxyImporter(proxyRepo, providerRepo, artifactRepo),
 		constants.MCPProxy:            newMCPProxyImporter(mcpProxyRepo, artifactRepo, mcpServerInfo),
+		constants.GraphQLApi:          newGraphQLAPIImporter(graphqlAPIRepo, artifactRepo),
 	}
 	return s
 }

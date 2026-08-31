@@ -53,9 +53,14 @@ type GraphQLAPIYAMLData struct {
 }
 
 // GraphQLUpstream represents the upstream configuration for the GraphQL API
-// deployment YAML — a single logical endpoint (no sandbox split, unlike REST).
+// deployment YAML. Unlike RestAPI's per-operation upstream shape, a GraphQL
+// API has exactly one logical endpoint per environment, but — like REST — it
+// still supports an optional sandbox split alongside the main upstream (see
+// GraphQLAPIConfigData.Upstream.Sandbox in the gateway's OpenAPI spec and
+// GraphQLAPITransformer's sandbox route handling).
 type GraphQLUpstream struct {
-	Main *GraphQLUpstreamTarget `yaml:"main,omitempty"`
+	Main    *GraphQLUpstreamTarget `yaml:"main,omitempty"`
+	Sandbox *GraphQLUpstreamTarget `yaml:"sandbox,omitempty"`
 }
 
 // GraphQLUpstreamTarget represents the GraphQL upstream endpoint (url or ref),
