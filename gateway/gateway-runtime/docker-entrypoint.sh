@@ -272,7 +272,6 @@ if [ -f /app/python-executor/python_policy_registry.py ]; then
     log "Starting Python Executor..."
     unset PYTHON_EXECUTOR_LISTEN
     python3 /app/python-executor/main.py --listen "${PYTHON_EXECUTOR_SOCKET}" "${PY_ARGS[@]}" \
-        > >(while IFS= read -r line; do echo "[pye] $line"; done) \
         2> >(while IFS= read -r line; do echo "[pye] $line" >&2; done) &
     PY_PID=$!
     log "Python Executor started (PID $PY_PID)"
@@ -298,10 +297,12 @@ else
     log "No Python policies detected, skipping Python Executor"
 fi
 
-# Start Policy Engine with [pol] log prefix
+# Start Policy Engine. Only stderr is prefixed: stdout carries the JSON traffic
+# log, which a line prefix would make unparseable, and the policy engine tags its
+# own stdout lines. stderr keeps the prefix because panics and stack dumps bypass
+# its logger.
 log "Starting Policy Engine..."
 /app/policy-engine -xds-server "${PE_XDS_SERVER}" "${PE_ARGS[@]}" \
-    > >(while IFS= read -r line; do echo "[pol] $line"; done) \
     2> >(while IFS= read -r line; do echo "[pol] $line" >&2; done) &
 PE_PID=$!
 log "Policy Engine started (PID $PE_PID)"
@@ -338,7 +339,6 @@ log "Starting Envoy..."
     --log-level "${LOG_LEVEL}" \
     --concurrency "${ROUTER_CONCURRENCY}" \
     "${ROUTER_ARGS[@]}" \
-    > >(while IFS= read -r line; do echo "[rtr] $line"; done) \
     2> >(while IFS= read -r line; do echo "[rtr] $line" >&2; done) &
 ENVOY_PID=$!
 log "Envoy started (PID $ENVOY_PID)"

@@ -2333,3 +2333,40 @@ func TestConfig_CaseInsensitiveAlgorithm(t *testing.T) {
 	err := cfg.Validate()
 	assert.NoError(t, err, "Algorithm validation should be case insensitive")
 }
+
+func TestTextAccessLogStartsWithComponentTag(t *testing.T) {
+	// A deployer-supplied text_format replaces the default outright, so the router's
+	// component tag can go missing with nothing else to catch it.
+	tests := []struct {
+		name       string
+		textFormat string
+		want       bool
+	}{
+		{"shipped default", defaultConfig().Router.AccessLogs.TextFormat, true},
+		{"custom format keeping the tag", "[rtr] %RESPONSE_CODE%\n", true},
+		{"custom format dropping the tag", "[%START_TIME%] %RESPONSE_CODE%\n", false},
+		{"empty", "", false},
+		{"tag without its trailing space is not a match", "[rtr]%RESPONSE_CODE%\n", false},
+		// Present but not leading: attribution anchors on the tag at column 0, so a
+		// line reading "[2026-...] [rtr] 200" is not greppable by component.
+		{"tag appearing mid-format does not count", "[%START_TIME%] [rtr] %RESPONSE_CODE%\n", false},
+		{"leading space before the tag does not count", " [rtr] %RESPONSE_CODE%\n", false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			assert.Equal(t, tt.want, textAccessLogStartsWithComponentTag(tt.textFormat))
+		})
+	}
+}
+
+func TestValidate_CustomTextAccessLogWithoutTagIsNotFatal(t *testing.T) {
+	// Dropping the tag is a log-formatting choice, not a misconfiguration: it must
+	// warn, never refuse to start.
+	cfg := defaultConfig()
+	cfg.Router.AccessLogs.Enabled = true
+	cfg.Router.AccessLogs.Format = "text"
+	cfg.Router.AccessLogs.TextFormat = "[%START_TIME%] %RESPONSE_CODE%\n"
+
+	assert.False(t, textAccessLogStartsWithComponentTag(cfg.Router.AccessLogs.TextFormat))
+	assert.NoError(t, cfg.Validate())
+}
