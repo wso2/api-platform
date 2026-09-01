@@ -357,7 +357,7 @@ across both components:
 | `ap_admin` | Platform administrator | Every resource and operation, both components |
 | `ap_operator` | Platform operator / CI-CD service account | Gateways, deployments, subscription plans, key managers, webhooks; reads everything else |
 | `ap_publisher` | API publisher | Full API/MCP/LLM lifecycle and its Developer Portal content; reads applications, subscriptions, plans |
-| `ap_developer` | API developer | Creates, updates and deploys APIs/proxies in an existing project and calls them through its own application and keys; deletes nothing, publishes no portal content |
+| `ap_developer` | API developer | Creates, updates and deploys APIs/proxies in an existing project and calls them through its own application and keys; can delete the MCP/LLM proxies it owns, but not REST APIs, projects or secrets, and publishes no portal content |
 | `ap_subscriber` | API consumer | Own applications, subscriptions and keys; reads the API/MCP catalog and plans |
 | `ap_viewer` | Auditor | Read-only across both components |
 

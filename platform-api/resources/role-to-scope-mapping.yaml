@@ -103,6 +103,10 @@ roles:
       - dp:label:manage
       - dp:webhook_subscriber:manage
       - dp:event:read
+
+  # API developer — builds APIs, MCP proxies and LLM proxies in an existing
+  # project and calls them through its own application; owns the proxies it
+  # creates but cannot delete REST APIs, projects or secrets.
   - name: ap_developer
     scopes:
       # Platform API
@@ -121,6 +125,7 @@ roles:
       - ap:mcp_proxy:create
       - ap:mcp_proxy:read
       - ap:mcp_proxy:update
+      - ap:mcp_proxy:delete
       - ap:mcp_proxy:deployment:create
       - ap:mcp_proxy:deployment:read
       - ap:mcp_proxy:deployment:undeploy
@@ -128,6 +133,7 @@ roles:
       - ap:llm_proxy:create
       - ap:llm_proxy:read
       - ap:llm_proxy:update
+      - ap:llm_proxy:delete
       - ap:llm_proxy:deployment:create
       - ap:llm_proxy:deployment:read
       - ap:llm_proxy:deployment:undeploy
