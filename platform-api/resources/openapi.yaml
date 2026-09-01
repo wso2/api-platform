@@ -4716,6 +4716,42 @@ paths:
         '500':
           $ref: '#/components/responses/InternalServerError'
 
+  /secrets/{secretId}/usages:
+    get:
+      summary: List a secret's usages
+      description: |
+        Returns the resources (REST APIs, LLM providers, LLM proxies, MCP proxies) that
+        currently reference this secret via a `{{ secret "handle" }}` placeholder.
+      operationId: getSecretUsages
+      security:
+        - OAuth2Security:
+            - ap:secret:read
+            - ap:secret:manage
+      tags:
+        - Secrets
+      parameters:
+        - name: secretId
+          in: path
+          required: true
+          description: The secret handle
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Resources that reference this secret.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SecretUsagesResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
 components:
   headers:
     Location:
@@ -8613,6 +8649,31 @@ components:
             $ref: '#/components/schemas/SecretSummary'
         pagination:
           $ref: '#/components/schemas/Pagination'
+
+    SecretReference:
+      type: object
+      description: Identifies a resource that references a secret.
+      properties:
+        type:
+          type: string
+          description: The referencing artifact's kind.
+          enum: [RestApi, LlmProvider, LlmProxy, Mcp]
+        handle:
+          type: string
+          description: The referencing resource's handle.
+        name:
+          type: string
+          description: The referencing resource's display name.
+
+    SecretUsagesResponse:
+      type: object
+      required:
+        - references
+      properties:
+        references:
+          type: array
+          items:
+            $ref: '#/components/schemas/SecretReference'
 
     GatewayTokenListResponse:
       type: object

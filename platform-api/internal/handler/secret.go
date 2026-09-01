@@ -47,6 +47,7 @@ func (h *SecretHandler) RegisterRoutes(mux router.Router) {
 	mux.HandleFunc("POST "+constants.APIBasePath+"/secrets", middleware.MapErrors(h.slogger, h.CreateSecret))
 	mux.HandleFunc("GET "+constants.APIBasePath+"/secrets", middleware.MapErrors(h.slogger, h.ListSecrets))
 	mux.HandleFunc("GET "+constants.APIBasePath+"/secrets/{secretId}", middleware.MapErrors(h.slogger, h.GetSecret))
+	mux.HandleFunc("GET "+constants.APIBasePath+"/secrets/{secretId}/usages", middleware.MapErrors(h.slogger, h.GetSecretUsages))
 	mux.HandleFunc("PUT "+constants.APIBasePath+"/secrets/{secretId}", middleware.MapErrors(h.slogger, h.UpdateSecret))
 	mux.HandleFunc("DELETE "+constants.APIBasePath+"/secrets/{secretId}", middleware.MapErrors(h.slogger, h.DeleteSecret))
 }
@@ -140,6 +141,27 @@ func (h *SecretHandler) GetSecret(w http.ResponseWriter, r *http.Request) error 
 	return nil
 }
 
+func (h *SecretHandler) GetSecretUsages(w http.ResponseWriter, r *http.Request) error {
+	orgID, ok := middleware.GetOrganizationFromRequest(r)
+	if !ok {
+		return apperror.Unauthorized.New().
+			WithLogMessage("organization claim not found in token")
+	}
+
+	handle := r.PathValue("secretId")
+	if handle == "" {
+		return apperror.ValidationFailed.New("Secret name is required")
+	}
+
+	refs, err := h.secretService.GetReferences(orgID, handle)
+	if err != nil {
+		return serviceError(err, "failed to get secret usages")
+	}
+
+	httputil.WriteJSON(w, http.StatusOK, dto.SecretUsagesResponse{References: refs})
+	return nil
+}
+
 func (h *SecretHandler) UpdateSecret(w http.ResponseWriter, r *http.Request) error {
 	orgID, ok := middleware.GetOrganizationFromRequest(r)
 	if !ok {
@@ -164,9 +186,6 @@ func (h *SecretHandler) UpdateSecret(w http.ResponseWriter, r *http.Request) err
 		DisplayName: r.FormValue("displayName"),
 		Description: r.FormValue("description"),
 		Value:       r.FormValue("value"),
-	}
-	if req.Value == "" {
-		return apperror.ValidationFailed.New("value is required")
 	}
 
 	resp, err := h.secretService.Update(orgID, handle, userID, &req)

@@ -42,14 +42,6 @@ import { appPathPattern } from '../../support/appPath';
 // Shared helpers
 // ---------------------------------------------------------------------------
 
-function toSlug(value) {
-  return value
-    .toLowerCase()
-    .trim()
-    .replace(/[^a-z0-9]+/g, '-')
-    .replace(/^-+|-+$/g, '');
-}
-
 function navigateToAddProvider() {
   cy.get('[data-cyid="nav-service-provider"]', { timeout: 30000 })
     .should('be.visible')
@@ -81,6 +73,12 @@ describe('AI Workspace — LLM provider secret management (create flow)', () => 
   const suffix = Date.now().toString().slice(-8);
   const orgHandle = Cypress.env('ORG_HANDLE');
   const providerName = `E2E Secret Provider ${suffix}`;
+  // Dedicated, compact base for pre-created placeholder secret handles — kept
+  // independent of providerName's length so it always stays well within the
+  // platform-api's 40-character secret handle limit regardless of the display
+  // name above (a slug of providerName alone can already exceed 40 chars once
+  // a suffix like "-tc63-api-key" is appended).
+  const secretHandleBase = `e2e-${suffix}`;
 
   let authToken = '';
   let organizationId = '';
@@ -172,7 +170,7 @@ describe('AI Workspace — LLM provider secret management (create flow)', () => 
   // TC-58: Re-save provider already using a placeholder → POST /secrets NOT called
   // -------------------------------------------------------------------------
   it('TC-58: does not create a duplicate secret when the auth value is already a placeholder', () => {
-    const existingHandle = `${toSlug(providerName)}-api-key`;
+    const existingHandle = `${secretHandleBase}-api-key`;
     // Pre-create the secret via API so there's a real secret backing the placeholder.
     cy.request({
       method: 'POST',
@@ -267,7 +265,7 @@ describe('AI Workspace — LLM provider secret management (create flow)', () => 
   // in the org (encryption proof, not scoped to a single just-created secret).
   // -------------------------------------------------------------------------
   it('TC-63: GET /secrets never exposes plaintext value for any secret in the org', () => {
-    const handle = `${toSlug(providerName)}-tc63-api-key`;
+    const handle = `${secretHandleBase}-tc63-api-key`;
 
     cy.request({
       method: 'POST',
@@ -318,6 +316,8 @@ describe('AI Workspace — LLM provider secret management (update flow)', () => 
   const suffix = Date.now().toString().slice(-8);
   const orgHandle = Cypress.env('ORG_HANDLE');
   const providerName = `E2E Secret Update Provider ${suffix}`;
+  // See secretHandleBase in the create-flow describe block above — same reasoning.
+  const secretHandleBase = `e2e-${suffix}`;
   const INITIAL_KEY = `sk-update-initial-${suffix}`;
   const UPDATED_KEY = `sk-update-new-${suffix}`;
 
@@ -450,7 +450,7 @@ describe('AI Workspace — LLM provider secret management (update flow)', () => 
   // TC-61: Edit credential by typing an explicit placeholder → POST /secrets NOT called
   // -------------------------------------------------------------------------
   it('TC-61: typing a placeholder value skips secret creation and sends the placeholder directly', () => {
-    const explicitHandle = `${toSlug(providerName)}-api-key`;
+    const explicitHandle = `${secretHandleBase}-api-key`;
 
     // Pre-create the secret so the platform-api accepts the placeholder in the PUT.
     // cy.request() bypasses cy.intercept(), so this won't affect secretCallCount below.

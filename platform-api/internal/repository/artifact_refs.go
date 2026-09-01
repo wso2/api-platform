@@ -86,3 +86,36 @@ func upsertDeploymentSecretRefs(tx *sql.Tx, db *database.DB, orgID, artifactUUID
 	}
 	return nil
 }
+
+// secretHandlesForArtifact returns every distinct secret handle referenced by
+// artifactUUID — both its current-config ref (gateway_id='') and any deployed-gateway
+// refs — so a caller can check each for orphan cleanup after the artifact is deleted.
+func secretHandlesForArtifact(tx *sql.Tx, db *database.DB, artifactUUID string) ([]string, error) {
+	rows, err := tx.Query(db.Rebind(`
+		SELECT DISTINCT secret_handle FROM artifact_secret_refs WHERE artifact_uuid = ?
+	`), artifactUUID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var handles []string
+	for rows.Next() {
+		var handle string
+		if err := rows.Scan(&handle); err != nil {
+			return nil, err
+		}
+		handles = append(handles, handle)
+	}
+	return handles, rows.Err()
+}
+
+// deleteArtifactSecretRefs removes every artifact_secret_refs row for artifactUUID.
+// Explicit delete, not relying on the FK cascade — SQL Server declares this table's
+// artifact_uuid FK as ON DELETE NO ACTION (unlike Postgres/SQLite's ON DELETE CASCADE),
+// so without this the artifact delete would fail there once any ref rows exist. Mirrors
+// ArtifactRepo.Delete's existing deleteCustomPolicyUsagesTx call for the same reason.
+func deleteArtifactSecretRefs(tx *sql.Tx, db *database.DB, artifactUUID string) error {
+	_, err := tx.Exec(db.Rebind(`DELETE FROM artifact_secret_refs WHERE artifact_uuid = ?`), artifactUUID)
+	return err
+}

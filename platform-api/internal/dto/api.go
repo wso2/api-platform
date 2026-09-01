@@ -21,6 +21,7 @@ import (
 	"time"
 
 	"github.com/wso2/api-platform/platform-api/api"
+	"github.com/wso2/api-platform/platform-api/internal/model"
 )
 
 // API represents an API entity in the platform
@@ -156,8 +157,9 @@ type UpstreamYAML struct {
 
 // UpstreamTarget represents a single upstream target (url or ref)
 type UpstreamTarget struct {
-	URL string `yaml:"url,omitempty"`
-	Ref string `yaml:"ref,omitempty"`
+	URL  string              `yaml:"url,omitempty"`
+	Ref  string              `yaml:"ref,omitempty"`
+	Auth *model.UpstreamAuth `yaml:"auth,omitempty"`
 }
 
 // APIListResponse represents a paginated list of APIs (constitution-compliant)
@@ -166,4 +168,3 @@ type APIListResponse struct {
 	List       []*API     `json:"list" yaml:"list"`             // Array of API objects
 	Pagination Pagination `json:"pagination" yaml:"pagination"` // Pagination metadata
 }
-

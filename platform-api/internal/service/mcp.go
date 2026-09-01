@@ -522,11 +522,15 @@ func (s *MCPProxyService) Delete(orgUUID, handle, deletedBy string) error {
 		}
 	}
 
-	if err := s.repo.Delete(handle, orgUUID); err != nil {
+	referencedSecrets, err := s.repo.Delete(handle, orgUUID)
+	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return apperror.MCPProxyNotFound.Wrap(err)
 		}
 		return fmt.Errorf("failed to delete MCP proxy: %w", err)
+	}
+	if s.secretService != nil {
+		s.secretService.CleanupOrphanedSecrets(orgUUID, referencedSecrets, deletedBy)
 	}
 
 	_ = s.auditRepo.Record("DELETE", mcpProxy.UUID, "mcp_proxy", orgUUID, deletedBy)

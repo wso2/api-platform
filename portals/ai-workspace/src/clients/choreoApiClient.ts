@@ -75,6 +75,9 @@ const buildUrl = (
   const full = path.startsWith('http') ? path : `${baseUrl}${path}`;
   if (!params || Object.keys(params).length === 0) return full;
 
+  // `full` may be a relative path (the default PLATFORM_API_BASE_URL is a same-origin
+  // BFF proxy path, not an absolute URL) — the URL constructor requires a base in that
+  // case, or it throws "Failed to construct 'URL': Invalid URL".
   const url = new URL(full, window.location.origin);
   for (const [k, v] of Object.entries(params)) {
     if (v !== undefined && v !== null) url.searchParams.append(k, String(v));

@@ -230,10 +230,10 @@ func (r *SecretRepo) Update(s *model.Secret) error {
 	return nil
 }
 
-// FindRefsAndSoftDelete checks for active artifact references and deprecates the
+// FindRefsAndDelete checks for active artifact references and permanently deletes the
 // secret in a single transaction, eliminating the TOCTOU window.
-// Returns the references without deprecating if any are found.
-func (r *SecretRepo) FindRefsAndSoftDelete(orgID, handle, updatedBy string) ([]model.SecretReference, error) {
+// Returns the references without deleting if any are found.
+func (r *SecretRepo) FindRefsAndDelete(orgID, handle string) ([]model.SecretReference, error) {
 	tx, err := r.db.Begin()
 	if err != nil {
 		return nil, fmt.Errorf("failed to begin transaction: %w", err)
@@ -241,9 +241,18 @@ func (r *SecretRepo) FindRefsAndSoftDelete(orgID, handle, updatedBy string) ([]m
 	defer tx.Rollback() //nolint:errcheck
 
 	var lockQuery string
-	if r.db.Driver() == "postgres" || r.db.Driver() == "postgresql" {
+	switch r.db.Driver() {
+	case "postgres", "postgresql":
 		lockQuery = `SELECT uuid FROM secrets WHERE organization_uuid = $1 AND handle = $2 LIMIT 1 FOR UPDATE`
-	} else {
+	case database.DriverSQLServer:
+		// T-SQL has no LIMIT clause — SELECT TOP (1) is the equivalent (fixing an
+		// invalid-syntax error previously surfaced to callers as a generic 500).
+		// WITH (UPDLOCK, ROWLOCK) is T-SQL's counterpart to Postgres's FOR UPDATE:
+		// without it, a plain SELECT takes no lock held for the transaction's
+		// lifetime, so two concurrent deletes/updates on the same secret would not
+		// serialize against each other on SQL Server the way they do on Postgres.
+		lockQuery = r.db.Rebind(`SELECT TOP (1) uuid FROM secrets WITH (UPDLOCK, ROWLOCK) WHERE organization_uuid = ? AND handle = ?`)
+	default:
 		lockQuery = r.db.Rebind(`SELECT uuid FROM secrets WHERE organization_uuid = ? AND handle = ? LIMIT 1`)
 	}
 	var lockedID string
@@ -289,14 +298,12 @@ func (r *SecretRepo) FindRefsAndSoftDelete(orgID, handle, updatedBy string) ([]m
 		return refs, nil
 	}
 
-	deleteQuery := r.db.Rebind(`
-		UPDATE secrets
-		SET status = 'DEPRECATED', updated_at = ?, updated_by = ?
-		WHERE organization_uuid = ? AND handle = ?
-	`)
-	result, err := tx.Exec(deleteQuery, time.Now().UTC(), updatedBy, orgID, handle)
+	// secret_scopes cascades from secrets.uuid on every dialect; artifact_secret_refs
+	// has no rows for this handle at this point (the zero-refs check above just passed).
+	deleteQuery := r.db.Rebind(`DELETE FROM secrets WHERE organization_uuid = ? AND handle = ?`)
+	result, err := tx.Exec(deleteQuery, orgID, handle)
 	if err != nil {
-		return nil, fmt.Errorf("failed to deprecate secret: %w", err)
+		return nil, fmt.Errorf("failed to delete secret: %w", err)
 	}
 	affected, err := result.RowsAffected()
 	if err != nil {

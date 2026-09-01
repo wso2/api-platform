@@ -1012,6 +1012,7 @@ type mockLLMProviderRepo struct {
 	existsResult bool
 	countResult  int
 	getByIDFunc  func(providerID, orgUUID string) (*model.LLMProvider, error)
+	deleteFunc   func(providerID, orgUUID string) ([]string, error)
 	createCalled bool
 	created      *model.LLMProvider
 	updated      *model.LLMProvider
@@ -1045,6 +1046,13 @@ func (m *mockLLMProviderRepo) GetByID(providerID, orgUUID string) (*model.LLMPro
 func (m *mockLLMProviderRepo) Update(p *model.LLMProvider) error {
 	m.updated = p
 	return nil
+}
+
+func (m *mockLLMProviderRepo) Delete(providerID, orgUUID string) ([]string, error) {
+	if m.deleteFunc != nil {
+		return m.deleteFunc(providerID, orgUUID)
+	}
+	return nil, nil
 }
 
 func (m *mockLLMProviderRepo) UpdateWithCustomPolicyUsages(p *model.LLMProvider, _ []string) error {
@@ -1088,6 +1096,7 @@ type mockLLMProxyRepo struct {
 	listByProviderItems  []*model.LLMProxy
 	lastListProviderUUID string
 	getByIDFunc          func(proxyID, orgUUID string) (*model.LLMProxy, error)
+	deleteFunc           func(proxyID, orgUUID string) ([]string, error)
 	created              *model.LLMProxy
 	updated              *model.LLMProxy
 }
@@ -1115,6 +1124,13 @@ func (m *mockLLMProxyRepo) GetByID(proxyID, orgUUID string) (*model.LLMProxy, er
 func (m *mockLLMProxyRepo) Update(p *model.LLMProxy) error {
 	m.updated = p
 	return nil
+}
+
+func (m *mockLLMProxyRepo) Delete(proxyID, orgUUID string) ([]string, error) {
+	if m.deleteFunc != nil {
+		return m.deleteFunc(proxyID, orgUUID)
+	}
+	return nil, nil
 }
 
 func (m *mockLLMProxyRepo) ListByProvider(orgUUID, providerUUID string, limit, offset int) ([]*model.LLMProxy, error) {
@@ -1784,11 +1800,69 @@ func TestLLMProviderServiceUpdate_CleansUpRotatedSecret(t *testing.T) {
 	if _, err := service.Update("org-1", "provider-1", "alice", request); err != nil {
 		t.Fatalf("expected no error, got: %v", err)
 	}
-	if secretRepo.secrets["old-handle"].Status != model.SecretStatusDeprecated {
-		t.Fatalf("expected old secret to be deprecated, got status=%v", secretRepo.secrets["old-handle"].Status)
+	if _, ok := secretRepo.secrets["old-handle"]; ok {
+		t.Fatal("expected old secret to be permanently deleted after rotation cleanup")
 	}
 	if secretRepo.secrets["new-handle"].Status != model.SecretStatusActive {
 		t.Fatalf("expected new secret to remain active, got status=%v", secretRepo.secrets["new-handle"].Status)
+	}
+}
+
+// TestLLMProviderServiceDelete_CleansUpOrphanedSecret proves deleting a provider
+// permanently removes a secret it referenced, once the provider (and thus the
+// artifact_secret_refs row backing that reference) is gone and nothing else
+// references the handle.
+func TestLLMProviderServiceDelete_CleansUpOrphanedSecret(t *testing.T) {
+	providerRepo := &mockLLMProviderRepo{
+		getByIDFunc: func(providerID, orgUUID string) (*model.LLMProvider, error) {
+			return &model.LLMProvider{UUID: "prov-uuid", ID: providerID}, nil
+		},
+		deleteFunc: func(providerID, orgUUID string) ([]string, error) {
+			return []string{"solo-handle"}, nil
+		},
+	}
+	secretRepo := newMockRepo()
+	secretRepo.secrets["solo-handle"] = &model.Secret{Handle: "solo-handle", Status: model.SecretStatusActive}
+	secretService := NewSecretService(secretRepo, &mockVault{}, newTestIdentityService())
+
+	service := NewLLMProviderService(providerRepo, nil, nil, nil, nil, nil, nil, slog.Default(), &noopAuditRepo{}, &config.Server{}, newTestIdentityService())
+	service.SetSecretService(secretService)
+
+	if err := service.Delete("org-1", "provider-1", "alice"); err != nil {
+		t.Fatalf("expected no error, got: %v", err)
+	}
+	if _, ok := secretRepo.secrets["solo-handle"]; ok {
+		t.Error("expected orphaned secret to be permanently deleted after provider deletion")
+	}
+}
+
+// TestLLMProviderServiceDelete_DoesNotCleanUpSecretStillReferencedElsewhere proves
+// the orphan cleanup is reference-checked, not an unconditional delete of every
+// handle the provider happened to use.
+func TestLLMProviderServiceDelete_DoesNotCleanUpSecretStillReferencedElsewhere(t *testing.T) {
+	providerRepo := &mockLLMProviderRepo{
+		getByIDFunc: func(providerID, orgUUID string) (*model.LLMProvider, error) {
+			return &model.LLMProvider{UUID: "prov-uuid", ID: providerID}, nil
+		},
+		deleteFunc: func(providerID, orgUUID string) ([]string, error) {
+			return []string{"shared-handle"}, nil
+		},
+	}
+	secretRepo := newMockRepo()
+	secretRepo.secrets["shared-handle"] = &model.Secret{Handle: "shared-handle", Status: model.SecretStatusActive}
+	secretRepo.findRefsFn = func(orgID, handle string) ([]model.SecretReference, error) {
+		return []model.SecretReference{{Handle: "other-proxy", Name: "Other Proxy", Type: "LlmProxy"}}, nil
+	}
+	secretService := NewSecretService(secretRepo, &mockVault{}, newTestIdentityService())
+
+	service := NewLLMProviderService(providerRepo, nil, nil, nil, nil, nil, nil, slog.Default(), &noopAuditRepo{}, &config.Server{}, newTestIdentityService())
+	service.SetSecretService(secretService)
+
+	if err := service.Delete("org-1", "provider-1", "alice"); err != nil {
+		t.Fatalf("expected no error, got: %v", err)
+	}
+	if _, ok := secretRepo.secrets["shared-handle"]; !ok {
+		t.Error("expected secret still referenced elsewhere to survive provider deletion")
 	}
 }
 
@@ -1842,8 +1916,8 @@ func TestLLMProxyServiceUpdate_CleansUpRotatedSecret(t *testing.T) {
 	if err != nil {
 		t.Fatalf("expected no error, got: %v", err)
 	}
-	if secretRepo.secrets["old-handle"].Status != model.SecretStatusDeprecated {
-		t.Fatalf("expected old secret to be deprecated, got status=%v", secretRepo.secrets["old-handle"].Status)
+	if _, ok := secretRepo.secrets["old-handle"]; ok {
+		t.Fatal("expected old secret to be permanently deleted after rotation cleanup")
 	}
 }
 

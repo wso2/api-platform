@@ -21,6 +21,7 @@ import (
 	"bytes"
 	"database/sql"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log/slog"
 	"mime/multipart"
@@ -355,7 +356,11 @@ func TestSecretHandler_Update_200(t *testing.T) {
 }
 
 // TC-IT-10b: PUT on a DEPRECATED secret reactivates it (status → ACTIVE) and re-encrypts the value.
-func TestSecretHandler_Update_ReactivatesDeprecatedSecret(t *testing.T) {
+// A deleted-and-unreferenced secret is now permanently removed (see
+// TestSecretHandler_Delete_HardDeletesRow), so there is no longer a row left to
+// reactivate via rotation: a PUT against a deleted handle 404s, and a fresh POST
+// with the same handle is free to create a brand-new secret.
+func TestSecretHandler_Update_DeletedHandleNotFound(t *testing.T) {
 	tmpDir := t.TempDir()
 	sqlDB, err := sql.Open("sqlite3", filepath.Join(tmpDir, "test-reactivate.db"))
 	if err != nil {
@@ -379,7 +384,7 @@ func TestSecretHandler_Update_ReactivatesDeprecatedSecret(t *testing.T) {
 	NewSecretHandler(svc, identityService, slog.Default()).RegisterRoutes(mux)
 	r := middleware.NewTestContextMiddleware(mux)
 
-	// Create then soft-delete (deprecate) the secret.
+	// Create then delete the secret.
 	body, ct := multipartForm(map[string]string{"id": "react-key", "displayName": "React Key", "value": "old-val"})
 	req, _ := http.NewRequest(http.MethodPost, "/api/v0.9/secrets", body)
 	req.Header.Set("Content-Type", ct)
@@ -400,14 +405,14 @@ func TestSecretHandler_Update_ReactivatesDeprecatedSecret(t *testing.T) {
 		t.Fatalf("delete: expected 204, got %d", wDel.Code)
 	}
 
-	// Confirm it is DEPRECATED before rotation.
-	var statusBefore string
-	sqlDB.QueryRow(`SELECT status FROM secrets WHERE handle = 'react-key'`).Scan(&statusBefore)
-	if statusBefore != "DEPRECATED" {
-		t.Fatalf("expected DEPRECATED before rotation, got %s", statusBefore)
+	// Confirm the row is gone entirely.
+	var count int
+	sqlDB.QueryRow(`SELECT COUNT(*) FROM secrets WHERE handle = 'react-key'`).Scan(&count)
+	if count != 0 {
+		t.Fatalf("expected row to be gone after delete, found %d", count)
 	}
 
-	// Rotate — PUT should reactivate.
+	// Rotate — PUT against the now-nonexistent handle must 404.
 	putBody, putCT := multipartForm(map[string]string{"value": "new-val"})
 	putReq, _ := http.NewRequest(http.MethodPut, "/api/v0.9/secrets/react-key", putBody)
 	putReq.Header.Set("Content-Type", putCT)
@@ -415,23 +420,28 @@ func TestSecretHandler_Update_ReactivatesDeprecatedSecret(t *testing.T) {
 	putReq.Header.Set("X-Test-User", "alice")
 	wPut := httptest.NewRecorder()
 	r.ServeHTTP(wPut, putReq)
-	if wPut.Code != http.StatusOK {
-		t.Fatalf("rotate: expected 200, got %d: %s", wPut.Code, wPut.Body.String())
+	if wPut.Code != http.StatusNotFound {
+		t.Fatalf("rotate: expected 404, got %d: %s", wPut.Code, wPut.Body.String())
 	}
 
-	// Status must be ACTIVE and value must decrypt to the new plaintext.
-	var statusAfter string
-	sqlDB.QueryRow(`SELECT status FROM secrets WHERE handle = 'react-key'`).Scan(&statusAfter)
-	if statusAfter != "ACTIVE" {
-		t.Errorf("expected ACTIVE after rotation, got %s", statusAfter)
+	// A fresh create with the same handle must succeed — the handle is fully free.
+	recreateBody, recreateCT := multipartForm(map[string]string{"id": "react-key", "displayName": "React Key", "value": "brand-new-val"})
+	recreateReq, _ := http.NewRequest(http.MethodPost, "/api/v0.9/secrets", recreateBody)
+	recreateReq.Header.Set("Content-Type", recreateCT)
+	recreateReq.Header.Set("X-Test-Org", "org-react-it")
+	recreateReq.Header.Set("X-Test-User", "alice")
+	wRecreate := httptest.NewRecorder()
+	r.ServeHTTP(wRecreate, recreateReq)
+	if wRecreate.Code != http.StatusCreated {
+		t.Fatalf("recreate: expected 201, got %d: %s", wRecreate.Code, wRecreate.Body.String())
 	}
 
 	plaintext, err := svc.Decrypt("org-react-it", "react-key")
 	if err != nil {
-		t.Fatalf("Decrypt after reactivation: %v", err)
+		t.Fatalf("Decrypt after recreate: %v", err)
 	}
-	if plaintext != "new-val" {
-		t.Errorf("expected plaintext=new-val, got %s", plaintext)
+	if plaintext != "brand-new-val" {
+		t.Errorf("expected plaintext=brand-new-val, got %s", plaintext)
 	}
 }
 
@@ -643,11 +653,10 @@ func TestSecretHandler_Create_ValueNotInListResponse(t *testing.T) {
 	}
 }
 
-// TC-60: DELETE soft-deletes — status becomes DEPRECATED, physical row is retained.
-// Verified by: (a) 204 on first delete, (b) Exists() returns false (ACTIVE filter),
-// (c) the DB row still exists with status=DEPRECATED (checked via direct SQL),
-// (d) Decrypt returns "secret is deprecated" — not "not found".
-func TestSecretHandler_Delete_SoftDeletesRow(t *testing.T) {
+// TC-60: DELETE permanently removes an unreferenced secret. Verified by:
+// (a) 204 on first delete, (b) Exists() returns false, (c) the DB row is gone
+// entirely (checked via direct SQL), (d) Decrypt returns "not found".
+func TestSecretHandler_Delete_HardDeletesRow(t *testing.T) {
 	// Build isolated stack so we can access the DB and service directly.
 	tmpDir := t.TempDir()
 	dbPath := filepath.Join(tmpDir, "test-sd.db")
@@ -696,40 +705,37 @@ func TestSecretHandler_Delete_SoftDeletesRow(t *testing.T) {
 		t.Fatalf("delete: expected 204, got %d", wDel.Code)
 	}
 
-	// (b) Exists() returns false — secret no longer ACTIVE
+	// (b) Exists() returns false — secret is gone
 	exists, err := repo.Exists("org-sd-it", "soft-del-key")
 	if err != nil {
 		t.Fatalf("Exists: %v", err)
 	}
 	if exists {
-		t.Error("Exists should return false after soft-delete")
+		t.Error("Exists should return false after delete")
 	}
 
-	// (c) Physical row still present with status=DEPRECATED
+	// (c) Physical row is gone entirely
 	var status string
 	err = sqlDB.QueryRow(
 		`SELECT status FROM secrets WHERE organization_uuid = ? AND handle = ?`,
 		"org-sd-it", "soft-del-key",
 	).Scan(&status)
-	if err != nil {
-		t.Fatalf("DB row missing after soft-delete: %v", err)
-	}
-	if status != "DEPRECATED" {
-		t.Errorf("expected status DEPRECATED, got %q", status)
+	if !errors.Is(err, sql.ErrNoRows) {
+		t.Fatalf("expected row to be gone after delete, got err=%v status=%q", err, status)
 	}
 
-	// (d) Decrypt returns "secret is deprecated", not "not found"
+	// (d) Decrypt returns "not found", not a value
 	_, decryptErr := svc.Decrypt("org-sd-it", "soft-del-key")
-	if decryptErr == nil {
-		t.Fatal("expected error decrypting DEPRECATED secret")
-	}
-	if decryptErr.Error() != "secret is deprecated" {
-		t.Errorf("expected 'secret is deprecated', got %q", decryptErr.Error())
+	if !apperror.SecretNotFound.Is(decryptErr) {
+		t.Errorf("expected SecretNotFound, got %v", decryptErr)
 	}
 }
 
 // TC-61: DEPRECATED secret — Decrypt returns error (platform API contract the GW
-// controller relies on to skip /value calls for DEPRECATED items).
+// controller relies on to skip /value calls for DEPRECATED items). A DEPRECATED
+// row is no longer reachable via the Delete flow (which now hard-deletes an
+// unreferenced secret) — this seeds one directly via SQL to exercise Decrypt's
+// defensive status check on its own.
 func TestSecretService_Decrypt_DeprecatedSecretReturnsError(t *testing.T) {
 	tmpDir := t.TempDir()
 	dbPath := filepath.Join(tmpDir, "test-dep.db")
@@ -750,7 +756,6 @@ func TestSecretService_Decrypt_DeprecatedSecretReturnsError(t *testing.T) {
 	repo := repository.NewSecretRepo(db)
 	svc := service.NewSecretService(repo, v, service.NewIdentityService(repository.NewUserIdentityMappingRepo(db)))
 
-	// Create and then soft-delete a secret
 	_, err = svc.Create("org-dep-it", "alice", &dto.CreateSecretRequest{
 		Handle: "dep-secret",
 		Value:  "plaintext",
@@ -758,8 +763,8 @@ func TestSecretService_Decrypt_DeprecatedSecretReturnsError(t *testing.T) {
 	if err != nil {
 		t.Fatalf("create: %v", err)
 	}
-	if err = svc.Delete("org-dep-it", "dep-secret", "alice"); err != nil {
-		t.Fatalf("delete: %v", err)
+	if _, err := sqlDB.Exec(`UPDATE secrets SET status = 'DEPRECATED' WHERE handle = 'dep-secret'`); err != nil {
+		t.Fatalf("deprecate: %v", err)
 	}
 
 	// Decrypt must return an error for DEPRECATED secret — not the plaintext
