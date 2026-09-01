@@ -19,16 +19,41 @@
 import { useState } from 'react';
 import { Box, Button, Drawer, IconButton, Typography } from '@wso2/oxygen-ui';
 import { RefreshCw } from '@wso2/oxygen-ui-icons-react';
+import { defineMessages, FormattedMessage, useIntl } from 'react-intl';
 
-import { useDeleteGatewayDeployment } from '../../../../api/hooks/useMvpQueries';
-import { useNotifications } from '../../../../components/Notifications';
-import type { Api, GatewayDeployment } from '../../../../types/domain';
+import { useDeleteDeployment, type Deployment } from '@/api/resources/restApis/deployments';
+import { useNotifications } from '@/components/Notifications';
 import { GatewayDeploymentRow } from './components/GatewayDeploymentRow';
 
+const messages = defineMessages({
+  title: {
+    id: 'apiControlPlane.pages.appShell.appShellPages.deploy.GatewayDeploymentHistory.title',
+    defaultMessage: 'API Deployment History',
+    description: 'Heading over the list of past deployments of this API on one gateway.',
+  },
+  refreshLabel: {
+    id: 'apiControlPlane.pages.appShell.appShellPages.deploy.GatewayDeploymentHistory.refreshLabel',
+    defaultMessage: 'Refresh deployment history',
+    description: 'Accessible label for the icon button that refetches the deployment list.',
+  },
+  viewMore: {
+    id: 'apiControlPlane.pages.appShell.appShellPages.deploy.GatewayDeploymentHistory.viewMore',
+    defaultMessage: 'View More',
+    description: 'Opens a drawer listing every deployment, beyond the three shown inline.',
+  },
+  deleted: {
+    id: 'apiControlPlane.pages.appShell.appShellPages.deploy.GatewayDeploymentHistory.deleted',
+    defaultMessage: 'Deleted "{deploymentName}".',
+    description:
+      'Toast confirming a deployment record was removed. {deploymentName} is user-supplied; do not translate it.',
+  },
+});
+
 type GatewayDeploymentHistoryProps = {
-  api: Api;
+  /** Handle of the API these deployments belong to. */
+  restApiId: string;
   /** Deployments on this gateway, newest first. */
-  deployments: GatewayDeployment[];
+  deployments: Deployment[];
   onRefresh: () => void;
   refreshing: boolean;
 };
@@ -39,30 +64,31 @@ type GatewayDeploymentHistoryProps = {
  * (ai-workspace GatewayDeploymentHistory).
  */
 export function GatewayDeploymentHistory({
-  api,
+  restApiId,
   deployments,
   onRefresh,
   refreshing,
 }: GatewayDeploymentHistoryProps) {
   const [drawerOpen, setDrawerOpen] = useState(false);
+  const intl = useIntl();
   const { notify } = useNotifications();
-  const deleteMutation = useDeleteGatewayDeployment();
+  const deleteMutation = useDeleteDeployment();
 
   if (deployments.length === 0) return null;
 
-  const currentDeploymentId = deployments[0]?.id ?? null;
+  const currentDeploymentId = deployments[0]?.deploymentId ?? null;
 
-  const handleDelete = (deployment: GatewayDeployment) => {
+  const handleDelete = (deployment: Deployment) => {
     deleteMutation.mutate(
-      { api, deployment },
+      { restApiId, deploymentId: deployment.deploymentId },
+      // No `onError`: the query client's `onMutationError` already notifies.
       {
-        onSuccess: () => notify(`Deleted "${deployment.name}".`, 'success'),
-        onError: (error) =>
+        onSuccess: () =>
           notify(
-            error instanceof Error ? error.message : 'Delete failed',
-            'error'
+            intl.formatMessage(messages.deleted, { deploymentName: deployment.name }),
+            'success',
           ),
-      }
+      },
     );
   };
 
@@ -78,10 +104,10 @@ export function GatewayDeploymentHistory({
         }}
       >
         <Typography sx={{ flexGrow: 1, fontWeight: 500 }}>
-          API Deployment History
+          <FormattedMessage {...messages.title} />
         </Typography>
         <IconButton
-          aria-label="Refresh deployment history"
+          aria-label={intl.formatMessage(messages.refreshLabel)}
           color="primary"
           disabled={refreshing}
           onClick={onRefresh}
@@ -95,8 +121,8 @@ export function GatewayDeploymentHistory({
         {deployments.slice(0, 3).map((deployment) => (
           <GatewayDeploymentRow
             deployment={deployment}
-            isCurrentDeployment={deployment.id === currentDeploymentId}
-            key={deployment.id}
+            isCurrentDeployment={deployment.deploymentId === currentDeploymentId}
+            key={deployment.deploymentId}
           />
         ))}
       </Box>
@@ -110,12 +136,8 @@ export function GatewayDeploymentHistory({
             textAlign: 'center',
           }}
         >
-          <Button
-            color="primary"
-            onClick={() => setDrawerOpen(true)}
-            variant="text"
-          >
-            View More
+          <Button color="primary" onClick={() => setDrawerOpen(true)} variant="text">
+            <FormattedMessage {...messages.viewMore} />
           </Button>
         </Box>
       )}
@@ -128,14 +150,14 @@ export function GatewayDeploymentHistory({
       >
         <Box sx={{ p: 3 }}>
           <Typography sx={{ mb: 2 }} variant="h6">
-            API Deployment History
+            <FormattedMessage {...messages.title} />
           </Typography>
           {deployments.map((deployment) => (
             <GatewayDeploymentRow
               deleteDisabled={deleteMutation.isPending}
               deployment={deployment}
-              isCurrentDeployment={deployment.id === currentDeploymentId}
-              key={deployment.id}
+              isCurrentDeployment={deployment.deploymentId === currentDeploymentId}
+              key={deployment.deploymentId}
               onDelete={handleDelete}
             />
           ))}
