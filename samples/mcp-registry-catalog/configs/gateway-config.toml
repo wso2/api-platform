@@ -1,0 +1,41 @@
+# AI Gateway configuration for the MCP Registry Catalog sample.
+#
+# This gateway runs standalone -- it is NOT registered against the Platform
+# API control plane in this sample (that requires an AI Workspace-issued
+# gateway token, which is out of scope for a catalog/discovery-focused
+# sample). It's included so the full platform topology is present and
+# reachable; see the README's "Explore Further" section for how to connect
+# it to a control plane yourself.
+
+[router]
+gateway_host = "*"
+
+[router.access_logs]
+enabled = true
+
+[controller.server]
+gateway_id = "mcp-registry-catalog-gateway"
+
+[controller.storage]
+type = "sqlite"
+
+[controller.storage.sqlite]
+path = "./data/gateway.db"
+
+[controller.logging]
+level = "info"
+
+[policy_engine.logging]
+level = "info"
+
+[controller.policies]
+definitions_path = "./default-policies"
+
+[controller.auth.basic]
+enabled = true
+
+[[controller.auth.basic.users]]
+username        = '{{ env "APIP_GW_CONTROLLER_AUTH_BASIC_ADMIN_USERNAME" "" }}'
+password        = '{{ env "APIP_GW_CONTROLLER_AUTH_BASIC_ADMIN_PASSWORD_HASH" "" }}'
+password_hashed = true
+roles           = ["admin"]

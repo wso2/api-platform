@@ -1,0 +1,134 @@
+name: mcp-registry-catalog
+
+services:
+
+  # ---------------------------------------------------------------------
+  # WSO2 API Platform -- Management API (control plane) + API Portal
+  # ---------------------------------------------------------------------
+
+  platform-api:
+    image: ghcr.io/wso2/api-platform/platform-api:0.16.0
+    restart: unless-stopped
+    command: ["-config", "/etc/platform-api/config.toml"]
+    env_file:
+      - path: api-platform.env
+        required: true
+        format: raw
+    volumes:
+      - ./configs/config.toml:/etc/platform-api/config.toml:ro
+      - ./configs/role-to-scope-mapping.yaml:/etc/platform-api/role-to-scope-mapping.yaml:ro
+      - platform-api-data:/app/data
+      - ./resources/certificates:/app/data/certs:ro
+      - ./resources/keys:/etc/platform-api/keys:ro
+    ports:
+      - "9243:9243"
+    healthcheck:
+      test: ["CMD", "curl", "-fk", "https://localhost:9243/health"]
+      interval: 10s
+      timeout: 5s
+      start_period: 20s
+      retries: 6
+
+  api-portal:
+    image: ghcr.io/wso2/api-platform/api-portal:1.0.0
+    restart: unless-stopped
+    depends_on:
+      platform-api:
+        condition: service_healthy
+    env_file:
+      - path: api-platform.env
+        required: true
+        format: raw
+    volumes:
+      - ./configs/config.toml:/app/configs/config.toml:ro
+      - api-portal-data:/app/data
+      - ./resources/certificates:/etc/api-portal/tls:ro
+      - ./resources/keys/jwt_public.pem:/etc/api-portal/keys/jwt_public.pem:ro
+      - ./resources/keys/api-portal-encryption.key:/etc/api-portal/keys/encryption.key:ro
+      - ./resources/keys/api-portal-session-secret:/etc/api-portal/keys/session-secret:ro
+    ports:
+      - "9543:9543"
+    healthcheck:
+      test: ["CMD", "curl", "-fk", "https://localhost:9543/health"]
+      interval: 10s
+      timeout: 5s
+      start_period: 20s
+      retries: 6
+
+  # ---------------------------------------------------------------------
+  # AI Gateway -- runs standalone in this sample (not registered against
+  # the control plane above). See README "Explore Further".
+  # ---------------------------------------------------------------------
+
+  gateway-controller:
+    image: ghcr.io/wso2/api-platform/gateway-controller:1.2.0
+    restart: unless-stopped
+    command: ["-config", "/etc/gateway-controller/config.toml"]
+    env_file:
+      - path: api-platform.env
+        required: true
+        format: raw
+    volumes:
+      - gateway-controller-data:/app/data
+      - ./configs/gateway-config.toml:/etc/gateway-controller/config.toml:ro
+      - ./resources/gateway-certificates:/app/certificates
+      - ./resources/gateway-listener-certs:/app/listener-certs:ro
+      - ./resources/gateway-aesgcm-keys/default-aesgcm256-v1.bin:/app/data/aesgcm-keys/default-aesgcm256-v1.bin:ro
+    ports:
+      - "9090:9090"   # REST API
+      - "9094:9092"   # Admin API
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9092/api/admin/v1/health"]
+      interval: 10s
+      timeout: 5s
+      start_period: 20s
+      retries: 6
+
+  gateway-runtime:
+    image: ghcr.io/wso2/api-platform/gateway-runtime:1.2.0
+    restart: unless-stopped
+    depends_on:
+      - gateway-controller
+    command: ["--pol.config", "/etc/policy-engine/config.toml"]
+    environment:
+      - GATEWAY_CONTROLLER_HOST=gateway-controller
+    volumes:
+      - ./configs/gateway-config.toml:/etc/policy-engine/config.toml:ro
+    ports:
+      - "8080:8080"   # HTTP ingress
+      - "8443:8443"   # HTTPS ingress
+      - "9901:9901"   # Envoy admin
+
+  # ---------------------------------------------------------------------
+  # Sample MCP servers -- the two proxies this sample publishes & discovers
+  # ---------------------------------------------------------------------
+
+  weather-mcp:
+    build: ./mcp-servers/weather-mcp
+    restart: unless-stopped
+    ports:
+      - "8091:8080"
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:8080/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 6
+
+  inventory-mcp:
+    build: ./mcp-servers/inventory-mcp
+    restart: unless-stopped
+    ports:
+      - "8092:8080"
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:8080/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 6
+
+volumes:
+  platform-api-data:
+    driver: local
+  api-portal-data:
+    driver: local
+  gateway-controller-data:
+    driver: local

@@ -1,0 +1,41 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  catalog-smoke-test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      # ghcr.io/wso2/api-platform/* images are public -- no login needed.
+
+      - name: Make scripts executable
+        run: chmod +x setup.sh publish.sh discover.sh teardown.sh
+
+      - name: Setup (start the stack)
+        env:
+          ADMIN_USERNAME: admin
+          ADMIN_PASSWORD: ${{ secrets.CI_ADMIN_PASSWORD || 'CiTestPassword123!' }}
+        run: ./setup.sh
+
+      - name: Publish both sample MCP proxies
+        run: ./publish.sh
+
+      - name: Discover -- expect both servers in the Registry API
+        run: |
+          set -o pipefail
+          ./discover.sh | tee discover.log
+          grep -q "weather-mcp" discover.log
+          grep -q "inventory-mcp" discover.log
+
+      - name: Dump logs on failure
+        if: failure()
+        run: docker compose logs --tail=200
+
+      - name: Teardown
+        if: always()
+        run: ./teardown.sh --volumes

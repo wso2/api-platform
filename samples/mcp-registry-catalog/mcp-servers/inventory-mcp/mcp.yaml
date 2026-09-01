@@ -1,0 +1,34 @@
+# Developer Portal manifest for the inventory-mcp sample server.
+# Format: https://wso2.com/api-platform/docs/ (API Portal -> Publishing APIs)
+apiVersion: devportal.api-platform.wso2.com/v1alpha2
+kind: MCP
+
+metadata:
+  name: inventory-mcp-v1
+
+spec:
+  type: MCP
+  displayName: Inventory MCP Server
+  version: 1.0.0
+  description: Check current stock levels by SKU across warehouses.
+  status: PUBLISHED
+
+  tags:
+    - inventory
+    - enterprise
+    - sample
+
+  labels:
+    - default
+
+  subscriptionPlans: []
+  visibility: PUBLIC
+
+  businessInformation:
+    businessOwner: Platform Team
+    businessOwnerEmail: platform-team@example.com
+    technicalOwner: Platform Team
+    technicalOwnerEmail: platform-team@example.com
+
+  endpoints:
+    productionUrl: http://inventory-mcp:8080/mcp
