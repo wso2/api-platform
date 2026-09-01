@@ -8,8 +8,10 @@
  */
 
 import { Layers, Workflow } from '@wso2/oxygen-ui-icons-react';
+import { BarChart3, Layers } from '@wso2/oxygen-ui-icons-react';
 
 import { EnvironmentsFeature } from '@wso2-enterprise/apip-cloud-ui-environments-new';
+import { InsightsFeature } from '@wso2-enterprise/apip-cloud-ui-insights';
 import {
   PipelinesFeature,
   ProjectPipelinesFeature,
@@ -93,6 +95,81 @@ export const cloudPluginFeatures: CloudPluginFeature<ApiControlPlaneExtension>[]
     ],
   }),
 ];
+ * - `environments` is nested under Settings via the `settings.project.tabs`
+ *   slot (`apip-cloud-ui-environments-new`, shared with ai-workspace).
+ * - `insights` registers org/project sidebar Moesif embeds and hides the
+ *   built-in Insights parent outside API scope when loaded.
+ */
+export const cloudPluginFeatures: CloudPluginFeature<ApiControlPlaneExtension>[] =
+  [
+    defineCloudPlugin({
+      id: 'environments',
+      version: '0.1.0',
+      extensions: [
+        {
+          id: 'environments',
+          routePath: 'settings/environments',
+          render: (port) => <EnvironmentsFeature port={port} />,
+          label: 'Environments',
+          icon: <Layers />,
+          level: 'project',
+          slot: settingsTabSlot('project'),
+          order: 10,
+        },
+      ],
+    }),
+    defineCloudPlugin({
+      id: 'insights',
+      version: '0.1.0',
+      extensions: [
+        {
+          id: 'organization-insights',
+          slot: 'sidebar.organization',
+          order: 60,
+          routePath: 'insights',
+          label: 'Insights',
+          group: 'api',
+          level: 'organization',
+          icon: <BarChart3 size={20} />,
+          isVisible: (scope) => {
+            const typed = scope as {
+              isOrganizationScope?: boolean;
+              isProjectScope?: boolean;
+              isApiScope?: boolean;
+            };
+            return (
+              Boolean(typed.isOrganizationScope) &&
+              !typed.isProjectScope &&
+              !typed.isApiScope
+            );
+          },
+          render: (port) => (
+            <InsightsFeature port={port} forcedScopeLevel="organization" />
+          ),
+        },
+        {
+          id: 'project-insights',
+          slot: 'sidebar.project',
+          order: 60,
+          routePath: 'insights',
+          label: 'Insights',
+          group: 'api',
+          level: 'project',
+          icon: <BarChart3 size={20} />,
+          isVisible: (scope) => {
+            const typed = scope as {
+              isProjectScope?: boolean;
+              isApiScope?: boolean;
+            };
+            return Boolean(typed.isProjectScope) && !typed.isApiScope;
+          },
+          render: (port) => (
+            <InsightsFeature port={port} forcedScopeLevel="project" />
+          ),
+        },
+      ],
+    }),
+  ];
 
 export const cloudExtensions = getCloudExtensions(cloudPluginFeatures);
 export type { ApiControlPlaneExtension };

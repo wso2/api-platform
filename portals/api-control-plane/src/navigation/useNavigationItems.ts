@@ -28,6 +28,7 @@ import {
   buildScopedExtensionPath,
   isSidebarExtension,
   useExtensions,
+  type ApiControlPlaneExtension,
 } from '../extensions';
 import { navigationRegistry } from './navigationRegistry';
 import {
@@ -53,6 +54,34 @@ const isScopeSatisfied = (
   if (definition.requires === 'project') return scope.isProjectScope;
   return true;
 };
+
+/** Cloud plugin ids that replace the built-in Insights parent outside API scope. */
+const CLOUD_INSIGHTS_SIDEBAR_IDS = new Set([
+  'organization-insights',
+  'project-insights',
+]);
+
+const builtinInsightsDefinition = navigationRegistry.find(
+  (definition) => definition.id === 'insights'
+);
+
+const hasCloudInsightsSidebar = (extensions: readonly ApiControlPlaneExtension[]) =>
+  extensions.some(
+    (extension) =>
+      isSidebarExtension(extension) &&
+      CLOUD_INSIGHTS_SIDEBAR_IDS.has(extension.id)
+  );
+
+/**
+ * The built-in Insights submenu and the cloud org/project Insights extensions
+ * both link to Insights outside API scope — keep only the cloud entries then.
+ */
+const isBuiltinInsightsHiddenByCloudPlugin = (
+  definition: NavigationDefinition,
+  scope: ConsoleScope,
+  cloudInsightsLoaded: boolean
+) =>
+  definition.id === 'insights' && cloudInsightsLoaded && !scope.isApiScope;
 
 export const useNavigationItems = (): NavigationItem[] => {
   const scope = useConsoleScope();
@@ -86,7 +115,11 @@ export const useNavigationItems = (): NavigationItem[] => {
             })
           : undefined;
         return {
-          group: extension.group,
+          group:
+            CLOUD_INSIGHTS_SIDEBAR_IDS.has(extension.id) &&
+            builtinInsightsDefinition?.group
+              ? builtinInsightsDefinition.group
+              : extension.group,
           icon: extension.icon,
           id: extension.id,
           isVisible: extension.isVisible,
@@ -98,7 +131,11 @@ export const useNavigationItems = (): NavigationItem[] => {
             // continuing below it — never a partial segment match.
             (pathname === destination ||
               (isDescendantRoute && pathname.startsWith(`${destination}/`))),
-          order: extension.order,
+          order:
+            CLOUD_INSIGHTS_SIDEBAR_IDS.has(extension.id) &&
+            builtinInsightsDefinition
+              ? builtinInsightsDefinition.order
+              : extension.order,
           // A missing project/API no longer makes the item unlinkable: the path
           // degrades to the extension page's scope-less alias, where its own
           // `ScopeGate` collects what's missing. Only a route with no
@@ -106,6 +143,7 @@ export const useNavigationItems = (): NavigationItem[] => {
           to: () => destination,
         };
       });
+    const cloudInsightsLoaded = hasCloudInsightsSidebar(extensions);
     const combinedRegistry = [...navigationRegistry, ...extensionDefinitions];
 
     // A definition becomes an item unless it has no target at all. Children go
@@ -116,6 +154,15 @@ export const useNavigationItems = (): NavigationItem[] => {
       definition: NavigationDefinition
     ): NavigationItem | undefined => {
       if (!isFeatureEnabled(definition)) return undefined;
+      if (
+        isBuiltinInsightsHiddenByCloudPlugin(
+          definition,
+          scope,
+          cloudInsightsLoaded
+        )
+      ) {
+        return undefined;
+      }
       if (!(definition.isVisible?.(scope) ?? true)) return undefined;
 
       const to = definition.to(scope);
