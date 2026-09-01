@@ -55,6 +55,7 @@ import { parsePolicyYaml } from '../../../PolicyParameterEditor/yamlParser';
 import type { GuardrailSelection } from './serviceProviderTypes';
 import { FormattedMessage } from 'react-intl';
 import ErrorAlert from '../../../../../Components/common/ErrorAlert';
+import PartialLoadWarning from '../../../../../Components/common/PartialLoadWarning';
 import { autoAttachesCostPolicy } from '../../../../../utils/providerTemplateDisplay';
 import type { PolicyHubPolicy } from '../../../../../utils/types';
 import { logger } from '../../../../../utils/logger';
@@ -162,11 +163,17 @@ export default function GuardrailsSection({
   const [drawerGuardrailsLoading, setDrawerGuardrailsLoading] = useState(false);
   const [drawerGuardrailsError, setDrawerGuardrailsError] =
     useState<Error | null>(null);
+  // Whether the failed request was a "load more" append rather than a first
+  // page — an append failure keeps the rows already listed, so it needs a
+  // different message from an initial-load failure that left the list empty.
+  const [drawerGuardrailsErrorIsAppend, setDrawerGuardrailsErrorIsAppend] =
+    useState(false);
   const [guardrailsOffset, setGuardrailsOffset] = useState(0);
   const [hasMoreGuardrails, setHasMoreGuardrails] = useState(false);
   const [isLoadingMoreGuardrails, setIsLoadingMoreGuardrails] = useState(false);
   const [customPolicies, setCustomPolicies] = useState<GatewayCustomPolicy[]>([]);
   const [customPoliciesLoading, setCustomPoliciesLoading] = useState(false);
+  const [customPoliciesError, setCustomPoliciesError] = useState<Error | null>(null);
   const [draggedGuardrailId, setDraggedGuardrailId] = useState<string | null>(
     null
   );
@@ -198,6 +205,7 @@ export default function GuardrailsSection({
         setDrawerGuardrailsLoading(true);
       }
       setDrawerGuardrailsError(null);
+      setDrawerGuardrailsErrorIsAppend(false);
       try {
         const showAll =
           categories.length === 0 ||
@@ -220,6 +228,7 @@ export default function GuardrailsSection({
         setDrawerGuardrailsError(
           err instanceof Error ? err : new Error('Failed to load guardrails')
         );
+        setDrawerGuardrailsErrorIsAppend(append);
       } finally {
         setDrawerGuardrailsLoading(false);
         setIsLoadingMoreGuardrails(false);
@@ -236,12 +245,16 @@ export default function GuardrailsSection({
 
   const fetchCustomPolicies = useCallback(async () => {
     setCustomPoliciesLoading(true);
+    setCustomPoliciesError(null);
     try {
       const response = await getGatewayCustomPolicies();
       setCustomPolicies(response.list || []);
     } catch (e) {
       logger.error('Failed to load custom policies:', e);
       setCustomPolicies([]);
+      setCustomPoliciesError(
+        e instanceof Error ? e : new Error('Failed to load custom policies')
+      );
     } finally {
       setCustomPoliciesLoading(false);
     }
@@ -521,15 +534,6 @@ export default function GuardrailsSection({
                         />
                       </Typography>
                     </Box>
-                  ) : drawerGuardrailsError ? (
-                    <Box sx={{ mt: 1 }}>
-                      <ErrorAlert
-                        error={drawerGuardrailsError}
-                        onRetry={() => {
-                          void fetchDrawerGuardrails(selectedCategories, 0, false);
-                        }}
-                      />
-                    </Box>
                   ) : (
                     <Box
                       onScroll={handleGuardrailListScroll}
@@ -539,6 +543,52 @@ export default function GuardrailsSection({
                         pr: 0.5,
                       }}
                     >
+                      {/* One source failing leaves the other's policies
+                          selectable — warn and offer a retry instead of
+                          replacing the whole list with an error. When both fail
+                          and nothing is listed, neither "only custom policies"
+                          nor "only Policy Hub policies" is true, so the two
+                          warnings collapse into one honest failure state. */}
+                      {drawerGuardrailsError &&
+                      customPoliciesError &&
+                      drawerItems.length === 0 ? (
+                        <PartialLoadWarning
+                          message="Guardrails could not be loaded from Policy Hub or from the organization's custom policies."
+                          onRetry={() => {
+                            setGuardrailsOffset(0);
+                            void fetchDrawerGuardrails(selectedCategories, 0, false);
+                            void fetchCustomPolicies();
+                          }}
+                        />
+                      ) : (
+                        <>
+                          {drawerGuardrailsError && (
+                            <PartialLoadWarning
+                              message={
+                                drawerGuardrailsErrorIsAppend
+                                  ? 'Additional Policy Hub policies could not be loaded. The guardrails already listed are still available.'
+                                  : 'Policy Hub policies could not be loaded. Only custom policies are listed.'
+                              }
+                              onRetry={() => {
+                                // Retry reloads the first page, so the pagination
+                                // cursor has to go back with it — otherwise the next
+                                // "load more" resumes from the pre-failure offset and
+                                // skips a page of guardrails.
+                                setGuardrailsOffset(0);
+                                void fetchDrawerGuardrails(selectedCategories, 0, false);
+                              }}
+                            />
+                          )}
+                          {customPoliciesError && (
+                            <PartialLoadWarning
+                              message="Custom policies could not be loaded. Only Policy Hub policies are listed."
+                              onRetry={() => {
+                                void fetchCustomPolicies();
+                              }}
+                            />
+                          )}
+                        </>
+                      )}
                       <Stack spacing={1.25}>
                         {drawerItems
                           .filter((g) => {

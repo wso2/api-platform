@@ -82,12 +82,14 @@ const mutatingHeaders = (): Record<string, string> => ({
  * instead of string-matching the message.
  */
 const parseApiError = async (res: Response): Promise<ApiError> => {
-  handleUnauthorizedResponse(res);
   let body: unknown;
   try {
     body = await res.json();
   } catch { /* body not JSON */ }
-  return buildApiError(res.status, body, `HTTP ${res.status}`);
+  const err = buildApiError(res.status, body, `HTTP ${res.status}`);
+  // Pass the code so only a genuine UNAUTHORIZED tears down the session.
+  handleUnauthorizedResponse(res, err.code);
+  return err;
 };
 
 // ============================================================================

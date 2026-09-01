@@ -43,6 +43,7 @@ import (
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/utils"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/version"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/xds"
+	"github.com/wso2/api-platform/httpkit/httpclient"
 	gohttpkit "github.com/wso2/api-platform/httpkit/middleware"
 )
 
@@ -389,7 +390,16 @@ func main() {
 	policyEngineConnected := make(chan struct{})
 
 	// Start xDS gRPC server with SDS support
-	xdsServer := xds.NewServer(snapshotManager, sdsSecretManager, cfg.Controller.Server.XDSPort, log, routerConnected)
+	var xdsServerOpts []xds.ServerOption
+	if cfg.Controller.Server.XDSTLS.Enabled {
+		xdsTLSConfig, err := config.BuildXDSServerTLSConfig(cfg.Controller.Server.XDSTLS)
+		if err != nil {
+			log.Error("invalid server.xds_tls config, refusing to start main xDS server in plaintext", slog.Any("error", err))
+			os.Exit(1)
+		}
+		xdsServerOpts = append(xdsServerOpts, xds.WithMTLS(xdsTLSConfig, cfg.Controller.Server.XDSTLS.AllowedClientIdentities))
+	}
+	xdsServer := xds.NewServer(snapshotManager, sdsSecretManager, cfg.Controller.Server.XDSPort, log, routerConnected, xdsServerOpts...)
 	go func() {
 		if err := xdsServer.Start(); err != nil {
 			log.Error("xDS server failed", slog.Any("error", err))
@@ -490,10 +500,12 @@ func main() {
 		policyxds.WithOnFirstConnect(policyEngineConnected),
 	}
 	if cfg.Controller.PolicyServer.TLS.Enabled {
-		serverOpts = append(serverOpts, policyxds.WithTLS(
-			cfg.Controller.PolicyServer.TLS.CertFile,
-			cfg.Controller.PolicyServer.TLS.KeyFile,
-		))
+		policyXDSTLSConfig, err := config.BuildXDSServerTLSConfig(cfg.Controller.PolicyServer.TLS)
+		if err != nil {
+			log.Error("invalid policy_server.tls config, refusing to start policy xDS server in plaintext", slog.Any("error", err))
+			os.Exit(1)
+		}
+		serverOpts = append(serverOpts, policyxds.WithMTLS(policyXDSTLSConfig, cfg.Controller.PolicyServer.TLS.AllowedClientIdentities))
 	}
 	policyXDSServer := policyxds.NewServer(policySnapshotManager, apiKeySnapshotManager, lazyResourceSnapshotManager, subscriptionSnapshotManager, nil, cfg.Controller.PolicyServer.Port, log, serverOpts...)
 	go func() {
@@ -519,7 +531,23 @@ func main() {
 	policyValidator := config.NewPolicyValidator(policyDefinitions)
 	validator.SetPolicyValidator(policyValidator)
 
-	apiSvc := utils.NewAPIDeploymentService(configStore, db, snapshotManager, validator, &cfg.Router, eventHubInstance, gatewayID, secretsService)
+	// Build the single shared outbound *http.Client used by every control-plane /
+	// platform-API / on-prem-APIM call this process makes. Built once, here, and injected
+	// into every constructor below instead of each one building (or caching) its own —
+	// real per-operation timeout budgets are enforced via context.WithTimeout at each call
+	// site, not by this client's own Timeout, which is only a generous safety-net backstop.
+	sharedHTTPClientCfg, err := config.BuildHTTPClientConfig(cfg.Controller.HTTPClient, cfg.Controller.ControlPlane.InsecureSkipVerify)
+	if err != nil {
+		log.Error("Invalid controller.http_client configuration", slog.Any("error", err))
+		os.Exit(1)
+	}
+	sharedHTTPClient, err := httpclient.New(sharedHTTPClientCfg)
+	if err != nil {
+		log.Error("Failed to build shared outbound HTTP client", slog.Any("error", err))
+		os.Exit(1)
+	}
+
+	apiSvc := utils.NewAPIDeploymentService(configStore, db, snapshotManager, validator, &cfg.Router, eventHubInstance, gatewayID, secretsService, sharedHTTPClient)
 	mcpSvc := utils.NewMCPDeploymentService(configStore, db, snapshotManager, policyManager, policyValidator, eventHubInstance, gatewayID, secretsService)
 	llmSvc := utils.NewLLMDeploymentService(configStore, db, snapshotManager, lazyResourceXDSManager, templateDefinitions,
 		apiSvc, &cfg.Router, policyVersionResolver, policyValidator)
@@ -542,6 +570,7 @@ func main() {
 		secretsService,
 		webhooksecret.GetStoreInstance(),
 		nil,
+		sharedHTTPClient,
 	)
 	if err := cpClient.Start(); err != nil {
 		log.Error("Failed to start control plane client", slog.Any("error", err))
@@ -560,7 +589,7 @@ func main() {
 		configStore, db, snapshotManager, policyManager,
 		apiSvc, apiKeyXDSManager,
 		cpClient, &cfg.Router, cfg,
-		&http.Client{Timeout: 10 * time.Second}, config.NewParser(), validator, log,
+		sharedHTTPClient, config.NewParser(), validator, log,
 		eventHubInstance, secretsService,
 	)
 	igw := immutable.NewImmutableGW(cfg.ImmutableGateway, restAPIService, llmSvc, mcpSvc)
@@ -612,7 +641,7 @@ func main() {
 	log.Info("EventListener started for multi-replica sync")
 
 	// Initialize API server with the configured validator and API key manager
-	apiServer := handlers.NewAPIServer(
+	apiServer, err := handlers.NewAPIServer(
 		configStore,
 		db,
 		snapshotManager,
@@ -629,7 +658,12 @@ func main() {
 		subscriptionSnapshotManager,
 		secretsService,
 		restAPIService,
+		sharedHTTPClient,
 	)
+	if err != nil {
+		log.Error("Failed to create API server", slog.Any("error", err))
+		os.Exit(1)
+	}
 
 	// Load immutable gateway artifacts from the filesystem (no-op when immutable mode is disabled).
 	if err := igw.LoadArtifacts(log); err != nil {
@@ -738,23 +772,54 @@ func main() {
 		metrics.StartMemoryMetricsUpdater(metricsCtx, 15*time.Second)
 	}
 
-	// Start REST API server
-	log.Info("Starting REST API server", slog.Int("port", cfg.Controller.Server.APIPort))
-
-	// Setup graceful shutdown
-	srv := &http.Server{
-		Addr:              fmt.Sprintf(":%d", cfg.Controller.Server.APIPort),
-		Handler:           handler,
-		ReadHeaderTimeout: 30 * time.Second,
-	}
-
-	// Start server in a goroutine
-	go func() {
-		if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
-			log.Error("Failed to start REST API server", slog.Any("error", err))
+	// Start REST API server. When server.tls is enabled, only the TLS listener
+	// is started -- plaintext management traffic (which carries credentials
+	// and API-key material) must not keep flowing once an operator has
+	// explicitly opted into TLS for this API. A misconfigured/missing
+	// certificate at that point fails startup rather than silently falling
+	// back to plaintext.
+	var srv, tlsSrv *http.Server
+	if cfg.Controller.Server.TLS.Enabled {
+		tlsConfig, err := buildRESTAPITLSConfig(&cfg.Controller.Server.TLS)
+		if err != nil {
+			log.Error("invalid server.tls config", slog.Any("error", err))
 			os.Exit(1)
 		}
-	}()
+		tlsSrv = &http.Server{
+			Addr:              fmt.Sprintf(":%d", cfg.Controller.Server.TLS.Port),
+			Handler:           handler,
+			ReadTimeout:       cfg.Controller.Server.ReadTimeout,
+			ReadHeaderTimeout: cfg.Controller.Server.ReadHeaderTimeout,
+			WriteTimeout:      cfg.Controller.Server.WriteTimeout,
+			IdleTimeout:       cfg.Controller.Server.IdleTimeout,
+			MaxHeaderBytes:    cfg.Controller.Server.MaxHeaderBytes,
+			TLSConfig:         tlsConfig,
+		}
+		go func() {
+			log.Info("Starting REST API TLS server", slog.Int("port", cfg.Controller.Server.TLS.Port))
+			if err := tlsSrv.ListenAndServeTLS(cfg.Controller.Server.TLS.CertPath, cfg.Controller.Server.TLS.KeyPath); err != nil && err != http.ErrServerClosed {
+				log.Error("REST API TLS server error", slog.Any("error", err))
+				os.Exit(1)
+			}
+		}()
+	} else {
+		log.Info("Starting REST API server", slog.Int("port", cfg.Controller.Server.APIPort))
+		srv = &http.Server{
+			Addr:              fmt.Sprintf(":%d", cfg.Controller.Server.APIPort),
+			Handler:           handler,
+			ReadTimeout:       cfg.Controller.Server.ReadTimeout,
+			ReadHeaderTimeout: cfg.Controller.Server.ReadHeaderTimeout,
+			WriteTimeout:      cfg.Controller.Server.WriteTimeout,
+			IdleTimeout:       cfg.Controller.Server.IdleTimeout,
+			MaxHeaderBytes:    cfg.Controller.Server.MaxHeaderBytes,
+		}
+		go func() {
+			if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+				log.Error("Failed to start REST API server", slog.Any("error", err))
+				os.Exit(1)
+			}
+		}()
+	}
 
 	log.Info("Gateway Controller started successfully")
 
@@ -803,8 +868,16 @@ func main() {
 	// Stop control plane client
 	cpClient.Stop()
 
-	if err := srv.Shutdown(ctx); err != nil {
-		log.Error("Server forced to shutdown", slog.Any("error", err))
+	if srv != nil {
+		if err := srv.Shutdown(ctx); err != nil {
+			log.Error("Server forced to shutdown", slog.Any("error", err))
+		}
+	}
+
+	if tlsSrv != nil {
+		if err := tlsSrv.Shutdown(ctx); err != nil {
+			log.Error("REST API TLS server forced to shutdown", slog.Any("error", err))
+		}
 	}
 
 	xdsServer.Stop()

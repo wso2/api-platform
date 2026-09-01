@@ -1,0 +1,41 @@
+apiVersion: eksctl.io/v1alpha5
+kind: ClusterConfig
+
+metadata:
+  name: ${EKS_CLUSTER_NAME}
+  region: ${AWS_REGION}
+  version: "${EKS_K8S_VERSION}"
+
+# OIDC is required for IRSA (EBS CSI driver service account).
+iam:
+  withOIDC: true
+
+addons:
+  - name: aws-ebs-csi-driver
+    wellKnownPolicies:
+      ebsCSIController: true
+
+managedNodeGroups:
+  - name: gateway-ng
+    instanceType: ${EKS_NODE_INSTANCE_TYPE}
+    desiredCapacity: ${EKS_GATEWAY_NODE_DESIRED}
+    minSize: 1
+    maxSize: 8
+    volumeSize: 50
+    privateNetworking: true
+    labels:
+      role: gateway-perf
+    tags:
+      project: ${EKS_CLUSTER_NAME}
+
+  - name: backend-ng
+    instanceType: ${EKS_BACKEND_NODE_INSTANCE_TYPE}
+    desiredCapacity: 1
+    minSize: 1
+    maxSize: 2
+    volumeSize: 30
+    privateNetworking: true
+    labels:
+      workload: backend
+    tags:
+      project: ${EKS_CLUSTER_NAME}

@@ -32,13 +32,69 @@
 
 import { createContext, useContext, type ReactNode } from 'react';
 
+import { runtimeConfig } from './config/runtime';
+import { CSRF_HEADER, CSRF_HEADER_VALUE } from './contexts/auth/authConstants';
+
 export type NotifySeverity = 'success' | 'info' | 'warning' | 'error';
+
+/**
+ * A same-origin, host-authenticated call to platform-api that an extension can
+ * make without knowing this portal's transport. `path` is relative to the API
+ * base (e.g. `/pipelines`). Resolves parsed JSON (or `undefined` for 204) and
+ * rejects with an `Error` carrying the API's message on failure.
+ */
+export type ApiFetch = <T = unknown>(
+  method: string,
+  path: string,
+  body?: unknown
+) => Promise<T>;
 
 export type CloudHostPort = {
   orgHandle: string;
   projectHandle?: string;
   navigate: (path: string) => void;
   notify: (message: string, severity?: NotifySeverity) => void;
+  apiFetch: ApiFetch;
+};
+
+const MUTATING_METHODS = new Set(['POST', 'PUT', 'PATCH', 'DELETE']);
+
+/**
+ * The Port's `apiFetch`: a same-origin fetch through the BFF proxy, which
+ * injects the bearer token from the session cookie (the browser never holds a
+ * token) and validates the CSRF header on mutations. The org is resolved by
+ * platform-api from that token, so no `X-Org-Id` is sent here. Kept as a small
+ * self-contained wrapper rather than reusing the api layer's transport so it
+ * stays on the UI side of the api-layer import boundary.
+ */
+export const extensionApiFetch: ApiFetch = async <T = unknown>(
+  method: string,
+  path: string,
+  body?: unknown
+): Promise<T> => {
+  const base = `${runtimeConfig.platformApiBaseUrl}/api/${runtimeConfig.platformApiVersion}`;
+  const verb = method.toUpperCase();
+  const headers: Record<string, string> = { Accept: 'application/json' };
+  if (body !== undefined) headers['Content-Type'] = 'application/json';
+  if (MUTATING_METHODS.has(verb)) headers[CSRF_HEADER] = CSRF_HEADER_VALUE;
+  const response = await fetch(`${base}${path}`, {
+    method: verb,
+    headers,
+    body: body !== undefined ? JSON.stringify(body) : undefined,
+  });
+  if (!response.ok) {
+    let message = `Request failed (${response.status})`;
+    try {
+      const parsed = (await response.json()) as { message?: string } | null;
+      if (parsed?.message) message = parsed.message;
+    } catch {
+      /* non-JSON error body — keep the status-based default */
+    }
+    throw new Error(message);
+  }
+  if (response.status === 204 || response.status === 205) return undefined as T;
+  const text = await response.text();
+  return (text ? JSON.parse(text) : undefined) as T;
 };
 
 const PortContext = createContext<CloudHostPort | null>(null);

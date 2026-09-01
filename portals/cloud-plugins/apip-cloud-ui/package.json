@@ -11,6 +11,8 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
+    "@wso2-enterprise/apip-cloud-ui-deploy": "file:../apip-cloud-ui-deploy",
+    "@wso2-enterprise/apip-cloud-ui-gateways": "file:../apip-cloud-ui-gateways",
     "@wso2-enterprise/apip-cloud-ui-pipelines": "file:../apip-cloud-ui-pipelines",
     "@wso2/oxygen-ui": "0.5.0",
     "@wso2/oxygen-ui-icons-react": "0.5.0",

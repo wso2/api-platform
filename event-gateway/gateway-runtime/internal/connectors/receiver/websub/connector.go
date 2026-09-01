@@ -25,6 +25,7 @@ import (
 	"time"
 
 	"github.com/wso2/api-platform/event-gateway/gateway-runtime/internal/binding"
+	"github.com/wso2/api-platform/event-gateway/gateway-runtime/internal/config"
 	"github.com/wso2/api-platform/event-gateway/gateway-runtime/internal/connectors"
 	"github.com/wso2/api-platform/event-gateway/gateway-runtime/internal/subscription"
 )
@@ -40,6 +41,10 @@ type Options struct {
 	DeliveryConcurrency        int
 	RuntimeID                  string
 	ConsumerGroupPrefix        string
+	// HTTPClient configures the shared outbound HTTP client used by both the
+	// Verifier (subscribe/unsubscribe intent verification) and the Deliverer
+	// (message delivery) — see config.HTTPClientConfig's doc comment.
+	HTTPClient config.HTTPClientConfig
 }
 
 // WebSubReceiver is a multi-channel WebSub receiver.
@@ -75,12 +80,16 @@ func NewReceiver(cfg connectors.ReceiverConfig, opts Options) (connectors.Receiv
 		topics.Register(cfg.Channel.PublicTopic)
 	}
 
-	deliverer := NewDeliverer(DeliveryConfig{
+	deliverer, err := NewDeliverer(DeliveryConfig{
 		MaxRetries:     opts.DeliveryMaxRetries,
 		InitialDelayMs: opts.DeliveryInitialDelayMs,
 		MaxDelayMs:     opts.DeliveryMaxDelayMs,
 		Concurrency:    opts.DeliveryConcurrency,
+		HTTPClient:     opts.HTTPClient,
 	})
+	if err != nil {
+		return nil, fmt.Errorf("failed to create deliverer: %w", err)
+	}
 
 	// Create consumer manager for per-callback consumers.
 	consumerMgr := NewConsumerManager(
@@ -100,11 +109,15 @@ func NewReceiver(cfg connectors.ReceiverConfig, opts Options) (connectors.Receiv
 	verificationTimeout := time.Duration(opts.VerificationTimeoutSeconds) * time.Second
 
 	// Create HubHandler for subscribe/unsubscribe on {context}/{version}/hub.
-	hubHandler := NewHubHandler(
+	hubHandler, err := NewHubHandler(
 		topics, store, verificationTimeout, opts.DefaultLeaseSeconds,
 		cfg.Processor, cfg.BrokerDriver, cfg.Channel.Name,
 		cfg.Channel.Channels, consumerMgr, syncProducer,
+		opts.HTTPClient,
 	)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create hub handler: %w", err)
+	}
 
 	// Create WebhookReceiverHandler for ingress on {context}/{version}/webhook-receiver.
 	webhookHandler := NewWebhookReceiverHandler(

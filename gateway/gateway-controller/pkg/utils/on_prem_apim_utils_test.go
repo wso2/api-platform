@@ -21,8 +21,13 @@ package utils
 import (
 	"archive/zip"
 	"bytes"
+	"io"
+	"log/slog"
+	"net/http"
+	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -210,6 +215,36 @@ func TestExportAPIAsZip_MissingUpstreamURL(t *testing.T) {
 
 	assert.Nil(t, buf, "result should be nil on error")
 	assert.Error(t, err, "should return error when upstream URL is missing")
+}
+
+// TestImportAPIToAPIM_ZeroTimeoutFallsBackToDefault regression-tests a bug where the
+// import request's context was built from the raw s.config.Timeout instead of
+// effectiveAPIMTimeout(s.config.Timeout): a zero Timeout (e.g. an APIUtilsService
+// constructed without going through NewAPIUtilsService's defaulting, as
+// controlplane/sync_secrets_test.go does) produced an already-expired context, failing
+// the request before it ever reached the network.
+func TestImportAPIToAPIM_ZeroTimeoutFallsBackToDefault(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusCreated)
+		_, _ = w.Write([]byte(`{"id":"api-1","revision":"rev-1"}`))
+	}))
+	defer server.Close()
+
+	svc := &APIUtilsService{
+		config: PlatformAPIConfig{
+			BaseURL: server.URL,
+			Timeout: 0, // regression condition: must fall back to defaultAPIMTimeout
+		},
+		logger:      slog.New(slog.NewTextHandler(io.Discard, nil)),
+		client:      server.Client(),
+		cachedToken: "test-token",
+		tokenExpiry: time.Now().Add(time.Hour), // skip the OAuth2 token flow
+	}
+
+	resp, err := svc.ImportAPIToAPIM("api.zip", bytes.NewBufferString("fake-zip-content"), "")
+	require.NoError(t, err)
+	assert.Equal(t, "api-1", resp.ID)
+	assert.Equal(t, "rev-1", resp.Revision)
 }
 
 // TestExportAPIAsZip_InvalidConfiguration verifies that ExportAPIAsZip returns an error
