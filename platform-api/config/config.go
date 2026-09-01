@@ -397,6 +397,28 @@ type HTTPSListener struct {
 	Port     int    `koanf:"port"`
 	CertFile string `koanf:"cert_file"`
 	KeyFile  string `koanf:"key_file"`
+
+	// MinimumProtocolVersion and MaximumProtocolVersion bound the negotiated
+	// TLS version: one of "TLS1_0", "TLS1_1", "TLS1_2", "TLS1_3".
+	MinimumProtocolVersion string `koanf:"minimum_protocol_version"`
+	MaximumProtocolVersion string `koanf:"maximum_protocol_version"`
+
+	// Ciphers is a comma-separated list of Go crypto/tls cipher suite names
+	// (e.g. "TLS_ECDHE_ECDSA_WITH_AES_128_GCM_SHA256"), restricting which
+	// suites this listener will negotiate. Empty by default, meaning Go's own
+	// secure default set/order applies. Only affects TLS 1.2 and below — TLS
+	// 1.3 suite selection is not configurable in Go's crypto/tls.
+	Ciphers string `koanf:"ciphers"`
+
+	// EcdhCurves is a comma-separated list of TLS 1.3 key-exchange groups,
+	// most preferred first (e.g. "X25519,P-256"). Classical curves only by
+	// default. A hybrid post-quantum group ("X25519MLKEM768", FIPS 203
+	// ML-KEM-768 + X25519) can be prepended as an explicit opt-in once the
+	// clients that reach this listener are confirmed to support it — TLS 1.3
+	// negotiation simply falls back to a later classical entry in this same
+	// list for a client that doesn't offer the hybrid group, so enabling it
+	// never breaks a legacy peer. See post-quantum-cryptography.md.
+	EcdhCurves string `koanf:"ecdh_curves"`
 }
 
 // Timeouts bounds the lifetime of a connection on both listeners, so a slow or
@@ -1018,6 +1040,17 @@ func validateListenersConfig(l *ServerListeners) error {
 	}
 	if l.HTTP.Enabled && l.HTTPS.Enabled && l.HTTP.Port == l.HTTPS.Port {
 		return fmt.Errorf("server.http.port and server.https.port must differ when both listeners are enabled (both are %d)", l.HTTP.Port)
+	}
+	if l.HTTPS.Enabled {
+		if err := ValidateHTTPSTLSVersions(l.HTTPS.MinimumProtocolVersion, l.HTTPS.MaximumProtocolVersion); err != nil {
+			return fmt.Errorf("server.https: %w", err)
+		}
+		if _, err := ParseHTTPSCiphers(l.HTTPS.Ciphers); err != nil {
+			return fmt.Errorf("server.https.ciphers: %w", err)
+		}
+		if _, err := ParseHTTPSEcdhCurves(l.HTTPS.EcdhCurves); err != nil {
+			return fmt.Errorf("server.https.ecdh_curves: %w", err)
+		}
 	}
 	return nil
 }
