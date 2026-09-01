@@ -79,8 +79,8 @@ const ApiListPage = lazy(() =>
   }))
 );
 const ApiCreatePage = lazy(() =>
-  import('../pages/appShell/appShellPages/apis/create/ApiCreationWizard').then((m) => ({
-    default: m.ApiCreationWizard,
+  import('../pages/appShell/appShellPages/apis/ApiCreatePage').then((m) => ({
+    default: m.ApiCreatePage,
   }))
 );
 const ApiDetailPage = lazy(() =>

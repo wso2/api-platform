@@ -40,7 +40,7 @@ import { runtimeConfig } from '../../config/runtime';
 import { routes } from '../../routes/paths';
 import { useConsoleScope } from '../../scope/ConsoleScopeProvider';
 import { useNotifications } from '../../components/Notifications';
-import { PortProvider, type CloudHostPort } from '../../hostPort';
+import { extensionApiFetch, PortProvider, type CloudHostPort } from '../../hostPort';
 import { AppHeader } from './AppHeader';
 import { APP_FOOTER_ID } from './appLayoutConstants';
 import { AppSidebar } from './AppSidebar';
@@ -75,6 +75,7 @@ export default function AppLayout() {
     projectHandle: params.projectHandler,
     navigate,
     notify,
+    apiFetch: extensionApiFetch,
   };
 
   const crumbs: BreadcrumbItem[] = [];
