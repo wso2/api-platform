@@ -16,7 +16,7 @@
  * under the License.
  */
 
-import { Box, Chip, Form, Grid, Stack, Tooltip, Typography } from '@wso2/oxygen-ui';
+import { Box, Chip, Form, Stack, Tooltip } from '@wso2/oxygen-ui';
 import { CircleCheck } from '@wso2/oxygen-ui-icons-react';
 import { useState } from 'react';
 import { defineMessages, FormattedMessage, useIntl } from 'react-intl';
@@ -24,6 +24,8 @@ import { defineMessages, FormattedMessage, useIntl } from 'react-intl';
 import { selectableCardSx } from '@/theme/receipes';
 import type { ApiType } from '../types';
 import { API_TYPES } from '../uiConfig';
+
+const CARD_WIDTH = 260;
 
 const messages = defineMessages({
   comingSoon: {
@@ -61,7 +63,7 @@ const messages = defineMessages({
 
 export type ApiTypeSelectorProps = {
   /**
-   * Called with the whole catalog entry — not just its key — so the caller can
+   * Called with the whole catalog entry, not just its key; so the caller can
    * render the picked type's title and icon without looking it back up.
    */
   onChange: (apiType: ApiType) => void;
@@ -73,10 +75,12 @@ export type ApiTypeSelectorProps = {
 };
 
 /**
- * A grid of cards, one per API type the platform will ever offer.
+ * A row of compact cards, one per API type the platform will ever offer. Each
+ * card carries the type's mark and name; its longer description hangs off the
+ * card as a tooltip rather than taking up room on the surface.
  *
  * Types that are not released yet stay on screen behind a "Coming soon" chip
- * rather than being hidden, the grid is meant to show the full shape of the
+ * rather than being hidden, the set is meant to show the full shape of the
  * product. `enabled` on the shared {@link API_TYPES} catalog is the single
  * source for what is pickable, so releasing WebSocket (say) is one flag flip in
  * `uiConfig.tsx` and needs no change here.
@@ -94,7 +98,7 @@ export const ApiTypeSelector = ({ onChange, value }: ApiTypeSelectorProps) => {
   };
 
   return (
-    // Centered, max-width layout; 3 columns at `md` (wraps 3 + 2).
+    // Centered, max-width layout; the cards keep a fixed width and wrap.
     <Stack
       spacing={3}
       sx={{
@@ -104,78 +108,87 @@ export const ApiTypeSelector = ({ onChange, value }: ApiTypeSelectorProps) => {
         width: '100%',
       }}
     >
-      <Grid
+      <Box
         aria-label={intl.formatMessage(messages.groupLabel)}
-        container
         role="group"
-        spacing={2}
-        sx={{ justifyContent: 'center' }}
+        sx={{ display: 'flex', flexWrap: 'wrap', gap: 2, justifyContent: 'center' }}
       >
         {API_TYPES.map((apiType) => {
           const disabled = !apiType.enabled;
           const selected = !disabled && apiType.key === selectedKey;
 
           return (
-            <Grid key={apiType.key} size={{ xs: 12, sm: 6, md: 4 }}>
-              <Tooltip title={disabled ? intl.formatMessage(messages.comingSoonHint) : ''}>
-                {/* A disabled CardButton fires no pointer events, so the
-                    tooltip needs a plain element of its own to hang off. */}
-                <Box sx={{ height: '100%' }}>
-                  <Form.CardButton
-                    alignItems="center"
-                    disabled={disabled}
-                    onClick={() => handleSelect(apiType)}
-                    selected={selected}
-                    sx={(theme) => ({
-                      ...selectableCardSx(theme, { disabled, selected }),
-                      height: '100%',
-                      p: 2,
-                      width: '100%',
-                    })}
-                    variant="outlined"
-                  >
-                    <Stack
-                      spacing={1}
-                      sx={{
-                        alignItems: 'center',
-                        height: '100%',
+            <Tooltip
+              key={apiType.key}
+              title={disabled ? intl.formatMessage(messages.comingSoonHint) : ''}
+            >
+              {/* The disabled card takes no pointer events (see below), so the
+                  tooltip needs a plain element of its own to hang off. */}
+              <Box sx={{ display: 'flex' }}>
+                <Form.CardButton
+                  alignItems="center"
+                  aria-disabled={disabled || undefined}
+                  disabled={disabled}
+                  onClick={disabled ? undefined : () => handleSelect(apiType)}
+                  selected={selected}
+                  sx={(theme) => ({
+                    ...selectableCardSx(theme, { disabled, selected }),
+                    height: '100%',
+                    justifyContent: 'flex-start',
+                    width: CARD_WIDTH,
+                    ...(disabled && { cursor: 'default', pointerEvents: 'none' }),
+                  })}
+                  tabIndex={disabled ? -1 : undefined}
+                  variant="outlined"
+                >
+                  <Form.CardHeader
+                    subheader={<FormattedMessage {...apiType.description} />}
+                    subheaderTypographyProps={{ variant: 'caption' }}
+                    // CardButton left-aligns its content; the header is the one
+                    // part that reads better centred under the mark. `caption`
+                    // maps to a `span`, so it has to become a block before
+                    // `textAlign` has anything to centre.
+                    sx={{
+                      '& .MuiCardHeader-subheader': {
+                        display: 'block',
                         textAlign: 'center',
-                        width: '100%',
-                      }}
-                    >
-                      {apiType.icon}
-                      <Stack direction="row" spacing={0.5} sx={{ alignItems: 'center' }}>
-                        <Typography sx={{ fontWeight: 600 }} variant="body2">
-                          <FormattedMessage {...apiType.title} />
-                        </Typography>
-                        {selected ? (
-                          <Box
-                            aria-label={intl.formatMessage(messages.selected)}
-                            role="img"
-                            sx={{ color: 'primary.main', display: 'flex' }}
-                          >
-                            <CircleCheck size={16} />
-                          </Box>
-                        ) : null}
-                      </Stack>
-                      <Typography color="text.secondary" variant="caption">
-                        <FormattedMessage {...apiType.description} />
-                      </Typography>
-                      {disabled ? (
-                        <Chip
-                          label={<FormattedMessage {...messages.comingSoon} />}
-                          size="small"
-                          sx={{ mt: 'auto' }}
-                        />
-                      ) : null}
-                    </Stack>
-                  </Form.CardButton>
-                </Box>
-              </Tooltip>
-            </Grid>
+                      },
+                    }}
+                    title={
+                      <Form.Stack
+                        direction="column"
+                        spacing={1}
+                        sx={{ alignItems: 'center', justifyContent: 'center' }}
+                      >
+                        {apiType.icon}
+                        <Form.Stack direction="row" spacing={0.5} sx={{ alignItems: 'center' }}>
+                          <Form.Body sx={{ fontWeight: 600 }}>
+                            <FormattedMessage {...apiType.title} />
+                          </Form.Body>
+                          {selected ? (
+                            <Box
+                              aria-label={intl.formatMessage(messages.selected)}
+                              role="img"
+                              sx={{ color: 'primary.main', display: 'flex' }}
+                            >
+                              <CircleCheck size={16} />
+                            </Box>
+                          ) : null}
+                        </Form.Stack>
+                      </Form.Stack>
+                    }
+                  />
+                  {disabled ? (
+                    <Form.CardContent sx={{ pt: 0 }}>
+                      <Chip label={<FormattedMessage {...messages.comingSoon} />} size="small" />
+                    </Form.CardContent>
+                  ) : null}
+                </Form.CardButton>
+              </Box>
+            </Tooltip>
           );
         })}
-      </Grid>
+      </Box>
     </Stack>
   );
 };
