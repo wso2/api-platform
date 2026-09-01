@@ -29,6 +29,18 @@ const (
 	APIKeySecurityInQuery  APIKeySecurityIn = "query"
 )
 
+// Defines values for ApiPortalListItemAuthType.
+const (
+	ApiPortalListItemAuthTypeLocal  ApiPortalListItemAuthType = "local"
+	ApiPortalListItemAuthTypeOauth2 ApiPortalListItemAuthType = "oauth2"
+)
+
+// Defines values for ApiPortalResponseAuthType.
+const (
+	ApiPortalResponseAuthTypeLocal  ApiPortalResponseAuthType = "local"
+	ApiPortalResponseAuthTypeOauth2 ApiPortalResponseAuthType = "oauth2"
+)
+
 // Defines values for ApplicationAssociationSelectorKind.
 const (
 	ApplicationAssociationSelectorKindLlmProvider ApplicationAssociationSelectorKind = "LlmProvider"
@@ -49,6 +61,12 @@ const (
 const (
 	CreateAPIKeyResponseStatusError   CreateAPIKeyResponseStatus = "error"
 	CreateAPIKeyResponseStatusSuccess CreateAPIKeyResponseStatus = "success"
+)
+
+// Defines values for CreateApiPortalRequestAuthType.
+const (
+	CreateApiPortalRequestAuthTypeLocal  CreateApiPortalRequestAuthType = "local"
+	CreateApiPortalRequestAuthTypeOauth2 CreateApiPortalRequestAuthType = "oauth2"
 )
 
 // Defines values for CreateGatewayRequestFunctionalityType.
@@ -313,6 +331,12 @@ const (
 	UpdateAPIKeyResponseStatusSuccess UpdateAPIKeyResponseStatus = "success"
 )
 
+// Defines values for UpdateApiPortalRequestAuthType.
+const (
+	UpdateApiPortalRequestAuthTypeLocal  UpdateApiPortalRequestAuthType = "local"
+	UpdateApiPortalRequestAuthTypeOauth2 UpdateApiPortalRequestAuthType = "oauth2"
+)
+
 // Defines values for UpstreamAuthType.
 const (
 	ApiKey UpstreamAuthType = "api-key"
@@ -356,6 +380,18 @@ const (
 const (
 	SortOrderQAsc  SortOrderQ = "asc"
 	SortOrderQDesc SortOrderQ = "desc"
+)
+
+// Defines values for ListApiPortalsParamsSortBy.
+const (
+	ListApiPortalsParamsSortByCreatedAt ListApiPortalsParamsSortBy = "createdAt"
+	ListApiPortalsParamsSortByName      ListApiPortalsParamsSortBy = "name"
+)
+
+// Defines values for ListApiPortalsParamsSortOrder.
+const (
+	ListApiPortalsParamsSortOrderAsc  ListApiPortalsParamsSortOrder = "asc"
+	ListApiPortalsParamsSortOrderDesc ListApiPortalsParamsSortOrder = "desc"
 )
 
 // Defines values for ListApplicationsParamsSortBy.
@@ -433,14 +469,14 @@ const (
 
 // Defines values for ListRESTAPIsParamsSortBy.
 const (
-	CreatedAt ListRESTAPIsParamsSortBy = "createdAt"
-	Name      ListRESTAPIsParamsSortBy = "name"
+	ListRESTAPIsParamsSortByCreatedAt ListRESTAPIsParamsSortBy = "createdAt"
+	ListRESTAPIsParamsSortByName      ListRESTAPIsParamsSortBy = "name"
 )
 
 // Defines values for ListRESTAPIsParamsSortOrder.
 const (
-	Asc  ListRESTAPIsParamsSortOrder = "asc"
-	Desc ListRESTAPIsParamsSortOrder = "desc"
+	ListRESTAPIsParamsSortOrderAsc  ListRESTAPIsParamsSortOrder = "asc"
+	ListRESTAPIsParamsSortOrderDesc ListRESTAPIsParamsSortOrder = "desc"
 )
 
 // Defines values for GetDeploymentsParamsStatus.
@@ -545,6 +581,84 @@ type AddGatewayToRESTAPIRequest struct {
 	// GatewayId Handle (URL-friendly slug) of the gateway to associate with the REST API
 	GatewayId string `binding:"required" json:"gatewayId" yaml:"gatewayId"`
 }
+
+// ApiPortalAuthConfig Platform-API's outbound authentication material for the portal admin
+// API. Shape depends on `authType`:
+//   - `local`  → must be empty.
+//   - `oauth2` → `stsTokenUrl`, `clientId`, `clientSecret` are all required.
+//
+// `clientSecret` is write-only: accepted on create/update requests, persisted
+// encrypted at rest, and never returned on read.
+type ApiPortalAuthConfig struct {
+	// ClientId Registered client identifier in the STS.
+	ClientId *string `json:"clientId,omitempty" yaml:"clientId,omitempty"`
+
+	// ClientSecret Registered client secret. Accepted only in create/update requests; never returned in responses. Persisted encrypted server-side.
+	ClientSecret *string `json:"clientSecret,omitempty" yaml:"clientSecret,omitempty"`
+
+	// StsTokenUrl Token endpoint of the STS Platform-API POSTs the client_credentials grant to.
+	StsTokenUrl *string `json:"stsTokenUrl,omitempty" yaml:"stsTokenUrl,omitempty"`
+}
+
+// ApiPortalListItem Lightweight projection returned in collection responses (excludes the `config` blob).
+type ApiPortalListItem struct {
+	AuthType    ApiPortalListItemAuthType `binding:"required" json:"authType" yaml:"authType"`
+	CreatedAt   time.Time                 `binding:"required" json:"createdAt" yaml:"createdAt"`
+	Description *string                   `json:"description" yaml:"description"`
+	Handle      string                    `binding:"required" json:"handle" yaml:"handle"`
+	Id          string                    `binding:"required" json:"id" yaml:"id"`
+	Name        string                    `binding:"required" json:"name" yaml:"name"`
+	Url         string                    `binding:"required" json:"url" yaml:"url"`
+}
+
+// ApiPortalListItemAuthType defines model for ApiPortalListItem.AuthType.
+type ApiPortalListItemAuthType string
+
+// ApiPortalListResponse defines model for ApiPortalListResponse.
+type ApiPortalListResponse struct {
+	// Count Number of items in the current response page.
+	Count      int                 `binding:"required" json:"count" yaml:"count"`
+	List       []ApiPortalListItem `binding:"required" json:"list" yaml:"list"`
+	Pagination Pagination          `json:"pagination" yaml:"pagination"`
+}
+
+// ApiPortalMetadata Free-form pass-through metadata for the portal pod (e.g. cloud-side OIDC endpoints the portal uses for consumer login). Platform-API stores and returns this as-is; it is not consumed by the outbound authentication path.
+type ApiPortalMetadata map[string]interface{}
+
+// ApiPortalResponse defines model for ApiPortalResponse.
+type ApiPortalResponse struct {
+	// AuthConfig Platform-API's outbound authentication material for the portal admin
+	// API. Shape depends on `authType`:
+	//   - `local`  → must be empty.
+	//   - `oauth2` → `stsTokenUrl`, `clientId`, `clientSecret` are all required.
+	// `clientSecret` is write-only: accepted on create/update requests, persisted
+	// encrypted at rest, and never returned on read.
+	AuthConfig *ApiPortalAuthConfig `json:"authConfig,omitempty" yaml:"authConfig,omitempty"`
+
+	// AuthType Determines how Platform API authenticates to the portal's admin API and selects the shape of the `config` object.
+	AuthType    ApiPortalResponseAuthType `binding:"required" json:"authType" yaml:"authType"`
+	CreatedAt   *time.Time                `binding:"required" json:"createdAt,omitempty" yaml:"createdAt,omitempty"`
+	Description *string                   `json:"description" yaml:"description"`
+
+	// Handle URL-friendly slug. Immutable after creation. Equal to `id`.
+	Handle *string `binding:"required" json:"handle,omitempty" yaml:"handle,omitempty"`
+
+	// Id Handle (URL-friendly slug) of the API Portal — primary identifier.
+	Id *string `binding:"required" json:"id,omitempty" yaml:"id,omitempty"`
+
+	// Metadata Free-form pass-through metadata for the portal pod (e.g. cloud-side OIDC endpoints the portal uses for consumer login). Platform-API stores and returns this as-is; it is not consumed by the outbound authentication path.
+	Metadata *ApiPortalMetadata `json:"metadata,omitempty" yaml:"metadata,omitempty"`
+
+	// Name Display name.
+	Name      string     `binding:"required" json:"name" yaml:"name"`
+	UpdatedAt *time.Time `binding:"required" json:"updatedAt,omitempty" yaml:"updatedAt,omitempty"`
+
+	// Url Public URL of the API Portal. Operator-supplied.
+	Url string `binding:"required" json:"url" yaml:"url"`
+}
+
+// ApiPortalResponseAuthType Determines how Platform API authenticates to the portal's admin API and selects the shape of the `config` object.
+type ApiPortalResponseAuthType string
 
 // Application defines model for Application.
 type Application struct {
@@ -717,6 +831,32 @@ type CreateAPIKeyResponse struct {
 
 // CreateAPIKeyResponseStatus Status of the operation
 type CreateAPIKeyResponseStatus string
+
+// CreateApiPortalRequest defines model for CreateApiPortalRequest.
+type CreateApiPortalRequest struct {
+	// AuthConfig Platform-API's outbound authentication material for the portal admin
+	// API. Shape depends on `authType`:
+	//   - `local`  → must be empty.
+	//   - `oauth2` → `stsTokenUrl`, `clientId`, `clientSecret` are all required.
+	// `clientSecret` is write-only: accepted on create/update requests, persisted
+	// encrypted at rest, and never returned on read.
+	AuthConfig  *ApiPortalAuthConfig           `json:"authConfig,omitempty" yaml:"authConfig,omitempty"`
+	AuthType    CreateApiPortalRequestAuthType `binding:"required" json:"authType" yaml:"authType"`
+	Description *string                        `json:"description" yaml:"description"`
+
+	// Handle URL-friendly slug. Must be unique within the org. Immutable after creation.
+	Handle string `binding:"required" json:"handle" yaml:"handle"`
+
+	// Metadata Free-form pass-through metadata for the portal pod (e.g. cloud-side OIDC endpoints the portal uses for consumer login). Platform-API stores and returns this as-is; it is not consumed by the outbound authentication path.
+	Metadata *ApiPortalMetadata `json:"metadata,omitempty" yaml:"metadata,omitempty"`
+	Name     string             `binding:"required" json:"name" yaml:"name"`
+
+	// Url Public URL of the API Portal to register. Operator-supplied.
+	Url string `binding:"required" json:"url" yaml:"url"`
+}
+
+// CreateApiPortalRequestAuthType defines model for CreateApiPortalRequest.AuthType.
+type CreateApiPortalRequestAuthType string
 
 // CreateApplicationRequest Request body for creating an application.
 type CreateApplicationRequest struct {
@@ -1312,7 +1452,7 @@ type LLMProvider struct {
 	// AssociatedGateways Optional list of gateways this LLM provider can be deployed to, along with per-gateway configuration overrides. This field is optional; omitting it does not change existing behaviour.
 	AssociatedGateways *[]AssociatedGateway `json:"associatedGateways,omitempty" yaml:"associatedGateways,omitempty"`
 
-	// Context Base path for all routes exposed by this proxy. Must start with / and carry no trailing slash; the single exception is the root path "/", which is the default.
+	// Context Base path for all routes exposed by this provider. Must start with / and carry no trailing slash; the single exception is the root path "/", which is the default.
 	Context *string `json:"context,omitempty" yaml:"context,omitempty"`
 
 	// CreatedAt Timestamp when the resource was created
@@ -1818,21 +1958,30 @@ type MCPProxyListResponse struct {
 	Pagination Pagination         `json:"pagination" yaml:"pagination"`
 }
 
-// MCPServerInfoFetchRequest defines model for MCPServerInfoFetchRequest.
+// MCPServerInfoFetchRequest Target MCP server to introspect, and the credentials to introspect it with. At least
+// one of `url`/`proxyId` must be provided
 type MCPServerInfoFetchRequest struct {
 	// Auth Authentication configuration for upstream endpoints
 	Auth *UpstreamAuth `json:"auth,omitempty" yaml:"auth,omitempty"`
 
-	// ProxyId MCP proxy handle (identifier) for refresh operations. When provided,
-	// the server fetches URL and auth from the stored proxy configuration.
-	// Auth override is not allowed in refetch mode.
+	// ProxyId MCP proxy handle (identifier) for refresh operations. The stored credentials of
+	// this proxy are used for the fetch, and its stored upstream URL too unless `url`
+	// overrides it. Required unless `url` is given.
 	ProxyId *string `json:"proxyId,omitempty" yaml:"proxyId,omitempty"`
 
-	// Url Endpoint URL of the MCP server to fetch information from.
-	// Required when proxyId is not provided. When proxyId is provided,
-	// the URL from the stored proxy configuration is used.
-	Url *string `json:"url,omitempty" yaml:"url,omitempty"`
+	// Url Endpoint URL of the MCP server to fetch information from. Required unless
+	// `proxyId` is given. When sent together with `proxyId` it overrides that proxy's
+	// stored upstream URL, while the proxy's stored credentials are still used — this
+	// validates an unsaved endpoint edit without re-sending a write-only secret.
+	Url   *string `json:"url,omitempty" yaml:"url,omitempty"`
+	union json.RawMessage
 }
+
+// MCPServerInfoFetchRequest0 defines model for .
+type MCPServerInfoFetchRequest0 = interface{}
+
+// MCPServerInfoFetchRequest1 defines model for .
+type MCPServerInfoFetchRequest1 = interface{}
 
 // MCPServerInfoFetchResponse defines model for MCPServerInfoFetchResponse.
 type MCPServerInfoFetchResponse struct {
@@ -2256,7 +2405,7 @@ type SecretCreateRequest struct {
 	Type *SecretCreateRequestType `json:"type,omitempty" yaml:"type,omitempty"`
 
 	// Value Plaintext secret value — encrypted at rest, never returned in any response
-	Value string `binding:"required" json:"value" yaml:"value"`
+	Value *string `binding:"required" json:"value,omitempty" yaml:"value,omitempty"`
 }
 
 // SecretCreateRequestType defines model for SecretCreateRequest.Type.
@@ -2324,7 +2473,7 @@ type SecretUpdateRequest struct {
 	Id *string `json:"id,omitempty" yaml:"id,omitempty"`
 
 	// Value New plaintext secret value — re-encrypted at rest
-	Value string `binding:"required" json:"value" yaml:"value"`
+	Value *string `binding:"required" json:"value,omitempty" yaml:"value,omitempty"`
 }
 
 // SecurityConfig Defines security mechanisms (API key, OAuth2) applicable to the API
@@ -2540,6 +2689,27 @@ type UpdateAPIKeyResponse struct {
 // UpdateAPIKeyResponseStatus Status of the operation
 type UpdateAPIKeyResponseStatus string
 
+// UpdateApiPortalRequest All fields optional. Only mutable fields are accepted — see field permissions in the design doc.
+type UpdateApiPortalRequest struct {
+	// AuthConfig Platform-API's outbound authentication material for the portal admin
+	// API. Shape depends on `authType`:
+	//   - `local`  → must be empty.
+	//   - `oauth2` → `stsTokenUrl`, `clientId`, `clientSecret` are all required.
+	// `clientSecret` is write-only: accepted on create/update requests, persisted
+	// encrypted at rest, and never returned on read.
+	AuthConfig  *ApiPortalAuthConfig            `json:"authConfig,omitempty" yaml:"authConfig,omitempty"`
+	AuthType    *UpdateApiPortalRequestAuthType `json:"authType,omitempty" yaml:"authType,omitempty"`
+	Description *string                         `json:"description" yaml:"description"`
+
+	// Metadata Free-form pass-through metadata for the portal pod (e.g. cloud-side OIDC endpoints the portal uses for consumer login). Platform-API stores and returns this as-is; it is not consumed by the outbound authentication path.
+	Metadata *ApiPortalMetadata `json:"metadata,omitempty" yaml:"metadata,omitempty"`
+	Name     *string            `json:"name,omitempty" yaml:"name,omitempty"`
+	Url      *string            `json:"url,omitempty" yaml:"url,omitempty"`
+}
+
+// UpdateApiPortalRequestAuthType defines model for UpdateApiPortalRequest.AuthType.
+type UpdateApiPortalRequestAuthType string
+
 // Upstream Upstream backend configuration with main and sandbox endpoints
 type Upstream struct {
 	// Main Upstream endpoint configuration. Provide exactly one of `url` (a direct backend URL) or
@@ -2644,6 +2814,9 @@ type UserAPIKeyListResponse struct {
 // ApiId defines model for apiId.
 type ApiId = string
 
+// ApiPortalId defines model for apiPortalId.
+type ApiPortalId = string
+
 // AppId defines model for appId.
 type AppId = string
 
@@ -2718,6 +2891,30 @@ type ServiceUnavailable = Error
 
 // Unauthorized The single error shape returned by every failed request across the API.
 type Unauthorized = Error
+
+// ListApiPortalsParams defines parameters for ListApiPortals.
+type ListApiPortalsParams struct {
+	// Limit Maximum number of items to return per page.
+	Limit *LimitQ `form:"limit,omitempty" json:"limit,omitempty" yaml:"limit,omitempty"`
+
+	// Offset Zero-based index of the first item to return.
+	Offset *OffsetQ `form:"offset,omitempty" json:"offset,omitempty" yaml:"offset,omitempty"`
+
+	// SortBy Field to sort the collection by. An unrecognized value falls back to the default sort (createdAt).
+	SortBy *ListApiPortalsParamsSortBy `form:"sortBy,omitempty" json:"sortBy,omitempty" yaml:"sortBy,omitempty"`
+
+	// SortOrder Sort direction applied to `sortBy`.
+	SortOrder *ListApiPortalsParamsSortOrder `form:"sortOrder,omitempty" json:"sortOrder,omitempty" yaml:"sortOrder,omitempty"`
+
+	// Query Case-insensitive substring filter matched against the resource id (handle).
+	Query *QueryQ `form:"query,omitempty" json:"query,omitempty" yaml:"query,omitempty"`
+}
+
+// ListApiPortalsParamsSortBy defines parameters for ListApiPortals.
+type ListApiPortalsParamsSortBy string
+
+// ListApiPortalsParamsSortOrder defines parameters for ListApiPortals.
+type ListApiPortalsParamsSortOrder string
 
 // ListApplicationsParams defines parameters for ListApplications.
 type ListApplicationsParams struct {
@@ -2883,7 +3080,7 @@ type ListLLMProviderAPIKeysParams struct {
 
 // GetLLMProviderDeploymentsParams defines parameters for GetLLMProviderDeployments.
 type GetLLMProviderDeploymentsParams struct {
-	// GatewayId **Gateway ID** (handle — unique slug identifier) of the Gateway to filter deployments by.
+	// GatewayId **Gateway ID** consisting of the **handle** (unique slug identifier) of the Gateway to filter status by.
 	GatewayId *GatewayIdQ `form:"gatewayId,omitempty" json:"gatewayId,omitempty" yaml:"gatewayId,omitempty"`
 
 	// Status Filter deployments by status (DEPLOYED, UNDEPLOYED, DEPLOYING, UNDEPLOYING, FAILED, or ARCHIVED)
@@ -2943,7 +3140,7 @@ type ListLLMProxyAPIKeysParams struct {
 
 // GetLLMProxyDeploymentsParams defines parameters for GetLLMProxyDeployments.
 type GetLLMProxyDeploymentsParams struct {
-	// GatewayId **Gateway ID** (handle — unique slug identifier) of the Gateway to filter deployments by.
+	// GatewayId **Gateway ID** consisting of the **handle** (unique slug identifier) of the Gateway to filter status by.
 	GatewayId *GatewayIdQ `form:"gatewayId,omitempty" json:"gatewayId,omitempty" yaml:"gatewayId,omitempty"`
 
 	// Status Filter deployments by status (DEPLOYED, UNDEPLOYED, DEPLOYING, UNDEPLOYING, FAILED, or ARCHIVED)
@@ -2985,7 +3182,7 @@ type ListMCPProxiesParams struct {
 
 // GetMCPProxyDeploymentsParams defines parameters for GetMCPProxyDeployments.
 type GetMCPProxyDeploymentsParams struct {
-	// GatewayId **Gateway ID** (handle — unique slug identifier) of the Gateway to filter deployments by.
+	// GatewayId **Gateway ID** consisting of the **handle** (unique slug identifier) of the Gateway to filter status by.
 	GatewayId *GatewayIdQ `form:"gatewayId,omitempty" json:"gatewayId,omitempty" yaml:"gatewayId,omitempty"`
 
 	// Status Filter deployments by status (DEPLOYED, UNDEPLOYED, DEPLOYING, UNDEPLOYING, FAILED, or ARCHIVED)
@@ -3091,7 +3288,7 @@ type ListRESTAPIsParamsSortOrder string
 
 // GetDeploymentsParams defines parameters for GetDeployments.
 type GetDeploymentsParams struct {
-	// GatewayId **Gateway ID** (handle — unique slug identifier) of the Gateway to filter deployments by.
+	// GatewayId **Gateway ID** consisting of the **handle** (unique slug identifier) of the Gateway to filter status by.
 	GatewayId *GatewayIdQ `form:"gatewayId,omitempty" json:"gatewayId,omitempty" yaml:"gatewayId,omitempty"`
 
 	// Status Filter deployments by status (DEPLOYED, UNDEPLOYED, DEPLOYING, UNDEPLOYING, FAILED, or ARCHIVED)
@@ -3187,6 +3384,12 @@ type UpdateSubscriptionParams struct {
 	// SubscriberId Subscriber ID; must match the subscription's subscriberId.
 	SubscriberId string `form:"subscriberId" json:"subscriberId" yaml:"subscriberId"`
 }
+
+// CreateApiPortalJSONRequestBody defines body for CreateApiPortal for application/json ContentType.
+type CreateApiPortalJSONRequestBody = CreateApiPortalRequest
+
+// UpdateApiPortalJSONRequestBody defines body for UpdateApiPortal for application/json ContentType.
+type UpdateApiPortalJSONRequestBody = UpdateApiPortalRequest
 
 // CreateApplicationJSONRequestBody defines body for CreateApplication for application/json ContentType.
 type CreateApplicationJSONRequestBody = CreateApplicationRequest
@@ -3298,6 +3501,130 @@ type CreateSubscriptionJSONRequestBody = CreateSubscriptionRequest
 
 // UpdateSubscriptionJSONRequestBody defines body for UpdateSubscription for application/json ContentType.
 type UpdateSubscriptionJSONRequestBody = Subscription
+
+// AsMCPServerInfoFetchRequest0 returns the union data inside the MCPServerInfoFetchRequest as a MCPServerInfoFetchRequest0
+func (t MCPServerInfoFetchRequest) AsMCPServerInfoFetchRequest0() (MCPServerInfoFetchRequest0, error) {
+	var body MCPServerInfoFetchRequest0
+	err := json.Unmarshal(t.union, &body)
+	return body, err
+}
+
+// FromMCPServerInfoFetchRequest0 overwrites any union data inside the MCPServerInfoFetchRequest as the provided MCPServerInfoFetchRequest0
+func (t *MCPServerInfoFetchRequest) FromMCPServerInfoFetchRequest0(v MCPServerInfoFetchRequest0) error {
+	b, err := json.Marshal(v)
+	t.union = b
+	return err
+}
+
+// MergeMCPServerInfoFetchRequest0 performs a merge with any union data inside the MCPServerInfoFetchRequest, using the provided MCPServerInfoFetchRequest0
+func (t *MCPServerInfoFetchRequest) MergeMCPServerInfoFetchRequest0(v MCPServerInfoFetchRequest0) error {
+	b, err := json.Marshal(v)
+	if err != nil {
+		return err
+	}
+
+	merged, err := runtime.JSONMerge(t.union, b)
+	t.union = merged
+	return err
+}
+
+// AsMCPServerInfoFetchRequest1 returns the union data inside the MCPServerInfoFetchRequest as a MCPServerInfoFetchRequest1
+func (t MCPServerInfoFetchRequest) AsMCPServerInfoFetchRequest1() (MCPServerInfoFetchRequest1, error) {
+	var body MCPServerInfoFetchRequest1
+	err := json.Unmarshal(t.union, &body)
+	return body, err
+}
+
+// FromMCPServerInfoFetchRequest1 overwrites any union data inside the MCPServerInfoFetchRequest as the provided MCPServerInfoFetchRequest1
+func (t *MCPServerInfoFetchRequest) FromMCPServerInfoFetchRequest1(v MCPServerInfoFetchRequest1) error {
+	b, err := json.Marshal(v)
+	t.union = b
+	return err
+}
+
+// MergeMCPServerInfoFetchRequest1 performs a merge with any union data inside the MCPServerInfoFetchRequest, using the provided MCPServerInfoFetchRequest1
+func (t *MCPServerInfoFetchRequest) MergeMCPServerInfoFetchRequest1(v MCPServerInfoFetchRequest1) error {
+	b, err := json.Marshal(v)
+	if err != nil {
+		return err
+	}
+
+	merged, err := runtime.JSONMerge(t.union, b)
+	t.union = merged
+	return err
+}
+
+func (t MCPServerInfoFetchRequest) MarshalJSON() ([]byte, error) {
+	b, err := t.union.MarshalJSON()
+	if err != nil {
+		return nil, err
+	}
+	object := make(map[string]json.RawMessage)
+	if t.union != nil {
+		err = json.Unmarshal(b, &object)
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	if t.Auth != nil {
+		object["auth"], err = json.Marshal(t.Auth)
+		if err != nil {
+			return nil, fmt.Errorf("error marshaling 'auth': %w", err)
+		}
+	}
+
+	if t.ProxyId != nil {
+		object["proxyId"], err = json.Marshal(t.ProxyId)
+		if err != nil {
+			return nil, fmt.Errorf("error marshaling 'proxyId': %w", err)
+		}
+	}
+
+	if t.Url != nil {
+		object["url"], err = json.Marshal(t.Url)
+		if err != nil {
+			return nil, fmt.Errorf("error marshaling 'url': %w", err)
+		}
+	}
+	b, err = json.Marshal(object)
+	return b, err
+}
+
+func (t *MCPServerInfoFetchRequest) UnmarshalJSON(b []byte) error {
+	err := t.union.UnmarshalJSON(b)
+	if err != nil {
+		return err
+	}
+	object := make(map[string]json.RawMessage)
+	err = json.Unmarshal(b, &object)
+	if err != nil {
+		return err
+	}
+
+	if raw, found := object["auth"]; found {
+		err = json.Unmarshal(raw, &t.Auth)
+		if err != nil {
+			return fmt.Errorf("error reading 'auth': %w", err)
+		}
+	}
+
+	if raw, found := object["proxyId"]; found {
+		err = json.Unmarshal(raw, &t.ProxyId)
+		if err != nil {
+			return fmt.Errorf("error reading 'proxyId': %w", err)
+		}
+	}
+
+	if raw, found := object["url"]; found {
+		err = json.Unmarshal(raw, &t.Url)
+		if err != nil {
+			return fmt.Errorf("error reading 'url': %w", err)
+		}
+	}
+
+	return err
+}
 
 // AsRateLimitingScopeConfig0 returns the union data inside the RateLimitingScopeConfig as a RateLimitingScopeConfig0
 func (t RateLimitingScopeConfig) AsRateLimitingScopeConfig0() (RateLimitingScopeConfig0, error) {

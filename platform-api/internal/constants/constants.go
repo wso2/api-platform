@@ -207,6 +207,54 @@ var ValidGatewayTokenStatuses = map[string]bool{
 	GatewayTokenStatusRevoked: true,
 }
 
+// API Portal status constants. The column exists on api_portals for
+// future extensibility but is not surfaced on the wire in the OSS offering:
+// OSS registers a portal that's already running, so every OSS row is created
+// as APIPortalStatusActive and never mutated by clients.
+const (
+	APIPortalStatusPending = "pending"
+	APIPortalStatusActive  = "active"
+	APIPortalStatusFailed  = "failed"
+)
+
+// API Portal authConfig field-name constants used by Create/Update validation
+// (required-field check) and by ClientCredentialsAuthProvider (payload build).
+const (
+	APIPortalAuthConfigKeySTSTokenURL  = "stsTokenUrl"
+	APIPortalAuthConfigKeyClientID     = "clientId"
+	APIPortalAuthConfigKeyClientSecret = "clientSecret"
+)
+
+// APIPortalOAuth2RequiredAuthConfigKeys are the keys the oauth2 flow must
+// supply in authConfig at Create time (or on Update when auth_type is being
+// changed to oauth2). Order is stable so validation error messages list
+// missing fields in a predictable sequence.
+var APIPortalOAuth2RequiredAuthConfigKeys = []string{
+	APIPortalAuthConfigKeySTSTokenURL,
+	APIPortalAuthConfigKeyClientID,
+	APIPortalAuthConfigKeyClientSecret,
+}
+
+// APIPortalAuthConfigSensitiveKeys lists the authConfig keys whose values are
+// treated as secrets: encrypted at rest via the platform vault and stripped
+// from any response. Independent of auth_type — the set is small and the
+// keys are the same shape across types.
+var APIPortalAuthConfigSensitiveKeys = []string{
+	APIPortalAuthConfigKeyClientSecret,
+}
+
+// API Portal auth type constants
+const (
+	APIPortalAuthTypeLocal  = "local"
+	APIPortalAuthTypeOAuth2 = "oauth2"
+)
+
+// ValidAPIPortalAuthTypes holds accepted values for api_portals.auth_type
+var ValidAPIPortalAuthTypes = map[string]bool{
+	APIPortalAuthTypeLocal:  true,
+	APIPortalAuthTypeOAuth2: true,
+}
+
 // ValidArtifactKinds holds accepted values for artifacts.type for the core (non-plugin)
 // artifact kinds. Plugin-owned kinds (e.g. WebSubApi, WebBrokerApi) are registered
 // into the ArtifactTableRegistry during plugin Init.
