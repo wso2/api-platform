@@ -16,10 +16,17 @@ jobs:
       - name: Make scripts executable
         run: chmod +x setup.sh publish.sh discover.sh teardown.sh
 
+      - name: Generate ephemeral CI admin password
+        env:
+          CI_ADMIN_PASSWORD: ${{ secrets.CI_ADMIN_PASSWORD }}
+        run: |
+          PASSWORD="${CI_ADMIN_PASSWORD:-$(openssl rand -base64 24 | tr -dc 'A-Za-z0-9' | cut -c1-20)}"
+          echo "::add-mask::$PASSWORD"
+          echo "ADMIN_PASSWORD=$PASSWORD" >> "$GITHUB_ENV"
+
       - name: Setup (start the stack)
         env:
           ADMIN_USERNAME: admin
-          ADMIN_PASSWORD: ${{ secrets.CI_ADMIN_PASSWORD || 'CiTestPassword123!' }}
         run: ./setup.sh
 
       - name: Publish both sample MCP proxies
