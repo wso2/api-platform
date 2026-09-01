@@ -762,7 +762,7 @@ export default function LLMProxyOverviewTab() {
                       >
                         <CircularProgress />
                       </Box>
-                    ) : apiKeys.length > 0 ? (
+                    ) : canReadProxyApiKey && apiKeys.length > 0 ? (
                       <ListingTable.Container>
                         <ListingTable>
                           <ListingTable.Head>

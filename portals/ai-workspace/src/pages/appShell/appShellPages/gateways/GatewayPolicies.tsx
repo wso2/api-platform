@@ -130,7 +130,7 @@ export default function GatewayPolicies() {
         ))}
         <Alert severity="info">
           {canViewManifest
-            ? "No gateway manifest received yet."
+            ? "No policies are installed on this gateway."
             : "No custom policies have been synced to this organization yet."}
         </Alert>
       </>

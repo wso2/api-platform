@@ -205,9 +205,13 @@ export function GatewayPoliciesProvider({ gatewayId, children }: { gatewayId: st
     const customPoliciesUnavailable =
       !canViewCustomPolicies || customResult.status === "rejected";
 
-    // Nothing listable arrived from either source — that, and only that, is a
-    // full failure. Anything else degrades to a partial list plus a warning.
-    if (manifestPolicies === null && customPoliciesUnavailable) {
+    // A manifest request that was actually made and failed is fatal. Unlike a
+    // missing manifest scope — where the gateway's installed policies are
+    // known to be out of view — a failed fetch leaves them unknown, so the
+    // custom-policy list must not silently stand in for the full picture.
+    // Beyond that, nothing listable from either source is the only full failure;
+    // anything else degrades to a partial list plus a warning.
+    if (manifestFailure || (manifestPolicies === null && customPoliciesUnavailable)) {
       const cause =
         manifestFailure ??
         (customResult.status === "rejected" ? customResult.reason : null);
@@ -226,10 +230,6 @@ export function GatewayPoliciesProvider({ gatewayId, children }: { gatewayId: st
     if (!canViewManifest) {
       nextWarnings.push(
         "Policies installed on this gateway are not shown — you do not have permission to read the gateway manifest. Only custom policies synced to the organization are listed.",
-      );
-    } else if (manifestFailure) {
-      nextWarnings.push(
-        "The gateway policy manifest could not be loaded, so policies installed on the gateway are not listed.",
       );
     }
     if (!canViewCustomPolicies) {
