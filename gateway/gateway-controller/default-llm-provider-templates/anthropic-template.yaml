@@ -28,9 +28,13 @@ spec:
   promptTokens:
     location: payload
     identifier: $.usage.input_tokens
+    fallbackIdentifiers:
+      - $.message.usage.input_tokens
   completionTokens:
     location: payload
     identifier: $.usage.output_tokens
+    fallbackIdentifiers:
+      - $.message.usage.output_tokens
   remainingTokens:
     location: header
     identifier: anthropic-ratelimit-tokens-remaining
@@ -40,3 +44,57 @@ spec:
   responseModel:
     location: payload
     identifier: $.model
+    fallbackIdentifiers:
+      - $.message.model
+  cachedTokens:
+    location: payload
+    identifier: $.usage.cache_read_input_tokens
+    fallbackIdentifiers:
+      - $.message.usage.cache_read_input_tokens
+  cacheWriteTokens:
+    location: payload
+    identifier: $.usage.cache_creation.ephemeral_5m_input_tokens
+    fallbackIdentifiers:
+      - $.message.usage.cache_creation.ephemeral_5m_input_tokens
+      # The TTL breakdown is optional; the flat total keeps the tokens billed.
+      - $.usage.cache_creation_input_tokens
+      - $.message.usage.cache_creation_input_tokens
+  cacheWrite1hTokens:
+    location: payload
+    identifier: $.usage.cache_creation.ephemeral_1h_input_tokens
+    fallbackIdentifiers:
+      - $.message.usage.cache_creation.ephemeral_1h_input_tokens
+  reasoningTokens:
+    location: payload
+    identifier: $.usage.output_tokens_details.thinking_tokens
+    fallbackIdentifiers:
+      - $.message.usage.output_tokens_details.thinking_tokens
+  serviceTier:
+    location: payload
+    identifier: $.usage.service_tier
+    fallbackIdentifiers:
+      - $.message.usage.service_tier
+    valueMap:
+      priority: priority
+      batch: batch
+  providerFields:
+    # The streaming envelope nests usage under "message", so both locations are
+    # declared and the calculator never sees the difference.
+    inferenceGeo:
+      location: payload
+      identifier: $.usage.inference_geo
+      fallbackIdentifiers:
+        - $.message.usage.inference_geo
+    webSearchRequests:
+      location: payload
+      identifier: $.usage.server_tool_use.web_search_requests
+      fallbackIdentifiers:
+        - $.message.usage.server_tool_use.web_search_requests
+    # Request-side parameters Anthropic does not echo in the response.
+    speed:
+      location: payload
+      identifier: $.speed
+    searchContextSize:
+      location: payload
+      identifier: $.web_search_options.search_context_size
+  cacheAccounting: additive

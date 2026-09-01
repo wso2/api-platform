@@ -8,11 +8,5 @@
 # These owners will be the default owners for everything in the repo.
 *   @RakhithaRR @Tharsanan1 @VirajSalaka @renuka-fernando @tharindu1st @malinthaprasan @AnuGayan @chamilaadhi @Arshardh @dushaniw @tgtshanika @tharikaGitHub @senthuran16 @CrowleyRajapakse @hisanhunais @HiranyaKavishani @RakhithaRR @HeshanSudarshana @ashera96 @pubudu538 @Krishanx92 @PasanT9 @Thushani-Jayasekera @thivindu @lasanthaS @Induwara04 @Piumal1999
 
-# Root level go.work files
-/go.work           @pubudu538 @malinthaprasan @Krishanx92
-
-# All go.mod and go.sum files throughout the repository
-**/go.mod          @pubudu538 @malinthaprasan @Krishanx92
-
 # VS Code launch configuration
 /.vscode/launch.json @renuka-fernando

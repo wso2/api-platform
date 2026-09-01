@@ -65,6 +65,10 @@ llm_template_definitions_path = "./resources/default-llm-provider-templates"
 # built-in 5 MiB default.
 openapi_spec_max_fetch_bytes = 5242880
 
+# Byte cap on the body read from an MCP backend's initialize/JSON-RPC responses
+# (server info, tools/prompts/resources listing). <= 0 uses the built-in 10 MiB default.
+mcp_response_max_fetch_bytes = 10485760
+
 [platform_api.logging]
 # Level is matched case-insensitively; lowercase is canonical.
 level = "info"   # debug | info | warn | error
@@ -356,6 +360,98 @@ timeout_enabled  = true
 timeout_interval = 20   # seconds between timeout check sweeps
 timeout_duration = 60   # seconds before a stuck deployment is timed out
 
+# ---------------------------------------------------------------------------
+# HTTP client — the single shared outbound *http.Client used by every
+# SSRF-guarded call this process makes whose destination is not fully trusted:
+# MCP reachability probes / JSON-RPC calls (an MCP proxy's own upstream URL),
+# and OpenAPI spec-by-URL fetches (an LLM provider template's spec URL). Built
+# once at startup; every field mirrors github.com/wso2/api-platform/httpkit/httpclient.Config.
+# ---------------------------------------------------------------------------
+[platform_api.http_client.pooling]
+max_idle_conns        = 100
+max_idle_conns_per_host = 10
+max_conns_per_host    = 100
+idle_conn_timeout     = "90s"
+keep_alive            = "30s"
+# A one-off outbound probe/call (MCP reachability, OpenAPI spec fetch) has nothing to gain
+# from connection reuse, and pooling a connection whose response was malformed (some MCP/
+# spec backends answer improperly) could corrupt a later, unrelated request.
+disable_keep_alives   = true
+# HTTP/2 is off by default: this client always sets a custom TLS config, which makes Go's
+# Transport conservatively disable HTTP/2 unless re-enabled here — only opt in after
+# considering the connection-coalescing caveat in httpclient.PoolingConfig.EnableHTTP2's doc.
+enable_http2 = false
+
+[platform_api.http_client.timeouts]
+# Safety-net overall budget for every outbound call this process makes through this client.
+# Real per-call budgets are enforced via a context.WithTimeout deadline at each call site
+# (10s for MCP calls, 15s for OpenAPI spec fetch) — this is only a generous backstop in case
+# one of those deadlines is ever missing.
+overall = "60s"
+dial = "10s"
+tls_handshake = "10s"
+response_header = "10s"
+expect_continue = "1s"
+# MUST stay negative (disabled). The OpenAPI spec fetch path applies its own,
+# potentially-larger operator-configured cap (openapi_spec_max_fetch_bytes above) via an
+# io.LimitReader at the call site; a positive value here would silently shadow it with a
+# smaller client-level cap. MCP response reads are bounded separately by
+# mcp_response_max_fetch_bytes above, applied at their own call sites.
+max_response_bytes = -1
+
+[platform_api.http_client.tls]
+min_version = "TLS1_2"
+max_version = "TLS1_3"
+# Comma-separated TLS 1.3 key-exchange groups, most preferred first. Empty uses Go's own
+# default set/order. Prepend the hybrid post-quantum group "X25519MLKEM768" (FIPS 203
+# ML-KEM-768 + X25519) as an explicit opt-in once peers reached by this client are confirmed
+# to support it, e.g. "X25519MLKEM768,X25519,P-256" — a peer that doesn't offer the hybrid
+# group simply falls back to a later classical entry in this same list.
+curve_preferences = ""
+# Comma-separated Go crypto/tls cipher suite names; only affects TLS 1.2 and below. Empty
+# uses Go's own default secure set.
+cipher_suites = ""
+# PEM CA bundle / mTLS client cert+key for the outbound call. Empty uses the system root
+# pool and no client certificate.
+root_ca_file = ""
+client_cert_file = ""
+client_key_file = ""
+# Unlike gateway-controller (which sources this from an existing controlplane setting),
+# platform-api has no equivalent existing trust setting, so it is configured directly here.
+# Enable only for local/dev environments.
+insecure_skip_verify = false
+
+[platform_api.http_client.proxy]
+# "none" (default) | "environment" (HTTP_PROXY/HTTPS_PROXY/NO_PROXY) | "url"
+mode = "none"
+url = ""
+username = ""
+password = ""
+no_proxy = []
+# Required ("delegated" or "manual_connect") only when mode != "none" AND ssrf.enabled below
+# — see config.HTTPClientProxyConfig's doc comment.
+egress = ""
+
+[platform_api.http_client.proxy.tls]
+# Configures a SEPARATE TLS handshake to an https:// proxy itself, decoupled from
+# platform_api.http_client.tls above (which always governs the origin handshake).
+root_ca_file = ""
+client_cert_file = ""
+client_key_file = ""
+insecure_skip_verify = false
+
+[platform_api.http_client.ssrf]
+# Enabled by default: every current caller of this client fetches a user/tenant-supplied
+# URL (an MCP proxy's upstream, an LLM provider template's OpenAPI spec URL) — exactly the
+# scenario ssrf-prevention.md targets.
+enabled = true
+# "permit_private_block_metadata" (default — a backend that is normally private, e.g. a
+# ClusterIP/service-DNS name/localhost, stays reachable; only link-local/metadata/
+# unspecified/multicast are refused) or "public_only" (stricter — every private/loopback/
+# link-local/CGNAT address is refused, for a URL expected to point at the public internet).
+preset = "permit_private_block_metadata"
+max_redirects = 5
+allowed_schemes = ["http", "https"]
 
 # ---------------------------------------------------------------------------
 # EventHub — multi-replica HA event delivery

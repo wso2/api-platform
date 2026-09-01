@@ -430,7 +430,19 @@ class SharedContext:
     operation_path: str
     auth_context: AuthContext | None
     metadata: dict[str, Any]  # cross-policy mutable bag
+    resolved_operation: str                # canonical operation; "" unless the kind resolves one
+    resolution_attributes: dict[str, str]  # protocol facts from the request; per-request copy
 ```
+
+`resolved_operation` names the operation whose policy chain is running, for an API
+kind whose operation cannot be read off the route — `operation_path` is identical for
+every operation on a multiplexed endpoint, so it cannot tell them apart.
+`resolution_attributes` carries what the resolver read out of the request while
+identifying that operation (`"a2a.context.id"`, `"a2a.task.id"`, …), so your policy
+does not re-parse the body, and so a *request-header-phase* policy can see a
+body-sourced value at all. Both are empty for every API kind that shipped before
+Agent: read that as "not applicable", not as a failure. Attribute values come out of
+a request body — treat them as untrusted.
 
 ### `AuthContext`
 

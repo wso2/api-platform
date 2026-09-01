@@ -21,6 +21,7 @@ const { jwtVerify, importX509 } = require('jose');
 const { config } = require('../config/configLoader');
 const constants = require('./constants');
 const logger = require('../config/logger');
+const { buildOutboundAgents } = require('../config/httpClientOptions');
 
 const DEFAULT_TOKEN_REFRESH_TIMEOUT_MS = 10000;
 
@@ -47,9 +48,12 @@ async function refreshAccessToken(refreshToken) {
         params.client_secret = config.auth.idp.clientSecret;
     }
     const data = qs.stringify(params);
+    const agents = buildOutboundAgents(config);
     const response = await axios.post(config.auth.idp.tokenUrl, data, {
         headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
         timeout: timeoutMs,
+        httpAgent: agents.httpAgent,
+        httpsAgent: agents.httpsAgent,
     });
     return response.data;
 }

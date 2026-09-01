@@ -34,6 +34,8 @@ spec:
   totalTokens:
     location: payload
     identifier: $.usage.total_tokens
+    fallbackIdentifiers:
+      - $.response.usage.total_tokens
   remainingTokens:
     location: header
     identifier: x-ratelimit-remaining-tokens
@@ -43,12 +45,61 @@ spec:
   responseModel:
     location: payload
     identifier: $.model
+    fallbackIdentifiers:
+      - $.response.model
+  cachedTokens:
+    location: payload
+    identifier: $.usage.prompt_tokens_details.cached_tokens
+  reasoningTokens:
+    location: payload
+    identifier: $.usage.completion_tokens_details.reasoning_tokens
+  audioInputTokens:
+    location: payload
+    identifier: $.usage.prompt_tokens_details.audio_tokens
+  audioOutputTokens:
+    location: payload
+    identifier: $.usage.completion_tokens_details.audio_tokens
+  serviceTier:
+    location: payload
+    identifier: $.service_tier
+    fallbackIdentifiers:
+      - $.response.service_tier
+    valueMap:
+      priority: priority
+      flex: flex
+      fast: priority
+  providerFields:
+    # A url_citation annotation inside a choice marks a web search call.
+    choices:
+      location: payload
+      identifier: $.choices
+    # The search depth is request-side only.
+    searchContextSize:
+      location: payload
+      identifier: $.web_search_options.search_context_size
+  cacheAccounting: inclusive
   resourceMappings:
     resources:
+      # A streamed response nests the whole document under "response", so each
+      # identifier carries its nested form as a fallback.
       - resource: /responses
         promptTokens:
           location: payload
           identifier: $.usage.input_tokens
+          fallbackIdentifiers:
+            - $.response.usage.input_tokens
         completionTokens:
           location: payload
           identifier: $.usage.output_tokens
+          fallbackIdentifiers:
+            - $.response.usage.output_tokens
+        cachedTokens:
+          location: payload
+          identifier: $.usage.input_tokens_details.cached_tokens
+          fallbackIdentifiers:
+            - $.response.usage.input_tokens_details.cached_tokens
+        reasoningTokens:
+          location: payload
+          identifier: $.usage.output_tokens_details.reasoning_tokens
+          fallbackIdentifiers:
+            - $.response.usage.output_tokens_details.reasoning_tokens

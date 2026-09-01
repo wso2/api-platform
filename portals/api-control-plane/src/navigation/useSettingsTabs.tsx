@@ -17,12 +17,26 @@
  */
 
 import type { ReactNode } from 'react';
-import { Settings as SettingsIcon } from '@wso2/oxygen-ui-icons-react';
+import { defineMessages, useIntl } from 'react-intl';
+import { Settings } from '@wso2/oxygen-ui-icons-react';
 
 import { useConsoleScope } from '../scope/ConsoleScopeProvider';
-import { useExtensions } from '../extensions';
+import {
+  settingsTabExtensions,
+  settingsTabSlot,
+  useExtensions,
+} from '../extensions';
 import { useIsHidden } from '../slots';
 import type { NavigationLevel } from './navigationTypes';
+
+const messages = defineMessages({
+  generalTab: {
+    id: 'apiControlPlane.navigation.useSettingsTabs.generalTab',
+    defaultMessage: 'General',
+    description:
+      'Label for the built-in first tab of the Settings page. A noun naming the section, not a command.',
+  },
+});
 
 export type SettingsTab = {
   id: string;
@@ -33,46 +47,43 @@ export type SettingsTab = {
   order: number;
 };
 
-const BUILT_IN_GENERAL_TAB: SettingsTab = {
-  id: 'general',
-  label: 'General',
-  icon: <SettingsIcon />,
-  path: 'general',
-  order: 0,
-};
-
 /**
- * The sub-nav tabs rendered inside the Settings page for a given scope: the
+ * The sub-nav tabs rendered inside the Settings page for a given level: the
  * built-in "General" tab (unless suppressed via `Hideable`) plus any
- * cloud-injected extension registered against the matching
- * `settings.<scope>.tabs` slot, sorted by order. Mirrors
+ * host-injected extension registered against the matching
+ * `settings.<level>.tabs` slot, sorted by `order`. Mirrors
  * `useNavigationItems`'s registry-plus-extensions merge, one level deeper
  * (inside Settings rather than the main sidebar).
  */
-export const useSettingsTabs = (scope: NavigationLevel): SettingsTab[] => {
+export const useSettingsTabs = (level: NavigationLevel): SettingsTab[] => {
+  const intl = useIntl();
   const consoleScope = useConsoleScope();
   const extensions = useExtensions();
-  const generalTabHidden = useIsHidden(`settings.${scope}.tabs.general`);
+  const generalTabHidden = useIsHidden(`${settingsTabSlot(level)}.general`);
 
-  const extensionTabs: SettingsTab[] = extensions
-    // Require `scope` to agree with the slot name too — a type-valid but
-    // inconsistent descriptor (e.g. `slot: 'settings.organization.tabs'`
-    // with `scope: 'project'`) must not render here with the wrong scope's
-    // Port (see `AppRoutes.tsx`'s equivalent guard for its route).
-    .filter(
-      (extension) =>
-        extension.slot === `settings.${scope}.tabs` && extension.scope === scope
-    )
+  const extensionTabs: SettingsTab[] = settingsTabExtensions(extensions, level)
     .filter((extension) => extension.isVisible?.(consoleScope) ?? true)
     .map((extension) => ({
+      icon: extension.icon ?? <Settings size={18} />,
       id: extension.id,
+      // An extension's label is host-supplied and already in the host's own
+      // locale — it is passed through, never run through this app's catalog.
       label: extension.label,
-      icon: extension.icon ?? <SettingsIcon />,
-      path: extension.routePath.replace(/^settings\//, ''),
       order: extension.order,
+      path: extension.routePath.replace(/^settings\//, ''),
     }));
 
-  const builtInTabs = generalTabHidden ? [] : [BUILT_IN_GENERAL_TAB];
+  const builtInTabs: SettingsTab[] = generalTabHidden
+    ? []
+    : [
+        {
+          icon: <Settings size={18} />,
+          id: 'general',
+          label: intl.formatMessage(messages.generalTab),
+          order: 0,
+          path: 'general',
+        },
+      ];
 
   return [...builtInTabs, ...extensionTabs].sort(
     (left, right) => left.order - right.order

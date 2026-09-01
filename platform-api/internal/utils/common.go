@@ -444,7 +444,6 @@ func ValidateContext(ctx string) error {
 	return nil
 }
 
-
 func ValidateExternalURL(_ context.Context, rawURL string) error {
 	if err := ValidateURL(rawURL); err != nil {
 		return err
@@ -471,9 +470,22 @@ func CheckURLReachability(rawURL string, timeout time.Duration) error {
 	// some servers answer a HEAD with an improperly terminated chunked response, and a
 	// pooled connection could then corrupt a later, unrelated request (e.g. the MCP
 	// initialize/tools/list calls FetchServerInfo makes right after this).
-	client := NewUpstreamFetchClient(timeout)
+	client, err := NewUpstreamFetchClient(timeout)
+	if err != nil {
+		return fmt.Errorf("failed to create HTTP client")
+	}
 
-	req, err := http.NewRequestWithContext(context.Background(), http.MethodHead, rawURL, nil)
+	// The shared client's own Timeouts.Overall is a safety-net only (see
+	// InitSharedHTTPClient's doc comment) — this call site's own timeout parameter is now
+	// the real per-call budget, enforced via the request context. A non-positive timeout
+	// falls back to a safe default rather than producing an already-expired context.
+	if timeout <= 0 {
+		timeout = defaultUpstreamFetchTimeout
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), timeout)
+	defer cancel()
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodHead, rawURL, nil)
 	if err != nil {
 		return fmt.Errorf("failed to create request")
 	}

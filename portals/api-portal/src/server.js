@@ -21,6 +21,8 @@ const fs = require('fs');
 const path = require('path');
 const logger = require('./config/logger');
 const { config } = require('./config/configLoader');
+const { buildTLSOptions } = require('./config/tlsOptions');
+const { buildOutboundAgents } = require('./config/httpClientOptions');
 const webhookDispatcher = require('./services/webhooks/dispatcher');
 const webhookDeliveryWorker = require('./services/webhooks/deliveryWorker');
 const db = require('./db/driver');
@@ -124,6 +126,24 @@ let server;
 
 async function startServer() {
     logger.info('API Portal & MCP Hub starting...');
+
+    // Constructs (and memoizes) the shared outbound http.Agent/https.Agent pair
+    // up front, so an invalid config.httpClient.tls value fails startup here —
+    // same fail-closed treatment as the inbound HTTPS setup below — instead of
+    // surfacing on whatever request happens to trigger the first outbound call
+    // (login, token refresh, webhook delivery). Every later buildOutboundAgents()
+    // call from those call sites returns this same cached pair.
+    try {
+        buildOutboundAgents(config);
+    } catch (err) {
+        logger.error('Error setting up outbound HTTP client', {
+            error: err.message,
+            stack: err.stack,
+            operation: 'outboundHttpClientSetup'
+        });
+        process.exit(1);
+    }
+
     await ensureSchema();
 
     // Seed before binding the listener, not from the 'listening' callback. This
@@ -150,9 +170,15 @@ async function startServer() {
         const serverCert = fs.readFileSync(certPath);
         const serverKey = fs.readFileSync(keyPath);
 
+        // TLS version bounds + ECDH/group preference list, config-gated — see
+        // js-post-quantum-cryptography.md. Throws (caught below) on an invalid
+        // value, so a bad config fails startup rather than silently degrading.
+        const tlsOptions = buildTLSOptions(config.server.https);
+
         server = https.createServer({
             key: serverKey,
             cert: serverCert,
+            ...tlsOptions,
         }, app).listen(PORT, onListening);
 
     } catch (err) {

@@ -102,11 +102,14 @@ const (
 	CodeRESTAPIAPIKeyForbidden            = "REST_API_API_KEY_FORBIDDEN"
 )
 
-// MCP proxy domain codes.
+// MCP proxy domain codes. MCP_PROXY_UPSTREAM_UNAUTHORIZED reports that the
+// *remote* MCP server rejected our credentials — deliberately not a 401, so a
+// client cannot confuse it with its own session expiring (see catalog.go).
 const (
 	CodeMCPProxyNotFound                   = "MCP_PROXY_NOT_FOUND"
 	CodeMCPProxyExists                     = "MCP_PROXY_EXISTS"
 	CodeMCPProxyDeploymentValidationFailed = "MCP_PROXY_DEPLOYMENT_VALIDATION_FAILED"
+	CodeMCPProxyUpstreamUnauthorized       = "MCP_PROXY_UPSTREAM_UNAUTHORIZED"
 )
 
 // Organization domain codes.

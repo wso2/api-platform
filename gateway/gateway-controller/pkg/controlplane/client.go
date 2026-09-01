@@ -123,37 +123,45 @@ type WebhookSecretSnapshotRefresher interface {
 
 // Client manages the WebSocket connection to the control plane
 type Client struct {
-	config                       config.ControlPlaneConfig
-	logger                       *slog.Logger
-	state                        *ConnectionState
-	ctx                          context.Context
-	cancel                       context.CancelFunc
-	stopChan                     chan struct{}
-	wg                           sync.WaitGroup
-	writeMu                      sync.Mutex // serializes writes to the WebSocket connection
-	store                        *storage.ConfigStore
-	db                           storage.Storage
-	snapshotManager              *xds.SnapshotManager
-	parser                       *config.Parser
-	validator                    config.Validator
-	deploymentService            *utils.APIDeploymentService
-	apiUtilsService              *utils.APIUtilsService
-	apiKeyService                *utils.APIKeyService
-	llmDeploymentService         *utils.LLMDeploymentService
-	mcpDeploymentService         *utils.MCPDeploymentService
-	apiKeyXDSManager             utils.XDSManager
-	apiKeyStore                  *storage.APIKeyStore
-	routerConfig                 *config.RouterConfig
-	policyManager                *policyxds.PolicyManager
-	systemConfig                 *config.Config
-	policyDefinitions            map[string]models.PolicyDefinition
-	subscriptionSnapshotUpdater  utils.SubscriptionSnapshotUpdater
-	subscriptionResourceService  *utils.SubscriptionResourceService
-	eventHub                     eventhub.EventHub
-	gatewayID                    string
-	gatewayPath                  string      // cached gateway path from well-known discovery
-	syncOnce                     sync.Once   // ensures deployment sync runs only on first connect
-	isFirstConnect               atomic.Bool // true on first connect, flipped to false after
+	config                      config.ControlPlaneConfig
+	logger                      *slog.Logger
+	state                       *ConnectionState
+	ctx                         context.Context
+	cancel                      context.CancelFunc
+	stopChan                    chan struct{}
+	wg                          sync.WaitGroup
+	writeMu                     sync.Mutex // serializes writes to the WebSocket connection
+	store                       *storage.ConfigStore
+	db                          storage.Storage
+	snapshotManager             *xds.SnapshotManager
+	parser                      *config.Parser
+	validator                   config.Validator
+	deploymentService           *utils.APIDeploymentService
+	apiUtilsService             *utils.APIUtilsService
+	apiKeyService               *utils.APIKeyService
+	llmDeploymentService        *utils.LLMDeploymentService
+	mcpDeploymentService        *utils.MCPDeploymentService
+	apiKeyXDSManager            utils.XDSManager
+	apiKeyStore                 *storage.APIKeyStore
+	routerConfig                *config.RouterConfig
+	policyManager               *policyxds.PolicyManager
+	systemConfig                *config.Config
+	policyDefinitions           map[string]models.PolicyDefinition
+	subscriptionSnapshotUpdater utils.SubscriptionSnapshotUpdater
+	subscriptionResourceService *utils.SubscriptionResourceService
+	eventHub                    eventhub.EventHub
+	gatewayID                   string
+	gatewayPath                 string      // cached gateway path from well-known discovery
+	syncOnce                    sync.Once   // ensures deployment sync runs only on first connect
+	isFirstConnect              atomic.Bool // true on first connect, flipped to false after
+
+	// httpClient is the single shared outbound *http.Client for this entire process (built
+	// once in cmd/controller/main.go and injected here), used for every plain (non-WebSocket)
+	// REST call this Client makes to the control plane host — well-known gateway-path
+	// discovery, gateway manifest push, platform-API calls (via apiUtilsService), and on-prem
+	// APIM calls. Per-operation timeout budgets (5s well-known, 30s manifest, etc.) are
+	// enforced via context.WithTimeout at each call site rather than a client-level Timeout.
+	httpClient                   *http.Client
 	webhookSecretStore           *webhooksecret.WebhookSecretStore
 	webhookSecretSnapshotManager WebhookSecretSnapshotRefresher
 	secretSyncer                 secretSyncer
@@ -192,6 +200,7 @@ func NewClient(
 	secretResolver funcs.SecretResolver,
 	webhookSecretStore *webhooksecret.WebhookSecretStore,
 	webhookSecretSnapshotManager WebhookSecretSnapshotRefresher,
+	httpClient *http.Client,
 ) *Client {
 	if db == nil {
 		panic("control plane client requires non-nil storage")
@@ -209,7 +218,7 @@ func NewClient(
 
 	ctx, cancel := context.WithCancel(context.Background())
 
-	deploymentService := utils.NewAPIDeploymentService(store, db, snapshotManager, validator, routerConfig, eventHubInstance, gatewayID, secretResolver)
+	deploymentService := utils.NewAPIDeploymentService(store, db, snapshotManager, validator, routerConfig, eventHubInstance, gatewayID, secretResolver, httpClient)
 	apiKeyService := utils.NewAPIKeyService(store, db, apiKeyXDSManager, apiKeyConfig, eventHubInstance, gatewayID)
 	subscriptionResourceService := utils.NewSubscriptionResourceService(db, subSnapshotManager, eventHubInstance, gatewayID)
 
@@ -235,6 +244,7 @@ func NewClient(
 		gatewayID:                    gatewayID,
 		webhookSecretStore:           webhookSecretStore,
 		webhookSecretSnapshotManager: webhookSecretSnapshotManager,
+		httpClient:                   httpClient,
 		state: &ConnectionState{
 			Current:        Disconnected,
 			Conn:           nil,
@@ -289,7 +299,7 @@ func NewClient(
 		Token:              cfg.Token,
 		InsecureSkipVerify: cfg.InsecureSkipVerify,
 		Timeout:            30 * time.Second,
-	}, logger)
+	}, httpClient, logger)
 
 	// Set OAuth2 credentials for on-prem APIM (for API import operations)
 	// Construct TokenURL from the controlplane host
@@ -679,21 +689,15 @@ func (c *Client) isOnPrem() bool {
 func (c *Client) discoverGatewayPath() (string, error) {
 	wellKnownURL := fmt.Sprintf("https://%s/internal/gateway/.well-known", c.config.Host)
 
-	httpClient := &http.Client{
-		Timeout: 5 * time.Second,
-		Transport: &http.Transport{
-			TLSClientConfig: &tls.Config{ // #nosec G402 -- Explicit operator-controlled opt-out for dev/test environments.
-				InsecureSkipVerify: c.config.InsecureSkipVerify,
-			},
-		},
-	}
+	ctx, cancel := context.WithTimeout(c.ctx, 5*time.Second)
+	defer cancel()
 
-	req, err := http.NewRequestWithContext(c.ctx, http.MethodGet, wellKnownURL, nil)
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, wellKnownURL, nil)
 	if err != nil {
 		return "", fmt.Errorf("failed to create well-known request: %w", err)
 	}
 
-	resp, err := httpClient.Do(req)
+	resp, err := c.httpClient.Do(req)
 	if err != nil {
 		return "", fmt.Errorf("failed to call well-known endpoint: %w", err)
 	}
@@ -958,11 +962,17 @@ func (c *Client) syncSubscriptionsForExistingAPIs(gatewayID string) {
 		}
 
 		apiID := cfg.UUID
+		// The control plane knows a bottom-up (DP->CP) synced API by the CP UUID
+		remoteAPIID := apiID
+		if cfg.CPArtifactID != "" {
+			remoteAPIID = cfg.CPArtifactID
+		}
 
-		subs, err := c.apiUtilsService.FetchSubscriptionsForAPI(apiID)
+		subs, err := c.apiUtilsService.FetchSubscriptionsForAPI(remoteAPIID)
 		if err != nil {
 			c.logger.Warn("Failed to bulk-sync subscriptions for API",
 				slog.String("api_id", apiID),
+				slog.String("cp_api_id", remoteAPIID),
 				slog.Any("error", err),
 			)
 			continue
@@ -1055,6 +1065,8 @@ func (c *Client) syncAPIKeysForExistingArtifacts(gatewayID string) {
 		return
 	}
 	artifactUUIDsByKind := make(map[string][]string)
+	// The control plane reports each key against the artifact UUID. For a bottom-up synced artifact that is the cp_artifact_id
+	localArtifactIDs := make(map[string]string)
 	for _, cfg := range configs {
 		if cfg == nil {
 			continue
@@ -1064,6 +1076,19 @@ func (c *Client) syncAPIKeysForExistingArtifacts(gatewayID string) {
 			continue
 		}
 		artifactUUIDsByKind[cfg.Kind] = append(artifactUUIDsByKind[cfg.Kind], cfg.UUID)
+		localArtifactIDs[cfg.UUID] = cfg.UUID
+	}
+	for _, cfg := range configs {
+		if cfg == nil || cfg.CPArtifactID == "" {
+			continue
+		}
+		if _, taken := localArtifactIDs[cfg.CPArtifactID]; taken {
+			continue
+		}
+		if _, known := localArtifactIDs[cfg.UUID]; !known {
+			continue // kind not covered by API-key sync
+		}
+		localArtifactIDs[cfg.CPArtifactID] = cfg.UUID
 	}
 
 	for _, kind := range []string{models.KindRestApi, models.KindWebSubApi, models.KindWebBrokerApi, models.KindLlmProvider, models.KindLlmProxy} {
@@ -1109,6 +1134,17 @@ func (c *Client) syncAPIKeysForExistingArtifacts(gatewayID string) {
 			key := keys[i]
 			if key.UUID == "" {
 				continue
+			}
+
+			if local, mapped := localArtifactIDs[key.ArtifactUUID]; mapped && local != key.ArtifactUUID {
+				if err := c.db.RemoveAPIKeyAPIAndName(key.ArtifactUUID, key.Name); err != nil &&
+					!storage.IsNotFoundError(err) {
+					c.logger.Warn("Failed to remove API key mis-keyed by control-plane artifact UUID",
+						slog.String("key_uuid", key.UUID),
+						slog.String("cp_artifact_uuid", key.ArtifactUUID),
+						slog.Any("error", err))
+				}
+				key.ArtifactUUID = local
 			}
 
 			if err := c.db.UpsertAPIKey(&key); err != nil {
@@ -3480,16 +3516,18 @@ func (c *Client) handleSubscriptionCreatedEvent(event map[string]interface{}) {
 			slog.Bool("hasToken", payload.SubscriptionToken != ""))
 		return
 	}
+	localAPIID := c.resolveLocalArtifactID(payload.APIID)
 	logger := baseLogger.With(
 		slog.String("correlation_id", createdEvent.CorrelationID),
 		slog.String("subscription_id", payload.SubscriptionID),
-		slog.String("api_id", payload.APIID),
+		slog.String("api_id", localAPIID),
+		slog.String("cp_api_id", payload.APIID),
 	)
 
 	status := models.SubscriptionStatus(payload.Status)
 	sub := &models.Subscription{
 		ID:                payload.SubscriptionID,
-		APIID:             payload.APIID,
+		APIID:             localAPIID,
 		SubscriptionToken: payload.SubscriptionToken,
 		Status:            status,
 		CreatedAt:         time.Now(),
@@ -3558,8 +3596,9 @@ func (c *Client) handleSubscriptionUpdatedEvent(event map[string]interface{}) {
 	}
 
 	// Copy all mutable fields from payload into existing before update.
+	// As in the created path, the control-plane UUID is mapped to the local one.
 	if payload.APIID != "" {
-		existing.APIID = payload.APIID
+		existing.APIID = c.resolveLocalArtifactID(payload.APIID)
 	}
 	if payload.ApplicationID != "" {
 		existing.ApplicationID = &payload.ApplicationID
@@ -4003,23 +4042,17 @@ func (c *Client) pushGatewayManifest(gatewayID string, policies []models.PolicyD
 		return fmt.Errorf("failed to marshal manifest payload: %w", err)
 	}
 
-	httpClient := &http.Client{
-		Timeout: 30 * time.Second,
-		Transport: &http.Transport{
-			TLSClientConfig: &tls.Config{ // #nosec G402 -- Explicit operator-controlled opt-out for dev/test environments.
-				InsecureSkipVerify: c.config.InsecureSkipVerify,
-			},
-		},
-	}
+	ctx, cancel := context.WithTimeout(c.ctx, 30*time.Second)
+	defer cancel()
 
-	req, err := http.NewRequest("POST", url, bytes.NewBuffer(jsonData))
+	req, err := http.NewRequestWithContext(ctx, "POST", url, bytes.NewBuffer(jsonData))
 	if err != nil {
 		return fmt.Errorf("failed to create manifest request: %w", err)
 	}
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("api-key", c.config.Token)
 
-	resp, err := httpClient.Do(req)
+	resp, err := c.httpClient.Do(req)
 	if err != nil {
 		return fmt.Errorf("failed to send gateway manifest: %w", err)
 	}

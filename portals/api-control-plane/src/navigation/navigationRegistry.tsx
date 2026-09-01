@@ -16,184 +16,445 @@
  * under the License.
  */
 
+import type { ReactNode } from 'react';
 import {
-  Boxes,
+  Activity,
+  BellRing,
+  ChartColumn,
+  ChartLine,
+  CircleDollarSign,
+  Code,
   ClipboardList,
+  FileCheck,
+  FileText,
+  Gauge,
+  GitBranch,
   Home,
+  Layers,
+  MessagesSquare,
   Network,
   Rocket,
+  Route,
+  ScrollText,
   Settings,
+  ShieldCheck,
+  SquareTerminal,
   Terminal,
 } from '@wso2/oxygen-ui-icons-react';
 
-import { routes } from '../routes/paths';
-import type { NavigationDefinition } from './navigationTypes';
+import type { ApiCapabilities } from '../pages/appShell/appShellPages/apis/utils/apiCapabilities';
+import {
+  apiScopeSelectPaths,
+  apiScopedPaths,
+  routes,
+  type ApiPathBuilder,
+  type ScopedPathBuilder,
+} from '../routes/paths';
+import type { ConsoleRouteParams } from '../scope/ConsoleScopeContext';
+import type { NavigationDefinition, NavigationLevel } from './navigationTypes';
+
+/**
+ * Divider-separated clusters, in sidebar order. Keys are never displayed — the
+ * sidebar renders no headings (see `NavigationDefinition.group`).
+ */
+const CLUSTER = {
+  /** Where you are and what's alongside it: Overview, Projects, Gateways. */
+  place: 'place',
+  /** What you can do to the API you're in. */
+  api: 'api',
+  /** Reachable at any scope. */
+  global: 'global',
+} as const;
+
+/**
+ * Turns a route pattern into an anchored full-path regex: regex metacharacters
+ * are escaped, then each `:param` becomes a single-segment wildcard. So
+ * `/organizations/:orgHandle/projects/:projectHandler/settings` yields
+ * `^/organizations/[^/]+/projects/[^/]+/settings$`.
+ */
+const toRouteRegex = (pattern: string): RegExp =>
+  new RegExp(
+    `^${pattern
+      .replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+      .replace(/:[A-Za-z][A-Za-z0-9]*/g, '[^/]+')}$`
+  );
+
+/**
+ * Builds a `match` predicate from the same `routes.*` builders an item links to,
+ * called with their `:param` defaults.
+ *
+ * Hand-writing `match` alongside `to` means maintaining the same path twice, and
+ * the two had already drifted: `settings` matched a bare `/\/settings$/`, so any
+ * future org- or api-level settings page would light up the *project* Settings
+ * item, and `runtime-logs` matched `/\/observe\/runtimelogs$/` with no
+ * org/project segments at all. Deriving both from one builder makes that class
+ * of drift impossible — a renamed route updates the highlight for free.
+ */
+const matchRoutes = (...patterns: string[]) => {
+  const regexes = patterns.map(toRouteRegex);
+  return (pathname: string) => regexes.some((regex) => regex.test(pathname));
+};
+
+/** `to` for an org-level item — always linkable inside the app shell. */
+const orgLevelTo =
+  (build: (orgHandle: string) => string): NavigationDefinition['to'] =>
+  ({ params }) =>
+    params.orgHandle ? build(params.orgHandle) : undefined;
+
+/**
+ * `to` for an API-level item, falling back to the page's scope-less alias when
+ * the project or API is missing.
+ *
+ * The item stays clickable at every scope: the alias mounts the same page, whose
+ * `ScopeGate` prompts for the missing handles and then navigates to the fully
+ * scoped URL. Returning `undefined` — the old behaviour, paired with a filter
+ * that hid the item — meant an org-level page offered no route into any
+ * API-level feature at all.
+ */
+const apiLevelTo =
+  (build: ApiPathBuilder): NavigationDefinition['to'] =>
+  ({ params }) =>
+    params.orgHandle
+      ? build(
+          params.orgHandle,
+          params.projectHandler ?? null,
+          params.apiHandler ?? null
+        )
+      : undefined;
+
+/** One entry in a submenu: its own id, label, icon and page. */
+type SubItem = {
+  icon: ReactNode;
+  id: string;
+  label: string;
+  to: ApiPathBuilder;
+};
+
+/**
+ * A child of a submenu parent: an ordinary API-level item, one nesting level down.
+ *
+ * `match` is the fully-scoped path only. The parent owns the scope-less aliases
+ * (see `submenu` below), so exactly one of the two is ever active.
+ */
+const subItem = ({ icon, id, label, to }: SubItem): NavigationDefinition => ({
+  icon,
+  id,
+  label,
+  // Children render in the order their parent lists them; `order` only sorts
+  // top-level items, so it plays no part here.
+  order: 0,
+  to: apiLevelTo(to),
+  match: matchRoutes(to(':orgHandle', ':projectHandler', ':apiHandler')),
+});
+
+/**
+ * The `to`/`match`/`children` of a submenu parent — an item that opens rather
+ * than navigates.
+ *
+ * A parent has no page of its own, so:
+ *
+ * - `to` is its **first child's** target. In API scope the sidebar drops the link
+ *   entirely and a click expands instead (Oxygen's `Sidebar.Item` switches to
+ *   `onToggleExpand` as soon as it has nested children), so this only ever
+ *   resolves out of scope — where it points at that child's scope-less alias and
+ *   the child page's `ScopeGate` asks for an API.
+ * - `match` covers every child's aliases and nothing else, so the parent stays
+ *   highlighted on the scope-gate page and hands the highlight to the child once
+ *   scope resolves. Oxygen leaves an expanded parent unhighlighted by design.
+ */
+const submenu = (
+  items: SubItem[]
+): Pick<NavigationDefinition, 'children' | 'match' | 'requires' | 'to'> => ({
+  children: items.map(subItem),
+  match: matchRoutes(...items.flatMap((item) => apiScopeSelectPaths(item.to))),
+  requires: 'api',
+  to: apiLevelTo(items[0].to),
+});
+
+/** One page an adaptive item points at, plus the scope that page needs. */
+type ScopeTier = { level: NavigationLevel; to: ScopedPathBuilder };
+
+const LEVEL_DEPTH: Record<NavigationLevel, number> = {
+  organization: 0,
+  project: 1,
+  api: 2,
+};
+
+const isLevelInScope = (level: NavigationLevel, params: ConsoleRouteParams) => {
+  if (level === 'api') return Boolean(params.projectHandler && params.apiHandler);
+  if (level === 'project') return Boolean(params.projectHandler);
+  return Boolean(params.orgHandle);
+};
+
+/** The tier's route pattern, calling its builder with the handles its level takes. */
+const tierPattern = ({ level, to }: ScopeTier): string => {
+  if (level === 'api') return to(':orgHandle', ':projectHandler', ':apiHandler');
+  if (level === 'project') return to(':orgHandle', ':projectHandler');
+  return to(':orgHandle');
+};
+
+/**
+ * One sidebar item pointing at a different page per scope: the deepest tier the
+ * route can satisfy wins.
+ *
+ * This is what lets a single **Overview** item mean "the summary of wherever you
+ * are" — the organization at org scope, the project once you pick one, the API
+ * once you open one. Clicking a project card or an API card navigates into the
+ * deeper tier, and because `match` covers every tier, Overview simply stays
+ * highlighted rather than handing off to a different item.
+ *
+ * Note what it does *not* do: an adaptive item whose shallowest tier is
+ * `organization` never needs a `ScopeGate`, because there is always some tier it
+ * can satisfy. It degrades instead of prompting. Tiers are only ever called with
+ * handles the route already has, which is why `ScopedPathBuilder` takes no
+ * `null`.
+ *
+ * Returns both `to` and `match` so a spread wires them together and they can't
+ * drift apart:
+ *
+ * ```tsx
+ * { id: 'overview', ...adaptive([{ level: 'api', to: routes.api }, ...]) }
+ * ```
+ */
+const adaptive = (
+  tiers: ScopeTier[]
+): Pick<NavigationDefinition, 'match' | 'to'> => {
+  const deepestFirst = [...tiers].sort(
+    (left, right) => LEVEL_DEPTH[right.level] - LEVEL_DEPTH[left.level]
+  );
+
+  return {
+    match: matchRoutes(...tiers.map(tierPattern)),
+    to: ({ params }) => {
+      if (!params.orgHandle) return undefined;
+      const tier = deepestFirst.find((candidate) =>
+        isLevelInScope(candidate.level, params)
+      );
+      return tier?.to(
+        params.orgHandle,
+        params.projectHandler,
+        params.apiHandler
+      );
+    },
+  };
+};
+
+
+/**
+ * Capability gating for an API-level item, applied only once an API is actually
+ * in scope.
+ *
+ * With no API loaded every capability is `false` (see `getApiCapabilities`), so
+ * a bare `({ capabilities }) => capabilities.canDeploy` would hide Deploy/Test/
+ * Manage from the sidebar in exactly the state where the user needs them as a
+ * way in. Out of API scope the item shows and leads to the scope picker; in API
+ * scope the capability still decides, so an API that can't be deployed has no
+ * Deploy item.
+ */
+const apiCapability =
+  (
+    isSupported: (capabilities: ApiCapabilities) => boolean
+  ): NonNullable<NavigationDefinition['isVisible']> =>
+  ({ capabilities, isApiScope }) =>
+    !isApiScope || isSupported(capabilities);
 
 export const navigationRegistry: NavigationDefinition[] = [
   {
-    id: 'organization-home',
-    label: 'Home',
-    level: 'organization',
+    id: 'overview',
+    label: 'Overview',
+    group: CLUSTER.place,
     order: 10,
     icon: <Home />,
-    to: ({ params }) =>
-      params.orgHandle ? routes.organizationHome(params.orgHandle) : undefined,
-    match: (pathname) => /\/organizations\/[^/]+\/home$/.test(pathname),
+    // The summary of wherever you are. Opening a project or an API navigates
+    // into a deeper tier of this same item rather than to a different one.
+    ...adaptive([
+      { level: 'api', to: routes.api },
+      { level: 'project', to: routes.projectHome },
+      { level: 'organization', to: routes.organizationHome },
+    ]),
   },
   {
     id: 'projects',
     label: 'Projects',
-    level: 'organization',
+    group: CLUSTER.place,
     order: 20,
-    icon: <Boxes />,
-    to: ({ params }) =>
-      params.orgHandle ? routes.projects(params.orgHandle) : undefined,
-    match: (pathname) => /\/organizations\/[^/]+\/projects$/.test(pathname),
+    icon: <Layers />,
+    // Inside a project this is redundant with Overview, and switching projects
+    // is the header switcher's job.
+    isVisible: ({ isProjectScope }) => !isProjectScope,
+    to: orgLevelTo(routes.projects),
+    match: matchRoutes(routes.projects(), routes.projectHome()),
   },
   {
     id: 'gateways',
     label: 'API Gateways',
-    level: 'organization',
+    group: CLUSTER.place,
     order: 30,
     icon: <Network />,
-    to: ({ params }) =>
-      params.orgHandle ? routes.gateways(params.orgHandle) : undefined,
-    match: (pathname) => /\/organizations\/[^/]+\/gateways(\/[^/]+)?$/.test(pathname),
+    to: orgLevelTo(routes.gateways),
+    match: matchRoutes(routes.gateways(), routes.newGateway(), routes.gateway()),
   },
   {
-    id: 'org-settings',
-    label: 'Settings',
-    level: 'organization',
-    order: 40,
-    icon: <Settings />,
-    pinned: true,
-    // Only while not inside a project — the project-level `settings` entry
-    // takes over once a project is selected, so there's always exactly one
-    // "Settings" link pinned to the sidebar bottom, never two at once.
-    isVisible: (scope) => !scope.isProjectScope,
-    to: ({ params }) =>
-      params.orgHandle ? routes.orgSettings(params.orgHandle) : undefined,
-    match: (pathname) => /\/organizations\/[^/]+\/settings(\/[^/]+)?$/.test(pathname),
-  },
-  {
-    id: 'project-home',
-    label: 'Project Home',
-    level: 'project',
-    order: 100,
-    icon: <Home />,
-    to: ({ params }) =>
-      params.orgHandle && params.projectHandler
-        ? routes.projectHome(params.orgHandle, params.projectHandler)
-        : undefined,
-    match: (pathname) =>
-      /\/organizations\/[^/]+\/projects\/[^/]+\/home$/.test(pathname),
-  },
-  {
-    id: 'apis',
-    label: 'APIs',
-    level: 'project',
-    order: 110,
-    icon: <Boxes />,
-    to: ({ params }) =>
-      params.orgHandle && params.projectHandler
-        ? routes.apis(params.orgHandle, params.projectHandler)
-        : undefined,
-    match: (pathname) =>
-      /\/projects\/[^/]+\/apis(\/new)?$/.test(pathname),
-  },
-  {
-    id: 'runtime-logs',
-    label: 'Runtime Logs',
-    level: 'project',
-    order: 120,
-    icon: <Terminal />,
-    to: ({ params }) =>
-      params.orgHandle && params.projectHandler
-        ? routes.runtimeLogs(params.orgHandle, params.projectHandler)
-        : undefined,
-    match: (pathname) => /\/observe\/runtimelogs$/.test(pathname),
-  },
-  {
-    id: 'settings',
-    label: 'Settings',
-    level: 'project',
-    order: 130,
-    icon: <Settings />,
-    pinned: true,
-    to: ({ params }) =>
-      params.orgHandle && params.projectHandler
-        ? routes.settings(params.orgHandle, params.projectHandler)
-        : undefined,
-    // Also active on a settings tab (e.g. /settings/general), but not deeper.
-    // The `/projects/[^/]+/` prefix is required so a project literally
-    // handled "settings" (e.g. `/projects/settings/home`) can't false-match.
-    match: (pathname) => /\/projects\/[^/]+\/settings(\/[^/]+)?$/.test(pathname),
-  },
-  {
-    id: 'api-overview',
-    label: 'API Overview',
-    level: 'api',
-    order: 200,
-    icon: <Boxes />,
-    to: ({ params }) =>
-      params.orgHandle && params.projectHandler && params.apiHandler
-        ? routes.api(
-            params.orgHandle,
-            params.projectHandler,
-            params.apiHandler
-          )
-        : undefined,
-    match: (pathname) => /\/apis\/[^/]+$/.test(pathname),
-  },
-  {
-    id: 'deploy',
-    label: 'Deploy',
-    level: 'api',
-    order: 210,
-    icon: <Rocket />,
-    isVisible: ({ capabilities }) => capabilities.canDeploy,
-    to: ({ params }) =>
-      params.orgHandle && params.projectHandler && params.apiHandler
-        ? routes.apiDeploy(
-            params.orgHandle,
-            params.projectHandler,
-            params.apiHandler
-          )
-        : undefined,
-    match: (pathname) => /\/deploy$/.test(pathname),
+    id: 'develop',
+    label: 'Develop',
+    group: CLUSTER.api,
+    order: 35,
+    icon: <Code />,
+    isVisible: apiCapability(({ canDevelop }) => canDevelop),
+    ...submenu([
+      {
+        icon: <ShieldCheck />,
+        id: 'develop-policies',
+        label: 'Policies',
+        to: routes.apiDevelopPolicies,
+      },
+      {
+        icon: <Route />,
+        id: 'develop-routing',
+        label: 'Routing',
+        to: routes.apiDevelopRouting,
+      },
+      {
+        icon: <FileText />,
+        id: 'develop-documents',
+        label: 'Documents',
+        to: routes.apiDevelopDocuments,
+      },
+    ]),
   },
   {
     id: 'test',
     label: 'Test',
-    level: 'api',
-    order: 220,
+    group: CLUSTER.api,
+    order: 40,
     icon: <Terminal />,
-    isVisible: ({ capabilities }) => capabilities.canTest,
-    to: ({ params }) =>
-      params.orgHandle && params.projectHandler && params.apiHandler
-        ? routes.apiTest(
-            params.orgHandle,
-            params.projectHandler,
-            params.apiHandler
-          )
-        : undefined,
-    match: (pathname) => /\/test$/.test(pathname),
+    isVisible: apiCapability(({ canTest }) => canTest),
+    ...submenu([
+      {
+        icon: <SquareTerminal />,
+        id: 'test-console',
+        label: 'API Console',
+        to: routes.apiTestConsole,
+      },
+      {
+        icon: <Terminal />,
+        id: 'test-curl',
+        label: 'Curl',
+        to: routes.apiTestCurl,
+      },
+      {
+        icon: <MessagesSquare />,
+        id: 'test-chat',
+        label: 'API Chat',
+        to: routes.apiTestChat,
+      },
+    ]),
+  },
+  {
+    id: 'deploy',
+    label: 'Deploy',
+    group: CLUSTER.api,
+    order: 50,
+    icon: <Rocket />,
+    isVisible: apiCapability(({ canDeploy }) => canDeploy),
+    to: apiLevelTo(routes.apiDeploy),
+    match: matchRoutes(...apiScopedPaths(routes.apiDeploy)),
+  },
+  {
+    // No capability gate, unlike its neighbours: `hasUsageInsights` is false for
+    // kinds this console shows by default, so gating on it would hide Insights on
+    // exactly the APIs it is meant for. Same for Observability below.
+    id: 'insights',
+    label: 'Insights',
+    group: CLUSTER.api,
+    order: 60,
+    icon: <ChartColumn />,
+    ...submenu([
+      {
+        icon: <ChartLine />,
+        id: 'insights-api',
+        label: 'API Insights',
+        to: routes.apiInsightsApi,
+      },
+      {
+        icon: <FileCheck />,
+        id: 'insights-compliance',
+        label: 'Compliance',
+        to: routes.apiInsightsCompliance,
+      },
+    ]),
+  },
+  {
+    id: 'observability',
+    label: 'Observability',
+    group: CLUSTER.api,
+    order: 70,
+    icon: <Activity />,
+    ...submenu([
+      {
+        icon: <BellRing />,
+        id: 'observability-alerts',
+        label: 'Alert',
+        to: routes.apiObservabilityAlerts,
+      },
+      {
+        icon: <Gauge />,
+        id: 'observability-metrics',
+        label: 'Metrics',
+        to: routes.apiObservabilityMetrics,
+      },
+      {
+        icon: <ScrollText />,
+        id: 'observability-logs',
+        label: 'Logs',
+        to: routes.apiObservabilityLogs,
+      },
+    ]),
   },
   {
     id: 'manage',
     label: 'Manage',
-    level: 'api',
-    order: 230,
+    group: CLUSTER.api,
+    order: 80,
     icon: <ClipboardList />,
-    isVisible: ({ capabilities }) => capabilities.canManage,
-    to: ({ params }) =>
-      params.orgHandle && params.projectHandler && params.apiHandler
-        ? routes.apiManage(
-            params.orgHandle,
-            params.projectHandler,
-            params.apiHandler
-          )
-        : undefined,
-    match: (pathname) => /\/manage$/.test(pathname),
+    isVisible: apiCapability(({ canManage }) => canManage),
+    ...submenu([
+      {
+        icon: <CircleDollarSign />,
+        id: 'manage-monetize',
+        label: 'Monetize',
+        to: routes.apiManageMonetize,
+      },
+      {
+        icon: <GitBranch />,
+        id: 'manage-lifecycle',
+        label: 'LifeCycle',
+        to: routes.apiManageLifecycle,
+      },
+    ]),
+  },
+  {
+    id: 'admin',
+    label: 'Admin',
+    group: CLUSTER.api,
+    order: 90,
+    icon: <ShieldCheck />,
+    to: apiLevelTo(routes.apiAdmin),
+    match: matchRoutes(...apiScopedPaths(routes.apiAdmin)),
+  },
+  {
+    // The one page with no scope requirement at all, hence its own cluster.
+    id: 'settings',
+    label: 'Settings',
+    group: CLUSTER.global,
+    order: 100,
+    icon: <Settings />,
+    // Follows you down one level: the organization's settings while browsing the
+    // org, that project's settings once you are inside one — one pinned link at a
+    // time, never both. Same page either way; only the scope it reads differs.
+    ...adaptive([
+      { level: 'project', to: routes.projectSettings },
+      { level: 'organization', to: routes.settings },
+    ]),
   },
 ];

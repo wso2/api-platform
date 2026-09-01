@@ -930,13 +930,6 @@ func (t *Translator) TranslateConfigs(
 		}
 	}
 
-	// Add SDS cluster if cert store is enabled
-	// This cluster allows Envoy to fetch certificates from the SDS service
-	if t.certStore != nil {
-		sdsCluster := t.createSDSCluster()
-		clusters = append(clusters, sdsCluster)
-	}
-
 	// Add OTEL collector cluster if tracing is enabled
 	// This cluster allows Envoy to send traces to OpenTelemetry collector
 	if t.config.TracingConfig.Enabled {
@@ -1354,8 +1347,12 @@ func (t *Translator) createListener(virtualHosts []*route.VirtualHost, isHTTPS b
 		PathWithEscapedSlashesAction: convertPathWithEscapedSlashesAction(t.routerConfig.HTTPListener.PathWithEscapedSlashesAction),
 	}
 
-	// Add access logs if enabled
-	if t.routerConfig.AccessLogs.Enabled {
+	// Add access logs if either consumer needs a sink: the operator-facing stdout
+	// log line (router.access_logs.enabled) or the gRPC ALS stream the collector
+	// depends on. The collector's sink must not be gated on the stdout toggle —
+	// ALS is the only data source for traffic logging and analytics, so gating it
+	// there silently disables both. See createAccessLogConfig.
+	if t.routerConfig.AccessLogs.Enabled || t.config.IsCollectorEnabled() {
 		accessLogs, err := t.createAccessLogConfig()
 		if err != nil {
 			return nil, nil, fmt.Errorf("failed to create access log config: %w", err)
@@ -2223,63 +2220,6 @@ func (t *Translator) createOTELCollectorCluster() *cluster.Cluster {
 	return c
 }
 
-// createSDSCluster creates an Envoy cluster for the SDS (Secret Discovery Service)
-// This cluster allows Envoy to fetch TLS certificates dynamically via xDS
-func (t *Translator) createSDSCluster() *cluster.Cluster {
-	// SDS uses the same xDS server
-	// In containerized environments, Envoy connects to the gateway-controller container
-	// Use the same host/port configuration as the main xDS connection
-	xdsHost := "gateway-controller" // Default for Docker Compose
-	if envHost := os.Getenv("GATEWAY_CONTROLLER_HOST"); envHost != "" {
-		xdsHost = envHost
-	}
-
-	xdsPort := t.config.Controller.Server.XDSPort
-	if xdsPort == 0 {
-		xdsPort = 18000 // Default xDS port
-	}
-
-	address := &core.Address{
-		Address: &core.Address_SocketAddress{
-			SocketAddress: &core.SocketAddress{
-				Protocol: core.SocketAddress_TCP,
-				Address:  xdsHost,
-				PortSpecifier: &core.SocketAddress_PortValue{
-					PortValue: uint32(xdsPort),
-				},
-			},
-		},
-	}
-
-	lbEndpoint := &endpoint.LbEndpoint{
-		HostIdentifier: &endpoint.LbEndpoint_Endpoint{
-			Endpoint: &endpoint.Endpoint{
-				Address: address,
-			},
-		},
-	}
-
-	localityLbEndpoints := &endpoint.LocalityLbEndpoints{
-		LbEndpoints: []*endpoint.LbEndpoint{lbEndpoint},
-	}
-
-	// Create the SDS cluster
-	// Note: SDS must use HTTP/2 for gRPC communication
-	return &cluster.Cluster{
-		Name:                 "sds_cluster",
-		ConnectTimeout:       durationpb.New(5 * time.Second),
-		ClusterDiscoveryType: &cluster.Cluster_Type{Type: cluster.Cluster_STRICT_DNS},
-		DnsLookupFamily:      cluster.Cluster_V4_PREFERRED,
-		LbPolicy:             cluster.Cluster_ROUND_ROBIN,
-		LoadAssignment: &endpoint.ClusterLoadAssignment{
-			ClusterName: "sds_cluster",
-			Endpoints:   []*endpoint.LocalityLbEndpoints{localityLbEndpoints},
-		},
-		// Enable HTTP/2 for gRPC
-		Http2ProtocolOptions: &core.Http2ProtocolOptions{},
-	}
-}
-
 // createUpstreamTLSContext creates an upstream TLS context for secure connections
 func (t *Translator) createUpstreamTLSContext(certificate []byte, address string) *tlsv3.UpstreamTlsContext {
 	// Create TLS context with base configuration
@@ -2293,6 +2233,7 @@ func (t *Translator) createUpstreamTLSContext(certificate []byte, address string
 					t.routerConfig.Upstream.TLS.MaximumProtocolVersion,
 				),
 				CipherSuites: t.parseCipherSuites(t.routerConfig.Upstream.TLS.Ciphers),
+				EcdhCurves:   t.parseCipherSuites(t.routerConfig.Upstream.TLS.EcdhCurves),
 			},
 		},
 	}
@@ -2312,24 +2253,25 @@ func (t *Translator) createUpstreamTLSContext(certificate []byte, address string
 		// 4. If none provided, Envoy falls back to system default trust store
 
 		if t.certStore != nil {
-			// Use SDS to dynamically fetch certificates
-			// This is more efficient than inlining certificates in every cluster config
+			// Use SDS to dynamically fetch certificates, riding the same ADS
+			// stream Envoy already has open for LDS/CDS/RDS (bootstrap
+			// xds_cluster, see envoy-bootstrap.yaml's dynamic_resources).
+			// The SDS service is registered on the same gRPC server/cache as
+			// the main xDS server (see xds/server.go), so no dedicated
+			// cluster or connection is needed -- this also means
+			// gateway-controller never needs to know any TLS client cert/key
+			// paths that live on gateway-runtime's filesystem: the ADS
+			// connection's own TLS is entirely gateway-runtime's concern,
+			// configured in its own bootstrap (docker-entrypoint.sh +
+			// config-override.yaml's xds_cluster), independent of this
+			// process. A prior version of this pushed a second CDS cluster
+			// ("sds_cluster") that duplicated xds_cluster's host:port and
+			// required this process to embed gateway-runtime-local file
+			// paths -- removed in favor of this ADS-based reference.
 			sdsConfig := &core.ConfigSource{
 				ResourceApiVersion: core.ApiVersion_V3,
-				ConfigSourceSpecifier: &core.ConfigSource_ApiConfigSource{
-					ApiConfigSource: &core.ApiConfigSource{
-						ApiType:             core.ApiConfigSource_GRPC,
-						TransportApiVersion: core.ApiVersion_V3,
-						GrpcServices: []*core.GrpcService{
-							{
-								TargetSpecifier: &core.GrpcService_EnvoyGrpc_{
-									EnvoyGrpc: &core.GrpcService_EnvoyGrpc{
-										ClusterName: "sds_cluster",
-									},
-								},
-							},
-						},
-					},
+				ConfigSourceSpecifier: &core.ConfigSource_Ads{
+					Ads: &core.AggregatedConfigSource{},
 				},
 			}
 
@@ -2405,6 +2347,41 @@ func (t *Translator) createUpstreamTLSContext(certificate []byte, address string
 	return upstreamTLSContext
 }
 
+// ClusterResourcesReferenceUpstreamCASecret reports whether any cluster in
+// clusters attaches the upstream CA bundle via SDS (ValidationContextSdsSecretConfig
+// named SecretNameUpstreamCA). Envoy only issues a watch for the Secret type URL
+// once a Cluster it has actually accepted references that secret name, so the
+// snapshot manager uses this to decide whether including the Secret resource in
+// a given snapshot version is warranted, rather than pushing it unconditionally
+// and having Envoy log "Ignoring unwatched type URL ... Secret" when no
+// HTTPS-scheme upstream is configured.
+func ClusterResourcesReferenceUpstreamCASecret(clusters []types.Resource) bool {
+	for _, res := range clusters {
+		c, ok := res.(*cluster.Cluster)
+		if !ok {
+			continue
+		}
+		for _, tsm := range c.GetTransportSocketMatches() {
+			typedConfig := tsm.GetTransportSocket().GetTypedConfig()
+			if typedConfig == nil {
+				continue
+			}
+			var tlsCtx tlsv3.UpstreamTlsContext
+			if err := typedConfig.UnmarshalTo(&tlsCtx); err != nil {
+				continue
+			}
+			combined, ok := tlsCtx.GetCommonTlsContext().GetValidationContextType().(*tlsv3.CommonTlsContext_CombinedValidationContext)
+			if !ok {
+				continue
+			}
+			if combined.CombinedValidationContext.GetValidationContextSdsSecretConfig().GetName() == SecretNameUpstreamCA {
+				return true
+			}
+		}
+	}
+	return false
+}
+
 // createDownstreamTLSContext creates a downstream TLS context for HTTPS listeners
 func (t *Translator) createDownstreamTLSContext() (*tlsv3.DownstreamTlsContext, error) {
 	// Read certificate and key files
@@ -2438,6 +2415,12 @@ func (t *Translator) createDownstreamTLSContext() (*tlsv3.DownstreamTlsContext, 
 		cipherSuites = t.parseCipherSuites(t.routerConfig.DownstreamTLS.Ciphers)
 	}
 
+	// Parse ECDH curves
+	var ecdhCurves []string
+	if t.routerConfig.DownstreamTLS.EcdhCurves != "" {
+		ecdhCurves = t.parseCipherSuites(t.routerConfig.DownstreamTLS.EcdhCurves)
+	}
+
 	// Create downstream TLS context
 	downstreamTLSContext := &tlsv3.DownstreamTlsContext{
 		CommonTlsContext: &tlsv3.CommonTlsContext{
@@ -2450,6 +2433,7 @@ func (t *Translator) createDownstreamTLSContext() (*tlsv3.DownstreamTlsContext, 
 					t.routerConfig.DownstreamTLS.MaximumProtocolVersion,
 				),
 				CipherSuites: cipherSuites,
+				EcdhCurves:   ecdhCurves,
 			},
 			AlpnProtocols: []string{constants.ALPNProtocolHTTP2, constants.ALPNProtocolHTTP11},
 		},
@@ -2474,7 +2458,8 @@ func (t *Translator) createTLSProtocolVersion(version string) tlsv3.TlsParameter
 	}
 }
 
-// parseCipherSuites splits and trims cipher suite string into array
+// parseCipherSuites splits and trims a comma-separated string into an array.
+// Used for both cipher suite lists and ECDH curve lists.
 func (t *Translator) parseCipherSuites(ciphers string) []string {
 	if ciphers == "" {
 		return nil
@@ -2609,9 +2594,47 @@ func sanitizeUpstreamDefinitionName(name string) string {
 	return sanitized
 }
 
-// createAccessLogConfig creates access log configuration based on format (JSON or text) to stdout
+// createAccessLogConfig builds the router's access log sinks. Two independent
+// consumers can each require a sink, so this is called whenever *either* is
+// active (see the call site in createHTTPConnectionManager):
+//
+//   - router.access_logs.enabled — the operator-facing stdout log line
+//   - the collector (analytics / traffic logging) — the gRPC ALS stream, which is
+//     the only thing that feeds the policy-engine's analytics pipeline
+//
+// The two must stay decoupled: turning off the stdout log line is a log-formatting
+// choice and must not silently starve traffic logging and analytics of their only
+// data source.
 func (t *Translator) createAccessLogConfig() ([]*accesslog.AccessLog, error) {
 	var accessLogs []*accesslog.AccessLog
+
+	if t.routerConfig.AccessLogs.Enabled {
+		fileAccessLog, err := t.createFileAccessLog()
+		if err != nil {
+			return nil, err
+		}
+		accessLogs = append(accessLogs, fileAccessLog)
+	}
+
+	// If the collector is active, create the gRPC access log config and append to existing access logs.
+	// The failure is fatal rather than a warning: ALS is the collector's only data
+	// source, so continuing without it would push a listener that silently reports
+	// nothing to traffic logging and analytics while both are enabled in config.
+	if t.config.IsCollectorEnabled() {
+		t.logger.Info("Creating gRPC access log configuration")
+		grpcAccessLog, err := t.createGRPCAccessLog()
+		if err != nil {
+			return nil, fmt.Errorf("failed to create gRPC access log config: %w", err)
+		}
+		accessLogs = append(accessLogs, grpcAccessLog)
+	}
+
+	return accessLogs, nil
+}
+
+// createFileAccessLog creates the stdout access log sink based on the configured
+// format (JSON or text).
+func (t *Translator) createFileAccessLog() (*accesslog.AccessLog, error) {
 	var fileAccessLog *fileaccesslog.FileAccessLog
 
 	if t.routerConfig.AccessLogs.Format == "json" {
@@ -2666,27 +2689,12 @@ func (t *Translator) createAccessLogConfig() ([]*accesslog.AccessLog, error) {
 		return nil, fmt.Errorf("failed to marshal access log config: %w", err)
 	}
 
-	// Add file access log to slice
-	accessLogs = append(accessLogs, &accesslog.AccessLog{
+	return &accesslog.AccessLog{
 		Name: "envoy.access_loggers.file",
 		ConfigType: &accesslog.AccessLog_TypedConfig{
 			TypedConfig: fileAccessLogAny,
 		},
-	})
-
-	// If the collector is active, create the gRPC access log config and append to existing access logs
-	if t.config.IsCollectorEnabled() {
-		t.logger.Info("Creating gRPC access log configuration")
-		grpcAccessLog, err := t.createGRPCAccessLog()
-		if err != nil {
-			t.logger.Warn("Failed to create gRPC access log config, continuing without it",
-				slog.Any("error", err))
-		} else {
-			accessLogs = append(accessLogs, grpcAccessLog)
-		}
-	}
-
-	return accessLogs, nil
+	}, nil
 }
 
 // createGRPCAccessLog creates a gRPC access log configuration for the gateway controller
@@ -2721,11 +2729,32 @@ func (t *Translator) createGRPCAccessLog() (*accesslog.AccessLog, error) {
 
 	return &accesslog.AccessLog{
 		Name:   "envoy.access_loggers.http_grpc",
-		Filter: buildIgnorePathsAccessLogFilter(t.config.Collector.IgnorePathPrefixes),
+		Filter: buildAccessLogFilter(t.config.Collector.IgnorePathPrefixes),
 		ConfigType: &accesslog.AccessLog_TypedConfig{
 			TypedConfig: grpcAccessLogAny,
 		},
 	}, nil
+}
+
+func buildAccessLogFilter(prefixes []string) *accesslog.AccessLogFilter {
+	filters := []*accesslog.AccessLogFilter{buildReservedHealthPathAccessLogFilter()}
+	if userFilter := buildIgnorePathsAccessLogFilter(prefixes); userFilter != nil {
+		filters = append(filters, userFilter)
+	}
+	if len(filters) == 1 {
+		return filters[0]
+	}
+	return &accesslog.AccessLogFilter{
+		FilterSpecifier: &accesslog.AccessLogFilter_AndFilter{
+			AndFilter: &accesslog.AndFilter{Filters: filters},
+		},
+	}
+}
+
+const envoyPathPseudoHeader = ":path"
+
+func buildReservedHealthPathAccessLogFilter() *accesslog.AccessLogFilter {
+	return headerPrefixFilter(envoyPathPseudoHeader, constants.GatewayHealthPathPrefix, true)
 }
 
 // envoyOriginalPathHeader is the header Envoy's router sets to the pre-rewrite,

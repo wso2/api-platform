@@ -51,6 +51,7 @@ func registerConnectors(registry *connectors.Registry, cfg *config.Config) {
 			DeliveryConcurrency:        cfg.WebSub.DeliveryConcurrency,
 			RuntimeID:                  cfg.RuntimeID,
 			ConsumerGroupPrefix:        cfg.Kafka.ConsumerGroupPrefix,
+			HTTPClient:                 cfg.HTTPClient,
 		})
 	})
 

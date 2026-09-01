@@ -30,7 +30,7 @@ import (
 	"github.com/wso2/api-platform/platform-api/internal/router"
 
 	"github.com/golang-jwt/jwt/v5"
-	"github.com/wso2/go-httpkit/httputil"
+	"github.com/wso2/api-platform/httpkit/httputil"
 	"golang.org/x/crypto/bcrypt"
 )
 

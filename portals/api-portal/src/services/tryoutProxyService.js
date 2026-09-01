@@ -50,6 +50,7 @@ const orgDao = require('../dao/organizationDao');
 const apiDao = require('../dao/apiDao');
 const apiMetadataService = require('./apiMetadataService');
 const { createGuardedLookup, assertAllowedScheme, assertAllowedHost } = require('../utils/ssrfGuard');
+const { buildOutboundAgents } = require('../config/httpClientOptions');
 
 function tryoutConfig() {
     return config.tryout || {};
@@ -95,6 +96,11 @@ function getClient() {
 
     const cfg = tryoutConfig();
     const lookup = createGuardedLookup({ allowPrivate: cfg.allowPrivateEndpoints !== false });
+    // Same cipher/curve/version tuning as this portal's other outbound clients
+    // (see httpClientOptions.js); rejectUnauthorized and the SSRF-guarded lookup
+    // stay specific to this client, so it keeps building its own Agent rather
+    // than reusing the shared one.
+    const { tlsOptions } = buildOutboundAgents(config);
 
     cachedClient = axios.create({
         timeout: cfg.timeoutMs || 15000,
@@ -108,7 +114,7 @@ function getClient() {
         // Upstream 4xx/5xx are a legitimate try-it result, not a proxy failure.
         validateStatus: () => true,
         httpAgent: new http.Agent({ lookup }),
-        httpsAgent: new https.Agent({ lookup, rejectUnauthorized: !cfg.tlsSkipVerify }),
+        httpsAgent: new https.Agent({ ...tlsOptions, lookup, rejectUnauthorized: !cfg.tlsSkipVerify }),
     });
     return cachedClient;
 }

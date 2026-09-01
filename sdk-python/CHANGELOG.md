@@ -7,6 +7,23 @@ This project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ---
 
+## [Unreleased]
+
+### Added
+
+- `SharedContext.resolved_operation` — the canonical protocol operation the request
+  resolved to, for an API kind whose operation cannot be read off the route
+  (`operation_path` is identical for every operation on a multiplexed endpoint).
+- `SharedContext.resolution_attributes` — the protocol-derived request facts the
+  route's resolver captured while identifying that operation, so a policy does not
+  re-parse the request body and a request-header-phase policy can read a body-sourced
+  value at all.
+
+Both are empty for every API kind released before Agent, so existing policies are
+unaffected.
+
+---
+
 ## [0.1.0] — 2026-04-23
 
 ### Added

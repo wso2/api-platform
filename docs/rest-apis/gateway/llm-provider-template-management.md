@@ -254,11 +254,24 @@ Status Code **200**
 |»»»» promptTokens|[ExtractionIdentifier](schemas.md#schemaextractionidentifier)|false|none|none|
 |»»»»» location|string|true|none|Where to find the token information|
 |»»»»» identifier|string|true|none|JSONPath expression or header name to identify the token value|
+|»»»»» fallbackIdentifiers|[string]|false|none|Additional locations to try when the primary identifier yields no<br>value, in order. Used where one provider returns several response<br>shapes on the same path.|
+|»»»»» valueMap|object|false|none|Maps values this provider reports onto the vocabulary the gateway<br>bills on. A reported value that is not a key is used unchanged.<br>Used where providers name the same billing tier differently.|
+|»»»»»» **additionalProperties**|string|false|none|none|
 |»»»» completionTokens|[ExtractionIdentifier](schemas.md#schemaextractionidentifier)|false|none|none|
 |»»»» totalTokens|[ExtractionIdentifier](schemas.md#schemaextractionidentifier)|false|none|none|
 |»»»» remainingTokens|[ExtractionIdentifier](schemas.md#schemaextractionidentifier)|false|none|none|
 |»»»» requestModel|[ExtractionIdentifier](schemas.md#schemaextractionidentifier)|false|none|none|
 |»»»» responseModel|[ExtractionIdentifier](schemas.md#schemaextractionidentifier)|false|none|none|
+|»»»» cachedTokens|[ExtractionIdentifier](schemas.md#schemaextractionidentifier)|false|none|none|
+|»»»» cacheWriteTokens|[ExtractionIdentifier](schemas.md#schemaextractionidentifier)|false|none|none|
+|»»»» cacheWrite1hTokens|[ExtractionIdentifier](schemas.md#schemaextractionidentifier)|false|none|none|
+|»»»» reasoningTokens|[ExtractionIdentifier](schemas.md#schemaextractionidentifier)|false|none|none|
+|»»»» audioInputTokens|[ExtractionIdentifier](schemas.md#schemaextractionidentifier)|false|none|none|
+|»»»» audioOutputTokens|[ExtractionIdentifier](schemas.md#schemaextractionidentifier)|false|none|none|
+|»»»» serviceTier|[ExtractionIdentifier](schemas.md#schemaextractionidentifier)|false|none|none|
+|»»»» providerFields|object|false|none|Named locations a provider-specific calculator needs but the closed<br>vocabulary does not cover. The value at each location is handed to<br>the calculator as-is; only its position is declared here.|
+|»»»»» **additionalProperties**|[ExtractionIdentifier](schemas.md#schemaextractionidentifier)|false|none|none|
+|»»»» cacheAccounting|string|false|none|Whether the cached token count reported by the provider is already<br>part of the input token total, or additional to it. One of<br>'inclusive' or 'additive'. Defaults to inclusive when omitted.|
 |»»»» resourceMappings|[LLMProviderTemplateResourceMappings](schemas.md#schemallmprovidertemplateresourcemappings)|false|none|none|
 |»»»»» resources|[[LLMProviderTemplateResourceMapping](schemas.md#schemallmprovidertemplateresourcemapping)]|false|none|none|
 |»»»»»» resource|string|true|none|Resource path pattern for this mapping|
@@ -268,6 +281,14 @@ Status Code **200**
 |»»»»»» remainingTokens|[ExtractionIdentifier](schemas.md#schemaextractionidentifier)|false|none|none|
 |»»»»»» requestModel|[ExtractionIdentifier](schemas.md#schemaextractionidentifier)|false|none|none|
 |»»»»»» responseModel|[ExtractionIdentifier](schemas.md#schemaextractionidentifier)|false|none|none|
+|»»»»»» cachedTokens|[ExtractionIdentifier](schemas.md#schemaextractionidentifier)|false|none|none|
+|»»»»»» cacheWriteTokens|[ExtractionIdentifier](schemas.md#schemaextractionidentifier)|false|none|none|
+|»»»»»» cacheWrite1hTokens|[ExtractionIdentifier](schemas.md#schemaextractionidentifier)|false|none|none|
+|»»»»»» reasoningTokens|[ExtractionIdentifier](schemas.md#schemaextractionidentifier)|false|none|none|
+|»»»»»» audioInputTokens|[ExtractionIdentifier](schemas.md#schemaextractionidentifier)|false|none|none|
+|»»»»»» audioOutputTokens|[ExtractionIdentifier](schemas.md#schemaextractionidentifier)|false|none|none|
+|»»»»»» serviceTier|[ExtractionIdentifier](schemas.md#schemaextractionidentifier)|false|none|none|
+|»»»»»» cacheAccounting|string|false|none|Whether the cached token count reported by the provider is already<br>part of the input token total, or additional to it. One of<br>'inclusive' or 'additive'. Overrides the template-level setting for<br>this resource; when omitted, the template-level value is inherited.|
 
 *and*
 

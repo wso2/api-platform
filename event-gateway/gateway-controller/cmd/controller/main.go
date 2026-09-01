@@ -44,6 +44,7 @@ import (
 	"github.com/wso2/api-platform/common/eventhub"
 	commonmodels "github.com/wso2/api-platform/common/models"
 	"github.com/wso2/api-platform/common/webhooksecret"
+	"github.com/wso2/api-platform/httpkit/httpclient"
 
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/adminserver"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/api/handlers"
@@ -69,7 +70,7 @@ import (
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/utils"
 	coreversion "github.com/wso2/api-platform/gateway/gateway-controller/pkg/version"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/xds"
-	gohttpkit "github.com/wso2/go-httpkit/middleware"
+	gohttpkit "github.com/wso2/api-platform/httpkit/middleware"
 
 	eventgateway "github.com/wso2/api-platform/event-gateway/gateway-controller/pkg/api/eventgateway"
 	eventgatewayconfig "github.com/wso2/api-platform/event-gateway/gateway-controller/pkg/config"
@@ -460,7 +461,12 @@ func main() {
 
 	serverOpts := []policyxds.ServerOption{policyxds.WithOnFirstConnect(policyEngineConnected)}
 	if cfg.Controller.PolicyServer.TLS.Enabled {
-		serverOpts = append(serverOpts, policyxds.WithTLS(cfg.Controller.PolicyServer.TLS.CertFile, cfg.Controller.PolicyServer.TLS.KeyFile))
+		policyXDSTLSConfig, err := coreconfig.BuildXDSServerTLSConfig(cfg.Controller.PolicyServer.TLS)
+		if err != nil {
+			log.Error("invalid policy_server.tls config, refusing to start policy xDS server in plaintext", slog.Any("error", err))
+			os.Exit(1)
+		}
+		serverOpts = append(serverOpts, policyxds.WithMTLS(policyXDSTLSConfig, cfg.Controller.PolicyServer.TLS.AllowedClientIdentities))
 	}
 	policyXDSServer := policyxds.NewServer(policySnapshotManager, apiKeySnapshotManager, lazyResourceSnapshotManager, subscriptionSnapshotManager, webhookSecretSnapshotManager, cfg.Controller.PolicyServer.Port, log, serverOpts...)
 	go func() {
@@ -481,7 +487,21 @@ func main() {
 	policyValidator := coreconfig.NewPolicyValidator(policyDefinitions)
 	validator.SetPolicyValidator(policyValidator)
 
-	apiSvc := utils.NewAPIDeploymentService(configStore, db, snapshotManager, validator, &cfg.Router, eventHubInstance, gatewayID, secretsService)
+	// Build the single shared outbound *http.Client used by every control-plane /
+	// platform-API call this process makes, built once here and injected into every
+	// constructor below instead of each one building (or caching) its own.
+	httpClientCfg, err := coreconfig.BuildHTTPClientConfig(cfg.Controller.HTTPClient, cfg.Controller.ControlPlane.InsecureSkipVerify)
+	if err != nil {
+		log.Error("Invalid controller.http_client configuration", slog.Any("error", err))
+		os.Exit(1)
+	}
+	httpClient, err := httpclient.New(httpClientCfg)
+	if err != nil {
+		log.Error("Failed to build HTTP client", slog.Any("error", err))
+		os.Exit(1)
+	}
+
+	apiSvc := utils.NewAPIDeploymentService(configStore, db, snapshotManager, validator, &cfg.Router, eventHubInstance, gatewayID, secretsService, httpClient)
 	mcpSvc := utils.NewMCPDeploymentService(configStore, db, snapshotManager, policyManager, policyValidator, eventHubInstance, gatewayID, secretsService)
 	llmSvc := utils.NewLLMDeploymentService(configStore, db, snapshotManager, lazyResourceXDSManager, templateDefinitions, apiSvc, &cfg.Router, policyVersionResolver, policyValidator)
 
@@ -489,7 +509,7 @@ func main() {
 		cfg.Controller.ControlPlane, log, configStore, db, snapshotManager, validator, &cfg.Router,
 		apiKeyXDSManager, apiKeyStore, &cfg.APIKey, policyManager, cfg, policyDefinitions,
 		lazyResourceXDSManager, templateDefinitions, subscriptionSnapshotManager, eventHubInstance,
-		secretsService, webhookSecretStore, webhookSecretSnapshotManager,
+		secretsService, webhookSecretStore, webhookSecretSnapshotManager, httpClient,
 	)
 	cpClient.SetControlPlaneEventGatewayHooks(controlplanehooks.Hooks{})
 	if err := cpClient.Start(); err != nil {
@@ -498,8 +518,6 @@ func main() {
 
 	llmSvc.SetControlPlanePusher(cpClient, cfg.Controller.ControlPlane.DeploymentSyncEnabled)
 	mcpSvc.SetControlPlanePusher(cpClient, cfg.Controller.ControlPlane.DeploymentSyncEnabled)
-
-	httpClient := &http.Client{Timeout: 10 * time.Second}
 
 	restAPIService := restapi.NewRestAPIService(
 		configStore, db, snapshotManager, policyManager, apiSvc, apiKeyXDSManager,
@@ -511,7 +529,11 @@ func main() {
 
 	igw := immutable.NewImmutableGW(cfg.ImmutableGateway, restAPIService, llmSvc, mcpSvc)
 
-	authConfig := generateAuthConfig(cfg)
+	authConfig, err := generateAuthConfig(cfg)
+	if err != nil {
+		log.Error("Failed to generate auth config", slog.Any("error", err))
+		os.Exit(1)
+	}
 	authMiddleWare, err := authenticators.AuthMiddleware(authConfig, log)
 	if err != nil {
 		log.Error("Failed to create auth middleware", slog.Any("error", err))
@@ -540,11 +562,15 @@ func main() {
 		os.Exit(1)
 	}
 
-	apiServer := handlers.NewAPIServer(
+	apiServer, err := handlers.NewAPIServer(
 		configStore, db, snapshotManager, policyManager, lazyResourceXDSManager, log, cpClient,
 		policyDefinitions, templateDefinitions, validator, apiKeyXDSManager, cfg, eventHubInstance,
-		subscriptionSnapshotManager, secretsService, restAPIService,
+		subscriptionSnapshotManager, secretsService, restAPIService, httpClient,
 	)
+	if err != nil {
+		log.Error("Failed to create API server", slog.Any("error", err))
+		os.Exit(1)
+	}
 
 	eventGatewayHandler := handler.NewWebSubServer(handler.Deps{
 		Store:                configStore,
@@ -623,7 +649,7 @@ func main() {
 	var controllerAdminServer *adminserver.Server
 	if cfg.Controller.AdminServer.Enabled {
 		adminAuthz := authenticators.AuthorizationMiddleware(
-			commonmodels.AuthConfig{ResourceRoles: adminResourceRoles()}, log)
+			commonmodels.AuthConfig{ResourceRoles: adminResourceRoles(), HTTPClient: httpClient}, log)
 		adminProtect := func(next http.Handler) http.Handler {
 			return authMiddleWare(adminAuthz(next))
 		}
@@ -725,7 +751,7 @@ func main() {
 	log.Info("Event-Gateway-Controller stopped")
 }
 
-func generateAuthConfig(cfg *coreconfig.Config) commonmodels.AuthConfig {
+func generateAuthConfig(cfg *coreconfig.Config) (commonmodels.AuthConfig, error) {
 	prefixed := func(methodAndPath string) string {
 		idx := strings.Index(methodAndPath, " ")
 		if idx < 0 {
@@ -771,6 +797,7 @@ func generateAuthConfig(cfg *coreconfig.Config) commonmodels.AuthConfig {
 	}
 	basicAuth := commonmodels.BasicAuth{Enabled: false}
 	idpAuth := commonmodels.IDPConfig{Enabled: false}
+	var jwksHTTPClient *http.Client
 	if cfg.Controller.Auth.Basic.Enabled {
 		users := make([]commonmodels.User, len(cfg.Controller.Auth.Basic.Users))
 		for i, authUser := range cfg.Controller.Auth.Basic.Users {
@@ -791,17 +818,30 @@ func generateAuthConfig(cfg *coreconfig.Config) commonmodels.AuthConfig {
 			ScopeClaim:        cfg.Controller.Auth.IDP.RolesClaim,
 			PermissionMapping: &cfg.Controller.Auth.IDP.RoleMapping,
 		}
+		client, err := authenticators.NewDefaultJWKSHTTPClient()
+		if err != nil {
+			return commonmodels.AuthConfig{}, fmt.Errorf("failed to build JWKS HTTP client: %w", err)
+		}
+		jwksHTTPClient = client
 	}
 	return commonmodels.AuthConfig{
 		BasicAuth:     &basicAuth,
 		JWTConfig:     &idpAuth,
 		ResourceRoles: DefaultResourceRoles,
-	}
+		HTTPClient:    jwksHTTPClient,
+	}, nil
 }
 
+// adminResourceRoles builds the deny-by-default scope map for the controller
+// admin/debug server (config_dump, xds_sync_status, pprof), gating every
+// endpoint except the public health probe behind the "admin" role. Mirrors
+// gateway-controller's core main.go adminResourceRoles implementation.
 func adminResourceRoles() map[string][]string {
 	const adminRole = "admin"
 
+	// prefixed builds a resource key of the form "<METHOD> <AdminAPIBasePath><path>"
+	// matching the versioned routes registered via HandlerWithOptions(BaseURL=AdminAPIBasePath),
+	// mirroring the prefixed helper in generateAuthConfig.
 	prefixed := func(methodAndPath string) string {
 		idx := strings.Index(methodAndPath, " ")
 		if idx < 0 {
@@ -815,8 +855,10 @@ func adminResourceRoles() map[string][]string {
 		"GET /xds_sync_status": {adminRole},
 	}
 
-	// pprof endpoints are registered directly on the mux rather than under a
-	// BaseURL, so their pattern carries no method and no base-path prefix.
+	// pprof endpoints are registered directly on the mux (not via a BaseURL), so
+	// their r.Pattern carries no method and no base-path prefix — map them as-is.
+	// Only registered when admin_server.pprof is enabled, but mapping them
+	// unconditionally is harmless and keeps them admin-gated when it is.
 	pprofRoles := map[string][]string{
 		"/debug/pprof/":        {adminRole},
 		"/debug/pprof/cmdline": {adminRole},
@@ -825,8 +867,8 @@ func adminResourceRoles() map[string][]string {
 		"/debug/pprof/trace":   {adminRole},
 	}
 
-	// The admin API is served on both the versioned and the legacy unprefixed
-	// paths, so both keys are needed for the authz middleware to match.
+	// Populate both the versioned and legacy (unprefixed) keys for each relative
+	// route so the authz middleware matches either form, exactly as generateAuthConfig does.
 	resourceRoles := make(map[string][]string, len(relativeRoles)*2+len(pprofRoles))
 	for methodAndPath, roles := range relativeRoles {
 		resourceRoles[prefixed(methodAndPath)] = roles

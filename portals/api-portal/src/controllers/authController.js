@@ -22,6 +22,7 @@ const https = require('https');
 const logger = require('../config/logger');
 const { logUserAction } = require('../middlewares/auditLogger');
 const { config } = require('../config/configLoader');
+const { buildOutboundAgents } = require('../config/httpClientOptions');
 const constants = require('../utils/constants');
 const util = require('../utils/util');
 const orgDao = require('../dao/organizationDao');
@@ -31,7 +32,28 @@ const { verifyPlatformJwtClaims } = require('../utils/platformJwt');
 const { portalRoles, rolesFromClaims } = require('../middlewares/authorization');
 const { clearPortalCookies } = require('../utils/sessionCookies');
 
+// Memoized once (not per-login) so tls_skip_verify logins still get bounded
+// connection pooling from the shared pooling options — a fresh https.Agent
+// per login would otherwise pay a new TCP+TLS handshake for every attempt.
+// auth.local.tlsSkipVerify is static config, so one cached agent per process
+// is correct; it's rebuilt only across a require cache reset (tests).
+let insecureLocalLoginAgent = null;
 
+// rejectUnauthorized varies per-config (auth.local.tlsSkipVerify): when it's
+// disabled, the shared pooled httpsAgent already matches (rejectUnauthorized
+// defaults to true) and is reused outright; when enabled, a separate agent is
+// memoized with the same pooling + tlsOptions but rejectUnauthorized: false,
+// since an Agent's TLS options are fixed at construction time.
+function getLocalLoginHttpsAgent(cfg) {
+    const { httpsAgent, tlsOptions, pooling } = buildOutboundAgents(cfg);
+    if (!cfg.auth.local?.tlsSkipVerify) {
+        return httpsAgent;
+    }
+    if (!insecureLocalLoginAgent) {
+        insecureLocalLoginAgent = new https.Agent({ ...pooling, ...tlsOptions, rejectUnauthorized: false });
+    }
+    return insecureLocalLoginAgent;
+}
 
 const login = async (req, res, next) => {
     const orgName = req.params.orgName;
@@ -267,7 +289,7 @@ const handleLocalLogin = async (req, res) => {
             new URLSearchParams({ username, password }).toString(),
             {
                 headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-                httpsAgent: new https.Agent({ rejectUnauthorized: !config.auth.local?.tlsSkipVerify }),
+                httpsAgent: getLocalLoginHttpsAgent(config),
                 timeout: 10000,
             }
         );

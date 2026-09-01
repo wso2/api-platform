@@ -34,8 +34,8 @@ import (
 	commonmodels "github.com/wso2/api-platform/common/models"
 	"github.com/wso2/api-platform/common/redact"
 	adminapi "github.com/wso2/api-platform/gateway/gateway-controller/pkg/api/admin"
-	api "github.com/wso2/api-platform/gateway/gateway-controller/pkg/api/management"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/api/handlers/handlerkit"
+	api "github.com/wso2/api-platform/gateway/gateway-controller/pkg/api/management"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/api/middleware"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/apikeyxds"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/config"
@@ -48,7 +48,7 @@ import (
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/storage"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/utils"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/xds"
-	"github.com/wso2/go-httpkit/httputil"
+	"github.com/wso2/api-platform/httpkit/httputil"
 )
 
 // APIServer implements the generated ServerInterface
@@ -99,7 +99,8 @@ func NewAPIServer(
 	subscriptionSnapshotUpdater utils.SubscriptionSnapshotUpdater,
 	secretService *secrets.SecretService,
 	restAPIService *restapi.RestAPIService,
-) *APIServer {
+	httpClient *http.Client,
+) (*APIServer, error) {
 	if db == nil {
 		panic("APIServer requires non-nil storage")
 	}
@@ -114,14 +115,13 @@ func NewAPIServer(
 		panic("APIServer requires non-empty gateway ID")
 	}
 
-	deploymentService := utils.NewAPIDeploymentService(store, db, snapshotManager, validator, &systemConfig.Router, eventHub, gatewayID, secretService)
+	deploymentService := utils.NewAPIDeploymentService(store, db, snapshotManager, validator, &systemConfig.Router, eventHub, gatewayID, secretService, httpClient)
 	apiKeyService := utils.NewAPIKeyService(store, db, apiKeyXDSManager, &systemConfig.APIKey, eventHub, gatewayID)
 	subscriptionResourceService := utils.NewSubscriptionResourceService(db, subscriptionSnapshotUpdater, eventHub, gatewayID)
 
 	policyVersionResolver := utils.NewLoadedPolicyVersionResolver(policyDefinitions)
 	policyValidator := config.NewPolicyValidator(policyDefinitions)
 	parser := config.NewParser()
-	httpClient := &http.Client{Timeout: 10 * time.Second}
 	routerConfig := &systemConfig.Router
 	mcpDeploymentService := utils.NewMCPDeploymentService(store, db, snapshotManager, policyManager, policyValidator, eventHub, gatewayID, secretService)
 
@@ -167,7 +167,7 @@ func NewAPIServer(
 	// Register status update callback
 	snapshotManager.SetStatusCallback(server.handleStatusUpdate)
 
-	return server
+	return server, nil
 }
 
 func (s *APIServer) getSubscriptionResourceService() *utils.SubscriptionResourceService {

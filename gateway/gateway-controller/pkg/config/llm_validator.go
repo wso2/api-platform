@@ -20,8 +20,10 @@ package config
 
 import (
 	"fmt"
+	"maps"
 	"net/url"
 	"regexp"
+	"slices"
 	"strings"
 	"unicode"
 
@@ -173,6 +175,53 @@ func (v *LLMValidator) validateTemplateSpec(spec *api.LLMProviderTemplateData) [
 			spec.RemainingTokens)...)
 	}
 
+	if spec.CachedTokens != nil {
+		errors = append(errors, v.validateExtractionIdentifier("spec.cachedTokens", spec.CachedTokens)...)
+	}
+
+	if spec.CacheWriteTokens != nil {
+		errors = append(errors, v.validateExtractionIdentifier("spec.cacheWriteTokens", spec.CacheWriteTokens)...)
+	}
+
+	if spec.CacheWrite1hTokens != nil {
+		errors = append(errors, v.validateExtractionIdentifier("spec.cacheWrite1hTokens", spec.CacheWrite1hTokens)...)
+	}
+
+	if spec.ReasoningTokens != nil {
+		errors = append(errors, v.validateExtractionIdentifier("spec.reasoningTokens", spec.ReasoningTokens)...)
+	}
+
+	if spec.AudioInputTokens != nil {
+		errors = append(errors, v.validateExtractionIdentifier("spec.audioInputTokens", spec.AudioInputTokens)...)
+	}
+
+	if spec.AudioOutputTokens != nil {
+		errors = append(errors, v.validateExtractionIdentifier("spec.audioOutputTokens", spec.AudioOutputTokens)...)
+	}
+
+	if spec.ServiceTier != nil {
+		errors = append(errors, v.validateExtractionIdentifier("spec.serviceTier", spec.ServiceTier)...)
+	}
+
+	if spec.ProviderFields != nil {
+		// Sorted so two identical requests report errors in the same order;
+		// Go randomises map iteration.
+		for _, name := range slices.Sorted(maps.Keys(*spec.ProviderFields)) {
+			if name == "" {
+				errors = append(errors, ValidationError{
+					Field:   "spec.providerFields",
+					Message: "providerFields key cannot be empty",
+				})
+				continue
+			}
+			field := (*spec.ProviderFields)[name]
+			errors = append(errors, v.validateExtractionIdentifier(
+				fmt.Sprintf("spec.providerFields.%s", name), &field)...)
+		}
+	}
+
+	errors = append(errors, v.validateCacheAccounting("spec.cacheAccounting", spec.CacheAccounting)...)
+
 	if spec.ResourceMappings != nil {
 		errors = append(errors, v.validateTemplateResourceMappings("spec.resourceMappings", spec.ResourceMappings)...)
 	}
@@ -244,6 +293,44 @@ func (v *LLMValidator) validateTemplateResourceMapping(fieldPrefix string,
 		errors = append(errors, v.validateExtractionIdentifier(fieldPrefix+".responseModel", mapping.ResponseModel)...)
 	}
 
+	if mapping.CachedTokens != nil {
+		errors = append(errors, v.validateExtractionIdentifier(
+			fmt.Sprintf("%s.cachedTokens", fieldPrefix), mapping.CachedTokens)...)
+	}
+
+	if mapping.CacheWriteTokens != nil {
+		errors = append(errors, v.validateExtractionIdentifier(
+			fmt.Sprintf("%s.cacheWriteTokens", fieldPrefix), mapping.CacheWriteTokens)...)
+	}
+
+	if mapping.CacheWrite1hTokens != nil {
+		errors = append(errors, v.validateExtractionIdentifier(
+			fmt.Sprintf("%s.cacheWrite1hTokens", fieldPrefix), mapping.CacheWrite1hTokens)...)
+	}
+
+	if mapping.ReasoningTokens != nil {
+		errors = append(errors, v.validateExtractionIdentifier(
+			fmt.Sprintf("%s.reasoningTokens", fieldPrefix), mapping.ReasoningTokens)...)
+	}
+
+	if mapping.AudioInputTokens != nil {
+		errors = append(errors, v.validateExtractionIdentifier(
+			fmt.Sprintf("%s.audioInputTokens", fieldPrefix), mapping.AudioInputTokens)...)
+	}
+
+	if mapping.AudioOutputTokens != nil {
+		errors = append(errors, v.validateExtractionIdentifier(
+			fmt.Sprintf("%s.audioOutputTokens", fieldPrefix), mapping.AudioOutputTokens)...)
+	}
+
+	if mapping.ServiceTier != nil {
+		errors = append(errors, v.validateExtractionIdentifier(
+			fmt.Sprintf("%s.serviceTier", fieldPrefix), mapping.ServiceTier)...)
+	}
+
+	errors = append(errors, v.validateCacheAccounting(
+		fmt.Sprintf("%s.cacheAccounting", fieldPrefix), mapping.CacheAccounting)...)
+
 	return errors
 }
 
@@ -269,7 +356,49 @@ func (v *LLMValidator) validateExtractionIdentifier(
 		})
 	}
 
+	if identifier.FallbackIdentifiers != nil {
+		for i, fallback := range *identifier.FallbackIdentifiers {
+			if fallback == "" {
+				errors = append(errors, ValidationError{
+					Field:   fmt.Sprintf("%s.fallbackIdentifiers[%d]", fieldPrefix, i),
+					Message: "fallback identifier cannot be empty",
+				})
+			}
+		}
+	}
+
+	// A key names a value the provider reports, so an empty key matches nothing.
+	// An empty target is allowed: it states that the reported value carries no
+	// rates of its own and should be billed as standard.
+	if identifier.ValueMap != nil {
+		for key := range *identifier.ValueMap {
+			if key == "" {
+				errors = append(errors, ValidationError{
+					Field:   fmt.Sprintf("%s.valueMap", fieldPrefix),
+					Message: "valueMap key cannot be empty",
+				})
+			}
+		}
+	}
+
 	return errors
+}
+
+// validateCacheAccounting checks the cache accounting mode. An absent value is
+// valid and means inclusive.
+func (v *LLMValidator) validateCacheAccounting(fieldPrefix string, value *string) []ValidationError {
+	if value == nil {
+		return nil
+	}
+
+	if *value != "inclusive" && *value != "additive" {
+		return []ValidationError{{
+			Field:   fieldPrefix,
+			Message: "cacheAccounting must be 'inclusive' or 'additive'",
+		}}
+	}
+
+	return nil
 }
 
 // validateLLMProvider validates an LLM provider configuration

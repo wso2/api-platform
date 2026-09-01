@@ -30,8 +30,8 @@ import {
   type ApiClient,
 } from '../api/ApiClientProvider';
 import { NotificationProvider } from '../components/Notifications';
-import { AuthStateContext } from '../features/auth/AuthStateContext';
-import type { AuthState } from '../features/auth/authTypes';
+import { AuthStateContext } from '../contexts/auth/AuthStateContext';
+import type { AuthState } from '../contexts/auth/authTypes';
 import {
   ConsoleScopeContext,
   type ConsoleScope,

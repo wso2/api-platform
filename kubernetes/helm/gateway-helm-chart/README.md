@@ -201,6 +201,53 @@ ConfigMap:
 
 A plain `APIP_GW_*` env var with no matching token in `config.toml` is ignored.
 
+### Raw config passthrough (`gateway.config_toml`)
+
+For configuration the chart doesn't model as structured `gateway.config.*` values, use
+`gateway.config_toml` — a raw TOML string rendered into the generated `config.toml`. It is
+injected at the **top of the file, above every `[table]` section**, so it can carry two shapes:
+
+- **Bare root keys** — e.g. policy "system parameters" that policies read as `${config.<key>}`
+  (the Azure Content Safety, AWS Bedrock Guardrail, embedding-provider, Redis, and similar
+  policies). TOML requires bare keys to precede all `[table]` headers, which is why the block
+  leads the file.
+- **Whole `[table]` sections** — a custom section the chart doesn't render. Tables are
+  order-independent, so these work from the top too.
+
+Do **not** redefine a table the chart already emits (`[controller.server]`, `[router]`, etc.) —
+TOML rejects a duplicate table.
+
+`config.toml` is rendered into a **ConfigMap, not a Secret**, so it must not hold plaintext
+secrets. For any secret value, supply a `{{ env "NAME" }}` or `{{ file "/path" }}` interpolation
+token (resolved by the gateway at startup, same mechanism as the control-plane token and DB
+password above) instead of a literal — each token reads from a different source, so back it with
+the matching mechanism:
+
+- `{{ env "NAME" }}` reads an environment variable — inject it via
+  `gateway.gatewayRuntime.deployment.extraEnv`.
+- `{{ file "/path" }}` reads a mounted file — mount the Secret via
+  `gateway.gatewayRuntime.deployment.extraVolumes` / `extraVolumeMounts` under one of the allowed
+  source dirs (`/etc/gateway-runtime`, `/secrets/gateway-runtime`) and point the token at that
+  mount path.
+
+Example — the Azure Content Safety content-moderation policy (endpoint is non-secret, the
+subscription key is a secret):
+
+```yaml
+gateway:
+  config_toml: |
+    azurecontentsafety_endpoint = "https://your-resource.cognitiveservices.azure.com"
+    azurecontentsafety_key = '{{ env "APIP_GW_AZURE_CONTENT_SAFETY_KEY" }}'
+  gatewayRuntime:
+    deployment:
+      extraEnv:
+        - name: APIP_GW_AZURE_CONTENT_SAFETY_KEY
+          valueFrom:
+            secretKeyRef:
+              name: azure-content-safety   # kubectl create secret generic azure-content-safety --from-literal=subscription-key='<key>'
+              key: subscription-key
+```
+
 ### Storage backends and scaling
 
 `gateway.config.controller.storage.type` selects the controller's database:

@@ -32,6 +32,7 @@ import (
 	"time"
 
 	extprocv3 "github.com/envoyproxy/go-control-plane/envoy/service/ext_proc/v3"
+	"github.com/wso2/api-platform/httpkit/httpclient"
 	"go.opentelemetry.io/otel"
 	"google.golang.org/grpc"
 
@@ -49,6 +50,7 @@ import (
 	"github.com/wso2/api-platform/gateway/gateway-runtime/policy-engine/internal/tracing"
 	"github.com/wso2/api-platform/gateway/gateway-runtime/policy-engine/internal/utils"
 	"github.com/wso2/api-platform/gateway/gateway-runtime/policy-engine/internal/xdsclient"
+	sdkutils "github.com/wso2/api-platform/sdk/core/utils"
 )
 
 // Version information (set via ldflags during build)
@@ -173,6 +175,25 @@ func main() {
 		os.Exit(1)
 	}
 	slog.InfoContext(ctx, "Config set in registry for ${config} CEL resolution")
+
+	// Build the single shared outbound *http.Client every policy retrieves via
+	// sdkutils.SharedHTTPClient() (see sdk/core/utils/httpclient.go). Built once,
+	// here, so every policy that makes an outbound call gets the same pooled
+	// connections, bounded timeouts/response size, and optional SSRF guard
+	// configured under [policy_engine.http_client], instead of each policy
+	// building (or forgetting to bound) its own *http.Client.
+	sharedHTTPClientCfg, err := config.BuildHTTPClientConfig(cfg.PolicyEngine.HTTPClient)
+	if err != nil {
+		slog.ErrorContext(ctx, "Invalid policy_engine.http_client configuration", "error", err)
+		os.Exit(1)
+	}
+	sharedHTTPClient, err := httpclient.New(sharedHTTPClientCfg)
+	if err != nil {
+		slog.ErrorContext(ctx, "Failed to build shared outbound HTTP client for policies", "error", err)
+		os.Exit(1)
+	}
+	sdkutils.SetSharedHTTPClient(sharedHTTPClient)
+	slog.InfoContext(ctx, "Shared outbound HTTP client built for policies")
 
 	// Initialize CEL evaluator
 	celEvaluator, err := cel.NewCELEvaluator()

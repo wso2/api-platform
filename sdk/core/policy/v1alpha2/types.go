@@ -28,6 +28,8 @@ const (
 	APIKindLlmProxy    APIKind = "LlmProxy"
 	APIKindMCP         APIKind = "Mcp"
 	APIKindWebSubApi   APIKind = "WebSubApi"
+	APIKindGraphQL     APIKind = "GraphQLApi"
+	APIKindAgent       APIKind = "Agent"
 )
 
 // UpstreamSlot identifies one of an API's built-in upstream slots.

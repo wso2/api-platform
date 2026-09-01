@@ -18,7 +18,7 @@ require (
 	github.com/oapi-codegen/runtime v1.5.0
 	github.com/stretchr/testify v1.11.1
 	github.com/wso2/api-platform/common v0.0.0
-	github.com/wso2/go-httpkit v0.0.0-local
+	github.com/wso2/api-platform/httpkit v0.0.0-local
 	golang.org/x/crypto v0.54.0
 	gopkg.in/yaml.v3 v3.0.1
 )
@@ -55,4 +55,4 @@ require (
 
 replace github.com/wso2/api-platform/common => ../common
 
-replace github.com/wso2/go-httpkit => ../httpkit
+replace github.com/wso2/api-platform/httpkit => ../httpkit

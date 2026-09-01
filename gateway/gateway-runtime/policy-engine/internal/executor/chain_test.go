@@ -960,3 +960,76 @@ func TestExecuteStreamingResponsePolicies_ModeFirstGating(t *testing.T) {
 		})
 	}
 }
+
+type transformingResponsePolicy struct{}
+
+func (p *transformingResponsePolicy) Mode() policy.ProcessingMode {
+	return policy.ProcessingMode{ResponseBodyMode: policy.BodyModeStream}
+}
+
+func (p *transformingResponsePolicy) OnResponseBody(_ context.Context, _ *policy.ResponseContext, _ map[string]interface{}) policy.ResponseAction {
+	return policy.DownstreamResponseModifications{}
+}
+
+func (p *transformingResponsePolicy) NeedsMoreResponseData(_ []byte) bool { return false }
+
+func (p *transformingResponsePolicy) OnResponseBodyChunk(_ context.Context, _ *policy.ResponseStreamContext, chunk *policy.StreamBody, _ map[string]interface{}) policy.StreamingResponseAction {
+	return policy.ForwardResponseChunk{Body: []byte("rewritten")}
+}
+
+type indexRecordingResponsePolicy struct {
+	seen []uint64
+}
+
+func (p *indexRecordingResponsePolicy) Mode() policy.ProcessingMode {
+	return policy.ProcessingMode{ResponseBodyMode: policy.BodyModeStream}
+}
+
+func (p *indexRecordingResponsePolicy) OnResponseBody(_ context.Context, _ *policy.ResponseContext, _ map[string]interface{}) policy.ResponseAction {
+	return policy.DownstreamResponseModifications{}
+}
+
+func (p *indexRecordingResponsePolicy) NeedsMoreResponseData(_ []byte) bool { return false }
+
+func (p *indexRecordingResponsePolicy) OnResponseBodyChunk(_ context.Context, _ *policy.ResponseStreamContext, chunk *policy.StreamBody, _ map[string]interface{}) policy.StreamingResponseAction {
+	p.seen = append(p.seen, chunk.Index)
+	return policy.ForwardResponseChunk{}
+}
+
+func TestExecuteStreamingResponsePolicies_IndexSurvivesBodyTransformation(t *testing.T) {
+	tracer := noop.NewTracerProvider().Tracer("test")
+	executor := NewChainExecutor(nil, nil, tracer)
+
+	recorder := &indexRecordingResponsePolicy{}
+	respCtx := &policy.ResponseStreamContext{
+		SharedContext:   testutils.NewTestSharedContext(),
+		RequestHeaders:  policy.NewHeaders(map[string][]string{"content-type": {"application/json"}}),
+		RequestPath:     "/test",
+		RequestMethod:   "POST",
+		ResponseHeaders: policy.NewHeaders(map[string][]string{"content-type": {"application/json"}}),
+		ResponseStatus:  200,
+	}
+
+	policies := []policy.Policy{recorder, &transformingResponsePolicy{}}
+	specs := []policy.PolicySpec{
+		newPolicySpec("record", "v1.0.0", true, nil),
+		newPolicySpec("transform", "v1.0.0", true, nil),
+	}
+
+	for _, index := range []uint64{1, 2, 3} {
+		_, err := executor.ExecuteStreamingResponsePolicies(
+			context.Background(),
+			policies,
+			respCtx,
+			&policy.StreamBody{Chunk: []byte("chunk"), Index: index, EndOfStream: index == 3},
+			specs,
+			"api",
+			"route",
+			false,
+		)
+		require.NoError(t, err)
+	}
+
+	assert.Equal(t, []uint64{1, 2, 3}, recorder.seen,
+		"the downstream policy must see the kernel's indexes, not zeros")
+}

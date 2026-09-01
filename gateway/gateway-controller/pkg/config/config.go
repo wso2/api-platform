@@ -200,6 +200,7 @@ type Controller struct {
 	Storage      StorageConfig      `koanf:"storage"`
 	Logging      LoggingConfig      `koanf:"logging"`
 	ControlPlane ControlPlaneConfig `koanf:"controlplane"`
+	HTTPClient   HTTPClientConfig   `koanf:"http_client"`
 	PolicyServer PolicyServerConfig `koanf:"policy_server"`
 	Policies     PoliciesConfig     `koanf:"policies"`
 	LLM          LLMConfig          `koanf:"llm"`
@@ -305,6 +306,88 @@ type ServerConfig struct {
 	ShutdownTimeout                 time.Duration `koanf:"shutdown_timeout"`
 	GatewayID                       string        `koanf:"gateway_id"`
 	SkipInvalidDeploymentsOnStartup bool          `koanf:"skip_invalid_deployments_on_startup"`
+
+	// TLS starts a second, TLS-only listener on TLS.Port serving the same
+	// REST management API as the plaintext listener on APIPort. Off by
+	// default.
+	TLS ServerTLSConfig `koanf:"tls"`
+
+	// XDSTLS switches the main xDS gRPC server (serving Envoy, on XDSPort)
+	// from plaintext to mutual TLS. Unlike TLS above, this does not add a
+	// second listener -- XDSPort itself starts speaking mTLS. Off by
+	// default; see XDSServerTLSConfig for why xDS has no server-only mode.
+	XDSTLS XDSServerTLSConfig `koanf:"xds_tls"`
+
+	// ReadTimeout, ReadHeaderTimeout, WriteTimeout, and IdleTimeout bound the
+	// REST management API's http.Server (both the plaintext listener on
+	// APIPort and the TLS listener on TLS.Port) so a slow or malicious
+	// client can't hold a connection open indefinitely (Slowloris-style
+	// resource exhaustion). MaxHeaderBytes bounds header size the same way.
+	// All five must be non-zero -- defaultConfig supplies safe defaults.
+	ReadTimeout       time.Duration `koanf:"read_timeout"`
+	ReadHeaderTimeout time.Duration `koanf:"read_header_timeout"`
+	WriteTimeout      time.Duration `koanf:"write_timeout"`
+	IdleTimeout       time.Duration `koanf:"idle_timeout"`
+	MaxHeaderBytes    int           `koanf:"max_header_bytes"`
+}
+
+// ServerTLSConfig holds configuration for an additional TLS listener for the
+// REST management API. It is served alongside — not instead of — the
+// plaintext listener on ServerConfig.APIPort, so enabling it never breaks an
+// existing plaintext deployment. Same shape and naming conventions as
+// policy-engine's AdminTLSConfig (gateway-runtime/policy-engine/internal/config) —
+// keep the two in sync if either changes, they are independent implementations
+// (different Go modules) of the same pattern.
+type ServerTLSConfig struct {
+	// Enabled starts the TLS listener on Port. Off by default: no
+	// certificate is provisioned by default, and the plaintext listener
+	// keeps working either way.
+	Enabled bool `koanf:"enabled"`
+
+	// Port is the port for the TLS REST API listener. Must differ from every
+	// other configured controller port (server.api_port, server.xds_port,
+	// admin_server.port, metrics.port).
+	Port int `koanf:"port"`
+
+	// CertPath and KeyPath are the PEM-encoded server certificate and
+	// private key for the TLS listener. Required when Enabled.
+	CertPath string `koanf:"cert_path"`
+	KeyPath  string `koanf:"key_path"`
+
+	// MinimumProtocolVersion and MaximumProtocolVersion bound the negotiated
+	// TLS version: one of "TLS1_0", "TLS1_1", "TLS1_2", "TLS1_3". Same
+	// vocabulary as router.downstream_tls/upstream_tls for consistency
+	// within the shared config file.
+	MinimumProtocolVersion string `koanf:"minimum_protocol_version"`
+	MaximumProtocolVersion string `koanf:"maximum_protocol_version"`
+
+	// Ciphers is a comma-separated list of Go crypto/tls cipher suite names
+	// (e.g. "TLS_ECDHE_ECDSA_WITH_AES_128_GCM_SHA256"), restricting which
+	// suites this listener will negotiate. Empty by default, meaning Go's
+	// own secure default set/order applies. Only affects TLS 1.2 and below —
+	// TLS 1.3 suite selection is not configurable in Go's crypto/tls.
+	//
+	// Note this is a different naming scheme than router.downstream_tls's
+	// ciphers field (OpenSSL/BoringSSL names like
+	// "ECDHE-ECDSA-AES128-GCM-SHA256"): this listener is served by Go's own
+	// crypto/tls, not Envoy, so it uses Go's canonical cipher suite names —
+	// see crypto/tls.CipherSuites for the supported list.
+	Ciphers string `koanf:"ciphers"`
+
+	// EcdhCurves is a comma-separated list of TLS 1.3 key-exchange groups,
+	// most preferred first. Defaults to the hybrid post-quantum group
+	// ("X25519MLKEM768", FIPS 203 ML-KEM-768 + X25519) first, with classical
+	// fallbacks after (e.g. "X25519MLKEM768,X25519,P-256").
+	//
+	// Unlike router.downstream_tls/upstream_tls's EcdhCurves (classical-only
+	// by default), this listener is served directly by this process's own Go
+	// crypto/tls (1.23+ implements X25519MLKEM768 natively) rather than
+	// pushed as xDS config to a separate Envoy process, so defaulting to the
+	// hybrid group here carries none of the "already-running peer NACKs the
+	// update" risk documented on those fields — TLS 1.3 negotiation simply
+	// falls back to a later classical entry in this same list for a client
+	// that doesn't offer the hybrid group.
+	EcdhCurves string `koanf:"ecdh_curves"`
 }
 
 // AdminServerConfig holds controller admin HTTP server configuration.
@@ -337,15 +420,8 @@ type PprofConfig struct {
 
 // PolicyServerConfig holds policy xDS server-related configuration
 type PolicyServerConfig struct {
-	Port int             `koanf:"port"`
-	TLS  PolicyServerTLS `koanf:"tls"`
-}
-
-// PolicyServerTLS holds TLS configuration for the policy xDS server
-type PolicyServerTLS struct {
-	Enabled  bool   `koanf:"enabled"`
-	CertFile string `koanf:"cert_file"`
-	KeyFile  string `koanf:"key_file"`
+	Port int                `koanf:"port"`
+	TLS  XDSServerTLSConfig `koanf:"tls"`
 }
 
 // PoliciesConfig holds policy-related configuration
@@ -564,6 +640,14 @@ type UpstreamTLS struct {
 	MinimumProtocolVersion string `koanf:"minimum_protocol_version"`
 	MaximumProtocolVersion string `koanf:"maximum_protocol_version"`
 	Ciphers                string `koanf:"ciphers"`
+	// EcdhCurves is a comma-separated list of ECDH curves (e.g. "X25519,P-256"), most preferred
+	// first. Defaults to classical curves only — a hybrid post-quantum group (e.g.
+	// "X25519MLKEM768") can be added as the first preference, but only as an explicit opt-in per
+	// deployment: an already-running Envoy instance that doesn't recognize the curve name will
+	// NACK the xDS update and keep serving its last-known-good config, silently freezing that
+	// instance out of any further config changes until the operator fixes it. Confirm the
+	// deployed Envoy/BoringSSL build supports the group before enabling it.
+	EcdhCurves             string `koanf:"ecdh_curves"`
 	TrustedCertPath        string `koanf:"trusted_cert_path"`
 	CustomCertsPath        string `koanf:"custom_certs_path"` // Directory containing custom trusted certificates
 	VerifyHostName         bool   `koanf:"verify_host_name"`
@@ -594,6 +678,14 @@ type DownstreamTLS struct {
 	MinimumProtocolVersion string `koanf:"minimum_protocol_version"`
 	MaximumProtocolVersion string `koanf:"maximum_protocol_version"`
 	Ciphers                string `koanf:"ciphers"`
+	// EcdhCurves is a comma-separated list of ECDH curves (e.g. "X25519,P-256"), most preferred
+	// first. Defaults to classical curves only — a hybrid post-quantum group (e.g.
+	// "X25519MLKEM768") can be added as the first preference, but only as an explicit opt-in per
+	// deployment: an already-running Envoy instance that doesn't recognize the curve name will
+	// NACK the xDS update and keep serving its last-known-good config, silently freezing that
+	// instance out of any further config changes until the operator fixes it. Confirm the
+	// deployed Envoy/BoringSSL build supports the group before enabling it.
+	EcdhCurves string `koanf:"ecdh_curves"`
 }
 
 // VHostsConfig for vhosts configuration
@@ -682,6 +774,125 @@ type ControlPlaneConfig struct {
 	ApimOAuth2Username     string `koanf:"apim_oauth2_username"`      // APIM resource owner username
 	ApimOAuth2Password     string `koanf:"apim_oauth2_password"`      // APIM resource owner password
 	GatewayName            string `koanf:"gateway_name"`              // Name of the gateway for deployment configuration
+}
+
+// HTTPClientConfig configures the single shared outbound *http.Client used by every
+// control-plane / platform-API / on-prem-APIM call this process makes. It mirrors
+// github.com/wso2/api-platform/httpkit/httpclient.Config field-for-field (see that package's own doc
+// comments for full semantics) so every knob the library exposes that has a natural TOML
+// shape is operator-configurable here, rather than hardcoded in main.go. The few fields
+// httpclient.Config exposes that CANNOT be expressed in TOML — Go callback hooks
+// (GetClientCertificate, VerifyPeerCertificate, VerifyConnection, ConnectHeader) and a
+// pre-built *x509.CertPool / []*net.IPNet — are not represented here; a caller that needs
+// those uses the httpclient package directly in code.
+//
+// Timeouts.Overall is only a generous safety-net budget: real per-operation budgets (5s
+// well-known discovery, 30s manifest/platform-API/on-prem-APIM calls, etc.) are enforced via
+// a context.WithTimeout deadline at each call site, since http.Client.Do honors a request's
+// context deadline independent of the client-level Timeout.
+//
+// TLS.InsecureSkipVerify is intentionally NOT a field here — it is sourced from the single
+// existing controller.controlplane.insecure_skip_verify setting (see main.go), which already
+// governs this same trust decision for every one of this client's current callers (control
+// plane, platform API, and on-prem APIM all copy that one field today). Duplicating it here
+// would just create two settings that must always be kept in sync.
+type HTTPClientConfig struct {
+	Pooling  HTTPClientPoolingConfig  `koanf:"pooling"`
+	Timeouts HTTPClientTimeoutsConfig `koanf:"timeouts"`
+	TLS      HTTPClientTLSConfig      `koanf:"tls"`
+	Proxy    HTTPClientProxyConfig    `koanf:"proxy"`
+	SSRF     HTTPClientSSRFConfig     `koanf:"ssrf"`
+}
+
+// HTTPClientPoolingConfig mirrors httpclient.PoolingConfig.
+type HTTPClientPoolingConfig struct {
+	MaxIdleConns        int           `koanf:"max_idle_conns"`
+	MaxIdleConnsPerHost int           `koanf:"max_idle_conns_per_host"`
+	MaxConnsPerHost     int           `koanf:"max_conns_per_host"`
+	IdleConnTimeout     time.Duration `koanf:"idle_conn_timeout"`
+	KeepAlive           time.Duration `koanf:"keep_alive"`
+	DisableKeepAlives   bool          `koanf:"disable_keep_alives"`
+	// EnableHTTP2 opts into HTTP/2. See httpclient.PoolingConfig.EnableHTTP2's doc comment
+	// on the HTTP/2 connection-coalescing caveat before enabling.
+	EnableHTTP2 bool `koanf:"enable_http2"`
+}
+
+// HTTPClientTimeoutsConfig mirrors httpclient.TimeoutsConfig.
+type HTTPClientTimeoutsConfig struct {
+	Overall        time.Duration `koanf:"overall"` // safety-net only; see HTTPClientConfig's doc comment
+	Dial           time.Duration `koanf:"dial"`
+	TLSHandshake   time.Duration `koanf:"tls_handshake"`
+	ResponseHeader time.Duration `koanf:"response_header"`
+	ExpectContinue time.Duration `koanf:"expect_continue"`
+	// MaxResponseBytes bounds a response body. 0 = package default (10MiB). A negative
+	// value is rejected by BuildHTTPClientConfig rather than disabling the bound.
+	MaxResponseBytes int64 `koanf:"max_response_bytes"`
+}
+
+// HTTPClientTLSConfig mirrors the TOML-expressible subset of httpclient.TLSConfig.
+type HTTPClientTLSConfig struct {
+	MinVersion       string `koanf:"min_version"`       // one of "TLS1_0".."TLS1_3"
+	MaxVersion       string `koanf:"max_version"`       // one of "TLS1_0".."TLS1_3"
+	CipherSuites     string `koanf:"cipher_suites"`     // comma-separated Go crypto/tls cipher suite names; TLS 1.2 and below only
+	CurvePreferences string `koanf:"curve_preferences"` // comma-separated, e.g. "X25519MLKEM768,X25519,P-256"
+	RootCAFile       string `koanf:"root_ca_file"`      // PEM CA bundle; empty uses the system root pool
+	ClientCertFile   string `koanf:"client_cert_file"`  // mTLS to the origin; both cert and key must be set together
+	ClientKeyFile    string `koanf:"client_key_file"`
+}
+
+// HTTPClientProxyConfig mirrors the TOML-expressible subset of httpclient.ProxyConfig.
+type HTTPClientProxyConfig struct {
+	// Mode selects how the proxy is determined: "none" (default), "environment"
+	// (HTTP_PROXY/HTTPS_PROXY/NO_PROXY), or "url" (URL/Username/Password/NoProxy below).
+	Mode     string   `koanf:"mode"`
+	URL      string   `koanf:"url"`
+	Username string   `koanf:"username"`
+	Password string   `koanf:"password"`
+	NoProxy  []string `koanf:"no_proxy"` // exact host, ".suffix", or CIDR entries; only used when mode == "url"
+
+	TLS HTTPClientProxyTLSConfig `koanf:"tls"`
+
+	// Egress states how origin-destination SSRF risk is handled when a forward proxy is
+	// also configured: "delegated" (trust the proxy's own egress controls) or
+	// "manual_connect" (validate the origin locally before ever issuing CONNECT). Must be
+	// set explicitly whenever Mode != "none" and SSRF.Enabled — httpclient.New fails
+	// closed at startup otherwise rather than silently choosing one.
+	Egress string `koanf:"egress"`
+}
+
+// HTTPClientProxyTLSConfig mirrors httpclient.ProxyTLSConfig (the proxy's own TLS
+// handshake, fully decoupled from the origin TLS handshake in HTTPClientTLSConfig).
+type HTTPClientProxyTLSConfig struct {
+	RootCAFile     string `koanf:"root_ca_file"`
+	ClientCertFile string `koanf:"client_cert_file"`
+	ClientKeyFile  string `koanf:"client_key_file"`
+	// InsecureSkipVerify and InsecureSkipVerifyAcknowledged are deliberately separate
+	// fields: httpkit's own acknowledgement gate (httpclient.ProxyTLSConfig) requires an
+	// operator to opt into disabling verification twice, once per field, so a single
+	// "insecure_skip_verify = true" in TOML can't silently satisfy its own gate. Both must
+	// be explicitly set to true for InsecureSkipVerify to take effect.
+	InsecureSkipVerify             bool `koanf:"insecure_skip_verify"`
+	InsecureSkipVerifyAcknowledged bool `koanf:"insecure_skip_verify_acknowledged"`
+}
+
+// HTTPClientSSRFConfig mirrors the TOML-expressible subset of httpclient.SSRFConfig. Off by
+// default: this shared client's current callers (control plane, platform API, on-prem APIM)
+// all target a single fixed, operator-configured host, not a user/tenant-supplied URL — the
+// scenario ssrf-prevention.md targets — so there is nothing to guard against today. Exposed
+// for completeness and for any future caller of this shared client that fetches a
+// tenant-supplied URL.
+type HTTPClientSSRFConfig struct {
+	Enabled bool `koanf:"enabled"`
+	// Preset selects a built-in netguard policy: "permit_private_block_metadata" (a
+	// backend that is normally private — a ClusterIP, a service-DNS name, localhost —
+	// stays reachable; only link-local/metadata/unspecified/multicast are refused) or
+	// "public_only" (stricter: every private/loopback/link-local/CGNAT address is
+	// refused, for a URL expected to point at the public internet). Required when Enabled
+	// is true. Custom CIDR allow/deny lists have no natural TOML shape and are not
+	// exposed here — use the httpclient/netguard packages directly in code for that.
+	Preset         string   `koanf:"preset"`
+	MaxRedirects   int      `koanf:"max_redirects"`
+	AllowedSchemes []string `koanf:"allowed_schemes"` // empty defaults to {"https"}
 }
 
 // APIKeyConfig represents the configuration for API keys
@@ -832,6 +1043,29 @@ func defaultConfig() *Config {
 				ShutdownTimeout:                 15 * time.Second,
 				GatewayID:                       constants.PlatformGatewayId,
 				SkipInvalidDeploymentsOnStartup: false,
+				ReadTimeout:                     30 * time.Second,
+				ReadHeaderTimeout:               30 * time.Second,
+				WriteTimeout:                    60 * time.Second,
+				IdleTimeout:                     120 * time.Second,
+				MaxHeaderBytes:                  1 << 20, // 1 MiB
+				TLS: ServerTLSConfig{
+					Enabled:                false,
+					Port:                   9093,
+					MinimumProtocolVersion: "TLS1_2",
+					MaximumProtocolVersion: "TLS1_3",
+					Ciphers:                "",
+					EcdhCurves:             "X25519MLKEM768,X25519,P-256",
+				},
+				XDSTLS: XDSServerTLSConfig{
+					Enabled:                false,
+					CertFile:               "./xds-certs/server.crt",
+					KeyFile:                "./xds-certs/server.key",
+					ClientCAFile:           "./xds-certs/ca.crt",
+					MinimumProtocolVersion: "TLS1_2",
+					MaximumProtocolVersion: "TLS1_3",
+					Ciphers:                "",
+					EcdhCurves:             "X25519MLKEM768,X25519,P-256",
+				},
 			},
 			AdminServer: AdminServerConfig{
 				Enabled:    true,
@@ -848,10 +1082,15 @@ func defaultConfig() *Config {
 			},
 			PolicyServer: PolicyServerConfig{
 				Port: 18001,
-				TLS: PolicyServerTLS{
-					Enabled:  false,
-					CertFile: "./certs/server.crt",
-					KeyFile:  "./certs/server.key",
+				TLS: XDSServerTLSConfig{
+					Enabled:                false,
+					CertFile:               "./xds-certs/server.crt",
+					KeyFile:                "./xds-certs/server.key",
+					ClientCAFile:           "./xds-certs/ca.crt",
+					MinimumProtocolVersion: "TLS1_2",
+					MaximumProtocolVersion: "TLS1_3",
+					Ciphers:                "",
+					EcdhCurves:             "X25519MLKEM768,X25519,P-256",
 				},
 			},
 			Policies: PoliciesConfig{
@@ -912,6 +1151,33 @@ func defaultConfig() *Config {
 				APIMSyncQueueSize:        0,
 				AIWorkspaceSyncPoolSize:  0,
 				AIWorkspaceSyncQueueSize: 0,
+			},
+			HTTPClient: HTTPClientConfig{
+				Pooling: HTTPClientPoolingConfig{
+					MaxIdleConns:        100,
+					MaxIdleConnsPerHost: 10,
+					MaxConnsPerHost:     100,
+					IdleConnTimeout:     90 * time.Second,
+					KeepAlive:           30 * time.Second,
+				},
+				Timeouts: HTTPClientTimeoutsConfig{
+					Overall:        60 * time.Second, // safety-net only; see HTTPClientConfig's doc comment
+					Dial:           10 * time.Second,
+					TLSHandshake:   10 * time.Second,
+					ResponseHeader: 10 * time.Second,
+					ExpectContinue: 1 * time.Second,
+				},
+				TLS: HTTPClientTLSConfig{
+					MinVersion:       "TLS1_2",
+					MaxVersion:       "TLS1_3",
+					CurvePreferences: "",
+				},
+				Proxy: HTTPClientProxyConfig{
+					Mode: "none",
+				},
+				SSRF: HTTPClientSSRFConfig{
+					Enabled: false,
+				},
 			},
 			EventHub: EventHubConfig{
 				PollInterval:    3 * time.Second,
@@ -989,6 +1255,7 @@ func defaultConfig() *Config {
 				MinimumProtocolVersion: "TLS1_2",
 				MaximumProtocolVersion: "TLS1_3",
 				Ciphers:                "ECDHE-ECDSA-AES128-GCM-SHA256,ECDHE-RSA-AES128-GCM-SHA256,ECDHE-ECDSA-AES128-SHA,ECDHE-RSA-AES128-SHA,AES128-GCM-SHA256,AES128-SHA,ECDHE-ECDSA-AES256-GCM-SHA384,ECDHE-RSA-AES256-GCM-SHA384,ECDHE-ECDSA-AES256-SHA,ECDHE-RSA-AES256-SHA,AES256-GCM-SHA384,AES256-SHA",
+				EcdhCurves:             "X25519,P-256",
 			},
 			GatewayHost: "*",
 			Upstream: RouterUpstream{
@@ -996,6 +1263,7 @@ func defaultConfig() *Config {
 					MinimumProtocolVersion: "TLS1_2",
 					MaximumProtocolVersion: "TLS1_3",
 					Ciphers:                "ECDHE-ECDSA-AES128-GCM-SHA256,ECDHE-RSA-AES128-GCM-SHA256,ECDHE-ECDSA-AES128-SHA,ECDHE-RSA-AES128-SHA,AES128-GCM-SHA256,AES128-SHA,ECDHE-ECDSA-AES256-GCM-SHA384,ECDHE-RSA-AES256-GCM-SHA384,ECDHE-ECDSA-AES256-SHA,ECDHE-RSA-AES256-SHA,AES256-GCM-SHA384,AES256-SHA",
+					EcdhCurves:             "X25519,P-256",
 					TrustedCertPath:        "/etc/ssl/certs/ca-certificates.crt",
 					CustomCertsPath:        "./certificates",
 					VerifyHostName:         true,
@@ -1355,6 +1623,60 @@ func (c *Config) Validate() error {
 		return fmt.Errorf("server.gateway_id is required and cannot be empty")
 	}
 
+	if c.Controller.Server.ReadTimeout <= 0 {
+		return fmt.Errorf("server.read_timeout must be positive, got: %s", c.Controller.Server.ReadTimeout)
+	}
+	if c.Controller.Server.ReadHeaderTimeout <= 0 {
+		return fmt.Errorf("server.read_header_timeout must be positive, got: %s", c.Controller.Server.ReadHeaderTimeout)
+	}
+	if c.Controller.Server.WriteTimeout <= 0 {
+		return fmt.Errorf("server.write_timeout must be positive, got: %s", c.Controller.Server.WriteTimeout)
+	}
+	if c.Controller.Server.IdleTimeout <= 0 {
+		return fmt.Errorf("server.idle_timeout must be positive, got: %s", c.Controller.Server.IdleTimeout)
+	}
+	if c.Controller.Server.MaxHeaderBytes <= 0 {
+		return fmt.Errorf("server.max_header_bytes must be positive, got: %d", c.Controller.Server.MaxHeaderBytes)
+	}
+
+	// Validate REST API TLS config
+	if c.Controller.Server.TLS.Enabled {
+		if c.Controller.Server.TLS.Port < 1 || c.Controller.Server.TLS.Port > 65535 {
+			return fmt.Errorf("server.tls.port must be between 1 and 65535, got: %d", c.Controller.Server.TLS.Port)
+		}
+		if c.Controller.Server.TLS.Port == c.Controller.Server.APIPort {
+			return fmt.Errorf("server.tls.port cannot be same as server.api_port")
+		}
+		if c.Controller.Server.TLS.Port == c.Controller.Server.XDSPort {
+			return fmt.Errorf("server.tls.port cannot be same as server.xds_port")
+		}
+		if c.Controller.Server.TLS.CertPath == "" {
+			return fmt.Errorf("server.tls.cert_path is required when server.tls.enabled")
+		}
+		if c.Controller.Server.TLS.KeyPath == "" {
+			return fmt.Errorf("server.tls.key_path is required when server.tls.enabled")
+		}
+		if err := ValidateServerTLSVersions(c.Controller.Server.TLS.MinimumProtocolVersion, c.Controller.Server.TLS.MaximumProtocolVersion); err != nil {
+			return fmt.Errorf("server.tls: %w", err)
+		}
+		if _, err := ParseServerCiphers(c.Controller.Server.TLS.Ciphers); err != nil {
+			return fmt.Errorf("server.tls.ciphers: %w", err)
+		}
+		if _, err := ParseServerEcdhCurves(c.Controller.Server.TLS.EcdhCurves); err != nil {
+			return fmt.Errorf("server.tls.ecdh_curves: %w", err)
+		}
+	}
+
+	// Validate main xDS server mTLS config (serves Envoy on server.xds_port)
+	if err := ValidateXDSServerTLS("server.xds_tls", c.Controller.Server.XDSTLS); err != nil {
+		return err
+	}
+
+	// Validate policy xDS server mTLS config (serves the policy-engine on policy_server.port)
+	if err := ValidateXDSServerTLS("policy_server.tls", c.Controller.PolicyServer.TLS); err != nil {
+		return err
+	}
+
 	if c.Controller.AdminServer.Enabled {
 		if c.Controller.AdminServer.Port < 1 || c.Controller.AdminServer.Port > 65535 {
 			return fmt.Errorf("admin_server.port must be between 1 and 65535, got: %d", c.Controller.AdminServer.Port)
@@ -1364,6 +1686,9 @@ func (c *Config) Validate() error {
 		}
 		if c.Controller.AdminServer.Port == c.Controller.Server.XDSPort {
 			return fmt.Errorf("admin_server.port cannot be same as server.xds_port")
+		}
+		if c.Controller.Server.TLS.Enabled && c.Controller.AdminServer.Port == c.Controller.Server.TLS.Port {
+			return fmt.Errorf("admin_server.port cannot be same as server.tls.port")
 		}
 	}
 
@@ -1380,6 +1705,9 @@ func (c *Config) Validate() error {
 		}
 		if c.Controller.AdminServer.Enabled && c.Controller.Metrics.Port == c.Controller.AdminServer.Port {
 			return fmt.Errorf("metrics.port cannot be same as admin_server.port")
+		}
+		if c.Controller.Server.TLS.Enabled && c.Controller.Metrics.Port == c.Controller.Server.TLS.Port {
+			return fmt.Errorf("metrics.port cannot be same as server.tls.port")
 		}
 	}
 
@@ -1570,6 +1898,11 @@ func (c *Config) validateTLSConfig() error {
 		}
 	}
 
+	// Validate ECDH curves
+	if err := validateEcdhCurves("router.upstream.tls.ecdh_curves", c.Router.Upstream.TLS.EcdhCurves); err != nil {
+		return err
+	}
+
 	// Validate trusted cert path if SSL verification is enabled
 	if !c.Router.Upstream.TLS.DisableSslVerification && c.Router.Upstream.TLS.TrustedCertPath == "" {
 		return fmt.Errorf("router.upstream.tls.trusted_cert_path is required when SSL verification is enabled")
@@ -1667,6 +2000,36 @@ func (c *Config) validateDownstreamTLSConfig() error {
 		}
 	}
 
+	// Validate ECDH curves
+	if err := validateEcdhCurves("router.downstream_tls.ecdh_curves", c.Router.DownstreamTLS.EcdhCurves); err != nil {
+		return err
+	}
+
+	return nil
+}
+
+// validateEcdhCurves validates the format of a comma-separated ecdh_curves config value.
+// It deliberately does not check curve names against a fixed allowlist — the set of curves
+// Envoy/BoringSSL accepts (including newer hybrid post-quantum groups such as
+// "X25519MLKEM768") evolves independently of this codebase, so Envoy itself is the source of
+// truth for which names are valid; an unsupported name is rejected when Envoy applies the
+// resulting listener/cluster config. fieldPath is used to prefix any returned error.
+func validateEcdhCurves(fieldPath, curves string) error {
+	if curves == "" {
+		return nil
+	}
+	// Basic validation: ensure curves don't contain invalid characters
+	if strings.Contains(curves, constants.CipherInvalidChars1) || strings.Contains(curves, constants.CipherInvalidChars2) {
+		return fmt.Errorf("%s contains invalid characters (use comma-separated values)", fieldPath)
+	}
+	if strings.TrimSpace(curves) == "" {
+		return fmt.Errorf("%s cannot be empty or whitespace only", fieldPath)
+	}
+	for _, curve := range strings.Split(curves, constants.CipherSuiteSeparator) {
+		if strings.TrimSpace(curve) == "" {
+			return fmt.Errorf("%s cannot contain an empty curve name (use comma-separated values)", fieldPath)
+		}
+	}
 	return nil
 }
 
