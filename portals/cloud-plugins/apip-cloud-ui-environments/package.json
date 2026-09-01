@@ -1,0 +1,22 @@
+{
+  "name": "@wso2-enterprise/apip-cloud-ui-environments",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "main": "src/index.ts",
+  "types": "src/index.ts",
+  "scripts": {
+    "build": "tsc --noEmit",
+    "_phase:build": "tsc --noEmit",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@wso2/oxygen-ui": "0.13.1",
+    "@wso2/oxygen-ui-icons-react": "0.13.1",
+    "react": "19.2.3"
+  },
+  "devDependencies": {
+    "@types/react": "19.2.2",
+    "typescript": "5.8.3"
+  }
+}
