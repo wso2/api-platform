@@ -103,7 +103,63 @@ roles:
       - dp:label:manage
       - dp:webhook_subscriber:manage
       - dp:event:read
-
+  - name: ap_developer
+    scopes:
+      # Platform API
+      - ap:organization:read
+      - ap:project:read
+      - ap:rest_api:create
+      - ap:rest_api:read
+      - ap:rest_api:update
+      - ap:rest_api:gateway:read
+      - ap:rest_api:gateway:create
+      - ap:rest_api:deployment:create
+      - ap:rest_api:deployment:read
+      - ap:rest_api:deployment:undeploy
+      - ap:rest_api:deployment:restore
+      - ap:rest_api:api_key:manage
+      - ap:mcp_proxy:create
+      - ap:mcp_proxy:read
+      - ap:mcp_proxy:update
+      - ap:mcp_proxy:deployment:create
+      - ap:mcp_proxy:deployment:read
+      - ap:mcp_proxy:deployment:undeploy
+      - ap:mcp_proxy:deployment:restore
+      - ap:llm_proxy:create
+      - ap:llm_proxy:read
+      - ap:llm_proxy:update
+      - ap:llm_proxy:deployment:create
+      - ap:llm_proxy:deployment:read
+      - ap:llm_proxy:deployment:undeploy
+      - ap:llm_proxy:deployment:restore
+      - ap:llm_proxy:api_key:manage
+      - ap:llm_provider:read
+      - ap:llm_template:read
+      - ap:gateway:read
+      - ap:gateway:manifest:read
+      - ap:gateway_custom_policy:read
+      - ap:secret:create
+      - ap:secret:read
+      - ap:secret:update
+      - ap:application:manage
+      - ap:subscription:manage
+      - ap:subscription_plan:read
+      - ap:api_key:read
+      - dp:application:manage
+      - dp:application_key:manage
+      - dp:application_key:revoke
+      - dp:subscription:manage
+      - dp:api_key:manage
+      - dp:mcp_server_key:manage
+      - dp:organization:read
+      - dp:organization_content:read
+      - dp:api:read
+      - dp:mcp_server:read
+      - dp:mcp_server_content:read
+      - dp:subscription_plan:read
+      - dp:view:read
+      - dp:label:read
+      - dp:event:read
   # Platform operator / CI-CD service account — runs gateways, deployments,
   # subscription plans, key managers and webhooks; reads everything else.
   - name: ap_operator

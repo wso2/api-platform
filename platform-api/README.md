@@ -348,7 +348,7 @@ key silently ignored.
 #### Role-Based Access Control (RBAC)
 
 Per-route scope checks are enforced when `platform_api.auth.authorization.enabled = true`. The
-shipped [`resources/role-to-scope-mapping.yaml`](resources/role-to-scope-mapping.yaml) defines five roles, each granting scopes in
+shipped [`resources/role-to-scope-mapping.yaml`](resources/role-to-scope-mapping.yaml) defines six roles, each granting scopes in
 both the `ap:*` (Platform API) and `dp:*` (Developer Portal) namespaces — one role covers a persona
 across both components:
 
@@ -357,6 +357,7 @@ across both components:
 | `ap_admin` | Platform administrator | Every resource and operation, both components |
 | `ap_operator` | Platform operator / CI-CD service account | Gateways, deployments, subscription plans, key managers, webhooks; reads everything else |
 | `ap_publisher` | API publisher | Full API/MCP/LLM lifecycle and its Developer Portal content; reads applications, subscriptions, plans |
+| `ap_developer` | API developer | Creates, updates and deploys APIs/proxies in an existing project and calls them through its own application and keys; deletes nothing, publishes no portal content |
 | `ap_subscriber` | API consumer | Own applications, subscriptions and keys; reads the API/MCP catalog and plans |
 | `ap_viewer` | Auditor | Read-only across both components |
 
@@ -410,7 +411,7 @@ roles         = ["ap_admin"]               # expanded via auth.authorization.rol
 ```
 
 `roles` is a list, so a user whose persona spans two shipped roles names both rather than needing a
-sixth role defined for the combination — `roles = ["ap_publisher", "ap_subscriber"]` grants the union
+seventh role defined for the combination — `roles = ["ap_publisher", "ap_subscriber"]` grants the union
 of the two, most-permissive wins, with duplicate scopes collapsed.
 
 The issued token carries **both**: the expanded scopes as the `scope` claim, and the role names as the
