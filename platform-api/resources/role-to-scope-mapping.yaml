@@ -104,6 +104,44 @@ roles:
       - dp:webhook_subscriber:manage
       - dp:event:read
 
+  # API developer — builds APIs, MCP proxies and LLM proxies in an existing
+  # project and calls them through its own application; owns the APIs and
+  # proxies it creates but cannot delete projects or secrets.
+  - name: ap_developer
+    scopes:
+      # Platform API
+      - ap:organization:read
+      - ap:project:read
+      - ap:rest_api:manage
+      - ap:mcp_proxy:manage
+      - ap:llm_proxy:manage
+      - ap:llm_provider:read
+      - ap:llm_template:read
+      - ap:gateway:read
+      - ap:gateway:manifest:read
+      - ap:gateway_custom_policy:read
+      - ap:secret:create
+      - ap:secret:read
+      - ap:secret:update
+      - ap:application:manage
+      - ap:subscription:manage
+      - ap:subscription_plan:read
+      - ap:api_key:read
+      - dp:application:manage
+      - dp:application_key:manage
+      - dp:application_key:revoke
+      - dp:subscription:manage
+      - dp:api_key:manage
+      - dp:mcp_server_key:manage
+      - dp:organization:read
+      - dp:organization_content:read
+      - dp:api:read
+      - dp:mcp_server:read
+      - dp:mcp_server_content:read
+      - dp:subscription_plan:read
+      - dp:view:read
+      - dp:label:read
+      - dp:event:read
   # Platform operator / CI-CD service account — runs gateways, deployments,
   # subscription plans, key managers and webhooks; reads everything else.
   - name: ap_operator
