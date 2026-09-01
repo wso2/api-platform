@@ -26,6 +26,7 @@ import (
 	"time"
 
 	"github.com/andybalholm/brotli"
+	"github.com/klauspost/compress/zstd"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -503,4 +504,112 @@ func TestStreamDecompressor_BombChunkAcrossFeeds_ReturnsError(t *testing.T) {
 	}
 
 	require.ErrorIs(t, err, ErrDecompressedTooLarge)
+}
+
+// =============================================================================
+// zstd window-size guard tests
+// =============================================================================
+
+// zstdWindowLimit is the decompression ceiling used by the window-guard tests,
+// and zstdOversizedWindow the window a hostile frame declares. The payload sits
+// comfortably under the ceiling so a failure can only come from the window
+// check, never from the output-side guard.
+const (
+	zstdWindowLimit     int64 = 256 * 1024
+	zstdOversizedWindow       = 1024 * 1024
+	zstdPayloadBytes          = 200 * 1024
+)
+
+// zstdCompressWithWindow is a test helper producing a zstd frame whose header
+// declares the given window size. The payload must exceed one block for the
+// encoder to take its streaming path; a smaller one is emitted as a
+// single-segment frame that declares no window at all.
+func zstdCompressWithWindow(t *testing.T, data []byte, window int) []byte {
+	t.Helper()
+	var buf bytes.Buffer
+	w, err := zstd.NewWriter(&buf,
+		zstd.WithWindowSize(window),
+		zstd.WithEncoderConcurrency(1),
+	)
+	require.NoError(t, err)
+	_, err = w.Write(data)
+	require.NoError(t, err)
+	require.NoError(t, w.Close())
+	return buf.Bytes()
+}
+
+// zstdWindowTestPayload is a compressible payload larger than one zstd block, so
+// the frame carries an explicit window declaration.
+func zstdWindowTestPayload() []byte {
+	data := make([]byte, zstdPayloadBytes)
+	for i := range data {
+		data[i] = byte(i % 7)
+	}
+	return data
+}
+
+// TestDecompressBody_Zstd_WindowExceedsLimit_ReturnsError verifies the declared
+// window is checked against the ceiling before the decoder allocates a buffer
+// for it. The payload decompresses to well under the ceiling, so the
+// output-side guard would never fire — only the window check can reject this.
+func TestDecompressBody_Zstd_WindowExceedsLimit_ReturnsError(t *testing.T) {
+	compressed := zstdCompressWithWindow(t, zstdWindowTestPayload(), zstdOversizedWindow)
+
+	_, err := decompressBody(compressed, "zstd", zstdWindowLimit)
+
+	require.Error(t, err)
+	assert.ErrorIs(t, err, zstd.ErrWindowSizeExceeded)
+}
+
+// TestDecompressBody_Zstd_WindowWithinLimit_Succeeds is the negative control:
+// the same ceiling accepts a frame whose window fits inside it.
+func TestDecompressBody_Zstd_WindowWithinLimit_Succeeds(t *testing.T) {
+	original := zstdWindowTestPayload()
+	compressed := zstdCompressWithWindow(t, original, int(zstdWindowLimit))
+
+	result, err := decompressBody(compressed, "zstd", zstdWindowLimit)
+
+	require.NoError(t, err)
+	assert.Equal(t, original, result)
+}
+
+// TestDecompressBody_Zstd_UnboundedLimit_AllowsLargeWindow verifies maxBytes <= 0
+// leaves the library default in place rather than pinning a ceiling of its own.
+func TestDecompressBody_Zstd_UnboundedLimit_AllowsLargeWindow(t *testing.T) {
+	original := zstdWindowTestPayload()
+	compressed := zstdCompressWithWindow(t, original, zstdOversizedWindow)
+
+	result, err := decompressBody(compressed, "zstd", 0)
+
+	require.NoError(t, err)
+	assert.Equal(t, original, result)
+}
+
+// TestStreamDecompressor_Zstd_WindowExceedsLimit_ReturnsError covers the same
+// guard on the streaming decoder, whose zstd reader is constructed separately.
+func TestStreamDecompressor_Zstd_WindowExceedsLimit_ReturnsError(t *testing.T) {
+	compressed := zstdCompressWithWindow(t, zstdWindowTestPayload(), zstdOversizedWindow)
+
+	sd := newStreamDecompressor("zstd", zstdWindowLimit)
+	defer sd.Close()
+
+	_, err := sd.FeedChunk(compressed, true)
+
+	require.Error(t, err)
+	assert.ErrorIs(t, err, zstd.ErrWindowSizeExceeded)
+}
+
+// TestStreamDecompressor_Zstd_WindowWithinLimit_Succeeds is the streaming
+// negative control.
+func TestStreamDecompressor_Zstd_WindowWithinLimit_Succeeds(t *testing.T) {
+	original := zstdWindowTestPayload()
+	compressed := zstdCompressWithWindow(t, original, int(zstdWindowLimit))
+
+	sd := newStreamDecompressor("zstd", zstdWindowLimit)
+	defer sd.Close()
+
+	out, err := sd.FeedChunk(compressed, true)
+
+	require.NoError(t, err)
+	assert.Equal(t, original, out)
 }

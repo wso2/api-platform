@@ -98,6 +98,27 @@ func resolveDeflateVariant(body []byte) string {
 	return encodingDeflateRaw
 }
 
+// zstdDecoderOptions builds the zstd decoder options for a body ceiling of
+// maxBytes. WithDecoderMaxMemory doubles as the window-size ceiling for
+// streaming decodes, so a frame *declaring* a window larger than the ceiling is
+// rejected before the decoder allocates a buffer for it — readLimited alone
+// only catches a bomb after that allocation has already happened. maxBytes <= 0
+// means unbounded, leaving the library default in place. A ceiling below
+// zstd.MinWindowSize is raised to it: every conformant frame declares at least a
+// 1 KiB window, so a lower cap would reject all zstd bodies rather than just
+// hostile ones.
+func zstdDecoderOptions(maxBytes int64) []zstd.DOption {
+	opts := []zstd.DOption{zstd.WithDecoderConcurrency(zstdDecoderConcurrency)}
+	if maxBytes > 0 {
+		maxMemory := uint64(maxBytes)
+		if maxMemory < zstd.MinWindowSize {
+			maxMemory = zstd.MinWindowSize
+		}
+		opts = append(opts, zstd.WithDecoderMaxMemory(maxMemory))
+	}
+	return opts
+}
+
 // ErrDecompressedTooLarge is returned when decompressed output exceeds the
 // configured ceiling — the signature of a decompression bomb.
 var ErrDecompressedTooLarge = errors.New("decompressed body exceeds maximum allowed size")
@@ -122,7 +143,7 @@ func decompressBody(body []byte, encoding string, maxBytes int64) ([]byte, error
 		r := brotli.NewReader(bytes.NewReader(body))
 		return readLimited(r, maxBytes)
 	case encodingZstd:
-		r, err := zstd.NewReader(bytes.NewReader(body), zstd.WithDecoderConcurrency(zstdDecoderConcurrency))
+		r, err := zstd.NewReader(bytes.NewReader(body), zstdDecoderOptions(maxBytes)...)
 		if err != nil {
 			return nil, fmt.Errorf("zstd reader: %w", err)
 		}
@@ -290,7 +311,7 @@ func newStreamDecompressor(encoding string, maxBytes int64) *streamDecompressor 
 		case encodingBr:
 			r = brotli.NewReader(input)
 		case encodingZstd:
-			zr, err := zstd.NewReader(input, zstd.WithDecoderConcurrency(zstdDecoderConcurrency))
+			zr, err := zstd.NewReader(input, zstdDecoderOptions(maxBytes)...)
 			if err != nil {
 				select {
 				case errChan <- fmt.Errorf("zstd.NewReader: %w", err):
