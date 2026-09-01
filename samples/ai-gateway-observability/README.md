@@ -7,29 +7,40 @@ dashboard showing request rate, latency and errors per proxy, plus a complete tr
 any single request through the gateway. No API key, no cloud account, nothing to
 configure by hand.
 
-The point: once a gateway sits between your applications and an LLM provider, you can
-operate that traffic the same way you operate everything else, with standard
-Prometheus metrics and OpenTelemetry traces that plug into whatever stack you already
-run.
-
 ## Prerequisites
 
 - Docker with the Compose plugin
 - `curl` (or `wget`), `unzip`, `jq` and `openssl`
-- Roughly 2 GB of free memory for the containers
 
 On Windows, run these from a WSL2 shell with Docker Desktop's WSL integration enabled.
-
-The gateway's own `scripts/setup.sh` bcrypts the admin password using `htpasswd` when
-it is installed, and falls back to a throwaway `httpd` container otherwise, so Docker
-alone is enough.
 
 ## Getting started
 
 ```bash
-./setup.sh     # downloads the gateway, starts everything, registers the proxies
-./load.sh      # ~1 minute of mixed traffic
+./setup.sh
 ```
+
+1. Downloads and extracts the AI Gateway distribution.
+2. Enables the Prometheus endpoints and tracing, and provisions the Grafana dashboard.
+3. Starts a WireMock container standing in for the OpenAI API.
+4. Starts the gateway together with Prometheus, Grafana, Jaeger and the OTel collector.
+5. Waits for the gateway to report healthy, then puts the mock on its network.
+6. Registers two proxies, `assistant-proxy` and `support-proxy`, each with an inbound
+   API key. Only the provider behind `support-proxy` has a token budget.
+
+Credentials, certificates and the environment file the stack needs are generated in
+step 4, so there is nothing to configure beforehand.
+
+```bash
+./load.sh
+```
+
+1. Checks the gateway is running, and stops if it is not.
+2. Sends a request every 0.25 seconds for 60 seconds, alternating between the two
+   proxies. Pass a different duration as `./load.sh 120`.
+3. Cycles through a fixed pattern every ten requests: one answered slowly, one failing
+   upstream, one with an invalid key, and seven ordinary ones. The same every run.
+4. Counts every response by status code and prints the totals.
 
 Then open the two URLs the scripts print:
 
@@ -40,30 +51,27 @@ Then open the two URLs the scripts print:
 
 ## What to look for
 
-**In Grafana**, the dashboard opens on the AI Gateway Overview. Four tiles across the
-top carry the peaks over the window (requests/sec, worst p95 end-to-end, gateway
-faults/sec, policy rejections/sec), and six charts break them down:
+**In Grafana**, the dashboard opens on the AI Gateway Overview: four tiles showing peak
+values, and six charts.
 
-- *Request rate per proxy*: two lines, `assistant-proxy` and `support-proxy`.
-- *Gateway processing time per route*: p50 and p95 of the time the policy engine itself
-  spent on a request. This is the gateway's own overhead.
-- *End-to-end latency*: p50 and p95 of the full round trip, including the model. The gap
-  between this and the chart above is time spent waiting on the upstream.
-- *Responses by status class*: 2xx alongside the 4xx and 5xx that `load.sh` mixes in.
-- *Policy rejections by policy*: `api-key-auth` rejecting bad keys throughout, and
-  `token-based-ratelimit` appearing part-way through the run when the support proxy
-  spends its token budget.
-- *Upstream failures*: 5xx responses coming back from the model backend.
+- *Request rate per proxy*: how much traffic each proxy is handling.
+- *Gateway processing time per route*: how long the gateway itself takes, as a typical
+  time (p50) and a slow-tail time (p95).
+- *End-to-end latency*: how long the whole call takes, including the model.
+- *Responses by status class*: how many requests succeeded (2xx) against how many were
+  rejected (4xx) or failed (5xx).
+- *Policy rejections by policy*: requests the gateway blocked, and which rule blocked
+  them. Bad keys throughout, the token budget from part-way through the run.
+- *Upstream failures*: requests the model backend itself failed.
 
-**In Jaeger**, open a trace and you get one request's journey as a waterfall. The charts
-above give these times in aggregate; a trace gives them for a single call, which is what
-you want when one request was slow and you need to know where the time went.
+**In Jaeger**, open a trace to see one request broken into its steps. The charts show
+totals across all traffic; a trace shows where a single slow request lost its time.
 
 ## Verify from the terminal
 
-`test.sh` proves the pipeline rather than describing it: the metrics endpoints respond,
-Prometheus is scraping all three of them, the metrics carry the per-proxy labels the
-dashboard groups by, Grafana loaded the dashboard, and Jaeger stored traces.
+`test.sh` checks the pipeline end to end: the metrics endpoints respond, Prometheus is
+scraping all three of them, both proxies report per-proxy metrics, Grafana loaded the
+dashboard, and Jaeger stored traces.
 
 ```bash
 ./test.sh
@@ -72,6 +80,12 @@ dashboard groups by, Grafana loaded the dashboard, and Jaeger stored traces.
 Expected output:
 
 ```
+══════════════════════════════════════════════════
+ Pre-flight checks
+══════════════════════════════════════════════════
+[INFO] Checking gateway health at http://localhost:9094/health ...
+[PASS] Gateway is healthy.
+
 ══════════════════════════════════════════════════
  Test 1: Metrics endpoints respond
 ══════════════════════════════════════════════════
@@ -84,17 +98,21 @@ Expected output:
 
 ## How it works
 
-- **Metrics**: the gateway exposes Prometheus endpoints; Prometheus scrapes them every
-  15 seconds and Grafana charts them. They answer how much traffic, how fast, how often
-  broken. Token usage is not among them; that goes to analytics (Moesif), not metrics.
-- **Traces**: the gateway exports OpenTelemetry spans to Jaeger. They answer where a
-  single request spent its time.
+```
+  ./load.sh ──► Gateway :8080 ──► mock LLM (WireMock)
+                     │
+        ┌────────────┴────────────┐
+        │                         │
+   Prometheus scrapes        gateway pushes
+   metrics every 15s         traces (OpenTelemetry)
+        │                         │
+        ▼                         ▼
+   Grafana :3000             Jaeger :16686
+```
 
-Both ship with the gateway; `setup.sh` switches them on, so there is nothing to
-configure by hand.
-
-The two proxies differ only in a token budget on `/support`. That is what makes the
-per-proxy panels worth watching: one keeps serving while the other starts returning 429.
+- **Metrics** answer how much traffic, how fast, and how often broken. Token usage is
+  not among them; that goes to analytics (Moesif), not metrics.
+- **Traces** answer where a single request spent its time.
 
 ## What's running
 
@@ -130,5 +148,5 @@ of `setup.sh` and `load.sh`. Override any of them before running.
 ./teardown.sh --clean    # also remove the extracted distribution and the zip
 ```
 
-Use `--clean` before a fresh run if you want to be certain the config edits above are
-reapplied to a pristine distribution.
+`--clean` makes the next `./setup.sh` download and set up the gateway from scratch,
+instead of reusing the copy already on disk.

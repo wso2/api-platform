@@ -15,8 +15,9 @@ JAEGER_URL="${JAEGER_URL:-http://localhost:16686}"
 GRAFANA_URL="${GRAFANA_URL:-http://localhost:3000}"
 GRAFANA_AUTH="${GRAFANA_AUTH:-admin:admin}"
 
-# Proxy names from llm-proxy-assistant.yaml and llm-proxy-support.yaml.
-EXPECTED_PROXIES=("assistant-proxy" "support-proxy")
+# The api_name label carries spec.displayName from llm-proxy-assistant.yaml and
+# llm-proxy-support.yaml, not metadata.name.
+EXPECTED_PROXIES=("Assistant Proxy" "Support Proxy")
 
 GREEN="\033[0;32m"; RED="\033[0;31m"; BLUE="\033[0;34m"; NC="\033[0m"
 pass() { printf '%b[PASS]%b %s\n' "${GREEN}" "${NC}" "$*"; }
