@@ -4,8 +4,8 @@ This sample runs the WSO2 AI Gateway with its full observability stack switched 
 (Prometheus, Grafana, an OpenTelemetry collector and Jaeger), pointed at two LLM
 proxies backed by a mock model. Generate a minute of traffic, and you get a live
 dashboard showing request rate, latency and errors per proxy, plus a complete trace of
-any single request through the gateway. No API key, no cloud account, nothing to
-configure by hand.
+any single request through the gateway. No OpenAI API key, no cloud account, nothing
+to configure by hand.
 
 ## Prerequisites
 
@@ -135,8 +135,10 @@ curl -X POST http://localhost:8080/assistant/chat/completions \
   -d '{"model":"gpt-4o-mini","messages":[{"role":"user","content":"hello"}]}'
 ```
 
-Watch it land on the dashboard, then find its trace in Jaeger. The support proxy is at
-`/support/chat/completions` with `demo-support-key`.
+`demo-assistant-key` is the inbound key `setup.sh` registered on the proxy; the gateway
+rejects requests without it. Watch the request land on the dashboard, then find its
+trace in Jaeger. The support proxy is at `/support/chat/completions` with
+`demo-support-key`.
 
 Ports, credentials, keys and traffic duration are all environment variables at the top
 of `setup.sh` and `load.sh`. Override any of them before running.
