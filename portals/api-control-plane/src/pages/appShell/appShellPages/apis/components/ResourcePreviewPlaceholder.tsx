@@ -116,17 +116,18 @@ export const ResourcePreviewPlaceholder = ({
       data-testid={testId}
       sx={(theme) => ({
         alignItems: 'center',
-        // A wash of the same three families the method chips use, so the
-        // surface belongs to the listing sitting on it. Every stop derives from
-        // a palette token, so it re-tints itself in dark mode instead of
-        // staying a pale smudge.
+        // A faint wash of the same families the method chips use, so the
+        // surface belongs to the listing sitting on it. The two paper stops
+        // hold the middle flat, so the tints read as a hint at the edges rather
+        // than a visible top-to-bottom ramp. Every stop derives from a palette
+        // token, so it re-tints itself in dark mode instead of staying a pale
+        // smudge.
         backgroundImage: `linear-gradient(180deg, ${alpha(
           theme.palette.success.light,
-          0.1,
-        )} 0%, ${theme.palette.background.paper} 52%, ${alpha(
-          theme.palette.info.light,
-          0.12,
-        )} 100%)`,
+          0.05,
+        )} 0%, ${theme.palette.background.paper} 38%, ${
+          theme.palette.background.paper
+        } 66%, ${alpha(theme.palette.info.light, 0.06)} 100%)`,
         border: hairline(theme),
         borderColor: 'divider',
         borderRadius: 2,

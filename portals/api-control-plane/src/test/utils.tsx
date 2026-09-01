@@ -24,18 +24,10 @@ import userEvent from '@testing-library/user-event';
 import { IntlProvider, ReactIntlErrorCode } from 'react-intl';
 import { MemoryRouter } from 'react-router-dom';
 
-import {
-  ApiClientProvider,
-  realApiClient,
-  type ApiClient,
-} from '../api/ApiClientProvider';
 import { NotificationProvider } from '../components/Notifications';
 import { AuthStateContext } from '../contexts/auth/AuthStateContext';
 import type { AuthState } from '../contexts/auth/authTypes';
-import {
-  ConsoleScopeContext,
-  type ConsoleScope,
-} from '../scope/ConsoleScopeProvider';
+import { ConsoleScopeContext, type ConsoleScope } from '@/scope/ConsoleScopeProvider';
 import { DISPLAY_TIME_ZONE, INTL_FORMATS } from '../i18n/formats';
 import { makeAuthState } from './mockAuthState';
 
@@ -45,9 +37,7 @@ import { makeAuthState } from './mockAuthState';
  */
 const TEST_LOCALE = 'en';
 
-const handleTestIntlError: NonNullable<
-  ComponentProps<typeof IntlProvider>['onError']
-> = (err) => {
+const handleTestIntlError: NonNullable<ComponentProps<typeof IntlProvider>['onError']> = (err) => {
   // Lookups intentionally miss; only invalid placeholders/config should fail.
   if (err.code === ReactIntlErrorCode.MISSING_TRANSLATION) return;
   console.error(err);
@@ -74,11 +64,6 @@ export type RenderWithProvidersOptions = Omit<RenderOptions, 'wrapper'> & {
   scope?: ConsoleScope;
   /** Reuse a specific QueryClient (default: fresh per render). */
   queryClient?: QueryClient;
-  /**
-   * Override API client functions (merged over the real client) so a test can
-   * stub specific calls without `vi.mock`. Omit to use the real client.
-   */
-  apiClient?: Partial<ApiClient>;
 };
 
 /**
@@ -93,13 +78,9 @@ export function renderWithProviders(
     authState = makeAuthState(),
     scope,
     queryClient = makeTestQueryClient(),
-    apiClient,
     ...renderOptions
-  }: RenderWithProvidersOptions = {}
+  }: RenderWithProvidersOptions = {},
 ) {
-  const mergedApiClient: ApiClient = apiClient
-    ? { ...realApiClient, ...apiClient }
-    : realApiClient;
   const Wrapper = ({ children }: { children: ReactNode }) => (
     <IntlProvider
       locale={TEST_LOCALE}
@@ -110,17 +91,15 @@ export function renderWithProviders(
       onError={handleTestIntlError}
     >
       <OxygenUIThemeProvider theme={WSO2Theme}>
-        <ApiClientProvider value={mergedApiClient}>
-          <QueryClientProvider client={queryClient}>
-            <MemoryRouter initialEntries={routerEntries ?? [route]}>
-              <AuthStateContext.Provider value={authState}>
-                <ScopeWrapper scope={scope}>
-                  <NotificationProvider>{children}</NotificationProvider>
-                </ScopeWrapper>
-              </AuthStateContext.Provider>
-            </MemoryRouter>
-          </QueryClientProvider>
-        </ApiClientProvider>
+        <QueryClientProvider client={queryClient}>
+          <MemoryRouter initialEntries={routerEntries ?? [route]}>
+            <AuthStateContext.Provider value={authState}>
+              <ScopeWrapper scope={scope}>
+                <NotificationProvider>{children}</NotificationProvider>
+              </ScopeWrapper>
+            </AuthStateContext.Provider>
+          </MemoryRouter>
+        </QueryClientProvider>
       </OxygenUIThemeProvider>
     </IntlProvider>
   );
@@ -132,19 +111,9 @@ export function renderWithProviders(
   };
 }
 
-function ScopeWrapper({
-  scope,
-  children,
-}: {
-  scope?: ConsoleScope;
-  children: ReactNode;
-}) {
+function ScopeWrapper({ scope, children }: { scope?: ConsoleScope; children: ReactNode }) {
   if (!scope) return <>{children}</>;
-  return (
-    <ConsoleScopeContext.Provider value={scope}>
-      {children}
-    </ConsoleScopeContext.Provider>
-  );
+  return <ConsoleScopeContext.Provider value={scope}>{children}</ConsoleScopeContext.Provider>;
 }
 
 // Re-export RTL so tests import everything from one place.

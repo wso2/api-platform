@@ -16,20 +16,18 @@
  * under the License.
  */
 
-import { getApiCapabilities } from '../pages/appShell/appShellPages/apis/utils/apiCapabilities';
-import { organizations, projects } from '../api/mocks/data';
-import type { ConsoleScope } from '../scope/ConsoleScopeProvider';
+import { getApiCapabilities } from '@/pages/appShell/appShellPages/apis/utils/apiCapabilities';
+import type { ConsoleScope } from '@/scope/ConsoleScopeProvider';
+import { anOrganization, aProject, manyProjects } from './msw';
 
 /**
  * Builds a `ConsoleScope` for tests, seeded from the mock fixtures. Inject via
  * `ConsoleScopeContext.Provider` (see `renderWithProviders`) so pages that call
  * `useConsoleScope()` render without mounting the real provider.
  */
-export function makeConsoleScope(
-  overrides: Partial<ConsoleScope> = {}
-): ConsoleScope {
-  const organization = overrides.organization ?? organizations[0];
-  const project = overrides.project ?? projects[0];
+export function makeConsoleScope(overrides: Partial<ConsoleScope> = {}): ConsoleScope {
+  const organization = overrides.organization ?? anOrganization();
+  const project = overrides.project ?? aProject();
   const component = overrides.component;
   const params = {
     orgHandle: organization?.id,
@@ -51,10 +49,10 @@ export function makeConsoleScope(
     isOrganizationScope: Boolean(organization),
     isProjectScope: Boolean(project),
     organization,
-    organizations: overrides.organizations ?? organizations,
+    organizations: overrides.organizations ?? [anOrganization()],
     params,
     project,
-    projects: overrides.projects ?? projects,
+    projects: overrides.projects ?? manyProjects(2),
     projectsError: undefined,
     ...overrides,
   };

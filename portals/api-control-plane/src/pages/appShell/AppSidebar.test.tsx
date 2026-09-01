@@ -19,15 +19,15 @@
 import { AppShell } from '@wso2/oxygen-ui';
 import { describe, expect, it } from 'vitest';
 
-import type { RestApi } from '../../api/resources/restApis';
-import { organizations, projects } from '../../api/mocks/data';
-import { routes } from '../../routes/paths';
-import { makeConsoleScope } from '../../test/mockScope';
-import { renderWithProviders, screen } from '../../test/utils';
+import type { RestApi } from '@/api/resources/restApis';
+import { routes } from '@/routes/paths';
+import { makeConsoleScope } from '@/test/mockScope';
+import { renderWithProviders, screen } from '@/test/utils';
 import { AppSidebar } from './AppSidebar';
+import { anOrganization, aProject } from '@/test/msw/fixtures';
 
-const ORG = organizations[0].id;
-const PROJECT = projects[0].id;
+const ORG = anOrganization().id;
+const PROJECT = aProject().id;
 const API = 'api-1';
 
 // Lowercase transports, exactly as the API sends them: an upper-case-only
@@ -61,7 +61,7 @@ const renderSidebar = (route: string, isApiScope: boolean) =>
         // params above, never from the loaded project object.
         project: undefined,
       }),
-    }
+    },
   );
 
 /*
@@ -89,10 +89,7 @@ describe('AppSidebar submenus', () => {
     renderSidebar(routes.organizationHome(ORG), false);
 
     const link = screen.getByRole('button', { name: /^Test$/ }).closest('a');
-    expect(link).toHaveAttribute(
-      'href',
-      routes.apiTestConsole(ORG, null, null)
-    );
+    expect(link).toHaveAttribute('href', routes.apiTestConsole(ORG, null, null));
     // Nothing to disclose, so no submenu entries and no chevron state.
     expect(screen.queryByText('API Console')).not.toBeInTheDocument();
   });
@@ -110,9 +107,10 @@ describe('AppSidebar submenus', () => {
   it('auto-opens the submenu holding the active page', () => {
     renderSidebar(routes.apiObservabilityLogs(ORG, PROJECT, API), true);
 
-    expect(
-      screen.getByRole('button', { name: /^Observability$/ })
-    ).toHaveAttribute('aria-expanded', 'true');
+    expect(screen.getByRole('button', { name: /^Observability$/ })).toHaveAttribute(
+      'aria-expanded',
+      'true',
+    );
     expect(screen.getByText('Logs')).toBeInTheDocument();
   });
 });

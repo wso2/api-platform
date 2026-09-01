@@ -1612,6 +1612,24 @@
     "defaultMessage": "Unauthorized",
     "description": "Page heading shown when the signed-in account may not use this console."
   },
+  "apiControlPlane.pages.appShell.appShellPages.test.TestPage.apiNotFound": {
+    "defaultMessage": "API not found"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.test.TestPage.loading": {
+    "defaultMessage": "Loading test console",
+    "description": "Shown while the API the curl command is built from is being fetched."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.test.TestPage.scopePrompt": {
+    "defaultMessage": "The curl console runs against a single API.",
+    "description": "Explains why an API must be picked before this page can render."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.test.TestPage.subtitle": {
+    "defaultMessage": "Use the following curl command to test the API."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.test.TestPage.title": {
+    "defaultMessage": "Test {apiName}",
+    "description": "Page heading. {apiName} is the API display name, user-supplied; do not translate it."
+  },
   "apiListPage.count": {
     "defaultMessage": "{count, plural, one {# API} other {# APIs}}",
     "description": "Heading above the listing, counting every match, not the page."
@@ -1807,12 +1825,6 @@
   },
   "appShell.runtimeLogsPage.subHeader": {
     "defaultMessage": "Runtime logs for {apiHandler}."
-  },
-  "appShell.testPage.header": {
-    "defaultMessage": "Test {apiName}"
-  },
-  "appShell.testPage.subHeader": {
-    "defaultMessage": "Use the following curl command to test the API."
   },
   "components.comingSoon.body": {
     "defaultMessage": "{feature} will be available soon."

@@ -20,23 +20,23 @@ import type { ReactNode } from 'react';
 import { MemoryRouter } from 'react-router-dom';
 import { describe, expect, it } from 'vitest';
 
-import type { RestApi } from '../api/resources/restApis';
+import type { RestApi } from '@/api/resources/restApis';
 import {
   ExtensionsProvider,
   type ApiControlPlaneExtension,
 } from '../extensions';
-import { organizations, projects } from '../api/mocks/data';
-import { routes } from '../routes/paths';
+import { routes } from '@/routes/paths';
 import {
   ConsoleScopeContext,
   type ConsoleScope,
 } from '../scope/ConsoleScopeContext';
-import { makeConsoleScope } from '../test/mockScope';
-import { renderHook } from '../test/utils';
+import { makeConsoleScope } from '@/test/mockScope';
+import { renderHook } from '@/test/utils';
 import { useNavigationItems } from './useNavigationItems';
+import { anOrganization, aProject } from '@/test/msw/fixtures';
 
-const ORG = organizations[0].id;
-const PROJECT = projects[0].id;
+const ORG = anOrganization().id;
+const PROJECT = aProject().id;
 const API = 'api-1';
 
 // A REST API that supports every capability the API-level items gate on, so a
