@@ -188,6 +188,9 @@ const InsightsEmbed: FC<InsightsEmbedProps> = ({ scope }) => {
   useEffect(() => {
     const handleMessage = (event: MessageEvent) => {
       if (event.origin !== embeddingOrigin) return;
+      const iframeWindow = iframeRef.current?.contentWindow;
+      if (!iframeWindow || event.source !== iframeWindow) return;
+
       switch (event.data?.type) {
         case MOESIF_EMBEDDED_POST_MESSAGE_TYPES.SCHEMA_GEN_FINISHED:
         case MOESIF_EMBEDDED_POST_MESSAGE_TYPES.ORG_LOAD_FINISHED:

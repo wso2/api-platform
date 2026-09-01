@@ -23,6 +23,7 @@ import {
   buildBasicProjectIframeSrc,
   resolveInsightsScopeLevel,
   resolveMoesifEmbeddingOrigin,
+  resolveTrustedMoesifAppUrl,
 } from './moesifEmbed';
 
 describe('moesifEmbed helpers', () => {
@@ -58,6 +59,33 @@ describe('moesifEmbed helpers', () => {
     expect(
       resolveMoesifEmbeddingOrigin('https://web-dev.moesif.com')
     ).toBe('https://web-dev.moesif.com');
+  });
+
+  it('rejects untrusted moesif hosts and falls back', () => {
+    expect(
+      resolveTrustedMoesifAppUrl(
+        'https://evil.example.com',
+        'https://web-dev.moesif.com'
+      )
+    ).toBe('https://web-dev.moesif.com');
+  });
+
+  it('rejects non-https moesif hosts', () => {
+    expect(
+      resolveTrustedMoesifAppUrl(
+        'http://www.moesif.com',
+        'https://www.moesif.com'
+      )
+    ).toBe('https://www.moesif.com');
+  });
+
+  it('accepts allowlisted https moesif hosts', () => {
+    expect(
+      resolveTrustedMoesifAppUrl(
+        'https://www.moesif.com/wrap',
+        'https://web-dev.moesif.com'
+      )
+    ).toBe('https://www.moesif.com');
   });
 });
 

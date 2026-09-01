@@ -47,7 +47,7 @@ const readJson = async <T>(response: Response): Promise<T> => {
       `Cloud analytics request failed (${response.status})`;
     if (response.status === 404) {
       throw new Error(
-        `${detail}. No Moesif org mapping exists for the authenticated organization — provision it in wso2cloud core (moesif_org_mappings).`
+        'Insights is not available for this organization. Contact your administrator if you believe this is an error.'
       );
     }
     throw new Error(detail);

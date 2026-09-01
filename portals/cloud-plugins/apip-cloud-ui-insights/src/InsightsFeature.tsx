@@ -52,15 +52,20 @@ const InsightsFeature: FC<InsightsFeatureProps> = ({
       projectHandle,
     });
 
-  const [projectId, setProjectId] = useState<string | null>(null);
-  const [projectName, setProjectName] = useState<string | null>(null);
-  const [scopeError, setScopeError] = useState<string | null>(null);
-  const [scopeLoading, setScopeLoading] = useState(scopeLevel === 'project');
-
   const scopeKey = useMemo(
     () => [orgHandle, projectHandle ?? '', scopeLevel].join('|'),
     [orgHandle, projectHandle, scopeLevel]
   );
+
+  const [projectId, setProjectId] = useState<string | null>(null);
+  const [projectName, setProjectName] = useState<string | null>(null);
+  const [scopeError, setScopeError] = useState<string | null>(null);
+  const [scopeLoading, setScopeLoading] = useState(scopeLevel === 'project');
+  const [resolvedScopeKey, setResolvedScopeKey] = useState<string | null>(() =>
+    scopeLevel === 'project' ? null : scopeKey
+  );
+
+  const isScopeReady = resolvedScopeKey === scopeKey;
 
   useEffect(() => {
     if (scopeLevel !== 'project') {
@@ -68,6 +73,7 @@ const InsightsFeature: FC<InsightsFeatureProps> = ({
       setScopeError(null);
       setProjectId(null);
       setProjectName(null);
+      setResolvedScopeKey(scopeKey);
       return;
     }
 
@@ -76,6 +82,7 @@ const InsightsFeature: FC<InsightsFeatureProps> = ({
     setScopeError(null);
     setProjectId(null);
     setProjectName(null);
+    setResolvedScopeKey(null);
 
     (async () => {
       try {
@@ -89,6 +96,7 @@ const InsightsFeature: FC<InsightsFeatureProps> = ({
         if (cancelled) return;
         setProjectId(project.projectId);
         setProjectName(project.projectName);
+        setResolvedScopeKey(scopeKey);
       } catch (err: unknown) {
         if (!cancelled) {
           setScopeError(err instanceof Error ? err.message : String(err));
@@ -112,14 +120,14 @@ const InsightsFeature: FC<InsightsFeatureProps> = ({
     );
   }
 
-  if (scopeLoading) {
-    return <LoadingState label="Preparing Insights" />;
-  }
-
   if (scopeError) {
     return (
       <ErrorState message={scopeError} title="Unable to load Insights" />
     );
+  }
+
+  if (scopeLoading || !isScopeReady) {
+    return <LoadingState label="Preparing Insights" />;
   }
 
   return (

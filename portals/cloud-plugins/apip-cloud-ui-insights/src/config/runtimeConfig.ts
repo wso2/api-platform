@@ -18,6 +18,8 @@
 
 /// <reference path="./vite-env.d.ts" />
 
+import { resolveTrustedMoesifAppUrl } from '../utils/moesifEmbed';
+
 export type InsightsRuntimeConfig = {
   /** Same-origin BFF proxy prefix, e.g. "/proxy". */
   platformApiBaseUrl: string;
@@ -57,6 +59,20 @@ const isProductionEnvironment = () => {
   return env === 'production' || env === 'stage';
 };
 
+const defaultMoesifAppUrl = () =>
+  isProductionEnvironment()
+    ? 'https://www.moesif.com'
+    : 'https://web-dev.moesif.com';
+
+const configuredMoesifAppUrl = () =>
+  fromWindow().MOESIF_APP_URL ||
+  fromWindow().MOESIF_BASIC_INSIGHTS_URL ||
+  fromWindow().moesifAppUrl ||
+  fromWindow().moesifBasicInsightsUrl ||
+  import.meta.env.VITE_MOESIF_APP_URL ||
+  import.meta.env.VITE_MOESIF_BASIC_INSIGHTS_URL ||
+  '';
+
 export const insightsRuntimeConfig: InsightsRuntimeConfig = {
   platformApiBaseUrl:
     fromWindow().PLATFORM_API_BASE_URL ||
@@ -68,16 +84,10 @@ export const insightsRuntimeConfig: InsightsRuntimeConfig = {
     fromWindow().platformApiVersion ||
     import.meta.env.VITE_PLATFORM_API_VERSION ||
     'v0.9',
-  moesifAppUrl:
-    fromWindow().MOESIF_APP_URL ||
-    fromWindow().MOESIF_BASIC_INSIGHTS_URL ||
-    fromWindow().moesifAppUrl ||
-    fromWindow().moesifBasicInsightsUrl ||
-    import.meta.env.VITE_MOESIF_APP_URL ||
-    import.meta.env.VITE_MOESIF_BASIC_INSIGHTS_URL ||
-    (isProductionEnvironment()
-      ? 'https://www.moesif.com'
-      : 'https://web-dev.moesif.com'),
+  moesifAppUrl: resolveTrustedMoesifAppUrl(
+    configuredMoesifAppUrl() || defaultMoesifAppUrl(),
+    defaultMoesifAppUrl()
+  ),
 };
 
 export const platformApiRoot = () => {

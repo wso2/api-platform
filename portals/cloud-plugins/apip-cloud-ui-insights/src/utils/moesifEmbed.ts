@@ -30,6 +30,34 @@ export const MOESIF_EMBEDDED_POST_MESSAGE_TYPES = {
 export const resolveMoesifEmbeddingOrigin = (moesifAppUrl: string): string =>
   new URL(moesifAppUrl).origin;
 
+/** Known Moesif wrap/basic hosts — reject misconfigured runtime URLs. */
+export const ALLOWED_MOESIF_ORIGINS = new Set([
+  'https://www.moesif.com',
+  'https://web-dev.moesif.com',
+]);
+
+/**
+ * Return a trusted Moesif app base URL (HTTPS + allowlisted origin).
+ * Falls back when runtime config points at an unexpected host.
+ */
+export const resolveTrustedMoesifAppUrl = (
+  configuredUrl: string,
+  fallbackUrl: string
+): string => {
+  const pick = (candidate: string) => {
+    try {
+      const parsed = new URL(candidate);
+      if (parsed.protocol !== 'https:') return undefined;
+      if (!ALLOWED_MOESIF_ORIGINS.has(parsed.origin)) return undefined;
+      return parsed.origin;
+    } catch {
+      return undefined;
+    }
+  };
+
+  return pick(configuredUrl) ?? pick(fallbackUrl) ?? 'https://web-dev.moesif.com';
+};
+
 /**
  * Org-level wrap/basic iframe.
  * Shape matches choreo-console: `{origin}/wrap/basic#auth=post`
