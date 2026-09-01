@@ -96,7 +96,13 @@ func TestExtractSecretHandle(t *testing.T) {
 func buildTestServer(t *testing.T, platformURL, jwt string) (*Server, *httptest.Server) {
 	t.Helper()
 
-	transport, err := proxy.NewTransport(proxy.TLSClientOptions{SkipVerify: true})
+	// MaxResponseBytes: -1 matches the shipped default (see config.defaultConfig) —
+	// the zero value would instead apply httpclient's own 10MiB cap, which these
+	// tests don't need.
+	transport, err := proxy.NewTransport(
+		config.HTTPClientConfig{Timeouts: config.HTTPClientTimeoutsConfig{MaxResponseBytes: -1}},
+		proxy.TLSClientOptions{SkipVerify: true},
+	)
 	if err != nil {
 		t.Fatalf("NewTransport: %v", err)
 	}
@@ -273,7 +279,13 @@ func TestHandleCreateWithSecretCompensation_Unauthenticated(t *testing.T) {
 		ControlPlane: config.ControlPlaneConfig{URL: platform.URL},
 		Cookie:       config.CookieConfig{Name: "_ai_workspace_session"},
 	}
-	transport, err := proxy.NewTransport(proxy.TLSClientOptions{SkipVerify: true})
+	// MaxResponseBytes: -1 matches the shipped default (see config.defaultConfig) —
+	// the zero value would instead apply httpclient's own 10MiB cap, which these
+	// tests don't need.
+	transport, err := proxy.NewTransport(
+		config.HTTPClientConfig{Timeouts: config.HTTPClientTimeoutsConfig{MaxResponseBytes: -1}},
+		proxy.TLSClientOptions{SkipVerify: true},
+	)
 	if err != nil {
 		t.Fatalf("NewTransport: %v", err)
 	}
