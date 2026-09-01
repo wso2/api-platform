@@ -16,55 +16,23 @@
  * under the License.
  */
 
-import { PageTitle } from '@wso2/oxygen-ui';
-import { defineMessages, FormattedMessage } from 'react-intl';
+import { FormattedMessage } from 'react-intl';
 
-import { ExternalToolPanel } from '@/components/common/ExternalToolPanel';
-import { runtimeConfig } from '@/config/runtime';
-
-const messages = defineMessages({
-  action: {
-    id: 'apiControlPlane.pages.appShell.appShellPages.insights.CompliancePage.action',
-    defaultMessage: 'Open Moesif Insights',
-    description:
-      'Button that opens the Moesif analytics console in a new tab. Moesif is a product name — leave it untranslated.',
-  },
-  panelDescription: {
-    id: 'apiControlPlane.pages.appShell.appShellPages.insights.CompliancePage.panelDescription',
-    defaultMessage:
-      'Review governance rules, specification conformance, and policy violations from your Moesif analytics workspace.',
-  },
-  panelTitle: {
-    id: 'apiControlPlane.pages.appShell.appShellPages.insights.CompliancePage.panelTitle',
-    defaultMessage: 'Your API compliance reporting lives in Moesif',
-  },
-  subHeader: {
-    id: 'apiControlPlane.pages.appShell.appShellPages.insights.CompliancePage.subHeader',
-    defaultMessage: 'Governance and compliance reporting.',
-  },
-  title: {
-    id: 'apiControlPlane.pages.appShell.appShellPages.insights.CompliancePage.title',
-    defaultMessage: 'Compliance',
-  },
-});
+import { ComingSoon } from '../../../../components/ComingSoon';
+import { routes } from '../../../../routes/paths';
+import { ScopeGate } from '../../../../scope/ScopeGate';
 
 export function CompliancePage() {
   return (
-    <>
-      <PageTitle>
-        <PageTitle.Header>
-          <FormattedMessage {...messages.title} />
-        </PageTitle.Header>
-        <PageTitle.SubHeader>
-          <FormattedMessage {...messages.subHeader} />
-        </PageTitle.SubHeader>
-      </PageTitle>
-      <ExternalToolPanel
-        actionLabel={<FormattedMessage {...messages.action} />}
-        description={<FormattedMessage {...messages.panelDescription} />}
-        href={runtimeConfig.moesifWebUrl}
-        title={<FormattedMessage {...messages.panelTitle} />}
+    <ScopeGate prompt="Compliance is assessed per API." requires="api" to={routes.apiInsightsCompliance}>
+      <ComingSoon
+        feature={
+          <FormattedMessage
+            id="appShell.compliancePage.feature"
+            defaultMessage="Compliance reporting for this API"
+          />
+        }
       />
-    </>
+    </ScopeGate>
   );
 }
