@@ -16,7 +16,7 @@
  * under the License.
  */
 
-import { defineMessages } from 'react-intl';
+import { defineMessages, useIntl } from 'react-intl';
 
 import { routes } from '@/routes/paths';
 import { ScopeGate } from '@/scope/ScopeGate';
@@ -33,17 +33,24 @@ const messages = defineMessages({
     defaultMessage: 'Policies attached to {apiName}',
     description: 'Sub-header under the section name; {apiName} is the API display name.',
   },
+  scopePrompt: {
+    id: 'apiControlPlane.pages.appShell.appShellPages.develop.policies.PoliciesPage.scopePrompt',
+    defaultMessage: 'Policies are attached to a single API.',
+    description: 'Explains why an API must be picked before this page can render.',
+  },
 });
 
 export function PoliciesPage() {
+  const intl = useIntl();
+
   return (
     <ScopeGate
-      prompt="Policies are attached to a single API."
+      prompt={intl.formatMessage(messages.scopePrompt)}
       requires="api"
       to={routes.apiDevelopPolicies}
     >
       <DevelopPageShell subtitle={messages.subtitle} title={messages.title}>
-        {(detail) => <PolicyPanel detail={detail} />}
+        {(api) => <PolicyPanel api={api} />}
       </DevelopPageShell>
     </ScopeGate>
   );

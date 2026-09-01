@@ -19,8 +19,47 @@
 import { Box, Button, Chip, IconButton, Stack, Tooltip, Typography } from '@wso2/oxygen-ui';
 import { GripVertical, Pencil, Plus, Shield, Trash2 } from '@wso2/oxygen-ui-icons-react';
 import { useState } from 'react';
+import { defineMessages, FormattedMessage, useIntl } from 'react-intl';
 
-import type { ApiPolicy } from '@/types/domain';
+import type { Policy } from '@/api/resources/restApis';
+
+const messages = defineMessages({
+  heading: {
+    id: 'apiControlPlane.pages.appShell.appShellPages.develop.policies.AttachedPolicyList.heading',
+    defaultMessage: 'Policies',
+    description: 'Heading over the list of policies attached at this scope. Noun.',
+  },
+  addPolicy: {
+    id: 'apiControlPlane.pages.appShell.appShellPages.develop.policies.AttachedPolicyList.addPolicy',
+    defaultMessage: 'Add Policy',
+    description: 'Button that attaches a policy from the catalog. Verb phrase.',
+  },
+  empty: {
+    id: 'apiControlPlane.pages.appShell.appShellPages.develop.policies.AttachedPolicyList.empty',
+    defaultMessage: 'No policies attached.',
+    description: 'Default placeholder when nothing is attached at this scope.',
+  },
+  edit: {
+    id: 'apiControlPlane.pages.appShell.appShellPages.develop.policies.AttachedPolicyList.edit',
+    defaultMessage: 'Edit',
+    description: 'Tooltip on the button that reconfigures an attached policy. Verb.',
+  },
+  editLabel: {
+    id: 'apiControlPlane.pages.appShell.appShellPages.develop.policies.AttachedPolicyList.editLabel',
+    defaultMessage: 'Edit policy',
+    description: 'Accessible label for the edit button on one attached policy.',
+  },
+  remove: {
+    id: 'apiControlPlane.pages.appShell.appShellPages.develop.policies.AttachedPolicyList.remove',
+    defaultMessage: 'Remove',
+    description: 'Tooltip on the button that detaches a policy. Verb.',
+  },
+  removeLabel: {
+    id: 'apiControlPlane.pages.appShell.appShellPages.develop.policies.AttachedPolicyList.removeLabel',
+    defaultMessage: 'Remove policy',
+    description: 'Accessible label for the remove button on one attached policy.',
+  },
+});
 
 /**
  * Renders a flat, ordered list of attached policies (the Hybrid-style policy
@@ -34,18 +73,23 @@ export function AttachedPolicyList({
   onEdit,
   onRemove,
   onReorder,
-  emptyText = 'No policies attached.',
+  emptyText,
 }: {
-  policies: ApiPolicy[];
+  policies: Policy[];
   canAdd: boolean;
   onAdd: () => void;
   onEdit: (index: number) => void;
   onRemove: (index: number) => void;
   onReorder: (from: number, to: number) => void;
+  /** Overrides the default placeholder; already-translated text. */
   emptyText?: string;
 }) {
+  const intl = useIntl();
   const [dragIndex, setDragIndex] = useState<number | null>(null);
   const [overIndex, setOverIndex] = useState<number | null>(null);
+  // Defaulted here rather than in the signature: a default parameter is
+  // evaluated before `useIntl` exists, so the fallback could not be translated.
+  const emptyLabel = emptyText ?? intl.formatMessage(messages.empty);
 
   return (
     <Box>
@@ -58,11 +102,11 @@ export function AttachedPolicyList({
         }}
       >
         <Typography sx={{ fontWeight: 600 }} variant="body2">
-          Policies
+          <FormattedMessage {...messages.heading} />
         </Typography>
         {canAdd && (
           <Button onClick={onAdd} size="small" startIcon={<Plus size={14} />} variant="outlined">
-            Add Policy
+            <FormattedMessage {...messages.addPolicy} />
           </Button>
         )}
       </Box>
@@ -77,7 +121,7 @@ export function AttachedPolicyList({
             py: 1.5,
           }}
         >
-          <Typography variant="body2">{emptyText}</Typography>
+          <Typography variant="body2">{emptyLabel}</Typography>
         </Box>
       ) : (
         <Stack spacing={0.75}>
@@ -136,18 +180,18 @@ export function AttachedPolicyList({
                 <Chip label={`v${policy.version}`} size="small" variant="outlined" />
                 {canAdd && (
                   <Stack direction="row">
-                    <Tooltip title="Edit">
+                    <Tooltip title={intl.formatMessage(messages.edit)}>
                       <IconButton
-                        aria-label="Edit policy"
+                        aria-label={intl.formatMessage(messages.editLabel)}
                         onClick={() => onEdit(index)}
                         size="small"
                       >
                         <Pencil size={14} />
                       </IconButton>
                     </Tooltip>
-                    <Tooltip title="Remove">
+                    <Tooltip title={intl.formatMessage(messages.remove)}>
                       <IconButton
-                        aria-label="Remove policy"
+                        aria-label={intl.formatMessage(messages.removeLabel)}
                         color="error"
                         onClick={() => onRemove(index)}
                         size="small"
@@ -176,7 +220,7 @@ export function AttachedPolicyList({
             textAlign: 'center',
           }}
         >
-          <Typography variant="caption">{emptyText}</Typography>
+          <Typography variant="caption">{emptyLabel}</Typography>
         </Box>
       )}
     </Box>

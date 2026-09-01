@@ -16,7 +16,7 @@
  * under the License.
  */
 
-import { defineMessages } from 'react-intl';
+import { defineMessages, useIntl } from 'react-intl';
 
 import { routes } from '@/routes/paths';
 import { ScopeGate } from '@/scope/ScopeGate';
@@ -33,13 +33,24 @@ const messages = defineMessages({
     defaultMessage: 'Routing for {apiName}',
     description: 'Sub-header under the section name; {apiName} is the API display name.',
   },
+  scopePrompt: {
+    id: 'apiControlPlane.pages.appShell.appShellPages.develop.routings.RoutingPage.scopePrompt',
+    defaultMessage: 'Routing is configured per API.',
+    description: 'Explains why an API must be picked before this page can render.',
+  },
 });
 
 export function RoutingPage() {
+  const intl = useIntl();
+
   return (
-    <ScopeGate prompt="Routing is configured per API." requires="api" to={routes.apiDevelopRouting}>
+    <ScopeGate
+      prompt={intl.formatMessage(messages.scopePrompt)}
+      requires="api"
+      to={routes.apiDevelopRouting}
+    >
       <DevelopPageShell subtitle={messages.subtitle} title={messages.title}>
-        {(detail) => <RoutingPanel detail={detail} />}
+        {(api) => <RoutingPanel api={api} />}
       </DevelopPageShell>
     </ScopeGate>
   );

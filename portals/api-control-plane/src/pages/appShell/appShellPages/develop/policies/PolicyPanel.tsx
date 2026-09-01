@@ -30,20 +30,81 @@ import {
 } from '@wso2/oxygen-ui';
 import { ChevronDown, Globe } from '@wso2/oxygen-ui-icons-react';
 import { useState } from 'react';
+import { defineMessages, FormattedMessage, useIntl } from 'react-intl';
 
-import { useUpdateApi } from '@/api/hooks/useMvpQueries';
-import type { PolicySummary } from '@/api/policyHub/policyHubClient';
-import { usePolicyHub } from '@/api/policyHub/usePolicyHub';
+import { useIsPolicyHubConfigured, type PolicySummary } from '@/api/resources/policyHub';
+import { useUpdateRestApi, type Policy, type RestApi } from '@/api/resources/restApis';
 import { useNotifications } from '@/components/Notifications';
-import type { ApiOperation, ApiPolicy, ApiDetail } from '@/types/domain';
 import { AttachedPolicyList } from './AttachedPolicyList';
 import { AvailablePoliciesPanel } from './AvailablePoliciesPanel';
 import { SaveBar } from '../SaveBar';
-import { methodColor, reorderPolicies } from '../../apis/utils/developEdit';
+import {
+  type EditableOperation,
+  methodColor,
+  reorderPolicies,
+  toEditableOperations,
+  withPolicyEdits,
+} from '../../apis/utils/developEdit';
 import { getDraggedPolicy, type PolicyScope, scopeId } from './policyDnd';
 import { PolicyConfigDrawer, type PolicyRef } from './PolicyConfigDrawer';
 
-type EditState = { scope: PolicyScope; policyIndex: number; policy: ApiPolicy } | null;
+const messages = defineMessages({
+  heading: {
+    id: 'apiControlPlane.pages.appShell.appShellPages.develop.policies.PolicyPanel.heading',
+    defaultMessage: 'Policies',
+    description: 'Heading over the panel where policies are attached. Noun.',
+  },
+  hint: {
+    id: 'apiControlPlane.pages.appShell.appShellPages.develop.policies.PolicyPanel.hint',
+    defaultMessage: 'Drag policies from the right onto the API or a resource.',
+    description: 'Instruction shown when a Policy Hub is configured.',
+  },
+  hubUnavailable: {
+    id: 'apiControlPlane.pages.appShell.appShellPages.develop.policies.PolicyPanel.hubUnavailable',
+    defaultMessage: 'Policy Hub is not configured; policies cannot be added.',
+    description: 'Shown instead of the instruction when no Policy Hub URL is set.',
+  },
+  globalPolicies: {
+    id: 'apiControlPlane.pages.appShell.appShellPages.develop.policies.PolicyPanel.globalPolicies',
+    defaultMessage: 'Global policies (API level)',
+    description: 'Section for policies applying to every resource of the API.',
+  },
+  globalEmpty: {
+    id: 'apiControlPlane.pages.appShell.appShellPages.develop.policies.PolicyPanel.globalEmpty',
+    defaultMessage: 'Drag and drop policies here to apply at the global level.',
+  },
+  resources: {
+    id: 'apiControlPlane.pages.appShell.appShellPages.develop.policies.PolicyPanel.resources',
+    defaultMessage: 'Resources',
+    description: "Section listing the API's operations, each with its own policies. Noun.",
+  },
+  noResources: {
+    id: 'apiControlPlane.pages.appShell.appShellPages.develop.policies.PolicyPanel.noResources',
+    defaultMessage: 'No resources. Add them in the Routing tab.',
+    description: '"Routing" is the name of a sibling page in this console.',
+  },
+  resourceEmpty: {
+    id: 'apiControlPlane.pages.appShell.appShellPages.develop.policies.PolicyPanel.resourceEmpty',
+    defaultMessage: 'Drag and drop policies here, or use Add Policy.',
+    description: '"Add Policy" is the label of a button in this same list.',
+  },
+  policyUpdated: {
+    id: 'apiControlPlane.pages.appShell.appShellPages.develop.policies.PolicyPanel.policyUpdated',
+    defaultMessage: 'Policy updated. Save to apply.',
+    description: 'Toast after editing an attached policy; the change is not persisted until Save.',
+  },
+  policyAttached: {
+    id: 'apiControlPlane.pages.appShell.appShellPages.develop.policies.PolicyPanel.policyAttached',
+    defaultMessage: 'Policy attached. Save to apply.',
+    description: 'Toast after attaching a policy; the change is not persisted until Save.',
+  },
+  saved: {
+    id: 'apiControlPlane.pages.appShell.appShellPages.develop.policies.PolicyPanel.saved',
+    defaultMessage: 'Policies saved.',
+  },
+});
+
+type EditState = { scope: PolicyScope; policyIndex: number; policy: Policy } | null;
 
 /** A left-panel drop target that highlights while a catalog policy hovers it. */
 function DropZone({
@@ -86,13 +147,19 @@ function DropZone({
   );
 }
 
-export function PolicyPanel({ detail }: { detail: ApiDetail }) {
+export function PolicyPanel({ api }: { api: RestApi }) {
+  const intl = useIntl();
   const { notify } = useNotifications();
-  const update = useUpdateApi();
-  const hubEnabled = usePolicyHub();
+  const update = useUpdateRestApi();
+  const hubEnabled = useIsPolicyHubConfigured();
+  const restApiId = api.id;
 
-  const [apiPolicies, setApiPolicies] = useState<ApiPolicy[]>(detail.policies);
-  const [operations, setOperations] = useState<ApiOperation[]>(detail.operations);
+  const [apiPolicies, setApiPolicies] = useState<Policy[]>(api.policies ?? []);
+  // Flattened once, lazily: from here the panel owns the edits, so re-deriving
+  // from `api` on a later render would silently discard them.
+  const [operations, setOperations] = useState<EditableOperation[]>(() =>
+    toEditableOperations(api),
+  );
 
   // Add/config flow targeting a scope.
   const [scope, setScope] = useState<PolicyScope | null>(null);
@@ -100,10 +167,10 @@ export function PolicyPanel({ detail }: { detail: ApiDetail }) {
   const [editing, setEditing] = useState<EditState>(null);
   const [activeZone, setActiveZone] = useState<string | null>(null);
 
-  const policiesFor = (s: PolicyScope): ApiPolicy[] =>
+  const policiesFor = (s: PolicyScope): Policy[] =>
     s.kind === 'api' ? apiPolicies : operations[s.index].policies || [];
 
-  const setPoliciesFor = (s: PolicyScope, next: ApiPolicy[]) => {
+  const setPoliciesFor = (s: PolicyScope, next: Policy[]) => {
     if (s.kind === 'api') setApiPolicies(next);
     else
       setOperations((ops) => ops.map((op, i) => (i === s.index ? { ...op, policies: next } : op)));
@@ -141,7 +208,7 @@ export function PolicyPanel({ detail }: { detail: ApiDetail }) {
     setEditing({ scope: s, policyIndex: index, policy: policiesFor(s)[index] });
   };
 
-  const confirmPolicy = (policy: ApiPolicy) => {
+  const confirmPolicy = (policy: Policy) => {
     if (!scope) return;
     if (editing) {
       setPoliciesFor(
@@ -152,7 +219,7 @@ export function PolicyPanel({ detail }: { detail: ApiDetail }) {
       setPoliciesFor(scope, [...policiesFor(scope), policy]);
     }
     notify(
-      editing ? 'Policy updated. Save to apply.' : 'Policy attached. Save to apply.',
+      intl.formatMessage(editing ? messages.policyUpdated : messages.policyAttached),
       'success',
     );
     closeFlow();
@@ -173,12 +240,15 @@ export function PolicyPanel({ detail }: { detail: ApiDetail }) {
     setPoliciesFor(s, reorderPolicies(policiesFor(s), from, to));
 
   const save = () => {
+    // The API was fetched by handle, so `id` is present; the guard exists
+    // because the spec marks it optional and a PUT to `/rest-apis/` would
+    // otherwise be issued against the collection.
+    if (!restApiId) return;
     update.mutate(
-      { ...detail, policies: apiPolicies, operations },
-      {
-        onSuccess: () => notify('Policies saved.', 'success'),
-        onError: (error) => notify(error instanceof Error ? error.message : 'Save failed', 'error'),
-      },
+      { restApiId, body: withPolicyEdits(api, { policies: apiPolicies, operations }) },
+      // No `onError`: the query client's `onMutationError` already notifies, and
+      // a local handler would replace the optimistic rollback in `useUpdateRestApi`.
+      { onSuccess: () => notify(intl.formatMessage(messages.saved), 'success') },
     );
   };
 
@@ -198,12 +268,10 @@ export function PolicyPanel({ detail }: { detail: ApiDetail }) {
           <Card sx={{ height: '100%' }} variant="outlined">
             <CardContent>
               <Typography sx={{ mb: 0.5 }} variant="subtitle1">
-                Policies
+                <FormattedMessage {...messages.heading} />
               </Typography>
               <Typography color="text.secondary" sx={{ mb: 2 }} variant="body2">
-                {hubEnabled
-                  ? 'Drag policies from the right onto the API or a resource.'
-                  : 'Policy Hub is not configured; policies cannot be added.'}
+                <FormattedMessage {...(hubEnabled ? messages.hint : messages.hubUnavailable)} />
               </Typography>
 
               {/* Global / API-level */}
@@ -216,11 +284,13 @@ export function PolicyPanel({ detail }: { detail: ApiDetail }) {
                 <Box sx={{ mb: 2 }}>
                   <Stack alignItems="center" direction="row" spacing={1} sx={{ mb: 1 }}>
                     <Globe size={16} />
-                    <Typography sx={{ fontWeight: 600 }}>Global policies (API level)</Typography>
+                    <Typography sx={{ fontWeight: 600 }}>
+                      <FormattedMessage {...messages.globalPolicies} />
+                    </Typography>
                   </Stack>
                   <AttachedPolicyList
                     canAdd={hubEnabled}
-                    emptyText="Drag and drop policies here to apply at the global level."
+                    emptyText={intl.formatMessage(messages.globalEmpty)}
                     onAdd={() => {
                       setEditing(null);
                       setScope({ kind: 'api' });
@@ -237,15 +307,20 @@ export function PolicyPanel({ detail }: { detail: ApiDetail }) {
               </DropZone>
 
               <Divider sx={{ my: 1 }} />
-              <Typography sx={{ fontWeight: 600, mb: 1 }}>Resources</Typography>
+              <Typography sx={{ fontWeight: 600, mb: 1 }}>
+                <FormattedMessage {...messages.resources} />
+              </Typography>
               {operations.length === 0 ? (
                 <Typography color="text.secondary" variant="body2">
-                  No resources. Add them in the Routing tab.
+                  <FormattedMessage {...messages.noResources} />
                 </Typography>
               ) : (
                 <Stack spacing={1}>
                   {operations.map((op, index) => {
                     const zid = scopeId({ kind: 'operation', index });
+                    // The "/" fallback is a URL path, not prose — kept out of
+                    // JSX so it is never mistaken for translatable text.
+                    const displayPath = op.path || '/';
                     return (
                       <DropZone
                         active={activeZone === zid}
@@ -273,7 +348,7 @@ export function PolicyPanel({ detail }: { detail: ApiDetail }) {
                                 sx={{ fontWeight: 700, minWidth: 58 }}
                               />
                               <Typography noWrap sx={{ fontFamily: 'monospace' }}>
-                                {op.path || '/'}
+                                {displayPath}
                               </Typography>
                               {(op.policies?.length || 0) > 0 && (
                                 <Chip label={op.policies!.length} size="small" variant="outlined" />
@@ -283,7 +358,7 @@ export function PolicyPanel({ detail }: { detail: ApiDetail }) {
                           <AccordionDetails>
                             <AttachedPolicyList
                               canAdd={hubEnabled}
-                              emptyText="Drag and drop policies here, or use Add Policy."
+                              emptyText={intl.formatMessage(messages.resourceEmpty)}
                               onAdd={() => {
                                 setEditing(null);
                                 setScope({ kind: 'operation', index });
@@ -319,7 +394,7 @@ export function PolicyPanel({ detail }: { detail: ApiDetail }) {
         )}
       </Stack>
 
-      <SaveBar onSave={save} saving={update.isPending} />
+      <SaveBar disabled={!restApiId} onSave={save} saving={update.isPending} />
 
       <PolicyConfigDrawer
         initialValues={editing?.policy.params}

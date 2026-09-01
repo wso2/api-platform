@@ -16,7 +16,32 @@
  * under the License.
  */
 
-import type { ApiOperation, ApiPolicy, ApiDetail, HttpMethod } from '../../../../../types/domain';
+import type {
+  Operation,
+  Policy,
+  RestApi,
+  UpdateRestApiBody,
+  UpstreamDefinition,
+} from '@/api/resources/restApis';
+
+/**
+ * Editing model for the Develop section, and the two conversions that connect
+ * it to the wire.
+ *
+ * The spec nests an operation's method, path and policies under `request`,
+ * which is right for the wire and wrong for a form: every field the Routing
+ * canvas edits would sit one level down from the two (`name`, `description`)
+ * that do not. So the panels edit a *flattened* operation and convert at the
+ * boundary — `toEditableOperations` on load, `withRoutingEdits` /
+ * `withPolicyEdits` on save.
+ *
+ * The flat type is **derived** from `Operation`, not restated: adding a field
+ * to `OperationRequest` in the spec adds it here, and renaming one breaks this
+ * file at compile time.
+ */
+export type EditableOperation = Pick<Operation, 'name' | 'description'> & Operation['request'];
+
+export type HttpMethod = Operation['request']['method'];
 
 export const HTTP_METHODS: HttpMethod[] = [
   'GET',
@@ -28,50 +53,58 @@ export const HTTP_METHODS: HttpMethod[] = [
   'OPTIONS',
 ];
 
+// --- wire ↔ editing model ---
+
+/** Flattens a fetched API's operations into the panels' editing model. */
+export const toEditableOperations = (api: RestApi): EditableOperation[] =>
+  (api.operations ?? []).map((operation) => ({
+    name: operation.name,
+    description: operation.description,
+    ...operation.request,
+  }));
+
+/** Re-nests the editing model into the spec's `Operation` shape. */
+export const toSpecOperations = (operations: EditableOperation[]): Operation[] =>
+  operations.map(({ name, description, ...request }) => ({
+    name,
+    description,
+    request,
+  }));
+
 // --- operations ---
 
-export const addOperation = (ops: ApiOperation[]): ApiOperation[] => [
+export const addOperation = (ops: EditableOperation[]): EditableOperation[] => [
   ...ops,
   { method: 'GET', path: '/' },
 ];
 
 export const updateOperation = (
-  ops: ApiOperation[],
+  ops: EditableOperation[],
   index: number,
-  patch: Partial<ApiOperation>,
-): ApiOperation[] => ops.map((op, i) => (i === index ? { ...op, ...patch } : op));
+  patch: Partial<EditableOperation>,
+): EditableOperation[] => ops.map((op, i) => (i === index ? { ...op, ...patch } : op));
 
-export const removeOperation = (ops: ApiOperation[], index: number): ApiOperation[] =>
+export const removeOperation = (ops: EditableOperation[], index: number): EditableOperation[] =>
   ops.filter((_, i) => i !== index);
 
 // --- policies ---
 
-export const addPolicy = (policies: ApiPolicy[]): ApiPolicy[] => [
+export const addPolicy = (policies: Policy[]): Policy[] => [
   ...policies,
   { name: '', version: '1.0.0' },
 ];
 
-export const updatePolicy = (
-  policies: ApiPolicy[],
-  index: number,
-  patch: Partial<ApiPolicy>,
-): ApiPolicy[] => policies.map((p, i) => (i === index ? { ...p, ...patch } : p));
+export const updatePolicy = (policies: Policy[], index: number, patch: Partial<Policy>): Policy[] =>
+  policies.map((p, i) => (i === index ? { ...p, ...patch } : p));
 
-export const removePolicy = (policies: ApiPolicy[], index: number): ApiPolicy[] =>
+export const removePolicy = (policies: Policy[], index: number): Policy[] =>
   policies.filter((_, i) => i !== index);
 
-export const replacePolicy = (
-  policies: ApiPolicy[],
-  index: number,
-  policy: ApiPolicy,
-): ApiPolicy[] => policies.map((p, i) => (i === index ? policy : p));
+export const replacePolicy = (policies: Policy[], index: number, policy: Policy): Policy[] =>
+  policies.map((p, i) => (i === index ? policy : p));
 
 /** Moves a policy one slot up (-1) or down (+1); order is persisted. */
-export const movePolicy = (
-  policies: ApiPolicy[],
-  index: number,
-  direction: -1 | 1,
-): ApiPolicy[] => {
+export const movePolicy = (policies: Policy[], index: number, direction: -1 | 1): Policy[] => {
   const target = index + direction;
   if (target < 0 || target >= policies.length) return policies;
   const next = [...policies];
@@ -80,7 +113,7 @@ export const movePolicy = (
 };
 
 /** Reorders a policy from one index to another (drag-and-drop reorder). */
-export const reorderPolicies = (policies: ApiPolicy[], from: number, to: number): ApiPolicy[] => {
+export const reorderPolicies = (policies: Policy[], from: number, to: number): Policy[] => {
   if (from === to || from < 0 || to < 0 || from >= policies.length || to >= policies.length) {
     return policies;
   }
@@ -101,7 +134,7 @@ export const REWRITE_POLICY_VERSION = '2.0.0';
 export const REWRITE_PATH_PARAM = 'New Path';
 
 /** The backend path an operation maps to (from its rewrite policy), if any. */
-export const getBackendPath = (op: ApiOperation): string | undefined => {
+export const getBackendPath = (op: EditableOperation): string | undefined => {
   const policy = (op.policies || []).find((p) => p.name === REWRITE_POLICY_NAME);
   const value = policy?.params?.[REWRITE_PATH_PARAM];
   return typeof value === 'string' && value ? value : undefined;
@@ -111,7 +144,10 @@ export const getBackendPath = (op: ApiOperation): string | undefined => {
  * Sets (or clears) an operation's backend path by upserting/removing the
  * rewrite policy, preserving any other policies on the operation.
  */
-export const setBackendPath = (op: ApiOperation, backendPath: string | undefined): ApiOperation => {
+export const setBackendPath = (
+  op: EditableOperation,
+  backendPath: string | undefined,
+): EditableOperation => {
   const others = (op.policies || []).filter((p) => p.name !== REWRITE_POLICY_NAME);
   if (!backendPath) {
     return { ...op, policies: others };
@@ -130,7 +166,7 @@ export const setBackendPath = (op: ApiOperation, backendPath: string | undefined
 };
 
 /** Distinct backend paths currently mapped across all operations. */
-export const backendPathsFromOperations = (ops: ApiOperation[]): string[] => {
+export const backendPathsFromOperations = (ops: EditableOperation[]): string[] => {
   const set = new Set<string>();
   for (const op of ops) {
     const path = getBackendPath(op);
@@ -176,22 +212,74 @@ export const isValidUrl = (value: string): boolean => {
 };
 
 /** Operations are valid when every row has a non-empty, leading-slash path. */
-export const operationsValid = (ops: ApiOperation[]): boolean =>
+export const operationsValid = (ops: EditableOperation[]): boolean =>
   ops.every((op) => op.path.trim().startsWith('/'));
 
 /** Policies are valid when every row has a name + version. */
-export const policiesValid = (policies: ApiPolicy[]): boolean =>
+export const policiesValid = (policies: Policy[]): boolean =>
   policies.every((p) => p.name.trim() !== '' && p.version.trim() !== '');
 
-/** Merges edited develop fields back onto a detail for submission. */
+// --- update bodies ---
+
+/**
+ * Applies an edited URL to one side of `upstream`.
+ *
+ * Everything else on that side is carried through — most importantly `auth`,
+ * which holds the upstream's credentials. The previous adapter rebuilt
+ * `upstream` as `{ main: { url } }`, so saving the Routing panel silently
+ * discarded the backend's authentication config.
+ *
+ * `url` and `ref` are mutually exclusive in the spec, so setting one clears the
+ * other; clearing the URL entirely leaves any `ref` in place.
+ */
+const withUpstreamUrl = (
+  existing: UpstreamDefinition | undefined,
+  url: string | undefined,
+): UpstreamDefinition => {
+  const next: UpstreamDefinition = { ...(existing ?? {}) };
+  const trimmed = url?.trim();
+  if (trimmed) {
+    next.url = trimmed;
+    delete next.ref;
+  } else {
+    delete next.url;
+  }
+  return next;
+};
+
+/**
+ * The PUT body for a Routing save.
+ *
+ * The spec's update body is the whole `RESTAPI`, so the fetched object is
+ * spread back with only the edited fields replaced — that is what preserves
+ * server-managed fields without a separate `raw` copy to merge against.
+ */
 export const withRoutingEdits = (
-  detail: ApiDetail,
-  edits: { operations: ApiOperation[]; prodUrl?: string; sandboxUrl?: string },
-): ApiDetail => ({
-  ...detail,
-  operations: edits.operations,
-  endpoints: {
-    prodUrl: edits.prodUrl?.trim() || undefined,
-    sandboxUrl: edits.sandboxUrl?.trim() || undefined,
-  },
+  api: RestApi,
+  edits: { operations: EditableOperation[]; prodUrl?: string; sandboxUrl?: string },
+): UpdateRestApiBody => {
+  const sandboxUrl = edits.sandboxUrl?.trim();
+  return {
+    ...api,
+    operations: toSpecOperations(edits.operations),
+    upstream: {
+      ...api.upstream,
+      main: withUpstreamUrl(api.upstream?.main, edits.prodUrl),
+      // Clearing the sandbox URL removes the sandbox side outright, rather
+      // than leaving a definition with neither `url` nor `ref`.
+      ...(sandboxUrl
+        ? { sandbox: withUpstreamUrl(api.upstream?.sandbox, sandboxUrl) }
+        : { sandbox: undefined }),
+    },
+  };
+};
+
+/** The PUT body for a Policies save — API-level policies plus per-operation ones. */
+export const withPolicyEdits = (
+  api: RestApi,
+  edits: { policies: Policy[]; operations: EditableOperation[] },
+): UpdateRestApiBody => ({
+  ...api,
+  policies: edits.policies,
+  operations: toSpecOperations(edits.operations),
 });

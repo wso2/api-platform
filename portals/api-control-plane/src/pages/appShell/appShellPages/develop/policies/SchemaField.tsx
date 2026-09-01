@@ -31,8 +31,9 @@ import {
 } from '@wso2/oxygen-ui';
 import { ChevronDown, ChevronRight, Plus, Trash2 } from '@wso2/oxygen-ui-icons-react';
 import { useState } from 'react';
+import { defineMessages, FormattedMessage, useIntl } from 'react-intl';
 
-import { defaultForSchema, getByPath, type ParameterSchema } from '@/api/policyHub/policySchema';
+import { defaultForSchema, getByPath, type ParameterSchema } from '@/api/resources/policyHub';
 
 type FieldProps = {
   schema: ParameterSchema;
@@ -47,6 +48,55 @@ type FieldProps = {
 };
 
 /** Title if authored, else the key with its first letter capitalized. */
+const messages = defineMessages({
+  requiredMarker: {
+    id: 'apiControlPlane.pages.appShell.appShellPages.develop.policies.SchemaField.requiredMarker',
+    defaultMessage: ' *',
+    description:
+      'Marker appended to a required field\u2019s label. Includes its leading space; adjust or drop the space to suit the locale\u2019s typography.',
+  },
+  keyPlaceholder: {
+    id: 'apiControlPlane.pages.appShell.appShellPages.develop.policies.SchemaField.keyPlaceholder',
+    defaultMessage: 'Key',
+    description: 'Placeholder for the name side of a key/value parameter pair. Noun.',
+  },
+  valuePlaceholder: {
+    id: 'apiControlPlane.pages.appShell.appShellPages.develop.policies.SchemaField.valuePlaceholder',
+    defaultMessage: 'Value',
+    description: 'Placeholder for the value side of a key/value parameter pair. Noun.',
+  },
+  removeEntryLabel: {
+    id: 'apiControlPlane.pages.appShell.appShellPages.develop.policies.SchemaField.removeEntryLabel',
+    defaultMessage: 'Remove entry',
+    description: 'Accessible label for the button deleting one key/value pair.',
+  },
+  addEntry: {
+    id: 'apiControlPlane.pages.appShell.appShellPages.develop.policies.SchemaField.addEntry',
+    defaultMessage: 'Add entry',
+    description: 'Adds another key/value pair to a map parameter. Verb phrase.',
+  },
+  advancedSettings: {
+    id: 'apiControlPlane.pages.appShell.appShellPages.develop.policies.SchemaField.advancedSettings',
+    defaultMessage: 'Advanced Settings',
+    description: 'Toggle revealing the parameters the policy marks as advanced.',
+  },
+  removeItemLabel: {
+    id: 'apiControlPlane.pages.appShell.appShellPages.develop.policies.SchemaField.removeItemLabel',
+    defaultMessage: 'Remove item',
+    description: 'Accessible label for the button deleting one entry of a list parameter.',
+  },
+  addItem: {
+    id: 'apiControlPlane.pages.appShell.appShellPages.develop.policies.SchemaField.addItem',
+    defaultMessage: 'Add item',
+    description: 'Adds another entry to a list parameter. Verb phrase.',
+  },
+  selectPlaceholder: {
+    id: 'apiControlPlane.pages.appShell.appShellPages.develop.policies.SchemaField.selectPlaceholder',
+    defaultMessage: 'Select\u2026',
+    description: 'Empty option shown before a value is chosen from a dropdown.',
+  },
+});
+
 const propLabel = (key: string, title?: string): string =>
   title || (key ? key.charAt(0).toUpperCase() + key.slice(1) : key);
 
@@ -59,12 +109,13 @@ const FieldLabel = ({
   required?: boolean;
   description?: string;
 }) => {
+  const intl = useIntl();
   if (!label) return null;
   return (
     <Box sx={{ mb: 0.5 }}>
       <Typography component="span" sx={{ fontWeight: 600 }} variant="body2">
         {label}
-        {required ? ' *' : ''}
+        {required ? intl.formatMessage(messages.requiredMarker) : ''}
       </Typography>
       {description && (
         <Typography color="text.secondary" sx={{ display: 'block' }} variant="caption">
@@ -96,6 +147,7 @@ function MapField({
   value: unknown;
   onChange: (path: string, value: unknown) => void;
 }) {
+  const intl = useIntl();
   const valueSchema = schema.additionalProperties ?? { type: 'string' };
   const [entries, setEntries] = useState<Array<[string, unknown]>>(() =>
     value && typeof value === 'object' && !Array.isArray(value)
@@ -128,7 +180,7 @@ function MapField({
           <Box key={index} sx={{ alignItems: 'center', display: 'flex', gap: 1 }}>
             <TextField
               onChange={(event) => setKey(index, event.target.value)}
-              placeholder="Key"
+              placeholder={intl.formatMessage(messages.keyPlaceholder)}
               size="small"
               sx={{ flex: 1 }}
               value={key}
@@ -150,7 +202,7 @@ function MapField({
                       : event.target.value,
                   )
                 }
-                placeholder="Value"
+                placeholder={intl.formatMessage(messages.valuePlaceholder)}
                 size="small"
                 sx={{ flex: 1 }}
                 type={isNum ? 'number' : 'text'}
@@ -158,7 +210,7 @@ function MapField({
               />
             )}
             <IconButton
-              aria-label="Remove entry"
+              aria-label={intl.formatMessage(messages.removeEntryLabel)}
               color="error"
               onClick={() => remove(index)}
               size="small"
@@ -173,7 +225,7 @@ function MapField({
           startIcon={<Plus size={14} />}
           sx={{ alignSelf: 'flex-start' }}
         >
-          Add entry
+          <FormattedMessage {...messages.addEntry} />
         </Button>
       </Stack>
     </Box>
@@ -191,6 +243,7 @@ export function SchemaField({
   onAddItem,
   onRemoveItem,
 }: FieldProps) {
+  const intl = useIntl();
   const [showAdvanced, setShowAdvanced] = useState(false);
   const value = getByPath(values, path);
 
@@ -260,7 +313,7 @@ export function SchemaField({
                 sx={{ mb: 1 }}
                 variant="text"
               >
-                Advanced Settings
+                <FormattedMessage {...messages.advancedSettings} />
               </Button>
               <Collapse in={showAdvanced}>
                 <Box sx={{ pt: 0.5 }}>{advanced.map(renderProp)}</Box>
@@ -304,7 +357,7 @@ export function SchemaField({
                 />
               </Box>
               <IconButton
-                aria-label="Remove item"
+                aria-label={intl.formatMessage(messages.removeItemLabel)}
                 color="error"
                 onClick={() => onRemoveItem(path, index)}
                 size="small"
@@ -319,7 +372,7 @@ export function SchemaField({
             startIcon={<Plus size={14} />}
             sx={{ alignSelf: 'flex-start' }}
           >
-            Add item
+            <FormattedMessage {...messages.addItem} />
           </Button>
         </Box>
       </Box>
@@ -339,7 +392,9 @@ export function SchemaField({
           value={(value as string) ?? ''}
         >
           <MenuItem value="">
-            <em>Select…</em>
+            <em>
+              <FormattedMessage {...messages.selectPlaceholder} />
+            </em>
           </MenuItem>
           {schema.enum.map((option) => (
             <MenuItem key={option} value={option}>
@@ -365,7 +420,7 @@ export function SchemaField({
           <Box>
             <Typography component="span" variant="body2">
               {label}
-              {required ? ' *' : ''}
+              {required ? intl.formatMessage(messages.requiredMarker) : ''}
             </Typography>
             {schema.description && (
               <Typography color="text.secondary" sx={{ display: 'block' }} variant="caption">

@@ -29,12 +29,66 @@ import {
 } from '@wso2/oxygen-ui';
 import { ExternalLink, GripVertical, Search, Shield } from '@wso2/oxygen-ui-icons-react';
 import { useMemo, useState } from 'react';
+import { defineMessages, FormattedMessage, useIntl } from 'react-intl';
 
-import type { PolicySummary } from '@/api/policyHub/policyHubClient';
-import { usePolicyHubCategories, usePolicyHubPolicies } from '@/api/policyHub/usePolicyHub';
+import {
+  usePolicyHubCategories,
+  usePolicyHubPolicies,
+  type PolicySummary,
+} from '@/api/resources/policyHub';
 import { EmptyState, ErrorState } from '@/components/StateViews';
 import { runtimeConfig } from '@/config/runtime';
 import { POLICY_DND_MIME, setDraggedPolicy } from './policyDnd';
+
+const messages = defineMessages({
+  heading: {
+    id: 'apiControlPlane.pages.appShell.appShellPages.develop.policies.AvailablePoliciesPanel.heading',
+    defaultMessage: 'Available policies',
+    description: 'Heading over the Policy Hub catalog that policies are dragged from.',
+  },
+  policyHub: {
+    id: 'apiControlPlane.pages.appShell.appShellPages.develop.policies.AvailablePoliciesPanel.policyHub',
+    defaultMessage: 'Policy Hub',
+    description: 'Link opening the Policy Hub website. Product name — leave untranslated.',
+  },
+  searchPlaceholder: {
+    id: 'apiControlPlane.pages.appShell.appShellPages.develop.policies.AvailablePoliciesPanel.searchPlaceholder',
+    defaultMessage: 'Search policies',
+  },
+  allCategories: {
+    id: 'apiControlPlane.pages.appShell.appShellPages.develop.policies.AvailablePoliciesPanel.allCategories',
+    defaultMessage: 'All',
+    description: 'Filter chip clearing the category selection so every policy is listed.',
+  },
+  loadError: {
+    id: 'apiControlPlane.pages.appShell.appShellPages.develop.policies.AvailablePoliciesPanel.loadError',
+    defaultMessage: 'Unable to load policies from the Policy Hub.',
+  },
+  emptyTitle: {
+    id: 'apiControlPlane.pages.appShell.appShellPages.develop.policies.AvailablePoliciesPanel.emptyTitle',
+    defaultMessage: 'No policies',
+  },
+  emptyDescription: {
+    id: 'apiControlPlane.pages.appShell.appShellPages.develop.policies.AvailablePoliciesPanel.emptyDescription',
+    defaultMessage: 'No policies match the filter.',
+  },
+  version: {
+    id: 'apiControlPlane.pages.appShell.appShellPages.develop.policies.AvailablePoliciesPanel.version',
+    defaultMessage: 'v{version}',
+    description:
+      'Version chip on a catalog entry. {version} is backend data; keep the "v" prefix if it reads naturally.',
+  },
+  previous: {
+    id: 'apiControlPlane.pages.appShell.appShellPages.develop.policies.AvailablePoliciesPanel.previous',
+    defaultMessage: 'Previous',
+    description: 'Pagination button for the previous page of the catalog.',
+  },
+  next: {
+    id: 'apiControlPlane.pages.appShell.appShellPages.develop.policies.AvailablePoliciesPanel.next',
+    defaultMessage: 'Next',
+    description: 'Pagination button for the next page of the catalog.',
+  },
+});
 
 const PAGE_SIZE = 20;
 
@@ -48,6 +102,7 @@ export function AvailablePoliciesPanel({
 }: {
   onSelect: (policy: PolicySummary) => void;
 }) {
+  const intl = useIntl();
   const [search, setSearch] = useState('');
   const [activeCategories, setActiveCategories] = useState<string[]>([]);
   const [page, setPage] = useState(1);
@@ -86,7 +141,9 @@ export function AvailablePoliciesPanel({
           mb: 1.5,
         }}
       >
-        <Typography variant="subtitle1">Available policies</Typography>
+        <Typography variant="subtitle1">
+          <FormattedMessage {...messages.heading} />
+        </Typography>
         {runtimeConfig.policyHubWebUrl && (
           <Button
             component="a"
@@ -96,7 +153,7 @@ export function AvailablePoliciesPanel({
             size="small"
             target="_blank"
           >
-            Policy Hub
+            <FormattedMessage {...messages.policyHub} />
           </Button>
         )}
       </Box>
@@ -104,7 +161,7 @@ export function AvailablePoliciesPanel({
       <TextField
         fullWidth
         onChange={(event) => setSearch(event.target.value)}
-        placeholder="Search policies"
+        placeholder={intl.formatMessage(messages.searchPlaceholder)}
         size="small"
         slotProps={{
           input: {
@@ -122,7 +179,7 @@ export function AvailablePoliciesPanel({
         <Stack direction="row" sx={{ flexWrap: 'wrap', gap: 0.75, mt: 1.5 }}>
           <Chip
             color={activeCategories.length === 0 ? 'primary' : 'default'}
-            label="All"
+            label={intl.formatMessage(messages.allCategories)}
             onClick={() => {
               setActiveCategories([]);
               setPage(1);
@@ -146,20 +203,20 @@ export function AvailablePoliciesPanel({
       )}
 
       <Box sx={{ flex: 1, mt: 1.5, overflowY: 'auto' }}>
-        {policiesQuery.isLoading ? (
+        {policiesQuery.isPending ? (
           <Box sx={{ display: 'flex', justifyContent: 'center', py: 6 }}>
             <CircularProgress size={24} />
           </Box>
         ) : policiesQuery.error ? (
-          <ErrorState
-            message={
-              policiesQuery.error instanceof Error
-                ? policiesQuery.error.message
-                : 'Unable to load policies from the Policy Hub.'
-            }
-          />
+          // The hub's own wording is deliberately not shown: `ApiError.message`
+          // for a hub failure is a sterile client-side string, and echoing an
+          // upstream message risks naming internal hosts.
+          <ErrorState message={intl.formatMessage(messages.loadError)} />
         ) : filtered.length === 0 ? (
-          <EmptyState title="No policies" description="No policies match the filter." />
+          <EmptyState
+            title={intl.formatMessage(messages.emptyTitle)}
+            description={intl.formatMessage(messages.emptyDescription)}
+          />
         ) : (
           <Stack spacing={1}>
             {filtered.map((policy) => (
@@ -199,7 +256,11 @@ export function AvailablePoliciesPanel({
                 <Typography noWrap sx={{ flex: 1, fontWeight: 600, minWidth: 0 }} variant="body2">
                   {policy.displayName}
                 </Typography>
-                <Chip label={`v${policy.version}`} size="small" variant="outlined" />
+                <Chip
+                  label={intl.formatMessage(messages.version, { version: policy.version })}
+                  size="small"
+                  variant="outlined"
+                />
               </Box>
             ))}
           </Stack>
@@ -209,10 +270,10 @@ export function AvailablePoliciesPanel({
       {(page > 1 || hasMore) && (
         <Box sx={{ display: 'flex', gap: 1, justifyContent: 'space-between', pt: 1.5 }}>
           <Button disabled={page <= 1} onClick={() => setPage((p) => p - 1)} size="small">
-            Previous
+            <FormattedMessage {...messages.previous} />
           </Button>
           <Button disabled={!hasMore} onClick={() => setPage((p) => p + 1)} size="small">
-            Next
+            <FormattedMessage {...messages.next} />
           </Button>
         </Box>
       )}

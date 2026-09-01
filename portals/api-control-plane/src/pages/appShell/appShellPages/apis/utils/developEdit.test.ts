@@ -18,9 +18,11 @@
 
 import { describe, expect, it } from 'vitest';
 
-import type { ApiOperation, ApiPolicy } from '../../../../../types/domain';
+import type { Policy } from '@/api/resources/restApis';
+import { aRestApi } from '@/test/msw';
 import {
   addOperation,
+  type EditableOperation,
   addPolicy,
   backendPathsFromOperations,
   getBackendPath,
@@ -34,8 +36,12 @@ import {
   reorderPolicies,
   replacePolicy,
   setBackendPath,
+  toEditableOperations,
+  toSpecOperations,
   updateOperation,
   updatePolicy,
+  withPolicyEdits,
+  withRoutingEdits,
 } from './developEdit';
 
 describe('developEdit operations', () => {
@@ -45,7 +51,7 @@ describe('developEdit operations', () => {
   });
 
   it('updates and removes operations immutably', () => {
-    const start: ApiOperation[] = [
+    const start: EditableOperation[] = [
       { method: 'GET', path: '/a' },
       { method: 'POST', path: '/b' },
     ];
@@ -65,7 +71,7 @@ describe('developEdit operations', () => {
 
 describe('developEdit policies', () => {
   it('adds, updates, removes policies', () => {
-    let policies: ApiPolicy[] = addPolicy([]);
+    let policies: Policy[] = addPolicy([]);
     expect(policies[0]).toEqual({ name: '', version: '1.0.0' });
     policies = updatePolicy(policies, 0, { name: 'SET_HEADER' });
     expect(policies[0].name).toBe('SET_HEADER');
@@ -79,7 +85,7 @@ describe('developEdit policies', () => {
   });
 
   it('replaces a policy at an index immutably', () => {
-    const start: ApiPolicy[] = [
+    const start: Policy[] = [
       { name: 'a', version: '1' },
       { name: 'b', version: '1' },
     ];
@@ -93,7 +99,7 @@ describe('developEdit policies', () => {
   });
 
   it('moves a policy up/down and is a no-op at the edges', () => {
-    const start: ApiPolicy[] = [
+    const start: Policy[] = [
       { name: 'a', version: '1' },
       { name: 'b', version: '1' },
       { name: 'c', version: '1' },
@@ -105,7 +111,7 @@ describe('developEdit policies', () => {
   });
 
   it('reorders a policy from one index to another (drag-drop)', () => {
-    const start: ApiPolicy[] = [
+    const start: Policy[] = [
       { name: 'a', version: '1' },
       { name: 'b', version: '1' },
       { name: 'c', version: '1' },
@@ -137,7 +143,7 @@ describe('developEdit helpers', () => {
 });
 
 describe('backend-resource mapping', () => {
-  const op: ApiOperation = { method: 'GET', path: '/sample' };
+  const op: EditableOperation = { method: 'GET', path: '/sample' };
 
   it('maps a proxy resource to a backend path via a rewrite policy', () => {
     const mapped = setBackendPath(op, '/book');
@@ -149,7 +155,7 @@ describe('backend-resource mapping', () => {
   });
 
   it('clears the mapping (removes the rewrite policy) without touching others', () => {
-    const withOther: ApiOperation = {
+    const withOther: EditableOperation = {
       ...op,
       policies: [{ name: 'cors', version: '1.0.0' }],
     };
@@ -165,8 +171,113 @@ describe('backend-resource mapping', () => {
       setBackendPath({ method: 'GET', path: '/a' }, '/book'),
       setBackendPath({ method: 'POST', path: '/b' }, '/book'),
       setBackendPath({ method: 'GET', path: '/c' }, '/author'),
-      { method: 'GET', path: '/d' } as ApiOperation,
+      { method: 'GET', path: '/d' } as EditableOperation,
     ];
     expect(backendPathsFromOperations(ops).sort()).toEqual(['/author', '/book']);
+  });
+});
+
+describe('editing model ↔ spec shape', () => {
+  it('flattens request fields onto the operation and nests them back', () => {
+    const api = aRestApi({
+      operations: [
+        {
+          name: 'listOrders',
+          description: 'All orders',
+          request: { method: 'POST', path: '/orders', policies: [{ name: 'cors', version: '1' }] },
+        },
+      ],
+    });
+
+    const editable = toEditableOperations(api);
+    expect(editable).toEqual([
+      {
+        name: 'listOrders',
+        description: 'All orders',
+        method: 'POST',
+        path: '/orders',
+        policies: [{ name: 'cors', version: '1' }],
+      },
+    ]);
+
+    // The round trip is lossless — nothing the spec carries is dropped by the
+    // flattening the panels edit through.
+    expect(toSpecOperations(editable)).toEqual(api.operations);
+  });
+
+  it('treats a missing operations list as empty rather than throwing', () => {
+    expect(toEditableOperations(aRestApi({ operations: undefined }))).toEqual([]);
+  });
+});
+
+describe('withRoutingEdits', () => {
+  it('preserves upstream auth while replacing the URL', () => {
+    const api = aRestApi({
+      upstream: {
+        main: {
+          url: 'https://old.test',
+          auth: { type: 'api-key', header: 'X-Key', value: 's3cret' },
+        },
+      },
+    });
+
+    const body = withRoutingEdits(api, { operations: [], prodUrl: 'https://new.test' });
+
+    expect(body.upstream.main).toEqual({
+      url: 'https://new.test',
+      auth: { type: 'api-key', header: 'X-Key', value: 's3cret' },
+    });
+  });
+
+  it('clears `ref` when a URL is set, since the spec makes them exclusive', () => {
+    const api = aRestApi({ upstream: { main: { ref: 'shared-upstream' } } });
+    const body = withRoutingEdits(api, { operations: [], prodUrl: 'https://new.test' });
+    expect(body.upstream.main).toEqual({ url: 'https://new.test' });
+  });
+
+  it('keeps a `ref` when the URL is cleared', () => {
+    const api = aRestApi({
+      upstream: { main: { ref: 'shared-upstream', url: 'https://old.test' } },
+    });
+    const body = withRoutingEdits(api, { operations: [], prodUrl: '' });
+    expect(body.upstream.main).toEqual({ ref: 'shared-upstream' });
+  });
+
+  it('drops the sandbox side when its URL is cleared', () => {
+    const api = aRestApi({
+      upstream: { main: { url: 'https://prod.test' }, sandbox: { url: 'https://sbx.test' } },
+    });
+    expect(
+      withRoutingEdits(api, { operations: [], prodUrl: 'https://prod.test', sandboxUrl: '' })
+        .upstream.sandbox,
+    ).toBeUndefined();
+  });
+
+  it('carries every other field of the fetched API through untouched', () => {
+    const api = aRestApi({ description: 'Ordering', policies: [{ name: 'cors', version: '1' }] });
+    const body = withRoutingEdits(api, { operations: [], prodUrl: 'https://new.test' });
+    // The spec's update body is the whole RESTAPI, so anything the panel does
+    // not edit must survive the PUT — this is what replaced the old `raw` merge.
+    expect(body.description).toBe('Ordering');
+    expect(body.policies).toEqual([{ name: 'cors', version: '1' }]);
+    expect(body.version).toBe(api.version);
+  });
+});
+
+describe('withPolicyEdits', () => {
+  it('replaces API-level and per-operation policies, leaving upstream alone', () => {
+    const api = aRestApi({
+      upstream: { main: { url: 'https://prod.test', auth: { type: 'bearer', value: 't' } } },
+      policies: [{ name: 'old', version: '1' }],
+    });
+
+    const body = withPolicyEdits(api, {
+      policies: [{ name: 'new', version: '2' }],
+      operations: [{ method: 'GET', path: '/a', policies: [{ name: 'op', version: '1' }] }],
+    });
+
+    expect(body.policies).toEqual([{ name: 'new', version: '2' }]);
+    expect(body.operations?.[0].request.policies).toEqual([{ name: 'op', version: '1' }]);
+    expect(body.upstream).toEqual(api.upstream);
   });
 });

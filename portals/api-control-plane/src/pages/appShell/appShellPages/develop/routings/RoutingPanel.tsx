@@ -17,6 +17,7 @@
  */
 
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { defineMessages, FormattedMessage, useIntl } from 'react-intl';
 import {
   Alert,
   alpha,
@@ -46,16 +47,16 @@ import {
   X,
 } from '@wso2/oxygen-ui-icons-react';
 
-import { useUpdateApi } from '@/api/hooks/useMvpQueries';
+import { useUpdateRestApi, type RestApi } from '@/api/resources/restApis';
 import { ConfirmDialog } from '@/components/ConfirmDialog';
 import { useNotifications } from '@/components/Notifications';
-import type { ApiOperation, ApiDetail } from '@/types/domain';
 import {
   type BackendResource,
   discoverBackendResources,
 } from '@/pages/appShell/appShellPages/apis/utils//backendDiscovery';
 import {
   addOperation,
+  type EditableOperation,
   getBackendPath,
   HTTP_METHODS,
   isValidUrl,
@@ -63,10 +64,239 @@ import {
   operationsValid,
   removeOperation,
   setBackendPath,
+  toEditableOperations,
   updateOperation,
   withRoutingEdits,
 } from '@/pages/appShell/appShellPages/apis/utils/developEdit';
 import { SaveBar } from '../SaveBar';
+
+const messages = defineMessages({
+  connectHint: {
+    id: 'apiControlPlane.pages.appShell.appShellPages.develop.routings.RoutingPanel.connectHint',
+    defaultMessage: 'Click to connect this backend resource',
+    description: 'Tooltip on a backend row while a connection is being drawn from a proxy row.',
+  },
+  notConnectedHint: {
+    id: 'apiControlPlane.pages.appShell.appShellPages.develop.routings.RoutingPanel.notConnectedHint',
+    defaultMessage:
+      'Not connected \u2014 use the port handle or the editor to map a backend resource',
+  },
+  removeResourceLabel: {
+    id: 'apiControlPlane.pages.appShell.appShellPages.develop.routings.RoutingPanel.removeResourceLabel',
+    defaultMessage: 'Remove resource',
+    description: 'Accessible label for the button deleting one proxy resource row.',
+  },
+  connectPortLabel: {
+    id: 'apiControlPlane.pages.appShell.appShellPages.develop.routings.RoutingPanel.connectPortLabel',
+    defaultMessage: 'Connect to a backend resource',
+    description: 'Label on the handle that starts drawing a connection from a proxy row.',
+  },
+  confirmRemoveTitle: {
+    id: 'apiControlPlane.pages.appShell.appShellPages.develop.routings.RoutingPanel.confirmRemoveTitle',
+    defaultMessage: 'Remove resource',
+  },
+  confirmRemoveMessage: {
+    id: 'apiControlPlane.pages.appShell.appShellPages.develop.routings.RoutingPanel.confirmRemoveMessage',
+    defaultMessage: "Remove the {method} {path} proxy resource? This can't be undone.",
+    description:
+      '{method} is an HTTP verb and {path} a URL path \u2014 both are data, not translatable.',
+  },
+  confirmRemoveAction: {
+    id: 'apiControlPlane.pages.appShell.appShellPages.develop.routings.RoutingPanel.confirmRemoveAction',
+    defaultMessage: 'Remove',
+    description: 'Confirms deleting a proxy resource. Verb.',
+  },
+  confirmDisconnectTitle: {
+    id: 'apiControlPlane.pages.appShell.appShellPages.develop.routings.RoutingPanel.confirmDisconnectTitle',
+    defaultMessage: 'Remove connection',
+  },
+  confirmDisconnectMessage: {
+    id: 'apiControlPlane.pages.appShell.appShellPages.develop.routings.RoutingPanel.confirmDisconnectMessage',
+    defaultMessage:
+      'Remove the connection for {method} {path}? Both resources stay \u2014 only the link is removed.',
+    description:
+      '{method} is an HTTP verb and {path} a URL path \u2014 both are data, not translatable.',
+  },
+  confirmDisconnectAction: {
+    id: 'apiControlPlane.pages.appShell.appShellPages.develop.routings.RoutingPanel.confirmDisconnectAction',
+    defaultMessage: 'Remove connection',
+    description: 'Confirms severing a proxy-to-backend mapping. Verb phrase.',
+  },
+  confirmDefault: {
+    id: 'apiControlPlane.pages.appShell.appShellPages.develop.routings.RoutingPanel.confirmDefault',
+    defaultMessage: 'Confirm',
+    description: 'Fallback label on the confirmation dialog button. Verb.',
+  },
+  saved: {
+    id: 'apiControlPlane.pages.appShell.appShellPages.develop.routings.RoutingPanel.saved',
+    defaultMessage: 'Routing saved.',
+  },
+  heading: {
+    id: 'apiControlPlane.pages.appShell.appShellPages.develop.routings.RoutingPanel.heading',
+    defaultMessage: 'Routing',
+    description: 'Heading of the panel mapping proxy resources to backend resources. Noun.',
+  },
+  subheading: {
+    id: 'apiControlPlane.pages.appShell.appShellPages.develop.routings.RoutingPanel.subheading',
+    defaultMessage:
+      'Map API proxy resources to backend resources. An unmapped resource passes through unchanged.',
+  },
+  addResource: {
+    id: 'apiControlPlane.pages.appShell.appShellPages.develop.routings.RoutingPanel.addResource',
+    defaultMessage: 'Add resource',
+    description: 'Adds another proxy resource row. Verb phrase.',
+  },
+  connectingBanner: {
+    id: 'apiControlPlane.pages.appShell.appShellPages.develop.routings.RoutingPanel.connectingBanner',
+    defaultMessage:
+      'Connecting <selected>{method} {path}</selected> \u2014 pick a matching backend resource (same method), or close to cancel.',
+    description:
+      'Banner while a connection is being drawn. <selected> emphasises the row; {method}/{path} are data.',
+  },
+  discoveryNoContract: {
+    id: 'apiControlPlane.pages.appShell.appShellPages.develop.routings.RoutingPanel.discoveryNoContract',
+    defaultMessage:
+      'No OpenAPI/Swagger contract found at the backend URL \u2014 map resources manually.',
+  },
+  discoveryFetchFailed: {
+    id: 'apiControlPlane.pages.appShell.appShellPages.develop.routings.RoutingPanel.discoveryFetchFailed',
+    defaultMessage:
+      'Could not fetch the backend contract (CORS or unreachable) \u2014 map resources manually.',
+  },
+  proxyResourcesColumn: {
+    id: 'apiControlPlane.pages.appShell.appShellPages.develop.routings.RoutingPanel.proxyResourcesColumn',
+    defaultMessage: 'API proxy resources',
+    description: 'Caption over the left column of the mapping canvas.',
+  },
+  backendResourcesColumn: {
+    id: 'apiControlPlane.pages.appShell.appShellPages.develop.routings.RoutingPanel.backendResourcesColumn',
+    defaultMessage: 'Backend resources',
+    description: 'Caption over the right column of the mapping canvas.',
+  },
+  backendUrlPlaceholder: {
+    id: 'apiControlPlane.pages.appShell.appShellPages.develop.routings.RoutingPanel.backendUrlPlaceholder',
+    defaultMessage: 'Set backend URL',
+  },
+  backendUrlLabel: {
+    id: 'apiControlPlane.pages.appShell.appShellPages.develop.routings.RoutingPanel.backendUrlLabel',
+    defaultMessage: 'Backend URL',
+    description: 'Accessible label for the inline backend URL field on the canvas.',
+  },
+  discoverTooltip: {
+    id: 'apiControlPlane.pages.appShell.appShellPages.develop.routings.RoutingPanel.discoverTooltip',
+    defaultMessage: 'Discover backend resources from its OpenAPI/Swagger contract',
+  },
+  discoverLabel: {
+    id: 'apiControlPlane.pages.appShell.appShellPages.develop.routings.RoutingPanel.discoverLabel',
+    defaultMessage: 'Discover backend resources',
+    description: 'Accessible label for the refresh button that re-reads the backend contract.',
+  },
+  removeConnectionLabel: {
+    id: 'apiControlPlane.pages.appShell.appShellPages.develop.routings.RoutingPanel.removeConnectionLabel',
+    defaultMessage: 'Remove connection',
+    description: 'Accessible label for the button severing one proxy-to-backend link.',
+  },
+  noResourcesYet: {
+    id: 'apiControlPlane.pages.appShell.appShellPages.develop.routings.RoutingPanel.noResourcesYet',
+    defaultMessage: 'No resources yet. Add one to route to the backend.',
+  },
+  backendEndpoint: {
+    id: 'apiControlPlane.pages.appShell.appShellPages.develop.routings.RoutingPanel.backendEndpoint',
+    defaultMessage: 'Backend endpoint',
+    description: 'Heading of the editor pane for the upstream URLs. Noun phrase.',
+  },
+  productionUrl: {
+    id: 'apiControlPlane.pages.appShell.appShellPages.develop.routings.RoutingPanel.productionUrl',
+    defaultMessage: 'Production URL',
+  },
+  sandboxUrl: {
+    id: 'apiControlPlane.pages.appShell.appShellPages.develop.routings.RoutingPanel.sandboxUrl',
+    defaultMessage: 'Sandbox URL (optional)',
+  },
+  backendResourcesHeading: {
+    id: 'apiControlPlane.pages.appShell.appShellPages.develop.routings.RoutingPanel.backendResourcesHeading',
+    defaultMessage: 'Backend resources',
+    description: 'Sub-heading in the editor pane, over the discovery controls.',
+  },
+  discover: {
+    id: 'apiControlPlane.pages.appShell.appShellPages.develop.routings.RoutingPanel.discover',
+    defaultMessage: 'Discover',
+    description: 'Button that re-reads the backend contract. Verb.',
+  },
+  discoveryLoading: {
+    id: 'apiControlPlane.pages.appShell.appShellPages.develop.routings.RoutingPanel.discoveryLoading',
+    defaultMessage: 'Fetching the backend contract\u2026',
+  },
+  discoveryDone: {
+    id: 'apiControlPlane.pages.appShell.appShellPages.develop.routings.RoutingPanel.discoveryDone',
+    defaultMessage:
+      'Found {count, plural, one {# backend resource} other {# backend resources}}. Matching proxy resources were auto-mapped; the rest are left unmapped.',
+  },
+  discoveryIdle: {
+    id: 'apiControlPlane.pages.appShell.appShellPages.develop.routings.RoutingPanel.discoveryIdle',
+    defaultMessage:
+      'Resources are discovered from the backend\u2019s OpenAPI/Swagger contract when the URL changes.',
+  },
+  selectPrompt: {
+    id: 'apiControlPlane.pages.appShell.appShellPages.develop.routings.RoutingPanel.selectPrompt',
+    defaultMessage: 'Select a resource or the backend to edit it.',
+  },
+  resourceMapping: {
+    id: 'apiControlPlane.pages.appShell.appShellPages.develop.routings.RoutingPanel.resourceMapping',
+    defaultMessage: 'Resource mapping',
+    description: 'Heading of the editor pane for one proxy resource. Noun phrase.',
+  },
+  apiProxyResourceCaption: {
+    id: 'apiControlPlane.pages.appShell.appShellPages.develop.routings.RoutingPanel.apiProxyResourceCaption',
+    defaultMessage: 'API PROXY RESOURCE',
+    description: 'Upper-case caption over the proxy side of the mapping summary.',
+  },
+  backendResourceCaption: {
+    id: 'apiControlPlane.pages.appShell.appShellPages.develop.routings.RoutingPanel.backendResourceCaption',
+    defaultMessage: 'BACKEND RESOURCE',
+    description: 'Upper-case caption over the backend side of the mapping summary.',
+  },
+  passthroughNote: {
+    id: 'apiControlPlane.pages.appShell.appShellPages.develop.routings.RoutingPanel.passthroughNote',
+    defaultMessage: 'Passthrough \u2014 same path as the proxy resource.',
+  },
+  rewriteNote: {
+    id: 'apiControlPlane.pages.appShell.appShellPages.develop.routings.RoutingPanel.rewriteNote',
+    defaultMessage: 'Requests are rewritten to this backend path.',
+  },
+  methodLabel: {
+    id: 'apiControlPlane.pages.appShell.appShellPages.develop.routings.RoutingPanel.methodLabel',
+    defaultMessage: 'Method',
+    description: 'Field label for the HTTP method of a proxy resource. Noun.',
+  },
+  proxyPathLabel: {
+    id: 'apiControlPlane.pages.appShell.appShellPages.develop.routings.RoutingPanel.proxyPathLabel',
+    defaultMessage: 'Proxy path',
+  },
+  connectToBackendLabel: {
+    id: 'apiControlPlane.pages.appShell.appShellPages.develop.routings.RoutingPanel.connectToBackendLabel',
+    defaultMessage: 'Connect to backend resource',
+  },
+  connectHelperText: {
+    id: 'apiControlPlane.pages.appShell.appShellPages.develop.routings.RoutingPanel.connectHelperText',
+    defaultMessage: 'Route this proxy resource to any backend resource of the same method.',
+  },
+  passthroughOption: {
+    id: 'apiControlPlane.pages.appShell.appShellPages.develop.routings.RoutingPanel.passthroughOption',
+    defaultMessage: 'Passthrough (same path)',
+    description: 'Dropdown option meaning the backend path equals the proxy path.',
+  },
+  nameLabel: {
+    id: 'apiControlPlane.pages.appShell.appShellPages.develop.routings.RoutingPanel.nameLabel',
+    defaultMessage: 'Name (optional)',
+    description: 'Field label for a human-readable name on a proxy resource. Noun.',
+  },
+  removeResourceButton: {
+    id: 'apiControlPlane.pages.appShell.appShellPages.develop.routings.RoutingPanel.removeResourceButton',
+    defaultMessage: 'Remove resource',
+    description: 'Deletes the proxy resource being edited. Verb phrase.',
+  },
+});
 
 // --- canvas geometry (fixed coords → SVG links need no DOM measurement) ---
 const OP_X = 4;
@@ -79,7 +309,7 @@ const BE_X = OP_X + NODE_W + COL_GAP;
 const CANVAS_W = BE_X + NODE_W + 8;
 
 /** Seeds the backend catalog from the resources the API already maps to. */
-function seedBackendResources(operations: ApiOperation[]): BackendResource[] {
+function seedBackendResources(operations: EditableOperation[]): BackendResource[] {
   const seen = new Set<string>();
   const list: BackendResource[] = [];
   for (const op of operations) {
@@ -141,8 +371,12 @@ function ResourcePill({
   onPortClick?: () => void;
 }) {
   const theme = useTheme();
+  const intl = useIntl();
   const badgeColor = useBadgeColor();
   const badge = badgeColor(method);
+  // The "/" fallback is a URL path, not prose — kept out of JSX so it is never
+  // mistaken for translatable text.
+  const displayPath = path || '/';
   const highlighted = selected || connectSource || connectEligible;
 
   return (
@@ -153,9 +387,9 @@ function ResourcePill({
       }}
       title={
         connectEligible
-          ? 'Click to connect this backend resource'
+          ? intl.formatMessage(messages.connectHint)
           : disconnected
-            ? 'Not connected — use the port handle or the editor to map a backend resource'
+            ? intl.formatMessage(messages.notConnectedHint)
             : undefined
       }
       sx={{
@@ -221,12 +455,12 @@ function ResourcePill({
         {method}
       </Box>
       <Typography noWrap sx={{ fontFamily: 'monospace', fontWeight: 500, minWidth: 0 }}>
-        {path || '/'}
+        {displayPath}
       </Typography>
 
       {onRemove && (
         <IconButton
-          aria-label="Remove resource"
+          aria-label={intl.formatMessage(messages.removeResourceLabel)}
           className="rt-remove"
           onClick={(event) => {
             event.stopPropagation();
@@ -249,7 +483,7 @@ function ResourcePill({
 
       {/* connection port — on the proxy side it starts a connection */}
       <Box
-        aria-label={onPortClick ? 'Connect to a backend resource' : undefined}
+        aria-label={onPortClick ? intl.formatMessage(messages.connectPortLabel) : undefined}
         onClick={
           onPortClick
             ? (event) => {
@@ -258,7 +492,7 @@ function ResourcePill({
               }
             : undefined
         }
-        title={onPortClick ? 'Connect to a backend resource' : undefined}
+        title={onPortClick ? intl.formatMessage(messages.connectPortLabel) : undefined}
         sx={{
           alignItems: 'center',
           bgcolor: connectSource ? 'primary.dark' : 'primary.main',
@@ -287,20 +521,25 @@ function ResourcePill({
   );
 }
 
-export function RoutingPanel({ detail }: { detail: ApiDetail }) {
+export function RoutingPanel({ api }: { api: RestApi }) {
   const theme = useTheme();
+  const intl = useIntl();
   const { notify } = useNotifications();
-  const update = useUpdateApi();
+  const update = useUpdateRestApi();
 
-  const [operations, setOperations] = useState<ApiOperation[]>(detail.operations);
+  // Flattened once, lazily: from here the panel owns the edits, so re-deriving
+  // from `api` on a later render would silently discard them.
+  const [operations, setOperations] = useState<EditableOperation[]>(() =>
+    toEditableOperations(api),
+  );
   // The backend's resources are a catalog that comes from the backend service.
   // Seed it from the resources the API already maps to; changing the backend
   // URL re-discovers the catalog from the backend's OpenAPI/Swagger contract.
   const [backendResources, setBackendResources] = useState<BackendResource[]>(() =>
-    seedBackendResources(detail.operations),
+    seedBackendResources(toEditableOperations(api)),
   );
-  const [prodUrl, setProdUrl] = useState(detail.endpoints.prodUrl || '');
-  const [sandboxUrl, setSandboxUrl] = useState(detail.endpoints.sandboxUrl || '');
+  const [prodUrl, setProdUrl] = useState(api.upstream?.main?.url ?? '');
+  const [sandboxUrl, setSandboxUrl] = useState(api.upstream?.sandbox?.url ?? '');
   const [selection, setSelection] = useState<Selection>(null);
   // Indices of resources whose proxy↔backend link has been removed. The two
   // resources stay; only the connection is severed (a UI/routing concept —
@@ -312,15 +551,17 @@ export function RoutingPanel({ detail }: { detail: ApiDetail }) {
   // When the backend URL changes we fetch its OpenAPI/Swagger contract and
   // rebuild the backend catalog from it. Proxy resources whose method+path
   // exist in the contract auto-map (passthrough); the rest hang dry.
+  // The failure is stored as a reason key rather than a finished sentence, so
+  // the copy is resolved at render time and follows a locale switch.
   const [discovery, setDiscovery] = useState<{
     status: 'idle' | 'loading' | 'done' | 'error';
     count?: number;
-    message?: string;
+    reason?: 'noContract' | 'fetchFailed';
   }>({ status: 'idle' });
   const discoverAbort = useRef<AbortController | null>(null);
   // The backend URL discovery last ran for — so the debounced effect fires
   // only on an actual change, never for the initially-seeded URL.
-  const lastDiscoveredUrl = useRef(detail.endpoints.prodUrl || '');
+  const lastDiscoveredUrl = useRef(api.upstream?.main?.url ?? '');
 
   const runDiscovery = useCallback(async (url: string) => {
     lastDiscoveredUrl.current = url;
@@ -332,10 +573,7 @@ export function RoutingPanel({ detail }: { detail: ApiDetail }) {
       const resources = await discoverBackendResources(url, controller.signal);
       if (controller.signal.aborted) return;
       if (resources.length === 0) {
-        setDiscovery({
-          status: 'error',
-          message: 'No OpenAPI/Swagger contract found at the backend URL — map resources manually.',
-        });
+        setDiscovery({ status: 'error', reason: 'noContract' });
         return;
       }
       // Rebuild the catalog and re-evaluate every mapping: matches auto-connect,
@@ -345,11 +583,7 @@ export function RoutingPanel({ detail }: { detail: ApiDetail }) {
       setDiscovery({ status: 'done', count: resources.length });
     } catch {
       if (controller.signal.aborted) return;
-      setDiscovery({
-        status: 'error',
-        message:
-          'Could not fetch the backend contract (CORS or unreachable) — map resources manually.',
-      });
+      setDiscovery({ status: 'error', reason: 'fetchFailed' });
     }
   }, []);
 
@@ -366,13 +600,15 @@ export function RoutingPanel({ detail }: { detail: ApiDetail }) {
   useEffect(() => () => discoverAbort.current?.abort(), []);
 
   const urlsValid = isValidUrl(prodUrl) && isValidUrl(sandboxUrl);
-  const canSave = operationsValid(operations) && urlsValid && !update.isPending;
+  const restApiId = api.id;
+  const canSave =
+    Boolean(restApiId) && operationsValid(operations) && urlsValid && !update.isPending;
 
   const addRow = () => {
     setOperations(addOperation(operations));
     setSelection({ type: 'operation', index: operations.length });
   };
-  const patchOp = (index: number, patch: Partial<ApiOperation>) =>
+  const patchOp = (index: number, patch: Partial<EditableOperation>) =>
     setOperations(updateOperation(operations, index, patch));
   const removeRow = (index: number) => {
     setOperations(removeOperation(operations, index));
@@ -417,10 +653,12 @@ export function RoutingPanel({ detail }: { detail: ApiDetail }) {
   const confirmRemoveRow = (index: number) => {
     const op = operations[index];
     setConfirm({
-      title: 'Remove resource',
-      message:
-        `Remove the ${op.method} ${op.path || '/'} proxy resource? ` + `This can't be undone.`,
-      confirmLabel: 'Remove',
+      title: intl.formatMessage(messages.confirmRemoveTitle),
+      message: intl.formatMessage(messages.confirmRemoveMessage, {
+        method: op.method,
+        path: op.path || '/',
+      }),
+      confirmLabel: intl.formatMessage(messages.confirmRemoveAction),
       destructive: true,
       onConfirm: () => removeRow(index),
     });
@@ -429,11 +667,12 @@ export function RoutingPanel({ detail }: { detail: ApiDetail }) {
   const confirmDisconnect = (index: number) => {
     const op = operations[index];
     setConfirm({
-      title: 'Remove connection',
-      message:
-        `Remove the connection for ${op.method} ${op.path || '/'}? ` +
-        'Both resources stay — only the link is removed.',
-      confirmLabel: 'Remove connection',
+      title: intl.formatMessage(messages.confirmDisconnectTitle),
+      message: intl.formatMessage(messages.confirmDisconnectMessage, {
+        method: op.method,
+        path: op.path || '/',
+      }),
+      confirmLabel: intl.formatMessage(messages.confirmDisconnectAction),
       destructive: false,
       onConfirm: () => disconnect(index),
     });
@@ -474,14 +713,20 @@ export function RoutingPanel({ detail }: { detail: ApiDetail }) {
   };
 
   const save = () => {
-    update.mutate(withRoutingEdits(detail, { operations, prodUrl, sandboxUrl }), {
-      onSuccess: () => notify('Routing saved.', 'success'),
-      onError: (error) => notify(error instanceof Error ? error.message : 'Save failed', 'error'),
-    });
+    // The API was fetched by handle, so `id` is present; the guard exists
+    // because the spec marks it optional and a PUT to `/rest-apis/` would
+    // otherwise be issued against the collection.
+    if (!restApiId) return;
+    update.mutate(
+      { restApiId, body: withRoutingEdits(api, { operations, prodUrl, sandboxUrl }) },
+      // No `onError`: the query client's `onMutationError` already notifies, and
+      // a local handler would replace the optimistic rollback in `useUpdateRestApi`.
+      { onSuccess: () => notify(intl.formatMessage(messages.saved), 'success') },
+    );
   };
 
   // Per-row backend path: explicit rewrite target, else the proxy path (passthrough).
-  const backendFor = (op: ApiOperation) => ({
+  const backendFor = (op: EditableOperation) => ({
     path: getBackendPath(op) ?? op.path,
     passthrough: getBackendPath(op) === undefined,
   });
@@ -495,14 +740,15 @@ export function RoutingPanel({ detail }: { detail: ApiDetail }) {
       {/* heading + add */}
       <Box sx={{ alignItems: 'flex-start', display: 'flex', gap: 3 }}>
         <Box sx={{ flex: 1 }}>
-          <Typography variant="h6">Routing</Typography>
+          <Typography variant="h6">
+            <FormattedMessage {...messages.heading} />
+          </Typography>
           <Typography color="text.secondary" variant="body2">
-            Map API proxy resources to backend resources. An unmapped resource passes through
-            unchanged.
+            <FormattedMessage {...messages.subheading} />
           </Typography>
         </Box>
         <Button onClick={addRow} size="small" startIcon={<Plus size={16} />}>
-          Add resource
+          <FormattedMessage {...messages.addResource} />
         </Button>
       </Box>
 
@@ -513,21 +759,32 @@ export function RoutingPanel({ detail }: { detail: ApiDetail }) {
           severity="info"
           sx={{ alignItems: 'center' }}
         >
-          Connecting{' '}
-          <Box component="span" sx={{ fontWeight: 700 }}>
-            {operations[connectingFrom].method} {operations[connectingFrom].path}
-          </Box>{' '}
-          — pick a matching backend resource (same method), or close to cancel.
+          <FormattedMessage
+            {...messages.connectingBanner}
+            values={{
+              method: operations[connectingFrom].method,
+              path: operations[connectingFrom].path,
+              selected: (chunks) => (
+                <Box component="span" sx={{ fontWeight: 700 }}>
+                  {chunks}
+                </Box>
+              ),
+            }}
+          />
         </Alert>
       )}
 
-      {discovery.status === 'error' && discovery.message && (
+      {discovery.status === 'error' && discovery.reason && (
         <Alert
           onClose={() => setDiscovery({ status: 'idle' })}
           severity="warning"
           sx={{ alignItems: 'center' }}
         >
-          {discovery.message}
+          <FormattedMessage
+            {...(discovery.reason === 'noContract'
+              ? messages.discoveryNoContract
+              : messages.discoveryFetchFailed)}
+          />
         </Alert>
       )}
 
@@ -552,7 +809,7 @@ export function RoutingPanel({ detail }: { detail: ApiDetail }) {
                 }}
                 variant="subtitle2"
               >
-                API proxy resources
+                <FormattedMessage {...messages.proxyResourcesColumn} />
               </Typography>
               <Box
                 sx={{
@@ -570,7 +827,7 @@ export function RoutingPanel({ detail }: { detail: ApiDetail }) {
                   }}
                   variant="subtitle2"
                 >
-                  Backend resources
+                  <FormattedMessage {...messages.backendResourcesColumn} />
                 </Typography>
                 <Box
                   onClick={() => setSelection({ type: 'upstream' })}
@@ -595,7 +852,7 @@ export function RoutingPanel({ detail }: { detail: ApiDetail }) {
                     error={!isValidUrl(prodUrl)}
                     fullWidth
                     onChange={(event) => setProdUrl(event.target.value)}
-                    placeholder="Set backend URL"
+                    placeholder={intl.formatMessage(messages.backendUrlPlaceholder)}
                     slotProps={{
                       htmlInput: { 'aria-label': 'Backend URL' },
                       input: {
@@ -613,10 +870,10 @@ export function RoutingPanel({ detail }: { detail: ApiDetail }) {
                   {discovery.status === 'loading' ? (
                     <CircularProgress size={14} sx={{ flex: 'none' }} />
                   ) : (
-                    <Tooltip title="Discover backend resources from its OpenAPI/Swagger contract">
+                    <Tooltip title={intl.formatMessage(messages.discoverTooltip)}>
                       <span>
                         <IconButton
-                          aria-label="Discover backend resources"
+                          aria-label={intl.formatMessage(messages.discoverLabel)}
                           disabled={!prodUrl.trim() || !isValidUrl(prodUrl)}
                           onClick={(event) => {
                             event.stopPropagation();
@@ -702,7 +959,7 @@ export function RoutingPanel({ detail }: { detail: ApiDetail }) {
                     }}
                   >
                     <IconButton
-                      aria-label="Remove connection"
+                      aria-label={intl.formatMessage(messages.removeConnectionLabel)}
                       className="rt-link-del"
                       onClick={() => confirmDisconnect(i)}
                       size="small"
@@ -779,7 +1036,7 @@ export function RoutingPanel({ detail }: { detail: ApiDetail }) {
                   sx={{ left: OP_X, position: 'absolute', top: HEADER_H + 6 }}
                   variant="body2"
                 >
-                  No resources yet. Add one to route to the backend.
+                  <FormattedMessage {...messages.noResourcesYet} />
                 </Typography>
               )}
             </Box>
@@ -812,7 +1069,9 @@ export function RoutingPanel({ detail }: { detail: ApiDetail }) {
                     justifyContent: 'space-between',
                   }}
                 >
-                  <Typography variant="subtitle1">Backend endpoint</Typography>
+                  <Typography variant="subtitle1">
+                    <FormattedMessage {...messages.backendEndpoint} />
+                  </Typography>
                   <IconButton onClick={() => setSelection(null)} size="small">
                     <X size={16} />
                   </IconButton>
@@ -820,7 +1079,7 @@ export function RoutingPanel({ detail }: { detail: ApiDetail }) {
                 <TextField
                   error={!isValidUrl(prodUrl)}
                   fullWidth
-                  label="Production URL"
+                  label={intl.formatMessage(messages.productionUrl)}
                   onChange={(event) => setProdUrl(event.target.value)}
                   placeholder="https://backend.example.com/api"
                   size="small"
@@ -843,7 +1102,7 @@ export function RoutingPanel({ detail }: { detail: ApiDetail }) {
                 <TextField
                   error={!isValidUrl(sandboxUrl)}
                   fullWidth
-                  label="Sandbox URL (optional)"
+                  label={intl.formatMessage(messages.sandboxUrl)}
                   onChange={(event) => setSandboxUrl(event.target.value)}
                   placeholder="https://sandbox.example.com/api"
                   size="small"
@@ -857,7 +1116,9 @@ export function RoutingPanel({ detail }: { detail: ApiDetail }) {
                     justifyContent: 'space-between',
                   }}
                 >
-                  <Typography variant="subtitle2">Backend resources</Typography>
+                  <Typography variant="subtitle2">
+                    <FormattedMessage {...messages.backendResourcesHeading} />
+                  </Typography>
                   <Button
                     disabled={
                       !prodUrl.trim() || !isValidUrl(prodUrl) || discovery.status === 'loading'
@@ -872,19 +1133,26 @@ export function RoutingPanel({ detail }: { detail: ApiDetail }) {
                       )
                     }
                   >
-                    Discover
+                    <FormattedMessage {...messages.discover} />
                   </Button>
                 </Box>
                 <Typography color="text.secondary" variant="caption">
-                  {discovery.status === 'loading'
-                    ? 'Fetching the backend contract…'
-                    : discovery.status === 'done'
-                      ? `Found ${discovery.count} backend resource${
-                          discovery.count === 1 ? '' : 's'
-                        }. Matching proxy resources were auto-mapped; the rest are left unmapped.`
-                      : discovery.status === 'error'
-                        ? discovery.message
-                        : 'Resources are discovered from the backend’s OpenAPI/Swagger contract when the URL changes.'}
+                  {discovery.status === 'loading' ? (
+                    <FormattedMessage {...messages.discoveryLoading} />
+                  ) : discovery.status === 'done' ? (
+                    <FormattedMessage
+                      {...messages.discoveryDone}
+                      values={{ count: discovery.count ?? 0 }}
+                    />
+                  ) : discovery.status === 'error' ? (
+                    <FormattedMessage
+                      {...(discovery.reason === 'noContract'
+                        ? messages.discoveryNoContract
+                        : messages.discoveryFetchFailed)}
+                    />
+                  ) : (
+                    <FormattedMessage {...messages.discoveryIdle} />
+                  )}
                 </Typography>
               </Stack>
             ) : (
@@ -899,7 +1167,7 @@ export function RoutingPanel({ detail }: { detail: ApiDetail }) {
                 }}
               >
                 <Typography variant="body2">
-                  Select a resource or the backend to edit it.
+                  <FormattedMessage {...messages.selectPrompt} />
                 </Typography>
               </Box>
             )}
@@ -910,7 +1178,7 @@ export function RoutingPanel({ detail }: { detail: ApiDetail }) {
       <SaveBar disabled={!canSave} onSave={save} saving={update.isPending} />
 
       <ConfirmDialog
-        confirmLabel={confirm?.confirmLabel ?? 'Confirm'}
+        confirmLabel={confirm?.confirmLabel ?? intl.formatMessage(messages.confirmDefault)}
         destructive={confirm?.destructive ?? true}
         message={confirm?.message ?? ''}
         onCancel={() => setConfirm(null)}
@@ -937,18 +1205,22 @@ function ResourceMappingEditor({
   onRemove,
   onClose,
 }: {
-  operation: ApiOperation;
+  operation: EditableOperation;
   backendPath: string;
   backendPassthrough: boolean;
   connectOptions: string[];
-  onChange: (patch: Partial<ApiOperation>) => void;
+  onChange: (patch: Partial<EditableOperation>) => void;
   onMapBackend: (value: string | undefined) => void;
   onRemove: () => void;
   onClose: () => void;
 }) {
   const theme = useTheme();
+  const intl = useIntl();
   const badgeColor = useBadgeColor();
   const badge = badgeColor(operation.method);
+  // URL paths, not prose — see the note in ResourcePill.
+  const displayProxyPath = operation.path || '/';
+  const displayBackendPath = backendPath || '/';
 
   return (
     <Stack spacing={2}>
@@ -959,7 +1231,9 @@ function ResourceMappingEditor({
           justifyContent: 'space-between',
         }}
       >
-        <Typography variant="subtitle1">Resource mapping</Typography>
+        <Typography variant="subtitle1">
+          <FormattedMessage {...messages.resourceMapping} />
+        </Typography>
         <IconButton onClick={onClose} size="small">
           <X size={16} />
         </IconButton>
@@ -978,7 +1252,7 @@ function ResourceMappingEditor({
           }}
           variant="caption"
         >
-          API PROXY RESOURCE
+          <FormattedMessage {...messages.apiProxyResourceCaption} />
         </Typography>
         <Box
           sx={{
@@ -1012,7 +1286,7 @@ function ResourceMappingEditor({
             {operation.method}
           </Box>
           <Typography noWrap sx={{ fontFamily: 'monospace', fontSize: 14 }}>
-            {operation.path || '/'}
+            {displayProxyPath}
           </Typography>
         </Box>
       </Box>
@@ -1039,7 +1313,7 @@ function ResourceMappingEditor({
           }}
           variant="caption"
         >
-          BACKEND RESOURCE
+          <FormattedMessage {...messages.backendResourceCaption} />
         </Typography>
         <Box
           sx={{
@@ -1056,7 +1330,7 @@ function ResourceMappingEditor({
           }}
         >
           <Typography noWrap sx={{ fontFamily: 'monospace', fontSize: 14 }}>
-            {backendPath || '/'}
+            {displayBackendPath}
           </Typography>
         </Box>
         <Typography
@@ -1064,9 +1338,9 @@ function ResourceMappingEditor({
           sx={{ display: 'block', mt: 0.75, textAlign: 'center' }}
           variant="caption"
         >
-          {backendPassthrough
-            ? 'Passthrough — same path as the proxy resource.'
-            : 'Requests are rewritten to this backend path.'}
+          <FormattedMessage
+            {...(backendPassthrough ? messages.passthroughNote : messages.rewriteNote)}
+          />
         </Typography>
       </Box>
 
@@ -1075,8 +1349,10 @@ function ResourceMappingEditor({
       {/* editable fields */}
       <TextField
         fullWidth
-        label="Method"
-        onChange={(event) => onChange({ method: event.target.value as ApiOperation['method'] })}
+        label={intl.formatMessage(messages.methodLabel)}
+        onChange={(event) =>
+          onChange({ method: event.target.value as EditableOperation['method'] })
+        }
         select
         size="small"
         value={operation.method}
@@ -1090,7 +1366,7 @@ function ResourceMappingEditor({
       <TextField
         error={!operation.path.trim().startsWith('/')}
         fullWidth
-        label="Proxy path"
+        label={intl.formatMessage(messages.proxyPathLabel)}
         onChange={(event) => onChange({ path: event.target.value })}
         placeholder="/sample/{id}"
         size="small"
@@ -1098,8 +1374,8 @@ function ResourceMappingEditor({
       />
       <TextField
         fullWidth
-        helperText="Route this proxy resource to any backend resource of the same method."
-        label="Connect to backend resource"
+        helperText={intl.formatMessage(messages.connectHelperText)}
+        label={intl.formatMessage(messages.connectToBackendLabel)}
         onChange={(event) => {
           const value = event.target.value;
           onMapBackend(value === PASSTHROUGH || value === operation.path ? undefined : value);
@@ -1109,7 +1385,9 @@ function ResourceMappingEditor({
         value={backendPassthrough ? PASSTHROUGH : backendPath}
       >
         <MenuItem value={PASSTHROUGH}>
-          <em>Passthrough (same path)</em>
+          <em>
+            <FormattedMessage {...messages.passthroughOption} />
+          </em>
         </MenuItem>
         {(backendPassthrough || connectOptions.includes(backendPath)
           ? connectOptions
@@ -1122,7 +1400,7 @@ function ResourceMappingEditor({
       </TextField>
       <TextField
         fullWidth
-        label="Name (optional)"
+        label={intl.formatMessage(messages.nameLabel)}
         onChange={(event) => onChange({ name: event.target.value || undefined })}
         size="small"
         value={operation.name || ''}
@@ -1130,7 +1408,7 @@ function ResourceMappingEditor({
 
       <Divider />
       <Button color="error" onClick={onRemove} size="small" startIcon={<Trash2 size={16} />}>
-        Remove resource
+        <FormattedMessage {...messages.removeResourceButton} />
       </Button>
     </Stack>
   );

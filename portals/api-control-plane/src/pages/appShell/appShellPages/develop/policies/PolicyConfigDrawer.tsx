@@ -27,20 +27,67 @@ import {
 } from '@wso2/oxygen-ui';
 import { ChevronLeft, X } from '@wso2/oxygen-ui-icons-react';
 import { useMemo, useState } from 'react';
+import { defineMessages, FormattedMessage, useIntl } from 'react-intl';
 
-import type { PolicySummary } from '../../../../../api/policyHub/policyHubClient';
 import {
   getByPath,
   initValues,
-  type ParameterSchema,
-  type ParameterValues,
   setByPath,
   topLevelRequiredMissing,
-} from '@/api/policyHub/policySchema';
-import { usePolicyDefinition } from '@/api/policyHub/usePolicyHub';
+  usePolicyDefinition,
+  type ParameterSchema,
+  type ParameterValues,
+  type PolicySummary,
+} from '@/api/resources/policyHub';
+import type { Policy } from '@/api/resources/restApis';
 import { ErrorState } from '@/components/StateViews';
-import type { ApiPolicy } from '@/types/domain';
 import { defaultForSchema, SchemaField } from './SchemaField';
+
+const messages = defineMessages({
+  title: {
+    id: 'apiControlPlane.pages.appShell.appShellPages.develop.policies.PolicyConfigDrawer.title',
+    defaultMessage: 'Configure {policyName}',
+    description:
+      'Drawer heading. {policyName} is the policy\u2019s catalog name, backend data; do not translate it.',
+  },
+  backLabel: {
+    id: 'apiControlPlane.pages.appShell.appShellPages.develop.policies.PolicyConfigDrawer.backLabel',
+    defaultMessage: 'Back',
+    description: 'Accessible label for the icon button returning to the previous step.',
+  },
+  closeLabel: {
+    id: 'apiControlPlane.pages.appShell.appShellPages.develop.policies.PolicyConfigDrawer.closeLabel',
+    defaultMessage: 'Close',
+    description: 'Accessible label for the icon button dismissing the drawer.',
+  },
+  loadError: {
+    id: 'apiControlPlane.pages.appShell.appShellPages.develop.policies.PolicyConfigDrawer.loadError',
+    defaultMessage: 'Unable to load the policy definition.',
+  },
+  noParameters: {
+    id: 'apiControlPlane.pages.appShell.appShellPages.develop.policies.PolicyConfigDrawer.noParameters',
+    defaultMessage: 'This policy has no configurable parameters.',
+  },
+  back: {
+    id: 'apiControlPlane.pages.appShell.appShellPages.develop.policies.PolicyConfigDrawer.back',
+    defaultMessage: 'Back',
+    description: 'Footer button returning to the previous step. Verb.',
+  },
+  cancel: {
+    id: 'apiControlPlane.pages.appShell.appShellPages.develop.policies.PolicyConfigDrawer.cancel',
+    defaultMessage: 'Cancel',
+  },
+  savePolicy: {
+    id: 'apiControlPlane.pages.appShell.appShellPages.develop.policies.PolicyConfigDrawer.savePolicy',
+    defaultMessage: 'Save policy',
+    description: 'Confirms edits to an already-attached policy. Verb phrase.',
+  },
+  attachPolicy: {
+    id: 'apiControlPlane.pages.appShell.appShellPages.develop.policies.PolicyConfigDrawer.attachPolicy',
+    defaultMessage: 'Attach policy',
+    description: 'Attaches the configured policy to the selected scope. Verb phrase.',
+  },
+});
 
 /** Minimal reference needed to load a policy's definition. */
 export type PolicyRef = Pick<PolicySummary, 'name' | 'version' | 'displayName'>;
@@ -65,8 +112,9 @@ export function PolicyConfigDrawer({
   initialValues?: Record<string, unknown>;
   onBack?: () => void;
   onClose: () => void;
-  onConfirm: (policy: ApiPolicy) => void;
+  onConfirm: (policy: Policy) => void;
 }) {
+  const intl = useIntl();
   const definitionQuery = usePolicyDefinition(policy?.name, policy?.version, open && !!policy);
   const schema: ParameterSchema | undefined = definitionQuery.data?.schema;
 
@@ -121,14 +169,25 @@ export function PolicyConfigDrawer({
           }}
         >
           {onBack && (
-            <IconButton aria-label="Back" onClick={onBack} size="small">
+            <IconButton
+              aria-label={intl.formatMessage(messages.backLabel)}
+              onClick={onBack}
+              size="small"
+            >
               <ChevronLeft size={18} />
             </IconButton>
           )}
           <Typography sx={{ flex: 1 }} variant="h6">
-            Configure {policy?.displayName}
+            <FormattedMessage
+              {...messages.title}
+              values={{ policyName: policy?.displayName ?? '' }}
+            />
           </Typography>
-          <IconButton aria-label="Close" onClick={onClose} size="small">
+          <IconButton
+            aria-label={intl.formatMessage(messages.closeLabel)}
+            onClick={onClose}
+            size="small"
+          >
             <X size={18} />
           </IconButton>
         </Box>
@@ -136,29 +195,17 @@ export function PolicyConfigDrawer({
         <Box sx={{ flex: 1, overflowY: 'auto', p: 2 }}>
           {definitionQuery.isLoading || !schema ? (
             definitionQuery.error ? (
-              <ErrorState
-                message={
-                  definitionQuery.error instanceof Error
-                    ? definitionQuery.error.message
-                    : 'Unable to load the policy definition.'
-                }
-              />
+              <ErrorState message={intl.formatMessage(messages.loadError)} />
             ) : (
               <Box sx={{ display: 'flex', justifyContent: 'center', py: 6 }}>
                 <CircularProgress size={24} />
               </Box>
             )
           ) : definitionQuery.error ? (
-            <ErrorState
-              message={
-                definitionQuery.error instanceof Error
-                  ? definitionQuery.error.message
-                  : 'Unable to load the policy definition.'
-              }
-            />
+            <ErrorState message={intl.formatMessage(messages.loadError)} />
           ) : !hasParams ? (
             <Typography color="text.secondary" variant="body2">
-              This policy has no configurable parameters.
+              <FormattedMessage {...messages.noParameters} />
             </Typography>
           ) : (
             <Stack spacing={1}>
@@ -185,13 +232,17 @@ export function PolicyConfigDrawer({
             p: 2,
           }}
         >
-          <Button onClick={onBack ?? onClose}>{onBack ? 'Back' : 'Cancel'}</Button>
+          <Button onClick={onBack ?? onClose}>
+            <FormattedMessage {...(onBack ? messages.back : messages.cancel)} />
+          </Button>
           <Button
             disabled={definitionQuery.isLoading || missingRequired}
             onClick={confirm}
             variant="contained"
           >
-            {mode === 'edit' ? 'Save policy' : 'Attach policy'}
+            <FormattedMessage
+              {...(mode === 'edit' ? messages.savePolicy : messages.attachPolicy)}
+            />
           </Button>
         </Box>
       </Box>

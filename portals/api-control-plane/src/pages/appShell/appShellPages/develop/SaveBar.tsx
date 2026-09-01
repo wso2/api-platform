@@ -17,9 +17,23 @@
  */
 
 import { Box, Button } from '@wso2/oxygen-ui';
+import { defineMessages, useIntl } from 'react-intl';
 
 import { useFooterHeight } from '@/hooks/useFooterHeight';
 import { stickyBottomBarSx } from '@/theme';
+
+const messages = defineMessages({
+  save: {
+    id: 'apiControlPlane.pages.appShell.appShellPages.develop.SaveBar.save',
+    defaultMessage: 'Save changes',
+    description: 'Default label on the save bar button. Verb phrase.',
+  },
+  saving: {
+    id: 'apiControlPlane.pages.appShell.appShellPages.develop.SaveBar.saving',
+    defaultMessage: 'Saving\u2026',
+    description: 'Label on the save button while the request is in flight.',
+  },
+});
 
 /** Layout for the save bar's own content; the sticky treatment is shared. */
 const saveBarLayoutSx = {
@@ -36,6 +50,7 @@ type SaveBarProps = {
   /** Renders the in-flight label and is implied disabled. */
   saving?: boolean;
   onSave: () => void;
+  /** Overrides the default "Save changes"; already-translated text. */
   label?: string;
 };
 
@@ -43,12 +58,16 @@ type SaveBarProps = {
  * Save action bar pinned to the bottom of a develop tab's scroll area
  * (`position: sticky`), offset above the app footer so it is never covered.
  */
-export function SaveBar({ disabled, saving, onSave, label = 'Save changes' }: SaveBarProps) {
+export function SaveBar({ disabled, saving, onSave, label }: SaveBarProps) {
+  const intl = useIntl();
   const footerHeight = useFooterHeight();
+  // Defaulted here rather than in the signature: a default parameter is
+  // evaluated before `useIntl` exists, so the fallback could not be translated.
+  const saveLabel = label ?? intl.formatMessage(messages.save);
   return (
     <Box sx={[stickyBottomBarSx, saveBarLayoutSx, { bottom: `${footerHeight}px` }]}>
       <Button disabled={disabled || saving} onClick={onSave} variant="contained">
-        {saving ? 'Saving…' : label}
+        {saving ? intl.formatMessage(messages.saving) : saveLabel}
       </Button>
     </Box>
   );

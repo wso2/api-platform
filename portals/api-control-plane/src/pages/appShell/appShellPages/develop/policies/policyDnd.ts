@@ -16,7 +16,7 @@
  * under the License.
  */
 
-import type { PolicySummary } from '@/api/policyHub/policyHubClient';
+import type { PolicySummary } from '@/api/resources/policyHub';
 
 /**
  * Native HTML5 drag-and-drop for the policy workspace. The catalog (right panel)

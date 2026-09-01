@@ -3,7 +3,16 @@
 Every backend call is typed from `platform-api/resources/openapi.yaml`. Components import **hooks** and nothing else; ESLint enforces it.
 
 >**A legacy layer still exists** (`client.ts`, `mvpApi.ts`, `useMvpQueries.ts`,
-> `*/*Client.ts`) and still serves most pages. Don't add to it, port the page instead.
+> `*/*Client.ts`) and still serves the Deploy and Test pages. Don't add to it, port the page instead.
+
+> **One resource is not spec-derived: `resources/policyHub`.** The Policy Hub is
+> a separate service at `runtimeConfig.policyHubBaseUrl` with no operations in
+> the platform spec, so it has no `operationId` to derive types from and cannot
+> use `core/http` (pinned to the BFF proxy; one of its endpoints answers YAML).
+> It keeps the endpoints/queries/hooks split and the `ApiError` contract, and
+> normalizes every response, because the wire is untyped. Read the header of
+> `resources/policyHub/policyHub.endpoints.ts` before copying anything from it —
+> it is an exception with reasons, not a second pattern.
 
 ## Layers
 

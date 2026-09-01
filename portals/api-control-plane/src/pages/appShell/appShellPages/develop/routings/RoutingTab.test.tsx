@@ -19,26 +19,25 @@
 import { http, HttpResponse } from 'msw';
 import { describe, expect, it } from 'vitest';
 
+import { aRestApi } from '@/test/msw';
 import { server } from '@/test/server';
 import { renderWithProviders, screen } from '@/test/utils';
-import type { ApiDetail } from '@/types/domain';
 import { RoutingPanel } from './RoutingPanel';
 
-const detail: ApiDetail = {
+// The panel now takes the spec's `RESTAPI` straight from `useRestApi`, so the
+// fixture is the spec-typed builder: operations nest under `request`, and the
+// backend URL lives on `upstream.main`.
+const api = aRestApi({
   id: 'orders-api',
-  projectId: 'proj',
-  name: 'orders',
   displayName: 'Orders',
-  handler: 'orders-api',
-  kind: 'API_PROXY',
-  status: 'ACTIVE',
+  projectId: 'proj',
   operations: [
-    { method: 'GET', path: '/orders' },
-    { method: 'GET', path: '/new' },
+    { request: { method: 'GET', path: '/orders' } },
+    { request: { method: 'GET', path: '/new' } },
   ],
   policies: [],
-  endpoints: { prodUrl: 'http://api.test' },
-};
+  upstream: { main: { url: 'http://api.test' } },
+});
 
 describe('RoutingTab backend discovery', () => {
   it('auto-maps proxy resources found in the backend contract and leaves the rest dry', async () => {
@@ -52,7 +51,7 @@ describe('RoutingTab backend discovery', () => {
       ),
     );
 
-    const { user } = renderWithProviders(<RoutingPanel detail={detail} />);
+    const { user } = renderWithProviders(<RoutingPanel api={api} />);
 
     // Seeded from the operations, both resources start mapped.
     expect(screen.queryByTitle(/Not connected/)).not.toBeInTheDocument();
@@ -75,8 +74,8 @@ describe('RoutingTab backend discovery', () => {
       ),
     );
 
-    const noUrl: ApiDetail = { ...detail, endpoints: {} };
-    const { user } = renderWithProviders(<RoutingPanel detail={noUrl} />);
+    const noUrl = { ...api, upstream: { main: {} } };
+    const { user } = renderWithProviders(<RoutingPanel api={noUrl} />);
 
     // The canvas holder is a real, editable input (not a static label).
     const field = screen.getByLabelText('Backend URL') as HTMLInputElement;

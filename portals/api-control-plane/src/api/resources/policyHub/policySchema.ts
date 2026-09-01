@@ -56,11 +56,7 @@ export const getByPath = (root: unknown, path: string): unknown => {
 };
 
 /** Immutable deep set; creates intermediate objects/arrays as needed. */
-export const setByPath = (
-  root: ParameterValues,
-  path: string,
-  value: unknown
-): ParameterValues => {
+export const setByPath = (root: ParameterValues, path: string, value: unknown): ParameterValues => {
   const segs = segments(path);
   const clone = (node: unknown, depth: number): unknown => {
     if (depth === segs.length) return value;
@@ -70,9 +66,10 @@ export const setByPath = (
       arr[seg] = clone(arr[seg], depth + 1);
       return arr;
     }
-    const obj = node && typeof node === 'object' && !Array.isArray(node)
-      ? { ...(node as Record<string, unknown>) }
-      : {};
+    const obj =
+      node && typeof node === 'object' && !Array.isArray(node)
+        ? { ...(node as Record<string, unknown>) }
+        : {};
     obj[seg] = clone(obj[seg], depth + 1);
     return obj;
   };
@@ -103,7 +100,7 @@ export const defaultForSchema = (schema: ParameterSchema): unknown => {
 /** Builds initial form values from the schema, overlaying any existing values. */
 export const initValues = (
   schema: ParameterSchema,
-  existing?: ParameterValues
+  existing?: ParameterValues,
 ): ParameterValues => {
   if (existing && Object.keys(existing).length > 0) {
     // Edit mode: start from saved values; fall back to defaults per property.
@@ -119,7 +116,7 @@ export const initValues = (
  */
 export const topLevelRequiredMissing = (
   schema: ParameterSchema,
-  values: ParameterValues
+  values: ParameterValues,
 ): boolean => {
   const required = schema.required || [];
   return required.some((key) => {

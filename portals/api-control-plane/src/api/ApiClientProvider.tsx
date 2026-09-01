@@ -47,11 +47,6 @@ import {
   undeployGatewayDeployment,
   updateApi,
 } from './mvpApi';
-import {
-  getPolicyDefinition,
-  listPolicies,
-  listPolicyCategories,
-} from './policyHub/policyHubClient';
 
 /**
  * The real data-access surface. Every backend call the app makes flows through
@@ -93,10 +88,6 @@ export const realApiClient = {
   listEnvironments,
   listDeployments,
   getApiProxy,
-  // policy hub
-  listPolicies,
-  listPolicyCategories,
-  getPolicyDefinition,
 };
 
 /** Typed surface, derived from the real client so it never drifts. */

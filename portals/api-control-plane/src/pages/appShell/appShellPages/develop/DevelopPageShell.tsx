@@ -18,39 +18,53 @@
 
 import type { ReactNode } from 'react';
 import { PageTitle } from '@wso2/oxygen-ui';
-import { FormattedMessage, type MessageDescriptor } from 'react-intl';
+import { defineMessages, FormattedMessage, useIntl, type MessageDescriptor } from 'react-intl';
 
-import { useApiDetail } from '@/api/hooks/useMvpQueries';
+import { useRestApi, type RestApi } from '@/api/resources/restApis';
 import { ErrorState, LoadingState } from '@/components/StateViews';
-import type { ApiDetail } from '@/types/domain';
+import { useConsoleScope } from '@/scope/ConsoleScopeProvider';
+
+const messages = defineMessages({
+  loading: {
+    id: 'apiControlPlane.pages.appShell.appShellPages.develop.DevelopPageShell.loading',
+    defaultMessage: 'Loading API',
+    description: 'Shown while the API being edited is fetched.',
+  },
+  notFound: {
+    id: 'apiControlPlane.pages.appShell.appShellPages.develop.DevelopPageShell.notFound',
+    defaultMessage: 'API not found',
+  },
+});
 
 export type DevelopPageShellProps = {
   /** Section name, e.g. Policies. */
   title: MessageDescriptor;
   /** Sub-header taking the API's `displayName` as `{apiName}`. */
   subtitle: MessageDescriptor;
-  children: (detail: ApiDetail) => ReactNode;
+  children: (api: RestApi) => ReactNode;
 };
 
 /**
  * Heading plus loaded API detail for a Develop page.
  *
- * The three panels were tabs on the API overview page, where one `useApiDetail()`
- * served all of them and the header card said which API you were looking at. Now
- * that each is its own route they each need both, so this holds the pair in one
+ * The three panels were tabs on the API overview page, where one query served
+ * all of them and the header card said which API you were looking at. Now that
+ * each is its own route they each need both, so this holds the pair in one
  * place rather than repeating the query and its loading/error branches three
- * times. `children` takes the loaded detail, so a panel needing it can't be
+ * times. `children` takes the loaded API, so a panel needing it can't be
  * rendered before it exists.
  */
 export function DevelopPageShell({ children, subtitle, title }: DevelopPageShellProps) {
-  const detailQuery = useApiDetail();
+  const intl = useIntl();
+  const { params } = useConsoleScope();
+  const apiQuery = useRestApi(params.apiHandler);
 
-  if (detailQuery.isLoading) return <LoadingState label="Loading API" />;
-  if (detailQuery.error || !detailQuery.data) {
-    return <ErrorState title="API not found" />;
+  if (apiQuery.isPending) return <LoadingState label={intl.formatMessage(messages.loading)} />;
+  if (apiQuery.error || !apiQuery.data) {
+    return <ErrorState title={intl.formatMessage(messages.notFound)} />;
   }
 
-  const detail = detailQuery.data;
+  const api = apiQuery.data;
 
   return (
     <>
@@ -59,11 +73,11 @@ export function DevelopPageShell({ children, subtitle, title }: DevelopPageShell
           <FormattedMessage {...title} />
         </PageTitle.Header>
         <PageTitle.SubHeader>
-          <FormattedMessage {...subtitle} values={{ apiName: detail.displayName }} />
+          <FormattedMessage {...subtitle} values={{ apiName: api.displayName }} />
         </PageTitle.SubHeader>
       </PageTitle>
 
-      {children(detail)}
+      {children(api)}
     </>
   );
 }
