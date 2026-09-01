@@ -15,7 +15,7 @@ REGISTRY_URL="${API_PORTAL_BASE_URL}/registry/${ORG_HANDLE}/v0.1/servers"
 
 log_header "MCP Registry -- ${REGISTRY_URL}"
 
-RESPONSE="$(curl -sSk "$REGISTRY_URL")"
+RESPONSE="$(curl -sS --cacert "$CA_BUNDLE" "$REGISTRY_URL")"
 COUNT="$(printf '%s' "$RESPONSE" | jq -r '.metadata.count // 0')"
 
 printf '%s' "$RESPONSE" | jq .

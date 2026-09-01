@@ -31,7 +31,7 @@ publish_one() {
 
   log_info "Publishing ${mcp_id}..."
   local response status
-  response=$(curl -sSk -w '\n%{http_code}' -X POST "${API_PORTAL_BASE_URL}/api/v0.9/mcp-servers" \
+  response=$(curl -sS --cacert "$CA_BUNDLE" -w '\n%{http_code}' -X POST "${API_PORTAL_BASE_URL}/api/v0.9/mcp-servers" \
     -H "Authorization: Bearer ${TOKEN}" \
     -F "metadata=@${dir}/mcp.yaml" \
     -F "definition=@${dir}/schemaDefinition.yaml;type=application/yaml")
@@ -42,7 +42,7 @@ publish_one() {
     log_ok "  created (${mcp_id})"
   elif [[ "$status" == "409" ]]; then
     log_info "  already published -- updating"
-    response=$(curl -sSk -w '\n%{http_code}' -X PUT "${API_PORTAL_BASE_URL}/api/v0.9/mcp-servers/${mcp_id}" \
+    response=$(curl -sS --cacert "$CA_BUNDLE" -w '\n%{http_code}' -X PUT "${API_PORTAL_BASE_URL}/api/v0.9/mcp-servers/${mcp_id}" \
       -H "Authorization: Bearer ${TOKEN}" \
       -F "metadata=@${dir}/mcp.yaml" \
       -F "definition=@${dir}/schemaDefinition.yaml;type=application/yaml")

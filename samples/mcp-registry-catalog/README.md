@@ -91,11 +91,13 @@ Each of `mcp-servers/weather-mcp/` and `mcp-servers/inventory-mcp/` carries:
 `publish.sh` logs in once against the Platform API (`POST /api/portal/v0.9/auth/login`), then for each server sends a multipart request to the Management API. The whole API Portal app (UI, Management API, Registry API) is mounted under a fixed `/api-portal` prefix. Only `/health` sits outside it:
 
 ```bash
-curl -k -X POST "https://localhost:9543/api-portal/api/v0.9/mcp-servers" \
+curl --cacert resources/certificates/cert.pem -X POST "https://localhost:9543/api-portal/api/v0.9/mcp-servers" \
   -H "Authorization: Bearer $TOKEN" \
   -F "metadata=@mcp.yaml" \
   -F "definition=@schemaDefinition.yaml;type=application/yaml"
 ```
+
+`resources/certificates/cert.pem` is the self-signed cert `setup.sh` generates for Platform API + API Portal -- `--cacert` verifies against that specific cert instead of skipping TLS verification with `-k`.
 
 Re-running `publish.sh` is safe: a `409 Conflict` (already published) is followed by a `PUT` to the same resource instead, so the script converges rather than failing.
 
@@ -104,7 +106,7 @@ Re-running `publish.sh` is safe: a `409 Conflict` (already published) is followe
 The Registry API needs no authentication. It's meant to be consumed by anyone with network access to the portal, the same way a public package registry's read API works:
 
 ```bash
-curl -k "https://localhost:9543/api-portal/registry/default/v0.1/servers"
+curl --cacert resources/certificates/cert.pem "https://localhost:9543/api-portal/registry/default/v0.1/servers"
 ```
 
 ## Files

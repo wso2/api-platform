@@ -16,6 +16,11 @@ API_PORTAL_URL="${API_PORTAL_URL:-https://localhost:9543}"
 API_PORTAL_BASE_URL="${API_PORTAL_URL}/api-portal"
 ORG_HANDLE="${ORG_HANDLE:-default}"
 VIEW_NAME="${VIEW_NAME:-default}"
+# The self-signed TLS cert setup.sh generates for Platform API + API Portal.
+# Passed to curl via --cacert instead of -k/--insecure, so requests verify
+# against this specific cert (which covers "localhost") rather than skipping
+# certificate validation altogether.
+CA_BUNDLE="${SCRIPT_DIR}/resources/certificates/cert.pem"
 
 log_header() { printf "\n%s%s== %s ==%s\n" "$BOLD" "$BLUE" "$1" "$NC"; }
 log_info()   { printf "%s%s%s %s\n" "$BLUE" "➜" "$NC" "$1"; }
@@ -64,7 +69,7 @@ wait_for_health() {
 platform_api_login() {
   local username="$1" password="$2"
   local response
-  response=$(curl -sSk -X POST "${PLATFORM_API_URL}/api/portal/v0.9/auth/login" \
+  response=$(curl -sS --cacert "$CA_BUNDLE" -X POST "${PLATFORM_API_URL}/api/portal/v0.9/auth/login" \
     -d "username=${username}" -d "password=${password}")
   local token
   token=$(printf '%s' "$response" | jq -r '.token // empty')

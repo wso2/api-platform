@@ -42,6 +42,9 @@ function callTool(name, args) {
 }
 
 function handleRpc(body) {
+  if (typeof body !== 'object' || body === null || Array.isArray(body) || typeof body.method !== 'string') {
+    return { jsonrpc: '2.0', id: null, error: { code: -32600, message: 'Invalid Request' } };
+  }
   const { id, method, params } = body;
   switch (method) {
     case 'initialize':
