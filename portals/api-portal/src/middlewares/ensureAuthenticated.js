@@ -97,11 +97,22 @@ function enforceSecurity(scope) {
                 const decodedAccessToken = safeDecodeJwt(token);
                 req[constants.USER_ID] = await resolveUserUuid(req, decodedAccessToken?.[constants.USER_ID]);
                 return validateAuthentication(scope)(req, res, next);
-            } else if (typeof req.socket?.getPeerCertificate === 'function' && req.socket.getPeerCertificate(true)) {
+            }
+            // getPeerCertificate() answers {} — truthy, but empty — on a TLS connection
+            // where the client sent no certificate, so presence of the method plus a
+            // truthy return is not evidence of a credential. Without the emptiness check
+            // every anonymous request to an HTTPS-enabled portal would be routed into
+            // enforceMTLS and answered 403 'Client certificate required' as plain text,
+            // instead of falling through to the uniform 401 JSON below. Plain HTTP has no
+            // such method at all, which is why this only misbehaves under https.enabled.
+            const clientCert = typeof req.socket?.getPeerCertificate === 'function'
+                ? req.socket.getPeerCertificate(true)
+                : null;
+            if (clientCert && Object.keys(clientCert).length > 0) {
                 return enforceMTLS(req, res, next);
             } else {
-                req.session.returnTo = accessControlUrl(req) || `${constants.ROUTE.BASE_PATH}/${req.params.orgName}`;
                 if (req.params.orgName) {
+                    req.session.returnTo = accessControlUrl(req) || `${constants.ROUTE.BASE_PATH}/${req.params.orgName}`;
                     return res.redirect(`${constants.ROUTE.BASE_PATH}/${req.params.orgName}/views/${req.session.view}/login`);
                 }
                 // No :orgName to build a login-page URL from. Not an edge case: the MCP
