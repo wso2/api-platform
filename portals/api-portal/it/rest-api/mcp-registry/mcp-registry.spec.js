@@ -46,7 +46,7 @@ const encodeName = (name) => encodeURIComponent(name);
 function publishBody(name, overrides = {}) {
     return {
         name,
-        description: 'Published by the MCP registry integration suite.',
+        description: overrides.description || 'Published by the MCP registry integration suite.',
         version: overrides.version || '1.0.0',
         title: overrides.title || 'Registry IT Server',
         remotes: overrides.remotes || [
@@ -61,6 +61,24 @@ function publishBody(name, overrides = {}) {
         },
         ...(overrides.extra || {}),
     };
+}
+
+// Reads the whole server collection, following metadata.nextCursor to the end. The
+// registry caps a page at MAX_LIMIT=100, so any completeness claim about the listing
+// has to page rather than ask for one big limit.
+async function listAllServers() {
+    const all = [];
+    let cursor;
+    // Bounded so a cursor that failed to advance ends the test instead of the run.
+    for (let page = 0; page < 100; page += 1) {
+        const query = cursor ? `?limit=100&cursor=${encodeURIComponent(cursor)}` : '?limit=100';
+        const res = await client.raw().get(`${client.BASE_PATH}${REGISTRY}/servers${query}`);
+        expect(res.status).toBe(200);
+        all.push(...res.body.servers);
+        cursor = res.body.metadata?.nextCursor;
+        if (!cursor) return all;
+    }
+    throw new Error('listAllServers: nextCursor never terminated');
 }
 
 // Published servers are not created through the /api/v0.9 collections, so the suite's
@@ -112,7 +130,10 @@ describe('MCP server registry (v0.1)', () => {
             const versions = await client.raw()
                 .get(`${client.BASE_PATH}${REGISTRY}/servers/${encodeName(name)}/versions`);
             expect(versions.status).toBe(200);
-            expect(JSON.stringify(versions.body)).toContain('1.0.0');
+            // Asserted on the version field of a list entry, not on a stringified body:
+            // '1.0.0' also appears in $schema-adjacent text and could match something
+            // that is not a version at all, which would make this pass for the wrong reason.
+            expect(versions.body.servers.map((s) => s.server.version)).toContain('1.0.0');
 
             const version = await client.raw()
                 .get(`${client.BASE_PATH}${REGISTRY}/servers/${encodeName(name)}/versions/1.0.0`);
@@ -160,9 +181,11 @@ describe('MCP server registry (v0.1)', () => {
             const again = await publish(publishBody(name, { title: 'Updated Title' }));
             expect(again.status).toBe(200);       // 200 = updated, 201 = created
 
-            // The upsert must not leave a duplicate behind.
-            const list = await client.raw().get(`${client.BASE_PATH}${REGISTRY}/servers?limit=100`);
-            const matches = list.body.servers.filter((s) => s.server.name === name);
+            // The upsert must not leave a duplicate behind. Walked page by page rather
+            // than read off a single ?limit=100 request: 100 is the registry's MAX_LIMIT
+            // (mcpRegistryService.normalizeLimit), so on an org holding more servers than
+            // that a duplicate could sit past the first page and go unseen.
+            const matches = (await listAllServers()).filter((s) => s.server.name === name);
             expect(matches).toHaveLength(1);
         });
 
@@ -241,19 +264,25 @@ describe('MCP server registry (v0.1)', () => {
 
         it('rejects unauthenticated writes to an existing server', async () => {
             const name = serverName(uniqueHandle('protected'));
-            expect((await publish(publishBody(name))).status).toBe(201);
+            const original = publishBody(name);
+            expect((await publish(original)).status).toBe(201);
             const target = `${client.BASE_PATH}${REGISTRY}/servers/${encodeName(name)}/versions/1.0.0`;
 
-            const updated = await client.raw().put(target).send(publishBody(name, { title: 'Hijacked' }));
+            const hijacked = 'Hijacked by an unauthenticated caller.';
+            const updated = await client.raw().put(target).send(publishBody(name, { description: hijacked }));
             expect(updated.status).toBe(401);
 
             const deleted = await client.raw().delete(target);
             expect(deleted.status).toBe(401);
 
-            // And the server is untouched by either attempt.
+            // And the server is untouched by either attempt. Checked on `description`,
+            // not `title`: title does not survive a read at all (see the known-defect
+            // test above), so asserting on it would hold whether or not the write landed.
+            // Asserted as equal to what was published rather than merely "not the hijack
+            // value", so the check still fails if description stops round-tripping too.
             const check = await client.raw().get(target);
             expect(check.status).toBe(200);
-            expect(check.body.server.title).not.toBe('Hijacked');
+            expect(check.body.server.description).toBe(original.description);
         });
 
         it('lets an entitled role delete a version, after which it is gone', async () => {
