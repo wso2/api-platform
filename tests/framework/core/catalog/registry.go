@@ -52,7 +52,7 @@ func BuildSpec(component, version string) (builder.Spec, error) {
 }
 
 // BuildSources builds each unversioned source product used by a resolved suite once.
-func BuildSources(ctx context.Context, resolved *topology.Resolved, root string, runner builder.Runner) error {
+func BuildSources(ctx context.Context, resolved *topology.Resolved, root string, runner builder.Runner, coverage bool) error {
 	if resolved == nil {
 		return fmt.Errorf("catalog: resolved suite is required")
 	}
@@ -78,7 +78,7 @@ func BuildSources(ctx context.Context, resolved *topology.Resolved, root string,
 	if len(products) == 0 {
 		return nil
 	}
-	return builder.BuildProducts(ctx, products, root, runner)
+	return builder.BuildProducts(ctx, products, root, runner, coverage)
 }
 
 // All returns every component definition the catalog knows about.

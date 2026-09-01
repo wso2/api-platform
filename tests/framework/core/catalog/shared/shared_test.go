@@ -92,7 +92,7 @@ func TestGatewayRunImagesUseNormalNames(t *testing.T) {
 	t.Setenv(EnvCoverageMode, "")
 	for _, ref := range []string{GatewayControllerRunImage(), GatewayRuntimeRunImage()} {
 		require.NotContains(t, ref, "-coverage",
-			"%s is a coverage-instrumented build; a default run collects no server-side "+
+			"%s is a coverage-instrumented build; a default run collects no runtime "+
 				"coverage, so it would pay the slowest build in the pipeline for nothing", ref)
 		require.Contains(t, ref, ":"+gatewayVersion(),
 			"%s is not pinned to gateway/VERSION", ref)

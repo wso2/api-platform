@@ -660,12 +660,12 @@ func (c *ComposeStack) PrimaryService() string {
 	return c.def.Compose.PrimaryService
 }
 
-// CoverageServices lists the services whose GOCOVERDIR a coverage run collects.
-func (c *ComposeStack) CoverageServices() []string {
+// CoverageServices lists the services whose coverage artifacts a coverage run collects.
+func (c *ComposeStack) CoverageServices() []components.CoverageService {
 	if c == nil || c.def == nil || c.def.Compose == nil {
 		return nil
 	}
-	return append([]string(nil), c.def.Compose.CoverageServices...)
+	return append([]components.CoverageService(nil), c.def.Compose.CoverageServices...)
 }
 
 // ServiceContainerID resolves one service's docker container ID. Resolve BEFORE stopping

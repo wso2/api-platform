@@ -1,6 +1,6 @@
 # integration-v2 framework for api-platform — implementation plan
 
-**Status:** DRAFT v1, pre-implementation. Modelled on product-apim's `integration-v2`
+**Status:** Active implementation. Modelled on product-apim's `integration-v2`
 (TestNG + Cucumber + Testcontainers), re-expressed for Go (godog + testcontainers-go) with a
 YAML topology layer replacing TestNG's suite XML.
 
@@ -10,11 +10,10 @@ YAML topology layer replacing TestNG's suite XML.
 
 **Goal.** One integration/E2E framework for every api-platform suite, providing:
 declarative multi-component topologies, safe parallelism, framework-provisioned infrastructure
-(containers + databases + schema), dynamic port mapping, scoped state, resource cleanup, and a
-tagged coverage taxonomy.
+(containers + databases + schema), dynamic port mapping, scoped state, resource cleanup, and
+coverage collection.
 
 **Non-goals (this plan).**
-- Server-side coverage collection — deferred until the framework runs (Phase 7).
 - The test-authoring Claude skill — parked, but in the delivery plan (Phase 8).
 - Replacing unit tests or the Gateway API conformance suite.
 - Framework self-test gates equivalent to product-apim's 31 `verify-*.sh` phases — see §7 open items.
@@ -69,7 +68,7 @@ tests/framework/
 │   ├── capability-map.yml       closed @cap/@feat vocabulary (drafted)
 │   ├── coverage-tree.md         GENERATED
 │   └── implementation-plan.md   this file
-├── framework/
+├── core/
 │   ├── actor/                   administrative credentials and actor contracts
 │   ├── components/              component definitions, instances, wiring and overlays
 │   ├── topology/                YAML schema, loader, validation and selection
@@ -179,7 +178,8 @@ Framework provisions the topology and hands accessors to an external Cypress pro
 (api-portal 22 specs, ai-workspace 11 specs, api-portal REST 37 Jest specs).
 
 ### Phase 7 — Coverage
-Reuse the existing Go coverage collector; move the dump to per-block teardown, merge at suite end.
+The framework owns build-time instrumentation, graceful-shutdown collection, and separate Go
+and Node/V8 report generation. Product HTTP coverage endpoints are not part of this design.
 
 ### Phase 8 — Test-authoring skill
 Parked; in the delivery plan.
@@ -236,50 +236,52 @@ that metadata.
 1. **Inventory and baseline**
    - Record the four product source roots, canonical Dockerfiles, image names, and version
      files.
-   - Identify every product-side change introduced solely for the coverage MVP.
+   - [x] Identify every product-side change introduced solely for framework coverage.
    - Capture baseline unit, integration, and race-test results.
 
 2. **Build contract**
-   - Add a shared build specification and executor under `core/builder`.
-   - Add catalog build specifications for `platformgateway`, `platformapi`, `aiworkspace`,
+   - [x] Add a shared build specification and executor under `core/builder`.
+   - [x] Add catalog build specifications for `platformgateway`, `platformapi`, `aiworkspace`,
      and `apiportal`.
-   - Validate source roots, Dockerfiles, image outputs, versions, and coverage capability.
-   - Make execution concurrency-safe and test it with a fake runner under `-race`.
+   - [x] Validate source roots, Dockerfiles, image outputs, versions, and coverage capability.
+   - [x] Make execution concurrency-safe and test it with a fake runner under `-race`.
 
 3. **Image selection**
-   - Keep explicit YAML/CLI versions in pull-only mode.
-   - Build from checked-out source only when no explicit version is supplied.
-   - Use the product `VERSION` value as the image tag.
-   - Reject `-gateway-version` combined with coverage mode.
+   - [x] Keep explicit YAML/CLI versions in pull-only mode.
+   - [x] Build from checked-out source only when no explicit version is supplied.
+   - [x] Use the product `VERSION` value as the image tag.
+   - [x] Reject `-gateway-version` combined with coverage mode.
 
 4. **Framework-owned instrumentation**
-   - Remove the gateway `/debug/coverage` endpoint, coverage configuration, and shared
+   - [x] Remove the gateway `/debug/coverage` endpoint, coverage configuration, and shared
      `common/covdump` implementation from the product.
-   - Use build-time Go instrumentation for Go services where the product build supports it.
-   - Treat API Portal’s Node frontend coverage as a separate capability; do not report it as
+   - [x] Use build-time Go instrumentation for Go services where the product build supports it.
+   - [x] Treat API Portal’s Node/V8 coverage as a separate capability; do not report it as
      Go coverage.
-   - Keep product Dockerfiles canonical and avoid duplicate framework Dockerfiles.
+   - [x] Keep product Dockerfiles canonical and avoid duplicate framework Dockerfiles.
 
 5. **Coverage collection**
-   - Collect `GOCOVERDIR` data from containers after graceful shutdown.
-   - Remove endpoint-specific dump code and configuration.
-   - Preserve per-block and per-service isolation during concurrent runs.
-   - Make collection failures diagnosable and non-destructive to sibling block cleanup.
+   - [x] Collect Go and Node/V8 data from containers after graceful shutdown.
+   - [x] Remove endpoint-specific dump code and configuration.
+   - [x] Preserve per-block and per-service isolation during concurrent runs.
+   - [x] Make collection failures diagnosable and non-destructive to sibling block cleanup.
 
 6. **Test coverage**
    - Maintain one unit-test file per new module.
-   - Add unit tests for all four build specifications, invalid paths, unsupported coverage,
+   - [x] Add unit tests for all four build specifications, invalid paths, unsupported coverage,
      version precedence, duplicate invocations, and command failures.
-   - Add integration tests that build or validate each product image when Docker is available.
-   - Add concurrent build/collection tests and run them with `go test -race`.
+   - [x] Add integration tests that build and validate each product image when Docker is available.
+   - [x] Add concurrent build tests and run them with `go test -race`.
+   - [x] Add concurrent collection tests covering isolated stopped containers.
 
 7. **Product and framework validation**
    - Run product unit tests for every changed product package.
    - Run framework unit tests, static analysis, and race tests.
-   - Run the four catalog integration probes and the relevant IT/UI smoke suites.
-   - Verify no stale coverage endpoint, coverage image suffix, or MVP-only reference remains.
+   - [x] Run the gateway catalog integration path and gateway coverage smoke suite.
+   - [x] Run coverage-enabled Platform API, AI Workspace, and API Portal suites.
+   - [x] Verify no stale coverage endpoint or coverage image suffix remains in active framework paths.
 
 8. **Documentation and handoff**
-   - Update framework and coverage documentation to describe the two image modes.
-   - Document the coverage limitations of graceful shutdown and Node frontend coverage.
-   - Review the final diff and commit only after all required checks pass.
+   - [x] Update framework and coverage documentation to describe the two image modes.
+   - [x] Document graceful-shutdown collection and the Node/V8 capability boundary.
+   - [x] Review the final diff and commit only after all required checks pass.

@@ -22,6 +22,7 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/require"
+	"github.com/wso2/api-platform/tests/framework/core/catalog/shared"
 )
 
 func TestPlatformAPIDefinition(t *testing.T) {
@@ -34,4 +35,12 @@ func TestPlatformAPIDefinition(t *testing.T) {
 	require.NotNil(t, definition.Health)
 	_, ok := definition.Endpoint("https")
 	require.True(t, ok)
+}
+
+func TestPlatformAPICoverageEnvironmentFollowsRunMode(t *testing.T) {
+	t.Setenv(shared.EnvCoverageMode, "false")
+	require.NotContains(t, PlatformAPI().Compose.Env, "GOCOVERDIR")
+
+	t.Setenv(shared.EnvCoverageMode, "true")
+	require.Equal(t, "/coverage", PlatformAPI().Compose.Env["GOCOVERDIR"])
 }

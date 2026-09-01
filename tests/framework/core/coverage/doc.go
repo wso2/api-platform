@@ -16,8 +16,5 @@
  * under the License.
  */
 
-// Package builder validates and executes source-image build plans declared by catalog
-// components. Coverage capabilities are declared by each product in CoverageSpec; this
-// package validates the contract and does not identify products by name or maintain
-// product Dockerfiles.
-package builder
+// Package coverage collects runtime coverage artifacts from isolated test blocks.
+package coverage

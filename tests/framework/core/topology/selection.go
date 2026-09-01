@@ -48,7 +48,7 @@ type Selection struct {
 	//
 	RunnerParallel int
 
-	// Coverage enables instrumented images and server-side coverage collection.
+	// Coverage enables instrumented images and runtime coverage collection.
 	Coverage bool
 
 	// GatewayVersion overrides the image version for platform-gateway components.
@@ -73,7 +73,7 @@ func (s *Selection) Flags(fs *flag.FlagSet) {
 	fs.IntVar(&s.RunnerParallel, "runner-parallel", 0,
 		"override how many runners run concurrently within each block")
 	fs.BoolVar(&s.Coverage, "coverage", false,
-		"build instrumented gateway images and collect server-side coverage")
+		"build instrumented source images and collect runtime coverage")
 	fs.StringVar(&s.GatewayVersion, "gateway-version", "",
 		"override the platform-gateway image version for this run")
 }

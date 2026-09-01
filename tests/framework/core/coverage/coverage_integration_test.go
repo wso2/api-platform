@@ -24,6 +24,7 @@ import (
 	"context"
 	"os"
 	"path/filepath"
+	"sync"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -61,4 +62,47 @@ func TestCopyDirFromStoppedContainer(t *testing.T) {
 	got, err = os.ReadFile(filepath.Join(dst, "sub", "blob.bin"))
 	require.NoError(t, err)
 	require.Equal(t, []byte{0x00, 0x01, 0xff}, got, "binary bytes must survive the tar stream")
+}
+
+// TestCopyDirCollectsConcurrentContainers keeps parallel block collection isolated.
+func TestCopyDirCollectsConcurrentContainers(t *testing.T) {
+	ctx := context.Background()
+	containers := make([]testcontainers.Container, 2)
+	for i := range containers {
+		ctr, err := testcontainers.GenericContainer(ctx, testcontainers.GenericContainerRequest{
+			ContainerRequest: testcontainers.ContainerRequest{
+				Image: "nginx:alpine",
+				Entrypoint: []string{"sh", "-c",
+					"mkdir -p /coverage && printf 'container-'$HOSTNAME > /coverage/covcounters.txt"},
+				WaitingFor: wait.ForExit(),
+			},
+			Started: true,
+		})
+		require.NoError(t, err)
+		containers[i] = ctr
+		t.Cleanup(func() { _ = ctr.Terminate(context.Background()) })
+	}
+
+	root := t.TempDir()
+	errs := make(chan error, len(containers))
+	var wg sync.WaitGroup
+	for i, ctr := range containers {
+		wg.Add(1)
+		go func(i int, ctr testcontainers.Container) {
+			defer wg.Done()
+			dst := filepath.Join(root, "block-"+string(rune('a'+i)), "service")
+			errs <- CopyDir(ctx, ctr.GetContainerID(), GuestDir, dst)
+		}(i, ctr)
+	}
+	wg.Wait()
+	close(errs)
+	for err := range errs {
+		require.NoError(t, err)
+	}
+
+	for _, block := range []string{"block-a", "block-b"} {
+		data, err := os.ReadFile(filepath.Join(root, block, "service", "covcounters.txt"))
+		require.NoError(t, err)
+		require.Contains(t, string(data), "container-")
+	}
 }

@@ -24,6 +24,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"sort"
 	"strings"
 )
 
@@ -34,14 +35,54 @@ type Image struct {
 	Context    string
 }
 
+// CoverageType identifies the instrumentation format produced by a build.
+type CoverageType string
+
+const (
+	// GoCoverage identifies Go coverage counter data.
+	GoCoverage CoverageType = "go"
+	// NodeV8Coverage identifies Node.js V8 coverage data.
+	NodeV8Coverage CoverageType = "node-v8"
+)
+
+// CoverageSpec describes a product's coverage capability.
+type CoverageSpec struct {
+	Supported   bool
+	Types       []CoverageType
+	Packages    []string
+	Include     []string
+	OutputDir   string
+	BuildArgs   map[string]string
+	Environment map[string]string
+}
+
+// CoverageBuildArgs returns deterministic Docker build arguments for a coverage mode.
+func CoverageBuildArgs(spec CoverageSpec) []string {
+	if !spec.Supported {
+		return nil
+	}
+	keys := make([]string, 0, len(spec.BuildArgs))
+	for key := range spec.BuildArgs {
+		keys = append(keys, key)
+	}
+	sort.Strings(keys)
+	args := make([]string, 0, 2*(len(keys)+1))
+	for _, key := range keys {
+		args = append(args, "--build-arg", key+"="+spec.BuildArgs[key])
+	}
+	if len(spec.Packages) > 0 {
+		args = append(args, "--build-arg", "COVERAGE_PACKAGES="+strings.Join(spec.Packages, ","))
+	}
+	return args
+}
+
 // Spec describes how a catalog component is built from source.
 type Spec struct {
-	Component           string
-	SourceDir           string
-	Images              []Image
-	SupportsCoverage    bool
-	InstrumentByDefault bool
-	Plan                func(root, version string, coverage bool) ([]Command, error)
+	Component string
+	SourceDir string
+	Images    []Image
+	Coverage  CoverageSpec
+	Plan      func(root, version string, coverage CoverageSpec) ([]Command, error)
 }
 
 // Command is one product build command. Directory is relative to the repository root.
@@ -78,7 +119,11 @@ func Build(ctx context.Context, spec Spec, req Request) error {
 	if err := validate(spec, req); err != nil {
 		return err
 	}
-	commands, err := spec.Plan(req.RepoRoot, req.Version, req.Coverage)
+	coverage := CoverageSpec{}
+	if req.Coverage {
+		coverage = spec.Coverage
+	}
+	commands, err := spec.Plan(req.RepoRoot, req.Version, coverage)
 	if err != nil {
 		return fmt.Errorf("build %s: planning: %w", spec.Component, err)
 	}
@@ -110,7 +155,7 @@ func BuildMany(ctx context.Context, specs []Spec, req Request) error {
 }
 
 // BuildProducts builds products with independent versions in declaration order.
-func BuildProducts(ctx context.Context, products []Product, repoRoot string, runner Runner) error {
+func BuildProducts(ctx context.Context, products []Product, repoRoot string, runner Runner, coverage bool) error {
 	if len(products) == 0 {
 		return fmt.Errorf("build: at least one product is required")
 	}
@@ -118,7 +163,7 @@ func BuildProducts(ctx context.Context, products []Product, repoRoot string, run
 		if err := Build(ctx, product.Spec, Request{
 			RepoRoot: repoRoot,
 			Version:  product.Version,
-			Coverage: product.Spec.InstrumentByDefault,
+			Coverage: coverage,
 			Runner:   runner,
 		}); err != nil {
 			return err
@@ -176,8 +221,37 @@ func validate(spec Spec, req Request) error {
 	if spec.Plan == nil {
 		return fmt.Errorf("build %s: plan is required", spec.Component)
 	}
-	if req.Coverage && !spec.SupportsCoverage {
+	if err := validateCoverage(spec.Coverage); err != nil {
+		return fmt.Errorf("build %s: %w", spec.Component, err)
+	}
+	if req.Coverage && !spec.Coverage.Supported {
 		return fmt.Errorf("build %s: coverage instrumentation is not supported", spec.Component)
+	}
+	return nil
+}
+
+func validateCoverage(spec CoverageSpec) error {
+	if !spec.Supported {
+		return nil
+	}
+	if len(spec.Types) == 0 {
+		return fmt.Errorf("at least one coverage type is required")
+	}
+	for _, coverageType := range spec.Types {
+		if coverageType != GoCoverage && coverageType != NodeV8Coverage {
+			return fmt.Errorf("unsupported coverage type %q", coverageType)
+		}
+	}
+	if strings.TrimSpace(spec.OutputDir) == "" {
+		return fmt.Errorf("coverage output directory is required")
+	}
+	if filepath.IsAbs(spec.OutputDir) == false || filepath.Clean(spec.OutputDir) != spec.OutputDir {
+		return fmt.Errorf("coverage output directory must be an absolute clean path")
+	}
+	for key := range spec.BuildArgs {
+		if strings.TrimSpace(key) == "" {
+			return fmt.Errorf("coverage build argument name is required")
+		}
 	}
 	return nil
 }

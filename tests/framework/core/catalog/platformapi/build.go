@@ -26,25 +26,33 @@ import (
 
 // BuildSpec returns the source-build metadata for Platform API.
 func BuildSpec(version string) (builder.Spec, error) {
+	coveragePackages := []string{"github.com/wso2/api-platform/platform-api/..."}
 	return builder.Spec{
-		Component:        "platform-api",
-		SourceDir:        "platform-api",
-		SupportsCoverage: false,
+		Component: "platform-api",
+		SourceDir: "platform-api",
+		Coverage: builder.CoverageSpec{
+			Supported: true, Types: []builder.CoverageType{builder.GoCoverage},
+			Packages: coveragePackages, OutputDir: "/coverage",
+			BuildArgs:   map[string]string{"ENABLE_COVERAGE": "true"},
+			Environment: map[string]string{"GOCOVERDIR": "/coverage"},
+		},
 		Images: []builder.Image{{
 			Name:       "ghcr.io/wso2/api-platform/platform-api:" + version,
 			Dockerfile: "platform-api/Dockerfile",
 			Context:    "platform-api",
 		}},
-		Plan: func(repoRoot, v string, _ bool) ([]builder.Command, error) {
+		Plan: func(repoRoot, v string, coverage builder.CoverageSpec) ([]builder.Command, error) {
+			args := []string{"docker", "buildx", "build", "-f", "Dockerfile",
+				"--build-context", "common=../common", "--build-context", "httpkit=../httpkit",
+				"--build-arg", "VERSION=" + v, "--build-arg", "PORT=9243",
+				"--tag", "ghcr.io/wso2/api-platform/platform-api:" + v, "--load"}
+			if coverage.Supported {
+				args = append(args, builder.CoverageBuildArgs(coverage)...)
+			}
+			args = append(args, ".")
 			return []builder.Command{{
 				Directory: filepath.Join(repoRoot, "platform-api"),
-				Args: []string{"docker", "buildx", "build", "-f", "Dockerfile",
-					"--build-context", "common=../common",
-					"--build-context", "httpkit=../httpkit",
-					"--build-arg", "VERSION=" + v,
-					"--build-arg", "PORT=9243",
-					"--tag", "ghcr.io/wso2/api-platform/platform-api:" + v,
-					"--load", "."},
+				Args:      args,
 			}}, nil
 		},
 	}, nil

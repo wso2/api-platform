@@ -1,78 +1,91 @@
 #!/usr/bin/env bash
-# Merge collected server-side coverage and render reports.
-#
-# Input: the per-variant per-service counter dirs a `-coverage` suite run leaves under
-# COVERAGE_OUT (default suites/it/coverage-out). Rerunnable: consumes only what is on
-# disk, so a failed suite's partial harvest still reports.
-#
-# Outputs, all under COVERAGE_OUT:
-#   merged/                     covdata pods merged across variants
-#   coverage.txt                one text profile, generated code filtered out (the denominator)
-#   coverage-controller.txt     the controller's slice of coverage.txt
-#   coverage-policyengine.txt   the policy-engine + policies slice
-#   coverage-controller.html    per-module HTML (rendered from inside each module so
-#   coverage-policyengine.html  sources resolve; policy-module sources render only when
-#                               their exact versions are present in the module cache)
+# Merge and render coverage artifacts collected from framework test blocks.
 set -euo pipefail
 
 here="$(cd "$(dirname "$0")/.." && pwd)"
+repo_root="$(cd "$here/../.." && pwd)"
 out="${COVERAGE_OUT:-$here/suites/it/coverage-out}"
-controller_mod="$here/../../gateway/gateway-controller"
-pe_mod="$here/../../gateway/gateway-runtime/policy-engine"
+tools="$here/tools/coverage"
 
 die() { echo "coverage-report: $*" >&2; exit 1; }
-
 [ -d "$out" ] || die "no coverage output at $out — run the suite with -coverage first"
 
-# Every <block>/<service> dir that actually holds counters. covmeta without covcounters
-# means the process never flushed; covdata would fail on it, so require both.
-inputs=""
+go_inputs=""
 while IFS= read -r dir; do
-  if ls "$dir"/covmeta.* >/dev/null 2>&1 && ls "$dir"/covcounters.* >/dev/null 2>&1; then
-    inputs="${inputs:+$inputs,}$dir"
-  fi
+	if ls "$dir"/covmeta.* >/dev/null 2>&1 && ls "$dir"/covcounters.* >/dev/null 2>&1; then
+		go_inputs="${go_inputs:+$go_inputs,}$dir"
+	fi
 done < <(find "$out" -mindepth 2 -maxdepth 2 -type d | sort)
-[ -n "$inputs" ] || die "no counter dirs under $out (want <block>/<service>/covmeta.* + covcounters.*)"
 
-echo "merging: $inputs"
-rm -rf "$out/merged" && mkdir -p "$out/merged"
-go tool covdata merge -i="$inputs" -o "$out/merged"
-go tool covdata textfmt -i="$out/merged" -o "$out/coverage.raw.txt"
+node_files=()
+while IFS= read -r file; do
+	node_files+=("$file")
+done < <(find "$out" -type f -name 'coverage-*.json' \
+	-not -path "$out/node-v8-input/*" -not -path "$out/node-v8-report/*" | sort)
 
-# The denominator: product code only. Generated code is dropped here to MATCH what a reader
-# expects the number to mean — never-instrumentable stubs at a forced 0% only understate it.
-grep -v -E '^github\.com/wso2/api-platform/gateway/gateway-controller/pkg/api/(admin|management)/' "$out/coverage.raw.txt" \
-  | grep -v -E '^github\.com/wso2/api-platform/gateway/gateway-runtime/policy-engine/internal/pythonbridge/proto/' \
-  | grep -v -E '^github\.com/wso2/api-platform/gateway/gateway-runtime/policy-engine/cmd/policy-engine/(plugin_registry|build_info)\.go' \
-  > "$out/coverage.txt"
+[ -n "$go_inputs" ] || [ "${#node_files[@]}" -gt 0 ] || die "no Go or Node/V8 coverage artifacts found under $out"
 
-# Guard: a report with no executed statement is a pipeline failure wearing a green suite.
-covered=$(awk 'NR>1 && $NF>0 {n++} END {print n+0}' "$out/coverage.txt")
-[ "$covered" -gt 0 ] || die "coverage.txt contains no executed statements — collection is broken"
+if [ -n "$go_inputs" ]; then
+	echo "merging Go coverage: $go_inputs"
+	rm -rf "$out/merged-go"
+	mkdir -p "$out/merged-go"
+	go tool covdata merge -i="$go_inputs" -o "$out/merged-go"
+	go tool covdata textfmt -i="$out/merged-go" -o "$out/coverage-go.raw.txt"
+	cp "$out/coverage-go.raw.txt" "$out/coverage-go.txt"
+	# Go profiles may contain generated files or packages supplied from outside this
+	# checkout. Keep available source files in the HTML profile and retain the complete
+	# text profile for upload and statement totals.
+	html_profile="$out/coverage-go.html.profile"
+	{
+		head -n 1 "$out/coverage-go.raw.txt"
+		tail -n +2 "$out/coverage-go.raw.txt" | while IFS= read -r line; do
+			file="${line%%:*}"
+			case "$file" in
+				github.com/wso2/api-platform/*)
+					source="$repo_root/${file#github.com/wso2/api-platform/}"
+					;;
+				ai-workspace-bff/*)
+					source="$repo_root/portals/ai-workspace/bff/${file#ai-workspace-bff/}"
+					;;
+				*)
+					source="$repo_root/$file"
+					;;
+			esac
+			[ -f "$source" ] && printf '%s\n' "$line"
+		done || true
+	} > "$html_profile"
+	go tool cover -html="$html_profile" -o "$out/coverage-go.html"
+	covered=$(awk 'NR>1 && $NF>0 {n++} END {print n+0}' "$out/coverage-go.txt")
+	[ "$covered" -gt 0 ] || die "Go coverage contains no executed statements"
+	awk 'NR>1 {total+=$(NF-1); if ($NF>0) covered+=$(NF-1)}
+		 END {if (total>0) printf "Go coverage: %.1f%% of statements (%d/%d)\n", 100*covered/total, covered, total}' \
+		"$out/coverage-go.txt"
+fi
 
-split_profile() { # prefix-regex -> file
-  { head -1 "$out/coverage.txt"; grep -E "$1" "$out/coverage.txt" || true; } > "$2"
-}
-split_profile '^github\.com/wso2/api-platform/gateway/gateway-controller/' "$out/coverage-controller.txt"
-split_profile '^github\.com/wso2/(api-platform/gateway/gateway-runtime/policy-engine|gateway-controllers/policies)/' "$out/coverage-policyengine.txt"
-# HTML needs sources; the policy modules' exact versions live only inside the image build
-# (build.yaml pins ranges), so the renderable slice is the policy-engine module alone.
-split_profile '^github\.com/wso2/api-platform/gateway/gateway-runtime/policy-engine/' "$out/coverage-policyengine-module.txt"
-
-summary() { # file label — profile lines end "<numstmt> <hitcount>"
-  awk 'NR>1 {total+=$(NF-1); if ($NF>0) covered+=$(NF-1)}
-       END {if (total>0) printf "  %-16s %6.1f%% of statements (%d/%d)\n", "'"$2"'", 100*covered/total, covered, total}' "$1"
-}
-echo "statement coverage (generated code excluded):"
-summary "$out/coverage-controller.txt"   "controller"
-summary "$out/coverage-policyengine.txt" "policy-engine"
-summary "$out/coverage.txt"              "combined"
-
-# HTML per module, from inside each module so the profile's import paths resolve to sources.
-(cd "$controller_mod" && go tool cover -html="$out/coverage-controller.txt" -o "$out/coverage-controller.html") \
-  || echo "coverage-report: controller HTML failed (sources not resolvable?)" >&2
-(cd "$pe_mod" && go tool cover -html="$out/coverage-policyengine-module.txt" -o "$out/coverage-policyengine.html") \
-  || echo "coverage-report: policy-engine HTML failed (sources not resolvable?)" >&2
-echo "note: policy-module sources are not renderable on the host (their exact versions exist only in the image build); their numbers are complete in coverage.txt and the summary above"
+if [ "${#node_files[@]}" -gt 0 ]; then
+	command -v npm >/dev/null 2>&1 || die "Node/V8 artifacts found, but npm is unavailable"
+	[ -f "$tools/package-lock.json" ] || die "Node/V8 report tool is not locked at $tools/package-lock.json"
+	rm -rf "$out/node-v8-input" "$out/node-v8-report"
+	mkdir -p "$out/node-v8-input"
+	i=0
+	for file in "${node_files[@]}"; do
+		node "$tools/normalize-v8.js" "$file" "$out/node-v8-input/coverage-$i.json" \
+			"$repo_root/portals/api-portal"
+		i=$((i + 1))
+	done
+	echo "merging Node/V8 coverage: ${#node_files[@]} files"
+	node_include="${COVERAGE_INCLUDE:-$repo_root/portals/api-portal/src/**/*.js}"
+	npm --prefix "$tools" ci --ignore-scripts --no-audit --no-fund >/dev/null
+	npm --prefix "$tools" exec -- c8 report \
+		--temp-directory="$out/node-v8-input" \
+		--report-dir="$out/node-v8-report" \
+		--include="$node_include" \
+		--allowExternal \
+		--reporter=text --reporter=html --reporter=json-summary --reporter=lcov
+	[ -s "$out/node-v8-report/coverage-summary.json" ] || die "Node/V8 reporter produced no summary"
+	node -e 'const s=require(process.argv[1]); if (!s.total || s.total.statements.total === 0) process.exit(1)' \
+		"$out/node-v8-report/coverage-summary.json" \
+		|| die "Node/V8 coverage contains no instrumented statements"
+fi
 
 echo "reports under $out"

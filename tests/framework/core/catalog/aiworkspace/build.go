@@ -26,24 +26,30 @@ import (
 
 // BuildSpec returns the source-build metadata for AI Workspace.
 func BuildSpec(version string) (builder.Spec, error) {
+	coveragePackages := []string{"ai-workspace-bff/..."}
 	return builder.Spec{
-		Component:        "ai-workspace",
-		SourceDir:        "portals/ai-workspace",
-		SupportsCoverage: false,
+		Component: "ai-workspace",
+		SourceDir: "portals/ai-workspace",
+		Coverage: builder.CoverageSpec{
+			Supported: true, Types: []builder.CoverageType{builder.GoCoverage},
+			Packages: coveragePackages, OutputDir: "/coverage",
+			BuildArgs:   map[string]string{"ENABLE_COVERAGE": "true"},
+			Environment: map[string]string{"GOCOVERDIR": "/coverage"},
+		},
 		Images: []builder.Image{{
 			Name:       "ghcr.io/wso2/api-platform/ai-workspace:" + version,
 			Dockerfile: "portals/ai-workspace/Dockerfile",
 			Context:    "portals/ai-workspace",
 		}},
-		Plan: func(repoRoot, v string, _ bool) ([]builder.Command, error) {
+		Plan: func(repoRoot, v string, coverage builder.CoverageSpec) ([]builder.Command, error) {
+			args := []string{"docker", "buildx", "build", "--build-context", "common=../../common", "--build-context", "httpkit=../../httpkit", "--build-arg", "VERSION=" + v, "--tag", "ghcr.io/wso2/api-platform/ai-workspace:" + v, "--load"}
+			if coverage.Supported {
+				args = append(args, builder.CoverageBuildArgs(coverage)...)
+			}
+			args = append(args, ".")
 			return []builder.Command{{
 				Directory: filepath.Join(repoRoot, "portals/ai-workspace"),
-				Args: []string{"docker", "buildx", "build",
-					"--build-context", "common=../../common",
-					"--build-context", "httpkit=../../httpkit",
-					"--build-arg", "VERSION=" + v,
-					"--tag", "ghcr.io/wso2/api-platform/ai-workspace:" + v,
-					"--load", "."},
+				Args:      args,
 			}}, nil
 		},
 	}, nil

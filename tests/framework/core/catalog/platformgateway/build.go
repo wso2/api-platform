@@ -26,23 +26,38 @@ import (
 
 // BuildSpec returns the source-build metadata for the gateway controller and runtime.
 func BuildSpec(version string) (builder.Spec, error) {
+	coveragePackages := []string{
+		"github.com/wso2/api-platform/gateway/gateway-controller/...",
+		"github.com/wso2/api-platform/gateway/gateway-runtime/policy-engine/...",
+		"github.com/wso2/gateway-controllers/policies/...",
+	}
 	return builder.Spec{
-		Component:           "platform-gateway",
-		SourceDir:           "gateway",
-		SupportsCoverage:    true,
-		InstrumentByDefault: true,
+		Component: "platform-gateway",
+		SourceDir: "gateway",
+		Coverage: builder.CoverageSpec{
+			Supported: true,
+			Types:     []builder.CoverageType{builder.GoCoverage},
+			Packages:  coveragePackages,
+			OutputDir: "/coverage",
+			BuildArgs: map[string]string{
+				"ENABLE_COVERAGE": "true",
+			},
+			Environment: map[string]string{
+				"GOCOVERDIR": "/coverage",
+			},
+		},
 		Images: []builder.Image{
 			{Name: "ghcr.io/wso2/api-platform/gateway-controller:" + version, Dockerfile: "gateway/gateway-controller/Dockerfile", Context: "gateway/gateway-controller"},
 			{Name: "ghcr.io/wso2/api-platform/gateway-runtime:" + version, Dockerfile: "gateway/gateway-runtime/Dockerfile", Context: "gateway/gateway-runtime"},
 		},
-		Plan: func(repoRoot, v string, instrumented bool) ([]builder.Command, error) {
+		Plan: func(repoRoot, v string, coverage builder.CoverageSpec) ([]builder.Command, error) {
 			dir := filepath.Join(repoRoot, "gateway")
 			runtimeDir := filepath.Join(dir, "gateway-runtime")
 			controller := "ghcr.io/wso2/api-platform/gateway-controller:" + v
 			runtime := "ghcr.io/wso2/api-platform/gateway-runtime:" + v
 			coverageArg := []string{}
-			if instrumented {
-				coverageArg = []string{"--build-arg", "ENABLE_COVERAGE=true"}
+			if coverage.Supported {
+				coverageArg = builder.CoverageBuildArgs(coverage)
 			}
 			buildBase := []string{"docker", "buildx", "build", "-f", "Dockerfile",
 				"--build-context", "sdk=../../sdk",

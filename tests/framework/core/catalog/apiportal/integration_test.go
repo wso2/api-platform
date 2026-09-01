@@ -4,14 +4,19 @@ package apiportal
 
 import (
 	"context"
+	"os"
+	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
 	"github.com/stretchr/testify/require"
 
+	"github.com/wso2/api-platform/tests/framework/core/builder"
 	"github.com/wso2/api-platform/tests/framework/core/catalog/platformapi"
 	"github.com/wso2/api-platform/tests/framework/core/catalog/shared"
 	"github.com/wso2/api-platform/tests/framework/core/components"
+	"github.com/wso2/api-platform/tests/framework/core/coverage"
 	"github.com/wso2/api-platform/tests/framework/core/runtime"
 )
 
@@ -30,6 +35,22 @@ func repoRoot(t *testing.T) string {
 // startup — testing the portal alone would prove only that a web server starts.
 func TestAPIPortalBoots(t *testing.T) {
 	root := repoRoot(t)
+	t.Setenv(shared.EnvCoverageMode, "true")
+	for _, name := range []string{"platform-api", "api-portal"} {
+		version, ok := shared.SourceVersion(name)
+		require.True(t, ok)
+		var spec builder.Spec
+		var buildErr error
+		if name == "platform-api" {
+			spec, buildErr = platformapi.BuildSpec(version)
+		} else {
+			spec, buildErr = BuildSpec(version)
+		}
+		require.NoError(t, buildErr)
+		require.NoError(t, builder.Build(context.Background(), spec, builder.Request{
+			RepoRoot: root, Version: version, Coverage: true, Runner: builder.ExecRunner{},
+		}), "building the instrumented %s image", name)
+	}
 	ctx, cancel := context.WithTimeout(context.Background(), 12*time.Minute)
 	defer cancel()
 
@@ -83,11 +104,40 @@ func TestAPIPortalBoots(t *testing.T) {
 	}
 
 	start(cp)
-	start(portal)
+	portalStack := start(portal)
 
 	// The portal must have been handed the control plane's OWN public key, not a second draw.
 	require.Equal(t,
 		string(shared.ControlPlaneCrypto()["keys/jwt_public.pem"]),
 		string(portalCryptoFiles()["keys/jwt_public.pem"]),
 		"the portal must verify tokens with the key platform-api signs them with")
+
+	output := t.TempDir()
+	if configured := os.Getenv(coverage.EnvOut); configured != "" {
+		output = configured
+	}
+	sink, err := coverage.NewSink(output)
+	require.NoError(t, err)
+	id, err := portalStack.ServiceContainerID(ctx, svcAPIPortal)
+	require.NoError(t, err)
+	require.NoError(t, portalStack.StopService(ctx, svcAPIPortal))
+	dst, err := sink.Dir("api-portal", svcAPIPortal)
+	require.NoError(t, err)
+	require.NoError(t, coverage.CopyDir(ctx, id, coverage.GuestDir, dst))
+	entries, err := os.ReadDir(filepath.Clean(dst))
+	require.NoError(t, err)
+	for _, entry := range entries {
+		if strings.HasPrefix(entry.Name(), "coverage-") && strings.HasSuffix(entry.Name(), ".json") {
+			return
+		}
+	}
+	require.Fail(t, "API Portal must flush Node/V8 coverage artifacts on graceful stop",
+		"coverage JSON not found in %v", entries)
+}
+
+func TestAPIPortalCoverageCapability(t *testing.T) {
+	t.Setenv(shared.EnvCoverageMode, "true")
+	definition := APIPortal()
+	require.Equal(t, "/coverage", definition.Compose.Env["NODE_V8_COVERAGE"])
+	require.Equal(t, []string{"node-v8"}, definition.Compose.CoverageServices[0].Types)
 }

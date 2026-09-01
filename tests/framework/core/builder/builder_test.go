@@ -47,14 +47,18 @@ func TestBuildPlansAndRunsCommands(t *testing.T) {
 	require.NoError(t, os.Mkdir(filepath.Join(root, "platform-api"), 0o755))
 	runner := &recordingRunner{}
 	spec := Spec{
-		Component:        "platform-api",
-		SourceDir:        "platform-api",
-		Images:           []Image{{Name: "platform-api:1.0.0", Dockerfile: "platform-api/Dockerfile", Context: "platform-api"}},
-		SupportsCoverage: true,
-		Plan: func(root, version string, coverage bool) ([]Command, error) {
+		Component: "platform-api",
+		SourceDir: "platform-api",
+		Images:    []Image{{Name: "platform-api:1.0.0", Dockerfile: "platform-api/Dockerfile", Context: "platform-api"}},
+		Coverage: CoverageSpec{
+			Supported: true,
+			Types:     []CoverageType{GoCoverage},
+			OutputDir: "/coverage",
+		},
+		Plan: func(root, version string, coverage CoverageSpec) ([]Command, error) {
 			require.NotEmpty(t, root)
 			require.Equal(t, "1.0.0", version)
-			require.True(t, coverage)
+			require.True(t, coverage.Supported)
 			return []Command{{Directory: filepath.Join(root, "platform-api"), Args: []string{"make", "build"}}}, nil
 		},
 	}
@@ -64,14 +68,71 @@ func TestBuildPlansAndRunsCommands(t *testing.T) {
 	require.Len(t, runner.commands, 1)
 }
 
+func TestCoverageBuildArgsAreDeterministicAndUseCatalogPackages(t *testing.T) {
+	args := CoverageBuildArgs(CoverageSpec{
+		Supported: true,
+		Packages:  []string{"example/service/..."},
+		BuildArgs: map[string]string{"Z_FLAG": "z", "A_FLAG": "a"},
+	})
+	require.Equal(t, []string{
+		"--build-arg", "A_FLAG=a",
+		"--build-arg", "Z_FLAG=z",
+		"--build-arg", "COVERAGE_PACKAGES=example/service/...",
+	}, args)
+}
+
+func TestBuildPassesDisabledCoverageSpecWhenCoverageIsOff(t *testing.T) {
+	root := t.TempDir()
+	called := false
+	err := Build(context.Background(), Spec{
+		Component: "service",
+		SourceDir: "service",
+		Images:    []Image{{Name: "service:test", Dockerfile: "service/Dockerfile", Context: "service"}},
+		Coverage:  CoverageSpec{Supported: true, Types: []CoverageType{GoCoverage}, OutputDir: "/coverage"},
+		Plan: func(_ string, _ string, coverage CoverageSpec) ([]Command, error) {
+			called = true
+			require.False(t, coverage.Supported)
+			return []Command{{Directory: root, Args: []string{"true"}}}, nil
+		},
+	}, Request{RepoRoot: root, Version: "test", Runner: &recordingRunner{}})
+	require.NoError(t, err)
+	require.True(t, called)
+}
+
 func TestBuildRejectsUnsupportedCoverage(t *testing.T) {
 	err := Build(context.Background(), Spec{
 		Component: "api-portal",
 		SourceDir: "api-portal",
 		Images:    []Image{{Name: "api-portal:1.0.0", Dockerfile: "api-portal/Dockerfile", Context: "api-portal"}},
-		Plan:      func(string, string, bool) ([]Command, error) { return nil, nil },
+		Plan:      func(string, string, CoverageSpec) ([]Command, error) { return nil, nil },
 	}, Request{RepoRoot: t.TempDir(), Version: "1.0.0", Coverage: true, Runner: &recordingRunner{}})
 	require.ErrorContains(t, err, "coverage instrumentation is not supported")
+}
+
+func TestBuildRejectsInvalidCoverageType(t *testing.T) {
+	err := Build(context.Background(), Spec{
+		Component: "gateway",
+		SourceDir: "gateway",
+		Images:    []Image{{Name: "gateway:1.0.0", Dockerfile: "gateway/Dockerfile", Context: "gateway"}},
+		Coverage:  CoverageSpec{Supported: true, Types: []CoverageType{"unknown"}, OutputDir: "/coverage"},
+		Plan: func(string, string, CoverageSpec) ([]Command, error) {
+			return []Command{{Directory: t.TempDir(), Args: []string{"true"}}}, nil
+		},
+	}, Request{RepoRoot: t.TempDir(), Version: "1.0.0", Runner: &recordingRunner{}})
+	require.ErrorContains(t, err, `unsupported coverage type "unknown"`)
+}
+
+func TestBuildAllowsUnsupportedCoverageWhenDisabled(t *testing.T) {
+	root := t.TempDir()
+	err := Build(context.Background(), Spec{
+		Component: "gateway",
+		SourceDir: "gateway",
+		Images:    []Image{{Name: "gateway:1.0.0", Dockerfile: "gateway/Dockerfile", Context: "gateway"}},
+		Plan: func(string, string, CoverageSpec) ([]Command, error) {
+			return []Command{{Directory: root, Args: []string{"true"}}}, nil
+		},
+	}, Request{RepoRoot: root, Version: "1.0.0", Runner: &recordingRunner{}})
+	require.NoError(t, err)
 }
 
 func TestBuildStopsAfterCommandFailure(t *testing.T) {
@@ -80,7 +141,7 @@ func TestBuildStopsAfterCommandFailure(t *testing.T) {
 		Component: "gateway",
 		SourceDir: "gateway",
 		Images:    []Image{{Name: "gateway:1.0.0", Dockerfile: "gateway/Dockerfile", Context: "gateway"}},
-		Plan: func(root, _ string, _ bool) ([]Command, error) {
+		Plan: func(root, _ string, _ CoverageSpec) ([]Command, error) {
 			return []Command{{Directory: root, Args: []string{"make", "build"}}, {Directory: root, Args: []string{"make", "second"}}}, nil
 		},
 	}
@@ -95,7 +156,7 @@ func TestBuildCanRunConcurrentlyWithIndependentRequests(t *testing.T) {
 		Component: "gateway",
 		SourceDir: "gateway",
 		Images:    []Image{{Name: "gateway:1.0.0", Dockerfile: "gateway/Dockerfile", Context: "gateway"}},
-		Plan: func(root, version string, _ bool) ([]Command, error) {
+		Plan: func(root, version string, _ CoverageSpec) ([]Command, error) {
 			return []Command{{Directory: root, Args: []string{"make", version}}}, nil
 		},
 	}
@@ -129,7 +190,7 @@ func TestBuildRejectsCommandOutsideRepository(t *testing.T) {
 		Component: "gateway",
 		SourceDir: "gateway",
 		Images:    []Image{{Name: "gateway:1.0.0", Dockerfile: "gateway/Dockerfile", Context: "gateway"}},
-		Plan: func(string, string, bool) ([]Command, error) {
+		Plan: func(string, string, CoverageSpec) ([]Command, error) {
 			return []Command{{Directory: t.TempDir(), Args: []string{"make"}}}, nil
 		},
 	}, Request{RepoRoot: root, Version: "1.0.0", Runner: &recordingRunner{}})
@@ -144,7 +205,7 @@ func TestBuildManyPreservesOrderAndStopsOnFailure(t *testing.T) {
 			Component: name,
 			SourceDir: name,
 			Images:    []Image{{Name: name + ":test", Dockerfile: name + "/Dockerfile", Context: name}},
-			Plan: func(repoRoot, _ string, _ bool) ([]Command, error) {
+			Plan: func(repoRoot, _ string, _ CoverageSpec) ([]Command, error) {
 				return []Command{{Directory: repoRoot, Args: []string{"make", name}}}, nil
 			},
 		}

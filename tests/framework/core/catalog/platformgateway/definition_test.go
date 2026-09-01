@@ -146,3 +146,11 @@ func TestComposeRuntimeBoundsItsShutdownDrain(t *testing.T) {
 		"gateway-runtime must raise stop_grace_period above the drain, so a later increase to "+
 			"ROUTER_DRAIN_TIME_SECONDS cannot silently reintroduce the mid-drain SIGKILL")
 }
+
+func TestPlatformGatewayCoverageEnvironmentFollowsRunMode(t *testing.T) {
+	t.Setenv(shared.EnvCoverageMode, "false")
+	require.NotContains(t, PlatformGateway().Compose.Env, "GOCOVERDIR")
+
+	t.Setenv(shared.EnvCoverageMode, "true")
+	require.Equal(t, "/coverage", PlatformGateway().Compose.Env["GOCOVERDIR"])
+}

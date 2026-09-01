@@ -36,7 +36,7 @@ const (
 	EnvImageMockPlatformAPI   = "IT_IMAGE_MOCK_PLATFORM_API"
 )
 
-// EnvCoverageMode marks a run that collects server-side coverage data.
+// EnvCoverageMode marks a run that collects runtime coverage data.
 const EnvCoverageMode = "IT_COVERAGE"
 
 // EnvGatewayFunctionalityType sets the functionalityType the running gateway registers with
@@ -52,7 +52,7 @@ func GatewayFunctionalityType() string {
 	return "regular"
 }
 
-// CoverageMode reports whether this run collects server-side coverage.
+// CoverageMode reports whether this run collects runtime coverage.
 func CoverageMode() bool {
 	v := strings.TrimSpace(os.Getenv(EnvCoverageMode))
 	return strings.EqualFold(v, "true") || v == "1"

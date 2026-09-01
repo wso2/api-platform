@@ -57,6 +57,10 @@ const svcPlatformAPI = "platform-api"
 // overlay supplies the fixed admin credentials.
 func PlatformAPI() *components.Definition {
 	generated := shared.ControlPlaneCrypto()
+	env := map[string]string{EnvImagePlatformAPI: shared.PlatformAPIImage()}
+	for key, value := range runtimeCoverageEnvironment() {
+		env[key] = value
+	}
 
 	return &components.Definition{
 		Name: "platform-api",
@@ -72,7 +76,7 @@ func PlatformAPI() *components.Definition {
 			// Image pinned from the product's own VERSION file, so the ${PlatformAPI}
 			// default in the YAML is only a fallback for reading the file by hand. See
 			// version.go: :latest is not dependable here — api-portal's build never tags it.
-			Env:            map[string]string{EnvImagePlatformAPI: shared.PlatformAPIImage()},
+			Env:            env,
 			PrimaryService: svcPlatformAPI,
 			Services:       []string{svcPlatformAPI},
 			StagedFiles: map[string]string{
@@ -82,6 +86,9 @@ func PlatformAPI() *components.Definition {
 				"role-to-scope-mapping.yaml": "platform-api/resources/role-to-scope-mapping.yaml",
 			},
 			GeneratedFiles: generated,
+			CoverageServices: []components.CoverageService{{
+				Name: svcPlatformAPI, Types: []string{"go"},
+			}},
 		},
 
 		Endpoints: []components.Endpoint{
@@ -122,6 +129,18 @@ func PlatformAPI() *components.Definition {
 
 		Limits: components.ResourceLimits{CPUs: 1, MemoryMB: 1000},
 	}
+}
+
+func runtimeCoverageEnvironment() map[string]string {
+	if !shared.CoverageMode() {
+		return nil
+	}
+	spec, _ := BuildSpec("")
+	env := make(map[string]string, len(spec.Coverage.Environment))
+	for key, value := range spec.Coverage.Environment {
+		env[key] = value
+	}
+	return env
 }
 
 // insecureClient dials the control plane's per-block self-signed certificate.

@@ -22,6 +22,7 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/require"
+	"github.com/wso2/api-platform/tests/framework/core/catalog/shared"
 )
 
 func TestAIWorkspaceDefinition(t *testing.T) {
@@ -33,4 +34,14 @@ func TestAIWorkspaceDefinition(t *testing.T) {
 	require.NotNil(t, definition.Config)
 	_, ok := definition.Endpoint("https")
 	require.True(t, ok)
+}
+
+func TestAIWorkspaceCoverageEnvironmentFollowsRunMode(t *testing.T) {
+	t.Setenv(shared.EnvCoverageMode, "false")
+	require.NotContains(t, AIWorkspace().Compose.Env, "GOCOVERDIR")
+
+	t.Setenv(shared.EnvCoverageMode, "true")
+	env := AIWorkspace().Compose.Env
+	require.Equal(t, "/coverage", env["GOCOVERDIR"])
+	require.NotContains(t, env, "NODE_V8_COVERAGE")
 }

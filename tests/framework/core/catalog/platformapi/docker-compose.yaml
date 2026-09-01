@@ -25,6 +25,8 @@ services:
     command: ["-config", "/etc/platform-api/config.toml"]
     env_file:
       - api-platform.env
+    environment:
+      - GOCOVERDIR=${GOCOVERDIR:-}
     volumes:
       - ./config.toml:/etc/platform-api/config.toml:ro
       - ./role-to-scope-mapping.yaml:/etc/platform-api/role-to-scope-mapping.yaml:ro

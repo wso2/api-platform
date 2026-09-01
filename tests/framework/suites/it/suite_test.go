@@ -51,11 +51,13 @@ func TestMain(m *testing.M) {
 	// The catalog reads coverage mode from the environment when its definitions are built,
 	// which happens on every catalog.Registry() call below and in the test proper — so the
 	// flag must land in the environment before either.
+	coverageMode := "false"
 	if selection.Coverage {
-		if err := os.Setenv(shared.EnvCoverageMode, "true"); err != nil {
-			fmt.Fprintln(os.Stderr, "setting coverage mode:", err)
-			os.Exit(1)
-		}
+		coverageMode = "true"
+	}
+	if err := os.Setenv(shared.EnvCoverageMode, coverageMode); err != nil {
+		fmt.Fprintln(os.Stderr, "setting coverage mode:", err)
+		os.Exit(1)
 	}
 
 	// The parallel budget MUST be settled here, before m.Run: the testing package reads
@@ -162,7 +164,7 @@ func TestGatewaySuite(t *testing.T) {
 	if err != nil {
 		t.Fatalf("applying the selection: %v", err)
 	}
-	if err := catalog.BuildSources(context.Background(), narrowed, root, frameworkbuilder.ExecRunner{}); err != nil {
+	if err := catalog.BuildSources(context.Background(), narrowed, root, frameworkbuilder.ExecRunner{}, selection.Coverage); err != nil {
 		t.Fatalf("building source images: %v", err)
 	}
 

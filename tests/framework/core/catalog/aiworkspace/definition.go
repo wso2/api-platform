@@ -39,6 +39,10 @@ const svcAIWorkspace = "ai-workspace"
 // network by alias, which is why the alias is fixed and the domain the BFF advertises is the
 // alias form.
 func AIWorkspace() *components.Definition {
+	env := map[string]string{EnvImageAIWorkspace: shared.Image(EnvImageAIWorkspace, shared.AIWorkspaceImage()).Ref}
+	for key, value := range runtimeCoverageEnvironment() {
+		env[key] = value
+	}
 	return &components.Definition{
 		Name:         svcAIWorkspace,
 		Alias:        svcAIWorkspace,
@@ -47,9 +51,12 @@ func AIWorkspace() *components.Definition {
 		Compose: &components.ComposeSpec{
 			ComposeFile: "tests/framework/core/catalog/aiworkspace/docker-compose.yaml",
 
-			Env:            map[string]string{EnvImageAIWorkspace: shared.Image(EnvImageAIWorkspace, shared.AIWorkspaceImage()).Ref},
+			Env:            env,
 			PrimaryService: svcAIWorkspace,
 			Services:       []string{svcAIWorkspace},
+			CoverageServices: []components.CoverageService{{
+				Name: svcAIWorkspace, Types: []string{"go"},
+			}},
 
 			// Its OWN serving pair plus the control plane's public certificate — never the
 			// control plane's private key. The overlay points ca_file at cp-cert.pem.
@@ -87,6 +94,18 @@ func AIWorkspace() *components.Definition {
 
 		Limits: components.ResourceLimits{CPUs: 1, MemoryMB: 512},
 	}
+}
+
+func runtimeCoverageEnvironment() map[string]string {
+	if !shared.CoverageMode() {
+		return nil
+	}
+	spec, _ := BuildSpec("")
+	env := make(map[string]string, len(spec.Coverage.Environment))
+	for key, value := range spec.Coverage.Environment {
+		env[key] = value
+	}
+	return env
 }
 
 // aiWorkspaceCryptoFiles stages the workspace's TLS material: a serving pair of its own and

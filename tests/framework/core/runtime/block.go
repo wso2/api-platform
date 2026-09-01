@@ -23,6 +23,7 @@ import (
 	"errors"
 	"fmt"
 	"sort"
+	"strings"
 	"sync"
 	"time"
 
@@ -461,9 +462,8 @@ func accessorKey(component, endpoint string) string {
 func AccessorKey(component, endpoint string) string { return accessorKey(component, endpoint) }
 
 // CollectCoverage gracefully stops every coverage-carrying service and copies its
-// GOCOVERDIR into the sink. Must run BEFORE Teardown: the counters exist only after the
-// process exits, and Teardown's compose Down removes the container in the same call that
-// would have stopped it.
+// coverage directory into the sink. Must run BEFORE Teardown: artifacts are finalized on
+// process exit and Teardown removes the container before they can be copied.
 //
 // Every service is attempted even if an earlier one fails, for the same reason Teardown
 // attempts every stop: a partial harvest attributed to the wrong cause is worse than a
@@ -480,25 +480,27 @@ func (t *Topology) CollectCoverage(ctx context.Context, sink *coverage.Sink) err
 	}
 	var errs []error
 	for component, stack := range t.stacks {
-		for _, svc := range stack.CoverageServices() {
+		for _, coverageService := range stack.CoverageServices() {
+			svc := coverageService.Name
+			coverageType := strings.Join(coverageService.Types, ",")
 			// The container ID must be resolved while the service still runs — the
 			// lookup behind it only sees running containers.
 			id, err := stack.ServiceContainerID(ctx, svc)
 			if err != nil {
-				errs = append(errs, fmt.Errorf("%s/%s: %w", component, svc, err))
+				errs = append(errs, fmt.Errorf("%s/%s (%s): %w", component, svc, coverageType, err))
 				continue
 			}
 			if err := stack.StopService(ctx, svc); err != nil {
-				errs = append(errs, fmt.Errorf("%s/%s: %w", component, svc, err))
+				errs = append(errs, fmt.Errorf("%s/%s (%s): %w", component, svc, coverageType, err))
 				continue
 			}
 			dst, err := sink.Dir(t.Block.Name, svc)
 			if err != nil {
-				errs = append(errs, fmt.Errorf("%s/%s: %w", component, svc, err))
+				errs = append(errs, fmt.Errorf("%s/%s (%s): %w", component, svc, coverageType, err))
 				continue
 			}
 			if err := coverage.CopyDir(ctx, id, coverage.GuestDir, dst); err != nil {
-				errs = append(errs, fmt.Errorf("%s/%s: %w", component, svc, err))
+				errs = append(errs, fmt.Errorf("%s/%s (%s): %w", component, svc, coverageType, err))
 			}
 		}
 	}

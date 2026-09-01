@@ -51,6 +51,13 @@ const (
 // The controller's management API is reached through the same component via its own
 // endpoints, published by the compose file.
 func PlatformGateway() *components.Definition {
+	env := map[string]string{
+		EnvImagePGController: shared.Image(shared.EnvImageGatewayController, shared.GatewayControllerRunImage()).Ref,
+		EnvImagePGRuntime:    shared.Image(shared.EnvImageGatewayRuntime, shared.GatewayRuntimeRunImage()).Ref,
+	}
+	for key, value := range runtimeCoverageEnvironment() {
+		env[key] = value
+	}
 	return &components.Definition{
 		Name: "platform-gateway",
 
@@ -84,12 +91,12 @@ func PlatformGateway() *components.Definition {
 			// file; administrative credentials come from the test overlay.
 
 			// Image references are resolved from the source version or environment overrides.
-			Env: map[string]string{
-				EnvImagePGController: shared.Image(shared.EnvImageGatewayController, shared.GatewayControllerRunImage()).Ref,
-				EnvImagePGRuntime:    shared.Image(shared.EnvImageGatewayRuntime, shared.GatewayRuntimeRunImage()).Ref,
-			},
+			Env: env,
 
-			CoverageServices: []string{svcRuntime, svcController},
+			CoverageServices: []components.CoverageService{
+				{Name: svcRuntime, Types: []string{"go"}},
+				{Name: svcController, Types: []string{"go"}},
+			},
 		},
 
 		Endpoints: []components.Endpoint{
@@ -165,6 +172,22 @@ func PlatformGateway() *components.Definition {
 
 		Limits: components.ResourceLimits{CPUs: 2, MemoryMB: 3000},
 	}
+}
+
+func runtimeCoverageEnvironment() map[string]string {
+	if !shared.CoverageMode() {
+		return nil
+	}
+	spec, _ := BuildSpec("")
+	return cloneEnvironment(spec.Coverage.Environment)
+}
+
+func cloneEnvironment(source map[string]string) map[string]string {
+	result := make(map[string]string, len(source))
+	for key, value := range source {
+		result[key] = value
+	}
+	return result
 }
 
 // PlatformGatewayWiring is what a block may configure about the gateway.

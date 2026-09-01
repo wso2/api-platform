@@ -33,6 +33,8 @@ RUN npm ci --omit=dev
 # Runtime stage
 FROM node:24-alpine
 
+ARG ENABLE_COVERAGE=false
+
 # Set the working directory inside the container
 WORKDIR /app
 
@@ -52,7 +54,7 @@ RUN addgroup -g 10001 appgroup && adduser -u 10001 -G appgroup -s /bin/sh -D -H 
 # app can write log files and its database. The TLS certificate is bind-mounted
 # read-only at /etc/api-portal/tls (generated host-side by setup.sh) — never
 # written to by the container.
-RUN mkdir -p /app/logs /app/data && chown -R 10001:10001 /app/logs /app/data
+RUN mkdir -p /app/logs /app/data /coverage && chown -R 10001:10001 /app/logs /app/data /coverage
 
 RUN chmod +x /app/docker-entrypoint.sh
 

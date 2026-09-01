@@ -42,6 +42,10 @@ const svcAPIPortal = "api-portal"
 // The portal is provisioned as the real product so subscription behavior exercises the
 // production control-plane contract.
 func APIPortal() *components.Definition {
+	env := map[string]string{EnvImageAPIPortal: shared.APIPortalImage()}
+	for key, value := range runtimeCoverageEnvironment() {
+		env[key] = value
+	}
 	return &components.Definition{
 		Name: svcAPIPortal,
 		// Fixed: platform-api and the portal address each other by name in configuration
@@ -55,9 +59,12 @@ func APIPortal() *components.Definition {
 			// Image pinned from the product's own VERSION file, so the ${APIPortal}
 			// default in the YAML is only a fallback for reading the file by hand. See
 			// version.go: :latest is not dependable here — api-portal's build never tags it.
-			Env:            map[string]string{EnvImageAPIPortal: shared.APIPortalImage()},
+			Env:            env,
 			PrimaryService: svcAPIPortal,
 			Services:       []string{svcAPIPortal},
+			CoverageServices: []components.CoverageService{{
+				Name: svcAPIPortal, Types: []string{"node-v8"},
+			}},
 			// The control plane's OWN key material, not a second draw. The portal verifies
 			// RS256 tokens platform-api signed and dials its self-signed TLS endpoint, so a
 			// separately generated pair would reject every token and the failure would read
@@ -102,6 +109,18 @@ func APIPortal() *components.Definition {
 
 		Limits: components.ResourceLimits{CPUs: 1, MemoryMB: 1000},
 	}
+}
+
+func runtimeCoverageEnvironment() map[string]string {
+	if !shared.CoverageMode() {
+		return nil
+	}
+	spec, _ := BuildSpec("")
+	env := make(map[string]string, len(spec.Coverage.Environment))
+	for key, value := range spec.Coverage.Environment {
+		env[key] = value
+	}
+	return env
 }
 
 // portalCryptoFiles selects the two pieces of the control plane's identity the portal needs.

@@ -24,6 +24,8 @@ import (
 	"context"
 	"crypto/tls"
 	"net/http"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -31,9 +33,11 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/wso2/api-platform/tests/framework/core/actor"
+	"github.com/wso2/api-platform/tests/framework/core/builder"
 	"github.com/wso2/api-platform/tests/framework/core/catalog/platformapi"
 	"github.com/wso2/api-platform/tests/framework/core/catalog/shared"
 	"github.com/wso2/api-platform/tests/framework/core/components"
+	"github.com/wso2/api-platform/tests/framework/core/coverage"
 	"github.com/wso2/api-platform/tests/framework/core/runtime"
 )
 
@@ -54,6 +58,22 @@ func repoRoot(t *testing.T) string {
 // whole chain: config templating, ca_file trust, and platform-api's local login.
 func TestAIWorkspaceBoots(t *testing.T) {
 	root := repoRoot(t)
+	t.Setenv(shared.EnvCoverageMode, "true")
+	for _, name := range []string{"platform-api", "ai-workspace"} {
+		version, ok := shared.SourceVersion(name)
+		require.True(t, ok)
+		var spec builder.Spec
+		var buildErr error
+		if name == "platform-api" {
+			spec, buildErr = platformapi.BuildSpec(version)
+		} else {
+			spec, buildErr = BuildSpec(version)
+		}
+		require.NoError(t, buildErr)
+		require.NoError(t, builder.Build(context.Background(), spec, builder.Request{
+			RepoRoot: root, Version: version, Coverage: true, Runner: builder.ExecRunner{},
+		}), "building the instrumented %s image", name)
+	}
 	ctx, cancel := context.WithTimeout(context.Background(), 12*time.Minute)
 	defer cancel()
 
@@ -132,4 +152,34 @@ func TestAIWorkspaceBoots(t *testing.T) {
 	defer resp.Body.Close()
 	require.Equal(t, http.StatusOK, resp.StatusCode,
 		"BFF login with the block's admin credentials must succeed; logs:\n%s", aiw.Logs(ctx))
+
+	sink, err := coverage.NewSink(t.TempDir())
+	require.NoError(t, err)
+	id, err := aiw.ServiceContainerID(ctx, svcAIWorkspace)
+	require.NoError(t, err)
+	require.NoError(t, aiw.StopService(ctx, svcAIWorkspace))
+	dst, err := sink.Dir("ai-workspace", svcAIWorkspace)
+	require.NoError(t, err)
+	require.NoError(t, coverage.CopyDir(ctx, id, coverage.GuestDir, dst))
+	entries, err := os.ReadDir(filepath.Clean(dst))
+	require.NoError(t, err)
+	requireCoverageArtifact(t, entries, "covmeta.", "AI Workspace must flush Go metadata on graceful stop")
+	requireCoverageArtifact(t, entries, "covcounters.", "AI Workspace must flush Go counters on graceful stop")
+}
+
+func requireCoverageArtifact(t *testing.T, entries []os.DirEntry, prefix, message string) {
+	t.Helper()
+	for _, entry := range entries {
+		if strings.HasPrefix(entry.Name(), prefix) {
+			return
+		}
+	}
+	require.Fail(t, message, "artifact prefix %q not found in %v", prefix, entries)
+}
+
+func TestAIWorkspaceCoverageCapability(t *testing.T) {
+	t.Setenv(shared.EnvCoverageMode, "true")
+	definition := AIWorkspace()
+	require.Equal(t, "/coverage", definition.Compose.Env["GOCOVERDIR"])
+	require.Equal(t, []string{"go"}, definition.Compose.CoverageServices[0].Types)
 }

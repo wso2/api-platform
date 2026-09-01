@@ -26,6 +26,7 @@ services:
       - api-platform.env
     environment:
       - NODE_EXTRA_CA_CERTS=/etc/api-portal/certs/cert.pem
+      - NODE_V8_COVERAGE=${NODE_V8_COVERAGE:-}
     volumes:
       - ./config.toml:/app/configs/config.toml:ro
       - ./keys/jwt_public.pem:/etc/api-portal/keys/jwt_public.pem:ro

@@ -16,7 +16,7 @@
  * under the License.
  */
 
-// Package coverage collects server-side Go coverage counters from a block's containers.
+// Package coverage collects coverage artifacts from a block's containers.
 package coverage
 
 import (

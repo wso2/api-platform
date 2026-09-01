@@ -22,6 +22,7 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/require"
+	"github.com/wso2/api-platform/tests/framework/core/catalog/shared"
 )
 
 func TestAPIPortalDefinition(t *testing.T) {
@@ -33,4 +34,12 @@ func TestAPIPortalDefinition(t *testing.T) {
 	require.NotEmpty(t, definition.Compose.GeneratedFiles)
 	_, ok := definition.Endpoint("http")
 	require.True(t, ok)
+}
+
+func TestAPIPortalCoverageEnvironmentFollowsRunMode(t *testing.T) {
+	t.Setenv(shared.EnvCoverageMode, "false")
+	require.NotContains(t, APIPortal().Compose.Env, "NODE_V8_COVERAGE")
+
+	t.Setenv(shared.EnvCoverageMode, "true")
+	require.Equal(t, "/coverage", APIPortal().Compose.Env["NODE_V8_COVERAGE"])
 }

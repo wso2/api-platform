@@ -27,19 +27,29 @@ import (
 // BuildSpec returns the source-build metadata for API Portal.
 func BuildSpec(version string) (builder.Spec, error) {
 	return builder.Spec{
-		Component:        "api-portal",
-		SourceDir:        "portals/api-portal",
-		SupportsCoverage: false,
+		Component: "api-portal",
+		SourceDir: "portals/api-portal",
+		Coverage: builder.CoverageSpec{
+			Supported: true, Types: []builder.CoverageType{builder.NodeV8Coverage},
+			Include: []string{"src/**/*.js"}, OutputDir: "/coverage",
+			BuildArgs:   map[string]string{"ENABLE_COVERAGE": "true"},
+			Environment: map[string]string{"NODE_V8_COVERAGE": "/coverage"},
+		},
 		Images: []builder.Image{{
 			Name:       "ghcr.io/wso2/api-platform/api-portal:" + version,
 			Dockerfile: "portals/api-portal/Dockerfile",
 			Context:    "portals/api-portal",
 		}},
-		Plan: func(repoRoot, v string, _ bool) ([]builder.Command, error) {
+		Plan: func(repoRoot, v string, coverage builder.CoverageSpec) ([]builder.Command, error) {
+			args := []string{"docker", "buildx", "build", "--tag",
+				"ghcr.io/wso2/api-platform/api-portal:" + v, "--load"}
+			if coverage.Supported {
+				args = append(args, builder.CoverageBuildArgs(coverage)...)
+			}
+			args = append(args, ".")
 			return []builder.Command{{
 				Directory: filepath.Join(repoRoot, "portals/api-portal"),
-				Args: []string{"docker", "buildx", "build", "--tag",
-					"ghcr.io/wso2/api-platform/api-portal:" + v, "--load", "."},
+				Args:      args,
 			}}, nil
 		},
 	}, nil

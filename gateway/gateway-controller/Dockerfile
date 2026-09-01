@@ -7,6 +7,7 @@ ARG GIT_COMMIT=unknown
 
 # Coverage build argument - set to "true" for coverage-instrumented builds
 ARG ENABLE_COVERAGE=false
+ARG COVERAGE_PACKAGES=""
 
 # Debug build argument - set to "true" for debug builds with dlv support (disables optimizations)
 ARG ENABLE_DEBUG=false
@@ -52,8 +53,9 @@ RUN --mount=type=cache,target=/go/pkg/mod \
     else \
         export CC=gcc; \
     fi && \
-    if [ "$ENABLE_COVERAGE" = "true" ]; then \
-        COVER_FLAG="-cover -covermode=atomic -coverpkg=github.com/wso2/api-platform/gateway/gateway-controller/..."; \
+	if [ "$ENABLE_COVERAGE" = "true" ]; then \
+		COVER_FLAG="-cover -covermode=atomic"; \
+		if [ -n "$COVERAGE_PACKAGES" ]; then COVER_FLAG="$COVER_FLAG -coverpkg=$COVERAGE_PACKAGES"; fi; \
     else \
         COVER_FLAG=""; \
     fi && \
@@ -139,9 +141,6 @@ RUN groupadd -r -g 10001 wso2 && \
         chown -R wso2:wso2 /coverage && \
         chmod -R 755 /coverage; \
     fi
-
-# Set GOCOVERDIR for coverage data collection (only effective when binary is built with -cover)
-ENV GOCOVERDIR=/coverage
 
 USER wso2
 

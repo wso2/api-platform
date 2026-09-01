@@ -46,8 +46,14 @@ type ComposeSpec struct {
 	// Env contains variables passed to Compose for interpolation.
 	Env map[string]string
 
-	// CoverageServices lists services from which coverage data is collected.
-	CoverageServices []string
+	// CoverageServices lists services and artifact formats collected after shutdown.
+	CoverageServices []CoverageService
+}
+
+// CoverageService identifies a service that writes coverage artifacts.
+type CoverageService struct {
+	Name  string
+	Types []string
 }
 
 // IsCompose reports whether this component is backed by a compose stack rather than a
@@ -91,6 +97,28 @@ func (d *Definition) validateCompose() error {
 			errs.addf("%s: staged file %q has no source path", d, name)
 		}
 	}
+	seenCoverage := make(map[string]bool, len(c.CoverageServices))
+	for _, service := range c.CoverageServices {
+		if strings.TrimSpace(service.Name) == "" {
+			errs.addf("%s: coverage service has no name", d)
+			continue
+		}
+		if seenCoverage[service.Name] {
+			errs.addf("%s: coverage service %q is duplicated", d, service.Name)
+		}
+		seenCoverage[service.Name] = true
+		if !containsStr(c.Services, service.Name) {
+			errs.addf("%s: coverage service %q is not in the services list", d, service.Name)
+		}
+		if len(service.Types) == 0 {
+			errs.addf("%s: coverage service %q has no coverage types", d, service.Name)
+		}
+		for _, coverageType := range service.Types {
+			if coverageType != "go" && coverageType != "node-v8" {
+				errs.addf("%s: coverage service %q has unsupported type %q", d, service.Name, coverageType)
+			}
+		}
+	}
 
 	return errs.err()
 }
@@ -121,7 +149,7 @@ func (c *ComposeSpec) WithGenerated(files map[string][]byte) *ComposeSpec {
 		StagedFiles:      make(map[string]string, len(c.StagedFiles)),
 		GeneratedFiles:   make(map[string][]byte, len(files)+len(c.GeneratedFiles)),
 		Env:              make(map[string]string, len(c.Env)),
-		CoverageServices: append([]string(nil), c.CoverageServices...),
+		CoverageServices: append([]CoverageService(nil), c.CoverageServices...),
 	}
 	for k, v := range c.StagedFiles {
 		out.StagedFiles[k] = v

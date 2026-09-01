@@ -77,6 +77,7 @@ ARG VERSION
 ARG GIT_COMMIT
 ARG BUILD_DATE
 ARG ENABLE_COVERAGE
+ARG COVERAGE_PACKAGES=""
 ARG ENABLE_DEBUG=false
 ARG TARGETARCH
 ENV VERSION=${VERSION}
@@ -121,8 +122,7 @@ WORKDIR /api-platform
 # Cache mounts let the builder's internal go build reuse compiled packages
 RUN --mount=type=cache,target=/go/pkg/mod \
     --mount=type=cache,target=/root/.cache/go-build \
-    [ "$ENABLE_COVERAGE" = "true" ] && export COVERAGE=true \
-        COVERPKG="github.com/wso2/api-platform/gateway/gateway-runtime/policy-engine/...,github.com/wso2/gateway-controllers/policies/..." || true; \
+	[ "$ENABLE_COVERAGE" = "true" ] && export COVERAGE=true COVERPKG="$COVERAGE_PACKAGES" || true; \
     [ "$ENABLE_DEBUG" = "true" ] && export DEBUG=true || true; \
     /usr/local/bin/gateway-builder \
         -build-file /api-platform/gateway/build.yaml \
@@ -277,9 +277,6 @@ RUN groupadd -r -g 10001 wso2 && \
     mkdir -p /home/wso2/conf/llm-pricing && \
     chown -R wso2:wso2 /app /var/run/api-platform /coverage /home/wso2 && \
     chmod -R 755 /app /var/run/api-platform /coverage /home/wso2
-
-# Set GOCOVERDIR for coverage data collection (only effective when binary is built with -cover)
-ENV GOCOVERDIR=/coverage
 
 ENV GATEWAY_CONTROLLER_HOST=gateway-controller \
     LOG_LEVEL=info

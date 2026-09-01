@@ -29,6 +29,7 @@ services:
       - IT_TEMPLATE_PATH=/anything
       - IT_RATE_LIMIT=5
       - IT_ALLOW_CREDENTIALS=true
+      - GOCOVERDIR=${GOCOVERDIR:-}
     volumes:
       - ./config.toml:/etc/gateway-controller/config.toml:ro
       - ./aesgcm-keys/default-aesgcm256-v1.bin:/app/data/aesgcm-keys/default-aesgcm256-v1.bin:ro
@@ -56,6 +57,7 @@ services:
       - ROUTER_ADMIN_HOST=0.0.0.0
       - ROUTER_DRAIN_TIME_SECONDS=2
       - AWS_ENDPOINT_URL_BEDROCK_RUNTIME=http://testbench:3006
+      - GOCOVERDIR=${GOCOVERDIR:-}
     volumes:
       - ./config.toml:/etc/policy-engine/config.toml:ro
     ports:

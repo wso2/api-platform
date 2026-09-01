@@ -59,15 +59,17 @@ func BuildOptions(outputPath string, buildMetadata *types.BuildMetadata) *types.
 	ldflags := generateLDFlags(buildMetadata, enableCoverage, enableDebug)
 
 	return &types.CompilationOptions{
-		OutputPath:     outputPath,
-		LDFlags:        ldflags,
-		BuildTags:      []string{},
-		CGOEnabled:     false, // Static binary
-		TargetOS:       "linux",
-		TargetArch:     targetArch,
-		EnableCoverage: enableCoverage,
-		CoverPkg:       coverPkg,
-		EnableDebug:    enableDebug,
+		OutputPath: outputPath,
+		LDFlags:    ldflags,
+		BuildTags:  []string{},
+		CGOEnabled: false, // Static binary
+		TargetOS:   "linux",
+		TargetArch: targetArch,
+		Coverage: types.CoverageOptions{
+			Enabled:  enableCoverage,
+			Packages: coverPkg,
+		},
+		EnableDebug: enableDebug,
 	}
 }
 

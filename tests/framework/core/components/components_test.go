@@ -1110,17 +1110,17 @@ func TestComposeHelpers(t *testing.T) {
 		definition := Definition{
 			Name: "gateway",
 			Compose: &ComposeSpec{
-				StagedFiles:       map[string]string{"a": "b"},
-				GeneratedFiles:    map[string][]byte{"existing": []byte("value")},
-				Env:               map[string]string{"A": "B"},
-				CoverageServices:  []string{"gateway"},
+				StagedFiles:      map[string]string{"a": "b"},
+				GeneratedFiles:   map[string][]byte{"existing": []byte("value")},
+				Env:              map[string]string{"A": "B"},
+				CoverageServices: []CoverageService{{Name: "gateway", Types: []string{"go"}}},
 			},
 		}
 		updated := definition.Compose.WithGenerated(map[string][]byte{"generated": []byte("content")})
 		require.Equal(t, map[string]string{"a": "b"}, updated.StagedFiles)
 		require.Equal(t, map[string][]byte{"existing": []byte("value"), "generated": []byte("content")}, updated.GeneratedFiles)
 		require.Equal(t, map[string]string{"A": "B"}, updated.Env)
-		require.Equal(t, []string{"gateway"}, updated.CoverageServices)
+		require.Equal(t, []CoverageService{{Name: "gateway", Types: []string{"go"}}}, updated.CoverageServices)
 		require.NotSame(t, definition.Compose, updated)
 		updated.GeneratedFiles["existing"][0] = 'X'
 		require.Equal(t, []byte("value"), definition.Compose.GeneratedFiles["existing"])
@@ -1204,4 +1204,16 @@ func TestRegistryMustRegister(t *testing.T) {
 			NewRegistry().MustRegister(&Definition{Name: "broken"})
 		})
 	})
+}
+
+func TestComposeRejectsInvalidCoverageServiceMetadata(t *testing.T) {
+	definition := Definition{
+		Name:      "stack",
+		Endpoints: []Endpoint{{Name: "http", Port: 8080, Scheme: "http"}},
+		Compose: &ComposeSpec{
+			ComposeFile: "compose.yaml", PrimaryService: "api", Services: []string{"api"},
+			CoverageServices: []CoverageService{{Name: "api", Types: []string{"unknown"}}},
+		},
+	}
+	require.ErrorContains(t, definition.Validate(), "unsupported type")
 }

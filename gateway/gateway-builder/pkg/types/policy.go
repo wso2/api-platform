@@ -100,17 +100,22 @@ type PolicyInfo struct {
 	Version string
 }
 
-// CompilationOptions contains settings for the compilation phase
+// CoverageOptions controls Go coverage instrumentation.
+type CoverageOptions struct {
+	Enabled  bool
+	Packages string
+}
+
+// CompilationOptions contains settings for the compilation phase.
 type CompilationOptions struct {
-	OutputPath     string
-	LDFlags        string
-	BuildTags      []string
-	CGOEnabled     bool
-	TargetOS       string
-	TargetArch     string
-	EnableCoverage bool   // Enable coverage instrumentation for integration tests
-	CoverPkg       string // -coverpkg patterns; without it -cover skips the policy modules (dependencies, not main module)
-	EnableDebug    bool   // Disable optimizations/inlining for dlv remote debugging
+	OutputPath  string
+	LDFlags     string
+	BuildTags   []string
+	CGOEnabled  bool
+	TargetOS    string
+	TargetArch  string
+	Coverage    CoverageOptions
+	EnableDebug bool // Disable optimizations/inlining for dlv remote debugging
 }
 
 // PackagingMetadata contains Docker image metadata

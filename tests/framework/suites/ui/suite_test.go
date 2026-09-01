@@ -32,6 +32,7 @@ import (
 	frameworkbuilder "github.com/wso2/api-platform/tests/framework/core/builder"
 	"github.com/wso2/api-platform/tests/framework/core/catalog"
 	"github.com/wso2/api-platform/tests/framework/core/catalog/shared"
+	"github.com/wso2/api-platform/tests/framework/core/coverage"
 	frameworkruntime "github.com/wso2/api-platform/tests/framework/core/runtime"
 	"github.com/wso2/api-platform/tests/framework/core/topology"
 	"github.com/wso2/api-platform/tests/framework/suites/ui/steps"
@@ -43,11 +44,13 @@ func TestMain(m *testing.M) {
 	selection.Flags(flag.CommandLine)
 	flag.Parse()
 
+	coverageMode := "false"
 	if selection.Coverage {
-		if err := os.Setenv(shared.EnvCoverageMode, "true"); err != nil {
-			fmt.Fprintln(os.Stderr, "setting coverage mode:", err)
-			os.Exit(1)
-		}
+		coverageMode = "true"
+	}
+	if err := os.Setenv(shared.EnvCoverageMode, coverageMode); err != nil {
+		fmt.Fprintln(os.Stderr, "setting coverage mode:", err)
+		os.Exit(1)
 	}
 
 	// The workspace lists only AI gateways; register this suite's real gateway as one so
@@ -131,13 +134,27 @@ func TestUISuite(t *testing.T) {
 	if err != nil {
 		t.Fatalf("applying the selection: %v", err)
 	}
-	if err := catalog.BuildSources(context.Background(), narrowed, root, frameworkbuilder.ExecRunner{}); err != nil {
+	if err := catalog.BuildSources(context.Background(), narrowed, root, frameworkbuilder.ExecRunner{}, selection.Coverage); err != nil {
 		t.Fatalf("building source images: %v", err)
+	}
+
+	var sink *coverage.Sink
+	if selection.Coverage {
+		out := os.Getenv(coverage.EnvOut)
+		if out == "" {
+			out = filepath.Join(dir, "coverage-out")
+		}
+		sink, err = coverage.NewSink(out)
+		if err != nil {
+			t.Fatalf("preparing the coverage sink: %v", err)
+		}
+		t.Logf("coverage: collecting counters into %s", sink.Root())
 	}
 
 	frameworkruntime.Run(t, narrowed, frameworkruntime.Deps{
 		RepoRoot:    root,
 		FeatureRoot: dir,
+		Coverage:    sink,
 		Steps: func(sc *godog.ScenarioContext, topo *frameworkruntime.Topology) {
 			steps.New(topo).Register(sc)
 		},

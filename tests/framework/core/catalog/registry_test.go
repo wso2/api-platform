@@ -25,6 +25,7 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/require"
+	"github.com/wso2/api-platform/tests/framework/core/builder"
 )
 
 func repoRoot(t *testing.T) string {
@@ -86,7 +87,7 @@ func TestBuildSpecsCoverSourceBuiltProducts(t *testing.T) {
 			require.NotEmpty(t, spec.SourceDir)
 			require.NotEmpty(t, spec.Images)
 			require.NotNil(t, spec.Plan)
-			commands, err := spec.Plan(root, "test-version", spec.SupportsCoverage)
+			commands, err := spec.Plan(root, "test-version", spec.Coverage)
 			require.NoError(t, err)
 			require.NotEmpty(t, commands)
 			for _, command := range commands {
@@ -103,7 +104,7 @@ func TestBuildSpecsCoverSourceBuiltProducts(t *testing.T) {
 func TestGatewayBuildPlanUsesNormalTagsForInstrumentedImages(t *testing.T) {
 	spec, err := BuildSpec("platform-gateway", "1.2.0-SNAPSHOT")
 	require.NoError(t, err)
-	commands, err := spec.Plan(repoRoot(t), "1.2.0-SNAPSHOT", true)
+	commands, err := spec.Plan(repoRoot(t), "1.2.0-SNAPSHOT", spec.Coverage)
 	require.NoError(t, err)
 	joined := make([]string, 0, len(commands))
 	for _, command := range commands {
@@ -114,6 +115,44 @@ func TestGatewayBuildPlanUsesNormalTagsForInstrumentedImages(t *testing.T) {
 	require.NotContains(t, plan, "-coverage:")
 	require.Contains(t, plan, "gateway-controller:1.2.0-SNAPSHOT")
 	require.Contains(t, plan, "gateway-runtime:1.2.0-SNAPSHOT")
+}
+
+func TestSourceBuildPlansOmitCoverageArgumentsWhenDisabled(t *testing.T) {
+	root := repoRoot(t)
+	for _, name := range []string{"platform-gateway", "platform-api", "api-portal", "ai-workspace"} {
+		t.Run(name, func(t *testing.T) {
+			spec, err := BuildSpec(name, "test-version")
+			require.NoError(t, err)
+			commands, err := spec.Plan(root, "test-version", builder.CoverageSpec{})
+			require.NoError(t, err)
+			for _, command := range commands {
+				require.NotContains(t, strings.Join(command.Args, " "), "ENABLE_COVERAGE=true")
+			}
+		})
+	}
+}
+
+func TestCoverageArgumentsPrecedeDockerContext(t *testing.T) {
+	root := repoRoot(t)
+	for _, name := range []string{"platform-gateway", "platform-api", "api-portal", "ai-workspace"} {
+		t.Run(name, func(t *testing.T) {
+			spec, err := BuildSpec(name, "test-version")
+			require.NoError(t, err)
+			commands, err := spec.Plan(root, "test-version", spec.Coverage)
+			require.NoError(t, err)
+			for _, command := range commands {
+				contextIndex := -1
+				for i, arg := range command.Args {
+					if arg == "." {
+						contextIndex = i
+					}
+				}
+				if contextIndex >= 0 {
+					require.NotContains(t, command.Args[contextIndex+1:], "--build-arg")
+				}
+			}
+		})
+	}
 }
 
 func TestBuildSpecRejectsUnknownProduct(t *testing.T) {

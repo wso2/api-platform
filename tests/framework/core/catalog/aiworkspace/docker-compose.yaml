@@ -28,6 +28,7 @@ services:
       - APIP_AIW_CONTROL_PLANE_URL=https://platform-api:9243
       - APIP_AIW_GATEWAY_CONTROLPLANE_HOST=platform-api:9243
       - APIP_AIW_DOMAIN=ai-workspace:9643
+      - GOCOVERDIR=${GOCOVERDIR:-}
     volumes:
       - ./config.toml:/etc/ai-workspace/config.toml:ro
       - ./tls/cert.pem:/etc/ai-workspace/tls/cert.pem:ro
