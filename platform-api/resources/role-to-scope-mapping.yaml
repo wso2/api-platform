@@ -112,34 +112,9 @@ roles:
       # Platform API
       - ap:organization:read
       - ap:project:read
-      - ap:rest_api:create
-      - ap:rest_api:read
-      - ap:rest_api:update
-      - ap:rest_api:delete
-      - ap:rest_api:gateway:read
-      - ap:rest_api:gateway:create
-      - ap:rest_api:deployment:create
-      - ap:rest_api:deployment:read
-      - ap:rest_api:deployment:undeploy
-      - ap:rest_api:deployment:restore
-      - ap:rest_api:api_key:manage
-      - ap:mcp_proxy:create
-      - ap:mcp_proxy:read
-      - ap:mcp_proxy:update
-      - ap:mcp_proxy:delete
-      - ap:mcp_proxy:deployment:create
-      - ap:mcp_proxy:deployment:read
-      - ap:mcp_proxy:deployment:undeploy
-      - ap:mcp_proxy:deployment:restore
-      - ap:llm_proxy:create
-      - ap:llm_proxy:read
-      - ap:llm_proxy:update
-      - ap:llm_proxy:delete
-      - ap:llm_proxy:deployment:create
-      - ap:llm_proxy:deployment:read
-      - ap:llm_proxy:deployment:undeploy
-      - ap:llm_proxy:deployment:restore
-      - ap:llm_proxy:api_key:manage
+      - ap:rest_api:manage
+      - ap:mcp_proxy:manage
+      - ap:llm_proxy:manage
       - ap:llm_provider:read
       - ap:llm_template:read
       - ap:gateway:read
