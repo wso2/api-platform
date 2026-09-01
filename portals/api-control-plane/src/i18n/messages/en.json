@@ -52,6 +52,29 @@
     "defaultMessage": "Source",
     "description": "Progress step where the user supplies a contract or a backend endpoint."
   },
+  "api.create.ApiCreationWizard.apiType.generic": {
+    "defaultMessage": "API",
+    "description": "Stands in for the chosen API type when the wizard is opened straight at a later step."
+  },
+  "api.create.ApiCreationWizard.apiType.subtitle": {
+    "defaultMessage": "This decides how the gateway exposes your backend. Only REST is available today."
+  },
+  "api.create.ApiCreationWizard.apiType.title": {
+    "defaultMessage": "What kind of API are you exposing?"
+  },
+  "api.create.ApiCreationWizard.configure.subtitle": {
+    "defaultMessage": "Name it, set where it routes, and create it."
+  },
+  "api.create.ApiCreationWizard.configure.title": {
+    "defaultMessage": "Configure and create"
+  },
+  "api.create.ApiCreationWizard.source.subtitle": {
+    "defaultMessage": "Bring an existing contract, or start from a blank slate and fill in the details yourself."
+  },
+  "api.create.ApiCreationWizard.source.title": {
+    "defaultMessage": "How do you want to define your {apiType}?",
+    "description": "{apiType} is the type picked in the first step, e.g. \"REST API\". Reads as one sentence."
+  },
   "api.create.ApiTypeSelector.badge.comingSoon": {
     "defaultMessage": "Coming soon",
     "description": "Badge on an API type that is planned but not released yet."

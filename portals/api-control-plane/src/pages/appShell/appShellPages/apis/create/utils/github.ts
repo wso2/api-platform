@@ -31,12 +31,15 @@ import { isValidUrl } from '../../utils/developEdit';
 const API_BASE_URL = 'https://api.github.com';
 const RAW_BASE_URL = 'https://raw.githubusercontent.com';
 
-/** What a repository URL names. Branch and path come from a deep link. */
+/** What a repository URL names. `refSegments` comes from a deep link. */
 export type GitHubRepoRef = {
-  branch?: string;
   owner: string;
-  /** Directory the link pointed at, without leading or trailing slashes. */
-  path?: string;
+  /**
+   * The segments after `tree/`, exactly as the URL carried them. Not split
+   * into a branch and a directory here, because the URL format gives no
+   * delimiter between the two — see `resolveGitHubRef`.
+   */
+  refSegments?: string[];
   repo: string;
 };
 
@@ -143,7 +146,7 @@ export const parseGitHubRepoUrl = (value: string): GitHubRepoRef | null => {
   }
 
   const segments = url.pathname.split('/').filter((segment) => segment !== '');
-  const [owner, rawRepo, kind, branch, ...rest] = segments;
+  const [owner, rawRepo, kind, ...rest] = segments;
   if (owner === undefined || rawRepo === undefined) {
     return null;
   }
@@ -151,15 +154,41 @@ export const parseGitHubRepoUrl = (value: string): GitHubRepoRef | null => {
   const repo = rawRepo.replace(/\.git$/, '');
   // Only `tree` carries a branch and directory; `blob`, `commit` and the rest
   // name something this step can't start from, so they are ignored.
-  if (kind !== 'tree' || branch === undefined) {
+  if (kind !== 'tree' || rest.length === 0) {
     return { owner, repo };
   }
   return {
-    branch,
     owner,
-    path: rest.join('/'),
+    refSegments: rest,
     repo,
   };
+};
+
+/**
+ * Splits a `tree/<...>` deep link into the branch it names and the directory
+ * inside it.
+ *
+ * The URL format is genuinely ambiguous — `tree/feature/x/apis` is either
+ * branch `feature` with path `x/apis` or branch `feature/x` with path `apis`,
+ * and the string alone cannot say which. So this resolves against the
+ * repository's actual branch list, longest candidate first, which is the only
+ * way a slash-named branch (a common convention) reads correctly. Returns
+ * `null` when no prefix is a branch, leaving the caller on the default branch.
+ */
+export const resolveGitHubRef = (
+  segments: string[] | undefined,
+  branches: string[],
+): { branch: string; path: string } | null => {
+  if (segments === undefined || segments.length === 0) {
+    return null;
+  }
+  for (let take = segments.length; take > 0; take -= 1) {
+    const candidate = segments.slice(0, take).join('/');
+    if (branches.includes(candidate)) {
+      return { branch: candidate, path: segments.slice(take).join('/') };
+    }
+  }
+  return null;
 };
 
 /** The repository itself, plus every branch it publishes. */

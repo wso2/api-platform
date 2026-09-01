@@ -17,7 +17,6 @@
  */
 
 import { Box } from '@wso2/oxygen-ui';
-import {} from '@wso2/oxygen-ui-icons-react';
 import { defineMessages } from 'react-intl';
 
 import gRPCIconUrl from '@/assets/icons/gRPC.svg';
@@ -107,8 +106,6 @@ export const API_TYPES: ApiType[] = [
     key: 'rest',
     title: messages.restTitle,
     description: messages.restDescription,
-    rawTitle: 'REST API',
-    rawDescription: 'Expose REST and other HTTP backends.',
     icon: <HttpIcon />,
     enabled: true,
   },
@@ -116,8 +113,6 @@ export const API_TYPES: ApiType[] = [
     key: 'websocket',
     title: messages.webSocketTitle,
     description: messages.webSocketDescription,
-    rawTitle: 'WebSocket API',
-    rawDescription: 'Stream data over long-lived WebSocket connections.',
     icon: <WebSocketIcon />,
     enabled: false,
   },
@@ -125,8 +120,6 @@ export const API_TYPES: ApiType[] = [
     key: 'graphql',
     title: messages.graphQlTitle,
     description: messages.graphQlDescription,
-    rawTitle: 'GraphQL API',
-    rawDescription: 'Serve a GraphQL schema through the gateway.',
     icon: <GraphqlIcon />,
     enabled: false,
   },
@@ -134,8 +127,6 @@ export const API_TYPES: ApiType[] = [
     key: 'websub',
     title: messages.webSubTitle,
     description: messages.webSubDescription,
-    rawTitle: 'WebSub API',
-    rawDescription: 'Deliver events to subscribers over WebSub.',
     icon: <WebSubIcon />,
     enabled: false,
   },
@@ -143,8 +134,6 @@ export const API_TYPES: ApiType[] = [
     key: 'grpc',
     title: messages.grpcTitle,
     description: messages.grpcDescription,
-    rawTitle: 'gRPC API',
-    rawDescription: 'Expose gRPC services through the gateway.',
     icon: <GrpcIcon />,
     enabled: false,
   },

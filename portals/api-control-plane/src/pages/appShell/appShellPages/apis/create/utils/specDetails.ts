@@ -50,16 +50,6 @@ const asText = (value: unknown): string | undefined => {
 };
 
 /**
- * A path segment made from a title: "Orders API v2" becomes "orders-api-v2".
- * Used only as the context of last resort, when the document names no server.
- */
-const slugify = (value: string): string =>
-  value
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, '-')
-    .replace(/^-+|-+$/g, '');
-
-/**
  * The first server URL a definition declares, assembled per spec version.
  *
  * A URL still carrying `{variables}` is dropped: substituting them is the
@@ -87,20 +77,6 @@ const readServerUrl = (spec: Record<string, unknown>): string | undefined => {
     : [];
   const scheme = schemes.includes('https') ? 'https' : (schemes[0] ?? 'https');
   return `${scheme}://${host}${asText(spec.basePath) ?? ''}`;
-};
-
-/** The path part of a server URL — what the gateway would expose it under. */
-const readContextFromUrl = (serverUrl: string): string | undefined => {
-  try {
-    const { pathname } = new URL(serverUrl);
-    const trimmed = pathname.replace(/\/+$/, '');
-    return trimmed === '' ? undefined : trimmed;
-  } catch {
-    // A relative server URL ("/v2") never parses on its own, and is already
-    // the context in its own right.
-    const trimmed = serverUrl.replace(/\/+$/, '');
-    return trimmed.startsWith('/') ? trimmed : undefined;
-  }
 };
 
 /** `http`/`https` from the server URL, so the form's transports match it. */
@@ -160,9 +136,10 @@ export const extractOperations = (spec: Record<string, unknown> | undefined): Ap
 /**
  * The draft the general form starts from, read off a fetched definition.
  *
- * Only what the document actually says is returned. `id`, `readOnly` and the
- * lifecycle/kind constants belong to the form and to the platform, so they are
- * deliberately left alone.
+ * Only what the document actually says is returned. `id`, `context`, `readOnly`
+ * and the lifecycle/kind constants belong to the form and to the platform, so
+ * they are deliberately left alone — the base path in particular is built from
+ * the project, identifier and version, never from the document's server URL.
  */
 export const extractApiDetails = (
   spec: Record<string, unknown> | undefined,
@@ -179,17 +156,10 @@ export const extractApiDetails = (
   const transports = readTransports(serverUrl);
   const operations = extractOperations(spec);
 
-  const context =
-    (serverUrl === undefined ? undefined : readContextFromUrl(serverUrl)) ??
-    (displayName === undefined ? undefined : `/${slugify(displayName)}`);
-
   return {
     ...(displayName === undefined ? {} : { displayName }),
     ...(version === undefined ? {} : { version }),
     ...(description === undefined ? {} : { description }),
-    // An empty context slug ("/" from a title of punctuation only) is no
-    // better than saying nothing.
-    ...(context === undefined || context === '/' ? {} : { context }),
     ...(serverUrl === undefined ? {} : { upstream: { main: { url: serverUrl } } }),
     ...(transports === undefined ? {} : { transports }),
     ...(operations.length === 0 ? {} : { operations }),

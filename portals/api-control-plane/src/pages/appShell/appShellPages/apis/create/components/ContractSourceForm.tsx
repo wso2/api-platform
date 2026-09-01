@@ -61,6 +61,7 @@ import {
   lookupGitHubRepository,
   parseGitHubRepoUrl,
   rawFileUrl,
+  resolveGitHubRef,
   type GitHubTree,
 } from '../utils/github';
 import {
@@ -527,12 +528,15 @@ const SampleLink = ({ onClick }: { onClick: () => void }) => (
 /** Why the upload field is rejected; `null` while it is acceptable. */
 type FileFieldError = 'required' | 'unsupported' | null;
 
+/** Why a file was rejected: removed or unsupported. */
+export type ContractFileRejection = 'removed' | 'unsupported';
+
 type ContractFileControlProps = {
   /** Extensions this API type's contract may use, e.g. `['.json', '.yaml']`. */
   extensions: string[];
   error: FileFieldError;
   file: File | null;
-  onReject: () => void;
+  onReject: (reason: ContractFileRejection) => void;
   onSelect: (file: File) => void;
 };
 
@@ -566,7 +570,7 @@ const ContractFileControl = ({
       onSelect(candidate);
       return;
     }
-    onReject();
+    onReject('unsupported');
   };
 
   const handleDrop = (event: DragEvent<HTMLElement>) => {
@@ -658,7 +662,7 @@ const ContractFileControl = ({
             aria-label={intl.formatMessage(messages.uploadRemove, {
               fileName: file.name,
             })}
-            onClick={onReject}
+            onClick={() => onReject('removed')}
             size="small"
           >
             <X size={16} />
@@ -679,6 +683,9 @@ const LOOKUP_DEBOUNCE_MS = 450;
 
 /** Ceiling for in-browser parsing — a huge document would freeze the tab. */
 const MAX_CONTRACT_BYTES = 10 * 1024 * 1024;
+
+/** How long a contract download may take before it is abandoned. */
+const CONTRACT_FETCH_TIMEOUT_MS = 20_000;
 
 /** What the preview pane needs in order to render a fetched contract. */
 export type FetchedContract = {
@@ -775,16 +782,24 @@ const fetchDocumentFrom = async (
       headers: {
         Accept: 'application/json, application/yaml, text/yaml, text/plain',
       },
+      // Timeouts also read as `unreachable`.
+      signal: AbortSignal.timeout(CONTRACT_FETCH_TIMEOUT_MS),
     });
     if (!response.ok) {
       return { status: 'unreachable' };
     }
+    // Check length before reading; chunked responses are backstopped later.
+    const declaredBytes = Number(response.headers.get('content-length'));
+    if (Number.isFinite(declaredBytes) && declaredBytes > MAX_CONTRACT_BYTES) {
+      return { status: 'oversized' };
+    }
     text = await response.text();
   } catch {
-    // Network failure, or the host refused the cross-origin read. The reason
-    // is developer-facing, so it stays in the console, not the UI.
+    // Network failure, a timeout, or the host refused the cross-origin read.
+    // The reason is developer-facing, so it stays in the console, not the UI.
     return { status: 'unreachable' };
   }
+  // Backstop for responses with no declared length.
   if (text.length > MAX_CONTRACT_BYTES) {
     return { status: 'oversized' };
   }
@@ -900,6 +915,8 @@ export const ContractSourceForm = ({
     | { status: 'failed' }
   >({ status: 'idle' });
   const [branch, setBranch] = useState('');
+  /** Directory from a pasted deep link, resolved after the branch is known. */
+  const [linkedPath, setLinkedPath] = useState('');
   const [directory, setDirectory] = useState('/');
   const [contractFile, setContractFile] = useState('');
   const [tree, setTree] = useState<GitHubTree | null>(null);
@@ -951,6 +968,16 @@ export const ContractSourceForm = ({
   const repositoryKey =
     repositoryRef === null ? '' : `${repositoryRef.owner}/${repositoryRef.repo}`;
 
+  /** Clears repo-derived state when the repository changes. */
+  useEffect(() => {
+    setBranch('');
+    setLinkedPath('');
+    setTree(null);
+    setTreeError(null);
+    setDirectory('/');
+    setContractFile('');
+  }, [repositoryKey]);
+
   /**
    * Looks the repository up as the URL is typed. Same debounce-and-abort shape
    * as the SwaggerHub lookup: one request per pause, and a reply that a later
@@ -978,14 +1005,10 @@ export const ContractSourceForm = ({
           defaultBranch: result.repository.defaultBranch,
           status: 'found',
         });
-        // A link that named a branch wins over the repository's default —
-        // it is what the user pasted.
-        setBranch(
-          repositoryRef.branch !== undefined &&
-            result.repository.branches.includes(repositoryRef.branch)
-            ? repositoryRef.branch
-            : result.repository.defaultBranch,
-        );
+        // A pasted branch link wins over the repo default.
+        const linked = resolveGitHubRef(repositoryRef.refSegments, result.repository.branches);
+        setBranch(linked?.branch ?? result.repository.defaultBranch);
+        setLinkedPath(linked?.path ?? '');
       });
     }, LOOKUP_DEBOUNCE_MS);
 
@@ -1004,6 +1027,9 @@ export const ContractSourceForm = ({
    */
   useEffect(() => {
     if (sourceKey !== 'github' || repositoryRef === null || branch === '') {
+      // A previous run whose `.then` was cut short by `abort()` never got to
+      // clear this, so the guard has to.
+      setTreeLoading(false);
       return;
     }
 
@@ -1023,10 +1049,7 @@ export const ContractSourceForm = ({
         }
         setTree(result.tree);
         // A pasted deep link decides where to start; otherwise the root.
-        const linked =
-          repositoryRef.path === undefined || repositoryRef.path === ''
-            ? '/'
-            : `/${repositoryRef.path}`;
+        const linked = linkedPath === '' ? '/' : `/${linkedPath}`;
         const startAt = result.tree.directories.includes(linked) ? linked : '/';
         setDirectory(startAt);
         setContractFile(contractFilesIn(result.tree, startAt)[0] ?? '');
@@ -1034,8 +1057,10 @@ export const ContractSourceForm = ({
     );
 
     return () => controller.abort();
+    // `repositoryKey` rather than the ref object. `linkedPath` is always set in
+    // the same update as `branch`, so it never fires this on its own.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [branch, repositoryKey, sourceKey]);
+  }, [branch, linkedPath, repositoryKey, sourceKey]);
 
   const handleDirectorySelected = (selection: GitHubDirectorySelection) => {
     setDirectory(selection.directory);
@@ -1117,11 +1142,10 @@ export const ContractSourceForm = ({
     setFile(next);
   };
 
-  /** Rejects the current file, whether it was unsupported or simply removed. */
-  const handleFileReject = () => {
-    const unsupported = file === null;
+  /** Rejects the current file using the provided reason. */
+  const handleFileReject = (reason: ContractFileRejection) => {
     setFile(null);
-    setFileError(unsupported ? 'unsupported' : null);
+    setFileError(reason === 'unsupported' ? 'unsupported' : null);
   };
 
   /**
@@ -1207,6 +1231,9 @@ export const ContractSourceForm = ({
    * second way in beside them is just noise.
    */
   const repositorySettled = repoLookup.status === 'found';
+
+  /** Whether the GitHub authorize card renders; hidden if handler is missing. */
+  const showGitHubAuthorize = !repositorySettled && onAuthorizeGitHub !== undefined;
 
   /** Why the repository lookup failed, as a sentence; `undefined` when it didn't. */
   const gitHubLookupError = (() => {
@@ -1402,7 +1429,7 @@ export const ContractSourceForm = ({
 
       {sourceKey === 'github' ? (
         <Grid container spacing={2} sx={{ alignItems: 'stretch' }}>
-          <Grid size={{ xs: 12, md: repositorySettled ? 12 : 5.5 }}>
+          <Grid size={{ xs: 12, md: showGitHubAuthorize ? 5.5 : 12 }}>
             <Card sx={{ height: '100%' }} variant="outlined">
               <CardContent sx={{ p: 3 }}>
                 <Form.Stack spacing={2}>
@@ -1506,7 +1533,7 @@ export const ContractSourceForm = ({
             </Card>
           </Grid>
 
-          {repositorySettled ? null : (
+          {showGitHubAuthorize ? (
             <>
               <Grid
                 size={{ xs: 12, md: 1 }}
@@ -1543,7 +1570,7 @@ export const ContractSourceForm = ({
                 </Card>
               </Grid>
             </>
-          )}
+          ) : null}
         </Grid>
       ) : null}
 
@@ -1627,15 +1654,17 @@ export const ContractSourceForm = ({
                 requiredMessage={messages.swaggerHubOrganizationRequired}
               />
             </Box>
-            <Tooltip title={intl.formatMessage(messages.swaggerHubRefresh)}>
-              <IconButton
-                aria-label={intl.formatMessage(messages.swaggerHubRefresh)}
-                onClick={onRefreshSwaggerHubOrganizations}
-                size="small"
-              >
-                <RefreshCw size={18} />
-              </IconButton>
-            </Tooltip>
+            {onRefreshSwaggerHubOrganizations === undefined ? null : (
+              <Tooltip title={intl.formatMessage(messages.swaggerHubRefresh)}>
+                <IconButton
+                  aria-label={intl.formatMessage(messages.swaggerHubRefresh)}
+                  onClick={onRefreshSwaggerHubOrganizations}
+                  size="small"
+                >
+                  <RefreshCw size={18} />
+                </IconButton>
+              </Tooltip>
+            )}
           </Stack>
 
           {lookup.status === 'found' ? (

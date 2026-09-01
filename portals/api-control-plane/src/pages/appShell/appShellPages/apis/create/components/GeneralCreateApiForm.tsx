@@ -242,6 +242,11 @@ const toBasePath = (
  * Where the form starts: the wizard's draft over the defaults, with the two
  * derived fields filled in so the first render already shows the handle and
  * base path the API would get.
+ *
+ * A draft that already carries an identifier or a base path keeps it. That is
+ * what makes returning from a failed create restore the user's own edits
+ * rather than the values read off the imported document; a fresh import names
+ * neither, so it still derives both.
  */
 const getInitialValues = (
   draftData: ApiCreationWizardDraftState,
@@ -261,7 +266,10 @@ const getInitialValues = (
   return {
     ...merged,
     id,
-    context: toBasePath(projectHandler, id, merged.version),
+    context:
+      merged.context.trim() === ''
+        ? toBasePath(projectHandler, id, merged.version)
+        : merged.context,
   };
 };
 
@@ -336,9 +344,16 @@ export const GeneralCreateApiForm = (props: GeneralCreateApiFormProps) => {
   );
 
   // Both fields are generated until the user takes them over. Clearing one
-  // hands it back, so there is always a way to return to the default.
-  const [identifierEdited, setIdentifierEdited] = useState(false);
-  const [basePathEdited, setBasePathEdited] = useState(false);
+  // hands it back, so there is always a way to return to the default. A draft
+  // that arrives with either already filled in is a restored submission, so
+  // the field starts out taken over — otherwise the next keystroke in the
+  // display name would generate over the top of what was restored.
+  const [identifierEdited, setIdentifierEdited] = useState(
+    () => (props.initialValues?.id ?? '').trim() !== '',
+  );
+  const [basePathEdited, setBasePathEdited] = useState(
+    () => (props.initialValues?.context ?? '').trim() !== '',
+  );
 
   // Errors are recomputed from state on every render; `touched` decides which
   // of them the user is ready to see, so nothing shouts before it is typed in.

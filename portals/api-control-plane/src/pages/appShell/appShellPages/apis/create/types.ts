@@ -31,8 +31,6 @@ export type ApiType = {
   key: string;
   title: MessageDescriptor;
   description: MessageDescriptor;
-  rawTitle: string;
-  rawDescription: string;
   icon: ReactNode;
   enabled: boolean;
 };

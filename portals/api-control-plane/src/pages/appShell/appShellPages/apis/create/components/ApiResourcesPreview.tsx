@@ -55,8 +55,13 @@ const HideInfoPlugin = () => ({
 
 export type ApiResourcesPreviewProps = {
   /**
-   * The fetched definition. Swagger UI renders it as-is and fetches nothing,
-   * and the Source view prints the same object — so both views always agree.
+   * The fetched definition, as a parsed object rather than a URL, so Swagger UI
+   * never re-downloads the document and the Source view prints the same object
+   * the resources are drawn from. It is not a guarantee of no network activity:
+   * swagger-client resolves `$ref`s while rendering, and `specValidation`
+   * reports an external `$ref` as a warning rather than rejecting it, so a
+   * document naming remote refs can have the preview fetch from whatever host
+   * they point at. Nothing else here issues a request - try-it-out is off.
    */
   spec?: Record<string, unknown>;
 };

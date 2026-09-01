@@ -277,6 +277,11 @@ export const ApiCreationProgress = ({
   useEffect(() => {
     if (status !== 'creating') return undefined;
 
+    // A retry re-enters `creating` with the ring left near the ceiling from the
+    // failed attempt, which would open the second try at "Finalizing setup".
+    // Already 0 on the first pass, so this only ever undoes a stale climb.
+    setPercent(0);
+
     const timer = window.setInterval(() => {
       setPercent((current) =>
         Math.min(

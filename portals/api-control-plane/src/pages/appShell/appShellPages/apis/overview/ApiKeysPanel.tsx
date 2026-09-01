@@ -164,6 +164,9 @@ const messages = defineMessages({
   },
 });
 
+/** Page size for fetching caller's keys. Uses endpoint maximum to avoid hiding keys due to client-side per-API filtering. */
+const API_KEY_PAGE_SIZE = 100;
+
 /** Stands in for a value the server did not send. Locale-independent, and one
  * definition so the table and the date formatter can't drift apart. */
 const EMPTY_VALUE = '-';
@@ -189,7 +192,11 @@ export function ApiKeysPanel({ restApiId }: { restApiId: string }) {
   // The spec has no per-API key listing — the only read is the caller's own
   // inventory across artifacts, so this narrows to REST API keys server-side
   // and to this API here. It therefore shows the signed-in user's keys only.
-  const keysQuery = useMyApiKeys({ type: ['RestApi'] });
+  //
+  // `limit` is explicit because filtering to this API happens in the browser.
+  // With the server default page size (20), relevant keys could be omitted.
+  // `API_KEY_PAGE_SIZE` is the spec max and yields the widest single request.
+  const keysQuery = useMyApiKeys({ limit: API_KEY_PAGE_SIZE, type: ['RestApi'] });
   const createMutation = useCreateApiKey();
   const revokeMutation = useRevokeApiKey();
 

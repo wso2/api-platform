@@ -18,13 +18,13 @@
 
 import { Box, Stack, Typography } from '@wso2/oxygen-ui';
 import { useCallback, useState } from 'react';
+import { defineMessages, useIntl } from 'react-intl';
 import { useNavigate } from 'react-router-dom';
 import { DefineApiPanel } from './components/DefineApiPanel';
 import { GeneralCreateApiForm } from './components/GeneralCreateApiForm';
 import { ApiCreationWizardDraftState, ApiType, GeneralApiCreationFormState } from './types';
 import { ApiTypeSelector } from './components/ApiTypeSelector';
 import { ApiCreationStepKey, ApiCreationSteps } from './components/ApiCreationSteps';
-import { API_TYPES } from './uiConfig';
 import { useCreateRestApi } from '@/api/resources/restApis';
 import { useConsoleScope } from '@/scope/ConsoleScopeProvider';
 import { routes } from '@/routes/paths';
@@ -34,20 +34,67 @@ import {
   type ApiCreationProgressStatus,
 } from './components/ApiCreationProgress';
 
+const messages = defineMessages({
+  apiTypeSubtitle: {
+    id: 'api.create.ApiCreationWizard.apiType.subtitle',
+    defaultMessage:
+      'This decides how the gateway exposes your backend. Only REST is available today.',
+  },
+  apiTypeTitle: {
+    id: 'api.create.ApiCreationWizard.apiType.title',
+    defaultMessage: 'What kind of API are you exposing?',
+  },
+  configureSubtitle: {
+    id: 'api.create.ApiCreationWizard.configure.subtitle',
+    defaultMessage: 'Name it, set where it routes, and create it.',
+  },
+  configureTitle: {
+    id: 'api.create.ApiCreationWizard.configure.title',
+    defaultMessage: 'Configure and create',
+  },
+  genericApiType: {
+    id: 'api.create.ApiCreationWizard.apiType.generic',
+    defaultMessage: 'API',
+    description:
+      'Stands in for the chosen API type when the wizard is opened straight at a later step.',
+  },
+  sourceSubtitle: {
+    id: 'api.create.ApiCreationWizard.source.subtitle',
+    defaultMessage:
+      'Bring an existing contract, or start from a blank slate and fill in the details yourself.',
+  },
+  sourceTitle: {
+    id: 'api.create.ApiCreationWizard.source.title',
+    defaultMessage: 'How do you want to define your {apiType}?',
+    description:
+      '{apiType} is the type picked in the first step, e.g. "REST API". Reads as one sentence.',
+  },
+});
+
 export const ApiCreationWizard = () => {
+  const intl = useIntl();
   const [step, setStep] = useState<ApiCreationStepKey>('apiType');
   const [apiType, setApiType] = useState<ApiType | null>(null);
 
   const [prefilledData, setPrefilledData] = useState<Partial<GeneralApiCreationFormState>>({});
 
+  /**
+   * The chosen type's own name, translated. `apiType` is already the entry from
+   * the catalog, so its descriptor is read directly rather than looked up again.
+   */
+  const apiTypeName =
+    apiType === null
+      ? intl.formatMessage(messages.genericApiType)
+      : intl.formatMessage(apiType.title);
+
   const getTitleForStep = (step: ApiCreationStepKey) => {
     switch (step) {
       case 'apiType':
-        return 'What kind of API are you exposing?';
+        return intl.formatMessage(messages.apiTypeTitle);
       case 'source':
-        return `How do you want to define your ${API_TYPES.find((type) => type === apiType)?.rawTitle || 'API'}?`;
+        return intl.formatMessage(messages.sourceTitle, { apiType: apiTypeName });
       case 'configure':
-        return 'Configure and create';
+        return intl.formatMessage(messages.configureTitle);
       default:
         return '';
     }
@@ -56,21 +103,27 @@ export const ApiCreationWizard = () => {
   const getSubtitleForStep = (step: ApiCreationStepKey) => {
     switch (step) {
       case 'apiType':
-        return 'This decides how the gateway exposes your backend. Only REST is available today.';
+        return intl.formatMessage(messages.apiTypeSubtitle);
       case 'source':
-        return 'Bring an existing contract, or start from a blank slate and fill in the details yourself.';
+        return intl.formatMessage(messages.sourceSubtitle);
       case 'configure':
-        return `${API_TYPES.find((type) => type === apiType)?.rawTitle || 'API'}.DEFAULT SKELETON - EDIT IT OR ASK AI TO REFINE IT`;
+        return intl.formatMessage(messages.configureSubtitle);
       default:
         return '';
     }
   };
 
+  /**
+   * Replaces the draft rather than merging into it: `extractApiDetails` omits
+   * the keys a document doesn't answer for, so spreading over the previous
+   * draft would carry an earlier import's fields into a later one.
+   *
+   * A fresh import also supersedes any earlier submission, so the form starts
+   * from the new document rather than restoring values typed against the old.
+   */
   const handleDataExtracted = (data: ApiCreationWizardDraftState) => {
-    setPrefilledData((prev) => ({
-      ...prev,
-      ...data,
-    }));
+    setPrefilledData(data);
+    setSubmittedValues(null);
 
     setStep('configure');
   };
@@ -82,11 +135,14 @@ export const ApiCreationWizard = () => {
   const { activeScope, params } = useConsoleScope();
 
   /**
-   * The submitted values are kept while the request is in flight.
-   * They also trigger the progress screen, so failed attempts can retry
-   * without sending the user back through the form.
+   * What the last attempt was submitted with. Deliberately *not* cleared when
+   * the progress screen is dismissed: the form remounts on the way back, and
+   * this is what it has to start from if the user's own edits are to survive a
+   * failed create. `creationStarted` — not this — decides which screen shows.
    */
   const [submittedValues, setSubmittedValues] = useState<GeneralApiCreationFormState | null>(null);
+  /** Whether the progress screen stands in for the form. */
+  const [creationStarted, setCreationStarted] = useState(false);
 
   const createApi = (values: GeneralApiCreationFormState) => {
     const projectId = activeScope.projectHandler;
@@ -102,6 +158,7 @@ export const ApiCreationWizard = () => {
     if (!activeScope.projectHandler) return;
 
     setSubmittedValues(finalData);
+    setCreationStarted(true);
     createApi(finalData);
   };
 
@@ -129,13 +186,15 @@ export const ApiCreationWizard = () => {
       ? 'created'
       : 'creating';
 
-  if (submittedValues) {
+  if (creationStarted && submittedValues) {
     return (
       <ApiCreationProgress
         displayName={submittedValues.displayName}
         onBack={() => {
           createRestApiMutation.reset();
-          setSubmittedValues(null);
+          // Only the screen goes back; `submittedValues` stays so the form
+          // returns to what was typed rather than to the imported draft.
+          setCreationStarted(false);
         }}
         onComplete={goToCreatedApi}
         onRetry={() => createApi(submittedValues)}
@@ -169,18 +228,25 @@ export const ApiCreationWizard = () => {
           )}
 
           {step === 'source' && (
+            // `onAuthorizeGitHub` and `onRefreshSwaggerHubOrganizations` are
+            // deliberately not passed: neither flow is wired yet, and the
+            // panel hides the control belonging to a handler it wasn't given
+            // rather than rendering a button that does nothing.
             <DefineApiPanel
-              onAuthorizeGitHub={() => {}}
+              initialApiTypeKey={apiType?.key}
               onDataFetched={handleDataExtracted}
               onBack={() => setStep('apiType')}
-              onRefreshSwaggerHubOrganizations={() => {}}
             />
           )}
 
           {step === 'configure' && (
             <Box sx={{ maxWidth: '80%', mt: 1 }}>
               <GeneralCreateApiForm
-                initialValues={prefilledData}
+                // What the user actually submitted, when there is such an
+                // attempt to come back from: the form remounts after the
+                // progress screen, so anything hand-typed would otherwise
+                // revert to the spec-derived draft.
+                initialValues={submittedValues ?? prefilledData}
                 onSubmit={onGeneralFormSumit}
                 onBack={() => setStep('source')}
               />
