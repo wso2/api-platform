@@ -105,8 +105,8 @@ roles:
       - dp:event:read
 
   # API developer — builds APIs, MCP proxies and LLM proxies in an existing
-  # project and calls them through its own application; owns the proxies it
-  # creates but cannot delete REST APIs, projects or secrets.
+  # project and calls them through its own application; owns the APIs and
+  # proxies it creates but cannot delete projects or secrets.
   - name: ap_developer
     scopes:
       # Platform API
@@ -115,6 +115,7 @@ roles:
       - ap:rest_api:create
       - ap:rest_api:read
       - ap:rest_api:update
+      - ap:rest_api:delete
       - ap:rest_api:gateway:read
       - ap:rest_api:gateway:create
       - ap:rest_api:deployment:create
