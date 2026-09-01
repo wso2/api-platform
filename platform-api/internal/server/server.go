@@ -817,9 +817,31 @@ func (s *Server) buildTLSConfig(httpsCfg config.HTTPSListener) (*tls.Config, err
 	}
 	s.logger.Info("Using mounted certificates", "certFile", certFile, "keyFile", keyFile)
 
+	// Config.Validate (validateListenersConfig) already rejects a bad
+	// version/cipher/curve value before this ever runs in production, so an
+	// error here can only come from a caller that bypassed validation.
+	if err := config.ValidateHTTPSTLSVersions(httpsCfg.MinimumProtocolVersion, httpsCfg.MaximumProtocolVersion); err != nil {
+		return nil, err
+	}
+	minVersion, _ := config.ParseHTTPSTLSVersion(httpsCfg.MinimumProtocolVersion)
+	maxVersion, _ := config.ParseHTTPSTLSVersion(httpsCfg.MaximumProtocolVersion)
+
+	cipherSuites, err := config.ParseHTTPSCiphers(httpsCfg.Ciphers)
+	if err != nil {
+		return nil, err
+	}
+
+	curves, err := config.ParseHTTPSEcdhCurves(httpsCfg.EcdhCurves)
+	if err != nil {
+		return nil, err
+	}
+
 	return &tls.Config{
-		Certificates: []tls.Certificate{cert},
-		MinVersion:   tls.VersionTLS12,
+		Certificates:     []tls.Certificate{cert},
+		MinVersion:       minVersion,
+		MaxVersion:       maxVersion,
+		CipherSuites:     cipherSuites, // nil == Go's own secure default set/order
+		CurvePreferences: curves,
 	}, nil
 }
 
