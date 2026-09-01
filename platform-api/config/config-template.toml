@@ -315,13 +315,12 @@ maximum_protocol_version = "TLS1_3"
 ciphers = ""
 
 # ecdh_curves is a comma-separated list of TLS 1.3 key-exchange groups, most
-# preferred first. Classical curves only by default. Prepend the hybrid
-# post-quantum group "X25519MLKEM768" (FIPS 203 ML-KEM-768 + X25519) as an
-# explicit opt-in once clients reaching this listener are confirmed to
-# support it, e.g. "X25519MLKEM768,X25519,P-256" — a client that doesn't
-# offer the hybrid group simply falls back to a later classical entry in this
-# same list, so enabling it never breaks a legacy peer.
-ecdh_curves = "X25519,P-256"
+# preferred first. Defaults to the hybrid post-quantum group "X25519MLKEM768"
+# (FIPS 203 ML-KEM-768 + X25519) first, with X25519 and P-256 kept after it
+# as legacy fallback curves for a client that doesn't yet support the hybrid
+# group — negotiation simply falls back to a later classical entry in this
+# same list, so the default never breaks a legacy peer.
+ecdh_curves = "X25519MLKEM768,X25519,P-256"
 
 # ---------------------------------------------------------------------------
 # Listener timeouts
