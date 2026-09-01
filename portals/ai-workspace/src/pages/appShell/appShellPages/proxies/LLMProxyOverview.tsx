@@ -167,6 +167,8 @@ function ProxyOverviewContent() {
   const showSnackbar = useAIWorkspaceSnackbar();
   const { hasPermission } = useAppAuth();
   const canDeleteProxy = hasPermission(SCOPES.LLM_PROXY_DELETE);
+  const canDeployProxy = hasPermission(SCOPES.LLM_PROXY_DEPLOYMENT_CREATE);
+  const canViewDeployments = hasPermission(SCOPES.LLM_PROXY_DEPLOYMENT_READ);
   const canUpdateProxy = hasPermission(SCOPES.LLM_PROXY_UPDATE);
   const navigate = useNavigate();
   const location = useLocation();
@@ -530,16 +532,27 @@ function ProxyOverviewContent() {
                 alignItems="flex-end"
                 sx={{ alignSelf: 'stretch' }}
               >
-                {/* Deployments remain viewable for gateway-created proxies (deploy/
-                    redeploy/restore/undeploy are disabled on the page itself), so the
-                    button navigates but is relabelled "View Deployments". */}
-                <Button
-                  variant="contained"
-                  component={RouterLink}
-                  to={`${proxiesPath}/${proxy.id}/deploy`}
+                {/* Deployments remain viewable for gateway-created proxies, and for
+                    users holding only the deployment-read scope (deploy/redeploy/
+                    restore/undeploy are disabled on the page itself), so the button
+                    navigates but is relabelled "View Deployments". Without even
+                    deployment-read there is nothing to see, so it is disabled. */}
+                <DisabledActionTooltip
+                  disabled={!canViewDeployments}
+                  title={NO_PERMISSION_TOOLTIP}
                 >
-                  {isReadOnlyProxy ? 'View Deployments' : 'Deploy to Gateway'}
-                </Button>
+                  <Button
+                    variant="contained"
+                    component={RouterLink}
+                    to={`${proxiesPath}/${proxy.id}/deploy`}
+                    disabled={!canViewDeployments}
+                    sx={DISABLED_ACTION_SX}
+                  >
+                    {isReadOnlyProxy || !canDeployProxy
+                      ? 'View Deployments'
+                      : 'Deploy to Gateway'}
+                  </Button>
+                </DisabledActionTooltip>
                 <DisabledActionTooltip
                   disabled={!canDeleteProxy || Boolean(deleteBlockedReason)}
                   title={
