@@ -411,13 +411,15 @@ type HTTPSListener struct {
 	Ciphers string `koanf:"ciphers"`
 
 	// EcdhCurves is a comma-separated list of TLS 1.3 key-exchange groups,
-	// most preferred first (e.g. "X25519,P-256"). Classical curves only by
-	// default. A hybrid post-quantum group ("X25519MLKEM768", FIPS 203
-	// ML-KEM-768 + X25519) can be prepended as an explicit opt-in once the
-	// clients that reach this listener are confirmed to support it — TLS 1.3
-	// negotiation simply falls back to a later classical entry in this same
-	// list for a client that doesn't offer the hybrid group, so enabling it
-	// never breaks a legacy peer. See post-quantum-cryptography.md.
+	// most preferred first. Defaults to the hybrid post-quantum group
+	// ("X25519MLKEM768", FIPS 203 ML-KEM-768 + X25519) first, with classical
+	// fallbacks X25519 and P-256 kept after it for a peer that doesn't yet
+	// support the hybrid group (e.g. "X25519MLKEM768,X25519,P-256"). This
+	// listener is served directly by this process's own Go crypto/tls (1.23+
+	// implements X25519MLKEM768 natively) rather than pushed as xDS config to
+	// a separate Envoy process, so defaulting to the hybrid group here never
+	// breaks a legacy peer — TLS 1.3 negotiation simply falls back to a later
+	// classical entry in this same list. See post-quantum-cryptography.md.
 	EcdhCurves string `koanf:"ecdh_curves"`
 }
 
