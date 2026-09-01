@@ -44,11 +44,20 @@ jobs:
           cd samples/sample-service
           make build
 
-      - name: Run Gateway integration tests
+      # Gateway integration coverage comes from the v2 suite; the old gateway/it lane's
+      # reporter never merged across services and wiped prior runs, so its numbers were
+      # partial. See tests/v2-framework/docs/coverage-architecture.md.
+      - name: Build testbench image
+        run: make -C tests/v2-framework testbench
+
+      - name: Run Gateway v2 integration tests with coverage
         continue-on-error: true
-        run: |
-          cd gateway
-          make test-integration
+        working-directory: tests/v2-framework
+        run: go test ./suites/it -count=1 -timeout=45m -blocks=gateway-core -block-parallel=3 -coverage
+
+      - name: Generate v2 coverage report
+        continue-on-error: true
+        run: make -C tests/v2-framework coverage-report
 
       - name: Build CLI binary
         run: |
@@ -73,11 +82,20 @@ jobs:
           files: '**/unit-test-coverage.txt'
           flags: unit
 
-      - name: Upload Gateway integration test coverage to Codecov
+      # Per-component uploads (monorepo): each component's slice under its own flag.
+      - name: Upload gateway-controller integration coverage to Codecov
         uses: codecov/codecov-action@v5
         with:
           token: ${{ secrets.CODECOV_TOKEN }}
-          directory: gateway/it/coverage/output/txt
+          files: tests/v2-framework/suites/it/coverage-out/coverage-controller.txt
+          flags: gateway-controller-integration
+
+      - name: Upload policy-engine integration coverage to Codecov
+        uses: codecov/codecov-action@v5
+        with:
+          token: ${{ secrets.CODECOV_TOKEN }}
+          files: tests/v2-framework/suites/it/coverage-out/coverage-policyengine.txt
+          flags: policy-engine-integration
           flags: integration
 
       - name: Upload CLI integration test coverage to Codecov

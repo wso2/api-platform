@@ -30,6 +30,8 @@ ARG TARGETARCH
 ARG VERSION=0.0.1-SNAPSHOT
 ARG GIT_COMMIT=unknown
 ARG EXPERIMENTAL=false
+ARG ENABLE_COVERAGE=false
+ARG COVERAGE_PACKAGES=""
 
 WORKDIR /build
 
@@ -66,13 +68,18 @@ RUN if [ "$TARGETARCH" = "amd64" ]; then \
     fi && \
     BUILD_TAGS="" && \
     if [ "$EXPERIMENTAL" = "true" ]; then BUILD_TAGS="-tags experimental"; fi && \
+    COVER_FLAGS="" && \
+    if [ "$ENABLE_COVERAGE" = "true" ]; then \
+        COVER_FLAGS="-cover -covermode=atomic"; \
+        if [ -n "$COVERAGE_PACKAGES" ]; then COVER_FLAGS="$COVER_FLAGS -coverpkg=$COVERAGE_PACKAGES"; fi; \
+    fi && \
     CGO_ENABLED=1 \
     GOOS=linux \
     GOARCH=${TARGETARCH} \
-    go build -a \
+    go build -a $COVER_FLAGS \
         ${BUILD_TAGS} \
         -ldflags "-X main.Version=${VERSION} -X main.GitCommit=${GIT_COMMIT}" \
-        -o platform-api ./cmd/main.go
+        -o platform-api ./cmd
 
 ###########################
 # Runtime Stage           #
@@ -81,6 +88,7 @@ FROM ubuntu:24.04
 
 ARG PORT
 ARG EXPERIMENTAL=false
+ARG ENABLE_COVERAGE=false
 ARG USERNAME=wso2
 ARG USER_UID=10001
 ARG USER_GID=$USER_UID
@@ -110,6 +118,8 @@ COPY internal/database/schema.sqlserver.sql  ./internal/database/schema.sqlserve
 COPY internal/database/schema.sqlite.sql     ./internal/database/schema.sqlite.sql
 COPY resources/default-llm-provider-templates ./resources/default-llm-provider-templates
 COPY resources/openapi.yaml                  ./resources/openapi.yaml
+
+RUN if [ "$ENABLE_COVERAGE" = "true" ]; then mkdir -p /coverage && chown "$USER_UID:$USER_GID" /coverage; fi
 
 RUN mkdir -p /app/data /app/data/certs && \
     chown -R wso2:appgroup /app

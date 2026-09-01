@@ -1,0 +1,9 @@
+.git
+.github
+.DS_Store
+**/.DS_Store
+**/coverage
+**/coverage.out
+**/*.log
+tmp
+scratchpad

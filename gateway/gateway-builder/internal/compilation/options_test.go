@@ -45,7 +45,7 @@ func TestBuildOptions_Default(t *testing.T) {
 	assert.False(t, opts.CGOEnabled)
 	assert.Equal(t, "linux", opts.TargetOS)
 	assert.Equal(t, runtime.GOARCH, opts.TargetArch) // Falls back to native when TARGETARCH not set
-	assert.False(t, opts.EnableCoverage)
+	assert.False(t, opts.Coverage.Enabled)
 	assert.Contains(t, opts.LDFlags, "-s -w")
 	assert.Contains(t, opts.LDFlags, "-X main.Version=v1.0.0")
 	assert.Contains(t, opts.LDFlags, "-X main.GitCommit=abc123")
@@ -83,7 +83,7 @@ func TestBuildOptions_WithCoverageEnabled(t *testing.T) {
 
 	opts := BuildOptions("/output/binary", metadata)
 
-	assert.True(t, opts.EnableCoverage)
+	assert.True(t, opts.Coverage.Enabled)
 	// Should NOT contain -s -w when coverage is enabled
 	assert.NotContains(t, opts.LDFlags, "-s -w")
 	assert.Contains(t, opts.LDFlags, "-X main.Version=v2.0.0")
@@ -101,7 +101,7 @@ func TestBuildOptions_CoverageEnvCaseInsensitive(t *testing.T) {
 
 	opts := BuildOptions("/output/binary", metadata)
 
-	assert.True(t, opts.EnableCoverage)
+	assert.True(t, opts.Coverage.Enabled)
 }
 
 func TestBuildOptions_CoverageEnvFalse(t *testing.T) {
@@ -116,7 +116,7 @@ func TestBuildOptions_CoverageEnvFalse(t *testing.T) {
 
 	opts := BuildOptions("/output/binary", metadata)
 
-	assert.False(t, opts.EnableCoverage)
+	assert.False(t, opts.Coverage.Enabled)
 	assert.Contains(t, opts.LDFlags, "-s -w")
 }
 

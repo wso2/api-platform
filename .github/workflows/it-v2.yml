@@ -1,0 +1,116 @@
+# --------------------------------------------------------------------
+# Copyright (c) 2026, WSO2 LLC. (https://www.wso2.com).
+#
+# WSO2 LLC. licenses this file to you under the Apache License,
+# Version 2.0 (the "License"); you may not use this file except
+# in compliance with the License.
+# You may obtain a copy of the License at
+#
+# http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing,
+# software distributed under the License is distributed on an
+# "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+# KIND, either express or implied.  See the License for the
+# specific language governing permissions and limitations
+# under the License.
+# --------------------------------------------------------------------
+
+# Runs the v2 integration suite on coverage-instrumented gateway images and publishes
+# server-side coverage: a text profile to Codecov and the HTML reports as a job artifact.
+# See tests/v2-framework/docs/coverage-architecture.md for the design.
+
+name: Integration Test v2 (coverage)
+
+on:
+  workflow_dispatch:
+  pull_request:
+    branches:
+      - main
+    paths:
+      - 'gateway/**'
+      - 'common/**'
+      - 'tests/v2-framework/**'
+      - '.github/workflows/it-v2.yml'
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.run_id }}
+  cancel-in-progress: true
+
+jobs:
+  integration-v2:
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+        with:
+          persist-credentials: false
+
+      - name: Set up Go
+        uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5.6.0
+        with:
+          go-version: '1.26.5'
+          cache-dependency-path: '**/go.sum'
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f # v3.12.0
+
+      # Default VERSION (gateway/VERSION), NOT an override: the framework pins its image
+      # references from that same file, so the two must agree.
+      - name: Build coverage-instrumented gateway images
+        run: make -C gateway build-coverage
+
+      - name: Build testbench image
+        run: make -C tests/v2-framework testbench
+
+      # amd64 runners use the native mssql image, so the arm64-only SQL Edge boot fragility
+      # does not apply and 3-parallel is safe here.
+      - name: Run the suite with coverage
+        working-directory: tests/v2-framework
+        run: go test ./suites/it -count=1 -timeout=45m -blocks=gateway-core -block-parallel=3 -coverage
+
+      # Rerunnable post-step: consumes whatever the run harvested, so a failed suite still
+      # reports what it covered. The script itself fails when no statement executed.
+      - name: Generate coverage report
+        if: always()
+        run: make -C tests/v2-framework coverage-report
+
+      # A hollow profile uploaded green is the failure mode the old harness shipped; refuse
+      # it explicitly. Requires the file to exist AND to carry a non-zero execution count.
+      - name: Verify coverage profile is real
+        if: always()
+        run: |
+          set -euo pipefail
+          profile=tests/v2-framework/suites/it/coverage-out/coverage.txt
+          test -s "$profile" || { echo "coverage profile missing or empty"; exit 1; }
+          covered=$(awk 'NR>1 && $NF>0 {n++} END {print n+0}' "$profile")
+          test "$covered" -gt 0 || { echo "coverage profile has no executed statements"; exit 1; }
+          echo "profile carries $covered covered ranges"
+
+      - name: Upload coverage HTML reports
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: coverage-reports
+          path: |
+            tests/v2-framework/suites/it/coverage-out/coverage*.html
+            tests/v2-framework/suites/it/coverage-out/coverage.txt
+          if-no-files-found: error
+
+      # Per-component uploads (monorepo): each component's slice under its own flag, from
+      # the split profiles the report step already produces. Policy-module lines live only
+      # in the HTML artifact — their sources are in the gateway-controllers repo, which
+      # Codecov (scoped to this repo) cannot display.
+      - name: Upload gateway-controller coverage to Codecov
+        if: always()
+        uses: codecov/codecov-action@v5
+        with:
+          files: tests/v2-framework/suites/it/coverage-out/coverage-controller.txt
+          flags: gateway-controller-integration
+
+      - name: Upload policy-engine coverage to Codecov
+        if: always()
+        uses: codecov/codecov-action@v5
+        with:
+          files: tests/v2-framework/suites/it/coverage-out/coverage-policyengine.txt
+          flags: policy-engine-integration

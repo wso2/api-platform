@@ -1,0 +1,7 @@
+{
+  "name": "@wso2/api-platform-coverage-tools",
+  "private": true,
+  "dependencies": {
+    "c8": "10.1.3"
+  }
+}
