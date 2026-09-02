@@ -65,14 +65,27 @@ function relativeTime(value: string): string {
   return `${years} year${years === 1 ? '' : 's'} ago`;
 }
 
+function errorMessage(err: unknown, fallback: string): string {
+  return err instanceof Error && err.message ? err.message : fallback;
+}
+
 const EnvironmentsList: FC<EnvironmentsListProps> = ({ port, readOnly, onCreateClick, notify }) => {
   const [environments, setEnvironments] = useState<Environment[]>([]);
   const [searchQuery, setSearchQuery] = useState('');
   const [deleteTarget, setDeleteTarget] = useState<Environment | null>(null);
+  const [loadError, setLoadError] = useState<string | null>(null);
 
   const refetch = useCallback(() => {
-    void port.list().then(setEnvironments);
-  }, [port]);
+    setLoadError(null);
+    void port.list().then(setEnvironments, (err: unknown) => {
+      // Deliberately leaves `environments` at its last-known value rather
+      // than clearing it — a failed refetch shouldn't blank out a list the
+      // user was already looking at.
+      const message = errorMessage(err, 'Failed to load environments.');
+      setLoadError(message);
+      notify?.(message, 'error');
+    });
+  }, [port, notify]);
 
   useEffect(() => {
     refetch();
@@ -85,10 +98,15 @@ const EnvironmentsList: FC<EnvironmentsListProps> = ({ port, readOnly, onCreateC
 
   const handleDelete = async () => {
     if (!deleteTarget) return;
-    await port.remove(deleteTarget.id);
-    refetch();
-    notify?.(`Environment "${deleteTarget.name}" deleted.`, 'success');
-    setDeleteTarget(null);
+    try {
+      await port.remove(deleteTarget.id);
+      refetch();
+      notify?.(`Environment "${deleteTarget.name}" deleted.`, 'success');
+    } catch (err) {
+      notify?.(errorMessage(err, `Failed to delete environment "${deleteTarget.name}".`), 'error');
+    } finally {
+      setDeleteTarget(null);
+    }
   };
 
   return (
@@ -102,6 +120,16 @@ const EnvironmentsList: FC<EnvironmentsListProps> = ({ port, readOnly, onCreateC
       </Box>
 
       {readOnly ? <Alert severity="info" sx={{ mb: 3 }}>Environments can be managed only at Organization level.</Alert> : null}
+
+      {loadError ? (
+        <Alert
+          severity="error"
+          sx={{ mb: 3 }}
+          action={<Button color="inherit" size="small" onClick={refetch}>Retry</Button>}
+        >
+          {loadError}
+        </Alert>
+      ) : null}
 
       <TextField
         fullWidth
