@@ -364,6 +364,7 @@ func main() {
 	// Initialize SDS secret manager if custom certificates are configured
 	var sdsSecretManager *xds.SDSSecretManager
 	translator := snapshotManager.GetTranslator()
+
 	if translator != nil && translator.GetCertStore() != nil {
 		// Use the same cache and node ID as the main xDS to ensure Envoy can fetch secrets
 		sdsSecretManager = xds.NewSDSSecretManager(
@@ -415,11 +416,13 @@ func main() {
 	// registry learns to transform cannot be silently left off this map — WebSubApi's exclusion
 	// (it keeps the async-specific legacy translation path) is declared alongside the registry's
 	// own kind list instead.
-	envoyTransformers := make(map[string]models.ConfigTransformer)
-	for _, kind := range transform.EnvoyTranslatorKinds() {
-		envoyTransformers[kind] = transformerRegistry
+	if translator != nil {
+		envoyTransformers := make(map[string]models.ConfigTransformer)
+		for _, kind := range transform.EnvoyTranslatorKinds() {
+			envoyTransformers[kind] = transformerRegistry
+		}
+		translator.SetTransformers(envoyTransformers)
 	}
-	translator.SetTransformers(envoyTransformers)
 
 	// Generate initial xDS snapshot
 	log.Info("Generating initial xDS snapshot")
