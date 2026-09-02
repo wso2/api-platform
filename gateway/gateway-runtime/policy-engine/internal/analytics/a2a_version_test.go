@@ -70,10 +70,10 @@ func a2aVersionRejectionEntry(transport, version string) *v3.HTTPAccessLogEntry 
 func TestA2AAnalytics_VersionRejectionIsAFailedInvocationAttributedToTheClient(t *testing.T) {
 	block := a2aBlock(t, a2aVersionRejectionEntry("JSONRPC", "1.0"))
 
-	assert.Equal(t, A2ARequestTypeOperation, block["requestType"],
+	assert.Equal(t, A2ARequestTypeOperation, block.RequestType,
 		"a refused operation request is an invocation attempt, not discovery")
-	assert.Equal(t, A2AOutcomeFailure, block["outcome"])
-	assert.Equal(t, A2AFailureOriginClient, block["failureOrigin"],
+	assert.Equal(t, A2AOutcomeFailure, block.Outcome)
+	assert.Equal(t, A2AFailureOriginClient, block.FailureOrigin,
 		"the agent never saw the request; the version it stated is the client's own")
 }
 
@@ -83,7 +83,7 @@ func TestA2AAnalytics_VersionRejectionIsAFailedInvocationAttributedToTheClient(t
 func TestA2AAnalytics_VersionRejectionReportsNoOperation(t *testing.T) {
 	block := a2aBlock(t, a2aVersionRejectionEntry("HTTP+JSON", "1.0"))
 
-	assert.Equal(t, A2AOperationUnknown, block["operation"])
+	assert.Equal(t, A2AOperationUnknown, block.Operation)
 }
 
 // The two bounded protocol facts survive from the resolver's own attributes, so a
@@ -94,8 +94,8 @@ func TestA2AAnalytics_VersionRejectionCarriesTheRoutesTransportAndVersion(t *tes
 		t.Run(transport, func(t *testing.T) {
 			block := a2aBlock(t, a2aVersionRejectionEntry(transport, "1.0"))
 
-			assert.Equal(t, transport, block["transport"])
-			assert.Equal(t, "1.0", block["protocolVersion"])
+			assert.Equal(t, transport, block.Transport)
+			assert.Equal(t, "1.0", block.ProtocolVersion)
 		})
 	}
 }
@@ -116,8 +116,8 @@ func TestA2AAnalytics_ResolverAttributesNeverOverrideThePolicysProperties(t *tes
 	fields[A2AProtocolVersionAttributeKey] = structpb.NewStringValue("9.9")
 
 	block := a2aBlock(t, entry)
-	assert.Equal(t, "JSONRPC", block["transport"])
-	assert.Equal(t, "1.0", block["protocolVersion"])
+	assert.Equal(t, "JSONRPC", block.Transport)
+	assert.Equal(t, "1.0", block.ProtocolVersion)
 }
 
 // A rejection whose route facts did not arrive reports neither dimension rather than
@@ -125,11 +125,11 @@ func TestA2AAnalytics_ResolverAttributesNeverOverrideThePolicysProperties(t *tes
 func TestA2AAnalytics_VersionRejectionOmitsAbsentRouteFacts(t *testing.T) {
 	block := a2aBlock(t, a2aVersionRejectionEntry("", ""))
 
-	assert.NotContains(t, block, "transport")
-	assert.NotContains(t, block, "protocolVersion")
+	assert.Empty(t, block.Transport)
+	assert.Empty(t, block.ProtocolVersion)
 	// The classification does not depend on them.
-	assert.Equal(t, A2ARequestTypeOperation, block["requestType"])
-	assert.Equal(t, A2AOutcomeFailure, block["outcome"])
+	assert.Equal(t, A2ARequestTypeOperation, block.RequestType)
+	assert.Equal(t, A2AOutcomeFailure, block.Outcome)
 }
 
 // The attribute names are a wire contract with the a2a resolver, which lives in a

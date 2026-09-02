@@ -249,19 +249,26 @@ const (
 	// Without this a dashboard cannot tell an agent that is erroring from a
 	// gateway that is rejecting, and both look like the agent's fault.
 	//
+	// Spelled in upper case, like the outcome vocabulary above and for the same
+	// reason: both are closed sets a dashboard groups by, and a reader looking at
+	// one event should not have to remember which of the two dimensions happens to
+	// be lower case. Case is part of the published value — a consumer matching
+	// `origin == "upstream"` will not match `UPSTREAM` — so this set and the
+	// outcome set are the only spellings, and neither is normalized on read.
+	//
 	// A2AFailureOriginClient covers a request the gateway refused before it
 	// reached the agent for a reason the caller controls (unparseable envelope,
 	// unknown operation, oversized body).
-	A2AFailureOriginClient = "client"
+	A2AFailureOriginClient = "CLIENT"
 	// A2AFailureOriginPolicy is a policy short-circuit: authentication,
 	// authorization, rate limiting, a guardrail.
-	A2AFailureOriginPolicy = "policy"
+	A2AFailureOriginPolicy = "POLICY"
 	// A2AFailureOriginGateway is a fault inside the gateway itself, with no
 	// upstream involved.
-	A2AFailureOriginGateway = "gateway"
+	A2AFailureOriginGateway = "GATEWAY"
 	// A2AFailureOriginUpstream is the agent's own failure — a transport error it
 	// returned, or a JSON-RPC error object in an otherwise successful response.
-	A2AFailureOriginUpstream = "upstream"
+	A2AFailureOriginUpstream = "UPSTREAM"
 
 	// a2aTransportHTTPJSON is the REST-shaped A2A binding, as common/agentproto spells
 	// it into a route's resolver config and the resolver carries it forward. Compared

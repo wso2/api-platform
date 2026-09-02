@@ -70,6 +70,7 @@ func RegisterAnalyticsSteps(ctx *godog.ScenarioContext, state *TestState, httpSt
 	ctx.Step(`^the latest analytics event should have metadata field "([^"]*)" with value "([^"]*)"$`, a.theLatestAnalyticsEventShouldHaveMetadataField)
 	ctx.Step(`^the latest analytics event should have A2A field "([^"]*)" with value "([^"]*)"$`, a.theLatestAnalyticsEventShouldHaveA2AField)
 	ctx.Step(`^the latest analytics event should not have A2A field "([^"]*)"$`, a.theLatestAnalyticsEventShouldNotHaveA2AField)
+	ctx.Step(`^the latest analytics event should have a non-empty A2A field "([^"]*)"$`, a.theLatestAnalyticsEventShouldHaveNonEmptyA2AField)
 	ctx.Step(`^I send a GET request to the analytics collector events endpoint$`, a.iSendGETRequestToAnalyticsCollectorEvents)
 }
 
@@ -312,18 +313,19 @@ func (a *AnalyticsSteps) theLatestAnalyticsEventShouldHaveMetadataField(fieldNam
 // selects one by URI, and a separately-held event would silently assert against
 // the wrong one.
 //
-// The A2A block is nested — metadata.a2aAnalytics.<field> — unlike the flat
-// metadata keys theLatestAnalyticsEventShouldHaveMetadataField reads, which is
-// why that step cannot be reused.
+// The A2A block is nested — metadata.agentAnalytics.a2a.<field> — unlike the
+// flat metadata keys theLatestAnalyticsEventShouldHaveMetadataField reads, which
+// is why that step cannot be reused. A field name may itself be a dotted path
+// ("request.inputPartCount") to reach into the flat request and response objects.
 func (a *AnalyticsSteps) theLatestAnalyticsEventShouldHaveA2AField(fieldName, expectedValue string) error {
 	block, err := a.a2aAnalyticsBlock()
 	if err != nil {
 		return err
 	}
 
-	actualValue, ok := block[fieldName]
-	if !ok {
-		return fmt.Errorf("A2A analytics field '%s' not found (present: %s)", fieldName, sortedKeys(block))
+	actualValue, err := a2aField(block, fieldName)
+	if err != nil {
+		return err
 	}
 
 	actualValueStr := fmt.Sprintf("%v", actualValue)
@@ -331,6 +333,36 @@ func (a *AnalyticsSteps) theLatestAnalyticsEventShouldHaveA2AField(fieldName, ex
 		return fmt.Errorf("expected A2A analytics field '%s' to be '%s', but got '%s'", fieldName, expectedValue, actualValueStr)
 	}
 	return nil
+}
+
+// a2aField walks a dotted path into the A2A block.
+//
+// The published model puts the request and response facts in their own objects —
+// nesting is what records which direction produced a value — so a scenario names
+// "response.taskState" rather than a flattened key. A missing intermediate object
+// is reported as the missing field it is, not as a nil dereference: an absent
+// `response` object means the gateway observed nothing, which is exactly the
+// failure a scenario asserting a response field is trying to catch.
+func a2aField(block map[string]interface{}, path string) (interface{}, error) {
+	current := block
+	segments := strings.Split(path, ".")
+	for i, segment := range segments {
+		value, ok := current[segment]
+		if !ok {
+			return nil, fmt.Errorf("A2A analytics field '%s' not found: no '%s' in {%s}",
+				path, segment, sortedKeys(current))
+		}
+		if i == len(segments)-1 {
+			return value, nil
+		}
+		nested, ok := value.(map[string]interface{})
+		if !ok {
+			return nil, fmt.Errorf("A2A analytics field '%s': '%s' is %T, expected an object",
+				path, segment, value)
+		}
+		current = nested
+	}
+	return nil, fmt.Errorf("A2A analytics field '%s' names no field", path)
 }
 
 // theLatestAnalyticsEventShouldNotHaveA2AField asserts a dimension is absent.
@@ -344,13 +376,47 @@ func (a *AnalyticsSteps) theLatestAnalyticsEventShouldNotHaveA2AField(fieldName 
 	if err != nil {
 		return err
 	}
-	if value, ok := block[fieldName]; ok {
+	// An absent parent object is an absent field: a scenario asserting that a card
+	// fetch carries no response.taskState is satisfied by there being no response
+	// object at all, which is how such an event is actually shaped.
+	if value, err := a2aField(block, fieldName); err == nil {
 		return fmt.Errorf("expected no A2A analytics field '%s', but it is present with value '%v'", fieldName, value)
 	}
 	return nil
 }
 
-// a2aAnalyticsBlock returns the a2aAnalytics object from the selected event.
+// theLatestAnalyticsEventShouldHaveNonEmptyA2AField asserts a dimension is present
+// and carries something, without pinning what.
+//
+// It exists for the identifiers the agent generates — a task id, a context id — whose
+// values are the agent's to choose and are different on every run. Asserting they are
+// present and non-empty is the whole claim worth making about them: an absent one means
+// correlation was lost, which is the failure this guards, while their actual value is
+// meaningful only to whoever is correlating on it.
+func (a *AnalyticsSteps) theLatestAnalyticsEventShouldHaveNonEmptyA2AField(fieldName string) error {
+	block, err := a.a2aAnalyticsBlock()
+	if err != nil {
+		return err
+	}
+
+	value, err := a2aField(block, fieldName)
+	if err != nil {
+		return err
+	}
+	if text := fmt.Sprintf("%v", value); text == "" {
+		return fmt.Errorf("A2A analytics field '%s' is present but empty", fieldName)
+	}
+	return nil
+}
+
+// a2aAnalyticsBlock returns the a2a section of the published Agent analytics
+// envelope on the selected event.
+//
+// The envelope is keyed by domain — metadata.agentAnalytics.a2a — so a later Agent
+// analytics domain can be added as a sibling without its fields having to be told
+// apart from A2A's by name. The legacy flat metadata.a2aAnalytics key is gone; an
+// event still carrying it would mean the publisher was writing both shapes, so it
+// is reported rather than silently accepted as a fallback.
 func (a *AnalyticsSteps) a2aAnalyticsBlock() (map[string]interface{}, error) {
 	event := a.lastMatchedEvent
 	if event == nil {
@@ -364,13 +430,26 @@ func (a *AnalyticsSteps) a2aAnalyticsBlock() (map[string]interface{}, error) {
 	if event.Metadata == nil {
 		return nil, fmt.Errorf("event has no metadata")
 	}
-	raw, ok := event.Metadata["a2aAnalytics"]
-	if !ok {
-		return nil, fmt.Errorf("event carries no a2aAnalytics block (metadata keys: %s)", sortedKeys(event.Metadata))
+	if _, legacy := event.Metadata["a2aAnalytics"]; legacy {
+		return nil, fmt.Errorf("event carries the legacy flat a2aAnalytics key, " +
+			"which the agentAnalytics envelope replaced")
 	}
-	block, ok := raw.(map[string]interface{})
+	raw, ok := event.Metadata["agentAnalytics"]
 	if !ok {
-		return nil, fmt.Errorf("a2aAnalytics is %T, expected an object", raw)
+		return nil, fmt.Errorf("event carries no agentAnalytics envelope (metadata keys: %s)",
+			sortedKeys(event.Metadata))
+	}
+	envelope, ok := raw.(map[string]interface{})
+	if !ok {
+		return nil, fmt.Errorf("agentAnalytics is %T, expected an object", raw)
+	}
+	rawA2A, ok := envelope["a2a"]
+	if !ok {
+		return nil, fmt.Errorf("agentAnalytics carries no a2a section (keys: %s)", sortedKeys(envelope))
+	}
+	block, ok := rawA2A.(map[string]interface{})
+	if !ok {
+		return nil, fmt.Errorf("agentAnalytics.a2a is %T, expected an object", rawA2A)
 	}
 	return block, nil
 }
