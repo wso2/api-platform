@@ -1,0 +1,19 @@
+{
+  "priority": 1,
+  "request": {
+    "method": "POST",
+    "url": "/v1/embeddings",
+    "bodyPatterns": [
+      { "contains": "system architecture" }
+    ]
+  },
+  "response": {
+    "status": 200,
+    "headers": { "Content-Type": "application/json" },
+    "jsonBody": {
+      "data": [
+        { "embedding": [0.05, 0.95, 0.1] }
+      ]
+    }
+  }
+}

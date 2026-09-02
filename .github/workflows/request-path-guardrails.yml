@@ -1,0 +1,61 @@
+name: Sample - Request-Path Guardrails
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "samples/request-path-guardrails/**"
+      - ".github/workflows/request-path-guardrails.yml"
+  pull_request:
+    paths:
+      - "samples/request-path-guardrails/**"
+      - ".github/workflows/request-path-guardrails.yml"
+  workflow_dispatch: {}
+
+defaults:
+  run:
+    working-directory: samples/request-path-guardrails
+
+jobs:
+  guardrails-sample:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install jq, python3-yaml, unzip, and openssl
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y jq python3-yaml unzip openssl
+
+      - name: Make scripts executable
+        run: chmod +x *.sh
+
+      - name: Set up the gateway stack
+        run: ./setup.sh
+
+      - name: Test — Prompt Injection Guard
+        run: ./test-prompt-injection-guard.sh
+
+      - name: Test — Semantic Prompt Guard
+        run: ./test-semantic-guard.sh
+
+      - name: Test — Content Length Guard
+        run: ./test-content-length-guard.sh
+
+      - name: Test — Word Count Guard
+        run: ./test-word-count-guard.sh
+
+      - name: Test — Combined Attack Suite
+        run: ./test-combined-attack.sh
+
+      - name: Collect gateway logs on failure
+        if: failure()
+        run: |
+          (cd wso2apip-ai-gateway-1.2.0 && docker compose logs --no-color) || true
+          docker logs mock-llm-openai || true
+
+      - name: Tear down the gateway stack
+        if: always()
+        run: ./teardown.sh --clean
