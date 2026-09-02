@@ -46,7 +46,7 @@ Each script prints a `[PASS]`/`[FAIL]` line per case. This is the exact output f
 
 ### `test-content-length-guard.sh`
 
-```
+```text
 [PASS] Small payload passed content-length-guardrail and reached the mock LLM.
 [PASS] Oversized payload BLOCKED by content-length-guardrail.
 [PASS] Content Length Guard: 2/2 cases behaved as expected.
@@ -54,7 +54,7 @@ Each script prints a `[PASS]`/`[FAIL]` line per case. This is the exact output f
 
 ### `test-word-count-guard.sh`
 
-```
+```text
 [PASS] Normal-length prompt passed word-count-guardrail and reached the mock LLM.
 [PASS] Verbose prompt BLOCKED by word-count-guardrail.
 [PASS] Word Count Guard: 2/2 cases behaved as expected.
@@ -62,7 +62,7 @@ Each script prints a `[PASS]`/`[FAIL]` line per case. This is the exact output f
 
 ### `test-prompt-injection-guard.sh`
 
-```
+```text
 [PASS] Clean prompt passed every guardrail and reached the mock LLM.
 [PASS] Injection attempt BLOCKED by regex-guardrail.
 [PASS] Prompt Injection Guard: 2/2 cases behaved as expected.
@@ -70,7 +70,7 @@ Each script prints a `[PASS]`/`[FAIL]` line per case. This is the exact output f
 
 ### `test-semantic-guard.sh`
 
-```
+```text
 [PASS] Allowed topic passed semantic-prompt-guard and reached the mock LLM.
 [PASS] Denied topic BLOCKED by semantic-prompt-guard.
 [PASS] Semantic Prompt Guard: 2/2 cases behaved as expected.
@@ -78,7 +78,7 @@ Each script prints a `[PASS]`/`[FAIL]` line per case. This is the exact output f
 
 ### `test-combined-attack.sh`
 
-```
+```text
 Clean baseline                 | 200      | 200      | -                        | PASS
 Prompt injection               | 422      | 422      | REGEX_GUARDRAIL          | PASS
 Denied topic (semantic)        | 422      | 422      | SEMANTIC_PROMPT_GUARD    | PASS
@@ -126,7 +126,7 @@ EMBEDDING_PROVIDER_MODEL=mistral-embed \
 # -> prompts: "Enter your Mistral embedding-provider API key: "
 ```
 
-The key is never written to disk — passed to the containers via Docker Compose environment passthrough only, discarded once the container has it. Never put it in `.env`.
+The key is never written to any file this sample controls (not `config.toml`, not `docker-compose.yaml`, not committed to the repo) — only its variable *name* is; the value is passed to the containers via Docker Compose environment passthrough. Never put it in `.env` either. This is not the same as the key being inaccessible: once the containers are running, anyone with access to the Docker host can read it back in plaintext (e.g. `docker inspect <container> --format '{{.Config.Env}}'`), for as long as those containers exist. That's an acceptable tradeoff for a local, disposable demo — for anything beyond that, use Docker secrets or a real secret manager instead of environment passthrough.
 
 An optional `EMBEDDING_PROVIDER_DIMENSION` (integer) is also supported alongside these, for a provider/model that needs an explicit embedding dimension.
 
@@ -138,7 +138,7 @@ Prefer to hand-edit config instead of passing env vars? Point `additional-config
 
 ## Files
 
-```
+```text
 llm-provider.yaml                LLM provider definition (mock OpenAI upstream, access control)
 llm-proxy.yaml                   LLM proxy — four guardrail policies chained on /chat/completions
 additional-config.toml           Gateway-global embedding-provider config, merged into config.toml by setup.sh
@@ -166,7 +166,7 @@ cp .env.example .env   # optional — every value has a working default
 The script performs these steps in order:
 
 1. Downloads and unzips the official WSO2 AI Gateway **v1.2.0** distribution
-2. Runs the distribution's own one-time provisioning script (`scripts/setup.sh`) — v1.2.0 ships **no default credential** and fails closed without it. `ADMIN_USERNAME`/`ADMIN_PASSWORD` (from `.env`, defaulting to `admin` / `guardrails-demo-admin-pw`) are passed through so provisioning is non-interactive and deterministic, rather than generating and printing a random one-time password
+2. Runs the distribution's own one-time provisioning script (`scripts/setup.sh`) — v1.2.0 ships **no default credential** and fails closed without it. `ADMIN_USERNAME`/`ADMIN_PASSWORD` (from `.env`, defaulting to `admin` / `guardrails-demo-admin-pw`) are passed through so provisioning is non-interactive and deterministic, rather than generating and printing a random one-time password. **That default password is public, in this repo** — the management API binds to all interfaces, not just localhost, so change it (via `.env`) before running this anywhere reachable by anyone else
 3. Starts a WireMock container that mocks **both** the OpenAI chat-completions endpoint and the embedding-provider endpoint used by `semantic-prompt-guard`
 4. Merges `additional-config.toml` into the gateway's `config.toml` — or, if `EMBEDDING_PROVIDER` is set, a config generated on the fly instead (see "Optional Configuration" above)
 5. If the merged `config.toml` references a real embedding provider's API key, wires that key's passthrough into the downloaded distribution's `docker-compose.yaml` (name only — never the value). A no-op with the default mock config
@@ -178,7 +178,7 @@ The script performs these steps in order:
 
 Expected tail of the output:
 
-```
+```text
 [OK]    Route is live (HTTP 200).
 
 ============================================================

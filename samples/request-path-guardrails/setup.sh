@@ -128,7 +128,7 @@ wait_for_health() {
   local url="$1"
   info "Waiting for gateway to be healthy at ${url} ..."
   for i in $(seq 1 "${MAX_RETRIES}"); do
-    if curl -sf "${url}" > /dev/null 2>&1; then
+    if curl -sf --connect-timeout 5 --max-time 10 "${url}" > /dev/null 2>&1; then
       success "Gateway is healthy."
       return 0
     fi
@@ -235,6 +235,14 @@ else
   # global.
   TMP_MERGED=$(mktemp)
   { cat "${ADDITIONAL_CONFIG}"; echo ""; cat "${GATEWAY_CONFIG}"; } > "${TMP_MERGED}"
+  # `mktemp` creates files 0600 (owner-only) — `mv`ing that over config.toml
+  # would silently replace its normal 0644 permissions. The container runs as
+  # a non-root user (uid 10001), so a 0600 file owned by the host user would
+  # deny it read access — this only surfaces on real Linux Docker (where file
+  # ownership/permissions are enforced across the bind mount), not on Docker
+  # Desktop for Mac, which is why this must be set explicitly rather than
+  # relied on implicitly.
+  chmod 644 "${TMP_MERGED}"
   mv "${TMP_MERGED}" "${GATEWAY_CONFIG}"
   success "Config merged."
 fi
@@ -418,7 +426,7 @@ info "Deploying LLM provider from ${PROVIDER_YAML} ..."
 # same pattern in teardown.sh. Body is captured too, not just status, so a
 # re-run against an already-configured environment is recognized as a no-op
 # rather than a hard failure.
-RESPONSE=$(curl -s -w "\n%{http_code}" \
+RESPONSE=$(curl -s --connect-timeout 10 --max-time 30 -w "\n%{http_code}" \
   -X POST "${GATEWAY_MGMT_URL}/llm-providers" \
   -H "Content-Type: application/yaml" \
   -H "${AUTH_HEADER}" \
@@ -443,7 +451,7 @@ fi
 PROVIDER_NAME=$(grep -A1 '^metadata:' "${PROVIDER_YAML}" | sed -n 's/^[[:space:]]*name:[[:space:]]*//p')
 if [[ -n "${PROVIDER_NAME}" ]]; then
   for i in $(seq 1 10); do
-    PROVIDER_STATUS=$(curl -s -o /dev/null -w "%{http_code}" -H "${AUTH_HEADER}" "${GATEWAY_MGMT_URL}/llm-providers/${PROVIDER_NAME}" || echo "000")
+    PROVIDER_STATUS=$(curl -s --connect-timeout 5 --max-time 10 -o /dev/null -w "%{http_code}" -H "${AUTH_HEADER}" "${GATEWAY_MGMT_URL}/llm-providers/${PROVIDER_NAME}" || echo "000")
     [[ "${PROVIDER_STATUS}" == "200" ]] && break
     sleep 1
   done
@@ -458,7 +466,7 @@ info "Deploying LLM proxy from ${PROXY_YAML} ..."
 [[ -f "${PROXY_YAML}" ]] || error "llm-proxy.yaml not found at ${PROXY_YAML}"
 
 # See the fallback/idempotency comment above the LLM-provider deploy call — same reasons.
-RESPONSE=$(curl -s -w "\n%{http_code}" \
+RESPONSE=$(curl -s --connect-timeout 10 --max-time 30 -w "\n%{http_code}" \
   -X POST "${GATEWAY_MGMT_URL}/llm-proxies" \
   -H "Content-Type: application/yaml" \
   -H "${AUTH_HEADER}" \
@@ -481,7 +489,7 @@ info "Waiting for the traffic route to become live ..."
 TRAFFIC_URL="https://localhost:${TRAFFIC_PORT}/api/llm/chat/completions"
 PROBE_PAYLOAD='{"model":"gpt-4o-mini","messages":[{"role":"user","content":"route probe — Pythagorean theorem"}]}'
 for i in $(seq 1 "${MAX_RETRIES}"); do
-  STATUS=$(curl -sk -o /dev/null -w "%{http_code}" -X POST "${TRAFFIC_URL}" \
+  STATUS=$(curl -sk --connect-timeout 5 --max-time 10 -o /dev/null -w "%{http_code}" -X POST "${TRAFFIC_URL}" \
     -H "Content-Type: application/json" -d "${PROBE_PAYLOAD}" || true)
   # 000 = connection failed (Envoy/controller not reachable yet); 404 = Envoy
   # is up but this route isn't registered yet (route propagation via xDS

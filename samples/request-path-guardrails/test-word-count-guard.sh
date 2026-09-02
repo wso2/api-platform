@@ -42,7 +42,7 @@ if ! command -v jq >/dev/null 2>&1; then
 fi
 
 info "Checking gateway health at ${HEALTH_URL} ..."
-if ! curl -sf "${HEALTH_URL}" >/dev/null 2>&1; then
+if ! curl -sf --connect-timeout 5 --max-time 10 "${HEALTH_URL}" >/dev/null 2>&1; then
   echo -e "${RED}[ERROR]${NC} Gateway is not running. Run ./setup.sh first." >&2; exit 1
 fi
 echo -e "${GREEN}[OK]${NC}    Gateway is healthy."

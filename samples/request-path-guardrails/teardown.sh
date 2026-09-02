@@ -52,7 +52,7 @@ delete_resource() {
   # substitution — under `set -e`, a bare `VAR=$(curl ...)` assignment with no
   # `||`/`if` around it would abort the whole script right here instead of
   # letting teardown continue to stop the containers below.
-  HTTP_STATUS=$(curl -s -o /dev/null -w "%{http_code}" \
+  HTTP_STATUS=$(curl -s --connect-timeout 5 --max-time 10 -o /dev/null -w "%{http_code}" \
     -X DELETE "${GATEWAY_MGMT_URL}/${kind}/${name}" \
     -H "${AUTH_HEADER}" || echo "000")
   if [[ "${HTTP_STATUS}" =~ ^2 ]]; then
@@ -70,7 +70,7 @@ delete_resource() {
 # Step 1 — Delete the LLM proxy and provider
 # ---------------------------------------------------------------------------
 GATEWAY_REACHABLE=false
-if curl -sf -o /dev/null "http://localhost:${HEALTH_PORT}/api/admin/v1/health" 2>/dev/null; then
+if curl -sf --connect-timeout 5 --max-time 10 -o /dev/null "http://localhost:${HEALTH_PORT}/api/admin/v1/health" 2>/dev/null; then
   GATEWAY_REACHABLE=true
 fi
 
