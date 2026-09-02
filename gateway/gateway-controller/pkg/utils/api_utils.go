@@ -347,6 +347,8 @@ func (s *APIUtilsService) FetchAPIKeysByKind(artifactKind, issuer string) ([]mod
 		path = "/webbroker-apis/api-keys"
 	case models.KindAgent:
 		path = "/agents/api-keys"
+	case models.KindGraphQLApi:
+		path = "/graphql-apis/api-keys"
 	default:
 		return nil, fmt.Errorf("unsupported artifact kind for API key fetch: %s", artifactKind)
 	}
