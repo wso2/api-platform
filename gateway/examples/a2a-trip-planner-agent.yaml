@@ -1,0 +1,192 @@
+# --------------------------------------------------------------------
+# Copyright (c) 2026, WSO2 LLC. (https://www.wso2.com).
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+# http://www.apache.org/licenses/LICENSE-2.0
+# --------------------------------------------------------------------
+
+# A2A Trip Planner — a complete Agent deployment with a managed Agent Card.
+#
+# The upstream is the A2A trip-planning agent under
+# tests/mock-servers/a2a-trip-planner (built on the official a2a-sdk). It
+# speaks A2A 1.0 over both HTTP bindings:
+#
+#   /                            JSON-RPC binding, all eleven operations
+#   /v1/...                      HTTP+JSON binding, one route per operation
+#   /.well-known/agent-card.json the agent's own public Agent Card
+#
+# The `pathPrefix` values below mirror that layout. A prefix travels upstream
+# with the request — only `spec.context` is stripped — so the two have to agree.
+#
+# The card here is `managed`: the gateway validates it at deploy time, stores
+# it, and serves it itself with an ETag. The request never reaches the agent,
+# so the interfaces advertised are the gateway's addresses rather than the
+# upstream's — which is the point, since the agent's own card advertises an
+# address clients cannot reach. See the end of the file for `passthrough`.
+#
+# Bring the agent up first (see tests/mock-servers/a2a-trip-planner/README.md):
+#
+#   docker run --rm -p 9099:9099 \
+#     --network gateway_gateway-network --name a2a-trip-planner \
+#     ghcr.io/wso2/api-platform/mock-a2a-trip-planner:test
+#
+# Then invoke it through the gateway:
+#
+#   curl -s http://localhost:8080/trip-planner/.well-known/agent-card.json
+#
+#   curl -s -X POST http://localhost:8080/trip-planner/v1/message:send \
+#     -H 'Content-Type: application/json' -H 'A2A-Version: 1.0' \
+#     -d '{"message":{"messageId":"m1","role":"ROLE_USER",
+#          "parts":[{"text":"Plan a 2 day trip to Galle"}]}}'
+#
+# `A2A-Version: 1.0` is mandatory on every operation request — A2A 1.0 §3.6.2
+# treats an absent value as 0.3, which a 1.0 agent rejects. The gateway
+# validates it before resolving an operation and does not add it for you. The
+# Agent Card is exempt: it is a discovery document, not an operation.
+
+apiVersion: gateway.api-platform.wso2.com/v1
+kind: Agent
+metadata:
+  name: a2a-trip-planner-v1.0
+  annotations:
+    "gateway.api-platform.wso2.com/project-id": "default"
+spec:
+  displayName: A2A Trip Planner
+  version: v1.0
+  context: /trip-planner
+  # vhost: "agents.api-platform.com"
+  upstream:
+    url: http://a2a-trip-planner:9099
+    # auth:
+    #   type: api-key
+    #   header: x-api-key
+    #   value: 12345
+  # A2A streaming operations are long-lived, so the route timeout defaults to
+  # disabled for the JSON-RPC route and for streaming HTTP+JSON routes. Set it
+  # here only for a hard ceiling; the idle timeout remains the liveness guard
+  # either way.
+  # resilience:
+  #   timeout: 60s
+  #   idleTimeout: 5m
+  a2a:
+    protocolVersion: "1.0"
+    operationConfigs:
+      transports:
+        - protocolBinding: JSONRPC
+          pathPrefix: /
+        - protocolBinding: HTTP+JSON
+          pathPrefix: /v1
+      # Applied to every A2A operation, before any operation-level policy.
+      # These never run for public Agent Card serving.
+      # policies:
+      #   - name: jwt-auth
+      #     version: v1
+      #     params:
+      #       issuers:
+      #         - PrimaryIdp
+      # Per-operation configuration, keyed by canonical operation name. Not an
+      # allowlist — unlisted operations still get the policies above.
+      # operations:
+      #   - name: CancelTask
+      #     policies:
+      #       - name: jwt-auth
+      #         version: v1
+      #         params:
+      #           issuers:
+      #             - PrimaryIdp
+      #           scopes:
+      #             allOf:
+      #               - "trip:cancel"
+      #   - name: SendStreamingMessage
+      #     policies:
+      #       - name: basic-ratelimit
+      #         version: v1
+      #         params:
+      #           limits:
+      #             - requests: 10
+      #               duration: "1m"
+    agentCard:
+      public:
+        mode: managed
+        # path: /card.json        # replaces /.well-known/agent-card.json
+        # policies:               # apply only to card serving
+        #   - name: cors
+        #     version: v1
+        #
+        # Written as embedded JSON: JSON object syntax is valid YAML, and this
+        # is the form a card copied straight out of an A2A agent arrives in.
+        # The gateway stores and serves it exactly as supplied — it never
+        # rewrites the document — and validates it against the full A2A 1.0
+        # Agent Card model for spec.a2a.protocolVersion.
+        #
+        # The interface URLs are the gateway-facing addresses: spec.context
+        # plus each transport's pathPrefix. They must be https — the controller
+        # rejects a managed card advertising an http interface — so these name
+        # the router's HTTPS ingress (8443), not the plaintext 8080 the curl
+        # commands above use. With a vhost configured, use that hostname.
+        content: {
+          "name": "A2A Trip Planner",
+          "description": "Plans deterministic multi-day itineraries",
+          "version": "1.0.0",
+          "protocolVersion": "1.0",
+          "supportedInterfaces": [
+            {
+              "protocolBinding": "JSONRPC",
+              "protocolVersion": "1.0",
+              "url": "https://localhost:8443/trip-planner"
+            },
+            {
+              "protocolBinding": "HTTP+JSON",
+              "protocolVersion": "1.0",
+              "url": "https://localhost:8443/trip-planner/v1"
+            }
+          ],
+          "capabilities": {
+            "streaming": true,
+            "extendedAgentCard": true
+          },
+          "defaultInputModes": ["text/plain"],
+          "defaultOutputModes": ["text/plain"],
+          "skills": [
+            {
+              "id": "plan_trip",
+              "name": "Plan a trip",
+              "description": "Plans a trip itinerary for a destination and day count",
+              "tags": ["travel"]
+            }
+          ]
+        }
+
+      # The extended card, served through the GetExtendedAgentCard operation and
+      # that operation's policy chain. The gateway requires an authenticated
+      # request for it whether or not this block is written: omitting it means
+      # `passthrough`, so an Agent that attaches no authentication policy fails
+      # closed rather than publishing its extended card.
+      #
+      # That is what happens here. This Agent attaches no authentication policy,
+      # so GetExtendedAgentCard answers 401 on both bindings — uncomment the
+      # `policies` block under `operationConfigs` above to make it reachable:
+      #
+      #   curl -s -o /dev/null -w '%{http_code}\n' \
+      #     -H 'A2A-Version: 1.0' \
+      #     http://localhost:8080/trip-planner/v1/extendedAgentCard
+      #   401
+      #
+      # Writing the block out only chooses how the card is produced: `managed`
+      # serves a gateway-held document, `passthrough` forwards the authenticated
+      # request and proxies the upstream's own extended card (the one that also
+      # lists `book_trip`). `capabilities.extendedAgentCard: true` above is what
+      # tells a client the operation exists at all.
+      # protected:
+      #   mode: passthrough
+
+      # `passthrough` for the public card instead proxies the agent's own
+      # document unchanged, and accepts neither `content` nor `signing` — the
+      # gateway does not parse, transform, or sign a proxied card. Swap the
+      # whole `public` block above for this to use it:
+      #
+      # public:
+      #   mode: passthrough
